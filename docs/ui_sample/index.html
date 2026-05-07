@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<title>便當櫃台 POS · Prototype</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body data-fs="lg" data-theme="warm">
+<div id="root"></div>
+
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="pos-components.jsx"></script>
+<script type="text/babel" src="screens.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+const TWEAKS_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "warm",
+  "fontSize": "lg"
+}/*EDITMODE-END*/;
+
+function App(){
+  const [tab, setTab] = useState('pos');
+  const [tweaks, setTweak] = useTweaks(TWEAKS_DEFAULTS);
+
+  useEffect(() => {
+    document.body.setAttribute('data-theme', tweaks.theme);
+    document.body.setAttribute('data-fs', tweaks.fontSize);
+  }, [tweaks.theme, tweaks.fontSize]);
+
+  const [todayMenu, setTodayMenu] = useState(TODAY_MENU);
+  const [vendors, setVendors] = useState(VENDORS);
+  const [tx, setTx] = useState(TODAY_TX);
+
+  // ordered today by sid (mutable so duplicate detection updates live)
+  const [orderedToday, setOrderedToday] = useState(ORDERED_TODAY);
+  // student balances (mutable so confirmations update saved balance)
+  const [balances, setBalances] = useState(() => Object.fromEntries(STUDENTS.map(s => [s.id, s.balance])));
+
+  const [query, setQuery] = useState('');
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [pickedId, setPickedId] = useState(null);
+  const [mode, setMode] = useState('order_debt');
+  const [payAmount, setPayAmount] = useState('');
+  const [flash, setFlash] = useState(null);
+  const [confirmDup, setConfirmDup] = useState(false);
+  const [focusZone, setFocusZone] = useState('mode-order_debt'); // mode-X | btn-confirm | btn-cancel | input
+  const [focusKey, setFocusKey] = useState(0);
+  const [online] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState('11:42:08');
+
+  const picked = pickedId ? { ...STUDENTS.find(s => s.id === pickedId), balance: balances[pickedId] } : null;
+  const orderedTodayCount = picked ? (orderedToday[picked.id] || 0) : 0;
+
+  const suggestions = useMemo(() => {
+    if (!query) return [];
+    const q = query.trim().toLowerCase();
+    return STUDENTS.map(s => ({ ...s, balance: balances[s.id] }))
+      .filter(s => s.id.toLowerCase().includes(q) || s.name.includes(query.trim()));
+  }, [query, balances]);
+
+  const choose = (s) => {
+    setPickedId(s.id);
+    setQuery('');
+    setActiveIdx(0);
+    setMode('order_debt');
+    setPayAmount(String(todayMenu.price));
+    setConfirmDup(false);
+    setFocusZone('mode-order_debt');
+  };
+
+  const reset = () => {
+    setPickedId(null); setQuery(''); setActiveIdx(0);
+    setMode('order_debt'); setPayAmount('');
+    setConfirmDup(false);
+    setFocusKey(k => k+1);
+  };
+
+  const submitSearch = () => {
+    if (suggestions.length === 0) return;
+    choose(suggestions[activeIdx] || suggestions[0]);
+  };
+
+  const triggerSync = () => {
+    setSyncing(true);
+    setTimeout(() => {
+      setSyncing(false);
+      setLastSync(new Date().toTimeString().slice(0,8));
+    }, 900 + Math.random() * 500);
+  };
+
+  const doConfirm = () => {
+    if (!picked) return;
+    const time = new Date().toTimeString().slice(0,8);
+    let entry, flashData;
+
+    if (mode === 'order_debt') {
+      const after = picked.balance - todayMenu.price;
+      const willDebt = after < 0;
+      entry = { time, sid: picked.id, name: picked.name,
+        type: willDebt ? 'debt' : 'order',
+        amount: -todayMenu.price, after, note: willDebt ? '記帳 ‧ 待繳 · ' + todayMenu.name : todayMenu.name };
+      flashData = { detail: todayMenu.name + (willDebt ? ' (記帳)' : ''), amount: -todayMenu.price, after };
+      setBalances(b => ({...b, [picked.id]: after}));
+      setOrderedToday(o => ({...o, [picked.id]: (o[picked.id]||0) + 1}));
+    }
+    else if (mode === 'order_pay') {
+      const paid = Number(payAmount || 0);
+      const after = picked.balance + paid - todayMenu.price;
+      entry = { time, sid: picked.id, name: picked.name, type: 'order_pay',
+        amount: paid - todayMenu.price, after,
+        note: `${todayMenu.name} · 收現 $${fmt(paid)}` };
+      flashData = { detail: `${todayMenu.name} · 收現 $${fmt(paid)}`, amount: paid - todayMenu.price, after };
+      setBalances(b => ({...b, [picked.id]: after}));
+      setOrderedToday(o => ({...o, [picked.id]: (o[picked.id]||0) + 1}));
+    }
+    else if (mode === 'topup') {
+      const amt = Number(payAmount || 0);
+      const after = picked.balance + amt;
+      entry = { time, sid: picked.id, name: picked.name,
+        type: picked.balance < 0 ? 'pay' : 'topup',
+        amount: +amt, after, note: picked.balance < 0 ? '繳交欠款 / 儲值' : '現金儲值' };
+      flashData = { detail: picked.balance < 0 ? '繳費 / 儲值' : '現金儲值', amount: +amt, after };
+      setBalances(b => ({...b, [picked.id]: after}));
+    }
+    else if (mode === 'cancel') {
+      if (orderedTodayCount === 0) return;
+      // Delete today's order records for this student instead of adding a cancel record
+      const refund = orderedTodayCount * todayMenu.price;
+      const after = picked.balance + refund;
+      setBalances(b => ({...b, [picked.id]: after}));
+      setOrderedToday(o => ({...o, [picked.id]: 0}));
+      setTx(prev => prev.filter(t => !(t.sid === picked.id && (t.type === 'order' || t.type === 'order_pay' || t.type === 'debt'))));
+      flashData = { detail: `已刪除當日 ${orderedTodayCount} 筆訂餐紀錄`, amount: +refund, after };
+      triggerSync();
+      setFlash({ id: Date.now(), sid: picked.id, name: picked.name, ...flashData });
+      setPickedId(null);
+      setConfirmDup(false);
+      return;
+    }
+    if (!entry) return;
+    setTx(prev => [{...entry}, ...prev]);
+    triggerSync();
+    setFlash({ id: Date.now(), sid: picked.id, name: picked.name, ...flashData });
+    setPickedId(null);
+    setConfirmDup(false);
+  };
+
+  // Confirm flow guards: duplicate-order warning
+  const handleConfirm = () => {
+    if (!picked) return;
+    if ((mode === 'order_debt' || mode === 'order_pay') && orderedTodayCount > 0 && !confirmDup) {
+      setConfirmDup(true);
+      return;
+    }
+    doConfirm();
+  };
+
+  const dismissFlash = () => { setFlash(null); reset(); };
+
+  // Global keyboard
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'F1') { e.preventDefault(); setTab('pos'); }
+      else if (e.key === 'F2') { e.preventDefault(); setTab('report'); }
+      else if (e.key === 'F3') { e.preventDefault(); setTab('admin'); }
+      else if (e.key === 'F4') { e.preventDefault(); setTab('backup'); }
+      else if (e.key === 'F5') { e.preventDefault(); setTab('vendors'); }
+
+      if (flash) return;
+      if (tab !== 'pos' || !picked) return;
+      if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) {
+        // inputs handle their own Enter/Esc
+        if (e.key === 'Enter') { e.preventDefault(); handleConfirm(); }
+        else if (e.key === 'Escape') { e.preventDefault();
+          if (confirmDup) setConfirmDup(false); else reset();
+        }
+        return;
+      }
+
+      // numeric shortcuts (always available, even on disabled cancel)
+      if (['1','2','3','4'].includes(e.key)) {
+        const map = { '1':'order_debt','2':'order_pay','3':'topup','4':'cancel' };
+        if (e.key === '4' && orderedTodayCount === 0) return;
+        const m = map[e.key];
+        setMode(m); setFocusZone('mode-' + m); setConfirmDup(false);
+        if (e.key === '2') setPayAmount(String(todayMenu.price));
+        else if (e.key === '3') setPayAmount('500');
+        return;
+      }
+
+      // arrow navigation: top row = 4 modes; bottom row = [取消, 確認]
+      const modes = ['mode-order_debt','mode-order_pay','mode-topup','mode-cancel'];
+      const i = modes.indexOf(focusZone);
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        if (focusZone === 'btn-confirm') setFocusZone('btn-cancel');
+        else if (focusZone === 'btn-cancel') setFocusZone('btn-cancel');
+        else if (i > 0) setFocusZone(modes[i - 1]);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        if (focusZone === 'btn-cancel') setFocusZone('btn-confirm');
+        else if (focusZone === 'btn-confirm') setFocusZone('btn-confirm');
+        else if (i >= 0 && i < 3) {
+          // skip disabled cancel
+          let next = i + 1;
+          if (modes[next] === 'mode-cancel' && orderedTodayCount === 0) next = i; // can't go further
+          setFocusZone(modes[next]);
+        }
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (i >= 0) setFocusZone('btn-confirm');
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (focusZone === 'btn-confirm' || focusZone === 'btn-cancel') setFocusZone('mode-' + mode);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (focusZone === 'btn-cancel') reset();
+        else if (focusZone === 'btn-confirm') handleConfirm();
+        else if (focusZone.startsWith('mode-')) {
+          const m = focusZone.replace('mode-', '');
+          if (m === 'cancel' && orderedTodayCount === 0) return;
+          if (m === mode) {
+            // already selected → confirm
+            handleConfirm();
+          } else {
+            setMode(m);
+            if (m === 'order_pay') setPayAmount(String(todayMenu.price));
+            else if (m === 'topup') setPayAmount('500');
+          }
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        if (confirmDup) setConfirmDup(false);
+        else reset();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [tab, picked, flash, mode, orderedTodayCount, confirmDup, payAmount, todayMenu.price, focusZone]);
+
+  const todayCount = tx.filter(t => t.type === 'order' || t.type === 'order_pay' || t.type === 'debt').length
+                   - tx.filter(t => t.type === 'cancel').reduce((acc,t) => acc + Math.round(t.amount/todayMenu.price), 0);
+
+  return (
+    <div className="app">
+      <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} />
+
+      {tab === 'pos' && (
+        <div className="main">
+          <div className="col-main">
+            {!picked ? (
+              <>
+                <SearchBox
+                  value={query}
+                  onChange={(v) => { setQuery(v); setActiveIdx(0); }}
+                  onSubmit={submitSearch}
+                  onEsc={() => { setQuery(''); setActiveIdx(0); }}
+                  suggestions={suggestions}
+                  activeIdx={activeIdx}
+                  onPick={choose}
+                  onHover={setActiveIdx}
+                  focusKey={focusKey}
+                />
+                <IdleHero todayMenu={todayMenu} todayCount={todayCount}
+                  queueHint={`全鍵盤操作 · 平均處理 4.2 秒/人`} />
+              </>
+            ) : (
+              <>
+                <CustomerCard
+                  student={picked}
+                  todayMenu={todayMenu}
+                  mode={mode}
+                  orderedTodayCount={orderedTodayCount}
+                  payAmount={payAmount}
+                  setPayAmount={setPayAmount}
+                />
+                {confirmDup && (
+                  <div className="dup-warn">
+                    <div className="dup-warn-icon">⚠</div>
+                    <div className="dup-warn-body">
+                      <div className="dup-warn-h">已經訂過 {orderedTodayCount} 次便當</div>
+                      <div className="dup-warn-sub">
+                        確定要再訂一份嗎? (家長可能用同一帳號為多位學員訂餐)
+                      </div>
+                    </div>
+                    <div className="dup-warn-btns">
+                      <button className="btn-cancel" onClick={() => setConfirmDup(false)}>
+                        <span>否</span><span className="kbd">Esc</span>
+                      </button>
+                      <button className="btn-confirm" onClick={doConfirm}>
+                        <span>是,再訂一份</span><span className="kbd kbd-light">↵</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <ActionBar
+                  mode={mode} setMode={(m) => { setMode(m); setConfirmDup(false); setFocusZone('mode-' + m);
+                    if (m === 'order_pay') setPayAmount(String(todayMenu.price));
+                    else if (m === 'topup') setPayAmount('500');
+                  }}
+                  student={picked}
+                  orderedTodayCount={orderedTodayCount}
+                  focusZone={focusZone}
+                  setFocusZone={setFocusZone}
+                  onConfirm={handleConfirm}
+                  onCancel={reset}
+                />
+              </>
+            )}
+          </div>
+          <div className="col-side">
+            <div className="card side-menu">
+              <div className="recent-head">本日便當</div>
+              <div style={{fontSize:'22px', fontWeight:600, letterSpacing:'-0.01em', marginTop:'4px'}}>{todayMenu.name}</div>
+              <div style={{display:'flex', gap:'10px', alignItems:'baseline', marginTop:'8px'}}>
+                <span className="mono" style={{fontSize:'24px', fontWeight:600}}>${fmt(todayMenu.price)}</span>
+                <span style={{fontSize:'12px', color:'var(--ink-3)'}}>{todayMenu.vendor}</span>
+              </div>
+              <div style={{marginTop:'14px', fontSize:'13px', color:'var(--ink-2)'}}>
+                已訂 <span className="mono" style={{fontSize:'20px', fontWeight:600, color:'var(--ink)'}}>{todayCount}</span> 份
+              </div>
+            </div>
+            <RecentStrip recent={tx.map((t,i) => ({...t, uid: i + '-' + t.time}))} />
+          </div>
+        </div>
+      )}
+
+      {tab === 'report'  && <ReportScreen tx={tx} setTx={setTx} todayMenu={todayMenu} />}
+      {tab === 'admin'   && <AdminScreen todayMenu={todayMenu} setTodayMenu={setTodayMenu} vendors={vendors} />}
+      {tab === 'vendors' && <VendorsScreen vendors={vendors} setVendors={setVendors} />}
+      {tab === 'backup'  && <BackupScreen />}
+
+      <ConfirmBanner flash={flash} onDismiss={dismissFlash} />
+
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="顯示">
+          <TweakRadio label="主題" value={tweaks.theme}
+            onChange={v => setTweak('theme', v)}
+            options={[
+              {value:'light', label:'亮色'},
+              {value:'dark',  label:'深色'},
+              {value:'warm',  label:'暖色'},
+            ]} />
+          <TweakRadio label="字體大小" value={tweaks.fontSize}
+            onChange={v => setTweak('fontSize', v)}
+            options={[
+              {value:'md', label:'普通'},
+              {value:'lg', label:'大字'},
+            ]} />
+        </TweakSection>
+      </TweaksPanel>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+
+</body>
+</html>
