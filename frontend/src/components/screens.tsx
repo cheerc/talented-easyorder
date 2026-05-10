@@ -2,14 +2,21 @@ import React from "react";
 
 // Report, Admin, Vendors, Backup screens (v2)
 import { fmt, sign } from "./pos-components";
+import { type Transaction, type TodayMenu, type Student, type Vendor } from '../mocks/initialData';
+import { useState, useMemo } from "react";
 
-import {  useState as useS2, useMemo as useM2  } from "react";
-
-export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }) {
-  const [dateRange, setDateRange] = useS2('today');
-  const [expandedSids, setExpandedSids] = useS2(new Set());
-  const [editingId, setEditingId] = useS2(null); // t.id for editing
-  const [draft, setDraft] = useS2(null);
+interface ReportScreenProps {
+  tx: Transaction[];
+  onUpdate: (id: string, data: Partial<Transaction>) => void;
+  onDelete: (id: string) => void;
+  todayMenu: TodayMenu;
+  viewDate: string;
+}
+export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }: ReportScreenProps) {
+  const [dateRange, setDateRange] = useState('today');
+  const [expandedSids, setExpandedSids] = useState<Set<string>>(new Set());
+  const [editingId, setEditingId] = useState<string | null>(null); // t.id for editing
+  const [draft, setDraft] = useState<Partial<Transaction> | null>(null);
 
   const toggleExpand = (sid) => {
     const next = new Set(expandedSids);
@@ -18,7 +25,7 @@ export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }) {
     setExpandedSids(next);
   };
 
-  const totals = useM2(() => {
+  const totals = useMemo(() => {
     let order = 0, topup = 0, debt = 0;
     tx.forEach(t => {
       const mP = t.mealPrice || 0;
@@ -30,7 +37,7 @@ export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }) {
     return { order, topup, debt };
   }, [tx]);
 
-  const grouped = useM2(() => {
+  const grouped = useMemo(() => {
     const map = new Map();
     tx.forEach(t => {
       if (!map.has(t.sid)) {
@@ -56,7 +63,7 @@ export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }) {
 
   const orderCount = tx.filter(t => t.type === 'order').length;
 
-  const todayStr = useM2(() => {
+  const todayStr = useMemo(() => {
     if (!viewDate) return '';
     const [y, m, d] = viewDate.split('-');
     return `${parseInt(m)}/${parseInt(d)}`;
@@ -69,21 +76,23 @@ export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }) {
     { id: 'custom', label: '自訂…' },
   ];
 
-  const startEdit = (e, t) => {
+  const startEdit = (e: React.MouseEvent, t: Transaction) => {
     e.stopPropagation();
     setEditingId(t.id);
     setDraft({ ...t });
   };
-  const saveEdit = (e) => {
+  const saveEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onUpdate(editingId, draft);
+    if (editingId && draft) {
+      onUpdate(editingId, draft);
+    }
     setEditingId(null);
   };
-  const cancelEdit = (e) => {
+  const cancelEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
     setEditingId(null);
   };
-  const deleteRow = (e, tid) => {
+  const deleteRow = (e: React.MouseEvent, tid: string) => {
     e.stopPropagation();
     if (!confirm('確定要刪除這筆紀錄?')) return;
     onDelete(tid);
@@ -167,20 +176,20 @@ export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }) {
                         <div className="dim">{t.type === 'order' ? '訂餐' : t.type === 'topup' ? '儲值' : '取消'}</div>
                         <div className={'r mono ' + (t.mealPrice > 0 ? 'neg' : t.mealPrice < 0 ? 'pos' : '')}>
                           {isEditing ? (
-                            <input type="number" className="rpt-edit-input mono r" value={draft.mealPrice}
-                                   onChange={e => setDraft({...draft, mealPrice: Number(e.target.value)})} />
+                            <input type="number" className="rpt-edit-input mono r" value={draft?.mealPrice || 0}
+                                   onChange={e => setDraft({...draft!, mealPrice: Number(e.target.value)})} />
                           ) : (t.mealPrice !== 0 ? <>{t.mealPrice > 0 ? '−' : '+'}${fmt(Math.abs(t.mealPrice))}</> : <>-</>)}
                         </div>
                         <div className={'r mono ' + (t.paidAmount > 0 ? 'pos' : '')}>
                           {isEditing ? (
-                            <input type="number" className="rpt-edit-input mono r" value={draft.paidAmount}
-                                   onChange={e => setDraft({...draft, paidAmount: Number(e.target.value)})} />
+                            <input type="number" className="rpt-edit-input mono r" value={draft?.paidAmount || 0}
+                                   onChange={e => setDraft({...draft!, paidAmount: Number(e.target.value)})} />
                           ) : (t.paidAmount > 0 ? <>+${fmt(t.paidAmount)}</> : <>-</>)}
                         </div>
                         <div className="dim italic" style={{ fontSize: '12px' }}>
                           {isEditing ? (
-                            <input className="rpt-edit-input" value={draft.note}
-                                   onChange={e => setDraft({...draft, note: e.target.value})} />
+                            <input className="rpt-edit-input" value={draft?.note || ''}
+                                   onChange={e => setDraft({...draft!, note: e.target.value})} />
                           ) : t.note}
                         </div>
                         <div className="rpt-row-actions">
@@ -213,10 +222,17 @@ export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }) {
 }
 
 // ============ Admin (today's menu only — no prepared count) ============
-export function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetData }) {
-  const [name, setName] = useS2(todayMenu.name);
-  const [price, setPrice] = useS2(todayMenu.price);
-  const [vendor, setVendor] = useS2(todayMenu.vendor);
+interface AdminScreenProps {
+  todayMenu: TodayMenu;
+  setTodayMenu: (menu: TodayMenu) => void;
+  vendors: Vendor[];
+  students: Student[];
+  resetData: () => void;
+}
+export function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetData }: AdminScreenProps) {
+  const [name, setName] = useState(todayMenu.name);
+  const [price, setPrice] = useState(todayMenu.price);
+  const [vendor, setVendor] = useState(todayMenu.vendor);
 
   const save = () => setTodayMenu({ ...todayMenu, name, price: Number(price), vendor });
 
@@ -279,11 +295,15 @@ export function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetD
 }
 
 // ============ Vendors ============
-export function VendorsScreen({ vendors, setVendors }) {
-  const [editing, setEditing] = useS2(null); // id of row being edited, or 'new'
-  const [draft, setDraft] = useS2({ name:'', phone:'', note:'' });
+interface VendorsScreenProps {
+  vendors: Vendor[];
+  setVendors: (v: Vendor[]) => void;
+}
+export function VendorsScreen({ vendors, setVendors }: VendorsScreenProps) {
+  const [editing, setEditing] = useState<string | null>(null); // id of row being edited, or 'new'
+  const [draft, setDraft] = useState<Partial<Vendor>>({ name:'', phone:'', note:'' });
 
-  const startEdit = (v) => { setEditing(v.id); setDraft({ ...v }); };
+  const startEdit = (v: Vendor) => { setEditing(v.id); setDraft({ ...v }); };
   const startNew  = () => { setEditing('new'); setDraft({ name:'', phone:'', note:'' }); };
   const cancel    = () => setEditing(null);
   const save = () => {
@@ -295,7 +315,7 @@ export function VendorsScreen({ vendors, setVendors }) {
     }
     setEditing(null);
   };
-  const remove = (id) => {
+  const remove = (id: string) => {
     if (confirm('確定要刪除此供應商嗎？')) {
       setVendors(vendors.filter(v => v.id !== id));
     }
@@ -368,9 +388,9 @@ export function VendorsScreen({ vendors, setVendors }) {
 
 // ============ Backup / Restore ============
 export function BackupScreen() {
-  const [step, setStep] = useS2(0);
-  const [progress, setProgress] = useS2(0);
-  const [op, setOp] = useS2(null); // 'export-local' | 'import-local' | 'restore-cloud'
+  const [step, setStep] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [op, setOp] = useState<string | null>(null); // 'export-local' | 'import-local' | 'restore-cloud'
 
   React.useEffect(() => {
     if (step !== 2) return;
@@ -383,7 +403,7 @@ export function BackupScreen() {
     return () => clearInterval(t);
   }, [step]);
 
-  const start = (kind) => { setOp(kind); setStep(1); };
+  const start = (kind: string) => { setOp(kind); setStep(1); };
   const go    = () => { setProgress(0); setStep(2); };
   const reset = () => { setStep(0); setOp(null); setProgress(0); };
 

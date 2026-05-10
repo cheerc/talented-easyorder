@@ -2,12 +2,24 @@ import React from "react";
 
 // POS Main Screen — search, order, checkout flow (v2)
 import {  useState, useEffect, useRef, useMemo, useCallback  } from "react";
+import { type Student, type TodayMenu } from '../mocks/initialData';
 
-export const fmt = (n) => new Intl.NumberFormat('zh-TW').format(Math.abs(n));
-export const sign = (n) => (n > 0 ? '+' : n < 0 ? '−' : '');
+export const fmt = (n: number) => new Intl.NumberFormat('zh-TW').format(Math.abs(n));
+export const sign = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '');
 
-// ============ Top Bar ============
-export function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, todayMenu, viewDate, setViewDate, systemDate }) {
+interface TopBarProps {
+  tab: string;
+  setTab: (tab: string) => void;
+  online: boolean;
+  syncing: boolean;
+  lastSync: string;
+  todayCount: number;
+  todayMenu: TodayMenu;
+  viewDate: string;
+  setViewDate: (date: string) => void;
+  systemDate: string;
+}
+export function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, todayMenu, viewDate, setViewDate, systemDate }: TopBarProps) {
   const tabs = [
     { id: 'pos',     label: '櫃台', hint: 'F1' },
     { id: 'report',  label: '今日帳', hint: 'F2' },
@@ -60,7 +72,19 @@ export function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, tod
 }
 
 // ============ Search Box ============
-export function SearchBox({ value, onChange, onSubmit, onEsc, suggestions, activeIdx, onPick, onHover, focusKey, disabled }) {
+interface SearchBoxProps {
+  value: string;
+  onChange: (val: string) => void;
+  onSubmit: () => void;
+  onEsc: () => void;
+  suggestions: Student[];
+  activeIdx: number;
+  onPick: (s: Student) => void;
+  onHover: (idx: number) => void;
+  focusKey: number;
+  disabled: boolean;
+}
+export function SearchBox({ value, onChange, onSubmit, onEsc, suggestions, activeIdx, onPick, onHover, focusKey, disabled }: SearchBoxProps) {
   const ref = useRef(null);
   useEffect(() => { if (!disabled) ref.current?.focus(); }, [focusKey, disabled]);
 
@@ -121,7 +145,15 @@ export function SearchBox({ value, onChange, onSubmit, onEsc, suggestions, activ
 //   2 = 訂便當 + 收現付款       — net 0 to balance, debt cleared by payment
 //   3 = 純儲值 / 繳費 (不訂餐)  — balance += amount
 //   4 = 取消當日訂餐            — refund all of today's orders
-export function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount }) {
+interface CustomerCardProps {
+  student: Student;
+  todayMenu: TodayMenu;
+  mode: string;
+  orderedTodayCount: number;
+  payAmount: string;
+  setPayAmount: (val: string) => void;
+}
+export function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount }: CustomerCardProps) {
   const after =
     mode === 'order'      ? student.balance + (Number(payAmount || 0) - todayMenu.price) :
     mode === 'topup'      ? student.balance + Number(payAmount || 0) :
@@ -226,7 +258,17 @@ export function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payA
 }
 
 // ============ Action Bar ============
-export function ActionBar({ mode, setMode, student, orderedTodayCount, onConfirm, onCancel, focusZone, setFocusZone }) {
+interface ActionBarProps {
+  mode: string;
+  setMode: (mode: string) => void;
+  student: Student;
+  orderedTodayCount: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+  focusZone: string;
+  setFocusZone: (zone: string) => void;
+}
+export function ActionBar({ mode, setMode, student, orderedTodayCount, onConfirm, onCancel, focusZone, setFocusZone }: ActionBarProps) {
   const opts = [
     { id: 'order',  label: '訂便當',           hint: 'Q' },
     { id: 'topup',  label: '純繳費 / 儲值',   hint: 'W' },
@@ -266,7 +308,13 @@ export function ActionBar({ mode, setMode, student, orderedTodayCount, onConfirm
 }
 
 // ============ Idle Hero ============
-export function IdleHero({ todayMenu, todayCount, vendorPhone, queueHint }) {
+interface IdleHeroProps {
+  todayMenu: TodayMenu;
+  todayCount: number;
+  vendorPhone: string;
+  queueHint?: string;
+}
+export function IdleHero({ todayMenu, todayCount, vendorPhone, queueHint }: IdleHeroProps) {
   return (
     <div className="idle">
       <div className="idle-menu">
@@ -293,7 +341,19 @@ export function IdleHero({ todayMenu, todayCount, vendorPhone, queueHint }) {
 }
 
 // ============ Confirmation banner (replaces auto-close countdown) ============
-export function ConfirmBanner({ flash, onDismiss }) {
+interface FlashData {
+  id: number;
+  name: string;
+  sid: string;
+  detail: string;
+  amount: number;
+  after: number;
+}
+interface ConfirmBannerProps {
+  flash: FlashData | null;
+  onDismiss: () => void;
+}
+export function ConfirmBanner({ flash, onDismiss }: ConfirmBannerProps) {
   useEffect(() => {
     if (!flash) return;
     const onKey = (e) => {
@@ -333,7 +393,10 @@ export function ConfirmBanner({ flash, onDismiss }) {
 }
 
 // ============ Recent strip ============
-export function RecentStrip({ recent }) {
+interface RecentStripProps {
+  recent: any[];
+}
+export function RecentStrip({ recent }: RecentStripProps) {
   return (
     <div className="recent">
       <div className="recent-head">最近 5 筆</div>
