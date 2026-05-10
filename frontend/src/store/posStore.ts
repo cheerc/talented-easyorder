@@ -50,7 +50,7 @@ export const usePosStore = create<PosState>()(
           newStudents[studentIndex] = { ...student, balance: newBalance };
 
           const newTransaction: Transaction = {
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            id: crypto.randomUUID(),
             date: new Date().toISOString().split('T')[0],
             time: new Date().toLocaleTimeString('en-US', { hour12: false }),
             sid: student.id,
@@ -81,15 +81,25 @@ export const usePosStore = create<PosState>()(
           // Recalculate amount
           newTx.amount = (newTx.paidAmount || 0) - (newTx.mealPrice || 0);
 
+          const diff = newTx.amount - oldTx.amount;
+          newTx.after = oldTx.after + diff;
+
           const newTransactions = [...state.transactions];
           newTransactions[txIndex] = newTx;
 
-          // Recalculate balance for this student (brute force for prototype simplicity)
-          // In a real app we'd need to re-sequence all 'after' balances
+          // Propagate diff to all newer transactions for this student
+          for (let i = 0; i < txIndex; i++) {
+            if (newTransactions[i].sid === oldTx.sid) {
+              newTransactions[i] = { 
+                ...newTransactions[i], 
+                after: newTransactions[i].after + diff 
+              };
+            }
+          }
+
           const studentIndex = state.students.findIndex(s => s.id === oldTx.sid);
           if (studentIndex === -1) return { transactions: newTransactions };
 
-          const diff = newTx.amount - oldTx.amount;
           const newStudents = [...state.students];
           newStudents[studentIndex] = { 
             ...newStudents[studentIndex], 
@@ -102,11 +112,22 @@ export const usePosStore = create<PosState>()(
 
       deleteTransaction: (id) => {
         set((state) => {
-          const tx = state.transactions.find(t => t.id === id);
-          if (!tx) return state;
+          const txIndex = state.transactions.findIndex(t => t.id === id);
+          if (txIndex === -1) return state;
 
+          const tx = state.transactions[txIndex];
           const studentIndex = state.students.findIndex(s => s.id === tx.sid);
-          const newTransactions = state.transactions.filter(t => t.id !== id);
+
+          const newTransactions = [...state.transactions];
+          for (let i = 0; i < txIndex; i++) {
+            if (newTransactions[i].sid === tx.sid) {
+              newTransactions[i] = { 
+                ...newTransactions[i], 
+                after: newTransactions[i].after - tx.amount 
+              };
+            }
+          }
+          newTransactions.splice(txIndex, 1);
 
           if (studentIndex === -1) return { transactions: newTransactions };
 
