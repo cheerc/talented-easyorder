@@ -1,5 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { usePosStore } from './store/posStore';
+import { type Student } from './mocks/initialData';
+
+interface FlashData {
+  id: number;
+  name: string;
+  sid: string;
+  detail: string;
+  amount: number;
+  after: number;
+}
 import { TopBar, SearchBox, CustomerCard, ActionBar, IdleHero, ConfirmBanner, RecentStrip } from './components/pos-components';
 import { ReportScreen, AdminScreen, VendorsScreen } from './components/screens';
 import { TweaksPanel, TweakSection, TweakRadio } from './components/tweaks-panel';
@@ -24,14 +34,14 @@ export default function App() {
   const [tab, setTab] = useState('pos'); // pos | report | admin | vendors | backup
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
-  const [picked, setPicked] = useState<any>(null);
+  const [picked, setPicked] = useState<Student | null>(null);
 
   const [mode, setMode] = useState('order');
   const [focusZone, setFocusZone] = useState('mode-order');
   const [payAmount, setPayAmount] = useState('');
   const [confirmDup, setConfirmDup] = useState(false);
 
-  const [flash, setFlash] = useState<any>(null);
+  const [flash, setFlash] = useState<FlashData | null>(null);
   const online = true;
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState('剛剛');
@@ -41,7 +51,7 @@ export default function App() {
     if (!picked) return 0;
     return tx.filter(t => t.sid === picked.id && t.type === 'order').length
       - tx.filter(t => t.sid === picked.id && t.type === 'cancel').reduce((acc, t) => acc + Math.abs((t.mealPrice || 0) / todayMenu.price), 0);
-  }, [tx, picked]);
+  }, [tx, picked, todayMenu.price]);
 
   const suggestions = useMemo(() => {
     if (!query) return [];
@@ -77,7 +87,7 @@ export default function App() {
 
     let mealPrice = 0;
     let paidAmount = 0;
-    let actualType = mode;
+    const actualType = mode;
     let note = '';
 
     if (mode === 'order') {
@@ -94,7 +104,7 @@ export default function App() {
       note = `退餐 ${orderedTodayCount} 筆` + (amt > 0 ? ` (退現 ${amt})` : '');
     }
 
-    processTransaction(picked.id, actualType as any, mealPrice, paidAmount, note);
+    processTransaction(picked.id, actualType as 'order' | 'topup' | 'cancel', mealPrice, paidAmount, note);
 
     setFlash({
       id: Date.now(),
@@ -169,7 +179,7 @@ export default function App() {
       }
       if (keys.includes(e.key)) {
         const key = e.key.toLowerCase();
-        const map: any = { 'q': 'order', 'w': 'topup', 'e': 'cancel' };
+        const map: Record<string, 'order' | 'topup' | 'cancel'> = { 'q': 'order', 'w': 'topup', 'e': 'cancel' };
         if (key === 'e' && orderedTodayCount === 0) return;
         e.preventDefault();
         const m = map[key];
