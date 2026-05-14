@@ -84,6 +84,7 @@ export function promoteCatalogItemToTodayMenu(
   item: MenuCatalogItem,
   vendor: Vendor,
   businessDate: string,
+  updatedAt: string,
 ): TodayMenu {
   return {
     businessDate,
@@ -92,7 +93,7 @@ export function promoteCatalogItemToTodayMenu(
     vendorId: vendor.vendorId,
     vendorNameSnapshot: vendor.name,
     catalogItemId: item.itemId,
-    updatedAt: new Date().toISOString(),
+    updatedAt,
     revision: 1,
   };
 }
