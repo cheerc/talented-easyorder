@@ -288,6 +288,7 @@ interface VendorsScreenProps {
 export function VendorsScreen({ vendors, setVendors }: VendorsScreenProps) {
   const [editing, setEditing] = useState<string | null>(null); // id of row being edited, or 'new'
   const [draft, setDraft] = useState<Partial<Vendor>>({ name:'', phone:'', note:'' });
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const startEdit = (v: Vendor) => { setEditing(v.vendorId); setDraft({ ...v }); };
   const startNew  = () => { setEditing('new'); setDraft({ name:'', phone:'', note:'' }); };
@@ -311,10 +312,10 @@ export function VendorsScreen({ vendors, setVendors }: VendorsScreenProps) {
     }
     setEditing(null);
   };
-  const remove = (vendorId: string) => {
-    if (confirm('確定要刪除此供應商嗎？')) {
-      setVendors(vendors.filter(v => v.vendorId !== vendorId));
-    }
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    setVendors(vendors.filter(v => v.vendorId !== deleteTarget));
+    setDeleteTarget(null);
   };
 
   return (
@@ -358,7 +359,7 @@ export function VendorsScreen({ vendors, setVendors }: VendorsScreenProps) {
               <div className="vendor-note dim">{v.note || '-'}</div>
               <div className="vendor-actions r">
                 <button className="rpt-mini-btn" onClick={() => startEdit(v)}>編輯</button>
-                <button className="rpt-mini-btn rpt-mini-del" style={{ marginLeft: '6px' }} onClick={() => remove(v.vendorId)}>刪除</button>
+                <button className="rpt-mini-btn rpt-mini-del" style={{ marginLeft: '6px' }} onClick={() => setDeleteTarget(v.vendorId)}>刪除</button>
               </div>
             </div>
           ))}
@@ -378,6 +379,27 @@ export function VendorsScreen({ vendors, setVendors }: VendorsScreenProps) {
           )}
         </div>
       </div>
+
+      {deleteTarget && (
+        <div className="dialog-overlay" onClick={() => setDeleteTarget(null)}>
+          <div className="dialog-box" onClick={e => e.stopPropagation()} style={{ maxWidth: '380px' }}>
+            <div className="dialog-h">確認刪除供應商</div>
+            <div className="dialog-body">
+              <p style={{ marginBottom: '12px' }}>確定要刪除此供應商嗎？此操作無法復原。</p>
+              {vendors.find(v => v.vendorId === deleteTarget) && (
+                <div className="dialog-row">
+                  <label>供應商</label>
+                  <span className="mono">{vendors.find(v => v.vendorId === deleteTarget)!.name}</span>
+                </div>
+              )}
+            </div>
+            <div className="dialog-foot">
+              <button className="btn-cancel" onClick={() => setDeleteTarget(null)}>取消</button>
+              <button className="btn-confirm danger" onClick={confirmDelete}>確定刪除</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
