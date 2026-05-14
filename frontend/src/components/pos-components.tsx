@@ -17,8 +17,9 @@ interface TopBarProps {
   todayCount: number;
   viewDate: string;
   setViewDate: (date: string) => void;
+  queuedCount?: number;
 }
-export function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate }: TopBarProps) {
+export function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate, queuedCount = 0 }: TopBarProps) {
   const tabs = [
     { id: 'pos',     label: '櫃台', hint: 'F1' },
     { id: 'report',  label: '今日帳', hint: 'F2' },
@@ -64,6 +65,9 @@ export function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, vie
         <div className="counter">
           <div className="counter-num">{todayCount}</div>
           <div className="counter-lbl">今日訂單</div>
+          {queuedCount > 0 && (
+            <div className="counter-queued">{queuedCount} 筆待傳</div>
+          )}
         </div>
       </div>
     </header>
@@ -338,6 +342,9 @@ export function IdleHero({ todayMenu, todayCount, vendorPhone, queueHint }: Idle
       <div className="idle-hint">
         <div className="idle-hint-lbl">下一位</div>
         <div className="idle-hint-txt">輸入編號 → 按 <span className="kbd">↵</span></div>
+        <div className="idle-keys">
+          <span className="kbd">Q</span> 訂餐 · <span className="kbd">W</span> 儲值 · <span className="kbd">E</span> 取消 · <span className="kbd">↵</span> 確認 · <span className="kbd">Esc</span> 返回
+        </div>
         {queueHint && <div className="idle-queue">{queueHint}</div>}
       </div>
     </div>

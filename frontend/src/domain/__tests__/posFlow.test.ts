@@ -81,6 +81,7 @@ describe('reducePosFlow — student_selected transitions', () => {
     mode: 'order',
     source: 'manual',
     paidAmountText: '',
+    searchTextHint: '',
   };
 
   it('changeMode(order) stays selected', () => {
@@ -90,7 +91,7 @@ describe('reducePosFlow — student_selected transitions', () => {
 
   it('changeMode(cancel) when cancelAvailable=true stays selected with cancel mode', () => {
     const event: PosFlowEvent = { type: 'changeMode', mode: 'cancel', cancelAvailable: true };
-    expect(reducePosFlow(selected, event)).toEqual({ ...selected, mode: 'cancel' });
+    expect(reducePosFlow(selected, event)).toEqual({ ...selected, mode: 'cancel', searchTextHint: '' });
   });
 
   it('changeMode(cancel) when cancelAvailable=false returns unchanged', () => {
@@ -115,6 +116,7 @@ describe('reducePosFlow — student_selected transitions', () => {
       studentId: '001',
       source: 'manual',
       paidAmountText: '',
+      searchTextHint: '',
     });
   });
 
@@ -137,6 +139,7 @@ describe('reducePosFlow — student_selected transitions', () => {
       mode: 'order',
       source: 'manual',
       paidAmountText: '',
+      searchTextHint: '',
     });
   });
 
@@ -152,6 +155,7 @@ describe('reducePosFlow — duplicate_warning transitions', () => {
     studentId: '001',
     source: 'manual',
     paidAmountText: '',
+    searchTextHint: '',
   };
 
   it('confirmDuplicate goes to committing', () => {

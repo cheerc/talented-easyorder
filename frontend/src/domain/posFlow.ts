@@ -4,8 +4,8 @@ export type PosSourceDevice = 'pc' | 'barcode_scanner' | 'ipad_handoff';
 
 export type PosFlowState =
   | { kind: 'idle'; searchText: string }
-  | { kind: 'student_selected'; studentId: string; mode: PosMode; source: PosSelectionSource; paidAmountText: string }
-  | { kind: 'duplicate_warning'; studentId: string; source: PosSelectionSource; paidAmountText: string }
+  | { kind: 'student_selected'; studentId: string; mode: PosMode; source: PosSelectionSource; paidAmountText: string; searchTextHint: string }
+  | { kind: 'duplicate_warning'; studentId: string; source: PosSelectionSource; paidAmountText: string; searchTextHint: string }
   | { kind: 'committing'; studentId: string; mode: PosMode; source: PosSelectionSource; paidAmountText: string }
   | { kind: 'success'; transactionId: string; syncStatus: 'queued' | 'synced' | 'failed' }
   | { kind: 'historical_readonly'; businessDate: string }
@@ -13,7 +13,7 @@ export type PosFlowState =
 
 export type PosFlowEvent =
   | { type: 'updateSearchText'; text: string }
-  | { type: 'selectStudent'; studentId: string; source: PosSelectionSource }
+  | { type: 'selectStudent'; studentId: string; source: PosSelectionSource; searchTextHint?: string }
   | { type: 'changeMode'; mode: PosMode; cancelAvailable: boolean }
   | { type: 'updatePaidAmount'; text: string }
   | { type: 'requestCommit'; hasDuplicateOrder: boolean; cancelAvailable: boolean }
@@ -72,14 +72,14 @@ function reduceStudentSelected(state: PosFlowState & { kind: 'student_selected' 
       return { ...state, paidAmountText: event.text };
     case 'requestCommit': {
       if (state.mode === 'order' && event.hasDuplicateOrder) {
-        return { kind: 'duplicate_warning', studentId: state.studentId, source: state.source, paidAmountText: state.paidAmountText };
+        return { kind: 'duplicate_warning', studentId: state.studentId, source: state.source, paidAmountText: state.paidAmountText, searchTextHint: state.searchTextHint };
       }
       return { kind: 'committing', studentId: state.studentId, mode: state.mode, source: state.source, paidAmountText: state.paidAmountText };
     }
     case 'selectStudent':
-      return { kind: 'student_selected', studentId: event.studentId, mode: 'order', source: event.source, paidAmountText: '' };
+      return { kind: 'student_selected', studentId: event.studentId, mode: 'order', source: event.source, paidAmountText: '', searchTextHint: event.searchTextHint ?? '' };
     case 'cancel':
-      return { kind: 'idle', searchText: '' };
+      return { kind: 'idle', searchText: state.searchTextHint };
     default:
       return state;
   }
@@ -90,7 +90,7 @@ function reduceDuplicateWarning(state: PosFlowState & { kind: 'duplicate_warning
     case 'confirmDuplicate':
       return { kind: 'committing', studentId: state.studentId, mode: 'order', source: state.source, paidAmountText: state.paidAmountText };
     case 'cancel':
-      return { kind: 'idle', searchText: '' };
+      return { kind: 'idle', searchText: state.searchTextHint };
     default:
       return state;
   }
