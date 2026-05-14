@@ -68,6 +68,28 @@
    - Idle PC can accept a valid handoff and move to `student_selected`.
    - Active PC flow queues or rejects the event visibly and does not replace the selected student.
 
+## Known Pitfalls: Zustand 5 Persist API
+
+> 以下來自 Phase 1.0 PR2 實作經驗，Phase 1.1 若涉及 `persist` middleware 務必參考。
+
+1. **`persist.migrate` 接收的參數是 `persistedState.state`，而非完整 `StorageValue`。**
+   - `migrate` 的 signature 是 `(persistedState: unknown, version: number) => StorageValue<State>`。
+   - TypeScript 型別上 `persistedState` 被標為 `unknown`，實際傳入的是 `StorageValue<State>`（即 `{ state: YourState, version: number }`）。
+   - 取用時直接用 `(persistedState as StorageValue<YourState>).state`，不要多包一層 `raw.state`。
+
+2. **`rehydrate()` 是非同步 Promise，測試必須 `await`。**
+   - `usePosStore.persist.rehydrate()` 回傳 `Promise<void>`。
+   - 測試在 rehydrate 後立即讀取 store state 會拿到尚未完成 migration 的舊資料。
+   - 正確寫法：`await usePosStore.persist.rehydrate()` 後再 assertion。
+
+3. **TypeScript 型別上 `usePosStore.persist` 不存在，需手動 cast。**
+   - Zustand 5 的 `create()` 包裝後，`persist` 屬性不會自動出現在 TypeScript 型別推斷中。
+   - 使用 `(usePosStore as any).persist` 或定義 extended interface 來存取 `persist.rehydrate()` / `persist.getOptions()`。
+
+4. **`skipHydration` 行為：**
+   - `persist({ skipHydration: true })` 時，store 初始化不會自動從 localStorage 讀取資料。
+   - 需手動呼叫 `rehydrate()` 來觸發 hydration。適合需要在 hydrate 前做前置檢查的場景（如 localStorage 格式驗證）。
+
 ## Data Flow
 
 ```text
@@ -311,6 +333,7 @@ export interface PosTransactionDraft {
 - Store:
   - new transaction rows include snapshot/source fields.
   - legacy localStorage rows still hydrate without crashing.
+- **Side-effect files:** `frontend/src/App.tsx`, `frontend/src/components/pos-components.tsx`, `frontend/src/components/screens.tsx` 直接引用 `posStore` 的型別與 actions，store 介面變更時需同步檢查這些檔案的型別引用是否相容。
 
 **Acceptance Criteria:**
 
@@ -328,6 +351,7 @@ export interface PosTransactionDraft {
 - Create: `frontend/src/__tests__/pcPosFlow.integration.test.tsx`
 - Modify: `frontend/src/App.tsx`
 - Modify: `frontend/src/components/pos-components.tsx`
+- Modify: `frontend/src/components/screens.tsx`
 
 **Implementation Plan:**
 
