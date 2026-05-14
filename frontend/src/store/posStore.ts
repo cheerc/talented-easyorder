@@ -6,6 +6,7 @@ import type { LedgerTransaction } from '../domain/ledger';
 import { createStudentSnapshot } from '../domain/student';
 import { createMenuSnapshot } from '../domain/menu';
 import { createLedgerTransaction, calculateTransactionAmount } from '../domain/ledger';
+import type { PosTransactionDraft } from '../domain/posTransaction';
 import {
   INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS
 } from '../mocks/initialData';
@@ -18,6 +19,7 @@ interface PosState {
 
   setTodayMenu: (menu: TodayMenu) => void;
   setVendors: (vendors: Vendor[]) => void;
+  commitPosTransactionDraft: (draft: PosTransactionDraft) => void;
   processTransaction: (
     studentId: string,
     type: LedgerTransaction['type'],
@@ -40,6 +42,38 @@ export const usePosStore = create<PosState>()(
 
       setTodayMenu: (menu) => set({ todayMenu: menu }),
       setVendors: (vendors) => set({ vendors }),
+
+      commitPosTransactionDraft: (draft) => {
+        set((state) => {
+          const studentIndex = state.students.findIndex(s => s.studentId === draft.intent.studentId);
+          if (studentIndex === -1) return state;
+
+          const student = state.students[studentIndex];
+          const now = new Date().toISOString();
+
+          const newStudents = [...state.students];
+          newStudents[studentIndex] = { ...student, currentBalance: draft.expectedBalanceAfter };
+
+          const newTransaction = createLedgerTransaction({
+            transactionId: crypto.randomUUID(),
+            businessDate: draft.intent.businessDate,
+            createdAt: now,
+            studentSnapshot: draft.snapshots.student,
+            menuSnapshot: draft.snapshots.menu,
+            type: draft.intent.type,
+            mealPrice: draft.intent.mealPrice,
+            paidAmount: draft.intent.paidAmount,
+            previousBalance: student.currentBalance,
+            sourceDevice: draft.intent.sourceDevice,
+            note: draft.intent.note,
+          });
+
+          return {
+            students: newStudents,
+            transactions: [newTransaction, ...state.transactions],
+          };
+        });
+      },
 
       processTransaction: (studentId, type, mealPrice, paidAmount, note) => {
         set((state) => {
