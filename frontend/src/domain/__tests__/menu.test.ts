@@ -91,12 +91,18 @@ describe('createMenuSnapshot', () => {
 
 describe('promoteCatalogItemToTodayMenu', () => {
   it('creates a valid TodayMenu from catalog item', () => {
-    const result = promoteCatalogItemToTodayMenu(CATALOG_ITEM_KARAAGE, VENDOR_ARONG, FIXTURE_BUSINESS_DATE);
+    const result = promoteCatalogItemToTodayMenu(CATALOG_ITEM_KARAAGE, VENDOR_ARONG, FIXTURE_BUSINESS_DATE, '2026-05-07T07:30:00Z');
     expect(result.businessDate).toBe(FIXTURE_BUSINESS_DATE);
     expect(result.itemName).toBe('日式唐揚雞便當');
     expect(result.price).toBe(90);
     expect(result.vendorId).toBe('v1');
     expect(result.vendorNameSnapshot).toBe('阿榮便當');
     expect(result.catalogItemId).toBe('cat-001');
+  });
+
+  it('uses explicit updatedAt instead of wall clock', () => {
+    const explicitTime = '2026-05-07T08:00:00Z';
+    const result = promoteCatalogItemToTodayMenu(CATALOG_ITEM_KARAAGE, VENDOR_ARONG, FIXTURE_BUSINESS_DATE, explicitTime);
+    expect(result.updatedAt).toBe(explicitTime);
   });
 });
