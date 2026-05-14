@@ -263,6 +263,7 @@ interface ActionBarProps {
   orderedTodayCount: number;
   onConfirm: () => void;
   onCancel: () => void;
+  focusZone: string;
 }
 export function ActionBar({ mode, setMode, orderedTodayCount, onConfirm, onCancel, focusZone }: ActionBarProps) {
   const opts = [
@@ -331,6 +332,34 @@ export function IdleHero({ todayMenu, todayCount, vendorPhone, queueHint }: Idle
         <div className="idle-hint-lbl">下一位</div>
         <div className="idle-hint-txt">輸入編號 → 按 <span className="kbd">↵</span></div>
         {queueHint && <div className="idle-queue">{queueHint}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ============ Duplicate Warning Banner ============
+interface DuplicateWarningBannerProps {
+  orderedTodayCount: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+export function DuplicateWarningBanner({ orderedTodayCount, onConfirm, onCancel }: DuplicateWarningBannerProps) {
+  return (
+    <div className="dup-warn">
+      <div className="dup-warn-icon">⚠</div>
+      <div className="dup-warn-body">
+        <div className="dup-warn-h">已經訂過 {orderedTodayCount} 次便當</div>
+        <div className="dup-warn-sub">
+          確定要再訂一份嗎? (家長可能用同一帳號為多位學員訂餐)
+        </div>
+      </div>
+      <div className="dup-warn-btns">
+        <button className="btn-cancel" onClick={onCancel}>
+          <span>否</span><span className="kbd">Esc</span>
+        </button>
+        <button className="btn-confirm" onClick={onConfirm}>
+          <span>是,再訂一份</span><span className="kbd kbd-light">↵</span>
+        </button>
       </div>
     </div>
   );

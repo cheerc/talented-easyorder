@@ -6,3 +6,5 @@ export * from './syncStatus';
 export * from './posFlow';
 export * from './posSearch';
 export * from './posTransaction';
+export * from './ipadHandoff';
+export * from './ipadHandoff';
