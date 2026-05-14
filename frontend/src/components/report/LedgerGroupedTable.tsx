@@ -5,31 +5,19 @@ import type { LedgerTransaction } from '../../domain/ledger';
 
 interface LedgerGroupedTableProps {
   groups: LedgerGroup[];
-  editingId: string | null;
-  draft: Partial<LedgerTransaction> | null;
   onToggleExpand: (sid: string) => void;
   expandedSids: Set<string>;
-  onStartEdit: (e: React.MouseEvent, t: LedgerTransaction) => void;
-  onSaveEdit: (e: React.MouseEvent) => void;
-  onCancelEdit: (e: React.MouseEvent) => void;
-  onDeleteClick: (e: React.MouseEvent, tid: string) => void;
-  setDraft: React.Dispatch<React.SetStateAction<Partial<LedgerTransaction> | null>>;
-  onCorrectClick?: (t: LedgerTransaction) => void;
-  onVoidClick?: (t: LedgerTransaction) => void;
+  onCorrectClick: (t: LedgerTransaction) => void;
+  onVoidClick: (t: LedgerTransaction) => void;
   dateStatus: string;
 }
 
 export function LedgerGroupedTable({
   groups,
-  editingId,
-  draft,
   onToggleExpand,
   expandedSids,
-  onStartEdit,
-  onSaveEdit,
-  onCancelEdit,
-  onDeleteClick,
-  setDraft,
+  onCorrectClick,
+  onVoidClick,
   dateStatus,
 }: LedgerGroupedTableProps) {
   return (
@@ -61,42 +49,27 @@ export function LedgerGroupedTable({
             {isExpanded && (
               <div className="rpt-details">
                 {g.transactions.slice().reverse().map(t => {
-                  const isEditing = editingId === t.transactionId;
                   const locked = dateStatus === 'closed';
                   return (
-                    <div key={t.transactionId} className={'rpt-detail-row ' + (isEditing ? 'rpt-tr-editing' : '')}>
+                    <div key={t.transactionId} className="rpt-detail-row">
                       <div className="mono dim">{t.createdAt.slice(11, 19)}</div>
                       <div className="dim">{t.type === 'order' ? '訂餐' : t.type === 'topup' ? '儲值' : t.type === 'cancel' ? '取消' : t.type === 'correction' ? '更正' : '作廢'}</div>
                       <div className={'r mono ' + (t.mealPrice > 0 ? 'neg' : t.mealPrice < 0 ? 'pos' : '')}>
-                        {isEditing ? (
-                          <input type="number" className="rpt-edit-input mono r" value={draft?.mealPrice ?? 0}
-                                 onChange={e => setDraft({...draft!, mealPrice: Number(e.target.value)})} />
-                        ) : (t.mealPrice !== 0 ? <>{t.mealPrice > 0 ? '−' : '+'}${fmt(Math.abs(t.mealPrice))}</> : <>-</>)}
+                        {t.mealPrice !== 0 ? <>{t.mealPrice > 0 ? '−' : '+'}${fmt(Math.abs(t.mealPrice))}</> : <>-</>}
                       </div>
                       <div className={'r mono ' + (t.paidAmount > 0 ? 'pos' : '')}>
-                        {isEditing ? (
-                          <input type="number" className="rpt-edit-input mono r" value={draft?.paidAmount ?? 0}
-                                 onChange={e => setDraft({...draft!, paidAmount: Number(e.target.value)})} />
-                        ) : (t.paidAmount > 0 ? <>+${fmt(t.paidAmount)}</> : <>-</>)}
+                        {t.paidAmount > 0 ? <>+${fmt(t.paidAmount)}</> : <>-</>}
                       </div>
                       <div className="dim italic" style={{ fontSize: '12px' }}>
-                        {isEditing ? (
-                          <input className="rpt-edit-input" value={draft?.note ?? ''}
-                                 onChange={e => setDraft({...draft!, note: e.target.value})} />
-                        ) : t.note}
+                        {t.note}
                       </div>
                       <div className="rpt-row-actions">
-                        {isEditing ? (
-                          <>
-                            <button className="rpt-mini-btn" onClick={onCancelEdit}>取消</button>
-                            <button className="rpt-mini-btn rpt-mini-strong" onClick={onSaveEdit}>儲存</button>
-                          </>
-                        ) : locked ? (
+                        {locked ? (
                           <span className="dim" style={{fontSize:'11px'}}>🔒 已關帳</span>
                         ) : (
                           <>
-                            <button className="rpt-mini-btn" onClick={(e) => onStartEdit(e, t)}>編輯</button>
-                            <button className="rpt-mini-btn rpt-mini-del" onClick={(e) => onDeleteClick(e, t.transactionId)}>刪除</button>
+                            <button className="rpt-mini-btn" onClick={() => onCorrectClick(t)}>更正</button>
+                            <button className="rpt-mini-btn rpt-mini-del" onClick={() => onVoidClick(t)}>刪除</button>
                           </>
                         )}
                       </div>

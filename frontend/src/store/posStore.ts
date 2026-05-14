@@ -446,59 +446,6 @@ export const usePosStore = create<PosState>()(
         return get().businessDateStatuses[businessDate] || 'open';
       },
 
-      closeBusinessDate: (input) => {
-        const state = get();
-        const { businessDate, countedCash, note, queuedSettlementAccepted, operatorId } = input;
-
-        if (state.businessDateStatuses[businessDate] === 'closed') return;
-
-        const dayTx = state.transactions.filter(t => t.businessDate === businessDate);
-        const effective = getEffectiveLedgerRows(dayTx);
-        const totals = calculateLedgerTotals(effective);
-
-        const hasQueued = dayTx.some(t => t.syncStatus === 'queued');
-        const hasFailed = dayTx.some(t => t.syncStatus === 'failed');
-        const hasConflict = dayTx.some(t => t.syncStatus === 'conflict');
-
-        const validation = validateCashClose(totals.netCash, countedCash, hasFailed, hasConflict, hasQueued, note);
-        if (!validation.ok) return;
-
-        if (hasQueued && !queuedSettlementAccepted) return;
-
-        const now = new Date().toISOString();
-        const settlement = createDailySettlement(businessDate, totals, countedCash, note, operatorId, now, hasQueued);
-
-        set(state => ({
-          dailySettlements: [...state.dailySettlements, settlement],
-          businessDateStatuses: { ...state.businessDateStatuses, [businessDate]: 'closed' },
-        }));
-      },
-
-      reopenBusinessDate: (input) => {
-        const state = get();
-        const { businessDate, reason, operatorId } = input;
-
-        if (state.businessDateStatuses[businessDate] === 'open') return;
-
-        const existing = state.dailySettlements
-          .filter(s => s.businessDate === businessDate)
-          .sort((a, b) => b.settlementRevision - a.settlementRevision)[0];
-
-        if (!existing) return;
-
-        const now = new Date().toISOString();
-        const reopened = reopenSettlement(existing, reason, operatorId, now);
-
-        set(state => ({
-          dailySettlements: [...state.dailySettlements, reopened],
-          businessDateStatuses: { ...state.businessDateStatuses, [businessDate]: 'reopened' },
-        }));
-      },
-
-      getBusinessDateStatus: (businessDate) => {
-        return get().businessDateStatuses[businessDate] || 'open';
-      },
-
       resetData: () => set({
         students: INITIAL_STUDENTS,
         transactions: INITIAL_TODAY_TX,

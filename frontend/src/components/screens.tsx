@@ -11,9 +11,7 @@ import {
   groupLedgerRowsByStudent,
   type LedgerDateRangeKind,
 } from '../domain/ledgerReport';
-import {
-  ReportDateRangeControls,
-} from './report/ReportDateRangeControls';
+import { ReportDateRangeControls } from './report/ReportDateRangeControls';
 import { ReportSummaryStats } from './report/ReportSummaryStats';
 import { LedgerGroupedTable } from './report/LedgerGroupedTable';
 import { CashClosePanel } from './report/CashClosePanel';
@@ -24,19 +22,14 @@ import { ReopenDialog } from './report/ReopenDialog';
 import { usePosStore } from '../store/posStore';
 
 interface ReportScreenProps {
-  tx: LedgerTransaction[];
-  onUpdate: (id: string, data: Partial<LedgerTransaction>) => void;
-  onDelete: (id: string) => void;
   todayMenu: TodayMenu;
   viewDate: string;
 }
-export function ReportScreen({ onUpdate, onDelete, todayMenu, viewDate }: ReportScreenProps) {
+export function ReportScreen({ todayMenu, viewDate }: ReportScreenProps) {
   const [dateRange, setDateRange] = useState<LedgerDateRangeKind>('today');
   const [customStart, setCustomStart] = useState(viewDate);
   const [customEnd, setCustomEnd] = useState(viewDate);
   const [expandedSids, setExpandedSids] = useState<Set<string>>(new Set());
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Partial<LedgerTransaction> | null>(null);
   const [correctingTx, setCorrectingTx] = useState<LedgerTransaction | null>(null);
   const [voidingTx, setVoidingTx] = useState<LedgerTransaction | null>(null);
   const [showReopen, setShowReopen] = useState(false);
@@ -76,33 +69,6 @@ export function ReportScreen({ onUpdate, onDelete, todayMenu, viewDate }: Report
     if (next.has(sid)) next.delete(sid);
     else next.add(sid);
     setExpandedSids(next);
-  };
-
-  const startEdit = (e: React.MouseEvent, t: LedgerTransaction) => {
-    e.stopPropagation();
-    setEditingId(t.transactionId);
-    setDraft({ ...t });
-  };
-
-  const saveEdit = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (editingId && draft) {
-      onUpdate(editingId, draft);
-    }
-    setEditingId(null);
-    setDraft(null);
-  };
-
-  const cancelEdit = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingId(null);
-    setDraft(null);
-  };
-
-  const deleteRow = (e: React.MouseEvent, tid: string) => {
-    e.stopPropagation();
-    if (dateStatus === 'closed') return;
-    onDelete(tid);
   };
 
   const handleCorrectSave = (txId: string, updates: Partial<LedgerTransaction>, reason: string) => {
@@ -166,15 +132,10 @@ export function ReportScreen({ onUpdate, onDelete, todayMenu, viewDate }: Report
 
       <LedgerGroupedTable
         groups={groups}
-        editingId={editingId}
-        draft={draft}
         onToggleExpand={toggleExpand}
         expandedSids={expandedSids}
-        onStartEdit={startEdit}
-        onSaveEdit={saveEdit}
-        onCancelEdit={cancelEdit}
-        onDeleteClick={deleteRow}
-        setDraft={setDraft}
+        onCorrectClick={setCorrectingTx}
+        onVoidClick={setVoidingTx}
         dateStatus={dateStatus}
       />
 
