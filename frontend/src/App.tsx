@@ -13,7 +13,8 @@ export default function App() {
   const {
     students, transactions: allTx, todayMenu, vendors,
     updateTransaction, deleteTransaction,
-    setTodayMenu, setVendors, resetData
+    setTodayMenu, setVendors, resetData,
+    getBusinessDateStatus,
   } = usePosStore();
 
   const systemDate = useMemo(() => new Date().toISOString().split('T')[0], []);
@@ -274,7 +275,7 @@ export default function App() {
       {tab === 'pos' && (
         <div className="main">
           <div className="col-main">
-            {isHistorical || state.kind === 'historical_readonly' ? (
+            {isHistorical || state.kind === 'historical_readonly' || getBusinessDateStatus(viewDate) === 'closed' ? (
               <div className="historical-lock" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--c-text-dim)', textAlign: 'center' }}>
                 <h2 style={{ color: 'var(--c-warn)', fontSize: '1.5rem', marginBottom: '8px' }}>目前檢視歷史紀錄</h2>
                 <p style={{ marginBottom: '24px' }}>您正在檢視 {viewDate} 的資料。<br />為確保帳務正確，歷史紀錄模式下已暫停結帳與訂餐功能。</p>

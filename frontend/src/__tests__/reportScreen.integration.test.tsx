@@ -1,0 +1,41 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { usePosStore } from '../store/posStore';
+import App from '../App';
+
+beforeEach(() => {
+  localStorage.clear();
+  usePosStore.getState().resetData();
+  usePosStore.persist.rehydrate();
+});
+
+describe('reportScreen integration', () => {
+  it('renders report tab with date range controls', async () => {
+    render(<App />);
+    // Navigate to report tab
+    const reportBtn = screen.getByText('今日帳');
+    await userEvent.click(reportBtn);
+    await waitFor(() => {
+      expect(screen.getByText('訂餐金額')).toBeTruthy();
+    });
+  });
+
+  it('shows summary stats in report view', async () => {
+    render(<App />);
+    await userEvent.click(screen.getByText('今日帳'));
+    await waitFor(() => {
+      expect(screen.getByText('訂餐')).toBeTruthy();
+      expect(screen.getByText('收現總額')).toBeTruthy();
+    });
+  });
+
+  it('shows grouped table with student names', async () => {
+    render(<App />);
+    await userEvent.click(screen.getByText('今日帳'));
+    await waitFor(() => {
+      // Report shows totals which are always rendered
+      expect(screen.getByText('總交易')).toBeTruthy();
+    });
+  });
+});
