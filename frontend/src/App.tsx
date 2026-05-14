@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { usePosStore } from './store/posStore';
-import { type Student } from './mocks/initialData';
+import type { StudentAccount } from './domain/student';
 
 interface FlashData {
   id: number;
@@ -15,26 +15,24 @@ import { ReportScreen, AdminScreen, VendorsScreen } from './components/screens';
 import { TweaksPanel, TweakSection, TweakRadio } from './components/tweaks-panel';
 
 export default function App() {
-  const { 
-    students, transactions: allTx, todayMenu, vendors, 
-    processTransaction, updateTransaction, deleteTransaction, 
-    setTodayMenu, setVendors, resetData 
+  const {
+    students, transactions: allTx, todayMenu, vendors,
+    processTransaction, updateTransaction, deleteTransaction,
+    setTodayMenu, setVendors, resetData
   } = usePosStore();
 
   const systemDate = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [viewDate, setViewDate] = useState(systemDate);
   const isHistorical = viewDate !== systemDate;
 
-  // Filter and sort for display: newest at the end for chronological processing, 
-  // or handle sorting explicitly. The store prepends (newest at [0]).
   const tx = useMemo(() => {
-    return allTx.filter(t => t.date === viewDate).reverse(); // Reverse to chronological order
+    return allTx.filter(t => t.businessDate === viewDate).reverse();
   }, [allTx, viewDate]);
 
-  const [tab, setTab] = useState('pos'); // pos | report | admin | vendors | backup
+  const [tab, setTab] = useState('pos');
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
-  const [picked, setPicked] = useState<Student | null>(null);
+  const [picked, setPicked] = useState<StudentAccount | null>(null);
 
   const [mode, setMode] = useState('order');
   const [focusZone, setFocusZone] = useState('mode-order');
@@ -46,20 +44,19 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState('剛剛');
 
-  // Compute orderedTodayCount dynamically from transactions
   const orderedTodayCount = useMemo(() => {
     if (!picked) return 0;
-    return tx.filter(t => t.sid === picked.id && t.type === 'order').length
-      - tx.filter(t => t.sid === picked.id && t.type === 'cancel').reduce((acc, t) => acc + Math.abs((t.mealPrice || 0) / todayMenu.price), 0);
+    return tx.filter(t => t.studentId === picked.studentId && t.type === 'order').length
+      - tx.filter(t => t.studentId === picked.studentId && t.type === 'cancel').reduce((acc, t) => acc + Math.abs((t.mealPrice || 0) / todayMenu.price), 0);
   }, [tx, picked, todayMenu.price]);
 
   const suggestions = useMemo(() => {
     if (!query) return [];
     const q = query.toLowerCase();
-    return students.filter(s => s.id.includes(q) || s.name.toLowerCase().includes(q));
+    return students.filter(s => s.studentId.includes(q) || s.displayName.toLowerCase().includes(q));
   }, [query, students]);
 
-  const choose = (s: Student) => {
+  const choose = (s: StudentAccount) => {
     setPicked(s);
     setQuery('');
     setMode('order');
@@ -93,31 +90,30 @@ export default function App() {
     if (mode === 'order') {
       mealPrice = pPrice;
       paidAmount = amt;
-      note = todayMenu.name + (amt > 0 ? ' (已付)' : '');
+      note = todayMenu.itemName + (amt > 0 ? ' (已付)' : '');
     } else if (mode === 'topup') {
       mealPrice = 0;
       paidAmount = amt;
       note = '現金儲值';
     } else if (mode === 'cancel') {
       mealPrice = -(orderedTodayCount * pPrice);
-      paidAmount = -amt; // Negative paidAmount means cash given back
+      paidAmount = -amt;
       note = `退餐 ${orderedTodayCount} 筆` + (amt > 0 ? ` (退現 ${amt})` : '');
     }
 
-    processTransaction(picked.id, actualType as 'order' | 'topup' | 'cancel', mealPrice, paidAmount, note);
+    processTransaction(picked.studentId, actualType as 'order' | 'topup' | 'cancel', mealPrice, paidAmount, note);
 
     setFlash({
       id: Date.now(),
-      name: picked.name,
-      sid: picked.id,
-      detail: mode === 'order' ? `訂餐: ${todayMenu.name}` + (amt > 0 ? `, 收現 ${amt}` : '') :
+      name: picked.displayName,
+      sid: picked.studentId,
+      detail: mode === 'order' ? `訂餐: ${todayMenu.itemName}` + (amt > 0 ? `, 收現 ${amt}` : '') :
           mode === 'topup' ? `儲值: 收現 ${amt}` :
             `取消 ${orderedTodayCount} 筆訂餐`,
       amount: paidAmount - mealPrice,
-      after: picked.balance + (paidAmount - mealPrice) // Need fresh balance actually, but this works for prototype
+      after: picked.currentBalance + (paidAmount - mealPrice)
     });
 
-    // fake sync
     setSyncing(true);
     setTimeout(() => {
       setSyncing(false);
@@ -137,16 +133,13 @@ export default function App() {
     doConfirm();
   }, [picked, mode, orderedTodayCount, confirmDup, doConfirm]);
 
-  // Global Key Bindings
   useEffect(() => {
     const onGlobalKey = (e: KeyboardEvent) => {
-      // Allow F1-F4 regardless of focus
       if (e.key === 'F1') { e.preventDefault(); setTab('pos'); return; }
       if (e.key === 'F2') { e.preventDefault(); setTab('report'); return; }
       if (e.key === 'F3') { e.preventDefault(); setTab('admin'); return; }
       if (e.key === 'F4') { e.preventDefault(); setTab('vendors'); return; }
 
-      // If typing in input, don't let other global keys trigger (except Enter/Esc handled in POS effect)
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
         return;
       }
@@ -155,13 +148,12 @@ export default function App() {
     return () => window.removeEventListener('keydown', onGlobalKey);
   }, []);
 
-  // POS Key Bindings
   useEffect(() => {
     if (tab !== 'pos' || flash) return;
 
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
-      if (!picked) return; // SearchBox handles its own keys
+      if (!picked) return;
       const keys = ['q', 'w', 'e', 'r', 'Q', 'W', 'E', 'R'];
 
       if (e.target.tagName === 'INPUT' && e.target.type !== 'radio') {
@@ -189,7 +181,6 @@ export default function App() {
         return;
       }
 
-      // arrow navigation: top row = 4 modes; bottom row = [取消, 確認]
       const modes = ['mode-order', 'mode-topup', 'mode-cancel'];
       const i = modes.indexOf(focusZone);
       if (e.key === 'ArrowLeft') {
@@ -277,7 +268,7 @@ export default function App() {
                 <IdleHero
                   todayMenu={todayMenu}
                   todayCount={todayCount}
-                  vendorPhone={vendors.find(v => v.name === todayMenu.vendor)?.phone}
+                  vendorPhone={vendors.find(v => v.name === todayMenu.vendorNameSnapshot)?.phone}
                   queueHint={`全鍵盤操作 · 平均處理 4.2 秒/人`} />
               </>
             ) : (
@@ -326,27 +317,27 @@ export default function App() {
           <div className="col-side">
             <div className="card side-menu">
               <div className="recent-head">本日便當</div>
-              <div style={{ fontSize: '22px', fontWeight: 600, letterSpacing: '-0.01em', marginTop: '4px' }}>{todayMenu.name}</div>
+              <div style={{ fontSize: '22px', fontWeight: 600, letterSpacing: '-0.01em', marginTop: '4px' }}>{todayMenu.itemName}</div>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'baseline', marginTop: '8px' }}>
                 <span className="mono" style={{ fontSize: '24px', fontWeight: 600 }}>${Math.abs(todayMenu.price)}</span>
-                <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>{todayMenu.vendor}</span>
+                <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>{todayMenu.vendorNameSnapshot}</span>
               </div>
               <div style={{ marginTop: '14px', fontSize: '13px', color: 'var(--ink-2)' }}>
                 已訂 <span className="mono" style={{ fontSize: '20px', fontWeight: 600, color: 'var(--ink)' }}>{todayCount}</span> 份
               </div>
             </div>
-            <RecentStrip recent={tx.slice().reverse().map((t, i) => ({ ...t, uid: i + '-' + t.time }))} />
+            <RecentStrip recent={tx.slice().reverse().map((t, i) => ({ ...t, uid: i + '-' + t.createdAt }))} />
           </div>
         </div>
       )}
 
       {tab === 'report' && (
-        <ReportScreen 
-          tx={tx} 
+        <ReportScreen
+          tx={tx}
           onUpdate={updateTransaction}
           onDelete={deleteTransaction}
-          todayMenu={todayMenu} 
-          viewDate={viewDate} 
+          todayMenu={todayMenu}
+          viewDate={viewDate}
         />
       )}
       {tab === 'admin' && <AdminScreen todayMenu={todayMenu} setTodayMenu={setTodayMenu} vendors={vendors} students={students} resetData={resetData} />}

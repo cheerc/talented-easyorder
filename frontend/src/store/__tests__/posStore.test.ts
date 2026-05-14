@@ -9,43 +9,127 @@ describe('posStore Accounting Engine', () => {
   it('calculates order balance correctly', () => {
     const studentId = '001';
     const store = usePosStore.getState();
-    const initialBalance = store.students.find(s => s.id === studentId)!.balance;
+    const initialBalance = store.students.find(s => s.studentId === studentId)!.currentBalance;
 
     store.processTransaction(studentId, 'order', 90, 0);
 
-    const updatedStudent = usePosStore.getState().students.find(s => s.id === studentId)!;
-    expect(updatedStudent.balance).toBe(initialBalance - 90);
+    const updatedStudent = usePosStore.getState().students.find(s => s.studentId === studentId)!;
+    expect(updatedStudent.currentBalance).toBe(initialBalance - 90);
   });
 
   it('recalculates after balance correctly on update', () => {
     const studentId = '001';
     const store = usePosStore.getState();
-    
-    // Clear transactions to start fresh
+
     usePosStore.setState({ transactions: [] });
 
-    // Tx 1: Order (balance -90)
     store.processTransaction(studentId, 'order', 90, 0);
     const tx1 = usePosStore.getState().transactions[0];
-    
-    // Tx 2: Order (balance -90)
+
     store.processTransaction(studentId, 'order', 90, 0);
     const tx2 = usePosStore.getState().transactions[0];
 
-    const balanceAfterTx2 = usePosStore.getState().students.find(s => s.id === studentId)!.balance;
-    expect(tx2.after).toBe(balanceAfterTx2);
+    const balanceAfterTx2 = usePosStore.getState().students.find(s => s.studentId === studentId)!.currentBalance;
+    expect(tx2.afterBalance).toBe(balanceAfterTx2);
 
-    // Update Tx 1: Changed to Topup +100
-    // So Tx 1 amount goes from -90 to +100 (diff: +190)
-    // The later Tx 2 should have its `after` updated to reflect this +190 diff.
-    usePosStore.getState().updateTransaction(tx1.id, { type: 'topup', mealPrice: 0, paidAmount: 100 });
+    usePosStore.getState().updateTransaction(tx1.transactionId, { type: 'topup', mealPrice: 0, paidAmount: 100 });
 
-    const newTx1 = usePosStore.getState().transactions.find(t => t.id === tx1.id)!;
-    const newTx2 = usePosStore.getState().transactions.find(t => t.id === tx2.id)!;
-    const finalBalance = usePosStore.getState().students.find(s => s.id === studentId)!.balance;
+    const newTx1 = usePosStore.getState().transactions.find(t => t.transactionId === tx1.transactionId)!;
+    const newTx2 = usePosStore.getState().transactions.find(t => t.transactionId === tx2.transactionId)!;
+    const finalBalance = usePosStore.getState().students.find(s => s.studentId === studentId)!.currentBalance;
 
-    expect(newTx1.after).toBe(tx1.after + 190);
-    expect(newTx2.after).toBe(tx2.after + 190);
-    expect(newTx2.after).toBe(finalBalance);
+    expect(newTx1.afterBalance).toBe(tx1.afterBalance + 190);
+    expect(newTx2.afterBalance).toBe(tx2.afterBalance + 190);
+    expect(newTx2.afterBalance).toBe(finalBalance);
+  });
+});
+
+describe('posStore Domain Integration', () => {
+  beforeEach(() => {
+    usePosStore.getState().resetData();
+  });
+
+  it('processTransaction stores studentNameSnapshot', () => {
+    const store = usePosStore.getState();
+    store.processTransaction('001', 'order', 90, 0);
+    const tx = usePosStore.getState().transactions[0];
+    expect(tx.studentNameSnapshot).toBe('王柏翰');
+  });
+
+  it('processTransaction stores menu snapshots from todayMenu', () => {
+    const store = usePosStore.getState();
+    store.processTransaction('001', 'order', 90, 0);
+    const tx = usePosStore.getState().transactions[0];
+    expect(tx.menuNameSnapshot).toBe('日式唐揚雞便當');
+    expect(tx.vendorNameSnapshot).toBe('阿榮便當');
+  });
+
+  it('processTransaction sets businessDate on transaction', () => {
+    const store = usePosStore.getState();
+    const todayDate = store.todayMenu.businessDate;
+    store.processTransaction('001', 'order', 90, 0);
+    const tx = usePosStore.getState().transactions[0];
+    expect(tx.businessDate).toBe(todayDate);
+  });
+
+  it('processTransaction sets syncStatus to local', () => {
+    const store = usePosStore.getState();
+    store.processTransaction('001', 'order', 90, 0);
+    const tx = usePosStore.getState().transactions[0];
+    expect(tx.syncStatus).toBe('local');
+  });
+
+  it('processTransaction uses calculateTransactionAmount for amount', () => {
+    const store = usePosStore.getState();
+    store.processTransaction('001', 'order', 90, 50);
+    const tx = usePosStore.getState().transactions[0];
+    expect(tx.amount).toBe(-40);
+  });
+
+  it('students use StudentAccount shape with currentBalance', () => {
+    const student = usePosStore.getState().students[0];
+    expect(student).toHaveProperty('studentId');
+    expect(student).toHaveProperty('displayName');
+    expect(student).toHaveProperty('currentBalance');
+    expect(student).toHaveProperty('status');
+    expect(student).toHaveProperty('faceEnrollmentStatus');
+    expect(student).toHaveProperty('revision');
+  });
+});
+
+describe('posStore Compatibility', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    usePosStore.getState().resetData();
+  });
+
+  it('normalizes old-shape student {id, name, balance} into StudentAccount', async () => {
+    const oldShape = {
+      state: {
+        students: [
+          { id: '999', name: '舊生甲', balance: 300 },
+          { id: '998', name: '舊生乙', balance: -50 },
+        ],
+        transactions: [],
+        vendors: [],
+        todayMenu: { date: '2026/05/07', name: '便當', price: 90, vendor: '測試' },
+      },
+      version: 0,
+    };
+    localStorage.setItem('pos-storage', JSON.stringify(oldShape));
+
+    // Zustand 5 persist rehydrate is async; await it so migrate() runs
+    const store = usePosStore as unknown as { persist?: { rehydrate: () => Promise<void> } };
+    if (store.persist?.rehydrate) {
+      await store.persist.rehydrate();
+    }
+    const students = usePosStore.getState().students;
+    const normalized = students.find(s => s.studentId === '999');
+    expect(normalized).toBeDefined();
+    expect(normalized!.displayName).toBe('舊生甲');
+    expect(normalized!.currentBalance).toBe(300);
+    expect(normalized!.status).toBe('active');
+    expect(normalized!.faceEnrollmentStatus).toBe('none');
+    expect(normalized!.revision).toBe(1);
   });
 });

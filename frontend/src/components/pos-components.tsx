@@ -1,6 +1,7 @@
 // POS Main Screen — search, order, checkout flow (v2)
 import { useEffect, useRef } from "react";
-import { type Student, type TodayMenu } from '../mocks/initialData';
+import type { StudentAccount } from '../domain/student';
+import type { TodayMenu } from '../domain/menu';
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const fmt = (n: number) => new Intl.NumberFormat('zh-TW').format(Math.abs(n));
@@ -75,9 +76,9 @@ interface SearchBoxProps {
   onChange: (val: string) => void;
   onSubmit: () => void;
   onEsc: () => void;
-  suggestions: Student[];
+  suggestions: StudentAccount[];
   activeIdx: number;
-  onPick: (s: Student) => void;
+  onPick: (s: StudentAccount) => void;
   onHover: (idx: number) => void;
   focusKey: number;
   disabled: boolean;
@@ -114,15 +115,15 @@ export function SearchBox({ value, onChange, onSubmit, onEsc, suggestions, activ
         <div className="suggest">
           {suggestions.slice(0, 6).map((s, i) => (
             <div
-              key={s.id}
+              key={s.studentId}
               className={'sug-row ' + (i === activeIdx ? 'sug-on' : '')}
               onMouseEnter={() => onHover(i)}
               onClick={() => onPick(s)}
             >
-              <span className="sug-id mono">{s.id}</span>
-              <span className="sug-name">{s.name}</span>
-              <span className={'sug-bal mono ' + (s.balance < 0 ? 'is-debt' : s.balance < 90 ? 'is-low' : '')}>
-                {s.balance < 0 ? `欠 ${fmt(s.balance)}` : `$${fmt(s.balance)}`}
+              <span className="sug-id mono">{s.studentId}</span>
+              <span className="sug-name">{s.displayName}</span>
+              <span className={'sug-bal mono ' + (s.currentBalance < 0 ? 'is-debt' : s.currentBalance < 90 ? 'is-low' : '')}>
+                {s.currentBalance < 0 ? `欠 ${fmt(s.currentBalance)}` : `$${fmt(s.currentBalance)}`}
               </span>
             </div>
           ))}
@@ -144,7 +145,7 @@ export function SearchBox({ value, onChange, onSubmit, onEsc, suggestions, activ
 //   3 = 純儲值 / 繳費 (不訂餐)  — balance += amount
 //   4 = 取消當日訂餐            — refund all of today's orders
 interface CustomerCardProps {
-  student: Student;
+  student: StudentAccount;
   todayMenu: TodayMenu;
   mode: string;
   orderedTodayCount: number;
@@ -153,23 +154,23 @@ interface CustomerCardProps {
 }
 export function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount }: CustomerCardProps) {
   const after =
-    mode === 'order'      ? student.balance + (Number(payAmount || 0) - todayMenu.price) :
-    mode === 'topup'      ? student.balance + Number(payAmount || 0) :
-    mode === 'cancel'     ? student.balance + (orderedTodayCount * todayMenu.price) :
-    student.balance;
+    mode === 'order'      ? student.currentBalance + (Number(payAmount || 0) - todayMenu.price) :
+    mode === 'topup'      ? student.currentBalance + Number(payAmount || 0) :
+    mode === 'cancel'     ? student.currentBalance + (orderedTodayCount * todayMenu.price) :
+    student.currentBalance;
 
   return (
     <div className="card customer">
       <div className="cust-head">
         <div className="cust-id-block">
-          <div className="cust-id mono">{student.id}</div>
+          <div className="cust-id mono">{student.studentId}</div>
           <div className="cust-grade">學員</div>
         </div>
-        <div className="cust-name">{student.name}</div>
+        <div className="cust-name">{student.displayName}</div>
         <div className="cust-bal">
           <div className="bal-lbl">帳戶餘額</div>
-          <div className={'bal-num mono ' + (student.balance < 0 ? 'warn' : student.balance < 90 ? 'low' : '')}>
-            {student.balance < 0 ? '−' : ''}${fmt(student.balance)}
+          <div className={'bal-num mono ' + (student.currentBalance < 0 ? 'warn' : student.currentBalance < 90 ? 'low' : '')}>
+            {student.currentBalance < 0 ? '−' : ''}${fmt(student.currentBalance)}
           </div>
           {orderedTodayCount > 0 && (
             <div className="bal-debt warn-soft-chip">
@@ -186,7 +187,7 @@ export function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payA
             <div className="pay-title">結帳明細</div>
             {mode === 'order' && (
               <div className="bill-item">
-                <span className="bill-label">當日便當 ({todayMenu.name})</span>
+                <span className="bill-label">當日便當 ({todayMenu.itemName})</span>
                 <span className="bill-val neg">−${fmt(todayMenu.price)}</span>
               </div>
             )}
@@ -199,7 +200,7 @@ export function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payA
             {mode === 'topup' && (
               <div className="bill-item">
                 <span className="bill-label">目前帳戶餘額</span>
-                <span className="bill-val">${fmt(student.balance)}</span>
+                <span className="bill-val">${fmt(student.currentBalance)}</span>
               </div>
             )}
             
@@ -316,11 +317,11 @@ export function IdleHero({ todayMenu, todayCount, vendorPhone, queueHint }: Idle
         <div className="idle-tag">本日便當</div>
         <div className="idle-name" style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
           <span className="mono" style={{ color: 'var(--c-brand)' }}>${fmt(todayMenu.price)}</span>
-          <span>{todayMenu.name}</span>
+          <span>{todayMenu.itemName}</span>
         </div>
         <div className="idle-meta" style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-start' }}>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span>{todayMenu.vendor}</span>
+            <span>{todayMenu.vendorNameSnapshot}</span>
             {vendorPhone && <span className="mono">{vendorPhone}</span>}
           </div>
           <div>已訂 <span className="mono">{todayCount}</span> 份</div>
@@ -389,7 +390,7 @@ export function ConfirmBanner({ flash, onDismiss }: ConfirmBannerProps) {
 
 // ============ Recent strip ============
 interface RecentStripProps {
-  recent: import('../mocks/initialData').Transaction[];
+  recent: (import('../domain/ledger').LedgerTransaction & { uid: string })[];
 }
 export function RecentStrip({ recent }: RecentStripProps) {
   return (
@@ -399,9 +400,9 @@ export function RecentStrip({ recent }: RecentStripProps) {
         {recent.length === 0 && <div className="recent-empty">尚無交易</div>}
         {recent.slice(0, 5).map(r => (
           <div key={r.uid} className="recent-row">
-            <span className="recent-time mono">{r.time}</span>
-            <span className="recent-id mono">{r.sid}</span>
-            <span className="recent-name">{r.name}</span>
+            <span className="recent-time mono">{r.createdAt.slice(11, 19)}</span>
+            <span className="recent-id mono">{r.studentId}</span>
+            <span className="recent-name">{r.studentNameSnapshot}</span>
             <span className={'recent-type type-' + r.type}>{
               r.type === 'order' ? '訂' :
               r.type === 'order_pay' ? '訂' :
