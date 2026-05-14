@@ -2,12 +2,15 @@ import React from "react";
 
 // Report, Admin, Vendors, Backup screens (v2)
 import { fmt } from "./pos-components";
-import { type Transaction, type TodayMenu, type Student, type Vendor } from '../mocks/initialData';
+import type { LedgerTransaction } from '../domain/ledger';
+import type { TodayMenu } from '../domain/menu';
+import type { StudentAccount } from '../domain/student';
+import type { Vendor } from '../domain/menu';
 import { useState, useMemo } from "react";
 
 interface ReportScreenProps {
-  tx: Transaction[];
-  onUpdate: (id: string, data: Partial<Transaction>) => void;
+  tx: LedgerTransaction[];
+  onUpdate: (id: string, data: Partial<LedgerTransaction>) => void;
   onDelete: (id: string) => void;
   todayMenu: TodayMenu;
   viewDate: string;
@@ -15,8 +18,8 @@ interface ReportScreenProps {
 export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }: ReportScreenProps) {
   const [dateRange, setDateRange] = useState('today');
   const [expandedSids, setExpandedSids] = useState<Set<string>>(new Set());
-  const [editingId, setEditingId] = useState<string | null>(null); // t.id for editing
-  const [draft, setDraft] = useState<Partial<Transaction> | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null); // t.transactionId for editing
+  const [draft, setDraft] = useState<Partial<LedgerTransaction> | null>(null);
 
   const toggleExpand = (sid: string) => {
     const next = new Set(expandedSids);
@@ -40,10 +43,10 @@ export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }: Re
   const grouped = useMemo(() => {
     const map = new Map();
     tx.forEach(t => {
-      if (!map.has(t.sid)) {
-        map.set(t.sid, {
-          sid: t.sid,
-          name: t.name,
+      if (!map.has(t.studentId)) {
+        map.set(t.studentId, {
+          sid: t.studentId,
+          name: t.studentNameSnapshot,
           mealPrice: 0,
           paidAmount: 0,
           after: 0,
@@ -51,11 +54,11 @@ export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }: Re
           txs: []
         });
       }
-      const g = map.get(t.sid);
+      const g = map.get(t.studentId);
       g.mealPrice += (t.mealPrice || 0);
       g.paidAmount += (t.paidAmount || 0);
-      g.after = t.after; // Assume tx are in order, so last one is current
-      g.lastTime = t.time;
+      g.after = t.afterBalance;
+      g.lastTime = t.createdAt.slice(11, 19);
       g.txs.push(t);
     });
     return Array.from(map.values()).reverse(); // Latest student activity first
@@ -76,9 +79,9 @@ export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }: Re
     { id: 'custom', label: '自訂…' },
   ];
 
-  const startEdit = (e: React.MouseEvent, t: Transaction) => {
+  const startEdit = (e: React.MouseEvent, t: LedgerTransaction) => {
     e.stopPropagation();
-    setEditingId(t.id);
+    setEditingId(t.transactionId);
     setDraft({ ...t });
   };
   const saveEdit = (e: React.MouseEvent) => {
@@ -117,7 +120,7 @@ export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }: Re
         <div className="stat stat-strong">
           <div className="stat-lbl">訂餐</div>
           <div className="stat-num mono">{orderCount}<span className="stat-of"> 份</span></div>
-          <div className="stat-sub">{todayMenu.name}</div>
+          <div className="stat-sub">{todayMenu.itemName}</div>
         </div>
         <div className="stat">
           <div className="stat-lbl">訂餐金額</div>
@@ -169,10 +172,10 @@ export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }: Re
               {isExpanded && (
                 <div className="rpt-details">
                   {g.txs.slice().reverse().map(t => {
-                    const isEditing = editingId === t.id;
+                    const isEditing = editingId === t.transactionId;
                     return (
-                      <div key={t.id} className={'rpt-detail-row ' + (isEditing ? 'rpt-tr-editing' : '')}>
-                        <div className="mono dim">{t.time}</div>
+                      <div key={t.transactionId} className={'rpt-detail-row ' + (isEditing ? 'rpt-tr-editing' : '')}>
+                        <div className="mono dim">{t.createdAt.slice(11, 19)}</div>
                         <div className="dim">{t.type === 'order' ? '訂餐' : t.type === 'topup' ? '儲值' : '取消'}</div>
                         <div className={'r mono ' + (t.mealPrice > 0 ? 'neg' : t.mealPrice < 0 ? 'pos' : '')}>
                           {isEditing ? (
@@ -201,7 +204,7 @@ export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }: Re
                           ) : (
                             <>
                               <button className="rpt-mini-btn" onClick={(e) => startEdit(e, t)}>編輯</button>
-                              <button className="rpt-mini-btn rpt-mini-del" onClick={(e) => deleteRow(e, t.id)}>刪除</button>
+                              <button className="rpt-mini-btn rpt-mini-del" onClick={(e) => deleteRow(e, t.transactionId)}>刪除</button>
                             </>
                           )}
                         </div>
@@ -226,15 +229,15 @@ interface AdminScreenProps {
   todayMenu: TodayMenu;
   setTodayMenu: (menu: TodayMenu) => void;
   vendors: Vendor[];
-  students: Student[];
+  students: StudentAccount[];
   resetData: () => void;
 }
 export function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetData }: AdminScreenProps) {
-  const [name, setName] = useState(todayMenu.name);
+  const [name, setName] = useState(todayMenu.itemName);
   const [price, setPrice] = useState(todayMenu.price);
-  const [vendor, setVendor] = useState(todayMenu.vendor);
+  const [vendor, setVendor] = useState(todayMenu.vendorNameSnapshot);
 
-  const save = () => setTodayMenu({ ...todayMenu, name, price: Number(price), vendor });
+  const save = () => setTodayMenu({ ...todayMenu, itemName: name, price: Number(price), vendorNameSnapshot: vendor });
 
   const handleReset = () => {
     if (confirm('確定要清空所有交易紀錄並重置為範例數據嗎？')) {
@@ -260,7 +263,7 @@ export function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetD
           <div className="adm-row">
             <label>供應商</label>
             <select className="adm-input" value={vendor} onChange={e => setVendor(e.target.value)}>
-              {vendors.map(v => <option key={v.id} value={v.name}>{v.name} ({v.phone})</option>)}
+              {vendors.map(v => <option key={v.vendorId} value={v.name}>{v.name} ({v.phone})</option>)}
             </select>
           </div>
           <div className="adm-foot">
@@ -278,11 +281,11 @@ export function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetD
           <div className="card-h">學員管理 <span className="card-h-sub">{students.length} 人</span></div>
           <div className="adm-stu-list">
             {students.slice(0, 10).map(s => (
-              <div className="adm-stu adm-stu-2col" key={s.id}>
-                <span className="mono adm-stu-id">{s.id}</span>
-                <span className="adm-stu-name">{s.name}</span>
-                <span className={'mono adm-stu-bal ' + (s.balance < 0 ? 'warn' : '')}>
-                  {s.balance < 0 ? `欠 $${fmt(s.balance)}` : `$${fmt(s.balance)}`}
+              <div className="adm-stu adm-stu-2col" key={s.studentId}>
+                <span className="mono adm-stu-id">{s.studentId}</span>
+                <span className="adm-stu-name">{s.displayName}</span>
+                <span className={'mono adm-stu-bal ' + (s.currentBalance < 0 ? 'warn' : '')}>
+                  {s.currentBalance < 0 ? `欠 $${fmt(s.currentBalance)}` : `$${fmt(s.currentBalance)}`}
                 </span>
               </div>
             ))}
@@ -303,21 +306,31 @@ export function VendorsScreen({ vendors, setVendors }: VendorsScreenProps) {
   const [editing, setEditing] = useState<string | null>(null); // id of row being edited, or 'new'
   const [draft, setDraft] = useState<Partial<Vendor>>({ name:'', phone:'', note:'' });
 
-  const startEdit = (v: Vendor) => { setEditing(v.id); setDraft({ ...v }); };
+  const startEdit = (v: Vendor) => { setEditing(v.vendorId); setDraft({ ...v }); };
   const startNew  = () => { setEditing('new'); setDraft({ name:'', phone:'', note:'' }); };
   const cancel    = () => setEditing(null);
   const save = () => {
-    if (!draft.name.trim()) return alert('請輸入供應商名稱');
+    if (!draft.name?.trim()) return alert('請輸入供應商名稱');
     if (editing === 'new') {
-      setVendors([...vendors, { name: draft.name || '', phone: draft.phone || '', note: draft.note || '', id: Date.now().toString() }]);
+      const newVendor: Vendor = {
+        vendorId: Date.now().toString(),
+        name: draft.name || '',
+        phone: draft.phone || '',
+        note: draft.note || '',
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        revision: 1,
+      };
+      setVendors([...vendors, newVendor]);
     } else {
-      setVendors(vendors.map(v => v.id === editing ? { ...v, name: draft.name || v.name, phone: draft.phone || v.phone, note: draft.note || v.note } : v));
+      setVendors(vendors.map(v => v.vendorId === editing ? { ...v, name: draft.name || v.name, phone: draft.phone || v.phone, note: draft.note || v.note } : v));
     }
     setEditing(null);
   };
-  const remove = (id: string) => {
+  const remove = (vendorId: string) => {
     if (confirm('確定要刪除此供應商嗎？')) {
-      setVendors(vendors.filter(v => v.id !== id));
+      setVendors(vendors.filter(v => v.vendorId !== vendorId));
     }
   };
 
@@ -338,8 +351,8 @@ export function VendorsScreen({ vendors, setVendors }: VendorsScreenProps) {
           <div className="vendor-th" style={{ gridTemplateColumns: '1.4fr 1.2fr 2fr 120px', borderBottom: '2px solid var(--line-2)' }}>
             <div>名稱</div><div>電話</div><div>備註</div><div className="r">操作</div>
           </div>
-          {vendors.map(v => editing === v.id ? (
-            <div className="vendor-tr vendor-edit" key={v.id} style={{ gridTemplateColumns: '1.4fr 1.2fr 2fr 120px', margin: '8px 0', border: '1px solid var(--accent)', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+          {vendors.map(v => editing === v.vendorId ? (
+            <div className="vendor-tr vendor-edit" key={v.vendorId} style={{ gridTemplateColumns: '1.4fr 1.2fr 2fr 120px', margin: '8px 0', border: '1px solid var(--accent)', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
               <input className="adm-input" value={draft.name} placeholder="供應商名稱" autoFocus
                      onChange={e => setDraft({...draft, name: e.target.value})} />
               <input className="adm-input mono" value={draft.phone} placeholder="電話"
@@ -352,7 +365,7 @@ export function VendorsScreen({ vendors, setVendors }: VendorsScreenProps) {
               </div>
             </div>
           ) : (
-            <div className="vendor-tr" key={v.id} style={{ gridTemplateColumns: '1.4fr 1.2fr 2fr 120px' }}>
+            <div className="vendor-tr" key={v.vendorId} style={{ gridTemplateColumns: '1.4fr 1.2fr 2fr 120px' }}>
               <div className="vendor-name" style={{ fontSize: '16px' }}>{v.name}</div>
               <div className="vendor-phone mono">
                 <a href={`tel:${v.phone}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
@@ -362,7 +375,7 @@ export function VendorsScreen({ vendors, setVendors }: VendorsScreenProps) {
               <div className="vendor-note dim">{v.note || '-'}</div>
               <div className="vendor-actions r">
                 <button className="rpt-mini-btn" onClick={() => startEdit(v)}>編輯</button>
-                <button className="rpt-mini-btn rpt-mini-del" style={{ marginLeft: '6px' }} onClick={() => remove(v.id)}>刪除</button>
+                <button className="rpt-mini-btn rpt-mini-del" style={{ marginLeft: '6px' }} onClick={() => remove(v.vendorId)}>刪除</button>
               </div>
             </div>
           ))}
