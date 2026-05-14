@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { fmt } from "./pos-components";
 import type { LedgerTransaction } from '../domain/ledger';
 import type { TodayMenu } from '../domain/menu';
@@ -24,8 +24,10 @@ import { usePosStore } from '../store/posStore';
 interface ReportScreenProps {
   todayMenu: TodayMenu;
   viewDate: string;
+  studentFilter?: string;
+  onClearStudentFilter?: () => void;
 }
-export function ReportScreen({ todayMenu, viewDate }: ReportScreenProps) {
+export function ReportScreen({ todayMenu, viewDate, studentFilter, onClearStudentFilter }: ReportScreenProps) {
   const [dateRange, setDateRange] = useState<LedgerDateRangeKind>('today');
   const [customStart, setCustomStart] = useState(viewDate);
   const [customEnd, setCustomEnd] = useState(viewDate);
@@ -33,6 +35,7 @@ export function ReportScreen({ todayMenu, viewDate }: ReportScreenProps) {
   const [correctingTx, setCorrectingTx] = useState<LedgerTransaction | null>(null);
   const [voidingTx, setVoidingTx] = useState<LedgerTransaction | null>(null);
   const [showReopen, setShowReopen] = useState(false);
+  const [studentSearch, setStudentSearch] = useState(studentFilter || '');
 
   const store = usePosStore();
   const dateStatus = store.getBusinessDateStatus(viewDate);
@@ -55,6 +58,28 @@ export function ReportScreen({ todayMenu, viewDate }: ReportScreenProps) {
 
   const totals = useMemo(() => calculateLedgerTotals(filtered), [filtered]);
   const groups = useMemo(() => groupLedgerRowsByStudent(filtered), [filtered]);
+
+  // When studentFilter arrives from App, schedule auto-expand
+  useEffect(() => {
+    if (!studentFilter) return;
+    const sid = studentFilter;
+    const t = setTimeout(() => {
+      setExpandedSids(prev => {
+        if (prev.has(sid)) return prev;
+        return new Set(prev).add(sid);
+      });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [studentFilter]);
+
+  const filteredGroups = useMemo(() => {
+    if (!studentSearch.trim()) return groups;
+    const q = studentSearch.toLowerCase();
+    return groups.filter(g =>
+      g.studentId.toLowerCase().includes(q) ||
+      g.studentNameSnapshot.toLowerCase().includes(q)
+    );
+  }, [groups, studentSearch]);
 
   const hasQueuedRows = filtered.some(t => t.syncStatus === 'queued');
   const hasFailedConflict = filtered.some(t => t.syncStatus === 'failed' || t.syncStatus === 'conflict');
@@ -130,8 +155,24 @@ export function ReportScreen({ todayMenu, viewDate }: ReportScreenProps) {
         onPrint={() => window.print()}
       />
 
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+        <input
+          className="adm-input"
+          value={studentSearch}
+          onChange={e => setStudentSearch(e.target.value)}
+          placeholder="搜尋學員編號或姓名…"
+          style={{ flex: '1', maxWidth: '280px' }}
+        />
+        {studentSearch && (
+          <button className="ghost-btn" style={{ fontSize: '12px' }}
+                  onClick={() => { setStudentSearch(''); onClearStudentFilter?.(); }}>
+            清除
+          </button>
+        )}
+      </div>
+
       <LedgerGroupedTable
-        groups={groups}
+        groups={filteredGroups}
         onToggleExpand={toggleExpand}
         expandedSids={expandedSids}
         onCorrectClick={setCorrectingTx}

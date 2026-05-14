@@ -151,8 +151,9 @@ interface CustomerCardProps {
   orderedTodayCount: number;
   payAmount: string;
   setPayAmount: (val: string) => void;
+  onViewHistory?: () => void;
 }
-export function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount }: CustomerCardProps) {
+export function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory }: CustomerCardProps) {
   const after =
     mode === 'order'      ? student.currentBalance + (Number(payAmount || 0) - todayMenu.price) :
     mode === 'topup'      ? student.currentBalance + Number(payAmount || 0) :
@@ -172,6 +173,12 @@ export function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payA
           <div className={'bal-num mono ' + (student.currentBalance < 0 ? 'warn' : student.currentBalance < 90 ? 'low' : '')}>
             {student.currentBalance < 0 ? '−' : ''}${fmt(student.currentBalance)}
           </div>
+          {onViewHistory && (
+            <button className="ghost-btn" style={{ marginTop: '6px', fontSize: '11px', padding: '2px 10px' }}
+                    onClick={onViewHistory}>
+              檢視歷史
+            </button>
+          )}
           {orderedTodayCount > 0 && (
             <div className="bal-debt warn-soft-chip">
               ⚠ 今日已訂過 <b>{orderedTodayCount}</b> 次便當
