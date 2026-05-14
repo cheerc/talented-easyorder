@@ -1,23 +1,18 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { usePosStore } from './store/posStore';
+import { usePosFlow } from './hooks/usePosFlow';
+import type { PosMode } from './domain/posFlow';
 import type { StudentAccount } from './domain/student';
+import { countActiveOrdersForStudent } from './domain/ledger';
 
-interface FlashData {
-  id: number;
-  name: string;
-  sid: string;
-  detail: string;
-  amount: number;
-  after: number;
-}
-import { TopBar, SearchBox, CustomerCard, ActionBar, IdleHero, ConfirmBanner, RecentStrip } from './components/pos-components';
+import { TopBar, SearchBox, CustomerCard, ActionBar, IdleHero, ConfirmBanner, RecentStrip, DuplicateWarningBanner } from './components/pos-components';
 import { ReportScreen, AdminScreen, VendorsScreen } from './components/screens';
 import { TweaksPanel, TweakSection, TweakRadio } from './components/tweaks-panel';
 
 export default function App() {
   const {
     students, transactions: allTx, todayMenu, vendors,
-    processTransaction, updateTransaction, deleteTransaction,
+    updateTransaction, deleteTransaction,
     setTodayMenu, setVendors, resetData
   } = usePosStore();
 
@@ -29,37 +24,75 @@ export default function App() {
     return allTx.filter(t => t.businessDate === viewDate).reverse();
   }, [allTx, viewDate]);
 
+  const {
+    state,
+    setSearchText,
+    selectStudent,
+    changeMode,
+    setPaidAmountText,
+    requestConfirm,
+    confirmDuplicate,
+    cancelFlow,
+    dismissSuccess,
+    commitTransaction,
+  } = usePosFlow({ businessDate: viewDate, isHistorical });
+
   const [tab, setTab] = useState('pos');
-  const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
-  const [picked, setPicked] = useState<StudentAccount | null>(null);
-
-  const [mode, setMode] = useState('order');
   const [focusZone, setFocusZone] = useState('mode-order');
-  const [payAmount, setPayAmount] = useState('');
-  const [confirmDup, setConfirmDup] = useState(false);
 
-  const [flash, setFlash] = useState<FlashData | null>(null);
-  const online = true;
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState('剛剛');
+  const online = true;
+
+  // Derive picked student — keep it pinned across committing/success so the UI doesn't flash away
+  const [pinnedStudentId, setPinnedStudentId] = useState<string | null>(null);
+  const [pinnedMode, setPinnedMode] = useState<PosMode>('order');
+  const [pinnedPaidAmount, setPinnedPaidAmount] = useState('');
+
+  // Update pinned data whenever state provides new information
+  if (state.kind === 'student_selected' || state.kind === 'duplicate_warning') {
+    if (pinnedStudentId !== state.studentId) {
+      setPinnedStudentId(state.studentId);
+    }
+    const mode = state.kind === 'student_selected' ? state.mode : 'order';
+    if (pinnedMode !== mode) setPinnedMode(mode);
+    if (pinnedPaidAmount !== state.paidAmountText) setPinnedPaidAmount(state.paidAmountText);
+  } else if (state.kind === 'committing') {
+    if (pinnedStudentId !== state.studentId) setPinnedStudentId(state.studentId);
+    if (pinnedMode !== state.mode) setPinnedMode(state.mode);
+    if (pinnedPaidAmount !== state.paidAmountText) setPinnedPaidAmount(state.paidAmountText);
+  } else if (state.kind === 'idle' && pinnedStudentId !== null) {
+    setPinnedStudentId(null);
+  }
+
+  const picked = useMemo(() => {
+    if (!pinnedStudentId) return null;
+    return students.find(s => s.studentId === pinnedStudentId) ?? null;
+  }, [students, pinnedStudentId]);
+
+  const currentMode: PosMode = state.kind === 'student_selected' || state.kind === 'committing'
+    ? state.mode
+    : pinnedMode;
+
+  const currentPaidAmount = state.kind === 'student_selected' || state.kind === 'duplicate_warning' || state.kind === 'committing'
+    ? state.paidAmountText
+    : pinnedPaidAmount;
 
   const orderedTodayCount = useMemo(() => {
     if (!picked) return 0;
-    return tx.filter(t => t.studentId === picked.studentId && t.type === 'order').length
-      - tx.filter(t => t.studentId === picked.studentId && t.type === 'cancel').reduce((acc, t) => acc + Math.abs((t.mealPrice || 0) / todayMenu.price), 0);
-  }, [tx, picked, todayMenu.price]);
+    return countActiveOrdersForStudent(allTx, picked.studentId, viewDate);
+  }, [picked, allTx, viewDate]);
 
   const suggestions = useMemo(() => {
+    const query = state.kind === 'idle' ? state.searchText : '';
     if (!query) return [];
     const q = query.toLowerCase();
     return students.filter(s => s.studentId.includes(q) || s.displayName.toLowerCase().includes(q));
-  }, [query, students]);
+  }, [state, students]);
 
   const choose = (s: StudentAccount) => {
-    setPicked(s);
-    setQuery('');
-    setMode('order');
+    selectStudent(s.studentId, 'manual');
     setFocusZone('mode-order');
   };
 
@@ -67,72 +100,47 @@ export default function App() {
     if (suggestions.length > 0) choose(suggestions[activeIdx]);
   };
 
-  const reset = useCallback(() => {
-    setPicked(null);
-    setMode('order');
-    setFocusZone('mode-order');
-    setConfirmDup(false);
-    setPayAmount('');
-  }, []);
+  const [flashKey, setFlashKey] = useState(0);
 
-  const dismissFlash = useCallback(() => setFlash(null), []);
-
-  const doConfirm = useCallback(() => {
-    if (!picked) return;
-    const pPrice = todayMenu.price;
-    const amt = Number(payAmount || 0);
-
-    let mealPrice = 0;
-    let paidAmount = 0;
-    const actualType = mode;
-    let note = '';
-
-    if (mode === 'order') {
-      mealPrice = pPrice;
-      paidAmount = amt;
-      note = todayMenu.itemName + (amt > 0 ? ' (已付)' : '');
-    } else if (mode === 'topup') {
-      mealPrice = 0;
-      paidAmount = amt;
-      note = '現金儲值';
-    } else if (mode === 'cancel') {
-      mealPrice = -(orderedTodayCount * pPrice);
-      paidAmount = -amt;
-      note = `退餐 ${orderedTodayCount} 筆` + (amt > 0 ? ` (退現 ${amt})` : '');
-    }
-
-    processTransaction(picked.studentId, actualType as 'order' | 'topup' | 'cancel', mealPrice, paidAmount, note);
-
-    setFlash({
-      id: Date.now(),
-      name: picked.displayName,
-      sid: picked.studentId,
-      detail: mode === 'order' ? `訂餐: ${todayMenu.itemName}` + (amt > 0 ? `, 收現 ${amt}` : '') :
-          mode === 'topup' ? `儲值: 收現 ${amt}` :
-            `取消 ${orderedTodayCount} 筆訂餐`,
-      amount: paidAmount - mealPrice,
-      after: picked.currentBalance + (paidAmount - mealPrice)
-    });
-
-    setSyncing(true);
-    setTimeout(() => {
-      setSyncing(false);
-      setLastSync(new Date().toLocaleTimeString('en-US', { hour12: false }).slice(0, 5));
-    }, 800);
-
-    reset();
-  }, [picked, mode, payAmount, todayMenu, orderedTodayCount, processTransaction, reset]);
+  const dismissFlash = useCallback(() => {
+    dismissSuccess();
+    setFlashKey(k => k + 1);
+    setSyncing(false);
+  }, [dismissSuccess]);
 
   const handleConfirm = useCallback(() => {
-    if (!picked) return;
-    if (mode === 'order' && orderedTodayCount > 0 && !confirmDup) {
-      setConfirmDup(true);
-      setFocusZone('btn-confirm');
+    if (state.kind !== 'student_selected' && state.kind !== 'duplicate_warning') return;
+    if (state.kind === 'duplicate_warning') {
+      confirmDuplicate();
       return;
     }
-    doConfirm();
-  }, [picked, mode, orderedTodayCount, confirmDup, doConfirm]);
+    requestConfirm();
+  }, [state.kind, requestConfirm, confirmDuplicate]);
 
+  // After requestConfirm transitions to committing or duplicate_warning,
+  // and after confirmDuplicate transitions to committing, fire commitTransaction
+  useEffect(() => {
+    if (state.kind === 'committing') {
+      commitTransaction();
+    }
+  }, [state.kind, commitTransaction]);
+
+  // Show syncing animation after commit
+  const prevKindRef = useRef(state.kind);
+  useEffect(() => {
+    if (prevKindRef.current !== 'success' && state.kind === 'success') {
+      setSyncing(true);
+      const t = setTimeout(() => {
+        setSyncing(false);
+        setLastSync(new Date().toLocaleTimeString('en-US', { hour12: false }).slice(0, 5));
+      }, 800);
+      prevKindRef.current = state.kind;
+      return () => clearTimeout(t);
+    }
+    prevKindRef.current = state.kind;
+  }, [state.kind]);
+
+  // Keyboard shortcuts for tab navigation
   useEffect(() => {
     const onGlobalKey = (e: KeyboardEvent) => {
       if (e.key === 'F1') { e.preventDefault(); setTab('pos'); return; }
@@ -148,36 +156,41 @@ export default function App() {
     return () => window.removeEventListener('keydown', onGlobalKey);
   }, []);
 
+  // POS keyboard shortcuts (when student is selected)
+  const hasFlash = state.kind === 'success';
   useEffect(() => {
-    if (tab !== 'pos' || flash) return;
+    if (tab !== 'pos' || hasFlash) return;
+    if (!picked) return;
 
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
-      if (!picked) return;
       const keys = ['q', 'w', 'e', 'r', 'Q', 'W', 'E', 'R'];
 
       if (e.target.tagName === 'INPUT' && e.target.type !== 'radio') {
         if (e.key === 'Escape') {
           e.target.blur();
-          reset();
+          cancelFlow();
+          return;
         }
-        if (e.key === 'Enter') handleConfirm();
-
+        if (e.key === 'Enter') {
+          handleConfirm();
+          return;
+        }
         if (keys.includes(e.key)) {
           e.target.blur();
         } else {
           return;
         }
       }
+
       if (keys.includes(e.key)) {
         const key = e.key.toLowerCase();
-        const map: Record<string, 'order' | 'topup' | 'cancel'> = { 'q': 'order', 'w': 'topup', 'e': 'cancel' };
+        const map: Record<string, PosMode> = { 'q': 'order', 'w': 'topup', 'e': 'cancel' };
         if (key === 'e' && orderedTodayCount === 0) return;
         e.preventDefault();
         const m = map[key];
-        setMode(m); setFocusZone('mode-' + m); setConfirmDup(false);
-        if (m === 'topup') setPayAmount(String(todayMenu.price));
-        else setPayAmount('');
+        changeMode(m);
+        setFocusZone('mode-' + m);
         return;
       }
 
@@ -202,31 +215,29 @@ export default function App() {
         if (i >= 0) setFocusZone('btn-confirm');
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        if (focusZone === 'btn-confirm' || focusZone === 'btn-cancel') setFocusZone('mode-' + mode);
+        if (focusZone === 'btn-confirm' || focusZone === 'btn-cancel') setFocusZone('mode-' + currentMode);
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        if (focusZone === 'btn-cancel') reset();
+        if (focusZone === 'btn-cancel') cancelFlow();
         else if (focusZone === 'btn-confirm') handleConfirm();
         else if (focusZone.startsWith('mode-')) {
-          const m = focusZone.replace('mode-', '');
+          const m = focusZone.replace('mode-', '') as PosMode;
           if (m === 'cancel' && orderedTodayCount === 0) return;
-          if (m === mode) {
+          if (m === currentMode) {
             handleConfirm();
           } else {
-            setMode(m);
-            if (m === 'topup') setPayAmount(String(todayMenu.price));
-            else setPayAmount('');
+            changeMode(m);
           }
         }
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        if (confirmDup) setConfirmDup(false);
-        else reset();
+        if (state.kind === 'duplicate_warning') cancelFlow();
+        else cancelFlow();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [tab, picked, flash, mode, orderedTodayCount, confirmDup, payAmount, todayMenu.price, focusZone, handleConfirm, reset]);
+  }, [tab, picked, hasFlash, currentMode, orderedTodayCount, focusZone, state.kind, handleConfirm, cancelFlow, changeMode]);
 
   const todayCount = tx.reduce((acc, t) => acc + ((t.mealPrice || 0) / todayMenu.price), 0);
 
@@ -238,6 +249,24 @@ export default function App() {
     document.body.setAttribute('data-theme', tweaks.theme);
   }, [tweaks]);
 
+  // Build flash data from success state
+  const isSuccess = state.kind === 'success';
+  const flashData = useMemo(() => {
+    if (!isSuccess || !picked) return null;
+    const amt = Number(currentPaidAmount || 0);
+    const mealPrice = currentMode === 'order' ? todayMenu.price : 0;
+    return {
+      id: flashKey,
+      name: picked.displayName,
+      sid: picked.studentId,
+      detail: currentMode === 'order' ? `訂餐: ${todayMenu.itemName}` + (amt > 0 ? `, 收現 ${amt}` : '') :
+              currentMode === 'topup' ? `儲值: 收現 ${amt}` :
+                `取消 ${orderedTodayCount} 筆訂餐`,
+      amount: amt - mealPrice,
+      after: picked.currentBalance + (amt - mealPrice),
+    };
+  }, [isSuccess, picked, currentMode, currentPaidAmount, todayMenu, orderedTodayCount, flashKey]);
+
   return (
     <div className="app">
       <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} />
@@ -245,7 +274,7 @@ export default function App() {
       {tab === 'pos' && (
         <div className="main">
           <div className="col-main">
-            {isHistorical ? (
+            {isHistorical || state.kind === 'historical_readonly' ? (
               <div className="historical-lock" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--c-text-dim)', textAlign: 'center' }}>
                 <h2 style={{ color: 'var(--c-warn)', fontSize: '1.5rem', marginBottom: '8px' }}>目前檢視歷史紀錄</h2>
                 <p style={{ marginBottom: '24px' }}>您正在檢視 {viewDate} 的資料。<br />為確保帳務正確，歷史紀錄模式下已暫停結帳與訂餐功能。</p>
@@ -254,16 +283,16 @@ export default function App() {
             ) : !picked ? (
               <>
                 <SearchBox
-                  value={query}
-                  onChange={(v) => { setQuery(v); setActiveIdx(0); }}
+                  value={state.kind === 'idle' ? state.searchText : ''}
+                  onChange={(v) => { setSearchText(v); setActiveIdx(0); }}
                   onSubmit={submitSearch}
-                  onEsc={() => { setQuery(''); setActiveIdx(0); }}
+                  onEsc={() => { setSearchText(''); setActiveIdx(0); }}
                   suggestions={suggestions}
                   activeIdx={activeIdx}
                   onPick={choose}
                   onHover={setActiveIdx}
                   focusKey={0}
-                  disabled={!!flash}
+                  disabled={hasFlash}
                 />
                 <IdleHero
                   todayMenu={todayMenu}
@@ -276,40 +305,28 @@ export default function App() {
                 <CustomerCard
                   student={picked}
                   todayMenu={todayMenu}
-                  mode={mode}
+                  mode={currentMode}
                   orderedTodayCount={orderedTodayCount}
-                  payAmount={payAmount}
-                  setPayAmount={setPayAmount}
+                  payAmount={currentPaidAmount}
+                  setPayAmount={setPaidAmountText}
                 />
-                {confirmDup && (
-                  <div className="dup-warn">
-                    <div className="dup-warn-icon">⚠</div>
-                    <div className="dup-warn-body">
-                      <div className="dup-warn-h">已經訂過 {orderedTodayCount} 次便當</div>
-                      <div className="dup-warn-sub">
-                        確定要再訂一份嗎? (家長可能用同一帳號為多位學員訂餐)
-                      </div>
-                    </div>
-                    <div className="dup-warn-btns">
-                      <button className="btn-cancel" onClick={() => setConfirmDup(false)}>
-                        <span>否</span><span className="kbd">Esc</span>
-                      </button>
-                      <button className="btn-confirm" onClick={doConfirm}>
-                        <span>是,再訂一份</span><span className="kbd kbd-light">↵</span>
-                      </button>
-                    </div>
-                  </div>
+                {state.kind === 'duplicate_warning' && (
+                  <DuplicateWarningBanner
+                    orderedTodayCount={orderedTodayCount}
+                    onConfirm={handleConfirm}
+                    onCancel={cancelFlow}
+                  />
                 )}
                 <ActionBar
-                  mode={mode} setMode={(m) => {
-                    setMode(m); setConfirmDup(false); setFocusZone('mode-' + m);
-                    if (m === 'topup') setPayAmount(String(todayMenu.price));
-                    else setPayAmount('');
+                  mode={currentMode}
+                  setMode={(m) => {
+                    changeMode(m as PosMode);
+                    setFocusZone('mode-' + m);
                   }}
                   orderedTodayCount={orderedTodayCount}
                   focusZone={focusZone}
                   onConfirm={handleConfirm}
-                  onCancel={reset}
+                  onCancel={cancelFlow}
                 />
               </>
             )}
@@ -344,7 +361,7 @@ export default function App() {
       {tab === 'vendors' && <VendorsScreen vendors={vendors} setVendors={setVendors} />}
 
 
-      <ConfirmBanner flash={flash} onDismiss={dismissFlash} />
+      <ConfirmBanner flash={flashData} onDismiss={dismissFlash} />
 
       <TweaksPanel title="Tweaks">
         <TweakSection label="顯示">
