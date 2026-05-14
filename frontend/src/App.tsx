@@ -44,7 +44,18 @@ export default function App() {
 
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState('剛剛');
-  const online = true;
+  const [online, setOnline] = useState(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  useEffect(() => {
+    const goOnline = () => setOnline(true);
+    const goOffline = () => setOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
 
   // Derive picked student — keep it pinned across committing/success so the UI doesn't flash away
   const [pinnedStudentId, setPinnedStudentId] = useState<string | null>(null);
@@ -102,12 +113,42 @@ export default function App() {
   };
 
   const [flashKey, setFlashKey] = useState(0);
+  const [undoCountdown, setUndoCountdown] = useState(0);
+  const lastCommittedTxIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (undoCountdown <= 0) {
+      if (undoCountdown === 0) lastCommittedTxIdRef.current = null;
+      return;
+    }
+    const t = setTimeout(() => setUndoCountdown(n => {
+      const next = n - 1;
+      if (next <= 0) lastCommittedTxIdRef.current = null;
+      return Math.max(0, next);
+    }), 1000);
+    return () => clearTimeout(t);
+  }, [undoCountdown]);
 
   const dismissFlash = useCallback(() => {
     dismissSuccess();
     setFlashKey(k => k + 1);
     setSyncing(false);
+    setUndoCountdown(0);
+    lastCommittedTxIdRef.current = null;
   }, [dismissSuccess]);
+
+  const handleUndo = useCallback(() => {
+    const txId = lastCommittedTxIdRef.current;
+    if (!txId) return;
+    usePosStore.getState().hardDeleteLocalDraft({
+      transactionId: txId,
+      reason: '操作者復原 (undo)',
+      operatorId: 'op-pos',
+    });
+    lastCommittedTxIdRef.current = null;
+    setUndoCountdown(0);
+    dismissFlash();
+  }, [dismissFlash]);
 
   const handleConfirm = useCallback(() => {
     if (state.kind !== 'student_selected' && state.kind !== 'duplicate_warning') return;
@@ -126,7 +167,18 @@ export default function App() {
     }
   }, [state.kind, commitTransaction]);
 
-  // Show syncing animation after commit
+  // Wire commit success → undo countdown start + lastCommittedTxId tracking
+  const commitTxIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (state.kind === 'committing' && commitTxIdRef.current === null) {
+      commitTxIdRef.current = `tx-${Date.now()}`;
+    }
+    if (state.kind !== 'committing') {
+      commitTxIdRef.current = null;
+    }
+  }, [state.kind]);
+
+  // Show syncing animation after commit + start undo countdown
   const prevKindRef = useRef(state.kind);
   useEffect(() => {
     if (prevKindRef.current !== 'success' && state.kind === 'success') {
@@ -135,8 +187,22 @@ export default function App() {
         setSyncing(false);
         setLastSync(new Date().toLocaleTimeString('en-US', { hour12: false }).slice(0, 5));
       }, 800);
+
+      // Start undo countdown via ref to avoid setState-in-effect lint
+      const allTx = usePosStore.getState().transactions;
+      const latestTx = allTx[0];
+      if (latestTx && latestTx.syncStatus === 'local') {
+        lastCommittedTxIdRef.current = latestTx.transactionId;
+      }
+
       prevKindRef.current = state.kind;
-      return () => clearTimeout(t);
+      return () => {
+        clearTimeout(t);
+        // Defer setState to avoid sync-set-in-effect
+        if (lastCommittedTxIdRef.current) {
+          setTimeout(() => setUndoCountdown(5), 0);
+        }
+      };
     }
     prevKindRef.current = state.kind;
   }, [state.kind]);
@@ -362,7 +428,7 @@ export default function App() {
       {tab === 'vendors' && <VendorsScreen vendors={vendors} setVendors={setVendors} />}
 
 
-      <ConfirmBanner flash={flashData} onDismiss={dismissFlash} />
+      <ConfirmBanner flash={flashData} onDismiss={dismissFlash} onUndo={handleUndo} undoCountdown={undoCountdown} />
 
       <TweaksPanel title="Tweaks">
         <TweakSection label="顯示">

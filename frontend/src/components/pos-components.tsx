@@ -55,10 +55,10 @@ export function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, vie
       </nav>
       <div className="status">
         <div className={'sync ' + (online ? 'sync-on' : 'sync-off')}>
-          <span className={'dot ' + (syncing ? 'dot-pulse' : '')}></span>
+          <span className={'dot ' + (syncing ? 'dot-pulse' : '') + (!online ? ' dot-red' : '')}></span>
           <div className="sync-txt">
-            <div className="sync-label">{online ? '雲端已同步' : '離線中 · 排隊中'}</div>
-            <div className="sync-meta">{syncing ? '推送中…' : `上次 ${lastSync}`}</div>
+            <div className="sync-label">{online ? '雲端已同步' : '⚠ 離線中'}</div>
+            <div className="sync-meta">{syncing ? '推送中…' : online ? `上次 ${lastSync}` : '等待連線恢復…'}</div>
           </div>
         </div>
         <div className="counter">
@@ -377,8 +377,10 @@ interface FlashData {
 interface ConfirmBannerProps {
   flash: FlashData | null;
   onDismiss: () => void;
+  onUndo?: () => void;
+  undoCountdown?: number;
 }
-export function ConfirmBanner({ flash, onDismiss }: ConfirmBannerProps) {
+export function ConfirmBanner({ flash, onDismiss, onUndo, undoCountdown }: ConfirmBannerProps) {
   useEffect(() => {
     if (!flash) return;
     const onKey = (e: KeyboardEvent) => {
@@ -410,8 +412,17 @@ export function ConfirmBanner({ flash, onDismiss }: ConfirmBannerProps) {
           </div>
         </div>
       </div>
-      <div className="flash-count">
-        <span className="kbd kbd-light">↵</span> 下一位 · <span className="kbd kbd-light">Esc</span> 關閉
+      <div className="flash-count" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <span><span className="kbd kbd-light">↵</span> 下一位 · <span className="kbd kbd-light">Esc</span> 關閉</span>
+        {onUndo && undoCountdown !== undefined && undoCountdown > 0 && (
+          <button
+            className="rpt-mini-btn rpt-mini-del"
+            onClick={(e) => { e.stopPropagation(); onUndo(); }}
+            style={{ padding: '4px 12px', fontSize: '13px' }}
+          >
+            復原 ({undoCountdown}s)
+          </button>
+        )}
       </div>
     </div>
   );
