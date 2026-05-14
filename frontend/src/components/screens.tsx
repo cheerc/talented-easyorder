@@ -232,7 +232,6 @@ export function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetD
                 </span>
               </div>
             ))}
-            <button className="ghost-btn ghost-wide">查看全部 / 新增學員</button>
           </div>
         </div>
       </div>
