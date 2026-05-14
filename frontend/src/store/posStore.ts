@@ -6,16 +6,35 @@ import type { LedgerTransaction } from '../domain/ledger';
 import { createStudentSnapshot } from '../domain/student';
 import { createMenuSnapshot } from '../domain/menu';
 import { createLedgerTransaction, calculateTransactionAmount } from '../domain/ledger';
+import { createCorrectionTransaction, createVoidTransaction, createLedgerAuditEvent } from '../domain/ledgerAudit';
 import type { PosTransactionDraft } from '../domain/posTransaction';
 import {
   INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS
 } from '../mocks/initialData';
+
+interface LedgerCorrectionInput {
+  transactionId: string;
+  updates: Partial<LedgerTransaction>;
+  reason: string;
+  operatorId: string;
+}
+
+interface LedgerVoidInput {
+  transactionId: string;
+  reason: string;
+  operatorId: string;
+}
+
+export type BusinessDateStatus = 'open' | 'closed' | 'reopened';
 
 interface PosState {
   students: StudentAccount[];
   transactions: LedgerTransaction[];
   vendors: Vendor[];
   todayMenu: TodayMenu;
+  auditEvents: import('../domain/ledgerAudit').LedgerAuditEvent[];
+  dailySettlements: import('../domain/cashClose').DailySettlement[];
+  businessDateStatuses: Record<string, BusinessDateStatus>;
 
   setTodayMenu: (menu: TodayMenu) => void;
   setVendors: (vendors: Vendor[]) => void;
@@ -29,16 +48,27 @@ interface PosState {
   ) => void;
   updateTransaction: (id: string, updates: Partial<LedgerTransaction>) => void;
   deleteTransaction: (id: string) => void;
+  correctTransaction: (input: LedgerCorrectionInput) => void;
+  voidTransaction: (input: LedgerVoidInput) => void;
+  hardDeleteLocalDraft: (input: LedgerVoidInput) => void;
+  setBusinessDateStatus: (date: string, status: BusinessDateStatus) => void;
   resetData: () => void;
 }
 
+const defaultState = {
+  auditEvents: [] as import('../domain/ledgerAudit').LedgerAuditEvent[],
+  dailySettlements: [] as import('../domain/cashClose').DailySettlement[],
+  businessDateStatuses: {} as Record<string, BusinessDateStatus>,
+};
+
 export const usePosStore = create<PosState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       students: INITIAL_STUDENTS,
       transactions: INITIAL_TODAY_TX,
       vendors: VENDORS,
       todayMenu: INITIAL_TODAY_MENU,
+      ...defaultState,
 
       setTodayMenu: (menu) => set({ todayMenu: menu }),
       setVendors: (vendors) => set({ vendors }),
@@ -178,18 +208,176 @@ export const usePosStore = create<PosState>()(
         });
       },
 
+      correctTransaction: (input) => {
+        const state = get();
+        const { transactionId, updates, reason, operatorId } = input;
+
+        const txIndex = state.transactions.findIndex(t => t.transactionId === transactionId);
+        if (txIndex === -1) return;
+
+        const original = state.transactions[txIndex];
+        const dateStatus = state.businessDateStatuses[original.businessDate];
+        if (dateStatus === 'closed') return;
+        const now = new Date().toISOString();
+
+        const auditEvent = createLedgerAuditEvent({
+          auditEventId: `evt-${Date.now()}`,
+          eventType: 'transaction_corrected',
+          entityType: 'transaction',
+          entityId: transactionId,
+          businessDate: original.businessDate,
+          before: { mealPrice: original.mealPrice, paidAmount: original.paidAmount },
+          after: { mealPrice: updates.mealPrice, paidAmount: updates.paidAmount },
+          reason,
+          operatorId,
+          createdAt: now,
+        });
+
+        const newTx = createCorrectionTransaction(
+          original,
+          {
+            mealPrice: updates.mealPrice ?? original.mealPrice,
+            paidAmount: updates.paidAmount ?? original.paidAmount,
+            note: updates.note ?? original.note,
+            type: original.type,
+          },
+          original.afterBalance,
+          {
+            auditEventId: auditEvent.auditEventId,
+            eventType: 'transaction_corrected',
+            entityType: 'transaction',
+            entityId: transactionId,
+            businessDate: original.businessDate,
+            before: auditEvent.before,
+            after: auditEvent.after,
+            reason,
+            operatorId,
+            createdAt: now,
+          },
+        );
+
+        const studentIndex = state.students.findIndex(s => s.studentId === original.studentId);
+        const updatedStudents = [...state.students];
+        if (studentIndex !== -1) {
+          updatedStudents[studentIndex] = {
+            ...updatedStudents[studentIndex],
+            currentBalance: newTx.afterBalance,
+          };
+        }
+
+        set({
+          transactions: [...state.transactions, newTx],
+          auditEvents: [...state.auditEvents, auditEvent],
+          students: updatedStudents,
+        });
+      },
+
+      voidTransaction: (input) => {
+        const state = get();
+        const { transactionId, reason, operatorId } = input;
+
+        const txIndex = state.transactions.findIndex(t => t.transactionId === transactionId);
+        if (txIndex === -1) return;
+
+        const original = state.transactions[txIndex];
+        const dateStatus = state.businessDateStatuses[original.businessDate];
+        if (dateStatus === 'closed') return;
+
+        const now = new Date().toISOString();
+
+        const auditEvent = createLedgerAuditEvent({
+          auditEventId: `evt-${Date.now()}`,
+          eventType: 'transaction_voided',
+          entityType: 'transaction',
+          entityId: transactionId,
+          businessDate: original.businessDate,
+          before: { amount: original.amount },
+          after: { amount: -original.amount },
+          reason,
+          operatorId,
+          createdAt: now,
+        });
+
+        const voidTx = createVoidTransaction(original, reason, operatorId, now);
+
+        const studentIndex = state.students.findIndex(s => s.studentId === original.studentId);
+        const updatedStudents = [...state.students];
+        if (studentIndex !== -1) {
+          updatedStudents[studentIndex] = {
+            ...updatedStudents[studentIndex],
+            currentBalance: updatedStudents[studentIndex].currentBalance + voidTx.amount,
+          };
+        }
+
+        set(state => ({
+          transactions: state.transactions.map(t =>
+            t.transactionId === transactionId
+              ? { ...t, voidedAt: now, voidedBy: operatorId, voidReason: reason }
+              : t
+          ).concat(voidTx),
+          auditEvents: [...state.auditEvents, auditEvent],
+          students: updatedStudents,
+        }));
+      },
+
+      hardDeleteLocalDraft: (input) => {
+        const state = get();
+        const { transactionId, reason, operatorId } = input;
+
+        const txIndex = state.transactions.findIndex(t => t.transactionId === transactionId);
+        if (txIndex === -1) return;
+
+        const original = state.transactions[txIndex];
+        if (original.syncStatus !== 'local') return;
+
+        const dateStatus = state.businessDateStatuses[original.businessDate];
+        if (dateStatus === 'closed') return;
+
+        const now = new Date().toISOString();
+
+        const auditEvent = createLedgerAuditEvent({
+          auditEventId: `evt-${Date.now()}`,
+          eventType: 'transaction_hard_deleted',
+          entityType: 'transaction',
+          entityId: transactionId,
+          businessDate: original.businessDate,
+          before: { ...original },
+          after: null,
+          reason,
+          operatorId,
+          createdAt: now,
+        });
+
+        set(state => ({
+          transactions: state.transactions.filter(t => t.transactionId !== transactionId),
+          auditEvents: [...state.auditEvents, auditEvent],
+        }));
+      },
+
+      setBusinessDateStatus: (date, status) => {
+        set(state => ({
+          businessDateStatuses: { ...state.businessDateStatuses, [date]: status },
+        }));
+      },
+
       resetData: () => set({
         students: INITIAL_STUDENTS,
         transactions: INITIAL_TODAY_TX,
-        todayMenu: INITIAL_TODAY_MENU
-      })
+        todayMenu: INITIAL_TODAY_MENU,
+        ...defaultState,
+      }),
     }),
     {
       name: 'pos-storage',
-      version: 1,
+      version: 2,
       migrate: (persistedState) => {
         const state = persistedState as Record<string, unknown>;
         if (!state) return state as PosState;
+
+        // v2: add audit state fields
+        if (!('auditEvents' in state)) state.auditEvents = [];
+        if (!('dailySettlements' in state)) state.dailySettlements = [];
+        if (!('businessDateStatuses' in state)) state.businessDateStatuses = {};
 
         // Normalize old-shape students {id, name, balance} → StudentAccount
         const rawStudents = state.students as Array<Record<string, unknown>> | undefined;
@@ -209,25 +397,16 @@ export const usePosStore = create<PosState>()(
 
         // Normalize old-shape transactions → LedgerTransaction
         const rawTx = state.transactions as Array<Record<string, unknown>> | undefined;
-        if (rawTx && rawTx.length > 0 && 'id' in rawTx[0] && !('transactionId' in rawTx[0])) {
-          state.transactions = rawTx.map((t: Record<string, unknown>) => ({
-            transactionId: t.id as string,
-            businessDate: (t.date as string) || '',
-            createdAt: `${t.date}T${t.time}.000Z`,
-            studentId: t.sid as string,
-            studentNameSnapshot: t.name as string,
-            type: t.type as LedgerTransaction['type'],
-            mealPrice: (t.mealPrice as number) ?? 0,
-            paidAmount: (t.paidAmount as number) ?? 0,
-            amount: (t.amount as number) ?? 0,
-            afterBalance: t.after as number,
-            menuNameSnapshot: (t.note as string) || '',
-            vendorNameSnapshot: '',
-            sourceDevice: 'pc' as const,
-            syncStatus: 'local' as const,
-            revision: 1,
-            note: (t.note as string) || '',
-          }));
+        if (rawTx && rawTx.length > 0) {
+          state.transactions = rawTx.map((t: Record<string, unknown>) => {
+            const hasId = 'id' in t && !('transactionId' in t);
+            const hasSyncStatus = 'syncStatus' in t;
+            return {
+              ...t,
+              transactionId: hasId ? t.id as string : (t.transactionId as string),
+              syncStatus: hasSyncStatus ? t.syncStatus : 'local',
+            };
+          });
         }
 
         // Normalize old-shape vendors {id, name, phone, note} → Vendor
