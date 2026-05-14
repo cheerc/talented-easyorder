@@ -12,7 +12,6 @@ import { TweaksPanel, TweakSection, TweakRadio } from './components/tweaks-panel
 export default function App() {
   const {
     students, transactions: allTx, todayMenu, vendors,
-    updateTransaction, deleteTransaction,
     setTodayMenu, setVendors, resetData,
     getBusinessDateStatus,
   } = usePosStore();
@@ -39,6 +38,7 @@ export default function App() {
   } = usePosFlow({ businessDate: viewDate, isHistorical });
 
   const [tab, setTab] = useState('pos');
+  const [reportStudentFilter, setReportStudentFilter] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
   const [focusZone, setFocusZone] = useState('mode-order');
 
@@ -376,6 +376,10 @@ export default function App() {
                   orderedTodayCount={orderedTodayCount}
                   payAmount={currentPaidAmount}
                   setPayAmount={setPaidAmountText}
+                  onViewHistory={() => {
+                    setReportStudentFilter(picked!.studentId);
+                    setTab('report');
+                  }}
                 />
                 {state.kind === 'duplicate_warning' && (
                   <DuplicateWarningBanner
@@ -417,11 +421,10 @@ export default function App() {
 
       {tab === 'report' && (
         <ReportScreen
-          tx={tx}
-          onUpdate={updateTransaction}
-          onDelete={deleteTransaction}
           todayMenu={todayMenu}
           viewDate={viewDate}
+          studentFilter={reportStudentFilter}
+          onClearStudentFilter={() => setReportStudentFilter('')}
         />
       )}
       {tab === 'admin' && <AdminScreen todayMenu={todayMenu} setTodayMenu={setTodayMenu} vendors={vendors} students={students} resetData={resetData} />}

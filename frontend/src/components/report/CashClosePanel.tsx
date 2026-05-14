@@ -7,6 +7,7 @@ interface CashClosePanelProps {
   businessDate: string;
   dateStatus: string;
   hasQueuedRows: boolean;
+  queuedRowCount?: number;
   hasFailedConflict: boolean;
   onClose: (countedCash: number, note: string) => void;
 }
@@ -17,6 +18,7 @@ export function CashClosePanel({
   hasQueuedRows,
   hasFailedConflict,
   onClose,
+  queuedRowCount = 0,
 }: CashClosePanelProps) {
   const [countedCash, setCountedCash] = useState<number | ''>('');
   const [note, setNote] = useState('');
@@ -28,7 +30,7 @@ export function CashClosePanel({
   const cashEntered = countedCash !== '';
   const canClose =
     cashEntered &&
-    (difference === 0 || note.trim().length > 0) &&
+    note.trim().length > 0 &&
     (!hasFailedConflict) &&
     (!hasQueuedRows || queuedAccepted) &&
     dateStatus !== 'closed';
@@ -61,16 +63,18 @@ export function CashClosePanel({
         </div>
         <div style={{ flex: '1', minWidth: '200px' }}>
           <div className="dim" style={{ fontSize: '12px', marginBottom: '4px' }}>
-            備註 {difference !== 0 && <span style={{color:'var(--c-warn)'}}>（差異需備註）</span>}
+            備註 <span style={{color:'var(--c-warn)',fontSize:'11px'}}>（必填）</span>
           </div>
-          <input className="adm-input" value={note} placeholder={difference !== 0 ? '請說明現金差異原因' : '關帳備註'}
+          <input className="adm-input" value={note} placeholder="請輸入關帳備註"
                  onChange={e => setNote(e.target.value)} style={{ width: '100%' }} />
         </div>
 
         {hasQueuedRows && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <input type="checkbox" id="queued-accept" checked={queuedAccepted} onChange={e => setQueuedAccepted(e.target.checked)} />
-            <label htmlFor="queued-accept" style={{ fontSize: '12px', cursor: 'pointer' }}>接受未同步資料結帳</label>
+            <label htmlFor="queued-accept" style={{ fontSize: '12px', cursor: 'pointer', color: 'var(--c-warn)' }}>
+              尚有 {queuedRowCount} 筆交易未上傳雲端，仍要結帳
+            </label>
           </div>
         )}
 

@@ -48,6 +48,13 @@ export function LedgerGroupedTable({
 
             {isExpanded && (
               <div className="rpt-details">
+                <div className="rpt-detail-row rpt-summary-row" style={{ background: 'var(--bg-2)', fontWeight: 500, fontSize: '12px', borderBottom: '2px solid var(--line-2)', display: 'flex', gap: '12px', padding: '4px 12px', alignItems: 'center' }}>
+                  <span>📋 訂餐 {g.recordCount} 筆</span>
+                  <span className="pos">收現 +${fmt(g.paidTotal)}</span>
+                  <span className={g.afterBalance - (g.transactions[0]?.afterBalance ?? g.afterBalance) < 0 ? 'warn' : 'pos'}>
+                    淨變動 {g.afterBalance - (g.transactions[0]?.afterBalance ?? g.afterBalance) < 0 ? '−' : '+'}${fmt(Math.abs(g.afterBalance - (g.transactions[0]?.afterBalance ?? g.afterBalance)))}
+                  </span>
+                </div>
                 {g.transactions.slice().reverse().map(t => {
                   const locked = dateStatus === 'closed';
                   return (
