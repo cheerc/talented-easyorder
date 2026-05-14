@@ -54,8 +54,9 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
   }, []);
 
   const selectStudent = useCallback((studentId: string, source: PosSelectionSource) => {
-    dispatch({ type: 'selectStudent', studentId, source });
-  }, []);
+    const searchTextHint = state.kind === 'idle' ? state.searchText : '';
+    dispatch({ type: 'selectStudent', studentId, source, searchTextHint });
+  }, [state.kind, state.searchText]);
 
   const changeMode = useCallback((mode: PosMode) => {
     const cancelAvailable =
@@ -182,7 +183,8 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
         syncStatus: 'queued',
       });
     } catch {
-      dispatch({ type: 'commitFailed', message: '交易建立失敗', retryable: true });
+      const errMsg = e instanceof Error ? e.message : '未知錯誤';
+      dispatch({ type: 'commitFailed', message: '交易建立失敗: ' + errMsg, retryable: true });
     } finally {
       committingRef.current = false;
     }

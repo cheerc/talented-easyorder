@@ -307,6 +307,7 @@ export default function App() {
   }, [tab, picked, hasFlash, currentMode, orderedTodayCount, focusZone, state.kind, handleConfirm, cancelFlow, changeMode]);
 
   const todayCount = tx.reduce((acc, t) => acc + ((t.mealPrice || 0) / todayMenu.price), 0);
+  const queuedCount = useMemo(() => allTx.filter(t => t.syncStatus === 'queued').length, [allTx]);
 
   const [tweaks, setTweaks] = useState({ theme: 'warm', fontSize: 'lg' });
   const setTweak = (k: string, v: string) => setTweaks(prev => ({ ...prev, [k]: v }));
@@ -336,7 +337,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} />
+      <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} queuedCount={queuedCount} />
 
       {tab === 'pos' && (
         <div className="main">
