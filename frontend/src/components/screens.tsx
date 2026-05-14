@@ -1,12 +1,27 @@
-import React from "react";
-
-// Report, Admin, Vendors, Backup screens (v2)
+import React, { useState, useMemo } from "react";
 import { fmt } from "./pos-components";
 import type { LedgerTransaction } from '../domain/ledger';
 import type { TodayMenu } from '../domain/menu';
 import type { StudentAccount } from '../domain/student';
 import type { Vendor } from '../domain/menu';
-import { useState, useMemo } from "react";
+import {
+  createLedgerDateRange,
+  getEffectiveLedgerRows,
+  calculateLedgerTotals,
+  groupLedgerRowsByStudent,
+  type LedgerDateRangeKind,
+} from '../domain/ledgerReport';
+import {
+  ReportDateRangeControls,
+} from './report/ReportDateRangeControls';
+import { ReportSummaryStats } from './report/ReportSummaryStats';
+import { LedgerGroupedTable } from './report/LedgerGroupedTable';
+import { CashClosePanel } from './report/CashClosePanel';
+import { ExportActions } from './report/ExportActions';
+import { CorrectionDialog } from './report/CorrectionDialog';
+import { VoidDialog } from './report/VoidDialog';
+import { ReopenDialog } from './report/ReopenDialog';
+import { usePosStore } from '../store/posStore';
 
 interface ReportScreenProps {
   tx: LedgerTransaction[];
@@ -15,11 +30,46 @@ interface ReportScreenProps {
   todayMenu: TodayMenu;
   viewDate: string;
 }
-export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }: ReportScreenProps) {
-  const [dateRange, setDateRange] = useState('today');
+export function ReportScreen({ onUpdate, onDelete, todayMenu, viewDate }: ReportScreenProps) {
+  const [dateRange, setDateRange] = useState<LedgerDateRangeKind>('today');
+  const [customStart, setCustomStart] = useState(viewDate);
+  const [customEnd, setCustomEnd] = useState(viewDate);
   const [expandedSids, setExpandedSids] = useState<Set<string>>(new Set());
-  const [editingId, setEditingId] = useState<string | null>(null); // t.transactionId for editing
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<LedgerTransaction> | null>(null);
+  const [correctingTx, setCorrectingTx] = useState<LedgerTransaction | null>(null);
+  const [voidingTx, setVoidingTx] = useState<LedgerTransaction | null>(null);
+  const [showReopen, setShowReopen] = useState(false);
+
+  const store = usePosStore();
+  const dateStatus = store.getBusinessDateStatus(viewDate);
+  const {
+    closeBusinessDate,
+    reopenBusinessDate,
+    transactions,
+  } = store;
+
+  const range = useMemo(() => createLedgerDateRange(
+    dateRange,
+    viewDate,
+    dateRange === 'custom' ? { startDate: customStart, endDate: customEnd } : undefined,
+  ), [dateRange, viewDate, customStart, customEnd]);
+
+  const effective = useMemo(() => getEffectiveLedgerRows(transactions), [transactions]);
+  const filtered = useMemo(() =>
+    effective.filter(t => t.businessDate >= range.startDate && t.businessDate <= range.endDate),
+  [effective, range]);
+
+  const totals = useMemo(() => calculateLedgerTotals(filtered), [filtered]);
+  const groups = useMemo(() => groupLedgerRowsByStudent(filtered), [filtered]);
+
+  const hasQueuedRows = filtered.some(t => t.syncStatus === 'queued');
+  const hasFailedConflict = filtered.some(t => t.syncStatus === 'failed' || t.syncStatus === 'conflict');
+
+  const todayStr = useMemo(() => {
+    const [, m, d] = viewDate.split('-');
+    return `${parseInt(m)}/${parseInt(d)}`;
+  }, [viewDate]);
 
   const toggleExpand = (sid: string) => {
     const next = new Set(expandedSids);
@@ -28,198 +78,130 @@ export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }: Re
     setExpandedSids(next);
   };
 
-  const totals = useMemo(() => {
-    let order = 0, topup = 0, debt = 0;
-    tx.forEach(t => {
-      const mP = t.mealPrice || 0;
-      const pA = t.paidAmount || 0;
-      if (t.type === 'order') order += mP;
-      if (pA > 0) topup += pA;
-      if (t.type === 'order' && mP > pA) debt += (mP - pA);
-    });
-    return { order, topup, debt };
-  }, [tx]);
-
-  const grouped = useMemo(() => {
-    const map = new Map();
-    tx.forEach(t => {
-      if (!map.has(t.studentId)) {
-        map.set(t.studentId, {
-          sid: t.studentId,
-          name: t.studentNameSnapshot,
-          mealPrice: 0,
-          paidAmount: 0,
-          after: 0,
-          lastTime: '',
-          txs: []
-        });
-      }
-      const g = map.get(t.studentId);
-      g.mealPrice += (t.mealPrice || 0);
-      g.paidAmount += (t.paidAmount || 0);
-      g.after = t.afterBalance;
-      g.lastTime = t.createdAt.slice(11, 19);
-      g.txs.push(t);
-    });
-    return Array.from(map.values()).reverse(); // Latest student activity first
-  }, [tx]);
-
-  const orderCount = tx.filter(t => t.type === 'order').length;
-
-  const todayStr = useMemo(() => {
-    if (!viewDate) return '';
-    const [, m, d] = viewDate.split('-');
-    return `${parseInt(m)}/${parseInt(d)}`;
-  }, [viewDate]);
-
-  const dates = [
-    { id: 'today',  label: `今日 (${todayStr})` },
-    { id: 'week',   label: '本週' },
-    { id: 'month',  label: '本月' },
-    { id: 'custom', label: '自訂…' },
-  ];
-
   const startEdit = (e: React.MouseEvent, t: LedgerTransaction) => {
     e.stopPropagation();
     setEditingId(t.transactionId);
     setDraft({ ...t });
   };
+
   const saveEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (editingId && draft) {
       onUpdate(editingId, draft);
     }
     setEditingId(null);
+    setDraft(null);
   };
+
   const cancelEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
     setEditingId(null);
+    setDraft(null);
   };
+
   const deleteRow = (e: React.MouseEvent, tid: string) => {
     e.stopPropagation();
-    if (!confirm('確定要刪除這筆紀錄?')) return;
+    if (dateStatus === 'closed') return;
     onDelete(tid);
+  };
+
+  const handleCorrectSave = (txId: string, updates: Partial<LedgerTransaction>, reason: string) => {
+    store.correctTransaction({ transactionId: txId, updates, reason, operatorId: 'op-report' });
+    setCorrectingTx(null);
+  };
+
+  const handleVoidAction = (txId: string, reason: string) => {
+    store.voidTransaction({ transactionId: txId, reason, operatorId: 'op-report' });
+    setVoidingTx(null);
+  };
+
+  const handleHardDelete = (txId: string, reason: string) => {
+    store.hardDeleteLocalDraft({ transactionId: txId, reason, operatorId: 'op-report' });
+    setVoidingTx(null);
+  };
+
+  const handleCashClose = (countedCash: number, note: string) => {
+    closeBusinessDate({ businessDate: viewDate, countedCash, note, queuedSettlementAccepted: true, operatorId: 'op-report' });
+  };
+
+  const handleReopen = (reason: string) => {
+    reopenBusinessDate({ businessDate: viewDate, reason, operatorId: 'op-report' });
+    setShowReopen(false);
   };
 
   return (
     <div className="screen report">
-      <div className="rpt-daterange">
-        {dates.map(d => (
-          <button key={d.id}
-            className={'rpt-date ' + (dateRange === d.id ? 'rpt-on' : '')}
-            onClick={() => setDateRange(d.id)}>
-            {d.label}
-          </button>
-        ))}
-        <div className="rpt-date-meta dim">
-          {dateRange === 'today' && '今日 11:42 即時更新中 · 共 ' + tx.length + ' 筆交易'}
-        </div>
-      </div>
+      <ReportDateRangeControls
+        dateRange={dateRange}
+        setDateRange={setDateRange}
+        todayStr={todayStr}
+        txCount={filtered.length}
+        customStart={customStart}
+        customEnd={customEnd}
+        setCustomStart={setCustomStart}
+        setCustomEnd={setCustomEnd}
+      />
 
-      <div className="rpt-stats">
-        <div className="stat stat-strong">
-          <div className="stat-lbl">訂餐</div>
-          <div className="stat-num mono">{orderCount}<span className="stat-of"> 份</span></div>
-          <div className="stat-sub">{todayMenu.itemName}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-lbl">訂餐金額</div>
-          <div className="stat-num mono">${fmt(totals.order)}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-lbl">收現總額</div>
-          <div className="stat-num mono accent">+${fmt(totals.topup)}</div>
-        </div>
-        <div className="stat">
-          <div className="stat-lbl">新增欠款</div>
-          <div className="stat-num mono warn">${fmt(totals.debt)}</div>
-        </div>
-      </div>
+      <ReportSummaryStats totals={totals} itemName={todayMenu.itemName} />
 
-      <div className="rpt-toolbar">
-        <div className="rpt-actions">
-          <button className="ghost-btn">列印</button>
-          <button className="ghost-btn">匯出 CSV</button>
-          <button className="ghost-btn ghost-strong">推送至雲端</button>
-        </div>
-      </div>
+      {dateStatus === 'closed' && (
+        <button className="ghost-btn" style={{ marginBottom: '12px' }} onClick={() => setShowReopen(true)}>
+          重新開啟日期
+        </button>
+      )}
 
-      <div className="rpt-table">
-        <div className="rpt-th" style={{ gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto' }}>
-          <div>最後時間</div><div>編號</div><div>姓名</div>
-          <div className="r">當日應付</div><div className="r">當日實收</div><div className="r">目前餘額</div><div className="r">狀態</div>
-        </div>
-        {grouped.map(g => {
-          const isExpanded = expandedSids.has(g.sid);
-          return (
-            <React.Fragment key={g.sid}>
-              <div className={'rpt-tr ' + (isExpanded ? 'expanded-head' : '')} 
-                   onClick={() => toggleExpand(g.sid)}
-                   style={{ gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto', cursor: 'pointer' }}>
-                <div className="mono dim">{g.lastTime}</div>
-                <div className="mono">{g.sid}</div>
-                <div style={{ fontWeight: '600' }}>{g.name}</div>
-                <div className="r mono neg">{g.mealPrice > 0 ? `−$${fmt(g.mealPrice)}` : '-'}</div>
-                <div className="r mono pos">{g.paidAmount > 0 ? `+$${fmt(g.paidAmount)}` : '-'}</div>
-                <div className="r mono">{g.after < 0 ? '−' : ''}${fmt(g.after)}</div>
-                <div className="r">
-                  <span className="pill" style={{ fontSize: '10px', background: isExpanded ? 'var(--ink)' : 'var(--line-2)', color: isExpanded ? '#fff' : 'var(--ink-3)' }}>
-                    {g.txs.length} 筆紀錄 {isExpanded ? '▴' : '▾'}
-                  </span>
-                </div>
-              </div>
-              
-              {isExpanded && (
-                <div className="rpt-details">
-                  {g.txs.slice().reverse().map(t => {
-                    const isEditing = editingId === t.transactionId;
-                    return (
-                      <div key={t.transactionId} className={'rpt-detail-row ' + (isEditing ? 'rpt-tr-editing' : '')}>
-                        <div className="mono dim">{t.createdAt.slice(11, 19)}</div>
-                        <div className="dim">{t.type === 'order' ? '訂餐' : t.type === 'topup' ? '儲值' : '取消'}</div>
-                        <div className={'r mono ' + (t.mealPrice > 0 ? 'neg' : t.mealPrice < 0 ? 'pos' : '')}>
-                          {isEditing ? (
-                            <input type="number" className="rpt-edit-input mono r" value={draft?.mealPrice || 0}
-                                   onChange={e => setDraft({...draft!, mealPrice: Number(e.target.value)})} />
-                          ) : (t.mealPrice !== 0 ? <>{t.mealPrice > 0 ? '−' : '+'}${fmt(Math.abs(t.mealPrice))}</> : <>-</>)}
-                        </div>
-                        <div className={'r mono ' + (t.paidAmount > 0 ? 'pos' : '')}>
-                          {isEditing ? (
-                            <input type="number" className="rpt-edit-input mono r" value={draft?.paidAmount || 0}
-                                   onChange={e => setDraft({...draft!, paidAmount: Number(e.target.value)})} />
-                          ) : (t.paidAmount > 0 ? <>+${fmt(t.paidAmount)}</> : <>-</>)}
-                        </div>
-                        <div className="dim italic" style={{ fontSize: '12px' }}>
-                          {isEditing ? (
-                            <input className="rpt-edit-input" value={draft?.note || ''}
-                                   onChange={e => setDraft({...draft!, note: e.target.value})} />
-                          ) : t.note}
-                        </div>
-                        <div className="rpt-row-actions">
-                          {isEditing ? (
-                            <>
-                              <button className="rpt-mini-btn" onClick={cancelEdit}>取消</button>
-                              <button className="rpt-mini-btn rpt-mini-strong" onClick={saveEdit}>儲存</button>
-                            </>
-                          ) : (
-                            <>
-                              <button className="rpt-mini-btn" onClick={(e) => startEdit(e, t)}>編輯</button>
-                              <button className="rpt-mini-btn rpt-mini-del" onClick={(e) => deleteRow(e, t.transactionId)}>刪除</button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </React.Fragment>
-          );
-        })}
-        {grouped.length === 0 && (
-          <div className="rpt-empty">今日尚無交易紀錄</div>
-        )}
-      </div>
+      <CashClosePanel
+        totals={totals}
+        businessDate={viewDate}
+        dateStatus={dateStatus}
+        hasQueuedRows={hasQueuedRows}
+        hasFailedConflict={hasFailedConflict}
+        onClose={handleCashClose}
+      />
+
+      <ExportActions
+        onExportCsv={() => {}}
+        onPrint={() => window.print()}
+      />
+
+      <LedgerGroupedTable
+        groups={groups}
+        editingId={editingId}
+        draft={draft}
+        onToggleExpand={toggleExpand}
+        expandedSids={expandedSids}
+        onStartEdit={startEdit}
+        onSaveEdit={saveEdit}
+        onCancelEdit={cancelEdit}
+        onDeleteClick={deleteRow}
+        setDraft={setDraft}
+        dateStatus={dateStatus}
+      />
+
+      {correctingTx && (
+        <CorrectionDialog
+          tx={correctingTx}
+          onSave={handleCorrectSave}
+          onCancel={() => setCorrectingTx(null)}
+        />
+      )}
+
+      {voidingTx && (
+        <VoidDialog
+          tx={voidingTx}
+          onVoid={handleVoidAction}
+          onHardDelete={handleHardDelete}
+          onCancel={() => setVoidingTx(null)}
+        />
+      )}
+
+      {showReopen && (
+        <ReopenDialog
+          businessDate={viewDate}
+          onReopen={handleReopen}
+          onCancel={() => setShowReopen(false)}
+        />
+      )}
     </div>
   );
 }
