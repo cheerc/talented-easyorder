@@ -59,7 +59,7 @@ export default function App() {
     return students.filter(s => s.id.includes(q) || s.name.toLowerCase().includes(q));
   }, [query, students]);
 
-  const choose = (s) => {
+  const choose = (s: Student) => {
     setPicked(s);
     setQuery('');
     setMode('order');
@@ -139,7 +139,7 @@ export default function App() {
 
   // Global Key Bindings
   useEffect(() => {
-    const onGlobalKey = (e) => {
+    const onGlobalKey = (e: KeyboardEvent) => {
       // Allow F1-F4 regardless of focus
       if (e.key === 'F1') { e.preventDefault(); setTab('pos'); return; }
       if (e.key === 'F2') { e.preventDefault(); setTab('report'); return; }
@@ -159,7 +159,7 @@ export default function App() {
   useEffect(() => {
     if (tab !== 'pos' || flash) return;
 
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       if (!picked) return; // SearchBox handles its own keys
       const keys = ['q', 'w', 'e', 'r', 'Q', 'W', 'E', 'R'];
@@ -240,7 +240,7 @@ export default function App() {
   const todayCount = tx.reduce((acc, t) => acc + ((t.mealPrice || 0) / todayMenu.price), 0);
 
   const [tweaks, setTweaks] = useState({ theme: 'warm', fontSize: 'lg' });
-  const setTweak = (k, v) => setTweaks(prev => ({ ...prev, [k]: v }));
+  const setTweak = (k: string, v: string) => setTweaks(prev => ({ ...prev, [k]: v }));
 
   useEffect(() => {
     document.body.setAttribute('data-fs', tweaks.fontSize);
@@ -249,7 +249,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} todayMenu={todayMenu} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate} />
+      <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} />
 
       {tab === 'pos' && (
         <div className="main">
@@ -315,10 +315,8 @@ export default function App() {
                     if (m === 'topup') setPayAmount(String(todayMenu.price));
                     else setPayAmount('');
                   }}
-                  student={picked}
                   orderedTodayCount={orderedTodayCount}
                   focusZone={focusZone}
-                  setFocusZone={setFocusZone}
                   onConfirm={handleConfirm}
                   onCancel={reset}
                 />

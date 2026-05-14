@@ -1,10 +1,10 @@
-import React from "react";
-
 // POS Main Screen — search, order, checkout flow (v2)
-import {  useState, useEffect, useRef, useMemo, useCallback  } from "react";
+import { useEffect, useRef } from "react";
 import { type Student, type TodayMenu } from '../mocks/initialData';
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const fmt = (n: number) => new Intl.NumberFormat('zh-TW').format(Math.abs(n));
+// eslint-disable-next-line react-refresh/only-export-components
 export const sign = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '');
 
 interface TopBarProps {
@@ -14,12 +14,10 @@ interface TopBarProps {
   syncing: boolean;
   lastSync: string;
   todayCount: number;
-  todayMenu: TodayMenu;
   viewDate: string;
   setViewDate: (date: string) => void;
-  systemDate: string;
 }
-export function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, todayMenu, viewDate, setViewDate, systemDate }: TopBarProps) {
+export function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate }: TopBarProps) {
   const tabs = [
     { id: 'pos',     label: '櫃台', hint: 'F1' },
     { id: 'report',  label: '今日帳', hint: 'F2' },
@@ -261,14 +259,11 @@ export function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payA
 interface ActionBarProps {
   mode: string;
   setMode: (mode: string) => void;
-  student: Student;
   orderedTodayCount: number;
   onConfirm: () => void;
   onCancel: () => void;
-  focusZone: string;
-  setFocusZone: (zone: string) => void;
 }
-export function ActionBar({ mode, setMode, student, orderedTodayCount, onConfirm, onCancel, focusZone, setFocusZone }: ActionBarProps) {
+export function ActionBar({ mode, setMode, orderedTodayCount, onConfirm, onCancel, focusZone }: ActionBarProps) {
   const opts = [
     { id: 'order',  label: '訂便當',           hint: 'Q' },
     { id: 'topup',  label: '純繳費 / 儲值',   hint: 'W' },
@@ -356,7 +351,7 @@ interface ConfirmBannerProps {
 export function ConfirmBanner({ flash, onDismiss }: ConfirmBannerProps) {
   useEffect(() => {
     if (!flash) return;
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') {
         e.preventDefault();
         onDismiss();
@@ -394,7 +389,7 @@ export function ConfirmBanner({ flash, onDismiss }: ConfirmBannerProps) {
 
 // ============ Recent strip ============
 interface RecentStripProps {
-  recent: any[];
+  recent: import('../mocks/initialData').Transaction[];
 }
 export function RecentStrip({ recent }: RecentStripProps) {
   return (

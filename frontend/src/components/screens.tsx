@@ -1,7 +1,7 @@
 import React from "react";
 
 // Report, Admin, Vendors, Backup screens (v2)
-import { fmt, sign } from "./pos-components";
+import { fmt } from "./pos-components";
 import { type Transaction, type TodayMenu, type Student, type Vendor } from '../mocks/initialData';
 import { useState, useMemo } from "react";
 
@@ -18,7 +18,7 @@ export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }: Re
   const [editingId, setEditingId] = useState<string | null>(null); // t.id for editing
   const [draft, setDraft] = useState<Partial<Transaction> | null>(null);
 
-  const toggleExpand = (sid) => {
+  const toggleExpand = (sid: string) => {
     const next = new Set(expandedSids);
     if (next.has(sid)) next.delete(sid);
     else next.add(sid);
@@ -65,7 +65,7 @@ export function ReportScreen({ tx, onUpdate, onDelete, todayMenu, viewDate }: Re
 
   const todayStr = useMemo(() => {
     if (!viewDate) return '';
-    const [y, m, d] = viewDate.split('-');
+    const [, m, d] = viewDate.split('-');
     return `${parseInt(m)}/${parseInt(d)}`;
   }, [viewDate]);
 
@@ -255,7 +255,7 @@ export function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetD
           </div>
           <div className="adm-row">
             <label>單價 (元)</label>
-            <input className="adm-input mono" type="number" value={price} onChange={e => setPrice(e.target.value)} />
+            <input className="adm-input mono" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} />
           </div>
           <div className="adm-row">
             <label>供應商</label>
@@ -309,9 +309,9 @@ export function VendorsScreen({ vendors, setVendors }: VendorsScreenProps) {
   const save = () => {
     if (!draft.name.trim()) return alert('請輸入供應商名稱');
     if (editing === 'new') {
-      setVendors([...vendors, { ...draft, id: Date.now().toString() }]);
+      setVendors([...vendors, { name: draft.name || '', phone: draft.phone || '', note: draft.note || '', id: Date.now().toString() }]);
     } else {
-      setVendors(vendors.map(v => v.id === editing ? { ...v, ...draft } : v));
+      setVendors(vendors.map(v => v.id === editing ? { ...v, name: draft.name || v.name, phone: draft.phone || v.phone, note: draft.note || v.note } : v));
     }
     setEditing(null);
   };
@@ -390,7 +390,7 @@ export function VendorsScreen({ vendors, setVendors }: VendorsScreenProps) {
 export function BackupScreen() {
   const [step, setStep] = useState(0);
   const [progress, setProgress] = useState(0);
-  const [op, setOp] = useState<string | null>(null); // 'export-local' | 'import-local' | 'restore-cloud'
+  const [op, setOp] = useState<keyof typeof opMeta | null>(null); // 'export-local' | 'import-local' | 'restore-cloud'
 
   React.useEffect(() => {
     if (step !== 2) return;
@@ -403,7 +403,7 @@ export function BackupScreen() {
     return () => clearInterval(t);
   }, [step]);
 
-  const start = (kind: string) => { setOp(kind); setStep(1); };
+  const start = (kind: keyof typeof opMeta) => { setOp(kind); setStep(1); };
   const go    = () => { setProgress(0); setStep(2); };
   const reset = () => { setStep(0); setOp(null); setProgress(0); };
 
