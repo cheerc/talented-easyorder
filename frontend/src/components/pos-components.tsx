@@ -18,8 +18,9 @@ interface TopBarProps {
   viewDate: string;
   setViewDate: (date: string) => void;
   queuedCount?: number;
+  onDashboard?: () => void;
 }
-export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate, queuedCount = 0 }: TopBarProps) {
+export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate, queuedCount = 0, onDashboard }: TopBarProps) {
   const tabs = [
     { id: 'pos',     label: '櫃台', hint: 'F1' },
     { id: 'report',  label: '今日帳', hint: 'F2' },
@@ -70,6 +71,11 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing,
             <div className="counter-queued">{queuedCount} 筆待傳</div>
           )}
         </div>
+        {onDashboard && (
+          <button className="db-trigger" onClick={onDashboard} title="今日營運概覽 (F6)">
+            <span style={{ fontSize: '16px' }}>📊</span>
+          </button>
+        )}
       </div>
     </header>
   );
