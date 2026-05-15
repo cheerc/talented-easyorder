@@ -1,55 +1,5 @@
 /* POS prototype — 極簡專業 */
-:root {
-  --bg: #f4f4f2;
-  --panel: #ffffff;
-  --ink: #15181c;
-  --ink-2: #5a5f66;
-  --ink-3: #9aa0a8;
-  --line: #e6e5e1;
-  --line-2: #efeeea;
-  --accent: oklch(64% 0.16 152);
-  /* 翠綠 */
-  --accent-ink: oklch(38% 0.14 152);
-  --accent-soft: oklch(96% 0.04 152);
-  --warn: oklch(58% 0.18 32);
-  --warn-soft: oklch(96% 0.04 32);
-  --pos: oklch(58% 0.14 230);
-  --shadow: 0 1px 0 rgba(0, 0, 0, .02), 0 8px 24px -16px rgba(0, 0, 0, .08);
-  --r: 10px;
-  --r-lg: 16px;
-  --fs: 15px;
-}
-
-[data-theme="dark"] {
-  --bg: #0e1014;
-  --panel: #161a20;
-  --ink: #f4f5f7;
-  --ink-2: #a8aeb8;
-  --ink-3: #6b7280;
-  --line: #262b33;
-  --line-2: #1d2229;
-  --accent: oklch(72% 0.18 152);
-  --accent-ink: oklch(82% 0.16 152);
-  --accent-soft: oklch(28% 0.06 152);
-  --warn: oklch(70% 0.20 32);
-  --warn-soft: oklch(28% 0.06 32);
-  --shadow: 0 1px 0 rgba(255, 255, 255, .02), 0 8px 24px -16px rgba(0, 0, 0, .4);
-}
-
-[data-theme="warm"] {
-  --bg: #f6f1e8;
-  --panel: #fffaf1;
-  --ink: #1f1a13;
-  --ink-2: #6b5f4d;
-  --ink-3: #a59478;
-  --line: #e9dec9;
-  --line-2: #f1e8d3;
-  --accent: oklch(62% 0.14 60);
-  --accent-ink: oklch(40% 0.12 60);
-  --accent-soft: oklch(94% 0.04 60);
-  --warn: oklch(56% 0.18 28);
-  --warn-soft: oklch(94% 0.05 28);
-}
+@import './styles/tokens.css';
 
 * {
   box-sizing: border-box

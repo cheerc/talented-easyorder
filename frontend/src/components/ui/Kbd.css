@@ -1,0 +1,22 @@
+.kbd-ui {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--panel);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-2);
+  margin: 0 2px;
+}
+
+.kbd-ui-lg {
+  min-width: 30px;
+  height: 30px;
+  font-size: 14px;
+}
