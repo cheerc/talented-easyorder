@@ -1,0 +1,25 @@
+.field-input {
+  padding: 10px 14px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--ink);
+  outline: 0;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+
+.field-input:focus {
+  border-color: var(--ink);
+}
+
+.field-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.field-err .field-input {
+  border-color: var(--warn);
+}

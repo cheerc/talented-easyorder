@@ -1,0 +1,32 @@
+.badge-ui {
+  display: inline-flex;
+  padding: 2px 9px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.badge-neutral {
+  background: var(--line-2);
+  color: var(--ink-2);
+}
+
+.badge-ok {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.badge-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.badge-err {
+  background: oklch(96% 0.04 0);
+  color: oklch(48% 0.18 0);
+}
+
+[data-theme="dark"] .badge-err {
+  background: oklch(28% 0.06 0);
+  color: oklch(70% 0.18 0);
+}

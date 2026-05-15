@@ -1,0 +1,26 @@
+.field-ui {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}
+
+.field-help {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.field-error {
+  font-size: 12px;
+  color: var(--warn);
+}
+
+.field-err .field-label {
+  color: var(--warn);
+}

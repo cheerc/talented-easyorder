@@ -1,0 +1,32 @@
+.tabs-ui {
+  display: flex;
+  gap: 4px;
+}
+
+.tab-ui {
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.12s;
+}
+
+.tab-ui:hover {
+  background: var(--line-2);
+  color: var(--ink);
+}
+
+.tab-ui-on {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.tab-ui-on:hover {
+  background: var(--ink);
+  color: var(--bg);
+}
