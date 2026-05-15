@@ -1,0 +1,39 @@
+.num-input-wrap {
+  display: flex;
+  align-items: center;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  transition: border-color 0.15s;
+}
+
+.num-input-wrap:focus-within {
+  border-color: var(--ink);
+}
+
+.field-err .num-input-wrap {
+  border-color: var(--warn);
+}
+
+.num-prefix,
+.num-suffix {
+  padding: 0 14px;
+  color: var(--ink-3);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.num-input {
+  border: none;
+  background: transparent;
+  flex: 1;
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  font-weight: 500;
+  min-width: 0;
+}
+
+.num-input:focus {
+  outline: none;
+}

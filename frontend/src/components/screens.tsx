@@ -4,6 +4,7 @@ import type { LedgerTransaction } from '../domain/ledger';
 import type { TodayMenu } from '../domain/menu';
 import type { StudentAccount } from '../domain/student';
 import type { Vendor } from '../domain/menu';
+import { ConfirmDialog } from './ui/ConfirmDialog';
 import {
   createLedgerDateRange,
   getEffectiveLedgerRows,
@@ -230,15 +231,14 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
   const [name, setName] = useState(todayMenu.itemName);
   const [price, setPrice] = useState(todayMenu.price);
   const [vendor, setVendor] = useState(todayMenu.vendorNameSnapshot);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const save = () => setTodayMenu({ ...todayMenu, itemName: name, price: Number(price), vendorNameSnapshot: vendor });
 
   const handleReset = () => {
-    if (confirm('確定要清空所有交易紀錄並重置為範例數據嗎？')) {
-      resetData();
-      alert('已完成重置！');
-      window.location.reload(); // Force reload to clear any local state
-    }
+    resetData();
+    setShowResetConfirm(false);
+    window.location.reload();
   };
 
   return (
@@ -267,7 +267,7 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
           <div style={{ marginTop: '40px', borderTop: '1px solid #eee', paddingTop: '20px' }}>
             <div className="card-h" style={{ color: '#d32f2f' }}>危險區域</div>
             <p className="dim" style={{ fontSize: '13px', marginBottom: '10px' }}>這會清空目前的所有快取資料，重置為系統初始狀態。</p>
-            <button className="rpt-mini-btn rpt-mini-del wide" style={{ height: '40px' }} onClick={handleReset}>重置系統數據 (Reset)</button>
+            <button className="rpt-mini-btn rpt-mini-del wide" style={{ height: '40px' }} onClick={() => setShowResetConfirm(true)}>重置系統數據 (Reset)</button>
           </div>
         </div>
 
@@ -286,6 +286,15 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
           </div>
         </div>
       </div>
+      <ConfirmDialog
+        open={showResetConfirm}
+        title="重置系統數據"
+        message="確定要清空所有交易紀錄並重置為範例數據嗎？重置後將重新載入頁面。"
+        onConfirm={handleReset}
+        onCancel={() => setShowResetConfirm(false)}
+        confirmLabel="確認重置"
+        variant="danger"
+      />
     </div>
   );
 });
