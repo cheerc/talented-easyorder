@@ -1,0 +1,17 @@
+{
+  "name": "便當櫃台",
+  "short_name": "便當櫃台",
+  "description": "校園便當 POS 管理系統",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f4f2",
+  "theme_color": "#15181c",
+  "orientation": "landscape-primary",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
