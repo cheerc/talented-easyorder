@@ -99,6 +99,7 @@ export function SearchBox({ value, onChange, onSubmit, onEsc, suggestions, activ
         <input
           ref={ref}
           className="search-input"
+          aria-label="輸入學員編號或姓名"
           value={value}
           disabled={disabled}
           autoFocus
@@ -116,10 +117,12 @@ export function SearchBox({ value, onChange, onSubmit, onEsc, suggestions, activ
         <span className="search-enter"><span className="kbd kbd-lg">↵</span></span>
       </div>
       {suggestions.length > 0 && value && (
-        <div className="suggest">
+        <div className="suggest" role="listbox" aria-label="學員建議清單">
           {suggestions.slice(0, 6).map((s, i) => (
             <div
               key={s.studentId}
+              role="option"
+              aria-selected={i === activeIdx}
               className={'sug-row ' + (i === activeIdx ? 'sug-on' : '')}
               onMouseEnter={() => onHover(i)}
               onClick={() => onPick(s)}
@@ -240,6 +243,7 @@ export function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payA
                 <input
                   className="pay-input-main"
                   type="number"
+                  aria-label="付款金額"
                   value={payAmount}
                   onChange={e => setPayAmount(e.target.value)}
                   placeholder={mode === 'cancel' ? "0" : (mode === 'order' ? "0" : "輸入金額")}
@@ -285,8 +289,8 @@ export function ActionBar({ mode, setMode, orderedTodayCount, onConfirm, onCance
   ];
 
   return (
-    <div className="actionbar">
-      <div className="modes modes-3">
+    <div className="actionbar" role="group" aria-label="交易操作">
+      <div className="modes modes-3" role="radiogroup" aria-label="交易類型">
         {opts.map(o => (
           <button
             key={o.id}
@@ -409,7 +413,7 @@ export function ConfirmBanner({ flash, onDismiss, onUndo, undoCountdown }: Confi
 
   if (!flash) return null;
   return (
-    <div className="flash" key={flash.id}>
+    <div className="flash" key={flash.id} role="status" aria-live="polite">
       <div className="flash-card">
         <div className="flash-tick">✓</div>
         <div className="flash-body">
