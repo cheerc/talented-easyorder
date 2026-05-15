@@ -12,6 +12,7 @@ import { ReportScreen, AdminScreen, VendorsScreen, HistoryScreen } from './compo
 import { TodayDashboard } from './components/TodayDashboard';
 import { TweaksPanel, TweakSection, TweakRadio } from './components/tweaks-panel';
 import { ErrorBoundary, AppCrashPage, SectionError } from './components/ErrorBoundary';
+import { PwaInstallBanner } from './components/PwaInstallBanner';
 
 export default function App() {
   const students = usePosStore((s) => s.students);
@@ -566,6 +567,7 @@ export default function App() {
       </TweaksPanel>
 
       {showDashboard && <TodayDashboard onClose={() => setShowDashboard(false)} />}
+      <PwaInstallBanner />
     </div>
     </ErrorBoundary>
   );
