@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   TRANSACTION_CSV_COLUMNS,
   SETTLEMENT_CSV_COLUMNS,
@@ -6,6 +6,7 @@ import {
   buildSettlementCsvRows,
   serializeCsv,
   buildLedgerPrintViewModel,
+  triggerCsvDownload,
 } from '../ledgerExport';
 import type { LedgerTransaction } from '../ledger';
 import type { DailySettlement } from '../cashClose';
@@ -102,6 +103,67 @@ describe('serializeCsv', () => {
   it('preserves empty string for missing fields', () => {
     const csv = serializeCsv(['a', 'b'], [['', '']]);
     expect(csv).toContain(',');
+  });
+});
+
+describe('triggerCsvDownload', () => {
+  let capturedBlob: Blob | null;
+  let anchorClickCount: number;
+  let revokeCalls: string[];
+  let originalCreateObjectURL: typeof URL.createObjectURL;
+  let originalRevokeObjectURL: typeof URL.revokeObjectURL;
+  let originalCreateElement: typeof document.createElement;
+
+  beforeEach(() => {
+    capturedBlob = null;
+    anchorClickCount = 0;
+    revokeCalls = [];
+    originalCreateObjectURL = URL.createObjectURL;
+    originalRevokeObjectURL = URL.revokeObjectURL;
+    originalCreateElement = document.createElement;
+    URL.createObjectURL = vi.fn((blob: Blob) => {
+      capturedBlob = blob;
+      return 'blob:test';
+    });
+    URL.revokeObjectURL = vi.fn((url: string) => {
+      revokeCalls.push(url);
+    });
+    document.createElement = vi.fn((tag: string) => {
+      const el = originalCreateElement.call(document, tag);
+      if (tag === 'a') {
+        vi.spyOn(el, 'click').mockImplementation(() => { anchorClickCount++; });
+      }
+      return el;
+    }) as typeof document.createElement;
+  });
+
+  afterEach(() => {
+    URL.createObjectURL = originalCreateObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL;
+    document.createElement = originalCreateElement;
+  });
+
+  it('creates Blob with UTF-8 BOM and text/csv MIME type', async () => {
+    triggerCsvDownload('test.csv', 'col1,col2\nv1,v2');
+
+    expect(capturedBlob).toBeInstanceOf(Blob);
+    expect(capturedBlob!.type).toBe('text/csv;charset=utf-8');
+
+    const buf = await capturedBlob!.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    // UTF-8 BOM: EF BB BF
+    expect(bytes[0]).toBe(0xEF);
+    expect(bytes[1]).toBe(0xBB);
+    expect(bytes[2]).toBe(0xBF);
+    const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(buf);
+    expect(text).toBe('﻿col1,col2\nv1,v2');
+  });
+
+  it('triggers click on anchor and revokes URL', () => {
+    triggerCsvDownload('r.csv', 'x');
+
+    expect(anchorClickCount).toBe(1);
+    expect(revokeCalls).toEqual(['blob:test']);
   });
 });
 
