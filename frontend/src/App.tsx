@@ -76,9 +76,11 @@ export default function App() {
     };
   }, []);
 
-  // Check storage health on mount
+  // Check storage health on mount (deferred to avoid setState-in-effect)
+  const storageHealthyRef = useRef(true);
   useEffect(() => {
-    checkStorageHealth();
+    const health = checkStorageHealth();
+    storageHealthyRef.current = health.ok;
   }, []);
 
   // Restore crash draft on mount if available
@@ -88,9 +90,21 @@ export default function App() {
     (async () => {
       const draft = await loadCrashDraft();
       if (cancelled || !draft) return;
+      // Apply draft back to store state
+      const student = students.find(s => s.studentId === draft.intent.studentId);
+      if (student) {
+        selectStudent(draft.intent.studentId, 'manual');
+        if (draft.intent.paidAmount > 0) {
+          setPaidAmountText(String(draft.intent.paidAmount));
+        }
+        if (draft.intent.type !== 'order') {
+          changeMode(draft.intent.type);
+        }
+      }
       setCrashDraftRestored(true);
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Derive picked student — keep it pinned across committing/success so the UI doesn't flash away
@@ -249,25 +263,29 @@ export default function App() {
   // Save crash draft when committing (before store mutation)
   useEffect(() => {
     if (state.kind !== 'committing') return;
+    if (!storageHealthyRef.current) return;
     const sid = state.studentId;
     const student = students.find(s => s.studentId === sid);
     if (!student) return;
+    const mealPrice = state.mode === 'order' ? todayMenu.price : 0;
+    const paidAmount = state.mode === 'topup' ? Number(state.paidAmountText || 0) : 0;
+    const amount = state.mode === 'order' ? -mealPrice : (state.mode === 'topup' ? paidAmount : 0);
     const draft = {
       intent: {
         businessDate: viewDate,
         studentId: sid,
         type: state.mode,
-        mealPrice: state.mode === 'order' ? todayMenu.price : 0,
-        paidAmount: 0,
-        note: '',
+        mealPrice,
+        paidAmount,
+        note: state.mode === 'order' ? todayMenu.itemName : (state.mode === 'topup' ? '現金儲值' : '退餐'),
         sourceDevice: 'pc' as const,
       },
       snapshots: {
         student: { studentId: sid, studentNameSnapshot: student.displayName },
         menu: { menuNameSnapshot: todayMenu.itemName, menuPriceSnapshot: todayMenu.price, vendorIdSnapshot: todayMenu.vendorId, vendorNameSnapshot: todayMenu.vendorNameSnapshot },
       },
-      amount: 0,
-      expectedBalanceAfter: student.currentBalance,
+      amount,
+      expectedBalanceAfter: student.currentBalance + amount,
     };
     saveCrashDraft(draft);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -376,6 +394,8 @@ export default function App() {
 
   const todayCount = tx.reduce((acc, t) => acc + ((t.mealPrice || 0) / todayMenu.price), 0);
   const queuedCount = useMemo(() => allTx.filter(t => t.syncStatus === 'queued').length, [allTx]);
+  const failedSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'failed').length, [allTx]);
+  const conflictSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'conflict').length, [allTx]);
 
   const [tweaks, setTweaks] = useState({ theme: 'warm', fontSize: 'lg' });
   const setTweak = (k: string, v: string) => setTweaks(prev => ({ ...prev, [k]: v }));
@@ -406,7 +426,7 @@ export default function App() {
   return (
     <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => console.error('[ErrorBoundary]', e)}>
     <div className="app">
-      <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate} queuedCount={queuedCount} onDashboard={() => setShowDashboard(true)} />
+      <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate} queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount} onDashboard={() => setShowDashboard(true)} />
 
       {tab === 'pos' && (
         <div className="main">

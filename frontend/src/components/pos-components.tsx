@@ -18,9 +18,11 @@ interface TopBarProps {
   viewDate: string;
   setViewDate: (date: string) => void;
   queuedCount?: number;
+  failedSyncCount?: number;
+  conflictSyncCount?: number;
   onDashboard?: () => void;
 }
-export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate, queuedCount = 0, onDashboard }: TopBarProps) {
+export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate, queuedCount = 0, failedSyncCount = 0, conflictSyncCount = 0, onDashboard }: TopBarProps) {
   const tabs = [
     { id: 'pos',     label: '櫃台', hint: 'F1' },
     { id: 'report',  label: '今日帳', hint: 'F2' },
@@ -75,6 +77,16 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing,
             <div className="sync-meta">{syncing ? '推送中…' : online ? `上次 ${lastSync}` : '等待連線恢復…'}</div>
           </div>
         </div>
+        {(failedSyncCount > 0 || conflictSyncCount > 0) && (
+          <div className="sync sync-err" style={{ marginLeft: '8px', padding: '2px 8px', borderRadius: 'var(--r)', background: 'var(--red-soft)', border: '1px solid var(--red)', fontSize: '12px', color: 'var(--red)' }}>
+            <span>⚠ 同步異常</span>
+            <span style={{ marginLeft: '4px' }}>
+              {failedSyncCount > 0 && `${failedSyncCount} 筆失敗`}
+              {failedSyncCount > 0 && conflictSyncCount > 0 && '、'}
+              {conflictSyncCount > 0 && `${conflictSyncCount} 筆衝突`}
+            </span>
+          </div>
+        )}
         <div className="counter">
           <div className="counter-num">{todayCount}</div>
           <div className="counter-lbl">今日訂單</div>
