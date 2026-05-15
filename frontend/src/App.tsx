@@ -8,6 +8,7 @@ import { countActiveOrdersForStudent } from './domain/ledger';
 import { TopBar, SearchBox, CustomerCard, ActionBar, IdleHero, ConfirmBanner, RecentStrip, DuplicateWarningBanner } from './components/pos-components';
 import { ReportScreen, AdminScreen, VendorsScreen } from './components/screens';
 import { TweaksPanel, TweakSection, TweakRadio } from './components/tweaks-panel';
+import { ErrorBoundary, AppCrashPage, SectionError } from './components/ErrorBoundary';
 
 export default function App() {
   const {
@@ -336,6 +337,7 @@ export default function App() {
   }, [isSuccess, picked, currentMode, currentPaidAmount, todayMenu, orderedTodayCount, flashKey]);
 
   return (
+    <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => console.error('[ErrorBoundary]', e)}>
     <div className="app">
       <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} queuedCount={queuedCount} />
 
@@ -421,15 +423,25 @@ export default function App() {
       )}
 
       {tab === 'report' && (
+        <ErrorBoundary fallback={<SectionError name="報表" />}>
         <ReportScreen
           todayMenu={todayMenu}
           viewDate={viewDate}
           studentFilter={reportStudentFilter}
           onClearStudentFilter={() => setReportStudentFilter('')}
         />
+        </ErrorBoundary>
       )}
-      {tab === 'admin' && <AdminScreen todayMenu={todayMenu} setTodayMenu={setTodayMenu} vendors={vendors} students={students} resetData={resetData} />}
-      {tab === 'vendors' && <VendorsScreen vendors={vendors} setVendors={setVendors} />}
+      {tab === 'admin' && (
+        <ErrorBoundary fallback={<SectionError name="今日設定" />}>
+        <AdminScreen todayMenu={todayMenu} setTodayMenu={setTodayMenu} vendors={vendors} students={students} resetData={resetData} />
+        </ErrorBoundary>
+      )}
+      {tab === 'vendors' && (
+        <ErrorBoundary fallback={<SectionError name="供應商" />}>
+        <VendorsScreen vendors={vendors} setVendors={setVendors} />
+        </ErrorBoundary>
+      )}
 
 
       <ConfirmBanner flash={flashData} onDismiss={dismissFlash} onUndo={handleUndo} undoCountdown={undoCountdown} />
@@ -452,5 +464,6 @@ export default function App() {
         </TweakSection>
       </TweaksPanel>
     </div>
+    </ErrorBoundary>
   );
 }
