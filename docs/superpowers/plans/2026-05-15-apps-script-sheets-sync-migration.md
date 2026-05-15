@@ -6,6 +6,21 @@
 
 **Architecture:** The frontend writes POS operations to IndexedDB first, then an outbox sends append-only events to an Apps Script web app. Apps Script uses `LockService` and idempotency keys to serialize writes into three visible Sheets: students, transactions, and daily_settlements. Opening service pulls the latest Sheets snapshot; realtime sync is not required for Phase 1.
 
+**Deployment & Auth Model (Production):** The Apps Script web app is deployed under a school-owned Google account (`Execute as: Me`). Access is restricted to specific Google accounts (school operator/admin accounts) — not "Anyone" or "Anyone with link." Every `doPost` request includes a shared secret in an `X-EasyOrder-Secret` header; the script validates it with `ScriptProperties`-stored HMAC before processing. The secret is stored in the frontend's environment config (`VITE_SYNC_SECRET`) and rotated by redeploying the Apps Script with a new secret. Unauthorized requests return HTTP 401 with `{ ok: false, message: 'unauthorized' }`.
+
+**Revision Conflict Rules (Per-Event):** The plan rejects last-write-wins for accounting. Revision checks are per-event-type:
+- `transaction_committed` (append-only): Stale `baseServerRevision` is tolerated while the business date is still open — the event is treated as idempotent (duplicate detection via `event_id`) and appended. This avoids blocking legitimate same-day transactions due to concurrent device writes.
+- `daily_settlement_closed`: Requires exact current `serverRevision`. If `baseServerRevision !== serverRevision`, the event is rejected as `conflict` — a settlement close must see the latest state.
+- `student_snapshot_imported`: Each student row carries a `student_revision`. On import, the script compares the incoming `student_revision` against the existing row's `student_revision` (default 0 for new students). If the incoming revision is stale (`<` existing), that student row is skipped and reported in `conflicts`. If equal or greater, the row is upserted and `student_revision` is incremented.
+
+**Outbox Retry & Backoff:** The IndexedDB outbox tracks `attemptCount`, `nextRetryAt`, `lastError`, and a `retryable` boolean per event. After a push failure:
+- HTTP 429 / 5xx → `retryable = true`, exponential backoff: `nextRetryAt = now + min(60, 2^attemptCount)` seconds.
+- HTTP 401 / 403 → `retryable = false` (permanent — check secret/config).
+- Conflict (`status: 'conflict'`) → `retryable = false` (operator must resolve manually).
+- Network failure (fetch throws) → `retryable = true`, same exponential backoff.
+- `pushOutboxEvents` skips events where `nextRetryAt > now` or `retryable === false`.
+- Failed rows are never deleted; they stay in the outbox for operator inspection.
+
 **Tech Stack:** React 19, TypeScript 6, Zustand 5, IndexedDB, Vitest, Google Apps Script `doGet`/`doPost`, SpreadsheetApp, LockService, Google Sheets.
 
 ---
@@ -140,6 +155,22 @@ export interface SyncEvent<TPayload = Record<string, unknown>> {
   payload: TPayload;
 }
 
+// Extended row stored in IndexedDB outbox
+export interface OutboxRow extends SyncEvent {
+  attemptCount: number;
+  nextRetryAt: string | null; // ISO 8601, null = ready to send
+  lastError: string | null;
+  retryable: boolean; // false = permanent failure, needs operator attention
+}
+
+// Extended row stored in IndexedDB outbox
+export interface OutboxRow extends SyncEvent {
+  attemptCount: number;
+  nextRetryAt: string | null; // ISO 8601, null = ready to send
+  lastError: string | null;
+  retryable: boolean; // false = permanent failure, needs operator attention
+}
+
 export interface SyncPushRequest {
   deviceId: string;
   events: SyncEvent[];
@@ -254,6 +285,10 @@ describe('easyorderDb', () => {
       createdAt: '2026-05-15T08:00:00.000Z',
       baseServerRevision: 0,
       payload: { transactionId: 'tx-1' },
+      attemptCount: 0,
+      nextRetryAt: null,
+      lastError: null,
+      retryable: true,
     });
 
     const events = await db.listOutboxEvents();
@@ -285,8 +320,9 @@ const OUTBOX_STORE = 'sync_outbox';
 
 export interface EasyOrderDb {
   putOutboxEvent(event: SyncEvent): Promise<void>;
-  listOutboxEvents(): Promise<SyncEvent[]>;
+  listOutboxEvents(): Promise<OutboxRow[]>;
   deleteOutboxEvent(eventId: string): Promise<void>;
+  updateOutboxRow(eventId: string, updates: Partial<OutboxRow>): Promise<void>;
 }
 
 function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
@@ -321,6 +357,14 @@ export async function openEasyOrderDb(name = 'easyorder'): Promise<EasyOrderDb> 
     async deleteOutboxEvent(eventId) {
       const tx = db.transaction(OUTBOX_STORE, 'readwrite');
       await requestToPromise(tx.objectStore(OUTBOX_STORE).delete(eventId));
+    },
+    async updateOutboxRow(eventId, updates) {
+      const tx = db.transaction(OUTBOX_STORE, 'readwrite');
+      const store = tx.objectStore(OUTBOX_STORE);
+      const existing = await requestToPromise(store.get(eventId));
+      if (!existing) throw new Error(`Outbox event not found: ${eventId}`);
+      await requestToPromise(store.put({ ...existing, ...updates }));
+      await requestToPromise(tx);
     },
   };
 }
@@ -361,7 +405,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { pushOutboxEvents } from '../outbox';
 import type { SyncEvent } from '../syncTypes';
 
-const event: SyncEvent = {
+const event: OutboxRow = {
   eventId: 'pc-1:1',
   deviceId: 'pc-1',
   deviceSeq: 1,
@@ -370,6 +414,10 @@ const event: SyncEvent = {
   createdAt: '2026-05-15T08:00:00.000Z',
   baseServerRevision: 0,
   payload: { transactionId: 'tx-1' },
+  attemptCount: 0,
+  nextRetryAt: null,
+  lastError: null,
+  retryable: true,
 };
 
 describe('pushOutboxEvents', () => {
@@ -377,32 +425,72 @@ describe('pushOutboxEvents', () => {
     const db = {
       listOutboxEvents: vi.fn().mockResolvedValue([event]),
       deleteOutboxEvent: vi.fn().mockResolvedValue(undefined),
+      updateOutboxRow: vi.fn().mockResolvedValue(undefined),
     };
     const fetcher = vi.fn().mockResolvedValue({
       ok: true,
+      status: 200,
       json: async () => ({ ok: true, acks: [{ eventId: 'pc-1:1', status: 'accepted', serverRevision: 1 }], conflicts: [] }),
     });
 
-    await pushOutboxEvents({ db, endpoint: 'https://script.google.com/s/mock/exec', deviceId: 'pc-1', fetcher });
+    await pushOutboxEvents({ db, endpoint: 'https://script.google.com/s/mock/exec', deviceId: 'pc-1', syncSecret: 'test-secret', fetcher });
 
     expect(fetcher).toHaveBeenCalledWith('https://script.google.com/s/mock/exec', expect.objectContaining({ method: 'POST' }));
     expect(db.deleteOutboxEvent).toHaveBeenCalledWith('pc-1:1');
   });
 
-  it('keeps conflicted events queued', async () => {
+  it('keeps conflicted events queued and marks them non-retryable', async () => {
     const db = {
       listOutboxEvents: vi.fn().mockResolvedValue([event]),
       deleteOutboxEvent: vi.fn().mockResolvedValue(undefined),
+      updateOutboxRow: vi.fn().mockResolvedValue(undefined),
     };
     const fetcher = vi.fn().mockResolvedValue({
       ok: true,
+      status: 200,
       json: async () => ({ ok: true, acks: [], conflicts: [{ eventId: 'pc-1:1', status: 'conflict', serverRevision: 9, message: 'revision mismatch' }] }),
     });
 
-    const result = await pushOutboxEvents({ db, endpoint: 'https://script.google.com/s/mock/exec', deviceId: 'pc-1', fetcher });
+    const result = await pushOutboxEvents({ db, endpoint: 'https://script.google.com/s/mock/exec', deviceId: 'pc-1', syncSecret: 'test-secret', fetcher });
 
     expect(db.deleteOutboxEvent).not.toHaveBeenCalled();
+    expect(db.updateOutboxRow).toHaveBeenCalledWith('pc-1:1', expect.objectContaining({ retryable: false }));
     expect(result.conflicts).toHaveLength(1);
+  });
+
+  it('applies exponential backoff on 429', async () => {
+    const db = {
+      listOutboxEvents: vi.fn().mockResolvedValue([event]),
+      deleteOutboxEvent: vi.fn().mockResolvedValue(undefined),
+      updateOutboxRow: vi.fn().mockResolvedValue(undefined),
+    };
+    const fetcher = vi.fn().mockResolvedValue({ ok: false, status: 429 });
+
+    await expect(
+      pushOutboxEvents({ db, endpoint: 'https://script.google.com/s/mock/exec', deviceId: 'pc-1', syncSecret: 'test-secret', fetcher })
+    ).rejects.toThrow('HTTP 429');
+
+    expect(db.updateOutboxRow).toHaveBeenCalledWith('pc-1:1', expect.objectContaining({
+      attemptCount: 1,
+      retryable: true,
+    }));
+  });
+
+  it('marks events permanently failed on 401', async () => {
+    const db = {
+      listOutboxEvents: vi.fn().mockResolvedValue([event]),
+      deleteOutboxEvent: vi.fn().mockResolvedValue(undefined),
+      updateOutboxRow: vi.fn().mockResolvedValue(undefined),
+    };
+    const fetcher = vi.fn().mockResolvedValue({ ok: false, status: 401 });
+
+    await expect(
+      pushOutboxEvents({ db, endpoint: 'https://script.google.com/s/mock/exec', deviceId: 'pc-1', syncSecret: 'test-secret', fetcher })
+    ).rejects.toThrow('HTTP 401');
+
+    expect(db.updateOutboxRow).toHaveBeenCalledWith('pc-1:1', expect.objectContaining({
+      retryable: false,
+    }));
   });
 });
 ```
@@ -423,30 +511,83 @@ Expected: FAIL because `outbox.ts` does not exist.
 Create `frontend/src/sync/outbox.ts`:
 
 ```ts
-import type { SyncEvent, SyncPushResponse } from './syncTypes';
+import type { OutboxRow, SyncPushResponse } from './syncTypes';
 
 interface OutboxDb {
-  listOutboxEvents(): Promise<SyncEvent[]>;
+  listOutboxEvents(): Promise<OutboxRow[]>;
   deleteOutboxEvent(eventId: string): Promise<void>;
+  updateOutboxRow(eventId: string, updates: Partial<OutboxRow>): Promise<void>;
+}
+
+function backoffSeconds(attemptCount: number): number {
+  return Math.min(60, Math.pow(2, attemptCount));
 }
 
 export async function pushOutboxEvents(input: {
   db: OutboxDb;
   endpoint: string;
   deviceId: string;
+  syncSecret: string;
   fetcher?: typeof fetch;
 }): Promise<SyncPushResponse> {
   const fetcher = input.fetcher ?? fetch;
-  const events = await input.db.listOutboxEvents();
-  if (events.length === 0) {
+  const allEvents = await input.db.listOutboxEvents();
+  const now = new Date().toISOString();
+  const readyEvents = allEvents.filter(e =>
+    e.retryable && (!e.nextRetryAt || e.nextRetryAt <= now)
+  );
+  if (readyEvents.length === 0) {
     return { ok: true, acks: [], conflicts: [] };
   }
 
-  const response = await fetcher(input.endpoint, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ deviceId: input.deviceId, events }),
-  });
+  let response;
+  try {
+    response = await fetcher(input.endpoint, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'X-EasyOrder-Secret': input.syncSecret,
+      },
+      body: JSON.stringify({ deviceId: input.deviceId, events: readyEvents }),
+    });
+  } catch (err) {
+    // Network failure: mark all ready events retryable with backoff
+    for (const event of readyEvents) {
+      const next = new Date(Date.now() + backoffSeconds(event.attemptCount + 1) * 1000).toISOString();
+      await input.db.updateOutboxRow(event.eventId, {
+        attemptCount: event.attemptCount + 1,
+        nextRetryAt: next,
+        lastError: String(err),
+        retryable: true,
+      });
+    }
+    throw new Error(`Sync push network failure: ${String(err)}`);
+  }
+
+  // HTTP 401/403: permanent failure
+  if (response.status === 401 || response.status === 403) {
+    for (const event of readyEvents) {
+      await input.db.updateOutboxRow(event.eventId, {
+        lastError: `HTTP ${response.status}: check sync secret or deployment access`,
+        retryable: false,
+      });
+    }
+    throw new Error(`Sync push auth failure: HTTP ${response.status}`);
+  }
+
+  // HTTP 429/5xx: retryable with backoff
+  if (response.status === 429 || response.status >= 500) {
+    for (const event of readyEvents) {
+      const next = new Date(Date.now() + backoffSeconds(event.attemptCount + 1) * 1000).toISOString();
+      await input.db.updateOutboxRow(event.eventId, {
+        attemptCount: event.attemptCount + 1,
+        nextRetryAt: next,
+        lastError: `HTTP ${response.status}`,
+        retryable: true,
+      });
+    }
+    throw new Error(`Sync push server error: HTTP ${response.status}`);
+  }
 
   if (!response.ok) {
     throw new Error(`Sync push failed: HTTP ${response.status}`);
@@ -457,6 +598,12 @@ export async function pushOutboxEvents(input: {
     if (ack.status === 'accepted' || ack.status === 'duplicate') {
       await input.db.deleteOutboxEvent(ack.eventId);
     }
+  }
+  for (const conflict of payload.conflicts) {
+    await input.db.updateOutboxRow(conflict.eventId, {
+      lastError: conflict.message,
+      retryable: false, // operator must resolve manually
+    });
   }
 
   return payload;
@@ -569,6 +716,13 @@ function doPost(e) {
   lock.waitLock(30000);
 
   try {
+    // Auth: validate shared secret from request body
+    const request = JSON.parse(e.postData.contents || '{}');
+    const secret = ScriptProperties.getProperty('EASYORDER_SYNC_SECRET');
+    if (!secret || request.secret !== secret) {
+      return jsonResponse({ ok: false, message: 'unauthorized' });
+    }
+
     const request = JSON.parse(e.postData.contents || '{}');
     const events = Array.isArray(request.events) ? request.events : [];
     const acks = [];
@@ -577,19 +731,70 @@ function doPost(e) {
 
     const txSheet = getSheet(SHEETS.transactions);
     const settlementSheet = getSheet(SHEETS.settlements);
+    const studentSheet = getSheet(SHEETS.students);
 
     events.forEach(event => {
-      if (event.baseServerRevision > serverRevision) {
-        conflicts.push({
-          eventId: event.eventId,
-          status: 'conflict',
-          serverRevision,
-          message: 'Client base revision is ahead of server',
-        });
+      // Per-event revision rules:
+      // - transaction_committed: append-only; stale baseRevision tolerated (idempotent)
+      // - daily_settlement_closed: must match exact current revision
+      // - student_snapshot_imported: per-student revision check
+      if (event.eventType === 'daily_settlement_closed') {
+        if (event.baseServerRevision !== serverRevision) {
+          conflicts.push({
+            eventId: event.eventId,
+            status: 'conflict',
+            serverRevision,
+            message: 'Settlement close requires exact current revision',
+          });
+          return;
+        }
+      }
+
+      if (event.eventType === 'student_snapshot_imported') {
+        const studentPayload = event.payload || {};
+        const existingStudents = readObjects(studentSheet);
+        const existingStudent = existingStudents.find(s => s.student_id === studentPayload.student_id);
+        const existingRevision = existingStudent ? Number(existingStudent.student_revision || 0) : 0;
+        const incomingRevision = Number(studentPayload.student_revision || 0);
+        if (incomingRevision < existingRevision) {
+          conflicts.push({
+            eventId: event.eventId,
+            status: 'conflict',
+            serverRevision,
+            message: `Stale student revision for ${studentPayload.student_id}`,
+          });
+          return;
+        }
+        // Upsert student row
+        const headers = studentSheet.getRange(1, 1, 1, studentSheet.getLastColumn()).getValues()[0].map(String);
+        const studentIdIndex = headers.indexOf('student_id');
+        let rowIndex = -1;
+        if (studentIdIndex >= 0) {
+          const rows = studentSheet.getDataRange().getValues();
+          for (let i = 1; i < rows.length; i++) {
+            if (rows[i][studentIdIndex] === studentPayload.student_id) { rowIndex = i + 1; break; }
+          }
+        }
+        const newRevision = existingRevision + 1;
+        const rowData = {
+          student_id: studentPayload.student_id,
+          display_name: studentPayload.display_name,
+          status: studentPayload.status || 'active',
+          current_balance: studentPayload.current_balance || 0,
+          student_revision: newRevision,
+          updated_at: new Date().toISOString(),
+        };
+        if (rowIndex > 0) {
+          headers.forEach((h, idx) => { studentSheet.getRange(rowIndex, idx + 1).setValue(rowData[h] ?? ''); });
+        } else {
+          appendObject(studentSheet, rowData);
+        }
+        acks.push({ eventId: event.eventId, status: 'accepted', serverRevision });
         return;
       }
 
-      const targetSheet = event.eventType === 'daily_settlement_closed' ? settlementSheet : txSheet;
+      // transaction_committed: append-only (tolerate stale baseRevision while date is open)
+      const targetSheet = txSheet;
       if (hasEventId(targetSheet, event.eventId)) {
         acks.push({ eventId: event.eventId, status: 'duplicate', serverRevision });
         return;
@@ -661,14 +866,23 @@ event_id,settlement_id,business_date,opening_cash,net_cash,expected_cash,counted
 1. Open the Spreadsheet.
 2. Extensions -> Apps Script.
 3. Paste `Code.gs`.
-4. Deploy -> New deployment -> Web app.
-5. Execute as: Me.
-6. Who has access: school/operator Google account policy.
-7. Copy the web app URL into frontend sync settings.
+4. Set the shared secret: in Apps Script editor, run `ScriptProperties.setProperty('EASYORDER_SYNC_SECRET', '<generate-a-random-secret>')` once.
+5. Deploy -> New deployment -> Web app.
+6. Execute as: **school-owned Google account** (not a personal account).
+7. Who has access: **specific accounts only** — add the school operator/admin Google accounts. Do NOT use "Anyone" or "Anyone with link."
+8. Copy the web app URL into frontend sync settings (`VITE_SYNC_ENDPOINT`).
+9. Set the same secret in the frontend environment: `VITE_SYNC_SECRET=<the-same-random-secret>`.
+
+## Secret Rotation
+
+1. Generate a new random secret.
+2. Update `ScriptProperties` in the Apps Script editor.
+3. Redeploy (New version) and update the frontend `VITE_SYNC_SECRET`.
+4. The old secret stops working immediately after redeploy.
 
 ## Operational Rule
 
-The frontend never writes directly to Google Sheets. It sends events to this web app. The script serializes writes with `LockService.getScriptLock()`.
+The frontend never writes directly to Google Sheets. It sends events to this web app. The script serializes writes with `LockService.getScriptLock()`. Access is restricted to specific Google accounts, and every request must carry a valid shared secret in the `X-EasyOrder-Secret` header.
 ```
 
 - [ ] **Step 3: Commit**

@@ -191,7 +191,20 @@
 
 **Implementation effect:** Runbook must say transaction and settlement sheets are append-only via Apps Script.
 
-### B8. Student Import Path
+### B8. Apps Script Web App Access / Auth
+
+**Question:** Who can invoke the Apps Script web app, and how are requests authenticated?
+
+**Options:**
+- A. **Restricted school Google accounts only** — Deploy the web app with "Who has access: specific accounts" (school-owned operator/admin accounts). The `doPost` endpoint additionally validates a shared secret (`X-EasyOrder-Secret` header) stored in `ScriptProperties` for defense-in-depth. Unauthorized requests return HTTP 401.
+- B. **Execute-as-school-owner + signed/shared-secret API requests** — Deploy as school owner with shared secret validation only (no per-account Google auth on the web app). Simpler but relies entirely on secret secrecy.
+- C. **Public link (forbidden for production)** — The web app is accessible to anyone with the URL. No auth. Rejected for production because accounting data is sensitive.
+
+**Recommendation:** A. Defense-in-depth: Google account restriction on the deployment _and_ shared secret validation in `doPost`. This is the strongest option that still uses only the school's existing Google account.
+
+**Implementation effect on Plan B:** Plan B's `Code.gs` must validate `X-EasyOrder-Secret` in `doPost` and return 401 for unauthorized requests. The frontend outbox (`pushOutboxEvents`) must include the secret header. The secret is stored in `VITE_SYNC_SECRET` (frontend env config) and `EASYORDER_SYNC_SECRET` (Apps Script `ScriptProperties`). Secret rotation requires redeploying the Apps Script and updating the frontend env.
+
+### B9. Student Import Path
 
 **Question:** Where does existing Excel data get imported?
 
@@ -300,7 +313,8 @@ If the user wants to proceed without answering every item, use these defaults:
 - B5: revision conflict, no last-write-wins.
 - B6: shared counter identity for pilot.
 - B7: admin can edit students only; transactions/settlements append via Apps Script.
-- B8: Excel -> CSV -> preview -> Sheets students.
+- B8: restricted school Google accounts + shared secret auth; public link forbidden.
+- B9: Excel -> CSV -> preview -> Sheets students.
 - C1: local-only training only, not real service.
 - C2: offline cold start required before real launch.
 - C3: exactly one production PWA install per device.
