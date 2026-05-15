@@ -1,5 +1,5 @@
 // POS Main Screen — search, order, checkout flow (v2)
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import type { StudentAccount } from '../domain/student';
 import type { TodayMenu } from '../domain/menu';
 
@@ -19,7 +19,7 @@ interface TopBarProps {
   setViewDate: (date: string) => void;
   queuedCount?: number;
 }
-export function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate, queuedCount = 0 }: TopBarProps) {
+export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate, queuedCount = 0 }: TopBarProps) {
   const tabs = [
     { id: 'pos',     label: '櫃台', hint: 'F1' },
     { id: 'report',  label: '今日帳', hint: 'F2' },
@@ -72,7 +72,7 @@ export function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, vie
       </div>
     </header>
   );
-}
+});
 
 // ============ Search Box ============
 interface SearchBoxProps {
@@ -87,7 +87,7 @@ interface SearchBoxProps {
   focusKey: number;
   disabled: boolean;
 }
-export function SearchBox({ value, onChange, onSubmit, onEsc, suggestions, activeIdx, onPick, onHover, focusKey, disabled }: SearchBoxProps) {
+export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubmit, onEsc, suggestions, activeIdx, onPick, onHover, focusKey, disabled }: SearchBoxProps) {
   const ref = useRef(null);
   useEffect(() => { if (!disabled) ref.current?.focus(); }, [focusKey, disabled]);
 
@@ -143,7 +143,7 @@ export function SearchBox({ value, onChange, onSubmit, onEsc, suggestions, activ
       )}
     </div>
   );
-}
+});
 
 // ============ Customer Card ============
 // Action key map:
@@ -160,7 +160,7 @@ interface CustomerCardProps {
   setPayAmount: (val: string) => void;
   onViewHistory?: () => void;
 }
-export function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory }: CustomerCardProps) {
+export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory }: CustomerCardProps) {
   const after =
     mode === 'order'      ? student.currentBalance + (Number(payAmount || 0) - todayMenu.price) :
     mode === 'topup'      ? student.currentBalance + Number(payAmount || 0) :
@@ -269,7 +269,7 @@ export function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payA
       </div>
     </div>
   );
-}
+});
 
 // ============ Action Bar ============
 interface ActionBarProps {
@@ -280,7 +280,7 @@ interface ActionBarProps {
   onCancel: () => void;
   focusZone: string;
 }
-export function ActionBar({ mode, setMode, orderedTodayCount, onConfirm, onCancel, focusZone }: ActionBarProps) {
+export const ActionBar = React.memo(function ActionBar({ mode, setMode, orderedTodayCount, onConfirm, onCancel, focusZone }: ActionBarProps) {
   const opts = [
     { id: 'order',  label: '訂便當',           hint: 'Q' },
     { id: 'topup',  label: '純繳費 / 儲值',   hint: 'W' },
@@ -317,7 +317,7 @@ export function ActionBar({ mode, setMode, orderedTodayCount, onConfirm, onCance
       </div>
     </div>
   );
-}
+});
 
 // ============ Idle Hero ============
 interface IdleHeroProps {
@@ -326,7 +326,7 @@ interface IdleHeroProps {
   vendorPhone: string;
   queueHint?: string;
 }
-export function IdleHero({ todayMenu, todayCount, vendorPhone, queueHint }: IdleHeroProps) {
+export const IdleHero = React.memo(function IdleHero({ todayMenu, todayCount, vendorPhone, queueHint }: IdleHeroProps) {
   return (
     <div className="idle">
       <div className="idle-menu">
@@ -353,7 +353,7 @@ export function IdleHero({ todayMenu, todayCount, vendorPhone, queueHint }: Idle
       </div>
     </div>
   );
-}
+});
 
 // ============ Duplicate Warning Banner ============
 interface DuplicateWarningBannerProps {
@@ -361,7 +361,7 @@ interface DuplicateWarningBannerProps {
   onConfirm: () => void;
   onCancel: () => void;
 }
-export function DuplicateWarningBanner({ orderedTodayCount, onConfirm, onCancel }: DuplicateWarningBannerProps) {
+export const DuplicateWarningBanner = React.memo(function DuplicateWarningBanner({ orderedTodayCount, onConfirm, onCancel }: DuplicateWarningBannerProps) {
   return (
     <div className="dup-warn">
       <div className="dup-warn-icon">⚠</div>
@@ -381,7 +381,7 @@ export function DuplicateWarningBanner({ orderedTodayCount, onConfirm, onCancel 
       </div>
     </div>
   );
-}
+});
 
 // ============ Confirmation banner (replaces auto-close countdown) ============
 interface FlashData {
@@ -398,7 +398,7 @@ interface ConfirmBannerProps {
   onUndo?: () => void;
   undoCountdown?: number;
 }
-export function ConfirmBanner({ flash, onDismiss, onUndo, undoCountdown }: ConfirmBannerProps) {
+export const ConfirmBanner = React.memo(function ConfirmBanner({ flash, onDismiss, onUndo, undoCountdown }: ConfirmBannerProps) {
   useEffect(() => {
     if (!flash) return;
     const onKey = (e: KeyboardEvent) => {
@@ -444,13 +444,13 @@ export function ConfirmBanner({ flash, onDismiss, onUndo, undoCountdown }: Confi
       </div>
     </div>
   );
-}
+});
 
 // ============ Recent strip ============
 interface RecentStripProps {
   recent: (import('../domain/ledger').LedgerTransaction & { uid: string })[];
 }
-export function RecentStrip({ recent }: RecentStripProps) {
+export const RecentStrip = React.memo(function RecentStrip({ recent }: RecentStripProps) {
   return (
     <div className="recent">
       <div className="recent-head">最近 5 筆</div>
@@ -477,5 +477,5 @@ export function RecentStrip({ recent }: RecentStripProps) {
       </div>
     </div>
   );
-}
+});
 

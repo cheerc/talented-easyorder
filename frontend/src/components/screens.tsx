@@ -33,7 +33,7 @@ interface ReportScreenProps {
   studentFilter?: string;
   onClearStudentFilter?: () => void;
 }
-export function ReportScreen({ todayMenu, viewDate, studentFilter, onClearStudentFilter }: ReportScreenProps) {
+export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDate, studentFilter, onClearStudentFilter }: ReportScreenProps) {
   const [dateRange, setDateRange] = useState<LedgerDateRangeKind>('today');
   const [customStart, setCustomStart] = useState(viewDate);
   const [customEnd, setCustomEnd] = useState(viewDate);
@@ -43,13 +43,10 @@ export function ReportScreen({ todayMenu, viewDate, studentFilter, onClearStuden
   const [showReopen, setShowReopen] = useState(false);
   const [studentSearch, setStudentSearch] = useState(studentFilter || '');
 
-  const store = usePosStore();
-  const dateStatus = store.getBusinessDateStatus(viewDate);
-  const {
-    closeBusinessDate,
-    reopenBusinessDate,
-    transactions,
-  } = store;
+  const transactions = usePosStore((s) => s.transactions);
+  const closeBusinessDate = usePosStore((s) => s.closeBusinessDate);
+  const reopenBusinessDate = usePosStore((s) => s.reopenBusinessDate);
+  const dateStatus = usePosStore((s) => s.getBusinessDateStatus(viewDate));
 
   const range = useMemo(() => createLedgerDateRange(
     dateRange,
@@ -217,7 +214,7 @@ export function ReportScreen({ todayMenu, viewDate, studentFilter, onClearStuden
       )}
     </div>
   );
-}
+});
 
 // ============ Admin (today's menu only — no prepared count) ============
 interface AdminScreenProps {
@@ -227,7 +224,7 @@ interface AdminScreenProps {
   students: StudentAccount[];
   resetData: () => void;
 }
-export function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetData }: AdminScreenProps) {
+export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetData }: AdminScreenProps) {
   const [name, setName] = useState(todayMenu.itemName);
   const [price, setPrice] = useState(todayMenu.price);
   const [vendor, setVendor] = useState(todayMenu.vendorNameSnapshot);
@@ -289,14 +286,14 @@ export function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetD
       </div>
     </div>
   );
-}
+});
 
 // ============ Vendors ============
 interface VendorsScreenProps {
   vendors: Vendor[];
   setVendors: (v: Vendor[]) => void;
 }
-export function VendorsScreen({ vendors, setVendors }: VendorsScreenProps) {
+export const VendorsScreen = React.memo(function VendorsScreen({ vendors, setVendors }: VendorsScreenProps) {
   const [editing, setEditing] = useState<string | null>(null); // id of row being edited, or 'new'
   const [draft, setDraft] = useState<Partial<Vendor>>({ name:'', phone:'', note:'' });
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -413,10 +410,10 @@ export function VendorsScreen({ vendors, setVendors }: VendorsScreenProps) {
       )}
     </div>
   );
-}
+});
 
 // ============ Backup / Restore ============
-export function BackupScreen() {
+export const BackupScreen = React.memo(function BackupScreen() {
   const [step, setStep] = useState(0);
   const [progress, setProgress] = useState(0);
   const [op, setOp] = useState<keyof typeof opMeta | null>(null); // 'export-local' | 'import-local' | 'restore-cloud'
@@ -507,5 +504,5 @@ export function BackupScreen() {
       )}
     </div>
   );
-}
+});
 
