@@ -5,7 +5,7 @@ import type { PosMode } from './domain/posFlow';
 import type { StudentAccount } from './domain/student';
 import { countActiveOrdersForStudent } from './domain/ledger';
 
-import { TopBar, SearchBox, CustomerCard, ActionBar, IdleHero, ConfirmBanner, RecentStrip, DuplicateWarningBanner } from './components/pos-components';
+import { TopBar, SearchBox, CustomerCard, ActionBar, IdleHero, ConfirmBanner, RecentStrip, DuplicateWarningBanner, MidnightBanner } from './components/pos-components';
 import { ReportScreen, AdminScreen, VendorsScreen, HistoryScreen } from './components/screens';
 import { TodayDashboard } from './components/TodayDashboard';
 import { TweaksPanel, TweakSection, TweakRadio } from './components/tweaks-panel';
@@ -21,9 +21,20 @@ export default function App() {
   const resetData = usePosStore((s) => s.resetData);
   const getBusinessDateStatus = usePosStore((s) => s.getBusinessDateStatus);
 
-  const systemDate = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const getSystemDate = () => new Date().toISOString().split('T')[0];
+  const [systemDate, setSystemDate] = useState(getSystemDate);
   const [viewDate, setViewDate] = useState(systemDate);
   const isHistorical = viewDate !== systemDate;
+
+  useEffect(() => {
+    const tick = setInterval(() => setSystemDate(getSystemDate()), 60_000);
+    const onVisible = () => setSystemDate(getSystemDate());
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(tick);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
 
   const tx = useMemo(() => {
     return allTx.filter(t => t.businessDate === viewDate).reverse();
@@ -346,11 +357,14 @@ export default function App() {
   return (
     <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => console.error('[ErrorBoundary]', e)}>
     <div className="app">
-      <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} queuedCount={queuedCount} onDashboard={() => setShowDashboard(true)} />
+      <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate} queuedCount={queuedCount} onDashboard={() => setShowDashboard(true)} />
 
       {tab === 'pos' && (
         <div className="main">
           <div className="col-main">
+            {!isHistorical && !(state.kind === 'historical_readonly') && getBusinessDateStatus(viewDate) !== 'closed' && viewDate !== systemDate && (
+              <MidnightBanner viewDate={viewDate} systemDate={systemDate} onSwitchToToday={() => setViewDate(systemDate)} />
+            )}
             {isHistorical || state.kind === 'historical_readonly' || getBusinessDateStatus(viewDate) === 'closed' ? (
               <div className="historical-lock" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--c-text-dim)', textAlign: 'center' }}>
                 <h2 style={{ color: 'var(--c-warn)', fontSize: '1.5rem', marginBottom: '8px' }}>目前檢視歷史紀錄</h2>
