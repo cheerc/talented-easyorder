@@ -27,7 +27,7 @@
 - MDN Storage quotas and eviction: https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria
 - MDN `window.error`: https://developer.mozilla.org/en-US/docs/Web/API/Window/error_event
 - MDN `window.unhandledrejection`: https://developer.mozilla.org/en-US/docs/Web/API/Window/unhandledrejection_event
-- Zustand persist middleware: https://zustand.site/en/docs/persist/
+- Zustand persist middleware: https://zustand.docs.pmnd.rs/reference/middlewares/persist
 
 ## 目前錯誤處理缺口
 
@@ -311,9 +311,35 @@ export interface ErrorLogEntry {
 const LOG_KEY = 'easyorder-error-log';
 const MAX_LOG_ENTRIES = 100;
 
+const CONTEXT_ALLOW_LIST = new Set([
+  'component', 'action', 'route', 'businessDate', 'transactionType',
+  'syncStatus', 'errorCode', 'retryCount', 'deviceType',
+]);
+
+function sanitizeContext(
+  context?: Record<string, string | number | boolean | null>,
+): Record<string, string | number | boolean | null> | undefined {
+  if (!context) return undefined;
+  const clean: Record<string, string | number | boolean | null> = {};
+  for (const [key, value] of Object.entries(context)) {
+    if (CONTEXT_ALLOW_LIST.has(key)) clean[key] = value;
+  }
+  return Object.keys(clean).length > 0 ? clean : undefined;
+}
+
+function sanitizeMessage(message: string): string {
+  // Strip potential PII patterns: student names, balance amounts, payment details
+  return message
+    .replace(/學生[：:]\s*\S+/g, '學生: [REDACTED]')
+    .replace(/餘額[：:]\s*-?\d+/g, '餘額: [REDACTED]')
+    .replace(/金額[：:]\s*-?\d+/g, '金額: [REDACTED]');
+}
+
 export function appendErrorLog(entry: Omit<ErrorLogEntry, 'id' | 'createdAt'>): ErrorLogEntry {
   const next: ErrorLogEntry = {
     ...entry,
+    message: sanitizeMessage(entry.message),
+    context: sanitizeContext(entry.context),
     id: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
   };
@@ -338,7 +364,7 @@ export function clearErrorLog() {
 
 - [ ] **Step 2: 監聽 global errors**
 
-`main.tsx` 加入 `window.addEventListener('error', ...)` 與 `window.addEventListener('unhandledrejection', ...)`。記錄前要做 sanitization，不存學生姓名、餘額、付款金額或 raw transaction payload。
+`main.tsx` 加入 `window.addEventListener('error', ...)` 與 `window.addEventListener('unhandledrejection', ...)`。所有 log entry 必須經過 `appendErrorLog` 的內建 sanitizer（allowlisted context keys + message PII redaction），確保學生姓名、餘額、付款金額、raw transaction payload 不會進入 error log。此 sanitization 是 `appendErrorLog` 的唯一入口，不可繞過。測試須驗證包含敏感欄位的 context/message 被正確過濾。
 
 - [ ] **Step 3: 後端 logging transport policy**
 
@@ -518,7 +544,7 @@ export interface PosCrashDraft {
 
 - [ ] **Step 2: 保存未確認草稿**
 
-當 operator 已選學生並修改 mode 或 amount，但尚未 local commit，寫入 `easyorder-pos-crash-draft`。成功 local commit、取消、返回 idle 時清除。
+當 operator 已選學生並修改 mode 或 amount，但尚未 local commit，寫入 IndexedDB 的 `crash_drafts` object store（不使用 localStorage，因為 Plan 7 Security 禁止 localStorage 存放含 studentId/payAmount 等敏感資料）。成功 local commit、取消、返回 idle 時清除。若 IndexedDB 不可用，crash draft 不持久化 — 僅保留在記憶體中，頁面 reload 後會遺失，此為可接受的降級行為。
 
 - [ ] **Step 3: 啟動後恢復**
 

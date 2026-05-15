@@ -281,7 +281,7 @@ export function createLedgerFixture(rowCount: number, studentCount = 80): Ledger
     const mealPrice = index % 5 === 0 ? 0 : 85;
     const paidAmount = index % 3 === 0 ? 85 : 0;
     const amount = paidAmount - mealPrice;
-    const previousBalance = student.currentBalance - amount;
+    const afterBalance = student.currentBalance + amount;
 
     return {
       transactionId: `fixture-tx-${index + 1}`,
@@ -293,8 +293,7 @@ export function createLedgerFixture(rowCount: number, studentCount = 80): Ledger
       mealPrice,
       paidAmount,
       amount,
-      previousBalance,
-      afterBalance: previousBalance + amount,
+      afterBalance,
       menuNameSnapshot: '雞腿便當',
       vendorNameSnapshot: '測試供應商',
       sourceDevice: 'pc',
@@ -561,11 +560,14 @@ interface VirtualLedgerListProps {
 
 export function VirtualLedgerList({ rows, expandedIds, onToggle, renderRow }: VirtualLedgerListProps) {
   const parentRef = useRef<HTMLDivElement | null>(null);
+  // React 19: explicitly disable useFlushSync to avoid console warnings
+  // and unnecessary synchronous layout flushes on iPad Safari scroll.
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: (index) => expandedIds.has(rows[index].studentId) ? 220 : 52,
     overscan: 8,
+    useFlushSync: false,
   });
 
   return (
@@ -681,14 +683,25 @@ import { lazy } from 'react';
 export const ReportScreenLazy = lazy(() => import('./screens').then((module) => ({ default: module.ReportScreen })));
 export const AdminScreenLazy = lazy(() => import('./screens').then((module) => ({ default: module.AdminScreen })));
 export const VendorsScreenLazy = lazy(() => import('./screens').then((module) => ({ default: module.VendorsScreen })));
-export const TweaksPanelLazy = lazy(() => import('./tweaks-panel').then((module) => ({ default: module.TweaksPanel })));
+
+// Lazy-load the entire tweaks workspace (TweaksPanel + TweakSection + TweakRadio)
+// so all tweaks code is excluded from the initial POS route bundle.
+export const TweaksWorkspaceLazy = lazy(() => import('./tweaks-panel').then((module) => ({
+  default: module.TweaksPanel,
+  // TweakSection and TweakRadio are used inside TweaksPanel's children in App.tsx,
+  // so they must also be part of this lazy chunk. Since they are in the same module,
+  // the dynamic import already captures them. App.tsx must move the TweakSection/TweakRadio
+  // usage into a wrapper component inside this lazy boundary.
+})));
 ```
 
 - [ ] **Step 2: Wrap non-POS workspaces in Suspense**
 
+Note: `App.tsx` currently imports `TweaksPanel`, `TweakSection`, and `TweakRadio` eagerly (line 15) and uses them inline (lines 349-365). To properly lazy-load tweaks, extract the entire tweaks usage block into a new `TweaksWorkspace` component in `tweaks-panel.tsx` that owns its own `TweakSection`/`TweakRadio` children, then lazy-load that single component. This ensures no tweaks code remains in the eager bundle.
+
 ```tsx
 import { Suspense } from 'react';
-import { ReportScreenLazy, AdminScreenLazy, VendorsScreenLazy, TweaksPanelLazy } from './components/lazyScreens';
+import { ReportScreenLazy, AdminScreenLazy, VendorsScreenLazy, TweaksWorkspaceLazy } from './components/lazyScreens';
 
 function WorkspaceFallback() {
   return <div className="workspace-fallback" role="status">載入工作區中…</div>;

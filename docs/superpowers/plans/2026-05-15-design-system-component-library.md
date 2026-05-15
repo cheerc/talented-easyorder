@@ -93,7 +93,7 @@ Recommended scope order:
 | Option | Strengths | Risks | Recommendation |
 |---|---|---|---|
 | Storybook React Vite | Mature ecosystem, addon docs, interaction testing, visual-regression integrations, familiar to many reviewers. | Heavier install, more config, slower startup, can become a parallel app to maintain. | Use if the team wants long-lived design docs and visual regression in CI. |
-| Ladle | Lightweight Vite-native React story runner, quick setup, lower maintenance for a small POS app. | Smaller ecosystem than Storybook; fewer built-in enterprise docs patterns. | **Recommended first choice** for this repo unless reviewer requires Storybook. |
+| Ladle | Lightweight Vite-native React story runner, quick setup, lower maintenance for a small POS app. **Dev-only dependency** — excluded from production bundle and PWA app-shell precache. | Smaller ecosystem than Storybook; fewer built-in enterprise docs patterns. | **Recommended first choice** for this repo unless reviewer requires Storybook. |
 | No workbench | Zero dependency and no extra scripts. | UI primitives are hard to review and regressions stay hidden until full flow testing. | Not recommended. |
 
 Recommended first implementation: `@ladle/react` with `npm run stories`. It is enough for Button/Card/Modal/Form previews and keeps the repo lean. If the team later needs screenshot diffing, accessibility addons, or richer docs, migrate story files to Storybook-compatible patterns.
@@ -106,7 +106,7 @@ Recommended first implementation: `@ladle/react` with `npm run stories`. It is e
 
 **Variants:** `primary`, `secondary`, `ghost`, `danger`, `soft`, `quick`.
 
-**Sizes:** `sm`, `md`, `lg`, `xl` where `xl` supports POS payment/confirmation touch targets.
+**Sizes:** `sm`, `md`, `lg`, `xl`. All sizes enforce a minimum 44x44px touch target (Accessibility plan requirement for iPad/Android). Use typography and padding for visual density — never shrink hit area below 44px. `xl` is for POS payment/confirmation high-risk touch targets (48px+).
 
 **API:**
 
@@ -498,7 +498,7 @@ export function Button({
   font-weight: 700;
   gap: var(--space-2);
   justify-content: center;
-  min-height: 40px;
+  min-height: 44px; /* a11y: all interactive elements must be ≥44px touch target */
   padding: 0 var(--space-4);
   transition: background .15s ease, border-color .15s ease, color .15s ease, transform .15s ease;
 }
@@ -519,7 +519,7 @@ export function Button({
 .ui-button--danger { background: var(--warn); border-color: var(--warn); color: white; }
 .ui-button--soft { background: var(--line-2); color: var(--ink); }
 .ui-button--quick { background: var(--panel); color: var(--ink-2); }
-.ui-button--sm { min-height: 32px; padding: 0 var(--space-3); font-size: 13px; }
+.ui-button--sm { min-height: 44px; padding: 0 var(--space-3); font-size: 13px; } /* a11y: visually compact but touch target stays ≥44px */
 .ui-button--lg { min-height: 48px; padding: 0 var(--space-5); }
 .ui-button--xl { min-height: 64px; padding: 0 var(--space-6); font-size: 18px; }
 .ui-button--full { width: 100%; }
@@ -790,6 +790,7 @@ git commit -m "feat: add form and status primitives"
 - [ ] **Step 1: Add controlled ConfirmDialog**
 
 ```tsx
+import { useEffect, useId, useRef } from 'react';
 import { Button } from './Button';
 
 export interface ConfirmDialogProps {
@@ -801,6 +802,7 @@ export interface ConfirmDialogProps {
   tone?: 'default' | 'danger' | 'warning';
   onConfirm: () => void;
   onCancel: () => void;
+  triggerRef?: React.RefObject<HTMLElement | null>;
 }
 
 export function ConfirmDialog({
@@ -812,23 +814,78 @@ export function ConfirmDialog({
   tone = 'default',
   onConfirm,
   onCancel,
+  triggerRef,
 }: ConfirmDialogProps) {
+  const id = useId();
+  const dialogRef = useRef<HTMLElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  // Focus management: move focus into dialog on open, return on close
+  useEffect(() => {
+    if (open) {
+      cancelRef.current?.focus();
+    } else if (triggerRef?.current) {
+      triggerRef.current.focus();
+    }
+  }, [open, triggerRef]);
+
+  // Escape key handler
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCancel();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open, onCancel]);
+
+  // Focus containment: trap Tab within dialog
+  useEffect(() => {
+    if (!open || !dialogRef.current) return;
+    const dialog = dialogRef.current;
+    const handleTab = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+      const focusable = dialog.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    dialog.addEventListener('keydown', handleTab);
+    return () => dialog.removeEventListener('keydown', handleTab);
+  }, [open]);
+
   if (!open) return null;
+
+  const titleId = `${id}-title`;
+  const descId = `${id}-description`;
 
   return (
     <div className="ui-modal-backdrop" role="presentation" onMouseDown={onCancel}>
       <section
+        ref={dialogRef}
         className="ui-modal"
-        role="dialog"
+        role="alertdialog"
         aria-modal="true"
-        aria-labelledby="confirm-title"
-        aria-describedby="confirm-description"
+        aria-labelledby={titleId}
+        aria-describedby={descId}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <h2 id="confirm-title">{title}</h2>
-        <p id="confirm-description">{description}</p>
+        <h2 id={titleId}>{title}</h2>
+        <p id={descId}>{description}</p>
         <div className="ui-modal__actions">
-          <Button variant="secondary" onClick={onCancel}>{cancelLabel}</Button>
+          <Button ref={cancelRef} variant="secondary" onClick={onCancel}>{cancelLabel}</Button>
           <Button variant={tone === 'danger' ? 'danger' : 'primary'} onClick={onConfirm}>{confirmLabel}</Button>
         </div>
       </section>
@@ -837,7 +894,15 @@ export function ConfirmDialog({
 }
 ```
 
-This first version is controlled and testable. If keyboard focus trapping is required immediately, add a focused `useDialogFocus` hook in the same PR. Do not leave both `window.confirm()` and `ConfirmDialog` in the same action path.
+This version includes full a11y compliance per the Accessibility plan:
+- `useId()` for unique aria IDs (no collisions with multiple dialogs)
+- `role="alertdialog"` for blocking confirmation/destructive patterns
+- Initial focus moves to cancel button on open
+- Focus returns to trigger element on close via `triggerRef`
+- Escape key closes the dialog
+- Focus containment (Tab trap) prevents focus from escaping
+
+Do not leave both `window.confirm()` and `ConfirmDialog` in the same action path.
 
 - [ ] **Step 2: Replace report delete confirmation**
 
