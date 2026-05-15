@@ -10,6 +10,7 @@ import { createCorrectionTransaction, createVoidTransaction, createLedgerAuditEv
 import { validateCashClose, createDailySettlement, reopenBusinessDate as reopenSettlement } from '../domain/cashClose';
 import { calculateLedgerTotals, getEffectiveLedgerRows } from '../domain/ledgerReport';
 import type { PosTransactionDraft } from '../domain/posTransaction';
+import { validatePersistedState } from '../storage/posStateValidator';
 import {
   INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS
 } from '../mocks/initialData';
@@ -456,6 +457,15 @@ export const usePosStore = create<PosState>()(
     {
       name: 'pos-storage',
       version: 2,
+      onRehydrateStorage: () => {
+        return (state, error) => {
+          if (error || !state) return;
+          const result = validatePersistedState(state);
+          if (!result.ok) {
+            console.error('[posStore] rehydration validation failed:', result.reason);
+          }
+        };
+      },
       migrate: (persistedState) => {
         const state = persistedState as Record<string, unknown>;
         if (!state) return state as PosState;
