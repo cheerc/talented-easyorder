@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { List, useDynamicRowHeight } from 'react-window';
 import { fmt } from '../pos-components';
 import type { LedgerGroup } from '../../domain/ledgerReport';
@@ -42,6 +42,7 @@ const TABLE_HEADER_HEIGHT = 36;
 const DEFAULT_ROW_HEIGHT = GROUP_ROW_HEIGHT;
 
 interface RowProps {
+  flatRows: FlatRow[];
   groups: LedgerGroup[];
   expandedSids: Set<string>;
   dateStatus: string;
@@ -53,6 +54,7 @@ interface RowProps {
 function LedgerGroupRow({
   index,
   style,
+  flatRows,
   groups,
   expandedSids,
   dateStatus,
@@ -71,7 +73,7 @@ function LedgerGroupRow({
     return dynamicHeight.observeRowElements(rowRef.current);
   }, [dynamicHeight]);
 
-  const row: FlatRow | undefined = flattenRows(groups, expandedSids)[index];
+  const row = flatRows[index];
   if (!row) return null;
 
   if (row.kind === 'group') {
@@ -171,10 +173,11 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
     return () => window.removeEventListener('resize', updateHeight);
   }, []);
 
-  const flatRows = flattenRows(groups, expandedSids);
+  const flatRows = useMemo(() => flattenRows(groups, expandedSids), [groups, expandedSids]);
   const rowHeight = useDynamicRowHeight({ defaultRowHeight: DEFAULT_ROW_HEIGHT });
 
   const rowProps: RowProps = {
+    flatRows,
     groups,
     expandedSids,
     dateStatus,
