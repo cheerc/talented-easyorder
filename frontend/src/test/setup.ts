@@ -21,3 +21,59 @@ const localStorageMock = (function () {
 Object.defineProperty(window, 'localStorage', {
   value: localStorageMock,
 });
+
+// Minimal IndexedDB mock for crash-draft tests
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyObj = any;
+
+const fakeIndexedDB = {
+  _databases: new Map<string, Map<string, unknown>>(),
+  open(name: string): AnyObj {
+    if (!fakeIndexedDB._databases.has(name)) {
+      fakeIndexedDB._databases.set(name, new Map<string, unknown>());
+    }
+    const store = fakeIndexedDB._databases.get(name)!;
+    const req: AnyObj = {
+      result: undefined as AnyObj,
+      onupgradeneeded: null as AnyObj,
+      onsuccess: null as AnyObj,
+      onerror: null as AnyObj,
+      error: null,
+    };
+    req.result = {
+      objectStoreNames: { contains: () => true } as AnyObj,
+      createObjectStore: () => { /* noop */ },
+      transaction: () => {
+        const tx: AnyObj = {
+          oncomplete: null as AnyObj,
+          onerror: null as AnyObj,
+          error: null,
+        };
+        tx.objectStore = () => ({
+          put: (value: unknown, key: string) => { store.set(key, value); },
+          get: (key: string) => {
+            const getReq: AnyObj = { result: store.get(key), onsuccess: null, onerror: null };
+            setTimeout(() => { getReq.onsuccess?.({ target: getReq } as AnyObj); }, 0);
+            return getReq;
+          },
+        });
+        setTimeout(() => { tx.oncomplete?.({ target: tx } as AnyObj); }, 0);
+        return tx;
+      },
+      close: () => { /* noop */ },
+    };
+    setTimeout(() => { req.onsuccess?.({ target: req } as AnyObj); }, 0);
+    return req;
+  },
+  deleteDatabase(name: string): AnyObj {
+    fakeIndexedDB._databases.delete(name);
+    const req: AnyObj = { onerror: null as AnyObj, error: null };
+    return req;
+  },
+};
+
+Object.defineProperty(window, 'indexedDB', {
+  value: fakeIndexedDB,
+  writable: true,
+  configurable: true,
+});

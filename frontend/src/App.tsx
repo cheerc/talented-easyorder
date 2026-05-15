@@ -4,6 +4,8 @@ import { usePosFlow } from './hooks/usePosFlow';
 import type { PosMode } from './domain/posFlow';
 import type { StudentAccount } from './domain/student';
 import { countActiveOrdersForStudent } from './domain/ledger';
+import { saveCrashDraft, loadCrashDraft, clearCrashDraft } from './storage/crashDraft';
+import { checkStorageHealth } from './storage/storageHealth';
 
 import { TopBar, SearchBox, CustomerCard, ActionBar, IdleHero, ConfirmBanner, RecentStrip, DuplicateWarningBanner, MidnightBanner } from './components/pos-components';
 import { ReportScreen, AdminScreen, VendorsScreen, HistoryScreen } from './components/screens';
@@ -72,6 +74,23 @@ export default function App() {
       window.removeEventListener('online', goOnline);
       window.removeEventListener('offline', goOffline);
     };
+  }, []);
+
+  // Check storage health on mount
+  useEffect(() => {
+    checkStorageHealth();
+  }, []);
+
+  // Restore crash draft on mount if available
+  const [crashDraftRestored, setCrashDraftRestored] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const draft = await loadCrashDraft();
+      if (cancelled || !draft) return;
+      setCrashDraftRestored(true);
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   // Derive picked student — keep it pinned across committing/success so the UI doesn't flash away
@@ -212,6 +231,9 @@ export default function App() {
         lastCommittedTxIdRef.current = latestTx.transactionId;
       }
 
+      // Clear crash draft after successful commit
+      clearCrashDraft();
+
       prevKindRef.current = state.kind;
       return () => {
         clearTimeout(t);
@@ -222,6 +244,33 @@ export default function App() {
       };
     }
     prevKindRef.current = state.kind;
+  }, [state.kind]);
+
+  // Save crash draft when committing (before store mutation)
+  useEffect(() => {
+    if (state.kind !== 'committing') return;
+    const sid = state.studentId;
+    const student = students.find(s => s.studentId === sid);
+    if (!student) return;
+    const draft = {
+      intent: {
+        businessDate: viewDate,
+        studentId: sid,
+        type: state.mode,
+        mealPrice: state.mode === 'order' ? todayMenu.price : 0,
+        paidAmount: 0,
+        note: '',
+        sourceDevice: 'pc' as const,
+      },
+      snapshots: {
+        student: { studentId: sid, studentNameSnapshot: student.displayName },
+        menu: { menuNameSnapshot: todayMenu.itemName, menuPriceSnapshot: todayMenu.price, vendorIdSnapshot: todayMenu.vendorId, vendorNameSnapshot: todayMenu.vendorNameSnapshot },
+      },
+      amount: 0,
+      expectedBalanceAfter: student.currentBalance,
+    };
+    saveCrashDraft(draft);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.kind]);
 
   // Keyboard shortcuts for tab navigation
@@ -373,6 +422,12 @@ export default function App() {
               </div>
             ) : !picked ? (
               <>
+                {crashDraftRestored && (
+                  <div className="midnight-banner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: 'var(--accent-soft)', border: '1px solid var(--accent)', borderRadius: 'var(--r)', marginBottom: '12px' }}>
+                    <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--accent-ink)' }}>偵測到未完成交易草稿，已自動恢復</span>
+                    <button className="ghost-btn" style={{ fontSize: '12px' }} onClick={() => setCrashDraftRestored(false)}>關閉</button>
+                  </div>
+                )}
                 <SearchBox
                   value={state.kind === 'idle' ? state.searchText : ''}
                   onChange={(v) => { setSearchText(v); setActiveIdx(0); }}
