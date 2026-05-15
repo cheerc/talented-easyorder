@@ -7,6 +7,7 @@ import { countActiveOrdersForStudent } from './domain/ledger';
 
 import { TopBar, SearchBox, CustomerCard, ActionBar, IdleHero, ConfirmBanner, RecentStrip, DuplicateWarningBanner } from './components/pos-components';
 import { ReportScreen, AdminScreen, VendorsScreen, HistoryScreen } from './components/screens';
+import { TodayDashboard } from './components/TodayDashboard';
 import { TweaksPanel, TweakSection, TweakRadio } from './components/tweaks-panel';
 import { ErrorBoundary, AppCrashPage, SectionError } from './components/ErrorBoundary';
 
@@ -45,6 +46,7 @@ export default function App() {
   const [reportStudentFilter, setReportStudentFilter] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
   const [focusZone, setFocusZone] = useState('mode-order');
+  const [showDashboard, setShowDashboard] = useState(false);
 
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState('剛剛');
@@ -219,6 +221,7 @@ export default function App() {
       if (e.key === 'F3') { e.preventDefault(); setTab('admin'); return; }
       if (e.key === 'F4') { e.preventDefault(); setTab('vendors'); return; }
       if (e.key === 'F5') { e.preventDefault(); setTab('history'); return; }
+      if (e.key === 'F6') { e.preventDefault(); setShowDashboard((v: boolean) => !v); return; }
 
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
         return;
@@ -343,7 +346,7 @@ export default function App() {
   return (
     <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => console.error('[ErrorBoundary]', e)}>
     <div className="app">
-      <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} queuedCount={queuedCount} />
+      <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} queuedCount={queuedCount} onDashboard={() => setShowDashboard(true)} />
 
       {tab === 'pos' && (
         <div className="main">
@@ -472,6 +475,8 @@ export default function App() {
             ]} />
         </TweakSection>
       </TweaksPanel>
+
+      {showDashboard && <TodayDashboard onClose={() => setShowDashboard(false)} />}
     </div>
     </ErrorBoundary>
   );
