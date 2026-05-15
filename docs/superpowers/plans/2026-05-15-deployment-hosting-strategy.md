@@ -4,9 +4,9 @@
 
 **Goal:** Define a completely free production deployment path for Talented EasyOrder's Vite/React frontend that fits the recommended free backend architecture and the PC + iPad campus deployment model.
 
-**Architecture:** Deploy the frontend as a Vite static asset bundle on Cloudflare Workers Static Assets by default, paired with the Cloudflare Worker + D1 API from the free backend plan. Keep the app local-first: hosting availability affects app load/update, but already-loaded POS service must continue from local state and PWA cache once that layer exists. Static assets should be served asset-first, while `/api/*` routes run the Worker script first and use D1 bindings.
+**Architecture:** Deploy the Vite frontend as Cloudflare Workers Static Assets by default, paired with a Worker API and D1 when the Cloudflare backend recommendation is accepted. Keep static asset requests free/asset-first, invoke the Worker only for approved API routes such as `/api/*`, and keep GitHub Actions as the merge gate before Cloudflare deployment.
 
-**Tech Stack:** Vite 8, React 19, TypeScript 6, Zustand 5, Vitest 4, ESLint 10, Cloudflare Workers Static Assets, Cloudflare Workers + D1, Wrangler, Workers Builds GitHub integration, GitHub Actions, optional Cloudflare Pages / Firebase Hosting / Vercel / Netlify / GitHub Pages fallback paths.
+**Tech Stack:** Vite 8, React 19, TypeScript 6, Zustand 5, Vitest 4, ESLint 10, Cloudflare Workers Static Assets, Cloudflare Workers + D1, Wrangler 4, Workers Builds GitHub integration, GitHub Actions, optional Cloudflare Pages / Firebase Hosting / Vercel / Netlify / GitHub Pages fallback paths.
 
 ---
 
@@ -16,39 +16,32 @@
 - `docs/superpowers/plans/2026-05-15-free-backend-architecture-exploration.md`
 - `frontend/package.json`
 - `frontend/vite.config.ts`
+- `.github/workflows/ci.yml`
 - `docs/iPad人臉辨識訂餐系統設計方案_V3.pdf`
 
 ## Official Provider Sources Checked On 2026-05-15
 
-- Cloudflare Pages limits: https://developers.cloudflare.com/pages/platform/limits/
-- Cloudflare Pages custom domains: https://developers.cloudflare.com/pages/configuration/custom-domains/
-- Cloudflare Pages preview deployments: https://developers.cloudflare.com/pages/configuration/preview-deployments/
-- Cloudflare Pages rollbacks: https://developers.cloudflare.com/pages/configuration/rollbacks/
-- Cloudflare Pages build configuration: https://developers.cloudflare.com/pages/configuration/build-configuration/
-- Cloudflare Pages build image: https://developers.cloudflare.com/pages/configuration/build-image/
+- Cloudflare Workers best practices: https://developers.cloudflare.com/workers/best-practices/workers-best-practices/
 - Cloudflare Workers Static Assets overview: https://developers.cloudflare.com/workers/static-assets/
 - Cloudflare Workers Static Assets billing and limits: https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/
-- Cloudflare Workers platform limits: https://developers.cloudflare.com/workers/platform/limits/
-- Cloudflare Workers React + Vite guide: https://developers.cloudflare.com/workers/framework-guides/web-apps/react/
-- Cloudflare Workers best practices: https://developers.cloudflare.com/workers/best-practices/workers-best-practices/
-- Cloudflare Workers Builds GitHub integration: https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/github-integration/
+- Cloudflare Workers Static Assets routing / worker script: https://developers.cloudflare.com/workers/static-assets/routing/worker-script/
+- Cloudflare Workers Static Assets SPA routing: https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/
+- Cloudflare Workers GitHub integration: https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/github-integration/
 - Cloudflare Workers Builds configuration: https://developers.cloudflare.com/workers/ci-cd/builds/configuration/
-- Cloudflare Workers Builds build image: https://developers.cloudflare.com/workers/ci-cd/builds/build-image/
 - Cloudflare Workers Preview URLs: https://developers.cloudflare.com/workers/configuration/previews/
 - Cloudflare Workers rollbacks: https://developers.cloudflare.com/workers/configuration/versions-and-deployments/rollbacks/
-- Cloudflare Workers Static Assets SPA routing: https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/
-- Cloudflare Workers Static Assets Worker routing: https://developers.cloudflare.com/workers/static-assets/routing/worker-script/
+- Cloudflare Workers platform limits: https://developers.cloudflare.com/workers/platform/limits/
+- Cloudflare D1 limits: https://developers.cloudflare.com/d1/platform/limits/
+- Cloudflare R2 pricing: https://developers.cloudflare.com/r2/pricing/
+- Cloudflare Pages limits: https://developers.cloudflare.com/pages/platform/limits/
+- Cloudflare Pages build image: https://developers.cloudflare.com/pages/configuration/build-image/
+- Vercel pricing: https://vercel.com/pricing
+- Netlify pricing: https://www.netlify.com/pricing/
+- GitHub Pages limits: https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits
+- Firebase pricing: https://firebase.google.com/pricing
 - GitHub `actions/setup-node`: https://github.com/actions/setup-node
 - GitHub `actions/checkout`: https://github.com/actions/checkout
-- Vercel pricing: https://vercel.com/pricing
-- Vercel limits: https://vercel.com/docs/limits/overview
-- Vercel domains and SSL: https://vercel.com/docs/domains/working-with-ssl
-- Netlify pricing: https://www.netlify.com/pricing/
-- Netlify HTTPS: https://docs.netlify.com/manage/domains/secure-domains-with-https/https-ssl/
-- GitHub Pages limits: https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits
-- GitHub Pages custom domain: https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site
-- Firebase pricing: https://firebase.google.com/pricing
-- Firebase Hosting custom domain: https://firebase.google.com/docs/hosting/custom-domain
+- GitHub Actions Node 20 runtime deprecation: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
 
 ## Current Deployment Context
 
@@ -60,16 +53,19 @@
    - `npm run preview` -> local Vite static preview.
 3. `frontend/vite.config.ts` uses `@vitejs/plugin-react` and Vitest jsdom setup. There is no custom base path, PWA plugin, service worker, or deployment-specific output configuration.
 4. `.github/workflows/ci.yml` already exists. It runs from `frontend/` on `push` and `pull_request`, uses Node 22, runs `npm ci`, `npx tsc --noEmit`, `npm run lint`, and `npx vitest run`, but it does not run `npm run build`.
-5. There is no `.nvmrc`, `.node-version`, or `.tool-versions` file in the repo today.
-6. The app is a pure static SPA today. That makes static hosting enough for the frontend, as long as future backend API URLs are provided through build-time `VITE_*` environment variables.
+5. There is no `.nvmrc`, `.node-version`, `.tool-versions`, `wrangler.jsonc`, or Cloudflare deployment config in the repo today.
+6. The app is a pure static SPA today. That makes static hosting enough for the frontend, but the recommended Phase 1.3 backend path is Cloudflare Worker + D1.
 7. The PDF's deployment reality is campus operation: a PC web POS is the accounting authority, future iPad is only an input sensor, and lunch service cannot stop during remote outage.
-8. The previous free-backend plan recommends Cloudflare Workers + D1 as the primary zero-cost backend. Cloudflare's current Workers best-practices docs recommend Workers Static Assets, not Pages, for new static sites, SPAs, and full-stack apps.
+8. Cloudflare's current Workers best-practices documentation says Workers Static Assets is the recommended way to deploy new static sites, SPAs, and full-stack apps on Cloudflare; new projects should use Workers instead of Pages.
 
 ## Deployment Goals
 
 - Host the Vite app for free with custom domain and HTTPS.
+- Keep static asset requests on the free/unlimited static asset path where possible.
+- Pair frontend assets, Worker API, D1, DNS, TLS, preview deployments, and rollback in one Cloudflare stack when the Cloudflare backend plan is accepted.
 - Support GitHub-based CI/CD from PR to preview to production.
-- Keep staging and production separated by branch and environment variables.
+- Keep GitHub Actions as the merge gate, not Cloudflare build status alone.
+- Keep staging and production separated by branch, environment, and public `VITE_*` config.
 - Keep rollback operator-friendly during lunch service incidents.
 - Keep the hosting layer independent from POS accounting correctness: remote hosting outage should not corrupt local ledger state.
 - Prepare for PWA/offline installability without implementing service worker details in this plan.
@@ -79,74 +75,130 @@
 
 | Criterion | What Good Looks Like For EasyOrder |
 |---|---|
-| Free allowance | Enough bandwidth/builds for one campus without surprise charges. |
+| Free allowance | Enough asset traffic/builds for one campus without surprise charges. |
+| Static/API routing | Static assets bypass Worker execution; API routes invoke Worker intentionally. |
 | Custom domain | `easyorder.<domain>` or customer-owned domain can be attached without paid plan. |
 | HTTPS | Automatic TLS for default and custom domains. |
-| CI/CD | GitHub PRs build previews; `main` or `production` branch deploys production automatically. |
+| CI/CD | GitHub PRs build previews; protected production branch deploys production. |
 | Preview deployments | Reviewer and user can test each PR on a stable preview URL before merge. |
 | Backend pairing | Frontend can call selected backend with environment-specific API URLs and compatible CORS. |
-| Rollback | Non-technical operator can redeploy or promote a previous version quickly. |
+| Rollback | Operator can promote a previous frontend/API version quickly, with D1 migration caveats documented. |
 | Campus network fit | Works through common school firewalls/proxies and does not require same-LAN hosting. |
 | PWA readiness | Static assets can later be cached and versioned safely. |
 
 ## Candidate Evaluation
 
-### 1. Cloudflare Workers Static Assets
+### 1. Cloudflare Workers Static Assets + Worker API + D1
 
 | Dimension | Evaluation |
 |---|---|
-| Free allowance | Static asset requests are free and unlimited, and Cloudflare documents no additional storage cost for Assets. Dynamic requests that invoke the Worker script still count against the Workers plan. Static assets share the Workers Static Assets limits: 20,000 files per Worker version on Free, 100,000 on Paid, and 25 MiB max single asset. |
-| Custom domain | Workers support routes and custom domains through Cloudflare. This keeps app and API under the same Cloudflare account and DNS surface. |
-| HTTPS automation | Cloudflare manages HTTPS for proxied custom domains/routes. |
-| CI/CD | Workers Builds can connect to GitHub, build on pushes, deploy production from the configured production branch, and upload preview versions for non-production branches. |
-| Preview deployments | Workers Preview URLs support versioned preview URLs and aliased preview URLs. The GitHub integration posts PR comments with build status and preview URLs when preview uploads run. |
-| Backend pairing | Best fit with the free backend plan. One Worker can serve static frontend assets and handle `/api/*` routes with D1 bindings. |
-| Rollback | Workers can roll back through Wrangler or the Cloudflare dashboard. Cloudflare limits rollback targets to the 100 most recently published versions. |
-| Campus network | Strong CDN/TLS story. If school firewall blocks `workers.dev`, use a custom domain and test from campus Wi-Fi before launch. |
-| PWA readiness | Strong. SPA mode can serve `index.html` for navigation fallback while hashed Vite assets remain asset-first. Need careful cache/update policy once the PWA plan lands. |
-| Verdict | **Recommended primary Cloudflare hosting for new project work.** This follows Cloudflare's current Workers best-practices guidance. |
+| Free allowance | Static asset requests are free and unlimited, and storing Assets has no additional cost. Dynamic API traffic still counts against normal Workers plan limits. |
+| Official direction | Cloudflare Workers best practices now recommend Workers Static Assets for new static sites, SPAs, and full-stack apps. Pages continues to work, but Cloudflare says new features and optimizations are focused on Workers. |
+| Static/API routing | Strong. Asset-first routing serves matching static files without invoking the Worker. Use `assets.run_worker_first` only for `/api/*` so static lunch-time app loads do not spend Worker request quota. |
+| File limits | Workers Static Assets supports 20,000 static asset files per Worker version on Free, 100,000 on Paid, and 25 MiB max single asset. |
+| Custom domain | Supported through Workers routes/custom domains. Use a production custom domain so campus IT does not need to allowlist provider preview domains for daily operation. |
+| HTTPS automation | Cloudflare manages TLS for Cloudflare-routed custom domains. |
+| CI/CD | Workers Builds can connect to GitHub and deploy automatically on pushes. GitHub Actions should still run the repo verification gate before merge. |
+| Preview deployments | Strong enough for this fleet. Workers GitHub integration posts PR comments, exposes check runs, and includes preview URLs for builds that upload Worker versions. Workers Preview URLs also support versioned URLs and aliased preview URLs. |
+| Backend pairing | Best fit when the backend is Worker + D1. Static assets, API, D1 bindings, custom domains, preview, deploy, and rollback live in one Cloudflare Worker surface. |
+| Rollback | Workers can roll back through Wrangler or the Cloudflare dashboard to the most recent 100 published versions. D1 schema rollback remains a separate policy decision. |
+| Campus network | Strong CDN and TLS story. If `workers.dev` preview domains are blocked, use custom domains for production and Cloudflare Access or explicit preview allowlisting for test users. |
+| PWA readiness | Strong. Hashed Vite assets can be served as static assets; `index.html` and service worker cache policy must be handled carefully in the later PWA plan. |
+| Verdict | **Recommended primary hosting** when Cloudflare Workers + D1 is selected. |
+
+Recommended initial `wrangler.jsonc` shape for the follow-up implementation plan:
+
+```jsonc
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "talented-easyorder",
+  "compatibility_date": "2026-05-15",
+  "main": "src/worker/index.ts",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "preview_urls": true,
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "EASYORDER_ENVIRONMENT": "preview"
+  },
+  "env": {
+    "staging": {
+      "name": "talented-easyorder-staging",
+      "vars": {
+        "EASYORDER_ENVIRONMENT": "staging"
+      }
+    },
+    "production": {
+      "name": "talented-easyorder-production",
+      "vars": {
+        "EASYORDER_ENVIRONMENT": "production"
+      }
+    }
+  }
+}
+```
+
+Implementation notes:
+
+- Put `wrangler.jsonc` under `frontend/` if the Worker project root is `frontend/`; otherwise use a repo-root file and make every command explicit about `frontend` build paths.
+- Use `assets.run_worker_first: ["/api/*"]`; do not set `run_worker_first: true` for the static SPA because that would invoke Worker code for every app-shell asset request and can turn static traffic into Worker request quota usage.
+- Use `assets.not_found_handling: "single-page-application"` so browser navigation routes fall back to the SPA shell without requiring the Worker for every non-API route.
+- Keep `VITE_*` values public. Backend secrets, D1 bindings, and provider tokens belong in Worker bindings/secrets or GitHub/Cloudflare secret stores, never in committed frontend config.
+- If a no-API first deployment is desired, the first PR may ship only static assets and `wrangler.jsonc`; add `src/worker/index.ts` with `/api/health` when the backend plan starts.
+
+### Cloudflare Free-Tier Guardrails
+
+These limits matter to deployment design, but they should not be mixed up:
+
+| Product | Current free-limit fact | Deployment implication |
+|---|---|---|
+| Workers Static Assets | Static asset requests are free and unlimited; storing Assets has no additional cost. | Vite JS/CSS/icon/app-shell requests should remain asset-first and should not invoke the Worker. |
+| Workers Free | 100,000 Worker requests/day, 10 ms CPU, 50 subrequests/invocation, 100 Workers/account, 20,000 static asset files per Worker version, 25 MiB max individual static asset. | `/api/*` and any `run_worker_first` route consumes Worker quota; do not route all SPA requests through Worker code unless the user accepts that quota risk. |
+| D1 Free | 10 databases/account, 500 MB maximum database size, 5 GB maximum storage per account, 7-day Time Travel, 50 queries per Worker invocation. | Good enough for a single-campus pilot, but schema/import/migration plans must watch the 500 MB per-database cap, not just the 5 GB account cap. |
+| R2 Free | Standard storage includes a monthly free allowance such as 10 GB storage plus operation allowances; R2 has no egress fees. | R2 is not required for the Vite static app because Workers Static Assets stores app assets. Revisit R2 only for future photos, exports, PDFs, backups, or model files. |
+
+Backend-provider note:
+
+- This hosting plan assumes Plan 1's accepted default remains Cloudflare Workers + D1.
+- If the user later chooses Neon Postgres instead, Workers Static Assets can still host the frontend/API Worker, but the Worker needs Hyperdrive or external database connection design.
+- If the user later chooses Turso, re-check the current Turso free tier and edge-database fit before implementation; do not treat old "Turso" product names or limits as stable.
 
 ### 2. Cloudflare Pages Free
 
 | Dimension | Evaluation |
 |---|---|
-| Free allowance | Cloudflare Pages Free has 500 builds/month, 1 build at a time, 20-minute build timeout, 20,000 files/site, 25 MiB max single asset, unlimited active preview deployments, and a soft 100-project account limit. Cloudflare Pages docs do not meter normal static bandwidth in the same credit model as Netlify/Vercel; abuse controls still apply. |
+| Free allowance | Cloudflare Pages Free has 500 builds/month, 1 build at a time, 20-minute build timeout, 20,000 files/site, 25 MiB max single asset, unlimited active preview deployments, and a soft 100-project account limit. |
 | Custom domain | Up to 100 custom domains per Pages project on Free. Apex domains work best when the domain is on Cloudflare DNS; subdomains can be connected without making the whole site a Cloudflare zone. |
 | HTTPS automation | Cloudflare automatically serves Pages over HTTPS and manages certificates for Cloudflare-routed custom domains. |
 | CI/CD | Native Git integration builds on pushes/PRs. GitHub Actions can also use direct upload if the team wants full control over verification before deploy. |
-| Preview deployments | Unlimited active preview deployments. Branch aliases and preview URLs fit reviewer/user validation. |
-| Backend pairing | Works with Cloudflare Workers + D1, but it separates frontend hosting from the Worker deployment and requires CORS or same-zone routing between Pages and Worker API. |
-| Rollback | Pages supports rolling back to a previous deployment. Worker rollback must still be handled separately. |
+| Preview deployments | Excellent. Pages has first-class preview deployments, branch aliases, and UI rollback. |
+| Backend pairing | Usable with Cloudflare Worker + D1, but frontend and API are separate deployment surfaces. CORS or same-zone routing must be designed carefully. |
+| Rollback | Pages supports rolling back to a previous deployment. Worker rollback remains separate. |
 | Campus network | Strong CDN and TLS story. If school firewall blocks `pages.dev`, use a custom domain on Cloudflare DNS and verify from campus Wi-Fi before launch. |
-| PWA readiness | Strong. Static assets and service worker can be served from the same origin later. Need careful cache busting for `index.html`. |
-| Verdict | **Cloudflare fallback/override only.** Use Pages only if the user explicitly chooses the older Pages workflow or a future Pages-only feature that Workers cannot satisfy. |
+| PWA readiness | Strong for static app assets. Need careful cache busting for `index.html`. |
+| Verdict | **Fallback / explicit override only.** Use Pages if the user values Pages' dedicated static-site dashboard more than Cloudflare's current new-project recommendation and accepts the separate Worker API deployment surface. |
 
-### Cloudflare Choice: Workers Static Assets Vs Pages
+Pages override policy:
 
-Cloudflare has two relevant free static-hosting paths for this project, but the default must now be Workers Static Assets because Cloudflare's current best-practices docs say Workers Static Assets is the recommended way to deploy new static sites, SPAs, and full-stack apps on Cloudflare.
-
-| Dimension | Workers Static Assets | Cloudflare Pages |
-|---|---|---|
-| Official direction | Current Cloudflare guidance for new projects. New features and optimizations are focused on Workers. | Continues to work, but is no longer the preferred new-project default per Cloudflare's Workers best-practices page. |
-| Deployment shape | One Worker deployment can serve frontend static assets and `/api/*` routes with D1 bindings. | Frontend Pages project deploys separately from Worker API + D1. |
-| Static asset handling | Static asset requests are free and unlimited with no additional storage cost. Dynamic `/api/*` Worker requests still count against Workers limits. | Pages has a separate Pages build/deployment model and 500 builds/month on Free. |
-| Preview workflow | Workers Preview URLs support generated version URLs and aliased preview URLs. Workers GitHub integration can add PR comments and check runs. | Pages has mature preview deployments and branch aliases. |
-| Rollback | Wrangler/dashboard rollback to the 100 most recently published Worker versions. Rollback does not revert D1/resource changes. | Pages deployment rollback for frontend only; Worker/API rollback remains separate. |
-| API pairing | Strongest same-deployment story: static assets and API can share one Worker project and origin. | Requires CORS/same-zone routing between Pages frontend and Worker API. |
-| Recommendation | **Primary choice** for this plan. | Fallback only if user deliberately overrides Cloudflare's current guidance. |
-
-Use **Workers Static Assets** first. Recommending Pages would be an explicit override of Cloudflare's current guidance and this plan does not identify a Pages-only advantage that Workers cannot satisfy for EasyOrder.
+- Do **not** pick Pages by habit. The default Cloudflare recommendation for this project is Workers Static Assets.
+- If the user chooses Pages anyway, document the explicit reason in `docs/deployment/cloudflare-pages-runbook.md`, such as operator familiarity with Pages' static-site UI or an existing Pages account/process.
+- When using Pages, keep Worker API deployment and D1 migration rollback as separate runbook sections, because Pages rollback does not roll back Worker code or D1 schema state.
 
 ### 3. Vercel Hobby
 
 | Dimension | Evaluation |
 |---|---|
-| Free allowance | Hobby is free forever for personal projects. Current pricing lists 100 GB/month Fast Data Transfer, 1M/month Edge Requests, 1M/month function invocations, and 4 hours/month active CPU. Static Vite app should stay far below these limits, but Hobby cannot buy extra usage and is framed for personal projects. |
+| Free allowance | Hobby is free for personal projects. Static Vite app should stay below normal limits, but Hobby cannot buy extra usage and is framed for personal projects. |
 | Custom domain | Supported. Vercel has first-class domain UI and generated deployment URLs. |
 | HTTPS automation | Vercel automatically attempts to generate certificates for domains added to a project. |
 | CI/CD | Excellent GitHub integration and automatic deployments. |
-| Preview deployments | Strong PR preview workflow. Good reviewer UX. |
-| Backend pairing | Good for frontend-only hosting, but less cohesive with a Cloudflare Worker + D1 backend. Cross-origin API calls and CORS must be managed. Vercel Functions are not the chosen free backend. |
+| Preview deployments | Strong PR preview workflow. |
+| Backend pairing | Good for frontend-only hosting, but less cohesive with a Cloudflare Worker + D1 backend. Cross-origin API calls and CORS must be managed. |
 | Rollback | Good deployment history and redeploy flow. |
 | Campus network | Generally good CDN reach. If school blocks `vercel.app`, use custom domain. |
 | PWA readiness | Good for static app assets. Avoid Vercel-only dynamic features unless accepted as part of the hosting strategy. |
@@ -156,12 +208,12 @@ Use **Workers Static Assets** first. Recommending Pages would be an explicit ove
 
 | Dimension | Evaluation |
 |---|---|
-| Free allowance | Netlify Free provides 300 credits/month. Current pricing says production deploys cost 15 credits each, bandwidth costs 20 credits/GB, web requests cost 2 credits/10k requests, and compute costs 10 credits/GB-hour. If a project reaches its credit limit, Netlify says the site enters a paused state until the next billing cycle and one project can pause all projects on the account. |
+| Free allowance | Netlify Free provides a credit model. If a project reaches its credit limit, Netlify can pause the site until the next billing cycle. |
 | Custom domain | Free plan includes custom domains with SSL. |
 | HTTPS automation | Netlify provides free HTTPS, including automatic certificate creation and renewal for Netlify-managed certificates. |
 | CI/CD | Strong Git integration. One concurrent build on Free. |
-| Preview deployments | Unlimited deploy previews and branch deploys are included in the pricing page. |
-| Backend pairing | Fine for static frontend calling Cloudflare Worker API, but no operational advantage over Workers Static Assets if backend is Cloudflare. Netlify Functions should not be introduced as a second backend. |
+| Preview deployments | Deploy previews and branch deploys fit review workflows. |
+| Backend pairing | Fine for static frontend calling Cloudflare Worker API, but no operational advantage over Cloudflare Workers Static Assets if backend is Cloudflare. |
 | Rollback | Good deploy history and publish previous deploy capability. |
 | Campus network | Generally good CDN. Credit-based bandwidth/request model is a risk for a strict free production app. |
 | PWA readiness | Good static hosting behavior. |
@@ -174,11 +226,11 @@ Use **Workers Static Assets** first. Recommending Pages would be an explicit ove
 | Free allowance | GitHub Pages published sites may be no larger than 1 GB, deployments time out after 10 minutes, sites have a soft 100 GB/month bandwidth limit, and a soft 10 builds/hour limit unless using a custom GitHub Actions workflow. |
 | Custom domain | Supported. Custom domain setup requires DNS and repository/domain verification discipline. |
 | HTTPS automation | GitHub Pages supports HTTPS for correctly configured Pages sites, including custom domains. |
-| CI/CD | GitHub Actions can build Vite and deploy Pages. This gives the most explicit CI control but less managed hosting UX. |
+| CI/CD | GitHub Actions can build Vite and deploy Pages. This gives explicit CI control but less managed hosting UX. |
 | Preview deployments | Weak. GitHub Pages has no first-class PR preview deployments. A team can script branch-specific previews, but that adds operational complexity and domain clutter. |
 | Backend pairing | Works as a static frontend calling Cloudflare Worker API, but CORS and preview-origin policy are less convenient. |
 | Rollback | Rollback is a git revert/redeploy or Actions artifact flow, not a simple hosting dashboard operation. |
-| Campus network | Good if served on custom domain. GitHub Pages terms warn it is not intended as free web-hosting for online business/SaaS or sensitive transactions, so production POS use must be checked before choosing it. |
+| Campus network | Good if served on custom domain. GitHub Pages terms/usage framing should be checked before production POS use. |
 | PWA readiness | Adequate for static assets. Must configure Vite `base` carefully if deployed under a project path rather than a root custom domain. |
 | Verdict | **Use for docs/demo only**, not recommended as production POS hosting unless the user explicitly accepts the terms and weak preview/rollback tradeoffs. |
 
@@ -190,7 +242,7 @@ Use **Workers Static Assets** first. Recommending Pages would be an explicit ove
 | Custom domain | Supported. Firebase Hosting provisions SSL certificates for custom domains and serves through Google's global CDN. |
 | HTTPS automation | Automatic SSL provisioning and re-provisioning are documented for custom domains. Provisioning can take up to 24 hours. |
 | CI/CD | Firebase CLI works well from GitHub Actions. Native preview channels exist, but the exact workflow must be configured. |
-| Preview deployments | Good with Firebase Hosting preview channels, but less central to this repo than Workers Static Assets if backend is Cloudflare. |
+| Preview deployments | Good with Firebase Hosting preview channels, but less central to this repo than Cloudflare Workers if backend is Cloudflare. |
 | Backend pairing | Strong only if the backend choice changes to Firebase Spark/Firestore. Otherwise it adds a second cloud account while backend remains Cloudflare. |
 | Rollback | Firebase Hosting supports version history/rollback through CLI/console. |
 | Campus network | Generally good CDN. Google services are usually reachable, but campus Google restrictions should be tested. |
@@ -199,40 +251,37 @@ Use **Workers Static Assets** first. Recommending Pages would be an explicit ove
 
 ## Recommendation
 
-### Primary: Workers Static Assets + Worker API + D1
+### Primary: Cloudflare Workers Static Assets + Worker API + D1
 
-Use Cloudflare Workers Static Assets as the default frontend hosting path when the user accepts the previous plan's Cloudflare Workers + D1 backend recommendation.
+Use Cloudflare Workers Static Assets as the default Cloudflare frontend host when the user accepts the previous plan's Cloudflare Workers + D1 backend recommendation.
 
 Recommended production shape:
 
 ```text
 GitHub PR
   -> CI: npm ci, lint, typecheck, test, build in frontend/
-  -> Workers Builds non-production build
-  -> wrangler versions upload creates Worker preview version + preview URL
-  -> reviewer/user verifies Workers preview URL
-  -> merge to main or production branch
-  -> Workers Builds production build
-  -> wrangler deploy publishes Worker version with static assets
-  -> static assets serve from the Worker asset binding
-  -> /api/* routes run Worker API code and read/write D1
+  -> Workers Builds non-production upload
+  -> PR comment/check run includes preview URL
+  -> reviewer/user verifies preview
+  -> merge to protected main or production branch
+  -> Workers production deployment
+  -> static assets served from Workers Static Assets
+  -> /api/* invokes Worker API
+  -> Worker API writes/reads D1
 ```
 
 Why this is the best default:
 
 - It follows Cloudflare's current new-project guidance for static sites, SPAs, and full-stack apps.
-- One Worker deployment can include static frontend assets, `/api/*` routes, D1 bindings, DNS/TLS, preview versions, and rollback.
-- Static asset requests are free/unlimited, while dynamic `/api/*` requests stay visible as Worker usage.
-- Workers Preview URLs and GitHub integration cover the reviewer/user preview requirement.
-- Workers dashboard/Wrangler rollback covers frontend and API code together, subject to Worker resource compatibility.
-- No need to introduce Vercel/Netlify/Firebase just to host static assets.
-- It makes the follow-up backend plan simpler because CORS, environment URLs, and deployment ownership can stay in one Worker project.
+- Static assets can be free/unlimited and can avoid Worker invocation when `run_worker_first` is limited to `/api/*`.
+- One provider surface owns frontend assets, API, D1 bindings, DNS, TLS, preview URLs, rollback, and observability.
+- Workers GitHub integration now covers the review loop with PR comments, check runs, and preview URLs.
+- Workers rollback supports dashboard/Wrangler rollback to recent versions; the D1 rollback caveat is visible in the same deployment model.
+- It avoids a Pages frontend plus separate Worker API split unless the user explicitly wants that split.
 
-### Cloudflare Fallback: Pages + Worker API + D1
+### Fallback: Cloudflare Pages + separate Worker API + D1
 
-Use Cloudflare Pages only as an explicit override if the user wants the legacy Pages workflow or if a future Pages-specific feature proves materially better for EasyOrder.
-
-This plan does **not** recommend Pages by default because Cloudflare's current best-practices guidance says new projects should use Workers Static Assets, and Workers now covers the previously cited Pages advantages: GitHub PR comments, preview URLs, and dashboard/Wrangler rollback.
+Use Pages only as an explicit override if the user decides Pages' static-site dashboard, branch alias UX, or team familiarity outweigh Cloudflare's Workers new-project guidance.
 
 ### Secondary: Firebase Hosting Only If Firebase Spark Is Chosen As Backend
 
@@ -250,17 +299,17 @@ Do not mix Firebase Hosting with Cloudflare D1 unless there is a strong domain/D
 
 ### School Firewall / Proxy
 
-- Use a custom domain for production, not the provider default domain. Some campuses may block `*.pages.dev`, `*.vercel.app`, `*.netlify.app`, or `*.web.app` by category.
+- Use a custom domain for production, not the provider default domain. Some campuses may block `*.workers.dev`, `*.pages.dev`, `*.vercel.app`, `*.netlify.app`, or `*.web.app` by category.
 - Test from the actual school Wi-Fi and wired PC network before launch:
   - production frontend URL
   - staging frontend URL
   - Worker/API health URL
   - asset loading for JS/CSS/fonts/icons
   - iPad Safari camera permissions later in Phase 2
-- Avoid multi-provider dependency for the critical path. If frontend is on Cloudflare and backend is on Cloudflare, fewer domains need allowlisting.
+- Avoid multi-provider dependency for the critical path. If frontend assets, API, DNS, and D1 are on Cloudflare, fewer domains need allowlisting.
 - Prepare an allowlist note for IT:
   - `https://app.easyorder.example`
-  - `https://api.easyorder.example`
+  - `https://api.easyorder.example` or `/api/*` on the app domain if same-origin routing is selected
   - Cloudflare TLS/CDN endpoints behind those domains
 
 ### PC + iPad Same LAN
@@ -287,11 +336,21 @@ Do not mix Firebase Hosting with Cloudflare D1 unless there is a strong domain/D
 
 | Environment | Source | Frontend URL | Backend URL | Purpose |
 |---|---|---|---|---|
-| Preview | Every PR branch | Workers Preview URL | Same Worker preview API, staging D1, or fake API depending on PR type | Reviewer/user validation before merge. |
-| Staging | `develop` or `staging` branch | `staging.easyorder.example` | `https://api-staging.easyorder.example` | Operator rehearsal and migration dry runs. |
-| Production | `main` or `production` branch | `easyorder.example` | `https://api.easyorder.example` | Real campus POS service. |
+| Preview | Every PR branch | Workers versioned or aliased preview URL | Worker preview/staging API or fake API depending on PR type | Reviewer/user validation before merge. |
+| Staging | `develop` or `staging` branch | `staging.easyorder.example` or `staging-talented-easyorder.<subdomain>.workers.dev` | `https://api-staging.easyorder.example` or staging Worker env | Operator rehearsal and migration dry runs. |
+| Production | `main` or `production` branch | `easyorder.example` | `/api/*` same-origin or `https://api.easyorder.example` | Real campus POS service. |
 
-Recommended default: use `main` for production and Workers Preview URLs for review. Add a dedicated `staging` branch only if the user wants long-lived UAT separate from PR previews.
+Recommended default: use `main` for production and PR previews for review. Add a dedicated `staging` branch only if the user wants long-lived UAT separate from PR previews.
+
+Preview alias convention:
+
+- Use versioned preview URLs for every PR build.
+- Use aliased preview URLs only for stable human-facing channels:
+  - `pr-<number>` for a live PR preview if the branch name is too long.
+  - `staging` for long-lived staging.
+  - `training` for operator rehearsal if the user wants a separate practice environment.
+- Keep aliases lowercase letters, numbers, and dashes; ensure alias plus Worker name stays under the DNS label limit.
+- Protect production data: preview aliases must use fake/staging API config unless the user explicitly approves read-only production data for UAT.
 
 ### GitHub Actions Verification Gate
 
@@ -306,9 +365,10 @@ frontend/.node-version = 22.16.0
 Reasoning:
 
 - Existing CI already uses Node 22.
-- Cloudflare Workers Builds' current build image default is Node 22.16.0.
-- Pinning `frontend/.node-version` makes GitHub Actions and Workers Builds resolve the same runtime instead of relying on mutable provider defaults.
-- Use `frontend/.node-version` because the frontend build runs from `frontend/`; if Workers Builds root is repo root, also set `NODE_VERSION=22.16.0` in build variables.
+- Cloudflare Pages' v3 build image default is Node 22.16.0, and pinning the same version still helps if Pages is used as a fallback.
+- Workers Builds should also read the same project Node version during frontend build setup.
+- Pinning `frontend/.node-version` makes GitHub Actions and Cloudflare build logs comparable instead of relying on mutable provider defaults.
+- Use `frontend/.node-version` rather than a root `.node-version` because CI and the recommended Workers project root should run from `frontend/`.
 
 Recommended `.github/workflows/ci.yml` shape:
 
@@ -326,7 +386,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version-file: frontend/.node-version
@@ -339,73 +399,37 @@ jobs:
       - run: npm run build
 ```
 
-Use `actions/setup-node@v6` rather than v4 because GitHub's Node 20 action-runtime deprecation starts on 2026-06-02. Pair it with `actions/checkout@v5` so the CI template does not immediately age into runtime warnings.
+Action version note:
+
+- `actions/setup-node@v6` is the current documented major and supports `node-version-file`.
+- `actions/checkout@v6` is shown in the current setup-node examples; if the repo cannot move to v6 immediately, record the reason and upgrade separately.
+- GitHub says runners begin using Node 24 by default on June 2, 2026 as part of Node 20 deprecation. Using current action majors avoids adding a known near-term runtime warning to new deployment docs.
 
 Keep the existing always-on `push` and `pull_request` triggers unless branch protection is explicitly designed for skipped checks. Path-filtered required checks can block merges when GitHub marks the workflow as skipped, so a simple always-on frontend gate is safer for this small repo.
 
-Why GitHub Actions even if Workers Builds can build/deploy:
+Why GitHub Actions even if Workers Builds has GitHub integration:
 
 - The repo already defines a global gate in `ROADMAP.md`: `npx tsc --noEmit`, `npm run lint`, `npx vitest run`, `npm run build` from `frontend/`.
-- Workers Builds deploy alone would catch deploy/build failures but should not replace the complete project gate.
-- CI should be the merge gate. Hosting deployment should happen only from reviewed/merged code.
+- Workers Builds proves deployability but should not replace the repo's code-quality merge gate.
+- CI should be the merge gate. Cloudflare deployment should happen only from reviewed/merged code.
 
-### Workers Static Assets Build And Deploy Settings
+### Workers Builds Settings
 
-Use `wrangler.jsonc` at the repo root so Workers Builds and local deploys share the same source of truth:
-
-```jsonc
-{
-  "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "talented-easyorder",
-  "main": "./workers/api/src/index.ts",
-  "compatibility_date": "2026-05-15",
-  "preview_urls": true,
-  "assets": {
-    "directory": "./frontend/dist",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
-  },
-  "vars": {
-    "EASYORDER_ENVIRONMENT": "production"
-  },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "talented-easyorder-prod",
-      "database_id": "<set-after-d1-create>"
-    }
-  ]
-}
-```
-
-Routing rule:
-
-- `run_worker_first` must be limited to `/api/*`.
-- Static files, Vite hashed assets, manifest, icons, and SPA navigation fallback should be asset-first.
-- `/api/*` should invoke the Worker script, validate request method/body, and use D1 bindings.
-- Do not put accounting mutation endpoints behind cached asset responses.
-
-Recommended Workers Builds settings:
+Use these settings for the Vite frontend and Worker:
 
 ```text
-Root directory: repo root
-Build command: npm ci --prefix frontend && npm run build --prefix frontend
-Deploy command: npx wrangler deploy
-Non-production branch deploy command: npx wrangler versions upload
-Node version: 22.16.0 from NODE_VERSION=22.16.0 and frontend/.node-version
-Production branch: main
-Non-production branch builds: enabled
+Project root: frontend
+Build command: npm ci && npm run build
+Build output directory: dist
+Deploy command for PR/non-production: npx wrangler versions upload --preview-alias pr-${PR_NUMBER}
+Deploy command for production: npx wrangler deploy --env production
+Node version: 22.16.0 from frontend/.node-version
+Wrangler config: frontend/wrangler.jsonc
 ```
 
-Preview alias convention:
+If the Worker API source lives outside `frontend/`, keep `frontend/` as the app build root but document the exact build/deploy command in `docs/deployment/cloudflare-workers-runbook.md`. Do not rely on implicit current directories.
 
-- Versioned preview URL: accept Cloudflare's generated URL for every uploaded preview version.
-- Aliased preview URL: use `pr-<number>` when a build is associated with a pull request.
-- Branch preview fallback: use `branch-<sanitized-branch-name>` when no PR number is available.
-- The implementer must verify the exact Workers Builds environment variable names available for PR number and branch name. If Workers Builds does not expose the needed alias value directly, add `scripts/cloudflare/preview-alias.sh` and call `npx wrangler versions upload --preview-alias "$(scripts/cloudflare/preview-alias.sh)"`.
-
-The implementer must verify the exact Workers Builds UI/CLI semantics during setup and document the final setting in `docs/deployment/workers-static-assets-runbook.md`.
+The implementer must verify the exact Workers Builds UI/CLI semantics during setup and document the final settings in `docs/deployment/cloudflare-workers-runbook.md`.
 
 ### Branch Protection And Required Status Checks
 
@@ -413,67 +437,74 @@ Before enabling production auto-deploy from `main`, configure repository protect
 
 - Protect `main`.
 - Require pull request review approval before merge.
-- Require the GitHub Actions frontend gate as a status check. Expected check name after the workflow rename is `Frontend CI / build-and-test`, but the implementer must verify GitHub's displayed check name after the first run.
+- Require the GitHub Actions frontend gate as a status check. Expected check name after the workflow update is `Frontend CI / build-and-test`, but the implementer must verify GitHub's displayed check name after the first run.
 - Require branches to be up to date before merge, or use merge queue if available.
 - Require conversation resolution.
 - Restrict direct pushes to `main` for normal contributors.
-- Configure Workers Builds production branch as protected `main`.
-- Treat Workers Builds build/deploy status as deployment evidence, not as the merge gate. GitHub Actions remains the required merge gate.
+- Configure Workers production deployment branch as protected `main`.
+- Treat Workers Builds/Cloudflare deploy status as deployment evidence, not as the merge gate. GitHub Actions remains the required merge gate.
 
 ### Environment Variables
 
 Frontend variables are public at build time. Do not put secrets in `VITE_*` variables.
 
-Recommended variables:
+Recommended frontend variables:
 
 ```text
 VITE_EASYORDER_ENVIRONMENT=preview | staging | production
-VITE_EASYORDER_API_BASE_URL=https://api-preview.example | https://api-staging.example | https://api.example
+VITE_EASYORDER_API_BASE_URL=/api | https://api-preview.example | https://api-staging.example | https://api.example
 VITE_EASYORDER_SYNC_TRANSPORT=cloudflare_d1 | fake
 ```
 
-Backend secrets belong in Cloudflare Worker secrets or D1 bindings, not in frontend `VITE_*` variables.
+Recommended Worker variables and bindings:
+
+```text
+EASYORDER_ENVIRONMENT=preview | staging | production
+D1 binding: EASYORDER_DB
+Worker secrets: provider tokens or admin-only credentials, if any
+```
+
+Backend secrets belong in Cloudflare Worker secrets or D1 bindings, not in frontend variables or committed files.
 
 ### Deployment Flow
 
 1. Developer opens PR.
 2. GitHub Actions runs frontend verification.
-3. Workers Builds runs a non-production branch build and uploads a preview Worker version.
-4. Cloudflare GitHub integration posts build status and the preview URL to the PR when available.
-5. `general` or reviewer validates the Workers preview URL if the task involves UI/deployment behavior.
+3. Workers Builds creates a non-production Worker version and preview URL.
+4. Cloudflare GitHub integration posts PR comment/check run with build status and preview URL.
+5. `general` or reviewer validates the preview URL if the task involves UI/deployment behavior.
 6. Branch protection allows merge to `main` only after review approval, green `Frontend CI / build-and-test`, and resolved conversations.
-7. Workers Builds deploys production from `main` using `npx wrangler deploy`.
+7. Workers production deploy runs from `main`.
 8. Post-deploy smoke check runs:
    - production URL returns 200.
    - app shell loads JS/CSS assets.
+   - `/api/health` succeeds from browser context when API is in scope.
+   - static asset requests do not invoke the Worker unless they match `/api/*`.
    - `VITE_EASYORDER_ENVIRONMENT` displays production in a non-sensitive diagnostics panel or build metadata endpoint.
-   - `/api/health` endpoint succeeds from browser context.
-   - a non-API asset URL is served asset-first and not by API routing.
-9. If smoke fails, rollback the Worker deployment. D1 data/schema rollback is separate and must follow the backend rollback policy.
+9. If smoke fails, roll back the Worker deployment and keep D1 unchanged unless a backend release explicitly changed D1.
 
 ## Rollback Strategy
 
-### Worker Static Assets Rollback
+### Worker + Static Assets Rollback
 
-Use Workers rollback for frontend/API-code incidents:
+Use Workers rollback for frontend/API incidents where the previous Worker version remains compatible with D1:
 
-1. Identify last known good Worker version in Cloudflare dashboard or with Wrangler.
-2. Roll back with Cloudflare dashboard or `npx wrangler rollback <VERSION_ID>`.
+1. Identify last known good Worker version in Cloudflare dashboard or Wrangler.
+2. Roll back to that version through dashboard or `wrangler rollback`.
 3. Verify production app shell loads from the custom domain.
-4. Verify `/api/health` and a read-only API route still match the expected D1 schema.
-5. Confirm existing local queue/localStorage data is not migrated backwards destructively.
+4. Verify `/api/health` and one read-only diagnostics request.
+5. Confirm existing local queue/localStorage/IndexedDB data is not migrated backwards destructively.
 6. Open a fix PR for the bad commit rather than editing production manually.
 
-### Backend Rollback
+### D1 Rollback
 
-Worker + D1 rollback must be stricter than frontend rollback:
+D1 schema rollback must be stricter than code/static rollback:
 
-- Worker code can roll back to a prior deployment if API contract remains compatible.
-- Worker rollback can target only the 100 most recently published versions.
+- Worker code can roll back to a prior version if API contract remains compatible.
 - D1 schema migrations must be forward-compatible where possible.
 - Destructive D1 migrations require a backup/export and explicit operator approval.
-- Cloudflare resource changes are not automatically rolled back with Worker code.
-- Static asset rollback must not assume D1/backend data rollback unless the backend version is part of the same release decision.
+- A Worker rollback does not change D1 resources or deleted/modified bindings.
+- Frontend deployment must not assume D1 rollback unless the backend version is part of the same release decision.
 
 ### Cache Rollback
 
@@ -485,24 +516,21 @@ When PWA is introduced later, rollback must also address service-worker cache:
 
 ## Files For Follow-Up Implementation Plan
 
-This hosting strategy should become a provider-specific implementation plan after user decisions are resolved. Suggested file set for Workers Static Assets:
+This hosting strategy should become a provider-specific implementation plan after user decisions are resolved. Suggested file set for Cloudflare Workers Static Assets:
 
 | File | Purpose |
 |---|---|
-| `.github/workflows/ci.yml` | Existing frontend CI gate; add build and use `frontend/.node-version`. |
-| `frontend/.node-version` | Pin Node 22.16.0 for GitHub Actions and Workers Builds parity. |
-| `package.json`, `package-lock.json` | Root Wrangler devDependency and scripts such as `deploy:worker` and `upload:worker-preview`; Workers Builds uses the Wrangler version from package metadata. |
-| `wrangler.jsonc` | Worker name, static assets directory, SPA fallback, `/api/*` `run_worker_first`, preview URLs, D1 binding, and compatibility date. |
-| `workers/api/src/index.ts` | Worker API entry point for `/api/*`, D1 access, health route, and asset binding type surface. |
-| `workers/api/src/routes/health.ts` | Minimal health route for smoke tests and campus connectivity checks. |
-| `scripts/cloudflare/preview-alias.sh` | Optional sanitized `pr-<number>` or `branch-<name>` alias helper if Workers Builds does not expose a usable alias directly. |
-| `.github/workflows/deploy-preview-smoke.yml` | Optional smoke check against Workers preview URLs after preview version upload. |
-| `docs/deployment/workers-static-assets-runbook.md` | Exact Workers Builds settings, domains/routes, environment variables, preview aliases, rollback, and smoke steps. |
-| `docs/deployment/branch-protection.md` | Required checks, review requirement, direct-push restriction, and Workers production branch policy. |
-| `docs/deployment/campus-network-checklist.md` | School IT allowlist, PC/iPad browser checks, custom domain/TLS checks. |
+| `.github/workflows/ci.yml` | Existing frontend CI gate; add build, use `frontend/.node-version`, and update checkout/setup-node action majors. |
+| `frontend/.node-version` | Pin Node 22.16.0 for GitHub Actions and Cloudflare build parity. |
+| `frontend/wrangler.jsonc` | Workers Static Assets config, preview URLs, environment names, and `assets.run_worker_first: ["/api/*"]`. |
+| `frontend/src/worker/index.ts` | Worker API entrypoint once `/api/health` or D1-backed endpoints are in scope. |
 | `frontend/src/config/runtimeConfig.ts` | Typed public runtime/build config with environment label and API base URL. |
 | `frontend/src/config/__tests__/runtimeConfig.test.ts` | Verify config validation rejects missing/invalid API base URL. |
-| `frontend/public/manifest.webmanifest` | Future PWA metadata placeholder only if the PWA plan is approved. |
+| `docs/deployment/cloudflare-workers-runbook.md` | Workers Builds settings, domains, environment variables, preview alias convention, routing, rollback, and smoke steps. |
+| `docs/deployment/branch-protection.md` | Required checks, review requirement, direct-push restriction, and Cloudflare production branch policy. |
+| `docs/deployment/campus-network-checklist.md` | School IT allowlist, PC/iPad browser checks, custom domain/TLS checks. |
+| `docs/deployment/smoke-checks.md` | Production and preview smoke checks, including static-vs-Worker route checks. |
+| `.github/workflows/deploy-preview-smoke.yml` | Optional smoke check against preview URLs after Workers Build. |
 
 Do not add PWA service worker implementation in the first hosting PR unless the user explicitly expands scope.
 
@@ -510,13 +538,13 @@ Do not add PWA service worker implementation in the first hosting PR unless the 
 
 | Task ID | Title | Primary Files | Depends On |
 |---|---|---|---|
-| EO-DEPLOY-T01 | Workers Static Assets decision record and runbook | `docs/deployment/workers-static-assets-runbook.md` | User hosting decision |
-| EO-DEPLOY-T02 | Existing CI gate and Node parity | `.github/workflows/ci.yml`, `frontend/.node-version` | EO-DEPLOY-T01 |
-| EO-DEPLOY-T03 | Branch protection and required checks | `docs/deployment/branch-protection.md`, GitHub repository settings | EO-DEPLOY-T02 |
-| EO-DEPLOY-T04 | Wrangler static assets and API routing config | `package.json`, `package-lock.json`, `wrangler.jsonc`, `workers/api/src/index.ts`, `workers/api/src/routes/health.ts` | EO-DEPLOY-T02 |
-| EO-DEPLOY-T05 | Typed public runtime config | `frontend/src/config/runtimeConfig.ts`, `frontend/src/config/__tests__/runtimeConfig.test.ts` | EO-DEPLOY-T04 |
-| EO-DEPLOY-T06 | Workers Builds environment setup | Cloudflare dashboard/CLI settings, build/deploy commands, preview aliases, no committed secrets | EO-DEPLOY-T03, EO-DEPLOY-T04 |
-| EO-DEPLOY-T07 | Staging/production smoke checks | `.github/workflows/deploy-smoke.yml`, `docs/deployment/smoke-checks.md` | EO-DEPLOY-T06 |
+| EO-DEPLOY-T01 | Cloudflare Workers decision record and runbook | `docs/deployment/cloudflare-workers-runbook.md` | User hosting decision |
+| EO-DEPLOY-T02 | Existing CI gate and Node/action parity | `.github/workflows/ci.yml`, `frontend/.node-version` | EO-DEPLOY-T01 |
+| EO-DEPLOY-T03 | Workers Static Assets config | `frontend/wrangler.jsonc`, optional `frontend/src/worker/index.ts` | EO-DEPLOY-T02 |
+| EO-DEPLOY-T04 | Branch protection and required checks | `docs/deployment/branch-protection.md`, GitHub repository settings | EO-DEPLOY-T02 |
+| EO-DEPLOY-T05 | Typed public runtime config | `frontend/src/config/runtimeConfig.ts`, `frontend/src/config/__tests__/runtimeConfig.test.ts` | EO-DEPLOY-T02 |
+| EO-DEPLOY-T06 | Workers Builds environment setup | Cloudflare dashboard/CLI settings, no committed secrets | EO-DEPLOY-T03, EO-DEPLOY-T04 |
+| EO-DEPLOY-T07 | Staging/production smoke checks | `.github/workflows/deploy-preview-smoke.yml`, `docs/deployment/smoke-checks.md` | EO-DEPLOY-T06 |
 | EO-DEPLOY-T08 | Campus network readiness checklist | `docs/deployment/campus-network-checklist.md` | EO-DEPLOY-T06 |
 | EO-DEPLOY-T09 | Rollback drill | `docs/deployment/rollback-drill.md` | EO-DEPLOY-T07 |
 
@@ -527,25 +555,28 @@ Do not add PWA service worker implementation in the first hosting PR unless the 
 | Local frontend gate | `cd frontend && npm ci && npm run lint && npx tsc --noEmit && npx vitest run && npm run build` | All pass; `dist/` is produced. |
 | Node parity | `cat frontend/.node-version` and inspect GitHub Actions + Workers Builds logs | All use Node 22.16.0. |
 | Required check | Open PR branch protection status | Merge is blocked until `Frontend CI / build-and-test` passes. |
-| Worker routing | Request `/api/health`, `/assets/<hashed-file>`, and an SPA route | `/api/*` runs Worker API; static assets are asset-first; SPA route falls back to `index.html`. |
-| Preview deploy | Open Workers Preview URL from PR comment/build details | App shell loads; no console errors from missing env; `/api/health` uses preview/staging backend. |
+| Workers config | `cd frontend && npx wrangler deploy --dry-run --env staging` or equivalent validation command | Wrangler reads `wrangler.jsonc`, asset directory, preview setting, and env without schema errors. |
+| Static/API routing | Request hashed asset and `/api/health` in preview | Asset request is served as static asset; `/api/health` invokes Worker. |
+| Preview deploy | Open Workers preview URL from PR comment/check run | App shell loads; no console errors from missing env. |
 | Production deploy | Open custom production URL | HTTPS valid; app loads from custom domain. |
-| API CORS | Browser calls `GET /health` on selected backend | Success from production and staging origins only. |
+| API CORS/same-origin | Browser calls `GET /api/health` or configured API origin | Success from production and staging origins only. |
 | Campus Wi-Fi | PC and iPad open production URL on school network | App loads; API health succeeds. |
-| Rollback | Roll back staging Worker to previous version | Staging returns previous app/API build; local data remains readable; D1 schema still compatible. |
+| Rollback | Roll back staging Worker to previous version | Staging returns previous build/API; local data remains readable. |
 | No secrets | Search committed files for backend tokens | No Worker secret, D1 token, Firebase token, or provider API token in repo. |
 
 ## DISCUSS WITH USER Decision Points
 
-> ⚠️ DISCUSS WITH USER: Is Cloudflare acceptable as the single provider for frontend hosting, backend Worker, D1 database, DNS, TLS, and deployment ownership?
+> ⚠️ DISCUSS WITH USER: Is Cloudflare acceptable as the single provider for frontend static assets, backend Worker, D1 database, DNS, TLS, and deployment ownership?
 
-> ⚠️ DISCUSS WITH USER: Do we accept Cloudflare's current Workers Static Assets guidance for new projects, or is there a user/business reason to override it and use Pages anyway?
+> ⚠️ DISCUSS WITH USER: Within Cloudflare, do we accept Workers Static Assets as the default because Cloudflare recommends Workers for new static/SPAs/full-stack apps, or is there an explicit reason to override to Pages?
+
+> ⚠️ DISCUSS WITH USER: If Workers Static Assets is selected, should production use same-origin `/api/*` routing or a separate `api.easyorder.example` domain?
 
 > ⚠️ DISCUSS WITH USER: Will the production app use a custom domain owned by the school/operator, and can that domain or subdomain be delegated to Cloudflare DNS?
 
 > ⚠️ DISCUSS WITH USER: Can we enforce `main` branch protection before production auto-deploy, including required PR review and the `Frontend CI / build-and-test` status check?
 
-> ⚠️ DISCUSS WITH USER: Should Workers Builds deploy production automatically from `main`, or should `main` only upload a version and require manual dashboard/Wrangler promotion?
+> ⚠️ DISCUSS WITH USER: Should production deploy automatically on every `main` merge, or require a manual approval step after merge?
 
 > ⚠️ DISCUSS WITH USER: Do we need a long-lived staging URL, or are PR preview deployments enough before production?
 
@@ -555,10 +586,10 @@ Do not add PWA service worker implementation in the first hosting PR unless the 
 
 > ⚠️ DISCUSS WITH USER: Is PWA offline cold-start required for launch, or is it acceptable that offline support initially requires the app to have been loaded before the network outage?
 
-> ⚠️ DISCUSS WITH USER: Should Workers preview URLs point to a fake/staging D1/backend only, or can they ever point at production read-only data for user acceptance testing?
+> ⚠️ DISCUSS WITH USER: Should preview deployments point to a fake/staging backend only, or can they ever point at production read-only data for user acceptance testing?
 
 ## Final Position
 
-For the current architecture and the previous free-backend recommendation, use **Cloudflare Workers Static Assets** as the production frontend host. This follows Cloudflare's current new-project guidance and keeps static assets, `/api/*` Worker routes, D1 bindings, DNS, TLS, preview URLs, and rollback in one Workers deployment model.
+For the current architecture and the previous free-backend recommendation, use **Cloudflare Workers Static Assets** as the production frontend host with Worker API + D1. This follows Cloudflare's current new-project guidance and keeps frontend assets, API, D1 bindings, DNS/TLS, preview URLs, deployment, rollback, and observability in one Cloudflare Worker model.
 
-Use **Cloudflare Pages** only as an explicit override/fallback if the user rejects Workers Static Assets despite Cloudflare's guidance. If the user chooses Firebase Spark as the backend, use **Firebase Hosting** instead. Otherwise, treat Vercel, Netlify, and GitHub Pages as fallback/demo options rather than the production POS hosting path.
+Use **Cloudflare Pages** only as an explicit override if the user prioritizes Pages' dedicated static-site dashboard or has an existing Pages process. If the user chooses Firebase Spark as the backend, use **Firebase Hosting** instead. Otherwise, treat Vercel, Netlify, and GitHub Pages as fallback/demo options rather than the production POS hosting path.
