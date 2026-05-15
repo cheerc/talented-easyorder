@@ -168,6 +168,7 @@ export function ReportScreen({ todayMenu, viewDate, studentFilter, onClearStuden
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
         <input
           className="adm-input"
+          aria-label="搜尋學員編號或姓名"
           value={studentSearch}
           onChange={e => setStudentSearch(e.target.value)}
           placeholder="搜尋學員編號或姓名…"
