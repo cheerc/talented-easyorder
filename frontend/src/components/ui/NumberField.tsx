@@ -1,7 +1,6 @@
 import React from 'react';
 import { Field } from './Field';
 import './NumberField.css';
-import './NumberField.css';
 
 interface NumberFieldProps {
   label: string;
@@ -44,7 +43,7 @@ export const NumberField = React.memo(function NumberField({
           onChange={e => onChange?.(Number(e.target.value))}
           placeholder={placeholder}
           disabled={disabled}
-          aria-label={label}
+          aria-describedby={error ? `${inputId}-error` : help ? `${inputId}-help` : undefined}
         />
         {suffix && <span className="num-suffix">{suffix}</span>}
       </div>

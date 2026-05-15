@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import './Modal.css';
 
 interface ModalProps {
@@ -9,6 +9,8 @@ interface ModalProps {
   className?: string;
 }
 
+const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export const Modal = React.memo(function Modal({
   open,
   title,
@@ -16,12 +18,35 @@ export const Modal = React.memo(function Modal({
   children,
   className = '',
 }: ModalProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!open) return;
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         onClose();
+        return;
+      }
+      if (e.key === 'Tab') {
+        const panel = panelRef.current;
+        if (!panel) return;
+        const focusable = panel.querySelectorAll<HTMLElement>(FOCUSABLE);
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
       }
     };
     window.addEventListener('keydown', onKey);
@@ -33,6 +58,7 @@ export const Modal = React.memo(function Modal({
   return (
     <div className="modal-overlay" data-testid="modal-backdrop" onClick={onClose}>
       <div
+        ref={panelRef}
         className={['modal-panel', className].filter(Boolean).join(' ')}
         role="dialog"
         aria-modal="true"
