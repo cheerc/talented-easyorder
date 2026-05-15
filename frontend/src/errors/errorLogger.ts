@@ -28,7 +28,7 @@ function sanitizeContext(
 
 function sanitizeMessage(message: string): string {
   return message
-    .replace(/學生[：:]\s*\S+/g, '學生: [REDACTED]')
+    .replace(/學生[：:]\s*\S+(?:\s+\S+)*/g, '學生: [REDACTED]')
     .replace(/餘額[：:]\s*-?\d+/g, '餘額: [REDACTED]')
     .replace(/金額[：:]\s*-?\d+/g, '金額: [REDACTED]');
 }
@@ -79,4 +79,8 @@ export function installGlobalErrorListeners() {
       stack: event.reason?.stack,
     });
   });
+}
+
+export function installErrorListeners() {
+  installGlobalErrorListeners();
 }

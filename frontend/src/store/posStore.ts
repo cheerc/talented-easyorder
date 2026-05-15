@@ -459,10 +459,20 @@ export const usePosStore = create<PosState>()(
       version: 2,
       onRehydrateStorage: () => {
         return (state, error) => {
-          if (error || !state) return;
+          if (error || !state) {
+            console.error('[posStore] rehydration failed:', error);
+            return;
+          }
           const result = validatePersistedState(state);
           if (!result.ok) {
             console.error('[posStore] rehydration validation failed:', result.reason);
+            Object.assign(state, {
+              students: INITIAL_STUDENTS,
+              transactions: INITIAL_TODAY_TX,
+              vendors: VENDORS,
+              todayMenu: INITIAL_TODAY_MENU,
+              ...defaultState,
+            });
           }
         };
       },
