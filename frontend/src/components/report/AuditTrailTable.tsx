@@ -27,11 +27,17 @@ function eventTypeClass(t: LedgerAuditEvent['eventType']) {
 }
 
 function beforeAfterSummary(before: Record<string, unknown> | null, after: Record<string, unknown> | null): string {
-  if (!before || !after) return '-';
+  if (!before) return after ? '(新建)' : '-';
+  if (!after) return '(已刪除)';
   const changes: string[] = [];
-  for (const key of Object.keys(after)) {
-    if (before[key] !== after[key]) {
-      changes.push(`${key}: ${before[key]} → ${after[key]}`);
+  const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  for (const key of allKeys) {
+    const bv = before[key];
+    const av = after[key];
+    if (bv !== av) {
+      if (bv === undefined) changes.push(`${key}: (無) → ${av}`);
+      else if (av === undefined) changes.push(`${key}: ${bv} → (無)`);
+      else changes.push(`${key}: ${bv} → ${av}`);
     }
   }
   return changes.length > 0 ? changes.join('; ') : '-';
