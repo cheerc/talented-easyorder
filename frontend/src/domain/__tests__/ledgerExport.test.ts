@@ -155,8 +155,9 @@ describe('triggerCsvDownload', () => {
     expect(bytes[0]).toBe(0xEF);
     expect(bytes[1]).toBe(0xBB);
     expect(bytes[2]).toBe(0xBF);
-    const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(buf);
-    expect(text).toBe('﻿col1,col2\nv1,v2');
+    // BOM bytes verified above; TextDecoder strips BOM from decoded text
+    const text = new TextDecoder('utf-8').decode(buf);
+    expect(text).toBe('col1,col2\nv1,v2');
   });
 
   it('triggers click on anchor and revokes URL', () => {

@@ -101,7 +101,7 @@ export function serializeCsv(columns: readonly string[], rows: string[][]): stri
 }
 
 export function triggerCsvDownload(filename: string, csvString: string): void {
-  const BOM = '﻿';
+  const BOM = '\uFEFF';
   const blob = new Blob([BOM + csvString], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');

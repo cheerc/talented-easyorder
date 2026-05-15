@@ -49,7 +49,6 @@ export function ReportScreen({ todayMenu, viewDate, studentFilter, onClearStuden
     closeBusinessDate,
     reopenBusinessDate,
     transactions,
-    dailySettlements,
   } = store;
 
   const range = useMemo(() => createLedgerDateRange(
@@ -160,9 +159,7 @@ export function ReportScreen({ todayMenu, viewDate, studentFilter, onClearStuden
       <ExportActions
         onExportCsv={() => {
           const txRows = buildTransactionCsvRows(filtered);
-          const settlementRows = buildSettlementCsvRows(dailySettlements);
-          const rows = [...txRows, ...settlementRows];
-          const csv = serializeCsv(TRANSACTION_CSV_COLUMNS, rows);
+          const csv = serializeCsv(TRANSACTION_CSV_COLUMNS, txRows);
           triggerCsvDownload(`easyorder-report-${viewDate}.csv`, csv);
         }}
         onPrint={() => window.print()}
