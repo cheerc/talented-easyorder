@@ -1654,6 +1654,31 @@ input::-webkit-inner-spin-button {
   color: var(--warn);
 }
 
+.pill-ok {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.pill-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.pill-err {
+  background: oklch(96% 0.04 0);
+  color: oklch(48% 0.18 0);
+}
+
+[data-theme="dark"] .pill-err {
+  background: oklch(28% 0.06 0);
+  color: oklch(70% 0.18 0);
+}
+
+[data-theme="warm"] .pill-err {
+  background: oklch(94% 0.04 0);
+  color: oklch(48% 0.16 0);
+}
+
 /* ============ ADMIN ============ */
 .admin {
   display: flex;

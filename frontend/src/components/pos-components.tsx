@@ -25,6 +25,7 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing,
     { id: 'report',  label: '今日帳', hint: 'F2' },
     { id: 'admin',   label: '今日設定', hint: 'F3' },
     { id: 'vendors', label: '供應商', hint: 'F4' },
+    { id: 'history', label: '歷史', hint: 'F5' },
   ];
   return (
     <header className="topbar">

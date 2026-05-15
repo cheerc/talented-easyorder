@@ -6,7 +6,7 @@ import type { StudentAccount } from './domain/student';
 import { countActiveOrdersForStudent } from './domain/ledger';
 
 import { TopBar, SearchBox, CustomerCard, ActionBar, IdleHero, ConfirmBanner, RecentStrip, DuplicateWarningBanner } from './components/pos-components';
-import { ReportScreen, AdminScreen, VendorsScreen } from './components/screens';
+import { ReportScreen, AdminScreen, VendorsScreen, HistoryScreen } from './components/screens';
 import { TweaksPanel, TweakSection, TweakRadio } from './components/tweaks-panel';
 import { ErrorBoundary, AppCrashPage, SectionError } from './components/ErrorBoundary';
 
@@ -218,6 +218,7 @@ export default function App() {
       if (e.key === 'F2') { e.preventDefault(); setTab('report'); return; }
       if (e.key === 'F3') { e.preventDefault(); setTab('admin'); return; }
       if (e.key === 'F4') { e.preventDefault(); setTab('vendors'); return; }
+      if (e.key === 'F5') { e.preventDefault(); setTab('history'); return; }
 
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
         return;
@@ -443,6 +444,11 @@ export default function App() {
       {tab === 'vendors' && (
         <ErrorBoundary fallback={<SectionError name="供應商" />}>
         <VendorsScreen vendors={vendors} setVendors={setVendors} />
+        </ErrorBoundary>
+      )}
+      {tab === 'history' && (
+        <ErrorBoundary fallback={<SectionError name="歷史紀錄" />}>
+        <HistoryScreen />
         </ErrorBoundary>
       )}
 
