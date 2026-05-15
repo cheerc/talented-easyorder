@@ -11,11 +11,14 @@ import { TweaksPanel, TweakSection, TweakRadio } from './components/tweaks-panel
 import { ErrorBoundary, AppCrashPage, SectionError } from './components/ErrorBoundary';
 
 export default function App() {
-  const {
-    students, transactions: allTx, todayMenu, vendors,
-    setTodayMenu, setVendors, resetData,
-    getBusinessDateStatus,
-  } = usePosStore();
+  const students = usePosStore((s) => s.students);
+  const allTx = usePosStore((s) => s.transactions);
+  const todayMenu = usePosStore((s) => s.todayMenu);
+  const vendors = usePosStore((s) => s.vendors);
+  const setTodayMenu = usePosStore((s) => s.setTodayMenu);
+  const setVendors = usePosStore((s) => s.setVendors);
+  const resetData = usePosStore((s) => s.resetData);
+  const getBusinessDateStatus = usePosStore((s) => s.getBusinessDateStatus);
 
   const systemDate = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [viewDate, setViewDate] = useState(systemDate);
