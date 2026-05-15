@@ -11,6 +11,12 @@ import {
   groupLedgerRowsByStudent,
   type LedgerDateRangeKind,
 } from '../domain/ledgerReport';
+import {
+  TRANSACTION_CSV_COLUMNS,
+  buildTransactionCsvRows,
+  serializeCsv,
+  triggerCsvDownload,
+} from '../domain/ledgerExport';
 import { ReportDateRangeControls } from './report/ReportDateRangeControls';
 import { ReportSummaryStats } from './report/ReportSummaryStats';
 import { LedgerGroupedTable } from './report/LedgerGroupedTable';
@@ -151,7 +157,11 @@ export function ReportScreen({ todayMenu, viewDate, studentFilter, onClearStuden
       />
 
       <ExportActions
-        onExportCsv={() => {}}
+        onExportCsv={() => {
+          const txRows = buildTransactionCsvRows(filtered);
+          const csv = serializeCsv(TRANSACTION_CSV_COLUMNS, txRows);
+          triggerCsvDownload(`easyorder-report-${viewDate}.csv`, csv);
+        }}
         onPrint={() => window.print()}
       />
 
