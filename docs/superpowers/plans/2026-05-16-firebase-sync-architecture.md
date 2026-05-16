@@ -4,7 +4,7 @@
 
 **Goal:** Replace the Apps Script + Google Sheets sync plan with a Firebase Firestore + Vercel architecture that supports Google Workspace sign-in, realtime multi-device POS sync, offline lunch-service continuity, auditable accounting rows, and Firebase/Vercel operations aligned with talented-payroll.
 
-**Architecture:** Use an independent Firebase project for EasyOrder, Firebase Auth with Google Workspace identities, Firestore as the realtime source of truth, and Vercel as the static SPA host. Firestore `transactions` and `daily_settlements` remain append/idempotency-centered accounting records; mutable `students.currentBalance` is a projection maintained by online Firestore transactions or offline-safe queued writes. Because Firestore web transactions fail offline, this plan explicitly separates the online `runTransaction` path from the offline write-queue path and keeps operator-visible sync status in the UI.
+**Architecture:** Use an independent Firebase project for EasyOrder, Firebase Auth with Google Workspace identities, Firestore as the realtime source of truth, and Vercel as the static SPA host. Firestore `transactions` and `daily_settlements` remain append/idempotency-centered accounting records; mutable `students.currentBalance` is a transaction-linked projection, and Security Rules reject independent balance edits. Because Firestore web transactions fail offline, this plan explicitly separates the online `runTransaction` path from the offline write-queue path and keeps operator-visible sync status in the UI.
 
 **Tech Stack:** Vite 8, React 19, TypeScript 6, Zustand 5, Firebase JS SDK, Firebase Auth, Firestore, Firestore Security Rules, Firebase Emulator Suite, Vitest 4, Testing Library, Vercel SPA hosting.
 
@@ -118,6 +118,7 @@ export interface StudentDoc {
   updatedAt: Timestamp;
   updatedBy: string;
   revision: number;
+  lastTransactionId: string | null;
 }
 ```
 
@@ -126,6 +127,7 @@ Rules:
 - `id` equals document ID.
 - `status: 'inactive'` hides the student from normal POS search but keeps historical transactions readable.
 - `openingBalance` is the initial imported balance. `currentBalance` is a projection and must match acknowledged transactions after reconciliation.
+- Client writes may not change `currentBalance`, `revision`, or `lastTransactionId` unless the same Firestore transaction/batch also creates the matching `transactions/{lastTransactionId}` document. Firestore Security Rules enforce this with `getAfter()`.
 - Direct hard delete is forbidden in the app and in Firestore rules.
 
 ### `transactions/{transactionId}`
@@ -270,13 +272,14 @@ Rules:
 |---|---|---|
 | `frontend/package.json` | Modify | Add `firebase` dependency and test tooling for rules if emulator tests are included in this PR series. |
 | `frontend/.env.example` | Create | Document `VITE_FIREBASE_*`, `VITE_FIREBASE_AUTH_DOMAIN`, and emulator toggles. |
+| `vercel.json` | Create | Production security headers and SPA routing for Firebase Auth/Firestore on Vercel. |
 | `firebase.json` | Create | Configure Firestore rules and emulator ports. |
-| `firestore.rules` | Create | Enforce Google Workspace auth, operator whitelist, append-only ledger writes, and no student hard delete. |
+| `firestore.rules` | Create | Enforce Google Workspace auth, operator whitelist, transaction-linked student balance projection updates, append-only ledger writes, and no student hard delete. |
 | `firestore.indexes.json` | Create | Indexes for business date, student, status, and created time queries. |
-| `frontend/src/firebase/firebaseApp.ts` | Create | Initialize Firebase app, Auth, Firestore persistent local cache, and emulator connection. |
+| `frontend/src/firebase/firebaseApp.ts` | Create | Singleton Firebase app/Auth/Firestore initialization, config guard, persistent local cache, and emulator connection. |
 | `frontend/src/firebase/firestorePaths.ts` | Create | Central path builders for every collection/doc/subcollection. |
 | `frontend/src/firebase/firestoreSchema.ts` | Create | TypeScript Firestore document interfaces and converters. |
-| `frontend/src/firebase/authService.ts` | Create | Google sign-in/out, auth-state listener, Workspace-domain check, operator whitelist listener. |
+| `frontend/src/firebase/authService.ts` | Create | Google sign-in/out, forced authorization verification, Workspace-domain check, operator whitelist listener. |
 | `frontend/src/firebase/syncStatus.ts` | Create | Convert Firestore metadata and local commit state into `green/yellow/red` UI state. |
 | `frontend/src/firebase/ledgerRepository.ts` | Create | Commit order/payment/refund/correction/void rows through online transaction or offline-safe batch path. |
 | `frontend/src/firebase/studentRepository.ts` | Create | Add/disable students and import initial roster into Firestore. |
@@ -412,7 +415,7 @@ Create `frontend/src/firebase/__tests__/firebaseApp.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { readFirebaseConfig } from '../firebaseApp';
+import { getFirebaseConfigState, isFirebaseConfigured, readFirebaseConfig } from '../firebaseApp';
 
 describe('readFirebaseConfig', () => {
   it('reads Vite Firebase env vars into a Firebase app config', () => {
@@ -438,6 +441,14 @@ describe('readFirebaseConfig', () => {
   it('fails fast when a required env var is missing', () => {
     expect(() => readFirebaseConfig({})).toThrow('Missing Firebase env var: VITE_FIREBASE_API_KEY');
   });
+
+  it('exposes config state without initializing Firebase at module load', () => {
+    expect(isFirebaseConfigured({})).toBe(false);
+    expect(getFirebaseConfigState({})).toEqual({
+      configured: false,
+      error: 'Missing Firebase env var: VITE_FIREBASE_API_KEY',
+    });
+  });
 });
 ```
 
@@ -455,13 +466,15 @@ Expected: FAIL because `frontend/src/firebase/firebaseApp.ts` does not exist.
 Create `frontend/src/firebase/firebaseApp.ts`:
 
 ```ts
-import { initializeApp, type FirebaseOptions } from 'firebase/app';
+import { getApp, getApps, initializeApp, type FirebaseApp, type FirebaseOptions } from 'firebase/app';
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
 import {
   connectFirestoreEmulator,
+  getFirestore,
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  type Firestore,
 } from 'firebase/firestore';
 
 export interface FirebaseEnv {
@@ -483,6 +496,10 @@ function required(env: FirebaseEnv, key: keyof FirebaseEnv): string {
   return value;
 }
 
+export type FirebaseConfigState =
+  | { configured: true; config: FirebaseOptions }
+  | { configured: false; error: string };
+
 export function readFirebaseConfig(env: FirebaseEnv): FirebaseOptions {
   return {
     apiKey: required(env, 'VITE_FIREBASE_API_KEY'),
@@ -494,24 +511,70 @@ export function readFirebaseConfig(env: FirebaseEnv): FirebaseOptions {
   };
 }
 
-const firebaseConfig = readFirebaseConfig(import.meta.env as FirebaseEnv);
-
-export const firebaseApp = initializeApp(firebaseConfig);
-export const firebaseAuth = getAuth(firebaseApp);
-export const firestoreDb = initializeFirestore(firebaseApp, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-});
-
-if ((import.meta.env as FirebaseEnv).VITE_FIREBASE_USE_EMULATOR === 'true') {
-  const host = (import.meta.env as FirebaseEnv).VITE_FIRESTORE_EMULATOR_HOST ?? '127.0.0.1';
-  const port = Number((import.meta.env as FirebaseEnv).VITE_FIRESTORE_EMULATOR_PORT ?? '8080');
-  connectFirestoreEmulator(firestoreDb, host, port);
-  connectAuthEmulator(
-    firebaseAuth,
-    (import.meta.env as FirebaseEnv).VITE_FIREBASE_AUTH_EMULATOR_URL ?? 'http://127.0.0.1:9099',
-    { disableWarnings: true },
-  );
+export function getFirebaseConfigState(env: FirebaseEnv): FirebaseConfigState {
+  try {
+    return { configured: true, config: readFirebaseConfig(env) };
+  } catch (error) {
+    return {
+      configured: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
+
+export function isFirebaseConfigured(env: FirebaseEnv = import.meta.env as FirebaseEnv): boolean {
+  return getFirebaseConfigState(env).configured;
+}
+
+export interface FirebaseServices {
+  app: FirebaseApp;
+  auth: ReturnType<typeof getAuth>;
+  db: Firestore;
+}
+
+let cachedServices: FirebaseServices | null = null;
+let emulatorConnected = false;
+
+function initializeFirestoreOnce(app: FirebaseApp): Firestore {
+  try {
+    return initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+  } catch {
+    return getFirestore(app);
+  }
+}
+
+export function ensureFirebaseInitialized(env: FirebaseEnv = import.meta.env as FirebaseEnv): FirebaseServices {
+  if (cachedServices) return cachedServices;
+
+  const state = getFirebaseConfigState(env);
+  if (!state.configured) {
+    throw new Error(state.error);
+  }
+
+  const app = getApps().length > 0 ? getApp() : initializeApp(state.config);
+  const auth = getAuth(app);
+  const db = initializeFirestoreOnce(app);
+
+  if (env.VITE_FIREBASE_USE_EMULATOR === 'true' && !emulatorConnected) {
+    const host = env.VITE_FIRESTORE_EMULATOR_HOST ?? '127.0.0.1';
+    const port = Number(env.VITE_FIRESTORE_EMULATOR_PORT ?? '8080');
+    connectFirestoreEmulator(db, host, port);
+    connectAuthEmulator(
+      auth,
+      env.VITE_FIREBASE_AUTH_EMULATOR_URL ?? 'http://127.0.0.1:9099',
+      { disableWarnings: true },
+    );
+    emulatorConnected = true;
+  }
+
+  cachedServices = { app, auth, db };
+  return cachedServices;
+}
+
+export const firebaseConfigState = getFirebaseConfigState(import.meta.env as FirebaseEnv);
+export const isConfigured = firebaseConfigState.configured;
 ```
 
 - [ ] **Step 4: Run the test and build**
@@ -546,7 +609,7 @@ Create `frontend/src/firebase/__tests__/authService.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { isAllowedWorkspaceEmail, toOperatorProfile } from '../authService';
+import { isAllowedWorkspaceEmail, shouldForceSignOut, toOperatorProfile } from '../authService';
 
 describe('authService', () => {
   it('allows talented.com.tw Workspace email only', () => {
@@ -567,6 +630,13 @@ describe('authService', () => {
       displayName: 'Counter One',
     });
   });
+
+  it('forces sign-out for domain and whitelist failures', () => {
+    expect(shouldForceSignOut({ ok: false, reason: 'wrong_domain' })).toBe(true);
+    expect(shouldForceSignOut({ ok: false, reason: 'not_whitelisted' })).toBe(true);
+    expect(shouldForceSignOut({ ok: false, reason: 'inactive' })).toBe(true);
+    expect(shouldForceSignOut({ ok: false, reason: 'signed_out' })).toBe(false);
+  });
 });
 ```
 
@@ -585,7 +655,7 @@ Create `frontend/src/firebase/authService.ts`:
 
 ```ts
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type Auth, type User } from 'firebase/auth';
-import { doc, onSnapshot, type Firestore } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, type Firestore } from 'firebase/firestore';
 import { operatorPath } from './firestorePaths';
 
 export interface OperatorProfile {
@@ -616,10 +686,36 @@ export function toOperatorProfile(user: Pick<User, 'uid' | 'email' | 'displayNam
   };
 }
 
-export async function signInWithGoogle(auth: Auth): Promise<void> {
+export function shouldForceSignOut(access: OperatorAccess): boolean {
+  return !access.ok && access.reason !== 'signed_out';
+}
+
+export async function getOperatorAccess(db: Firestore, user: User): Promise<OperatorAccess> {
+  const profile = toOperatorProfile(user);
+  if (!isAllowedWorkspaceEmail(profile.email)) {
+    return { ok: false, reason: 'wrong_domain', profile };
+  }
+
+  const snapshot = await getDoc(doc(db, operatorPath(profile.uid)));
+  const data = snapshot.data() as { active?: boolean; role?: 'counter' | 'admin' } | undefined;
+  if (!data) return { ok: false, reason: 'not_whitelisted', profile };
+  if (!data.active) return { ok: false, reason: 'inactive', profile };
+  return { ok: true, profile, role: data.role ?? 'counter' };
+}
+
+export async function verifyUserAuthorization(auth: Auth, db: Firestore, user: User): Promise<OperatorAccess> {
+  const access = await getOperatorAccess(db, user);
+  if (shouldForceSignOut(access)) {
+    await signOut(auth);
+  }
+  return access;
+}
+
+export async function signInWithGoogle(auth: Auth, db: Firestore): Promise<OperatorAccess> {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ hd: 'talented.com.tw', prompt: 'select_account' });
-  await signInWithPopup(auth, provider);
+  const credential = await signInWithPopup(auth, provider);
+  return verifyUserAuthorization(auth, db, credential.user);
 }
 
 export function signOutOperator(auth: Auth): Promise<void> {
@@ -632,7 +728,7 @@ export function subscribeOperatorAccess(
   onAccess: (access: OperatorAccess) => void,
 ): () => void {
   let unsubscribeOperator: (() => void) | null = null;
-  const unsubscribeAuth = onAuthStateChanged(auth, user => {
+  const unsubscribeAuth = onAuthStateChanged(auth, async user => {
     unsubscribeOperator?.();
     unsubscribeOperator = null;
 
@@ -644,6 +740,7 @@ export function subscribeOperatorAccess(
     const profile = toOperatorProfile(user);
     if (!isAllowedWorkspaceEmail(profile.email)) {
       onAccess({ ok: false, reason: 'wrong_domain', profile });
+      await signOut(auth);
       return;
     }
 
@@ -651,10 +748,12 @@ export function subscribeOperatorAccess(
       const data = snapshot.data() as { active?: boolean; role?: 'counter' | 'admin' } | undefined;
       if (!data) {
         onAccess({ ok: false, reason: 'not_whitelisted', profile });
+        void signOut(auth);
         return;
       }
       if (!data.active) {
         onAccess({ ok: false, reason: 'inactive', profile });
+        void signOut(auth);
         return;
       }
       onAccess({ ok: true, profile, role: data.role ?? 'counter' });
@@ -675,10 +774,12 @@ Create `frontend/src/auth/AuthGate.tsx`:
 ```tsx
 import type { ReactNode } from 'react';
 import type { Auth } from 'firebase/auth';
+import type { Firestore } from 'firebase/firestore';
 import { signInWithGoogle, signOutOperator, type OperatorAccess } from '../firebase/authService';
 
-export function AuthGate({ auth, access, children }: {
+export function AuthGate({ auth, db, access, children }: {
   auth: Auth;
+  db: Firestore;
   access: OperatorAccess;
   children: ReactNode;
 }) {
@@ -690,7 +791,7 @@ export function AuthGate({ auth, access, children }: {
         {access.reason === 'wrong_domain' && <p>此帳號不是 @talented.com.tw，請切換公司帳號。</p>}
         {access.reason === 'not_whitelisted' && <p>此帳號尚未加入 EasyOrder 操作員名單。</p>}
         {access.reason === 'inactive' && <p>此帳號已停用，請聯絡管理員。</p>}
-        <button type="button" onClick={() => void signInWithGoogle(auth)}>使用 Google 登入</button>
+        <button type="button" onClick={() => void signInWithGoogle(auth, db)}>使用 Google 登入</button>
       </main>
     );
   }
@@ -900,6 +1001,44 @@ service cloud.firestore {
       return request.resource.data.operatorId == request.auth.uid;
     }
 
+    function affectedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function createsMatchingTransaction(studentId) {
+      let txId = request.resource.data.lastTransactionId;
+      let tx = getAfter(/databases/$(database)/documents/transactions/$(txId));
+      return txId is string
+        && tx.data.id == txId
+        && tx.data.studentId == studentId
+        && tx.data.operatorId == request.auth.uid
+        && tx.data.amount is number;
+    }
+
+    function transactionProjectionUpdate(studentId) {
+      let txId = request.resource.data.lastTransactionId;
+      let tx = getAfter(/databases/$(database)/documents/transactions/$(txId));
+      return affectedKeys().hasOnly(['currentBalance', 'revision', 'updatedAt', 'updatedBy', 'lastTransactionId'])
+        && createsMatchingTransaction(studentId)
+        && request.resource.data.currentBalance == resource.data.currentBalance + tx.data.amount
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+
+    function rosterOnlyStudentUpdate() {
+      return affectedKeys().hasOnly([
+        'displayName',
+        'aliases',
+        'className',
+        'groupName',
+        'status',
+        'updatedAt',
+        'updatedBy'
+      ])
+      && request.resource.data.updatedBy == request.auth.uid
+      && request.resource.data.status in ['active', 'inactive'];
+    }
+
     match /operators/{uid} {
       allow get: if activeOperator() && (uid == request.auth.uid || adminOperator());
       allow list: if adminOperator();
@@ -915,11 +1054,16 @@ service cloud.firestore {
       allow create: if activeOperator()
         && request.resource.data.id == studentId
         && request.resource.data.updatedBy == request.auth.uid
-        && request.resource.data.status in ['active', 'inactive'];
+        && request.resource.data.status in ['active', 'inactive']
+        && request.resource.data.currentBalance == request.resource.data.openingBalance
+        && request.resource.data.revision == 1
+        && request.resource.data.lastTransactionId == null;
       allow update: if activeOperator()
         && request.resource.data.id == resource.data.id
-        && request.resource.data.updatedBy == request.auth.uid
-        && request.resource.data.status in ['active', 'inactive'];
+        && (
+          rosterOnlyStudentUpdate()
+          || transactionProjectionUpdate(studentId)
+        );
       allow delete: if false;
     }
 
@@ -986,7 +1130,7 @@ import {
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
-import { deleteDoc, doc, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 
 let env: RulesTestEnvironment;
 
@@ -1002,6 +1146,27 @@ async function seedOperator(uid: string, email: string, role: 'counter' | 'admin
       active,
       createdAt: new Date('2026-05-16T08:00:00.000Z'),
       updatedAt: new Date('2026-05-16T08:00:00.000Z'),
+    });
+  });
+}
+
+async function seedStudent(studentId: string, balance = 500) {
+  await env.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), `students/${studentId}`), {
+      id: studentId,
+      displayName: '王小明',
+      aliases: [],
+      className: null,
+      groupName: null,
+      openingBalance: balance,
+      currentBalance: balance,
+      status: 'active',
+      createdAt: new Date('2026-05-16T08:00:00.000Z'),
+      createdBy: 'seed',
+      updatedAt: new Date('2026-05-16T08:00:00.000Z'),
+      updatedBy: 'seed',
+      revision: 1,
+      lastTransactionId: null,
     });
   });
 }
@@ -1074,6 +1239,59 @@ describe('firestore.rules required cases', () => {
 
     await assertFails(deleteDoc(doc(db, 'students/015')));
     await assertFails(deleteDoc(doc(db, 'transactions/tx-1')));
+  });
+
+  it('rejects direct student balance changes without a matching transaction in the same write', async () => {
+    await seedOperator('uid-counter', 'counter@talented.com.tw');
+    await seedStudent('015', 500);
+    const db = authedDb('uid-counter', 'counter@talented.com.tw');
+
+    await assertFails(updateDoc(doc(db, 'students/015'), {
+      currentBalance: 999,
+      revision: 2,
+      updatedAt: new Date('2026-05-16T08:01:00.000Z'),
+      updatedBy: 'uid-counter',
+      lastTransactionId: 'tx-missing',
+    }));
+  });
+
+  it('allows student balance projection only when the same batch creates the matching transaction', async () => {
+    await seedOperator('uid-counter', 'counter@talented.com.tw');
+    await seedStudent('015', 500);
+    const db = authedDb('uid-counter', 'counter@talented.com.tw');
+    const batch = writeBatch(db);
+
+    batch.set(doc(db, 'transactions/tx-2'), {
+      id: 'tx-2',
+      studentId: '015',
+      studentNameSnapshot: '王小明',
+      type: 'payment',
+      amount: 100,
+      balanceBefore: 500,
+      balanceAfter: 600,
+      clientBalanceAfterPreview: 600,
+      menuNameSnapshot: '',
+      price: 0,
+      paidAmount: 100,
+      operatorId: 'uid-counter',
+      operatorEmail: 'counter@talented.com.tw',
+      deviceId: 'pc-1',
+      businessDate: '2026-05-16',
+      sourceDevice: 'pc',
+      note: '補錢',
+      status: 'pending',
+      createdAt: new Date('2026-05-16T08:01:00.000Z'),
+      committedAt: null,
+    });
+    batch.update(doc(db, 'students/015'), {
+      currentBalance: 600,
+      revision: 2,
+      updatedAt: new Date('2026-05-16T08:01:00.000Z'),
+      updatedBy: 'uid-counter',
+      lastTransactionId: 'tx-2',
+    });
+
+    await assertSucceeds(batch.commit());
   });
 
   it('rejects transaction create when operatorId does not match auth uid', async () => {
@@ -1353,6 +1571,7 @@ export async function commitLedgerOnline(db: Firestore, input: CommitLedgerInput
       revision: increment(1),
       updatedAt: serverTimestamp(),
       updatedBy: input.operatorId,
+      lastTransactionId: input.id,
     });
     return 'accepted';
   });
@@ -1376,13 +1595,14 @@ export async function commitLedgerOfflineBatch(db: Firestore, input: CommitLedge
     revision: increment(1),
     updatedAt: serverTimestamp(),
     updatedBy: input.operatorId,
+    lastTransactionId: input.id,
   });
   await batch.commit();
   return 'queued';
 }
 ```
 
-Review note: the offline batch path intentionally avoids `runTransaction`, because Firestore transactions fail offline. It depends on a stable `transactionId` and disabled duplicate UI retry after local commit.
+Review note: the offline batch path intentionally avoids `runTransaction`, because Firestore transactions fail offline. It depends on a stable `transactionId`, disabled duplicate UI retry after local commit, and the Firestore Rules `getAfter()` check that links the student projection update to the matching transaction document in the same batch.
 
 - [ ] **Step 3: Wire POS store commit path**
 
@@ -1454,6 +1674,7 @@ describe('studentRepository', () => {
       currentBalance: 500,
       status: 'active',
       revision: 1,
+      lastTransactionId: null,
       updatedBy: 'uid-1',
     });
   });
@@ -1488,6 +1709,7 @@ export function buildStudentDoc(input: {
     updatedAt: serverTimestamp(),
     updatedBy: input.operatorId,
     revision: 1,
+    lastTransactionId: null,
   };
 }
 
@@ -1664,12 +1886,42 @@ git commit -m "feat: support Firestore offline closeout"
 
 **Files:**
 
+- Create: `vercel.json`
 - Create: `docs/ops/firebase-vercel-setup.md`
 - Create: `docs/ops/firebase-backup-runbook.md`
 - Modify: `docs/superpowers/plans/2026-05-15-user-decision-checklist.md`
 - Modify: `docs/superpowers/plans/2026-05-15-deployment-hosting-strategy.md`
 
-- [ ] **Step 1: Create Firebase + Vercel setup doc**
+- [ ] **Step 1: Add Vercel security headers and SPA routing**
+
+Create `vercel.json`:
+
+```json
+{
+  "rewrites": [
+    { "source": "/((?!assets/|pwa/|manifest.webmanifest|favicon.svg|icons.svg).*)", "destination": "/" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://firebaseinstallations.googleapis.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com; img-src 'self' data: https://www.gstatic.com https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src https://accounts.google.com https://*.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com; frame-ancestors 'none'; upgrade-insecure-requests"
+        },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), payment=()" }
+      ]
+    }
+  ]
+}
+```
+
+Review note: keep `style-src 'unsafe-inline'` only while the current React/CSS stack needs inline styles. Do not add `script-src 'unsafe-eval'` for production. If Firebase Auth or Firestore adds a blocked origin during browser verification, update `connect-src` or `frame-src` with the exact origin and document the console error in the PR.
+
+- [ ] **Step 2: Create Firebase + Vercel setup doc**
 
 Create `docs/ops/firebase-vercel-setup.md`:
 
@@ -1705,7 +1957,7 @@ Output directory: `frontend/dist`
 Phase 1 does not use Vercel Serverless Functions.
 ```
 
-- [ ] **Step 2: Create backup runbook**
+- [ ] **Step 3: Create backup runbook**
 
 Create `docs/ops/firebase-backup-runbook.md`:
 
@@ -1733,14 +1985,14 @@ Create `docs/ops/firebase-backup-runbook.md`:
 3. Do not delete production Firestore data during a drill.
 ```
 
-- [ ] **Step 3: Update decision and deployment docs**
+- [ ] **Step 4: Update decision and deployment docs**
 
 Modify `docs/superpowers/plans/2026-05-15-user-decision-checklist.md` B-series items to reflect Firebase + Vercel instead of Apps Script. Modify `docs/superpowers/plans/2026-05-15-deployment-hosting-strategy.md` so EasyOrder Phase 1 deploys as Vercel static SPA with Firebase env vars.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add docs/ops/firebase-vercel-setup.md docs/ops/firebase-backup-runbook.md docs/superpowers/plans/2026-05-15-user-decision-checklist.md docs/superpowers/plans/2026-05-15-deployment-hosting-strategy.md
+git add vercel.json docs/ops/firebase-vercel-setup.md docs/ops/firebase-backup-runbook.md docs/superpowers/plans/2026-05-15-user-decision-checklist.md docs/superpowers/plans/2026-05-15-deployment-hosting-strategy.md
 git commit -m "docs: add Firebase Vercel operations runbooks"
 ```
 
@@ -1770,6 +2022,9 @@ Create `docs/ops/firebase-sync-verification.md`:
 | Offline closeout | Close attempt is saved, parent summary is promoted after reconnect if no competing attempt exists. |
 | Two close attempts for same business date disagree | Closeout conflict UI blocks final close until operator resolves. |
 | Student disabled after historical transaction | Historical transaction still displays student snapshot. |
+| Direct student balance update without matching transaction | Firestore emulator rules reject the write. |
+| Non-whitelisted or wrong-domain login | App signs the user out and displays the authorization failure. |
+| Vercel production response | Includes CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, and Permissions-Policy headers. |
 | Vercel production env missing Firebase key | Build or runtime config fails fast with explicit missing env var message. |
 ```
 
@@ -1805,7 +2060,8 @@ git commit -m "test: document Firebase sync verification matrix"
 2. Google provider `hd=talented.com.tw` is a sign-in hint. The app and rules still verify the actual email domain.
 3. Firebase web config values are not secrets. They can be stored in Vercel `VITE_FIREBASE_*` variables and bundled into the app. Firestore rules and Auth enforce access.
 4. Do not store Google OAuth tokens in Zustand, localStorage, IndexedDB, or logs.
-5. If App Check is added after launch, write a separate plan. It is not required for Phase 1 because Firestore Security Rules and Auth are the enforcement layer.
+5. Student balance fields are not free-form client state. Rules must require a matching `transactions/{transactionId}` document in the same batch/transaction before accepting a projection update.
+6. If App Check is added after launch, write a separate plan. It is not required for Phase 1 because Firestore Security Rules and Auth are the enforcement layer.
 
 ## Offline And Conflict Policy
 
@@ -1822,6 +2078,8 @@ git commit -m "test: document Firebase sync verification matrix"
 - New Firebase project config is documented and Vercel env vars are listed.
 - Firebase Auth Google sign-in gates the app and rejects non-`@talented.com.tw` accounts.
 - Firestore Security Rules enforce active operator whitelist and prevent hard deletion of students/transactions.
+- Firestore Security Rules reject direct `students.currentBalance` or `students.revision` updates unless the same write creates the matching transaction document.
+- Unauthorized, wrong-domain, inactive, or non-whitelisted Firebase users are forcibly signed out after verification.
 - Firestore persistent local cache is enabled with multi-tab handling.
 - Realtime `onSnapshot` listeners hydrate students, transactions, daily settlements, and cash adjustments.
 - Sync badge displays `已同步`, `同步中`, `離線待同步`, or `衝突需處理` from Firestore metadata and local conflict state.
@@ -1829,6 +2087,6 @@ git commit -m "test: document Firebase sync verification matrix"
 - Offline order/payment/refund commits visibly remain pending and reuse the same transaction ID on retry.
 - Closeout can be saved offline as a close attempt and promoted online without silent last-write-wins.
 - Student add/disable is implemented through Firestore, with historical transaction snapshots preserved.
-- Vercel deploy uses static SPA output and `VITE_FIREBASE_*` env vars; Phase 1 has no serverless functions.
+- Vercel deploy uses static SPA output, `VITE_FIREBASE_*` env vars, SPA rewrites, and security headers; Phase 1 has no serverless functions.
 - Backup/export runbook identifies counter operator as daily backup owner and director/admin as restore owner.
 - The implementation PRs pass lint, build, unit tests, integration tests, and Firestore emulator rules tests.
