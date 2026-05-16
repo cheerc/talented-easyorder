@@ -6,7 +6,7 @@ import { usePosStore } from '../store/posStore';
 
 describe('pcPosFlow integration — keyboard flow', () => {
   beforeEach(() => {
-    localStorage.clear();
+    window.localStorage.clear();
     usePosStore.getState().resetData();
   });
 
@@ -33,7 +33,7 @@ describe('pcPosFlow integration — keyboard flow', () => {
 
     await waitFor(() => {
       expect(screen.getByText('訂便當')).toBeTruthy();
-      expect(screen.getByText('純繳費 / 儲值')).toBeTruthy();
+      expect(screen.getByText('補錢 / 儲值')).toBeTruthy();
     });
   });
 
@@ -76,5 +76,42 @@ describe('pcPosFlow integration — keyboard flow', () => {
     await waitFor(() => {
       expect(screen.queryByText('✓')).toBeFalsy();
     });
+  });
+
+  it('uses today menu price as the first order quick amount', async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    const input = screen.getByPlaceholderText(/015/);
+    await user.type(input, '015');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(screen.getByText('訂便當')).toBeTruthy();
+    });
+
+    // Quick buttons should show the today menu price (90)
+    const quickButtons = screen.getAllByText('90');
+    expect(quickButtons.length).toBeGreaterThan(0);
+  });
+
+  it('allows changing only the selected order price before commit', async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    const input = screen.getByPlaceholderText(/015/);
+    await user.type(input, '015');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(screen.getByText('訂便當')).toBeTruthy();
+    });
+
+    await user.click(screen.getByRole('button', { name: '改本筆價格' }));
+    await user.clear(screen.getByLabelText('本筆價格'));
+    await user.type(screen.getByLabelText('本筆價格'), '110');
+    await user.type(screen.getByLabelText('品項或原因'), '雞腿便當');
+
+    expect(screen.getByText(/110/)).toBeTruthy();
   });
 });

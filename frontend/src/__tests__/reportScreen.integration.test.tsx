@@ -5,7 +5,7 @@ import { usePosStore } from '../store/posStore';
 import App from '../App';
 
 beforeEach(() => {
-  localStorage.clear();
+  window.localStorage.clear();
   usePosStore.getState().resetData();
   usePosStore.persist.rehydrate();
 });
@@ -36,6 +36,23 @@ describe('reportScreen integration', () => {
     await waitFor(() => {
       // Report shows totals which are always rendered
       expect(screen.getByText('總交易')).toBeTruthy();
+    });
+  });
+
+  it('shows opening cash input and expected drawer cash label', async () => {
+    // Seed store with a cash session so openingCash is available
+    usePosStore.getState().openCashSession({
+      businessDate: new Date().toISOString().split('T')[0],
+      openingCash: 4000,
+      operatorId: 'counter',
+      openedAt: new Date().toISOString(),
+    });
+
+    render(<App />);
+    await userEvent.click(screen.getByText('今日帳'));
+    await waitFor(() => {
+      expect(screen.getByLabelText('開帳金額')).toBeTruthy();
+      expect(screen.getByText('系統應有抽屜現金')).toBeTruthy();
     });
   });
 });

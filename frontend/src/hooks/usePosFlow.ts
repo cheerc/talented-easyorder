@@ -19,6 +19,8 @@ import { usePosStore } from '../store/posStore';
 export interface UsePosFlowArgs {
   businessDate: string;
   isHistorical: boolean;
+  priceOverride: number | null;
+  priceOverrideLabel: string;
 }
 
 export interface UsePosFlowReturn {
@@ -141,8 +143,10 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
     let mealPrice = 0;
     let note = '';
     if (mode === 'order') {
-      mealPrice = todayMenu.price;
-      note = todayMenu.itemName + (paidAmountVal > 0 ? ' (已付)' : '');
+      mealPrice = args.priceOverride ?? todayMenu.price;
+      note = args.priceOverride !== null
+        ? `單筆改價：${args.priceOverrideLabel.trim() || todayMenu.itemName}`
+        : todayMenu.itemName + (paidAmountVal > 0 ? ' (已付)' : '');
     } else if (mode === 'topup') {
       note = '現金儲值';
     } else if (mode === 'cancel') {
@@ -188,7 +192,7 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
     } finally {
       committingRef.current = false;
     }
-  }, [state, students, todayMenu, transactions, commitPosTransactionDraft, args.businessDate]);
+  }, [state, students, todayMenu, transactions, commitPosTransactionDraft, args.businessDate, args.priceOverride, args.priceOverrideLabel]);
 
   const cancelFlow = useCallback(() => {
     dispatch({ type: 'cancel' });

@@ -10,6 +10,8 @@ import { createCorrectionTransaction, createVoidTransaction, createLedgerAuditEv
 import { validateCashClose, createDailySettlement, reopenBusinessDate as reopenSettlement } from '../domain/cashClose';
 import { calculateLedgerTotals, getEffectiveLedgerRows } from '../domain/ledgerReport';
 import type { PosTransactionDraft } from '../domain/posTransaction';
+import type { DailyCashSession } from '../domain/cashSession';
+import { createDailyCashSession } from '../domain/cashSession';
 import { validatePersistedState } from '../storage/posStateValidator';
 import {
   INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS
@@ -56,6 +58,13 @@ interface ReopenBusinessDateInput {
   operatorId: string;
 }
 
+interface OpenCashSessionInput {
+  businessDate: string;
+  openingCash: number;
+  operatorId: string;
+  openedAt: string;
+}
+
 export type BusinessDateStatus = 'open' | 'closed' | 'reopened';
 
 interface PosState {
@@ -66,6 +75,7 @@ interface PosState {
   auditEvents: import('../domain/ledgerAudit').LedgerAuditEvent[];
   dailySettlements: import('../domain/cashClose').DailySettlement[];
   businessDateStatuses: Record<string, BusinessDateStatus>;
+  cashSessions: Record<string, DailyCashSession>;
 
   setTodayMenu: (menu: TodayMenu) => void;
   setVendors: (vendors: Vendor[]) => void;
@@ -83,6 +93,7 @@ interface PosState {
   voidTransaction: (input: LedgerVoidInput) => void;
   hardDeleteLocalDraft: (input: LedgerVoidInput) => void;
   setBusinessDateStatus: (date: string, status: BusinessDateStatus) => void;
+  openCashSession: (input: OpenCashSessionInput) => void;
   closeBusinessDate: (input: CloseBusinessDateInput) => void;
   reopenBusinessDate: (input: ReopenBusinessDateInput) => void;
   getBusinessDateStatus: (businessDate: string) => BusinessDateStatus;
@@ -93,6 +104,7 @@ const defaultState = {
   auditEvents: [] as import('../domain/ledgerAudit').LedgerAuditEvent[],
   dailySettlements: [] as import('../domain/cashClose').DailySettlement[],
   businessDateStatuses: {} as Record<string, BusinessDateStatus>,
+  cashSessions: {} as Record<string, DailyCashSession>,
 };
 
 export const usePosStore = create<PosState>()(
@@ -106,6 +118,24 @@ export const usePosStore = create<PosState>()(
 
       setTodayMenu: (menu) => set({ todayMenu: menu }),
       setVendors: (vendors) => set({ vendors }),
+
+      openCashSession: (input) => {
+        set((state) => {
+          if (state.cashSessions[input.businessDate]) return state;
+
+          return {
+            cashSessions: {
+              ...state.cashSessions,
+              [input.businessDate]: createDailyCashSession({
+                businessDate: input.businessDate,
+                openingCash: input.openingCash,
+                openedBy: input.operatorId,
+                openedAt: input.openedAt,
+              }),
+            },
+          };
+        });
+      },
 
       commitPosTransactionDraft: (draft) => {
         set((state) => {
@@ -408,13 +438,17 @@ export const usePosStore = create<PosState>()(
         const hasFailed = dayTx.some(t => t.syncStatus === 'failed');
         const hasConflict = dayTx.some(t => t.syncStatus === 'conflict');
 
-        const validation = validateCashClose(totals.netCash, countedCash, hasFailed, hasConflict, hasQueued, note);
+        const cashSession = state.cashSessions[businessDate];
+        const openingCash = cashSession?.openingCash ?? 0;
+        const expectedCash = openingCash + totals.netCash;
+
+        const validation = validateCashClose(expectedCash, countedCash, hasFailed, hasConflict, hasQueued, note);
         if (!validation.ok) return;
 
         if (hasQueued && !queuedSettlementAccepted) return;
 
         const now = new Date().toISOString();
-        const settlement = createDailySettlement(businessDate, totals, countedCash, note, operatorId, now, hasQueued);
+        const settlement = createDailySettlement(businessDate, totals, openingCash, countedCash, note, operatorId, now, hasQueued);
 
         set(state => ({
           dailySettlements: [...state.dailySettlements, settlement],

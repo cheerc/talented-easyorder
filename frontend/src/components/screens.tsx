@@ -50,6 +50,10 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
   const closeBusinessDate = usePosStore((s) => s.closeBusinessDate);
   const reopenBusinessDate = usePosStore((s) => s.reopenBusinessDate);
   const dateStatus = usePosStore((s) => s.getBusinessDateStatus(viewDate));
+  const cashSessions = usePosStore((s) => s.cashSessions);
+  const openCashSession = usePosStore((s) => s.openCashSession);
+  const currentCashSession = cashSessions[viewDate];
+  const openingCash = currentCashSession?.openingCash ?? 4000;
 
   const range = useMemo(() => createLedgerDateRange(
     dateRange,
@@ -153,6 +157,8 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
         dateStatus={dateStatus}
         hasQueuedRows={hasQueuedRows}
         hasFailedConflict={hasFailedConflict}
+        openingCash={openingCash}
+        onOpeningCashChange={(amount) => openCashSession({ businessDate: viewDate, openingCash: amount, operatorId: 'counter', openedAt: new Date().toISOString() })}
         onClose={handleCashClose}
       />
 

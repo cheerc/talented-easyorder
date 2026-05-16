@@ -6,7 +6,7 @@ import { usePosStore } from '../store/posStore';
 
 describe('pcPosSafety — duplicate submit guard', () => {
   beforeEach(() => {
-    localStorage.clear();
+    window.localStorage.clear();
     usePosStore.getState().resetData();
   });
 
@@ -33,7 +33,7 @@ describe('pcPosSafety — duplicate submit guard', () => {
 
 describe('pcPosSafety — duplicate order warning', () => {
   beforeEach(() => {
-    localStorage.clear();
+    window.localStorage.clear();
     usePosStore.getState().resetData();
   });
 
@@ -84,6 +84,20 @@ describe('pcPosSafety — duplicate order warning', () => {
     await waitFor(() => {
       const el = document.querySelector('.dup-warn-h');
       expect(el).toBeTruthy();
+    });
+  });
+
+  it('uses operator-friendly payment wording', async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    const input = screen.getByPlaceholderText(/015/);
+    await user.type(input, '015');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: /補錢/ })).toBeTruthy();
+      expect(screen.queryByText(/純繳費/)).not.toBeTruthy();
     });
   });
 });
