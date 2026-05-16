@@ -1,0 +1,147 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function talentedEmail() {
+      return signedIn()
+        && request.auth.token.email is string
+        && request.auth.token.email.matches('.*@talented\\.com\\.tw$');
+    }
+
+    function operatorDoc() {
+      return get(/databases/$(database)/documents/operators/$(request.auth.uid));
+    }
+
+    function activeOperator() {
+      return talentedEmail()
+        && exists(/databases/$(database)/documents/operators/$(request.auth.uid))
+        && operatorDoc().data.active == true;
+    }
+
+    function adminOperator() {
+      return activeOperator() && operatorDoc().data.role == 'admin';
+    }
+
+    function sameOperator() {
+      return request.resource.data.operatorId == request.auth.uid;
+    }
+
+    function affectedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function createsNewMatchingTransaction(studentId) {
+      let txId = request.resource.data.lastTransactionId;
+      let tx = getAfter(/databases/$(database)/documents/transactions/$(txId));
+      return txId is string
+        && txId != resource.data.lastTransactionId
+        && !exists(/databases/$(database)/documents/transactions/$(txId))
+        && existsAfter(/databases/$(database)/documents/transactions/$(txId))
+        && tx.data.id == txId
+        && tx.data.studentId == studentId
+        && tx.data.operatorId == request.auth.uid
+        && tx.data.amount is number;
+    }
+
+    function transactionProjectionUpdate(studentId) {
+      let txId = request.resource.data.lastTransactionId;
+      let tx = getAfter(/databases/$(database)/documents/transactions/$(txId));
+      return affectedKeys().hasOnly(['currentBalance', 'revision', 'updatedAt', 'updatedBy', 'lastTransactionId'])
+        && createsNewMatchingTransaction(studentId)
+        && request.resource.data.currentBalance == resource.data.currentBalance + tx.data.amount
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+
+    function rosterOnlyStudentUpdate() {
+      return affectedKeys().hasOnly([
+        'displayName',
+        'aliases',
+        'className',
+        'groupName',
+        'status',
+        'updatedAt',
+        'updatedBy'
+      ])
+      && request.resource.data.updatedBy == request.auth.uid
+      && request.resource.data.status in ['active', 'inactive'];
+    }
+
+    match /operators/{uid} {
+      allow get: if activeOperator() && (uid == request.auth.uid || adminOperator());
+      allow list: if adminOperator();
+      allow create, update: if adminOperator()
+        && request.resource.data.uid == uid
+        && request.resource.data.email.matches('.*@talented\\.com\\.tw$')
+        && request.resource.data.active is bool;
+      allow delete: if false;
+    }
+
+    match /students/{studentId} {
+      allow read: if activeOperator();
+      allow create: if activeOperator()
+        && request.resource.data.id == studentId
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.status in ['active', 'inactive']
+        && request.resource.data.currentBalance == request.resource.data.openingBalance
+        && request.resource.data.revision == 1
+        && request.resource.data.lastTransactionId == null;
+      allow update: if activeOperator()
+        && request.resource.data.id == resource.data.id
+        && (
+          rosterOnlyStudentUpdate()
+          || transactionProjectionUpdate(studentId)
+        );
+      allow delete: if false;
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if activeOperator();
+      allow create: if activeOperator()
+        && request.resource.data.id == transactionId
+        && sameOperator()
+        && request.resource.data.businessDate is string
+        && request.resource.data.studentId is string
+        && request.resource.data.amount is number
+        && request.resource.data.type in ['order', 'payment', 'refund', 'cancel', 'correction', 'void'];
+      allow update: if activeOperator()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'committedAt', 'balanceAfter', 'voidedAt', 'voidedBy', 'voidReason']);
+      allow delete: if false;
+    }
+
+    match /daily_settlements/{businessDate} {
+      allow read: if activeOperator();
+      allow create, update: if activeOperator()
+        && request.resource.data.businessDate == businessDate
+        && request.resource.data.closedBy == request.auth.uid;
+      allow delete: if false;
+
+      match /close_attempts/{closeAttemptId} {
+        allow read: if activeOperator();
+        allow create: if activeOperator()
+          && request.resource.data.id == closeAttemptId
+          && request.resource.data.businessDate == businessDate
+          && request.resource.data.operatorId == request.auth.uid;
+        allow update: if activeOperator()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+        allow delete: if false;
+      }
+
+      match /cash_adjustments/{adjustmentId} {
+        allow read: if activeOperator();
+        allow create: if activeOperator()
+          && request.resource.data.id == adjustmentId
+          && request.resource.data.businessDate == businessDate
+          && request.resource.data.operatorId == request.auth.uid
+          && request.resource.data.amount > 0
+          && request.resource.data.type in ['deposit', 'withdraw'];
+        allow update: if activeOperator()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+        allow delete: if false;
+      }
+    }
+  }
+}
