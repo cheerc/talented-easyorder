@@ -2,329 +2,249 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans if turning any decision below into implementation. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give the user one concise decision list before implementing the counter-cash and Apps Script sync plans.
+**Goal:** Record the user's confirmed Phase 1 product and architecture decisions before rewriting Plan B for Firebase Firestore + Vercel.
 
-**Architecture:** Decisions are grouped by product area and each item has options, a recommendation, and the implementation effect. This document is not a code task list; it is the approval gate for Plan A and Plan B.
+**Architecture:** Decisions are grouped by product area and each item records the confirmed choice plus the implementation effect. This document is not a code task list; it is the approval gate for Plan A and the upcoming Firebase/Firestore Plan B.
 
-**Tech Stack:** Project documentation, AgEnD decision records, EasyOrder frontend and Apps Script plans.
+**Tech Stack:** EasyOrder frontend PWA, Firebase Auth, Firestore with offline persistence/realtime sync, Firebase Security Rules, Vercel hosting, AgEnD decision records.
 
 ---
 
 ## How To Use This Checklist
 
-1. The lead sends this file to the user/operator.
-2. The user answers each required item.
-3. The lead records accepted answers with `decision(action: post)` before dispatching implementation.
-4. Implementation plans may proceed with recommended defaults only when the item says "safe default".
+1. The lead treats each item below as the user's confirmed decision.
+2. The lead records accepted answers with `decision(action: post)` before dispatching implementation.
+3. Implementation plans may proceed only when they cite this checklist and the exact plan file they implement.
+4. The Apps Script + Google Sheets Plan B cycle is stopped; the sync/backend plan must be rewritten for Firebase Firestore + Vercel.
 
 ## Required Decisions Before Plan A
 
-### A1. Opening Cash Default
+### A1. Opening Cash And Counter Cash Adjustments
 
-**Question:** Is the petty-cash opening amount fixed, configurable per day, or configured once per school/term?
+**Question:** Is the petty-cash opening amount fixed, editable, or controlled by explicit cash movements?
 
-**Options:**
-- A. Fixed default `4000`, editable per day.
-- B. Fixed default `3000`, editable per day.
-- C. Admin-configured school default, copied into each day.
+**Confirmed decision:** The first setup records the initial opening cash. After that, drawer cash changes through daily revenue plus explicit `counter deposit` / `counter withdraw` operations.
 
-**Recommendation:** C for production, A as the implementation default. The UI should prefill `4000` but allow the operator to edit the opening cash for that business date.
-
-**Implementation effect:** `dailyCashSession.openingCash` must be stored per business date. A future admin setting may provide the default.
+**Implementation effect:** Do not allow arbitrary edits to current drawer cash. Add counter deposit/withdraw flows that record operator, timestamp, amount, and reason. The accounting ledger must make every manual drawer change traceable.
 
 ### A2. Vendor Payout Tracking
 
 **Question:** Does the counter pay the lunch vendor from the drawer every day?
 
-**Decision from current discussion:** No. The vendor is monthly billed.
+**Confirmed decision:** No. The vendor is monthly billed.
 
-**Recommendation:** Do not implement vendor payout in Phase 1.
-
-**Implementation effect:** Settlement formula is `expectedDrawerCash = openingCash + netCash`. Do not subtract vendor payout.
+**Implementation effect:** Settlement formula is `expectedDrawerCash = openingCash + netCash + counterDeposits - counterWithdrawals`. Do not subtract vendor payout.
 
 ### A3. Late Payment / Missed Payment Correction
 
 **Question:** Should missed payment discovered later get a special "補登" UI?
 
-**Decision from current discussion:** No.
+**Confirmed decision:** No.
 
-**Recommendation:** Use the existing W mode, renamed `補錢 / 儲值`.
-
-**Implementation effect:** No new backfill screen. The POS workflow remains: search student -> W -> enter amount -> confirm.
+**Implementation effect:** Use the existing W mode, renamed `補錢 / 儲值`. The POS workflow remains: search student -> W -> enter amount -> confirm.
 
 ### A4. Cancellation Semantics
 
 **Question:** Should cancellation distinguish before vs after the vendor count was phoned in?
 
-**Decision from current discussion:** No.
+**Confirmed decision:** No.
 
-**Recommendation:** Show only current effective order count.
-
-**Implementation effect:** `cancel` continues to affect local effective count. No vendor-count lock or policy state is added.
+**Implementation effect:** Show only current effective order count. `cancel` continues to affect the local effective count. No vendor-count lock or policy state is added.
 
 ### A5. Multiple Meals On One Account
 
 **Question:** Can one account order more than one meal in a day?
 
-**Options:**
-- A. Allow, with duplicate warning only.
-- B. Allow, but require a reason/category such as `多孩同帳號`, `加訂`, `老師代訂`.
-- C. Block by default; admin override required.
+**Confirmed decision:** Yes. Allow multiple meals and show a duplicate/multiple-meal prompt. Students may legitimately share one number, for example siblings like "林小明/林小妹".
 
-**Recommendation:** B. This matches the real "parent uses one account for multiple children" case while preserving audit clarity.
-
-**Implementation effect:** Plan A duplicate warning can stay, but a later small enhancement should add optional reason text when confirming a duplicate order.
+**Implementation effect:** Do not block duplicate orders for the same account. The UI should warn and require confirmation, but shared-account use is normal data, not an error.
 
 ### A6. Single-Order Price Override
 
 **Question:** Who may change one order's price?
 
-**Options:**
-- A. Any counter operator during order confirmation.
-- B. Admin only.
-- C. No override; change today's global menu price only.
+**Confirmed decision:** Any counter staff member may change the price. Responsibility belongs to the counter operator who performed the action.
 
-**Recommendation:** A for Phase 1. The action is visible, local to one selected transaction, and recorded in transaction note.
-
-**Implementation effect:** Add `改本筆價格` in POS confirmation; do not mutate `todayMenu.price`.
+**Implementation effect:** Add `改本筆價格` in POS confirmation. Record operator identity, timestamp, original price, new price, and reason/note when available. Do not mutate `todayMenu.price`.
 
 ### A7. Debt Limit
 
 **Question:** Are students allowed to go into debt without a limit?
 
-**Options:**
-- A. No limit in pilot; show warning when balance becomes negative.
-- B. Soft warning threshold, e.g. debt over 300 requires confirmation.
-- C. Hard block after a configured limit.
+**Confirmed decision:** Do not restrict debt in Phase 1. Add limits later if needed.
 
-**Recommendation:** A for pilot, B for production after staff confirms policy.
-
-**Implementation effect:** Current negative-balance warning is enough for Plan A. Do not add approval gates yet.
+**Implementation effect:** Current negative-balance warning is enough. Do not add approval gates or hard debt blocks yet.
 
 ## Required Decisions Before Plan B
 
 ### B1. Backend Authority
 
-**Question:** Is Google Sheets the visible operational database and Phase 1 backend source?
+**Question:** What is the Phase 1 backend/source of truth?
 
-**Decision from current discussion:** Yes, via Apps Script.
+**Confirmed decision:** Use Firebase Firestore + Vercel, following the same broad architecture as `talented-payroll`. Use an independent Firebase project for EasyOrder. Cancel the Apps Script + Google Sheets backend plan.
 
-**Recommendation:** Apps Script + Google Sheets for Phase 1; Cloudflare D1 remains fallback only.
+**Implementation effect:** Rewrite Plan B around Firestore collections, Firebase Auth, Security Rules, Vercel deployment, realtime sync, and Firestore offline persistence. Do not implement Apps Script `doGet`/`doPost` or Google Sheets as the production backend.
 
-**Implementation effect:** Implement Apps Script `doGet`/`doPost`, not Cloudflare Worker/D1.
+### B2. Account Ownership And Project Boundary
 
-### B2. Meaning Of Free
+**Question:** Which account and project own the backend data?
 
-**Question:** Does "free" allow a free-tier provider account, or must it use only the user's existing Google account?
+**Confirmed decision:** Use the company's existing Google Workspace account. Backend data belongs under the `cheerc@talented.com.tw` admin account. EasyOrder must use its own Firebase project, separate from `talented-payroll`.
 
-**Options:**
-- A. Existing Google account only.
-- B. Free-tier provider allowed if no normal monthly cost.
-- C. Free-tier provider allowed with billing account/credit card.
-
-**Recommendation:** A based on the latest discussion.
-
-**Implementation effect:** Plan B uses Apps Script and Sheets. Deployment/hosting plan must not assume Cloudflare unless later approved.
+**Implementation effect:** Setup/runbook must create a distinct EasyOrder Firebase project under the company admin account. Do not reuse the `talented-payroll` Firebase project.
 
 ### B3. Sync Freshness
 
 **Question:** Is near-realtime multi-device sync required?
 
-**Options:**
-- A. No. Pull at opening and foreground sync/retry after each transaction is enough.
-- B. Poll every 15-30 seconds.
-- C. Near-realtime push/realtime channel.
+**Confirmed decision:** Yes. Use Firestore realtime sync. When network is available, every transaction syncs automatically.
 
-**Recommendation:** A for Phase 1. The lunch counter scale is about 40 students and roughly 50 daily transactions.
+**Implementation effect:** Plan B must use Firestore realtime listeners for operational views and writes through Firestore APIs. Avoid polling loops as the primary sync mechanism.
 
-**Implementation effect:** Implement foreground outbox push and bootstrap pull first. Do not add realtime infrastructure.
+### B4. Offline Closeout And Sync Status
 
-### B4. Closeout With Queued Rows
+**Question:** May the operator close the day while writes are not yet synced?
 
-**Question:** May the operator close the day while some rows are queued but not yet uploaded?
+**Confirmed decision:** Yes. Allow offline closeout. Firestore offline persistence writes locally first, then automatically syncs when network returns.
 
-**Options:**
-- A. Block closeout until every row is synced.
-- B. Allow closeout only with explicit queued-row acknowledgement.
-- C. Always allow closeout and sync later.
+**Implementation effect:** Do not block closeout only because writes are pending. Show an explicit sync status indicator: `🟢已同步` / `🟡同步中` / `🔴離線待同步`. Failed/conflict states still need visible operator attention.
 
-**Recommendation:** B. Failed/conflict rows must block; queued rows can close only with an explicit visible receipt because school network may be unreliable.
+### B5. Concurrent Multi-Computer Operation
 
-**Implementation effect:** Existing closeout gate should block failed/conflict rows and require acknowledgement for queued rows.
+**Question:** Can multiple counter computers operate at the same time?
 
-### B5. Conflict Resolution
+**Confirmed decision:** Yes. Do not lock the system to one active session.
 
-**Question:** What happens if two devices update the same accounting state?
-
-**Options:**
-- A. Last-write-wins.
-- B. Apps Script revision check returns conflict; operator resolves after pulling latest state.
-- C. CRDT/merge logic.
-
-**Recommendation:** B. Last-write-wins is unsafe for accounting; CRDT is unnecessary.
-
-**Implementation effect:** Sync events include `baseServerRevision`; Apps Script returns `conflict` when revision checks fail.
+**Implementation effect:** Plan B must support multiple devices writing concurrently. Use Firestore atomic transactions and optimistic locking/retry for conflicts such as two devices updating the same student's balance at the same time.
 
 ### B6. Staff Identity
 
 **Question:** Does production require per-staff accounts?
 
-**Options:**
-- A. Shared counter identity/PIN for pilot.
-- B. Per-staff name/PIN selected at shift start.
-- C. Google account sign-in per staff member.
+**Confirmed decision:** Yes. Staff sign in with individual Google Workspace accounts and every operation records the operator identity.
 
-**Recommendation:** A for pilot, B for production if audit accountability matters. Avoid Google OAuth complexity in Phase 1 unless the school requires it.
+**Implementation effect:** Use Firebase Auth with Google Workspace login. Store `operatorUid`, `operatorEmail`, and timestamp on accounting-relevant writes.
 
-**Implementation effect:** Plan B can write `operatorId='counter'` initially. Store schema should still keep `operatorId` fields.
+### B7. Admin Dashboard
 
-### B7. Sheet Access Policy
+**Question:** Is a separate admin dashboard required?
 
-**Question:** Who can directly edit the Google Sheet?
+**Confirmed decision:** No. Do not build an admin dashboard for Phase 1. Counter staff have full permission in the frontend to view, verify, and reconcile accounting because lunch money is代收代付, not revenue.
 
-**Options:**
-- A. Director/admin read-only; Apps Script is the only writer.
-- B. Director/admin can edit students only.
-- C. Director/admin can edit any sheet.
+**Implementation effect:** Put operational accounting workflows in the POS/frontend. Use Firestore Security Rules to control authenticated read/write access instead of a separate admin UI.
 
-**Recommendation:** B. Direct edits to transactions or settlements can break idempotency and revisions.
+### B8. Production Auth And Access Control
 
-**Implementation effect:** Runbook must say transaction and settlement sheets are append-only via Apps Script.
+**Question:** How should production users authenticate and authorize backend access?
 
-### B8. Apps Script Web App Access / Auth
+**Confirmed decision:** Use Firebase Auth with Google Workspace accounts. Cancel the Apps Script shared-secret/HMAC pairing model.
 
-**Question:** Who can invoke the Apps Script web app, and how are requests authenticated?
+**Implementation effect:** Plan B must define Firebase Auth setup, allowed-domain or whitelist behavior, custom claims/allowlist as needed, and Firestore Security Rules that verify identity before reads/writes.
 
-**Options:**
-- A. **Restricted school Google accounts only** — Deploy the web app with "Who has access: specific accounts" (school-owned operator/admin accounts). The `doPost` endpoint additionally validates a shared secret (`X-EasyOrder-Secret` header) stored in `ScriptProperties` for defense-in-depth. Unauthorized requests return HTTP 401.
-- B. **Execute-as-school-owner + signed/shared-secret API requests** — Deploy as school owner with shared secret validation only (no per-account Google auth on the web app). Simpler but relies entirely on secret secrecy.
-- C. **Public link (forbidden for production)** — The web app is accessible to anyone with the URL. No auth. Rejected for production because accounting data is sensitive.
+### B9. Student Lifecycle
 
-**Recommendation:** A. Defense-in-depth: Google account restriction on the deployment _and_ shared secret validation in `doPost`. This is the strongest option that still uses only the school's existing Google account.
+**Question:** Where does student data come from?
 
-**Implementation effect on Plan B:** Plan B's `Code.gs` must validate `X-EasyOrder-Secret` in `doPost` and return 401 for unauthorized requests. The frontend outbox (`pushOutboxEvents`) must include the secret header. The secret is stored in `VITE_SYNC_SECRET` (frontend env config) and `EASYORDER_SYNC_SECRET` (Apps Script `ScriptProperties`). Secret rotation requires redeploying the Apps Script and updating the frontend env.
+**Confirmed decision:** Cancel the CSV import flow. Students are created one by one when they order lunch. Graduated/inactive/non-ordering students are disabled rather than deleted.
 
-### B9. Student Import Path
-
-**Question:** Where does existing Excel data get imported?
-
-**Options:**
-- A. Excel -> CSV -> app preview -> Sheets students tab -> app bootstrap pull.
-- B. Excel -> direct manual paste into Sheets.
-- C. Excel -> app imports directly into local storage.
-
-**Recommendation:** A. It gives validation and keeps Sheets visible as the master roster.
-
-**Implementation effect:** Add student import runbook and keep transaction CSV import out of production ledger.
+**Implementation effect:** Add POS/frontend workflows to create and deactivate students directly. Historical orders and cash ledger rows must keep student snapshots so deleting/deactivating a student never breaks history.
 
 ## Required Decisions Before Deployment / Pilot
 
-### C1. Pilot Can Launch Without Real Sync
+### C1. Paper And System Parallel Run
 
-**Question:** Can the pilot launch before real sync exists if UI clearly says local-only/demo?
+**Question:** Can the pilot use paper and system together?
 
-**Options:**
-- A. Yes, for training/demo only.
-- B. Yes, for real lunch service with manual export backup.
-- C. No, real service requires sync and backup first.
+**Confirmed decision:** Yes. Paper and system run in parallel. Cloud exists for backup and sync. Staff can switch computers; production is not bound to one device.
 
-**Recommendation:** A. Do not use local-only mode for real money unless the operator explicitly accepts manual backup risk.
+**Implementation effect:** Runbook should state that paper remains the operational fallback during pilot. Firestore sync enables continuity across counter computers.
 
 ### C2. Offline Cold Start
 
-**Question:** Must the PWA open from the Home Screen when the network is already down?
+**Question:** Must the PWA open when the network is already down?
 
-**Options:**
-- A. Required for launch.
-- B. Not required; already-loaded app continuity is enough.
+**Confirmed decision:** Required for real lunch service.
 
-**Recommendation:** A if the app is used for real lunch service. The operator should run a pre-lunch readiness check anyway.
+**Implementation effect:** Keep PWA offline readiness in the deployment checklist. The operator should still run a pre-lunch readiness check while online.
 
-### C3. Device Install Rule
+### C3. Device And Phase Boundary
 
-**Question:** Can the runbook require exactly one production PWA install per device?
+**Question:** What devices are in Phase 1?
 
-**Options:**
-- A. Yes. Duplicate Home Screen installs must be removed.
-- B. No. Staff may use multiple browser profiles/icons.
+**Confirmed decision:** One browser per operating device. iPad/Android face-recognition ordering is Phase 2. Phase 1 PWA is the counter-computer ordering system.
 
-**Recommendation:** A. iPad/PWA duplicate installs can isolate storage and create split local queues.
+**Implementation effect:** Phase 1 runbook should standardize one browser/profile per device. Do not mix Phase 2 face-ordering requirements into the Phase 1 POS plan.
 
 ### C4. Local Data Risk
 
 **Question:** Does the school accept that offline POS stores student/accounting data on the device?
 
-**Options:**
-- A. Yes, with minimization, clear-data runbook, and device access controls.
-- B. No, do not store sensitive data locally.
+**Confirmed decision:** Yes, with minimization, sync status visibility, clear-data runbook, and device access controls.
 
-**Recommendation:** A. Offline POS cannot work without local data.
+**Implementation effect:** Firestore offline persistence is allowed. The security plan must document local-device risk and recovery/clear-data steps.
 
 ### C5. Backup And Restore Owner
 
 **Question:** Who owns backup/export and restore drills?
 
-**Options:**
-- A. Director/admin.
-- B. Counter operator.
-- C. Developer/support only.
+**Confirmed decision:** Counter staff own backup and restore. Reason: lunch ordering cash flow is代收代付, not business revenue.
 
-**Recommendation:** A. Counter operator should not own restore decisions during service.
+**Implementation effect:** Backup/restore runbooks and UI must be usable by counter staff, not admin-only. Keep recovery steps operationally simple.
 
-### C6. Account Ownership
+### C6. Account Ownership And Frontend Access
 
-**Question:** Which Google account owns the Spreadsheet and Apps Script?
+**Question:** Who owns backend permissions and who can log in?
 
-**Options:**
-- A. School-owned shared/admin Google account with recovery/2FA.
-- B. Individual staff personal Google account.
-- C. Developer account.
+**Confirmed decision:** Backend authority belongs to the admin account `cheerc@talented.com.tw`. Frontend login is open to a whitelist of approved Google Workspace accounts.
 
-**Recommendation:** A. Production data should not depend on a developer or individual staff account.
+**Implementation effect:** Firebase project ownership, Auth allowlist, and Security Rules must be documented. Production access must not depend on a developer personal account.
 
 ## Existing Plan Disposition
 
 | Existing file | Disposition |
 |---|---|
-| `2026-05-14-phase-1-3-google-sheets-sync-offline.md` | Replaced by Plan B. |
-| `2026-05-15-free-backend-architecture-exploration.md` | Backend choice superseded by Apps Script/Sheets for Phase 1. |
-| `2026-05-15-data-migration-strategy.md` | Student import and backup parts fold into Plan B; broader IndexedDB migration remains reference. |
-| `2026-05-15-deployment-hosting-strategy.md` | Keep; update after B2/C6 decisions. |
-| `2026-05-15-frontend-security-considerations.md` | Keep; lower priority but local data risk decision is required. |
+| `2026-05-15-apps-script-sheets-sync-migration.md` | Superseded. Do not implement Apps Script + Sheets; rewrite Plan B for Firebase Firestore + Vercel. |
+| `2026-05-14-phase-1-3-google-sheets-sync-offline.md` | Superseded by Firebase Firestore offline/realtime sync direction. |
+| `2026-05-15-free-backend-architecture-exploration.md` | Backend choice superseded by independent EasyOrder Firebase project + Vercel. |
+| `2026-05-15-data-migration-strategy.md` | CSV import direction superseded; keep only general historical-data safety ideas if still useful. |
+| `2026-05-15-deployment-hosting-strategy.md` | Update to Firebase project + Vercel hosting. |
+| `2026-05-15-frontend-security-considerations.md` | Keep and update for Firebase Auth, Firestore rules, and local Firestore cache risk. |
 | `2026-05-15-cross-platform-android-support.md` | Keep for Phase 2. |
 | `2026-05-14-phase-2-ipad-face-handoff.md` | Keep for Phase 2. |
 | `2026-05-15-user-operation-sop-ux-analysis.md` | Reference for training and pilot drill, not a separate implementation plan. |
 
 ## Recommended Decision Defaults
 
-If the user wants to proceed without answering every item, use these defaults:
+Use these confirmed decisions when writing or dispatching implementation plans:
 
-- A1: default 4000, editable per day.
-- A2: no vendor payout.
+- A1: initial opening cash is set once; later drawer changes use counter deposit/withdraw ledger entries with operator, time, amount, and reason.
+- A2: no vendor payout in daily settlement.
 - A3: W mode handles missed payment.
 - A4: no before/after vendor count split.
-- A5: allow duplicate/multiple meals with reason in later enhancement.
-- A6: counter operator can override one order price.
-- A7: no debt limit in pilot.
-- B1: Apps Script + Sheets.
-- B2: existing Google account only.
-- B3: no realtime sync for Phase 1.
-- B4: block failed/conflict, allow queued only with acknowledgement.
-- B5: revision conflict, no last-write-wins.
-- B6: shared counter identity for pilot.
-- B7: admin can edit students only; transactions/settlements append via Apps Script.
-- B8: restricted school Google accounts + shared secret auth; public link forbidden.
-- B9: Excel -> CSV -> preview -> Sheets students.
-- C1: local-only training only, not real service.
+- A5: allow multiple meals on one account with prompt; shared student numbers are normal.
+- A6: any counter staff member can override one order price; record responsibility on the operator.
+- A7: no debt limit in Phase 1.
+- B1: Firebase Firestore + Vercel; independent EasyOrder Firebase project; no Apps Script + Sheets.
+- B2: company Google Workspace/admin account owns backend data; separate from `talented-payroll`.
+- B3: Firestore realtime sync for transactions when online.
+- B4: offline closeout allowed; show `🟢已同步` / `🟡同步中` / `🔴離線待同步`; Firestore syncs later.
+- B5: multiple computers may operate concurrently; use Firestore atomic transactions with optimistic retry.
+- B6: individual Google Workspace staff login; record operator identity.
+- B7: no admin dashboard; counter frontend handles full accounting workflows.
+- B8: Firebase Auth + Firestore Security Rules; no shared-secret/HMAC Apps Script auth.
+- B9: create/deactivate students in POS; no CSV import; history remains intact.
+- C1: paper and system run in parallel; cloud is backup + sync and supports switching computers.
 - C2: offline cold start required before real launch.
-- C3: exactly one production PWA install per device.
-- C4: local data accepted with runbook.
-- C5: director/admin owns backup and restore.
-- C6: school-owned Google account owns production Sheets/Apps Script.
+- C3: one browser per operating device; Phase 2 handles iPad/Android face-recognition ordering.
+- C4: local Firestore cache accepted with runbook and device controls.
+- C5: counter staff own backup/restore.
+- C6: backend permissions under `cheerc@talented.com.tw`; frontend login uses whitelist.
 
 ## Definition Of Done
 
-- The user has answered or accepted defaults for all Plan A and Plan B required decisions.
-- Accepted answers are recorded through AgEnD `decision(action: post)`.
-- Implementation dispatch cites this checklist plus the exact Plan A or Plan B file path.
-- Any future Cloudflare/D1 work is explicitly marked fallback or Phase 2, not the Phase 1 default.
+- The user-confirmed decisions above are recorded through AgEnD `decision(action: post)` before implementation dispatch.
+- Plan A implementation cites this checklist for counter cash, multiple meals, price override, and debt-limit behavior.
+- The old Apps Script + Sheets Plan B is not dispatched for implementation.
+- The replacement Plan B cites this checklist and specifies Firebase project setup, Firebase Auth, Firestore schema, Firestore Security Rules, Vercel deployment, realtime listeners, offline persistence, and multi-device conflict handling.
+- Student lifecycle implementation creates/deactivates students in the POS/frontend and preserves historical transaction snapshots.
+- Backup/restore and local-data runbooks assign responsibility to counter staff and document the `cheerc@talented.com.tw` admin ownership boundary.
