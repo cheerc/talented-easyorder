@@ -8,6 +8,7 @@ export const fmt = (n: number) => new Intl.NumberFormat('zh-TW').format(Math.abs
 // eslint-disable-next-line react-refresh/only-export-components
 export const sign = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '');
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function getQuickAmounts(input: {
   mode: string;
   todayPrice: number;
@@ -235,10 +236,15 @@ interface CustomerCardProps {
   payAmount: string;
   setPayAmount: (val: string) => void;
   onViewHistory?: () => void;
+  priceOverride: number | null;
+  priceOverrideLabel: string;
+  setPriceOverride: (value: number | null) => void;
+  setPriceOverrideLabel: (value: string) => void;
 }
-export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory }: CustomerCardProps) {
+export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel }: CustomerCardProps) {
+  const effectiveMealPrice = mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
   const after =
-    mode === 'order'      ? student.currentBalance + (Number(payAmount || 0) - todayMenu.price) :
+    mode === 'order'      ? student.currentBalance + (Number(payAmount || 0) - effectiveMealPrice) :
     mode === 'topup'      ? student.currentBalance + Number(payAmount || 0) :
     mode === 'cancel'     ? student.currentBalance + (orderedTodayCount * todayMenu.price) :
     student.currentBalance;
@@ -277,8 +283,8 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
             <div className="pay-title">結帳明細</div>
             {mode === 'order' && (
               <div className="bill-item">
-                <span className="bill-label">當日便當 ({todayMenu.itemName})</span>
-                <span className="bill-val neg">−${fmt(todayMenu.price)}</span>
+                <span className="bill-label">當日便當 ({priceOverrideLabel || todayMenu.itemName})</span>
+                <span className="bill-val neg">−${fmt(effectiveMealPrice)}</span>
               </div>
             )}
             {mode === 'cancel' && (
@@ -300,6 +306,44 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                 {after < 0 ? '−' : ''}${fmt(after)}
               </span>
             </div>
+            {mode === 'order' && (
+              <div className="price-override">
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={() => setPriceOverride(priceOverride ?? todayMenu.price)}
+                >
+                  改本筆價格
+                </button>
+                {priceOverride !== null && (
+                  <div className="price-override-fields">
+                    <label>
+                      <span>本筆價格</span>
+                      <input
+                        className="adm-input mono"
+                        type="number"
+                        aria-label="本筆價格"
+                        value={priceOverride}
+                        onChange={e => setPriceOverride(Number(e.target.value || todayMenu.price))}
+                      />
+                    </label>
+                    <label>
+                      <span>品項/原因</span>
+                      <input
+                        className="adm-input"
+                        aria-label="品項或原因"
+                        value={priceOverrideLabel}
+                        onChange={e => setPriceOverrideLabel(e.target.value)}
+                        placeholder="例如：雞腿便當"
+                      />
+                    </label>
+                    <button type="button" className="ghost-btn" onClick={() => setPriceOverride(null)}>
+                      取消改價
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             {after < 0 && <div className="chip chip-warn" style={{ alignSelf: 'flex-start', marginTop: '8px' }}>⚠ 將產生欠款</div>}
           </div>
 
@@ -308,7 +352,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
             <div className="pay-panel">
               <div className="pay-header">
                 <span className="pay-title">
-                  {mode === 'order' ? '本次繳費' : mode === 'topup' ? '儲值金額' : '退還現金'}
+                  {mode === 'order' ? '本次繳費' : mode === 'topup' ? '補錢 / 儲值金額' : '退還現金'}
                 </span>
                 {mode === 'order' && <span className="dim" style={{ fontSize: '12px' }}>留空為記帳</span>}
                 {mode === 'cancel' && <span className="dim" style={{ fontSize: '12px' }}>若已付現請輸入退款金額</span>}
@@ -363,7 +407,7 @@ interface ActionBarProps {
 export const ActionBar = React.memo(function ActionBar({ mode, setMode, orderedTodayCount, onConfirm, onCancel, focusZone }: ActionBarProps) {
   const opts = [
     { id: 'order',  label: '訂便當',           hint: 'Q' },
-    { id: 'topup',  label: '純繳費 / 儲值',   hint: 'W' },
+    { id: 'topup',  label: '補錢 / 儲值',   hint: 'W' },
     { id: 'cancel', label: '取消當日訂餐',     hint: 'E',
       disabled: orderedTodayCount === 0 },
   ];
@@ -377,6 +421,8 @@ export const ActionBar = React.memo(function ActionBar({ mode, setMode, orderedT
             disabled={o.disabled}
             className={'mode ' + (mode === o.id ? 'mode-on' : '') + (o.disabled ? ' mode-disabled' : '') + (focusZone === 'mode-' + o.id ? ' mode-focus' : '')}
             onClick={() => !o.disabled && setMode(o.id)}
+            role="radio"
+            aria-checked={mode === o.id}
           >
             <span className="mode-key">{o.hint}</span>
             <span className="mode-lbl">{o.label}</span>

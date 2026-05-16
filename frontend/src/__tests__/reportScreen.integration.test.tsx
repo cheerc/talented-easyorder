@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { usePosStore, type BusinessDateStatus } from '../store/posStore';
+import { usePosStore } from '../store/posStore';
 import App from '../App';
 
 beforeEach(() => {

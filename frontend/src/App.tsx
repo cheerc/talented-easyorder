@@ -28,6 +28,8 @@ export default function App() {
   const [systemDate, setSystemDate] = useState(getSystemDate);
   const [viewDate, setViewDate] = useState(systemDate);
   const isHistorical = viewDate !== systemDate;
+  const [priceOverride, setPriceOverride] = useState<number | null>(null);
+  const [priceOverrideLabel, setPriceOverrideLabel] = useState('');
 
   useEffect(() => {
     const tick = setInterval(() => setSystemDate(getSystemDate()), 60_000);
@@ -186,6 +188,8 @@ export default function App() {
     setSyncing(false);
     setUndoCountdown(0);
     lastCommittedTxIdRef.current = null;
+    setPriceOverride(null);
+    setPriceOverrideLabel('');
   }, [dismissSuccess]);
 
   const handleUndo = useCallback(() => {
@@ -268,9 +272,17 @@ export default function App() {
     const sid = state.studentId;
     const student = students.find(s => s.studentId === sid);
     if (!student) return;
-    const mealPrice = state.mode === 'order' ? todayMenu.price : 0;
+    const mealPrice = state.mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
     const paidAmount = state.mode === 'topup' ? Number(state.paidAmountText || 0) : 0;
     const amount = state.mode === 'order' ? -mealPrice : (state.mode === 'topup' ? paidAmount : 0);
+    const note =
+      state.mode === 'order' && priceOverride !== null
+        ? `單筆改價：${priceOverrideLabel.trim() || todayMenu.itemName}`
+        : state.mode === 'order'
+          ? todayMenu.itemName
+          : state.mode === 'topup'
+            ? '現金儲值'
+            : '退餐';
     const draft = {
       intent: {
         businessDate: viewDate,
@@ -278,12 +290,12 @@ export default function App() {
         type: state.mode,
         mealPrice,
         paidAmount,
-        note: state.mode === 'order' ? todayMenu.itemName : (state.mode === 'topup' ? '現金儲值' : '退餐'),
+        note,
         sourceDevice: 'pc' as const,
       },
       snapshots: {
         student: { studentId: sid, studentNameSnapshot: student.displayName },
-        menu: { menuNameSnapshot: todayMenu.itemName, menuPriceSnapshot: todayMenu.price, vendorIdSnapshot: todayMenu.vendorId, vendorNameSnapshot: todayMenu.vendorNameSnapshot },
+        menu: { menuNameSnapshot: todayMenu.itemName, menuPriceSnapshot: mealPrice, vendorIdSnapshot: todayMenu.vendorId, vendorNameSnapshot: todayMenu.vendorNameSnapshot },
       },
       amount,
       expectedBalanceAfter: student.currentBalance + amount,
@@ -411,7 +423,7 @@ export default function App() {
   const flashData = useMemo(() => {
     if (!isSuccess || !picked) return null;
     const amt = Number(currentPaidAmount || 0);
-    const mealPrice = currentMode === 'order' ? todayMenu.price : 0;
+    const mealPrice = currentMode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
     return {
       id: flashKey,
       name: picked.displayName,
@@ -422,7 +434,7 @@ export default function App() {
       amount: amt - mealPrice,
       after: picked.currentBalance + (amt - mealPrice),
     };
-  }, [isSuccess, picked, currentMode, currentPaidAmount, todayMenu, orderedTodayCount, flashKey]);
+  }, [isSuccess, picked, currentMode, currentPaidAmount, todayMenu, orderedTodayCount, flashKey, priceOverride]);
 
   return (
     <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => console.error('[ErrorBoundary]', e)}>
@@ -480,6 +492,10 @@ export default function App() {
                     setReportStudentFilter(picked!.studentId);
                     setTab('report');
                   }}
+                  priceOverride={priceOverride}
+                  priceOverrideLabel={priceOverrideLabel}
+                  setPriceOverride={setPriceOverride}
+                  setPriceOverrideLabel={setPriceOverrideLabel}
                 />
                 {state.kind === 'duplicate_warning' && (
                   <DuplicateWarningBanner

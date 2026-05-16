@@ -121,4 +121,16 @@ describe('buildPosTransactionDraft', () => {
     });
     expect(draft.expectedBalanceAfter).toBe(5000 - 90);
   });
+
+  it('uses per-order price override without changing today menu', () => {
+    const draft = buildPosTransactionDraft({
+      intent: makeIntent({ type: 'order', sourceDevice: 'pc', mealPrice: 110, paidAmount: 110, note: '單筆改價：雞腿便當' }),
+      student: STUDENT_001,
+      menu: TODAY_MENU_KARAAGE,
+    });
+
+    expect(draft.intent.mealPrice).toBe(110);
+    expect(draft.snapshots.menu.menuNameSnapshot).toBe(TODAY_MENU_KARAAGE.itemName);
+    expect(draft.amount).toBe(0);
+  });
 });
