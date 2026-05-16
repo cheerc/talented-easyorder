@@ -6,7 +6,7 @@ import { usePosStore } from '../store/posStore';
 
 describe('pcPosFlow integration — keyboard flow', () => {
   beforeEach(() => {
-    localStorage.clear();
+    window.localStorage.clear();
     usePosStore.getState().resetData();
   });
 
@@ -76,5 +76,22 @@ describe('pcPosFlow integration — keyboard flow', () => {
     await waitFor(() => {
       expect(screen.queryByText('✓')).toBeFalsy();
     });
+  });
+
+  it('uses today menu price as the first order quick amount', async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    const input = screen.getByPlaceholderText(/015/);
+    await user.type(input, '015');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(screen.getByText('訂便當')).toBeTruthy();
+    });
+
+    // Quick buttons should show the today menu price (90)
+    const quickButtons = screen.getAllByText('90');
+    expect(quickButtons.length).toBeGreaterThan(0);
   });
 });

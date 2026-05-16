@@ -8,6 +8,21 @@ export const fmt = (n: number) => new Intl.NumberFormat('zh-TW').format(Math.abs
 // eslint-disable-next-line react-refresh/only-export-components
 export const sign = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '');
 
+export function getQuickAmounts(input: {
+  mode: string;
+  todayPrice: number;
+  currentDebt: number;
+}): number[] {
+  if (input.mode === 'cancel') return [input.todayPrice];
+  if (input.mode === 'topup') return [100, 500, 1000, 2000, 3000];
+
+  const amounts = [input.todayPrice, 100, 200, 500, 1000];
+  if (input.currentDebt > 0) {
+    amounts.splice(1, 0, input.todayPrice + input.currentDebt);
+  }
+  return [...new Set(amounts)].filter(amount => Number.isInteger(amount) && amount > 0);
+}
+
 interface TopBarProps {
   tab: string;
   setTab: (tab: string) => void;
@@ -314,7 +329,11 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
               </div>
 
               <div className="pay-quick-grid">
-                {(mode === 'cancel' ? [todayMenu.price] : (mode === 'order' ? [90, 100, 200, 500, 1000] : [100, 500, 1000, 2000, 3000])).map(v => (
+                {getQuickAmounts({
+                  mode,
+                  todayPrice: todayMenu.price,
+                  currentDebt: Math.max(0, -student.currentBalance),
+                }).map(v => (
                   <button key={v} className="btn-quick" onClick={() => setPayAmount(String(v))}>
                     {mode === 'topup' ? '+' : mode === 'cancel' ? '-' : ''}{v}
                   </button>
