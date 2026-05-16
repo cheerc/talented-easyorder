@@ -464,13 +464,14 @@ export const usePosStore = create<PosState>()(
         const hasFailed = dayTx.some(t => t.syncStatus === 'failed');
         const hasConflict = dayTx.some(t => t.syncStatus === 'conflict');
 
-        const validation = validateCashClose(totals.netCash, countedCash, hasFailed, hasConflict, hasQueued, note);
+        const cashSession = state.cashSessions[businessDate];
+        const openingCash = cashSession?.openingCash ?? 0;
+        const expectedCash = openingCash + totals.netCash;
+
+        const validation = validateCashClose(expectedCash, countedCash, hasFailed, hasConflict, hasQueued, note);
         if (!validation.ok) return;
 
         if (hasQueued && !queuedSettlementAccepted) return;
-
-        const cashSession = state.cashSessions[businessDate];
-        const openingCash = cashSession?.openingCash ?? 0;
 
         const now = new Date().toISOString();
         const settlement = createDailySettlement(businessDate, totals, openingCash, countedCash, note, operatorId, now, hasQueued);
