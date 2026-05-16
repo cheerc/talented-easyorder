@@ -133,3 +133,47 @@ describe('posStore Compatibility', () => {
     expect(normalized!.revision).toBe(1);
   });
 });
+
+
+describe('posStore Cash Sessions', () => {
+  beforeEach(() => {
+    usePosStore.getState().resetData();
+  });
+
+  it('opens a cash session for the current business date', () => {
+    const store = usePosStore.getState();
+
+    store.openCashSession({
+      businessDate: '2026-05-15',
+      openingCash: 4000,
+      operatorId: 'counter',
+      openedAt: '2026-05-15T08:00:00.000Z',
+    });
+
+    const next = usePosStore.getState();
+    expect(next.cashSessions['2026-05-15']).toMatchObject({
+      businessDate: '2026-05-15',
+      openingCash: 4000,
+      status: 'open',
+    });
+  });
+
+  it('does not overwrite an existing open cash session', () => {
+    const store = usePosStore.getState();
+
+    store.openCashSession({
+      businessDate: '2026-05-15',
+      openingCash: 4000,
+      operatorId: 'counter',
+      openedAt: '2026-05-15T08:00:00.000Z',
+    });
+    store.openCashSession({
+      businessDate: '2026-05-15',
+      openingCash: 3000,
+      operatorId: 'counter',
+      openedAt: '2026-05-15T08:05:00.000Z',
+    });
+
+    expect(usePosStore.getState().cashSessions['2026-05-15'].openingCash).toBe(4000);
+  });
+});

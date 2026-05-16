@@ -10,6 +10,8 @@ import { createCorrectionTransaction, createVoidTransaction, createLedgerAuditEv
 import { validateCashClose, createDailySettlement, reopenBusinessDate as reopenSettlement } from '../domain/cashClose';
 import { calculateLedgerTotals, getEffectiveLedgerRows } from '../domain/ledgerReport';
 import type { PosTransactionDraft } from '../domain/posTransaction';
+import type { DailyCashSession } from '../domain/cashSession';
+import { createDailyCashSession } from '../domain/cashSession';
 import { validatePersistedState } from '../storage/posStateValidator';
 import {
   INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS
@@ -56,6 +58,20 @@ interface ReopenBusinessDateInput {
   operatorId: string;
 }
 
+interface OpenCashSessionInput {
+  businessDate: string;
+  openingCash: number;
+  operatorId: string;
+  openedAt: string;
+}
+
+interface OpenCashSessionInput {
+  businessDate: string;
+  openingCash: number;
+  operatorId: string;
+  openedAt: string;
+}
+
 export type BusinessDateStatus = 'open' | 'closed' | 'reopened';
 
 interface PosState {
@@ -66,6 +82,7 @@ interface PosState {
   auditEvents: import('../domain/ledgerAudit').LedgerAuditEvent[];
   dailySettlements: import('../domain/cashClose').DailySettlement[];
   businessDateStatuses: Record<string, BusinessDateStatus>;
+  cashSessions: Record<string, DailyCashSession>;
 
   setTodayMenu: (menu: TodayMenu) => void;
   setVendors: (vendors: Vendor[]) => void;
@@ -83,6 +100,8 @@ interface PosState {
   voidTransaction: (input: LedgerVoidInput) => void;
   hardDeleteLocalDraft: (input: LedgerVoidInput) => void;
   setBusinessDateStatus: (date: string, status: BusinessDateStatus) => void;
+  openCashSession: (input: OpenCashSessionInput) => void;
+  openCashSession: (input: OpenCashSessionInput) => void;
   closeBusinessDate: (input: CloseBusinessDateInput) => void;
   reopenBusinessDate: (input: ReopenBusinessDateInput) => void;
   getBusinessDateStatus: (businessDate: string) => BusinessDateStatus;
@@ -93,6 +112,7 @@ const defaultState = {
   auditEvents: [] as import('../domain/ledgerAudit').LedgerAuditEvent[],
   dailySettlements: [] as import('../domain/cashClose').DailySettlement[],
   businessDateStatuses: {} as Record<string, BusinessDateStatus>,
+  cashSessions: {} as Record<string, DailyCashSession>,
 };
 
 export const usePosStore = create<PosState>()(
@@ -106,6 +126,42 @@ export const usePosStore = create<PosState>()(
 
       setTodayMenu: (menu) => set({ todayMenu: menu }),
       setVendors: (vendors) => set({ vendors }),
+
+      openCashSession: (input) => {
+        set((state) => {
+          if (state.cashSessions[input.businessDate]) return state;
+
+          return {
+            cashSessions: {
+              ...state.cashSessions,
+              [input.businessDate]: createDailyCashSession({
+                businessDate: input.businessDate,
+                openingCash: input.openingCash,
+                openedBy: input.operatorId,
+                openedAt: input.openedAt,
+              }),
+            },
+          };
+        });
+      },
+
+      openCashSession: (input) => {
+        set((state) => {
+          if (state.cashSessions[input.businessDate]) return state;
+
+          return {
+            cashSessions: {
+              ...state.cashSessions,
+              [input.businessDate]: createDailyCashSession({
+                businessDate: input.businessDate,
+                openingCash: input.openingCash,
+                openedBy: input.operatorId,
+                openedAt: input.openedAt,
+              }),
+            },
+          };
+        });
+      },
 
       commitPosTransactionDraft: (draft) => {
         set((state) => {
