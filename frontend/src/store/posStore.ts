@@ -469,8 +469,11 @@ export const usePosStore = create<PosState>()(
 
         if (hasQueued && !queuedSettlementAccepted) return;
 
+        const cashSession = state.cashSessions[businessDate];
+        const openingCash = cashSession?.openingCash ?? 0;
+
         const now = new Date().toISOString();
-        const settlement = createDailySettlement(businessDate, totals, countedCash, note, operatorId, now, hasQueued);
+        const settlement = createDailySettlement(businessDate, totals, openingCash, countedCash, note, operatorId, now, hasQueued);
 
         set(state => ({
           dailySettlements: [...state.dailySettlements, settlement],

@@ -9,6 +9,8 @@ interface CashClosePanelProps {
   hasQueuedRows: boolean;
   queuedRowCount?: number;
   hasFailedConflict: boolean;
+  openingCash: number;
+  onOpeningCashChange: (openingCash: number) => void;
   onClose: (countedCash: number, note: string) => void;
 }
 
@@ -17,6 +19,8 @@ export function CashClosePanel({
   dateStatus,
   hasQueuedRows,
   hasFailedConflict,
+  openingCash,
+  onOpeningCashChange,
   onClose,
   queuedRowCount = 0,
 }: CashClosePanelProps) {
@@ -26,10 +30,10 @@ export function CashClosePanel({
   const [showConfirm, setShowConfirm] = useState(false);
 
   const countedNum = countedCash === '' ? 0 : countedCash;
-  const difference = countedNum - totals.netCash;
+  const expectedDrawerCash = openingCash + totals.netCash;
+  const difference = countedNum - expectedDrawerCash;
   const cashEntered = countedCash !== '';
   const canClose =
-    cashEntered &&
     note.trim().length > 0 &&
     (!hasFailedConflict) &&
     (!hasQueuedRows || queuedAccepted) &&
@@ -45,14 +49,41 @@ export function CashClosePanel({
 
       <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div>
-          <div className="dim" style={{ fontSize: '12px', marginBottom: '4px' }}>系統現金 (預計)</div>
+          <label className="dim" htmlFor="opening-cash" style={{ fontSize: '12px', marginBottom: '4px', display: 'block' }}>
+            開帳金額
+          </label>
+          <input
+            id="opening-cash"
+            aria-label="開帳金額"
+            type="number"
+            className="adm-input mono"
+            style={{ width: '140px', fontSize: '18px' }}
+            value={openingCash}
+            onChange={e => onOpeningCashChange(Number(e.target.value || 0))}
+          />
+        </div>
+        <div>
+          <div className="dim" style={{ fontSize: '12px', marginBottom: '4px' }}>今日實收</div>
           <div className="mono" style={{ fontSize: '20px', fontWeight: 600 }}>${fmt(totals.netCash)}</div>
         </div>
         <div>
-          <div className="dim" style={{ fontSize: '12px', marginBottom: '4px' }}>實際現金 (點算)</div>
-          <input type="number" className="adm-input mono" style={{ width: '140px', fontSize: '18px' }}
-                 value={countedCash} placeholder="請輸入實際點算金額"
-                 onChange={e => { const v = e.target.value; setCountedCash(v === '' ? '' : Number(v)); }} />
+          <div className="dim" style={{ fontSize: '12px', marginBottom: '4px' }}>系統應有抽屜現金</div>
+          <div className="mono" style={{ fontSize: '20px', fontWeight: 600 }}>${fmt(expectedDrawerCash)}</div>
+        </div>
+        <div>
+          <label className="dim" htmlFor="counted-cash" style={{ fontSize: '12px', marginBottom: '4px', display: 'block' }}>
+            實際點算金額
+          </label>
+          <input
+            id="counted-cash"
+            aria-label="實際點算金額"
+            type="number"
+            className="adm-input mono"
+            style={{ width: '140px', fontSize: '18px' }}
+            value={countedCash}
+            placeholder="抽屜總現金"
+            onChange={e => { const v = e.target.value; setCountedCash(v === '' ? '' : Number(v)); }}
+          />
         </div>
         <div>
           <div className="dim" style={{ fontSize: '12px', marginBottom: '4px' }}>差異</div>
@@ -94,8 +125,10 @@ export function CashClosePanel({
             <div className="dialog-h">確認關帳</div>
             <div className="dialog-body">
               <div className="dialog-row"><label>日期</label><span className="mono">{businessDate}</span></div>
-              <div className="dialog-row"><label>系統現金</label><span className="mono">${fmt(totals.netCash)}</span></div>
-              <div className="dialog-row"><label>實際現金</label><span className="mono">${fmt(countedNum)}</span></div>
+              <div className="dialog-row"><label>開帳金額</label><span className="mono">${fmt(openingCash)}</span></div>
+              <div className="dialog-row"><label>今日實收</label><span className="mono">${fmt(totals.netCash)}</span></div>
+              <div className="dialog-row"><label>系統應有抽屜現金</label><span className="mono">${fmt(expectedDrawerCash)}</span></div>
+              <div className="dialog-row"><label>實際點算</label><span className="mono">${fmt(countedNum)}</span></div>
               <div className="dialog-row">
                 <label>差異</label>
                 <span className={'mono ' + (difference === 0 ? '' : difference > 0 ? 'pos' : 'warn')}>{difference === 0 ? '✓ 平' : `$${fmt(difference)}`}</span>
