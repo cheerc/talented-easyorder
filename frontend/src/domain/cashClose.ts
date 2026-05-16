@@ -10,6 +10,8 @@ export interface DailySettlement {
   settlementRevision: number;
   orderCount: number;
   transactionCount: number;
+  openingCash: number;
+  netCash: number;
   expectedCash: number;
   countedCash: number;
   difference: number;
@@ -25,6 +27,8 @@ export interface DailySettlement {
 
 export interface CashCloseDraft {
   businessDate: string;
+  openingCash: number;
+  netCash: number;
   expectedCash: number;
   countedCash: number;
   difference: number;
@@ -35,15 +39,19 @@ export interface CashCloseDraft {
 export function createCashCloseDraft(
   totals: LedgerTotals,
   businessDate: string,
+  openingCash: number,
   countedCash: number,
   note: string,
   queuedSettlementAccepted: boolean,
 ): CashCloseDraft {
+  const expectedCash = openingCash + totals.netCash;
   return {
     businessDate,
-    expectedCash: totals.netCash,
+    openingCash,
+    netCash: totals.netCash,
+    expectedCash,
     countedCash,
-    difference: countedCash - totals.netCash,
+    difference: countedCash - expectedCash,
     note,
     queuedSettlementAccepted,
   };
@@ -72,13 +80,15 @@ export function validateCashClose(
 export function createDailySettlement(
   businessDate: string,
   totals: LedgerTotals,
+  openingCash: number,
   countedCash: number,
   note: string,
   closedBy: string,
   closedAt: string,
   hasQueuedRows: boolean,
 ): DailySettlement {
-  const difference = countedCash - totals.netCash;
+  const expectedCash = openingCash + totals.netCash;
+  const difference = countedCash - expectedCash;
   return {
     settlementId: `settle-${businessDate}-${closedAt}`,
     businessDate,
@@ -86,7 +96,9 @@ export function createDailySettlement(
     settlementRevision: 1,
     orderCount: totals.orderCount,
     transactionCount: totals.transactionCount,
-    expectedCash: totals.netCash,
+    openingCash,
+    netCash: totals.netCash,
+    expectedCash,
     countedCash,
     difference,
     note,

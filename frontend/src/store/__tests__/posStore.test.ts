@@ -99,7 +99,7 @@ describe('posStore Domain Integration', () => {
 
 describe('posStore Compatibility', () => {
   beforeEach(() => {
-    localStorage.clear();
+    window.localStorage.clear();
     usePosStore.getState().resetData();
   });
 

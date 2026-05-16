@@ -22,18 +22,20 @@ const makeTotals = (overrides: Partial<LedgerTotals> = {}): LedgerTotals => ({
 });
 
 describe('createCashCloseDraft', () => {
-  it('sets expectedCash from totals.netCash', () => {
-    const draft = createCashCloseDraft(makeTotals({ netCash: 500 }), '2026-05-15', 500, '', false);
-    expect(draft.expectedCash).toBe(500);
+  it('sets expectedCash from openingCash + totals.netCash', () => {
+    const draft = createCashCloseDraft(makeTotals({ netCash: 500 }), '2026-05-15', 1000, 1500, '', false);
+    expect(draft.openingCash).toBe(1000);
+    expect(draft.netCash).toBe(500);
+    expect(draft.expectedCash).toBe(1500);
   });
 
   it('calculates difference as countedCash - expectedCash', () => {
-    const draft = createCashCloseDraft(makeTotals({ netCash: 500 }), '2026-05-15', 480, '', false);
+    const draft = createCashCloseDraft(makeTotals({ netCash: 500 }), '2026-05-15', 1000, 1480, '', false);
     expect(draft.difference).toBe(-20);
   });
 
   it('zero difference when counted matches expected', () => {
-    const draft = createCashCloseDraft(makeTotals({ netCash: 500 }), '2026-05-15', 500, '', false);
+    const draft = createCashCloseDraft(makeTotals({ netCash: 500 }), '2026-05-15', 1000, 1500, '', false);
     expect(draft.difference).toBe(0);
   });
 });
@@ -78,9 +80,11 @@ describe('validateCashClose', () => {
 
 describe('createDailySettlement', () => {
   it('creates settlement with revision 1 for first close', () => {
-    const settlement = createDailySettlement('2026-05-15', makeTotals(), 500, '', 'op-admin', '2026-05-15T18:00:00.000Z', false);
+    const settlement = createDailySettlement('2026-05-15', makeTotals(), 0, 500, '', 'op-admin', '2026-05-15T18:00:00.000Z', false);
     expect(settlement.settlementRevision).toBe(1);
     expect(settlement.status).toBe('closed');
+    expect(settlement.openingCash).toBe(0);
+    expect(settlement.netCash).toBe(500);
     expect(settlement.expectedCash).toBe(500);
     expect(settlement.countedCash).toBe(500);
     expect(settlement.difference).toBe(0);
@@ -88,12 +92,12 @@ describe('createDailySettlement', () => {
   });
 
   it('uses queued syncStatus when queuedRowsExist', () => {
-    const settlement = createDailySettlement('2026-05-15', makeTotals(), 500, '', 'op-admin', '2026-05-15T18:00:00.000Z', true);
+    const settlement = createDailySettlement('2026-05-15', makeTotals(), 0, 500, '', 'op-admin', '2026-05-15T18:00:00.000Z', true);
     expect(settlement.syncStatus).toBe('queued');
   });
 
   it('uses local syncStatus when no queued rows', () => {
-    const settlement = createDailySettlement('2026-05-15', makeTotals(), 500, '', 'op-admin', '2026-05-15T18:00:00.000Z', false);
+    const settlement = createDailySettlement('2026-05-15', makeTotals(), 0, 500, '', 'op-admin', '2026-05-15T18:00:00.000Z', false);
     expect(settlement.syncStatus).toBe('local');
   });
 });
