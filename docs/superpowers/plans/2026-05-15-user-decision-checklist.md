@@ -126,7 +126,20 @@
 
 **Implementation effect:** Plan B uses Apps Script and Sheets. Deployment/hosting plan must not assume Cloudflare unless later approved.
 
-### B3. Sync Freshness
+### B3. Apps Script Web App Access/Auth
+
+**Question:** How should the production PWA authenticate to the Apps Script web app?
+
+**Options:**
+- A. School-owned Google account deploys Apps Script as `Execute as: Me`, access `Anyone with the link`, and every request uses a locally configured HMAC pairing secret.
+- B. Restrict web app access to school Google accounts and require staff Google sign-in in the PWA browser session.
+- C. Public/link-only web app with no app-level signature.
+
+**Recommendation:** A for Phase 1. It avoids direct Sheets OAuth and extra providers while preventing unsigned public writes. The pairing secret must be generated outside git, stored in Apps Script `SYNC_API_SECRET`, entered locally on each production device, and rotated if a device is lost.
+
+**Implementation effect:** Plan B must implement signed `doGet`/`doPost` requests. Missing, expired, or invalid signatures return `unauthorized` and are not retried. Option C is forbidden for production accounting data.
+
+### B4. Sync Freshness
 
 **Question:** Is near-realtime multi-device sync required?
 
@@ -139,7 +152,7 @@
 
 **Implementation effect:** Implement foreground outbox push and bootstrap pull first. Do not add realtime infrastructure.
 
-### B4. Closeout With Queued Rows
+### B5. Closeout With Queued Rows
 
 **Question:** May the operator close the day while some rows are queued but not yet uploaded?
 
@@ -152,7 +165,7 @@
 
 **Implementation effect:** Existing closeout gate should block failed/conflict rows and require acknowledgement for queued rows.
 
-### B5. Conflict Resolution
+### B6. Conflict Resolution
 
 **Question:** What happens if two devices update the same accounting state?
 
@@ -163,9 +176,9 @@
 
 **Recommendation:** B. Last-write-wins is unsafe for accounting; CRDT is unnecessary.
 
-**Implementation effect:** Sync events include `baseServerRevision`; Apps Script returns `conflict` when revision checks fail.
+**Implementation effect:** Transaction events include per-student `expectedStudentRevision`; settlement events require exact current `serverRevision`; Apps Script returns `conflict` when those checks fail.
 
-### B6. Staff Identity
+### B7. Staff Identity
 
 **Question:** Does production require per-staff accounts?
 
@@ -178,7 +191,7 @@
 
 **Implementation effect:** Plan B can write `operatorId='counter'` initially. Store schema should still keep `operatorId` fields.
 
-### B7. Sheet Access Policy
+### B8. Sheet Access Policy
 
 **Question:** Who can directly edit the Google Sheet?
 
@@ -191,7 +204,7 @@
 
 **Implementation effect:** Runbook must say transaction and settlement sheets are append-only via Apps Script.
 
-### B8. Student Import Path
+### B9. Student Import Path
 
 **Question:** Where does existing Excel data get imported?
 
@@ -295,12 +308,13 @@ If the user wants to proceed without answering every item, use these defaults:
 - A7: no debt limit in pilot.
 - B1: Apps Script + Sheets.
 - B2: existing Google account only.
-- B3: no realtime sync for Phase 1.
-- B4: block failed/conflict, allow queued only with acknowledgement.
-- B5: revision conflict, no last-write-wins.
-- B6: shared counter identity for pilot.
-- B7: admin can edit students only; transactions/settlements append via Apps Script.
-- B8: Excel -> CSV -> preview -> Sheets students.
+- B3: school-owned Apps Script deployer with HMAC pairing secret; no unsigned public writes.
+- B4: no realtime sync for Phase 1.
+- B5: block failed/conflict, allow queued only with acknowledgement.
+- B6: per-student revision for transactions and exact server revision for settlements; no last-write-wins.
+- B7: shared counter identity for pilot.
+- B8: admin can edit students only; transactions/settlements append via Apps Script.
+- B9: Excel -> CSV -> preview -> Sheets students.
 - C1: local-only training only, not real service.
 - C2: offline cold start required before real launch.
 - C3: exactly one production PWA install per device.
