@@ -1,0 +1,105 @@
+import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type Auth, type User } from 'firebase/auth';
+import { doc, getDoc, onSnapshot, type Firestore } from 'firebase/firestore';
+import { operatorPath } from './firestorePaths';
+
+export interface OperatorProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+}
+
+export type OperatorAccess =
+  | { ok: true; profile: OperatorProfile; role: 'counter' | 'admin' }
+  | { ok: false; reason: 'signed_out' | 'wrong_domain' | 'not_whitelisted' | 'inactive'; profile?: OperatorProfile };
+
+export function isAllowedWorkspaceEmail(email: string | null): boolean {
+  return Boolean(email && email.toLowerCase().endsWith('@talented.com.tw'));
+}
+
+export function toOperatorProfile(user: Pick<User, 'uid' | 'email' | 'displayName'>): OperatorProfile {
+  return {
+    uid: user.uid,
+    email: user.email ?? '',
+    displayName: user.displayName ?? user.email ?? user.uid,
+  };
+}
+
+export function shouldForceSignOut(access: OperatorAccess): boolean {
+  return !access.ok && access.reason !== 'signed_out';
+}
+
+export async function getOperatorAccess(db: Firestore, user: User): Promise<OperatorAccess> {
+  const profile = toOperatorProfile(user);
+  if (!isAllowedWorkspaceEmail(profile.email)) {
+    return { ok: false, reason: 'wrong_domain', profile };
+  }
+
+  const snapshot = await getDoc(doc(db, operatorPath(profile.uid)));
+  const data = snapshot.data() as { active?: boolean; role?: 'counter' | 'admin' } | undefined;
+  if (!data) return { ok: false, reason: 'not_whitelisted', profile };
+  if (!data.active) return { ok: false, reason: 'inactive', profile };
+  return { ok: true, profile, role: data.role ?? 'counter' };
+}
+
+export async function verifyUserAuthorization(auth: Auth, db: Firestore, user: User): Promise<OperatorAccess> {
+  const access = await getOperatorAccess(db, user);
+  if (shouldForceSignOut(access)) {
+    await signOut(auth);
+  }
+  return access;
+}
+
+export async function signInWithGoogle(auth: Auth, db: Firestore): Promise<OperatorAccess> {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ hd: 'talented.com.tw', prompt: 'select_account' });
+  const credential = await signInWithPopup(auth, provider);
+  return verifyUserAuthorization(auth, db, credential.user);
+}
+
+export function signOutOperator(auth: Auth): Promise<void> {
+  return signOut(auth);
+}
+
+export function subscribeOperatorAccess(
+  auth: Auth,
+  db: Firestore,
+  onAccess: (access: OperatorAccess) => void,
+): () => void {
+  let unsubscribeOperator: (() => void) | null = null;
+  const unsubscribeAuth = onAuthStateChanged(auth, async user => {
+    unsubscribeOperator?.();
+    unsubscribeOperator = null;
+
+    if (!user) {
+      onAccess({ ok: false, reason: 'signed_out' });
+      return;
+    }
+
+    const profile = toOperatorProfile(user);
+    if (!isAllowedWorkspaceEmail(profile.email)) {
+      onAccess({ ok: false, reason: 'wrong_domain', profile });
+      await signOut(auth);
+      return;
+    }
+
+    unsubscribeOperator = onSnapshot(doc(db, operatorPath(profile.uid)), snapshot => {
+      const data = snapshot.data() as { active?: boolean; role?: 'counter' | 'admin' } | undefined;
+      if (!data) {
+        onAccess({ ok: false, reason: 'not_whitelisted', profile });
+        void signOut(auth);
+        return;
+      }
+      if (!data.active) {
+        onAccess({ ok: false, reason: 'inactive', profile });
+        void signOut(auth);
+        return;
+      }
+      onAccess({ ok: true, profile, role: data.role ?? 'counter' });
+    });
+  });
+
+  return () => {
+    unsubscribeOperator?.();
+    unsubscribeAuth();
+  };
+}
