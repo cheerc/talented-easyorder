@@ -127,7 +127,7 @@ Rules:
 - `id` equals document ID.
 - `status: 'inactive'` hides the student from normal POS search but keeps historical transactions readable.
 - `openingBalance` is the initial imported balance. `currentBalance` is a projection and must match acknowledged transactions after reconciliation.
-- Client writes may not change `currentBalance`, `revision`, or `lastTransactionId` unless the same Firestore transaction/batch also creates the matching `transactions/{lastTransactionId}` document. Firestore Security Rules enforce this with `getAfter()`.
+- Client writes may not change `currentBalance`, `revision`, or `lastTransactionId` unless the same Firestore transaction/batch creates a new matching `transactions/{lastTransactionId}` document. Firestore Security Rules enforce this with `lastTransactionId` progression, `!exists()` before the write, `existsAfter()` after the write, and `getAfter()` content checks.
 - Direct hard delete is forbidden in the app and in Firestore rules.
 
 ### `transactions/{transactionId}`
@@ -1005,10 +1005,13 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys();
     }
 
-    function createsMatchingTransaction(studentId) {
+    function createsNewMatchingTransaction(studentId) {
       let txId = request.resource.data.lastTransactionId;
       let tx = getAfter(/databases/$(database)/documents/transactions/$(txId));
       return txId is string
+        && txId != resource.data.lastTransactionId
+        && !exists(/databases/$(database)/documents/transactions/$(txId))
+        && existsAfter(/databases/$(database)/documents/transactions/$(txId))
         && tx.data.id == txId
         && tx.data.studentId == studentId
         && tx.data.operatorId == request.auth.uid
@@ -1019,7 +1022,7 @@ service cloud.firestore {
       let txId = request.resource.data.lastTransactionId;
       let tx = getAfter(/databases/$(database)/documents/transactions/$(txId));
       return affectedKeys().hasOnly(['currentBalance', 'revision', 'updatedAt', 'updatedBy', 'lastTransactionId'])
-        && createsMatchingTransaction(studentId)
+        && createsNewMatchingTransaction(studentId)
         && request.resource.data.currentBalance == resource.data.currentBalance + tx.data.amount
         && request.resource.data.revision == resource.data.revision + 1
         && request.resource.data.updatedBy == request.auth.uid;
@@ -1171,6 +1174,33 @@ async function seedStudent(studentId: string, balance = 500) {
   });
 }
 
+async function seedTransaction(transactionId: string, studentId = '015', amount = 100) {
+  await env.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), `transactions/${transactionId}`), {
+      id: transactionId,
+      studentId,
+      studentNameSnapshot: '王小明',
+      type: 'payment',
+      amount,
+      balanceBefore: 500,
+      balanceAfter: 500 + amount,
+      clientBalanceAfterPreview: 500 + amount,
+      menuNameSnapshot: '',
+      price: 0,
+      paidAmount: amount,
+      operatorId: 'uid-counter',
+      operatorEmail: 'counter@talented.com.tw',
+      deviceId: 'pc-1',
+      businessDate: '2026-05-16',
+      sourceDevice: 'pc',
+      note: 'seeded transaction',
+      status: 'pending',
+      createdAt: new Date('2026-05-16T08:00:00.000Z'),
+      committedAt: null,
+    });
+  });
+}
+
 function authedDb(uid: string, email: string) {
   return env.authenticatedContext(uid, { email }).firestore();
 }
@@ -1255,6 +1285,21 @@ describe('firestore.rules required cases', () => {
     }));
   });
 
+  it('rejects projection update that reuses an existing transaction ID', async () => {
+    await seedOperator('uid-counter', 'counter@talented.com.tw');
+    await seedStudent('015', 500);
+    await seedTransaction('tx-existing', '015', 100);
+    const db = authedDb('uid-counter', 'counter@talented.com.tw');
+
+    await assertFails(updateDoc(doc(db, 'students/015'), {
+      currentBalance: 600,
+      revision: 2,
+      updatedAt: new Date('2026-05-16T08:02:00.000Z'),
+      updatedBy: 'uid-counter',
+      lastTransactionId: 'tx-existing',
+    }));
+  });
+
   it('allows student balance projection only when the same batch creates the matching transaction', async () => {
     await seedOperator('uid-counter', 'counter@talented.com.tw');
     await seedStudent('015', 500);
@@ -1292,6 +1337,52 @@ describe('firestore.rules required cases', () => {
     });
 
     await assertSucceeds(batch.commit());
+  });
+
+  it('rejects a second projection update with the same transaction ID', async () => {
+    await seedOperator('uid-counter', 'counter@talented.com.tw');
+    await seedStudent('015', 500);
+    const db = authedDb('uid-counter', 'counter@talented.com.tw');
+    const batch = writeBatch(db);
+
+    batch.set(doc(db, 'transactions/tx-replay'), {
+      id: 'tx-replay',
+      studentId: '015',
+      studentNameSnapshot: '王小明',
+      type: 'payment',
+      amount: 100,
+      balanceBefore: 500,
+      balanceAfter: 600,
+      clientBalanceAfterPreview: 600,
+      menuNameSnapshot: '',
+      price: 0,
+      paidAmount: 100,
+      operatorId: 'uid-counter',
+      operatorEmail: 'counter@talented.com.tw',
+      deviceId: 'pc-1',
+      businessDate: '2026-05-16',
+      sourceDevice: 'pc',
+      note: '補錢',
+      status: 'pending',
+      createdAt: new Date('2026-05-16T08:03:00.000Z'),
+      committedAt: null,
+    });
+    batch.update(doc(db, 'students/015'), {
+      currentBalance: 600,
+      revision: 2,
+      updatedAt: new Date('2026-05-16T08:03:00.000Z'),
+      updatedBy: 'uid-counter',
+      lastTransactionId: 'tx-replay',
+    });
+    await assertSucceeds(batch.commit());
+
+    await assertFails(updateDoc(doc(db, 'students/015'), {
+      currentBalance: 700,
+      revision: 3,
+      updatedAt: new Date('2026-05-16T08:04:00.000Z'),
+      updatedBy: 'uid-counter',
+      lastTransactionId: 'tx-replay',
+    }));
   });
 
   it('rejects transaction create when operatorId does not match auth uid', async () => {
@@ -1602,7 +1693,7 @@ export async function commitLedgerOfflineBatch(db: Firestore, input: CommitLedge
 }
 ```
 
-Review note: the offline batch path intentionally avoids `runTransaction`, because Firestore transactions fail offline. It depends on a stable `transactionId`, disabled duplicate UI retry after local commit, and the Firestore Rules `getAfter()` check that links the student projection update to the matching transaction document in the same batch.
+Review note: the offline batch path intentionally avoids `runTransaction`, because Firestore transactions fail offline. It depends on a stable `transactionId`, disabled duplicate UI retry after local commit, and Firestore Rules checks that require the transaction ID to differ from the current `students.lastTransactionId`, not exist before the write, exist after the write, and match the student projection through `getAfter()`.
 
 - [ ] **Step 3: Wire POS store commit path**
 
@@ -2060,7 +2151,7 @@ git commit -m "test: document Firebase sync verification matrix"
 2. Google provider `hd=talented.com.tw` is a sign-in hint. The app and rules still verify the actual email domain.
 3. Firebase web config values are not secrets. They can be stored in Vercel `VITE_FIREBASE_*` variables and bundled into the app. Firestore rules and Auth enforce access.
 4. Do not store Google OAuth tokens in Zustand, localStorage, IndexedDB, or logs.
-5. Student balance fields are not free-form client state. Rules must require a matching `transactions/{transactionId}` document in the same batch/transaction before accepting a projection update.
+5. Student balance fields are not free-form client state. Rules must require a new matching `transactions/{transactionId}` document in the same batch/transaction before accepting a projection update: `lastTransactionId` must change, `exists()` must be false before the write, `existsAfter()` must be true after the write, and `getAfter()` must match the student, operator, and amount.
 6. If App Check is added after launch, write a separate plan. It is not required for Phase 1 because Firestore Security Rules and Auth are the enforcement layer.
 
 ## Offline And Conflict Policy
@@ -2078,7 +2169,7 @@ git commit -m "test: document Firebase sync verification matrix"
 - New Firebase project config is documented and Vercel env vars are listed.
 - Firebase Auth Google sign-in gates the app and rejects non-`@talented.com.tw` accounts.
 - Firestore Security Rules enforce active operator whitelist and prevent hard deletion of students/transactions.
-- Firestore Security Rules reject direct `students.currentBalance` or `students.revision` updates unless the same write creates the matching transaction document.
+- Firestore Security Rules reject direct `students.currentBalance` or `students.revision` updates unless the same write creates a new matching transaction document; replaying an existing transaction ID or reusing the current `lastTransactionId` is rejected.
 - Unauthorized, wrong-domain, inactive, or non-whitelisted Firebase users are forcibly signed out after verification.
 - Firestore persistent local cache is enabled with multi-tab handling.
 - Realtime `onSnapshot` listeners hydrate students, transactions, daily settlements, and cash adjustments.
