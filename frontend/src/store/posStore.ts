@@ -65,13 +65,6 @@ interface OpenCashSessionInput {
   openedAt: string;
 }
 
-interface OpenCashSessionInput {
-  businessDate: string;
-  openingCash: number;
-  operatorId: string;
-  openedAt: string;
-}
-
 export type BusinessDateStatus = 'open' | 'closed' | 'reopened';
 
 interface PosState {
@@ -101,7 +94,6 @@ interface PosState {
   hardDeleteLocalDraft: (input: LedgerVoidInput) => void;
   setBusinessDateStatus: (date: string, status: BusinessDateStatus) => void;
   openCashSession: (input: OpenCashSessionInput) => void;
-  openCashSession: (input: OpenCashSessionInput) => void;
   closeBusinessDate: (input: CloseBusinessDateInput) => void;
   reopenBusinessDate: (input: ReopenBusinessDateInput) => void;
   getBusinessDateStatus: (businessDate: string) => BusinessDateStatus;
@@ -126,24 +118,6 @@ export const usePosStore = create<PosState>()(
 
       setTodayMenu: (menu) => set({ todayMenu: menu }),
       setVendors: (vendors) => set({ vendors }),
-
-      openCashSession: (input) => {
-        set((state) => {
-          if (state.cashSessions[input.businessDate]) return state;
-
-          return {
-            cashSessions: {
-              ...state.cashSessions,
-              [input.businessDate]: createDailyCashSession({
-                businessDate: input.businessDate,
-                openingCash: input.openingCash,
-                openedBy: input.operatorId,
-                openedAt: input.openedAt,
-              }),
-            },
-          };
-        });
-      },
 
       openCashSession: (input) => {
         set((state) => {
