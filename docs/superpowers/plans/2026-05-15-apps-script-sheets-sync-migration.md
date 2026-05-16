@@ -954,12 +954,33 @@ function appendObject(sheet, object) {
   sheet.appendRow(headers.map(header => object[header] ?? ''));
 }
 
-function hasEventId(sheet, eventId) {
+function findEventById(sheet, eventId) {
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
   const eventIdIndex = headers.indexOf('event_id');
-  if (eventIdIndex < 0) return false;
+  if (eventIdIndex < 0) return null;
   const rows = sheet.getDataRange().getValues().slice(1);
-  return rows.some(row => row[eventIdIndex] === eventId);
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    if (rows[rowIndex][eventIdIndex] === eventId) {
+      const object = {};
+      headers.forEach((header, index) => {
+        object[header] = rows[rowIndex][index];
+      });
+      return object;
+    }
+  }
+  return null;
+}
+
+function maxServerRevision(sheet) {
+  return readObjects(sheet).reduce((max, row) => {
+    return Math.max(max, Number(row.server_revision || 0));
+  }, 0);
+}
+
+function repairServerRevision(txSheet, settlementSheet) {
+  const repaired = Math.max(getServerRevision(), maxServerRevision(txSheet), maxServerRevision(settlementSheet));
+  setServerRevision(repaired);
+  return repaired;
 }
 
 function findRowByColumn(sheet, columnName, value) {
@@ -982,35 +1003,56 @@ function setCellByHeader(sheet, rowNumber, headers, header, value) {
   sheet.getRange(rowNumber, columnIndex + 1).setValue(value);
 }
 
-function updateStudentForTransaction(studentSheet, event, serverRevision) {
-  const payload = event.payload || {};
-  const found = findRowByColumn(studentSheet, 'student_id', payload.studentId);
+function transactionsForStudent(txSheet, studentId) {
+  return readObjects(txSheet)
+    .filter(row => String(row.student_id) === String(studentId))
+    .sort((left, right) => Number(left.server_revision || 0) - Number(right.server_revision || 0));
+}
+
+function computeStudentProjection(studentSheet, txSheet, studentId) {
+  const found = findRowByColumn(studentSheet, 'student_id', studentId);
   if (!found) {
-    return { ok: false, eventId: event.eventId, serverRevision, message: `Unknown student: ${payload.studentId}` };
+    return { ok: false, message: `Unknown student: ${studentId}` };
   }
 
-  const revisionIndex = found.headers.indexOf('student_revision');
-  const balanceIndex = found.headers.indexOf('current_balance');
-  if (revisionIndex < 0 || balanceIndex < 0) {
-    throw new Error('students sheet requires current_balance and student_revision columns');
+  const openingBalanceIndex = found.headers.indexOf('opening_balance');
+  if (openingBalanceIndex < 0) {
+    throw new Error('students sheet requires opening_balance column so current balance can be repaired from transactions');
   }
 
-  const currentRevision = Number(found.row[revisionIndex] || 0);
-  if (currentRevision !== Number(payload.expectedStudentRevision)) {
+  const rows = transactionsForStudent(txSheet, studentId);
+  const openingBalance = Number(found.row[openingBalanceIndex] || 0);
+  const balance = rows.reduce((total, row) => total + Number(row.amount || 0), openingBalance);
+  return { ok: true, found, balance, revision: rows.length };
+}
+
+function validateTransactionRevision(studentSheet, txSheet, event, serverRevision) {
+  const payload = event.payload || {};
+  const projection = computeStudentProjection(studentSheet, txSheet, payload.studentId);
+  if (!projection.ok) {
+    return { ok: false, eventId: event.eventId, serverRevision, message: projection.message };
+  }
+
+  if (projection.revision !== Number(payload.expectedStudentRevision)) {
     return {
       ok: false,
       eventId: event.eventId,
       serverRevision,
-      message: `Student revision conflict for ${payload.studentId}: expected ${payload.expectedStudentRevision}, actual ${currentRevision}`,
+      message: `Student revision conflict for ${payload.studentId}: expected ${payload.expectedStudentRevision}, actual ${projection.revision}`,
     };
   }
 
-  const currentBalance = Number(found.row[balanceIndex] || 0);
-  const nextBalance = currentBalance + Number(payload.amount || 0);
-  setCellByHeader(studentSheet, found.rowNumber, found.headers, 'current_balance', nextBalance);
-  setCellByHeader(studentSheet, found.rowNumber, found.headers, 'student_revision', currentRevision + 1);
-  setCellByHeader(studentSheet, found.rowNumber, found.headers, 'updated_at', new Date().toISOString());
   return { ok: true };
+}
+
+function repairStudentFromLedger(studentSheet, txSheet, studentId) {
+  const projection = computeStudentProjection(studentSheet, txSheet, studentId);
+  if (!projection.ok) throw new Error(projection.message);
+  const { found } = projection;
+  setCellByHeader(studentSheet, found.rowNumber, found.headers, 'current_balance', projection.balance);
+  setCellByHeader(studentSheet, found.rowNumber, found.headers, 'student_revision', projection.revision);
+  setCellByHeader(studentSheet, found.rowNumber, found.headers, 'updated_at', new Date().toISOString());
+  return projection;
 }
 
 function getServerRevision() {
@@ -1067,27 +1109,31 @@ function doPost(e) {
     const events = Array.isArray(request.events) ? request.events : [];
     const acks = [];
     const conflicts = [];
-    let serverRevision = getServerRevision();
-
     const txSheet = getSheet(SHEETS.transactions);
     const settlementSheet = getSheet(SHEETS.settlements);
     const studentSheet = getSheet(SHEETS.students);
+    let serverRevision = repairServerRevision(txSheet, settlementSheet);
 
     events.forEach(event => {
       const targetSheet = event.eventType === 'daily_settlement_closed' ? settlementSheet : txSheet;
-      if (hasEventId(targetSheet, event.eventId)) {
+      const duplicate = findEventById(targetSheet, event.eventId);
+      if (duplicate) {
+        if (event.eventType === 'transaction_committed') {
+          repairStudentFromLedger(studentSheet, txSheet, duplicate.student_id);
+        }
+        serverRevision = repairServerRevision(txSheet, settlementSheet);
         acks.push({ eventId: event.eventId, status: 'duplicate', serverRevision });
         return;
       }
 
       if (event.eventType === 'transaction_committed') {
-        const studentUpdate = updateStudentForTransaction(studentSheet, event, serverRevision);
-        if (!studentUpdate.ok) {
+        const validation = validateTransactionRevision(studentSheet, txSheet, event, serverRevision);
+        if (!validation.ok) {
           conflicts.push({
             eventId: event.eventId,
             status: 'conflict',
             serverRevision,
-            message: studentUpdate.message,
+            message: validation.message,
           });
           return;
         }
@@ -1113,6 +1159,7 @@ function doPost(e) {
 
       serverRevision += 1;
       const payload = event.payload || {};
+      // Source of truth first: if later derived-state repair fails, retry sees the event row and repairs.
       appendObject(targetSheet, {
         ...payload,
         event_id: event.eventId,
@@ -1122,10 +1169,15 @@ function doPost(e) {
         server_revision: serverRevision,
         synced_at: new Date().toISOString(),
       });
+
+      if (event.eventType === 'transaction_committed') {
+        repairStudentFromLedger(studentSheet, txSheet, payload.studentId);
+      }
+
+      setServerRevision(serverRevision);
       acks.push({ eventId: event.eventId, status: 'accepted', serverRevision });
     });
 
-    setServerRevision(serverRevision);
     return jsonResponse({ ok: true, acks, conflicts });
   } catch (error) {
     return errorResponse('quota_or_transient_error', String(error && error.message ? error.message : error), true, 60);
@@ -1157,7 +1209,7 @@ Create three visible worksheets in one Google Spreadsheet:
 `students`:
 
 ```text
-student_id,display_name,status,current_balance,student_revision,updated_at
+student_id,display_name,status,opening_balance,current_balance,student_revision,updated_at
 ```
 
 `transactions`:
@@ -1211,10 +1263,24 @@ Rotating the pairing secret requires updating the Apps Script `SYNC_API_SECRET` 
 ## Operational Rule
 
 The frontend never writes directly to Google Sheets. It sends events to this web app. The script serializes writes with `LockService.getScriptLock()`.
-Transaction events may proceed on a stale global server revision only when the per-student `expectedStudentRevision` matches the `students` row. Daily settlement events require exact current `serverRevision` and return a conflict otherwise. Student roster import is not a sync event; it is admin-controlled maintenance on the `students` sheet through the import runbook.
+`transactions` and `daily_settlements` are the source of truth. The `students.current_balance` and `students.student_revision` fields are derived from `students.opening_balance` plus accepted transaction rows. Transaction events may proceed on a stale global server revision only when `expectedStudentRevision` matches the revision computed from transaction rows. Daily settlement events require exact current `serverRevision` and return a conflict otherwise. Student roster import is not a sync event; it is admin-controlled maintenance on the `students` sheet through the import runbook.
+
+Duplicate/retry handling must be repairable:
+
+1. If a transaction append succeeds but student repair fails, retrying the same event sees the duplicate transaction row and recomputes the student row from the ledger.
+2. If transaction or settlement append succeeds but `serverRevision` property update fails, retrying the duplicate or handling the next request repairs `serverRevision` from the max `server_revision` in the event sheets.
+3. If a student row is manually drifted, the next accepted or duplicate transaction for that student rewrites `current_balance` and `student_revision` from the transaction ledger.
 ```
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Verify partial-write simulations in review notes**
+
+Before committing the Apps Script task, document these simulations in the PR/test notes and verify the code path against each one:
+
+1. Force `repairStudentFromLedger` to throw immediately after a transaction row append. Expected retry: duplicate transaction is detected, student row is recomputed from `opening_balance + transactions.amount`, and the event is acknowledged as duplicate.
+2. Force `setServerRevision` to throw immediately after a transaction or settlement row append. Expected retry or next request: `repairServerRevision` reads max `server_revision` from `transactions` and `daily_settlements`, updates Script Properties, and returns the repaired revision.
+3. Manually edit `students.current_balance` or `students.student_revision` away from the ledger value. Expected next accepted or duplicate transaction for that student: derived fields are rewritten from transaction rows instead of trusted as source of truth.
+
+- [ ] **Step 4: Commit**
 
 ```bash
 git add apps-script/easyorder-sync/Code.gs apps-script/easyorder-sync/README.md
@@ -1518,7 +1584,7 @@ studentId,displayName,openingBalance
 
 1. Export Excel to CSV.
 2. In the app, preview the CSV and fix duplicate `studentId`, blank `displayName`, or invalid `openingBalance`.
-3. Apply the import to the Google Sheet `students` tab.
+3. Apply the import to the Google Sheet `students` tab: `openingBalance` writes `opening_balance`, `current_balance` starts equal to `opening_balance`, and `student_revision` starts at `0`.
 4. Start EasyOrder and run bootstrap pull.
 5. Confirm the app shows the imported student count and opening balances.
 
@@ -1671,6 +1737,8 @@ Expected: `git diff --check` prints no errors. `git status --short` shows only i
 - Outbox records preserve retry metadata: status, attempt count, next retry time, and last error.
 - Apps Script web app deployment has a concrete auth decision: school-owned deployer, `Execute as: Me`, link access, and HMAC pairing secret validation on every `doGet`/`doPost`.
 - Apps Script `doPost` serializes append-only event writes with `LockService`.
+- Apps Script treats `transactions` and `daily_settlements` as source-of-truth event ledgers; `students.current_balance`, `students.student_revision`, and Script Property `serverRevision` are repairable derived state.
+- Duplicate/retry paths explicitly repair partial-write cases: append succeeded but student repair failed, append succeeded but `serverRevision` update failed, or student row drifted from the ledger.
 - Sheets remain visible and understandable to the director: students, transactions, daily_settlements.
 - Event ids are idempotency keys.
 - Accounting conflicts are surfaced instead of last-write-wins: transaction writes check `expectedStudentRevision`; settlement writes require exact current server revision.
