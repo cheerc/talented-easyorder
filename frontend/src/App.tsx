@@ -56,7 +56,7 @@ export default function App() {
     cancelFlow,
     dismissSuccess,
     commitTransaction,
-  } = usePosFlow({ businessDate: viewDate, isHistorical });
+  } = usePosFlow({ businessDate: viewDate, isHistorical, priceOverride, priceOverrideLabel });
 
   const [tab, setTab] = useState('pos');
   const [reportStudentFilter, setReportStudentFilter] = useState('');
