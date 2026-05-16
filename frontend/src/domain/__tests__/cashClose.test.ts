@@ -116,6 +116,44 @@ describe('reopenBusinessDate', () => {
   });
 });
 
+describe('settlement with opening cash', () => {
+  it('creates settlement using expected drawer cash including opening cash', () => {
+    const settlement = createDailySettlement(
+      '2026-05-15',
+      makeTotals({ netCash: 1260 }),
+      4000,
+      5260,
+      '平帳',
+      'counter',
+      '2026-05-15T09:30:00.000Z',
+      false,
+    );
+
+    expect(settlement.openingCash).toBe(4000);
+    expect(settlement.netCash).toBe(1260);
+    expect(settlement.expectedCash).toBe(5260);
+    expect(settlement.countedCash).toBe(5260);
+    expect(settlement.difference).toBe(0);
+  });
+
+  it('createCashCloseDraft derives expected cash from opening cash plus net cash', () => {
+    const draft = createCashCloseDraft(
+      makeTotals({ netCash: 1260 }),
+      '2026-05-15',
+      4000,
+      5250,
+      '短少 10 元',
+      false,
+    );
+
+    expect(draft.openingCash).toBe(4000);
+    expect(draft.netCash).toBe(1260);
+    expect(draft.expectedCash).toBe(5260);
+    expect(draft.countedCash).toBe(5250);
+    expect(draft.difference).toBe(-10);
+  });
+});
+
 describe('isBusinessDateWritable', () => {
   it('open is writable', () => {
     expect(isBusinessDateWritable('open')).toBe(true);
