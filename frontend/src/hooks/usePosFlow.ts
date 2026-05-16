@@ -192,7 +192,7 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
     } finally {
       committingRef.current = false;
     }
-  }, [state, students, todayMenu, transactions, commitPosTransactionDraft, args.businessDate]);
+  }, [state, students, todayMenu, transactions, commitPosTransactionDraft, args.businessDate, args.priceOverride, args.priceOverrideLabel]);
 
   const cancelFlow = useCallback(() => {
     dispatch({ type: 'cancel' });
