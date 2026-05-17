@@ -429,7 +429,7 @@ export default function App() {
       amount: amt - mealPrice,
       after: picked.currentBalance + (amt - mealPrice),
     };
-  }, [isSuccess, picked, currentMode, currentPaidAmount, todayMenu, orderedTodayCount, flashKey, priceOverride]);
+  }, [isSuccess, picked, currentMode, currentPaidAmount, todayMenu, flashKey, priceOverride]);
 
   return (
     <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => console.error('[ErrorBoundary]', e)}>

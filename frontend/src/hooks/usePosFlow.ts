@@ -9,8 +9,6 @@ import type { ScannerInput } from '../domain/posSearch';
 import { resolveScannedStudent } from '../domain/posSearch';
 import { parsePaidAmount, buildPosTransactionDraft } from '../domain/posTransaction';
 import { countActiveOrdersForStudent } from '../domain/ledger';
-import { countActiveOrdersForStudent } from '../domain/ledger';
-import { countActiveOrdersForStudent } from '../domain/ledger';
 import {
   validateIpadHandoffMessage,
   readHandoffIntent,

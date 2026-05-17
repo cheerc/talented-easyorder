@@ -8,103 +8,58 @@ beforeEach(() => {
 });
 
 describe('ledgerStore — audit events', () => {
-  it('correctTransaction appends audit event', () => {
+  it('editTransaction appends audit event', () => {
     const store = usePosStore.getState();
     const tx = store.transactions[0];
-    store.correctTransaction({
-      transactionId: tx.transactionId,
-      updates: { mealPrice: 90, paidAmount: 50, note: 'test' },
-      reason: '價格變更',
-      operatorId: 'op-test',
-    });
+    store.editTransaction(tx.transactionId, { mealPrice: 90, paidAmount: 50, note: 'test' });
     const next = usePosStore.getState();
     expect(next.auditEvents).toHaveLength(1);
-    expect(next.auditEvents[0].eventType).toBe('transaction_corrected');
+    expect(next.auditEvents[0].eventType).toBe('transaction_edited');
     expect(next.auditEvents[0].entityId).toBe(tx.transactionId);
-    expect(next.auditEvents[0].reason).toBe('價格變更');
   });
 
-  it('voidTransaction appends audit event', () => {
+  it('deleteTransaction removes the transaction from state', () => {
     const store = usePosStore.getState();
     const tx = store.transactions[0];
-    store.voidTransaction({ transactionId: tx.transactionId, reason: '錯誤', operatorId: 'op-test' });
-    const next = usePosStore.getState();
-    expect(next.auditEvents).toHaveLength(1);
-    expect(next.auditEvents[0].eventType).toBe('transaction_voided');
-  });
-
-  it('hardDeleteLocalDraft removes local draft and appends audit', () => {
-    const store = usePosStore.getState();
-    const tx = store.transactions[0];
-    store.hardDeleteLocalDraft({ transactionId: tx.transactionId, reason: '測試刪除', operatorId: 'op-test' });
+    expect(tx).toBeTruthy();
+    store.deleteTransaction(tx.transactionId);
     const next = usePosStore.getState();
     expect(next.transactions.find(t => t.transactionId === tx.transactionId)).toBeUndefined();
-    expect(next.auditEvents).toHaveLength(1);
+  });
+
+  it('deleteOrderWithRefundCheck appends audit event', () => {
+    const store = usePosStore.getState();
+    const tx = store.transactions[0];
+    const prevAuditCount = store.auditEvents.length;
+    const result = store.deleteOrderWithRefundCheck(tx.transactionId);
+    if (result.deleted) {
+      const next = usePosStore.getState();
+      expect(next.auditEvents.length).toBe(prevAuditCount + 1);
+      expect(next.auditEvents[prevAuditCount].eventType).toBe('transaction_deleted');
+    }
   });
 });
 
-describe('ledgerStore — correction migration', () => {
-  it('corrects queued row by appending correction not mutating original', () => {
+describe('ledgerStore — edit transaction', () => {
+  it('edits mealPrice and paidAmount inline', () => {
     const store = usePosStore.getState();
     const tx = store.transactions[0];
     if (!tx) return;
 
-    // First set sync to queued
-    store.updateTransaction(tx.transactionId, { syncStatus: 'queued' });
-    const updatedTx = usePosStore.getState().transactions.find(t => t.transactionId === tx.transactionId)!;
-    expect(updatedTx.syncStatus).toBe('queued');
-
-    store.correctTransaction({
-      transactionId: tx.transactionId,
-      updates: { mealPrice: 100, paidAmount: 100, note: 'correction' },
-      reason: 'sync-status correction',
-      operatorId: 'op-test',
-    });
+    store.editTransaction(tx.transactionId, { mealPrice: 100, paidAmount: 100, note: 'updated' });
 
     const next = usePosStore.getState();
-    // Original should not be mutated for mealPrice/paidAmount
-    const orig = next.transactions.find(t => t.transactionId === tx.transactionId);
-    expect(orig).toBeTruthy();
-    if (orig) {
-      // Original values preserved (queued row should not be directly edited)
-      expect(orig.mealPrice).toBe(updatedTx.mealPrice);
-      expect(orig.paidAmount).toBe(updatedTx.paidAmount);
-    }
-
-    // A correction row should exist
-    const correction = next.transactions.find(t =>
-      t.type === 'correction' && t.studentId === tx.studentId,
-    );
-    expect(correction).toBeTruthy();
-  });
-});
-
-describe('ledgerStore — void', () => {
-  it('marks original voided when voidTransaction is called', () => {
-    const store = usePosStore.getState();
-    const tx = store.transactions[0];
-    if (!tx) return;
-
-    store.updateTransaction(tx.transactionId, { syncStatus: 'synced' });
-    store.voidTransaction({ transactionId: tx.transactionId, reason: '必須 void', operatorId: 'op-test' });
-
-    const next = usePosStore.getState();
-    const orig = next.transactions.find(t => t.transactionId === tx.transactionId);
-    expect(orig).toBeTruthy();
-    if (orig) {
-      expect(orig.voidedAt).toBeDefined();
-    }
-
-    const voidRow = next.transactions.find(t => t.type === 'void' && t.studentId === tx.studentId);
-    expect(voidRow).toBeTruthy();
-    if (voidRow) {
-      expect(voidRow.amount).toBe(-orig!.amount);
-    }
+    const edited = next.transactions.find(t => t.transactionId === tx.transactionId)!;
+    expect(edited).toBeTruthy();
+    expect(edited.mealPrice).toBe(100);
+    expect(edited.paidAmount).toBe(100);
+    expect(edited.note).toBe('updated');
+    expect(edited.revision).toBe(tx.revision + 1);
   });
 });
 
 describe('ledgerStore — closed date blocks', () => {
-  it('blocked date prevents correctTransaction', () => {
+  it('blocked date prevents editTransaction', () => {
     const store = usePosStore.getState();
     const tx = store.transactions[0];
     if (!tx) return;
@@ -112,12 +67,7 @@ describe('ledgerStore — closed date blocks', () => {
     store.setBusinessDateStatus(tx.businessDate, 'closed');
     const prevCount = store.auditEvents.length;
 
-    store.correctTransaction({
-      transactionId: tx.transactionId,
-      updates: { paidAmount: 100 },
-      reason: 'test',
-      operatorId: 'op',
-    });
+    store.editTransaction(tx.transactionId, { paidAmount: 100 });
 
     // Should be a no-op - no additional audit event
     const next = usePosStore.getState();
@@ -160,7 +110,6 @@ describe('ledgerStore — hydration migration', () => {
   });
 
   it('normalizes transactions without syncStatus to local', () => {
-    // Zustand 5: persistedState received directly (no .state wrapper)
     const input = {
       students: [],
       transactions: [

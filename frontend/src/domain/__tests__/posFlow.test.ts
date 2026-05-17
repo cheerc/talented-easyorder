@@ -35,6 +35,7 @@ describe('reducePosFlow — idle state transitions', () => {
       mode: 'order',
       source: 'manual',
       paidAmountText: '',
+      searchTextHint: '',
     });
   });
 
@@ -46,6 +47,7 @@ describe('reducePosFlow — idle state transitions', () => {
       mode: 'order',
       source: 'scan',
       paidAmountText: '',
+      searchTextHint: '',
     });
   });
 
@@ -57,12 +59,13 @@ describe('reducePosFlow — idle state transitions', () => {
       mode: 'order',
       source: 'ipad',
       paidAmountText: '',
+      searchTextHint: '',
     });
   });
 
   it('idle + commit-related events are ignored', () => {
     const events: PosFlowEvent[] = [
-      { type: 'requestCommit', hasDuplicateOrder: false, cancelAvailable: false },
+      { type: 'requestCommit', hasDuplicateOrder: false },
       { type: 'commitStarted' },
       { type: 'commitSucceeded', transactionId: 'x', syncStatus: 'queued' },
       { type: 'commitFailed', message: 'err', retryable: false },
@@ -85,18 +88,13 @@ describe('reducePosFlow — student_selected transitions', () => {
   };
 
   it('changeMode(order) stays selected', () => {
-    const event: PosFlowEvent = { type: 'changeMode', mode: 'order', cancelAvailable: false };
+    const event: PosFlowEvent = { type: 'changeMode', mode: 'order' };
     expect(reducePosFlow(selected, event)).toEqual(selected);
   });
 
-  it('changeMode(cancel) when cancelAvailable=true stays selected with cancel mode', () => {
-    const event: PosFlowEvent = { type: 'changeMode', mode: 'cancel', cancelAvailable: true };
-    expect(reducePosFlow(selected, event)).toEqual({ ...selected, mode: 'cancel', searchTextHint: '' });
-  });
-
-  it('changeMode(cancel) when cancelAvailable=false returns unchanged', () => {
-    const event: PosFlowEvent = { type: 'changeMode', mode: 'cancel', cancelAvailable: false };
-    expect(reducePosFlow(selected, event)).toEqual(selected);
+  it('changeMode(payment) updates mode and resets paidAmountText', () => {
+    const event: PosFlowEvent = { type: 'changeMode', mode: 'payment' };
+    expect(reducePosFlow(selected, event)).toEqual({ ...selected, mode: 'payment', paidAmountText: '' });
   });
 
   it('updatePaidAmount updates text', () => {
@@ -110,7 +108,7 @@ describe('reducePosFlow — student_selected transitions', () => {
   });
 
   it('requestCommit with order and hasDuplicateOrder=true goes to duplicate_warning', () => {
-    const event: PosFlowEvent = { type: 'requestCommit', hasDuplicateOrder: true, cancelAvailable: false };
+    const event: PosFlowEvent = { type: 'requestCommit', hasDuplicateOrder: true };
     expect(reducePosFlow(selected, event)).toEqual({
       kind: 'duplicate_warning',
       studentId: '001',
@@ -121,7 +119,7 @@ describe('reducePosFlow — student_selected transitions', () => {
   });
 
   it('requestCommit with order and hasDuplicateOrder=false goes to committing', () => {
-    const event: PosFlowEvent = { type: 'requestCommit', hasDuplicateOrder: false, cancelAvailable: false };
+    const event: PosFlowEvent = { type: 'requestCommit', hasDuplicateOrder: false };
     expect(reducePosFlow(selected, event)).toEqual({
       kind: 'committing',
       studentId: '001',
@@ -183,12 +181,12 @@ describe('reducePosFlow — committing guards', () => {
   };
 
   it('requestCommit during committing returns unchanged (duplicate-submit guard)', () => {
-    const event: PosFlowEvent = { type: 'requestCommit', hasDuplicateOrder: false, cancelAvailable: false };
+    const event: PosFlowEvent = { type: 'requestCommit', hasDuplicateOrder: false };
     expect(reducePosFlow(committing, event)).toEqual(committing);
   });
 
   it('changeMode during committing returns unchanged', () => {
-    expect(reducePosFlow(committing, { type: 'changeMode', mode: 'topup', cancelAvailable: false })).toEqual(committing);
+    expect(reducePosFlow(committing, { type: 'changeMode', mode: 'payment' })).toEqual(committing);
   });
 
   it('selectStudent during committing returns unchanged', () => {
@@ -234,7 +232,7 @@ describe('reducePosFlow — success transitions', () => {
 
   it('other events ignored during success', () => {
     expect(reducePosFlow(success, { type: 'cancel' })).toEqual(success);
-    expect(reducePosFlow(success, { type: 'requestCommit', hasDuplicateOrder: false, cancelAvailable: false })).toEqual(success);
+    expect(reducePosFlow(success, { type: 'requestCommit', hasDuplicateOrder: false })).toEqual(success);
   });
 });
 
@@ -254,7 +252,7 @@ describe('reducePosFlow — error transitions', () => {
   });
 
   it('requestCommit from error returns unchanged', () => {
-    expect(reducePosFlow(errorWithContext, { type: 'requestCommit', hasDuplicateOrder: false, cancelAvailable: false })).toEqual(errorWithContext);
+    expect(reducePosFlow(errorWithContext, { type: 'requestCommit', hasDuplicateOrder: false })).toEqual(errorWithContext);
   });
 
   it('preserves context for non-retryable error too', () => {
@@ -271,7 +269,7 @@ describe('reducePosFlow — historical_readonly lock', () => {
   });
 
   it('changeMode ignored', () => {
-    expect(reducePosFlow(hist, { type: 'changeMode', mode: 'order', cancelAvailable: false })).toEqual(hist);
+    expect(reducePosFlow(hist, { type: 'changeMode', mode: 'order' })).toEqual(hist);
   });
 
   it('updatePaidAmount ignored', () => {
@@ -279,7 +277,7 @@ describe('reducePosFlow — historical_readonly lock', () => {
   });
 
   it('requestCommit ignored', () => {
-    expect(reducePosFlow(hist, { type: 'requestCommit', hasDuplicateOrder: false, cancelAvailable: false })).toEqual(hist);
+    expect(reducePosFlow(hist, { type: 'requestCommit', hasDuplicateOrder: false })).toEqual(hist);
   });
 
   it('cancel ignored', () => {

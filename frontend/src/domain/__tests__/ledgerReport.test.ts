@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   createLedgerDateRange,
   filterTransactionsByBusinessDate,
-  getEffectiveLedgerRows,
   calculateLedgerTotals,
   groupLedgerRowsByStudent,
 } from '../ledgerReport';
@@ -61,11 +60,11 @@ describe('createLedgerDateRange', () => {
 describe('filterTransactionsByBusinessDate', () => {
   it('returns transactions within range', () => {
     const txs: LedgerTransaction[] = [
-      makeTx({ businessDate: '2026-05-10', transactionId: 'tx-a' }), // before week start
-      makeTx({ businessDate: '2026-05-15', transactionId: 'tx-b' }), // in range
-      makeTx({ businessDate: '2026-05-20', transactionId: 'tx-c' }), // after week end
+      makeTx({ businessDate: '2026-05-10', transactionId: 'tx-a' }),
+      makeTx({ businessDate: '2026-05-15', transactionId: 'tx-b' }),
+      makeTx({ businessDate: '2026-05-20', transactionId: 'tx-c' }),
     ];
-    const range = createLedgerDateRange('week', '2026-05-15'); // 05-11 to 05-17
+    const range = createLedgerDateRange('week', '2026-05-15');
     const filtered = filterTransactionsByBusinessDate(txs, range);
     expect(filtered).toHaveLength(1);
     expect(filtered[0].transactionId).toBe('tx-b');
@@ -82,64 +81,42 @@ describe('filterTransactionsByBusinessDate', () => {
   });
 });
 
-describe('getEffectiveLedgerRows', () => {
-  it('excludes original rows with voidedAt', () => {
-    const txs: LedgerTransaction[] = [
-      makeTx({ transactionId: 'tx-original', type: 'order', mealPrice: 85 }),
-    ];
-    // Effective rows = those without voidedAt - but our type doesn't have voidedAt field
-    // The spec says "exclude original rows with voidedAt" - this means void type rows are included
-    const effective = getEffectiveLedgerRows(txs);
-    expect(effective).toHaveLength(1);
-  });
-
-  it('includes correction and void rows', () => {
-    const txs: LedgerTransaction[] = [
-      makeTx({ transactionId: 'tx-order', type: 'order' }),
-      makeTx({ transactionId: 'tx-correction', type: 'correction' }),
-      makeTx({ transactionId: 'tx-void', type: 'void' }),
-    ];
-    const effective = getEffectiveLedgerRows(txs);
-    expect(effective).toHaveLength(3);
-  });
-});
-
 describe('calculateLedgerTotals', () => {
   it('counts order rows', () => {
     const txs: LedgerTransaction[] = [
       makeTx({ transactionId: 'tx-1', type: 'order', mealPrice: 85 }),
       makeTx({ transactionId: 'tx-2', type: 'order', mealPrice: 85 }),
-      makeTx({ transactionId: 'tx-3', type: 'topup', paidAmount: 500 }),
+      makeTx({ transactionId: 'tx-3', type: 'payment', paidAmount: 500 }),
     ];
     const totals = calculateLedgerTotals(txs);
     expect(totals.orderCount).toBe(2);
   });
 
-  it('sums positive mealPrice for order rows', () => {
-    const txs: LedgerTransaction[] = [
-      makeTx({ transactionId: 'tx-1', type: 'order', mealPrice: 85 }),
-      makeTx({ transactionId: 'tx-2', type: 'order', mealPrice: 90 }),
-    ];
-    const totals = calculateLedgerTotals(txs);
-    expect(totals.orderSalesAmount).toBe(175);
-  });
-
-  it('sums positive paidAmount across order and top-up rows', () => {
+  it('sums paid amount for income across order and payment rows', () => {
     const txs: LedgerTransaction[] = [
       makeTx({ transactionId: 'tx-1', type: 'order', paidAmount: 50 }),
-      makeTx({ transactionId: 'tx-2', type: 'topup', paidAmount: 500 }),
+      makeTx({ transactionId: 'tx-2', type: 'payment', paidAmount: 500 }),
     ];
     const totals = calculateLedgerTotals(txs);
-    expect(totals.cashCollected).toBe(550);
+    expect(totals.totalIncome).toBe(550);
   });
 
-  it('calculates netCash as cashCollected minus refundAmount', () => {
+  it('sums mealPrice for expense rows', () => {
     const txs: LedgerTransaction[] = [
-      makeTx({ transactionId: 'tx-1', type: 'order', paidAmount: 85 }),
-      makeTx({ transactionId: 'tx-2', type: 'cancel', paidAmount: -85 }),
+      makeTx({ transactionId: 'tx-1', type: 'expense', studentId: '__cashier__', mealPrice: 200, paidAmount: 0 }),
+      makeTx({ transactionId: 'tx-2', type: 'expense', studentId: '__cashier__', mealPrice: 50, paidAmount: 0 }),
     ];
     const totals = calculateLedgerTotals(txs);
-    expect(totals.netCash).toBe(0);
+    expect(totals.totalExpense).toBe(250);
+  });
+
+  it('calculates netCash as totalIncome minus totalExpense', () => {
+    const txs: LedgerTransaction[] = [
+      makeTx({ transactionId: 'tx-1', type: 'order', paidAmount: 85 }),
+      makeTx({ transactionId: 'tx-2', type: 'expense', studentId: '__cashier__', mealPrice: 35, paidAmount: 0 }),
+    ];
+    const totals = calculateLedgerTotals(txs);
+    expect(totals.netCash).toBe(50);
   });
 
   it('calculates newDebt as unpaid meal price', () => {
@@ -151,17 +128,7 @@ describe('calculateLedgerTotals', () => {
     expect(totals.newDebt).toBe(120); // 85-0 + 85-50
   });
 
-  it('counts cancellation rows', () => {
-    const txs: LedgerTransaction[] = [
-      makeTx({ transactionId: 'tx-1', type: 'cancel' }),
-      makeTx({ transactionId: 'tx-2', type: 'order' }),
-      makeTx({ transactionId: 'tx-3', type: 'cancel' }),
-    ];
-    const totals = calculateLedgerTotals(txs);
-    expect(totals.cancellationCount).toBe(2);
-  });
-
-  it('counts transactionCount as effective rows', () => {
+  it('counts transactionCount as total rows', () => {
     const txs: LedgerTransaction[] = [
       makeTx({ transactionId: 'tx-1' }),
       makeTx({ transactionId: 'tx-2' }),
@@ -201,7 +168,7 @@ describe('groupLedgerRowsByStudent', () => {
   it('calculates mealTotal and paidTotal per student', () => {
     const txs: LedgerTransaction[] = [
       makeTx({ transactionId: 'tx-1', studentId: '015', type: 'order', mealPrice: 85, paidAmount: 0, amount: -85 }),
-      makeTx({ transactionId: 'tx-2', studentId: '015', type: 'topup', mealPrice: 0, paidAmount: 500, amount: 500 }),
+      makeTx({ transactionId: 'tx-2', studentId: '015', type: 'payment', mealPrice: 0, paidAmount: 500, amount: 500 }),
     ];
     const groups = groupLedgerRowsByStudent(txs);
     const group = groups.find(g => g.studentId === '015')!;
@@ -215,7 +182,7 @@ describe('groupLedgerRowsByStudent', () => {
       makeTx({ transactionId: 'tx-2', studentId: '016', createdAt: '2026-05-15T14:00:00.000Z' }),
     ];
     const groups = groupLedgerRowsByStudent(txs);
-    expect(groups[0].studentId).toBe('016'); // later transaction first
+    expect(groups[0].studentId).toBe('016');
   });
 
   it('sorts transactions within group by created time ascending', () => {
