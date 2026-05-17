@@ -636,20 +636,6 @@ export default function App() {
         onCancel={() => setCancelDialogOpen(false)}
       />
 
-      <ConfirmDialog
-        open={cancelDialogOpen}
-        title="取消訂餐"
-        message={`確定要取消 ${picked?.displayName ?? ''} 的訂餐嗎？`}
-        confirmLabel="確認取消"
-        cancelLabel="返回"
-        variant="danger"
-        onConfirm={() => {
-          handleDeleteOrder();
-          setCancelDialogOpen(false);
-        }}
-        onCancel={() => setCancelDialogOpen(false)}
-      />
-
       <TweaksPanel title="Tweaks">
         <TweakSection label="顯示">
           <TweakRadio label="主題" value={tweaks.theme}

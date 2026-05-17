@@ -97,6 +97,118 @@ describe('posStore Domain Integration', () => {
   });
 });
 
+describe('posStore commitPosTransactionDraft', () => {
+  beforeEach(() => {
+    usePosStore.getState().resetData();
+  });
+
+  it('stores expense with income direction (mealPrice=0, paidAmount=100)', () => {
+    const store = usePosStore.getState();
+    store.commitPosTransactionDraft({
+      intent: {
+        businessDate: '2026-05-17',
+        studentId: '__cashier__',
+        type: 'expense',
+        mealPrice: 0,
+        paidAmount: 100,
+        note: '收入：撿到錢',
+        sourceDevice: 'pc',
+      },
+      snapshots: {
+        student: { studentId: '__cashier__', studentNameSnapshot: '櫃台' },
+        menu: { menuNameSnapshot: '', vendorNameSnapshot: '' },
+      },
+      amount: 100,
+      expectedBalanceAfter: 0,
+    });
+    const tx = usePosStore.getState().transactions[0];
+    expect(tx.mealPrice).toBe(0);
+    expect(tx.paidAmount).toBe(100);
+    expect(tx.amount).toBe(100);
+  });
+
+  it('stores expense with expense direction (mealPrice=150, paidAmount=0)', () => {
+    const store = usePosStore.getState();
+    store.commitPosTransactionDraft({
+      intent: {
+        businessDate: '2026-05-17',
+        studentId: '__cashier__',
+        type: 'expense',
+        mealPrice: 150,
+        paidAmount: 0,
+        note: '支出：付便當錢',
+        sourceDevice: 'pc',
+      },
+      snapshots: {
+        student: { studentId: '__cashier__', studentNameSnapshot: '櫃台' },
+        menu: { menuNameSnapshot: '', vendorNameSnapshot: '' },
+      },
+      amount: -150,
+      expectedBalanceAfter: 0,
+    });
+    const tx = usePosStore.getState().transactions[0];
+    expect(tx.mealPrice).toBe(150);
+    expect(tx.paidAmount).toBe(0);
+    expect(tx.amount).toBe(-150);
+  });
+});
+
+describe('posStore commitPosTransactionDraft', () => {
+  beforeEach(() => {
+    usePosStore.getState().resetData();
+  });
+
+  it('stores expense with income direction (mealPrice=0, paidAmount=100)', () => {
+    const store = usePosStore.getState();
+    store.commitPosTransactionDraft({
+      intent: {
+        businessDate: '2026-05-17',
+        studentId: '__cashier__',
+        type: 'expense',
+        mealPrice: 0,
+        paidAmount: 100,
+        note: '收入：撿到錢',
+        sourceDevice: 'pc',
+      },
+      snapshots: {
+        student: { studentId: '__cashier__', studentNameSnapshot: '櫃台' },
+        menu: { menuNameSnapshot: '', vendorNameSnapshot: '' },
+      },
+      amount: 100,
+      expectedBalanceAfter: 0,
+    });
+    const tx = usePosStore.getState().transactions[0];
+    expect(tx.mealPrice).toBe(0);
+    expect(tx.paidAmount).toBe(100);
+    expect(tx.amount).toBe(100);
+  });
+
+  it('stores expense with expense direction (mealPrice=150, paidAmount=0)', () => {
+    const store = usePosStore.getState();
+    store.commitPosTransactionDraft({
+      intent: {
+        businessDate: '2026-05-17',
+        studentId: '__cashier__',
+        type: 'expense',
+        mealPrice: 150,
+        paidAmount: 0,
+        note: '支出：付便當錢',
+        sourceDevice: 'pc',
+      },
+      snapshots: {
+        student: { studentId: '__cashier__', studentNameSnapshot: '櫃台' },
+        menu: { menuNameSnapshot: '', vendorNameSnapshot: '' },
+      },
+      amount: -150,
+      expectedBalanceAfter: 0,
+    });
+    const tx = usePosStore.getState().transactions[0];
+    expect(tx.mealPrice).toBe(150);
+    expect(tx.paidAmount).toBe(0);
+    expect(tx.amount).toBe(-150);
+  });
+});
+
 describe('posStore Compatibility', () => {
   beforeEach(() => {
     window.localStorage.clear();

@@ -132,7 +132,7 @@ export const usePosStore = create<PosState>()(
               menuSnapshot: { menuNameSnapshot: '', vendorNameSnapshot: '' },
               type: 'expense',
               mealPrice: Math.round(draft.intent.mealPrice),
-              paidAmount: 0,
+              paidAmount: Math.round(draft.intent.paidAmount),
               previousBalance: 0,
               sourceDevice: draft.intent.sourceDevice,
               note: draft.intent.note,
