@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { usePosStore } from '../store/posStore';
 import { fmt } from './pos-components';
-import { calculateLedgerTotals, getEffectiveLedgerRows } from '../domain/ledgerReport';
+import { calculateLedgerTotals } from '../domain/ledgerReport';
 
 export const TodayDashboard = React.memo(function TodayDashboard({ onClose }: { onClose: () => void }) {
   const transactions = usePosStore((s) => s.transactions);
@@ -15,8 +15,7 @@ export const TodayDashboard = React.memo(function TodayDashboard({ onClose }: { 
     return transactions.filter(t => t.businessDate === systemDate);
   }, [transactions, systemDate]);
 
-  const effective = useMemo(() => getEffectiveLedgerRows(todayTx), [todayTx]);
-  const totals = useMemo(() => calculateLedgerTotals(effective), [effective]);
+  const totals = useMemo(() => calculateLedgerTotals(todayTx), [todayTx]);
 
   const queuedCount = useMemo(() => todayTx.filter(t => t.syncStatus === 'queued').length, [todayTx]);
 
