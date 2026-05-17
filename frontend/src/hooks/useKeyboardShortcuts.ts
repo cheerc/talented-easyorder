@@ -4,11 +4,12 @@ import type { PosMode } from '../domain/posFlow';
 interface UseKeyboardShortcutsArgs {
   enabled: boolean;
   changeMode: (mode: PosMode) => void;
+  enterExpenseMode?: () => void;
   handleConfirm: () => void;
   cancelFlow: () => void;
 }
 
-export function useKeyboardShortcuts({ enabled, changeMode, handleConfirm, cancelFlow }: UseKeyboardShortcutsArgs) {
+export function useKeyboardShortcuts({ enabled, changeMode, enterExpenseMode, handleConfirm, cancelFlow }: UseKeyboardShortcutsArgs) {
   useEffect(() => {
     if (!enabled) return;
 
@@ -50,11 +51,15 @@ export function useKeyboardShortcuts({ enabled, changeMode, handleConfirm, cance
           return; // suppressed in text areas
         }
         e.preventDefault();
-        changeMode(modeKey[key]);
+        if (key === 'e' && enterExpenseMode) {
+          enterExpenseMode();
+        } else {
+          changeMode(modeKey[key]);
+        }
       }
     };
 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [enabled, changeMode, handleConfirm, cancelFlow]);
+  }, [enabled, changeMode, enterExpenseMode, handleConfirm, cancelFlow]);
 }

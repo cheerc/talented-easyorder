@@ -589,3 +589,111 @@ export const RecentStrip = React.memo(function RecentStrip({ recent }: RecentStr
   );
 });
 
+
+// ============ Expense Panel ============
+const EXPENSE_QUICK_OPTIONS = ['付便當錢', '其他原因'] as const;
+
+interface ExpensePanelProps {
+  kind: 'expense_input' | 'expense_reason' | 'expense_other_note';
+  amountText: string;
+  amount: number;
+  onAmountChange: (text: string) => void;
+  onAmountConfirm: (amount: number) => void;
+  onReasonSelect: (reason: '付便當錢' | '其他原因') => void;
+  onNoteChange: (note: string) => void;
+  onNoteConfirm: (note: string) => void;
+  onCancel: () => void;
+}
+
+export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanelProps) {
+  const { kind, amountText, amount, onAmountChange, onAmountConfirm, onReasonSelect, onNoteChange, onNoteConfirm, onCancel } = props;
+
+  return (
+    <div className="card customer" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div className="pay-title">櫃台支出</div>
+
+      {kind === 'expense_input' && (
+        <>
+          <div className="pay-input-container">
+            <span className="pay-input-prefix">$</span>
+            <input
+              className="pay-input-main"
+              type="number"
+              aria-label="支出金額"
+              value={amountText}
+              onChange={e => onAmountChange(e.target.value)}
+              placeholder="輸入支出金額"
+              autoFocus
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const n = Number(amountText);
+                  if (Number.isFinite(n) && n > 0) {
+                    onAmountConfirm(n);
+                  }
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  onCancel();
+                }
+              }}
+            />
+            <span className="pay-input-suffix">元</span>
+          </div>
+          <div className="pay-quick-grid">
+            {[100, 200, 500, 1000].map(v => (
+              <button key={v} className="btn-quick" onClick={() => onAmountConfirm(v)}>
+                {v}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {kind === 'expense_reason' && (
+        <>
+          <div className="dup-warn" style={{ flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+            <div className="dup-warn-h">支出 ${Math.abs(amount)} — 選擇原因</div>
+            <div className="dup-warn-btns" style={{ marginTop: '12px', gap: '16px' }}>
+              {EXPENSE_QUICK_OPTIONS.map(opt => (
+                <button key={opt} className="btn-confirm" onClick={() => onReasonSelect(opt)}>
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="dim" style={{ textAlign: 'center', fontSize: '12px' }}>
+            <span className="kbd">←</span><span className="kbd">→</span> 選擇 · <span className="kbd">↵</span> 確認 · <span className="kbd">Esc</span> 取消
+          </div>
+        </>
+      )}
+
+      {kind === 'expense_other_note' && (
+        <div className="pay-input-container" style={{ flexDirection: 'column', gap: '8px', alignItems: 'stretch' }}>
+          <span className="dim" style={{ fontSize: '12px' }}>支出原因（必填）</span>
+          <input
+            className="adm-input"
+            aria-label="支出備註"
+            placeholder="請輸入支出原因"
+            autoFocus
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                const v = (e.target as HTMLInputElement).value.trim();
+                if (v) onNoteConfirm(v);
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                onCancel();
+              }
+            }}
+            onChange={e => onNoteChange(e.target.value)}
+          />
+          <div className="dim" style={{ fontSize: '12px' }}>
+            <span className="kbd">↵</span> 確認 · <span className="kbd">Esc</span> 取消
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});

@@ -4,17 +4,19 @@ import { useKeyboardShortcuts } from '../useKeyboardShortcuts';
 
 describe('useKeyboardShortcuts', () => {
   let changeMode: ReturnType<typeof vi.fn>;
+  let enterExpenseMode: ReturnType<typeof vi.fn>;
   let handleConfirm: ReturnType<typeof vi.fn>;
   let cancelFlow: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     changeMode = vi.fn();
+    enterExpenseMode = vi.fn();
     handleConfirm = vi.fn();
     cancelFlow = vi.fn();
   });
 
   it('calls changeMode("order") when Q is pressed', () => {
-    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow }));
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, enterExpenseMode, handleConfirm, cancelFlow }));
 
     const event = new KeyboardEvent('keydown', { key: 'q', bubbles: true });
     window.dispatchEvent(event);
@@ -23,7 +25,7 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('calls changeMode("payment") when W is pressed', () => {
-    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow }));
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, enterExpenseMode, handleConfirm, cancelFlow }));
 
     const event = new KeyboardEvent('keydown', { key: 'w', bubbles: true });
     window.dispatchEvent(event);
@@ -31,17 +33,17 @@ describe('useKeyboardShortcuts', () => {
     expect(changeMode).toHaveBeenCalledWith('payment');
   });
 
-  it('calls changeMode("expense") when E is pressed', () => {
-    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow }));
+  it('calls enterExpenseMode when E is pressed', () => {
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, enterExpenseMode, handleConfirm, cancelFlow }));
 
     const event = new KeyboardEvent('keydown', { key: 'e', bubbles: true });
     window.dispatchEvent(event);
 
-    expect(changeMode).toHaveBeenCalledWith('expense');
+    expect(enterExpenseMode).toHaveBeenCalledOnce();
   });
 
   it('calls handleConfirm on Enter', () => {
-    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow }));
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, enterExpenseMode, handleConfirm, cancelFlow }));
 
     const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
     window.dispatchEvent(event);
@@ -50,7 +52,7 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('calls cancelFlow on Escape', () => {
-    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow }));
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, enterExpenseMode, handleConfirm, cancelFlow }));
 
     const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
     window.dispatchEvent(event);
@@ -59,7 +61,7 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('suppresses Q/W/E in text input', () => {
-    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow }));
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, enterExpenseMode, handleConfirm, cancelFlow }));
 
     const input = document.createElement('input');
     input.type = 'text';
@@ -76,7 +78,7 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('allows Q/W/E in number input', () => {
-    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow }));
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, enterExpenseMode, handleConfirm, cancelFlow }));
 
     const input = document.createElement('input');
     input.type = 'number';
@@ -93,7 +95,7 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('suppresses Q/W/E in textarea', () => {
-    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow }));
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, enterExpenseMode, handleConfirm, cancelFlow }));
 
     const textarea = document.createElement('textarea');
     document.body.appendChild(textarea);
@@ -109,7 +111,7 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('does nothing when disabled', () => {
-    renderHook(() => useKeyboardShortcuts({ enabled: false, changeMode, handleConfirm, cancelFlow }));
+    renderHook(() => useKeyboardShortcuts({ enabled: false, changeMode, enterExpenseMode, handleConfirm, cancelFlow }));
 
     const event = new KeyboardEvent('keydown', { key: 'q', bubbles: true });
     window.dispatchEvent(event);
@@ -120,7 +122,7 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('cleans up listeners on unmount', () => {
-    const { unmount } = renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow }));
+    const { unmount } = renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, enterExpenseMode, handleConfirm, cancelFlow }));
 
     unmount();
 
