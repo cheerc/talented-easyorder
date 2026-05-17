@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useMemo } from "react";
 import type { StudentAccount } from '../domain/student';
 import type { TodayMenu } from '../domain/menu';
+import type { PosMode } from '../domain/posFlow';
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const fmt = (n: number) => new Intl.NumberFormat('zh-TW').format(Math.abs(n));
@@ -10,12 +11,11 @@ export const sign = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '');
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function getQuickAmounts(input: {
-  mode: string;
+  mode: PosMode;
   todayPrice: number;
   currentDebt: number;
 }): number[] {
-  if (input.mode === 'cancel') return [input.todayPrice];
-  if (input.mode === 'topup') return [100, 500, 1000, 2000, 3000];
+  if (input.mode === 'payment') return [100, 500, 1000, 2000, 3000];
 
   const amounts = [input.todayPrice, 100, 200, 500, 1000];
   if (input.currentDebt > 0) {
@@ -223,15 +223,10 @@ export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubm
 });
 
 // ============ Customer Card ============
-// Action key map:
-//   1 = 訂便當 (記帳)         — balance -= price, becomes debt if negative
-//   2 = 訂便當 + 收現付款       — net 0 to balance, debt cleared by payment
-//   3 = 純儲值 / 繳費 (不訂餐)  — balance += amount
-//   4 = 取消當日訂餐            — refund all of today's orders
 interface CustomerCardProps {
   student: StudentAccount;
   todayMenu: TodayMenu;
-  mode: string;
+  mode: PosMode;
   orderedTodayCount: number;
   payAmount: string;
   setPayAmount: (val: string) => void;
@@ -240,14 +235,11 @@ interface CustomerCardProps {
   priceOverrideLabel: string;
   setPriceOverride: (value: number | null) => void;
   setPriceOverrideLabel: (value: string) => void;
+  onDeleteOrder?: () => void;
 }
-export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel }: CustomerCardProps) {
+export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel, onDeleteOrder }: CustomerCardProps) {
   const effectiveMealPrice = mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
-  const after =
-    mode === 'order'      ? student.currentBalance + (Number(payAmount || 0) - effectiveMealPrice) :
-    mode === 'topup'      ? student.currentBalance + Number(payAmount || 0) :
-    mode === 'cancel'     ? student.currentBalance + (orderedTodayCount * todayMenu.price) :
-    student.currentBalance;
+  const after = student.currentBalance + (Number(payAmount || 0) - effectiveMealPrice);
 
   return (
     <div className="card customer">
@@ -273,6 +265,12 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
               ⚠ 今日已訂過 <b>{orderedTodayCount}</b> 次便當
             </div>
           )}
+          {onDeleteOrder && (
+            <button className="ghost-btn" style={{ marginTop: '6px', fontSize: '11px', padding: '2px 10px', color: 'var(--c-warn)' }}
+                    onClick={onDeleteOrder}>
+              取消訂餐
+            </button>
+          )}
         </div>
       </div>
 
@@ -287,13 +285,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                 <span className="bill-val neg">−${fmt(effectiveMealPrice)}</span>
               </div>
             )}
-            {mode === 'cancel' && (
-              <div className="bill-item">
-                <span className="bill-label">取消訂餐 ({orderedTodayCount} 筆)</span>
-                <span className="bill-val pos">+${fmt(orderedTodayCount * todayMenu.price)}</span>
-              </div>
-            )}
-            {mode === 'topup' && (
+            {mode === 'payment' && (
               <div className="bill-item">
                 <span className="bill-label">目前帳戶餘額</span>
                 <span className="bill-val">${fmt(student.currentBalance)}</span>
@@ -348,16 +340,15 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
           </div>
 
           {/* Right Side: Payment Panel */}
-          {(mode !== 'cancel' || orderedTodayCount > 0) ? (
+          {mode !== 'expense' ? (
             <div className="pay-panel">
               <div className="pay-header">
                 <span className="pay-title">
-                  {mode === 'order' ? '本次繳費' : mode === 'topup' ? '補錢 / 儲值金額' : '退還現金'}
+                  {mode === 'order' ? '本次繳費' : '繳費金額'}
                 </span>
                 {mode === 'order' && <span className="dim" style={{ fontSize: '12px' }}>留空為記帳</span>}
-                {mode === 'cancel' && <span className="dim" style={{ fontSize: '12px' }}>若已付現請輸入退款金額</span>}
               </div>
-              
+
               <div className="pay-input-container">
                 <span className="pay-input-prefix">$</span>
                 <input
@@ -366,7 +357,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                   aria-label="付款金額"
                   value={payAmount}
                   onChange={e => setPayAmount(e.target.value)}
-                  placeholder={mode === 'cancel' ? "0" : (mode === 'order' ? "0" : "輸入金額")}
+                  placeholder={mode === 'order' ? "0" : "輸入金額"}
                   autoFocus
                 />
                 <span className="pay-input-suffix">元</span>
@@ -379,14 +370,14 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                   currentDebt: Math.max(0, -student.currentBalance),
                 }).map(v => (
                   <button key={v} className="btn-quick" onClick={() => setPayAmount(String(v))}>
-                    {mode === 'topup' ? '+' : mode === 'cancel' ? '-' : ''}{v}
+                    {v}
                   </button>
                 ))}
               </div>
             </div>
           ) : (
             <div className="cancel-empty">
-              <div>本日尚無訂餐紀錄</div>
+              <div>支出模式 — 請在下方輸入金額</div>
             </div>
           )}
         </div>
@@ -397,19 +388,17 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
 
 // ============ Action Bar ============
 interface ActionBarProps {
-  mode: string;
-  setMode: (mode: string) => void;
-  orderedTodayCount: number;
+  mode: PosMode;
+  setMode: (mode: PosMode) => void;
   onConfirm: () => void;
   onCancel: () => void;
   focusZone: string;
 }
-export const ActionBar = React.memo(function ActionBar({ mode, setMode, orderedTodayCount, onConfirm, onCancel, focusZone }: ActionBarProps) {
+export const ActionBar = React.memo(function ActionBar({ mode, setMode, onConfirm, onCancel, focusZone }: ActionBarProps) {
   const opts = [
-    { id: 'order',  label: '訂便當',           hint: 'Q' },
-    { id: 'topup',  label: '補錢 / 儲值',   hint: 'W' },
-    { id: 'cancel', label: '取消當日訂餐',     hint: 'E',
-      disabled: orderedTodayCount === 0 },
+    { id: 'order' as PosMode,   label: '訂便當',       hint: 'Q' },
+    { id: 'payment' as PosMode, label: '繳費',         hint: 'W' },
+    { id: 'expense' as PosMode, label: '支出',         hint: 'E' },
   ];
 
   return (
@@ -418,9 +407,8 @@ export const ActionBar = React.memo(function ActionBar({ mode, setMode, orderedT
         {opts.map(o => (
           <button
             key={o.id}
-            disabled={o.disabled}
-            className={'mode ' + (mode === o.id ? 'mode-on' : '') + (o.disabled ? ' mode-disabled' : '') + (focusZone === 'mode-' + o.id ? ' mode-focus' : '')}
-            onClick={() => !o.disabled && setMode(o.id)}
+            className={'mode ' + (mode === o.id ? 'mode-on' : '') + (focusZone === 'mode-' + o.id ? ' mode-focus' : '')}
+            onClick={() => setMode(o.id)}
             role="radio"
             aria-checked={mode === o.id}
           >
@@ -434,11 +422,10 @@ export const ActionBar = React.memo(function ActionBar({ mode, setMode, orderedT
           <span>取消</span><span className="kbd">Esc</span>
         </button>
         <button
-          className={'btn-confirm ' + (mode === 'cancel' ? 'danger' : '') + (focusZone === 'btn-confirm' ? ' btn-focus' : '')}
+          className={'btn-confirm ' + (focusZone === 'btn-confirm' ? ' btn-focus' : '')}
           onClick={onConfirm}
-          disabled={mode === 'cancel' && orderedTodayCount === 0}
         >
-          <span>{mode === 'cancel' ? '確認取消' : '確認'}</span><span className="kbd kbd-light">↵</span>
+          <span>確認</span><span className="kbd kbd-light">↵</span>
         </button>
       </div>
     </div>
@@ -473,7 +460,7 @@ export const IdleHero = React.memo(function IdleHero({ todayMenu, todayCount, ve
         <div className="idle-hint-lbl">下一位</div>
         <div className="idle-hint-txt">輸入編號 → 按 <span className="kbd">↵</span></div>
         <div className="idle-keys">
-          <span className="kbd">Q</span> 訂餐 · <span className="kbd">W</span> 儲值 · <span className="kbd">E</span> 取消 · <span className="kbd">↵</span> 確認 · <span className="kbd">Esc</span> 返回
+          <span className="kbd">Q</span> 訂餐 · <span className="kbd">W</span> 繳費 · <span className="kbd">E</span> 支出 · <span className="kbd">↵</span> 確認 · <span className="kbd">Esc</span> 返回
         </div>
         {queueHint && <div className="idle-queue">{queueHint}</div>}
       </div>
@@ -589,11 +576,8 @@ export const RecentStrip = React.memo(function RecentStrip({ recent }: RecentStr
             <span className="recent-name">{r.studentNameSnapshot}</span>
             <span className={'recent-type type-' + r.type}>{
               r.type === 'order' ? '訂' :
-              r.type === 'order_pay' ? '訂' :
-              r.type === 'topup' ? '儲' :
-              r.type === 'pay' ? '繳' :
-              r.type === 'debt' ? '欠' :
-              r.type === 'cancel' ? '退' : ''
+              r.type === 'payment' ? '繳' :
+              r.type === 'expense' ? '支' : ''
             }</span>
             <span className={'recent-amt mono ' + (r.amount > 0 ? 'pos' : 'neg')}>
               {sign(r.amount)}{fmt(r.amount)}
@@ -605,3 +589,111 @@ export const RecentStrip = React.memo(function RecentStrip({ recent }: RecentStr
   );
 });
 
+
+// ============ Expense Panel ============
+const EXPENSE_QUICK_OPTIONS = ['付便當錢', '其他原因'] as const;
+
+interface ExpensePanelProps {
+  kind: 'expense_input' | 'expense_reason' | 'expense_other_note';
+  amountText: string;
+  amount: number;
+  onAmountChange: (text: string) => void;
+  onAmountConfirm: (amount: number) => void;
+  onReasonSelect: (reason: '付便當錢' | '其他原因') => void;
+  onNoteChange: (note: string) => void;
+  onNoteConfirm: (note: string) => void;
+  onCancel: () => void;
+}
+
+export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanelProps) {
+  const { kind, amountText, amount, onAmountChange, onAmountConfirm, onReasonSelect, onNoteChange, onNoteConfirm, onCancel } = props;
+
+  return (
+    <div className="card customer" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div className="pay-title">櫃台支出</div>
+
+      {kind === 'expense_input' && (
+        <>
+          <div className="pay-input-container">
+            <span className="pay-input-prefix">$</span>
+            <input
+              className="pay-input-main"
+              type="number"
+              aria-label="支出金額"
+              value={amountText}
+              onChange={e => onAmountChange(e.target.value)}
+              placeholder="輸入支出金額"
+              autoFocus
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const n = Number(amountText);
+                  if (Number.isFinite(n) && n > 0) {
+                    onAmountConfirm(n);
+                  }
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  onCancel();
+                }
+              }}
+            />
+            <span className="pay-input-suffix">元</span>
+          </div>
+          <div className="pay-quick-grid">
+            {[100, 200, 500, 1000].map(v => (
+              <button key={v} className="btn-quick" onClick={() => onAmountConfirm(v)}>
+                {v}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {kind === 'expense_reason' && (
+        <>
+          <div className="dup-warn" style={{ flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+            <div className="dup-warn-h">支出 ${Math.abs(amount)} — 選擇原因</div>
+            <div className="dup-warn-btns" style={{ marginTop: '12px', gap: '16px' }}>
+              {EXPENSE_QUICK_OPTIONS.map(opt => (
+                <button key={opt} className="btn-confirm" onClick={() => onReasonSelect(opt)}>
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="dim" style={{ textAlign: 'center', fontSize: '12px' }}>
+            <span className="kbd">←</span><span className="kbd">→</span> 選擇 · <span className="kbd">↵</span> 確認 · <span className="kbd">Esc</span> 取消
+          </div>
+        </>
+      )}
+
+      {kind === 'expense_other_note' && (
+        <div className="pay-input-container" style={{ flexDirection: 'column', gap: '8px', alignItems: 'stretch' }}>
+          <span className="dim" style={{ fontSize: '12px' }}>支出原因（必填）</span>
+          <input
+            className="adm-input"
+            aria-label="支出備註"
+            placeholder="請輸入支出原因"
+            autoFocus
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                const v = (e.target as HTMLInputElement).value.trim();
+                if (v) onNoteConfirm(v);
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                onCancel();
+              }
+            }}
+            onChange={e => onNoteChange(e.target.value)}
+          />
+          <div className="dim" style={{ fontSize: '12px' }}>
+            <span className="kbd">↵</span> 確認 · <span className="kbd">Esc</span> 取消
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});

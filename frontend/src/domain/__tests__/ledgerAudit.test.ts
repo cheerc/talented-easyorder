@@ -3,9 +3,6 @@ import {
   decideLedgerEditPolicy,
   decideLedgerDeletePolicy,
   createLedgerAuditEvent,
-  createCorrectionTransaction,
-  createVoidTransaction,
-  recalculateStudentAfterBalances,
 } from '../ledgerAudit';
 import type { LedgerTransaction } from '../ledger';
 import type { AuditEventInput } from '../ledgerAudit';
@@ -51,24 +48,24 @@ describe('decideLedgerEditPolicy', () => {
     expect(result.action).toBe('direct_edit');
   });
 
-  it('open date + queued syncStatus → append_correction', () => {
+  it('open date + queued syncStatus → direct_edit', () => {
     const result = decideLedgerEditPolicy(makeTx({ syncStatus: 'queued' }), 'open');
-    expect(result.action).toBe('append_correction');
+    expect(result.action).toBe('direct_edit');
   });
 
-  it('open date + synced syncStatus → append_correction', () => {
+  it('open date + synced syncStatus → direct_edit', () => {
     const result = decideLedgerEditPolicy(makeTx({ syncStatus: 'synced' }), 'open');
-    expect(result.action).toBe('append_correction');
+    expect(result.action).toBe('direct_edit');
   });
 
-  it('open date + failed syncStatus → append_correction', () => {
+  it('open date + failed syncStatus → direct_edit', () => {
     const result = decideLedgerEditPolicy(makeTx({ syncStatus: 'failed' }), 'open');
-    expect(result.action).toBe('append_correction');
+    expect(result.action).toBe('direct_edit');
   });
 
-  it('open date + conflict syncStatus → append_correction', () => {
+  it('open date + conflict syncStatus → direct_edit', () => {
     const result = decideLedgerEditPolicy(makeTx({ syncStatus: 'conflict' }), 'open');
-    expect(result.action).toBe('append_correction');
+    expect(result.action).toBe('direct_edit');
   });
 
   it('closed date → blocked', () => {
@@ -93,24 +90,24 @@ describe('decideLedgerDeletePolicy', () => {
     expect(result.action).toBe('hard_delete');
   });
 
-  it('open date + queued syncStatus → append_void', () => {
+  it('open date + queued syncStatus → hard_delete', () => {
     const result = decideLedgerDeletePolicy(makeTx({ syncStatus: 'queued' }), 'open');
-    expect(result.action).toBe('append_void');
+    expect(result.action).toBe('hard_delete');
   });
 
-  it('open date + synced syncStatus → append_void', () => {
+  it('open date + synced syncStatus → hard_delete', () => {
     const result = decideLedgerDeletePolicy(makeTx({ syncStatus: 'synced' }), 'open');
-    expect(result.action).toBe('append_void');
+    expect(result.action).toBe('hard_delete');
   });
 
-  it('open date + failed syncStatus → append_void', () => {
+  it('open date + failed syncStatus → hard_delete', () => {
     const result = decideLedgerDeletePolicy(makeTx({ syncStatus: 'failed' }), 'open');
-    expect(result.action).toBe('append_void');
+    expect(result.action).toBe('hard_delete');
   });
 
-  it('open date + conflict syncStatus → append_void', () => {
+  it('open date + conflict syncStatus → hard_delete', () => {
     const result = decideLedgerDeletePolicy(makeTx({ syncStatus: 'conflict' }), 'open');
-    expect(result.action).toBe('append_void');
+    expect(result.action).toBe('hard_delete');
   });
 
   it('closed date → blocked', () => {
@@ -134,78 +131,5 @@ describe('createLedgerAuditEvent', () => {
     expect(event.reason).toBe('修正收款金額');
     expect(event.operatorId).toBe('op-admin');
     expect(event.createdAt).toBe('2026-05-15T15:00:00.000Z');
-  });
-});
-
-/* ------ createCorrectionTransaction ------ */
-
-describe('createCorrectionTransaction', () => {
-  it('creates correction row referencing original transaction', () => {
-    const input = { ...auditInput };
-    const correctionTx = createCorrectionTransaction(
-      makeTx({ transactionId: 'tx-orig', studentId: '015', businessDate: '2026-05-15', afterBalance: 100 }),
-      { mealPrice: 85, paidAmount: 50, note: '更正', type: 'order' as const },
-      130,
-      input,
-    );
-    expect(correctionTx.type).toBe('correction');
-    expect(correctionTx.studentId).toBe('015');
-    expect(correctionTx.mealPrice).toBe(85);
-    expect(correctionTx.paidAmount).toBe(50);
-    expect(correctionTx.amount).toBe(50 - 85); // paidAmount - mealPrice = -35
-    expect(correctionTx.afterBalance).toBe(95); // 130 + (50-85) = 95
-    expect(correctionTx.note).toBe('更正');
-  });
-});
-
-/* ------ createVoidTransaction ------ */
-
-describe('createVoidTransaction', () => {
-  it('creates void row reversing the original', () => {
-    const original = makeTx({
-      transactionId: 'tx-orig',
-      studentId: '015',
-      type: 'order',
-      mealPrice: 85,
-      paidAmount: 0,
-      amount: -85,
-      afterBalance: 15,
-      businessDate: '2026-05-15',
-    });
-    const voidTx = createVoidTransaction(original, '操作錯誤', 'op-admin', '2026-05-15T16:00:00.000Z');
-    expect(voidTx.type).toBe('void');
-    expect(voidTx.studentId).toBe('015');
-    expect(voidTx.mealPrice).toBe(-85); // reversed
-    expect(voidTx.paidAmount).toBe(0);
-    expect(voidTx.amount).toBe(85); // reversed -(-85) = 85
-    expect(voidTx.note).toBe('voids tx-orig');
-    expect(voidTx.syncStatus).toBe('local');
-    expect(voidTx.revision).toBe(1);
-  });
-});
-
-/* ------ recalculateStudentAfterBalances ------ */
-
-describe('recalculateStudentAfterBalances', () => {
-  it('recalculates later rows for the same student', () => {
-    const txs: LedgerTransaction[] = [
-      { ...makeTx({ transactionId: 'tx-1', studentId: '015', businessDate: '2026-05-14', createdAt: '2026-05-14T10:00:00.000Z', amount: -85, afterBalance: 15 }) },
-      { ...makeTx({ transactionId: 'tx-2', studentId: '015', businessDate: '2026-05-15', createdAt: '2026-05-15T12:00:00.000Z', amount: -85, afterBalance: -70 }) },
-      { ...makeTx({ transactionId: 'tx-3', studentId: '016', businessDate: '2026-05-15', createdAt: '2026-05-15T13:00:00.000Z', amount: -85, afterBalance: 15 }) },
-    ];
-    const recalc = recalculateStudentAfterBalances(txs, '015', 100);
-    expect(recalc[0].afterBalance).toBe(15);  // unchanged, opening not applied
-    expect(recalc[1].afterBalance).toBe(-70); // unchanged, consistent
-    expect(recalc[2].afterBalance).toBe(15);  // different student, unchanged
-  });
-
-  it('leaves other students unchanged', () => {
-    const txs: LedgerTransaction[] = [
-      { ...makeTx({ transactionId: 'tx-1', studentId: '015', amount: -50, afterBalance: 50 }) },
-      { ...makeTx({ transactionId: 'tx-2', studentId: '016', amount: -85, afterBalance: 15 }) },
-    ];
-    const recalc = recalculateStudentAfterBalances(txs, '015', 100);
-    // student 016 should be untouched
-    expect(recalc.find(t => t.studentId === '016')!.afterBalance).toBe(15);
   });
 });

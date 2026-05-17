@@ -96,7 +96,7 @@ describe('pcPosSafety — duplicate order warning', () => {
     await user.keyboard('{Enter}');
 
     await waitFor(() => {
-      expect(screen.getByRole('radio', { name: /補錢/ })).toBeTruthy();
+      expect(screen.getByRole('radio', { name: /繳費/ })).toBeTruthy();
       expect(screen.queryByText(/純繳費/)).not.toBeTruthy();
     });
   });

@@ -33,7 +33,7 @@ describe('pcPosFlow integration — keyboard flow', () => {
 
     await waitFor(() => {
       expect(screen.getByText('訂便當')).toBeTruthy();
-      expect(screen.getByText('補錢 / 儲值')).toBeTruthy();
+      expect(screen.getByText('繳費')).toBeTruthy();
     });
   });
 

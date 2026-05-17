@@ -4,7 +4,7 @@ import {
   buildPosTransactionDraft,
 } from '../posTransaction';
 import type { PosTransactionIntent } from '../posTransaction';
-import { STUDENT_001, TODAY_MENU_KARAAGE, TX_ORDER_001 } from './fixtures';
+import { STUDENT_001, TODAY_MENU_KARAAGE } from './fixtures';
 import type { StudentAccount } from '../student';
 import type { TodayMenu } from '../menu';
 
@@ -69,26 +69,15 @@ describe('buildPosTransactionDraft', () => {
     expect(draft.expectedBalanceAfter).toBe(STUDENT_001.currentBalance);
   });
 
-  it('topup with 500 creates positive amount and mealPrice=0', () => {
+  it('payment with 500 creates positive amount and mealPrice=0', () => {
     const draft = buildPosTransactionDraft({
-      intent: makeIntent({ type: 'topup', sourceDevice: 'pc', mealPrice: 0, paidAmount: 500 }),
+      intent: makeIntent({ type: 'payment', sourceDevice: 'pc', mealPrice: 0, paidAmount: 500 }),
       student: STUDENT_001,
       menu: TODAY_MENU_KARAAGE,
     });
     expect(draft.amount).toBe(500);
     expect(draft.intent.mealPrice).toBe(0);
     expect(draft.expectedBalanceAfter).toBe(STUDENT_001.currentBalance + 500);
-  });
-
-  it('cancel reverses the supplied active order', () => {
-    const draft = buildPosTransactionDraft({
-      intent: makeIntent({ type: 'cancel', sourceDevice: 'pc', mealPrice: 90, paidAmount: 0 }),
-      student: STUDENT_001,
-      menu: TODAY_MENU_KARAAGE,
-      activeOrder: TX_ORDER_001,
-    });
-    expect(draft.amount).toBe(90);
-    expect(draft.expectedBalanceAfter).toBe(STUDENT_001.currentBalance + 90);
   });
 
   it('draft snapshots preserve names/price from current objects', () => {

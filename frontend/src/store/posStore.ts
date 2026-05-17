@@ -6,42 +6,23 @@ import type { LedgerTransaction } from '../domain/ledger';
 import { createStudentSnapshot } from '../domain/student';
 import { createMenuSnapshot } from '../domain/menu';
 import { createLedgerTransaction, calculateTransactionAmount } from '../domain/ledger';
-import { createCorrectionTransaction, createVoidTransaction, createLedgerAuditEvent } from '../domain/ledgerAudit';
+import { createLedgerAuditEvent } from '../domain/ledgerAudit';
 import { validateCashClose, createDailySettlement, reopenBusinessDate as reopenSettlement } from '../domain/cashClose';
-import { calculateLedgerTotals, getEffectiveLedgerRows } from '../domain/ledgerReport';
+import { calculateLedgerTotals } from '../domain/ledgerReport';
+import { CASHIER_SENTINEL } from '../domain/ledger';
 import type { PosTransactionDraft } from '../domain/posTransaction';
 import type { DailyCashSession } from '../domain/cashSession';
 import { createDailyCashSession } from '../domain/cashSession';
-import { validatePersistedState } from '../storage/posStateValidator';
+import { validatePersistedState, migrateState } from '../storage/posStateValidator';
 import {
   INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS
 } from '../mocks/initialData';
 
-interface LedgerCorrectionInput {
-  transactionId: string;
-  updates: Partial<LedgerTransaction>;
-  reason: string;
-  operatorId: string;
-}
-
-interface LedgerVoidInput {
-  transactionId: string;
-  reason: string;
-  operatorId: string;
-}
-
-interface CloseBusinessDateInput {
-  businessDate: string;
-  countedCash: number;
-  note: string;
-  queuedSettlementAccepted: boolean;
-  operatorId: string;
-}
-
-interface ReopenBusinessDateInput {
-  businessDate: string;
-  reason: string;
-  operatorId: string;
+interface DeleteOrderResult {
+  deleted: boolean;
+  refundAmount: number;
+  studentName: string;
+  wasClosedDate: boolean;
 }
 
 interface CloseBusinessDateInput {
@@ -89,9 +70,8 @@ interface PosState {
   ) => void;
   updateTransaction: (id: string, updates: Partial<LedgerTransaction>) => void;
   deleteTransaction: (id: string) => void;
-  correctTransaction: (input: LedgerCorrectionInput) => void;
-  voidTransaction: (input: LedgerVoidInput) => void;
-  hardDeleteLocalDraft: (input: LedgerVoidInput) => void;
+  deleteOrderWithRefundCheck: (id: string) => DeleteOrderResult;
+  editTransaction: (id: string, updates: { mealPrice?: number; paidAmount?: number; note?: string }) => void;
   setBusinessDateStatus: (date: string, status: BusinessDateStatus) => void;
   openCashSession: (input: OpenCashSessionInput) => void;
   closeBusinessDate: (input: CloseBusinessDateInput) => void;
@@ -139,14 +119,36 @@ export const usePosStore = create<PosState>()(
 
       commitPosTransactionDraft: (draft) => {
         set((state) => {
-          const studentIndex = state.students.findIndex(s => s.studentId === draft.intent.studentId);
+          const isExpense = draft.intent.type === 'expense';
+          const sid = draft.intent.studentId;
+
+          if (isExpense) {
+            const now = new Date().toISOString();
+            const newTransaction = createLedgerTransaction({
+              transactionId: crypto.randomUUID(),
+              businessDate: draft.intent.businessDate,
+              createdAt: now,
+              studentSnapshot: { studentId: CASHIER_SENTINEL, studentNameSnapshot: '櫃台' },
+              menuSnapshot: { menuNameSnapshot: '', vendorNameSnapshot: '' },
+              type: 'expense',
+              mealPrice: Math.round(draft.intent.mealPrice),
+              paidAmount: 0,
+              previousBalance: 0,
+              sourceDevice: draft.intent.sourceDevice,
+              note: draft.intent.note,
+            });
+            return { transactions: [newTransaction, ...state.transactions] };
+          }
+
+          const studentIndex = state.students.findIndex(s => s.studentId === sid);
           if (studentIndex === -1) return state;
 
           const student = state.students[studentIndex];
           const now = new Date().toISOString();
 
           const newStudents = [...state.students];
-          newStudents[studentIndex] = { ...student, currentBalance: draft.expectedBalanceAfter };
+          const roundedBalance = Math.round(draft.expectedBalanceAfter);
+          newStudents[studentIndex] = { ...student, currentBalance: roundedBalance };
 
           const newTransaction = createLedgerTransaction({
             transactionId: crypto.randomUUID(),
@@ -155,8 +157,8 @@ export const usePosStore = create<PosState>()(
             studentSnapshot: draft.snapshots.student,
             menuSnapshot: draft.snapshots.menu,
             type: draft.intent.type,
-            mealPrice: draft.intent.mealPrice,
-            paidAmount: draft.intent.paidAmount,
+            mealPrice: Math.round(draft.intent.mealPrice),
+            paidAmount: Math.round(draft.intent.paidAmount),
             previousBalance: student.currentBalance,
             sourceDevice: draft.intent.sourceDevice,
             note: draft.intent.note,
@@ -247,6 +249,12 @@ export const usePosStore = create<PosState>()(
           if (txIndex === -1) return state;
 
           const tx = state.transactions[txIndex];
+          if (tx.studentId === CASHIER_SENTINEL) {
+            const newTransactions = [...state.transactions];
+            newTransactions.splice(txIndex, 1);
+            return { transactions: newTransactions };
+          }
+
           const studentIndex = state.students.findIndex(s => s.studentId === tx.studentId);
 
           const newTransactions = [...state.transactions];
@@ -265,157 +273,152 @@ export const usePosStore = create<PosState>()(
           const newStudents = [...state.students];
           newStudents[studentIndex] = {
             ...newStudents[studentIndex],
-            currentBalance: newStudents[studentIndex].currentBalance - tx.amount
+            currentBalance: Math.round(newStudents[studentIndex].currentBalance - tx.amount)
           };
 
           return { transactions: newTransactions, students: newStudents };
         });
       },
 
-      correctTransaction: (input) => {
+      deleteOrderWithRefundCheck: (id) => {
         const state = get();
-        const { transactionId, updates, reason, operatorId } = input;
+        const tx = state.transactions.find(t => t.transactionId === id);
+        if (!tx || tx.type !== 'order') {
+          return { deleted: false, refundAmount: 0, studentName: '', wasClosedDate: false };
+        }
 
-        const txIndex = state.transactions.findIndex(t => t.transactionId === transactionId);
-        if (txIndex === -1) return;
+        const dateStatus = state.businessDateStatuses[tx.businessDate] || 'open';
+        const wasClosedDate = dateStatus !== 'open';
+        const refundAmount = tx.paidAmount;
 
-        const original = state.transactions[txIndex];
-        const dateStatus = state.businessDateStatuses[original.businessDate];
-        if (dateStatus === 'closed') return;
         const now = new Date().toISOString();
-
         const auditEvent = createLedgerAuditEvent({
           auditEventId: `evt-${Date.now()}`,
-          eventType: 'transaction_corrected',
+          eventType: 'transaction_deleted',
           entityType: 'transaction',
-          entityId: transactionId,
-          businessDate: original.businessDate,
-          before: { mealPrice: original.mealPrice, paidAmount: original.paidAmount },
-          after: { mealPrice: updates.mealPrice, paidAmount: updates.paidAmount },
-          reason,
-          operatorId,
+          entityId: id,
+          businessDate: tx.businessDate,
+          before: { ...tx },
+          after: null,
+          reason: 'delete',
+          operatorId: 'system',
           createdAt: now,
         });
 
-        const newTx = createCorrectionTransaction(
-          original,
-          {
-            mealPrice: updates.mealPrice ?? original.mealPrice,
-            paidAmount: updates.paidAmount ?? original.paidAmount,
-            note: updates.note ?? original.note,
-            type: original.type,
-          },
-          original.afterBalance,
-          {
-            auditEventId: auditEvent.auditEventId,
-            eventType: 'transaction_corrected',
-            entityType: 'transaction',
-            entityId: transactionId,
-            businessDate: original.businessDate,
-            before: auditEvent.before,
-            after: auditEvent.after,
-            reason,
-            operatorId,
-            createdAt: now,
-          },
-        );
-
-        const studentIndex = state.students.findIndex(s => s.studentId === original.studentId);
-        const updatedStudents = [...state.students];
-        if (studentIndex !== -1) {
-          updatedStudents[studentIndex] = {
-            ...updatedStudents[studentIndex],
-            currentBalance: newTx.afterBalance,
-          };
+        // Recalculate all student balances by filtering out deleted tx and recomputing
+        const remainingTx = state.transactions.filter(t => t.transactionId !== id);
+        const balanceMap = new Map<string, number>();
+        for (const s of state.students) {
+          balanceMap.set(s.studentId, 0);
         }
+
+        const sorted = [...remainingTx]
+          .filter(t => t.studentId !== CASHIER_SENTINEL)
+          .sort((a, b) => {
+            if (a.businessDate !== b.businessDate) return a.businessDate.localeCompare(b.businessDate);
+            if (a.createdAt !== b.createdAt) return a.createdAt.localeCompare(b.createdAt);
+            return a.transactionId.localeCompare(b.transactionId);
+          });
+
+        for (const t of sorted) {
+          const prev = balanceMap.get(t.studentId) ?? 0;
+          const newBal = Math.round(prev + t.amount);
+          balanceMap.set(t.studentId, newBal);
+        }
+
+        const newStudents = state.students.map(s => ({
+          ...s,
+          currentBalance: balanceMap.get(s.studentId) ?? s.currentBalance,
+        }));
+
+        const newTransactions = state.transactions.filter(t => t.transactionId !== id);
 
         set({
-          transactions: [...state.transactions, newTx],
+          transactions: newTransactions,
+          students: newStudents,
           auditEvents: [...state.auditEvents, auditEvent],
-          students: updatedStudents,
         });
+
+        return {
+          deleted: true,
+          refundAmount,
+          studentName: tx.studentNameSnapshot,
+          wasClosedDate,
+        };
       },
 
-      voidTransaction: (input) => {
+      editTransaction: (id, updates) => {
         const state = get();
-        const { transactionId, reason, operatorId } = input;
-
-        const txIndex = state.transactions.findIndex(t => t.transactionId === transactionId);
+        const txIndex = state.transactions.findIndex(t => t.transactionId === id);
         if (txIndex === -1) return;
 
         const original = state.transactions[txIndex];
         const dateStatus = state.businessDateStatuses[original.businessDate];
         if (dateStatus === 'closed') return;
 
-        const now = new Date().toISOString();
+        const newMealPrice = Math.round(updates.mealPrice ?? original.mealPrice);
+        const newPaidAmount = Math.round(updates.paidAmount ?? original.paidAmount);
+        const newNote = updates.note ?? original.note;
 
+        // D9 delta formula
+        const oldDelta = original.paidAmount - original.mealPrice;
+        const newDelta = newPaidAmount - newMealPrice;
+        const balanceDelta = newDelta - oldDelta;
+
+        const now = new Date().toISOString();
         const auditEvent = createLedgerAuditEvent({
           auditEventId: `evt-${Date.now()}`,
-          eventType: 'transaction_voided',
+          eventType: 'transaction_edited',
           entityType: 'transaction',
-          entityId: transactionId,
+          entityId: id,
           businessDate: original.businessDate,
-          before: { amount: original.amount },
-          after: { amount: -original.amount },
-          reason,
-          operatorId,
+          before: { mealPrice: original.mealPrice, paidAmount: original.paidAmount, note: original.note },
+          after: { mealPrice: newMealPrice, paidAmount: newPaidAmount, note: newNote },
+          reason: 'edit',
+          operatorId: 'system',
           createdAt: now,
         });
 
-        const voidTx = createVoidTransaction(original, reason, operatorId, now);
+        const newAmount = calculateTransactionAmount(newMealPrice, newPaidAmount);
+        const newTx: LedgerTransaction = {
+          ...original,
+          mealPrice: newMealPrice,
+          paidAmount: newPaidAmount,
+          amount: newAmount,
+          note: newNote,
+          revision: original.revision + 1,
+        };
 
-        const studentIndex = state.students.findIndex(s => s.studentId === original.studentId);
-        const updatedStudents = [...state.students];
-        if (studentIndex !== -1) {
-          updatedStudents[studentIndex] = {
-            ...updatedStudents[studentIndex],
-            currentBalance: updatedStudents[studentIndex].currentBalance + voidTx.amount,
-          };
+        if (original.studentId !== CASHIER_SENTINEL) {
+          const studentIndex = state.students.findIndex(s => s.studentId === original.studentId);
+          if (studentIndex !== -1) {
+            const newStudents = [...state.students];
+            newStudents[studentIndex] = {
+              ...newStudents[studentIndex],
+              currentBalance: Math.round(newStudents[studentIndex].currentBalance + balanceDelta),
+            };
+
+            const newTransactions = state.transactions.map((t, i) =>
+              i === txIndex ? newTx : t
+            );
+
+            set({
+              transactions: newTransactions,
+              auditEvents: [...state.auditEvents, auditEvent],
+              students: newStudents,
+            });
+            return;
+          }
         }
 
-        set(state => ({
-          transactions: state.transactions.map(t =>
-            t.transactionId === transactionId
-              ? { ...t, voidedAt: now, voidedBy: operatorId, voidReason: reason }
-              : t
-          ).concat(voidTx),
+        const newTransactions = state.transactions.map((t, i) =>
+          i === txIndex ? newTx : t
+        );
+
+        set({
+          transactions: newTransactions,
           auditEvents: [...state.auditEvents, auditEvent],
-          students: updatedStudents,
-        }));
-      },
-
-      hardDeleteLocalDraft: (input) => {
-        const state = get();
-        const { transactionId, reason, operatorId } = input;
-
-        const txIndex = state.transactions.findIndex(t => t.transactionId === transactionId);
-        if (txIndex === -1) return;
-
-        const original = state.transactions[txIndex];
-        if (original.syncStatus !== 'local') return;
-
-        const dateStatus = state.businessDateStatuses[original.businessDate];
-        if (dateStatus === 'closed') return;
-
-        const now = new Date().toISOString();
-
-        const auditEvent = createLedgerAuditEvent({
-          auditEventId: `evt-${Date.now()}`,
-          eventType: 'transaction_hard_deleted',
-          entityType: 'transaction',
-          entityId: transactionId,
-          businessDate: original.businessDate,
-          before: { ...original },
-          after: null,
-          reason,
-          operatorId,
-          createdAt: now,
         });
-
-        set(state => ({
-          transactions: state.transactions.filter(t => t.transactionId !== transactionId),
-          auditEvents: [...state.auditEvents, auditEvent],
-        }));
       },
 
       setBusinessDateStatus: (date, status) => {
@@ -431,8 +434,7 @@ export const usePosStore = create<PosState>()(
         if (state.businessDateStatuses[businessDate] === 'closed') return;
 
         const dayTx = state.transactions.filter(t => t.businessDate === businessDate);
-        const effective = getEffectiveLedgerRows(dayTx);
-        const totals = calculateLedgerTotals(effective);
+        const totals = calculateLedgerTotals(dayTx);
 
         const hasQueued = dayTx.some(t => t.syncStatus === 'queued');
         const hasFailed = dayTx.some(t => t.syncStatus === 'failed');
@@ -497,9 +499,22 @@ export const usePosStore = create<PosState>()(
             console.error('[posStore] rehydration failed:', error);
             return;
           }
-          const result = validatePersistedState(state);
-          if (!result.ok) {
-            console.error('[posStore] rehydration validation failed:', result.reason);
+          const migrationResult = migrateState(state);
+          if (migrationResult.ok) {
+            Object.assign(state, migrationResult.state);
+            const validationResult = validatePersistedState(state);
+            if (!validationResult.ok) {
+              console.error('[posStore] validation failed after migration:', validationResult.reason);
+              Object.assign(state, {
+                students: INITIAL_STUDENTS,
+                transactions: INITIAL_TODAY_TX,
+                vendors: VENDORS,
+                todayMenu: INITIAL_TODAY_MENU,
+                ...defaultState,
+              });
+            }
+          } else {
+            console.error('[posStore] migration failed:', migrationResult.reason);
             Object.assign(state, {
               students: INITIAL_STUDENTS,
               transactions: INITIAL_TODAY_TX,

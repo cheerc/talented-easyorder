@@ -7,7 +7,8 @@ import { countActiveOrdersForStudent } from './domain/ledger';
 import { saveCrashDraft, loadCrashDraft, clearCrashDraft } from './storage/crashDraft';
 import { checkStorageHealth } from './storage/storageHealth';
 
-import { TopBar, SearchBox, CustomerCard, ActionBar, IdleHero, ConfirmBanner, RecentStrip, DuplicateWarningBanner, MidnightBanner } from './components/pos-components';
+import { TopBar, SearchBox, CustomerCard, ActionBar, IdleHero, ConfirmBanner, RecentStrip, DuplicateWarningBanner, MidnightBanner, ExpensePanel } from './components/pos-components';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { ReportScreen, AdminScreen, VendorsScreen, HistoryScreen } from './components/screens';
 import { TodayDashboard } from './components/TodayDashboard';
 import { TweaksPanel, TweakSection, TweakRadio } from './components/tweaks-panel';
@@ -56,6 +57,12 @@ export default function App() {
     cancelFlow,
     dismissSuccess,
     commitTransaction,
+    enterExpenseMode,
+    updateExpenseAmount,
+    confirmExpenseAmount,
+    selectExpenseReason,
+    updateExpenseNote,
+    confirmExpenseNote,
   } = usePosFlow({ businessDate: viewDate, isHistorical, priceOverride, priceOverrideLabel });
 
   const [tab, setTab] = useState('pos');
@@ -136,9 +143,11 @@ export default function App() {
     return students.find(s => s.studentId === pinnedStudentId) ?? null;
   }, [students, pinnedStudentId]);
 
-  const currentMode: PosMode = state.kind === 'student_selected' || state.kind === 'committing'
+  const currentMode: PosMode = (state.kind === 'student_selected' || state.kind === 'committing')
     ? state.mode
-    : pinnedMode;
+    : (state.kind === 'expense_input' || state.kind === 'expense_reason' || state.kind === 'expense_other_note')
+      ? 'expense'
+      : pinnedMode;
 
   const currentPaidAmount = state.kind === 'student_selected' || state.kind === 'duplicate_warning' || state.kind === 'committing'
     ? state.paidAmountText
@@ -195,24 +204,35 @@ export default function App() {
   const handleUndo = useCallback(() => {
     const txId = lastCommittedTxIdRef.current;
     if (!txId) return;
-    usePosStore.getState().hardDeleteLocalDraft({
-      transactionId: txId,
-      reason: '操作者復原 (undo)',
-      operatorId: 'op-pos',
-    });
+    usePosStore.getState().deleteTransaction(txId);
     lastCommittedTxIdRef.current = null;
     setUndoCountdown(0);
     dismissFlash();
   }, [dismissFlash]);
 
   const handleConfirm = useCallback(() => {
+    if (state.kind === 'expense_input') {
+      const n = Number(currentPaidAmount);
+      if (Number.isFinite(n) && n > 0) confirmExpenseAmount(n);
+      return;
+    }
     if (state.kind !== 'student_selected' && state.kind !== 'duplicate_warning') return;
     if (state.kind === 'duplicate_warning') {
       confirmDuplicate();
       return;
     }
     requestConfirm();
-  }, [state.kind, requestConfirm, confirmDuplicate]);
+  }, [state.kind, requestConfirm, confirmDuplicate, currentPaidAmount, confirmExpenseAmount]);
+
+  const handleDeleteOrder = useCallback(() => {
+    if (!picked) return;
+    const store = usePosStore.getState();
+    store.deleteOrderWithRefundCheck(
+      store.transactions.find(t =>
+        t.studentId === picked.studentId && t.businessDate === viewDate && t.type === 'order'
+      )?.transactionId ?? ''
+    );
+  }, [picked, viewDate]);
 
   // After requestConfirm transitions to committing or duplicate_warning,
   // and after confirmDuplicate transitions to committing, fire commitTransaction
@@ -270,19 +290,21 @@ export default function App() {
     if (state.kind !== 'committing') return;
     if (!storageHealthyRef.current) return;
     const sid = state.studentId;
+    if (state.mode === 'expense') return; // expense doesn't need crash recovery
+    if (!sid) return;
     const student = students.find(s => s.studentId === sid);
     if (!student) return;
     const mealPrice = state.mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
-    const paidAmount = state.mode === 'topup' ? Number(state.paidAmountText || 0) : 0;
-    const amount = state.mode === 'order' ? -mealPrice : (state.mode === 'topup' ? paidAmount : 0);
+    const paidAmount = state.mode === 'payment' ? Number(state.paidAmountText || 0) : 0;
+    const amount = state.mode === 'order' ? -mealPrice : (state.mode === 'payment' ? paidAmount : 0);
     const note =
       state.mode === 'order' && priceOverride !== null
         ? `單筆改價：${priceOverrideLabel.trim() || todayMenu.itemName}`
         : state.mode === 'order'
           ? todayMenu.itemName
-          : state.mode === 'topup'
-            ? '現金儲值'
-            : '退餐';
+          : state.mode === 'payment'
+            ? '現金繳費'
+            : '';
     const draft = {
       intent: {
         businessDate: viewDate,
@@ -304,7 +326,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.kind]);
 
-  // Keyboard shortcuts for tab navigation
+  // Keyboard shortcuts for tab navigation (F-keys only)
   useEffect(() => {
     const onGlobalKey = (e: KeyboardEvent) => {
       if (e.key === 'F1') { e.preventDefault(); setTab('pos'); return; }
@@ -322,59 +344,63 @@ export default function App() {
     return () => window.removeEventListener('keydown', onGlobalKey);
   }, []);
 
-  // POS keyboard shortcuts (when student is selected)
+  // POS keyboard shortcuts — Q/W/E + Enter/Escape + arrow navigation
   const hasFlash = state.kind === 'success';
+  useKeyboardShortcuts({
+    enabled: tab === 'pos' && !hasFlash,
+    changeMode,
+    enterExpenseMode,
+    handleConfirm,
+    cancelFlow,
+  });
+
+  // Arrow key navigation for focus zones
   useEffect(() => {
-    if (tab !== 'pos' || hasFlash) return;
-    if (!picked) return;
+    if (tab !== 'pos' || hasFlash || !picked) return;
 
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
-      const keys = ['q', 'w', 'e', 'r', 'Q', 'W', 'E', 'R'];
 
-      if (e.target.tagName === 'INPUT' && e.target.type !== 'radio') {
-        if (e.key === 'Escape') {
-          e.target.blur();
-          cancelFlow();
-          return;
-        }
-        if (e.key === 'Enter') {
-          handleConfirm();
-          return;
-        }
-        if (keys.includes(e.key)) {
-          e.target.blur();
-        } else {
-          return;
-        }
-      }
-
-      if (keys.includes(e.key)) {
-        const key = e.key.toLowerCase();
-        const map: Record<string, PosMode> = { 'q': 'order', 'w': 'topup', 'e': 'cancel' };
-        if (key === 'e' && orderedTodayCount === 0) return;
+      // Enter: handle focus zone confirm
+      if (e.key === 'Enter') {
         e.preventDefault();
-        const m = map[key];
-        changeMode(m);
-        setFocusZone('mode-' + m);
+        if (focusZone === 'btn-cancel') cancelFlow();
+        else if (focusZone === 'btn-confirm') handleConfirm();
+        else if (focusZone.startsWith('mode-')) {
+          const m = focusZone.replace('mode-', '') as PosMode;
+          if (m === currentMode) {
+            handleConfirm();
+          } else {
+            changeMode(m);
+            setFocusZone('mode-' + m);
+          }
+        }
         return;
       }
 
-      const modes = ['mode-order', 'mode-topup', 'mode-cancel'];
+      // Escape: cancel flow
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelFlow();
+        return;
+      }
+
+      const modes = ['mode-order', 'mode-payment', 'mode-expense'];
       const i = modes.indexOf(focusZone);
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
         if (focusZone === 'btn-confirm') setFocusZone('btn-cancel');
         else if (focusZone === 'btn-cancel') setFocusZone('btn-cancel');
-        else if (i > 0) setFocusZone(modes[i - 1]);
+        else if (i > 0) { const m = modes[i - 1].replace('mode-', ''); setFocusZone(modes[i - 1]); changeMode(m as PosMode); }
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         if (focusZone === 'btn-cancel') setFocusZone('btn-confirm');
         else if (focusZone === 'btn-confirm') setFocusZone('btn-confirm');
         else if (i >= 0 && i < 3) {
-          let next = i + 1;
-          if (modes[next] === 'mode-cancel' && orderedTodayCount === 0) next = i;
+          const next = i + 1;
+          const m = modes[next].replace('mode-', '');
           setFocusZone(modes[next]);
+          changeMode(m as PosMode);
         }
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -382,28 +408,11 @@ export default function App() {
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         if (focusZone === 'btn-confirm' || focusZone === 'btn-cancel') setFocusZone('mode-' + currentMode);
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        if (focusZone === 'btn-cancel') cancelFlow();
-        else if (focusZone === 'btn-confirm') handleConfirm();
-        else if (focusZone.startsWith('mode-')) {
-          const m = focusZone.replace('mode-', '') as PosMode;
-          if (m === 'cancel' && orderedTodayCount === 0) return;
-          if (m === currentMode) {
-            handleConfirm();
-          } else {
-            changeMode(m);
-          }
-        }
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        if (state.kind === 'duplicate_warning') cancelFlow();
-        else cancelFlow();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [tab, picked, hasFlash, currentMode, orderedTodayCount, focusZone, state.kind, handleConfirm, cancelFlow, changeMode]);
+  }, [tab, picked, hasFlash, currentMode, focusZone, handleConfirm, cancelFlow, changeMode]);
 
   const todayCount = tx.reduce((acc, t) => acc + ((t.mealPrice || 0) / todayMenu.price), 0);
   const queuedCount = useMemo(() => allTx.filter(t => t.syncStatus === 'queued').length, [allTx]);
@@ -429,12 +438,12 @@ export default function App() {
       name: picked.displayName,
       sid: picked.studentId,
       detail: currentMode === 'order' ? `訂餐: ${todayMenu.itemName}` + (amt > 0 ? `, 收現 ${amt}` : '') :
-              currentMode === 'topup' ? `儲值: 收現 ${amt}` :
-                `取消 ${orderedTodayCount} 筆訂餐`,
+              currentMode === 'payment' ? `繳費: 收現 ${amt}` :
+                `支出: ${mealPrice}`,
       amount: amt - mealPrice,
       after: picked.currentBalance + (amt - mealPrice),
     };
-  }, [isSuccess, picked, currentMode, currentPaidAmount, todayMenu, orderedTodayCount, flashKey, priceOverride]);
+  }, [isSuccess, picked, currentMode, currentPaidAmount, todayMenu, flashKey, priceOverride]);
 
   return (
     <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => console.error('[ErrorBoundary]', e)}>
@@ -481,22 +490,37 @@ export default function App() {
               </>
             ) : (
               <>
-                <CustomerCard
-                  student={picked}
-                  todayMenu={todayMenu}
-                  mode={currentMode}
-                  orderedTodayCount={orderedTodayCount}
-                  payAmount={currentPaidAmount}
-                  setPayAmount={setPaidAmountText}
-                  onViewHistory={() => {
-                    setReportStudentFilter(picked!.studentId);
-                    setTab('report');
-                  }}
-                  priceOverride={priceOverride}
-                  priceOverrideLabel={priceOverrideLabel}
-                  setPriceOverride={setPriceOverride}
-                  setPriceOverrideLabel={setPriceOverrideLabel}
-                />
+                {(state.kind === 'expense_input' || state.kind === 'expense_reason' || state.kind === 'expense_other_note') ? (
+                  <ExpensePanel
+                    kind={state.kind}
+                    amountText={(state as { amountText?: string }).amountText ?? ''}
+                    amount={(state as { amount?: number }).amount ?? 0}
+                    onAmountChange={updateExpenseAmount}
+                    onAmountConfirm={confirmExpenseAmount}
+                    onReasonSelect={selectExpenseReason}
+                    onNoteChange={updateExpenseNote}
+                    onNoteConfirm={confirmExpenseNote}
+                    onCancel={cancelFlow}
+                  />
+                ) : (
+                  <CustomerCard
+                    student={picked}
+                    todayMenu={todayMenu}
+                    mode={currentMode}
+                    orderedTodayCount={orderedTodayCount}
+                    payAmount={currentPaidAmount}
+                    setPayAmount={setPaidAmountText}
+                    onViewHistory={() => {
+                      setReportStudentFilter(picked!.studentId);
+                      setTab('report');
+                    }}
+                    priceOverride={priceOverride}
+                    priceOverrideLabel={priceOverrideLabel}
+                    setPriceOverride={setPriceOverride}
+                    setPriceOverrideLabel={setPriceOverrideLabel}
+                    onDeleteOrder={handleDeleteOrder}
+                  />
+                )}
                 {state.kind === 'duplicate_warning' && (
                   <DuplicateWarningBanner
                     orderedTodayCount={orderedTodayCount}
@@ -510,7 +534,6 @@ export default function App() {
                     changeMode(m as PosMode);
                     setFocusZone('mode-' + m);
                   }}
-                  orderedTodayCount={orderedTodayCount}
                   focusZone={focusZone}
                   onConfirm={handleConfirm}
                   onCancel={cancelFlow}

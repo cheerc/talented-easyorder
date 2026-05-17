@@ -7,7 +7,6 @@ import type { Vendor } from '../domain/menu';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import {
   createLedgerDateRange,
-  getEffectiveLedgerRows,
   calculateLedgerTotals,
   groupLedgerRowsByStudent,
   type LedgerDateRangeKind,
@@ -23,8 +22,6 @@ import { ReportSummaryStats } from './report/ReportSummaryStats';
 import { LedgerGroupedTable } from './report/LedgerGroupedTable';
 import { CashClosePanel } from './report/CashClosePanel';
 import { ExportActions } from './report/ExportActions';
-import { CorrectionDialog } from './report/CorrectionDialog';
-import { VoidDialog } from './report/VoidDialog';
 import { ReopenDialog } from './report/ReopenDialog';
 import { SettlementHistoryTable } from './report/SettlementHistoryTable';
 import { AuditTrailTable } from './report/AuditTrailTable';
@@ -41,14 +38,13 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
   const [customStart, setCustomStart] = useState(viewDate);
   const [customEnd, setCustomEnd] = useState(viewDate);
   const [expandedSids, setExpandedSids] = useState<Set<string>>(new Set());
-  const [correctingTx, setCorrectingTx] = useState<LedgerTransaction | null>(null);
-  const [voidingTx, setVoidingTx] = useState<LedgerTransaction | null>(null);
   const [showReopen, setShowReopen] = useState(false);
   const [studentSearch, setStudentSearch] = useState(studentFilter || '');
 
   const transactions = usePosStore((s) => s.transactions);
   const closeBusinessDate = usePosStore((s) => s.closeBusinessDate);
   const reopenBusinessDate = usePosStore((s) => s.reopenBusinessDate);
+  const deleteOrderWithRefundCheck = usePosStore((s) => s.deleteOrderWithRefundCheck);
   const dateStatus = usePosStore((s) => s.getBusinessDateStatus(viewDate));
   const cashSessions = usePosStore((s) => s.cashSessions);
   const openCashSession = usePosStore((s) => s.openCashSession);
@@ -61,10 +57,13 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
     dateRange === 'custom' ? { startDate: customStart, endDate: customEnd } : undefined,
   ), [dateRange, viewDate, customStart, customEnd]);
 
-  const effective = useMemo(() => getEffectiveLedgerRows(transactions), [transactions]);
   const filtered = useMemo(() =>
-    effective.filter(t => t.businessDate >= range.startDate && t.businessDate <= range.endDate),
-  [effective, range]);
+    transactions.filter(t => t.businessDate >= range.startDate && t.businessDate <= range.endDate),
+  [transactions, range]);
+
+  const expenseRows = useMemo(() =>
+    filtered.filter(t => t.type === 'expense'),
+  [filtered]);
 
   const totals = useMemo(() => calculateLedgerTotals(filtered), [filtered]);
   const groups = useMemo(() => groupLedgerRowsByStudent(filtered), [filtered]);
@@ -106,19 +105,25 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
     setExpandedSids(next);
   };
 
-  const handleCorrectSave = (txId: string, updates: Partial<LedgerTransaction>, reason: string) => {
-    store.correctTransaction({ transactionId: txId, updates, reason, operatorId: 'op-report' });
-    setCorrectingTx(null);
+  const handleEditClick = (t: LedgerTransaction) => {
+    const mealPriceStr = window.prompt('mealPrice（支出金額）', String(t.mealPrice));
+    if (mealPriceStr === null) return;
+    const paidAmountStr = window.prompt('paidAmount（實收金額）', String(t.paidAmount));
+    if (paidAmountStr === null) return;
+    const note = window.prompt('備註', t.note);
+    if (note === null) return;
+    const mealPrice = Number(mealPriceStr);
+    const paidAmount = Number(paidAmountStr);
+    if (!Number.isFinite(mealPrice) || !Number.isFinite(paidAmount)) return;
+    usePosStore.getState().editTransaction(t.transactionId, { mealPrice, paidAmount, note });
   };
 
-  const handleVoidAction = (txId: string, reason: string) => {
-    store.voidTransaction({ transactionId: txId, reason, operatorId: 'op-report' });
-    setVoidingTx(null);
-  };
-
-  const handleHardDelete = (txId: string, reason: string) => {
-    store.hardDeleteLocalDraft({ transactionId: txId, reason, operatorId: 'op-report' });
-    setVoidingTx(null);
+  const handleDeleteClick = (t: LedgerTransaction) => {
+    if (t.type === 'order') {
+      deleteOrderWithRefundCheck(t.transactionId);
+    } else {
+      usePosStore.getState().deleteTransaction(t.transactionId);
+    }
   };
 
   const handleCashClose = (countedCash: number, note: string) => {
@@ -190,29 +195,13 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
 
       <LedgerGroupedTable
         groups={filteredGroups}
+        expenseRows={expenseRows}
         onToggleExpand={toggleExpand}
         expandedSids={expandedSids}
-        onCorrectClick={setCorrectingTx}
-        onVoidClick={setVoidingTx}
+        onEditClick={handleEditClick}
+        onDeleteClick={handleDeleteClick}
         dateStatus={dateStatus}
       />
-
-      {correctingTx && (
-        <CorrectionDialog
-          tx={correctingTx}
-          onSave={handleCorrectSave}
-          onCancel={() => setCorrectingTx(null)}
-        />
-      )}
-
-      {voidingTx && (
-        <VoidDialog
-          tx={voidingTx}
-          onVoid={handleVoidAction}
-          onHardDelete={handleHardDelete}
-          onCancel={() => setVoidingTx(null)}
-        />
-      )}
 
       {showReopen && (
         <ReopenDialog

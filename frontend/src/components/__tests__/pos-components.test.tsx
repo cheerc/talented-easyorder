@@ -10,7 +10,7 @@ describe('getQuickAmounts', () => {
     expect(getQuickAmounts({ mode: 'order', todayPrice: 85, currentDebt: 170 }).slice(0, 2)).toEqual([85, 255]);
   });
 
-  it('keeps top-up amounts independent from today price', () => {
-    expect(getQuickAmounts({ mode: 'topup', todayPrice: 85, currentDebt: 0 })).toEqual([100, 500, 1000, 2000, 3000]);
+  it('keeps payment amounts independent from today price', () => {
+    expect(getQuickAmounts({ mode: 'payment', todayPrice: 85, currentDebt: 0 })).toEqual([100, 500, 1000, 2000, 3000]);
   });
 });

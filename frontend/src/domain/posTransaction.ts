@@ -1,10 +1,9 @@
 import type { StudentAccount, StudentSnapshot } from './student';
 import type { TodayMenu, MenuSnapshot } from './menu';
-import type { LedgerTransaction } from './ledger';
 import type { PosMode, PosSourceDevice } from './posFlow';
 import { createStudentSnapshot } from './student';
 import { createMenuSnapshot } from './menu';
-import { calculateTransactionAmount } from './ledger';
+import { calculateTransactionAmount, CASHIER_SENTINEL } from './ledger';
 
 export interface PosTransactionIntent {
   businessDate: string;
@@ -49,7 +48,6 @@ export interface BuildPosTransactionDraftArgs {
   intent: PosTransactionIntent;
   student: StudentAccount;
   menu: TodayMenu;
-  activeOrder?: LedgerTransaction;
 }
 
 export function buildPosTransactionDraft(args: BuildPosTransactionDraftArgs): PosTransactionDraft {
@@ -58,19 +56,42 @@ export function buildPosTransactionDraft(args: BuildPosTransactionDraftArgs): Po
     menu: createMenuSnapshot(args.menu),
   };
 
-  let amount: number;
-  if (args.intent.type === 'cancel' && args.activeOrder) {
-    amount = -args.activeOrder.amount;
-  } else {
-    amount = calculateTransactionAmount(args.intent.mealPrice, args.intent.paidAmount);
-  }
-
-  const expectedBalanceAfter = args.student.currentBalance + amount;
+  const amount = calculateTransactionAmount(args.intent.mealPrice, args.intent.paidAmount);
+  const expectedBalanceAfter = Math.round(args.student.currentBalance + amount);
 
   return {
     intent: args.intent,
     snapshots,
     amount,
     expectedBalanceAfter,
+  };
+}
+
+export interface BuildExpenseTransactionDraftArgs {
+  businessDate: string;
+  amount: number;
+  note: string;
+  sourceDevice: PosSourceDevice;
+}
+
+export function buildExpenseTransactionDraft(args: BuildExpenseTransactionDraftArgs): PosTransactionDraft {
+  const snapshots: PosTransactionSnapshotInput = {
+    student: { studentId: CASHIER_SENTINEL, studentNameSnapshot: '櫃台' },
+    menu: { menuNameSnapshot: '', vendorNameSnapshot: '' },
+  };
+
+  return {
+    intent: {
+      businessDate: args.businessDate,
+      studentId: CASHIER_SENTINEL,
+      type: 'expense',
+      mealPrice: args.amount,
+      paidAmount: 0,
+      note: args.note,
+      sourceDevice: args.sourceDevice,
+    },
+    snapshots,
+    amount: -args.amount,
+    expectedBalanceAfter: 0,
   };
 }

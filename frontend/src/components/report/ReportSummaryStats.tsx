@@ -15,16 +15,12 @@ export function ReportSummaryStats({ totals, itemName }: ReportSummaryStatsProps
         <div className="stat-sub">{itemName}</div>
       </div>
       <div className="stat">
-        <div className="stat-lbl">訂餐金額</div>
-        <div className="stat-num mono">${fmt(totals.orderSalesAmount)}</div>
+        <div className="stat-lbl">總收入</div>
+        <div className="stat-num mono accent">+${fmt(totals.totalIncome)}</div>
       </div>
       <div className="stat">
-        <div className="stat-lbl">收現總額</div>
-        <div className="stat-num mono accent">+${fmt(totals.cashCollected)}</div>
-      </div>
-      <div className="stat">
-        <div className="stat-lbl">退款</div>
-        <div className="stat-num mono warn">${fmt(totals.refundAmount)}</div>
+        <div className="stat-lbl">總支出</div>
+        <div className="stat-num mono warn">−${fmt(totals.totalExpense)}</div>
       </div>
       <div className="stat">
         <div className="stat-lbl">淨現金</div>
@@ -33,14 +29,6 @@ export function ReportSummaryStats({ totals, itemName }: ReportSummaryStatsProps
       <div className="stat">
         <div className="stat-lbl">新增欠款</div>
         <div className="stat-num mono warn">${fmt(totals.newDebt)}</div>
-      </div>
-      <div className="stat">
-        <div className="stat-lbl">儲值</div>
-        <div className="stat-num mono accent">${fmt(totals.topUpAmount)}</div>
-      </div>
-      <div className="stat">
-        <div className="stat-lbl">取消</div>
-        <div className="stat-num mono">{totals.cancellationCount}</div>
       </div>
       <div className="stat">
         <div className="stat-lbl">總交易</div>

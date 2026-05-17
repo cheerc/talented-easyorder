@@ -3,7 +3,6 @@ import {
   calculateTransactionAmount,
   createLedgerTransaction,
   countActiveOrdersForStudent,
-  canCancelToday,
   recalculateStudentBalances,
 } from '../ledger';
 import type { LedgerTransaction } from '../ledger';
@@ -26,7 +25,7 @@ describe('calculateTransactionAmount', () => {
     expect(calculateTransactionAmount(90, 90)).toBe(0);
   });
 
-  it('topup: amount = paidAmount', () => {
+  it('payment: amount = paidAmount', () => {
     expect(calculateTransactionAmount(0, 500)).toBe(500);
   });
 
@@ -66,26 +65,9 @@ describe('createLedgerTransaction', () => {
 });
 
 describe('countActiveOrdersForStudent', () => {
-  const cancelledOrder: LedgerTransaction = {
-    ...TX_ORDER_001,
-    transactionId: 'tx-cancel-001',
-    type: 'cancel',
-    amount: 90,
-    afterBalance: 1250,
-  };
-
   it('counts active orders for student on given business date', () => {
     const count = countActiveOrdersForStudent([TX_ORDER_001], '001', FIXTURE_BUSINESS_DATE);
     expect(count).toBe(1);
-  });
-
-  it('excludes cancelled orders from count', () => {
-    const count = countActiveOrdersForStudent(
-      [TX_ORDER_001, cancelledOrder],
-      '001',
-      FIXTURE_BUSINESS_DATE,
-    );
-    expect(count).toBe(0);
   });
 
   it('excludes other students', () => {
@@ -97,26 +79,32 @@ describe('countActiveOrdersForStudent', () => {
     const count = countActiveOrdersForStudent([TX_ORDER_001], '001', '2026-05-08');
     expect(count).toBe(0);
   });
-});
 
-describe('canCancelToday', () => {
-  it('can cancel when active order count > 0', () => {
-    expect(canCancelToday([TX_ORDER_001], '001', FIXTURE_BUSINESS_DATE)).toBe(true);
-  });
-
-  it('cannot cancel when active order count is zero', () => {
-    expect(canCancelToday([], '001', FIXTURE_BUSINESS_DATE)).toBe(false);
-  });
-
-  it('cannot cancel when all orders already cancelled', () => {
-    const cancelled: LedgerTransaction = {
+  it('excludes payment and expense rows', () => {
+    const paymentRow: LedgerTransaction = {
       ...TX_ORDER_001,
-      transactionId: 'tx-cancel-001',
-      type: 'cancel',
-      amount: 90,
-      afterBalance: 1250,
+      transactionId: 'tx-payment-1',
+      type: 'payment',
+      mealPrice: 0,
+      paidAmount: 100,
+      amount: 100,
+      afterBalance: 1350,
     };
-    expect(canCancelToday([TX_ORDER_001, cancelled], '001', FIXTURE_BUSINESS_DATE)).toBe(false);
+    const expenseRow: LedgerTransaction = {
+      ...TX_ORDER_001,
+      transactionId: 'tx-expense-1',
+      type: 'expense',
+      mealPrice: 50,
+      paidAmount: 0,
+      amount: -50,
+      afterBalance: 1200,
+    };
+    const count = countActiveOrdersForStudent(
+      [TX_ORDER_001, paymentRow, expenseRow],
+      '001',
+      FIXTURE_BUSINESS_DATE,
+    );
+    expect(count).toBe(1);
   });
 });
 
@@ -136,7 +124,7 @@ describe('recalculateStudentBalances', () => {
       {
         ...TX_ORDER_001,
         transactionId: 'tx-2',
-        type: 'topup',
+        type: 'payment',
         createdAt: '2026-05-07T02:00:00Z',
         mealPrice: 0,
         paidAmount: 500,

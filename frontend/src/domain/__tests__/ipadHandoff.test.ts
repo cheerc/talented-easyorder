@@ -45,16 +45,6 @@ describe('validateIpadHandoffMessage', () => {
     if (!result.ok) expect(result.code).toBe('invalid_timestamp');
   });
 
-  it('accepts topup action', () => {
-    const result = validateIpadHandoffMessage({ ...validMessage, action: 'topup' });
-    expect(result.ok).toBe(true);
-  });
-
-  it('accepts cancel action', () => {
-    const result = validateIpadHandoffMessage({ ...validMessage, action: 'cancel' });
-    expect(result.ok).toBe(true);
-  });
-
   it('rejects message with non-ipad source', () => {
     const result = validateIpadHandoffMessage({
       ...validMessage,

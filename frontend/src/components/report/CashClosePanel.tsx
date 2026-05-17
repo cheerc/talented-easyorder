@@ -63,7 +63,7 @@ export function CashClosePanel({
           />
         </div>
         <div>
-          <div className="dim" style={{ fontSize: '12px', marginBottom: '4px' }}>今日實收</div>
+          <div className="dim" style={{ fontSize: '12px', marginBottom: '4px' }}>淨現金</div>
           <div className="mono" style={{ fontSize: '20px', fontWeight: 600 }}>${fmt(totals.netCash)}</div>
         </div>
         <div>
@@ -126,7 +126,7 @@ export function CashClosePanel({
             <div className="dialog-body">
               <div className="dialog-row"><label>日期</label><span className="mono">{businessDate}</span></div>
               <div className="dialog-row"><label>開帳金額</label><span className="mono">${fmt(openingCash)}</span></div>
-              <div className="dialog-row"><label>今日實收</label><span className="mono">${fmt(totals.netCash)}</span></div>
+              <div className="dialog-row"><label>淨現金</label><span className="mono">${fmt(totals.netCash)}</span></div>
               <div className="dialog-row"><label>系統應有抽屜現金</label><span className="mono">${fmt(expectedDrawerCash)}</span></div>
               <div className="dialog-row"><label>實際點算</label><span className="mono">${fmt(countedNum)}</span></div>
               <div className="dialog-row">

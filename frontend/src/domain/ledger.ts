@@ -1,4 +1,4 @@
-export type TransactionType = 'order' | 'topup' | 'cancel' | 'correction' | 'void';
+export type TransactionType = 'order' | 'payment' | 'expense';
 export type LedgerSyncStatus = 'local' | 'queued' | 'synced' | 'failed' | 'conflict';
 
 export interface LedgerTransaction {
@@ -19,15 +19,13 @@ export interface LedgerTransaction {
   syncStatus: LedgerSyncStatus;
   revision: number;
   note: string;
-  voidedAt?: string;
-  voidedBy?: string;
-  voidReason?: string;
-  correctsTransactionId?: string;
 }
 
 import type { StudentSnapshot } from './student';
 import type { MenuSnapshot } from './menu';
 import type { StudentAccount } from './student';
+
+export const CASHIER_SENTINEL = '__cashier__' as const;
 
 export interface CreateLedgerTransactionInput {
   transactionId: string;
@@ -50,19 +48,20 @@ export function calculateTransactionAmount(mealPrice: number, paidAmount: number
 
 export function createLedgerTransaction(input: CreateLedgerTransactionInput): LedgerTransaction {
   const amount = calculateTransactionAmount(input.mealPrice, input.paidAmount);
+  const studentId = input.type === 'expense' ? CASHIER_SENTINEL : input.studentSnapshot.studentId;
   return {
     transactionId: input.transactionId,
     businessDate: input.businessDate,
     createdAt: input.createdAt,
-    studentId: input.studentSnapshot.studentId,
-    studentNameSnapshot: input.studentSnapshot.studentNameSnapshot,
+    studentId,
+    studentNameSnapshot: input.type === 'expense' ? '櫃台' : input.studentSnapshot.studentNameSnapshot,
     type: input.type,
     mealPrice: input.mealPrice,
     paidAmount: input.paidAmount,
     amount,
-    afterBalance: input.previousBalance + amount,
-    menuNameSnapshot: input.menuSnapshot.menuNameSnapshot,
-    vendorNameSnapshot: input.menuSnapshot.vendorNameSnapshot,
+    afterBalance: input.type === 'expense' ? 0 : input.previousBalance + amount,
+    menuNameSnapshot: input.type === 'expense' ? '' : input.menuSnapshot.menuNameSnapshot,
+    vendorNameSnapshot: input.type === 'expense' ? '' : input.menuSnapshot.vendorNameSnapshot,
     sourceDevice: input.sourceDevice,
     operatorId: input.operatorId,
     syncStatus: 'local',
@@ -76,20 +75,9 @@ export function countActiveOrdersForStudent(
   studentId: string,
   businessDate: string,
 ): number {
-  const relevant = transactions.filter(
-    t => t.studentId === studentId && t.businessDate === businessDate,
-  );
-  const orders = relevant.filter(t => t.type === 'order').length;
-  const cancels = relevant.filter(t => t.type === 'cancel').length;
-  return Math.max(0, orders - cancels);
-}
-
-export function canCancelToday(
-  transactions: LedgerTransaction[],
-  studentId: string,
-  businessDate: string,
-): boolean {
-  return countActiveOrdersForStudent(transactions, studentId, businessDate) > 0;
+  return transactions.filter(
+    t => t.studentId === studentId && t.businessDate === businessDate && t.type === 'order',
+  ).length;
 }
 
 export interface RecalculationResult {
@@ -101,7 +89,8 @@ export function recalculateStudentBalances(
   students: StudentAccount[],
   transactions: LedgerTransaction[],
 ): RecalculationResult {
-  const sorted = [...transactions].sort((a, b) => {
+  const studentTx = transactions.filter(t => t.studentId !== CASHIER_SENTINEL);
+  const sorted = [...studentTx].sort((a, b) => {
     if (a.businessDate !== b.businessDate) return a.businessDate.localeCompare(b.businessDate);
     if (a.createdAt !== b.createdAt) return a.createdAt.localeCompare(b.createdAt);
     return a.transactionId.localeCompare(b.transactionId);
@@ -121,7 +110,7 @@ export function recalculateStudentBalances(
 
   const updatedStudents = students.map(s => ({
     ...s,
-    currentBalance: balanceMap.get(s.studentId) ?? s.currentBalance,
+    currentBalance: Math.round(balanceMap.get(s.studentId) ?? s.currentBalance),
   }));
 
   return { students: updatedStudents, transactions: updatedTx };
