@@ -1,4 +1,5 @@
 import type { LedgerTransaction } from './ledger';
+import { CASHIER_SENTINEL } from './ledger';
 
 export type LedgerDateRangeKind = 'today' | 'week' | 'month' | 'custom';
 
@@ -10,13 +11,10 @@ export interface LedgerDateRange {
 
 export interface LedgerTotals {
   orderCount: number;
-  orderSalesAmount: number;
-  cashCollected: number;
-  refundAmount: number;
+  totalIncome: number;
+  totalExpense: number;
   netCash: number;
   newDebt: number;
-  topUpAmount: number;
-  cancellationCount: number;
   transactionCount: number;
 }
 
@@ -78,60 +76,41 @@ export function filterTransactionsByBusinessDate(
   return transactions.filter(tx => tx.businessDate >= range.startDate && tx.businessDate <= range.endDate);
 }
 
-export function getEffectiveLedgerRows(transactions: LedgerTransaction[]): LedgerTransaction[] {
-  // Exclude voided originals, include correction and void rows
-  return transactions.filter(tx => tx.type !== 'order' || !tx.voidedAt);
-}
-
 export function calculateLedgerTotals(transactions: LedgerTransaction[]): LedgerTotals {
-  const effective = getEffectiveLedgerRows(transactions);
-
   let orderCount = 0;
-  let orderSalesAmount = 0;
-  let cashCollected = 0;
-  let refundAmount = 0;
+  let totalIncome = 0;
+  let totalExpense = 0;
   let newDebt = 0;
-  let topUpAmount = 0;
-  let cancellationCount = 0;
 
-  for (const tx of effective) {
+  for (const tx of transactions) {
+    const roundedMealPrice = Math.round(tx.mealPrice);
+    const roundedPaidAmount = Math.round(tx.paidAmount);
     if (tx.type === 'order') {
       orderCount++;
-      orderSalesAmount += Math.max(0, tx.mealPrice);
-      if (tx.paidAmount > 0) {
-        cashCollected += tx.paidAmount;
-      }
-      const unpaid = Math.max(tx.mealPrice - Math.max(tx.paidAmount, 0), 0);
+      totalIncome += roundedPaidAmount;
+      const unpaid = Math.max(0, roundedMealPrice - roundedPaidAmount);
       newDebt += unpaid;
-    } else if (tx.type === 'topup') {
-      topUpAmount += Math.max(0, tx.paidAmount);
-      if (tx.paidAmount > 0) {
-        cashCollected += tx.paidAmount;
-      }
-    } else if (tx.type === 'cancel' || tx.type === 'void' || tx.type === 'correction') {
-      cancellationCount++;
-      if (tx.paidAmount < 0) {
-        refundAmount += Math.abs(tx.paidAmount);
-      }
+    } else if (tx.type === 'payment') {
+      totalIncome += roundedPaidAmount;
+    } else if (tx.type === 'expense') {
+      totalExpense += roundedMealPrice;
     }
   }
 
   return {
     orderCount,
-    orderSalesAmount,
-    cashCollected,
-    refundAmount,
-    netCash: cashCollected - refundAmount,
+    totalIncome,
+    totalExpense,
+    netCash: totalIncome - totalExpense,
     newDebt,
-    topUpAmount,
-    cancellationCount,
-    transactionCount: effective.length,
+    transactionCount: transactions.length,
   };
 }
 
 export function groupLedgerRowsByStudent(transactions: LedgerTransaction[]): LedgerGroup[] {
   const map = new Map<string, LedgerTransaction[]>();
   for (const tx of transactions) {
+    if (tx.studentId === CASHIER_SENTINEL) continue;
     const key = tx.studentId;
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(tx);
@@ -148,8 +127,8 @@ export function groupLedgerRowsByStudent(transactions: LedgerTransaction[]): Led
     let mealTotal = 0;
     let paidTotal = 0;
     for (const tx of sorted) {
-      if (tx.type === 'order') mealTotal += Math.max(0, tx.mealPrice);
-      paidTotal += Math.max(0, tx.paidAmount);
+      if (tx.type === 'order') mealTotal += Math.round(Math.max(0, tx.mealPrice));
+      paidTotal += Math.round(Math.max(0, tx.paidAmount));
     }
 
     groups.push({
@@ -164,7 +143,6 @@ export function groupLedgerRowsByStudent(transactions: LedgerTransaction[]): Led
     });
   }
 
-  // Sort groups by latest transaction time descending
   groups.sort((a, b) => b.latestCreatedAt.localeCompare(a.latestCreatedAt));
 
   return groups;

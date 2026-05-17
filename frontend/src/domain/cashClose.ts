@@ -10,6 +10,8 @@ export interface DailySettlement {
   settlementRevision: number;
   orderCount: number;
   transactionCount: number;
+  totalIncome: number;
+  totalExpense: number;
   openingCash: number;
   netCash: number;
   expectedCash: number;
@@ -96,6 +98,8 @@ export function createDailySettlement(
     settlementRevision: 1,
     orderCount: totals.orderCount,
     transactionCount: totals.transactionCount,
+    totalIncome: totals.totalIncome,
+    totalExpense: totals.totalExpense,
     openingCash,
     netCash: totals.netCash,
     expectedCash,

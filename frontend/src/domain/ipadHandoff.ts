@@ -16,7 +16,7 @@ export type ValidateHandoffResult =
   | { ok: true }
   | { ok: false; code: 'missing_student_id' | 'invalid_action' | 'unsupported_version' | 'invalid_timestamp' | 'invalid_source' };
 
-const VALID_ACTIONS: HandoffAction[] = ['order', 'topup', 'cancel'];
+const VALID_ACTIONS: HandoffAction[] = ['order', 'payment'];
 const VALID_SOURCES: PosSourceDevice[] = ['ipad_handoff'];
 const SUPPORTED_VERSION = 1;
 

@@ -8,7 +8,9 @@ import type { PosFlowState, PosMode, PosSelectionSource } from '../domain/posFlo
 import type { ScannerInput } from '../domain/posSearch';
 import { resolveScannedStudent } from '../domain/posSearch';
 import { parsePaidAmount, buildPosTransactionDraft } from '../domain/posTransaction';
-import { countActiveOrdersForStudent, canCancelToday } from '../domain/ledger';
+import { countActiveOrdersForStudent } from '../domain/ledger';
+import { countActiveOrdersForStudent } from '../domain/ledger';
+import { countActiveOrdersForStudent } from '../domain/ledger';
 import {
   validateIpadHandoffMessage,
   readHandoffIntent,
@@ -29,6 +31,12 @@ export interface UsePosFlowReturn {
   selectStudent: (studentId: string, source: PosSelectionSource) => void;
   changeMode: (mode: PosMode) => void;
   setPaidAmountText: (text: string) => void;
+  enterExpenseMode: () => void;
+  updateExpenseAmount: (text: string) => void;
+  confirmExpenseAmount: (amount: number) => void;
+  selectExpenseReason: (reason: '付便當錢' | '其他原因') => void;
+  updateExpenseNote: (note: string) => void;
+  confirmExpenseNote: (note: string) => void;
   receiveScannerInput: (input: ScannerInput) => void;
   receiveIpadHandoff: (channel: string) => { ok: boolean; studentId?: string };
   requestConfirm: () => void;
@@ -61,15 +69,35 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
   }, [state.kind, state.searchText]);
 
   const changeMode = useCallback((mode: PosMode) => {
-    const cancelAvailable =
-      state.kind === 'student_selected'
-        ? canCancelToday(transactions, state.studentId, args.businessDate)
-        : false;
-    dispatch({ type: 'changeMode', mode, cancelAvailable });
-  }, [transactions, args.businessDate, state]);
+    dispatch({ type: 'changeMode', mode });
+  }, []);
 
   const setPaidAmountText = useCallback((text: string) => {
     dispatch({ type: 'updatePaidAmount', text });
+  }, []);
+
+  const enterExpenseMode = useCallback(() => {
+    dispatch({ type: 'enterExpenseMode' });
+  }, []);
+
+  const updateExpenseAmount = useCallback((text: string) => {
+    dispatch({ type: 'expenseUpdateAmount', text });
+  }, []);
+
+  const confirmExpenseAmount = useCallback((amount: number) => {
+    dispatch({ type: 'expenseConfirmAmount', amount });
+  }, []);
+
+  const selectExpenseReason = useCallback((reason: '付便當錢' | '其他原因') => {
+    dispatch({ type: 'expenseSelectReason', reason });
+  }, []);
+
+  const updateExpenseNote = useCallback((note: string) => {
+    dispatch({ type: 'expenseUpdateNote', note });
+  }, []);
+
+  const confirmExpenseNote = useCallback((note: string) => {
+    dispatch({ type: 'expenseConfirmNote', note });
   }, []);
 
   const receiveScannerInput = useCallback((input: ScannerInput) => {
@@ -104,10 +132,9 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
       state.mode === 'order'
         ? countActiveOrdersForStudent(transactions, state.studentId, args.businessDate)
         : 0;
-    const cancelAvailable = canCancelToday(transactions, state.studentId, args.businessDate);
     const hasDuplicateOrder = state.mode === 'order' && activeOrderCount > 0;
 
-    dispatch({ type: 'requestCommit', hasDuplicateOrder, cancelAvailable });
+    dispatch({ type: 'requestCommit', hasDuplicateOrder });
   }, [state, transactions, args.businessDate]);
 
   const confirmDuplicate = useCallback(() => {
@@ -122,17 +149,12 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
     const mode = state.kind === 'committing' ? state.mode : 'order' as PosMode;
     const source = state.kind === 'committing' ? state.source : state.source;
     const paidAmountText = state.kind === 'committing' ? state.paidAmountText : state.paidAmountText;
+    const expenseAmount = state.kind === 'committing' ? state.expenseAmount : undefined;
+    const expenseNote = state.kind === 'committing' ? state.expenseNote : undefined;
 
     committingRef.current = true;
 
-    const student = students.find((s) => s.studentId === sid);
-    if (!student) {
-      dispatch({ type: 'commitFailed', message: '找不到學生', retryable: false });
-      committingRef.current = false;
-      return;
-    }
-
-    // If we're in duplicate_warning, transition to committing first
+    // If in duplicate_warning, confirm first
     if (state.kind === 'duplicate_warning') {
       dispatch({ type: 'confirmDuplicate' });
     }
@@ -147,52 +169,88 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
       note = args.priceOverride !== null
         ? `單筆改價：${args.priceOverrideLabel.trim() || todayMenu.itemName}`
         : todayMenu.itemName + (paidAmountVal > 0 ? ' (已付)' : '');
-    } else if (mode === 'topup') {
-      note = '現金儲值';
-    } else if (mode === 'cancel') {
-      note = '退餐';
+    } else if (mode === 'payment') {
+      note = '現金繳費';
+    } else if (mode === 'expense') {
+      mealPrice = expenseAmount ?? 0;
+      note = expenseNote ?? '';
     }
 
-    const intent = {
-      businessDate: args.businessDate,
-      studentId: sid,
-      type: mode,
-      mealPrice,
-      paidAmount: paidAmountVal,
-      note,
-      sourceDevice: toPosSourceDevice(source),
-    };
-
-    const activeOrder = mode === 'cancel'
-      ? transactions.find(
-          (t) =>
-            t.studentId === sid &&
-            t.type === 'order' &&
-            t.businessDate === args.businessDate,
-        )
-      : undefined;
-
     try {
-      const draft = buildPosTransactionDraft({
-        intent,
-        student,
-        menu: todayMenu,
-        activeOrder,
-      });
+      if (mode === 'expense') {
+        const student = students.length > 0 ? students[0] : null;
+        const studentSnapshot = student
+          ? { studentId: 'expense-operator', studentNameSnapshot: '櫃台' }
+          : { studentId: 'expense-operator', studentNameSnapshot: '櫃台' };
 
-      commitPosTransactionDraft(draft);
-      dispatch({
-        type: 'commitSucceeded',
-        transactionId: draft.intent.businessDate + '-' + Date.now(),
-        syncStatus: 'queued',
-      });
-    } catch {
+        const draft = buildPosTransactionDraft({
+          intent: {
+            businessDate: args.businessDate,
+            studentId: studentSnapshot.studentId,
+            type: mode,
+            mealPrice,
+            paidAmount: paidAmountVal,
+            note,
+            sourceDevice: toPosSourceDevice(source),
+          },
+          student: {
+            studentId: studentSnapshot.studentId,
+            displayName: studentSnapshot.studentNameSnapshot,
+            status: 'active',
+            currentBalance: 0,
+            aliases: [],
+            faceEnrollmentStatus: 'none',
+            createdAt: '',
+            updatedAt: '',
+            revision: 1,
+          },
+          menu: todayMenu,
+        });
+
+        commitPosTransactionDraft(draft);
+        dispatch({
+          type: 'commitSucceeded',
+          transactionId: draft.intent.businessDate + '-' + Date.now(),
+          syncStatus: 'queued',
+        });
+      } else {
+        const student = students.find((s) => s.studentId === sid);
+        if (!student) {
+          dispatch({ type: 'commitFailed', message: '找不到學生', retryable: false });
+          committingRef.current = false;
+          return;
+        }
+
+        const intent = {
+          businessDate: args.businessDate,
+          studentId: sid ?? '',
+          type: mode,
+          mealPrice,
+          paidAmount: paidAmountVal,
+          note,
+          sourceDevice: toPosSourceDevice(source),
+        };
+
+        const draft = buildPosTransactionDraft({
+          intent,
+          student,
+          menu: todayMenu,
+        });
+
+        commitPosTransactionDraft(draft);
+        dispatch({
+          type: 'commitSucceeded',
+          transactionId: draft.intent.businessDate + '-' + Date.now(),
+          syncStatus: 'queued',
+        });
+      }
+    } catch (e) {
       const errMsg = e instanceof Error ? e.message : '未知錯誤';
       dispatch({ type: 'commitFailed', message: '交易建立失敗: ' + errMsg, retryable: true });
     } finally {
       committingRef.current = false;
     }
-  }, [state, students, todayMenu, transactions, commitPosTransactionDraft, args.businessDate, args.priceOverride, args.priceOverrideLabel]);
+  }, [state, students, todayMenu, commitPosTransactionDraft, args.businessDate, args.priceOverride, args.priceOverrideLabel]);
 
   const cancelFlow = useCallback(() => {
     dispatch({ type: 'cancel' });
@@ -208,6 +266,12 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
     selectStudent,
     changeMode,
     setPaidAmountText,
+    enterExpenseMode,
+    updateExpenseAmount,
+    confirmExpenseAmount,
+    selectExpenseReason,
+    updateExpenseNote,
+    confirmExpenseNote,
     receiveScannerInput,
     receiveIpadHandoff,
     requestConfirm,
