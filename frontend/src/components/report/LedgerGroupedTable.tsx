@@ -1,5 +1,5 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { List, useDynamicRowHeight } from 'react-window';
+import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import { List } from 'react-window';
 import { fmt } from '../pos-components';
 import type { LedgerGroup } from '../../domain/ledgerReport';
 import type { LedgerTransaction } from '../../domain/ledger';
@@ -67,14 +67,6 @@ function LedgerGroupRow({
   index: number;
   style: React.CSSProperties;
 } & RowProps) {
-  const rowRef = useRef<HTMLDivElement>(null);
-  const dynamicHeight = useDynamicRowHeight({ defaultRowHeight: DEFAULT_ROW_HEIGHT, key: index });
-
-  useEffect(() => {
-    if (!rowRef.current) return;
-    return dynamicHeight.observeRowElements(rowRef.current);
-  }, [dynamicHeight]);
-
   const row = flatRows[index];
   if (!row) return null;
 
@@ -82,7 +74,7 @@ function LedgerGroupRow({
     const g = groups[row.groupIndex];
     const isExpanded = expandedSids.has(g.studentId);
     return (
-      <div ref={rowRef} style={style}>
+      <div style={style}>
         <div
           className={'rpt-tr ' + (isExpanded ? 'expanded-head' : '')}
           onClick={() => onToggleExpand(g.studentId)}
@@ -107,7 +99,7 @@ function LedgerGroupRow({
   if (row.kind === 'summary') {
     const g = groups[row.groupIndex];
     return (
-      <div ref={rowRef} style={style}>
+      <div style={style}>
         <div className="rpt-detail-row rpt-summary-row" style={{ background: 'var(--bg-2)', fontWeight: 500, fontSize: '12px', borderBottom: '2px solid var(--line-2)', display: 'flex', gap: '12px', padding: '4px 12px', alignItems: 'center', height: SUMMARY_ROW_HEIGHT }}>
           <span>📋 訂餐 {g.recordCount} 筆</span>
           <span className="pos">收現 +${fmt(g.paidTotal)}</span>
@@ -124,7 +116,7 @@ function LedgerGroupRow({
   const locked = dateStatus === 'closed';
   const typeLabel: Record<string, string> = { order: '訂餐', payment: '繳費', expense: '支出' };
   return (
-    <div ref={rowRef} style={style}>
+    <div style={style}>
       <div className="rpt-detail-row" style={{ display: 'grid', gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto', height: DETAIL_ROW_HEIGHT, alignItems: 'center' }}>
         <div className="mono dim">{t.createdAt.slice(11, 19)}</div>
         <div className="dim">{typeLabel[t.type] ?? t.type}</div>
@@ -185,7 +177,14 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
   }, []);
 
   const flatRows = useMemo(() => flattenRows(groups, expandedSids), [groups, expandedSids]);
-  const rowHeight = useDynamicRowHeight({ defaultRowHeight: DEFAULT_ROW_HEIGHT });
+
+  const getRowHeight = useCallback((index: number) => {
+    const row = flatRows[index];
+    if (!row) return DEFAULT_ROW_HEIGHT;
+    if (row.kind === 'group') return GROUP_ROW_HEIGHT;
+    if (row.kind === 'summary') return SUMMARY_ROW_HEIGHT;
+    return DETAIL_ROW_HEIGHT;
+  }, [flatRows]);
 
   const rowProps: RowProps = {
     flatRows,
@@ -226,7 +225,7 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
         <List
           rowComponent={LedgerGroupRow}
           rowCount={flatRows.length}
-          rowHeight={rowHeight}
+          rowHeight={getRowHeight}
           rowProps={rowProps}
           defaultHeight={containerHeight}
           style={{ height: containerHeight }}

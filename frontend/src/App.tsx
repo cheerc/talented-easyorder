@@ -212,7 +212,7 @@ export default function App() {
 
   const handleConfirm = useCallback(() => {
     if (state.kind === 'expense_input') {
-      const n = Number(currentPaidAmount);
+      const n = Number(state.amountText);
       if (Number.isFinite(n) && n > 0) confirmExpenseAmount(n);
       return;
     }
@@ -222,7 +222,8 @@ export default function App() {
       return;
     }
     requestConfirm();
-  }, [state.kind, requestConfirm, confirmDuplicate, currentPaidAmount, confirmExpenseAmount]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.kind, requestConfirm, confirmDuplicate, confirmExpenseAmount]);
 
   const handleDeleteOrder = useCallback(() => {
     if (!picked) return;
@@ -350,6 +351,7 @@ export default function App() {
     enabled: tab === 'pos' && !hasFlash,
     changeMode,
     enterExpenseMode,
+    cancelOrder: handleDeleteOrder,
     handleConfirm,
     cancelFlow,
   });
@@ -385,7 +387,7 @@ export default function App() {
         return;
       }
 
-      const modes = ['mode-order', 'mode-payment', 'mode-expense'];
+      const modes = ['mode-order', 'mode-payment'];
       const i = modes.indexOf(focusZone);
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
@@ -464,29 +466,45 @@ export default function App() {
               </div>
             ) : !picked ? (
               <>
-                {crashDraftRestored && (
-                  <div className="midnight-banner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: 'var(--accent-soft)', border: '1px solid var(--accent)', borderRadius: 'var(--r)', marginBottom: '12px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--accent-ink)' }}>偵測到未完成交易草稿，已自動恢復</span>
-                    <button className="ghost-btn" style={{ fontSize: '12px' }} onClick={() => setCrashDraftRestored(false)}>關閉</button>
-                  </div>
+                {(state.kind === 'expense_input' || state.kind === 'expense_reason' || state.kind === 'expense_other_note') ? (
+                  <ExpensePanel
+                    kind={state.kind}
+                    amountText={(state as { amountText?: string }).amountText ?? ''}
+                    amount={(state as { amount?: number }).amount ?? 0}
+                    onAmountChange={updateExpenseAmount}
+                    onAmountConfirm={confirmExpenseAmount}
+                    onReasonSelect={selectExpenseReason}
+                    onNoteChange={updateExpenseNote}
+                    onNoteConfirm={confirmExpenseNote}
+                    onCancel={cancelFlow}
+                  />
+                ) : (
+                  <>
+                    {crashDraftRestored && (
+                      <div className="midnight-banner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: 'var(--accent-soft)', border: '1px solid var(--accent)', borderRadius: 'var(--r)', marginBottom: '12px' }}>
+                        <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--accent-ink)' }}>偵測到未完成交易草稿，已自動恢復</span>
+                        <button className="ghost-btn" style={{ fontSize: '12px' }} onClick={() => setCrashDraftRestored(false)}>關閉</button>
+                      </div>
+                    )}
+                    <SearchBox
+                      value={state.kind === 'idle' ? state.searchText : ''}
+                      onChange={(v) => { setSearchText(v); setActiveIdx(0); }}
+                      onSubmit={submitSearch}
+                      onEsc={() => { setSearchText(''); setActiveIdx(0); }}
+                      suggestions={suggestions}
+                      activeIdx={activeIdx}
+                      onPick={choose}
+                      onHover={setActiveIdx}
+                      focusKey={0}
+                      disabled={hasFlash}
+                    />
+                    <IdleHero
+                      todayMenu={todayMenu}
+                      todayCount={todayCount}
+                      vendorPhone={vendors.find(v => v.name === todayMenu.vendorNameSnapshot)?.phone}
+                      queueHint={`全鍵盤操作 · 平均處理 4.2 秒/人`} />
+                  </>
                 )}
-                <SearchBox
-                  value={state.kind === 'idle' ? state.searchText : ''}
-                  onChange={(v) => { setSearchText(v); setActiveIdx(0); }}
-                  onSubmit={submitSearch}
-                  onEsc={() => { setSearchText(''); setActiveIdx(0); }}
-                  suggestions={suggestions}
-                  activeIdx={activeIdx}
-                  onPick={choose}
-                  onHover={setActiveIdx}
-                  focusKey={0}
-                  disabled={hasFlash}
-                />
-                <IdleHero
-                  todayMenu={todayMenu}
-                  todayCount={todayCount}
-                  vendorPhone={vendors.find(v => v.name === todayMenu.vendorNameSnapshot)?.phone}
-                  queueHint={`全鍵盤操作 · 平均處理 4.2 秒/人`} />
               </>
             ) : (
               <>
@@ -534,6 +552,7 @@ export default function App() {
                     changeMode(m as PosMode);
                     setFocusZone('mode-' + m);
                   }}
+                  onDeleteOrder={handleDeleteOrder}
                   focusZone={focusZone}
                   onConfirm={handleConfirm}
                   onCancel={cancelFlow}

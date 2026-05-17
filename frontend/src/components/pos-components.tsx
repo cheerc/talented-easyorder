@@ -392,18 +392,18 @@ interface ActionBarProps {
   setMode: (mode: PosMode) => void;
   onConfirm: () => void;
   onCancel: () => void;
+  onDeleteOrder?: () => void;
   focusZone: string;
 }
-export const ActionBar = React.memo(function ActionBar({ mode, setMode, onConfirm, onCancel, focusZone }: ActionBarProps) {
+export const ActionBar = React.memo(function ActionBar({ mode, setMode, onConfirm, onCancel, onDeleteOrder, focusZone }: ActionBarProps) {
   const opts = [
     { id: 'order' as PosMode,   label: '訂便當',       hint: 'Q' },
     { id: 'payment' as PosMode, label: '繳費',         hint: 'W' },
-    { id: 'expense' as PosMode, label: '支出',         hint: 'E' },
   ];
 
   return (
     <div className="actionbar" role="group" aria-label="交易操作">
-      <div className="modes modes-3" role="radiogroup" aria-label="交易類型">
+      <div className="modes modes-2" role="radiogroup" aria-label="交易類型">
         {opts.map(o => (
           <button
             key={o.id}
@@ -417,6 +417,17 @@ export const ActionBar = React.memo(function ActionBar({ mode, setMode, onConfir
           </button>
         ))}
       </div>
+      {onDeleteOrder && (
+        <div className="action-extras" style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
+          <button
+            className={'btn-cancel ' + (focusZone === 'btn-delete-order' ? ' btn-focus' : '')}
+            onClick={onDeleteOrder}
+            style={{ fontSize: '14px', padding: '8px 24px' }}
+          >
+            <span>取消訂餐</span><span className="kbd">R</span>
+          </button>
+        </div>
+      )}
       <div className="confirm-row">
         <button className={'btn-cancel ' + (focusZone === 'btn-cancel' ? 'btn-focus' : '')} onClick={onCancel}>
           <span>取消</span><span className="kbd">Esc</span>
@@ -460,7 +471,7 @@ export const IdleHero = React.memo(function IdleHero({ todayMenu, todayCount, ve
         <div className="idle-hint-lbl">下一位</div>
         <div className="idle-hint-txt">輸入編號 → 按 <span className="kbd">↵</span></div>
         <div className="idle-keys">
-          <span className="kbd">Q</span> 訂餐 · <span className="kbd">W</span> 繳費 · <span className="kbd">E</span> 支出 · <span className="kbd">↵</span> 確認 · <span className="kbd">Esc</span> 返回
+          <span className="kbd">Q</span> 訂餐 · <span className="kbd">W</span> 繳費 · <span className="kbd">R</span> 取消 · <span className="kbd">E</span> 支出 · <span className="kbd">↵</span> 確認 · <span className="kbd">Esc</span> 返回
         </div>
         {queueHint && <div className="idle-queue">{queueHint}</div>}
       </div>
@@ -580,7 +591,12 @@ export const RecentStrip = React.memo(function RecentStrip({ recent }: RecentStr
               r.type === 'expense' ? '支' : ''
             }</span>
             <span className={'recent-amt mono ' + (r.amount > 0 ? 'pos' : 'neg')}>
-              {sign(r.amount)}{fmt(r.amount)}
+              {r.type === 'order'
+                ? (r.paidAmount >= r.mealPrice
+                    ? `已繳費 ${fmt(r.mealPrice)}`
+                    : `待繳費 ${fmt(r.mealPrice - r.paidAmount)}`)
+                : <>{sign(r.amount)}{fmt(r.amount)}</>
+              }
             </span>
           </div>
         ))}
