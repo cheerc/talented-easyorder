@@ -3,13 +3,15 @@ import { List, useDynamicRowHeight } from 'react-window';
 import { fmt } from '../pos-components';
 import type { LedgerGroup } from '../../domain/ledgerReport';
 import type { LedgerTransaction } from '../../domain/ledger';
+import { CASHIER_SENTINEL } from '../../domain/ledger';
 
 interface LedgerGroupedTableProps {
   groups: LedgerGroup[];
+  expenseRows: LedgerTransaction[];
   onToggleExpand: (sid: string) => void;
   expandedSids: Set<string>;
-  onCorrectClick: (t: LedgerTransaction) => void;
-  onVoidClick: (t: LedgerTransaction) => void;
+  onEditClick: (t: LedgerTransaction) => void;
+  onDeleteClick: (t: LedgerTransaction) => void;
   dateStatus: string;
 }
 
@@ -47,8 +49,8 @@ interface RowProps {
   expandedSids: Set<string>;
   dateStatus: string;
   onToggleExpand: (sid: string) => void;
-  onCorrectClick: (t: LedgerTransaction) => void;
-  onVoidClick: (t: LedgerTransaction) => void;
+  onEditClick: (t: LedgerTransaction) => void;
+  onDeleteClick: (t: LedgerTransaction) => void;
 }
 
 function LedgerGroupRow({
@@ -59,8 +61,8 @@ function LedgerGroupRow({
   expandedSids,
   dateStatus,
   onToggleExpand,
-  onCorrectClick,
-  onVoidClick,
+  onEditClick,
+  onDeleteClick,
 }: {
   index: number;
   style: React.CSSProperties;
@@ -120,11 +122,12 @@ function LedgerGroupRow({
   // detail row
   const t = row.tx!;
   const locked = dateStatus === 'closed';
+  const typeLabel: Record<string, string> = { order: '訂餐', payment: '繳費', expense: '支出' };
   return (
     <div ref={rowRef} style={style}>
       <div className="rpt-detail-row" style={{ display: 'grid', gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto', height: DETAIL_ROW_HEIGHT, alignItems: 'center' }}>
         <div className="mono dim">{t.createdAt.slice(11, 19)}</div>
-        <div className="dim">{t.type === 'order' ? '訂餐' : t.type === 'topup' ? '儲值' : t.type === 'cancel' ? '取消' : t.type === 'correction' ? '更正' : '作廢'}</div>
+        <div className="dim">{typeLabel[t.type] ?? t.type}</div>
         <div className={'r mono ' + (t.mealPrice > 0 ? 'neg' : t.mealPrice < 0 ? 'pos' : '')}>
           {t.mealPrice !== 0 ? <>{t.mealPrice > 0 ? '−' : '+'}${fmt(Math.abs(t.mealPrice))}</> : <>-</>}
         </div>
@@ -139,8 +142,15 @@ function LedgerGroupRow({
             <span className="dim" style={{fontSize:'11px'}}>🔒 已關帳</span>
           ) : (
             <>
-              <button className="rpt-mini-btn" onClick={() => onCorrectClick(t)}>更正</button>
-              <button className="rpt-mini-btn rpt-mini-del" onClick={() => onVoidClick(t)}>刪除</button>
+              {t.studentId !== CASHIER_SENTINEL && (
+                <>
+                  <button className="rpt-mini-btn" onClick={() => onEditClick(t)}>編輯</button>
+                  <button className="rpt-mini-btn rpt-mini-del" onClick={() => onDeleteClick(t)}>刪除</button>
+                </>
+              )}
+              {t.studentId === CASHIER_SENTINEL && (
+                <button className="rpt-mini-btn rpt-mini-del" onClick={() => onDeleteClick(t)}>刪除</button>
+              )}
             </>
           )}
         </div>
@@ -151,10 +161,11 @@ function LedgerGroupRow({
 
 const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
   groups,
+  expenseRows,
   onToggleExpand,
   expandedSids,
-  onCorrectClick,
-  onVoidClick,
+  onEditClick,
+  onDeleteClick,
   dateStatus,
 }: LedgerGroupedTableProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -182,12 +193,31 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
     expandedSids,
     dateStatus,
     onToggleExpand,
-    onCorrectClick,
-    onVoidClick,
+    onEditClick,
+    onDeleteClick,
   };
+
+  const expenseSection = expenseRows.length > 0 ? (
+    <div style={{ marginBottom: '12px', border: '1px solid var(--c-warn)', borderRadius: 'var(--r)', overflow: 'hidden' }}>
+      <div style={{ background: 'var(--c-warn)', color: '#fff', padding: '8px 12px', fontSize: '13px', fontWeight: 600 }}>櫃台支出</div>
+      {expenseRows.map(t => (
+        <div key={t.transactionId} className="rpt-detail-row" style={{ display: 'grid', gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto', height: DETAIL_ROW_HEIGHT, alignItems: 'center', borderBottom: '1px solid var(--line-1)', padding: '4px 0' }}>
+          <div className="mono dim">{t.createdAt.slice(11, 19)}</div>
+          <div className="dim">支出</div>
+          <div className="r mono neg">−${fmt(t.mealPrice)}</div>
+          <div className="r mono">-</div>
+          <div className="dim italic" style={{ fontSize: '12px' }}>{t.note}</div>
+          <div className="rpt-row-actions">
+            {dateStatus !== 'closed' && <button className="rpt-mini-btn rpt-mini-del" onClick={() => onDeleteClick(t)}>刪除</button>}
+          </div>
+        </div>
+      ))}
+    </div>
+  ) : null;
 
   return (
     <div className="rpt-table" ref={containerRef}>
+      {expenseSection}
       <div className="rpt-th" style={{ gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto', height: TABLE_HEADER_HEIGHT }}>
         <div>最後時間</div><div>編號</div><div>姓名</div>
         <div className="r">當日應付</div><div className="r">當日實收</div><div className="r">目前餘額</div><div className="r">狀態</div>
@@ -202,9 +232,9 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
           style={{ height: containerHeight }}
           overscanCount={5}
         />
-      ) : (
+      ) : expenseRows.length === 0 ? (
         <div className="rpt-empty">尚無交易紀錄</div>
-      )}
+      ) : null}
     </div>
   );
 });
