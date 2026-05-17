@@ -1,5 +1,5 @@
 ---
-status: draft-r1
+status: draft-r2
 date: 2026-05-17
 complexity: complex+
 batch: 1 of 3
@@ -113,9 +113,14 @@ interface LedgerTotals {
 ### D9: 修改金額功能（保留簡化版）
 
 - 移除 correction/void 的雙紀錄設計
-- 保留**直接編輯**原紀錄的 `mealPrice` / `paidAmount`（inline edit）
-- 編輯後自動 recalculate：`amount = paidAmount - mealPrice`，更新 `student.currentBalance`
-- 建立 audit event（`type: 'transaction_edited'`），記錄 before/after snapshot
+- 保留**直接編輯**原紀錄的 `mealPrice` / `paidAmount` / `note`（inline edit）
+- 編輯後 balance recalc 使用 diff 方式：
+  ```typescript
+  const delta = (newPaidAmount - newMealPrice) - (oldPaidAmount - oldMealPrice);
+  student.currentBalance += delta;
+  ```
+- note-only edit 不 recalc balance（delta = 0），但仍建立 audit event
+- 所有編輯建立 audit event（`type: 'transaction_edited'`），記錄 before/after snapshot
 - UI：在 F2 LedgerGroupedTable 每筆紀錄旁的「編輯」按鈕 → inline edit fields
 
 ---
