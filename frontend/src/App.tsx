@@ -195,11 +195,7 @@ export default function App() {
   const handleUndo = useCallback(() => {
     const txId = lastCommittedTxIdRef.current;
     if (!txId) return;
-    usePosStore.getState().hardDeleteLocalDraft({
-      transactionId: txId,
-      reason: '操作者復原 (undo)',
-      operatorId: 'op-pos',
-    });
+    usePosStore.getState().deleteTransaction(txId);
     lastCommittedTxIdRef.current = null;
     setUndoCountdown(0);
     dismissFlash();
@@ -270,19 +266,21 @@ export default function App() {
     if (state.kind !== 'committing') return;
     if (!storageHealthyRef.current) return;
     const sid = state.studentId;
+    if (state.mode === 'expense') return; // expense doesn't need crash recovery
+    if (!sid) return;
     const student = students.find(s => s.studentId === sid);
     if (!student) return;
     const mealPrice = state.mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
-    const paidAmount = state.mode === 'topup' ? Number(state.paidAmountText || 0) : 0;
-    const amount = state.mode === 'order' ? -mealPrice : (state.mode === 'topup' ? paidAmount : 0);
+    const paidAmount = state.mode === 'payment' ? Number(state.paidAmountText || 0) : 0;
+    const amount = state.mode === 'order' ? -mealPrice : (state.mode === 'payment' ? paidAmount : 0);
     const note =
       state.mode === 'order' && priceOverride !== null
         ? `單筆改價：${priceOverrideLabel.trim() || todayMenu.itemName}`
         : state.mode === 'order'
           ? todayMenu.itemName
-          : state.mode === 'topup'
-            ? '現金儲值'
-            : '退餐';
+          : state.mode === 'payment'
+            ? '現金繳費'
+            : '';
     const draft = {
       intent: {
         businessDate: viewDate,
@@ -351,8 +349,7 @@ export default function App() {
 
       if (keys.includes(e.key)) {
         const key = e.key.toLowerCase();
-        const map: Record<string, PosMode> = { 'q': 'order', 'w': 'topup', 'e': 'cancel' };
-        if (key === 'e' && orderedTodayCount === 0) return;
+        const map: Record<string, PosMode> = { 'q': 'order', 'w': 'payment', 'e': 'expense' };
         e.preventDefault();
         const m = map[key];
         changeMode(m);
@@ -360,7 +357,7 @@ export default function App() {
         return;
       }
 
-      const modes = ['mode-order', 'mode-topup', 'mode-cancel'];
+      const modes = ['mode-order', 'mode-payment', 'mode-expense'];
       const i = modes.indexOf(focusZone);
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
@@ -372,8 +369,7 @@ export default function App() {
         if (focusZone === 'btn-cancel') setFocusZone('btn-confirm');
         else if (focusZone === 'btn-confirm') setFocusZone('btn-confirm');
         else if (i >= 0 && i < 3) {
-          let next = i + 1;
-          if (modes[next] === 'mode-cancel' && orderedTodayCount === 0) next = i;
+          const next = i + 1;
           setFocusZone(modes[next]);
         }
       } else if (e.key === 'ArrowDown') {
@@ -388,7 +384,6 @@ export default function App() {
         else if (focusZone === 'btn-confirm') handleConfirm();
         else if (focusZone.startsWith('mode-')) {
           const m = focusZone.replace('mode-', '') as PosMode;
-          if (m === 'cancel' && orderedTodayCount === 0) return;
           if (m === currentMode) {
             handleConfirm();
           } else {
@@ -429,8 +424,8 @@ export default function App() {
       name: picked.displayName,
       sid: picked.studentId,
       detail: currentMode === 'order' ? `訂餐: ${todayMenu.itemName}` + (amt > 0 ? `, 收現 ${amt}` : '') :
-              currentMode === 'topup' ? `儲值: 收現 ${amt}` :
-                `取消 ${orderedTodayCount} 筆訂餐`,
+              currentMode === 'payment' ? `繳費: 收現 ${amt}` :
+                `支出: ${mealPrice}`,
       amount: amt - mealPrice,
       after: picked.currentBalance + (amt - mealPrice),
     };
