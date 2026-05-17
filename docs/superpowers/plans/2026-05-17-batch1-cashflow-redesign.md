@@ -1,5 +1,5 @@
 ---
-status: draft-r2
+status: approved
 date: 2026-05-17
 complexity: complex+
 batch: 1 of 3
