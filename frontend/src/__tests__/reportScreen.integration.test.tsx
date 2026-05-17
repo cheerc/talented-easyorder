@@ -39,7 +39,7 @@ describe('reportScreen integration', () => {
     });
   });
 
-  it('shows opening cash input and expected drawer cash label', async () => {
+  it('shows opening cash display and expected drawer cash label', async () => {
     // Seed store with a cash session so openingCash is available
     usePosStore.getState().openCashSession({
       businessDate: new Date().toISOString().split('T')[0],
@@ -51,7 +51,7 @@ describe('reportScreen integration', () => {
     render(<App />);
     await userEvent.click(screen.getByText('今日帳'));
     await waitFor(() => {
-      expect(screen.getByLabelText('開帳金額')).toBeTruthy();
+      expect(screen.getByText('開帳金額')).toBeTruthy();
       expect(screen.getByText('系統應有抽屜現金')).toBeTruthy();
     });
   });

@@ -25,6 +25,8 @@ export default function App() {
   const setVendors = usePosStore((s) => s.setVendors);
   const resetData = usePosStore((s) => s.resetData);
   const getBusinessDateStatus = usePosStore((s) => s.getBusinessDateStatus);
+  const cashSessions = usePosStore((s) => s.cashSessions);
+  const openCashSession = usePosStore((s) => s.openCashSession);
 
   const getSystemDate = () => new Date().toISOString().split('T')[0];
   const [systemDate, setSystemDate] = useState(getSystemDate);
@@ -312,7 +314,7 @@ export default function App() {
     const amount = state.mode === 'order' ? -mealPrice : (state.mode === 'payment' ? paidAmount : 0);
     const note =
       state.mode === 'order' && priceOverride !== null
-        ? `單筆改價：${priceOverrideLabel.trim() || todayMenu.itemName}`
+        ? `訂購其他餐點：${priceOverrideLabel.trim() || todayMenu.itemName}`
         : state.mode === 'order'
           ? todayMenu.itemName
           : state.mode === 'payment'
@@ -588,7 +590,10 @@ export default function App() {
                 已訂 <span className="mono" style={{ fontSize: '20px', fontWeight: 600, color: 'var(--ink)' }}>{todayCount}</span> 份
               </div>
             </div>
-            <RecentStrip recent={tx.slice().reverse().map((t, i) => ({ ...t, uid: i + '-' + t.createdAt }))} />
+            <RecentStrip
+              recent={tx.slice().reverse().map((t, i) => ({ ...t, uid: i + '-' + t.createdAt }))}
+              onItemClick={!isHistorical && getBusinessDateStatus(viewDate) !== 'closed' ? (sid) => selectStudent(sid, 'manual') : undefined}
+            />
           </div>
         </div>
       )}
@@ -605,7 +610,15 @@ export default function App() {
       )}
       {tab === 'admin' && (
         <ErrorBoundary fallback={<SectionError name="今日設定" />}>
-        <AdminScreen todayMenu={todayMenu} setTodayMenu={setTodayMenu} vendors={vendors} students={students} resetData={resetData} />
+        <AdminScreen
+          todayMenu={todayMenu}
+          setTodayMenu={setTodayMenu}
+          vendors={vendors}
+          students={students}
+          resetData={resetData}
+          openingCash={cashSessions[viewDate]?.openingCash ?? 4000}
+          onOpeningCashChange={(amount) => openCashSession({ businessDate: viewDate, openingCash: amount, operatorId: 'admin', openedAt: new Date().toISOString() })}
+        />
         </ErrorBoundary>
       )}
       {tab === 'vendors' && (

@@ -70,6 +70,17 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing,
                 setViewDate(d.toISOString().split('T')[0]);
               }}
             >◀</button>
+            <button
+              className="db-trigger"
+              title="下個月"
+              style={{ width: '22px', height: '22px', fontSize: '10px', borderRadius: '4px' }}
+              onClick={() => {
+                const d = new Date(viewDate);
+                d.setMonth(d.getMonth() + 1);
+                d.setDate(1);
+                setViewDate(d.toISOString().split('T')[0]);
+              }}
+            >▶</button>
           </div>
         </div>
       </div>
@@ -291,13 +302,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                 <span className="bill-val">${fmt(student.currentBalance)}</span>
               </div>
             )}
-            
-            <div className="after-preview">
-              <span className="after-label">交易後預估餘額</span>
-              <span className={'after-val ' + (after < 0 ? 'warn' : 'accent')}>
-                {after < 0 ? '−' : ''}${fmt(after)}
-              </span>
-            </div>
+
             {mode === 'order' && (
               <div className="price-override">
                 <button
@@ -305,7 +310,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                   className="ghost-btn"
                   onClick={() => setPriceOverride(priceOverride ?? todayMenu.price)}
                 >
-                  改本筆價格
+                  訂購其他餐點
                 </button>
                 {priceOverride !== null && (
                   <div className="price-override-fields">
@@ -583,15 +588,16 @@ export const ConfirmBanner = React.memo(function ConfirmBanner({ flash, onDismis
 // ============ Recent strip ============
 interface RecentStripProps {
   recent: (import('../domain/ledger').LedgerTransaction & { uid: string })[];
+  onItemClick?: (studentId: string) => void;
 }
-export const RecentStrip = React.memo(function RecentStrip({ recent }: RecentStripProps) {
+export const RecentStrip = React.memo(function RecentStrip({ recent, onItemClick }: RecentStripProps) {
   return (
     <div className="recent">
       <div className="recent-head">最近 5 筆</div>
       <div className="recent-list">
         {recent.length === 0 && <div className="recent-empty">尚無交易</div>}
         {recent.slice(0, 5).map(r => (
-          <div key={r.uid} className="recent-row">
+          <div key={r.uid} className="recent-row" onClick={() => onItemClick?.(r.studentId)} style={onItemClick ? { cursor: 'pointer' } : undefined}>
             <span className="recent-time mono">{r.createdAt.slice(11, 19)}</span>
             <span className="recent-id mono">{r.studentId}</span>
             <span className="recent-name">{r.studentNameSnapshot}</span>
