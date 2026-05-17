@@ -8,6 +8,7 @@ import { saveCrashDraft, loadCrashDraft, clearCrashDraft } from './storage/crash
 import { checkStorageHealth } from './storage/storageHealth';
 
 import { TopBar, SearchBox, CustomerCard, ActionBar, IdleHero, ConfirmBanner, RecentStrip, DuplicateWarningBanner, MidnightBanner, ExpensePanel } from './components/pos-components';
+import { ConfirmDialog } from './components/ui/ConfirmDialog';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { ReportScreen, AdminScreen, VendorsScreen, HistoryScreen } from './components/screens';
 import { TodayDashboard } from './components/TodayDashboard';
@@ -60,6 +61,7 @@ export default function App() {
     enterExpenseMode,
     updateExpenseAmount,
     confirmExpenseAmount,
+    selectExpenseDirection,
     selectExpenseReason,
     updateExpenseNote,
     confirmExpenseNote,
@@ -145,7 +147,7 @@ export default function App() {
 
   const currentMode: PosMode = (state.kind === 'student_selected' || state.kind === 'committing')
     ? state.mode
-    : (state.kind === 'expense_input' || state.kind === 'expense_reason' || state.kind === 'expense_other_note')
+    : (state.kind === 'expense_input' || state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note')
       ? 'expense'
       : pinnedMode;
 
@@ -224,6 +226,16 @@ export default function App() {
     requestConfirm();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.kind, requestConfirm, confirmDuplicate, confirmExpenseAmount]);
+
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+
+  const openCancelConfirm = useCallback(() => {
+    if (!picked) return;
+    const orderTx = allTx.find(t =>
+      t.studentId === picked.studentId && t.businessDate === viewDate && t.type === 'order'
+    );
+    if (orderTx) setCancelDialogOpen(true);
+  }, [picked, viewDate, allTx]);
 
   const handleDeleteOrder = useCallback(() => {
     if (!picked) return;
@@ -347,11 +359,12 @@ export default function App() {
 
   // POS keyboard shortcuts — Q/W/E + Enter/Escape + arrow navigation
   const hasFlash = state.kind === 'success';
+  const isStudentSelected = picked !== null && (state.kind === 'student_selected' || state.kind === 'duplicate_warning' || state.kind === 'committing');
   useKeyboardShortcuts({
     enabled: tab === 'pos' && !hasFlash,
     changeMode,
-    enterExpenseMode,
-    cancelOrder: handleDeleteOrder,
+    cancelOrder: openCancelConfirm,
+    isStudentSelected,
     handleConfirm,
     cancelFlow,
   });
@@ -416,7 +429,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [tab, picked, hasFlash, currentMode, focusZone, handleConfirm, cancelFlow, changeMode]);
 
-  const todayCount = tx.reduce((acc, t) => acc + ((t.mealPrice || 0) / todayMenu.price), 0);
+  const todayCount = tx.filter(t => t.type === 'order').length;
   const queuedCount = useMemo(() => allTx.filter(t => t.syncStatus === 'queued').length, [allTx]);
   const failedSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'failed').length, [allTx]);
   const conflictSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'conflict').length, [allTx]);
@@ -466,13 +479,14 @@ export default function App() {
               </div>
             ) : !picked ? (
               <>
-                {(state.kind === 'expense_input' || state.kind === 'expense_reason' || state.kind === 'expense_other_note') ? (
+                {(state.kind === 'expense_input' || state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note') ? (
                   <ExpensePanel
                     kind={state.kind}
                     amountText={(state as { amountText?: string }).amountText ?? ''}
                     amount={(state as { amount?: number }).amount ?? 0}
                     onAmountChange={updateExpenseAmount}
                     onAmountConfirm={confirmExpenseAmount}
+                    onDirectionSelect={selectExpenseDirection}
                     onReasonSelect={selectExpenseReason}
                     onNoteChange={updateExpenseNote}
                     onNoteConfirm={confirmExpenseNote}
@@ -502,19 +516,21 @@ export default function App() {
                       todayMenu={todayMenu}
                       todayCount={todayCount}
                       vendorPhone={vendors.find(v => v.name === todayMenu.vendorNameSnapshot)?.phone}
+                      onEnterExpense={enterExpenseMode}
                       queueHint={`全鍵盤操作 · 平均處理 4.2 秒/人`} />
                   </>
                 )}
               </>
             ) : (
               <>
-                {(state.kind === 'expense_input' || state.kind === 'expense_reason' || state.kind === 'expense_other_note') ? (
+                {(state.kind === 'expense_input' || state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note') ? (
                   <ExpensePanel
                     kind={state.kind}
                     amountText={(state as { amountText?: string }).amountText ?? ''}
                     amount={(state as { amount?: number }).amount ?? 0}
                     onAmountChange={updateExpenseAmount}
                     onAmountConfirm={confirmExpenseAmount}
+                    onDirectionSelect={selectExpenseDirection}
                     onReasonSelect={selectExpenseReason}
                     onNoteChange={updateExpenseNote}
                     onNoteConfirm={confirmExpenseNote}
@@ -552,7 +568,7 @@ export default function App() {
                     changeMode(m as PosMode);
                     setFocusZone('mode-' + m);
                   }}
-                  onDeleteOrder={handleDeleteOrder}
+                  onDeleteOrder={openCancelConfirm}
                   focusZone={focusZone}
                   onConfirm={handleConfirm}
                   onCancel={cancelFlow}
@@ -605,6 +621,20 @@ export default function App() {
 
 
       <ConfirmBanner flash={flashData} onDismiss={dismissFlash} onUndo={handleUndo} undoCountdown={undoCountdown} />
+
+      <ConfirmDialog
+        open={cancelDialogOpen}
+        title="取消訂餐"
+        message={`確定要取消 ${picked?.displayName ?? ''} 的訂餐嗎？`}
+        confirmLabel="確認取消"
+        cancelLabel="返回"
+        variant="danger"
+        onConfirm={() => {
+          handleDeleteOrder();
+          setCancelDialogOpen(false);
+        }}
+        onCancel={() => setCancelDialogOpen(false)}
+      />
 
       <TweaksPanel title="Tweaks">
         <TweakSection label="顯示">

@@ -198,19 +198,22 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
 
   const expenseSection = expenseRows.length > 0 ? (
     <div style={{ marginBottom: '12px', border: '1px solid var(--c-warn)', borderRadius: 'var(--r)', overflow: 'hidden' }}>
-      <div style={{ background: 'var(--c-warn)', color: '#fff', padding: '8px 12px', fontSize: '13px', fontWeight: 600 }}>櫃台支出</div>
-      {expenseRows.map(t => (
-        <div key={t.transactionId} className="rpt-detail-row" style={{ display: 'grid', gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto', height: DETAIL_ROW_HEIGHT, alignItems: 'center', borderBottom: '1px solid var(--line-1)', padding: '4px 0' }}>
-          <div className="mono dim">{t.createdAt.slice(11, 19)}</div>
-          <div className="dim">支出</div>
-          <div className="r mono neg">−${fmt(t.mealPrice)}</div>
-          <div className="r mono">-</div>
-          <div className="dim italic" style={{ fontSize: '12px' }}>{t.note}</div>
-          <div className="rpt-row-actions">
-            {dateStatus !== 'closed' && <button className="rpt-mini-btn rpt-mini-del" onClick={() => onDeleteClick(t)}>刪除</button>}
+      <div style={{ background: 'var(--c-warn)', color: '#fff', padding: '8px 12px', fontSize: '13px', fontWeight: 600 }}>櫃台 收入/支出</div>
+      {expenseRows.map(t => {
+        const isIncome = t.paidAmount > 0;
+        return (
+          <div key={t.transactionId} className="rpt-detail-row" style={{ display: 'grid', gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto', height: DETAIL_ROW_HEIGHT, alignItems: 'center', borderBottom: '1px solid var(--line-1)', padding: '4px 0' }}>
+            <div className="mono dim">{t.createdAt.slice(11, 19)}</div>
+            <div className="dim">{isIncome ? '收入' : '支出'}</div>
+            <div className={'r mono ' + (isIncome ? 'pos' : 'neg')}>{isIncome ? `+$${fmt(t.paidAmount)}` : `−$${fmt(t.mealPrice)}`}</div>
+            <div className="r mono">-</div>
+            <div className="dim italic" style={{ fontSize: '12px' }}>{t.note}</div>
+            <div className="rpt-row-actions">
+              {dateStatus !== 'closed' && <button className="rpt-mini-btn rpt-mini-del" onClick={() => onDeleteClick(t)}>刪除</button>}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   ) : null;
 

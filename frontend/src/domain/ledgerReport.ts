@@ -93,7 +93,12 @@ export function calculateLedgerTotals(transactions: LedgerTransaction[]): Ledger
     } else if (tx.type === 'payment') {
       totalIncome += roundedPaidAmount;
     } else if (tx.type === 'expense') {
-      totalExpense += roundedMealPrice;
+      if (roundedPaidAmount > 0) {
+        totalIncome += roundedPaidAmount;
+      }
+      if (roundedMealPrice > 0) {
+        totalExpense += roundedMealPrice;
+      }
     }
   }
 

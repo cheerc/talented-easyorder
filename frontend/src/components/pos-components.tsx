@@ -403,7 +403,7 @@ export const ActionBar = React.memo(function ActionBar({ mode, setMode, onConfir
 
   return (
     <div className="actionbar" role="group" aria-label="交易操作">
-      <div className="modes modes-2" role="radiogroup" aria-label="交易類型">
+      <div className="modes modes-3" role="radiogroup" aria-label="交易類型" style={{ display: 'flex', gap: '8px' }}>
         {opts.map(o => (
           <button
             key={o.id}
@@ -411,23 +411,23 @@ export const ActionBar = React.memo(function ActionBar({ mode, setMode, onConfir
             onClick={() => setMode(o.id)}
             role="radio"
             aria-checked={mode === o.id}
+            style={{ flex: 1 }}
           >
             <span className="mode-key">{o.hint}</span>
             <span className="mode-lbl">{o.label}</span>
           </button>
         ))}
-      </div>
-      {onDeleteOrder && (
-        <div className="action-extras" style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
+        {onDeleteOrder && (
           <button
-            className={'btn-cancel ' + (focusZone === 'btn-delete-order' ? ' btn-focus' : '')}
+            className={'mode ' + (focusZone === 'btn-delete-order' ? ' mode-focus' : '')}
             onClick={onDeleteOrder}
-            style={{ fontSize: '14px', padding: '8px 24px' }}
+            style={{ flex: 1 }}
           >
-            <span>取消訂餐</span><span className="kbd">R</span>
+            <span className="mode-key">E</span>
+            <span className="mode-lbl">取消訂餐</span>
           </button>
-        </div>
-      )}
+        )}
+      </div>
       <div className="confirm-row">
         <button className={'btn-cancel ' + (focusZone === 'btn-cancel' ? 'btn-focus' : '')} onClick={onCancel}>
           <span>取消</span><span className="kbd">Esc</span>
@@ -449,8 +449,9 @@ interface IdleHeroProps {
   todayCount: number;
   vendorPhone: string;
   queueHint?: string;
+  onEnterExpense?: () => void;
 }
-export const IdleHero = React.memo(function IdleHero({ todayMenu, todayCount, vendorPhone, queueHint }: IdleHeroProps) {
+export const IdleHero = React.memo(function IdleHero({ todayMenu, todayCount, vendorPhone, queueHint, onEnterExpense }: IdleHeroProps) {
   return (
     <div className="idle">
       <div className="idle-menu">
@@ -470,8 +471,17 @@ export const IdleHero = React.memo(function IdleHero({ todayMenu, todayCount, ve
       <div className="idle-hint">
         <div className="idle-hint-lbl">下一位</div>
         <div className="idle-hint-txt">輸入編號 → 按 <span className="kbd">↵</span></div>
-        <div className="idle-keys">
-          <span className="kbd">Q</span> 訂餐 · <span className="kbd">W</span> 繳費 · <span className="kbd">R</span> 取消 · <span className="kbd">E</span> 支出 · <span className="kbd">↵</span> 確認 · <span className="kbd">Esc</span> 返回
+        <div style={{ marginTop: '8px' }}>
+          <button
+            className="btn-confirm"
+            onClick={onEnterExpense}
+            style={{ fontSize: '14px', padding: '8px 20px' }}
+          >
+            新增 收入/支出
+          </button>
+        </div>
+        <div className="idle-keys" style={{ marginTop: '8px' }}>
+          <span className="kbd">Q</span> 訂餐 · <span className="kbd">W</span> 繳費 · <span className="kbd">↵</span> 確認 · <span className="kbd">Esc</span> 返回
         </div>
         {queueHint && <div className="idle-queue">{queueHint}</div>}
       </div>
@@ -610,23 +620,24 @@ export const RecentStrip = React.memo(function RecentStrip({ recent }: RecentStr
 const EXPENSE_QUICK_OPTIONS = ['付便當錢', '其他原因'] as const;
 
 interface ExpensePanelProps {
-  kind: 'expense_input' | 'expense_reason' | 'expense_other_note';
+  kind: 'expense_input' | 'expense_direction' | 'expense_reason' | 'expense_other_note';
   amountText: string;
   amount: number;
   onAmountChange: (text: string) => void;
   onAmountConfirm: (amount: number) => void;
-  onReasonSelect: (reason: '付便當錢' | '其他原因') => void;
+  onDirectionSelect: (direction: import('../domain/posFlow').ExpenseDirection) => void;
+  onReasonSelect: (reason: '付便當錢' | '支出其他' | '收入其他') => void;
   onNoteChange: (note: string) => void;
   onNoteConfirm: (note: string) => void;
   onCancel: () => void;
 }
 
 export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanelProps) {
-  const { kind, amountText, amount, onAmountChange, onAmountConfirm, onReasonSelect, onNoteChange, onNoteConfirm, onCancel } = props;
+  const { kind, amountText, amount, onAmountChange, onAmountConfirm, onDirectionSelect, onReasonSelect, onNoteChange, onNoteConfirm, onCancel } = props;
 
   return (
     <div className="card customer" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div className="pay-title">櫃台支出</div>
+      <div className="pay-title">新增 收入/支出</div>
 
       {kind === 'expense_input' && (
         <>
@@ -635,10 +646,10 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
             <input
               className="pay-input-main"
               type="number"
-              aria-label="支出金額"
+              aria-label="金額"
               value={amountText}
               onChange={e => onAmountChange(e.target.value)}
-              placeholder="輸入支出金額"
+              placeholder="輸入金額"
               autoFocus
               onKeyDown={e => {
                 if (e.key === 'Enter') {
@@ -666,10 +677,29 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
         </>
       )}
 
+      {kind === 'expense_direction' && (
+        <>
+          <div className="dup-warn" style={{ flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+            <div className="dup-warn-h">金額 ${Math.abs(amount)} — 選擇類型</div>
+            <div className="dup-warn-btns" style={{ marginTop: '12px', gap: '16px' }}>
+              <button className="btn-confirm" onClick={() => onDirectionSelect('expense')}>
+                支出
+              </button>
+              <button className="btn-confirm" onClick={() => onDirectionSelect('income')}>
+                收入
+              </button>
+            </div>
+          </div>
+          <div className="dim" style={{ textAlign: 'center', fontSize: '12px' }}>
+            <span className="kbd">←</span><span className="kbd">→</span> 選擇 · <span className="kbd">↵</span> 確認 · <span className="kbd">Esc</span> 取消
+          </div>
+        </>
+      )}
+
       {kind === 'expense_reason' && (
         <>
           <div className="dup-warn" style={{ flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-            <div className="dup-warn-h">支出 ${Math.abs(amount)} — 選擇原因</div>
+            <div className="dup-warn-h">{amount ? `$${Math.abs(amount)} — 選擇原因` : '選擇原因'}</div>
             <div className="dup-warn-btns" style={{ marginTop: '12px', gap: '16px' }}>
               {EXPENSE_QUICK_OPTIONS.map(opt => (
                 <button key={opt} className="btn-confirm" onClick={() => onReasonSelect(opt)}>
@@ -686,11 +716,11 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
 
       {kind === 'expense_other_note' && (
         <div className="pay-input-container" style={{ flexDirection: 'column', gap: '8px', alignItems: 'stretch' }}>
-          <span className="dim" style={{ fontSize: '12px' }}>支出原因（必填）</span>
+          <span className="dim" style={{ fontSize: '12px' }}>備註（必填）</span>
           <input
             className="adm-input"
-            aria-label="支出備註"
-            placeholder="請輸入支出原因"
+            aria-label="備註"
+            placeholder="請輸入備註"
             autoFocus
             onKeyDown={e => {
               if (e.key === 'Enter') {

@@ -4,7 +4,7 @@ import {
   reducePosFlow,
   toPosSourceDevice,
 } from '../domain/posFlow';
-import type { PosFlowState, PosMode, PosSelectionSource } from '../domain/posFlow';
+import type { PosFlowState, PosMode, PosSelectionSource, ExpenseDirection } from '../domain/posFlow';
 import type { ScannerInput } from '../domain/posSearch';
 import { resolveScannedStudent } from '../domain/posSearch';
 import { parsePaidAmount, buildPosTransactionDraft } from '../domain/posTransaction';
@@ -32,7 +32,8 @@ export interface UsePosFlowReturn {
   enterExpenseMode: () => void;
   updateExpenseAmount: (text: string) => void;
   confirmExpenseAmount: (amount: number) => void;
-  selectExpenseReason: (reason: '付便當錢' | '其他原因') => void;
+  selectExpenseDirection: (direction: ExpenseDirection) => void;
+  selectExpenseReason: (reason: '付便當錢' | '支出其他' | '收入其他') => void;
   updateExpenseNote: (note: string) => void;
   confirmExpenseNote: (note: string) => void;
   receiveScannerInput: (input: ScannerInput) => void;
@@ -86,7 +87,11 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
     dispatch({ type: 'expenseConfirmAmount', amount });
   }, []);
 
-  const selectExpenseReason = useCallback((reason: '付便當錢' | '其他原因') => {
+  const selectExpenseDirection = useCallback((direction: ExpenseDirection) => {
+    dispatch({ type: 'expenseSelectDirection', direction });
+  }, []);
+
+  const selectExpenseReason = useCallback((reason: '付便當錢' | '支出其他' | '收入其他') => {
     dispatch({ type: 'expenseSelectReason', reason });
   }, []);
 
@@ -149,6 +154,7 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
     const paidAmountText = state.kind === 'committing' ? state.paidAmountText : state.paidAmountText;
     const expenseAmount = state.kind === 'committing' ? state.expenseAmount : undefined;
     const expenseNote = state.kind === 'committing' ? state.expenseNote : undefined;
+    const expenseDirection = state.kind === 'committing' ? state.expenseDirection : undefined;
 
     committingRef.current = true;
 
@@ -158,7 +164,7 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
     }
 
     const parsedAmount = parsePaidAmount(paidAmountText);
-    const paidAmountVal = parsedAmount.ok ? parsedAmount.value : 0;
+    let paidAmountVal = parsedAmount.ok ? parsedAmount.value : 0;
 
     let mealPrice = 0;
     let note = '';
@@ -170,7 +176,13 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
     } else if (mode === 'payment') {
       note = '現金繳費';
     } else if (mode === 'expense') {
-      mealPrice = expenseAmount ?? 0;
+      if (expenseDirection === 'income') {
+        mealPrice = 0;
+        paidAmountVal = expenseAmount ?? 0;
+      } else {
+        mealPrice = expenseAmount ?? 0;
+        paidAmountVal = 0;
+      }
       note = expenseNote ?? '';
     }
 
@@ -267,6 +279,7 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
     enterExpenseMode,
     updateExpenseAmount,
     confirmExpenseAmount,
+    selectExpenseDirection,
     selectExpenseReason,
     updateExpenseNote,
     confirmExpenseNote,

@@ -7,12 +7,15 @@ export type PosFlowState =
   | { kind: 'student_selected'; studentId: string; mode: PosMode; source: PosSelectionSource; paidAmountText: string; searchTextHint: string }
   | { kind: 'duplicate_warning'; studentId: string; source: PosSelectionSource; paidAmountText: string; searchTextHint: string }
   | { kind: 'expense_input'; amountText: string }
-  | { kind: 'expense_reason'; amount: number }
-  | { kind: 'expense_other_note'; amount: number }
-  | { kind: 'committing'; studentId?: string; mode: PosMode; source: PosSelectionSource; paidAmountText: string; expenseAmount?: number; expenseNote?: string }
+  | { kind: 'expense_direction'; amount: number }
+  | { kind: 'expense_reason'; amount: number; direction: ExpenseDirection }
+  | { kind: 'expense_other_note'; amount: number; direction: ExpenseDirection }
+  | { kind: 'committing'; studentId?: string; mode: PosMode; source: PosSelectionSource; paidAmountText: string; expenseAmount?: number; expenseNote?: string; expenseDirection?: ExpenseDirection }
   | { kind: 'success'; transactionId: string; syncStatus: 'queued' | 'synced' | 'failed' }
   | { kind: 'historical_readonly'; businessDate: string }
   | { kind: 'error'; studentId?: string; mode?: PosMode; source?: PosSelectionSource; paidAmountText?: string; message: string; retryable: boolean };
+
+export type ExpenseDirection = 'income' | 'expense';
 
 export type PosFlowEvent =
   | { type: 'updateSearchText'; text: string }
@@ -24,7 +27,8 @@ export type PosFlowEvent =
   | { type: 'enterExpenseMode' }
   | { type: 'expenseUpdateAmount'; text: string }
   | { type: 'expenseConfirmAmount'; amount: number }
-  | { type: 'expenseSelectReason'; reason: '付便當錢' | '其他原因' }
+  | { type: 'expenseSelectDirection'; direction: ExpenseDirection }
+  | { type: 'expenseSelectReason'; reason: '付便當錢' | '支出其他' | '收入其他' }
   | { type: 'expenseUpdateNote'; note: string }
   | { type: 'expenseConfirmNote' }
   | { type: 'commitStarted' }
@@ -49,6 +53,8 @@ export function reducePosFlow(state: PosFlowState, event: PosFlowEvent): PosFlow
       return reduceDuplicateWarning(state, event);
     case 'expense_input':
       return reduceExpenseInput(state, event);
+    case 'expense_direction':
+      return reduceExpenseDirection(state, event);
     case 'expense_reason':
       return reduceExpenseReason(state, event);
     case 'expense_other_note':
@@ -116,7 +122,18 @@ function reduceExpenseInput(state: PosFlowState & { kind: 'expense_input' }, eve
     case 'expenseUpdateAmount':
       return { kind: 'expense_input', amountText: event.text };
     case 'expenseConfirmAmount':
-      return { kind: 'expense_reason', amount: event.amount };
+      return { kind: 'expense_direction', amount: event.amount };
+    case 'cancel':
+      return { kind: 'idle', searchText: '' };
+    default:
+      return state;
+  }
+}
+
+function reduceExpenseDirection(state: PosFlowState & { kind: 'expense_direction' }, event: PosFlowEvent): PosFlowState {
+  switch (event.type) {
+    case 'expenseSelectDirection':
+      return { kind: 'expense_reason', amount: state.amount, direction: event.direction };
     case 'cancel':
       return { kind: 'idle', searchText: '' };
     default:
@@ -128,9 +145,12 @@ function reduceExpenseReason(state: PosFlowState & { kind: 'expense_reason' }, e
   switch (event.type) {
     case 'expenseSelectReason': {
       if (event.reason === '付便當錢') {
-        return { kind: 'committing', mode: 'expense', source: 'manual', paidAmountText: '', expenseAmount: state.amount, expenseNote: '付便當錢' };
+        return { kind: 'committing', mode: 'expense', source: 'manual', paidAmountText: '', expenseAmount: state.amount, expenseNote: '付便當錢', expenseDirection: 'expense' };
       }
-      return { kind: 'expense_other_note', amount: state.amount };
+      if (event.reason === '收入其他') {
+        return { kind: 'expense_other_note', amount: state.amount, direction: 'income' };
+      }
+      return { kind: 'expense_other_note', amount: state.amount, direction: 'expense' };
     }
     case 'cancel':
       return { kind: 'idle', searchText: '' };
@@ -142,9 +162,9 @@ function reduceExpenseReason(state: PosFlowState & { kind: 'expense_reason' }, e
 function reduceExpenseOtherNote(state: PosFlowState & { kind: 'expense_other_note' }, event: PosFlowEvent): PosFlowState {
   switch (event.type) {
     case 'expenseUpdateNote':
-      return { kind: 'expense_other_note', amount: state.amount };
+      return { kind: 'expense_other_note', amount: state.amount, direction: state.direction };
     case 'expenseConfirmNote':
-      return { kind: 'committing', mode: 'expense', source: 'manual', paidAmountText: '', expenseAmount: state.amount, expenseNote: event.note };
+      return { kind: 'committing', mode: 'expense', source: 'manual', paidAmountText: '', expenseAmount: state.amount, expenseNote: event.note, expenseDirection: state.direction };
     case 'cancel':
       return { kind: 'idle', searchText: '' };
     default:

@@ -4,13 +4,13 @@ import type { PosMode } from '../domain/posFlow';
 interface UseKeyboardShortcutsArgs {
   enabled: boolean;
   changeMode: (mode: PosMode) => void;
-  enterExpenseMode?: () => void;
   cancelOrder?: () => void;
+  isStudentSelected?: boolean;
   handleConfirm: () => void;
   cancelFlow: () => void;
 }
 
-export function useKeyboardShortcuts({ enabled, changeMode, enterExpenseMode, cancelOrder, handleConfirm, cancelFlow }: UseKeyboardShortcutsArgs) {
+export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStudentSelected, handleConfirm, cancelFlow }: UseKeyboardShortcutsArgs) {
   useEffect(() => {
     if (!enabled) return;
 
@@ -55,24 +55,8 @@ export function useKeyboardShortcuts({ enabled, changeMode, enterExpenseMode, ca
         return;
       }
 
-      // E — enter expense mode from idle
-      if (key === 'e' && enterExpenseMode) {
-        if (tag === 'INPUT') {
-          const inputType = (target as HTMLInputElement).type;
-          if (inputType === 'text' || inputType === 'search' || inputType === 'email' || inputType === 'password' || inputType === 'url' || inputType === 'tel') {
-            return;
-          }
-          (target as HTMLInputElement).blur();
-        } else if (tag === 'TEXTAREA' || target.contentEditable === 'true') {
-          return;
-        }
-        e.preventDefault();
-        enterExpenseMode();
-        return;
-      }
-
-      // R — cancel order (when student selected)
-      if (key === 'r' && cancelOrder) {
+      // E — cancel order when student selected, no-op otherwise (idle expense entry is now a button)
+      if (key === 'e' && cancelOrder && isStudentSelected) {
         if (tag === 'INPUT') {
           const inputType = (target as HTMLInputElement).type;
           if (inputType === 'text' || inputType === 'search' || inputType === 'email' || inputType === 'password' || inputType === 'url' || inputType === 'tel') {
@@ -84,10 +68,13 @@ export function useKeyboardShortcuts({ enabled, changeMode, enterExpenseMode, ca
         }
         e.preventDefault();
         cancelOrder();
+        return;
       }
+
+      // R — no-op everywhere (was cancel order, now E handles cancel)
     };
 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [enabled, changeMode, enterExpenseMode, cancelOrder, handleConfirm, cancelFlow]);
+  }, [enabled, changeMode, cancelOrder, isStudentSelected, handleConfirm, cancelFlow]);
 }
