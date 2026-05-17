@@ -21,7 +21,7 @@ describe('posStateValidator — state migration', () => {
     const result = migrateState(oldState);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const tx = result.state.transactions.find((t: any) => t.transactionId === 'tx1');
+      const tx = result.state.transactions.find((t) => t.transactionId === 'tx1');
       expect(tx).toBeDefined();
       expect(tx.type).toBe('payment');
     }
@@ -73,7 +73,7 @@ describe('posStateValidator — state migration', () => {
     const result = migrateState(oldState);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const s1 = result.state.students.find((s: any) => s.studentId === 's1');
+      const s1 = result.state.students.find((s) => s.studentId === 's1');
       expect(s1).toBeDefined();
       // order: -40 (mealPrice=90, paidAmount=50), payment: +100 (paidAmount=100)
       // total: -40 + 100 = 60

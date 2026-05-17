@@ -71,8 +71,6 @@ export function migrateState(raw: unknown): MigrationResult {
     return { ok: false, reason: 'transactions is not an array' };
   }
 
-  const oldTypes = new Set(['topup', 'cancel', 'correction', 'void']);
-
   // Type remapping: topup→payment, cancel/correction/void→drop
   const migratedTx = rawTx
     .filter((t) => {
