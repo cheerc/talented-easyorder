@@ -38,14 +38,12 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
   const [customStart, setCustomStart] = useState(viewDate);
   const [customEnd, setCustomEnd] = useState(viewDate);
   const [expandedSids, setExpandedSids] = useState<Set<string>>(new Set());
-  const [editingTx, setEditingTx] = useState<LedgerTransaction | null>(null);
   const [showReopen, setShowReopen] = useState(false);
   const [studentSearch, setStudentSearch] = useState(studentFilter || '');
 
   const transactions = usePosStore((s) => s.transactions);
   const closeBusinessDate = usePosStore((s) => s.closeBusinessDate);
   const reopenBusinessDate = usePosStore((s) => s.reopenBusinessDate);
-  const editTransaction = usePosStore((s) => s.editTransaction);
   const deleteOrderWithRefundCheck = usePosStore((s) => s.deleteOrderWithRefundCheck);
   const dateStatus = usePosStore((s) => s.getBusinessDateStatus(viewDate));
   const cashSessions = usePosStore((s) => s.cashSessions);
@@ -108,7 +106,16 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
   };
 
   const handleEditClick = (t: LedgerTransaction) => {
-    setEditingTx(t);
+    const mealPriceStr = window.prompt('mealPrice（支出金額）', String(t.mealPrice));
+    if (mealPriceStr === null) return;
+    const paidAmountStr = window.prompt('paidAmount（實收金額）', String(t.paidAmount));
+    if (paidAmountStr === null) return;
+    const note = window.prompt('備註', t.note);
+    if (note === null) return;
+    const mealPrice = Number(mealPriceStr);
+    const paidAmount = Number(paidAmountStr);
+    if (!Number.isFinite(mealPrice) || !Number.isFinite(paidAmount)) return;
+    usePosStore.getState().editTransaction(t.transactionId, { mealPrice, paidAmount, note });
   };
 
   const handleDeleteClick = (t: LedgerTransaction) => {
