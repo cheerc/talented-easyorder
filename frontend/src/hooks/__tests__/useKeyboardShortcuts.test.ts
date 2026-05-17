@@ -5,12 +5,14 @@ import { useKeyboardShortcuts } from '../useKeyboardShortcuts';
 describe('useKeyboardShortcuts', () => {
   let changeMode: ReturnType<typeof vi.fn>;
   let enterExpenseMode: ReturnType<typeof vi.fn>;
+  let cancelOrder: ReturnType<typeof vi.fn>;
   let handleConfirm: ReturnType<typeof vi.fn>;
   let cancelFlow: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     changeMode = vi.fn();
     enterExpenseMode = vi.fn();
+    cancelOrder = vi.fn();
     handleConfirm = vi.fn();
     cancelFlow = vi.fn();
   });
@@ -40,6 +42,94 @@ describe('useKeyboardShortcuts', () => {
     window.dispatchEvent(event);
 
     expect(enterExpenseMode).toHaveBeenCalledOnce();
+  });
+
+  it('does nothing on E when enterExpenseMode is not provided', () => {
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow }));
+
+    const event = new KeyboardEvent('keydown', { key: 'e', bubbles: true });
+    window.dispatchEvent(event);
+
+    expect(changeMode).not.toHaveBeenCalled();
+  });
+
+  it('calls cancelOrder when R is pressed', () => {
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, enterExpenseMode, cancelOrder, handleConfirm, cancelFlow }));
+
+    const event = new KeyboardEvent('keydown', { key: 'r', bubbles: true });
+    window.dispatchEvent(event);
+
+    expect(cancelOrder).toHaveBeenCalledOnce();
+  });
+
+  it('does nothing on R when cancelOrder is not provided', () => {
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, enterExpenseMode, handleConfirm, cancelFlow }));
+
+    const event = new KeyboardEvent('keydown', { key: 'r', bubbles: true });
+    window.dispatchEvent(event);
+
+    expect(changeMode).not.toHaveBeenCalled();
+  });
+
+  it('suppresses R in text input', () => {
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, enterExpenseMode, cancelOrder, handleConfirm, cancelFlow }));
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    document.body.appendChild(input);
+    input.focus();
+
+    const event = new KeyboardEvent('keydown', { key: 'r', bubbles: true });
+    Object.defineProperty(event, 'target', { value: input });
+    input.dispatchEvent(event);
+
+    expect(cancelOrder).not.toHaveBeenCalled();
+
+    document.body.removeChild(input);
+  });
+
+  it('does nothing on E when enterExpenseMode is not provided', () => {
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow }));
+
+    const event = new KeyboardEvent('keydown', { key: 'e', bubbles: true });
+    window.dispatchEvent(event);
+
+    expect(changeMode).not.toHaveBeenCalled();
+  });
+
+  it('calls cancelOrder when R is pressed', () => {
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, enterExpenseMode, cancelOrder, handleConfirm, cancelFlow }));
+
+    const event = new KeyboardEvent('keydown', { key: 'r', bubbles: true });
+    window.dispatchEvent(event);
+
+    expect(cancelOrder).toHaveBeenCalledOnce();
+  });
+
+  it('does nothing on R when cancelOrder is not provided', () => {
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, enterExpenseMode, handleConfirm, cancelFlow }));
+
+    const event = new KeyboardEvent('keydown', { key: 'r', bubbles: true });
+    window.dispatchEvent(event);
+
+    expect(changeMode).not.toHaveBeenCalled();
+  });
+
+  it('suppresses R in text input', () => {
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, enterExpenseMode, cancelOrder, handleConfirm, cancelFlow }));
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    document.body.appendChild(input);
+    input.focus();
+
+    const event = new KeyboardEvent('keydown', { key: 'r', bubbles: true });
+    Object.defineProperty(event, 'target', { value: input });
+    input.dispatchEvent(event);
+
+    expect(cancelOrder).not.toHaveBeenCalled();
+
+    document.body.removeChild(input);
   });
 
   it('calls handleConfirm on Enter', () => {

@@ -5,11 +5,12 @@ interface UseKeyboardShortcutsArgs {
   enabled: boolean;
   changeMode: (mode: PosMode) => void;
   enterExpenseMode?: () => void;
+  cancelOrder?: () => void;
   handleConfirm: () => void;
   cancelFlow: () => void;
 }
 
-export function useKeyboardShortcuts({ enabled, changeMode, enterExpenseMode, handleConfirm, cancelFlow }: UseKeyboardShortcutsArgs) {
+export function useKeyboardShortcuts({ enabled, changeMode, enterExpenseMode, cancelOrder, handleConfirm, cancelFlow }: UseKeyboardShortcutsArgs) {
   useEffect(() => {
     if (!enabled) return;
 
@@ -36,30 +37,57 @@ export function useKeyboardShortcuts({ enabled, changeMode, enterExpenseMode, ha
         return;
       }
 
-      // Q/W/E — suppress in text inputs, allow in number inputs
-      const modeKey: Record<string, PosMode> = { q: 'order', w: 'payment', e: 'expense' };
+      // Q/W — suppress in text inputs, allow in number inputs
+      const modeKey: Record<string, PosMode> = { q: 'order', w: 'payment' };
       const key = e.key.toLowerCase();
       if (modeKey[key]) {
         if (tag === 'INPUT') {
           const inputType = (target as HTMLInputElement).type;
           if (inputType === 'text' || inputType === 'search' || inputType === 'email' || inputType === 'password' || inputType === 'url' || inputType === 'tel') {
-            return; // suppressed in text-like inputs
+            return;
           }
-          // number input — allow (blur first)
           (target as HTMLInputElement).blur();
         } else if (tag === 'TEXTAREA' || target.contentEditable === 'true') {
-          return; // suppressed in text areas
+          return;
         }
         e.preventDefault();
-        if (key === 'e' && enterExpenseMode) {
-          enterExpenseMode();
-        } else {
-          changeMode(modeKey[key]);
+        changeMode(modeKey[key]);
+        return;
+      }
+
+      // E — enter expense mode from idle
+      if (key === 'e' && enterExpenseMode) {
+        if (tag === 'INPUT') {
+          const inputType = (target as HTMLInputElement).type;
+          if (inputType === 'text' || inputType === 'search' || inputType === 'email' || inputType === 'password' || inputType === 'url' || inputType === 'tel') {
+            return;
+          }
+          (target as HTMLInputElement).blur();
+        } else if (tag === 'TEXTAREA' || target.contentEditable === 'true') {
+          return;
         }
+        e.preventDefault();
+        enterExpenseMode();
+        return;
+      }
+
+      // R — cancel order (when student selected)
+      if (key === 'r' && cancelOrder) {
+        if (tag === 'INPUT') {
+          const inputType = (target as HTMLInputElement).type;
+          if (inputType === 'text' || inputType === 'search' || inputType === 'email' || inputType === 'password' || inputType === 'url' || inputType === 'tel') {
+            return;
+          }
+          (target as HTMLInputElement).blur();
+        } else if (tag === 'TEXTAREA' || target.contentEditable === 'true') {
+          return;
+        }
+        e.preventDefault();
+        cancelOrder();
       }
     };
 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [enabled, changeMode, enterExpenseMode, handleConfirm, cancelFlow]);
+  }, [enabled, changeMode, enterExpenseMode, cancelOrder, handleConfirm, cancelFlow]);
 }
