@@ -10,7 +10,6 @@ interface CashClosePanelProps {
   queuedRowCount?: number;
   hasFailedConflict: boolean;
   openingCash: number;
-  onOpeningCashChange: (openingCash: number) => void;
   onClose: (countedCash: number, note: string) => void;
 }
 
@@ -20,7 +19,6 @@ export function CashClosePanel({
   hasQueuedRows,
   hasFailedConflict,
   openingCash,
-  onOpeningCashChange,
   onClose,
   queuedRowCount = 0,
 }: CashClosePanelProps) {
@@ -49,18 +47,8 @@ export function CashClosePanel({
 
       <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div>
-          <label className="dim" htmlFor="opening-cash" style={{ fontSize: '12px', marginBottom: '4px', display: 'block' }}>
-            開帳金額
-          </label>
-          <input
-            id="opening-cash"
-            aria-label="開帳金額"
-            type="number"
-            className="adm-input mono"
-            style={{ width: '140px', fontSize: '18px' }}
-            value={openingCash}
-            onChange={e => onOpeningCashChange(Number(e.target.value || 0))}
-          />
+          <div className="dim" style={{ fontSize: '12px', marginBottom: '4px' }}>開帳金額</div>
+          <div className="mono" style={{ fontSize: '20px', fontWeight: 600 }}>${fmt(openingCash)}</div>
         </div>
         <div>
           <div className="dim" style={{ fontSize: '12px', marginBottom: '4px' }}>淨現金</div>

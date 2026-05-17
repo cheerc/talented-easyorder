@@ -47,7 +47,6 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
   const deleteOrderWithRefundCheck = usePosStore((s) => s.deleteOrderWithRefundCheck);
   const dateStatus = usePosStore((s) => s.getBusinessDateStatus(viewDate));
   const cashSessions = usePosStore((s) => s.cashSessions);
-  const openCashSession = usePosStore((s) => s.openCashSession);
   const currentCashSession = cashSessions[viewDate];
   const openingCash = currentCashSession?.openingCash ?? 4000;
 
@@ -163,7 +162,6 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
         hasQueuedRows={hasQueuedRows}
         hasFailedConflict={hasFailedConflict}
         openingCash={openingCash}
-        onOpeningCashChange={(amount) => openCashSession({ businessDate: viewDate, openingCash: amount, operatorId: 'counter', openedAt: new Date().toISOString() })}
         onClose={handleCashClose}
       />
 
@@ -221,12 +219,15 @@ interface AdminScreenProps {
   vendors: Vendor[];
   students: StudentAccount[];
   resetData: () => void;
+  openingCash: number;
+  onOpeningCashChange: (amount: number) => void;
 }
-export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetData }: AdminScreenProps) {
+export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetData, openingCash, onOpeningCashChange }: AdminScreenProps) {
   const [name, setName] = useState(todayMenu.itemName);
   const [price, setPrice] = useState(todayMenu.price);
   const [vendor, setVendor] = useState(todayMenu.vendorNameSnapshot);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [openingCashDraft, setOpeningCashDraft] = useState(String(openingCash));
 
   const save = () => setTodayMenu({ ...todayMenu, itemName: name, price: Number(price), vendorNameSnapshot: vendor });
 
@@ -257,6 +258,34 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
           </div>
           <div className="adm-foot">
             <button className="btn-confirm wide" onClick={save}>儲存今日設定</button>
+          </div>
+
+          <div style={{ marginTop: '32px', borderTop: '1px solid var(--line)', paddingTop: '20px' }}>
+            <div className="card-h">每日開帳金額</div>
+            <div className="adm-row">
+              <label>開帳金額 (元)</label>
+              <input className="adm-input mono" type="number" value={openingCashDraft} onChange={e => setOpeningCashDraft(e.target.value)} />
+            </div>
+            <div className="adm-foot">
+              <button className="btn-confirm wide" onClick={() => {
+                const n = Number(openingCashDraft);
+                if (Number.isFinite(n) && n >= 0) onOpeningCashChange(n);
+              }}>儲存開帳金額</button>
+            </div>
+          </div>
+
+          <div style={{ marginTop: '32px', borderTop: '1px solid var(--line)', paddingTop: '20px' }}>
+            <div className="card-h">每日開帳金額</div>
+            <div className="adm-row">
+              <label>開帳金額 (元)</label>
+              <input className="adm-input mono" type="number" value={openingCashDraft} onChange={e => setOpeningCashDraft(e.target.value)} />
+            </div>
+            <div className="adm-foot">
+              <button className="btn-confirm wide" onClick={() => {
+                const n = Number(openingCashDraft);
+                if (Number.isFinite(n) && n >= 0) onOpeningCashChange(n);
+              }}>儲存開帳金額</button>
+            </div>
           </div>
 
           <div style={{ marginTop: '40px', borderTop: '1px solid #eee', paddingTop: '20px' }}>

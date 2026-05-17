@@ -523,7 +523,7 @@ body[data-fs="lg"] {
 .pay-input-container:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft), 0 8px 24px -12px rgba(0,0,0,0.12); transform: translateY(-1px); }
 .pay-input-prefix { padding-left: 20px; color: var(--ink-3); font-size: 28px; font-weight: 500; }
 .pay-input-main { flex: 1; border: 0; outline: 0; background: transparent; padding: 0 16px; font-size: 42px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--ink); text-align: right; width: 100%; }
-.pay-input-main::placeholder { font-size: 16px; font-weight: 400; color: var(--ink-3); text-align: left; opacity: 0.5; letter-spacing: 0; }
+.pay-input-main::placeholder { font-size: 16px; font-weight: 400; color: var(--ink-3); text-align: center; opacity: 0.5; letter-spacing: 0; }
 .pay-input-suffix { padding-right: 20px; color: var(--ink-3); font-size: 18px; font-weight: 600; }
 
 .pay-quick-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }

@@ -107,7 +107,7 @@ describe('pcPosFlow integration — keyboard flow', () => {
       expect(screen.getByText('訂便當')).toBeTruthy();
     });
 
-    await user.click(screen.getByRole('button', { name: '改本筆價格' }));
+    await user.click(screen.getByRole('button', { name: '訂購其他餐點' }));
     await user.clear(screen.getByLabelText('本筆價格'));
     await user.type(screen.getByLabelText('本筆價格'), '110');
     await user.type(screen.getByLabelText('品項或原因'), '雞腿便當');
