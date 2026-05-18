@@ -133,21 +133,6 @@ export const usePosStore = create<PosState>()(
         });
       },
 
-      updateOpeningCash: (businessDate, amount) => {
-        set((state) => {
-          const existing = state.cashSessions[businessDate];
-          if (!existing) return state;
-          const dateStatus = state.businessDateStatuses[businessDate] || 'open';
-          if (dateStatus === 'closed') return state;
-          return {
-            cashSessions: {
-              ...state.cashSessions,
-              [businessDate]: { ...existing, openingCash: amount },
-            },
-          };
-        });
-      },
-
       commitPosTransactionDraft: (draft) => {
         set((state) => {
           const isExpense = draft.intent.type === 'expense';
