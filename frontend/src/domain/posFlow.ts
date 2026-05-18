@@ -133,6 +133,9 @@ function reduceExpenseInput(state: PosFlowState & { kind: 'expense_input' }, eve
 function reduceExpenseDirection(state: PosFlowState & { kind: 'expense_direction' }, event: PosFlowEvent): PosFlowState {
   switch (event.type) {
     case 'expenseSelectDirection':
+      if (event.direction === 'income') {
+        return { kind: 'expense_other_note', amount: state.amount, direction: 'income' };
+      }
       return { kind: 'expense_reason', amount: state.amount, direction: event.direction };
     case 'cancel':
       return { kind: 'idle', searchText: '' };

@@ -220,21 +220,38 @@ interface AdminScreenProps {
   students: StudentAccount[];
   resetData: () => void;
   openingCash: number;
+  dateStatus: string;
+  hasCashSession: boolean;
   onOpeningCashChange: (amount: number) => void;
+  onUpdateOpeningCash: (amount: number) => void;
 }
-export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetData, openingCash, onOpeningCashChange }: AdminScreenProps) {
+export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetData, openingCash, dateStatus, hasCashSession, onOpeningCashChange, onUpdateOpeningCash }: AdminScreenProps) {
   const [name, setName] = useState(todayMenu.itemName);
   const [price, setPrice] = useState(todayMenu.price);
   const [vendor, setVendor] = useState(todayMenu.vendorNameSnapshot);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [openingCashDraft, setOpeningCashDraft] = useState(String(openingCash));
+  const [cashSavedMsg, setCashSavedMsg] = useState('');
 
+  const isClosed = dateStatus === 'closed';
   const save = () => setTodayMenu({ ...todayMenu, itemName: name, price: Number(price), vendorNameSnapshot: vendor });
 
   const handleReset = () => {
     resetData();
     setShowResetConfirm(false);
     window.location.reload();
+  };
+
+  const handleSaveOpeningCash = () => {
+    const n = Number(openingCashDraft);
+    if (!Number.isFinite(n) || n < 0) return;
+    if (hasCashSession) {
+      onUpdateOpeningCash(n);
+    } else {
+      onOpeningCashChange(n);
+    }
+    setCashSavedMsg('已儲存');
+    setTimeout(() => setCashSavedMsg(''), 2000);
   };
 
   return (
@@ -264,13 +281,13 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
             <div className="card-h">每日開帳金額</div>
             <div className="adm-row">
               <label>開帳金額 (元)</label>
-              <input className="adm-input mono" type="number" value={openingCashDraft} onChange={e => setOpeningCashDraft(e.target.value)} />
+              <input className="adm-input mono" type="number" value={openingCashDraft} onChange={e => setOpeningCashDraft(e.target.value)} disabled={isClosed} />
             </div>
             <div className="adm-foot">
-              <button className="btn-confirm wide" onClick={() => {
-                const n = Number(openingCashDraft);
-                if (Number.isFinite(n) && n >= 0) onOpeningCashChange(n);
-              }}>儲存開帳金額</button>
+              <button className="btn-confirm wide" onClick={handleSaveOpeningCash} disabled={isClosed}>
+                儲存開帳金額
+              </button>
+              {cashSavedMsg && <span style={{ marginLeft: '8px', color: 'var(--accent-ink)', fontSize: '13px' }}>{cashSavedMsg}</span>}
             </div>
           </div>
 
