@@ -274,20 +274,6 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
             </div>
           </div>
 
-          <div style={{ marginTop: '32px', borderTop: '1px solid var(--line)', paddingTop: '20px' }}>
-            <div className="card-h">每日開帳金額</div>
-            <div className="adm-row">
-              <label>開帳金額 (元)</label>
-              <input className="adm-input mono" type="number" value={openingCashDraft} onChange={e => setOpeningCashDraft(e.target.value)} />
-            </div>
-            <div className="adm-foot">
-              <button className="btn-confirm wide" onClick={() => {
-                const n = Number(openingCashDraft);
-                if (Number.isFinite(n) && n >= 0) onOpeningCashChange(n);
-              }}>儲存開帳金額</button>
-            </div>
-          </div>
-
           <div style={{ marginTop: '40px', borderTop: '1px solid #eee', paddingTop: '20px' }}>
             <div className="card-h" style={{ color: '#d32f2f' }}>危險區域</div>
             <p className="dim" style={{ fontSize: '13px', marginBottom: '10px' }}>這會清空目前的所有快取資料，重置為系統初始狀態。</p>
