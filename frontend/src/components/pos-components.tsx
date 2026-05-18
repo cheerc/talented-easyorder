@@ -61,23 +61,21 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing,
             />
             <button
               className="db-trigger"
-              title="上個月"
+              title="前一天"
               style={{ width: '22px', height: '22px', fontSize: '10px', borderRadius: '4px' }}
               onClick={() => {
                 const d = new Date(viewDate);
-                d.setMonth(d.getMonth() - 1);
-                d.setDate(1);
+                d.setDate(d.getDate() - 1);
                 setViewDate(d.toISOString().split('T')[0]);
               }}
             >◀</button>
             <button
               className="db-trigger"
-              title="下個月"
+              title="後一天"
               style={{ width: '22px', height: '22px', fontSize: '10px', borderRadius: '4px' }}
               onClick={() => {
                 const d = new Date(viewDate);
-                d.setMonth(d.getMonth() + 1);
-                d.setDate(1);
+                d.setDate(d.getDate() + 1);
                 setViewDate(d.toISOString().split('T')[0]);
               }}
             >▶</button>
@@ -315,17 +313,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                 {priceOverride !== null && (
                   <div className="price-override-fields">
                     <label>
-                      <span>本筆價格</span>
-                      <input
-                        className="adm-input mono"
-                        type="number"
-                        aria-label="本筆價格"
-                        value={priceOverride}
-                        onChange={e => setPriceOverride(Number(e.target.value || todayMenu.price))}
-                      />
-                    </label>
-                    <label>
-                      <span>品項/原因</span>
+                      <span>品項</span>
                       <input
                         className="adm-input"
                         aria-label="品項或原因"
@@ -334,8 +322,18 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                         placeholder="例如：雞腿便當"
                       />
                     </label>
+                    <label>
+                      <span>價格</span>
+                      <input
+                        className="adm-input mono"
+                        type="number"
+                        aria-label="價格"
+                        value={priceOverride}
+                        onChange={e => setPriceOverride(Number(e.target.value || todayMenu.price))}
+                      />
+                    </label>
                     <button type="button" className="ghost-btn" onClick={() => setPriceOverride(null)}>
-                      取消改價
+                      取消
                     </button>
                   </div>
                 )}
@@ -362,23 +360,25 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                   aria-label="付款金額"
                   value={payAmount}
                   onChange={e => setPayAmount(e.target.value)}
-                  placeholder={mode === 'order' ? "0" : "輸入金額"}
+                  placeholder={mode === 'order' ? "" : "輸入金額"}
                   autoFocus
                 />
                 <span className="pay-input-suffix">元</span>
               </div>
 
-              <div className="pay-quick-grid">
-                {getQuickAmounts({
-                  mode,
-                  todayPrice: todayMenu.price,
-                  currentDebt: Math.max(0, -student.currentBalance),
-                }).map(v => (
-                  <button key={v} className="btn-quick" onClick={() => setPayAmount(String(v))}>
-                    {v}
-                  </button>
-                ))}
-              </div>
+              {mode === 'payment' && (
+                <div className="pay-quick-grid">
+                  {getQuickAmounts({
+                    mode,
+                    todayPrice: todayMenu.price,
+                    currentDebt: Math.max(0, -student.currentBalance),
+                  }).map(v => (
+                    <button key={v} className="btn-quick" onClick={() => setPayAmount(String(v))}>
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             <div className="cancel-empty">

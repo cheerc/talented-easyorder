@@ -364,8 +364,10 @@ export default function App() {
   // POS keyboard shortcuts — Q/W/E + Enter/Escape + arrow navigation
   const hasFlash = state.kind === 'success';
   const isStudentSelected = picked !== null && (state.kind === 'student_selected' || state.kind === 'duplicate_warning' || state.kind === 'committing');
+  const isExpenseFlow = state.kind === 'expense_input' || state.kind === 'expense_direction'
+    || state.kind === 'expense_reason' || state.kind === 'expense_other_note';
   useKeyboardShortcuts({
-    enabled: tab === 'pos' && !hasFlash,
+    enabled: tab === 'pos' && !hasFlash && !isExpenseFlow,
     changeMode,
     cancelOrder: openCancelConfirm,
     isStudentSelected,
@@ -668,6 +670,7 @@ export default function App() {
         onConfirm={() => {
           handleDeleteOrder();
           setCancelDialogOpen(false);
+          cancelFlow();
         }}
         onCancel={() => setCancelDialogOpen(false)}
       />
