@@ -7,7 +7,21 @@ beforeEach(() => {
   usePosStore.persist.rehydrate();
 });
 
+const SEED_TX = {
+  transactionId: 'tx-test-seed', businessDate: '2026-05-10', createdAt: '2026-05-10T03:42:08.000Z',
+  studentId: '001', studentNameSnapshot: '王柏翰', type: 'order' as const,
+  mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: 0,
+  menuNameSnapshot: '便當', vendorNameSnapshot: '阿榮便當',
+  sourceDevice: 'pc' as const, syncStatus: 'local' as const, revision: 1, note: 'test',
+};
+
+function seedTransaction() {
+  usePosStore.setState(s => ({ transactions: [SEED_TX, ...s.transactions] }));
+}
+
 describe('ledgerStore — audit events', () => {
+  beforeEach(() => seedTransaction());
+
   it('editTransaction appends audit event', () => {
     const store = usePosStore.getState();
     const tx = store.transactions[0];
@@ -41,6 +55,8 @@ describe('ledgerStore — audit events', () => {
 });
 
 describe('ledgerStore — edit transaction', () => {
+  beforeEach(() => seedTransaction());
+
   it('edits mealPrice and paidAmount inline', () => {
     const store = usePosStore.getState();
     const tx = store.transactions[0];
@@ -59,6 +75,8 @@ describe('ledgerStore — edit transaction', () => {
 });
 
 describe('ledgerStore — closed date blocks', () => {
+  beforeEach(() => seedTransaction());
+
   it('blocked date prevents editTransaction', () => {
     const store = usePosStore.getState();
     const tx = store.transactions[0];
