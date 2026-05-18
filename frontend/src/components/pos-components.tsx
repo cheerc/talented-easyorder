@@ -601,19 +601,36 @@ export const RecentStrip = React.memo(function RecentStrip({ recent, onItemClick
             <span className="recent-time mono">{r.createdAt.slice(11, 19)}</span>
             <span className="recent-id mono">{r.studentId}</span>
             <span className="recent-name">{r.studentNameSnapshot}</span>
-            <span className={'recent-type type-' + r.type}>{
+            <span className={'recent-type ' + (r.type === 'expense'
+              ? (r.paidAmount > 0 ? 'type-income' : 'type-expense')
+              : 'type-' + r.type)}>{
               r.type === 'order' ? '訂' :
               r.type === 'payment' ? '繳' :
-              r.type === 'expense' ? '支' : ''
+              r.type === 'expense' ? (r.paidAmount > 0 ? '收' : '支') : ''
             }</span>
-            <span className={'recent-amt mono ' + (r.amount > 0 ? 'pos' : 'neg')}>
+            <span className={'recent-amt mono ' + (
+              r.type === 'order'
+                ? (r.afterBalance >= 0 ? 'pos' : 'neg')
+                : r.type === 'payment'
+                  ? (r.afterBalance >= 0 ? 'pos' : 'neg')
+                  : r.type === 'expense'
+                    ? (r.paidAmount > 0 ? 'pos' : 'neg')
+                    : (r.amount > 0 ? 'pos' : 'neg')
+            )}>
               {r.type === 'order'
-                ? (r.paidAmount >= r.mealPrice
+                ? (r.afterBalance >= 0
                     ? `已繳費 ${fmt(r.mealPrice)}`
-                    : `待繳費 ${fmt(r.mealPrice - r.paidAmount)}`)
-                : <>{sign(r.amount)}{fmt(r.amount)}</>
-              }
-            </span>
+                    : `待繳費 ${fmt(Math.abs(r.afterBalance))}`)
+                : r.type === 'payment'
+                  ? (r.afterBalance >= 0
+                      ? `+${fmt(r.paidAmount)}`
+                      : `待繳費 ${fmt(Math.abs(r.afterBalance))}`)
+                  : r.type === 'expense'
+                    ? (r.paidAmount > 0
+                        ? `+${fmt(r.paidAmount)}`
+                        : `−${fmt(r.mealPrice)}`)
+                    : <>{sign(r.amount)}{fmt(r.amount)}</>
+              }</span>
           </div>
         ))}
       </div>

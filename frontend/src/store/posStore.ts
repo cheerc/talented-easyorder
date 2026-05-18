@@ -74,6 +74,7 @@ interface PosState {
   editTransaction: (id: string, updates: { mealPrice?: number; paidAmount?: number; note?: string }) => void;
   setBusinessDateStatus: (date: string, status: BusinessDateStatus) => void;
   openCashSession: (input: OpenCashSessionInput) => void;
+  updateOpeningCash: (businessDate: string, amount: number) => void;
   closeBusinessDate: (input: CloseBusinessDateInput) => void;
   reopenBusinessDate: (input: ReopenBusinessDateInput) => void;
   getBusinessDateStatus: (businessDate: string) => BusinessDateStatus;
@@ -112,6 +113,21 @@ export const usePosStore = create<PosState>()(
                 openedBy: input.operatorId,
                 openedAt: input.openedAt,
               }),
+            },
+          };
+        });
+      },
+
+      updateOpeningCash: (businessDate, amount) => {
+        set((state) => {
+          const existing = state.cashSessions[businessDate];
+          if (!existing) return state;
+          const dateStatus = state.businessDateStatuses[businessDate] || 'open';
+          if (dateStatus === 'closed') return state;
+          return {
+            cashSessions: {
+              ...state.cashSessions,
+              [businessDate]: { ...existing, openingCash: amount },
             },
           };
         });

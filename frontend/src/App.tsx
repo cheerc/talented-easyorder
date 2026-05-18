@@ -27,10 +27,12 @@ export default function App() {
   const getBusinessDateStatus = usePosStore((s) => s.getBusinessDateStatus);
   const cashSessions = usePosStore((s) => s.cashSessions);
   const openCashSession = usePosStore((s) => s.openCashSession);
+  const updateOpeningCash = usePosStore((s) => s.updateOpeningCash);
 
   const getSystemDate = () => new Date().toISOString().split('T')[0];
   const [systemDate, setSystemDate] = useState(getSystemDate);
   const [viewDate, setViewDate] = useState(systemDate);
+  const dateStatus = getBusinessDateStatus(viewDate);
   const isHistorical = viewDate !== systemDate;
   const [priceOverride, setPriceOverride] = useState<number | null>(null);
   const [priceOverrideLabel, setPriceOverrideLabel] = useState('');
@@ -447,7 +449,25 @@ export default function App() {
   // Build flash data from success state
   const isSuccess = state.kind === 'success';
   const flashData = useMemo(() => {
-    if (!isSuccess || !picked) return null;
+    if (!isSuccess || !picked) {
+      // F4-2: expense mode — picked is null, generate virtual flashData
+      if (isSuccess && !picked) {
+        const latestExpense = allTx.find(t => t.studentId === '__cashier__' && t.type === 'expense');
+        if (!latestExpense) return null;
+        const isIncome = latestExpense.paidAmount > 0;
+        return {
+          id: flashKey,
+          name: '櫃台',
+          sid: '',
+          detail: isIncome
+            ? `收入: ${latestExpense.note} +$${latestExpense.paidAmount}`
+            : `支出: ${latestExpense.note} −$${latestExpense.mealPrice}`,
+          amount: isIncome ? latestExpense.paidAmount : -latestExpense.mealPrice,
+          after: 0,
+        };
+      }
+      return null;
+    }
     const amt = Number(currentPaidAmount || 0);
     const mealPrice = currentMode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
     return {
@@ -456,11 +476,11 @@ export default function App() {
       sid: picked.studentId,
       detail: currentMode === 'order' ? `訂餐: ${todayMenu.itemName}` + (amt > 0 ? `, 收現 ${amt}` : '') :
               currentMode === 'payment' ? `繳費: 收現 ${amt}` :
-                `支出: ${mealPrice}`,
+                '',
       amount: amt - mealPrice,
-      after: picked.currentBalance + (amt - mealPrice),
+      after: picked.currentBalance,
     };
-  }, [isSuccess, picked, currentMode, currentPaidAmount, todayMenu, flashKey, priceOverride]);
+  }, [isSuccess, picked, currentMode, currentPaidAmount, todayMenu, flashKey, priceOverride, allTx]);
 
   return (
     <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => console.error('[ErrorBoundary]', e)}>
@@ -617,7 +637,10 @@ export default function App() {
           students={students}
           resetData={resetData}
           openingCash={cashSessions[viewDate]?.openingCash ?? 4000}
+          dateStatus={dateStatus}
+          hasCashSession={!!cashSessions[viewDate]}
           onOpeningCashChange={(amount) => openCashSession({ businessDate: viewDate, openingCash: amount, operatorId: 'admin', openedAt: new Date().toISOString() })}
+          onUpdateOpeningCash={(amount) => updateOpeningCash(viewDate, amount)}
         />
         </ErrorBoundary>
       )}
