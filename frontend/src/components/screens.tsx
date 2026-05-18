@@ -64,6 +64,17 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
     filtered.filter(t => t.type === 'expense'),
   [filtered]);
 
+  const counterCashFlow = useMemo(() => {
+    const income = expenseRows.filter(t => t.paidAmount > 0);
+    const expenseOnly = expenseRows.filter(t => t.paidAmount === 0);
+    return {
+      incomeCount: income.length,
+      incomeAmount: income.reduce((s, t) => s + t.paidAmount, 0),
+      expenseCount: expenseOnly.length,
+      expenseAmount: expenseOnly.reduce((s, t) => s + t.mealPrice, 0),
+    };
+  }, [expenseRows]);
+
   const totals = useMemo(() => calculateLedgerTotals(filtered), [filtered]);
   const groups = useMemo(() => groupLedgerRowsByStudent(filtered), [filtered]);
 
@@ -147,7 +158,7 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
         setCustomEnd={setCustomEnd}
       />
 
-      <ReportSummaryStats totals={totals} itemName={todayMenu.itemName} />
+      <ReportSummaryStats totals={totals} itemName={todayMenu.itemName} counterCashFlow={counterCashFlow} />
 
       {dateStatus === 'closed' && (
         <button className="ghost-btn" style={{ marginBottom: '12px' }} onClick={() => setShowReopen(true)}>

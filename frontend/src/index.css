@@ -1266,26 +1266,6 @@ input::-webkit-inner-spin-button {
   color: var(--accent-ink);
 }
 
-.type-income {
-  background: var(--accent-soft);
-  color: var(--accent-ink);
-}
-
-.type-expense {
-  background: var(--warn-soft);
-  color: var(--warn);
-}
-
-.type-income {
-  background: var(--accent-soft);
-  color: var(--accent-ink);
-}
-
-.type-expense {
-  background: var(--warn-soft);
-  color: var(--warn);
-}
-
 .type-debt {
   background: var(--warn-soft);
   color: var(--warn);
