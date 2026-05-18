@@ -243,6 +243,7 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [openingCashDraft, setOpeningCashDraft] = useState(String(openingCash));
   const [cashSavedMsg, setCashSavedMsg] = useState('');
+  const [showOpeningCashConfirm, setShowOpeningCashConfirm] = useState(false);
 
   const isClosed = dateStatus === 'closed';
   const save = () => setTodayMenu({ ...todayMenu, itemName: name, price: Number(price), vendorNameSnapshot: vendor });
@@ -253,7 +254,7 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
     window.location.reload();
   };
 
-  const handleSaveOpeningCash = () => {
+  const doSaveOpeningCash = () => {
     const n = Number(openingCashDraft);
     if (!Number.isFinite(n) || n < 0) return;
     if (hasCashSession) {
@@ -261,8 +262,19 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
     } else {
       onOpeningCashChange(n);
     }
+    setShowOpeningCashConfirm(false);
     setCashSavedMsg('已儲存');
     setTimeout(() => setCashSavedMsg(''), 2000);
+  };
+
+  const handleSaveOpeningCash = () => {
+    const n = Number(openingCashDraft);
+    if (!Number.isFinite(n) || n < 0) return;
+    if (hasCashSession && n !== openingCash) {
+      setShowOpeningCashConfirm(true);
+    } else {
+      doSaveOpeningCash();
+    }
   };
 
   return (
@@ -331,6 +343,15 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
         onConfirm={handleReset}
         onCancel={() => setShowResetConfirm(false)}
         confirmLabel="確認重置"
+        variant="danger"
+      />
+      <ConfirmDialog
+        open={showOpeningCashConfirm}
+        title="修改開帳金額"
+        message="修改開帳金額會影響今日所有帳務計算，確定要繼續嗎？"
+        onConfirm={doSaveOpeningCash}
+        onCancel={() => setShowOpeningCashConfirm(false)}
+        confirmLabel="確認修改"
         variant="danger"
       />
     </div>

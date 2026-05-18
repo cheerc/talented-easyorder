@@ -90,9 +90,9 @@ describe('pcPosFlow integration — keyboard flow', () => {
       expect(screen.getByText('訂便當')).toBeTruthy();
     });
 
-    // Quick buttons should show the today menu price (90)
-    const quickButtons = screen.getAllByText('90');
-    expect(quickButtons.length).toBeGreaterThan(0);
+    // Quick buttons should NOT appear in order mode (F5-2)
+    const quickButtons = screen.queryAllByRole('button', { name: '90' });
+    expect(quickButtons.length).toBe(0);
   });
 
   it('allows changing only the selected order price before commit', async () => {
@@ -108,9 +108,10 @@ describe('pcPosFlow integration — keyboard flow', () => {
     });
 
     await user.click(screen.getByRole('button', { name: '訂購其他餐點' }));
-    await user.clear(screen.getByLabelText('本筆價格'));
-    await user.type(screen.getByLabelText('本筆價格'), '110');
+    await user.clear(screen.getByLabelText('品項或原因'));
     await user.type(screen.getByLabelText('品項或原因'), '雞腿便當');
+    await user.clear(screen.getByLabelText('價格'));
+    await user.type(screen.getByLabelText('價格'), '110');
 
     expect(screen.getByText(/110/)).toBeTruthy();
   });
