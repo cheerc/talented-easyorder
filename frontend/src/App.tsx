@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { usePosStore } from './store/posStore';
 import { usePosFlow } from './hooks/usePosFlow';
 import type { PosMode } from './domain/posFlow';
@@ -216,20 +217,100 @@ export default function App() {
     dismissFlash();
   }, [dismissFlash]);
 
+  const saveCrashDraftFromState = useCallback(() => {
+    if (state.kind !== 'committing') return;
+    if (!storageHealthyRef.current) return;
+    const sid = state.studentId;
+    if (state.mode === 'expense') return;
+    if (!sid) return;
+    const student = students.find(s => s.studentId === sid);
+    if (!student) return;
+    const mealPrice = state.mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
+    const paidAmount = state.mode === 'payment' ? Number(state.paidAmountText || 0) : 0;
+    const amount = state.mode === 'order' ? -mealPrice : (state.mode === 'payment' ? paidAmount : 0);
+    const note =
+      state.mode === 'order' && priceOverride !== null
+        ? `訂購其他餐點：${priceOverrideLabel.trim() || todayMenu.itemName}`
+        : state.mode === 'order'
+          ? todayMenu.itemName
+          : state.mode === 'payment'
+            ? '現金繳費'
+            : '';
+    saveCrashDraft({
+      intent: {
+        businessDate: viewDate,
+        studentId: sid,
+        type: state.mode,
+        mealPrice,
+        paidAmount,
+        note,
+        sourceDevice: 'pc' as const,
+      },
+      snapshots: {
+        student: { studentId: sid, studentNameSnapshot: student.displayName },
+        menu: { menuNameSnapshot: todayMenu.itemName, menuPriceSnapshot: mealPrice, vendorIdSnapshot: todayMenu.vendorId, vendorNameSnapshot: todayMenu.vendorNameSnapshot },
+      },
+      amount,
+      expectedBalanceAfter: student.currentBalance + amount,
+    });
+  }, [state, students, todayMenu, priceOverride, priceOverrideLabel, viewDate]);
+
+  const saveCrashDraftFromState = useCallback(() => {
+    if (state.kind !== 'committing') return;
+    if (!storageHealthyRef.current) return;
+    const sid = state.studentId;
+    if (state.mode === 'expense') return;
+    if (!sid) return;
+    const student = students.find(s => s.studentId === sid);
+    if (!student) return;
+    const mealPrice = state.mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
+    const paidAmount = state.mode === 'payment' ? Number(state.paidAmountText || 0) : 0;
+    const amount = state.mode === 'order' ? -mealPrice : (state.mode === 'payment' ? paidAmount : 0);
+    const note =
+      state.mode === 'order' && priceOverride !== null
+        ? `訂購其他餐點：${priceOverrideLabel.trim() || todayMenu.itemName}`
+        : state.mode === 'order'
+          ? todayMenu.itemName
+          : state.mode === 'payment'
+            ? '現金繳費'
+            : '';
+    saveCrashDraft({
+      intent: {
+        businessDate: viewDate,
+        studentId: sid,
+        type: state.mode,
+        mealPrice,
+        paidAmount,
+        note,
+        sourceDevice: 'pc' as const,
+      },
+      snapshots: {
+        student: { studentId: sid, studentNameSnapshot: student.displayName },
+        menu: { menuNameSnapshot: todayMenu.itemName, menuPriceSnapshot: mealPrice, vendorIdSnapshot: todayMenu.vendorId, vendorNameSnapshot: todayMenu.vendorNameSnapshot },
+      },
+      amount,
+      expectedBalanceAfter: student.currentBalance + amount,
+    });
+  }, [state, students, todayMenu, priceOverride, priceOverrideLabel, viewDate]);
+
   const handleConfirm = useCallback(() => {
     if (state.kind === 'expense_input') {
       const n = Number(state.amountText);
       if (Number.isFinite(n) && n > 0) confirmExpenseAmount(n);
       return;
     }
-    if (state.kind !== 'student_selected' && state.kind !== 'duplicate_warning') return;
     if (state.kind === 'duplicate_warning') {
-      confirmDuplicate();
+      flushSync(() => confirmDuplicate());
+      saveCrashDraftFromState();
+      commitTransaction();
       return;
     }
-    requestConfirm();
+    if (state.kind !== 'student_selected') return;
+    flushSync(() => requestConfirm());
+    saveCrashDraftFromState();
+    commitTransaction();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.kind, requestConfirm, confirmDuplicate, confirmExpenseAmount]);
+  }, [state.kind, requestConfirm, confirmDuplicate, confirmExpenseAmount, commitTransaction, saveCrashDraftFromState]);
 
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
 
@@ -250,55 +331,6 @@ export default function App() {
       )?.transactionId ?? ''
     );
   }, [picked, viewDate]);
-
-  // After requestConfirm transitions to committing or duplicate_warning,
-  // and after confirmDuplicate transitions to committing, fire commitTransaction
-  useEffect(() => {
-    if (state.kind === 'committing') {
-      commitTransaction();
-    }
-  }, [state.kind, commitTransaction]);
-
-  // Save crash draft when committing (before store mutation)
-  useEffect(() => {
-    if (state.kind !== 'committing') return;
-    if (!storageHealthyRef.current) return;
-    const sid = state.studentId;
-    if (state.mode === 'expense') return;
-    if (!sid) return;
-    const student = students.find(s => s.studentId === sid);
-    if (!student) return;
-    const mealPrice = state.mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
-    const paidAmount = state.mode === 'payment' ? Number(state.paidAmountText || 0) : 0;
-    const amount = state.mode === 'order' ? -mealPrice : (state.mode === 'payment' ? paidAmount : 0);
-    const note =
-      state.mode === 'order' && priceOverride !== null
-        ? `訂購其他餐點：${priceOverrideLabel.trim() || todayMenu.itemName}`
-        : state.mode === 'order'
-          ? todayMenu.itemName
-          : state.mode === 'payment'
-            ? '現金繳費'
-            : '';
-    const draft = {
-      intent: {
-        businessDate: viewDate,
-        studentId: sid,
-        type: state.mode,
-        mealPrice,
-        paidAmount,
-        note,
-        sourceDevice: 'pc' as const,
-      },
-      snapshots: {
-        student: { studentId: sid, studentNameSnapshot: student.displayName },
-        menu: { menuNameSnapshot: todayMenu.itemName, menuPriceSnapshot: mealPrice, vendorIdSnapshot: todayMenu.vendorId, vendorNameSnapshot: todayMenu.vendorNameSnapshot },
-      },
-      amount,
-      expectedBalanceAfter: student.currentBalance + amount,
-    };
-    saveCrashDraft(draft);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.kind, students, todayMenu, priceOverride, priceOverrideLabel, viewDate]);
 
   // Wire commit success → undo countdown start + lastCommittedTxId tracking
   const commitTxIdRef = useRef<string | null>(null);
@@ -341,47 +373,6 @@ export default function App() {
       };
     }
     prevKindRef.current = state.kind;
-  }, [state.kind]);
-
-  // Save crash draft when committing (before store mutation)
-  useEffect(() => {
-    if (state.kind !== 'committing') return;
-    if (!storageHealthyRef.current) return;
-    const sid = state.studentId;
-    if (state.mode === 'expense') return; // expense doesn't need crash recovery
-    if (!sid) return;
-    const student = students.find(s => s.studentId === sid);
-    if (!student) return;
-    const mealPrice = state.mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
-    const paidAmount = state.mode === 'payment' ? Number(state.paidAmountText || 0) : 0;
-    const amount = state.mode === 'order' ? -mealPrice : (state.mode === 'payment' ? paidAmount : 0);
-    const note =
-      state.mode === 'order' && priceOverride !== null
-        ? `訂購其他餐點：${priceOverrideLabel.trim() || todayMenu.itemName}`
-        : state.mode === 'order'
-          ? todayMenu.itemName
-          : state.mode === 'payment'
-            ? '現金繳費'
-            : '';
-    const draft = {
-      intent: {
-        businessDate: viewDate,
-        studentId: sid,
-        type: state.mode,
-        mealPrice,
-        paidAmount,
-        note,
-        sourceDevice: 'pc' as const,
-      },
-      snapshots: {
-        student: { studentId: sid, studentNameSnapshot: student.displayName },
-        menu: { menuNameSnapshot: todayMenu.itemName, menuPriceSnapshot: mealPrice, vendorIdSnapshot: todayMenu.vendorId, vendorNameSnapshot: todayMenu.vendorNameSnapshot },
-      },
-      amount,
-      expectedBalanceAfter: student.currentBalance + amount,
-    };
-    saveCrashDraft(draft);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.kind]);
 
   // Keyboard shortcuts for tab navigation (F-keys only)
