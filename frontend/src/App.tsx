@@ -1,11 +1,10 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { flushSync } from 'react-dom';
 import { usePosStore } from './store/posStore';
 import { usePosFlow } from './hooks/usePosFlow';
 import type { PosMode } from './domain/posFlow';
 import type { StudentAccount } from './domain/student';
 import { countActiveOrdersForStudent } from './domain/ledger';
-import { saveCrashDraft, loadCrashDraft, clearCrashDraft } from './storage/crashDraft';
+import { loadCrashDraft, clearCrashDraft } from './storage/crashDraft';
 import { checkStorageHealth } from './storage/storageHealth';
 
 import { TopBar, SearchBox, CustomerCard, ActionBar, IdleHero, ConfirmBanner, RecentStrip, DuplicateWarningBanner, MidnightBanner, ExpensePanel } from './components/pos-components';
@@ -62,7 +61,6 @@ export default function App() {
     confirmDuplicate,
     cancelFlow,
     dismissSuccess,
-    commitTransaction,
     enterExpenseMode,
     updateExpenseAmount,
     confirmExpenseAmount,
@@ -217,82 +215,6 @@ export default function App() {
     dismissFlash();
   }, [dismissFlash]);
 
-  const saveCrashDraftFromState = useCallback(() => {
-    if (state.kind !== 'committing') return;
-    if (!storageHealthyRef.current) return;
-    const sid = state.studentId;
-    if (state.mode === 'expense') return;
-    if (!sid) return;
-    const student = students.find(s => s.studentId === sid);
-    if (!student) return;
-    const mealPrice = state.mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
-    const paidAmount = state.mode === 'payment' ? Number(state.paidAmountText || 0) : 0;
-    const amount = state.mode === 'order' ? -mealPrice : (state.mode === 'payment' ? paidAmount : 0);
-    const note =
-      state.mode === 'order' && priceOverride !== null
-        ? `訂購其他餐點：${priceOverrideLabel.trim() || todayMenu.itemName}`
-        : state.mode === 'order'
-          ? todayMenu.itemName
-          : state.mode === 'payment'
-            ? '現金繳費'
-            : '';
-    saveCrashDraft({
-      intent: {
-        businessDate: viewDate,
-        studentId: sid,
-        type: state.mode,
-        mealPrice,
-        paidAmount,
-        note,
-        sourceDevice: 'pc' as const,
-      },
-      snapshots: {
-        student: { studentId: sid, studentNameSnapshot: student.displayName },
-        menu: { menuNameSnapshot: todayMenu.itemName, menuPriceSnapshot: mealPrice, vendorIdSnapshot: todayMenu.vendorId, vendorNameSnapshot: todayMenu.vendorNameSnapshot },
-      },
-      amount,
-      expectedBalanceAfter: student.currentBalance + amount,
-    });
-  }, [state, students, todayMenu, priceOverride, priceOverrideLabel, viewDate]);
-
-  const saveCrashDraftFromState = useCallback(() => {
-    if (state.kind !== 'committing') return;
-    if (!storageHealthyRef.current) return;
-    const sid = state.studentId;
-    if (state.mode === 'expense') return;
-    if (!sid) return;
-    const student = students.find(s => s.studentId === sid);
-    if (!student) return;
-    const mealPrice = state.mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
-    const paidAmount = state.mode === 'payment' ? Number(state.paidAmountText || 0) : 0;
-    const amount = state.mode === 'order' ? -mealPrice : (state.mode === 'payment' ? paidAmount : 0);
-    const note =
-      state.mode === 'order' && priceOverride !== null
-        ? `訂購其他餐點：${priceOverrideLabel.trim() || todayMenu.itemName}`
-        : state.mode === 'order'
-          ? todayMenu.itemName
-          : state.mode === 'payment'
-            ? '現金繳費'
-            : '';
-    saveCrashDraft({
-      intent: {
-        businessDate: viewDate,
-        studentId: sid,
-        type: state.mode,
-        mealPrice,
-        paidAmount,
-        note,
-        sourceDevice: 'pc' as const,
-      },
-      snapshots: {
-        student: { studentId: sid, studentNameSnapshot: student.displayName },
-        menu: { menuNameSnapshot: todayMenu.itemName, menuPriceSnapshot: mealPrice, vendorIdSnapshot: todayMenu.vendorId, vendorNameSnapshot: todayMenu.vendorNameSnapshot },
-      },
-      amount,
-      expectedBalanceAfter: student.currentBalance + amount,
-    });
-  }, [state, students, todayMenu, priceOverride, priceOverrideLabel, viewDate]);
-
   const handleConfirm = useCallback(() => {
     if (state.kind === 'expense_input') {
       const n = Number(state.amountText);
@@ -300,17 +222,13 @@ export default function App() {
       return;
     }
     if (state.kind === 'duplicate_warning') {
-      flushSync(() => confirmDuplicate());
-      saveCrashDraftFromState();
-      commitTransaction();
+      confirmDuplicate();
       return;
     }
     if (state.kind !== 'student_selected') return;
-    flushSync(() => requestConfirm());
-    saveCrashDraftFromState();
-    commitTransaction();
+    requestConfirm();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.kind, requestConfirm, confirmDuplicate, confirmExpenseAmount, commitTransaction, saveCrashDraftFromState]);
+  }, [state.kind, requestConfirm, confirmDuplicate, confirmExpenseAmount]);
 
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
 
