@@ -259,6 +259,47 @@ export default function App() {
     }
   }, [state.kind, commitTransaction]);
 
+  // Save crash draft when committing (before store mutation)
+  useEffect(() => {
+    if (state.kind !== 'committing') return;
+    if (!storageHealthyRef.current) return;
+    const sid = state.studentId;
+    if (state.mode === 'expense') return;
+    if (!sid) return;
+    const student = students.find(s => s.studentId === sid);
+    if (!student) return;
+    const mealPrice = state.mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
+    const paidAmount = state.mode === 'payment' ? Number(state.paidAmountText || 0) : 0;
+    const amount = state.mode === 'order' ? -mealPrice : (state.mode === 'payment' ? paidAmount : 0);
+    const note =
+      state.mode === 'order' && priceOverride !== null
+        ? `訂購其他餐點：${priceOverrideLabel.trim() || todayMenu.itemName}`
+        : state.mode === 'order'
+          ? todayMenu.itemName
+          : state.mode === 'payment'
+            ? '現金繳費'
+            : '';
+    const draft = {
+      intent: {
+        businessDate: viewDate,
+        studentId: sid,
+        type: state.mode,
+        mealPrice,
+        paidAmount,
+        note,
+        sourceDevice: 'pc' as const,
+      },
+      snapshots: {
+        student: { studentId: sid, studentNameSnapshot: student.displayName },
+        menu: { menuNameSnapshot: todayMenu.itemName, menuPriceSnapshot: mealPrice, vendorIdSnapshot: todayMenu.vendorId, vendorNameSnapshot: todayMenu.vendorNameSnapshot },
+      },
+      amount,
+      expectedBalanceAfter: student.currentBalance + amount,
+    };
+    saveCrashDraft(draft);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.kind, students, todayMenu, priceOverride, priceOverrideLabel, viewDate]);
+
   // Wire commit success → undo countdown start + lastCommittedTxId tracking
   const commitTxIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -448,7 +489,16 @@ export default function App() {
     document.body.setAttribute('data-theme', tweaks.theme);
   }, [tweaks]);
 
-  // Build flash data from success state
+  // Derived expense props for ExpensePanel — type-narrowed, no `as` cast
+  const expenseProps = useMemo(() => {
+    if (state.kind === 'expense_input') {
+      return { kind: state.kind as const, amountText: state.amountText, amount: 0 };
+    }
+    if (state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note') {
+      return { kind: state.kind as const, amountText: '', amount: state.amount };
+    }
+    return null;
+  }, [state]);
   const isSuccess = state.kind === 'success';
   const flashData = useMemo(() => {
     if (!isSuccess || !picked) {
@@ -503,11 +553,11 @@ export default function App() {
               </div>
             ) : !picked ? (
               <>
-                {(state.kind === 'expense_input' || state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note') ? (
+                {expenseProps ? (
                   <ExpensePanel
-                    kind={state.kind}
-                    amountText={(state as { amountText?: string }).amountText ?? ''}
-                    amount={(state as { amount?: number }).amount ?? 0}
+                    kind={expenseProps.kind}
+                    amountText={expenseProps.amountText}
+                    amount={expenseProps.amount}
                     onAmountChange={updateExpenseAmount}
                     onAmountConfirm={confirmExpenseAmount}
                     onDirectionSelect={selectExpenseDirection}
@@ -547,11 +597,11 @@ export default function App() {
               </>
             ) : (
               <>
-                {(state.kind === 'expense_input' || state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note') ? (
+                {expenseProps ? (
                   <ExpensePanel
-                    kind={state.kind}
-                    amountText={(state as { amountText?: string }).amountText ?? ''}
-                    amount={(state as { amount?: number }).amount ?? 0}
+                    kind={expenseProps.kind}
+                    amountText={expenseProps.amountText}
+                    amount={expenseProps.amount}
                     onAmountChange={updateExpenseAmount}
                     onAmountConfirm={confirmExpenseAmount}
                     onDirectionSelect={selectExpenseDirection}
