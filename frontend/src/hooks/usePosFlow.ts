@@ -1,4 +1,4 @@
-import { useCallback, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useReducer, useRef } from 'react';
 import {
   createInitialPosFlowState,
   reducePosFlow,
@@ -8,6 +8,8 @@ import type { PosFlowState, PosMode, PosSelectionSource, ExpenseDirection } from
 import type { ScannerInput } from '../domain/posSearch';
 import { resolveScannedStudent } from '../domain/posSearch';
 import { parsePaidAmount, buildPosTransactionDraft } from '../domain/posTransaction';
+import { saveCrashDraft } from '../storage/crashDraft';
+import { checkStorageHealth } from '../storage/storageHealth';
 import { countActiveOrdersForStudent } from '../domain/ledger';
 import {
   validateIpadHandoffMessage,
@@ -57,6 +59,13 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
   const commitPosTransactionDraft = usePosStore((s) => s.commitPosTransactionDraft);
 
   const committingRef = useRef(false);
+  const storageHealthyRef = useRef(true);
+
+  useEffect(() => {
+    storageHealthyRef.current = checkStorageHealth().ok;
+  }, []);
+
+
 
   const setSearchText = useCallback((text: string) => {
     dispatch({ type: 'updateSearchText', text });
@@ -157,6 +166,41 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
     const expenseDirection = state.kind === 'committing' ? state.expenseDirection : undefined;
 
     committingRef.current = true;
+
+    // Save crash draft for non-expense commits before store mutation
+    if (mode !== 'expense' && storageHealthyRef.current && sid) {
+      const student = students.find((s) => s.studentId === sid);
+      if (student) {
+        const mealPrice = mode === 'order' ? (args.priceOverride ?? todayMenu.price) : 0;
+        const paidAmount = mode === 'payment' ? Number(paidAmountText || 0) : 0;
+        const amount = mode === 'order' ? -mealPrice : (mode === 'payment' ? paidAmount : 0);
+        const note =
+          mode === 'order' && args.priceOverride !== null
+            ? `訂購其他餐點：${args.priceOverrideLabel.trim() || todayMenu.itemName}`
+            : mode === 'order'
+              ? todayMenu.itemName
+              : mode === 'payment'
+                ? '現金繳費'
+                : '';
+        saveCrashDraft({
+          intent: {
+            businessDate: args.businessDate,
+            studentId: sid,
+            type: mode,
+            mealPrice,
+            paidAmount,
+            note,
+            sourceDevice: 'pc' as const,
+          },
+          snapshots: {
+            student: { studentId: sid, studentNameSnapshot: student.displayName },
+            menu: { menuNameSnapshot: todayMenu.itemName, menuPriceSnapshot: mealPrice, vendorIdSnapshot: todayMenu.vendorId, vendorNameSnapshot: todayMenu.vendorNameSnapshot },
+          },
+          amount,
+          expectedBalanceAfter: student.currentBalance + amount,
+        });
+      }
+    }
 
     // If in duplicate_warning, confirm first
     if (state.kind === 'duplicate_warning') {
@@ -261,6 +305,14 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
       committingRef.current = false;
     }
   }, [state, students, todayMenu, commitPosTransactionDraft, args.businessDate, args.priceOverride, args.priceOverrideLabel]);
+
+  // Auto-trigger commitTransaction when state transitions to committing
+  useEffect(() => {
+    if (state.kind !== 'committing') return;
+    commitTransaction();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.kind]);
+
 
   const cancelFlow = useCallback(() => {
     dispatch({ type: 'cancel' });
