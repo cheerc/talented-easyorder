@@ -254,7 +254,6 @@ interface CustomerCardProps {
 }
 export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel, onDeleteOrder }: CustomerCardProps) {
   const effectiveMealPrice = mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
-  const after = student.currentBalance + (Number(payAmount || 0) - effectiveMealPrice);
   const payInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     payInputRef.current?.focus();

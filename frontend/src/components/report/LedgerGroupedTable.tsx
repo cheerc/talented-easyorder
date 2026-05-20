@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { fmt } from '../pos-components';
 import type { LedgerGroup } from '../../domain/ledgerReport';
 import type { LedgerTransaction } from '../../domain/ledger';
@@ -84,13 +84,13 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
   // Reset to page 1 when groups change
   useMemo(() => {
     if (page > totalPages) setPage(1);
-  }, [groups.length, page, totalPages]);
+  }, [page, totalPages]);
 
   const visibleRows = useMemo(() => {
     // If total groups fit on one page, show all without pagination
     if (totalGroups <= pageSize) return flatRows;
     return paginateGroups(flatRows, Math.min(page, totalPages), pageSize);
-  }, [flatRows, page, pageSize, totalGroups]);
+  }, [flatRows, page, pageSize, totalPages, totalGroups]);
 
   const incomeRows = expenseRows.filter(t => t.paidAmount > 0);
   const expenseOnlyRows = expenseRows.filter(t => t.paidAmount === 0);
@@ -123,7 +123,7 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
     </div>
   ) : null;
 
-  const renderRow = (row: FlatRow, _idx: number) => {
+  const renderRow = (row: FlatRow) => {
     if (row.kind === 'group') {
       const g = groups[row.groupIndex];
       const isExpanded = expandedSids.has(g.studentId);
@@ -209,7 +209,7 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
       </div>
       {flatRows.length > 0 ? (
         <>
-          {visibleRows.map((row, idx) => renderRow(row, idx))}
+          {visibleRows.map((row) => renderRow(row))}
           {totalGroups > pageSize && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderTop: '1px solid var(--line-2)', fontSize: '13px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

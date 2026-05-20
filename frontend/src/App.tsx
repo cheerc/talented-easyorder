@@ -408,7 +408,7 @@ export default function App() {
   }, [tweaks]);
 
   // Derived expense props for ExpensePanel — type-narrowed, no `as` cast
-  const expenseProps = useMemo(() => {
+  const expenseProps = (() => {
     if (state.kind === 'expense_input') {
       return { kind: state.kind as const, amountText: state.amountText, amount: 0 };
     }
@@ -416,7 +416,7 @@ export default function App() {
       return { kind: state.kind as const, amountText: '', amount: state.amount };
     }
     return null;
-  }, [state]);
+  })();
   const isSuccess = state.kind === 'success';
   const flashData = useMemo(() => {
     if (!isSuccess || !picked) {
