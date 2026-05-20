@@ -108,7 +108,9 @@ export function calculateLedgerTotals(transactions: LedgerTransaction[]): Ledger
     totalExpense,
     netCash: totalIncome - totalExpense,
     newDebt,
-    transactionCount: transactions.length,
+    transactionCount: transactions.filter(t =>
+      t.type !== 'order' || t.paidAmount > 0
+    ).length,
   };
 }
 

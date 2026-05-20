@@ -128,11 +128,11 @@ describe('calculateLedgerTotals', () => {
     expect(totals.newDebt).toBe(120); // 85-0 + 85-50
   });
 
-  it('counts transactionCount as total rows', () => {
+  it('counts transactionCount as total rows with cash flow', () => {
     const txs: LedgerTransaction[] = [
-      makeTx({ transactionId: 'tx-1' }),
-      makeTx({ transactionId: 'tx-2' }),
-      makeTx({ transactionId: 'tx-3' }),
+      makeTx({ transactionId: 'tx-1', type: 'order', paidAmount: 85 }),
+      makeTx({ transactionId: 'tx-2', type: 'payment', paidAmount: 500 }),
+      makeTx({ transactionId: 'tx-3', type: 'expense', studentId: '__cashier__', mealPrice: 100 }),
     ];
     const totals = calculateLedgerTotals(txs);
     expect(totals.transactionCount).toBe(3);
@@ -143,6 +143,17 @@ describe('calculateLedgerTotals', () => {
     expect(totals.orderCount).toBe(0);
     expect(totals.netCash).toBe(0);
     expect(totals.newDebt).toBe(0);
+  });
+
+  it('excludes unpaid order transactions from transactionCount', () => {
+    const txs: LedgerTransaction[] = [
+      makeTx({ transactionId: 'tx-1', type: 'order', mealPrice: 85, paidAmount: 0 }), // unpaid → excluded
+      makeTx({ transactionId: 'tx-2', type: 'order', mealPrice: 85, paidAmount: 85 }), // paid → included
+      makeTx({ transactionId: 'tx-3', type: 'payment', paidAmount: 500 }), // included
+      makeTx({ transactionId: 'tx-4', type: 'expense', studentId: '__cashier__', mealPrice: 100, paidAmount: 0 }), // included
+    ];
+    const totals = calculateLedgerTotals(txs);
+    expect(totals.transactionCount).toBe(3); // tx-2, tx-3, tx-4 — not tx-1
   });
 });
 
