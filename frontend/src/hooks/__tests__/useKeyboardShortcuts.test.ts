@@ -151,4 +151,64 @@ describe('useKeyboardShortcuts', () => {
 
     expect(changeMode).not.toHaveBeenCalled();
   });
+
+  describe('A key — enter expense mode', () => {
+    let enterExpenseMode: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      enterExpenseMode = vi.fn();
+    });
+
+    it('calls enterExpenseMode on A in idle (no student selected)', () => {
+      renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow, enterExpenseMode, isStudentSelected: false }));
+
+      const event = new KeyboardEvent('keydown', { key: 'a', bubbles: true });
+      window.dispatchEvent(event);
+
+      expect(enterExpenseMode).toHaveBeenCalledOnce();
+    });
+
+    it('does nothing on A when student selected', () => {
+      renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow, enterExpenseMode, isStudentSelected: true }));
+
+      const event = new KeyboardEvent('keydown', { key: 'a', bubbles: true });
+      window.dispatchEvent(event);
+
+      expect(enterExpenseMode).not.toHaveBeenCalled();
+    });
+
+    it('suppresses A in text input', () => {
+      renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow, enterExpenseMode, isStudentSelected: false }));
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      document.body.appendChild(input);
+      input.focus();
+
+      const event = new KeyboardEvent('keydown', { key: 'a', bubbles: true });
+      Object.defineProperty(event, 'target', { value: input });
+      input.dispatchEvent(event);
+
+      expect(enterExpenseMode).not.toHaveBeenCalled();
+
+      document.body.removeChild(input);
+    });
+
+    it('allows A in number input', () => {
+      renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow, enterExpenseMode, isStudentSelected: false }));
+
+      const input = document.createElement('input');
+      input.type = 'number';
+      document.body.appendChild(input);
+      input.focus();
+
+      const event = new KeyboardEvent('keydown', { key: 'a', bubbles: true });
+      Object.defineProperty(event, 'target', { value: input });
+      input.dispatchEvent(event);
+
+      expect(enterExpenseMode).toHaveBeenCalledOnce();
+
+      document.body.removeChild(input);
+    });
+  });
 });

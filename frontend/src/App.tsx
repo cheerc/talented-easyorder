@@ -323,6 +323,7 @@ export default function App() {
     isStudentSelected,
     handleConfirm,
     cancelFlow,
+    enterExpenseMode,
   });
 
   // Arrow key navigation for focus zones
@@ -415,6 +416,9 @@ export default function App() {
       if (isSuccess && !picked) {
         const latestExpense = allTx.find(t => t.studentId === '__cashier__' && t.type === 'expense');
         if (!latestExpense) return null;
+        const counterNetCash = allTx
+          .filter(t => t.studentId === '__cashier__' && t.type === 'expense')
+          .reduce((sum, t) => sum + (t.paidAmount > 0 ? t.paidAmount : -t.mealPrice), 0);
         const isIncome = latestExpense.paidAmount > 0;
         return {
           id: flashKey,
@@ -424,7 +428,7 @@ export default function App() {
             ? `收入: ${latestExpense.note} +$${latestExpense.paidAmount}`
             : `支出: ${latestExpense.note} −$${latestExpense.mealPrice}`,
           amount: isIncome ? latestExpense.paidAmount : -latestExpense.mealPrice,
-          after: 0,
+          after: counterNetCash,
         };
       }
       return null;

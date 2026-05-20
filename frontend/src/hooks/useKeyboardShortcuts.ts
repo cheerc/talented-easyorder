@@ -8,9 +8,10 @@ interface UseKeyboardShortcutsArgs {
   isStudentSelected?: boolean;
   handleConfirm: () => void;
   cancelFlow: () => void;
+  enterExpenseMode?: () => void;
 }
 
-export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStudentSelected, handleConfirm, cancelFlow }: UseKeyboardShortcutsArgs) {
+export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStudentSelected, handleConfirm, cancelFlow, enterExpenseMode }: UseKeyboardShortcutsArgs) {
   useEffect(() => {
     if (!enabled) return;
 
@@ -71,10 +72,25 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
         return;
       }
 
+      // A — enter expense mode in idle only (no student selected)
+      if (key === 'a' && enterExpenseMode && !isStudentSelected) {
+        if (tag === 'INPUT') {
+          const inputType = (target as HTMLInputElement).type;
+          if (inputType === 'text' || inputType === 'search' || inputType === 'email' || inputType === 'password' || inputType === 'url' || inputType === 'tel') {
+            return;
+          }
+        } else if (tag === 'TEXTAREA' || target.contentEditable === 'true') {
+          return;
+        }
+        e.preventDefault();
+        enterExpenseMode();
+        return;
+      }
+
       // R — no-op everywhere (was cancel order, now E handles cancel)
     };
 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [enabled, changeMode, cancelOrder, isStudentSelected, handleConfirm, cancelFlow]);
+  }, [enabled, changeMode, cancelOrder, isStudentSelected, handleConfirm, cancelFlow, enterExpenseMode]);
 }

@@ -63,4 +63,12 @@ describe('RecentStrip', () => {
     expect(container.textContent).not.toContain('待繳費');
     expect(container.textContent).not.toContain('已繳費');
   });
+
+  it('hides __cashier__ id in studentId column', () => {
+    const recent = [makeTx({ studentId: '__cashier__', studentNameSnapshot: '櫃台', type: 'expense', mealPrice: 100, paidAmount: 0, amount: -100, afterBalance: 0, uid: '0-e' })];
+    const { container } = render(<RecentStrip recent={recent} />);
+    const idSpan = container.querySelector('.recent-id');
+    expect(idSpan?.textContent).toBe('');
+    expect(container.textContent).toContain('櫃台');
+  });
 });
