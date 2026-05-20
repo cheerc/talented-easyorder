@@ -80,7 +80,7 @@ export function CashClosePanel({
             style={{ width: '140px', fontSize: '18px' }}
             value={countedCash}
             placeholder="抽屜總現金"
-            onChange={e => { const v = e.target.value; setCountedCash(v === '' ? '' : Number(v)); }}
+            onChange={e => { const v = e.target.value; if (!/^\d*$/.test(v)) return; setCountedCash(v === '' ? '' : Number(v)); }}
             onKeyDown={e => { if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault(); }}
           />
         </div>

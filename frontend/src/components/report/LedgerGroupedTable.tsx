@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { fmt } from '../pos-components';
 import type { LedgerGroup } from '../../domain/ledgerReport';
 import type { LedgerTransaction } from '../../domain/ledger';
@@ -82,7 +82,7 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
   const totalPages = Math.max(1, Math.ceil(totalGroups / pageSize));
 
   // Reset to page 1 when groups change
-  useMemo(() => {
+  useEffect(() => {
     if (page > totalPages) setPage(1);
   }, [page, totalPages]);
 
