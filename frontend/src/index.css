@@ -1267,13 +1267,17 @@ input::-webkit-inner-spin-button {
 }
 
 .type-income {
-  background: var(--accent-soft);
-  color: var(--accent-ink);
+  background: rgba(34, 197, 94, 0.15);
+  color: #16a34a;
+}
+.type-payment {
+  background: rgba(34, 197, 94, 0.15);
+  color: #16a34a;
 }
 
 .type-expense {
-  background: var(--warn-soft);
-  color: var(--warn);
+  background: rgba(239, 68, 68, 0.15);
+  color: #dc2626;
 }
 
 .type-debt {
@@ -1288,7 +1292,11 @@ input::-webkit-inner-spin-button {
 }
 
 .recent-amt.pos {
-  color: var(--accent-ink);
+  color: #16a34a;
+}
+
+.recent-amt.neg {
+  color: #dc2626;
 }
 
 /* ============ REPORT ============ */

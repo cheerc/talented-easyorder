@@ -604,7 +604,14 @@ export const RecentStrip = React.memo(function RecentStrip({ recent, onItemClick
           <div key={r.uid} className="recent-row" onClick={() => onItemClick?.(r.studentId)} style={onItemClick ? { cursor: 'pointer' } : undefined}>
             <span className="recent-time mono">{r.createdAt.slice(11, 19)}</span>
             <span className="recent-id mono">{r.studentId === '__cashier__' ? '' : r.studentId}</span>
-            <span className="recent-name">{r.studentNameSnapshot}</span>
+            <span className="recent-name">
+              {r.studentNameSnapshot}
+              {r.note && r.type === 'expense' && (
+                <span className="dim" style={{ fontSize: '11px', marginLeft: '4px' }}>
+                  {r.note.slice(0, 4)}
+                </span>
+              )}
+            </span>
             <span className={'recent-type ' + (r.type === 'expense'
               ? (r.paidAmount > 0 ? 'type-income' : 'type-expense')
               : 'type-' + r.type)}>{
