@@ -5,6 +5,7 @@ import {
   createDailySettlement,
   reopenBusinessDate,
   isBusinessDateWritable,
+  getOpeningCash,
 } from '../cashClose';
 import type { LedgerTotals } from '../ledgerReport';
 
@@ -169,5 +170,29 @@ describe('isBusinessDateWritable', () => {
 
   it('closed is not writable', () => {
     expect(isBusinessDateWritable('closed')).toBe(false);
+  });
+});
+
+describe('getOpeningCash', () => {
+  it('returns yesterday countedCash when available', () => {
+    const yesterdaySettlement = createDailySettlement('2026-05-14', makeTotals({ netCash: 500 }), 1000, 1520, '平帳', 'op', '2026-05-14T18:00:00.000Z', false);
+    const result = getOpeningCash('2026-05-15', [yesterdaySettlement], undefined);
+    expect(result).toBe(1520);
+  });
+
+  it('falls back to cashSession openingCash when no yesterday settlement', () => {
+    const result = getOpeningCash('2026-05-15', [], { openingCash: 3000 });
+    expect(result).toBe(3000);
+  });
+
+  it('falls back to default 4000 when no source available', () => {
+    const result = getOpeningCash('2026-05-15', [], undefined);
+    expect(result).toBe(4000);
+  });
+
+  it('yesterday settlement takes priority over cashSession', () => {
+    const yesterdaySettlement = createDailySettlement('2026-05-14', makeTotals({ netCash: 500 }), 1000, 1520, '平帳', 'op', '2026-05-14T18:00:00.000Z', false);
+    const result = getOpeningCash('2026-05-15', [yesterdaySettlement], { openingCash: 3000 });
+    expect(result).toBe(1520);
   });
 });

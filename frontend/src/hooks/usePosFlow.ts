@@ -73,8 +73,9 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
 
   const selectStudent = useCallback((studentId: string, source: PosSelectionSource) => {
     const searchTextHint = state.kind === 'idle' ? state.searchText : '';
-    dispatch({ type: 'selectStudent', studentId, source, searchTextHint });
-  }, [state.kind, state.searchText]);
+    const hasOrderToday = countActiveOrdersForStudent(transactions, studentId, args.businessDate) > 0;
+    dispatch({ type: 'selectStudent', studentId, source, searchTextHint, hasOrderToday });
+  }, [state.kind, state.searchText, transactions, args.businessDate]);
 
   const changeMode = useCallback((mode: PosMode) => {
     dispatch({ type: 'changeMode', mode });

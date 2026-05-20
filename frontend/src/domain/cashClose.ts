@@ -133,3 +133,28 @@ export function reopenBusinessDate(
 export function isBusinessDateWritable(status: BusinessDateStatus): boolean {
   return status !== 'closed';
 }
+
+export function getOpeningCash(
+  businessDate: string,
+  dailySettlements: DailySettlement[],
+  cashSession?: { openingCash: number },
+): number {
+  const yesterday = shiftDateStr(businessDate, -1);
+  const yesterdaySettlement = dailySettlements
+    .filter(s => s.businessDate === yesterday)
+    .sort((a, b) => b.settlementRevision - a.settlementRevision)[0];
+
+  if (yesterdaySettlement) return yesterdaySettlement.countedCash;
+  if (cashSession) return cashSession.openingCash;
+  return 4000;
+}
+
+function shiftDateStr(dateStr: string, offset: number): string {
+  const parts = dateStr.split('-').map(Number);
+  const d = new Date(parts[0], parts[1] - 1, parts[2]);
+  d.setDate(d.getDate() + offset);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}

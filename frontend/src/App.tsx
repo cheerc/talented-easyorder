@@ -11,6 +11,7 @@ import { TopBar, SearchBox, CustomerCard, ActionBar, IdleHero, ConfirmBanner, Re
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { ReportScreen, AdminScreen, VendorsScreen, HistoryScreen } from './components/screens';
+import { getOpeningCash } from './domain/cashClose';
 import { TodayDashboard } from './components/TodayDashboard';
 import { TweaksPanel, TweakSection, TweakRadio } from './components/tweaks-panel';
 import { ErrorBoundary, AppCrashPage, SectionError } from './components/ErrorBoundary';
@@ -26,6 +27,7 @@ export default function App() {
   const resetData = usePosStore((s) => s.resetData);
   const getBusinessDateStatus = usePosStore((s) => s.getBusinessDateStatus);
   const cashSessions = usePosStore((s) => s.cashSessions);
+  const dailySettlements = usePosStore((s) => s.dailySettlements as import('./domain/cashClose').DailySettlement[]);
   const openCashSession = usePosStore((s) => s.openCashSession);
   const updateOpeningCash = usePosStore((s) => s.updateOpeningCash);
 
@@ -601,7 +603,7 @@ export default function App() {
           vendors={vendors}
           students={students}
           resetData={resetData}
-          openingCash={cashSessions[viewDate]?.openingCash ?? 4000}
+          openingCash={getOpeningCash(viewDate, dailySettlements || [], cashSessions[viewDate])}
           dateStatus={dateStatus}
           hasCashSession={!!cashSessions[viewDate]}
           onOpeningCashChange={(amount) => openCashSession({ businessDate: viewDate, openingCash: amount, operatorId: 'admin', openedAt: new Date().toISOString() })}

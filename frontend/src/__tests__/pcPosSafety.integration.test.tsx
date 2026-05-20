@@ -57,7 +57,7 @@ describe('pcPosSafety — duplicate order warning', () => {
     });
   });
 
-  it('second order shows duplicate warning banner', async () => {
+  it('second selection defaults to payment when hasOrderToday', async () => {
     render(<App />);
     const user = userEvent.setup();
 
@@ -73,17 +73,14 @@ describe('pcPosSafety — duplicate order warning', () => {
     await user.keyboard('{Enter}');
     await waitFor(() => expect(screen.queryByText('✓')).toBeFalsy());
 
-    // Second order on same student — need to click back into the input
+    // Second selection on same student — hasOrderToday=true → defaults to payment mode
     const input2 = screen.getByPlaceholderText(/015/) as HTMLInputElement;
     await user.click(input2);
     await user.keyboard('015{Enter}');
-    await waitFor(() => expect(screen.getByText('確認')).toBeTruthy());
-    await user.click(screen.getByText('確認'));
 
-    // Should see duplicate warning
+    // Should be in payment mode, not order mode
     await waitFor(() => {
-      const el = document.querySelector('.dup-warn-h');
-      expect(el).toBeTruthy();
+      expect(screen.getByText('繳費')).toBeTruthy();
     });
   });
 

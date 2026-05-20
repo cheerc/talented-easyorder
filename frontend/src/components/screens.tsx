@@ -11,6 +11,7 @@ import {
   groupLedgerRowsByStudent,
   type LedgerDateRangeKind,
 } from '../domain/ledgerReport';
+import { getOpeningCash } from '../domain/cashClose';
 import {
   TRANSACTION_CSV_COLUMNS,
   buildTransactionCsvRows,
@@ -47,8 +48,9 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
   const deleteOrderWithRefundCheck = usePosStore((s) => s.deleteOrderWithRefundCheck);
   const dateStatus = usePosStore((s) => s.getBusinessDateStatus(viewDate));
   const cashSessions = usePosStore((s) => s.cashSessions);
+  const dailySettlements = usePosStore((s) => s.dailySettlements as import('../domain/cashClose').DailySettlement[]);
   const currentCashSession = cashSessions[viewDate];
-  const openingCash = currentCashSession?.openingCash ?? 4000;
+  const openingCash = getOpeningCash(viewDate, dailySettlements || [], currentCashSession);
 
   const range = useMemo(() => createLedgerDateRange(
     dateRange,
@@ -137,7 +139,11 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
   };
 
   const handleCashClose = (countedCash: number, note: string) => {
-    closeBusinessDate({ businessDate: viewDate, countedCash, note, queuedSettlementAccepted: true, operatorId: 'op-report' });
+    try {
+      closeBusinessDate({ businessDate: viewDate, countedCash, note, queuedSettlementAccepted: true, operatorId: 'op-report' });
+    } catch (err) {
+      console.error('closeBusinessDate failed', err);
+    }
   };
 
   const handleReopen = (reason: string) => {
@@ -171,6 +177,7 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
         businessDate={viewDate}
         dateStatus={dateStatus}
         hasQueuedRows={hasQueuedRows}
+        queuedRowCount={filtered.filter(t => t.syncStatus === 'queued').length}
         hasFailedConflict={hasFailedConflict}
         openingCash={openingCash}
         onClose={handleCashClose}
