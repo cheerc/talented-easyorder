@@ -19,7 +19,7 @@ export type ExpenseDirection = 'income' | 'expense';
 
 export type PosFlowEvent =
   | { type: 'updateSearchText'; text: string }
-  | { type: 'selectStudent'; studentId: string; source: PosSelectionSource; searchTextHint?: string }
+  | { type: 'selectStudent'; studentId: string; source: PosSelectionSource; searchTextHint?: string; hasOrderToday?: boolean }
   | { type: 'changeMode'; mode: PosMode }
   | { type: 'updatePaidAmount'; text: string }
   | { type: 'requestCommit'; hasDuplicateOrder: boolean }
@@ -75,7 +75,7 @@ function reduceIdle(state: PosFlowState & { kind: 'idle' }, event: PosFlowEvent)
     case 'updateSearchText':
       return { kind: 'idle', searchText: event.text };
     case 'selectStudent':
-      return { kind: 'student_selected', studentId: event.studentId, mode: 'order', source: event.source, paidAmountText: '', searchTextHint: '' };
+      return { kind: 'student_selected', studentId: event.studentId, mode: event.hasOrderToday ? 'payment' : 'order', source: event.source, paidAmountText: '', searchTextHint: '' };
     case 'enterExpenseMode':
       return { kind: 'expense_input', amountText: '' };
     default:
@@ -98,7 +98,7 @@ function reduceStudentSelected(state: PosFlowState & { kind: 'student_selected' 
       return { kind: 'committing', studentId: state.studentId, mode: state.mode, source: state.source, paidAmountText: state.paidAmountText };
     }
     case 'selectStudent':
-      return { kind: 'student_selected', studentId: event.studentId, mode: 'order', source: event.source, paidAmountText: '', searchTextHint: event.searchTextHint ?? '' };
+      return { kind: 'student_selected', studentId: event.studentId, mode: event.hasOrderToday ? 'payment' : 'order', source: event.source, paidAmountText: '', searchTextHint: event.searchTextHint ?? '' };
     case 'cancel':
       return { kind: 'idle', searchText: state.searchTextHint };
     default:

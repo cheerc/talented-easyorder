@@ -31,11 +31,21 @@ export function CashClosePanel({
   const expectedDrawerCash = openingCash + totals.netCash;
   const difference = countedNum - expectedDrawerCash;
   const cashEntered = countedCash !== '';
+  if (dateStatus === 'closed') {
+    return (
+      <div className="card cash-close-panel" style={{ marginBottom: '16px', padding: '16px 20px', opacity: 0.6, pointerEvents: 'none' }}>
+        <div className="card-h" style={{ marginBottom: '12px' }}>
+          結帳關帳
+          <span className="pill" style={{ marginLeft: '8px', background: 'var(--c-warn)' }}>已關閉</span>
+        </div>
+      </div>
+    );
+  }
+
   const canClose =
     note.trim().length > 0 &&
     (!hasFailedConflict) &&
-    (!hasQueuedRows || queuedAccepted) &&
-    dateStatus !== 'closed';
+    (!hasQueuedRows || queuedAccepted);
 
   return (
     <div className="card cash-close-panel" style={{ marginBottom: '16px', padding: '16px 20px' }}>
@@ -88,7 +98,7 @@ export function CashClosePanel({
                  onChange={e => setNote(e.target.value)} style={{ width: '100%' }} />
         </div>
 
-        {hasQueuedRows && (
+        {hasQueuedRows && queuedRowCount > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <input type="checkbox" id="queued-accept" checked={queuedAccepted} onChange={e => setQueuedAccepted(e.target.checked)} />
             <label htmlFor="queued-accept" style={{ fontSize: '12px', cursor: 'pointer', color: 'var(--c-warn)' }}>
@@ -97,11 +107,12 @@ export function CashClosePanel({
           </div>
         )}
 
-        <button className="btn-confirm" disabled={!canClose}
-                onClick={() => setShowConfirm(true)}
-                style={!canClose ? { opacity: 0.4, cursor: 'not-allowed' } : {}}>
+        {canClose && (
+        <button className="btn-confirm"
+                onClick={() => setShowConfirm(true)}>
           確認關帳
         </button>
+        )}
       </div>
       {hasFailedConflict && (
         <div className="dim" style={{ color: 'var(--c-warn)', marginTop: '8px', fontSize: '12px' }}>⚠ 有同步失敗或衝突記錄，無法關帳</div>
