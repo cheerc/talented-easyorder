@@ -18,12 +18,14 @@
 
 ### 1.3 收支輸入金額按 Enter 後跳轉類型選擇（解決 bubbling 導致跳過問題）
 - **現狀**：在「新增 收入/支出」介面輸入金額按 Enter 時，由於 event bubbling 到 `window` 觸發了剛註冊的 `expense_direction` 鍵盤監聽器，導致直接選擇了預設的第一個選項（支出），而沒有停留讓使用者選擇。
-- **改進方案**：在 `ExpensePanel` 的金額輸入框 `onKeyDown` 事件中，針對 `Enter` 鍵加上 `e.stopPropagation()`，防止事件向上冒泡到 `window`。
+- **改進方案**：在 `ExpensePanel` 的金額輸入框 `onKeyDown` 事件中，針對 `Enter` 鍵使用 `e.nativeEvent.stopImmediatePropagation()`，防止 React SyntheticEvent 的 stopPropagation 無法阻止 window.addEventListener 的原生事件。React SyntheticEvent 的 `stopPropagation()` 僅在 React 事件系統內生效，無法阻止透過 `window.addEventListener('keydown', ...)` 註冊的 `expense_direction` 原生監聽器。
 
 ### 1.4 收支流程與對話框中的 Escape 與 Enter 鍵處理
+- **現狀**：`Modal.tsx` 僅處理 Escape 與 Tab focus trap，沒有 Enter 鍵確認機制。ConfirmDialog 依賴 Modal，因此目前無 Enter 確認。全局 `useKeyboardShortcuts` 的 Enter 監聽在 expense flow 期間雖被 disable（`isExpenseFlow` guard），但在 dialog 開啟時無 guard，可能觸發背景確認。
 - **改進方案**：
   1. 確保 `ExpensePanel` 在任何步驟（包括 `expense_direction` 和 `expense_reason` 選擇狀態），按下 `Escape` 都會取消並返回首頁。
-  2. 當 `ConfirmDialog`（如取消訂餐提示）開啟時，攔截全局的 `Escape` 和 `Enter` 快捷鍵，只讓對話框處理（Esc 為返回，Enter 為確認），不得觸發下層的任何全局快捷鍵（如切換模式或背景確認）。
+  2. 在 `Modal.tsx` 的 keyboard handler 中增加 `Enter` 鍵 capture：當 Modal open 時按 Enter → `e.preventDefault()` + `e.nativeEvent.stopImmediatePropagation()`，並觸發 ConfirmDialog 的 `onConfirm` prop。需將 ConfirmDialog 的 onConfirm callback 透過 ref 或 Modal prop 傳入，或直接在 ConfirmDialog 的 useEffect 中註冊 Enter 監聽（使用 `stopImmediatePropagation()` 阻止冒泡到 window 的全局快捷鍵監聽器）。
+  3. ConfirmDialog 開啟時，攔截全局的 `Escape` 和 `Enter` 快捷鍵，只讓對話框處理（Esc 為返回，Enter 為確認），不得觸發下層的任何全局快捷鍵（如切換模式或背景確認）。
 
 ---
 
@@ -41,7 +43,8 @@
     6. 報表頁面中的「點算抽屜現金」輸入框 (`countedCash`)
   - **套用過濾規則**：
     - 在 `onKeyDown` 攔截並阻擋 `-`, `+`, `e`, `E` 以及 `.` 的輸入。
-    - 在 `onChange` 檢查，如果輸入為空則允許清空，若大於 0 則更新，若等於 0 或為負則不更新。
+    - 在 `onChange` 使用 regex `/^\d*$/`（僅允許純數字，阻擋任何非數字字元貼上）進行過濾，若輸入為空則允許清空，若通過 regex 則更新 state。此舉可防止使用者透過貼上繞過 onKeyDown 限制。
+    - 注意 `type="number"` 輸入框的 ArrowUp/ArrowDown 原生行為可能遞減數值至 0 或負數：onChange 過濾時一併處理，若值 ≤ 0 則不更新（或清空）。
     - 點選確認/提交時，若值小於或等於 0 或為空，則拒絕送出。
 
 ---
@@ -69,9 +72,10 @@
 - **現狀**：櫃台收支的備註目前緊跟在名稱後方，版面略顯不一。
 - **改進方案**：
   - 當 RecentStrip 渲染 `type === 'expense'` 時：
-    1. 將備註 (note) 截取前 4 字，並以全型空白補足 4 字元寬度。
-    2. 將此備註渲染在第 5 欄（`recent-amt`）金額的前方，使其起點與學生訂單的「已繳費/待繳費」完全水平對齊。
-    3. 顯示範例：`收 贊助金 + 500`、`支 支付便當 - 600`。
+    1. 將備註 (note) 截取前 4 字，並以全型空白補足 4 字元寬度（全型空白 Unicode: `　`）。
+    2. 將此備註渲染在 `recent-amt` 欄位的金額**前方**（即同一個 `recent-amt` span 的前半部），與金額共同構成完整字串，例如：`收 贊助金　 +500`、`支 支付便當 -600`。
+    3. 具體格式：`{收/支} {備註前4字並以　補滿4格} {+/-}{金額}`，例如「收 贊助金　 +500」。
+    4. 若無備註（note 為空），則不顯示空白，直接顯示 `{收/支} {+/-}{金額}`。
 
 ---
 
@@ -82,19 +86,20 @@
 - **改進方案**：按鈕始終渲染在畫面上，但若備註為空或條件不滿足時，按鈕設為 `disabled` 且 `opacity` 降為 `0.5`，滑鼠游標設為 `not-allowed`。
 
 ### 4.2 移除今日帳本的虛擬化，改為標準分頁表格，支援瀏覽器原生滾動
-- **現狀**：`LedgerGroupedTable` 使用 `react-window` 虛擬化，限制了容器高度，且在資料量大或展開時容易造成隱藏和滾動條衝突。
+- **現狀**：`LedgerGroupedTable` 使用 `react-window` 虛擬化，限制了容器高度，且在資料量大或展開時容易造成隱藏和滾動條衝突。`react-window` 僅在 `LedgerGroupedTable.tsx` 中使用（經 grep 確認，無其他元件引用），可一併從 `package.json` 移除 `react-window` 和 `@types/react-window` dependency。
 - **改進方案**：
-  1. 移除 `react-window` 的 `List` 元件。
-  2. 加入標準的分頁機制：預設每頁 `20` 筆學員分頁（可切換 `10`, `20`, `50` 筆）。
+  1. 移除 `react-window` 的 `List` 元件，以及 `containerHeight` 的動態計算邏輯（`useEffect` 中 `window.innerHeight - rect.top - 24` 的 resize listener）。
+  2. 加入標準的分頁機制：預設每頁 `20` 筆學員群組分頁（可切換 `10`, `20`, `50` 筆）。分頁以**學員群組（group）**為計數單位，展開的 detail rows 算在該 group 當前頁內，不跨頁。
   3. 在表格下方新增分頁列，包含「上一頁」、「下一頁」按鈕、當前頁碼/總頁數指示、以及每頁筆數下拉選單。
   4. 讓表格元件在 DOM 中隨資料行數自然展開，超出畫面時透過瀏覽器原生滾動條滾動，改善操作體驗。
+  5. 從 `package.json` 移除 `react-window` 和 `@types/react-window` 兩項 dependency。
 
 ### 4.3 每日開帳金額修改警示 dialog 優化
 - **現狀**：首次設定與修改時皆會跳警示，或金額相同時也會儲存。
 - **改進方案**：
-  1. 檢查若修改的金額與目前開帳金額相同，點擊儲存時直接 ignore/no-op，不執行任何儲存或提示。
+  1. 檢查若修改的金額與目前開帳金額相同，點擊儲存時直接 `return`（no-op），不呼叫任何 store action（`onOpeningCashChange` / `onUpdateOpeningCash` 均不呼叫），不顯示任何提示。
   2. 若修改的金額與目前金額不同：
-     - 若為**今日首次設定**（無 cashSession）：直接儲存，不跳 ConfirmDialog。
+     - 若為**今日首次設定**（無 cashSession）：直接儲存（呼叫 `onOpeningCashChange`），不跳 ConfirmDialog。
      - 若**已存在 cashSession**（非首次設定且金額不同）：跳出 ConfirmDialog 提示「修改開帳金額會影響今日所有帳務計算，確定要繼續嗎？」。
 
 ---
