@@ -295,7 +295,7 @@ export default function App() {
     prevKindRef.current = state.kind;
   }, [state.kind]);
 
-  // Keyboard shortcuts for tab navigation (F-keys only)
+  // Keyboard shortcuts for tab navigation (F-keys only) + number key auto-focus
   useEffect(() => {
     const onGlobalKey = (e: KeyboardEvent) => {
       if (e.key === 'F1') { e.preventDefault(); setTab('pos'); return; }
@@ -308,10 +308,16 @@ export default function App() {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
         return;
       }
+
+      // Digit key auto-focus search box in idle
+      if (/^[0-9]$/.test(e.key) && tab === 'pos' && !picked && !expenseProps) {
+        setSearchText(e.key);
+        e.preventDefault();
+      }
     };
     window.addEventListener('keydown', onGlobalKey);
     return () => window.removeEventListener('keydown', onGlobalKey);
-  }, []);
+  }, [tab, picked, state.kind, setSearchText]);
 
   // POS keyboard shortcuts — Q/W/E + Enter/Escape + arrow navigation
   const hasFlash = state.kind === 'success';
@@ -402,7 +408,7 @@ export default function App() {
   }, [tweaks]);
 
   // Derived expense props for ExpensePanel — type-narrowed, no `as` cast
-  const expenseProps = useMemo(() => {
+  const expenseProps = (() => {
     if (state.kind === 'expense_input') {
       return { kind: state.kind as const, amountText: state.amountText, amount: 0 };
     }
@@ -410,7 +416,7 @@ export default function App() {
       return { kind: state.kind as const, amountText: '', amount: state.amount };
     }
     return null;
-  }, [state]);
+  })();
   const isSuccess = state.kind === 'success';
   const flashData = useMemo(() => {
     if (!isSuccess || !picked) {
@@ -566,17 +572,6 @@ export default function App() {
             )}
           </div>
           <div className="col-side">
-            <div className="card side-menu">
-              <div className="recent-head">本日便當</div>
-              <div style={{ fontSize: '22px', fontWeight: 600, letterSpacing: '-0.01em', marginTop: '4px' }}>{todayMenu.itemName}</div>
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'baseline', marginTop: '8px' }}>
-                <span className="mono" style={{ fontSize: '24px', fontWeight: 600 }}>${Math.abs(todayMenu.price)}</span>
-                <span style={{ fontSize: '12px', color: 'var(--ink-3)' }}>{todayMenu.vendorNameSnapshot}</span>
-              </div>
-              <div style={{ marginTop: '14px', fontSize: '13px', color: 'var(--ink-2)' }}>
-                已訂 <span className="mono" style={{ fontSize: '20px', fontWeight: 600, color: 'var(--ink)' }}>{todayCount}</span> 份
-              </div>
-            </div>
             <RecentStrip
               recent={tx.slice().reverse().map((t, i) => ({ ...t, uid: i + '-' + t.createdAt }))}
               onItemClick={!isHistorical && getBusinessDateStatus(viewDate) !== 'closed' ? (sid) => selectStudent(sid, 'manual') : undefined}

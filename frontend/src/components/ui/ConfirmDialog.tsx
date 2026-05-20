@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Modal } from './Modal';
 import { Button } from './Button';
 
@@ -25,6 +25,20 @@ export const ConfirmDialog = React.memo(function ConfirmDialog({
   cancelLabel = '取消',
   variant = 'primary',
 }: ConfirmDialogProps) {
+  // Enter key confirm handler — stopImmediatePropagation to prevent global shortcuts
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.nativeEvent?.stopImmediatePropagation?.();
+        onConfirm();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onConfirm]);
+
   return (
     <Modal open={open} title={title} onClose={onCancel}>
       <p style={{ margin: '0 0 24px', color: 'var(--ink-2)', fontSize: '15px', lineHeight: 1.6 }}>
