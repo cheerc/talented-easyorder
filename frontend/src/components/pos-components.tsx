@@ -249,6 +249,10 @@ interface CustomerCardProps {
 export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel, onDeleteOrder }: CustomerCardProps) {
   const effectiveMealPrice = mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
   const after = student.currentBalance + (Number(payAmount || 0) - effectiveMealPrice);
+  const payInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    payInputRef.current?.focus();
+  }, [mode]);
 
   return (
     <div className="card customer">
@@ -355,13 +359,13 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
               <div className="pay-input-container">
                 <span className="pay-input-prefix">$</span>
                 <input
+                  ref={payInputRef}
                   className="pay-input-main"
                   type="number"
                   aria-label="付款金額"
                   value={payAmount}
                   onChange={e => setPayAmount(e.target.value)}
                   placeholder={mode === 'order' ? "" : "輸入金額"}
-                  autoFocus
                 />
                 <span className="pay-input-suffix">元</span>
               </div>
@@ -599,7 +603,7 @@ export const RecentStrip = React.memo(function RecentStrip({ recent, onItemClick
         {recent.slice(0, 5).map(r => (
           <div key={r.uid} className="recent-row" onClick={() => onItemClick?.(r.studentId)} style={onItemClick ? { cursor: 'pointer' } : undefined}>
             <span className="recent-time mono">{r.createdAt.slice(11, 19)}</span>
-            <span className="recent-id mono">{r.studentId}</span>
+            <span className="recent-id mono">{r.studentId === '__cashier__' ? '' : r.studentId}</span>
             <span className="recent-name">{r.studentNameSnapshot}</span>
             <span className={'recent-type ' + (r.type === 'expense'
               ? (r.paidAmount > 0 ? 'type-income' : 'type-expense')
@@ -658,6 +662,37 @@ interface ExpensePanelProps {
 export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanelProps) {
   const { kind, amountText, amount, onAmountChange, onAmountConfirm, onDirectionSelect, onReasonSelect, onNoteChange, onNoteConfirm, onCancel } = props;
 
+  const [selIdx, setSelIdx] = React.useState(0);
+
+  // Keyboard navigation for expense_direction and expense_reason
+  useEffect(() => {
+    if (kind !== 'expense_direction' && kind !== 'expense_reason') return;
+
+    const optionCount = kind === 'expense_direction' ? 2 : EXPENSE_QUICK_OPTIONS.length;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setSelIdx(idx => Math.max(0, idx - 1));
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setSelIdx(idx => Math.min(optionCount - 1, idx + 1));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (kind === 'expense_direction') {
+          onDirectionSelect(selIdx === 0 ? 'expense' : 'income');
+        } else {
+          onReasonSelect(EXPENSE_QUICK_OPTIONS[selIdx]);
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        onCancel();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [kind, onDirectionSelect, onReasonSelect, onCancel, selIdx]);
+
   return (
     <div className="card customer" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div className="pay-title">新增 收入/支出</div>
@@ -705,10 +740,10 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
           <div className="dup-warn" style={{ flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
             <div className="dup-warn-h">金額 ${Math.abs(amount)} — 選擇類型</div>
             <div className="dup-warn-btns" style={{ marginTop: '12px', gap: '16px' }}>
-              <button className="btn-confirm" onClick={() => onDirectionSelect('expense')}>
+              <button className="btn-confirm" style={selIdx === 0 ? { outline: '2px solid var(--accent)', outlineOffset: '2px' } : undefined} onClick={() => onDirectionSelect('expense')}>
                 支出
               </button>
-              <button className="btn-confirm" onClick={() => onDirectionSelect('income')}>
+              <button className="btn-confirm" style={selIdx === 1 ? { outline: '2px solid var(--accent)', outlineOffset: '2px' } : undefined} onClick={() => onDirectionSelect('income')}>
                 收入
               </button>
             </div>
@@ -724,8 +759,8 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
           <div className="dup-warn" style={{ flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
             <div className="dup-warn-h">{amount ? `$${Math.abs(amount)} — 選擇原因` : '選擇原因'}</div>
             <div className="dup-warn-btns" style={{ marginTop: '12px', gap: '16px' }}>
-              {EXPENSE_QUICK_OPTIONS.map(opt => (
-                <button key={opt} className="btn-confirm" onClick={() => onReasonSelect(opt)}>
+              {EXPENSE_QUICK_OPTIONS.map((opt, i) => (
+                <button key={opt} className="btn-confirm" style={selIdx === i ? { outline: '2px solid var(--accent)', outlineOffset: '2px' } : undefined} onClick={() => onReasonSelect(opt)}>
                   {opt}
                 </button>
               ))}
@@ -738,7 +773,7 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
       )}
 
       {kind === 'expense_other_note' && (
-        <div className="pay-input-container" style={{ flexDirection: 'column', gap: '8px', alignItems: 'stretch' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '8px 0' }}>
           <span className="dim" style={{ fontSize: '12px' }}>備註（必填）</span>
           <input
             className="adm-input"
@@ -749,7 +784,10 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
               if (e.key === 'Enter') {
                 e.preventDefault();
                 const v = (e.target as HTMLInputElement).value.trim();
-                if (v) onNoteConfirm(v);
+                if (v) {
+                  e.nativeEvent.stopImmediatePropagation();
+                  onNoteConfirm(v);
+                }
               }
               if (e.key === 'Escape') {
                 e.preventDefault();
@@ -758,7 +796,7 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
             }}
             onChange={e => onNoteChange(e.target.value)}
           />
-          <div className="dim" style={{ fontSize: '12px' }}>
+          <div className="dim" style={{ fontSize: '12px', marginTop: '4px' }}>
             <span className="kbd">↵</span> 確認 · <span className="kbd">Esc</span> 取消
           </div>
         </div>
