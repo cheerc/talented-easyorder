@@ -63,6 +63,38 @@ describe('ConfirmDialog', () => {
     expect(onCancel).toHaveBeenCalled();
   });
 
+  it('calls onConfirm when Enter key pressed while open', async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    render(
+      <ConfirmDialog
+        open
+        title="確認刪除"
+        message="確定要刪除此項目嗎？"
+        onConfirm={onConfirm}
+        onCancel={() => {}}
+      />
+    );
+    await user.keyboard('{Enter}');
+    expect(onConfirm).toHaveBeenCalled();
+  });
+
+  it('calls onCancel when Escape key pressed while open', async () => {
+    const user = userEvent.setup();
+    const onCancel = vi.fn();
+    render(
+      <ConfirmDialog
+        open
+        title="確認刪除"
+        message="確定要刪除此項目嗎？"
+        onConfirm={() => {}}
+        onCancel={onCancel}
+      />
+    );
+    await user.keyboard('{Escape}');
+    expect(onCancel).toHaveBeenCalled();
+  });
+
   it('renders danger variant confirm button', () => {
     render(
       <ConfirmDialog

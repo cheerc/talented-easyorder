@@ -188,13 +188,19 @@ export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubm
           aria-label="輸入學員編號或姓名"
           value={value}
           disabled={disabled}
-          autoFocus
           autoComplete="off"
           spellCheck="false"
           placeholder="例如 015 或 周映彤"
           onChange={e => onChange(e.target.value)}
           onKeyDown={e => {
-            if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); onSubmit(); }
+            if (e.key === 'Enter') {
+              e.preventDefault(); e.stopPropagation();
+              if (value.trim() === '') {
+                e.currentTarget.blur();
+              } else {
+                onSubmit();
+              }
+            }
             else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onEsc(); }
             else if (e.key === 'ArrowDown') { e.preventDefault(); onHover(Math.min(activeIdx + 1, suggestions.length - 1)); }
             else if (e.key === 'ArrowUp') { e.preventDefault(); onHover(Math.max(activeIdx - 1, 0)); }
@@ -333,7 +339,8 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                         type="number"
                         aria-label="價格"
                         value={priceOverride}
-                        onChange={e => setPriceOverride(Number(e.target.value || todayMenu.price))}
+                        onChange={e => { const v = e.target.value; if (v === '' || /^\d*$/.test(v)) setPriceOverride(Number(v || todayMenu.price)); }}
+                        onKeyDown={e => { if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault(); }}
                       />
                     </label>
                     <button type="button" className="ghost-btn" onClick={() => setPriceOverride(null)}>
@@ -343,7 +350,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                 )}
               </div>
             )}
-            {after < 0 && <div className="chip chip-warn" style={{ alignSelf: 'flex-start', marginTop: '8px' }}>⚠ 將產生欠款</div>}
+{/* §3.1: removed "將產生欠款" warning per UX spec */}
           </div>
 
           {/* Right Side: Payment Panel */}
@@ -364,25 +371,14 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                   type="number"
                   aria-label="付款金額"
                   value={payAmount}
-                  onChange={e => setPayAmount(e.target.value)}
+                  onChange={e => { const v = e.target.value; if (v === '' || /^\d*$/.test(v)) setPayAmount(v); }}
+                  onKeyDown={e => { if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault(); }}
                   placeholder={mode === 'order' ? "" : "輸入金額"}
                 />
                 <span className="pay-input-suffix">元</span>
               </div>
 
-              {mode === 'payment' && (
-                <div className="pay-quick-grid">
-                  {getQuickAmounts({
-                    mode,
-                    todayPrice: todayMenu.price,
-                    currentDebt: Math.max(0, -student.currentBalance),
-                  }).map(v => (
-                    <button key={v} className="btn-quick" onClick={() => setPayAmount(String(v))}>
-                      {v}
-                    </button>
-                  ))}
-                </div>
-              )}
+{/* §3.3: removed quick amount buttons from payment mode */}
             </div>
           ) : (
             <div className="cancel-empty">
@@ -486,7 +482,7 @@ export const IdleHero = React.memo(function IdleHero({ todayMenu, todayCount, ve
             onClick={onEnterExpense}
             style={{ fontSize: '14px', padding: '8px 20px' }}
           >
-            新增 收入/支出
+            新增 收入/支出 (A) (A)
           </button>
         </div>
         <div className="idle-keys" style={{ marginTop: '8px' }}>
@@ -606,11 +602,6 @@ export const RecentStrip = React.memo(function RecentStrip({ recent, onItemClick
             <span className="recent-id mono">{r.studentId === '__cashier__' ? '' : r.studentId}</span>
             <span className="recent-name">
               {r.studentNameSnapshot}
-              {r.note && r.type === 'expense' && (
-                <span className="dim" style={{ fontSize: '11px', marginLeft: '4px' }}>
-                  {r.note.slice(0, 4)}
-                </span>
-              )}
             </span>
             <span className={'recent-type ' + (r.type === 'expense'
               ? (r.paidAmount > 0 ? 'type-income' : 'type-expense')
@@ -637,9 +628,9 @@ export const RecentStrip = React.memo(function RecentStrip({ recent, onItemClick
                       ? `+${fmt(r.paidAmount)}`
                       : `待繳費 ${fmt(Math.abs(r.afterBalance))}`)
                   : r.type === 'expense'
-                    ? (r.paidAmount > 0
-                        ? `+${fmt(r.paidAmount)}`
-                        : `−${fmt(r.mealPrice)}`)
+                    ? (r.note
+                        ? `${r.paidAmount > 0 ? '收' : '支'} ${(r.note.slice(0, 4) + '　　　').slice(0, 4)} ${r.paidAmount > 0 ? '+' : '−'}${fmt(r.paidAmount > 0 ? r.paidAmount : r.mealPrice)}`
+                        : `${r.paidAmount > 0 ? '+' : '−'}${fmt(r.paidAmount > 0 ? r.paidAmount : r.mealPrice)}`)
                     : <>{sign(r.amount)}{fmt(r.amount)}</>
               }</span>
           </div>
@@ -713,12 +704,14 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
               type="number"
               aria-label="金額"
               value={amountText}
-              onChange={e => onAmountChange(e.target.value)}
+              onChange={e => { const v = e.target.value; if (v === '' || /^\d*$/.test(v)) onAmountChange(v); }}
               placeholder="輸入金額"
               autoFocus
               onKeyDown={e => {
+                if (['-', '+', 'e', 'E', '.'].includes(e.key)) { e.preventDefault(); return; }
                 if (e.key === 'Enter') {
                   e.preventDefault();
+                  e.nativeEvent.stopImmediatePropagation();
                   const n = Number(amountText);
                   if (Number.isFinite(n) && n > 0) {
                     onAmountConfirm(n);
@@ -732,13 +725,7 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
             />
             <span className="pay-input-suffix">元</span>
           </div>
-          <div className="pay-quick-grid">
-            {[100, 200, 500, 1000].map(v => (
-              <button key={v} className="btn-quick" onClick={() => onAmountConfirm(v)}>
-                {v}
-              </button>
-            ))}
-          </div>
+{/* §3.3: removed quick amount buttons from expense panel */}
         </>
       )}
 

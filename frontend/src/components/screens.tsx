@@ -277,7 +277,8 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
   const handleSaveOpeningCash = () => {
     const n = Number(openingCashDraft);
     if (!Number.isFinite(n) || n < 0) return;
-    if (hasCashSession && n !== openingCash) {
+    if (n === openingCash) return; // no-op when same amount
+    if (hasCashSession) {
       setShowOpeningCashConfirm(true);
     } else {
       doSaveOpeningCash();
@@ -295,7 +296,7 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
           </div>
           <div className="adm-row">
             <label>單價 (元)</label>
-            <input className="adm-input mono" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} />
+            <input className="adm-input mono" type="number" value={price} onChange={e => { const v = e.target.value; if (v === '' || /^\d*$/.test(v)) setPrice(Number(v)); }} onKeyDown={e => { if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault(); }} />
           </div>
           <div className="adm-row">
             <label>供應商</label>
@@ -311,7 +312,7 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
             <div className="card-h">每日開帳金額</div>
             <div className="adm-row">
               <label>開帳金額 (元)</label>
-              <input className="adm-input mono" type="number" value={openingCashDraft} onChange={e => setOpeningCashDraft(e.target.value)} disabled={isClosed} />
+              <input className="adm-input mono" type="number" value={openingCashDraft} onChange={e => { const v = e.target.value; if (v === '' || /^\d*$/.test(v)) setOpeningCashDraft(v); }} onKeyDown={e => { if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault(); }} disabled={isClosed} />
             </div>
             <div className="adm-foot">
               <button className="btn-confirm wide" onClick={handleSaveOpeningCash} disabled={isClosed}>

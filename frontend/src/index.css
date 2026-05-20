@@ -396,6 +396,7 @@ body[data-fs="lg"] {
 }
 
 .customer {
+  padding: 36px;
   animation: cardIn .2s ease-out;
 }
 
@@ -498,10 +499,10 @@ body[data-fs="lg"] {
   font-weight: 600;
 }
 .action-block { padding-top: 32px; }
-.action-grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: 48px; align-items: stretch; }
+.action-grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: 64px; align-items: stretch; }
 
 /* Left side: Bill summary */
-.bill-summary { display: flex; flex-direction: column; gap: 12px; }
+.bill-summary { display: flex; flex-direction: column; gap: 18px; }
 .bill-item { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line-2); }
 .bill-item:last-child { border-bottom: 0; }
 .bill-label { color: var(--ink-2); font-size: 15px; }

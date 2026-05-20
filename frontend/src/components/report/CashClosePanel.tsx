@@ -81,6 +81,7 @@ export function CashClosePanel({
             value={countedCash}
             placeholder="抽屜總現金"
             onChange={e => { const v = e.target.value; setCountedCash(v === '' ? '' : Number(v)); }}
+            onKeyDown={e => { if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault(); }}
           />
         </div>
         <div>
@@ -107,12 +108,13 @@ export function CashClosePanel({
           </div>
         )}
 
-        {canClose && (
-        <button className="btn-confirm"
-                onClick={() => setShowConfirm(true)}>
+        <button
+          className="btn-confirm"
+          disabled={!canClose}
+          style={!canClose ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+          onClick={() => setShowConfirm(true)}>
           確認關帳
         </button>
-        )}
       </div>
       {hasFailedConflict && (
         <div className="dim" style={{ color: 'var(--c-warn)', marginTop: '8px', fontSize: '12px' }}>⚠ 有同步失敗或衝突記錄，無法關帳</div>

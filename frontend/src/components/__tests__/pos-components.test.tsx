@@ -1,21 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { render } from '@testing-library/react';
-import { getQuickAmounts, RecentStrip } from '../pos-components';
+import { RecentStrip } from '../pos-components';
 import type { LedgerTransaction } from '../../domain/ledger';
-
-describe('getQuickAmounts', () => {
-  it('places today price first for order mode', () => {
-    expect(getQuickAmounts({ mode: 'order', todayPrice: 85, currentDebt: 0 })[0]).toBe(85);
-  });
-
-  it('adds price plus debt as the second order quick amount when the student owes money', () => {
-    expect(getQuickAmounts({ mode: 'order', todayPrice: 85, currentDebt: 170 }).slice(0, 2)).toEqual([85, 255]);
-  });
-
-  it('keeps payment amounts independent from today price', () => {
-    expect(getQuickAmounts({ mode: 'payment', todayPrice: 85, currentDebt: 0 })).toEqual([100, 500, 1000, 2000, 3000]);
-  });
-});
 
 describe('RecentStrip', () => {
   const makeTx = (overrides: Partial<LedgerTransaction> & { uid: string }): (LedgerTransaction & { uid: string }) => ({
@@ -57,11 +43,19 @@ describe('RecentStrip', () => {
     expect(container.textContent).not.toContain('已繳費');
   });
 
-  it('shows numeric amount for expense type', () => {
-    const recent = [makeTx({ type: 'expense', mealPrice: 150, amount: -150, paidAmount: 0, afterBalance: 0, uid: '0-d' })];
+  it('shows formatted note for expense type', () => {
+    const recent = [makeTx({ type: 'expense', mealPrice: 150, paidAmount: 0, amount: -150, note: '支付便當', afterBalance: 0, uid: '0-d' })];
     const { container } = render(<RecentStrip recent={recent} />);
-    expect(container.textContent).not.toContain('待繳費');
-    expect(container.textContent).not.toContain('已繳費');
+    expect(container.textContent).toContain('支');
+    expect(container.textContent).toContain('支付便當');
+  });
+
+  it('formats income expense with note prefix', () => {
+    const recent = [makeTx({ type: 'expense', paidAmount: 300, mealPrice: 0, amount: 300, note: '贊助金', studentId: '__cashier__', studentNameSnapshot: '櫃台', afterBalance: 0, uid: '0-f' })];
+    const { container } = render(<RecentStrip recent={recent} />);
+    expect(container.textContent).toContain('收');
+    expect(container.textContent).toContain('贊助金');
+    expect(container.textContent).toContain('300');
   });
 
   it('hides __cashier__ id in studentId column', () => {
