@@ -7,8 +7,6 @@ import { NumericInput } from './ui/NumericInput';
 
 interface KeyboardEventWithFlag extends KeyboardEvent { __handledByExpensePanel?: boolean }
 
-interface KeyboardEventWithFlag extends KeyboardEvent { __handledByExpensePanel?: boolean }
-
 // eslint-disable-next-line react-refresh/only-export-components
 export const fmt = (n: number) => new Intl.NumberFormat('zh-TW').format(Math.abs(n));
 // eslint-disable-next-line react-refresh/only-export-components
