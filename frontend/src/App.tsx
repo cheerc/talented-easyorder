@@ -326,7 +326,15 @@ export default function App() {
     isDialogOpen: cancelDialogOpen || noOrderDialogOpen,
   });
 
-  const todayCount = tx.filter(t => t.type === 'order' && t.menuNameSnapshot === todayMenu.itemName && t.mealPrice === todayMenu.price).length;
+  const todayCount = useMemo(() => {
+    const defaultBentoOrders = tx.filter(t => 
+      t.type === 'order' && 
+      t.menuNameSnapshot === todayMenu.itemName && 
+      t.mealPrice === todayMenu.price &&
+      (!t.note || !t.note.startsWith('單筆改價：'))
+    );
+    return defaultBentoOrders.length;
+  }, [tx, todayMenu.itemName, todayMenu.price]);
   const queuedCount = useMemo(() => allTx.filter(t => t.syncStatus === 'queued').length, [allTx]);
   const failedSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'failed').length, [allTx]);
   const conflictSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'conflict').length, [allTx]);
