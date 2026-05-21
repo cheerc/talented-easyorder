@@ -7,7 +7,7 @@ import {
 import type { PosFlowState, PosMode, PosSelectionSource, ExpenseDirection } from '../domain/posFlow';
 import type { ScannerInput } from '../domain/posSearch';
 import { resolveScannedStudent } from '../domain/posSearch';
-import { parsePaidAmount, buildPosTransactionDraft } from '../domain/posTransaction';
+import { buildPosTransactionDraft, deriveTransactionAttributes } from '../domain/posTransaction';
 import { saveCrashDraft } from '../storage/crashDraft';
 import { checkStorageHealth } from '../storage/storageHealth';
 import { countActiveOrdersForStudent } from '../domain/ledger';
@@ -172,30 +172,28 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
     if (mode !== 'expense' && storageHealthyRef.current && sid) {
       const student = students.find((s) => s.studentId === sid);
       if (student) {
-        const mealPrice = mode === 'order' ? (args.priceOverride ?? todayMenu.price) : 0;
-        const paidAmount = mode === 'payment' ? Number(paidAmountText || 0) : 0;
-        const amount = mode === 'order' ? -mealPrice : (mode === 'payment' ? paidAmount : 0);
-        const note =
-          mode === 'order' && args.priceOverride !== null
-            ? `訂購其他餐點：${args.priceOverrideLabel.trim() || todayMenu.itemName}`
-            : mode === 'order'
-              ? todayMenu.itemName
-              : mode === 'payment'
-                ? '現金繳費'
-                : '';
+        const crashAttrs = deriveTransactionAttributes({
+          mode,
+          todayMenuPrice: todayMenu.price,
+          todayMenuItemName: todayMenu.itemName,
+          priceOverride: args.priceOverride,
+          priceOverrideLabel: args.priceOverrideLabel,
+          paidAmountText,
+        });
+        const amount = mode === 'order' ? -crashAttrs.mealPrice : (mode === 'payment' ? crashAttrs.paidAmount : 0);
         saveCrashDraft({
           intent: {
             businessDate: args.businessDate,
             studentId: sid,
             type: mode,
-            mealPrice,
-            paidAmount,
-            note,
+            mealPrice: crashAttrs.mealPrice,
+            paidAmount: crashAttrs.paidAmount,
+            note: crashAttrs.note,
             sourceDevice: 'pc' as const,
           },
           snapshots: {
             student: { studentId: sid, studentNameSnapshot: student.displayName },
-            menu: { menuNameSnapshot: todayMenu.itemName, menuPriceSnapshot: mealPrice, vendorIdSnapshot: todayMenu.vendorId, vendorNameSnapshot: todayMenu.vendorNameSnapshot },
+            menu: { menuNameSnapshot: todayMenu.itemName, menuPriceSnapshot: crashAttrs.mealPrice, vendorIdSnapshot: todayMenu.vendorId, vendorNameSnapshot: todayMenu.vendorNameSnapshot },
           },
           amount,
           expectedBalanceAfter: student.currentBalance + amount,
@@ -208,28 +206,20 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
       dispatch({ type: 'confirmDuplicate' });
     }
 
-    const parsedAmount = parsePaidAmount(paidAmountText);
-    let paidAmountVal = parsedAmount.ok ? parsedAmount.value : 0;
-
-    let mealPrice = 0;
-    let note = '';
-    if (mode === 'order') {
-      mealPrice = args.priceOverride ?? todayMenu.price;
-      note = args.priceOverride !== null
-        ? `單筆改價：${args.priceOverrideLabel.trim() || todayMenu.itemName}`
-        : todayMenu.itemName + (paidAmountVal > 0 ? ' (已付)' : '');
-    } else if (mode === 'payment') {
-      note = '現金繳費';
-    } else if (mode === 'expense') {
-      if (expenseDirection === 'income') {
-        mealPrice = 0;
-        paidAmountVal = expenseAmount ?? 0;
-      } else {
-        mealPrice = expenseAmount ?? 0;
-        paidAmountVal = 0;
-      }
-      note = expenseNote ?? '';
-    }
+    const attrs = deriveTransactionAttributes({
+      mode,
+      todayMenuPrice: todayMenu.price,
+      todayMenuItemName: todayMenu.itemName,
+      priceOverride: args.priceOverride,
+      priceOverrideLabel: args.priceOverrideLabel,
+      paidAmountText,
+      expenseAmount,
+      expenseNote,
+      expenseDirection,
+    });
+    const mealPrice = attrs.mealPrice;
+    const paidAmountVal = attrs.paidAmount;
+    const note = attrs.note;
 
     try {
       if (mode === 'expense') {

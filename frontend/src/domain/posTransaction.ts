@@ -74,6 +74,55 @@ export interface BuildExpenseTransactionDraftArgs {
   sourceDevice: PosSourceDevice;
 }
 
+export interface DerivedTransactionAttrs {
+  mealPrice: number;
+  paidAmount: number;
+  note: string;
+}
+
+export function deriveTransactionAttributes(args: {
+  mode: PosMode;
+  todayMenuPrice: number;
+  todayMenuItemName: string;
+  priceOverride: number | null;
+  priceOverrideLabel: string;
+  paidAmountText?: string;
+  expenseAmount?: number;
+  expenseNote?: string;
+  expenseDirection?: 'income' | 'expense';
+}): DerivedTransactionAttrs {
+  const { mode, todayMenuPrice, todayMenuItemName, priceOverride, priceOverrideLabel } = args;
+
+  const parsedAmount = args.paidAmountText ? parsePaidAmount(args.paidAmountText) : null;
+  const paidAmountVal = (parsedAmount && parsedAmount.ok) ? parsedAmount.value : 0;
+
+  let mealPrice = 0;
+  let paidAmount = 0;
+  let note = '';
+
+  if (mode === 'order') {
+    mealPrice = priceOverride ?? todayMenuPrice;
+    note = priceOverride !== null
+      ? `單筆改價：${priceOverrideLabel.trim() || todayMenuItemName}`
+      : todayMenuItemName + (paidAmountVal > 0 ? ' (已付)' : '');
+  } else if (mode === 'payment') {
+    mealPrice = 0;
+    paidAmount = paidAmountVal;
+    note = '現金繳費';
+  } else if (mode === 'expense') {
+    if (args.expenseDirection === 'income') {
+      mealPrice = 0;
+      paidAmount = args.expenseAmount ?? 0;
+    } else {
+      mealPrice = args.expenseAmount ?? 0;
+      paidAmount = 0;
+    }
+    note = args.expenseNote ?? '';
+  }
+
+  return { mealPrice, paidAmount, note };
+}
+
 export function buildExpenseTransactionDraft(args: BuildExpenseTransactionDraftArgs): PosTransactionDraft {
   const snapshots: PosTransactionSnapshotInput = {
     student: { studentId: CASHIER_SENTINEL, studentNameSnapshot: '櫃台' },
