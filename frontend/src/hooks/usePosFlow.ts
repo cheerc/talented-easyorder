@@ -71,11 +71,12 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
     dispatch({ type: 'updateSearchText', text });
   }, []);
 
+  const hintSearchText = state.kind === 'idle' ? state.searchText : '';
   const selectStudent = useCallback((studentId: string, source: PosSelectionSource) => {
-    const searchTextHint = state.kind === 'idle' ? state.searchText : '';
+    const searchTextHint = hintSearchText;
     const hasOrderToday = countActiveOrdersForStudent(transactions, studentId, args.businessDate) > 0;
     dispatch({ type: 'selectStudent', studentId, source, searchTextHint, hasOrderToday });
-  }, [state.kind, state.kind === 'idle' ? state.searchText : '', transactions, args.businessDate]);
+  }, [hintSearchText, transactions, args.businessDate]);
 
   const changeMode = useCallback((mode: PosMode) => {
     dispatch({ type: 'changeMode', mode });
