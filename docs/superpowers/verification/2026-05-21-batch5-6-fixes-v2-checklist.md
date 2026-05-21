@@ -1,83 +1,263 @@
-# Batch 5-6 Fixes v2 — Verification Checklist
+# Batch 5-6 Fixes v2: 驗證清單
 
-## Test Chain (自動化)
-- [x] t1 `npx tsc --noEmit` — PASS
-- [x] t2 `npm run lint` — PASS (1 pre-existing warning: expenseProps dep)
-- [x] t3 `npx vitest run` — 48 files, 385 tests PASS
-- [x] t4 `npm run build` — PASS
+> Generated: 2026-05-21
+> PR: #51
+> HEAD: de3b57c
+> 基於: PR #50 驗證後使用者回報的殘留問題 + R1 review findings
 
-## R1 Rework (PR #51 review findings)
+## How to test
 
-### §3.1 價格修改區域 + 便當統計過濾
-- [x] App.tsx todayCount: 加入 `menuNameSnapshot` + `mealPrice` 過濾
-- [x] index.css: 加入 `.price-override`（border-top dashed 分隔 + 間距）
-- [x] index.css: 加入 `.price-override-fields`（flex gap: 12px, 淺色虛線卡片）
+```bash
+cd ~/talented-easyorder/frontend && npm run dev
+```
 
-### §3.2 RecentStrip 容量
-- [x] `slice(0,5)` → `slice(0,12)`
-- [x] 標題 "最近 5 筆" → "最近 12 筆"
+Open browser → localhost:5173. 所有測試步驟均在本地 dev 環境手動操作。
 
-### §1.2 IdleHero 按鈕 CSS
-- [x] 按鈕改用 `.mode` class（與 ActionBar Q/W/E 統一）
-- [x] `<span className="mode-key">A</span>` + `<span className="mode-lbl">新增 收入/支出</span>`
-- [x] `style={{ flex: 'none', width: 'auto' }}`
+---
 
-### §3.4 RecentStrip expense 分欄
-- [x] expense 有備註: `recent-amt-lbl`（備註）+ `recent-amt-val`（金額）分欄結構
-- [x] expense 無備註: 僅 `recent-amt-val`
-- [x] CSS: `.recent-row` grid 第 5 欄 140px 固定
-- [x] CSS: `.recent-amt` flexbox `justify-content: space-between`
-- [x] CSS: `.recent-amt-lbl` 左對齊、overflow ellipsis、color ink-3
-- [x] CSS: `.recent-amt-val` 右對齊、flex-shrink: 0
+## §1 — 鍵盤快捷鍵與輸入聚焦
 
-### §4 CSS 重複
-- [x] index.css: 移除重複的 `.rpt-detail-actions` block
+---
 
-## §1.1 搜尋框自動聚焦
-- [x] 初始載入：搜尋框不自動聚焦
-- [x] 按下數字鍵：自動填入數字 + 聚焦搜尋框
-- [x] Escape：清除文字 + blur 搜尋框
-- [x] App.tsx: `searchFocusKey` state 傳入 SearchBox
-- [x] SearchBox useEffect: `focusKey > 0` guard
+## §1.1: 搜尋框聚焦行為（3 個修復點）
 
-## §1.2 按鈕 DRY
-- [x] IdleHero 按鈕文字: `新增 收入/支出 (A)`（無重複）
+### 驗證步驟
+1. 啟動 App → idle 首頁載入完成
+2. 確認搜尋框**預設不聚焦**（游標不在搜尋框內）
+3. 無焦點時按 `1` → 確認搜尋框自動聚焦 + `1` 已填入
+4. 接著按 `1` → 確認搜尋框顯示 `11`（可連續輸入多位數）
+5. 搜尋框有內容時按 `Escape` → 確認清除數字 + blur 離開焦點
+6. 搜尋框空白時按 `Enter` → 確認 blur 離開焦點
 
-## §1.4 Escape 返回上層
-- [x] expense_direction cancel → expense_input
-- [x] expense_reason cancel → expense_direction
-- [x] expense_other_note cancel (income) → expense_direction
-- [x] expense_other_note cancel (expense) → expense_reason
-- [x] ExpensePanel: kind 變化時 selIdx 重置為 0
-- [x] posFlow.test.ts: 4 個新 test case PASS
+### 預期行為
+- idle 首頁載入時搜尋框不聚焦（原本剛載入就聚焦）
+- 無焦點時按數字鍵 → 自動聚焦 + 填入數字，可連續輸入（原本只能輸入單個數字）
+- Escape 清除 + blur（原本無此行為）
+- Enter 空白時 blur（維持不變）
 
-## §2.1 NumericInput DRY + E 快捷鍵
-- [x] NumericInput.tsx 新建: forwardRef, onKeyDown block [-+eE.], onChange /^\d*$/, onWheel blur
-- [x] NumberField.tsx 內部改用 NumericInput
-- [x] CustomerCard payAmount → NumericInput
-- [x] CustomerCard priceOverride → NumericInput
-- [x] ExpensePanel amountText → NumericInput
-- [x] AdminScreen price → NumericInput
-- [x] AdminScreen openingCashDraft → NumericInput
-- [x] CashClosePanel countedCash → NumericInput
-- [x] useKeyboardShortcuts: primary shortcut bypass (q/w/e/a/escape/enter)
+| # | 測試項目 | Pass? |
+|---|---------|-------|
+| 1 | 載入時不聚焦 | |
+| 2 | 數字鍵自動聚焦 + 填入 | |
+| 3 | 連續輸入多位數 | |
+| 4 | Escape 清除 + blur | |
+| 5 | Enter 空白 blur | |
 
-## §3.4 RecentStrip 重複標籤
-- [x] expense 類型: recent-amt 不再顯示重複的 收/支
-- [x] 保持左側 recent-type badge 顯示收/支
+---
 
-## §4.1 關帳崩潰
-- [x] CashClosePanel props 解構補上 `businessDate`
+## §1.2: 「新增 收入/支出 (A)」按鈕
 
-## §4.2 帳本表格 detail row
-- [x] Detail row 7 欄: 時間 + 類型 + 姓名(佔位) + 當日應付 + 當日實收 + 餘額 + 備註/操作
-- [x] Detail row `padding: '0 18px'`
-- [x] CSS `.rpt-detail-row::before` left: 6px
-- [x] CSS `.counter-row::before { display: none; }`
-- [x] expenseSection 的 income/expenseOnly row 加上 `counter-row` class
-- [x] `.rpt-detail-actions` + `.rpt-detail-note` CSS 新增
+### 驗證步驟
+1. idle 首頁觀察按鈕文字
+2. 確認只顯示一個 `(A)`，不重複
+3. 確認 `(A)` 使用與 Q/W/E 相同的 `.mode-key` 樣式
 
-## §4.3 首次開帳 dialog
-- [x] handleSaveOpeningCash: 一律 showOpeningCashConfirm (移除 hasCashSession 條件)
-- [x] ConfirmDialog: hasCashSession → variant="danger" / 修改開帳金額
-- [x] ConfirmDialog: !hasCashSession → variant="primary" / 設定開帳金額
+### 預期行為
+- 顯示「新增 收入/支出 (A)」（原本顯示 (A)(A) 兩個）
+- 按鈕樣式與 Q/W/E 統一（`.mode-key` + `.mode-lbl`）
+
+| # | 測試項目 | Pass? |
+|---|---------|-------|
+| 1 | 只有一個 (A) | |
+| 2 | 樣式與 Q/W/E 統一 | |
+
+---
+
+## §1.4: 收支流程 Escape 返回上一層
+
+### 驗證步驟
+1. A → 輸入金額 → Enter → 類型選擇 → 按 `Escape`
+2. 類型選擇 → 選「支出」→ 原因選擇 → 按 `Escape`
+3. 收入路徑 → 備註輸入 → 按 `Escape`
+4. 支出路徑 → 原因 → 備註輸入 → 按 `Escape`
+
+### 預期行為
+- Escape 返回上一層，不是直接回 idle（原本直接回 idle）
+- 類型選擇 Escape → 金額輸入
+- 原因選擇 Escape → 類型選擇
+- 備註（收入）Escape → 類型選擇（收入無原因步驟）
+- 備註（支出）Escape → 原因選擇
+
+| # | 測試項目 | Pass? |
+|---|---------|-------|
+| 1 | 類型選擇 → Escape → 金額輸入 | |
+| 2 | 原因選擇 → Escape → 類型選擇 | |
+| 3 | 備註（收入）→ Escape → 類型選擇 | |
+| 4 | 備註（支出）→ Escape → 原因選擇 | |
+
+---
+
+## §2 — 數值輸入框限制
+
+---
+
+## §2.1: NumericInput DRY + 滾輪 + 快捷鍵 E
+
+### 驗證步驟
+1. 繳費金額框聚焦時按 `e` → 確認被攔截（不輸入）
+2. 聚焦繳費金額框時按快捷鍵 `E`（取消訂餐）→ 確認仍可觸發
+3. 任意數值輸入框聚焦 → 滑鼠滾輪上下滾 → 確認數值不變
+
+### 預期行為
+- `e` 在輸入框內被攔截，但全域快捷鍵 E 仍可觸發（原本 E 快捷鍵也失效）
+- 滾輪不影響數值（原本滾輪會增減數值）
+- 所有 6 個數值輸入框使用同一個 `NumericInput` 組件（DRY）
+
+### 6 個輸入框逐一驗證
+
+| 輸入框位置 | 輸入 `-` `.` `e` 被擋 | 滾輪不變 | Pass? |
+|-----------|----------------------|---------|-------|
+| 收支金額（A → 金額） | | | |
+| 繳費金額（學生卡片 payment） | | | |
+| 改價金額（學生卡片 priceOverride） | | | |
+| 便當單價（設定頁） | | | |
+| 開帳金額（設定頁） | | | |
+| 點算現金（關帳 countedCash） | | | |
+
+---
+
+## §3 — UI 與版面排版
+
+---
+
+## §3.1: 價格修改區域排版 + 便當統計
+
+### 驗證步驟
+1. 搜尋學生 → 點「訂購其他餐點」展開自訂價格
+2. 觀察是否有虛線分隔、卡片容器、間距舒適
+3. 訂購一筆非預設便當（改價/改品項）→ 回 idle 首頁看統計
+4. 確認非預設便當不計入今日便當統計
+
+### 預期行為
+- 有 dashed border-top 分隔 + `.price-override-fields` 卡片容器（原本擠在一起）
+- 非預設便當不計入 todayCount（原本統一計入導致數量錯誤）
+
+| # | 測試項目 | Pass? |
+|---|---------|-------|
+| 1 | 虛線分隔 + 卡片排版 | |
+| 2 | 非預設便當不計入統計 | |
+
+---
+
+## §3.2: RecentStrip 筆數
+
+### 驗證步驟
+1. 觀察右側側邊欄 RecentStrip 標題
+2. 確認顯示「最近 12 筆」
+3. 有足夠交易時確認最多顯示 12 筆
+
+### 預期行為
+- 標題「最近 12 筆」（原本 5 筆）
+- 列表最多 12 筆（原本 5 筆）
+
+| # | 測試項目 | Pass? |
+|---|---------|-------|
+| 1 | 標題顯示 12 筆 | |
+| 2 | 列表最多 12 筆 | |
+
+---
+
+## §3.4: RecentStrip 收支重複標籤
+
+### 驗證步驟
+1. 新增一筆支出（備註「遺失費用」）→ 觀察 RecentStrip
+2. 新增一筆收入（備註「撿到錢」）→ 觀察 RecentStrip
+3. 備註超過 4 字的情況 → 確認截斷 + 金額不被壓縮
+
+### 預期行為
+- 支出：`支 遺失費用 −300`（左側徽章 + 備註 + 金額，不重複）
+- 收入：`收 撿到錢　　 +3`（左側徽章 + 備註對齊 + 金額，不重複）
+- 原本顯示「支 支 遺失費用 −300」重複
+- 備註超過 4 字 → 截斷 + `…`，金額不被壓縮
+
+| # | 測試項目 | Pass? |
+|---|---------|-------|
+| 1 | 支出不重複標籤 | |
+| 2 | 收入不重複標籤 | |
+| 3 | 長備註截斷 + 金額完整 | |
+
+---
+
+## §4 — 結帳關帳與帳本
+
+---
+
+## §4.1: 關帳按鈕 + 關帳崩潰修復
+
+### 驗證步驟
+1. 進關帳 → 不填備註 → 觀察按鈕
+2. 填入備註 → 按「確認關帳」
+3. 關帳後重新整理頁面
+
+### 預期行為
+- 未填備註：disabled、半透明、cursor: not-allowed
+- 按下確認關帳：正常關帳，不崩潰（原本出現「報表區塊發生錯誤」）
+- 重新整理後狀態維持已關帳（原本變回未關帳）
+
+| # | 測試項目 | Pass? |
+|---|---------|-------|
+| 1 | disabled 狀態正確 | |
+| 2 | 關帳不崩潰 | |
+| 3 | 重新整理保持已關帳 | |
+
+---
+
+## §4.2: 帳本表格展開 + 分頁
+
+### 驗證步驟
+1. 今日帳 → 帳本 LedgerGroupedTable
+2. 確認表格完整展開，欄位對齊（7 欄）
+3. 確認表頭與細節列 padding 一致，樹狀符號 `└` 位置正確
+4. 超過 20 筆 → 確認分頁控制（上一頁/下一頁 + 頁碼）
+5. 櫃台收支列 → 確認無 `└` 樹狀符號
+
+### 預期行為
+- 表格完整展開、7 欄對齊（原本不完整）
+- 分頁控制正常（原本無分頁）
+- 櫃台收支列無樹狀符號（`.counter-row` 處理）
+
+| # | 測試項目 | Pass? |
+|---|---------|-------|
+| 1 | 表格展開 + 7 欄對齊 | |
+| 2 | 表頭/細節列 padding | |
+| 3 | 分頁控制 | |
+| 4 | 櫃台列無 └ | |
+
+---
+
+## §4.3: 首次開帳金額 ConfirmDialog
+
+### 驗證步驟
+1. 新日期（無 cashSession）→ 設定開帳金額 → 儲存
+2. 觀察 Dialog 標題和按鈕
+3. 已有 cashSession → 修改金額 → 儲存
+4. 觀察 Dialog 標題和按鈕
+
+### 預期行為
+- 首次設定 → ConfirmDialog：標題「設定開帳金額」、按鈕「確認設定」（primary 藍色）
+- 原本首次設定不跳 dialog
+- 修改 → ConfirmDialog：標題「修改開帳金額」、按鈕「確認修改」（danger 紅色）
+
+| # | 測試項目 | Pass? |
+|---|---------|-------|
+| 1 | 首次設定跳 dialog | |
+| 2 | 首次：標題「設定」+ primary 藍色 | |
+| 3 | 修改：標題「修改」+ danger 紅色 | |
+
+---
+
+## Summary
+
+| Section | 修復點數 | 測試項目數 |
+|---------|---------|----------|
+| §1.1 搜尋框聚焦 | 3 | 5 |
+| §1.2 按鈕 DRY | 2 | 2 |
+| §1.4 Escape 上一層 | 1 | 4 |
+| §2.1 數值輸入 DRY | 3 | 9 |
+| §3.1 排版+統計 | 2 | 2 |
+| §3.2 RecentStrip 筆數 | 1 | 2 |
+| §3.4 重複標籤 | 1 | 3 |
+| §4.1 關帳崩潰 | 1 | 3 |
+| §4.2 帳本表格 | 1 | 4 |
+| §4.3 首次開帳 dialog | 1 | 3 |
+| **合計** | **16** | **37** |
