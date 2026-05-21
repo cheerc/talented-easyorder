@@ -283,6 +283,76 @@ describe('reducePosFlow — error transitions', () => {
     retryable: true,
   };
 
+  describe('reducePosFlow — expense flow cancel returns parent state', () => {
+    it('expense_direction cancel returns expense_input with current amount', () => {
+      const state: PosFlowState = { kind: 'expense_direction', amount: 500 };
+      expect(reducePosFlow(state, { type: 'cancel' })).toEqual({
+        kind: 'expense_input',
+        amountText: '500',
+      });
+    });
+
+    it('expense_reason cancel returns expense_direction preserving amount', () => {
+      const state: PosFlowState = { kind: 'expense_reason', amount: 300, direction: 'expense' };
+      expect(reducePosFlow(state, { type: 'cancel' })).toEqual({
+        kind: 'expense_direction',
+        amount: 300,
+      });
+    });
+
+    it('expense_other_note cancel with income direction returns expense_direction', () => {
+      const state: PosFlowState = { kind: 'expense_other_note', amount: 200, direction: 'income' };
+      expect(reducePosFlow(state, { type: 'cancel' })).toEqual({
+        kind: 'expense_direction',
+        amount: 200,
+      });
+    });
+
+    it('expense_other_note cancel with expense direction returns expense_reason', () => {
+      const state: PosFlowState = { kind: 'expense_other_note', amount: 150, direction: 'expense' };
+      expect(reducePosFlow(state, { type: 'cancel' })).toEqual({
+        kind: 'expense_reason',
+        amount: 150,
+        direction: 'expense',
+      });
+    });
+  });
+
+  describe('reducePosFlow — expense flow cancel returns parent state', () => {
+    it('expense_direction cancel returns expense_input with current amount', () => {
+      const state: PosFlowState = { kind: 'expense_direction', amount: 500 };
+      expect(reducePosFlow(state, { type: 'cancel' })).toEqual({
+        kind: 'expense_input',
+        amountText: '500',
+      });
+    });
+
+    it('expense_reason cancel returns expense_direction preserving amount', () => {
+      const state: PosFlowState = { kind: 'expense_reason', amount: 300, direction: 'expense' };
+      expect(reducePosFlow(state, { type: 'cancel' })).toEqual({
+        kind: 'expense_direction',
+        amount: 300,
+      });
+    });
+
+    it('expense_other_note cancel with income direction returns expense_direction', () => {
+      const state: PosFlowState = { kind: 'expense_other_note', amount: 200, direction: 'income' };
+      expect(reducePosFlow(state, { type: 'cancel' })).toEqual({
+        kind: 'expense_direction',
+        amount: 200,
+      });
+    });
+
+    it('expense_other_note cancel with expense direction returns expense_reason', () => {
+      const state: PosFlowState = { kind: 'expense_other_note', amount: 150, direction: 'expense' };
+      expect(reducePosFlow(state, { type: 'cancel' })).toEqual({
+        kind: 'expense_reason',
+        amount: 150,
+        direction: 'expense',
+      });
+    });
+  });
+
   it('cancel from error returns idle', () => {
     expect(reducePosFlow(errorWithContext, { type: 'cancel' })).toEqual({ kind: 'idle', searchText: '' });
   });

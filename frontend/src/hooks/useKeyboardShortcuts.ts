@@ -16,7 +16,9 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
     if (!enabled) return;
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented) return;
+      const key = e.key.toLowerCase();
+      const isPrimaryShortcut = ['q', 'w', 'e', 'a', 'escape', 'enter'].includes(key);
+      if (e.defaultPrevented && !isPrimaryShortcut) return;
 
       const target = e.target as HTMLElement;
       const tag = target.tagName;
@@ -40,7 +42,6 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
 
       // Q/W — suppress in text inputs, allow in number inputs
       const modeKey: Record<string, PosMode> = { q: 'order', w: 'payment' };
-      const key = e.key.toLowerCase();
       if (modeKey[key]) {
         if (tag === 'INPUT') {
           const inputType = (target as HTMLInputElement).type;

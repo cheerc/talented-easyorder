@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useMemo } from "react";
 import type { StudentAccount } from '../domain/student';
 import type { TodayMenu } from '../domain/menu';
 import type { PosMode } from '../domain/posFlow';
+import { NumericInput } from './ui/NumericInput';
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const fmt = (n: number) => new Intl.NumberFormat('zh-TW').format(Math.abs(n));
@@ -175,7 +176,7 @@ interface SearchBoxProps {
 }
 export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubmit, onEsc, suggestions, activeIdx, onPick, onHover, focusKey, disabled }: SearchBoxProps) {
   const ref = useRef(null);
-  useEffect(() => { if (!disabled) ref.current?.focus(); }, [focusKey, disabled]);
+  useEffect(() => { if (focusKey > 0 && !disabled) ref.current?.focus(); }, [focusKey, disabled]);
 
   return (
     <div className="searchwrap">
@@ -201,7 +202,7 @@ export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubm
                 onSubmit();
               }
             }
-            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onEsc(); }
+            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); e.currentTarget.blur(); onEsc(); }
             else if (e.key === 'ArrowDown') { e.preventDefault(); onHover(Math.min(activeIdx + 1, suggestions.length - 1)); }
             else if (e.key === 'ArrowUp') { e.preventDefault(); onHover(Math.max(activeIdx - 1, 0)); }
           }}
@@ -333,13 +334,11 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                     </label>
                     <label>
                       <span>價格</span>
-                      <input
+                    <NumericInput
                         className="adm-input mono"
-                        type="number"
                         aria-label="價格"
                         value={priceOverride}
-                        onChange={e => { const v = e.target.value; if (v === '' || /^\d*$/.test(v)) setPriceOverride(Number(v || todayMenu.price)); }}
-                        onKeyDown={e => { if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault(); }}
+                        onChange={v => setPriceOverride(Number(v || todayMenu.price))}
                       />
                     </label>
                     <button type="button" className="ghost-btn" onClick={() => setPriceOverride(null)}>
@@ -364,14 +363,12 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
 
               <div className="pay-input-container">
                 <span className="pay-input-prefix">$</span>
-                <input
+                <NumericInput
                   ref={payInputRef}
                   className="pay-input-main"
-                  type="number"
                   aria-label="付款金額"
                   value={payAmount}
-                  onChange={e => { const v = e.target.value; if (v === '' || /^\d*$/.test(v)) setPayAmount(v); }}
-                  onKeyDown={e => { if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault(); }}
+                  onChange={setPayAmount}
                   placeholder={mode === 'order' ? "" : "輸入金額"}
                 />
                 <span className="pay-input-suffix">元</span>
@@ -481,7 +478,7 @@ export const IdleHero = React.memo(function IdleHero({ todayMenu, todayCount, ve
             onClick={onEnterExpense}
             style={{ fontSize: '14px', padding: '8px 20px' }}
           >
-            新增 收入/支出 (A) (A)
+            新增 收入/支出 (A)
           </button>
         </div>
         <div className="idle-keys" style={{ marginTop: '8px' }}>
@@ -628,7 +625,7 @@ export const RecentStrip = React.memo(function RecentStrip({ recent, onItemClick
                       : `待繳費 ${fmt(Math.abs(r.afterBalance))}`)
                   : r.type === 'expense'
                     ? (r.note
-                        ? `${r.paidAmount > 0 ? '收' : '支'} ${(r.note.slice(0, 4) + '　　　').slice(0, 4)} ${r.paidAmount > 0 ? '+' : '−'}${fmt(r.paidAmount > 0 ? r.paidAmount : r.mealPrice)}`
+                        ? `${(r.note.slice(0, 4) + '　　　').slice(0, 4)} ${r.paidAmount > 0 ? '+' : '−'}${fmt(r.paidAmount > 0 ? r.paidAmount : r.mealPrice)}`
                         : `${r.paidAmount > 0 ? '+' : '−'}${fmt(r.paidAmount > 0 ? r.paidAmount : r.mealPrice)}`)
                     : <>{sign(r.amount)}{fmt(r.amount)}</>
               }</span>
@@ -660,6 +657,11 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
   const { kind, amountText, amount, onAmountChange, onAmountConfirm, onDirectionSelect, onReasonSelect, onNoteChange, onNoteConfirm, onCancel } = props;
 
   const [selIdx, setSelIdx] = React.useState(0);
+
+  // Reset selection index when step changes
+  useEffect(() => {
+    setSelIdx(0);
+  }, [kind]);
 
   // Keyboard navigation for expense_direction and expense_reason
   useEffect(() => {
@@ -698,16 +700,14 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
         <>
           <div className="pay-input-container">
             <span className="pay-input-prefix">$</span>
-            <input
+            <NumericInput
               className="pay-input-main"
-              type="number"
               aria-label="金額"
               value={amountText}
-              onChange={e => { const v = e.target.value; if (v === '' || /^\d*$/.test(v)) onAmountChange(v); }}
+              onChange={onAmountChange}
               placeholder="輸入金額"
               autoFocus
               onKeyDown={e => {
-                if (['-', '+', 'e', 'E', '.'].includes(e.key)) { e.preventDefault(); return; }
                 if (e.key === 'Enter') {
                   e.preventDefault();
                   e.nativeEvent.stopImmediatePropagation();

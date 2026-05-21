@@ -181,6 +181,7 @@ export default function App() {
     if (suggestions.length > 0) choose(suggestions[activeIdx]);
   };
 
+  const [searchFocusKey, setSearchFocusKey] = useState(0);
   const [flashKey, setFlashKey] = useState(0);
   const [undoCountdown, setUndoCountdown] = useState(0);
   const lastCommittedTxIdRef = useRef<string | null>(null);
@@ -312,6 +313,7 @@ export default function App() {
       // Digit key auto-focus search box in idle
       if (/^[0-9]$/.test(e.key) && tab === 'pos' && !picked && !expenseProps) {
         setSearchText(e.key);
+        setSearchFocusKey(prev => prev + 1);
         e.preventDefault();
       }
     };
@@ -504,7 +506,7 @@ export default function App() {
                       activeIdx={activeIdx}
                       onPick={choose}
                       onHover={setActiveIdx}
-                      focusKey={0}
+                      focusKey={searchFocusKey}
                       disabled={hasFlash}
                     />
                     <IdleHero

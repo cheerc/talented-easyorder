@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { fmt } from '../pos-components';
+import { NumericInput } from '../ui/NumericInput';
 import type { LedgerTotals } from '../../domain/ledgerReport';
 
 interface CashClosePanelProps {
@@ -15,6 +16,7 @@ interface CashClosePanelProps {
 
 export function CashClosePanel({
   totals,
+  businessDate,
   dateStatus,
   hasQueuedRows,
   hasFailedConflict,
@@ -72,16 +74,14 @@ export function CashClosePanel({
           <label className="dim" htmlFor="counted-cash" style={{ fontSize: '12px', marginBottom: '4px', display: 'block' }}>
             實際點算金額
           </label>
-          <input
+          <NumericInput
             id="counted-cash"
             aria-label="實際點算金額"
-            type="number"
             className="adm-input mono"
             style={{ width: '140px', fontSize: '18px' }}
             value={countedCash}
             placeholder="抽屜總現金"
-            onChange={e => { const v = e.target.value; if (!/^\d*$/.test(v)) return; setCountedCash(v === '' ? '' : Number(v)); }}
-            onKeyDown={e => { if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault(); }}
+            onChange={v => setCountedCash(v === '' ? '' : Number(v))}
           />
         </div>
         <div>
