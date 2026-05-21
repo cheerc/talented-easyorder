@@ -16,13 +16,16 @@ interface UseAppNavigationShortcutsArgs {
   handleConfirm: () => void;
   setSearchText: (text: string) => void;
   setSearchFocusKey: (updater: (prev: number) => number) => void;
+  cancelOrder?: () => void;
+  isDialogOpen?: boolean;
 }
 
 export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
-  const { tab, setTab, setShowDashboard, picked, expenseProps, currentMode, hasFlash, focusZone, setFocusZone, changeMode, cancelFlow, handleConfirm, setSearchText, setSearchFocusKey } = args;
+  const { tab, setTab, setShowDashboard, picked, expenseProps, currentMode, hasFlash, focusZone, setFocusZone, changeMode, cancelFlow, handleConfirm, setSearchText, setSearchFocusKey, cancelOrder, isDialogOpen } = args;
 
   // Global keyboard shortcuts: F-keys + digit key auto-focus
   useEffect(() => {
+    if (isDialogOpen) return;
     const onGlobalKey = (e: KeyboardEvent) => {
       if (e.key === 'F1') {
         e.preventDefault();
@@ -50,11 +53,11 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
     };
     window.addEventListener('keydown', onGlobalKey);
     return () => window.removeEventListener('keydown', onGlobalKey);
-  }, [tab, picked, expenseProps, setTab, setShowDashboard, setSearchText, setSearchFocusKey]);
+  }, [tab, picked, expenseProps, setTab, setShowDashboard, setSearchText, setSearchFocusKey, isDialogOpen]);
 
   // Arrow key navigation for focus zones
   useEffect(() => {
-    if (tab !== 'pos' || hasFlash || !picked) return;
+    if (tab !== 'pos' || hasFlash || !picked || isDialogOpen) return;
 
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
@@ -63,7 +66,9 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
         e.preventDefault();
         if (focusZone === 'btn-cancel') cancelFlow();
         else if (focusZone === 'btn-confirm') handleConfirm();
-        else if (focusZone.startsWith('mode-')) {
+        else if (focusZone === 'btn-delete-order') {
+          cancelOrder?.();
+        } else if (focusZone.startsWith('mode-')) {
           const m = focusZone.replace('mode-', '') as PosMode;
           if (m === currentMode) {
             handleConfirm();
@@ -81,22 +86,31 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
         return;
       }
 
-      const modes = ['mode-order', 'mode-payment'];
+      const modes = ['mode-order', 'mode-payment', 'btn-delete-order'];
       const i = modes.indexOf(focusZone);
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
         if (focusZone === 'btn-confirm') setFocusZone('btn-cancel');
         else if (focusZone === 'btn-cancel') setFocusZone('btn-cancel');
-        else if (i > 0) { const m = modes[i - 1].replace('mode-', ''); setFocusZone(modes[i - 1]); changeMode(m as PosMode); }
+        else if (i > 0) {
+          const nextZone = modes[i - 1];
+          setFocusZone(nextZone);
+          if (nextZone.startsWith('mode-')) {
+            const m = nextZone.replace('mode-', '') as PosMode;
+            changeMode(m);
+          }
+        }
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         if (focusZone === 'btn-cancel') setFocusZone('btn-confirm');
         else if (focusZone === 'btn-confirm') setFocusZone('btn-confirm');
-        else if (i >= 0 && i < 3) {
-          const next = i + 1;
-          const m = modes[next].replace('mode-', '');
-          setFocusZone(modes[next]);
-          changeMode(m as PosMode);
+        else if (i >= 0 && i < modes.length - 1) {
+          const nextZone = modes[i + 1];
+          setFocusZone(nextZone);
+          if (nextZone.startsWith('mode-')) {
+            const m = nextZone.replace('mode-', '') as PosMode;
+            changeMode(m);
+          }
         }
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -108,5 +122,5 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [tab, picked, hasFlash, currentMode, focusZone, handleConfirm, cancelFlow, changeMode, setFocusZone]);
+  }, [tab, picked, hasFlash, currentMode, focusZone, handleConfirm, cancelFlow, changeMode, setFocusZone, cancelOrder, isDialogOpen]);
 }

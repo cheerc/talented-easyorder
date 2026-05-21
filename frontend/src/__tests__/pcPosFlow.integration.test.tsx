@@ -116,6 +116,54 @@ describe('pcPosFlow integration — keyboard flow', () => {
     expect(screen.getByText(/110/)).toBeTruthy();
   });
 
+  it('prevents submitting empty or $0 payments in payment mode', async () => {
+    render(<App />);
+    const user = userEvent.setup();
+
+    const input = screen.getByPlaceholderText(/015/);
+    await user.type(input, '015');
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(screen.getByText('訂便當')).toBeTruthy();
+    });
+
+    // Switch to payment mode (W)
+    await user.click(screen.getByRole('radio', { name: /繳費/ }));
+
+    // Confirm that the current mode is payment
+    const paymentInput = screen.getByLabelText('付款金額') as HTMLInputElement;
+    expect(paymentInput).toBeTruthy();
+
+    // Verify it is initially empty
+    expect(paymentInput.value).toBe('');
+
+    // Try to confirm (Enter or click confirm)
+    await user.keyboard('{Enter}');
+
+    // Verify we are still on the student payment page, NOT in success state (no checkmark)
+    expect(screen.queryByText('✓')).toBeFalsy();
+    expect(screen.getByText('繳費金額')).toBeTruthy();
+
+    // Type 0 and try to confirm
+    await user.type(paymentInput, '0');
+    await user.keyboard('{Enter}');
+
+    // Verify we are still on the student payment page
+    expect(screen.queryByText('✓')).toBeFalsy();
+    expect(screen.getByText('繳費金額')).toBeTruthy();
+
+    // Type a positive number and try to confirm
+    await user.clear(paymentInput);
+    await user.type(paymentInput, '100');
+    await user.keyboard('{Enter}');
+
+    // Verify it successfully committed (shows flash success checkmark)
+    await waitFor(() => {
+      expect(screen.getByText('✓')).toBeTruthy();
+    });
+  });
+
   it('shows sync status badge in the UI', async () => {
     render(<App />);
     const syncBadge = screen.queryByRole('status');

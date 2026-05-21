@@ -75,7 +75,7 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
     const searchTextHint = state.kind === 'idle' ? state.searchText : '';
     const hasOrderToday = countActiveOrdersForStudent(transactions, studentId, args.businessDate) > 0;
     dispatch({ type: 'selectStudent', studentId, source, searchTextHint, hasOrderToday });
-  }, [state.kind, state.searchText, transactions, args.businessDate]);
+  }, [state.kind, state.kind === 'idle' ? state.searchText : '', transactions, args.businessDate]);
 
   const changeMode = useCallback((mode: PosMode) => {
     dispatch({ type: 'changeMode', mode });
@@ -140,6 +140,13 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
 
   const requestConfirm = useCallback(() => {
     if (state.kind !== 'student_selected') return;
+
+    if (state.mode === 'payment') {
+      const amt = Number(state.paidAmountText || '0');
+      if (!state.paidAmountText || !Number.isFinite(amt) || amt <= 0) {
+        return;
+      }
+    }
 
     const activeOrderCount =
       state.mode === 'order'

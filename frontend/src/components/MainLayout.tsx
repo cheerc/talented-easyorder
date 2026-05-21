@@ -36,6 +36,8 @@ interface MainLayoutProps {
   picked: { displayName: string } | null;
   onCancelDialogConfirm: () => void;
   onCancelDialogCancel: () => void;
+  noOrderDialogOpen: boolean;
+  onNoOrderDialogClose: () => void;
   showDashboard: boolean;
   onCloseDashboard: () => void;
   children: React.ReactNode;
@@ -44,15 +46,16 @@ interface MainLayoutProps {
 export const MainLayout = React.memo(function MainLayout(props: MainLayoutProps) {
   const {
     tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate,
-    systemDate, queuedCount, failedSyncCount, conflictSyncCount, onDashboard,
+    queuedCount, failedSyncCount, conflictSyncCount, onDashboard,
     flashData, onDismissFlash, onUndo, undoCountdown,
     cancelDialogOpen, picked, onCancelDialogConfirm, onCancelDialogCancel,
+    noOrderDialogOpen, onNoOrderDialogClose,
     showDashboard, onCloseDashboard, children,
   } = props;
 
   return (
     <div className="app">
-      <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate} queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount} onDashboard={onDashboard} />
+      <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount} onDashboard={onDashboard} />
       {children}
       <ConfirmBanner flash={flashData} onDismiss={onDismissFlash} onUndo={onUndo} undoCountdown={undoCountdown} />
       <ConfirmDialog
@@ -64,6 +67,15 @@ export const MainLayout = React.memo(function MainLayout(props: MainLayoutProps)
         variant="danger"
         onConfirm={onCancelDialogConfirm}
         onCancel={onCancelDialogCancel}
+      />
+      <ConfirmDialog
+        open={noOrderDialogOpen}
+        title="此學生今日尚未訂便當"
+        message="學員今日尚未訂餐，無法執行取消動作。"
+        confirmLabel="確認"
+        cancelLabel="返回"
+        onConfirm={onNoOrderDialogClose}
+        onCancel={onNoOrderDialogClose}
       />
       {showDashboard && <TodayDashboard onClose={onCloseDashboard} />}
       <PwaInstallBanner />

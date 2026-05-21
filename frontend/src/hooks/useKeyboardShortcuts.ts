@@ -9,11 +9,13 @@ interface UseKeyboardShortcutsArgs {
   handleConfirm: () => void;
   cancelFlow: () => void;
   enterExpenseMode?: () => void;
+  setFocusZone?: (zone: string) => void;
+  isDialogOpen?: boolean;
 }
 
-export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStudentSelected, handleConfirm, cancelFlow, enterExpenseMode }: UseKeyboardShortcutsArgs) {
+export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStudentSelected, handleConfirm, cancelFlow, enterExpenseMode, setFocusZone, isDialogOpen }: UseKeyboardShortcutsArgs) {
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || isDialogOpen) return;
 
     const onKey = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
@@ -33,8 +35,11 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
         return;
       }
 
-      // Enter always works
+      // Enter always works (delegated to navigation shortcuts if student is selected to avoid double trigger)
       if (e.key === 'Enter') {
+        if (isStudentSelected) {
+          return;
+        }
         e.preventDefault();
         handleConfirm();
         return;
@@ -54,11 +59,12 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
         }
         e.preventDefault();
         changeMode(modeKey[key]);
+        setFocusZone?.('mode-' + modeKey[key]);
         return;
       }
 
-      // E — cancel order when student selected, no-op otherwise (idle expense entry is now a button)
-      if (key === 'e' && cancelOrder && isStudentSelected) {
+      // E — select the cancel order button when student selected, no-op otherwise
+      if (key === 'e' && isStudentSelected) {
         if (tag === 'INPUT') {
           const inputType = (target as HTMLInputElement).type;
           if (inputType === 'text' || inputType === 'search' || inputType === 'email' || inputType === 'password' || inputType === 'url' || inputType === 'tel') {
@@ -69,7 +75,7 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
           return;
         }
         e.preventDefault();
-        cancelOrder();
+        setFocusZone?.('btn-delete-order');
         return;
       }
 
@@ -93,5 +99,5 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [enabled, changeMode, cancelOrder, isStudentSelected, handleConfirm, cancelFlow, enterExpenseMode]);
+  }, [enabled, changeMode, cancelOrder, isStudentSelected, handleConfirm, cancelFlow, enterExpenseMode, setFocusZone, isDialogOpen]);
 }

@@ -15,22 +15,26 @@ describe('useKeyboardShortcuts', () => {
     cancelFlow = vi.fn();
   });
 
-  it('calls changeMode("order") when Q is pressed', () => {
-    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow }));
+  it('calls changeMode("order") and setFocusZone("mode-order") when Q is pressed', () => {
+    const setFocusZone = vi.fn();
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow, setFocusZone }));
 
     const event = new KeyboardEvent('keydown', { key: 'q', bubbles: true });
     window.dispatchEvent(event);
 
     expect(changeMode).toHaveBeenCalledWith('order');
+    expect(setFocusZone).toHaveBeenCalledWith('mode-order');
   });
 
-  it('calls changeMode("payment") when W is pressed', () => {
-    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow }));
+  it('calls changeMode("payment") and setFocusZone("mode-payment") when W is pressed', () => {
+    const setFocusZone = vi.fn();
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow, setFocusZone }));
 
     const event = new KeyboardEvent('keydown', { key: 'w', bubbles: true });
     window.dispatchEvent(event);
 
     expect(changeMode).toHaveBeenCalledWith('payment');
+    expect(setFocusZone).toHaveBeenCalledWith('mode-payment');
   });
 
   it('does nothing on E in idle (no cancelOrder or not student selected)', () => {
@@ -43,13 +47,15 @@ describe('useKeyboardShortcuts', () => {
     expect(cancelOrder).not.toHaveBeenCalled();
   });
 
-  it('calls cancelOrder on E when student selected', () => {
-    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, cancelOrder, isStudentSelected: true, handleConfirm, cancelFlow }));
+  it('calls setFocusZone with "btn-delete-order" on E when student selected', () => {
+    const setFocusZone = vi.fn();
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, cancelOrder, isStudentSelected: true, handleConfirm, cancelFlow, setFocusZone }));
 
     const event = new KeyboardEvent('keydown', { key: 'e', bubbles: true });
     window.dispatchEvent(event);
 
-    expect(cancelOrder).toHaveBeenCalledOnce();
+    expect(setFocusZone).toHaveBeenCalledWith('btn-delete-order');
+    expect(cancelOrder).not.toHaveBeenCalled();
   });
 
   it('does nothing on R (no-op everywhere)', () => {
@@ -62,13 +68,22 @@ describe('useKeyboardShortcuts', () => {
     expect(changeMode).not.toHaveBeenCalled();
   });
 
-  it('calls handleConfirm on Enter', () => {
-    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow }));
+  it('calls handleConfirm on Enter when student is NOT selected', () => {
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow, isStudentSelected: false }));
 
     const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
     window.dispatchEvent(event);
 
     expect(handleConfirm).toHaveBeenCalledOnce();
+  });
+
+  it('ignores Enter in useKeyboardShortcuts when student is selected', () => {
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow, isStudentSelected: true }));
+
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
+    window.dispatchEvent(event);
+
+    expect(handleConfirm).not.toHaveBeenCalled();
   });
 
   it('calls cancelFlow on Escape', () => {

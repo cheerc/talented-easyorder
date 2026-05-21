@@ -19,22 +19,25 @@ export const ActionBar = React.memo(function ActionBar({ mode, setMode, onConfir
   return (
     <div className="actionbar" role="group" aria-label="交易操作">
       <div className="modes modes-3" role="radiogroup" aria-label="交易類型" style={{ display: 'flex', gap: '8px' }}>
-        {opts.map(o => (
-          <button
-            key={o.id}
-            className={'mode ' + (mode === o.id ? 'mode-on' : '') + (focusZone === 'mode-' + o.id ? ' mode-focus' : '')}
-            onClick={() => setMode(o.id)}
-            role="radio"
-            aria-checked={mode === o.id}
-            style={{ flex: 1 }}
-          >
-            <span className="mode-key">{o.hint}</span>
-            <span className="mode-lbl">{o.label}</span>
-          </button>
-        ))}
+        {opts.map(o => {
+          const isModeOn = focusZone === 'mode-' + o.id || (mode === o.id && focusZone !== 'btn-delete-order');
+          return (
+            <button
+              key={o.id}
+              className={'mode ' + (isModeOn ? 'mode-on' : '') + (focusZone === 'mode-' + o.id ? ' mode-focus' : '')}
+              onClick={() => setMode(o.id)}
+              role="radio"
+              aria-checked={mode === o.id}
+              style={{ flex: 1 }}
+            >
+              <span className="mode-key">{o.hint}</span>
+              <span className="mode-lbl">{o.label}</span>
+            </button>
+          );
+        })}
         {onDeleteOrder && (
           <button
-            className={'mode ' + (focusZone === 'btn-delete-order' ? ' mode-focus' : '')}
+            className={'mode ' + (focusZone === 'btn-delete-order' ? 'mode-on mode-focus' : '')}
             onClick={onDeleteOrder}
             style={{ flex: 1 }}
           >

@@ -232,13 +232,18 @@ export default function App() {
   }, [state.kind, requestConfirm, confirmDuplicate, confirmExpenseAmount]);
 
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [noOrderDialogOpen, setNoOrderDialogOpen] = useState(false);
 
   const openCancelConfirm = useCallback(() => {
     if (!picked) return;
     const orderTx = allTx.find(t =>
       t.studentId === picked.studentId && t.businessDate === viewDate && t.type === 'order'
     );
-    if (orderTx) setCancelDialogOpen(true);
+    if (orderTx) {
+      setCancelDialogOpen(true);
+    } else {
+      setNoOrderDialogOpen(true);
+    }
   }, [picked, viewDate, allTx]);
 
   const handleDeleteOrder = useCallback(() => {
@@ -299,6 +304,15 @@ export default function App() {
   const isExpenseFlow = state.kind === 'expense_input' || state.kind === 'expense_direction'
     || state.kind === 'expense_reason' || state.kind === 'expense_other_note';
 
+  const selectedMode = state.kind === 'student_selected' ? state.mode : undefined;
+
+  // Synchronize focusZone with state mode when student selection state changes
+  useEffect(() => {
+    if (state.kind === 'student_selected') {
+      setFocusZone('mode-' + state.mode);
+    }
+  }, [state.kind, selectedMode]);
+
   // POS keyboard shortcuts — Q/W/E + Enter/Escape
   useKeyboardShortcuts({
     enabled: tab === 'pos' && !hasFlash && !isExpenseFlow,
@@ -308,6 +322,8 @@ export default function App() {
     handleConfirm,
     cancelFlow,
     enterExpenseMode,
+    setFocusZone,
+    isDialogOpen: cancelDialogOpen || noOrderDialogOpen,
   });
 
   const todayCount = tx.filter(t => t.type === 'order' && t.menuNameSnapshot === todayMenu.itemName && t.mealPrice === todayMenu.price).length;
@@ -389,6 +405,8 @@ export default function App() {
     picked, expenseProps, currentMode, hasFlash, focusZone, setFocusZone,
     changeMode: changeMode as (m: PosMode) => void,
     cancelFlow, handleConfirm, setSearchText, setSearchFocusKey,
+    cancelOrder: openCancelConfirm,
+    isDialogOpen: cancelDialogOpen || noOrderDialogOpen,
   });
 
   return (
@@ -407,6 +425,8 @@ export default function App() {
         cancelFlow();
       }}
       onCancelDialogCancel={() => setCancelDialogOpen(false)}
+      noOrderDialogOpen={noOrderDialogOpen}
+      onNoOrderDialogClose={() => setNoOrderDialogOpen(false)}
       showDashboard={showDashboard} onCloseDashboard={() => setShowDashboard(false)}
     >
       {tab === 'pos' && (
