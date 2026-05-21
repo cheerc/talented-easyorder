@@ -740,12 +740,18 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
         <>
           <div className="dup-warn" style={{ flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
             <div className="dup-warn-h">金額 ${Math.abs(amount)} — 選擇類型</div>
-            <div className="dup-warn-btns" style={{ marginTop: '12px', gap: '16px' }}>
-              <button className="btn-confirm" style={selIdx === 0 ? { outline: '2px solid var(--accent)', outlineOffset: '2px' } : undefined} onClick={() => onDirectionSelect('expense')}>
-                支出
+            <div className="dup-warn-btns" style={{ marginTop: '12px', gap: '16px', display: 'flex', width: '100%' }}>
+              <button
+                className={'mode ' + (selIdx === 0 ? 'mode-on mode-focus' : '')}
+                onClick={() => onDirectionSelect('expense')}
+              >
+                <span className="mode-lbl">支出</span>
               </button>
-              <button className="btn-confirm" style={selIdx === 1 ? { outline: '2px solid var(--accent)', outlineOffset: '2px' } : undefined} onClick={() => onDirectionSelect('income')}>
-                收入
+              <button
+                className={'mode ' + (selIdx === 1 ? 'mode-on mode-focus' : '')}
+                onClick={() => onDirectionSelect('income')}
+              >
+                <span className="mode-lbl">收入</span>
               </button>
             </div>
           </div>
@@ -759,10 +765,14 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
         <>
           <div className="dup-warn" style={{ flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
             <div className="dup-warn-h">{amount ? `$${Math.abs(amount)} — 選擇原因` : '選擇原因'}</div>
-            <div className="dup-warn-btns" style={{ marginTop: '12px', gap: '16px' }}>
+            <div className="dup-warn-btns" style={{ marginTop: '12px', gap: '16px', display: 'flex', width: '100%' }}>
               {EXPENSE_QUICK_OPTIONS.map((opt, i) => (
-                <button key={opt} className="btn-confirm" style={selIdx === i ? { outline: '2px solid var(--accent)', outlineOffset: '2px' } : undefined} onClick={() => onReasonSelect(opt === '其他原因' ? '支出其他' : '付便當錢')}>
-                  {opt}
+                <button
+                  key={opt}
+                  className={'mode ' + (selIdx === i ? 'mode-on mode-focus' : '')}
+                  onClick={() => onReasonSelect(opt === '其他原因' ? '支出其他' : '付便當錢')}
+                >
+                  <span className="mode-lbl">{opt}</span>
                 </button>
               ))}
             </div>
