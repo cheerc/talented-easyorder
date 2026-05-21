@@ -41,9 +41,9 @@ interface TopBarProps {
 }
 export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate, queuedCount = 0, failedSyncCount = 0, conflictSyncCount = 0, onDashboard }: TopBarProps) {
   const tabs = [
-    { id: 'pos',     label: '櫃台', hint: 'F1' },
-    { id: 'report',  label: '今日帳', hint: 'F2' },
-    { id: 'admin',   label: '今日設定', hint: 'F3' },
+    { id: 'pos', label: '櫃台', hint: 'F1' },
+    { id: 'report', label: '今日帳', hint: 'F2' },
+    { id: 'admin', label: '今日設定', hint: 'F3' },
     { id: 'vendors', label: '供應商', hint: 'F4' },
     { id: 'history', label: '歷史', hint: 'F5' },
   ];
@@ -275,7 +275,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
           </div>
           {onViewHistory && (
             <button className="ghost-btn" style={{ marginTop: '6px', fontSize: '11px', padding: '2px 10px' }}
-                    onClick={onViewHistory}>
+              onClick={onViewHistory}>
               檢視歷史
             </button>
           )}
@@ -286,7 +286,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
           )}
           {onDeleteOrder && (
             <button className="ghost-btn" style={{ marginTop: '6px', fontSize: '11px', padding: '2px 10px', color: 'var(--c-warn)' }}
-                    onClick={onDeleteOrder}>
+              onClick={onDeleteOrder}>
               取消訂餐
             </button>
           )}
@@ -334,7 +334,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                     </label>
                     <label>
                       <span>價格</span>
-                    <NumericInput
+                      <NumericInput
                         className="adm-input mono"
                         aria-label="價格"
                         value={priceOverride}
@@ -348,7 +348,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                 )}
               </div>
             )}
-{/* §3.1: removed "將產生欠款" warning per UX spec */}
+            {/* §3.1: removed "將產生欠款" warning per UX spec */}
           </div>
 
           {/* Right Side: Payment Panel */}
@@ -374,7 +374,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                 <span className="pay-input-suffix">元</span>
               </div>
 
-{/* §3.3: removed quick amount buttons from payment mode */}
+              {/* §3.3: removed quick amount buttons from payment mode */}
             </div>
           ) : (
             <div className="cancel-empty">
@@ -398,8 +398,8 @@ interface ActionBarProps {
 }
 export const ActionBar = React.memo(function ActionBar({ mode, setMode, onConfirm, onCancel, onDeleteOrder, focusZone }: ActionBarProps) {
   const opts = [
-    { id: 'order' as PosMode,   label: '訂便當',       hint: 'Q' },
-    { id: 'payment' as PosMode, label: '繳費',         hint: 'W' },
+    { id: 'order' as PosMode, label: '訂便當', hint: 'Q' },
+    { id: 'payment' as PosMode, label: '繳費', hint: 'W' },
   ];
 
   return (
@@ -593,10 +593,10 @@ interface RecentStripProps {
 export const RecentStrip = React.memo(function RecentStrip({ recent, onItemClick }: RecentStripProps) {
   return (
     <div className="recent">
-      <div className="recent-head">最近 12 筆</div>
+      <div className="recent-head">最近 20 筆</div>
       <div className="recent-list">
         {recent.length === 0 && <div className="recent-empty">尚無交易</div>}
-        {recent.slice(0, 12).map(r => (
+        {recent.slice(0, 20).map(r => (
           <div key={r.uid} className="recent-row" onClick={() => onItemClick?.(r.studentId)} style={onItemClick ? { cursor: 'pointer' } : undefined}>
             <span className="recent-time mono">{r.createdAt.slice(11, 19)}</span>
             <span className="recent-id mono">{r.studentId === '__cashier__' ? '' : r.studentId}</span>
@@ -606,10 +606,10 @@ export const RecentStrip = React.memo(function RecentStrip({ recent, onItemClick
             <span className={'recent-type ' + (r.type === 'expense'
               ? (r.paidAmount > 0 ? 'type-income' : 'type-expense')
               : 'type-' + r.type)}>{
-              r.type === 'order' ? '訂' :
-              r.type === 'payment' ? '繳' :
-              r.type === 'expense' ? (r.paidAmount > 0 ? '收' : '支') : ''
-            }</span>
+                r.type === 'order' ? '訂' :
+                  r.type === 'payment' ? '繳' :
+                    r.type === 'expense' ? (r.paidAmount > 0 ? '收' : '支') : ''
+              }</span>
             <span className={'recent-amt mono ' + (
               r.type === 'order'
                 ? (r.afterBalance >= 0 ? 'pos' : 'neg')
@@ -621,16 +621,16 @@ export const RecentStrip = React.memo(function RecentStrip({ recent, onItemClick
             )}>
               {r.type === 'order'
                 ? (r.afterBalance >= 0
-                    ? `已繳費 ${fmt(r.mealPrice)}`
-                    : `待繳費 ${fmt(Math.abs(r.afterBalance))}`)
+                  ? `已繳費 ${fmt(r.mealPrice)}`
+                  : `待繳費 ${fmt(Math.abs(r.afterBalance))}`)
                 : r.type === 'payment'
                   ? (r.afterBalance >= 0
-                      ? `+${fmt(r.paidAmount)}`
-                      : `待繳費 ${fmt(Math.abs(r.afterBalance))}`)
+                    ? `+${fmt(r.paidAmount)}`
+                    : `待繳費 ${fmt(Math.abs(r.afterBalance))}`)
                   : r.type === 'expense'
                     ? (r.note
-                        ? <><span className="recent-amt-lbl">{(r.note.slice(0, 4) + '　　　').slice(0, 4)}</span><span className="recent-amt-val">{r.paidAmount > 0 ? '+' : '−'}{fmt(r.paidAmount > 0 ? r.paidAmount : r.mealPrice)}</span></>
-                        : <span className="recent-amt-val">{r.paidAmount > 0 ? '+' : '−'}{fmt(r.paidAmount > 0 ? r.paidAmount : r.mealPrice)}</span>)
+                      ? <><span className="recent-amt-lbl">{(r.note.slice(0, 4) + '　　　').slice(0, 4)}</span><span className="recent-amt-val">{r.paidAmount > 0 ? '+' : '−'}{fmt(r.paidAmount > 0 ? r.paidAmount : r.mealPrice)}</span></>
+                      : <span className="recent-amt-val">{r.paidAmount > 0 ? '+' : '−'}{fmt(r.paidAmount > 0 ? r.paidAmount : r.mealPrice)}</span>)
                     : <>{sign(r.amount)}{fmt(r.amount)}</>
               }</span>
           </div>
@@ -741,7 +741,7 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
             />
             <span className="pay-input-suffix">元</span>
           </div>
-{/* §3.3: removed quick amount buttons from expense panel */}
+          {/* §3.3: removed quick amount buttons from expense panel */}
         </>
       )}
 
