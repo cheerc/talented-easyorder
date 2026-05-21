@@ -5,6 +5,10 @@ import type { TodayMenu } from '../domain/menu';
 import type { PosMode } from '../domain/posFlow';
 import { NumericInput } from './ui/NumericInput';
 
+interface KeyboardEventWithFlag extends KeyboardEvent { __handledByExpensePanel?: boolean }
+
+interface KeyboardEventWithFlag extends KeyboardEvent { __handledByExpensePanel?: boolean }
+
 // eslint-disable-next-line react-refresh/only-export-components
 export const fmt = (n: number) => new Intl.NumberFormat('zh-TW').format(Math.abs(n));
 // eslint-disable-next-line react-refresh/only-export-components
@@ -665,7 +669,7 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
     const optionCount = kind === 'expense_direction' ? 2 : EXPENSE_QUICK_OPTIONS.length;
 
     const onKey = (e: KeyboardEvent) => {
-      if ((e as any).__handledByExpensePanel) return;
+      if ((e as KeyboardEventWithFlag).__handledByExpensePanel) return;
 
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
@@ -675,7 +679,7 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
         setSelIdx(idx => Math.min(optionCount - 1, idx + 1));
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        (e as any).__handledByExpensePanel = true;
+        (e as KeyboardEventWithFlag).__handledByExpensePanel = true;
         if (kind === 'expense_direction') {
           onDirectionSelect(selIdx === 0 ? 'expense' : 'income');
         } else {
@@ -686,7 +690,7 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
-        (e as any).__handledByExpensePanel = true;
+        (e as KeyboardEventWithFlag).__handledByExpensePanel = true;
         onCancel();
       }
     };
@@ -710,12 +714,12 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
               placeholder="輸入金額"
               autoFocus
               onKeyDown={e => {
-                if ((e.nativeEvent as any).__handledByExpensePanel) return;
+                if ((e.nativeEvent as KeyboardEventWithFlag).__handledByExpensePanel) return;
 
                 if (e.key === 'Enter') {
                   e.preventDefault();
                   e.nativeEvent.stopImmediatePropagation();
-                  (e.nativeEvent as any).__handledByExpensePanel = true;
+                  (e.nativeEvent as KeyboardEventWithFlag).__handledByExpensePanel = true;
                   const n = Number(amountText);
                   if (Number.isFinite(n) && n > 0) {
                     onAmountConfirm(n);
@@ -725,7 +729,7 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
                   e.preventDefault();
                   e.stopPropagation();
                   e.nativeEvent.stopImmediatePropagation();
-                  (e.nativeEvent as any).__handledByExpensePanel = true;
+                  (e.nativeEvent as KeyboardEventWithFlag).__handledByExpensePanel = true;
                   onCancel();
                 }
               }}
@@ -782,14 +786,14 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
             placeholder="請輸入備註"
             autoFocus
             onKeyDown={e => {
-              if ((e.nativeEvent as any).__handledByExpensePanel) return;
+              if ((e.nativeEvent as KeyboardEventWithFlag).__handledByExpensePanel) return;
 
               if (e.key === 'Enter') {
                 e.preventDefault();
                 const v = (e.target as HTMLInputElement).value.trim();
                 if (v) {
                   e.nativeEvent.stopImmediatePropagation();
-                  (e.nativeEvent as any).__handledByExpensePanel = true;
+                  (e.nativeEvent as KeyboardEventWithFlag).__handledByExpensePanel = true;
                   onNoteConfirm(v);
                 }
               }
@@ -797,7 +801,7 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
                 e.preventDefault();
                 e.stopPropagation();
                 e.nativeEvent.stopImmediatePropagation();
-                (e.nativeEvent as any).__handledByExpensePanel = true;
+                (e.nativeEvent as KeyboardEventWithFlag).__handledByExpensePanel = true;
                 onCancel();
               }
             }}

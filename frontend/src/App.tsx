@@ -329,9 +329,10 @@ export default function App() {
   // Synchronize focusZone with state mode when student selection state changes
   useEffect(() => {
     if (state.kind === 'student_selected') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFocusZone('mode-' + state.mode);
     }
-  }, [state.kind, selectedMode]);
+  }, [state.kind, selectedMode, state.mode]);
 
   // POS keyboard shortcuts — Q/W/E + Enter/Escape
   useKeyboardShortcuts({
@@ -373,6 +374,7 @@ export default function App() {
     if (state.kind === 'idle' && tab === 'pos') {
       (document.activeElement as HTMLElement)?.blur();
       setSearchText('');
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearchFocusKey(0);
     } else if (state.kind !== 'idle') {
       setSearchFocusKey(0);
