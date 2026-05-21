@@ -138,7 +138,7 @@ function reduceExpenseDirection(state: PosFlowState & { kind: 'expense_direction
       }
       return { kind: 'expense_reason', amount: state.amount, direction: event.direction };
     case 'cancel':
-      return { kind: 'idle', searchText: '' };
+      return { kind: 'expense_input', amountText: String(state.amount) };
     default:
       return state;
   }
@@ -156,7 +156,7 @@ function reduceExpenseReason(state: PosFlowState & { kind: 'expense_reason' }, e
       return { kind: 'expense_other_note', amount: state.amount, direction: 'expense' };
     }
     case 'cancel':
-      return { kind: 'idle', searchText: '' };
+      return { kind: 'expense_direction', amount: state.amount };
     default:
       return state;
   }
@@ -169,7 +169,10 @@ function reduceExpenseOtherNote(state: PosFlowState & { kind: 'expense_other_not
     case 'expenseConfirmNote':
       return { kind: 'committing', mode: 'expense', source: 'manual', paidAmountText: '', expenseAmount: state.amount, expenseNote: event.note, expenseDirection: state.direction };
     case 'cancel':
-      return { kind: 'idle', searchText: '' };
+      if (state.direction === 'income') {
+        return { kind: 'expense_direction', amount: state.amount };
+      }
+      return { kind: 'expense_reason', amount: state.amount, direction: state.direction };
     default:
       return state;
   }

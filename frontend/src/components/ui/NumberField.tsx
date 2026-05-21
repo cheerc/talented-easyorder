@@ -1,5 +1,6 @@
 import React from 'react';
 import { Field } from './Field';
+import { NumericInput } from './NumericInput';
 import './NumberField.css';
 
 interface NumberFieldProps {
@@ -35,12 +36,11 @@ export const NumberField = React.memo(function NumberField({
     <Field label={label} htmlFor={inputId} help={help} error={error} className={className}>
       <div className="num-input-wrap">
         {prefix && <span className="num-prefix">{prefix}</span>}
-        <input
+        <NumericInput
           id={inputId}
           className="field-input num-input"
-          type="number"
           value={value}
-          onChange={e => onChange?.(Number(e.target.value))}
+          onChange={v => onChange?.(Number(v))}
           placeholder={placeholder}
           disabled={disabled}
           aria-describedby={error ? `${inputId}-error` : help ? `${inputId}-help` : undefined}

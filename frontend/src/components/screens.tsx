@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { NumericInput } from './ui/NumericInput';
 import { fmt } from "./pos-components";
 import type { LedgerTransaction } from '../domain/ledger';
 import type { TodayMenu } from '../domain/menu';
@@ -277,12 +278,8 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
   const handleSaveOpeningCash = () => {
     const n = Number(openingCashDraft);
     if (!Number.isFinite(n) || n < 0) return;
-    if (n === openingCash) return; // no-op when same amount
-    if (hasCashSession) {
-      setShowOpeningCashConfirm(true);
-    } else {
-      doSaveOpeningCash();
-    }
+    if (n === openingCash) return;
+    setShowOpeningCashConfirm(true);
   };
 
   return (
@@ -296,7 +293,7 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
           </div>
           <div className="adm-row">
             <label>單價 (元)</label>
-            <input className="adm-input mono" type="number" value={price} onChange={e => { const v = e.target.value; if (v === '' || /^\d*$/.test(v)) setPrice(Number(v)); }} onKeyDown={e => { if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault(); }} />
+            <NumericInput className="adm-input mono" aria-label="便當單價" value={price} onChange={v => setPrice(Number(v))} />
           </div>
           <div className="adm-row">
             <label>供應商</label>
@@ -312,7 +309,7 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
             <div className="card-h">每日開帳金額</div>
             <div className="adm-row">
               <label>開帳金額 (元)</label>
-              <input className="adm-input mono" type="number" value={openingCashDraft} onChange={e => { const v = e.target.value; if (v === '' || /^\d*$/.test(v)) setOpeningCashDraft(v); }} onKeyDown={e => { if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault(); }} disabled={isClosed} />
+              <NumericInput className="adm-input mono" aria-label="開帳金額" value={openingCashDraft} onChange={setOpeningCashDraft} disabled={isClosed} />
             </div>
             <div className="adm-foot">
               <button className="btn-confirm wide" onClick={handleSaveOpeningCash} disabled={isClosed}>
@@ -355,12 +352,14 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
       />
       <ConfirmDialog
         open={showOpeningCashConfirm}
-        title="修改開帳金額"
-        message="修改開帳金額會影響今日所有帳務計算，確定要繼續嗎？"
+        title={hasCashSession ? "修改開帳金額" : "設定開帳金額"}
+        message={hasCashSession
+          ? "修改開帳金額會影響今日所有帳務計算，確定要繼續嗎？"
+          : `確定要將今日開帳金額設為 $${Number(openingCashDraft).toLocaleString()} 嗎？`}
         onConfirm={doSaveOpeningCash}
         onCancel={() => setShowOpeningCashConfirm(false)}
-        confirmLabel="確認修改"
-        variant="danger"
+        confirmLabel={hasCashSession ? "確認修改" : "確認設定"}
+        variant={hasCashSession ? "danger" : "primary"}
       />
     </div>
   );

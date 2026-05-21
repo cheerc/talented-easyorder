@@ -181,6 +181,7 @@ export default function App() {
     if (suggestions.length > 0) choose(suggestions[activeIdx]);
   };
 
+  const [searchFocusKey, setSearchFocusKey] = useState(0);
   const [flashKey, setFlashKey] = useState(0);
   const [undoCountdown, setUndoCountdown] = useState(0);
   const lastCommittedTxIdRef = useRef<string | null>(null);
@@ -312,6 +313,7 @@ export default function App() {
       // Digit key auto-focus search box in idle
       if (/^[0-9]$/.test(e.key) && tab === 'pos' && !picked && !expenseProps) {
         setSearchText(e.key);
+        setSearchFocusKey(prev => prev + 1);
         e.preventDefault();
       }
     };
@@ -394,7 +396,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [tab, picked, hasFlash, currentMode, focusZone, handleConfirm, cancelFlow, changeMode]);
 
-  const todayCount = tx.filter(t => t.type === 'order').length;
+  const todayCount = tx.filter(t => t.type === 'order' && t.menuNameSnapshot === todayMenu.itemName && t.mealPrice === todayMenu.price).length;
   const queuedCount = useMemo(() => allTx.filter(t => t.syncStatus === 'queued').length, [allTx]);
   const failedSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'failed').length, [allTx]);
   const conflictSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'conflict').length, [allTx]);
@@ -504,7 +506,7 @@ export default function App() {
                       activeIdx={activeIdx}
                       onPick={choose}
                       onHover={setActiveIdx}
-                      focusKey={0}
+                      focusKey={searchFocusKey}
                       disabled={hasFlash}
                     />
                     <IdleHero
