@@ -118,7 +118,7 @@
     3.  **CSS 樣式調整**：
         *   在 `index.css` 中將 `.recent-row` 的第 5 欄寬度從 `auto` 改為固定 `140px`。
         *   將 `.recent-amt` 設為 `display: flex; justify-content: space-between; gap: 4px;`。
-        *   新增 `.recent-amt-lbl { text-align: left; flex: 1; color: var(--ink-3); font-size: 11px; }` 與 `.recent-amt-val { text-align: right; }`。這能保證不論備註長短，備註的起始起點皆能完美垂直對齊。
+        *   新增 `.recent-amt-lbl { text-align: left; flex: 1; color: var(--ink-3); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }` 與 `.recent-amt-val { text-align: right; flex-shrink: 0; }`。這能保證不論備註長短，備註的起始起點皆能完美垂直對齊，且過長備註會以 `…` 截斷，不會壓縮右側金額空間。
 
 ---
 
@@ -133,20 +133,31 @@
     2.  確保 `canClose` 邏輯包含 `note.trim().length > 0`。當不滿足條件時，按鈕維持 disabled 並套用半透明與 `cursor: not-allowed`。
 
 ### 4.2 今日帳本表格列對齊調整 (移除 react-window 後的修復)
+> PR #50 已完成 react-window 移除與標準分頁表格實作。本節專注修復移除後產生的欄位對齊與排版問題。
+
 *   **問題分析**：
     *   `LedgerGroupedTable` 的表頭與學員群組列使用了 7 欄配置（`gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto'`），但交易細節列（`rpt-detail-row`）在 JSX 中卻只有 6 個子元素，缺失了對應「姓名」的第 3 欄，導致整行欄位向左偏移，價格出現在姓名列，操作按鈕出現在金額列，整個表格排版錯亂。
     *   細節列帶有 CSS 的 `padding-left: 48px`，與表頭和群組列的 `padding: 12px 18px` (左邊距 18px) 不一致，造成欄位起點無法對齊。
 *   **解決方案**：
     1.  **補齊細節列欄位**：在 `LedgerGroupedTable.tsx` 的細節列 JSX 中，於第 3 個位置插入一個空白的 `<div className="dim"></div>` 佔位符。
     2.  **加入餘額顯示**：在第 6 個位置渲染該交易發生後的餘額 `t.afterBalance`（對齊表頭的「目前餘額」）。
-    3.  **整合備註與操作**：在第 7 個位置（狀態/操作）使用 Flex 橫向排版容器，將「交易備註 (`t.note`)」與「編輯/刪除按鈕」包裝在一起：
+    3.  **整合備註與操作**：在第 7 個位置（狀態/操作）使用 `.rpt-detail-actions` CSS 類別的 Flex 橫向排版容器，將「交易備註 (`t.note`)」與「編輯/刪除按鈕」包裝在一起：
         ```tsx
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', width: '100%' }}>
-          <span className="dim italic" style={{ fontSize: '12px' }}>{t.note}</span>
-          <div className="rpt-row-actions" style={{ marginLeft: 'auto' }}>
+        <div className="rpt-detail-actions">
+          <span className="dim italic rpt-detail-note">{t.note}</span>
+          <div className="rpt-row-actions">
             {/* 編輯 / 刪除按鈕 */}
           </div>
         </div>
+        ```
+        對應 CSS（新增至 `index.css`）：
+        ```css
+        .rpt-detail-actions {
+          display: flex; align-items: center;
+          justify-content: space-between; gap: 8px; width: 100%;
+        }
+        .rpt-detail-note { font-size: 12px; }
+        .rpt-detail-actions .rpt-row-actions { margin-left: auto; }
         ```
     4.  **對齊內距與樹狀指標修復**：
         *   將細節列的 inline style 補上 `padding: '0 18px'`，使其與表頭的邊距完美一致，確保各欄位對齊。
@@ -169,3 +180,9 @@
             *   訊息：`"修改開帳金額會影響今日所有帳務計算，確定要繼續嗎？"`
             *   確認按鈕文字：`"確認修改"`
             *   Variant: `"danger"`
+
+---
+
+## 5. 驗證計劃 (Verification Plan)
+
+詳見 [Batch 5-6 Verification Checklist](./2026-05-21-batch5-6-verification-checklist.md)。
