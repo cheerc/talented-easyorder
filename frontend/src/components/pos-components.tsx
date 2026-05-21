@@ -621,17 +621,17 @@ export const RecentStrip = React.memo(function RecentStrip({ recent, onItemClick
             )}>
               {r.type === 'order'
                 ? (r.afterBalance >= 0
-                  ? `已繳費 ${fmt(r.mealPrice)}`
-                  : `待繳費 ${fmt(Math.abs(r.afterBalance))}`)
+                  ? <><span className="recent-amt-lbl">已繳費</span><span className="recent-amt-val">{fmt(r.mealPrice)}</span></>
+                  : <><span className="recent-amt-lbl">待繳費</span><span className="recent-amt-val">{fmt(Math.abs(r.afterBalance))}</span></>)
                 : r.type === 'payment'
                   ? (r.afterBalance >= 0
-                    ? `+${fmt(r.paidAmount)}`
-                    : `待繳費 ${fmt(Math.abs(r.afterBalance))}`)
+                    ? <span className="recent-amt-val">+{fmt(r.paidAmount)}</span>
+                    : <><span className="recent-amt-lbl">待繳費</span><span className="recent-amt-val">{fmt(Math.abs(r.afterBalance))}</span></>)
                   : r.type === 'expense'
                     ? (r.note
                       ? <><span className="recent-amt-lbl">{(r.note.slice(0, 4) + '　　　').slice(0, 4)}</span><span className="recent-amt-val">{r.paidAmount > 0 ? '+' : '−'}{fmt(r.paidAmount > 0 ? r.paidAmount : r.mealPrice)}</span></>
                       : <span className="recent-amt-val">{r.paidAmount > 0 ? '+' : '−'}{fmt(r.paidAmount > 0 ? r.paidAmount : r.mealPrice)}</span>)
-                    : <>{sign(r.amount)}{fmt(r.amount)}</>
+                    : <><span className="recent-amt-val">{sign(r.amount)}{fmt(r.amount)}</span></>
               }</span>
           </div>
         ))}

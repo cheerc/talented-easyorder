@@ -1259,8 +1259,8 @@ input::-webkit-inner-spin-button {
 
 .recent-row {
   display: grid;
-  grid-template-columns: 64px 40px 1fr auto 140px;
-  gap: 10px;
+  grid-template-columns: 64px 36px minmax(48px, 1fr) auto minmax(100px, 140px);
+  gap: 8px;
   align-items: center;
   padding: 8px 0;
   border-bottom: 1px solid var(--line-2);
@@ -1283,6 +1283,10 @@ input::-webkit-inner-spin-button {
 
 .recent-name {
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .recent-type {
@@ -1341,8 +1345,7 @@ input::-webkit-inner-spin-button {
 .recent-amt-lbl {
   text-align: left;
   flex: 1;
-  color: var(--ink-3);
-  font-size: 11px;
+  color: var(--ink-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
