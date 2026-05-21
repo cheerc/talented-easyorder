@@ -92,34 +92,59 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
     return paginateGroups(flatRows, Math.min(page, totalPages), pageSize);
   }, [flatRows, page, pageSize, totalPages, totalGroups]);
 
-  const incomeRows = expenseRows.filter(t => t.paidAmount > 0);
-  const expenseOnlyRows = expenseRows.filter(t => t.paidAmount === 0);
+  const incomeRows = useMemo(() => {
+    return expenseRows.filter(t => (Number(t.paidAmount) || 0) > 0);
+  }, [expenseRows]);
+
+  const expenseOnlyRows = useMemo(() => {
+    return expenseRows.filter(t => !((Number(t.paidAmount) || 0) > 0));
+  }, [expenseRows]);
+
+
 
   const expenseSection = expenseRows.length > 0 ? (
-    <div style={{ marginBottom: '12px', borderRadius: 'var(--r)', overflow: 'hidden' }}>
-      <div style={{ background: 'var(--ink)', color: '#fff', padding: '8px 12px', fontSize: '13px', fontWeight: 600 }}>櫃台 收入/支出（{expenseRows.length} 筆）</div>
-      {incomeRows.map(t => (
-        <div key={t.transactionId} className="rpt-detail-row counter-row" style={{ display: 'grid', gridTemplateColumns: '80px 60px 1fr 1fr auto', height: DETAIL_ROW_HEIGHT, alignItems: 'center', borderBottom: '1px solid var(--line-1)', padding: '4px 0', background: 'rgba(34,197,94,0.04)' }}>
-          <div className="mono dim">{t.createdAt.slice(11, 19)}</div>
-          <div className="pos" style={{ fontWeight: 600 }}>收入</div>
-          <div className="r mono pos">+${fmt(t.paidAmount)}</div>
-          <div className="dim italic" style={{ fontSize: '12px' }}>{t.note}</div>
-          <div className="rpt-row-actions">
-            {dateStatus !== 'closed' && <button className="rpt-mini-btn rpt-mini-del" onClick={() => onDeleteClick(t)}>刪除</button>}
+    <div style={{ marginBottom: '12px', borderRadius: 'var(--r)' }}>
+      <div style={{ background: 'var(--ink)', color: '#fff', padding: '8px 12px', fontSize: '13px', fontWeight: 600 }}>櫃台 收支明細（{expenseRows.length} 筆）</div>
+      {incomeRows.map(t => {
+        const paidAmount = Number(t.paidAmount) || 0;
+        const timeStr = t.createdAt ? t.createdAt.slice(11, 19) : '';
+        return (
+          <div key={t.transactionId} className="rpt-detail-row counter-row" style={{ display: 'grid', gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto', height: DETAIL_ROW_HEIGHT, alignItems: 'center', borderBottom: '1px solid var(--line-1)', padding: '0 18px', background: 'rgba(34,197,94,0.04)' }}>
+            <div className="mono dim">{timeStr}</div>
+            <div className="dim">櫃台</div>
+            <div className="pos" style={{ fontWeight: 600 }}>收入</div>
+            <div className="r dim">-</div>
+            <div className="r mono pos">+${fmt(paidAmount)}</div>
+            <div className="r dim">-</div>
+            <div className="rpt-detail-actions">
+              <span className="dim italic rpt-detail-note">{t.note}</span>
+              <div className="rpt-row-actions">
+                {dateStatus !== 'closed' && <button className="rpt-mini-btn rpt-mini-del" onClick={() => onDeleteClick(t)}>刪除</button>}
+              </div>
+            </div>
           </div>
-        </div>
-      ))}
-      {expenseOnlyRows.map(t => (
-        <div key={t.transactionId} className="rpt-detail-row counter-row" style={{ display: 'grid', gridTemplateColumns: '80px 60px 1fr 1fr auto', height: DETAIL_ROW_HEIGHT, alignItems: 'center', borderBottom: '1px solid var(--line-1)', padding: '4px 0', background: 'rgba(239,68,68,0.04)' }}>
-          <div className="mono dim">{t.createdAt.slice(11, 19)}</div>
-          <div className="neg" style={{ fontWeight: 600 }}>支出</div>
-          <div className="r mono neg">−${fmt(t.mealPrice)}</div>
-          <div className="dim italic" style={{ fontSize: '12px' }}>{t.note}</div>
-          <div className="rpt-row-actions">
-            {dateStatus !== 'closed' && <button className="rpt-mini-btn rpt-mini-del" onClick={() => onDeleteClick(t)}>刪除</button>}
+        );
+      })}
+      {expenseOnlyRows.map(t => {
+        const mealPrice = Number(t.mealPrice) || 0;
+        const timeStr = t.createdAt ? t.createdAt.slice(11, 19) : '';
+        return (
+          <div key={t.transactionId} className="rpt-detail-row counter-row" style={{ display: 'grid', gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto', height: DETAIL_ROW_HEIGHT, alignItems: 'center', borderBottom: '1px solid var(--line-1)', padding: '0 18px', background: 'rgba(239,68,68,0.04)' }}>
+            <div className="mono dim">{timeStr}</div>
+            <div className="dim">櫃台</div>
+            <div className="neg" style={{ fontWeight: 600 }}>支出</div>
+            <div className="r mono neg">−${fmt(mealPrice)}</div>
+            <div className="r dim">-</div>
+            <div className="r dim">-</div>
+            <div className="rpt-detail-actions">
+              <span className="dim italic rpt-detail-note">{t.note}</span>
+              <div className="rpt-row-actions">
+                {dateStatus !== 'closed' && <button className="rpt-mini-btn rpt-mini-del" onClick={() => onDeleteClick(t)}>刪除</button>}
+              </div>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   ) : null;
 

@@ -1527,6 +1527,7 @@ input::-webkit-inner-spin-button {
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .rpt-th,
