@@ -9,11 +9,12 @@ import { createLedgerTransaction, calculateTransactionAmount } from '../domain/l
 import { createLedgerAuditEvent } from '../domain/ledgerAudit';
 import { validateCashClose, createDailySettlement, reopenBusinessDate as reopenSettlement } from '../domain/cashClose';
 import { calculateLedgerTotals } from '../domain/ledgerReport';
-import { CASHIER_SENTINEL } from '../domain/ledger';
+import { CASHIER_SENTINEL, recalculateStudentBalances } from '../domain/ledger';
 import type { PosTransactionDraft } from '../domain/posTransaction';
 import type { DailyCashSession } from '../domain/cashSession';
 import { createDailyCashSession } from '../domain/cashSession';
 import { validatePersistedState, migrateState } from '../storage/posStateValidator';
+import { migratePersistedState } from '../storage/migration';
 import {
   INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS
 } from '../mocks/initialData';
@@ -321,33 +322,18 @@ export const usePosStore = create<PosState>()(
           createdAt: now,
         });
 
-        // Recalculate all student balances by filtering out deleted tx and recomputing
         const remainingTx = state.transactions.filter(t => t.transactionId !== id);
-        const balanceMap = new Map<string, number>();
-        for (const s of state.students) {
-          balanceMap.set(s.studentId, 0);
-        }
 
-        const sorted = [...remainingTx]
-          .filter(t => t.studentId !== CASHIER_SENTINEL)
-          .sort((a, b) => {
-            if (a.businessDate !== b.businessDate) return a.businessDate.localeCompare(b.businessDate);
-            if (a.createdAt !== b.createdAt) return a.createdAt.localeCompare(b.createdAt);
-            return a.transactionId.localeCompare(b.transactionId);
-          });
+        const { students: newStudents, transactions: newStudentTx } = recalculateStudentBalances(
+          state.students,
+          remainingTx
+        );
 
-        for (const t of sorted) {
-          const prev = balanceMap.get(t.studentId) ?? 0;
-          const newBal = Math.round(prev + t.amount);
-          balanceMap.set(t.studentId, newBal);
-        }
+        const cashierTx = remainingTx.filter(t => t.studentId === CASHIER_SENTINEL);
 
-        const newStudents = state.students.map(s => ({
-          ...s,
-          currentBalance: balanceMap.get(s.studentId) ?? s.currentBalance,
-        }));
-
-        const newTransactions = state.transactions.filter(t => t.transactionId !== id);
+        const newTransactions = [...newStudentTx, ...cashierTx].sort(
+          (a, b) => b.createdAt.localeCompare(a.createdAt)
+        );
 
         set({
           transactions: newTransactions,
@@ -541,79 +527,7 @@ export const usePosStore = create<PosState>()(
           }
         };
       },
-      migrate: (persistedState) => {
-        const state = persistedState as Record<string, unknown>;
-        if (!state) return state as PosState;
-
-        // v2: add audit state fields
-        if (!('auditEvents' in state)) state.auditEvents = [];
-        if (!('dailySettlements' in state)) state.dailySettlements = [];
-        if (!('businessDateStatuses' in state)) state.businessDateStatuses = {};
-
-        // Normalize old-shape students {id, name, balance} → StudentAccount
-        const rawStudents = state.students as Array<Record<string, unknown>> | undefined;
-        if (rawStudents && rawStudents.length > 0 && 'id' in rawStudents[0] && !('studentId' in rawStudents[0])) {
-          state.students = rawStudents.map((s: Record<string, unknown>) => ({
-            studentId: s.id as string,
-            displayName: (s.name as string) || '',
-            status: 'active',
-            currentBalance: (s.balance as number) ?? 0,
-            aliases: [],
-            faceEnrollmentStatus: 'none',
-            createdAt: '2026-01-10T08:00:00Z',
-            updatedAt: '2026-01-10T08:00:00Z',
-            revision: 1,
-          }));
-        }
-
-        // Normalize old-shape transactions → LedgerTransaction
-        const rawTx = state.transactions as Array<Record<string, unknown>> | undefined;
-        if (rawTx && rawTx.length > 0) {
-          state.transactions = rawTx.map((t: Record<string, unknown>) => {
-            const hasId = 'id' in t && !('transactionId' in t);
-            const hasSyncStatus = 'syncStatus' in t;
-            return {
-              ...t,
-              transactionId: hasId ? t.id as string : (t.transactionId as string),
-              syncStatus: hasSyncStatus ? t.syncStatus : 'local',
-            };
-          });
-        }
-
-        // Normalize old-shape vendors {id, name, phone, note} → Vendor
-        const rawVendors = state.vendors as Array<Record<string, unknown>> | undefined;
-        if (rawVendors && rawVendors.length > 0 && 'id' in rawVendors[0] && !('vendorId' in rawVendors[0])) {
-          state.vendors = rawVendors.map((v: Record<string, unknown>) => ({
-            vendorId: v.id as string,
-            name: (v.name as string) || '',
-            phone: (v.phone as string) || '',
-            note: (v.note as string) || '',
-            status: 'active' as const,
-            createdAt: '2026-01-01T00:00:00Z',
-            updatedAt: '2026-01-01T00:00:00Z',
-            revision: 1,
-          }));
-        }
-
-        // Normalize old-shape todayMenu {date, name, price, vendor} → TodayMenu
-        const rawMenu = state.todayMenu as Record<string, unknown> | undefined;
-        if (rawMenu && 'date' in rawMenu && !('businessDate' in rawMenu)) {
-          const vendorName = (rawMenu.vendor as string) || '';
-          const oldVendors = (state.vendors as Vendor[]) || [];
-          const matchedVendor = oldVendors.find(v => v.name === vendorName);
-          state.todayMenu = {
-            businessDate: rawMenu.date as string,
-            itemName: (rawMenu.name as string) || '',
-            price: (rawMenu.price as number) ?? 0,
-            vendorId: matchedVendor?.vendorId || 'v1',
-            vendorNameSnapshot: vendorName,
-            updatedAt: '2026-05-07T07:00:00Z',
-            revision: 1,
-          };
-        }
-
-        return state as PosState;
-      },
+      migrate: migratePersistedState,
     }
   )
 );

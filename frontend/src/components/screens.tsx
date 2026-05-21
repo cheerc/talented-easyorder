@@ -6,6 +6,7 @@ import type { TodayMenu } from '../domain/menu';
 import type { StudentAccount } from '../domain/student';
 import type { Vendor } from '../domain/menu';
 import { ConfirmDialog } from './ui/ConfirmDialog';
+import { EditTransactionModal } from './EditTransactionModal';
 import {
   createLedgerDateRange,
   calculateLedgerTotals,
@@ -41,6 +42,7 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
   const [customEnd, setCustomEnd] = useState(viewDate);
   const [expandedSids, setExpandedSids] = useState<Set<string>>(new Set());
   const [showReopen, setShowReopen] = useState(false);
+  const [editingTx, setEditingTx] = useState<LedgerTransaction | null>(null);
   const [studentSearch, setStudentSearch] = useState(studentFilter || '');
 
   const transactions = usePosStore((s) => s.transactions);
@@ -119,16 +121,7 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
   };
 
   const handleEditClick = (t: LedgerTransaction) => {
-    const mealPriceStr = window.prompt('mealPrice（支出金額）', String(t.mealPrice));
-    if (mealPriceStr === null) return;
-    const paidAmountStr = window.prompt('paidAmount（實收金額）', String(t.paidAmount));
-    if (paidAmountStr === null) return;
-    const note = window.prompt('備註', t.note);
-    if (note === null) return;
-    const mealPrice = Number(mealPriceStr);
-    const paidAmount = Number(paidAmountStr);
-    if (!Number.isFinite(mealPrice) || !Number.isFinite(paidAmount)) return;
-    usePosStore.getState().editTransaction(t.transactionId, { mealPrice, paidAmount, note });
+    setEditingTx(t);
   };
 
   const handleDeleteClick = (t: LedgerTransaction) => {
@@ -227,6 +220,18 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
           onCancel={() => setShowReopen(false)}
         />
       )}
+
+      <EditTransactionModal
+        open={editingTx !== null}
+        transaction={editingTx}
+        onClose={() => setEditingTx(null)}
+        onSave={(updates) => {
+          if (editingTx) {
+            usePosStore.getState().editTransaction(editingTx.transactionId, updates);
+          }
+          setEditingTx(null);
+        }}
+      />
     </div>
   );
 });
@@ -243,8 +248,10 @@ interface AdminScreenProps {
   hasCashSession: boolean;
   onOpeningCashChange: (amount: number) => void;
   onUpdateOpeningCash: (amount: number) => void;
+  tweaks: { theme: string; fontSize: string };
+  setTweak: (k: string, v: string) => void;
 }
-export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetData, openingCash, dateStatus, hasCashSession, onOpeningCashChange, onUpdateOpeningCash }: AdminScreenProps) {
+export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetData, openingCash, dateStatus, hasCashSession, onOpeningCashChange, onUpdateOpeningCash, tweaks, setTweak }: AdminScreenProps) {
   const [name, setName] = useState(todayMenu.itemName);
   const [price, setPrice] = useState(todayMenu.price);
   const [vendor, setVendor] = useState(todayMenu.vendorNameSnapshot);
@@ -316,6 +323,44 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
                 儲存開帳金額
               </button>
               {cashSavedMsg && <span style={{ marginLeft: '8px', color: 'var(--accent-ink)', fontSize: '13px' }}>{cashSavedMsg}</span>}
+            </div>
+          </div>
+
+          <div style={{ marginTop: '32px', borderTop: '1px solid var(--line)', paddingTop: '20px' }}>
+            <div className="card-h">顯示設定</div>
+            <div className="adm-row">
+              <label>主題</label>
+              <select className="adm-input" value={tweaks.theme} onChange={e => setTweak('theme', e.target.value)}>
+                <option value="light">亮色</option>
+                <option value="dark">深色</option>
+                <option value="warm">暖色</option>
+              </select>
+            </div>
+            <div className="adm-row">
+              <label>字體大小</label>
+              <select className="adm-input" value={tweaks.fontSize} onChange={e => setTweak('fontSize', e.target.value)}>
+                <option value="md">普通</option>
+                <option value="lg">大字</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ marginTop: '32px', borderTop: '1px solid var(--line)', paddingTop: '20px' }}>
+            <div className="card-h">顯示設定</div>
+            <div className="adm-row">
+              <label>主題</label>
+              <select className="adm-input" value={tweaks.theme} onChange={e => setTweak('theme', e.target.value)}>
+                <option value="light">亮色</option>
+                <option value="dark">深色</option>
+                <option value="warm">暖色</option>
+              </select>
+            </div>
+            <div className="adm-row">
+              <label>字體大小</label>
+              <select className="adm-input" value={tweaks.fontSize} onChange={e => setTweak('fontSize', e.target.value)}>
+                <option value="md">普通</option>
+                <option value="lg">大字</option>
+              </select>
             </div>
           </div>
 

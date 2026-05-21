@@ -7,15 +7,13 @@ import { countActiveOrdersForStudent } from './domain/ledger';
 import { loadCrashDraft, clearCrashDraft } from './storage/crashDraft';
 import { checkStorageHealth } from './storage/storageHealth';
 
-import { TopBar, SearchBox, CustomerCard, ActionBar, IdleHero, ConfirmBanner, RecentStrip, DuplicateWarningBanner, MidnightBanner, ExpensePanel } from './components/pos-components';
-import { ConfirmDialog } from './components/ui/ConfirmDialog';
+import { SearchBox, CustomerCard, ActionBar, IdleHero, RecentStrip, DuplicateWarningBanner, MidnightBanner, ExpensePanel } from './components/pos-components';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useAppNavigationShortcuts } from './hooks/useAppNavigationShortcuts';
 import { ReportScreen, AdminScreen, VendorsScreen, HistoryScreen } from './components/screens';
 import { getOpeningCash } from './domain/cashClose';
-import { TodayDashboard } from './components/TodayDashboard';
-import { TweaksPanel, TweakSection, TweakRadio } from './components/tweaks-panel';
+import { MainLayout } from './components/MainLayout';
 import { ErrorBoundary, AppCrashPage, SectionError } from './components/ErrorBoundary';
-import { PwaInstallBanner } from './components/PwaInstallBanner';
 
 export default function App() {
   const students = usePosStore((s) => s.students);
@@ -296,36 +294,12 @@ export default function App() {
     prevKindRef.current = state.kind;
   }, [state.kind]);
 
-  // Keyboard shortcuts for tab navigation (F-keys only) + number key auto-focus
-  useEffect(() => {
-    const onGlobalKey = (e: KeyboardEvent) => {
-      if (e.key === 'F1') { e.preventDefault(); setTab('pos'); return; }
-      if (e.key === 'F2') { e.preventDefault(); setTab('report'); return; }
-      if (e.key === 'F3') { e.preventDefault(); setTab('admin'); return; }
-      if (e.key === 'F4') { e.preventDefault(); setTab('vendors'); return; }
-      if (e.key === 'F5') { e.preventDefault(); setTab('history'); return; }
-      if (e.key === 'F6') { e.preventDefault(); setShowDashboard((v: boolean) => !v); return; }
-
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-        return;
-      }
-
-      // Digit key auto-focus search box in idle
-      if (/^[0-9]$/.test(e.key) && tab === 'pos' && !picked && !expenseProps) {
-        setSearchText(e.key);
-        setSearchFocusKey(prev => prev + 1);
-        e.preventDefault();
-      }
-    };
-    window.addEventListener('keydown', onGlobalKey);
-    return () => window.removeEventListener('keydown', onGlobalKey);
-  }, [tab, picked, state.kind, setSearchText]);
-
-  // POS keyboard shortcuts — Q/W/E + Enter/Escape + arrow navigation
   const hasFlash = state.kind === 'success';
   const isStudentSelected = picked !== null && (state.kind === 'student_selected' || state.kind === 'duplicate_warning' || state.kind === 'committing');
   const isExpenseFlow = state.kind === 'expense_input' || state.kind === 'expense_direction'
     || state.kind === 'expense_reason' || state.kind === 'expense_other_note';
+
+  // POS keyboard shortcuts — Q/W/E + Enter/Escape
   useKeyboardShortcuts({
     enabled: tab === 'pos' && !hasFlash && !isExpenseFlow,
     changeMode,
@@ -335,66 +309,6 @@ export default function App() {
     cancelFlow,
     enterExpenseMode,
   });
-
-  // Arrow key navigation for focus zones
-  useEffect(() => {
-    if (tab !== 'pos' || hasFlash || !picked) return;
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented) return;
-
-      // Enter: handle focus zone confirm
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        if (focusZone === 'btn-cancel') cancelFlow();
-        else if (focusZone === 'btn-confirm') handleConfirm();
-        else if (focusZone.startsWith('mode-')) {
-          const m = focusZone.replace('mode-', '') as PosMode;
-          if (m === currentMode) {
-            handleConfirm();
-          } else {
-            changeMode(m);
-            setFocusZone('mode-' + m);
-          }
-        }
-        return;
-      }
-
-      // Escape: cancel flow
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        cancelFlow();
-        return;
-      }
-
-      const modes = ['mode-order', 'mode-payment'];
-      const i = modes.indexOf(focusZone);
-      if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        if (focusZone === 'btn-confirm') setFocusZone('btn-cancel');
-        else if (focusZone === 'btn-cancel') setFocusZone('btn-cancel');
-        else if (i > 0) { const m = modes[i - 1].replace('mode-', ''); setFocusZone(modes[i - 1]); changeMode(m as PosMode); }
-      } else if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        if (focusZone === 'btn-cancel') setFocusZone('btn-confirm');
-        else if (focusZone === 'btn-confirm') setFocusZone('btn-confirm');
-        else if (i >= 0 && i < 3) {
-          const next = i + 1;
-          const m = modes[next].replace('mode-', '');
-          setFocusZone(modes[next]);
-          changeMode(m as PosMode);
-        }
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        if (i >= 0) setFocusZone('btn-confirm');
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        if (focusZone === 'btn-confirm' || focusZone === 'btn-cancel') setFocusZone('mode-' + currentMode);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [tab, picked, hasFlash, currentMode, focusZone, handleConfirm, cancelFlow, changeMode]);
 
   const todayCount = tx.filter(t => t.type === 'order' && t.menuNameSnapshot === todayMenu.itemName && t.mealPrice === todayMenu.price).length;
   const queuedCount = useMemo(() => allTx.filter(t => t.syncStatus === 'queued').length, [allTx]);
@@ -457,11 +371,32 @@ export default function App() {
     };
   }, [isSuccess, picked, currentMode, currentPaidAmount, todayMenu, flashKey, priceOverride, allTx]);
 
+  // Keyboard shortcuts: F-keys + digit auto-focus + arrow navigation
+  useAppNavigationShortcuts({
+    tab, setTab, setShowDashboard,
+    picked, expenseProps, currentMode, hasFlash, focusZone, setFocusZone,
+    changeMode: changeMode as (m: PosMode) => void,
+    cancelFlow, handleConfirm, setSearchText, setSearchFocusKey,
+  });
+
   return (
     <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => console.error('[ErrorBoundary]', e)}>
-    <div className="app">
-      <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate} queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount} onDashboard={() => setShowDashboard(true)} />
-
+    <MainLayout
+      tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync}
+      todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate}
+      queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount}
+      onDashboard={() => setShowDashboard(true)}
+      flashData={flashData} onDismissFlash={dismissFlash}
+      onUndo={handleUndo} undoCountdown={undoCountdown}
+      cancelDialogOpen={cancelDialogOpen} picked={picked}
+      onCancelDialogConfirm={() => {
+        handleDeleteOrder();
+        setCancelDialogOpen(false);
+        cancelFlow();
+      }}
+      onCancelDialogCancel={() => setCancelDialogOpen(false)}
+      showDashboard={showDashboard} onCloseDashboard={() => setShowDashboard(false)}
+    >
       {tab === 'pos' && (
         <div className="main">
           <div className="col-main">
@@ -605,6 +540,7 @@ export default function App() {
           hasCashSession={!!cashSessions[viewDate]}
           onOpeningCashChange={(amount) => openCashSession({ businessDate: viewDate, openingCash: amount, operatorId: 'admin', openedAt: new Date().toISOString() })}
           onUpdateOpeningCash={(amount) => updateOpeningCash(viewDate, amount)}
+          tweaks={tweaks} setTweak={setTweak}
         />
         </ErrorBoundary>
       )}
@@ -620,44 +556,7 @@ export default function App() {
       )}
 
 
-      <ConfirmBanner flash={flashData} onDismiss={dismissFlash} onUndo={handleUndo} undoCountdown={undoCountdown} />
-
-      <ConfirmDialog
-        open={cancelDialogOpen}
-        title="取消訂餐"
-        message={`確定要取消 ${picked?.displayName ?? ''} 的訂餐嗎？`}
-        confirmLabel="確認取消"
-        cancelLabel="返回"
-        variant="danger"
-        onConfirm={() => {
-          handleDeleteOrder();
-          setCancelDialogOpen(false);
-          cancelFlow();
-        }}
-        onCancel={() => setCancelDialogOpen(false)}
-      />
-
-      <TweaksPanel title="Tweaks">
-        <TweakSection label="顯示">
-          <TweakRadio label="主題" value={tweaks.theme}
-            onChange={v => setTweak('theme', v)}
-            options={[
-              { value: 'light', label: '亮色' },
-              { value: 'dark', label: '深色' },
-              { value: 'warm', label: '暖色' },
-            ]} />
-          <TweakRadio label="字體大小" value={tweaks.fontSize}
-            onChange={v => setTweak('fontSize', v)}
-            options={[
-              { value: 'md', label: '普通' },
-              { value: 'lg', label: '大字' },
-            ]} />
-        </TweakSection>
-      </TweaksPanel>
-
-      {showDashboard && <TodayDashboard onClose={() => setShowDashboard(false)} />}
-      <PwaInstallBanner />
-    </div>
+    </MainLayout>
     </ErrorBoundary>
   );
 }
