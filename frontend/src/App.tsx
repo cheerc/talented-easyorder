@@ -483,13 +483,13 @@ export default function App() {
                       onHover={setActiveIdx}
                       focusKey={searchFocusKey}
                       disabled={hasFlash}
+                      onEnterExpense={enterExpenseMode}
                     />
                     <IdleHero
                       todayMenu={todayMenu}
                       todayCount={todayCount}
                       vendorPhone={vendors.find(v => v.name === todayMenu.vendorNameSnapshot)?.phone}
-                      onEnterExpense={enterExpenseMode}
-                      queueHint={`全鍵盤操作 · 平均處理 4.2 秒/人`} />
+                    />
                   </>
                 )}
               </>

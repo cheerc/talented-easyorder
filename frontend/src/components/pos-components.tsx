@@ -173,41 +173,50 @@ interface SearchBoxProps {
   onHover: (idx: number) => void;
   focusKey: number;
   disabled: boolean;
+  onEnterExpense?: () => void;
 }
-export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubmit, onEsc, suggestions, activeIdx, onPick, onHover, focusKey, disabled }: SearchBoxProps) {
+export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubmit, onEsc, suggestions, activeIdx, onPick, onHover, focusKey, disabled, onEnterExpense }: SearchBoxProps) {
   const ref = useRef(null);
   useEffect(() => { if (focusKey > 0 && !disabled) ref.current?.focus(); }, [focusKey, disabled]);
 
   return (
     <div className="searchwrap">
       <label className="search-label">輸入編號或姓名</label>
-      <div className="search">
-        <span className="search-prefix">#</span>
-        <input
-          ref={ref}
-          className="search-input"
-          aria-label="輸入學員編號或姓名"
-          value={value}
-          disabled={disabled}
-          autoComplete="off"
-          spellCheck="false"
-          placeholder="例如 015 或 周映彤"
-          onChange={e => onChange(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') {
-              e.preventDefault(); e.stopPropagation();
-              if (value.trim() === '') {
-                e.currentTarget.blur();
-              } else {
-                onSubmit();
+      <div className="search-row">
+        <div className="search">
+          <span className="search-prefix">#</span>
+          <input
+            ref={ref}
+            className="search-input"
+            aria-label="輸入學員編號或姓名"
+            value={value}
+            disabled={disabled}
+            autoComplete="off"
+            spellCheck="false"
+            placeholder="例如 015 或 周映彤"
+            onChange={e => onChange(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault(); e.stopPropagation();
+                if (value.trim() === '') {
+                  e.currentTarget.blur();
+                } else {
+                  onSubmit();
+                }
               }
-            }
-            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); e.currentTarget.blur(); onEsc(); }
-            else if (e.key === 'ArrowDown') { e.preventDefault(); onHover(Math.min(activeIdx + 1, suggestions.length - 1)); }
-            else if (e.key === 'ArrowUp') { e.preventDefault(); onHover(Math.max(activeIdx - 1, 0)); }
-          }}
-        />
-        <span className="search-enter"><span className="kbd kbd-lg">↵</span></span>
+              else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); e.currentTarget.blur(); onEsc(); }
+              else if (e.key === 'ArrowDown') { e.preventDefault(); onHover(Math.min(activeIdx + 1, suggestions.length - 1)); }
+              else if (e.key === 'ArrowUp') { e.preventDefault(); onHover(Math.max(activeIdx - 1, 0)); }
+            }}
+          />
+          <span className="search-enter"><span className="kbd kbd-lg">↵</span></span>
+        </div>
+        {onEnterExpense && (
+          <button className="mode" onClick={onEnterExpense} style={{ flex: 'none', width: 'auto', padding: '14px 28px' }}>
+            <span className="mode-key">A</span>
+            <span className="mode-lbl" style={{ fontSize: '18px' }}>收入/支出</span>
+          </button>
+        )}
       </div>
       {suggestions.length > 0 && value && (
         <div className="suggest" role="listbox" aria-label="學員建議清單">
@@ -455,7 +464,7 @@ interface IdleHeroProps {
   queueHint?: string;
   onEnterExpense?: () => void;
 }
-export const IdleHero = React.memo(function IdleHero({ todayMenu, todayCount, vendorPhone, queueHint, onEnterExpense }: IdleHeroProps) {
+export const IdleHero = React.memo(function IdleHero({ todayMenu, todayCount, vendorPhone }: IdleHeroProps) {
   return (
     <div className="idle">
       <div className="idle-menu">
@@ -471,24 +480,6 @@ export const IdleHero = React.memo(function IdleHero({ todayMenu, todayCount, ve
           </div>
           <div>已訂 <span className="mono">{todayCount}</span> 份</div>
         </div>
-      </div>
-      <div className="idle-hint">
-        <div className="idle-hint-lbl">下一位</div>
-        <div className="idle-hint-txt">輸入編號 → 按 <span className="kbd">↵</span></div>
-        <div style={{ marginTop: '8px' }}>
-          <button
-            className="mode"
-            onClick={onEnterExpense}
-            style={{ flex: 'none', width: 'auto' }}
-          >
-            <span className="mode-key">A</span>
-            <span className="mode-lbl">新增 收入/支出</span>
-          </button>
-        </div>
-        <div className="idle-keys" style={{ marginTop: '8px' }}>
-          <span className="kbd">Q</span> 訂餐 · <span className="kbd">W</span> 繳費 · <span className="kbd">↵</span> 確認 · <span className="kbd">Esc</span> 返回
-        </div>
-        {queueHint && <div className="idle-queue">{queueHint}</div>}
       </div>
     </div>
   );

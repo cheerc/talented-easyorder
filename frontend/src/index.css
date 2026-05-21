@@ -269,7 +269,14 @@ body[data-fs="lg"] {
   font-weight: 500;
 }
 
+.search-row {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
 .search {
+  flex: 1;
   display: flex;
   align-items: center;
   background: var(--panel);
@@ -278,6 +285,7 @@ body[data-fs="lg"] {
   padding: 0 18px;
   transition: border-color .15s, box-shadow .15s;
 }
+
 
 .search:focus-within {
   border-color: var(--ink);
