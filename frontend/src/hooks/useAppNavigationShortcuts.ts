@@ -24,7 +24,14 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
   // Global keyboard shortcuts: F-keys + digit key auto-focus
   useEffect(() => {
     const onGlobalKey = (e: KeyboardEvent) => {
-      if (e.key === 'F1') { e.preventDefault(); setTab('pos'); return; }
+      if (e.key === 'F1') {
+        e.preventDefault();
+        (document.activeElement as HTMLElement)?.blur();
+        setSearchText('');
+        setSearchFocusKey(() => 0);
+        setTab('pos');
+        return;
+      }
       if (e.key === 'F2') { e.preventDefault(); setTab('report'); return; }
       if (e.key === 'F3') { e.preventDefault(); setTab('admin'); return; }
       if (e.key === 'F4') { e.preventDefault(); setTab('vendors'); return; }

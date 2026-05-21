@@ -30,7 +30,7 @@ export type PosFlowEvent =
   | { type: 'expenseSelectDirection'; direction: ExpenseDirection }
   | { type: 'expenseSelectReason'; reason: '付便當錢' | '支出其他' | '收入其他' }
   | { type: 'expenseUpdateNote'; note: string }
-  | { type: 'expenseConfirmNote' }
+  | { type: 'expenseConfirmNote'; note: string }
   | { type: 'commitStarted' }
   | { type: 'commitSucceeded'; transactionId: string; syncStatus: 'queued' | 'synced' | 'failed' }
   | { type: 'commitFailed'; message: string; retryable: boolean }
@@ -100,7 +100,7 @@ function reduceStudentSelected(state: PosFlowState & { kind: 'student_selected' 
     case 'selectStudent':
       return { kind: 'student_selected', studentId: event.studentId, mode: event.hasOrderToday ? 'payment' : 'order', source: event.source, paidAmountText: '', searchTextHint: event.searchTextHint ?? '' };
     case 'cancel':
-      return { kind: 'idle', searchText: state.searchTextHint };
+      return { kind: 'idle', searchText: '' };
     default:
       return state;
   }
@@ -111,7 +111,7 @@ function reduceDuplicateWarning(state: PosFlowState & { kind: 'duplicate_warning
     case 'confirmDuplicate':
       return { kind: 'committing', studentId: state.studentId, mode: 'order', source: state.source, paidAmountText: state.paidAmountText };
     case 'cancel':
-      return { kind: 'idle', searchText: state.searchTextHint };
+      return { kind: 'idle', searchText: '' };
     default:
       return state;
   }

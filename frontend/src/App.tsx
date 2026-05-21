@@ -323,13 +323,25 @@ export default function App() {
     document.body.setAttribute('data-theme', tweaks.theme);
   }, [tweaks]);
 
+  // 任何時候回到 idle 介面，或切換回櫃台且為 idle 時，都要離開焦點，並清空搜尋內容
+  // 並且在處於非 idle 狀態時，提前將 searchFocusKey 重置為 0，避免回到 idle 時 SearchBox 自動聚焦
+  useEffect(() => {
+    if (state.kind === 'idle' && tab === 'pos') {
+      (document.activeElement as HTMLElement)?.blur();
+      setSearchText('');
+      setSearchFocusKey(0);
+    } else if (state.kind !== 'idle') {
+      setSearchFocusKey(0);
+    }
+  }, [state.kind, tab, setSearchText]);
+
   // Derived expense props for ExpensePanel — type-narrowed, no `as` cast
   const expenseProps = (() => {
     if (state.kind === 'expense_input') {
-      return { kind: state.kind as const, amountText: state.amountText, amount: 0 };
+      return { kind: 'expense_input' as const, amountText: state.amountText, amount: 0 };
     }
     if (state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note') {
-      return { kind: state.kind as const, amountText: '', amount: state.amount };
+      return { kind: state.kind, amountText: '', amount: state.amount };
     }
     return null;
   })();
