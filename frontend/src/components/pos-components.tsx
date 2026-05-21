@@ -474,11 +474,12 @@ export const IdleHero = React.memo(function IdleHero({ todayMenu, todayCount, ve
         <div className="idle-hint-txt">輸入編號 → 按 <span className="kbd">↵</span></div>
         <div style={{ marginTop: '8px' }}>
           <button
-            className="btn-confirm"
+            className="mode"
             onClick={onEnterExpense}
-            style={{ fontSize: '14px', padding: '8px 20px' }}
+            style={{ flex: 'none', width: 'auto' }}
           >
-            新增 收入/支出 (A)
+            <span className="mode-key">A</span>
+            <span className="mode-lbl">新增 收入/支出</span>
           </button>
         </div>
         <div className="idle-keys" style={{ marginTop: '8px' }}>
@@ -589,10 +590,10 @@ interface RecentStripProps {
 export const RecentStrip = React.memo(function RecentStrip({ recent, onItemClick }: RecentStripProps) {
   return (
     <div className="recent">
-      <div className="recent-head">最近 5 筆</div>
+      <div className="recent-head">最近 12 筆</div>
       <div className="recent-list">
         {recent.length === 0 && <div className="recent-empty">尚無交易</div>}
-        {recent.slice(0, 5).map(r => (
+        {recent.slice(0, 12).map(r => (
           <div key={r.uid} className="recent-row" onClick={() => onItemClick?.(r.studentId)} style={onItemClick ? { cursor: 'pointer' } : undefined}>
             <span className="recent-time mono">{r.createdAt.slice(11, 19)}</span>
             <span className="recent-id mono">{r.studentId === '__cashier__' ? '' : r.studentId}</span>
@@ -625,8 +626,8 @@ export const RecentStrip = React.memo(function RecentStrip({ recent, onItemClick
                       : `待繳費 ${fmt(Math.abs(r.afterBalance))}`)
                   : r.type === 'expense'
                     ? (r.note
-                        ? `${(r.note.slice(0, 4) + '　　　').slice(0, 4)} ${r.paidAmount > 0 ? '+' : '−'}${fmt(r.paidAmount > 0 ? r.paidAmount : r.mealPrice)}`
-                        : `${r.paidAmount > 0 ? '+' : '−'}${fmt(r.paidAmount > 0 ? r.paidAmount : r.mealPrice)}`)
+                        ? <><span className="recent-amt-lbl">{(r.note.slice(0, 4) + '　　　').slice(0, 4)}</span><span className="recent-amt-val">{r.paidAmount > 0 ? '+' : '−'}{fmt(r.paidAmount > 0 ? r.paidAmount : r.mealPrice)}</span></>
+                        : <span className="recent-amt-val">{r.paidAmount > 0 ? '+' : '−'}{fmt(r.paidAmount > 0 ? r.paidAmount : r.mealPrice)}</span>)
                     : <>{sign(r.amount)}{fmt(r.amount)}</>
               }</span>
           </div>

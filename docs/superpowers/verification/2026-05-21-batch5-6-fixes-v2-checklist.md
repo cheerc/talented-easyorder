@@ -6,6 +6,33 @@
 - [x] t3 `npx vitest run` — 48 files, 385 tests PASS
 - [x] t4 `npm run build` — PASS
 
+## R1 Rework (PR #51 review findings)
+
+### §3.1 價格修改區域 + 便當統計過濾
+- [x] App.tsx todayCount: 加入 `menuNameSnapshot` + `mealPrice` 過濾
+- [x] index.css: 加入 `.price-override`（border-top dashed 分隔 + 間距）
+- [x] index.css: 加入 `.price-override-fields`（flex gap: 12px, 淺色虛線卡片）
+
+### §3.2 RecentStrip 容量
+- [x] `slice(0,5)` → `slice(0,12)`
+- [x] 標題 "最近 5 筆" → "最近 12 筆"
+
+### §1.2 IdleHero 按鈕 CSS
+- [x] 按鈕改用 `.mode` class（與 ActionBar Q/W/E 統一）
+- [x] `<span className="mode-key">A</span>` + `<span className="mode-lbl">新增 收入/支出</span>`
+- [x] `style={{ flex: 'none', width: 'auto' }}`
+
+### §3.4 RecentStrip expense 分欄
+- [x] expense 有備註: `recent-amt-lbl`（備註）+ `recent-amt-val`（金額）分欄結構
+- [x] expense 無備註: 僅 `recent-amt-val`
+- [x] CSS: `.recent-row` grid 第 5 欄 140px 固定
+- [x] CSS: `.recent-amt` flexbox `justify-content: space-between`
+- [x] CSS: `.recent-amt-lbl` 左對齊、overflow ellipsis、color ink-3
+- [x] CSS: `.recent-amt-val` 右對齊、flex-shrink: 0
+
+### §4 CSS 重複
+- [x] index.css: 移除重複的 `.rpt-detail-actions` block
+
 ## §1.1 搜尋框自動聚焦
 - [x] 初始載入：搜尋框不自動聚焦
 - [x] 按下數字鍵：自動填入數字 + 聚焦搜尋框

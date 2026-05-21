@@ -396,7 +396,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [tab, picked, hasFlash, currentMode, focusZone, handleConfirm, cancelFlow, changeMode]);
 
-  const todayCount = tx.filter(t => t.type === 'order').length;
+  const todayCount = tx.filter(t => t.type === 'order' && t.menuNameSnapshot === todayMenu.itemName && t.mealPrice === todayMenu.price).length;
   const queuedCount = useMemo(() => allTx.filter(t => t.syncStatus === 'queued').length, [allTx]);
   const failedSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'failed').length, [allTx]);
   const conflictSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'conflict').length, [allTx]);
