@@ -214,7 +214,7 @@ export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubm
         {onEnterExpense && (
           <button className="mode" onClick={onEnterExpense} style={{ flex: 'none', width: 'auto', padding: '14px 28px' }}>
             <span className="mode-key">A</span>
-            <span className="mode-lbl" style={{ fontSize: '18px' }}>收入/支出</span>
+            <span className="mode-lbl" style={{ fontSize: '22px' }}>新增櫃台收支</span>
           </button>
         )}
       </div>
