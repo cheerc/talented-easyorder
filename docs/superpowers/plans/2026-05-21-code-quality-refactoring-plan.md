@@ -1,3 +1,35 @@
+---
+required_reads:
+  - docs/superpowers/reviews/2026-05-21-code-quality-review.md
+  - frontend/src/store/posStore.ts
+  - frontend/src/domain/ledger.ts
+  - frontend/src/App.tsx
+  - frontend/src/hooks/usePosFlow.ts
+  - frontend/src/domain/posTransaction.ts
+  - frontend/src/components/screens.tsx
+  - frontend/src/components/pos-components.tsx
+  - frontend/src/components/tweaks-panel.tsx
+  - frontend/src/components/ui/NumberField.tsx
+  - frontend/src/storage/posStateValidator.ts
+complexity: complex+
+---
+
+---
+required_reads:
+  - docs/superpowers/reviews/2026-05-21-code-quality-review.md
+  - frontend/src/store/posStore.ts
+  - frontend/src/domain/ledger.ts
+  - frontend/src/App.tsx
+  - frontend/src/hooks/usePosFlow.ts
+  - frontend/src/domain/posTransaction.ts
+  - frontend/src/components/screens.tsx
+  - frontend/src/components/pos-components.tsx
+  - frontend/src/components/tweaks-panel.tsx
+  - frontend/src/components/ui/NumberField.tsx
+  - frontend/src/storage/posStateValidator.ts
+complexity: complex+
+---
+
 # talented-easyorder 程式碼品質與重構執行計畫書
 **日期**：2026-05-21  
 **計畫書作者**：Antigravity AI  
