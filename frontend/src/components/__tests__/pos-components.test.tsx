@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
-import { RecentStrip } from '../pos-components';
+import { RecentStrip, ExpensePanel } from '../pos-components';
 import type { LedgerTransaction } from '../../domain/ledger';
 
 describe('RecentStrip', () => {
@@ -16,7 +16,10 @@ describe('RecentStrip', () => {
     note: '',
     afterBalance: 10,
     createdAt: '2026-05-17T12:00:00.000Z',
-    createdBy: 'test',
+    menuNameSnapshot: '預設菜單',
+    vendorNameSnapshot: '預設廠商',
+    sourceDevice: 'pc' as const,
+    revision: 1,
     syncStatus: 'local' as const,
     uid: '0-tx-1',
     ...overrides,
@@ -64,5 +67,71 @@ describe('RecentStrip', () => {
     const idSpan = container.querySelector('.recent-id');
     expect(idSpan?.textContent).toBe('');
     expect(container.textContent).toContain('櫃台');
+  });
+});
+
+describe('ExpensePanel', () => {
+  it('stops propagation of Escape key on note input', () => {
+    const onCancel = vi.fn();
+    const { container } = render(
+      <ExpensePanel
+        kind="expense_other_note"
+        amountText=""
+        amount={100}
+        onAmountChange={() => {}}
+        onAmountConfirm={() => {}}
+        onDirectionSelect={() => {}}
+        onReasonSelect={() => {}}
+        onNoteChange={() => {}}
+        onNoteConfirm={() => {}}
+        onCancel={onCancel}
+      />
+    );
+
+    const input = container.querySelector('input');
+    expect(input).not.toBeNull();
+
+    const windowListener = vi.fn();
+    window.addEventListener('keydown', windowListener);
+
+    const escEvent = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+    input!.dispatchEvent(escEvent);
+
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(windowListener).not.toHaveBeenCalled();
+
+    window.removeEventListener('keydown', windowListener);
+  });
+
+  it('stops propagation of Escape key on amount input', () => {
+    const onCancel = vi.fn();
+    const { container } = render(
+      <ExpensePanel
+        kind="expense_input"
+        amountText="100"
+        amount={0}
+        onAmountChange={() => {}}
+        onAmountConfirm={() => {}}
+        onDirectionSelect={() => {}}
+        onReasonSelect={() => {}}
+        onNoteChange={() => {}}
+        onNoteConfirm={() => {}}
+        onCancel={onCancel}
+      />
+    );
+
+    const input = container.querySelector('input');
+    expect(input).not.toBeNull();
+
+    const windowListener = vi.fn();
+    window.addEventListener('keydown', windowListener);
+
+    const escEvent = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
+    input!.dispatchEvent(escEvent);
+
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(windowListener).not.toHaveBeenCalled();
+
+    window.removeEventListener('keydown', windowListener);
   });
 });
