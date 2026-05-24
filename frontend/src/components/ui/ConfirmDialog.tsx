@@ -31,7 +31,7 @@ export const ConfirmDialog = React.memo(function ConfirmDialog({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        e.nativeEvent?.stopImmediatePropagation?.();
+        e.stopImmediatePropagation();
         onConfirm();
       }
     };

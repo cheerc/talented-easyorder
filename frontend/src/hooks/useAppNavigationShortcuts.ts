@@ -62,6 +62,8 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
 
+      if (e.key.startsWith('Arrow') && ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA')) return;
+
       if (e.key === 'Enter') {
         e.preventDefault();
         if (focusZone === 'btn-cancel') cancelFlow();
