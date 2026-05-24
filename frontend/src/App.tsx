@@ -382,7 +382,7 @@ export default function App() {
   }, [state.kind, tab, setSearchText]);
 
   // Derived expense props for ExpensePanel — type-narrowed, no `as` cast
-  const expenseProps = (() => {
+  const expenseProps = useMemo(() => {
     if (state.kind === 'expense_input') {
       return { kind: 'expense_input' as const, amountText: state.amountText, amount: 0 };
     }
@@ -390,7 +390,7 @@ export default function App() {
       return { kind: state.kind, amountText: '', amount: state.amount };
     }
     return null;
-  })();
+  }, [state.kind, state.amountText, state.amount]);
   const isSuccess = state.kind === 'success';
   const flashData = useMemo(() => {
     if (!isSuccess || !picked) {

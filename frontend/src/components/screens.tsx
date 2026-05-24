@@ -345,25 +345,6 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
             </div>
           </div>
 
-          <div style={{ marginTop: '32px', borderTop: '1px solid var(--line)', paddingTop: '20px' }}>
-            <div className="card-h">顯示設定</div>
-            <div className="adm-row">
-              <label>主題</label>
-              <select className="adm-input" value={tweaks.theme} onChange={e => setTweak('theme', e.target.value)}>
-                <option value="light">亮色</option>
-                <option value="dark">深色</option>
-                <option value="warm">暖色</option>
-              </select>
-            </div>
-            <div className="adm-row">
-              <label>字體大小</label>
-              <select className="adm-input" value={tweaks.fontSize} onChange={e => setTweak('fontSize', e.target.value)}>
-                <option value="md">普通</option>
-                <option value="lg">大字</option>
-              </select>
-            </div>
-          </div>
-
           <div style={{ marginTop: '40px', borderTop: '1px solid #eee', paddingTop: '20px' }}>
             <div className="card-h" style={{ color: '#d32f2f' }}>危險區域</div>
             <p className="dim" style={{ fontSize: '13px', marginBottom: '10px' }}>這會清空目前的所有快取資料，重置為系統初始狀態。</p>
