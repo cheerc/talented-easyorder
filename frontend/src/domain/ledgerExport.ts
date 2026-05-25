@@ -23,6 +23,8 @@ export const TRANSACTION_CSV_COLUMNS = [
   'voided_at',
   'voided_by',
   'void_reason',
+  'deposit_amount',
+  'unpaid_amount',
 ] as const;
 
 export const SETTLEMENT_CSV_COLUMNS = [
@@ -65,6 +67,8 @@ export function buildTransactionCsvRows(transactions: LedgerTransaction[]): stri
     t.voidedAt ?? '',
     t.voidedBy ?? '',
     t.voidReason ?? '',
+    String((t as any).depositAmount ?? 0),
+    String((t as any).unpaidAmount ?? 0),
   ]);
 }
 

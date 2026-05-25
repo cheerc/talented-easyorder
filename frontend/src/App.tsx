@@ -3,7 +3,7 @@ import { usePosStore } from './store/posStore';
 import { usePosFlow } from './hooks/usePosFlow';
 import type { PosMode } from './domain/posFlow';
 import type { StudentAccount } from './domain/student';
-import { countActiveOrdersForStudent } from './domain/ledger';
+import { countActiveOrdersForStudent, mergeLedgerTransactions } from './domain/ledger';
 import { loadCrashDraft, clearCrashDraft } from './storage/crashDraft';
 import { checkStorageHealth } from './storage/storageHealth';
 
@@ -332,7 +332,7 @@ export default function App() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setFocusZone('mode-' + state.mode);
     }
-  }, [state.kind, selectedMode, state.mode]);
+  }, [state.kind, selectedMode]);
 
   // POS keyboard shortcuts — Q/W/E + Enter/Escape
   useKeyboardShortcuts({
@@ -382,15 +382,18 @@ export default function App() {
   }, [state.kind, tab, setSearchText]);
 
   // Derived expense props for ExpensePanel — type-narrowed, no `as` cast
+  const stateAmountText = state.kind === 'expense_input' ? state.amountText : undefined;
+  const stateAmount = (state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note') ? state.amount : undefined;
+
   const expenseProps = useMemo(() => {
     if (state.kind === 'expense_input') {
-      return { kind: 'expense_input' as const, amountText: state.amountText, amount: 0 };
+      return { kind: 'expense_input' as const, amountText: stateAmountText || '', amount: 0 };
     }
     if (state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note') {
-      return { kind: state.kind, amountText: '', amount: state.amount };
+      return { kind: state.kind, amountText: '', amount: stateAmount || 0 };
     }
     return null;
-  }, [state.kind, state.amountText, state.amount]);
+  }, [state.kind, stateAmountText, stateAmount]);
   const isSuccess = state.kind === 'success';
   const flashData = useMemo(() => {
     if (!isSuccess || !picked) {
@@ -572,7 +575,7 @@ export default function App() {
           </div>
           <div className="col-side">
             <RecentStrip
-              recent={tx.slice().reverse().map((t, i) => ({ ...t, uid: i + '-' + t.createdAt }))}
+              recent={mergeLedgerTransactions(tx).map((t, i) => ({ ...t, uid: i + '-' + t.createdAt }))}
               onItemClick={!isHistorical && getBusinessDateStatus(viewDate) !== 'closed' ? (sid) => selectStudent(sid, 'manual') : undefined}
             />
           </div>

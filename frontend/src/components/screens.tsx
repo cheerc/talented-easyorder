@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { NumericInput } from './ui/NumericInput';
 import { fmt } from "./pos-components";
-import type { LedgerTransaction } from '../domain/ledger';
+import { type LedgerTransaction, mergeLedgerTransactions } from '../domain/ledger';
 import type { TodayMenu } from '../domain/menu';
 import type { StudentAccount } from '../domain/student';
 import type { Vendor } from '../domain/menu';
@@ -38,6 +38,7 @@ interface ReportScreenProps {
 }
 export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDate, studentFilter, onClearStudentFilter }: ReportScreenProps) {
   const [dateRange, setDateRange] = useState<LedgerDateRangeKind>('today');
+  const [displayMode, setDisplayMode] = useState<'merged' | 'original'>('merged');
   const [customStart, setCustomStart] = useState(viewDate);
   const [customEnd, setCustomEnd] = useState(viewDate);
   const [expandedSids, setExpandedSids] = useState<Set<string>>(new Set());
@@ -147,6 +148,25 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
 
   return (
     <div className="screen report">
+      <div className="rpt-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--ink-2)' }}>顯示模式：</span>
+          <div className="rpt-filters">
+            <button
+              className={'rpt-filter ' + (displayMode === 'merged' ? 'rpt-on' : '')}
+              onClick={() => setDisplayMode('merged')}
+            >
+              合併模式
+            </button>
+            <button
+              className={'rpt-filter ' + (displayMode === 'original' ? 'rpt-on' : '')}
+              onClick={() => setDisplayMode('original')}
+            >
+              原始模式
+            </button>
+          </div>
+        </div>
+      </div>
       <ReportDateRangeControls
         dateRange={dateRange}
         setDateRange={setDateRange}
@@ -179,7 +199,8 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
 
       <ExportActions
         onExportCsv={() => {
-          const txRows = buildTransactionCsvRows(filtered);
+          const txsToExport = displayMode === 'merged' ? mergeLedgerTransactions(filtered) : filtered;
+          const txRows = buildTransactionCsvRows(txsToExport);
           const csv = serializeCsv(TRANSACTION_CSV_COLUMNS, txRows);
           triggerCsvDownload(`easyorder-report-${viewDate}.csv`, csv);
         }}
@@ -211,6 +232,7 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
         onEditClick={handleEditClick}
         onDeleteClick={handleDeleteClick}
         dateStatus={dateStatus}
+        displayMode={displayMode}
       />
 
       {showReopen && (

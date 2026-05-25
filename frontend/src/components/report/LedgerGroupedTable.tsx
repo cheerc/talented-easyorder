@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { fmt } from '../pos-components';
 import type { LedgerGroup } from '../../domain/ledgerReport';
 import type { LedgerTransaction } from '../../domain/ledger';
-import { CASHIER_SENTINEL } from '../../domain/ledger';
+import { CASHIER_SENTINEL, mergeLedgerTransactions } from '../../domain/ledger';
 
 interface LedgerGroupedTableProps {
   groups: LedgerGroup[];
@@ -12,6 +12,7 @@ interface LedgerGroupedTableProps {
   onEditClick: (t: LedgerTransaction) => void;
   onDeleteClick: (t: LedgerTransaction) => void;
   dateStatus: string;
+  displayMode?: 'merged' | 'original';
 }
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
@@ -29,14 +30,15 @@ interface FlatRow {
   tx?: LedgerTransaction;
 }
 
-function flattenGroups(groups: LedgerGroup[], expandedSids: Set<string>): FlatRow[] {
+function flattenGroups(groups: LedgerGroup[], expandedSids: Set<string>, displayMode: 'merged' | 'original'): FlatRow[] {
   const rows: FlatRow[] = [];
   for (let i = 0; i < groups.length; i++) {
     const g = groups[i];
     rows.push({ kind: 'group', groupIndex: i });
     if (expandedSids.has(g.studentId)) {
       rows.push({ kind: 'summary', groupIndex: i });
-      for (const tx of g.transactions) {
+      const txs = displayMode === 'merged' ? mergeLedgerTransactions(g.transactions) : g.transactions;
+      for (const tx of txs) {
         rows.push({ kind: 'detail', groupIndex: i, tx });
       }
     }
@@ -72,11 +74,12 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
   onEditClick,
   onDeleteClick,
   dateStatus,
+  displayMode = 'merged',
 }: LedgerGroupedTableProps) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
-  const flatRows = useMemo(() => flattenGroups(groups, expandedSids), [groups, expandedSids]);
+  const flatRows = useMemo(() => flattenGroups(groups, expandedSids, displayMode), [groups, expandedSids, displayMode]);
 
   const totalGroups = groups.length;
   const totalPages = Math.max(1, Math.ceil(totalGroups / pageSize));
@@ -200,16 +203,35 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
           {t.mealPrice !== 0 ? <>{t.mealPrice > 0 ? '−' : '+'}${fmt(Math.abs(t.mealPrice))}</> : <>-</>}
         </div>
         <div className={'r mono ' + (t.paidAmount > 0 ? 'pos' : '')}>
-          {t.paidAmount > 0 ? <>+${fmt(t.paidAmount)}</> : <>-</>}
+          {t.paidAmount > 0 ? (
+            <>
+              +${fmt(t.paidAmount)}
+              {displayMode === 'merged' && 'depositAmount' in t && (t as any).depositAmount > 0 && (
+                <span style={{ fontSize: '11px', color: '#16a34a', marginLeft: '4px' }}>
+                  (儲 +${fmt((t as any).depositAmount)})
+                </span>
+              )}
+            </>
+          ) : (
+            <>-</>
+          )}
         </div>
         <div className={'r mono ' + (t.afterBalance < 0 ? 'warn' : '')}>
-          {t.afterBalance < 0 ? '−' : ''}${fmt(Math.abs(t.afterBalance))}
+          {displayMode === 'merged' && 'unpaidAmount' in t && (t as any).unpaidAmount > 0 ? (
+            <span className="warn" style={{ fontWeight: 600 }}>
+              待繳費 ${fmt((t as any).unpaidAmount)}
+            </span>
+          ) : (
+            <>{t.afterBalance < 0 ? '−' : ''}${fmt(Math.abs(t.afterBalance))}</>
+          )}
         </div>
         <div className="rpt-detail-actions">
           <span className="dim italic rpt-detail-note">{t.note}</span>
           <div className="rpt-row-actions">
           {locked ? (
             <span className="dim" style={{fontSize:'11px'}}>🔒 已關帳</span>
+          ) : displayMode === 'merged' && t.studentId !== CASHIER_SENTINEL ? (
+            <span className="dim" style={{fontSize:'11px'}}>🔒 請切換至原始模式進行編輯或刪除</span>
           ) : (
             <>
               {t.studentId !== CASHIER_SENTINEL && (

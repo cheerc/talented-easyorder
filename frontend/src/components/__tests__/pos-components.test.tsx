@@ -4,7 +4,7 @@ import { RecentStrip, ExpensePanel } from '../pos-components';
 import type { LedgerTransaction } from '../../domain/ledger';
 
 describe('RecentStrip', () => {
-  const makeTx = (overrides: Partial<LedgerTransaction> & { uid: string }): (LedgerTransaction & { uid: string }) => ({
+  const makeTx = (overrides: Partial<import('../../domain/ledger').MergedTransaction> & { uid: string }): (import('../../domain/ledger').MergedTransaction & { uid: string }) => ({
     transactionId: 'tx-1',
     studentId: '001',
     studentNameSnapshot: '王小美',
@@ -22,25 +22,27 @@ describe('RecentStrip', () => {
     revision: 1,
     syncStatus: 'local' as const,
     uid: '0-tx-1',
+    depositAmount: 0,
+    unpaidAmount: 0,
     ...overrides,
   });
 
   it('shows 待繳費 for unpaid order', () => {
-    const recent = [makeTx({ type: 'order', mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: -90, uid: '0-a' })];
+    const recent = [makeTx({ type: 'order', mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: -90, unpaidAmount: 90, uid: '0-a' })];
     const { container } = render(<RecentStrip recent={recent} />);
     expect(container.textContent).toContain('待繳費');
     expect(container.textContent).toContain('90');
   });
 
   it('shows 已繳費 for paid order', () => {
-    const recent = [makeTx({ type: 'order', mealPrice: 90, paidAmount: 90, amount: 0, afterBalance: 500, uid: '0-b' })];
+    const recent = [makeTx({ type: 'order', mealPrice: 90, paidAmount: 90, amount: 0, afterBalance: 500, unpaidAmount: 0, uid: '0-b' })];
     const { container } = render(<RecentStrip recent={recent} />);
     expect(container.textContent).toContain('已繳費');
     expect(container.textContent).toContain('90');
   });
 
   it('shows numeric amount for payment type', () => {
-    const recent = [makeTx({ type: 'payment', paidAmount: 200, amount: 200, afterBalance: 500, uid: '0-c' })];
+    const recent = [makeTx({ type: 'payment', paidAmount: 200, amount: 200, afterBalance: 500, unpaidAmount: 0, uid: '0-c' })];
     const { container } = render(<RecentStrip recent={recent} />);
     expect(container.textContent).not.toContain('待繳費');
     expect(container.textContent).not.toContain('已繳費');

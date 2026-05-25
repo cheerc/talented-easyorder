@@ -580,7 +580,7 @@ export const ConfirmBanner = React.memo(function ConfirmBanner({ flash, onDismis
 
 // ============ Recent strip ============
 interface RecentStripProps {
-  recent: (import('../domain/ledger').LedgerTransaction & { uid: string })[];
+  recent: (import('../domain/ledger').MergedTransaction & { uid: string })[];
   onItemClick?: (studentId: string) => void;
 }
 export const RecentStrip = React.memo(function RecentStrip({ recent, onItemClick }: RecentStripProps) {
@@ -605,21 +605,23 @@ export const RecentStrip = React.memo(function RecentStrip({ recent, onItemClick
               }</span>
             <span className={'recent-amt mono ' + (
               r.type === 'order'
-                ? (r.afterBalance >= 0 ? 'pos' : 'neg')
+                ? (r.unpaidAmount === 0 ? 'pos' : 'neg')
                 : r.type === 'payment'
-                  ? (r.afterBalance >= 0 ? 'pos' : 'neg')
+                  ? (r.unpaidAmount === 0 ? 'pos' : 'neg')
                   : r.type === 'expense'
                     ? (r.paidAmount > 0 ? 'pos' : 'neg')
                     : (r.amount > 0 ? 'pos' : 'neg')
             )}>
               {r.type === 'order'
-                ? (r.afterBalance >= 0
-                  ? <><span className="recent-amt-lbl">已繳費</span><span className="recent-amt-val">{fmt(r.mealPrice)}</span></>
-                  : <><span className="recent-amt-lbl">待繳費</span><span className="recent-amt-val">{fmt(Math.abs(r.afterBalance))}</span></>)
+                ? (r.unpaidAmount === 0
+                  ? <><span className="recent-amt-lbl">已繳費</span><span className="recent-amt-val">{fmt(r.paidAmount)}</span></>
+                  : <><span className="recent-amt-lbl">待繳費</span><span className="recent-amt-val">{fmt(r.unpaidAmount)}</span></>)
                 : r.type === 'payment'
-                  ? (r.afterBalance >= 0
-                    ? <span className="recent-amt-val">+{fmt(r.paidAmount)}</span>
-                    : <><span className="recent-amt-lbl">待繳費</span><span className="recent-amt-val">{fmt(Math.abs(r.afterBalance))}</span></>)
+                  ? (r.unpaidAmount === 0
+                    ? (r.depositAmount > 0
+                      ? <><span className="recent-amt-lbl">儲值</span><span className="recent-amt-val">{fmt(r.depositAmount)}</span></>
+                      : <span className="recent-amt-val">+{fmt(r.paidAmount)}</span>)
+                    : <><span className="recent-amt-lbl">待繳費</span><span className="recent-amt-val">{fmt(r.unpaidAmount)}</span></>)
                   : r.type === 'expense'
                     ? (r.note
                       ? <><span className="recent-amt-lbl">{(r.note.slice(0, 4) + '　　　').slice(0, 4)}</span><span className="recent-amt-val">{r.paidAmount > 0 ? '+' : '−'}{fmt(r.paidAmount > 0 ? r.paidAmount : r.mealPrice)}</span></>

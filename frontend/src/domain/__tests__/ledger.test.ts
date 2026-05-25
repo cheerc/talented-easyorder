@@ -4,6 +4,7 @@ import {
   createLedgerTransaction,
   countActiveOrdersForStudent,
   recalculateStudentBalances,
+  mergeLedgerTransactions,
 } from '../ledger';
 import type { LedgerTransaction } from '../ledger';
 import {
@@ -163,5 +164,138 @@ describe('recalculateStudentBalances', () => {
     const s004 = result.students.find(s => s.studentId === '004')!;
     expect(s001.currentBalance).toBe(-90);
     expect(s004.currentBalance).toBe(-90);
+  });
+});
+
+describe('mergeLedgerTransactions', () => {
+  it('merges multiple duplicate orders into a single order', () => {
+    const txs: LedgerTransaction[] = [
+      {
+        ...TX_ORDER_001,
+        transactionId: 'tx-1',
+        createdAt: '2026-05-07T12:00:00Z',
+        mealPrice: 90,
+        paidAmount: 0,
+        amount: -90,
+        afterBalance: -90,
+      },
+      {
+        ...TX_ORDER_001,
+        transactionId: 'tx-2',
+        createdAt: '2026-05-07T12:01:00Z',
+        mealPrice: 90,
+        paidAmount: 0,
+        amount: -90,
+        afterBalance: -180,
+      },
+    ];
+
+    const merged = mergeLedgerTransactions(txs);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].mealPrice).toBe(180);
+    expect(merged[0].paidAmount).toBe(0);
+    expect(merged[0].unpaidAmount).toBe(180);
+    expect(merged[0].depositAmount).toBe(0);
+    expect(merged[0].createdAt).toBe('2026-05-07T12:00:00Z');
+  });
+
+  it('offsets order with subsequent payment resulting in deposit (separate rows)', () => {
+    const txs: LedgerTransaction[] = [
+      {
+        ...TX_ORDER_001,
+        transactionId: 'tx-1',
+        createdAt: '2026-05-07T12:00:00Z',
+        mealPrice: 90,
+        paidAmount: 0,
+        amount: -90,
+        afterBalance: -90,
+      },
+      {
+        ...TX_ORDER_001,
+        transactionId: 'tx-2',
+        createdAt: '2026-05-07T12:01:00Z',
+        mealPrice: 90,
+        paidAmount: 0,
+        amount: -90,
+        afterBalance: -180,
+      },
+      {
+        ...TX_ORDER_001,
+        transactionId: 'tx-3',
+        type: 'payment',
+        createdAt: '2026-05-07T12:02:00Z',
+        mealPrice: 0,
+        paidAmount: 200,
+        amount: 200,
+        afterBalance: 20,
+      },
+    ];
+
+    const merged = mergeLedgerTransactions(txs);
+    expect(merged).toHaveLength(2); // Order and Payment are separate rows
+
+    // Sorted descending (latest first): Payment first, Order second
+    expect(merged[0].type).toBe('payment');
+    expect(merged[0].paidAmount).toBe(200);
+    expect(merged[0].depositAmount).toBe(20);
+    expect(merged[0].unpaidAmount).toBe(0);
+
+    expect(merged[1].type).toBe('order');
+    expect(merged[1].mealPrice).toBe(180);
+    expect(merged[1].paidAmount).toBe(180);
+    expect(merged[1].unpaidAmount).toBe(0);
+    expect(merged[1].depositAmount).toBe(0);
+  });
+
+  it('offsets payment first then order resulting in deposit (separate rows)', () => {
+    const txs: LedgerTransaction[] = [
+      {
+        ...TX_ORDER_001,
+        transactionId: 'tx-3',
+        type: 'payment',
+        createdAt: '2026-05-07T12:00:00Z',
+        mealPrice: 0,
+        paidAmount: 200,
+        amount: 200,
+        afterBalance: 200,
+      },
+      {
+        ...TX_ORDER_001,
+        transactionId: 'tx-1',
+        createdAt: '2026-05-07T12:01:00Z',
+        mealPrice: 90,
+        paidAmount: 0,
+        amount: -90,
+        afterBalance: 110,
+      },
+      {
+        ...TX_ORDER_001,
+        transactionId: 'tx-2',
+        createdAt: '2026-05-07T12:02:00Z',
+        mealPrice: 90,
+        paidAmount: 0,
+        amount: -90,
+        afterBalance: 20,
+      },
+    ];
+
+    const merged = mergeLedgerTransactions(txs);
+    expect(merged).toHaveLength(2); // Order and Payment are separate rows
+
+    // Sorted descending (latest first): Order first (since 12:01 and 12:02 are merged into earliest 12:01? Wait!
+    // The duplicate orders are merged into the earliestOrder, which is 12:01.
+    // The payment is at 12:00.
+    // So order is at 12:01, payment is at 12:00.
+    // Sorted descending: Order first (12:01), Payment second (12:00)
+    expect(merged[0].type).toBe('order');
+    expect(merged[0].mealPrice).toBe(180);
+    expect(merged[0].paidAmount).toBe(180);
+    expect(merged[0].unpaidAmount).toBe(0);
+    expect(merged[0].depositAmount).toBe(0);
+
+    expect(merged[1].type).toBe('payment');
+    expect(merged[1].paidAmount).toBe(200);
+    expect(merged[1].depositAmount).toBe(20);
+    expect(merged[1].unpaidAmount).toBe(0);
   });
 });

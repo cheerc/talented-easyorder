@@ -33,8 +33,8 @@ const makeTx = (overrides: Partial<LedgerTransaction> = {}): LedgerTransaction =
 });
 
 describe('CSV column definitions', () => {
-  it('transaction CSV has exactly 20 columns', () => {
-    expect(TRANSACTION_CSV_COLUMNS).toHaveLength(20);
+  it('transaction CSV has exactly 22 columns', () => {
+    expect(TRANSACTION_CSV_COLUMNS).toHaveLength(22);
   });
 
   it('transaction CSV columns match documented order', () => {
@@ -52,7 +52,7 @@ describe('buildTransactionCsvRows', () => {
   it('maps one ledger row to one CSV row', () => {
     const rows = buildTransactionCsvRows([makeTx()]);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toHaveLength(20);
+    expect(rows[0]).toHaveLength(22);
     expect(rows[0][0]).toBe('2026-05-15');
     expect(rows[0][1]).toBe('tx-1');
     expect(rows[0][4]).toBe('王小明');
@@ -68,6 +68,10 @@ describe('buildSettlementCsvRows', () => {
       settlementRevision: 1,
       orderCount: 10,
       transactionCount: 10,
+      totalIncome: 500,
+      totalExpense: 0,
+      openingCash: 0,
+      netCash: 500,
       expectedCash: 500,
       countedCash: 500,
       difference: 0,
@@ -171,9 +175,12 @@ describe('triggerCsvDownload', () => {
 describe('buildLedgerPrintViewModel', () => {
   it('includes header, totals, and grouped rows', () => {
     const totals: LedgerTotals = {
-      orderCount: 1, orderSalesAmount: 85, cashCollected: 0,
-      refundAmount: 0, netCash: 0, newDebt: 85, topUpAmount: 0,
-      cancellationCount: 0, transactionCount: 1,
+      orderCount: 1,
+      totalIncome: 0,
+      totalExpense: 0,
+      netCash: 0,
+      newDebt: 85,
+      transactionCount: 1,
     };
     const groups: LedgerGroup[] = [{
       studentId: '015',
