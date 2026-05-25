@@ -201,8 +201,13 @@ export function mergeLedgerTransactions(transactions: LedgerTransaction[]): Merg
     let remainingPaidForOrders = totalPaidToday;
     for (const order of mergedOrders) {
       const allocated = Math.min(order.mealPrice, remainingPaidForOrders);
-      order.paidAmount = allocated;
-      order.unpaidAmount = unpaidAmount > 0 ? unpaidAmount : (order.mealPrice - allocated);
+      if (unpaidAmount > 0) {
+        order.paidAmount = allocated;
+        order.unpaidAmount = unpaidAmount;
+      } else {
+        order.paidAmount = order.mealPrice;
+        order.unpaidAmount = 0;
+      }
       remainingPaidForOrders -= allocated;
     }
 
