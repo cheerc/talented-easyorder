@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { RecentStrip, ExpensePanel } from '../pos-components';
-import type { LedgerTransaction } from '../../domain/ledger';
+
 
 describe('RecentStrip', () => {
   const makeTx = (overrides: Partial<import('../../domain/ledger').MergedTransaction> & { uid: string }): (import('../../domain/ledger').MergedTransaction & { uid: string }) => ({

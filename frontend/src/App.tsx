@@ -332,6 +332,9 @@ export default function App() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setFocusZone('mode-' + state.mode);
     }
+    // state.mode intentionally excluded: covered by selectedMode which
+    // captures state.mode only when kind === 'student_selected'
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.kind, selectedMode]);
 
   // POS keyboard shortcuts — Q/W/E + Enter/Escape

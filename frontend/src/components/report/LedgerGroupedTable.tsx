@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { fmt } from '../pos-components';
 import type { LedgerGroup } from '../../domain/ledgerReport';
-import type { LedgerTransaction } from '../../domain/ledger';
+import type { LedgerTransaction, MergedTransaction } from '../../domain/ledger';
 import { CASHIER_SENTINEL, mergeLedgerTransactions } from '../../domain/ledger';
 
 interface LedgerGroupedTableProps {
@@ -206,9 +206,9 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
           {t.paidAmount > 0 ? (
             <>
               +${fmt(t.paidAmount)}
-              {displayMode === 'merged' && 'depositAmount' in t && (t as any).depositAmount > 0 && (
+              {displayMode === 'merged' && 'depositAmount' in t && (t as MergedTransaction).depositAmount > 0 && (
                 <span style={{ fontSize: '11px', color: '#16a34a', marginLeft: '4px' }}>
-                  (儲 +${fmt((t as any).depositAmount)})
+                  (儲 +${fmt((t as MergedTransaction).depositAmount)})
                 </span>
               )}
             </>
@@ -217,9 +217,9 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
           )}
         </div>
         <div className={'r mono ' + (t.afterBalance < 0 ? 'warn' : '')}>
-          {displayMode === 'merged' && 'unpaidAmount' in t && (t as any).unpaidAmount > 0 ? (
+          {displayMode === 'merged' && 'unpaidAmount' in t && (t as MergedTransaction).unpaidAmount > 0 ? (
             <span className="warn" style={{ fontWeight: 600 }}>
-              待繳費 ${fmt((t as any).unpaidAmount)}
+              待繳費 ${fmt((t as MergedTransaction).unpaidAmount)}
             </span>
           ) : (
             <>{t.afterBalance < 0 ? '−' : ''}${fmt(Math.abs(t.afterBalance))}</>
