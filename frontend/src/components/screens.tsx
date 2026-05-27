@@ -270,7 +270,7 @@ interface AdminScreenProps {
   hasCashSession: boolean;
   onOpeningCashChange: (amount: number) => void;
   onUpdateOpeningCash: (amount: number) => void;
-  tweaks: { theme: string; fontSize: string };
+  tweaks: { theme: string; fontSize: string; disableHoverSelection: boolean };
   setTweak: (k: string, v: string) => void;
 }
 export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetData, openingCash, dateStatus, hasCashSession, onOpeningCashChange, onUpdateOpeningCash, tweaks, setTweak }: AdminScreenProps) {
@@ -363,6 +363,13 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
               <select className="adm-input" value={tweaks.fontSize} onChange={e => setTweak('fontSize', e.target.value)}>
                 <option value="md">普通</option>
                 <option value="lg">大字</option>
+              </select>
+            </div>
+            <div className="adm-row">
+              <label>停用滑鼠 hover 選取</label>
+              <select className="adm-input" value={tweaks.disableHoverSelection ? 'true' : 'false'} onChange={e => setTweak('disableHoverSelection', e.target.value)}>
+                <option value="true">停用 (預設)</option>
+                <option value="false">啟用 (傳統行為)</option>
               </select>
             </div>
           </div>

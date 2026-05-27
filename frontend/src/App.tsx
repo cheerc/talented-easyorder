@@ -360,8 +360,13 @@ export default function App() {
   const failedSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'failed').length, [allTx]);
   const conflictSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'conflict').length, [allTx]);
 
-  const [tweaks, setTweaks] = useState({ theme: 'warm', fontSize: 'lg' });
-  const setTweak = (k: string, v: string) => setTweaks(prev => ({ ...prev, [k]: v }));
+  const [tweaks, setTweaks] = useState({ theme: 'warm', fontSize: 'lg', disableHoverSelection: true });
+  const setTweak = (k: string, v: string) => setTweaks(prev => {
+    if (k === 'disableHoverSelection') {
+      return { ...prev, disableHoverSelection: v === 'true' };
+    }
+    return { ...prev, [k]: v };
+  });
 
   useEffect(() => {
     document.body.setAttribute('data-fs', tweaks.fontSize);
@@ -509,6 +514,7 @@ export default function App() {
                       focusKey={searchFocusKey}
                       disabled={hasFlash}
                       onEnterExpense={enterExpenseMode}
+                      disableHoverSelection={tweaks.disableHoverSelection}
                     />
                     <IdleHero
                       todayMenu={todayMenu}
