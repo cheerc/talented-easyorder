@@ -168,134 +168,159 @@ describe('recalculateStudentBalances', () => {
 });
 
 describe('mergeLedgerTransactions', () => {
-  it('merges multiple duplicate orders into a single order', () => {
-    const txs: LedgerTransaction[] = [
-      {
-        ...TX_ORDER_001,
-        transactionId: 'tx-1',
-        createdAt: '2026-05-07T12:00:00Z',
-        mealPrice: 90,
-        paidAmount: 0,
-        amount: -90,
-        afterBalance: -90,
-      },
-      {
-        ...TX_ORDER_001,
-        transactionId: 'tx-2',
-        createdAt: '2026-05-07T12:01:00Z',
-        mealPrice: 90,
-        paidAmount: 0,
-        amount: -90,
-        afterBalance: -180,
-      },
-    ];
+  const baseTx = (overrides: Partial<LedgerTransaction>): LedgerTransaction => ({
+    ...TX_ORDER_001,
+    ...overrides,
+  });
 
+  // Edge case 1: 訂便當 90，沒付錢（餘額 −90）
+  it('order 90 no payment: orderCount=1, displayBalance=-90, unpaidAmount=90', () => {
+    const txs: LedgerTransaction[] = [
+      baseTx({ transactionId: 'tx-1', mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: -90 }),
+    ];
     const merged = mergeLedgerTransactions(txs);
     expect(merged).toHaveLength(1);
-    expect(merged[0].mealPrice).toBe(180);
-    expect(merged[0].paidAmount).toBe(0);
-    expect(merged[0].unpaidAmount).toBe(180);
-    expect(merged[0].depositAmount).toBe(0);
-    expect(merged[0].createdAt).toBe('2026-05-07T12:00:00Z');
-  });
-
-  it('offsets order with subsequent payment resulting in deposit (separate rows)', () => {
-    const txs: LedgerTransaction[] = [
-      {
-        ...TX_ORDER_001,
-        transactionId: 'tx-1',
-        createdAt: '2026-05-07T12:00:00Z',
-        mealPrice: 90,
-        paidAmount: 0,
-        amount: -90,
-        afterBalance: -90,
-      },
-      {
-        ...TX_ORDER_001,
-        transactionId: 'tx-2',
-        createdAt: '2026-05-07T12:01:00Z',
-        mealPrice: 90,
-        paidAmount: 0,
-        amount: -90,
-        afterBalance: -180,
-      },
-      {
-        ...TX_ORDER_001,
-        transactionId: 'tx-3',
-        type: 'payment',
-        createdAt: '2026-05-07T12:02:00Z',
-        mealPrice: 0,
-        paidAmount: 200,
-        amount: 200,
-        afterBalance: 20,
-      },
-    ];
-
-    const merged = mergeLedgerTransactions(txs);
-    expect(merged).toHaveLength(2); // Order and Payment are separate rows
-
-    // Sorted descending (latest first): Payment first, Order second
-    expect(merged[0].type).toBe('payment');
-    expect(merged[0].paidAmount).toBe(200);
-    expect(merged[0].depositAmount).toBe(20);
-    expect(merged[0].unpaidAmount).toBe(0);
-
-    expect(merged[1].type).toBe('order');
-    expect(merged[1].mealPrice).toBe(180);
-    expect(merged[1].paidAmount).toBe(180);
-    expect(merged[1].unpaidAmount).toBe(0);
-    expect(merged[1].depositAmount).toBe(0);
-  });
-
-  it('offsets payment first then order resulting in deposit (separate rows)', () => {
-    const txs: LedgerTransaction[] = [
-      {
-        ...TX_ORDER_001,
-        transactionId: 'tx-3',
-        type: 'payment',
-        createdAt: '2026-05-07T12:00:00Z',
-        mealPrice: 0,
-        paidAmount: 200,
-        amount: 200,
-        afterBalance: 200,
-      },
-      {
-        ...TX_ORDER_001,
-        transactionId: 'tx-1',
-        createdAt: '2026-05-07T12:01:00Z',
-        mealPrice: 90,
-        paidAmount: 0,
-        amount: -90,
-        afterBalance: 110,
-      },
-      {
-        ...TX_ORDER_001,
-        transactionId: 'tx-2',
-        createdAt: '2026-05-07T12:02:00Z',
-        mealPrice: 90,
-        paidAmount: 0,
-        amount: -90,
-        afterBalance: 20,
-      },
-    ];
-
-    const merged = mergeLedgerTransactions(txs);
-    expect(merged).toHaveLength(2); // Order and Payment are separate rows
-
-    // Sorted descending (latest first): Order first (since 12:01 and 12:02 are merged into earliest 12:01? Wait!
-    // The duplicate orders are merged into the earliestOrder, which is 12:01.
-    // The payment is at 12:00.
-    // So order is at 12:01, payment is at 12:00.
-    // Sorted descending: Order first (12:01), Payment second (12:00)
     expect(merged[0].type).toBe('order');
-    expect(merged[0].mealPrice).toBe(180);
-    expect(merged[0].paidAmount).toBe(180);
-    expect(merged[0].unpaidAmount).toBe(0);
+    expect(merged[0].orderCount).toBe(1);
+    expect(merged[0].displayBalance).toBe(-90);
+    expect(merged[0].mealPrice).toBe(90);
+    expect(merged[0].paidAmount).toBe(0);
+    expect(merged[0].unpaidAmount).toBe(90);
     expect(merged[0].depositAmount).toBe(0);
+  });
 
-    expect(merged[1].type).toBe('payment');
-    expect(merged[1].paidAmount).toBe(200);
-    expect(merged[1].depositAmount).toBe(20);
-    expect(merged[1].unpaidAmount).toBe(0);
+  // Edge case 2: 訂便當 90，付 50（餘額 −40）
+  it('order 90 + payment 50: merges into single order, displayBalance=-40', () => {
+    const txs: LedgerTransaction[] = [
+      baseTx({ transactionId: 'tx-1', mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: -90, createdAt: '2026-05-07T12:00:00Z' }),
+      baseTx({ transactionId: 'tx-2', type: 'payment', mealPrice: 0, paidAmount: 50, amount: 50, afterBalance: -40, createdAt: '2026-05-07T12:01:00Z' }),
+    ];
+    const merged = mergeLedgerTransactions(txs);
+    expect(merged).toHaveLength(1);
+    const m = merged[0];
+    expect(m.type).toBe('order');
+    expect(m.orderCount).toBe(1);
+    expect(m.displayBalance).toBe(-40);
+    expect(m.mealPrice).toBe(90);
+    expect(m.paidAmount).toBe(50);
+    expect(m.unpaidAmount).toBe(40);
+    expect(m.depositAmount).toBe(0);
+  });
+
+  // Edge case 3: 訂便當 90，付 90（餘額 0）
+  it('order 90 + payment 90: displayBalance=0, unpaidAmount=0', () => {
+    const txs: LedgerTransaction[] = [
+      baseTx({ transactionId: 'tx-1', mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: -90, createdAt: '2026-05-07T12:00:00Z' }),
+      baseTx({ transactionId: 'tx-2', type: 'payment', mealPrice: 0, paidAmount: 90, amount: 90, afterBalance: 0, createdAt: '2026-05-07T12:01:00Z' }),
+    ];
+    const merged = mergeLedgerTransactions(txs);
+    expect(merged).toHaveLength(1);
+    const m = merged[0];
+    expect(m.orderCount).toBe(1);
+    expect(m.displayBalance).toBe(0);
+    expect(m.mealPrice).toBe(90);
+    expect(m.paidAmount).toBe(90);
+    expect(m.unpaidAmount).toBe(0);
+    expect(m.depositAmount).toBe(0);
+  });
+
+  // Edge case 4: 訂便當 90，付 100（餘額 10）
+  it('order 90 + payment 100: depositAmount=10, displayBalance=10', () => {
+    const txs: LedgerTransaction[] = [
+      baseTx({ transactionId: 'tx-1', mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: -90, createdAt: '2026-05-07T12:00:00Z' }),
+      baseTx({ transactionId: 'tx-2', type: 'payment', mealPrice: 0, paidAmount: 100, amount: 100, afterBalance: 10, createdAt: '2026-05-07T12:01:00Z' }),
+    ];
+    const merged = mergeLedgerTransactions(txs);
+    expect(merged).toHaveLength(1);
+    const m = merged[0];
+    expect(m.orderCount).toBe(1);
+    expect(m.displayBalance).toBe(10);
+    expect(m.mealPrice).toBe(90);
+    expect(m.paidAmount).toBe(100);
+    expect(m.unpaidAmount).toBe(0);
+    expect(m.depositAmount).toBe(10);
+  });
+
+  // Edge case 5: 訂便當 90×2，付 200（餘額 20）
+  it('two orders 90 each + payment 200: orderCount=2, displayBalance=20', () => {
+    const txs: LedgerTransaction[] = [
+      baseTx({ transactionId: 'tx-1', mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: -90, createdAt: '2026-05-07T12:00:00Z' }),
+      baseTx({ transactionId: 'tx-2', mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: -180, createdAt: '2026-05-07T12:01:00Z' }),
+      baseTx({ transactionId: 'tx-3', type: 'payment', mealPrice: 0, paidAmount: 200, amount: 200, afterBalance: 20, createdAt: '2026-05-07T12:02:00Z' }),
+    ];
+    const merged = mergeLedgerTransactions(txs);
+    expect(merged).toHaveLength(1);
+    const m = merged[0];
+    expect(m.orderCount).toBe(2);
+    expect(m.displayBalance).toBe(20);
+    expect(m.mealPrice).toBe(180);
+    expect(m.paidAmount).toBe(200);
+    expect(m.unpaidAmount).toBe(0);
+    expect(m.depositAmount).toBe(20);
+  });
+
+  // Edge case 6: 先儲值 200，再訂便當 90（餘額 110）
+  it('payment 200 first then order 90: orderCount=1, displayBalance=110, depositAmount=110', () => {
+    const txs: LedgerTransaction[] = [
+      baseTx({ transactionId: 'tx-1', type: 'payment', mealPrice: 0, paidAmount: 200, amount: 200, afterBalance: 200, createdAt: '2026-05-07T12:00:00Z' }),
+      baseTx({ transactionId: 'tx-2', mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: 110, createdAt: '2026-05-07T12:01:00Z' }),
+    ];
+    const merged = mergeLedgerTransactions(txs);
+    expect(merged).toHaveLength(1);
+    const m = merged[0];
+    expect(m.type).toBe('order');
+    expect(m.orderCount).toBe(1);
+    expect(m.displayBalance).toBe(110);
+    expect(m.mealPrice).toBe(90);
+    expect(m.paidAmount).toBe(200);
+    expect(m.depositAmount).toBe(110);
+    expect(m.unpaidAmount).toBe(0);
+  });
+
+  // Edge case 7: 只繳費 500，沒訂便當 → 保留 payment 獨立行
+  it('payment only no order: kept as independent row with orderCount=0', () => {
+    const txs: LedgerTransaction[] = [
+      baseTx({ transactionId: 'tx-1', type: 'payment', mealPrice: 0, paidAmount: 500, amount: 500, afterBalance: 500, createdAt: '2026-05-07T12:00:00Z' }),
+    ];
+    const merged = mergeLedgerTransactions(txs);
+    expect(merged).toHaveLength(1);
+    const m = merged[0];
+    expect(m.type).toBe('payment');
+    expect(m.orderCount).toBe(0);
+    expect(m.displayBalance).toBe(500);
+    expect(m.paidAmount).toBe(500);
+    expect(m.unpaidAmount).toBe(0);
+    expect(m.depositAmount).toBe(500);
+  });
+
+  // Edge case 8: 櫃台收支 → cashier rows still pass through
+  it('cashier expense rows pass through with orderCount=0, displayBalance=0', () => {
+    const txs: LedgerTransaction[] = [
+      { ...TX_ORDER_001, transactionId: 'tx-cash-1', studentId: '__cashier__', studentNameSnapshot: '櫃台', type: 'expense', mealPrice: 100, paidAmount: 0, amount: -100, afterBalance: 0, note: '文具' },
+    ];
+    const merged = mergeLedgerTransactions(txs);
+    expect(merged).toHaveLength(1);
+    const m = merged[0];
+    expect(m.type).toBe('expense');
+    expect(m.orderCount).toBe(0);
+    expect(m.displayBalance).toBe(0);
+  });
+
+  // Multiple students: each student merged independently
+  it('merges each student independently', () => {
+    const txs: LedgerTransaction[] = [
+      baseTx({ transactionId: 'tx-1', studentId: '001', mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: -90, createdAt: '2026-05-07T12:00:00Z' }),
+      baseTx({ transactionId: 'tx-2', studentId: '001', type: 'payment', mealPrice: 0, paidAmount: 90, amount: 90, afterBalance: 0, createdAt: '2026-05-07T12:01:00Z' }),
+      baseTx({ transactionId: 'tx-3', studentId: '004', studentNameSnapshot: '張哲瑋', mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: -90, createdAt: '2026-05-07T12:02:00Z' }),
+    ];
+    const merged = mergeLedgerTransactions(txs);
+    // Two students → two merged rows
+    expect(merged.length).toBe(2);
+    const s001 = merged.find(m => m.studentId === '001')!;
+    const s004 = merged.find(m => m.studentId === '004')!;
+    expect(s001.orderCount).toBe(1);
+    expect(s001.displayBalance).toBe(0);
+    expect(s004.orderCount).toBe(1);
+    expect(s004.displayBalance).toBe(-90);
   });
 });

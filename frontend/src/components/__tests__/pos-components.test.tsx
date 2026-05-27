@@ -5,7 +5,8 @@ import type { StudentAccount } from '../../domain/student';
 
 
 describe('RecentStrip', () => {
-  const makeTx = (overrides: Partial<import('../../domain/ledger').MergedTransaction> & { uid: string }): (import('../../domain/ledger').MergedTransaction & { uid: string }) => ({
+  type MergedTx = import('../../domain/ledger').MergedTransaction & { uid: string };
+  const base: Omit<MergedTx, 'uid'> = {
     transactionId: 'tx-1',
     studentId: '001',
     studentNameSnapshot: '王小美',
@@ -15,61 +16,88 @@ describe('RecentStrip', () => {
     paidAmount: 0,
     amount: -90,
     note: '',
-    afterBalance: 10,
+    afterBalance: -90,
     createdAt: '2026-05-17T12:00:00.000Z',
     menuNameSnapshot: '預設菜單',
     vendorNameSnapshot: '預設廠商',
     sourceDevice: 'pc' as const,
     revision: 1,
     syncStatus: 'local' as const,
-    uid: '0-tx-1',
     depositAmount: 0,
-    unpaidAmount: 0,
-    ...overrides,
+    unpaidAmount: 90,
+    orderCount: 1,
+    displayBalance: -90,
+  };
+  const mk = (overrides: Partial<MergedTx>): MergedTx => ({ ...base, uid: overrides.transactionId ? '0-' + overrides.transactionId : '0-tx-1', ...overrides });
+
+  // Edge case 1: order 90, no payment → balance -90 → red
+  it('shows 訂 1份 餘額 −90 (red) for unpaid order', () => {
+    const { container } = render(<RecentStrip recent={[mk({ displayBalance: -90, orderCount: 1 })]} />);
+    expect(container.textContent).toContain('1份');
+    expect(container.textContent).toContain('餘額');
+    const amt = container.querySelector('.recent-amt');
+    expect(amt?.className).toContain('neg');
   });
 
-  it('shows 待繳費 for unpaid order', () => {
-    const recent = [makeTx({ type: 'order', mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: -90, unpaidAmount: 90, uid: '0-a' })];
-    const { container } = render(<RecentStrip recent={recent} />);
-    expect(container.textContent).toContain('待繳費');
-    expect(container.textContent).toContain('90');
+  // Edge case 2: order 90 + pay 50 → balance -40 → red
+  it('shows 訂 1份 餘額 −40 (red) for partial payment', () => {
+    const { container } = render(<RecentStrip recent={[mk({ displayBalance: -40, orderCount: 1 })]} />);
+    expect(container.textContent).toContain('1份');
+    expect(container.textContent).toContain('40');
+    const amt = container.querySelector('.recent-amt');
+    expect(amt?.className).toContain('neg');
   });
 
-  it('shows 已繳費 for paid order', () => {
-    const recent = [makeTx({ type: 'order', mealPrice: 90, paidAmount: 90, amount: 0, afterBalance: 500, unpaidAmount: 0, uid: '0-b' })];
-    const { container } = render(<RecentStrip recent={recent} />);
-    expect(container.textContent).toContain('已繳費');
-    expect(container.textContent).toContain('90');
+  // Edge case 3: order 90 + pay 90 → balance 0 → green
+  it('shows 訂 1份 餘額 0 (green) for fully paid order', () => {
+    const { container } = render(<RecentStrip recent={[mk({ displayBalance: 0, orderCount: 1 })]} />);
+    expect(container.textContent).toContain('1份');
+    expect(container.textContent).toContain('0');
+    const amt = container.querySelector('.recent-amt');
+    expect(amt?.className).toContain('pos');
   });
 
-  it('shows numeric amount for payment type', () => {
-    const recent = [makeTx({ type: 'payment', paidAmount: 200, amount: 200, afterBalance: 500, unpaidAmount: 0, uid: '0-c' })];
-    const { container } = render(<RecentStrip recent={recent} />);
-    expect(container.textContent).not.toContain('待繳費');
-    expect(container.textContent).not.toContain('已繳費');
+  // Edge case 4: order 90 + pay 100 → balance 10 → green
+  it('shows 訂 1份 餘額 10 (green) for overpayment', () => {
+    const { container } = render(<RecentStrip recent={[mk({ displayBalance: 10, orderCount: 1 })]} />);
+    expect(container.textContent).toContain('1份');
+    expect(container.textContent).toContain('10');
+    const amt = container.querySelector('.recent-amt');
+    expect(amt?.className).toContain('pos');
   });
 
-  it('shows formatted note for expense type', () => {
-    const recent = [makeTx({ type: 'expense', mealPrice: 150, paidAmount: 0, amount: -150, note: '支付便當', afterBalance: 0, uid: '0-d' })];
-    const { container } = render(<RecentStrip recent={recent} />);
-    expect(container.textContent).toContain('支');
-    expect(container.textContent).toContain('支付便當');
+  // Edge case 5: 2 orders + pay 200 → balance 20 → green
+  it('shows 訂 2份 餘額 20 (green) for two orders', () => {
+    const { container } = render(<RecentStrip recent={[mk({ displayBalance: 20, orderCount: 2 })]} />);
+    expect(container.textContent).toContain('2份');
+    expect(container.textContent).toContain('20');
+    const amt = container.querySelector('.recent-amt');
+    expect(amt?.className).toContain('pos');
   });
 
-  it('formats income expense with note prefix', () => {
-    const recent = [makeTx({ type: 'expense', paidAmount: 300, mealPrice: 0, amount: 300, note: '贊助金', studentId: '__cashier__', studentNameSnapshot: '櫃台', afterBalance: 0, uid: '0-f' })];
-    const { container } = render(<RecentStrip recent={recent} />);
-    expect(container.textContent).toContain('收');
-    expect(container.textContent).toContain('贊助金');
-    expect(container.textContent).toContain('300');
+  // Edge case 6: payment 200 first then order 90 → balance 110 → green
+  it('shows 訂 1份 餘額 110 (green) for deposit before order', () => {
+    const { container } = render(<RecentStrip recent={[mk({ displayBalance: 110, orderCount: 1 })]} />);
+    expect(container.textContent).toContain('1份');
+    expect(container.textContent).toContain('110');
+    const amt = container.querySelector('.recent-amt');
+    expect(amt?.className).toContain('pos');
   });
 
-  it('hides __cashier__ id in studentId column', () => {
-    const recent = [makeTx({ studentId: '__cashier__', studentNameSnapshot: '櫃台', type: 'expense', mealPrice: 100, paidAmount: 0, amount: -100, afterBalance: 0, uid: '0-e' })];
-    const { container } = render(<RecentStrip recent={recent} />);
-    const idSpan = container.querySelector('.recent-id');
-    expect(idSpan?.textContent).toBe('');
-    expect(container.textContent).toContain('櫃台');
+  // Edge case 7: payment only, no order → should NOT appear
+  it('does not show payment-only rows', () => {
+    const paymentOnly = mk({ type: 'payment', orderCount: 0, displayBalance: 500, mealPrice: 0, paidAmount: 500, amount: 500 });
+    const { container } = render(<RecentStrip recent={[paymentOnly]} />);
+    const rows = container.querySelectorAll('.recent-row');
+    expect(rows.length).toBe(0);
+  });
+
+  // Edge case 8: cashier expense → should NOT appear
+  it('does not show cashier expense rows', () => {
+    const expenseTx = mk({ type: 'expense', studentId: '__cashier__', studentNameSnapshot: '櫃台', orderCount: 0, displayBalance: 0, note: '文具' });
+    const { container } = render(<RecentStrip recent={[expenseTx]} />);
+    const rows = container.querySelectorAll('.recent-row');
+    expect(rows.length).toBe(0);
   });
 });
 
