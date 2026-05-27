@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/react';
-import { RecentStrip, ExpensePanel } from '../pos-components';
+import { render, fireEvent } from '@testing-library/react';
+import { RecentStrip, ExpensePanel, SearchBox } from '../pos-components';
+import type { StudentAccount } from '../../domain/student';
 
 
 describe('RecentStrip', () => {
@@ -135,5 +136,48 @@ describe('ExpensePanel', () => {
     expect(windowListener).not.toHaveBeenCalled();
 
     window.removeEventListener('keydown', windowListener);
+  });
+});
+
+describe('SearchBox', () => {
+  const mockStudents: StudentAccount[] = [
+    { studentId: '001', displayName: '王小美', currentBalance: 100, status: 'active' as const, aliases: [], faceEnrollmentStatus: 'none' as const, createdAt: '', updatedAt: '', revision: 1 },
+    { studentId: '002', displayName: '李大華', currentBalance: 200, status: 'active' as const, aliases: [], faceEnrollmentStatus: 'none' as const, createdAt: '', updatedAt: '', revision: 1 },
+  ];
+  const baseProps = {
+    value: '001',
+    onChange: () => {},
+    onSubmit: () => {},
+    onEsc: () => {},
+    suggestions: [] as StudentAccount[],
+    activeIdx: 0,
+    onPick: () => {},
+    onHover: vi.fn(),
+    focusKey: 0,
+    disabled: false,
+  };
+
+  it('does not call onHover on mouse enter when disableHoverSelection is true', () => {
+    const onHover = vi.fn();
+    const { container } = render(<SearchBox {...baseProps} suggestions={mockStudents} onHover={onHover} disableHoverSelection={true} />);
+    const firstRow = container.querySelector('.sug-row');
+    fireEvent.mouseEnter(firstRow!);
+    expect(onHover).not.toHaveBeenCalled();
+  });
+
+  it('does not call onHover on mouse enter when disableHoverSelection is omitted (default true)', () => {
+    const onHover = vi.fn();
+    const { container } = render(<SearchBox {...baseProps} suggestions={mockStudents} onHover={onHover} />);
+    const firstRow = container.querySelector('.sug-row');
+    fireEvent.mouseEnter(firstRow!);
+    expect(onHover).not.toHaveBeenCalled();
+  });
+
+  it('calls onHover on mouse enter when disableHoverSelection is false', () => {
+    const onHover = vi.fn();
+    const { container } = render(<SearchBox {...baseProps} suggestions={mockStudents} onHover={onHover} disableHoverSelection={false} />);
+    const firstRow = container.querySelector('.sug-row');
+    fireEvent.mouseEnter(firstRow!);
+    expect(onHover).toHaveBeenCalledWith(0);
   });
 });

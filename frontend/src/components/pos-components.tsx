@@ -176,8 +176,9 @@ interface SearchBoxProps {
   focusKey: number;
   disabled: boolean;
   onEnterExpense?: () => void;
+  disableHoverSelection?: boolean;
 }
-export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubmit, onEsc, suggestions, activeIdx, onPick, onHover, focusKey, disabled, onEnterExpense }: SearchBoxProps) {
+export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubmit, onEsc, suggestions, activeIdx, onPick, onHover, focusKey, disabled, onEnterExpense, disableHoverSelection = true }: SearchBoxProps) {
   const ref = useRef(null);
   useEffect(() => { if (focusKey > 0 && !disabled) ref.current?.focus(); }, [focusKey, disabled]);
 
@@ -228,7 +229,11 @@ export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubm
               role="option"
               aria-selected={i === activeIdx}
               className={'sug-row ' + (i === activeIdx ? 'sug-on' : '')}
-              onMouseEnter={() => onHover(i)}
+              onMouseEnter={() => {
+                if (!disableHoverSelection) {
+                  onHover(i);
+                }
+              }}
               onClick={() => onPick(s)}
             >
               <span className="sug-id mono">{s.studentId}</span>
