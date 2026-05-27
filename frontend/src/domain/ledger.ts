@@ -119,6 +119,8 @@ export function recalculateStudentBalances(
 export interface MergedTransaction extends LedgerTransaction {
   depositAmount: number;
   unpaidAmount: number;
+  orderCount: number;
+  displayBalance: number;
 }
 
 export function mergeLedgerTransactions(transactions: LedgerTransaction[]): MergedTransaction[] {
@@ -144,6 +146,8 @@ export function mergeLedgerTransactions(transactions: LedgerTransaction[]): Merg
       ...tx,
       depositAmount: 0,
       unpaidAmount: 0,
+      orderCount: 0,
+      displayBalance: 0,
     });
   }
 
@@ -152,74 +156,47 @@ export function mergeLedgerTransactions(transactions: LedgerTransaction[]): Merg
     if (studentTxs.length === 0) continue;
 
     const latestTx = studentTxs[studentTxs.length - 1];
-    const endBalance = latestTx.afterBalance;
-    const unpaidAmount = endBalance < 0 ? Math.abs(endBalance) : 0;
+    const displayBalance = latestTx.afterBalance;
 
     const orders = studentTxs.filter(t => t.type === 'order');
     const payments = studentTxs.filter(t => t.type === 'payment');
+    const orderCount = orders.length;
 
-    const commodityGroups: Record<string, LedgerTransaction[]> = {};
-    for (const order of orders) {
-      const commodityKey = `${order.menuNameSnapshot}_${order.mealPrice}`;
-      if (!commodityGroups[commodityKey]) {
-        commodityGroups[commodityKey] = [];
-      }
-      commodityGroups[commodityKey].push(order);
-    }
+    const totalMealPrice = orders.reduce((sum, o) => sum + o.mealPrice, 0);
+    const totalPaid = orders.reduce((sum, o) => sum + o.paidAmount, 0) + payments.reduce((sum, p) => sum + p.paidAmount, 0);
 
-    const mergedOrders: MergedTransaction[] = Object.values(commodityGroups)
-      .map(group => {
-        const earliestOrder = group[0];
-        const latestOrderInGroup = group[group.length - 1];
-        const totalMealPrice = group.reduce((sum, o) => sum + o.mealPrice, 0);
-        const mergedNote = group.map(o => o.note).filter(Boolean).join(', ');
+    if (orderCount > 0) {
+      // Merge all orders and payments into a single order row
+      const earliestTx = studentTxs[0];
+      const depositAmount = Math.max(0, totalPaid - totalMealPrice);
+      const unpaidAmount = Math.max(0, totalMealPrice - totalPaid);
+      const mergedNote = orders.map(o => o.note).filter(Boolean).join(', ');
 
-        return {
-          ...earliestOrder,
-          mealPrice: totalMealPrice,
-          paidAmount: 0,
-          amount: -totalMealPrice,
-          afterBalance: latestOrderInGroup.afterBalance,
-          depositAmount: 0,
+      mergedList.push({
+        ...earliestTx,
+        type: 'order',
+        mealPrice: totalMealPrice,
+        paidAmount: totalPaid,
+        amount: totalPaid - totalMealPrice,
+        afterBalance: displayBalance,
+        depositAmount,
+        unpaidAmount,
+        orderCount,
+        displayBalance,
+        note: mergedNote || earliestTx.note,
+      });
+    } else {
+      // No orders: keep payments as independent rows (for today's report)
+      for (const p of payments) {
+        mergedList.push({
+          ...p,
+          depositAmount: p.paidAmount,
           unpaidAmount: 0,
-          note: mergedNote || earliestOrder.note,
-        };
-      })
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-
-    const sortedPayments: MergedTransaction[] = payments
-      .map(p => ({
-        ...p,
-        depositAmount: 0,
-        unpaidAmount: 0,
-      }))
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-
-    const totalPaidToday = orders.reduce((sum, o) => sum + o.paidAmount, 0) + payments.reduce((sum, p) => sum + p.paidAmount, 0);
-    const totalMealToday = mergedOrders.reduce((sum, o) => sum + o.mealPrice, 0);
-
-    let remainingPaidForOrders = totalPaidToday;
-    for (const order of mergedOrders) {
-      const allocated = Math.min(order.mealPrice, remainingPaidForOrders);
-      if (unpaidAmount > 0) {
-        order.paidAmount = allocated;
-        order.unpaidAmount = unpaidAmount;
-      } else {
-        order.paidAmount = order.mealPrice;
-        order.unpaidAmount = 0;
+          orderCount: 0,
+          displayBalance,
+        });
       }
-      remainingPaidForOrders -= allocated;
     }
-
-    let remainingMealForPayments = totalMealToday;
-    for (const payment of sortedPayments) {
-      const used = Math.min(payment.paidAmount, remainingMealForPayments);
-      remainingMealForPayments -= used;
-      payment.depositAmount = payment.paidAmount - used;
-      payment.unpaidAmount = unpaidAmount > 0 ? unpaidAmount : 0;
-    }
-
-    mergedList.push(...mergedOrders, ...sortedPayments);
   }
 
   return mergedList.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
