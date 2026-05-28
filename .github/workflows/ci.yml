@@ -1,6 +1,9 @@
 name: Frontend CI
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 jobs:
   build-and-test:
