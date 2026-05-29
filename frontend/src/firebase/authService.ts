@@ -2,6 +2,8 @@ import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type 
 import { doc, getDoc, onSnapshot, type Firestore } from 'firebase/firestore';
 import { operatorPath } from './firestorePaths';
 
+const ALLOWED_DOMAIN = import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? 'talented.com.tw';
+
 export interface OperatorProfile {
   uid: string;
   email: string;
@@ -13,7 +15,7 @@ export type OperatorAccess =
   | { ok: false; reason: 'signed_out' | 'wrong_domain' | 'not_whitelisted' | 'inactive'; profile?: OperatorProfile };
 
 export function isAllowedWorkspaceEmail(email: string | null): boolean {
-  return Boolean(email && email.toLowerCase().endsWith('@talented.com.tw'));
+  return Boolean(email && email.toLowerCase().endsWith('@' + ALLOWED_DOMAIN));
 }
 
 export function toOperatorProfile(user: Pick<User, 'uid' | 'email' | 'displayName'>): OperatorProfile {
@@ -51,7 +53,7 @@ export async function verifyUserAuthorization(auth: Auth, db: Firestore, user: U
 
 export async function signInWithGoogle(auth: Auth, db: Firestore): Promise<OperatorAccess> {
   const provider = new GoogleAuthProvider();
-  provider.setCustomParameters({ hd: 'talented.com.tw', prompt: 'select_account' });
+  provider.setCustomParameters({ hd: ALLOWED_DOMAIN, prompt: 'select_account' });
   const credential = await signInWithPopup(auth, provider);
   return verifyUserAuthorization(auth, db, credential.user);
 }
