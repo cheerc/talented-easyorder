@@ -15,6 +15,7 @@ import type { DailyCashSession } from '../domain/cashSession';
 import { createDailyCashSession } from '../domain/cashSession';
 import { validatePersistedState, migrateState } from '../storage/posStateValidator';
 import { migratePersistedState } from '../storage/migration';
+import { appendErrorLog } from '../errors/errorLogger';
 import {
   INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS
 } from '../mocks/initialData';
@@ -499,7 +500,7 @@ export const usePosStore = create<PosState>()(
         return (state, error) => {
           try {
             if (error || !state) {
-              console.error('[posStore] rehydration failed:', error);
+              appendErrorLog({ source: 'storage', message: '[posStore] rehydration failed: ' + String(error) });
               return;
             }
             const migrationResult = migrateState(state);
@@ -507,7 +508,7 @@ export const usePosStore = create<PosState>()(
               Object.assign(state, migrationResult.state);
               const validationResult = validatePersistedState(state);
               if (!validationResult.ok) {
-                console.error('[posStore] validation failed after migration:', validationResult.reason);
+                appendErrorLog({ source: 'storage', message: '[posStore] validation failed after migration: ' + validationResult.reason });
                 Object.assign(state, {
                   students: INITIAL_STUDENTS,
                   transactions: INITIAL_TODAY_TX,
@@ -517,7 +518,7 @@ export const usePosStore = create<PosState>()(
                 });
               }
             } else {
-              console.error('[posStore] migration failed:', migrationResult.reason);
+              appendErrorLog({ source: 'storage', message: '[posStore] migration failed: ' + migrationResult.reason });
               Object.assign(state, {
                 students: INITIAL_STUDENTS,
                 transactions: INITIAL_TODAY_TX,
@@ -527,7 +528,7 @@ export const usePosStore = create<PosState>()(
               });
             }
           } catch (e) {
-            console.error('[posStore] rehydration crashed:', e);
+            appendErrorLog({ source: 'storage', message: '[posStore] rehydration crashed: ' + String(e) });
             Object.assign(state, {
               students: INITIAL_STUDENTS,
               transactions: INITIAL_TODAY_TX,
