@@ -4,12 +4,17 @@ import { usePosFlow } from './hooks/usePosFlow';
 import type { PosMode } from './domain/posFlow';
 import type { StudentAccount } from './domain/student';
 import { countActiveOrdersForStudent, mergeLedgerTransactions } from './domain/ledger';
-import { loadCrashDraft, clearCrashDraft } from './storage/crashDraft';
+import { clearCrashDraft } from './storage/crashDraft';
 import { checkStorageHealth } from './storage/storageHealth';
 
 import { SearchBox, CustomerCard, ActionBar, IdleHero, RecentStrip, DuplicateWarningBanner, MidnightBanner, ExpensePanel } from './components/pos-components';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useAppNavigationShortcuts } from './hooks/useAppNavigationShortcuts';
+import { useSystemDate } from './hooks/useSystemDate';
+import { useServiceWorkerCleanup } from './hooks/useServiceWorkerCleanup';
+import { useOnlineStatus } from './hooks/useOnlineStatus';
+import { useCrashDraftRecovery } from './hooks/useCrashDraftRecovery';
+import { useUndoCountdown } from './hooks/useUndoCountdown';
 import { ReportScreen, AdminScreen, VendorsScreen, HistoryScreen } from './components/screens';
 import { getOpeningCash } from './domain/cashClose';
 import { MainLayout } from './components/MainLayout';
@@ -29,43 +34,13 @@ export default function App() {
   const openCashSession = usePosStore((s) => s.openCashSession);
   const updateOpeningCash = usePosStore((s) => s.updateOpeningCash);
 
-  const getSystemDate = () => new Date().toISOString().split('T')[0];
-  const [systemDate, setSystemDate] = useState(getSystemDate);
-  const [viewDate, setViewDate] = useState(systemDate);
+  const { systemDate, viewDate, setViewDate } = useSystemDate();
   const dateStatus = getBusinessDateStatus(viewDate);
   const isHistorical = viewDate !== systemDate;
   const [priceOverride, setPriceOverride] = useState<number | null>(null);
   const [priceOverrideLabel, setPriceOverrideLabel] = useState('');
 
-  useEffect(() => {
-    const tick = setInterval(() => setSystemDate(getSystemDate()), 60_000);
-    const onVisible = () => setSystemDate(getSystemDate());
-    document.addEventListener('visibilitychange', onVisible);
-    return () => {
-      clearInterval(tick);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
-  }, []);
-
-  // Clear service worker and cache to ensure browser loads the latest updates
-  useEffect(() => {
-    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(registrations => {
-        for (const registration of registrations) {
-          registration.unregister().then(() => {
-            console.log('[SW] Unregistered Service Worker successfully');
-          });
-        }
-      });
-    }
-    if (typeof window !== 'undefined' && 'caches' in window) {
-      caches.keys().then(names => {
-        for (const name of names) {
-          caches.delete(name);
-        }
-      });
-    }
-  }, []);
+  useServiceWorkerCleanup();
 
   const tx = useMemo(() => {
     return allTx.filter(t => t.businessDate === viewDate).reverse();
@@ -98,18 +73,7 @@ export default function App() {
 
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState('剛剛');
-  const [online, setOnline] = useState(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
-
-  useEffect(() => {
-    const goOnline = () => setOnline(true);
-    const goOffline = () => setOnline(false);
-    window.addEventListener('online', goOnline);
-    window.addEventListener('offline', goOffline);
-    return () => {
-      window.removeEventListener('online', goOnline);
-      window.removeEventListener('offline', goOffline);
-    };
-  }, []);
+  const online = useOnlineStatus();
 
   // Check storage health on mount (deferred to avoid setState-in-effect)
   const storageHealthyRef = useRef(true);
@@ -118,29 +82,7 @@ export default function App() {
     storageHealthyRef.current = health.ok;
   }, []);
 
-  // Restore crash draft on mount if available
-  const [crashDraftRestored, setCrashDraftRestored] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const draft = await loadCrashDraft();
-      if (cancelled || !draft) return;
-      // Apply draft back to store state
-      const student = students.find(s => s.studentId === draft.intent.studentId);
-      if (student) {
-        selectStudent(draft.intent.studentId, 'manual');
-        if (draft.intent.paidAmount > 0) {
-          setPaidAmountText(String(draft.intent.paidAmount));
-        }
-        if (draft.intent.type !== 'order') {
-          changeMode(draft.intent.type);
-        }
-      }
-      setCrashDraftRestored(true);
-    })();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const crashDraftRestored = useCrashDraftRecovery({ selectStudent, setPaidAmountText, changeMode });
 
   // Derive picked student — keep it pinned across committing/success so the UI doesn't flash away
   const [pinnedStudentId, setPinnedStudentId] = useState<string | null>(null);
@@ -201,40 +143,13 @@ export default function App() {
 
   const [searchFocusKey, setSearchFocusKey] = useState(0);
   const [flashKey, setFlashKey] = useState(0);
-  const [undoCountdown, setUndoCountdown] = useState(0);
-  const lastCommittedTxIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (undoCountdown <= 0) {
-      if (undoCountdown === 0) lastCommittedTxIdRef.current = null;
-      return;
-    }
-    const t = setTimeout(() => setUndoCountdown(n => {
-      const next = n - 1;
-      if (next <= 0) lastCommittedTxIdRef.current = null;
-      return Math.max(0, next);
-    }), 1000);
-    return () => clearTimeout(t);
-  }, [undoCountdown]);
-
-  const dismissFlash = useCallback(() => {
-    dismissSuccess();
-    setFlashKey(k => k + 1);
-    setSyncing(false);
-    setUndoCountdown(0);
-    lastCommittedTxIdRef.current = null;
-    setPriceOverride(null);
-    setPriceOverrideLabel('');
-  }, [dismissSuccess]);
-
-  const handleUndo = useCallback(() => {
-    const txId = lastCommittedTxIdRef.current;
-    if (!txId) return;
-    usePosStore.getState().deleteTransaction(txId);
-    lastCommittedTxIdRef.current = null;
-    setUndoCountdown(0);
-    dismissFlash();
-  }, [dismissFlash]);
+  const { undoCountdown, setUndoCountdown, lastCommittedTxIdRef, dismissFlash, handleUndo } = useUndoCountdown({
+    dismissSuccess,
+    setFlashKey,
+    setSyncing,
+    setPriceOverride,
+    setPriceOverrideLabel,
+  });
 
   const handleConfirm = useCallback(() => {
     if (state.kind === 'expense_input') {
@@ -318,6 +233,7 @@ export default function App() {
       };
     }
     prevKindRef.current = state.kind;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.kind]);
 
   const hasFlash = state.kind === 'success';
