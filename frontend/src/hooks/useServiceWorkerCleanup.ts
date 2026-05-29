@@ -5,9 +5,7 @@ export function useServiceWorkerCleanup() {
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(registrations => {
         for (const registration of registrations) {
-          registration.unregister().then(() => {
-            console.log('[SW] Unregistered Service Worker successfully');
-          });
+          registration.unregister();
         }
       });
     }
