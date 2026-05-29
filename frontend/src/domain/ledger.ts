@@ -19,6 +19,8 @@ export interface LedgerTransaction {
   syncStatus: LedgerSyncStatus;
   revision: number;
   note: string;
+  depositAmount?: number;
+  unpaidAmount?: number;
 }
 
 import type { StudentSnapshot } from './student';
