@@ -1,4 +1,5 @@
 import type { PosState } from '../store/posStore';
+import { appendErrorLog } from '../errors/errorLogger';
 import type { Vendor } from '../domain/menu';
 
 export function migratePersistedState(persistedState: unknown, version: number): PosState {
@@ -76,7 +77,7 @@ export function migratePersistedState(persistedState: unknown, version: number):
 
     return state as unknown as PosState;
   } catch (e) {
-    console.error('[migration] migratePersistedState crashed:', e);
+    appendErrorLog({ source: 'storage', message: '[migration] migratePersistedState crashed: ' + String(e) });
     throw e; // let onRehydrateStorage fallback handle the reset
   }
 }
