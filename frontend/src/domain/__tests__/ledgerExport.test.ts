@@ -57,6 +57,27 @@ describe('buildTransactionCsvRows', () => {
     expect(rows[0][1]).toBe('tx-1');
     expect(rows[0][4]).toBe('王小明');
   });
+
+  it('defaults depositAmount and unpaidAmount to 0 when missing', () => {
+    const tx = makeTx();
+    delete (tx as Partial<LedgerTransaction>).depositAmount;
+    delete (tx as Partial<LedgerTransaction>).unpaidAmount;
+    const rows = buildTransactionCsvRows([tx]);
+    expect(rows[0][20]).toBe('0');
+    expect(rows[0][21]).toBe('0');
+  });
+
+  it('outputs depositAmount and unpaidAmount when present', () => {
+    const tx = makeTx({ depositAmount: 150, unpaidAmount: 50 });
+    const rows = buildTransactionCsvRows([tx]);
+    expect(rows[0][20]).toBe('150');
+    expect(rows[0][21]).toBe('50');
+  });
+
+  it('handles empty array', () => {
+    const rows = buildTransactionCsvRows([]);
+    expect(rows).toHaveLength(0);
+  });
 });
 
 describe('buildSettlementCsvRows', () => {

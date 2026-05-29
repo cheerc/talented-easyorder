@@ -67,10 +67,8 @@ export function buildTransactionCsvRows(transactions: LedgerTransaction[]): stri
     t.voidedAt ?? '',
     t.voidedBy ?? '',
     t.voidReason ?? '',
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    String((t as any).depositAmount ?? 0),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    String((t as any).unpaidAmount ?? 0),
+    String(t.depositAmount ?? 0),
+    String(t.unpaidAmount ?? 0),
   ]);
 }
 
