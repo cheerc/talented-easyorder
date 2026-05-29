@@ -64,49 +64,115 @@ describe('posStateValidator', () => {
     if (!result.ok) expect(result.reason).toContain('businessDateStatuses');
   });
 
-  describe('deep validation gaps (shallow-only validator)', () => {
-    // These tests document the current shallow validation behaviour.
-    // validatePersistedState only checks top-level keys and types;
-    // it does NOT inspect nested object structure.
-    // Tests marked with .skip expose gaps for future fix (#61+#68).
-
-    it('passes when student currentBalance is a string instead of number', () => {
+  describe('deep validation', () => {
+    it('rejects student with currentBalance as string', () => {
       const bad = {
         ...validState,
         students: [{ ...validState.students[0], currentBalance: 'not-a-number' }],
       };
       const result = validatePersistedState(bad);
-      // GAP: shallow validation only checks students is an array, not element shape
-      expect(result.ok).toBe(true);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toContain('currentBalance');
     });
 
-    it.skip('SHOULD reject transaction missing required id field', () => {
+    it('rejects student missing studentId', () => {
+      const s = { ...validState.students[0] };
+      delete (s as Record<string, unknown>).studentId;
+      const bad = { ...validState, students: [s] };
+      const result = validatePersistedState(bad);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toContain('studentId');
+    });
+
+    it('rejects transaction with mealPrice as string', () => {
+      const bad = {
+        ...validState,
+        transactions: [{ transactionId: 'tx-1', businessDate: '2026-05-15', createdAt: '2026-05-15T12:00:00Z', studentId: 's1', type: 'order', mealPrice: 'not-a-number', paidAmount: 0, amount: -100, afterBalance: -100, sourceDevice: 'pc', syncStatus: 'local', revision: 1 }],
+      };
+      const result = validatePersistedState(bad);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toContain('mealPrice');
+    });
+
+    it('rejects transaction missing transactionId', () => {
       const bad = {
         ...validState,
         transactions: [{ type: 'order', studentId: 's1', amount: -100, mealPrice: 100, paidAmount: 0, afterBalance: -100, businessDate: '2026-05-15', createdAt: '2026-05-15T12:00:00Z', menuNameSnapshot: 'lunch', vendorNameSnapshot: 'v', studentNameSnapshot: 'test', sourceDevice: 'pc', syncStatus: 'local', revision: 1, note: '' }],
       };
       const result = validatePersistedState(bad);
-      // GAP: shallow validation only checks transactions is an array — element integrity not verified
       expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toContain('transactionId');
     });
 
-    it('passes when todayMenu has wrong-typed price field', () => {
+    it('rejects transaction with invalid type', () => {
+      const bad = {
+        ...validState,
+        transactions: [{ transactionId: 'tx-1', businessDate: '2026-05-15', createdAt: '2026-05-15T12:00:00Z', studentId: 's1', type: 'invalid', mealPrice: 100, paidAmount: 0, amount: -100, afterBalance: -100, sourceDevice: 'pc', syncStatus: 'local', revision: 1 }],
+      };
+      const result = validatePersistedState(bad);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toContain('type');
+    });
+
+    it('rejects todayMenu with price as string', () => {
       const bad = {
         ...validState,
         todayMenu: { ...validState.todayMenu, price: 'not-a-number' },
       };
       const result = validatePersistedState(bad);
-      // GAP: shallow validation only checks todayMenu is a non-null object
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toContain('todayMenu');
+    });
+
+    it('rejects todayMenu missing businessDate', () => {
+      const m = { ...validState.todayMenu };
+      delete (m as Record<string, unknown>).businessDate;
+      const bad = { ...validState, todayMenu: m };
+      const result = validatePersistedState(bad);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toContain('businessDate');
+    });
+
+    it('rejects auditEvent missing auditEventId', () => {
+      const bad = {
+        ...validState,
+        auditEvents: [{ eventType: 'transaction_edited', entityType: 'transaction', entityId: 'e-1', businessDate: '2026-05-15', reason: 'test', operatorId: 'op-1', createdAt: '2026-05-15T12:00:00Z' }],
+      };
+      const result = validatePersistedState(bad);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toContain('auditEventId');
+    });
+
+    it('rejects vendor with missing name', () => {
+      const bad = {
+        ...validState,
+        vendors: [{ vendorId: 'v1', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', revision: 1, status: 'active' }],
+      };
+      const result = validatePersistedState(bad);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toContain('name');
+    });
+
+    it('accepts all elements valid', () => {
+      const result = validatePersistedState(validState);
       expect(result.ok).toBe(true);
     });
 
-    it('passes when businessDateStatuses has corrupt nested values', () => {
+    it('accepts large transaction array (sample-based validation)', () => {
+      const tx = { transactionId: 'tx-1', businessDate: '2026-05-15', createdAt: '2026-05-15T12:00:00Z', studentId: 's1', type: 'order', mealPrice: 100, paidAmount: 0, amount: -100, afterBalance: -100, sourceDevice: 'pc', syncStatus: 'local', revision: 1 };
+      const txs = Array.from({ length: 200 }, (_, i) => ({ ...tx, transactionId: `tx-${i}` }));
+      const bad = { ...validState, transactions: txs };
+      const result = validatePersistedState(bad);
+      expect(result.ok).toBe(true);
+    });
+
+    it('passes when businessDateStatuses has corrupt nested values (still shallow)', () => {
       const bad = {
         ...validState,
         businessDateStatuses: { '2026-05-15': 42 },
       };
       const result = validatePersistedState(bad);
-      // GAP: shallow validation only checks businessDateStatuses is a non-null object
+      // businessDateStatuses is object-validated but not deep-validated per plan
       expect(result.ok).toBe(true);
     });
   });
