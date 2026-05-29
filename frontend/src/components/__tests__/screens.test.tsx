@@ -24,8 +24,7 @@ const mockState = {
 };
 
 vi.mock('../../store/posStore', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const usePosStore = (selector: any) => selector(mockState);
+  const usePosStore = (selector: Parameters<typeof import('../../store/posStore').usePosStore>[0]) => selector(mockState);
   usePosStore.getState = () => mockState;
   return { usePosStore };
 });
