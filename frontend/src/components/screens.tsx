@@ -283,7 +283,11 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
   const [showOpeningCashConfirm, setShowOpeningCashConfirm] = useState(false);
 
   const isClosed = dateStatus === 'closed';
-  const save = () => setTodayMenu({ ...todayMenu, itemName: name, price: Number(price), vendorNameSnapshot: vendor });
+  const save = () => {
+    const n = Number(price);
+    if (!Number.isSafeInteger(n) || n <= 0) return;
+    setTodayMenu({ ...todayMenu, itemName: name, price: n, vendorNameSnapshot: vendor });
+  };
 
   const handleReset = () => {
     resetData();
@@ -293,7 +297,7 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
 
   const doSaveOpeningCash = () => {
     const n = Number(openingCashDraft);
-    if (!Number.isFinite(n) || n < 0) return;
+    if (!Number.isSafeInteger(n) || n < 0) return;
     if (hasCashSession) {
       onUpdateOpeningCash(n);
     } else {
@@ -306,7 +310,7 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
 
   const handleSaveOpeningCash = () => {
     const n = Number(openingCashDraft);
-    if (!Number.isFinite(n) || n < 0) return;
+    if (!Number.isSafeInteger(n) || n < 0) return;
     if (n === openingCash) return;
     setShowOpeningCashConfirm(true);
   };

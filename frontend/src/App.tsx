@@ -239,7 +239,8 @@ export default function App() {
   const handleConfirm = useCallback(() => {
     if (state.kind === 'expense_input') {
       const n = Number(state.amountText);
-      if (Number.isFinite(n) && n > 0) confirmExpenseAmount(n);
+      if (!Number.isSafeInteger(n) || n <= 0) return;
+      confirmExpenseAmount(n);
       return;
     }
     if (state.kind === 'duplicate_warning') {
@@ -424,6 +425,7 @@ export default function App() {
       return null;
     }
     const amt = Number(currentPaidAmount || 0);
+    if (!Number.isSafeInteger(amt) || amt < 0) return null;
     const mealPrice = currentMode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
     return {
       id: flashKey,
