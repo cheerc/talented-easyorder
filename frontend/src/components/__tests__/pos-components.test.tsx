@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
-import { RecentStrip, ExpensePanel, SearchBox } from '../pos-components';
+import {
+  RecentStrip, ExpensePanel, SearchBox,
+  TopBar, MidnightBanner, CustomerCard, ActionBar,
+  IdleHero, DuplicateWarningBanner, ConfirmBanner,
+} from '../pos-components';
 import type { StudentAccount } from '../../domain/student';
 
 
@@ -207,5 +211,167 @@ describe('SearchBox', () => {
     const firstRow = container.querySelector('.sug-row');
     fireEvent.mouseEnter(firstRow!);
     expect(onHover).toHaveBeenCalledWith(0);
+  });
+});
+
+// === Smoke tests for pos/ components ===
+
+describe('TopBar', () => {
+  it('renders without crash with mock props', () => {
+    const { container } = render(
+      <TopBar
+        tab="pos"
+        setTab={() => {}}
+        online={true}
+        syncing={false}
+        lastSync="12:00"
+        todayCount={3}
+        viewDate="2026-05-29"
+        setViewDate={() => {}}
+      />
+    );
+    expect(container.textContent).toContain('櫃台');
+  });
+});
+
+describe('MidnightBanner', () => {
+  it('renders date mismatch banner', () => {
+    const { container } = render(
+      <MidnightBanner
+        viewDate="2026-05-28"
+        systemDate="2026-05-29"
+        onSwitchToToday={() => {}}
+      />
+    );
+    expect(container.textContent).toBeTruthy();
+  });
+});
+
+describe('SearchBox smoke', () => {
+  it('renders search input', () => {
+    const { container } = render(
+      <SearchBox
+        value=""
+        onChange={() => {}}
+        onSubmit={() => {}}
+        onEsc={() => {}}
+        suggestions={[]}
+        activeIdx={0}
+        onPick={() => {}}
+        onHover={() => {}}
+        focusKey={0}
+        disabled={false}
+      />
+    );
+    expect(container.querySelector('input')).toBeTruthy();
+  });
+});
+
+describe('CustomerCard', () => {
+  const mockStudent: StudentAccount = {
+    studentId: '001',
+    displayName: '王小美',
+    currentBalance: 100,
+    status: 'active',
+    aliases: [],
+    faceEnrollmentStatus: 'none',
+    createdAt: '',
+    updatedAt: '',
+    revision: 1,
+  };
+  const mockMenu = { itemName: '排骨便當', price: 90, vendorId: 'v1', vendorNameSnapshot: '老王便當' };
+
+  it('renders student balance card', () => {
+    const { container } = render(
+      <CustomerCard
+        student={mockStudent}
+        todayMenu={mockMenu}
+        mode="order"
+        orderedTodayCount={0}
+        payAmount=""
+        setPayAmount={() => {}}
+        priceOverride={null}
+        priceOverrideLabel=""
+        setPriceOverride={() => {}}
+        setPriceOverrideLabel={() => {}}
+      />
+    );
+    expect(container.textContent).toContain('王小美');
+  });
+});
+
+describe('ActionBar', () => {
+  it('renders mode buttons', () => {
+    const { container } = render(
+      <ActionBar
+        mode="order"
+        setMode={() => {}}
+        onConfirm={() => {}}
+        onCancel={() => {}}
+        focusZone="mode-order"
+      />
+    );
+    expect(container.textContent).toContain('訂便當');
+    expect(container.textContent).toContain('繳費');
+  });
+});
+
+describe('IdleHero', () => {
+  const mockMenu = { itemName: '排骨便當', price: 90, vendorId: 'v1', vendorNameSnapshot: '老王便當' };
+
+  it('renders today menu info', () => {
+    const { container } = render(
+      <IdleHero todayMenu={mockMenu} todayCount={3} vendorPhone="0912345678" />
+    );
+    expect(container.textContent).toContain('排骨便當');
+  });
+});
+
+describe('DuplicateWarningBanner', () => {
+  it('renders warning message', () => {
+    const { container } = render(
+      <DuplicateWarningBanner
+        orderedTodayCount={1}
+        onConfirm={() => {}}
+        onCancel={() => {}}
+      />
+    );
+    expect(container.textContent).toBeTruthy();
+  });
+});
+
+describe('ConfirmBanner', () => {
+  it('null when no flash (conditional render)', () => {
+    const { container } = render(
+      <ConfirmBanner flash={null} onDismiss={() => {}} />
+    );
+    expect(container.firstChild).toBeNull();
+  });
+});
+
+describe('RecentStrip empty state', () => {
+  it('renders empty state "尚無交易"', () => {
+    const { container } = render(<RecentStrip recent={[]} />);
+    expect(container.textContent).toContain('尚無交易');
+  });
+});
+
+describe('ExpensePanel smoke', () => {
+  it('renders amount input in expense_input kind', () => {
+    const { container } = render(
+      <ExpensePanel
+        kind="expense_input"
+        amountText=""
+        amount={0}
+        onAmountChange={() => {}}
+        onAmountConfirm={() => {}}
+        onDirectionSelect={() => {}}
+        onReasonSelect={() => {}}
+        onNoteChange={() => {}}
+        onNoteConfirm={() => {}}
+        onCancel={() => {}}
+      />
+    );
+    expect(container.querySelector('input')).toBeTruthy();
   });
 });
