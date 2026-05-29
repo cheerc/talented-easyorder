@@ -497,16 +497,27 @@ export const usePosStore = create<PosState>()(
       version: 2,
       onRehydrateStorage: () => {
         return (state, error) => {
-          if (error || !state) {
-            console.error('[posStore] rehydration failed:', error);
-            return;
-          }
-          const migrationResult = migrateState(state);
-          if (migrationResult.ok) {
-            Object.assign(state, migrationResult.state);
-            const validationResult = validatePersistedState(state);
-            if (!validationResult.ok) {
-              console.error('[posStore] validation failed after migration:', validationResult.reason);
+          try {
+            if (error || !state) {
+              console.error('[posStore] rehydration failed:', error);
+              return;
+            }
+            const migrationResult = migrateState(state);
+            if (migrationResult.ok) {
+              Object.assign(state, migrationResult.state);
+              const validationResult = validatePersistedState(state);
+              if (!validationResult.ok) {
+                console.error('[posStore] validation failed after migration:', validationResult.reason);
+                Object.assign(state, {
+                  students: INITIAL_STUDENTS,
+                  transactions: INITIAL_TODAY_TX,
+                  vendors: VENDORS,
+                  todayMenu: INITIAL_TODAY_MENU,
+                  ...defaultState,
+                });
+              }
+            } else {
+              console.error('[posStore] migration failed:', migrationResult.reason);
               Object.assign(state, {
                 students: INITIAL_STUDENTS,
                 transactions: INITIAL_TODAY_TX,
@@ -515,8 +526,8 @@ export const usePosStore = create<PosState>()(
                 ...defaultState,
               });
             }
-          } else {
-            console.error('[posStore] migration failed:', migrationResult.reason);
+          } catch (e) {
+            console.error('[posStore] rehydration crashed:', e);
             Object.assign(state, {
               students: INITIAL_STUDENTS,
               transactions: INITIAL_TODAY_TX,
