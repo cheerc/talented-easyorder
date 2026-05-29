@@ -80,7 +80,7 @@ export function subscribeOperatorAccess(
     const profile = toOperatorProfile(user);
     if (!isAllowedWorkspaceEmail(profile.email)) {
       onAccess({ ok: false, reason: 'wrong_domain', profile });
-      await signOut(auth);
+      signOut(auth).catch(err => console.error('[auth] force signOut failed:', err));
       return;
     }
 
@@ -88,12 +88,12 @@ export function subscribeOperatorAccess(
       const data = snapshot.data() as { active?: boolean; role?: 'counter' | 'admin' } | undefined;
       if (!data) {
         onAccess({ ok: false, reason: 'not_whitelisted', profile });
-        void signOut(auth);
+        signOut(auth).catch(err => console.error('[auth] force signOut failed:', err));
         return;
       }
       if (!data.active) {
         onAccess({ ok: false, reason: 'inactive', profile });
-        void signOut(auth);
+        signOut(auth).catch(err => console.error('[auth] force signOut failed:', err));
         return;
       }
       onAccess({ ok: true, profile, role: data.role ?? 'counter' });
