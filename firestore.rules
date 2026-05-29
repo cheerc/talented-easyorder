@@ -8,6 +8,7 @@ service cloud.firestore {
     function talentedEmail() {
       return signedIn()
         && request.auth.token.email is string
+        && request.auth.token.email_verified == true
         && request.auth.token.email.matches('.*@talented\\.com\\.tw$');
     }
 
