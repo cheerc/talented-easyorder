@@ -50,6 +50,45 @@ describe('errorLogger', () => {
     expect(entry.message).toContain('[REDACTED]');
   });
 
+  it('sanitizes multi-word Chinese names', () => {
+    const entry = appendErrorLog({
+      source: 'react',
+      message: '學生: 歐陽大衛 餘額: 1200',
+    });
+    expect(entry.message).not.toContain('歐陽大衛');
+    expect(entry.message).toContain('[REDACTED]');
+  });
+
+  it('sanitizes PII with mixed content', () => {
+    const entry = appendErrorLog({
+      source: 'react',
+      message: 'error: 學生: 林小明, 金額: -150, status: fail',
+    });
+    expect(entry.message).not.toContain('林小明');
+    expect(entry.message).not.toContain('-150');
+    expect(entry.message).toContain('status: fail');
+  });
+
+  it('sanitizes PII across multiple lines', () => {
+    const entry = appendErrorLog({
+      source: 'react',
+      message: 'Line 1\n學生: 張三 金額: 200\nLine 3',
+    });
+    expect(entry.message).not.toContain('張三');
+    expect(entry.message).not.toContain('200');
+  });
+
+  it('sanitizes 姓名 and name patterns', () => {
+    const entry = appendErrorLog({
+      source: 'react',
+      message: '姓名: 李大華, name: John Smith, 學生: 王小明',
+    });
+    expect(entry.message).not.toContain('李大華');
+    expect(entry.message).not.toContain('John Smith');
+    expect(entry.message).not.toContain('王小明');
+    expect(entry.message).toContain('[REDACTED]');
+  });
+
   it('sanitizes context by allowlist', () => {
     const entry = appendErrorLog({
       source: 'storage',
