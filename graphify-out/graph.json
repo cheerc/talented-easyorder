@@ -204,7 +204,7 @@
       "file_type": "code",
       "source_file": "vercel.json",
       "source_location": "L2",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_vercel_rewrites",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_vercel_rewrites",
       "community": 93,
       "norm_label": "rewrites"
     },
@@ -213,7 +213,7 @@
       "file_type": "code",
       "source_file": "vercel.json",
       "source_location": "L5",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_vercel_headers",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_vercel_headers",
       "community": 93,
       "norm_label": "headers"
     },
@@ -239,7 +239,7 @@
         "language": "bash",
         "kind": "bash_entrypoint"
       },
-      "id": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "id": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
       "community": 6,
       "norm_label": "workflow.sh script"
     },
@@ -252,7 +252,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_handle_error",
       "community": 6,
       "norm_label": "handle_error()"
     },
@@ -265,7 +265,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_pause",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_pause",
       "community": 6,
       "norm_label": "pause()"
     },
@@ -278,7 +278,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_check_and_switch_gcloud",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_check_and_switch_gcloud",
       "community": 6,
       "norm_label": "check_and_switch_gcloud()"
     },
@@ -291,7 +291,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_check_and_switch_firebase",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_check_and_switch_firebase",
       "community": 6,
       "norm_label": "check_and_switch_firebase()"
     },
@@ -304,7 +304,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_merge_firestore_rules",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_merge_firestore_rules",
       "community": 6,
       "norm_label": "merge_firestore_rules()"
     },
@@ -317,7 +317,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_show_menu",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_show_menu",
       "community": 6,
       "norm_label": "show_menu()"
     },
@@ -330,7 +330,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_start_emulators",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_start_emulators",
       "community": 6,
       "norm_label": "start_emulators()"
     },
@@ -343,7 +343,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_dev_with_emulators",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_dev_with_emulators",
       "community": 6,
       "norm_label": "dev_with_emulators()"
     },
@@ -356,7 +356,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_dev_prod",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_dev_prod",
       "community": 6,
       "norm_label": "dev_prod()"
     },
@@ -369,7 +369,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_build_test",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_build_test",
       "community": 6,
       "norm_label": "run_build_test()"
     },
@@ -382,7 +382,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_typecheck",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_typecheck",
       "community": 6,
       "norm_label": "run_typecheck()"
     },
@@ -395,7 +395,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_lint",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_lint",
       "community": 6,
       "norm_label": "run_lint()"
     },
@@ -408,7 +408,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_unit_tests",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_unit_tests",
       "community": 6,
       "norm_label": "run_unit_tests()"
     },
@@ -421,7 +421,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_integration_tests",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_integration_tests",
       "community": 6,
       "norm_label": "run_integration_tests()"
     },
@@ -434,7 +434,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_full_ci",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_full_ci",
       "community": 6,
       "norm_label": "run_full_ci()"
     },
@@ -447,7 +447,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_preview",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_preview",
       "community": 6,
       "norm_label": "run_preview()"
     },
@@ -460,7 +460,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_confirm_prod",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_confirm_prod",
       "community": 6,
       "norm_label": "confirm_prod()"
     },
@@ -473,7 +473,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_frontend",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_frontend",
       "community": 6,
       "norm_label": "deploy_frontend()"
     },
@@ -486,7 +486,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_rules",
       "community": 6,
       "norm_label": "deploy_rules()"
     },
@@ -499,7 +499,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_indexes",
       "community": 6,
       "norm_label": "deploy_indexes()"
     },
@@ -512,7 +512,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_all",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_all",
       "community": 6,
       "norm_label": "deploy_all()"
     },
@@ -525,7 +525,7 @@
         "language": "bash",
         "kind": "bash_function"
       },
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
       "community": 6,
       "norm_label": "deploy_full_stack()"
     },
@@ -543,7 +543,7 @@
       "file_type": "code",
       "source_file": "firebase.json",
       "source_location": "L2",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_firebase_firestore",
       "community": 264,
       "norm_label": "firestore"
     },
@@ -552,7 +552,7 @@
       "file_type": "code",
       "source_file": "firebase.json",
       "source_location": "L3",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore_rules",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_firebase_firestore_rules",
       "community": 264,
       "norm_label": "rules"
     },
@@ -561,7 +561,7 @@
       "file_type": "code",
       "source_file": "firebase.json",
       "source_location": "L4",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore_indexes",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_firebase_firestore_indexes",
       "community": 264,
       "norm_label": "indexes"
     },
@@ -570,8 +570,8 @@
       "file_type": "code",
       "source_file": "firebase.json",
       "source_location": "L6",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators",
-      "community": 35,
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators",
+      "community": 21,
       "norm_label": "emulators"
     },
     {
@@ -579,8 +579,8 @@
       "file_type": "code",
       "source_file": "firebase.json",
       "source_location": "L7",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_auth",
-      "community": 35,
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators_auth",
+      "community": 21,
       "norm_label": "auth"
     },
     {
@@ -588,8 +588,8 @@
       "file_type": "code",
       "source_file": "firebase.json",
       "source_location": "L7",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_auth_port",
-      "community": 35,
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_firebase_auth_port",
+      "community": 21,
       "norm_label": "port"
     },
     {
@@ -597,8 +597,8 @@
       "file_type": "code",
       "source_file": "firebase.json",
       "source_location": "L8",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_firestore",
-      "community": 35,
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators_firestore",
+      "community": 21,
       "norm_label": "firestore"
     },
     {
@@ -606,8 +606,8 @@
       "file_type": "code",
       "source_file": "firebase.json",
       "source_location": "L8",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore_port",
-      "community": 35,
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_firebase_firestore_port",
+      "community": 21,
       "norm_label": "port"
     },
     {
@@ -615,8 +615,8 @@
       "file_type": "code",
       "source_file": "firebase.json",
       "source_location": "L9",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_ui",
-      "community": 35,
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators_ui",
+      "community": 21,
       "norm_label": "ui"
     },
     {
@@ -624,8 +624,8 @@
       "file_type": "code",
       "source_file": "firebase.json",
       "source_location": "L9",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_ui_enabled",
-      "community": 35,
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_firebase_ui_enabled",
+      "community": 21,
       "norm_label": "enabled"
     },
     {
@@ -633,8 +633,8 @@
       "file_type": "code",
       "source_file": "firebase.json",
       "source_location": "L9",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_ui_port",
-      "community": 35,
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_firebase_ui_port",
+      "community": 21,
       "norm_label": "port"
     },
     {
@@ -642,8 +642,8 @@
       "file_type": "code",
       "source_file": "firebase.json",
       "source_location": "L10",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_singleprojectmode",
-      "community": 35,
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators_singleprojectmode",
+      "community": 21,
       "norm_label": "singleprojectmode"
     },
     {
@@ -660,7 +660,7 @@
       "file_type": "code",
       "source_file": "firestore.indexes.json",
       "source_location": "L2",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_firestore_indexes_indexes",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_firestore_indexes_indexes",
       "community": 92,
       "norm_label": "indexes"
     },
@@ -669,7 +669,7 @@
       "file_type": "code",
       "source_file": "firestore.indexes.json",
       "source_location": "L28",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_firestore_indexes_fieldoverrides",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_firestore_indexes_fieldoverrides",
       "community": 92,
       "norm_label": "fieldoverrides"
     },
@@ -1507,7 +1507,7 @@
       "source_file": "frontend/src/App.tsx",
       "source_location": "L1",
       "id": "frontend_src_app_tsx",
-      "community": 33,
+      "community": 2,
       "norm_label": "app.tsx"
     },
     {
@@ -1534,7 +1534,7 @@
       "source_file": "frontend/src/mocks/initialData.ts",
       "source_location": "L1",
       "id": "frontend_src_mocks_initialdata_ts",
-      "community": 22,
+      "community": 33,
       "norm_label": "initialdata.ts"
     },
     {
@@ -1543,7 +1543,7 @@
       "source_file": "frontend/src/mocks/initialData.ts",
       "source_location": "L7",
       "id": "mocks_initialdata_initial_students",
-      "community": 22,
+      "community": 33,
       "norm_label": "initial_students"
     },
     {
@@ -1552,7 +1552,7 @@
       "source_file": "frontend/src/mocks/initialData.ts",
       "source_location": "L30",
       "id": "mocks_initialdata_vendors",
-      "community": 22,
+      "community": 33,
       "norm_label": "vendors"
     },
     {
@@ -1561,7 +1561,7 @@
       "source_file": "frontend/src/mocks/initialData.ts",
       "source_location": "L37",
       "id": "mocks_initialdata_initial_today_menu",
-      "community": 22,
+      "community": 33,
       "norm_label": "initial_today_menu"
     },
     {
@@ -1570,7 +1570,7 @@
       "source_file": "frontend/src/mocks/initialData.ts",
       "source_location": "L47",
       "id": "mocks_initialdata_initial_today_tx",
-      "community": 22,
+      "community": 33,
       "norm_label": "initial_today_tx"
     },
     {
@@ -1579,7 +1579,7 @@
       "source_file": "frontend/src/mocks/initialData.ts",
       "source_location": "L49",
       "id": "mocks_initialdata_initial_ordered_today",
-      "community": 22,
+      "community": 33,
       "norm_label": "initial_ordered_today"
     },
     {
@@ -2308,7 +2308,7 @@
       "source_file": "frontend/src/components/EditTransactionModal.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_edittransactionmodal_tsx",
-      "community": 16,
+      "community": 1,
       "norm_label": "edittransactionmodal.tsx"
     },
     {
@@ -2317,7 +2317,7 @@
       "source_file": "frontend/src/components/EditTransactionModal.tsx",
       "source_location": "L8",
       "id": "components_edittransactionmodal_edittransactionmodalprops",
-      "community": 16,
+      "community": 1,
       "norm_label": "edittransactionmodalprops"
     },
     {
@@ -2326,7 +2326,7 @@
       "source_file": "frontend/src/components/EditTransactionModal.tsx",
       "source_location": "L15",
       "id": "components_edittransactionmodal_edittransactionmodal",
-      "community": 16,
+      "community": 27,
       "norm_label": "edittransactionmodal"
     },
     {
@@ -2506,7 +2506,7 @@
       "source_file": "frontend/src/components/ui/NumericInput.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_ui_numericinput_tsx",
-      "community": 64,
+      "community": 19,
       "norm_label": "numericinput.tsx"
     },
     {
@@ -2515,7 +2515,7 @@
       "source_file": "frontend/src/components/ui/NumericInput.tsx",
       "source_location": "L3",
       "id": "ui_numericinput_numericinputprops",
-      "community": 64,
+      "community": 19,
       "norm_label": "numericinputprops"
     },
     {
@@ -2524,7 +2524,7 @@
       "source_file": "frontend/src/components/ui/NumericInput.tsx",
       "source_location": "L8",
       "id": "ui_numericinput_numericinput",
-      "community": 64,
+      "community": 19,
       "norm_label": "numericinput"
     },
     {
@@ -2596,7 +2596,7 @@
       "source_file": "frontend/src/components/ui/Field.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_ui_field_tsx",
-      "community": 167,
+      "community": 1,
       "norm_label": "field.tsx"
     },
     {
@@ -2605,7 +2605,7 @@
       "source_file": "frontend/src/components/ui/Field.tsx",
       "source_location": "L4",
       "id": "ui_field_fieldprops",
-      "community": 167,
+      "community": 1,
       "norm_label": "fieldprops"
     },
     {
@@ -2614,7 +2614,7 @@
       "source_file": "frontend/src/components/ui/Field.tsx",
       "source_location": "L13",
       "id": "ui_field_field",
-      "community": 167,
+      "community": 1,
       "norm_label": "field"
     },
     {
@@ -2623,7 +2623,7 @@
       "source_file": "frontend/src/components/ui/NumberField.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_ui_numberfield_tsx",
-      "community": 64,
+      "community": 1,
       "norm_label": "numberfield.tsx"
     },
     {
@@ -2632,7 +2632,7 @@
       "source_file": "frontend/src/components/ui/NumberField.tsx",
       "source_location": "L6",
       "id": "ui_numberfield_numberfieldprops",
-      "community": 64,
+      "community": 1,
       "norm_label": "numberfieldprops"
     },
     {
@@ -2641,7 +2641,7 @@
       "source_file": "frontend/src/components/ui/NumberField.tsx",
       "source_location": "L20",
       "id": "ui_numberfield_numberfield",
-      "community": 64,
+      "community": 1,
       "norm_label": "numberfield"
     },
     {
@@ -2686,7 +2686,7 @@
       "source_file": "frontend/src/components/ui/TextField.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_ui_textfield_tsx",
-      "community": 167,
+      "community": 1,
       "norm_label": "textfield.tsx"
     },
     {
@@ -2695,7 +2695,7 @@
       "source_file": "frontend/src/components/ui/TextField.tsx",
       "source_location": "L5",
       "id": "ui_textfield_textfieldprops",
-      "community": 167,
+      "community": 1,
       "norm_label": "textfieldprops"
     },
     {
@@ -2704,7 +2704,7 @@
       "source_file": "frontend/src/components/ui/TextField.tsx",
       "source_location": "L17",
       "id": "ui_textfield_textfield",
-      "community": 167,
+      "community": 1,
       "norm_label": "textfield"
     },
     {
@@ -2902,7 +2902,7 @@
       "source_file": "frontend/src/components/ui/__tests__/Field.test.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_ui_tests_field_test_tsx",
-      "community": 167,
+      "community": 1,
       "norm_label": "field.test.tsx"
     },
     {
@@ -2911,7 +2911,7 @@
       "source_file": "frontend/src/components/ui/__tests__/Field.test.tsx",
       "source_location": "L23",
       "id": "tests_field_test_label",
-      "community": 167,
+      "community": 1,
       "norm_label": "label"
     },
     {
@@ -2920,7 +2920,7 @@
       "source_file": "frontend/src/components/ui/__tests__/Field.test.tsx",
       "source_location": "L29",
       "id": "tests_field_test_field",
-      "community": 167,
+      "community": 1,
       "norm_label": "field"
     },
     {
@@ -3010,7 +3010,7 @@
       "source_file": "frontend/src/components/ui/__tests__/TextField.test.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_ui_tests_textfield_test_tsx",
-      "community": 167,
+      "community": 1,
       "norm_label": "textfield.test.tsx"
     },
     {
@@ -3019,7 +3019,7 @@
       "source_file": "frontend/src/components/ui/__tests__/TextField.test.tsx",
       "source_location": "L19",
       "id": "tests_textfield_test_user",
-      "community": 167,
+      "community": 1,
       "norm_label": "user"
     },
     {
@@ -3028,7 +3028,7 @@
       "source_file": "frontend/src/components/ui/__tests__/TextField.test.tsx",
       "source_location": "L20",
       "id": "tests_textfield_test_onchange",
-      "community": 167,
+      "community": 1,
       "norm_label": "onchange"
     },
     {
@@ -3091,7 +3091,7 @@
       "source_file": "frontend/src/components/ui/__tests__/NumberField.test.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_ui_tests_numberfield_test_tsx",
-      "community": 64,
+      "community": 1,
       "norm_label": "numberfield.test.tsx"
     },
     {
@@ -3100,7 +3100,7 @@
       "source_file": "frontend/src/components/ui/__tests__/NumberField.test.tsx",
       "source_location": "L19",
       "id": "tests_numberfield_test_user",
-      "community": 64,
+      "community": 1,
       "norm_label": "user"
     },
     {
@@ -3109,7 +3109,7 @@
       "source_file": "frontend/src/components/ui/__tests__/NumberField.test.tsx",
       "source_location": "L20",
       "id": "tests_numberfield_test_onchange",
-      "community": 64,
+      "community": 1,
       "norm_label": "onchange"
     },
     {
@@ -3127,7 +3127,7 @@
       "source_file": "frontend/src/components/screens/ReportScreen.tsx",
       "source_location": "L26",
       "id": "screens_reportscreen_reportscreenprops",
-      "community": 7,
+      "community": 27,
       "norm_label": "reportscreenprops"
     },
     {
@@ -3181,7 +3181,7 @@
       "source_file": "frontend/src/components/screens/AdminScreen.tsx",
       "source_location": "L23",
       "id": "screens_adminscreen_adminscreen",
-      "community": 7,
+      "community": 27,
       "norm_label": "adminscreen"
     },
     {
@@ -3235,7 +3235,7 @@
       "source_file": "frontend/src/components/pos/ExpensePanel.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_pos_expensepanel_tsx",
-      "community": 21,
+      "community": 19,
       "norm_label": "expensepanel.tsx"
     },
     {
@@ -3244,7 +3244,7 @@
       "source_file": "frontend/src/components/pos/ExpensePanel.tsx",
       "source_location": "L5",
       "id": "pos_expensepanel_expense_quick_options",
-      "community": 21,
+      "community": 19,
       "norm_label": "expense_quick_options"
     },
     {
@@ -3253,7 +3253,7 @@
       "source_file": "frontend/src/components/pos/ExpensePanel.tsx",
       "source_location": "L7",
       "id": "pos_expensepanel_expensepanelprops",
-      "community": 21,
+      "community": 19,
       "norm_label": "expensepanelprops"
     },
     {
@@ -3262,7 +3262,7 @@
       "source_file": "frontend/src/components/pos/ExpensePanel.tsx",
       "source_location": "L20",
       "id": "pos_expensepanel_expensepanel",
-      "community": 21,
+      "community": 19,
       "norm_label": "expensepanel"
     },
     {
@@ -3298,7 +3298,7 @@
       "source_file": "frontend/src/components/pos/CustomerCard.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_pos_customercard_tsx",
-      "community": 21,
+      "community": 19,
       "norm_label": "customercard.tsx"
     },
     {
@@ -3307,7 +3307,7 @@
       "source_file": "frontend/src/components/pos/CustomerCard.tsx",
       "source_location": "L8",
       "id": "pos_customercard_customercardprops",
-      "community": 21,
+      "community": 19,
       "norm_label": "customercardprops"
     },
     {
@@ -3316,7 +3316,7 @@
       "source_file": "frontend/src/components/pos/CustomerCard.tsx",
       "source_location": "L22",
       "id": "pos_customercard_customercard",
-      "community": 21,
+      "community": 19,
       "norm_label": "customercard"
     },
     {
@@ -3325,7 +3325,7 @@
       "source_file": "frontend/src/components/pos/utils.ts",
       "source_location": "L1",
       "id": "frontend_src_components_pos_utils_ts",
-      "community": 21,
+      "community": 19,
       "norm_label": "utils.ts"
     },
     {
@@ -3334,7 +3334,7 @@
       "source_file": "frontend/src/components/pos/utils.ts",
       "source_location": "L1",
       "id": "pos_utils_keyboardeventwithflag",
-      "community": 21,
+      "community": 19,
       "norm_label": "keyboardeventwithflag"
     },
     {
@@ -3343,7 +3343,7 @@
       "source_file": "frontend/src/components/pos/utils.ts",
       "source_location": "L3",
       "id": "pos_utils_fmt",
-      "community": 21,
+      "community": 19,
       "norm_label": "fmt()"
     },
     {
@@ -3352,7 +3352,7 @@
       "source_file": "frontend/src/components/pos/utils.ts",
       "source_location": "L4",
       "id": "pos_utils_sign",
-      "community": 21,
+      "community": 19,
       "norm_label": "sign()"
     },
     {
@@ -3361,7 +3361,7 @@
       "source_file": "frontend/src/components/pos/utils.ts",
       "source_location": "L6",
       "id": "pos_utils_getquickamounts",
-      "community": 21,
+      "community": 19,
       "norm_label": "getquickamounts()"
     },
     {
@@ -3370,7 +3370,7 @@
       "source_file": "frontend/src/components/pos/SearchBox.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_pos_searchbox_tsx",
-      "community": 21,
+      "community": 7,
       "norm_label": "searchbox.tsx"
     },
     {
@@ -3379,7 +3379,7 @@
       "source_file": "frontend/src/components/pos/SearchBox.tsx",
       "source_location": "L5",
       "id": "pos_searchbox_searchboxprops",
-      "community": 21,
+      "community": 7,
       "norm_label": "searchboxprops"
     },
     {
@@ -3388,7 +3388,7 @@
       "source_file": "frontend/src/components/pos/SearchBox.tsx",
       "source_location": "L19",
       "id": "pos_searchbox_searchbox",
-      "community": 21,
+      "community": 2,
       "norm_label": "searchbox"
     },
     {
@@ -3424,7 +3424,7 @@
       "source_file": "frontend/src/components/pos/IdleHero.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_pos_idlehero_tsx",
-      "community": 21,
+      "community": 7,
       "norm_label": "idlehero.tsx"
     },
     {
@@ -3433,7 +3433,7 @@
       "source_file": "frontend/src/components/pos/IdleHero.tsx",
       "source_location": "L5",
       "id": "pos_idlehero_idleheroprops",
-      "community": 21,
+      "community": 7,
       "norm_label": "idleheroprops"
     },
     {
@@ -3442,7 +3442,7 @@
       "source_file": "frontend/src/components/pos/IdleHero.tsx",
       "source_location": "L12",
       "id": "pos_idlehero_idlehero",
-      "community": 21,
+      "community": 2,
       "norm_label": "idlehero"
     },
     {
@@ -3451,7 +3451,7 @@
       "source_file": "frontend/src/components/pos/ConfirmBanner.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_pos_confirmbanner_tsx",
-      "community": 21,
+      "community": 19,
       "norm_label": "confirmbanner.tsx"
     },
     {
@@ -3460,7 +3460,7 @@
       "source_file": "frontend/src/components/pos/ConfirmBanner.tsx",
       "source_location": "L4",
       "id": "pos_confirmbanner_flashdata",
-      "community": 21,
+      "community": 19,
       "norm_label": "flashdata"
     },
     {
@@ -3469,7 +3469,7 @@
       "source_file": "frontend/src/components/pos/ConfirmBanner.tsx",
       "source_location": "L12",
       "id": "pos_confirmbanner_confirmbannerprops",
-      "community": 21,
+      "community": 19,
       "norm_label": "confirmbannerprops"
     },
     {
@@ -3478,7 +3478,7 @@
       "source_file": "frontend/src/components/pos/ConfirmBanner.tsx",
       "source_location": "L18",
       "id": "pos_confirmbanner_confirmbanner",
-      "community": 21,
+      "community": 19,
       "norm_label": "confirmbanner"
     },
     {
@@ -3487,7 +3487,7 @@
       "source_file": "frontend/src/components/pos/RecentStrip.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_pos_recentstrip_tsx",
-      "community": 21,
+      "community": 19,
       "norm_label": "recentstrip.tsx"
     },
     {
@@ -3496,7 +3496,7 @@
       "source_file": "frontend/src/components/pos/RecentStrip.tsx",
       "source_location": "L9",
       "id": "pos_recentstrip_orders",
-      "community": 21,
+      "community": 19,
       "norm_label": "orders"
     },
     {
@@ -3505,7 +3505,7 @@
       "source_file": "frontend/src/components/pos/DuplicateWarningBanner.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_pos_duplicatewarningbanner_tsx",
-      "community": 19,
+      "community": 2,
       "norm_label": "duplicatewarningbanner.tsx"
     },
     {
@@ -3514,7 +3514,7 @@
       "source_file": "frontend/src/components/pos/DuplicateWarningBanner.tsx",
       "source_location": "L3",
       "id": "pos_duplicatewarningbanner_duplicatewarningbannerprops",
-      "community": 19,
+      "community": 2,
       "norm_label": "duplicatewarningbannerprops"
     },
     {
@@ -3523,7 +3523,7 @@
       "source_file": "frontend/src/components/pos/DuplicateWarningBanner.tsx",
       "source_location": "L8",
       "id": "pos_duplicatewarningbanner_duplicatewarningbanner",
-      "community": 19,
+      "community": 2,
       "norm_label": "duplicatewarningbanner"
     },
     {
@@ -3532,7 +3532,7 @@
       "source_file": "frontend/src/components/pos/MidnightBanner.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_pos_midnightbanner_tsx",
-      "community": 19,
+      "community": 2,
       "norm_label": "midnightbanner.tsx"
     },
     {
@@ -3541,7 +3541,7 @@
       "source_file": "frontend/src/components/pos/MidnightBanner.tsx",
       "source_location": "L3",
       "id": "pos_midnightbanner_midnightbannerprops",
-      "community": 19,
+      "community": 2,
       "norm_label": "midnightbannerprops"
     },
     {
@@ -3550,7 +3550,7 @@
       "source_file": "frontend/src/components/pos/MidnightBanner.tsx",
       "source_location": "L8",
       "id": "pos_midnightbanner_midnightbanner",
-      "community": 19,
+      "community": 2,
       "norm_label": "midnightbanner"
     },
     {
@@ -3883,7 +3883,7 @@
       "source_file": "frontend/src/components/report/AuditTrailTable.tsx",
       "source_location": "L1",
       "id": "frontend_src_components_report_audittrailtable_tsx",
-      "community": 27,
+      "community": 4,
       "norm_label": "audittrailtable.tsx"
     },
     {
@@ -3892,7 +3892,7 @@
       "source_file": "frontend/src/components/report/AuditTrailTable.tsx",
       "source_location": "L5",
       "id": "report_audittrailtable_eventtypelabel",
-      "community": 27,
+      "community": 4,
       "norm_label": "eventtypelabel()"
     },
     {
@@ -3901,7 +3901,7 @@
       "source_file": "frontend/src/components/report/AuditTrailTable.tsx",
       "source_location": "L18",
       "id": "report_audittrailtable_eventtypeclass",
-      "community": 27,
+      "community": 4,
       "norm_label": "eventtypeclass()"
     },
     {
@@ -3910,7 +3910,7 @@
       "source_file": "frontend/src/components/report/AuditTrailTable.tsx",
       "source_location": "L29",
       "id": "report_audittrailtable_beforeaftersummary",
-      "community": 27,
+      "community": 4,
       "norm_label": "beforeaftersummary()"
     },
     {
@@ -5179,7 +5179,7 @@
       "source_file": "frontend/src/__tests__/pcPosFlow.integration.test.tsx",
       "source_location": "L1",
       "id": "frontend_src_tests_pcposflow_integration_test_tsx",
-      "community": 287,
+      "community": 33,
       "norm_label": "pcposflow.integration.test.tsx"
     },
     {
@@ -5188,7 +5188,7 @@
       "source_file": "frontend/src/__tests__/pcPosFlow.integration.test.tsx",
       "source_location": "L15",
       "id": "tests_pcposflow_integration_test_user",
-      "community": 287,
+      "community": 33,
       "norm_label": "user"
     },
     {
@@ -5197,7 +5197,7 @@
       "source_file": "frontend/src/__tests__/pcPosFlow.integration.test.tsx",
       "source_location": "L17",
       "id": "tests_pcposflow_integration_test_input",
-      "community": 287,
+      "community": 33,
       "norm_label": "input"
     },
     {
@@ -5206,7 +5206,7 @@
       "source_file": "frontend/src/__tests__/pcPosFlow.integration.test.tsx",
       "source_location": "L94",
       "id": "tests_pcposflow_integration_test_quickbuttons",
-      "community": 287,
+      "community": 33,
       "norm_label": "quickbuttons"
     },
     {
@@ -5215,7 +5215,7 @@
       "source_file": "frontend/src/__tests__/pcPosFlow.integration.test.tsx",
       "source_location": "L135",
       "id": "tests_pcposflow_integration_test_paymentinput",
-      "community": 287,
+      "community": 33,
       "norm_label": "paymentinput"
     },
     {
@@ -5224,7 +5224,7 @@
       "source_file": "frontend/src/__tests__/pcPosFlow.integration.test.tsx",
       "source_location": "L169",
       "id": "tests_pcposflow_integration_test_syncbadge",
-      "community": 287,
+      "community": 33,
       "norm_label": "syncbadge"
     },
     {
@@ -5323,7 +5323,7 @@
       "source_file": "frontend/src/hooks/usePosFlow.ts",
       "source_location": "L1",
       "id": "frontend_src_hooks_useposflow_ts",
-      "community": 58,
+      "community": 17,
       "norm_label": "useposflow.ts"
     },
     {
@@ -5332,7 +5332,7 @@
       "source_file": "frontend/src/hooks/usePosFlow.ts",
       "source_location": "L21",
       "id": "hooks_useposflow_useposflowargs",
-      "community": 58,
+      "community": 17,
       "norm_label": "useposflowargs"
     },
     {
@@ -5341,7 +5341,7 @@
       "source_file": "frontend/src/hooks/usePosFlow.ts",
       "source_location": "L28",
       "id": "hooks_useposflow_useposflowreturn",
-      "community": 58,
+      "community": 17,
       "norm_label": "useposflowreturn"
     },
     {
@@ -5386,7 +5386,7 @@
       "source_file": "frontend/src/hooks/useSystemDate.ts",
       "source_location": "L1",
       "id": "frontend_src_hooks_usesystemdate_ts",
-      "community": 33,
+      "community": 2,
       "norm_label": "usesystemdate.ts"
     },
     {
@@ -5395,7 +5395,7 @@
       "source_file": "frontend/src/hooks/useSystemDate.ts",
       "source_location": "L3",
       "id": "hooks_usesystemdate_usesystemdate",
-      "community": 33,
+      "community": 2,
       "norm_label": "usesystemdate()"
     },
     {
@@ -5413,7 +5413,7 @@
       "source_file": "frontend/src/hooks/useCrashDraftRecovery.ts",
       "source_location": "L6",
       "id": "hooks_usecrashdraftrecovery_usecrashdraftrecoveryargs",
-      "community": 32,
+      "community": 44,
       "norm_label": "usecrashdraftrecoveryargs"
     },
     {
@@ -5422,7 +5422,7 @@
       "source_file": "frontend/src/hooks/useCrashDraftRecovery.ts",
       "source_location": "L12",
       "id": "hooks_usecrashdraftrecovery_usecrashdraftrecovery",
-      "community": 33,
+      "community": 44,
       "norm_label": "usecrashdraftrecovery()"
     },
     {
@@ -5431,7 +5431,7 @@
       "source_file": "frontend/src/hooks/useOnlineStatus.ts",
       "source_location": "L1",
       "id": "frontend_src_hooks_useonlinestatus_ts",
-      "community": 33,
+      "community": 2,
       "norm_label": "useonlinestatus.ts"
     },
     {
@@ -5440,7 +5440,7 @@
       "source_file": "frontend/src/hooks/useOnlineStatus.ts",
       "source_location": "L3",
       "id": "hooks_useonlinestatus_useonlinestatus",
-      "community": 33,
+      "community": 2,
       "norm_label": "useonlinestatus()"
     },
     {
@@ -5989,7 +5989,7 @@
       "source_file": "frontend/src/domain/posFlow.ts",
       "source_location": "L1",
       "id": "frontend_src_domain_posflow_ts",
-      "community": 36,
+      "community": 23,
       "norm_label": "posflow.ts"
     },
     {
@@ -6007,7 +6007,7 @@
       "source_file": "frontend/src/domain/posFlow.ts",
       "source_location": "L2",
       "id": "domain_posflow_posselectionsource",
-      "community": 58,
+      "community": 44,
       "norm_label": "posselectionsource"
     },
     {
@@ -6016,7 +6016,7 @@
       "source_file": "frontend/src/domain/posFlow.ts",
       "source_location": "L3",
       "id": "domain_posflow_possourcedevice",
-      "community": 11,
+      "community": 20,
       "norm_label": "possourcedevice"
     },
     {
@@ -6025,7 +6025,7 @@
       "source_file": "frontend/src/domain/posFlow.ts",
       "source_location": "L5",
       "id": "domain_posflow_posflowstate",
-      "community": 58,
+      "community": 17,
       "norm_label": "posflowstate"
     },
     {
@@ -6034,7 +6034,7 @@
       "source_file": "frontend/src/domain/posFlow.ts",
       "source_location": "L18",
       "id": "domain_posflow_expensedirection",
-      "community": 58,
+      "community": 17,
       "norm_label": "expensedirection"
     },
     {
@@ -6061,7 +6061,7 @@
       "source_file": "frontend/src/domain/posFlow.ts",
       "source_location": "L46",
       "id": "domain_posflow_reduceposflow",
-      "community": 36,
+      "community": 23,
       "norm_label": "reduceposflow()"
     },
     {
@@ -6070,7 +6070,7 @@
       "source_file": "frontend/src/domain/posFlow.ts",
       "source_location": "L73",
       "id": "domain_posflow_reduceidle",
-      "community": 36,
+      "community": 23,
       "norm_label": "reduceidle()"
     },
     {
@@ -6079,7 +6079,7 @@
       "source_file": "frontend/src/domain/posFlow.ts",
       "source_location": "L86",
       "id": "domain_posflow_reducestudentselected",
-      "community": 36,
+      "community": 23,
       "norm_label": "reducestudentselected()"
     },
     {
@@ -6088,7 +6088,7 @@
       "source_file": "frontend/src/domain/posFlow.ts",
       "source_location": "L109",
       "id": "domain_posflow_reduceduplicatewarning",
-      "community": 36,
+      "community": 23,
       "norm_label": "reduceduplicatewarning()"
     },
     {
@@ -6097,7 +6097,7 @@
       "source_file": "frontend/src/domain/posFlow.ts",
       "source_location": "L120",
       "id": "domain_posflow_reduceexpenseinput",
-      "community": 36,
+      "community": 23,
       "norm_label": "reduceexpenseinput()"
     },
     {
@@ -6106,7 +6106,7 @@
       "source_file": "frontend/src/domain/posFlow.ts",
       "source_location": "L133",
       "id": "domain_posflow_reduceexpensedirection",
-      "community": 36,
+      "community": 23,
       "norm_label": "reduceexpensedirection()"
     },
     {
@@ -6115,7 +6115,7 @@
       "source_file": "frontend/src/domain/posFlow.ts",
       "source_location": "L147",
       "id": "domain_posflow_reduceexpensereason",
-      "community": 36,
+      "community": 23,
       "norm_label": "reduceexpensereason()"
     },
     {
@@ -6124,7 +6124,7 @@
       "source_file": "frontend/src/domain/posFlow.ts",
       "source_location": "L165",
       "id": "domain_posflow_reduceexpenseothernote",
-      "community": 36,
+      "community": 23,
       "norm_label": "reduceexpenseothernote()"
     },
     {
@@ -6133,7 +6133,7 @@
       "source_file": "frontend/src/domain/posFlow.ts",
       "source_location": "L181",
       "id": "domain_posflow_reducecommitting",
-      "community": 36,
+      "community": 23,
       "norm_label": "reducecommitting()"
     },
     {
@@ -6142,7 +6142,7 @@
       "source_file": "frontend/src/domain/posFlow.ts",
       "source_location": "L200",
       "id": "domain_posflow_reducesuccess",
-      "community": 36,
+      "community": 23,
       "norm_label": "reducesuccess()"
     },
     {
@@ -6151,7 +6151,7 @@
       "source_file": "frontend/src/domain/posFlow.ts",
       "source_location": "L205",
       "id": "domain_posflow_reduceerror",
-      "community": 36,
+      "community": 23,
       "norm_label": "reduceerror()"
     },
     {
@@ -6169,7 +6169,7 @@
       "source_file": "frontend/src/domain/posTransaction.ts",
       "source_location": "L1",
       "id": "frontend_src_domain_postransaction_ts",
-      "community": 11,
+      "community": 20,
       "norm_label": "postransaction.ts"
     },
     {
@@ -6178,7 +6178,7 @@
       "source_file": "frontend/src/domain/posTransaction.ts",
       "source_location": "L8",
       "id": "domain_postransaction_postransactionintent",
-      "community": 11,
+      "community": 20,
       "norm_label": "postransactionintent"
     },
     {
@@ -6187,7 +6187,7 @@
       "source_file": "frontend/src/domain/posTransaction.ts",
       "source_location": "L18",
       "id": "domain_postransaction_postransactionsnapshotinput",
-      "community": 11,
+      "community": 20,
       "norm_label": "postransactionsnapshotinput"
     },
     {
@@ -6205,7 +6205,7 @@
       "source_file": "frontend/src/domain/posTransaction.ts",
       "source_location": "L30",
       "id": "domain_postransaction_parsepaidamount",
-      "community": 11,
+      "community": 20,
       "norm_label": "parsepaidamount()"
     },
     {
@@ -6223,7 +6223,7 @@
       "source_file": "frontend/src/domain/posTransaction.ts",
       "source_location": "L53",
       "id": "domain_postransaction_buildpostransactiondraft",
-      "community": 11,
+      "community": 20,
       "norm_label": "buildpostransactiondraft()"
     },
     {
@@ -6232,7 +6232,7 @@
       "source_file": "frontend/src/domain/posTransaction.ts",
       "source_location": "L70",
       "id": "domain_postransaction_buildexpensetransactiondraftargs",
-      "community": 11,
+      "community": 20,
       "norm_label": "buildexpensetransactiondraftargs"
     },
     {
@@ -6241,7 +6241,7 @@
       "source_file": "frontend/src/domain/posTransaction.ts",
       "source_location": "L77",
       "id": "domain_postransaction_derivedtransactionattrs",
-      "community": 11,
+      "community": 20,
       "norm_label": "derivedtransactionattrs"
     },
     {
@@ -6250,7 +6250,7 @@
       "source_file": "frontend/src/domain/posTransaction.ts",
       "source_location": "L83",
       "id": "domain_postransaction_derivetransactionattributes",
-      "community": 11,
+      "community": 20,
       "norm_label": "derivetransactionattributes()"
     },
     {
@@ -6259,7 +6259,7 @@
       "source_file": "frontend/src/domain/posTransaction.ts",
       "source_location": "L126",
       "id": "domain_postransaction_buildexpensetransactiondraft",
-      "community": 11,
+      "community": 20,
       "norm_label": "buildexpensetransactiondraft()"
     },
     {
@@ -6295,7 +6295,7 @@
       "source_file": "frontend/src/domain/student.ts",
       "source_location": "L4",
       "id": "domain_student_studentaccount",
-      "community": 21,
+      "community": 7,
       "norm_label": "studentaccount"
     },
     {
@@ -6304,7 +6304,7 @@
       "source_file": "frontend/src/domain/student.ts",
       "source_location": "L19",
       "id": "domain_student_studentsnapshot",
-      "community": 11,
+      "community": 20,
       "norm_label": "studentsnapshot"
     },
     {
@@ -6340,7 +6340,7 @@
       "source_file": "frontend/src/domain/student.ts",
       "source_location": "L41",
       "id": "domain_student_createstudentsnapshot",
-      "community": 11,
+      "community": 20,
       "norm_label": "createstudentsnapshot()"
     },
     {
@@ -6376,7 +6376,7 @@
       "source_file": "frontend/src/domain/syncStatus.ts",
       "source_location": "L1",
       "id": "frontend_src_domain_syncstatus_ts",
-      "community": 4,
+      "community": 20,
       "norm_label": "syncstatus.ts"
     },
     {
@@ -6385,7 +6385,7 @@
       "source_file": "frontend/src/domain/syncStatus.ts",
       "source_location": "L1",
       "id": "domain_syncstatus_syncstatus",
-      "community": 4,
+      "community": 20,
       "norm_label": "syncstatus"
     },
     {
@@ -6727,7 +6727,7 @@
       "source_file": "frontend/src/domain/menu.ts",
       "source_location": "L25",
       "id": "domain_menu_menusnapshot",
-      "community": 11,
+      "community": 20,
       "norm_label": "menusnapshot"
     },
     {
@@ -6790,7 +6790,7 @@
       "source_file": "frontend/src/domain/ledger.ts",
       "source_location": "L1",
       "id": "frontend_src_domain_ledger_ts",
-      "community": 11,
+      "community": 20,
       "norm_label": "ledger.ts"
     },
     {
@@ -6799,7 +6799,7 @@
       "source_file": "frontend/src/domain/ledger.ts",
       "source_location": "L1",
       "id": "domain_ledger_transactiontype",
-      "community": 11,
+      "community": 20,
       "norm_label": "transactiontype"
     },
     {
@@ -6826,7 +6826,7 @@
       "source_file": "frontend/src/domain/ledger.ts",
       "source_location": "L30",
       "id": "domain_ledger_cashier_sentinel",
-      "community": 11,
+      "community": 20,
       "norm_label": "cashier_sentinel"
     },
     {
@@ -6844,7 +6844,7 @@
       "source_file": "frontend/src/domain/ledger.ts",
       "source_location": "L36",
       "id": "domain_ledger_createledgertransactioninput",
-      "community": 11,
+      "community": 20,
       "norm_label": "createledgertransactioninput"
     },
     {
@@ -6853,7 +6853,7 @@
       "source_file": "frontend/src/domain/ledger.ts",
       "source_location": "L51",
       "id": "domain_ledger_calculatetransactionamount",
-      "community": 11,
+      "community": 20,
       "norm_label": "calculatetransactionamount()"
     },
     {
@@ -6871,7 +6871,7 @@
       "source_file": "frontend/src/domain/ledger.ts",
       "source_location": "L79",
       "id": "domain_ledger_countactiveordersforstudent",
-      "community": 11,
+      "community": 28,
       "norm_label": "countactiveordersforstudent()"
     },
     {
@@ -6880,7 +6880,7 @@
       "source_file": "frontend/src/domain/ledger.ts",
       "source_location": "L89",
       "id": "domain_ledger_recalculationresult",
-      "community": 21,
+      "community": 7,
       "norm_label": "recalculationresult"
     },
     {
@@ -6898,7 +6898,7 @@
       "source_file": "frontend/src/domain/ledger.ts",
       "source_location": "L125",
       "id": "domain_ledger_mergedtransaction",
-      "community": 11,
+      "community": 16,
       "norm_label": "mergedtransaction"
     },
     {
@@ -6916,7 +6916,7 @@
       "source_file": "frontend/src/domain/posSearch.ts",
       "source_location": "L1",
       "id": "frontend_src_domain_possearch_ts",
-      "community": 58,
+      "community": 11,
       "norm_label": "possearch.ts"
     },
     {
@@ -6925,7 +6925,7 @@
       "source_file": "frontend/src/domain/posSearch.ts",
       "source_location": "L3",
       "id": "domain_possearch_possearchmode",
-      "community": 58,
+      "community": 11,
       "norm_label": "possearchmode"
     },
     {
@@ -6934,7 +6934,7 @@
       "source_file": "frontend/src/domain/posSearch.ts",
       "source_location": "L5",
       "id": "domain_possearch_possearchresult",
-      "community": 58,
+      "community": 11,
       "norm_label": "possearchresult"
     },
     {
@@ -6943,7 +6943,7 @@
       "source_file": "frontend/src/domain/posSearch.ts",
       "source_location": "L9",
       "id": "domain_possearch_scannerinput",
-      "community": 58,
+      "community": 17,
       "norm_label": "scannerinput"
     },
     {
@@ -6952,7 +6952,7 @@
       "source_file": "frontend/src/domain/posSearch.ts",
       "source_location": "L14",
       "id": "domain_possearch_searchposstudents",
-      "community": 58,
+      "community": 11,
       "norm_label": "searchposstudents()"
     },
     {
@@ -6961,7 +6961,7 @@
       "source_file": "frontend/src/domain/posSearch.ts",
       "source_location": "L31",
       "id": "domain_possearch_resolvescannedstudent",
-      "community": 58,
+      "community": 11,
       "norm_label": "resolvescannedstudent()"
     },
     {
@@ -7087,7 +7087,7 @@
       "source_file": "frontend/src/domain/index.ts",
       "source_location": "L1",
       "id": "frontend_src_domain_index_ts",
-      "community": 4,
+      "community": 20,
       "norm_label": "index.ts"
     },
     {
@@ -7321,7 +7321,7 @@
       "source_file": "frontend/src/domain/__tests__/fixtures.ts",
       "source_location": "L64",
       "id": "tests_fixtures_tx_order_001",
-      "community": 28,
+      "community": 7,
       "norm_label": "tx_order_001"
     },
     {
@@ -8068,7 +8068,7 @@
       "source_file": "frontend/src/domain/__tests__/posTransaction.test.ts",
       "source_location": "L1",
       "id": "frontend_src_domain_tests_postransaction_test_ts",
-      "community": 11,
+      "community": 7,
       "norm_label": "postransaction.test.ts"
     },
     {
@@ -8077,7 +8077,7 @@
       "source_file": "frontend/src/domain/__tests__/posTransaction.test.ts",
       "source_location": "L21",
       "id": "tests_postransaction_test_result",
-      "community": 11,
+      "community": 7,
       "norm_label": "result"
     },
     {
@@ -8086,7 +8086,7 @@
       "source_file": "frontend/src/domain/__tests__/posTransaction.test.ts",
       "source_location": "L40",
       "id": "tests_postransaction_test_makeintent",
-      "community": 11,
+      "community": 7,
       "norm_label": "makeintent()"
     },
     {
@@ -8095,7 +8095,7 @@
       "source_file": "frontend/src/domain/__tests__/posTransaction.test.ts",
       "source_location": "L52",
       "id": "tests_postransaction_test_draft",
-      "community": 11,
+      "community": 7,
       "norm_label": "draft"
     },
     {
@@ -8104,7 +8104,7 @@
       "source_file": "frontend/src/domain/__tests__/posTransaction.test.ts",
       "source_location": "L84",
       "id": "tests_postransaction_test_student",
-      "community": 11,
+      "community": 7,
       "norm_label": "student"
     },
     {
@@ -8113,7 +8113,7 @@
       "source_file": "frontend/src/domain/__tests__/posTransaction.test.ts",
       "source_location": "L85",
       "id": "tests_postransaction_test_menu",
-      "community": 11,
+      "community": 7,
       "norm_label": "menu"
     },
     {
@@ -8122,7 +8122,7 @@
       "source_file": "frontend/src/domain/__tests__/posTransaction.test.ts",
       "source_location": "L105",
       "id": "tests_postransaction_test_richerstudent",
-      "community": 11,
+      "community": 7,
       "norm_label": "richerstudent"
     },
     {
@@ -8131,7 +8131,7 @@
       "source_file": "frontend/src/store/posStore.ts",
       "source_location": "L1",
       "id": "frontend_src_store_posstore_ts",
-      "community": 22,
+      "community": 33,
       "norm_label": "posstore.ts"
     },
     {
@@ -8140,7 +8140,7 @@
       "source_file": "frontend/src/store/posStore.ts",
       "source_location": "L23",
       "id": "store_posstore_deleteorderresult",
-      "community": 22,
+      "community": 33,
       "norm_label": "deleteorderresult"
     },
     {
@@ -8149,7 +8149,7 @@
       "source_file": "frontend/src/store/posStore.ts",
       "source_location": "L30",
       "id": "store_posstore_closebusinessdateinput",
-      "community": 22,
+      "community": 33,
       "norm_label": "closebusinessdateinput"
     },
     {
@@ -8158,7 +8158,7 @@
       "source_file": "frontend/src/store/posStore.ts",
       "source_location": "L38",
       "id": "store_posstore_reopenbusinessdateinput",
-      "community": 22,
+      "community": 33,
       "norm_label": "reopenbusinessdateinput"
     },
     {
@@ -8167,7 +8167,7 @@
       "source_file": "frontend/src/store/posStore.ts",
       "source_location": "L44",
       "id": "store_posstore_opencashsessioninput",
-      "community": 22,
+      "community": 33,
       "norm_label": "opencashsessioninput"
     },
     {
@@ -8176,7 +8176,7 @@
       "source_file": "frontend/src/store/posStore.ts",
       "source_location": "L51",
       "id": "store_posstore_businessdatestatus",
-      "community": 22,
+      "community": 33,
       "norm_label": "businessdatestatus"
     },
     {
@@ -8697,7 +8697,7 @@
       "file_type": "document",
       "source_file": "README.md",
       "source_location": "L1",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_readme_talented_easyorder_ipad_pos",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_readme_talented_easyorder_ipad_pos",
       "community": 262,
       "norm_label": "talented easyorder (ipad pos)"
     },
@@ -8706,7 +8706,7 @@
       "file_type": "document",
       "source_file": "README.md",
       "source_location": "L5",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_readme_getting_started",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_readme_getting_started",
       "community": 262,
       "norm_label": "getting started"
     },
@@ -8715,7 +8715,7 @@
       "file_type": "document",
       "source_file": "README.md",
       "source_location": "L7",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_readme_codeblock_1",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_readme_codeblock_1",
       "community": 262,
       "norm_label": "code:bash (cd frontend)"
     },
@@ -8724,7 +8724,7 @@
       "file_type": "document",
       "source_file": "README.md",
       "source_location": "L13",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_readme_documentation",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_readme_documentation",
       "community": 262,
       "norm_label": "documentation"
     },
@@ -8742,7 +8742,7 @@
       "file_type": "document",
       "source_file": "CLAUDE.md",
       "source_location": "L1",
-      "id": "eo_team_lead_users_cheerc_talented_easyorder_claude_graphify",
+      "id": "eo_team_impl_users_cheerc_talented_easyorder_claude_graphify",
       "community": 8,
       "norm_label": "graphify"
     },
@@ -8932,7 +8932,7 @@
       "source_file": ".claude/skills/graphify/SKILL.md",
       "source_location": "L145",
       "id": "graphify_skill_step_2_detect_files",
-      "community": 327,
+      "community": 148,
       "norm_label": "step 2 - detect files"
     },
     {
@@ -8941,7 +8941,7 @@
       "source_file": ".claude/skills/graphify/SKILL.md",
       "source_location": "L147",
       "id": "graphify_skill_codeblock_6",
-      "community": 327,
+      "community": 148,
       "norm_label": "code:bash ($(cat graphify-out/.graphify_python) -c \")"
     },
     {
@@ -8950,7 +8950,7 @@
       "source_file": ".claude/skills/graphify/SKILL.md",
       "source_location": "L159",
       "id": "graphify_skill_codeblock_7",
-      "community": 327,
+      "community": 148,
       "norm_label": "code:block7 (corpus: x files \u00b7 ~y words)"
     },
     {
@@ -9130,7 +9130,7 @@
       "source_file": ".claude/skills/graphify/SKILL.md",
       "source_location": "L604",
       "id": "graphify_skill_step_6_generate_obsidian_vault_opt_in_html",
-      "community": 148,
+      "community": 36,
       "norm_label": "step 6 - generate obsidian vault (opt-in) + html"
     },
     {
@@ -9139,7 +9139,7 @@
       "source_file": ".claude/skills/graphify/SKILL.md",
       "source_location": "L612",
       "id": "graphify_skill_codeblock_20",
-      "community": 148,
+      "community": 36,
       "norm_label": "code:bash (graphify export obsidian)"
     },
     {
@@ -9148,7 +9148,7 @@
       "source_file": ".claude/skills/graphify/SKILL.md",
       "source_location": "L619",
       "id": "graphify_skill_codeblock_21",
-      "community": 148,
+      "community": 36,
       "norm_label": "code:bash (graphify export html  # auto-aggregates to community view if)"
     },
     {
@@ -9472,7 +9472,7 @@
       "source_file": ".claude/skills/graphify/SKILL.md",
       "source_location": "L1027",
       "id": "graphify_skill_for_graphify_path",
-      "community": 326,
+      "community": 162,
       "norm_label": "for /graphify path"
     },
     {
@@ -9481,7 +9481,7 @@
       "source_file": ".claude/skills/graphify/SKILL.md",
       "source_location": "L1031",
       "id": "graphify_skill_codeblock_44",
-      "community": 326,
+      "community": 162,
       "norm_label": "code:bash (graphify path \"node_a\" \"node_b\")"
     },
     {
@@ -9490,7 +9490,7 @@
       "source_file": ".claude/skills/graphify/SKILL.md",
       "source_location": "L1039",
       "id": "graphify_skill_codeblock_45",
-      "community": 326,
+      "community": 162,
       "norm_label": "code:bash ($(cat graphify-out/.graphify_python) -m graphify save-result)"
     },
     {
@@ -9580,7 +9580,7 @@
       "source_file": ".claude/skills/graphify/SKILL.md",
       "source_location": "L1134",
       "id": "graphify_skill_for_native_claude_md_integration",
-      "community": 162,
+      "community": 58,
       "norm_label": "for native claude.md integration"
     },
     {
@@ -9589,7 +9589,7 @@
       "source_file": ".claude/skills/graphify/SKILL.md",
       "source_location": "L1138",
       "id": "graphify_skill_codeblock_51",
-      "community": 162,
+      "community": 58,
       "norm_label": "code:bash (graphify claude install)"
     },
     {
@@ -9598,7 +9598,7 @@
       "source_file": ".claude/skills/graphify/SKILL.md",
       "source_location": "L1144",
       "id": "graphify_skill_codeblock_52",
-      "community": 162,
+      "community": 58,
       "norm_label": "code:bash (graphify claude uninstall  # remove the section)"
     },
     {
@@ -12028,7 +12028,7 @@
       "source_file": "docs/superpowers/plans/2026-05-15-design-system-component-library(DONE).md",
       "source_location": "L285",
       "id": "plans_2026_05_15_design_system_component_library_done_implementation_plan",
-      "community": 217,
+      "community": 238,
       "norm_label": "implementation plan"
     },
     {
@@ -27032,6 +27032,494 @@
       "source_location": "L2",
       "community": 93,
       "norm_label": "rewrites",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_vercel_rewrites"
+    },
+    {
+      "label": "headers",
+      "file_type": "code",
+      "source_file": "vercel.json",
+      "source_location": "L5",
+      "community": 93,
+      "norm_label": "headers",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_vercel_headers"
+    },
+    {
+      "label": "workflow.sh script",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_entrypoint"
+      },
+      "community": 6,
+      "norm_label": "workflow.sh script",
+      "id": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry"
+    },
+    {
+      "label": "handle_error()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L28",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "handle_error()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error"
+    },
+    {
+      "label": "pause()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L40",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "pause()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_pause"
+    },
+    {
+      "label": "check_and_switch_gcloud()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L47",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "check_and_switch_gcloud()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_check_and_switch_gcloud"
+    },
+    {
+      "label": "check_and_switch_firebase()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L62",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "check_and_switch_firebase()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_check_and_switch_firebase"
+    },
+    {
+      "label": "merge_firestore_rules()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L88",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "merge_firestore_rules()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_merge_firestore_rules"
+    },
+    {
+      "label": "show_menu()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L147",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "show_menu()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_show_menu"
+    },
+    {
+      "label": "start_emulators()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L180",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "start_emulators()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_start_emulators"
+    },
+    {
+      "label": "dev_with_emulators()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L189",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "dev_with_emulators()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_dev_with_emulators"
+    },
+    {
+      "label": "dev_prod()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L245",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "dev_prod()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_dev_prod"
+    },
+    {
+      "label": "run_build_test()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L268",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "run_build_test()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_build_test"
+    },
+    {
+      "label": "run_typecheck()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L277",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "run_typecheck()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_typecheck"
+    },
+    {
+      "label": "run_lint()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L286",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "run_lint()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_lint"
+    },
+    {
+      "label": "run_unit_tests()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L295",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "run_unit_tests()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_unit_tests"
+    },
+    {
+      "label": "run_integration_tests()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L305",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "run_integration_tests()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_integration_tests"
+    },
+    {
+      "label": "run_full_ci()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L343",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "run_full_ci()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_full_ci"
+    },
+    {
+      "label": "run_preview()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L355",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "run_preview()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_preview"
+    },
+    {
+      "label": "confirm_prod()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L366",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "confirm_prod()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_confirm_prod"
+    },
+    {
+      "label": "deploy_frontend()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L378",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "deploy_frontend()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_frontend"
+    },
+    {
+      "label": "deploy_rules()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L403",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "deploy_rules()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules"
+    },
+    {
+      "label": "deploy_indexes()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L432",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "deploy_indexes()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes"
+    },
+    {
+      "label": "deploy_all()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L445",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "deploy_all()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_all"
+    },
+    {
+      "label": "deploy_full_stack()",
+      "file_type": "code",
+      "source_file": "workflow.sh",
+      "source_location": "L453",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_function"
+      },
+      "community": 6,
+      "norm_label": "deploy_full_stack()",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack"
+    },
+    {
+      "label": "firestore",
+      "file_type": "code",
+      "source_file": "firebase.json",
+      "source_location": "L2",
+      "community": 264,
+      "norm_label": "firestore",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore"
+    },
+    {
+      "label": "rules",
+      "file_type": "code",
+      "source_file": "firebase.json",
+      "source_location": "L3",
+      "community": 264,
+      "norm_label": "rules",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore_rules"
+    },
+    {
+      "label": "indexes",
+      "file_type": "code",
+      "source_file": "firebase.json",
+      "source_location": "L4",
+      "community": 264,
+      "norm_label": "indexes",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore_indexes"
+    },
+    {
+      "label": "emulators",
+      "file_type": "code",
+      "source_file": "firebase.json",
+      "source_location": "L6",
+      "community": 35,
+      "norm_label": "emulators",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators"
+    },
+    {
+      "label": "auth",
+      "file_type": "code",
+      "source_file": "firebase.json",
+      "source_location": "L7",
+      "community": 35,
+      "norm_label": "auth",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_auth"
+    },
+    {
+      "label": "port",
+      "file_type": "code",
+      "source_file": "firebase.json",
+      "source_location": "L7",
+      "community": 35,
+      "norm_label": "port",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_auth_port"
+    },
+    {
+      "label": "firestore",
+      "file_type": "code",
+      "source_file": "firebase.json",
+      "source_location": "L8",
+      "community": 35,
+      "norm_label": "firestore",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_firestore"
+    },
+    {
+      "label": "port",
+      "file_type": "code",
+      "source_file": "firebase.json",
+      "source_location": "L8",
+      "community": 35,
+      "norm_label": "port",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore_port"
+    },
+    {
+      "label": "ui",
+      "file_type": "code",
+      "source_file": "firebase.json",
+      "source_location": "L9",
+      "community": 35,
+      "norm_label": "ui",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_ui"
+    },
+    {
+      "label": "enabled",
+      "file_type": "code",
+      "source_file": "firebase.json",
+      "source_location": "L9",
+      "community": 35,
+      "norm_label": "enabled",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_ui_enabled"
+    },
+    {
+      "label": "port",
+      "file_type": "code",
+      "source_file": "firebase.json",
+      "source_location": "L9",
+      "community": 35,
+      "norm_label": "port",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_ui_port"
+    },
+    {
+      "label": "singleProjectMode",
+      "file_type": "code",
+      "source_file": "firebase.json",
+      "source_location": "L10",
+      "community": 35,
+      "norm_label": "singleprojectmode",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_singleprojectmode"
+    },
+    {
+      "label": "indexes",
+      "file_type": "code",
+      "source_file": "firestore.indexes.json",
+      "source_location": "L2",
+      "community": 92,
+      "norm_label": "indexes",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_firestore_indexes_indexes"
+    },
+    {
+      "label": "fieldOverrides",
+      "file_type": "code",
+      "source_file": "firestore.indexes.json",
+      "source_location": "L28",
+      "community": 92,
+      "norm_label": "fieldoverrides",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_firestore_indexes_fieldoverrides"
+    },
+    {
+      "label": "Talented EasyOrder (iPad POS)",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L1",
+      "community": 262,
+      "norm_label": "talented easyorder (ipad pos)",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_readme_talented_easyorder_ipad_pos"
+    },
+    {
+      "label": "Getting Started",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L5",
+      "community": 262,
+      "norm_label": "getting started",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_readme_getting_started"
+    },
+    {
+      "label": "code:bash (cd frontend)",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L7",
+      "community": 262,
+      "norm_label": "code:bash (cd frontend)",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_readme_codeblock_1"
+    },
+    {
+      "label": "Documentation",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L13",
+      "community": 262,
+      "norm_label": "documentation",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_readme_documentation"
+    },
+    {
+      "label": "graphify",
+      "file_type": "document",
+      "source_file": "CLAUDE.md",
+      "source_location": "L1",
+      "community": 8,
+      "norm_label": "graphify",
+      "id": "eo_team_lead_users_cheerc_talented_easyorder_claude_graphify"
+    },
+    {
+      "label": "rewrites",
+      "file_type": "code",
+      "source_file": "vercel.json",
+      "source_location": "L2",
+      "community": 93,
+      "norm_label": "rewrites",
       "id": "talented_easyorder_vercel_rewrites"
     },
     {
@@ -27518,7 +28006,7 @@
       "file_type": "code",
       "source_file": "frontend/src/components/screens.tsx",
       "source_location": "L33",
-      "community": 7,
+      "community": 27,
       "norm_label": "reportscreenprops",
       "id": "components_screens_reportscreenprops"
     },
@@ -27563,7 +28051,7 @@
       "file_type": "code",
       "source_file": "frontend/src/components/screens.tsx",
       "source_location": "L428",
-      "community": 33,
+      "community": 2,
       "norm_label": "vendorsscreen",
       "id": "components_screens_vendorsscreen"
     },
@@ -27581,7 +28069,7 @@
       "file_type": "code",
       "source_file": "frontend/src/components/screens.tsx",
       "source_location": "L642",
-      "community": 33,
+      "community": 2,
       "norm_label": "historyscreen",
       "id": "components_screens_historyscreen"
     },
@@ -27653,7 +28141,7 @@
       "file_type": "code",
       "source_file": "frontend/src/components/pos-components.tsx",
       "source_location": "L141",
-      "community": 33,
+      "community": 2,
       "norm_label": "midnightbanner",
       "id": "components_pos_components_midnightbanner"
     },
@@ -27671,7 +28159,7 @@
       "file_type": "code",
       "source_file": "frontend/src/components/pos-components.tsx",
       "source_location": "L181",
-      "community": 33,
+      "community": 2,
       "norm_label": "searchbox",
       "id": "components_pos_components_searchbox"
     },
@@ -27725,7 +28213,7 @@
       "file_type": "code",
       "source_file": "frontend/src/components/pos-components.tsx",
       "source_location": "L474",
-      "community": 33,
+      "community": 2,
       "norm_label": "idlehero",
       "id": "components_pos_components_idlehero"
     },
@@ -27743,7 +28231,7 @@
       "file_type": "code",
       "source_file": "frontend/src/components/pos-components.tsx",
       "source_location": "L501",
-      "community": 33,
+      "community": 2,
       "norm_label": "duplicatewarningbanner",
       "id": "components_pos_components_duplicatewarningbanner"
     },
@@ -28004,7 +28492,7 @@
       "file_type": "code",
       "source_file": "frontend/src/components/report/AuditTrailTable.tsx",
       "source_location": null,
-      "community": 33,
+      "community": 2,
       "norm_label": "audittrailtable component",
       "id": "report_audittrailtable_audit_trail_table"
     },
@@ -28544,7 +29032,7 @@
       "file_type": "code",
       "source_file": "frontend/src/firebase/firestoreSchema.ts",
       "source_location": null,
-      "community": 20,
+      "community": 2,
       "norm_label": "firestoresyncstatus",
       "id": "firebase_firestoreSchema_FirestoreSyncStatus"
     },
@@ -28553,7 +29041,7 @@
       "file_type": "code",
       "source_file": "frontend/src/firebase/__tests__/syncStatus.test.ts",
       "source_location": null,
-      "community": 20,
+      "community": 2,
       "norm_label": "derivesyncindicator",
       "id": "firebase_syncStatus_deriveSyncIndicator"
     },
@@ -28562,7 +29050,7 @@
       "file_type": "code",
       "source_file": "frontend/src/components/pos-components.tsx",
       "source_location": null,
-      "community": 20,
+      "community": 2,
       "norm_label": "pos components (v2)",
       "id": "components_pos-components"
     },
@@ -28571,7 +29059,7 @@
       "file_type": "code",
       "source_file": "frontend/src/components/pos-components.tsx",
       "source_location": "line 181",
-      "community": 20,
+      "community": 163,
       "norm_label": "searchbox",
       "id": "components_pos-components_SearchBox"
     },
@@ -28607,7 +29095,7 @@
       "file_type": "code",
       "source_file": "frontend/src/components/pos-components.tsx",
       "source_location": "line 637",
-      "community": 20,
+      "community": 2,
       "norm_label": "expensepanel",
       "id": "components_pos-components_ExpensePanel"
     },
@@ -28625,7 +29113,7 @@
       "file_type": "code",
       "source_file": "frontend/src/components/pos-components.tsx",
       "source_location": "line 591",
-      "community": 20,
+      "community": 2,
       "norm_label": "recentstrip",
       "id": "components_pos-components_RecentStrip"
     },
@@ -28679,7 +29167,7 @@
       "file_type": "code",
       "source_file": "frontend/src/hooks/useAppNavigationShortcuts.ts",
       "source_location": null,
-      "community": 20,
+      "community": 2,
       "norm_label": "useappnavigationshortcuts",
       "id": "hooks_useAppNavigationShortcuts"
     },
@@ -28787,7 +29275,7 @@
       "file_type": "document",
       "source_file": "docs/superpowers/verification/2026-05-21-batch5-6-fixes-retest.md",
       "source_location": null,
-      "community": 20,
+      "community": 2,
       "norm_label": "batch 5-6 fixes retest checklist",
       "id": "verification_batch5-6-fixes-retest"
     },
@@ -28796,7 +29284,7 @@
       "file_type": "code",
       "source_file": "docs/ui_sample/pos-components.jsx",
       "source_location": null,
-      "community": 20,
+      "community": 2,
       "norm_label": "pos components prototype (jsx)",
       "id": "ui_sample_pos-components_jsx"
     },
@@ -31239,7 +31727,7 @@
       "source_location": "L5",
       "weight": 1.0,
       "source": "vercel_json",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_vercel_headers",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_vercel_headers",
       "confidence_score": 1.0
     },
     {
@@ -31249,8 +31737,28 @@
       "source_location": "L2",
       "weight": 1.0,
       "source": "vercel_json",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_vercel_rewrites",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_vercel_rewrites",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "vercel.json",
+      "source_location": "L5",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "vercel_json",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_vercel_headers"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "vercel.json",
+      "source_location": "L2",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "vercel_json",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_vercel_rewrites"
     },
     {
       "relation": "contains",
@@ -31279,7 +31787,7 @@
       "source_location": "L62",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_check_and_switch_firebase",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_check_and_switch_firebase",
       "confidence_score": 1.0
     },
     {
@@ -31289,7 +31797,7 @@
       "source_location": "L47",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_check_and_switch_gcloud",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_check_and_switch_gcloud",
       "confidence_score": 1.0
     },
     {
@@ -31299,7 +31807,7 @@
       "source_location": "L366",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_confirm_prod",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_confirm_prod",
       "confidence_score": 1.0
     },
     {
@@ -31309,7 +31817,7 @@
       "source_location": "L445",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_all",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_all",
       "confidence_score": 1.0
     },
     {
@@ -31319,7 +31827,7 @@
       "source_location": "L378",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_frontend",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_frontend",
       "confidence_score": 1.0
     },
     {
@@ -31329,7 +31837,7 @@
       "source_location": "L453",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
       "confidence_score": 1.0
     },
     {
@@ -31339,7 +31847,7 @@
       "source_location": "L432",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_indexes",
       "confidence_score": 1.0
     },
     {
@@ -31349,7 +31857,7 @@
       "source_location": "L403",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_rules",
       "confidence_score": 1.0
     },
     {
@@ -31359,7 +31867,7 @@
       "source_location": "L245",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_dev_prod",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_dev_prod",
       "confidence_score": 1.0
     },
     {
@@ -31369,7 +31877,7 @@
       "source_location": "L189",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_dev_with_emulators",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_dev_with_emulators",
       "confidence_score": 1.0
     },
     {
@@ -31379,7 +31887,7 @@
       "source_location": "L28",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_handle_error",
       "confidence_score": 1.0
     },
     {
@@ -31389,7 +31897,7 @@
       "source_location": "L88",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_merge_firestore_rules",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_merge_firestore_rules",
       "confidence_score": 1.0
     },
     {
@@ -31399,7 +31907,7 @@
       "source_location": "L40",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_pause",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_pause",
       "confidence_score": 1.0
     },
     {
@@ -31409,7 +31917,7 @@
       "source_location": "L268",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_build_test",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_build_test",
       "confidence_score": 1.0
     },
     {
@@ -31419,7 +31927,7 @@
       "source_location": "L343",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_full_ci",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_full_ci",
       "confidence_score": 1.0
     },
     {
@@ -31429,7 +31937,7 @@
       "source_location": "L305",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_integration_tests",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_integration_tests",
       "confidence_score": 1.0
     },
     {
@@ -31439,7 +31947,7 @@
       "source_location": "L286",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_lint",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_lint",
       "confidence_score": 1.0
     },
     {
@@ -31449,7 +31957,7 @@
       "source_location": "L355",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_preview",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_preview",
       "confidence_score": 1.0
     },
     {
@@ -31459,7 +31967,7 @@
       "source_location": "L277",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_typecheck",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_typecheck",
       "confidence_score": 1.0
     },
     {
@@ -31469,7 +31977,7 @@
       "source_location": "L295",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_unit_tests",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_unit_tests",
       "confidence_score": 1.0
     },
     {
@@ -31479,7 +31987,7 @@
       "source_location": "L147",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_show_menu",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_show_menu",
       "confidence_score": 1.0
     },
     {
@@ -31489,8 +31997,228 @@
       "source_location": "L180",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_start_emulators",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_start_emulators",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L62",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_check_and_switch_firebase"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L47",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_check_and_switch_gcloud"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L366",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_confirm_prod"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L445",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_all"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L378",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_frontend"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L453",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L432",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L403",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L245",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_dev_prod"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L189",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_dev_with_emulators"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L28",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L88",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_merge_firestore_rules"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L40",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_pause"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L268",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_build_test"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L343",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_full_ci"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L305",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_integration_tests"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L286",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_lint"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L355",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_preview"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L277",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_typecheck"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L295",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_unit_tests"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L147",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_show_menu"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L180",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_start_emulators"
     },
     {
       "relation": "semantically_similar_to",
@@ -31729,8 +32457,18 @@
       "source_location": "L1",
       "weight": 1.0,
       "source": "workflow_sh",
-      "target": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L1",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "workflow_sh",
+      "target": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry"
     },
     {
       "relation": "contains",
@@ -31779,8 +32517,8 @@
       "source_location": "L492",
       "weight": 1.0,
       "context": "call",
-      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_all",
+      "source": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_all",
       "confidence_score": 1.0
     },
     {
@@ -31790,8 +32528,8 @@
       "source_location": "L489",
       "weight": 1.0,
       "context": "call",
-      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_frontend",
+      "source": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_frontend",
       "confidence_score": 1.0
     },
     {
@@ -31801,8 +32539,8 @@
       "source_location": "L493",
       "weight": 1.0,
       "context": "call",
-      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "source": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
       "confidence_score": 1.0
     },
     {
@@ -31812,8 +32550,8 @@
       "source_location": "L491",
       "weight": 1.0,
       "context": "call",
-      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes",
+      "source": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_indexes",
       "confidence_score": 1.0
     },
     {
@@ -31823,8 +32561,8 @@
       "source_location": "L490",
       "weight": 1.0,
       "context": "call",
-      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules",
+      "source": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_rules",
       "confidence_score": 1.0
     },
     {
@@ -31834,8 +32572,8 @@
       "source_location": "L481",
       "weight": 1.0,
       "context": "call",
-      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_dev_prod",
+      "source": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_dev_prod",
       "confidence_score": 1.0
     },
     {
@@ -31845,8 +32583,8 @@
       "source_location": "L480",
       "weight": 1.0,
       "context": "call",
-      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_dev_with_emulators",
+      "source": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_dev_with_emulators",
       "confidence_score": 1.0
     },
     {
@@ -31856,8 +32594,8 @@
       "source_location": "L482",
       "weight": 1.0,
       "context": "call",
-      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_build_test",
+      "source": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_build_test",
       "confidence_score": 1.0
     },
     {
@@ -31867,8 +32605,8 @@
       "source_location": "L487",
       "weight": 1.0,
       "context": "call",
-      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_full_ci",
+      "source": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_full_ci",
       "confidence_score": 1.0
     },
     {
@@ -31878,8 +32616,8 @@
       "source_location": "L486",
       "weight": 1.0,
       "context": "call",
-      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_integration_tests",
+      "source": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_integration_tests",
       "confidence_score": 1.0
     },
     {
@@ -31889,8 +32627,8 @@
       "source_location": "L484",
       "weight": 1.0,
       "context": "call",
-      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_lint",
+      "source": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_lint",
       "confidence_score": 1.0
     },
     {
@@ -31900,8 +32638,8 @@
       "source_location": "L488",
       "weight": 1.0,
       "context": "call",
-      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_preview",
+      "source": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_preview",
       "confidence_score": 1.0
     },
     {
@@ -31911,8 +32649,8 @@
       "source_location": "L483",
       "weight": 1.0,
       "context": "call",
-      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_typecheck",
+      "source": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_typecheck",
       "confidence_score": 1.0
     },
     {
@@ -31922,8 +32660,8 @@
       "source_location": "L485",
       "weight": 1.0,
       "context": "call",
-      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_unit_tests",
+      "source": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_unit_tests",
       "confidence_score": 1.0
     },
     {
@@ -31933,8 +32671,8 @@
       "source_location": "L501",
       "weight": 1.0,
       "context": "call",
-      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_show_menu",
+      "source": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_show_menu",
       "confidence_score": 1.0
     },
     {
@@ -31944,8 +32682,8 @@
       "source_location": "L479",
       "weight": 1.0,
       "context": "call",
-      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_start_emulators",
+      "source": "users_cheerc_agend_worktrees_eo_team_impl_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_start_emulators",
       "confidence_score": 1.0
     },
     {
@@ -31955,8 +32693,8 @@
       "source_location": "L384",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_frontend",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_frontend",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_handle_error",
       "confidence_score": 1.0
     },
     {
@@ -31966,8 +32704,8 @@
       "source_location": "L439",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_indexes",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_handle_error",
       "confidence_score": 1.0
     },
     {
@@ -31977,8 +32715,8 @@
       "source_location": "L426",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_rules",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_handle_error",
       "confidence_score": 1.0
     },
     {
@@ -31988,8 +32726,8 @@
       "source_location": "L272",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_build_test",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_build_test",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_handle_error",
       "confidence_score": 1.0
     },
     {
@@ -31999,8 +32737,8 @@
       "source_location": "L337",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_integration_tests",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_integration_tests",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_handle_error",
       "confidence_score": 1.0
     },
     {
@@ -32010,8 +32748,8 @@
       "source_location": "L290",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_lint",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_lint",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_handle_error",
       "confidence_score": 1.0
     },
     {
@@ -32021,8 +32759,8 @@
       "source_location": "L359",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_preview",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_preview",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_handle_error",
       "confidence_score": 1.0
     },
     {
@@ -32032,8 +32770,8 @@
       "source_location": "L281",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_typecheck",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_typecheck",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_handle_error",
       "confidence_score": 1.0
     },
     {
@@ -32043,8 +32781,8 @@
       "source_location": "L299",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_unit_tests",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_unit_tests",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_handle_error",
       "confidence_score": 1.0
     },
     {
@@ -32054,8 +32792,8 @@
       "source_location": "L400",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_frontend",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_pause",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_frontend",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_pause",
       "confidence_score": 1.0
     },
     {
@@ -32065,8 +32803,8 @@
       "source_location": "L472",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_pause",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_pause",
       "confidence_score": 1.0
     },
     {
@@ -32076,8 +32814,8 @@
       "source_location": "L442",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_pause",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_indexes",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_pause",
       "confidence_score": 1.0
     },
     {
@@ -32087,8 +32825,8 @@
       "source_location": "L429",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_pause",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_rules",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_pause",
       "confidence_score": 1.0
     },
     {
@@ -32098,8 +32836,8 @@
       "source_location": "L63",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_check_and_switch_firebase",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_check_and_switch_gcloud",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_check_and_switch_firebase",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_check_and_switch_gcloud",
       "confidence_score": 1.0
     },
     {
@@ -32109,8 +32847,8 @@
       "source_location": "L433",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_check_and_switch_firebase",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_indexes",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_check_and_switch_firebase",
       "confidence_score": 1.0
     },
     {
@@ -32120,8 +32858,8 @@
       "source_location": "L404",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_check_and_switch_firebase",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_rules",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_check_and_switch_firebase",
       "confidence_score": 1.0
     },
     {
@@ -32131,8 +32869,8 @@
       "source_location": "L412",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_merge_firestore_rules",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_rules",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_merge_firestore_rules",
       "confidence_score": 1.0
     },
     {
@@ -32142,8 +32880,8 @@
       "source_location": "L457",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_build_test",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_build_test",
       "confidence_score": 1.0
     },
     {
@@ -32153,8 +32891,8 @@
       "source_location": "L346",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_full_ci",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_build_test",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_full_ci",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_build_test",
       "confidence_score": 1.0
     },
     {
@@ -32164,8 +32902,8 @@
       "source_location": "L458",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_typecheck",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_typecheck",
       "confidence_score": 1.0
     },
     {
@@ -32175,8 +32913,8 @@
       "source_location": "L347",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_full_ci",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_typecheck",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_full_ci",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_typecheck",
       "confidence_score": 1.0
     },
     {
@@ -32186,8 +32924,8 @@
       "source_location": "L459",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_lint",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_lint",
       "confidence_score": 1.0
     },
     {
@@ -32197,8 +32935,8 @@
       "source_location": "L348",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_full_ci",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_lint",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_full_ci",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_lint",
       "confidence_score": 1.0
     },
     {
@@ -32208,8 +32946,8 @@
       "source_location": "L460",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_unit_tests",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_unit_tests",
       "confidence_score": 1.0
     },
     {
@@ -32219,8 +32957,8 @@
       "source_location": "L349",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_full_ci",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_unit_tests",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_full_ci",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_unit_tests",
       "confidence_score": 1.0
     },
     {
@@ -32230,8 +32968,8 @@
       "source_location": "L350",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_full_ci",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_integration_tests",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_full_ci",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_run_integration_tests",
       "confidence_score": 1.0
     },
     {
@@ -32241,8 +32979,8 @@
       "source_location": "L434",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_confirm_prod",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_indexes",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_confirm_prod",
       "confidence_score": 1.0
     },
     {
@@ -32252,8 +32990,8 @@
       "source_location": "L405",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_confirm_prod",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_rules",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_confirm_prod",
       "confidence_score": 1.0
     },
     {
@@ -32263,8 +33001,8 @@
       "source_location": "L447",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_all",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_frontend",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_all",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_frontend",
       "confidence_score": 1.0
     },
     {
@@ -32274,8 +33012,8 @@
       "source_location": "L466",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_frontend",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_frontend",
       "confidence_score": 1.0
     },
     {
@@ -32285,8 +33023,8 @@
       "source_location": "L448",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_all",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_all",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_rules",
       "confidence_score": 1.0
     },
     {
@@ -32296,8 +33034,8 @@
       "source_location": "L467",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_rules",
       "confidence_score": 1.0
     },
     {
@@ -32307,8 +33045,8 @@
       "source_location": "L449",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_all",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_all",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_indexes",
       "confidence_score": 1.0
     },
     {
@@ -32318,8 +33056,8 @@
       "source_location": "L468",
       "weight": 1.0,
       "context": "call",
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_workflow_deploy_indexes",
       "confidence_score": 1.0
     },
     {
@@ -32329,7 +33067,7 @@
       "source_location": "L6",
       "weight": 1.0,
       "source": "firebase_json",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators",
       "confidence_score": 1.0
     },
     {
@@ -32339,8 +33077,28 @@
       "source_location": "L2",
       "weight": 1.0,
       "source": "firebase_json",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_firebase_firestore",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firebase.json",
+      "source_location": "L6",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "firebase_json",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firebase.json",
+      "source_location": "L2",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "firebase_json",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore"
     },
     {
       "relation": "conceptually_related_to",
@@ -32378,8 +33136,8 @@
       "source_file": "firebase.json",
       "source_location": "L4",
       "weight": 1.0,
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore_indexes",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_firebase_firestore",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_firebase_firestore_indexes",
       "confidence_score": 1.0
     },
     {
@@ -32388,8 +33146,8 @@
       "source_file": "firebase.json",
       "source_location": "L3",
       "weight": 1.0,
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore_rules",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_firebase_firestore",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_firebase_firestore_rules",
       "confidence_score": 1.0
     },
     {
@@ -32398,8 +33156,8 @@
       "source_file": "firebase.json",
       "source_location": "L7",
       "weight": 1.0,
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_auth",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators_auth",
       "confidence_score": 1.0
     },
     {
@@ -32408,8 +33166,8 @@
       "source_file": "firebase.json",
       "source_location": "L8",
       "weight": 1.0,
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_firestore",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators_firestore",
       "confidence_score": 1.0
     },
     {
@@ -32418,8 +33176,8 @@
       "source_file": "firebase.json",
       "source_location": "L10",
       "weight": 1.0,
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_singleprojectmode",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators_singleprojectmode",
       "confidence_score": 1.0
     },
     {
@@ -32428,8 +33186,8 @@
       "source_file": "firebase.json",
       "source_location": "L9",
       "weight": 1.0,
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_ui",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators_ui",
       "confidence_score": 1.0
     },
     {
@@ -32438,8 +33196,8 @@
       "source_file": "firebase.json",
       "source_location": "L7",
       "weight": 1.0,
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_auth",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_auth_port",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators_auth",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_firebase_auth_port",
       "confidence_score": 1.0
     },
     {
@@ -32448,8 +33206,8 @@
       "source_file": "firebase.json",
       "source_location": "L8",
       "weight": 1.0,
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_firestore",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore_port",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators_firestore",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_firebase_firestore_port",
       "confidence_score": 1.0
     },
     {
@@ -32458,8 +33216,8 @@
       "source_file": "firebase.json",
       "source_location": "L9",
       "weight": 1.0,
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_ui",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_ui_enabled",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators_ui",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_firebase_ui_enabled",
       "confidence_score": 1.0
     },
     {
@@ -32468,8 +33226,8 @@
       "source_file": "firebase.json",
       "source_location": "L9",
       "weight": 1.0,
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_ui",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_ui_port",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_firebase_emulators_ui",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_firebase_ui_port",
       "confidence_score": 1.0
     },
     {
@@ -32479,7 +33237,7 @@
       "source_location": "L28",
       "weight": 1.0,
       "source": "firestore_indexes_json",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_firestore_indexes_fieldoverrides",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_firestore_indexes_fieldoverrides",
       "confidence_score": 1.0
     },
     {
@@ -32489,8 +33247,28 @@
       "source_location": "L2",
       "weight": 1.0,
       "source": "firestore_indexes_json",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_firestore_indexes_indexes",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_firestore_indexes_indexes",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firestore.indexes.json",
+      "source_location": "L28",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "firestore_indexes_json",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_firestore_indexes_fieldoverrides"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firestore.indexes.json",
+      "source_location": "L2",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "firestore_indexes_json",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_firestore_indexes_indexes"
     },
     {
       "relation": "contains",
@@ -35126,9 +35904,9 @@
       "source_file": "frontend/src/storage/migration.ts",
       "source_location": "L2",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_storage_migration_ts",
-      "target": "errors_errorlogger_appenderrorlog",
-      "confidence_score": 1.0
+      "target": "errors_errorlogger_appenderrorlog"
     },
     {
       "relation": "imports_from",
@@ -35148,9 +35926,9 @@
       "source_file": "frontend/src/storage/migration.ts",
       "source_location": "L2",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_storage_migration_ts",
-      "target": "frontend_src_errors_errorlogger_ts",
-      "confidence_score": 1.0
+      "target": "frontend_src_errors_errorlogger_ts"
     },
     {
       "relation": "imports_from",
@@ -35191,9 +35969,9 @@
       "source_file": "frontend/src/storage/__tests__/migration.test.ts",
       "source_location": "L2",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_storage_tests_migration_test_ts",
-      "target": "frontend_src_storage_migration_ts",
-      "confidence_score": 1.0
+      "target": "frontend_src_storage_migration_ts"
     },
     {
       "relation": "imports",
@@ -35202,9 +35980,9 @@
       "source_file": "frontend/src/storage/__tests__/migration.test.ts",
       "source_location": "L2",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_storage_tests_migration_test_ts",
-      "target": "storage_migration_migratepersistedstate",
-      "confidence_score": 1.0
+      "target": "storage_migration_migratepersistedstate"
     },
     {
       "relation": "imports",
@@ -35597,9 +36375,9 @@
       "source_file": "frontend/src/storage/__tests__/migration.test.ts",
       "source_location": "L366",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_storage_tests_migration_test_ts",
-      "target": "tests_migration_test_bad",
-      "confidence_score": 1.0
+      "target": "tests_migration_test_bad"
     },
     {
       "relation": "contains",
@@ -35607,9 +36385,9 @@
       "source_file": "frontend/src/storage/__tests__/migration.test.ts",
       "source_location": "L7",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_storage_tests_migration_test_ts",
-      "target": "tests_migration_test_current",
-      "confidence_score": 1.0
+      "target": "tests_migration_test_current"
     },
     {
       "relation": "contains",
@@ -35617,9 +36395,9 @@
       "source_file": "frontend/src/storage/__tests__/migration.test.ts",
       "source_location": "L335",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_storage_tests_migration_test_ts",
-      "target": "tests_migration_test_menu",
-      "confidence_score": 1.0
+      "target": "tests_migration_test_menu"
     },
     {
       "relation": "contains",
@@ -35627,9 +36405,9 @@
       "source_file": "frontend/src/storage/__tests__/migration.test.ts",
       "source_location": "L339",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_storage_tests_migration_test_ts",
-      "target": "tests_migration_test_r",
-      "confidence_score": 1.0
+      "target": "tests_migration_test_r"
     },
     {
       "relation": "contains",
@@ -35637,9 +36415,9 @@
       "source_file": "frontend/src/storage/__tests__/migration.test.ts",
       "source_location": "L358",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_storage_tests_migration_test_ts",
-      "target": "tests_migration_test_result",
-      "confidence_score": 1.0
+      "target": "tests_migration_test_result"
     },
     {
       "relation": "contains",
@@ -35647,9 +36425,9 @@
       "source_file": "frontend/src/storage/__tests__/migration.test.ts",
       "source_location": "L348",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_storage_tests_migration_test_ts",
-      "target": "tests_migration_test_state",
-      "confidence_score": 1.0
+      "target": "tests_migration_test_state"
     },
     {
       "relation": "contains",
@@ -35657,9 +36435,9 @@
       "source_file": "frontend/src/storage/__tests__/migration.test.ts",
       "source_location": "L115",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_storage_tests_migration_test_ts",
-      "target": "tests_migration_test_student",
-      "confidence_score": 1.0
+      "target": "tests_migration_test_student"
     },
     {
       "relation": "contains",
@@ -35667,9 +36445,9 @@
       "source_file": "frontend/src/storage/__tests__/migration.test.ts",
       "source_location": "L324",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_storage_tests_migration_test_ts",
-      "target": "tests_migration_test_students",
-      "confidence_score": 1.0
+      "target": "tests_migration_test_students"
     },
     {
       "relation": "contains",
@@ -35677,9 +36455,9 @@
       "source_file": "frontend/src/storage/__tests__/migration.test.ts",
       "source_location": "L177",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_storage_tests_migration_test_ts",
-      "target": "tests_migration_test_tx",
-      "confidence_score": 1.0
+      "target": "tests_migration_test_tx"
     },
     {
       "relation": "contains",
@@ -35687,9 +36465,9 @@
       "source_file": "frontend/src/storage/__tests__/migration.test.ts",
       "source_location": "L230",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_storage_tests_migration_test_ts",
-      "target": "tests_migration_test_vendor",
-      "confidence_score": 1.0
+      "target": "tests_migration_test_vendor"
     },
     {
       "relation": "contains",
@@ -35697,9 +36475,9 @@
       "source_file": "frontend/src/storage/__tests__/migration.test.ts",
       "source_location": "L332",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_storage_tests_migration_test_ts",
-      "target": "tests_migration_test_vendors",
-      "confidence_score": 1.0
+      "target": "tests_migration_test_vendors"
     },
     {
       "relation": "contains",
@@ -42715,9 +43493,9 @@
       "source_file": "frontend/src/firebase/__tests__/realtimeSubscriptions.test.ts",
       "source_location": "L73",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_firebase_tests_realtimesubscriptions_test_ts",
-      "target": "tests_realtimesubscriptions_test_calls",
-      "confidence_score": 1.0
+      "target": "tests_realtimesubscriptions_test_calls"
     },
     {
       "relation": "contains",
@@ -42725,9 +43503,9 @@
       "source_file": "frontend/src/firebase/__tests__/realtimeSubscriptions.test.ts",
       "source_location": "L72",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_firebase_tests_realtimesubscriptions_test_ts",
-      "target": "tests_realtimesubscriptions_test_pending",
-      "confidence_score": 1.0
+      "target": "tests_realtimesubscriptions_test_pending"
     },
     {
       "relation": "contains",
@@ -42735,9 +43513,9 @@
       "source_file": "frontend/src/firebase/__tests__/realtimeSubscriptions.test.ts",
       "source_location": "L75",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_firebase_tests_realtimesubscriptions_test_ts",
-      "target": "tests_realtimesubscriptions_test_schedulebatch",
-      "confidence_score": 1.0
+      "target": "tests_realtimesubscriptions_test_schedulebatch"
     },
     {
       "relation": "contains",
@@ -42888,9 +43666,9 @@
       "source_file": "frontend/src/__tests__/orderPayment.integration.test.tsx",
       "source_location": "L2",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_tests_orderpayment_integration_test_tsx",
-      "target": "frontend_src_store_posstore_ts",
-      "confidence_score": 1.0
+      "target": "frontend_src_store_posstore_ts"
     },
     {
       "relation": "imports",
@@ -42899,9 +43677,9 @@
       "source_file": "frontend/src/__tests__/orderPayment.integration.test.tsx",
       "source_location": "L2",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_tests_orderpayment_integration_test_tsx",
-      "target": "store_posstore_useposstore",
-      "confidence_score": 1.0
+      "target": "store_posstore_useposstore"
     },
     {
       "relation": "contains",
@@ -42909,9 +43687,9 @@
       "source_file": "frontend/src/__tests__/orderPayment.integration.test.tsx",
       "source_location": "L77",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_tests_orderpayment_integration_test_tsx",
-      "target": "tests_orderpayment_integration_test_afterorder",
-      "confidence_score": 1.0
+      "target": "tests_orderpayment_integration_test_afterorder"
     },
     {
       "relation": "contains",
@@ -42919,9 +43697,9 @@
       "source_file": "frontend/src/__tests__/orderPayment.integration.test.tsx",
       "source_location": "L83",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_tests_orderpayment_integration_test_tsx",
-      "target": "tests_orderpayment_integration_test_afterpayment",
-      "confidence_score": 1.0
+      "target": "tests_orderpayment_integration_test_afterpayment"
     },
     {
       "relation": "contains",
@@ -42929,9 +43707,9 @@
       "source_file": "frontend/src/__tests__/orderPayment.integration.test.tsx",
       "source_location": "L69",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_tests_orderpayment_integration_test_tsx",
-      "target": "tests_orderpayment_integration_test_store",
-      "confidence_score": 1.0
+      "target": "tests_orderpayment_integration_test_store"
     },
     {
       "relation": "contains",
@@ -42939,9 +43717,9 @@
       "source_file": "frontend/src/__tests__/orderPayment.integration.test.tsx",
       "source_location": "L63",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_tests_orderpayment_integration_test_tsx",
-      "target": "tests_orderpayment_integration_test_totalpaid",
-      "confidence_score": 1.0
+      "target": "tests_orderpayment_integration_test_totalpaid"
     },
     {
       "relation": "contains",
@@ -42949,9 +43727,9 @@
       "source_file": "frontend/src/__tests__/orderPayment.integration.test.tsx",
       "source_location": "L60",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_tests_orderpayment_integration_test_tsx",
-      "target": "tests_orderpayment_integration_test_txforstudent",
-      "confidence_score": 1.0
+      "target": "tests_orderpayment_integration_test_txforstudent"
     },
     {
       "relation": "imports_from",
@@ -44165,9 +44943,9 @@
       "source_file": "frontend/src/store/posStore.ts",
       "source_location": "L18",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_store_posstore_ts",
-      "target": "frontend_src_errors_errorlogger_ts",
-      "confidence_score": 1.0
+      "target": "frontend_src_errors_errorlogger_ts"
     },
     {
       "relation": "calls",
@@ -44220,9 +44998,9 @@
       "source_file": "frontend/src/store/posStore.ts",
       "source_location": "L18",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_store_posstore_ts",
-      "target": "errors_errorlogger_appenderrorlog",
-      "confidence_score": 1.0
+      "target": "errors_errorlogger_appenderrorlog"
     },
     {
       "relation": "calls",
@@ -46747,9 +47525,9 @@
       "source_file": "frontend/src/domain/ledgerReport.ts",
       "source_location": "L2",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_domain_ledgerreport_ts",
-      "target": "domain_ledger_isstudenttransaction",
-      "confidence_score": 1.0
+      "target": "domain_ledger_isstudenttransaction"
     },
     {
       "relation": "imports",
@@ -47644,9 +48422,9 @@
       "source_file": "frontend/src/domain/ledger.ts",
       "source_location": "L32",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "frontend_src_domain_ledger_ts",
-      "target": "domain_ledger_isstudenttransaction",
-      "confidence_score": 1.0
+      "target": "domain_ledger_isstudenttransaction"
     },
     {
       "relation": "contains",
@@ -47984,9 +48762,9 @@
       "source_file": "frontend/src/domain/ledger.ts",
       "source_location": "L137",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "domain_ledger_mergeledgertransactions",
-      "target": "domain_ledger_isstudenttransaction",
-      "confidence_score": 1.0
+      "target": "domain_ledger_isstudenttransaction"
     },
     {
       "relation": "calls",
@@ -50501,8 +51279,18 @@
       "source_location": "L1",
       "weight": 1.0,
       "source": "readme_md",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_readme_talented_easyorder_ipad_pos",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_readme_talented_easyorder_ipad_pos",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L1",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "readme_md",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_readme_talented_easyorder_ipad_pos"
     },
     {
       "relation": "contains",
@@ -50520,8 +51308,8 @@
       "source_file": "README.md",
       "source_location": "L13",
       "weight": 1.0,
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_readme_talented_easyorder_ipad_pos",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_readme_documentation",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_readme_talented_easyorder_ipad_pos",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_readme_documentation",
       "confidence_score": 1.0
     },
     {
@@ -50530,8 +51318,8 @@
       "source_file": "README.md",
       "source_location": "L5",
       "weight": 1.0,
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_readme_talented_easyorder_ipad_pos",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_readme_getting_started",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_readme_talented_easyorder_ipad_pos",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_readme_getting_started",
       "confidence_score": 1.0
     },
     {
@@ -50540,8 +51328,8 @@
       "source_file": "README.md",
       "source_location": "L7",
       "weight": 1.0,
-      "source": "eo_team_lead_users_cheerc_talented_easyorder_readme_getting_started",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_readme_codeblock_1",
+      "source": "eo_team_impl_users_cheerc_talented_easyorder_readme_getting_started",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_readme_codeblock_1",
       "confidence_score": 1.0
     },
     {
@@ -50551,8 +51339,18 @@
       "source_location": "L1",
       "weight": 1.0,
       "source": "claude_md",
-      "target": "eo_team_lead_users_cheerc_talented_easyorder_claude_graphify",
+      "target": "eo_team_impl_users_cheerc_talented_easyorder_claude_graphify",
       "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "CLAUDE.md",
+      "source_location": "L1",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "claude_md",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_claude_graphify"
     },
     {
       "relation": "conceptually_related_to",
@@ -70222,6 +71020,686 @@
       "weight": 1.0,
       "context": "call",
       "confidence_score": 1.0,
+      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_all"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L489",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_frontend"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L493",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L491",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L490",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L481",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_dev_prod"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L480",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_dev_with_emulators"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L482",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_build_test"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L487",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_full_ci"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L486",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_integration_tests"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L484",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_lint"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L488",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_preview"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L483",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_typecheck"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L485",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_unit_tests"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L501",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_show_menu"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L479",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "users_cheerc_agend_worktrees_eo_team_lead_users_cheerc_talented_easyorder_workflow_sh__entry",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_start_emulators"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L384",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_frontend",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L439",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L426",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L272",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_build_test",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L337",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_integration_tests",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L290",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_lint",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L359",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_preview",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L281",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_typecheck",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L299",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_unit_tests",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_handle_error"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L400",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_frontend",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_pause"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L472",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_pause"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L442",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_pause"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L429",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_pause"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L63",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_check_and_switch_firebase",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_check_and_switch_gcloud"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L433",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_check_and_switch_firebase"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L404",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_check_and_switch_firebase"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L412",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_merge_firestore_rules"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L457",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_build_test"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L346",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_full_ci",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_build_test"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L458",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_typecheck"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L347",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_full_ci",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_typecheck"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L459",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_lint"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L348",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_full_ci",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_lint"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L460",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_unit_tests"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L349",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_full_ci",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_unit_tests"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L350",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_full_ci",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_run_integration_tests"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L434",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_confirm_prod"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L405",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_confirm_prod"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L447",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_all",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_frontend"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L466",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_frontend"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L448",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_all",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L467",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_rules"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L449",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_all",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L468",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_full_stack",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_workflow_deploy_indexes"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firebase.json",
+      "source_location": "L4",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore_indexes"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firebase.json",
+      "source_location": "L3",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore_rules"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firebase.json",
+      "source_location": "L7",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_auth"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firebase.json",
+      "source_location": "L8",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_firestore"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firebase.json",
+      "source_location": "L10",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_singleprojectmode"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firebase.json",
+      "source_location": "L9",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_ui"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firebase.json",
+      "source_location": "L7",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_auth",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_auth_port"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firebase.json",
+      "source_location": "L8",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_firestore",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_firestore_port"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firebase.json",
+      "source_location": "L9",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_ui",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_ui_enabled"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firebase.json",
+      "source_location": "L9",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_firebase_emulators_ui",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_firebase_ui_port"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L13",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_readme_talented_easyorder_ipad_pos",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_readme_documentation"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L5",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_readme_talented_easyorder_ipad_pos",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_readme_getting_started"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L7",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "eo_team_lead_users_cheerc_talented_easyorder_readme_getting_started",
+      "target": "eo_team_lead_users_cheerc_talented_easyorder_readme_codeblock_1"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "source_file": "workflow.sh",
+      "source_location": "L492",
+      "weight": 1.0,
+      "context": "call",
+      "confidence_score": 1.0,
       "source": "users_cheerc_talented_easyorder_workflow_sh__entry",
       "target": "talented_easyorder_workflow_deploy_all"
     },
@@ -74289,6 +75767,5 @@
       "label": "security implementation components",
       "source_file": "docs/superpowers/plans/2026-05-15-frontend-security-considerations.md"
     }
-  ],
-  "built_at_commit": "978e3ca7e9cbdea9f79a14a16930cb80400f64cd"
+  ]
 }
