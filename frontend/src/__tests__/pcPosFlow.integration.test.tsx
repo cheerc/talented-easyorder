@@ -2,13 +2,10 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../App';
-import { usePosStore } from '../store/posStore';
+import { resetStoreForTest } from './helpers/storeSetup';
 
 describe('pcPosFlow integration — keyboard flow', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    usePosStore.getState().resetData();
-  });
+  beforeEach(() => resetStoreForTest());
 
   it('typing an exact student id and pressing Enter selects the student', async () => {
     render(<App />);

@@ -2,13 +2,10 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../App';
-import { usePosStore } from '../store/posStore';
+import { resetStoreForTest } from './helpers/storeSetup';
 
 describe('pcPosSafety — duplicate submit guard', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    usePosStore.getState().resetData();
-  });
+  beforeEach(() => resetStoreForTest());
 
   it('confirm button triggers one commit per click', async () => {
     render(<App />);
@@ -32,10 +29,7 @@ describe('pcPosSafety — duplicate submit guard', () => {
 });
 
 describe('pcPosSafety — duplicate order warning', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    usePosStore.getState().resetData();
-  });
+  beforeEach(() => resetStoreForTest());
 
   it('first order shows no duplicate warning', async () => {
     render(<App />);
