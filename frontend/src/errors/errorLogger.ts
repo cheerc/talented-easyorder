@@ -1,7 +1,7 @@
 export interface ErrorLogEntry {
   id: string;
   createdAt: string;
-  source: 'react' | 'window-error' | 'unhandled-rejection' | 'storage' | 'sync';
+  source: 'react' | 'window-error' | 'unhandled-rejection' | 'storage' | 'sync' | 'auth';
   message: string;
   stack?: string;
   context?: Record<string, string | number | boolean | null>;
