@@ -30,7 +30,7 @@ export default function App() {
   const resetData = usePosStore((s) => s.resetData);
   const getBusinessDateStatus = usePosStore((s) => s.getBusinessDateStatus);
   const cashSessions = usePosStore((s) => s.cashSessions);
-  const dailySettlements = usePosStore((s) => s.dailySettlements as import('./domain/cashClose').DailySettlement[]);
+  const dailySettlements = usePosStore((s) => s.dailySettlements);
   const openCashSession = usePosStore((s) => s.openCashSession);
   const updateOpeningCash = usePosStore((s) => s.updateOpeningCash);
 
