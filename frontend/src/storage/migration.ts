@@ -1,4 +1,4 @@
-import type { PosState } from '../store/posStore';
+import type { PosState } from '../store/posTypes';
 import { appendErrorLog } from '../errors/errorLogger';
 import type { Vendor } from '../domain/menu';
 
