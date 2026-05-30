@@ -1,3 +1,5 @@
+import type { ValidationResult } from '../types/validation';
+
 export type DailyCashSessionStatus = 'open' | 'closed';
 
 export interface DailyCashSession {
@@ -73,12 +75,13 @@ export function createDrawerCloseout(input: {
   };
 }
 
-export function validateOpeningCash(value: number): { ok: true } | { ok: false; message: string } {
+
+export function validateOpeningCash(value: number): ValidationResult {
   if (!Number.isInteger(value) || value < 0) {
-    return { ok: false, message: '開帳金額必須是 0 或正整數' };
+    return { ok: false, reason: '開帳金額必須是 0 或正整數' };
   }
   if (value > 20000) {
-    return { ok: false, message: '開帳金額異常，請確認是否輸入錯誤' };
+    return { ok: false, reason: '開帳金額異常，請確認是否輸入錯誤' };
   }
   return { ok: true };
 }

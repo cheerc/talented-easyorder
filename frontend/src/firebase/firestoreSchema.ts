@@ -1,4 +1,5 @@
 import { serverTimestamp, type FieldValue, type Timestamp } from 'firebase/firestore';
+import type { ValidationResult } from '../types/validation';
 
 export type FirestoreTimestamp = Timestamp | FieldValue;
 export type FirestoreTransactionType = 'order' | 'payment' | 'refund' | 'cancel' | 'correction' | 'void';
@@ -38,7 +39,7 @@ export function buildTransactionDoc(input: TransactionDocInput): TransactionDoc 
   };
 }
 
-export function validateStudentDoc(input: Record<string, unknown>): { ok: true } | { ok: false; reason: string } {
+export function validateStudentDoc(input: Record<string, unknown>): ValidationResult {
   if (input.status !== 'active' && input.status !== 'inactive') return { ok: false, reason: 'invalid status' };
   if (typeof input.revision !== 'number' || input.revision < 1) return { ok: false, reason: 'invalid revision' };
   return { ok: true };
