@@ -9,7 +9,7 @@ interface EditTransactionModalProps {
   open: boolean;
   transaction: LedgerTransaction | null;
   onClose: () => void;
-  onSave: (updates: { mealPrice: number; paidAmount: number; note: string }) => void;
+  onSave: (transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }) => void;
 }
 
 export const EditTransactionModal = React.memo(function EditTransactionModal({
@@ -48,7 +48,8 @@ export const EditTransactionModal = React.memo(function EditTransactionModal({
       return;
     }
 
-    onSave({ mealPrice, paidAmount, note });
+    onSave(transaction.transactionId, { mealPrice, paidAmount, note });
+    onClose();
   };
 
   return (

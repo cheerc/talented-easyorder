@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { type LedgerTransaction, mergeLedgerTransactions } from '../../domain/ledger';
 import type { TodayMenu } from '../../domain/menu';
 import { EditTransactionModal } from '../EditTransactionModal';
@@ -45,6 +45,9 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
   const deleteOrderWithRefundCheck = usePosStore((s) => s.deleteOrderWithRefundCheck);
   const deleteTransaction = usePosStore((s) => s.deleteTransaction);
   const editTransaction = usePosStore((s) => s.editTransaction);
+  const handleEditSave = useCallback((transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }) => {
+    editTransaction(transactionId, updates);
+  }, [editTransaction]);
   const dateStatus = usePosStore((s) => s.getBusinessDateStatus(viewDate));
   const cashSessions = usePosStore((s) => s.cashSessions);
   const dailySettlements = usePosStore((s) => s.dailySettlements as import('../../domain/cashClose').DailySettlement[]);
@@ -242,12 +245,7 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
         open={editingTx !== null}
         transaction={editingTx}
         onClose={() => setEditingTx(null)}
-        onSave={(updates) => {
-          if (editingTx) {
-            editTransaction(editingTx.transactionId, updates);
-          }
-          setEditingTx(null);
-        }}
+        onSave={handleEditSave}
       />
     </div>
   );
