@@ -1,11 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { usePosStore } from '../store/posStore';
+import { resetStoreForTest } from './helpers/storeSetup';
 
 describe('order payment integration', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    usePosStore.getState().resetData();
-  });
+  beforeEach(() => resetStoreForTest());
 
   it('full payment: order then pay full amount, balance returns to zero', () => {
     const store = usePosStore.getState();

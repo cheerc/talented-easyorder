@@ -3,12 +3,9 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { usePosStore } from '../store/posStore';
 import App from '../App';
+import { resetStoreForTest } from './helpers/storeSetup';
 
-beforeEach(() => {
-  window.localStorage.clear();
-  usePosStore.getState().resetData();
-  usePosStore.persist.rehydrate();
-});
+beforeEach(() => resetStoreForTest());
 
 describe('reportScreen integration', () => {
   it('renders report tab with date range controls', async () => {
