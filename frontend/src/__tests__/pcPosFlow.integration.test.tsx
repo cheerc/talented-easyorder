@@ -74,7 +74,7 @@ describe('pcPosFlow integration — keyboard flow', () => {
     await user.keyboard('{Enter}');
 
     await waitFor(() => {
-      expect(screen.queryByText('✓')).toBeFalsy();
+      expect(screen.queryByTestId('payment-success')).toBeNull();
     });
   });
 
@@ -142,16 +142,16 @@ describe('pcPosFlow integration — keyboard flow', () => {
     await user.keyboard('{Enter}');
 
     // Verify we are still on the student payment page, NOT in success state (no checkmark)
-    expect(screen.queryByText('✓')).toBeFalsy();
-    expect(screen.getByText('繳費金額')).toBeTruthy();
+    expect(screen.queryByTestId('payment-success')).toBeNull();
+    expect(screen.getByLabelText('付款金額')).toBeTruthy();
 
     // Type 0 and try to confirm
     await user.type(paymentInput, '0');
     await user.keyboard('{Enter}');
 
     // Verify we are still on the student payment page
-    expect(screen.queryByText('✓')).toBeFalsy();
-    expect(screen.getByText('繳費金額')).toBeTruthy();
+    expect(screen.queryByTestId('payment-success')).toBeNull();
+    expect(screen.getByLabelText('付款金額')).toBeTruthy();
 
     // Type a positive number and try to confirm
     await user.clear(paymentInput);
@@ -160,7 +160,7 @@ describe('pcPosFlow integration — keyboard flow', () => {
 
     // Verify it successfully committed (shows flash success checkmark)
     await waitFor(() => {
-      expect(screen.getByText('✓')).toBeTruthy();
+      expect(screen.getByTestId('payment-success')).toBeTruthy();
     });
   });
 
