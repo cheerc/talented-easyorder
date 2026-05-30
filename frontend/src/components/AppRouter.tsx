@@ -1,8 +1,12 @@
-import React, { useCallback } from 'react';
-import { ReportScreen, AdminScreen, VendorsScreen, HistoryScreen } from './screens';
+import React, { useCallback, Suspense } from 'react';
 import { ErrorBoundary, SectionError } from './ErrorBoundary';
 import { PosColumn } from './PosColumn';
 import type { ComponentProps } from 'react';
+
+const ReportScreen = React.lazy(() => import('./screens/ReportScreen').then(m => ({ default: m.ReportScreen })));
+const AdminScreen = React.lazy(() => import('./screens/AdminScreen').then(m => ({ default: m.AdminScreen })));
+const VendorsScreen = React.lazy(() => import('./screens/VendorsScreen').then(m => ({ default: m.VendorsScreen })));
+const HistoryScreen = React.lazy(() => import('./screens/HistoryScreen').then(m => ({ default: m.HistoryScreen })));
 
 type PosColumnProps = ComponentProps<typeof PosColumn>;
 
@@ -51,16 +55,19 @@ export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
 
       {tab === 'report' && (
         <ErrorBoundary fallback={<SectionError name="報表" />}>
+        <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
         <ReportScreen
           todayMenu={todayMenu}
           viewDate={viewDate}
           studentFilter={reportStudentFilter}
           onClearStudentFilter={onClearStudentFilter}
         />
+        </Suspense>
         </ErrorBoundary>
       )}
       {tab === 'admin' && (
         <ErrorBoundary fallback={<SectionError name="今日設定" />}>
+        <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
         <AdminScreen
           todayMenu={todayMenu}
           setTodayMenu={setTodayMenu}
@@ -74,16 +81,21 @@ export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
           onUpdateOpeningCash={handleUpdateOpeningCash}
           tweaks={tweaks} setTweak={setTweak}
         />
+        </Suspense>
         </ErrorBoundary>
       )}
       {tab === 'vendors' && (
         <ErrorBoundary fallback={<SectionError name="供應商" />}>
+        <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
         <VendorsScreen vendors={vendors} setVendors={setVendors} />
+        </Suspense>
         </ErrorBoundary>
       )}
       {tab === 'history' && (
         <ErrorBoundary fallback={<SectionError name="歷史紀錄" />}>
+        <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
         <HistoryScreen />
+        </Suspense>
         </ErrorBoundary>
       )}
     </>
