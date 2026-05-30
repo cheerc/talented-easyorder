@@ -43,6 +43,8 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
   const closeBusinessDate = usePosStore((s) => s.closeBusinessDate);
   const reopenBusinessDate = usePosStore((s) => s.reopenBusinessDate);
   const deleteOrderWithRefundCheck = usePosStore((s) => s.deleteOrderWithRefundCheck);
+  const deleteTransaction = usePosStore((s) => s.deleteTransaction);
+  const editTransaction = usePosStore((s) => s.editTransaction);
   const dateStatus = usePosStore((s) => s.getBusinessDateStatus(viewDate));
   const cashSessions = usePosStore((s) => s.cashSessions);
   const dailySettlements = usePosStore((s) => s.dailySettlements as import('../../domain/cashClose').DailySettlement[]);
@@ -122,7 +124,7 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
     if (t.type === 'order') {
       deleteOrderWithRefundCheck(t.transactionId);
     } else {
-      usePosStore.getState().deleteTransaction(t.transactionId);
+      deleteTransaction(t.transactionId);
     }
   };
 
@@ -242,7 +244,7 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
         onClose={() => setEditingTx(null)}
         onSave={(updates) => {
           if (editingTx) {
-            usePosStore.getState().editTransaction(editingTx.transactionId, updates);
+            editTransaction(editingTx.transactionId, updates);
           }
           setEditingTx(null);
         }}
