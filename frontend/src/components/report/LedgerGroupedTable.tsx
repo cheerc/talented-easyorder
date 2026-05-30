@@ -2,15 +2,10 @@ import React, { useState, useMemo, useEffect } from 'react';
 import type { LedgerGroup } from '../../domain/ledgerReport';
 import type { LedgerTransaction } from '../../domain/ledger';
 import { GroupRow } from './GroupRow';
-import type { GroupRowProps } from './GroupRow';
 import { SummaryRow } from './SummaryRow';
-import type { SummaryRowProps } from './SummaryRow';
 import { DetailRow } from './DetailRow';
-import type { DetailRowProps } from './DetailRow';
 import { IncomeRow } from './IncomeRow';
-import type { IncomeRowProps } from './IncomeRow';
 import { ExpenseOnlyRow } from './ExpenseOnlyRow';
-import type { ExpenseOnlyRowProps } from './ExpenseOnlyRow';
 import { flattenGroups, paginateGroups } from './ledgerGroupUtils';
 import type { FlatRow } from './ledgerGroupUtils';
 
