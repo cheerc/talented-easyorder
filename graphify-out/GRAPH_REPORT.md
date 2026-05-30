@@ -1,13 +1,18 @@
 # Graph Report - eo-team-impl-_Users_cheerc_talented-easyorder  (2026-05-30)
 
 ## Corpus Check
-- 231 files · ~181,311 words
+- 232 files · ~181,432 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3472 nodes · 4283 edges · 323 communities (263 shown, 60 thin omitted)
+- 3477 nodes · 4287 edges · 328 communities (268 shown, 60 thin omitted)
 - Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 133 edges (avg confidence: 0.76)
 - Token cost: 0 input · 0 output
+
+## Graph Freshness
+- Built from commit: `0c24551e`
+- Run `git rev-parse HEAD` and compare to check if the graph is stale.
+- Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - [[_COMMUNITY_Community 0|Community 0]]
@@ -73,6 +78,7 @@
 - [[_COMMUNITY_Community 61|Community 61]]
 - [[_COMMUNITY_Community 62|Community 62]]
 - [[_COMMUNITY_Community 63|Community 63]]
+- [[_COMMUNITY_Community 64|Community 64]]
 - [[_COMMUNITY_Community 65|Community 65]]
 - [[_COMMUNITY_Community 66|Community 66]]
 - [[_COMMUNITY_Community 67|Community 67]]
@@ -171,6 +177,7 @@
 - [[_COMMUNITY_Community 164|Community 164]]
 - [[_COMMUNITY_Community 165|Community 165]]
 - [[_COMMUNITY_Community 166|Community 166]]
+- [[_COMMUNITY_Community 167|Community 167]]
 - [[_COMMUNITY_Community 168|Community 168]]
 - [[_COMMUNITY_Community 169|Community 169]]
 - [[_COMMUNITY_Community 170|Community 170]]
@@ -327,6 +334,9 @@
 - [[_COMMUNITY_Community 323|Community 323]]
 - [[_COMMUNITY_Community 324|Community 324]]
 - [[_COMMUNITY_Community 325|Community 325]]
+- [[_COMMUNITY_Community 326|Community 326]]
+- [[_COMMUNITY_Community 327|Community 327]]
+- [[_COMMUNITY_Community 330|Community 330]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `資料遷移策略實作計畫` - 28 edges
@@ -370,27 +380,27 @@
 - **data migration architecture components** — data-migration, indexeddb, zustand, localstorage-migration, migration-stages, idempotency-keys, conflict-policy [INFERRED]
 - **security implementation components** — frontend-security, xss-strategy, csp-policy, display-policy, data-classification [INFERRED]
 
-## Communities (323 total, 60 thin omitted)
+## Communities (328 total, 60 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.06
 Nodes (51): Firebase Sync Architecture Implementation Plan, Spec Conformance Audit, buildTransactionQueuePayload Function, getCloseBlockingSyncSummary Function, getOperatorAccess(), isAllowedWorkspaceEmail(), OperatorAccess, OperatorProfile (+43 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.05
-Nodes (35): EditTransactionModalProps, PwaInstallBanner, btn, onClick, user, confirmBtn, onCancel, onConfirm (+27 more)
+Cohesion: 0.14
+Nodes (12): field, label, onChange, user, onChange, user, Field, FieldProps (+4 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.05
-Nodes (42): POS Components (v2), ExpensePanel, RecentStrip, ActionBar, CustomerCard, DuplicateWarningBanner, IdleHero, MidnightBanner (+34 more)
+Cohesion: 0.07
+Nodes (29): POS Components (v2), ExpensePanel, RecentStrip, ActionBar, DuplicateWarningBanner, FirestoreSyncStatus, deriveSyncIndicator, useAppNavigationShortcuts (+21 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.05
 Nodes (37): afterBalance-based display logic, Batch 1 cashflow redesign, Batch 1 hotfix round 2, Batch 4 accounting fixes, Batch 5-6 verification checklist, Batch 5 UX improvements, Batch 6 accounting/UX fixes, __cashier__ sentinel (+29 more)
 
 ### Community 4 - "Community 4"
-Cohesion: 0.08
-Nodes (26): DailySettlement, LedgerSyncStatus, AuditEventInput, BusinessDateStatus, createLedgerAuditEvent(), decideLedgerDeletePolicy(), decideLedgerEditPolicy(), LedgerAuditEvent (+18 more)
+Cohesion: 0.20
+Nodes (12): AuditEventInput, BusinessDateStatus, createLedgerAuditEvent(), decideLedgerDeletePolicy(), decideLedgerEditPolicy(), LedgerAuditEventType, LedgerMutationDecision, editTransaction action (+4 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.08
@@ -401,8 +411,8 @@ Cohesion: 0.08
 Nodes (73): check_and_switch_firebase(), check_and_switch_gcloud(), confirm_prod(), deploy_all(), deploy_frontend(), deploy_full_stack(), deploy_indexes(), deploy_rules() (+65 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.09
-Nodes (34): RecalculationResult, createMenuSnapshot(), filterActiveVendors(), MenuCatalogItem, MenuValidationResult, promoteCatalogItemToTodayMenu Function, promoteCatalogItemToTodayMenu(), RecordStatus (+26 more)
+Cohesion: 0.13
+Nodes (20): calculateTransactionAmount(), CreateLedgerTransactionInput, createMenuSnapshot(), MenuSnapshot, PosSourceDevice, BuildExpenseTransactionDraftArgs, buildPosTransactionDraft(), DerivedTransactionAttrs (+12 more)
 
 ### Community 8 - "Community 8"
 Cohesion: 0.08
@@ -410,15 +420,15 @@ Nodes (28): Daily Cash Close Process, CSS Design Tokens, Ledger Audit Trail, Off
 
 ### Community 9 - "Community 9"
 Cohesion: 0.07
-Nodes (42): result, tx, result, tx, ARRAY_KEYS, hasNum(), hasStr(), isSafeInt() (+34 more)
+Nodes (43): result, tx, result, tx, ARRAY_KEYS, hasNum(), hasStr(), isSafeInt() (+35 more)
 
 ### Community 10 - "Community 10"
 Cohesion: 0.10
 Nodes (19): App component, AuthGate component, LedgerGroupedTable component, Code Review Report, Deployment Guide, Error Handling Recovery Strategy Plan, Verification Checklist, AppErrorCode (+11 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.11
-Nodes (21): PosSearchMode, PosSearchResult, resolveScannedStudent(), searchPosStudents(), FaceEnrollmentStatus, filterActiveStudents(), ImportFieldError, searchActiveStudents() (+13 more)
+Cohesion: 0.09
+Nodes (22): PosSearchMode, PosSearchResult, resolveScannedStudent(), searchPosStudents(), FaceEnrollmentStatus, filterActiveStudents(), ImportFieldError, searchActiveStudents() (+14 more)
 
 ### Community 12 - "Community 12"
 Cohesion: 0.10
@@ -437,12 +447,12 @@ Cohesion: 0.11
 Nodes (20): Firebase Backup Runbook, Cross-Platform Android PWA Support Plan, Google Sheets Sync & Offline Plan (OBSOLETE), iPad POS System Design Spec, Tweaks Panel Prototyping Toolkit, Batch 5-6 UI Fixes Verification Checklist, Firestore Composite Indexes, MainLayout App Shell (+12 more)
 
 ### Community 16 - "Community 16"
-Cohesion: 0.10
-Nodes (22): Batch 3 Seed Data Reset Plan, LedgerTransaction, MergedTransaction, LedgerPrintViewModel, LedgerGroup, DetailRow, DetailRowProps, ExpenseOnlyRow (+14 more)
+Cohesion: 0.14
+Nodes (18): fmt(), calculateLedgerTotals(), createLedgerDateRange(), filterTransactionsByBusinessDate(), getMonday(), getMonthEnd(), getSunday(), LedgerDateRange (+10 more)
 
 ### Community 17 - "Community 17"
-Cohesion: 0.12
-Nodes (22): HandoffAction, IpadHandoffMessage, readHandoffIntent(), toHandoffScannerInput(), VALID_ACTIONS, VALID_SOURCES, ValidateHandoffResult, validateIpadHandoffMessage() (+14 more)
+Cohesion: 0.11
+Nodes (24): HandoffAction, IpadHandoffMessage, readHandoffIntent(), toHandoffScannerInput(), VALID_ACTIONS, VALID_SOURCES, ValidateHandoffResult, validateIpadHandoffMessage() (+16 more)
 
 ### Community 18 - "Community 18"
 Cohesion: 0.11
@@ -450,39 +460,39 @@ Nodes (17): compilerOptions, allowImportingTsExtensions, erasableSyntaxOnly, lib
 
 ### Community 19 - "Community 19"
 Cohesion: 0.06
-Nodes (37): FlashData, MainLayout, MainLayoutProps, ActionBarProps, ConfirmBanner, ConfirmBannerProps, CustomerCardProps, DuplicateWarningBannerProps (+29 more)
+Nodes (32): FlashData, MainLayout, MainLayoutProps, ActionBarProps, ConfirmBanner, ConfirmBannerProps, CustomerCardProps, DuplicateWarningBannerProps (+24 more)
 
 ### Community 20 - "Community 20"
-Cohesion: 0.16
-Nodes (16): calculateTransactionAmount(), CASHIER_SENTINEL, CreateLedgerTransactionInput, TransactionType, MenuSnapshot, PosSourceDevice, BuildExpenseTransactionDraftArgs, buildPosTransactionDraft() (+8 more)
+Cohesion: 0.07
+Nodes (39): ReportScreenProps, RecalculationResult, filterActiveVendors(), MenuCatalogItem, MenuValidationResult, promoteCatalogItemToTodayMenu Function, promoteCatalogItemToTodayMenu(), RecordStatus (+31 more)
 
 ### Community 21 - "Community 21"
 Cohesion: 0.22
 Nodes (9): port, emulators, auth, firestore, singleProjectMode, ui, port, enabled (+1 more)
 
 ### Community 22 - "Community 22"
-Cohesion: 0.16
-Nodes (15): BusinessDateStatus, CashCloseDraft, createCashCloseDraft(), createDailySettlement(), getOpeningCash(), isBusinessDateWritable(), reopenBusinessDate(), shiftDateStr() (+7 more)
+Cohesion: 0.09
+Nodes (28): BusinessDateStatus, CashCloseDraft, createCashCloseDraft(), createDailySettlement(), DailySettlement, getOpeningCash(), isBusinessDateWritable(), reopenBusinessDate() (+20 more)
 
 ### Community 23 - "Community 23"
 Cohesion: 0.11
-Nodes (26): createInitialPosFlowState(), PosFlowEvent, reduceCommitting(), reduceDuplicateWarning(), reduceError(), reduceExpenseDirection(), reduceExpenseInput(), reduceExpenseOtherNote() (+18 more)
+Nodes (25): PosFlowEvent, reduceCommitting(), reduceDuplicateWarning(), reduceError(), reduceExpenseDirection(), reduceExpenseInput(), reduceExpenseOtherNote(), reduceExpenseReason() (+17 more)
 
 ### Community 25 - "Community 25"
-Cohesion: 0.10
-Nodes (24): appendErrorLog(), clearErrorLog(), CONTEXT_ALLOW_LIST, ErrorLogEntry, getRecentErrors(), installErrorListeners(), installGlobalErrorListeners(), readErrorLog() (+16 more)
+Cohesion: 0.23
+Nodes (12): appendErrorLog(), clearErrorLog(), CONTEXT_ALLOW_LIST, ErrorLogEntry, getRecentErrors(), installErrorListeners(), installGlobalErrorListeners(), readErrorLog() (+4 more)
 
 ### Community 26 - "Community 26"
-Cohesion: 0.18
-Nodes (14): isStudentTransaction(), calculateLedgerTotals(), createLedgerDateRange(), filterTransactionsByBusinessDate(), getMonday(), getMonthEnd(), getSunday(), groupLedgerRowsByStudent() (+6 more)
+Cohesion: 0.08
+Nodes (22): PwaInstallBanner, btn, onClick, user, confirmBtn, onCancel, onConfirm, user (+14 more)
 
 ### Community 27 - "Community 27"
-Cohesion: 0.06
-Nodes (48): EditTransactionModal, fmt(), AdminScreenProps, BackupScreen, ReportScreenProps, VendorsScreenProps, buildLedgerPrintViewModel(), buildSettlementCsvRows() (+40 more)
+Cohesion: 0.09
+Nodes (33): EditTransactionModal, AdminScreenProps, BackupScreen, VendorsScreenProps, buildLedgerPrintViewModel(), buildSettlementCsvRows(), buildTransactionCsvRows(), serializeCsv() (+25 more)
 
 ### Community 28 - "Community 28"
-Cohesion: 0.09
-Nodes (25): Code Quality Refactoring Plan (2026-05-21), Phase 1.0 Foundation Hardening Plan, calculateTransactionAmount (paidAmount - mealPrice), CASHIER_SENTINEL Constant, countActiveOrdersForStudent Function, countActiveOrdersForStudent(), createLedgerTransaction(), mergeLedgerTransactions() (+17 more)
+Cohesion: 0.05
+Nodes (50): EditTransactionModalProps, Batch 3 Seed Data Reset Plan, Code Quality Refactoring Plan (2026-05-21), Phase 1.0 Foundation Hardening Plan, calculateTransactionAmount (paidAmount - mealPrice), CASHIER_SENTINEL, CASHIER_SENTINEL Constant, countActiveOrdersForStudent Function (+42 more)
 
 ### Community 29 - "Community 29"
 Cohesion: 0.20
@@ -497,12 +507,12 @@ Cohesion: 0.04
 Nodes (44): Background Sync API Feasibility, Cache Strategy, Campus Environment Considerations, Campus Firewall / Proxy, code:text (vite-plugin-pwa + Workbox generateSW), code:json ({), code:html (<link rel="manifest" href="/manifest.webmanifest" />), code:text (App starts) (+36 more)
 
 ### Community 32 - "Community 32"
-Cohesion: 0.16
-Nodes (12): PosMode, useAppNavigationShortcuts(), UseAppNavigationShortcutsArgs, useKeyboardShortcuts(), UseKeyboardShortcutsArgs, ActionBar, ActionBarProps, event (+4 more)
+Cohesion: 0.17
+Nodes (11): PosMode, UseAppNavigationShortcutsArgs, useKeyboardShortcuts(), UseKeyboardShortcutsArgs, ActionBar, ActionBarProps, event, input (+3 more)
 
 ### Community 33 - "Community 33"
-Cohesion: 0.06
-Nodes (34): usePosFlow(), useUndoCountdown(), UseUndoCountdownArgs, INITIAL_ORDERED_TODAY, INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS (+26 more)
+Cohesion: 0.11
+Nodes (20): CustomerCard, IdleHero, MidnightBanner, HistoryScreen, VendorsScreen, useAppNavigationShortcuts(), useCrashDraftRecovery(), useOnlineStatus() (+12 more)
 
 ### Community 34 - "Community 34"
 Cohesion: 0.29
@@ -513,8 +523,8 @@ Cohesion: 0.22
 Nodes (9): port, emulators, auth, firestore, singleProjectMode, ui, port, enabled (+1 more)
 
 ### Community 36 - "Community 36"
-Cohesion: 0.67
-Nodes (3): code:bash (graphify export obsidian), code:bash (graphify export html  # auto-aggregates to community view if), Step 6 - Generate Obsidian vault (opt-in) + HTML
+Cohesion: 0.13
+Nodes (8): LedgerAuditEvent, AuditTrailTable, SettlementHistoryTable, BackupScreen, HistoryScreen, { container }, mockMenu, mockState
 
 ### Community 37 - "Community 37"
 Cohesion: 0.18
@@ -545,8 +555,8 @@ Cohesion: 0.20
 Nodes (8): input, next, raw, result, SEED_TX, state, store, txs
 
 ### Community 44 - "Community 44"
-Cohesion: 0.26
-Nodes (11): PosSelectionSource, PosTransactionDraft, useCrashDraftRecovery(), UseCrashDraftRecoveryArgs, clearCrashDraft(), isCrashDraftAvailable(), loadCrashDraft(), openDB() (+3 more)
+Cohesion: 0.29
+Nodes (10): PosSelectionSource, PosTransactionDraft, UseCrashDraftRecoveryArgs, clearCrashDraft(), isCrashDraftAvailable(), loadCrashDraft(), openDB(), saveCrashDraft() (+2 more)
 
 ### Community 45 - "Community 45"
 Cohesion: 0.29
@@ -601,8 +611,8 @@ Cohesion: 0.29
 Nodes (7): dependencies, firebase, lucide-react, react, react-dom, zustand, Zustand
 
 ### Community 58 - "Community 58"
-Cohesion: 0.67
-Nodes (3): code:bash (graphify claude install), code:bash (graphify claude uninstall  # remove the section), For native CLAUDE.md integration
+Cohesion: 0.40
+Nodes (4): confirmBtn, input, input2, user
 
 ### Community 59 - "Community 59"
 Cohesion: 0.33
@@ -623,6 +633,10 @@ Nodes (38): Architecture Decision Matrix, code:text (Admin enrollment), code:ts 
 ### Community 63 - "Community 63"
 Cohesion: 0.40
 Nodes (5): Cloudflare D1 + Workers, Free Backend Architecture Exploration, Idempotency, Local-First Architecture, Supabase
+
+### Community 64 - "Community 64"
+Cohesion: 0.17
+Nodes (11): bad, current, menu, r, result, state, student, students (+3 more)
 
 ### Community 65 - "Community 65"
 Cohesion: 0.70
@@ -828,6 +842,10 @@ Nodes (18): Balance Integrity, code:ts (export type StudentStatus = 'active' | '
 Cohesion: 0.11
 Nodes (17): code:ts (export type RecordStatus = 'active' | 'inactive';), Menu And Vendor Management Spec, Menu Catalog, Today's Menu Setup, UI/UX 要求, Vendor Management, 不在本模組範圍, 使用者故事 (+9 more)
 
+### Community 167 - "Community 167"
+Cohesion: 0.67
+Nodes (3): code:bash (graphify export obsidian), code:bash (graphify export html  # auto-aggregates to community view if), Step 6 - Generate Obsidian vault (opt-in) + HTML
+
 ### Community 168 - "Community 168"
 Cohesion: 0.12
 Nodes (16): 1.10 離線處理機制, 1.1 雙模快速搜尋 (Dual-mode Search), 1.2 一人一單作業 (One-at-a-time Transaction Flow), 1.3 交易類型 (Transaction Types), 1.4 每日現金對帳 (Daily Cash Settlement), 1.5 資料同步至 Google Sheets, 1.6 資料庫結構 (Google Sheets), 1.7 更正與作廢 (Correction & Void) (+8 more)
@@ -989,8 +1007,8 @@ Cohesion: 0.29
 Nodes (6): 1. 系統架構：Local Master + Cloud Backup (DR), 2. 核心交易邏輯 (Accounting Engine), 3. UI/UX 互動規範, 4. 階段開發進度, 5. 隱私核心規範, iPad 人臉辨識訂餐系統 (POS) - 系統設計規格書 (v2.0)
 
 ### Community 208 - "Community 208"
-Cohesion: 0.33
-Nodes (5): useServiceWorkerCleanup(), deleteFn, getRegistrations, keys, unregister
+Cohesion: 0.67
+Nodes (3): code:bash (graphify claude install), code:bash (graphify claude uninstall  # remove the section), For native CLAUDE.md integration
 
 ### Community 209 - "Community 209"
 Cohesion: 0.29
@@ -1025,8 +1043,8 @@ Cohesion: 0.29
 Nodes (7): code:tsx (import type { InputHTMLAttributes, ReactNode } from 'react';), code:tsx (import type { TextFieldProps } from './TextField';), code:tsx (import type { HTMLAttributes, ReactNode } from 'react';), code:tsx (import { render, screen } from '@testing-library/react';), code:bash (cd frontend), code:bash (git add frontend/src/components/ui frontend/src/styles/compo), Task 3: Add Field, TextField, NumberField, StatusBadge, Tabs, and EmptyState
 
 ### Community 217 - "Community 217"
-Cohesion: 0.33
-Nodes (6): code:ts (export type AppTheme = 'warm' | 'dark';), code:ts (import { defaultThemePreference, normalizeThemePreference, t), code:ts (import { describe, expect, it } from 'vitest';), code:bash (cd frontend), code:bash (git add frontend/src/theme frontend/src/App.tsx frontend/src), Task 5: Centralize theme and font-scale control
+Cohesion: 0.29
+Nodes (7): code:ts (export type AppTheme = 'warm' | 'dark';), code:ts (import { defaultThemePreference, normalizeThemePreference, t), code:ts (import { describe, expect, it } from 'vitest';), code:bash (cd frontend), code:bash (git add frontend/src/theme frontend/src/App.tsx frontend/src), Implementation Plan, Task 5: Centralize theme and font-scale control
 
 ### Community 218 - "Community 218"
 Cohesion: 0.29
@@ -1109,8 +1127,8 @@ Cohesion: 0.33
 Nodes (6): code:ts (import { describe, expect, it } from 'vitest';), code:bash (cd frontend), code:ts (export type DailyCashSessionStatus = 'open' | 'closed';), code:bash (cd frontend), code:bash (git add frontend/src/domain/cashSession.ts frontend/src/doma), Task 1: Add Daily Cash Session Domain
 
 ### Community 238 - "Community 238"
-Cohesion: 0.29
-Nodes (7): code:bash (git add frontend/src/styles/tokens.css frontend/src/index.cs), code:css (:root {), code:css (@import './styles/tokens.css';), code:md (# Component Inventory), code:bash (cd frontend), Implementation Plan, Task 1: Extract token CSS without changing visuals
+Cohesion: 0.33
+Nodes (6): code:bash (git add frontend/src/styles/tokens.css frontend/src/index.cs), code:css (:root {), code:css (@import './styles/tokens.css';), code:md (# Component Inventory), code:bash (cd frontend), Task 1: Extract token CSS without changing visuals
 
 ### Community 239 - "Community 239"
 Cohesion: 0.33
@@ -1400,25 +1418,37 @@ Nodes (3): §4.1: 關帳按鈕 disabled 狀態, 預期行為, 驗證步驟
 Cohesion: 0.67
 Nodes (3): §4.3: 每日開帳金額修改警示優化, 預期行為, 驗證步驟
 
+### Community 326 - "Community 326"
+Cohesion: 0.09
+Nodes (22): INITIAL_ORDERED_TODAY, INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS, migratePersistedState(), BusinessDateStatus, CloseBusinessDateInput (+14 more)
+
+### Community 327 - "Community 327"
+Cohesion: 0.33
+Nodes (5): input, paymentInput, quickButtons, syncBadge, user
+
+### Community 330 - "Community 330"
+Cohesion: 0.50
+Nodes (3): Change, Issue #117 Verification Checklist, Verification
+
 ## Knowledge Gaps
-- **2093 isolated node(s):** `rewrites`, `headers`, `rules`, `indexes`, `port` (+2088 more)
+- **2096 isolated node(s):** `rewrites`, `headers`, `rules`, `indexes`, `port` (+2091 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **60 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Zustand` connect `Community 57` to `Community 33`, `Community 37`?**
-  _High betweenness centrality (0.010) - this node is a cross-community bridge._
+- **Why does `Zustand` connect `Community 57` to `Community 37`, `Community 326`?**
+  _High betweenness centrality (0.013) - this node is a cross-community bridge._
 - **Why does `dependencies` connect `Community 57` to `Community 38`?**
   _High betweenness centrality (0.010) - this node is a cross-community bridge._
 - **What connects `rewrites`, `headers`, `rules` to the rest of the system?**
-  _2095 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _2098 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
   _Cohesion score 0.05576923076923077 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**
-  _Cohesion score 0.054693877551020405 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.1437908496732026 - nodes in this community are weakly interconnected._
 - **Should `Community 2` be split into smaller, more focused modules?**
-  _Cohesion score 0.05272108843537415 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06666666666666667 - nodes in this community are weakly interconnected._
 - **Should `Community 3` be split into smaller, more focused modules?**
   _Cohesion score 0.05405405405405406 - nodes in this community are weakly interconnected._
