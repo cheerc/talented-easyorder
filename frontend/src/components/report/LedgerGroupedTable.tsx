@@ -1,8 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { fmt } from '../pos-components';
 import type { LedgerGroup } from '../../domain/ledgerReport';
-import type { LedgerTransaction, MergedTransaction } from '../../domain/ledger';
-import { CASHIER_SENTINEL, mergeLedgerTransactions } from '../../domain/ledger';
+import type { LedgerTransaction } from '../../domain/ledger';
+import { GroupRow } from './GroupRow';
+import { SummaryRow } from './SummaryRow';
+import { DetailRow } from './DetailRow';
+import { IncomeRow } from './IncomeRow';
+import { ExpenseOnlyRow } from './ExpenseOnlyRow';
+import { flattenGroups, paginateGroups } from './ledgerGroupUtils';
+import type { FlatRow } from './ledgerGroupUtils';
 
 interface LedgerGroupedTableProps {
   groups: LedgerGroup[];
@@ -18,226 +23,7 @@ interface LedgerGroupedTableProps {
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
 const DEFAULT_PAGE_SIZE = 20;
 
-const GROUP_ROW_HEIGHT = 48;
-const SUMMARY_ROW_HEIGHT = 36;
-const DETAIL_ROW_HEIGHT = 40;
 const TABLE_HEADER_HEIGHT = 36;
-
-const TYPE_LABEL: Record<string, string> = { order: '訂餐', payment: '繳費', expense: '支出' };
-
-// Flatten groups + summary + detail rows into a single flat list
-interface FlatRow {
-  kind: 'group' | 'summary' | 'detail';
-  groupIndex: number;
-  tx?: LedgerTransaction;
-}
-
-function flattenGroups(groups: LedgerGroup[], expandedSids: Set<string>, displayMode: 'merged' | 'original'): FlatRow[] {
-  const rows: FlatRow[] = [];
-  for (let i = 0; i < groups.length; i++) {
-    const g = groups[i];
-    rows.push({ kind: 'group', groupIndex: i });
-    if (expandedSids.has(g.studentId)) {
-      rows.push({ kind: 'summary', groupIndex: i });
-      const txs = displayMode === 'merged' ? mergeLedgerTransactions(g.transactions) : g.transactions;
-      for (const tx of txs) {
-        rows.push({ kind: 'detail', groupIndex: i, tx });
-      }
-    }
-  }
-  return rows;
-}
-
-function paginateGroups(flatRows: FlatRow[], page: number, pageSize: number): FlatRow[] {
-  let groupIdx = 0;
-  const startGroup = (page - 1) * pageSize;
-  const endGroup = startGroup + pageSize;
-  const result: FlatRow[] = [];
-  let currentGroup = -1;
-
-  for (const row of flatRows) {
-    if (row.kind === 'group') {
-      currentGroup = groupIdx;
-      groupIdx++;
-    }
-    if (currentGroup >= startGroup && currentGroup < endGroup) {
-      result.push(row);
-    }
-  }
-  return result;
-}
-
-// ---- extracted row components ----
-
-interface GroupRowProps {
-  group: LedgerGroup;
-  groupIndex: number;
-  isExpanded: boolean;
-  onToggleExpand: (sid: string) => void;
-}
-
-const GroupRow = React.memo(function GroupRow({ group, groupIndex, isExpanded, onToggleExpand }: GroupRowProps) {
-  return (
-    <div
-      key={`g-${groupIndex}`}
-      className={'rpt-tr ' + (isExpanded ? 'expanded-head' : '')}
-      onClick={() => onToggleExpand(group.studentId)}
-      style={{ gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto', cursor: 'pointer', display: 'grid', height: GROUP_ROW_HEIGHT, alignItems: 'center', borderTop: '1px solid var(--line-2)' }}
-    >
-      <div className="mono dim">{group.latestCreatedAt.slice(11, 19)}</div>
-      <div className="mono">{group.studentId}</div>
-      <div style={{ fontWeight: '600' }}>{group.studentNameSnapshot}</div>
-      <div className="r mono neg">{group.mealTotal > 0 ? `−$${fmt(group.mealTotal)}` : '-'}</div>
-      <div className="r mono pos">{group.paidTotal > 0 ? `+$${fmt(group.paidTotal)}` : '-'}</div>
-      <div className="r mono">{group.afterBalance < 0 ? '−' : ''}${fmt(Math.abs(group.afterBalance))}</div>
-      <div className="r">
-        <span className="pill" style={{ fontSize: '10px', background: isExpanded ? 'var(--ink)' : 'var(--line-2)', color: isExpanded ? '#fff' : 'var(--ink-3)' }}>
-          {group.recordCount} 筆紀錄 {isExpanded ? '▴' : '▾'}
-        </span>
-      </div>
-    </div>
-  );
-});
-
-interface SummaryRowProps {
-  group: LedgerGroup;
-  groupIndex: number;
-}
-
-const SummaryRow = React.memo(function SummaryRow({ group, groupIndex }: SummaryRowProps) {
-  const firstAfter = group.transactions[0]?.afterBalance ?? group.afterBalance;
-  const netChange = group.afterBalance - firstAfter;
-  return (
-    <div key={`s-${groupIndex}`} className="rpt-detail-row rpt-summary-row" style={{ background: 'var(--bg-2)', fontWeight: 500, fontSize: '12px', borderBottom: '2px solid var(--line-2)', display: 'flex', gap: '12px', padding: '4px 12px', alignItems: 'center', height: SUMMARY_ROW_HEIGHT }}>
-      <span>📋 訂餐 {group.recordCount} 筆</span>
-      <span className="pos">收現 +${fmt(group.paidTotal)}</span>
-      <span className={netChange < 0 ? 'warn' : 'pos'}>
-        淨變動 {netChange < 0 ? '−' : '+'}${fmt(Math.abs(netChange))}
-      </span>
-    </div>
-  );
-});
-
-interface DetailRowProps {
-  tx: LedgerTransaction;
-  locked: boolean;
-  displayMode: 'merged' | 'original';
-  onEditClick: (t: LedgerTransaction) => void;
-  onDeleteClick: (t: LedgerTransaction) => void;
-}
-
-const DetailRow = React.memo(function DetailRow({ tx: t, locked, displayMode, onEditClick, onDeleteClick }: DetailRowProps) {
-  const merged = t as Partial<MergedTransaction>;
-  return (
-    <div key={`d-${t.transactionId}`} className="rpt-detail-row" style={{ display: 'grid', gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto', height: DETAIL_ROW_HEIGHT, alignItems: 'center', padding: '0 18px' }}>
-      <div className="mono dim">{t.createdAt.slice(11, 19)}</div>
-      <div className="dim">{TYPE_LABEL[t.type] ?? t.type}</div>
-      <div className="dim"></div>
-      <div className={'r mono ' + (t.mealPrice > 0 ? 'neg' : t.mealPrice < 0 ? 'pos' : '')}>
-        {t.mealPrice !== 0 ? <>{t.mealPrice > 0 ? '−' : '+'}${fmt(Math.abs(t.mealPrice))}</> : <>-</>}
-      </div>
-      <div className={'r mono ' + (t.paidAmount > 0 ? 'pos' : '')}>
-        {t.paidAmount > 0 ? (
-          <>
-            +${fmt(t.paidAmount)}
-            {displayMode === 'merged' && (merged.depositAmount ?? 0) > 0 && (
-              <span style={{ fontSize: '11px', color: '#16a34a', marginLeft: '4px' }}>
-                (儲 +${fmt(merged.depositAmount!)})
-              </span>
-            )}
-          </>
-        ) : (
-          <>-</>
-        )}
-      </div>
-      <div className={'r mono ' + (t.afterBalance < 0 ? 'warn' : '')}>
-        {displayMode === 'merged' && (merged.unpaidAmount ?? 0) > 0 ? (
-          <span className="warn" style={{ fontWeight: 600 }}>
-            待繳費 ${fmt(merged.unpaidAmount!)}
-          </span>
-        ) : (
-          <>{t.afterBalance < 0 ? '−' : ''}${fmt(Math.abs(t.afterBalance))}</>
-        )}
-      </div>
-      <div className="rpt-detail-actions">
-        <span className="dim italic rpt-detail-note">{t.note}</span>
-        <div className="rpt-row-actions">
-        {locked ? (
-          <span className="dim" style={{fontSize:'11px'}}>🔒 已關帳</span>
-        ) : displayMode === 'merged' && t.studentId !== CASHIER_SENTINEL ? (
-          <span className="dim" style={{fontSize:'11px'}}>🔒 請切換至原始模式進行編輯或刪除</span>
-        ) : (
-          <>
-            {t.studentId !== CASHIER_SENTINEL && (
-              <>
-                <button className="rpt-mini-btn" onClick={() => onEditClick(t)}>編輯</button>
-                <button className="rpt-mini-btn rpt-mini-del" onClick={() => onDeleteClick(t)}>刪除</button>
-              </>
-            )}
-            {t.studentId === CASHIER_SENTINEL && (
-              <button className="rpt-mini-btn rpt-mini-del" onClick={() => onDeleteClick(t)}>刪除</button>
-            )}
-          </>
-        )}
-        </div>
-      </div>
-    </div>
-  );
-});
-
-interface IncomeRowProps {
-  tx: LedgerTransaction;
-  onDeleteClick: (t: LedgerTransaction) => void;
-  dateStatus: string;
-}
-
-const IncomeRow = React.memo(function IncomeRow({ tx: t, onDeleteClick, dateStatus }: IncomeRowProps) {
-  const paidAmount = Number(t.paidAmount) || 0;
-  const timeStr = t.createdAt ? t.createdAt.slice(11, 19) : '';
-  return (
-    <div key={t.transactionId} className="rpt-detail-row counter-row" style={{ display: 'grid', gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto', height: DETAIL_ROW_HEIGHT, alignItems: 'center', borderBottom: '1px solid var(--line-1)', padding: '0 18px', background: 'rgba(34,197,94,0.04)' }}>
-      <div className="mono dim">{timeStr}</div>
-      <div className="dim">櫃台</div>
-      <div className="pos" style={{ fontWeight: 600 }}>收入</div>
-      <div className="r dim">-</div>
-      <div className="r mono pos">+${fmt(paidAmount)}</div>
-      <div className="r dim">-</div>
-      <div className="rpt-detail-actions">
-        <span className="dim italic rpt-detail-note">{t.note}</span>
-        <div className="rpt-row-actions">
-          {dateStatus !== 'closed' && <button className="rpt-mini-btn rpt-mini-del" onClick={() => onDeleteClick(t)}>刪除</button>}
-        </div>
-      </div>
-    </div>
-  );
-});
-
-interface ExpenseOnlyRowProps {
-  tx: LedgerTransaction;
-  onDeleteClick: (t: LedgerTransaction) => void;
-  dateStatus: string;
-}
-
-const ExpenseOnlyRow = React.memo(function ExpenseOnlyRow({ tx: t, onDeleteClick, dateStatus }: ExpenseOnlyRowProps) {
-  const mealPrice = Number(t.mealPrice) || 0;
-  const timeStr = t.createdAt ? t.createdAt.slice(11, 19) : '';
-  return (
-    <div key={t.transactionId} className="rpt-detail-row counter-row" style={{ display: 'grid', gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto', height: DETAIL_ROW_HEIGHT, alignItems: 'center', borderBottom: '1px solid var(--line-1)', padding: '0 18px', background: 'rgba(239,68,68,0.04)' }}>
-      <div className="mono dim">{timeStr}</div>
-      <div className="dim">櫃台</div>
-      <div className="neg" style={{ fontWeight: 600 }}>支出</div>
-      <div className="r mono neg">−${fmt(mealPrice)}</div>
-      <div className="r dim">-</div>
-      <div className="r dim">-</div>
-      <div className="rpt-detail-actions">
-        <span className="dim italic rpt-detail-note">{t.note}</span>
-        <div className="rpt-row-actions">
-          {dateStatus !== 'closed' && <button className="rpt-mini-btn rpt-mini-del" onClick={() => onDeleteClick(t)}>刪除</button>}
-        </div>
-      </div>
-    </div>
-  );
-});
 
 const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
   groups,
@@ -257,13 +43,11 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
   const totalGroups = groups.length;
   const totalPages = Math.max(1, Math.ceil(totalGroups / pageSize));
 
-  // Reset to page 1 when groups change
   useEffect(() => {
     if (page > totalPages) setPage(1);
   }, [page, totalPages]);
 
   const visibleRows = useMemo(() => {
-    // If total groups fit on one page, show all without pagination
     if (totalGroups <= pageSize) return flatRows;
     return paginateGroups(flatRows, Math.min(page, totalPages), pageSize);
   }, [flatRows, page, pageSize, totalPages, totalGroups]);
@@ -281,8 +65,6 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
       { incomeRows: [], expenseOnlyRows: [] },
     );
   }, [expenseRows]);
-
-
 
   const expenseSection = expenseRows.length > 0 ? (
     <div style={{ marginBottom: '12px', borderRadius: 'var(--r)' }}>
@@ -322,7 +104,6 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
       );
     }
 
-    // detail row
     return (
       <DetailRow
         key={`d-${row.tx!.transactionId}`}
@@ -391,3 +172,4 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
 });
 
 export { LedgerGroupedTable };
+export type { LedgerGroupedTableProps };
