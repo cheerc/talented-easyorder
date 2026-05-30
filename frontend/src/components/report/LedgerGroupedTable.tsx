@@ -268,12 +268,18 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
     return paginateGroups(flatRows, Math.min(page, totalPages), pageSize);
   }, [flatRows, page, pageSize, totalPages, totalGroups]);
 
-  const incomeRows = useMemo(() => {
-    return expenseRows.filter(t => (Number(t.paidAmount) || 0) > 0);
-  }, [expenseRows]);
-
-  const expenseOnlyRows = useMemo(() => {
-    return expenseRows.filter(t => !((Number(t.paidAmount) || 0) > 0));
+  const { incomeRows, expenseOnlyRows } = useMemo(() => {
+    return expenseRows.reduce<{ incomeRows: LedgerTransaction[]; expenseOnlyRows: LedgerTransaction[] }>(
+      (acc, t) => {
+        if ((Number(t.paidAmount) || 0) > 0) {
+          acc.incomeRows.push(t);
+        } else {
+          acc.expenseOnlyRows.push(t);
+        }
+        return acc;
+      },
+      { incomeRows: [], expenseOnlyRows: [] },
+    );
   }, [expenseRows]);
 
 
