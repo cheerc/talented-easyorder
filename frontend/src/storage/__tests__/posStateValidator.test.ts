@@ -158,7 +158,7 @@ describe('posStateValidator', () => {
       expect(result.ok).toBe(true);
     });
 
-    it('accepts large transaction array (sample-based validation)', () => {
+    it('accepts large transaction array (full-scan validation)', () => {
       const tx = { transactionId: 'tx-1', businessDate: '2026-05-15', createdAt: '2026-05-15T12:00:00Z', studentId: 's1', type: 'order', mealPrice: 100, paidAmount: 0, amount: -100, afterBalance: -100, sourceDevice: 'pc', syncStatus: 'local', revision: 1 };
       const txs = Array.from({ length: 200 }, (_, i) => ({ ...tx, transactionId: `tx-${i}` }));
       const bad = { ...validState, transactions: txs };
