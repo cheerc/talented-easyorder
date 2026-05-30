@@ -39,37 +39,46 @@ export function createOrderActions(
 ) {
   return {
     processTransaction: (studentId: string, type: LedgerTransaction['type'], mealPrice: number, paidAmount: number, note?: string) => {
-      set((state) => {
-        const studentIndex = state.students.findIndex(s => s.studentId === studentId);
-        if (studentIndex === -1) return state;
+      const markKey = `pos-tx-${crypto.randomUUID()}`;
+      performance.mark(`${markKey}-start`);
+      try {
+        set((state) => {
+          const studentIndex = state.students.findIndex(s => s.studentId === studentId);
+          if (studentIndex === -1) return state;
 
-        const student = state.students[studentIndex];
-        const now = new Date().toISOString();
-        const amount = calculateTransactionAmount(mealPrice, paidAmount);
-        const newBalance = student.currentBalance + amount;
+          const student = state.students[studentIndex];
+          const now = new Date().toISOString();
+          const amount = calculateTransactionAmount(mealPrice, paidAmount);
+          const newBalance = student.currentBalance + amount;
 
-        const newStudents = [...state.students];
-        newStudents[studentIndex] = { ...student, currentBalance: newBalance };
+          const newStudents = [...state.students];
+          newStudents[studentIndex] = { ...student, currentBalance: newBalance };
 
-        const newTransaction = createLedgerTransaction({
-          transactionId: crypto.randomUUID(),
-          businessDate: state.todayMenu.businessDate,
-          createdAt: now,
-          studentSnapshot: createStudentSnapshot(student),
-          menuSnapshot: createMenuSnapshot(state.todayMenu),
-          type,
-          mealPrice,
-          paidAmount,
-          previousBalance: student.currentBalance,
-          sourceDevice: 'pc',
-          note: note || (type === 'order' ? state.todayMenu.itemName : type),
+          const newTransaction = createLedgerTransaction({
+            transactionId: crypto.randomUUID(),
+            businessDate: state.todayMenu.businessDate,
+            createdAt: now,
+            studentSnapshot: createStudentSnapshot(student),
+            menuSnapshot: createMenuSnapshot(state.todayMenu),
+            type,
+            mealPrice,
+            paidAmount,
+            previousBalance: student.currentBalance,
+            sourceDevice: 'pc',
+            note: note || (type === 'order' ? state.todayMenu.itemName : type),
+          });
+
+          return {
+            students: newStudents,
+            transactions: [newTransaction, ...state.transactions]
+          };
         });
-
-        return {
-          students: newStudents,
-          transactions: [newTransaction, ...state.transactions]
-        };
-      });
+      } finally {
+        performance.mark(`${markKey}-end`);
+        performance.measure('pos-transaction', `${markKey}-start`, `${markKey}-end`);
+        performance.clearMarks(`${markKey}-start`);
+        performance.clearMarks(`${markKey}-end`);
+      }
     },
   };
 }
