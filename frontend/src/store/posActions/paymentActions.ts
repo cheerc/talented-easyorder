@@ -5,7 +5,6 @@ import { createMenuSnapshot } from '../../domain/menu';
 
 export function createPaymentActions(
   set: (partial: Partial<PosState> | ((state: PosState) => Partial<PosState>)) => void,
-  _get: () => PosState,
 ) {
   return {
     commitPaymentTransaction: (studentId: string, paidAmount: number, note?: string) => {

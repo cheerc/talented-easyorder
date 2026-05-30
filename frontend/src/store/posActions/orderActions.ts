@@ -36,7 +36,6 @@ export function buildOrderTransaction(
 
 export function createOrderActions(
   set: (partial: Partial<PosState> | ((state: PosState) => Partial<PosState>)) => void,
-  _get: () => PosState,
 ) {
   return {
     processTransaction: (studentId: string, type: LedgerTransaction['type'], mealPrice: number, paidAmount: number, note?: string) => {

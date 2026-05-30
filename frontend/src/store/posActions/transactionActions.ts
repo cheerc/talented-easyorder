@@ -10,8 +10,8 @@ export function createTransactionActions(
   set: (partial: Partial<PosState> | ((state: PosState) => Partial<PosState>)) => void,
   get: () => PosState,
 ): Pick<PosState, 'commitPosTransactionDraft' | 'processTransaction' | 'updateTransaction' | 'deleteTransaction' | 'deleteOrderWithRefundCheck' | 'editTransaction'> {
-  const orderActions = createOrderActions(set, get);
-  const paymentActions = createPaymentActions(set, get);
+  const orderActions = createOrderActions(set);
+  const paymentActions = createPaymentActions(set);
   const editActions = createEditActions(set, get);
 
   return {
