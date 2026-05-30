@@ -28,7 +28,7 @@ required_reads:
 | `frontend/src/store/derived/useCashClose.ts` (new) | 組合 cashSessions + domain/cashClose computations |
 | `frontend/src/store/derived/useLedgerExport.ts` (new) | 組合 domain/ledgerExport + triggerCsvDownload callback |
 | `frontend/src/components/screens/ReportScreen.tsx` (modify) | 改用 derived hooks，移除 domain imports |
-| `frontend/src/components/report/LedgerGroupedTable.tsx` (modify) | CASHIER_SENTINEL 改由 store re-export，mergeLedgerTransactions 改用 callback prop |
+| `frontend/src/components/report/LedgerGroupedTable.tsx` (modify) | CASHIER_SENTINEL + mergeLedgerTransactions 改由 store re-export |
 | `frontend/src/components/TodayDashboard.tsx` (modify) | 改用 useLedgerReport hook |
 | `frontend/src/store/posStore.ts` (modify) | re-export CASHIER_SENTINEL |
 
@@ -109,11 +109,21 @@ function useLedgerExport(viewDate: string): {
 
 ## Section 5: Migrate LedgerGroupedTable.tsx
 
-**變更**：
-- `CASHIER_SENTINEL` → 改從 `store/posStore` import（store re-export）
-- `mergeLedgerTransactions` → 改為接受 optional prop `mergeTransactions`（由 parent 傳入），default 仍使用 domain function（避免 breaking change）
+目前 imports（line 5）：
+```typescript
+import { CASHIER_SENTINEL, mergeLedgerTransactions } from '../../domain/ledger';
+```
 
-若 parent 未傳入 mergeTransactions，LedgerGroupedTable 內部 fallback 到 domain function（向後相容）。
+`CASHIER_SENTINEL` 用於 render 邏輯（lines 167-177），`mergeLedgerTransactions` 用於 `flattenGroups` 內部（line 42）。
+
+**變更**：
+- `CASHIER_SENTINEL` → 改從 `store/posStore` import（store re-export，見 Section 7）
+- `mergeLedgerTransactions` → 改從 `store/posStore` import（store re-export，見 Section 7）
+
+即 import 行改為：
+```typescript
+import { CASHIER_SENTINEL, mergeLedgerTransactions } from '../../store/posStore';
+```
 
 **Verification**: same as Section 4
 
@@ -125,16 +135,18 @@ function useLedgerExport(viewDate: string): {
 
 **Verification**: same as Section 4
 
-## Section 7: Store Re-export CASHIER_SENTINEL
+## Section 7: Store Re-exports
 
-在 `posStore.ts` 中：
+在 `posStore.ts` 中新增 re-export：
 ```typescript
-export { CASHIER_SENTINEL } from '../domain/ledger';
+export { CASHIER_SENTINEL, mergeLedgerTransactions } from '../domain/ledger';
 ```
+
+如此 `LedgerGroupedTable.tsx` 和其他 component 可從 store 單一入口取得這些符號。
 
 ## Affected Callers
 - `ReportScreen.tsx` — 主要 consumer，移除 5 組 domain imports
-- `LedgerGroupedTable.tsx` — 改 CASHIER_SENTINEL source + mergeTransactions prop
+- `LedgerGroupedTable.tsx` — CASHIER_SENTINEL + mergeLedgerTransactions 改從 store import
 - `TodayDashboard.tsx` — 改用 useLedgerReport
 
 ## Test Impact
@@ -145,7 +157,7 @@ export { CASHIER_SENTINEL } from '../domain/ledger';
 
 ## ⚠️ Risk
 - `useLedgerReport` 的 dependency array 若錯誤會導致 stale computation
-- `LedgerGroupedTable` 的 `mergeTransactions` prop 是向後相容的 breaking change interface
+- Store re-export 增加 posStore 的 surface area，但避免 circular dependency（store → domain 是合法方向）
 - `useLedgerExport` 中的 `triggerCsvDownload` 是 side effect（browser download），需確保 hook 不回傳 unstable callback
 
 ## Success Criteria
