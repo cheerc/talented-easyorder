@@ -1,0 +1,1217 @@
+{
+  "/Users/cheerc/talented-easyorder/vercel.json": {
+    "mtime": 1778988584.9254248,
+    "ast_hash": "3013f96af1b1c34e82684bfae84d376b",
+    "semantic_hash": "3013f96af1b1c34e82684bfae84d376b"
+  },
+  "/Users/cheerc/talented-easyorder/workflow.sh": {
+    "mtime": 1778990659.2506595,
+    "ast_hash": "803c9bcbfde85227874233c9cdf8c5f9",
+    "semantic_hash": "803c9bcbfde85227874233c9cdf8c5f9"
+  },
+  "/Users/cheerc/talented-easyorder/firebase.json": {
+    "mtime": 1778988584.9069984,
+    "ast_hash": "e146410f4c7073ea59d3df467523e708",
+    "semantic_hash": "e146410f4c7073ea59d3df467523e708"
+  },
+  "/Users/cheerc/talented-easyorder/firestore.indexes.json": {
+    "mtime": 1778988584.9072711,
+    "ast_hash": "c8428b9922421b2e2381c68088b6d96d",
+    "semantic_hash": "c8428b9922421b2e2381c68088b6d96d"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/tsconfig.node.json": {
+    "mtime": 1778938271.600548,
+    "ast_hash": "8788db7f51d2d64226db1393571325d1",
+    "semantic_hash": "8788db7f51d2d64226db1393571325d1"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/tsconfig.app.json": {
+    "mtime": 1778415775.7038438,
+    "ast_hash": "8eeddd70babc58029602ae33446c0eb8",
+    "semantic_hash": "8eeddd70babc58029602ae33446c0eb8"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/package.json": {
+    "mtime": 1779300416.757277,
+    "ast_hash": "fb658f29840ba59cb60bf7b4487921ad",
+    "semantic_hash": "fb658f29840ba59cb60bf7b4487921ad"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/tsconfig.json": {
+    "mtime": 1778148993.5810952,
+    "ast_hash": "a3d39fa780ebff65444de257f291ce6c",
+    "semantic_hash": "a3d39fa780ebff65444de257f291ce6c"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/eslint.config.js": {
+    "mtime": 1778148993.5767155,
+    "ast_hash": "0355276bc79439afe3c53e3a2470ca1e",
+    "semantic_hash": "0355276bc79439afe3c53e3a2470ca1e"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/vite.config.ts": {
+    "mtime": 1778938337.2717822,
+    "ast_hash": "2563559ade31c9efdbbea495ba74f57a",
+    "semantic_hash": "2563559ade31c9efdbbea495ba74f57a"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/vitest.config.ts": {
+    "mtime": 1778938271.5994525,
+    "ast_hash": "2b5aab16e7b2d40dbef30cb5daf67ce4",
+    "semantic_hash": "2b5aab16e7b2d40dbef30cb5daf67ce4"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/public/manifest.json": {
+    "mtime": 1778834826.6000633,
+    "ast_hash": "cfa0bb5a80c31d4717795b1241ef88e4",
+    "semantic_hash": "cfa0bb5a80c31d4717795b1241ef88e4"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/App.tsx": {
+    "mtime": 1780150149.238093,
+    "ast_hash": "aa16746bf5934898a02c2b910fe45fa2",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/main.tsx": {
+    "mtime": 1778834826.6152015,
+    "ast_hash": "89e99473ceebaffee662bfd888b7bc81",
+    "semantic_hash": "89e99473ceebaffee662bfd888b7bc81"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/mocks/initialData.ts": {
+    "mtime": 1779096961.809349,
+    "ast_hash": "17ade4a18717eeeb352c61084f3db14a",
+    "semantic_hash": "17ade4a18717eeeb352c61084f3db14a"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/test/setup.ts": {
+    "mtime": 1778834826.6202095,
+    "ast_hash": "5e1d6b5e43a537bb1833a379e69c6bf6",
+    "semantic_hash": "5e1d6b5e43a537bb1833a379e69c6bf6"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/auth/AuthGate.tsx": {
+    "mtime": 1780073983.3022163,
+    "ast_hash": "475d1c0e795da9b3744a11a9ea776dfb",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/storage/posStateValidator.ts": {
+    "mtime": 1780150149.2468398,
+    "ast_hash": "587d9ba67808a2f91d032c46674ec6e5",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/storage/migration.ts": {
+    "mtime": 1780150149.2464585,
+    "ast_hash": "a37d35504151a14b168b4084b1ffbbdd",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/storage/crashDraft.ts": {
+    "mtime": 1778834826.6166317,
+    "ast_hash": "07b35817928786edf9395f328a5b039a",
+    "semantic_hash": "07b35817928786edf9395f328a5b039a"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/storage/storageHealth.ts": {
+    "mtime": 1778834826.6171296,
+    "ast_hash": "57f7e90ceb3922c464719182432a7fbd",
+    "semantic_hash": "57f7e90ceb3922c464719182432a7fbd"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/storage/__tests__/crashDraft.test.ts": {
+    "mtime": 1778834826.6156685,
+    "ast_hash": "2c9c577a187dd068f56afc245f4a681e",
+    "semantic_hash": "2c9c577a187dd068f56afc245f4a681e"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/storage/__tests__/storageHealth.test.ts": {
+    "mtime": 1778834826.6164107,
+    "ast_hash": "e8f58c4ce53d32dbbf35d87086fdb3ec",
+    "semantic_hash": "e8f58c4ce53d32dbbf35d87086fdb3ec"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/storage/__tests__/posStateValidator.test.ts": {
+    "mtime": 1780150149.2459228,
+    "ast_hash": "ba799dcfc7e160c8d6f750996cc7b58f",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/screens.tsx": {
+    "mtime": 1780073983.3063798,
+    "ast_hash": "9ce3511c5d852b9b1981dda905d7d529",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/pos-components.tsx": {
+    "mtime": 1780073983.3032193,
+    "ast_hash": "884b3c7c8dabd5a370a5f9d21348c7ca",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/TodayDashboard.tsx": {
+    "mtime": 1779024287.1068723,
+    "ast_hash": "9d3b58da4c298846517765218d6f885f",
+    "semantic_hash": "9d3b58da4c298846517765218d6f885f"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/MainLayout.tsx": {
+    "mtime": 1779383808.476961,
+    "ast_hash": "9dee4a325c6056bd337fcca28bdb5839",
+    "semantic_hash": "9dee4a325c6056bd337fcca28bdb5839"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/EditTransactionModal.tsx": {
+    "mtime": 1779380620.0384912,
+    "ast_hash": "8027d3c4face1d243172f7a86a7ce389",
+    "semantic_hash": "8027d3c4face1d243172f7a86a7ce389"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/PwaInstallBanner.tsx": {
+    "mtime": 1778834826.600922,
+    "ast_hash": "94f41ed2345176b664a30ea418957e07",
+    "semantic_hash": "94f41ed2345176b664a30ea418957e07"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/SyncStatusBadge.tsx": {
+    "mtime": 1778988584.9148576,
+    "ast_hash": "66bec42785131dfd4652fead091480c5",
+    "semantic_hash": "66bec42785131dfd4652fead091480c5"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ErrorBoundary.tsx": {
+    "mtime": 1778817788.9828043,
+    "ast_hash": "c9e4e6d03d4b6055d2b6b5a442c77b3a",
+    "semantic_hash": "c9e4e6d03d4b6055d2b6b5a442c77b3a"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/ConfirmDialog.tsx": {
+    "mtime": 1779616382.8513458,
+    "ast_hash": "80a15abc7d8e19828c6c47756c7c15d1",
+    "semantic_hash": "80a15abc7d8e19828c6c47756c7c15d1"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/NumericInput.tsx": {
+    "mtime": 1779365337.834197,
+    "ast_hash": "e4b741c7ae41e3182924d8ddc57b8eb2",
+    "semantic_hash": "e4b741c7ae41e3182924d8ddc57b8eb2"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/Tabs.tsx": {
+    "mtime": 1778834826.6095722,
+    "ast_hash": "27be56af793cd02f559b618a41ef96c6",
+    "semantic_hash": "27be56af793cd02f559b618a41ef96c6"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/Card.tsx": {
+    "mtime": 1778834826.6060169,
+    "ast_hash": "6f6bb3047fcac92fd3b27da8d574c3b6",
+    "semantic_hash": "6f6bb3047fcac92fd3b27da8d574c3b6"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/Field.tsx": {
+    "mtime": 1778834826.6072485,
+    "ast_hash": "43793327ea0e6c35a464175ae0b9253b",
+    "semantic_hash": "43793327ea0e6c35a464175ae0b9253b"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/NumberField.tsx": {
+    "mtime": 1779365337.833909,
+    "ast_hash": "bc3a78d02c5c94a01f53d7db1809749e",
+    "semantic_hash": "bc3a78d02c5c94a01f53d7db1809749e"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/StatusBadge.tsx": {
+    "mtime": 1778834826.6091843,
+    "ast_hash": "b611e109908c48dabe47e23c70df2a4b",
+    "semantic_hash": "b611e109908c48dabe47e23c70df2a4b"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/TextField.tsx": {
+    "mtime": 1778834826.6099608,
+    "ast_hash": "bd684901dd84aaa8bbfcbf97b2935d2b",
+    "semantic_hash": "bd684901dd84aaa8bbfcbf97b2935d2b"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/Kbd.tsx": {
+    "mtime": 1778834826.607905,
+    "ast_hash": "3aaa8c0e86e4ad014c4c53a6ea7296a0",
+    "semantic_hash": "3aaa8c0e86e4ad014c4c53a6ea7296a0"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/Button.tsx": {
+    "mtime": 1778834826.6053882,
+    "ast_hash": "bbbe1bb367b6dbe2a6b5f7f83e328099",
+    "semantic_hash": "bbbe1bb367b6dbe2a6b5f7f83e328099"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/Modal.tsx": {
+    "mtime": 1778834826.6083357,
+    "ast_hash": "8ca9e5d43e755a7af2245eea780ba305",
+    "semantic_hash": "8ca9e5d43e755a7af2245eea780ba305"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/EmptyState.tsx": {
+    "mtime": 1778834826.6067593,
+    "ast_hash": "27500234d4f06afe01a69f27a517a45c",
+    "semantic_hash": "27500234d4f06afe01a69f27a517a45c"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/__tests__/Button.test.tsx": {
+    "mtime": 1778834826.6102905,
+    "ast_hash": "fe18a776652faae824d4bea22a575bd6",
+    "semantic_hash": "fe18a776652faae824d4bea22a575bd6"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/__tests__/ConfirmDialog.test.tsx": {
+    "mtime": 1779300416.7614985,
+    "ast_hash": "df5ac902c6f49bc60ef4b2743359ecea",
+    "semantic_hash": "df5ac902c6f49bc60ef4b2743359ecea"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/__tests__/Field.test.tsx": {
+    "mtime": 1778834826.611353,
+    "ast_hash": "e2c24dfca798bb619b7894f73488b851",
+    "semantic_hash": "e2c24dfca798bb619b7894f73488b851"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/__tests__/Modal.test.tsx": {
+    "mtime": 1778834826.611727,
+    "ast_hash": "a98c2f010e301240d8ea08f077182eb2",
+    "semantic_hash": "a98c2f010e301240d8ea08f077182eb2"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/__tests__/Kbd.test.tsx": {
+    "mtime": 1778834826.61153,
+    "ast_hash": "e0177e6c812c941eed4a2b8f7adb1c6f",
+    "semantic_hash": "e0177e6c812c941eed4a2b8f7adb1c6f"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/__tests__/Card.test.tsx": {
+    "mtime": 1778834826.6105032,
+    "ast_hash": "11e2f380df4dd2a31adfec0b66a5cfa3",
+    "semantic_hash": "11e2f380df4dd2a31adfec0b66a5cfa3"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/__tests__/StatusBadge.test.tsx": {
+    "mtime": 1778834826.6123328,
+    "ast_hash": "aff39f8f11ed989ade15fb3447f64c77",
+    "semantic_hash": "aff39f8f11ed989ade15fb3447f64c77"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/__tests__/TextField.test.tsx": {
+    "mtime": 1778834826.6127129,
+    "ast_hash": "74e9a2754e63273a4a911146cd5fa16e",
+    "semantic_hash": "74e9a2754e63273a4a911146cd5fa16e"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/__tests__/Tabs.test.tsx": {
+    "mtime": 1778834826.612525,
+    "ast_hash": "c4bde735216fa7ceaa7635c83d453662",
+    "semantic_hash": "c4bde735216fa7ceaa7635c83d453662"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/__tests__/EmptyState.test.tsx": {
+    "mtime": 1778834826.6111572,
+    "ast_hash": "0e6b9964d0fea00caab26b7f9f33f771",
+    "semantic_hash": "0e6b9964d0fea00caab26b7f9f33f771"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/ui/__tests__/NumberField.test.tsx": {
+    "mtime": 1778834826.6119447,
+    "ast_hash": "08cbc8cb7995e107fa135b7822865bf4",
+    "semantic_hash": "08cbc8cb7995e107fa135b7822865bf4"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/__tests__/ErrorBoundary.test.tsx": {
+    "mtime": 1778817788.9831932,
+    "ast_hash": "d4a350b5129ee9927ecef668654cec97",
+    "semantic_hash": "d4a350b5129ee9927ecef668654cec97"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/__tests__/pos-components.test.tsx": {
+    "mtime": 1780073983.302869,
+    "ast_hash": "11b9881259faa34d41577bd234e9d120",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/__tests__/PwaInstallBanner.test.tsx": {
+    "mtime": 1778834826.6016803,
+    "ast_hash": "9feb2d51edd732a737ef87496c72bc72",
+    "semantic_hash": "9feb2d51edd732a737ef87496c72bc72"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/report/AuditTrailTable.tsx": {
+    "mtime": 1778834826.602729,
+    "ast_hash": "bbf9432bcf48497cba45e2698464adc7",
+    "semantic_hash": "bbf9432bcf48497cba45e2698464adc7"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/report/ReopenDialog.tsx": {
+    "mtime": 1778794939.045416,
+    "ast_hash": "03febdd3f5ea91929b3f75c801593650",
+    "semantic_hash": "03febdd3f5ea91929b3f75c801593650"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/report/ReportSummaryStats.tsx": {
+    "mtime": 1779154690.8100166,
+    "ast_hash": "368949a565bfe3dc3bdf8d7dba1508b9",
+    "semantic_hash": "368949a565bfe3dc3bdf8d7dba1508b9"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/report/SettlementHistoryTable.tsx": {
+    "mtime": 1778834826.6031272,
+    "ast_hash": "fa95aa30477fa2b906501949087bd62e",
+    "semantic_hash": "fa95aa30477fa2b906501949087bd62e"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/report/ExportActions.tsx": {
+    "mtime": 1778794939.0448446,
+    "ast_hash": "73e6c8451f0795f704e4802152534147",
+    "semantic_hash": "73e6c8451f0795f704e4802152534147"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/report/CashClosePanel.tsx": {
+    "mtime": 1779365337.8329804,
+    "ast_hash": "93b4a9198a4e5a38358e9fcadfdfd63d",
+    "semantic_hash": "93b4a9198a4e5a38358e9fcadfdfd63d"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/report/ReportDateRangeControls.tsx": {
+    "mtime": 1778794939.0456057,
+    "ast_hash": "b6dc9d9efc799a7c1196ec3d8a5fdab0",
+    "semantic_hash": "b6dc9d9efc799a7c1196ec3d8a5fdab0"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/report/LedgerGroupedTable.tsx": {
+    "mtime": 1780150149.2415824,
+    "ast_hash": "5b349d6d1ea2bbe91276a5b9014afe6f",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/report/__tests__/LedgerGroupedTable.test.tsx": {
+    "mtime": 1779386561.1856587,
+    "ast_hash": "1a9ee193d199e48dd4a6769aa9ac9282",
+    "semantic_hash": "1a9ee193d199e48dd4a6769aa9ac9282"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/settlementRepository.ts": {
+    "mtime": 1778988584.9235399,
+    "ast_hash": "0e8611c8a6d482378b4e731d65ae8cd8",
+    "semantic_hash": "0e8611c8a6d482378b4e731d65ae8cd8"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/firestoreSchema.ts": {
+    "mtime": 1778988584.9228141,
+    "ast_hash": "a927c91f87cad84583d040ebbb0102e9",
+    "semantic_hash": "a927c91f87cad84583d040ebbb0102e9"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/syncStatus.ts": {
+    "mtime": 1778988584.9240487,
+    "ast_hash": "830cab86d5490202db11a6a5367ea253",
+    "semantic_hash": "830cab86d5490202db11a6a5367ea253"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/studentRepository.ts": {
+    "mtime": 1778988584.9237874,
+    "ast_hash": "361423fd5fb34033d0d24823da8bc73d",
+    "semantic_hash": "361423fd5fb34033d0d24823da8bc73d"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/authService.ts": {
+    "mtime": 1780150149.2441626,
+    "ast_hash": "0e12b83d3a810557a9c4c74634367fed",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/realtimeSubscriptions.ts": {
+    "mtime": 1780150149.2448096,
+    "ast_hash": "0ec1ed0b6c2182b97c7f97772f57c73e",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/firestorePaths.ts": {
+    "mtime": 1778988584.9225295,
+    "ast_hash": "b6558f3b443ce8f268c8e1d8f9b44791",
+    "semantic_hash": "b6558f3b443ce8f268c8e1d8f9b44791"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/firebaseApp.ts": {
+    "mtime": 1778988584.921987,
+    "ast_hash": "4aa645c3d966110dcbc3c6de67f7fcfb",
+    "semantic_hash": "4aa645c3d966110dcbc3c6de67f7fcfb"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/ledgerRepository.ts": {
+    "mtime": 1778988584.923064,
+    "ast_hash": "4ba5b17deccbd367e7735ead193d9239",
+    "semantic_hash": "4ba5b17deccbd367e7735ead193d9239"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/__tests__/firebaseApp.test.ts": {
+    "mtime": 1778988584.9192183,
+    "ast_hash": "c61f893eb1374843257b34040828627d",
+    "semantic_hash": "c61f893eb1374843257b34040828627d"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/__tests__/syncStatus.test.ts": {
+    "mtime": 1778988584.9214835,
+    "ast_hash": "21208b1646e420e6d7c0d0513b03c6cb",
+    "semantic_hash": "21208b1646e420e6d7c0d0513b03c6cb"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/__tests__/settlementRepository.test.ts": {
+    "mtime": 1778988584.9208386,
+    "ast_hash": "91cdd1bb1d26a02d088877e2f09f3dc5",
+    "semantic_hash": "91cdd1bb1d26a02d088877e2f09f3dc5"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/__tests__/authService.test.ts": {
+    "mtime": 1778988584.9187434,
+    "ast_hash": "052676886ae7db085bcbbd8e7a965161",
+    "semantic_hash": "052676886ae7db085bcbbd8e7a965161"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/__tests__/studentRepository.test.ts": {
+    "mtime": 1778988584.9212449,
+    "ast_hash": "e7ff804d199dc63be1a4709a3ab7549d",
+    "semantic_hash": "e7ff804d199dc63be1a4709a3ab7549d"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/__tests__/ledgerRepository.test.ts": {
+    "mtime": 1778988584.9204712,
+    "ast_hash": "b5c38d5b95b2bafe91173cc1f3f160b7",
+    "semantic_hash": "b5c38d5b95b2bafe91173cc1f3f160b7"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/__tests__/firestoreRules.spec.ts": {
+    "mtime": 1778988584.9197862,
+    "ast_hash": "0076526b04a65d0343bfba4f06421d62",
+    "semantic_hash": "0076526b04a65d0343bfba4f06421d62"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/__tests__/firestoreSchema.test.ts": {
+    "mtime": 1778988584.9200912,
+    "ast_hash": "f52e19a5a92bb453cd5a99bfbb2d307c",
+    "semantic_hash": "f52e19a5a92bb453cd5a99bfbb2d307c"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/__tests__/reportScreen.integration.test.tsx": {
+    "mtime": 1779096961.8046455,
+    "ast_hash": "3d9e31cbea126d49860695be2591cd98",
+    "semantic_hash": "3d9e31cbea126d49860695be2591cd98"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/__tests__/pcPosSafety.integration.test.tsx": {
+    "mtime": 1779278359.2689342,
+    "ast_hash": "1b42cf6dd3e5373dc1414a21142fb5e8",
+    "semantic_hash": "1b42cf6dd3e5373dc1414a21142fb5e8"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/__tests__/pcPosFlow.integration.test.tsx": {
+    "mtime": 1780150149.2395966,
+    "ast_hash": "af23d47ae13ff0b1044ea13d23e32ea6",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/__tests__/posStateValidator.test.ts": {
+    "mtime": 1779024287.1054087,
+    "ast_hash": "9e0c294b24b24d4346a81ff4baee839f",
+    "semantic_hash": "9e0c294b24b24d4346a81ff4baee839f"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/hooks/usePosFlow.ts": {
+    "mtime": 1779466116.88683,
+    "ast_hash": "842444bb5f7a384465bae266aab8cdb5",
+    "semantic_hash": "842444bb5f7a384465bae266aab8cdb5"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/hooks/useAppNavigationShortcuts.ts": {
+    "mtime": 1779616382.8530622,
+    "ast_hash": "6dd859ba66963cf189a67aebdd118cdf",
+    "semantic_hash": "6dd859ba66963cf189a67aebdd118cdf"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/hooks/useKeyboardShortcuts.ts": {
+    "mtime": 1779383690.0267794,
+    "ast_hash": "e3a92bcda59b82158994b645ede8ce82",
+    "semantic_hash": "e3a92bcda59b82158994b645ede8ce82"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/hooks/__tests__/useKeyboardShortcuts.test.ts": {
+    "mtime": 1779383194.5109282,
+    "ast_hash": "595e285a9d3451cb0aaa723b3b4e20ea",
+    "semantic_hash": "595e285a9d3451cb0aaa723b3b4e20ea"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/errors/errorCatalog.ts": {
+    "mtime": 1778834826.6140313,
+    "ast_hash": "a0b1b686c62f2e4ccd830e86f5908508",
+    "semantic_hash": "a0b1b686c62f2e4ccd830e86f5908508"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/errors/errorLogger.ts": {
+    "mtime": 1780073983.3098364,
+    "ast_hash": "9a0b23fc6ae495909716a52643f421c8",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/errors/__tests__/errorCatalog.test.ts": {
+    "mtime": 1778834826.6132605,
+    "ast_hash": "c0d4c59b7ef8791ae3c3dfe7fa1913c2",
+    "semantic_hash": "c0d4c59b7ef8791ae3c3dfe7fa1913c2"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/errors/__tests__/errorLogger.test.ts": {
+    "mtime": 1780073983.3096154,
+    "ast_hash": "21fb96d0ab9f43cc76cd6a7aa7b5e54f",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/ipadHandoff.ts": {
+    "mtime": 1779024287.1165478,
+    "ast_hash": "0a70a6c89ca0cd97a268f34697a4d2bd",
+    "semantic_hash": "0a70a6c89ca0cd97a268f34697a4d2bd"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/ledgerAudit.ts": {
+    "mtime": 1779024287.117533,
+    "ast_hash": "68621a2effc47ad915cbb5a74bdf0184",
+    "semantic_hash": "68621a2effc47ad915cbb5a74bdf0184"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/posFlow.ts": {
+    "mtime": 1779381389.7908661,
+    "ast_hash": "8697ec535410452c04a481593e8dce12",
+    "semantic_hash": "8697ec535410452c04a481593e8dce12"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/posTransaction.ts": {
+    "mtime": 1779380620.0447738,
+    "ast_hash": "ecc4aedee480c431bfe64e0e625917fe",
+    "semantic_hash": "ecc4aedee480c431bfe64e0e625917fe"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/student.ts": {
+    "mtime": 1778763760.5924342,
+    "ast_hash": "e27dc4050687a6bd4c813b114529c212",
+    "semantic_hash": "e27dc4050687a6bd4c813b114529c212"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/syncStatus.ts": {
+    "mtime": 1778763760.5926168,
+    "ast_hash": "9312faca8418f9f7d67e8f4573b1ddc7",
+    "semantic_hash": "9312faca8418f9f7d67e8f4573b1ddc7"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/cashClose.ts": {
+    "mtime": 1779278359.2726445,
+    "ast_hash": "dcfc85a36e06a4ed467d01eec97be998",
+    "semantic_hash": "dcfc85a36e06a4ed467d01eec97be998"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/cashSession.ts": {
+    "mtime": 1778988584.9184022,
+    "ast_hash": "106d25cb55cdc50895508b6ed6ca18bf",
+    "semantic_hash": "106d25cb55cdc50895508b6ed6ca18bf"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/ledgerReport.ts": {
+    "mtime": 1780150149.2431448,
+    "ast_hash": "8b302fa4bd5616e84c0ef44ec059d6b0",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/menu.ts": {
+    "mtime": 1778763760.592144,
+    "ast_hash": "b1b77f998e15caafc0350d185d706130",
+    "semantic_hash": "b1b77f998e15caafc0350d185d706130"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/ledger.ts": {
+    "mtime": 1780150149.242663,
+    "ast_hash": "9b75ab3fa8f3b838fe7dcf3a02dcf8cb",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/posSearch.ts": {
+    "mtime": 1778781557.0684667,
+    "ast_hash": "cf849fb609dc5e3579716598492d0d37",
+    "semantic_hash": "cf849fb609dc5e3579716598492d0d37"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/businessDate.ts": {
+    "mtime": 1778763760.5912764,
+    "ast_hash": "ccd0c7defd7f8fe5ddbb181b8853d456",
+    "semantic_hash": "ccd0c7defd7f8fe5ddbb181b8853d456"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/ledgerExport.ts": {
+    "mtime": 1780073983.3092523,
+    "ast_hash": "b33217793aa511bc677b523796e5d5cf",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/index.ts": {
+    "mtime": 1778794939.0490623,
+    "ast_hash": "4aec9cd2db01e139ea4a87774aad2d67",
+    "semantic_hash": "4aec9cd2db01e139ea4a87774aad2d67"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/ledgerSyncBoundary.ts": {
+    "mtime": 1778794939.0508976,
+    "ast_hash": "936d46a36bf7a05080be5c83bbbe761e",
+    "semantic_hash": "936d46a36bf7a05080be5c83bbbe761e"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/__tests__/ledgerExport.test.ts": {
+    "mtime": 1780073983.308328,
+    "ast_hash": "8311fcd64f47ed7b41c840b7c4d3ddee",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/__tests__/fixtures.ts": {
+    "mtime": 1778763760.5900443,
+    "ast_hash": "ae7f1590f2e6fd726970feb957d5d9e3",
+    "semantic_hash": "ae7f1590f2e6fd726970feb957d5d9e3"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/__tests__/posSearch.test.ts": {
+    "mtime": 1778781557.067031,
+    "ast_hash": "9c397e861d6236edd79ec9a939a28fa7",
+    "semantic_hash": "9c397e861d6236edd79ec9a939a28fa7"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/__tests__/cashClose.test.ts": {
+    "mtime": 1779278359.271741,
+    "ast_hash": "1ddbc5be548f9d75d4dabce19f177266",
+    "semantic_hash": "1ddbc5be548f9d75d4dabce19f177266"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/__tests__/ledgerReport.test.ts": {
+    "mtime": 1779278359.2720497,
+    "ast_hash": "7e2d07700ccf49b31ac2eda2fe6f399e",
+    "semantic_hash": "7e2d07700ccf49b31ac2eda2fe6f399e"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/__tests__/student.test.ts": {
+    "mtime": 1778763760.5910366,
+    "ast_hash": "83d63b982a0c91260948e6e2705d3815",
+    "semantic_hash": "83d63b982a0c91260948e6e2705d3815"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/__tests__/posFlow.test.ts": {
+    "mtime": 1779616382.8522272,
+    "ast_hash": "76307924a98d8a24a38349ba8be6124a",
+    "semantic_hash": "76307924a98d8a24a38349ba8be6124a"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/__tests__/ipadHandoff.test.ts": {
+    "mtime": 1779024287.1105676,
+    "ast_hash": "69d56240c5874914c4e6635c27d16994",
+    "semantic_hash": "69d56240c5874914c4e6635c27d16994"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/__tests__/ledger.test.ts": {
+    "mtime": 1779889131.320774,
+    "ast_hash": "3724d9f436d33f8631701564b4cb3001",
+    "semantic_hash": "3724d9f436d33f8631701564b4cb3001"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/__tests__/cashSession.test.ts": {
+    "mtime": 1778988584.9176013,
+    "ast_hash": "56c1a031e935cd4f678f7fc49593464b",
+    "semantic_hash": "56c1a031e935cd4f678f7fc49593464b"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/__tests__/menu.test.ts": {
+    "mtime": 1778763760.5906658,
+    "ast_hash": "a4eecb4b4c84ee3e769c51a610b6718d",
+    "semantic_hash": "a4eecb4b4c84ee3e769c51a610b6718d"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/__tests__/ledgerSyncBoundary.test.ts": {
+    "mtime": 1778794939.0485651,
+    "ast_hash": "84a53a113ab372b72b4c1656c8bdb36c",
+    "semantic_hash": "84a53a113ab372b72b4c1656c8bdb36c"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/__tests__/businessDate.test.ts": {
+    "mtime": 1778763760.589608,
+    "ast_hash": "ca591e6f79e8ac7485c7db426160dc8f",
+    "semantic_hash": "ca591e6f79e8ac7485c7db426160dc8f"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/__tests__/ledgerAudit.test.ts": {
+    "mtime": 1779024287.1113667,
+    "ast_hash": "93ecd84c0835eb4869f304c5e48e4d59",
+    "semantic_hash": "93ecd84c0835eb4869f304c5e48e4d59"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/domain/__tests__/posTransaction.test.ts": {
+    "mtime": 1779024287.1151228,
+    "ast_hash": "f57beaa8de4f185872123ac78af870cf",
+    "semantic_hash": "f57beaa8de4f185872123ac78af870cf"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/store/posStore.ts": {
+    "mtime": 1780150149.2475107,
+    "ast_hash": "f370114b8530cb460cd0e60053a7f0ee",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/store/__tests__/posStore.test.ts": {
+    "mtime": 1778988584.9247415,
+    "ast_hash": "465c211b658fb7af811181c420fdc91c",
+    "semantic_hash": "465c211b658fb7af811181c420fdc91c"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/store/__tests__/ledgerStore.test.ts": {
+    "mtime": 1779096961.8097913,
+    "ast_hash": "e89c5962a2f2a3147fd017b3a72fcff5",
+    "semantic_hash": "e89c5962a2f2a3147fd017b3a72fcff5"
+  },
+  "/Users/cheerc/talented-easyorder/.claude/settings.json": {
+    "mtime": 1779986758.461933,
+    "ast_hash": "87f0d903477984d0587a02f8fe185263",
+    "semantic_hash": "87f0d903477984d0587a02f8fe185263"
+  },
+  "/Users/cheerc/talented-easyorder/docs/ui_sample/data.jsx": {
+    "mtime": 1778148516.0,
+    "ast_hash": "d022956d2952027aac9ee4e182737435",
+    "semantic_hash": "d022956d2952027aac9ee4e182737435"
+  },
+  "/Users/cheerc/talented-easyorder/docs/ui_sample/pos-components.jsx": {
+    "mtime": 1778148516.0,
+    "ast_hash": "334c579c256d90c9987ae2547c272597",
+    "semantic_hash": "334c579c256d90c9987ae2547c272597"
+  },
+  "/Users/cheerc/talented-easyorder/docs/ui_sample/screens.jsx": {
+    "mtime": 1778148516.0,
+    "ast_hash": "7b32a05d66faa9d5675399aa2a5ef191",
+    "semantic_hash": "7b32a05d66faa9d5675399aa2a5ef191"
+  },
+  "/Users/cheerc/talented-easyorder/docs/ui_sample/tweaks-panel.jsx": {
+    "mtime": 1778148516.0,
+    "ast_hash": "0b67b9bfbe4e2860262209d25beb3067",
+    "semantic_hash": "0b67b9bfbe4e2860262209d25beb3067"
+  },
+  "/Users/cheerc/talented-easyorder/README.md": {
+    "mtime": 1778415594.8763738,
+    "ast_hash": "bfd3685d2136d8d8b8f925376ee7973d",
+    "semantic_hash": "bfd3685d2136d8d8b8f925376ee7973d"
+  },
+  "/Users/cheerc/talented-easyorder/CLAUDE.md": {
+    "mtime": 1779986758.4617043,
+    "ast_hash": "82efb97a359f5c7290bf2513d14686be",
+    "semantic_hash": "82efb97a359f5c7290bf2513d14686be"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/index.html": {
+    "mtime": 1778834826.598237,
+    "ast_hash": "828ea333242d7a713f02dbdaf06c5399",
+    "semantic_hash": "828ea333242d7a713f02dbdaf06c5399"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/README.md": {
+    "mtime": 1778148993.5757155,
+    "ast_hash": "f6e3faf55d738cf2affe1b44195f27cf",
+    "semantic_hash": "f6e3faf55d738cf2affe1b44195f27cf"
+  },
+  "/Users/cheerc/talented-easyorder/.claude/CLAUDE.md": {
+    "mtime": 1779986758.4614716,
+    "ast_hash": "db73b0edd7ffbc61ceac177130730865",
+    "semantic_hash": "db73b0edd7ffbc61ceac177130730865"
+  },
+  "/Users/cheerc/talented-easyorder/.claude/skills/graphify/SKILL.md": {
+    "mtime": 1779986758.461106,
+    "ast_hash": "5ae00786ea53e4d944ab70abe11eedd1",
+    "semantic_hash": "5ae00786ea53e4d944ab70abe11eedd1"
+  },
+  "/Users/cheerc/talented-easyorder/docs/DEPLOYMENT-GUIDE.md": {
+    "mtime": 1778998111.6193204,
+    "ast_hash": "19369362cc6e935dddb7a915d51c58e8",
+    "semantic_hash": "19369362cc6e935dddb7a915d51c58e8"
+  },
+  "/Users/cheerc/talented-easyorder/docs/ui_sample/index.html": {
+    "mtime": 1778148516.0,
+    "ast_hash": "c80e66a7f2ccb75683d26bc71431f21e",
+    "semantic_hash": "c80e66a7f2ccb75683d26bc71431f21e"
+  },
+  "/Users/cheerc/talented-easyorder/docs/ops/firebase-sync-verification.md": {
+    "mtime": 1778988584.9064615,
+    "ast_hash": "48899ae5ba3c362b799d9a455d02464f",
+    "semantic_hash": "48899ae5ba3c362b799d9a455d02464f"
+  },
+  "/Users/cheerc/talented-easyorder/docs/ops/firebase-vercel-setup.md": {
+    "mtime": 1778988584.9066725,
+    "ast_hash": "b8d2d7dfcfd72214f4c8bda3ad5c5cb5",
+    "semantic_hash": "b8d2d7dfcfd72214f4c8bda3ad5c5cb5"
+  },
+  "/Users/cheerc/talented-easyorder/docs/ops/firebase-backup-runbook.md": {
+    "mtime": 1778988584.9061213,
+    "ast_hash": "4c02e21f583387c4d676d1a3b7e84286",
+    "semantic_hash": "4c02e21f583387c4d676d1a3b7e84286"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/VERIFICATION-CHECKLIST.md": {
+    "mtime": 1779102742.9025855,
+    "ast_hash": "32329ebf1c4b74ba3413ac7a81e8c4d1",
+    "semantic_hash": "32329ebf1c4b74ba3413ac7a81e8c4d1"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-user-operation-sop-ux-analysis.md": {
+    "mtime": 1778808451.5426083,
+    "ast_hash": "7abda7dc8e789002027e27a63d292643",
+    "semantic_hash": "7abda7dc8e789002027e27a63d292643"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-error-handling-recovery-strategy(DONE).md": {
+    "mtime": 1778808451.5409682,
+    "ast_hash": "29b7ee4b5a11969988bcc9ee4962e7f2",
+    "semantic_hash": "29b7ee4b5a11969988bcc9ee4962e7f2"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-frontend-hardening-plan(DONE).md": {
+    "mtime": 1778808451.541355,
+    "ast_hash": "a15f3a45b4e3e4dddf41e9ddb5c0bdaf",
+    "semantic_hash": "a15f3a45b4e3e4dddf41e9ddb5c0bdaf"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-cross-platform-android-support.md": {
+    "mtime": 1778808451.539894,
+    "ast_hash": "21ac2e9fa76e51063239dbdf8e1ac308",
+    "semantic_hash": "21ac2e9fa76e51063239dbdf8e1ac308"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-14-phase-1-3-google-sheets-sync-offline(OBSOLETE).md": {
+    "mtime": 1778753481.747277,
+    "ast_hash": "4cd79813e9be8422a8ede179704134b9",
+    "semantic_hash": "4cd79813e9be8422a8ede179704134b9"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-design-system-component-library(DONE).md": {
+    "mtime": 1778808451.5405853,
+    "ast_hash": "7a49afd6fab6d6a90422ab5a3e3c4d2a",
+    "semantic_hash": "7a49afd6fab6d6a90422ab5a3e3c4d2a"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-apps-script-sheets-sync-migration(OBSOLETE).md": {
+    "mtime": 1778858639.375061,
+    "ast_hash": "8ec3f761b5c5764767f1a6517d7dc788",
+    "semantic_hash": "8ec3f761b5c5764767f1a6517d7dc788"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-17-batch2-ui-fixes.md": {
+    "mtime": 1779033219.9586334,
+    "ast_hash": "56d00508305ad03bd0b387e267e215a0",
+    "semantic_hash": "56d00508305ad03bd0b387e267e215a0"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-14-phase-1-0-foundation-hardening(DONE).md": {
+    "mtime": 1778753481.7453718,
+    "ast_hash": "aecb85045c92334a1048a273ebf3a894",
+    "semantic_hash": "aecb85045c92334a1048a273ebf3a894"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-17-batch3-seed-data.md": {
+    "mtime": 1779033227.206913,
+    "ast_hash": "7cea50b2d7c3265c2dbe17f517390406",
+    "semantic_hash": "7cea50b2d7c3265c2dbe17f517390406"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-21-code-quality-refactoring-plan.md": {
+    "mtime": 1779367901.0301259,
+    "ast_hash": "df85918adeda596f85816fa39daa9ccd",
+    "semantic_hash": "df85918adeda596f85816fa39daa9ccd"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-spec-conformance-audit.md": {
+    "mtime": 1778808451.5424197,
+    "ast_hash": "828ace55501376e25afd686597231e41",
+    "semantic_hash": "828ace55501376e25afd686597231e41"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-16-firebase-sync-architecture.md": {
+    "mtime": 1778948039.9771447,
+    "ast_hash": "2c2b78bb70ab2ff0e4dc5dcb9c826c31",
+    "semantic_hash": "2c2b78bb70ab2ff0e4dc5dcb9c826c31"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-20-batch6-verification-checklist.md": {
+    "mtime": 1779288965.8351753,
+    "ast_hash": "478483d066d217e8649ddbcd3ea1e73c",
+    "semantic_hash": "478483d066d217e8649ddbcd3ea1e73c"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-18-batch4-verification-checklist.md": {
+    "mtime": 1779262590.5373828,
+    "ast_hash": "e94e1946a6d358877b4c62262b0efc26",
+    "semantic_hash": "e94e1946a6d358877b4c62262b0efc26"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-free-backend-architecture-exploration.md": {
+    "mtime": 1778808451.5411685,
+    "ast_hash": "a2511c93c3bee45b3b7aad031ea4ae2a",
+    "semantic_hash": "a2511c93c3bee45b3b7aad031ea4ae2a"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-14-phase-1-2-reporting-and-settlement(DONE).md": {
+    "mtime": 1778753481.7465243,
+    "ast_hash": "fe94e37b89117d1a1b95f287e769b70e",
+    "semantic_hash": "fe94e37b89117d1a1b95f287e769b70e"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-10-frontend-audit-remediation(DONE).md": {
+    "mtime": 1778410255.924991,
+    "ast_hash": "6c0b00d8a2906fdecc8b893ced5f484d",
+    "semantic_hash": "6c0b00d8a2906fdecc8b893ced5f484d"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-counter-cash-exception-normalization.md": {
+    "mtime": 1778858639.375523,
+    "ast_hash": "1824d1695548a76e65b768edcda48ae6",
+    "semantic_hash": "1824d1695548a76e65b768edcda48ae6"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-edge-case-scenario-analysis.md": {
+    "mtime": 1778808451.5407686,
+    "ast_hash": "07dde5b53428b2407aaa2a02279e2440",
+    "semantic_hash": "07dde5b53428b2407aaa2a02279e2440"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-21-batch5-6-verification-fixes.md": {
+    "mtime": 1779348869.13787,
+    "ast_hash": "4bc3b712db840b0e3dd23e8ec9b468ad",
+    "semantic_hash": "4bc3b712db840b0e3dd23e8ec9b468ad"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-pwa-offline-first-strategy(DONE).md": {
+    "mtime": 1778808451.5422306,
+    "ast_hash": "7d973ee2b828e0f5913d8f3e41f61405",
+    "semantic_hash": "7d973ee2b828e0f5913d8f3e41f61405"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-27-disable-hover-selection.md": {
+    "mtime": 1779867457.841163,
+    "ast_hash": "0f59168be214d406aec687236eb02610",
+    "semantic_hash": "0f59168be214d406aec687236eb02610"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-14-phase-2-ipad-face-handoff.md": {
+    "mtime": 1778753481.7478745,
+    "ast_hash": "6729f6dbd3478f41197c1e30dc282641",
+    "semantic_hash": "6729f6dbd3478f41197c1e30dc282641"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-accessibility-plan(DONE).md": {
+    "mtime": 1778808451.5396364,
+    "ast_hash": "956a4062a77f5db25a272a101a9433f3",
+    "semantic_hash": "956a4062a77f5db25a272a101a9433f3"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-frontend-performance-optimization(DONE).md": {
+    "mtime": 1778808451.5417616,
+    "ast_hash": "120fbae23c7275036773404f651f33bd",
+    "semantic_hash": "120fbae23c7275036773404f651f33bd"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/ROADMAP.md": {
+    "mtime": 1778753481.7483327,
+    "ast_hash": "adc7748a204aa943da9cb470bb337e80",
+    "semantic_hash": "adc7748a204aa943da9cb470bb337e80"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-17-batch1-hotfix.md": {
+    "mtime": 1779025868.671438,
+    "ast_hash": "a11977188b4613be0bb287cd07974869",
+    "semantic_hash": "a11977188b4613be0bb287cd07974869"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-data-migration-strategy.md": {
+    "mtime": 1778808451.5401013,
+    "ast_hash": "c34dfd2b7616706c5451524077bdcdfb",
+    "semantic_hash": "c34dfd2b7616706c5451524077bdcdfb"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-frontend-security-considerations.md": {
+    "mtime": 1778808451.542008,
+    "ast_hash": "b77df38c2f75dd89af6decaed8923d6a",
+    "semantic_hash": "b77df38c2f75dd89af6decaed8923d6a"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-18-batch4-accounting-fixes.md": {
+    "mtime": 1779105874.0981696,
+    "ast_hash": "a5a1eb3f791ec6470434e8ca9987c656",
+    "semantic_hash": "a5a1eb3f791ec6470434e8ca9987c656"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-18-batch5-ux-improvements.md": {
+    "mtime": 1779105887.1151705,
+    "ast_hash": "fa95e1031a7014c590c727ce85625f65",
+    "semantic_hash": "fa95e1031a7014c590c727ce85625f65"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-17-batch1-hotfix-r2.md": {
+    "mtime": 1779030273.7655199,
+    "ast_hash": "33ca486d17a257d69c5b6bfe58ad5eeb",
+    "semantic_hash": "33ca486d17a257d69c5b6bfe58ad5eeb"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-18-batch5-verification-checklist.md": {
+    "mtime": 1779288886.7549968,
+    "ast_hash": "fb101b9769e5702868f56f9fd81ce014",
+    "semantic_hash": "fb101b9769e5702868f56f9fd81ce014"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-17-batch1-cashflow-redesign.md": {
+    "mtime": 1779005119.758009,
+    "ast_hash": "abe6578c8e093d5e9a19dd87ad777104",
+    "semantic_hash": "abe6578c8e093d5e9a19dd87ad777104"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-frontend-improvement-roadmap.md": {
+    "mtime": 1778808451.5415275,
+    "ast_hash": "ca1d986196bc05ba8994dfc3a78dbbcb",
+    "semantic_hash": "ca1d986196bc05ba8994dfc3a78dbbcb"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-20-batch6-accounting-ux-fixes.md": {
+    "mtime": 1779265756.283592,
+    "ast_hash": "112d7932c88035ec96fb3c2aea14dcb7",
+    "semantic_hash": "112d7932c88035ec96fb3c2aea14dcb7"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-deployment-hosting-strategy(OBSOLETE).md": {
+    "mtime": 1778808451.540334,
+    "ast_hash": "962034c4cb291a6e7577d725389db9fb",
+    "semantic_hash": "962034c4cb291a6e7577d725389db9fb"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-edge-case-ui-plan(DONE).md": {
+    "mtime": 1778834826.597244,
+    "ast_hash": "68882f98a1d31c9751c37eb8d41fc758",
+    "semantic_hash": "68882f98a1d31c9751c37eb8d41fc758"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-user-decision-checklist.md": {
+    "mtime": 1778948039.9767525,
+    "ast_hash": "1234590c26199c3645d61f8e1e8c89e4",
+    "semantic_hash": "1234590c26199c3645d61f8e1e8c89e4"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-21-batch5-6-verification-checklist.md": {
+    "mtime": 1779346030.2035825,
+    "ast_hash": "56f03ad67b2750c5a303a354ccddcb65",
+    "semantic_hash": "56f03ad67b2750c5a303a354ccddcb65"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-27-recent-strip-simplification-v2.md": {
+    "mtime": 1779874318.3854039,
+    "ast_hash": "cb86c8d3023a19f94e634b7940324d1d",
+    "semantic_hash": "cb86c8d3023a19f94e634b7940324d1d"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-15-phase-a-b-c-execution-plan(DONE).md": {
+    "mtime": 1778834826.5976713,
+    "ast_hash": "b1580571b3c55c51315021a27ba31342",
+    "semantic_hash": "b1580571b3c55c51315021a27ba31342"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-14-phase-1-1-pc-pos-formalization(DONE).md": {
+    "mtime": 1778778410.9662132,
+    "ast_hash": "0d880cece09f5ffaa8191e856619c01d",
+    "semantic_hash": "0d880cece09f5ffaa8191e856619c01d"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/plans/2026-05-25-order-display-simplification-payment-offset.md": {
+    "mtime": 1779709487.3507535,
+    "ast_hash": "8393c0184b8d1f7efa4d923f3901f610",
+    "semantic_hash": "8393c0184b8d1f7efa4d923f3901f610"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/specs/2026-05-14-ipad-face-auth-handoff-spec.md": {
+    "mtime": 1778753481.7494326,
+    "ast_hash": "76a8de09fce292e220ad9818d5d948a0",
+    "semantic_hash": "76a8de09fce292e220ad9818d5d948a0"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/specs/2026-05-14-student-account-management-spec.md": {
+    "mtime": 1778753481.7511225,
+    "ast_hash": "ead869f72259479cc834346d8eb59cae",
+    "semantic_hash": "ead869f72259479cc834346d8eb59cae"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/specs/2026-05-14-menu-vendor-management-spec.md": {
+    "mtime": 1778753481.7498958,
+    "ast_hash": "2ace4606ed2b03c5e6954ebaff07f193",
+    "semantic_hash": "2ace4606ed2b03c5e6954ebaff07f193"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/specs/2026-05-07-ipad-pos-system-design.md": {
+    "mtime": 1778404975.0163636,
+    "ast_hash": "5507de64f30ddb17b195a44a0b184698",
+    "semantic_hash": "5507de64f30ddb17b195a44a0b184698"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/specs/2026-05-14-order-ledger-cash-close-spec.md": {
+    "mtime": 1778753481.7502906,
+    "ast_hash": "752ff4e7ddcb1d2480429f5f8d8356bd",
+    "semantic_hash": "752ff4e7ddcb1d2480429f5f8d8356bd"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/specs/2026-05-14-pc-pos-order-flow-spec.md": {
+    "mtime": 1778753481.7506816,
+    "ast_hash": "4feccad061e1e156f887dcad00a58276",
+    "semantic_hash": "4feccad061e1e156f887dcad00a58276"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/specs/2026-05-14-google-sheets-sync-offline-spec.md": {
+    "mtime": 1778753481.7489686,
+    "ast_hash": "84e118f4883f173824561d4b0a98a59c",
+    "semantic_hash": "84e118f4883f173824561d4b0a98a59c"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/verification/2026-05-20-batch6-wave2-verification.md": {
+    "mtime": 1779278359.2675095,
+    "ast_hash": "c565cb2fd3899c8feb77d267b12a7121",
+    "semantic_hash": "c565cb2fd3899c8feb77d267b12a7121"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/verification/2026-05-21-batch5-6-fixes-retest.md": {
+    "mtime": 1779354986.208158,
+    "ast_hash": "6ff3b3ac71d036b75b5bce3834f18a1f",
+    "semantic_hash": "6ff3b3ac71d036b75b5bce3834f18a1f"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/verification/2026-05-20-batch6-wave3-verification.md": {
+    "mtime": 1779278359.2677684,
+    "ast_hash": "0fed73bc1776ee3832b068d28675d0ba",
+    "semantic_hash": "0fed73bc1776ee3832b068d28675d0ba"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/verification/2026-05-21-batch5-6-fixes-v2-checklist.md": {
+    "mtime": 1779380470.641634,
+    "ast_hash": "d62023fb88718b4a7c9eb1bf203440d3",
+    "semantic_hash": "d62023fb88718b4a7c9eb1bf203440d3"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/verification/2026-05-20-batch6-wave1-verification.md": {
+    "mtime": 1779278359.267262,
+    "ast_hash": "f7e4b6522937b5ada70a0eb3df2ab96b",
+    "semantic_hash": "f7e4b6522937b5ada70a0eb3df2ab96b"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/verification/2026-05-21-batch5-6-verification-checklist.md": {
+    "mtime": 1779300416.7568707,
+    "ast_hash": "cb45539ec6d383ea143cdcf0c383b741",
+    "semantic_hash": "cb45539ec6d383ea143cdcf0c383b741"
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/reviews/2026-05-21-code-quality-review.md": {
+    "mtime": 1779354986.2073712,
+    "ast_hash": "08b4040662a40d77a24fab688d4dd61b",
+    "semantic_hash": "08b4040662a40d77a24fab688d4dd61b"
+  },
+  "/Users/cheerc/talented-easyorder/.github/workflows/ci.yml": {
+    "mtime": 1779974298.475661,
+    "ast_hash": "60c8dc870107bda60a81703c1327635c",
+    "semantic_hash": "60c8dc870107bda60a81703c1327635c"
+  },
+  "/Users/cheerc/talented-easyorder/.superpowers/brainstorm/60258-1778145095/content/layout.html": {
+    "mtime": 1778145115.1439776,
+    "ast_hash": "401c5fbf76e72457f28eef32a1737d9e",
+    "semantic_hash": "401c5fbf76e72457f28eef32a1737d9e"
+  },
+  "/Users/cheerc/talented-easyorder/.superpowers/brainstorm/60258-1778145095/content/waiting.html": {
+    "mtime": 1778145818.351071,
+    "ast_hash": "3f20d396a2cf12bc60c3234014532ba9",
+    "semantic_hash": "3f20d396a2cf12bc60c3234014532ba9"
+  },
+  "/Users/cheerc/talented-easyorder/docs/iPad\u4eba\u81c9\u8fa8\u8b58\u8a02\u9910\u7cfb\u7d71\u8a2d\u8a08\u65b9\u6848_V3.pdf": {
+    "mtime": 1778138179.8097172,
+    "ast_hash": "b482ffd99f39ff7473c28c9648614aca",
+    "semantic_hash": "b482ffd99f39ff7473c28c9648614aca"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/public/icons.svg": {
+    "mtime": 1778148993.5784254,
+    "ast_hash": "3b4fcfcf393eca4d264dca4a4663bc37",
+    "semantic_hash": "3b4fcfcf393eca4d264dca4a4663bc37"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/public/favicon.svg": {
+    "mtime": 1778148993.578025,
+    "ast_hash": "7e840862161341271697daa99a40d76b",
+    "semantic_hash": "7e840862161341271697daa99a40d76b"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/assets/hero.png": {
+    "mtime": 1778148993.5799303,
+    "ast_hash": "aead493361b27e7510691c5d7072dfc1",
+    "semantic_hash": "aead493361b27e7510691c5d7072dfc1"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/assets/vite.svg": {
+    "mtime": 1778148993.5803726,
+    "ast_hash": "9960a24288958394ac50e57ff638b036",
+    "semantic_hash": "9960a24288958394ac50e57ff638b036"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/assets/react.svg": {
+    "mtime": 1778148993.5801914,
+    "ast_hash": "f0402b67b6ce880f65666bb49e841696",
+    "semantic_hash": "f0402b67b6ce880f65666bb49e841696"
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/screens/ReportScreen.tsx": {
+    "mtime": 1780073983.307231,
+    "ast_hash": "f5b8a5d96dcc53acb6f7be2dc68fab00",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/screens/HistoryScreen.tsx": {
+    "mtime": 1780073983.307031,
+    "ast_hash": "4170d120e786a2594e16bd586c8617f2",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/screens/AdminScreen.tsx": {
+    "mtime": 1780073983.3066087,
+    "ast_hash": "abd5f3177a4c80eb8577fff8c89e678b",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/screens/BackupScreen.tsx": {
+    "mtime": 1780073983.306856,
+    "ast_hash": "a0af6313912e7382c2a573c0571a7a4c",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/screens/VendorsScreen.tsx": {
+    "mtime": 1780073983.3074045,
+    "ast_hash": "9d5bfc15e94d9857f4e6d5d2a0178be6",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/pos/ExpensePanel.tsx": {
+    "mtime": 1780073983.303996,
+    "ast_hash": "21c9bdcc08122e8e54f0f4044d84aa11",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/pos/TopBar.tsx": {
+    "mtime": 1780073983.305206,
+    "ast_hash": "3060c77e9b9cc828a159747d06110dea",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/pos/CustomerCard.tsx": {
+    "mtime": 1780073983.3036878,
+    "ast_hash": "a0ee7311c692d5949889764009d95973",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/pos/utils.ts": {
+    "mtime": 1780073983.305464,
+    "ast_hash": "1e96609f54379763807d7984c1753815",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/pos/SearchBox.tsx": {
+    "mtime": 1780073983.3046339,
+    "ast_hash": "dd266e42df6ece5cd7fa2052360f5c41",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/pos/ActionBar.tsx": {
+    "mtime": 1780073983.3033993,
+    "ast_hash": "dd3fbf63ca48b6d1bea777068b531e9f",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/pos/IdleHero.tsx": {
+    "mtime": 1780073983.30415,
+    "ast_hash": "593c406ec90b1f8ea527111b8d97c4b9",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/pos/ConfirmBanner.tsx": {
+    "mtime": 1780150149.240985,
+    "ast_hash": "5fbdbba178b86206e57eb35a34fa3bde",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/pos/RecentStrip.tsx": {
+    "mtime": 1780073983.304461,
+    "ast_hash": "89e8b0b075d7661e16f5ac9e635befe8",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/pos/DuplicateWarningBanner.tsx": {
+    "mtime": 1780073983.3038275,
+    "ast_hash": "6c1eb28ec607a40ff029ce18b556c7d3",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/pos/MidnightBanner.tsx": {
+    "mtime": 1780073983.3043158,
+    "ast_hash": "b3fca4fc5c1328b1421805747bc3bab6",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/components/__tests__/screens.test.tsx": {
+    "mtime": 1780150149.2404842,
+    "ast_hash": "8ae251f6c86f3f6a29318807b77ed654",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/__tests__/financialGuard.test.ts": {
+    "mtime": 1780073983.3019884,
+    "ast_hash": "10b5ce40ef50d2ad2e3d3bcefa8403d0",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/hooks/useUndoCountdown.ts": {
+    "mtime": 1780073983.3110816,
+    "ast_hash": "fbc0e78103540a77e2b2140ee6a35ad3",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/hooks/useSystemDate.ts": {
+    "mtime": 1780073983.3109493,
+    "ast_hash": "c8bc2ff00688d9dd71cacd2bbdcd7b5f",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/hooks/useCrashDraftRecovery.ts": {
+    "mtime": 1780073983.310487,
+    "ast_hash": "c84585b0cadc4623b590ac925a4b80e4",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/hooks/useOnlineStatus.ts": {
+    "mtime": 1780073983.310632,
+    "ast_hash": "ddbf1e242ced597e7454ff9b2aafdcd1",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/hooks/useServiceWorkerCleanup.ts": {
+    "mtime": 1780073983.3108046,
+    "ast_hash": "ac7bd2ab0d61d7d3d8d086056c6450bf",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/hooks/__tests__/useServiceWorkerCleanup.test.ts": {
+    "mtime": 1780073983.3103225,
+    "ast_hash": "fa9d3e60b588ccd0baa49b3558578b1e",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/storage/__tests__/migration.test.ts": {
+    "mtime": 1780150149.2453759,
+    "ast_hash": "1eaba5484b245757fb6c2c3485d6b89d",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/firebase/__tests__/realtimeSubscriptions.test.ts": {
+    "mtime": 1780150149.2435396,
+    "ast_hash": "8b54f446fa8f93f267cecef95d984ee7",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/frontend/src/__tests__/orderPayment.integration.test.tsx": {
+    "mtime": 1780150149.2386668,
+    "ast_hash": "c807150c0e7472bb4c80cfa1a487ee3e",
+    "semantic_hash": ""
+  },
+  "/Users/cheerc/talented-easyorder/docs/superpowers/verification/issue-117.md": {
+    "mtime": 1780150149.2358103,
+    "ast_hash": "1164cd23e47b02d8dcf0d1f613b71463",
+    "semantic_hash": ""
+  }
+}
