@@ -29,6 +29,10 @@ import type { StudentAccount } from './student';
 
 export const CASHIER_SENTINEL = '__cashier__' as const;
 
+export function isStudentTransaction(tx: { studentId: string }): boolean {
+  return tx.studentId !== CASHIER_SENTINEL;
+}
+
 export interface CreateLedgerTransactionInput {
   transactionId: string;
   businessDate: string;
@@ -91,7 +95,7 @@ export function recalculateStudentBalances(
   students: StudentAccount[],
   transactions: LedgerTransaction[],
 ): RecalculationResult {
-  const studentTx = transactions.filter(t => t.studentId !== CASHIER_SENTINEL);
+  const studentTx = transactions.filter(isStudentTransaction);
   const sorted = [...studentTx].sort((a, b) => {
     if (a.businessDate !== b.businessDate) return a.businessDate.localeCompare(b.businessDate);
     if (a.createdAt !== b.createdAt) return a.createdAt.localeCompare(b.createdAt);
@@ -130,7 +134,7 @@ export function mergeLedgerTransactions(transactions: LedgerTransaction[]): Merg
   const studentGroups: Record<string, LedgerTransaction[]> = {};
 
   for (const tx of transactions) {
-    if (tx.studentId === CASHIER_SENTINEL) {
+    if (!isStudentTransaction(tx)) {
       cashierTxs.push(tx);
     } else {
       const key = `${tx.businessDate}_${tx.studentId}`;

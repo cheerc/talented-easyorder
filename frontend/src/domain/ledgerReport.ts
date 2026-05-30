@@ -1,5 +1,5 @@
 import type { LedgerTransaction } from './ledger';
-import { CASHIER_SENTINEL } from './ledger';
+import { isStudentTransaction } from './ledger';
 
 export type LedgerDateRangeKind = 'today' | 'week' | 'month' | 'custom';
 
@@ -117,7 +117,7 @@ export function calculateLedgerTotals(transactions: LedgerTransaction[]): Ledger
 export function groupLedgerRowsByStudent(transactions: LedgerTransaction[]): LedgerGroup[] {
   const map = new Map<string, LedgerTransaction[]>();
   for (const tx of transactions) {
-    if (tx.studentId === CASHIER_SENTINEL) continue;
+    if (!isStudentTransaction(tx)) continue;
     const key = tx.studentId;
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(tx);
