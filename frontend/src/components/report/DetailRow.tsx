@@ -1,7 +1,7 @@
 import React from 'react';
 import { fmt } from '../pos-components';
 import type { LedgerTransaction, MergedTransaction } from '../../domain/ledger';
-import { CASHIER_SENTINEL } from '../../domain/ledger';
+import { CASHIER_SENTINEL } from '../../store/posStore';
 
 export interface DetailRowProps {
   tx: LedgerTransaction;

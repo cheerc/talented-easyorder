@@ -1,6 +1,6 @@
 import type { LedgerGroup } from '../../domain/ledgerReport';
 import type { LedgerTransaction } from '../../domain/ledger';
-import { mergeLedgerTransactions } from '../../domain/ledger';
+import { mergeLedgerTransactions } from '../../store/posStore';
 
 export interface FlatRow {
   kind: 'group' | 'summary' | 'detail';

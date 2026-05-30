@@ -1,20 +1,8 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { type LedgerTransaction, mergeLedgerTransactions } from '../../domain/ledger';
+import type { LedgerTransaction } from '../../domain/ledger';
 import type { TodayMenu } from '../../domain/menu';
 import { EditTransactionModal } from '../EditTransactionModal';
-import {
-  createLedgerDateRange,
-  calculateLedgerTotals,
-  groupLedgerRowsByStudent,
-  type LedgerDateRangeKind,
-} from '../../domain/ledgerReport';
-import { getOpeningCash } from '../../domain/cashClose';
-import {
-  TRANSACTION_CSV_COLUMNS,
-  buildTransactionCsvRows,
-  serializeCsv,
-  triggerCsvDownload,
-} from '../../domain/ledgerExport';
+import type { LedgerDateRangeKind } from '../../domain/ledgerReport';
 import { ReportDateRangeControls } from '../report/ReportDateRangeControls';
 import { ReportSummaryStats } from '../report/ReportSummaryStats';
 import { LedgerGroupedTable } from '../report/LedgerGroupedTable';
@@ -22,6 +10,9 @@ import { CashClosePanel } from '../report/CashClosePanel';
 import { ExportActions } from '../report/ExportActions';
 import { ReopenDialog } from '../report/ReopenDialog';
 import { usePosStore } from '../../store/posStore';
+import { useLedgerReport } from '../../store/derived/useLedgerReport';
+import { useCashClose } from '../../store/derived/useCashClose';
+import { useLedgerExport } from '../../store/derived/useLedgerExport';
 
 interface ReportScreenProps {
   todayMenu: TodayMenu;
@@ -39,7 +30,6 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
   const [editingTx, setEditingTx] = useState<LedgerTransaction | null>(null);
   const [studentSearch, setStudentSearch] = useState(studentFilter || '');
 
-  const transactions = usePosStore((s) => s.transactions);
   const closeBusinessDate = usePosStore((s) => s.closeBusinessDate);
   const reopenBusinessDate = usePosStore((s) => s.reopenBusinessDate);
   const deleteOrderWithRefundCheck = usePosStore((s) => s.deleteOrderWithRefundCheck);
@@ -48,21 +38,13 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
   const handleEditSave = useCallback((transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }) => {
     editTransaction(transactionId, updates);
   }, [editTransaction]);
-  const dateStatus = usePosStore((s) => s.getBusinessDateStatus(viewDate));
-  const cashSessions = usePosStore((s) => s.cashSessions);
-  const dailySettlements = usePosStore((s) => s.dailySettlements as import('../../domain/cashClose').DailySettlement[]);
-  const currentCashSession = cashSessions[viewDate];
-  const openingCash = getOpeningCash(viewDate, dailySettlements || [], currentCashSession);
+  const { dateStatus, openingCash } = useCashClose(viewDate);
 
-  const range = useMemo(() => createLedgerDateRange(
-    dateRange,
-    viewDate,
-    dateRange === 'custom' ? { startDate: customStart, endDate: customEnd } : undefined,
-  ), [dateRange, viewDate, customStart, customEnd]);
+  const { filtered, totals, groups } = useLedgerReport({
+    dateRange, viewDate, customStart, customEnd,
+  });
 
-  const filtered = useMemo(() =>
-    transactions.filter(t => t.businessDate >= range.startDate && t.businessDate <= range.endDate),
-  [transactions, range]);
+  const { exportCsv } = useLedgerExport(viewDate);
 
   const expenseRows = useMemo(() =>
     filtered.filter(t => t.type === 'expense'),
@@ -78,9 +60,6 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
       expenseAmount: expenseOnly.reduce((s, t) => s + t.mealPrice, 0),
     };
   }, [expenseRows]);
-
-  const totals = useMemo(() => calculateLedgerTotals(filtered), [filtered]);
-  const groups = useMemo(() => groupLedgerRowsByStudent(filtered), [filtered]);
 
   // When studentFilter arrives from App, schedule auto-expand
   useEffect(() => {
@@ -196,12 +175,7 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
       />
 
       <ExportActions
-        onExportCsv={() => {
-          const txsToExport = displayMode === 'merged' ? mergeLedgerTransactions(filtered) : filtered;
-          const txRows = buildTransactionCsvRows(txsToExport);
-          const csv = serializeCsv(TRANSACTION_CSV_COLUMNS, txRows);
-          triggerCsvDownload(`easyorder-report-${viewDate}.csv`, csv);
-        }}
+        onExportCsv={() => exportCsv(filtered, displayMode)}
         onPrint={() => window.print()}
       />
 

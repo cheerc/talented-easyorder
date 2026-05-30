@@ -10,6 +10,7 @@ import {
 } from '../mocks/initialData';
 
 export { type PosState, type BusinessDateStatus } from './posTypes';
+export { CASHIER_SENTINEL, mergeLedgerTransactions } from '../domain/ledger';
 
 export const usePosStore = create<PosState>()(
   persist(

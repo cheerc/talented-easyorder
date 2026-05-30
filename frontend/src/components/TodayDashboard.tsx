@@ -1,21 +1,19 @@
 import React, { useMemo } from 'react';
 import { usePosStore } from '../store/posStore';
 import { fmt } from './pos-components';
-import { calculateLedgerTotals } from '../domain/ledgerReport';
+import { useLedgerReport } from '../store/derived/useLedgerReport';
 
 export const TodayDashboard = React.memo(function TodayDashboard({ onClose }: { onClose: () => void }) {
-  const transactions = usePosStore((s) => s.transactions);
   const auditEvents = usePosStore((s) => s.auditEvents);
   const dailySettlements = usePosStore((s) => s.dailySettlements);
   const businessDateStatuses = usePosStore((s) => s.businessDateStatuses);
 
   const systemDate = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-  const todayTx = useMemo(() => {
-    return transactions.filter(t => t.businessDate === systemDate);
-  }, [transactions, systemDate]);
-
-  const totals = useMemo(() => calculateLedgerTotals(todayTx), [todayTx]);
+  const { filtered: todayTx, totals } = useLedgerReport({
+    dateRange: 'today',
+    viewDate: systemDate,
+  });
 
   const queuedCount = useMemo(() => todayTx.filter(t => t.syncStatus === 'queued').length, [todayTx]);
 
