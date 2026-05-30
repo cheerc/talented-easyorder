@@ -166,13 +166,21 @@ describe('posStateValidator', () => {
       expect(result.ok).toBe(true);
     });
 
-    it('passes when businessDateStatuses has corrupt nested values (still shallow)', () => {
+    it('rejects when businessDateStatuses has invalid nested values', () => {
       const bad = {
         ...validState,
         businessDateStatuses: { '2026-05-15': 42 },
       };
       const result = validatePersistedState(bad);
-      // businessDateStatuses is object-validated but not deep-validated per plan
+      expect(result.ok).toBe(false);
+    });
+
+    it('accepts when businessDateStatuses has valid nested values', () => {
+      const good = {
+        ...validState,
+        businessDateStatuses: { '2026-05-15': 'closed', '2026-05-16': 'open' },
+      };
+      const result = validatePersistedState(good);
       expect(result.ok).toBe(true);
     });
   });
