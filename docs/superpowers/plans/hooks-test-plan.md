@@ -79,12 +79,15 @@ required_reads:
 | A6 | digit key ignored on non-POS tab | tab='report' → digit key ignored |
 | A7 | Enter on btn-confirm calls handleConfirm | focusZone='btn-confirm' → Enter → handleConfirm called |
 | A8 | Enter on btn-cancel calls cancelFlow | focusZone='btn-cancel' → Enter → cancelFlow called |
-| A9 | Escape calls cancelFlow | dispatch Escape → cancelFlow called |
-| A10 | ArrowLeft/ArrowRight navigate focus zones | ArrowLeft from btn-confirm → btn-cancel; ArrowRight from btn-cancel → btn-confirm |
-| A11 | ArrowDown from mode row → btn-confirm | ArrowDown from mode-order → btn-confirm |
-| A12 | ArrowUp from btn-confirm → mode row | ArrowUp from btn-confirm → mode-{currentMode} |
-| A13 | shortcuts disabled when isDialogOpen | isDialogOpen=true → F1 ignored |
-| A14 | cleanup on unmount | unmount → removeEventListener called |
+| A8b | Enter on btn-delete-order calls cancelOrder | focusZone='btn-delete-order' → Enter → cancelOrder called |
+| A9 | Enter on mode-{currentMode} calls handleConfirm | focusZone='mode-order' + currentMode='order' → handleConfirm called |
+| A9b | Enter on mode-{differentMode} calls changeMode | focusZone='mode-payment' + currentMode='order' → changeMode('payment') + setFocusZone |
+| A10 | Escape calls cancelFlow | dispatch Escape → cancelFlow called |
+| A11 | ArrowLeft/ArrowRight navigate focus zones | ArrowLeft from btn-confirm → btn-cancel; ArrowRight from btn-cancel → btn-confirm |
+| A12 | ArrowDown from mode row → btn-confirm | ArrowDown from mode-order → btn-confirm |
+| A13 | ArrowUp from btn-confirm → mode row | ArrowUp from btn-confirm → mode-{currentMode} |
+| A14 | shortcuts disabled when isDialogOpen | isDialogOpen=true → F1 ignored |
+| A15 | cleanup on unmount | unmount → removeEventListener called |
 
 **Verification**: `npx vitest run --reporter=verbose useAppNavigationShortcuts`
 
@@ -113,7 +116,7 @@ required_reads:
 - `useKeyboardShortcuts.test.ts` — 既有 pattern 參考
 - `usePosFlow.test.ts` — 既有 pattern 參考（剛合併 PR #167）
 - `useServiceWorkerCleanup.test.ts` — 既有 pattern 參考
-- 目標：至少新增 25 tests（5 + 5 + 7 + 14 + 7）
+- 目標：至少新增 41 tests（5 + 5 + 7 + 17 + 7）
 
 ## Success Criteria
 1. 5 個新 test files，每個獨立可執行
