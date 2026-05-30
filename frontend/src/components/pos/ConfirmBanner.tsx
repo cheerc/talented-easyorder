@@ -32,7 +32,7 @@ export const ConfirmBanner = React.memo(function ConfirmBanner({ flash, onDismis
   return (
     <div className="flash" key={flash.id} role="status" aria-live="polite">
       <div className="flash-card">
-        <div className="flash-tick">✓</div>
+        <div className="flash-tick" data-testid="payment-success">✓</div>
         <div className="flash-body">
           <div className="flash-name">{flash.name} <span className="mono flash-id">#{flash.sid}</span></div>
           <div className="flash-detail">{flash.detail}</div>
