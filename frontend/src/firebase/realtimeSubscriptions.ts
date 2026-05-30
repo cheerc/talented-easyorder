@@ -22,24 +22,39 @@ function pendingCount(snapshot: { docs: Array<{ metadata: { hasPendingWrites: bo
 export function subscribeBusinessDate(db: Firestore, businessDate: string, handlers: RealtimeHandlers): Unsubscribe {
   const unsubscribers: Unsubscribe[] = [];
 
+  let batchPending = false;
+  const pending: Array<() => void> = [];
+
+  function scheduleBatch(fn: () => void) {
+    pending.push(fn);
+    if (!batchPending) {
+      batchPending = true;
+      queueMicrotask(() => {
+        batchPending = false;
+        const calls = pending.splice(0);
+        for (const call of calls) call();
+      });
+    }
+  }
+
   unsubscribers.push(onSnapshot(
     query(collection(db, 'students'), orderBy('displayName')),
     { includeMetadataChanges: true },
-    snapshot => handlers.onStudents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })), pendingCount(snapshot), snapshot.metadata.fromCache),
+    snapshot => scheduleBatch(() => handlers.onStudents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })), pendingCount(snapshot), snapshot.metadata.fromCache)),
     error => handlers.onError(error),
   ));
 
   unsubscribers.push(onSnapshot(
     query(collection(db, 'transactions'), where('businessDate', '==', businessDate), orderBy('createdAt', 'desc')),
     { includeMetadataChanges: true },
-    snapshot => handlers.onTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })), pendingCount(snapshot), snapshot.metadata.fromCache),
+    snapshot => scheduleBatch(() => handlers.onTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })), pendingCount(snapshot), snapshot.metadata.fromCache)),
     error => handlers.onError(error),
   ));
 
   unsubscribers.push(onSnapshot(
     query(collection(db, 'daily_settlements'), where('businessDate', '==', businessDate)),
     { includeMetadataChanges: true },
-    snapshot => handlers.onSettlements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })), pendingCount(snapshot), snapshot.metadata.fromCache),
+    snapshot => scheduleBatch(() => handlers.onSettlements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })), pendingCount(snapshot), snapshot.metadata.fromCache)),
     error => handlers.onError(error),
   ));
 
