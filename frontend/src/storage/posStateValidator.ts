@@ -1,4 +1,5 @@
 import type { PosState } from '../store/posTypes';
+import type { ValidationResult } from '../types/validation';
 
 const CURRENT_SCHEMA_VERSION = 2;
 
@@ -14,7 +15,7 @@ export type MigrationResult =
   | { ok: true; state: PosState & { schemaVersion: number } }
   | { ok: false; reason: string };
 
-export type ValidationResult =
+export type PersistedStateValidationResult =
   | { ok: true; state: PosState }
   | { ok: false; reason: string };
 
@@ -45,7 +46,7 @@ function isSafeInt(n: unknown): boolean {
   return typeof n === 'number' && Number.isSafeInteger(n);
 }
 
-export function validateStudentAccount(s: unknown): { ok: true } | { ok: false; reason: string } {
+export function validateStudentAccount(s: unknown): ValidationResult {
   if (typeof s !== 'object' || s === null) return { ok: false, reason: 'expected object' };
   const r = s as Record<string, unknown>;
   if (!hasStr(r, 'studentId')) return { ok: false, reason: 'missing studentId' };
@@ -62,7 +63,7 @@ export function validateStudentAccount(s: unknown): { ok: true } | { ok: false; 
   return { ok: true };
 }
 
-export function validateLedgerTransaction(t: unknown): { ok: true } | { ok: false; reason: string } {
+export function validateLedgerTransaction(t: unknown): ValidationResult {
   if (typeof t !== 'object' || t === null) return { ok: false, reason: 'expected object' };
   const r = t as Record<string, unknown>;
   if (!hasStr(r, 'transactionId')) return { ok: false, reason: 'missing transactionId' };
@@ -83,7 +84,7 @@ export function validateLedgerTransaction(t: unknown): { ok: true } | { ok: fals
   return { ok: true };
 }
 
-export function validateTodayMenu(m: unknown): { ok: true } | { ok: false; reason: string } {
+export function validateTodayMenu(m: unknown): ValidationResult {
   if (typeof m !== 'object' || m === null) return { ok: false, reason: 'expected object' };
   const r = m as Record<string, unknown>;
   if (!hasStr(r, 'businessDate')) return { ok: false, reason: 'missing businessDate' };
@@ -97,7 +98,7 @@ export function validateTodayMenu(m: unknown): { ok: true } | { ok: false; reaso
   return { ok: true };
 }
 
-export function validateLedgerAuditEvent(e: unknown): { ok: true } | { ok: false; reason: string } {
+export function validateLedgerAuditEvent(e: unknown): ValidationResult {
   if (typeof e !== 'object' || e === null) return { ok: false, reason: 'expected object' };
   const r = e as Record<string, unknown>;
   if (!hasStr(r, 'auditEventId')) return { ok: false, reason: 'missing auditEventId' };
@@ -111,7 +112,7 @@ export function validateLedgerAuditEvent(e: unknown): { ok: true } | { ok: false
   return { ok: true };
 }
 
-export function validateDailySettlement(s: unknown): { ok: true } | { ok: false; reason: string } {
+export function validateDailySettlement(s: unknown): ValidationResult {
   if (typeof s !== 'object' || s === null) return { ok: false, reason: 'expected object' };
   const r = s as Record<string, unknown>;
   if (!hasStr(r, 'settlementId')) return { ok: false, reason: 'missing settlementId' };
@@ -127,7 +128,7 @@ export function validateDailySettlement(s: unknown): { ok: true } | { ok: false;
   return { ok: true };
 }
 
-export function validateVendor(v: unknown): { ok: true } | { ok: false; reason: string } {
+export function validateVendor(v: unknown): ValidationResult {
   if (typeof v !== 'object' || v === null) return { ok: false, reason: 'expected object' };
   const r = v as Record<string, unknown>;
   if (!hasStr(r, 'vendorId')) return { ok: false, reason: 'missing vendorId' };
@@ -140,7 +141,7 @@ export function validateVendor(v: unknown): { ok: true } | { ok: false; reason: 
   return { ok: true };
 }
 
-export function validatePersistedState(raw: unknown): ValidationResult {
+export function validatePersistedState(raw: unknown): PersistedStateValidationResult {
   if (raw === null || raw === undefined) {
     return { ok: false, reason: 'persisted state is null or undefined' };
   }
