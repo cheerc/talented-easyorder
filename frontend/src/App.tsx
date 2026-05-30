@@ -200,20 +200,20 @@ export default function App() {
     );
   }, [picked, viewDate]);
 
-  // Wire commit success → undo countdown start + lastCommittedTxId tracking
   const commitTxIdRef = useRef<string | null>(null);
+
+  // commitTxIdRef tracking + syncing animation + undo countdown
+  const prevKindRef = useRef(state.kind);
   useEffect(() => {
+    // Track commitTxId during committing state
     if (state.kind === 'committing' && commitTxIdRef.current === null) {
       commitTxIdRef.current = `tx-${Date.now()}`;
     }
     if (state.kind !== 'committing') {
       commitTxIdRef.current = null;
     }
-  }, [state.kind]);
 
-  // Show syncing animation after commit + start undo countdown
-  const prevKindRef = useRef(state.kind);
-  useEffect(() => {
+    // Show syncing animation after commit + start undo countdown
     if (prevKindRef.current !== 'success' && state.kind === 'success') {
       setSyncing(true);
       const t = setTimeout(() => {
@@ -249,15 +249,6 @@ export default function App() {
   const isExpenseFlow = state.kind === 'expense_input' || state.kind === 'expense_direction'
     || state.kind === 'expense_reason' || state.kind === 'expense_other_note';
 
-  const selectedMode = state.kind === 'student_selected' ? state.mode : undefined;
-
-  // Synchronize focusZone with state mode when student selection state changes
-  useEffect(() => {
-    if (state.kind === 'student_selected') {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setFocusZone('mode-' + state.mode);
-    }
-  }, [state.kind, selectedMode, state.mode]);
 
   // POS keyboard shortcuts — Q/W/E + Enter/Escape
   useKeyboardShortcuts({
@@ -298,18 +289,24 @@ export default function App() {
     document.body.setAttribute('data-theme', tweaks.theme);
   }, [tweaks]);
 
-  // 任何時候回到 idle 介面，或切換回櫃台且為 idle 時，都要離開焦點，並清空搜尋內容
-  // 並且在處於非 idle 狀態時，提前將 searchFocusKey 重置為 0，避免回到 idle 時 SearchBox 自動聚焦
+  // focusZone sync + idle/blur/search reset
   useEffect(() => {
+    // Synchronize focusZone with state mode when student selection state changes
+    if (state.kind === 'student_selected') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFocusZone('mode-' + state.mode);
+    }
+
+    // 任何時候回到 idle 介面，或切換回櫃台且為 idle 時，都要離開焦點，並清空搜尋內容
+    // 並且在處於非 idle 狀態時，提前將 searchFocusKey 重置為 0，避免回到 idle 時 SearchBox 自動聚焦
     if (state.kind === 'idle' && tab === 'pos') {
       (document.activeElement as HTMLElement)?.blur();
       setSearchText('');
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearchFocusKey(0);
     } else if (state.kind !== 'idle') {
       setSearchFocusKey(0);
     }
-  }, [state.kind, tab, setSearchText]);
+  }, [state.kind, state.mode, tab, setSearchText]);
 
   // Derived expense props for ExpensePanel — type-narrowed, no `as` cast
   const stateAmountText = state.kind === 'expense_input' ? state.amountText : undefined;
