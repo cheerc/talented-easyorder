@@ -1,6 +1,7 @@
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type Auth, type User } from 'firebase/auth';
 import { doc, getDoc, onSnapshot, type Firestore } from 'firebase/firestore';
 import { operatorPath } from './firestorePaths';
+import { appendErrorLog } from '../errors/errorLogger';
 
 const ALLOWED_DOMAIN = import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? 'talented.com.tw';
 
@@ -80,20 +81,41 @@ export function subscribeOperatorAccess(
     const profile = toOperatorProfile(user);
     if (!isAllowedWorkspaceEmail(profile.email)) {
       onAccess({ ok: false, reason: 'wrong_domain', profile });
-      signOut(auth).catch(err => console.error('[auth] force signOut failed:', err));
+      try {
+        await signOut(auth);
+      } catch (err) {
+        appendErrorLog({
+          source: 'auth',
+          message: '[auth] force signOut failed: ' + (err instanceof Error ? err.message : String(err)),
+        });
+      }
       return;
     }
 
-    unsubscribeOperator = onSnapshot(doc(db, operatorPath(profile.uid)), snapshot => {
+    unsubscribeOperator = onSnapshot(doc(db, operatorPath(profile.uid)), async snapshot => {
       const data = snapshot.data() as { active?: boolean; role?: 'counter' | 'admin' } | undefined;
       if (!data) {
         onAccess({ ok: false, reason: 'not_whitelisted', profile });
-        signOut(auth).catch(err => console.error('[auth] force signOut failed:', err));
+        try {
+          await signOut(auth);
+        } catch (err) {
+          appendErrorLog({
+            source: 'auth',
+            message: '[auth] force signOut failed: ' + (err instanceof Error ? err.message : String(err)),
+          });
+        }
         return;
       }
       if (!data.active) {
         onAccess({ ok: false, reason: 'inactive', profile });
-        signOut(auth).catch(err => console.error('[auth] force signOut failed:', err));
+        try {
+          await signOut(auth);
+        } catch (err) {
+          appendErrorLog({
+            source: 'auth',
+            message: '[auth] force signOut failed: ' + (err instanceof Error ? err.message : String(err)),
+          });
+        }
         return;
       }
       onAccess({ ok: true, profile, role: data.role ?? 'counter' });
