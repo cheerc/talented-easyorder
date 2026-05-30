@@ -35,6 +35,14 @@ export default function App() {
   const updateOpeningCash = usePosStore((s) => s.updateOpeningCash);
 
   const { systemDate, viewDate, setViewDate } = useSystemDate();
+
+  const handleOpeningCashChange = useCallback((amount: number) => {
+    openCashSession({ businessDate: viewDate, openingCash: amount, operatorId: 'admin', openedAt: new Date().toISOString() });
+  }, [viewDate, openCashSession]);
+
+  const handleUpdateOpeningCash = useCallback((amount: number) => {
+    updateOpeningCash(viewDate, amount);
+  }, [viewDate, updateOpeningCash]);
   const dateStatus = getBusinessDateStatus(viewDate);
   const isHistorical = viewDate !== systemDate;
   const [priceOverride, setPriceOverride] = useState<number | null>(null);
@@ -527,8 +535,8 @@ export default function App() {
           openingCash={getOpeningCash(viewDate, dailySettlements || [], cashSessions[viewDate])}
           dateStatus={dateStatus}
           hasCashSession={!!cashSessions[viewDate]}
-          onOpeningCashChange={(amount) => openCashSession({ businessDate: viewDate, openingCash: amount, operatorId: 'admin', openedAt: new Date().toISOString() })}
-          onUpdateOpeningCash={(amount) => updateOpeningCash(viewDate, amount)}
+          onOpeningCashChange={handleOpeningCashChange}
+          onUpdateOpeningCash={handleUpdateOpeningCash}
           tweaks={tweaks} setTweak={setTweak}
         />
         </ErrorBoundary>
