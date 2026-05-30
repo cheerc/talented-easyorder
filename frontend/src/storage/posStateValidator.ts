@@ -196,18 +196,16 @@ export function validatePersistedState(raw: unknown): ValidationResult {
     if (!r.ok) return { ok: false, reason: `invalid auditEvent: ${r.reason}` };
   }
 
-  // Sampling: students (first 20 + last 10, can be thousands)
+  // Full scan: students
   const students = state.students as unknown[];
-  const studentSample = students.slice(0, 20).concat(students.length > 20 ? students.slice(-10) : []);
-  for (const s of studentSample) {
+  for (const s of students) {
     const r = validateStudentAccount(s);
     if (!r.ok) return { ok: false, reason: `invalid student: ${r.reason}` };
   }
 
-  // Sampling: transactions (first 50 + last 20, can be tens of thousands)
+  // Full scan: transactions
   const transactions = state.transactions as unknown[];
-  const txSample = transactions.slice(0, 50).concat(transactions.length > 50 ? transactions.slice(-20) : []);
-  for (const t of txSample) {
+  for (const t of transactions) {
     const r = validateLedgerTransaction(t);
     if (!r.ok) return { ok: false, reason: `invalid transaction: ${r.reason}` };
   }
