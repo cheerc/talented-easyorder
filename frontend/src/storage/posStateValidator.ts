@@ -210,6 +210,14 @@ export function validatePersistedState(raw: unknown): ValidationResult {
     if (!r.ok) return { ok: false, reason: `invalid transaction: ${r.reason}` };
   }
 
+  // Full scan: businessDateStatuses
+  const bds = state.businessDateStatuses as Record<string, unknown>;
+  for (const [date, status] of Object.entries(bds)) {
+    if (typeof status !== 'string' || !VALID_SETTLEMENT_STATUSES.has(status)) {
+      return { ok: false, reason: `invalid businessDateStatus for ${date}: ${String(status)}` };
+    }
+  }
+
   return { ok: true, state: state as unknown as PosState };
 }
 
