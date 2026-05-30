@@ -18,6 +18,7 @@ export function useUndoCountdown({
 }: UseUndoCountdownArgs) {
   const [undoCountdown, setUndoCountdown] = useState(0);
   const lastCommittedTxIdRef = useRef<string | null>(null);
+  const deleteTransaction = usePosStore((s) => s.deleteTransaction);
 
   useEffect(() => {
     if (undoCountdown <= 0) {
@@ -45,11 +46,11 @@ export function useUndoCountdown({
   const handleUndo = useCallback(() => {
     const txId = lastCommittedTxIdRef.current;
     if (!txId) return;
-    usePosStore.getState().deleteTransaction(txId);
+    deleteTransaction(txId);
     lastCommittedTxIdRef.current = null;
     setUndoCountdown(0);
     dismissFlash();
-  }, [dismissFlash]);
+  }, [dismissFlash, deleteTransaction]);
 
   return { undoCountdown, setUndoCountdown, lastCommittedTxIdRef, dismissFlash, handleUndo };
 }
