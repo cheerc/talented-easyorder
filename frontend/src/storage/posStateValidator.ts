@@ -1,4 +1,4 @@
-import type { PosState } from '../store/posStore';
+import type { PosState } from '../store/posTypes';
 
 const CURRENT_SCHEMA_VERSION = 2;
 
