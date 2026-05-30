@@ -81,7 +81,7 @@ async function seedTransaction(transactionId: string, studentId = '015', amount 
 }
 
 function authedDb(uid: string, email: string) {
-  return env.authenticatedContext(uid, { email }).firestore();
+  return env.authenticatedContext(uid, { email, email_verified: true }).firestore();
 }
 
 describeOrSkip('firestore.rules required cases', () => {
