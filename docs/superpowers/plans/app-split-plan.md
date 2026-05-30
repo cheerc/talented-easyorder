@@ -10,7 +10,7 @@ required_reads:
 # Plan: App.tsx God Component 拆分 (#147)
 
 ## Objective
-將 `App.tsx` (556 lines) 拆分為 composition hook + sub-components，目標 ≤ 150 lines。
+將 `App.tsx` (556 lines) 拆分為 composition hook + sub-components，目標 ≤ 250 lines。
 
 ## Files
 
@@ -184,13 +184,13 @@ interface AppRouterProps {
 
 ## Section 4: Slim Down `App.tsx`
 
-App.tsx 改為 composition root（目標 ≤ 200 lines）：
+App.tsx 改為 composition root（目標 ≤ 250 lines）：
 
 **移除**（移入 useAppState / PosColumn / AppRouter）：
 - Store subscriptions (12 行) → useAppState
 - Count computations: todayCount/queuedCount/failedSyncCount/conflictSyncCount (~20 行) → useAppState
 - `expenseProps` useMemo (~10 行) → PosColumn（接收 `state` prop，內部計算）
-- `flashData` useMemo (~50 行) → PosColumn（接收 store data props，內部計算）
+- `flashData` useMemo (~50 行) → `useFlashData` hook（new，在 App.tsx 呼叫，因 flashData 需傳給 MainLayout prop，無法移入子 component）
 - `suggestions` useMemo + `choose` + `submitSearch` (~15 行) → PosColumn
 - `openCancelConfirm` + `handleDeleteOrder` (~25 行) → 移入 PosColumn（接收 `picked`、`viewDate`、`allTx` props）
 - `focusZone sync` useEffect (~18 行) → 移入 custom hook `useFocusSync`（new，見下方）
@@ -198,7 +198,7 @@ App.tsx 改為 composition root（目標 ≤ 200 lines）：
 - Render JSX (~165 行) → PosColumn + AppRouter
 - `orderedTodayCount` useMemo → 移入 PosColumn（接收 `picked`、`allTx`、`viewDate` props）
 
-共移除約 323 行，加回 composition render (~35 行) 後淨效果約 −288 行。
+共移除約 273 行（flashData ~50 行保留在 App.tsx 作為 useFlashData hook），加回 composition render (~35 行) 後淨效果約 −238 行。
 
 **保留在 App.tsx**：
 1. **Hook composition**: useSystemDate, useAppState, usePosFlow, useCrashDraftRecovery, useOnlineStatus, useUndoCountdown
@@ -212,7 +212,7 @@ App.tsx 改為 composition root（目標 ≤ 200 lines）：
 9. **Imports** (~12 行)
 10. **`countActiveOrdersForStudent` import** — `orderedTodayCount` computation 已移入 PosColumn，但若 App.tsx 仍需要此 import（例如傳給 PosColumn），保留之
 
-保守估算：35 + 15 + 39 + 20 + 12 + 15 + 35 + 12 = **~183 行**（不含空白行）→ **≤200 行目標可達成**。
+保守估算：35 + 15 + 39 + 20 + 12 + 15 + 35 + 12 = **~183 行**（不含 useFlashData hook call），加回 pinned student logic（~35 行，v2 漏計）與 useFlashData hook 呼叫（~3 行）後 **~221 行**（不含空白行）→ **≤250 行目標可達成**。
 
 **新增 helper**: `useFocusSync` hook（可內聯在 App.tsx 或獨立檔案）
 ```typescript
@@ -239,7 +239,7 @@ function useFocusSync(state: PosFlowState, tab: string, setSearchText, setSearch
 - 每個 section 完成後立刻跑 full test suite（t1~t4）
 
 ## Success Criteria
-1. App.tsx ≤ 200 lines（composition only，從 556 行縮減 ≥64%）
+1. App.tsx ≤ 250 lines（composition only，從 556 行縮減 ≥55%）
 2. 3 個 new files 存在（useAppState.ts、AppRouter.tsx、PosColumn.tsx）
 3. t1~t4 全 PASS
 4. 所有既有功能不變（POS flow、報表、管理、供應商、歷史紀錄）
