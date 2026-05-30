@@ -1,155 +1,155 @@
-# Graph Report - talented-easyorder  (2026-05-31)
+# Graph Report - eo-team-lead-_Users_cheerc_talented-easyorder  (2026-05-31)
 
 ## Corpus Check
-- 250 files · ~189,291 words
+- 282 files · ~198,111 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3648 nodes · 4560 edges · 340 communities (280 shown, 60 thin omitted)
+- 3516 nodes · 4323 edges · 332 communities (272 shown, 60 thin omitted)
 - Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 133 edges (avg confidence: 0.76)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `31222c21`
+- Built from commit: `136e0aa1`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- [[_COMMUNITY_Auth, Sync & Deployment|Auth, Sync & Deployment]]
-- [[_COMMUNITY_UI Components & Modals|UI Components & Modals]]
-- [[_COMMUNITY_POS Screen Components|POS Screen Components]]
-- [[_COMMUNITY_Batch Planning & Execution|Batch Planning & Execution]]
-- [[_COMMUNITY_Ledger & Cash Close Domain|Ledger & Cash Close Domain]]
-- [[_COMMUNITY_Frontend Hardening Plans|Frontend Hardening Plans]]
-- [[_COMMUNITY_Ops & Deployment Scripts|Ops & Deployment Scripts]]
-- [[_COMMUNITY_Menu Domain|Menu Domain]]
-- [[_COMMUNITY_Cross-Cutting Concepts|Cross-Cutting Concepts]]
-- [[_COMMUNITY_POS State Validation & Storage|POS State Validation & Storage]]
-- [[_COMMUNITY_App Shell & Report Layout|App Shell & Report Layout]]
-- [[_COMMUNITY_Ledger Transaction Core|Ledger Transaction Core]]
-- [[_COMMUNITY_TypeScript Configuration|TypeScript Configuration]]
-- [[_COMMUNITY_Package Dependencies|Package Dependencies]]
-- [[_COMMUNITY_Error Handling & Sync Status|Error Handling & Sync Status]]
-- [[_COMMUNITY_Ops Documentation|Ops Documentation]]
-- [[_COMMUNITY_Ledger Data Model|Ledger Data Model]]
-- [[_COMMUNITY_iPad Handoff|iPad Handoff]]
-- [[_COMMUNITY_TypeScript Node Config|TypeScript Node Config]]
-- [[_COMMUNITY_POS Component Props|POS Component Props]]
-- [[_COMMUNITY_Community 20 (components_screens_adminscreenprops comp)|Community 20 (components_screens_adminscreenprops comp)]]
-- [[_COMMUNITY_Community 21 (domain_student_faceenrollmentstatus doma)|Community 21 (domain_student_faceenrollmentstatus doma)]]
-- [[_COMMUNITY_Community 22 (domain_cashclose_businessdatestatus doma)|Community 22 (domain_cashclose_businessdatestatus doma)]]
-- [[_COMMUNITY_Community 23 (domain_posflow_createinitialposflowstate)|Community 23 (domain_posflow_createinitialposflowstate)]]
-- [[_COMMUNITY_Community 25 (errors_errorlogger_appenderrorlog errors)|Community 25 (errors_errorlogger_appenderrorlog errors)]]
-- [[_COMMUNITY_Community 26 (domain_ledgerreport_createledgerdaterang)|Community 26 (domain_ledgerreport_createledgerdaterang)]]
-- [[_COMMUNITY_Community 27 (domain_ledgerexport_buildledgerprintview)|Community 27 (domain_ledgerexport_buildledgerprintview)]]
-- [[_COMMUNITY_Community 28 (frontend_src_domain_tests_ledger_test_ts)|Community 28 (frontend_src_domain_tests_ledger_test_ts)]]
-- [[_COMMUNITY_Community 29 (domain_cashsession_calculateexpecteddraw)|Community 29 (domain_cashsession_calculateexpecteddraw)]]
-- [[_COMMUNITY_Community 30 (domain_ledger_recalculationresult domain)|Community 30 (domain_ledger_recalculationresult domain)]]
-- [[_COMMUNITY_Community 31 (components_errorboundary_appcrashpage co)|Community 31 (components_errorboundary_appcrashpage co)]]
-- [[_COMMUNITY_Community 32 (domain_posflow_posmode frontend_src_hook)|Community 32 (domain_posflow_posmode frontend_src_hook)]]
-- [[_COMMUNITY_Community 33 (domain_cashclose_getopeningcash domain_c)|Community 33 (domain_cashclose_getopeningcash domain_c)]]
-- [[_COMMUNITY_Community 34 (firebase_firebaseapp_ensurefirebaseiniti)|Community 34 (firebase_firebaseapp_ensurefirebaseiniti)]]
-- [[_COMMUNITY_Community 35 (frontend_src_mocks_initialdata_ts fronte)|Community 35 (frontend_src_mocks_initialdata_ts fronte)]]
-- [[_COMMUNITY_Community 36 (domain_posflow_reducecommitting domain_p)|Community 36 (domain_posflow_reducecommitting domain_p)]]
-- [[_COMMUNITY_Community 37 (conflict-policy csp-policy data-classifi)|Community 37 (conflict-policy csp-policy data-classifi)]]
-- [[_COMMUNITY_Community 38 (firebase_json frontend_favicon frontend_)|Community 38 (firebase_json frontend_favicon frontend_)]]
-- [[_COMMUNITY_Community 39 (domain_ledgerreport_ledgertotals fronten)|Community 39 (domain_ledgerreport_ledgertotals fronten)]]
-- [[_COMMUNITY_Community 40 (components_errorboundary_errorboundary c)|Community 40 (components_errorboundary_errorboundary c)]]
-- [[_COMMUNITY_Community 41 (components_errorboundary_test_error_boun)|Community 41 (components_errorboundary_test_error_boun)]]
-- [[_COMMUNITY_Community 42 (frontend_public_manifest_json public_man)|Community 42 (frontend_public_manifest_json public_man)]]
-- [[_COMMUNITY_Community 43 (frontend_src_store_tests_ledgerstore_tes)|Community 43 (frontend_src_store_tests_ledgerstore_tes)]]
-- [[_COMMUNITY_Community 44 (domain_postransaction_postransactiondraf)|Community 44 (domain_postransaction_postransactiondraf)]]
-- [[_COMMUNITY_Community 45 (docs_ui_sample_pos_components_jsx ui_sam)|Community 45 (docs_ui_sample_pos_components_jsx ui_sam)]]
-- [[_COMMUNITY_Community 46 (talented_easyorder_firebase_auth_port ta)|Community 46 (talented_easyorder_firebase_auth_port ta)]]
-- [[_COMMUNITY_Community 47 (audit_trail business_date_lock csv_expor)|Community 47 (audit_trail business_date_lock csv_expor)]]
-- [[_COMMUNITY_Community 48 (batch5_6_verification_fixes batch6_verif)|Community 48 (batch5_6_verification_fixes batch6_verif)]]
-- [[_COMMUNITY_Community 49 (docs_code-quality-refactoring_plan docs_)|Community 49 (docs_code-quality-refactoring_plan docs_)]]
-- [[_COMMUNITY_Community 50 (frontend_src_storage_storagehealth_ts fr)|Community 50 (frontend_src_storage_storagehealth_ts fr)]]
-- [[_COMMUNITY_Community 51 (components_screens_reportscreen domain_l)|Community 51 (components_screens_reportscreen domain_l)]]
-- [[_COMMUNITY_Community 52 (frontend_src_components_ui_tabs_tsx fron)|Community 52 (frontend_src_components_ui_tabs_tsx fron)]]
-- [[_COMMUNITY_Community 53 (components_syncstatusbadge_iconbykind co)|Community 53 (components_syncstatusbadge_iconbykind co)]]
-- [[_COMMUNITY_Community 54 (components_pos_components_fmt components)|Community 54 (components_pos_components_fmt components)]]
-- [[_COMMUNITY_Community 55 (frontend_src_domain_tests_postransaction)|Community 55 (frontend_src_domain_tests_postransaction)]]
-- [[_COMMUNITY_Community 56 (frontend_src_firebase_tests_firestorerul)|Community 56 (frontend_src_firebase_tests_firestorerul)]]
-- [[_COMMUNITY_Community 57 (frontend_package_dependencies frontend_p)|Community 57 (frontend_package_dependencies frontend_p)]]
-- [[_COMMUNITY_Community 58 (domain_posflow_expensedirection domain_p)|Community 58 (domain_posflow_expensedirection domain_p)]]
-- [[_COMMUNITY_Community 59 (cash_session counter_cash_normalization )|Community 59 (cash_session counter_cash_normalization )]]
-- [[_COMMUNITY_Community 60 (docs_ui_sample_data_jsx ui_sample_data_o)|Community 60 (docs_ui_sample_data_jsx ui_sample_data_o)]]
-- [[_COMMUNITY_Community 61 (frontend_src_components_ui_statusbadge_t)|Community 61 (frontend_src_components_ui_statusbadge_t)]]
-- [[_COMMUNITY_Community 62 (components_mainlayout_flashdata componen)|Community 62 (components_mainlayout_flashdata componen)]]
-- [[_COMMUNITY_Community 63 (cloudflare_d1 free_backend_architecture )|Community 63 (cloudflare_d1 free_backend_architecture )]]
-- [[_COMMUNITY_Community 64 (frontend_package_scripts frontend_packag)|Community 64 (frontend_package_scripts frontend_packag)]]
-- [[_COMMUNITY_Community 65 (domain_businessdate_businessdatestatus d)|Community 65 (domain_businessdate_businessdatestatus d)]]
-- [[_COMMUNITY_Community 66 (audit-trail edge-case-ui midnight-bounda)|Community 66 (audit-trail edge-case-ui midnight-bounda)]]
-- [[_COMMUNITY_Community 67 (frontend_src_components_ui_kbd_tsx front)|Community 67 (frontend_src_components_ui_kbd_tsx front)]]
-- [[_COMMUNITY_Community 68 (frontend_src_store_tests_posstore_test_t)|Community 68 (frontend_src_store_tests_posstore_test_t)]]
-- [[_COMMUNITY_Community 69 (frontend_src_components_ui_card_tsx fron)|Community 69 (frontend_src_components_ui_card_tsx fron)]]
-- [[_COMMUNITY_Community 71 (frontend_src_tests_pcpossafety_integrati)|Community 71 (frontend_src_tests_pcpossafety_integrati)]]
-- [[_COMMUNITY_Community 72 (firebase_firestoreSchema_TransactionDoc )|Community 72 (firebase_firestoreSchema_TransactionDoc )]]
-- [[_COMMUNITY_Community 73 (domain_ledgerreport_ledgerdaterangekind )|Community 73 (domain_ledgerreport_ledgerdaterangekind )]]
-- [[_COMMUNITY_Community 74 (firebase_realtimesubscriptions_pendingco)|Community 74 (firebase_realtimesubscriptions_pendingco)]]
-- [[_COMMUNITY_Community 75 (frontend_src_test_setup_ts test_setup_an)|Community 75 (frontend_src_test_setup_ts test_setup_an)]]
-- [[_COMMUNITY_Community 76 (close_blocking_sync_summary daily_settle)|Community 76 (close_blocking_sync_summary daily_settle)]]
-- [[_COMMUNITY_Community 77 (ipad-handoff phase-1-1-pos pos-flow-redu)|Community 77 (ipad-handoff phase-1-1-pos pos-flow-redu)]]
-- [[_COMMUNITY_Community 78 (design-system error-handling phase-abc-e)|Community 78 (design-system error-handling phase-abc-e)]]
-- [[_COMMUNITY_Community 79 (frontend_src_components_ui_emptystate_ts)|Community 79 (frontend_src_components_ui_emptystate_ts)]]
-- [[_COMMUNITY_Community 80 (firebase-backend multi-device-concurrent)|Community 80 (firebase-backend multi-device-concurrent)]]
-- [[_COMMUNITY_Community 81 (assets_hero_easyorder_hero_image public_)|Community 81 (assets_hero_easyorder_hero_image public_)]]
-- [[_COMMUNITY_Community 82 (business_date_status canwrite_businessda)|Community 82 (business_date_status canwrite_businessda)]]
-- [[_COMMUNITY_Community 83 (claude_settings_hooks claude_settings_ho)|Community 83 (claude_settings_hooks claude_settings_ho)]]
-- [[_COMMUNITY_Community 84 (components_pos-components_CustomerCard c)|Community 84 (components_pos-components_CustomerCard c)]]
-- [[_COMMUNITY_Community 85 (cloudflare-workers deployment-hosting-st)|Community 85 (cloudflare-workers deployment-hosting-st)]]
-- [[_COMMUNITY_Community 86 (batch1_hotfix batch4_verification expens)|Community 86 (batch1_hotfix batch4_verification expens)]]
-- [[_COMMUNITY_Community 87 (frontend_tsconfig_files frontend_tsconfi)|Community 87 (frontend_tsconfig_files frontend_tsconfi)]]
-- [[_COMMUNITY_Community 88 (ledger_export settlement_csv_columns tra)|Community 88 (ledger_export settlement_csv_columns tra)]]
-- [[_COMMUNITY_Community 89 (ledger_audit_event ledger_totals ledger_)|Community 89 (ledger_audit_event ledger_totals ledger_)]]
-- [[_COMMUNITY_Community 90 (errors_errorLogger_installErrorListeners)|Community 90 (errors_errorLogger_installErrorListeners)]]
-- [[_COMMUNITY_Community 91 (storage_posstatevalidator_balance_recalc)|Community 91 (storage_posstatevalidator_balance_recalc)]]
-- [[_COMMUNITY_Community 92 (firestore_indexes_json talented_easyorde)|Community 92 (firestore_indexes_json talented_easyorde)]]
-- [[_COMMUNITY_Community 93 (talented_easyorder_vercel_headers talent)|Community 93 (talented_easyorder_vercel_headers talent)]]
-- [[_COMMUNITY_Community 94 (components_pos-components_ActionBar comp)|Community 94 (components_pos-components_ActionBar comp)]]
-- [[_COMMUNITY_Community 95 (components_ui_confirmdialog components_u)|Community 95 (components_ui_confirmdialog components_u)]]
-- [[_COMMUNITY_Community 96 (errors_errorLogger errors_errorLogger_ap)|Community 96 (errors_errorLogger errors_errorLogger_ap)]]
-- [[_COMMUNITY_Community 97 (frontend_components_ui_card frontend_com)|Community 97 (frontend_components_ui_card frontend_com)]]
-- [[_COMMUNITY_Community 98 (frontend_components_ui_kbd frontend_comp)|Community 98 (frontend_components_ui_kbd frontend_comp)]]
-- [[_COMMUNITY_Community 100 (plans_2026-05-15-user-operation-sop-ux-a)|Community 100 (plans_2026-05-15-user-operation-sop-ux-a)]]
-- [[_COMMUNITY_Community 101 (plans_2026-05-15-user-operation-sop-ux-a)|Community 101 (plans_2026-05-15-user-operation-sop-ux-a)]]
-- [[_COMMUNITY_Community 102 (ui_button_test_a11y_min_height ui_button)|Community 102 (ui_button_test_a11y_min_height ui_button)]]
-- [[_COMMUNITY_Community 103 (ui_tests_textfield_test-text-field ui_te)|Community 103 (ui_tests_textfield_test-text-field ui_te)]]
-- [[_COMMUNITY_Community 106 (domain_ipadhandoff_handoff_intent_locals)|Community 106 (domain_ipadhandoff_handoff_intent_locals)]]
-- [[_COMMUNITY_Community 107 (domain_ledgerexport_test_ledger_export_t)|Community 107 (domain_ledgerexport_test_ledger_export_t)]]
-- [[_COMMUNITY_Community 108 (ui_confirmdialog_enter_key_confirm)|Community 108 (ui_confirmdialog_enter_key_confirm)]]
-- [[_COMMUNITY_Community 109 (frontend_tsconfig_node_typescript_node_c)|Community 109 (frontend_tsconfig_node_typescript_node_c)]]
-- [[_COMMUNITY_Community 110 (specs_ipad-face-auth-handoff_faceprofile)|Community 110 (specs_ipad-face-auth-handoff_faceprofile)]]
-- [[_COMMUNITY_Community 111 (specs_ipad-face-auth-handoff_confidence_)|Community 111 (specs_ipad-face-auth-handoff_confidence_)]]
-- [[_COMMUNITY_Community 112 (store_posstore_open CashSession)|Community 112 (store_posstore_open CashSession)]]
-- [[_COMMUNITY_Community 113 (store_posstore_deletetransaction)|Community 113 (store_posstore_deletetransaction)]]
-- [[_COMMUNITY_Community 114 (domain_ledgeraudit_auditEventInput)|Community 114 (domain_ledgeraudit_auditEventInput)]]
-- [[_COMMUNITY_Community 115 (domain_fixtures_student001)|Community 115 (domain_fixtures_student001)]]
-- [[_COMMUNITY_Community 116 (domain_fixtures_todaymenu_karaage)|Community 116 (domain_fixtures_todaymenu_karaage)]]
-- [[_COMMUNITY_Community 117 (domain_fixtures_txorder001)|Community 117 (domain_fixtures_txorder001)]]
-- [[_COMMUNITY_Community 118 (mocks_initialdata)|Community 118 (mocks_initialdata)]]
-- [[_COMMUNITY_Community 119 (test_setup)|Community 119 (test_setup)]]
-- [[_COMMUNITY_Community 120 (settings_settings)|Community 120 (settings_settings)]]
-- [[_COMMUNITY_Community 121 (brainstorm_layout)|Community 121 (brainstorm_layout)]]
-- [[_COMMUNITY_Community 122 (firebase_firestoreSchema)|Community 122 (firebase_firestoreSchema)]]
-- [[_COMMUNITY_Community 123 (components_pos-components_IdleHero)|Community 123 (components_pos-components_IdleHero)]]
-- [[_COMMUNITY_Community 124 (components_pos-components_TopBar)|Community 124 (components_pos-components_TopBar)]]
-- [[_COMMUNITY_Community 125 (icons_svg)|Community 125 (icons_svg)]]
-- [[_COMMUNITY_Community 126 (storage_storageHealth)|Community 126 (storage_storageHealth)]]
-- [[_COMMUNITY_Community 127 (supe_brainstorm_waiting)|Community 127 (supe_brainstorm_waiting)]]
-- [[_COMMUNITY_Community 128 (frontend_field_component)|Community 128 (frontend_field_component)]]
-- [[_COMMUNITY_Community 129 (frontend_assets_react_svg)|Community 129 (frontend_assets_react_svg)]]
-- [[_COMMUNITY_Community 130 (frontend_tsconfig)|Community 130 (frontend_tsconfig)]]
-- [[_COMMUNITY_Community 131 (frontend_readme_doc)|Community 131 (frontend_readme_doc)]]
-- [[_COMMUNITY_Community 132 (ui_kbd_component)|Community 132 (ui_kbd_component)]]
-- [[_COMMUNITY_Community 133 (ui_emptystate_component)|Community 133 (ui_emptystate_component)]]
-- [[_COMMUNITY_Community 134 (test_ui_tabs_interaction)|Community 134 (test_ui_tabs_interaction)]]
-- [[_COMMUNITY_Community 135 (test_ui_emptystate_rendering)|Community 135 (test_ui_emptystate_rendering)]]
-- [[_COMMUNITY_Community 136 (test_ui_numberfield_accessibility)|Community 136 (test_ui_numberfield_accessibility)]]
-- [[_COMMUNITY_Community 137 (pwa_offline_strategy)|Community 137 (pwa_offline_strategy)]]
-- [[_COMMUNITY_Community 138 (accessibility_plan)|Community 138 (accessibility_plan)]]
-- [[_COMMUNITY_Community 139 (frontend_performance)|Community 139 (frontend_performance)]]
+- [[_COMMUNITY_Community 0|Community 0]]
+- [[_COMMUNITY_Community 1|Community 1]]
+- [[_COMMUNITY_Community 2|Community 2]]
+- [[_COMMUNITY_Community 3|Community 3]]
+- [[_COMMUNITY_Community 4|Community 4]]
+- [[_COMMUNITY_Community 5|Community 5]]
+- [[_COMMUNITY_Community 6|Community 6]]
+- [[_COMMUNITY_Community 7|Community 7]]
+- [[_COMMUNITY_Community 8|Community 8]]
+- [[_COMMUNITY_Community 9|Community 9]]
+- [[_COMMUNITY_Community 10|Community 10]]
+- [[_COMMUNITY_Community 11|Community 11]]
+- [[_COMMUNITY_Community 12|Community 12]]
+- [[_COMMUNITY_Community 13|Community 13]]
+- [[_COMMUNITY_Community 14|Community 14]]
+- [[_COMMUNITY_Community 15|Community 15]]
+- [[_COMMUNITY_Community 16|Community 16]]
+- [[_COMMUNITY_Community 17|Community 17]]
+- [[_COMMUNITY_Community 18|Community 18]]
+- [[_COMMUNITY_Community 19|Community 19]]
+- [[_COMMUNITY_Community 20|Community 20]]
+- [[_COMMUNITY_Community 21|Community 21]]
+- [[_COMMUNITY_Community 22|Community 22]]
+- [[_COMMUNITY_Community 23|Community 23]]
+- [[_COMMUNITY_Community 25|Community 25]]
+- [[_COMMUNITY_Community 26|Community 26]]
+- [[_COMMUNITY_Community 27|Community 27]]
+- [[_COMMUNITY_Community 28|Community 28]]
+- [[_COMMUNITY_Community 29|Community 29]]
+- [[_COMMUNITY_Community 30|Community 30]]
+- [[_COMMUNITY_Community 31|Community 31]]
+- [[_COMMUNITY_Community 32|Community 32]]
+- [[_COMMUNITY_Community 33|Community 33]]
+- [[_COMMUNITY_Community 34|Community 34]]
+- [[_COMMUNITY_Community 35|Community 35]]
+- [[_COMMUNITY_Community 36|Community 36]]
+- [[_COMMUNITY_Community 37|Community 37]]
+- [[_COMMUNITY_Community 38|Community 38]]
+- [[_COMMUNITY_Community 39|Community 39]]
+- [[_COMMUNITY_Community 40|Community 40]]
+- [[_COMMUNITY_Community 41|Community 41]]
+- [[_COMMUNITY_Community 42|Community 42]]
+- [[_COMMUNITY_Community 43|Community 43]]
+- [[_COMMUNITY_Community 44|Community 44]]
+- [[_COMMUNITY_Community 45|Community 45]]
+- [[_COMMUNITY_Community 46|Community 46]]
+- [[_COMMUNITY_Community 47|Community 47]]
+- [[_COMMUNITY_Community 48|Community 48]]
+- [[_COMMUNITY_Community 49|Community 49]]
+- [[_COMMUNITY_Community 50|Community 50]]
+- [[_COMMUNITY_Community 51|Community 51]]
+- [[_COMMUNITY_Community 52|Community 52]]
+- [[_COMMUNITY_Community 53|Community 53]]
+- [[_COMMUNITY_Community 54|Community 54]]
+- [[_COMMUNITY_Community 55|Community 55]]
+- [[_COMMUNITY_Community 56|Community 56]]
+- [[_COMMUNITY_Community 57|Community 57]]
+- [[_COMMUNITY_Community 58|Community 58]]
+- [[_COMMUNITY_Community 59|Community 59]]
+- [[_COMMUNITY_Community 60|Community 60]]
+- [[_COMMUNITY_Community 61|Community 61]]
+- [[_COMMUNITY_Community 62|Community 62]]
+- [[_COMMUNITY_Community 63|Community 63]]
+- [[_COMMUNITY_Community 64|Community 64]]
+- [[_COMMUNITY_Community 65|Community 65]]
+- [[_COMMUNITY_Community 66|Community 66]]
+- [[_COMMUNITY_Community 67|Community 67]]
+- [[_COMMUNITY_Community 68|Community 68]]
+- [[_COMMUNITY_Community 69|Community 69]]
+- [[_COMMUNITY_Community 71|Community 71]]
+- [[_COMMUNITY_Community 72|Community 72]]
+- [[_COMMUNITY_Community 73|Community 73]]
+- [[_COMMUNITY_Community 74|Community 74]]
+- [[_COMMUNITY_Community 75|Community 75]]
+- [[_COMMUNITY_Community 76|Community 76]]
+- [[_COMMUNITY_Community 77|Community 77]]
+- [[_COMMUNITY_Community 78|Community 78]]
+- [[_COMMUNITY_Community 79|Community 79]]
+- [[_COMMUNITY_Community 80|Community 80]]
+- [[_COMMUNITY_Community 81|Community 81]]
+- [[_COMMUNITY_Community 82|Community 82]]
+- [[_COMMUNITY_Community 83|Community 83]]
+- [[_COMMUNITY_Community 84|Community 84]]
+- [[_COMMUNITY_Community 85|Community 85]]
+- [[_COMMUNITY_Community 86|Community 86]]
+- [[_COMMUNITY_Community 87|Community 87]]
+- [[_COMMUNITY_Community 88|Community 88]]
+- [[_COMMUNITY_Community 89|Community 89]]
+- [[_COMMUNITY_Community 90|Community 90]]
+- [[_COMMUNITY_Community 91|Community 91]]
+- [[_COMMUNITY_Community 92|Community 92]]
+- [[_COMMUNITY_Community 93|Community 93]]
+- [[_COMMUNITY_Community 94|Community 94]]
+- [[_COMMUNITY_Community 95|Community 95]]
+- [[_COMMUNITY_Community 96|Community 96]]
+- [[_COMMUNITY_Community 97|Community 97]]
+- [[_COMMUNITY_Community 98|Community 98]]
+- [[_COMMUNITY_Community 100|Community 100]]
+- [[_COMMUNITY_Community 101|Community 101]]
+- [[_COMMUNITY_Community 102|Community 102]]
+- [[_COMMUNITY_Community 103|Community 103]]
+- [[_COMMUNITY_Community 106|Community 106]]
+- [[_COMMUNITY_Community 107|Community 107]]
+- [[_COMMUNITY_Community 108|Community 108]]
+- [[_COMMUNITY_Community 109|Community 109]]
+- [[_COMMUNITY_Community 110|Community 110]]
+- [[_COMMUNITY_Community 111|Community 111]]
+- [[_COMMUNITY_Community 112|Community 112]]
+- [[_COMMUNITY_Community 113|Community 113]]
+- [[_COMMUNITY_Community 114|Community 114]]
+- [[_COMMUNITY_Community 115|Community 115]]
+- [[_COMMUNITY_Community 116|Community 116]]
+- [[_COMMUNITY_Community 117|Community 117]]
+- [[_COMMUNITY_Community 118|Community 118]]
+- [[_COMMUNITY_Community 119|Community 119]]
+- [[_COMMUNITY_Community 120|Community 120]]
+- [[_COMMUNITY_Community 121|Community 121]]
+- [[_COMMUNITY_Community 122|Community 122]]
+- [[_COMMUNITY_Community 123|Community 123]]
+- [[_COMMUNITY_Community 124|Community 124]]
+- [[_COMMUNITY_Community 125|Community 125]]
+- [[_COMMUNITY_Community 126|Community 126]]
+- [[_COMMUNITY_Community 127|Community 127]]
+- [[_COMMUNITY_Community 128|Community 128]]
+- [[_COMMUNITY_Community 129|Community 129]]
+- [[_COMMUNITY_Community 130|Community 130]]
+- [[_COMMUNITY_Community 131|Community 131]]
+- [[_COMMUNITY_Community 132|Community 132]]
+- [[_COMMUNITY_Community 133|Community 133]]
+- [[_COMMUNITY_Community 134|Community 134]]
+- [[_COMMUNITY_Community 135|Community 135]]
+- [[_COMMUNITY_Community 136|Community 136]]
+- [[_COMMUNITY_Community 137|Community 137]]
+- [[_COMMUNITY_Community 138|Community 138]]
+- [[_COMMUNITY_Community 139|Community 139]]
 - [[_COMMUNITY_Community 140|Community 140]]
 - [[_COMMUNITY_Community 141|Community 141]]
 - [[_COMMUNITY_Community 142|Community 142]]
@@ -340,24 +340,16 @@
 - [[_COMMUNITY_Community 328|Community 328]]
 - [[_COMMUNITY_Community 329|Community 329]]
 - [[_COMMUNITY_Community 330|Community 330]]
-- [[_COMMUNITY_Community 331|Community 331]]
-- [[_COMMUNITY_Community 332|Community 332]]
 - [[_COMMUNITY_Community 333|Community 333]]
-- [[_COMMUNITY_Community 334|Community 334]]
-- [[_COMMUNITY_Community 335|Community 335]]
-- [[_COMMUNITY_Community 336|Community 336]]
-- [[_COMMUNITY_Community 337|Community 337]]
-- [[_COMMUNITY_Community 338|Community 338]]
-- [[_COMMUNITY_Community 339|Community 339]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `LedgerTransaction` - 29 edges
-2. `資料遷移策略實作計畫` - 28 edges
-3. `StudentAccount` - 25 edges
-4. `Batch 6 — Accounting & UX Fixes: 驗證清單` - 25 edges
-5. `TodayMenu` - 24 edges
-6. `Phase 1.3 Google Sheets Sync And Offline Implementation Plan` - 23 edges
-7. `Phase 2 iPad Face Handoff Implementation Plan` - 23 edges
+1. `資料遷移策略實作計畫` - 28 edges
+2. `LedgerTransaction` - 25 edges
+3. `Batch 6 — Accounting & UX Fixes: 驗證清單` - 25 edges
+4. `StudentAccount` - 23 edges
+5. `Phase 1.3 Google Sheets Sync And Offline Implementation Plan` - 23 edges
+6. `Phase 2 iPad Face Handoff Implementation Plan` - 23 edges
+7. `TodayMenu` - 22 edges
 8. `Batch 5-6 Verification Fixes: 驗證清單` - 21 edges
 9. `compilerOptions` - 19 edges
 10. `PosMode` - 18 edges
@@ -392,357 +384,357 @@
 - **data migration architecture components** — data-migration, indexeddb, zustand, localstorage-migration, migration-stages, idempotency-keys, conflict-policy [INFERRED]
 - **security implementation components** — frontend-security, xss-strategy, csp-policy, display-policy, data-classification [INFERRED]
 
-## Communities (340 total, 60 thin omitted)
+## Communities (332 total, 60 thin omitted)
 
-### Community 0 - "Auth, Sync & Deployment"
+### Community 0 - "Community 0"
 Cohesion: 0.06
 Nodes (51): Firebase Sync Architecture Implementation Plan, Spec Conformance Audit, buildTransactionQueuePayload Function, getCloseBlockingSyncSummary Function, getOperatorAccess(), isAllowedWorkspaceEmail(), OperatorAccess, OperatorProfile (+43 more)
 
-### Community 1 - "UI Components & Modals"
+### Community 1 - "Community 1"
 Cohesion: 0.14
 Nodes (12): field, label, onChange, user, onChange, user, Field, FieldProps (+4 more)
 
-### Community 2 - "POS Screen Components"
-Cohesion: 0.08
-Nodes (23): ActionBar, CustomerCard, DuplicateWarningBanner, IdleHero, SearchBox, CustomerCard, amt, base (+15 more)
+### Community 2 - "Community 2"
+Cohesion: 0.07
+Nodes (28): POS Components (v2), ExpensePanel, RecentStrip, ActionBar, CustomerCard, DuplicateWarningBanner, FirestoreSyncStatus, deriveSyncIndicator (+20 more)
 
-### Community 3 - "Batch Planning & Execution"
+### Community 3 - "Community 3"
 Cohesion: 0.05
 Nodes (37): afterBalance-based display logic, Batch 1 cashflow redesign, Batch 1 hotfix round 2, Batch 4 accounting fixes, Batch 5-6 verification checklist, Batch 5 UX improvements, Batch 6 accounting/UX fixes, __cashier__ sentinel (+29 more)
 
-### Community 4 - "Ledger & Cash Close Domain"
-Cohesion: 0.20
-Nodes (12): AuditEventInput, BusinessDateStatus, createLedgerAuditEvent(), decideLedgerDeletePolicy(), decideLedgerEditPolicy(), LedgerAuditEventType, LedgerMutationDecision, editTransaction action (+4 more)
+### Community 4 - "Community 4"
+Cohesion: 0.15
+Nodes (16): isStudentTransaction(), createLedgerDateRange(), filterTransactionsByBusinessDate(), getMonday(), getMonthEnd(), getSunday(), groupLedgerRowsByStudent(), LedgerDateRange (+8 more)
 
-### Community 5 - "Frontend Hardening Plans"
+### Community 5 - "Community 5"
 Cohesion: 0.08
 Nodes (35): Frontend Hardening Plan (4 PRs), PR1 CSV Export Implementation, PR2 React Error Boundary, PR3 Accessibility Improvements, PR4 Performance Optimization (React.memo + Virtualization), iPad Face Recognition Ordering System Design V3, Face Handoff Flow, Face Recognition System (+27 more)
 
-### Community 6 - "Ops & Deployment Scripts"
+### Community 6 - "Community 6"
 Cohesion: 0.08
 Nodes (73): check_and_switch_firebase(), check_and_switch_gcloud(), confirm_prod(), deploy_all(), deploy_frontend(), deploy_full_stack(), deploy_indexes(), deploy_rules() (+65 more)
 
-### Community 7 - "Menu Domain"
-Cohesion: 0.07
-Nodes (37): calculateTransactionAmount(), CASHIER_SENTINEL, countActiveOrdersForStudent(), CreateLedgerTransactionInput, RecalculationResult, TransactionType, MenuSnapshot, PosSourceDevice (+29 more)
+### Community 7 - "Community 7"
+Cohesion: 0.13
+Nodes (19): calculateTransactionAmount(), CreateLedgerTransactionInput, MenuSnapshot, PosSourceDevice, BuildExpenseTransactionDraftArgs, buildPosTransactionDraft(), DerivedTransactionAttrs, deriveTransactionAttributes() (+11 more)
 
-### Community 8 - "Cross-Cutting Concepts"
+### Community 8 - "Community 8"
 Cohesion: 0.08
 Nodes (28): Daily Cash Close Process, CSS Design Tokens, Ledger Audit Trail, Offline-First PWA, Operator Access Control, POS Transaction State Machine, Batch 6 Wave 1 Verification Report, Design System Component Library Plan (+20 more)
 
-### Community 9 - "POS State Validation & Storage"
+### Community 9 - "Community 9"
 Cohesion: 0.07
-Nodes (42): result, tx, result, tx, ARRAY_KEYS, hasNum(), hasStr(), isSafeInt() (+34 more)
+Nodes (43): result, tx, result, tx, ARRAY_KEYS, hasNum(), hasStr(), isSafeInt() (+35 more)
 
-### Community 10 - "App Shell & Report Layout"
+### Community 10 - "Community 10"
 Cohesion: 0.10
 Nodes (19): App component, AuthGate component, LedgerGroupedTable component, Code Review Report, Deployment Guide, Error Handling Recovery Strategy Plan, Verification Checklist, AppErrorCode (+11 more)
 
-### Community 11 - "Ledger Transaction Core"
-Cohesion: 0.07
-Nodes (29): Affected Callers Summary, code:typescript (// frontend/src/store/posTypes.ts), code:typescript (// frontend/src/store/posActions/transactionActions.ts), code:typescript (// frontend/src/store/posActions/sessionActions.ts), code:typescript (// frontend/src/store/posActions/menuActions.ts), code:typescript (// frontend/src/store/posPersistence.ts), code:typescript (// frontend/src/store/posStore.ts), code:diff (- import type { PosState } from '../store/posStore';) (+21 more)
+### Community 11 - "Community 11"
+Cohesion: 0.15
+Nodes (16): RecalculationResult, FaceEnrollmentStatus, filterActiveStudents(), ImportFieldError, searchActiveStudents(), StudentAccount, StudentImportResult, StudentImportRow (+8 more)
 
-### Community 12 - "TypeScript Configuration"
+### Community 12 - "Community 12"
 Cohesion: 0.10
 Nodes (20): compilerOptions, allowImportingTsExtensions, allowJs, erasableSyntaxOnly, jsx, lib, module, moduleDetection (+12 more)
 
-### Community 13 - "Package Dependencies"
+### Community 13 - "Community 13"
 Cohesion: 0.10
-Nodes (21): devDependencies, eslint, @eslint/js, eslint-plugin-react-hooks, eslint-plugin-react-refresh, @firebase/rules-unit-testing, firebase-tools, globals (+13 more)
+Nodes (20): devDependencies, eslint, @eslint/js, eslint-plugin-react-hooks, eslint-plugin-react-refresh, @firebase/rules-unit-testing, globals, jsdom (+12 more)
 
-### Community 14 - "Error Handling & Sync Status"
+### Community 14 - "Community 14"
 Cohesion: 0.14
 Nodes (20): ErrorBoundary with Crash Page, SyncStatusBadge Component, Cash Close Domain (DailySettlement / validateCashClose), Daily Cash Session Domain, Firebase Initialization (Emulator, Persistent Cache, Multi-tab), Firestore Collection Paths, Firestore Security Rules Tests, Firestore Schema Validation Tests (+12 more)
 
-### Community 15 - "Ops Documentation"
+### Community 15 - "Community 15"
 Cohesion: 0.11
 Nodes (20): Firebase Backup Runbook, Cross-Platform Android PWA Support Plan, Google Sheets Sync & Offline Plan (OBSOLETE), iPad POS System Design Spec, Tweaks Panel Prototyping Toolkit, Batch 5-6 UI Fixes Verification Checklist, Firestore Composite Indexes, MainLayout App Shell (+12 more)
 
-### Community 16 - "Ledger Data Model"
-Cohesion: 0.12
-Nodes (15): ConfirmBanner, ConfirmBannerProps, FlashData, EXPENSE_QUICK_OPTIONS, ExpensePanel, ExpensePanelProps, IdleHero, IdleHeroProps (+7 more)
+### Community 16 - "Community 16"
+Cohesion: 0.16
+Nodes (15): BusinessDateStatus, CashCloseDraft, createCashCloseDraft(), createDailySettlement(), getOpeningCash(), isBusinessDateWritable(), reopenBusinessDate(), shiftDateStr() (+7 more)
 
-### Community 17 - "iPad Handoff"
+### Community 17 - "Community 17"
 Cohesion: 0.14
 Nodes (17): HandoffAction, IpadHandoffMessage, readHandoffIntent(), toHandoffScannerInput(), VALID_ACTIONS, VALID_SOURCES, ValidateHandoffResult, validateIpadHandoffMessage() (+9 more)
 
-### Community 18 - "TypeScript Node Config"
+### Community 18 - "Community 18"
 Cohesion: 0.11
 Nodes (17): compilerOptions, allowImportingTsExtensions, erasableSyntaxOnly, lib, module, moduleDetection, moduleResolution, noEmit (+9 more)
 
-### Community 19 - "POS Component Props"
-Cohesion: 0.08
-Nodes (21): ActionBarProps, ConfirmBannerProps, CustomerCardProps, DuplicateWarningBannerProps, FlashData, IdleHeroProps, KeyboardEventWithFlag, MidnightBanner (+13 more)
+### Community 19 - "Community 19"
+Cohesion: 0.05
+Nodes (40): FlashData, MainLayout, MainLayoutProps, ActionBarProps, ConfirmBanner, ConfirmBannerProps, CustomerCardProps, DuplicateWarningBannerProps (+32 more)
 
-### Community 20 - "Community 20 (components_screens_adminscreenprops comp)"
-Cohesion: 0.07
-Nodes (36): createMenuSnapshot(), filterActiveVendors(), MenuCatalogItem, MenuValidationResult, promoteCatalogItemToTodayMenu Function, promoteCatalogItemToTodayMenu(), RecordStatus, TodayMenu (+28 more)
+### Community 20 - "Community 20"
+Cohesion: 0.11
+Nodes (26): ReportScreenProps, createMenuSnapshot(), filterActiveVendors(), MenuCatalogItem, MenuValidationResult, promoteCatalogItemToTodayMenu Function, promoteCatalogItemToTodayMenu(), RecordStatus (+18 more)
 
-### Community 21 - "Community 21 (domain_student_faceenrollmentstatus doma)"
+### Community 21 - "Community 21"
 Cohesion: 0.22
 Nodes (9): port, emulators, auth, firestore, singleProjectMode, ui, port, enabled (+1 more)
 
-### Community 22 - "Community 22 (domain_cashclose_businessdatestatus doma)"
-Cohesion: 0.08
-Nodes (30): BusinessDateStatus, CashCloseDraft, createCashCloseDraft(), createDailySettlement(), DailySettlement, getOpeningCash(), isBusinessDateWritable(), reopenBusinessDate() (+22 more)
-
-### Community 23 - "Community 23 (domain_posflow_createinitialposflowstate)"
-Cohesion: 0.11
-Nodes (26): createInitialPosFlowState(), PosFlowEvent, reduceCommitting(), reduceDuplicateWarning(), reduceError(), reduceExpenseDirection(), reduceExpenseInput(), reduceExpenseOtherNote() (+18 more)
-
-### Community 25 - "Community 25 (errors_errorlogger_appenderrorlog errors)"
-Cohesion: 0.23
-Nodes (12): appendErrorLog(), clearErrorLog(), CONTEXT_ALLOW_LIST, ErrorLogEntry, getRecentErrors(), installErrorListeners(), installGlobalErrorListeners(), readErrorLog() (+4 more)
-
-### Community 26 - "Community 26 (domain_ledgerreport_createledgerdaterang)"
-Cohesion: 0.16
-Nodes (11): PwaInstallBanner, btn, onClick, user, AnyObj, listeners, mockEvent, mockPrompt (+3 more)
-
-### Community 27 - "Community 27 (domain_ledgerexport_buildledgerprintview)"
+### Community 22 - "Community 22"
 Cohesion: 0.09
-Nodes (27): buildLedgerPrintViewModel(), buildSettlementCsvRows(), buildTransactionCsvRows(), serializeCsv(), SETTLEMENT_CSV_COLUMNS, TRANSACTION_CSV_COLUMNS, triggerCsvDownload(), LedgerDateRangeKind (+19 more)
+Nodes (28): DailySettlement, LedgerSyncStatus, TransactionType, AuditEventInput, BusinessDateStatus, createLedgerAuditEvent(), decideLedgerDeletePolicy(), decideLedgerEditPolicy() (+20 more)
 
-### Community 28 - "Community 28 (frontend_src_domain_tests_ledger_test_ts)"
-Cohesion: 0.07
-Nodes (28): 10. SyncStatusBadge (Priority LOW — pure presentation), 11. MainLayout (Priority LOW — pure presentation), 1. EditTransactionModal (Priority HIGH — cash flow), 2. CashClosePanel (Priority HIGH — cash flow), 3. ReportSummaryStats (Priority HIGH — cash flow), 4. TodayDashboard (Priority MEDIUM — display logic), 5. AuditTrailTable (Priority MEDIUM), 6. SettlementHistoryTable (Priority MEDIUM) (+20 more)
+### Community 23 - "Community 23"
+Cohesion: 0.10
+Nodes (33): createInitialPosFlowState(), ExpenseDirection, PosFlowEvent, PosFlowState, PosSelectionSource, reduceCommitting(), reduceDuplicateWarning(), reduceError() (+25 more)
 
-### Community 29 - "Community 29 (domain_cashsession_calculateexpecteddraw)"
-Cohesion: 0.22
-Nodes (10): calculateExpectedDrawerCash(), createDailyCashSession(), CreateDailyCashSessionInput, createDrawerCloseout(), DailyCashSessionStatus, DrawerCashInput, DrawerCloseout, CashSession Calculation Tests (+2 more)
+### Community 25 - "Community 25"
+Cohesion: 0.21
+Nodes (13): appendErrorLog(), clearErrorLog(), CONTEXT_ALLOW_LIST, ErrorLogEntry, getRecentErrors(), installErrorListeners(), installGlobalErrorListeners(), readErrorLog() (+5 more)
 
-### Community 30 - "Community 30 (domain_ledger_recalculationresult domain)"
+### Community 26 - "Community 26"
+Cohesion: 0.08
+Nodes (24): EditTransactionModal, EditTransactionModalProps, PwaInstallBanner, btn, onClick, user, confirmBtn, onCancel (+16 more)
+
+### Community 27 - "Community 27"
+Cohesion: 0.10
+Nodes (26): buildLedgerPrintViewModel(), buildSettlementCsvRows(), buildTransactionCsvRows(), LedgerPrintViewModel, serializeCsv(), SETTLEMENT_CSV_COLUMNS, TRANSACTION_CSV_COLUMNS, triggerCsvDownload() (+18 more)
+
+### Community 28 - "Community 28"
+Cohesion: 0.09
+Nodes (22): countActiveOrdersForStudent(), PosSearchMode, PosSearchResult, resolveScannedStudent(), searchPosStudents(), STUDENT_001, STUDENT_004, TX_ORDER_001 (+14 more)
+
+### Community 29 - "Community 29"
+Cohesion: 0.20
+Nodes (11): calculateExpectedDrawerCash(), createDailyCashSession(), CreateDailyCashSessionInput, createDrawerCloseout(), DailyCashSession, DailyCashSessionStatus, DrawerCashInput, DrawerCloseout (+3 more)
+
+### Community 30 - "Community 30"
 Cohesion: 0.04
 Nodes (46): 1. Cloudflare Workers Static Assets + Worker API + D1, 2. Cloudflare Pages Free, 3. Vercel Hobby, 4. Netlify Free, 5. GitHub Pages, 6. Firebase Hosting Spark, Branch And Environment Model, Branch Protection And Required Status Checks (+38 more)
 
-### Community 31 - "Community 31 (components_errorboundary_appcrashpage co)"
+### Community 31 - "Community 31"
 Cohesion: 0.04
 Nodes (44): Background Sync API Feasibility, Cache Strategy, Campus Environment Considerations, Campus Firewall / Proxy, code:text (vite-plugin-pwa + Workbox generateSW), code:json ({), code:html (<link rel="manifest" href="/manifest.webmanifest" />), code:text (App starts) (+36 more)
 
-### Community 32 - "Community 32 (domain_posflow_posmode frontend_src_hook)"
+### Community 32 - "Community 32"
 Cohesion: 0.16
-Nodes (11): PosMode, UseAppNavigationShortcutsArgs, UseCrashDraftRecoveryArgs, UseKeyboardShortcutsArgs, ActionBar, ActionBarProps, event, input (+3 more)
+Nodes (12): PosMode, UseAppNavigationShortcutsArgs, UseCrashDraftRecoveryArgs, useKeyboardShortcuts(), UseKeyboardShortcutsArgs, ActionBar, ActionBarProps, event (+4 more)
 
-### Community 33 - "Community 33 (domain_cashclose_getopeningcash domain_c)"
-Cohesion: 0.13
-Nodes (19): HistoryScreen, VendorsScreen, useAppNavigationShortcuts(), useCrashDraftRecovery(), useKeyboardShortcuts(), useOnlineStatus(), usePosFlow(), useServiceWorkerCleanup() (+11 more)
+### Community 33 - "Community 33"
+Cohesion: 0.11
+Nodes (20): IdleHero, MidnightBanner, SearchBox, HistoryScreen, VendorsScreen, useAppNavigationShortcuts(), useCrashDraftRecovery(), useOnlineStatus() (+12 more)
 
-### Community 34 - "Community 34 (firebase_firebaseapp_ensurefirebaseiniti)"
+### Community 34 - "Community 34"
 Cohesion: 0.29
 Nodes (10): ensureFirebaseInitialized(), FirebaseConfigState, FirebaseEnv, FirebaseServices, getFirebaseConfigState(), initializeFirestoreOnce(), isFirebaseConfigured(), readFirebaseConfig() (+2 more)
 
-### Community 35 - "Community 35 (frontend_src_mocks_initialdata_ts fronte)"
+### Community 35 - "Community 35"
 Cohesion: 0.22
 Nodes (9): port, emulators, auth, firestore, singleProjectMode, ui, port, enabled (+1 more)
 
-### Community 36 - "Community 36 (domain_posflow_reducecommitting domain_p)"
-Cohesion: 0.06
-Nodes (38): fmt(), AdminScreenProps, BackupScreen, ReportScreenProps, VendorsScreenProps, LedgerAuditEvent, LedgerTotals, CustomerCardProps (+30 more)
+### Community 36 - "Community 36"
+Cohesion: 0.10
+Nodes (19): fmt(), AdminScreenProps, BackupScreen, VendorsScreenProps, calculateLedgerTotals(), fmt(), AuditTrailTable, ExportActions() (+11 more)
 
-### Community 37 - "Community 37 (conflict-policy csp-policy data-classifi)"
+### Community 37 - "Community 37"
 Cohesion: 0.18
 Nodes (11): multi-device conflict policy, CSP policy, data classification, data-migration-strategy, display policy, frontend-security-considerations, idempotency keys, IndexedDB (+3 more)
 
-### Community 38 - "Community 38 (firebase_json frontend_favicon frontend_)"
+### Community 38 - "Community 38"
 Cohesion: 0.17
 Nodes (11): App Favicon (Purple Lightning Bolt), name, private, scripts, build, dev, lint, preview (+3 more)
 
-### Community 39 - "Community 39 (domain_ledgerreport_ledgertotals fronten)"
+### Community 39 - "Community 39"
 Cohesion: 0.05
 Nodes (41): code:ts (import { describe, expect, it } from 'vitest';), code:ts (import { describe, expect, it } from 'vitest';), code:ts (export type ValidationResult =), code:bash (git add frontend/src/storage/posStateValidator.ts frontend/s), code:ts (import { describe, expect, it, vi } from 'vitest';), code:ts (export interface StorageHealth {), code:bash (git add frontend/src/storage/storageHealth.ts frontend/src/s), code:ts (export interface PosCrashDraft {) (+33 more)
 
-### Community 40 - "Community 40 (components_errorboundary_errorboundary c)"
+### Community 40 - "Community 40"
 Cohesion: 0.13
 Nodes (7): AppCrashPage(), ErrorBoundary, ErrorBoundaryProps, ErrorBoundaryState, SectionError(), onError, user
 
-### Community 41 - "Community 41 (components_errorboundary_test_error_boun)"
+### Community 41 - "Community 41"
 Cohesion: 0.20
 Nodes (10): ErrorBoundary Component Tests, AdminScreen, Reset Data Danger Zone, Crash Draft Saving Before Transaction Commit, POS Flow State Machine Reducer, usePosFlow Hook, P0 False Cloud-Sync Confidence UX Risk, P0 Unsafe Amount Parsing UX Risk (+2 more)
 
-### Community 42 - "Community 42 (frontend_public_manifest_json public_man)"
+### Community 42 - "Community 42"
 Cohesion: 0.20
 Nodes (9): background_color, description, display, icons, name, orientation, short_name, start_url (+1 more)
 
-### Community 43 - "Community 43 (frontend_src_store_tests_ledgerstore_tes)"
+### Community 43 - "Community 43"
 Cohesion: 0.20
 Nodes (8): input, next, raw, result, SEED_TX, state, store, txs
 
-### Community 44 - "Community 44 (domain_postransaction_postransactiondraf)"
-Cohesion: 0.40
-Nodes (7): clearCrashDraft(), isCrashDraftAvailable(), loadCrashDraft(), openDB(), saveCrashDraft(), sampleDraft, updated
+### Community 44 - "Community 44"
+Cohesion: 0.36
+Nodes (8): PosTransactionDraft, clearCrashDraft(), isCrashDraftAvailable(), loadCrashDraft(), openDB(), saveCrashDraft(), sampleDraft, updated
 
-### Community 45 - "Community 45 (docs_ui_sample_pos_components_jsx ui_sam)"
+### Community 45 - "Community 45"
 Cohesion: 0.29
 Nodes (5): ConfirmBanner(), CustomerCard(), fmt(), IdleHero(), sign()
 
-### Community 46 - "Community 46 (talented_easyorder_firebase_auth_port ta)"
+### Community 46 - "Community 46"
 Cohesion: 0.22
 Nodes (9): port, emulators, auth, firestore, singleProjectMode, ui, port, enabled (+1 more)
 
-### Community 47 - "Community 47 (audit_trail business_date_lock csv_expor)"
+### Community 47 - "Community 47"
 Cohesion: 0.22
 Nodes (9): Audit Trail, Business Date Lock, CSV Export Schema, Edge Case Scenario Analysis, Face Handoff, Phase 1.2 Reporting and Settlement, Phase 2 iPad Face Handoff, Reopen and Reclose (+1 more)
 
-### Community 48 - "Community 48 (batch5_6_verification_fixes batch6_verif)"
+### Community 48 - "Community 48"
 Cohesion: 0.28
 Nodes (9): Batch 5-6 Verification Fixes, Batch 6 Verification Checklist, Counter Net Cash, Disable Hover Selection, ExpensePanel, Frontend Audit Remediation, Idle Keyboard Shortcuts, LedgerGroupedTable (+1 more)
 
-### Community 49 - "Community 49 (docs_code-quality-refactoring_plan docs_)"
+### Community 49 - "Community 49"
 Cohesion: 0.05
 Nodes (40): 1. God Component — App.tsx, 1. 冗餘且低效的餘額重算邏輯, 1. 組件庫過於巨大且職責混雜, 1. 自動化測試, 2. Infrastructure 邏輯滲透核心 Store, 2. 手動驗證流程, 2. 殘留的 Tweaks 實驗性代碼, 2. 重複的交易屬性推導 (+32 more)
 
-### Community 50 - "Community 50 (frontend_src_storage_storagehealth_ts fr)"
+### Community 50 - "Community 50"
 Cohesion: 0.31
 Nodes (7): checkStorageHealth(), FallbackMode, getFallbackMode(), StorageHealth, health, origSet, result
 
-### Community 51 - "Community 51 (components_screens_reportscreen domain_l)"
+### Community 51 - "Community 51"
 Cohesion: 0.25
 Nodes (9): ReportScreen, triggerCsvDownload Blob Download Test, Correction And Void Instead Of Edit Delete, PC POS Accounting Authority Boundary, User Operation SOP And UX Blind Spot Analysis, LedgerAuditEvent Type And Display, iPad Face Auth Handoff Specification, Report Screen Integration Tests (+1 more)
 
-### Community 52 - "Community 52 (frontend_src_components_ui_tabs_tsx fron)"
+### Community 52 - "Community 52"
 Cohesion: 0.25
 Nodes (7): activeTab, items, onChange, user, TabItem, Tabs, TabsProps
 
-### Community 53 - "Community 53 (components_syncstatusbadge_iconbykind co)"
-Cohesion: 0.20
-Nodes (10): iconByKind, SyncStatusBadge(), deriveSyncIndicator(), SyncIndicatorInput, SyncIndicatorKind, badge, { container }, { getByText } (+2 more)
+### Community 53 - "Community 53"
+Cohesion: 0.32
+Nodes (4): iconByKind, deriveSyncIndicator(), SyncIndicatorInput, SyncIndicatorKind
 
-### Community 54 - "Community 54 (components_pos_components_fmt components)"
+### Community 54 - "Community 54"
 Cohesion: 0.05
 Nodes (39): code:text (Student/menu/ledger/settlement domain write), code:ts (export type ConflictEntity = 'student' | 'vendor' | 'menu' |), code:ts (export type LocalOnlyRowsDecision = 'keep' | 'export' | 'dis), code:ts (export interface LegacySheetRow {), code:bash (npx vitest run src/domain/__tests__/syncTransport.test.ts sr), code:bash (npx vitest run src/store/__tests__/syncQueueStore.test.ts sr), code:bash (npx tsc --noEmit), code:bash (git add frontend/src/domain frontend/src/services frontend/s) (+31 more)
 
-### Community 55 - "Community 55 (frontend_src_domain_tests_postransaction)"
+### Community 55 - "Community 55"
 Cohesion: 0.05
 Nodes (39): §1.1: 搜尋框聚焦行為（3 個修復點）, §1.2: 「新增 收入/支出 (A)」按鈕, §1.4: 收支流程 Escape 返回上一層, §1 — 鍵盤快捷鍵與輸入聚焦, §2.1: NumericInput DRY + 滾輪 + 快捷鍵 E, §2 — 數值輸入框限制, §3.1: 價格修改區域排版 + 便當統計, §3.2: RecentStrip 筆數 (+31 more)
 
-### Community 56 - "Community 56 (frontend_src_firebase_tests_firestorerul)"
+### Community 56 - "Community 56"
 Cohesion: 0.25
 Nodes (3): batch, db, rulesPath
 
-### Community 57 - "Community 57 (frontend_package_dependencies frontend_p)"
+### Community 57 - "Community 57"
 Cohesion: 0.29
 Nodes (7): dependencies, firebase, lucide-react, react, react-dom, zustand, Zustand
 
-### Community 58 - "Community 58 (domain_posflow_expensedirection domain_p)"
-Cohesion: 0.40
-Nodes (4): confirmBtn, input, input2, user
+### Community 58 - "Community 58"
+Cohesion: 0.12
+Nodes (15): Affected Callers, Approach, code:typescript (build: {), code:typescript (import { ReportScreen, AdminScreen, VendorsScreen, HistorySc), code:typescript (import React, { Suspense } from 'react';), Files, Objective, Plan: Monolithic JS Bundle — Code Splitting (#144) (+7 more)
 
-### Community 59 - "Community 59 (cash_session counter_cash_normalization )"
+### Community 59 - "Community 59"
 Cohesion: 0.33
 Nodes (6): Cash Session, Counter Cash Exception Normalization, Drawer Closeout, Opening Cash, Per-Order Price Override, Quick Amounts
 
-### Community 60 - "Community 60 (docs_ui_sample_data_jsx ui_sample_data_o)"
+### Community 60 - "Community 60"
 Cohesion: 0.33
 Nodes (5): ORDERED_TODAY, STUDENTS, TODAY_MENU, TODAY_TX, VENDORS
 
-### Community 61 - "Community 61 (frontend_src_components_ui_statusbadge_t)"
+### Community 61 - "Community 61"
 Cohesion: 0.40
 Nodes (4): el, BadgeVariant, StatusBadge, StatusBadgeProps
 
-### Community 62 - "Community 62 (components_mainlayout_flashdata componen)"
+### Community 62 - "Community 62"
 Cohesion: 0.05
 Nodes (38): Architecture Decision Matrix, code:text (Admin enrollment), code:ts (export type FaceDiagnosticEventType =), code:ts (export interface FaceRecognitionRuntimeConfig {), code:bash (npx vitest run src/domain/__tests__/faceFeasibility.test.ts ), code:bash (npx vitest run src/__tests__/ipadRecognitionScreen.integrati), code:bash (npx tsc --noEmit), code:bash (git add frontend/src/domain frontend/src/services/face front) (+30 more)
 
-### Community 63 - "Community 63 (cloudflare_d1 free_backend_architecture )"
+### Community 63 - "Community 63"
 Cohesion: 0.40
 Nodes (5): Cloudflare D1 + Workers, Free Backend Architecture Exploration, Idempotency, Local-First Architecture, Supabase
 
-### Community 64 - "Community 64 (frontend_package_scripts frontend_packag)"
+### Community 64 - "Community 64"
 Cohesion: 0.17
 Nodes (11): bad, current, menu, r, result, state, student, students (+3 more)
 
-### Community 65 - "Community 65 (domain_businessdate_businessdatestatus d)"
+### Community 65 - "Community 65"
 Cohesion: 0.70
 Nodes (3): BusinessDateStatus, canWriteBusinessDate(), isHistoricalBusinessDate()
 
-### Community 66 - "Community 66 (audit-trail edge-case-ui midnight-bounda)"
+### Community 66 - "Community 66"
 Cohesion: 0.40
 Nodes (5): audit trail UI, edge case UI plan, midnight boundary handling, settlement history UI, today status dashboard
 
-### Community 67 - "Community 67 (frontend_src_components_ui_kbd_tsx front)"
+### Community 67 - "Community 67"
 Cohesion: 0.50
 Nodes (3): el, Kbd, KbdProps
 
-### Community 68 - "Community 68 (frontend_src_store_tests_posstore_test_t)"
+### Community 68 - "Community 68"
 Cohesion: 0.05
 Nodes (38): A11y 基準, code:ts (import { describe, expect, it } from 'vitest';), code:tsx (<div className="sr-only" role="status" aria-live="polite" ar), code:bash (git add frontend/src/App.tsx frontend/src/components/pos-com), code:tsx (<button), code:bash (git add frontend/src/components/screens.tsx frontend/src/com), code:css (:root {), code:bash (git add frontend/src/index.css frontend/src/App.tsx frontend) (+30 more)
 
-### Community 69 - "Community 69 (frontend_src_components_ui_card_tsx fron)"
+### Community 69 - "Community 69"
 Cohesion: 0.50
 Nodes (3): el, Card, CardProps
 
-### Community 71 - "Community 71 (frontend_src_tests_pcpossafety_integrati)"
+### Community 71 - "Community 71"
 Cohesion: 0.06
 Nodes (34): Batch 1 — 金流邏輯重設計, code:block1 (totalIncome = Σ(order.paidAmount) + Σ(payment.paidAmount)), code:typescript (interface LedgerTotals {), code:typescript (const delta = (newPaidAmount - newMealPrice) - (oldPaidAmoun), code:typescript (interface DeleteOrderResult {), code:bash (cd frontend && grep -rl "'cancel'\|'topup'\|'correction'\|'v), code:block6 (Task 0 (migration) → Task 1 (domain) → Task 2 (store) → Task), Context (+26 more)
 
-### Community 72 - "Community 72 (firebase_firestoreSchema_TransactionDoc )"
+### Community 72 - "Community 72"
 Cohesion: 0.50
 Nodes (4): TransactionDoc, TransactionDocInput, buildTransactionDoc, StudentSnapshot
 
-### Community 73 - "Community 73 (domain_ledgerreport_ledgerdaterangekind )"
+### Community 73 - "Community 73"
 Cohesion: 0.06
 Nodes (34): Batch 4 — 會計正確性 + 收支流程修正：驗證清單, code:bash (cd frontend && npm run dev), F4-1: 儲值 flash 餘額雙重計算, F4-2: 收支完成後狀態卡住, F4-3: 收入流程跳過 reason 選擇, F4-4: 最近 5 筆收入顯示為「收」（綠色）, F4-5: 今日帳顯示現金流記錄, F4-6: RecentStrip order/payment 用 afterBalance 判斷 (+26 more)
 
-### Community 75 - "Community 75 (frontend_src_test_setup_ts test_setup_an)"
+### Community 75 - "Community 75"
 Cohesion: 0.50
 Nodes (3): AnyObj, fakeIndexedDB, localStorageMock
 
-### Community 76 - "Community 76 (close_blocking_sync_summary daily_settle)"
+### Community 76 - "Community 76"
 Cohesion: 0.50
 Nodes (4): CloseBlockingSyncSummary, DailySettlement, LedgerSyncBoundary, QueueableLedgerPayload
 
-### Community 77 - "Community 77 (ipad-handoff phase-1-1-pos pos-flow-redu)"
+### Community 77 - "Community 77"
 Cohesion: 0.50
 Nodes (4): iPad handoff receiver boundary, Phase 1.1 PC POS formalization, POS flow reducer, POS state machine
 
-### Community 78 - "Community 78 (design-system error-handling phase-abc-e)"
+### Community 78 - "Community 78"
 Cohesion: 0.50
 Nodes (4): design system component library, error handling and recovery, Phase A/B/C execution plan, PWA offline-first
 
-### Community 80 - "Community 80 (firebase-backend multi-device-concurrent)"
+### Community 80 - "Community 80"
 Cohesion: 0.50
 Nodes (4): Firebase Firestore + Vercel backend, multi-device concurrent operation, offline closeout allowed, user decision checklist
 
-### Community 81 - "Community 81 (assets_hero_easyorder_hero_image public_)"
+### Community 81 - "Community 81"
 Cohesion: 0.67
 Nodes (3): EasyOrder Hero Promotional Image Showing POS UI, PWA Manifest For Bento Counter POS, Sample Students Vendors And Menu Data
 
-### Community 82 - "Community 82 (business_date_status canwrite_businessda)"
+### Community 82 - "Community 82"
 Cohesion: 0.67
 Nodes (3): BusinessDateStatus, canWriteBusinessDate, isHistoricalBusinessDate
 
-### Community 84 - "Community 84 (components_pos-components_CustomerCard c)"
+### Community 84 - "Community 84"
 Cohesion: 0.67
 Nodes (3): CustomerCard, DuplicateWarningBanner, getQuickAmounts
 
-### Community 85 - "Community 85 (cloudflare-workers deployment-hosting-st)"
+### Community 85 - "Community 85"
 Cohesion: 0.67
 Nodes (3): Cloudflare Workers, deployment hosting strategy, Workers Static Assets
 
-### Community 86 - "Community 86 (batch1_hotfix batch4_verification expens)"
+### Community 86 - "Community 86"
 Cohesion: 0.67
 Nodes (3): Batch 1 Hotfix, Batch 4 Verification Checklist, Expense Flow
 
-### Community 88 - "Community 88 (ledger_export settlement_csv_columns tra)"
+### Community 88 - "Community 88"
 Cohesion: 0.67
 Nodes (3): CSV Export, SETTLEMENT_CSV_COLUMNS, TRANSACTION_CSV_COLUMNS
 
-### Community 89 - "Community 89 (ledger_audit_event ledger_totals ledger_)"
+### Community 89 - "Community 89"
 Cohesion: 0.67
 Nodes (3): LedgerAuditEvent, LedgerTotals, LedgerTransaction
 
-### Community 90 - "Community 90 (errors_errorLogger_installErrorListeners)"
+### Community 90 - "Community 90"
 Cohesion: 0.67
 Nodes (3): installErrorListeners, Frontend TypeScript Config (app), App Entry (main.tsx)
 
-### Community 91 - "Community 91 (storage_posstatevalidator_balance_recalc)"
+### Community 91 - "Community 91"
 Cohesion: 0.67
 Nodes (3): Student Balance Recalculation on Migration, POS State Schema Migration (v1 to v2), Transaction Type Remapping (topup to payment)
 
-### Community 92 - "Community 92 (firestore_indexes_json talented_easyorde)"
+### Community 92 - "Community 92"
 Cohesion: 0.29
 Nodes (6): fieldOverrides, indexes, fieldOverrides, indexes, fieldOverrides, indexes
 
-### Community 93 - "Community 93 (talented_easyorder_vercel_headers talent)"
+### Community 93 - "Community 93"
 Cohesion: 0.29
 Nodes (6): headers, rewrites, headers, rewrites, headers, rewrites
 
@@ -855,8 +847,8 @@ Cohesion: 0.11
 Nodes (17): code:ts (export type RecordStatus = 'active' | 'inactive';), Menu And Vendor Management Spec, Menu Catalog, Today's Menu Setup, UI/UX 要求, Vendor Management, 不在本模組範圍, 使用者故事 (+9 more)
 
 ### Community 167 - "Community 167"
-Cohesion: 0.11
-Nodes (21): TodayDashboard, isStudentTransaction(), calculateLedgerTotals(), createLedgerDateRange(), filterTransactionsByBusinessDate(), getMonday(), getMonthEnd(), getSunday() (+13 more)
+Cohesion: 0.12
+Nodes (16): Affected Callers, Approach, code:bash (cd frontend && npm install --save-dev @welldone-software/why), code:typescript (// Dev-only render tracking), code:typescript (if (import.meta.env.DEV) {), code:typescript (export function processTransaction(...) {), code:typescript (beforeAll(() => {), Files (+8 more)
 
 ### Community 168 - "Community 168"
 Cohesion: 0.12
@@ -1019,8 +1011,8 @@ Cohesion: 0.29
 Nodes (6): 1. 系統架構：Local Master + Cloud Backup (DR), 2. 核心交易邏輯 (Accounting Engine), 3. UI/UX 互動規範, 4. 階段開發進度, 5. 隱私核心規範, iPad 人臉辨識訂餐系統 (POS) - 系統設計規格書 (v2.0)
 
 ### Community 208 - "Community 208"
-Cohesion: 0.10
-Nodes (19): baseProps, baseTotals, btn, cashInput, cb, closeBtn, { container }, { container, getByLabelText } (+11 more)
+Cohesion: 0.33
+Nodes (5): afterOrder, afterPayment, store, totalPaid, txForStudent
 
 ### Community 209 - "Community 209"
 Cohesion: 0.29
@@ -1331,8 +1323,8 @@ Cohesion: 0.50
 Nodes (4): §4.2: 帳本分頁表格（移除虛擬化）, 邊界條件, 預期行為, 驗證步驟
 
 ### Community 287 - "Community 287"
-Cohesion: 0.05
-Nodes (48): EditTransactionModal, EditTransactionModalProps, Batch 3 Seed Data Reset Plan, Code Quality Refactoring Plan (2026-05-21), Phase 1.0 Foundation Hardening Plan, calculateTransactionAmount (paidAmount - mealPrice), CASHIER_SENTINEL Constant, countActiveOrdersForStudent Function (+40 more)
+Cohesion: 0.07
+Nodes (35): Batch 3 Seed Data Reset Plan, Code Quality Refactoring Plan (2026-05-21), Phase 1.0 Foundation Hardening Plan, calculateTransactionAmount (paidAmount - mealPrice), CASHIER_SENTINEL, CASHIER_SENTINEL Constant, countActiveOrdersForStudent Function, createLedgerTransaction() (+27 more)
 
 ### Community 288 - "Community 288"
 Cohesion: 0.67
@@ -1435,80 +1427,48 @@ Cohesion: 0.67
 Nodes (3): §4.3: 每日開帳金額修改警示優化, 預期行為, 驗證步驟
 
 ### Community 326 - "Community 326"
-Cohesion: 0.13
-Nodes (29): DailyCashSession, Vendor, PosTransactionDraft, StudentAccount, INITIAL_ORDERED_TODAY, INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX (+21 more)
+Cohesion: 0.10
+Nodes (19): INITIAL_ORDERED_TODAY, INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS, BusinessDateStatus, CloseBusinessDateInput, DeleteOrderResult (+11 more)
 
 ### Community 327 - "Community 327"
 Cohesion: 0.33
 Nodes (5): input, paymentInput, quickButtons, syncBadge, user
 
 ### Community 328 - "Community 328"
-Cohesion: 0.14
-Nodes (14): FlashData, MainLayout, MainLayoutProps, ConfirmBanner, TopBar, confirmBtn, onCancel, onConfirm (+6 more)
+Cohesion: 0.67
+Nodes (3): code:bash (graphify path "NODE_A" "NODE_B"), code:bash ($(cat graphify-out/.graphify_python) -m graphify save-result), For /graphify path
 
 ### Community 329 - "Community 329"
-Cohesion: 0.29
-Nodes (10): ExpenseDirection, PosFlowState, PosSelectionSource, PosSearchMode, PosSearchResult, resolveScannedStudent(), ScannerInput, searchPosStudents() (+2 more)
+Cohesion: 0.67
+Nodes (3): code:bash ($(cat graphify-out/.graphify_python) -c "), code:block7 (Corpus: X files · ~Y words), Step 2 - Detect files
 
 ### Community 330 - "Community 330"
 Cohesion: 0.50
 Nodes (3): Change, Issue #117 Verification Checklist, Verification
 
-### Community 331 - "Community 331"
-Cohesion: 0.25
-Nodes (8): POS Components (v2), ExpensePanel, RecentStrip, FirestoreSyncStatus, deriveSyncIndicator, useAppNavigationShortcuts, POS Components Prototype (JSX), Batch 5-6 Fixes Retest Checklist
-
-### Community 332 - "Community 332"
-Cohesion: 0.17
-Nodes (11): ReopenDialog(), ReopenDialogProps, btn, { container }, dialogBox, { getByText }, { getByText, container }, input (+3 more)
-
 ### Community 333 - "Community 333"
 Cohesion: 0.40
 Nodes (4): Changes, Deep validation checks, issue-123 Verification Checklist, Verification
 
-### Community 334 - "Community 334"
-Cohesion: 0.20
-Nodes (9): active, baseProps, btns, { container }, { getByText }, inputs, setCustomEnd, setCustomStart (+1 more)
-
-### Community 335 - "Community 335"
-Cohesion: 0.40
-Nodes (4): onClose, user, Modal, ModalProps
-
-### Community 336 - "Community 336"
-Cohesion: 0.33
-Nodes (5): afterOrder, afterPayment, store, totalPaid, txForStudent
-
-### Community 337 - "Community 337"
-Cohesion: 0.40
-Nodes (4): next, normalized, oldShape, store
-
-### Community 338 - "Community 338"
-Cohesion: 0.67
-Nodes (3): code:bash (graphify path "NODE_A" "NODE_B"), code:bash ($(cat graphify-out/.graphify_python) -m graphify save-result), For /graphify path
-
-### Community 339 - "Community 339"
-Cohesion: 0.67
-Nodes (3): code:bash ($(cat graphify-out/.graphify_python) -c "), code:block7 (Corpus: X files · ~Y words), Step 2 - Detect files
-
 ## Knowledge Gaps
-- **2222 isolated node(s):** `rewrites`, `headers`, `rules`, `indexes`, `port` (+2217 more)
+- **2122 isolated node(s):** `Objective`, `Approach`, `Files`, `code:typescript (build: {)`, `code:typescript (import { ReportScreen, AdminScreen, VendorsScreen, HistorySc)` (+2117 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **60 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Zustand` connect `Community 57 (frontend_package_dependencies frontend_p)` to `Community 37 (conflict-policy csp-policy data-classifi)`, `Community 326`?**
-  _High betweenness centrality (0.015) - this node is a cross-community bridge._
-- **Why does `dependencies` connect `Community 57 (frontend_package_dependencies frontend_p)` to `Community 38 (firebase_json frontend_favicon frontend_)`?**
-  _High betweenness centrality (0.014) - this node is a cross-community bridge._
-- **What connects `rewrites`, `headers`, `rules` to the rest of the system?**
-  _2224 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `Auth, Sync & Deployment` be split into smaller, more focused modules?**
+- **Why does `createLedgerTransaction()` connect `Community 287` to `Community 0`, `Community 326`, `Community 7`, `Community 22`, `Community 28`?**
+  _High betweenness centrality (0.012) - this node is a cross-community bridge._
+- **Why does `Zustand` connect `Community 57` to `Community 37`, `Community 326`?**
+  _High betweenness centrality (0.012) - this node is a cross-community bridge._
+- **Why does `dependencies` connect `Community 57` to `Community 38`?**
+  _High betweenness centrality (0.011) - this node is a cross-community bridge._
+- **What connects `Objective`, `Approach`, `Files` to the rest of the system?**
+  _2124 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `Community 0` be split into smaller, more focused modules?**
   _Cohesion score 0.05576923076923077 - nodes in this community are weakly interconnected._
-- **Should `UI Components & Modals` be split into smaller, more focused modules?**
+- **Should `Community 1` be split into smaller, more focused modules?**
   _Cohesion score 0.1437908496732026 - nodes in this community are weakly interconnected._
-- **Should `POS Screen Components` be split into smaller, more focused modules?**
-  _Cohesion score 0.08 - nodes in this community are weakly interconnected._
-- **Should `Batch Planning & Execution` be split into smaller, more focused modules?**
-  _Cohesion score 0.05405405405405406 - nodes in this community are weakly interconnected._
+- **Should `Community 2` be split into smaller, more focused modules?**
+  _Cohesion score 0.06896551724137931 - nodes in this community are weakly interconnected._

@@ -25,7 +25,6 @@ required_reads:
 |------|------|
 | `frontend/src/components/AppRouter.tsx` (modify) | 加入 lazy + Suspense，移除 static imports |
 | `frontend/vite.config.ts` (modify) | 加入 build.rollupOptions.manualChunks |
-| `frontend/src/components/screens/index.ts` (new) | Named export barrel（lazy() 需要 named exports） |
 
 ## Section 1: Configure manualChunks (vite.config.ts)
 
@@ -39,7 +38,7 @@ build: {
         'vendor-react': ['react', 'react-dom'],
         'vendor-firebase': ['firebase/app', 'firebase/firestore'],
         'vendor-zustand': ['zustand'],
-        'vendor-pwa': ['vite-plugin-pwa', 'virtual:pwa-register/react'],
+        // vendor-pwa omitted: PWA uses registerType: 'autoUpdate' (no virtual:pwa-register client import)
       },
     },
   },

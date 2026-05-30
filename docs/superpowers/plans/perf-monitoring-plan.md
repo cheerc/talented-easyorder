@@ -87,6 +87,10 @@ export function processTransaction(...) {
 
 ⚠️ `performance.mark/measure` 是標準 Web API，TypeScript 型別內建於 `lib.dom`，無需額外 type package。
 
+⚠️ `processTransaction` 非 top-level function，實際定義散布在 `orderActions/paymentActions/editActions` 的 return closures 中。Impl 需 trace 實際位置後放置 marks。
+
+長期 POS session 中 `performance.mark` 以 tx.id 累積可能導致記憶體增長。建議在 batch 結束後呼叫 `performance.clearMarks()` 清理。
+
 **Verification**: `npx tsc --noEmit` + `npm run dev` → 開啟 Chrome DevTools Performance tab 確認 marks 出現
 
 ## Affected Callers
