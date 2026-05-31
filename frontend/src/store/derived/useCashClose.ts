@@ -7,7 +7,7 @@ export function useCashClose(viewDate: string): {
   dateStatus: string;
   currentCashSession: DailyCashSession | undefined;
 } {
-  const dateStatus = usePosStore((s) => s.getBusinessDateStatus(viewDate));
+  const dateStatus = usePosStore((s) => s.businessDateStatuses?.[viewDate] || 'open');
   const cashSessions = usePosStore((s) => s.cashSessions);
   const dailySettlements = usePosStore((s) => s.dailySettlements);
   const currentCashSession = cashSessions[viewDate];

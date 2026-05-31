@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { usePosStore } from '../../store/posStore';
 import { fmt } from '../pos-components';
 
+const PAGE_SIZE = 20;
+
 function statusLabel(status: string) {
   if (status === 'closed') return '已關帳';
   if (status === 'reopened') return '已重開';
@@ -17,10 +19,14 @@ function statusClass(status: string) {
 export const SettlementHistoryTable = React.memo(function SettlementHistoryTable() {
   const dailySettlements = usePosStore((s) => s.dailySettlements);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
 
   const sorted = useMemo(() => {
     return [...dailySettlements].sort((a, b) => b.businessDate.localeCompare(a.businessDate));
   }, [dailySettlements]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const paged = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   if (sorted.length === 0) {
     return <div className="rpt-empty">尚無關帳紀錄</div>;
@@ -38,7 +44,7 @@ export const SettlementHistoryTable = React.memo(function SettlementHistoryTable
         <div>關帳人</div>
         <div>關帳時間</div>
       </div>
-      {sorted.map((s) => (
+      {paged.map((s) => (
         <React.Fragment key={s.settlementId}>
           <div
             className="rpt-tr"
@@ -74,6 +80,13 @@ export const SettlementHistoryTable = React.memo(function SettlementHistoryTable
           )}
         </React.Fragment>
       ))}
+      {sorted.length > PAGE_SIZE && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', padding: '12px 0' }}>
+          <button className="ghost-btn" disabled={page === 0} onClick={() => setPage(page - 1)}>上一頁</button>
+          <span className="dim" style={{ fontSize: '13px' }}>第 {page + 1} / {totalPages} 頁（共 {sorted.length} 筆）</span>
+          <button className="ghost-btn" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}>下一頁</button>
+        </div>
+      )}
     </div>
   );
 });
