@@ -13,3 +13,6 @@ graphify-out/.graphify_*
 graphify-out/graph.html
 .graphify_root
 .claude/settings.local.json
+
+.agents/*
+.gemini/*
