@@ -101,4 +101,27 @@ describe('handoff intent write/read cycle', () => {
     const result = readHandoffIntent(channel);
     expect(result).toBeNull();
   });
+
+  it('rejects crafted object with wrong field types (no unsafe cast)', () => {
+    const channel = 'crafted-channel';
+    localStorage.setItem(channel, JSON.stringify({
+      version: '1',
+      timestamp: 'bad',
+      action: 'invalid',
+      studentId: 123,
+      sourceDevice: 'not-valid',
+    }));
+    const result = readHandoffIntent(channel);
+    expect(result).toBeNull();
+  });
+
+  it('rejects object missing required fields', () => {
+    const channel = 'missing-fields-channel';
+    localStorage.setItem(channel, JSON.stringify({
+      version: 1,
+      action: 'order',
+    }));
+    const result = readHandoffIntent(channel);
+    expect(result).toBeNull();
+  });
 });

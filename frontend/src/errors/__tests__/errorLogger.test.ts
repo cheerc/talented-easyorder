@@ -114,4 +114,26 @@ describe('errorLogger', () => {
     appendErrorLog({ source: 'sync', message: 'b' });
     expect(getRecentErrors()).toHaveLength(2);
   });
+
+  it('sanitizes PII from stack trace', () => {
+    const entry = appendErrorLog({
+      source: 'window-error',
+      message: 'render error',
+      stack: 'Error: 學生: 王小明 餘額: 500\n    at App (App.tsx:10:5)',
+    });
+    expect(entry.stack).not.toContain('王小明');
+    expect(entry.stack).not.toContain('500');
+    expect(entry.stack).toContain('[REDACTED]');
+    expect(entry.stack).toContain('App.tsx:10:5');
+  });
+
+  it('does not match "filename" when sanitizing "name" pattern', () => {
+    const entry = appendErrorLog({
+      source: 'react',
+      message: 'filename: app.tsx load failed, name: John Smith',
+    });
+    expect(entry.message).toContain('filename: app.tsx');
+    expect(entry.message).not.toContain('John Smith');
+    expect(entry.message).toContain('name: [REDACTED]');
+  });
 });

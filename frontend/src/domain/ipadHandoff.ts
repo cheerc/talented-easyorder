@@ -43,14 +43,24 @@ export function writeHandoffIntent(channel: string, msg: IpadHandoffMessage): vo
   localStorage.setItem(channel, JSON.stringify(msg));
 }
 
+function isIpadHandoffMessage(obj: unknown): obj is IpadHandoffMessage {
+  if (typeof obj !== 'object' || obj === null) return false;
+  const r = obj as Record<string, unknown>;
+  return typeof r.version === 'number'
+    && typeof r.timestamp === 'number'
+    && typeof r.action === 'string'
+    && typeof r.studentId === 'string'
+    && typeof r.sourceDevice === 'string';
+}
+
 export function readHandoffIntent(channel: string): IpadHandoffMessage | null {
   const raw = localStorage.getItem(channel);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return null;
+    if (!isIpadHandoffMessage(parsed)) return null;
     localStorage.removeItem(channel);
-    return parsed as IpadHandoffMessage;
+    return parsed;
   } catch {
     localStorage.removeItem(channel);
     return null;

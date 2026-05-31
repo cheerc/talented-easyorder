@@ -71,10 +71,16 @@ service cloud.firestore {
       && request.resource.data.status in ['active', 'inactive'];
     }
 
+    match /operators/bootstrap {
+      allow get: if true;
+      allow create: if !exists(/databases/$(database)/documents/operators/bootstrap) && talentedEmail();
+      allow update, delete: if false;
+    }
+
     match /operators/{uid} {
       allow get: if activeOperator() && (uid == request.auth.uid || adminOperator());
       allow list: if adminOperator();
-      allow create, update: if adminOperator()
+      allow create, update: if (adminOperator() || (!exists(/databases/$(database)/documents/operators/bootstrap) && talentedEmail()))
         && request.resource.data.uid == uid
         && request.resource.data.email.matches('.*@talented\\.com\\.tw$')
         && request.resource.data.active is bool;

@@ -183,5 +183,19 @@ describe('posStateValidator', () => {
       const result = validatePersistedState(good);
       expect(result.ok).toBe(true);
     });
+
+    it('rejects student missing studentId even when Object.prototype has it (prototype pollution)', () => {
+      (Object.prototype as Record<string, unknown>).studentId = 'polluted';
+      try {
+        const s = { ...validState.students[0] };
+        delete (s as Record<string, unknown>).studentId;
+        const bad = { ...validState, students: [s] };
+        const result = validatePersistedState(bad);
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.reason).toContain('studentId');
+      } finally {
+        delete (Object.prototype as Record<string, unknown>).studentId;
+      }
+    });
   });
 });
