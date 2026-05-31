@@ -17,6 +17,10 @@ async function createPwaPlugin(): Promise<PluginOption> {
       globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
       runtimeCaching: [
         {
+          urlPattern: /^https?:\/\/.*(?:identitytoolkit|firestore)\.googleapis\.com\/.*/i,
+          handler: 'NetworkOnly',
+        },
+        {
           urlPattern: /^https?:\/\/.*/i,
           handler: 'NetworkFirst',
           options: {

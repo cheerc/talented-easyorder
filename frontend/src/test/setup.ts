@@ -50,11 +50,22 @@ const fakeIndexedDB = {
           error: null,
         };
         tx.objectStore = () => ({
-          put: (value: unknown, key: string) => { store.set(key, value); },
+          put: (value: unknown, key: string) => {
+            store.set(key, value);
+            const putReq: AnyObj = { result: undefined, onsuccess: null, onerror: null };
+            setTimeout(() => { putReq.onsuccess?.({ target: putReq } as AnyObj); }, 0);
+            return putReq;
+          },
           get: (key: string) => {
             const getReq: AnyObj = { result: store.get(key), onsuccess: null, onerror: null };
             setTimeout(() => { getReq.onsuccess?.({ target: getReq } as AnyObj); }, 0);
             return getReq;
+          },
+          delete: (key: string) => {
+            store.delete(key);
+            const delReq: AnyObj = { result: undefined, onsuccess: null, onerror: null };
+            setTimeout(() => { delReq.onsuccess?.({ target: delReq } as AnyObj); }, 0);
+            return delReq;
           },
         });
         setTimeout(() => { tx.oncomplete?.({ target: tx } as AnyObj); }, 0);

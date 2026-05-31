@@ -4,6 +4,7 @@ import { migratePersistedState } from '../storage/migration';
 import { migrateState, validatePersistedState } from '../storage/posStateValidator';
 import { appendErrorLog } from '../errors/errorLogger';
 import { INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS } from '../mocks/initialData';
+import { createIndexedDBStorage } from '../storage/indexedDBStorage';
 
 export const defaultState = {
   auditEvents: [] as PosState['auditEvents'],
@@ -14,6 +15,7 @@ export const defaultState = {
 
 export const posPersistenceConfig: PersistOptions<PosState> = {
   name: 'pos-storage',
+  storage: createIndexedDBStorage(),
   version: 2,
   onRehydrateStorage: () => {
     return (state, error) => {
