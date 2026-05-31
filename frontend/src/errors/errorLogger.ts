@@ -26,7 +26,7 @@ function sanitizeContext(
   return Object.keys(clean).length > 0 ? clean : undefined;
 }
 
-function sanitizeMessage(message: string): string {
+export function sanitizeMessage(message: string): string {
   return message
     .replace(/學生[：:]\s*[^,\n，]+/g, '學生: [REDACTED]')
     .replace(/姓名[：:]\s*[^,\n，]+/g, '姓名: [REDACTED]')

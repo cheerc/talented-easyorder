@@ -1,4 +1,5 @@
 import { Component, type ReactNode, type ErrorInfo } from 'react';
+import { sanitizeMessage } from '../errors/errorLogger';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -21,7 +22,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    this.props.onError?.(error, info);
+    const sanitized = new Error(sanitizeMessage(error.message));
+    sanitized.stack = error.stack;
+    this.props.onError?.(sanitized, info);
   }
 
   handleRetry = () => {
