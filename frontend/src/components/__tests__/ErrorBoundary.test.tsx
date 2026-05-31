@@ -52,6 +52,19 @@ describe('ErrorBoundary', () => {
     expect(err.message).toBe('specific error');
   });
 
+  it('sanitizes PII in error message passed to onError', () => {
+    const onError = vi.fn();
+    render(
+      <ErrorBoundary fallback={<div>err</div>} onError={onError}>
+        <Boom msg="學生: 王小明 付款失敗" />
+      </ErrorBoundary>
+    );
+    expect(onError).toHaveBeenCalled();
+    const err: Error = onError.mock.calls[0][0];
+    expect(err.message).not.toContain('王小明');
+    expect(err.message).toContain('[REDACTED]');
+  });
+
   it('resets error state on retry and re-renders children', async () => {
     const user = userEvent.setup();
     let shouldCrash = true;

@@ -14,6 +14,7 @@ import { useUndoCountdown } from './hooks/useUndoCountdown';
 import { getOpeningCash } from './domain/cashClose';
 import { MainLayout } from './components/MainLayout';
 import { ErrorBoundary, AppCrashPage } from './components/ErrorBoundary';
+import { appendErrorLog } from './errors/errorLogger';
 import { AppRouter } from './components/AppRouter';
 import { useAppState } from './hooks/useAppState';
 import { useFlashData } from './hooks/useFlashData';
@@ -194,7 +195,7 @@ export default function App() {
   });
 
   return (
-    <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => console.error('[ErrorBoundary]', e)}>
+    <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => appendErrorLog({ source: 'react', message: e.message, stack: e.stack })}>
     <AuthGate auth={auth} db={db} access={access}>
     <MainLayout
       tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync}

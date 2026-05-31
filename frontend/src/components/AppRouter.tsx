@@ -51,7 +51,11 @@ export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
 
   return (
     <>
-      {tab === 'pos' && <PosColumn {...posColumnProps} />}
+      {tab === 'pos' && (
+        <ErrorBoundary fallback={<SectionError name="POS櫃台" />}>
+        <PosColumn {...posColumnProps} />
+        </ErrorBoundary>
+      )}
 
       {tab === 'report' && (
         <ErrorBoundary fallback={<SectionError name="報表" />}>
