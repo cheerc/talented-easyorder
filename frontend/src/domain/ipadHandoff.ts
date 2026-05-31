@@ -40,7 +40,7 @@ export function toHandoffScannerInput(msg: IpadHandoffMessage): ScannerInput {
 }
 
 export function writeHandoffIntent(channel: string, msg: IpadHandoffMessage): void {
-  localStorage.setItem(channel, JSON.stringify(msg));
+  sessionStorage.setItem(channel, JSON.stringify(msg));
 }
 
 function isIpadHandoffMessage(obj: unknown): obj is IpadHandoffMessage {
@@ -54,15 +54,15 @@ function isIpadHandoffMessage(obj: unknown): obj is IpadHandoffMessage {
 }
 
 export function readHandoffIntent(channel: string): IpadHandoffMessage | null {
-  const raw = localStorage.getItem(channel);
+  const raw = sessionStorage.getItem(channel);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
     if (!isIpadHandoffMessage(parsed)) return null;
-    localStorage.removeItem(channel);
+    sessionStorage.removeItem(channel);
     return parsed;
   } catch {
-    localStorage.removeItem(channel);
+    sessionStorage.removeItem(channel);
     return null;
   }
 }

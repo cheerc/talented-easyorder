@@ -21,7 +21,7 @@ async function createPwaPlugin(): Promise<PluginOption> {
           handler: 'NetworkOnly',
         },
         {
-          urlPattern: /^https?:\/\/.*/i,
+          urlPattern: /^https?:\/\/.*\.(?:js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)(\?.*)?$/i,
           handler: 'NetworkFirst',
           options: {
             cacheName: 'pos-network-cache',

@@ -97,14 +97,14 @@ describe('handoff intent write/read cycle', () => {
 
   it('handles malformed stored data gracefully', () => {
     const channel = 'malformed-channel';
-    localStorage.setItem(channel, 'not-json');
+    sessionStorage.setItem(channel, 'not-json');
     const result = readHandoffIntent(channel);
     expect(result).toBeNull();
   });
 
   it('rejects crafted object with wrong field types (no unsafe cast)', () => {
     const channel = 'crafted-channel';
-    localStorage.setItem(channel, JSON.stringify({
+    sessionStorage.setItem(channel, JSON.stringify({
       version: '1',
       timestamp: 'bad',
       action: 'invalid',
@@ -117,11 +117,38 @@ describe('handoff intent write/read cycle', () => {
 
   it('rejects object missing required fields', () => {
     const channel = 'missing-fields-channel';
-    localStorage.setItem(channel, JSON.stringify({
+    sessionStorage.setItem(channel, JSON.stringify({
       version: 1,
       action: 'order',
     }));
     const result = readHandoffIntent(channel);
     expect(result).toBeNull();
+  });
+});
+
+describe('handoff message expiration', () => {
+  it('rejects a message older than 30 seconds', () => {
+    const expiredMessage: IpadHandoffMessage = {
+      version: 1,
+      timestamp: Date.now() - 40_000,
+      action: 'order',
+      studentId: '015',
+      sourceDevice: 'ipad_handoff',
+    };
+    const result = validateIpadHandoffMessage(expiredMessage);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe('expired');
+  });
+
+  it('accepts a message within the 30-second window', () => {
+    const freshMessage: IpadHandoffMessage = {
+      version: 1,
+      timestamp: Date.now(),
+      action: 'order',
+      studentId: '015',
+      sourceDevice: 'ipad_handoff',
+    };
+    const result = validateIpadHandoffMessage(freshMessage);
+    expect(result.ok).toBe(true);
   });
 });
