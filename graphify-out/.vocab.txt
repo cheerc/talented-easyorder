@@ -51,7 +51,6 @@ args
 aria
 arong
 array
-assessment
 assets
 ast
 async
@@ -114,7 +113,6 @@ breakdown
 breakpoints
 browser
 btn
-btns
 bucket
 budget
 budgets
@@ -127,6 +125,7 @@ bundler
 business
 button
 buttons
+bypassing
 bytes
 cache
 calculate
@@ -173,8 +172,10 @@ choice
 chosen
 chrome
 chunk
+chunks
 class
 classification
+classifier
 claude
 clean
 cleanup
@@ -210,9 +211,6 @@ compiler
 complete
 completed
 completion
-complex
-complexity
-compo
 component
 components
 composite
@@ -222,13 +220,13 @@ conditional
 confidence
 config
 configuration
+configure
 configured
 confirm
 confirmation
 confirmations
 conflict
 conformance
-connected
 considerations
 consolidates
 const
@@ -239,8 +237,6 @@ constrained
 constraint
 constraints
 constructor
-consumer
-consumers
 container
 contains
 content
@@ -333,7 +329,6 @@ development
 deviation
 deviations
 device
-devices
 diagnostic
 diagnostics
 dialog
@@ -374,6 +369,7 @@ dry
 dual
 duplicate
 durable
+dynamic
 each
 eager
 earlier
@@ -386,7 +382,6 @@ edit
 effect
 effective
 element
-els
 email
 emergency
 emit
@@ -437,6 +432,7 @@ expect
 expected
 expense
 experience
+experimental
 explain
 exploration
 export
@@ -506,7 +502,6 @@ friendly
 fro
 from
 front
-fronte
 fronten
 frontend
 full
@@ -516,6 +511,7 @@ gap
 gaps
 gate
 gcloud
+gemma
 gen
 general
 generate
@@ -561,6 +557,7 @@ have
 header
 headers
 health
+heavy
 height
 helpers
 hero
@@ -574,6 +571,7 @@ home
 honesty
 hook
 hooks
+host
 hosted
 hosting
 hotfix
@@ -603,6 +601,7 @@ implementation
 implicit
 import
 importing
+imports
 improvement
 improvements
 inactive
@@ -622,7 +621,6 @@ initialization
 initialize
 initialized
 input
-inputs
 install
 installed
 instead
@@ -656,21 +654,21 @@ kbd
 keep
 key
 keyboard
+keydown
 keys
 kind
-kinds
 known
 label
 lan
 lang
 language
 late
+latency
 layer
 layers
 layout
 lazy
 lbl
-leaf
 ledger
 legacy
 legal
@@ -682,7 +680,6 @@ light
 lightning
 limit
 line
-lines
 link
 linkage
 lint
@@ -734,11 +731,9 @@ merge
 merged
 message
 messages
+meta
 metadata
 midnight
-migr
-migra
-migrat
 migrate
 migratio
 migration
@@ -755,13 +750,12 @@ modal
 mode
 model
 models
-modified
 modify
 module
 modules
 monday
+monitoring
 mono
-monolith
 monolithic
 month
 mouse
@@ -775,7 +769,6 @@ native
 nav
 navigation
 ndist
-needed
 neg
 negative
 neo
@@ -787,7 +780,6 @@ new
 newest
 next
 node
-nodes
 non
 none
 normal
@@ -806,6 +798,7 @@ number
 numeric
 obj
 object
+objective
 observability
 observations
 obsidian
@@ -833,7 +826,6 @@ optimization
 optimize
 optional
 options
-orde
 order
 ordered
 ordering
@@ -849,7 +841,6 @@ output
 outputs
 over
 overlap
-overlay
 override
 overrides
 overview
@@ -874,7 +865,6 @@ part
 parts
 path
 paths
-pattern
 patterns
 pause
 pay
@@ -897,6 +887,7 @@ petty
 phase
 phases
 picked
+pii
 pilot
 pipeline
 pitfalls
@@ -919,7 +910,6 @@ position
 postgres
 pre
 preference
-presentation
 prettier
 prev
 preview
@@ -944,7 +934,6 @@ projections
 promote
 promotional
 prompt
-prop
 proposed
 props
 protection
@@ -954,7 +943,6 @@ prototyping
 provider
 proxy
 pull
-pure
 purple
 purpo
 push
@@ -972,6 +960,7 @@ quiet
 radio
 range
 ranges
+rationale
 raw
 reachability
 react
@@ -1016,7 +1005,6 @@ regardless
 registrations
 regression
 rel
-related
 relationship
 relationships
 release
@@ -1042,7 +1030,6 @@ repositories
 repository
 request
 required
-rerender
 reset
 resolution
 resolve
@@ -1071,6 +1058,7 @@ root
 roster
 round
 route
+router
 row
 rows
 rpt
@@ -1084,6 +1072,7 @@ safe
 safety
 same
 sample
+sanitization
 sanitize
 save
 saving
@@ -1105,7 +1094,6 @@ second
 secondary
 secret
 section
-secu
 security
 seed
 sel
@@ -1159,6 +1147,7 @@ slice
 slices
 slider
 snapshot
+software
 sop
 source
 sources
@@ -1169,6 +1158,7 @@ specification
 specifications
 specs
 split
+splitting
 spot
 spots
 sprite
@@ -1217,6 +1207,7 @@ subscribe
 subscriptions
 success
 suggested
+suggestions
 suite
 summarize
 summary
@@ -1253,7 +1244,6 @@ textarea
 the
 theme
 then
-these
 thin
 this
 three
@@ -1357,7 +1347,6 @@ virtualization
 virtualize
 visualizer
 visuals
-vit
 vite
 vitejs
 vitest
@@ -1368,7 +1357,6 @@ void
 vsl
 waiting
 warm
-warn
 warning
 warnings
 was
@@ -1377,11 +1365,13 @@ wave
 wcag
 web
 webmanifest
+welldone
 what
 whatever
 when
 whisper
 whitelist
+why
 wiki
 window
 wins
@@ -1421,14 +1411,12 @@ zustand
 下午接手
 下拉選單元件調整
 不在本模組範圍
-不需變更的檔案
 不顯示
 中櫃台收支重複標籤消除與完美的備註對齊
 主任月底結算
 主要問題
 主頁面
 互動規範
-交易合併與分配邏輯
 交易合併邏輯
 交易清單
 交易類型
@@ -1452,14 +1440,12 @@ zustand
 保留簡化版
 修復與介面優化
 修復規劃
-修改檔案
 修改的檔案
 修改金額功能
 修改開帳金額需跳出警示
 修正流程
 修訂版
 個修復點
-個檔案
 個輸入框逐一驗證
 側邊欄
 備註前
@@ -1471,7 +1457,6 @@ zustand
 元件庫
 元件更新
 全型空白補滿
-全測試鏈
 共用資源警告
 冗餘且低效的餘額重算邏輯
 切換模式後自動聚焦金額輸入框
@@ -1514,7 +1499,6 @@ zustand
 官方參考來源
 容量調整
 實作任務
-實作步驟
 實作與規格差異
 實作計畫
 實作順序
@@ -1557,7 +1541,6 @@ zustand
 手動驗證流程
 打開瀏覽器
 技術約束
-拆分策略
 按鈕快捷鍵提示
 按鈕樣式與
 按順序執行
@@ -1591,7 +1574,6 @@ zustand
 文字不重疊
 文字重疊
 新增的檔案
-新建檔案
 新手合作社阿姨
 方案設計
 日期更新
@@ -1622,14 +1604,12 @@ zustand
 歷史紀錄與切換日期
 殘留的
 每日現金對帳
-每日開帳金額修改警示優化
 每日開帳金額修改警示彈窗優化
 測試範圍與指令
 滾輪數值滾動阻擋與快捷鍵
 漸進增強與優雅降級
 無障礙與
 現有實作對照
-現況分析
 現況說明
 發現摘要與優先順序
 目前主要缺口
@@ -1657,7 +1637,6 @@ zustand
 結帳關帳與帳本
 綠色收入
 網路頻繁斷線
-縮減為
 總交易筆數不包含未繳費訂單
 總交易筆數修正
 繳費金額
