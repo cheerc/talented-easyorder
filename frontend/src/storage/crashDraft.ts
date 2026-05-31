@@ -1,4 +1,18 @@
 import type { PosTransactionDraft } from '../domain/posTransaction';
+import { appendErrorLog } from '../errors/errorLogger';
+
+/**
+ * Crash Draft — same-origin IndexedDB persistence for in-progress POS transactions.
+ *
+ * Lifecycle:
+ *   saveCrashDraft() — called on each transaction field change
+ *   loadCrashDraft() — checked on app mount (crash recovery)
+ *   clearCrashDraft() — called on successful transaction commit
+ *
+ * Stored in `easyorder-crash-draft` / drafts / current-draft (single draft only).
+ * The draft includes studentId for recovery UX (pre-fills student selector).
+ * Database is auto-deleted on commit; no data leaves the browser.
+ */
 
 const DB_NAME = 'easyorder-crash-draft';
 const STORE_NAME = 'drafts';
@@ -27,7 +41,7 @@ export async function saveCrashDraft(draft: PosTransactionDraft): Promise<void> 
     });
     db.close();
   } catch {
-    // IndexedDB unavailable — silently skip
+    appendErrorLog({ source: 'storage', message: 'crashDraft save failed' });
   }
 }
 
@@ -43,6 +57,7 @@ export async function loadCrashDraft(): Promise<PosTransactionDraft | null> {
     db.close();
     return result ?? null;
   } catch {
+    appendErrorLog({ source: 'storage', message: 'crashDraft load failed' });
     return null;
   }
 }
@@ -52,7 +67,7 @@ export function clearCrashDraft(): void {
     const req = indexedDB.deleteDatabase(DB_NAME);
     req.onerror = () => { /* ignore */ };
   } catch {
-    // IndexedDB unavailable — silently skip
+    appendErrorLog({ source: 'storage', message: 'crashDraft delete failed' });
   }
 }
 
