@@ -35,11 +35,11 @@ const VALID_AUDIT_ENTITY_TYPES = new Set(['transaction', 'settlement', 'business
 const VALID_VENDOR_STATUSES = new Set(['active', 'inactive']);
 
 function hasStr(v: unknown, key: string): boolean {
-  return typeof (v as Record<string, unknown>)[key] === 'string';
+  return Object.hasOwn(v as object, key) && typeof (v as Record<string, unknown>)[key] === 'string';
 }
 
 function hasNum(v: unknown, key: string): boolean {
-  return typeof (v as Record<string, unknown>)[key] === 'number';
+  return Object.hasOwn(v as object, key) && typeof (v as Record<string, unknown>)[key] === 'number';
 }
 
 function isSafeInt(n: unknown): boolean {

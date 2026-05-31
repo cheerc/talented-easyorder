@@ -30,15 +30,20 @@ function sanitizeMessage(message: string): string {
   return message
     .replace(/學生[：:]\s*[^,\n，]+/g, '學生: [REDACTED]')
     .replace(/姓名[：:]\s*[^,\n，]+/g, '姓名: [REDACTED]')
-    .replace(/name[：:]\s*[^,\n，]+/gi, 'name: [REDACTED]')
+    .replace(/\bname[：:]\s*[^,\n，]+/gi, 'name: [REDACTED]')
     .replace(/餘額[：:]\s*-?\d+/g, '餘額: [REDACTED]')
     .replace(/金額[：:]\s*-?\d+/g, '金額: [REDACTED]');
+}
+
+function sanitizeStack(stack: string): string {
+  return sanitizeMessage(stack);
 }
 
 export function appendErrorLog(entry: Omit<ErrorLogEntry, 'id' | 'createdAt'>): ErrorLogEntry {
   const next: ErrorLogEntry = {
     ...entry,
     message: sanitizeMessage(entry.message),
+    stack: entry.stack ? sanitizeStack(entry.stack) : undefined,
     context: sanitizeContext(entry.context),
     id: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
