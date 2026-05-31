@@ -1,3 +1,11 @@
+/**
+ * iPad handoff hook — couples useIpadHandoff ↔ domain/ipadHandoff bidirectionally.
+ *
+ * Current state: the hook imports domain/ipadHandoff for message validation and
+ * domain/posSearch for student resolution. Future refactor direction: extract shared
+ * validation types to domain/ipadHandoffValidation.ts so both sides import from a
+ * common utility without circular knowledge of each other.
+ */
 import { useCallback } from 'react';
 import type { PosFlowEvent } from '../domain/posFlow';
 import {

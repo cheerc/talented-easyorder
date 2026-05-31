@@ -10,6 +10,11 @@ export interface ErrorLogEntry {
 const LOG_KEY = 'easyorder-error-log';
 const MAX_LOG_ENTRIES = 100;
 
+// Error log 保留在 localStorage 而非 IndexedDB：
+// appendErrorLog 在 ErrorBoundary.componentDidCatch 與 global error listeners 中被同步呼叫，
+// 若改為 async IndexedDB 會導致 race condition（React render 與 error logging 交錯）。
+// 所有寫入的 entry 已通過 sanitizeMessage / sanitizeContext 去識別化，localStorage 可接受。
+
 const CONTEXT_ALLOW_LIST = new Set([
   'component', 'action', 'route', 'businessDate', 'transactionType',
   'syncStatus', 'errorCode', 'retryCount', 'deviceType',
