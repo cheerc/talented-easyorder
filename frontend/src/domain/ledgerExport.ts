@@ -94,6 +94,10 @@ export function buildSettlementCsvRows(settlements: DailySettlement[]): string[]
 
 export function serializeCsv(columns: readonly string[], rows: string[][]): string {
   const escape = (val: string): string => {
+    // Prevent CSV formula injection (CWE-1236)
+    if (/^[=+\-@]/.test(val)) {
+      val = "'" + val;
+    }
     if (val.includes(',') || val.includes('"') || val.includes('\n') || val.includes('\r')) {
       return `"${val.replace(/"/g, '""')}"`;
     }

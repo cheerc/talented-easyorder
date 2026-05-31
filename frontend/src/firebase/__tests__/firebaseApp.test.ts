@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+vi.unmock('../firebaseApp');
 import { getFirebaseConfigState, isFirebaseConfigured, readFirebaseConfig } from '../firebaseApp';
 
 describe('readFirebaseConfig', () => {

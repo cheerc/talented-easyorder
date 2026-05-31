@@ -77,3 +77,48 @@ Object.defineProperty(window, 'indexedDB', {
   writable: true,
   configurable: true,
 });
+
+import { vi } from 'vitest';
+
+const mockServices = {
+  auth: {
+    currentUser: {
+      uid: 'uid-counter',
+      email: 'counter@talented.com.tw',
+      displayName: 'Counter',
+    },
+  },
+  db: {},
+};
+
+// Global mocks for Firebase initialization and Auth Gate in test environment
+vi.mock('../firebase/firebaseApp', () => ({
+  ensureFirebaseInitialized: () => mockServices,
+  readFirebaseConfig: () => ({}),
+  getFirebaseConfigState: () => ({ configured: false, error: 'Mocked config' }),
+  isFirebaseConfigured: () => false,
+  firebaseConfigState: { configured: false, error: 'Mocked config' },
+  isConfigured: false,
+}));
+
+vi.mock('../firebase/authService', () => ({
+  subscribeOperatorAccess: (
+    _auth: unknown,
+    _db: unknown,
+    onAccess: (access: import('../firebase/authService').OperatorAccess) => void,
+  ) => {
+    // Immediately authorize the operator in test environment so integration tests pass
+    onAccess({
+      ok: true,
+      profile: {
+        uid: 'uid-counter',
+        email: 'counter@talented.com.tw',
+        displayName: 'Counter',
+      },
+      role: 'admin',
+    });
+    return () => {};
+  },
+  signInWithGoogle: vi.fn(),
+  signOutOperator: vi.fn(),
+}));

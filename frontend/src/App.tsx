@@ -21,9 +21,21 @@ import { useFocusSync } from './hooks/useFocusSync';
 import { useCancelDialog } from './hooks/useCancelDialog';
 import { useTweaks } from './hooks/useTweaks';
 import { buildPosColumnProps } from './hooks/usePosColumnProps';
+import { ensureFirebaseInitialized } from './firebase/firebaseApp';
+import { AuthGate } from './auth/AuthGate';
+import { subscribeOperatorAccess } from './firebase/authService';
+import type { OperatorAccess } from './firebase/authService';
 
 export default function App() {
   const { systemDate, viewDate, setViewDate } = useSystemDate();
+  const { auth, db } = ensureFirebaseInitialized();
+  const [access, setAccess] = useState<OperatorAccess>({ ok: false, reason: 'signed_out' });
+
+  useEffect(() => {
+    const unsubscribe = subscribeOperatorAccess(auth, db, setAccess);
+    return unsubscribe;
+  }, [auth, db]);
+
   const app = useAppState(viewDate);
   const { students, allTx, todayMenu, vendors, setTodayMenu, setVendors, resetData,
     getBusinessDateStatus, cashSessions, dailySettlements, openCashSession, updateOpeningCash,
@@ -183,6 +195,7 @@ export default function App() {
 
   return (
     <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => console.error('[ErrorBoundary]', e)}>
+    <AuthGate auth={auth} db={db} access={access}>
     <MainLayout
       tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync}
       todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate}
@@ -210,6 +223,7 @@ export default function App() {
         posColumnProps={posColumnProps}
       />
     </MainLayout>
+    </AuthGate>
     </ErrorBoundary>
   );
 }

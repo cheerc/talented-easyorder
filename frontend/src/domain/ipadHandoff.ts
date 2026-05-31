@@ -14,7 +14,7 @@ export interface IpadHandoffMessage {
 
 export type ValidateHandoffResult =
   | { ok: true }
-  | { ok: false; code: 'missing_student_id' | 'invalid_action' | 'unsupported_version' | 'invalid_timestamp' | 'invalid_source' };
+  | { ok: false; code: 'missing_student_id' | 'invalid_action' | 'unsupported_version' | 'invalid_timestamp' | 'invalid_source' | 'expired' };
 
 const VALID_ACTIONS: HandoffAction[] = ['order', 'payment'];
 const VALID_SOURCES: PosSourceDevice[] = ['ipad_handoff'];
@@ -25,6 +25,12 @@ export function validateIpadHandoffMessage(msg: IpadHandoffMessage): ValidateHan
   if (!msg.studentId.trim()) return { ok: false, code: 'missing_student_id' };
   if (!VALID_ACTIONS.includes(msg.action)) return { ok: false, code: 'invalid_action' };
   if (!msg.timestamp || msg.timestamp <= 0) return { ok: false, code: 'invalid_timestamp' };
+  
+  const MAX_HANDOFF_AGE_MS = 30_000; // 30 seconds
+  if (Math.abs(Date.now() - msg.timestamp) > MAX_HANDOFF_AGE_MS) {
+    return { ok: false, code: 'expired' };
+  }
+
   if (!VALID_SOURCES.includes(msg.sourceDevice)) return { ok: false, code: 'invalid_source' };
   return { ok: true };
 }

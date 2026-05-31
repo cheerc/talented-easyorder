@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+vi.unmock('../authService');
 import { isAllowedWorkspaceEmail, shouldForceSignOut, toOperatorProfile } from '../authService';
 
 describe('authService', () => {
