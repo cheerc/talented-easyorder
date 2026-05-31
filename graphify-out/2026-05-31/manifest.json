@@ -60,9 +60,9 @@
     "semantic_hash": "cfa0bb5a80c31d4717795b1241ef88e4"
   },
   "/Users/cheerc/talented-easyorder/frontend/src/App.tsx": {
-    "mtime": 1780220065.7791429,
-    "ast_hash": "47ffb840ab16188bfc1b9e9e7ba93ada",
-    "semantic_hash": "47ffb840ab16188bfc1b9e9e7ba93ada"
+    "mtime": 1780235502.3206067,
+    "ast_hash": "dcd77f4b6cc1047bb6f61dc3f2b48d41",
+    "semantic_hash": ""
   },
   "/Users/cheerc/talented-easyorder/frontend/src/main.tsx": {
     "mtime": 1780220065.7850125,
@@ -75,9 +75,9 @@
     "semantic_hash": "17ade4a18717eeeb352c61084f3db14a"
   },
   "/Users/cheerc/talented-easyorder/frontend/src/test/setup.ts": {
-    "mtime": 1778834826.6202095,
-    "ast_hash": "5e1d6b5e43a537bb1833a379e69c6bf6",
-    "semantic_hash": "5e1d6b5e43a537bb1833a379e69c6bf6"
+    "mtime": 1780235502.3232903,
+    "ast_hash": "d7781f52988faa69dde5e1c3381f2012",
+    "semantic_hash": ""
   },
   "/Users/cheerc/talented-easyorder/frontend/src/auth/AuthGate.tsx": {
     "mtime": 1780073983.3022163,
@@ -380,9 +380,9 @@
     "semantic_hash": "4ba5b17deccbd367e7735ead193d9239"
   },
   "/Users/cheerc/talented-easyorder/frontend/src/firebase/__tests__/firebaseApp.test.ts": {
-    "mtime": 1778988584.9192183,
-    "ast_hash": "c61f893eb1374843257b34040828627d",
-    "semantic_hash": "c61f893eb1374843257b34040828627d"
+    "mtime": 1780235502.322348,
+    "ast_hash": "d94ebc279ae84ac319910dd48235674b",
+    "semantic_hash": ""
   },
   "/Users/cheerc/talented-easyorder/frontend/src/firebase/__tests__/syncStatus.test.ts": {
     "mtime": 1778988584.9214835,
@@ -395,9 +395,9 @@
     "semantic_hash": "91cdd1bb1d26a02d088877e2f09f3dc5"
   },
   "/Users/cheerc/talented-easyorder/frontend/src/firebase/__tests__/authService.test.ts": {
-    "mtime": 1778988584.9187434,
-    "ast_hash": "052676886ae7db085bcbbd8e7a965161",
-    "semantic_hash": "052676886ae7db085bcbbd8e7a965161"
+    "mtime": 1780235502.322068,
+    "ast_hash": "235b6d2a981c18825691fbd472729d46",
+    "semantic_hash": ""
   },
   "/Users/cheerc/talented-easyorder/frontend/src/firebase/__tests__/studentRepository.test.ts": {
     "mtime": 1778988584.9212449,
@@ -480,9 +480,9 @@
     "semantic_hash": "21fb96d0ab9f43cc76cd6a7aa7b5e54f"
   },
   "/Users/cheerc/talented-easyorder/frontend/src/domain/ipadHandoff.ts": {
-    "mtime": 1779024287.1165478,
-    "ast_hash": "0a70a6c89ca0cd97a268f34697a4d2bd",
-    "semantic_hash": "0a70a6c89ca0cd97a268f34697a4d2bd"
+    "mtime": 1780235502.3210542,
+    "ast_hash": "71463626c794b25f68ef18b58e50135c",
+    "semantic_hash": ""
   },
   "/Users/cheerc/talented-easyorder/frontend/src/domain/ledgerAudit.ts": {
     "mtime": 1779024287.117533,
@@ -545,9 +545,9 @@
     "semantic_hash": "ccd0c7defd7f8fe5ddbb181b8853d456"
   },
   "/Users/cheerc/talented-easyorder/frontend/src/domain/ledgerExport.ts": {
-    "mtime": 1780073983.3092523,
-    "ast_hash": "b33217793aa511bc677b523796e5d5cf",
-    "semantic_hash": "b33217793aa511bc677b523796e5d5cf"
+    "mtime": 1780235502.3216486,
+    "ast_hash": "a10e1995522563f227205c5d281db057",
+    "semantic_hash": ""
   },
   "/Users/cheerc/talented-easyorder/frontend/src/domain/index.ts": {
     "mtime": 1778794939.0490623,
@@ -1523,5 +1523,15 @@
     "mtime": 1780176939.3969822,
     "ast_hash": "9ef422902ec6df621c80c780f85bf66e",
     "semantic_hash": "9ef422902ec6df621c80c780f85bf66e"
+  },
+  "/Users/cheerc/talented-easyorder/.agents/workflows/graphify.md": {
+    "mtime": 1780226328.7536097,
+    "ast_hash": "0bc020d491fca99550c1ea3de0a5f862",
+    "semantic_hash": "0bc020d491fca99550c1ea3de0a5f862"
+  },
+  "/Users/cheerc/talented-easyorder/.agents/rules/graphify.md": {
+    "mtime": 1780226328.7534218,
+    "ast_hash": "f1e53ecc9194573d3c28fc116c743a2e",
+    "semantic_hash": "f1e53ecc9194573d3c28fc116c743a2e"
   }
 }
