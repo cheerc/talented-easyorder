@@ -119,7 +119,7 @@ cd ~/talented-easyorder
 3. Vercel 環境變數設定（在 Vercel Dashboard > Project Settings > Environment Variables）：
 
 ```
-VITE_FIREBASE_API_KEY=AIzaSyBhf_udq4Fp-b6nqnfqTB3m2IfVSL-I_AI
+VITE_FIREBASE_API_KEY=<your-firebase-api-key>
 VITE_FIREBASE_AUTH_DOMAIN=gen-lang-client-0613258198.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=gen-lang-client-0613258198
 VITE_FIREBASE_APP_ID=1:704294644197:web:3c2d159fe167478d47e70c

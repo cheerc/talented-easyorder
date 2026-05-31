@@ -6,6 +6,9 @@
 
 set -o pipefail
 
+# --- 載入環境變數 ---
+source .env 2>/dev/null || true
+
 # --- 設定變數 ---
 FIREBASE_PROJECT="gen-lang-client-0613258198"
 FIREBASE_USER="cheerc@gmail.com"
@@ -250,7 +253,7 @@ dev_prod() {
     if [ ! -f "$env_file" ]; then
         echo -e "${YELLOW}⚠️  $env_file 不存在，從 payroll 複製 Firebase config...${NC}"
         cat > "$env_file" << EOF
-VITE_FIREBASE_API_KEY=AIzaSyBhf_udq4Fp-b6nqnfqTB3m2IfVSL-I_AI
+VITE_FIREBASE_API_KEY=${VITE_FIREBASE_API_KEY:-<your-firebase-api-key>}
 VITE_FIREBASE_AUTH_DOMAIN=gen-lang-client-0613258198.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=gen-lang-client-0613258198
 VITE_FIREBASE_APP_ID=1:704294644197:web:3c2d159fe167478d47e70c
