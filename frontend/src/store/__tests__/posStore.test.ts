@@ -118,8 +118,11 @@ describe('posStore Compatibility', () => {
     };
     localStorage.setItem('pos-storage', JSON.stringify(oldShape));
 
+    // Clear IndexedDB so the legacy localStorage migration path is exercised
+    const store = usePosStore as unknown as { persist?: { clearStorage: () => void; rehydrate: () => Promise<void> } };
+    store.persist?.clearStorage();
+
     // Zustand 5 persist rehydrate is async; await it so migrate() runs
-    const store = usePosStore as unknown as { persist?: { rehydrate: () => Promise<void> } };
     if (store.persist?.rehydrate) {
       await store.persist.rehydrate();
     }

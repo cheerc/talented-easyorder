@@ -75,6 +75,7 @@ export function migratePersistedState(persistedState: unknown, version: number):
       };
     }
 
+    (state as Record<string, unknown>).schemaVersion = 2;
     return state as unknown as PosState;
   } catch (e) {
     appendErrorLog({ source: 'storage', message: '[migration] migratePersistedState crashed: ' + String(e) });
