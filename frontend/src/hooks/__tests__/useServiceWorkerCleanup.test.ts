@@ -16,9 +16,9 @@ describe('useServiceWorkerCleanup', () => {
     await vi.waitFor(() => {
       expect(getRegistrations).toHaveBeenCalled();
     });
-    // unregister is called in .then() — wait for microtask
-    await new Promise(r => setTimeout(r, 10));
-    expect(unregister).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(unregister).toHaveBeenCalled();
+    });
   });
 
   it('deletes all cache entries', async () => {
@@ -34,9 +34,10 @@ describe('useServiceWorkerCleanup', () => {
     await vi.waitFor(() => {
       expect(keys).toHaveBeenCalled();
     });
-    await new Promise(r => setTimeout(r, 10));
-    expect(deleteFn).toHaveBeenCalledWith('cache-v1');
-    expect(deleteFn).toHaveBeenCalledWith('cache-v2');
+    await vi.waitFor(() => {
+      expect(deleteFn).toHaveBeenCalledWith('cache-v1');
+      expect(deleteFn).toHaveBeenCalledWith('cache-v2');
+    });
   });
 
   it('handles empty registrations gracefully', async () => {

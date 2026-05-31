@@ -113,7 +113,7 @@ service cloud.firestore {
         && request.resource.data.businessDate is string
         && request.resource.data.studentId is string
         && request.resource.data.amount is number
-        && request.resource.data.type in ['order', 'payment', 'refund', 'cancel', 'correction', 'void'];
+        && request.resource.data.type in ['order', 'payment', 'expense'];
       allow update: if activeOperator()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'committedAt', 'balanceAfter', 'voidedAt', 'voidedBy', 'voidReason']);
       allow delete: if false;

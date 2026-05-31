@@ -1,5 +1,8 @@
 import type { PosState } from '../store/posTypes';
 import type { ValidationResult } from '../types/validation';
+import { recalculateStudentBalances } from '../domain/ledger';
+import type { StudentAccount } from '../domain/student';
+import type { LedgerTransaction } from '../domain/ledger';
 
 const CURRENT_SCHEMA_VERSION = 2;
 
@@ -258,41 +261,23 @@ export function migrateState(raw: unknown): MigrationResult {
 
   state.transactions = migratedTx;
 
-  // Recalculate student balances from 0
+  // Recalculate student balances using shared domain logic
   const rawStudents = state.students as Array<Record<string, unknown>> | undefined;
   if (rawStudents && Array.isArray(rawStudents)) {
-    const balanceMap = new Map<string, number>();
-    for (const s of rawStudents) {
-      balanceMap.set(s.studentId as string, 0);
-    }
-
-    const sorted = [...migratedTx].sort((a, b) => {
-      const aDate = (a.businessDate as string) || '';
-      const bDate = (b.businessDate as string) || '';
-      if (aDate !== bDate) return aDate.localeCompare(bDate);
-      const aAt = (a.createdAt as string) || '';
-      const bAt = (b.createdAt as string) || '';
-      if (aAt !== bAt) return aAt.localeCompare(bAt);
-      return ((a.transactionId as string) || '').localeCompare((b.transactionId as string) || '');
-    });
-
-    for (const tx of sorted) {
-      const sid = tx.studentId as string;
+    // Compute amount for each migrated transaction before recalc
+    for (const tx of migratedTx) {
       const paidAmount = (tx.paidAmount as number) || 0;
       const mealPrice = (tx.mealPrice as number) || 0;
-      const amount = (paidAmount - mealPrice);
-      tx.amount = amount;
-
-      const prev = balanceMap.get(sid) ?? 0;
-      const newBalance = prev + amount;
-      balanceMap.set(sid, newBalance);
-      tx.afterBalance = newBalance;
+      tx.amount = (paidAmount - mealPrice);
     }
 
-    state.students = rawStudents.map((s) => ({
-      ...s,
-      currentBalance: Math.round(balanceMap.get(s.studentId as string) ?? (s.currentBalance as number) ?? 0),
-    }));
+    const result = recalculateStudentBalances(
+      rawStudents as unknown as StudentAccount[],
+      migratedTx as unknown as LedgerTransaction[],
+    );
+
+    state.students = result.students as unknown as Array<Record<string, unknown>>;
+    state.transactions = result.transactions as unknown as Array<Record<string, unknown>>;
   }
 
   (state as Record<string, unknown>).schemaVersion = CURRENT_SCHEMA_VERSION;
