@@ -82,7 +82,7 @@ function localStorageStorage(): {
 export function createIndexedDBStorage(): PersistStorage<unknown> {
   const isIndexedDBAvailable = (() => {
     try {
-      if (typeof indexedDB === 'undefined' || indexedDB === undefined) return false;
+      if (typeof indexedDB === 'undefined' || window.indexedDB === undefined) return false;
       return true;
     } catch {
       return false;
