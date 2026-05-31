@@ -1,6 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { usePosStore } from '../../store/posStore';
 import type { LedgerAuditEvent } from '../../domain/ledgerAudit';
+
+const PAGE_SIZE = 20;
 
 function eventTypeLabel(t: LedgerAuditEvent['eventType']) {
   switch (t) {
@@ -45,10 +47,14 @@ function beforeAfterSummary(before: Record<string, unknown> | null, after: Recor
 
 export const AuditTrailTable = React.memo(function AuditTrailTable() {
   const auditEvents = usePosStore((s) => s.auditEvents);
+  const [page, setPage] = useState(0);
 
   const sorted = useMemo(() => {
     return [...auditEvents].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }, [auditEvents]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const paged = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   if (sorted.length === 0) {
     return <div className="rpt-empty">尚無稽核紀錄</div>;
@@ -64,7 +70,7 @@ export const AuditTrailTable = React.memo(function AuditTrailTable() {
         <div>變更摘要</div>
         <div>日期</div>
       </div>
-      {sorted.map((e) => (
+      {paged.map((e) => (
         <div
           key={e.auditEventId}
           className="rpt-tr"
@@ -78,6 +84,13 @@ export const AuditTrailTable = React.memo(function AuditTrailTable() {
           <div className="mono">{e.businessDate}</div>
         </div>
       ))}
+      {sorted.length > PAGE_SIZE && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', padding: '12px 0' }}>
+          <button className="ghost-btn" disabled={page === 0} onClick={() => setPage(page - 1)}>上一頁</button>
+          <span className="dim" style={{ fontSize: '13px' }}>第 {page + 1} / {totalPages} 頁（共 {sorted.length} 筆）</span>
+          <button className="ghost-btn" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}>下一頁</button>
+        </div>
+      )}
     </div>
   );
 });

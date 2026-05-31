@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useShallow } from 'zustand/shallow';
 import { usePosStore } from '../store/posStore';
 import type { StudentAccount } from '../domain/student';
 import type { LedgerTransaction } from '../domain/ledger';
@@ -25,21 +26,36 @@ export interface UseAppStateReturn {
 }
 
 export function useAppState(viewDate: string): UseAppStateReturn {
-  const students = usePosStore((s) => s.students);
-  const allTx = usePosStore((s) => s.transactions);
-  const todayMenu = usePosStore((s) => s.todayMenu);
-  const vendors = usePosStore((s) => s.vendors);
-  const setTodayMenu = usePosStore((s) => s.setTodayMenu);
-  const setVendors = usePosStore((s) => s.setVendors);
-  const resetData = usePosStore((s) => s.resetData);
-  const getBusinessDateStatus = usePosStore((s) => s.getBusinessDateStatus);
-  const cashSessions = usePosStore((s) => s.cashSessions);
-  const dailySettlements = usePosStore((s) => s.dailySettlements);
-  const openCashSession = usePosStore((s) => s.openCashSession);
-  const updateOpeningCash = usePosStore((s) => s.updateOpeningCash);
+  const {
+    students,
+    transactions: allTx,
+    todayMenu,
+    vendors,
+    setTodayMenu,
+    setVendors,
+    resetData,
+    getBusinessDateStatus,
+    cashSessions,
+    dailySettlements,
+    openCashSession,
+    updateOpeningCash,
+  } = usePosStore(useShallow((s) => ({
+    students: s.students,
+    transactions: s.transactions,
+    todayMenu: s.todayMenu,
+    vendors: s.vendors,
+    setTodayMenu: s.setTodayMenu,
+    setVendors: s.setVendors,
+    resetData: s.resetData,
+    getBusinessDateStatus: s.getBusinessDateStatus,
+    cashSessions: s.cashSessions,
+    dailySettlements: s.dailySettlements,
+    openCashSession: s.openCashSession,
+    updateOpeningCash: s.updateOpeningCash,
+  })));
 
   const tx = useMemo(() =>
-    allTx.filter(t => t.businessDate === viewDate).reverse(),
+    allTx.filter(t => t.businessDate === viewDate).reverse().slice(0, 200),
   [allTx, viewDate]);
 
   const todayCount = useMemo(() => {

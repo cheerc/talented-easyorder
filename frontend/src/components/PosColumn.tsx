@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { SearchBox, CustomerCard, ActionBar, IdleHero, RecentStrip, DuplicateWarningBanner, MidnightBanner, ExpensePanel } from './pos-components';
-import { countActiveOrdersForStudent, mergeLedgerTransactions } from '../domain/ledger';
+import { useActiveOrderCount, useMergedTransactions } from '../store/derived/useLedger';
 import type { PosFlowState, PosMode, PosSelectionSource, ExpenseDirection } from '../domain/posFlow';
 import type { StudentAccount } from '../domain/student';
 import type { LedgerTransaction } from '../domain/ledger';
@@ -62,7 +62,7 @@ interface PosColumnProps {
 export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
   const {
     state, isHistorical, dateStatus, viewDate, systemDate, setViewDate,
-    picked, currentMode, currentPaidAmount, allTx, students, selectStudent,
+    picked, currentMode, currentPaidAmount, students, selectStudent,
     expenseProps,
     updateExpenseAmount, confirmExpenseAmount, selectExpenseDirection, selectExpenseReason,
     updateExpenseNote, confirmExpenseNote,
@@ -74,10 +74,8 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
     handleDeleteOrder, onViewHistory,
   } = props;
 
-  const orderedTodayCount = useMemo(() => {
-    if (!picked) return 0;
-    return countActiveOrdersForStudent(allTx, picked.studentId, viewDate);
-  }, [picked, allTx, viewDate]);
+  const orderedTodayCount = useActiveOrderCount(picked?.studentId ?? null, viewDate);
+  const mergedTx = useMergedTransactions(tx);
 
   const [activeIdx, setActiveIdx] = useState(0);
 
@@ -210,7 +208,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
       </div>
       <div className="col-side">
         <RecentStrip
-          recent={mergeLedgerTransactions(tx).map((t, i) => ({ ...t, uid: i + '-' + t.createdAt }))}
+          recent={mergedTx.map((t, i) => ({ ...t, uid: i + '-' + t.createdAt }))}
           onItemClick={!isHistorical && dateStatus !== 'closed' ? (sid) => selectStudent(sid, 'manual') : undefined}
         />
       </div>
