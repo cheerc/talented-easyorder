@@ -80,46 +80,45 @@ Object.defineProperty(window, 'indexedDB', {
 
 import { vi } from 'vitest';
 
-// Global mocks for Firebase initialization and Auth Gate in test environment
-vi.mock('../firebase/firebaseApp', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../firebase/firebaseApp')>();
-  return {
-    ...original,
-    ensureFirebaseInitialized: () => ({
-      auth: {
-        currentUser: {
-          uid: 'uid-counter',
-          email: 'counter@talented.com.tw',
-          displayName: 'Counter',
-        },
-      },
-      db: {},
-    }),
-  };
-});
-
-vi.mock('../firebase/authService', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../firebase/authService')>();
-  return {
-    ...original,
-    subscribeOperatorAccess: (
-      _auth: unknown,
-      _db: unknown,
-      onAccess: (access: import('../firebase/authService').OperatorAccess) => void,
-    ) => {
-      // Immediately authorize the operator in test environment so integration tests pass
-      onAccess({
-        ok: true,
-        profile: {
-          uid: 'uid-counter',
-          email: 'counter@talented.com.tw',
-          displayName: 'Counter',
-        },
-        role: 'admin',
-      });
-      return () => {};
+const mockServices = {
+  auth: {
+    currentUser: {
+      uid: 'uid-counter',
+      email: 'counter@talented.com.tw',
+      displayName: 'Counter',
     },
-    signInWithGoogle: vi.fn(),
-    signOutOperator: vi.fn(),
-  };
-});
+  },
+  db: {},
+};
+
+// Global mocks for Firebase initialization and Auth Gate in test environment
+vi.mock('../firebase/firebaseApp', () => ({
+  ensureFirebaseInitialized: () => mockServices,
+  readFirebaseConfig: () => ({}),
+  getFirebaseConfigState: () => ({ configured: false, error: 'Mocked config' }),
+  isFirebaseConfigured: () => false,
+  firebaseConfigState: { configured: false, error: 'Mocked config' },
+  isConfigured: false,
+}));
+
+vi.mock('../firebase/authService', () => ({
+  subscribeOperatorAccess: (
+    _auth: unknown,
+    _db: unknown,
+    onAccess: (access: import('../firebase/authService').OperatorAccess) => void,
+  ) => {
+    // Immediately authorize the operator in test environment so integration tests pass
+    onAccess({
+      ok: true,
+      profile: {
+        uid: 'uid-counter',
+        email: 'counter@talented.com.tw',
+        displayName: 'Counter',
+      },
+      role: 'admin',
+    });
+    return () => {};
+  },
+  signInWithGoogle: vi.fn(),
+  signOutOperator: vi.fn(),
+}));
