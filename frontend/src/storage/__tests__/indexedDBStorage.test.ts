@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createIndexedDBStorage } from '../indexedDBStorage';
 
 describe('createIndexedDBStorage', () => {
@@ -69,6 +69,33 @@ describe('createIndexedDBStorage', () => {
       const result = await storage.getItem('overwrite-key');
 
       expect(result).toEqual(v2);
+    });
+  });
+
+  describe('connection singleton (_dbPromise)', () => {
+    it('reuses cached connection without re-calling indexedDB.open', async () => {
+      const storage = createIndexedDBStorage();
+      // First operation primes _dbPromise
+      await storage.setItem('init', { state: {}, version: 2 });
+
+      const openSpy = vi.spyOn(window.indexedDB, 'open');
+
+      // Subsequent operations should NOT trigger new indexedDB.open calls
+      await storage.setItem('k1', { state: { a: 1 }, version: 2 });
+      await storage.setItem('k2', { state: { b: 2 }, version: 2 });
+      await storage.getItem('init');
+
+      expect(openSpy).not.toHaveBeenCalled();
+    });
+
+    it('shares data across separate createIndexedDBStorage instances', async () => {
+      const storage1 = createIndexedDBStorage();
+      const storage2 = createIndexedDBStorage();
+
+      await storage1.setItem('shared', { state: { x: 1 }, version: 2 });
+      const result = await storage2.getItem('shared');
+
+      expect(result).toEqual({ state: { x: 1 }, version: 2 });
     });
   });
 });
