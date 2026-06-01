@@ -51,7 +51,8 @@ export function AppCrashPage() {
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', textAlign: 'center', padding: '32px' }}>
       <h1 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '12px' }}>系統發生錯誤</h1>
       <p style={{ color: 'var(--c-text-dim)', marginBottom: '8px' }}>很抱歉，應用程式遇到未預期的錯誤。</p>
-      <p style={{ color: 'var(--c-text-dim)' }}>請點擊下方按鈕嘗試重新載入。</p>
+      <p style={{ color: 'var(--c-text-dim)', marginBottom: '16px' }}>請點擊下方按鈕嘗試重新載入。</p>
+      <button className="btn-confirm" onClick={() => window.location.reload()}>重新載入</button>
     </div>
   );
 }

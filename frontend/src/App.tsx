@@ -179,7 +179,7 @@ export default function App() {
     isDialogOpen: cancelDialogOpen || noOrderDialogOpen,
   });
 
-  const posColumnProps = buildPosColumnProps({
+  const posColumnProps = useMemo(() => buildPosColumnProps({
     state, isHistorical, dateStatus, viewDate, systemDate, setViewDate,
     picked, currentMode, currentPaidAmount, allTx, students, selectStudent,
     expenseProps,
@@ -192,7 +192,17 @@ export default function App() {
     tx, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
     handleDeleteOrder,
     onViewHistory: () => { setReportStudentFilter(picked!.studentId); setTab('report'); },
-  });
+  }), [state, isHistorical, dateStatus, viewDate, systemDate, setViewDate,
+    picked, currentMode, currentPaidAmount, allTx, students, selectStudent,
+    expenseProps,
+    updateExpenseAmount, confirmExpenseAmount, selectExpenseDirection, selectExpenseReason,
+    updateExpenseNote, confirmExpenseNote,
+    setPaidAmountText, handleConfirm, cancelFlow, changeMode, setFocusZone, focusZone, openCancelConfirm,
+    setSearchText, searchFocusKey, hasFlash,
+    crashDraftRestoredState, setCrashDraftRestoredState,
+    todayMenu, todayCount, vendors, enterExpenseMode, tweaks,
+    tx, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
+    handleDeleteOrder]);
 
   return (
     <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => appendErrorLog({ source: 'react', message: e.message, stack: e.stack })}>
