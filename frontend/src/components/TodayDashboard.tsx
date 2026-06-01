@@ -1,12 +1,13 @@
 import React, { useMemo } from 'react';
+import { useShallow } from 'zustand/shallow';
 import { usePosStore } from '../store/posStore';
 import { fmt } from './pos-components';
 import { useLedgerReport } from '../store/derived/useLedgerReport';
 
 export const TodayDashboard = React.memo(function TodayDashboard({ onClose }: { onClose: () => void }) {
-  const auditEvents = usePosStore((s) => s.auditEvents);
-  const dailySettlements = usePosStore((s) => s.dailySettlements);
-  const businessDateStatuses = usePosStore((s) => s.businessDateStatuses);
+  const { auditEvents, dailySettlements, businessDateStatuses } = usePosStore(
+    useShallow((s) => ({ auditEvents: s.auditEvents, dailySettlements: s.dailySettlements, businessDateStatuses: s.businessDateStatuses }))
+  );
 
   const systemDate = useMemo(() => new Date().toISOString().split('T')[0], []);
 
@@ -15,22 +16,18 @@ export const TodayDashboard = React.memo(function TodayDashboard({ onClose }: { 
     viewDate: systemDate,
   });
 
-  const queuedCount = useMemo(() => todayTx.filter(t => t.syncStatus === 'queued').length, [todayTx]);
+  const queuedCount = todayTx.filter(t => t.syncStatus === 'queued').length;
 
   const dateStatus = businessDateStatuses[systemDate] || 'open';
 
-  const todaySettlement = useMemo(() => {
+  const todaySettlement = (() => {
     const daySet = dailySettlements.filter(s => s.businessDate === systemDate);
     return daySet.sort((a, b) => b.settlementRevision - a.settlementRevision)[0] ?? null;
-  }, [dailySettlements, systemDate]);
+  })();
 
-  const correctionCount = useMemo(() => {
-    return auditEvents.filter(e => e.eventType === 'transaction_corrected' && e.businessDate === systemDate).length;
-  }, [auditEvents, systemDate]);
+  const correctionCount = auditEvents.filter(e => e.eventType === 'transaction_corrected' && e.businessDate === systemDate).length;
 
-  const voidCount = useMemo(() => {
-    return auditEvents.filter(e => e.eventType === 'transaction_voided' && e.businessDate === systemDate).length;
-  }, [auditEvents, systemDate]);
+  const voidCount = auditEvents.filter(e => e.eventType === 'transaction_voided' && e.businessDate === systemDate).length;
 
   const latest5 = useMemo(() => {
     return [...todayTx].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5);
