@@ -1,3 +1,4 @@
+import type { Firestore } from 'firebase/firestore';
 import type { StudentAccount } from '../domain/student';
 import type { Vendor, TodayMenu } from '../domain/menu';
 import type { LedgerTransaction } from '../domain/ledger';
@@ -66,5 +67,7 @@ export interface PosState {
   closeBusinessDate: (input: CloseBusinessDateInput) => void;
   reopenBusinessDate: (input: ReopenBusinessDateInput) => void;
   getBusinessDateStatus: (businessDate: string) => BusinessDateStatus;
+  addStudent: (db: Firestore, input: { studentId: string; displayName: string; openingBalance: number; operatorId: string }) => Promise<void>;
+  disableStudent: (db: Firestore, input: { studentId: string; operatorId: string }) => Promise<void>;
   resetData: () => void;
 }

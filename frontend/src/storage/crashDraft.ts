@@ -31,34 +31,38 @@ function openDB(): Promise<IDBDatabase> {
 }
 
 export async function saveCrashDraft(draft: PosTransactionDraft): Promise<void> {
+  let db: IDBDatabase | null = null;
   try {
-    const db = await openDB();
+    db = await openDB();
     const tx = db.transaction(STORE_NAME, 'readwrite');
     tx.objectStore(STORE_NAME).put(draft, DRAFT_KEY);
     await new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
-    db.close();
   } catch {
     appendErrorLog({ source: 'storage', message: 'crashDraft save failed' });
+  } finally {
+    db?.close();
   }
 }
 
 export async function loadCrashDraft(): Promise<PosTransactionDraft | null> {
+  let db: IDBDatabase | null = null;
   try {
-    const db = await openDB();
+    db = await openDB();
     const tx = db.transaction(STORE_NAME, 'readonly');
     const req = tx.objectStore(STORE_NAME).get(DRAFT_KEY);
     const result = await new Promise<PosTransactionDraft | undefined>((resolve, reject) => {
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
-    db.close();
     return result ?? null;
   } catch {
     appendErrorLog({ source: 'storage', message: 'crashDraft load failed' });
     return null;
+  } finally {
+    db?.close();
   }
 }
 
