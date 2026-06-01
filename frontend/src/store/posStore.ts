@@ -24,7 +24,7 @@ export const usePosStore = create<PosState>()(
       ...createMenuActions(set),
       ...createSessionActions(set, get),
       ...createTransactionActions(set, get),
-      ...createFirebaseActions(set, get),
+      ...createFirebaseActions(),
     }),
     posPersistenceConfig,
   )
