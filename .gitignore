@@ -5,14 +5,11 @@ dist/
 .DS_Store
 .agend-managed
 
-# graphify — local-only files
-graphify-out/manifest.json
-graphify-out/cost.json
-graphify-out/cache/
-graphify-out/.graphify_*
-graphify-out/graph.html
+# graphify — local-only（不 commit，post-commit hook 自動重建）
+graphify-out/
 .graphify_root
 .claude/settings.local.json
 
 .agents/*
 .gemini/*
+.antigravitycli/*
