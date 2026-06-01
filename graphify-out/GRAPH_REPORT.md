@@ -1,16 +1,16 @@
 # Graph Report - talented-easyorder  (2026-06-01)
 
 ## Corpus Check
-- 294 files · ~200,176 words
+- 298 files · ~202,454 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3431 nodes · 5329 edges · 291 communities (221 shown, 70 thin omitted)
+- 3455 nodes · 5386 edges · 293 communities (223 shown, 70 thin omitted)
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 98 edges (avg confidence: 0.77)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `ae8ac86a`
+- Built from commit: `cbca7554`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -277,18 +277,14 @@
 - [[_COMMUNITY_Community 264|Community 264]]
 - [[_COMMUNITY_Community 265|Community 265]]
 - [[_COMMUNITY_Community 266|Community 266]]
-- [[_COMMUNITY_Community 267|Community 267]]
 - [[_COMMUNITY_Community 268|Community 268]]
 - [[_COMMUNITY_Community 269|Community 269]]
 - [[_COMMUNITY_Community 270|Community 270]]
 - [[_COMMUNITY_Community 271|Community 271]]
 - [[_COMMUNITY_Community 272|Community 272]]
 - [[_COMMUNITY_Community 273|Community 273]]
-- [[_COMMUNITY_Community 274|Community 274]]
 - [[_COMMUNITY_Community 275|Community 275]]
-- [[_COMMUNITY_Community 276|Community 276]]
 - [[_COMMUNITY_Community 277|Community 277]]
-- [[_COMMUNITY_Community 278|Community 278]]
 - [[_COMMUNITY_Community 279|Community 279]]
 - [[_COMMUNITY_Community 280|Community 280]]
 - [[_COMMUNITY_Community 281|Community 281]]
@@ -301,14 +297,20 @@
 - [[_COMMUNITY_Community 288|Community 288]]
 - [[_COMMUNITY_Community 289|Community 289]]
 - [[_COMMUNITY_Community 290|Community 290]]
+- [[_COMMUNITY_Community 291|Community 291]]
+- [[_COMMUNITY_Community 292|Community 292]]
+- [[_COMMUNITY_Community 294|Community 294]]
+- [[_COMMUNITY_Community 300|Community 300]]
+- [[_COMMUNITY_Community 304|Community 304]]
+- [[_COMMUNITY_Community 305|Community 305]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `LedgerTransaction` - 50 edges
+1. `LedgerTransaction` - 51 edges
 2. `Batch 6 Verification Checklist` - 48 edges
-3. `usePosStore` - 41 edges
+3. `usePosStore` - 43 edges
 4. `Batch 6 accounting/UX fixes` - 33 edges
-5. `fmt()` - 31 edges
-6. `StudentAccount` - 31 edges
+5. `StudentAccount` - 32 edges
+6. `fmt()` - 31 edges
 7. `TodayMenu` - 31 edges
 8. `資料遷移策略實作計畫` - 30 edges
 9. `App()` - 28 edges
@@ -341,11 +343,11 @@
 - **Phase 3 Security Fixes** — plans_2026_05_31_security_fixes_phase1_4_issue_175, plans_2026_05_31_security_fixes_phase1_4_issue_178, plans_2026_05_31_security_fixes_phase1_4_issue_179 [EXTRACTED 1.00]
 - **Ledger Export CSV Pipeline** — domain_ledgerexport_buildtransactioncsvrows, domain_ledgerexport_buildsettlementcsvrows, domain_ledgerexport_serializecsv, domain_ledgerexport_triggercsvdownload [INFERRED 0.95]
 
-## Communities (291 total, 70 thin omitted)
+## Communities (293 total, 70 thin omitted)
 
 ### Community 0 - "POS Store & Core Financial Logic"
-Cohesion: 0.12
-Nodes (18): DailyCashSession, INITIAL_ORDERED_TODAY, INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS, createMenuActions(), defaultState (+10 more)
+Cohesion: 0.09
+Nodes (25): TodayDashboard Test Suite, TodayDashboard, useLedgerReport(), resetStoreForTest(), usePosFlow Test Suite, useUndoCountdown Test Suite, useUndoCountdown(), UseUndoCountdownArgs (+17 more)
 
 ### Community 1 - "Cash Close & Ledger Reports"
 Cohesion: 0.09
@@ -388,8 +390,8 @@ Cohesion: 0.12
 Nodes (25): Batch 6 accounting/UX fixes, expense flash banner with net cash, expense panel keyboard navigation, input focus and keyboard shortcuts, LedgerGroupedTable expense rows fix, opening cash = yesterday countedCash, B6-16: A 快捷鍵進入收入/支出模式（已含於 B6-1）, Batch 6 — Accounting & UX Fixes: 驗證清單 (+17 more)
 
 ### Community 11 - "App Entry & Keyboard Shortcuts"
-Cohesion: 0.13
-Nodes (32): Code Quality Refactoring Plan (2026-05-21), calculateTransactionAmount(), CASHIER_SENTINEL, countActiveOrdersForStudent(), createLedgerTransaction(), CreateLedgerTransactionInput, MergedTransaction, recalculateStudentBalances() (+24 more)
+Cohesion: 0.14
+Nodes (24): Code Quality Refactoring Plan (2026-05-21), Phase 1.0 Foundation Hardening Plan, calculateTransactionAmount(), CASHIER_SENTINEL, createLedgerTransaction(), recalculateStudentBalances(), PosTransactionDraft, createTransactionId() (+16 more)
 
 ### Community 12 - "Deployment and Multi-environment Setup"
 Cohesion: 0.05
@@ -400,8 +402,8 @@ Cohesion: 0.17
 Nodes (21): Batch 3 Seed Data Reset Plan, LedgerTransaction, LedgerGroup, LedgerGroupedTable, DetailRow, DetailRowProps, TYPE_LABEL, ExpenseOnlyRow (+13 more)
 
 ### Community 14 - "Deployment Guide & Error Boundary Architecture"
-Cohesion: 0.13
-Nodes (29): POS Components Test Suite, PosColumn, ExpensePanel, ActionBar, ConfirmBanner, ConfirmBannerProps, FlashData, CustomerCard (+21 more)
+Cohesion: 0.11
+Nodes (33): POS Components Test Suite, PosColumn, ExpensePanel, ActionBar, ActionBarProps, ConfirmBanner, ConfirmBannerProps, FlashData (+25 more)
 
 ### Community 15 - "Community 15"
 Cohesion: 0.07
@@ -416,8 +418,8 @@ Cohesion: 0.06
 Nodes (34): code:text (Student/menu/ledger/settlement domain write), code:ts (export type ConflictEntity = 'student' | 'vendor' | 'menu' |), code:ts (export type LocalOnlyRowsDecision = 'keep' | 'export' | 'dis), code:ts (export interface LegacySheetRow {), code:text (App), code:ts (export type RemoteWriteResult =), code:ts (export type SheetName = 'students' | 'vendors' | 'menus' | '), code:ts (export type SyncEntity = 'student' | 'vendor' | 'menu' | 'tr) (+26 more)
 
 ### Community 18 - "Community 18"
-Cohesion: 0.17
-Nodes (16): TodayDashboard Test Suite, TodayDashboard, useCashClose(), useLedgerReport(), BusinessDateStatus, CashCloseDraft, createCashCloseDraft(), createDailySettlement() (+8 more)
+Cohesion: 0.16
+Nodes (16): useCashClose(), Deployment Guide, BusinessDateStatus, CashCloseDraft, createCashCloseDraft(), createDailySettlement(), getOpeningCash(), isBusinessDateWritable() (+8 more)
 
 ### Community 19 - "Community 19"
 Cohesion: 0.06
@@ -428,12 +430,12 @@ Cohesion: 0.06
 Nodes (32): 1. Pre-Lunch Setup, 2. Normal Lunch Order, 3. Payment Without New Order, 4. Duplicate Order Warning, 5. Same-Day Cancel And Refund, 6. Mistake Recovery, 7. Network Outage, 8. iPad Recognition Failure Or Disconnection (+24 more)
 
 ### Community 21 - "Community 21"
-Cohesion: 0.12
-Nodes (16): Background, Batch 5 — UX 微調, code:tsx (enabled: tab === 'pos' && !hasFlash,), code:tsx (const isExpenseFlow = state.kind === 'expense_input' || stat), code:tsx (onConfirm={() => {), code:tsx (onConfirm={() => {), code:block7 (本筆價格 <number input>), code:block8 (品項   <text input>) (+8 more)
+Cohesion: 0.17
+Nodes (12): code:tsx (enabled: tab === 'pos' && !hasFlash,), code:tsx (const isExpenseFlow = state.kind === 'expense_input' || stat), code:tsx (onConfirm={() => {), code:tsx (onConfirm={() => {), code:block7 (本筆價格 <number input>), code:block8 (品項   <text input>), F5-1: Q/W/E 快捷鍵在收支介面應無效（Medium）, F5-2: 移除「本次繳費」預設金額按鈕（Low） (+4 more)
 
 ### Community 22 - "Community 22"
-Cohesion: 0.18
-Nodes (15): createStudentSnapshot(), FaceEnrollmentStatus, filterActiveStudents(), ImportFieldError, searchActiveStudents(), StudentImportResult, StudentImportRow, StudentStatus (+7 more)
+Cohesion: 0.15
+Nodes (12): PosSearchMode, PosSearchResult, resolveScannedStudent(), FaceEnrollmentStatus, filterActiveStudents(), ImportFieldError, searchActiveStudents(), StudentImportResult (+4 more)
 
 ### Community 23 - "Community 23"
 Cohesion: 0.07
@@ -468,16 +470,16 @@ Cohesion: 0.21
 Nodes (27): Firebase + Vercel Setup Guide, check_and_switch_firebase(), check_and_switch_gcloud(), confirm_prod(), deploy_all(), deploy_frontend(), deploy_full_stack(), deploy_indexes() (+19 more)
 
 ### Community 31 - "Community 31"
-Cohesion: 0.05
-Nodes (57): AuthGate(), appendErrorLog(), clearErrorLog(), CONTEXT_ALLOW_LIST, ErrorLogEntry, getRecentErrors(), installErrorListeners(), installGlobalErrorListeners() (+49 more)
+Cohesion: 0.08
+Nodes (38): Firebase Config Read And Validate Tests, cashAdjustmentPath(), closeAttemptPath(), settlementPath(), studentPath(), transactionPath(), buildTransactionDoc(), FirestoreSyncStatus (+30 more)
 
 ### Community 32 - "Community 32"
 Cohesion: 0.07
 Nodes (26): §1 — POS 金額輸入焦點 & 快捷鍵 A (B6-1, B6-16), §2 — Expense Flash Banner 顯示淨現金 (B6-2), §3 — 備註 Enter 被 ConfirmBanner 搶走 (B6-3), §4 — RecentStrip __cashier__ 文字重疊 (B6-4), §5 — ExpensePanel 鍵盤導航 (B6-5), §6 — Expense Note 輸入欄位佈局修正 (B6-6), CI Chain, code:block1 (frontend/src/App.tsx) (+18 more)
 
 ### Community 33 - "Community 33"
-Cohesion: 0.08
-Nodes (31): Split Monolithic usePosStore — 執行計畫書, Affected Callers Summary, code:typescript (// frontend/src/store/posTypes.ts), code:typescript (// frontend/src/store/posActions/transactionActions.ts), code:typescript (// frontend/src/store/posActions/sessionActions.ts), code:typescript (// frontend/src/store/posActions/menuActions.ts), code:typescript (// frontend/src/store/posPersistence.ts), code:typescript (// frontend/src/store/posStore.ts) (+23 more)
+Cohesion: 0.09
+Nodes (30): Split Monolithic usePosStore — 執行計畫書, Affected Callers Summary, code:typescript (// frontend/src/store/posTypes.ts), code:typescript (// frontend/src/store/posActions/transactionActions.ts), code:typescript (// frontend/src/store/posActions/sessionActions.ts), code:typescript (// frontend/src/store/posActions/menuActions.ts), code:typescript (// frontend/src/store/posPersistence.ts), code:typescript (// frontend/src/store/posStore.ts) (+22 more)
 
 ### Community 34 - "Community 34"
 Cohesion: 0.08
@@ -488,12 +490,12 @@ Cohesion: 0.08
 Nodes (23): 1.1 大量訂單日 (200+ 筆交易), 1.2 網路頻繁斷線/恢復 (Network Flapping), 1.3 日結後發現錯帳 — 修正流程, 1.4 跨日操作 (Midnight Boundary), 1.5 多 iPad 同時操作衝突, 1. 邊界案例情境, 2.1 新手合作社阿姨 — 從開機到一日營運, 2.2 主任月底結算 — 跨日期查詢、匯出、對帳 (+15 more)
 
 ### Community 36 - "Community 36"
-Cohesion: 0.15
-Nodes (20): HandoffAction, IpadHandoffMessage, readHandoffIntent(), toHandoffScannerInput(), VALID_ACTIONS, VALID_SOURCES, ValidateHandoffResult, validateIpadHandoffMessage() (+12 more)
+Cohesion: 0.33
+Nodes (10): Plan: Store Actions Unit Test Coverage, Affected Callers, Objective, Plan: Store Actions Unit Test Coverage (#145), Section 1: transactionActions.test.ts, Section 2: sessionActions.test.ts, Section 3: menuActions.test.ts, Success Criteria (+2 more)
 
 ### Community 37 - "Community 37"
-Cohesion: 0.11
-Nodes (17): A11y 基準, code:bash (git add frontend/src/index.css docs/qa/accessibility-checkli), code:bash (git add docs/qa/ipad-voiceover-test-plan.md docs/qa/ipad-tou), code:bash (cd frontend), code:bash (cd frontend), Definition Of Done, DISCUSS WITH USER, EasyOrder 額外標準 (+9 more)
+Cohesion: 0.09
+Nodes (22): A11y 基準, code:css (:root {), code:bash (git add frontend/src/index.css docs/qa/accessibility-checkli), code:bash (git add docs/qa/ipad-voiceover-test-plan.md docs/qa/ipad-tou), code:bash (cd frontend), code:bash (cd frontend), code:css (:root {), code:bash (git add frontend/src/index.css frontend/src/components/pos-c) (+14 more)
 
 ### Community 38 - "Community 38"
 Cohesion: 0.18
@@ -512,8 +514,8 @@ Cohesion: 0.13
 Nodes (22): PC POS Accounting Authority Boundary, User Operation SOP And UX Blind Spot Analysis, code:ts (export type FaceProfileStatus = 'none' | 'enrolled' | 'disab), Confidence And Ambiguity, Enrollment, iPad Face Auth Handoff Spec, Offline Operation, PC Handoff (+14 more)
 
 ### Community 42 - "Community 42"
-Cohesion: 0.09
-Nodes (22): code:ts (export interface PosCrashDraft {), code:bash (git add frontend/src/storage/crashDraft.ts frontend/src/stor), code:bash (git add docs/ops/error-recovery-runbook.md frontend/src/comp), code:ts (export interface ErrorLogTransport {), code:bash (git add docs/ops/client-error-logging-policy.md frontend/src), code:bash (cd frontend), code:bash (cd frontend), code:ts (export interface ErrorLogEntry {) (+14 more)
+Cohesion: 0.07
+Nodes (26): code:ts (export interface PosCrashDraft {), code:bash (git add frontend/src/storage/crashDraft.ts frontend/src/stor), code:bash (git add docs/ops/error-recovery-runbook.md frontend/src/comp), code:ts (export interface ErrorLogTransport {), code:bash (git add docs/ops/client-error-logging-policy.md frontend/src), code:bash (cd frontend), code:bash (cd frontend), code:tsx (import { render, screen } from '@testing-library/react';) (+18 more)
 
 ### Community 43 - "Community 43"
 Cohesion: 0.12
@@ -552,20 +554,20 @@ Cohesion: 0.11
 Nodes (17): compilerOptions, allowImportingTsExtensions, erasableSyntaxOnly, lib, module, moduleDetection, moduleResolution, noEmit (+9 more)
 
 ### Community 52 - "Community 52"
-Cohesion: 0.08
-Nodes (21): AdminScreen, AppRouter, AppRouterProps, HistoryScreen, PosColumnProps, ReportScreen, VendorsScreen, AppCrashPage() (+13 more)
+Cohesion: 0.12
+Nodes (10): AdminScreen, AppRouterProps, PosColumnProps, ReportScreen, VendorsScreen, AppCrashPage(), ErrorBoundary, ErrorBoundaryProps (+2 more)
 
 ### Community 53 - "Community 53"
-Cohesion: 0.12
-Nodes (20): useOnlineStatus Test Suite, useSystemDate Test Suite, useUndoCountdown Test Suite, useCancelDialog(), useCrashDraftRecovery(), useFlashData(), useOnlineStatus(), usePosColumnProps (+12 more)
+Cohesion: 0.11
+Nodes (21): AuthGate(), OperatorAccess, useOnlineStatus Test Suite, useSystemDate Test Suite, useCancelDialog(), useFlashData(), useFocusSync(), useKeyboardShortcuts hook (+13 more)
 
 ### Community 54 - "Community 54"
-Cohesion: 0.11
-Nodes (27): CloseBlockingSyncSummary, DailySettlement, Spec Conformance Audit, LedgerSyncStatus, AuditEventInput, BusinessDateStatus, createLedgerAuditEvent(), decideLedgerDeletePolicy() (+19 more)
+Cohesion: 0.24
+Nodes (15): HandoffAction, IpadHandoffMessage, isIpadHandoffMessage(), readHandoffIntent(), toHandoffScannerInput(), VALID_ACTIONS, VALID_SOURCES, ValidateHandoffResult (+7 more)
 
 ### Community 55 - "Community 55"
-Cohesion: 0.12
-Nodes (16): code:block1 (/graphify                                             # full), code:bash (if [ ! -f graphify-out/.graphify_python ]; then), code:bash (graphify cluster-only .), code:bash (python3 -m graphify.watch INPUT_PATH --debounce 3), code:bash (graphify hook install    # install), code:bash (graphify claude install), code:bash (graphify claude uninstall  # remove the section), For --cluster-only (+8 more)
+Cohesion: 0.11
+Nodes (18): code:block1 (/graphify                                             # full), code:bash (if [ ! -f graphify-out/.graphify_python ]; then), code:bash (graphify cluster-only .), code:bash ($(cat graphify-out/.graphify_python) -c "), code:bash (python3 -m graphify.watch INPUT_PATH --debounce 3), code:bash (graphify hook install    # install), code:bash (graphify claude install), code:bash (graphify claude uninstall  # remove the section) (+10 more)
 
 ### Community 56 - "Community 56"
 Cohesion: 0.12
@@ -576,8 +578,8 @@ Cohesion: 0.12
 Nodes (16): 1. 下拉選單元件調整 (SearchBox Component), 2. 今日設定頁面配置 (Admin screen), 3. 主頁面 State 與屬性傳遞 (App Component), 4. 單元測試撰寫 (Unit Tests), code:typescript (disableHoverSelection?: boolean;), code:typescript (onMouseEnter={() => {), code:tsx (<div className="adm-row">), code:typescript (const [tweaks, setTweaks] = useState({ theme: 'warm', fontSi) (+8 more)
 
 ### Community 58 - "Community 58"
-Cohesion: 0.15
-Nodes (13): code:bash ($(cat graphify-out/.graphify_python) -c "), code:block11 ([Agent tool call 1: files 1-15, subagent_type="general-purpo), code:bash (PROJECT_ROOT=$(cat graphify-out/.graphify_root)), code:block13 (You are a graphify extraction subagent. Read the files liste), code:bash ($(cat graphify-out/.graphify_python) -c "), code:bash ($(cat graphify-out/.graphify_python) -c "), code:bash ($(cat graphify-out/.graphify_python) -c "), code:bash ($(cat graphify-out/.graphify_python) -c ") (+5 more)
+Cohesion: 0.12
+Nodes (18): code:bash ($(cat graphify-out/.graphify_python) -c "), code:block11 ([Agent tool call 1: files 1-15, subagent_type="general-purpo), code:bash (PROJECT_ROOT=$(cat graphify-out/.graphify_root)), code:block13 (You are a graphify extraction subagent. Read the files liste), code:bash ($(cat graphify-out/.graphify_python) -c "), code:bash ($(cat graphify-out/.graphify_python) -c "), code:bash ($(cat graphify-out/.graphify_python) -c "), code:bash ($(cat graphify-out/.graphify_python) -c ") (+10 more)
 
 ### Community 59 - "Community 59"
 Cohesion: 0.09
@@ -604,16 +606,16 @@ Cohesion: 0.21
 Nodes (16): §1.1: 搜尋框聚焦行為（3 個修復點）, §1.2: 「新增 收入/支出 (A)」按鈕, §1.4: 收支流程 Escape 返回上一層, §2.1: 數值輸入框 DRY + 滾輪 + 快捷鍵 E, §3.1: 價格修改區域排版 + 便當統計, §3.2: RecentStrip 筆數, §3.4: RecentStrip 收支重複標籤, §4.1: 關帳按鈕 + 關帳崩潰修復 (+8 more)
 
 ### Community 65 - "Community 65"
-Cohesion: 0.24
-Nodes (14): Firebase Sync Architecture Implementation Plan, commitLedgerOfflineBatch (Offline Write Path), commitLedgerOnline(), Definition Of Done, Existing Plan Disposition, File Structure, Firebase Sync Architecture Implementation Plan, Firestore Offline Constraint (+6 more)
+Cohesion: 0.18
+Nodes (17): Firebase Sync Architecture Implementation Plan, Spec Conformance Audit, buildTransactionQueuePayload Function, getCloseBlockingSyncSummary Function, searchPosStudents(), Definition Of Done, Existing Plan Disposition, File Structure (+9 more)
 
 ### Community 66 - "Community 66"
-Cohesion: 0.25
-Nodes (8): code:tsx (it('uses operator-friendly payment wording', async () => {), code:bash (cd frontend), code:ts ({ id: 'topup', label: '補錢 / 儲值', hint: 'W' },), code:tsx ({mode === 'order' ? '本次繳費' : mode === 'topup' ? '補錢 / 儲值金額' ), code:tsx (<div className="cust-id mono">{student.studentId}</div>), code:bash (cd frontend), code:bash (git add frontend/src/components/pos-components.tsx frontend/), Task 7: Simplify Operator Language And Confirmations
+Cohesion: 0.31
+Nodes (11): getOperatorAccess(), isAllowedWorkspaceEmail(), OperatorProfile, shouldForceSignOut(), signInWithGoogle(), signOutOperator(), subscribeOperatorAccess(), toOperatorProfile() (+3 more)
 
 ### Community 67 - "Community 67"
-Cohesion: 0.11
-Nodes (21): code:bash (git add frontend/src/styles/tokens.css frontend/src/index.cs), code:css (@import './styles/tokens.css';), code:tsx (import type { ButtonHTMLAttributes, ReactNode } from 'react'), code:css (.ui-button {), code:tsx (import type { HTMLAttributes, ReactNode } from 'react';), code:tsx (import type { HTMLAttributes } from 'react';), code:bash (cd frontend), code:bash (git add frontend/src/styles/components.css frontend/src/inde) (+13 more)
+Cohesion: 0.22
+Nodes (9): code:ts (export type AppTheme = 'warm' | 'dark';), code:ts (import { defaultThemePreference, normalizeThemePreference, t), code:ts (import { describe, expect, it } from 'vitest';), code:bash (cd frontend), code:bash (git add frontend/src/theme frontend/src/App.tsx frontend/src), code:ts (export type AppTheme = 'warm' | 'dark';), Implementation Plan, Task 5: Centralize theme and font-scale control (+1 more)
 
 ### Community 68 - "Community 68"
 Cohesion: 0.11
@@ -629,15 +631,15 @@ Nodes (16): Plan: Fix Components Bypassing Store with Direct Domain Imports, Aff
 
 ### Community 71 - "Community 71"
 Cohesion: 0.15
-Nodes (28): PosColumnProps, createInitialPosFlowState(), ExpenseDirection, PosFlowEvent, PosFlowState, PosSelectionSource, reduceCommitting(), reduceDuplicateWarning() (+20 more)
+Nodes (30): PosColumnProps, countActiveOrdersForStudent(), createInitialPosFlowState(), ExpenseDirection, PosFlowEvent, PosFlowState, PosMode, PosSelectionSource (+22 more)
 
 ### Community 72 - "Community 72"
-Cohesion: 0.31
-Nodes (11): useCrashDraftRecovery Test Suite, clearCrashDraft(), isCrashDraftAvailable(), loadCrashDraft(), openDB(), saveCrashDraft(), sampleDraft, CHANGE_MODE (+3 more)
+Cohesion: 0.27
+Nodes (13): useCrashDraftRecovery Test Suite, useCrashDraftRecovery(), UseCrashDraftRecoveryArgs, clearCrashDraft(), isCrashDraftAvailable(), loadCrashDraft(), openDB(), saveCrashDraft() (+5 more)
 
 ### Community 74 - "Community 74"
-Cohesion: 0.13
-Nodes (26): Phase 1.0 Foundation Hardening Plan, Ledger Domain, RecalculationResult, Ledger Report Domain, filterActiveVendors(), MenuCatalogItem, MenuValidationResult, promoteCatalogItemToTodayMenu Function (+18 more)
+Cohesion: 0.12
+Nodes (33): createMenuSnapshot(), filterActiveVendors(), MenuCatalogItem, MenuValidationResult, promoteCatalogItemToTodayMenu Function, promoteCatalogItemToTodayMenu(), RecordStatus, TodayMenu (+25 more)
 
 ### Community 75 - "Community 75"
 Cohesion: 0.14
@@ -652,16 +654,16 @@ Cohesion: 0.05
 Nodes (51): Daily Cash Close Process, Ledger Audit Trail, POS Transaction State Machine, Batch 6 Wave 1 Verification Report, Order Ledger And Cash Close Spec, PC POS Order Flow Spec, ledgerRepository Test Suite, code:ts (export type TransactionType = 'order' | 'topup' | 'cancel' |) (+43 more)
 
 ### Community 78 - "Community 78"
-Cohesion: 0.15
-Nodes (13): code:bash (git add frontend/src/platform/installPrompt.ts frontend/src/), code:bash (git add frontend/src/platform/navigationGuards.ts frontend/s), code:bash (git add frontend/src/platform/cameraCapabilities.ts frontend), code:bash (git add frontend/src/platform/storageCapabilities.ts fronten), code:bash (git add docs/deployment/android-twa-feasibility.md docs/depl), code:bash (git add docs/qa/cross-platform-pwa-test-matrix.md .github/wo), Task 2: Cross-Platform Install UX, Task 4: Android Back / iOS Navigation Safety (+5 more)
+Cohesion: 0.12
+Nodes (17): code:bash (git add frontend/src/index.css frontend/src/App.tsx frontend), code:bash (git add frontend/src/platform/installPrompt.ts frontend/src/), code:bash (git add frontend/src/index.css frontend/src/App.tsx frontend), code:bash (git add frontend/src/platform/navigationGuards.ts frontend/s), code:bash (git add frontend/src/platform/cameraCapabilities.ts frontend), code:bash (git add frontend/src/platform/storageCapabilities.ts fronten), code:bash (git add docs/deployment/android-twa-feasibility.md docs/depl), code:bash (git add docs/qa/cross-platform-pwa-test-matrix.md .github/wo) (+9 more)
 
 ### Community 79 - "Community 79"
 Cohesion: 0.26
 Nodes (13): Plan: usePosFlow Hook 拆分, Affected Callers (graphify query required), Files, Objective, Plan: usePosFlow Hook 拆分, ⚠️ Risk, Section 1: Extract `useExpenseFlow`, Section 2: Extract `useScannerInput` (+5 more)
 
 ### Community 80 - "Community 80"
-Cohesion: 0.15
-Nodes (13): code:ts (import { describe, expect, it } from 'vitest';), code:ts (export const MIN_TOUCH_TARGET_PX = 44;), code:ts (import { MIN_TOUCH_TARGET_PX } from './a11yConstants';), code:bash (git add frontend/src/accessibility), Task 1: 建立 A11y 常數與檢查基準, code:ts (import { describe, expect, it } from 'vitest';), code:ts (export type ValidationResult =), code:bash (git add frontend/src/storage/posStateValidator.ts frontend/s) (+5 more)
+Cohesion: 0.12
+Nodes (17): code:ts (import { describe, expect, it } from 'vitest';), code:ts (export const MIN_TOUCH_TARGET_PX = 44;), code:ts (import { MIN_TOUCH_TARGET_PX } from './a11yConstants';), code:bash (git add frontend/src/accessibility), Task 1: 建立 A11y 常數與檢查基準, code:ts (import { describe, expect, it } from 'vitest';), code:ts (import { describe, expect, it } from 'vitest';), code:ts (export type ValidationResult =) (+9 more)
 
 ### Community 81 - "Community 81"
 Cohesion: 0.14
@@ -672,16 +674,16 @@ Cohesion: 0.26
 Nodes (13): Plan: Monolithic JS Bundle — Code Splitting, Affected Callers, Approach, Files, Objective, Plan: Monolithic JS Bundle — Code Splitting (#144), ⚠️ Risk, Section 1: Configure manualChunks (vite.config.ts) (+5 more)
 
 ### Community 83 - "Community 83"
-Cohesion: 0.24
-Nodes (11): LedgerPrintViewModel, LedgerTotals, ReportSummaryStats Test Suite, CashClosePanel(), CashClosePanelProps, CounterCashFlow, ReportSummaryStats(), ReportSummaryStatsProps (+3 more)
+Cohesion: 0.28
+Nodes (7): Error Handling Recovery Strategy Plan, AppErrorCode, ErrorSeverity, getUserErrorMessage(), messages, RecoveryAction, UserErrorMessage
 
 ### Community 84 - "Community 84"
 Cohesion: 0.24
 Nodes (13): MenuCatalogItem (Reusable Catalog), Menu and Vendor Management Spec, TodayMenu Entity, Vendor Entity, UI Sample Screens (Report/Admin/Vendors/Backup v2), Menu And Vendor Management Spec, UI/UX 要求, 不在本模組範圍 (+5 more)
 
 ### Community 85 - "Community 85"
-Cohesion: 0.18
-Nodes (12): code:bash (cd frontend), code:typescript (import { defineConfig } from 'vite'), code:typescript (import { describe, it, expect, beforeEach } from 'vitest';), code:bash (git add frontend/), code:bash (cd frontend), code:json ({), code:bash (cd frontend), code:bash (git add frontend/) (+4 more)
+Cohesion: 0.22
+Nodes (9): code:yaml (name: Frontend CI), code:bash (git add .github/), code:bash (cd frontend), code:json ({), code:bash (cd frontend), code:bash (git add frontend/), Phase 2: Architecture Refactoring & CI/CD, Task 5: Setup GitHub Actions CI (+1 more)
 
 ### Community 86 - "Community 86"
 Cohesion: 0.28
@@ -696,12 +698,12 @@ Cohesion: 0.28
 Nodes (12): Plan: Render Performance Monitoring Infrastructure, Affected Callers, Approach, Files, Objective, Plan: Render Performance Monitoring Infrastructure (#158), ⚠️ Risk, Section 1: Install Dev Dependency (+4 more)
 
 ### Community 89 - "Community 89"
-Cohesion: 0.12
-Nodes (17): code:ts (import { describe, expect, it } from 'vitest';), code:bash (cd frontend), code:ts (import { getApp, getApps, initializeApp, type FirebaseApp, t), code:bash (cd frontend), code:bash (git add frontend/src/firebase/firebaseApp.ts frontend/src/fi), code:ts (import { describe, expect, it } from 'vitest';), code:ts (import { doc, serverTimestamp, setDoc, updateDoc, type Fires), code:bash (cd frontend) (+9 more)
+Cohesion: 0.18
+Nodes (12): code:ts (import { describe, expect, it } from 'vitest';), code:ts (import { describe, expect, it } from 'vitest';), code:ts (import { doc, serverTimestamp, setDoc, updateDoc, type Fires), code:bash (cd frontend), code:bash (git add frontend/src/firebase/studentRepository.ts frontend/), code:ts (import { describe, expect, it } from 'vitest';), code:ts (import { doc, runTransaction, serverTimestamp, setDoc, type ), code:tsx (同步狀態：離線關帳已先保存，本機上線後會同步。若其他裝置也關帳，系統會要求選擇正確版本。) (+4 more)
 
 ### Community 90 - "Community 90"
-Cohesion: 0.28
-Nodes (13): DailySettlement, mergeLedgerTransactions(), Ledger Export Domain, buildLedgerPrintViewModel(), buildSettlementCsvRows(), buildTransactionCsvRows(), serializeCsv(), SETTLEMENT_CSV_COLUMNS (+5 more)
+Cohesion: 0.15
+Nodes (22): useActiveOrderCount(), useMergedTransactions(), CreateLedgerTransactionInput, isStudentTransaction(), MergedTransaction, mergeLedgerTransactions(), RecalculationResult, TransactionType (+14 more)
 
 ### Community 91 - "Community 91"
 Cohesion: 0.15
@@ -724,8 +726,8 @@ Cohesion: 0.15
 Nodes (13): code:bash ($(cat graphify-out/.graphify_python) -c "), code:block41 (Query expanded to (from graph vocab, N tokens): [token1, tok), code:bash (graphify query "QUESTION"), code:bash ($(cat graphify-out/.graphify_python) -m graphify save-result), code:bash (graphify path "NODE_A" "NODE_B"), code:bash ($(cat graphify-out/.graphify_python) -m graphify save-result), code:bash (graphify explain "NODE_NAME"), code:bash ($(cat graphify-out/.graphify_python) -m graphify save-result) (+5 more)
 
 ### Community 96 - "Community 96"
-Cohesion: 0.34
-Nodes (11): isStudentTransaction(), calculateLedgerTotals(), createLedgerDateRange(), filterTransactionsByBusinessDate(), getMonday(), getMonthEnd(), getSunday(), groupLedgerRowsByStudent() (+3 more)
+Cohesion: 0.11
+Nodes (32): useLedgerExport(), Ledger Domain, LedgerPrintViewModel, Ledger Report Domain, calculateLedgerTotals(), createLedgerDateRange(), filterTransactionsByBusinessDate(), getMonday() (+24 more)
 
 ### Community 97 - "Community 97"
 Cohesion: 0.15
@@ -736,20 +738,20 @@ Cohesion: 0.20
 Nodes (9): Background, Batch 3 — 種子資料重設, Changes, Current State, Required Tests, S1: 學生餘額全部歸零, S2: 初始交易清空, S3: todayMenu 日期更新（optional） (+1 more)
 
 ### Community 99 - "Community 99"
-Cohesion: 0.33
-Nodes (10): Plan: Store Actions Unit Test Coverage, Affected Callers, Objective, Plan: Store Actions Unit Test Coverage (#145), Section 1: transactionActions.test.ts, Section 2: sessionActions.test.ts, Section 3: menuActions.test.ts, Success Criteria (+2 more)
+Cohesion: 0.70
+Nodes (5): iPad Face Recognition Ordering System Design V3, Face Handoff Flow, Face Recognition System, iPad POS Architecture, Student Management (Face Enrollment)
 
 ### Community 100 - "Community 100"
 Cohesion: 0.20
 Nodes (9): background_color, description, display, icons, name, orientation, short_name, start_url (+1 more)
 
 ### Community 101 - "Community 101"
-Cohesion: 0.18
-Nodes (11): PosMode, useAppNavigationShortcuts hook, useAppNavigationShortcuts(), UseAppNavigationShortcutsArgs, UseCrashDraftRecoveryArgs, useKeyboardShortcuts hook, useKeyboardShortcuts(), UseKeyboardShortcutsArgs (+3 more)
+Cohesion: 0.39
+Nodes (5): SettlementHistoryTable, statusClass(), statusLabel(), settlement history UI, { store, baseSettlements }
 
 ### Community 102 - "Community 102"
-Cohesion: 0.10
-Nodes (26): MainLayout Test Suite, EditTransactionModal, EditTransactionModalProps, FlashData, MainLayout, MainLayoutProps, PwaInstallBanner, PWA Install Banner Tests (+18 more)
+Cohesion: 0.09
+Nodes (26): EditTransactionModal, EditTransactionModalProps, PwaInstallBanner, ReopenDialog, PWA Install Banner Tests, ReopenDialog Test Suite, ReopenDialog(), ReopenDialogProps (+18 more)
 
 ### Community 103 - "Community 103"
 Cohesion: 0.29
@@ -760,12 +762,12 @@ Cohesion: 0.20
 Nodes (9): Android 與跨平台支援策略實作計畫, code:bash (cd frontend), code:bash (cd frontend), Definition Of Done, DISCUSS WITH USER, 官方來源檢查於 2026-05-15, 已讀資料與現況, 核心結論 (+1 more)
 
 ### Community 105 - "Community 105"
-Cohesion: 0.09
-Nodes (26): Firebase Backup Runbook, Cross-Platform Android PWA Support Plan, Google Sheets Sync & Offline Plan (OBSOLETE), iPad POS System Design Spec, Tweaks Panel Prototyping Toolkit, Batch 5-6 UI Fixes Verification Checklist, Firestore Composite Indexes, MainLayout App Shell (+18 more)
+Cohesion: 0.20
+Nodes (9): Firebase Backup Runbook, Firestore Composite Indexes, Student Domain Model, Firebase Student Repository, POS State Migration Tests, Daily Counter Export, EasyOrder Firebase Backup Runbook, Restore Drill (+1 more)
 
 ### Community 106 - "Community 106"
-Cohesion: 0.28
-Nodes (7): Error Handling Recovery Strategy Plan, AppErrorCode, ErrorSeverity, getUserErrorMessage(), messages, RecoveryAction, UserErrorMessage
+Cohesion: 0.40
+Nodes (5): code:ts (export type StudentStatus = 'active' | 'inactive';), code:ts (export type RecordStatus = 'active' | 'inactive';), EO-P10-T02: Student Account Domain, EO-P10-T03: Menu And Vendor Domain, code:ts (export type RecordStatus = 'active' | 'inactive';)
 
 ### Community 107 - "Community 107"
 Cohesion: 0.20
@@ -800,20 +802,20 @@ Cohesion: 0.17
 Nodes (12): Audit Trail, Business Date Lock, CSV Export Schema, edge case UI plan, Edge Case Scenario Analysis, Face Handoff, midnight boundary handling, Phase 1.2 Reporting and Settlement (+4 more)
 
 ### Community 115 - "Community 115"
-Cohesion: 0.43
-Nodes (5): SettlementHistoryTable, statusClass(), statusLabel(), settlement history UI, { store, baseSettlements }
+Cohesion: 0.50
+Nodes (4): 依賴關係, 與其他模組的介面, 輸入, 輸出
 
 ### Community 116 - "Community 116"
-Cohesion: 0.14
-Nodes (14): code:ts (import { describe, expect, it } from 'vitest';), code:ts (export type SyncIndicatorKind = 'green_synced' | 'yellow_syn), code:ts (import {), code:tsx (import type { SyncIndicatorKind } from '../firebase/syncStat), code:bash (cd frontend), code:bash (git add frontend/src/firebase/syncStatus.ts frontend/src/fir), code:ts (import { describe, expect, it } from 'vitest';), code:ts (import {) (+6 more)
+Cohesion: 0.29
+Nodes (7): code:ts (import { describe, expect, it } from 'vitest';), code:ts (export type SyncIndicatorKind = 'green_synced' | 'yellow_syn), code:ts (import {), code:tsx (import type { SyncIndicatorKind } from '../firebase/syncStat), code:bash (cd frontend), code:bash (git add frontend/src/firebase/syncStatus.ts frontend/src/fir), Task 6: Implement realtime subscriptions and sync indicator
 
 ### Community 117 - "Community 117"
 Cohesion: 0.11
 Nodes (18): code:tsx (<div className="sr-only" role="status" aria-live="polite" ar), code:bash (git add frontend/src/App.tsx frontend/src/components/pos-com), code:tsx (<button), code:bash (git add frontend/src/components/screens.tsx frontend/src/com), code:tsx (import { render, screen } from '@testing-library/react';), code:bash (git add frontend/src/App.tsx frontend/src/components/pos-com), code:ts (import { useCallback, useState } from 'react';), Task 3: POS 搜尋與 ActionBar 語意化 (+10 more)
 
 ### Community 118 - "Community 118"
-Cohesion: 0.20
-Nodes (11): Button, Card, code:tsx (import type { ButtonHTMLAttributes, ReactNode } from 'react'), code:tsx (import type { HTMLAttributes, ReactNode } from 'react';), code:tsx (export interface ConfirmDialogProps {), code:tsx (export interface FieldProps {), code:ts (export type AppTheme = 'warm' | 'dark';), Component Specifications (+3 more)
+Cohesion: 0.25
+Nodes (9): Button, Card, code:tsx (import type { ButtonHTMLAttributes, ReactNode } from 'react'), code:tsx (import type { HTMLAttributes, ReactNode } from 'react';), code:tsx (export interface ConfirmDialogProps {), code:tsx (export interface FieldProps {), Component Specifications, Form Components (+1 more)
 
 ### Community 119 - "Community 119"
 Cohesion: 0.27
@@ -828,12 +830,12 @@ Cohesion: 0.19
 Nodes (12): port, emulators, auth, firestore, singleProjectMode, ui, firestore, indexes (+4 more)
 
 ### Community 122 - "Community 122"
-Cohesion: 0.18
-Nodes (10): code:yaml (name: Frontend CI), code:bash (git add .github/), code:bash (git add frontend/src/App.tsx), Frontend Audit Remediation Implementation Plan, Phase 0: Immediate Cleanup, Phase 1: Type Safety & Core Logic Testing, Phase 2: Architecture Refactoring & CI/CD, Self-Review Checklist (+2 more)
+Cohesion: 0.13
+Nodes (16): code:bash (cd frontend), code:typescript (import { defineConfig } from 'vite'), code:typescript (import { describe, it, expect, beforeEach } from 'vitest';), code:bash (git add frontend/), code:bash (git add frontend/src/App.tsx), code:bash (mv frontend/src/components/pos-components.jsx frontend/src/c), code:json ("noImplicitAny": true,), code:bash (git add frontend/) (+8 more)
 
 ### Community 123 - "Community 123"
-Cohesion: 0.17
-Nodes (12): code:ts (import { describe, expect, it } from 'vitest';), code:ts (export const operatorPath = (uid: string) => `operators/${ui), code:ts (import { serverTimestamp, type FieldValue, type Timestamp } ), code:bash (cd frontend), code:bash (git add frontend/src/firebase/firestorePaths.ts frontend/src), code:md (# Firebase Sync Verification Matrix), code:tsx (expect(screen.getByRole('status')).toHaveTextContent(/已同步|同步), code:bash (cd frontend) (+4 more)
+Cohesion: 0.12
+Nodes (17): code:bash (cd frontend), code:ts (import { getApp, getApps, initializeApp, type FirebaseApp, t), code:bash (cd frontend), code:bash (git add frontend/src/firebase/firebaseApp.ts frontend/src/fi), code:ts (import { describe, expect, it } from 'vitest';), code:ts (export const operatorPath = (uid: string) => `operators/${ui), code:ts (import { serverTimestamp, type FieldValue, type Timestamp } ), code:bash (cd frontend) (+9 more)
 
 ### Community 124 - "Community 124"
 Cohesion: 0.29
@@ -845,15 +847,15 @@ Nodes (7): Cloudflare D1 + Workers, deployment hosting strategy, Free Backend Ar
 
 ### Community 126 - "Community 126"
 Cohesion: 0.26
-Nodes (12): code:tsx (placeholder={mode === 'order' ? "0" : "輸入金額"}), code:tsx (placeholder={mode === 'order' ? "" : "輸入金額"}), F5-5: 訂餐繳費 placeholder 移除（Low）, F5-7: 修改開帳金額需跳出警示（Medium）, F5-1: Q/W/E 快捷鍵在收支介面應無效, F5-6: 「訂購其他餐點」展開後排版修正, 邊界條件, 邊界條件 (+4 more)
+Nodes (12): code:tsx (placeholder={mode === 'order' ? "0" : "輸入金額"}), code:tsx (placeholder={mode === 'order' ? "" : "輸入金額"}), F5-5: 訂餐繳費 placeholder 移除（Low）, F5-7: 修改開帳金額需跳出警示（Medium）, F5-1: Q/W/E 快捷鍵在收支介面應無效, F5-3: 取消訂單後應回到首頁, 邊界條件, 邊界條件 (+4 more)
 
 ### Community 127 - "Community 127"
 Cohesion: 0.33
 Nodes (5): ORDERED_TODAY, STUDENTS, TODAY_MENU, TODAY_TX, VENDORS
 
 ### Community 128 - "Community 128"
-Cohesion: 0.21
-Nodes (12): B6-1: Q/W 切換模式後自動聚焦金額輸入框（含 A 快捷鍵）, B6-4: RecentStrip `__cashier__` 文字不重疊, B6-6: Expense 備註輸入框不被 `.pay-input-container` 壓住, B6-7: RecentStrip Badge 顏色統一（綠色收入、紅色支出）, 預期行為, 預期行為, 預期行為, 預期行為 (+4 more)
+Cohesion: 0.22
+Nodes (11): B6-4: RecentStrip `__cashier__` 文字不重疊, B6-6: Expense 備註輸入框不被 `.pay-input-container` 壓住, B6-7: RecentStrip Badge 顏色統一（綠色收入、紅色支出）, 預期行為, 預期行為, 預期行為, 預期行為, 驗證步驟 (+3 more)
 
 ### Community 129 - "Community 129"
 Cohesion: 0.17
@@ -864,7 +866,7 @@ Cohesion: 0.33
 Nodes (5): code:js (export default defineConfig([), code:js (// eslint.config.js), Expanding the ESLint configuration, React Compiler, React + TypeScript + Vite
 
 ### Community 132 - "Community 132"
-Cohesion: 0.18
+Cohesion: 0.17
 Nodes (10): Batch 5 — UX 微調：驗證清單, code:bash (cd frontend && npm run dev), F5-7: 修改開帳金額需跳出警示, How to test, Test suite status, 完整流程, 整合測試（全部 F5-1 ~ F5-7）, 邊界條件 (+2 more)
 
 ### Community 133 - "Community 133"
@@ -880,8 +882,8 @@ Cohesion: 0.29
 Nodes (7): code:tsx (import { lazy } from 'react';), code:tsx (import { Suspense } from 'react';), code:css (.workspace-fallback {), code:tsx (import { fireEvent, render, screen } from '@testing-library/), code:bash (cd frontend), code:bash (git add frontend/src/App.tsx frontend/src/App.lazy.test.tsx ), Task 5: Lazy-load non-POS workspaces and keep POS eager
 
 ### Community 136 - "Community 136"
-Cohesion: 0.20
-Nodes (10): code:bash ($(cat graphify-out/.graphify_python) -c "), code:bash ($(cat graphify-out/.graphify_python) -c "), code:block31 (Graph complete. Outputs in PATH_TO_DIR/graphify-out/), code:bash ($(cat graphify-out/.graphify_python) -c "), code:bash ($(cat graphify-out/.graphify_python) -c "), code:block7 (Corpus: X files · ~Y words), For /graphify add, Step 2 - Detect files (+2 more)
+Cohesion: 0.67
+Nodes (3): code:bash ($(cat graphify-out/.graphify_python) -c "), code:block31 (Graph complete. Outputs in PATH_TO_DIR/graphify-out/), Step 9 - Save manifest, update cost tracker, clean up, and report
 
 ### Community 137 - "Community 137"
 Cohesion: 0.33
@@ -904,8 +906,8 @@ Cohesion: 0.27
 Nodes (10): 4. RecentStrip `__cashier__` 文字重疊 (B6-4), 6. Expense Note 輸入欄位佈局修正 (B6-6), 8. RecentStrip 備註前 4 字 (B6-8), code:tsx (<span className="recent-id mono">), code:tsx (<div style={{ display: 'flex', flexDirection: 'column', gap:), code:tsx (<span className="recent-name">), [MODIFY] [pos-components.tsx](file:///Users/cheerc/talented-easyorder/frontend/src/components/pos-components.tsx), [MODIFY] [pos-components.tsx](file:///Users/cheerc/talented-easyorder/frontend/src/components/pos-components.tsx) (+2 more)
 
 ### Community 142 - "Community 142"
-Cohesion: 0.70
-Nodes (5): iPad Face Recognition Ordering System Design V3, Face Handoff Flow, Face Recognition System, iPad POS Architecture, Student Management (Face Enrollment)
+Cohesion: 0.43
+Nodes (5): MainLayout Test Suite, FlashData, MainLayout, MainLayoutProps, baseProps
 
 ### Community 143 - "Community 143"
 Cohesion: 0.40
@@ -924,8 +926,8 @@ Cohesion: 0.40
 Nodes (5): Android TWA / Google Play, App Store / iOS Wrapper, 更新機制, 純 PWA, 部署與發行策略
 
 ### Community 147 - "Community 147"
-Cohesion: 0.46
-Nodes (6): LedgerAuditEvent, AuditTrailTable, beforeAfterSummary(), eventTypeClass(), eventTypeLabel(), { store, baseEvents }
+Cohesion: 0.11
+Nodes (30): CloseBlockingSyncSummary, DailySettlement, DailySettlement, LedgerSyncStatus, AuditEventInput, BusinessDateStatus, createLedgerAuditEvent(), decideLedgerDeletePolicy() (+22 more)
 
 ### Community 148 - "Community 148"
 Cohesion: 0.50
@@ -940,12 +942,12 @@ Cohesion: 0.40
 Nodes (5): code:bash (npx vitest run src/domain/__tests__/ledgerReport.test.ts src), code:bash (npx vitest run src/store/__tests__/ledgerStore.test.ts src/_), code:bash (npx tsc --noEmit), code:bash (git add frontend/src/domain frontend/src/store frontend/src/), EO-P12-T08: Phase Verification And Regression Guard
 
 ### Community 152 - "Community 152"
-Cohesion: 0.33
-Nodes (5): Counter Cash And Exception Normalization Implementation Plan, Definition Of Done, File Structure, Product Decisions Locked By This Plan, Supersedes / Uses
+Cohesion: 0.30
+Nodes (10): AppRouter, HistoryScreen, AdminScreen, BackupScreen, HistoryScreen, ReportScreen, VendorsScreen, VendorsScreenProps (+2 more)
 
 ### Community 153 - "Community 153"
-Cohesion: 0.40
-Nodes (4): code:tsx (import { render, screen } from '@testing-library/react';), code:tsx (import { Component, type ErrorInfo, type ReactNode } from 'r), code:bash (git add frontend/src/main.tsx frontend/src/errors/ErrorBound), Task 2: React Error Boundary
+Cohesion: 0.38
+Nodes (5): useAppNavigationShortcuts hook, useAppNavigationShortcuts(), UseAppNavigationShortcutsArgs, DEFAULT_PROPS, keydown()
 
 ### Community 154 - "Community 154"
 Cohesion: 0.22
@@ -955,33 +957,29 @@ Nodes (9): code:bash (cd frontend), code:bash (cd frontend), code:tsx (import { 
 Cohesion: 0.40
 Nodes (4): code:bash (cd frontend), Documentation, Getting Started, Talented EasyOrder (iPad POS)
 
-### Community 156 - "Community 156"
-Cohesion: 0.18
-Nodes (14): ReopenDialog, useLedgerExport(), LedgerDateRangeKind, ReopenDialog Test Suite, ExportActions(), ExportActionsProps, ReopenDialog(), ReopenDialogProps (+6 more)
-
 ### Community 157 - "Community 157"
-Cohesion: 0.22
-Nodes (9): B6-10: LedgerGroupedTable 櫃台收支正確顯示所有行, B6-14: 今日開帳金額 = 昨日關帳金額（countedCash）, 邊界條件, 邊界條件, 邊界條件, 預期行為, 預期行為, 驗證步驟 (+1 more)
+Cohesion: 0.33
+Nodes (6): B6-10: LedgerGroupedTable 櫃台收支正確顯示所有行, B6-1: Q/W 切換模式後自動聚焦金額輸入框（含 A 快捷鍵）, 邊界條件, 邊界條件, 預期行為, 驗證步驟
 
 ### Community 158 - "Community 158"
 Cohesion: 0.25
 Nodes (7): Automated Tests, code:bash (cd frontend && npx vitest run), Deferred Items (Batch 7), Implementation Plan — Batch 6: Accounting & UX Fixes, Issue Inventory (extracted from commit diff), Manual Verification, Verification Plan
 
 ### Community 159 - "Community 159"
-Cohesion: 0.25
-Nodes (8): code:css (:root {), code:bash (git add frontend/src/index.css frontend/src/App.tsx frontend), code:css (:root {), code:bash (git add frontend/src/index.css frontend/src/components/pos-c), Task 2: CSS 觸控目標與焦點樣式, Task 6: 動態字體與高齡操作者模式, code:bash (git add frontend/src/index.css frontend/src/App.tsx frontend), Task 3: Responsive POS Layout
+Cohesion: 0.21
+Nodes (13): appendErrorLog(), clearErrorLog(), CONTEXT_ALLOW_LIST, ErrorLogEntry, getRecentErrors(), installErrorListeners(), installGlobalErrorListeners(), readErrorLog() (+5 more)
 
 ### Community 160 - "Community 160"
-Cohesion: 0.25
-Nodes (8): code:tsx (it('uses today menu price as the first order quick amount', ), code:bash (cd frontend), code:ts (export function getQuickAmounts(input: {), code:tsx ({getQuickAmounts({), code:tsx (import { describe, expect, it } from 'vitest';), code:bash (cd frontend), code:bash (git add frontend/src/components/pos-components.tsx frontend/), Task 5: Make Quick Amounts Context-Derived
+Cohesion: 0.11
+Nodes (19): code:ts (import { describe, expect, it } from 'vitest';), code:bash (cd frontend), code:ts (export type DailyCashSessionStatus = 'open' | 'closed';), code:bash (cd frontend), code:bash (git add frontend/src/domain/cashSession.ts frontend/src/doma), code:tsx (it('uses operator-friendly payment wording', async () => {), code:bash (cd frontend), code:ts ({ id: 'topup', label: '補錢 / 儲值', hint: 'W' },) (+11 more)
 
 ### Community 161 - "Community 161"
-Cohesion: 0.40
-Nodes (5): code:ts (export type StudentStatus = 'active' | 'inactive';), code:ts (export type RecordStatus = 'active' | 'inactive';), EO-P10-T02: Student Account Domain, EO-P10-T03: Menu And Vendor Domain, code:ts (export type RecordStatus = 'active' | 'inactive';)
+Cohesion: 0.29
+Nodes (7): code:ts (import { describe, expect, it } from 'vitest';), code:ts (import {), code:ts (deviceId: string;), code:ts (// Once a POS confirmation receives a transactionId, retry m), code:bash (cd frontend), code:bash (git add frontend/src/firebase/ledgerRepository.ts frontend/s), Task 7: Implement ledger commit repository
 
 ### Community 162 - "Community 162"
-Cohesion: 0.50
-Nodes (4): 依賴關係, 與其他模組的介面, 輸入, 輸出
+Cohesion: 0.40
+Nodes (6): Cross-Platform Android PWA Support Plan, Google Sheets Sync & Offline Plan (OBSOLETE), iPad POS System Design Spec, POS Transaction Domain (Intent/Draft), Cash Close Unit Tests, Ledger Report Unit Tests
 
 ### Community 163 - "Community 163"
 Cohesion: 0.50
@@ -1087,9 +1085,13 @@ Nodes (6): CSP policy, data classification, display policy, frontend-security-co
 Cohesion: 0.33
 Nodes (5): App Favicon (Purple Lightning Bolt), name, private, type, version
 
-### Community 261 - "Community 261"
+### Community 260 - "Community 260"
 Cohesion: 0.33
-Nodes (6): code:ts (import { describe, expect, it } from 'vitest';), code:bash (cd frontend), code:ts (export type DailyCashSessionStatus = 'open' | 'closed';), code:bash (cd frontend), code:bash (git add frontend/src/domain/cashSession.ts frontend/src/doma), Task 1: Add Daily Cash Session Domain
+Nodes (6): Tweaks Panel Prototyping Toolkit, Batch 5-6 UI Fixes Verification Checklist, MainLayout App Shell, Modal Component Tests, Card Container Component, Form Field Component
+
+### Community 261 - "Community 261"
+Cohesion: 0.18
+Nodes (10): #174 — localStorage 明文儲存學生 PII 與交易資料, #175 — Service Worker wildcard cache 攔截 Firebase Auth/Firestore 敏感回應, #178 — Unsafe JSON.parse 在 ipadHandoff, #179 — Prototype Pollution 風險在 posStateValidator, #180 — PII 可能透過 errorLogger stack/context 欄位外洩, #181 — Firestore Rules Bootstrap Deadlock, Plan: 6 Security Issues Fix — Wave 1 + Wave 2, Test Impact (+2 more)
 
 ### Community 262 - "Community 262"
 Cohesion: 0.33
@@ -1110,10 +1112,6 @@ Nodes (6): code:ts (export interface CspOptions {), code:ts (import { describe, 
 ### Community 266 - "Community 266"
 Cohesion: 0.40
 Nodes (6): 1. POS 金額輸入焦點 & 快捷鍵 (B6-1, B6-16), 2. Expense Flash Banner 顯示淨現金 (B6-2), code:ts (// 計算當日櫃台淨現金 = Σ(收入 paidAmount) - Σ(支出 mealPrice) for type=e), [MODIFY] [App.tsx](file:///Users/cheerc/talented-easyorder/frontend/src/App.tsx), [MODIFY] [App.tsx](file:///Users/cheerc/talented-easyorder/frontend/src/App.tsx), [MODIFY] [useKeyboardShortcuts.ts](file:///Users/cheerc/talented-easyorder/frontend/src/hooks/useKeyboardShortcuts.ts)
-
-### Community 267 - "Community 267"
-Cohesion: 0.40
-Nodes (5): Deployment Guide, usePosFlow Test Suite, POS Store (Zustand), POS Store Types, DEFAULT_ARGS
 
 ### Community 268 - "Community 268"
 Cohesion: 0.40
@@ -1139,25 +1137,13 @@ Nodes (5): code:ts (export type DisplayContext = 'pc-pos' | 'pc-report' | 'pc-ad
 Cohesion: 0.40
 Nodes (5): 13. 學生已訂過便當 → 預設繳費模式 (B6-15), code:ts (const selectStudent = useCallback((studentId: string, source), code:ts (mode: event.hasOrderToday ? 'payment' : 'order'), [MODIFY] [posFlow.ts](file:///Users/cheerc/talented-easyorder/frontend/src/domain/posFlow.ts), [MODIFY] [usePosFlow.ts](file:///Users/cheerc/talented-easyorder/frontend/src/hooks/usePosFlow.ts)
 
-### Community 274 - "Community 274"
-Cohesion: 0.50
-Nodes (4): code:bash (mv frontend/src/components/pos-components.jsx frontend/src/c), code:json ("noImplicitAny": true,), code:bash (git add frontend/), Task 3: Convert JSX to TSX & Enable Strict TypeScript
-
 ### Community 275 - "Community 275"
 Cohesion: 0.50
 Nodes (4): code:ts (export interface EasyOrderBackupV1 {), CSV Export, Export / Import Strategy, JSON Backup
 
-### Community 276 - "Community 276"
-Cohesion: 0.50
-Nodes (4): code:ts (import { describe, expect, it } from 'vitest';), code:ts (export type AppErrorCode =), code:bash (git add frontend/src/errors), Task 1: Error Catalog 與使用者友善訊息
-
 ### Community 277 - "Community 277"
 Cohesion: 0.50
 Nodes (4): F5-2: 移除訂餐「本次繳費」預設金額按鈕, 邊界條件, 預期行為, 驗證步驟
-
-### Community 278 - "Community 278"
-Cohesion: 0.50
-Nodes (4): F5-3: 取消訂單後應回到首頁, 邊界條件, 預期行為, 驗證步驟
 
 ### Community 279 - "Community 279"
 Cohesion: 0.50
@@ -1207,8 +1193,32 @@ Nodes (3): code:bash (cd frontend), code:bash (cd frontend), Verification Comman
 Cohesion: 0.67
 Nodes (3): §1.2: 「新增 收入/支出 (A)」按鈕快捷鍵提示, 預期行為, 驗證步驟
 
+### Community 291 - "Community 291"
+Cohesion: 0.15
+Nodes (14): code:bash (git add frontend/src/styles/tokens.css frontend/src/index.cs), code:css (@import './styles/tokens.css';), code:tsx (import type { ButtonHTMLAttributes, ReactNode } from 'react'), code:css (.ui-button {), code:tsx (import type { HTMLAttributes, ReactNode } from 'react';), code:tsx (import type { HTMLAttributes } from 'react';), code:bash (cd frontend), code:bash (git add frontend/src/styles/components.css frontend/src/inde) (+6 more)
+
+### Community 292 - "Community 292"
+Cohesion: 0.25
+Nodes (8): code:tsx (import { useEffect, useId, useRef } from 'react';), code:tsx (const [pendingDeleteId, setPendingDeleteId] = useState<strin), code:tsx (const requestDeleteRow = (event: React.MouseEvent, transacti), code:tsx (<ConfirmDialog), code:tsx (import { fireEvent, render, screen } from '@testing-library/), code:bash (cd frontend), code:bash (git add frontend/src/components/ui frontend/src/components/s), Task 4: Add Modal and replace browser confirmations in one slice
+
+### Community 294 - "Community 294"
+Cohesion: 0.57
+Nodes (5): Storage Health Check, checkStorageHealth(), FallbackMode, getFallbackMode(), StorageHealth
+
+### Community 300 - "Community 300"
+Cohesion: 0.40
+Nodes (4): Background, Batch 5 — UX 微調, Success Criteria, Test Impact
+
+### Community 304 - "Community 304"
+Cohesion: 0.50
+Nodes (4): F5-6: 「訂購其他餐點」展開後排版修正, 邊界條件, 預期行為, 驗證步驟
+
+### Community 305 - "Community 305"
+Cohesion: 0.50
+Nodes (4): B6-14: 今日開帳金額 = 昨日關帳金額（countedCash）, 邊界條件, 預期行為, 驗證步驟
+
 ## Knowledge Gaps
-- **1650 isolated node(s):** `rewrites`, `headers`, `rules`, `indexes`, `port` (+1645 more)
+- **1659 isolated node(s):** `rewrites`, `headers`, `rules`, `indexes`, `port` (+1654 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **70 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
@@ -1216,15 +1226,15 @@ Nodes (3): §1.2: 「新增 收入/支出 (A)」按鈕快捷鍵提示, 預期行
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `Batch 6 Verification Checklist` connect `Community 25` to `Community 129`, `Community 290`, `Frontend Hardening & iPad Face Auth Specification`, `Community 76`, `eslint Configuration & Testing DevDependencies`, `Deployment Guide & Error Boundary Architecture`, `Community 15`, `Community 175`, `Community 111`, `Community 29`, `Community 158`?**
-  _High betweenness centrality (0.105) - this node is a cross-community bridge._
-- **Why does `Firebase Sync Architecture Implementation Plan` connect `Community 65` to `Community 91`, `App Entry & Keyboard Shortcuts`, `Firebase Sync Architecture & Offline Integration`, `Community 54`?**
+  _High betweenness centrality (0.098) - this node is a cross-community bridge._
+- **Why does `Firebase Sync Architecture Implementation Plan` connect `Community 65` to `Community 91`, `App Entry & Keyboard Shortcuts`, `Firebase Sync Architecture & Offline Integration`, `Community 31`?**
   _High betweenness centrality (0.081) - this node is a cross-community bridge._
-- **Why does `LedgerGroupedTable` connect `eslint Configuration & Testing DevDependencies` to `Community 96`, `Community 25`, `App Entry & Keyboard Shortcuts`, `Community 156`?**
+- **Why does `recalculateStudentBalances()` connect `App Entry & Keyboard Shortcuts` to `POS Store Dialogs & Main Layout Tests`, `Community 65`, `Community 90`, `Community 74`?**
   _High betweenness centrality (0.059) - this node is a cross-community bridge._
 - **What connects `rewrites`, `headers`, `rules` to the rest of the system?**
-  _1657 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _1666 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `POS Store & Core Financial Logic` be split into smaller, more focused modules?**
-  _Cohesion score 0.12315270935960591 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08788159111933395 - nodes in this community are weakly interconnected._
 - **Should `Cash Close & Ledger Reports` be split into smaller, more focused modules?**
   _Cohesion score 0.09090909090909091 - nodes in this community are weakly interconnected._
 - **Should `POS UI Components & Tests` be split into smaller, more focused modules?**
