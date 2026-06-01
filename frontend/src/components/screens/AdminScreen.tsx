@@ -134,17 +134,7 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
 
         <div className="card adm-card">
           <div className="card-h">學員管理 <span className="card-h-sub">{students.length} 人</span></div>
-          <div className="adm-stu-list">
-            {students.slice(0, 10).map(s => (
-              <div className="adm-stu adm-stu-2col" key={s.studentId}>
-                <span className="mono adm-stu-id">{s.studentId}</span>
-                <span className="adm-stu-name">{s.displayName}</span>
-                <span className={'mono adm-stu-bal ' + (s.currentBalance < 0 ? 'warn' : '')}>
-                  {s.currentBalance < 0 ? `欠 $${fmt(s.currentBalance)}` : `$${fmt(s.currentBalance)}`}
-                </span>
-              </div>
-            ))}
-          </div>
+          <StudentList students={students} />
         </div>
       </div>
       <ConfirmDialog
@@ -168,5 +158,53 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
         variant={hasCashSession ? "danger" : "primary"}
       />
     </div>
+  );
+});
+
+const PAGE_SIZE = 10;
+
+const StudentList = React.memo(function StudentList({ students }: { students: StudentAccount[] }) {
+  const [page, setPage] = useState(0);
+  const [search, setSearch] = useState('');
+
+  const filtered = search.trim()
+    ? students.filter(s => s.studentId.includes(search.trim()) || s.displayName.includes(search.trim()))
+    : students;
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const paged = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+
+  return (
+    <>
+      <div style={{ marginBottom: '8px' }}>
+        <input
+          className="adm-input"
+          aria-label="搜尋學員"
+          value={search}
+          onChange={e => { setSearch(e.target.value); setPage(0); }}
+          placeholder="搜尋學員編號或姓名…"
+          style={{ width: '100%', boxSizing: 'border-box' }}
+        />
+      </div>
+      <div className="adm-stu-list">
+        {paged.map(s => (
+          <div className="adm-stu adm-stu-2col" key={s.studentId}>
+            <span className="mono adm-stu-id">{s.studentId}</span>
+            <span className="adm-stu-name">{s.displayName}</span>
+            <span className={'mono adm-stu-bal ' + (s.currentBalance < 0 ? 'warn' : '')}>
+              {s.currentBalance < 0 ? `欠 $${fmt(s.currentBalance)}` : `$${fmt(s.currentBalance)}`}
+            </span>
+          </div>
+        ))}
+      </div>
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '12px' }}>
+          <button className="ghost-btn" disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>上一頁</button>
+          <span style={{ fontSize: '13px', color: 'var(--ink-2)' }}>{safePage + 1} / {totalPages}</span>
+          <button className="ghost-btn" disabled={safePage >= totalPages - 1} onClick={() => setPage(safePage + 1)}>下一頁</button>
+        </div>
+      )}
+    </>
   );
 });

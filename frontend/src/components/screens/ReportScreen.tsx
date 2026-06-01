@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { appendErrorLog } from '../../errors/errorLogger';
 import type { LedgerTransaction } from '../../domain/ledger';
 import type { TodayMenu } from '../../domain/menu';
 import { EditTransactionModal } from '../EditTransactionModal';
@@ -9,6 +10,7 @@ import { LedgerGroupedTable } from '../report/LedgerGroupedTable';
 import { CashClosePanel } from '../report/CashClosePanel';
 import { ExportActions } from '../report/ExportActions';
 import { ReopenDialog } from '../report/ReopenDialog';
+import { useShallow } from 'zustand/shallow';
 import { usePosStore } from '../../store/posStore';
 import { useLedgerReport } from '../../store/derived/useLedgerReport';
 import { useCashClose } from '../../store/derived/useCashClose';
@@ -30,11 +32,15 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
   const [editingTx, setEditingTx] = useState<LedgerTransaction | null>(null);
   const [studentSearch, setStudentSearch] = useState(studentFilter || '');
 
-  const closeBusinessDate = usePosStore((s) => s.closeBusinessDate);
-  const reopenBusinessDate = usePosStore((s) => s.reopenBusinessDate);
-  const deleteOrderWithRefundCheck = usePosStore((s) => s.deleteOrderWithRefundCheck);
-  const deleteTransaction = usePosStore((s) => s.deleteTransaction);
-  const editTransaction = usePosStore((s) => s.editTransaction);
+  const { closeBusinessDate, reopenBusinessDate, deleteOrderWithRefundCheck, deleteTransaction, editTransaction } = usePosStore(
+    useShallow((s) => ({
+      closeBusinessDate: s.closeBusinessDate,
+      reopenBusinessDate: s.reopenBusinessDate,
+      deleteOrderWithRefundCheck: s.deleteOrderWithRefundCheck,
+      deleteTransaction: s.deleteTransaction,
+      editTransaction: s.editTransaction,
+    }))
+  );
   const handleEditSave = useCallback((transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }) => {
     editTransaction(transactionId, updates);
   }, [editTransaction]);
@@ -114,7 +120,7 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
     try {
       closeBusinessDate({ businessDate: viewDate, countedCash, note, queuedSettlementAccepted: true, operatorId: 'op-report' });
     } catch (err) {
-      console.error('closeBusinessDate failed', err);
+      appendErrorLog({ source: 'settlement', message: 'closeBusinessDate failed: ' + String(err) });
     }
   };
 
