@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { saveCrashDraft, loadCrashDraft, clearCrashDraft, isCrashDraftAvailable } from '../crashDraft';
 import type { PosTransactionDraft } from '../../domain/posTransaction';
 
@@ -67,5 +67,48 @@ describe('crashDraft', () => {
     await saveCrashDraft(updated);
     const loaded = await loadCrashDraft();
     expect(loaded!.amount).toBe(-100);
+  });
+
+  describe('finally block cleanup', () => {
+    it('calls db.close() even when transaction fails', async () => {
+      const closeSpy = vi.fn();
+      const originalOpen = window.indexedDB.open;
+
+      window.indexedDB.open = vi.fn(() => {
+        const req: Record<string, unknown> = {
+          result: undefined,
+          onupgradeneeded: null,
+          onsuccess: null,
+          onerror: null,
+          error: null,
+        };
+        req.result = {
+          objectStoreNames: { contains: () => true },
+          createObjectStore: () => { /* noop */ },
+          close: closeSpy,
+          transaction: () => {
+            const tx: Record<string, unknown> = {
+              oncomplete: null,
+              onerror: null,
+              error: new Error('transaction failed'),
+            };
+            tx.objectStore = () => ({
+              put: () => ({ result: undefined, onsuccess: null, onerror: null }),
+            });
+            setTimeout(() => { (tx.onerror as (e: Event) => void)?.({ target: tx } as unknown as Event); }, 0);
+            return tx;
+          },
+        };
+        setTimeout(() => { (req.onsuccess as (e: Event) => void)?.({ target: req } as unknown as Event); }, 0);
+        return req as IDBOpenDBRequest;
+      });
+
+      try {
+        await saveCrashDraft(sampleDraft);
+        expect(closeSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        window.indexedDB.open = originalOpen;
+      }
+    });
   });
 });

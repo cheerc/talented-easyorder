@@ -3,8 +3,11 @@ import type { PersistStorage, StorageValue } from 'zustand/middleware';
 const DB_NAME = 'easyorder-pos';
 const STORE_NAME = 'persist';
 
+let _dbPromise: Promise<IDBDatabase> | null = null;
+
 function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (_dbPromise) return _dbPromise;
+  _dbPromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, 1);
     request.onupgradeneeded = () => {
       if (!request.result.objectStoreNames.contains(STORE_NAME)) {
@@ -12,8 +15,9 @@ function openDB(): Promise<IDBDatabase> {
       }
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onerror = () => { _dbPromise = null; reject(request.error); };
   });
+  return _dbPromise;
 }
 
 function indexedDBStorage(): {
