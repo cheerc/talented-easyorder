@@ -1,5 +1,4 @@
-export type TransactionType = 'order' | 'payment' | 'expense';
-export type LedgerSyncStatus = 'local' | 'queued' | 'synced' | 'failed' | 'conflict';
+export type { TransactionType, LedgerSyncStatus } from './types';
 
 export interface LedgerTransaction {
   transactionId: string;
