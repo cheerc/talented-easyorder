@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import App from '../App';
 import { resetStoreForTest } from './helpers/storeSetup';
+import { renderApp } from './helpers/renderApp';
 
 describe('pcPosSafety — duplicate submit guard', () => {
   beforeEach(() => resetStoreForTest());
 
   it('confirm button triggers one commit per click', async () => {
-    render(<App />);
+    await renderApp();
     const user = userEvent.setup();
 
     const input = screen.getByPlaceholderText(/015/);
@@ -32,7 +32,7 @@ describe('pcPosSafety — duplicate order warning', () => {
   beforeEach(() => resetStoreForTest());
 
   it('first order shows no duplicate warning', async () => {
-    render(<App />);
+    await renderApp();
     const user = userEvent.setup();
 
     const input = screen.getByPlaceholderText(/015/);
@@ -52,7 +52,7 @@ describe('pcPosSafety — duplicate order warning', () => {
   });
 
   it('second selection defaults to payment when hasOrderToday', async () => {
-    render(<App />);
+    await renderApp();
     const user = userEvent.setup();
 
     // First order
@@ -79,7 +79,7 @@ describe('pcPosSafety — duplicate order warning', () => {
   });
 
   it('uses operator-friendly payment wording', async () => {
-    render(<App />);
+    await renderApp();
     const user = userEvent.setup();
 
     const input = screen.getByPlaceholderText(/015/);

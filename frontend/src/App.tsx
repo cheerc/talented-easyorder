@@ -31,13 +31,14 @@ export default function App() {
   const { systemDate, viewDate, setViewDate } = useSystemDate();
 
   const [fb, setFb] = useState<Awaited<ReturnType<typeof ensureFirebaseInitialized>> | null>(null);
+  const [fbError, setFbError] = useState<string | null>(null);
   useEffect(() => {
-    const result = ensureFirebaseInitialized() as unknown;
-    if (typeof (result as Record<string, unknown>)?.then === 'function') {
-      (result as ReturnType<typeof ensureFirebaseInitialized>).then(setFb);
-    } else {
-      setFb(result as Awaited<ReturnType<typeof ensureFirebaseInitialized>>);
-    }
+    let cancelled = false;
+    ensureFirebaseInitialized().then(
+      services => { if (!cancelled) setFb(services); },
+      err => { if (!cancelled) setFbError(err instanceof Error ? err.message : String(err)); },
+    );
+    return () => { cancelled = true; };
   }, []);
 
   const auth = fb?.auth ?? null;
@@ -217,6 +218,9 @@ export default function App() {
     tx, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
     handleDeleteOrder]);
 
+  if (fbError) {
+    return <AppCrashPage />;
+  }
   if (!fb) {
     return <div className="app-loading" aria-label="載入中">載入中...</div>;
   }
