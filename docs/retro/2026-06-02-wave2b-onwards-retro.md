@@ -1,0 +1,143 @@
+# Wave 2b-4 Retrospective
+
+> 日期: 2026-06-02—03
+> 範圍: Wave 2b-2 至 Wave 4b（#233-#249 中 Wave 1+2 未涵蓋部分 + Wave 3/4 全波）
+> 參與: eo-team-lead (orchestrator), eo-team-impl (implementer), eo-team-reviewer (reviewer)
+> 前情: Wave 1+2 retro 見 `docs/retro/2026-06-02-wave1-2-retro.md`
+
+---
+
+## 1. 總覽
+
+| 指標 | Wave 2b-2 | Wave 3 | Wave 4 | 合計 |
+|------|-----------|--------|--------|------|
+| Issues 修復 | 1 | 6 | 2 | 9 |
+| PRs | 1 | 4 | 2 | 7 |
+| Review rounds | 2 | 4 | 2 | 8 |
+| Plan reviews | 0 | 3 | 0 | 3 |
+| Plan rejects | 0 | 1 | 0 | 1 |
+| Critical bugs 攔截 | 0 | 1 | 0 | 1 |
+| Scope creep | 0 | 0 | 0 | 0 |
+| Impl 卡死事件 | 0 | 2 | 0 | 2 |
+
+**已修復 issues**: #236 (Wave 2b-2); #233, #237, #238, #243, #244, #248 (Wave 3); #234, #239 (Wave 4)
+**全 17 issues 修復完畢** — Wave 1+2 涵蓋 8 個 + 本 retro 涵蓋 9 個 = 17 個
+
+---
+
+## 2. 關鍵事件
+
+### 2.1 Plan Review 攔截架構缺陷（PR #257）
+
+Wave 3d (#238 storage wire types) plan v1 只定義了 `WireLedgerTransaction`、`WireStudentAccount`、`WireVendor`，遺漏了 `LedgerAuditEvent`、`DailySettlement`、`DailyCashSession` 和 `WirePersistedState`。Reviewer 在 plan review 階段 REJECTED，要求擴充 scope。
+
+**教訓**: Plan review 機制有效 — 在實作前攔截不完整的設計，避免半成品 PR 導致的 rework。Wave 1+2 retro 的 Action A4（獨立小 PR）在此波得到良好執行。
+
+### 2.2 Impl ctx:100% Deadlock 與 Nudge 恢復（Wave 3b）
+
+Impl 在 Wave 3b (#233 TransactionEditView) 實作中兩次 ctx:100% 卡死：
+
+1. **第一次**: Old worktree 已 release 但 impl 仍指向已刪除路徑 → nudge 部分有效但隨後又卡
+2. **第二次**: Proxy `InvalidHTTPResponse` 斷線 → `restart_instance(mode: resume)` 成功恢復，ctx 從 100% 降到 47%，context 保留、進度無遺失
+
+**恢復階梯**: nudge → restart(mode:resume) — resume 模式保留對話 context 是關鍵，fresh restart 會丟失所有進度。
+
+**教訓**: 
+- Worktree release 後應立即通知 impl 建立新 worktree，避免指向已刪除路徑
+- Dispatch 中的 worktree 建立指令可統一使用 `repo action=checkout bind:true`（impl 建議），自動處理 release + bind + ci_watch，避免 `already exists` 問題
+
+### 2.3 Worktree "already exists" 反覆發生
+
+Wave 3d 和 Wave 4b dispatch 時 worktree 路徑衝突（`already exists`）共 2 次。每次都需手動 `force_release_worktree` 才能繼續。
+
+**教訓**: 標準化 worktree 生命週期管理 — dispatch 前置步驟應使用 `repo action=checkout bind:true` 而非手動 `git worktree add`，讓 daemon 自動處理 release → checkout → bind → ci_watch 全流程。
+
+### 2.4 Wave 3+4 零 Code Review Reject
+
+Wave 3+4 共 6 個 code review PR，全部 VERIFIED on first pass。與 Wave 1+2 的 7 rounds（含 re-review）相比顯著改善。
+
+**原因分析**:
+- 每個 PR scope 極小（平均 1-4 files changed）
+- Plan review 在實作前釐清了設計意圖
+- Dispatch 中的 Required Reads、scope boundary、base SHA 明確
+- 驗證鏈（tsc → lint → vitest → build）紀律一致
+
+---
+
+## 3. 各方 Retro 摘要
+
+### 3.1 eo-team-impl（Implementer）
+
+**可避免的 bug**: 無 runtime bug。Wire types 的 `as unknown as` assertion 設計安全（tsc 會擋結構不同步）。
+
+**Dispatch 改進建議**:
+- Worktree 建立統一改用 `repo action=checkout bind:true` 語法
+- 多檔案重構時 plan 可附 affected test files grep 結果
+
+**做得好的**:
+- Plan scope/excluded 明確，避免過度實作
+- 驗證鏈 + scope gate 紀律一致
+- `repo action=checkout bind:true` 比手動 `git worktree add` 穩健
+
+**運維事件**: Context compaction 一次（跨多 PR 後觸發），從 summary 無縫繼續。
+
+### 3.2 eo-team-reviewer（Reviewer）
+
+**攔截的 bugs**:
+- PR #252 (Wave 2b-1, prior): `cashSessions` missing — **最危險**，會觸發 v2 使用者全資料遺失
+- PR #257 (Wave 3d): Plan review 攔截缺少 Audit/Settlement wire types
+- PR #253 (Wave 2b-2): ESLint crash + async init error handling 缺失
+
+**Dispatch 品質**: Excellent。Scope boundary 和 HEAD SHA 使 review 精準快速。
+
+**Plan review 成效**: 在 spec 階段攔截架構缺口，節省顯著 rework 成本。
+
+**未來建議**:
+- Review dispatch 前強制 CI green check
+- Side-effect-heavy 邏輯維持 runtime 證據要求
+
+---
+
+## 4. Action Items
+
+| # | 項目 | 來源 | 狀態 |
+|---|------|------|------|
+| A1 | Dispatch 附 affected tests 清單 | Wave 1+2 impl | 延續 |
+| A2 | Dispatch 附 CI lint rule 提醒 | Wave 1+2 impl, reviewer | 延續 |
+| A3 | Migration pipeline 改動需 dependency graph | Wave 1+2 impl, reviewer | 延續 |
+| A4 | 每個 concern 獨立小 PR | Wave 1+2 general | ✅ Wave 3+4 嚴格執行 |
+| A5 | 測試折進對應重構 PR | Wave 1+2 general | ✅ Wave 3c 執行 |
+| A6 | 加入 lead self-monitoring | Wave 1+2 general | 延續 |
+| A9 | Firebase lazy chunk 使用路徑監控 | Wave 1+2 general | 延續 |
+| **A10** | **Worktree 建立統一用 `repo action=checkout bind:true`** | Wave 3+4 impl | **NEW** |
+| **A11** | **Plan review 持續作為 complex+ 的必要 gate** | Wave 3+4 reviewer | **NEW** |
+
+---
+
+## 5. CI/Test 紀錄
+
+| PR | Wave | tsc | lint | vitest | build | CI |
+|------|------|------|------|------|------|------|
+| #253 Wave 2b-2 | 2 | PASS | PASS | 688 passed | 793KB | PASS |
+| #254 Wave 3a | 3 | PASS | PASS | 691 passed | — | PASS |
+| #255 Wave 3b | 3 | PASS | PASS | 688 passed | — | PASS |
+| #256 Wave 3c | 3 | PASS | PASS | 713 passed | — | PASS |
+| #257 Wave 3d | 3 | PASS | PASS | 713 passed | — | PASS |
+| #258 Wave 4a | 4 | PASS | PASS | 688 passed | — | PASS |
+| #259 Wave 4b | 4 | PASS | PASS | 713 passed | — | PASS |
+
+---
+
+## 6. 完成總結
+
+17/17 issues 全部修復完畢。Codebase 狀態：
+
+- **Persistence layer**: 完全 decoupled（wire types，PR #257）
+- **Domain layer**: Type-level coupling 已消除（shared types，PR #258）
+- **Store layer**: Domain boundaries 已文件化（slice interfaces，PR #259）
+- **UI layer**: ViewModel 模式已建立（TransactionEditView，PR #255）
+- **Test coverage**: DailySettlement state machine 測試已補（PR #256）
+
+---
+
+*Generated by eo-team-lead with input from eo-team-impl and eo-team-reviewer.*
