@@ -37,15 +37,40 @@ export interface OpenCashSessionInput {
 
 export type BusinessDateStatus = 'open' | 'closed' | 'reopened';
 
-export interface PosState {
+/** Student domain: 學生帳戶管理 */
+export interface StudentStateSlice {
   students: StudentAccount[];
+}
+
+/** Transaction domain: 每日交易記錄 */
+export interface TransactionStateSlice {
   transactions: LedgerTransaction[];
+}
+
+/** Menu domain: 菜單與廠商 */
+export interface MenuStateSlice {
   vendors: Vendor[];
   todayMenu: TodayMenu;
+}
+
+/** Audit domain: 審計追蹤 */
+export interface AuditStateSlice {
   auditEvents: LedgerAuditEvent[];
+}
+
+/** Settlement domain: 關帳、營業日狀態、現金收銀 */
+export interface SettlementStateSlice {
   dailySettlements: DailySettlement[];
   businessDateStatuses: Record<string, BusinessDateStatus>;
   cashSessions: Record<string, DailyCashSession>;
+}
+
+export interface PosState
+  extends StudentStateSlice,
+    TransactionStateSlice,
+    MenuStateSlice,
+    AuditStateSlice,
+    SettlementStateSlice {
 
   setTodayMenu: (menu: TodayMenu) => void;
   setVendors: (vendors: Vendor[]) => void;
