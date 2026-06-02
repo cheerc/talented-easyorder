@@ -9,10 +9,11 @@ const CURRENT_SCHEMA_VERSION = 2;
 const REQUIRED_KEYS = [
   'students', 'transactions', 'vendors', 'todayMenu',
   'auditEvents', 'dailySettlements', 'businessDateStatuses',
+  'cashSessions',
 ] as const;
 
 const ARRAY_KEYS = new Set<string>(['students', 'transactions', 'vendors', 'auditEvents', 'dailySettlements']);
-const OBJECT_KEYS = new Set<string>(['todayMenu', 'businessDateStatuses']);
+const OBJECT_KEYS = new Set<string>(['todayMenu', 'businessDateStatuses', 'cashSessions']);
 
 export type MigrationResult =
   | { ok: true; state: PosState & { schemaVersion: number } }
@@ -249,6 +250,17 @@ export function migrateState(raw: unknown): MigrationResult {
 
   if (version >= CURRENT_SCHEMA_VERSION) {
     (state as Record<string, unknown>).schemaVersion = CURRENT_SCHEMA_VERSION;
+    // Shallow structure check: corrupted or incomplete v2+ state must not pass
+    for (const key of REQUIRED_KEYS) {
+      if (!(key in state)) return { ok: false, reason: `missing required key: ${key}` };
+    }
+    for (const key of ARRAY_KEYS) {
+      if (!Array.isArray(state[key])) return { ok: false, reason: `expected array for key: ${key}` };
+    }
+    for (const key of OBJECT_KEYS) {
+      const val = state[key];
+      if (val === null || typeof val !== 'object' || Array.isArray(val)) return { ok: false, reason: `expected object for key: ${key}` };
+    }
     return { ok: true, state: state as unknown as PosState & { schemaVersion: number } };
   }
 

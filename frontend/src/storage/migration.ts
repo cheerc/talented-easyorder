@@ -1,17 +1,62 @@
 import type { PosState } from '../store/posTypes';
 import { appendErrorLog } from '../errors/errorLogger';
 import type { Vendor } from '../domain/menu';
+import { recalculateStudentBalances } from '../domain/ledger';
+import type { StudentAccount } from '../domain/student';
+import type { LedgerTransaction } from '../domain/ledger';
 
-export function migratePersistedState(persistedState: unknown, version: number): PosState {
+const CURRENT_SCHEMA_VERSION = 2;
+
+export function migratePersistedState(persistedState: unknown, _zVersion: number): PosState {
+  void _zVersion;
   try {
     const state = persistedState as Record<string, unknown>;
-    void version;
     if (!state) return state as unknown as PosState;
+
+    const version = (state.schemaVersion as number) ?? 0;
+
+    // Type remapping (v0→v1→v2): topup→payment, drop cancel/correction/void
+    if (version < CURRENT_SCHEMA_VERSION) {
+      const rawTx = state.transactions as Array<Record<string, unknown>> | undefined;
+      if (rawTx && Array.isArray(rawTx) && rawTx.length > 0) {
+        const migratedTx = rawTx
+          .filter((t) => {
+            const type = t.type as string;
+            if (type === 'cancel' || type === 'correction' || type === 'void') return false;
+            return true;
+          })
+          .map((t) => {
+            const type = t.type as string;
+            if (type === 'topup') return { ...t, type: 'payment' };
+            return t;
+          }) as Array<Record<string, unknown>>;
+
+        // Compute amount for each migrated transaction before recalc
+        for (const tx of migratedTx) {
+          const paidAmount = (tx.paidAmount as number) || 0;
+          const mealPrice = (tx.mealPrice as number) || 0;
+          tx.amount = (paidAmount - mealPrice);
+        }
+
+        const rawStudents = state.students as Array<Record<string, unknown>> | undefined;
+        if (rawStudents && Array.isArray(rawStudents) && rawStudents.length > 0) {
+          const result = recalculateStudentBalances(
+            rawStudents as unknown as StudentAccount[],
+            migratedTx as unknown as LedgerTransaction[],
+          );
+          state.students = result.students as unknown as Array<Record<string, unknown>>;
+          state.transactions = result.transactions as unknown as Array<Record<string, unknown>>;
+        } else {
+          state.transactions = migratedTx;
+        }
+      }
+    }
 
     // v2: add audit state fields
     if (!('auditEvents' in state)) state.auditEvents = [];
     if (!('dailySettlements' in state)) state.dailySettlements = [];
     if (!('businessDateStatuses' in state)) state.businessDateStatuses = {};
+    if (!('cashSessions' in state)) state.cashSessions = {};
 
     // Normalize old-shape students {id, name, balance} → StudentAccount
     const rawStudents = state.students as Array<Record<string, unknown>> | undefined;

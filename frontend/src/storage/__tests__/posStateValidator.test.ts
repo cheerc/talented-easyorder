@@ -9,6 +9,7 @@ const validState = {
   auditEvents: [],
   dailySettlements: [],
   businessDateStatuses: {},
+  cashSessions: {},
 };
 
 describe('posStateValidator', () => {
