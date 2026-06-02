@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useShallow } from 'zustand/shallow';
 import { usePosStore } from '../../store/posStore';
 import { fmt } from '../pos-components';
 
@@ -17,7 +18,7 @@ function statusClass(status: string) {
 }
 
 export const SettlementHistoryTable = React.memo(function SettlementHistoryTable() {
-  const dailySettlements = usePosStore((s) => s.dailySettlements);
+  const dailySettlements = usePosStore(useShallow((s) => s.dailySettlements));
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
 
