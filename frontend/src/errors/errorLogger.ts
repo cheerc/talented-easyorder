@@ -17,7 +17,7 @@ const MAX_LOG_ENTRIES = 100;
 
 const CONTEXT_ALLOW_LIST = new Set([
   'component', 'action', 'route', 'businessDate', 'transactionType',
-  'syncStatus', 'errorCode', 'retryCount', 'deviceType',
+  'syncStatus', 'errorCode', 'retryCount', 'deviceType', 'errorHint',
 ]);
 
 function sanitizeContext(
@@ -37,7 +37,11 @@ export function sanitizeMessage(message: string): string {
     .replace(/姓名[：:]\s*[^,\n，]+/g, '姓名: [REDACTED]')
     .replace(/\bname[：:]\s*[^,\n，]+/gi, 'name: [REDACTED]')
     .replace(/餘額[：:]\s*-?\d+/g, '餘額: [REDACTED]')
-    .replace(/金額[：:]\s*-?\d+/g, '金額: [REDACTED]');
+    .replace(/金額[：:]\s*-?\d+/g, '金額: [REDACTED]')
+    .replace(/09\d{2}[-\s]?\d{3}[-\s]?\d{3}/g, '[PHONE REDACTED]')
+    .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[EMAIL REDACTED]')
+    .replace(/[鄉鎮市區路街段巷弄號號樓]/g, '[ADDR REDACTED]')
+    .replace(/[A-Z]\d{9}/g, '[ID REDACTED]');
 }
 
 function sanitizeStack(stack: string): string {
