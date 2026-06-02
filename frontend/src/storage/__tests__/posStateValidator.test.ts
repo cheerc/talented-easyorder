@@ -64,6 +64,47 @@ describe('posStateValidator', () => {
     if (!result.ok) expect(result.reason).toContain('businessDateStatuses');
   });
 
+  describe('skipDeepValidation', () => {
+    it('accepts valid state with skipDeepValidation', () => {
+      const result = validatePersistedState(validState, { skipDeepValidation: true });
+      expect(result.ok).toBe(true);
+    });
+
+    it('still rejects missing required key with skipDeepValidation', () => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { students: _s, ...missing } = validState;
+      const result = validatePersistedState(missing, { skipDeepValidation: true });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toContain('students');
+    });
+
+    it('still rejects wrong type with skipDeepValidation', () => {
+      const bad = { ...validState, transactions: 'not-array' };
+      const result = validatePersistedState(bad, { skipDeepValidation: true });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toContain('transactions');
+    });
+
+    it('skips deep field validation with skipDeepValidation', () => {
+      const bad = {
+        ...validState,
+        students: [{ ...validState.students[0], currentBalance: 'not-a-number' }],
+      };
+      const result = validatePersistedState(bad, { skipDeepValidation: true });
+      expect(result.ok).toBe(true);
+    });
+
+    it('still catches deep field validation without skipDeepValidation (default)', () => {
+      const bad = {
+        ...validState,
+        students: [{ ...validState.students[0], currentBalance: 'not-a-number' }],
+      };
+      const result = validatePersistedState(bad);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toContain('currentBalance');
+    });
+  });
+
   describe('deep validation', () => {
     it('rejects student with currentBalance as string', () => {
       const bad = {

@@ -144,7 +144,10 @@ export function validateVendor(v: unknown): ValidationResult {
   return { ok: true };
 }
 
-export function validatePersistedState(raw: unknown): PersistedStateValidationResult {
+export function validatePersistedState(
+  raw: unknown,
+  opts?: { skipDeepValidation?: boolean },
+): PersistedStateValidationResult {
   if (raw === null || raw === undefined) {
     return { ok: false, reason: 'persisted state is null or undefined' };
   }
@@ -171,6 +174,14 @@ export function validatePersistedState(raw: unknown): PersistedStateValidationRe
     if (val === null || typeof val !== 'object' || Array.isArray(val)) {
       return { ok: false, reason: `expected object for key: ${key}, got ${typeof val}` };
     }
+  }
+
+  // When schema version matches CURRENT_SCHEMA_VERSION, data has already
+  // passed through migrateState(). Skip deep per-item validation to avoid
+  // blocking the main thread on large datasets (1000+ transactions, hundreds
+  // of students).
+  if (opts?.skipDeepValidation) {
+    return { ok: true, state: state as unknown as PosState };
   }
 
   // Deep validation — full scan for small collections, sampling for large
