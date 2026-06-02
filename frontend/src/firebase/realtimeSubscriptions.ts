@@ -1,12 +1,5 @@
-import {
-  collection,
-  onSnapshot,
-  orderBy,
-  query,
-  where,
-  type Firestore,
-  type Unsubscribe,
-} from 'firebase/firestore';
+import type { Firestore, Unsubscribe } from 'firebase/firestore';
+import { getFirestoreMod } from './firebaseModules';
 import { appendErrorLog } from '../errors/errorLogger';
 
 export interface RealtimeHandlers {
@@ -21,6 +14,7 @@ function pendingCount(snapshot: { docs: Array<{ metadata: { hasPendingWrites: bo
 }
 
 export function subscribeBusinessDate(db: Firestore, businessDate: string, handlers: RealtimeHandlers): Unsubscribe {
+  const { collection, onSnapshot, orderBy, query, where } = getFirestoreMod();
   const unsubscribers: Unsubscribe[] = [];
 
   let batchPending = false;
@@ -30,9 +24,6 @@ export function subscribeBusinessDate(db: Firestore, businessDate: string, handl
     pending.push(fn);
     if (!batchPending) {
       batchPending = true;
-      // React 19 automatically batches state updates; queueMicrotask prevents
-      // tearing during Firestore snapshot dispatch by coalescing multiple
-      // onSnapshot callbacks within the same microtask boundary.
       queueMicrotask(() => {
         batchPending = false;
         const calls = pending.splice(0);

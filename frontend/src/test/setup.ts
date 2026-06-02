@@ -133,3 +133,15 @@ vi.mock('../firebase/authService', () => ({
   signInWithGoogle: vi.fn(),
   signOutOperator: vi.fn(),
 }));
+
+vi.mock('../firebase/firebaseModules', async () => {
+  const [authMod, fsMod] = await Promise.all([
+    import('firebase/auth'),
+    import('firebase/firestore'),
+  ]);
+  return {
+    ensureFirebaseModulesLoaded: vi.fn(),
+    getAuthMod: () => authMod,
+    getFirestoreMod: () => fsMod,
+  };
+});

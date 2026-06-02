@@ -46,11 +46,20 @@ export default defineConfig(async () => ({
           if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
             return 'vendor-react';
           }
-          if (id.includes('node_modules/firebase')) {
-            return 'vendor-firebase';
-          }
           if (id.includes('node_modules/zustand')) {
             return 'vendor-zustand';
+          }
+          if (id.includes('node_modules/firebase/app')) {
+            return 'vendor-firebase-app';
+          }
+          if (id.includes('node_modules/firebase/auth')) {
+            return 'vendor-firebase-auth';
+          }
+          if (id.includes('node_modules/firebase/firestore')) {
+            return 'vendor-firebase-firestore';
+          }
+          if (id.includes('node_modules/firebase')) {
+            return 'vendor-firebase-shared';
           }
         },
       },
