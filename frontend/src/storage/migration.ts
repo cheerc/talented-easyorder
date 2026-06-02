@@ -1,6 +1,6 @@
 import type { PosState } from '../store/posTypes';
 import { appendErrorLog } from '../errors/errorLogger';
-import type { Vendor } from '../domain/menu';
+import type { WireVendor } from './wireTypes';
 import { recalculateStudentBalances } from '../domain/ledger';
 import type { StudentAccount } from '../domain/student';
 import type { LedgerTransaction } from '../domain/ledger';
@@ -107,7 +107,7 @@ export function migratePersistedState(persistedState: unknown, _zVersion: number
     const rawMenu = state.todayMenu as Record<string, unknown> | undefined;
     if (rawMenu && 'date' in rawMenu && !('businessDate' in rawMenu)) {
       const vendorName = (rawMenu.vendor as string) || '';
-      const oldVendors = (state.vendors as Vendor[]) || [];
+      const oldVendors = (state.vendors as WireVendor[]) || [];
       const matchedVendor = oldVendors.find(v => v.name === vendorName);
       state.todayMenu = {
         businessDate: rawMenu.date as string,
