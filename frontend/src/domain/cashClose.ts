@@ -1,4 +1,4 @@
-import type { LedgerSyncStatus } from './ledger';
+import type { LedgerSyncStatus } from './types';
 import type { LedgerTotals } from './ledgerReport';
 
 export type BusinessDateStatus = 'open' | 'closed' | 'reopened';

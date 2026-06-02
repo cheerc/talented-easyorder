@@ -1,4 +1,4 @@
-import type { LedgerSyncStatus } from './ledger';
+import type { LedgerSyncStatus } from './types';
 
 export type LedgerAuditEventType =
   | 'transaction_edited'
