@@ -127,6 +127,40 @@ describe('errorLogger', () => {
     expect(entry.stack).toContain('App.tsx:10:5');
   });
 
+  it('does not redact single address character (avoid false positives)', () => {
+    const entry = appendErrorLog({
+      source: 'react',
+      message: '路徑錯誤: file not found',
+    });
+    expect(entry.message).toContain('路徑錯誤');
+    expect(entry.message).not.toContain('[ADDR REDACTED]');
+  });
+
+  it('redacts address patterns (number+addr char or 2+ consecutive addr chars)', () => {
+    const entry = appendErrorLog({
+      source: 'react',
+      message: '地址: 台北市大安區忠孝東路四段100號11樓',
+    });
+    expect(entry.message).not.toContain('100號');
+    expect(entry.message).not.toContain('11樓');
+    expect(entry.message).toContain('[ADDR REDACTED]');
+  });
+
+  it('sanitizes string values in allowlisted context keys', () => {
+    const entry = appendErrorLog({
+      source: 'react',
+      message: 'test',
+      context: {
+        errorHint: '學生: 王小明 電話0912-345-678',
+      },
+    });
+    expect(entry.context).toBeDefined();
+    expect(entry.context!.errorHint).toBeDefined();
+    expect(entry.context!.errorHint).not.toContain('王小明');
+    expect(entry.context!.errorHint).not.toContain('0912-345-678');
+    expect(entry.context!.errorHint).toContain('[REDACTED]');
+  });
+
   it('does not match "filename" when sanitizing "name" pattern', () => {
     const entry = appendErrorLog({
       source: 'react',

@@ -26,7 +26,9 @@ function sanitizeContext(
   if (!context) return undefined;
   const clean: Record<string, string | number | boolean | null> = {};
   for (const [key, value] of Object.entries(context)) {
-    if (CONTEXT_ALLOW_LIST.has(key)) clean[key] = value;
+    if (CONTEXT_ALLOW_LIST.has(key)) {
+      clean[key] = typeof value === 'string' ? sanitizeMessage(value) : value;
+    }
   }
   return Object.keys(clean).length > 0 ? clean : undefined;
 }
@@ -40,7 +42,7 @@ export function sanitizeMessage(message: string): string {
     .replace(/金額[：:]\s*-?\d+/g, '金額: [REDACTED]')
     .replace(/09\d{2}[-\s]?\d{3}[-\s]?\d{3}/g, '[PHONE REDACTED]')
     .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[EMAIL REDACTED]')
-    .replace(/[鄉鎮市區路街段巷弄號號樓]/g, '[ADDR REDACTED]')
+    .replace(/(?:\d+[號樓]|\d+巷\d+弄|[鄉鎮市區路街段巷弄號樓]{2,})/g, '[ADDR REDACTED]')
     .replace(/[A-Z]\d{9}/g, '[ID REDACTED]');
 }
 
