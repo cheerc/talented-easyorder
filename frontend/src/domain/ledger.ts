@@ -129,6 +129,13 @@ export interface MergedTransaction extends LedgerTransaction {
   displayBalance: number;
 }
 
+export interface TransactionEditView {
+  transactionId: string;
+  mealPrice: number;
+  paidAmount: number;
+  note: string;
+}
+
 export function mergeLedgerTransactions(transactions: LedgerTransaction[]): MergedTransaction[] {
   const cashierTxs: LedgerTransaction[] = [];
   const studentGroups: Record<string, LedgerTransaction[]> = {};

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { appendErrorLog } from '../../errors/errorLogger';
-import type { LedgerTransaction } from '../../domain/ledger';
+import type { LedgerTransaction, TransactionEditView } from '../../domain/ledger';
 import type { TodayMenu } from '../../domain/menu';
 import { EditTransactionModal } from '../EditTransactionModal';
 import type { LedgerDateRangeKind } from '../../domain/ledgerReport';
@@ -29,7 +29,7 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
   const [customEnd, setCustomEnd] = useState(viewDate);
   const [expandedSids, setExpandedSids] = useState<Set<string>>(new Set());
   const [showReopen, setShowReopen] = useState(false);
-  const [editingTx, setEditingTx] = useState<LedgerTransaction | null>(null);
+  const [editingTx, setEditingTx] = useState<TransactionEditView | null>(null);
   const [studentSearch, setStudentSearch] = useState(studentFilter || '');
 
   const { closeBusinessDate, reopenBusinessDate, deleteOrderWithRefundCheck, deleteTransaction, editTransaction } = usePosStore(
@@ -105,7 +105,12 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
   };
 
   const handleEditClick = (t: LedgerTransaction) => {
-    setEditingTx(t);
+    setEditingTx({
+      transactionId: t.transactionId,
+      mealPrice: t.mealPrice,
+      paidAmount: t.paidAmount,
+      note: t.note,
+    });
   };
 
   const handleDeleteClick = (t: LedgerTransaction) => {
