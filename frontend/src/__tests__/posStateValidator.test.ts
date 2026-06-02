@@ -129,6 +129,41 @@ describe('posStateValidator — state migration', () => {
     }
   });
 
+  it('rejects corrupted v2+ state missing required key', () => {
+    const state = {
+      schemaVersion: 2,
+      students: [],
+      transactions: [],
+      vendors: [],
+      todayMenu: { businessDate: '2026-05-17', itemName: 'test', price: 90, vendorId: 'v1', vendorNameSnapshot: 'V', updatedAt: '2026-05-17T00:00:00Z', revision: 1 },
+      auditEvents: [],
+      dailySettlements: [],
+      businessDateStatuses: {},
+      // cashSessions intentionally missing
+    };
+
+    const result = migrateState(state);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain('cashSessions');
+  });
+
+  it('accepts valid v2+ state with all required keys', () => {
+    const state = {
+      schemaVersion: 2,
+      students: [],
+      transactions: [],
+      vendors: [],
+      todayMenu: { businessDate: '2026-05-17', itemName: 'test', price: 90, vendorId: 'v1', vendorNameSnapshot: 'V', updatedAt: '2026-05-17T00:00:00Z', revision: 1 },
+      auditEvents: [],
+      dailySettlements: [],
+      businessDateStatuses: {},
+      cashSessions: {},
+    };
+
+    const result = migrateState(state);
+    expect(result.ok).toBe(true);
+  });
+
   it('validation still works after migration', () => {
     const oldState = {
       students: [
