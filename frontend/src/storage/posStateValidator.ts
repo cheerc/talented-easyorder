@@ -1,5 +1,5 @@
-import type { PosState } from '../store/posTypes';
 import type { ValidationResult } from '../types/validation';
+import type { WirePersistedState } from './wireTypes';
 import { recalculateStudentBalances } from '../domain/ledger';
 import type { StudentAccount } from '../domain/student';
 import type { LedgerTransaction } from '../domain/ledger';
@@ -16,11 +16,11 @@ const ARRAY_KEYS = new Set<string>(['students', 'transactions', 'vendors', 'audi
 const OBJECT_KEYS = new Set<string>(['todayMenu', 'businessDateStatuses', 'cashSessions']);
 
 export type MigrationResult =
-  | { ok: true; state: PosState & { schemaVersion: number } }
+  | { ok: true; state: WirePersistedState & { schemaVersion: number } }
   | { ok: false; reason: string };
 
 export type PersistedStateValidationResult =
-  | { ok: true; state: PosState }
+  | { ok: true; state: WirePersistedState }
   | { ok: false; reason: string };
 
 // ---- deep validation functions ----
@@ -182,7 +182,7 @@ export function validatePersistedState(
   // blocking the main thread on large datasets (1000+ transactions, hundreds
   // of students).
   if (opts?.skipDeepValidation) {
-    return { ok: true, state: state as unknown as PosState };
+    return { ok: true, state: state as unknown as WirePersistedState };
   }
 
   // Deep validation — full scan for small collections, sampling for large
@@ -234,7 +234,7 @@ export function validatePersistedState(
     }
   }
 
-  return { ok: true, state: state as unknown as PosState };
+  return { ok: true, state: state as unknown as WirePersistedState };
 }
 
 export function migrateState(raw: unknown): MigrationResult {
@@ -261,7 +261,7 @@ export function migrateState(raw: unknown): MigrationResult {
       const val = state[key];
       if (val === null || typeof val !== 'object' || Array.isArray(val)) return { ok: false, reason: `expected object for key: ${key}` };
     }
-    return { ok: true, state: state as unknown as PosState & { schemaVersion: number } };
+    return { ok: true, state: state as unknown as WirePersistedState & { schemaVersion: number } };
   }
 
   const rawTx = state.transactions as Array<Record<string, unknown>> | undefined;
@@ -304,5 +304,5 @@ export function migrateState(raw: unknown): MigrationResult {
   }
 
   (state as Record<string, unknown>).schemaVersion = CURRENT_SCHEMA_VERSION;
-  return { ok: true, state: state as unknown as PosState & { schemaVersion: number } };
+  return { ok: true, state: state as unknown as WirePersistedState & { schemaVersion: number } };
 }
