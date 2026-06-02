@@ -7,7 +7,7 @@ dist/
 
 # graphify — local-only（不 commit，post-commit hook 自動重建）
 graphify-out/
-.graphify_root
+.graphify*
 .claude/settings.local.json
 
 .agents/*
