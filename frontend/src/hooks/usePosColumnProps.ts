@@ -1,7 +1,4 @@
-import type { ComponentProps } from 'react';
-import { PosColumn } from '../components/PosColumn';
-
-type PosColumnProps = ComponentProps<typeof PosColumn>;
+import type { PosColumnProps } from '../components/PosColumn.types';
 
 export function buildPosColumnProps(args: {
   state: PosColumnProps['state'];
