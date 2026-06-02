@@ -104,7 +104,7 @@ const mockServices = {
 
 // Global mocks for Firebase initialization and Auth Gate in test environment
 vi.mock('../firebase/firebaseApp', () => ({
-  ensureFirebaseInitialized: () => mockServices,
+  ensureFirebaseInitialized: () => Promise.resolve(mockServices),
   readFirebaseConfig: () => ({}),
   getFirebaseConfigState: () => ({ configured: false, error: 'Mocked config' }),
   isFirebaseConfigured: () => false,
@@ -133,3 +133,15 @@ vi.mock('../firebase/authService', () => ({
   signInWithGoogle: vi.fn(),
   signOutOperator: vi.fn(),
 }));
+
+vi.mock('../firebase/firebaseModules', async () => {
+  const [authMod, fsMod] = await Promise.all([
+    import('firebase/auth'),
+    import('firebase/firestore'),
+  ]);
+  return {
+    ensureFirebaseModulesLoaded: vi.fn(),
+    getAuthMod: () => authMod,
+    getFirestoreMod: () => fsMod,
+  };
+});

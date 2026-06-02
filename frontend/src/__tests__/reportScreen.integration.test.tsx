@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { usePosStore } from '../store/posStore';
-import App from '../App';
 import { resetStoreForTest } from './helpers/storeSetup';
+import { renderApp } from './helpers/renderApp';
 
 beforeEach(() => resetStoreForTest());
 
 describe('reportScreen integration', () => {
   it('renders report tab with date range controls', async () => {
-    render(<App />);
+    await renderApp();
     // Navigate to report tab
     const reportBtn = screen.getByText('今日帳');
     await userEvent.click(reportBtn);
@@ -19,7 +19,7 @@ describe('reportScreen integration', () => {
   });
 
   it('shows summary stats in report view', async () => {
-    render(<App />);
+    await renderApp();
     await userEvent.click(screen.getByText('今日帳'));
     await waitFor(() => {
       expect(screen.getByText('訂餐')).toBeTruthy();
@@ -28,7 +28,7 @@ describe('reportScreen integration', () => {
   });
 
   it('shows grouped table with student names', async () => {
-    render(<App />);
+    await renderApp();
     await userEvent.click(screen.getByText('今日帳'));
     await waitFor(() => {
       // Report shows totals which are always rendered
@@ -45,7 +45,7 @@ describe('reportScreen integration', () => {
       openedAt: new Date().toISOString(),
     });
 
-    render(<App />);
+    await renderApp();
     await userEvent.click(screen.getByText('今日帳'));
     await waitFor(() => {
       expect(screen.getByText('開帳金額')).toBeTruthy();

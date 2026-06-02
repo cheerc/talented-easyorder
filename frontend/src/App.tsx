@@ -29,10 +29,24 @@ import type { OperatorAccess } from './firebase/authService';
 
 export default function App() {
   const { systemDate, viewDate, setViewDate } = useSystemDate();
-  const { auth, db } = ensureFirebaseInitialized();
+
+  const [fb, setFb] = useState<Awaited<ReturnType<typeof ensureFirebaseInitialized>> | null>(null);
+  const [fbError, setFbError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    ensureFirebaseInitialized().then(
+      services => { if (!cancelled) setFb(services); },
+      err => { if (!cancelled) setFbError(err instanceof Error ? err.message : String(err)); },
+    );
+    return () => { cancelled = true; };
+  }, []);
+
+  const auth = fb?.auth ?? null;
+  const db = fb?.db ?? null;
   const [access, setAccess] = useState<OperatorAccess>({ ok: false, reason: 'signed_out' });
 
   useEffect(() => {
+    if (!auth || !db) return;
     const unsubscribe = subscribeOperatorAccess(auth, db, setAccess);
     return unsubscribe;
   }, [auth, db]);
@@ -204,9 +218,16 @@ export default function App() {
     tx, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
     handleDeleteOrder]);
 
+  if (fbError) {
+    return <AppCrashPage />;
+  }
+  if (!fb) {
+    return <div className="app-loading" aria-label="載入中">載入中...</div>;
+  }
+
   return (
     <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => appendErrorLog({ source: 'react', message: e.message, stack: e.stack })}>
-    <AuthGate auth={auth} db={db} access={access}>
+    <AuthGate auth={fb.auth} db={fb.db} access={access}>
     <MainLayout
       tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync}
       todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate}

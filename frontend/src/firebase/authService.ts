@@ -1,5 +1,6 @@
-import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type Auth, type User } from 'firebase/auth';
-import { doc, getDoc, onSnapshot, type Firestore } from 'firebase/firestore';
+import type { Auth, User } from 'firebase/auth';
+import type { Firestore } from 'firebase/firestore';
+import { getAuthMod, getFirestoreMod } from './firebaseModules';
 import { operatorPath } from './firestorePaths';
 import { appendErrorLog } from '../errors/errorLogger';
 
@@ -37,6 +38,7 @@ export async function getOperatorAccess(db: Firestore, user: User): Promise<Oper
     return { ok: false, reason: 'wrong_domain', profile };
   }
 
+  const { getDoc, doc } = getFirestoreMod();
   const snapshot = await getDoc(doc(db, operatorPath(profile.uid)));
   const data = snapshot.data() as { active?: boolean; role?: 'counter' | 'admin' } | undefined;
   if (!data) return { ok: false, reason: 'not_whitelisted', profile };
@@ -47,12 +49,13 @@ export async function getOperatorAccess(db: Firestore, user: User): Promise<Oper
 export async function verifyUserAuthorization(auth: Auth, db: Firestore, user: User): Promise<OperatorAccess> {
   const access = await getOperatorAccess(db, user);
   if (shouldForceSignOut(access)) {
-    await signOut(auth);
+    await getAuthMod().signOut(auth);
   }
   return access;
 }
 
 export async function signInWithGoogle(auth: Auth, db: Firestore): Promise<OperatorAccess> {
+  const { GoogleAuthProvider, signInWithPopup } = getAuthMod();
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ hd: ALLOWED_DOMAIN, prompt: 'select_account' });
   const credential = await signInWithPopup(auth, provider);
@@ -60,7 +63,7 @@ export async function signInWithGoogle(auth: Auth, db: Firestore): Promise<Opera
 }
 
 export function signOutOperator(auth: Auth): Promise<void> {
-  return signOut(auth);
+  return getAuthMod().signOut(auth);
 }
 
 export function subscribeOperatorAccess(
@@ -68,6 +71,8 @@ export function subscribeOperatorAccess(
   db: Firestore,
   onAccess: (access: OperatorAccess) => void,
 ): () => void {
+  const { onAuthStateChanged, signOut } = getAuthMod();
+  const { doc, onSnapshot } = getFirestoreMod();
   let unsubscribeOperator: (() => void) | null = null;
   const unsubscribeAuth = onAuthStateChanged(auth, async user => {
     unsubscribeOperator?.();

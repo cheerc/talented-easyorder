@@ -1,4 +1,5 @@
-import { serverTimestamp, type FieldValue, type Timestamp } from 'firebase/firestore';
+import type { FieldValue, Timestamp } from 'firebase/firestore';
+import { getFirestoreMod } from './firebaseModules';
 import type { ValidationResult } from '../types/validation';
 
 export type FirestoreTimestamp = Timestamp | FieldValue;
@@ -32,6 +33,7 @@ export interface TransactionDoc extends TransactionDocInput {
 }
 
 export function buildTransactionDoc(input: TransactionDocInput): TransactionDoc {
+  const { serverTimestamp } = getFirestoreMod();
   return {
     ...input,
     createdAt: serverTimestamp(),

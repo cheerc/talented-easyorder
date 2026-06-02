@@ -1,12 +1,5 @@
-import {
-  doc,
-  getDoc,
-  increment,
-  runTransaction,
-  serverTimestamp,
-  writeBatch,
-  type Firestore,
-} from 'firebase/firestore';
+import type { Firestore } from 'firebase/firestore';
+import { getFirestoreMod } from './firebaseModules';
 import { studentPath, transactionPath } from './firestorePaths';
 import { buildTransactionDoc, type TransactionDocInput } from './firestoreSchema';
 
@@ -23,6 +16,7 @@ export interface CommitLedgerInput extends TransactionDocInput {
 }
 
 export async function commitLedgerOnline(db: Firestore, input: CommitLedgerInput): Promise<'accepted' | 'duplicate'> {
+  const { doc, increment, runTransaction, serverTimestamp } = getFirestoreMod();
   const txRef = doc(db, transactionPath(input.id));
   const studentRef = doc(db, studentPath(input.studentId));
 
@@ -59,6 +53,7 @@ export async function commitLedgerOnline(db: Firestore, input: CommitLedgerInput
 }
 
 export async function commitLedgerOfflineBatch(db: Firestore, input: CommitLedgerInput): Promise<'queued'> {
+  const { doc, getDoc, increment, serverTimestamp, writeBatch } = getFirestoreMod();
   const txRef = doc(db, transactionPath(input.id));
   const studentRef = doc(db, studentPath(input.studentId));
   const existing = await getDoc(txRef);
