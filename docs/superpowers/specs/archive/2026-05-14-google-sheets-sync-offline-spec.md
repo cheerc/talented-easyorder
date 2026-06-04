@@ -1,4 +1,14 @@
-# Google Sheets Sync And Offline Spec
+[DEPRECATED] — Google Sheets 同步已被 Firebase Firestore 完全取代。
+
+取代方案：
+- Firebase Firestore (`frontend/src/firebase/`) 作為即時資料庫與同步層
+- `frontend/src/domain/ledgerSyncBoundary.ts` 定義 queueable payload 與 sync boundary
+- `frontend/src/firebase/ledgerRepository.ts`, `settlementRepository.ts`, `studentRepository.ts` 處理 CRUD 與 sync
+- `frontend/src/firebase/realtimeSubscriptions.ts` 處理即時訂閱
+- 本地 durable queue 概念保留在 `ledgerSyncBoundary.ts`，但 transport 層已從 Google Sheets API 改為 Firestore
+
+---
+# Google Sheets Sync And Offline Spec (DEPRECATED)
 
 ## 功能描述
 
