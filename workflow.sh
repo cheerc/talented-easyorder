@@ -166,6 +166,7 @@ show_menu() {
     echo -e "t5) Integration Tests (Firestore Rules + Emulator)"
     echo -e "t6) Full CI (t1-t5 Sequential)"
     echo -e "t7) Preview (Build + Local Serve)"
+    echo -e "e2e) E2E Tests (Playwright + Firebase Emulator)"
     echo ""
     echo -e "${RED}══════ 🔴 Production (p1-p5) ══════${NC}"
     echo -e "p1) Deploy Frontend (Vercel) ${CYAN}[需 Vercel CLI]${NC}"
@@ -365,6 +366,21 @@ run_preview() {
     (cd "$FRONTEND_DIR" && npm run preview)
 }
 
+run_e2e_tests() {
+    echo -e "${CYAN}🎭 E2E Tests (Playwright + Firebase Emulator)...${NC}"
+
+    # Kill any existing emulator on those ports
+    lsof -t -i :8080 -i :9099 | xargs kill -9 2>/dev/null || true
+    sleep 1
+
+    (cd "$FRONTEND_DIR" && npm run test:e2e) > "$TEMP_LOG" 2>&1
+    if [ $? -ne 0 ]; then
+        handle_error "E2E Tests" || return 1
+    fi
+    echo -e "${GREEN}✅ E2E Tests Passed${NC}"
+    tail -n 5 "$TEMP_LOG"
+}
+
 # --- Production ---
 confirm_prod() {
     if [ "$INTERACTIVE" = false ]; then
@@ -489,6 +505,7 @@ if [ -n "$1" ]; then
         t5) run_integration_tests ;;
         t6) run_full_ci ;;
         t7) INTERACTIVE=true; run_preview ;;
+        e2e) run_e2e_tests ;;
         p1) deploy_frontend ;;
         p2) INTERACTIVE=true; deploy_rules ;;
         p3) INTERACTIVE=true; deploy_indexes ;;
@@ -514,6 +531,7 @@ while true; do
         t5) run_integration_tests ;;
         t6) run_full_ci ;;
         t7) run_preview ;;
+        e2e) run_e2e_tests ;;
         p1) deploy_frontend ;;
         p2) deploy_rules ;;
         p3) deploy_indexes ;;
