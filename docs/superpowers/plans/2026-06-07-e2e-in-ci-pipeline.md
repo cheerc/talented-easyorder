@@ -115,14 +115,16 @@ export default defineConfig({
   testDir: './e2e',
   timeout: 30000,
   retries: 1,
+  projects: [{ name: 'chromium' }],
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:4173',
   },
   // CI: emulators 由 ci.yml step 管理；local: npm run test:e2e 包在 emulators:exec 內
+  // 使用 vite preview（production build）而非 vite dev，確保捕捉 build-time 錯誤
   webServer: {
-    command: 'VITE_FIREBASE_USE_EMULATOR=true VITE_FIRESTORE_EMULATOR_HOST=127.0.0.1 VITE_FIRESTORE_EMULATOR_PORT=8080 VITE_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099 npx vite --port 5173 --strictPort',
-    port: 5173,
-    timeout: 60000,
+    command: 'VITE_FIREBASE_USE_EMULATOR=true VITE_FIRESTORE_EMULATOR_HOST=127.0.0.1 VITE_FIRESTORE_EMULATOR_PORT=8080 VITE_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099 npm run build && npx vite preview --port 4173 --strictPort',
+    port: 4173,
+    timeout: 120000,
     reuseExistingServer: !process.env.CI,
   },
 });
@@ -166,15 +168,33 @@ test.describe('EasyOrder Smoke', () => {
 
 ### Step 5: Update `workflow.sh`
 
-新增 e2e 函數（現有 t1-t7 已佔用，使用下一個可用編號）：
+新增 e2e 函數（對標 payroll workflow.sh t5，提供統一開發者體驗）：
 
-> **編號決策**：workflow.sh t5 目前已用於 "Integration Tests (Firestore Rules)"。General 派工提及 "t5（或等效）" — 本文採用保留現有編號、新增獨立函數的方案，避免改動現有 t5 語意造成混淆。CI job 命名使用 `e2e-tests`（對標 payroll），workflow.sh 內以獨立選項提供。
+> **編號決策**：workflow.sh 現有 t1-t7 已全數佔用（t5 = Integration Tests / Firestore Rules）。為避免改動現有編號語意造成混淆，e2e 使用 `e2e` 作為 named option（非數字編號），與既有數字選項共存。CI job 命名使用 `e2e-tests`（對標 payroll）。
 
-**方案 A（最小改動）**：不新增 workflow.sh 選項，local e2e 直接 `cd frontend && npm run test:e2e`。workflow.sh 僅在 CI 被呼叫（ci.yml step），但 easyorder ci.yml build-and-test job 使用 inline 指令不經 workflow.sh。
+新增內容：
+1. **Menu display**：在 Testing 區段新增 `e2e) E2E Tests (Playwright + Firebase Emulator)`
+2. **函數**：`run_e2e_tests()` — wrapper around `npm run test:e2e`
+3. **Case statement**：`e2e) run_e2e_tests ;;`（CLI mode）+ interactive menu case
 
-**方案 B**：在 workflow.sh 新增 e2e 函數與選單項目。需改動 menu display + case statement。
+```bash
+run_e2e_tests() {
+    echo -e "${CYAN}🎭 E2E Tests (Playwright + Firebase Emulator)...${NC}"
 
-**採用方案 A**：ci.yml e2e-tests job 使用 inline 指令（與現有 build-and-test job 風格一致）。workflow.sh 保留給 local dev 使用，e2e 測試透過 `npm run test:e2e` 執行。
+    # Kill any existing emulator on those ports
+    lsof -t -i :8080 -i :9099 | xargs kill -9 2>/dev/null || true
+    sleep 1
+
+    (cd "$FRONTEND_DIR" && npm run test:e2e) > "$TEMP_LOG" 2>&1
+    if [ $? -ne 0 ]; then
+        handle_error "E2E Tests" || return 1
+    fi
+    echo -e "${GREEN}✅ E2E Tests Passed${NC}"
+    tail -n 5 "$TEMP_LOG"
+}
+```
+
+**Verify**: `./workflow.sh e2e` → 啟動 emulators + 執行 Playwright smoke test → passed
 
 ### Step 6: Update `ci.yml`
 
@@ -182,6 +202,8 @@ test.describe('EasyOrder Smoke', () => {
 name: Frontend CI
 
 on:
+  push:
+    branches: [dev]
   pull_request:
     branches: [dev]
     types: [opened, synchronize, reopened]
@@ -270,14 +292,16 @@ jobs:
 - **不需 secrets** — 所有 env vars 都是 dummy 值
 - **不需 functions build** — easyorder 無 backend
 
-**Verify**: PR trigger → `e2e-tests` job 在 CI 上跑綠
+**Verify**: PR trigger → `e2e-tests` job 在 CI 上跑綠；push to dev → 兩個 job 都觸發
 
 ## CI Trigger 調整
 
-將 `ci.yml` trigger 從 `push` + `pull_request` 改為 `pull_request` only（對標 payroll pre-merge 模式）：
+將 `ci.yml` trigger 從無限制 `push`（所有 branch）改為 `push: branches: [dev]` + `pull_request` pre-merge 模式（對標 payroll）：
 
 ```yaml
 on:
+  push:
+    branches: [dev]
   pull_request:
     branches: [dev]
     types: [opened, synchronize, reopened]
@@ -287,7 +311,7 @@ on:
   workflow_dispatch:
 ```
 
-> **理由**：`push` trigger 對所有 branch 的 push 都觸發 CI（含 WIP commit），浪費 CI 分鐘數。改為 PR-based pre-merge 僅在 PR open/sync 時觸發。`workflow_dispatch` 保留手動觸發能力。
+> **設計決策**：保留 `push: branches: [dev]` 確保 merge 後 dev 有持續驗證（避免 silent regression），限制僅 dev push 觸發節省 CI 分鐘數。PR trigger 在 dev-targeting PR open/sync 時觸發，`paths-ignore` 過濾純文件變更。`workflow_dispatch` 保留手動觸發能力。
 
 ## Test Impact
 
