@@ -344,6 +344,49 @@ run_integration_tests() {
     tail -n 5 "$TEMP_LOG"
 }
 
+# --- Targeted single-file (TDD 迭代用；full t4/t5 留給送審前 + CI) ---
+run_unit_file() {
+    local file="$1"
+    if [ -z "$file" ]; then
+        echo -e "${RED}❌ 用法: ./workflow.sh t4-file <FILE_PATH（相對 frontend/）>${NC}"
+        return 1
+    fi
+    INTERACTIVE=false
+    echo -e "${CYAN}🧪 [t4-file] Unit Single File: $file${NC}"
+    local rel="${file#frontend/}"
+    (cd "$FRONTEND_DIR" && npx vitest --run "$rel")
+}
+
+run_integration_file() {
+    local file="$1"
+    if [ -z "$file" ]; then
+        echo -e "${RED}❌ 用法: ./workflow.sh t5-file <FILE_PATH（相對 frontend/）>${NC}"
+        return 1
+    fi
+    INTERACTIVE=false
+    echo -e "${CYAN}🔥 [t5-file] Integration Single File: $file${NC}"
+    lsof -t -i :8080 -i :9099 | xargs kill -9 2>/dev/null || true
+    sleep 1
+    firebase emulators:start --project "$FIREBASE_PROJECT" &
+    local emu_pid=$!
+    local retries=0
+    while ! curl -s http://localhost:8080 > /dev/null 2>&1; do
+        sleep 1
+        retries=$((retries + 1))
+        if [ $retries -gt 30 ]; then
+            echo -e "${RED}❌ Emulator 啟動超時${NC}"
+            kill $emu_pid 2>/dev/null
+            return 1
+        fi
+    done
+    local rel="${file#frontend/}"
+    (cd "$FRONTEND_DIR" && FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npx vitest --run "$rel")
+    local test_status=$?
+    kill $emu_pid 2>/dev/null
+    wait $emu_pid 2>/dev/null
+    return $test_status
+}
+
 run_full_ci() {
     echo -e "${CYAN}🏁 [t6] Full CI (t1-t5)...${NC}"
     echo ""
@@ -503,6 +546,8 @@ if [ -n "$1" ]; then
         t3) run_lint ;;
         t4) run_unit_tests ;;
         t5) run_integration_tests ;;
+        t4-file) run_unit_file "$2" ;;
+        t5-file) run_integration_file "$2" ;;
         t6) run_full_ci ;;
         t7) INTERACTIVE=true; run_preview ;;
         e2e) run_e2e_tests ;;
