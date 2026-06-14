@@ -1,0 +1,129 @@
+name: easyorder E2E (release gate + nightly)
+
+# Playwright E2E — moved out of per-PR CI (#56/#268) to conserve GH Actions
+# minutes. Runs on: (1) workflow_dispatch — the release gate (lead kicks it on
+# dev HEAD before bump, see dispatch_books LEAD.md §6 e2e-gate) + ad-hoc; and
+# (2) nightly schedule on dev for early regression detection (failure -> auto-issue).
+# NOTE: easyorder t5 = Firestore Rules (per-PR, in ci.yml); this is the Playwright e2e.
+on:
+  workflow_dispatch:
+  schedule:
+    # 02:00 Asia/Taipei = 18:00 UTC (previous day)
+    - cron: '0 18 * * *'
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: e2e-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-tests:
+    name: e2e-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VITE_FIREBASE_API_KEY: "dummy-api-key"
+      VITE_FIREBASE_AUTH_DOMAIN: "dummy-auth-domain"
+      VITE_FIREBASE_PROJECT_ID: "dummy-project-id"
+      VITE_FIREBASE_APP_ID: "dummy-app-id"
+      VITE_FIREBASE_MESSAGING_SENDER_ID: "000000000000"
+      VITE_FIREBASE_STORAGE_BUCKET: "dummy-bucket"
+      VITE_FIREBASE_USE_EMULATOR: "true"
+      VITE_FIRESTORE_EMULATOR_HOST: "127.0.0.1"
+      VITE_FIRESTORE_EMULATOR_PORT: "8080"
+      VITE_FIREBASE_AUTH_EMULATOR_URL: "http://127.0.0.1:9099"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # full history so nightly root-cause classification can diff against
+          # the last successful e2e SHA (see "Classify & report" step)
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Java (for Firebase emulators)
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Install Playwright Browsers
+        run: npx playwright install chromium --with-deps
+        working-directory: frontend
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
+      - name: E2E Tests
+        run: npx firebase emulators:exec --only auth,firestore --project gen-lang-client-0613258198 "npx playwright test"
+        working-directory: frontend
+
+      - name: Upload Playwright Report (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
+      - name: Upload Test Results (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: frontend/test-results/
+          retention-days: 7
+
+      # Nightly only: open (or update) a tracking issue on failure, with
+      # root-cause classification + dedup. Release-gate (workflow_dispatch) runs
+      # are lead-attended, so no auto-issue there.
+      - name: Classify & report nightly failure
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHA="${{ github.sha }}"
+          SHORT="${SHA:0:8}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          # No new commits since last green => same code failing => likely flaky/infra.
+          # New commits since last green => a change may have regressed => possible regression.
+          LAST_GOOD="$(gh run list --workflow=e2e-tests.yml --branch dev --status success \
+            --limit 1 --json headSha --jq '.[0].headSha // ""' || true)"
+          if [ -n "$LAST_GOOD" ] && git cat-file -e "${LAST_GOOD}^{commit}" 2>/dev/null \
+             && [ "$(git rev-list --count "${LAST_GOOD}..${SHA}" 2>/dev/null || echo 1)" = "0" ]; then
+            CLASS="likely-flaky"
+          else
+            CLASS="possible-regression"
+          fi
+
+          gh label create nightly-e2e --color B60205 --description "nightly e2e failure" --force >/dev/null 2>&1 || true
+          gh label create "$CLASS" --color FBCA04 --force >/dev/null 2>&1 || true
+
+          NOTE="Nightly e2e failed on dev @ \`${SHA}\`
+          - Classification: **${CLASS}** (last green: \`${LAST_GOOD:-unknown}\`)
+          - Run: ${RUN_URL}
+          - Artifacts: \`playwright-report\` / \`test-results\` on the run page"
+
+          EXISTING="$(gh issue list --label nightly-e2e --state open --limit 1 \
+            --json number --jq '.[0].number // ""' || true)"
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "$NOTE"
+            gh issue edit "$EXISTING" --add-label "$CLASS" >/dev/null 2>&1 || true
+          else
+            gh issue create --title "nightly e2e failed on dev @ ${SHORT} (${CLASS})" \
+              --label "nightly-e2e,${CLASS}" --body "$NOTE"
+          fi
