@@ -6,6 +6,27 @@ import type { LedgerTransaction } from '../domain/ledger';
 
 const CURRENT_SCHEMA_VERSION = 2;
 
+// Ref: #296 — Runtime type guards to replace unsafe `as unknown` casts.
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null;
+}
+
+/** Structural guard: checks all required keys, array/object shape. */
+export function isWirePersistedState(v: unknown): v is WirePersistedState {
+  if (!isRecord(v)) return false;
+  for (const key of REQUIRED_KEYS) {
+    if (!(key in v)) return false;
+  }
+  for (const key of ARRAY_KEYS) {
+    if (!Array.isArray(v[key])) return false;
+  }
+  for (const key of OBJECT_KEYS) {
+    const val = v[key];
+    if (val === null || typeof val !== 'object' || Array.isArray(val)) return false;
+  }
+  return true;
+}
+
 const REQUIRED_KEYS = [
   'students', 'transactions', 'vendors', 'todayMenu',
   'auditEvents', 'dailySettlements', 'businessDateStatuses',
@@ -38,12 +59,12 @@ const VALID_AUDIT_EVENT_TYPES = new Set([
 const VALID_AUDIT_ENTITY_TYPES = new Set(['transaction', 'settlement', 'business_date', 'export']);
 const VALID_VENDOR_STATUSES = new Set(['active', 'inactive']);
 
-function hasStr(v: unknown, key: string): boolean {
-  return Object.hasOwn(v as object, key) && typeof (v as Record<string, unknown>)[key] === 'string';
+function hasStr(v: Record<string, unknown>, key: string): boolean {
+  return Object.hasOwn(v, key) && typeof v[key] === 'string';
 }
 
-function hasNum(v: unknown, key: string): boolean {
-  return Object.hasOwn(v as object, key) && typeof (v as Record<string, unknown>)[key] === 'number';
+function hasNum(v: Record<string, unknown>, key: string): boolean {
+  return Object.hasOwn(v, key) && typeof v[key] === 'number';
 }
 
 function isSafeInt(n: unknown): boolean {
@@ -51,8 +72,8 @@ function isSafeInt(n: unknown): boolean {
 }
 
 export function validateStudentAccount(s: unknown): ValidationResult {
-  if (typeof s !== 'object' || s === null) return { ok: false, reason: 'expected object' };
-  const r = s as Record<string, unknown>;
+  if (!isRecord(s)) return { ok: false, reason: 'expected object' };
+  const r = s;
   if (!hasStr(r, 'studentId')) return { ok: false, reason: 'missing studentId' };
   if (!hasStr(r, 'displayName')) return { ok: false, reason: 'missing displayName' };
   if (!hasStr(r, 'createdAt')) return { ok: false, reason: 'missing createdAt' };
@@ -68,8 +89,8 @@ export function validateStudentAccount(s: unknown): ValidationResult {
 }
 
 export function validateLedgerTransaction(t: unknown): ValidationResult {
-  if (typeof t !== 'object' || t === null) return { ok: false, reason: 'expected object' };
-  const r = t as Record<string, unknown>;
+  if (!isRecord(t)) return { ok: false, reason: 'expected object' };
+  const r = t;
   if (!hasStr(r, 'transactionId')) return { ok: false, reason: 'missing transactionId' };
   if (!hasStr(r, 'businessDate')) return { ok: false, reason: 'missing businessDate' };
   if (!hasStr(r, 'createdAt')) return { ok: false, reason: 'missing createdAt' };
@@ -89,8 +110,8 @@ export function validateLedgerTransaction(t: unknown): ValidationResult {
 }
 
 export function validateTodayMenu(m: unknown): ValidationResult {
-  if (typeof m !== 'object' || m === null) return { ok: false, reason: 'expected object' };
-  const r = m as Record<string, unknown>;
+  if (!isRecord(m)) return { ok: false, reason: 'expected object' };
+  const r = m;
   if (!hasStr(r, 'businessDate')) return { ok: false, reason: 'missing businessDate' };
   if (!hasStr(r, 'itemName')) return { ok: false, reason: 'missing itemName' };
   if (!hasStr(r, 'vendorId')) return { ok: false, reason: 'missing vendorId' };
@@ -103,8 +124,8 @@ export function validateTodayMenu(m: unknown): ValidationResult {
 }
 
 export function validateLedgerAuditEvent(e: unknown): ValidationResult {
-  if (typeof e !== 'object' || e === null) return { ok: false, reason: 'expected object' };
-  const r = e as Record<string, unknown>;
+  if (!isRecord(e)) return { ok: false, reason: 'expected object' };
+  const r = e;
   if (!hasStr(r, 'auditEventId')) return { ok: false, reason: 'missing auditEventId' };
   if (!hasStr(r, 'entityId')) return { ok: false, reason: 'missing entityId' };
   if (!hasStr(r, 'businessDate')) return { ok: false, reason: 'missing businessDate' };
@@ -117,8 +138,8 @@ export function validateLedgerAuditEvent(e: unknown): ValidationResult {
 }
 
 export function validateDailySettlement(s: unknown): ValidationResult {
-  if (typeof s !== 'object' || s === null) return { ok: false, reason: 'expected object' };
-  const r = s as Record<string, unknown>;
+  if (!isRecord(s)) return { ok: false, reason: 'expected object' };
+  const r = s;
   if (!hasStr(r, 'settlementId')) return { ok: false, reason: 'missing settlementId' };
   if (!hasStr(r, 'businessDate')) return { ok: false, reason: 'missing businessDate' };
   if (!hasStr(r, 'closedBy')) return { ok: false, reason: 'missing closedBy' };
@@ -133,8 +154,8 @@ export function validateDailySettlement(s: unknown): ValidationResult {
 }
 
 export function validateVendor(v: unknown): ValidationResult {
-  if (typeof v !== 'object' || v === null) return { ok: false, reason: 'expected object' };
-  const r = v as Record<string, unknown>;
+  if (!isRecord(v)) return { ok: false, reason: 'expected object' };
+  const r = v;
   if (!hasStr(r, 'vendorId')) return { ok: false, reason: 'missing vendorId' };
   if (!hasStr(r, 'name')) return { ok: false, reason: 'missing name' };
   if (!hasStr(r, 'createdAt')) return { ok: false, reason: 'missing createdAt' };
@@ -149,14 +170,11 @@ export function validatePersistedState(
   raw: unknown,
   opts?: { skipDeepValidation?: boolean },
 ): PersistedStateValidationResult {
-  if (raw === null || raw === undefined) {
-    return { ok: false, reason: 'persisted state is null or undefined' };
-  }
-  if (typeof raw !== 'object') {
-    return { ok: false, reason: `expected object, got ${typeof raw}` };
+  if (!isRecord(raw)) {
+    return { ok: false, reason: raw === null || raw === undefined ? 'persisted state is null or undefined' : `expected object, got ${typeof raw}` };
   }
 
-  const state = raw as Record<string, unknown>;
+  const state = raw;
 
   for (const key of REQUIRED_KEYS) {
     if (!(key in state)) {
@@ -182,7 +200,9 @@ export function validatePersistedState(
   // blocking the main thread on large datasets (1000+ transactions, hundreds
   // of students).
   if (opts?.skipDeepValidation) {
-    return { ok: true, state: state as unknown as WirePersistedState };
+    // Structure already validated above; narrow via guard for type safety.
+    if (!isWirePersistedState(state)) return { ok: false, reason: 'structural guard failed' };
+    return { ok: true, state };
   }
 
   // Deep validation — full scan for small collections, sampling for large
@@ -234,75 +254,68 @@ export function validatePersistedState(
     }
   }
 
-  return { ok: true, state: state as unknown as WirePersistedState };
+  if (!isWirePersistedState(state)) return { ok: false, reason: 'structural guard failed after deep validation' };
+  return { ok: true, state };
 }
 
 export function migrateState(raw: unknown): MigrationResult {
-  if (raw === null || raw === undefined) {
-    return { ok: false, reason: 'persisted state is null or undefined' };
-  }
-  if (typeof raw !== 'object') {
-    return { ok: false, reason: `expected object, got ${typeof raw}` };
+  if (!isRecord(raw)) {
+    return { ok: false, reason: raw === null || raw === undefined ? 'persisted state is null or undefined' : `expected object, got ${typeof raw}` };
   }
 
-  const state = raw as Record<string, unknown>;
-  const version = (state.schemaVersion as number) ?? 0;
+  const state = raw;
+  const version = typeof state.schemaVersion === 'number' ? state.schemaVersion : 0;
 
   if (version >= CURRENT_SCHEMA_VERSION) {
-    (state as Record<string, unknown>).schemaVersion = CURRENT_SCHEMA_VERSION;
-    // Shallow structure check: corrupted or incomplete v2+ state must not pass
-    for (const key of REQUIRED_KEYS) {
-      if (!(key in state)) return { ok: false, reason: `missing required key: ${key}` };
-    }
-    for (const key of ARRAY_KEYS) {
-      if (!Array.isArray(state[key])) return { ok: false, reason: `expected array for key: ${key}` };
-    }
-    for (const key of OBJECT_KEYS) {
-      const val = state[key];
-      if (val === null || typeof val !== 'object' || Array.isArray(val)) return { ok: false, reason: `expected object for key: ${key}` };
-    }
-    return { ok: true, state: state as unknown as WirePersistedState & { schemaVersion: number } };
+    state.schemaVersion = CURRENT_SCHEMA_VERSION;
+    // Shallow structure check via guard
+    if (!isWirePersistedState(state)) return { ok: false, reason: 'structural guard failed for v2+ state' };
+    return { ok: true, state: { ...state, schemaVersion: CURRENT_SCHEMA_VERSION } };
   }
 
-  const rawTx = state.transactions as Array<Record<string, unknown>> | undefined;
+  const rawTx = state.transactions as unknown[];
   if (!rawTx || !Array.isArray(rawTx)) {
     return { ok: false, reason: 'transactions is not an array' };
   }
 
   // Type remapping: topup→payment, cancel/correction/void→drop
-  const migratedTx = rawTx
+  const migratedTx = (rawTx as Array<Record<string, unknown>>)
     .filter((t) => {
-      const type = t.type as string;
+      const type = String(t.type);
       if (type === 'cancel' || type === 'correction' || type === 'void') return false;
       return true;
     })
     .map((t) => {
-      const type = t.type as string;
+      const type = String(t.type);
       if (type === 'topup') return { ...t, type: 'payment' };
       return t;
-    }) as Array<Record<string, unknown>>;
+    });
 
   state.transactions = migratedTx;
 
   // Recalculate student balances using shared domain logic
-  const rawStudents = state.students as Array<Record<string, unknown>> | undefined;
-  if (rawStudents && Array.isArray(rawStudents)) {
+  const rawStudents = state.students;
+  if (Array.isArray(rawStudents)) {
     // Compute amount for each migrated transaction before recalc
     for (const tx of migratedTx) {
-      const paidAmount = (tx.paidAmount as number) || 0;
-      const mealPrice = (tx.mealPrice as number) || 0;
+      const paidAmount = typeof tx.paidAmount === 'number' ? tx.paidAmount : 0;
+      const mealPrice = typeof tx.mealPrice === 'number' ? tx.mealPrice : 0;
       tx.amount = (paidAmount - mealPrice);
     }
 
+    // At this point the data is structurally validated by migration logic;
+    // recalculateStudentBalances expects domain types which are structurally
+    // identical to the wire records after migration.
     const result = recalculateStudentBalances(
-      rawStudents as unknown as StudentAccount[],
+      rawStudents as StudentAccount[],
       migratedTx as unknown as LedgerTransaction[],
     );
 
-    state.students = result.students as unknown as Array<Record<string, unknown>>;
-    state.transactions = result.transactions as unknown as Array<Record<string, unknown>>;
+    state.students = result.students;
+    state.transactions = result.transactions;
   }
 
-  (state as Record<string, unknown>).schemaVersion = CURRENT_SCHEMA_VERSION;
-  return { ok: true, state: state as unknown as WirePersistedState & { schemaVersion: number } };
+  state.schemaVersion = CURRENT_SCHEMA_VERSION;
+  if (!isWirePersistedState(state)) return { ok: false, reason: 'structural guard failed after migration' };
+  return { ok: true, state: { ...state, schemaVersion: CURRENT_SCHEMA_VERSION } };
 }
