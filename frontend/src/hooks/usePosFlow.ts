@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer } from 'react';
+import { useCallback, useEffect, useReducer, useRef } from 'react';
 import {
   createInitialPosFlowState,
   reducePosFlow,
@@ -85,11 +85,15 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
   });
   const { requestConfirm, confirmDuplicate, commitTransaction } = transactionCommit;
 
+  // Ref: #290 — Use ref to hold latest commitTransaction, avoiding stale closure.
+  // Removes eslint-disable-next-line react-hooks/exhaustive-deps.
+  const commitTransactionRef = useRef(commitTransaction);
+  useEffect(() => { commitTransactionRef.current = commitTransaction; });
+
   // Auto-trigger commitTransaction when state transitions to committing
   useEffect(() => {
     if (state.kind !== 'committing') return;
-    commitTransaction();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    commitTransactionRef.current();
   }, [state.kind]);
 
   const cancelFlow = useCallback(() => {

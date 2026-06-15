@@ -234,6 +234,9 @@ describe('reducePosFlow — committing guards', () => {
       kind: 'success',
       transactionId: 'tx-1',
       syncStatus: 'queued',
+      studentId: '001',
+      mode: 'order',
+      paidAmountText: '',
     });
   });
 
