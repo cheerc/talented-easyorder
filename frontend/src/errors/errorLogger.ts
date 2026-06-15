@@ -94,29 +94,41 @@ export function clearErrorLog() {
   localStorage.removeItem(LOG_KEY);
 }
 
-export function installGlobalErrorListeners() {
-  window.addEventListener('error', (event) => {
+// Ref: #291 — Return cleanup function so listeners can be removed (prevents HMR leak).
+export function installGlobalErrorListeners(): () => void {
+  const handleError = (event: ErrorEvent) => {
     appendErrorLog({
       source: 'window-error',
       message: event.message || 'Unknown window error',
       stack: event.error?.stack,
     });
-  });
+  };
 
-  window.addEventListener('unhandledrejection', (event) => {
+  const handleRejection = (event: PromiseRejectionEvent) => {
     appendErrorLog({
       source: 'unhandled-rejection',
       message: event.reason?.message || String(event.reason),
       stack: event.reason?.stack,
     });
-  });
+  };
+
+  window.addEventListener('error', handleError);
+  window.addEventListener('unhandledrejection', handleRejection);
+
+  return () => {
+    window.removeEventListener('error', handleError);
+    window.removeEventListener('unhandledrejection', handleRejection);
+  };
 }
 
-export function installErrorListeners() {
-  installGlobalErrorListeners();
+export function installErrorListeners(): () => void {
+  const cleanupGlobal = installGlobalErrorListeners();
+  return cleanupGlobal;
 }
 
 // Ref: #266 — Auto-subscribe appendErrorLog to the event bus.
 // Core modules call emitError() instead of importing appendErrorLog directly;
 // this subscription bridges the bus to localStorage persistence.
-onError(appendErrorLog);
+// Ref: #291 — Store unsubscribe for cleanup.
+const _unsubscribeErrorBus = onError(appendErrorLog);
+export { _unsubscribeErrorBus };
