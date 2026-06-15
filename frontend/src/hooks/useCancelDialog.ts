@@ -1,11 +1,11 @@
 import { useState, useCallback } from 'react';
 import { usePosStore } from '../store/posStore';
 import type { StudentAccount } from '../domain/student';
-import type { LedgerTransaction } from '../domain/ledger';
+import type { WorkflowTransactionView } from '../domain/transactionViews';
 
 export function useCancelDialog(args: {
   picked: StudentAccount | null;
-  allTx: LedgerTransaction[];
+  allTx: WorkflowTransactionView[];
   viewDate: string;
 }) {
   const { picked, allTx, viewDate } = args;

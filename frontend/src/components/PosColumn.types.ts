@@ -1,6 +1,6 @@
 import type { PosFlowState, PosMode, PosSelectionSource, ExpenseDirection } from '../domain/posFlow';
 import type { StudentAccount } from '../domain/student';
-import type { LedgerTransaction } from '../domain/ledger';
+import type { WorkflowTransactionView } from '../domain/transactionViews';
 import type { TodayMenu, Vendor } from '../domain/menu';
 
 export interface PosColumnProps {
@@ -14,7 +14,7 @@ export interface PosColumnProps {
   picked: StudentAccount | null;
   currentMode: PosMode;
   currentPaidAmount: string;
-  allTx: LedgerTransaction[];
+  allTx: WorkflowTransactionView[];
   students: StudentAccount[];
   selectStudent: (id: string, src: PosSelectionSource) => void;
   // Expense
@@ -46,7 +46,7 @@ export interface PosColumnProps {
   enterExpenseMode: () => void;
   tweaks: { theme: string; fontSize: string; disableHoverSelection: boolean };
   // Recent strip
-  tx: LedgerTransaction[];
+  tx: WorkflowTransactionView[];
   // Price override
   priceOverride: number | null;
   priceOverrideLabel: string;

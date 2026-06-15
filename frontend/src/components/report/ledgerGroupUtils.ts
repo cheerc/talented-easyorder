@@ -1,11 +1,11 @@
 import type { LedgerGroup } from '../../domain/ledgerReport';
-import type { LedgerTransaction } from '../../domain/ledger';
+import type { ReportTransactionView } from '../../domain/transactionViews';
 import { mergeLedgerTransactions } from '../../store/posStore';
 
 export interface FlatRow {
   kind: 'group' | 'summary' | 'detail';
   groupIndex: number;
-  tx?: LedgerTransaction;
+  tx?: ReportTransactionView;
 }
 
 export function flattenGroups(groups: LedgerGroup[], expandedSids: Set<string>, displayMode: 'merged' | 'original'): FlatRow[] {

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { emitError } from '../../errors/errorBus';
-import type { LedgerTransaction, TransactionEditView } from '../../domain/ledger';
+import type { TransactionEditView } from '../../domain/ledger';
+import type { ReportTransactionView } from '../../domain/transactionViews';
 import { EditTransactionModal } from '../EditTransactionModal';
 import type { LedgerDateRangeKind } from '../../domain/ledgerReport';
 import { ReportDateRangeControls } from '../report/ReportDateRangeControls';
@@ -95,7 +96,7 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
     setExpandedSids(next);
   };
 
-  const handleEditClick = (t: LedgerTransaction) => {
+  const handleEditClick = (t: ReportTransactionView) => {
     setEditingTx({
       transactionId: t.transactionId,
       mealPrice: t.mealPrice,
@@ -104,7 +105,7 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
     });
   };
 
-  const handleDeleteClick = (t: LedgerTransaction) => {
+  const handleDeleteClick = (t: ReportTransactionView) => {
     if (t.type === 'order') {
       deleteOrderWithRefundCheck(t.transactionId);
     } else {

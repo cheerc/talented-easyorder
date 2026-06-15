@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import type { LedgerGroup } from '../../domain/ledgerReport';
-import type { LedgerTransaction } from '../../domain/ledger';
+import type { ReportTransactionView } from '../../domain/transactionViews';
 import { GroupRow } from './GroupRow';
 import { SummaryRow } from './SummaryRow';
 import { DetailRow } from './DetailRow';
@@ -11,11 +11,11 @@ import type { FlatRow } from './ledgerGroupUtils';
 
 interface LedgerGroupedTableProps {
   groups: LedgerGroup[];
-  expenseRows: LedgerTransaction[];
+  expenseRows: ReportTransactionView[];
   onToggleExpand: (sid: string) => void;
   expandedSids: Set<string>;
-  onEditClick: (t: LedgerTransaction) => void;
-  onDeleteClick: (t: LedgerTransaction) => void;
+  onEditClick: (t: ReportTransactionView) => void;
+  onDeleteClick: (t: ReportTransactionView) => void;
   dateStatus: string;
   displayMode?: 'merged' | 'original';
 }
@@ -53,7 +53,7 @@ const LedgerGroupedTable = React.memo(function LedgerGroupedTable({
   }, [flatRows, page, pageSize, totalPages, totalGroups]);
 
   const { incomeRows, expenseOnlyRows } = useMemo(() => {
-    return expenseRows.reduce<{ incomeRows: LedgerTransaction[]; expenseOnlyRows: LedgerTransaction[] }>(
+    return expenseRows.reduce<{ incomeRows: ReportTransactionView[]; expenseOnlyRows: ReportTransactionView[] }>(
       (acc, t) => {
         if ((Number(t.paidAmount) || 0) > 0) {
           acc.incomeRows.push(t);
