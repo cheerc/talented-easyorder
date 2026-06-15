@@ -34,4 +34,18 @@ describe('readFirebaseConfig', () => {
       error: 'Missing Firebase env var: VITE_FIREBASE_API_KEY',
     });
   });
+
+  it('config state is valid when no VITE_RECAPTCHA_SITE_KEY is set (#287)', () => {
+    // App Check is opt-in — missing reCAPTCHA key should not affect config
+    const state = getFirebaseConfigState({
+      VITE_FIREBASE_API_KEY: 'key',
+      VITE_FIREBASE_AUTH_DOMAIN: 'domain',
+      VITE_FIREBASE_PROJECT_ID: 'proj',
+      VITE_FIREBASE_APP_ID: 'app',
+      VITE_FIREBASE_MESSAGING_SENDER_ID: 'sender',
+      VITE_FIREBASE_STORAGE_BUCKET: 'bucket',
+      // No VITE_RECAPTCHA_SITE_KEY
+    });
+    expect(state.configured).toBe(true);
+  });
 });

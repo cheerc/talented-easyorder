@@ -14,6 +14,7 @@ export interface FirebaseEnv {
   VITE_FIRESTORE_EMULATOR_HOST?: string;
   VITE_FIRESTORE_EMULATOR_PORT?: string;
   VITE_FIREBASE_AUTH_EMULATOR_URL?: string;
+  VITE_RECAPTCHA_SITE_KEY?: string;
 }
 
 function required(env: FirebaseEnv, key: keyof FirebaseEnv): string {
@@ -61,6 +62,32 @@ export interface FirebaseServices {
 let cachedServices: FirebaseServices | null = null;
 let initPromise: Promise<FirebaseServices> | null = null;
 let emulatorConnected = false;
+let appCheckInitialized = false;
+
+// Ref: #287 — Initialize Firebase App Check with ReCaptchaV3Provider.
+// Skips silently when VITE_RECAPTCHA_SITE_KEY is absent (dev without reCAPTCHA).
+// Debug token enabled in development mode for local testing.
+async function initializeAppCheckOnce(app: FirebaseApp, env: FirebaseEnv): Promise<void> {
+  if (appCheckInitialized) return;
+  appCheckInitialized = true;
+
+  const siteKey = env.VITE_RECAPTCHA_SITE_KEY;
+  if (!siteKey) return; // App Check opt-in via env var
+
+  try {
+    // Enable debug token in dev mode
+    if (import.meta.env.DEV) {
+      (globalThis as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+    }
+    const { initializeAppCheck, ReCaptchaV3Provider } = await import('firebase/app-check');
+    initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(siteKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+  } catch {
+    // App Check failure should not block app startup
+  }
+}
 
 function initializeFirestoreOnce(app: FirebaseApp): Firestore {
   const { initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager } = getFirestoreMod();
@@ -102,6 +129,10 @@ export async function ensureFirebaseInitialized(env: FirebaseEnv = import.meta.e
     }
 
     cachedServices = { app, auth, db };
+
+    // Ref: #287 — App Check after services are ready, before returning
+    await initializeAppCheckOnce(app, env);
+
     return cachedServices;
   })();
 
