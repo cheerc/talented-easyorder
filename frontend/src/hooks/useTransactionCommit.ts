@@ -4,7 +4,7 @@ import { toPosSourceDevice } from '../domain/posFlow';
 import type { StudentAccount } from '../domain/student';
 import type { TodayMenu } from '../domain/menu';
 import type { LedgerTransaction } from '../domain/ledger';
-import { countActiveOrdersForStudent } from '../domain/ledger';
+import { countActiveOrdersForStudent, CASHIER_SENTINEL } from '../domain/ledger';
 import type { PosTransactionDraft } from '../domain/posTransaction';
 import { buildPosTransactionDraft, deriveTransactionAttributes } from '../domain/posTransaction';
 import { saveCrashDraft } from '../storage/crashDraft';
@@ -124,10 +124,8 @@ export function useTransactionCommit(
 
     try {
       if (mode === 'expense') {
-        const student = students.length > 0 ? students[0] : null;
-        const studentSnapshot = student
-          ? { studentId: 'expense-operator', studentNameSnapshot: '櫃台' }
-          : { studentId: 'expense-operator', studentNameSnapshot: '櫃台' };
+        // Ref: #283 — Use CASHIER_SENTINEL to match domain layer convention.
+        const studentSnapshot = { studentId: CASHIER_SENTINEL, studentNameSnapshot: '櫃台' };
 
         const draft = buildPosTransactionDraft({
           intent: {
