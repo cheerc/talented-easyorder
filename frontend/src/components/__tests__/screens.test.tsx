@@ -54,6 +54,14 @@ vi.mock('../../store/selectors', () => ({
   useStudentActions: () => ({ addStudent: vi.fn(), disableStudent: vi.fn() }),
 }));
 
+vi.mock('../../store/derived/useCashClose', () => ({
+  useCashClose: () => ({ openingCash: 0, dateStatus: 'open', currentCashSession: undefined }),
+}));
+
+vi.mock('../../hooks/useTweaks', () => ({
+  useTweaks: () => ({ tweaks: { theme: 'warm', fontSize: 'lg', disableHoverSelection: true }, setTweak: vi.fn() }),
+}));
+
 import { ReportScreen } from '../screens/ReportScreen';
 import { AdminScreen } from '../screens/AdminScreen';
 import { VendorsScreen } from '../screens/VendorsScreen';
@@ -77,20 +85,7 @@ describe('ReportScreen', () => {
 describe('AdminScreen', () => {
   it('renders settings card', () => {
     const { container } = render(
-      <AdminScreen
-        todayMenu={mockMenu}
-        setTodayMenu={() => {}}
-        vendors={[]}
-        students={[]}
-        resetData={() => {}}
-        openingCash={0}
-        dateStatus="open"
-        hasCashSession={false}
-        onOpeningCashChange={() => {}}
-        onUpdateOpeningCash={() => {}}
-        tweaks={{ theme: 'warm', fontSize: 'lg', disableHoverSelection: true }}
-        setTweak={() => {}}
-      />
+      <AdminScreen viewDate="2026-05-29" />
     );
     expect(container.textContent).toContain('今日設定');
   });
@@ -99,7 +94,7 @@ describe('AdminScreen', () => {
 describe('VendorsScreen', () => {
   it('renders vendor list', () => {
     const { container } = render(
-      <VendorsScreen vendors={[]} setVendors={() => {}} />
+      <VendorsScreen />
     );
     expect(container).toBeTruthy();
   });

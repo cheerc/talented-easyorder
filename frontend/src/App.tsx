@@ -247,11 +247,6 @@ export default function App() {
         todayMenu={todayMenu} viewDate={viewDate}
         reportStudentFilter={reportStudentFilter}
         onClearStudentFilter={() => setReportStudentFilter('')}
-        setTodayMenu={setTodayMenu} vendors={vendors} students={students} resetData={resetData}
-        openingCash={getOpeningCash(viewDate, dailySettlements || [], cashSessions[viewDate])}
-        dateStatus={dateStatus} hasCashSession={!!cashSessions[viewDate]}
-        openCashSession={openCashSession} updateOpeningCash={updateOpeningCash}
-        tweaks={tweaks} setTweak={setTweak} setVendors={setVendors}
         posColumnProps={posColumnProps}
       />
     </MainLayout>
