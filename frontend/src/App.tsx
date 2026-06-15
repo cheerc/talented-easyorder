@@ -1,8 +1,6 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { usePosStore } from './store/posStore';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { usePosFlow } from './hooks/usePosFlow';
 import type { PosMode } from './domain/posFlow';
-import { clearCrashDraft } from './storage/crashDraft';
 import { checkStorageHealth } from './storage/storageHealth';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useAppNavigationShortcuts } from './hooks/useAppNavigationShortcuts';
@@ -11,6 +9,10 @@ import { useServiceWorkerCleanup } from './hooks/useServiceWorkerCleanup';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useCrashDraftRecovery } from './hooks/useCrashDraftRecovery';
 import { useUndoCountdown } from './hooks/useUndoCountdown';
+import { usePinnedStudent } from './hooks/usePinnedStudent';
+import { useCommitLifecycle } from './hooks/useCommitLifecycle';
+import { useConfirmHandler } from './hooks/useConfirmHandler';
+import { useExpenseProps } from './hooks/useExpenseProps';
 
 import { MainLayout } from './components/MainLayout';
 import { ErrorBoundary, AppCrashPage } from './components/ErrorBoundary';
@@ -52,7 +54,6 @@ function AppContent() {
   const [focusZone, setFocusZone] = useState('mode-order');
   const [showDashboard, setShowDashboard] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState('剛剛');
   const online = useOnlineStatus();
 
   const storageHealthyRef = useRef(true);
@@ -61,45 +62,8 @@ function AppContent() {
   const crashDraftRestored = useCrashDraftRecovery({ selectStudent, setPaidAmountText, changeMode });
   const [crashDraftRestoredState, setCrashDraftRestoredState] = useState(crashDraftRestored);
 
-  // Ref: #284 — Derive pinned state purely from the flow state (no setState in render body).
-  // The success/committing/error states now carry studentId/mode/paidAmountText for derivation.
-  const { pinnedStudentId, pinnedMode, pinnedPaidAmount } = useMemo(() => {
-    if (state.kind === 'student_selected' || state.kind === 'duplicate_warning') {
-      return {
-        pinnedStudentId: state.studentId,
-        pinnedMode: (state.kind === 'student_selected' ? state.mode : 'order') as PosMode,
-        pinnedPaidAmount: state.paidAmountText,
-      };
-    }
-    if (state.kind === 'committing' || state.kind === 'success') {
-      return {
-        pinnedStudentId: state.studentId ?? null,
-        pinnedMode: state.mode,
-        pinnedPaidAmount: state.paidAmountText,
-      };
-    }
-    if (state.kind === 'error') {
-      return {
-        pinnedStudentId: state.studentId ?? null,
-        pinnedMode: state.mode ?? 'order' as PosMode,
-        pinnedPaidAmount: state.paidAmountText ?? '',
-      };
-    }
-    // idle, expense_*, historical_readonly — no pinned student
-    return { pinnedStudentId: null, pinnedMode: 'order' as PosMode, pinnedPaidAmount: '' };
-  }, [state]);
-
-  const picked = useMemo(() => {
-    if (!pinnedStudentId) return null;
-    return students.find(s => s.studentId === pinnedStudentId) ?? null;
-  }, [students, pinnedStudentId]);
-
-  const currentMode: PosMode = (state.kind === 'student_selected' || state.kind === 'committing')
-    ? state.mode : (state.kind === 'expense_input' || state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note')
-      ? 'expense' : pinnedMode;
-
-  const currentPaidAmount = state.kind === 'student_selected' || state.kind === 'duplicate_warning' || state.kind === 'committing'
-    ? state.paidAmountText : pinnedPaidAmount;
+  // Ref: #281 — Extracted to usePinnedStudent hook
+  const { picked, currentMode, currentPaidAmount } = usePinnedStudent(state, students);
 
   const [searchFocusKey, setSearchFocusKey] = useState(0);
   const [flashKey, setFlashKey] = useState(0);
@@ -107,46 +71,19 @@ function AppContent() {
     dismissSuccess, setFlashKey, setSyncing, setPriceOverride, setPriceOverrideLabel,
   });
 
-  const handleConfirm = useCallback(() => {
-    if (state.kind === 'expense_input') {
-      const n = Number(state.amountText);
-      if (!Number.isSafeInteger(n) || n <= 0) return;
-      confirmExpenseAmount(n); return;
-    }
-    if (state.kind === 'duplicate_warning') { confirmDuplicate(); return; }
-    if (state.kind !== 'student_selected') return;
-    requestConfirm();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.kind, requestConfirm, confirmDuplicate, confirmExpenseAmount]);
+  // Ref: #281 — Extracted to useConfirmHandler hook
+  const handleConfirm = useConfirmHandler({ state, requestConfirm, confirmDuplicate, confirmExpenseAmount });
 
   const { cancelDialogOpen, setCancelDialogOpen, noOrderDialogOpen, setNoOrderDialogOpen,
     openCancelConfirm, handleDeleteOrder } = useCancelDialog({ picked, allTx, viewDate });
 
-  const commitTxIdRef = useRef<string | null>(null);
-  const prevKindRef = useRef(state.kind);
-  useEffect(() => {
-    if (state.kind === 'committing' && commitTxIdRef.current === null) {
-      commitTxIdRef.current = `tx-${Date.now()}`;
-    }
-    if (state.kind !== 'committing') commitTxIdRef.current = null;
-    if (prevKindRef.current !== 'success' && state.kind === 'success') {
-      setSyncing(true);
-      const t = setTimeout(() => {
-        setSyncing(false);
-        setLastSync(new Date().toLocaleTimeString('en-US', { hour12: false }).slice(0, 5));
-      }, 800);
-      const latestTx = usePosStore.getState().transactions[0];
-      if (latestTx && latestTx.syncStatus === 'local') lastCommittedTxIdRef.current = latestTx.transactionId;
-      clearCrashDraft();
-      prevKindRef.current = state.kind;
-      return () => {
-        clearTimeout(t);
-        if (lastCommittedTxIdRef.current) setTimeout(() => setUndoCountdown(5), 0);
-      };
-    }
-    prevKindRef.current = state.kind;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.kind]);
+  // Ref: #281 — Extracted to useCommitLifecycle hook
+  const { lastSync } = useCommitLifecycle({
+    stateKind: state.kind,
+    lastCommittedTxIdRef,
+    setUndoCountdown,
+    setSyncing,
+  });
 
   const hasFlash = state.kind === 'success';
   const isStudentSelected = picked !== null && (state.kind === 'student_selected' || state.kind === 'duplicate_warning' || state.kind === 'committing');
@@ -163,14 +100,8 @@ function AppContent() {
   useFocusSync(state, tab, setSearchText, setSearchFocusKey, setFocusZone);
 
   const isSuccess = state.kind === 'success';
-  const stateAmountText = state.kind === 'expense_input' ? state.amountText : undefined;
-  const stateAmount = (state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note') ? state.amount : undefined;
-  const expenseProps = useMemo(() => {
-    if (state.kind === 'expense_input') return { kind: 'expense_input' as const, amountText: stateAmountText || '', amount: 0 };
-    if (state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note')
-      return { kind: state.kind, amountText: '', amount: stateAmount || 0 };
-    return null;
-  }, [state.kind, stateAmountText, stateAmount]);
+  // Ref: #281 — Extracted to useExpenseProps hook
+  const expenseProps = useExpenseProps(state);
 
   const flashData = useFlashData({ isSuccess, picked, currentMode, currentPaidAmount, todayMenu, flashKey, priceOverride, allTx });
 
