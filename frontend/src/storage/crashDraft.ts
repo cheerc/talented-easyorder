@@ -1,5 +1,5 @@
 import type { PosTransactionDraft } from '../domain/posTransaction';
-import { appendErrorLog } from '../errors/errorLogger';
+import { emitError } from '../errors/errorBus';
 
 /**
  * Crash Draft — same-origin IndexedDB persistence for in-progress POS transactions.
@@ -41,7 +41,7 @@ export async function saveCrashDraft(draft: PosTransactionDraft): Promise<void> 
       tx.onerror = () => reject(tx.error);
     });
   } catch {
-    appendErrorLog({ source: 'storage', message: 'crashDraft save failed' });
+    emitError({ source: 'storage', message: 'crashDraft save failed' });
   } finally {
     db?.close();
   }
@@ -59,7 +59,7 @@ export async function loadCrashDraft(): Promise<PosTransactionDraft | null> {
     });
     return result ?? null;
   } catch {
-    appendErrorLog({ source: 'storage', message: 'crashDraft load failed' });
+    emitError({ source: 'storage', message: 'crashDraft load failed' });
     return null;
   } finally {
     db?.close();
@@ -71,7 +71,7 @@ export function clearCrashDraft(): void {
     const req = indexedDB.deleteDatabase(DB_NAME);
     req.onerror = () => { /* ignore */ };
   } catch {
-    appendErrorLog({ source: 'storage', message: 'crashDraft delete failed' });
+    emitError({ source: 'storage', message: 'crashDraft delete failed' });
   }
 }
 

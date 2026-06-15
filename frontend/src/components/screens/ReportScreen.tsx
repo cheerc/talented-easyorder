@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { appendErrorLog } from '../../errors/errorLogger';
+import { emitError } from '../../errors/errorBus';
 import type { LedgerTransaction, TransactionEditView } from '../../domain/ledger';
 import type { TodayMenu } from '../../domain/menu';
 import { EditTransactionModal } from '../EditTransactionModal';
@@ -125,7 +125,7 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
     try {
       closeBusinessDate({ businessDate: viewDate, countedCash, note, queuedSettlementAccepted: true, operatorId: 'op-report' });
     } catch (err) {
-      appendErrorLog({ source: 'settlement', message: 'closeBusinessDate failed: ' + String(err) });
+      emitError({ source: 'settlement', message: 'closeBusinessDate failed: ' + String(err) });
     }
   };
 

@@ -1,7 +1,9 @@
+import { onError } from './errorBus';
+
 export interface ErrorLogEntry {
   id: string;
   createdAt: string;
-  source: 'react' | 'window-error' | 'unhandled-rejection' | 'storage' | 'sync' | 'auth';
+  source: 'react' | 'window-error' | 'unhandled-rejection' | 'storage' | 'sync' | 'auth' | 'firebase' | 'settlement';
   message: string;
   stack?: string;
   context?: Record<string, string | number | boolean | null>;
@@ -102,3 +104,8 @@ export function installGlobalErrorListeners() {
 export function installErrorListeners() {
   installGlobalErrorListeners();
 }
+
+// Ref: #266 — Auto-subscribe appendErrorLog to the event bus.
+// Core modules call emitError() instead of importing appendErrorLog directly;
+// this subscription bridges the bus to localStorage persistence.
+onError(appendErrorLog);

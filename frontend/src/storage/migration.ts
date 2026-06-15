@@ -1,5 +1,5 @@
 import type { PosState } from '../store/posTypes';
-import { appendErrorLog } from '../errors/errorLogger';
+import { emitError } from '../errors/errorBus';
 import type { WireVendor } from './wireTypes';
 import { recalculateStudentBalances } from '../domain/ledger';
 import type { StudentAccount } from '../domain/student';
@@ -123,7 +123,7 @@ export function migratePersistedState(persistedState: unknown, _zVersion: number
     (state as Record<string, unknown>).schemaVersion = 2;
     return state as unknown as PosState;
   } catch (e) {
-    appendErrorLog({ source: 'storage', message: '[migration] migratePersistedState crashed: ' + String(e) });
+    emitError({ source: 'storage', message: '[migration] migratePersistedState crashed: ' + String(e) });
     throw e; // let onRehydrateStorage fallback handle the reset
   }
 }
