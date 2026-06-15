@@ -1,4 +1,4 @@
-import type { Firestore } from 'firebase/firestore';
+// TODO: [#289] Split into domain-specific stores for full decoupling
 import type { StudentAccount } from '../domain/student';
 import type { Vendor, TodayMenu } from '../domain/menu';
 import type { LedgerTransaction } from '../domain/ledger';
@@ -113,7 +113,7 @@ export interface SessionActions {
 
 /** Student domain actions */
 export interface StudentActions {
-  addStudent: (db: Firestore, input: { studentId: string; displayName: string; openingBalance: number; operatorId: string }) => Promise<void>;
-  disableStudent: (db: Firestore, input: { studentId: string; operatorId: string }) => Promise<void>;
+  addStudent: (input: { studentId: string; displayName: string; openingBalance: number; operatorId: string }) => Promise<void>;
+  disableStudent: (input: { studentId: string; operatorId: string }) => Promise<void>;
 }
 

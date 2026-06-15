@@ -1,3 +1,4 @@
+// TODO: [#289] Split into domain-specific stores for full decoupling
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { PosState } from './posTypes';
