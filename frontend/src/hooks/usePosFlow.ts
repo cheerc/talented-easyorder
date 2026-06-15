@@ -6,8 +6,7 @@ import {
 import type { PosFlowState, PosMode, PosSelectionSource, ExpenseDirection } from '../domain/posFlow';
 import type { ScannerInput } from '../domain/posSearch';
 import { countActiveOrdersForStudent } from '../domain/ledger';
-import { useShallow } from 'zustand/shallow';
-import { usePosStore } from '../store/posStore';
+import { useStudents, useTransactions, useMenu, useTransactionActions } from '../store/selectors';
 import { useExpenseFlow } from './useExpenseFlow';
 import { useScannerInput } from './useScannerInput';
 import { useIpadHandoff } from './useIpadHandoff';
@@ -48,14 +47,10 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
     createInitialPosFlowState(args.isHistorical, args.businessDate),
   );
 
-  const { students, todayMenu, transactions, commitPosTransactionDraft } = usePosStore(
-    useShallow((s) => ({
-      students: s.students,
-      todayMenu: s.todayMenu,
-      transactions: s.transactions,
-      commitPosTransactionDraft: s.commitPosTransactionDraft,
-    }))
-  );
+  const { students } = useStudents();
+  const { todayMenu } = useMenu();
+  const { transactions } = useTransactions();
+  const { commitPosTransactionDraft } = useTransactionActions();
 
   const setSearchText = useCallback((text: string) => {
     dispatch({ type: 'updateSearchText', text });

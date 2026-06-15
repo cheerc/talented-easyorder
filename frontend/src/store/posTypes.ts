@@ -70,10 +70,16 @@ export interface PosState
     TransactionStateSlice,
     MenuStateSlice,
     AuditStateSlice,
-    SettlementStateSlice {
+    SettlementStateSlice,
+    TransactionActions,
+    MenuActions,
+    SessionActions,
+    StudentActions {}
 
-  setTodayMenu: (menu: TodayMenu) => void;
-  setVendors: (vendors: Vendor[]) => void;
+// ─── Per-Domain Action Interfaces (Ref: #264) ───
+
+/** Transaction domain actions */
+export interface TransactionActions {
   commitPosTransactionDraft: (draft: PosTransactionDraft) => void;
   processTransaction: (
     studentId: string,
@@ -86,13 +92,28 @@ export interface PosState
   deleteTransaction: (id: string) => void;
   deleteOrderWithRefundCheck: (id: string) => DeleteOrderResult;
   editTransaction: (id: string, updates: { mealPrice?: number; paidAmount?: number; note?: string }) => void;
+}
+
+/** Menu domain actions */
+export interface MenuActions {
+  setTodayMenu: (menu: TodayMenu) => void;
+  setVendors: (vendors: Vendor[]) => void;
+  resetData: () => void;
+}
+
+/** Session domain actions */
+export interface SessionActions {
   setBusinessDateStatus: (date: string, status: BusinessDateStatus) => void;
   openCashSession: (input: OpenCashSessionInput) => void;
   updateOpeningCash: (businessDate: string, amount: number) => void;
   closeBusinessDate: (input: CloseBusinessDateInput) => void;
   reopenBusinessDate: (input: ReopenBusinessDateInput) => void;
   getBusinessDateStatus: (businessDate: string) => BusinessDateStatus;
+}
+
+/** Student domain actions */
+export interface StudentActions {
   addStudent: (db: Firestore, input: { studentId: string; displayName: string; openingBalance: number; operatorId: string }) => Promise<void>;
   disableStudent: (db: Firestore, input: { studentId: string; operatorId: string }) => Promise<void>;
-  resetData: () => void;
 }
+

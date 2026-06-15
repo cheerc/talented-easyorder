@@ -10,8 +10,7 @@ import { LedgerGroupedTable } from '../report/LedgerGroupedTable';
 import { CashClosePanel } from '../report/CashClosePanel';
 import { ExportActions } from '../report/ExportActions';
 import { ReopenDialog } from '../report/ReopenDialog';
-import { useShallow } from 'zustand/shallow';
-import { usePosStore } from '../../store/posStore';
+import { useSessionActions, useTransactionActions } from '../../store/selectors';
 import { useLedgerReport } from '../../store/derived/useLedgerReport';
 import { useCashClose } from '../../store/derived/useCashClose';
 import { useLedgerExport } from '../../store/derived/useLedgerExport';
@@ -32,15 +31,8 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
   const [editingTx, setEditingTx] = useState<TransactionEditView | null>(null);
   const [studentSearch, setStudentSearch] = useState(studentFilter || '');
 
-  const { closeBusinessDate, reopenBusinessDate, deleteOrderWithRefundCheck, deleteTransaction, editTransaction } = usePosStore(
-    useShallow((s) => ({
-      closeBusinessDate: s.closeBusinessDate,
-      reopenBusinessDate: s.reopenBusinessDate,
-      deleteOrderWithRefundCheck: s.deleteOrderWithRefundCheck,
-      deleteTransaction: s.deleteTransaction,
-      editTransaction: s.editTransaction,
-    }))
-  );
+  const { closeBusinessDate, reopenBusinessDate } = useSessionActions();
+  const { deleteOrderWithRefundCheck, deleteTransaction, editTransaction } = useTransactionActions();
   const handleEditSave = useCallback((transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }) => {
     editTransaction(transactionId, updates);
   }, [editTransaction]);

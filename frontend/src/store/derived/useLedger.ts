@@ -1,16 +1,16 @@
 import { useMemo } from 'react';
-import { usePosStore } from '../posStore';
+import { useTransactions } from '../selectors';
 import { countActiveOrdersForStudent, mergeLedgerTransactions } from '../../domain/ledger';
-import type { MergedTransaction } from '../../domain/ledger';
+import type { MergedTransaction, LedgerTransaction } from '../../domain/ledger';
 
 export function useActiveOrderCount(studentId: string | null, viewDate: string): number {
-  const allTx = usePosStore((s) => s.transactions);
+  const { transactions: allTx } = useTransactions();
   return useMemo(() => {
     if (!studentId) return 0;
     return countActiveOrdersForStudent(allTx, studentId, viewDate);
   }, [allTx, studentId, viewDate]);
 }
 
-export function useMergedTransactions(tx: ReturnType<typeof usePosStore.getState>['transactions']): MergedTransaction[] {
+export function useMergedTransactions(tx: LedgerTransaction[]): MergedTransaction[] {
   return useMemo(() => mergeLedgerTransactions(tx), [tx]);
 }

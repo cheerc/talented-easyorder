@@ -55,13 +55,16 @@ const { store, baseTrans, baseEvents, baseSettlements, baseStatuses, todayStr } 
   };
 });
 
-vi.mock('../../store/posStore', () => ({
-  usePosStore: (selector: (s: {
-    transactions: PosTransaction[];
-    auditEvents: LedgerAuditEvent[];
-    dailySettlements: DailySettlement[];
-    businessDateStatuses: Record<string, string>;
-  }) => unknown) => selector(store),
+vi.mock('../../store/selectors', () => ({
+  useSession: () => ({
+    auditEvents: store.auditEvents,
+    dailySettlements: store.dailySettlements,
+    businessDateStatuses: store.businessDateStatuses,
+    cashSessions: {},
+  }),
+  useTransactions: () => ({
+    transactions: store.transactions,
+  }),
 }));
 
 import { TodayDashboard } from '../TodayDashboard';
