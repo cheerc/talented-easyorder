@@ -45,6 +45,7 @@ describe('transactionViews', () => {
       syncStatus: 'local',
       paidAmount: 90,
       mealPrice: 90,
+      note: '',
     };
     expect(view.paidAmount).toBe(90);
     expect(view.mealPrice).toBe(90);

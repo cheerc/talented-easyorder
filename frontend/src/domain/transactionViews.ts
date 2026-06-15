@@ -34,6 +34,7 @@ export interface WorkflowTransactionView {
   syncStatus: LedgerTransaction['syncStatus'];
   paidAmount: number; // reviewer finding #2: useFlashData.ts L27-28
   mealPrice: number;  // reviewer finding #2: useFlashData.ts L27-28
+  note: string;       // useFlashData.ts L34-35: flash confirmation display
 }
 
 // Type compatibility assertion: LedgerTransaction extends both views

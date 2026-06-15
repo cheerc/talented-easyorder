@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { FlashData } from '../components/MainLayout';
 import type { StudentAccount } from '../domain/student';
-import type { LedgerTransaction } from '../domain/ledger';
+import type { WorkflowTransactionView } from '../domain/transactionViews';
 import type { TodayMenu } from '../domain/menu';
 
 export function useFlashData(args: {
@@ -12,7 +12,7 @@ export function useFlashData(args: {
   todayMenu: TodayMenu;
   flashKey: number;
   priceOverride: number | null;
-  allTx: LedgerTransaction[];
+  allTx: WorkflowTransactionView[];
 }): FlashData | null {
   const { isSuccess, picked, currentMode, currentPaidAmount, todayMenu, flashKey, priceOverride, allTx } = args;
 
