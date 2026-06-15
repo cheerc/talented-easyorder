@@ -11,7 +11,7 @@ export type PosFlowState =
   | { kind: 'expense_reason'; amount: number; direction: ExpenseDirection }
   | { kind: 'expense_other_note'; amount: number; direction: ExpenseDirection }
   | { kind: 'committing'; studentId?: string; mode: PosMode; source: PosSelectionSource; paidAmountText: string; expenseAmount?: number; expenseNote?: string; expenseDirection?: ExpenseDirection }
-  | { kind: 'success'; transactionId: string; syncStatus: 'queued' | 'synced' | 'failed' }
+  | { kind: 'success'; transactionId: string; syncStatus: 'queued' | 'synced' | 'failed'; studentId?: string; mode: PosMode; paidAmountText: string }
   | { kind: 'historical_readonly'; businessDate: string }
   | { kind: 'error'; studentId?: string; mode?: PosMode; source?: PosSelectionSource; paidAmountText?: string; message: string; retryable: boolean };
 
@@ -181,7 +181,7 @@ function reduceExpenseOtherNote(state: PosFlowState & { kind: 'expense_other_not
 function reduceCommitting(state: PosFlowState & { kind: 'committing' }, event: PosFlowEvent): PosFlowState {
   switch (event.type) {
     case 'commitSucceeded':
-      return { kind: 'success', transactionId: event.transactionId, syncStatus: event.syncStatus };
+      return { kind: 'success', transactionId: event.transactionId, syncStatus: event.syncStatus, studentId: state.studentId, mode: state.mode, paidAmountText: state.paidAmountText };
     case 'commitFailed':
       return {
         kind: 'error',

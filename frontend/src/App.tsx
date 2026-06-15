@@ -61,22 +61,33 @@ function AppContent() {
   const crashDraftRestored = useCrashDraftRecovery({ selectStudent, setPaidAmountText, changeMode });
   const [crashDraftRestoredState, setCrashDraftRestoredState] = useState(crashDraftRestored);
 
-  // Derive picked student — keep it pinned across committing/success so UI doesn't flash away
-  const [pinnedStudentId, setPinnedStudentId] = useState<string | null>(null);
-  const [pinnedMode, setPinnedMode] = useState<PosMode>('order');
-  const [pinnedPaidAmount, setPinnedPaidAmount] = useState('');
-  if (state.kind === 'student_selected' || state.kind === 'duplicate_warning') {
-    if (pinnedStudentId !== state.studentId) setPinnedStudentId(state.studentId);
-    const mode = state.kind === 'student_selected' ? state.mode : 'order';
-    if (pinnedMode !== mode) setPinnedMode(mode);
-    if (pinnedPaidAmount !== state.paidAmountText) setPinnedPaidAmount(state.paidAmountText);
-  } else if (state.kind === 'committing') {
-    if (pinnedStudentId !== state.studentId) setPinnedStudentId(state.studentId);
-    if (pinnedMode !== state.mode) setPinnedMode(state.mode);
-    if (pinnedPaidAmount !== state.paidAmountText) setPinnedPaidAmount(state.paidAmountText);
-  } else if (state.kind === 'idle' && pinnedStudentId !== null) {
-    setPinnedStudentId(null);
-  }
+  // Ref: #284 — Derive pinned state purely from the flow state (no setState in render body).
+  // The success/committing/error states now carry studentId/mode/paidAmountText for derivation.
+  const { pinnedStudentId, pinnedMode, pinnedPaidAmount } = useMemo(() => {
+    if (state.kind === 'student_selected' || state.kind === 'duplicate_warning') {
+      return {
+        pinnedStudentId: state.studentId,
+        pinnedMode: (state.kind === 'student_selected' ? state.mode : 'order') as PosMode,
+        pinnedPaidAmount: state.paidAmountText,
+      };
+    }
+    if (state.kind === 'committing' || state.kind === 'success') {
+      return {
+        pinnedStudentId: state.studentId ?? null,
+        pinnedMode: state.mode,
+        pinnedPaidAmount: state.paidAmountText,
+      };
+    }
+    if (state.kind === 'error') {
+      return {
+        pinnedStudentId: state.studentId ?? null,
+        pinnedMode: state.mode ?? 'order' as PosMode,
+        pinnedPaidAmount: state.paidAmountText ?? '',
+      };
+    }
+    // idle, expense_*, historical_readonly — no pinned student
+    return { pinnedStudentId: null, pinnedMode: 'order' as PosMode, pinnedPaidAmount: '' };
+  }, [state]);
 
   const picked = useMemo(() => {
     if (!pinnedStudentId) return null;
