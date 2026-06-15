@@ -107,7 +107,7 @@ export function subscribeOperatorAccess(
 
     const profile = toOperatorProfile(user);
     if (!isAllowedWorkspaceEmail(profile.email)) {
-      onAccess({ ok: false, reason: 'wrong_domain', profile });
+      // Ref: #301 — signOut before emitting rejected to avoid race condition
       try {
         await signOut(auth);
       } catch (err) {
@@ -116,6 +116,7 @@ export function subscribeOperatorAccess(
           message: '[auth] force signOut failed: ' + (err instanceof Error ? err.message : String(err)),
         });
       }
+      onAccess({ ok: false, reason: 'wrong_domain', profile });
       return;
     }
 
@@ -126,7 +127,7 @@ export function subscribeOperatorAccess(
         emitError({ source: 'auth', message: '[auth] operator doc has unexpected shape' });
       }
       if (!raw || !data) {
-        onAccess({ ok: false, reason: 'not_whitelisted', profile });
+        // Ref: #301 — signOut before emitting rejected to avoid race condition
         try {
           await signOut(auth);
         } catch (err) {
@@ -135,10 +136,11 @@ export function subscribeOperatorAccess(
             message: '[auth] force signOut failed: ' + (err instanceof Error ? err.message : String(err)),
           });
         }
+        onAccess({ ok: false, reason: 'not_whitelisted', profile });
         return;
       }
       if (!data.active) {
-        onAccess({ ok: false, reason: 'inactive', profile });
+        // Ref: #301 — signOut before emitting rejected to avoid race condition
         try {
           await signOut(auth);
         } catch (err) {
@@ -147,6 +149,7 @@ export function subscribeOperatorAccess(
             message: '[auth] force signOut failed: ' + (err instanceof Error ? err.message : String(err)),
           });
         }
+        onAccess({ ok: false, reason: 'inactive', profile });
         return;
       }
       onAccess({ ok: true, profile, role: data.role ?? 'counter' });
