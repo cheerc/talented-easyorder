@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { NumericInput } from '../ui/NumericInput';
 import { fmt } from "../pos-components";
 import type { StudentAccount } from '../../domain/student';
@@ -36,6 +36,14 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
   const [cashSavedMsg, setCashSavedMsg] = useState('');
   const [showOpeningCashConfirm, setShowOpeningCashConfirm] = useState(false);
 
+  // Ref: #294 — Store timeout ID for cleanup on unmount.
+  const cashSavedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (cashSavedTimeoutRef.current !== null) clearTimeout(cashSavedTimeoutRef.current);
+    };
+  }, []);
+
   const isClosed = dateStatus === 'closed';
   const save = () => {
     const n = Number(price);
@@ -59,7 +67,8 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
     }
     setShowOpeningCashConfirm(false);
     setCashSavedMsg('已儲存');
-    setTimeout(() => setCashSavedMsg(''), 2000);
+    if (cashSavedTimeoutRef.current !== null) clearTimeout(cashSavedTimeoutRef.current);
+    cashSavedTimeoutRef.current = setTimeout(() => { setCashSavedMsg(''); cashSavedTimeoutRef.current = null; }, 2000);
   };
 
   const handleSaveOpeningCash = () => {
