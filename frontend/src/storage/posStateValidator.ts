@@ -268,7 +268,17 @@ export function migrateState(raw: unknown): MigrationResult {
 
   if (version >= CURRENT_SCHEMA_VERSION) {
     state.schemaVersion = CURRENT_SCHEMA_VERSION;
-    // Shallow structure check via guard
+    // Shallow structure check: report which key/shape is wrong
+    for (const key of REQUIRED_KEYS) {
+      if (!(key in state)) return { ok: false, reason: `missing required key: ${key}` };
+    }
+    for (const key of ARRAY_KEYS) {
+      if (!Array.isArray(state[key])) return { ok: false, reason: `expected array for key: ${key}` };
+    }
+    for (const key of OBJECT_KEYS) {
+      const val = state[key];
+      if (val === null || typeof val !== 'object' || Array.isArray(val)) return { ok: false, reason: `expected object for key: ${key}` };
+    }
     if (!isWirePersistedState(state)) return { ok: false, reason: 'structural guard failed for v2+ state' };
     return { ok: true, state: { ...state, schemaVersion: CURRENT_SCHEMA_VERSION } };
   }

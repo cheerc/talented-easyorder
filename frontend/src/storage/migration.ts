@@ -4,7 +4,6 @@ import type { WireVendor } from './wireTypes';
 import { recalculateStudentBalances } from '../domain/ledger';
 import type { StudentAccount } from '../domain/student';
 import type { LedgerTransaction } from '../domain/ledger';
-import { isWirePersistedState } from './posStateValidator';
 
 const CURRENT_SCHEMA_VERSION = 2;
 
