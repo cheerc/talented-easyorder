@@ -244,7 +244,7 @@ export default function App() {
     >
       <AppRouter
         tab={tab}
-        todayMenu={todayMenu} viewDate={viewDate}
+        viewDate={viewDate}
         reportStudentFilter={reportStudentFilter}
         onClearStudentFilter={() => setReportStudentFilter('')}
         posColumnProps={posColumnProps}

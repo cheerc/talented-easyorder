@@ -74,7 +74,6 @@ describe('ReportScreen', () => {
   it('renders with mock store', () => {
     const { container } = render(
       <ReportScreen
-        todayMenu={mockMenu}
         viewDate="2026-05-29"
       />
     );

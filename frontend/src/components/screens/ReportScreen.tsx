@@ -10,18 +10,18 @@ import { LedgerGroupedTable } from '../report/LedgerGroupedTable';
 import { CashClosePanel } from '../report/CashClosePanel';
 import { ExportActions } from '../report/ExportActions';
 import { ReopenDialog } from '../report/ReopenDialog';
-import { useSessionActions, useTransactionActions } from '../../store/selectors';
+import { useSessionActions, useTransactionActions, useMenu } from '../../store/selectors';
 import { useLedgerReport } from '../../store/derived/useLedgerReport';
 import { useCashClose } from '../../store/derived/useCashClose';
 import { useLedgerExport } from '../../store/derived/useLedgerExport';
 
 interface ReportScreenProps {
-  todayMenu: TodayMenu;
   viewDate: string;
   studentFilter?: string;
   onClearStudentFilter?: () => void;
 }
-export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDate, studentFilter, onClearStudentFilter }: ReportScreenProps) {
+export const ReportScreen = React.memo(function ReportScreen({ viewDate, studentFilter, onClearStudentFilter }: ReportScreenProps) {
+  const { todayMenu } = useMenu();
   const [dateRange, setDateRange] = useState<LedgerDateRangeKind>('today');
   const [displayMode, setDisplayMode] = useState<'merged' | 'original'>('merged');
   const [customStart, setCustomStart] = useState(viewDate);

@@ -12,8 +12,6 @@ type PosColumnProps = ComponentProps<typeof PosColumn>;
 
 interface AppRouterProps {
   tab: string;
-  // ReportScreen
-  todayMenu: PosColumnProps['todayMenu'];
   viewDate: string;
   reportStudentFilter: string;
   onClearStudentFilter: () => void;
@@ -22,7 +20,7 @@ interface AppRouterProps {
 }
 
 export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
-  const { tab, todayMenu, viewDate, reportStudentFilter, onClearStudentFilter, posColumnProps } = props;
+  const { tab, viewDate, reportStudentFilter, onClearStudentFilter, posColumnProps } = props;
 
   return (
     <>
@@ -36,7 +34,6 @@ export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
         <ErrorBoundary fallback={<SectionError name="報表" />}>
         <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
         <ReportScreen
-          todayMenu={todayMenu}
           viewDate={viewDate}
           studentFilter={reportStudentFilter}
           onClearStudentFilter={onClearStudentFilter}
