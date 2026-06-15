@@ -1,6 +1,13 @@
 import { useMemo } from 'react';
-import { useShallow } from 'zustand/shallow';
-import { usePosStore } from '../store/posStore';
+import {
+  useStudents,
+  useTransactions,
+  useMenu,
+  useMenuActions,
+  useSession,
+  useSessionActions,
+  useGlobalActions,
+} from '../store/selectors';
 import type { StudentAccount } from '../domain/student';
 import type { LedgerTransaction } from '../domain/ledger';
 import type { TodayMenu, Vendor } from '../domain/menu';
@@ -15,7 +22,7 @@ export interface UseAppStateReturn {
   resetData: () => void;
   getBusinessDateStatus: (date: string) => string;
   cashSessions: Record<string, { openingCash: number }>;
-  dailySettlements: ReturnType<typeof usePosStore.getState>['dailySettlements'];
+  dailySettlements: ReturnType<typeof import('../store/selectors').useSession>['dailySettlements'];
   openCashSession: (input: { businessDate: string; openingCash: number; operatorId: string; openedAt: string }) => void;
   updateOpeningCash: (businessDate: string, amount: number) => void;
   tx: LedgerTransaction[];
@@ -26,33 +33,13 @@ export interface UseAppStateReturn {
 }
 
 export function useAppState(viewDate: string): UseAppStateReturn {
-  const {
-    students,
-    transactions: allTx,
-    todayMenu,
-    vendors,
-    setTodayMenu,
-    setVendors,
-    resetData,
-    getBusinessDateStatus,
-    cashSessions,
-    dailySettlements,
-    openCashSession,
-    updateOpeningCash,
-  } = usePosStore(useShallow((s) => ({
-    students: s.students,
-    transactions: s.transactions,
-    todayMenu: s.todayMenu,
-    vendors: s.vendors,
-    setTodayMenu: s.setTodayMenu,
-    setVendors: s.setVendors,
-    resetData: s.resetData,
-    getBusinessDateStatus: s.getBusinessDateStatus,
-    cashSessions: s.cashSessions,
-    dailySettlements: s.dailySettlements,
-    openCashSession: s.openCashSession,
-    updateOpeningCash: s.updateOpeningCash,
-  })));
+  const { students } = useStudents();
+  const { transactions: allTx } = useTransactions();
+  const { todayMenu, vendors } = useMenu();
+  const { setTodayMenu, setVendors } = useMenuActions();
+  const { cashSessions, dailySettlements } = useSession();
+  const { openCashSession, updateOpeningCash, getBusinessDateStatus } = useSessionActions();
+  const { resetData } = useGlobalActions();
 
   const tx = useMemo(() =>
     allTx.filter(t => t.businessDate === viewDate).reverse().slice(0, 200),

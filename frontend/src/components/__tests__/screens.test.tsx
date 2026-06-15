@@ -23,11 +23,36 @@ const mockState = {
   setVendors: vi.fn(),
 };
 
-vi.mock('../../store/posStore', () => {
-  const usePosStore = (selector: Parameters<typeof import('../../store/posStore').usePosStore>[0]) => selector(mockState);
-  usePosStore.getState = () => mockState;
-  return { usePosStore };
-});
+vi.mock('../../store/selectors', () => ({
+  useSessionActions: () => ({
+    closeBusinessDate: mockState.closeBusinessDate,
+    reopenBusinessDate: mockState.reopenBusinessDate,
+    getBusinessDateStatus: mockState.getBusinessDateStatus,
+    setBusinessDateStatus: vi.fn(),
+    openCashSession: mockState.openCashSession,
+    updateOpeningCash: mockState.updateOpeningCash,
+  }),
+  useTransactionActions: () => ({
+    deleteOrderWithRefundCheck: mockState.deleteOrderWithRefundCheck,
+    deleteTransaction: mockState.deleteTransaction,
+    editTransaction: mockState.editTransaction,
+    commitPosTransactionDraft: vi.fn(),
+    processTransaction: vi.fn(),
+    updateTransaction: vi.fn(),
+  }),
+  useTransactions: () => ({ transactions: mockState.transactions }),
+  useSession: () => ({
+    auditEvents: mockState.auditEvents,
+    dailySettlements: mockState.dailySettlements,
+    businessDateStatuses: {},
+    cashSessions: mockState.cashSessions,
+  }),
+  useStudents: () => ({ students: mockState.students }),
+  useMenu: () => ({ todayMenu: mockState.todayMenu, vendors: mockState.vendors }),
+  useMenuActions: () => ({ setTodayMenu: mockState.setTodayMenu, setVendors: mockState.setVendors }),
+  useGlobalActions: () => ({ resetData: mockState.resetData }),
+  useStudentActions: () => ({ addStudent: vi.fn(), disableStudent: vi.fn() }),
+}));
 
 import { ReportScreen } from '../screens/ReportScreen';
 import { AdminScreen } from '../screens/AdminScreen';
