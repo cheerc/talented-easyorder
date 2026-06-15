@@ -86,9 +86,6 @@ export function readErrorLog(): ErrorLogEntry[] {
   }
 }
 
-export function getRecentErrors(): ErrorLogEntry[] {
-  return readErrorLog();
-}
 
 export function clearErrorLog() {
   localStorage.removeItem(LOG_KEY);

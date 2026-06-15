@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { appendErrorLog, readErrorLog, clearErrorLog, getRecentErrors, sanitizeStack } from '../errorLogger';
+import { appendErrorLog, readErrorLog, clearErrorLog, sanitizeStack } from '../errorLogger';
 
 beforeEach(() => {
   localStorage.clear();
@@ -109,10 +109,10 @@ describe('errorLogger', () => {
     expect((entry.context as Record<string, unknown>).balance).toBeUndefined();
   });
 
-  it('getRecentErrors returns entries', () => {
+  it('readErrorLog returns entries', () => {
     appendErrorLog({ source: 'react', message: 'a' });
     appendErrorLog({ source: 'sync', message: 'b' });
-    expect(getRecentErrors()).toHaveLength(2);
+    expect(readErrorLog()).toHaveLength(2);
   });
 
   it('sanitizes PII from stack trace', () => {
