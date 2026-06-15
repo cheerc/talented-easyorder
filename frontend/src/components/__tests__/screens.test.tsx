@@ -68,8 +68,6 @@ import { VendorsScreen } from '../screens/VendorsScreen';
 import { BackupScreen } from '../screens/BackupScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
 
-const mockMenu = { itemName: '排骨便當', price: 90, vendorId: 'v1', vendorNameSnapshot: '老王便當' };
-
 describe('ReportScreen', () => {
   it('renders with mock store', () => {
     const { container } = render(

@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { emitError } from '../../errors/errorBus';
 import type { LedgerTransaction, TransactionEditView } from '../../domain/ledger';
-import type { TodayMenu } from '../../domain/menu';
 import { EditTransactionModal } from '../EditTransactionModal';
 import type { LedgerDateRangeKind } from '../../domain/ledgerReport';
 import { ReportDateRangeControls } from '../report/ReportDateRangeControls';
