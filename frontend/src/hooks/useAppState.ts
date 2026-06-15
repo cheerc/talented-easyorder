@@ -33,9 +33,10 @@ export interface UseAppStateReturn {
 }
 
 /**
- * @deprecated Prefer domain-specific selectors (useStudents, useTransactions, useMenu, useSession, etc.)
- * from store/selectors.ts. This composite hook remains only for App.tsx posColumnProps orchestration.
- * Screens and sub-components should use domain selectors directly — see #264.
+ * @deprecated No production consumers remain after #298 removed App.tsx usage.
+ * TODO: Delete this file entirely — retained only for test reference.
+ * Use domain-specific selectors (useStudents, useTransactions, useMenu, useSession)
+ * from store/selectors.ts — see #264.
  */
 export function useAppState(viewDate: string): UseAppStateReturn {
   const { students } = useStudents();

@@ -18,7 +18,7 @@ import { MainLayout } from './components/MainLayout';
 import { ErrorBoundary, AppCrashPage } from './components/ErrorBoundary';
 import { appendErrorLog } from './errors/errorLogger';
 import { AppRouter } from './components/AppRouter';
-import { useAppState } from './hooks/useAppState';
+import { useStudents, useTransactions, useMenu, useSessionActions } from './store/selectors';
 import { useFlashData } from './hooks/useFlashData';
 import { useFocusSync } from './hooks/useFocusSync';
 import { useCancelDialog } from './hooks/useCancelDialog';
@@ -32,10 +32,27 @@ function AppContent() {
   const { fb, fbError, access } = useFirebase();
   const { systemDate, viewDate, setViewDate } = useSystemDate();
 
-  const app = useAppState(viewDate);
-  const { students, allTx, todayMenu, vendors,
-    getBusinessDateStatus,
-    tx, todayCount, queuedCount, failedSyncCount, conflictSyncCount } = app;
+  const { students } = useStudents();
+  const { transactions: allTx } = useTransactions();
+  const { todayMenu, vendors } = useMenu();
+  const { getBusinessDateStatus } = useSessionActions();
+
+  // Ref: #298 — Inline computations previously in useAppState.
+  const tx = useMemo(() =>
+    allTx.filter(t => t.businessDate === viewDate).reverse().slice(0, 200),
+  [allTx, viewDate]);
+  const todayCount = useMemo(() => {
+    const defaultBentoOrders = tx.filter(t =>
+      t.type === 'order' &&
+      t.menuNameSnapshot === todayMenu.itemName &&
+      t.mealPrice === todayMenu.price &&
+      (!t.note || !t.note.startsWith('單筆改價：'))
+    );
+    return defaultBentoOrders.length;
+  }, [tx, todayMenu.itemName, todayMenu.price]);
+  const queuedCount = useMemo(() => allTx.filter(t => t.syncStatus === 'queued').length, [allTx]);
+  const failedSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'failed').length, [allTx]);
+  const conflictSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'conflict').length, [allTx]);
 
   const dateStatus = getBusinessDateStatus(viewDate);
   const isHistorical = viewDate !== systemDate;
