@@ -4,6 +4,21 @@ import { getAuthMod, getFirestoreMod } from './firebaseModules';
 import { operatorPath } from './firestorePaths';
 import { emitError } from '../errors/errorBus';
 
+// Ref: #285 — Runtime type guard for Firestore operator doc data.
+// Replaces unsafe `as` cast to catch server-side doc shape changes.
+interface OperatorDocData {
+  active?: boolean;
+  role?: 'counter' | 'admin';
+}
+
+export function isValidOperatorDoc(data: unknown): data is OperatorDocData {
+  if (data == null || typeof data !== 'object') return false;
+  const obj = data as Record<string, unknown>;
+  if ('active' in obj && typeof obj.active !== 'boolean') return false;
+  if ('role' in obj && obj.role !== 'counter' && obj.role !== 'admin') return false;
+  return true;
+}
+
 const ALLOWED_DOMAIN = import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? 'talented.com.tw';
 
 export interface OperatorProfile {
@@ -40,10 +55,14 @@ export async function getOperatorAccess(db: Firestore, user: User): Promise<Oper
 
   const { getDoc, doc } = getFirestoreMod();
   const snapshot = await getDoc(doc(db, operatorPath(profile.uid)));
-  const data = snapshot.data() as { active?: boolean; role?: 'counter' | 'admin' } | undefined;
-  if (!data) return { ok: false, reason: 'not_whitelisted', profile };
-  if (!data.active) return { ok: false, reason: 'inactive', profile };
-  return { ok: true, profile, role: data.role ?? 'counter' };
+  const raw = snapshot.data();
+  if (!raw) return { ok: false, reason: 'not_whitelisted', profile };
+  if (!isValidOperatorDoc(raw)) {
+    emitError({ source: 'auth', message: '[auth] operator doc has unexpected shape' });
+    return { ok: false, reason: 'not_whitelisted', profile };
+  }
+  if (!raw.active) return { ok: false, reason: 'inactive', profile };
+  return { ok: true, profile, role: raw.role ?? 'counter' };
 }
 
 export async function verifyUserAuthorization(auth: Auth, db: Firestore, user: User): Promise<OperatorAccess> {
@@ -98,8 +117,12 @@ export function subscribeOperatorAccess(
     }
 
     unsubscribeOperator = onSnapshot(doc(db, operatorPath(profile.uid)), async snapshot => {
-      const data = snapshot.data() as { active?: boolean; role?: 'counter' | 'admin' } | undefined;
-      if (!data) {
+      const raw = snapshot.data();
+      const data = isValidOperatorDoc(raw) ? raw : null;
+      if (raw && !data) {
+        emitError({ source: 'auth', message: '[auth] operator doc has unexpected shape' });
+      }
+      if (!raw || !data) {
         onAccess({ ok: false, reason: 'not_whitelisted', profile });
         try {
           await signOut(auth);
