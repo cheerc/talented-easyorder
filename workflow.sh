@@ -1,312 +1,80 @@
 #!/bin/bash
 
-# EasyOrder POS - 統一開發與部署腳本 (v1.0)
-# 用法: ./workflow.sh [option]
-# Firebase 使用 talented-payroll 的 prod 專案
+# EasyOrder POS - 測試腳本 (from v1.0 Split)
+# 用法: ./workflow.sh [t1-t7|e2e|t4-file|t5-file]
+# Testing only — dev server/deploy moved to deploy.sh
 
-set -o pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/workflow-lib.sh"
 
-# --- 載入環境變數 ---
-source .env 2>/dev/null || true
+# --- Per-test log files (persistent, not overwritten between steps) ---
+T1_LOG="t1_latest.log"
+T2_LOG="t2_latest.log"
+T3_LOG="t3_latest.log"
+T4_LOG="t4_latest.log"
+T5_LOG="t5_latest.log"
+E2E_LOG="e2e_latest.log"
 
-# --- 設定變數 ---
-FIREBASE_PROJECT="gen-lang-client-0613258198"
-FIREBASE_USER="cheerc@gmail.com"
-GCLOUD_USER="cheerc@talented.com.tw"
-PAYROLL_DIR="$HOME/talented-payroll"
-FRONTEND_DIR="./frontend"
-TEMP_LOG=".temp_workflow.log"
+# --- Individual test functions ---
 
-INTERACTIVE=true
-
-# --- 顏色定義 ---
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-# --- 錯誤處理 ---
-handle_error() {
-    local step_name="$1"
-    echo -e "${RED}❌ $step_name 失敗！${NC}"
-    if [ -f "$TEMP_LOG" ]; then
-        echo -e "${YELLOW}--- Error Details (Last 80 lines) ---${NC}"
-        tail -n 80 "$TEMP_LOG"
-        echo -e "${YELLOW}--------------------------------------${NC}"
-    fi
-    rm -f "$TEMP_LOG"
-    return 1
-}
-
-pause() {
-    if [ "$INTERACTIVE" = true ]; then
-        read -p "按 Enter 返回..."
-    fi
-}
-
-# --- gcloud 切換 ---
-check_and_switch_gcloud() {
-    local target_email="$1"
-    if ! command -v gcloud &> /dev/null; then
-        return 0
-    fi
-    local current_account=$(gcloud config get-value account 2>/dev/null)
-    if [[ "$current_account" == "$target_email" ]]; then
-        echo -e "${GREEN}✅ gcloud: $target_email${NC}"
-        return 0
-    fi
-    echo -e "${CYAN}🔄 切換 gcloud → $target_email${NC}"
-    gcloud config set account "$target_email" > /dev/null 2>&1
-}
-
-# --- Firebase 切換 ---
-check_and_switch_firebase() {
-    check_and_switch_gcloud "$GCLOUD_USER"
-
-    echo -e "${CYAN}🔍 檢查 Firebase 帳號: $FIREBASE_USER${NC}"
-    local login_list=$(firebase login:list 2>&1)
-
-    if echo "$login_list" | grep -q "No authorized accounts"; then
-        echo -e "${RED}❌ Firebase 未登入，執行 firebase login${NC}"
-        firebase login
-    fi
-
-    local current_active=$(echo "$login_list" | grep -E "[✔*>]" | awk '{for(i=1;i<=NF;i++) if($i ~ /@/) print $i}' | tr -d '() ' | head -n 1)
-    if [[ "$current_active" != "$FIREBASE_USER" ]]; then
-        firebase login:use "$FIREBASE_USER" > /dev/null 2>&1
-    fi
-
-    if ! firebase projects:list > /dev/null 2>&1; then
-        echo -e "${YELLOW}⚠️  憑證過期，重新驗證...${NC}"
-        firebase login --reauth
-        firebase login:use "$FIREBASE_USER" > /dev/null 2>&1
-    fi
-
-    echo -e "${GREEN}✅ Firebase 帳號就緒 [$FIREBASE_USER]${NC}"
-}
-
-# --- Firestore Rules 合併 (payroll + easyorder) ---
-merge_firestore_rules() {
-    local payroll_rules="$PAYROLL_DIR/firestore.rules"
-    local easyorder_rules="./firestore.rules"
-    local merged_rules=".firestore.rules.merged"
-
-    if [ ! -f "$payroll_rules" ]; then
-        echo -e "${RED}❌ 找不到 $payroll_rules，無法合併 rules${NC}"
+run_t1() {
+    echo -e "${CYAN}🏗️  [t1] Build Test...${NC}"
+    (cd "$FRONTEND_DIR" && npm run build) > "$T1_LOG" 2>&1
+    local status=$?
+    if [ $status -ne 0 ]; then
+        echo -e "${YELLOW}--- Build Error Details (Last 80 lines) ---${NC}"
+        tail -n 80 "$T1_LOG"
+        echo -e "${YELLOW}--------------------------------------------${NC}"
+        echo -e "${RED}❌ t1 Build Test Failed${NC} → $T1_LOG"
         return 1
     fi
-
-    python3 -c "
-import sys, re
-
-def extract_inner(path):
-    with open(path) as f:
-        content = f.read()
-    # Strip template vars like {database} so they don't affect brace counting
-    cleaned = re.sub(r'\{[a-zA-Z_]+\}', 'X', content)
-    lines = cleaned.split('\n')
-    orig_lines = content.split('\n')
-    depth = 0
-    start = None
-    end = None
-    for i, line in enumerate(lines):
-        depth += line.count('{') - line.count('}')
-        if start is None and depth >= 2:
-            start = i + 1
-        if start is not None and depth < 2:
-            end = i
-            break
-    if start and end:
-        return '\n'.join(orig_lines[start:end])
-    return ''
-
-payroll = extract_inner(sys.argv[1])
-easyorder = extract_inner(sys.argv[2])
-output = sys.argv[3]
-
-merged = (
-    \"rules_version = '2';\n\"
-    'service cloud.firestore {\n'
-    '  match /databases/{database}/documents {\n\n'
-    '    // Payroll Rules\n'
-    + payroll + '\n\n'
-    '    // EasyOrder Rules\n'
-    + easyorder + '\n'
-    '  }\n'
-    '}\n'
-)
-
-with open(output, 'w') as f:
-    f.write(merged)
-print(f'Merged: {len(payroll.splitlines())} payroll + {len(easyorder.splitlines())} easyorder lines')
-" "$payroll_rules" "$easyorder_rules" "$merged_rules" || return 1
-
-    echo -e "${GREEN}✅ 已產生合併 rules: $merged_rules${NC}"
+    echo -e "${GREEN}✅ t1 Build Test Passed${NC} → $T1_LOG"
 }
 
-# --- 選單 ---
-show_menu() {
-    clear
-    echo -e "${BLUE}═══════════════════════════════════════════════${NC}"
-    echo -e "${BLUE}   🍜  EasyOrder POS Workflow (v1.0)  🍜${NC}"
-    echo -e "${BLUE}═══════════════════════════════════════════════${NC}"
-    echo ""
-    echo -e "${GREEN}══════ 🟢 Development (d1-d3) ══════${NC}"
-    echo -e "d1) 啟動 Firebase Emulators (Auth + Firestore)"
-    echo -e "d2) Dev Server + Emulators (本地全套)"
-    echo -e "d3) Dev Server (連接 Prod Firebase)"
-    echo ""
-    echo -e "${CYAN}══════ 🧪 Testing (t1-t7) ══════${NC}"
-    echo -e "t1) Build Test (vite build)"
-    echo -e "t2) Type Check (tsc --noEmit)"
-    echo -e "t3) Lint (eslint)"
-    echo -e "t4) Unit Tests (vitest)"
-    echo -e "t5) Integration Tests (Firestore Rules + Emulator)"
-    echo -e "t6) Full CI (t1-t5 Sequential)"
-    echo -e "t7) Preview (Build + Local Serve)"
-    echo -e "e2e) E2E Tests (Playwright + Firebase Emulator)"
-    echo ""
-    echo -e "${RED}══════ 🔴 Production (p1-p5) ══════${NC}"
-    echo -e "p1) Deploy Frontend (Vercel) ${CYAN}[需 Vercel CLI]${NC}"
-    echo -e "p2) Deploy Firestore Rules ${CYAN}[合併 payroll + easyorder]${NC}"
-    echo -e "p3) Deploy Firestore Indexes ${CYAN}[需 $FIREBASE_USER]${NC}"
-    echo -e "p4) Deploy All (p1+p2+p3)"
-    echo -e "p5) Full Stack (Test → Build → Deploy All)"
-    echo ""
-    echo -e "q) 離開"
-    echo ""
-    echo -e "${BLUE}═══════════════════════════════════════════════${NC}"
-}
-
-# --- Development ---
-start_emulators() {
-    echo -e "${GREEN}🔥 啟動 Firebase Emulators...${NC}"
-    echo -e "${CYAN}   Auth: http://localhost:9099${NC}"
-    echo -e "${CYAN}   Firestore: http://localhost:8080${NC}"
-    echo -e "${CYAN}   UI: http://localhost:4000${NC}"
-    echo ""
-    firebase emulators:start --project "$FIREBASE_PROJECT"
-}
-
-dev_with_emulators() {
-    echo -e "${GREEN}🚀 啟動 Dev Server + Emulators...${NC}"
-
-    # Start emulators in background
-    firebase emulators:start --project "$FIREBASE_PROJECT" &
-    local emu_pid=$!
-
-    # Wait for emulator to be ready
-    echo -e "${CYAN}⏳ 等待 Emulator 就緒...${NC}"
-    local retries=0
-    while ! curl -s http://localhost:4000 > /dev/null 2>&1; do
-        sleep 1
-        retries=$((retries + 1))
-        if [ $retries -gt 30 ]; then
-            echo -e "${RED}❌ Emulator 啟動超時${NC}"
-            kill $emu_pid 2>/dev/null
-            return 1
-        fi
-    done
-
-    echo -e "${GREEN}✅ Emulator 就緒，啟動 Dev Server...${NC}"
-
-    # Create temp .env.local for emulator mode
-    local env_file="$FRONTEND_DIR/.env.local"
-    local env_backup=""
-    if [ -f "$env_file" ]; then
-        env_backup=$(mktemp)
-        cp "$env_file" "$env_backup"
-    fi
-
-    cat > "$env_file" << EOF
-VITE_FIREBASE_API_KEY=fake-api-key
-VITE_FIREBASE_AUTH_DOMAIN=localhost
-VITE_FIREBASE_PROJECT_ID=$FIREBASE_PROJECT
-VITE_FIREBASE_APP_ID=fake-app-id
-VITE_FIREBASE_MESSAGING_SENDER_ID=000000000000
-VITE_FIREBASE_STORAGE_BUCKET=$FIREBASE_PROJECT.appspot.com
-VITE_FIREBASE_USE_EMULATOR=true
-VITE_FIRESTORE_EMULATOR_HOST=127.0.0.1
-VITE_FIRESTORE_EMULATOR_PORT=8080
-VITE_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099
-EOF
-
-    (cd "$FRONTEND_DIR" && npm run dev)
-
-    # Cleanup
-    if [ -n "$env_backup" ]; then
-        cp "$env_backup" "$env_file"
-        rm "$env_backup"
-    else
-        rm -f "$env_file"
-    fi
-    kill $emu_pid 2>/dev/null
-    wait $emu_pid 2>/dev/null
-}
-
-dev_prod() {
-    echo -e "${YELLOW}⚠️  Dev Server 連接 Production Firebase${NC}"
-    echo -e "${CYAN}   Project: $FIREBASE_PROJECT${NC}"
-
-    local env_file="$FRONTEND_DIR/.env.local"
-    if [ ! -f "$env_file" ]; then
-        echo -e "${YELLOW}⚠️  $env_file 不存在，從 payroll 複製 Firebase config...${NC}"
-        cat > "$env_file" << EOF
-VITE_FIREBASE_API_KEY=${VITE_FIREBASE_API_KEY:-<your-firebase-api-key>}
-VITE_FIREBASE_AUTH_DOMAIN=gen-lang-client-0613258198.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=gen-lang-client-0613258198
-VITE_FIREBASE_APP_ID=1:704294644197:web:3c2d159fe167478d47e70c
-VITE_FIREBASE_MESSAGING_SENDER_ID=704294644197
-VITE_FIREBASE_STORAGE_BUCKET=gen-lang-client-0613258198.firebasestorage.app
-VITE_FIREBASE_USE_EMULATOR=false
-EOF
-        echo -e "${GREEN}✅ 已建立 $env_file${NC}"
-    fi
-
-    (cd "$FRONTEND_DIR" && npm run dev)
-}
-
-# --- Testing ---
-run_build_test() {
-    echo -e "${CYAN}🏗️  [t1] Build Test...${NC}"
-    (cd "$FRONTEND_DIR" && npm run build) > "$TEMP_LOG" 2>&1
-    if [ $? -ne 0 ]; then
-        handle_error "Build Test" || return 1
-    fi
-    echo -e "${GREEN}✅ Build Test Passed${NC}"
-}
-
-run_typecheck() {
+run_t2() {
     echo -e "${CYAN}🔍 [t2] Type Check...${NC}"
-    (cd "$FRONTEND_DIR" && npx tsc --noEmit) > "$TEMP_LOG" 2>&1
-    if [ $? -ne 0 ]; then
-        handle_error "Type Check" || return 1
+    (cd "$FRONTEND_DIR" && npx tsc --noEmit) > "$T2_LOG" 2>&1
+    local status=$?
+    if [ $status -ne 0 ]; then
+        echo -e "${YELLOW}--- Type Check Error Details (Last 80 lines) ---${NC}"
+        tail -n 80 "$T2_LOG"
+        echo -e "${YELLOW}-------------------------------------------------${NC}"
+        echo -e "${RED}❌ t2 Type Check Failed${NC} → $T2_LOG"
+        return 1
     fi
-    echo -e "${GREEN}✅ Type Check Passed${NC}"
+    echo -e "${GREEN}✅ t2 Type Check Passed${NC} → $T2_LOG"
 }
 
-run_lint() {
+run_t3() {
     echo -e "${CYAN}🧹 [t3] Lint...${NC}"
-    (cd "$FRONTEND_DIR" && npm run lint) > "$TEMP_LOG" 2>&1
-    if [ $? -ne 0 ]; then
-        handle_error "Lint" || return 1
+    (cd "$FRONTEND_DIR" && npm run lint) > "$T3_LOG" 2>&1
+    local status=$?
+    if [ $status -ne 0 ]; then
+        echo -e "${YELLOW}--- Lint Error Details (Last 80 lines) ---${NC}"
+        tail -n 80 "$T3_LOG"
+        echo -e "${YELLOW}-------------------------------------------${NC}"
+        echo -e "${RED}❌ t3 Lint Failed${NC} → $T3_LOG"
+        return 1
     fi
-    echo -e "${GREEN}✅ Lint Passed${NC}"
+    echo -e "${GREEN}✅ t3 Lint Passed${NC} → $T3_LOG"
 }
 
-run_unit_tests() {
+run_t4() {
     echo -e "${CYAN}🧪 [t4] Unit Tests...${NC}"
-    (cd "$FRONTEND_DIR" && npx vitest --run --exclude '**/firestoreRules.spec.ts') > "$TEMP_LOG" 2>&1
-    if [ $? -ne 0 ]; then
-        handle_error "Unit Tests" || return 1
+    (cd "$FRONTEND_DIR" && npx vitest --run --exclude '**/firestoreRules.spec.ts') > "$T4_LOG" 2>&1
+    local status=$?
+    if [ $status -ne 0 ]; then
+        echo -e "${YELLOW}--- Unit Test Error Details (Last 80 lines) ---${NC}"
+        tail -n 80 "$T4_LOG"
+        echo -e "${YELLOW}------------------------------------------------${NC}"
+        echo -e "${RED}❌ t4 Unit Tests Failed${NC} → $T4_LOG"
+        return 1
     fi
-    echo -e "${GREEN}✅ Unit Tests Passed${NC}"
-    tail -n 5 "$TEMP_LOG"
+    echo -e "${GREEN}✅ t4 Unit Tests Passed${NC} → $T4_LOG"
+    tail -n 5 "$T4_LOG"
 }
 
-run_integration_tests() {
+run_t5() {
     echo -e "${CYAN}🔥 [t5] Integration Tests (Firestore Rules)...${NC}"
 
     # Kill any existing emulator on those ports
@@ -330,7 +98,7 @@ run_integration_tests() {
     done
 
     # Run rules tests
-    (cd "$FRONTEND_DIR" && FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npx vitest --run src/firebase/__tests__/firestoreRules.spec.ts) > "$TEMP_LOG" 2>&1
+    (cd "$FRONTEND_DIR" && FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npx vitest --run src/firebase/__tests__/firestoreRules.spec.ts) > "$T5_LOG" 2>&1
     local test_status=$?
 
     # Cleanup emulator
@@ -338,13 +106,95 @@ run_integration_tests() {
     wait $emu_pid 2>/dev/null
 
     if [ $test_status -ne 0 ]; then
-        handle_error "Integration Tests" || return 1
+        echo -e "${YELLOW}--- Integration Test Error Details (Last 80 lines) ---${NC}"
+        tail -n 80 "$T5_LOG"
+        echo -e "${YELLOW}------------------------------------------------------${NC}"
+        echo -e "${RED}❌ t5 Integration Tests Failed${NC} → $T5_LOG"
+        return 1
     fi
-    echo -e "${GREEN}✅ Integration Tests Passed${NC}"
-    tail -n 5 "$TEMP_LOG"
+    echo -e "${GREEN}✅ t5 Integration Tests Passed${NC} → $T5_LOG"
+    tail -n 5 "$T5_LOG"
 }
 
-# --- Targeted single-file (TDD 迭代用；full t4/t5 留給送審前 + CI) ---
+# --- t6: Full CI — run all, don't stop on failure, summary report ---
+
+run_t6() {
+    local labels=("t1 Build Test" "t2 Type Check" "t3 Lint" "t4 Unit Tests" "t5 Integration Tests")
+    local logs=("$T1_LOG" "$T2_LOG" "$T3_LOG" "$T4_LOG" "$T5_LOG")
+    local funcs=(run_t1 run_t2 run_t3 run_t4 run_t5)
+    local total=${#funcs[@]}
+    local passed=0
+    local failed=0
+    local results=()
+
+    for i in "${!funcs[@]}"; do
+        echo ""
+        ${funcs[$i]}
+        if [ $? -eq 0 ]; then
+            results+=("PASS")
+            ((passed++))
+        else
+            results+=("FAIL")
+            ((failed++))
+        fi
+    done
+
+    # Print summary table
+    echo ""
+    echo -e "${BLUE}═══════ Test Summary (t6 Full CI) ═══════${NC}"
+    for i in "${!labels[@]}"; do
+        if [ "${results[$i]}" = "PASS" ]; then
+            echo -e "  ${GREEN}✅${NC} ${labels[$i]}  ${GREEN}PASS${NC}"
+        else
+            echo -e "  ${RED}❌${NC} ${labels[$i]}  ${RED}FAIL${NC} → ${logs[$i]}"
+        fi
+    done
+    echo -e "${BLUE}═════════════════════════════════════════${NC}"
+    echo -e "  Result: ${passed}/${total} passed, ${failed}/${total} failed"
+    echo ""
+
+    if [ $failed -eq 0 ]; then
+        echo -e "${GREEN}🎉 All Tests Passed!${NC}"
+        return 0
+    else
+        echo -e "${RED}⚠️  Some tests failed. Check logs above.${NC}"
+        return 1
+    fi
+}
+
+# --- t7: Preview ---
+
+run_t7() {
+    echo -e "${CYAN}👁️  [t7] Preview (Build + Serve)...${NC}"
+    (cd "$FRONTEND_DIR" && npm run build) > "$T1_LOG" 2>&1
+    if [ $? -ne 0 ]; then
+        handle_error "Build" "$T1_LOG" || return 1
+    fi
+    echo -e "${GREEN}✅ Build 完成，啟動 Preview Server...${NC}"
+    (cd "$FRONTEND_DIR" && npm run preview)
+}
+
+# --- E2E ---
+
+run_e2e() {
+    echo -e "${CYAN}🎭 E2E Tests (Playwright + Firebase Emulator)...${NC}"
+    lsof -t -i :8080 -i :9099 | xargs kill -9 2>/dev/null || true
+    sleep 1
+    (cd "$FRONTEND_DIR" && npm run test:e2e) > "$E2E_LOG" 2>&1
+    local status=$?
+    if [ $status -ne 0 ]; then
+        echo -e "${YELLOW}--- E2E Error Details (Last 80 lines) ---${NC}"
+        tail -n 80 "$E2E_LOG"
+        echo -e "${YELLOW}------------------------------------------${NC}"
+        echo -e "${RED}❌ E2E Tests Failed${NC} → $E2E_LOG"
+        return 1
+    fi
+    echo -e "${GREEN}✅ E2E Tests Passed${NC} → $E2E_LOG"
+    tail -n 5 "$E2E_LOG"
+}
+
+# --- Targeted single-file (TDD 迭代用) ---
+
 run_unit_file() {
     local file="$1"
     if [ -z "$file" ]; then
@@ -387,202 +237,63 @@ run_integration_file() {
     return $test_status
 }
 
-run_full_ci() {
-    echo -e "${CYAN}🏁 [t6] Full CI (t1-t5)...${NC}"
+# --- Interactive Menu ---
+
+show_test_menu() {
+    clear
+    echo -e "${BLUE}═══════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}   🍜  EasyOrder POS Testing (v1.0)  🍜${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════${NC}"
     echo ""
-    run_build_test || return 1
-    run_typecheck || return 1
-    run_lint || return 1
-    run_unit_tests || return 1
-    run_integration_tests || return 1
+    echo -e "${CYAN}══════ 🧪 Testing (t1-t7) ══════${NC}"
+    echo -e "t1) Build Test (vite build)"
+    echo -e "t2) Type Check (tsc --noEmit)"
+    echo -e "t3) Lint (eslint)"
+    echo -e "t4) Unit Tests (vitest)"
+    echo -e "t5) Integration Tests (Firestore Rules + Emulator)"
+    echo -e "t6) Full CI (t1-t5, no-stop + summary)"
+    echo -e "t7) Preview (Build + Local Serve)"
+    echo -e "e2e) E2E Tests (Playwright + Firebase Emulator)"
     echo ""
-    echo -e "${GREEN}🎉 All Tests Passed!${NC}"
-}
-
-run_preview() {
-    echo -e "${CYAN}👁️  [t7] Preview (Build + Serve)...${NC}"
-    (cd "$FRONTEND_DIR" && npm run build) > "$TEMP_LOG" 2>&1
-    if [ $? -ne 0 ]; then
-        handle_error "Build" || return 1
-    fi
-    echo -e "${GREEN}✅ Build 完成，啟動 Preview Server...${NC}"
-    (cd "$FRONTEND_DIR" && npm run preview)
-}
-
-run_e2e_tests() {
-    echo -e "${CYAN}🎭 E2E Tests (Playwright + Firebase Emulator)...${NC}"
-
-    # Kill any existing emulator on those ports
-    lsof -t -i :8080 -i :9099 | xargs kill -9 2>/dev/null || true
-    sleep 1
-
-    (cd "$FRONTEND_DIR" && npm run test:e2e) > "$TEMP_LOG" 2>&1
-    if [ $? -ne 0 ]; then
-        handle_error "E2E Tests" || return 1
-    fi
-    echo -e "${GREEN}✅ E2E Tests Passed${NC}"
-    tail -n 5 "$TEMP_LOG"
-}
-
-# --- Production ---
-confirm_prod() {
-    if [ "$INTERACTIVE" = false ]; then
-        return 0
-    fi
-    echo -e "${RED}🛑 即將操作正式環境 ($FIREBASE_PROJECT)${NC}"
-    read -p "輸入 'yes' 確認: " confirm
-    if [[ "$confirm" != "yes" ]]; then
-        echo -e "${RED}❌ 已取消${NC}"
-        return 1
-    fi
-}
-
-deploy_frontend() {
-    echo -e "${YELLOW}🚀 [p1] Deploying Frontend to Vercel...${NC}"
-
-    # Build first
-    (cd "$FRONTEND_DIR" && npm run build) > "$TEMP_LOG" 2>&1
-    if [ $? -ne 0 ]; then
-        handle_error "Frontend Build" || return 1
-    fi
-
-    # Deploy
-    if [ -n "$VERCEL_TOKEN" ]; then
-        vercel deploy --prod --token="$VERCEL_TOKEN"
-    else
-        vercel deploy --prod
-    fi
-
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✅ Frontend Deployed to Vercel!${NC}"
-    else
-        echo -e "${RED}❌ Vercel deploy 失敗${NC}"
-        return 1
-    fi
-    pause
-}
-
-deploy_rules() {
-    check_and_switch_firebase || return 1
-    confirm_prod || return 1
-
-    echo -e "${YELLOW}🚀 [p2] Deploying Firestore Rules...${NC}"
-    echo -e "${YELLOW}⚠️  注意：此專案與 Payroll 共用 Firebase Project${NC}"
-    echo -e "${CYAN}   將合併 payroll + easyorder rules 後部署${NC}"
+    echo -e "q) 離開"
     echo ""
-
-    merge_firestore_rules || return 1
-
-    # Swap rules file: backup original, deploy merged, restore
-    cp ./firestore.rules ./firestore.rules.bak
-    cp .firestore.rules.merged ./firestore.rules
-
-    firebase deploy --only firestore:rules --project "$FIREBASE_PROJECT" > "$TEMP_LOG" 2>&1
-    local deploy_status=$?
-
-    # Restore original
-    cp ./firestore.rules.bak ./firestore.rules
-    rm -f ./firestore.rules.bak .firestore.rules.merged
-
-    if [ $deploy_status -ne 0 ]; then
-        handle_error "Firestore Rules Deploy" || return 1
-    fi
-    echo -e "${GREEN}✅ Firestore Rules Deployed (merged payroll+easyorder)!${NC}"
-    pause
-}
-
-deploy_indexes() {
-    check_and_switch_firebase || return 1
-    confirm_prod || return 1
-
-    echo -e "${YELLOW}🚀 [p3] Deploying Firestore Indexes...${NC}"
-    firebase deploy --only firestore:indexes --project "$FIREBASE_PROJECT" > "$TEMP_LOG" 2>&1
-    if [ $? -ne 0 ]; then
-        handle_error "Firestore Indexes Deploy" || return 1
-    fi
-    echo -e "${GREEN}✅ Firestore Indexes Deployed!${NC}"
-    pause
-}
-
-deploy_all() {
-    echo -e "${YELLOW}🚀 [p4] Deploy All...${NC}"
-    deploy_frontend || return 1
-    deploy_rules || return 1
-    deploy_indexes || return 1
-    echo -e "${GREEN}🎉 All Deployments Complete!${NC}"
-}
-
-deploy_full_stack() {
-    echo -e "${YELLOW}🚀 [p5] Full Stack (Test → Build → Deploy)...${NC}"
-    echo ""
-
-    run_build_test || return 1
-    run_typecheck || return 1
-    run_lint || return 1
-    run_unit_tests || return 1
-
-    echo ""
-    echo -e "${GREEN}✅ Tests passed, starting deployment...${NC}"
-    echo ""
-
-    deploy_frontend || return 1
-    deploy_rules || return 1
-    deploy_indexes || return 1
-
-    echo ""
-    echo -e "${GREEN}🎉 FULL STACK DEPLOYMENT COMPLETE!${NC}"
-    pause
+    echo -e "${BLUE}═══════════════════════════════════════════════${NC}"
 }
 
 # --- CLI Argument Handling ---
 if [ -n "$1" ]; then
     INTERACTIVE=false
     case "$1" in
-        d1) INTERACTIVE=true; start_emulators ;;
-        d2) INTERACTIVE=true; dev_with_emulators ;;
-        d3) INTERACTIVE=true; dev_prod ;;
-        t1) run_build_test ;;
-        t2) run_typecheck ;;
-        t3) run_lint ;;
-        t4) run_unit_tests ;;
-        t5) run_integration_tests ;;
+        t1) run_t1 ;;
+        t2) run_t2 ;;
+        t3) run_t3 ;;
+        t4) run_t4 ;;
+        t5) run_t5 ;;
         t4-file) run_unit_file "$2" ;;
         t5-file) run_integration_file "$2" ;;
-        t6) run_full_ci ;;
-        t7) INTERACTIVE=true; run_preview ;;
-        e2e) run_e2e_tests ;;
-        p1) deploy_frontend ;;
-        p2) INTERACTIVE=true; deploy_rules ;;
-        p3) INTERACTIVE=true; deploy_indexes ;;
-        p4) INTERACTIVE=true; deploy_all ;;
-        p5) INTERACTIVE=true; deploy_full_stack ;;
-        *) echo -e "${RED}❌ 無效參數: $1${NC}"; echo "用法: ./workflow.sh [d1-d3|t1-t7|p1-p5]"; exit 1 ;;
+        t6) run_t6 ;;
+        t7) INTERACTIVE=true; run_t7 ;;
+        e2e) run_e2e ;;
+        *) echo -e "${RED}❌ 無效參數: $1${NC}"; echo "用法: ./workflow.sh [t1-t7|e2e|t4-file|t5-file]"; exit 1 ;;
     esac
     exit $?
 fi
 
 # --- Interactive Loop ---
 while true; do
-    show_menu
+    show_test_menu
     read -p "請輸入選項: " choice
     case $choice in
-        d1) start_emulators ;;
-        d2) dev_with_emulators ;;
-        d3) dev_prod ;;
-        t1) run_build_test ;;
-        t2) run_typecheck ;;
-        t3) run_lint ;;
-        t4) run_unit_tests ;;
-        t5) run_integration_tests ;;
-        t6) run_full_ci ;;
-        t7) run_preview ;;
-        e2e) run_e2e_tests ;;
-        p1) deploy_frontend ;;
-        p2) deploy_rules ;;
-        p3) deploy_indexes ;;
-        p4) deploy_all ;;
-        p5) deploy_full_stack ;;
+        t1) run_t1 ;;
+        t2) run_t2 ;;
+        t3) run_t3 ;;
+        t4) run_t4 ;;
+        t5) run_t5 ;;
+        t6) run_t6 ;;
+        t7) run_t7 ;;
+        e2e) run_e2e ;;
         q) exit 0 ;;
         *) echo -e "${RED}無效選項${NC}"; sleep 1 ;;
     esac
+    pause
 done

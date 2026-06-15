@@ -13,3 +13,7 @@ graphify-out/
 .agents/*
 .gemini/*
 .antigravitycli/*
+
+# Persistent test/deploy logs (workflow.sh refactor #271)
+*.log
+.temp_workflow.log
