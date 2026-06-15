@@ -11,9 +11,9 @@ export function migratePersistedState(persistedState: unknown, _zVersion: number
   void _zVersion;
   try {
     const state = persistedState as Record<string, unknown>;
-    if (!state) return state as unknown as PosState;
+    if (!state) return state as PosState;
 
-    const version = (state.schemaVersion as number) ?? 0;
+    const version = typeof state.schemaVersion === 'number' ? state.schemaVersion : 0;
 
     // Type remapping (v0→v1→v2): topup→payment, drop cancel/correction/void
     if (version < CURRENT_SCHEMA_VERSION) {
@@ -21,31 +21,31 @@ export function migratePersistedState(persistedState: unknown, _zVersion: number
       if (rawTx && Array.isArray(rawTx) && rawTx.length > 0) {
         const migratedTx = rawTx
           .filter((t) => {
-            const type = t.type as string;
+            const type = String(t.type);
             if (type === 'cancel' || type === 'correction' || type === 'void') return false;
             return true;
           })
           .map((t) => {
-            const type = t.type as string;
+            const type = String(t.type);
             if (type === 'topup') return { ...t, type: 'payment' };
             return t;
-          }) as Array<Record<string, unknown>>;
+          });
 
         // Compute amount for each migrated transaction before recalc
         for (const tx of migratedTx) {
-          const paidAmount = (tx.paidAmount as number) || 0;
-          const mealPrice = (tx.mealPrice as number) || 0;
+          const paidAmount = typeof tx.paidAmount === 'number' ? tx.paidAmount : 0;
+          const mealPrice = typeof tx.mealPrice === 'number' ? tx.mealPrice : 0;
           tx.amount = (paidAmount - mealPrice);
         }
 
         const rawStudents = state.students as Array<Record<string, unknown>> | undefined;
         if (rawStudents && Array.isArray(rawStudents) && rawStudents.length > 0) {
           const result = recalculateStudentBalances(
-            rawStudents as unknown as StudentAccount[],
+            rawStudents as StudentAccount[],
             migratedTx as unknown as LedgerTransaction[],
           );
-          state.students = result.students as unknown as Array<Record<string, unknown>>;
-          state.transactions = result.transactions as unknown as Array<Record<string, unknown>>;
+          state.students = result.students;
+          state.transactions = result.transactions;
         } else {
           state.transactions = migratedTx;
         }
@@ -120,8 +120,10 @@ export function migratePersistedState(persistedState: unknown, _zVersion: number
       };
     }
 
-    (state as Record<string, unknown>).schemaVersion = 2;
-    return state as unknown as PosState;
+    state.schemaVersion = 2;
+    // Use structural guard if available, otherwise the zustand persist layer
+    // will validate via posStateValidator.validatePersistedState.
+    return state as PosState;
   } catch (e) {
     emitError({ source: 'storage', message: '[migration] migratePersistedState crashed: ' + String(e) });
     throw e; // let onRehydrateStorage fallback handle the reset

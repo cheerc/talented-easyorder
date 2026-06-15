@@ -37,7 +37,7 @@ export function useCrashDraftRecovery({
       setCrashDraftRestored(true);
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: crash draft recovery must run exactly once on app start; re-running on callback identity changes would re-select the student
   }, []);
 
   return crashDraftRestored;

@@ -48,7 +48,7 @@ export function useCommitLifecycle({
       };
     }
     prevKindRef.current = stateKind;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setSyncing/setUndoCountdown are stable setters from parent; lastCommittedTxIdRef is a ref. Only stateKind transitions should trigger this effect.
   }, [stateKind]);
 
   return { lastSync };
