@@ -24,9 +24,41 @@ required_reads:
 
 | 檔案 | 職責 | 來源行範圍（現 workflow.sh） |
 |------|------|---------------------------|
+| `.gitignore` | 新增 `*.log` 排除 persistent log 檔 | 新增行 |
 | `workflow-lib.sh` | 共用：config vars, colors, error handling, gcloud/firebase switch | L1-88 |
 | `workflow.sh` | 測試入口：t1-t7, e2e, t4-file, t5-file, interactive menu(test) | L271-425, L537-561(CLI router test部分), L564-589(interactive test部分) |
 | `deploy.sh` | Dev server + Deploy：d1-d3, p1-p5, merge_firestore_rules, interactive menu(deploy) | L90-147, L183-269, L427-535, CLI/interactive deploy部分 |
+
+---
+
+### Task 0: 更新 `.gitignore`（排除 persistent log 檔）
+
+**Files:**
+- Modify: `.gitignore`
+
+> Plan 引入 6 個 persistent log 檔（t1_latest.log ~ e2e_latest.log），必須排除 git 追蹤。payroll 已有 `*.log` pattern。
+
+- [ ] **Step 1: 在 `.gitignore` 新增 log 排除規則**
+
+在 `.gitignore` 尾部新增：
+
+```
+# Persistent test/deploy logs (workflow.sh refactor #271)
+*.log
+.temp_workflow.log
+```
+
+- [ ] **Step 2: 確認既有 log 檔未被追蹤**
+
+Run: `git status --porcelain | grep '\.log'`
+Expected: 無輸出（無 log 檔被追蹤）
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add .gitignore
+git commit -m "chore: add *.log to .gitignore for persistent test logs (#271)"
+```
 
 ---
 
@@ -171,60 +203,245 @@ gcloud/firebase switching moved to shared lib."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/workflow-lib.sh"
 
+# --- Deploy-local temp log (deploy 函式仍用共用 temp log) ---
+TEMP_LOG=".temp_workflow.log"
+
 # --- Firestore Rules 合併 (payroll + easyorder) ---
 merge_firestore_rules() {
-    # 完整移植現行 workflow.sh L91-147 的 merge_firestore_rules()
-    # （含 python3 extract_inner 邏輯，不做任何修改）
-    ...保持與現行完全一致...
+    local payroll_rules="$PAYROLL_DIR/firestore.rules"
+    local easyorder_rules="./firestore.rules"
+    local merged_rules=".firestore.rules.merged"
+
+    if [ ! -f "$payroll_rules" ]; then
+        echo -e "${RED}❌ 找不到 $payroll_rules，無法合併 rules${NC}"
+        return 1
+    fi
+
+    python3 -c "
+import sys, re
+
+def extract_inner(path):
+    with open(path) as f:
+        content = f.read()
+    # Strip template vars like {database} so they don't affect brace counting
+    cleaned = re.sub(r'\\{[a-zA-Z_]+\\}', 'X', content)
+    lines = cleaned.split('\n')
+    orig_lines = content.split('\n')
+    depth = 0
+    start = None
+    end = None
+    for i, line in enumerate(lines):
+        depth += line.count('{') - line.count('}')
+        if start is None and depth >= 2:
+            start = i + 1
+        if start is not None and depth < 2:
+            end = i
+            break
+    if start and end:
+        return '\n'.join(orig_lines[start:end])
+    return ''
+
+payroll = extract_inner(sys.argv[1])
+easyorder = extract_inner(sys.argv[2])
+output = sys.argv[3]
+
+merged = (
+    \"rules_version = '2';\n\"
+    'service cloud.firestore {\n'
+    '  match /databases/{database}/documents {\n\n'
+    '    // Payroll Rules\n'
+    + payroll + '\n\n'
+    '    // EasyOrder Rules\n'
+    + easyorder + '\n'
+    '  }\n'
+    '}\n'
+)
+
+with open(output, 'w') as f:
+    f.write(merged)
+print(f'Merged: {len(payroll.splitlines())} payroll + {len(easyorder.splitlines())} easyorder lines')
+" "$payroll_rules" "$easyorder_rules" "$merged_rules" || return 1
+
+    echo -e "${GREEN}✅ 已產生合併 rules: $merged_rules${NC}"
 }
 
 # --- Development ---
 start_emulators() {
-    # 完整移植現行 workflow.sh L184-191
-    ...保持與現行完全一致...
+    echo -e "${GREEN}🔥 啟動 Firebase Emulators...${NC}"
+    echo -e "${CYAN}   Auth: http://localhost:9099${NC}"
+    echo -e "${CYAN}   Firestore: http://localhost:8080${NC}"
+    echo -e "${CYAN}   UI: http://localhost:4000${NC}"
+    echo ""
+    firebase emulators:start --project "$FIREBASE_PROJECT"
 }
 
 dev_with_emulators() {
-    # 完整移植現行 workflow.sh L193-247
-    ...保持與現行完全一致...
+    echo -e "${GREEN}🚀 啟動 Dev Server + Emulators...${NC}"
+
+    # Start emulators in background
+    firebase emulators:start --project "$FIREBASE_PROJECT" &
+    local emu_pid=$!
+
+    # Wait for emulator to be ready
+    echo -e "${CYAN}⏳ 等待 Emulator 就緒...${NC}"
+    local retries=0
+    while ! curl -s http://localhost:4000 > /dev/null 2>&1; do
+        sleep 1
+        retries=$((retries + 1))
+        if [ $retries -gt 30 ]; then
+            echo -e "${RED}❌ Emulator 啟動超時${NC}"
+            kill $emu_pid 2>/dev/null
+            return 1
+        fi
+    done
+
+    echo -e "${GREEN}✅ Emulator 就緒，啟動 Dev Server...${NC}"
+
+    # Create temp .env.local for emulator mode
+    local env_file="$FRONTEND_DIR/.env.local"
+    local env_backup=""
+    if [ -f "$env_file" ]; then
+        env_backup=$(mktemp)
+        cp "$env_file" "$env_backup"
+    fi
+
+    cat > "$env_file" << EOF
+VITE_FIREBASE_API_KEY=fake-api-key
+VITE_FIREBASE_AUTH_DOMAIN=localhost
+VITE_FIREBASE_PROJECT_ID=$FIREBASE_PROJECT
+VITE_FIREBASE_APP_ID=fake-app-id
+VITE_FIREBASE_MESSAGING_SENDER_ID=000000000000
+VITE_FIREBASE_STORAGE_BUCKET=$FIREBASE_PROJECT.appspot.com
+VITE_FIREBASE_USE_EMULATOR=true
+VITE_FIRESTORE_EMULATOR_HOST=127.0.0.1
+VITE_FIRESTORE_EMULATOR_PORT=8080
+VITE_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099
+EOF
+
+    (cd "$FRONTEND_DIR" && npm run dev)
+
+    # Cleanup
+    if [ -n "$env_backup" ]; then
+        cp "$env_backup" "$env_file"
+        rm "$env_backup"
+    else
+        rm -f "$env_file"
+    fi
+    kill $emu_pid 2>/dev/null
+    wait $emu_pid 2>/dev/null
 }
 
 dev_prod() {
-    # 完整移植現行 workflow.sh L249-269
-    ...保持與現行完全一致...
+    echo -e "${YELLOW}⚠️  Dev Server 連接 Production Firebase${NC}"
+    echo -e "${CYAN}   Project: $FIREBASE_PROJECT${NC}"
+
+    local env_file="$FRONTEND_DIR/.env.local"
+    if [ ! -f "$env_file" ]; then
+        echo -e "${YELLOW}⚠️  $env_file 不存在，從 payroll 複製 Firebase config...${NC}"
+        cat > "$env_file" << EOF
+VITE_FIREBASE_API_KEY=${VITE_FIREBASE_API_KEY:-<your-firebase-api-key>}
+VITE_FIREBASE_AUTH_DOMAIN=gen-lang-client-0613258198.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=gen-lang-client-0613258198
+VITE_FIREBASE_APP_ID=1:704294644197:web:3c2d159fe167478d47e70c
+VITE_FIREBASE_MESSAGING_SENDER_ID=704294644197
+VITE_FIREBASE_STORAGE_BUCKET=gen-lang-client-0613258198.firebasestorage.app
+VITE_FIREBASE_USE_EMULATOR=false
+EOF
+        echo -e "${GREEN}✅ 已建立 $env_file${NC}"
+    fi
+
+    (cd "$FRONTEND_DIR" && npm run dev)
 }
 
 # --- Production ---
 confirm_prod() {
-    # 完整移植現行 workflow.sh L428-438
-    ...保持與現行完全一致...
+    if [ "$INTERACTIVE" = false ]; then
+        return 0
+    fi
+    echo -e "${RED}🛑 即將操作正式環境 ($FIREBASE_PROJECT)${NC}"
+    read -p "輸入 'yes' 確認: " confirm
+    if [[ "$confirm" != "yes" ]]; then
+        echo -e "${RED}❌ 已取消${NC}"
+        return 1
+    fi
 }
 
 deploy_frontend() {
-    # 完整移植現行 workflow.sh L440-463
-    ...保持與現行完全一致...
+    echo -e "${YELLOW}🚀 [p1] Deploying Frontend to Vercel...${NC}"
+
+    # Build first
+    (cd "$FRONTEND_DIR" && npm run build) > "$TEMP_LOG" 2>&1
+    if [ $? -ne 0 ]; then
+        handle_error "Frontend Build" "$TEMP_LOG" || return 1
+    fi
+
+    # Deploy
+    if [ -n "$VERCEL_TOKEN" ]; then
+        vercel deploy --prod --token="$VERCEL_TOKEN"
+    else
+        vercel deploy --prod
+    fi
+
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✅ Frontend Deployed to Vercel!${NC}"
+    else
+        echo -e "${RED}❌ Vercel deploy 失敗${NC}"
+        return 1
+    fi
+    pause
 }
 
 deploy_rules() {
-    # 完整移植現行 workflow.sh L465-492
-    ...保持與現行完全一致...
+    check_and_switch_firebase || return 1
+    confirm_prod || return 1
+
+    echo -e "${YELLOW}🚀 [p2] Deploying Firestore Rules...${NC}"
+    echo -e "${YELLOW}⚠️  注意：此專案與 Payroll 共用 Firebase Project${NC}"
+    echo -e "${CYAN}   將合併 payroll + easyorder rules 後部署${NC}"
+    echo ""
+
+    merge_firestore_rules || return 1
+
+    # Swap rules file: backup original, deploy merged, restore
+    cp ./firestore.rules ./firestore.rules.bak
+    cp .firestore.rules.merged ./firestore.rules
+
+    firebase deploy --only firestore:rules --project "$FIREBASE_PROJECT" > "$TEMP_LOG" 2>&1
+    local deploy_status=$?
+
+    # Restore original
+    cp ./firestore.rules.bak ./firestore.rules
+    rm -f ./firestore.rules.bak .firestore.rules.merged
+
+    if [ $deploy_status -ne 0 ]; then
+        handle_error "Firestore Rules Deploy" "$TEMP_LOG" || return 1
+    fi
+    echo -e "${GREEN}✅ Firestore Rules Deployed (merged payroll+easyorder)!${NC}"
+    pause
 }
 
 deploy_indexes() {
-    # 完整移植現行 workflow.sh L494-505
-    ...保持與現行完全一致...
+    check_and_switch_firebase || return 1
+    confirm_prod || return 1
+
+    echo -e "${YELLOW}🚀 [p3] Deploying Firestore Indexes...${NC}"
+    firebase deploy --only firestore:indexes --project "$FIREBASE_PROJECT" > "$TEMP_LOG" 2>&1
+    if [ $? -ne 0 ]; then
+        handle_error "Firestore Indexes Deploy" "$TEMP_LOG" || return 1
+    fi
+    echo -e "${GREEN}✅ Firestore Indexes Deployed!${NC}"
+    pause
 }
 
 deploy_all() {
-    # 完整移植現行 workflow.sh L507-513
-    ...保持與現行完全一致...
+    echo -e "${YELLOW}🚀 [p4] Deploy All...${NC}"
+    deploy_frontend || return 1
+    deploy_rules || return 1
+    deploy_indexes || return 1
+    echo -e "${GREEN}🎉 All Deployments Complete!${NC}"
 }
 
 deploy_full_stack() {
-    # 完整移植現行 workflow.sh L515-535
-    # ⚠️ 注意：此函式呼叫 run_build_test/run_typecheck/run_lint/run_unit_tests
-    # 重構後需改為 source workflow.sh 或直接呼叫 ./workflow.sh t1-t4
-    # 建議改為：
     echo -e "${YELLOW}🚀 [p5] Full Stack (Test → Build → Deploy)...${NC}"
     echo ""
     ./workflow.sh t1 || return 1
@@ -693,17 +910,19 @@ Expected: `All syntax OK`
 
 ## Key Design Decisions
 
-1. **`handle_error()` 改為接受 log_file 參數**：不再依賴全域 `$TEMP_LOG`，每個 test function 傳入自己的 log 檔路徑。`$TEMP_LOG` 全域變數從 lib 中移除。
+1. **`handle_error()` 改為接受 log_file 參數**：不再依賴全域 `$TEMP_LOG`，每個 test function 傳入自己的 log 檔路徑。`$TEMP_LOG` 全域變數從 lib 中移除。所有 deploy 函式中的 `handle_error` 呼叫已更新為 `handle_error "<name>" "$TEMP_LOG"` 格式。
 
-2. **`deploy_full_stack()` 的 test 呼叫改為 `./workflow.sh t1`-`t4`**：避免 deploy.sh 需要 source workflow.sh 造成循環依賴。使用子進程方式乾淨分離。
+2. **`deploy.sh` 頂部定義 `TEMP_LOG`**：deploy 函式（`deploy_frontend`/`deploy_rules`/`deploy_indexes`）仍使用 `$TEMP_LOG`，在 deploy.sh source lib 後立即定義 `TEMP_LOG=".temp_workflow.log"`。
 
-3. **t6 summary 對齊 payroll t7 模式**：使用 array 存 labels/logs/funcs/results，跑完全部再印表格。
+3. **`deploy_full_stack()` 的 test 呼叫改為 `./workflow.sh t1`-`t4`**：避免 deploy.sh 需要 source workflow.sh 造成循環依賴。使用子進程方式乾淨分離。
 
-4. **e2e 維持現狀**：獨立 `e2e` 指令，不納入 t* 序列（issue #271 Phase 3 建議維持）。但新增 `E2E_LOG="e2e_latest.log"` 持久 log。
+4. **t6 summary 對齊 payroll t7 模式**：使用 array 存 labels/logs/funcs/results，跑完全部再印表格。
 
-5. **`$TEMP_LOG` 移除**：不再使用共享 temp log。每個 test 有獨立 log，deploy 相關函式（`deploy_frontend` 等）可考慮也用獨立 log 但 issue 未要求，保持現行 `$TEMP_LOG` 在 deploy.sh 內部（若 deploy 函式仍用 `$TEMP_LOG`，在 deploy.sh 頂部定義 `TEMP_LOG=".temp_workflow.log"` 即可）。
+5. **e2e 維持現狀**：獨立 `e2e` 指令，不納入 t* 序列（issue #271 Phase 3 建議維持）。但新增 `E2E_LOG="e2e_latest.log"` 持久 log。
 
-6. **不引入 `--source-only`、worktree env self-heal**：issue #271 明確標註暫不引入。
+6. **`.gitignore` 新增 `*.log`**：persistent log 檔（t1_latest.log ~ e2e_latest.log + .temp_workflow.log）不應被 git 追蹤，對齊 payroll 已有的 `*.log` pattern。
+
+7. **不引入 `--source-only`、worktree env self-heal**：issue #271 明確標註暫不引入。
 
 ## Acceptance Criteria Mapping
 
