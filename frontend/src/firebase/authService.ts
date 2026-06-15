@@ -3,6 +3,7 @@ import type { Firestore } from 'firebase/firestore';
 import { getAuthMod, getFirestoreMod } from './firebaseModules';
 import { operatorPath } from './firestorePaths';
 import { emitError } from '../errors/errorBus';
+import { clearSensitiveData } from '../store/posPersistence';
 
 // Ref: #285 — Runtime type guard for Firestore operator doc data.
 // Replaces unsafe `as` cast to catch server-side doc shape changes.
@@ -81,7 +82,9 @@ export async function signInWithGoogle(auth: Auth, db: Firestore): Promise<Opera
   return verifyUserAuthorization(auth, db, credential.user);
 }
 
-export function signOutOperator(auth: Auth): Promise<void> {
+// Ref: #286 — Clear sensitive POS data on signOut to protect PII on shared devices.
+export async function signOutOperator(auth: Auth): Promise<void> {
+  await clearSensitiveData();
   return getAuthMod().signOut(auth);
 }
 
