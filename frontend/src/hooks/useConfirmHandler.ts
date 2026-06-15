@@ -1,8 +1,9 @@
-import { useCallback } from 'react';
+import { useCallback, useRef, useEffect } from 'react';
 import type { PosFlowState } from '../domain/posFlow';
 
 // Ref: #281 — Extracted from App.tsx to reduce AppContent complexity.
-// Encapsulates the confirm handler dispatching logic based on flow state.
+// Ref: #293 — Stabilize callback reference via useRef pattern to avoid
+// defeating React.memo on child components that receive handleConfirm.
 
 export interface UseConfirmHandlerArgs {
   state: PosFlowState;
@@ -17,15 +18,25 @@ export function useConfirmHandler({
   confirmDuplicate,
   confirmExpenseAmount,
 }: UseConfirmHandlerArgs): () => void {
+  const stateRef = useRef(state);
+  const requestConfirmRef = useRef(requestConfirm);
+  const confirmDuplicateRef = useRef(confirmDuplicate);
+  const confirmExpenseAmountRef = useRef(confirmExpenseAmount);
+
+  useEffect(() => { stateRef.current = state; });
+  useEffect(() => { requestConfirmRef.current = requestConfirm; });
+  useEffect(() => { confirmDuplicateRef.current = confirmDuplicate; });
+  useEffect(() => { confirmExpenseAmountRef.current = confirmExpenseAmount; });
+
   return useCallback(() => {
-    if (state.kind === 'expense_input') {
-      const n = Number(state.amountText);
+    const s = stateRef.current;
+    if (s.kind === 'expense_input') {
+      const n = Number(s.amountText);
       if (!Number.isSafeInteger(n) || n <= 0) return;
-      confirmExpenseAmount(n); return;
+      confirmExpenseAmountRef.current(n); return;
     }
-    if (state.kind === 'duplicate_warning') { confirmDuplicate(); return; }
-    if (state.kind !== 'student_selected') return;
-    requestConfirm();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.kind, requestConfirm, confirmDuplicate, confirmExpenseAmount]);
+    if (s.kind === 'duplicate_warning') { confirmDuplicateRef.current(); return; }
+    if (s.kind !== 'student_selected') return;
+    requestConfirmRef.current();
+  }, []);
 }
