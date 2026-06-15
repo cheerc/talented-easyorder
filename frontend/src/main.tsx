@@ -14,7 +14,11 @@ if (import.meta.env.DEV) {
   });
 }
 
-installErrorListeners();
+// Ref: #291 — Capture cleanup for HMR to prevent listener leaks.
+const cleanupErrorListeners = installErrorListeners();
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => cleanupErrorListeners());
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
