@@ -78,7 +78,8 @@ const fakeIndexedDB = {
   },
   deleteDatabase(name: string): AnyObj {
     fakeIndexedDB._databases.delete(name);
-    const req: AnyObj = { onerror: null as AnyObj, error: null };
+    const req: AnyObj = { onsuccess: null as AnyObj, onerror: null as AnyObj, onblocked: null as AnyObj, error: null };
+    setTimeout(() => { req.onsuccess?.({ target: req } as AnyObj); }, 0);
     return req;
   },
 };

@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { appendErrorLog, readErrorLog, clearErrorLog, getRecentErrors } from '../errorLogger';
+import { appendErrorLog, readErrorLog, clearErrorLog, getRecentErrors, sanitizeStack } from '../errorLogger';
 
 beforeEach(() => {
   localStorage.clear();
@@ -169,5 +169,70 @@ describe('errorLogger', () => {
     expect(entry.message).toContain('filename: app.tsx');
     expect(entry.message).not.toContain('John Smith');
     expect(entry.message).toContain('name: [REDACTED]');
+  });
+
+  describe('sanitizeStack (#288)', () => {
+    it('strips Unix absolute file paths from stack traces', () => {
+      const stack = 'Error: fail\n    at Module (/Users/cheerc/talented-easyorder/frontend/src/App.tsx:42:5)';
+      const result = sanitizeStack(stack);
+      expect(result).not.toContain('/Users/cheerc');
+      expect(result).toContain('[PATH]');
+    });
+
+    it('strips Windows file paths from stack traces', () => {
+      const stack = 'Error: fail\n    at C:\\Users\\dev\\project\\src\\index.ts:10:3';
+      const result = sanitizeStack(stack);
+      expect(result).not.toContain('C:\\Users\\dev');
+      expect(result).toContain('[PATH]');
+    });
+
+    it('strips node_modules paths', () => {
+      const stack = 'at node_modules/firebase/auth/dist/index.js:123:45';
+      const result = sanitizeStack(stack);
+      expect(result).not.toContain('node_modules/firebase');
+      expect(result).toContain('[MODULE]');
+    });
+
+    it('also applies message sanitization (PII patterns)', () => {
+      const stack = 'Error: 學生: 王小明\n    at /Users/cheerc/src/App.tsx:1:1';
+      const result = sanitizeStack(stack);
+      expect(result).toContain('[REDACTED]');
+      expect(result).not.toContain('王小明');
+    });
+  });
+
+  describe('TTL rotation (#288)', () => {
+    it('removes entries older than 24 hours', () => {
+      const old = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+      const recent = new Date().toISOString();
+
+      // Manually seed localStorage with old + recent entries
+      const entries = [
+        { id: 'recent-1', createdAt: recent, source: 'react', message: 'recent' },
+        { id: 'old-1', createdAt: old, source: 'react', message: 'old' },
+      ];
+      localStorage.setItem('easyorder-error-log', JSON.stringify(entries));
+
+      // Append a new entry — should trigger TTL rotation
+      appendErrorLog({ source: 'react', message: 'new entry' });
+
+      const log = readErrorLog();
+      expect(log.some(e => e.id === 'old-1')).toBe(false);
+      expect(log.some(e => e.id === 'recent-1')).toBe(true);
+      expect(log.some(e => e.message === 'new entry')).toBe(true);
+    });
+
+    it('keeps entries within 24 hours', () => {
+      const fresh = new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString();
+      const entries = [
+        { id: 'fresh-1', createdAt: fresh, source: 'react', message: 'fresh' },
+      ];
+      localStorage.setItem('easyorder-error-log', JSON.stringify(entries));
+
+      appendErrorLog({ source: 'react', message: 'another' });
+
+      const log = readErrorLog();
+      expect(log.some(e => e.id === 'fresh-1')).toBe(true);
+    });
   });
 });

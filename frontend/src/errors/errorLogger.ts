@@ -11,6 +11,7 @@ export interface ErrorLogEntry {
 
 const LOG_KEY = 'easyorder-error-log';
 const MAX_LOG_ENTRIES = 100;
+const LOG_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // Error log 保留在 localStorage 而非 IndexedDB：
 // appendErrorLog 在 ErrorBoundary.componentDidCatch 與 global error listeners 中被同步呼叫，
@@ -48,8 +49,15 @@ export function sanitizeMessage(message: string): string {
     .replace(/[A-Z]\d{9}/g, '[ID REDACTED]');
 }
 
-function sanitizeStack(stack: string): string {
-  return sanitizeMessage(stack);
+// Ref: #288 — Strip file paths and user-home directories from stack traces.
+// Prevents leaking OS username, project paths, and internal file structure.
+export function sanitizeStack(stack: string): string {
+  return sanitizeMessage(stack)
+    // Strip absolute file paths (Unix and Windows)
+    .replace(/(?:\/[\w.-]+){2,}/g, '[PATH]')
+    .replace(/(?:[A-Z]:\\[\w\\.-]+)/gi, '[PATH]')
+    // Strip webpack/vite internal paths
+    .replace(/\b(?:node_modules|__vite_ssr_import__)[\w/.\\-]*/g, '[MODULE]');
 }
 
 export function appendErrorLog(entry: Omit<ErrorLogEntry, 'id' | 'createdAt'>): ErrorLogEntry {
@@ -62,7 +70,10 @@ export function appendErrorLog(entry: Omit<ErrorLogEntry, 'id' | 'createdAt'>): 
     createdAt: new Date().toISOString(),
   };
   const current = readErrorLog();
-  localStorage.setItem(LOG_KEY, JSON.stringify([next, ...current].slice(0, MAX_LOG_ENTRIES)));
+  // Ref: #288 — TTL-based rotation: remove entries older than 24h
+  const cutoff = Date.now() - LOG_TTL_MS;
+  const fresh = current.filter(e => new Date(e.createdAt).getTime() > cutoff);
+  localStorage.setItem(LOG_KEY, JSON.stringify([next, ...fresh].slice(0, MAX_LOG_ENTRIES)));
   return next;
 }
 

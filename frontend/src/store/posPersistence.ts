@@ -6,6 +6,37 @@ import { appendErrorLog } from '../errors/errorLogger';
 import { INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS } from '../mocks/initialData';
 import { createIndexedDBStorage } from '../storage/indexedDBStorage';
 
+// TODO: [future] encrypt sensitive fields before IndexedDB persist (#286)
+
+const POS_STORAGE_KEY = 'pos-storage';
+
+/**
+ * Ref: #286 — Clear sensitive POS data from IndexedDB and localStorage on signOut.
+ * On shared kiosk/iPad devices, this prevents student PII (names, balances,
+ * transactions) from persisting after the operator signs out.
+ */
+export async function clearSensitiveData(): Promise<void> {
+  try {
+    // Clear IndexedDB
+    if (typeof indexedDB !== 'undefined') {
+      await new Promise<void>((resolve) => {
+        const req = indexedDB.deleteDatabase('easyorder-pos');
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve(); // best-effort
+        req.onblocked = () => resolve();
+      });
+      // Also clear crash draft
+      const reqCrash = indexedDB.deleteDatabase('easyorder-crash-draft');
+      reqCrash.onerror = () => { /* best-effort */ };
+    }
+  } catch { /* best-effort */ }
+
+  try {
+    // Clear localStorage fallback
+    localStorage.removeItem(POS_STORAGE_KEY);
+  } catch { /* best-effort */ }
+}
+
 export const defaultState = {
   auditEvents: [] as PosState['auditEvents'],
   dailySettlements: [] as PosState['dailySettlements'],
