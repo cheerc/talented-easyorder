@@ -2,7 +2,7 @@ import type { Auth, User } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import { getAuthMod, getFirestoreMod } from './firebaseModules';
 import { operatorPath } from './firestorePaths';
-import { appendErrorLog } from '../errors/errorLogger';
+import { emitError } from '../errors/errorBus';
 
 const ALLOWED_DOMAIN = import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? 'talented.com.tw';
 
@@ -89,7 +89,7 @@ export function subscribeOperatorAccess(
       try {
         await signOut(auth);
       } catch (err) {
-        appendErrorLog({
+        emitError({
           source: 'auth',
           message: '[auth] force signOut failed: ' + (err instanceof Error ? err.message : String(err)),
         });
@@ -104,7 +104,7 @@ export function subscribeOperatorAccess(
         try {
           await signOut(auth);
         } catch (err) {
-          appendErrorLog({
+          emitError({
             source: 'auth',
             message: '[auth] force signOut failed: ' + (err instanceof Error ? err.message : String(err)),
           });
@@ -116,7 +116,7 @@ export function subscribeOperatorAccess(
         try {
           await signOut(auth);
         } catch (err) {
-          appendErrorLog({
+          emitError({
             source: 'auth',
             message: '[auth] force signOut failed: ' + (err instanceof Error ? err.message : String(err)),
           });
