@@ -11,7 +11,7 @@ import { useServiceWorkerCleanup } from './hooks/useServiceWorkerCleanup';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useCrashDraftRecovery } from './hooks/useCrashDraftRecovery';
 import { useUndoCountdown } from './hooks/useUndoCountdown';
-import { getOpeningCash } from './domain/cashClose';
+
 import { MainLayout } from './components/MainLayout';
 import { ErrorBoundary, AppCrashPage } from './components/ErrorBoundary';
 import { appendErrorLog } from './errors/errorLogger';
@@ -22,38 +22,17 @@ import { useFocusSync } from './hooks/useFocusSync';
 import { useCancelDialog } from './hooks/useCancelDialog';
 import { useTweaks } from './hooks/useTweaks';
 import { buildPosColumnProps } from './hooks/usePosColumnProps';
-import { ensureFirebaseInitialized } from './firebase/firebaseApp';
+import { FirebaseProvider } from './providers/FirebaseProvider';
+import { useFirebase } from './hooks/useFirebase';
 import { AuthGate } from './auth/AuthGate';
-import { subscribeOperatorAccess } from './firebase/authService';
-import type { OperatorAccess } from './firebase/authService';
 
-export default function App() {
+function AppContent() {
+  const { fb, fbError, access } = useFirebase();
   const { systemDate, viewDate, setViewDate } = useSystemDate();
 
-  const [fb, setFb] = useState<Awaited<ReturnType<typeof ensureFirebaseInitialized>> | null>(null);
-  const [fbError, setFbError] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    ensureFirebaseInitialized().then(
-      services => { if (!cancelled) setFb(services); },
-      err => { if (!cancelled) setFbError(err instanceof Error ? err.message : String(err)); },
-    );
-    return () => { cancelled = true; };
-  }, []);
-
-  const auth = fb?.auth ?? null;
-  const db = fb?.db ?? null;
-  const [access, setAccess] = useState<OperatorAccess>({ ok: false, reason: 'signed_out' });
-
-  useEffect(() => {
-    if (!auth || !db) return;
-    const unsubscribe = subscribeOperatorAccess(auth, db, setAccess);
-    return unsubscribe;
-  }, [auth, db]);
-
   const app = useAppState(viewDate);
-  const { students, allTx, todayMenu, vendors, setTodayMenu, setVendors, resetData,
-    getBusinessDateStatus, cashSessions, dailySettlements, openCashSession, updateOpeningCash,
+  const { students, allTx, todayMenu, vendors,
+    getBusinessDateStatus,
     tx, todayCount, queuedCount, failedSyncCount, conflictSyncCount } = app;
 
   const dateStatus = getBusinessDateStatus(viewDate);
@@ -168,7 +147,7 @@ export default function App() {
     isDialogOpen: cancelDialogOpen || noOrderDialogOpen,
   });
 
-  const { tweaks, setTweak } = useTweaks();
+  const { tweaks } = useTweaks();
 
   useFocusSync(state, tab, setSearchText, setSearchFocusKey, setFocusZone);
 
@@ -244,14 +223,9 @@ export default function App() {
     >
       <AppRouter
         tab={tab}
-        todayMenu={todayMenu} viewDate={viewDate}
+        viewDate={viewDate}
         reportStudentFilter={reportStudentFilter}
         onClearStudentFilter={() => setReportStudentFilter('')}
-        setTodayMenu={setTodayMenu} vendors={vendors} students={students} resetData={resetData}
-        openingCash={getOpeningCash(viewDate, dailySettlements || [], cashSessions[viewDate])}
-        dateStatus={dateStatus} hasCashSession={!!cashSessions[viewDate]}
-        openCashSession={openCashSession} updateOpeningCash={updateOpeningCash}
-        tweaks={tweaks} setTweak={setTweak} setVendors={setVendors}
         posColumnProps={posColumnProps}
       />
     </MainLayout>
@@ -259,3 +233,12 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
+export default function App() {
+  return (
+    <FirebaseProvider>
+      <AppContent />
+    </FirebaseProvider>
+  );
+}
+

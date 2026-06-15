@@ -1,11 +1,10 @@
 import React, { useState } from "react";
 import type { Vendor } from '../../domain/menu';
+import { useMenu, useMenuActions } from '../../store/selectors';
 
-interface VendorsScreenProps {
-  vendors: Vendor[];
-  setVendors: (v: Vendor[]) => void;
-}
-export const VendorsScreen = React.memo(function VendorsScreen({ vendors, setVendors }: VendorsScreenProps) {
+export const VendorsScreen = React.memo(function VendorsScreen() {
+  const { vendors } = useMenu();
+  const { setVendors } = useMenuActions();
   const [editing, setEditing] = useState<string | null>(null); // id of row being edited, or 'new'
   const [draft, setDraft] = useState<Partial<Vendor>>({ name:'', phone:'', note:'' });
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);

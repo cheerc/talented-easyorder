@@ -32,6 +32,11 @@ export interface UseAppStateReturn {
   conflictSyncCount: number;
 }
 
+/**
+ * @deprecated Prefer domain-specific selectors (useStudents, useTransactions, useMenu, useSession, etc.)
+ * from store/selectors.ts. This composite hook remains only for App.tsx posColumnProps orchestration.
+ * Screens and sub-components should use domain selectors directly — see #264.
+ */
 export function useAppState(viewDate: string): UseAppStateReturn {
   const { students } = useStudents();
   const { transactions: allTx } = useTransactions();

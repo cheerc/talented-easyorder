@@ -1,26 +1,33 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { NumericInput } from '../ui/NumericInput';
 import { fmt } from "../pos-components";
-import type { TodayMenu } from '../../domain/menu';
 import type { StudentAccount } from '../../domain/student';
-import type { Vendor } from '../../domain/menu';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { useMenu, useMenuActions, useStudents, useGlobalActions, useSessionActions } from '../../store/selectors';
+import { useCashClose } from '../../store/derived/useCashClose';
+import { useTweaks } from '../../hooks/useTweaks';
 
 interface AdminScreenProps {
-  todayMenu: TodayMenu;
-  setTodayMenu: (menu: TodayMenu) => void;
-  vendors: Vendor[];
-  students: StudentAccount[];
-  resetData: () => void;
-  openingCash: number;
-  dateStatus: string;
-  hasCashSession: boolean;
-  onOpeningCashChange: (amount: number) => void;
-  onUpdateOpeningCash: (amount: number) => void;
-  tweaks: { theme: string; fontSize: string; disableHoverSelection: boolean };
-  setTweak: (k: string, v: string) => void;
+  viewDate: string;
 }
-export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetData, openingCash, dateStatus, hasCashSession, onOpeningCashChange, onUpdateOpeningCash, tweaks, setTweak }: AdminScreenProps) {
+export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminScreenProps) {
+  const { todayMenu, vendors } = useMenu();
+  const { setTodayMenu } = useMenuActions();
+  const { students } = useStudents();
+  const { resetData } = useGlobalActions();
+  const { openCashSession, updateOpeningCash } = useSessionActions();
+  const { openingCash, dateStatus, currentCashSession } = useCashClose(viewDate);
+  const hasCashSession = !!currentCashSession;
+  const { tweaks, setTweak } = useTweaks();
+
+  // Wrapper callbacks (moved from AppRouter — reviewer finding #1)
+  const onOpeningCashChange = useCallback((amount: number) => {
+    openCashSession({ businessDate: viewDate, openingCash: amount, operatorId: 'admin', openedAt: new Date().toISOString() });
+  }, [viewDate, openCashSession]);
+
+  const onUpdateOpeningCash = useCallback((amount: number) => {
+    updateOpeningCash(viewDate, amount);
+  }, [viewDate, updateOpeningCash]);
   const [name, setName] = useState(todayMenu.itemName);
   const [price, setPrice] = useState(todayMenu.price);
   const [vendor, setVendor] = useState(todayMenu.vendorNameSnapshot);
