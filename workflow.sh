@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # EasyOrder POS - 測試腳本 (from v1.0 Split)
-# 用法: ./workflow.sh [t1-t7|e2e|t4-file|t5-file]
+# 用法: ./workflow.sh [t1-t7|preview|t4-file|t5-file|t6-file]
 # Testing only — dev server/deploy moved to deploy.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,7 +13,7 @@ T2_LOG="t2_latest.log"
 T3_LOG="t3_latest.log"
 T4_LOG="t4_latest.log"
 T5_LOG="t5_latest.log"
-E2E_LOG="e2e_latest.log"
+T6_LOG="t6_latest.log"
 
 # --- Individual test functions ---
 
@@ -116,12 +116,31 @@ run_t5() {
     tail -n 5 "$T5_LOG"
 }
 
-# --- t6: Full CI — run all, don't stop on failure, summary report ---
+# --- t6: E2E Tests (Playwright + Firebase Emulator) ---
 
 run_t6() {
-    local labels=("t1 Build Test" "t2 Type Check" "t3 Lint" "t4 Unit Tests" "t5 Integration Tests")
-    local logs=("$T1_LOG" "$T2_LOG" "$T3_LOG" "$T4_LOG" "$T5_LOG")
-    local funcs=(run_t1 run_t2 run_t3 run_t4 run_t5)
+    echo -e "${CYAN}🎭 [t6] E2E Tests (Playwright + Firebase Emulator)...${NC}"
+    lsof -t -i :8080 -i :9099 | xargs kill -9 2>/dev/null || true
+    sleep 1
+    (cd "$FRONTEND_DIR" && npm run test:e2e) > "$T6_LOG" 2>&1
+    local status=$?
+    if [ $status -ne 0 ]; then
+        echo -e "${YELLOW}--- E2E Error Details (Last 80 lines) ---${NC}"
+        tail -n 80 "$T6_LOG"
+        echo -e "${YELLOW}------------------------------------------${NC}"
+        echo -e "${RED}❌ t6 E2E Tests Failed${NC} → $T6_LOG"
+        return 1
+    fi
+    echo -e "${GREEN}✅ t6 E2E Tests Passed${NC} → $T6_LOG"
+    tail -n 5 "$T6_LOG"
+}
+
+# --- t7: Full Run (t1-t6) — run all, don't stop on failure, summary report ---
+
+run_t7() {
+    local labels=("t1 Build Test" "t2 Type Check" "t3 Lint" "t4 Unit Tests" "t5 Integration Tests" "t6 E2E Tests")
+    local logs=("$T1_LOG" "$T2_LOG" "$T3_LOG" "$T4_LOG" "$T5_LOG" "$T6_LOG")
+    local funcs=(run_t1 run_t2 run_t3 run_t4 run_t5 run_t6)
     local total=${#funcs[@]}
     local passed=0
     local failed=0
@@ -141,7 +160,7 @@ run_t6() {
 
     # Print summary table
     echo ""
-    echo -e "${BLUE}═══════ Test Summary (t6 Full CI) ═══════${NC}"
+    echo -e "${BLUE}═══════ Test Summary (t7 Full Run) ═══════${NC}"
     for i in "${!labels[@]}"; do
         if [ "${results[$i]}" = "PASS" ]; then
             echo -e "  ${GREEN}✅${NC} ${labels[$i]}  ${GREEN}PASS${NC}"
@@ -149,7 +168,7 @@ run_t6() {
             echo -e "  ${RED}❌${NC} ${labels[$i]}  ${RED}FAIL${NC} → ${logs[$i]}"
         fi
     done
-    echo -e "${BLUE}═════════════════════════════════════════${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════${NC}"
     echo -e "  Result: ${passed}/${total} passed, ${failed}/${total} failed"
     echo ""
 
@@ -162,35 +181,16 @@ run_t6() {
     fi
 }
 
-# --- t7: Preview ---
+# --- preview: Preview (Build + Local Serve) ---
 
-run_t7() {
-    echo -e "${CYAN}👁️  [t7] Preview (Build + Serve)...${NC}"
+run_preview() {
+    echo -e "${CYAN}👁️  [preview] Preview (Build + Serve)...${NC}"
     (cd "$FRONTEND_DIR" && npm run build) > "$T1_LOG" 2>&1
     if [ $? -ne 0 ]; then
         handle_error "Build" "$T1_LOG" || return 1
     fi
     echo -e "${GREEN}✅ Build 完成，啟動 Preview Server...${NC}"
     (cd "$FRONTEND_DIR" && npm run preview)
-}
-
-# --- E2E ---
-
-run_e2e() {
-    echo -e "${CYAN}🎭 E2E Tests (Playwright + Firebase Emulator)...${NC}"
-    lsof -t -i :8080 -i :9099 | xargs kill -9 2>/dev/null || true
-    sleep 1
-    (cd "$FRONTEND_DIR" && npm run test:e2e) > "$E2E_LOG" 2>&1
-    local status=$?
-    if [ $status -ne 0 ]; then
-        echo -e "${YELLOW}--- E2E Error Details (Last 80 lines) ---${NC}"
-        tail -n 80 "$E2E_LOG"
-        echo -e "${YELLOW}------------------------------------------${NC}"
-        echo -e "${RED}❌ E2E Tests Failed${NC} → $E2E_LOG"
-        return 1
-    fi
-    echo -e "${GREEN}✅ E2E Tests Passed${NC} → $E2E_LOG"
-    tail -n 5 "$E2E_LOG"
 }
 
 # --- Targeted single-file (TDD 迭代用) ---
@@ -237,6 +237,20 @@ run_integration_file() {
     return $test_status
 }
 
+run_e2e_file() {
+    local file="$1"
+    if [ -z "$file" ]; then
+        echo -e "${RED}❌ 用法: ./workflow.sh t6-file <FILE_PATH（相對 frontend/）>${NC}"
+        return 1
+    fi
+    INTERACTIVE=false
+    echo -e "${CYAN}🎭 [t6-file] E2E Single File: $file${NC}"
+    lsof -t -i :8080 -i :9099 | xargs kill -9 2>/dev/null || true
+    sleep 1
+    local rel="${file#frontend/}"
+    (cd "$FRONTEND_DIR" && npx playwright test "$rel")
+}
+
 # --- Interactive Menu ---
 
 show_test_menu() {
@@ -251,9 +265,9 @@ show_test_menu() {
     echo -e "t3) Lint (eslint)"
     echo -e "t4) Unit Tests (vitest)"
     echo -e "t5) Integration Tests (Firestore Rules + Emulator)"
-    echo -e "t6) Full CI (t1-t5, no-stop + summary)"
-    echo -e "t7) Preview (Build + Local Serve)"
-    echo -e "e2e) E2E Tests (Playwright + Firebase Emulator)"
+    echo -e "t6) E2E Tests (Playwright + Firebase Emulator)"
+    echo -e "t7) Full Run (t1-t6, no-stop + summary)"
+    echo -e "preview) Preview (Build + Local Serve)"
     echo ""
     echo -e "q) 離開"
     echo ""
@@ -272,9 +286,10 @@ if [ -n "$1" ]; then
         t4-file) run_unit_file "$2" ;;
         t5-file) run_integration_file "$2" ;;
         t6) run_t6 ;;
-        t7) INTERACTIVE=true; run_t7 ;;
-        e2e) run_e2e ;;
-        *) echo -e "${RED}❌ 無效參數: $1${NC}"; echo "用法: ./workflow.sh [t1-t7|e2e|t4-file|t5-file]"; exit 1 ;;
+        t6-file) run_e2e_file "$2" ;;
+        t7) run_t7 ;;
+        preview) INTERACTIVE=true; run_preview ;;
+        *) echo -e "${RED}❌ 無效參數: $1${NC}"; echo "用法: ./workflow.sh [t1-t7|preview|t4-file|t5-file|t6-file]"; exit 1 ;;
     esac
     exit $?
 fi
@@ -291,7 +306,7 @@ while true; do
         t5) run_t5 ;;
         t6) run_t6 ;;
         t7) run_t7 ;;
-        e2e) run_e2e ;;
+        preview) run_preview ;;
         q) exit 0 ;;
         *) echo -e "${RED}無效選項${NC}"; sleep 1 ;;
     esac
