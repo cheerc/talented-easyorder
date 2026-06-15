@@ -1,14 +1,15 @@
 import React from 'react';
 import { fmt } from '../pos-components';
-import type { LedgerTransaction, MergedTransaction } from '../../domain/ledger';
+import type { MergedTransaction } from '../../domain/ledger';
+import type { ReportTransactionView } from '../../domain/transactionViews';
 import { CASHIER_SENTINEL } from '../../store/posStore';
 
 export interface DetailRowProps {
-  tx: LedgerTransaction;
+  tx: ReportTransactionView;
   locked: boolean;
   displayMode: 'merged' | 'original';
-  onEditClick: (t: LedgerTransaction) => void;
-  onDeleteClick: (t: LedgerTransaction) => void;
+  onEditClick: (t: ReportTransactionView) => void;
+  onDeleteClick: (t: ReportTransactionView) => void;
 }
 
 export const DETAIL_ROW_HEIGHT = 40;
