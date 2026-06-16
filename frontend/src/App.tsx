@@ -27,6 +27,7 @@ import { usePosColumnProps } from './hooks/usePosColumnProps';
 import { FirebaseProvider } from './providers/FirebaseProvider';
 import { useFirebase } from './hooks/useFirebase';
 import { AuthGate } from './auth/AuthGate';
+import { POS_DAILY_TX_DISPLAY_LIMIT } from './domain/constants';
 
 function AppContent() {
   const { fb, fbError, access } = useFirebase();
@@ -39,7 +40,7 @@ function AppContent() {
 
   // Ref: #298 — Inline computations previously in useAppState.
   const tx = useMemo(() =>
-    allTx.filter(t => t.businessDate === viewDate).reverse().slice(0, 200),
+    allTx.filter(t => t.businessDate === viewDate).reverse().slice(0, POS_DAILY_TX_DISPLAY_LIMIT),
   [allTx, viewDate]);
   const todayCount = useMemo(() => {
     const defaultBentoOrders = tx.filter(t =>
