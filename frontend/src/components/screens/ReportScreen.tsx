@@ -86,8 +86,10 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
     );
   }, [groups, studentSearch]);
 
-  const hasQueuedRows = filtered.some(t => t.syncStatus === 'queued');
-  const hasFailedConflict = filtered.some(t => t.syncStatus === 'failed' || t.syncStatus === 'conflict');
+  // Ref: #351 — Memoize derived booleans to avoid re-scanning on every render
+  const hasQueuedRows = useMemo(() => filtered.some(t => t.syncStatus === 'queued'), [filtered]);
+  const queuedRowCount = useMemo(() => filtered.filter(t => t.syncStatus === 'queued').length, [filtered]);
+  const hasFailedConflict = useMemo(() => filtered.some(t => t.syncStatus === 'failed' || t.syncStatus === 'conflict'), [filtered]);
 
   const todayStr = useMemo(() => {
     const [, m, d] = viewDate.split('-');
@@ -176,7 +178,7 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
         businessDate={viewDate}
         dateStatus={dateStatus}
         hasQueuedRows={hasQueuedRows}
-        queuedRowCount={filtered.filter(t => t.syncStatus === 'queued').length}
+        queuedRowCount={queuedRowCount}
         hasFailedConflict={hasFailedConflict}
         openingCash={openingCash}
         onClose={handleCashClose}
