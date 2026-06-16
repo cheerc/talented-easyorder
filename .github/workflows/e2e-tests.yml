@@ -67,7 +67,7 @@ jobs:
         run: npm install --global firebase-tools
 
       - name: E2E Tests
-        run: npx firebase emulators:exec --only auth,firestore --project gen-lang-client-0613258198 "npx playwright test"
+        run: npx firebase emulators:exec --only auth,firestore --project ${{ vars.FIREBASE_PROJECT_ID || 'demo-easyorder' }} "npx playwright test"
         working-directory: frontend
 
       - name: Upload Playwright Report (on failure)
