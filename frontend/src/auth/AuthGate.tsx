@@ -9,7 +9,7 @@ export function AuthGate({ auth, db, access, children }: {
   access: OperatorAccess;
   children: ReactNode;
 }) {
-  const domain = import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? 'talented.com.tw';
+  const domain = import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? 'example.com';
 
   if (!access.ok) {
     return (
