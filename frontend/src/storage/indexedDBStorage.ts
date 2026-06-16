@@ -70,7 +70,12 @@ function localStorageStorage(): {
     async getItem(name: string): Promise<StorageValue<unknown> | null> {
       const raw = localStorage.getItem(name);
       if (raw === null) return null;
-      return JSON.parse(raw);
+      try {
+        return JSON.parse(raw);
+      } catch {
+        // Ref: #345 — corrupted localStorage should not crash rehydration
+        return null;
+      }
     },
 
     async setItem(name: string, value: StorageValue<unknown>): Promise<void> {
@@ -103,10 +108,16 @@ export function createIndexedDBStorage(): PersistStorage<unknown> {
 
         const raw = localStorage.getItem(name);
         if (raw === null) return null;
-        const parsed = JSON.parse(raw) as StorageValue<unknown>;
-        await idb.setItem(name, parsed);
-        localStorage.removeItem(name);
-        return parsed;
+        try {
+          const parsed = JSON.parse(raw) as StorageValue<unknown>;
+          await idb.setItem(name, parsed);
+          localStorage.removeItem(name);
+          return parsed;
+        } catch {
+          // Ref: #345 — corrupted localStorage should not crash migration
+          localStorage.removeItem(name);
+          return null;
+        }
       },
       setItem: idb.setItem,
       removeItem: idb.removeItem,
