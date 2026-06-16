@@ -16,6 +16,21 @@ const rulesPath = path.resolve(import.meta.dirname, '../../../../firestore.rules
 const firestoreEmulatorHost =
   process.env.FIRESTORE_EMULATOR_HOST ?? process.env.FIREBASE_FIRESTORE_EMULATOR_ADDRESS;
 
+/**
+ * Ref: #333 — Firestore security rules integration tests.
+ *
+ * These tests require a running Firestore emulator and are automatically
+ * skipped when FIRESTORE_EMULATOR_HOST is not set. This is intentional:
+ * security rules can only be meaningfully tested against the actual rules
+ * engine, not mocks.
+ *
+ * To run locally:
+ *   firebase emulators:start --only firestore
+ *   FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npx vitest run src/firebase/__tests__/firestoreRules.spec.ts
+ *
+ * CI: Add a Firestore emulator service to the CI pipeline to enable these
+ * tests. Until then, they remain skipped (not a code issue, infra gap).
+ */
 const describeOrSkip = firestoreEmulatorHost ? describe : describe.skip;
 
 async function seedOperator(uid: string, email: string, role: 'counter' | 'admin' = 'counter', active = true) {
