@@ -98,7 +98,7 @@ export function createEditActions(
 
       const now = new Date().toISOString();
       const auditEvent = createLedgerAuditEvent({
-        auditEventId: `evt-${Date.now()}`,
+        auditEventId: `evt-${crypto.randomUUID()}`,
         eventType: 'transaction_deleted',
         entityType: 'transaction',
         entityId: id,
@@ -157,7 +157,7 @@ export function createEditActions(
 
       const now = new Date().toISOString();
       const auditEvent = createLedgerAuditEvent({
-        auditEventId: `evt-${Date.now()}`,
+        auditEventId: `evt-${crypto.randomUUID()}`,
         eventType: 'transaction_edited',
         entityType: 'transaction',
         entityId: id,
