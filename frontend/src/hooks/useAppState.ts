@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { POS_DAILY_TX_DISPLAY_LIMIT } from '../domain/constants';
 import {
   useStudents,
   useTransactions,
@@ -48,7 +49,7 @@ export function useAppState(viewDate: string): UseAppStateReturn {
   const { resetData } = useGlobalActions();
 
   const tx = useMemo(() =>
-    allTx.filter(t => t.businessDate === viewDate).reverse().slice(0, 200),
+    allTx.filter(t => t.businessDate === viewDate).reverse().slice(0, POS_DAILY_TX_DISPLAY_LIMIT),
   [allTx, viewDate]);
 
   const todayCount = useMemo(() => {
