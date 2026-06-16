@@ -76,8 +76,10 @@ export function createOrderActions(
       } finally {
         performance.mark(`${markKey}-end`);
         performance.measure('pos-transaction', `${markKey}-start`, `${markKey}-end`);
+        // Ref: #322 — Clear entries to prevent PerformanceEntry buffer leak
         performance.clearMarks(`${markKey}-start`);
         performance.clearMarks(`${markKey}-end`);
+        performance.clearMeasures('pos-transaction');
       }
     },
   };

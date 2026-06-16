@@ -20,6 +20,11 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
 
   const orderedTodayCount = useActiveOrderCount(picked?.studentId ?? null, viewDate);
   const mergedTx = useMergedTransactions(tx);
+  // Ref: #323 — Memoize mapped array to avoid defeating React.memo on RecentStrip
+  const recentStripData = useMemo(
+    () => mergedTx.map((t, i) => ({ ...t, uid: i + '-' + t.createdAt })),
+    [mergedTx],
+  );
 
   const [activeIdx, setActiveIdx] = useState(0);
 
@@ -152,7 +157,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
       </div>
       <div className="col-side">
         <RecentStrip
-          recent={mergedTx.map((t, i) => ({ ...t, uid: i + '-' + t.createdAt }))}
+          recent={recentStripData}
           onItemClick={!isHistorical && dateStatus !== 'closed' ? (sid) => selectStudent(sid, 'manual') : undefined}
         />
       </div>

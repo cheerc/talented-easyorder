@@ -1,0 +1,143 @@
+/* ============ RESTORE ============ */
+.restore {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.restore-card {
+  max-width: 580px;
+  width: 100%;
+  text-align: center;
+  padding: 40px;
+}
+
+.rest-icon {
+  font-size: 54px;
+  color: var(--ink-3);
+}
+
+.rest-h {
+  font-size: 24px;
+  font-weight: 600;
+  margin-top: 14px;
+  letter-spacing: -0.01em;
+}
+
+.rest-sub {
+  font-size: 14px;
+  color: var(--ink-2);
+  margin-top: 10px;
+  line-height: 1.6;
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.rest-meta {
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin: 24px 0;
+  text-align: left;
+}
+
+.rest-meta-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.rest-meta-row b,
+.rest-meta-row .mono {
+  color: var(--ink);
+}
+
+.rest-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rest-warn {
+  padding: 12px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.rest-btns {
+  display: flex;
+  gap: 10px;
+}
+
+.rest-prog-bar {
+  height: 8px;
+  background: var(--line-2);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.rest-prog-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width .1s linear;
+}
+
+.rest-prog-txt {
+  margin-top: 10px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.rest-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.rest-done-tick {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+}
+
+.rest-done-h {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.rest-done-sub {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-bottom: 14px;
+}
+
+/* footer hint strip */
+.foot-hints {
+  display: flex;
+  gap: 14px;
+  padding: 10px 24px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 12px;
+  color: var(--ink-3);
+  justify-content: center;
+}
+
+.foot-hints .grp {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+

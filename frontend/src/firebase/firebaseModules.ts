@@ -1,3 +1,10 @@
+/**
+ * Ref: #321 — Firebase SDK lazy-loading module.
+ * Dynamic import() defers the 349KB Firestore SDK and 125KB Auth SDK
+ * until actually needed (after app shell renders). Combined with
+ * manualChunks in vite.config.ts, this ensures the SDKs are in
+ * separate chunks that load on demand, not at initial page load.
+ */
 let _authMod: typeof import('firebase/auth') | null = null;
 let _fsMod: typeof import('firebase/firestore') | null = null;
 
