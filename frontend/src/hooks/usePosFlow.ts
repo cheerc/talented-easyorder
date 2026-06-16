@@ -1,3 +1,25 @@
+/**
+ * Ref: #318 — Hook composition chain documentation.
+ *
+ * usePosFlow is the central orchestrator for POS flow state. It composes
+ * 4 lower-level hooks into a unified interface:
+ *
+ * ```
+ * App (or usePosColumnProps builder)
+ *   └─ usePosFlow (L2 — flow state machine + composition)
+ *       ├─ useExpenseFlow     (L3 — expense mode actions)
+ *       ├─ useScannerInput    (L3 — barcode scanner integration)
+ *       ├─ useIpadHandoff     (L3 — iPad handoff listener)
+ *       └─ useTransactionCommit (L3 — transaction commit + balance)
+ * ```
+ *
+ * Each L3 hook receives the flow `dispatch` function and returns
+ * domain-specific callbacks. usePosFlow merges them into a flat return.
+ *
+ * This composition is intentional: each L3 hook encapsulates a distinct
+ * concern (expense, scanner, iPad, commit) and can be tested independently.
+ * Flattening would couple unrelated concerns.
+ */
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import {
   createInitialPosFlowState,

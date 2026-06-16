@@ -1,3 +1,8 @@
+/**
+ * Ref: #318 — L3 hook in composition chain (see usePosFlow.ts for diagram).
+ * Encapsulates transaction commit logic: balance checks, processTransaction call,
+ * and post-commit flow state reset.
+ */
 import { useCallback, useEffect, useRef } from 'react';
 import type { PosFlowEvent, PosFlowState, PosMode } from '../domain/posFlow';
 import { toPosSourceDevice } from '../domain/posFlow';
