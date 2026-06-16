@@ -1,4 +1,4 @@
-import type { Firestore, Query, Unsubscribe } from 'firebase/firestore';
+import type { Query, Unsubscribe } from 'firebase/firestore';
 import { getFirestoreMod } from './firebaseModules';
 import { emitError } from '../errors/errorBus';
 
@@ -9,9 +9,7 @@ export interface RealtimeHandlers {
   onError: (error: Error) => void;
 }
 
-function pendingCount(snapshot: { docs: Array<{ metadata: { hasPendingWrites: boolean } }> }): number {
-  return snapshot.docs.filter(doc => doc.metadata.hasPendingWrites).length;
-}
+
 
 /**
  * Ref: #343 — Transient Firestore error codes that warrant a resubscribe attempt.
@@ -86,54 +84,3 @@ export function retryableOnSnapshot(
   };
 }
 
-export function subscribeBusinessDate(db: Firestore, businessDate: string, handlers: RealtimeHandlers): Unsubscribe {
-  const { collection, orderBy, query, where } = getFirestoreMod();
-  const unsubscribers: Unsubscribe[] = [];
-
-  let batchPending = false;
-  const pending: Array<() => void> = [];
-
-  function scheduleBatch(fn: () => void) {
-    pending.push(fn);
-    if (!batchPending) {
-      batchPending = true;
-      queueMicrotask(() => {
-        batchPending = false;
-        const calls = pending.splice(0);
-        for (const call of calls) call();
-      });
-    }
-  }
-
-  unsubscribers.push(retryableOnSnapshot(
-    query(collection(db, 'students'), orderBy('displayName')),
-    { includeMetadataChanges: true },
-    snapshot => {
-      const s = snapshot as { docs: Array<{ id: string; data: () => Record<string, unknown>; metadata: { hasPendingWrites: boolean } }>; metadata: { fromCache: boolean } };
-      scheduleBatch(() => handlers.onStudents(s.docs.map(doc => ({ id: doc.id, ...doc.data() })), pendingCount(s), s.metadata.fromCache));
-    },
-    error => handlers.onError(error),
-  ));
-
-  unsubscribers.push(retryableOnSnapshot(
-    query(collection(db, 'transactions'), where('businessDate', '==', businessDate), orderBy('createdAt', 'desc')),
-    { includeMetadataChanges: true },
-    snapshot => {
-      const s = snapshot as { docs: Array<{ id: string; data: () => Record<string, unknown>; metadata: { hasPendingWrites: boolean } }>; metadata: { fromCache: boolean } };
-      scheduleBatch(() => handlers.onTransactions(s.docs.map(doc => ({ id: doc.id, ...doc.data() })), pendingCount(s), s.metadata.fromCache));
-    },
-    error => handlers.onError(error),
-  ));
-
-  unsubscribers.push(retryableOnSnapshot(
-    query(collection(db, 'daily_settlements'), where('businessDate', '==', businessDate)),
-    { includeMetadataChanges: true },
-    snapshot => {
-      const s = snapshot as { docs: Array<{ id: string; data: () => Record<string, unknown>; metadata: { hasPendingWrites: boolean } }>; metadata: { fromCache: boolean } };
-      scheduleBatch(() => handlers.onSettlements(s.docs.map(doc => ({ id: doc.id, ...doc.data() })), pendingCount(s), s.metadata.fromCache));
-    },
-    error => handlers.onError(error),
-  ));
-
-  return () => unsubscribers.forEach(unsubscribe => unsubscribe());
-}
