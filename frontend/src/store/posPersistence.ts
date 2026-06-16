@@ -2,7 +2,7 @@ import type { PersistOptions } from 'zustand/middleware';
 import type { PosState } from './posTypes';
 import { migratePersistedState } from '../storage/migration';
 import { validatePersistedState } from '../storage/posStateValidator';
-import { appendErrorLog } from '../errors/errorLogger';
+import { appendErrorLog, clearErrorLog } from '../errors/errorLogger';
 import { INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS } from '../mocks/initialData';
 import { createIndexedDBStorage } from '../storage/indexedDBStorage';
 
@@ -34,6 +34,8 @@ export async function clearSensitiveData(): Promise<void> {
   try {
     // Clear localStorage fallback
     localStorage.removeItem(POS_STORAGE_KEY);
+    // Ref: #315 — Clear error log on signOut (may contain sensitive context)
+    clearErrorLog();
   } catch { /* best-effort */ }
 }
 

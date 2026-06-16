@@ -6,12 +6,17 @@ import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useMenu, useMenuActions, useStudents, useGlobalActions, useSessionActions } from '../../store/selectors';
 import { useCashClose } from '../../store/derived/useCashClose';
 import { useTweaks } from '../../hooks/useTweaks';
+import { useFirebase } from '../../hooks/useFirebase';
+import { SYSTEM_OPERATOR_ID } from '../../domain/operatorId';
 
 interface AdminScreenProps {
   viewDate: string;
 }
 export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminScreenProps) {
   const { todayMenu, vendors } = useMenu();
+  const { access } = useFirebase();
+  // Ref: #336 — Real operator UID for audit trail
+  const operatorUid = (access.ok && access.profile?.uid) ? access.profile.uid : SYSTEM_OPERATOR_ID;
   const { setTodayMenu } = useMenuActions();
   const { students } = useStudents();
   const { resetData } = useGlobalActions();
@@ -22,7 +27,7 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
 
   // Wrapper callbacks (moved from AppRouter — reviewer finding #1)
   const onOpeningCashChange = useCallback((amount: number) => {
-    openCashSession({ businessDate: viewDate, openingCash: amount, operatorId: 'admin', openedAt: new Date().toISOString() });
+    openCashSession({ businessDate: viewDate, openingCash: amount, operatorId: operatorUid, openedAt: new Date().toISOString() });
   }, [viewDate, openCashSession]);
 
   const onUpdateOpeningCash = useCallback((amount: number) => {

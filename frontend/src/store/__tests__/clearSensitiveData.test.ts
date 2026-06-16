@@ -31,4 +31,14 @@ describe('clearSensitiveData (#286)', () => {
     expect(deleteSpy).toHaveBeenCalledWith('easyorder-crash-draft');
     deleteSpy.mockRestore();
   });
+
+  // Ref: #315 — Error log must be cleared on signOut
+  it('clears error log from localStorage on signOut', async () => {
+    localStorage.setItem('easyorder-error-log', JSON.stringify([{ id: 'e1', message: 'test error' }]));
+    expect(localStorage.getItem('easyorder-error-log')).not.toBeNull();
+
+    await clearSensitiveData();
+
+    expect(localStorage.getItem('easyorder-error-log')).toBeNull();
+  });
 });
