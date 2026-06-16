@@ -21,6 +21,8 @@ export function useCrashDraftRecovery({
     (async () => {
       const draft = await loadCrashDraft();
       if (cancelled || !draft) return;
+      // Ref: #317 — getState() is correct here: imperative read inside async callback,
+      // not a subscription. Using a selector hook is invalid inside callbacks.
       const students = usePosStore.getState().students;
       const student = students.find(s => s.studentId === draft.intent.studentId);
       if (!student) {

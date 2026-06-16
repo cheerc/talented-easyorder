@@ -38,6 +38,7 @@ export function useCommitLifecycle({
         setSyncing(false);
         setLastSync(new Date().toLocaleTimeString('en-US', { hour12: false }).slice(0, 5));
       }, 800);
+      // Ref: #317 — getState() is correct: imperative read inside effect, not a subscription.
       const latestTx = usePosStore.getState().transactions[0];
       if (latestTx && latestTx.syncStatus === 'local') lastCommittedTxIdRef.current = latestTx.transactionId;
       clearCrashDraft();
