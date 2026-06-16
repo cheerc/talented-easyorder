@@ -86,7 +86,9 @@ export function retryableOnSnapshot(
   };
 }
 
-export function subscribeBusinessDate(db: Firestore, businessDate: string, handlers: RealtimeHandlers): Unsubscribe {
+// Ref: #348 — Not exported: currently only used internally by this module.
+// Will be wired into the app lifecycle when real-time subscriptions are integrated.
+function subscribeBusinessDate(db: Firestore, businessDate: string, handlers: RealtimeHandlers): Unsubscribe {
   const { collection, orderBy, query, where } = getFirestoreMod();
   const unsubscribers: Unsubscribe[] = [];
 
