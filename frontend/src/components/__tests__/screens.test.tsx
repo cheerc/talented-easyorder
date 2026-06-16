@@ -67,13 +67,16 @@ import { AdminScreen } from '../screens/AdminScreen';
 import { VendorsScreen } from '../screens/VendorsScreen';
 import { BackupScreen } from '../screens/BackupScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
+import { FirebaseProvider } from '../../providers/FirebaseProvider';
 
 describe('ReportScreen', () => {
   it('renders with mock store', () => {
     const { container } = render(
-      <ReportScreen
-        viewDate="2026-05-29"
-      />
+      <FirebaseProvider>
+        <ReportScreen
+          viewDate="2026-05-29"
+        />
+      </FirebaseProvider>
     );
     expect(container).toBeTruthy();
   });

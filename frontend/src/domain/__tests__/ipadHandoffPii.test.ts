@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { writeHandoffIntent, readHandoffIntent, subscribeHandoffChannel } from '../ipadHandoff';
 import type { IpadHandoffMessage } from '../ipadHandoff';
 
