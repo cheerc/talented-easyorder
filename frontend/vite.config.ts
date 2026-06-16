@@ -55,6 +55,9 @@ export default defineConfig(async () => ({
           if (id.includes('node_modules/firebase/auth')) {
             return 'vendor-firebase-auth';
           }
+          // Ref: #321 — Firestore SDK (349KB) isolated into its own chunk.
+          // Already lazy-loaded via dynamic import() in firebaseModules.ts.
+          // This manualChunks entry ensures Vite doesn't merge it into the main bundle.
           if (id.includes('node_modules/firebase/firestore')) {
             return 'vendor-firebase-firestore';
           }
