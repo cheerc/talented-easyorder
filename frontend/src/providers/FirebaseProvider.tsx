@@ -29,7 +29,13 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!fb?.auth || !fb?.db) return;
-    return subscribeOperatorAccess(fb.auth, fb.db, setAccess);
+    // Ref: #320 — Guard against stale setAccess after unmount
+    let cancelled = false;
+    const guardedSetAccess = (a: OperatorAccess) => {
+      if (!cancelled) setAccess(a);
+    };
+    const unsub = subscribeOperatorAccess(fb.auth, fb.db, guardedSetAccess);
+    return () => { cancelled = true; unsub(); };
   }, [fb?.auth, fb?.db]);
 
   return (

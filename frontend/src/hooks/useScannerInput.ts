@@ -1,3 +1,8 @@
+/**
+ * Ref: #318 — L3 hook in composition chain (see usePosFlow.ts for diagram).
+ * Encapsulates barcode scanner input handling: converts raw scanner events
+ * into PosFlowEvent dispatches for student lookup.
+ */
 import { useCallback } from 'react';
 import type { PosFlowEvent } from '../domain/posFlow';
 import type { ScannerInput } from '../domain/posSearch';

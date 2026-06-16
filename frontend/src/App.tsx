@@ -23,7 +23,7 @@ import { useFlashData } from './hooks/useFlashData';
 import { useFocusSync } from './hooks/useFocusSync';
 import { useCancelDialog } from './hooks/useCancelDialog';
 import { useTweaks } from './hooks/useTweaks';
-import { buildPosColumnProps } from './hooks/usePosColumnProps';
+import { usePosColumnProps } from './hooks/usePosColumnProps';
 import { FirebaseProvider } from './providers/FirebaseProvider';
 import { useFirebase } from './hooks/useFirebase';
 import { AuthGate } from './auth/AuthGate';
@@ -131,30 +131,50 @@ function AppContent() {
     isDialogOpen: cancelDialogOpen || noOrderDialogOpen,
   });
 
-  const posColumnProps = useMemo(() => buildPosColumnProps({
-    state, isHistorical, dateStatus, viewDate, systemDate, setViewDate,
-    picked, currentMode, currentPaidAmount, allTx, students, selectStudent,
-    expenseProps,
-    updateExpenseAmount, confirmExpenseAmount, selectExpenseDirection, selectExpenseReason,
-    updateExpenseNote, confirmExpenseNote,
-    setPaidAmountText, handleConfirm, cancelFlow, changeMode, setFocusZone, focusZone, openCancelConfirm,
-    setSearchText, searchFocusKey, hasFlash,
-    crashDraftRestored: crashDraftRestoredState, setCrashDraftRestored: setCrashDraftRestoredState,
-    todayMenu, todayCount, vendors, enterExpenseMode, tweaks,
-    tx, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
+  // Ref: #316 — Replaced inline 30-dep useMemo with usePosColumnProps hook.
+  // Each useMemo group stabilizes a logical concern; the hook merges them.
+  const dateArgs = useMemo(() => ({
+    isHistorical, dateStatus, viewDate, systemDate, setViewDate,
+  }), [isHistorical, dateStatus, viewDate, systemDate, setViewDate]);
+
+  const flowArgs = useMemo(() => ({
+    state, picked, currentMode, currentPaidAmount, selectStudent,
+    setPaidAmountText, handleConfirm, cancelFlow, changeMode, openCancelConfirm,
     handleDeleteOrder,
     onViewHistory: () => { setReportStudentFilter(picked!.studentId); setTab('report'); },
-  }), [state, isHistorical, dateStatus, viewDate, systemDate, setViewDate,
-    picked, currentMode, currentPaidAmount, allTx, students, selectStudent,
-    expenseProps,
-    updateExpenseAmount, confirmExpenseAmount, selectExpenseDirection, selectExpenseReason,
-    updateExpenseNote, confirmExpenseNote,
-    setPaidAmountText, handleConfirm, cancelFlow, changeMode, setFocusZone, focusZone, openCancelConfirm,
-    setSearchText, searchFocusKey, hasFlash,
-    crashDraftRestoredState, setCrashDraftRestoredState,
-    todayMenu, todayCount, vendors, enterExpenseMode, tweaks,
-    tx, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
+  }), [state, picked, currentMode, currentPaidAmount, selectStudent,
+    setPaidAmountText, handleConfirm, cancelFlow, changeMode, openCancelConfirm,
     handleDeleteOrder]);
+
+  const expenseArgs = useMemo(() => ({
+    expenseProps, enterExpenseMode,
+    updateExpenseAmount, confirmExpenseAmount, selectExpenseDirection,
+    selectExpenseReason, updateExpenseNote, confirmExpenseNote,
+  }), [expenseProps, enterExpenseMode,
+    updateExpenseAmount, confirmExpenseAmount, selectExpenseDirection,
+    selectExpenseReason, updateExpenseNote, confirmExpenseNote]);
+
+  const uiArgs = useMemo(() => ({
+    setFocusZone, focusZone, hasFlash,
+    crashDraftRestored: crashDraftRestoredState,
+    setCrashDraftRestored: setCrashDraftRestoredState,
+  }), [setFocusZone, focusZone, hasFlash, crashDraftRestoredState, setCrashDraftRestoredState]);
+
+  const searchArgs = useMemo(() => ({
+    setSearchText, searchFocusKey,
+  }), [setSearchText, searchFocusKey]);
+
+  const menuArgs = useMemo(() => ({
+    allTx, students, todayMenu, todayCount, vendors, tx, tweaks,
+  }), [allTx, students, todayMenu, todayCount, vendors, tx, tweaks]);
+
+  const pricingArgs = useMemo(() => ({
+    priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
+  }), [priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel]);
+
+  const posColumnProps = usePosColumnProps(
+    dateArgs, flowArgs, expenseArgs, uiArgs, searchArgs, menuArgs, pricingArgs,
+  );
 
   if (fbError) {
     return <AppCrashPage />;

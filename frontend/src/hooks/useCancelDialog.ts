@@ -26,6 +26,7 @@ export function useCancelDialog(args: {
 
   const handleDeleteOrder = useCallback(() => {
     if (!picked) return;
+    // Ref: #317 — getState() is correct: imperative read inside callback, not a subscription.
     const store = usePosStore.getState();
     store.deleteOrderWithRefundCheck(
       store.transactions.find(t =>
