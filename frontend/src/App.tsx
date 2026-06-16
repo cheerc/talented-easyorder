@@ -25,6 +25,7 @@ import { useCancelDialog } from './hooks/useCancelDialog';
 import { useTweaks } from './hooks/useTweaks';
 import { usePosColumnProps } from './hooks/usePosColumnProps';
 import { FirebaseProvider } from './providers/FirebaseProvider';
+import { isConfigured as isFirebaseConfigured } from './firebase/firebaseApp';
 import { useFirebase } from './hooks/useFirebase';
 import { AuthGate } from './auth/AuthGate';
 import { POS_DAILY_TX_DISPLAY_LIMIT } from './domain/constants';
@@ -180,13 +181,10 @@ function AppContent() {
   if (fbError) {
     return <AppCrashPage />;
   }
-  if (!fb) {
-    return <div className="app-loading" aria-label="載入中">載入中...</div>;
-  }
 
-  return (
-    <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => appendErrorLog({ source: 'react', message: e.message, stack: e.stack })}>
-    <AuthGate auth={fb.auth} db={fb.db} access={access}>
+  // Ref: #362 — Firebase not configured (no .env): run in local-only mode,
+  // bypassing AuthGate. fb will remain null with no fbError.
+  const mainContent = (
     <MainLayout
       tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync}
       todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate}
@@ -209,6 +207,26 @@ function AppContent() {
         posColumnProps={posColumnProps}
       />
     </MainLayout>
+  );
+
+  if (!fb && isFirebaseConfigured) {
+    // Firebase configured but init pending — show loading
+    return <div className="app-loading" aria-label="載入中">載入中...</div>;
+  }
+
+  if (!fb) {
+    // Ref: #362 — Firebase not configured (no .env): local-only mode
+    return (
+      <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => appendErrorLog({ source: 'react', message: e.message, stack: e.stack })}>
+      {mainContent}
+      </ErrorBoundary>
+    );
+  }
+
+  return (
+    <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => appendErrorLog({ source: 'react', message: e.message, stack: e.stack })}>
+    <AuthGate auth={fb.auth} db={fb.db} access={access}>
+    {mainContent}
     </AuthGate>
     </ErrorBoundary>
   );

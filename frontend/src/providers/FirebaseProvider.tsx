@@ -2,7 +2,7 @@
 // into a reusable context provider. Ref: #265
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
-import { ensureFirebaseInitialized, type FirebaseServices } from '../firebase/firebaseApp';
+import { ensureFirebaseInitialized, isFirebaseConfigured, type FirebaseServices, type FirebaseEnv } from '../firebase/firebaseApp';
 import { subscribeOperatorAccess, type OperatorAccess } from '../firebase/authService';
 
 interface FirebaseContextValue {
@@ -19,6 +19,10 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   const [access, setAccess] = useState<OperatorAccess>({ ok: false, reason: 'signed_out' });
 
   useEffect(() => {
+    // Ref: #362 — Skip Firebase init when env vars are absent.
+    // fb=null + fbError=null = "not configured" (local-only mode).
+    if (!isFirebaseConfigured(import.meta.env as FirebaseEnv)) return;
+
     let cancelled = false;
     ensureFirebaseInitialized().then(
       services => { if (!cancelled) setFb(services); },
