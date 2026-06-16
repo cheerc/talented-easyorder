@@ -20,7 +20,7 @@ export function isValidOperatorDoc(data: unknown): data is OperatorDocData {
   return true;
 }
 
-const ALLOWED_DOMAIN = import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? 'talented.com.tw';
+const ALLOWED_DOMAIN = import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? 'example.com';
 
 export interface OperatorProfile {
   uid: string;
