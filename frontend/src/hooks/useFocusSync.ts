@@ -1,6 +1,12 @@
 import { useEffect } from 'react';
 import type { PosFlowState } from '../domain/posFlow';
 
+/**
+ * Ref: #328 — No cleanup needed: this effect only calls React setState
+ * functions and HTMLElement.blur(). There are no subscriptions, event
+ * listeners, or timers to clean up on unmount.
+ */
+
 export function useFocusSync(
   state: PosFlowState,
   tab: string,
