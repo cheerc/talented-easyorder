@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 
 // Mock Firebase modules before importing FirebaseProvider
@@ -25,12 +25,12 @@ describe('#320 — FirebaseProvider cleanup race', () => {
 
   it('does not call setAccess after unmount (cancelled flag)', async () => {
     // ensureFirebaseInitialized resolves with mock services
-    const mockAuth = {} as any;
-    const mockDb = {} as any;
-    mockEnsure.mockResolvedValue({ auth: mockAuth, db: mockDb, app: {} as any });
+    const mockAuth = {} as Record<string, unknown>;
+    const mockDb = {} as Record<string, unknown>;
+    mockEnsure.mockResolvedValue({ auth: mockAuth, db: mockDb, app: {} as Record<string, unknown> } as ReturnType<typeof ensureFirebaseInitialized> extends Promise<infer T> ? T : never);
 
     // Capture the callback passed to subscribeOperatorAccess
-    let capturedCallback: ((a: any) => void) | null = null;
+    let capturedCallback: ((a: Record<string, unknown>) => void) | null = null;
     const mockUnsub = vi.fn();
     mockSubscribe.mockImplementation((_auth, _db, cb) => {
       capturedCallback = cb;
