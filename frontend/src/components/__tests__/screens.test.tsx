@@ -85,7 +85,9 @@ describe('ReportScreen', () => {
 describe('AdminScreen', () => {
   it('renders settings card', () => {
     const { container } = render(
-      <AdminScreen viewDate="2026-05-29" />
+      <FirebaseProvider>
+        <AdminScreen viewDate="2026-05-29" />
+      </FirebaseProvider>
     );
     expect(container.textContent).toContain('今日設定');
   });
