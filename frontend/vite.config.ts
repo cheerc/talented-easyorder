@@ -38,6 +38,17 @@ export default defineConfig(async () => ({
   plugins: [
     react(),
     await createPwaPlugin(),
+    // Ref: #361 — Strip CSP meta tag in dev mode so Vite's inline
+    // React Refresh script is not blocked by script-src 'self'.
+    {
+      name: 'strip-csp-dev',
+      transformIndexHtml(html, ctx) {
+        if (ctx.server) {
+          return html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, '');
+        }
+        return html;
+      },
+    },
   ],
   build: {
     rollupOptions: {

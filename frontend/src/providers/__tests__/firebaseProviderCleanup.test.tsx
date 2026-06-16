@@ -4,6 +4,7 @@ import { renderHook, act } from '@testing-library/react';
 // Mock Firebase modules before importing FirebaseProvider
 vi.mock('../../firebase/firebaseApp', () => ({
   ensureFirebaseInitialized: vi.fn(),
+  isFirebaseConfigured: vi.fn().mockReturnValue(true),
 }));
 vi.mock('../../firebase/authService', () => ({
   subscribeOperatorAccess: vi.fn(),

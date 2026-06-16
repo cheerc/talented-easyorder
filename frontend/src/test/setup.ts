@@ -108,9 +108,9 @@ vi.mock('../firebase/firebaseApp', () => ({
   ensureFirebaseInitialized: () => Promise.resolve(mockServices),
   readFirebaseConfig: () => ({}),
   getFirebaseConfigState: () => ({ configured: false, error: 'Mocked config' }),
-  isFirebaseConfigured: () => false,
+  isFirebaseConfigured: () => true,
   firebaseConfigState: { configured: false, error: 'Mocked config' },
-  isConfigured: false,
+  isConfigured: true,
 }));
 
 vi.mock('../firebase/authService', () => ({

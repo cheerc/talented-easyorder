@@ -6,16 +6,18 @@ import React from 'react';
 // Mock Firebase modules before importing
 vi.mock('../../firebase/firebaseApp', () => ({
   ensureFirebaseInitialized: vi.fn(),
+  isFirebaseConfigured: vi.fn(),
 }));
 vi.mock('../../firebase/authService', () => ({
   subscribeOperatorAccess: vi.fn(),
 }));
 
 import { FirebaseProvider, useFirebase } from '../FirebaseProvider';
-import { ensureFirebaseInitialized } from '../../firebase/firebaseApp';
+import { ensureFirebaseInitialized, isFirebaseConfigured } from '../../firebase/firebaseApp';
 import { subscribeOperatorAccess } from '../../firebase/authService';
 
 const mockEnsure = vi.mocked(ensureFirebaseInitialized);
+const mockIsConfigured = vi.mocked(isFirebaseConfigured);
 const mockSubscribe = vi.mocked(subscribeOperatorAccess);
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -25,6 +27,8 @@ function wrapper({ children }: { children: ReactNode }) {
 describe('#331 — FirebaseProvider lifecycle tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: Firebase is configured
+    mockIsConfigured.mockReturnValue(true);
   });
 
   it('provides initial state: fb=null, fbError=null, access=signed_out', () => {
@@ -106,5 +110,25 @@ describe('#331 — FirebaseProvider lifecycle tests', () => {
       renderHook(() => useFirebase());
     }).toThrow('useFirebase must be used within FirebaseProvider');
     spy.mockRestore();
+  });
+});
+
+describe('#362 — FirebaseProvider skips init when not configured', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('keeps fb=null and fbError=null without calling ensureFirebaseInitialized', async () => {
+    mockIsConfigured.mockReturnValue(false);
+
+    const { result } = renderHook(() => useFirebase(), { wrapper });
+
+    // Wait a tick to ensure useEffect has run
+    await act(async () => {});
+
+    expect(result.current.fb).toBeNull();
+    expect(result.current.fbError).toBeNull();
+    expect(result.current.access).toEqual({ ok: false, reason: 'signed_out' });
+    expect(mockEnsure).not.toHaveBeenCalled();
   });
 });
