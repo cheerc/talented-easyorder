@@ -14,6 +14,8 @@ import { useSessionActions, useTransactionActions, useMenu } from '../../store/s
 import { useLedgerReport } from '../../store/derived/useLedgerReport';
 import { useCashClose } from '../../store/derived/useCashClose';
 import { useLedgerExport } from '../../store/derived/useLedgerExport';
+import { useFirebase } from '../../hooks/useFirebase';
+import { SYSTEM_OPERATOR_ID } from '../../domain/operatorId';
 
 interface ReportScreenProps {
   viewDate: string;
@@ -22,6 +24,9 @@ interface ReportScreenProps {
 }
 export const ReportScreen = React.memo(function ReportScreen({ viewDate, studentFilter, onClearStudentFilter }: ReportScreenProps) {
   const { todayMenu } = useMenu();
+  const { access } = useFirebase();
+  // Ref: #310 — Real operator UID for audit trail
+  const operatorUid = (access.ok && access.profile?.uid) ? access.profile.uid : SYSTEM_OPERATOR_ID;
   const [dateRange, setDateRange] = useState<LedgerDateRangeKind>('today');
   const [displayMode, setDisplayMode] = useState<'merged' | 'original'>('merged');
   const [customStart, setCustomStart] = useState(viewDate);
@@ -34,8 +39,8 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
   const { closeBusinessDate, reopenBusinessDate } = useSessionActions();
   const { deleteOrderWithRefundCheck, deleteTransaction, editTransaction } = useTransactionActions();
   const handleEditSave = useCallback((transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }) => {
-    editTransaction(transactionId, updates);
-  }, [editTransaction]);
+    editTransaction(transactionId, updates, operatorUid);
+  }, [editTransaction, operatorUid]);
   const { dateStatus, openingCash } = useCashClose(viewDate);
 
   const { filtered, totals, groups } = useLedgerReport({
@@ -107,7 +112,7 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
 
   const handleDeleteClick = (t: ReportTransactionView) => {
     if (t.type === 'order') {
-      deleteOrderWithRefundCheck(t.transactionId);
+      deleteOrderWithRefundCheck(t.transactionId, operatorUid);
     } else {
       deleteTransaction(t.transactionId);
     }
@@ -115,14 +120,14 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
 
   const handleCashClose = (countedCash: number, note: string) => {
     try {
-      closeBusinessDate({ businessDate: viewDate, countedCash, note, queuedSettlementAccepted: true, operatorId: 'op-report' });
+      closeBusinessDate({ businessDate: viewDate, countedCash, note, queuedSettlementAccepted: true, operatorId: operatorUid });
     } catch (err) {
       emitError({ source: 'settlement', message: 'closeBusinessDate failed: ' + String(err) });
     }
   };
 
   const handleReopen = (reason: string) => {
-    reopenBusinessDate({ businessDate: viewDate, reason, operatorId: 'op-report' });
+    reopenBusinessDate({ businessDate: viewDate, reason, operatorId: operatorUid });
     setShowReopen(false);
   };
 

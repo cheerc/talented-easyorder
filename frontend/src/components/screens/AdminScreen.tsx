@@ -47,7 +47,8 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
   const isClosed = dateStatus === 'closed';
   const save = () => {
     const n = Number(price);
-    if (!Number.isSafeInteger(n) || n <= 0) return;
+    // Ref: #311 — Explicit NaN/Infinity guard on financial input
+    if (!Number.isFinite(n) || !Number.isSafeInteger(n) || n <= 0) return;
     setTodayMenu({ ...todayMenu, itemName: name, price: n, vendorNameSnapshot: vendor });
   };
 
@@ -59,7 +60,8 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
 
   const doSaveOpeningCash = () => {
     const n = Number(openingCashDraft);
-    if (!Number.isSafeInteger(n) || n < 0) return;
+    // Ref: #311 — Explicit NaN/Infinity guard on financial input
+    if (!Number.isFinite(n) || !Number.isSafeInteger(n) || n < 0) return;
     if (hasCashSession) {
       onUpdateOpeningCash(n);
     } else {
@@ -73,7 +75,8 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
 
   const handleSaveOpeningCash = () => {
     const n = Number(openingCashDraft);
-    if (!Number.isSafeInteger(n) || n < 0) return;
+    // Ref: #311 — Explicit NaN/Infinity guard on financial input
+    if (!Number.isFinite(n) || !Number.isSafeInteger(n) || n < 0) return;
     if (n === openingCash) return;
     setShowOpeningCashConfirm(true);
   };
