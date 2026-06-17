@@ -110,7 +110,7 @@ describe('pcPosFlow integration — keyboard flow', () => {
     await user.clear(screen.getByLabelText('價格'));
     await user.type(screen.getByLabelText('價格'), '110');
 
-    expect(screen.getByText(/110/)).toBeTruthy();
+    expect(screen.getAllByText(/110/).length).toBeGreaterThan(0);
   });
 
   it('prevents submitting empty or $0 payments in payment mode', async () => {

@@ -33,14 +33,16 @@ describe('CustomerCard', () => {
   });
 
   it('displays positive balance without warning', () => {
-    renderCard();
+    const { container } = renderCard();
     // $500 shown
-    expect(screen.getByText(/500/)).toBeDefined();
+    expect(container.querySelector('.bal-num')?.textContent).toContain('500');
   });
 
   it('shows warning styling for negative balance', () => {
-    renderCard({ student: { studentId: 's1', displayName: 'B', currentBalance: -100 } });
-    expect(screen.getByText(/100/)).toBeDefined();
+    const { container } = renderCard({ student: { studentId: 's1', displayName: 'B', currentBalance: -100 } });
+    const balNum = container.querySelector('.bal-num');
+    expect(balNum?.textContent).toContain('100');
+    expect(balNum?.className).toContain('warn');
   });
 
   it('shows ordered-today warning when orderedTodayCount > 0', () => {
@@ -100,5 +102,42 @@ describe('CustomerCard', () => {
     expect(thirdItem.querySelector('.bill-label')?.textContent).toBe('預計結帳後餘額');
     expect(thirdItem.querySelector('.bill-val')?.textContent).toBe('$130');
     expect(thirdItem.querySelector('.bill-val')?.className).not.toContain('neg');
+  });
+
+  it('renders redesigned 4-line transaction preview in order mode', () => {
+    const { container } = renderCard({
+      mode: 'order',
+      student: { studentId: 's1', displayName: '王小明', currentBalance: 500 },
+      todayMenu: { itemName: '排骨便當', price: 90, vendorNameSnapshot: 'A' },
+      payAmount: '100',
+    });
+
+    const billItems = container.querySelectorAll('.bill-item');
+    expect(billItems).toHaveLength(4);
+
+    // 1st item: 目前帳戶餘額
+    const firstItem = billItems[0];
+    expect(firstItem.querySelector('.bill-label')?.textContent).toBe('目前帳戶餘額');
+    expect(firstItem.querySelector('.bill-val')?.textContent).toBe('$500');
+    expect(firstItem.querySelector('.bill-val')?.className).not.toContain('neg');
+
+    // 2nd item: 今日便當 (排骨便當)
+    const secondItem = billItems[1];
+    expect(secondItem.querySelector('.bill-label')?.textContent).toBe('今日便當 (排骨便當)');
+    expect(secondItem.querySelector('.bill-val')?.textContent).toBe('−$90');
+    expect(secondItem.querySelector('.bill-val')?.className).toContain('neg');
+
+    // 3rd item: 此次繳費金額
+    const thirdItem = billItems[2];
+    expect(thirdItem.querySelector('.bill-label')?.textContent).toBe('此次繳費金額');
+    expect(thirdItem.querySelector('.bill-val')?.textContent).toBe('+$100');
+    expect(thirdItem.querySelector('.bill-val')?.className).toContain('pos');
+
+    // 4th item: 預計結帳後餘額 (500 - 90 + 100 = 510)
+    const fourthItem = billItems[3];
+    expect(fourthItem.querySelector('.bill-label')?.textContent).toBe('預計結帳後餘額');
+    expect(fourthItem.querySelector('.bill-val')?.textContent).toBe('$510');
+    expect(fourthItem.querySelector('.bill-val')?.className).not.toContain('neg');
+    expect(fourthItem.className).toContain('bill-total');
   });
 });
