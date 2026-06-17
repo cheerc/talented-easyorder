@@ -40,6 +40,8 @@ set -euo pipefail
 
 # Cleanup function: restore caller's shell options when sourced
 _preflight_cleanup() {
+  # Remove traps to prevent recursion or duplicate triggers
+  trap - RETURN ERR EXIT
   if [ "$_preflight_sourced" -eq 1 ]; then
     eval "$_preflight_saved_opts"
     if [ -n "${_preflight_saved_pipefail:-}" ]; then
@@ -50,6 +52,11 @@ _preflight_cleanup() {
     fi
   fi
 }
+
+# Set traps to catch early return or command failure under set -e
+if [ "$_preflight_sourced" -eq 1 ]; then
+  trap _preflight_cleanup RETURN ERR
+fi
 
 # --- #1 Guard: not a worktree / detached / dev|main / prunable ---
 
@@ -95,6 +102,7 @@ if [ "$worktree_root" != "$source_repo" ]; then
 
   # Sync all local .env files (excluding .env.example) from source repo frontend/ to worktree frontend/
   if [ -d "$source_repo/frontend" ]; then
+    mkdir -p "$worktree_root/frontend"
     find "$source_repo/frontend" -maxdepth 1 -name ".env*" ! -name ".env.example" 2>/dev/null | while read -r env_file; do
       filename=$(basename "$env_file")
       echo "preflight-worktree: copying $filename to worktree..."
