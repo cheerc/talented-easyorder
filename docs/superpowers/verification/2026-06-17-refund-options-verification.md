@@ -2,7 +2,7 @@
 
 > Generated: 2026-06-17
 > PR: #376
-> HEAD: daec13ccad59b8a086d87f2f0fbbbcda96ba3346
+> HEAD: 82d8bf3661834479e0c11232d98951f909725f88
 > Plan: docs/superpowers/plans/376-refund-options.md
 
 ## How to test
