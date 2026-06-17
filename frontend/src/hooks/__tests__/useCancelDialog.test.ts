@@ -1,17 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useCancelDialog } from '../useCancelDialog';
+import { usePosStore } from '../../store/posStore';
 
 // Ref: #349 — Tests for useCancelDialog (cancel flow)
 
+const mockStore = {
+  transactions: [
+    { studentId: 's1', businessDate: '2024-01-15', type: 'order', transactionId: 'tx-1' },
+  ],
+  deleteOrderWithRefundCheck: vi.fn(),
+};
+
 vi.mock('../../store/posStore', () => ({
   usePosStore: {
-    getState: () => ({
-      transactions: [
-        { studentId: 's1', businessDate: '2024-01-15', type: 'order', transactionId: 'tx-1' },
-      ],
-      deleteOrderWithRefundCheck: vi.fn(),
-    }),
+    getState: () => mockStore,
   },
 }));
 
@@ -76,5 +79,23 @@ describe('useCancelDialog', () => {
     expect(result.current.cancelDialogOpen).toBe(true);
     act(() => result.current.setCancelDialogOpen(false));
     expect(result.current.cancelDialogOpen).toBe(false);
+  });
+
+  it('handleDeleteOrder calls deleteOrderWithRefundCheck with correct arguments', () => {
+    const args = makeArgs({
+      picked: { studentId: 's1', displayName: 'A' },
+      allTx: [{ studentId: 's1', businessDate: '2024-01-15', type: 'order', transactionId: 'tx-1' }],
+    });
+    const { result } = renderHook(() =>
+      useCancelDialog(args as Parameters<typeof useCancelDialog>[0]),
+    );
+
+    const store = usePosStore.getState();
+
+    act(() => result.current.handleDeleteOrder(true));
+    expect(store.deleteOrderWithRefundCheck).toHaveBeenCalledWith('tx-1', undefined, true);
+
+    act(() => result.current.handleDeleteOrder(false));
+    expect(store.deleteOrderWithRefundCheck).toHaveBeenCalledWith('tx-1', undefined, false);
   });
 });
