@@ -20,14 +20,22 @@
 
   Replace:
   ```typescript
-    // TODO: Fix #375 — paidAmount should be assigned to paidAmountVal here so that
-    // paidAmount is correctly passed to buildPosTransactionDraft and createLedgerTransaction.
-    // Currently paidAmount is left as the default 0, which ignores the payment when ordering.
-    // paidAmount = paidAmountVal;
+    if (mode === 'order') {
+      mealPrice = priceOverride ?? todayMenuPrice;
+      note = priceOverride !== null
+        ? `單筆改價：${priceOverrideLabel.trim() || todayMenuItemName}`
+        : todayMenuItemName + (paidAmountVal > 0 ? ' (已付)' : '');
+    }
   ```
   With:
   ```typescript
-    paidAmount = paidAmountVal;
+    if (mode === 'order') {
+      mealPrice = priceOverride ?? todayMenuPrice;
+      paidAmount = paidAmountVal;
+      note = priceOverride !== null
+        ? `單筆改價：${priceOverrideLabel.trim() || todayMenuItemName}`
+        : todayMenuItemName + (paidAmountVal > 0 ? ' (已付)' : '');
+    }
   ```
 
 - [ ] **Step 2: Commit changes**
@@ -68,56 +76,58 @@
 ### Task 3: Add Unit Tests
 
 **Files:**
-- Modify: `frontend/src/store/__tests__/transactionActions.test.ts`
+- Modify: `frontend/src/domain/__tests__/posTransaction.test.ts`
 
-- [ ] **Step 1: Write the unit test**
-  Add a new test inside the `describe('transactionActions — commitPosTransactionDraft', ...)` block in [transactionActions.test.ts](file:///Users/cheerc/talented-easyorder/frontend/src/store/__tests__/transactionActions.test.ts).
+- [ ] **Step 1: Import deriveTransactionAttributes in the test file**
+  Add `deriveTransactionAttributes` to imports in [posTransaction.test.ts](file:///Users/cheerc/talented-easyorder/frontend/src/domain/__tests__/posTransaction.test.ts).
+
+  Replace:
+  ```typescript
+  import {
+    parsePaidAmount,
+    buildPosTransactionDraft,
+  } from '../posTransaction';
+  ```
+  With:
+  ```typescript
+  import {
+    parsePaidAmount,
+    buildPosTransactionDraft,
+    deriveTransactionAttributes,
+  } from '../posTransaction';
+  ```
+
+- [ ] **Step 2: Write the unit test**
+  Add a new describe block for `deriveTransactionAttributes` in [posTransaction.test.ts](file:///Users/cheerc/talented-easyorder/frontend/src/domain/__tests__/posTransaction.test.ts).
 
   Test code:
   ```typescript
-    it('T1b: creates order with simultaneous payment and updates student balance correctly', () => {
-      const store = usePosStore.getState();
-      const student = store.students.find(s => s.studentId === '001')!;
-      const initialBalance = student.currentBalance;
-
-      const draft = buildPosTransactionDraft({
-        intent: {
-          businessDate: store.todayMenu.businessDate,
-          studentId: '001',
-          type: 'order',
-          mealPrice: 90,
-          paidAmount: 90,
-          note: '日式唐揚雞便當',
-          sourceDevice: 'pc',
-        },
-        student,
-        menu: store.todayMenu,
+  describe('deriveTransactionAttributes', () => {
+    it('derives paidAmount correctly when mode is order and paidAmountText is provided', () => {
+      const result = deriveTransactionAttributes({
+        mode: 'order',
+        todayMenuPrice: 90,
+        todayMenuItemName: '日式唐揚雞便當',
+        priceOverride: null,
+        priceOverrideLabel: '',
+        paidAmountText: '90',
       });
-
-      store.commitPosTransactionDraft(draft);
-
-      const next = usePosStore.getState();
-      const tx = next.transactions[0];
-      const updatedStudent = next.students.find(s => s.studentId === '001')!;
-
-      expect(tx.type).toBe('order');
-      expect(tx.studentId).toBe('001');
-      expect(tx.mealPrice).toBe(90);
-      expect(tx.paidAmount).toBe(90);
-      expect(tx.amount).toBe(0);
-      expect(updatedStudent.currentBalance).toBe(initialBalance);
+      expect(result.paidAmount).toBe(90);
+      expect(result.mealPrice).toBe(90);
+      expect(result.note).toBe('日式唐揚雞便當 (已付)');
     });
+  });
   ```
 
-- [ ] **Step 2: Run tests to verify correctness**
+- [ ] **Step 3: Run tests to verify correctness**
   Run unit tests:
   ```bash
   ./workflow.sh t4
   ```
   Verify all unit tests pass.
 
-- [ ] **Step 3: Commit changes**
+- [ ] **Step 4: Commit changes**
   ```bash
-  git add frontend/src/store/__tests__/transactionActions.test.ts
-  git commit -m "test: add unit test for order with simultaneous payment"
+  git add frontend/src/domain/__tests__/posTransaction.test.ts
+  git commit -m "test: add unit test for deriveTransactionAttributes in order mode"
   ```
