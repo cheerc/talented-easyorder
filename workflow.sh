@@ -122,7 +122,7 @@ run_t6() {
     echo -e "${CYAN}🎭 [t6] E2E Tests (Playwright + Firebase Emulator)...${NC}"
     lsof -t -i :8080 -i :9099 | xargs kill -9 2>/dev/null || true
     sleep 1
-    (cd "$FRONTEND_DIR" && npm run test:e2e) > "$T6_LOG" 2>&1
+    (cd "$FRONTEND_DIR" && npx firebase emulators:exec --only auth,firestore --project demo-easyorder "npx playwright test") > "$T6_LOG" 2>&1
     local status=$?
     if [ $status -ne 0 ]; then
         echo -e "${YELLOW}--- E2E Error Details (Last 80 lines) ---${NC}"

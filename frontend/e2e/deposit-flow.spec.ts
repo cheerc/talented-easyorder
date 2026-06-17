@@ -20,7 +20,7 @@ test.describe('Deposit Flow', () => {
     await page.locator('.mode').filter({ hasText: '繳費' }).click();
     
     // 5. Enter payment amount in the NumericInput
-    const payInput = page.locator('.customer input[type="text"], .customer input[inputmode="numeric"]');
+    const payInput = page.locator('.customer input[type="number"]');
     await payInput.fill('500');
     
     // 6. Click confirm

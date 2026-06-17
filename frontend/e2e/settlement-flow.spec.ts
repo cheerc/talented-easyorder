@@ -40,6 +40,6 @@ test.describe('Settlement Flow', () => {
     await page.locator('button.tab').filter({ hasText: '櫃台' }).click();
     
     // 6. Verify POS screen is back
-    await expect(page.locator('.searchwrap, .search-input')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.search-input')).toBeVisible({ timeout: 5000 });
   });
 });

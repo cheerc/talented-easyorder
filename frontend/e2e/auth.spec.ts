@@ -9,7 +9,7 @@ test.describe('Authentication', () => {
     await expect(page.locator('.operator-strip')).toBeVisible();
 
     // POS tab should be the default active tab
-    await expect(page.locator('.tab-bar, [role="tablist"]')).toBeVisible();
+    await expect(page.locator('.tabs')).toBeVisible();
   });
 
   test('auth gate shown when not logged in', async ({ page }) => {

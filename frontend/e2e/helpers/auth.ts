@@ -24,7 +24,26 @@ export async function createEmulatorUser(email: string, password: string): Promi
     },
   );
   if (!res.ok) throw new Error(`Failed to create emulator user: ${await res.text()}`);
-  return res.json() as Promise<EmulatorUser>;
+  const user = (await res.json()) as EmulatorUser;
+
+  // Set emailVerified to true via REST update endpoint
+  const updateRes = await fetch(
+    `${AUTH_EMULATOR}/identitytoolkit.googleapis.com/v1/accounts:update?key=${API_KEY}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer owner',
+      },
+      body: JSON.stringify({
+        localId: user.localId,
+        emailVerified: true,
+      }),
+    },
+  );
+  if (!updateRes.ok) throw new Error(`Failed to verify emulator user email: ${await updateRes.text()}`);
+
+  return user;
 }
 
 /** Sign in an existing user via Auth Emulator REST API */
