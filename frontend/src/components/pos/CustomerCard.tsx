@@ -26,6 +26,9 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
     payInputRef.current?.focus();
   }, [mode]);
 
+  const parsedPayAmount = Number(payAmount) || 0;
+  const projectedBalance = student.currentBalance + parsedPayAmount;
+
   return (
     <div className="card customer">
       <div className="cust-head">
@@ -71,10 +74,27 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
               </div>
             )}
             {mode === 'payment' && (
-              <div className="bill-item">
-                <span className="bill-label">目前帳戶餘額</span>
-                <span className="bill-val">${fmt(student.currentBalance)}</span>
-              </div>
+              <>
+                <div className="bill-item no-border">
+                  <span className="bill-label">目前帳戶餘額</span>
+                  <span className={`bill-val${student.currentBalance < 0 ? ' neg' : ''}`}>
+                    {student.currentBalance < 0 ? '−' : ''}${fmt(student.currentBalance)}
+                  </span>
+                </div>
+                <div className="bill-item no-border">
+                  <span className="bill-label">此次繳費金額</span>
+                  <span className="bill-val pos">
+                    +${fmt(parsedPayAmount)}
+                  </span>
+                </div>
+                <div className="bill-divider" />
+                <div className="bill-item bill-total">
+                  <span className="bill-label">預計結帳後餘額</span>
+                  <span className={`bill-val${projectedBalance < 0 ? ' neg' : ''}`}>
+                    {projectedBalance < 0 ? '−' : ''}${fmt(projectedBalance)}
+                  </span>
+                </div>
+              </>
             )}
 
             {mode === 'order' && (

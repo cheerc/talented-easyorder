@@ -57,4 +57,48 @@ describe('CustomerCard', () => {
     renderCard();
     expect(screen.queryByText('檢視歷史')).toBeNull();
   });
+
+  it('renders redesigned 3-line transaction preview in payment mode', () => {
+    const { container } = renderCard({
+      mode: 'payment',
+      student: { studentId: 's1', displayName: '王小明', currentBalance: -170 },
+      payAmount: '100',
+    });
+
+    const billItems = container.querySelectorAll('.bill-item');
+    expect(billItems).toHaveLength(3);
+
+    // 1st item: 目前帳戶餘額
+    const firstItem = billItems[0];
+    expect(firstItem.querySelector('.bill-label')?.textContent).toBe('目前帳戶餘額');
+    expect(firstItem.querySelector('.bill-val')?.textContent).toBe('−$170');
+    expect(firstItem.querySelector('.bill-val')?.className).toContain('neg');
+
+    // 2nd item: 此次繳費金額
+    const secondItem = billItems[1];
+    expect(secondItem.querySelector('.bill-label')?.textContent).toBe('此次繳費金額');
+    expect(secondItem.querySelector('.bill-val')?.textContent).toBe('+$100');
+    expect(secondItem.querySelector('.bill-val')?.className).toContain('pos');
+
+    // 3rd item: 預計結帳後餘額
+    const thirdItem = billItems[2];
+    expect(thirdItem.querySelector('.bill-label')?.textContent).toBe('預計結帳後餘額');
+    expect(thirdItem.querySelector('.bill-val')?.textContent).toBe('−$70');
+    expect(thirdItem.querySelector('.bill-val')?.className).toContain('neg');
+    expect(thirdItem.className).toContain('bill-total');
+  });
+
+  it('renders positive projected balance correctly without neg class in payment mode', () => {
+    const { container } = renderCard({
+      mode: 'payment',
+      student: { studentId: 's1', displayName: '王小明', currentBalance: -170 },
+      payAmount: '300', // -170 + 300 = 130 > 0
+    });
+
+    const billItems = container.querySelectorAll('.bill-item');
+    const thirdItem = billItems[2];
+    expect(thirdItem.querySelector('.bill-label')?.textContent).toBe('預計結帳後餘額');
+    expect(thirdItem.querySelector('.bill-val')?.textContent).toBe('$130');
+    expect(thirdItem.querySelector('.bill-val')?.className).not.toContain('neg');
+  });
 });
