@@ -24,19 +24,106 @@
 
   Replace `deleteOrderWithRefundCheck` implementation:
   ```typescript
-      deleteOrderWithRefundCheck: (id: string, operatorId?: string) => {
-        const state = get();
-        const tx = state.transactions.find(t => t.transactionId === id);
-        if (!tx || tx.type !== 'order') {
-          return { deleted: false, refundAmount: 0, studentName: '', wasClosedDate: false };
-        }
+    deleteOrderWithRefundCheck: (id: string, operatorId?: string) => {
+      const state = get();
+      const tx = state.transactions.find(t => t.transactionId === id);
+      if (!tx || tx.type !== 'order') {
+        return { deleted: false, refundAmount: 0, studentName: '', wasClosedDate: false };
+      }
 
-        const dateStatus = state.businessDateStatuses[tx.businessDate] || 'open';
-        const wasClosedDate = dateStatus !== 'open';
-        const refundAmount = tx.paidAmount;
+      const dateStatus = state.businessDateStatuses[tx.businessDate] || 'open';
+      const wasClosedDate = dateStatus !== 'open';
+      const refundAmount = tx.paidAmount;
 
-        const now = new Date().toISOString();
-        const auditEvent = createLedgerAuditEvent({
+      const now = new Date().toISOString();
+      const auditEvent = createLedgerAuditEvent({
+        auditEventId: `evt-${crypto.randomUUID()}`,
+        eventType: 'transaction_deleted',
+        entityType: 'transaction',
+        entityId: id,
+        businessDate: tx.businessDate,
+        before: { ...tx },
+        after: null,
+        reason: 'delete',
+        operatorId: operatorId ?? SYSTEM_OPERATOR_ID,
+        createdAt: now,
+      });
+
+      const remainingTx = state.transactions.filter(t => t.transactionId !== id);
+
+      const { students: newStudents, transactions: newStudentTx } = recalculateStudentBalances(
+        state.students,
+        remainingTx
+      );
+
+      const cashierTx = remainingTx.filter(t => t.studentId === CASHIER_SENTINEL);
+
+      const newTransactions = [...newStudentTx, ...cashierTx].sort(
+        (a, b) => b.createdAt.localeCompare(a.createdAt)
+      );
+
+      set({
+        transactions: newTransactions,
+        students: newStudents,
+        auditEvents: [...state.auditEvents, auditEvent],
+      });
+
+      return {
+        deleted: true,
+        refundAmount,
+        studentName: tx.studentNameSnapshot,
+        wasClosedDate,
+      };
+    },
+  ```
+
+  With (maintaining the 4 spaces for signature, 6 spaces for body indentation):
+  ```typescript
+    deleteOrderWithRefundCheck: (id: string, operatorId?: string, keepPaymentAsDeposit?: boolean) => {
+      const state = get();
+      const tx = state.transactions.find(t => t.transactionId === id);
+      if (!tx || tx.type !== 'order') {
+        return { deleted: false, refundAmount: 0, studentName: '', wasClosedDate: false };
+      }
+
+      const dateStatus = state.businessDateStatuses[tx.businessDate] || 'open';
+      const wasClosedDate = dateStatus !== 'open';
+      
+      const now = new Date().toISOString();
+      let remainingTx = state.transactions;
+      let refundAmount = tx.paidAmount;
+      let auditEvent;
+
+      if (keepPaymentAsDeposit && tx.paidAmount > 0) {
+        refundAmount = 0;
+        auditEvent = createLedgerAuditEvent({
+          auditEventId: `evt-${crypto.randomUUID()}`,
+          eventType: 'transaction_edited',
+          entityType: 'transaction',
+          entityId: id,
+          businessDate: tx.businessDate,
+          before: { mealPrice: tx.mealPrice, paidAmount: tx.paidAmount, note: tx.note },
+          after: { mealPrice: 0, paidAmount: tx.paidAmount, note: `取消訂餐：保留繳費 ${tx.paidAmount}` },
+          reason: 'edit',
+          operatorId: operatorId ?? SYSTEM_OPERATOR_ID,
+          createdAt: now,
+        });
+
+        remainingTx = state.transactions.map(t => {
+          if (t.transactionId === id) {
+            return {
+              ...t,
+              type: 'payment',
+              mealPrice: 0,
+              amount: t.paidAmount,
+              note: `取消訂餐：保留繳費 ${t.paidAmount}`,
+              revision: t.revision + 1,
+            };
+          }
+          return t;
+        });
+      } else {
+        auditEvent = createLedgerAuditEvent({
           auditEventId: `evt-${crypto.randomUUID()}`,
           eventType: 'transaction_deleted',
           entityType: 'transaction',
@@ -48,120 +135,33 @@
           operatorId: operatorId ?? SYSTEM_OPERATOR_ID,
           createdAt: now,
         });
+        remainingTx = state.transactions.filter(t => t.transactionId !== id);
+      }
 
-        const remainingTx = state.transactions.filter(t => t.transactionId !== id);
+      const { students: newStudents, transactions: newStudentTx } = recalculateStudentBalances(
+        state.students,
+        remainingTx
+      );
 
-        const { students: newStudents, transactions: newStudentTx } = recalculateStudentBalances(
-          state.students,
-          remainingTx
-        );
+      const cashierTx = remainingTx.filter(t => t.studentId === CASHIER_SENTINEL);
 
-        const cashierTx = remainingTx.filter(t => t.studentId === CASHIER_SENTINEL);
+      const newTransactions = [...newStudentTx, ...cashierTx].sort(
+        (a, b) => b.createdAt.localeCompare(a.createdAt)
+      );
 
-        const newTransactions = [...newStudentTx, ...cashierTx].sort(
-          (a, b) => b.createdAt.localeCompare(a.createdAt)
-        );
+      set({
+        transactions: newTransactions,
+        students: newStudents,
+        auditEvents: [...state.auditEvents, auditEvent],
+      });
 
-        set({
-          transactions: newTransactions,
-          students: newStudents,
-          auditEvents: [...state.auditEvents, auditEvent],
-        });
-
-        return {
-          deleted: true,
-          refundAmount,
-          studentName: tx.studentNameSnapshot,
-          wasClosedDate,
-        };
-      },
-  ```
-
-  With:
-  ```typescript
-      deleteOrderWithRefundCheck: (id: string, operatorId?: string, keepPaymentAsDeposit?: boolean) => {
-        const state = get();
-        const tx = state.transactions.find(t => t.transactionId === id);
-        if (!tx || tx.type !== 'order') {
-          return { deleted: false, refundAmount: 0, studentName: '', wasClosedDate: false };
-        }
-
-        const dateStatus = state.businessDateStatuses[tx.businessDate] || 'open';
-        const wasClosedDate = dateStatus !== 'open';
-        
-        const now = new Date().toISOString();
-        let remainingTx = state.transactions;
-        let refundAmount = tx.paidAmount;
-        let auditEvent;
-
-        if (keepPaymentAsDeposit && tx.paidAmount > 0) {
-          refundAmount = 0;
-          auditEvent = createLedgerAuditEvent({
-            auditEventId: `evt-${crypto.randomUUID()}`,
-            eventType: 'transaction_edited',
-            entityType: 'transaction',
-            entityId: id,
-            businessDate: tx.businessDate,
-            before: { mealPrice: tx.mealPrice, paidAmount: tx.paidAmount, note: tx.note },
-            after: { mealPrice: 0, paidAmount: tx.paidAmount, note: `取消訂餐：保留繳費 ${tx.paidAmount}` },
-            reason: 'edit',
-            operatorId: operatorId ?? SYSTEM_OPERATOR_ID,
-            createdAt: now,
-          });
-
-          remainingTx = state.transactions.map(t => {
-            if (t.transactionId === id) {
-              return {
-                ...t,
-                type: 'payment',
-                mealPrice: 0,
-                amount: t.paidAmount,
-                note: `取消訂餐：保留繳費 ${t.paidAmount}`,
-                revision: t.revision + 1,
-              };
-            }
-            return t;
-          });
-        } else {
-          auditEvent = createLedgerAuditEvent({
-            auditEventId: `evt-${crypto.randomUUID()}`,
-            eventType: 'transaction_deleted',
-            entityType: 'transaction',
-            entityId: id,
-            businessDate: tx.businessDate,
-            before: { ...tx },
-            after: null,
-            reason: 'delete',
-            operatorId: operatorId ?? SYSTEM_OPERATOR_ID,
-            createdAt: now,
-          });
-          remainingTx = state.transactions.filter(t => t.transactionId !== id);
-        }
-
-        const { students: newStudents, transactions: newStudentTx } = recalculateStudentBalances(
-          state.students,
-          remainingTx
-        );
-
-        const cashierTx = remainingTx.filter(t => t.studentId === CASHIER_SENTINEL);
-
-        const newTransactions = [...newStudentTx, ...cashierTx].sort(
-          (a, b) => b.createdAt.localeCompare(a.createdAt)
-        );
-
-        set({
-          transactions: newTransactions,
-          students: newStudents,
-          auditEvents: [...state.auditEvents, auditEvent],
-        });
-
-        return {
-          deleted: true,
-          refundAmount,
-          studentName: tx.studentNameSnapshot,
-          wasClosedDate,
-        };
-      },
+      return {
+        deleted: true,
+        refundAmount,
+        studentName: tx.studentNameSnapshot,
+        wasClosedDate,
+      };
+    },
   ```
 
 - [ ] **Step 2: Update type definition in posTypes.ts**
@@ -341,7 +341,8 @@
   In [MainLayout.tsx](file:///Users/cheerc/talented-easyorder/frontend/src/components/MainLayout.tsx):
   1. Add `orderTx?: LedgerTransaction | null` to `MainLayoutProps` interface.
   2. Update `onCancelDialogConfirm` signature to support `(keepPaymentAsDeposit?: boolean) => void`.
-  3. Import `CancelOrderDialog` and replace `ConfirmDialog` (for cancelDialogOpen).
+  3. Import `CancelOrderDialog` and `StudentAccount`.
+  4. Replace `ConfirmDialog` (for cancelDialogOpen).
 
   Replace:
   ```typescript
@@ -352,6 +353,7 @@
   import { ConfirmDialog } from './ui/ConfirmDialog';
   import { CancelOrderDialog } from './CancelOrderDialog';
   import type { LedgerTransaction } from '../domain/ledger';
+  import type { StudentAccount } from '../domain/student';
   ```
 
   And update `MainLayoutProps` (Around L35):
@@ -376,14 +378,14 @@
 
 - [ ] **Step 3: Update App.tsx to lookup orderTx and pass it**
   In [App.tsx](file:///Users/cheerc/talented-easyorder/frontend/src/App.tsx):
-  1. Lookup `orderTx` for the picked student and the viewDate.
+  1. Lookup `orderTx` for the picked student and the viewDate using `allTx` (not `transactions` which is out of scope).
   2. Pass it to `MainLayout`.
   3. Pass the `keepPaymentAsDeposit` boolean parameter in the `onCancelDialogConfirm` callback to `handleDeleteOrder`.
 
   Around L195:
   ```typescript
         cancelDialogOpen={cancelDialogOpen} picked={picked}
-        orderTx={picked ? transactions.find(t => t.studentId === picked.studentId && t.businessDate === viewDate && t.type === 'order') : null}
+        orderTx={picked ? allTx.find(t => t.studentId === picked.studentId && t.businessDate === viewDate && t.type === 'order') : null}
         onCancelDialogConfirm={(keepPaymentAsDeposit) => { handleDeleteOrder(keepPaymentAsDeposit); setCancelDialogOpen(false); cancelFlow(); }}
         onCancelDialogCancel={() => setCancelDialogOpen(false)}
   ```
