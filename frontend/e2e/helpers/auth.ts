@@ -1,6 +1,8 @@
 // E2E Auth Helper — Firebase Auth Emulator REST API
 // Ref: #269
 
+import { PROJECT } from './seed';
+
 const AUTH_EMULATOR = 'http://127.0.0.1:9099';
 const API_KEY = 'dummy-api-key';
 
@@ -42,7 +44,7 @@ export async function signInEmulatorUser(email: string, password: string): Promi
 /** Delete all users from Auth Emulator */
 export async function clearEmulatorAuth(): Promise<void> {
   // The project ID must match the one used in firebase.json
-  await fetch(`${AUTH_EMULATOR}/emulator/v1/projects/gen-lang-client-0613258198/accounts`, {
+  await fetch(`${AUTH_EMULATOR}/emulator/v1/projects/${PROJECT}/accounts`, {
     method: 'DELETE',
   });
 }

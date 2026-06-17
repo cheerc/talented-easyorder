@@ -2,7 +2,7 @@
 // Ref: #269
 
 const FIRESTORE_EMULATOR = 'http://127.0.0.1:8080';
-const PROJECT = 'gen-lang-client-0613258198';
+export const PROJECT = process.env.FIREBASE_PROJECT_ID || 'demo-easyorder';
 
 
 function toFirestoreValue(v: unknown): Record<string, unknown> {
