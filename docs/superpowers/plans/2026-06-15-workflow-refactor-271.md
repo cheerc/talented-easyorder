@@ -84,7 +84,7 @@ set -o pipefail
 source .env 2>/dev/null || true
 
 # --- 設定變數 ---
-FIREBASE_PROJECT="gen-lang-client-0613258198"
+FIREBASE_PROJECT="<firebase-project-id>"
 FIREBASE_USER="cheerc@gmail.com"
 GCLOUD_USER="cheerc@talented.com.tw"
 PAYROLL_DIR="$HOME/talented-payroll"
@@ -340,11 +340,11 @@ dev_prod() {
         echo -e "${YELLOW}⚠️  $env_file 不存在，從 payroll 複製 Firebase config...${NC}"
         cat > "$env_file" << EOF
 VITE_FIREBASE_API_KEY=${VITE_FIREBASE_API_KEY:-<your-firebase-api-key>}
-VITE_FIREBASE_AUTH_DOMAIN=gen-lang-client-0613258198.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=gen-lang-client-0613258198
+VITE_FIREBASE_AUTH_DOMAIN=<firebase-project-id>.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=<firebase-project-id>
 VITE_FIREBASE_APP_ID=1:704294644197:web:3c2d159fe167478d47e70c
 VITE_FIREBASE_MESSAGING_SENDER_ID=704294644197
-VITE_FIREBASE_STORAGE_BUCKET=gen-lang-client-0613258198.firebasestorage.app
+VITE_FIREBASE_STORAGE_BUCKET=<firebase-project-id>.firebasestorage.app
 VITE_FIREBASE_USE_EMULATOR=false
 EOF
         echo -e "${GREEN}✅ 已建立 $env_file${NC}"

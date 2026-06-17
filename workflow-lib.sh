@@ -9,7 +9,7 @@ set -o pipefail
 source .env 2>/dev/null || true
 
 # --- 設定變數 ---
-FIREBASE_PROJECT="gen-lang-client-0613258198"
+FIREBASE_PROJECT="${FIREBASE_PROJECT_ID:-demo-easyorder}"
 FIREBASE_USER="cheerc@gmail.com"
 GCLOUD_USER="cheerc@talented.com.tw"
 PAYROLL_DIR="$HOME/talented-payroll"

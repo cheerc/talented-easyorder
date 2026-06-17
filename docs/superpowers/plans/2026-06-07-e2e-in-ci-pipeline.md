@@ -84,7 +84,7 @@ export default defineConfig({
   webServer: [
     {
       // Firebase emulators — start first
-      command: 'npx firebase emulators:exec --only auth,firestore --project gen-lang-client-0613258198 "sleep infinity"',
+      command: 'npx firebase emulators:exec --only auth,firestore --project <firebase-project-id> "sleep infinity"',
       port: 9099,
       timeout: 60000,
       reuseExistingServer: !process.env.CI,
@@ -136,7 +136,7 @@ export default defineConfig({
 
 ```jsonc
 // package.json scripts
-"test:e2e": "firebase emulators:exec --only auth,firestore --project gen-lang-client-0613258198 npx playwright test",
+"test:e2e": "firebase emulators:exec --only auth,firestore --project <firebase-project-id> npx playwright test",
 "pretest:e2e": "npm run build"  // optional; or let webServer handle it
 ```
 

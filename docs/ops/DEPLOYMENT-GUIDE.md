@@ -14,7 +14,7 @@
 
 ## ⚠️ 共用資源警告
 
-EasyOrder 與 talented-payroll **共用同一個 Firebase project**：`gen-lang-client-0613258198`
+EasyOrder 與 talented-payroll **共用同一個 Firebase project**：`<firebase-project-id>`
 
 | 資源 | 共用狀態 | 部署注意事項 |
 |------|----------|--------------|
@@ -42,12 +42,12 @@ workflow.sh 會自動：
 1. 讀取 `~/talented-payroll/firestore.rules`（payroll 的 rules）
 2. 讀取 `./firestore.rules`（easyorder 的 rules）
 3. 用 Python 合併成一份（payroll rules + easyorder rules 並存）
-4. 部署合併後的 rules 到 `gen-lang-client-0613258198`
+4. 部署合併後的 rules 到 `<firebase-project-id>`
 5. 部署完後還原本地 `firestore.rules`（不修改 git tracked 版本）
 
 **驗證**：
 ```bash
-firebase firestore:rules --project gen-lang-client-0613258198
+firebase firestore:rules --project <firebase-project-id>
 # 或在 Firebase Console > Firestore > Rules 確認兩邊 rules 都在
 ```
 
@@ -120,11 +120,11 @@ cd ~/talented-easyorder
 
 ```
 VITE_FIREBASE_API_KEY=<your-firebase-api-key>
-VITE_FIREBASE_AUTH_DOMAIN=gen-lang-client-0613258198.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=gen-lang-client-0613258198
+VITE_FIREBASE_AUTH_DOMAIN=<firebase-project-id>.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=<firebase-project-id>
 VITE_FIREBASE_APP_ID=1:704294644197:web:3c2d159fe167478d47e70c
 VITE_FIREBASE_MESSAGING_SENDER_ID=704294644197
-VITE_FIREBASE_STORAGE_BUCKET=gen-lang-client-0613258198.firebasestorage.app
+VITE_FIREBASE_STORAGE_BUCKET=<firebase-project-id>.firebasestorage.app
 VITE_FIREBASE_USE_EMULATOR=false
 ```
 
@@ -167,7 +167,7 @@ cd ~/talented-easyorder
 
 | 問題 | 解法 |
 |------|------|
-| Rules 部署後 payroll 壞了 | 從 payroll 側重新部署：`cd ~/talented-payroll && firebase deploy --only firestore:rules --project gen-lang-client-0613258198`（注意：這會蓋掉 easyorder rules） |
+| Rules 部署後 payroll 壞了 | 從 payroll 側重新部署：`cd ~/talented-payroll && firebase deploy --only firestore:rules --project <firebase-project-id>`（注意：這會蓋掉 easyorder rules） |
 | Vercel 部署有問題 | Vercel Dashboard > Deployments > 選擇上一個正常版本 > Promote to Production |
 | Index 有問題 | Firebase Console > Firestore > Indexes > 手動刪除有問題的 index |
 
@@ -192,9 +192,9 @@ cd ~/talented-easyorder
 
 | 項目 | 值 |
 |------|-----|
-| Project ID | `gen-lang-client-0613258198` |
-| Firebase Console | https://console.firebase.google.com/project/gen-lang-client-0613258198 |
-| Auth domain | `gen-lang-client-0613258198.firebaseapp.com` |
+| Project ID | `<firebase-project-id>` |
+| Firebase Console | https://console.firebase.google.com/project/<firebase-project-id> |
+| Auth domain | `<firebase-project-id>.firebaseapp.com` |
 | Firestore location | (查看 Console > Project Settings) |
 | Firebase user | `cheerc@gmail.com` |
 | gcloud user | `cheerc@talented.com.tw` |
