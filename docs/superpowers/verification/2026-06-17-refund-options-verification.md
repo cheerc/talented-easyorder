@@ -2,7 +2,7 @@
 
 > Generated: 2026-06-17
 > PR: #376
-> HEAD: [commit SHA]
+> HEAD: daec13ccad59b8a086d87f2f0fbbbcda96ba3346
 > Plan: docs/superpowers/plans/376-refund-options.md
 
 ## How to test
