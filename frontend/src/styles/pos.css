@@ -257,6 +257,11 @@
 .bill-summary { display: flex; flex-direction: column; gap: 18px; }
 .bill-item { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line-2); }
 .bill-item:last-child { border-bottom: 0; }
+.bill-item.no-border { border-bottom: 0; padding: 8px 0; }
+.bill-item.bill-total { border-bottom: 0; padding: 12px 0; }
+.bill-item.bill-total .bill-label { color: var(--ink); font-size: 16px; font-weight: 600; }
+.bill-item.bill-total .bill-val { font-size: 22px; font-weight: 700; }
+.bill-divider { height: 0; border: 0; border-top: 1px solid var(--line-2); margin: 6px 0; }
 .bill-label { color: var(--ink-2); font-size: 15px; }
 .bill-val { font-weight: 600; font-size: 19px; font-family: 'JetBrains Mono', monospace; }
 .bill-val.neg { color: var(--warn); }
