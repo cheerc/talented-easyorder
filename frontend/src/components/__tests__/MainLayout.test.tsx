@@ -11,6 +11,10 @@ vi.mock('../ui/ConfirmDialog', () => ({
   ConfirmDialog: vi.fn(() => <div data-testid="confirm-dialog">ConfirmDialog</div>),
 }));
 
+vi.mock('../CancelOrderDialog', () => ({
+  CancelOrderDialog: vi.fn(() => <div data-testid="cancel-order-dialog">CancelOrderDialog</div>),
+}));
+
 vi.mock('../TodayDashboard', () => ({
   TodayDashboard: vi.fn(() => <div data-testid="today-dashboard">TodayDashboard</div>),
 }));
@@ -41,6 +45,7 @@ const baseProps = {
   undoCountdown: 0,
   cancelDialogOpen: false,
   picked: null,
+  orderTx: null,
   onCancelDialogConfirm: vi.fn(),
   onCancelDialogCancel: vi.fn(),
   noOrderDialogOpen: false,

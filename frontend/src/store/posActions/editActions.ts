@@ -85,7 +85,7 @@ export function createEditActions(
     },
 
     // Ref: #310 — operatorId param for audit trail. Falls back to SYSTEM_OPERATOR_ID for automated ops.
-    deleteOrderWithRefundCheck: (id: string, operatorId?: string) => {
+    deleteOrderWithRefundCheck: (id: string, operatorId?: string, keepPaymentAsDeposit?: boolean) => {
       const state = get();
       const tx = state.transactions.find(t => t.transactionId === id);
       if (!tx || tx.type !== 'order') {
@@ -94,23 +94,55 @@ export function createEditActions(
 
       const dateStatus = state.businessDateStatuses[tx.businessDate] || 'open';
       const wasClosedDate = dateStatus !== 'open';
-      const refundAmount = tx.paidAmount;
-
+      
       const now = new Date().toISOString();
-      const auditEvent = createLedgerAuditEvent({
-        auditEventId: `evt-${crypto.randomUUID()}`,
-        eventType: 'transaction_deleted',
-        entityType: 'transaction',
-        entityId: id,
-        businessDate: tx.businessDate,
-        before: { ...tx },
-        after: null,
-        reason: 'delete',
-        operatorId: operatorId ?? SYSTEM_OPERATOR_ID,
-        createdAt: now,
-      });
+      let remainingTx: LedgerTransaction[];
+      let refundAmount = tx.paidAmount;
+      let auditEvent;
 
-      const remainingTx = state.transactions.filter(t => t.transactionId !== id);
+      if (keepPaymentAsDeposit && tx.paidAmount > 0) {
+        refundAmount = 0;
+        auditEvent = createLedgerAuditEvent({
+          auditEventId: `evt-${crypto.randomUUID()}`,
+          eventType: 'transaction_edited',
+          entityType: 'transaction',
+          entityId: id,
+          businessDate: tx.businessDate,
+          before: { mealPrice: tx.mealPrice, paidAmount: tx.paidAmount, note: tx.note },
+          after: { mealPrice: 0, paidAmount: tx.paidAmount, note: `取消訂餐：保留繳費 ${tx.paidAmount}` },
+          reason: 'edit',
+          operatorId: operatorId ?? SYSTEM_OPERATOR_ID,
+          createdAt: now,
+        });
+
+        remainingTx = state.transactions.map(t => {
+          if (t.transactionId === id) {
+            return {
+              ...t,
+              type: 'payment',
+              mealPrice: 0,
+              amount: t.paidAmount,
+              note: `取消訂餐：保留繳費 ${t.paidAmount}`,
+              revision: t.revision + 1,
+            };
+          }
+          return t;
+        });
+      } else {
+        auditEvent = createLedgerAuditEvent({
+          auditEventId: `evt-${crypto.randomUUID()}`,
+          eventType: 'transaction_deleted',
+          entityType: 'transaction',
+          entityId: id,
+          businessDate: tx.businessDate,
+          before: { ...tx },
+          after: null,
+          reason: 'delete',
+          operatorId: operatorId ?? SYSTEM_OPERATOR_ID,
+          createdAt: now,
+        });
+        remainingTx = state.transactions.filter(t => t.transactionId !== id);
+      }
 
       const { students: newStudents, transactions: newStudentTx } = recalculateStudentBalances(
         state.students,

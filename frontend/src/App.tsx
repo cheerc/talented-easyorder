@@ -193,7 +193,8 @@ function AppContent() {
       flashData={flashData} onDismissFlash={dismissFlash}
       onUndo={handleUndo} undoCountdown={undoCountdown}
       cancelDialogOpen={cancelDialogOpen} picked={picked}
-      onCancelDialogConfirm={() => { handleDeleteOrder(); setCancelDialogOpen(false); cancelFlow(); }}
+      orderTx={picked ? allTx.find(t => t.studentId === picked.studentId && t.businessDate === viewDate && t.type === 'order') : null}
+      onCancelDialogConfirm={(keepPaymentAsDeposit) => { handleDeleteOrder(keepPaymentAsDeposit); setCancelDialogOpen(false); cancelFlow(); }}
       onCancelDialogCancel={() => setCancelDialogOpen(false)}
       noOrderDialogOpen={noOrderDialogOpen}
       onNoOrderDialogClose={() => setNoOrderDialogOpen(false)}
