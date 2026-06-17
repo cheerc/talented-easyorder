@@ -2,6 +2,9 @@ import React from 'react';
 import { TopBar } from './pos-components';
 import { ConfirmBanner } from './pos-components';
 import { ConfirmDialog } from './ui/ConfirmDialog';
+import { CancelOrderDialog } from './CancelOrderDialog';
+import type { LedgerTransaction } from '../domain/ledger';
+import type { StudentAccount } from '../domain/student';
 import { TodayDashboard } from './TodayDashboard';
 import { PwaInstallBanner } from './PwaInstallBanner';
 
@@ -33,8 +36,9 @@ interface MainLayoutProps {
   onUndo: () => void;
   undoCountdown: number;
   cancelDialogOpen: boolean;
-  picked: { displayName: string } | null;
-  onCancelDialogConfirm: () => void;
+  picked: StudentAccount | null;
+  orderTx?: LedgerTransaction | null;
+  onCancelDialogConfirm: (keepPaymentAsDeposit: boolean) => void;
   onCancelDialogCancel: () => void;
   noOrderDialogOpen: boolean;
   onNoOrderDialogClose: () => void;
@@ -48,7 +52,7 @@ export const MainLayout = React.memo(function MainLayout(props: MainLayoutProps)
     tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate,
     queuedCount, failedSyncCount, conflictSyncCount, onDashboard,
     flashData, onDismissFlash, onUndo, undoCountdown,
-    cancelDialogOpen, picked, onCancelDialogConfirm, onCancelDialogCancel,
+    cancelDialogOpen, picked, orderTx, onCancelDialogConfirm, onCancelDialogCancel,
     noOrderDialogOpen, onNoOrderDialogClose,
     showDashboard, onCloseDashboard, children,
   } = props;
@@ -58,13 +62,10 @@ export const MainLayout = React.memo(function MainLayout(props: MainLayoutProps)
       <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount} onDashboard={onDashboard} />
       {children}
       <ConfirmBanner flash={flashData} onDismiss={onDismissFlash} onUndo={onUndo} undoCountdown={undoCountdown} />
-      <ConfirmDialog
+      <CancelOrderDialog
         open={cancelDialogOpen}
-        title="取消訂餐"
-        message={`確定要取消 ${picked?.displayName ?? ''} 的訂餐嗎？`}
-        confirmLabel="確認取消"
-        cancelLabel="返回"
-        variant="danger"
+        picked={picked}
+        orderTx={orderTx ?? null}
         onConfirm={onCancelDialogConfirm}
         onCancel={onCancelDialogCancel}
       />

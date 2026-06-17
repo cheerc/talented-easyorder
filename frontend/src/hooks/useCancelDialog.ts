@@ -24,15 +24,15 @@ export function useCancelDialog(args: {
     }
   }, [picked, viewDate, allTx]);
 
-  const handleDeleteOrder = useCallback(() => {
+  const handleDeleteOrder = useCallback((keepPaymentAsDeposit?: boolean) => {
     if (!picked) return;
-    // Ref: #317 — getState() is correct: imperative read inside callback, not a subscription.
     const store = usePosStore.getState();
-    store.deleteOrderWithRefundCheck(
-      store.transactions.find(t =>
-        t.studentId === picked.studentId && t.businessDate === viewDate && t.type === 'order'
-      )?.transactionId ?? ''
+    const orderTx = store.transactions.find(t =>
+      t.studentId === picked.studentId && t.businessDate === viewDate && t.type === 'order'
     );
+    if (orderTx) {
+      store.deleteOrderWithRefundCheck(orderTx.transactionId, undefined, keepPaymentAsDeposit);
+    }
   }, [picked, viewDate]);
 
   return {
