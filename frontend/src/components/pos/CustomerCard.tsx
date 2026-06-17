@@ -27,7 +27,9 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
   }, [mode]);
 
   const parsedPayAmount = Number(payAmount) || 0;
-  const projectedBalance = student.currentBalance + parsedPayAmount;
+  const projectedBalance = mode === 'order'
+    ? student.currentBalance - effectiveMealPrice + parsedPayAmount
+    : student.currentBalance + parsedPayAmount;
 
   return (
     <div className="card customer">
@@ -68,10 +70,31 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
           <div className="bill-summary">
             <div className="pay-title">結帳明細</div>
             {mode === 'order' && (
-              <div className="bill-item">
-                <span className="bill-label">當日便當 ({priceOverrideLabel || todayMenu.itemName})</span>
-                <span className="bill-val neg">−${fmt(effectiveMealPrice)}</span>
-              </div>
+              <>
+                <div className="bill-item no-border">
+                  <span className="bill-label">目前帳戶餘額</span>
+                  <span className={`bill-val${student.currentBalance < 0 ? ' neg' : ''}`}>
+                    {student.currentBalance < 0 ? '−' : ''}${fmt(student.currentBalance)}
+                  </span>
+                </div>
+                <div className="bill-item no-border">
+                  <span className="bill-label">今日便當 ({priceOverrideLabel || todayMenu.itemName})</span>
+                  <span className="bill-val neg">−${fmt(effectiveMealPrice)}</span>
+                </div>
+                <div className="bill-item no-border">
+                  <span className="bill-label">此次繳費金額</span>
+                  <span className="bill-val pos">
+                    +${fmt(parsedPayAmount)}
+                  </span>
+                </div>
+                <div className="bill-divider" />
+                <div className="bill-item bill-total">
+                  <span className="bill-label">預計結帳後餘額</span>
+                  <span className={`bill-val${projectedBalance < 0 ? ' neg' : ''}`}>
+                    {projectedBalance < 0 ? '−' : ''}${fmt(projectedBalance)}
+                  </span>
+                </div>
+              </>
             )}
             {mode === 'payment' && (
               <>

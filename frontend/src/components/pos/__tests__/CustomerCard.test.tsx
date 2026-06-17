@@ -33,14 +33,16 @@ describe('CustomerCard', () => {
   });
 
   it('displays positive balance without warning', () => {
-    renderCard();
+    const { container } = renderCard();
     // $500 shown
-    expect(screen.getByText(/500/)).toBeDefined();
+    expect(container.querySelector('.bal-num')?.textContent).toContain('500');
   });
 
   it('shows warning styling for negative balance', () => {
-    renderCard({ student: { studentId: 's1', displayName: 'B', currentBalance: -100 } });
-    expect(screen.getByText(/100/)).toBeDefined();
+    const { container } = renderCard({ student: { studentId: 's1', displayName: 'B', currentBalance: -100 } });
+    const balNum = container.querySelector('.bal-num');
+    expect(balNum?.textContent).toContain('100');
+    expect(balNum?.className).toContain('warn');
   });
 
   it('shows ordered-today warning when orderedTodayCount > 0', () => {
