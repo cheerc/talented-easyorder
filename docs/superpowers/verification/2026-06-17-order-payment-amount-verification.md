@@ -2,7 +2,7 @@
 
 > Generated: 2026-06-17
 > PR: #375
-> HEAD: [commit SHA]
+> HEAD: 2ce2601d6b95c1c8adb4f4bbde404a61034accca
 > Plan: docs/superpowers/plans/375-order-payment-amount.md
 
 ## How to test
