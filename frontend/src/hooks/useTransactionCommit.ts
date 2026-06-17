@@ -86,7 +86,9 @@ export function useTransactionCommit(
           priceOverrideLabel: args.priceOverrideLabel,
           paidAmountText,
         });
-        const amount = mode === 'order' ? -crashAttrs.mealPrice : (mode === 'payment' ? crashAttrs.paidAmount : 0);
+        const amount = mode === 'order'
+          ? crashAttrs.paidAmount - crashAttrs.mealPrice
+          : (mode === 'payment' ? crashAttrs.paidAmount : 0);
         saveCrashDraft({
           intent: {
             businessDate: args.businessDate,
