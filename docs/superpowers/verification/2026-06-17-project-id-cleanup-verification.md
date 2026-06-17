@@ -2,7 +2,7 @@
 
 > Generated: 2026-06-17
 > PR: #373
-> HEAD: [commit SHA]
+> HEAD: 37c53ff806b179861173c04f0955518a6d0dde1d
 > Plan: none (Simple task)
 
 ## How to test
