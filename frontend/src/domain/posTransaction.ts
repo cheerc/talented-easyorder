@@ -102,6 +102,7 @@ export function deriveTransactionAttributes(args: {
 
   if (mode === 'order') {
     mealPrice = priceOverride ?? todayMenuPrice;
+    paidAmount = paidAmountVal;
     note = priceOverride !== null
       ? `單筆改價：${priceOverrideLabel.trim() || todayMenuItemName}`
       : todayMenuItemName + (paidAmountVal > 0 ? ' (已付)' : '');
