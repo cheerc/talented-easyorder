@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import type { Vendor } from '../../domain/menu';
 import { useMenu, useMenuActions } from '../../store/selectors';
+import { getTaiwanISOString } from '../../utils/dateTime';
 
 export const VendorsScreen = React.memo(function VendorsScreen() {
   const { vendors } = useMenu();
@@ -21,8 +22,8 @@ export const VendorsScreen = React.memo(function VendorsScreen() {
         phone: draft.phone || '',
         note: draft.note || '',
         status: 'active',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: getTaiwanISOString(),
+        updatedAt: getTaiwanISOString(),
         revision: 1,
       };
       setVendors([...vendors, newVendor]);
