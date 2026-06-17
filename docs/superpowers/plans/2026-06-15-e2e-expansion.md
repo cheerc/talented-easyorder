@@ -72,7 +72,7 @@ export async function createEmulatorUser(email: string, password: string) {
 }
 
 export async function clearEmulatorAuth() {
-  await fetch(`${AUTH_EMULATOR}/emulator/v1/projects/gen-lang-client-0613258198/accounts`,
+  await fetch(`${AUTH_EMULATOR}/emulator/v1/projects/<firebase-project-id>/accounts`,
     { method: 'DELETE' });
 }
 ```
@@ -83,7 +83,7 @@ export async function clearEmulatorAuth() {
 // frontend/e2e/helpers/seed.ts
 // Uses Firestore REST API via emulator to seed test data
 const FIRESTORE_EMULATOR = 'http://127.0.0.1:8080';
-const PROJECT = 'gen-lang-client-0613258198';
+const PROJECT = '<firebase-project-id>';
 
 export async function seedOperator(uid: string, email: string, role: string = 'admin') {
   // Create operator doc via Firestore REST API

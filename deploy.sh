@@ -144,11 +144,11 @@ dev_prod() {
         echo -e "${YELLOW}⚠️  $env_file 不存在，從 payroll 複製 Firebase config...${NC}"
         cat > "$env_file" << EOF
 VITE_FIREBASE_API_KEY=${VITE_FIREBASE_API_KEY:-<your-firebase-api-key>}
-VITE_FIREBASE_AUTH_DOMAIN=gen-lang-client-0613258198.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=gen-lang-client-0613258198
+VITE_FIREBASE_AUTH_DOMAIN=${FIREBASE_PROJECT}.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=${FIREBASE_PROJECT}
 VITE_FIREBASE_APP_ID=1:704294644197:web:3c2d159fe167478d47e70c
 VITE_FIREBASE_MESSAGING_SENDER_ID=704294644197
-VITE_FIREBASE_STORAGE_BUCKET=gen-lang-client-0613258198.firebasestorage.app
+VITE_FIREBASE_STORAGE_BUCKET=${FIREBASE_PROJECT}.firebasestorage.app
 VITE_FIREBASE_USE_EMULATOR=false
 EOF
         echo -e "${GREEN}✅ 已建立 $env_file${NC}"
