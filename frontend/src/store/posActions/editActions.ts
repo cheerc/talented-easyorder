@@ -96,7 +96,7 @@ export function createEditActions(
       const wasClosedDate = dateStatus !== 'open';
       
       const now = new Date().toISOString();
-      let remainingTx = state.transactions;
+      let remainingTx: LedgerTransaction[];
       let refundAmount = tx.paidAmount;
       let auditEvent;
 
