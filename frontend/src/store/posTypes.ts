@@ -90,7 +90,7 @@ export interface TransactionActions {
   ) => void;
   updateTransaction: (id: string, updates: Partial<LedgerTransaction>) => void;
   deleteTransaction: (id: string) => void;
-  deleteOrderWithRefundCheck: (id: string, operatorId?: string) => DeleteOrderResult;
+  deleteOrderWithRefundCheck: (id: string, operatorId?: string, keepPaymentAsDeposit?: boolean) => DeleteOrderResult;
   editTransaction: (id: string, updates: { mealPrice?: number; paidAmount?: number; note?: string }, operatorId?: string) => void;
 }
 
