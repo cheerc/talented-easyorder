@@ -211,7 +211,7 @@ function AppContent() {
 
   if (!fb && isFirebaseConfigured) {
     // Firebase configured but init pending — show loading
-    return <div className="app-loading" aria-label="載入中">載入中...</div>;
+    return <div className="app-loading" aria-label="載入中"><div className="app-loading-spinner" />載入中...</div>;
   }
 
   if (!fb) {

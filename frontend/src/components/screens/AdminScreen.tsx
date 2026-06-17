@@ -8,6 +8,7 @@ import { useCashClose } from '../../store/derived/useCashClose';
 import { useTweaks } from '../../hooks/useTweaks';
 import { useFirebase } from '../../hooks/useFirebase';
 import { SYSTEM_OPERATOR_ID } from '../../domain/operatorId';
+import { getTaiwanISOString } from '../../utils/dateTime';
 
 interface AdminScreenProps {
   viewDate: string;
@@ -27,7 +28,7 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
 
   // Wrapper callbacks (moved from AppRouter — reviewer finding #1)
   const onOpeningCashChange = useCallback((amount: number) => {
-    openCashSession({ businessDate: viewDate, openingCash: amount, operatorId: operatorUid, openedAt: new Date().toISOString() });
+    openCashSession({ businessDate: viewDate, openingCash: amount, operatorId: operatorUid, openedAt: getTaiwanISOString() });
   }, [viewDate, openCashSession]);
 
   const onUpdateOpeningCash = useCallback((amount: number) => {
