@@ -5,7 +5,7 @@ import type { PosTransaction } from '../../domain/transaction';
 import type { LedgerAuditEvent } from '../../domain/ledgerAudit';
 
 const { store, baseTrans, baseEvents, baseSettlements, baseStatuses, todayStr } = vi.hoisted(() => {
-  const systemDate = new Date().toISOString().split('T')[0];
+  const systemDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
   const transactions: PosTransaction[] = [
     {
       transactionId: 'tx-1', studentId: '001', studentNameSnapshot: '王小美', type: 'order',

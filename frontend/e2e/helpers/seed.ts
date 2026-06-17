@@ -34,7 +34,10 @@ async function createDoc(collection: string, docId: string, data: Record<string,
   const url = `${FIRESTORE_EMULATOR}/v1/projects/${PROJECT}/databases/(default)/documents/${collection}?documentId=${docId}`;
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer owner',
+    },
     body: JSON.stringify(toFirestoreDoc(data)),
   });
   if (!res.ok) {

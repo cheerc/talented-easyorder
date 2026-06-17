@@ -126,6 +126,13 @@ export async function ensureFirebaseInitialized(env: FirebaseEnv = import.meta.e
         { disableWarnings: true },
       );
       emulatorConnected = true;
+
+      if (typeof window !== 'undefined') {
+        const win = window as unknown as { emulatorSignIn?: (email: string, pass: string) => unknown };
+        win.emulatorSignIn = (email: string, pass: string) => {
+          return getAuthMod().signInWithEmailAndPassword(auth, email, pass);
+        };
+      }
     }
 
     cachedServices = { app, auth, db };

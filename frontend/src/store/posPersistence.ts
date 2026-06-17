@@ -50,6 +50,16 @@ export const posPersistenceConfig: PersistOptions<PosState> = {
   name: 'pos-storage',
   storage: createIndexedDBStorage(),
   version: 2,
+  partialize: (state) => ({
+    students: state.students,
+    transactions: state.transactions,
+    vendors: state.vendors,
+    todayMenu: state.todayMenu,
+    auditEvents: state.auditEvents,
+    dailySettlements: state.dailySettlements,
+    businessDateStatuses: state.businessDateStatuses,
+    cashSessions: state.cashSessions,
+  }) as unknown as PosState,
   onRehydrateStorage: () => {
     return (state, error) => {
       try {
