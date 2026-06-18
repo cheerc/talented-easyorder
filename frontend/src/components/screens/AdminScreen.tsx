@@ -29,7 +29,7 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
   // Wrapper callbacks (moved from AppRouter — reviewer finding #1)
   const onOpeningCashChange = useCallback((amount: number) => {
     openCashSession({ businessDate: viewDate, openingCash: amount, operatorId: operatorUid, openedAt: getTaiwanISOString() });
-  }, [viewDate, openCashSession]);
+  }, [viewDate, openCashSession, operatorUid]);
 
   const onUpdateOpeningCash = useCallback((amount: number) => {
     updateOpeningCash(viewDate, amount);
