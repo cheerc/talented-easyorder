@@ -177,6 +177,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 setPriceOverrideLabel={setPriceOverrideLabel}
                 onDeleteOrder={handleDeleteOrder}
                 focusZone={focusZone}
+                studentTransactions={picked ? recentGroups.find(g => g.studentId === picked.studentId)?.transactions ?? [] : []}
               />
             )}
             {state.kind === 'duplicate_warning' && (
