@@ -6,7 +6,6 @@ import type { LedgerTransaction } from '../../domain/ledger';
 import { NumericInput } from '../ui/NumericInput';
 import { TransactionStatusView } from './TransactionStatusView';
 import { fmt } from './utils';
-import { TransactionStatusView } from './TransactionStatusView';
 
 interface CustomerCardProps {
   student: StudentAccount;
