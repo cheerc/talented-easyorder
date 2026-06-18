@@ -44,7 +44,7 @@ export interface UsePosFlowArgs {
 export interface UsePosFlowReturn {
   state: PosFlowState;
   setSearchText: (text: string) => void;
-  selectStudent: (studentId: string, source: PosSelectionSource) => void;
+  selectStudent: (studentId: string, source: PosSelectionSource, intent?: 'order' | 'view-status') => void;
   changeMode: (mode: PosMode) => void;
   setPaidAmountText: (text: string) => void;
   enterExpenseMode: () => void;
@@ -79,10 +79,10 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
   }, []);
 
   const hintSearchText = state.kind === 'idle' ? state.searchText : '';
-  const selectStudent = useCallback((studentId: string, source: PosSelectionSource) => {
+  const selectStudent = useCallback((studentId: string, source: PosSelectionSource, intent?: 'order' | 'view-status') => {
     const searchTextHint = hintSearchText;
     const hasOrderToday = countActiveOrdersForStudent(transactions, studentId, args.businessDate) > 0;
-    dispatch({ type: 'selectStudent', studentId, source, searchTextHint, hasOrderToday });
+    dispatch({ type: 'selectStudent', studentId, source, searchTextHint, hasOrderToday, intent });
   }, [hintSearchText, transactions, args.businessDate]);
 
   const changeMode = useCallback((mode: PosMode) => {
