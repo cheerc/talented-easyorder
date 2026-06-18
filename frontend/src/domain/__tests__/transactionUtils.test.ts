@@ -11,8 +11,11 @@ describe('getIncome', () => {
   it('returns paidAmount for payment', () => {
     expect(getIncome({ ...baseTx, type: 'payment', paidAmount: 300 })).toBe(300);
   });
-  it('returns null for order', () => {
+  it('returns null for order without payment', () => {
     expect(getIncome({ ...baseTx, type: 'order', mealPrice: 60 })).toBeNull();
+  });
+  it('returns paidAmount for order with payment', () => {
+    expect(getIncome({ ...baseTx, type: 'order', paidAmount: 90, mealPrice: 90 })).toBe(90);
   });
   it('returns null for expense', () => {
     expect(getIncome({ ...baseTx, type: 'expense', amount: 100 })).toBeNull();

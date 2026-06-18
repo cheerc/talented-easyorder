@@ -3,6 +3,7 @@ import type { LedgerTransaction } from './ledger';
 /** Returns the income amount if the transaction represents income, or null. */
 export function getIncome(tx: LedgerTransaction): number | null {
   if (tx.type === 'payment') return tx.paidAmount;
+  if (tx.type === 'order' && tx.paidAmount > 0) return tx.paidAmount;
   return null;
 }
 
