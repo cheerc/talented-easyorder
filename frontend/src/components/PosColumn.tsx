@@ -202,7 +202,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
       <div className="col-side">
         <RecentStrip
           groups={recentGroups}
-          onStudentClick={!isHistorical && dateStatus !== 'closed' ? (sid) => { selectStudent(sid, 'manual'); setFocusZone('view-status'); } : undefined}
+          onStudentClick={!isHistorical && dateStatus !== 'closed' ? (sid) => { selectStudent(sid, 'manual', 'view-status'); setFocusZone('view-status'); } : undefined}
           onEditClick={showHistoricalLock ? undefined : handleRecentEditClick}
           onDeleteClick={showHistoricalLock ? undefined : handleRecentDeleteClick}
           dateStatus={dateStatus}
