@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 
 interface NumericInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type' | 'onChange'> {
   value?: number | string;
@@ -7,7 +7,12 @@ interface NumericInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElem
 
 export const NumericInput = React.memo(React.forwardRef<HTMLInputElement, NumericInputProps>(
   function NumericInput({ value, onChange, onKeyDown, ...rest }, ref) {
+    const imeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      // Ref: #403 — ignore keyDown during IME composition
+      if (e.nativeEvent.isComposing) return;
+
       if (['-', '+', 'e', 'E', '.'].includes(e.key)) {
         e.preventDefault();
         return;
@@ -16,9 +21,24 @@ export const NumericInput = React.memo(React.forwardRef<HTMLInputElement, Numeri
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const v = e.target.value;
-      if (v === '' || /^\d*$/.test(v)) {
-        onChange?.(v);
+      const raw = e.target.value;
+
+      // Ref: #403 — detect non-ASCII input (IME active)
+      if (/[^\x20-\x7E]/.test(raw)) {
+        e.target.value = String(value ?? '');
+        const IME_WARNING_HINT = '請切換回英數輸入法（目前可能是中文輸入法）';
+        e.target.setCustomValidity(IME_WARNING_HINT);
+        e.target.reportValidity();
+        // Auto-clear after 4s; use ref to avoid leak
+        if (imeTimerRef.current) clearTimeout(imeTimerRef.current);
+        imeTimerRef.current = setTimeout(() => {
+          e.target.setCustomValidity('');
+        }, 4000);
+        return;
+      }
+
+      if (raw === '' || /^\d*$/.test(raw)) {
+        onChange?.(raw);
       }
     };
 

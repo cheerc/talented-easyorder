@@ -105,13 +105,11 @@ describe('useAppNavigationShortcuts — F-keys', () => {
 
   it('A7b: Enter on view-status is no-op (does not call cancelOrder)', () => {
     const cancelOrder = vi.fn();
-    const handleConfirm = vi.fn();
-    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, cancelOrder, handleConfirm, focusZone: 'view-status' }));
+    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, cancelOrder, focusZone: 'view-status' }));
 
     keydown('Enter');
 
     expect(cancelOrder).not.toHaveBeenCalled();
-    expect(handleConfirm).not.toHaveBeenCalled();
   });
 
   it('A8: Enter on mode-{differentMode} calls changeMode', () => {

@@ -9,13 +9,13 @@ const baseTx = {
 
 describe('getIncome', () => {
   it('returns paidAmount for payment', () => {
-    expect(getIncome({ ...baseTx, type: 'payment', paidAmount: 500 })).toBe(500);
+    expect(getIncome({ ...baseTx, type: 'payment', paidAmount: 300 })).toBe(300);
+  });
+  it('returns null for order without payment', () => {
+    expect(getIncome({ ...baseTx, type: 'order', mealPrice: 60 })).toBeNull();
   });
   it('returns paidAmount for order with payment', () => {
     expect(getIncome({ ...baseTx, type: 'order', paidAmount: 90, mealPrice: 90 })).toBe(90);
-  });
-  it('returns null for order without payment', () => {
-    expect(getIncome({ ...baseTx, type: 'order', paidAmount: 0, mealPrice: 90 })).toBeNull();
   });
   it('returns null for expense', () => {
     expect(getIncome({ ...baseTx, type: 'expense', amount: 100 })).toBeNull();
@@ -24,12 +24,15 @@ describe('getIncome', () => {
 
 describe('getExpense', () => {
   it('returns mealPrice for order', () => {
-    expect(getExpense({ ...baseTx, type: 'order', mealPrice: 90 })).toBe(90);
+    expect(getExpense({ ...baseTx, type: 'order', mealPrice: 60 })).toBe(60);
   });
   it('returns amount for expense', () => {
     expect(getExpense({ ...baseTx, type: 'expense', amount: 100 })).toBe(100);
   });
   it('returns null for payment', () => {
-    expect(getExpense({ ...baseTx, type: 'payment', paidAmount: 500 })).toBeNull();
+    expect(getExpense({ ...baseTx, type: 'payment', paidAmount: 300 })).toBeNull();
+  });
+  it('returns 0 for order with mealPrice=0', () => {
+    expect(getExpense({ ...baseTx, type: 'order', mealPrice: 0 })).toBe(0);
   });
 });

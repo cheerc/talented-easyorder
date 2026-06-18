@@ -6,6 +6,7 @@ import type { LedgerTransaction } from '../../domain/ledger';
 import { NumericInput } from '../ui/NumericInput';
 import { TransactionStatusView } from './TransactionStatusView';
 import { fmt } from './utils';
+import { TransactionStatusView } from './TransactionStatusView';
 
 interface CustomerCardProps {
   student: StudentAccount;
@@ -195,11 +196,11 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
 
               {/* §3.3: removed quick amount buttons from payment mode */}
             </div>
-          ) : (
+          ) : focusZone !== 'view-status' ? (
             <div className="cancel-empty">
               <div>支出模式 — 請在下方輸入金額</div>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

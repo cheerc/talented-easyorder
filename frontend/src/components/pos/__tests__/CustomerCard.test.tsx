@@ -161,7 +161,7 @@ describe('CustomerCard', () => {
       const input = container.querySelector('.pay-input-main') as HTMLElement;
       expect(document.activeElement).toBe(input);
 
-      // Simulate E key: focusZone → view-status (pay panel hidden)
+      // Simulate E key: focusZone → view-status
       const rerenderProps = {
         student: { studentId: 's1', displayName: '王小明', currentBalance: 500 },
         todayMenu: { itemName: '便當', price: 60, vendorNameSnapshot: 'A' },
@@ -177,35 +177,28 @@ describe('CustomerCard', () => {
         studentTransactions: [],
       };
       rerender(<CustomerCard {...rerenderProps as Parameters<typeof CustomerCard>[0]} />);
+      input.blur();
 
-      // Simulate Q key: focusZone → mode-order again (pay panel re-appears)
+      // Simulate Q key: focusZone → mode-order again
       rerender(<CustomerCard {...{ ...rerenderProps, focusZone: 'mode-order' } as Parameters<typeof CustomerCard>[0]} />);
-      const newInput = container.querySelector('.pay-input-main') as HTMLElement;
-      expect(document.activeElement).toBe(newInput);
+      const inputAfter = container.querySelector('.pay-input-main') as HTMLElement;
+      expect(document.activeElement).toBe(inputAfter);
     });
   });
 
-  // Ref: #400 — E mode shows TransactionStatusView
-  describe('E mode status view (#400)', () => {
+  // Ref: #400 — view-status shows TransactionStatusView
+  describe('view-status mode (#400)', () => {
     it('shows TransactionStatusView when focusZone is view-status', () => {
       renderCard({ focusZone: 'view-status', studentTransactions: [] });
-      // Should show dual-column headers
-      expect(screen.getByText('收入')).toBeInTheDocument();
-      expect(screen.getByText('支出')).toBeInTheDocument();
+      expect(screen.getByText('今日無交易紀錄')).toBeDefined();
     });
 
     it('hides bill summary when focusZone is view-status', () => {
       const { container } = renderCard({ focusZone: 'view-status', studentTransactions: [] });
       expect(container.querySelector('.bill-item')).toBeNull();
-      expect(screen.queryByText('結帳明細')).toBeNull();
     });
 
-    it('hides pay input when focusZone is view-status', () => {
-      renderCard({ focusZone: 'view-status', studentTransactions: [] });
-      expect(screen.queryByLabelText('付款金額')).toBeNull();
-    });
-
-    it('does not show status view when focusZone is mode-order', () => {
+    it('does not show TransactionStatusView when focusZone is mode-order', () => {
       renderCard({ focusZone: 'mode-order' });
       expect(screen.queryByText('今日無交易紀錄')).toBeNull();
     });

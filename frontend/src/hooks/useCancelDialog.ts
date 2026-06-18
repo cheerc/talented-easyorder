@@ -29,7 +29,6 @@ export function useCancelDialog(args: {
     }
   }, [picked, viewDate, allTx]);
 
-  // Ref: #401 — open cancel dialog for a specific order tx from RecentStrip
   const openCancelConfirmForTx = useCallback((tx: LedgerTransaction) => {
     if (allStudents && selectStudent) {
       const student = allStudents.find(s => s.studentId === tx.studentId);
