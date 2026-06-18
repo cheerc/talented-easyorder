@@ -20,6 +20,7 @@ function renderCard(overrides: Record<string, unknown> = {}) {
     priceOverrideLabel: '',
     setPriceOverride: vi.fn(),
     setPriceOverrideLabel: vi.fn(),
+    focusZone: 'mode-order',
     ...overrides,
   };
   return render(<CustomerCard {...defaultProps as Parameters<typeof CustomerCard>[0]} />);
@@ -139,5 +140,80 @@ describe('CustomerCard', () => {
     expect(fourthItem.querySelector('.bill-val')?.textContent).toBe('$510');
     expect(fourthItem.querySelector('.bill-val')?.className).not.toContain('neg');
     expect(fourthItem.className).toContain('bill-total');
+  });
+
+  // Ref: #395 — focusZone-driven auto-focus
+  describe('focusZone auto-focus (#395)', () => {
+    it('focuses pay input when focusZone starts with mode-', () => {
+      const { container } = renderCard({ focusZone: 'mode-order' });
+      const input = container.querySelector('.pay-input-main');
+      expect(document.activeElement).toBe(input);
+    });
+
+    it('does not focus pay input when focusZone is btn-delete-order', () => {
+      const { container } = renderCard({ focusZone: 'btn-delete-order' });
+      const input = container.querySelector('.pay-input-main');
+      expect(document.activeElement).not.toBe(input);
+    });
+
+    it('re-focuses input when focusZone changes back to mode-order (Q→E→Q)', () => {
+      const { container, rerender } = renderCard({ focusZone: 'mode-order' });
+      const input = container.querySelector('.pay-input-main') as HTMLElement;
+      expect(document.activeElement).toBe(input);
+
+      // Simulate E key: focusZone → btn-delete-order
+      const rerenderProps = {
+        student: { studentId: 's1', displayName: '王小明', currentBalance: 500 },
+        todayMenu: { itemName: '便當', price: 60, vendorNameSnapshot: 'A' },
+        mode: 'order' as const,
+        orderedTodayCount: 0,
+        payAmount: '',
+        setPayAmount: vi.fn(),
+        priceOverride: null,
+        priceOverrideLabel: '',
+        setPriceOverride: vi.fn(),
+        setPriceOverrideLabel: vi.fn(),
+        focusZone: 'btn-delete-order',
+      };
+      rerender(<CustomerCard {...rerenderProps as Parameters<typeof CustomerCard>[0]} />);
+      input.blur();
+
+      // Simulate Q key: focusZone → mode-order again
+      rerender(<CustomerCard {...{ ...rerenderProps, focusZone: 'mode-order' } as Parameters<typeof CustomerCard>[0]} />);
+      expect(document.activeElement).toBe(input);
+    });
+  });
+
+  // Ref: #395 — cancel hint UI in E mode
+  describe('cancel hint in E mode (#395)', () => {
+    it('shows cancel hint when focusZone is btn-delete-order', () => {
+      renderCard({ focusZone: 'btn-delete-order' });
+      expect(screen.getByText(/即將取消訂餐/)).toBeDefined();
+    });
+
+    it('hides bill summary when focusZone is btn-delete-order', () => {
+      const { container } = renderCard({ focusZone: 'btn-delete-order' });
+      expect(container.querySelector('.bill-item')).toBeNull();
+    });
+
+    it('does not show cancel hint when focusZone is mode-order', () => {
+      renderCard({ focusZone: 'mode-order' });
+      expect(screen.queryByText(/即將取消訂餐/)).toBeNull();
+    });
+  });
+
+  // Ref: #396 — no placeholder in payment mode
+  describe('placeholder removal (#396)', () => {
+    it('has no placeholder in payment mode', () => {
+      const { container } = renderCard({ mode: 'payment', focusZone: 'mode-payment' });
+      const input = container.querySelector('.pay-input-main');
+      expect(input?.getAttribute('placeholder')).toBe('');
+    });
+
+    it('has no placeholder in order mode', () => {
+      renderCard({ mode: 'order', focusZone: 'mode-order' });
+      const input = document.querySelector('.pay-input-main');
+      expect(input?.getAttribute('placeholder')).toBe('');
+    });
   });
 });
