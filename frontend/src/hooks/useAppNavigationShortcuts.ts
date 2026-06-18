@@ -66,9 +66,7 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
 
       if (e.key === 'Enter') {
         e.preventDefault();
-        if (focusZone === 'btn-cancel') cancelFlow();
-        else if (focusZone === 'btn-confirm') handleConfirm();
-        else if (focusZone === 'btn-delete-order') {
+        if (focusZone === 'btn-delete-order') {
           cancelOrder?.();
         } else if (focusZone.startsWith('mode-')) {
           const m = focusZone.replace('mode-', '') as PosMode;
@@ -92,9 +90,7 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
       const i = modes.indexOf(focusZone);
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        if (focusZone === 'btn-confirm') setFocusZone('btn-cancel');
-        else if (focusZone === 'btn-cancel') setFocusZone('btn-cancel');
-        else if (i > 0) {
+        if (i > 0) {
           const nextZone = modes[i - 1];
           setFocusZone(nextZone);
           if (nextZone.startsWith('mode-')) {
@@ -104,9 +100,7 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
         }
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
-        if (focusZone === 'btn-cancel') setFocusZone('btn-confirm');
-        else if (focusZone === 'btn-confirm') setFocusZone('btn-confirm');
-        else if (i >= 0 && i < modes.length - 1) {
+        if (i >= 0 && i < modes.length - 1) {
           const nextZone = modes[i + 1];
           setFocusZone(nextZone);
           if (nextZone.startsWith('mode-')) {
@@ -114,12 +108,6 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
             changeMode(m);
           }
         }
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        if (i >= 0) setFocusZone('btn-confirm');
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        if (focusZone === 'btn-confirm' || focusZone === 'btn-cancel') setFocusZone('mode-' + currentMode);
       }
     };
     window.addEventListener('keydown', onKey);

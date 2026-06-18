@@ -4,12 +4,10 @@ import type { PosMode } from '../../domain/posFlow';
 interface ActionBarProps {
   mode: PosMode;
   setMode: (mode: PosMode) => void;
-  onConfirm: () => void;
-  onCancel: () => void;
   onDeleteOrder?: () => void;
   focusZone: string;
 }
-export const ActionBar = React.memo(function ActionBar({ mode, setMode, onConfirm, onCancel, onDeleteOrder, focusZone }: ActionBarProps) {
+export const ActionBar = React.memo(function ActionBar({ mode, setMode, onDeleteOrder, focusZone }: ActionBarProps) {
   const opts = [
     { id: 'order' as PosMode, label: '訂便當', hint: 'Q' },
     { id: 'payment' as PosMode, label: '繳費', hint: 'W' },
@@ -44,17 +42,6 @@ export const ActionBar = React.memo(function ActionBar({ mode, setMode, onConfir
             <span className="mode-lbl">取消訂餐</span>
           </button>
         )}
-      </div>
-      <div className="confirm-row">
-        <button className={'btn-cancel ' + (focusZone === 'btn-cancel' ? 'btn-focus' : '')} onClick={onCancel}>
-          <span>取消</span><span className="kbd">Esc</span>
-        </button>
-        <button
-          className={'btn-confirm ' + (focusZone === 'btn-confirm' ? ' btn-focus' : '')}
-          onClick={onConfirm}
-        >
-          <span>確認</span><span className="kbd kbd-light">↵</span>
-        </button>
       </div>
     </div>
   );
