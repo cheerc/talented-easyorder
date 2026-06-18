@@ -13,10 +13,12 @@ export function useFocusSync(
   setSearchText: (text: string) => void,
   setSearchFocusKey: React.Dispatch<React.SetStateAction<number>>,
   setFocusZone: React.Dispatch<React.SetStateAction<string>>,
+  focusZone: string,
 ) {
   useEffect(() => {
     // Synchronize focusZone with state mode when student selection state changes
-    if (state.kind === 'student_selected') {
+    // Skip if focusZone is 'view-status' — RecentStrip click intentionally set it
+    if (state.kind === 'student_selected' && focusZone !== 'view-status') {
       setFocusZone('mode-' + state.mode);
     }
 
@@ -29,5 +31,5 @@ export function useFocusSync(
     } else if (state.kind !== 'idle') {
       setSearchFocusKey(0);
     }
-  }, [state.kind, state.mode, tab, setSearchText, setSearchFocusKey, setFocusZone]);
+  }, [state.kind, state.mode, tab, setSearchText, setSearchFocusKey, setFocusZone, focusZone]);
 }

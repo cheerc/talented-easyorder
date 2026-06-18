@@ -53,7 +53,7 @@ describe('RecentStrip', () => {
     render(<RecentStrip groups={groups} dateStatus="open" />);
     expect(screen.getByText('王小明')).toBeInTheDocument();
     expect(screen.getByText(/餘額/)).toBeInTheDocument();
-    expect(screen.getByText('1筆')).toBeInTheDocument();
+    expect(screen.getByText('1個便當')).toBeInTheDocument();
   });
 
   it('expands to show detail rows on click, collapses on second click', async () => {
@@ -165,6 +165,24 @@ describe('RecentStrip', () => {
     expect(screen.queryByRole('button', { name: '編輯' })).not.toBeInTheDocument();
     // Delete button should still be visible
     expect(screen.getByRole('button', { name: '刪除' })).toBeInTheDocument();
+  });
+
+  it('shows order count (not total record count) in summary', () => {
+    const groups = [makeGroup('S001', '王小明', [
+      makeTx({ transactionId: 't1', studentId: 'S001', type: 'order', mealPrice: 90 }),
+      makeTx({ transactionId: 't2', studentId: 'S001', type: 'payment', paidAmount: 500 }),
+    ], 410)];
+    render(<RecentStrip groups={groups} dateStatus="open" />);
+    // Should show "1個便當" (only order type counted), not "2筆"
+    expect(screen.getByText('1個便當')).toBeInTheDocument();
+  });
+
+  it('shows positive sign prefix for non-negative balance', () => {
+    const groups = [makeGroup('S001', '王小明', [
+      makeTx({ transactionId: 't1', studentId: 'S001', type: 'payment', paidAmount: 500 }),
+    ], 500)];
+    render(<RecentStrip groups={groups} dateStatus="open" />);
+    expect(screen.getByText(/餘額/).textContent).toContain('+');
   });
 });
 

@@ -118,7 +118,7 @@ function AppContent() {
 
   const { tweaks } = useTweaks();
 
-  useFocusSync(state, tab, setSearchText, setSearchFocusKey, setFocusZone);
+  useFocusSync(state, tab, setSearchText, setSearchFocusKey, setFocusZone, focusZone);
 
   const isSuccess = state.kind === 'success';
   // Ref: #281 — Extracted to useExpenseProps hook

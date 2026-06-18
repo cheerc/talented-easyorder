@@ -63,6 +63,18 @@ describe('reducePosFlow — idle state transitions', () => {
     });
   });
 
+  it('idle + selectStudent with intent=view-status keeps order mode even when hasOrderToday', () => {
+    const event: PosFlowEvent = { type: 'selectStudent', studentId: '001', source: 'manual', hasOrderToday: true, intent: 'view-status' };
+    expect(reducePosFlow(idle, event)).toEqual({
+      kind: 'student_selected',
+      studentId: '001',
+      mode: 'order',
+      source: 'manual',
+      paidAmountText: '',
+      searchTextHint: '',
+    });
+  });
+
   it('idle + selectStudent via scan sets source correctly', () => {
     const event: PosFlowEvent = { type: 'selectStudent', studentId: '002', source: 'scan' };
     expect(reducePosFlow(idle, event)).toEqual({
@@ -171,6 +183,18 @@ describe('reducePosFlow — student_selected transitions', () => {
       kind: 'student_selected',
       studentId: '002',
       mode: 'payment',
+      source: 'manual',
+      paidAmountText: '',
+      searchTextHint: '',
+    });
+  });
+
+  it('selectStudent during selected with intent=view-status keeps order mode even when hasOrderToday', () => {
+    const event: PosFlowEvent = { type: 'selectStudent', studentId: '002', source: 'manual', hasOrderToday: true, intent: 'view-status' };
+    expect(reducePosFlow(selected, event)).toEqual({
+      kind: 'student_selected',
+      studentId: '002',
+      mode: 'order',
       source: 'manual',
       paidAmountText: '',
       searchTextHint: '',
