@@ -120,6 +120,7 @@ export const RecentStrip = React.memo(function RecentStrip({
                     <span />
                     <span className="tx-col-income">收入</span>
                     <span className="tx-col-expense">支出</span>
+                    <span />
                   </div>
                   {g.transactions.map(tx => (
                     <RecentDetailRow
