@@ -150,8 +150,8 @@ describe('CustomerCard', () => {
       expect(document.activeElement).toBe(input);
     });
 
-    it('does not focus pay input when focusZone is btn-delete-order', () => {
-      const { container } = renderCard({ focusZone: 'btn-delete-order' });
+    it('does not focus pay input when focusZone is view-status', () => {
+      const { container } = renderCard({ focusZone: 'view-status', studentTransactions: [] });
       const input = container.querySelector('.pay-input-main');
       expect(document.activeElement).not.toBe(input);
     });
@@ -161,7 +161,7 @@ describe('CustomerCard', () => {
       const input = container.querySelector('.pay-input-main') as HTMLElement;
       expect(document.activeElement).toBe(input);
 
-      // Simulate E key: focusZone → btn-delete-order
+      // Simulate E key: focusZone → view-status
       const rerenderProps = {
         student: { studentId: 's1', displayName: '王小明', currentBalance: 500 },
         todayMenu: { itemName: '便當', price: 60, vendorNameSnapshot: 'A' },
@@ -173,32 +173,34 @@ describe('CustomerCard', () => {
         priceOverrideLabel: '',
         setPriceOverride: vi.fn(),
         setPriceOverrideLabel: vi.fn(),
-        focusZone: 'btn-delete-order',
+        focusZone: 'view-status',
+        studentTransactions: [],
       };
       rerender(<CustomerCard {...rerenderProps as Parameters<typeof CustomerCard>[0]} />);
       input.blur();
 
       // Simulate Q key: focusZone → mode-order again
       rerender(<CustomerCard {...{ ...rerenderProps, focusZone: 'mode-order' } as Parameters<typeof CustomerCard>[0]} />);
-      expect(document.activeElement).toBe(input);
+      const inputAfter = container.querySelector('.pay-input-main') as HTMLElement;
+      expect(document.activeElement).toBe(inputAfter);
     });
   });
 
-  // Ref: #395 — cancel hint UI in E mode
-  describe('cancel hint in E mode (#395)', () => {
-    it('shows cancel hint when focusZone is btn-delete-order', () => {
-      renderCard({ focusZone: 'btn-delete-order' });
-      expect(screen.getByText(/即將取消訂餐/)).toBeDefined();
+  // Ref: #400 — view-status shows TransactionStatusView
+  describe('view-status mode (#400)', () => {
+    it('shows TransactionStatusView when focusZone is view-status', () => {
+      renderCard({ focusZone: 'view-status', studentTransactions: [] });
+      expect(screen.getByText('今日無交易紀錄')).toBeDefined();
     });
 
-    it('hides bill summary when focusZone is btn-delete-order', () => {
-      const { container } = renderCard({ focusZone: 'btn-delete-order' });
+    it('hides bill summary when focusZone is view-status', () => {
+      const { container } = renderCard({ focusZone: 'view-status', studentTransactions: [] });
       expect(container.querySelector('.bill-item')).toBeNull();
     });
 
-    it('does not show cancel hint when focusZone is mode-order', () => {
+    it('does not show TransactionStatusView when focusZone is mode-order', () => {
       renderCard({ focusZone: 'mode-order' });
-      expect(screen.queryByText(/即將取消訂餐/)).toBeNull();
+      expect(screen.queryByText('今日無交易紀錄')).toBeNull();
     });
   });
 

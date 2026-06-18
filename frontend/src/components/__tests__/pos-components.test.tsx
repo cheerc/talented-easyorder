@@ -387,6 +387,32 @@ describe('ActionBar', () => {
     expect(container.querySelector('.confirm-row')).toBeNull();
     expect(container.textContent).not.toContain('確認');
   });
+
+  it('renders 訂餐狀況 button when onStatusMode provided', () => {
+    render(
+      <ActionBar
+        mode="order"
+        setMode={() => {}}
+        onStatusMode={() => {}}
+        focusZone="mode-order"
+      />
+    );
+    expect(screen.getByText('訂餐狀況')).toBeInTheDocument();
+  });
+
+  it('calls onStatusMode when 訂餐狀況 button clicked', () => {
+    const onStatusMode = vi.fn();
+    render(
+      <ActionBar
+        mode="order"
+        setMode={() => {}}
+        onStatusMode={onStatusMode}
+        focusZone="mode-order"
+      />
+    );
+    fireEvent.click(screen.getByText('訂餐狀況'));
+    expect(onStatusMode).toHaveBeenCalled();
+  });
 });
 
 describe('IdleHero', () => {

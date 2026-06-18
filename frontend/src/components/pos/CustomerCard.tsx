@@ -2,8 +2,10 @@ import React, { useEffect, useRef } from "react";
 import type { StudentAccount } from '../../domain/student';
 import type { TodayMenu } from '../../domain/menu';
 import type { PosMode } from '../../domain/posFlow';
+import type { LedgerTransaction } from '../../domain/ledger';
 import { NumericInput } from '../ui/NumericInput';
 import { fmt } from './utils';
+import { TransactionStatusView } from './TransactionStatusView';
 
 interface CustomerCardProps {
   student: StudentAccount;
@@ -19,8 +21,9 @@ interface CustomerCardProps {
   setPriceOverrideLabel: (value: string) => void;
   onDeleteOrder?: () => void;
   focusZone?: string;
+  studentTransactions?: LedgerTransaction[];
 }
-export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel, onDeleteOrder, focusZone }: CustomerCardProps) {
+export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel, onDeleteOrder, focusZone, studentTransactions }: CustomerCardProps) {
   const effectiveMealPrice = mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
   const payInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -71,10 +74,10 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
         <div className="action-grid">
           {/* Left Side: Summary */}
           <div className="bill-summary">
-            <div className="pay-title">結帳明細</div>
-            {focusZone === 'btn-delete-order' ? (
-              <div className="cancel-hint">即將取消訂餐，按 Enter 確認或 Escape 取消</div>
+            {focusZone === 'view-status' ? (
+              <TransactionStatusView transactions={studentTransactions ?? []} />
             ) : (<>
+            <div className="pay-title">結帳明細</div>
             {mode === 'order' && (
               <>
                 <div className="bill-item no-border">
@@ -168,7 +171,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
           </div>
 
           {/* Right Side: Payment Panel */}
-          {mode !== 'expense' ? (
+          {focusZone !== 'view-status' && mode !== 'expense' ? (
             <div className="pay-panel">
               <div className="pay-header">
                 <span className="pay-title">
@@ -192,11 +195,11 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
 
               {/* §3.3: removed quick amount buttons from payment mode */}
             </div>
-          ) : (
+          ) : focusZone !== 'view-status' ? (
             <div className="cancel-empty">
               <div>支出模式 — 請在下方輸入金額</div>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

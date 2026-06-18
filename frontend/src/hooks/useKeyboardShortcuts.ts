@@ -82,7 +82,7 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
         return;
       }
 
-      // E — select the cancel order button when student selected, no-op otherwise
+      // E — switch to order status view when student selected, no-op otherwise
       if (key === 'e' && isStudentSelectedRef.current) {
         if (tag === 'INPUT') {
           const inputType = (target as HTMLInputElement).type;
@@ -94,7 +94,7 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
           return;
         }
         e.preventDefault();
-        setFocusZoneRef.current?.('btn-delete-order');
+        setFocusZoneRef.current?.('view-status');
         return;
       }
 

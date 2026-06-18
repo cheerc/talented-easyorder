@@ -66,8 +66,9 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
 
       if (e.key === 'Enter') {
         e.preventDefault();
-        if (focusZone === 'btn-delete-order') {
-          cancelOrder?.();
+        if (focusZone === 'view-status') {
+          // Ref: #400 — view-status is read-only display, Enter is no-op
+          return;
         } else if (focusZone.startsWith('mode-')) {
           const m = focusZone.replace('mode-', '') as PosMode;
           if (m === currentMode) {
@@ -86,7 +87,7 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
         return;
       }
 
-      const modes = ['mode-order', 'mode-payment', 'btn-delete-order'];
+      const modes = ['mode-order', 'mode-payment', 'view-status'];
       const i = modes.indexOf(focusZone);
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
