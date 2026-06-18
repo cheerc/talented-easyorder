@@ -369,13 +369,23 @@ describe('ActionBar', () => {
       <ActionBar
         mode="order"
         setMode={() => {}}
-        onConfirm={() => {}}
-        onCancel={() => {}}
         focusZone="mode-order"
       />
     );
     expect(container.textContent).toContain('訂便當');
     expect(container.textContent).toContain('繳費');
+  });
+
+  it('does not render confirm or cancel buttons', () => {
+    const { container } = render(
+      <ActionBar
+        mode="order"
+        setMode={() => {}}
+        focusZone="mode-order"
+      />
+    );
+    expect(container.querySelector('.confirm-row')).toBeNull();
+    expect(container.textContent).not.toContain('確認');
   });
 });
 

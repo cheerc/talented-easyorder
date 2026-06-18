@@ -56,10 +56,10 @@ describe('pcPosFlow integration — keyboard flow', () => {
     await user.keyboard('{Enter}');
 
     await waitFor(() => {
-      expect(screen.getByText('確認')).toBeTruthy();
+      expect(screen.getByText('訂便當')).toBeTruthy();
     });
 
-    // Press Enter on confirm to commit
+    // Press Enter to commit (keyboard shortcut replaces confirm button)
     await user.keyboard('{Enter}');
 
     await waitFor(() => {

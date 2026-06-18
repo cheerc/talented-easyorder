@@ -140,6 +140,15 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
           </>
         ) : (
           <>
+            <ActionBar
+              mode={currentMode}
+              setMode={(m) => {
+                changeMode(m as PosMode);
+                setFocusZone('mode-' + m);
+              }}
+              onDeleteOrder={openCancelConfirm}
+              focusZone={focusZone}
+            />
             {expenseProps ? (
               <ExpensePanel
                 kind={expenseProps.kind}
@@ -177,17 +186,6 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 onCancel={cancelFlow}
               />
             )}
-            <ActionBar
-              mode={currentMode}
-              setMode={(m) => {
-                changeMode(m as PosMode);
-                setFocusZone('mode-' + m);
-              }}
-              onDeleteOrder={openCancelConfirm}
-              focusZone={focusZone}
-              onConfirm={handleConfirm}
-              onCancel={cancelFlow}
-            />
           </>
         )}
       </div>

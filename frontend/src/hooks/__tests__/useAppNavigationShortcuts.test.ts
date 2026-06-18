@@ -10,7 +10,7 @@ const DEFAULT_PROPS = {
   expenseProps: null,
   currentMode: 'order' as const,
   hasFlash: false,
-  focusZone: 'btn-confirm',
+  focusZone: 'mode-order',
   setFocusZone: vi.fn(),
   changeMode: vi.fn(),
   cancelFlow: vi.fn(),
@@ -94,34 +94,7 @@ describe('useAppNavigationShortcuts — F-keys', () => {
     expect(setSearchText).not.toHaveBeenCalled();
   });
 
-  it('A7: Enter on btn-confirm calls handleConfirm', () => {
-    const handleConfirm = vi.fn();
-    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, handleConfirm, focusZone: 'btn-confirm' }));
-
-    keydown('Enter');
-
-    expect(handleConfirm).toHaveBeenCalled();
-  });
-
-  it('A8: Enter on btn-cancel calls cancelFlow', () => {
-    const cancelFlow = vi.fn();
-    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, cancelFlow, focusZone: 'btn-cancel' }));
-
-    keydown('Enter');
-
-    expect(cancelFlow).toHaveBeenCalled();
-  });
-
-  it('A8b: Enter on btn-delete-order calls cancelOrder', () => {
-    const cancelOrder = vi.fn();
-    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, cancelOrder, focusZone: 'btn-delete-order' }));
-
-    keydown('Enter');
-
-    expect(cancelOrder).toHaveBeenCalled();
-  });
-
-  it('A9: Enter on mode-{currentMode} calls handleConfirm', () => {
+  it('A7: Enter on mode-{currentMode} calls handleConfirm', () => {
     const handleConfirm = vi.fn();
     renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, handleConfirm, focusZone: 'mode-order', currentMode: 'order' }));
 
@@ -130,7 +103,16 @@ describe('useAppNavigationShortcuts — F-keys', () => {
     expect(handleConfirm).toHaveBeenCalled();
   });
 
-  it('A9b: Enter on mode-{differentMode} calls changeMode', () => {
+  it('A7b: Enter on btn-delete-order calls cancelOrder', () => {
+    const cancelOrder = vi.fn();
+    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, cancelOrder, focusZone: 'btn-delete-order' }));
+
+    keydown('Enter');
+
+    expect(cancelOrder).toHaveBeenCalled();
+  });
+
+  it('A8: Enter on mode-{differentMode} calls changeMode', () => {
     const changeMode = vi.fn();
     const setFocusZone = vi.fn();
     renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, changeMode, setFocusZone, focusZone: 'mode-payment', currentMode: 'order' }));
@@ -141,7 +123,7 @@ describe('useAppNavigationShortcuts — F-keys', () => {
     expect(setFocusZone).toHaveBeenCalledWith('mode-payment');
   });
 
-  it('A10: Escape calls cancelFlow', () => {
+  it('A9: Escape calls cancelFlow', () => {
     const cancelFlow = vi.fn();
     renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, cancelFlow }));
 
@@ -152,40 +134,25 @@ describe('useAppNavigationShortcuts — F-keys', () => {
 });
 
 describe('useAppNavigationShortcuts — Arrow navigation', () => {
-  it('A11: ArrowLeft from btn-confirm → btn-cancel; ArrowRight back', () => {
+  it('A10: ArrowLeft/ArrowRight cycle through mode row', () => {
     const setFocusZone = vi.fn();
-    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, setFocusZone, focusZone: 'btn-confirm' }));
-
-    keydown('ArrowLeft');
-    expect(setFocusZone).toHaveBeenCalledWith('btn-cancel');
-
-    vi.mocked(setFocusZone).mockClear();
-    renderHook(
-      (props) => useAppNavigationShortcuts(props),
-      { initialProps: { ...DEFAULT_PROPS, picked: {}, setFocusZone, focusZone: 'btn-cancel' } }
-    );
+    const changeMode = vi.fn();
+    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, setFocusZone, changeMode, focusZone: 'mode-order' }));
 
     keydown('ArrowRight');
-    expect(setFocusZone).toHaveBeenCalledWith('btn-confirm');
+    expect(setFocusZone).toHaveBeenCalledWith('mode-payment');
+    expect(changeMode).toHaveBeenCalledWith('payment');
   });
 
-  it('A12: ArrowDown from mode row moves to btn-confirm', () => {
+  it('A10b: ArrowDown from mode row is no-op (no confirm row)', () => {
     const setFocusZone = vi.fn();
     renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, setFocusZone, focusZone: 'mode-order' }));
 
     keydown('ArrowDown');
-    expect(setFocusZone).toHaveBeenCalledWith('btn-confirm');
+    expect(setFocusZone).not.toHaveBeenCalled();
   });
 
-  it('A13: ArrowUp from btn-confirm moves to mode row', () => {
-    const setFocusZone = vi.fn();
-    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, setFocusZone, focusZone: 'btn-confirm', currentMode: 'order' }));
-
-    keydown('ArrowUp');
-    expect(setFocusZone).toHaveBeenCalledWith('mode-order');
-  });
-
-  it('A14: shortcuts disabled when isDialogOpen', () => {
+  it('A11: shortcuts disabled when isDialogOpen', () => {
     const setTab = vi.fn();
     renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, setTab, isDialogOpen: true }));
 
@@ -193,7 +160,7 @@ describe('useAppNavigationShortcuts — Arrow navigation', () => {
     expect(setTab).not.toHaveBeenCalled();
   });
 
-  it('A15: cleanup on unmount removes event listeners', () => {
+  it('A12: cleanup on unmount removes event listeners', () => {
     const removeListenerSpy = vi.spyOn(window, 'removeEventListener');
 
     const { unmount } = renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {} }));
@@ -204,3 +171,4 @@ describe('useAppNavigationShortcuts — Arrow navigation', () => {
     removeListenerSpy.mockRestore();
   });
 });
+

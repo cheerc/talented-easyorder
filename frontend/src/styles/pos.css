@@ -419,11 +419,6 @@
   outline-offset: 2px;
 }
 
-.btn-focus {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
-}
-
 .btn-confirm:disabled {
   opacity: .4;
   cursor: not-allowed;
@@ -715,11 +710,6 @@ input::-webkit-inner-spin-button {
 .mode-lbl {
   font-size: 15px;
   font-weight: 500;
-}
-
-.confirm-row {
-  display: flex;
-  gap: 10px;
 }
 
 .btn-cancel,
