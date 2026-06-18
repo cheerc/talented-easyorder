@@ -103,13 +103,13 @@ describe('useAppNavigationShortcuts — F-keys', () => {
     expect(handleConfirm).toHaveBeenCalled();
   });
 
-  it('A7b: Enter on btn-delete-order calls cancelOrder', () => {
+  it('A7b: Enter on view-status is no-op (does not call cancelOrder)', () => {
     const cancelOrder = vi.fn();
-    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, cancelOrder, focusZone: 'btn-delete-order' }));
+    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, cancelOrder, focusZone: 'view-status' }));
 
     keydown('Enter');
 
-    expect(cancelOrder).toHaveBeenCalled();
+    expect(cancelOrder).not.toHaveBeenCalled();
   });
 
   it('A8: Enter on mode-{differentMode} calls changeMode', () => {

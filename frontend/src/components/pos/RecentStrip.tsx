@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import type { LedgerGroup } from '../../domain/ledgerReport';
 import type { LedgerTransaction } from '../../domain/ledger';
 import { fmt } from './utils';
+import { getIncome, getExpense } from '../../domain/transactionUtils';
 
 interface RecentStripProps {
   groups: LedgerGroup[];
@@ -30,16 +31,15 @@ const RecentDetailRow = React.memo(function RecentDetailRow({
 }) {
   const time = tx.createdAt.slice(11, 19);
   const typeLabel = TYPE_LABELS[tx.type] ?? tx.type;
-  const amount = tx.type === 'order' ? -tx.mealPrice : tx.paidAmount;
-  const isNeg = amount < 0;
+  const income = getIncome(tx);
+  const expense = getExpense(tx);
 
   return (
     <div className="recent-detail-row">
       <span className="recent-time mono">{time}</span>
       <span className={'recent-type type-' + tx.type}>{typeLabel}</span>
-      <span className={'recent-detail-amt mono ' + (isNeg ? 'neg' : 'pos')}>
-        {isNeg ? '−' : '+'}{fmt(amount)}
-      </span>
+      <span className="tx-col-income mono">{income != null ? `+${fmt(income)}` : ''}</span>
+      <span className="tx-col-expense mono">{expense != null ? `−${fmt(expense)}` : ''}</span>
       {!locked && (onEditClick || onDeleteClick) && (
         <span className="recent-detail-actions">
           {onEditClick && tx.type !== 'expense' && (
@@ -115,6 +115,12 @@ export const RecentStrip = React.memo(function RecentStrip({
               {/* Expanded detail rows */}
               {isExpanded && (
                 <div className="recent-details">
+                  <div className="recent-detail-header">
+                    <span />
+                    <span />
+                    <span className="tx-col-income">收入</span>
+                    <span className="tx-col-expense">支出</span>
+                  </div>
                   {g.transactions.map(tx => (
                     <RecentDetailRow
                       key={tx.transactionId}

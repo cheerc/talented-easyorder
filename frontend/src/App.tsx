@@ -96,7 +96,7 @@ function AppContent() {
   const handleConfirm = useConfirmHandler({ state, requestConfirm, confirmDuplicate, confirmExpenseAmount });
 
   const { cancelDialogOpen, setCancelDialogOpen, noOrderDialogOpen, setNoOrderDialogOpen,
-    openCancelConfirm, handleDeleteOrder } = useCancelDialog({ picked, allTx, viewDate });
+    openCancelConfirm, openCancelConfirmForTx, handleDeleteOrder } = useCancelDialog({ picked, allTx, viewDate, allStudents: students, selectStudent });
 
   // Ref: #281 — Extracted to useCommitLifecycle hook
   const { lastSync } = useCommitLifecycle({
@@ -143,11 +143,11 @@ function AppContent() {
 
   const flowArgs = useMemo(() => ({
     state, picked, currentMode, currentPaidAmount, selectStudent,
-    setPaidAmountText, handleConfirm, cancelFlow, changeMode, openCancelConfirm,
+    setPaidAmountText, handleConfirm, cancelFlow, changeMode, openCancelConfirm, openCancelConfirmForTx,
     handleDeleteOrder,
     onViewHistory: () => { setReportStudentFilter(picked!.studentId); setTab('report'); },
   }), [state, picked, currentMode, currentPaidAmount, selectStudent,
-    setPaidAmountText, handleConfirm, cancelFlow, changeMode, openCancelConfirm,
+    setPaidAmountText, handleConfirm, cancelFlow, changeMode, openCancelConfirm, openCancelConfirmForTx,
     handleDeleteOrder]);
 
   const expenseArgs = useMemo(() => ({
