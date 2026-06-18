@@ -4,9 +4,11 @@
 
 **Goal:** Rework E mode from "取消訂餐" (cancel order) to "訂餐狀況" (order status) with DRY dual-column income/expense display, delete confirmation dialogs, and RecentStrip auto-switch.
 
-**Architecture:** Extract a shared `TransactionStatusView` component that renders student transactions in a dual-column (收入/支出) format. This component is used by both CustomerCard (E mode status view) and RecentStrip (detail rows). E becomes a focusZone-based mode (`mode-status`) rather than a new PosMode, avoiding state machine changes. Delete actions get confirmation dialogs for all transaction types.
+**Architecture:** Extract shared `transactionUtils.ts` (getIncome/getExpense helpers) and `TransactionStatusView` component for dual-column (收入/支出) display. Used by both CustomerCard (E mode) and RecentStrip (detail rows). E uses focusZone `'view-status'` (NOT `'mode-*'` prefix — avoids collision with Enter handler's `startsWith('mode-')` branch in useAppNavigationShortcuts). Delete actions get confirmation dialogs for all transaction types.
 
 **Tech Stack:** React, TypeScript, Vitest, existing UI patterns (CancelOrderDialog, LedgerGroup)
+
+**Spec reference:** GitHub issues #400, #401, #402 (capability spec)
 
 **Closes:** #400, #401, #402
 
@@ -15,8 +17,10 @@
 ## File Structure
 
 ### New Files
+- `frontend/src/domain/transactionUtils.ts` — Shared getIncome/getExpense helpers (DRY: used by TransactionStatusView + RecentStrip)
 - `frontend/src/components/pos/TransactionStatusView.tsx` — Shared component: renders a student's today transactions in dual-column (收入/支出) format with optional action buttons
 - `frontend/src/components/pos/DeleteConfirmDialog.tsx` — Generic delete confirmation dialog for payment/expense transactions (order deletion reuses existing CancelOrderDialog)
+- `frontend/src/domain/__tests__/transactionUtils.test.ts` — Tests for getIncome/getExpense
 - `frontend/src/components/pos/__tests__/TransactionStatusView.test.tsx` — Tests for TransactionStatusView
 - `frontend/src/components/pos/__tests__/DeleteConfirmDialog.test.tsx` — Tests for DeleteConfirmDialog
 
@@ -26,28 +30,97 @@
 - `frontend/src/components/pos/RecentStrip.tsx` — Use dual-column layout from TransactionStatusView pattern; integrate delete confirmation
 - `frontend/src/components/PosColumn.tsx` — Wire new E mode behavior; add delete confirmation state; auto-switch on RecentStrip student click
 - `frontend/src/components/pos-components.tsx` — Export new components
-- `frontend/src/hooks/useKeyboardShortcuts.ts` — Change E key to set focusZone='mode-status'
-- `frontend/src/hooks/useAppNavigationShortcuts.ts` — Update modes array: 'btn-delete-order' → 'mode-status'
-- `frontend/src/hooks/useCancelDialog.ts` — Add delete confirmation state for payment/expense
+- `frontend/src/hooks/useKeyboardShortcuts.ts` — Change E key to set focusZone='view-status'
+- `frontend/src/hooks/useAppNavigationShortcuts.ts` — Update modes array: 'btn-delete-order' → 'view-status'; add explicit guard in Enter handler (view-status = no-op, NOT matching startsWith('mode-'))
+- `frontend/src/hooks/useCancelDialog.ts` — Add openCancelConfirmForTx(tx) to handle RecentStrip order deletion
 - `frontend/src/styles/pos.css` — Add dual-column layout styles
-- `frontend/src/App.tsx` — Wire new focusZone value if needed
+- `frontend/src/App.tsx` — Wire DeleteConfirmDialog state + new focusZone value
+- `frontend/src/__tests__/pcPosFlow.integration.test.tsx` — Update E key integration tests
+- `frontend/src/__tests__/pcPosSafety.integration.test.tsx` — Update cancel flow integration tests
 
 ### Test Files to Update
 - `frontend/src/components/__tests__/pos-components.test.tsx` — ActionBar label, new E mode behavior
-- `frontend/src/hooks/__tests__/useAppNavigationShortcuts.test.ts` — Updated modes array
+- `frontend/src/hooks/__tests__/useAppNavigationShortcuts.test.ts` — Updated modes array + Enter guard
 - `frontend/src/components/pos/__tests__/CustomerCard.test.tsx` — E mode status view
+- `frontend/src/__tests__/pcPosFlow.integration.test.tsx` — E key no longer triggers cancel
+- `frontend/src/__tests__/pcPosSafety.integration.test.tsx` — Cancel flow via RecentStrip delete
 
 ---
 
-## Task 1: Shared Dual-Column Style + TransactionStatusView Component
+## Task 1: Shared Transaction Utils + Dual-Column Style + TransactionStatusView Component
 
 **Files:**
+- Create: `frontend/src/domain/transactionUtils.ts`
+- Create: `frontend/src/domain/__tests__/transactionUtils.test.ts`
 - Create: `frontend/src/components/pos/TransactionStatusView.tsx`
 - Create: `frontend/src/components/pos/__tests__/TransactionStatusView.test.tsx`
 - Modify: `frontend/src/styles/pos.css`
 - Modify: `frontend/src/components/pos-components.tsx`
 
-- [ ] **Step 1: Write failing tests for TransactionStatusView**
+- [ ] **Step 1: Create transactionUtils.ts with tests**
+
+```ts
+// frontend/src/domain/transactionUtils.ts
+import type { LedgerTransaction } from './ledger';
+
+/** Returns income amount for display, or null if this tx has no income component */
+export function getIncome(tx: LedgerTransaction): number | null {
+  if (tx.type === 'payment') return tx.paidAmount;
+  if (tx.type === 'order' && tx.paidAmount > 0) return tx.paidAmount;
+  return null;
+}
+
+/** Returns expense amount for display, or null if this tx has no expense component */
+export function getExpense(tx: LedgerTransaction): number | null {
+  if (tx.type === 'order') return tx.mealPrice;
+  if (tx.type === 'expense') return tx.amount;
+  return null;
+}
+```
+
+```ts
+// frontend/src/domain/__tests__/transactionUtils.test.ts
+import { getIncome, getExpense } from '../transactionUtils';
+
+const baseTx = {
+  transactionId: 'tx-1', businessDate: '2026-06-18', createdAt: '2026-06-18T09:00:00Z',
+  studentId: 's1', studentNameSnapshot: '王柏翰', menuNameSnapshot: '', vendorNameSnapshot: '',
+  sourceDevice: 'pc' as const, syncStatus: 'synced' as any, revision: 1, note: '',
+  afterBalance: 0, mealPrice: 0, paidAmount: 0, amount: 0,
+};
+
+describe('getIncome', () => {
+  it('returns paidAmount for payment', () => {
+    expect(getIncome({ ...baseTx, type: 'payment', paidAmount: 500 })).toBe(500);
+  });
+  it('returns paidAmount for order with payment', () => {
+    expect(getIncome({ ...baseTx, type: 'order', paidAmount: 90, mealPrice: 90 })).toBe(90);
+  });
+  it('returns null for order without payment', () => {
+    expect(getIncome({ ...baseTx, type: 'order', paidAmount: 0, mealPrice: 90 })).toBeNull();
+  });
+  it('returns null for expense', () => {
+    expect(getIncome({ ...baseTx, type: 'expense', amount: 100 })).toBeNull();
+  });
+});
+
+describe('getExpense', () => {
+  it('returns mealPrice for order', () => {
+    expect(getExpense({ ...baseTx, type: 'order', mealPrice: 90 })).toBe(90);
+  });
+  it('returns amount for expense', () => {
+    expect(getExpense({ ...baseTx, type: 'expense', amount: 100 })).toBe(100);
+  });
+  it('returns null for payment', () => {
+    expect(getExpense({ ...baseTx, type: 'payment', paidAmount: 500 })).toBeNull();
+  });
+});
+```
+
+Run: `cd frontend && npx vitest run src/domain/__tests__/transactionUtils.test.ts --reporter verbose 2>&1 | tail -20`
+Expected: 7 tests PASS
+
+- [ ] **Step 2: Write failing tests for TransactionStatusView**
 
 ```tsx
 // frontend/src/components/pos/__tests__/TransactionStatusView.test.tsx
@@ -177,6 +250,7 @@ Add to `frontend/src/styles/pos.css`:
 // frontend/src/components/pos/TransactionStatusView.tsx
 import React from 'react';
 import type { LedgerTransaction } from '../../domain/ledger';
+import { getIncome, getExpense } from '../../domain/transactionUtils';
 
 interface TransactionStatusViewProps {
   transactions: LedgerTransaction[];
@@ -192,18 +266,6 @@ const TYPE_LABELS: Record<string, string> = {
 function formatTime(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-}
-
-function getIncome(tx: LedgerTransaction): number | null {
-  if (tx.type === 'payment') return tx.paidAmount;
-  if (tx.type === 'order' && tx.paidAmount > 0) return tx.paidAmount;
-  return null;
-}
-
-function getExpense(tx: LedgerTransaction): number | null {
-  if (tx.type === 'order') return tx.mealPrice;
-  if (tx.type === 'expense') return tx.paidAmount || tx.mealPrice;
-  return null;
 }
 
 export const TransactionStatusView = React.memo(function TransactionStatusView({
@@ -456,7 +518,7 @@ it('calls onStatusMode when E button clicked', () => {
 
 - [ ] **Step 2: Write failing tests for navigation modes array update**
 
-In `frontend/src/hooks/__tests__/useAppNavigationShortcuts.test.ts`, update the modes array test to use `mode-status` instead of `btn-delete-order`.
+In `frontend/src/hooks/__tests__/useAppNavigationShortcuts.test.ts`, update the modes array test to use `view-status` instead of `btn-delete-order`.
 
 - [ ] **Step 3: Run tests to verify they fail**
 
@@ -469,7 +531,7 @@ Change ActionBar props and E button:
 - Replace `onDeleteOrder?: () => void` with `onStatusMode?: () => void`
 - Rename label from `取消訂餐` to `訂餐狀況`
 - Change `onClick` from `onDeleteOrder` to `onStatusMode`
-- Update highlight: `focusZone === 'mode-status'` instead of `focusZone === 'btn-delete-order'`
+- Update highlight: `focusZone === 'view-status'` instead of `focusZone === 'btn-delete-order'`
 
 ```tsx
 interface ActionBarProps {
@@ -482,7 +544,7 @@ interface ActionBarProps {
 // E button section:
 {onStatusMode && (
   <button
-    className={'mode ' + (focusZone === 'mode-status' ? 'mode-on mode-focus' : '')}
+    className={'mode ' + (focusZone === 'view-status' ? 'mode-on mode-focus' : '')}
     onClick={onStatusMode}
     style={{ flex: 1 }}
   >
@@ -494,12 +556,12 @@ interface ActionBarProps {
 
 - [ ] **Step 5: Update useKeyboardShortcuts.ts E handler**
 
-Change `setFocusZoneRef.current?.('btn-delete-order')` to `setFocusZoneRef.current?.('mode-status')`.
+Change `setFocusZoneRef.current?.('btn-delete-order')` to `setFocusZoneRef.current?.('view-status')`.
 
 - [ ] **Step 6: Update useAppNavigationShortcuts.ts**
 
-Change modes array: `'btn-delete-order'` → `'mode-status'`.
-Update Enter handler: `focusZone === 'btn-delete-order'` → `focusZone === 'mode-status'` (but Enter on mode-status should be a no-op, not call cancelOrder — remove the cancelOrder call for this zone).
+Change modes array: `'btn-delete-order'` → `'view-status'`.
+Update Enter handler: `focusZone === 'btn-delete-order'` → `focusZone === 'view-status'` (but Enter on view-status should be a no-op, not call cancelOrder — remove the cancelOrder call for this zone).
 
 - [ ] **Step 7: Run tests to verify they pass**
 
@@ -532,11 +594,11 @@ git commit -m "feat(pos): rename E button to 訂餐狀況, update keyboard/nav (
 // Add to frontend/src/components/pos/__tests__/CustomerCard.test.tsx
 import { TransactionStatusView } from '../../pos-components';
 
-it('shows TransactionStatusView when focusZone is mode-status', () => {
+it('shows TransactionStatusView when focusZone is view-status', () => {
   render(
     <CustomerCard
       {...defaultProps}
-      focusZone="mode-status"
+      focusZone="view-status"
       studentTransactions={[mockOrderTx]}
     />
   );
@@ -547,11 +609,11 @@ it('shows TransactionStatusView when focusZone is mode-status', () => {
   expect(screen.queryByText('結帳明細')).not.toBeInTheDocument();
 });
 
-it('hides pay input when focusZone is mode-status', () => {
+it('hides pay input when focusZone is view-status', () => {
   render(
     <CustomerCard
       {...defaultProps}
-      focusZone="mode-status"
+      focusZone="view-status"
       studentTransactions={[]}
     />
   );
@@ -566,7 +628,7 @@ it('hides pay input when focusZone is mode-status', () => {
 Add `studentTransactions?: LedgerTransaction[]` to props. In the bill-summary section:
 
 ```tsx
-{focusZone === 'mode-status' ? (
+{focusZone === 'view-status' ? (
   <TransactionStatusView transactions={studentTransactions ?? []} />
 ) : (
   // existing bill-summary + pay-panel code
@@ -610,10 +672,10 @@ git commit -m "feat(pos): show TransactionStatusView in E mode (#400)"
 ## Task 5: RecentStrip Dual-Column + Delete Confirmation Wiring
 
 **Files:**
-- Modify: `frontend/src/components/pos/RecentStrip.tsx` — Dual-column layout for detail rows
+- Modify: `frontend/src/components/pos/RecentStrip.tsx` — Dual-column layout for detail rows, import getIncome/getExpense from transactionUtils
 - Modify: `frontend/src/components/PosColumn.tsx` — Wire delete confirmation dialogs + auto-switch E mode on student click
-- Modify: `frontend/src/hooks/useCancelDialog.ts` — Add payment/expense delete state
-- Modify: `frontend/src/App.tsx` — Wire DeleteConfirmDialog + new dialog state
+- Modify: `frontend/src/hooks/useCancelDialog.ts` — Add `openCancelConfirmForTx(tx)` that selects student then opens CancelOrderDialog
+- Modify: `frontend/src/App.tsx` — Wire DeleteConfirmDialog + deleteConfirmTx state
 
 - [ ] **Step 1: Write failing tests for RecentStrip dual-column**
 
@@ -625,9 +687,9 @@ Test that `handleRecentDeleteClick` for payment/expense opens a confirmation dia
 
 - [ ] **Step 3: Update RecentStrip detail rows to dual-column format**
 
-Replace the single amount column with dual 收入/支出 columns following the same pattern as TransactionStatusView (DRY — use the same CSS classes `.tx-col-income`/`.tx-col-expense` and the same `getIncome`/`getExpense` logic, extracted to a shared utility if needed).
+Replace the single amount column with dual 收入/支出 columns. Import `getIncome`/`getExpense` from `../../domain/transactionUtils` (DRY — same helpers as TransactionStatusView). Use same CSS classes `.tx-col-income`/`.tx-col-expense`.
 
-Add column headers at the top of the expanded detail section.
+Add column headers (收入/支出) at the top of the expanded detail section.
 
 - [ ] **Step 4: Update PosColumn.tsx — delete confirmation wiring**
 
@@ -644,7 +706,6 @@ Update handler:
 ```tsx
 const handleRecentDeleteClick = (tx: LedgerTransaction) => {
   if (tx.type === 'order') {
-    // Use existing cancel dialog flow — need to select student first, then open
     openCancelConfirmForTx(tx);
   } else {
     setDeleteConfirmTx(tx);
@@ -652,14 +713,32 @@ const handleRecentDeleteClick = (tx: LedgerTransaction) => {
 };
 ```
 
+`openCancelConfirmForTx` is a new function in `useCancelDialog.ts`:
+```tsx
+// Add to useCancelDialog.ts:
+const openCancelConfirmForTx = useCallback((tx: LedgerTransaction) => {
+  // Find student account from allStudents by tx.studentId, select it, then open dialog
+  const student = allStudents.find(s => s.studentId === tx.studentId);
+  if (student) {
+    selectStudent(student.studentId, 'manual');
+  }
+  // Store the specific orderTx for the dialog
+  setOrderTx(tx);
+  setCancelDialogOpen(true);
+}, [allStudents, selectStudent]);
+
+// Return from useCancelDialog:
+return { ...existing, openCancelConfirmForTx };
+```
+
 - [ ] **Step 5: Update PosColumn.tsx — auto-switch E mode on student click**
 
-Change `onStudentClick` callback to also set focusZone to `mode-status`:
+Change `onStudentClick` callback to also set focusZone to `view-status`:
 
 ```tsx
 onStudentClick={!isHistorical && dateStatus !== 'closed' ? (sid) => {
   selectStudent(sid, 'manual');
-  setFocusZone('mode-status');
+  setFocusZone('view-status');
 } : undefined}
 ```
 
@@ -667,12 +746,29 @@ onStudentClick={!isHistorical && dateStatus !== 'closed' ? (sid) => {
 
 Replace `onDeleteOrder={openCancelConfirm}` with:
 ```tsx
-onStatusMode={() => setFocusZone('mode-status')}
+onStatusMode={() => setFocusZone('view-status')}
 ```
 
-- [ ] **Step 7: Wire DeleteConfirmDialog in App.tsx or MainLayout**
+- [ ] **Step 7: Wire DeleteConfirmDialog in App.tsx**
 
-Render `DeleteConfirmDialog` with state from PosColumn/useCancelDialog.
+Render `DeleteConfirmDialog` in `App.tsx` (same location as CancelOrderDialog):
+
+```tsx
+import { DeleteConfirmDialog } from './components/pos-components';
+
+// In the render:
+<DeleteConfirmDialog
+  open={deleteConfirmTx != null}
+  studentName={deleteConfirmTx ? /* find student name from tx */ deleteConfirmTx.studentNameSnapshot : ''}
+  transactionType={deleteConfirmTx?.type === 'expense' ? 'expense' : 'payment'}
+  amount={deleteConfirmTx?.amount ?? 0}
+  onConfirm={() => {
+    if (deleteConfirmTx) deleteTransaction(deleteConfirmTx.transactionId);
+    setDeleteConfirmTx(null);
+  }}
+  onCancel={() => setDeleteConfirmTx(null)}
+/>
+```
 
 - [ ] **Step 8: Run full test suite**
 
@@ -684,6 +780,35 @@ Expected: All tests pass
 ```bash
 git add -A
 git commit -m "feat(pos): wire E mode, dual-column RecentStrip, delete confirmations (#400, #401, #402)"
+```
+
+---
+
+## Task 5b: Update Integration Tests
+
+**Files:**
+- Modify: `frontend/src/__tests__/pcPosFlow.integration.test.tsx` — E key now sets 'view-status' focusZone, not 'btn-delete-order'
+- Modify: `frontend/src/__tests__/pcPosSafety.integration.test.tsx` — Cancel order flow changed: no longer via E button, now via RecentStrip delete
+
+- [ ] **Step 1: Update pcPosFlow.integration.test.tsx**
+
+Find tests that simulate E key press and expect `btn-delete-order` behavior. Update to expect `view-status` focusZone instead. E key should no longer trigger cancel dialog.
+
+- [ ] **Step 2: Update pcPosSafety.integration.test.tsx**
+
+Find tests that simulate cancel order flow via E button. Update to test cancel via RecentStrip delete button → CancelOrderDialog flow instead.
+
+- [ ] **Step 3: Run integration tests**
+
+Run: `cd frontend && npx vitest run src/__tests__/pcPosFlow.integration.test.tsx src/__tests__/pcPosSafety.integration.test.tsx --reporter verbose 2>&1 | tail -30`
+Expected: All PASS
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add frontend/src/__tests__/pcPosFlow.integration.test.tsx \
+       frontend/src/__tests__/pcPosSafety.integration.test.tsx
+git commit -m "test(pos): update integration tests for E mode rework (#400)"
 ```
 
 ---
