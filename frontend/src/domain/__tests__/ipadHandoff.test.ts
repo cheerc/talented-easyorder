@@ -4,6 +4,7 @@ import {
   toHandoffScannerInput,
   writeHandoffIntent,
   readHandoffIntent,
+  subscribeHandoffChannel,
 } from '../ipadHandoff';
 import type { IpadHandoffMessage } from '../ipadHandoff';
 
@@ -69,16 +70,23 @@ describe('toHandoffScannerInput', () => {
 });
 
 describe('handoff intent write/read cycle', () => {
-  it('writes and reads handoff intent via specified channel', () => {
+  // Ref: #313 — writeHandoffIntent now uses BroadcastChannel, not sessionStorage.
+  // Use subscribeHandoffChannel to receive messages.
+  it('writes and reads handoff intent via BroadcastChannel', async () => {
     const channel = 'test-handoff-channel';
+    const received: IpadHandoffMessage[] = [];
+    const unsub = subscribeHandoffChannel(channel, msg => received.push(msg));
+
     writeHandoffIntent(channel, validMessage);
-    const read = readHandoffIntent(channel);
-    expect(read).not.toBeNull();
-    expect(read!.studentId).toBe('015');
-    expect(read!.action).toBe('order');
-    expect(read!.version).toBe(1);
-    expect(read!.timestamp).toBe(validMessage.timestamp);
-    expect(read!.sourceDevice).toBe('ipad_handoff');
+    await new Promise(r => setTimeout(r, 10));
+
+    expect(received.length).toBe(1);
+    expect(received[0].studentId).toBe('015');
+    expect(received[0].action).toBe('order');
+    expect(received[0].version).toBe(1);
+    expect(received[0].timestamp).toBe(validMessage.timestamp);
+    expect(received[0].sourceDevice).toBe('ipad_handoff');
+    unsub();
   });
 
   it('readHandoffIntent returns null when no data written', () => {
@@ -86,13 +94,11 @@ describe('handoff intent write/read cycle', () => {
     expect(result).toBeNull();
   });
 
-  it('readHandoffIntent clears the stored data after reading', () => {
-    const channel = 'consume-test-channel';
+  it('BroadcastChannel messages are not persisted in sessionStorage', () => {
+    const channel = 'no-persist-test';
     writeHandoffIntent(channel, validMessage);
-    const first = readHandoffIntent(channel);
-    expect(first).not.toBeNull();
-    const second = readHandoffIntent(channel);
-    expect(second).toBeNull();
+    // sessionStorage should remain empty (BroadcastChannel path)
+    expect(sessionStorage.getItem(channel)).toBeNull();
   });
 
   it('handles malformed stored data gracefully', () => {

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { PosMode } from '../domain/posFlow';
 
 interface UseKeyboardShortcutsArgs {
@@ -13,7 +13,26 @@ interface UseKeyboardShortcutsArgs {
   isDialogOpen?: boolean;
 }
 
+// Ref: #292 — Use refs for callback dependencies so the keydown listener
+// is registered once on mount (when enabled) instead of re-registered on
+// every state change. Only `enabled` and `isDialogOpen` control registration.
 export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStudentSelected, handleConfirm, cancelFlow, enterExpenseMode, setFocusZone, isDialogOpen }: UseKeyboardShortcutsArgs) {
+  const changeModeRef = useRef(changeMode);
+  const cancelOrderRef = useRef(cancelOrder);
+  const isStudentSelectedRef = useRef(isStudentSelected);
+  const handleConfirmRef = useRef(handleConfirm);
+  const cancelFlowRef = useRef(cancelFlow);
+  const enterExpenseModeRef = useRef(enterExpenseMode);
+  const setFocusZoneRef = useRef(setFocusZone);
+
+  useEffect(() => { changeModeRef.current = changeMode; });
+  useEffect(() => { cancelOrderRef.current = cancelOrder; });
+  useEffect(() => { isStudentSelectedRef.current = isStudentSelected; });
+  useEffect(() => { handleConfirmRef.current = handleConfirm; });
+  useEffect(() => { cancelFlowRef.current = cancelFlow; });
+  useEffect(() => { enterExpenseModeRef.current = enterExpenseMode; });
+  useEffect(() => { setFocusZoneRef.current = setFocusZone; });
+
   useEffect(() => {
     if (!enabled || isDialogOpen) return;
 
@@ -31,17 +50,17 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
         if (tag === 'INPUT' || tag === 'TEXTAREA') {
           (target as HTMLInputElement).blur();
         }
-        cancelFlow();
+        cancelFlowRef.current();
         return;
       }
 
       // Enter always works (delegated to navigation shortcuts if student is selected to avoid double trigger)
       if (e.key === 'Enter') {
-        if (isStudentSelected) {
+        if (isStudentSelectedRef.current) {
           return;
         }
         e.preventDefault();
-        handleConfirm();
+        handleConfirmRef.current();
         return;
       }
 
@@ -58,13 +77,13 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
           return;
         }
         e.preventDefault();
-        changeMode(modeKey[key]);
-        setFocusZone?.('mode-' + modeKey[key]);
+        changeModeRef.current(modeKey[key]);
+        setFocusZoneRef.current?.('mode-' + modeKey[key]);
         return;
       }
 
-      // E — select the cancel order button when student selected, no-op otherwise
-      if (key === 'e' && isStudentSelected) {
+      // E — switch to order status view when student selected, no-op otherwise
+      if (key === 'e' && isStudentSelectedRef.current) {
         if (tag === 'INPUT') {
           const inputType = (target as HTMLInputElement).type;
           if (inputType === 'text' || inputType === 'search' || inputType === 'email' || inputType === 'password' || inputType === 'url' || inputType === 'tel') {
@@ -75,12 +94,12 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
           return;
         }
         e.preventDefault();
-        setFocusZone?.('btn-delete-order');
+        setFocusZoneRef.current?.('view-status');
         return;
       }
 
       // A — enter expense mode in idle only (no student selected)
-      if (key === 'a' && enterExpenseMode && !isStudentSelected) {
+      if (key === 'a' && enterExpenseModeRef.current && !isStudentSelectedRef.current) {
         if (tag === 'INPUT') {
           const inputType = (target as HTMLInputElement).type;
           if (inputType === 'text' || inputType === 'search' || inputType === 'email' || inputType === 'password' || inputType === 'url' || inputType === 'tel') {
@@ -90,7 +109,7 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
           return;
         }
         e.preventDefault();
-        enterExpenseMode();
+        enterExpenseModeRef.current();
         return;
       }
 
@@ -99,5 +118,5 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [enabled, changeMode, cancelOrder, isStudentSelected, handleConfirm, cancelFlow, enterExpenseMode, setFocusZone, isDialogOpen]);
+  }, [enabled, isDialogOpen]);
 }

@@ -1,4 +1,4 @@
-import React, { useCallback, Suspense } from 'react';
+import React, { Suspense } from 'react';
 import { ErrorBoundary, SectionError } from './ErrorBoundary';
 import { PosColumn } from './PosColumn';
 import type { ComponentProps } from 'react';
@@ -12,42 +12,15 @@ type PosColumnProps = ComponentProps<typeof PosColumn>;
 
 interface AppRouterProps {
   tab: string;
-  // ReportScreen
-  todayMenu: PosColumnProps['todayMenu'];
   viewDate: string;
   reportStudentFilter: string;
   onClearStudentFilter: () => void;
-  // AdminScreen
-  setTodayMenu: (m: PosColumnProps['todayMenu']) => void;
-  vendors: PosColumnProps['vendors'];
-  students: PosColumnProps['students'];
-  resetData: () => void;
-  openingCash: number;
-  dateStatus: string;
-  hasCashSession: boolean;
-  openCashSession: (input: { businessDate: string; openingCash: number; operatorId: string; openedAt: string }) => void;
-  updateOpeningCash: (businessDate: string, amount: number) => void;
-  tweaks: PosColumnProps['tweaks'];
-  setTweak: (k: string, v: string) => void;
-  // VendorsScreen
-  setVendors: (v: PosColumnProps['vendors']) => void;
   // PosColumn
   posColumnProps: PosColumnProps;
 }
 
 export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
-  const { tab, todayMenu, viewDate, reportStudentFilter, onClearStudentFilter,
-    setTodayMenu, vendors, students, resetData,
-    openingCash, dateStatus, hasCashSession, openCashSession, updateOpeningCash,
-    tweaks, setTweak, setVendors, posColumnProps } = props;
-
-  const handleOpeningCashChange = useCallback((amount: number) => {
-    openCashSession({ businessDate: viewDate, openingCash: amount, operatorId: 'admin', openedAt: new Date().toISOString() });
-  }, [viewDate, openCashSession]);
-
-  const handleUpdateOpeningCash = useCallback((amount: number) => {
-    updateOpeningCash(viewDate, amount);
-  }, [viewDate, updateOpeningCash]);
+  const { tab, viewDate, reportStudentFilter, onClearStudentFilter, posColumnProps } = props;
 
   return (
     <>
@@ -61,7 +34,6 @@ export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
         <ErrorBoundary fallback={<SectionError name="報表" />}>
         <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
         <ReportScreen
-          todayMenu={todayMenu}
           viewDate={viewDate}
           studentFilter={reportStudentFilter}
           onClearStudentFilter={onClearStudentFilter}
@@ -72,26 +44,14 @@ export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
       {tab === 'admin' && (
         <ErrorBoundary fallback={<SectionError name="今日設定" />}>
         <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
-        <AdminScreen
-          todayMenu={todayMenu}
-          setTodayMenu={setTodayMenu}
-          vendors={vendors}
-          students={students}
-          resetData={resetData}
-          openingCash={openingCash}
-          dateStatus={dateStatus}
-          hasCashSession={hasCashSession}
-          onOpeningCashChange={handleOpeningCashChange}
-          onUpdateOpeningCash={handleUpdateOpeningCash}
-          tweaks={tweaks} setTweak={setTweak}
-        />
+        <AdminScreen viewDate={viewDate} />
         </Suspense>
         </ErrorBoundary>
       )}
       {tab === 'vendors' && (
         <ErrorBoundary fallback={<SectionError name="供應商" />}>
         <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
-        <VendorsScreen vendors={vendors} setVendors={setVendors} />
+        <VendorsScreen />
         </Suspense>
         </ErrorBoundary>
       )}

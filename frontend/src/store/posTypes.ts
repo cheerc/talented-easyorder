@@ -1,4 +1,4 @@
-import type { Firestore } from 'firebase/firestore';
+// TODO: [#289] Split into domain-specific stores for full decoupling
 import type { StudentAccount } from '../domain/student';
 import type { Vendor, TodayMenu } from '../domain/menu';
 import type { LedgerTransaction } from '../domain/ledger';
@@ -37,18 +37,49 @@ export interface OpenCashSessionInput {
 
 export type BusinessDateStatus = 'open' | 'closed' | 'reopened';
 
-export interface PosState {
+/** Student domain: 學生帳戶管理 */
+export interface StudentStateSlice {
   students: StudentAccount[];
+}
+
+/** Transaction domain: 每日交易記錄 */
+export interface TransactionStateSlice {
   transactions: LedgerTransaction[];
+}
+
+/** Menu domain: 菜單與廠商 */
+export interface MenuStateSlice {
   vendors: Vendor[];
   todayMenu: TodayMenu;
+}
+
+/** Audit domain: 審計追蹤 */
+export interface AuditStateSlice {
   auditEvents: LedgerAuditEvent[];
+}
+
+/** Settlement domain: 關帳、營業日狀態、現金收銀 */
+export interface SettlementStateSlice {
   dailySettlements: DailySettlement[];
   businessDateStatuses: Record<string, BusinessDateStatus>;
   cashSessions: Record<string, DailyCashSession>;
+}
 
-  setTodayMenu: (menu: TodayMenu) => void;
-  setVendors: (vendors: Vendor[]) => void;
+export interface PosState
+  extends StudentStateSlice,
+    TransactionStateSlice,
+    MenuStateSlice,
+    AuditStateSlice,
+    SettlementStateSlice,
+    TransactionActions,
+    MenuActions,
+    SessionActions,
+    StudentActions {}
+
+// ─── Per-Domain Action Interfaces (Ref: #264) ───
+
+/** Transaction domain actions */
+export interface TransactionActions {
   commitPosTransactionDraft: (draft: PosTransactionDraft) => void;
   processTransaction: (
     studentId: string,
@@ -59,15 +90,30 @@ export interface PosState {
   ) => void;
   updateTransaction: (id: string, updates: Partial<LedgerTransaction>) => void;
   deleteTransaction: (id: string) => void;
-  deleteOrderWithRefundCheck: (id: string) => DeleteOrderResult;
-  editTransaction: (id: string, updates: { mealPrice?: number; paidAmount?: number; note?: string }) => void;
+  deleteOrderWithRefundCheck: (id: string, operatorId?: string, keepPaymentAsDeposit?: boolean) => DeleteOrderResult;
+  editTransaction: (id: string, updates: { mealPrice?: number; paidAmount?: number; note?: string }, operatorId?: string) => void;
+}
+
+/** Menu domain actions */
+export interface MenuActions {
+  setTodayMenu: (menu: TodayMenu) => void;
+  setVendors: (vendors: Vendor[]) => void;
+  resetData: () => void;
+}
+
+/** Session domain actions */
+export interface SessionActions {
   setBusinessDateStatus: (date: string, status: BusinessDateStatus) => void;
   openCashSession: (input: OpenCashSessionInput) => void;
   updateOpeningCash: (businessDate: string, amount: number) => void;
   closeBusinessDate: (input: CloseBusinessDateInput) => void;
   reopenBusinessDate: (input: ReopenBusinessDateInput) => void;
   getBusinessDateStatus: (businessDate: string) => BusinessDateStatus;
-  addStudent: (db: Firestore, input: { studentId: string; displayName: string; openingBalance: number; operatorId: string }) => Promise<void>;
-  disableStudent: (db: Firestore, input: { studentId: string; operatorId: string }) => Promise<void>;
-  resetData: () => void;
 }
+
+/** Student domain actions */
+export interface StudentActions {
+  addStudent: (input: { studentId: string; displayName: string; openingBalance: number; operatorId: string }) => Promise<void>;
+  disableStudent: (input: { studentId: string; operatorId: string }) => Promise<void>;
+}
+

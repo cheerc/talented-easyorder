@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { usePosStore } from '../posStore';
+import { useTransactions } from '../selectors';
 import {
   createLedgerDateRange,
   calculateLedgerTotals,
@@ -25,7 +25,13 @@ export function useLedgerReport(args: {
   totals: LedgerTotals;
   groups: LedgerGroup[];
 } {
-  const transactions = usePosStore((s) => s.transactions);
+  const { transactions: allTransactions } = useTransactions();
+  const transactions = useMemo(() => {
+    if (args.dateRange === 'today') {
+      return allTransactions.filter(t => t.businessDate === args.viewDate);
+    }
+    return allTransactions;
+  }, [allTransactions, args.dateRange, args.viewDate]);
 
   const range = useMemo(() => createLedgerDateRange(
     args.dateRange,

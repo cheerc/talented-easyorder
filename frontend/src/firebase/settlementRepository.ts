@@ -1,4 +1,5 @@
-import { doc, runTransaction, serverTimestamp, setDoc, type Firestore } from 'firebase/firestore';
+import type { Firestore } from 'firebase/firestore';
+import { getFirestoreMod } from './firebaseModules';
 import { closeAttemptPath, settlementPath, cashAdjustmentPath } from './firestorePaths';
 
 export function createCloseAttemptId(deviceId: string, businessDate: string, sequence: number): string {
@@ -25,6 +26,7 @@ export async function writeOfflineCloseAttempt(db: Firestore, input: {
   deviceId: string;
   note: string;
 }) {
+  const { doc, setDoc, serverTimestamp } = getFirestoreMod();
   await setDoc(doc(db, closeAttemptPath(input.businessDate, input.id)), {
     ...input,
     status: 'pending',
@@ -37,6 +39,7 @@ export async function promoteCloseAttemptOnline(db: Firestore, input: {
   closeAttemptId: string;
   summary: Record<string, unknown>;
 }) {
+  const { doc, runTransaction } = getFirestoreMod();
   const summaryRef = doc(db, settlementPath(input.businessDate));
   const attemptRef = doc(db, closeAttemptPath(input.businessDate, input.closeAttemptId));
   await runTransaction(db, async transaction => {
@@ -59,6 +62,7 @@ export async function addCashAdjustment(db: Firestore, input: {
   operatorEmail: string;
   deviceId: string;
 }) {
+  const { doc, setDoc, serverTimestamp } = getFirestoreMod();
   await setDoc(doc(db, cashAdjustmentPath(input.businessDate, input.id)), {
     ...input,
     status: 'pending',

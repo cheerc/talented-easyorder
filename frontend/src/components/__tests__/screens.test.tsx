@@ -23,27 +23,60 @@ const mockState = {
   setVendors: vi.fn(),
 };
 
-vi.mock('../../store/posStore', () => {
-  const usePosStore = (selector: Parameters<typeof import('../../store/posStore').usePosStore>[0]) => selector(mockState);
-  usePosStore.getState = () => mockState;
-  return { usePosStore };
-});
+vi.mock('../../store/selectors', () => ({
+  useSessionActions: () => ({
+    closeBusinessDate: mockState.closeBusinessDate,
+    reopenBusinessDate: mockState.reopenBusinessDate,
+    getBusinessDateStatus: mockState.getBusinessDateStatus,
+    setBusinessDateStatus: vi.fn(),
+    openCashSession: mockState.openCashSession,
+    updateOpeningCash: mockState.updateOpeningCash,
+  }),
+  useTransactionActions: () => ({
+    deleteOrderWithRefundCheck: mockState.deleteOrderWithRefundCheck,
+    deleteTransaction: mockState.deleteTransaction,
+    editTransaction: mockState.editTransaction,
+    commitPosTransactionDraft: vi.fn(),
+    processTransaction: vi.fn(),
+    updateTransaction: vi.fn(),
+  }),
+  useTransactions: () => ({ transactions: mockState.transactions }),
+  useSession: () => ({
+    auditEvents: mockState.auditEvents,
+    dailySettlements: mockState.dailySettlements,
+    businessDateStatuses: {},
+    cashSessions: mockState.cashSessions,
+  }),
+  useStudents: () => ({ students: mockState.students }),
+  useMenu: () => ({ todayMenu: mockState.todayMenu, vendors: mockState.vendors }),
+  useMenuActions: () => ({ setTodayMenu: mockState.setTodayMenu, setVendors: mockState.setVendors }),
+  useGlobalActions: () => ({ resetData: mockState.resetData }),
+  useStudentActions: () => ({ addStudent: vi.fn(), disableStudent: vi.fn() }),
+}));
+
+vi.mock('../../store/derived/useCashClose', () => ({
+  useCashClose: () => ({ openingCash: 0, dateStatus: 'open', currentCashSession: undefined }),
+}));
+
+vi.mock('../../hooks/useTweaks', () => ({
+  useTweaks: () => ({ tweaks: { theme: 'warm', fontSize: 'lg', disableHoverSelection: true }, setTweak: vi.fn() }),
+}));
 
 import { ReportScreen } from '../screens/ReportScreen';
 import { AdminScreen } from '../screens/AdminScreen';
 import { VendorsScreen } from '../screens/VendorsScreen';
 import { BackupScreen } from '../screens/BackupScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
-
-const mockMenu = { itemName: '排骨便當', price: 90, vendorId: 'v1', vendorNameSnapshot: '老王便當' };
+import { FirebaseProvider } from '../../providers/FirebaseProvider';
 
 describe('ReportScreen', () => {
   it('renders with mock store', () => {
     const { container } = render(
-      <ReportScreen
-        todayMenu={mockMenu}
-        viewDate="2026-05-29"
-      />
+      <FirebaseProvider>
+        <ReportScreen
+          viewDate="2026-05-29"
+        />
+      </FirebaseProvider>
     );
     expect(container).toBeTruthy();
   });
@@ -52,20 +85,9 @@ describe('ReportScreen', () => {
 describe('AdminScreen', () => {
   it('renders settings card', () => {
     const { container } = render(
-      <AdminScreen
-        todayMenu={mockMenu}
-        setTodayMenu={() => {}}
-        vendors={[]}
-        students={[]}
-        resetData={() => {}}
-        openingCash={0}
-        dateStatus="open"
-        hasCashSession={false}
-        onOpeningCashChange={() => {}}
-        onUpdateOpeningCash={() => {}}
-        tweaks={{ theme: 'warm', fontSize: 'lg', disableHoverSelection: true }}
-        setTweak={() => {}}
-      />
+      <FirebaseProvider>
+        <AdminScreen viewDate="2026-05-29" />
+      </FirebaseProvider>
     );
     expect(container.textContent).toContain('今日設定');
   });
@@ -74,7 +96,7 @@ describe('AdminScreen', () => {
 describe('VendorsScreen', () => {
   it('renders vendor list', () => {
     const { container } = render(
-      <VendorsScreen vendors={[]} setVendors={() => {}} />
+      <VendorsScreen />
     );
     expect(container).toBeTruthy();
   });

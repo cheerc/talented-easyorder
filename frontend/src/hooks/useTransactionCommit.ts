@@ -1,10 +1,15 @@
+/**
+ * Ref: #318 — L3 hook in composition chain (see usePosFlow.ts for diagram).
+ * Encapsulates transaction commit logic: balance checks, processTransaction call,
+ * and post-commit flow state reset.
+ */
 import { useCallback, useEffect, useRef } from 'react';
 import type { PosFlowEvent, PosFlowState, PosMode } from '../domain/posFlow';
 import { toPosSourceDevice } from '../domain/posFlow';
 import type { StudentAccount } from '../domain/student';
 import type { TodayMenu } from '../domain/menu';
 import type { LedgerTransaction } from '../domain/ledger';
-import { countActiveOrdersForStudent } from '../domain/ledger';
+import { countActiveOrdersForStudent, CASHIER_SENTINEL } from '../domain/ledger';
 import type { PosTransactionDraft } from '../domain/posTransaction';
 import { buildPosTransactionDraft, deriveTransactionAttributes } from '../domain/posTransaction';
 import { saveCrashDraft } from '../storage/crashDraft';
@@ -81,7 +86,9 @@ export function useTransactionCommit(
           priceOverrideLabel: args.priceOverrideLabel,
           paidAmountText,
         });
-        const amount = mode === 'order' ? -crashAttrs.mealPrice : (mode === 'payment' ? crashAttrs.paidAmount : 0);
+        const amount = mode === 'order'
+          ? crashAttrs.paidAmount - crashAttrs.mealPrice
+          : (mode === 'payment' ? crashAttrs.paidAmount : 0);
         saveCrashDraft({
           intent: {
             businessDate: args.businessDate,
@@ -124,10 +131,8 @@ export function useTransactionCommit(
 
     try {
       if (mode === 'expense') {
-        const student = students.length > 0 ? students[0] : null;
-        const studentSnapshot = student
-          ? { studentId: 'expense-operator', studentNameSnapshot: '櫃台' }
-          : { studentId: 'expense-operator', studentNameSnapshot: '櫃台' };
+        // Ref: #283 — Use CASHIER_SENTINEL to match domain layer convention.
+        const studentSnapshot = { studentId: CASHIER_SENTINEL, studentNameSnapshot: '櫃台' };
 
         const draft = buildPosTransactionDraft({
           intent: {

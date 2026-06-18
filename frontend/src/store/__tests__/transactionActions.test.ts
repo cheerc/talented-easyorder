@@ -225,4 +225,30 @@ describe('transactionActions — editTransaction / deleteTransaction', () => {
     expect(next.auditEvents).toHaveLength(1);
     expect(next.auditEvents[0].eventType).toBe('transaction_deleted');
   });
+
+  it('T9b: deleteOrderWithRefundCheck with keepPaymentAsDeposit converts order to payment', () => {
+    const store = usePosStore.getState();
+
+    store.processTransaction('001', 'order', 90, 50);
+    const tx = usePosStore.getState().transactions[0];
+
+    const studentBefore = usePosStore.getState().students.find(s => s.studentId === '001')!;
+    // balance is affected by order (amount = 50 - 90 = -40)
+
+    const result = store.deleteOrderWithRefundCheck(tx.transactionId, undefined, true);
+
+    expect(result.deleted).toBe(true);
+    expect(result.refundAmount).toBe(0); // Kept as deposit
+
+    const next = usePosStore.getState();
+    const updatedTx = next.transactions.find(t => t.transactionId === tx.transactionId)!;
+    const studentAfter = next.students.find(s => s.studentId === '001')!;
+
+    expect(updatedTx.type).toBe('payment');
+    expect(updatedTx.mealPrice).toBe(0);
+    expect(updatedTx.paidAmount).toBe(50);
+    expect(updatedTx.amount).toBe(50);
+    // Balance was base_balance - 40. Now it is base_balance + 50. Difference is +90.
+    expect(studentAfter.currentBalance).toBe(studentBefore.currentBalance + 90);
+  });
 });

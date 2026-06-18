@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { usePosStore } from '../store/posStore';
+import { useTransactionActions } from '../store/selectors';
 
 interface UseUndoCountdownArgs {
   dismissSuccess: () => void;
@@ -18,7 +18,7 @@ export function useUndoCountdown({
 }: UseUndoCountdownArgs) {
   const [undoCountdown, setUndoCountdown] = useState(0);
   const lastCommittedTxIdRef = useRef<string | null>(null);
-  const deleteTransaction = usePosStore((s) => s.deleteTransaction);
+  const { deleteTransaction } = useTransactionActions();
 
   useEffect(() => {
     if (undoCountdown <= 0) {

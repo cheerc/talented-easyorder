@@ -7,9 +7,33 @@ dist/
 
 # graphify — local-only（不 commit，post-commit hook 自動重建）
 graphify-out/
-.graphify_root
+.graphify*
 .claude/settings.local.json
 
 .agents/*
 .gemini/*
 .antigravitycli/*
+.superpowers/
+
+# Persistent test/deploy logs (workflow.sh refactor #271)
+*.log
+.temp_workflow.log
+
+# Service account keys & credentials (public repo protection)
+**/service-account*.json
+**/serviceAccount*.json
+**/*-adminsdk-*.json
+**/credentials*.json
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Firebase
+firebase-debug.log
+firebase-debug.*.log
+ui-debug.log
+
+# Build artifacts
+.vercel
+.firebase

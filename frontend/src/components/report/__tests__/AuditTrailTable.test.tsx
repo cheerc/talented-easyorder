@@ -29,8 +29,13 @@ const { store, baseEvents } = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../../store/posStore', () => ({
-  usePosStore: (selector: (s: { auditEvents: LedgerAuditEvent[] }) => unknown) => selector(store),
+vi.mock('../../../store/selectors', () => ({
+  useSession: () => ({
+    auditEvents: store.auditEvents,
+    dailySettlements: [],
+    businessDateStatuses: {},
+    cashSessions: {},
+  }),
 }));
 
 import { AuditTrailTable } from '../AuditTrailTable';

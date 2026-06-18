@@ -2,7 +2,9 @@ import React, { useEffect, useRef } from "react";
 import type { StudentAccount } from '../../domain/student';
 import type { TodayMenu } from '../../domain/menu';
 import type { PosMode } from '../../domain/posFlow';
+import type { LedgerTransaction } from '../../domain/ledger';
 import { NumericInput } from '../ui/NumericInput';
+import { TransactionStatusView } from './TransactionStatusView';
 import { fmt } from './utils';
 
 interface CustomerCardProps {
@@ -18,13 +20,22 @@ interface CustomerCardProps {
   setPriceOverride: (value: number | null) => void;
   setPriceOverrideLabel: (value: string) => void;
   onDeleteOrder?: () => void;
+  focusZone?: string;
+  studentTransactions?: LedgerTransaction[];
 }
-export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel, onDeleteOrder }: CustomerCardProps) {
+export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel, onDeleteOrder, focusZone, studentTransactions }: CustomerCardProps) {
   const effectiveMealPrice = mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
   const payInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    payInputRef.current?.focus();
-  }, [mode]);
+    if (focusZone?.startsWith('mode-')) {
+      payInputRef.current?.focus();
+    }
+  }, [mode, focusZone]);
+
+  const parsedPayAmount = Number(payAmount) || 0;
+  const projectedBalance = mode === 'order'
+    ? student.currentBalance - effectiveMealPrice + parsedPayAmount
+    : student.currentBalance + parsedPayAmount;
 
   return (
     <div className="card customer">
@@ -63,18 +74,59 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
         <div className="action-grid">
           {/* Left Side: Summary */}
           <div className="bill-summary">
+            {focusZone === 'view-status' ? (
+              <TransactionStatusView transactions={studentTransactions ?? []} />
+            ) : (<>
             <div className="pay-title">結帳明細</div>
             {mode === 'order' && (
-              <div className="bill-item">
-                <span className="bill-label">當日便當 ({priceOverrideLabel || todayMenu.itemName})</span>
-                <span className="bill-val neg">−${fmt(effectiveMealPrice)}</span>
-              </div>
+              <>
+                <div className="bill-item no-border">
+                  <span className="bill-label">目前帳戶餘額</span>
+                  <span className={`bill-val${student.currentBalance < 0 ? ' neg' : ''}`}>
+                    {student.currentBalance < 0 ? '−' : ''}${fmt(student.currentBalance)}
+                  </span>
+                </div>
+                <div className="bill-item no-border">
+                  <span className="bill-label">今日便當 ({priceOverrideLabel || todayMenu.itemName})</span>
+                  <span className="bill-val neg">−${fmt(effectiveMealPrice)}</span>
+                </div>
+                <div className="bill-item no-border">
+                  <span className="bill-label">此次繳費金額</span>
+                  <span className="bill-val pos">
+                    +${fmt(parsedPayAmount)}
+                  </span>
+                </div>
+                <div className="bill-divider" />
+                <div className="bill-item bill-total">
+                  <span className="bill-label">預計結帳後餘額</span>
+                  <span className={`bill-val${projectedBalance < 0 ? ' neg' : ''}`}>
+                    {projectedBalance < 0 ? '−' : ''}${fmt(projectedBalance)}
+                  </span>
+                </div>
+              </>
             )}
             {mode === 'payment' && (
-              <div className="bill-item">
-                <span className="bill-label">目前帳戶餘額</span>
-                <span className="bill-val">${fmt(student.currentBalance)}</span>
-              </div>
+              <>
+                <div className="bill-item no-border">
+                  <span className="bill-label">目前帳戶餘額</span>
+                  <span className={`bill-val${student.currentBalance < 0 ? ' neg' : ''}`}>
+                    {student.currentBalance < 0 ? '−' : ''}${fmt(student.currentBalance)}
+                  </span>
+                </div>
+                <div className="bill-item no-border">
+                  <span className="bill-label">此次繳費金額</span>
+                  <span className="bill-val pos">
+                    +${fmt(parsedPayAmount)}
+                  </span>
+                </div>
+                <div className="bill-divider" />
+                <div className="bill-item bill-total">
+                  <span className="bill-label">預計結帳後餘額</span>
+                  <span className={`bill-val${projectedBalance < 0 ? ' neg' : ''}`}>
+                    {projectedBalance < 0 ? '−' : ''}${fmt(projectedBalance)}
+                  </span>
+                </div>
+              </>
             )}
 
             {mode === 'order' && (
@@ -115,10 +167,11 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
               </div>
             )}
             {/* §3.1: removed "將產生欠款" warning per UX spec */}
+            </>)}
           </div>
 
           {/* Right Side: Payment Panel */}
-          {mode !== 'expense' ? (
+          {focusZone !== 'view-status' && mode !== 'expense' ? (
             <div className="pay-panel">
               <div className="pay-header">
                 <span className="pay-title">
@@ -135,7 +188,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                   aria-label="付款金額"
                   value={payAmount}
                   onChange={setPayAmount}
-                  placeholder={mode === 'order' ? "" : "輸入金額"}
+                  placeholder=""
                 />
                 <span className="pay-input-suffix">元</span>
               </div>

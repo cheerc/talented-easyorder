@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { appendErrorLog } from '../../errors/errorLogger';
-import type { LedgerTransaction } from '../../domain/ledger';
-import type { TodayMenu } from '../../domain/menu';
+import { emitError } from '../../errors/errorBus';
+import type { TransactionEditView } from '../../domain/ledger';
+import type { ReportTransactionView } from '../../domain/transactionViews';
 import { EditTransactionModal } from '../EditTransactionModal';
 import type { LedgerDateRangeKind } from '../../domain/ledgerReport';
 import { ReportDateRangeControls } from '../report/ReportDateRangeControls';
@@ -10,40 +10,37 @@ import { LedgerGroupedTable } from '../report/LedgerGroupedTable';
 import { CashClosePanel } from '../report/CashClosePanel';
 import { ExportActions } from '../report/ExportActions';
 import { ReopenDialog } from '../report/ReopenDialog';
-import { useShallow } from 'zustand/shallow';
-import { usePosStore } from '../../store/posStore';
+import { useSessionActions, useTransactionActions, useMenu } from '../../store/selectors';
 import { useLedgerReport } from '../../store/derived/useLedgerReport';
 import { useCashClose } from '../../store/derived/useCashClose';
 import { useLedgerExport } from '../../store/derived/useLedgerExport';
+import { useFirebase } from '../../hooks/useFirebase';
+import { SYSTEM_OPERATOR_ID } from '../../domain/operatorId';
 
 interface ReportScreenProps {
-  todayMenu: TodayMenu;
   viewDate: string;
   studentFilter?: string;
   onClearStudentFilter?: () => void;
 }
-export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDate, studentFilter, onClearStudentFilter }: ReportScreenProps) {
+export const ReportScreen = React.memo(function ReportScreen({ viewDate, studentFilter, onClearStudentFilter }: ReportScreenProps) {
+  const { todayMenu } = useMenu();
+  const { access } = useFirebase();
+  // Ref: #310 — Real operator UID for audit trail
+  const operatorUid = (access.ok && access.profile?.uid) ? access.profile.uid : SYSTEM_OPERATOR_ID;
   const [dateRange, setDateRange] = useState<LedgerDateRangeKind>('today');
   const [displayMode, setDisplayMode] = useState<'merged' | 'original'>('merged');
   const [customStart, setCustomStart] = useState(viewDate);
   const [customEnd, setCustomEnd] = useState(viewDate);
   const [expandedSids, setExpandedSids] = useState<Set<string>>(new Set());
   const [showReopen, setShowReopen] = useState(false);
-  const [editingTx, setEditingTx] = useState<LedgerTransaction | null>(null);
+  const [editingTx, setEditingTx] = useState<TransactionEditView | null>(null);
   const [studentSearch, setStudentSearch] = useState(studentFilter || '');
 
-  const { closeBusinessDate, reopenBusinessDate, deleteOrderWithRefundCheck, deleteTransaction, editTransaction } = usePosStore(
-    useShallow((s) => ({
-      closeBusinessDate: s.closeBusinessDate,
-      reopenBusinessDate: s.reopenBusinessDate,
-      deleteOrderWithRefundCheck: s.deleteOrderWithRefundCheck,
-      deleteTransaction: s.deleteTransaction,
-      editTransaction: s.editTransaction,
-    }))
-  );
+  const { closeBusinessDate, reopenBusinessDate } = useSessionActions();
+  const { deleteOrderWithRefundCheck, deleteTransaction, editTransaction } = useTransactionActions();
   const handleEditSave = useCallback((transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }) => {
-    editTransaction(transactionId, updates);
-  }, [editTransaction]);
+    editTransaction(transactionId, updates, operatorUid);
+  }, [editTransaction, operatorUid]);
   const { dateStatus, openingCash } = useCashClose(viewDate);
 
   const { filtered, totals, groups } = useLedgerReport({
@@ -89,8 +86,10 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
     );
   }, [groups, studentSearch]);
 
-  const hasQueuedRows = filtered.some(t => t.syncStatus === 'queued');
-  const hasFailedConflict = filtered.some(t => t.syncStatus === 'failed' || t.syncStatus === 'conflict');
+  // Ref: #351 — Memoize derived booleans to avoid re-scanning on every render
+  const hasQueuedRows = useMemo(() => filtered.some(t => t.syncStatus === 'queued'), [filtered]);
+  const queuedRowCount = useMemo(() => filtered.filter(t => t.syncStatus === 'queued').length, [filtered]);
+  const hasFailedConflict = useMemo(() => filtered.some(t => t.syncStatus === 'failed' || t.syncStatus === 'conflict'), [filtered]);
 
   const todayStr = useMemo(() => {
     const [, m, d] = viewDate.split('-');
@@ -104,13 +103,18 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
     setExpandedSids(next);
   };
 
-  const handleEditClick = (t: LedgerTransaction) => {
-    setEditingTx(t);
+  const handleEditClick = (t: ReportTransactionView) => {
+    setEditingTx({
+      transactionId: t.transactionId,
+      mealPrice: t.mealPrice,
+      paidAmount: t.paidAmount,
+      note: t.note,
+    });
   };
 
-  const handleDeleteClick = (t: LedgerTransaction) => {
+  const handleDeleteClick = (t: ReportTransactionView) => {
     if (t.type === 'order') {
-      deleteOrderWithRefundCheck(t.transactionId);
+      deleteOrderWithRefundCheck(t.transactionId, operatorUid);
     } else {
       deleteTransaction(t.transactionId);
     }
@@ -118,14 +122,14 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
 
   const handleCashClose = (countedCash: number, note: string) => {
     try {
-      closeBusinessDate({ businessDate: viewDate, countedCash, note, queuedSettlementAccepted: true, operatorId: 'op-report' });
+      closeBusinessDate({ businessDate: viewDate, countedCash, note, queuedSettlementAccepted: true, operatorId: operatorUid });
     } catch (err) {
-      appendErrorLog({ source: 'settlement', message: 'closeBusinessDate failed: ' + String(err) });
+      emitError({ source: 'settlement', message: 'closeBusinessDate failed: ' + String(err) });
     }
   };
 
   const handleReopen = (reason: string) => {
-    reopenBusinessDate({ businessDate: viewDate, reason, operatorId: 'op-report' });
+    reopenBusinessDate({ businessDate: viewDate, reason, operatorId: operatorUid });
     setShowReopen(false);
   };
 
@@ -174,7 +178,7 @@ export const ReportScreen = React.memo(function ReportScreen({ todayMenu, viewDa
         businessDate={viewDate}
         dateStatus={dateStatus}
         hasQueuedRows={hasQueuedRows}
-        queuedRowCount={filtered.filter(t => t.syncStatus === 'queued').length}
+        queuedRowCount={queuedRowCount}
         hasFailedConflict={hasFailedConflict}
         openingCash={openingCash}
         onClose={handleCashClose}

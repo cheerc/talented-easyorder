@@ -1,8 +1,6 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { usePosStore } from './store/posStore';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { usePosFlow } from './hooks/usePosFlow';
 import type { PosMode } from './domain/posFlow';
-import { clearCrashDraft } from './storage/crashDraft';
 import { checkStorageHealth } from './storage/storageHealth';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useAppNavigationShortcuts } from './hooks/useAppNavigationShortcuts';
@@ -11,39 +9,57 @@ import { useServiceWorkerCleanup } from './hooks/useServiceWorkerCleanup';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useCrashDraftRecovery } from './hooks/useCrashDraftRecovery';
 import { useUndoCountdown } from './hooks/useUndoCountdown';
-import { getOpeningCash } from './domain/cashClose';
+import { usePinnedStudent } from './hooks/usePinnedStudent';
+import { useCommitLifecycle } from './hooks/useCommitLifecycle';
+import { useConfirmHandler } from './hooks/useConfirmHandler';
+import { useExpenseProps } from './hooks/useExpenseProps';
+
 import { MainLayout } from './components/MainLayout';
 import { ErrorBoundary, AppCrashPage } from './components/ErrorBoundary';
 import { appendErrorLog } from './errors/errorLogger';
 import { AppRouter } from './components/AppRouter';
-import { useAppState } from './hooks/useAppState';
+import { useStudents, useTransactions, useMenu, useSessionActions } from './store/selectors';
 import { useFlashData } from './hooks/useFlashData';
 import { useFocusSync } from './hooks/useFocusSync';
 import { useCancelDialog } from './hooks/useCancelDialog';
 import { useTweaks } from './hooks/useTweaks';
-import { buildPosColumnProps } from './hooks/usePosColumnProps';
-import { ensureFirebaseInitialized } from './firebase/firebaseApp';
+import { usePosColumnProps } from './hooks/usePosColumnProps';
+import { FirebaseProvider } from './providers/FirebaseProvider';
+import { isConfigured as isFirebaseConfigured } from './firebase/firebaseApp';
+import { useFirebase } from './hooks/useFirebase';
 import { AuthGate } from './auth/AuthGate';
-import { subscribeOperatorAccess } from './firebase/authService';
-import type { OperatorAccess } from './firebase/authService';
+import { POS_DAILY_TX_DISPLAY_LIMIT } from './domain/constants';
+import { SYSTEM_OPERATOR_ID } from './domain/operatorId';
 
-export default function App() {
+function AppContent() {
+  const { fb, fbError, access } = useFirebase();
   const { systemDate, viewDate, setViewDate } = useSystemDate();
-  const { auth, db } = ensureFirebaseInitialized();
-  const [access, setAccess] = useState<OperatorAccess>({ ok: false, reason: 'signed_out' });
 
-  useEffect(() => {
-    const unsubscribe = subscribeOperatorAccess(auth, db, setAccess);
-    return unsubscribe;
-  }, [auth, db]);
+  const { students } = useStudents();
+  const { transactions: allTx } = useTransactions();
+  const { todayMenu, vendors } = useMenu();
+  const { getBusinessDateStatus } = useSessionActions();
 
-  const app = useAppState(viewDate);
-  const { students, allTx, todayMenu, vendors, setTodayMenu, setVendors, resetData,
-    getBusinessDateStatus, cashSessions, dailySettlements, openCashSession, updateOpeningCash,
-    tx, todayCount, queuedCount, failedSyncCount, conflictSyncCount } = app;
+  // Ref: #298 — Inline computations previously in useAppState.
+  const tx = useMemo(() =>
+    allTx.filter(t => t.businessDate === viewDate).reverse().slice(0, POS_DAILY_TX_DISPLAY_LIMIT),
+  [allTx, viewDate]);
+  const todayCount = useMemo(() => {
+    const defaultBentoOrders = tx.filter(t =>
+      t.type === 'order' &&
+      t.menuNameSnapshot === todayMenu.itemName &&
+      t.mealPrice === todayMenu.price &&
+      (!t.note || !t.note.startsWith('單筆改價：'))
+    );
+    return defaultBentoOrders.length;
+  }, [tx, todayMenu.itemName, todayMenu.price]);
+  const queuedCount = useMemo(() => allTx.filter(t => t.syncStatus === 'queued').length, [allTx]);
+  const failedSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'failed').length, [allTx]);
+  const conflictSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'conflict').length, [allTx]);
 
   const dateStatus = getBusinessDateStatus(viewDate);
   const isHistorical = viewDate !== systemDate;
+  const operatorUid = (access.ok && access.profile?.uid) ? access.profile.uid : SYSTEM_OPERATOR_ID;
   const [priceOverride, setPriceOverride] = useState<number | null>(null);
   const [priceOverrideLabel, setPriceOverrideLabel] = useState('');
   useServiceWorkerCleanup();
@@ -59,7 +75,6 @@ export default function App() {
   const [focusZone, setFocusZone] = useState('mode-order');
   const [showDashboard, setShowDashboard] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState('剛剛');
   const online = useOnlineStatus();
 
   const storageHealthyRef = useRef(true);
@@ -68,34 +83,8 @@ export default function App() {
   const crashDraftRestored = useCrashDraftRecovery({ selectStudent, setPaidAmountText, changeMode });
   const [crashDraftRestoredState, setCrashDraftRestoredState] = useState(crashDraftRestored);
 
-  // Derive picked student — keep it pinned across committing/success so UI doesn't flash away
-  const [pinnedStudentId, setPinnedStudentId] = useState<string | null>(null);
-  const [pinnedMode, setPinnedMode] = useState<PosMode>('order');
-  const [pinnedPaidAmount, setPinnedPaidAmount] = useState('');
-  if (state.kind === 'student_selected' || state.kind === 'duplicate_warning') {
-    if (pinnedStudentId !== state.studentId) setPinnedStudentId(state.studentId);
-    const mode = state.kind === 'student_selected' ? state.mode : 'order';
-    if (pinnedMode !== mode) setPinnedMode(mode);
-    if (pinnedPaidAmount !== state.paidAmountText) setPinnedPaidAmount(state.paidAmountText);
-  } else if (state.kind === 'committing') {
-    if (pinnedStudentId !== state.studentId) setPinnedStudentId(state.studentId);
-    if (pinnedMode !== state.mode) setPinnedMode(state.mode);
-    if (pinnedPaidAmount !== state.paidAmountText) setPinnedPaidAmount(state.paidAmountText);
-  } else if (state.kind === 'idle' && pinnedStudentId !== null) {
-    setPinnedStudentId(null);
-  }
-
-  const picked = useMemo(() => {
-    if (!pinnedStudentId) return null;
-    return students.find(s => s.studentId === pinnedStudentId) ?? null;
-  }, [students, pinnedStudentId]);
-
-  const currentMode: PosMode = (state.kind === 'student_selected' || state.kind === 'committing')
-    ? state.mode : (state.kind === 'expense_input' || state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note')
-      ? 'expense' : pinnedMode;
-
-  const currentPaidAmount = state.kind === 'student_selected' || state.kind === 'duplicate_warning' || state.kind === 'committing'
-    ? state.paidAmountText : pinnedPaidAmount;
+  // Ref: #281 — Extracted to usePinnedStudent hook
+  const { picked, currentMode, currentPaidAmount } = usePinnedStudent(state, students);
 
   const [searchFocusKey, setSearchFocusKey] = useState(0);
   const [flashKey, setFlashKey] = useState(0);
@@ -103,46 +92,19 @@ export default function App() {
     dismissSuccess, setFlashKey, setSyncing, setPriceOverride, setPriceOverrideLabel,
   });
 
-  const handleConfirm = useCallback(() => {
-    if (state.kind === 'expense_input') {
-      const n = Number(state.amountText);
-      if (!Number.isSafeInteger(n) || n <= 0) return;
-      confirmExpenseAmount(n); return;
-    }
-    if (state.kind === 'duplicate_warning') { confirmDuplicate(); return; }
-    if (state.kind !== 'student_selected') return;
-    requestConfirm();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.kind, requestConfirm, confirmDuplicate, confirmExpenseAmount]);
+  // Ref: #281 — Extracted to useConfirmHandler hook
+  const handleConfirm = useConfirmHandler({ state, requestConfirm, confirmDuplicate, confirmExpenseAmount });
 
   const { cancelDialogOpen, setCancelDialogOpen, noOrderDialogOpen, setNoOrderDialogOpen,
-    openCancelConfirm, handleDeleteOrder } = useCancelDialog({ picked, allTx, viewDate });
+    openCancelConfirm, openCancelConfirmForTx, handleDeleteOrder } = useCancelDialog({ picked, allTx, viewDate, allStudents: students, selectStudent });
 
-  const commitTxIdRef = useRef<string | null>(null);
-  const prevKindRef = useRef(state.kind);
-  useEffect(() => {
-    if (state.kind === 'committing' && commitTxIdRef.current === null) {
-      commitTxIdRef.current = `tx-${Date.now()}`;
-    }
-    if (state.kind !== 'committing') commitTxIdRef.current = null;
-    if (prevKindRef.current !== 'success' && state.kind === 'success') {
-      setSyncing(true);
-      const t = setTimeout(() => {
-        setSyncing(false);
-        setLastSync(new Date().toLocaleTimeString('en-US', { hour12: false }).slice(0, 5));
-      }, 800);
-      const latestTx = usePosStore.getState().transactions[0];
-      if (latestTx && latestTx.syncStatus === 'local') lastCommittedTxIdRef.current = latestTx.transactionId;
-      clearCrashDraft();
-      prevKindRef.current = state.kind;
-      return () => {
-        clearTimeout(t);
-        if (lastCommittedTxIdRef.current) setTimeout(() => setUndoCountdown(5), 0);
-      };
-    }
-    prevKindRef.current = state.kind;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.kind]);
+  // Ref: #281 — Extracted to useCommitLifecycle hook
+  const { lastSync } = useCommitLifecycle({
+    stateKind: state.kind,
+    lastCommittedTxIdRef,
+    setUndoCountdown,
+    setSyncing,
+  });
 
   const hasFlash = state.kind === 'success';
   const isStudentSelected = picked !== null && (state.kind === 'student_selected' || state.kind === 'duplicate_warning' || state.kind === 'committing');
@@ -154,19 +116,13 @@ export default function App() {
     isDialogOpen: cancelDialogOpen || noOrderDialogOpen,
   });
 
-  const { tweaks, setTweak } = useTweaks();
+  const { tweaks } = useTweaks();
 
   useFocusSync(state, tab, setSearchText, setSearchFocusKey, setFocusZone);
 
   const isSuccess = state.kind === 'success';
-  const stateAmountText = state.kind === 'expense_input' ? state.amountText : undefined;
-  const stateAmount = (state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note') ? state.amount : undefined;
-  const expenseProps = useMemo(() => {
-    if (state.kind === 'expense_input') return { kind: 'expense_input' as const, amountText: stateAmountText || '', amount: 0 };
-    if (state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note')
-      return { kind: state.kind, amountText: '', amount: stateAmount || 0 };
-    return null;
-  }, [state.kind, stateAmountText, stateAmount]);
+  // Ref: #281 — Extracted to useExpenseProps hook
+  const expenseProps = useExpenseProps(state);
 
   const flashData = useFlashData({ isSuccess, picked, currentMode, currentPaidAmount, todayMenu, flashKey, priceOverride, allTx });
 
@@ -179,34 +135,58 @@ export default function App() {
     isDialogOpen: cancelDialogOpen || noOrderDialogOpen,
   });
 
-  const posColumnProps = useMemo(() => buildPosColumnProps({
-    state, isHistorical, dateStatus, viewDate, systemDate, setViewDate,
-    picked, currentMode, currentPaidAmount, allTx, students, selectStudent,
-    expenseProps,
-    updateExpenseAmount, confirmExpenseAmount, selectExpenseDirection, selectExpenseReason,
-    updateExpenseNote, confirmExpenseNote,
-    setPaidAmountText, handleConfirm, cancelFlow, changeMode, setFocusZone, focusZone, openCancelConfirm,
-    setSearchText, searchFocusKey, hasFlash,
-    crashDraftRestored: crashDraftRestoredState, setCrashDraftRestored: setCrashDraftRestoredState,
-    todayMenu, todayCount, vendors, enterExpenseMode, tweaks,
-    tx, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
+  // Ref: #316 — Replaced inline 30-dep useMemo with usePosColumnProps hook.
+  // Each useMemo group stabilizes a logical concern; the hook merges them.
+  const dateArgs = useMemo(() => ({
+    isHistorical, dateStatus, viewDate, systemDate, setViewDate,
+  }), [isHistorical, dateStatus, viewDate, systemDate, setViewDate]);
+
+  const flowArgs = useMemo(() => ({
+    state, picked, currentMode, currentPaidAmount, selectStudent,
+    setPaidAmountText, handleConfirm, cancelFlow, changeMode, openCancelConfirm, openCancelConfirmForTx,
     handleDeleteOrder,
     onViewHistory: () => { setReportStudentFilter(picked!.studentId); setTab('report'); },
-  }), [state, isHistorical, dateStatus, viewDate, systemDate, setViewDate,
-    picked, currentMode, currentPaidAmount, allTx, students, selectStudent,
-    expenseProps,
-    updateExpenseAmount, confirmExpenseAmount, selectExpenseDirection, selectExpenseReason,
-    updateExpenseNote, confirmExpenseNote,
-    setPaidAmountText, handleConfirm, cancelFlow, changeMode, setFocusZone, focusZone, openCancelConfirm,
-    setSearchText, searchFocusKey, hasFlash,
-    crashDraftRestoredState, setCrashDraftRestoredState,
-    todayMenu, todayCount, vendors, enterExpenseMode, tweaks,
-    tx, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
+  }), [state, picked, currentMode, currentPaidAmount, selectStudent,
+    setPaidAmountText, handleConfirm, cancelFlow, changeMode, openCancelConfirm, openCancelConfirmForTx,
     handleDeleteOrder]);
 
-  return (
-    <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => appendErrorLog({ source: 'react', message: e.message, stack: e.stack })}>
-    <AuthGate auth={auth} db={db} access={access}>
+  const expenseArgs = useMemo(() => ({
+    expenseProps, enterExpenseMode,
+    updateExpenseAmount, confirmExpenseAmount, selectExpenseDirection,
+    selectExpenseReason, updateExpenseNote, confirmExpenseNote,
+  }), [expenseProps, enterExpenseMode,
+    updateExpenseAmount, confirmExpenseAmount, selectExpenseDirection,
+    selectExpenseReason, updateExpenseNote, confirmExpenseNote]);
+
+  const uiArgs = useMemo(() => ({
+    setFocusZone, focusZone, hasFlash,
+    crashDraftRestored: crashDraftRestoredState,
+    setCrashDraftRestored: setCrashDraftRestoredState,
+  }), [setFocusZone, focusZone, hasFlash, crashDraftRestoredState, setCrashDraftRestoredState]);
+
+  const searchArgs = useMemo(() => ({
+    setSearchText, searchFocusKey,
+  }), [setSearchText, searchFocusKey]);
+
+  const menuArgs = useMemo(() => ({
+    allTx, students, todayMenu, todayCount, vendors, tx, operatorUid, tweaks,
+  }), [allTx, students, todayMenu, todayCount, vendors, tx, operatorUid, tweaks]);
+
+  const pricingArgs = useMemo(() => ({
+    priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
+  }), [priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel]);
+
+  const posColumnProps = usePosColumnProps(
+    dateArgs, flowArgs, expenseArgs, uiArgs, searchArgs, menuArgs, pricingArgs,
+  );
+
+  if (fbError) {
+    return <AppCrashPage />;
+  }
+
+  // Ref: #362 — Firebase not configured (no .env): run in local-only mode,
+  // bypassing AuthGate. fb will remain null with no fbError.
+  const mainContent = (
     <MainLayout
       tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync}
       todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate}
@@ -215,7 +195,8 @@ export default function App() {
       flashData={flashData} onDismissFlash={dismissFlash}
       onUndo={handleUndo} undoCountdown={undoCountdown}
       cancelDialogOpen={cancelDialogOpen} picked={picked}
-      onCancelDialogConfirm={() => { handleDeleteOrder(); setCancelDialogOpen(false); cancelFlow(); }}
+      orderTx={picked ? allTx.find(t => t.studentId === picked.studentId && t.businessDate === viewDate && t.type === 'order') : null}
+      onCancelDialogConfirm={(keepPaymentAsDeposit) => { handleDeleteOrder(keepPaymentAsDeposit); setCancelDialogOpen(false); cancelFlow(); }}
       onCancelDialogCancel={() => setCancelDialogOpen(false)}
       noOrderDialogOpen={noOrderDialogOpen}
       onNoOrderDialogClose={() => setNoOrderDialogOpen(false)}
@@ -223,18 +204,42 @@ export default function App() {
     >
       <AppRouter
         tab={tab}
-        todayMenu={todayMenu} viewDate={viewDate}
+        viewDate={viewDate}
         reportStudentFilter={reportStudentFilter}
         onClearStudentFilter={() => setReportStudentFilter('')}
-        setTodayMenu={setTodayMenu} vendors={vendors} students={students} resetData={resetData}
-        openingCash={getOpeningCash(viewDate, dailySettlements || [], cashSessions[viewDate])}
-        dateStatus={dateStatus} hasCashSession={!!cashSessions[viewDate]}
-        openCashSession={openCashSession} updateOpeningCash={updateOpeningCash}
-        tweaks={tweaks} setTweak={setTweak} setVendors={setVendors}
         posColumnProps={posColumnProps}
       />
     </MainLayout>
+  );
+
+  if (!fb && isFirebaseConfigured) {
+    // Firebase configured but init pending — show loading
+    return <div className="app-loading" aria-label="載入中"><div className="app-loading-spinner" />載入中...</div>;
+  }
+
+  if (!fb) {
+    // Ref: #362 — Firebase not configured (no .env): local-only mode
+    return (
+      <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => appendErrorLog({ source: 'react', message: e.message, stack: e.stack })}>
+      {mainContent}
+      </ErrorBoundary>
+    );
+  }
+
+  return (
+    <ErrorBoundary fallback={<AppCrashPage />} onError={(e) => appendErrorLog({ source: 'react', message: e.message, stack: e.stack })}>
+    <AuthGate auth={fb.auth} db={fb.db} access={access}>
+    {mainContent}
     </AuthGate>
     </ErrorBoundary>
   );
 }
+
+export default function App() {
+  return (
+    <FirebaseProvider>
+      <AppContent />
+    </FirebaseProvider>
+  );
+}
+

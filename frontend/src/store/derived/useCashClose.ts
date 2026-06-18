@@ -1,4 +1,4 @@
-import { usePosStore } from '../posStore';
+import { useSession } from '../selectors';
 import { getOpeningCash } from '../../domain/cashClose';
 import type { DailyCashSession } from '../../domain/cashSession';
 
@@ -7,9 +7,8 @@ export function useCashClose(viewDate: string): {
   dateStatus: string;
   currentCashSession: DailyCashSession | undefined;
 } {
-  const dateStatus = usePosStore((s) => s.businessDateStatuses?.[viewDate] || 'open');
-  const cashSessions = usePosStore((s) => s.cashSessions);
-  const dailySettlements = usePosStore((s) => s.dailySettlements);
+  const { businessDateStatuses, cashSessions, dailySettlements } = useSession();
+  const dateStatus = businessDateStatuses?.[viewDate] || 'open';
   const currentCashSession = cashSessions[viewDate];
 
   const openingCash = getOpeningCash(viewDate, dailySettlements, currentCashSession);

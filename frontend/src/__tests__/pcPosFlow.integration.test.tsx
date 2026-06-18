@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import App from '../App';
 import { resetStoreForTest } from './helpers/storeSetup';
+import { renderApp } from './helpers/renderApp';
 
 describe('pcPosFlow integration — keyboard flow', () => {
   beforeEach(() => resetStoreForTest());
 
   it('typing an exact student id and pressing Enter selects the student', async () => {
-    render(<App />);
+    await renderApp();
     const user = userEvent.setup();
 
     const input = screen.getByPlaceholderText(/015/);
@@ -21,7 +21,7 @@ describe('pcPosFlow integration — keyboard flow', () => {
   });
 
   it('selecting a student shows Q/W/E mode shortcuts', async () => {
-    render(<App />);
+    await renderApp();
     const user = userEvent.setup();
 
     const input = screen.getByPlaceholderText(/015/);
@@ -35,7 +35,7 @@ describe('pcPosFlow integration — keyboard flow', () => {
   });
 
   it('pressing Escape in idle clears search text', async () => {
-    render(<App />);
+    await renderApp();
     const user = userEvent.setup();
 
     const input = screen.getByPlaceholderText(/015/) as HTMLInputElement;
@@ -48,7 +48,7 @@ describe('pcPosFlow integration — keyboard flow', () => {
   });
 
   it('success dismissal clears selected student', async () => {
-    render(<App />);
+    await renderApp();
     const user = userEvent.setup();
 
     const input = screen.getByPlaceholderText(/015/);
@@ -56,10 +56,10 @@ describe('pcPosFlow integration — keyboard flow', () => {
     await user.keyboard('{Enter}');
 
     await waitFor(() => {
-      expect(screen.getByText('確認')).toBeTruthy();
+      expect(screen.getByText('訂便當')).toBeTruthy();
     });
 
-    // Press Enter on confirm to commit
+    // Press Enter to commit (keyboard shortcut replaces confirm button)
     await user.keyboard('{Enter}');
 
     await waitFor(() => {
@@ -76,7 +76,7 @@ describe('pcPosFlow integration — keyboard flow', () => {
   });
 
   it('uses today menu price as the first order quick amount', async () => {
-    render(<App />);
+    await renderApp();
     const user = userEvent.setup();
 
     const input = screen.getByPlaceholderText(/015/);
@@ -93,7 +93,7 @@ describe('pcPosFlow integration — keyboard flow', () => {
   });
 
   it('allows changing only the selected order price before commit', async () => {
-    render(<App />);
+    await renderApp();
     const user = userEvent.setup();
 
     const input = screen.getByPlaceholderText(/015/);
@@ -110,11 +110,11 @@ describe('pcPosFlow integration — keyboard flow', () => {
     await user.clear(screen.getByLabelText('價格'));
     await user.type(screen.getByLabelText('價格'), '110');
 
-    expect(screen.getByText(/110/)).toBeTruthy();
+    expect(screen.getAllByText(/110/).length).toBeGreaterThan(0);
   });
 
   it('prevents submitting empty or $0 payments in payment mode', async () => {
-    render(<App />);
+    await renderApp();
     const user = userEvent.setup();
 
     const input = screen.getByPlaceholderText(/015/);
@@ -162,7 +162,7 @@ describe('pcPosFlow integration — keyboard flow', () => {
   });
 
   it('shows sync status badge in the UI', async () => {
-    render(<App />);
+    await renderApp();
     const syncBadge = screen.queryByRole('status');
     // When Firebase is not configured, the app may still render with local-only mode
     // The sync badge presence or absence should not crash the render

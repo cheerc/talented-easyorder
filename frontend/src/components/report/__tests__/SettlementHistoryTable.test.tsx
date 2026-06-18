@@ -26,8 +26,13 @@ const { store, baseSettlements } = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../../store/posStore', () => ({
-  usePosStore: (selector: (s: { dailySettlements: DailySettlement[] }) => unknown) => selector(store),
+vi.mock('../../../store/selectors', () => ({
+  useSession: () => ({
+    dailySettlements: store.dailySettlements,
+    auditEvents: [],
+    businessDateStatuses: {},
+    cashSessions: {},
+  }),
 }));
 
 import { SettlementHistoryTable } from '../SettlementHistoryTable';

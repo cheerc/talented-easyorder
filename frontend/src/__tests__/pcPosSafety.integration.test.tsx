@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import App from '../App';
 import { resetStoreForTest } from './helpers/storeSetup';
+import { renderApp } from './helpers/renderApp';
 
 describe('pcPosSafety — duplicate submit guard', () => {
   beforeEach(() => resetStoreForTest());
 
   it('confirm button triggers one commit per click', async () => {
-    render(<App />);
+    await renderApp();
     const user = userEvent.setup();
 
     const input = screen.getByPlaceholderText(/015/);
@@ -16,11 +16,11 @@ describe('pcPosSafety — duplicate submit guard', () => {
     await user.keyboard('{Enter}');
 
     await waitFor(() => {
-      expect(screen.getByText('確認')).toBeTruthy();
+      expect(screen.getByText('訂便當')).toBeTruthy();
     });
 
-    const confirmBtn = screen.getByText('確認');
-    await user.click(confirmBtn);
+    // Press Enter to commit (keyboard shortcut replaces confirm button)
+    await user.keyboard('{Enter}');
 
     await waitFor(() => {
       expect(screen.getByText('✓')).toBeTruthy();
@@ -32,7 +32,7 @@ describe('pcPosSafety — duplicate order warning', () => {
   beforeEach(() => resetStoreForTest());
 
   it('first order shows no duplicate warning', async () => {
-    render(<App />);
+    await renderApp();
     const user = userEvent.setup();
 
     const input = screen.getByPlaceholderText(/015/);
@@ -40,11 +40,11 @@ describe('pcPosSafety — duplicate order warning', () => {
     await user.keyboard('{Enter}');
 
     await waitFor(() => {
-      expect(screen.getByText('確認')).toBeTruthy();
+      expect(screen.getByText('訂便當')).toBeTruthy();
     });
 
-    const confirmBtn = screen.getByText('確認');
-    await user.click(confirmBtn);
+    // Press Enter to commit (keyboard shortcut replaces confirm button)
+    await user.keyboard('{Enter}');
 
     await waitFor(() => {
       expect(screen.getByText('✓')).toBeTruthy();
@@ -52,15 +52,15 @@ describe('pcPosSafety — duplicate order warning', () => {
   });
 
   it('second selection defaults to payment when hasOrderToday', async () => {
-    render(<App />);
+    await renderApp();
     const user = userEvent.setup();
 
     // First order
     const input = screen.getByPlaceholderText(/015/) as HTMLInputElement;
     await user.click(input);
     await user.keyboard('015{Enter}');
-    await waitFor(() => expect(screen.getByText('確認')).toBeTruthy());
-    await user.click(screen.getByText('確認'));
+    await waitFor(() => expect(screen.getByText('訂便當')).toBeTruthy());
+    await user.keyboard('{Enter}');
     await waitFor(() => expect(screen.getByText('✓')).toBeTruthy());
 
     // Dismiss flash by pressing Enter
@@ -79,7 +79,7 @@ describe('pcPosSafety — duplicate order warning', () => {
   });
 
   it('uses operator-friendly payment wording', async () => {
-    render(<App />);
+    await renderApp();
     const user = userEvent.setup();
 
     const input = screen.getByPlaceholderText(/015/);

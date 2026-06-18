@@ -47,14 +47,14 @@ describe('useKeyboardShortcuts', () => {
     expect(cancelOrder).not.toHaveBeenCalled();
   });
 
-  it('calls setFocusZone with "btn-delete-order" on E when student selected', () => {
+  it('calls setFocusZone with "view-status" on E when student selected', () => {
     const setFocusZone = vi.fn();
     renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, cancelOrder, isStudentSelected: true, handleConfirm, cancelFlow, setFocusZone }));
 
     const event = new KeyboardEvent('keydown', { key: 'e', bubbles: true });
     window.dispatchEvent(event);
 
-    expect(setFocusZone).toHaveBeenCalledWith('btn-delete-order');
+    expect(setFocusZone).toHaveBeenCalledWith('view-status');
     expect(cancelOrder).not.toHaveBeenCalled();
   });
 

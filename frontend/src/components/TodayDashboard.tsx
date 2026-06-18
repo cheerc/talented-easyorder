@@ -1,15 +1,13 @@
 import React, { useMemo } from 'react';
-import { useShallow } from 'zustand/shallow';
-import { usePosStore } from '../store/posStore';
+import { useSession } from '../store/selectors';
 import { fmt } from './pos-components';
 import { useLedgerReport } from '../store/derived/useLedgerReport';
+import { getTaiwanDate } from '../utils/dateTime';
 
 export const TodayDashboard = React.memo(function TodayDashboard({ onClose }: { onClose: () => void }) {
-  const { auditEvents, dailySettlements, businessDateStatuses } = usePosStore(
-    useShallow((s) => ({ auditEvents: s.auditEvents, dailySettlements: s.dailySettlements, businessDateStatuses: s.businessDateStatuses }))
-  );
+  const { auditEvents, dailySettlements, businessDateStatuses } = useSession();
 
-  const systemDate = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const systemDate = useMemo(() => getTaiwanDate(), []);
 
   const { filtered: todayTx, totals } = useLedgerReport({
     dateRange: 'today',

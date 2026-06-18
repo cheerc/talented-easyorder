@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { appendErrorLog, readErrorLog, clearErrorLog, getRecentErrors } from '../errorLogger';
+import { appendErrorLog, readErrorLog, clearErrorLog, sanitizeStack } from '../errorLogger';
 
 beforeEach(() => {
   localStorage.clear();
@@ -109,10 +109,10 @@ describe('errorLogger', () => {
     expect((entry.context as Record<string, unknown>).balance).toBeUndefined();
   });
 
-  it('getRecentErrors returns entries', () => {
+  it('readErrorLog returns entries', () => {
     appendErrorLog({ source: 'react', message: 'a' });
     appendErrorLog({ source: 'sync', message: 'b' });
-    expect(getRecentErrors()).toHaveLength(2);
+    expect(readErrorLog()).toHaveLength(2);
   });
 
   it('sanitizes PII from stack trace', () => {
@@ -127,6 +127,40 @@ describe('errorLogger', () => {
     expect(entry.stack).toContain('App.tsx:10:5');
   });
 
+  it('does not redact single address character (avoid false positives)', () => {
+    const entry = appendErrorLog({
+      source: 'react',
+      message: '路徑錯誤: file not found',
+    });
+    expect(entry.message).toContain('路徑錯誤');
+    expect(entry.message).not.toContain('[ADDR REDACTED]');
+  });
+
+  it('redacts address patterns (number+addr char or 2+ consecutive addr chars)', () => {
+    const entry = appendErrorLog({
+      source: 'react',
+      message: '地址: 台北市大安區忠孝東路四段100號11樓',
+    });
+    expect(entry.message).not.toContain('100號');
+    expect(entry.message).not.toContain('11樓');
+    expect(entry.message).toContain('[ADDR REDACTED]');
+  });
+
+  it('sanitizes string values in allowlisted context keys', () => {
+    const entry = appendErrorLog({
+      source: 'react',
+      message: 'test',
+      context: {
+        errorHint: '學生: 王小明 電話0912-345-678',
+      },
+    });
+    expect(entry.context).toBeDefined();
+    expect(entry.context!.errorHint).toBeDefined();
+    expect(entry.context!.errorHint).not.toContain('王小明');
+    expect(entry.context!.errorHint).not.toContain('0912-345-678');
+    expect(entry.context!.errorHint).toContain('[REDACTED]');
+  });
+
   it('does not match "filename" when sanitizing "name" pattern', () => {
     const entry = appendErrorLog({
       source: 'react',
@@ -135,5 +169,70 @@ describe('errorLogger', () => {
     expect(entry.message).toContain('filename: app.tsx');
     expect(entry.message).not.toContain('John Smith');
     expect(entry.message).toContain('name: [REDACTED]');
+  });
+
+  describe('sanitizeStack (#288)', () => {
+    it('strips Unix absolute file paths from stack traces', () => {
+      const stack = 'Error: fail\n    at Module (/Users/cheerc/talented-easyorder/frontend/src/App.tsx:42:5)';
+      const result = sanitizeStack(stack);
+      expect(result).not.toContain('/Users/cheerc');
+      expect(result).toContain('[PATH]');
+    });
+
+    it('strips Windows file paths from stack traces', () => {
+      const stack = 'Error: fail\n    at C:\\Users\\dev\\project\\src\\index.ts:10:3';
+      const result = sanitizeStack(stack);
+      expect(result).not.toContain('C:\\Users\\dev');
+      expect(result).toContain('[PATH]');
+    });
+
+    it('strips node_modules paths', () => {
+      const stack = 'at node_modules/firebase/auth/dist/index.js:123:45';
+      const result = sanitizeStack(stack);
+      expect(result).not.toContain('node_modules/firebase');
+      expect(result).toContain('[MODULE]');
+    });
+
+    it('also applies message sanitization (PII patterns)', () => {
+      const stack = 'Error: 學生: 王小明\n    at /Users/cheerc/src/App.tsx:1:1';
+      const result = sanitizeStack(stack);
+      expect(result).toContain('[REDACTED]');
+      expect(result).not.toContain('王小明');
+    });
+  });
+
+  describe('TTL rotation (#288)', () => {
+    it('removes entries older than 24 hours', () => {
+      const old = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+      const recent = new Date().toISOString();
+
+      // Manually seed localStorage with old + recent entries
+      const entries = [
+        { id: 'recent-1', createdAt: recent, source: 'react', message: 'recent' },
+        { id: 'old-1', createdAt: old, source: 'react', message: 'old' },
+      ];
+      localStorage.setItem('easyorder-error-log', JSON.stringify(entries));
+
+      // Append a new entry — should trigger TTL rotation
+      appendErrorLog({ source: 'react', message: 'new entry' });
+
+      const log = readErrorLog();
+      expect(log.some(e => e.id === 'old-1')).toBe(false);
+      expect(log.some(e => e.id === 'recent-1')).toBe(true);
+      expect(log.some(e => e.message === 'new entry')).toBe(true);
+    });
+
+    it('keeps entries within 24 hours', () => {
+      const fresh = new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString();
+      const entries = [
+        { id: 'fresh-1', createdAt: fresh, source: 'react', message: 'fresh' },
+      ];
+      localStorage.setItem('easyorder-error-log', JSON.stringify(entries));
+
+      appendErrorLog({ source: 'react', message: 'another' });
+
+      const log = readErrorLog();
+      expect(log.some(e => e.id === 'fresh-1')).toBe(true);
+    });
   });
 });

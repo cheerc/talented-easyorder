@@ -1,5 +1,5 @@
 import type { PosTransactionDraft } from '../domain/posTransaction';
-import { appendErrorLog } from '../errors/errorLogger';
+import { emitError } from '../errors/errorBus';
 
 /**
  * Crash Draft — same-origin IndexedDB persistence for in-progress POS transactions.
@@ -12,12 +12,23 @@ import { appendErrorLog } from '../errors/errorLogger';
  * Stored in `easyorder-crash-draft` / drafts / current-draft (single draft only).
  * The draft includes studentId for recovery UX (pre-fills student selector).
  * Database is auto-deleted on commit; no data leaves the browser.
+ *
+ * Ref: #312 — Drafts have a 24h TTL. On load, expired drafts are silently purged
+ * to prevent stale PII from persisting indefinitely.
  */
 
 const DB_NAME = 'easyorder-crash-draft';
 const STORE_NAME = 'drafts';
 const DRAFT_KEY = 'current-draft';
 const DB_VERSION = 1;
+/** Ref: #312 — Maximum age of a crash draft before it's considered expired (24 hours). */
+export const CRASH_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Internal envelope that wraps the draft with a timestamp for TTL enforcement. */
+interface CrashDraftEnvelope {
+  draft: PosTransactionDraft;
+  savedAt: number;
+}
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -35,13 +46,15 @@ export async function saveCrashDraft(draft: PosTransactionDraft): Promise<void> 
   try {
     db = await openDB();
     const tx = db.transaction(STORE_NAME, 'readwrite');
-    tx.objectStore(STORE_NAME).put(draft, DRAFT_KEY);
+    // Ref: #312 — Wrap draft with savedAt timestamp for TTL enforcement
+    const envelope: CrashDraftEnvelope = { draft, savedAt: Date.now() };
+    tx.objectStore(STORE_NAME).put(envelope, DRAFT_KEY);
     await new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
   } catch {
-    appendErrorLog({ source: 'storage', message: 'crashDraft save failed' });
+    emitError({ source: 'storage', message: 'crashDraft save failed' });
   } finally {
     db?.close();
   }
@@ -53,13 +66,26 @@ export async function loadCrashDraft(): Promise<PosTransactionDraft | null> {
     db = await openDB();
     const tx = db.transaction(STORE_NAME, 'readonly');
     const req = tx.objectStore(STORE_NAME).get(DRAFT_KEY);
-    const result = await new Promise<PosTransactionDraft | undefined>((resolve, reject) => {
+    const result = await new Promise<CrashDraftEnvelope | PosTransactionDraft | undefined>((resolve, reject) => {
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
-    return result ?? null;
+    if (!result) return null;
+
+    // Ref: #312 — Support both old (plain draft) and new (envelope) formats
+    if ('savedAt' in result && 'draft' in result) {
+      const envelope = result as CrashDraftEnvelope;
+      if (Date.now() - envelope.savedAt > CRASH_DRAFT_TTL_MS) {
+        // Expired — purge silently
+        clearCrashDraft();
+        return null;
+      }
+      return envelope.draft;
+    }
+    // Legacy format (pre-#312): treat as valid, no TTL check
+    return result as PosTransactionDraft;
   } catch {
-    appendErrorLog({ source: 'storage', message: 'crashDraft load failed' });
+    emitError({ source: 'storage', message: 'crashDraft load failed' });
     return null;
   } finally {
     db?.close();
@@ -71,7 +97,7 @@ export function clearCrashDraft(): void {
     const req = indexedDB.deleteDatabase(DB_NAME);
     req.onerror = () => { /* ignore */ };
   } catch {
-    appendErrorLog({ source: 'storage', message: 'crashDraft delete failed' });
+    emitError({ source: 'storage', message: 'crashDraft delete failed' });
   }
 }
 

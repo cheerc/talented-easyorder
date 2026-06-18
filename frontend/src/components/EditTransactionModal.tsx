@@ -3,11 +3,11 @@ import { Modal } from './ui/Modal';
 import { NumberField } from './ui/NumberField';
 import { TextField } from './ui/TextField';
 import { Button } from './ui/Button';
-import type { LedgerTransaction } from '../domain/ledger';
+import type { TransactionEditView } from '../domain/ledger';
 
 interface EditTransactionModalProps {
   open: boolean;
-  transaction: LedgerTransaction | null;
+  transaction: TransactionEditView | null;
   onClose: () => void;
   onSave: (transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }) => void;
 }

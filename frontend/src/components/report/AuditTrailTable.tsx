@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { usePosStore } from '../../store/posStore';
+import { useSession } from '../../store/selectors';
 import type { LedgerAuditEvent } from '../../domain/ledgerAudit';
 
 const PAGE_SIZE = 20;
@@ -46,7 +46,7 @@ function beforeAfterSummary(before: Record<string, unknown> | null, after: Recor
 }
 
 export const AuditTrailTable = React.memo(function AuditTrailTable() {
-  const auditEvents = usePosStore((s) => s.auditEvents);
+  const { auditEvents } = useSession();
   const [page, setPage] = useState(0);
 
   const sorted = useMemo(() => {

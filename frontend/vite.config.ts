@@ -38,6 +38,17 @@ export default defineConfig(async () => ({
   plugins: [
     react(),
     await createPwaPlugin(),
+    // Ref: #361 — Strip CSP meta tag in dev mode so Vite's inline
+    // React Refresh script is not blocked by script-src 'self'.
+    {
+      name: 'strip-csp-dev',
+      transformIndexHtml(html, ctx) {
+        if (ctx.server) {
+          return html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, '');
+        }
+        return html;
+      },
+    },
   ],
   build: {
     rollupOptions: {
@@ -46,11 +57,23 @@ export default defineConfig(async () => ({
           if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
             return 'vendor-react';
           }
-          if (id.includes('node_modules/firebase')) {
-            return 'vendor-firebase';
-          }
           if (id.includes('node_modules/zustand')) {
             return 'vendor-zustand';
+          }
+          if (id.includes('node_modules/firebase/app')) {
+            return 'vendor-firebase-app';
+          }
+          if (id.includes('node_modules/firebase/auth')) {
+            return 'vendor-firebase-auth';
+          }
+          // Ref: #321 — Firestore SDK (349KB) isolated into its own chunk.
+          // Already lazy-loaded via dynamic import() in firebaseModules.ts.
+          // This manualChunks entry ensures Vite doesn't merge it into the main bundle.
+          if (id.includes('node_modules/firebase/firestore')) {
+            return 'vendor-firebase-firestore';
+          }
+          if (id.includes('node_modules/firebase')) {
+            return 'vendor-firebase-shared';
           }
         },
       },

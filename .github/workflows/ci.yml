@@ -2,8 +2,18 @@ name: Frontend CI
 
 on:
   push:
+    branches: [dev]
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    branches: [dev]
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+concurrency:
+  group: pre-merge-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
@@ -12,8 +22,8 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -23,3 +33,8 @@ jobs:
       - run: npm run lint
       - run: npx vitest run
       - run: npx firebase emulators:exec --only firestore "npx vitest run src/firebase/__tests__/firestoreRules.spec.ts"
+
+# NOTE(#56/#268): Playwright e2e moved out of per-PR CI to the dedicated
+# e2e-tests.yml workflow (workflow_dispatch release gate + nightly schedule).
+# Per-PR now runs only build-and-test (tsc / lint / vitest / firestore-rules).
+# NOTE: easyorder t5 = Firestore Rules (stays here); Playwright e2e = the moved job.

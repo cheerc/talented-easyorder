@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { usePosStore } from '../../store/posStore';
+import { useSession } from '../../store/selectors';
 import { fmt } from '../pos-components';
 
 const PAGE_SIZE = 20;
@@ -17,7 +17,7 @@ function statusClass(status: string) {
 }
 
 export const SettlementHistoryTable = React.memo(function SettlementHistoryTable() {
-  const dailySettlements = usePosStore((s) => s.dailySettlements);
+  const { dailySettlements } = useSession();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
 

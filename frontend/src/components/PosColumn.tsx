@@ -1,63 +1,13 @@
-import React, { useMemo, useState } from 'react';
-import { SearchBox, CustomerCard, ActionBar, IdleHero, RecentStrip, DuplicateWarningBanner, MidnightBanner, ExpensePanel } from './pos-components';
-import { useActiveOrderCount, useMergedTransactions } from '../store/derived/useLedger';
-import type { PosFlowState, PosMode, PosSelectionSource, ExpenseDirection } from '../domain/posFlow';
+import React, { useMemo, useState, useCallback } from 'react';
+import { SearchBox, CustomerCard, ActionBar, IdleHero, RecentStrip, DuplicateWarningBanner, MidnightBanner, ExpensePanel, DeleteConfirmDialog } from './pos-components';
+import { useActiveOrderCount } from '../store/derived/useLedger';
+import { useTransactionActions } from '../store/selectors';
+import { groupLedgerRowsByStudent } from '../domain/ledgerReport';
+import type { LedgerTransaction, TransactionEditView } from '../domain/ledger';
+import { EditTransactionModal } from './EditTransactionModal';
+import type { PosColumnProps } from './PosColumn.types';
 import type { StudentAccount } from '../domain/student';
-import type { LedgerTransaction } from '../domain/ledger';
-import type { TodayMenu, Vendor } from '../domain/menu';
-
-interface PosColumnProps {
-  state: PosFlowState;
-  isHistorical: boolean;
-  dateStatus: string;
-  viewDate: string;
-  systemDate: string;
-  setViewDate: (d: string) => void;
-  // Student
-  picked: StudentAccount | null;
-  currentMode: PosMode;
-  currentPaidAmount: string;
-  allTx: LedgerTransaction[];
-  students: StudentAccount[];
-  selectStudent: (id: string, src: PosSelectionSource) => void;
-  // Expense
-  expenseProps: { kind: string; amountText: string; amount: number } | null;
-  updateExpenseAmount: (t: string) => void;
-  confirmExpenseAmount: (n: number) => void;
-  selectExpenseDirection: (d: ExpenseDirection) => void;
-  selectExpenseReason: (r: string) => void;
-  updateExpenseNote: (n: string) => void;
-  confirmExpenseNote: (n: string) => void;
-  // Actions
-  setPaidAmountText: (t: string) => void;
-  handleConfirm: () => void;
-  cancelFlow: () => void;
-  changeMode: (m: PosMode) => void;
-  setFocusZone: (z: string) => void;
-  focusZone: string;
-  openCancelConfirm: () => void;
-  // Search
-  setSearchText: (t: string) => void;
-  searchFocusKey: number;
-  hasFlash: boolean;
-  // Misc
-  crashDraftRestored: boolean;
-  setCrashDraftRestored: (v: boolean) => void;
-  todayMenu: TodayMenu;
-  todayCount: number;
-  vendors: Vendor[];
-  enterExpenseMode: () => void;
-  tweaks: { theme: string; fontSize: string; disableHoverSelection: boolean };
-  // Recent strip
-  tx: LedgerTransaction[];
-  // Price override
-  priceOverride: number | null;
-  priceOverrideLabel: string;
-  setPriceOverride: (v: number | null) => void;
-  setPriceOverrideLabel: (v: string) => void;
-  handleDeleteOrder: () => void;
-  onViewHistory: () => void;
-}
+import type { PosMode } from '../domain/posFlow';
 
 export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
   const {
@@ -66,16 +16,55 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
     expenseProps,
     updateExpenseAmount, confirmExpenseAmount, selectExpenseDirection, selectExpenseReason,
     updateExpenseNote, confirmExpenseNote,
-    setPaidAmountText, handleConfirm, cancelFlow, changeMode, setFocusZone, focusZone, openCancelConfirm,
+    setPaidAmountText, handleConfirm, cancelFlow, changeMode, setFocusZone, focusZone, openCancelConfirmForTx,
     setSearchText, searchFocusKey, hasFlash,
     crashDraftRestored, setCrashDraftRestored,
     todayMenu, todayCount, vendors, enterExpenseMode, tweaks,
-    tx, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
+    tx, operatorUid, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
     handleDeleteOrder, onViewHistory,
   } = props;
 
   const orderedTodayCount = useActiveOrderCount(picked?.studentId ?? null, viewDate);
-  const mergedTx = useMergedTransactions(tx);
+
+  const { deleteTransaction, editTransaction } = useTransactionActions();
+
+  // Group raw transactions by student for RecentStrip
+  const recentGroups = useMemo(
+    () => groupLedgerRowsByStudent(tx as LedgerTransaction[]),
+    [tx],
+  );
+
+  // Edit modal state
+  const [editingTx, setEditingTx] = useState<TransactionEditView | null>(null);
+
+  // Ref: #401 — delete confirmation state for payment/expense
+  const [deleteConfirmTx, setDeleteConfirmTx] = useState<LedgerTransaction | null>(null);
+
+  const handleRecentEditClick = (t: LedgerTransaction) => {
+    setEditingTx({
+      transactionId: t.transactionId,
+      mealPrice: t.mealPrice,
+      paidAmount: t.paidAmount,
+      note: t.note,
+    });
+  };
+
+  const handleRecentDeleteClick = (t: LedgerTransaction) => {
+    if (t.type === 'order') {
+      // Ref: #401 — route through cancel confirmation dialog
+      openCancelConfirmForTx(t);
+    } else {
+      // Ref: #401 — show confirmation dialog for payment/expense
+      setDeleteConfirmTx(t);
+    }
+  };
+
+  const handleRecentEditSave = useCallback(
+    (transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }) => {
+      editTransaction(transactionId, updates, operatorUid);
+    },
+    [editTransaction, operatorUid],
+  );
 
   const [activeIdx, setActiveIdx] = useState(0);
 
@@ -156,6 +145,15 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
           </>
         ) : (
           <>
+            <ActionBar
+              mode={currentMode}
+              setMode={(m) => {
+                changeMode(m as PosMode);
+                setFocusZone('mode-' + m);
+              }}
+              onStatusMode={() => setFocusZone('view-status')}
+              focusZone={focusZone}
+            />
             {expenseProps ? (
               <ExpensePanel
                 kind={expenseProps.kind}
@@ -183,6 +181,8 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 setPriceOverride={setPriceOverride}
                 setPriceOverrideLabel={setPriceOverrideLabel}
                 onDeleteOrder={handleDeleteOrder}
+                focusZone={focusZone}
+                studentTransactions={picked ? recentGroups.find(g => g.studentId === picked.studentId)?.transactions ?? [] : []}
               />
             )}
             {state.kind === 'duplicate_warning' && (
@@ -192,26 +192,37 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 onCancel={cancelFlow}
               />
             )}
-            <ActionBar
-              mode={currentMode}
-              setMode={(m) => {
-                changeMode(m as PosMode);
-                setFocusZone('mode-' + m);
-              }}
-              onDeleteOrder={openCancelConfirm}
-              focusZone={focusZone}
-              onConfirm={handleConfirm}
-              onCancel={cancelFlow}
-            />
           </>
         )}
       </div>
       <div className="col-side">
         <RecentStrip
-          recent={mergedTx.map((t, i) => ({ ...t, uid: i + '-' + t.createdAt }))}
-          onItemClick={!isHistorical && dateStatus !== 'closed' ? (sid) => selectStudent(sid, 'manual') : undefined}
+          groups={recentGroups}
+          onStudentClick={!isHistorical && dateStatus !== 'closed' ? (sid) => {
+            selectStudent(sid, 'manual');
+            setFocusZone('view-status');
+          } : undefined}
+          onEditClick={showHistoricalLock ? undefined : handleRecentEditClick}
+          onDeleteClick={showHistoricalLock ? undefined : handleRecentDeleteClick}
+          dateStatus={dateStatus}
         />
       </div>
+      <EditTransactionModal
+        open={editingTx !== null}
+        transaction={editingTx}
+        onClose={() => setEditingTx(null)}
+        onSave={handleRecentEditSave}
+      />
+      {deleteConfirmTx && (
+        <DeleteConfirmDialog
+          open={true}
+          studentName={recentGroups.find(g => g.transactions.some(t => t.transactionId === deleteConfirmTx.transactionId))?.studentNameSnapshot ?? ''}
+          transactionType={deleteConfirmTx.type as 'payment' | 'expense'}
+          amount={deleteConfirmTx.type === 'expense' ? deleteConfirmTx.amount : deleteConfirmTx.paidAmount}
+          onConfirm={() => { deleteTransaction(deleteConfirmTx.transactionId); setDeleteConfirmTx(null); }}
+          onCancel={() => setDeleteConfirmTx(null)}
+        />
+      )}
     </div>
   );
 });

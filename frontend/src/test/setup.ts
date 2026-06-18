@@ -78,7 +78,8 @@ const fakeIndexedDB = {
   },
   deleteDatabase(name: string): AnyObj {
     fakeIndexedDB._databases.delete(name);
-    const req: AnyObj = { onerror: null as AnyObj, error: null };
+    const req: AnyObj = { onsuccess: null as AnyObj, onerror: null as AnyObj, onblocked: null as AnyObj, error: null };
+    setTimeout(() => { req.onsuccess?.({ target: req } as AnyObj); }, 0);
     return req;
   },
 };
@@ -104,12 +105,12 @@ const mockServices = {
 
 // Global mocks for Firebase initialization and Auth Gate in test environment
 vi.mock('../firebase/firebaseApp', () => ({
-  ensureFirebaseInitialized: () => mockServices,
+  ensureFirebaseInitialized: () => Promise.resolve(mockServices),
   readFirebaseConfig: () => ({}),
   getFirebaseConfigState: () => ({ configured: false, error: 'Mocked config' }),
-  isFirebaseConfigured: () => false,
+  isFirebaseConfigured: () => true,
   firebaseConfigState: { configured: false, error: 'Mocked config' },
-  isConfigured: false,
+  isConfigured: true,
 }));
 
 vi.mock('../firebase/authService', () => ({
@@ -133,3 +134,15 @@ vi.mock('../firebase/authService', () => ({
   signInWithGoogle: vi.fn(),
   signOutOperator: vi.fn(),
 }));
+
+vi.mock('../firebase/firebaseModules', async () => {
+  const [authMod, fsMod] = await Promise.all([
+    import('firebase/auth'),
+    import('firebase/firestore'),
+  ]);
+  return {
+    ensureFirebaseModulesLoaded: vi.fn(),
+    getAuthMod: () => authMod,
+    getFirestoreMod: () => fsMod,
+  };
+});

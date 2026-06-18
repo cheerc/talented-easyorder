@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   parsePaidAmount,
   buildPosTransactionDraft,
+  deriveTransactionAttributes,
 } from '../posTransaction';
 import type { PosTransactionIntent } from '../posTransaction';
 import { STUDENT_001, TODAY_MENU_KARAAGE } from './fixtures';
@@ -121,5 +122,21 @@ describe('buildPosTransactionDraft', () => {
     expect(draft.intent.mealPrice).toBe(110);
     expect(draft.snapshots.menu.menuNameSnapshot).toBe(TODAY_MENU_KARAAGE.itemName);
     expect(draft.amount).toBe(0);
+  });
+});
+
+describe('deriveTransactionAttributes', () => {
+  it('derives paidAmount correctly when mode is order and paidAmountText is provided', () => {
+    const result = deriveTransactionAttributes({
+      mode: 'order',
+      todayMenuPrice: 90,
+      todayMenuItemName: '日式唐揚雞便當',
+      priceOverride: null,
+      priceOverrideLabel: '',
+      paidAmountText: '90',
+    });
+    expect(result.paidAmount).toBe(90);
+    expect(result.mealPrice).toBe(90);
+    expect(result.note).toBe('日式唐揚雞便當 (已付)');
   });
 });

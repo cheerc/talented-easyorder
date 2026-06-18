@@ -1,10 +1,10 @@
 import React from 'react';
 import { fmt } from '../pos-components';
-import type { LedgerTransaction } from '../../domain/ledger';
+import type { ReportTransactionView } from '../../domain/transactionViews';
 
 export interface ExpenseOnlyRowProps {
-  tx: LedgerTransaction;
-  onDeleteClick: (t: LedgerTransaction) => void;
+  tx: ReportTransactionView;
+  onDeleteClick: (t: ReportTransactionView) => void;
   dateStatus: string;
 }
 

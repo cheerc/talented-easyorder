@@ -1,3 +1,8 @@
+/**
+ * Ref: #318 — L3 hook in composition chain (see usePosFlow.ts for diagram).
+ * Encapsulates expense-mode actions: enter/exit expense, update amount/direction/reason/note.
+ * Receives `dispatch` from usePosFlow and returns memoized callbacks.
+ */
 import { useCallback } from 'react';
 import type { PosFlowEvent, ExpenseDirection } from '../domain/posFlow';
 

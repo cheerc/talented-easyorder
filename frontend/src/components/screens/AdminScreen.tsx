@@ -1,26 +1,39 @@
-import React, { useState } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { NumericInput } from '../ui/NumericInput';
 import { fmt } from "../pos-components";
-import type { TodayMenu } from '../../domain/menu';
 import type { StudentAccount } from '../../domain/student';
-import type { Vendor } from '../../domain/menu';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { useMenu, useMenuActions, useStudents, useGlobalActions, useSessionActions } from '../../store/selectors';
+import { useCashClose } from '../../store/derived/useCashClose';
+import { useTweaks } from '../../hooks/useTweaks';
+import { useFirebase } from '../../hooks/useFirebase';
+import { SYSTEM_OPERATOR_ID } from '../../domain/operatorId';
+import { getTaiwanISOString } from '../../utils/dateTime';
 
 interface AdminScreenProps {
-  todayMenu: TodayMenu;
-  setTodayMenu: (menu: TodayMenu) => void;
-  vendors: Vendor[];
-  students: StudentAccount[];
-  resetData: () => void;
-  openingCash: number;
-  dateStatus: string;
-  hasCashSession: boolean;
-  onOpeningCashChange: (amount: number) => void;
-  onUpdateOpeningCash: (amount: number) => void;
-  tweaks: { theme: string; fontSize: string; disableHoverSelection: boolean };
-  setTweak: (k: string, v: string) => void;
+  viewDate: string;
 }
-export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setTodayMenu, vendors, students, resetData, openingCash, dateStatus, hasCashSession, onOpeningCashChange, onUpdateOpeningCash, tweaks, setTweak }: AdminScreenProps) {
+export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminScreenProps) {
+  const { todayMenu, vendors } = useMenu();
+  const { access } = useFirebase();
+  // Ref: #336 — Real operator UID for audit trail
+  const operatorUid = (access.ok && access.profile?.uid) ? access.profile.uid : SYSTEM_OPERATOR_ID;
+  const { setTodayMenu } = useMenuActions();
+  const { students } = useStudents();
+  const { resetData } = useGlobalActions();
+  const { openCashSession, updateOpeningCash } = useSessionActions();
+  const { openingCash, dateStatus, currentCashSession } = useCashClose(viewDate);
+  const hasCashSession = !!currentCashSession;
+  const { tweaks, setTweak } = useTweaks();
+
+  // Wrapper callbacks (moved from AppRouter — reviewer finding #1)
+  const onOpeningCashChange = useCallback((amount: number) => {
+    openCashSession({ businessDate: viewDate, openingCash: amount, operatorId: operatorUid, openedAt: getTaiwanISOString() });
+  }, [viewDate, openCashSession, operatorUid]);
+
+  const onUpdateOpeningCash = useCallback((amount: number) => {
+    updateOpeningCash(viewDate, amount);
+  }, [viewDate, updateOpeningCash]);
   const [name, setName] = useState(todayMenu.itemName);
   const [price, setPrice] = useState(todayMenu.price);
   const [vendor, setVendor] = useState(todayMenu.vendorNameSnapshot);
@@ -29,10 +42,24 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
   const [cashSavedMsg, setCashSavedMsg] = useState('');
   const [showOpeningCashConfirm, setShowOpeningCashConfirm] = useState(false);
 
+  // Ref: #294 — Store timeout ID for cleanup on unmount.
+  const cashSavedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (cashSavedTimeoutRef.current !== null) clearTimeout(cashSavedTimeoutRef.current);
+    };
+  }, []);
+
   const isClosed = dateStatus === 'closed';
+
+  // Ref: #347 — DRY validation helpers for financial input guards
+  const isPositiveInt = (n: number) => Number.isFinite(n) && Number.isSafeInteger(n) && n > 0;
+  const isNonNegativeInt = (n: number) => Number.isFinite(n) && Number.isSafeInteger(n) && n >= 0;
+
   const save = () => {
     const n = Number(price);
-    if (!Number.isSafeInteger(n) || n <= 0) return;
+    // Ref: #311, #347 — Financial input validation
+    if (!isPositiveInt(n)) return;
     setTodayMenu({ ...todayMenu, itemName: name, price: n, vendorNameSnapshot: vendor });
   };
 
@@ -44,7 +71,8 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
 
   const doSaveOpeningCash = () => {
     const n = Number(openingCashDraft);
-    if (!Number.isSafeInteger(n) || n < 0) return;
+    // Ref: #311, #347 — Financial input validation
+    if (!isNonNegativeInt(n)) return;
     if (hasCashSession) {
       onUpdateOpeningCash(n);
     } else {
@@ -52,12 +80,14 @@ export const AdminScreen = React.memo(function AdminScreen({ todayMenu, setToday
     }
     setShowOpeningCashConfirm(false);
     setCashSavedMsg('已儲存');
-    setTimeout(() => setCashSavedMsg(''), 2000);
+    if (cashSavedTimeoutRef.current !== null) clearTimeout(cashSavedTimeoutRef.current);
+    cashSavedTimeoutRef.current = setTimeout(() => { setCashSavedMsg(''); cashSavedTimeoutRef.current = null; }, 2000);
   };
 
   const handleSaveOpeningCash = () => {
     const n = Number(openingCashDraft);
-    if (!Number.isSafeInteger(n) || n < 0) return;
+    // Ref: #311, #347 — Financial input validation
+    if (!isNonNegativeInt(n)) return;
     if (n === openingCash) return;
     setShowOpeningCashConfirm(true);
   };

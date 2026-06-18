@@ -1,5 +1,14 @@
 import React, { useState } from "react";
 
+/**
+ * Ref: #329 — BackupScreen is a UI placeholder / prototype.
+ *
+ * ⚠️ PLACEHOLDER: The progress bar, data counts, and timestamps are all
+ * hardcoded. No actual backup/restore logic is connected. This screen
+ * serves as a UI mockup for future backup functionality.
+ *
+ * TODO: Connect to real backup service when implemented.
+ */
 export const BackupScreen = React.memo(function BackupScreen() {
   const [step, setStep] = useState(0);
   const [progress, setProgress] = useState(0);

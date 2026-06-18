@@ -1,4 +1,5 @@
-import { doc, serverTimestamp, setDoc, updateDoc, type Firestore } from 'firebase/firestore';
+import type { Firestore } from 'firebase/firestore';
+import { getFirestoreMod } from './firebaseModules';
 import { studentPath } from './firestorePaths';
 
 export function buildStudentDoc(input: {
@@ -7,6 +8,7 @@ export function buildStudentDoc(input: {
   openingBalance: number;
   operatorId: string;
 }) {
+  const { serverTimestamp } = getFirestoreMod();
   return {
     id: input.studentId,
     displayName: input.displayName,
@@ -26,10 +28,12 @@ export function buildStudentDoc(input: {
 }
 
 export async function addStudent(db: Firestore, input: Parameters<typeof buildStudentDoc>[0]): Promise<void> {
+  const { doc, setDoc } = getFirestoreMod();
   await setDoc(doc(db, studentPath(input.studentId)), buildStudentDoc(input));
 }
 
 export async function disableStudent(db: Firestore, input: { studentId: string; operatorId: string }): Promise<void> {
+  const { doc, updateDoc, serverTimestamp } = getFirestoreMod();
   await updateDoc(doc(db, studentPath(input.studentId)), {
     status: 'inactive',
     updatedAt: serverTimestamp(),

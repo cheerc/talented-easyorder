@@ -1,13 +1,6 @@
-import {
-  collection,
-  onSnapshot,
-  orderBy,
-  query,
-  where,
-  type Firestore,
-  type Unsubscribe,
-} from 'firebase/firestore';
-import { appendErrorLog } from '../errors/errorLogger';
+import type { Query, Unsubscribe } from 'firebase/firestore';
+import { getFirestoreMod } from './firebaseModules';
+import { emitError } from '../errors/errorBus';
 
 export interface RealtimeHandlers {
   onStudents: (docs: unknown[], pendingWrites: number, fromCache: boolean) => void;
@@ -16,51 +9,78 @@ export interface RealtimeHandlers {
   onError: (error: Error) => void;
 }
 
-function pendingCount(snapshot: { docs: Array<{ metadata: { hasPendingWrites: boolean } }> }): number {
-  return snapshot.docs.filter(doc => doc.metadata.hasPendingWrites).length;
+
+
+/**
+ * Ref: #343 — Transient Firestore error codes that warrant a resubscribe attempt.
+ * Permanent errors (e.g. PERMISSION_DENIED) should NOT trigger retry.
+ */
+const TRANSIENT_ERROR_CODES = new Set(['unavailable', 'deadline-exceeded', 'resource-exhausted', 'aborted', 'internal']);
+
+function isTransientError(error: Error & { code?: string }): boolean {
+  return TRANSIENT_ERROR_CODES.has(error.code ?? '');
 }
 
-export function subscribeBusinessDate(db: Firestore, businessDate: string, handlers: RealtimeHandlers): Unsubscribe {
-  const unsubscribers: Unsubscribe[] = [];
+const MAX_RETRIES = 4;
+const BASE_DELAY_MS = 1000;
 
-  let batchPending = false;
-  const pending: Array<() => void> = [];
+/**
+ * Ref: #343 — Wraps onSnapshot with exponential backoff resubscribe on transient errors.
+ * Permanent errors (PERMISSION_DENIED, NOT_FOUND, etc.) are reported but not retried.
+ */
+export function retryableOnSnapshot(
+  queryRef: Query,
+  options: { includeMetadataChanges: boolean },
+  onNext: (snapshot: Record<string, unknown>) => void,
+  onError: (error: Error) => void,
+): Unsubscribe {
+  const { onSnapshot } = getFirestoreMod();
+  let retryCount = 0;
+  let currentUnsub: Unsubscribe | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let disposed = false;
 
-  function scheduleBatch(fn: () => void) {
-    pending.push(fn);
-    if (!batchPending) {
-      batchPending = true;
-      // React 19 automatically batches state updates; queueMicrotask prevents
-      // tearing during Firestore snapshot dispatch by coalescing multiple
-      // onSnapshot callbacks within the same microtask boundary.
-      queueMicrotask(() => {
-        batchPending = false;
-        const calls = pending.splice(0);
-        for (const call of calls) call();
-      });
-    }
+  function subscribe() {
+    currentUnsub = onSnapshot(
+      queryRef,
+      options,
+      snapshot => {
+        retryCount = 0; // Reset on successful snapshot
+        onNext(snapshot as Record<string, unknown>);
+      },
+      error => {
+        currentUnsub = null;
+        const typedError = error as Error & { code?: string };
+
+        if (!disposed && isTransientError(typedError) && retryCount < MAX_RETRIES) {
+          const delay = BASE_DELAY_MS * Math.pow(2, retryCount);
+          retryCount++;
+          emitError({
+            source: 'firebase',
+            message: `[onSnapshot] transient error (${typedError.code}), retry ${retryCount}/${MAX_RETRIES} in ${delay}ms`,
+          });
+          retryTimer = setTimeout(() => {
+            retryTimer = null;
+            if (!disposed) subscribe();
+          }, delay);
+        } else {
+          // Permanent error or max retries exceeded — report and stop
+          onError(error);
+          emitError({
+            source: 'firebase',
+            message: `onSnapshot error: ${error.message}` + (retryCount >= MAX_RETRIES ? ' (max retries exceeded)' : ''),
+          });
+        }
+      },
+    );
   }
 
-  unsubscribers.push(onSnapshot(
-    query(collection(db, 'students'), orderBy('displayName')),
-    { includeMetadataChanges: true },
-    snapshot => scheduleBatch(() => handlers.onStudents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })), pendingCount(snapshot), snapshot.metadata.fromCache)),
-    error => { handlers.onError(error); appendErrorLog({ source: 'firebase', message: 'onSnapshot error: ' + error.message }); },
-  ));
+  subscribe();
 
-  unsubscribers.push(onSnapshot(
-    query(collection(db, 'transactions'), where('businessDate', '==', businessDate), orderBy('createdAt', 'desc')),
-    { includeMetadataChanges: true },
-    snapshot => scheduleBatch(() => handlers.onTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })), pendingCount(snapshot), snapshot.metadata.fromCache)),
-    error => { handlers.onError(error); appendErrorLog({ source: 'firebase', message: 'onSnapshot error: ' + error.message }); },
-  ));
-
-  unsubscribers.push(onSnapshot(
-    query(collection(db, 'daily_settlements'), where('businessDate', '==', businessDate)),
-    { includeMetadataChanges: true },
-    snapshot => scheduleBatch(() => handlers.onSettlements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })), pendingCount(snapshot), snapshot.metadata.fromCache)),
-    error => { handlers.onError(error); appendErrorLog({ source: 'firebase', message: 'onSnapshot error: ' + error.message }); },
-  ));
-
-  return () => unsubscribers.forEach(unsubscribe => unsubscribe());
+  return () => {
+    disposed = true;
+    if (retryTimer) clearTimeout(retryTimer);
+    currentUnsub?.();
+  };
 }
+

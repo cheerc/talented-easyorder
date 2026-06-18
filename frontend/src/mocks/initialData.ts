@@ -25,6 +25,8 @@ export const INITIAL_STUDENTS: StudentAccount[] = [
   { studentId: '018', displayName: '潘柏宇', status: 'active', currentBalance: 0, aliases: [], faceEnrollmentStatus: 'none', createdAt: '2026-01-10T08:00:00Z', updatedAt: '2026-01-10T08:00:00Z', revision: 1 },
   { studentId: '019', displayName: '簡宥成', status: 'active', currentBalance: 0, aliases: [], faceEnrollmentStatus: 'none', createdAt: '2026-01-10T08:00:00Z', updatedAt: '2026-01-10T08:00:00Z', revision: 1 },
   { studentId: '020', displayName: '鄭婉婷', status: 'active', currentBalance: 0, aliases: [], faceEnrollmentStatus: 'none', createdAt: '2026-01-10T08:00:00Z', updatedAt: '2026-01-10T08:00:00Z', revision: 1 },
+  { studentId: 'S001', displayName: '王小明', status: 'active', currentBalance: 1000, aliases: [], faceEnrollmentStatus: 'none', createdAt: '2026-01-10T08:00:00Z', updatedAt: '2026-01-10T08:00:00Z', revision: 1 },
+  { studentId: 'S002', displayName: '李小華', status: 'active', currentBalance: 500, aliases: [], faceEnrollmentStatus: 'none', createdAt: '2026-01-10T08:00:00Z', updatedAt: '2026-01-10T08:00:00Z', revision: 1 },
 ];
 
 export const VENDORS: Vendor[] = [

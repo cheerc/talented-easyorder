@@ -39,8 +39,23 @@ export function toHandoffScannerInput(msg: IpadHandoffMessage): ScannerInput {
   return { rawCode: msg.studentId.trim(), terminator: 'Enter' };
 }
 
+/**
+ * Ref: #313 — Replaced sessionStorage with BroadcastChannel to avoid persisting
+ * PII (studentId) in plaintext. BroadcastChannel is ephemeral: data is only
+ * available to tabs that are listening at the time of the broadcast.
+ *
+ * Fallback: If BroadcastChannel is not supported (e.g., some older browsers),
+ * falls back to sessionStorage with immediate cleanup.
+ */
 export function writeHandoffIntent(channel: string, msg: IpadHandoffMessage): void {
-  sessionStorage.setItem(channel, JSON.stringify(msg));
+  if (typeof BroadcastChannel !== 'undefined') {
+    const bc = new BroadcastChannel(channel);
+    bc.postMessage(msg);
+    bc.close();
+  } else {
+    // Fallback for environments without BroadcastChannel
+    sessionStorage.setItem(channel, JSON.stringify(msg));
+  }
 }
 
 function isIpadHandoffMessage(obj: unknown): obj is IpadHandoffMessage {
@@ -53,6 +68,12 @@ function isIpadHandoffMessage(obj: unknown): obj is IpadHandoffMessage {
     && typeof r.sourceDevice === 'string';
 }
 
+/**
+ * Ref: #313 — readHandoffIntent now primarily relies on BroadcastChannel
+ * listener (set up in useIpadHandoff hook). This function handles the
+ * sessionStorage fallback path only. When using BroadcastChannel, messages
+ * are received via the onmessage handler, not polled from storage.
+ */
 export function readHandoffIntent(channel: string): IpadHandoffMessage | null {
   const raw = sessionStorage.getItem(channel);
   if (!raw) return null;
@@ -65,4 +86,22 @@ export function readHandoffIntent(channel: string): IpadHandoffMessage | null {
     sessionStorage.removeItem(channel);
     return null;
   }
+}
+
+/**
+ * Ref: #313 — Subscribe to handoff messages via BroadcastChannel.
+ * Returns an unsubscribe function for cleanup.
+ */
+export function subscribeHandoffChannel(
+  channel: string,
+  onMessage: (msg: IpadHandoffMessage) => void,
+): () => void {
+  if (typeof BroadcastChannel === 'undefined') return () => {};
+  const bc = new BroadcastChannel(channel);
+  bc.onmessage = (event: MessageEvent) => {
+    if (isIpadHandoffMessage(event.data)) {
+      onMessage(event.data);
+    }
+  };
+  return () => bc.close();
 }

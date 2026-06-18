@@ -1,5 +1,4 @@
-export type TransactionType = 'order' | 'payment' | 'expense';
-export type LedgerSyncStatus = 'local' | 'queued' | 'synced' | 'failed' | 'conflict';
+export type { TransactionType, LedgerSyncStatus } from './types';
 
 export interface LedgerTransaction {
   transactionId: string;
@@ -127,6 +126,13 @@ export interface MergedTransaction extends LedgerTransaction {
   unpaidAmount: number;
   orderCount: number;
   displayBalance: number;
+}
+
+export interface TransactionEditView {
+  transactionId: string;
+  mealPrice: number;
+  paidAmount: number;
+  note: string;
 }
 
 export function mergeLedgerTransactions(transactions: LedgerTransaction[]): MergedTransaction[] {

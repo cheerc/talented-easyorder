@@ -1,0 +1,128 @@
+/* ============ ADMIN ============ */
+.admin {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+.adm-card .card-h {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.card-h-sub {
+  font-size: 11px;
+  color: var(--ink-3);
+  font-weight: 400;
+}
+
+.adm-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.adm-row label {
+  font-size: 11px;
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.adm-input {
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 15px;
+  font-family: inherit;
+  outline: 0;
+  color: var(--ink);
+}
+
+.adm-input:focus {
+  border-color: var(--ink);
+}
+
+.adm-foot {
+  margin-top: 18px;
+}
+
+.adm-stu-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.adm-stu {
+  display: grid;
+  grid-template-columns: 50px 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line-2);
+  font-size: 13px;
+}
+
+.adm-stu-id {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.adm-stu-name {
+  font-weight: 500;
+}
+
+.adm-stu-grade {
+  font-size: 10px;
+  color: var(--ink-3);
+  padding: 2px 7px;
+  background: var(--line-2);
+  border-radius: 99px;
+}
+
+.adm-stu-bal {
+  font-size: 12px;
+  color: var(--ink-2);
+  min-width: 70px;
+  text-align: right;
+}
+
+.sys-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.sys {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.sys-lbl {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.sys-val {
+  font-size: 14px;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.sys-val.ok {
+  color: var(--accent-ink);
+}
+

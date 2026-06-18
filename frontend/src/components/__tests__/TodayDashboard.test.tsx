@@ -5,7 +5,7 @@ import type { PosTransaction } from '../../domain/transaction';
 import type { LedgerAuditEvent } from '../../domain/ledgerAudit';
 
 const { store, baseTrans, baseEvents, baseSettlements, baseStatuses, todayStr } = vi.hoisted(() => {
-  const systemDate = new Date().toISOString().split('T')[0];
+  const systemDate = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
   const transactions: PosTransaction[] = [
     {
       transactionId: 'tx-1', studentId: '001', studentNameSnapshot: '王小美', type: 'order',
@@ -55,13 +55,16 @@ const { store, baseTrans, baseEvents, baseSettlements, baseStatuses, todayStr } 
   };
 });
 
-vi.mock('../../store/posStore', () => ({
-  usePosStore: (selector: (s: {
-    transactions: PosTransaction[];
-    auditEvents: LedgerAuditEvent[];
-    dailySettlements: DailySettlement[];
-    businessDateStatuses: Record<string, string>;
-  }) => unknown) => selector(store),
+vi.mock('../../store/selectors', () => ({
+  useSession: () => ({
+    auditEvents: store.auditEvents,
+    dailySettlements: store.dailySettlements,
+    businessDateStatuses: store.businessDateStatuses,
+    cashSessions: {},
+  }),
+  useTransactions: () => ({
+    transactions: store.transactions,
+  }),
 }));
 
 import { TodayDashboard } from '../TodayDashboard';

@@ -1,27 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import { EditTransactionModal } from '../EditTransactionModal';
-import type { LedgerTransaction } from '../../domain/ledger';
+import type { TransactionEditView } from '../../domain/ledger';
 
-const baseTx: LedgerTransaction = {
+const baseTx: TransactionEditView = {
   transactionId: 'tx-1',
-  studentId: '001',
-  studentNameSnapshot: '王小美',
-  type: 'order',
-  businessDate: '2026-05-30',
   mealPrice: 90,
   paidAmount: 0,
-  amount: -90,
   note: '',
-  afterBalance: -90,
-  createdAt: '2026-05-30T12:00:00.000Z',
-  menuNameSnapshot: '預設菜單',
-  vendorNameSnapshot: '預設廠商',
-  sourceDevice: 'pc',
-  revision: 1,
-  syncStatus: 'local',
-  depositAmount: 0,
-  unpaidAmount: 90,
 };
 
 describe('EditTransactionModal', () => {
@@ -67,7 +53,7 @@ describe('EditTransactionModal', () => {
     const { getByLabelText, rerender } = render(
       <EditTransactionModal open transaction={baseTx} onClose={vi.fn()} onSave={vi.fn()} />
     );
-    const newTx: LedgerTransaction = { ...baseTx, transactionId: 'tx-2', mealPrice: 120, paidAmount: 100, note: 'changed' };
+    const newTx: TransactionEditView = { ...baseTx, transactionId: 'tx-2', mealPrice: 120, paidAmount: 100, note: 'changed' };
     rerender(
       <EditTransactionModal open transaction={newTx} onClose={vi.fn()} onSave={vi.fn()} />
     );
@@ -199,7 +185,7 @@ describe('EditTransactionModal', () => {
       <EditTransactionModal open transaction={baseTx} onClose={vi.fn()} onSave={onSave} />
     );
     fireEvent.change(getByLabelText('支出金額 (mealPrice)'), { target: { value: '80' } });
-    const newTx: LedgerTransaction = { ...baseTx, transactionId: 'tx-3', mealPrice: 100, paidAmount: 100, note: 'second' };
+    const newTx: TransactionEditView = { ...baseTx, transactionId: 'tx-3', mealPrice: 100, paidAmount: 100, note: 'second' };
     rerender(
       <EditTransactionModal open transaction={newTx} onClose={vi.fn()} onSave={onSave} />
     );
@@ -238,7 +224,7 @@ describe('EditTransactionModal', () => {
 
   it('calls onSave with correct transactionId from the passed transaction', () => {
     const onSave = vi.fn();
-    const tx: LedgerTransaction = { ...baseTx, transactionId: 'custom-tx-id-999' };
+    const tx: TransactionEditView = { ...baseTx, transactionId: 'custom-tx-id-999' };
     const { getByText } = render(
       <EditTransactionModal open transaction={tx} onClose={vi.fn()} onSave={onSave} />
     );

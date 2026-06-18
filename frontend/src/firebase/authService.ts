@@ -1,9 +1,26 @@
-import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type Auth, type User } from 'firebase/auth';
-import { doc, getDoc, onSnapshot, type Firestore } from 'firebase/firestore';
+import type { Auth, User } from 'firebase/auth';
+import type { Firestore } from 'firebase/firestore';
+import { getAuthMod, getFirestoreMod } from './firebaseModules';
 import { operatorPath } from './firestorePaths';
-import { appendErrorLog } from '../errors/errorLogger';
+import { emitError } from '../errors/errorBus';
+import { clearSensitiveData } from '../store/posPersistence';
 
-const ALLOWED_DOMAIN = import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? 'talented.com.tw';
+// Ref: #285 — Runtime type guard for Firestore operator doc data.
+// Replaces unsafe `as` cast to catch server-side doc shape changes.
+interface OperatorDocData {
+  active?: boolean;
+  role?: 'counter' | 'admin';
+}
+
+export function isValidOperatorDoc(data: unknown): data is OperatorDocData {
+  if (data == null || typeof data !== 'object') return false;
+  const obj = data as Record<string, unknown>;
+  if ('active' in obj && typeof obj.active !== 'boolean') return false;
+  if ('role' in obj && obj.role !== 'counter' && obj.role !== 'admin') return false;
+  return true;
+}
+
+const ALLOWED_DOMAIN = import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? 'example.com';
 
 export interface OperatorProfile {
   uid: string;
@@ -37,30 +54,38 @@ export async function getOperatorAccess(db: Firestore, user: User): Promise<Oper
     return { ok: false, reason: 'wrong_domain', profile };
   }
 
+  const { getDoc, doc } = getFirestoreMod();
   const snapshot = await getDoc(doc(db, operatorPath(profile.uid)));
-  const data = snapshot.data() as { active?: boolean; role?: 'counter' | 'admin' } | undefined;
-  if (!data) return { ok: false, reason: 'not_whitelisted', profile };
-  if (!data.active) return { ok: false, reason: 'inactive', profile };
-  return { ok: true, profile, role: data.role ?? 'counter' };
+  const raw = snapshot.data();
+  if (!raw) return { ok: false, reason: 'not_whitelisted', profile };
+  if (!isValidOperatorDoc(raw)) {
+    emitError({ source: 'auth', message: '[auth] operator doc has unexpected shape' });
+    return { ok: false, reason: 'not_whitelisted', profile };
+  }
+  if (!raw.active) return { ok: false, reason: 'inactive', profile };
+  return { ok: true, profile, role: raw.role ?? 'counter' };
 }
 
 export async function verifyUserAuthorization(auth: Auth, db: Firestore, user: User): Promise<OperatorAccess> {
   const access = await getOperatorAccess(db, user);
   if (shouldForceSignOut(access)) {
-    await signOut(auth);
+    await getAuthMod().signOut(auth);
   }
   return access;
 }
 
 export async function signInWithGoogle(auth: Auth, db: Firestore): Promise<OperatorAccess> {
+  const { GoogleAuthProvider, signInWithPopup } = getAuthMod();
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ hd: ALLOWED_DOMAIN, prompt: 'select_account' });
   const credential = await signInWithPopup(auth, provider);
   return verifyUserAuthorization(auth, db, credential.user);
 }
 
-export function signOutOperator(auth: Auth): Promise<void> {
-  return signOut(auth);
+// Ref: #286 — Clear sensitive POS data on signOut to protect PII on shared devices.
+export async function signOutOperator(auth: Auth): Promise<void> {
+  await clearSensitiveData();
+  return getAuthMod().signOut(auth);
 }
 
 export function subscribeOperatorAccess(
@@ -68,6 +93,8 @@ export function subscribeOperatorAccess(
   db: Firestore,
   onAccess: (access: OperatorAccess) => void,
 ): () => void {
+  const { onAuthStateChanged, signOut } = getAuthMod();
+  const { doc, onSnapshot } = getFirestoreMod();
   let unsubscribeOperator: (() => void) | null = null;
   const unsubscribeAuth = onAuthStateChanged(auth, async user => {
     unsubscribeOperator?.();
@@ -80,42 +107,49 @@ export function subscribeOperatorAccess(
 
     const profile = toOperatorProfile(user);
     if (!isAllowedWorkspaceEmail(profile.email)) {
-      onAccess({ ok: false, reason: 'wrong_domain', profile });
+      // Ref: #301 — signOut before emitting rejected to avoid race condition
       try {
         await signOut(auth);
       } catch (err) {
-        appendErrorLog({
+        emitError({
           source: 'auth',
           message: '[auth] force signOut failed: ' + (err instanceof Error ? err.message : String(err)),
         });
       }
+      onAccess({ ok: false, reason: 'wrong_domain', profile });
       return;
     }
 
     unsubscribeOperator = onSnapshot(doc(db, operatorPath(profile.uid)), async snapshot => {
-      const data = snapshot.data() as { active?: boolean; role?: 'counter' | 'admin' } | undefined;
-      if (!data) {
-        onAccess({ ok: false, reason: 'not_whitelisted', profile });
+      const raw = snapshot.data();
+      const data = isValidOperatorDoc(raw) ? raw : null;
+      if (raw && !data) {
+        emitError({ source: 'auth', message: '[auth] operator doc has unexpected shape' });
+      }
+      if (!raw || !data) {
+        // Ref: #301 — signOut before emitting rejected to avoid race condition
         try {
           await signOut(auth);
         } catch (err) {
-          appendErrorLog({
+          emitError({
             source: 'auth',
             message: '[auth] force signOut failed: ' + (err instanceof Error ? err.message : String(err)),
           });
         }
+        onAccess({ ok: false, reason: 'not_whitelisted', profile });
         return;
       }
       if (!data.active) {
-        onAccess({ ok: false, reason: 'inactive', profile });
+        // Ref: #301 — signOut before emitting rejected to avoid race condition
         try {
           await signOut(auth);
         } catch (err) {
-          appendErrorLog({
+          emitError({
             source: 'auth',
             message: '[auth] force signOut failed: ' + (err instanceof Error ? err.message : String(err)),
           });
         }
+        onAccess({ ok: false, reason: 'inactive', profile });
         return;
       }
       onAccess({ ok: true, profile, role: data.role ?? 'counter' });

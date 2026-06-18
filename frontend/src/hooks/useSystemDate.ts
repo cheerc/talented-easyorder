@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
+import { getTaiwanDate } from '../utils/dateTime';
 
 export function useSystemDate() {
-  const getSystemDate = () => new Date().toISOString().split('T')[0];
+  const getSystemDate = () => getTaiwanDate();
   const [systemDate, setSystemDate] = useState(getSystemDate);
   const [viewDate, setViewDate] = useState(systemDate);
 
