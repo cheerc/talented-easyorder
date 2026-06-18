@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import type { StudentAccount } from '../domain/student';
@@ -27,13 +27,39 @@ export const CancelOrderDialog = React.memo(function CancelOrderDialog({
     }
   }, [open]);
 
-  if (!picked) return null;
+  const hasPaidAmount = !!(picked && orderTx && orderTx.paidAmount > 0);
 
-  const hasPaidAmount = orderTx && orderTx.paidAmount > 0;
-
-  const handleConfirm = () => {
+  const handleConfirm = useCallback(() => {
     onConfirm(hasPaidAmount ? keepPaymentAsDeposit : false);
-  };
+  }, [onConfirm, hasPaidAmount, keepPaymentAsDeposit]);
+
+  // Ref: #391 — keyboard nav for refund option radios + Enter confirm
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowDown' && hasPaidAmount) {
+        e.preventDefault();
+        setKeepPaymentAsDeposit(true);
+        return;
+      }
+      if (e.key === 'ArrowUp' && hasPaidAmount) {
+        e.preventDefault();
+        setKeepPaymentAsDeposit(false);
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        handleConfirm();
+        return;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, hasPaidAmount, handleConfirm]);
+
+
+  if (!picked) return null;
 
   return (
     <Modal open={open} title="取消訂餐" onClose={onCancel}>
