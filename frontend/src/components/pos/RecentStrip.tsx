@@ -107,9 +107,9 @@ export const RecentStrip = React.memo(function RecentStrip({
               >
                 <span className="recent-expand-icon">{isExpanded ? '▾' : '▸'}</span>
                 <span className="recent-name">{g.studentNameSnapshot}</span>
-                <span className="recent-group-count">{g.recordCount}筆</span>
+                <span className="recent-group-count">{g.transactions.filter(t => t.type === 'order').length}個便當</span>
                 <span className={'recent-amt mono ' + (isNeg ? 'neg' : 'pos')}>
-                  餘額 {isNeg ? '−' : ''}{fmt(g.afterBalance)}
+                  餘額 {isNeg ? '−' : '+'}{fmt(g.afterBalance)}
                 </span>
               </div>
               {/* Expanded detail rows */}
