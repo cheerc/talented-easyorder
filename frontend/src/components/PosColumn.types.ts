@@ -1,6 +1,7 @@
 import type { PosFlowState, PosMode, PosSelectionSource, ExpenseDirection } from '../domain/posFlow';
 import type { StudentAccount } from '../domain/student';
 import type { WorkflowTransactionView } from '../domain/transactionViews';
+import type { LedgerTransaction } from '../domain/ledger';
 import type { TodayMenu, Vendor } from '../domain/menu';
 
 export interface PosColumnProps {
@@ -33,6 +34,7 @@ export interface PosColumnProps {
   setFocusZone: (z: string) => void;
   focusZone: string;
   openCancelConfirm: () => void;
+  openCancelConfirmForTx: (tx: LedgerTransaction) => void;
   // Search
   setSearchText: (t: string) => void;
   searchFocusKey: number;

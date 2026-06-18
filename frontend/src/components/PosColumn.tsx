@@ -16,7 +16,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
     expenseProps,
     updateExpenseAmount, confirmExpenseAmount, selectExpenseDirection, selectExpenseReason,
     updateExpenseNote, confirmExpenseNote,
-    setPaidAmountText, handleConfirm, cancelFlow, changeMode, setFocusZone, focusZone,
+    setPaidAmountText, handleConfirm, cancelFlow, changeMode, setFocusZone, focusZone, openCancelConfirmForTx,
     setSearchText, searchFocusKey, hasFlash,
     crashDraftRestored, setCrashDraftRestored,
     todayMenu, todayCount, vendors, enterExpenseMode, tweaks,
@@ -26,7 +26,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
 
   const orderedTodayCount = useActiveOrderCount(picked?.studentId ?? null, viewDate);
 
-  const { deleteOrderWithRefundCheck, deleteTransaction, editTransaction } = useTransactionActions();
+  const { deleteTransaction, editTransaction } = useTransactionActions();
 
   // Group raw transactions by student for RecentStrip
   const recentGroups = useMemo(
@@ -51,7 +51,8 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
 
   const handleRecentDeleteClick = (t: LedgerTransaction) => {
     if (t.type === 'order') {
-      deleteOrderWithRefundCheck(t.transactionId, operatorUid);
+      // Ref: #401 — route through cancel confirmation dialog
+      openCancelConfirmForTx(t);
     } else {
       // Ref: #401 — show confirmation dialog for payment/expense
       setDeleteConfirmTx(t);
@@ -217,7 +218,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
           open={true}
           studentName={recentGroups.find(g => g.transactions.some(t => t.transactionId === deleteConfirmTx.transactionId))?.studentNameSnapshot ?? ''}
           transactionType={deleteConfirmTx.type as 'payment' | 'expense'}
-          amount={deleteConfirmTx.paidAmount}
+          amount={deleteConfirmTx.type === 'expense' ? deleteConfirmTx.amount : deleteConfirmTx.paidAmount}
           onConfirm={() => { deleteTransaction(deleteConfirmTx.transactionId); setDeleteConfirmTx(null); }}
           onCancel={() => setDeleteConfirmTx(null)}
         />

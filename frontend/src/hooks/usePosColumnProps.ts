@@ -28,6 +28,7 @@ export interface PosColumnFlowArgs {
   cancelFlow: PosColumnProps['cancelFlow'];
   changeMode: PosColumnProps['changeMode'];
   openCancelConfirm: PosColumnProps['openCancelConfirm'];
+  openCancelConfirmForTx: PosColumnProps['openCancelConfirmForTx'];
   handleDeleteOrder: PosColumnProps['handleDeleteOrder'];
   onViewHistory: () => void;
 }
@@ -106,6 +107,7 @@ export function buildPosColumnProps(args: {
   setFocusZone: PosColumnProps['setFocusZone'];
   focusZone: string;
   openCancelConfirm: PosColumnProps['openCancelConfirm'];
+  openCancelConfirmForTx: PosColumnProps['openCancelConfirmForTx'];
   setSearchText: PosColumnProps['setSearchText'];
   searchFocusKey: number;
   hasFlash: boolean;
@@ -152,6 +154,7 @@ export function buildPosColumnProps(args: {
     setFocusZone: args.setFocusZone,
     focusZone: args.focusZone,
     openCancelConfirm: args.openCancelConfirm,
+    openCancelConfirmForTx: args.openCancelConfirmForTx,
     setSearchText: args.setSearchText,
     searchFocusKey: args.searchFocusKey,
     hasFlash: args.hasFlash,
@@ -206,6 +209,7 @@ export function usePosColumnProps(
     cancelFlow: flow.cancelFlow,
     changeMode: flow.changeMode,
     openCancelConfirm: flow.openCancelConfirm,
+    openCancelConfirmForTx: flow.openCancelConfirmForTx,
     handleDeleteOrder: flow.handleDeleteOrder,
     onViewHistory: flow.onViewHistory,
     // expense
