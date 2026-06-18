@@ -18,13 +18,16 @@ interface CustomerCardProps {
   setPriceOverride: (value: number | null) => void;
   setPriceOverrideLabel: (value: string) => void;
   onDeleteOrder?: () => void;
+  focusZone?: string;
 }
-export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel, onDeleteOrder }: CustomerCardProps) {
+export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel, onDeleteOrder, focusZone }: CustomerCardProps) {
   const effectiveMealPrice = mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
   const payInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    payInputRef.current?.focus();
-  }, [mode]);
+    if (focusZone?.startsWith('mode-')) {
+      payInputRef.current?.focus();
+    }
+  }, [mode, focusZone]);
 
   const parsedPayAmount = Number(payAmount) || 0;
   const projectedBalance = mode === 'order'
@@ -69,6 +72,9 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
           {/* Left Side: Summary */}
           <div className="bill-summary">
             <div className="pay-title">結帳明細</div>
+            {focusZone === 'btn-delete-order' ? (
+              <div className="cancel-hint">即將取消訂餐，按 Enter 確認或 Escape 取消</div>
+            ) : (<>
             {mode === 'order' && (
               <>
                 <div className="bill-item no-border">
@@ -158,6 +164,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
               </div>
             )}
             {/* §3.1: removed "將產生欠款" warning per UX spec */}
+            </>)}
           </div>
 
           {/* Right Side: Payment Panel */}
@@ -178,7 +185,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                   aria-label="付款金額"
                   value={payAmount}
                   onChange={setPayAmount}
-                  placeholder={mode === 'order' ? "" : "輸入金額"}
+                  placeholder=""
                 />
                 <span className="pay-input-suffix">元</span>
               </div>

@@ -167,6 +167,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 setPriceOverride={setPriceOverride}
                 setPriceOverrideLabel={setPriceOverrideLabel}
                 onDeleteOrder={handleDeleteOrder}
+                focusZone={focusZone}
               />
             )}
             {state.kind === 'duplicate_warning' && (
