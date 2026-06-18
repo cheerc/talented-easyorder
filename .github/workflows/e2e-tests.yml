@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       VITE_FIREBASE_API_KEY: "dummy-api-key"
       VITE_FIREBASE_AUTH_DOMAIN: "dummy-auth-domain"
       VITE_FIREBASE_PROJECT_ID: "dummy-project-id"
@@ -77,6 +78,7 @@ jobs:
           name: playwright-report
           path: frontend/playwright-report/
           retention-days: 7
+          if-no-files-found: ignore
 
       - name: Upload Test Results (on failure)
         if: failure()
@@ -85,6 +87,7 @@ jobs:
           name: test-results
           path: frontend/test-results/
           retention-days: 7
+          if-no-files-found: ignore
 
       # Nightly only: open (or update) a tracking issue on failure, with
       # root-cause classification + dedup. Release-gate (workflow_dispatch) runs
