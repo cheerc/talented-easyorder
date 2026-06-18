@@ -388,20 +388,6 @@ describe('ActionBar', () => {
     expect(container.textContent).not.toContain('確認');
   });
 
-<<<<<<< HEAD
-  it('renders E button with 訂餐狀況 label', () => {
-    render(
-      <ActionBar mode="order" setMode={vi.fn()} onStatusMode={vi.fn()} focusZone="mode-order" />
-    );
-    expect(screen.getByText('訂餐狀況')).toBeInTheDocument();
-    expect(screen.getByText('E')).toBeInTheDocument();
-  });
-
-  it('calls onStatusMode when E button clicked', () => {
-    const onStatusMode = vi.fn();
-    render(
-      <ActionBar mode="order" setMode={vi.fn()} onStatusMode={onStatusMode} focusZone="mode-order" />
-=======
   it('renders 訂餐狀況 button when onStatusMode provided', () => {
     render(
       <ActionBar
@@ -423,7 +409,6 @@ describe('ActionBar', () => {
         onStatusMode={onStatusMode}
         focusZone="mode-order"
       />
->>>>>>> origin/dev
     );
     fireEvent.click(screen.getByText('訂餐狀況'));
     expect(onStatusMode).toHaveBeenCalled();

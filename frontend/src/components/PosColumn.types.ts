@@ -1,13 +1,8 @@
 import type { PosFlowState, PosMode, PosSelectionSource, ExpenseDirection } from '../domain/posFlow';
 import type { StudentAccount } from '../domain/student';
 import type { WorkflowTransactionView } from '../domain/transactionViews';
-<<<<<<< HEAD
-import type { LedgerTransaction } from '../domain/ledger';
-import type { TodayMenu, Vendor } from '../domain/menu';
-=======
 import type { TodayMenu, Vendor } from '../domain/menu';
 import type { LedgerTransaction } from '../domain/ledger';
->>>>>>> origin/dev
 
 export interface PosColumnProps {
   state: PosFlowState;

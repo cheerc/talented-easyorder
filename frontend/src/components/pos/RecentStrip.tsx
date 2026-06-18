@@ -1,10 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import type { LedgerGroup } from '../../domain/ledgerReport';
 import type { LedgerTransaction } from '../../domain/ledger';
-<<<<<<< HEAD
-import { getIncome, getExpense } from '../../domain/transactionUtils';
-=======
->>>>>>> origin/dev
 import { fmt } from './utils';
 import { getIncome, getExpense } from '../../domain/transactionUtils';
 
@@ -42,17 +38,8 @@ const RecentDetailRow = React.memo(function RecentDetailRow({
     <div className="recent-detail-row">
       <span className="recent-time mono">{time}</span>
       <span className={'recent-type type-' + tx.type}>{typeLabel}</span>
-<<<<<<< HEAD
-      <span className="tx-col-income mono">
-        {income != null ? `+${fmt(income)}` : ''}
-      </span>
-      <span className="tx-col-expense mono">
-        {expense != null ? `−${fmt(expense)}` : ''}
-      </span>
-=======
       <span className="tx-col-income mono">{income != null ? `+${fmt(income)}` : ''}</span>
       <span className="tx-col-expense mono">{expense != null ? `−${fmt(expense)}` : ''}</span>
->>>>>>> origin/dev
       {!locked && (onEditClick || onDeleteClick) && (
         <span className="recent-detail-actions">
           {onEditClick && tx.type !== 'expense' && (

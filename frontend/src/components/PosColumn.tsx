@@ -37,11 +37,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
   // Edit modal state
   const [editingTx, setEditingTx] = useState<TransactionEditView | null>(null);
 
-<<<<<<< HEAD
-  // Ref: #401 — delete confirmation state for payment/expense
-=======
   // Delete confirm dialog state (for payment/expense)
->>>>>>> origin/dev
   const [deleteConfirmTx, setDeleteConfirmTx] = useState<LedgerTransaction | null>(null);
 
   const handleRecentEditClick = (t: LedgerTransaction) => {
@@ -55,15 +51,8 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
 
   const handleRecentDeleteClick = (t: LedgerTransaction) => {
     if (t.type === 'order') {
-<<<<<<< HEAD
-      // Ref: #401 — route through cancel confirmation dialog
       openCancelConfirmForTx(t);
     } else {
-      // Ref: #401 — show confirmation dialog for payment/expense
-=======
-      openCancelConfirmForTx(t);
-    } else {
->>>>>>> origin/dev
       setDeleteConfirmTx(t);
     }
   };
@@ -197,11 +186,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 setPriceOverrideLabel={setPriceOverrideLabel}
                 onDeleteOrder={handleDeleteOrder}
                 focusZone={focusZone}
-<<<<<<< HEAD
-                studentTransactions={picked ? recentGroups.find(g => g.studentId === picked.studentId)?.transactions ?? [] : []}
-=======
                 studentTransactions={studentTransactions}
->>>>>>> origin/dev
               />
             )}
             {state.kind === 'duplicate_warning' && (
@@ -217,14 +202,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
       <div className="col-side">
         <RecentStrip
           groups={recentGroups}
-<<<<<<< HEAD
-          onStudentClick={!isHistorical && dateStatus !== 'closed' ? (sid) => {
-            selectStudent(sid, 'manual');
-            setFocusZone('view-status');
-          } : undefined}
-=======
           onStudentClick={!isHistorical && dateStatus !== 'closed' ? (sid) => { selectStudent(sid, 'manual'); setFocusZone('view-status'); } : undefined}
->>>>>>> origin/dev
           onEditClick={showHistoricalLock ? undefined : handleRecentEditClick}
           onDeleteClick={showHistoricalLock ? undefined : handleRecentDeleteClick}
           dateStatus={dateStatus}
@@ -236,18 +214,6 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
         onClose={() => setEditingTx(null)}
         onSave={handleRecentEditSave}
       />
-<<<<<<< HEAD
-      {deleteConfirmTx && (
-        <DeleteConfirmDialog
-          open={true}
-          studentName={recentGroups.find(g => g.transactions.some(t => t.transactionId === deleteConfirmTx.transactionId))?.studentNameSnapshot ?? ''}
-          transactionType={deleteConfirmTx.type as 'payment' | 'expense'}
-          amount={deleteConfirmTx.type === 'expense' ? deleteConfirmTx.amount : deleteConfirmTx.paidAmount}
-          onConfirm={() => { deleteTransaction(deleteConfirmTx.transactionId); setDeleteConfirmTx(null); }}
-          onCancel={() => setDeleteConfirmTx(null)}
-        />
-      )}
-=======
       <DeleteConfirmDialog
         open={deleteConfirmTx !== null}
         studentName={deleteConfirmTx ? (students.find(s => s.studentId === deleteConfirmTx.studentId)?.displayName ?? '') : ''}
@@ -261,7 +227,6 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
         }}
         onCancel={() => setDeleteConfirmTx(null)}
       />
->>>>>>> origin/dev
     </div>
   );
 });
