@@ -96,7 +96,7 @@ function AppContent() {
   const handleConfirm = useConfirmHandler({ state, requestConfirm, confirmDuplicate, confirmExpenseAmount });
 
   const { cancelDialogOpen, setCancelDialogOpen, noOrderDialogOpen, setNoOrderDialogOpen,
-    openCancelConfirm, handleDeleteOrder } = useCancelDialog({ picked, allTx, viewDate });
+    openCancelConfirm, handleDeleteOrder } = useCancelDialog({ picked, allTx, viewDate, allStudents: students, selectStudent });
 
   // Ref: #281 — Extracted to useCommitLifecycle hook
   const { lastSync } = useCommitLifecycle({

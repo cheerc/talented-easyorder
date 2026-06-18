@@ -3,7 +3,7 @@ import { getIncome, getExpense } from '../transactionUtils';
 const baseTx = {
   transactionId: 'tx-1', businessDate: '2026-06-18', createdAt: '2026-06-18T09:00:00Z',
   studentId: 's1', studentNameSnapshot: '王柏翰', menuNameSnapshot: '', vendorNameSnapshot: '',
-  sourceDevice: 'pc' as const, syncStatus: 'synced' as any, revision: 1, note: '',
+  sourceDevice: 'pc' as const, syncStatus: 'synced' as const, revision: 1, note: '',
   afterBalance: 0, mealPrice: 0, paidAmount: 0, amount: 0,
 };
 

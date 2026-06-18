@@ -1147,3 +1147,18 @@ input::-webkit-inner-spin-button {
   text-align: center;
   color: var(--text-secondary, #888);
 }
+
+/* --- RecentStrip dual-column detail rows --- */
+.recent-detail-header,
+.recent-detail-row {
+  display: grid;
+  grid-template-columns: 70px 30px 1fr 1fr auto;
+  gap: 4px;
+  padding: 3px 8px;
+  align-items: center;
+  font-size: 0.85rem;
+}
+.recent-detail-header {
+  color: var(--text-secondary, #888);
+  border-bottom: 1px solid var(--border-light, #eee);
+}
