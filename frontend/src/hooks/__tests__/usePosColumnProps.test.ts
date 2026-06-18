@@ -42,6 +42,7 @@ function makeMockArgs(): Parameters<typeof buildPosColumnProps>[0] {
     enterExpenseMode: vi.fn(),
     tweaks: { theme: 'warm', fontSize: 'lg', disableHoverSelection: false },
     tx: [],
+    operatorUid: '__system__',
     priceOverride: null,
     priceOverrideLabel: '',
     setPriceOverride: vi.fn(),

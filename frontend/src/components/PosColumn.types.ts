@@ -47,6 +47,7 @@ export interface PosColumnProps {
   tweaks: { theme: string; fontSize: string; disableHoverSelection: boolean };
   // Recent strip
   tx: WorkflowTransactionView[];
+  operatorUid: string;
   // Price override
   priceOverride: number | null;
   priceOverrideLabel: string;

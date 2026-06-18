@@ -1,107 +1,170 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {
   RecentStrip, ExpensePanel, SearchBox,
   TopBar, MidnightBanner, CustomerCard, ActionBar,
   IdleHero, DuplicateWarningBanner, ConfirmBanner,
 } from '../pos-components';
 import type { StudentAccount } from '../../domain/student';
+import type { LedgerGroup } from '../../domain/ledgerReport';
+import type { LedgerTransaction } from '../../domain/ledger';
 
+
+function makeTx(overrides: Partial<LedgerTransaction> & { transactionId: string; studentId: string; type: string }): LedgerTransaction {
+  return {
+    businessDate: '2026-01-01',
+    createdAt: '2026-01-01T10:00:00Z',
+    studentNameSnapshot: 'Test Student',
+    mealPrice: 0,
+    paidAmount: 0,
+    amount: 0,
+    afterBalance: 0,
+    menuNameSnapshot: '',
+    vendorNameSnapshot: '',
+    sourceDevice: 'pc' as const,
+    syncStatus: 'synced' as const,
+    revision: 1,
+    note: '',
+    ...overrides,
+  } as LedgerTransaction;
+}
+
+function makeGroup(studentId: string, name: string, transactions: LedgerTransaction[], balance: number): LedgerGroup {
+  return {
+    studentId,
+    studentNameSnapshot: name,
+    latestCreatedAt: transactions[transactions.length - 1]?.createdAt ?? '',
+    mealTotal: transactions.filter(t => t.type === 'order').reduce((s, t) => s + t.mealPrice, 0),
+    paidTotal: transactions.reduce((s, t) => s + t.paidAmount, 0),
+    afterBalance: balance,
+    recordCount: transactions.length,
+    transactions,
+  };
+}
 
 describe('RecentStrip', () => {
-  type MergedTx = import('../../domain/ledger').MergedTransaction & { uid: string };
-  const base: Omit<MergedTx, 'uid'> = {
-    transactionId: 'tx-1',
-    studentId: '001',
-    studentNameSnapshot: '王小美',
-    type: 'order' as const,
-    businessDate: '2026-05-17',
-    mealPrice: 90,
-    paidAmount: 0,
-    amount: -90,
-    note: '',
-    afterBalance: -90,
-    createdAt: '2026-05-17T12:00:00.000Z',
-    menuNameSnapshot: '預設菜單',
-    vendorNameSnapshot: '預設廠商',
-    sourceDevice: 'pc' as const,
-    revision: 1,
-    syncStatus: 'local' as const,
-    depositAmount: 0,
-    unpaidAmount: 90,
-    orderCount: 1,
-    displayBalance: -90,
-  };
-  const mk = (overrides: Partial<MergedTx>): MergedTx => ({ ...base, uid: overrides.transactionId ? '0-' + overrides.transactionId : '0-tx-1', ...overrides });
-
-  // Edge case 1: order 90, no payment → balance -90 → red
-  it('shows 訂 1份 餘額 −90 (red) for unpaid order', () => {
-    const { container } = render(<RecentStrip recent={[mk({ displayBalance: -90, orderCount: 1 })]} />);
-    expect(container.textContent).toContain('1份');
-    expect(container.textContent).toContain('餘額');
-    const amt = container.querySelector('.recent-amt');
-    expect(amt?.className).toContain('neg');
+  it('renders student group rows with name and balance', () => {
+    const groups = [
+      makeGroup('S001', '王小明', [
+        makeTx({ transactionId: 't1', studentId: 'S001', type: 'order', mealPrice: 90, afterBalance: -90 }),
+      ], -90),
+    ];
+    render(<RecentStrip groups={groups} dateStatus="open" />);
+    expect(screen.getByText('王小明')).toBeInTheDocument();
+    expect(screen.getByText(/餘額/)).toBeInTheDocument();
+    expect(screen.getByText('1筆')).toBeInTheDocument();
   });
 
-  // Edge case 2: order 90 + pay 50 → balance -40 → red
-  it('shows 訂 1份 餘額 −40 (red) for partial payment', () => {
-    const { container } = render(<RecentStrip recent={[mk({ displayBalance: -40, orderCount: 1 })]} />);
-    expect(container.textContent).toContain('1份');
-    expect(container.textContent).toContain('40');
-    const amt = container.querySelector('.recent-amt');
-    expect(amt?.className).toContain('neg');
+  it('expands to show detail rows on click, collapses on second click', async () => {
+    const groups = [
+      makeGroup('S001', '王小明', [
+        makeTx({ transactionId: 't1', studentId: 'S001', type: 'order', mealPrice: 90, createdAt: '2026-01-01T10:00:00Z' }),
+        makeTx({ transactionId: 't2', studentId: 'S001', type: 'payment', paidAmount: 90, createdAt: '2026-01-01T10:05:00Z' }),
+      ], 0),
+    ];
+    render(<RecentStrip groups={groups} dateStatus="open" />);
+
+    // Initially collapsed — no detail rows
+    expect(screen.queryByText('10:00:00')).not.toBeInTheDocument();
+
+    // Click to expand
+    await userEvent.click(screen.getByText('王小明'));
+    expect(screen.getByText('10:00:00')).toBeInTheDocument();
+    expect(screen.getByText('10:05:00')).toBeInTheDocument();
+
+    // Click to collapse
+    await userEvent.click(screen.getByText('王小明'));
+    expect(screen.queryByText('10:00:00')).not.toBeInTheDocument();
   });
 
-  // Edge case 3: order 90 + pay 90 → balance 0 → green
-  it('shows 訂 1份 餘額 0 (green) for fully paid order', () => {
-    const { container } = render(<RecentStrip recent={[mk({ displayBalance: 0, orderCount: 1 })]} />);
-    expect(container.textContent).toContain('1份');
-    expect(container.textContent).toContain('0');
-    const amt = container.querySelector('.recent-amt');
-    expect(amt?.className).toContain('pos');
+  it('shows edit and delete buttons in expanded detail rows', async () => {
+    const onEdit = vi.fn();
+    const onDelete = vi.fn();
+    const tx1 = makeTx({ transactionId: 't1', studentId: 'S001', type: 'order', mealPrice: 90 });
+    const groups = [makeGroup('S001', '王小明', [tx1], -90)];
+
+    render(<RecentStrip groups={groups} dateStatus="open" onEditClick={onEdit} onDeleteClick={onDelete} />);
+    await userEvent.click(screen.getByText('王小明'));
+
+    const editBtn = screen.getByRole('button', { name: '編輯' });
+    const deleteBtn = screen.getByRole('button', { name: '刪除' });
+
+    await userEvent.click(editBtn);
+    expect(onEdit).toHaveBeenCalledWith(tx1);
+
+    await userEvent.click(deleteBtn);
+    expect(onDelete).toHaveBeenCalledWith(tx1);
   });
 
-  // Edge case 4: order 90 + pay 100 → balance 10 → green
-  it('shows 訂 1份 餘額 10 (green) for overpayment', () => {
-    const { container } = render(<RecentStrip recent={[mk({ displayBalance: 10, orderCount: 1 })]} />);
-    expect(container.textContent).toContain('1份');
-    expect(container.textContent).toContain('10');
-    const amt = container.querySelector('.recent-amt');
-    expect(amt?.className).toContain('pos');
+  it('hides edit/delete when dateStatus is closed', async () => {
+    const tx1 = makeTx({ transactionId: 't1', studentId: 'S001', type: 'order', mealPrice: 90 });
+    const groups = [makeGroup('S001', '王小明', [tx1], -90)];
+
+    render(<RecentStrip groups={groups} dateStatus="closed" onEditClick={vi.fn()} onDeleteClick={vi.fn()} />);
+    await userEvent.click(screen.getByText('王小明'));
+
+    expect(screen.queryByRole('button', { name: '編輯' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '刪除' })).not.toBeInTheDocument();
   });
 
-  // Edge case 5: 2 orders + pay 200 → balance 20 → green
-  it('shows 訂 2份 餘額 20 (green) for two orders', () => {
-    const { container } = render(<RecentStrip recent={[mk({ displayBalance: 20, orderCount: 2 })]} />);
-    expect(container.textContent).toContain('2份');
-    expect(container.textContent).toContain('20');
-    const amt = container.querySelector('.recent-amt');
-    expect(amt?.className).toContain('pos');
+  it('shows empty state when no groups', () => {
+    render(<RecentStrip groups={[]} dateStatus="open" />);
+    expect(screen.getByText('尚無交易')).toBeInTheDocument();
   });
 
-  // Edge case 6: payment 200 first then order 90 → balance 110 → green
-  it('shows 訂 1份 餘額 110 (green) for deposit before order', () => {
-    const { container } = render(<RecentStrip recent={[mk({ displayBalance: 110, orderCount: 1 })]} />);
-    expect(container.textContent).toContain('1份');
-    expect(container.textContent).toContain('110');
-    const amt = container.querySelector('.recent-amt');
-    expect(amt?.className).toContain('pos');
+  it('renders multiple student groups', () => {
+    const groups = [
+      makeGroup('S001', '王小明', [makeTx({ transactionId: 't1', studentId: 'S001', type: 'order', mealPrice: 90 })], -90),
+      makeGroup('S002', '李小華', [makeTx({ transactionId: 't2', studentId: 'S002', type: 'payment', paidAmount: 500 })], 500),
+    ];
+    render(<RecentStrip groups={groups} dateStatus="open" />);
+    expect(screen.getByText('王小明')).toBeInTheDocument();
+    expect(screen.getByText('李小華')).toBeInTheDocument();
   });
 
-  // Edge case 7: payment only, no order → should NOT appear
-  it('does not show payment-only rows', () => {
-    const paymentOnly = mk({ type: 'payment', orderCount: 0, displayBalance: 500, mealPrice: 0, paidAmount: 500, amount: 500 });
-    const { container } = render(<RecentStrip recent={[paymentOnly]} />);
-    const rows = container.querySelectorAll('.recent-row');
-    expect(rows.length).toBe(0);
+  it('applies neg class for negative balance', () => {
+    const groups = [makeGroup('S001', '王小明', [
+      makeTx({ transactionId: 't1', studentId: 'S001', type: 'order', mealPrice: 90 }),
+    ], -90)];
+    render(<RecentStrip groups={groups} dateStatus="open" />);
+    const amtEl = screen.getByText(/餘額/).closest('.recent-amt');
+    expect(amtEl?.className).toContain('neg');
   });
 
-  // Edge case 8: cashier expense → should NOT appear
-  it('does not show cashier expense rows', () => {
-    const expenseTx = mk({ type: 'expense', studentId: '__cashier__', studentNameSnapshot: '櫃台', orderCount: 0, displayBalance: 0, note: '文具' });
-    const { container } = render(<RecentStrip recent={[expenseTx]} />);
-    const rows = container.querySelectorAll('.recent-row');
-    expect(rows.length).toBe(0);
+  it('applies pos class for non-negative balance', () => {
+    const groups = [makeGroup('S001', '王小明', [
+      makeTx({ transactionId: 't1', studentId: 'S001', type: 'payment', paidAmount: 500 }),
+    ], 500)];
+    render(<RecentStrip groups={groups} dateStatus="open" />);
+    const amtEl = screen.getByText(/餘額/).closest('.recent-amt');
+    expect(amtEl?.className).toContain('pos');
+  });
+
+  it('calls onStudentClick when group row is clicked', async () => {
+    const onStudentClick = vi.fn();
+    const groups = [makeGroup('S001', '王小明', [
+      makeTx({ transactionId: 't1', studentId: 'S001', type: 'order', mealPrice: 90 }),
+    ], -90)];
+    render(<RecentStrip groups={groups} dateStatus="open" onStudentClick={onStudentClick} />);
+
+    await userEvent.click(screen.getByText('王小明'));
+    expect(onStudentClick).toHaveBeenCalledWith('S001');
+  });
+
+  it('hides edit button for expense type transactions', async () => {
+    const onEdit = vi.fn();
+    const onDelete = vi.fn();
+    const tx1 = makeTx({ transactionId: 't1', studentId: 'S001', type: 'expense', mealPrice: 100 });
+    const groups = [makeGroup('S001', '王小明', [tx1], -100)];
+
+    render(<RecentStrip groups={groups} dateStatus="open" onEditClick={onEdit} onDeleteClick={onDelete} />);
+    await userEvent.click(screen.getByText('王小明'));
+
+    // Edit button should be hidden for expense type
+    expect(screen.queryByRole('button', { name: '編輯' })).not.toBeInTheDocument();
+    // Delete button should still be visible
+    expect(screen.getByRole('button', { name: '刪除' })).toBeInTheDocument();
   });
 });
 
@@ -346,13 +409,6 @@ describe('ConfirmBanner', () => {
       <ConfirmBanner flash={null} onDismiss={() => {}} />
     );
     expect(container.firstChild).toBeNull();
-  });
-});
-
-describe('RecentStrip empty state', () => {
-  it('renders empty state "尚無交易"', () => {
-    const { container } = render(<RecentStrip recent={[]} />);
-    expect(container.textContent).toContain('尚無交易');
   });
 });
 
