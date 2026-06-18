@@ -13,3 +13,4 @@ export { DuplicateWarningBanner } from './pos/DuplicateWarningBanner';
 export { ConfirmBanner } from './pos/ConfirmBanner';
 export { RecentStrip } from './pos/RecentStrip';
 export { ExpensePanel } from './pos/ExpensePanel';
+export { TransactionStatusView } from './pos/TransactionStatusView';

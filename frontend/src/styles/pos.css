@@ -1111,3 +1111,39 @@ input::-webkit-inner-spin-button {
   color: #dc2626;
 }
 
+/* --- Transaction Status View (dual column) --- */
+.tx-status-view {
+  width: 100%;
+}
+.tx-status-header {
+  display: grid;
+  grid-template-columns: 100px 60px 1fr 1fr;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #888);
+  border-bottom: 1px solid var(--border-light, #eee);
+}
+.tx-status-row {
+  display: grid;
+  grid-template-columns: 100px 60px 1fr 1fr;
+  gap: 8px;
+  padding: 6px 8px;
+  align-items: center;
+  font-size: 0.95rem;
+}
+.tx-col-income {
+  text-align: right;
+  color: var(--income-color, #2e7d32);
+  font-weight: 600;
+}
+.tx-col-expense {
+  text-align: right;
+  color: var(--expense-color, #c62828);
+  font-weight: 600;
+}
+.tx-status-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-secondary, #888);
+}
