@@ -120,3 +120,20 @@ body[data-fs="lg"] {
 @keyframes app-spin {
   to { transform: rotate(360deg); }
 }
+
+/* RecentStrip grouped mode */
+.recent-group { border-bottom: 1px solid var(--border-1, #e5e7eb); }
+.recent-row--group { display: flex; align-items: center; gap: 6px; padding: 6px 8px; }
+.recent-row--group:hover { background: var(--surface-hover, #f3f4f6); }
+.recent-row--expanded { background: var(--surface-active, #eff6ff); }
+.recent-expand-icon { font-size: 10px; width: 14px; color: var(--ink-3, #9ca3af); }
+.recent-group-count { font-size: 12px; color: var(--ink-3, #9ca3af); margin-left: auto; margin-right: 8px; }
+.recent-details { padding-left: 20px; background: var(--surface-1, #fafafa); }
+.recent-detail-row { display: flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 13px; }
+.recent-detail-row:hover { background: var(--surface-hover, #f3f4f6); }
+.recent-detail-amt { margin-left: auto; }
+.recent-detail-actions { display: flex; gap: 4px; margin-left: 8px; }
+.recent-mini-btn { background: none; border: none; cursor: pointer; font-size: 13px; padding: 2px 4px; border-radius: 3px; }
+.recent-mini-btn:hover { background: var(--surface-hover, #e5e7eb); }
+.recent-mini-del { color: var(--danger, #ef4444); }
+.recent-mini-del:hover { background: rgba(239, 68, 68, 0.1); }

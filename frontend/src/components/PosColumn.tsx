@@ -1,7 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { SearchBox, CustomerCard, ActionBar, IdleHero, RecentStrip, DuplicateWarningBanner, MidnightBanner, ExpensePanel } from './pos-components';
-import { useActiveOrderCount, useMergedTransactions } from '../store/derived/useLedger';
+import { useActiveOrderCount } from '../store/derived/useLedger';
+import { useTransactionActions } from '../store/selectors';
+import { groupLedgerRowsByStudent } from '../domain/ledgerReport';
+import type { LedgerTransaction, TransactionEditView } from '../domain/ledger';
+import { EditTransactionModal } from './EditTransactionModal';
 import type { PosColumnProps } from './PosColumn.types';
+import type { StudentAccount } from '../domain/student';
+import type { PosMode } from '../domain/posFlow';
 
 export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
   const {
@@ -14,16 +20,45 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
     setSearchText, searchFocusKey, hasFlash,
     crashDraftRestored, setCrashDraftRestored,
     todayMenu, todayCount, vendors, enterExpenseMode, tweaks,
-    tx, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
+    tx, operatorUid, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
     handleDeleteOrder, onViewHistory,
   } = props;
 
   const orderedTodayCount = useActiveOrderCount(picked?.studentId ?? null, viewDate);
-  const mergedTx = useMergedTransactions(tx);
-  // Ref: #323 — Memoize mapped array to avoid defeating React.memo on RecentStrip
-  const recentStripData = useMemo(
-    () => mergedTx.map((t, i) => ({ ...t, uid: i + '-' + t.createdAt })),
-    [mergedTx],
+
+  const { deleteOrderWithRefundCheck, deleteTransaction, editTransaction } = useTransactionActions();
+
+  // Group raw transactions by student for RecentStrip
+  const recentGroups = useMemo(
+    () => groupLedgerRowsByStudent(tx as LedgerTransaction[]),
+    [tx],
+  );
+
+  // Edit modal state
+  const [editingTx, setEditingTx] = useState<TransactionEditView | null>(null);
+
+  const handleRecentEditClick = (t: LedgerTransaction) => {
+    setEditingTx({
+      transactionId: t.transactionId,
+      mealPrice: t.mealPrice,
+      paidAmount: t.paidAmount,
+      note: t.note,
+    });
+  };
+
+  const handleRecentDeleteClick = (t: LedgerTransaction) => {
+    if (t.type === 'order') {
+      deleteOrderWithRefundCheck(t.transactionId, operatorUid);
+    } else {
+      deleteTransaction(t.transactionId);
+    }
+  };
+
+  const handleRecentEditSave = useCallback(
+    (transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }) => {
+      editTransaction(transactionId, updates, operatorUid);
+    },
+    [editTransaction, operatorUid],
   );
 
   const [activeIdx, setActiveIdx] = useState(0);
@@ -157,10 +192,19 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
       </div>
       <div className="col-side">
         <RecentStrip
-          recent={recentStripData}
-          onItemClick={!isHistorical && dateStatus !== 'closed' ? (sid) => selectStudent(sid, 'manual') : undefined}
+          groups={recentGroups}
+          onStudentClick={!isHistorical && dateStatus !== 'closed' ? (sid) => selectStudent(sid, 'manual') : undefined}
+          onEditClick={showHistoricalLock ? undefined : handleRecentEditClick}
+          onDeleteClick={showHistoricalLock ? undefined : handleRecentDeleteClick}
+          dateStatus={dateStatus}
         />
       </div>
+      <EditTransactionModal
+        open={editingTx !== null}
+        transaction={editingTx}
+        onClose={() => setEditingTx(null)}
+        onSave={handleRecentEditSave}
+      />
     </div>
   );
 });

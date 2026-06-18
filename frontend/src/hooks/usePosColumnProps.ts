@@ -67,6 +67,7 @@ export interface PosColumnMenuArgs {
   todayCount: number;
   vendors: PosColumnProps['vendors'];
   tx: PosColumnProps['tx'];
+  operatorUid: string;
   tweaks: PosColumnProps['tweaks'];
 }
 
@@ -116,6 +117,7 @@ export function buildPosColumnProps(args: {
   enterExpenseMode: PosColumnProps['enterExpenseMode'];
   tweaks: PosColumnProps['tweaks'];
   tx: PosColumnProps['tx'];
+  operatorUid: string;
   priceOverride: number | null;
   priceOverrideLabel: string;
   setPriceOverride: (v: number | null) => void;
@@ -161,6 +163,7 @@ export function buildPosColumnProps(args: {
     enterExpenseMode: args.enterExpenseMode,
     tweaks: args.tweaks,
     tx: args.tx,
+    operatorUid: args.operatorUid,
     priceOverride: args.priceOverride,
     priceOverrideLabel: args.priceOverrideLabel,
     setPriceOverride: args.setPriceOverride,
@@ -230,6 +233,7 @@ export function usePosColumnProps(
     todayCount: menu.todayCount,
     vendors: menu.vendors,
     tx: menu.tx,
+    operatorUid: menu.operatorUid,
     tweaks: menu.tweaks,
     // pricing
     priceOverride: pricing.priceOverride,

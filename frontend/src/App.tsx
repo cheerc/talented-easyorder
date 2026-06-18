@@ -29,6 +29,7 @@ import { isConfigured as isFirebaseConfigured } from './firebase/firebaseApp';
 import { useFirebase } from './hooks/useFirebase';
 import { AuthGate } from './auth/AuthGate';
 import { POS_DAILY_TX_DISPLAY_LIMIT } from './domain/constants';
+import { SYSTEM_OPERATOR_ID } from './domain/operatorId';
 
 function AppContent() {
   const { fb, fbError, access } = useFirebase();
@@ -58,6 +59,7 @@ function AppContent() {
 
   const dateStatus = getBusinessDateStatus(viewDate);
   const isHistorical = viewDate !== systemDate;
+  const operatorUid = (access.ok && access.profile?.uid) ? access.profile.uid : SYSTEM_OPERATOR_ID;
   const [priceOverride, setPriceOverride] = useState<number | null>(null);
   const [priceOverrideLabel, setPriceOverrideLabel] = useState('');
   useServiceWorkerCleanup();
@@ -167,8 +169,8 @@ function AppContent() {
   }), [setSearchText, searchFocusKey]);
 
   const menuArgs = useMemo(() => ({
-    allTx, students, todayMenu, todayCount, vendors, tx, tweaks,
-  }), [allTx, students, todayMenu, todayCount, vendors, tx, tweaks]);
+    allTx, students, todayMenu, todayCount, vendors, tx, operatorUid, tweaks,
+  }), [allTx, students, todayMenu, todayCount, vendors, tx, operatorUid, tweaks]);
 
   const pricingArgs = useMemo(() => ({
     priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
