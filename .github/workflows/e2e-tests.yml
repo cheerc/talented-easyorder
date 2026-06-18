@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
       VITE_FIREBASE_API_KEY: "dummy-api-key"
       VITE_FIREBASE_AUTH_DOMAIN: "dummy-auth-domain"
       VITE_FIREBASE_PROJECT_ID: "dummy-project-id"
