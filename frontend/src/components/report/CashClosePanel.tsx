@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { fmt } from '../pos-components';
 import { NumericInput } from '../ui/NumericInput';
+import { Modal } from '../ui/Modal';
+import { Button } from '../ui/Button';
 import type { LedgerTotals } from '../../domain/ledgerReport';
 
 interface CashClosePanelProps {
@@ -108,42 +110,37 @@ export function CashClosePanel({
           </div>
         )}
 
-        <button
-          className="btn-confirm"
+        <Button
+          variant="primary"
           disabled={!canClose}
-          style={!canClose ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
-          onClick={() => setShowConfirm(true)}>
+          onClick={() => setShowConfirm(true)}
+        >
           確認關帳
-        </button>
+        </Button>
       </div>
       {hasFailedConflict && (
         <div className="dim" style={{ color: 'var(--c-warn)', marginTop: '8px', fontSize: '12px' }}>⚠ 有同步失敗或衝突記錄，無法關帳</div>
       )}
 
-      {showConfirm && (
-        <div className="dialog-overlay" onClick={() => setShowConfirm(false)}>
-          <div className="dialog-box" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
-            <div className="dialog-h">確認關帳</div>
-            <div className="dialog-body">
-              <div className="dialog-row"><label>日期</label><span className="mono">{businessDate}</span></div>
-              <div className="dialog-row"><label>開帳金額</label><span className="mono">${fmt(openingCash)}</span></div>
-              <div className="dialog-row"><label>淨現金</label><span className="mono">${fmt(totals.netCash)}</span></div>
-              <div className="dialog-row"><label>系統應有抽屜現金</label><span className="mono">${fmt(expectedDrawerCash)}</span></div>
-              <div className="dialog-row"><label>實際點算</label><span className="mono">${fmt(countedNum)}</span></div>
-              <div className="dialog-row">
-                <label>差異</label>
-                <span className={'mono ' + (difference === 0 ? '' : difference > 0 ? 'pos' : 'warn')}>{difference === 0 ? '✓ 平' : `$${fmt(difference)}`}</span>
-              </div>
-              {note && <div className="dialog-row"><label>備註</label><span>{note}</span></div>}
-              {hasQueuedRows && <div className="dialog-row"><label>⚠</label><span style={{fontSize:'12px',color:'var(--c-warn)'}}>仍有未同步資料，已確認接受</span></div>}
-            </div>
-            <div className="dialog-foot">
-              <button className="btn-cancel" onClick={() => setShowConfirm(false)}>取消</button>
-              <button className="btn-confirm" onClick={() => { onClose(countedNum, note); setShowConfirm(false); }}>確定關帳</button>
-            </div>
+      <Modal open={showConfirm} title="確認關帳" onClose={() => setShowConfirm(false)}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><label>日期</label><span className="mono">{businessDate}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><label>開帳金額</label><span className="mono">${fmt(openingCash)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><label>淨現金</label><span className="mono">${fmt(totals.netCash)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><label>系統應有抽屜現金</label><span className="mono">${fmt(expectedDrawerCash)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><label>實際點算</label><span className="mono">${fmt(countedNum)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <label>差異</label>
+            <span className={'mono ' + (difference === 0 ? '' : difference > 0 ? 'pos' : 'warn')}>{difference === 0 ? '✓ 平' : `$${fmt(difference)}`}</span>
           </div>
+          {note && <div style={{ display: 'flex', justifyContent: 'space-between' }}><label>備註</label><span>{note}</span></div>}
+          {hasQueuedRows && <div style={{ display: 'flex', justifyContent: 'space-between' }}><label>⚠</label><span style={{fontSize:'12px',color:'var(--c-warn)'}}>仍有未同步資料，已確認接受</span></div>}
         </div>
-      )}
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <Button variant="ghost" onClick={() => setShowConfirm(false)}>取消</Button>
+          <Button variant="primary" onClick={() => { onClose(countedNum, note); setShowConfirm(false); }}>確定關帳</Button>
+        </div>
+      </Modal>
     </div>
   );
 }

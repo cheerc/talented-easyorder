@@ -134,9 +134,9 @@ describe('CashClosePanel', () => {
     );
     const noteInput = getByText('備註').nextElementSibling as HTMLInputElement;
     fireEvent.change(noteInput, { target: { value: 'test note' } });
-    const closeBtn = container.querySelector('.cash-close-panel .btn-confirm') as HTMLButtonElement;
+    const closeBtn = container.querySelector('.cash-close-panel .btn-primary') as HTMLButtonElement;
     fireEvent.click(closeBtn);
-    expect(container.querySelector('.dialog-overlay')).toBeTruthy();
+    expect(container.querySelector('.modal-overlay')).toBeTruthy();
     expect(getByText('取消')).toBeTruthy();
     expect(getByText('確定關帳')).toBeTruthy();
   });
@@ -176,10 +176,10 @@ describe('CashClosePanel', () => {
     const noteInput = getByText('備註').nextElementSibling as HTMLInputElement;
     fireEvent.change(noteInput, { target: { value: 'test' } });
     fireEvent.click(getByText('確認關帳'));
-    const overlay = container.querySelector('.dialog-overlay') as HTMLElement;
+    const overlay = container.querySelector('.modal-overlay') as HTMLElement;
     fireEvent.click(overlay);
     // Dialog should be dismissed, overlay removed
-    expect(container.querySelector('.dialog-overlay')).toBeNull();
+    expect(container.querySelector('.modal-overlay')).toBeNull();
   });
 
   it('shows failed conflict warning when hasFailedConflict', () => {
