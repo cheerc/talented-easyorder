@@ -23,8 +23,8 @@ test.describe('Deposit Flow', () => {
     const payInput = page.locator('.customer input[type="number"]');
     await payInput.fill('500');
     
-    // 6. Click confirm
-    await page.locator('.btn-confirm').click();
+    // 6. Press Enter to confirm (Ref: #399 — btn-confirm removed, keyboard Enter confirms)
+    await page.keyboard.press('Enter');
     
     // 7. Should show success flash
     await expect(page.locator('.flash, .confirm-banner')).toBeVisible({ timeout: 5000 });
