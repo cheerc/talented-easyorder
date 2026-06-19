@@ -1,50 +1,50 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, screen } from '@testing-library/react';
 import { ReopenDialog } from '../ReopenDialog';
 
 describe('ReopenDialog', () => {
   it('displays businessDate in title', () => {
-    const { container } = render(
+    render(
       <ReopenDialog businessDate="2026-05-30" onReopen={vi.fn()} onCancel={vi.fn()} />
     );
-    expect(container.textContent).toContain('2026-05-30');
+    expect(screen.getByText(/2026-05-30/)).toBeInTheDocument();
   });
 
   it('確認重開 button disabled when reason is empty', () => {
-    const { getByText } = render(
+    render(
       <ReopenDialog businessDate="2026-05-30" onReopen={vi.fn()} onCancel={vi.fn()} />
     );
-    const btn = getByText('確認重開') as HTMLButtonElement;
+    const btn = screen.getByText('確認重開') as HTMLButtonElement;
     expect(btn.disabled).toBe(true);
   });
 
   it('確認重開 button enabled when reason has text', () => {
-    const { getByText, container } = render(
+    render(
       <ReopenDialog businessDate="2026-05-30" onReopen={vi.fn()} onCancel={vi.fn()} />
     );
-    const input = container.querySelector('.dialog-body input') as HTMLInputElement;
+    const input = screen.getByPlaceholderText('請說明重新開啟的原因') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'need to fix' } });
-    const btn = getByText('確認重開') as HTMLButtonElement;
+    const btn = screen.getByText('確認重開') as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
   });
 
   it('calls onReopen(reason) when confirm clicked', () => {
     const onReopen = vi.fn();
-    const { getByText, container } = render(
+    render(
       <ReopenDialog businessDate="2026-05-30" onReopen={onReopen} onCancel={vi.fn()} />
     );
-    const input = container.querySelector('.dialog-body input') as HTMLInputElement;
+    const input = screen.getByPlaceholderText('請說明重新開啟的原因') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'wrong total' } });
-    fireEvent.click(getByText('確認重開'));
+    fireEvent.click(screen.getByText('確認重開'));
     expect(onReopen).toHaveBeenCalledWith('wrong total');
   });
 
   it('calls onCancel when cancel clicked', () => {
     const onCancel = vi.fn();
-    const { getByText } = render(
+    render(
       <ReopenDialog businessDate="2026-05-30" onReopen={vi.fn()} onCancel={onCancel} />
     );
-    fireEvent.click(getByText('取消'));
+    fireEvent.click(screen.getByText('取消'));
     expect(onCancel).toHaveBeenCalledOnce();
   });
 
@@ -53,25 +53,25 @@ describe('ReopenDialog', () => {
     const { container } = render(
       <ReopenDialog businessDate="2026-05-30" onReopen={vi.fn()} onCancel={onCancel} />
     );
-    const overlay = container.querySelector('.dialog-overlay') as HTMLElement;
+    const overlay = container.querySelector('.modal-overlay') as HTMLElement;
     fireEvent.click(overlay);
     expect(onCancel).toHaveBeenCalledOnce();
   });
 
-  it('dialog box click does NOT call onCancel', () => {
+  it('dialog panel click does NOT call onCancel', () => {
     const onCancel = vi.fn();
     const { container } = render(
       <ReopenDialog businessDate="2026-05-30" onReopen={vi.fn()} onCancel={onCancel} />
     );
-    const dialogBox = container.querySelector('.dialog-box') as HTMLElement;
-    fireEvent.click(dialogBox);
+    const panel = container.querySelector('.modal-panel') as HTMLElement;
+    fireEvent.click(panel);
     expect(onCancel).not.toHaveBeenCalled();
   });
 
   it('shows required field hint on reason input', () => {
-    const { container } = render(
+    render(
       <ReopenDialog businessDate="2026-05-30" onReopen={vi.fn()} onCancel={vi.fn()} />
     );
-    expect(container.textContent).toContain('必填');
+    expect(screen.getByText('必填')).toBeInTheDocument();
   });
 });

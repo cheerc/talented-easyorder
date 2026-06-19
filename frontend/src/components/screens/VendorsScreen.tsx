@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import type { Vendor } from '../../domain/menu';
 import { useMenu, useMenuActions } from '../../store/selectors';
 import { getTaiwanISOString } from '../../utils/dateTime';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 export const VendorsScreen = React.memo(function VendorsScreen() {
   const { vendors } = useMenu();
@@ -37,6 +38,10 @@ export const VendorsScreen = React.memo(function VendorsScreen() {
     setVendors(vendors.filter(v => v.vendorId !== deleteTarget));
     setDeleteTarget(null);
   };
+
+  const deleteVendorName = deleteTarget
+    ? vendors.find(v => v.vendorId === deleteTarget)?.name ?? ''
+    : '';
 
   return (
     <div className="screen vendors">
@@ -100,26 +105,16 @@ export const VendorsScreen = React.memo(function VendorsScreen() {
         </div>
       </div>
 
-      {deleteTarget && (
-        <div className="dialog-overlay" onClick={() => setDeleteTarget(null)}>
-          <div className="dialog-box" onClick={e => e.stopPropagation()} style={{ maxWidth: '380px' }}>
-            <div className="dialog-h">確認刪除供應商</div>
-            <div className="dialog-body">
-              <p style={{ marginBottom: '12px' }}>確定要刪除此供應商嗎？此操作無法復原。</p>
-              {vendors.find(v => v.vendorId === deleteTarget) && (
-                <div className="dialog-row">
-                  <label>供應商</label>
-                  <span className="mono">{vendors.find(v => v.vendorId === deleteTarget)!.name}</span>
-                </div>
-              )}
-            </div>
-            <div className="dialog-foot">
-              <button className="btn-cancel" onClick={() => setDeleteTarget(null)}>取消</button>
-              <button className="btn-confirm danger" onClick={confirmDelete}>確定刪除</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="確認刪除供應商"
+        message={deleteVendorName ? `確定要刪除供應商「${deleteVendorName}」嗎？此操作無法復原。` : '確定要刪除此供應商嗎？此操作無法復原。'}
+        confirmLabel="確定刪除"
+        cancelLabel="取消"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 });

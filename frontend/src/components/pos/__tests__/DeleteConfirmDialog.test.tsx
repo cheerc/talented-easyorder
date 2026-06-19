@@ -53,14 +53,14 @@ describe('DeleteConfirmDialog', () => {
   it('handles Enter key to confirm', () => {
     const onConfirm = vi.fn();
     render(<DeleteConfirmDialog {...baseProps} onConfirm={onConfirm} />);
-    fireEvent.keyDown(document, { key: 'Enter' });
+    fireEvent.keyDown(window, { key: 'Enter' });
     expect(onConfirm).toHaveBeenCalled();
   });
 
   it('handles Escape key to cancel', () => {
     const onCancel = vi.fn();
     render(<DeleteConfirmDialog {...baseProps} onCancel={onCancel} />);
-    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.keyDown(window, { key: 'Escape' });
     expect(onCancel).toHaveBeenCalled();
   });
 });
