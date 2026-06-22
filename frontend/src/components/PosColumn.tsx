@@ -90,6 +90,14 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
     return (tx as LedgerTransaction[]).filter(t => t.studentId === picked.studentId);
   }, [tx, picked]);
 
+  // All-date transactions for history view (sorted newest-first)
+  const allStudentTransactions = useMemo(() => {
+    if (!picked) return [];
+    return (props.allTx as LedgerTransaction[])
+      .filter(t => t.studentId === picked.studentId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }, [props.allTx, picked]);
+
   return (
     <div className="main">
       <div className="col-main">
@@ -187,6 +195,11 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 onDeleteOrder={handleDeleteOrder}
                 focusZone={focusZone}
                 studentTransactions={studentTransactions}
+                onEditClick={handleRecentEditClick}
+                onDeleteClick={handleRecentDeleteClick}
+                locked={showHistoricalLock}
+                allStudentTransactions={allStudentTransactions}
+                onViewHistoryBack={() => setFocusZone('mode-' + currentMode)}
               />
             )}
             {state.kind === 'duplicate_warning' && (
@@ -203,8 +216,6 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
         <RecentStrip
           groups={recentGroups}
           onStudentClick={!isHistorical && dateStatus !== 'closed' ? (sid) => { selectStudent(sid, 'manual', 'view-status'); setFocusZone('view-status'); } : undefined}
-          onEditClick={showHistoricalLock ? undefined : handleRecentEditClick}
-          onDeleteClick={showHistoricalLock ? undefined : handleRecentDeleteClick}
           dateStatus={dateStatus}
         />
       </div>

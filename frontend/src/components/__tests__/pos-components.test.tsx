@@ -56,56 +56,33 @@ describe('RecentStrip', () => {
     expect(screen.getByText('1個便當')).toBeInTheDocument();
   });
 
-  it('expands to show detail rows on click, collapses on second click', async () => {
+  it('does not show expand icons or detail rows', () => {
     const groups = [
       makeGroup('S001', '王小明', [
         makeTx({ transactionId: 't1', studentId: 'S001', type: 'order', mealPrice: 90, createdAt: '2026-01-01T10:00:00Z' }),
-        makeTx({ transactionId: 't2', studentId: 'S001', type: 'payment', paidAmount: 90, createdAt: '2026-01-01T10:05:00Z' }),
-      ], 0),
+      ], -90),
     ];
     render(<RecentStrip groups={groups} dateStatus="open" />);
-
-    // Initially collapsed — no detail rows
-    expect(screen.queryByText('10:00:00')).not.toBeInTheDocument();
-
-    // Click to expand
-    await userEvent.click(screen.getByText('王小明'));
-    expect(screen.getByText('10:00:00')).toBeInTheDocument();
-    expect(screen.getByText('10:05:00')).toBeInTheDocument();
-
-    // Click to collapse
-    await userEvent.click(screen.getByText('王小明'));
+    // No expand icons
+    expect(screen.queryByText('▸')).not.toBeInTheDocument();
+    expect(screen.queryByText('▾')).not.toBeInTheDocument();
+    // No detail rows (time is never shown)
     expect(screen.queryByText('10:00:00')).not.toBeInTheDocument();
   });
 
-  it('shows edit and delete buttons in expanded detail rows', async () => {
-    const onEdit = vi.fn();
-    const onDelete = vi.fn();
-    const tx1 = makeTx({ transactionId: 't1', studentId: 'S001', type: 'order', mealPrice: 90 });
-    const groups = [makeGroup('S001', '王小明', [tx1], -90)];
+  it('clicking only triggers onStudentClick without expanding', async () => {
+    const onStudentClick = vi.fn();
+    const groups = [
+      makeGroup('S001', '王小明', [
+        makeTx({ transactionId: 't1', studentId: 'S001', type: 'order', mealPrice: 90, createdAt: '2026-01-01T10:00:00Z' }),
+      ], -90),
+    ];
+    render(<RecentStrip groups={groups} dateStatus="open" onStudentClick={onStudentClick} />);
 
-    render(<RecentStrip groups={groups} dateStatus="open" onEditClick={onEdit} onDeleteClick={onDelete} />);
     await userEvent.click(screen.getByText('王小明'));
-
-    const editBtn = screen.getByRole('button', { name: '編輯' });
-    const deleteBtn = screen.getByRole('button', { name: '刪除' });
-
-    await userEvent.click(editBtn);
-    expect(onEdit).toHaveBeenCalledWith(tx1);
-
-    await userEvent.click(deleteBtn);
-    expect(onDelete).toHaveBeenCalledWith(tx1);
-  });
-
-  it('hides edit/delete when dateStatus is closed', async () => {
-    const tx1 = makeTx({ transactionId: 't1', studentId: 'S001', type: 'order', mealPrice: 90 });
-    const groups = [makeGroup('S001', '王小明', [tx1], -90)];
-
-    render(<RecentStrip groups={groups} dateStatus="closed" onEditClick={vi.fn()} onDeleteClick={vi.fn()} />);
-    await userEvent.click(screen.getByText('王小明'));
-
-    expect(screen.queryByRole('button', { name: '編輯' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '刪除' })).not.toBeInTheDocument();
+    expect(onStudentClick).toHaveBeenCalledWith('S001');
+    // No detail rows appear
+    expect(screen.queryByText('10:00:00')).not.toBeInTheDocument();
   });
 
   it('shows empty state when no groups', () => {
@@ -152,21 +129,6 @@ describe('RecentStrip', () => {
     expect(onStudentClick).toHaveBeenCalledWith('S001');
   });
 
-  it('hides edit button for expense type transactions', async () => {
-    const onEdit = vi.fn();
-    const onDelete = vi.fn();
-    const tx1 = makeTx({ transactionId: 't1', studentId: 'S001', type: 'expense', mealPrice: 100 });
-    const groups = [makeGroup('S001', '王小明', [tx1], -100)];
-
-    render(<RecentStrip groups={groups} dateStatus="open" onEditClick={onEdit} onDeleteClick={onDelete} />);
-    await userEvent.click(screen.getByText('王小明'));
-
-    // Edit button should be hidden for expense type
-    expect(screen.queryByRole('button', { name: '編輯' })).not.toBeInTheDocument();
-    // Delete button should still be visible
-    expect(screen.getByRole('button', { name: '刪除' })).toBeInTheDocument();
-  });
-
   it('shows order count (not total record count) in summary', () => {
     const groups = [makeGroup('S001', '王小明', [
       makeTx({ transactionId: 't1', studentId: 'S001', type: 'order', mealPrice: 90 }),
@@ -183,6 +145,15 @@ describe('RecentStrip', () => {
     ], 500)];
     render(<RecentStrip groups={groups} dateStatus="open" />);
     expect(screen.getByText(/餘額/).textContent).toContain('+');
+  });
+
+  it('does not render edit or delete buttons (removed from RecentStrip)', () => {
+    const groups = [makeGroup('S001', '王小明', [
+      makeTx({ transactionId: 't1', studentId: 'S001', type: 'order', mealPrice: 90 }),
+    ], -90)];
+    render(<RecentStrip groups={groups} dateStatus="open" />);
+    expect(screen.queryByRole('button', { name: '編輯' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '刪除' })).not.toBeInTheDocument();
   });
 });
 
