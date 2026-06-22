@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { CustomerCard } from '../../pos/CustomerCard';
+import type { LedgerTransaction } from '../../../domain/ledger';
 
 // Ref: #350 — Tests for POS CustomerCard component (financial display)
 
@@ -216,6 +217,67 @@ describe('CustomerCard', () => {
       renderCard({ mode: 'order', focusZone: 'mode-order' });
       const input = document.querySelector('.pay-input-main');
       expect(input?.getAttribute('placeholder')).toBe('');
+    });
+  });
+
+  // Ref: #419 — expense mode must not render bill items (DRY guard)
+  describe('expense mode DRY guard (#419)', () => {
+    it('does not render bill items in expense mode', () => {
+      const { container } = renderCard({ mode: 'expense', focusZone: 'mode-expense' });
+      expect(container.querySelector('.bill-item')).toBeNull();
+      expect(screen.queryByText('結帳明細')).toBeNull();
+    });
+  });
+
+  // Ref: #419 — view-history mode
+  describe('view-history mode (#419)', () => {
+    function makeTx(overrides: Partial<LedgerTransaction> & { transactionId: string }): LedgerTransaction {
+      return {
+        transactionId: overrides.transactionId,
+        businessDate: '2026-06-22',
+        createdAt: '2026-06-22T10:00:00Z',
+        studentId: 's1',
+        studentNameSnapshot: '王小明',
+        menuNameSnapshot: '',
+        vendorNameSnapshot: '',
+        type: 'order',
+        mealPrice: 60,
+        paidAmount: 0,
+        amount: 0,
+        afterBalance: 440,
+        sourceDevice: 'pc' as const,
+        syncStatus: 'synced' as const,
+        revision: 1,
+        note: '',
+        ...overrides,
+      } as LedgerTransaction;
+    }
+
+    const historyTxs: LedgerTransaction[] = [
+      makeTx({ transactionId: 'h1', businessDate: '2026-06-22', createdAt: '2026-06-22T10:00:00Z', type: 'order', mealPrice: 60 }),
+      makeTx({ transactionId: 'h2', businessDate: '2026-06-21', createdAt: '2026-06-21T09:00:00Z', type: 'payment', paidAmount: 500 }),
+    ];
+
+    it('shows all-date transactions when focusZone is view-history', () => {
+      renderCard({ focusZone: 'view-history', allStudentTransactions: historyTxs });
+      // Should show date labels
+      expect(screen.getByText('2026-06-22')).toBeDefined();
+      expect(screen.getByText('2026-06-21')).toBeDefined();
+    });
+
+    it('shows back button in view-history mode', () => {
+      renderCard({ focusZone: 'view-history', allStudentTransactions: historyTxs });
+      expect(screen.getByText('返回')).toBeDefined();
+    });
+
+    it('hides bill summary in view-history mode', () => {
+      const { container } = renderCard({ focusZone: 'view-history', allStudentTransactions: historyTxs });
+      expect(container.querySelector('.bill-item')).toBeNull();
+    });
+
+    it('hides pay panel in view-history mode', () => {
+      const { container } = renderCard({ focusZone: 'view-history', allStudentTransactions: historyTxs });
+      expect(container.querySelector('.pay-panel')).toBeNull();
     });
   });
 });

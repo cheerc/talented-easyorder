@@ -22,8 +22,13 @@ interface CustomerCardProps {
   onDeleteOrder?: () => void;
   focusZone?: string;
   studentTransactions?: LedgerTransaction[];
+  onEditClick?: (tx: LedgerTransaction) => void;
+  onDeleteClick?: (tx: LedgerTransaction) => void;
+  locked?: boolean;
+  allStudentTransactions?: LedgerTransaction[];
+  onViewHistoryBack?: () => void;
 }
-export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel, onDeleteOrder, focusZone, studentTransactions }: CustomerCardProps) {
+export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel, onDeleteOrder, focusZone, studentTransactions, onEditClick, onDeleteClick, locked, allStudentTransactions, onViewHistoryBack }: CustomerCardProps) {
   const effectiveMealPrice = mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
   const payInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -74,60 +79,67 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
         <div className="action-grid">
           {/* Left Side: Summary */}
           <div className="bill-summary">
-            {focusZone === 'view-status' ? (
-              <TransactionStatusView transactions={studentTransactions ?? []} />
-            ) : (<>
+            {focusZone === 'view-history' ? (
+              <div className="tx-history-view">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <div className="pay-title">交易歷史</div>
+                  <button className="ghost-btn" onClick={onViewHistoryBack} style={{ fontSize: '13px' }}>返回</button>
+                </div>
+                {allStudentTransactions && allStudentTransactions.length > 0 ? (
+                  (() => {
+                    // Group by businessDate
+                    const grouped = new Map<string, LedgerTransaction[]>();
+                    for (const tx of allStudentTransactions) {
+                      const arr = grouped.get(tx.businessDate) ?? [];
+                      arr.push(tx);
+                      grouped.set(tx.businessDate, arr);
+                    }
+                    return Array.from(grouped.entries()).map(([date, txs]) => (
+                      <div key={date} className="tx-history-date-group">
+                        <div className="tx-history-date-label">{date}</div>
+                        <TransactionStatusView transactions={txs} />
+                      </div>
+                    ));
+                  })()
+                ) : (
+                  <div className="tx-status-empty">無交易紀錄</div>
+                )}
+              </div>
+            ) : focusZone === 'view-status' ? (
+              <TransactionStatusView
+                transactions={studentTransactions ?? []}
+                onEditClick={onEditClick}
+                onDeleteClick={onDeleteClick}
+                locked={locked}
+              />
+            ) : (mode === 'order' || mode === 'payment') ? (<>
             <div className="pay-title">結帳明細</div>
+            {/* Shared bill items for order & payment modes only — expense mode must NOT render bill items */}
+            <div className="bill-item no-border">
+              <span className="bill-label">目前帳戶餘額</span>
+              <span className={`bill-val${student.currentBalance < 0 ? ' neg' : ''}`}>
+                {student.currentBalance < 0 ? '−' : ''}${fmt(student.currentBalance)}
+              </span>
+            </div>
             {mode === 'order' && (
-              <>
-                <div className="bill-item no-border">
-                  <span className="bill-label">目前帳戶餘額</span>
-                  <span className={`bill-val${student.currentBalance < 0 ? ' neg' : ''}`}>
-                    {student.currentBalance < 0 ? '−' : ''}${fmt(student.currentBalance)}
-                  </span>
-                </div>
-                <div className="bill-item no-border">
-                  <span className="bill-label">今日便當 ({priceOverrideLabel || todayMenu.itemName})</span>
-                  <span className="bill-val neg">−${fmt(effectiveMealPrice)}</span>
-                </div>
-                <div className="bill-item no-border">
-                  <span className="bill-label">此次繳費金額</span>
-                  <span className="bill-val pos">
-                    +${fmt(parsedPayAmount)}
-                  </span>
-                </div>
-                <div className="bill-divider" />
-                <div className="bill-item bill-total">
-                  <span className="bill-label">預計結帳後餘額</span>
-                  <span className={`bill-val${projectedBalance < 0 ? ' neg' : ''}`}>
-                    {projectedBalance < 0 ? '−' : ''}${fmt(projectedBalance)}
-                  </span>
-                </div>
-              </>
+              <div className="bill-item no-border">
+                <span className="bill-label">今日便當 ({priceOverrideLabel || todayMenu.itemName})</span>
+                <span className="bill-val neg">−${fmt(effectiveMealPrice)}</span>
+              </div>
             )}
-            {mode === 'payment' && (
-              <>
-                <div className="bill-item no-border">
-                  <span className="bill-label">目前帳戶餘額</span>
-                  <span className={`bill-val${student.currentBalance < 0 ? ' neg' : ''}`}>
-                    {student.currentBalance < 0 ? '−' : ''}${fmt(student.currentBalance)}
-                  </span>
-                </div>
-                <div className="bill-item no-border">
-                  <span className="bill-label">此次繳費金額</span>
-                  <span className="bill-val pos">
-                    +${fmt(parsedPayAmount)}
-                  </span>
-                </div>
-                <div className="bill-divider" />
-                <div className="bill-item bill-total">
-                  <span className="bill-label">預計結帳後餘額</span>
-                  <span className={`bill-val${projectedBalance < 0 ? ' neg' : ''}`}>
-                    {projectedBalance < 0 ? '−' : ''}${fmt(projectedBalance)}
-                  </span>
-                </div>
-              </>
-            )}
+            <div className="bill-item no-border">
+              <span className="bill-label">此次繳費金額</span>
+              <span className="bill-val pos">
+                +${fmt(parsedPayAmount)}
+              </span>
+            </div>
+            <div className="bill-divider" />
+            <div className="bill-item bill-total">
+              <span className="bill-label">預計結帳後餘額</span>
+              <span className={`bill-val${projectedBalance < 0 ? ' neg' : ''}`}>
+                {projectedBalance < 0 ? '−' : ''}${fmt(projectedBalance)}
+              </span>
+            </div>
 
             {mode === 'order' && (
               <div className="price-override">
@@ -167,11 +179,12 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
               </div>
             )}
             {/* §3.1: removed "將產生欠款" warning per UX spec */}
-            </>)}
+            </>)
+            : null /* expense mode: no bill items when not in expense flow */}
           </div>
 
           {/* Right Side: Payment Panel */}
-          {focusZone !== 'view-status' && mode !== 'expense' ? (
+          {focusZone !== 'view-status' && focusZone !== 'view-history' && mode !== 'expense' ? (
             <div className="pay-panel">
               <div className="pay-header">
                 <span className="pay-title">
@@ -195,7 +208,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
 
               {/* §3.3: removed quick amount buttons from payment mode */}
             </div>
-          ) : focusZone !== 'view-status' ? (
+          ) : focusZone !== 'view-status' && focusZone !== 'view-history' ? (
             <div className="cancel-empty">
               <div>支出模式 — 請在下方輸入金額</div>
             </div>

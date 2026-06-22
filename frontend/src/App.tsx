@@ -145,7 +145,7 @@ function AppContent() {
     state, picked, currentMode, currentPaidAmount, selectStudent,
     setPaidAmountText, handleConfirm, cancelFlow, changeMode, openCancelConfirm, openCancelConfirmForTx,
     handleDeleteOrder,
-    onViewHistory: () => { setReportStudentFilter(picked!.studentId); setTab('report'); },
+    onViewHistory: () => { setFocusZone('view-history'); },
   }), [state, picked, currentMode, currentPaidAmount, selectStudent,
     setPaidAmountText, handleConfirm, cancelFlow, changeMode, openCancelConfirm, openCancelConfirmForTx,
     handleDeleteOrder]);
