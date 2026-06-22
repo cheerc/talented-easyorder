@@ -231,6 +231,10 @@ describe('CustomerCard', () => {
 
   // Ref: #419 — view-history mode
   describe('view-history mode (#419)', () => {
+    // Pin date for weekly pagination — 2026-06-22 is a Monday
+    beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-06-22T12:00:00Z')); });
+    afterEach(() => { vi.useRealTimers(); });
+
     function makeTx(overrides: Partial<LedgerTransaction> & { transactionId: string }): LedgerTransaction {
       return {
         transactionId: overrides.transactionId,
@@ -255,14 +259,14 @@ describe('CustomerCard', () => {
 
     const historyTxs: LedgerTransaction[] = [
       makeTx({ transactionId: 'h1', businessDate: '2026-06-22', createdAt: '2026-06-22T10:00:00Z', type: 'order', mealPrice: 60 }),
-      makeTx({ transactionId: 'h2', businessDate: '2026-06-21', createdAt: '2026-06-21T09:00:00Z', type: 'payment', paidAmount: 500 }),
+      makeTx({ transactionId: 'h2', businessDate: '2026-06-23', createdAt: '2026-06-23T09:00:00Z', type: 'payment', paidAmount: 500 }),
     ];
 
-    it('shows all-date transactions when focusZone is view-history', () => {
+    it('shows current-week transactions when focusZone is view-history', () => {
       renderCard({ focusZone: 'view-history', allStudentTransactions: historyTxs });
-      // Should show date labels
+      // Should show date labels for current week transactions
       expect(screen.getByText('2026-06-22')).toBeDefined();
-      expect(screen.getByText('2026-06-21')).toBeDefined();
+      expect(screen.getByText('2026-06-23')).toBeDefined();
     });
 
     it('shows back button in view-history mode', () => {
@@ -304,6 +308,9 @@ describe('CustomerCard', () => {
 
   // Ref: #423 — weekly pagination (Fix 3)
   describe('weekly pagination (#423)', () => {
+    // Pin date for weekly pagination — 2026-06-22 is a Monday
+    beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-06-22T12:00:00Z')); });
+    afterEach(() => { vi.useRealTimers(); });
     function makeTx(overrides: Partial<LedgerTransaction> & { transactionId: string }): LedgerTransaction {
       return {
         transactionId: overrides.transactionId,
