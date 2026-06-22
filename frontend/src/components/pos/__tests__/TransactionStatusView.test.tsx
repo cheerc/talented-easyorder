@@ -116,4 +116,35 @@ describe('TransactionStatusView', () => {
     render(<TransactionStatusView transactions={[mockTx({ type: 'expense', amount: 200 })]} />);
     expect(screen.getByText('-200')).toBeInTheDocument();
   });
+
+  // Ref: #423 — header and data rows must always have 5 grid children
+  describe('grid children alignment (#423)', () => {
+    it('header has exactly 5 grid children', () => {
+      const { container } = render(<TransactionStatusView transactions={[mockTx()]} />);
+      const header = container.querySelector('.tx-status-header');
+      expect(header?.children.length).toBe(5);
+    });
+
+    it('data row has 5 children when action callbacks provided', () => {
+      const { container } = render(
+        <TransactionStatusView transactions={[mockTx()]} onEditClick={vi.fn()} onDeleteClick={vi.fn()} />
+      );
+      const row = container.querySelector('.tx-status-row');
+      expect(row?.children.length).toBe(5);
+    });
+
+    it('data row has 5 children when locked (action placeholder rendered)', () => {
+      const { container } = render(
+        <TransactionStatusView transactions={[mockTx()]} onEditClick={vi.fn()} onDeleteClick={vi.fn()} locked />
+      );
+      const row = container.querySelector('.tx-status-row');
+      expect(row?.children.length).toBe(5);
+    });
+
+    it('data row has 5 children when no action callbacks provided', () => {
+      const { container } = render(<TransactionStatusView transactions={[mockTx()]} />);
+      const row = container.querySelector('.tx-status-row');
+      expect(row?.children.length).toBe(5);
+    });
+  });
 });
