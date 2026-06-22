@@ -5,13 +5,13 @@ import { fmt } from './utils';
 interface RecentStripProps {
   groups: LedgerGroup[];
   onStudentClick?: (studentId: string) => void;
-  dateStatus: string;
+  // dateStatus kept in interface for backward compatibility but not used internally
+  dateStatus?: string;
 }
 
 export const RecentStrip = React.memo(function RecentStrip({
   groups,
   onStudentClick,
-  dateStatus,
 }: RecentStripProps) {
   // Show max 20 groups
   const displayGroups = groups.slice(0, 20);
