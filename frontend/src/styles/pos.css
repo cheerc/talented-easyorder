@@ -1111,38 +1111,45 @@ input::-webkit-inner-spin-button {
   color: #dc2626;
 }
 
-/* --- TransactionStatusView dual-column --- */
+/* --- TransactionStatusView single-row layout --- */
 .tx-status-view { width: 100%; }
-.tx-status-header,
 .tx-status-row {
-  display: grid;
-  grid-template-columns: 70px 30px 1fr 1fr auto;
-  gap: 4px;
-  padding: 3px 8px;
+  display: flex;
   align-items: center;
-  font-size: 0.85rem;
-}
-.tx-status-header {
-  color: var(--text-secondary, #888);
+  gap: 8px;
+  padding: 8px 4px;
+  font-size: 1rem;
   border-bottom: 1px solid var(--border-light, #eee);
 }
-.tx-col-income { color: var(--c-pos, #2e7d32); text-align: right; }
-.tx-col-expense { color: var(--c-neg, #c62828); text-align: right; }
+.tx-status-row:last-child { border-bottom: 0; }
+.tx-time { color: var(--ink-2); font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
+.tx-amount {
+  margin-left: auto;
+  text-align: right;
+  font-weight: 600;
+  font-size: 1.1rem;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+}
+.tx-amount.pos { color: var(--c-pos, #2e7d32); }
+.tx-amount.neg { color: var(--c-neg, #c62828); }
 .tx-type-badge {
   display: inline-block;
-  width: 22px; height: 22px;
-  line-height: 22px;
+  width: 24px; height: 24px;
+  line-height: 24px;
   text-align: center;
   border-radius: 4px;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   font-weight: 600;
 }
 .tx-type-order { background: var(--badge-order-bg, #e3f2fd); color: var(--badge-order-fg, #1565c0); }
 .tx-type-payment { background: var(--badge-pay-bg, #e8f5e9); color: var(--badge-pay-fg, #2e7d32); }
 .tx-type-expense { background: var(--badge-exp-bg, #fce4ec); color: var(--badge-exp-fg, #c62828); }
+.tx-actions { display: flex; gap: 4px; margin-left: 8px; }
 .tx-status-empty {
   padding: 24px;
   text-align: center;
   color: var(--text-secondary, #888);
+  font-size: 1rem;
 }
 

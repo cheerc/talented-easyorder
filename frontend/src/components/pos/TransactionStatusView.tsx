@@ -1,10 +1,13 @@
 import React from 'react';
 import type { LedgerTransaction } from '../../domain/ledger';
 import { getIncome, getExpense } from '../../domain/transactionUtils';
+import { fmt } from './utils';
 
 interface TransactionStatusViewProps {
   transactions: LedgerTransaction[];
-  actions?: (tx: LedgerTransaction) => React.ReactNode;
+  onEditClick?: (tx: LedgerTransaction) => void;
+  onDeleteClick?: (tx: LedgerTransaction) => void;
+  locked?: boolean;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -20,17 +23,13 @@ function formatTime(iso: string): string {
 
 export const TransactionStatusView = React.memo(function TransactionStatusView({
   transactions,
-  actions,
+  onEditClick,
+  onDeleteClick,
+  locked,
 }: TransactionStatusViewProps) {
   if (transactions.length === 0) {
     return (
       <div className="tx-status-view">
-        <div className="tx-status-header">
-          <span />
-          <span />
-          <span className="tx-col-income">收入</span>
-          <span className="tx-col-expense">支出</span>
-        </div>
         <div className="tx-status-empty">今日無交易紀錄</div>
       </div>
     );
@@ -38,22 +37,37 @@ export const TransactionStatusView = React.memo(function TransactionStatusView({
 
   return (
     <div className="tx-status-view">
-      <div className="tx-status-header">
-        <span />
-        <span />
-        <span className="tx-col-income">收入</span>
-        <span className="tx-col-expense">支出</span>
-      </div>
       {transactions.map((tx) => {
         const income = getIncome(tx);
         const expense = getExpense(tx);
+        const isIncome = income != null;
+        const displayAmount = isIncome ? income : expense!;
+        const sign = isIncome ? '+' : '−';
+        const colorClass = isIncome ? 'pos' : 'neg';
+
         return (
           <div key={tx.transactionId} className="tx-status-row">
             <span className="tx-time">{formatTime(tx.createdAt)}</span>
             <span className={'tx-type-badge tx-type-' + tx.type}>{TYPE_LABELS[tx.type] ?? tx.type}</span>
-            <span className="tx-col-income">{income != null ? `+${income}` : ''}</span>
-            <span className="tx-col-expense">{expense != null ? `-${expense}` : ''}</span>
-            {actions?.(tx)}
+            <span className={`tx-amount mono ${colorClass}`}>{sign}{fmt(displayAmount)}</span>
+            {!locked && (onEditClick || onDeleteClick) && (
+              <span className="tx-actions">
+                {onEditClick && tx.type !== 'expense' && (
+                  <button
+                    className="recent-mini-btn"
+                    onClick={() => onEditClick(tx)}
+                    aria-label="編輯"
+                  >✏️</button>
+                )}
+                {onDeleteClick && (
+                  <button
+                    className="recent-mini-btn recent-mini-del"
+                    onClick={() => onDeleteClick(tx)}
+                    aria-label="刪除"
+                  >✕</button>
+                )}
+              </span>
+            )}
           </div>
         );
       })}
