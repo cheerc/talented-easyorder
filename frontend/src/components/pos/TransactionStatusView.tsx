@@ -35,6 +35,7 @@ export const TransactionStatusView = React.memo(function TransactionStatusView({
       <span />
       <span className="tx-col-income">收入</span>
       <span className="tx-col-expense">支出</span>
+      <span />{/* action column placeholder (#423) */}
     </div>
   );
 
@@ -59,25 +60,23 @@ export const TransactionStatusView = React.memo(function TransactionStatusView({
             <span className={'tx-type-badge tx-type-' + tx.type}>{TYPE_LABELS[tx.type] ?? tx.type}</span>
             <span className="tx-col-income">{income != null ? `+${income}` : ''}</span>
             <span className="tx-col-expense">{expense != null ? `-${expense}` : ''}</span>
-            {/* Action buttons (#419) */}
-            {!locked && (onEditClick || onDeleteClick) && (
-              <span className="tx-actions">
-                {onEditClick && tx.type !== 'expense' && (
-                  <button
-                    className="recent-mini-btn"
-                    onClick={() => onEditClick(tx)}
-                    aria-label="編輯"
-                  >✏️</button>
-                )}
-                {onDeleteClick && (
-                  <button
-                    className="recent-mini-btn recent-mini-del"
-                    onClick={() => onDeleteClick(tx)}
-                    aria-label="刪除"
-                  >✕</button>
-                )}
-              </span>
-            )}
+            {/* Action buttons (#419) — always render .tx-actions for grid alignment (#423) */}
+            <span className="tx-actions">
+              {!locked && onEditClick && tx.type !== 'expense' && (
+                <button
+                  className="recent-mini-btn"
+                  onClick={() => onEditClick(tx)}
+                  aria-label="編輯"
+                >✏️</button>
+              )}
+              {!locked && onDeleteClick && (
+                <button
+                  className="recent-mini-btn recent-mini-del"
+                  onClick={() => onDeleteClick(tx)}
+                  aria-label="刪除"
+                >✕</button>
+              )}
+            </span>
           </div>
         );
       })}

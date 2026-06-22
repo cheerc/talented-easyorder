@@ -231,6 +231,10 @@ describe('CustomerCard', () => {
 
   // Ref: #419 — view-history mode
   describe('view-history mode (#419)', () => {
+    // Pin date for weekly pagination — 2026-06-22 is a Monday
+    beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-06-22T12:00:00Z')); });
+    afterEach(() => { vi.useRealTimers(); });
+
     function makeTx(overrides: Partial<LedgerTransaction> & { transactionId: string }): LedgerTransaction {
       return {
         transactionId: overrides.transactionId,
@@ -255,14 +259,14 @@ describe('CustomerCard', () => {
 
     const historyTxs: LedgerTransaction[] = [
       makeTx({ transactionId: 'h1', businessDate: '2026-06-22', createdAt: '2026-06-22T10:00:00Z', type: 'order', mealPrice: 60 }),
-      makeTx({ transactionId: 'h2', businessDate: '2026-06-21', createdAt: '2026-06-21T09:00:00Z', type: 'payment', paidAmount: 500 }),
+      makeTx({ transactionId: 'h2', businessDate: '2026-06-23', createdAt: '2026-06-23T09:00:00Z', type: 'payment', paidAmount: 500 }),
     ];
 
-    it('shows all-date transactions when focusZone is view-history', () => {
+    it('shows current-week transactions when focusZone is view-history', () => {
       renderCard({ focusZone: 'view-history', allStudentTransactions: historyTxs });
-      // Should show date labels
+      // Should show date labels for current week transactions
       expect(screen.getByText('2026-06-22')).toBeDefined();
-      expect(screen.getByText('2026-06-21')).toBeDefined();
+      expect(screen.getByText('2026-06-23')).toBeDefined();
     });
 
     it('shows back button in view-history mode', () => {
@@ -278,6 +282,95 @@ describe('CustomerCard', () => {
     it('hides pay panel in view-history mode', () => {
       const { container } = renderCard({ focusZone: 'view-history', allStudentTransactions: historyTxs });
       expect(container.querySelector('.pay-panel')).toBeNull();
+    });
+  });
+
+  // Ref: #423 — full-width alignment (Fix 1)
+  describe('full-width alignment (#423)', () => {
+    it('adds full-width class to bill-summary when focusZone is view-status', () => {
+      const { container } = renderCard({ focusZone: 'view-status', studentTransactions: [] });
+      const billSummary = container.querySelector('.bill-summary');
+      expect(billSummary?.className).toContain('full-width');
+    });
+
+    it('adds full-width class to bill-summary when focusZone is view-history', () => {
+      const { container } = renderCard({ focusZone: 'view-history', allStudentTransactions: [] });
+      const billSummary = container.querySelector('.bill-summary');
+      expect(billSummary?.className).toContain('full-width');
+    });
+
+    it('does not add full-width class when focusZone is mode-order', () => {
+      const { container } = renderCard({ focusZone: 'mode-order' });
+      const billSummary = container.querySelector('.bill-summary');
+      expect(billSummary?.className).not.toContain('full-width');
+    });
+  });
+
+  // Ref: #423 — weekly pagination (Fix 3)
+  describe('weekly pagination (#423)', () => {
+    // Pin date for weekly pagination — 2026-06-22 is a Monday
+    beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-06-22T12:00:00Z')); });
+    afterEach(() => { vi.useRealTimers(); });
+    function makeTx(overrides: Partial<LedgerTransaction> & { transactionId: string }): LedgerTransaction {
+      return {
+        transactionId: overrides.transactionId,
+        businessDate: '2026-06-22',
+        createdAt: '2026-06-22T10:00:00Z',
+        studentId: 's1',
+        studentNameSnapshot: '王小明',
+        menuNameSnapshot: '',
+        vendorNameSnapshot: '',
+        type: 'order',
+        mealPrice: 60,
+        paidAmount: 0,
+        amount: 0,
+        afterBalance: 440,
+        sourceDevice: 'pc' as const,
+        syncStatus: 'synced' as const,
+        revision: 1,
+        note: '',
+        ...overrides,
+      } as LedgerTransaction;
+    }
+
+    it('shows week navigation buttons in view-history mode', () => {
+      renderCard({ focusZone: 'view-history', allStudentTransactions: [] });
+      expect(screen.getByLabelText('上一週')).toBeDefined();
+      expect(screen.getByLabelText('下一週')).toBeDefined();
+    });
+
+    it('shows week range label in view-history mode', () => {
+      renderCard({ focusZone: 'view-history', allStudentTransactions: [] });
+      // Should show a range like "YYYY-MM-DD ~ YYYY-MM-DD"
+      const label = screen.getByText(/\d{4}-\d{2}-\d{2}\s*~\s*\d{4}-\d{2}-\d{2}/);
+      expect(label).toBeDefined();
+    });
+
+    it('disables next-week button at current week (offset=0)', () => {
+      renderCard({ focusZone: 'view-history', allStudentTransactions: [] });
+      const nextBtn = screen.getByLabelText('下一週');
+      expect(nextBtn).toHaveProperty('disabled', true);
+    });
+
+    it('filters transactions to current week only', () => {
+      // Today is 2026-06-22 (Monday). Current week = Mon 2026-06-22 ~ Sun 2026-06-28
+      const txs = [
+        makeTx({ transactionId: 'w1', businessDate: '2026-06-22' }),  // this week
+        makeTx({ transactionId: 'w2', businessDate: '2026-06-15' }),  // last week
+      ];
+      const { container } = renderCard({ focusZone: 'view-history', allStudentTransactions: txs });
+      // Only the current week transaction should be shown in date groups
+      const dateLabels = container.querySelectorAll('.tx-history-date-label');
+      expect(dateLabels.length).toBe(1);
+      expect(dateLabels[0].textContent).toBe('2026-06-22');
+    });
+
+    it('shows empty message when no transactions in current week', () => {
+      const txs = [
+        makeTx({ transactionId: 'old1', businessDate: '2026-06-10' }),  // 2 weeks ago
+      ];
+      renderCard({ focusZone: 'view-history', allStudentTransactions: txs });
+      expect(screen.getByText('本週無交易紀錄')).toBeDefined();
     });
   });
 });
