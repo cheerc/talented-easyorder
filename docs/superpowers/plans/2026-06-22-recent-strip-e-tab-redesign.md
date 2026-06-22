@@ -451,9 +451,9 @@ Expected: PASS（確認 baseline）
     onDeleteClick={onDeleteClick}
     locked={locked}
   />
-) : (<>
+) : (mode === 'order' || mode === 'payment') ? (<>
 <div className="pay-title">結帳明細</div>
-{/* Shared bill items for order & payment modes */}
+{/* Shared bill items for order & payment modes only — expense mode must NOT render bill items */}
 <div className="bill-item no-border">
   <span className="bill-label">目前帳戶餘額</span>
   <span className={`bill-val${student.currentBalance < 0 ? ' neg' : ''}`}>
@@ -480,7 +480,7 @@ Expected: PASS（確認 baseline）
   </span>
 </div>
 {/* ... price-override section stays unchanged, guarded by mode === 'order' ... */}
-</>)}
+</>) : null /* expense mode: no bill items when not in expense flow */}
 ```
 
 **關鍵改動：**
@@ -488,6 +488,9 @@ Expected: PASS（確認 baseline）
 - 共用欄位（餘額、繳費金額、預計結帳後餘額）只寫一次
 - 「今日便當」行只在 `mode === 'order'` 條件下顯示
 - `projectedBalance` 計算已正確處理兩種模式（已有邏輯：order = balance - mealPrice + pay，payment = balance + pay）
+- **⚠️ Expense mode guard**：共用 block 用 `(mode === 'order' || mode === 'payment')` 限制，`expense` 模式下不渲染 bill items（否則 `mode === 'expense'` + `state.kind === 'student_selected'` 時 `expenseProps` 為 null → CustomerCard 仍會渲染 → 錯誤顯示 bill items）
+
+**`usePosColumnProps.ts` 不需修改**：該 hook 只做 flat props → grouped args 的 mapping，本次改動不影響 PosColumnProps interface（allTx 已在 props 中），故無需變更。
 
 **同時需新增 CustomerCard props：**
 - `onEditClick?: (tx: LedgerTransaction) => void`
@@ -671,7 +674,7 @@ const allStudentTransactions = useMemo(() => {
 - `allStudentTransactions?: LedgerTransaction[]`
 - `onViewHistoryBack?: () => void`（返回按鈕的 callback）
 
-`onViewHistoryBack` 在 PosColumn 層實作為 `() => setFocusZone('view-status')` 或 `() => setFocusZone('mode-' + currentMode)`。
+`onViewHistoryBack` 在 PosColumn 層實作為 `() => setFocusZone('mode-' + currentMode)`（spec 說「返回當前模式」，故回到 mode-based focusZone）。
 
 - [ ] **Step 7: 新增 CSS — 歷史視圖日期分隔**
 
@@ -765,7 +768,7 @@ Expected: 全 PASS
 git add frontend/src/styles/pos.css
 git commit -m "style(pos): increase font size for ActionBar labels and TransactionStatusView
 
-Closes #419"
+Part of #419"
 ```
 
 ---
@@ -811,5 +814,5 @@ Expected: 全 PASS
 git add -A
 git commit -m "chore(pos): remove dead CSS classes and unused imports from RecentStrip/TSV refactor
 
-Part of #419"
+Closes #419"
 ```
