@@ -26,6 +26,30 @@ function mockTx(overrides: Partial<LedgerTransaction> = {}): LedgerTransaction {
 }
 
 describe('TransactionStatusView', () => {
+  // Ref: #402 — dual-column display
+  it('renders dual-column headers (收入/支出)', () => {
+    render(<TransactionStatusView transactions={[mockTx()]} />);
+    expect(screen.getByText('收入')).toBeInTheDocument();
+    expect(screen.getByText('支出')).toBeInTheDocument();
+  });
+
+  it('shows expense for order type in expense column', () => {
+    render(<TransactionStatusView transactions={[mockTx({ type: 'order', mealPrice: 60 })]} />);
+    expect(screen.getByText('-60')).toBeInTheDocument();
+  });
+
+  it('shows income for payment type in income column', () => {
+    render(<TransactionStatusView transactions={[mockTx({ type: 'payment', paidAmount: 300 })]} />);
+    expect(screen.getByText('+300')).toBeInTheDocument();
+  });
+
+  // Ref: #421 — order with paidAmount > 0 shows both columns
+  it('shows both income and expense when order has paidAmount > 0', () => {
+    render(<TransactionStatusView transactions={[mockTx({ type: 'order', mealPrice: 60, paidAmount: 100 })]} />);
+    expect(screen.getByText('-60')).toBeInTheDocument();
+    expect(screen.getByText('+100')).toBeInTheDocument();
+  });
+
   it('renders type badge', () => {
     render(<TransactionStatusView transactions={[mockTx({ type: 'order' })]} />);
     expect(screen.getByText('訂')).toBeInTheDocument();
@@ -43,21 +67,14 @@ describe('TransactionStatusView', () => {
     expect(screen.getByText('今日無交易紀錄')).toBeInTheDocument();
   });
 
-  it('shows right-aligned expense amount for order type', () => {
-    const { container } = render(<TransactionStatusView transactions={[mockTx({ type: 'order', mealPrice: 60 })]} />);
-    const amountEl = container.querySelector('.tx-amount');
-    expect(amountEl?.textContent).toBe('−60');
-    expect(amountEl?.className).toContain('neg');
+  it('renders dual-column headers even when empty', () => {
+    render(<TransactionStatusView transactions={[]} />);
+    expect(screen.getByText('收入')).toBeInTheDocument();
+    expect(screen.getByText('支出')).toBeInTheDocument();
   });
 
-  it('shows right-aligned income amount for payment type', () => {
-    const { container } = render(<TransactionStatusView transactions={[mockTx({ type: 'payment', paidAmount: 300 })]} />);
-    const amountEl = container.querySelector('.tx-amount');
-    expect(amountEl?.textContent).toBe('+300');
-    expect(amountEl?.className).toContain('pos');
-  });
-
-  it('renders edit and delete buttons when callbacks provided and not locked', () => {
+  // Ref: #419 — edit/delete buttons
+  it('renders edit and delete buttons when callbacks provided', () => {
     const onEdit = vi.fn();
     const onDelete = vi.fn();
     render(<TransactionStatusView transactions={[mockTx()]} onEditClick={onEdit} onDeleteClick={onDelete} />);
@@ -85,5 +102,18 @@ describe('TransactionStatusView', () => {
     render(<TransactionStatusView transactions={[mockTx()]} onEditClick={onEdit} onDeleteClick={onDelete} locked />);
     expect(screen.queryByLabelText('編輯')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('刪除')).not.toBeInTheDocument();
+  });
+
+  it('hides edit button for expense type transactions', () => {
+    const onEdit = vi.fn();
+    const onDelete = vi.fn();
+    render(<TransactionStatusView transactions={[mockTx({ type: 'expense', amount: 100 })]} onEditClick={onEdit} onDeleteClick={onDelete} />);
+    expect(screen.queryByLabelText('編輯')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('刪除')).toBeInTheDocument();
+  });
+
+  it('shows expense for expense type in expense column', () => {
+    render(<TransactionStatusView transactions={[mockTx({ type: 'expense', amount: 200 })]} />);
+    expect(screen.getByText('-200')).toBeInTheDocument();
   });
 });
