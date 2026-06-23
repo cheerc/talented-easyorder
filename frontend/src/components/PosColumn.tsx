@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { SearchBox, CustomerCard, ActionBar, IdleHero, RecentStrip, DuplicateWarningBanner, MidnightBanner, ExpensePanel, DeleteConfirmDialog } from './pos-components';
+import { SearchBox, CustomerCard, ActionBar, IdleHero, RecentStrip, MidnightBanner, ExpensePanel, DeleteConfirmDialog } from './pos-components';
+import { ConfirmDialog } from './ui/ConfirmDialog';
 import { useActiveOrderCount } from '../store/derived/useLedger';
 import { useTransactionActions } from '../store/selectors';
 import { groupLedgerRowsByStudent } from '../domain/ledgerReport';
@@ -202,13 +203,16 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 onViewHistoryBack={() => setFocusZone('mode-' + currentMode)}
               />
             )}
-            {state.kind === 'duplicate_warning' && (
-              <DuplicateWarningBanner
-                orderedTodayCount={orderedTodayCount}
-                onConfirm={handleConfirm}
-                onCancel={cancelFlow}
-              />
-            )}
+            <ConfirmDialog
+              open={state.kind === 'duplicate_warning'}
+              title="❗ 已經訂過便當"
+              message={`該學生今天已經訂過 ${orderedTodayCount} 次便當。確定要再訂一份嗎？ (家長可能用同一帳號為多位學員訂餐)`}
+              onConfirm={handleConfirm}
+              onCancel={cancelFlow}
+              confirmLabel="是，再訂一份"
+              cancelLabel="否"
+              variant="danger"
+            />
           </>
         )}
       </div>
