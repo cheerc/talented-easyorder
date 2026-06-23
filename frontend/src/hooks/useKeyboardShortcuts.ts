@@ -64,15 +64,15 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
         return;
       }
 
-      // Q/W — suppress in text inputs, allow in number inputs
+      // Q/W — suppress in text inputs, allow in numeric inputs (data-numeric-input)
       const modeKey: Record<string, PosMode> = { q: 'order', w: 'payment' };
       if (modeKey[key]) {
         if (tag === 'INPUT') {
-          const inputType = (target as HTMLInputElement).type;
-          if (inputType === 'text' || inputType === 'search' || inputType === 'email' || inputType === 'password' || inputType === 'url' || inputType === 'tel') {
+          const input = target as HTMLInputElement;
+          if (!input.hasAttribute('data-numeric-input')) {
             return;
           }
-          (target as HTMLInputElement).blur();
+          input.blur();
         } else if (tag === 'TEXTAREA' || target.contentEditable === 'true') {
           return;
         }
@@ -85,11 +85,11 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
       // E — switch to order status view when student selected, no-op otherwise
       if (key === 'e' && isStudentSelectedRef.current) {
         if (tag === 'INPUT') {
-          const inputType = (target as HTMLInputElement).type;
-          if (inputType === 'text' || inputType === 'search' || inputType === 'email' || inputType === 'password' || inputType === 'url' || inputType === 'tel') {
+          const input = target as HTMLInputElement;
+          if (!input.hasAttribute('data-numeric-input')) {
             return;
           }
-          (target as HTMLInputElement).blur();
+          input.blur();
         } else if (tag === 'TEXTAREA' || target.contentEditable === 'true') {
           return;
         }
@@ -101,8 +101,8 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
       // A — enter expense mode in idle only (no student selected)
       if (key === 'a' && enterExpenseModeRef.current && !isStudentSelectedRef.current) {
         if (tag === 'INPUT') {
-          const inputType = (target as HTMLInputElement).type;
-          if (inputType === 'text' || inputType === 'search' || inputType === 'email' || inputType === 'password' || inputType === 'url' || inputType === 'tel') {
+          const input = target as HTMLInputElement;
+          if (!input.hasAttribute('data-numeric-input')) {
             return;
           }
         } else if (tag === 'TEXTAREA' || target.contentEditable === 'true') {

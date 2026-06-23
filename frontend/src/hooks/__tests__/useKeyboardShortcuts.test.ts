@@ -112,11 +112,12 @@ describe('useKeyboardShortcuts', () => {
     document.body.removeChild(input);
   });
 
-  it('allows Q/W/E in number input', () => {
+  it('allows Q/W/E in numeric input (data-numeric-input)', () => {
     renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, cancelOrder, isStudentSelected: true, handleConfirm, cancelFlow }));
 
     const input = document.createElement('input');
-    input.type = 'number';
+    input.type = 'text';
+    input.setAttribute('data-numeric-input', 'true');
     document.body.appendChild(input);
     input.focus();
 
@@ -209,11 +210,12 @@ describe('useKeyboardShortcuts', () => {
       document.body.removeChild(input);
     });
 
-    it('allows A in number input', () => {
+    it('allows A in numeric input (data-numeric-input)', () => {
       renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode, handleConfirm, cancelFlow, enterExpenseMode, isStudentSelected: false }));
 
       const input = document.createElement('input');
-      input.type = 'number';
+      input.type = 'text';
+      input.setAttribute('data-numeric-input', 'true');
       document.body.appendChild(input);
       input.focus();
 
