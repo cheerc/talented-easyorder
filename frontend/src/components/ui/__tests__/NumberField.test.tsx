@@ -7,19 +7,19 @@ describe('NumberField', () => {
   it('renders label and input', () => {
     render(<NumberField label="金額" />);
     expect(screen.getByText('金額')).toBeDefined();
-    expect(screen.getByRole('spinbutton')).toBeDefined();
+    expect(screen.getByRole('textbox')).toBeDefined();
   });
 
   it('has accessible name from label', () => {
     render(<NumberField label="金額" />);
-    expect(screen.getByRole('spinbutton', { name: '金額' })).toBeDefined();
+    expect(screen.getByRole('textbox', { name: '金額' })).toBeDefined();
   });
 
   it('calls onChange with numeric value', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(<NumberField label="金額" onChange={onChange} />);
-    await user.type(screen.getByRole('spinbutton'), '42');
+    await user.type(screen.getByRole('textbox'), '42');
     expect(onChange).toHaveBeenCalled();
   });
 
