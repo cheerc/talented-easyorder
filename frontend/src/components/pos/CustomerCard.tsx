@@ -19,7 +19,7 @@ interface CustomerCardProps {
   priceOverrideLabel: string;
   setPriceOverride: (value: number | null) => void;
   setPriceOverrideLabel: (value: string) => void;
-  onDeleteOrder?: () => void;
+
   focusZone?: string;
   studentTransactions?: LedgerTransaction[];
   onEditClick?: (tx: LedgerTransaction) => void;
@@ -88,7 +88,7 @@ function WeeklyHistoryView({ allStudentTransactions, onViewHistoryBack }: {
   );
 }
 
-export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel, onDeleteOrder, focusZone, studentTransactions, onEditClick, onDeleteClick, locked, allStudentTransactions, onViewHistoryBack }: CustomerCardProps) {
+export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel, focusZone, studentTransactions, onEditClick, onDeleteClick, locked, allStudentTransactions, onViewHistoryBack }: CustomerCardProps) {
   const effectiveMealPrice = mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
   const payInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -126,12 +126,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
               ⚠ 今日已訂過 <b>{orderedTodayCount}</b> 次便當
             </div>
           )}
-          {onDeleteOrder && (
-            <button className="ghost-btn" style={{ marginTop: '6px', fontSize: '11px', padding: '2px 10px', color: 'var(--c-warn)' }}
-              onClick={onDeleteOrder}>
-              取消訂餐
-            </button>
-          )}
+
         </div>
       </div>
 

@@ -22,7 +22,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
     crashDraftRestored, setCrashDraftRestored,
     todayMenu, todayCount, vendors, enterExpenseMode, tweaks,
     tx, operatorUid, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
-    handleDeleteOrder, onViewHistory,
+    onViewHistory,
   } = props;
 
   const orderedTodayCount = useActiveOrderCount(picked?.studentId ?? null, viewDate);
@@ -193,7 +193,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 priceOverrideLabel={priceOverrideLabel}
                 setPriceOverride={setPriceOverride}
                 setPriceOverrideLabel={setPriceOverrideLabel}
-                onDeleteOrder={handleDeleteOrder}
+
                 focusZone={focusZone}
                 studentTransactions={studentTransactions}
                 onEditClick={handleRecentEditClick}
