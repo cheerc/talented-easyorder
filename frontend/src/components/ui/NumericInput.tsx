@@ -13,10 +13,17 @@ export const NumericInput = React.memo(React.forwardRef<HTMLInputElement, Numeri
       // Ref: #403 — ignore keyDown during IME composition
       if (e.nativeEvent.isComposing) return;
 
-      if (['-', '+', 'e', 'E', '.'].includes(e.key)) {
+      // Block characters not valid in numeric input
+      // Allow: digits, Backspace, Delete, Tab, Escape, Enter, arrows, Home, End, navigation
+      if (
+        e.key.length === 1 &&
+        !/[0-9]/.test(e.key) &&
+        !e.ctrlKey && !e.metaKey && !e.altKey
+      ) {
         e.preventDefault();
         return;
       }
+
       onKeyDown?.(e);
     };
 
@@ -42,18 +49,16 @@ export const NumericInput = React.memo(React.forwardRef<HTMLInputElement, Numeri
       }
     };
 
-    const handleWheel = (e: React.WheelEvent<HTMLInputElement>) => {
-      e.currentTarget.blur();
-    };
-
     return (
       <input
         ref={ref}
-        type="number"
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        data-numeric-input="true"
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
-        onWheel={handleWheel}
         {...rest}
       />
     );

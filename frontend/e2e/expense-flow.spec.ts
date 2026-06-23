@@ -36,7 +36,7 @@ test.describe('Expense Flow', () => {
     }
 
     // Enter amount — type into the amount input
-    const amountInput = authedPage.locator('input[type="number"], input[data-testid="expense-amount"], .expense-amount input');
+    const amountInput = authedPage.locator('input[data-numeric-input], input[data-testid="expense-amount"], .expense-amount input');
     if (await amountInput.count() > 0) {
       await amountInput.first().fill('150');
       await amountInput.first().press('Enter');

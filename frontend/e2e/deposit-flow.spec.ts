@@ -20,7 +20,7 @@ test.describe('Deposit Flow', () => {
     await page.locator('.mode').filter({ hasText: '繳費' }).click();
     
     // 5. Enter payment amount in the NumericInput
-    const payInput = page.locator('.customer input[type="number"]');
+    const payInput = page.locator('.customer input[data-numeric-input]');
     await payInput.fill('500');
     
     // 6. Press Enter to confirm (Ref: #399 — btn-confirm removed, keyboard Enter confirms)
