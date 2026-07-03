@@ -34,6 +34,17 @@ jobs:
       - run: npx vitest run
       - run: npx firebase emulators:exec --only firestore "npx vitest run src/firebase/__tests__/firestoreRules.spec.ts"
 
+      - name: 📊 PR Diff Stats
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr view ${{ github.event.pull_request.number }} \
+            --json additions,deletions,changedFiles \
+            --jq '"| Metric | Value |\n|--------|-------|\n| ➕ Additions | \(.additions) |\n| ➖ Deletions | \(.deletions) |\n| 📁 Changed Files | \(.changedFiles) |"' \
+            >> "$GITHUB_STEP_SUMMARY"
+
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 10
