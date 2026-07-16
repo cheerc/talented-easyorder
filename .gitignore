@@ -5,9 +5,6 @@ dist/
 .DS_Store
 .agend-managed
 
-# graphify — local-only（不 commit，post-commit hook 自動重建）
-graphify-out/
-.graphify*
 .claude/settings.local.json
 
 .agents/*
