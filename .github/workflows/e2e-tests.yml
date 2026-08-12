@@ -2,8 +2,8 @@ name: easyorder E2E (release gate + nightly)
 
 # Playwright E2E — moved out of per-PR CI (#56/#268) to conserve GH Actions
 # minutes. Runs on: (1) workflow_dispatch — the release gate (lead kicks it on
-# dev HEAD before bump, see dispatch_books LEAD.md §6 e2e-gate) + ad-hoc; and
-# (2) nightly schedule on dev for early regression detection (failure -> auto-issue).
+# main HEAD before bump) + ad-hoc; and (2) nightly schedule on main for early
+# regression detection (failure -> auto-issue).
 # NOTE: easyorder t5 = Firestore Rules (per-PR, in ci.yml); this is the Playwright e2e.
 on:
   workflow_dispatch:
@@ -103,7 +103,7 @@ jobs:
 
           # No new commits since last green => same code failing => likely flaky/infra.
           # New commits since last green => a change may have regressed => possible regression.
-          LAST_GOOD="$(gh run list --workflow=e2e-tests.yml --branch dev --status success \
+          LAST_GOOD="$(gh run list --workflow=e2e-tests.yml --branch main --status success \
             --limit 1 --json headSha --jq '.[0].headSha // ""' || true)"
           if [ -n "$LAST_GOOD" ] && git cat-file -e "${LAST_GOOD}^{commit}" 2>/dev/null \
              && [ "$(git rev-list --count "${LAST_GOOD}..${SHA}" 2>/dev/null || echo 1)" = "0" ]; then
@@ -115,7 +115,7 @@ jobs:
           gh label create nightly-e2e --color B60205 --description "nightly e2e failure" --force >/dev/null 2>&1 || true
           gh label create "$CLASS" --color FBCA04 --force >/dev/null 2>&1 || true
 
-          NOTE="Nightly e2e failed on dev @ \`${SHA}\`
+          NOTE="Nightly e2e failed on main @ \`${SHA}\`
           - Classification: **${CLASS}** (last green: \`${LAST_GOOD:-unknown}\`)
           - Run: ${RUN_URL}
           - Artifacts: \`playwright-report\` / \`test-results\` on the run page"
@@ -126,6 +126,6 @@ jobs:
             gh issue comment "$EXISTING" --body "$NOTE"
             gh issue edit "$EXISTING" --add-label "$CLASS" >/dev/null 2>&1 || true
           else
-            gh issue create --title "nightly e2e failed on dev @ ${SHORT} (${CLASS})" \
+            gh issue create --title "nightly e2e failed on main @ ${SHORT} (${CLASS})" \
               --label "nightly-e2e,${CLASS}" --body "$NOTE"
           fi
