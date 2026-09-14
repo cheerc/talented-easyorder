@@ -4,6 +4,8 @@ A highly responsive, offline-first iPad POS system with facial recognition suppo
 
 ## Getting Started
 
+Requires Node.js 24 (see `.nvmrc`).
+
 ```bash
 cd frontend
 npm install
