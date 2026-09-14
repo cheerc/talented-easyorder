@@ -13,7 +13,8 @@
 專案處於停擺後的對齊點：最後一次功能／修正 commit 是 2026-06-23
 （`cce3c56`），之後只有 chore/CI 與今天的兩個依賴／toolchain PR；
 open issue = 0、open PR = 0，所有已記錄的 UI 工作皆已 merge，
-等 operator 本人驗收 frontend UI 後再往後開發。
+等 operator 本人驗收 frontend UI 後再往後開發
+（commit 月分佈詳見附錄「量測與統計口徑註記」）。
 
 ## 2. 當前關鍵路徑
 
@@ -28,10 +29,10 @@ open issue = 0、open PR = 0，所有已記錄的 UI 工作皆已 merge，
 **重要事實：查無任何已記錄的未完成 UI 項目。**
 
 - `gh issue list --state open` 回傳空（2026-09-14 實測）。
-- `gh pr list --state open` 回傳空（2026-09-14 實測）。
+- `gh pr list --state open` 除本文件自身的 PR 外回傳空（2026-09-14 實測）。
 - 最後一批 UI issue（#403、#406–#431 區間，抽查 #403/#406/#407/#412/
   #417/#419/#421/#423/#425/#428/#430）狀態皆為 CLOSED（#406 的 issue
-  檢視回傳 MERGED，屬同一「已關閉」語義，見 §8 備註 1）。
+  檢視回傳 MERGED，屬同一「已關閉」語義）。
 - plans / specs / retro / TODO 全文搜尋無未完成 UI 待辦。
 
 **不要憑空編造待辦項。** 下表是空的結構化表格，供 operator 邊測邊填：
@@ -109,10 +110,10 @@ npm ci && npx tsc --noEmit && npm run lint && npx vitest run && npm run build
    `frontend/src/store/posTypes.ts:1` 指向 #289（CLOSED）、
    `frontend/src/store/posPersistence.ts:9` 指向 #286（CLOSED）。
 5. `docs/superpowers/plans/` 下的 plan checkbox 從未被當作進度追蹤機制，
-   不可作為進度證據（註：brief 稱「皆為 0 勾選」不精確——archive 內
+   不可作為進度證據（註：archive 內
    2026-05-07-ipad-pos-system-design.md 與
-   2026-05-10-frontend-audit-remediation(DONE).md 共含 4 個已勾選項，
-   皆為歷史設計文件的內文勾選，非進度追蹤；見 §8 備註 5）。
+   2026-05-10-frontend-audit-remediation(DONE).md 共含 4 個歷史設計文件內文勾選項，
+   非進度追蹤用途）。
 
 ## 8. 如何維護本文件
 
@@ -126,21 +127,11 @@ npm ci && npx tsc --noEmit && npm run lint && npx vitest run && npm run build
 
 ---
 
-### 驗證備註（brief 誤差，已以實測值為準）
+### 附錄：量測與統計口徑註記
 
-1. 月分佈 261/135/3/1/2 為 author-date 口徑；committer-date 口徑為
-   278/118/3/1/2（差異僅一筆跨月 commit `dd3e201`：
-   author-date 2026-05-31 / committer-date 2026-06-01）。文件採用
-   brief 的 author-date 數字。
-2. `posPersistence.ts` 實際路徑為 `frontend/src/store/posPersistence.ts`
-   （brief 誤寫為 `src/storage/`），其 TODO 在 L9。
-3. `screens.test.tsx` 實際路徑為
-   `frontend/src/components/__tests__/screens.test.tsx`（brief 缺
-   `frontend/` 前綴），`describe('BackupScreen')` 在 L105（brief 稱 L106）。
-4. `ROADMAP.md` 實際路徑為 `docs/superpowers/plans/ROADMAP.md`
-  （brief 未給路徑；repo root 無此檔）。
-5. plans checkbox：brief 稱「皆為 0 勾選」不精確，實測已勾選共 4 項
-   （見 §7 第 5 項），但結論不變——皆非進度追蹤用途。
-6. build 耗時實測 457ms（brief 稱 477ms），屬機器差異，其餘基線數字
-   （PWA 20 entries / 908.09 KiB、vitest 991/8）完全一致。
-...[truncated 7373 chars]
+1. **Commit 月分佈口徑**：author-date 口徑為 261/135/3/1/2（2026-05 至 2026-09，total 402）；
+   committer-date 口徑為 260/136/3/1/2（total 402）。
+   全歷史僅跨月 commit `dd3e201` 一筆（author-date 2026-05-31 / committer-date 2026-06-01），
+   其餘月份兩種口徑完全一致。本文件統計採用 author-date 數字。
+2. **Build 耗時說明**：實測 457ms，隨機器負載略有浮動（約 450–480ms 區間），
+   PWA precache 20 entries / 908.09 KiB 穩定一致。
