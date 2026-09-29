@@ -1,5 +1,7 @@
 # Menu And Vendor Management Spec
 
+> **2026-09-29 範圍更新：** 本檔保留為既有設計／實作基線。本輪目標見 [Frontend prototype workflow spec](frontend-prototype-workflow-spec.md)。本輪每天只有晚餐，僅做每日菜單與供應商基本維護；catalog、圖片與多餐擴充暫緩。每日價格快照與日期鎖以新 spec 為準。
+
 ## 功能描述
 
 Menu And Vendor Management 定義每日餐點設定、供應商主檔、菜單 catalog、價格與圖片 metadata，以及歷史交易需要保存的菜單/供應商快照。

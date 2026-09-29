@@ -1,5 +1,7 @@
 # Design Spec: 訂便當結帳明細介面優化
 
+> **2026-09-29 範圍更新：** 本檔保留為既有設計／實作基線。本輪目標見 [Frontend prototype workflow spec](frontend-prototype-workflow-spec.md)。本輪送出／取消入口、成功回饋、收款文案以新 spec 為準，不要求恢復已取消的找零計算介面。
+
 ## 1. 目的與背景
 目前系統在「訂便當」模式下，左側的結帳明細僅顯示單行「當日便當 -$90」，未能清晰告知使用者目前餘額、此次繳費變動及最終預計餘額。相比之下，「繳費」模式則擁有完整的 3 行明細。
 為了提升交易透明度並提供更好的 UX，此設計將「訂便當」模式下的明細擴展為與繳費風格一致的 4 行完整結構。
@@ -14,7 +16,7 @@
 ## 3. 架構設計與程式碼變更
 
 ### 3.1 核心邏輯變更：`CustomerCard.tsx`
-檔案位置：[frontend/src/components/pos/CustomerCard.tsx](file:///Users/cheerc/talented-easyorder/frontend/src/components/pos/CustomerCard.tsx)
+檔案位置：[frontend/src/components/pos/CustomerCard.tsx](../../../frontend/src/components/pos/CustomerCard.tsx)
 
 1. **更新 `projectedBalance` 的計算**：
    在 `mode === 'order'` 時，結帳後餘額必須同時扣除便當價格：
@@ -57,7 +59,7 @@
    ```
 
 ### 3.2 測試修正
-檔案位置：[frontend/src/components/pos/__tests__/CustomerCard.test.tsx](file:///Users/cheerc/talented-easyorder/frontend/src/components/pos/__tests__/CustomerCard.test.tsx)
+檔案位置：[frontend/src/components/pos/__tests__/CustomerCard.test.tsx](../../../frontend/src/components/pos/__tests__/CustomerCard.test.tsx)
 - 由於明細行數變更，需更新對應的單元測試，確保 `mode === 'order'` 下的明細項目數量與內文斷言與新設計相符。
 
 ## 4. 驗證計畫

@@ -1,5 +1,7 @@
 # iPad Face Auth Handoff Spec
 
+> **2026-09-29 範圍更新：** 本檔保留為既有設計／實作基線。本輪目標見 [Frontend prototype workflow spec](frontend-prototype-workflow-spec.md)。本輪不開發 iPad／人臉辨識。保留本檔作未來參考，不列入前端 prototype 驗收。
+
 ## 功能描述
 
 iPad Face Auth Handoff 定義 Phase 2：iPad 以相機做人臉辨識，辨識成功後把學員身份事件推送到 PC POS 搜尋/選取流程，由 PC 操作員完成訂餐、繳費、雜支與帳務確認。

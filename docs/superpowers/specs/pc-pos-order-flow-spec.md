@@ -1,5 +1,7 @@
 # PC POS Order Flow Spec
 
+> **2026-09-29 範圍更新：** 本檔保留為既有設計／實作基線。本輪目標見 [Frontend prototype workflow spec](frontend-prototype-workflow-spec.md)。本轮鍵盤／焦點／成功／取消／本機流程以新 spec 為準；本檔原有搜尋與回搜尋敘述不可當作 UI 已驗收。
+
 ## 功能描述
 
 PC POS Order Flow 定義櫃台核心流程：搜尋學員、確認身份、選擇交易模式（訂餐/繳費/雜支）、預覽餘額、送出一筆交易、進入同步/排隊狀態，並回到下一位學員。
