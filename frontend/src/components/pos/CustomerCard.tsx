@@ -6,6 +6,7 @@ import { Button } from '../ui/Button';
 import type { PosMode } from '../../domain/posFlow';
 import type { LedgerTransaction } from '../../domain/ledger';
 import { NumericInput } from '../ui/NumericInput';
+import { parsePaidAmount } from '../../domain/posTransaction';
 import { TransactionStatusView } from './TransactionStatusView';
 import { fmt } from './utils';
 
@@ -105,11 +106,14 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
     }
   }, [mode, focusZone]);
 
-  const parsedPayAmount = Number(payAmount) || 0;
+  // M1 K07：收款欄不合法（例如負數）時兩種模式都不能送出，並說明原因，不悄悄當成 0。
+  const payParse = parsePaidAmount(String(payAmount ?? ''));
+  const payError = payParse.ok ? null : payParse.message;
+  const parsedPayAmount = payParse.ok ? payParse.value : 0;
   // M1：送出鍵的條件與 Enter 一致：繳費要有正整數金額；訂餐要有當天晚餐。
-  const canConfirm = mode === 'payment'
+  const canConfirm = !payError && (mode === 'payment'
     ? Number.isSafeInteger(parsedPayAmount) && parsedPayAmount > 0
-    : mode === 'order' ? isMenuReady(todayMenu) : false;
+    : mode === 'order' ? isMenuReady(todayMenu) : false);
   const confirmLabel = mode === 'payment'
     ? '確認收款'
     : orderedTodayCount > 0 ? `再訂一份（今日第 ${orderedTodayCount + 1} 份）` : '確認訂餐';
@@ -251,6 +255,8 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                   aria-label="付款金額"
                   value={payAmount}
                   onChange={setPayAmount}
+                  keepMinusSign
+                  aria-invalid={payError ? true : undefined}
                   placeholder=""
                 />
                 <span className="pay-input-suffix">元</span>
@@ -269,7 +275,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
               )}
               {onConfirm && !locked && !canConfirm && (
                 <div className="pay-actions-hint">
-                  {mode === 'payment' ? '請先輸入收款金額。' : '這天還沒設定晚餐，不能訂餐；可以按 W 改成只繳費。'}
+                  {payError ?? (mode === 'payment' ? '請先輸入收款金額。' : '這天還沒設定晚餐，不能訂餐；可以按 W 改成只繳費。')}
                 </div>
               )}
             </div>

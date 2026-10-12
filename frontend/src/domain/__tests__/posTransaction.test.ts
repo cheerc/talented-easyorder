@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parsePaidAmount,
+  PAID_AMOUNT_NEGATIVE_MESSAGE,
   buildPosTransactionDraft,
   deriveTransactionAttributes,
 } from '../posTransaction';
@@ -24,10 +25,9 @@ describe('parsePaidAmount', () => {
     if (!result.ok) expect(result.message.length).toBeGreaterThan(0);
   });
 
-  it('rejects negative numbers', () => {
-    const result = parsePaidAmount('-50');
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.message.length).toBeGreaterThan(0);
+  it('rejects negative numbers with a clear message (M1 K07)', () => {
+    expect(parsePaidAmount('-50')).toEqual({ ok: false, message: PAID_AMOUNT_NEGATIVE_MESSAGE });
+    expect(parsePaidAmount('-')).toEqual({ ok: false, message: PAID_AMOUNT_NEGATIVE_MESSAGE });
   });
 
   it('rejects fractional amounts', () => {

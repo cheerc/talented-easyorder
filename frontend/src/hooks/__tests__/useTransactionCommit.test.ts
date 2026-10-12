@@ -154,6 +154,19 @@ describe('useTransactionCommit', () => {
     );
   });
 
+  it('M1 K07：收款欄是負數時，訂餐與繳費都不送出', () => {
+    for (const mode of ['order', 'payment'] as const) {
+      const state: PosFlowState = {
+        kind: 'student_selected', studentId: 's1', mode, source: 'manual', paidAmountText: '-5', searchTextHint: '',
+      };
+      const { result } = renderHook(() =>
+        useTransactionCommit(dispatch as Parameters<typeof useTransactionCommit>[0], state, [makeStudent()], makeMenu(), [], commitDraft, makeArgs()),
+      );
+      act(() => { result.current.requestConfirm(); });
+    }
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
   // --- Double-submit guard ---
   it('commitTransaction ignores non-committing states', () => {
     const state: PosFlowState = { kind: 'idle', searchTextHint: '' };
