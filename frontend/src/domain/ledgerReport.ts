@@ -9,12 +9,24 @@ export interface LedgerDateRange {
   endDate: string;
 }
 
+/**
+ * M2 F08 報表口徑。畫面上的卡片名稱與這裡的欄位一一對應：
+ * - orderCount 份數：訂餐筆數（每筆一份）。
+ * - mealTotal 餐費：訂餐的應收餐費合計。
+ * - orderUnpaid 訂餐當下未收：每筆訂餐「餐費 − 當筆收款」不足的部分合計。之後補繳不會扣回，所以不是帳戶欠款。
+ * - totalIncome 收現：實際收進的現金＝訂餐當筆收款＋繳費＋櫃台收入。
+ * - totalExpense 支出：櫃台付出的現金。
+ * - netCash 淨現金＝收現 − 支出。
+ * - transactionCount 筆數：區間內所有交易，包含未付款的訂餐與櫃台收支。
+ * 一律用整段區間的交易計算，不能傳畫面上分頁或截斷後的清單。
+ */
 export interface LedgerTotals {
   orderCount: number;
+  mealTotal: number;
+  orderUnpaid: number;
   totalIncome: number;
   totalExpense: number;
   netCash: number;
-  newDebt: number;
   transactionCount: number;
 }
 
@@ -78,18 +90,19 @@ export function filterTransactionsByBusinessDate(
 
 export function calculateLedgerTotals(transactions: LedgerTransaction[]): LedgerTotals {
   let orderCount = 0;
+  let mealTotal = 0;
+  let orderUnpaid = 0;
   let totalIncome = 0;
   let totalExpense = 0;
-  let newDebt = 0;
 
   for (const tx of transactions) {
     const roundedMealPrice = Math.round(tx.mealPrice);
     const roundedPaidAmount = Math.round(tx.paidAmount);
     if (tx.type === 'order') {
       orderCount++;
+      mealTotal += roundedMealPrice;
       totalIncome += roundedPaidAmount;
-      const unpaid = Math.max(0, roundedMealPrice - roundedPaidAmount);
-      newDebt += unpaid;
+      orderUnpaid += Math.max(0, roundedMealPrice - roundedPaidAmount);
     } else if (tx.type === 'payment') {
       totalIncome += roundedPaidAmount;
     } else if (tx.type === 'expense') {
@@ -104,13 +117,12 @@ export function calculateLedgerTotals(transactions: LedgerTransaction[]): Ledger
 
   return {
     orderCount,
+    mealTotal,
+    orderUnpaid,
     totalIncome,
     totalExpense,
     netCash: totalIncome - totalExpense,
-    newDebt,
-    transactionCount: transactions.filter(t =>
-      t.type !== 'order' || t.paidAmount > 0
-    ).length,
+    transactionCount: transactions.length,
   };
 }
 

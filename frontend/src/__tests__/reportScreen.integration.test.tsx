@@ -14,7 +14,7 @@ describe('reportScreen integration', () => {
     const reportBtn = screen.getByText('今日帳');
     await userEvent.click(reportBtn);
     await waitFor(() => {
-      expect(screen.getByText('總收入')).toBeTruthy();
+      expect(screen.getByText('收現')).toBeTruthy();
     });
   });
 
@@ -22,8 +22,8 @@ describe('reportScreen integration', () => {
     await renderApp();
     await userEvent.click(screen.getByText('今日帳'));
     await waitFor(() => {
-      expect(screen.getByText('訂餐')).toBeTruthy();
-      expect(screen.getByText('總收入')).toBeTruthy();
+      expect(screen.getByText('份數')).toBeTruthy();
+      expect(screen.getByText('收現')).toBeTruthy();
     });
   });
 
@@ -32,7 +32,7 @@ describe('reportScreen integration', () => {
     await userEvent.click(screen.getByText('今日帳'));
     await waitFor(() => {
       // Report shows totals which are always rendered
-      expect(screen.getByText('總交易')).toBeTruthy();
+      expect(screen.getByText('筆數')).toBeTruthy();
     });
   });
 

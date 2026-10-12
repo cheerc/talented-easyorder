@@ -58,8 +58,8 @@ describe('useLedgerReport', () => {
     );
 
     expect(result.current.totals.orderCount).toBe(1);
-    // transactionCount excludes unpaid orders (paidAmount=0), only payment counts
-    expect(result.current.totals.transactionCount).toBe(1);
+    // F08：筆數包含未付款的訂餐
+    expect(result.current.totals.transactionCount).toBe(2);
   });
 
   it('groups by student', () => {

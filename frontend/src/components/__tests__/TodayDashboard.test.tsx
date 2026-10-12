@@ -23,11 +23,11 @@ const { store, baseTrans, baseEvents, baseSettlements, baseStatuses, todayStr } 
     },
   ];
   const auditEvents: LedgerAuditEvent[] = [
-    { auditEventId: 'ae-1', eventType: 'transaction_corrected', entityType: 'transaction',
+    { auditEventId: 'ae-1', eventType: 'transaction_edited', entityType: 'transaction',
       entityId: 'tx-1', businessDate: systemDate,
       before: { mealPrice: 90 }, after: { mealPrice: 80 },
       reason: 'correction', operatorId: 'op-1', createdAt: '2026-05-30T14:00:00.000Z' },
-    { auditEventId: 'ae-2', eventType: 'transaction_voided', entityType: 'transaction',
+    { auditEventId: 'ae-2', eventType: 'transaction_deleted', entityType: 'transaction',
       entityId: 'tx-3', businessDate: systemDate,
       before: { mealPrice: 90 }, after: null,
       reason: 'void', operatorId: 'op-2', createdAt: '2026-05-30T15:00:00.000Z' },
@@ -95,19 +95,13 @@ describe('TodayDashboard', () => {
     expect(container.textContent).toContain(todayStr);
   });
 
-  it('displays transaction count', () => {
+  it('F08：筆數含未付款訂餐，份數附餐費，收現是實收現金', () => {
     const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
-    expect(container.textContent).toContain('交易筆數');
-  });
-
-  it('displays order count from totals', () => {
-    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
-    expect(container.textContent).toContain('訂餐數');
-  });
-
-  it('displays cash collected from totals', () => {
-    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
-    expect(container.textContent).toContain('收現總計');
+    const cards = Array.from(container.querySelectorAll('.db-card')).map(el => el.textContent);
+    expect(cards[0]).toBe('筆數2含未付款訂餐');
+    expect(cards[1]).toBe('份數1餐費 $90');
+    expect(cards[2]).toBe('收現$500淨現金 $500');
+    expect(container.textContent).not.toMatch(/undefined|NaN/);
   });
 
   it('shows 已關帳 when dateStatus is closed', () => {
@@ -139,14 +133,10 @@ describe('TodayDashboard', () => {
     expect(container.textContent).toContain('已全數同步');
   });
 
-  it('shows correction count', () => {
+  it('今日更正與刪除各算一筆', () => {
     const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
-    expect(container.textContent).toContain('今日更正');
-  });
-
-  it('shows void count', () => {
-    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
-    expect(container.textContent).toContain('作廢');
+    const card = Array.from(container.querySelectorAll('.db-card')).find(el => el.textContent?.includes('今日更正'));
+    expect(card?.textContent).toBe('今日更正1刪除 1 筆');
   });
 
   it('shows latest 5 transactions sorted by createdAt desc', () => {

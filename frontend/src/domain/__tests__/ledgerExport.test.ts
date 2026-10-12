@@ -200,7 +200,8 @@ describe('buildLedgerPrintViewModel', () => {
       totalIncome: 0,
       totalExpense: 0,
       netCash: 0,
-      newDebt: 85,
+      mealTotal: 0,
+      orderUnpaid: 85,
       transactionCount: 1,
     };
     const groups: LedgerGroup[] = [{
