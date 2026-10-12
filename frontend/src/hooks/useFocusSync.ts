@@ -27,14 +27,10 @@ export function useFocusSync(
       setFocusZone('mode-order');
     }
 
-    // 任何時候回到 idle 介面，或切換回櫃台且為 idle 時，都要離開焦點，並清空搜尋內容
-    // 並且在處於非 idle 狀態時，提前將 searchFocusKey 重置為 0，避免回到 idle 時 SearchBox 自動聚焦
+    // M1：回到搜尋（完成、取消、切回櫃台）時清空搜尋並把游標放進搜尋框，姓名可以直接打，不用先點。
     if (state.kind === 'idle' && tab === 'pos') {
-      (document.activeElement as HTMLElement)?.blur();
       setSearchText('');
-      setSearchFocusKey(0);
-    } else if (state.kind !== 'idle') {
-      setSearchFocusKey(0);
+      setSearchFocusKey(k => k + 1);
     }
   }, [state.kind, state.mode, tab, setSearchText, setSearchFocusKey, setFocusZone, focusZone]);
 }

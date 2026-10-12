@@ -54,9 +54,13 @@ export const ConfirmDialog = React.memo(function ConfirmDialog({
         e.preventDefault();
         return;
       }
-      // 焦點在對話框內的按鈕上：交給瀏覽器原生的按鈕行為，Enter 按哪顆就是哪顆。
+      // 焦點在對話框內的按鈕上：Enter 按哪顆就是哪顆。
       const active = document.activeElement;
-      if (active instanceof HTMLButtonElement && active.closest('[role="dialog"]')) return;
+      if (active instanceof HTMLButtonElement && active.closest('[role="dialog"]')) {
+        e.preventDefault();
+        active.click();
+        return;
+      }
       e.preventDefault();
       if (defaultAction === 'cancel') onCancel();
       else onConfirm();
@@ -74,7 +78,7 @@ export const ConfirmDialog = React.memo(function ConfirmDialog({
         <Button variant="ghost" onClick={onCancel} autoFocus={defaultAction === 'cancel'}>
           {cancelLabel}
         </Button>
-        <Button variant={variant} onClick={onConfirm}>
+        <Button variant={variant} onClick={onConfirm} autoFocus={defaultAction === 'confirm'}>
           {confirmLabel}
         </Button>
       </div>

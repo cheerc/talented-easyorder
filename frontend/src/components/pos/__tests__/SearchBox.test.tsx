@@ -129,4 +129,37 @@ describe('SearchBox long lists and keyboard (M1 F01 / K02)', () => {
     fireEvent.keyDown(screen.getByLabelText('輸入學員編號或姓名'), { key: 'Enter', keyCode: 229 });
     expect(onSubmit).not.toHaveBeenCalled();
   });
+
+  const defaultProps = {
+    value: '', onChange: vi.fn(), onSubmit: vi.fn(), onEsc: vi.fn(),
+    suggestions: [] as StudentAccount[], activeIdx: 0, onPick: vi.fn(), onHover: vi.fn(),
+    focusKey: 0, disabled: false,
+  };
+
+  it('M1：游標在搜尋框時，櫃台收支按鈕提示 Tab 而不是 A', () => {
+    render(<SearchBox {...defaultProps} onEnterExpense={vi.fn()} />);
+    const btn = screen.getByRole('button', { name: /新增櫃台收支/ });
+    expect(btn.textContent).toContain('A');
+    fireEvent.focus(screen.getByLabelText('輸入學員編號或姓名'));
+    expect(btn.textContent).toContain('Tab');
+  });
+
+  it('M1：有字時 Esc 只清空、游標留在框內；空的才離開', () => {
+    const onEsc = vi.fn();
+    const { rerender } = render(<SearchBox {...defaultProps} value="00" onEsc={onEsc} />);
+    const input = screen.getByLabelText('輸入學員編號或姓名') as HTMLInputElement;
+    input.focus();
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(onEsc).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(input);
+    rerender(<SearchBox {...defaultProps} value="" onEsc={onEsc} />);
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(document.activeElement).not.toBe(input);
+  });
+
+  it('M1：focusKey 增加時把游標放進搜尋框', () => {
+    const { rerender } = render(<SearchBox {...defaultProps} focusKey={0} />);
+    rerender(<SearchBox {...defaultProps} focusKey={1} />);
+    expect(document.activeElement).toBe(screen.getByLabelText('輸入學員編號或姓名'));
+  });
 });

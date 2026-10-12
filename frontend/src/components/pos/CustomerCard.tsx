@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import type { StudentAccount } from '../../domain/student';
 import type { TodayMenu } from '../../domain/menu';
+import { isMenuReady } from '../../domain/menu';
+import { Button } from '../ui/Button';
 import type { PosMode } from '../../domain/posFlow';
 import type { LedgerTransaction } from '../../domain/ledger';
 import { NumericInput } from '../ui/NumericInput';
@@ -27,6 +29,12 @@ interface CustomerCardProps {
   locked?: boolean;
   allStudentTransactions?: LedgerTransaction[];
   onViewHistoryBack?: () => void;
+  /** M1：看得到的送出鍵，與 Enter 同一個動作。 */
+  onConfirm?: () => void;
+  /** M1：看得到的取消鍵，與 Esc 同一個動作。 */
+  onCancel?: () => void;
+  /** 存檔中：按鈕暫時停用，避免重複送出。 */
+  busy?: boolean;
 }
 // Ref: #423 — weekly pagination helper
 function getWeekRange(offset: number): { start: string; end: string; label: string } {
@@ -88,7 +96,7 @@ function WeeklyHistoryView({ allStudentTransactions, onViewHistoryBack }: {
   );
 }
 
-export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel, focusZone, studentTransactions, onEditClick, onDeleteClick, locked, allStudentTransactions, onViewHistoryBack }: CustomerCardProps) {
+export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel, focusZone, studentTransactions, onEditClick, onDeleteClick, locked, allStudentTransactions, onViewHistoryBack, onConfirm, onCancel, busy = false }: CustomerCardProps) {
   const effectiveMealPrice = mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
   const payInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -98,6 +106,13 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
   }, [mode, focusZone]);
 
   const parsedPayAmount = Number(payAmount) || 0;
+  // M1：送出鍵的條件與 Enter 一致：繳費要有正整數金額；訂餐要有當天晚餐。
+  const canConfirm = mode === 'payment'
+    ? Number.isSafeInteger(parsedPayAmount) && parsedPayAmount > 0
+    : mode === 'order' ? isMenuReady(todayMenu) : false;
+  const confirmLabel = mode === 'payment'
+    ? '確認收款'
+    : orderedTodayCount > 0 ? `再訂一份（今日第 ${orderedTodayCount + 1} 份）` : '確認訂餐';
   const projectedBalance = mode === 'order'
     ? student.currentBalance - effectiveMealPrice + parsedPayAmount
     : student.currentBalance + parsedPayAmount;
@@ -207,7 +222,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                       />
                     </label>
                     <button type="button" className="ghost-btn" onClick={() => { setPriceOverride(null); setPriceOverrideLabel(''); }}>
-                      取消
+                      取消其他餐點
                     </button>
                   </div>
                 )}
@@ -242,6 +257,21 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
               </div>
 
               {/* §3.3: removed quick amount buttons from payment mode */}
+              {onConfirm && onCancel && !locked && (
+                <div className="pay-actions">
+                  <Button variant="primary" size="lg" onClick={onConfirm} disabled={busy || !canConfirm}>
+                    {confirmLabel} <span className="kbd kbd-light">↵</span>
+                  </Button>
+                  <Button variant="ghost" onClick={onCancel} disabled={busy}>
+                    取消 <span className="kbd">Esc</span>
+                  </Button>
+                </div>
+              )}
+              {onConfirm && !locked && !canConfirm && (
+                <div className="pay-actions-hint">
+                  {mode === 'payment' ? '請先輸入收款金額。' : '這天還沒設定晚餐，不能訂餐；可以按 W 改成只繳費。'}
+                </div>
+              )}
             </div>
           ) : focusZone !== 'view-status' && focusZone !== 'view-history' ? (
             <div className="cancel-empty">

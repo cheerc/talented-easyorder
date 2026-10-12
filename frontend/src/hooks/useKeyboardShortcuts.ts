@@ -38,6 +38,8 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
 
     const onKey = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
+      // M1：帶 Ctrl／Cmd／Alt 的組合鍵（例如 Ctrl+A 全選、Cmd+W）留給瀏覽器與系統，不當成 Q／W／E／A。
+      if ((e.ctrlKey || e.metaKey || e.altKey) && key.length === 1) return;
       const isPrimaryShortcut = ['q', 'w', 'e', 'a', 'escape', 'enter'].includes(key);
       if (e.defaultPrevented && !isPrimaryShortcut) return;
 
@@ -64,6 +66,8 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
         if (isStudentSelectedRef.current) {
           return;
         }
+        // M1：焦點在按鈕上（例如 Tab 到「新增櫃台收支」）時讓按鈕自己處理。
+        if (tag === 'BUTTON') return;
         e.preventDefault();
         handleConfirmRef.current();
         return;

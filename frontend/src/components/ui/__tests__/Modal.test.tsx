@@ -55,4 +55,39 @@ describe('Modal', () => {
     );
     expect(screen.getByRole('dialog')).toBeDefined();
   });
+
+  it('M1 K09：Esc 只關對話框，背景的 Esc 監聽收不到；onClose 換新函式也照樣有效', () => {
+    const background = vi.fn();
+    window.addEventListener('keydown', background);
+    try {
+      const first = vi.fn();
+      const second = vi.fn();
+      const { rerender } = render(<Modal open title="t" onClose={first}><p>x</p></Modal>);
+      rerender(<Modal open title="t" onClose={second}><p>x</p></Modal>);
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+      expect(second).toHaveBeenCalledOnce();
+      expect(first).not.toHaveBeenCalled();
+      expect(background).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('keydown', background);
+    }
+  });
+
+  it('M1 K09：開啟時焦點移進對話框，Tab 從背景拉回，關閉後還給原本的元素', () => {
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    outside.focus();
+    try {
+      const { rerender } = render(<Modal open title="t" onClose={() => {}}><input aria-label="金額" /><button>儲存</button></Modal>);
+      expect(document.activeElement).toBe(screen.getByLabelText('金額'));
+      outside.focus();
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', cancelable: true }));
+      expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
+      rerender(<Modal open={false} title="t" onClose={() => {}}><input aria-label="金額" /></Modal>);
+      expect(document.activeElement).toBe(outside);
+    } finally {
+      outside.remove();
+    }
+  });
 });
+

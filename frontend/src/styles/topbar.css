@@ -47,6 +47,7 @@
 .tab {
   display: flex;
   align-items: center;
+  white-space: nowrap;
   gap: 8px;
   padding: 8px 14px;
   border-radius: 8px;

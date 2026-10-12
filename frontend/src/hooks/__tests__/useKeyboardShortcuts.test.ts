@@ -237,4 +237,24 @@ describe('useKeyboardShortcuts', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(confirm).toHaveBeenCalledOnce();
   });
+
+  it('M1：焦點在按鈕上（例如 Tab 到新增櫃台收支）時 Enter 交給按鈕', () => {
+    const confirm = vi.fn<() => void>();
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode: vi.fn(), handleConfirm: confirm, cancelFlow: vi.fn() }));
+    const btn = document.createElement('button');
+    document.body.appendChild(btn);
+    btn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    btn.remove();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('M1：Ctrl／Cmd 組合鍵不觸發字母快捷鍵', () => {
+    const mode = vi.fn<(m: import('../../domain/posFlow').PosMode) => void>();
+    const expense = vi.fn<() => void>();
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode: mode, handleConfirm: vi.fn(), cancelFlow: vi.fn(), enterExpenseMode: expense }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'q', metaKey: true, bubbles: true }));
+    expect(expense).not.toHaveBeenCalled();
+    expect(mode).not.toHaveBeenCalled();
+  });
 });

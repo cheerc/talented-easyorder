@@ -35,6 +35,21 @@ function keydown(key: string, target?: Element) {
 }
 
 describe('useAppNavigationShortcuts — F-keys', () => {
+  it('M1 K09：有對話框開著時 F 鍵不切頁', () => {
+    const setTab = vi.fn();
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    document.body.appendChild(dialog);
+    try {
+      renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, setTab }));
+      keydown('F2');
+      expect(setTab).not.toHaveBeenCalled();
+    } finally {
+      dialog.remove();
+    }
+  });
+
   it('A1: F1 focuses POS tab, clears search, sets tab to pos', () => {
     const props = { ...DEFAULT_PROPS, tab: 'report', setSearchText: vi.fn(), setSearchFocusKey: vi.fn(), setTab: vi.fn() };
     renderHook(() => useAppNavigationShortcuts(props));
@@ -110,6 +125,28 @@ describe('useAppNavigationShortcuts — F-keys', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', repeat: true, bubbles: true }));
 
     expect(handleConfirm).not.toHaveBeenCalled();
+  });
+
+  it('M1：焦點在按鈕上時 Enter 交給按鈕（取消鍵不會被當成送出）', () => {
+    const handleConfirm = vi.fn();
+    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, handleConfirm, focusZone: 'mode-order', currentMode: 'order' }));
+
+    keydown('Enter', document.createElement('button'));
+
+    expect(handleConfirm).not.toHaveBeenCalled();
+  });
+
+  it('M1：滑鼠點過上方模式鍵（焦點在 .actionbar 的按鈕）後，Enter 仍照目前模式送出', () => {
+    const handleConfirm = vi.fn();
+    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, handleConfirm, focusZone: 'mode-order', currentMode: 'order' }));
+    const bar = document.createElement('div');
+    bar.className = 'actionbar';
+    const modeBtn = document.createElement('button');
+    bar.appendChild(modeBtn);
+
+    keydown('Enter', modeBtn);
+
+    expect(handleConfirm).toHaveBeenCalledOnce();
   });
 
   it('A7b: Enter on view-status is no-op (does not call cancelOrder)', () => {

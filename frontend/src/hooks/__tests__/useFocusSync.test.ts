@@ -46,4 +46,14 @@ describe('useFocusSync', () => {
 
     expect(setFocusZone).toHaveBeenCalledWith('mode-order');
   });
+
+  it('M1：回到 idle 時清空搜尋並把游標放回搜尋框', () => {
+    const state: PosFlowState = { kind: 'idle', searchText: '' };
+    const clearText = vi.fn<(text: string) => void>();
+    const bumpKey = vi.fn<React.Dispatch<React.SetStateAction<number>>>();
+    renderHook(() => useFocusSync(state, 'pos', clearText, bumpKey, vi.fn(), 'mode-order'));
+    expect(clearText).toHaveBeenCalledWith('');
+    const updater = bumpKey.mock.calls[0][0] as (k: number) => number;
+    expect(updater(3)).toBe(4);
+  });
 });
