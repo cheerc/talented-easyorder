@@ -1,114 +1,102 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
-import type { StudentAccount } from '../domain/student';
+import { ReasonField } from './ui/ReasonField';
 import type { LedgerTransaction } from '../domain/ledger';
+import type { LedgerMutationResult } from '../domain/ledgerAudit';
 
 interface CancelOrderDialogProps {
   open: boolean;
-  picked: StudentAccount | null;
+  /** 帳戶名稱與目前餘額，用來先說明取消後的影響。 */
+  account: { displayName: string; currentBalance: number } | null;
   orderTx: LedgerTransaction | null;
-  onConfirm: (keepPaymentAsDeposit: boolean) => void;
+  /** M2：理由必填；回傳失敗（例如已關帳）時對話框留著並顯示原因。 */
+  onConfirm: (keepPaymentAsDeposit: boolean, reason: string) => LedgerMutationResult;
   onCancel: () => void;
 }
 
+const money = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(n)}`;
+
 export const CancelOrderDialog = React.memo(function CancelOrderDialog({
   open,
-  picked,
+  account,
   orderTx,
   onConfirm,
   onCancel,
 }: CancelOrderDialogProps) {
   const [keepPaymentAsDeposit, setKeepPaymentAsDeposit] = useState(false);
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | undefined>();
 
   useEffect(() => {
     if (open) {
       setKeepPaymentAsDeposit(false);
+      setReason('');
+      setError(undefined);
     }
   }, [open]);
 
-  const hasPaidAmount = !!(picked && orderTx && orderTx.paidAmount > 0);
+  const hasPaidAmount = !!(account && orderTx && orderTx.paidAmount > 0);
+  const keep = hasPaidAmount && keepPaymentAsDeposit;
 
   const handleConfirm = useCallback(() => {
-    onConfirm(hasPaidAmount ? keepPaymentAsDeposit : false);
-  }, [onConfirm, hasPaidAmount, keepPaymentAsDeposit]);
+    const result = onConfirm(keep, reason);
+    if (!result.ok) setError(result.message);
+  }, [onConfirm, keep, reason]);
 
-  // Ref: #391 — keyboard nav for refund option radios + Enter confirm
+  // Ref: #391 — ↑／↓ 切換退款方式。Enter 由理由欄處理（輸入法選字的 Enter 不算）。
   useEffect(() => {
-    if (!open) return;
+    if (!open || !hasPaidAmount) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowDown' && hasPaidAmount) {
-        e.preventDefault();
-        setKeepPaymentAsDeposit(true);
-        return;
-      }
-      if (e.key === 'ArrowUp' && hasPaidAmount) {
-        e.preventDefault();
-        setKeepPaymentAsDeposit(false);
-        return;
-      }
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        handleConfirm();
-        return;
-      }
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      setKeepPaymentAsDeposit(e.key === 'ArrowDown');
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, hasPaidAmount, handleConfirm]);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [open, hasPaidAmount]);
 
+  if (!account || !orderTx) return null;
 
-  if (!picked) return null;
+  // M2：先說清楚對帳戶與櫃台現金的影響。刪掉這筆訂餐，餘額扣回本筆的淨額；保留收款時只退餐費。
+  const before = account.currentBalance;
+  const after = keep ? before + orderTx.mealPrice : before - orderTx.amount;
+  const cashText = !keep && orderTx.paidAmount > 0
+    ? `櫃台退還現金 $${orderTx.paidAmount}`
+    : '櫃台現金不變';
 
   return (
     <Modal open={open} title="取消訂餐" onClose={onCancel}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {hasPaidAmount ? (
+        <p style={{ margin: 0, color: 'var(--ink-1)', fontSize: '15px', fontWeight: 500 }}>
+          取消 {account.displayName} 的訂餐 — {orderTx.menuNameSnapshot || orderTx.note || '今日便當'}（${orderTx.mealPrice}）
+        </p>
+        {hasPaidAmount && (
           <>
-            <p style={{ margin: 0, color: 'var(--ink-1)', fontSize: '15px', fontWeight: 500 }}>
-              取消訂餐 — {orderTx.note || '今日便當'}
-            </p>
             <p style={{ margin: 0, color: 'var(--ink-2)', fontSize: '14px', lineHeight: 1.5 }}>
-              本次訂餐含繳費 ${orderTx.paidAmount}，請選擇處理方式：
+              這筆訂餐同時收了 ${orderTx.paidAmount}，請選擇處理方式（↑／↓ 切換）：
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '8px 0' }}>
+            <div role="radiogroup" aria-label="收款處理方式" style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '4px 0' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="refundMethod"
-                  checked={!keepPaymentAsDeposit}
-                  onChange={() => setKeepPaymentAsDeposit(false)}
-                />
-                <span style={{ color: 'var(--ink-1)', fontSize: '14px' }}>
-                  退還現金（餘額恢復至訂餐前）
-                </span>
+                <input type="radio" name="refundMethod" checked={!keepPaymentAsDeposit} onChange={() => setKeepPaymentAsDeposit(false)} />
+                <span style={{ color: 'var(--ink-1)', fontSize: '14px' }}>退還這筆收款（現金還給對方）</span>
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="refundMethod"
-                  checked={keepPaymentAsDeposit}
-                  onChange={() => setKeepPaymentAsDeposit(true)}
-                />
-                <span style={{ color: 'var(--ink-1)', fontSize: '14px' }}>
-                  保留至帳戶餘額（取消便當但繳費保留）
-                </span>
+                <input type="radio" name="refundMethod" checked={keepPaymentAsDeposit} onChange={() => setKeepPaymentAsDeposit(true)} />
+                <span style={{ color: 'var(--ink-1)', fontSize: '14px' }}>收款留在帳戶（只取消餐費）</span>
               </label>
             </div>
           </>
-        ) : (
-          <p style={{ margin: '0 0 8px', color: 'var(--ink-2)', fontSize: '15px', lineHeight: 1.6 }}>
-            確定要取消 {picked.displayName} 的訂餐嗎？
-          </p>
         )}
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
-          <Button variant="ghost" onClick={onCancel}>
-            返回
-          </Button>
-          <Button variant="danger" onClick={handleConfirm}>
-            確認取消
-          </Button>
+        <div className="cancel-impact" aria-live="polite" style={{ padding: '10px 12px', borderRadius: 'var(--r)', background: 'var(--line-2)', fontSize: '14px', lineHeight: 1.6 }}>
+          <div>帳戶餘額：{money(before)} → <strong>{money(after)}</strong></div>
+          <div>{cashText}</div>
+        </div>
+        <ReasonField value={reason} onChange={v => { setReason(v); setError(undefined); }} onSubmit={handleConfirm} error={error} autoFocus />
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '4px' }}>
+          <Button variant="ghost" onClick={onCancel}>返回</Button>
+          <Button variant="danger" onClick={handleConfirm}>確認取消</Button>
         </div>
       </div>
     </Modal>

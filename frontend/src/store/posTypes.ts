@@ -2,7 +2,7 @@
 import type { StudentAccount } from '../domain/student';
 import type { Vendor, TodayMenu } from '../domain/menu';
 import type { LedgerTransaction } from '../domain/ledger';
-import type { LedgerAuditEvent } from '../domain/ledgerAudit';
+import type { LedgerAuditEvent, LedgerMutationOptions, LedgerMutationResult } from '../domain/ledgerAudit';
 import type { PosTransactionDraft } from '../domain/posTransaction';
 import type { DailyCashSession } from '../domain/cashSession';
 import type { DailySettlement } from '../domain/cashClose';
@@ -13,6 +13,8 @@ export interface DeleteOrderResult {
   refundAmount: number;
   studentName: string;
   wasClosedDate: boolean;
+  /** deleted=false 時給櫃台人員看的原因（關帳日、缺理由、找不到）。 */
+  message?: string;
 }
 
 export interface CloseBusinessDateInput {
@@ -93,10 +95,10 @@ export interface TransactionActions {
     paidAmount: number,
     note?: string
   ) => void;
-  updateTransaction: (id: string, updates: Partial<LedgerTransaction>) => void;
-  deleteTransaction: (id: string) => void;
-  deleteOrderWithRefundCheck: (id: string, operatorId?: string, keepPaymentAsDeposit?: boolean) => DeleteOrderResult;
-  editTransaction: (id: string, updates: { mealPrice?: number; paidAmount?: number; note?: string }, operatorId?: string) => void;
+  /** M2：理由必填、已關帳的日期擋下；原單整筆寫進稽核。 */
+  deleteTransaction: (id: string, opts: LedgerMutationOptions) => LedgerMutationResult;
+  deleteOrderWithRefundCheck: (id: string, opts: LedgerMutationOptions & { keepPaymentAsDeposit?: boolean }) => DeleteOrderResult;
+  editTransaction: (id: string, updates: { mealPrice?: number; paidAmount?: number; note?: string }, opts: LedgerMutationOptions) => LedgerMutationResult;
 }
 
 /** Menu domain actions */

@@ -10,6 +10,7 @@ function eventTypeLabel(t: LedgerAuditEvent['eventType']) {
     case 'transaction_corrected': return '更正';
     case 'transaction_voided': return '作廢';
     case 'transaction_hard_deleted': return '刪除';
+    case 'transaction_deleted': return '刪除';
     case 'business_date_closed': return '關帳';
     case 'business_date_reopened': return '重開';
     case 'csv_exported': return '匯出 CSV';
@@ -22,15 +23,25 @@ function eventTypeClass(t: LedgerAuditEvent['eventType']) {
     case 'transaction_corrected': return 'pill-warn';
     case 'transaction_voided': return 'pill-err';
     case 'transaction_hard_deleted': return 'pill-err';
+    case 'transaction_deleted': return 'pill-err';
     case 'business_date_closed': return 'pill-ok';
     case 'business_date_reopened': return 'pill-warn';
     default: return 'pill';
   }
 }
 
+/** 舊版稽核的 reason 只記 'edit'／'delete' 這類代碼，不是人寫的理由。 */
+function readableReason(reason: string): string {
+  return reason === 'edit' || reason === 'delete' ? '' : reason;
+}
+
 function beforeAfterSummary(before: Record<string, unknown> | null, after: Record<string, unknown> | null): string {
   if (!before) return after ? '(新建)' : '-';
-  if (!after) return '(已刪除)';
+  if (!after) {
+    // M2：刪除時原單整筆存在 before，列出金額方便對照。
+    const meal = before.mealPrice, paid = before.paidAmount;
+    return meal === undefined && paid === undefined ? '(已刪除)' : `(已刪除) 原單：應收 ${meal ?? 0}、實收 ${paid ?? 0}`;
+  }
   const changes: string[] = [];
   const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
   for (const key of allKeys) {
@@ -80,7 +91,10 @@ export const AuditTrailTable = React.memo(function AuditTrailTable() {
           <div><span className={eventTypeClass(e.eventType)}>{eventTypeLabel(e.eventType)}</span></div>
           <div>{e.operatorId}</div>
           <div className="mono dim" style={{ fontSize: '12px' }}>{e.entityType}: {e.entityId.slice(0, 12)}…</div>
-          <div className="dim" style={{ fontSize: '12px' }}>{beforeAfterSummary(e.before, e.after)}</div>
+          <div className="dim" style={{ fontSize: '12px' }}>
+            {readableReason(e.reason) && <strong style={{ color: 'var(--ink)' }}>理由：{readableReason(e.reason)}｜</strong>}
+            {beforeAfterSummary(e.before, e.after)}
+          </div>
           <div className="mono">{e.businessDate}</div>
         </div>
       ))}

@@ -91,7 +91,7 @@ describe('expenseActions — commitPosTransactionDraft (expense)', () => {
   });
 });
 
-describe('editActions — updateTransaction + cascade', () => {
+describe('editActions — editTransaction + cascade', () => {
   it('propagates balance change to subsequent transactions of same student', () => {
     seedStudent('s1', '學生A', 1000);
     seedMenu();
@@ -108,7 +108,7 @@ describe('editActions — updateTransaction + cascade', () => {
 
     // Edit the oldest transaction (last in array, index 2) — change mealPrice from 60 to 100
     const oldestTxId = state.transactions[2].transactionId;
-    usePosStore.getState().updateTransaction(oldestTxId, { mealPrice: 100 });
+    usePosStore.getState().editTransaction(oldestTxId, { mealPrice: 100 }, { reason: '測試' });
 
     const updated = usePosStore.getState();
     // Balance diff: was -60 (amount = 0-60), now -100 (amount = 0-100), diff = -40
@@ -122,7 +122,7 @@ describe('editActions — updateTransaction + cascade', () => {
     usePosStore.getState().processTransaction('s1', 'order', 60, 0, '訂單');
 
     const txId = usePosStore.getState().transactions[0].transactionId;
-    usePosStore.getState().deleteTransaction(txId, '刪除原因', 'operator1');
+    usePosStore.getState().deleteTransaction(txId, { reason: '刪除原因', operatorId: 'operator1' });
 
     const state = usePosStore.getState();
     // After delete, tx should be removed and balance restored

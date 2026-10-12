@@ -118,7 +118,7 @@ function AppContent() {
   const handleConfirm = useConfirmHandler({ state, requestConfirm, confirmDuplicate, confirmExpenseAmount, orderBlocked: !isMenuReady(todayMenu) });
 
   const { cancelDialogOpen, setCancelDialogOpen, noOrderDialogOpen, setNoOrderDialogOpen,
-    openCancelConfirm, openCancelConfirmForTx, handleDeleteOrder } = useCancelDialog({ picked, allTx, viewDate, allStudents: students, selectStudent });
+    orderTx: cancelOrderTx, openCancelConfirm, openCancelConfirmForTx, handleDeleteOrder } = useCancelDialog({ picked, allTx, viewDate, allStudents: students, selectStudent, operatorId: operatorUid });
 
   // Ref: #281 — Extracted to useCommitLifecycle hook
   const { lastSync } = useCommitLifecycle({
@@ -221,8 +221,12 @@ function AppContent() {
       flashData={flashData} onDismissFlash={dismissFlash}
       onUndo={handleUndo} undoCountdown={undoCountdown}
       cancelDialogOpen={cancelDialogOpen} picked={picked}
-      orderTx={picked ? allTx.find(t => t.studentId === picked.studentId && t.businessDate === viewDate && t.type === 'order') : null}
-      onCancelDialogConfirm={(keepPaymentAsDeposit) => { handleDeleteOrder(keepPaymentAsDeposit); setCancelDialogOpen(false); cancelFlow(); }}
+      orderTx={cancelOrderTx}
+      onCancelDialogConfirm={(keepPaymentAsDeposit, reason) => {
+        const result = handleDeleteOrder(keepPaymentAsDeposit, reason);
+        if (result.ok) { setCancelDialogOpen(false); cancelFlow(); }
+        return result;
+      }}
       onCancelDialogCancel={() => setCancelDialogOpen(false)}
       noOrderDialogOpen={noOrderDialogOpen}
       onNoOrderDialogClose={() => setNoOrderDialogOpen(false)}

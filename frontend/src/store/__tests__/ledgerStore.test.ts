@@ -25,7 +25,7 @@ describe('ledgerStore — audit events', () => {
   it('editTransaction appends audit event', () => {
     const store = usePosStore.getState();
     const tx = store.transactions[0];
-    store.editTransaction(tx.transactionId, { mealPrice: 90, paidAmount: 50, note: 'test' });
+    store.editTransaction(tx.transactionId, { mealPrice: 90, paidAmount: 50, note: 'test' }, { reason: '測試' });
     const next = usePosStore.getState();
     expect(next.auditEvents).toHaveLength(1);
     expect(next.auditEvents[0].eventType).toBe('transaction_edited');
@@ -36,7 +36,7 @@ describe('ledgerStore — audit events', () => {
     const store = usePosStore.getState();
     const tx = store.transactions[0];
     expect(tx).toBeTruthy();
-    store.deleteTransaction(tx.transactionId);
+    store.deleteTransaction(tx.transactionId, { reason: '測試' });
     const next = usePosStore.getState();
     expect(next.transactions.find(t => t.transactionId === tx.transactionId)).toBeUndefined();
   });
@@ -45,7 +45,7 @@ describe('ledgerStore — audit events', () => {
     const store = usePosStore.getState();
     const tx = store.transactions[0];
     const prevAuditCount = store.auditEvents.length;
-    const result = store.deleteOrderWithRefundCheck(tx.transactionId);
+    const result = store.deleteOrderWithRefundCheck(tx.transactionId, { reason: '測試' });
     if (result.deleted) {
       const next = usePosStore.getState();
       expect(next.auditEvents.length).toBe(prevAuditCount + 1);
@@ -62,7 +62,7 @@ describe('ledgerStore — edit transaction', () => {
     const tx = store.transactions[0];
     if (!tx) return;
 
-    store.editTransaction(tx.transactionId, { mealPrice: 100, paidAmount: 100, note: 'updated' });
+    store.editTransaction(tx.transactionId, { mealPrice: 100, paidAmount: 100, note: 'updated' }, { reason: '測試' });
 
     const next = usePosStore.getState();
     const edited = next.transactions.find(t => t.transactionId === tx.transactionId)!;
@@ -85,7 +85,7 @@ describe('ledgerStore — closed date blocks', () => {
     store.setBusinessDateStatus(tx.businessDate, 'closed');
     const prevCount = store.auditEvents.length;
 
-    store.editTransaction(tx.transactionId, { paidAmount: 100 });
+    store.editTransaction(tx.transactionId, { paidAmount: 100 }, { reason: '測試' });
 
     // Should be a no-op - no additional audit event
     const next = usePosStore.getState();

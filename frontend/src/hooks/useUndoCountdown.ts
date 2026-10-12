@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTransactionActions } from '../store/selectors';
 
+export const UNDO_REASON = '送出後立即撤回';
+
 interface UseUndoCountdownArgs {
   dismissSuccess: () => void;
   setFlashKey: (value: React.SetStateAction<number>) => void;
@@ -46,7 +48,8 @@ export function useUndoCountdown({
   const handleUndo = useCallback(() => {
     const txId = lastCommittedTxIdRef.current;
     if (!txId) return;
-    deleteTransaction(txId);
+    // M2：撤回也留下原單與理由在稽核紀錄。
+    deleteTransaction(txId, { reason: UNDO_REASON });
     lastCommittedTxIdRef.current = null;
     setUndoCountdown(0);
     dismissFlash();

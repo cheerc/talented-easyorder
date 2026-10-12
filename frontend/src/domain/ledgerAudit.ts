@@ -77,3 +77,28 @@ export function createLedgerAuditEvent(input: AuditEventInput): LedgerAuditEvent
   };
 }
 
+
+/** M2：更正、刪除、取消訂餐共用的檢查結果。ok=false 時 message 直接顯示給櫃台人員。 */
+export type LedgerMutationResult = { ok: true } | { ok: false; message: string };
+
+/** 改帳時一定要帶的資訊：理由必填；操作員沒給時記為系統。 */
+export interface LedgerMutationOptions {
+  reason: string;
+  operatorId?: string;
+}
+
+export const LEDGER_CLOSED_DATE_MESSAGE = '這一天已經關帳，請先到今日帳（F2）重開，再更正或刪除。';
+export const LEDGER_REASON_REQUIRED_MESSAGE = '請填寫理由。';
+
+/**
+ * M2：所有改帳入口（更正、刪除、取消訂餐、撤回）共用的檢查。
+ * 已關帳的營業日一律擋下；理由去掉空白後不能是空的。
+ */
+export function checkLedgerMutation(
+  dateStatus: BusinessDateStatus | undefined,
+  reason: string,
+): LedgerMutationResult {
+  if (dateStatus === 'closed') return { ok: false, message: LEDGER_CLOSED_DATE_MESSAGE };
+  if (!reason.trim()) return { ok: false, message: LEDGER_REASON_REQUIRED_MESSAGE };
+  return { ok: true };
+}

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useUndoCountdown } from '../useUndoCountdown';
+import { useUndoCountdown, UNDO_REASON } from '../useUndoCountdown';
 import { usePosStore } from '../../store/posStore';
 
 let dismissSuccess: ReturnType<typeof vi.fn>;
@@ -103,6 +103,10 @@ describe('useUndoCountdown', () => {
     const txs = usePosStore.getState().transactions;
     expect(txs.find(t => t.transactionId === tx.transactionId)).toBeUndefined();
     expect(result.current.undoCountdown).toBe(0);
+    // M2：撤回也留下原單與理由
+    expect(usePosStore.getState().auditEvents.at(-1)).toMatchObject({
+      eventType: 'transaction_deleted', entityId: tx.transactionId, reason: UNDO_REASON,
+    });
   });
 
   it('U7: handleUndo no-ops when lastCommittedTxIdRef is null', () => {
