@@ -311,6 +311,19 @@ describe('reducePosFlow — error transitions', () => {
     retryable: true,
   };
 
+  it('M1：retryCommit 用原本的草稿重送', () => {
+    expect(reducePosFlow(errorWithContext, { type: 'retryCommit' })).toEqual({
+      kind: 'committing', studentId: '001', mode: 'order', source: 'manual', paidAmountText: '50',
+    });
+  });
+
+  it('M1：不可重試的錯誤與櫃台收支錯誤不重送', () => {
+    const notRetryable: PosFlowState = { ...errorWithContext, retryable: false } as PosFlowState;
+    expect(reducePosFlow(notRetryable, { type: 'retryCommit' })).toBe(notRetryable);
+    const expense: PosFlowState = { kind: 'error', mode: 'expense', source: 'manual', paidAmountText: '', message: 'x', retryable: true };
+    expect(reducePosFlow(expense, { type: 'retryCommit' })).toBe(expense);
+  });
+
   describe('reducePosFlow — expense flow cancel returns parent state', () => {
     it('expense_direction cancel returns expense_input with current amount', () => {
       const state: PosFlowState = { kind: 'expense_direction', amount: 500 };

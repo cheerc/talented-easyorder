@@ -109,4 +109,67 @@ describe('ConfirmDialog', () => {
     const confirmBtn = screen.getByText('確認');
     expect(confirmBtn.className).toContain('btn-danger');
   });
+
+  describe('M1 K08：重複訂餐這類確認不能被 Enter 穿過', () => {
+    function renderDefaultCancel() {
+      const onConfirm = vi.fn();
+      const onCancel = vi.fn();
+      render(
+        <ConfirmDialog open title="已經訂過便當" message="再訂一份？" onConfirm={onConfirm} onCancel={onCancel}
+          confirmLabel="是，再訂一份" cancelLabel="否，不加訂" defaultAction="cancel" />
+      );
+      return { onConfirm, onCancel };
+    }
+
+    it('defaultAction=cancel 時取消鍵取得初始焦點，Enter 等於取消', async () => {
+      const user = userEvent.setup();
+      const { onConfirm, onCancel } = renderDefaultCancel();
+      expect(document.activeElement?.textContent).toBe('否，不加訂');
+      await user.keyboard('{Enter}');
+      expect(onCancel).toHaveBeenCalledOnce();
+      expect(onConfirm).not.toHaveBeenCalled();
+    });
+
+    it('焦點不在對話框按鈕上時，Enter 也走預設的取消', () => {
+      const { onConfirm, onCancel } = renderDefaultCancel();
+      (document.activeElement as HTMLElement | null)?.blur();
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+      expect(onCancel).toHaveBeenCalledOnce();
+      expect(onConfirm).not.toHaveBeenCalled();
+    });
+
+    it('→ 移到確認鍵再按 Enter 才加訂', async () => {
+      const user = userEvent.setup();
+      const { onConfirm, onCancel } = renderDefaultCancel();
+      await user.keyboard('{ArrowRight}');
+      expect(document.activeElement?.textContent).toBe('是，再訂一份');
+      await user.keyboard('{Enter}');
+      expect(onConfirm).toHaveBeenCalledOnce();
+      expect(onCancel).not.toHaveBeenCalled();
+      await user.keyboard('{ArrowLeft}');
+      expect(document.activeElement?.textContent).toBe('否，不加訂');
+    });
+
+    it('長按產生的重複 Enter 與輸入法選字的 Enter 都被吞掉', () => {
+      const onConfirm = vi.fn();
+      const onCancel = vi.fn();
+      render(<ConfirmDialog open title="t" message="m" onConfirm={onConfirm} onCancel={onCancel} />);
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', repeat: true, cancelable: true }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, cancelable: true }));
+      expect(onConfirm).not.toHaveBeenCalled();
+      expect(onCancel).not.toHaveBeenCalled();
+    });
+
+    it('對話框開著時背景的 Enter 監聽收不到這次 Enter', () => {
+      const background = vi.fn();
+      window.addEventListener('keydown', background);
+      try {
+        renderDefaultCancel();
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+        expect(background).not.toHaveBeenCalled();
+      } finally {
+        window.removeEventListener('keydown', background);
+      }
+    });
+  });
 });

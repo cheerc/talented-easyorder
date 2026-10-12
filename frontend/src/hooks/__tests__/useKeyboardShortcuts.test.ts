@@ -228,4 +228,13 @@ describe('useKeyboardShortcuts', () => {
       document.body.removeChild(input);
     });
   });
+
+  it('M1 K08：長按 Enter 的重複事件不送出', () => {
+    const confirm = vi.fn<() => void>();
+    renderHook(() => useKeyboardShortcuts({ enabled: true, changeMode: vi.fn(), handleConfirm: confirm, cancelFlow: vi.fn() }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', repeat: true, bubbles: true }));
+    expect(confirm).not.toHaveBeenCalled();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(confirm).toHaveBeenCalledOnce();
+  });
 });

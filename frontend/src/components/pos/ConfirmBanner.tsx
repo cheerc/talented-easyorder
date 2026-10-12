@@ -21,6 +21,8 @@ export const ConfirmBanner = React.memo(function ConfirmBanner({ flash, onDismis
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') {
         e.preventDefault();
+        // M1 K08：送出那一下的長按不能順手把成功畫面關掉，要放開再按一次才回搜尋。
+        if (e.repeat) return;
         onDismiss();
       }
     };

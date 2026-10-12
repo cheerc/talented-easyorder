@@ -34,6 +34,7 @@ export type PosFlowEvent =
   | { type: 'commitStarted' }
   | { type: 'commitSucceeded'; transactionId: string; syncStatus: 'queued' | 'synced' | 'failed' }
   | { type: 'commitFailed'; message: string; retryable: boolean }
+  | { type: 'retryCommit' }
   | { type: 'dismissSuccess' }
   | { type: 'cancel' }
   | { type: 'enterHistoricalReadonly'; businessDate: string };
@@ -212,6 +213,10 @@ function reduceSuccess(state: PosFlowState & { kind: 'success' }, event: PosFlow
 
 function reduceError(state: PosFlowState & { kind: 'error' }, event: PosFlowEvent): PosFlowState {
   if (event.type === 'cancel') return { kind: 'idle', searchText: '' };
+  // M1：儲存失敗時草稿留著，可重送同一筆。櫃台收支的錯誤狀態沒帶金額與原因，不能重送，只能取消重來。
+  if (event.type === 'retryCommit' && state.retryable && state.studentId && state.mode && state.mode !== 'expense' && state.source) {
+    return { kind: 'committing', studentId: state.studentId, mode: state.mode, source: state.source, paidAmountText: state.paidAmountText ?? '' };
+  }
   return state;
 }
 

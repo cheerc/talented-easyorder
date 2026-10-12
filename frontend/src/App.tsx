@@ -129,13 +129,16 @@ function AppContent() {
   });
 
   const hasFlash = state.kind === 'success';
-  const isStudentSelected = picked !== null && (state.kind === 'student_selected' || state.kind === 'duplicate_warning' || state.kind === 'committing');
+  const isStudentSelected = picked !== null && (state.kind === 'student_selected' || state.kind === 'duplicate_warning' || state.kind === 'committing' || state.kind === 'error');
   const isExpenseFlow = state.kind === 'expense_input' || state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note';
+
+  // M1 K08：重複訂餐確認也是對話框，開著時背景的 Enter／方向鍵／Q W 都不處理，交給對話框。
+  const isDialogOpen = cancelDialogOpen || noOrderDialogOpen || state.kind === 'duplicate_warning';
 
   useKeyboardShortcuts({
     enabled: tab === 'pos' && !hasFlash && !isExpenseFlow,
     changeMode, cancelOrder: openCancelConfirm, isStudentSelected, handleConfirm, cancelFlow, enterExpenseMode, setFocusZone,
-    isDialogOpen: cancelDialogOpen || noOrderDialogOpen,
+    isDialogOpen,
   });
 
   const { tweaks } = useTweaks();
@@ -146,7 +149,7 @@ function AppContent() {
   // Ref: #281 — Extracted to useExpenseProps hook
   const expenseProps = useExpenseProps(state);
 
-  const flashData = useFlashData({ isSuccess, picked, currentMode, currentPaidAmount, todayMenu, flashKey, priceOverride, allTx });
+  const flashData = useFlashData({ isSuccess, picked, currentMode, currentPaidAmount, todayMenu, flashKey, priceOverride, priceOverrideLabel, allTx });
 
   useAppNavigationShortcuts({
     tab, setTab, setShowDashboard,
@@ -154,7 +157,7 @@ function AppContent() {
     changeMode: changeMode as (m: PosMode) => void,
     cancelFlow, handleConfirm, setSearchText, setSearchFocusKey,
     cancelOrder: openCancelConfirm,
-    isDialogOpen: cancelDialogOpen || noOrderDialogOpen,
+    isDialogOpen,
   });
 
   // Ref: #316 — Replaced inline 30-dep useMemo with usePosColumnProps hook.

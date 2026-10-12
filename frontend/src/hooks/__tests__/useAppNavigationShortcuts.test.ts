@@ -103,6 +103,15 @@ describe('useAppNavigationShortcuts — F-keys', () => {
     expect(handleConfirm).toHaveBeenCalled();
   });
 
+  it('M1 K08：長按 Enter 的重複事件不送出', () => {
+    const handleConfirm = vi.fn();
+    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, handleConfirm, focusZone: 'mode-order', currentMode: 'order' }));
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', repeat: true, bubbles: true }));
+
+    expect(handleConfirm).not.toHaveBeenCalled();
+  });
+
   it('A7b: Enter on view-status is no-op (does not call cancelOrder)', () => {
     const cancelOrder = vi.fn();
     renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, cancelOrder, focusZone: 'view-status' }));

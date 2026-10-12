@@ -31,6 +31,19 @@ describe('useConfirmHandler', () => {
     expect(confirmDuplicate).toHaveBeenCalledOnce();
   });
 
+  it('M1：儲存失敗後 Enter 交給 requestConfirm 重送同一筆', () => {
+    const state: PosFlowState = { kind: 'error', studentId: 's1', mode: 'order', source: 'manual', paidAmountText: '', message: 'x', retryable: true };
+    const requestConfirm = vi.fn();
+    const confirmDuplicate = vi.fn();
+    const confirmExpenseAmount = vi.fn();
+
+    const { result } = renderHook(() =>
+      useConfirmHandler({ state, requestConfirm, confirmDuplicate, confirmExpenseAmount })
+    );
+    result.current();
+    expect(requestConfirm).toHaveBeenCalledOnce();
+  });
+
   it('calls confirmExpenseAmount with parsed amount when expense_input', () => {
     const state: PosFlowState = { kind: 'expense_input', amountText: '50' };
     const requestConfirm = vi.fn();

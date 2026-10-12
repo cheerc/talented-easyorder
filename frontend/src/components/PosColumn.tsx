@@ -186,6 +186,13 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 onCancel={cancelFlow}
               />
             ) : (
+              <>
+              {state.kind === 'error' && (
+                <div className="pos-commit-error" role="alert">
+                  沒有存進去：{state.message}。這筆草稿還在，
+                  {state.retryable ? '按 Enter 重送同一筆，' : ''}按 Esc 取消重來。
+                </div>
+              )}
               <CustomerCard
                 student={picked}
                 todayMenu={todayMenu}
@@ -207,16 +214,18 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 allStudentTransactions={allStudentTransactions}
                 onViewHistoryBack={() => setFocusZone('mode-' + currentMode)}
               />
+              </>
             )}
             <ConfirmDialog
               open={state.kind === 'duplicate_warning'}
               title="❗ 已經訂過便當"
-              message={`該學生今天已經訂過 ${orderedTodayCount} 次便當。確定要再訂一份嗎？ (家長可能用同一帳號為多位學員訂餐)`}
+              message={`該學生今天已經訂過 ${orderedTodayCount} 次便當。確定要再訂一份嗎？（家長可能用同一帳號為多位學員訂餐）預設是不加訂；要加訂請按 → 移到「是，再訂一份」再按 Enter，或直接點它。`}
               onConfirm={handleConfirm}
               onCancel={cancelFlow}
               confirmLabel="是，再訂一份"
-              cancelLabel="否"
+              cancelLabel="否，不加訂"
               variant="danger"
+              defaultAction="cancel"
             />
           </>
         )}

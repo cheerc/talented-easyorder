@@ -41,6 +41,7 @@ export function useConfirmHandler({
       confirmExpenseAmountRef.current(n); return;
     }
     if (s.kind === 'duplicate_warning') { confirmDuplicateRef.current(); return; }
+    if (s.kind === 'error') { requestConfirmRef.current(); return; }
     if (s.kind !== 'student_selected') return;
     if (s.mode === 'order' && orderBlockedRef.current) return;
     requestConfirmRef.current();
