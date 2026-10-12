@@ -28,9 +28,10 @@ export const CancelOrderDialog = React.memo(function CancelOrderDialog({
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | undefined>();
 
+  // 規格 L-TRACE：預設不能自動退現。有收款時預設「收款留在帳戶」，要退現金得自己按 ↑ 或點選。
   useEffect(() => {
     if (open) {
-      setKeepPaymentAsDeposit(false);
+      setKeepPaymentAsDeposit(true);
       setReason('');
       setError(undefined);
     }
@@ -44,11 +45,13 @@ export const CancelOrderDialog = React.memo(function CancelOrderDialog({
     if (!result.ok) setError(result.message);
   }, [onConfirm, keep, reason]);
 
-  // Ref: #391 — ↑／↓ 切換退款方式。Enter 由理由欄處理（輸入法選字的 Enter 不算）。
+  // Ref: #391 — ↑／↓ 切換退款方式（↑ 退還、↓ 留在帳戶）。Enter 由理由欄處理（輸入法選字的 Enter 不算）。
   useEffect(() => {
     if (!open || !hasPaidAmount) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      // 理由欄用注音選字時 ↑／↓ 是選候選字，不能拿來切換退款方式。
+      if (e.isComposing || e.keyCode === 229) return;
       e.preventDefault();
       e.stopImmediatePropagation();
       setKeepPaymentAsDeposit(e.key === 'ArrowDown');

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useUndoCountdown, UNDO_REASON } from '../useUndoCountdown';
 import { usePosStore } from '../../store/posStore';
+import { onError } from '../../errors/errorBus';
 
 let dismissSuccess: ReturnType<typeof vi.fn>;
 let setFlashKey: ReturnType<typeof vi.fn>;
@@ -23,8 +24,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function getProps() {
-  return { dismissSuccess, setFlashKey, setSyncing, setPriceOverride, setPriceOverrideLabel };
+function getProps(): Parameters<typeof useUndoCountdown>[0] {
+  return { dismissSuccess, setFlashKey, setSyncing, setPriceOverride, setPriceOverrideLabel } as unknown as Parameters<typeof useUndoCountdown>[0];
 }
 
 describe('useUndoCountdown', () => {
@@ -120,5 +121,27 @@ describe('useUndoCountdown', () => {
 
     expect(usePosStore.getState().transactions.length).toBe(txCountBefore);
     expect(props.dismissSuccess).not.toHaveBeenCalled();
+  });
+
+  it('撤回帶操作員；失敗時（例如那天已關帳）記錄錯誤，不默默當成成功', () => {
+    usePosStore.getState().processTransaction('001', 'order', 90, 0);
+    const tx = usePosStore.getState().transactions[0];
+    const props = { ...getProps(), operatorId: 'op-9' };
+    const { result } = renderHook(() => useUndoCountdown(props));
+
+    act(() => { result.current.lastCommittedTxIdRef.current = tx.transactionId; });
+    act(() => { result.current.handleUndo(); });
+    expect(usePosStore.getState().auditEvents.at(-1)).toMatchObject({ operatorId: 'op-9', reason: UNDO_REASON });
+
+    usePosStore.getState().processTransaction('001', 'order', 90, 0);
+    const tx2 = usePosStore.getState().transactions[0];
+    usePosStore.setState(s => ({ businessDateStatuses: { ...s.businessDateStatuses, [tx2.businessDate]: 'closed' } }));
+    const seen: string[] = [];
+    const unsubscribe = onError(e => seen.push(e.message));
+    act(() => { result.current.lastCommittedTxIdRef.current = tx2.transactionId; });
+    act(() => { result.current.handleUndo(); });
+    unsubscribe();
+    expect(usePosStore.getState().transactions.some(t => t.transactionId === tx2.transactionId)).toBe(true);
+    expect(seen.some(m => m.startsWith('撤回失敗'))).toBe(true);
   });
 });

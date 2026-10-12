@@ -111,7 +111,7 @@ function AppContent() {
   const [searchFocusKey, setSearchFocusKey] = useState(0);
   const [flashKey, setFlashKey] = useState(0);
   const { undoCountdown, setUndoCountdown, lastCommittedTxIdRef, dismissFlash, handleUndo } = useUndoCountdown({
-    dismissSuccess, setFlashKey, setSyncing, setPriceOverride, setPriceOverrideLabel,
+    dismissSuccess, setFlashKey, setSyncing, setPriceOverride, setPriceOverrideLabel, operatorId: operatorUid,
   });
 
   // Ref: #281 — Extracted to useConfirmHandler hook
