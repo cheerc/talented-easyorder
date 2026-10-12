@@ -1,7 +1,7 @@
 /* ============ TOPBAR ============ */
 .topbar {
   display: grid;
-  grid-template-columns: 220px 1fr auto;
+  grid-template-columns: 220px minmax(0, 1fr) auto;
   align-items: center;
   gap: 24px;
   padding: 14px 24px;
@@ -42,10 +42,15 @@
 .tabs {
   display: flex;
   gap: 4px;
+  /* 窄視窗時只讓分頁列自己橫向捲動，不讓整頁出現橫向捲軸。 */
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .tab {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   white-space: nowrap;
   gap: 8px;
@@ -170,3 +175,11 @@
   letter-spacing: 0.04em;
 }
 
+
+@media (max-width: 1180px) {
+  .topbar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 16px;
+    padding: 12px 16px;
+  }
+}
