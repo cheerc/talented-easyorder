@@ -3,10 +3,9 @@ import { NumericInput } from '../ui/NumericInput';
 import { fmt } from "../pos-components";
 import type { StudentAccount } from '../../domain/student';
 import { validateNewAccount, createLocalAccount, NEW_ACCOUNT_ERROR_MESSAGES, type NewAccountError } from '../../domain/student';
-import { isMenuReady } from '../../domain/menu';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
-import { useMenu, useMenuActions, useStudents, useGlobalActions, useSessionActions, usePracticeDataActions, useTransactions } from '../../store/selectors';
-import { isPrototypeMode } from '../../appMode';
+import { useMenu, useMenuActions, useStudents, useGlobalActions, useSessionActions, usePracticeDataActions } from '../../store/selectors';
+import { PracticeDataPanel } from './PracticeDataPanel';
 import { useCashClose } from '../../store/derived/useCashClose';
 import { useTweaks } from '../../hooks/useTweaks';
 import { useFirebase } from '../../hooks/useFirebase';
@@ -26,9 +25,6 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
   const { setTodayMenu } = useMenuActions();
   const { students } = useStudents();
   const { resetData } = useGlobalActions();
-  const { startBlankData, loadSampleData } = usePracticeDataActions();
-  const { transactions } = useTransactions();
-  const [practiceConfirm, setPracticeConfirm] = useState<'blank' | 'sample' | null>(null);
   const { openCashSession, updateOpeningCash } = useSessionActions();
   const { openingCash, dateStatus, currentCashSession } = useCashClose(viewDate);
   const hasCashSession = !!currentCashSession;
@@ -78,19 +74,6 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
     const selectedVendor = vendors.find(v => v.name === vendor);
     setTodayMenu({ ...todayMenu, itemName: name, price: n, vendorId: selectedVendor?.vendorId ?? todayMenu.vendorId, vendorNameSnapshot: vendor });
   };
-
-  const handlePracticeConfirm = () => {
-    if (practiceConfirm === 'blank') startBlankData();
-    if (practiceConfirm === 'sample') loadSampleData();
-    setPracticeConfirm(null);
-  };
-
-  const practiceSteps = [
-    { done: students.length > 0, label: '建立帳戶（右側「學員管理」）' },
-    { done: vendors.length > 0, label: '新增供應商（F4 供應商）' },
-    { done: isMenuReady(todayMenu), label: '設定今日晚餐（上方「今日便當設定」）' },
-    { done: hasCashSession, label: '設定開帳金額（上方「每日開帳金額」）' },
-  ];
 
   const handleReset = () => {
     resetData();
@@ -185,24 +168,7 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
           </div>
 
           {isLocal ? (
-            <div style={{ marginTop: '40px', borderTop: '1px solid var(--line)', paddingTop: '20px' }} aria-label="練習資料">
-              <div className="card-h">練習資料 <span className="card-h-sub">{isPrototypeMode ? '本機練習 · 僅此瀏覽器' : '本機模式 · 未連雲端'}</span></div>
-              <p className="dim" style={{ fontSize: '13px', marginBottom: '10px' }}>
-                目前：{students.length} 位帳戶、{vendors.length} 家供應商、{transactions.length} 筆交易
-              </p>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="ghost-btn" onClick={() => setPracticeConfirm('blank')}>從空白開始…</button>
-                <button className="ghost-btn" onClick={() => setPracticeConfirm('sample')}>載入驗收範例…</button>
-              </div>
-              <div className="card-h" style={{ marginTop: '16px', fontSize: '13px' }}>開始訂餐前的準備</div>
-              <ol style={{ fontSize: '13px', margin: '4px 0 0', paddingLeft: '20px' }} aria-label="開始訂餐前的準備">
-                {practiceSteps.map(step => (
-                  <li key={step.label} style={{ color: step.done ? 'var(--ink-3)' : 'inherit' }}>
-                    {step.done ? '✓ ' : ''}{step.label}
-                  </li>
-                ))}
-              </ol>
-            </div>
+            <PracticeDataPanel hasCashSession={hasCashSession} />
           ) : (
             <div style={{ marginTop: '40px', borderTop: '1px solid #eee', paddingTop: '20px' }}>
               <div className="card-h" style={{ color: '#d32f2f' }}>危險區域</div>
@@ -225,17 +191,6 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
         onConfirm={handleReset}
         onCancel={() => setShowResetConfirm(false)}
         confirmLabel="確認重置"
-        variant="danger"
-      />
-      <ConfirmDialog
-        open={practiceConfirm !== null}
-        title={practiceConfirm === 'blank' ? '從空白開始' : '載入驗收範例'}
-        message={`將清除目前的 ${students.length} 位帳戶、${vendors.length} 家供應商、${transactions.length} 筆交易，以及更正、關帳與開帳紀錄，`
-          + (practiceConfirm === 'blank' ? '改成完全空白的資料。' : '改成固定的匿名驗收範例。')
-          + '此動作無法復原；匯出快照功能尚未提供。按取消不會變更任何資料。'}
-        onConfirm={handlePracticeConfirm}
-        onCancel={() => setPracticeConfirm(null)}
-        confirmLabel={practiceConfirm === 'blank' ? '確認清空' : '確認載入範例'}
         variant="danger"
       />
       <ConfirmDialog
