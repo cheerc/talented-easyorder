@@ -86,3 +86,47 @@ describe('SearchBox', () => {
     expect(screen.getByText(/欠/)).toBeDefined();
   });
 });
+
+describe('SearchBox long lists and keyboard (M1 F01 / K02)', () => {
+  const many = Array.from({ length: 9 }, (_, i) => ({
+    studentId: `01${i}`, displayName: `學員${i}`, currentBalance: 100, status: 'active', aliases: [],
+  }) as unknown as StudentAccount);
+  const base = {
+    value: '01', onChange: vi.fn(), onSubmit: vi.fn(), onEsc: vi.fn(), suggestions: many,
+    activeIdx: 0, onPick: vi.fn(), onHover: vi.fn(), focusKey: 0, disabled: false,
+  };
+
+  it('renders every candidate (no hidden 7th row) and highlights the active one', () => {
+    render(<SearchBox {...base} activeIdx={7} />);
+    const options = screen.getAllByRole('option');
+    expect(options).toHaveLength(9);
+    expect(options[7].getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByText(/共 9 筆/)).toBeDefined();
+  });
+
+  it('ArrowDown stops at the last visible candidate and ArrowUp at the first', () => {
+    const onHover = vi.fn();
+    const { rerender } = render(<SearchBox {...base} activeIdx={8} onHover={onHover} />);
+    const input = screen.getByLabelText('輸入學員編號或姓名');
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(onHover).toHaveBeenLastCalledWith(8);
+    rerender(<SearchBox {...base} activeIdx={0} onHover={onHover} />);
+    fireEvent.keyDown(input, { key: 'ArrowUp' });
+    expect(onHover).toHaveBeenLastCalledWith(0);
+  });
+
+  it('shows a no-result message for an unknown code', () => {
+    render(<SearchBox {...base} value="999" suggestions={[]} />);
+    expect(screen.getByRole('status').textContent).toContain('找不到「999」');
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('Enter while an input method is composing does not submit', () => {
+    const onSubmit = vi.fn();
+    render(<SearchBox {...base} onSubmit={onSubmit} />);
+    fireEvent.keyDown(screen.getByLabelText('輸入學員編號或姓名'), { key: 'Enter', isComposing: true });
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByLabelText('輸入學員編號或姓名'), { key: 'Enter', keyCode: 229 });
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+});

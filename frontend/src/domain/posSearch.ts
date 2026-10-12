@@ -28,15 +28,28 @@ export function searchPosStudents(students: StudentAccount[], query: string): Po
   return { ok: true, mode: 'text', students: results };
 }
 
-/** F1 搜尋框的候選清單：只列啟用中的帳戶，比對編號、姓名與別名（不分大小寫）。 */
+/**
+ * F1 搜尋框的候選清單（M1 F01 的共同規則）：只列啟用中的帳戶，比對編號、姓名與別名（不分大小寫）。
+ * 排序：編號完全相同 → 別名完全相同 → 編號開頭相同 → 其他部分符合；同一組內維持名單順序。
+ */
 export function filterSearchSuggestions(students: StudentAccount[], query: string): StudentAccount[] {
-  if (!query) return [];
-  const q = query.toLowerCase();
-  return students.filter(s => s.status === 'active' && (
-    s.studentId.includes(q)
-    || s.displayName.toLowerCase().includes(q)
-    || s.aliases.some(a => a.toLowerCase().includes(q))
-  ));
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const rank = (s: StudentAccount): number => {
+    const id = s.studentId.toLowerCase();
+    const aliases = s.aliases.map(a => a.toLowerCase());
+    if (id === q) return 0;
+    if (aliases.includes(q)) return 1;
+    if (id.startsWith(q)) return 2;
+    if (id.includes(q) || s.displayName.toLowerCase().includes(q) || aliases.some(a => a.includes(q))) return 3;
+    return -1;
+  };
+  return students
+    .filter(s => s.status === 'active')
+    .map((s, i) => ({ s, i, r: rank(s) }))
+    .filter(x => x.r >= 0)
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map(x => x.s);
 }
 
 export function resolveScannedStudent(students: StudentAccount[], input: ScannerInput): PosSearchResult {

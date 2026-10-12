@@ -176,6 +176,14 @@ describe('AdminScreen per-date dinner menu (M0)', () => {
     fireEvent.change(screen.getByLabelText('便當單價'), { target: { value: '120' } });
     fireEvent.click(screen.getByRole('button', { name: '儲存今日設定' }));
 
+    expect(screen.getByText('已儲存 2026-06-02 的晚餐')).toBeTruthy();
+
+    // 切到更早、沒有設定的日子：不沿用較晚的菜單，提示未設定；上一天的「已儲存」提示清掉。
+    rerender(<AdminScreen viewDate="2026-05-31" />);
+    expect(screen.queryByText(/已儲存/)).toBeNull();
+    expect(screen.getByText(/這天之前還沒有設定晚餐/)).toBeTruthy();
+    expect((screen.getByLabelText('便當單價') as HTMLInputElement).value).toBe('0');
+
     const s = usePosStore.getState();
     expect(s.menusByDate['2026-06-01']).toMatchObject({ itemName: '排骨', price: 90, vendorId: 'v1' });
     expect(s.menusByDate['2026-06-02']).toMatchObject({ itemName: '排骨', price: 120 });

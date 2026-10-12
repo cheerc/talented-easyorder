@@ -17,8 +17,17 @@ interface SearchBoxProps {
   disableHoverSelection?: boolean;
 }
 export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubmit, onEsc, suggestions, activeIdx, onPick, onHover, focusKey, disabled, onEnterExpense, disableHoverSelection = true }: SearchBoxProps) {
-  const ref = useRef(null);
+  const ref = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => { if (focusKey > 0 && !disabled) ref.current?.focus(); }, [focusKey, disabled]);
+  // M1 F01：高亮的那一筆一定捲到看得見的位置，Enter 選到的就是畫面上高亮的人。
+  const lastIdx = suggestions.length - 1;
+  const shownIdx = Math.min(activeIdx, Math.max(lastIdx, 0));
+  useEffect(() => {
+    const row = listRef.current?.querySelector<HTMLElement>(`[data-idx="${shownIdx}"]`);
+    row?.scrollIntoView?.({ block: 'nearest' });
+  }, [shownIdx, suggestions]);
+  const query = value.trim();
 
   return (
     <div className="searchwrap">
@@ -37,6 +46,8 @@ export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubm
             placeholder="例如 015 或 周映彤"
             onChange={e => onChange(e.target.value)}
             onKeyDown={e => {
+              // 輸入法選字中的 Enter 只是選字，不選人。
+              if (e.nativeEvent.isComposing || e.keyCode === 229) return;
               if (e.key === 'Enter') {
                 e.preventDefault(); e.stopPropagation();
                 if (value.trim() === '') {
@@ -46,8 +57,8 @@ export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubm
                 }
               }
               else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); e.currentTarget.blur(); onEsc(); }
-              else if (e.key === 'ArrowDown') { e.preventDefault(); onHover(Math.min(activeIdx + 1, suggestions.length - 1)); }
-              else if (e.key === 'ArrowUp') { e.preventDefault(); onHover(Math.max(activeIdx - 1, 0)); }
+              else if (e.key === 'ArrowDown') { e.preventDefault(); if (lastIdx >= 0) onHover(Math.min(shownIdx + 1, lastIdx)); }
+              else if (e.key === 'ArrowUp') { e.preventDefault(); if (lastIdx >= 0) onHover(Math.max(shownIdx - 1, 0)); }
             }}
           />
           <span className="search-enter"><span className="kbd kbd-lg">↵</span></span>
@@ -59,14 +70,16 @@ export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubm
           </button>
         )}
       </div>
-      {suggestions.length > 0 && value && (
-        <div className="suggest" role="listbox" aria-label="學員建議清單">
-          {suggestions.slice(0, 6).map((s, i) => (
+      {suggestions.length > 0 && query && (
+        <div className="suggest">
+          <div className="sug-list" role="listbox" aria-label="學員建議清單" ref={listRef}>
+          {suggestions.map((s, i) => (
             <div
               key={s.studentId}
+              data-idx={i}
               role="option"
-              aria-selected={i === activeIdx}
-              className={'sug-row ' + (i === activeIdx ? 'sug-on' : '')}
+              aria-selected={i === shownIdx}
+              className={'sug-row ' + (i === shownIdx ? 'sug-on' : '')}
               onMouseEnter={() => {
                 if (!disableHoverSelection) {
                   onHover(i);
@@ -81,11 +94,18 @@ export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubm
               </span>
             </div>
           ))}
+          </div>
           <div className="sug-foot">
+            {suggestions.length > 1 && <span>共 {suggestions.length} 筆 ·</span>}
             <span className="kbd">↑</span><span className="kbd">↓</span> 選擇 ·
             <span className="kbd">↵</span> 確認 ·
             <span className="kbd">Esc</span> 清空
           </div>
+        </div>
+      )}
+      {suggestions.length === 0 && query && (
+        <div className="suggest" role="status">
+          <div className="sug-empty">找不到「{query}」：沒有符合的啟用中帳戶。請確認編號或姓名，停用的帳戶不會出現。</div>
         </div>
       )}
     </div>

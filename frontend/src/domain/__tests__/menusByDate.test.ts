@@ -27,11 +27,17 @@ describe('resolveMenuForDate', () => {
     expect(resolveMenuForDate(byDate, legacy, '2026-06-10').menu.itemName).toBe('雞腿');
   });
 
-  it('falls back to the legacy single menu when no earlier date is set', () => {
-    const r = resolveMenuForDate(byDate, legacy, '2026-05-31');
+  it('falls back to the legacy single menu only while no date has its own menu', () => {
+    const r = resolveMenuForDate({}, legacy, '2026-05-31');
     expect(r.source).toBe('legacy');
     expect(r.menu).toMatchObject({ itemName: '舊菜單', businessDate: '2026-05-31' });
     expect(resolveMenuForDate({}, legacy, '2026-01-01').menu).toBe(legacy);
+  });
+
+  it('a date earlier than every saved menu is unset, not the later menu', () => {
+    const r = resolveMenuForDate(byDate, legacy, '2026-05-31');
+    expect(r.source).toBe('none');
+    expect(r.menu).toMatchObject({ itemName: '', price: 0, businessDate: '2026-05-31' });
   });
 });
 
@@ -54,6 +60,16 @@ describe('setMenuForDate', () => {
     setMenuForDate('2026-06-02', { itemName: '雞腿', price: 100, vendorId: 'v1', vendorNameSnapshot: '練習店' }, 'x');
     setMenuForDate('2026-06-01', { itemName: '排骨', price: 90, vendorId: 'v1', vendorNameSnapshot: '練習店' }, 'x');
     expect(usePosStore.getState().todayMenu.itemName).toBe('雞腿');
+  });
+
+  it('the first dated save keeps the old single menu on its own date for earlier days', () => {
+    usePosStore.getState().loadSampleData();
+    const old = usePosStore.getState().todayMenu;
+    const later = '2099-01-02';
+    usePosStore.getState().setMenuForDate(later, { itemName: '雞腿', price: 100, vendorId: 'v1', vendorNameSnapshot: '練習店' }, 'x');
+    const s = usePosStore.getState();
+    expect(s.menusByDate[old.businessDate]).toEqual(old);
+    expect(resolveMenuForDate(s.menusByDate, s.todayMenu, '2099-01-01').menu.itemName).toBe(old.itemName);
   });
 
   it('blank / sample reset the per-date menus; clearing transactions keeps them', () => {
