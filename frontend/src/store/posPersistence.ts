@@ -5,10 +5,11 @@ import { validatePersistedState } from '../storage/posStateValidator';
 import { appendErrorLog, clearErrorLog } from '../errors/errorLogger';
 import { INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS } from '../mocks/initialData';
 import { createIndexedDBStorage } from '../storage/indexedDBStorage';
+import { namespacedStorageName } from '../appMode';
 
 // TODO: [future] encrypt sensitive fields before IndexedDB persist (#286)
 
-const POS_STORAGE_KEY = 'pos-storage';
+const POS_STORAGE_KEY = namespacedStorageName('pos-storage');
 
 /**
  * Ref: #286 — Clear sensitive POS data from IndexedDB and localStorage on signOut.
@@ -20,13 +21,13 @@ export async function clearSensitiveData(): Promise<void> {
     // Clear IndexedDB
     if (typeof indexedDB !== 'undefined') {
       await new Promise<void>((resolve) => {
-        const req = indexedDB.deleteDatabase('easyorder-pos');
+        const req = indexedDB.deleteDatabase(namespacedStorageName('easyorder-pos'));
         req.onsuccess = () => resolve();
         req.onerror = () => resolve(); // best-effort
         req.onblocked = () => resolve();
       });
       // Also clear crash draft
-      const reqCrash = indexedDB.deleteDatabase('easyorder-crash-draft');
+      const reqCrash = indexedDB.deleteDatabase(namespacedStorageName('easyorder-crash-draft'));
       reqCrash.onerror = () => { /* best-effort */ };
     }
   } catch { /* best-effort */ }
@@ -47,7 +48,7 @@ export const defaultState = {
 };
 
 export const posPersistenceConfig: PersistOptions<PosState> = {
-  name: 'pos-storage',
+  name: POS_STORAGE_KEY,
   storage: createIndexedDBStorage(),
   version: 2,
   partialize: (state) => ({

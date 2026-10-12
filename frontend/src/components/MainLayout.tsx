@@ -7,6 +7,7 @@ import type { LedgerTransaction } from '../domain/ledger';
 import type { StudentAccount } from '../domain/student';
 import { TodayDashboard } from './TodayDashboard';
 import { PwaInstallBanner } from './PwaInstallBanner';
+import type { StorageMode } from '../appMode';
 
 export interface FlashData {
   id: number;
@@ -31,6 +32,7 @@ interface MainLayoutProps {
   failedSyncCount: number;
   conflictSyncCount: number;
   onDashboard: () => void;
+  storageMode?: StorageMode;
   flashData: FlashData | null;
   onDismissFlash: () => void;
   onUndo: () => void;
@@ -50,7 +52,7 @@ interface MainLayoutProps {
 export const MainLayout = React.memo(function MainLayout(props: MainLayoutProps) {
   const {
     tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate,
-    queuedCount, failedSyncCount, conflictSyncCount, onDashboard,
+    queuedCount, failedSyncCount, conflictSyncCount, onDashboard, storageMode,
     flashData, onDismissFlash, onUndo, undoCountdown,
     cancelDialogOpen, picked, orderTx, onCancelDialogConfirm, onCancelDialogCancel,
     noOrderDialogOpen, onNoOrderDialogClose,
@@ -59,7 +61,7 @@ export const MainLayout = React.memo(function MainLayout(props: MainLayoutProps)
 
   return (
     <div className="app">
-      <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount} onDashboard={onDashboard} />
+      <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount} onDashboard={onDashboard} storageMode={storageMode} />
       {children}
       <ConfirmBanner flash={flashData} onDismiss={onDismissFlash} onUndo={onUndo} undoCountdown={undoCountdown} />
       <CancelOrderDialog

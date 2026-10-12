@@ -1,5 +1,6 @@
 import type { PosTransactionDraft } from '../domain/posTransaction';
 import { emitError } from '../errors/errorBus';
+import { namespacedStorageName } from '../appMode';
 
 /**
  * Crash Draft — same-origin IndexedDB persistence for in-progress POS transactions.
@@ -17,7 +18,7 @@ import { emitError } from '../errors/errorBus';
  * to prevent stale PII from persisting indefinitely.
  */
 
-const DB_NAME = 'easyorder-crash-draft';
+const DB_NAME = namespacedStorageName('easyorder-crash-draft');
 const STORE_NAME = 'drafts';
 const DRAFT_KEY = 'current-draft';
 const DB_VERSION = 1;

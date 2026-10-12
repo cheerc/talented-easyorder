@@ -2,8 +2,10 @@ import { getApp, getApps, initializeApp, type FirebaseApp, type FirebaseOptions 
 import type { Auth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import { ensureFirebaseModulesLoaded, getAuthMod, getFirestoreMod } from './firebaseModules';
+import { isPrototypeModeName } from '../appMode';
 
 export interface FirebaseEnv {
+  MODE?: string;
   VITE_FIREBASE_API_KEY?: string;
   VITE_FIREBASE_AUTH_DOMAIN?: string;
   VITE_FIREBASE_PROJECT_ID?: string;
@@ -39,6 +41,10 @@ export function readFirebaseConfig(env: FirebaseEnv): FirebaseOptions {
 }
 
 export function getFirebaseConfigState(env: FirebaseEnv): FirebaseConfigState {
+  // M0：本機練習模式即使有 Firebase env 也不連線。
+  if (isPrototypeModeName(env.MODE)) {
+    return { configured: false, error: '本機練習模式不連線 Firebase' };
+  }
   try {
     return { configured: true, config: readFirebaseConfig(env) };
   } catch (error) {
