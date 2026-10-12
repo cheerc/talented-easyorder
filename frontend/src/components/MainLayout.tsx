@@ -51,7 +51,7 @@ interface MainLayoutProps {
 
 export const MainLayout = React.memo(function MainLayout(props: MainLayoutProps) {
   const {
-    tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate,
+    tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate, systemDate,
     queuedCount, failedSyncCount, conflictSyncCount, onDashboard, storageMode,
     flashData, onDismissFlash, onUndo, undoCountdown,
     cancelDialogOpen, picked, orderTx, onCancelDialogConfirm, onCancelDialogCancel,
@@ -80,7 +80,7 @@ export const MainLayout = React.memo(function MainLayout(props: MainLayoutProps)
         onConfirm={onNoOrderDialogClose}
         onCancel={onNoOrderDialogClose}
       />
-      {showDashboard && <TodayDashboard onClose={onCloseDashboard} />}
+      {showDashboard && <TodayDashboard systemDate={systemDate} onClose={onCloseDashboard} />}
       <PwaInstallBanner />
     </div>
   );

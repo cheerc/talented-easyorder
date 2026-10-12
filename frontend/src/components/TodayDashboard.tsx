@@ -2,12 +2,10 @@ import React, { useMemo } from 'react';
 import { useSession } from '../store/selectors';
 import { fmt } from './pos-components';
 import { useLedgerReport } from '../store/derived/useLedgerReport';
-import { getTaiwanDate } from '../utils/dateTime';
 
-export const TodayDashboard = React.memo(function TodayDashboard({ onClose }: { onClose: () => void }) {
+// systemDate 由 App 傳入（練習模式下為練習營業日），不在這裡自行取實際日期。
+export const TodayDashboard = React.memo(function TodayDashboard({ systemDate, onClose }: { systemDate: string; onClose: () => void }) {
   const { auditEvents, dailySettlements, businessDateStatuses } = useSession();
-
-  const systemDate = useMemo(() => getTaiwanDate(), []);
 
   const { filtered: todayTx, totals } = useLedgerReport({
     dateRange: 'today',

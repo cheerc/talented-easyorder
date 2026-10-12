@@ -4,6 +4,7 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { useActiveOrderCount } from '../store/derived/useLedger';
 import { useTransactionActions } from '../store/selectors';
 import { groupLedgerRowsByStudent } from '../domain/ledgerReport';
+import { filterSearchSuggestions } from '../domain/posSearch';
 import type { LedgerTransaction, TransactionEditView } from '../domain/ledger';
 import { EditTransactionModal } from './EditTransactionModal';
 import type { PosColumnProps } from './PosColumn.types';
@@ -69,14 +70,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
 
   const suggestions = useMemo(() => {
     const query = state.kind === 'idle' ? state.searchText : '';
-    if (!query) return [];
-    const q = query.toLowerCase();
-    // 停用帳戶不出現在訂餐搜尋；別名也可搜尋（M0 S04）。
-    return students.filter(s => s.status === 'active' && (
-      s.studentId.includes(q)
-      || s.displayName.toLowerCase().includes(q)
-      || s.aliases.some(a => a.toLowerCase().includes(q))
-    ));
+    return filterSearchSuggestions(students, query);
   }, [state, students]);
 
   const choose = (s: StudentAccount) => {

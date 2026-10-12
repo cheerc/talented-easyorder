@@ -9,7 +9,7 @@ vi.mock('../../hooks/useFirebase', () => ({
 import { AdminScreen } from '../screens/AdminScreen';
 import { usePosStore } from '../../store/posStore';
 import { buildSnapshot, pickDataset } from '../../domain/practiceSnapshot';
-import { searchPosStudents } from '../../domain/posSearch';
+import { filterSearchSuggestions } from '../../domain/posSearch';
 
 beforeEach(() => {
   usePosStore.getState().loadSampleData();
@@ -151,13 +151,12 @@ describe('AdminScreen practice data (local mode)', () => {
     s = usePosStore.getState().students[0];
     expect(s.status).toBe('inactive');
     expect(screen.getByTestId('student-row-001').textContent).toContain('已停用');
-    const hidden = searchPosStudents(usePosStore.getState().students, '小甲');
-    expect(hidden.ok && hidden.students).toEqual([]);
+    // F1 搜尋框候選（PosColumn 實際使用的過濾）：停用後以別名、姓名、編號都搜不到。
+    for (const q of ['小甲', '甲同學', '001']) expect(filterSearchSuggestions(usePosStore.getState().students, q)).toEqual([]);
     expect(usePosStore.getState().transactions).toHaveLength(1);
 
     fireEvent.click(screen.getByRole('button', { name: '恢復 001' }));
     expect(usePosStore.getState().students[0].status).toBe('active');
-    const found = searchPosStudents(usePosStore.getState().students, 'Jia');
-    expect(found.ok && found.students.map(x => x.studentId)).toEqual(['001']);
+    expect(filterSearchSuggestions(usePosStore.getState().students, 'jia').map(x => x.studentId)).toEqual(['001']);
   });
 });
