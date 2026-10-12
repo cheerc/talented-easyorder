@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useSession } from '../../store/selectors';
-import { fmt } from '../pos-components';
+import { fmt, sign } from '../pos-components';
 import { formatTaipeiDateTime, formatTaipeiTime } from '../../utils/dateTime';
 import { operatorLabel } from '../../domain/operatorId';
 
@@ -40,7 +40,7 @@ export const SettlementHistoryTable = React.memo(function SettlementHistoryTable
         <div>日期</div>
         <div>狀態</div>
         <div>訂餐數</div>
-        <div>系統現金</div>
+        <div>應有現金</div>
         <div>實際點算</div>
         <div>差異</div>
         <div>關帳人</div>
@@ -59,7 +59,7 @@ export const SettlementHistoryTable = React.memo(function SettlementHistoryTable
             <div className="mono">${fmt(s.expectedCash)}</div>
             <div className="mono">${fmt(s.countedCash)}</div>
             <div className={`mono ${s.difference !== 0 ? 'warn' : ''}`}>
-              {s.difference > 0 ? '+' : ''}{fmt(s.difference)}
+              {sign(s.difference)}${fmt(s.difference)}
             </div>
             <div>{operatorLabel(s.closedBy)}</div>
             <div className="mono dim" style={{ fontSize: '12px' }}>{formatTaipeiTime(s.closedAt)}</div>

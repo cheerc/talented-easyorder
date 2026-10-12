@@ -116,7 +116,8 @@ export interface SessionActions {
   setBusinessDateStatus: (date: string, status: BusinessDateStatus) => void;
   openCashSession: (input: OpenCashSessionInput) => void;
   updateOpeningCash: (businessDate: string, amount: number) => void;
-  closeBusinessDate: (input: CloseBusinessDateInput) => void;
+  /** M3：回傳結果；開帳金額未設定、差額沒寫原因、已關帳等情況回傳原因，不再無聲失敗。 */
+  closeBusinessDate: (input: CloseBusinessDateInput) => LedgerMutationResult;
   reopenBusinessDate: (input: ReopenBusinessDateInput) => void;
   getBusinessDateStatus: (businessDate: string) => BusinessDateStatus;
 }

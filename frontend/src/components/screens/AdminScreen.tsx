@@ -29,7 +29,7 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
   const { students } = useStudents();
   const { resetData } = useGlobalActions();
   const { openCashSession, updateOpeningCash } = useSessionActions();
-  const { openingCash, dateStatus, currentCashSession } = useCashClose(viewDate);
+  const { openingCash, suggestedOpeningCash, dateStatus, currentCashSession } = useCashClose(viewDate);
   const hasCashSession = !!currentCashSession;
   const { tweaks, setTweak } = useTweaks();
 
@@ -53,13 +53,22 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
   }, [todayMenu, vendors]);
   const [menuSavedMsg, setMenuSavedMsg] = useState('');
   // 切換檢視日期時清掉上一天的「已儲存」提示（render 期間調整，避免 effect 連鎖更新）。
+  const [menuError, setMenuError] = useState('');
   const [menuMsgDate, setMenuMsgDate] = useState(viewDate);
   if (menuMsgDate !== viewDate) {
     setMenuMsgDate(viewDate);
     setMenuSavedMsg('');
+    setMenuError('');
   }
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [openingCashDraft, setOpeningCashDraft] = useState(String(openingCash));
+  // M3：開帳金額只預填，不自動生效；沒有設定時預填前一天關帳的實際點算，本人按儲存才算數。
+  const initialCashDraft = String(openingCash ?? suggestedOpeningCash ?? '');
+  const [openingCashDraft, setOpeningCashDraft] = useState(initialCashDraft);
+  const [cashDraftDate, setCashDraftDate] = useState(viewDate);
+  if (cashDraftDate !== viewDate) {
+    setCashDraftDate(viewDate);
+    setOpeningCashDraft(initialCashDraft);
+  }
   const [cashSavedMsg, setCashSavedMsg] = useState('');
   const [showOpeningCashConfirm, setShowOpeningCashConfirm] = useState(false);
 
@@ -79,10 +88,19 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
 
   const save = () => {
     const n = Number(price);
+    // M3 D01：名稱空白或單價不合法時不存，並說明原因；以前會顯示「已儲存」但 F1 仍不能訂餐。
+    const errors: string[] = [];
+    if (!name.trim()) errors.push('請填寫便當名稱。');
     // Ref: #311, #347 — Financial input validation
-    if (!isPositiveInt(n)) return;
+    if (!isPositiveInt(n)) errors.push('單價要是大於 0 的整數。');
+    if (errors.length > 0) {
+      setMenuError(errors.join(''));
+      setMenuSavedMsg('');
+      return;
+    }
+    setMenuError('');
     const selectedVendor = vendors.find(v => v.name === vendor);
-    setMenuForDate(viewDate, { itemName: name, price: n, vendorId: selectedVendor?.vendorId ?? todayMenu.vendorId, vendorNameSnapshot: vendor }, getTaiwanISOString());
+    setMenuForDate(viewDate, { itemName: name.trim(), price: n, vendorId: selectedVendor?.vendorId ?? todayMenu.vendorId, vendorNameSnapshot: vendor }, getTaiwanISOString());
     setMenuSavedMsg(`已儲存 ${viewDate} 的晚餐`);
   };
 
@@ -108,6 +126,7 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
   };
 
   const handleSaveOpeningCash = () => {
+    if (openingCashDraft.trim() === '') return;
     const n = Number(openingCashDraft);
     // Ref: #311, #347 — Financial input validation
     if (!isNonNegativeInt(n)) return;
@@ -128,7 +147,7 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
           )}
           <div className="adm-row">
             <label>便當名稱</label>
-            <input className="adm-input" value={name} onChange={e => setName(e.target.value)} />
+            <input className="adm-input" aria-label="便當名稱" value={name} onChange={e => setName(e.target.value)} />
           </div>
           <div className="adm-row">
             <label>單價 (元)</label>
@@ -142,6 +161,7 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
           </div>
           <div className="adm-foot">
             <button className="btn-confirm wide" onClick={save}>儲存今日設定</button>
+            {menuError && <span role="alert" style={{ marginLeft: '8px', color: 'var(--c-warn)', fontSize: '13px' }}>{menuError}</span>}
             {menuSavedMsg && <span role="status" style={{ marginLeft: '8px', color: 'var(--accent-ink)', fontSize: '13px' }}>{menuSavedMsg}</span>}
           </div>
 
@@ -157,6 +177,13 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
               </button>
               {cashSavedMsg && <span style={{ marginLeft: '8px', color: 'var(--accent-ink)', fontSize: '13px' }}>{cashSavedMsg}</span>}
             </div>
+            <p className="dim" style={{ fontSize: '12px', margin: '8px 0 0' }}>
+              {openingCash !== null
+                ? `${viewDate} 的開帳金額：$${openingCash.toLocaleString()}`
+                : suggestedOpeningCash !== null
+                  ? `${viewDate} 還沒設定開帳金額。已預填前一天關帳點算的 $${suggestedOpeningCash.toLocaleString()}，確認後按「儲存開帳金額」。`
+                  : `${viewDate} 還沒設定開帳金額；設定後才能關帳。`}
+            </p>
           </div>
 
           <div style={{ marginTop: '32px', borderTop: '1px solid var(--line)', paddingTop: '20px' }}>

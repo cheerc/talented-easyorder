@@ -103,7 +103,8 @@ describe('useCashClose', () => {
     const { result } = renderHook(() => useCashClose('2026-06-15'));
 
     expect(result.current.dateStatus).toBe('open');
-    expect(typeof result.current.openingCash).toBe('number');
+    // M3：沒有本人確認的開帳金額時是 null，不再預設 4000
+    expect(result.current.openingCash).toBeNull();
   });
 
   it('defaults to open when no status exists', () => {

@@ -59,6 +59,9 @@ export function createCashCloseDraft(
   };
 }
 
+/** M3：點算和應有現金不同時一定要寫原因；差額為 0 可以不寫。 */
+export const CASH_DIFFERENCE_NOTE_MESSAGE = '點算金額和應有現金不同，請寫下原因。';
+
 export function validateCashClose(
   expectedCash: number,
   countedCash: number,
@@ -66,15 +69,16 @@ export function validateCashClose(
   hasConflict: boolean,
   hasQueuedRows: boolean,
   note: string,
+  queuedAccepted = false,
 ): { ok: true } | { ok: false; code: string; message: string } {
   if (hasFailed || hasConflict) {
     return { ok: false, code: 'blocked_sync', message: '存在失敗或衝突的同步記錄，無法關帳' };
   }
-  if (hasQueuedRows) {
+  if (hasQueuedRows && !queuedAccepted) {
     return { ok: false, code: 'queued_unconfirmed', message: '存在排隊中的記錄，需要確認後才能關帳' };
   }
   if (expectedCash !== countedCash && !note.trim()) {
-    return { ok: false, code: 'discrepancy_no_note', message: '現金差異需填寫備註' };
+    return { ok: false, code: 'discrepancy_no_note', message: CASH_DIFFERENCE_NOTE_MESSAGE };
   }
   return { ok: true };
 }
@@ -134,20 +138,24 @@ export function isBusinessDateWritable(status: BusinessDateStatus): boolean {
   return status !== 'closed';
 }
 
-export function getOpeningCash(
-  businessDate: string,
-  dailySettlements: DailySettlement[],
-  cashSession?: { openingCash: number },
-): number {
-  const yesterday = shiftDateStr(businessDate, -1);
-  const yesterdaySettlement = dailySettlements
-    .filter(s => s.businessDate === yesterday)
-    .sort((a, b) => b.settlementRevision - a.settlementRevision)[0];
-
-  if (yesterdaySettlement) return yesterdaySettlement.countedCash;
-  if (cashSession) return cashSession.openingCash;
-  return 4000;
+/**
+ * M3：開帳金額只認這一天本人確認過的設定（F3「儲存開帳金額」）。沒有設定就回傳 null，
+ * 關帳畫面與 store 都不准關帳，不再自動沿用昨天點算或預設 4000。
+ */
+export function getConfirmedOpeningCash(cashSession?: { openingCash: number }): number | null {
+  return cashSession ? cashSession.openingCash : null;
 }
+
+/** M3：F3 開帳金額欄位的預填建議值＝前一天最後一版關帳的實際點算；本人仍要按儲存確認。 */
+export function suggestOpeningCash(businessDate: string, dailySettlements: DailySettlement[]): number | null {
+  const yesterday = shiftDateStr(businessDate, -1);
+  const latest = dailySettlements
+    .filter(s => s.businessDate === yesterday && s.status === 'closed')
+    .sort((a, b) => b.settlementRevision - a.settlementRevision)[0];
+  return latest ? latest.countedCash : null;
+}
+
+export const OPENING_CASH_MISSING_MESSAGE = '還沒設定這一天的開帳金額，請先到今日設定（F3）設定，才能關帳。';
 
 function shiftDateStr(dateStr: string, offset: number): string {
   const parts = dateStr.split('-').map(Number);

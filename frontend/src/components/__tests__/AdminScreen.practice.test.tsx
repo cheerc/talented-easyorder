@@ -188,4 +188,19 @@ describe('AdminScreen per-date dinner menu (M0)', () => {
     expect(s.menusByDate['2026-06-01']).toMatchObject({ itemName: '排骨', price: 90, vendorId: 'v1' });
     expect(s.menusByDate['2026-06-02']).toMatchObject({ itemName: '排骨', price: 120 });
   });
+
+  it('M3：便當名稱空白或單價不合法時不儲存，並說明原因', () => {
+    usePosStore.getState().startBlankData();
+    render(<AdminScreen viewDate="2026-10-12" />);
+    fireEvent.change(screen.getByLabelText('便當名稱'), { target: { value: '  ' } });
+    fireEvent.change(screen.getByLabelText('便當單價'), { target: { value: '90' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存今日設定' }));
+    expect(screen.getByRole('alert').textContent).toBe('請填寫便當名稱。');
+    expect(usePosStore.getState().menusByDate['2026-10-12']).toBeUndefined();
+
+    fireEvent.change(screen.getByLabelText('便當名稱'), { target: { value: ' 雞腿飯 ' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存今日設定' }));
+    expect(screen.queryByText('請填寫便當名稱。')).toBeNull();
+    expect(usePosStore.getState().menusByDate['2026-10-12']).toMatchObject({ itemName: '雞腿飯', price: 90 });
+  });
 });

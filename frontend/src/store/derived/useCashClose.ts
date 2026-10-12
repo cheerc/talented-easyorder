@@ -1,9 +1,12 @@
 import { useSession } from '../selectors';
-import { getOpeningCash } from '../../domain/cashClose';
+import { getConfirmedOpeningCash, suggestOpeningCash } from '../../domain/cashClose';
 import type { DailyCashSession } from '../../domain/cashSession';
 
 export function useCashClose(viewDate: string): {
-  openingCash: number;
+  /** 本人在 F3 確認過的開帳金額；沒有設定時是 null。 */
+  openingCash: number | null;
+  /** F3 預填用：前一天關帳的實際點算。 */
+  suggestedOpeningCash: number | null;
   dateStatus: string;
   currentCashSession: DailyCashSession | undefined;
 } {
@@ -11,7 +14,8 @@ export function useCashClose(viewDate: string): {
   const dateStatus = businessDateStatuses?.[viewDate] || 'open';
   const currentCashSession = cashSessions[viewDate];
 
-  const openingCash = getOpeningCash(viewDate, dailySettlements, currentCashSession);
+  const openingCash = getConfirmedOpeningCash(currentCashSession);
+  const suggestedOpeningCash = suggestOpeningCash(viewDate, dailySettlements);
 
-  return { openingCash, dateStatus, currentCashSession };
+  return { openingCash, suggestedOpeningCash, dateStatus, currentCashSession };
 }
