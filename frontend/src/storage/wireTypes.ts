@@ -77,6 +77,7 @@ export interface WirePersistedState {
   transactions: WireLedgerTransaction[];
   vendors: WireVendor[];
   todayMenu: WireTodayMenu;
+  menusByDate?: Record<string, WireTodayMenu>;
   auditEvents: WireLedgerAuditEvent[];
   dailySettlements: WireDailySettlement[];
   businessDateStatuses: Record<string, WireBusinessDateStatus>;

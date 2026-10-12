@@ -160,3 +160,24 @@ describe('AdminScreen practice data (local mode)', () => {
     expect(filterSearchSuggestions(usePosStore.getState().students, 'jia').map(x => x.studentId)).toEqual(['001']);
   });
 });
+
+describe('AdminScreen per-date dinner menu (M0)', () => {
+  it('saves the menu for the viewed date only; a later date inherits it until it gets its own', () => {
+    usePosStore.getState().startBlankData();
+    usePosStore.getState().setVendors([{ vendorId: 'v1', name: '練習店', phone: '0', note: '', status: 'active', createdAt: 'x', updatedAt: 'x', revision: 1 }]);
+    const { rerender } = render(<AdminScreen viewDate="2026-06-01" />);
+    fireEvent.change(screen.getByLabelText('便當單價'), { target: { value: '90' } });
+    fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: '排骨' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存今日設定' }));
+    expect(screen.getByText('已儲存 2026-06-01 的晚餐')).toBeTruthy();
+
+    rerender(<AdminScreen viewDate="2026-06-02" />);
+    expect(screen.getByText(/目前沿用 2026-06-01 的晚餐/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('便當單價'), { target: { value: '120' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存今日設定' }));
+
+    const s = usePosStore.getState();
+    expect(s.menusByDate['2026-06-01']).toMatchObject({ itemName: '排骨', price: 90, vendorId: 'v1' });
+    expect(s.menusByDate['2026-06-02']).toMatchObject({ itemName: '排骨', price: 120 });
+  });
+});

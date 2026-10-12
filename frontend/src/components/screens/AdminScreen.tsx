@@ -4,7 +4,7 @@ import { fmt } from "../pos-components";
 import type { StudentAccount } from '../../domain/student';
 import { validateNewAccount, createLocalAccount, parseAliases, NEW_ACCOUNT_ERROR_MESSAGES, type NewAccountError } from '../../domain/student';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
-import { useMenu, useMenuActions, useStudents, useGlobalActions, useSessionActions, usePracticeDataActions } from '../../store/selectors';
+import { useMenu, useMenuForDate, useMenuActions, useStudents, useGlobalActions, useSessionActions, usePracticeDataActions } from '../../store/selectors';
 import { PracticeDataPanel } from './PracticeDataPanel';
 import { useCashClose } from '../../store/derived/useCashClose';
 import { useTweaks } from '../../hooks/useTweaks';
@@ -16,13 +16,16 @@ interface AdminScreenProps {
   viewDate: string;
 }
 export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminScreenProps) {
-  const { todayMenu, vendors } = useMenu();
+  const { vendors } = useMenu();
+  // M0：晚餐設定依營業日保存；編輯的是目前檢視的營業日。
+  const resolvedMenu = useMenuForDate(viewDate);
+  const todayMenu = resolvedMenu.menu;
   const { fb, access } = useFirebase();
   // M0：未連 Firebase（本機練習或無 env）時顯示練習資料與手動建帳戶。
   const isLocal = !fb;
   // Ref: #336 — Real operator UID for audit trail
   const operatorUid = (access.ok && access.profile?.uid) ? access.profile.uid : SYSTEM_OPERATOR_ID;
-  const { setTodayMenu } = useMenuActions();
+  const { setMenuForDate } = useMenuActions();
   const { students } = useStudents();
   const { resetData } = useGlobalActions();
   const { openCashSession, updateOpeningCash } = useSessionActions();
@@ -48,6 +51,7 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
     setPrice(todayMenu.price);
     setVendor(todayMenu.vendorNameSnapshot || vendors[0]?.name || '');
   }, [todayMenu, vendors]);
+  const [menuSavedMsg, setMenuSavedMsg] = useState('');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [openingCashDraft, setOpeningCashDraft] = useState(String(openingCash));
   const [cashSavedMsg, setCashSavedMsg] = useState('');
@@ -72,7 +76,8 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
     // Ref: #311, #347 — Financial input validation
     if (!isPositiveInt(n)) return;
     const selectedVendor = vendors.find(v => v.name === vendor);
-    setTodayMenu({ ...todayMenu, itemName: name, price: n, vendorId: selectedVendor?.vendorId ?? todayMenu.vendorId, vendorNameSnapshot: vendor });
+    setMenuForDate(viewDate, { itemName: name, price: n, vendorId: selectedVendor?.vendorId ?? todayMenu.vendorId, vendorNameSnapshot: vendor }, getTaiwanISOString());
+    setMenuSavedMsg(`已儲存 ${viewDate} 的晚餐`);
   };
 
   const handleReset = () => {
@@ -108,7 +113,10 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
     <div className="screen admin">
       <div className="admin-grid admin-grid-2">
         <div className="card adm-card">
-          <div className="card-h">今日便當設定</div>
+          <div className="card-h">今日便當設定 <span className="card-h-sub mono">{viewDate}</span></div>
+          {resolvedMenu.source === 'inherited' && (
+            <p className="dim" style={{ fontSize: '12px', margin: '0 0 8px' }}>這天還沒有自己的設定，目前沿用 {resolvedMenu.fromDate} 的晚餐；儲存後只改這一天起的菜單。</p>
+          )}
           <div className="adm-row">
             <label>便當名稱</label>
             <input className="adm-input" value={name} onChange={e => setName(e.target.value)} />
@@ -125,6 +133,7 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
           </div>
           <div className="adm-foot">
             <button className="btn-confirm wide" onClick={save}>儲存今日設定</button>
+            {menuSavedMsg && <span role="status" style={{ marginLeft: '8px', color: 'var(--accent-ink)', fontSize: '13px' }}>{menuSavedMsg}</span>}
           </div>
 
           <div style={{ marginTop: '32px', borderTop: '1px solid var(--line)', paddingTop: '20px' }}>

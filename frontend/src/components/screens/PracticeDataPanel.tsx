@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
-import { useMenu, useStudents, useTransactions, usePracticeDataActions, useSession, useSimulationDate } from '../../store/selectors';
+import { useMenu, useStudents, useTransactions, usePracticeDataActions, useSession, useSimulationDate, useMenuForDate } from '../../store/selectors';
 import { shiftBusinessDate } from '../../domain/businessDate';
 import { getTaiwanDate } from '../../utils/dateTime';
 import { usePosStore } from '../../store/posStore';
@@ -40,11 +40,12 @@ function downloadJson(fileName: string, content: string) {
 export const PracticeDataPanel = React.memo(function PracticeDataPanel({ hasCashSession }: { hasCashSession: boolean }) {
   const { students } = useStudents();
   const { transactions } = useTransactions();
-  const { todayMenu, vendors } = useMenu();
+  const { vendors } = useMenu();
   const { auditEvents, dailySettlements, cashSessions } = useSession();
   const { startBlankData, loadSampleData, restoreDataset, clearPracticeTransactions, setSimulationDate } = usePracticeDataActions();
   const simulationDate = useSimulationDate();
   const practiceDate = simulationDate ?? getTaiwanDate();
+  const { menu: practiceMenu } = useMenuForDate(practiceDate);
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -61,7 +62,7 @@ export const PracticeDataPanel = React.memo(function PracticeDataPanel({ hasCash
   const steps = [
     { done: students.length > 0, label: '建立帳戶（右側「學員管理」）' },
     { done: vendors.length > 0, label: '新增供應商（F4 供應商）' },
-    { done: isMenuReady(todayMenu), label: '設定今日晚餐（上方「今日便當設定」）' },
+    { done: isMenuReady(practiceMenu), label: '設定今日晚餐（上方「今日便當設定」）' },
     { done: hasCashSession, label: '設定開帳金額（上方「每日開帳金額」）' },
   ];
 

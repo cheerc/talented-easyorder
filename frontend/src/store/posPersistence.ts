@@ -45,6 +45,7 @@ export const defaultState = {
   dailySettlements: [] as PosState['dailySettlements'],
   businessDateStatuses: {} as PosState['businessDateStatuses'],
   cashSessions: {} as PosState['cashSessions'],
+  menusByDate: {} as PosState['menusByDate'],
 };
 
 export const posPersistenceConfig: PersistOptions<PosState> = {
@@ -56,6 +57,7 @@ export const posPersistenceConfig: PersistOptions<PosState> = {
     transactions: state.transactions,
     vendors: state.vendors,
     todayMenu: state.todayMenu,
+    menusByDate: state.menusByDate,
     auditEvents: state.auditEvents,
     dailySettlements: state.dailySettlements,
     businessDateStatuses: state.businessDateStatuses,

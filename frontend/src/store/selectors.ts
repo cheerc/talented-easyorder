@@ -2,7 +2,9 @@
 // Facade pattern: single unified Zustand store internally, but consumers
 // subscribe only to their relevant slice via useShallow.
 
+import { useMemo } from 'react';
 import { useShallow } from 'zustand/shallow';
+import { resolveMenuForDate, type ResolvedMenu } from '../domain/menu';
 import { usePosStore } from './posStore';
 import type {
   StudentStateSlice,
@@ -29,7 +31,15 @@ export function useMenu(): MenuStateSlice {
   return usePosStore(useShallow((s) => ({
     vendors: s.vendors,
     todayMenu: s.todayMenu,
+    menusByDate: s.menusByDate,
   })));
+}
+
+/** M0：某個營業日實際使用的晚餐設定（日期 key 菜單，沒有設定時沿用較早日期）。結果已 memo，可放進 effect 依賴。 */
+export function useMenuForDate(date: string): ResolvedMenu {
+  const menusByDate = usePosStore((s) => s.menusByDate);
+  const todayMenu = usePosStore((s) => s.todayMenu);
+  return useMemo(() => resolveMenuForDate(menusByDate, todayMenu, date), [menusByDate, todayMenu, date]);
 }
 
 /** Session + Audit + Settlement state. Re-renders only when these change. */
@@ -65,6 +75,7 @@ const sessionActionsSelector = (s: ReturnType<typeof usePosStore.getState>) => (
 
 const menuActionsSelector = (s: ReturnType<typeof usePosStore.getState>) => ({
   setTodayMenu: s.setTodayMenu,
+  setMenuForDate: s.setMenuForDate,
   setVendors: s.setVendors,
 });
 

@@ -28,6 +28,7 @@ function dataset(): PracticeDataset {
     dailySettlements: [],
     businessDateStatuses: { '2026-10-12': 'open' },
     cashSessions: { '2026-10-12': { cashSessionId: 'c1', businessDate: '2026-10-12', openingCash: 1000, openedBy: 'op', openedAt: '2026-10-12T08:00:00Z', status: 'open', revision: 1 } },
+    menusByDate: { '2026-10-12': { businessDate: '2026-10-12', itemName: '晚餐', price: 90, vendorId: 'v1', vendorNameSnapshot: '練習店', updatedAt: '2026-10-12T00:00:00Z', revision: 1 } },
     simulationDate: null,
   };
 }
@@ -46,7 +47,7 @@ describe('practice snapshot round trip', () => {
   });
 
   it('round-trips a blank dataset', () => {
-    const blank: PracticeDataset = { students: [], transactions: [], vendors: [], todayMenu: EMPTY_TODAY_MENU, auditEvents: [], dailySettlements: [], businessDateStatuses: {}, cashSessions: {}, simulationDate: null };
+    const blank: PracticeDataset = { students: [], transactions: [], vendors: [], todayMenu: EMPTY_TODAY_MENU, auditEvents: [], dailySettlements: [], businessDateStatuses: {}, cashSessions: {}, menusByDate: {}, simulationDate: null };
     const r = parseSnapshot(text(buildSnapshot(blank, '2026-10-12T09:30:00Z')));
     expect(r.ok).toBe(true);
   });
@@ -54,7 +55,7 @@ describe('practice snapshot round trip', () => {
   it('pickDataset drops actions and unrelated fields', () => {
     const withExtras = { ...dataset(), someAction: () => {}, schemaVersion: 2 };
     expect(Object.keys(pickDataset(withExtras)).sort()).toEqual(
-      ['auditEvents', 'businessDateStatuses', 'cashSessions', 'dailySettlements', 'simulationDate', 'students', 'todayMenu', 'transactions', 'vendors'],
+      ['auditEvents', 'businessDateStatuses', 'cashSessions', 'dailySettlements', 'menusByDate', 'simulationDate', 'students', 'todayMenu', 'transactions', 'vendors'],
     );
   });
 });

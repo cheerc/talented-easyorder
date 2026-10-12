@@ -28,7 +28,7 @@ import {
 import type { PosFlowState, PosMode, PosSelectionSource, ExpenseDirection } from '../domain/posFlow';
 import type { ScannerInput } from '../domain/posSearch';
 import { countActiveOrdersForStudent } from '../domain/ledger';
-import { useStudents, useTransactions, useMenu, useTransactionActions } from '../store/selectors';
+import { useStudents, useTransactions, useMenuForDate, useTransactionActions } from '../store/selectors';
 import { useExpenseFlow } from './useExpenseFlow';
 import { useScannerInput } from './useScannerInput';
 import { useIpadHandoff } from './useIpadHandoff';
@@ -70,7 +70,7 @@ export function usePosFlow(args: UsePosFlowArgs): UsePosFlowReturn {
   );
 
   const { students } = useStudents();
-  const { todayMenu } = useMenu();
+  const { menu: todayMenu } = useMenuForDate(args.businessDate);
   const { transactions } = useTransactions();
   const { commitPosTransactionDraft } = useTransactionActions();
 

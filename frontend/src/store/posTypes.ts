@@ -52,6 +52,8 @@ export interface TransactionStateSlice {
 export interface MenuStateSlice {
   vendors: Vendor[];
   todayMenu: TodayMenu;
+  /** M0：依營業日保存的晚餐設定；沒有設定的日子沿用較早日期（見 resolveMenuForDate）。 */
+  menusByDate: Record<string, TodayMenu>;
 }
 
 /** Audit domain: 審計追蹤 */
@@ -100,6 +102,8 @@ export interface TransactionActions {
 /** Menu domain actions */
 export interface MenuActions {
   setTodayMenu: (menu: TodayMenu) => void;
+  /** 儲存某個營業日的晚餐設定，同時更新 todayMenu 為最近儲存的設定。 */
+  setMenuForDate: (date: string, menu: Omit<TodayMenu, 'businessDate' | 'revision' | 'updatedAt'>, now: string) => void;
   setVendors: (vendors: Vendor[]) => void;
   resetData: () => void;
 }
