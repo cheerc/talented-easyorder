@@ -28,6 +28,7 @@ export interface WireStudentAccount {
   currentBalance: number; aliases: string[];
   className?: string; groupName?: string; faceProfileId?: string;
   faceEnrollmentStatus: WireFaceEnrollmentStatus;
+  openingBalance?: { amount: number; asOfDate: string; note: string; createdAt: string };
   createdAt: string; updatedAt: string; revision: number;
 }
 

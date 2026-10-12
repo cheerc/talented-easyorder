@@ -7,6 +7,7 @@ import { createTransactionActions } from './posActions/transactionActions';
 import { createSessionActions } from './posActions/sessionActions';
 import { createMenuActions } from './posActions/menuActions';
 import { createFirebaseActions } from './posActions/firebaseActions';
+import { createPracticeDataActions } from './posActions/practiceDataActions';
 import {
   INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS
 } from '../mocks/initialData';
@@ -26,6 +27,7 @@ export const usePosStore = create<PosState>()(
       ...createSessionActions(set, get),
       ...createTransactionActions(set, get),
       ...createFirebaseActions(),
+      ...createPracticeDataActions(set),
     }),
     posPersistenceConfig,
   )

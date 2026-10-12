@@ -49,3 +49,14 @@ export const INITIAL_TODAY_MENU: TodayMenu = {
 export const INITIAL_TODAY_TX: LedgerTransaction[] = [];
 
 export const INITIAL_ORDERED_TODAY: Record<string, number> = {};
+
+/** M0：從空白開始時的今日晚餐（未設定；不可訂餐）。 */
+export const EMPTY_TODAY_MENU: TodayMenu = {
+  businessDate: '',
+  itemName: '',
+  price: 0,
+  vendorId: '',
+  vendorNameSnapshot: '',
+  updatedAt: '',
+  revision: 1,
+};

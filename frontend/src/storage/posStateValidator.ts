@@ -85,6 +85,12 @@ export function validateStudentAccount(s: unknown): ValidationResult {
   if (!VALID_STUDENT_STATUSES.has(r.status as string)) return { ok: false, reason: `invalid status: ${String(r.status)}` };
   if (!Array.isArray(r.aliases)) return { ok: false, reason: 'aliases not array' };
   if (!VALID_FACE_STATUSES.has(r.faceEnrollmentStatus as string)) return { ok: false, reason: `invalid faceEnrollmentStatus: ${String(r.faceEnrollmentStatus)}` };
+  if (r.openingBalance !== undefined) {
+    const ob = r.openingBalance;
+    if (!isRecord(ob)) return { ok: false, reason: 'openingBalance not object' };
+    if (!isSafeInt(ob.amount)) return { ok: false, reason: 'openingBalance.amount not safe integer' };
+    if (!hasStr(ob, 'asOfDate') || !hasStr(ob, 'note') || !hasStr(ob, 'createdAt')) return { ok: false, reason: 'openingBalance missing fields' };
+  }
   return { ok: true };
 }
 
@@ -118,7 +124,9 @@ export function validateTodayMenu(m: unknown): ValidationResult {
   if (!hasStr(r, 'updatedAt')) return { ok: false, reason: 'missing updatedAt' };
   if (!hasNum(r, 'price')) return { ok: false, reason: 'missing price' };
   if (!hasNum(r, 'revision')) return { ok: false, reason: 'missing revision' };
-  if (!isSafeInt(r.price) || r.price <= 0) return { ok: false, reason: 'price not positive safe integer' };
+  // M0：空白資料集的「未設定」菜單（名稱空白、價格 0）是合法狀態，不能因此被回填範例資料。
+  const isUnsetMenu = r.itemName === '' && r.price === 0;
+  if (!isUnsetMenu && (!isSafeInt(r.price) || r.price <= 0)) return { ok: false, reason: 'price not positive safe integer' };
   if (r.revision < 1) return { ok: false, reason: 'invalid revision' };
   return { ok: true };
 }

@@ -74,7 +74,8 @@ export interface PosState
     TransactionActions,
     MenuActions,
     SessionActions,
-    StudentActions {}
+    StudentActions,
+    PracticeDataActions {}
 
 // ─── Per-Domain Action Interfaces (Ref: #264) ───
 
@@ -117,3 +118,13 @@ export interface StudentActions {
   disableStudent: (input: { studentId: string; operatorId: string }) => Promise<void>;
 }
 
+
+/** M0：本機練習資料 actions（只在本機模式的 F3 使用） */
+export interface PracticeDataActions {
+  /** 清空名單、供應商、交易、稽核、結帳與今日菜單。 */
+  startBlankData: () => void;
+  /** 載入固定的匿名驗收範例（含供應商）。 */
+  loadSampleData: () => void;
+  /** 新增一個本機帳戶；重複編號時不變更。 */
+  addLocalStudent: (account: StudentAccount) => void;
+}

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useConfirmHandler } from '../useConfirmHandler';
 import type { PosFlowState } from '../../domain/posFlow';
@@ -57,5 +57,23 @@ describe('useConfirmHandler', () => {
     expect(requestConfirm).not.toHaveBeenCalled();
     expect(confirmDuplicate).not.toHaveBeenCalled();
     expect(confirmExpenseAmount).not.toHaveBeenCalled();
+  });
+
+  it('blocks order confirm when orderBlocked (M0 blank menu) but still allows payment', () => {
+    const orderState: PosFlowState = { kind: 'student_selected', studentId: 's1', mode: 'order', source: 'manual', paidAmountText: '', searchTextHint: '' };
+    const requestConfirm = vi.fn();
+    const { result } = renderHook(() =>
+      useConfirmHandler({ state: orderState, requestConfirm, confirmDuplicate: vi.fn(), confirmExpenseAmount: vi.fn(), orderBlocked: true })
+    );
+    result.current();
+    expect(requestConfirm).not.toHaveBeenCalled();
+
+    const paymentState: PosFlowState = { ...orderState, mode: 'payment' };
+    const requestConfirm2 = vi.fn();
+    const { result: result2 } = renderHook(() =>
+      useConfirmHandler({ state: paymentState, requestConfirm: requestConfirm2, confirmDuplicate: vi.fn(), confirmExpenseAmount: vi.fn(), orderBlocked: true })
+    );
+    result2.current();
+    expect(requestConfirm2).toHaveBeenCalledOnce();
   });
 });

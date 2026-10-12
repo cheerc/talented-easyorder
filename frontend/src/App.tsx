@@ -28,6 +28,7 @@ import { FirebaseProvider } from './providers/FirebaseProvider';
 import { isConfigured as isFirebaseConfigured } from './firebase/firebaseApp';
 import { useFirebase } from './hooks/useFirebase';
 import { isPrototypeMode } from './appMode';
+import { isMenuReady } from './domain/menu';
 import { AuthGate } from './auth/AuthGate';
 import { POS_DAILY_TX_DISPLAY_LIMIT } from './domain/constants';
 import { SYSTEM_OPERATOR_ID } from './domain/operatorId';
@@ -94,7 +95,7 @@ function AppContent() {
   });
 
   // Ref: #281 — Extracted to useConfirmHandler hook
-  const handleConfirm = useConfirmHandler({ state, requestConfirm, confirmDuplicate, confirmExpenseAmount });
+  const handleConfirm = useConfirmHandler({ state, requestConfirm, confirmDuplicate, confirmExpenseAmount, orderBlocked: !isMenuReady(todayMenu) });
 
   const { cancelDialogOpen, setCancelDialogOpen, noOrderDialogOpen, setNoOrderDialogOpen,
     openCancelConfirm, openCancelConfirmForTx, handleDeleteOrder } = useCancelDialog({ picked, allTx, viewDate, allStudents: students, selectStudent });
