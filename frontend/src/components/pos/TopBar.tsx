@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import type { StorageMode } from "../../appMode";
 import { useSimulationDate } from "../../store/selectors";
 
@@ -27,6 +27,12 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing,
     { id: 'vendors', label: '供應商', hint: 'F4' },
     { id: 'history', label: '歷史', hint: 'F5' },
   ];
+  // 窄視窗時分頁列會自己橫向捲動；切頁（含 F1–F5）後把目前分頁捲進畫面。
+  const tabsRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const on = tabsRef.current?.querySelector<HTMLElement>('.tab-on');
+    on?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [tab]);
   return (
     <header className="topbar">
       <div className="brand">
@@ -63,7 +69,7 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing,
           </div>
         </div>
       </div>
-      <nav className="tabs">
+      <nav className="tabs" ref={tabsRef}>
         {tabs.map(t => (
           <button
             key={t.id}

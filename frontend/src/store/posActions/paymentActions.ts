@@ -1,5 +1,5 @@
 import type { PosState } from '../posTypes';
-import { createLedgerTransaction, calculateTransactionAmount } from '../../domain/ledger';
+import { createLedgerTransaction, rebalanceAccounts } from '../../domain/ledger';
 import { createStudentSnapshot } from '../../domain/student';
 import { createMenuSnapshot } from '../../domain/menu';
 
@@ -14,12 +14,6 @@ export function createPaymentActions(
 
         const student = state.students[studentIndex];
         const now = new Date().toISOString();
-        const amount = calculateTransactionAmount(0, paidAmount);
-        const newBalance = student.currentBalance + amount;
-
-        const newStudents = [...state.students];
-        newStudents[studentIndex] = { ...student, currentBalance: newBalance };
-
         const newTransaction = createLedgerTransaction({
           transactionId: crypto.randomUUID(),
           businessDate: state.todayMenu.businessDate,
@@ -34,10 +28,7 @@ export function createPaymentActions(
           note: note || 'payment',
         });
 
-        return {
-          students: newStudents,
-          transactions: [newTransaction, ...state.transactions],
-        };
+        return rebalanceAccounts(state.students, state.transactions, [newTransaction, ...state.transactions], [studentId]);
       });
     },
   };

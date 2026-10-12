@@ -1,5 +1,5 @@
 import type { LedgerTransaction } from './ledger';
-import { isStudentTransaction } from './ledger';
+import { isStudentTransaction, sortLedgerChronologically } from './ledger';
 
 export type LedgerDateRangeKind = 'today' | 'week' | 'month' | 'custom';
 
@@ -114,7 +114,15 @@ export function calculateLedgerTotals(transactions: LedgerTransaction[]): Ledger
   };
 }
 
-export function groupLedgerRowsByStudent(transactions: LedgerTransaction[]): LedgerGroup[] {
+/**
+ * 依帳戶分組。每組的交易依 sortLedgerChronologically 由舊到新排，afterBalance 取「最後發生」那筆，
+ * 補登前一天的交易後仍等於帳戶目前餘額（M2 F03）。inputOrder 說明傳入陣列方向（預設舊的在前，同 F1 畫面清單）；
+ * 直接傳 store 交易陣列時請給 'newest-first'。
+ */
+export function groupLedgerRowsByStudent(
+  transactions: LedgerTransaction[],
+  inputOrder: 'newest-first' | 'oldest-first' = 'oldest-first',
+): LedgerGroup[] {
   const map = new Map<string, LedgerTransaction[]>();
   for (const tx of transactions) {
     if (!isStudentTransaction(tx)) continue;
@@ -125,9 +133,10 @@ export function groupLedgerRowsByStudent(transactions: LedgerTransaction[]): Led
 
   const groups: LedgerGroup[] = [];
   for (const [studentId, txs] of map) {
-    const sorted = [...txs].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const sorted = sortLedgerChronologically(txs, inputOrder);
 
-    const latestCreatedAt = sorted[sorted.length - 1]?.createdAt ?? '';
+    // 分組的排列仍以最近一次登錄的時間為準（補登的那筆也算最近操作）。
+    const latestCreatedAt = txs.reduce((max, t) => (t.createdAt > max ? t.createdAt : max), '');
     const lastTx = sorted[sorted.length - 1];
     const studentNameSnapshot = lastTx?.studentNameSnapshot ?? '';
 

@@ -108,3 +108,47 @@ describe('editActions — editTransaction', () => {
     expect(audits[audits.length - 1].eventType).toBe('transaction_edited');
   });
 });
+
+describe('M2 F03：改帳後這個帳戶之後每一筆的結餘都重算', () => {
+  function setup() {
+    usePosStore.setState({ transactions: [] });
+    const start = usePosStore.getState().students.find(s => s.studentId === '001')!.currentBalance;
+    usePosStore.getState().processTransaction('001', 'order', 90, 0);
+    const order = usePosStore.getState().transactions[0];
+    usePosStore.getState().processTransaction('001', 'payment', 0, 100);
+    const payment = usePosStore.getState().transactions[0];
+    return { start, order, payment };
+  }
+  const bal = () => usePosStore.getState().students.find(s => s.studentId === '001')!.currentBalance;
+  const after = (id: string) => usePosStore.getState().transactions.find(t => t.transactionId === id)!.afterBalance;
+
+  it('editTransaction 把收款 100 改成 120：最後一筆結餘與目前餘額一致', () => {
+    const { start, payment } = setup();
+    usePosStore.getState().editTransaction(payment.transactionId, { paidAmount: 120 });
+    expect(bal()).toBe(start - 90 + 120);
+    expect(after(payment.transactionId)).toBe(start - 90 + 120);
+  });
+
+  it('editTransaction 改前面那筆訂餐：後面的收款結餘跟著變', () => {
+    const { start, order, payment } = setup();
+    usePosStore.getState().editTransaction(order.transactionId, { mealPrice: 110 });
+    expect(after(order.transactionId)).toBe(start - 110);
+    expect(after(payment.transactionId)).toBe(start - 110 + 100);
+    expect(bal()).toBe(start - 110 + 100);
+  });
+
+  it('deleteTransaction 刪掉中間那筆：後面的結餘往回調', () => {
+    const { start, order, payment } = setup();
+    usePosStore.getState().deleteTransaction(order.transactionId);
+    expect(after(payment.transactionId)).toBe(start + 100);
+    expect(bal()).toBe(start + 100);
+  });
+
+  it('deleteOrderWithRefundCheck 不會動到其他帳戶的餘額', () => {
+    const { order } = setup();
+    const others = usePosStore.getState().students.filter(s => s.studentId !== '001').map(s => [s.studentId, s.currentBalance]);
+    usePosStore.getState().deleteOrderWithRefundCheck(order.transactionId);
+    expect(usePosStore.getState().students.filter(s => s.studentId !== '001').map(s => [s.studentId, s.currentBalance])).toEqual(others);
+  });
+});
+

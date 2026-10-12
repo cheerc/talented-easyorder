@@ -5,6 +5,7 @@ import { buildOrderTransaction } from './orderActions';
 import { createOrderActions } from './orderActions';
 import { createPaymentActions } from './paymentActions';
 import { createEditActions } from './editActions';
+import { rebalanceAccounts } from '../../domain/ledger';
 
 export function createTransactionActions(
   set: (partial: Partial<PosState> | ((state: PosState) => Partial<PosState>)) => void,
@@ -28,12 +29,10 @@ export function createTransactionActions(
         const studentIndex = state.students.findIndex(s => s.studentId === sid);
         if (studentIndex === -1) return state;
 
-        const { newStudents, newTransaction } = buildOrderTransaction(state, draft, studentIndex);
+        const { newTransaction } = buildOrderTransaction(state, draft, studentIndex);
 
-        return {
-          students: newStudents,
-          transactions: [newTransaction, ...state.transactions],
-        };
+        // M2 F03：補登前幾天的交易時，之後各筆的結餘也要一起重算。
+        return rebalanceAccounts(state.students, state.transactions, [newTransaction, ...state.transactions], [sid]);
       });
     },
 

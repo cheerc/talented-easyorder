@@ -57,6 +57,16 @@ describe('RecentStrip', () => {
     expect(screen.getByText('1個便當')).toBeInTheDocument();
   });
 
+  it('M2 F03：有目前餘額時顯示它，不用這串交易最後一筆的舊結餘', () => {
+    const groups = [
+      makeGroup('S001', '王小明', [
+        makeTx({ transactionId: 't1', studentId: 'S001', type: 'order', mealPrice: 90, afterBalance: -90 }),
+      ], -90),
+    ];
+    render(<RecentStrip groups={groups} balances={new Map([['S001', 30]])} dateStatus="open" />);
+    expect(screen.getByText(/餘額/).textContent).toContain('+30');
+  });
+
   it('does not show expand icons or detail rows', () => {
     const groups = [
       makeGroup('S001', '王小明', [

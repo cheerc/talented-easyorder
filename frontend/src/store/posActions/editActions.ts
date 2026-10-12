@@ -1,6 +1,6 @@
 import type { PosState } from '../posTypes';
 import type { LedgerTransaction } from '../../domain/ledger';
-import { CASHIER_SENTINEL, recalculateStudentBalances, calculateTransactionAmount } from '../../domain/ledger';
+import { rebalanceAccounts, calculateTransactionAmount } from '../../domain/ledger';
 import { createLedgerAuditEvent } from '../../domain/ledgerAudit';
 import { SYSTEM_OPERATOR_ID } from '../../domain/operatorId';
 
@@ -16,71 +16,22 @@ export function createEditActions(
 
         const oldTx = state.transactions[txIndex];
         const newTx = { ...oldTx, ...updates };
-
         newTx.amount = calculateTransactionAmount(newTx.mealPrice, newTx.paidAmount);
-
-        const diff = newTx.amount - oldTx.amount;
-        newTx.afterBalance = oldTx.afterBalance + diff;
 
         const newTransactions = [...state.transactions];
         newTransactions[txIndex] = newTx;
 
-        for (let i = 0; i < txIndex; i++) {
-          if (newTransactions[i].studentId === oldTx.studentId) {
-            newTransactions[i] = {
-              ...newTransactions[i],
-              afterBalance: newTransactions[i].afterBalance + diff
-            };
-          }
-        }
-
-        const studentIndex = state.students.findIndex(s => s.studentId === oldTx.studentId);
-        if (studentIndex === -1) return { transactions: newTransactions };
-
-        const newStudents = [...state.students];
-        newStudents[studentIndex] = {
-          ...newStudents[studentIndex],
-          currentBalance: newStudents[studentIndex].currentBalance + diff
-        };
-
-        return { transactions: newTransactions, students: newStudents };
+        // M2 F03：改一筆後，這個帳戶之後每一筆的結餘與目前餘額都重算。
+        return rebalanceAccounts(state.students, state.transactions, newTransactions, [oldTx.studentId, newTx.studentId]);
       });
     },
 
     deleteTransaction: (id: string) => {
       set((state) => {
-        const txIndex = state.transactions.findIndex(t => t.transactionId === id);
-        if (txIndex === -1) return state;
-
-        const tx = state.transactions[txIndex];
-        if (tx.studentId === CASHIER_SENTINEL) {
-          const newTransactions = [...state.transactions];
-          newTransactions.splice(txIndex, 1);
-          return { transactions: newTransactions };
-        }
-
-        const studentIndex = state.students.findIndex(s => s.studentId === tx.studentId);
-
-        const newTransactions = [...state.transactions];
-        for (let i = 0; i < txIndex; i++) {
-          if (newTransactions[i].studentId === tx.studentId) {
-            newTransactions[i] = {
-              ...newTransactions[i],
-              afterBalance: newTransactions[i].afterBalance - tx.amount
-            };
-          }
-        }
-        newTransactions.splice(txIndex, 1);
-
-        if (studentIndex === -1) return { transactions: newTransactions };
-
-        const newStudents = [...state.students];
-        newStudents[studentIndex] = {
-          ...newStudents[studentIndex],
-          currentBalance: Math.round(newStudents[studentIndex].currentBalance - tx.amount)
-        };
-
-        return { transactions: newTransactions, students: newStudents };
+        const tx = state.transactions.find(t => t.transactionId === id);
+        if (!tx) return state;
+        const newTransactions = state.transactions.filter(t => t.transactionId !== id);
+        return rebalanceAccounts(state.students, state.transactions, newTransactions, [tx.studentId]);
       });
     },
 
@@ -144,15 +95,9 @@ export function createEditActions(
         remainingTx = state.transactions.filter(t => t.transactionId !== id);
       }
 
-      const { students: newStudents, transactions: newStudentTx } = recalculateStudentBalances(
-        state.students,
-        remainingTx
-      );
-
-      const cashierTx = remainingTx.filter(t => t.studentId === CASHIER_SENTINEL);
-
-      const newTransactions = [...newStudentTx, ...cashierTx].sort(
-        (a, b) => b.createdAt.localeCompare(a.createdAt)
+      // M2：只重算這個帳戶；其他帳戶不動（舊資料沒有期初時，整批重算會把餘額歸零）。
+      const { students: newStudents, transactions: newTransactions } = rebalanceAccounts(
+        state.students, state.transactions, remainingTx, [tx.studentId],
       );
 
       set({
@@ -183,10 +128,6 @@ export function createEditActions(
       const newPaidAmount = Math.round(updates.paidAmount ?? original.paidAmount);
       const newNote = updates.note ?? original.note;
 
-      const oldDelta = original.paidAmount - original.mealPrice;
-      const newDelta = newPaidAmount - newMealPrice;
-      const balanceDelta = newDelta - oldDelta;
-
       const now = new Date().toISOString();
       const auditEvent = createLedgerAuditEvent({
         auditEventId: `evt-${crypto.randomUUID()}`,
@@ -211,35 +152,14 @@ export function createEditActions(
         revision: original.revision + 1,
       };
 
-      if (original.studentId !== CASHIER_SENTINEL) {
-        const studentIndex = state.students.findIndex(s => s.studentId === original.studentId);
-        if (studentIndex !== -1) {
-          const newStudents = [...state.students];
-          newStudents[studentIndex] = {
-            ...newStudents[studentIndex],
-            currentBalance: Math.round(newStudents[studentIndex].currentBalance + balanceDelta),
-          };
-
-          const newTransactions = state.transactions.map((t, i) =>
-            i === txIndex ? newTx : t
-          );
-
-          set({
-            transactions: newTransactions,
-            auditEvents: [...state.auditEvents, auditEvent],
-            students: newStudents,
-          });
-          return;
-        }
-      }
-
-      const newTransactions = state.transactions.map((t, i) =>
-        i === txIndex ? newTx : t
-      );
+      const newTransactions = state.transactions.map((t, i) => (i === txIndex ? newTx : t));
+      // M2 F03：修改後這個帳戶之後每一筆的結餘都要跟著變，不只目前餘額。
+      const rebalanced = rebalanceAccounts(state.students, state.transactions, newTransactions, [original.studentId]);
 
       set({
-        transactions: newTransactions,
+        transactions: rebalanced.transactions,
         auditEvents: [...state.auditEvents, auditEvent],
+        students: rebalanced.students,
       });
     },
   };

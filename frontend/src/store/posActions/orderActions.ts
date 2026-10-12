@@ -1,6 +1,6 @@
 import type { PosState } from '../posTypes';
 import type { LedgerTransaction } from '../../domain/ledger';
-import { createLedgerTransaction, calculateTransactionAmount } from '../../domain/ledger';
+import { createLedgerTransaction, rebalanceAccounts } from '../../domain/ledger';
 import { createStudentSnapshot } from '../../domain/student';
 import { createMenuSnapshot } from '../../domain/menu';
 import type { PosTransactionDraft } from '../../domain/posTransaction';
@@ -48,12 +48,6 @@ export function createOrderActions(
 
           const student = state.students[studentIndex];
           const now = new Date().toISOString();
-          const amount = calculateTransactionAmount(mealPrice, paidAmount);
-          const newBalance = student.currentBalance + amount;
-
-          const newStudents = [...state.students];
-          newStudents[studentIndex] = { ...student, currentBalance: newBalance };
-
           const newTransaction = createLedgerTransaction({
             transactionId: crypto.randomUUID(),
             businessDate: state.todayMenu.businessDate,
@@ -68,10 +62,7 @@ export function createOrderActions(
             note: note || (type === 'order' ? state.todayMenu.itemName : type),
           });
 
-          return {
-            students: newStudents,
-            transactions: [newTransaction, ...state.transactions]
-          };
+          return rebalanceAccounts(state.students, state.transactions, [newTransaction, ...state.transactions], [studentId]);
         });
       } finally {
         performance.mark(`${markKey}-end`);

@@ -10,8 +10,8 @@ export interface SummaryRowProps {
 export const SUMMARY_ROW_HEIGHT = 36;
 
 export const SummaryRow = React.memo(function SummaryRow({ group, groupIndex }: SummaryRowProps) {
-  const firstAfter = group.transactions[0]?.afterBalance ?? group.afterBalance;
-  const netChange = group.afterBalance - firstAfter;
+  // M2：淨變動是區間內每一筆的增減加總。原本用「最後結餘 − 第一筆結餘」，少算了第一筆本身。
+  const netChange = group.transactions.reduce((sum, t) => sum + t.amount, 0);
   return (
     <div key={`s-${groupIndex}`} className="rpt-detail-row rpt-summary-row" style={{ background: 'var(--bg-2)', fontWeight: 500, fontSize: '12px', borderBottom: '2px solid var(--line-2)', display: 'flex', gap: '12px', padding: '4px 12px', alignItems: 'center', height: SUMMARY_ROW_HEIGHT }}>
       <span>📋 訂餐 {group.recordCount} 筆</span>
