@@ -3,10 +3,14 @@ import React, { useRef } from 'react';
 interface NumericInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type' | 'onChange'> {
   value?: number | string;
   onChange?: (value: string) => void;
+  /**
+   * M1 K07：讓負號留在欄位裡（交給外層顯示錯誤並停用送出），而不是悄悄吃掉、把 -5 變成 5。
+   */
+  keepMinusSign?: boolean;
 }
 
 export const NumericInput = React.memo(React.forwardRef<HTMLInputElement, NumericInputProps>(
-  function NumericInput({ value, onChange, onKeyDown, ...rest }, ref) {
+  function NumericInput({ value, onChange, onKeyDown, keepMinusSign = false, ...rest }, ref) {
     const imeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -18,6 +22,7 @@ export const NumericInput = React.memo(React.forwardRef<HTMLInputElement, Numeri
       if (
         e.key.length === 1 &&
         !/[0-9]/.test(e.key) &&
+        !(keepMinusSign && e.key === '-') &&
         !e.ctrlKey && !e.metaKey && !e.altKey
       ) {
         e.preventDefault();
@@ -44,7 +49,7 @@ export const NumericInput = React.memo(React.forwardRef<HTMLInputElement, Numeri
         return;
       }
 
-      if (raw === '' || /^\d*$/.test(raw)) {
+      if (raw === '' || (keepMinusSign ? /^-?\d*$/ : /^\d*$/).test(raw)) {
         onChange?.(raw);
       }
     };

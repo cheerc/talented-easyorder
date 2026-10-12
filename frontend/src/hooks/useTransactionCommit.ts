@@ -11,7 +11,7 @@ import type { TodayMenu } from '../domain/menu';
 import type { LedgerTransaction } from '../domain/ledger';
 import { countActiveOrdersForStudent, CASHIER_SENTINEL } from '../domain/ledger';
 import type { PosTransactionDraft } from '../domain/posTransaction';
-import { buildPosTransactionDraft, deriveTransactionAttributes } from '../domain/posTransaction';
+import { buildPosTransactionDraft, deriveTransactionAttributes, parsePaidAmount } from '../domain/posTransaction';
 import { saveCrashDraft } from '../storage/crashDraft';
 import { checkStorageHealth } from '../storage/storageHealth';
 
@@ -44,12 +44,10 @@ export function useTransactionCommit(
     }
     if (state.kind !== 'student_selected') return;
 
-    if (state.mode === 'payment') {
-      const amt = Number(state.paidAmountText || '0');
-      if (!state.paidAmountText || !Number.isFinite(amt) || amt <= 0) {
-        return;
-      }
-    }
+    // M1 K07：收款欄不合法（例如負數）時不送出，不論訂餐或繳費；畫面上已顯示原因。
+    const parsed = parsePaidAmount(state.paidAmountText);
+    if (!parsed.ok) return;
+    if (state.mode === 'payment' && parsed.value <= 0) return;
 
     const activeOrderCount =
       state.mode === 'order'

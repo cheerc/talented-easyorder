@@ -1,3 +1,4 @@
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { NumericInput } from '../NumericInput';
 
@@ -95,5 +96,28 @@ describe('NumericInput IME detection (#403)', () => {
     const input = screen.getByRole('textbox');
     expect(input.getAttribute('inputmode')).toBe('numeric');
     expect(input.getAttribute('pattern')).toBe('[0-9]*');
+  });
+});
+
+describe('NumericInput 負號（M1 K07）', () => {
+  it('預設擋下負號鍵與含負號的值', () => {
+    const onChange = vi.fn();
+    render(<NumericInput value="" onChange={onChange} />);
+    const input = screen.getByRole('textbox');
+    const ev = fireEvent.keyDown(input, { key: '-' });
+    expect(ev).toBe(false); // preventDefault
+    fireEvent.change(input, { target: { value: '-5' } });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('keepMinusSign：負號留在欄位裡交給外層判斷，不會被吃掉變成正數', () => {
+    const onChange = vi.fn();
+    render(<NumericInput value="" onChange={onChange} keepMinusSign />);
+    const input = screen.getByRole('textbox');
+    expect(fireEvent.keyDown(input, { key: '-' })).toBe(true);
+    fireEvent.change(input, { target: { value: '-5' } });
+    expect(onChange).toHaveBeenCalledWith('-5');
+    fireEvent.change(input, { target: { value: '5-' } });
+    expect(onChange).toHaveBeenCalledTimes(1);
   });
 });

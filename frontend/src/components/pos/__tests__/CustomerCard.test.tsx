@@ -373,4 +373,20 @@ describe('CustomerCard', () => {
       expect(screen.getByText('本週無交易紀錄')).toBeDefined();
     });
   });
+
+  describe('M1 K07：收款欄是負數', () => {
+    const actions = { onConfirm: vi.fn(), onCancel: vi.fn() };
+    it('繳費模式輸入 -5：送出鍵停用，說明不能是負數，不當成 5', () => {
+      renderCard({ ...actions, mode: 'payment', focusZone: 'mode-payment', payAmount: '-5' });
+      expect(screen.getByRole('button', { name: /確認收款/ })).toBeDisabled();
+      expect(screen.getByText(/收款金額不能是負數/)).toBeDefined();
+      expect((screen.getByLabelText('付款金額') as HTMLInputElement).value).toBe('-5');
+    });
+
+    it('訂餐模式輸入 -5：也不能送出（不會悄悄記成 0 元記帳）', () => {
+      renderCard({ ...actions, payAmount: '-5', todayMenu: { itemName: '便當', price: 60, vendorNameSnapshot: 'A', businessDate: '2026-06-01' } });
+      expect(screen.getByRole('button', { name: /確認訂餐/ })).toBeDisabled();
+      expect(screen.getByText(/收款金額不能是負數/)).toBeDefined();
+    });
+  });
 });

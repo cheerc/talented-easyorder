@@ -27,9 +27,14 @@ export interface PosTransactionDraft {
   expectedBalanceAfter: number;
 }
 
+export const PAID_AMOUNT_NEGATIVE_MESSAGE = '收款金額不能是負數。退錢請用取消訂餐或更正交易。';
+
 export function parsePaidAmount(text: string): { ok: true; value: number } | { ok: false; message: string } {
   const trimmed = text.trim();
   if (!trimmed) return { ok: true, value: 0 };
+
+  // M1 K07：負號不能被默默拿掉變成正數，要明確擋下。
+  if (trimmed.startsWith('-')) return { ok: false, message: PAID_AMOUNT_NEGATIVE_MESSAGE };
 
   const num = Number(trimmed);
   if (!Number.isFinite(num) || !/^\d+$/.test(trimmed)) {
