@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -355,7 +356,7 @@ describe('CustomerCard', () => {
     updatedAt: '',
     revision: 1,
   };
-  const mockMenu = { itemName: '排骨便當', price: 90, vendorId: 'v1', vendorNameSnapshot: '老王便當' };
+  const mockMenu = { businessDate: '2026-06-01', itemName: '排骨便當', price: 90, vendorId: 'v1', vendorNameSnapshot: '老王便當', updatedAt: '', revision: 1 };
 
   it('renders student balance card', () => {
     const { container } = render(
@@ -373,6 +374,43 @@ describe('CustomerCard', () => {
       />
     );
     expect(container.textContent).toContain('王小美');
+  });
+
+  // M1 F02：特殊餐子流程按「取消」要整個還原，品項名不能留在明細或下次預填。
+  it('cancelling the special meal clears both price and item label', () => {
+    function Harness() {
+      const [price, setPrice] = React.useState<number | null>(null);
+      const [label, setLabel] = React.useState('');
+      return (
+        <CustomerCard
+          student={mockStudent} todayMenu={mockMenu} mode="order" orderedTodayCount={0}
+          payAmount="" setPayAmount={() => {}}
+          priceOverride={price} priceOverrideLabel={label}
+          setPriceOverride={setPrice} setPriceOverrideLabel={setLabel}
+        />
+      );
+    }
+    const { container } = render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: '訂購其他餐點' }));
+    fireEvent.change(screen.getByLabelText('品項或原因'), { target: { value: '雞腿便當' } });
+    expect(container.textContent).toContain('今日便當 (雞腿便當)');
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(container.textContent).toContain('今日便當 (排骨便當)');
+    expect(container.textContent).not.toContain('雞腿便當');
+    fireEvent.click(screen.getByRole('button', { name: '訂購其他餐點' }));
+    expect((screen.getByLabelText('品項或原因') as HTMLInputElement).value).toBe('');
+  });
+
+  it('shows the menu name, not a stale label, when no special price is set', () => {
+    const { container } = render(
+      <CustomerCard
+        student={mockStudent} todayMenu={mockMenu} mode="order" orderedTodayCount={0}
+        payAmount="" setPayAmount={() => {}}
+        priceOverride={null} priceOverrideLabel="雞腿便當"
+        setPriceOverride={() => {}} setPriceOverrideLabel={() => {}}
+      />
+    );
+    expect(container.textContent).toContain('今日便當 (排骨便當)');
   });
 });
 
@@ -429,7 +467,7 @@ describe('ActionBar', () => {
 });
 
 describe('IdleHero', () => {
-  const mockMenu = { itemName: '排骨便當', price: 90, vendorId: 'v1', vendorNameSnapshot: '老王便當' };
+  const mockMenu = { businessDate: '2026-06-01', itemName: '排骨便當', price: 90, vendorId: 'v1', vendorNameSnapshot: '老王便當', updatedAt: '', revision: 1 };
 
   it('renders today menu info', () => {
     const { container } = render(

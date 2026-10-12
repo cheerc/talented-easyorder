@@ -109,3 +109,16 @@ describe('menusByDate validation and snapshots', () => {
     expect(validatePersistedState({ ...base, menusByDate: { '2026-06-01': menu('2026-06-01', '排骨', 90) } }).ok).toBe(true);
   });
 });
+
+describe('first dated save on legacy data (M1 follow-up)', () => {
+  it('keeps the old single menu on its own date even when the first saved date is earlier', () => {
+    usePosStore.getState().loadSampleData();
+    const old = usePosStore.getState().todayMenu;
+    usePosStore.getState().setMenuForDate('2000-01-01', { itemName: '雞腿', price: 100, vendorId: 'v1', vendorNameSnapshot: '練習店' }, 'x');
+    const s = usePosStore.getState();
+    expect(s.menusByDate[old.businessDate]).toEqual(old);
+    expect(s.todayMenu).toEqual(old);
+    expect(resolveMenuForDate(s.menusByDate, s.todayMenu, old.businessDate).menu.itemName).toBe(old.itemName);
+    expect(resolveMenuForDate(s.menusByDate, s.todayMenu, '2000-01-02').menu.itemName).toBe('雞腿');
+  });
+});

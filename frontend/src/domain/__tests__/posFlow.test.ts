@@ -3,6 +3,7 @@ import {
   createInitialPosFlowState,
   reducePosFlow,
   toPosSourceDevice,
+  posDraftKey,
 } from '../posFlow';
 import type { PosFlowState, PosFlowEvent } from '../posFlow';
 
@@ -391,4 +392,22 @@ describe('toPosSourceDevice', () => {
   it('maps manual -> pc', () => expect(toPosSourceDevice('manual')).toBe('pc'));
   it('maps scan -> barcode_scanner', () => expect(toPosSourceDevice('scan')).toBe('barcode_scanner'));
   it('maps ipad -> ipad_handoff', () => expect(toPosSourceDevice('ipad')).toBe('ipad_handoff'));
+});
+
+describe('posDraftKey (M1 F02: draft extras follow the draft owner)', () => {
+  it('is the student for selected / duplicate / committing / success / error', () => {
+    expect(posDraftKey({ kind: 'student_selected', studentId: '001', mode: 'order', source: 'manual', paidAmountText: '', searchTextHint: '' })).toBe('student:001');
+    expect(posDraftKey({ kind: 'duplicate_warning', studentId: '001', source: 'manual', paidAmountText: '', searchTextHint: '' })).toBe('student:001');
+    expect(posDraftKey({ kind: 'committing', studentId: '001', mode: 'order', source: 'manual', paidAmountText: '' })).toBe('student:001');
+    expect(posDraftKey({ kind: 'success', transactionId: 't', syncStatus: 'queued', studentId: '001', mode: 'order', paidAmountText: '' })).toBe('student:001');
+    expect(posDraftKey({ kind: 'error', studentId: '001', message: 'x', retryable: true })).toBe('student:001');
+  });
+
+  it('changes when switching people and is null for idle, expense and historical states', () => {
+    expect(posDraftKey({ kind: 'student_selected', studentId: '002', mode: 'order', source: 'manual', paidAmountText: '', searchTextHint: '' })).not.toBe('student:001');
+    expect(posDraftKey({ kind: 'idle', searchText: '' })).toBeNull();
+    expect(posDraftKey({ kind: 'expense_input', amountText: '' })).toBeNull();
+    expect(posDraftKey({ kind: 'historical_readonly', businessDate: '2026-06-01' })).toBeNull();
+    expect(posDraftKey({ kind: 'committing', mode: 'expense', source: 'manual', paidAmountText: '', expenseAmount: 50 })).toBeNull();
+  });
 });

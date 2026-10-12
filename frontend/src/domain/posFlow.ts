@@ -225,3 +225,21 @@ export function toPosSourceDevice(source: PosSelectionSource): PosSourceDevice {
       return 'ipad_handoff';
   }
 }
+
+/**
+ * M1 F02：目前這張交易草稿屬於誰。換人、取消回到搜尋、進入櫃台收支或切到歷史日時 key 會變，
+ * 綁在草稿上的附加欄位（特殊餐價格與品項）要跟著一起清除。送出成功時仍屬同一人，成功畫面要用到這些值。
+ */
+export function posDraftKey(state: PosFlowState): string | null {
+  switch (state.kind) {
+    case 'student_selected':
+    case 'duplicate_warning':
+    case 'success':
+      return state.studentId ? `student:${state.studentId}` : null;
+    case 'committing':
+    case 'error':
+      return state.studentId ? `student:${state.studentId}` : null;
+    default:
+      return null;
+  }
+}

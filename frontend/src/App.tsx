@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { usePosFlow } from './hooks/usePosFlow';
-import type { PosMode } from './domain/posFlow';
+import { posDraftKey, type PosMode } from './domain/posFlow';
 import { checkStorageHealth } from './storage/storageHealth';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useAppNavigationShortcuts } from './hooks/useAppNavigationShortcuts';
@@ -73,6 +73,16 @@ function AppContent() {
     enterExpenseMode, updateExpenseAmount, confirmExpenseAmount,
     selectExpenseDirection, selectExpenseReason, updateExpenseNote, confirmExpenseNote,
   } = usePosFlow({ businessDate: viewDate, isHistorical, priceOverride, priceOverrideLabel });
+
+  // M1 F02：特殊餐價格與品項屬於這張草稿；換人、取消、進櫃台收支或切日時一律清掉，
+  // 不靠個別 Esc／取消按鈕各自記得清。render 期間調整，避免 effect 先畫出一幀殘留價格。
+  const draftKey = posDraftKey(state);
+  const [prevDraftKey, setPrevDraftKey] = useState(draftKey);
+  if (prevDraftKey !== draftKey) {
+    setPrevDraftKey(draftKey);
+    if (priceOverride !== null) setPriceOverride(null);
+    if (priceOverrideLabel !== '') setPriceOverrideLabel('');
+  }
 
   // M0 S-DATE：模擬營業日切換時，不把未送出的 F1 草稿帶到新的一天。
   const prevSystemDateRef = useRef(systemDate);

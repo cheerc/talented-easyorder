@@ -17,9 +17,9 @@ export function createMenuActions(
     setMenuForDate: (date, menu, now) => set((state) => {
       const prev = state.menusByDate[date];
       const saved = { ...menu, businessDate: date, updatedAt: now, revision: (prev?.revision ?? 0) + 1 };
-      // 第一次依日期儲存時，把原本的單一菜單留在它自己的日期，較早的日子仍沿用它而不是新設定。
+      // 第一次依日期儲存時，把原本的單一菜單留在它自己的日期，不被新設定覆蓋（不論新日期較早或較晚）。
       const legacy = state.todayMenu;
-      const seed = Object.keys(state.menusByDate).length === 0 && isMenuReady(legacy) && legacy.businessDate < date
+      const seed = Object.keys(state.menusByDate).length === 0 && isMenuReady(legacy) && legacy.businessDate !== date
         ? { [legacy.businessDate]: legacy } : {};
       const menusByDate = { ...seed, ...state.menusByDate, [date]: saved };
       // todayMenu 保持為最新營業日的設定，給仍讀單一菜單的舊路徑與沒有日期設定時的後備。
