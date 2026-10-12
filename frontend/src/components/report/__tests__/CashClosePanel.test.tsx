@@ -20,7 +20,7 @@ const baseProps = {
   hasQueuedRows: false,
   hasFailedConflict: false,
   openingCash: 500,
-  onClose: vi.fn(),
+  onClose: vi.fn(() => ({ ok: true as const })),
 };
 
 describe('CashClosePanel', () => {
@@ -117,11 +117,11 @@ describe('CashClosePanel', () => {
   });
 
   it('確認關帳 button enabled when hasQueuedRows and queuedAccepted', () => {
-    const { container, getByText } = render(
+    const { container, getByText, getByLabelText } = render(
       <CashClosePanel {...baseProps} hasQueuedRows queuedRowCount={2} />
     );
-    // First fill in the note (required for canClose)
-    const noteInput = getByText('備註').nextElementSibling as HTMLInputElement;
+    fireEvent.change(getByLabelText('實際點算金額'), { target: { value: '1200' } });
+    const noteInput = getByLabelText('關帳備註') as HTMLInputElement;
     fireEvent.change(noteInput, { target: { value: 'test' } });
     const cb = container.querySelector('#queued-accept') as HTMLInputElement;
     fireEvent.click(cb);
@@ -130,10 +130,11 @@ describe('CashClosePanel', () => {
   });
 
   it('shows confirmation dialog on 確認關帳 click', () => {
-    const { container, getByText } = render(
+    const { container, getByText, getByLabelText } = render(
       <CashClosePanel {...baseProps} openingCash={100} />
     );
-    const noteInput = getByText('備註').nextElementSibling as HTMLInputElement;
+    fireEvent.change(getByLabelText('實際點算金額'), { target: { value: '800' } });
+    const noteInput = getByLabelText('關帳備註') as HTMLInputElement;
     fireEvent.change(noteInput, { target: { value: 'test note' } });
     const closeBtn = container.querySelector('.cash-close-panel .btn-primary') as HTMLButtonElement;
     fireEvent.click(closeBtn);
@@ -143,25 +144,26 @@ describe('CashClosePanel', () => {
   });
 
   it('confirmation dialog shows businessDate, openingCash, netCash, expectedDrawerCash, countedCash, difference', () => {
-    const { container, getByText } = render(
+    const { container, getByText, getByLabelText } = render(
       <CashClosePanel {...baseProps} openingCash={100} totals={{ ...baseTotals, netCash: 400 }} />
     );
-    const noteInput = getByText('備註').nextElementSibling as HTMLInputElement;
+    fireEvent.change(getByLabelText('實際點算金額'), { target: { value: '500' } });
+    const noteInput = getByLabelText('關帳備註') as HTMLInputElement;
     fireEvent.change(noteInput, { target: { value: 'test' } });
     fireEvent.click(getByText('確認關帳'));
     expect(container.textContent).toContain('2026-05-30');
     expect(container.textContent).toContain('$100');
     expect(container.textContent).toContain('$400');
     expect(container.textContent).toContain('$500');
-    expect(container.textContent).toContain('$0');
+    expect(container.textContent).toContain('✓ 平');
   });
 
   it('confirmation dialog calls onClose(countedCash, note) on confirm', () => {
-    const onClose = vi.fn();
+    const onClose = vi.fn(() => ({ ok: true as const }));
     const { getByText, getByLabelText } = render(
       <CashClosePanel {...baseProps} onClose={onClose} />
     );
-    const noteInput = getByText('備註').nextElementSibling as HTMLInputElement;
+    const noteInput = getByLabelText('關帳備註') as HTMLInputElement;
     fireEvent.change(noteInput, { target: { value: 'end of day' } });
     const cashInput = getByLabelText('實際點算金額') as HTMLInputElement;
     fireEvent.change(cashInput, { target: { value: '1200' } });
@@ -171,10 +173,11 @@ describe('CashClosePanel', () => {
   });
 
   it('clicking overlay dismisses confirmation dialog', () => {
-    const { getByText, container } = render(
+    const { getByText, container, getByLabelText } = render(
       <CashClosePanel {...baseProps} />
     );
-    const noteInput = getByText('備註').nextElementSibling as HTMLInputElement;
+    fireEvent.change(getByLabelText('實際點算金額'), { target: { value: '1200' } });
+    const noteInput = getByLabelText('關帳備註') as HTMLInputElement;
     fireEvent.change(noteInput, { target: { value: 'test' } });
     fireEvent.click(getByText('確認關帳'));
     const overlay = container.querySelector('.modal-overlay') as HTMLElement;
@@ -193,5 +196,35 @@ describe('CashClosePanel', () => {
     const input = getByLabelText('實際點算金額') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '1500' } });
     expect(input.value).toBe('1500');
+  });
+
+  it('M3：沒有開帳金額時不能關帳，並說明要先到 F3 設定', () => {
+    const { getByText, getByLabelText, container } = render(<CashClosePanel {...baseProps} openingCash={null} />);
+    fireEvent.change(getByLabelText('實際點算金額'), { target: { value: '700' } });
+    expect((getByText('確認關帳') as HTMLButtonElement).disabled).toBe(true);
+    expect(container.textContent).toContain('未設定');
+    expect(container.textContent).toContain('請先到今日設定（F3）設定');
+  });
+
+  it('M3：沒輸入實際點算不能關；差額為 0 不用寫原因；有差額一定要寫', () => {
+    const { getByText, getByLabelText, container } = render(<CashClosePanel {...baseProps} />);
+    const btn = getByText('確認關帳') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    fireEvent.change(getByLabelText('實際點算金額'), { target: { value: '1200' } });
+    expect(btn.disabled).toBe(false);
+    fireEvent.change(getByLabelText('實際點算金額'), { target: { value: '1190' } });
+    expect(btn.disabled).toBe(true);
+    expect(container.textContent).toContain('點算金額和應有現金不同，請寫下原因。');
+    fireEvent.change(getByLabelText('關帳備註'), { target: { value: '點算短少10，待查' } });
+    expect(btn.disabled).toBe(false);
+  });
+
+  it('M3：store 拒絕時顯示原因', () => {
+    const onClose = vi.fn(() => ({ ok: false as const, message: '這一天已經關帳。' }));
+    const { getByText, getByLabelText, getByRole } = render(<CashClosePanel {...baseProps} onClose={onClose} />);
+    fireEvent.change(getByLabelText('實際點算金額'), { target: { value: '1200' } });
+    fireEvent.click(getByText('確認關帳'));
+    fireEvent.click(getByText('確定關帳'));
+    expect(getByRole('alert').textContent).toBe('沒有關帳：這一天已經關帳。');
   });
 });

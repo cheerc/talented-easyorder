@@ -5,7 +5,8 @@ import {
   createDailySettlement,
   reopenBusinessDate,
   isBusinessDateWritable,
-  getOpeningCash,
+  getConfirmedOpeningCash,
+  suggestOpeningCash,
 } from '../cashClose';
 import type { LedgerTotals } from '../ledgerReport';
 
@@ -73,10 +74,10 @@ describe('validateCashClose', () => {
     expect(result.ok).toBe(false);
   });
 
-  it('queued rows with acceptance passes', () => {
-    const result = validateCashClose(500, 500, false, false, true, '');
-    // false: queuedSettlementAccepted
-    expect(result.ok).toBe(false);
+  it('M3：queued rows with acceptance passes, but a difference still needs a note', () => {
+    expect(validateCashClose(500, 500, false, false, true, '', true).ok).toBe(true);
+    const diff = validateCashClose(500, 490, false, false, true, '', true);
+    expect(diff).toEqual({ ok: false, code: 'discrepancy_no_note', message: '點算金額和應有現金不同，請寫下原因。' });
   });
 });
 
@@ -174,26 +175,20 @@ describe('isBusinessDateWritable', () => {
   });
 });
 
-describe('getOpeningCash', () => {
-  it('returns yesterday countedCash when available', () => {
-    const yesterdaySettlement = createDailySettlement('2026-05-14', makeTotals({ netCash: 500 }), 1000, 1520, '平帳', 'op', '2026-05-14T18:00:00.000Z', false);
-    const result = getOpeningCash('2026-05-15', [yesterdaySettlement], undefined);
-    expect(result).toBe(1520);
+describe('M3：開帳金額只認本人確認的設定', () => {
+  it('getConfirmedOpeningCash：有當天設定就用它，沒有就是 null（不再預設 4000、不自動沿用昨天）', () => {
+    expect(getConfirmedOpeningCash({ openingCash: 1000 })).toBe(1000);
+    expect(getConfirmedOpeningCash({ openingCash: 0 })).toBe(0);
+    expect(getConfirmedOpeningCash(undefined)).toBeNull();
   });
 
-  it('falls back to cashSession openingCash when no yesterday settlement', () => {
-    const result = getOpeningCash('2026-05-15', [], { openingCash: 3000 });
-    expect(result).toBe(3000);
-  });
-
-  it('falls back to default 4000 when no source available', () => {
-    const result = getOpeningCash('2026-05-15', [], undefined);
-    expect(result).toBe(4000);
-  });
-
-  it('yesterday settlement takes priority over cashSession', () => {
-    const yesterdaySettlement = createDailySettlement('2026-05-14', makeTotals({ netCash: 500 }), 1000, 1520, '平帳', 'op', '2026-05-14T18:00:00.000Z', false);
-    const result = getOpeningCash('2026-05-15', [yesterdaySettlement], { openingCash: 3000 });
-    expect(result).toBe(1520);
+  it('suggestOpeningCash：只當預填建議，取前一天最後一版「已關帳」的實際點算', () => {
+    const v1 = createDailySettlement('2026-05-14', makeTotals({ netCash: 500 }), 1000, 1520, '平帳', 'op', '2026-05-14T10:00:00.000Z', false);
+    expect(suggestOpeningCash('2026-05-15', [v1])).toBe(1520);
+    const reopened = { ...v1, status: 'reopened' as const, settlementRevision: 2 };
+    const v3 = { ...v1, settlementRevision: 3, countedCash: 1540 };
+    expect(suggestOpeningCash('2026-05-15', [v1, reopened, v3])).toBe(1540);
+    expect(suggestOpeningCash('2026-05-15', [v1, reopened])).toBe(1520);
+    expect(suggestOpeningCash('2026-05-16', [v1])).toBeNull();
   });
 });

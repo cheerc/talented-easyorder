@@ -74,7 +74,13 @@ describe('SettlementHistoryTable', () => {
 
   it('shows difference with + prefix when positive', () => {
     const { container } = render(<SettlementHistoryTable />);
-    expect(container.textContent).toContain('+5');
+    expect(container.textContent).toContain('+$5');
+  });
+
+  it('M3：短少顯示負號，不會看成多出來', () => {
+    store.dailySettlements = [{ ...baseSettlements[0], countedCash: 1190, difference: -10 }];
+    const { container } = render(<SettlementHistoryTable />);
+    expect(container.textContent).toContain('−$10');
   });
 
   it('shows difference in warn style when non-zero', () => {

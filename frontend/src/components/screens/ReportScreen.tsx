@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { emitError } from '../../errors/errorBus';
 import type { TransactionEditView } from '../../domain/ledger';
+import type { LedgerMutationResult } from '../../domain/ledgerAudit';
 import type { ReportTransactionView } from '../../domain/transactionViews';
 import { EditTransactionModal } from '../EditTransactionModal';
 import { CancelOrderDialog } from '../CancelOrderDialog';
@@ -60,6 +61,8 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
   const { filtered, totals, groups } = useLedgerReport({
     dateRange, viewDate, customStart, customEnd,
   });
+  // M3：關帳一律用這一天的全部交易，不跟著上方切換的本週／本月或姓名搜尋縮小。
+  const { filtered: dayRows, totals: dayTotals } = useLedgerReport({ dateRange: 'today', viewDate });
 
   const { exportCsv } = useLedgerExport(viewDate);
 
@@ -101,9 +104,9 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
   }, [groups, studentSearch]);
 
   // Ref: #351 — Memoize derived booleans to avoid re-scanning on every render
-  const hasQueuedRows = useMemo(() => filtered.some(t => t.syncStatus === 'queued'), [filtered]);
-  const queuedRowCount = useMemo(() => filtered.filter(t => t.syncStatus === 'queued').length, [filtered]);
-  const hasFailedConflict = useMemo(() => filtered.some(t => t.syncStatus === 'failed' || t.syncStatus === 'conflict'), [filtered]);
+  const hasQueuedRows = useMemo(() => dayRows.some(t => t.syncStatus === 'queued'), [dayRows]);
+  const queuedRowCount = useMemo(() => dayRows.filter(t => t.syncStatus === 'queued').length, [dayRows]);
+  const hasFailedConflict = useMemo(() => dayRows.some(t => t.syncStatus === 'failed' || t.syncStatus === 'conflict'), [dayRows]);
 
   const todayStr = useMemo(() => {
     const [, m, d] = viewDate.split('-');
@@ -130,11 +133,12 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
     setDeletingId(t.transactionId);
   };
 
-  const handleCashClose = (countedCash: number, note: string) => {
+  const handleCashClose = (countedCash: number, note: string): LedgerMutationResult => {
     try {
-      closeBusinessDate({ businessDate: viewDate, countedCash, note, queuedSettlementAccepted: true, operatorId: operatorUid });
+      return closeBusinessDate({ businessDate: viewDate, countedCash, note, queuedSettlementAccepted: true, operatorId: operatorUid });
     } catch (err) {
       emitError({ source: 'settlement', message: 'closeBusinessDate failed: ' + String(err) });
+      return { ok: false, message: '關帳時發生錯誤，請再試一次。' };
     }
   };
 
@@ -184,7 +188,8 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
       )}
 
       <CashClosePanel
-        totals={totals}
+        key={viewDate}
+        totals={dayTotals}
         businessDate={viewDate}
         dateStatus={dateStatus}
         hasQueuedRows={hasQueuedRows}

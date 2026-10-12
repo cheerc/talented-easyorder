@@ -124,20 +124,47 @@ describe('sessionActions — close / reopen', () => {
     expect(latest.reopenReason).toBe('need correction');
   });
 
-  it('S6: closeBusinessDate without cash session still succeeds (openingCash=0)', () => {
-    const store = usePosStore.getState();
-
-    store.closeBusinessDate({
-      businessDate: '2026-05-16',
-      countedCash: 0,
-      note: '',
-      queuedSettlementAccepted: false,
-      operatorId: 'counter',
+  it('M3 S6：沒有設定開帳金額不能關帳，回傳原因、資料不動', () => {
+    const r = usePosStore.getState().closeBusinessDate({
+      businessDate: '2026-05-16', countedCash: 0, note: '', queuedSettlementAccepted: false, operatorId: 'counter',
     });
-
+    expect(r).toEqual({ ok: false, message: expect.stringContaining('還沒設定這一天的開帳金額') });
     const next = usePosStore.getState();
-    expect(next.businessDateStatuses['2026-05-16']).toBe('closed');
-    expect(next.dailySettlements).toHaveLength(1);
-    expect(next.dailySettlements[0].openingCash).toBe(0);
+    expect(next.businessDateStatuses['2026-05-16']).toBeUndefined();
+    expect(next.dailySettlements).toHaveLength(0);
+  });
+
+  it('M3：開帳金額用當天本人確認的設定，不用前一天的點算', () => {
+    const store = usePosStore.getState();
+    store.openCashSession({ businessDate: '2026-05-15', openingCash: 1000, operatorId: 'counter', openedAt: '2026-05-15T08:00:00.000Z' });
+    expect(store.closeBusinessDate({ businessDate: '2026-05-15', countedCash: 1320, note: '多了', queuedSettlementAccepted: false, operatorId: 'counter' })).toEqual({ ok: true });
+    store.openCashSession({ businessDate: '2026-05-16', openingCash: 1000, operatorId: 'counter', openedAt: '2026-05-16T08:00:00.000Z' });
+    expect(store.closeBusinessDate({ businessDate: '2026-05-16', countedCash: 1000, note: '', queuedSettlementAccepted: false, operatorId: 'counter' })).toEqual({ ok: true });
+    const d2 = usePosStore.getState().dailySettlements.find(s => s.businessDate === '2026-05-16')!;
+    expect(d2.openingCash).toBe(1000);
+    expect(d2.expectedCash).toBe(1000);
+    expect(d2.difference).toBe(0);
+  });
+
+  it('M3：有差額沒寫原因不能關；差額為 0 可以不寫', () => {
+    const store = usePosStore.getState();
+    store.openCashSession({ businessDate: '2026-05-15', openingCash: 1000, operatorId: 'counter', openedAt: '2026-05-15T08:00:00.000Z' });
+    const r = store.closeBusinessDate({ businessDate: '2026-05-15', countedCash: 990, note: ' ', queuedSettlementAccepted: false, operatorId: 'counter' });
+    expect(r).toEqual({ ok: false, message: '點算金額和應有現金不同，請寫下原因。' });
+    expect(usePosStore.getState().dailySettlements).toHaveLength(0);
+    expect(store.closeBusinessDate({ businessDate: '2026-05-15', countedCash: 1000, note: '', queuedSettlementAccepted: false, operatorId: 'counter' })).toEqual({ ok: true });
+  });
+
+  it('M3：有待上傳的交易時，確認接受後可以關帳（原本永遠關不了）', () => {
+    const store = usePosStore.getState();
+    const date = store.todayMenu.businessDate;
+    store.openCashSession({ businessDate: date, openingCash: 1000, operatorId: 'counter', openedAt: '2026-05-15T08:00:00.000Z' });
+    store.processTransaction('001', 'payment', 0, 100);
+    usePosStore.setState(s => ({ transactions: s.transactions.map(t => ({ ...t, syncStatus: 'queued' as const })) }));
+    const blocked = usePosStore.getState().closeBusinessDate({ businessDate: date, countedCash: 1100, note: '', queuedSettlementAccepted: false, operatorId: 'counter' });
+    expect(blocked.ok).toBe(false);
+    const ok = usePosStore.getState().closeBusinessDate({ businessDate: date, countedCash: 1100, note: '', queuedSettlementAccepted: true, operatorId: 'counter' });
+    expect(ok).toEqual({ ok: true });
+    expect(usePosStore.getState().dailySettlements[0].expectedCash).toBe(1100);
   });
 });

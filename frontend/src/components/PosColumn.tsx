@@ -127,9 +127,19 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
         )}
         {showHistoricalLock ? (
           <div className="historical-lock" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--c-text-dim)', textAlign: 'center' }}>
-            <h2 style={{ color: 'var(--c-warn)', fontSize: '1.5rem', marginBottom: '8px' }}>目前檢視歷史紀錄</h2>
-            <p style={{ marginBottom: '24px' }}>您正在檢視 {viewDate} 的資料。<br />為確保帳務正確，歷史紀錄模式下已暫停結帳與訂餐功能。</p>
-            <button className="btn-confirm" onClick={() => setViewDate(systemDate)}>返回今日</button>
+            {viewDate === systemDate && dateStatus === 'closed' ? (
+              // M3：今天已關帳時說清楚原因和下一步，不要說成「歷史紀錄」。
+              <>
+                <h2 style={{ color: 'var(--c-warn)', fontSize: '1.5rem', marginBottom: '8px' }}>今天（{viewDate}）已經關帳</h2>
+                <p style={{ marginBottom: '24px' }}>關帳後不能再訂餐、繳費或新增櫃台收支。<br />要補登或更正，請先到今日帳（F2）按「重新開啟日期」並寫下原因。</p>
+              </>
+            ) : (
+              <>
+                <h2 style={{ color: 'var(--c-warn)', fontSize: '1.5rem', marginBottom: '8px' }}>目前檢視歷史紀錄</h2>
+                <p style={{ marginBottom: '24px' }}>您正在檢視 {viewDate} 的資料。<br />為確保帳務正確，歷史紀錄模式下已暫停結帳與訂餐功能。</p>
+                <button className="btn-confirm" onClick={() => setViewDate(systemDate)}>返回今日</button>
+              </>
+            )}
           </div>
         ) : !picked ? (
           <>
