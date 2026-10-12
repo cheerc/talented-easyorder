@@ -72,4 +72,22 @@ describe('Modal', () => {
       window.removeEventListener('keydown', background);
     }
   });
+
+  it('M1 K09：開啟時焦點移進對話框，Tab 從背景拉回，關閉後還給原本的元素', () => {
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    outside.focus();
+    try {
+      const { rerender } = render(<Modal open title="t" onClose={() => {}}><input aria-label="金額" /><button>儲存</button></Modal>);
+      expect(document.activeElement).toBe(screen.getByLabelText('金額'));
+      outside.focus();
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', cancelable: true }));
+      expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
+      rerender(<Modal open={false} title="t" onClose={() => {}}><input aria-label="金額" /></Modal>);
+      expect(document.activeElement).toBe(outside);
+    } finally {
+      outside.remove();
+    }
+  });
 });
+

@@ -136,6 +136,19 @@ describe('useAppNavigationShortcuts — F-keys', () => {
     expect(handleConfirm).not.toHaveBeenCalled();
   });
 
+  it('M1：滑鼠點過上方模式鍵（焦點在 .actionbar 的按鈕）後，Enter 仍照目前模式送出', () => {
+    const handleConfirm = vi.fn();
+    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, handleConfirm, focusZone: 'mode-order', currentMode: 'order' }));
+    const bar = document.createElement('div');
+    bar.className = 'actionbar';
+    const modeBtn = document.createElement('button');
+    bar.appendChild(modeBtn);
+
+    keydown('Enter', modeBtn);
+
+    expect(handleConfirm).toHaveBeenCalledOnce();
+  });
+
   it('A7b: Enter on view-status is no-op (does not call cancelOrder)', () => {
     const cancelOrder = vi.fn();
     renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, cancelOrder, focusZone: 'view-status' }));
