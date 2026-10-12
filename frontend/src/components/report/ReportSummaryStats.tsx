@@ -15,24 +15,33 @@ interface ReportSummaryStatsProps {
 }
 
 export function ReportSummaryStats({ totals, itemName, counterCashFlow }: ReportSummaryStatsProps) {
+  // M2 F08：卡片名稱對應 LedgerTotals 的口徑，公式寫在副標，櫃台不用猜數字怎麼來的。
   return (
     <div className="rpt-stats">
       <div className="stat stat-strong">
-        <div className="stat-lbl">訂餐</div>
+        <div className="stat-lbl">份數</div>
         <div className="stat-num mono">{totals.orderCount}<span className="stat-of"> 份</span></div>
         <div className="stat-sub">{itemName}</div>
       </div>
       <div className="stat">
-        <div className="stat-lbl">總收入</div>
-        <div className="stat-num mono accent">+${fmt(totals.totalIncome)}</div>
+        <div className="stat-lbl">餐費</div>
+        <div className="stat-num mono">${fmt(totals.mealTotal)}</div>
+        <div className="stat-sub">訂餐當下未收 ${fmt(totals.orderUnpaid)}</div>
       </div>
       <div className="stat">
-        <div className="stat-lbl">總支出</div>
+        <div className="stat-lbl">收現</div>
+        <div className="stat-num mono accent">+${fmt(totals.totalIncome)}</div>
+        <div className="stat-sub">訂餐收款＋繳費＋櫃台收入</div>
+      </div>
+      <div className="stat">
+        <div className="stat-lbl">支出</div>
         <div className="stat-num mono warn">−${fmt(totals.totalExpense)}</div>
+        <div className="stat-sub">櫃台付出的現金</div>
       </div>
       <div className="stat">
         <div className="stat-lbl">淨現金</div>
         <div className="stat-num mono">${fmt(totals.netCash)}</div>
+        <div className="stat-sub">收現 − 支出</div>
       </div>
       {counterCashFlow && (counterCashFlow.incomeCount > 0 || counterCashFlow.expenseCount > 0) && (
         <>
@@ -47,12 +56,9 @@ export function ReportSummaryStats({ totals, itemName, counterCashFlow }: Report
         </>
       )}
       <div className="stat">
-        <div className="stat-lbl">新增欠款</div>
-        <div className="stat-num mono warn">${fmt(totals.newDebt)}</div>
-      </div>
-      <div className="stat">
-        <div className="stat-lbl">總交易</div>
+        <div className="stat-lbl">筆數</div>
         <div className="stat-num mono">{totals.transactionCount}</div>
+        <div className="stat-sub">所有交易，含未付款訂餐</div>
       </div>
     </div>
   );

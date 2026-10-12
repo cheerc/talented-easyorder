@@ -119,13 +119,17 @@ describe('calculateLedgerTotals', () => {
     expect(totals.netCash).toBe(50);
   });
 
-  it('calculates newDebt as unpaid meal price', () => {
+  it('F08：餐費是訂餐應收合計，訂餐當下未收是每筆不足的部分', () => {
     const txs: LedgerTransaction[] = [
       makeTx({ transactionId: 'tx-1', type: 'order', mealPrice: 85, paidAmount: 0 }),
       makeTx({ transactionId: 'tx-2', type: 'order', mealPrice: 85, paidAmount: 50 }),
+      makeTx({ transactionId: 'tx-3', type: 'order', mealPrice: 85, paidAmount: 100 }),
+      makeTx({ transactionId: 'tx-4', type: 'payment', mealPrice: 0, paidAmount: 85 }),
     ];
     const totals = calculateLedgerTotals(txs);
-    expect(totals.newDebt).toBe(120); // 85-0 + 85-50
+    expect(totals.mealTotal).toBe(255);
+    expect(totals.orderUnpaid).toBe(120); // 85-0 + 85-50；多收的 15 不抵；後來補繳也不扣回
+    expect(totals.totalIncome).toBe(235); // 0 + 50 + 100 + 85
   });
 
   it('counts transactionCount as total rows with cash flow', () => {
@@ -142,18 +146,20 @@ describe('calculateLedgerTotals', () => {
     const totals = calculateLedgerTotals([]);
     expect(totals.orderCount).toBe(0);
     expect(totals.netCash).toBe(0);
-    expect(totals.newDebt).toBe(0);
+    expect(totals.mealTotal).toBe(0);
+    expect(totals.orderUnpaid).toBe(0);
   });
 
-  it('excludes unpaid order transactions from transactionCount', () => {
+  it('F08：筆數包含未付款的訂餐（F1 訂 90 未付，F2 筆數是 1，不是 0）', () => {
     const txs: LedgerTransaction[] = [
-      makeTx({ transactionId: 'tx-1', type: 'order', mealPrice: 85, paidAmount: 0 }), // unpaid → excluded
-      makeTx({ transactionId: 'tx-2', type: 'order', mealPrice: 85, paidAmount: 85 }), // paid → included
-      makeTx({ transactionId: 'tx-3', type: 'payment', paidAmount: 500 }), // included
-      makeTx({ transactionId: 'tx-4', type: 'expense', studentId: '__cashier__', mealPrice: 100, paidAmount: 0 }), // included
+      makeTx({ transactionId: 'tx-1', type: 'order', mealPrice: 85, paidAmount: 0 }),
+      makeTx({ transactionId: 'tx-2', type: 'order', mealPrice: 85, paidAmount: 85 }),
+      makeTx({ transactionId: 'tx-3', type: 'payment', paidAmount: 500 }),
+      makeTx({ transactionId: 'tx-4', type: 'expense', studentId: '__cashier__', mealPrice: 100, paidAmount: 0 }),
     ];
     const totals = calculateLedgerTotals(txs);
-    expect(totals.transactionCount).toBe(3); // tx-2, tx-3, tx-4 — not tx-1
+    expect(totals.transactionCount).toBe(4);
+    expect(calculateLedgerTotals([txs[0]]).transactionCount).toBe(1);
   });
 });
 

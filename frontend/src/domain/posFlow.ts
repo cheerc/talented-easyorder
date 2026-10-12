@@ -213,6 +213,8 @@ function reduceSuccess(state: PosFlowState & { kind: 'success' }, event: PosFlow
 
 function reduceError(state: PosFlowState & { kind: 'error' }, event: PosFlowEvent): PosFlowState {
   if (event.type === 'cancel') return { kind: 'idle', searchText: '' };
+  // M2：櫃台收支失敗後畫面回到搜尋列；在搜尋框按 Esc 或開始打字就收起錯誤，回到一般搜尋。
+  if (event.type === 'updateSearchText' && !state.studentId) return { kind: 'idle', searchText: event.text };
   // M1：儲存失敗時草稿留著，可重送同一筆。櫃台收支的錯誤狀態沒帶金額與原因，不能重送，只能取消重來。
   if (event.type === 'retryCommit' && state.retryable && state.studentId && state.mode && state.mode !== 'expense' && state.source) {
     return { kind: 'committing', studentId: state.studentId, mode: state.mode, source: state.source, paidAmountText: state.paidAmountText ?? '' };

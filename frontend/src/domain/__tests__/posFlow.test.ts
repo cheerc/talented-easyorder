@@ -324,6 +324,13 @@ describe('reducePosFlow — error transitions', () => {
     expect(reducePosFlow(expense, { type: 'retryCommit' })).toBe(expense);
   });
 
+  it('M2：櫃台收支失敗後，在搜尋框按 Esc（清空）或打字就回到搜尋；學員草稿的錯誤不受影響', () => {
+    const expense: PosFlowState = { kind: 'error', mode: 'expense', source: 'manual', paidAmountText: '', message: 'x', retryable: false };
+    expect(reducePosFlow(expense, { type: 'updateSearchText', text: '' })).toEqual({ kind: 'idle', searchText: '' });
+    expect(reducePosFlow(expense, { type: 'updateSearchText', text: '00' })).toEqual({ kind: 'idle', searchText: '00' });
+    expect(reducePosFlow(errorWithContext, { type: 'updateSearchText', text: '00' })).toBe(errorWithContext);
+  });
+
   describe('reducePosFlow — expense flow cancel returns parent state', () => {
     it('expense_direction cancel returns expense_input with current amount', () => {
       const state: PosFlowState = { kind: 'expense_direction', amount: 500 };

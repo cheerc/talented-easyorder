@@ -21,9 +21,12 @@ export const TodayDashboard = React.memo(function TodayDashboard({ systemDate, o
     return daySet.sort((a, b) => b.settlementRevision - a.settlementRevision)[0] ?? null;
   })();
 
-  const correctionCount = auditEvents.filter(e => e.eventType === 'transaction_corrected' && e.businessDate === systemDate).length;
+  // M2：更正與刪除各自計數（稽核事件只有 transaction_edited 與 transaction_deleted／transaction_hard_deleted）。
+  const correctionCount = auditEvents.filter(e => e.eventType === 'transaction_edited' && e.businessDate === systemDate).length;
 
-  const voidCount = auditEvents.filter(e => e.eventType === 'transaction_voided' && e.businessDate === systemDate).length;
+  const deleteCount = auditEvents.filter(e =>
+    (e.eventType === 'transaction_deleted' || e.eventType === 'transaction_hard_deleted') && e.businessDate === systemDate,
+  ).length;
 
   const latest5 = useMemo(() => {
     return [...todayTx].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5);
@@ -44,18 +47,20 @@ export const TodayDashboard = React.memo(function TodayDashboard({ systemDate, o
         </div>
 
         <div className="db-grid">
+          {/* M2 F08：名稱與口徑和今日帳（F2）的卡片一致。 */}
           <div className="db-card db-card-strong">
-            <div className="db-card-lbl">交易筆數</div>
+            <div className="db-card-lbl">筆數</div>
             <div className="db-card-num">{totals.transactionCount}</div>
+            <div className="db-card-sub">含未付款訂餐</div>
           </div>
           <div className="db-card">
-            <div className="db-card-lbl">訂餐數</div>
+            <div className="db-card-lbl">份數</div>
             <div className="db-card-num">{totals.orderCount}</div>
-            <div className="db-card-sub">取消 {totals.cancellationCount} 筆</div>
+            <div className="db-card-sub">餐費 ${fmt(totals.mealTotal)}</div>
           </div>
           <div className="db-card db-card-accent">
-            <div className="db-card-lbl">收現總計</div>
-            <div className="db-card-num">${fmt(totals.cashCollected)}</div>
+            <div className="db-card-lbl">收現</div>
+            <div className="db-card-num">${fmt(totals.totalIncome)}</div>
             <div className="db-card-sub">淨現金 ${fmt(totals.netCash)}</div>
           </div>
           <div className={`db-card ${dateStatus === 'closed' ? 'db-card-ok' : dateStatus === 'reopened' ? 'db-card-warn' : 'db-card-open'}`}>
@@ -75,7 +80,7 @@ export const TodayDashboard = React.memo(function TodayDashboard({ systemDate, o
           <div className="db-card">
             <div className="db-card-lbl">今日更正</div>
             <div className="db-card-num">{correctionCount}</div>
-            <div className="db-card-sub">作廢 {voidCount} 筆</div>
+            <div className="db-card-sub">刪除 {deleteCount} 筆</div>
           </div>
         </div>
 

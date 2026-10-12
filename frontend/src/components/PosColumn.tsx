@@ -108,6 +108,17 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }, [props.allTx, picked]);
 
+  // M1／M2：送出失敗要讓櫃台看到原因。櫃台收支沒有選帳戶，畫面回到搜尋列，也要在那裡顯示；
+  // 它的金額與原因沒有留在錯誤狀態裡，所以不說「草稿還在」。訊息本身可能已帶句號，避免出現「。。」。
+  const commitErrorBanner = state.kind === 'error' ? (
+    <div className="pos-commit-error" role="alert">
+      沒有存進去：{state.message.replace(/[。.]+$/, '')}。
+      {state.studentId
+        ? <>這筆草稿還在，{state.retryable ? '按 Enter 重送同一筆，' : ''}按 Esc 取消重來。</>
+        : <>這筆櫃台收支沒有記錄，按 Esc 關閉這則提示。</>}
+    </div>
+  ) : null;
+
   return (
     <div className="main">
       <div className="col-main">
@@ -137,6 +148,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
               />
             ) : (
               <>
+                {commitErrorBanner}
                 {crashDraftRestored && (
                   <div className="midnight-banner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: 'var(--accent-soft)', border: '1px solid var(--accent)', borderRadius: 'var(--r)', marginBottom: '12px' }}>
                     <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--accent-ink)' }}>偵測到未完成交易草稿，已自動恢復</span>
@@ -191,12 +203,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
               />
             ) : (
               <>
-              {state.kind === 'error' && (
-                <div className="pos-commit-error" role="alert">
-                  沒有存進去：{state.message}。這筆草稿還在，
-                  {state.retryable ? '按 Enter 重送同一筆，' : ''}按 Esc 取消重來。
-                </div>
-              )}
+              {commitErrorBanner}
               <CustomerCard
                 student={picked}
                 todayMenu={todayMenu}

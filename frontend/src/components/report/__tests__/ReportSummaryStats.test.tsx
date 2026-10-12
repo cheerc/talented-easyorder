@@ -5,10 +5,11 @@ import type { LedgerTotals } from '../../domain/ledgerReport';
 
 const baseTotals: LedgerTotals = {
   orderCount: 10,
+  mealTotal: 900,
+  orderUnpaid: 0,
   totalIncome: 900,
   totalExpense: 200,
   netCash: 700,
-  newDebt: 900,
   transactionCount: 12,
 };
 
@@ -39,9 +40,17 @@ describe('ReportSummaryStats', () => {
     expect(container.textContent).toContain('$1,234');
   });
 
-  it('displays newDebt formatted', () => {
-    const { container } = render(<ReportSummaryStats totals={{ ...baseTotals, newDebt: 567 }} itemName="排骨便當" />);
-    expect(container.textContent).toContain('$567');
+  it('F08：餐費卡片顯示應收餐費，副標是訂餐當下未收，不再有「新增欠款」', () => {
+    const { container } = render(<ReportSummaryStats totals={{ ...baseTotals, mealTotal: 1350, orderUnpaid: 567 }} itemName="排骨便當" />);
+    expect(container.textContent).toContain('餐費$1,350');
+    expect(container.textContent).toContain('訂餐當下未收 $567');
+    expect(container.textContent).not.toContain('新增欠款');
+  });
+
+  it('F08：卡片名稱是份數／餐費／收現／支出／淨現金／筆數', () => {
+    const { container } = render(<ReportSummaryStats totals={baseTotals} itemName="排骨便當" />);
+    const labels = Array.from(container.querySelectorAll('.stat-lbl')).map(el => el.textContent);
+    expect(labels).toEqual(['份數', '餐費', '收現', '支出', '淨現金', '筆數']);
   });
 
   it('displays transactionCount', () => {
@@ -51,8 +60,9 @@ describe('ReportSummaryStats', () => {
 
   it('does not render counter cash flow section when counterCashFlow is undefined', () => {
     const { container } = render(<ReportSummaryStats totals={baseTotals} itemName="排骨便當" />);
-    expect(container.textContent).not.toContain('櫃台收入');
-    expect(container.textContent).not.toContain('櫃台支出');
+    const labels = Array.from(container.querySelectorAll('.stat-lbl')).map(el => el.textContent);
+    expect(labels).not.toContain('櫃台收入');
+    expect(labels).not.toContain('櫃台支出');
   });
 
   it('does not render counter cash flow section when both counts are 0', () => {
@@ -63,8 +73,9 @@ describe('ReportSummaryStats', () => {
         counterCashFlow={{ incomeCount: 0, incomeAmount: 0, expenseCount: 0, expenseAmount: 0 }}
       />
     );
-    expect(container.textContent).not.toContain('櫃台收入');
-    expect(container.textContent).not.toContain('櫃台支出');
+    const labels = Array.from(container.querySelectorAll('.stat-lbl')).map(el => el.textContent);
+    expect(labels).not.toContain('櫃台收入');
+    expect(labels).not.toContain('櫃台支出');
   });
 
   it('renders counter income when incomeCount > 0', () => {
@@ -96,10 +107,11 @@ describe('ReportSummaryStats', () => {
   it('handles zero totals (all fields 0)', () => {
     const zeroTotals: LedgerTotals = {
       orderCount: 0,
+      mealTotal: 0,
+      orderUnpaid: 0,
       totalIncome: 0,
       totalExpense: 0,
       netCash: 0,
-      newDebt: 0,
       transactionCount: 0,
     };
     const { container } = render(<ReportSummaryStats totals={zeroTotals} itemName="排骨便當" />);

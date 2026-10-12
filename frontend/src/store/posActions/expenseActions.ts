@@ -1,4 +1,3 @@
-import type { PosState } from '../posTypes';
 import { CASHIER_SENTINEL } from '../../domain/ledger';
 import { createLedgerTransaction } from '../../domain/ledger';
 import type { PosTransactionDraft } from '../../domain/posTransaction';
@@ -17,15 +16,5 @@ export function buildExpenseTransaction(draft: PosTransactionDraft) {
     previousBalance: 0,
     sourceDevice: draft.intent.sourceDevice,
     note: draft.intent.note,
-  });
-}
-
-export function commitExpenseTransaction(
-  set: (partial: Partial<PosState> | ((state: PosState) => Partial<PosState>)) => void,
-  draft: PosTransactionDraft,
-) {
-  set((state) => {
-    const newTransaction = buildExpenseTransaction(draft);
-    return { transactions: [newTransaction, ...state.transactions] };
   });
 }

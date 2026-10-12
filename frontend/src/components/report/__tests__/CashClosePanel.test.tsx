@@ -8,7 +8,8 @@ const baseTotals: LedgerTotals = {
   totalIncome: 900,
   totalExpense: 200,
   netCash: 700,
-  newDebt: 900,
+  mealTotal: 0,
+  orderUnpaid: 900,
   transactionCount: 12,
 };
 
