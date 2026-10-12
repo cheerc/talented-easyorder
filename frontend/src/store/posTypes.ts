@@ -6,6 +6,7 @@ import type { LedgerAuditEvent } from '../domain/ledgerAudit';
 import type { PosTransactionDraft } from '../domain/posTransaction';
 import type { DailyCashSession } from '../domain/cashSession';
 import type { DailySettlement } from '../domain/cashClose';
+import type { PracticeDataset } from '../domain/practiceSnapshot';
 
 export interface DeleteOrderResult {
   deleted: boolean;
@@ -127,4 +128,8 @@ export interface PracticeDataActions {
   loadSampleData: () => void;
   /** 新增一個本機帳戶；重複編號時不變更。 */
   addLocalStudent: (account: StudentAccount) => void;
+  /** 以已驗證的快照一次替換整個資料集。 */
+  restoreDataset: (dataset: PracticeDataset) => void;
+  /** 只清除交易、稽核、關帳與開帳；保留名單、期初、供應商與菜單。 */
+  clearPracticeTransactions: () => void;
 }

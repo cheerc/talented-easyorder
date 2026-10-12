@@ -81,6 +81,8 @@ const practiceDataActionsSelector = (s: ReturnType<typeof usePosStore.getState>)
   startBlankData: s.startBlankData,
   loadSampleData: s.loadSampleData,
   addLocalStudent: s.addLocalStudent,
+  restoreDataset: s.restoreDataset,
+  clearPracticeTransactions: s.clearPracticeTransactions,
 });
 
 /** Transaction actions. Stable references — will not cause re-renders. */

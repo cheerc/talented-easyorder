@@ -1,6 +1,7 @@
 import type { PosState } from '../posTypes';
 import type { StudentAccount } from '../../domain/student';
 import { defaultState } from '../posPersistence';
+import { clearTransactionsKeepRoster, type PracticeDataset } from '../../domain/practiceSnapshot';
 import {
   EMPTY_TODAY_MENU, INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS,
 } from '../../mocks/initialData';
@@ -10,7 +11,7 @@ import {
 
 export function createPracticeDataActions(
   set: (partial: Partial<PosState> | ((state: PosState) => Partial<PosState>)) => void,
-): Pick<PosState, 'startBlankData' | 'loadSampleData' | 'addLocalStudent'> {
+): Pick<PosState, 'startBlankData' | 'loadSampleData' | 'addLocalStudent' | 'restoreDataset' | 'clearPracticeTransactions'> {
   return {
     startBlankData: () => set({
       students: [],
@@ -33,5 +34,10 @@ export function createPracticeDataActions(
       if (state.students.some(s => s.studentId === account.studentId)) return {};
       return { students: [...state.students, account] };
     }),
+
+    // 快照已由 parseSnapshot 完整驗證；一次替換整個資料集。
+    restoreDataset: (dataset: PracticeDataset) => set({ ...dataset }),
+
+    clearPracticeTransactions: () => set((state) => clearTransactionsKeepRoster(state)),
   };
 }
