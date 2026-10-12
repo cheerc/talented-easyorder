@@ -66,6 +66,8 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
 
       if (e.key === 'Enter') {
         e.preventDefault();
+        // M1 K08：長按 Enter 的重複事件不送出。
+        if (e.repeat) return;
         if (focusZone === 'view-status') {
           // Ref: #400 — view-status is read-only display, Enter is no-op
           return;

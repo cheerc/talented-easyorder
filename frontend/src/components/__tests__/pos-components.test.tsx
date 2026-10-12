@@ -497,6 +497,17 @@ describe('ConfirmBanner', () => {
     );
     expect(container.firstChild).toBeNull();
   });
+
+  it('M1 K08：長按 Enter 的重複事件不關閉成功畫面，放開再按才回搜尋', () => {
+    const onDismiss = vi.fn();
+    render(
+      <ConfirmBanner flash={{ id: 1, name: '甲', sid: '001', detail: '訂餐: 便當', amount: -90, after: 110 }} onDismiss={onDismiss} />
+    );
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', repeat: true }));
+    expect(onDismiss).not.toHaveBeenCalled();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
 });
 
 describe('ExpensePanel smoke', () => {

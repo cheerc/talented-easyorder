@@ -38,6 +38,10 @@ export function useTransactionCommit(
   }, []);
 
   const requestConfirm = useCallback(() => {
+    if (state.kind === 'error') {
+      dispatch({ type: 'retryCommit' });
+      return;
+    }
     if (state.kind !== 'student_selected') return;
 
     if (state.mode === 'payment') {

@@ -56,6 +56,11 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
 
       // Enter always works (delegated to navigation shortcuts if student is selected to avoid double trigger)
       if (e.key === 'Enter') {
+        // M1 K08：長按 Enter 的重複事件不送出，避免一次長按穿過多個步驟。
+        if (e.repeat) {
+          e.preventDefault();
+          return;
+        }
         if (isStudentSelectedRef.current) {
           return;
         }

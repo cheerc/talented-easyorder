@@ -9,6 +9,7 @@ interface ButtonProps {
   size?: 'sm' | 'md' | 'lg';
   className?: string;
   type?: 'button' | 'submit';
+  autoFocus?: boolean;
 }
 
 export const Button = React.memo(function Button({
@@ -19,6 +20,7 @@ export const Button = React.memo(function Button({
   size = 'md',
   className = '',
   type = 'button',
+  autoFocus = false,
 }: ButtonProps) {
   const cls = ['btn-ui', `btn-${variant}`, size !== 'md' ? `btn-${size}` : '', className]
     .filter(Boolean)
@@ -30,6 +32,7 @@ export const Button = React.memo(function Button({
       className={cls}
       onClick={onClick}
       disabled={disabled}
+      autoFocus={autoFocus}
     >
       {children}
     </button>
