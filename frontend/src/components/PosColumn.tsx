@@ -71,7 +71,12 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
     const query = state.kind === 'idle' ? state.searchText : '';
     if (!query) return [];
     const q = query.toLowerCase();
-    return students.filter(s => s.studentId.includes(q) || s.displayName.toLowerCase().includes(q));
+    // 停用帳戶不出現在訂餐搜尋；別名也可搜尋（M0 S04）。
+    return students.filter(s => s.status === 'active' && (
+      s.studentId.includes(q)
+      || s.displayName.toLowerCase().includes(q)
+      || s.aliases.some(a => a.toLowerCase().includes(q))
+    ));
   }, [state, students]);
 
   const choose = (s: StudentAccount) => {

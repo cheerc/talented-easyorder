@@ -9,6 +9,7 @@ vi.mock('../../hooks/useFirebase', () => ({
 import { AdminScreen } from '../screens/AdminScreen';
 import { usePosStore } from '../../store/posStore';
 import { buildSnapshot, pickDataset } from '../../domain/practiceSnapshot';
+import { searchPosStudents } from '../../domain/posSearch';
 
 beforeEach(() => {
   usePosStore.getState().loadSampleData();
@@ -128,5 +129,35 @@ describe('AdminScreen practice data (local mode)', () => {
     const s = usePosStore.getState();
     expect(s.transactions).toHaveLength(0);
     expect(s.students.map(x => [x.studentId, x.currentBalance])).toEqual([['001', 200]]);
+  });
+
+  it('edits aliases and name; deactivated accounts leave F1 search but keep history (S04)', () => {
+    usePosStore.getState().startBlankData();
+    render(<AdminScreen viewDate="2026-10-12" />);
+    fillAccount('001', '甲生', '200');
+    usePosStore.getState().processTransaction('001', 'order', 90, 0);
+
+    fireEvent.click(screen.getByRole('button', { name: '編輯 001' }));
+    fireEvent.change(screen.getByLabelText('別名'), { target: { value: '小甲、Jia' } });
+    fireEvent.change(screen.getByLabelText('001 姓名'), { target: { value: '甲同學' } });
+    fireEvent.click(screen.getByRole('button', { name: '儲存' }));
+    let s = usePosStore.getState().students[0];
+    expect(s.displayName).toBe('甲同學');
+    expect(s.aliases).toEqual(['小甲', 'Jia']);
+    expect(usePosStore.getState().transactions[0].studentNameSnapshot).toBe('甲生');
+    expect(screen.getByTestId('student-row-001').textContent).toContain('小甲、Jia');
+
+    fireEvent.click(screen.getByRole('button', { name: '停用 001' }));
+    s = usePosStore.getState().students[0];
+    expect(s.status).toBe('inactive');
+    expect(screen.getByTestId('student-row-001').textContent).toContain('已停用');
+    const hidden = searchPosStudents(usePosStore.getState().students, '小甲');
+    expect(hidden.ok && hidden.students).toEqual([]);
+    expect(usePosStore.getState().transactions).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: '恢復 001' }));
+    expect(usePosStore.getState().students[0].status).toBe('active');
+    const found = searchPosStudents(usePosStore.getState().students, 'Jia');
+    expect(found.ok && found.students.map(x => x.studentId)).toEqual(['001']);
   });
 });

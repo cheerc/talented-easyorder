@@ -60,6 +60,7 @@ export const posPersistenceConfig: PersistOptions<PosState> = {
     dailySettlements: state.dailySettlements,
     businessDateStatuses: state.businessDateStatuses,
     cashSessions: state.cashSessions,
+    simulationDate: state.simulationDate,
   }) as unknown as PosState,
   onRehydrateStorage: () => {
     return (state, error) => {

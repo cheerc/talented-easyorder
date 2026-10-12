@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import { NumericInput } from '../ui/NumericInput';
 import { fmt } from "../pos-components";
 import type { StudentAccount } from '../../domain/student';
-import { validateNewAccount, createLocalAccount, NEW_ACCOUNT_ERROR_MESSAGES, type NewAccountError } from '../../domain/student';
+import { validateNewAccount, createLocalAccount, parseAliases, NEW_ACCOUNT_ERROR_MESSAGES, type NewAccountError } from '../../domain/student';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useMenu, useMenuActions, useStudents, useGlobalActions, useSessionActions, usePracticeDataActions } from '../../store/selectors';
 import { PracticeDataPanel } from './PracticeDataPanel';
@@ -181,7 +181,7 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
         <div className="card adm-card">
           <div className="card-h">學員管理 <span className="card-h-sub">{students.length} 人</span></div>
           {isLocal && <NewAccountForm students={students} asOfDate={viewDate} />}
-          <StudentList students={students} />
+          <StudentList students={students} editable={isLocal} />
         </div>
       </div>
       <ConfirmDialog
@@ -210,12 +210,14 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
 
 const PAGE_SIZE = 10;
 
-const StudentList = React.memo(function StudentList({ students }: { students: StudentAccount[] }) {
+const StudentList = React.memo(function StudentList({ students, editable = false }: { students: StudentAccount[]; editable?: boolean }) {
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const { setLocalStudentStatus } = usePracticeDataActions();
 
   const filtered = search.trim()
-    ? students.filter(s => s.studentId.includes(search.trim()) || s.displayName.includes(search.trim()))
+    ? students.filter(s => s.studentId.includes(search.trim()) || s.displayName.includes(search.trim()) || s.aliases.some(a => a.includes(search.trim())))
     : students;
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -235,13 +237,31 @@ const StudentList = React.memo(function StudentList({ students }: { students: St
         />
       </div>
       <div className="adm-stu-list">
-        {paged.map(s => (
-          <div className="adm-stu adm-stu-2col" key={s.studentId}>
+        {paged.map(s => editingId === s.studentId ? (
+          <StudentEditRow key={s.studentId} student={s} onDone={() => setEditingId(null)} />
+        ) : (
+          <div className={editable ? 'adm-stu' : 'adm-stu adm-stu-2col'} key={s.studentId} data-testid={`student-row-${s.studentId}`}>
             <span className="mono adm-stu-id">{s.studentId}</span>
-            <span className="adm-stu-name">{s.displayName}</span>
+            <span className="adm-stu-name" style={s.status === 'inactive' ? { color: 'var(--ink-3)' } : undefined}>
+              {s.displayName}
+              {s.aliases.length > 0 && <span className="dim" style={{ fontWeight: 400, marginLeft: '6px' }}>（{s.aliases.join('、')}）</span>}
+              {s.status === 'inactive' && <span className="adm-stu-grade" style={{ marginLeft: '6px' }}>已停用</span>}
+            </span>
             <span className={'mono adm-stu-bal ' + (s.currentBalance < 0 ? 'warn' : '')}>
               {s.currentBalance < 0 ? `欠 $${fmt(s.currentBalance)}` : `$${fmt(s.currentBalance)}`}
             </span>
+            {editable && (
+              <span style={{ display: 'flex', gap: '4px' }}>
+                <button className="ghost-btn" aria-label={`編輯 ${s.studentId}`} onClick={() => setEditingId(s.studentId)}>編輯</button>
+                <button
+                  className="ghost-btn"
+                  aria-label={`${s.status === 'active' ? '停用' : '恢復'} ${s.studentId}`}
+                  onClick={() => setLocalStudentStatus(s.studentId, s.status === 'active' ? 'inactive' : 'active', new Date().toISOString())}
+                >
+                  {s.status === 'active' ? '停用' : '恢復'}
+                </button>
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -253,6 +273,40 @@ const StudentList = React.memo(function StudentList({ students }: { students: St
         </div>
       )}
     </>
+  );
+});
+
+// M0：修改姓名與別名。交易內的姓名快照不會跟著改。
+const StudentEditRow = React.memo(function StudentEditRow({ student, onDone }: { student: StudentAccount; onDone: () => void }) {
+  const { updateLocalStudent } = usePracticeDataActions();
+  const [displayName, setDisplayName] = useState(student.displayName);
+  const [aliasText, setAliasText] = useState(student.aliases.join('、'));
+  const [error, setError] = useState('');
+
+  const save = (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = displayName.trim();
+    if (!name) { setError('請輸入姓名'); return; }
+    updateLocalStudent(student.studentId, { displayName: name, aliases: parseAliases(aliasText, name) }, new Date().toISOString());
+    onDone();
+  };
+
+  return (
+    <form onSubmit={save} aria-label={`編輯帳戶 ${student.studentId}`} style={{ padding: '9px 0', borderBottom: '1px solid var(--line-2)' }}>
+      <div className="adm-row">
+        <label htmlFor={`edit-name-${student.studentId}`}>{student.studentId} 姓名</label>
+        <input id={`edit-name-${student.studentId}`} className="adm-input" value={displayName} onChange={e => setDisplayName(e.target.value)} />
+      </div>
+      <div className="adm-row">
+        <label htmlFor={`edit-alias-${student.studentId}`}>別名</label>
+        <input id={`edit-alias-${student.studentId}`} className="adm-input" value={aliasText} onChange={e => setAliasText(e.target.value)} placeholder="多個別名以逗號或頓號分隔，例如：小明、Ming" />
+      </div>
+      {error && <p role="alert" style={{ color: 'var(--red)', fontSize: '13px', margin: '4px 0' }}>{error}</p>}
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button type="submit" className="ghost-btn">儲存</button>
+        <button type="button" className="ghost-btn" onClick={onDone}>取消</button>
+      </div>
+    </form>
   );
 });
 

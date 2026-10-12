@@ -28,6 +28,7 @@ function dataset(): PracticeDataset {
     dailySettlements: [],
     businessDateStatuses: { '2026-10-12': 'open' },
     cashSessions: { '2026-10-12': { cashSessionId: 'c1', businessDate: '2026-10-12', openingCash: 1000, openedBy: 'op', openedAt: '2026-10-12T08:00:00Z', status: 'open', revision: 1 } },
+    simulationDate: null,
   };
 }
 
@@ -45,7 +46,7 @@ describe('practice snapshot round trip', () => {
   });
 
   it('round-trips a blank dataset', () => {
-    const blank: PracticeDataset = { students: [], transactions: [], vendors: [], todayMenu: EMPTY_TODAY_MENU, auditEvents: [], dailySettlements: [], businessDateStatuses: {}, cashSessions: {} };
+    const blank: PracticeDataset = { students: [], transactions: [], vendors: [], todayMenu: EMPTY_TODAY_MENU, auditEvents: [], dailySettlements: [], businessDateStatuses: {}, cashSessions: {}, simulationDate: null };
     const r = parseSnapshot(text(buildSnapshot(blank, '2026-10-12T09:30:00Z')));
     expect(r.ok).toBe(true);
   });
@@ -53,7 +54,7 @@ describe('practice snapshot round trip', () => {
   it('pickDataset drops actions and unrelated fields', () => {
     const withExtras = { ...dataset(), someAction: () => {}, schemaVersion: 2 };
     expect(Object.keys(pickDataset(withExtras)).sort()).toEqual(
-      ['auditEvents', 'businessDateStatuses', 'cashSessions', 'dailySettlements', 'students', 'todayMenu', 'transactions', 'vendors'],
+      ['auditEvents', 'businessDateStatuses', 'cashSessions', 'dailySettlements', 'simulationDate', 'students', 'todayMenu', 'transactions', 'vendors'],
     );
   });
 });
@@ -95,6 +96,49 @@ describe('parseSnapshot rejects bad files without partial data', () => {
   });
 });
 
+describe('snapshot hardening (review on #443)', () => {
+  it('round-trips the simulation date and rejects a malformed one', () => {
+    const d = { ...dataset(), simulationDate: '2026-10-14' };
+    const ok = parseSnapshot(text(buildSnapshot(d, 'x')));
+    expect(ok.ok && ok.snapshot.data.simulationDate).toBe('2026-10-14');
+    const bad = parseSnapshot(text(buildSnapshot({ ...d, simulationDate: '10/14' }, 'x')));
+    expect(bad).toEqual({ ok: false, reason: '模擬營業日格式不正確：10/14' });
+  });
+
+  it('treats a snapshot without simulationDate (older export) as real date', () => {
+    const snap = buildSnapshot(dataset(), 'x') as unknown as { data: Record<string, unknown> };
+    delete snap.data.simulationDate;
+    const r = parseSnapshot(text(snap));
+    expect(r.ok && r.snapshot.data.simulationDate).toBe(null);
+  });
+
+  it('validates each cash session', () => {
+    const d = dataset();
+    const empty = parseSnapshot(text(buildSnapshot({ ...d, cashSessions: { '2026-10-12': {} as never } }, 'x')));
+    expect(empty).toEqual({ ok: false, reason: '開帳資料不正確（2026-10-12）：缺少編號' });
+    const wrongKey = parseSnapshot(text(buildSnapshot({ ...d, cashSessions: { '2026-10-13': d.cashSessions['2026-10-12'] } }, 'x')));
+    expect(wrongKey.ok).toBe(false);
+    const nanCash = parseSnapshot(text(buildSnapshot({ ...d, cashSessions: { '2026-10-12': { ...d.cashSessions['2026-10-12'], openingCash: 'abc' as never } } }, 'x')));
+    expect(nanCash).toEqual({ ok: false, reason: '開帳資料不正確（2026-10-12）：開帳金額不是整數' });
+  });
+
+  it('rejects non-integer amount / afterBalance', () => {
+    const d = dataset();
+    const r = parseSnapshot(text(buildSnapshot({ ...d, transactions: [{ ...d.transactions[0], afterBalance: 1.5 }] }, 'x')));
+    expect(r).toEqual({ ok: false, reason: '交易 t1 的金額不是整數。' });
+  });
+
+  it('recomputes balances instead of trusting the file (opening 200, order 90 → 110)', () => {
+    const d = dataset();
+    const tampered = { ...d, students: [{ ...d.students[0], currentBalance: 99999 }], transactions: [{ ...d.transactions[0], afterBalance: 5 }] };
+    const r = parseSnapshot(text(buildSnapshot(tampered, 'x')));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.snapshot.data.students[0].currentBalance).toBe(110);
+    expect(r.snapshot.data.transactions[0].afterBalance).toBe(110);
+  });
+});
+
 describe('clearTransactionsKeepRoster', () => {
   it('keeps roster, vendors and menu; clears ledger state; balances return to opening (110 → 200)', () => {
     const r = clearTransactionsKeepRoster(dataset());
@@ -107,6 +151,7 @@ describe('clearTransactionsKeepRoster', () => {
     expect(r.dailySettlements).toEqual([]);
     expect(r.businessDateStatuses).toEqual({});
     expect(r.cashSessions).toEqual({});
+    expect(r.simulationDate).toBe(null);
   });
 });
 
