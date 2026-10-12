@@ -6,6 +6,7 @@ import { createOrderActions } from './orderActions';
 import { createPaymentActions } from './paymentActions';
 import { createEditActions } from './editActions';
 import { rebalanceAccounts } from '../../domain/ledger';
+import { checkNewLedgerEntry, type LedgerMutationResult } from '../../domain/ledgerAudit';
 
 export function createTransactionActions(
   set: (partial: Partial<PosState> | ((state: PosState) => Partial<PosState>)) => void,
@@ -16,24 +17,29 @@ export function createTransactionActions(
   const editActions = createEditActions(set, get);
 
   return {
-    commitPosTransactionDraft: (draft: PosTransactionDraft) => {
-      set((state) => {
-        const isExpense = draft.intent.type === 'expense';
-        const sid = draft.intent.studentId;
+    commitPosTransactionDraft: (draft: PosTransactionDraft): LedgerMutationResult => {
+      const state = get();
+      // M2：關帳日在 store 層就擋下，畫面鎖之外再多一道。
+      const check = checkNewLedgerEntry(state.businessDateStatuses[draft.intent.businessDate]);
+      if (!check.ok) return check;
 
-        if (isExpense) {
-          const newTransaction = buildExpenseTransaction(draft);
-          return { transactions: [newTransaction, ...state.transactions] };
-        }
+      const isExpense = draft.intent.type === 'expense';
+      const sid = draft.intent.studentId;
 
-        const studentIndex = state.students.findIndex(s => s.studentId === sid);
-        if (studentIndex === -1) return state;
+      if (isExpense) {
+        const newTransaction = buildExpenseTransaction(draft);
+        set({ transactions: [newTransaction, ...state.transactions] });
+        return { ok: true };
+      }
 
-        const { newTransaction } = buildOrderTransaction(state, draft, studentIndex);
+      const studentIndex = state.students.findIndex(s => s.studentId === sid);
+      if (studentIndex === -1) return { ok: false, message: '找不到這個帳戶。' };
 
-        // M2 F03：補登前幾天的交易時，之後各筆的結餘也要一起重算。
-        return rebalanceAccounts(state.students, state.transactions, [newTransaction, ...state.transactions], [sid]);
-      });
+      const { newTransaction } = buildOrderTransaction(state, draft, studentIndex);
+
+      // M2 F03：補登前幾天的交易時，之後各筆的結餘也要一起重算。
+      set(rebalanceAccounts(state.students, state.transactions, [newTransaction, ...state.transactions], [sid]));
+      return { ok: true };
     },
 
     ...orderActions,

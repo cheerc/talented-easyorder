@@ -87,7 +87,8 @@ export interface PosState
 
 /** Transaction domain actions */
 export interface TransactionActions {
-  commitPosTransactionDraft: (draft: PosTransactionDraft) => void;
+  /** M2：關帳日回傳失敗、不寫入。 */
+  commitPosTransactionDraft: (draft: PosTransactionDraft) => LedgerMutationResult;
   processTransaction: (
     studentId: string,
     type: LedgerTransaction['type'],

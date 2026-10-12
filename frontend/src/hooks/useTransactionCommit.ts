@@ -11,6 +11,7 @@ import type { TodayMenu } from '../domain/menu';
 import type { LedgerTransaction } from '../domain/ledger';
 import { countActiveOrdersForStudent, CASHIER_SENTINEL } from '../domain/ledger';
 import type { PosTransactionDraft } from '../domain/posTransaction';
+import type { LedgerMutationResult } from '../domain/ledgerAudit';
 import { buildPosTransactionDraft, deriveTransactionAttributes, parsePaidAmount } from '../domain/posTransaction';
 import { saveCrashDraft } from '../storage/crashDraft';
 import { checkStorageHealth } from '../storage/storageHealth';
@@ -27,7 +28,7 @@ export function useTransactionCommit(
   students: StudentAccount[],
   todayMenu: TodayMenu,
   transactions: LedgerTransaction[],
-  commitPosTransactionDraft: (draft: PosTransactionDraft) => void,
+  commitPosTransactionDraft: (draft: PosTransactionDraft) => LedgerMutationResult,
   args: UseTransactionCommitArgs,
 ) {
   const committingRef = useRef(false);
@@ -160,7 +161,12 @@ export function useTransactionCommit(
           menu: todayMenu,
         });
 
-        commitPosTransactionDraft(draft);
+        const result = commitPosTransactionDraft(draft);
+        if (!result.ok) {
+          // M2：store 擋下（例如關帳日）時保留草稿、顯示原因，不當成成功。
+          dispatch({ type: 'commitFailed', message: result.message, retryable: false });
+          return;
+        }
         dispatch({
           type: 'commitSucceeded',
           transactionId: draft.intent.businessDate + '-' + Date.now(),
@@ -190,7 +196,12 @@ export function useTransactionCommit(
           menu: todayMenu,
         });
 
-        commitPosTransactionDraft(draft);
+        const result = commitPosTransactionDraft(draft);
+        if (!result.ok) {
+          // M2：store 擋下（例如關帳日）時保留草稿、顯示原因，不當成成功。
+          dispatch({ type: 'commitFailed', message: result.message, retryable: false });
+          return;
+        }
         dispatch({
           type: 'commitSucceeded',
           transactionId: draft.intent.businessDate + '-' + Date.now(),

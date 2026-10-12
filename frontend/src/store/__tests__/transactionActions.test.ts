@@ -252,3 +252,53 @@ describe('transactionActions — editTransaction / deleteTransaction', () => {
     expect(studentAfter.currentBalance).toBe(studentBefore.currentBalance + 90);
   });
 });
+
+describe('M2：關帳日在 store 層擋下所有新增入口', () => {
+  function close(date: string) {
+    usePosStore.setState(s => ({ businessDateStatuses: { ...s.businessDateStatuses, [date]: 'closed' } }));
+  }
+  function draftFor(type: 'order' | 'payment' | 'expense') {
+    const store = usePosStore.getState();
+    const student = store.students.find(s => s.studentId === '001')!;
+    return buildPosTransactionDraft({
+      intent: {
+        businessDate: store.todayMenu.businessDate,
+        studentId: type === 'expense' ? CASHIER_SENTINEL : '001',
+        type,
+        mealPrice: type === 'order' ? 90 : type === 'expense' ? 50 : 0,
+        paidAmount: type === 'payment' ? 100 : 0,
+        note: '',
+        sourceDevice: 'pc',
+      },
+      student,
+      menu: store.todayMenu,
+    });
+  }
+
+  it('commitPosTransactionDraft：訂餐、繳費、櫃台支出都回傳失敗，資料不動', () => {
+    const date = usePosStore.getState().todayMenu.businessDate;
+    close(date);
+    const before = usePosStore.getState();
+    for (const type of ['order', 'payment', 'expense'] as const) {
+      const r = usePosStore.getState().commitPosTransactionDraft(draftFor(type));
+      expect(r).toEqual({ ok: false, message: expect.stringContaining('已經關帳') });
+    }
+    const after = usePosStore.getState();
+    expect(after.transactions).toBe(before.transactions);
+    expect(after.students).toBe(before.students);
+  });
+
+  it('重開（reopened）後可以新增', () => {
+    const date = usePosStore.getState().todayMenu.businessDate;
+    usePosStore.setState(s => ({ businessDateStatuses: { ...s.businessDateStatuses, [date]: 'reopened' } }));
+    expect(usePosStore.getState().commitPosTransactionDraft(draftFor('order'))).toEqual({ ok: true });
+  });
+
+  it('processTransaction 也不寫入', () => {
+    const date = usePosStore.getState().todayMenu.businessDate;
+    close(date);
+    const before = usePosStore.getState().transactions;
+    usePosStore.getState().processTransaction('001', 'order', 90, 0);
+    expect(usePosStore.getState().transactions).toBe(before);
+  });
+});
