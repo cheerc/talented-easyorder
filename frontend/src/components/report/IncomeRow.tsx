@@ -1,6 +1,7 @@
 import React from 'react';
 import { fmt } from '../pos-components';
 import type { ReportTransactionView } from '../../domain/transactionViews';
+import { formatTaipeiTime } from '../../utils/dateTime';
 
 export interface IncomeRowProps {
   tx: ReportTransactionView;
@@ -12,7 +13,7 @@ export const DETAIL_ROW_HEIGHT = 40;
 
 export const IncomeRow = React.memo(function IncomeRow({ tx: t, onDeleteClick, dateStatus }: IncomeRowProps) {
   const paidAmount = Number(t.paidAmount) || 0;
-  const timeStr = t.createdAt ? t.createdAt.slice(11, 19) : '';
+  const timeStr = formatTaipeiTime(t.createdAt);
   return (
     <div key={t.transactionId} className="rpt-detail-row counter-row" style={{ display: 'grid', gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto', height: DETAIL_ROW_HEIGHT, alignItems: 'center', borderBottom: '1px solid var(--line-1)', padding: '0 18px', background: 'rgba(34,197,94,0.04)' }}>
       <div className="mono dim">{timeStr}</div>

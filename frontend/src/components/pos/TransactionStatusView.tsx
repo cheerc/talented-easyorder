@@ -1,6 +1,7 @@
 import React from 'react';
 import type { LedgerTransaction } from '../../domain/ledger';
 import { getIncome, getExpense } from '../../domain/transactionUtils';
+import { formatTaipeiTime } from '../../utils/dateTime';
 
 interface TransactionStatusViewProps {
   transactions: LedgerTransaction[];
@@ -15,10 +16,6 @@ const TYPE_LABELS: Record<string, string> = {
   expense: '支',
 };
 
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-}
 
 // Ref: #402 — dual-column income/expense display
 // Ref: #419 — type badge, edit/delete buttons, locked prop, font-size
@@ -56,7 +53,7 @@ export const TransactionStatusView = React.memo(function TransactionStatusView({
         const expense = getExpense(tx);
         return (
           <div key={tx.transactionId} className="tx-status-row">
-            <span className="tx-time">{formatTime(tx.createdAt)}</span>
+            <span className="tx-time">{formatTaipeiTime(tx.createdAt)}</span>
             <span className={'tx-type-badge tx-type-' + tx.type}>{TYPE_LABELS[tx.type] ?? tx.type}</span>
             <span className="tx-col-income">{income != null ? `+${income}` : ''}</span>
             <span className="tx-col-expense">{expense != null ? `-${expense}` : ''}</span>

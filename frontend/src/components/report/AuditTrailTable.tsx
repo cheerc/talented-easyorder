@@ -1,108 +1,73 @@
 import React, { useMemo, useState } from 'react';
-import { useSession } from '../../store/selectors';
-import type { LedgerAuditEvent } from '../../domain/ledgerAudit';
+import { useSession, useTransactions } from '../../store/selectors';
+import { describeAuditEvents } from '../../domain/auditView';
 
 const PAGE_SIZE = 20;
+const COLUMNS = '160px 90px 110px 150px 1fr 100px';
 
-function eventTypeLabel(t: LedgerAuditEvent['eventType']) {
-  switch (t) {
-    case 'transaction_edited': return '編輯';
-    case 'transaction_corrected': return '更正';
-    case 'transaction_voided': return '作廢';
-    case 'transaction_hard_deleted': return '刪除';
-    case 'transaction_deleted': return '刪除';
-    case 'business_date_closed': return '關帳';
-    case 'business_date_reopened': return '重開';
-    case 'csv_exported': return '匯出 CSV';
-    case 'report_printed': return '列印';
-  }
-}
-
-function eventTypeClass(t: LedgerAuditEvent['eventType']) {
-  switch (t) {
-    case 'transaction_corrected': return 'pill-warn';
-    case 'transaction_voided': return 'pill-err';
-    case 'transaction_hard_deleted': return 'pill-err';
-    case 'transaction_deleted': return 'pill-err';
-    case 'business_date_closed': return 'pill-ok';
-    case 'business_date_reopened': return 'pill-warn';
-    default: return 'pill';
-  }
-}
-
-/** 舊版稽核的 reason 只記 'edit'／'delete' 這類代碼，不是人寫的理由。 */
-function readableReason(reason: string): string {
-  return reason === 'edit' || reason === 'delete' ? '' : reason;
-}
-
-function beforeAfterSummary(before: Record<string, unknown> | null, after: Record<string, unknown> | null): string {
-  if (!before) return after ? '(新建)' : '-';
-  if (!after) {
-    // M2：刪除時原單整筆存在 before，列出金額方便對照。
-    const meal = before.mealPrice, paid = before.paidAmount;
-    return meal === undefined && paid === undefined ? '(已刪除)' : `(已刪除) 原單：應收 ${meal ?? 0}、實收 ${paid ?? 0}`;
-  }
-  const changes: string[] = [];
-  const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
-  for (const key of allKeys) {
-    const bv = before[key];
-    const av = after[key];
-    if (bv !== av) {
-      if (bv === undefined) changes.push(`${key}: (無) → ${av}`);
-      else if (av === undefined) changes.push(`${key}: ${bv} → (無)`);
-      else changes.push(`${key}: ${bv} → ${av}`);
-    }
-  }
-  return changes.length > 0 ? changes.join('; ') : '-';
-}
-
+/**
+ * M2 F09／F10：稽核紀錄以帳戶、營業日或交易編號查詢；每列寫出帳戶、中文欄名的前後值與理由，
+ * 時間一律台北時間，營業日另成一欄。
+ */
 export const AuditTrailTable = React.memo(function AuditTrailTable() {
   const { auditEvents } = useSession();
+  const { transactions } = useTransactions();
   const [page, setPage] = useState(0);
+  const [query, setQuery] = useState('');
 
-  const sorted = useMemo(() => {
-    return [...auditEvents].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [auditEvents]);
+  const rows = useMemo(() => describeAuditEvents(auditEvents, transactions), [auditEvents, transactions]);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? rows.filter(r => r.searchText.includes(q)) : rows;
+  }, [rows, query]);
 
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  const paged = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages - 1);
+  const paged = filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
 
-  if (sorted.length === 0) {
+  if (rows.length === 0) {
     return <div className="rpt-empty">尚無稽核紀錄</div>;
   }
 
   return (
     <div className="rpt-table">
-      <div className="rpt-th" style={{ display: 'grid', gridTemplateColumns: '160px 100px 120px 200px 1fr 80px' }}>
-        <div>時間</div>
-        <div>操作類型</div>
-        <div>操作人</div>
-        <div>對象</div>
-        <div>變更摘要</div>
-        <div>日期</div>
+      <div style={{ padding: '8px 0 12px' }}>
+        <input
+          className="adm-input"
+          aria-label="查詢稽核紀錄"
+          placeholder="輸入帳戶編號、姓名或營業日（例如 001、王、2026-05-30）"
+          value={query}
+          onChange={e => { setQuery(e.target.value); setPage(0); }}
+          style={{ width: '100%', maxWidth: '420px' }}
+        />
       </div>
-      {paged.map((e) => (
-        <div
-          key={e.auditEventId}
-          className="rpt-tr"
-          style={{ display: 'grid', gridTemplateColumns: '160px 100px 120px 200px 1fr 80px' }}
-        >
-          <div className="mono dim" style={{ fontSize: '12px' }}>{e.createdAt.slice(0, 19).replace('T', ' ')}</div>
-          <div><span className={eventTypeClass(e.eventType)}>{eventTypeLabel(e.eventType)}</span></div>
-          <div>{e.operatorId}</div>
-          <div className="mono dim" style={{ fontSize: '12px' }}>{e.entityType}: {e.entityId.slice(0, 12)}…</div>
-          <div className="dim" style={{ fontSize: '12px' }}>
-            {readableReason(e.reason) && <strong style={{ color: 'var(--ink)' }}>理由：{readableReason(e.reason)}｜</strong>}
-            {beforeAfterSummary(e.before, e.after)}
+      <div className="rpt-th" style={{ display: 'grid', gridTemplateColumns: COLUMNS }}>
+        <div>時間（台北）</div>
+        <div>操作</div>
+        <div>操作人</div>
+        <div>帳戶</div>
+        <div>變更內容與理由</div>
+        <div>營業日</div>
+      </div>
+      {paged.length === 0 && <div className="rpt-empty">沒有符合「{query.trim()}」的紀錄</div>}
+      {paged.map(r => (
+        <div key={r.auditEventId} className="rpt-tr" style={{ display: 'grid', gridTemplateColumns: COLUMNS }}>
+          <div className="mono dim" style={{ fontSize: '12px' }}>{r.time}</div>
+          <div><span className={r.typeClass}>{r.typeLabel}</span></div>
+          <div>{r.operator}</div>
+          <div>{r.subject}</div>
+          <div style={{ fontSize: '13px' }}>
+            <div>{r.changes}</div>
+            {r.reason && <div className="dim">理由：{r.reason}</div>}
           </div>
-          <div className="mono">{e.businessDate}</div>
+          <div className="mono">{r.businessDate}</div>
         </div>
       ))}
-      {sorted.length > PAGE_SIZE && (
+      {filtered.length > PAGE_SIZE && (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', padding: '12px 0' }}>
-          <button className="ghost-btn" disabled={page === 0} onClick={() => setPage(page - 1)}>上一頁</button>
-          <span className="dim" style={{ fontSize: '13px' }}>第 {page + 1} / {totalPages} 頁（共 {sorted.length} 筆）</span>
-          <button className="ghost-btn" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}>下一頁</button>
+          <button className="ghost-btn" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>上一頁</button>
+          <span className="dim" style={{ fontSize: '13px' }}>第 {currentPage + 1} / {totalPages} 頁（共 {filtered.length} 筆）</span>
+          <button className="ghost-btn" disabled={currentPage >= totalPages - 1} onClick={() => setPage(currentPage + 1)}>下一頁</button>
         </div>
       )}
     </div>

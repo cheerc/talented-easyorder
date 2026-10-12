@@ -1,6 +1,7 @@
 import React from 'react';
 import { fmt } from '../pos-components';
 import type { LedgerGroup } from '../../domain/ledgerReport';
+import { formatTaipeiTime } from '../../utils/dateTime';
 
 export interface GroupRowProps {
   group: LedgerGroup;
@@ -19,7 +20,7 @@ export const GroupRow = React.memo(function GroupRow({ group, groupIndex, isExpa
       onClick={() => onToggleExpand(group.studentId)}
       style={{ gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto', cursor: 'pointer', display: 'grid', height: GROUP_ROW_HEIGHT, alignItems: 'center', borderTop: '1px solid var(--line-2)' }}
     >
-      <div className="mono dim">{group.latestCreatedAt.slice(11, 19)}</div>
+      <div className="mono dim">{formatTaipeiTime(group.latestCreatedAt)}</div>
       <div className="mono">{group.studentId}</div>
       <div style={{ fontWeight: '600' }}>{group.studentNameSnapshot}</div>
       <div className="r mono neg">{group.mealTotal > 0 ? `−$${fmt(group.mealTotal)}` : '-'}</div>

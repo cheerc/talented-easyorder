@@ -58,8 +58,8 @@ describe('TransactionStatusView', () => {
   it('renders time from createdAt', () => {
     const txs = [mockTx({ createdAt: '2026-06-18T09:13:41Z' })];
     render(<TransactionStatusView transactions={txs} />);
-    const expected = new Date('2026-06-18T09:13:41Z').toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-    expect(screen.getByText(expected)).toBeInTheDocument();
+    // F10：不論電腦時區，一律顯示台北時間
+    expect(screen.getByText('17:13:41')).toBeInTheDocument();
   });
 
   it('renders empty state when no transactions', () => {

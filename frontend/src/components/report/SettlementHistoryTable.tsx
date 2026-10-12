@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useSession } from '../../store/selectors';
 import { fmt } from '../pos-components';
+import { formatTaipeiDateTime, formatTaipeiTime } from '../../utils/dateTime';
+import { operatorLabel } from '../../domain/operatorId';
 
 const PAGE_SIZE = 20;
 
@@ -59,19 +61,19 @@ export const SettlementHistoryTable = React.memo(function SettlementHistoryTable
             <div className={`mono ${s.difference !== 0 ? 'warn' : ''}`}>
               {s.difference > 0 ? '+' : ''}{fmt(s.difference)}
             </div>
-            <div>{s.closedBy}</div>
-            <div className="mono dim" style={{ fontSize: '12px' }}>{s.closedAt.slice(11, 19)}</div>
+            <div>{operatorLabel(s.closedBy)}</div>
+            <div className="mono dim" style={{ fontSize: '12px' }}>{formatTaipeiTime(s.closedAt)}</div>
           </div>
           {expandedId === s.settlementId && (
             <div className="rpt-expand" style={{ padding: '12px 16px', background: 'var(--bg-card)', borderBottom: '1px solid var(--line-2)' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '8px', fontSize: '13px' }}>
-                <div><span className="dim">交易筆數：</span><span className="mono">{s.transactionCount}</span></div>
+                <div title="2026-10 起關帳的紀錄含未付款訂餐；更早的紀錄只算有收付現金的交易"><span className="dim">交易筆數：</span><span className="mono">{s.transactionCount}</span></div>
                 <div><span className="dim">備註：</span>{s.note || '-'}</div>
                 <div><span className="dim">同步狀態：</span><span className="mono">{s.syncStatus}</span></div>
                 {s.reopenedBy && (
                   <>
-                    <div><span className="dim">重開人：</span>{s.reopenedBy}</div>
-                    <div><span className="dim">重開時間：</span><span className="mono">{s.reopenedAt?.slice(0, 19)}</span></div>
+                    <div><span className="dim">重開人：</span>{operatorLabel(s.reopenedBy)}</div>
+                    <div><span className="dim">重開時間：</span><span className="mono">{formatTaipeiDateTime(s.reopenedAt)}</span></div>
                     <div><span className="dim">重開原因：</span>{s.reopenReason || '-'}</div>
                   </>
                 )}

@@ -2,6 +2,8 @@ import React, { useMemo } from 'react';
 import { useSession } from '../store/selectors';
 import { fmt } from './pos-components';
 import { useLedgerReport } from '../store/derived/useLedgerReport';
+import { formatTaipeiTime } from '../utils/dateTime';
+import { operatorLabel } from '../domain/operatorId';
 
 // systemDate 由 App 傳入（練習模式下為練習營業日），不在這裡自行取實際日期。
 export const TodayDashboard = React.memo(function TodayDashboard({ systemDate, onClose }: { systemDate: string; onClose: () => void }) {
@@ -68,7 +70,7 @@ export const TodayDashboard = React.memo(function TodayDashboard({ systemDate, o
             <div className="db-card-num"><span className={statusClass} style={{ fontSize: '14px' }}>{statusLabel}</span></div>
             {todaySettlement && (
               <div className="db-card-sub">
-                {todaySettlement.closedBy} · {todaySettlement.closedAt.slice(11, 19)}
+                {operatorLabel(todaySettlement.closedBy)} · {formatTaipeiTime(todaySettlement.closedAt)}
               </div>
             )}
           </div>
@@ -92,7 +94,7 @@ export const TodayDashboard = React.memo(function TodayDashboard({ systemDate, o
             <div className="db-tx-list">
               {latest5.map(tx => (
                 <div key={tx.transactionId} className="db-tx-row">
-                  <div className="mono dim" style={{ fontSize: '12px' }}>{tx.createdAt.slice(11, 19)}</div>
+                  <div className="mono dim" style={{ fontSize: '12px' }}>{formatTaipeiTime(tx.createdAt)}</div>
                   <div>{tx.studentNameSnapshot}</div>
                   <div><span className={`pill pill-${tx.type}`}>{tx.type}</span></div>
                   <div className={`mono ${tx.amount >= 0 ? 'accent' : 'warn'}`} style={{ textAlign: 'right' }}>
