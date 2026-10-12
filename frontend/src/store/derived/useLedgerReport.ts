@@ -44,7 +44,7 @@ export function useLedgerReport(args: {
   [transactions, range]);
 
   const totals = useMemo(() => calculateLedgerTotals(filtered), [filtered]);
-  const groups = useMemo(() => groupLedgerRowsByStudent(filtered), [filtered]);
+  const groups = useMemo(() => groupLedgerRowsByStudent(filtered, 'newest-first'), [filtered]);
 
   return { range, filtered, totals, groups };
 }

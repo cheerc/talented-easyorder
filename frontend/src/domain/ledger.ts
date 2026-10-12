@@ -85,6 +85,25 @@ export function countActiveOrdersForStudent(
   ).length;
 }
 
+/**
+ * 帳務的「發生先後」：營業日 → 建立時間 → 同一毫秒依陣列位置。
+ * 重算餘額（rebalanceAccounts、recalculateStudentBalances）和 F2 分組取最後一筆都用這一個順序，
+ * 補登前一天的交易時，各畫面的逐筆結餘與目前餘額才會一致。
+ * inputOrder 說明傳入陣列的方向：store 的交易陣列是新的在前（預設）；畫面上反轉過的清單是舊的在前。
+ * 回傳新陣列，舊的在前。
+ */
+export function sortLedgerChronologically<T extends Pick<LedgerTransaction, 'businessDate' | 'createdAt'>>(
+  transactions: readonly T[],
+  inputOrder: 'newest-first' | 'oldest-first' = 'newest-first',
+): T[] {
+  const oldestFirst = inputOrder === 'newest-first' ? [...transactions].reverse() : [...transactions];
+  // Array.prototype.sort 是穩定排序，同一毫秒的交易保留上面整理好的先後。
+  return oldestFirst.sort((a, b) => {
+    if (a.businessDate !== b.businessDate) return a.businessDate.localeCompare(b.businessDate);
+    return a.createdAt.localeCompare(b.createdAt);
+  });
+}
+
 export interface RecalculationResult {
   students: StudentAccount[];
   transactions: LedgerTransaction[];
@@ -94,12 +113,7 @@ export function recalculateStudentBalances(
   students: StudentAccount[],
   transactions: LedgerTransaction[],
 ): RecalculationResult {
-  const studentTx = transactions.filter(isStudentTransaction);
-  const sorted = [...studentTx].sort((a, b) => {
-    if (a.businessDate !== b.businessDate) return a.businessDate.localeCompare(b.businessDate);
-    if (a.createdAt !== b.createdAt) return a.createdAt.localeCompare(b.createdAt);
-    return a.transactionId.localeCompare(b.transactionId);
-  });
+  const sorted = sortLedgerChronologically(transactions.filter(isStudentTransaction));
 
   const balanceMap = new Map<string, number>();
   // M0：以期初餘額為起點，重算不可把期初歸零。
@@ -149,15 +163,7 @@ export function rebalanceAccounts(
     }
   }
 
-  // 同一毫秒建立的交易以陣列位置排先後：store 的交易陣列新的在前，位置越後面越早發生。
-  const position = new Map(transactionsAfter.map((t, i) => [t.transactionId, i]));
-  const ordered = transactionsAfter
-    .filter(t => ids.has(t.studentId))
-    .sort((a, b) => {
-      if (a.businessDate !== b.businessDate) return a.businessDate.localeCompare(b.businessDate);
-      if (a.createdAt !== b.createdAt) return a.createdAt.localeCompare(b.createdAt);
-      return (position.get(b.transactionId) ?? 0) - (position.get(a.transactionId) ?? 0);
-    });
+  const ordered = sortLedgerChronologically(transactionsAfter.filter(t => ids.has(t.studentId)));
 
   const running = new Map(base);
   const after = new Map<string, number>();
