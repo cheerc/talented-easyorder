@@ -11,7 +11,7 @@ import {
 
 export function createPracticeDataActions(
   set: (partial: Partial<PosState> | ((state: PosState) => Partial<PosState>)) => void,
-): Pick<PosState, 'startBlankData' | 'loadSampleData' | 'addLocalStudent' | 'restoreDataset' | 'clearPracticeTransactions'> {
+): Pick<PosState, 'startBlankData' | 'loadSampleData' | 'addLocalStudent' | 'restoreDataset' | 'clearPracticeTransactions' | 'setSimulationDate' | 'updateLocalStudent' | 'setLocalStudentStatus'> {
   return {
     startBlankData: () => set({
       students: [],
@@ -39,5 +39,19 @@ export function createPracticeDataActions(
     restoreDataset: (dataset: PracticeDataset) => set({ ...dataset }),
 
     clearPracticeTransactions: () => set((state) => clearTransactionsKeepRoster(state)),
+
+    setSimulationDate: (date) => set({ simulationDate: date }),
+
+    updateLocalStudent: (studentId, changes, now) => set((state) => ({
+      students: state.students.map(s => s.studentId === studentId
+        ? { ...s, displayName: changes.displayName, aliases: changes.aliases, updatedAt: now, revision: s.revision + 1 }
+        : s),
+    })),
+
+    setLocalStudentStatus: (studentId, status, now) => set((state) => ({
+      students: state.students.map(s => s.studentId === studentId && s.status !== status
+        ? { ...s, status, updatedAt: now, revision: s.revision + 1 }
+        : s),
+    })),
   };
 }

@@ -1,5 +1,6 @@
 import React from "react";
 import type { StorageMode } from "../../appMode";
+import { useSimulationDate } from "../../store/selectors";
 
 interface TopBarProps {
   tab: string;
@@ -18,6 +19,7 @@ interface TopBarProps {
   storageMode?: StorageMode;
 }
 export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate, queuedCount = 0, failedSyncCount = 0, conflictSyncCount = 0, onDashboard, storageMode = 'cloud' }: TopBarProps) {
+  const simulationDate = useSimulationDate();
   const tabs = [
     { id: 'pos', label: '櫃台', hint: 'F1' },
     { id: 'report', label: '今日帳', hint: 'F2' },
@@ -88,7 +90,7 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing,
             <span className="dot"></span>
             <div className="sync-txt">
               <div className="sync-label">{storageMode === 'prototype' ? '本機練習 · 僅此瀏覽器' : '本機模式 · 未連雲端'}</div>
-              <div className="sync-meta">資料只存在這個瀏覽器</div>
+              <div className="sync-meta">{storageMode === 'prototype' && simulationDate ? `練習營業日 ${simulationDate}` : '資料只存在這個瀏覽器'}</div>
             </div>
           </div>
         )}

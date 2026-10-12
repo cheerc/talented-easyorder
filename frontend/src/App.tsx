@@ -72,6 +72,14 @@ function AppContent() {
     selectExpenseDirection, selectExpenseReason, updateExpenseNote, confirmExpenseNote,
   } = usePosFlow({ businessDate: viewDate, isHistorical, priceOverride, priceOverrideLabel });
 
+  // M0 S-DATE：模擬營業日切換時，不把未送出的 F1 草稿帶到新的一天。
+  const prevSystemDateRef = useRef(systemDate);
+  useEffect(() => {
+    if (prevSystemDateRef.current === systemDate) return;
+    prevSystemDateRef.current = systemDate;
+    if (isPrototypeMode) cancelFlow();
+  }, [systemDate, cancelFlow]);
+
   const [tab, setTab] = useState('pos');
   const [reportStudentFilter, setReportStudentFilter] = useState('');
   const [focusZone, setFocusZone] = useState('mode-order');

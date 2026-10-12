@@ -23,6 +23,7 @@ export const usePosStore = create<PosState>()(
       vendors: VENDORS,
       todayMenu: INITIAL_TODAY_MENU,
       ...defaultState,
+      simulationDate: null,
       ...createMenuActions(set),
       ...createSessionActions(set, get),
       ...createTransactionActions(set, get),

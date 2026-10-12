@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { validateNewAccount, createLocalAccount, type StudentAccount } from '../student';
+import { validateNewAccount, createLocalAccount, parseAliases, type StudentAccount } from '../student';
+import { shiftBusinessDate } from '../businessDate';
 import { recalculateStudentBalances, type LedgerTransaction } from '../ledger';
 import { isMenuReady } from '../menu';
 import { INITIAL_STUDENTS } from '../../mocks/initialData';
@@ -90,5 +91,21 @@ describe('isMenuReady', () => {
     expect(isMenuReady({ ...base, itemName: '', price: 0 })).toBe(false);
     expect(isMenuReady({ ...base, itemName: '晚餐', price: 0 })).toBe(false);
     expect(isMenuReady({ ...base, itemName: '晚餐', price: 90 })).toBe(true);
+  });
+});
+
+describe('parseAliases', () => {
+  it('splits on half/full-width commas and 、, trims, dedupes and drops the display name', () => {
+    expect(parseAliases(' 小明, Ming Wang，小明、甲生 ,, ', '甲生')).toEqual(['小明', 'Ming Wang']);
+    expect(parseAliases('', '甲生')).toEqual([]);
+  });
+});
+
+describe('shiftBusinessDate', () => {
+  it('crosses month and year boundaries', () => {
+    expect(shiftBusinessDate('2026-10-12', 1)).toBe('2026-10-13');
+    expect(shiftBusinessDate('2026-10-31', 1)).toBe('2026-11-01');
+    expect(shiftBusinessDate('2026-12-31', 1)).toBe('2027-01-01');
+    expect(shiftBusinessDate('2026-03-01', -1)).toBe('2026-02-28');
   });
 });

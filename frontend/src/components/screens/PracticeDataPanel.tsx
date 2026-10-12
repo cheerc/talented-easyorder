@@ -1,6 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
-import { useMenu, useStudents, useTransactions, usePracticeDataActions, useSession } from '../../store/selectors';
+import { useMenu, useStudents, useTransactions, usePracticeDataActions, useSession, useSimulationDate } from '../../store/selectors';
+import { shiftBusinessDate } from '../../domain/businessDate';
+import { getTaiwanDate } from '../../utils/dateTime';
 import { usePosStore } from '../../store/posStore';
 import { isMenuReady } from '../../domain/menu';
 import { isPrototypeMode } from '../../appMode';
@@ -40,7 +42,9 @@ export const PracticeDataPanel = React.memo(function PracticeDataPanel({ hasCash
   const { transactions } = useTransactions();
   const { todayMenu, vendors } = useMenu();
   const { auditEvents, dailySettlements, cashSessions } = useSession();
-  const { startBlankData, loadSampleData, restoreDataset, clearPracticeTransactions } = usePracticeDataActions();
+  const { startBlankData, loadSampleData, restoreDataset, clearPracticeTransactions, setSimulationDate } = usePracticeDataActions();
+  const simulationDate = useSimulationDate();
+  const practiceDate = simulationDate ?? getTaiwanDate();
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -143,6 +147,28 @@ export const PracticeDataPanel = React.memo(function PracticeDataPanel({ hasCash
         <p role={notice.kind === 'error' ? 'alert' : 'status'} style={{ fontSize: '13px', margin: '8px 0 0', color: notice.kind === 'error' ? 'var(--red)' : 'var(--accent-ink)' }}>
           {notice.text}
         </p>
+      )}
+      {isPrototypeMode && (
+        <div aria-label="練習營業日" style={{ marginTop: '16px' }}>
+          <div className="card-h" style={{ fontSize: '13px' }}>
+            練習營業日 <span className="card-h-sub">{simulationDate ? '模擬中' : '使用今天的實際日期'}</span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="date"
+              className="adm-input mono"
+              aria-label="設定練習營業日"
+              value={practiceDate}
+              onChange={e => { if (e.target.value) setSimulationDate(e.target.value); }}
+              style={{ width: 'auto' }}
+            />
+            <button className="ghost-btn" onClick={() => setSimulationDate(shiftBusinessDate(practiceDate, 1))}>下一個練習日</button>
+            {simulationDate && <button className="ghost-btn" onClick={() => setSimulationDate(null)}>回到實際日期</button>}
+          </div>
+          <p className="dim" style={{ fontSize: '12px', margin: '4px 0 0' }}>
+            新交易記在練習營業日；前幾天的交易與關帳都保留，可用上方日期查看。切換日期時 F1 未送出的輸入會清除。
+          </p>
+        </div>
       )}
       <div className="card-h" style={{ marginTop: '16px', fontSize: '13px' }}>開始訂餐前的準備</div>
       <ol style={{ fontSize: '13px', margin: '4px 0 0', paddingLeft: '20px' }} aria-label="開始訂餐前的準備">

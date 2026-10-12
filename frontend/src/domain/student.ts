@@ -185,3 +185,13 @@ export function createLocalAccount(
     revision: 1,
   };
 }
+
+/** M0：別名以逗號（全形、半形）或頓號分隔；去空白、去重、移除與姓名相同者。 */
+export function parseAliases(text: string, displayName: string): string[] {
+  const seen = new Set<string>();
+  for (const part of text.split(/[,，、]/)) {
+    const alias = part.trim();
+    if (alias && alias !== displayName.trim()) seen.add(alias);
+  }
+  return [...seen];
+}

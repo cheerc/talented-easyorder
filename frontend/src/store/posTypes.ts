@@ -76,6 +76,7 @@ export interface PosState
     MenuActions,
     SessionActions,
     StudentActions,
+    PracticeStateSlice,
     PracticeDataActions {}
 
 // ─── Per-Domain Action Interfaces (Ref: #264) ───
@@ -120,6 +121,11 @@ export interface StudentActions {
 }
 
 
+/** M0：練習模式的模擬營業日；null 表示使用今天的實際日期。 */
+export interface PracticeStateSlice {
+  simulationDate: string | null;
+}
+
 /** M0：本機練習資料 actions（只在本機模式的 F3 使用） */
 export interface PracticeDataActions {
   /** 清空名單、供應商、交易、稽核、結帳與今日菜單。 */
@@ -132,4 +138,10 @@ export interface PracticeDataActions {
   restoreDataset: (dataset: PracticeDataset) => void;
   /** 只清除交易、稽核、關帳與開帳；保留名單、期初、供應商與菜單。 */
   clearPracticeTransactions: () => void;
+  /** 設定模擬營業日（YYYY-MM-DD）；null 回到實際日期。 */
+  setSimulationDate: (date: string | null) => void;
+  /** 修改本機帳戶的姓名與別名；交易內的姓名快照不變。 */
+  updateLocalStudent: (studentId: string, changes: { displayName: string; aliases: string[] }, now: string) => void;
+  /** 停用或恢復本機帳戶。停用者不出現在訂餐搜尋，歷史仍可查。 */
+  setLocalStudentStatus: (studentId: string, status: StudentAccount['status'], now: string) => void;
 }

@@ -77,79 +77,92 @@ describe('TodayDashboard', () => {
     store.businessDateStatuses = { ...baseStatuses };
   });
 
+  it('uses the systemDate prop (practice business date) instead of the real date', () => {
+    const practiceDate = '2026-01-05';
+    store.transactions = [
+      ...baseTrans.map(t => ({ ...t })),
+      { ...baseTrans[0], transactionId: 'tx-p', studentNameSnapshot: '練習生', businessDate: practiceDate, syncStatus: 'local' as const },
+    ];
+    const { container } = render(<TodayDashboard systemDate={practiceDate} onClose={vi.fn()} />);
+    expect(container.textContent).toContain(practiceDate);
+    expect(container.textContent).toContain('練習生');
+    expect(container.textContent).not.toContain('王小美');
+    expect(container.textContent).toContain('營業中');
+  });
+
   it('renders system date', () => {
-    const { container } = render(<TodayDashboard onClose={vi.fn()} />);
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
     expect(container.textContent).toContain(todayStr);
   });
 
   it('displays transaction count', () => {
-    const { container } = render(<TodayDashboard onClose={vi.fn()} />);
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
     expect(container.textContent).toContain('交易筆數');
   });
 
   it('displays order count from totals', () => {
-    const { container } = render(<TodayDashboard onClose={vi.fn()} />);
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
     expect(container.textContent).toContain('訂餐數');
   });
 
   it('displays cash collected from totals', () => {
-    const { container } = render(<TodayDashboard onClose={vi.fn()} />);
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
     expect(container.textContent).toContain('收現總計');
   });
 
   it('shows 已關帳 when dateStatus is closed', () => {
-    const { container } = render(<TodayDashboard onClose={vi.fn()} />);
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
     expect(container.textContent).toContain('已關帳');
   });
 
   it('shows 營業中 when dateStatus is open', () => {
     store.businessDateStatuses = { [todayStr]: 'open' };
-    const { container } = render(<TodayDashboard onClose={vi.fn()} />);
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
     expect(container.textContent).toContain('營業中');
   });
 
   it('shows 已重開 when dateStatus is reopened', () => {
     store.businessDateStatuses = { [todayStr]: 'reopened' };
-    const { container } = render(<TodayDashboard onClose={vi.fn()} />);
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
     expect(container.textContent).toContain('已重開');
   });
 
   it('shows settlement closer and time when todaySettlement exists', () => {
-    const { container } = render(<TodayDashboard onClose={vi.fn()} />);
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
     expect(container.textContent).toContain('op-1');
     expect(container.textContent).toContain('18:00:00');
   });
 
   it('shows queued count synced when 0', () => {
     store.transactions.forEach(t => { t.syncStatus = 'local'; });
-    const { container } = render(<TodayDashboard onClose={vi.fn()} />);
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
     expect(container.textContent).toContain('已全數同步');
   });
 
   it('shows correction count', () => {
-    const { container } = render(<TodayDashboard onClose={vi.fn()} />);
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
     expect(container.textContent).toContain('今日更正');
   });
 
   it('shows void count', () => {
-    const { container } = render(<TodayDashboard onClose={vi.fn()} />);
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
     expect(container.textContent).toContain('作廢');
   });
 
   it('shows latest 5 transactions sorted by createdAt desc', () => {
-    const { container } = render(<TodayDashboard onClose={vi.fn()} />);
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
     expect(container.textContent).toContain('最近 5 筆交易');
   });
 
   it('shows 今日尚無交易紀錄 when no transactions today', () => {
     store.transactions = [];
-    const { container } = render(<TodayDashboard onClose={vi.fn()} />);
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
     expect(container.textContent).toContain('今日尚無交易紀錄');
   });
 
   it('calls onClose when overlay clicked', () => {
     const onClose = vi.fn();
-    const { container } = render(<TodayDashboard onClose={onClose} />);
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={onClose} />);
     const overlay = container.querySelector('.db-overlay') as HTMLElement;
     fireEvent.click(overlay);
     expect(onClose).toHaveBeenCalledOnce();
@@ -157,7 +170,7 @@ describe('TodayDashboard', () => {
 
   it('calls onClose when close button clicked', () => {
     const onClose = vi.fn();
-    const { container } = render(<TodayDashboard onClose={onClose} />);
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={onClose} />);
     const closeBtn = container.querySelector('.db-close') as HTMLElement;
     fireEvent.click(closeBtn);
     expect(onClose).toHaveBeenCalledOnce();
@@ -165,7 +178,7 @@ describe('TodayDashboard', () => {
 
   it('panel click does NOT call onClose', () => {
     const onClose = vi.fn();
-    const { container } = render(<TodayDashboard onClose={onClose} />);
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={onClose} />);
     const panel = container.querySelector('.db-panel') as HTMLElement;
     fireEvent.click(panel);
     expect(onClose).not.toHaveBeenCalled();

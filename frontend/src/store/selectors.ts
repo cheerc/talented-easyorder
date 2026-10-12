@@ -83,6 +83,9 @@ const practiceDataActionsSelector = (s: ReturnType<typeof usePosStore.getState>)
   addLocalStudent: s.addLocalStudent,
   restoreDataset: s.restoreDataset,
   clearPracticeTransactions: s.clearPracticeTransactions,
+  setSimulationDate: s.setSimulationDate,
+  updateLocalStudent: s.updateLocalStudent,
+  setLocalStudentStatus: s.setLocalStudentStatus,
 });
 
 /** Transaction actions. Stable references — will not cause re-renders. */
@@ -113,4 +116,9 @@ export function useGlobalActions() {
 /** M0 本機練習資料 actions. Stable references. */
 export function usePracticeDataActions() {
   return usePosStore(useShallow(practiceDataActionsSelector));
+}
+
+/** M0：練習模式的模擬營業日（null = 實際日期）。 */
+export function useSimulationDate() {
+  return usePosStore((s) => s.simulationDate);
 }

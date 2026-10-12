@@ -23,6 +23,8 @@ export interface PracticeDataset {
   dailySettlements: DailySettlement[];
   businessDateStatuses: Record<string, 'open' | 'closed' | 'reopened'>;
   cashSessions: Record<string, DailyCashSession>;
+  /** 練習模式的模擬營業日；null 表示使用實際日期。 */
+  simulationDate: string | null;
 }
 
 export interface PracticeSnapshot {
@@ -52,7 +54,7 @@ export function countDataset(d: PracticeDataset): DatasetCounts {
   };
 }
 
-export function pickDataset(state: PracticeDataset): PracticeDataset {
+export function pickDataset(state: Omit<PracticeDataset, 'simulationDate'> & { simulationDate?: string | null }): PracticeDataset {
   return {
     students: state.students,
     transactions: state.transactions,
@@ -62,6 +64,7 @@ export function pickDataset(state: PracticeDataset): PracticeDataset {
     dailySettlements: state.dailySettlements,
     businessDateStatuses: state.businessDateStatuses,
     cashSessions: state.cashSessions,
+    simulationDate: state.simulationDate ?? null,
   };
 }
 
@@ -73,6 +76,18 @@ export function buildSnapshot(state: PracticeDataset, exportedAt: string): Pract
 export function snapshotFileName(date: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `easyorder-practice-${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}.json`;
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function cashSessionProblem(date: string, session: unknown): string | null {
+  if (typeof session !== 'object' || session === null) return '不是物件';
+  const c = session as Record<string, unknown>;
+  if (typeof c.cashSessionId !== 'string') return '缺少編號';
+  if (c.businessDate !== date) return '日期與索引不一致';
+  if (!Number.isSafeInteger(c.openingCash)) return '開帳金額不是整數';
+  if (c.status !== 'open' && c.status !== 'closed') return `狀態不正確：${String(c.status)}`;
+  return null;
 }
 
 export type ParseSnapshotResult =
@@ -100,7 +115,19 @@ export function parseSnapshot(text: string): ParseSnapshotResult {
 
   const validation = validatePersistedState(r.data);
   if (!validation.ok) return { ok: false, reason: `資料格式不正確：${validation.reason}` };
-  const data = r.data as PracticeDataset;
+  const rawData = r.data as Record<string, unknown>;
+  const data = { ...(r.data as Omit<PracticeDataset, 'simulationDate'>), simulationDate: null } as PracticeDataset;
+
+  const sim = rawData.simulationDate;
+  if (sim !== undefined && sim !== null) {
+    if (typeof sim !== 'string' || !DATE_RE.test(sim)) return { ok: false, reason: `模擬營業日格式不正確：${String(sim)}` };
+    data.simulationDate = sim;
+  }
+
+  for (const [date, session] of Object.entries(data.cashSessions as Record<string, unknown>)) {
+    const reason = cashSessionProblem(date, session);
+    if (reason) return { ok: false, reason: `開帳資料不正確（${date}）：${reason}` };
+  }
 
   const ids = new Set<string>();
   for (const s of data.students) {
@@ -114,7 +141,16 @@ export function parseSnapshot(text: string): ParseSnapshotResult {
     if (t.studentId !== CASHIER_SENTINEL && !ids.has(t.studentId)) {
       return { ok: false, reason: `交易 ${t.transactionId} 指向不存在的帳戶 ${t.studentId}。` };
     }
+    if (!Number.isSafeInteger(t.amount) || !Number.isSafeInteger(t.afterBalance)) {
+      return { ok: false, reason: `交易 ${t.transactionId} 的金額不是整數。` };
+    }
   }
+
+  // 不直接相信檔案裡的餘額：以期初＋交易重算，與 App 內的重算規則一致。
+  const { students, transactions: studentTx } = recalculateStudentBalances(data.students, data.transactions);
+  const cashierTx = data.transactions.filter(t => t.studentId === CASHIER_SENTINEL);
+  data.students = students;
+  data.transactions = [...studentTx, ...cashierTx].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   const snapshot: PracticeSnapshot = { format: SNAPSHOT_FORMAT, schemaVersion: SNAPSHOT_SCHEMA_VERSION, exportedAt: r.exportedAt, data };
   return { ok: true, snapshot, counts: countDataset(data) };
@@ -135,5 +171,6 @@ export function clearTransactionsKeepRoster(state: PracticeDataset): PracticeDat
     dailySettlements: [],
     businessDateStatuses: {},
     cashSessions: {},
+    simulationDate: state.simulationDate,
   };
 }

@@ -52,7 +52,8 @@ vi.mock('../../store/selectors', () => ({
   useMenuActions: () => ({ setTodayMenu: mockState.setTodayMenu, setVendors: mockState.setVendors }),
   useGlobalActions: () => ({ resetData: mockState.resetData }),
   useStudentActions: () => ({ addStudent: vi.fn(), disableStudent: vi.fn() }),
-  usePracticeDataActions: () => ({ startBlankData: vi.fn(), loadSampleData: vi.fn(), addLocalStudent: vi.fn() }),
+  usePracticeDataActions: () => ({ startBlankData: vi.fn(), loadSampleData: vi.fn(), addLocalStudent: vi.fn(), setSimulationDate: vi.fn(), updateLocalStudent: vi.fn(), setLocalStudentStatus: vi.fn() }),
+  useSimulationDate: () => null,
 }));
 
 vi.mock('../../store/derived/useCashClose', () => ({

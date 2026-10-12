@@ -28,6 +28,17 @@ export function searchPosStudents(students: StudentAccount[], query: string): Po
   return { ok: true, mode: 'text', students: results };
 }
 
+/** F1 搜尋框的候選清單：只列啟用中的帳戶，比對編號、姓名與別名（不分大小寫）。 */
+export function filterSearchSuggestions(students: StudentAccount[], query: string): StudentAccount[] {
+  if (!query) return [];
+  const q = query.toLowerCase();
+  return students.filter(s => s.status === 'active' && (
+    s.studentId.includes(q)
+    || s.displayName.toLowerCase().includes(q)
+    || s.aliases.some(a => a.toLowerCase().includes(q))
+  ));
+}
+
 export function resolveScannedStudent(students: StudentAccount[], input: ScannerInput): PosSearchResult {
   const code = input.rawCode.trim();
 
