@@ -10,7 +10,7 @@ import { rebalanceAccounts } from '../../domain/ledger';
 export function createTransactionActions(
   set: (partial: Partial<PosState> | ((state: PosState) => Partial<PosState>)) => void,
   get: () => PosState,
-): Pick<PosState, 'commitPosTransactionDraft' | 'processTransaction' | 'updateTransaction' | 'deleteTransaction' | 'deleteOrderWithRefundCheck' | 'editTransaction'> {
+): Pick<PosState, 'commitPosTransactionDraft' | 'processTransaction' | 'deleteTransaction' | 'deleteOrderWithRefundCheck' | 'editTransaction'> {
   const orderActions = createOrderActions(set);
   const paymentActions = createPaymentActions(set);
   const editActions = createEditActions(set, get);

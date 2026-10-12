@@ -58,7 +58,6 @@ export function useSession(): AuditStateSlice & SettlementStateSlice {
 const transactionActionsSelector = (s: ReturnType<typeof usePosStore.getState>) => ({
   commitPosTransactionDraft: s.commitPosTransactionDraft,
   processTransaction: s.processTransaction,
-  updateTransaction: s.updateTransaction,
   deleteTransaction: s.deleteTransaction,
   deleteOrderWithRefundCheck: s.deleteOrderWithRefundCheck,
   editTransaction: s.editTransaction,

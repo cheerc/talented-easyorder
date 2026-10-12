@@ -136,7 +136,7 @@ describe('transactionActions — commitPosTransactionDraft', () => {
   });
 });
 
-describe('transactionActions — processTransaction / updateTransaction', () => {
+describe('transactionActions — processTransaction / editTransaction', () => {
   it('T5: processTransaction batch chains balance across multiple calls', () => {
     const store = usePosStore.getState();
     const studentId = '001';
@@ -157,11 +157,11 @@ describe('transactionActions — processTransaction / updateTransaction', () => 
     expect(txs[2].afterBalance).toBe(-90);
   });
 
-  it('T6: updateTransaction nonexistent ID is a no-op', () => {
+  it('T6: editTransaction nonexistent ID is a no-op', () => {
     const store = usePosStore.getState();
     const txCountBefore = store.transactions.length;
 
-    store.updateTransaction('nonexistent-id', { type: 'payment', mealPrice: 0, paidAmount: 100 });
+    store.editTransaction('nonexistent-id', { mealPrice: 0, paidAmount: 100 }, { reason: '測試' });
 
     const next = usePosStore.getState();
     expect(next.transactions.length).toBe(txCountBefore);
@@ -175,7 +175,7 @@ describe('transactionActions — editTransaction / deleteTransaction', () => {
     store.processTransaction('001', 'order', 90, 0);
     const tx = usePosStore.getState().transactions[0];
 
-    store.editTransaction(tx.transactionId, { mealPrice: 100, paidAmount: 50 });
+    store.editTransaction(tx.transactionId, { mealPrice: 100, paidAmount: 50 }, { reason: '測試' });
 
     const next = usePosStore.getState();
     const edited = next.transactions.find(t => t.transactionId === tx.transactionId)!;
@@ -199,7 +199,7 @@ describe('transactionActions — editTransaction / deleteTransaction', () => {
     const studentBefore = usePosStore.getState().students.find(s => s.studentId === '001')!;
     expect(studentBefore.currentBalance).toBe(-90);
 
-    store.deleteTransaction(tx.transactionId);
+    store.deleteTransaction(tx.transactionId, { reason: '測試' });
 
     const next = usePosStore.getState();
     expect(next.transactions.find(t => t.transactionId === tx.transactionId)).toBeUndefined();
@@ -214,7 +214,7 @@ describe('transactionActions — editTransaction / deleteTransaction', () => {
     store.processTransaction('001', 'order', 90, 50);
     const tx = usePosStore.getState().transactions[0];
 
-    const result = store.deleteOrderWithRefundCheck(tx.transactionId);
+    const result = store.deleteOrderWithRefundCheck(tx.transactionId, { reason: '測試' });
 
     expect(result.deleted).toBe(true);
     expect(result.refundAmount).toBe(50);
@@ -235,7 +235,7 @@ describe('transactionActions — editTransaction / deleteTransaction', () => {
     const studentBefore = usePosStore.getState().students.find(s => s.studentId === '001')!;
     // balance is affected by order (amount = 50 - 90 = -40)
 
-    const result = store.deleteOrderWithRefundCheck(tx.transactionId, undefined, true);
+    const result = store.deleteOrderWithRefundCheck(tx.transactionId, { reason: '測試', keepPaymentAsDeposit: true });
 
     expect(result.deleted).toBe(true);
     expect(result.refundAmount).toBe(0); // Kept as deposit

@@ -1,3 +1,4 @@
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DeleteConfirmDialog } from '../../pos-components';
 
@@ -7,7 +8,7 @@ describe('DeleteConfirmDialog', () => {
     studentName: '王柏翰',
     transactionType: 'payment' as const,
     amount: 500,
-    onConfirm: vi.fn(),
+    onConfirm: vi.fn(() => ({ ok: true as const })),
     onCancel: vi.fn(),
   };
 
@@ -32,7 +33,7 @@ describe('DeleteConfirmDialog', () => {
   });
 
   it('calls onConfirm when confirm button clicked', () => {
-    const onConfirm = vi.fn();
+    const onConfirm = vi.fn(() => ({ ok: true as const }));
     render(<DeleteConfirmDialog {...baseProps} onConfirm={onConfirm} />);
     fireEvent.click(screen.getByText('確認刪除'));
     expect(onConfirm).toHaveBeenCalled();
@@ -50,11 +51,23 @@ describe('DeleteConfirmDialog', () => {
     expect(screen.queryByText(/王柏翰/)).not.toBeInTheDocument();
   });
 
-  it('handles Enter key to confirm', () => {
-    const onConfirm = vi.fn();
+  it('M2：理由欄自動取得焦點，按 Enter 帶理由送出', () => {
+    const onConfirm = vi.fn(() => ({ ok: true as const }));
     render(<DeleteConfirmDialog {...baseProps} onConfirm={onConfirm} />);
-    fireEvent.keyDown(window, { key: 'Enter' });
-    expect(onConfirm).toHaveBeenCalled();
+    const reason = screen.getByLabelText('理由（必填，會記在稽核紀錄）');
+    expect(document.activeElement).toBe(reason);
+    fireEvent.change(reason, { target: { value: '重複登記' } });
+    fireEvent.keyDown(reason, { key: 'Enter' });
+    expect(onConfirm).toHaveBeenCalledWith('重複登記');
+  });
+
+  it('M2：送出失敗時留在對話框並顯示原因', () => {
+    const onCancel = vi.fn();
+    const onConfirm = vi.fn(() => ({ ok: false as const, message: '這一天已經關帳' }));
+    render(<DeleteConfirmDialog {...baseProps} onConfirm={onConfirm} onCancel={onCancel} />);
+    fireEvent.click(screen.getByText('確認刪除'));
+    expect(screen.getByRole('alert').textContent).toBe('這一天已經關帳');
+    expect(onCancel).not.toHaveBeenCalled();
   });
 
   it('handles Escape key to cancel', () => {

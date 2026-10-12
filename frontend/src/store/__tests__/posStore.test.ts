@@ -32,7 +32,7 @@ describe('posStore Accounting Engine', () => {
     const balanceAfterTx2 = usePosStore.getState().students.find(s => s.studentId === studentId)!.currentBalance;
     expect(tx2.afterBalance).toBe(balanceAfterTx2);
 
-    usePosStore.getState().updateTransaction(tx1.transactionId, { type: 'topup', mealPrice: 0, paidAmount: 100 });
+    usePosStore.getState().editTransaction(tx1.transactionId, { mealPrice: 0, paidAmount: 100 }, { reason: '測試' });
 
     const newTx1 = usePosStore.getState().transactions.find(t => t.transactionId === tx1.transactionId)!;
     const newTx2 = usePosStore.getState().transactions.find(t => t.transactionId === tx2.transactionId)!;

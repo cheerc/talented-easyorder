@@ -8,6 +8,7 @@ import type { StudentAccount } from '../domain/student';
 import { TodayDashboard } from './TodayDashboard';
 import { PwaInstallBanner } from './PwaInstallBanner';
 import type { StorageMode } from '../appMode';
+import type { LedgerMutationResult } from '../domain/ledgerAudit';
 
 export interface FlashData {
   id: number;
@@ -40,7 +41,7 @@ interface MainLayoutProps {
   cancelDialogOpen: boolean;
   picked: StudentAccount | null;
   orderTx?: LedgerTransaction | null;
-  onCancelDialogConfirm: (keepPaymentAsDeposit: boolean) => void;
+  onCancelDialogConfirm: (keepPaymentAsDeposit: boolean, reason: string) => LedgerMutationResult;
   onCancelDialogCancel: () => void;
   noOrderDialogOpen: boolean;
   onNoOrderDialogClose: () => void;
@@ -66,7 +67,7 @@ export const MainLayout = React.memo(function MainLayout(props: MainLayoutProps)
       <ConfirmBanner flash={flashData} onDismiss={onDismissFlash} onUndo={onUndo} undoCountdown={undoCountdown} />
       <CancelOrderDialog
         open={cancelDialogOpen}
-        picked={picked}
+        account={picked}
         orderTx={orderTx ?? null}
         onConfirm={onCancelDialogConfirm}
         onCancel={onCancelDialogCancel}

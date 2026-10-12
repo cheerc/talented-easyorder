@@ -65,9 +65,8 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
   };
 
   const handleRecentEditSave = useCallback(
-    (transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }) => {
-      editTransaction(transactionId, updates, operatorUid);
-    },
+    (transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }, reason: string) =>
+      editTransaction(transactionId, updates, { reason, operatorId: operatorUid }),
     [editTransaction, operatorUid],
   );
 
@@ -257,11 +256,11 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
         studentName={deleteConfirmTx ? (students.find(s => s.studentId === deleteConfirmTx.studentId)?.displayName ?? '') : ''}
         transactionType={(deleteConfirmTx?.type === 'expense' ? 'expense' : 'payment') as 'payment' | 'expense'}
         amount={deleteConfirmTx ? (deleteConfirmTx.type === 'expense' ? deleteConfirmTx.amount : deleteConfirmTx.paidAmount) : 0}
-        onConfirm={() => {
-          if (deleteConfirmTx) {
-            deleteTransaction(deleteConfirmTx.transactionId);
-          }
-          setDeleteConfirmTx(null);
+        onConfirm={(reason) => {
+          if (!deleteConfirmTx) return { ok: true };
+          const result = deleteTransaction(deleteConfirmTx.transactionId, { reason, operatorId: operatorUid });
+          if (result.ok) setDeleteConfirmTx(null);
+          return result;
         }}
         onCancel={() => setDeleteConfirmTx(null)}
       />

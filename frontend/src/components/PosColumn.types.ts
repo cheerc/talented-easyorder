@@ -3,6 +3,7 @@ import type { StudentAccount } from '../domain/student';
 import type { WorkflowTransactionView } from '../domain/transactionViews';
 import type { TodayMenu, Vendor } from '../domain/menu';
 import type { LedgerTransaction } from '../domain/ledger';
+import type { LedgerMutationResult } from '../domain/ledgerAudit';
 
 export interface PosColumnProps {
   state: PosFlowState;
@@ -55,6 +56,6 @@ export interface PosColumnProps {
   priceOverrideLabel: string;
   setPriceOverride: (v: number | null) => void;
   setPriceOverrideLabel: (v: string) => void;
-  handleDeleteOrder: () => void;
+  handleDeleteOrder: (keepPaymentAsDeposit: boolean, reason: string) => LedgerMutationResult;
   onViewHistory: () => void;
 }

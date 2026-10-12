@@ -9,7 +9,7 @@ const mockStore = {
   transactions: [
     { studentId: 's1', businessDate: '2024-01-15', type: 'order', transactionId: 'tx-1' },
   ],
-  deleteOrderWithRefundCheck: vi.fn(),
+  deleteOrderWithRefundCheck: vi.fn(() => ({ deleted: true, refundAmount: 0, studentName: 'A', wasClosedDate: false })),
 };
 
 vi.mock('../../store/posStore', () => ({
@@ -92,10 +92,22 @@ describe('useCancelDialog', () => {
 
     const store = usePosStore.getState();
 
-    act(() => result.current.handleDeleteOrder(true));
-    expect(store.deleteOrderWithRefundCheck).toHaveBeenCalledWith('tx-1', undefined, true);
+    act(() => { result.current.handleDeleteOrder(true, '家長來電'); });
+    expect(store.deleteOrderWithRefundCheck).toHaveBeenCalledWith('tx-1', { reason: '家長來電', operatorId: undefined, keepPaymentAsDeposit: true });
 
-    act(() => result.current.handleDeleteOrder(false));
-    expect(store.deleteOrderWithRefundCheck).toHaveBeenCalledWith('tx-1', undefined, false);
+    act(() => { result.current.handleDeleteOrder(false, '訂錯人'); });
+    expect(store.deleteOrderWithRefundCheck).toHaveBeenCalledWith('tx-1', { reason: '訂錯人', operatorId: undefined, keepPaymentAsDeposit: false });
+  });
+
+  it('M2：store 擋下時（已關帳）把原因交回對話框', () => {
+    const store = usePosStore.getState();
+    vi.mocked(store.deleteOrderWithRefundCheck).mockReturnValueOnce(
+      { deleted: false, refundAmount: 0, studentName: 'A', wasClosedDate: true, message: '這一天已經關帳' },
+    );
+    const args = makeArgs({ picked: { studentId: 's1', displayName: 'A' }, operatorId: 'op-1' });
+    const { result } = renderHook(() => useCancelDialog(args as unknown as Parameters<typeof useCancelDialog>[0]));
+    let r: ReturnType<typeof result.current.handleDeleteOrder> | undefined;
+    act(() => { r = result.current.handleDeleteOrder(false, '理由'); });
+    expect(r).toEqual({ ok: false, message: '這一天已經關帳' });
   });
 });

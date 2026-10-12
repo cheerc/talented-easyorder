@@ -48,7 +48,7 @@ describe('#310 — operatorId in audit events', () => {
     usePosStore.getState().processTransaction('s1', 'order', 60, 0, '便當');
 
     const txId = usePosStore.getState().transactions[0].transactionId;
-    usePosStore.getState().deleteOrderWithRefundCheck(txId, 'uid-operator-1');
+    usePosStore.getState().deleteOrderWithRefundCheck(txId, { reason: '測試', operatorId: 'uid-operator-1' });
 
     const auditEvents = usePosStore.getState().auditEvents;
     expect(auditEvents.length).toBe(1);
@@ -61,7 +61,7 @@ describe('#310 — operatorId in audit events', () => {
     usePosStore.getState().processTransaction('s1', 'order', 60, 0, '便當');
 
     const txId = usePosStore.getState().transactions[0].transactionId;
-    usePosStore.getState().deleteOrderWithRefundCheck(txId);
+    usePosStore.getState().deleteOrderWithRefundCheck(txId, { reason: '測試' });
 
     const auditEvents = usePosStore.getState().auditEvents;
     expect(auditEvents.length).toBe(1);
@@ -74,7 +74,7 @@ describe('#310 — operatorId in audit events', () => {
     usePosStore.getState().processTransaction('s1', 'order', 60, 0, '便當');
 
     const txId = usePosStore.getState().transactions[0].transactionId;
-    usePosStore.getState().editTransaction(txId, { mealPrice: 80 }, 'uid-admin-2');
+    usePosStore.getState().editTransaction(txId, { mealPrice: 80 }, { reason: '測試', operatorId: 'uid-admin-2' });
 
     const auditEvents = usePosStore.getState().auditEvents;
     expect(auditEvents.length).toBe(1);
@@ -87,7 +87,7 @@ describe('#310 — operatorId in audit events', () => {
     usePosStore.getState().processTransaction('s1', 'order', 60, 0, '便當');
 
     const txId = usePosStore.getState().transactions[0].transactionId;
-    usePosStore.getState().editTransaction(txId, { mealPrice: 80 });
+    usePosStore.getState().editTransaction(txId, { mealPrice: 80 }, { reason: '測試' });
 
     const auditEvents = usePosStore.getState().auditEvents;
     expect(auditEvents.length).toBe(1);

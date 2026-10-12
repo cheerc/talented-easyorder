@@ -3,6 +3,8 @@ import { emitError } from '../../errors/errorBus';
 import type { TransactionEditView } from '../../domain/ledger';
 import type { ReportTransactionView } from '../../domain/transactionViews';
 import { EditTransactionModal } from '../EditTransactionModal';
+import { CancelOrderDialog } from '../CancelOrderDialog';
+import { DeleteConfirmDialog } from '../pos/DeleteConfirmDialog';
 import type { LedgerDateRangeKind } from '../../domain/ledgerReport';
 import { ReportDateRangeControls } from '../report/ReportDateRangeControls';
 import { ReportSummaryStats } from '../report/ReportSummaryStats';
@@ -10,7 +12,7 @@ import { LedgerGroupedTable } from '../report/LedgerGroupedTable';
 import { CashClosePanel } from '../report/CashClosePanel';
 import { ExportActions } from '../report/ExportActions';
 import { ReopenDialog } from '../report/ReopenDialog';
-import { useSessionActions, useTransactionActions, useMenuForDate } from '../../store/selectors';
+import { useSessionActions, useTransactionActions, useMenuForDate, useStudents, useTransactions } from '../../store/selectors';
 import { useLedgerReport } from '../../store/derived/useLedgerReport';
 import { useCashClose } from '../../store/derived/useCashClose';
 import { useLedgerExport } from '../../store/derived/useLedgerExport';
@@ -38,9 +40,21 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
 
   const { closeBusinessDate, reopenBusinessDate } = useSessionActions();
   const { deleteOrderWithRefundCheck, deleteTransaction, editTransaction } = useTransactionActions();
-  const handleEditSave = useCallback((transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }) => {
-    editTransaction(transactionId, updates, operatorUid);
-  }, [editTransaction, operatorUid]);
+  const handleEditSave = useCallback((transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }, reason: string) =>
+    editTransaction(transactionId, updates, { reason, operatorId: operatorUid }),
+  [editTransaction, operatorUid]);
+  // M2：F2 的刪除也要先確認、填理由，和 F1 走同一套檢查。
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { students } = useStudents();
+  const { transactions: storeTransactions } = useTransactions();
+  const deletingTx = useMemo(
+    () => (deletingId ? storeTransactions.find(t => t.transactionId === deletingId) ?? null : null),
+    [deletingId, storeTransactions],
+  );
+  const deletingAccount = useMemo(
+    () => (deletingTx ? students.find(s => s.studentId === deletingTx.studentId) ?? null : null),
+    [deletingTx, students],
+  );
   const { dateStatus, openingCash } = useCashClose(viewDate);
 
   const { filtered, totals, groups } = useLedgerReport({
@@ -113,11 +127,7 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
   };
 
   const handleDeleteClick = (t: ReportTransactionView) => {
-    if (t.type === 'order') {
-      deleteOrderWithRefundCheck(t.transactionId, operatorUid);
-    } else {
-      deleteTransaction(t.transactionId);
-    }
+    setDeletingId(t.transactionId);
   };
 
   const handleCashClose = (countedCash: number, note: string) => {
@@ -230,6 +240,32 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
         transaction={editingTx}
         onClose={() => setEditingTx(null)}
         onSave={handleEditSave}
+      />
+      <CancelOrderDialog
+        open={deletingTx?.type === 'order'}
+        account={deletingAccount}
+        orderTx={deletingTx?.type === 'order' ? deletingTx : null}
+        onConfirm={(keepPaymentAsDeposit, reason) => {
+          if (!deletingTx) return { ok: true };
+          const result = deleteOrderWithRefundCheck(deletingTx.transactionId, { reason, operatorId: operatorUid, keepPaymentAsDeposit });
+          if (!result.deleted) return { ok: false, message: result.message ?? '取消失敗。' };
+          setDeletingId(null);
+          return { ok: true };
+        }}
+        onCancel={() => setDeletingId(null)}
+      />
+      <DeleteConfirmDialog
+        open={!!deletingTx && deletingTx.type !== 'order'}
+        studentName={deletingAccount?.displayName ?? deletingTx?.studentNameSnapshot ?? ''}
+        transactionType={deletingTx?.type === 'expense' ? 'expense' : 'payment'}
+        amount={deletingTx ? (deletingTx.type === 'expense' ? Math.max(deletingTx.mealPrice, deletingTx.paidAmount) : deletingTx.paidAmount) : 0}
+        onConfirm={(reason) => {
+          if (!deletingTx) return { ok: true };
+          const result = deleteTransaction(deletingTx.transactionId, { reason, operatorId: operatorUid });
+          if (result.ok) setDeletingId(null);
+          return result;
+        }}
+        onCancel={() => setDeletingId(null)}
       />
     </div>
   );

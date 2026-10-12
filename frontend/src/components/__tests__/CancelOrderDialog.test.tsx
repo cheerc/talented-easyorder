@@ -1,183 +1,149 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CancelOrderDialog } from '../CancelOrderDialog';
-import type { StudentAccount } from '../../domain/student';
 import type { LedgerTransaction } from '../../domain/ledger';
+import type { LedgerMutationResult } from '../../domain/ledgerAudit';
 
-const mockStudent: StudentAccount = {
-  studentId: 's-1',
-  displayName: '王小明',
-  currentBalance: 500,
-  schoolId: 'school-1',
-  classLabel: 'A',
-  enrollmentStatus: 'active',
-  createdAt: '2026-01-01',
-  updatedAt: '2026-01-01',
-};
+const account = { displayName: '測試甲', currentBalance: 500 };
 
-const mockOrderTxWithPaidAmount: LedgerTransaction = {
+// 訂 90、當場收 100：本筆淨額 +10。
+const orderWithPaid = {
   transactionId: 'tx-1',
   studentId: 's-1',
-  studentNameSnapshot: '王小明',
+  studentNameSnapshot: '測試甲',
   type: 'order',
   businessDate: '2026-06-18',
-  mealPrice: 85,
-  paidAmount: 90,
-  amount: -85,
-  note: '今日便當',
+  mealPrice: 90,
+  paidAmount: 100,
+  amount: 10,
+  afterBalance: 500,
+  menuNameSnapshot: '晚餐',
+  vendorNameSnapshot: '',
+  note: '',
+  sourceDevice: 'pc',
   syncStatus: 'local',
+  revision: 1,
   createdAt: '2026-06-18T10:00:00Z',
-  updatedAt: '2026-06-18T10:00:00Z',
-  operatorId: 'op-1',
-};
+} as LedgerTransaction;
 
-const mockOrderTxNoPaid: LedgerTransaction = {
-  ...mockOrderTxWithPaidAmount,
-  paidAmount: 0,
-};
+const orderNoPaid = { ...orderWithPaid, paidAmount: 0, amount: -90 } as LedgerTransaction;
 
-describe('CancelOrderDialog keyboard navigation', () => {
-  let onConfirm: ReturnType<typeof vi.fn>;
-  let onCancel: ReturnType<typeof vi.fn>;
+const REASON_LABEL = '理由（必填，會記在稽核紀錄）';
+
+describe('CancelOrderDialog', () => {
+  let onConfirm: ReturnType<typeof vi.fn<(keep: boolean, reason: string) => LedgerMutationResult>>;
+  let onCancel: ReturnType<typeof vi.fn<() => void>>;
 
   beforeEach(() => {
-    onConfirm = vi.fn();
-    onCancel = vi.fn();
+    onConfirm = vi.fn<(keep: boolean, reason: string) => LedgerMutationResult>(() => ({ ok: true }));
+    onCancel = vi.fn<() => void>();
   });
 
-  describe('with paid amount (refund options visible)', () => {
-    function renderWithRefund() {
-      return render(
-        <CancelOrderDialog
-          open={true}
-          picked={mockStudent}
-          orderTx={mockOrderTxWithPaidAmount}
-          onConfirm={onConfirm}
-          onCancel={onCancel}
-        />
-      );
-    }
+  const renderDialog = (orderTx: LedgerTransaction, open = true) => render(
+    <CancelOrderDialog open={open} account={account} orderTx={orderTx} onConfirm={onConfirm} onCancel={onCancel} />,
+  );
 
-    it('ArrowDown switches from "退還現金" to "保留至帳戶餘額"', () => {
-      renderWithRefund();
-      // Default should be "退還現金" (keepPaymentAsDeposit=false)
+  const impact = () => document.querySelector('.cancel-impact')!.textContent;
+
+  describe('有收款時（可選退款方式）', () => {
+    it('預設「收款留在帳戶」，不會自動退現（規格 L-TRACE）', () => {
+      renderDialog(orderWithPaid);
       const radios = screen.getAllByRole('radio');
-      expect(radios[0]).toBeChecked(); // 退還現金
-      expect(radios[1]).not.toBeChecked(); // 保留至帳戶餘額
-
-      fireEvent.keyDown(window, { key: 'ArrowDown' });
-
+      expect(radios[1]).toBeChecked();
       expect(radios[0]).not.toBeChecked();
-      expect(radios[1]).toBeChecked();
     });
 
-    it('ArrowUp switches from "保留至帳戶餘額" back to "退還現金"', () => {
-      renderWithRefund();
-      // Press ArrowDown first to select "保留至帳戶餘額"
-      fireEvent.keyDown(window, { key: 'ArrowDown' });
-      const radios = screen.getAllByRole('radio');
-      expect(radios[1]).toBeChecked();
+    it('打完理由直接按 Enter：送出的是留在帳戶，不是退現', () => {
+      renderDialog(orderWithPaid);
+      const reason = screen.getByLabelText(REASON_LABEL);
+      fireEvent.change(reason, { target: { value: '家長來電取消' } });
+      fireEvent.keyDown(reason, { key: 'Enter' });
+      expect(onConfirm).toHaveBeenCalledWith(true, '家長來電取消');
+    });
 
+    it('↑／↓ 切換退款方式，停在兩端', () => {
+      renderDialog(orderWithPaid);
+      const radios = screen.getAllByRole('radio');
       fireEvent.keyDown(window, { key: 'ArrowUp' });
-
+      fireEvent.keyDown(window, { key: 'ArrowUp' });
       expect(radios[0]).toBeChecked();
-      expect(radios[1]).not.toBeChecked();
-    });
-
-    it('ArrowDown at bottom does not go past the last option', () => {
-      renderWithRefund();
-      // Press ArrowDown twice — should stay on second option
       fireEvent.keyDown(window, { key: 'ArrowDown' });
       fireEvent.keyDown(window, { key: 'ArrowDown' });
-
-      const radios = screen.getAllByRole('radio');
       expect(radios[1]).toBeChecked();
     });
 
-    it('ArrowUp at top does not go past the first option', () => {
-      renderWithRefund();
-      // Already at first option, pressing ArrowUp should stay
-      fireEvent.keyDown(window, { key: 'ArrowUp' });
-
+    it('注音選字中的 ↑／↓ 不會切換退款方式', () => {
+      renderDialog(orderWithPaid);
       const radios = screen.getAllByRole('radio');
-      expect(radios[0]).toBeChecked();
+      const reason = screen.getByLabelText(REASON_LABEL);
+      fireEvent.keyDown(reason, { key: 'ArrowUp', isComposing: true });
+      fireEvent.keyDown(reason, { key: 'ArrowUp', keyCode: 229 });
+      expect(radios[1]).toBeChecked();
     });
 
-    it('Enter confirms with current selection (default: keepPaymentAsDeposit=false)', () => {
-      renderWithRefund();
-      fireEvent.keyDown(window, { key: 'Enter' });
-      expect(onConfirm).toHaveBeenCalledWith(false);
+    it('先說明影響：預設留在帳戶 → 餘額 500 + 90 = 590，現金不變', () => {
+      renderDialog(orderWithPaid);
+      expect(impact()).toContain('$500 → $590');
+      expect(impact()).toContain('櫃台現金不變');
     });
 
-    it('Enter confirms with keepPaymentAsDeposit=true after ArrowDown', () => {
-      renderWithRefund();
-      fireEvent.keyDown(window, { key: 'ArrowDown' });
-      fireEvent.keyDown(window, { key: 'Enter' });
-      expect(onConfirm).toHaveBeenCalledWith(true);
+    it('先說明影響：按 ↑ 改成退還收款 → 餘額 500 − 10 = 490，櫃台退 100', () => {
+      renderDialog(orderWithPaid);
+      fireEvent.keyDown(window, { key: 'ArrowUp' });
+      expect(impact()).toContain('$500 → $490');
+      expect(impact()).toContain('櫃台退還現金 $100');
+    });
+
+    it('按 ↑ 選退還後按確認，送出 keepPaymentAsDeposit=false 與理由', () => {
+      renderDialog(orderWithPaid);
+      fireEvent.keyDown(window, { key: 'ArrowUp' });
+      fireEvent.change(screen.getByLabelText(REASON_LABEL), { target: { value: '要退錢' } });
+      fireEvent.click(screen.getByText('確認取消'));
+      expect(onConfirm).toHaveBeenCalledWith(false, '要退錢');
     });
   });
 
-  describe('without paid amount (simple confirm)', () => {
-    function renderSimple() {
-      return render(
-        <CancelOrderDialog
-          open={true}
-          picked={mockStudent}
-          orderTx={mockOrderTxNoPaid}
-          onConfirm={onConfirm}
-          onCancel={onCancel}
-        />
-      );
-    }
-
-    it('Enter confirms with keepPaymentAsDeposit=false', () => {
-      renderSimple();
-      fireEvent.keyDown(window, { key: 'Enter' });
-      expect(onConfirm).toHaveBeenCalledWith(false);
-    });
-
-    it('ArrowDown/ArrowUp do nothing when no refund options', () => {
-      renderSimple();
-      // No radio buttons should exist
+  describe('沒有收款時', () => {
+    it('沒有退款選項；餘額 500 + 90 = 590，現金不變', () => {
+      renderDialog(orderNoPaid);
       expect(screen.queryAllByRole('radio')).toHaveLength(0);
+      expect(impact()).toContain('$500 → $590');
+      expect(impact()).toContain('櫃台現金不變');
+    });
 
-      // Arrow keys should not throw
-      fireEvent.keyDown(window, { key: 'ArrowDown' });
-      fireEvent.keyDown(window, { key: 'ArrowUp' });
+    it('按確認取消送出 keepPaymentAsDeposit=false', () => {
+      renderDialog(orderNoPaid);
+      fireEvent.change(screen.getByLabelText(REASON_LABEL), { target: { value: '訂錯人' } });
+      fireEvent.click(screen.getByText('確認取消'));
+      expect(onConfirm).toHaveBeenCalledWith(false, '訂錯人');
     });
   });
 
-  describe('when dialog is closed', () => {
-    it('keyboard events are not handled', () => {
-      render(
-        <CancelOrderDialog
-          open={false}
-          picked={mockStudent}
-          orderTx={mockOrderTxWithPaidAmount}
-          onConfirm={onConfirm}
-          onCancel={onCancel}
-        />
-      );
-
-      fireEvent.keyDown(window, { key: 'Enter' });
-      expect(onConfirm).not.toHaveBeenCalled();
-    });
+  it('理由欄自動取得焦點，輸入法選字的 Enter 不送出', () => {
+    renderDialog(orderNoPaid);
+    const reason = screen.getByLabelText(REASON_LABEL);
+    expect(document.activeElement).toBe(reason);
+    fireEvent.keyDown(reason, { key: 'Enter', keyCode: 229 });
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 
-  describe('Escape still works (via Modal)', () => {
-    it('Escape calls onCancel through Modal onClose', () => {
-      render(
-        <CancelOrderDialog
-          open={true}
-          picked={mockStudent}
-          orderTx={mockOrderTxWithPaidAmount}
-          onConfirm={onConfirm}
-          onCancel={onCancel}
-        />
-      );
+  it('送出失敗（缺理由、已關帳）時留在對話框並顯示原因', () => {
+    onConfirm.mockReturnValue({ ok: false, message: '請填寫理由。' });
+    renderDialog(orderNoPaid);
+    fireEvent.click(screen.getByText('確認取消'));
+    expect(screen.getByRole('alert').textContent).toBe('請填寫理由。');
+    expect(onCancel).not.toHaveBeenCalled();
+  });
 
-      fireEvent.keyDown(window, { key: 'Escape' });
-      expect(onCancel).toHaveBeenCalled();
-    });
+  it('關閉時不處理按鍵', () => {
+    renderDialog(orderWithPaid, false);
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('Esc 經由 Modal 呼叫 onCancel', () => {
+    renderDialog(orderWithPaid);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onCancel).toHaveBeenCalled();
   });
 });
