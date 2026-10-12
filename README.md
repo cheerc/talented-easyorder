@@ -1,6 +1,8 @@
-# Talented EasyOrder (iPad POS)
+# Talented EasyOrder (PC Counter Prototype)
 
-A highly responsive, offline-first iPad POS system with facial recognition support (Phase 2), built with React, Vite, and Zustand.
+PC 晚餐櫃台前端 prototype，使用 React、Vite 與 Zustand。當前重點是鍵盤登記、收款、餘額與可追溯查帳；iPad／人臉辨識及後端擴充暫緩。
+
+Project team 請先讀 [前端交接入口](docs/FRONTEND-PROTOTYPE-HANDOFF.md) 與 [本人操作驗證清單](docs/superpowers/verification/2026-09-29-operator-prototype-checklist.md)。文件描述的新版練習工具仍待分批實作。
 
 ## Getting Started
 
@@ -40,5 +42,5 @@ See [`frontend/.env.example`](frontend/.env.example) for all required variables.
 | `VITE_ALLOWED_EMAIL_DOMAIN` | Email domain for operator access (e.g. `your-company.com`) |
 
 ## Documentation
-- Specifications: `docs/specs/`
+- Specifications: [Frontend prototype spec](docs/superpowers/specs/frontend-prototype-workflow-spec.md)（既有 specs 在同目錄）
 - Architecture & Plans: `docs/superpowers/`

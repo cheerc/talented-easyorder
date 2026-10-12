@@ -1,5 +1,7 @@
 # Student Account Management Spec
 
+> **2026-09-29 範圍更新：** 本檔保留為既有設計／實作基線。本輪目標見 [Frontend prototype workflow spec](frontend-prototype-workflow-spec.md)。本輪手動名單建檔、獨立期初與停用行為以新 spec 為準；領域型別或 Firebase CRUD 存在不代表管理 UI 已完成。
+
 ## 功能描述
 
 Student Account Management 定義學員主檔、帳戶餘額、搜尋、匯入驗證流程，以及 Phase 2 人臉辨識 enrollment 所需的學員端資料邊界。

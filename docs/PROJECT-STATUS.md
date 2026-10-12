@@ -1,137 +1,56 @@
 # Project Status — Talented EasyOrder
 
-> **Last verified:** 2026-09-14 @ `e41544122bb9b8336bb34a463bf76f62f4025c7e`
-> （`chore(node): migrate CI and toolchain declarations to Node 24 (#437)`）
->
-> 本文件是專案現況快照，也是 operator 的 **frontend UI 驗收清單落點**。
-> 與其他規劃文件的關係：`docs/superpowers/plans/ROADMAP.md` 的 Phase 1.3 與
-> Tech Stack 章節已過時（仍寫 Google Sheets），以本文件 §5 為準；
-> ROADMAP 本體不由本文件修改（需 operator 決定）。
+> **Last inspected:** 2026-09-29，程式基準 `884a996`。
+> 本輪只更新 spec／計畫／驗收文件；沒有改應用程式、沒有完成本人驗收。
 
-## 1. 一句話現況
+## 1. 當前方向
 
-專案處於停擺後的對齊點：最後一次功能／修正 commit 是 2026-06-23
-（`cce3c56`），之後只有 chore/CI 與今天的兩個依賴／toolchain PR；
-open issue = 0、open PR = 0，所有已記錄的 UI 工作皆已 merge，
-等 operator 本人驗收 frontend UI 後再往後開發
-（commit 月分佈詳見附錄「量測與統計口徑註記」）。
+PC 晚餐櫃台前端 prototype：鍵盤為主、滑鼠為輔，保留 operator 約七成滿意的 F1。每天一餐（晚餐）；餐費90找零後記90，多留10元則記100。支援1920×1080 PC及MacBook Pro 13吋，按可用視窗重排，不整頁縮小。
 
-## 2. 當前關鍵路徑
+先完成本機模擬、F1操作、更正追溯、日末核帳。後端、iPad、人臉辨識、同步架構擴充均暫緩。
 
-**Operator 的 frontend UI 驗收是唯一的 gate。**
+交接入口：[FRONTEND-PROTOTYPE-HANDOFF](FRONTEND-PROTOTYPE-HANDOFF.md)。現行排程：[ROADMAP](superpowers/plans/ROADMAP.md)／[詳細計畫](superpowers/plans/2026-09-29-frontend-prototype-refocus.md)。原 Google Sheets roadmap 已封存，不再作排程來源。
 
-- 在 frontend 通過 operator 本人驗證之前，不往後開發（不啟 Phase 2、不做新功能）。
-- 發現任何 UI 問題 → 開 issue → 回填 §3 的驗收清單表格。
-- 本文件每次更新時一併刷新頂部的 last-verified 日期與 commit SHA。
+## 2. 現況與驗收 gate
 
-## 3. Frontend UI 驗收清單（本文件核心）
+operator 已表示 F2–F5 尚未充分操作驗證。已 merge、open issue=0、測試通過都不等於 UI 被接受。2026-09-29 建立本文件PR之前，GitHub open PR／issue 查詢為空；新發現記於下列 audit，尚未自動開 issues。
 
-**重要事實：查無任何已記錄的未完成 UI 項目。**
+[操作 audit](superpowers/reviews/2026-09-29-frontend-workflow-audit.md) 記錄已重現與靜態風險；[本人驗收清單](superpowers/verification/2026-09-29-operator-prototype-checklist.md) 是唯一詳細操作清單，不在此重複維護。
 
-- `gh issue list --state open` 回傳空（2026-09-14 實測）。
-- `gh pr list --state open` 除本文件自身的 PR 外回傳空（2026-09-14 實測）。
-- 最後一批 UI issue（#403、#406–#431 區間，抽查 #403/#406/#407/#412/
-  #417/#419/#421/#423/#425/#428/#430）狀態皆為 CLOSED（#406 的 issue
-  檢視回傳 MERGED，屬同一「已關閉」語義）。
-- plans / specs / retro / TODO 全文搜尋無未完成 UI 待辦。
-
-**不要憑空編造待辦項。** 下表是空的結構化表格，供 operator 邊測邊填：
-
-| 畫面/元件 | 問題描述 | 期望行為 | 狀態 | 對應 issue |
-|---|---|---|---|---|
-| （例）PosColumn 結帳欄 | （填寫） | （填寫） | 待確認 | （開 issue 後回填編號） |
-| | | | | |
-
-填寫方式：發現問題請先開 issue，再把編號回填到「對應 issue」欄；
-狀態建議使用「待確認 / 已開 issue / 已修復待驗 / 已關閉」四種。
-
-## 4. Phase 進度表
-
-| Phase | 狀態 | 證據 |
+| 優先項目 | 證據／狀態 | 下一步 |
 |---|---|---|
-| 1.0 基礎架構補強 | DONE | `docs/superpowers/plans/archive/2026-05-14-phase-1-0-foundation-hardening(DONE).md` |
-| 1.1 PC POS 正式化 | DONE | `docs/superpowers/plans/archive/2026-05-14-phase-1-1-pc-pos-formalization(DONE).md` |
-| 1.2 報表與結算 | DONE | `docs/superpowers/plans/archive/2026-05-14-phase-1-2-reporting-and-settlement(DONE).md` |
-| 1.3 Google Sheets 同步 | **OBSOLETE** | 檔名標記 `(OBSOLETE)`：`docs/superpowers/plans/archive/2026-05-14-phase-1-3-google-sheets-sync-offline(OBSOLETE).md`；改走 Firebase（`docs/superpowers/plans/archive/2026-05-16-firebase-sync-architecture.md`，CHANGELOG 0.2.0「deprecate Google Sheets sync」#261） |
-| 2 iPad 人臉辨識 | 未開始 | `docs/superpowers/plans/archive/2026-05-14-phase-2-ipad-face-handoff.md` 無 DONE 標記 |
+| F01 不可見搜尋候選可被Enter選取 | UI重現；未修 | M1 |
+| F02 取消特殊餐後價格帶到下一人 | UI重現；未修 | M1 |
+| F03 更正收款後F1／最近帳戶／F2餘額不同 | UI重現；未修 | M2，帳務 gate |
+| F04 部分刪除／undo無稽核與鎖帳檢查 | 靜態確認；未修 | M2 |
+| F05/F06 空白建檔缺口／本機假同步回饋 | 畫面＋程式確認；未修 | M0 |
+| F07–F12 提示、筆數、追溯文案、時間、焦點、歷史入口 | audit列明；未修 | M1–M3 |
+| R01–R06 邊界風險 | 定向測試待做，不能稱已重現 | 按plan分批驗 |
 
-## 5. 實際架構與 stack（本文件為準）
+本人回饋可直接用清單 ID，team 再整理 issue／修復PR並回填。狀態採「發現／待重現／已修待驗／本人通過」，不得因 issue 關閉直接填通過。
 
-- 持久化：IndexedDB（`frontend/src/storage/indexedDBStorage.ts`，
-  內含 localStorage fallback，見該檔 L64–L76）+ Firestore
-  （`frontend/src/firebase/` 下 `ledgerRepository.ts`、
-  `studentRepository.ts`、`settlementRepository.ts`、
-  `realtimeSubscriptions.ts`）。
-- 實際 stack（`frontend/package.json` 聲明值）：
-  Vite ^8.0.10、React ^19.2.5、TypeScript ~6.0.2、Zustand ^5.0.13、
-  Vitest ^4.1.5、Firebase ^12.13.0、vite-plugin-pwa ^1.3.0。
-- ⚠️ `docs/superpowers/plans/ROADMAP.md` 已過時：
-  其 Tech Stack 仍寫 "Google Sheets/Apps Script or an equivalent adapter"
-  （該檔 L9），Phase 1.3 整段仍是 Sheets（該檔 L29、L49、L120–L139）。
-  以本文件為準；ROADMAP 本體是否改寫由 operator 決定，本次未修改。
+## 3. 分批進度
 
-## 6. 健康度基線（2026-09-14 於本 worktree 實跑，Node v24.21.0）
+| 批次 | Code／team驗證 | 本人驗收 |
+|---|---|---|
+| M0 隔離本機、空白建檔、期初、快照 | 待實作 | 未驗 |
+| M1 F1鍵盤／草稿／回饋／尺寸 | 待實作 | 未驗 |
+| M2 餘額一致／更正作廢／稽核 | 待實作 | 未驗 |
+| M3 F2–F5每日閉環 | 待實作 | 未驗 |
+| M4 自建資料多日模擬 | 待前述交付 | 未驗 |
 
-- `npx tsc --noEmit` → exit 0（無輸出）
-- `npm run lint` → exit 0
-- `npx vitest run` → 113 passed / 1 skipped 檔案；
-  991 passed / 8 skipped 測試
-- `npm run build` → 成功（實測 457ms）；PWA generateSW，
-  precache 20 entries / 908.09 KiB
-- 1 skipped 檔案 = `frontend/src/firebase/__tests__/firestoreRules.spec.ts`，
-  設計上在無 Firestore emulator 時 `describe.skip`（CI 有 emulator 會跑）。
-- CI（GitHub Actions）跑在 Node v24（PR #437 之後），
-  build-and-test 與 e2e 皆 pass。
+歷史 Phase1.0／1.1／1.2 已交付、Sheets phase obsolete、Phase2未啟動的背景保留於[原status快照](superpowers/reviews/2026-09-14-project-status-baseline.md)，不以歷史DONE代替上述新一輪驗收。
 
-重跑指令（於 `frontend/` 目錄）：
+## 4. 程式架構與本輪驗證限制
 
-```bash
-npm ci && npx tsc --noEmit && npm run lint && npx vitest run && npm run build
-```
+現有 frontend 為 Vite／React／TypeScript／Zustand，IndexedDB（含localStorage fallback）與Firebase程式並存。未設定完整Firebase配置時App已有local-only分支，但尚不具備這輪要求的明確環境隔離、空白建檔、完整快照工具。
 
-## 7. 已知技術債（只記錄，不處理）
+本輪實際操作：使用者5173唯讀流程，另origin的5174副本（禁用Firebase）做範例訂餐／繳費／更正／草稿取消。已目視1920×1080 content viewport；Mac實際視窗、125%、Windows IME、全面關帳／退款／故障等仍待按清單驗證。
 
-1. `frontend/src/components/screens/BackupScreen.tsx` 是純 UI placeholder：
-   資料全 hardcode（12,847 筆 L69、2026/05/06 18:32 L46/L70、
-   `setInterval` 假進度條 L19），文案描述 "Google Sheets"（L35/L57）
-   與 "SQLite"（L33/L35）——兩者都不是實際架構；
-   檔案 header 已自述為 placeholder（Ref: #329）。
-   **該元件未被 `AppRouter.tsx` 掛上任何 tab**（router 只有
-   pos / report / admin / vendors / history 五個 tab），使用者無法到達；
-   僅 `frontend/src/components/__tests__/screens.test.tsx:105`
-  （`describe('BackupScreen')`）引用。
-2. `CHANGELOG.md` 最新條目為 `[0.3.0]` 2026-06-15，
-   其後 #419–#431 一整批 UI 工作未記錄。
-3. 版本號三方不一致：`frontend/package.json` = 0.0.2、
-   CHANGELOG 最新 = 0.3.0、git tag = v0.0.1 / v0.0.2 / 0529。
-   對齊基準需 operator 決定，本次不動。
-4. 3 處 TODO 指向已關閉 issue（內容為未來工作佔位，非錯誤）：
-   `frontend/src/store/posStore.ts:1` 與
-   `frontend/src/store/posTypes.ts:1` 指向 #289（CLOSED）、
-   `frontend/src/store/posPersistence.ts:9` 指向 #286（CLOSED）。
-5. `docs/superpowers/plans/` 下的 plan checkbox 從未被當作進度追蹤機制，
-   不可作為進度證據（註：archive 內
-   2026-05-07-ipad-pos-system-design.md 與
-   2026-05-10-frontend-audit-remediation(DONE).md 共含 4 個歷史設計文件內文勾選項，
-   非進度追蹤用途）。
+本PR只改Markdown，做文件連結、數字案例、diff格式檢查。**沒有重跑code test suite**。2026-09-14的991 passed／8 skipped等健康度數字仍在原快照，僅為歷史基線，不冒充本輪測試結果。
 
-## 8. 如何維護本文件
+既有BackupScreen未掛路由且為placeholder、版本號不一致、舊TODO等技術背景見原快照。本輪只處理會阻礙prototype驗證的部分，不開全面技術債清理。
 
-- **何時更新**：每次 operator 驗收回饋、Phase 狀態變化、架構變更、
-  健康度基線漂移（依賴大版本升級、測試數明顯變化）時更新對應章節。
-- **更新什麼**：只改事實變更的章節；§3 驗收清單有新 issue 時加行；
-  issue 關閉時把狀態改為已關閉（保留行作為紀錄，不要刪除）。
-- **last-verified 欄位要一起改**：頂部的日期與 commit SHA 每次更新本文
-  件時必須同步刷新為當下值。
-- 驗收相關的結構性變更（新增欄位、改變 gate 規則）需 operator 確認。
+## 5. 維護方式
 
----
-
-### 附錄：量測與統計口徑註記
-
-1. **Commit 月分佈口徑**：author-date 口徑為 261/135/3/1/2（2026-05 至 2026-09，total 402）；
-   committer-date 口徑為 260/136/3/1/2（total 402）。
-   全歷史僅跨月 commit `dd3e201` 一筆（author-date 2026-05-31 / committer-date 2026-06-01），
-   其餘月份兩種口徑完全一致。本文件統計採用 author-date 數字。
-2. **Build 耗時說明**：實測 457ms，隨機器負載略有浮動（約 450–480ms 區間），
-   PWA precache 20 entries / 908.09 KiB 穩定一致。
+每批team交付或本人回饋時，更新檢視日期、實際commit、修復PR、清單ID及驗收結果；保持「code已寫／team已驗／本人通過」分離。新的產品決策先更新workflow spec，再改對應plan與清單。此輪文件PR由project team review、rework、merge，作者不代為merge。

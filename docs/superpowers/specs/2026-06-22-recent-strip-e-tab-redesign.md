@@ -1,5 +1,7 @@
 # RecentStrip 簡化 + E 訂餐狀況重新設計
 
+> **2026-09-29 範圍更新：** 本檔保留為既有設計／實作基線。本輪目標見 [Frontend prototype workflow spec](frontend-prototype-workflow-spec.md)。保留最近帳戶與 E 訂餐狀況方向；餘額一致、焦點與更正追溯以新 spec 為準。
+
 > **Status**: Approved  
 > **Date**: 2026-06-22  
 > **Scope**: RecentStrip 展開移除、TransactionStatusView 重設計、CustomerCard DRY、檢視歷史就地顯示

@@ -1,5 +1,7 @@
 # Order Ledger And Cash Close Spec
 
+> **2026-09-29 範圍更新：** 本檔保留為既有設計／實作基線。本輪目標見 [Frontend prototype workflow spec](frontend-prototype-workflow-spec.md)。本輪禁止正常 UI 硬刪已保存紀錄，改用可追溯作廢／revision；期初、交易筆數、餘額重算與本機關帳以新 spec 為準。本檔 hard_delete 與固定預設4000為舊基線，不是新目標。
+
 ## 功能描述
 
 Order Ledger And Cash Close 定義交易流水帳、報表統計、錯誤修正、刪除/作廢政策、每日現金對帳（cash close）、鎖帳/重開流程、CSV/列印輸出，以及 Firebase 同步的資料邊界。
