@@ -53,7 +53,7 @@ describe('useTransactionCommit', () => {
 
   beforeEach(() => {
     dispatch = vi.fn();
-    commitDraft = vi.fn();
+    commitDraft = vi.fn(() => ({ ok: true }));
   });
 
   // --- #283: CASHIER_SENTINEL regression test ---
@@ -85,6 +85,20 @@ describe('useTransactionCommit', () => {
     const draft: PosTransactionDraft = commitDraft.mock.calls[0][0];
     expect(draft.intent.studentId).toBe(CASHIER_SENTINEL);
     expect(draft.intent.studentId).not.toBe('expense-operator');
+  });
+
+  it('M2：store 擋下（關帳日）時派 commitFailed，不當成成功', () => {
+    const blocked = vi.fn(() => ({ ok: false as const, message: '這一天已經關帳' }));
+    const state: PosFlowState = {
+      kind: 'committing', studentId: 's1', mode: 'expense', source: 'manual', paidAmountText: '', searchTextHint: '',
+      expenseAmount: 50, expenseNote: '文具', expenseDirection: 'expense',
+    } as PosFlowState;
+    const { result } = renderHook(() =>
+      useTransactionCommit(dispatch as Parameters<typeof useTransactionCommit>[0], state, [makeStudent()], makeMenu(), [], blocked, makeArgs()),
+    );
+    act(() => { result.current.commitTransaction(); });
+    expect(dispatch).toHaveBeenCalledWith({ type: 'commitFailed', message: '這一天已經關帳', retryable: false });
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'commitSucceeded' }));
   });
 
   // --- Duplicate detection ---

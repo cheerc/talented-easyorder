@@ -3,6 +3,7 @@ import type { LedgerTransaction } from '../../domain/ledger';
 import { createLedgerTransaction, rebalanceAccounts } from '../../domain/ledger';
 import { createStudentSnapshot } from '../../domain/student';
 import { createMenuSnapshot } from '../../domain/menu';
+import { checkNewLedgerEntry } from '../../domain/ledgerAudit';
 import type { PosTransactionDraft } from '../../domain/posTransaction';
 
 export function buildOrderTransaction(
@@ -45,6 +46,7 @@ export function createOrderActions(
         set((state) => {
           const studentIndex = state.students.findIndex(s => s.studentId === studentId);
           if (studentIndex === -1) return state;
+          if (!checkNewLedgerEntry(state.businessDateStatuses[state.todayMenu.businessDate]).ok) return state;
 
           const student = state.students[studentIndex];
           const now = new Date().toISOString();

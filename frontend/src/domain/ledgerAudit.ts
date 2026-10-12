@@ -102,3 +102,10 @@ export function checkLedgerMutation(
   if (!reason.trim()) return { ok: false, message: LEDGER_REASON_REQUIRED_MESSAGE };
   return { ok: true };
 }
+
+export const LEDGER_CLOSED_DATE_NEW_MESSAGE = '這一天已經關帳，不能新增交易；請先到今日帳（F2）重開。';
+
+/** 規格 §6：關帳日的所有新增入口都在 store 擋寫，不只靠畫面鎖住。 */
+export function checkNewLedgerEntry(dateStatus: BusinessDateStatus | undefined): LedgerMutationResult {
+  return dateStatus === 'closed' ? { ok: false, message: LEDGER_CLOSED_DATE_NEW_MESSAGE } : { ok: true };
+}

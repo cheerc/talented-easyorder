@@ -36,7 +36,7 @@ vi.mock('../../store/selectors', () => ({
     deleteOrderWithRefundCheck: mockState.deleteOrderWithRefundCheck,
     deleteTransaction: mockState.deleteTransaction,
     editTransaction: mockState.editTransaction,
-    commitPosTransactionDraft: vi.fn(),
+    commitPosTransactionDraft: vi.fn(() => ({ ok: true })),
     processTransaction: vi.fn(),
     updateTransaction: vi.fn(),
   }),
