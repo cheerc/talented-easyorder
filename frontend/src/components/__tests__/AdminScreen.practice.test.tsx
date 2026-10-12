@@ -203,4 +203,27 @@ describe('AdminScreen per-date dinner menu (M0)', () => {
     expect(screen.queryByText('請填寫便當名稱。')).toBeNull();
     expect(usePosStore.getState().menusByDate['2026-10-12']).toMatchObject({ itemName: '雞腿飯', price: 90 });
   });
+
+  it('M3：開帳金額預填跟著建議值更新；重開的日子預填那次關帳的開帳金額', async () => {
+    const { act } = await import('@testing-library/react');
+    const { createDailySettlement, reopenBusinessDate } = await import('../../domain/cashClose');
+    const { calculateLedgerTotals } = await import('../../domain/ledgerReport');
+    usePosStore.getState().startBlankData();
+    render(<AdminScreen viewDate="2026-10-12" />);
+    expect(screen.getByLabelText('開帳金額')).toHaveProperty('value', '');
+
+    // 同一天內建議值改變（例如還原快照帶進前一天的關帳），欄位跟著重新預填。
+    const totals = calculateLedgerTotals([]);
+    const yesterday = createDailySettlement('2026-10-11', totals, 1000, 1050, '', 'op', '2026-10-11T10:00:00.000Z', false);
+    act(() => { usePosStore.setState({ dailySettlements: [yesterday] }); });
+    expect(screen.getByLabelText('開帳金額')).toHaveProperty('value', '1050');
+    expect(screen.getByText(/已預填前一天關帳點算的 \$1,050/)).toBeTruthy();
+
+    // 這一天以前用 4000 關帳過、後來重開：優先預填那次的開帳金額。
+    const closed = createDailySettlement('2026-10-12', totals, 4000, 4000, '', 'op', '2026-10-12T10:00:00.000Z', false);
+    const reopened = reopenBusinessDate(closed, '補登', 'op', '2026-10-12T11:00:00.000Z');
+    act(() => { usePosStore.setState({ dailySettlements: [yesterday, closed, reopened] }); });
+    expect(screen.getByLabelText('開帳金額')).toHaveProperty('value', '4000');
+    expect(screen.getByText(/已預填這一天上次關帳用的開帳金額 \$4,000/)).toBeTruthy();
+  });
 });

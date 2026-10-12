@@ -92,14 +92,16 @@ export function createDailySettlement(
   closedBy: string,
   closedAt: string,
   hasQueuedRows: boolean,
+  settlementRevision = 1,
 ): DailySettlement {
   const expectedCash = openingCash + totals.netCash;
   const difference = countedCash - expectedCash;
   return {
-    settlementId: `settle-${businessDate}-${closedAt}`,
+    // 重開後再關帳的版次也寫進編號，同一毫秒內關帳兩次也不會撞號。
+    settlementId: `settle-${businessDate}-${closedAt}${settlementRevision > 1 ? `-r${settlementRevision}` : ''}`,
     businessDate,
     status: 'closed',
-    settlementRevision: 1,
+    settlementRevision,
     orderCount: totals.orderCount,
     transactionCount: totals.transactionCount,
     totalIncome: totals.totalIncome,
@@ -122,11 +124,14 @@ export function reopenBusinessDate(
   reason: string,
   reopenedBy: string,
   reopenedAt: string,
+  settlementRevision = previous.settlementRevision + 1,
 ): DailySettlement {
   return {
     ...previous,
+    // M3：重開是一筆新的版本，要有自己的編號；以前沿用原關帳編號，結帳歷史會有兩列同一個編號。
+    settlementId: `settle-${previous.businessDate}-${reopenedAt}-r${settlementRevision}`,
     status: 'reopened',
-    settlementRevision: previous.settlementRevision + 1,
+    settlementRevision,
     reopenedBy,
     reopenedAt,
     reopenReason: reason,
@@ -146,13 +151,45 @@ export function getConfirmedOpeningCash(cashSession?: { openingCash: number }): 
   return cashSession ? cashSession.openingCash : null;
 }
 
-/** M3：F3 開帳金額欄位的預填建議值＝前一天最後一版關帳的實際點算；本人仍要按儲存確認。 */
-export function suggestOpeningCash(businessDate: string, dailySettlements: DailySettlement[]): number | null {
+/**
+ * M3：同一天的最後一版結帳紀錄。每一版都比前一版晚發生，所以先比這一版的時間（重開時間或關帳時間）；
+ * 舊資料裡重開後再關帳的版次都寫成 1，不能只看版次。時間相同時才比版次。
+ */
+export function latestSettlement(businessDate: string, dailySettlements: DailySettlement[]): DailySettlement | undefined {
+  return dailySettlements
+    .filter(s => s.businessDate === businessDate)
+    .sort(compareSettlementVersionDesc)[0];
+}
+
+/** 新版本排前面：先比這一版的重開或關帳時間，相同時再比版次。 */
+export function compareSettlementVersionDesc(a: DailySettlement, b: DailySettlement): number {
+  const at = (s: DailySettlement) => (s.status === 'reopened' && s.reopenedAt ? s.reopenedAt : s.closedAt);
+  return at(b).localeCompare(at(a)) || b.settlementRevision - a.settlementRevision;
+}
+
+/** M3：重開或再關帳時，新紀錄的版次接在這一天既有最高版次之後。 */
+export function nextSettlementRevision(businessDate: string, dailySettlements: DailySettlement[]): number {
+  return dailySettlements
+    .filter(s => s.businessDate === businessDate)
+    .reduce((max, s) => Math.max(max, s.settlementRevision), 0) + 1;
+}
+
+export interface OpeningCashSuggestion {
+  amount: number;
+  /** same_day：這一天上一次關帳用的開帳金額（重開的日子）；previous_day：前一天關帳的實際點算。 */
+  source: 'same_day' | 'previous_day';
+}
+
+/**
+ * M3：F3 開帳金額欄位的預填建議值，本人仍要按儲存確認。
+ * 這一天已經關帳過（後來重開）時，優先用那次關帳記錄的開帳金額；否則用前一天最後一版「已關帳」的實際點算。
+ */
+export function suggestOpeningCash(businessDate: string, dailySettlements: DailySettlement[]): OpeningCashSuggestion | null {
+  const sameDay = latestSettlement(businessDate, dailySettlements);
+  if (sameDay) return { amount: sameDay.openingCash, source: 'same_day' };
   const yesterday = shiftDateStr(businessDate, -1);
-  const latest = dailySettlements
-    .filter(s => s.businessDate === yesterday && s.status === 'closed')
-    .sort((a, b) => b.settlementRevision - a.settlementRevision)[0];
-  return latest ? latest.countedCash : null;
+  const lastClosed = latestSettlement(yesterday, dailySettlements.filter(s => s.status === 'closed'));
+  return lastClosed ? { amount: lastClosed.countedCash, source: 'previous_day' } : null;
 }
 
 export const OPENING_CASH_MISSING_MESSAGE = '還沒設定這一天的開帳金額，請先到今日設定（F3）設定，才能關帳。';

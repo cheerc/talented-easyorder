@@ -1,5 +1,5 @@
 import type { PosState } from '../posTypes';
-import { validateCashClose, createDailySettlement, reopenBusinessDate as reopenSettlement, getConfirmedOpeningCash, OPENING_CASH_MISSING_MESSAGE } from '../../domain/cashClose';
+import { validateCashClose, createDailySettlement, reopenBusinessDate as reopenSettlement, getConfirmedOpeningCash, latestSettlement, nextSettlementRevision, OPENING_CASH_MISSING_MESSAGE } from '../../domain/cashClose';
 import { calculateLedgerTotals } from '../../domain/ledgerReport';
 import { createDailyCashSession } from '../../domain/cashSession';
 
@@ -69,7 +69,10 @@ export function createSessionActions(
       if (!validation.ok) return { ok: false, message: validation.message };
 
       const now = new Date().toISOString();
-      const settlement = createDailySettlement(businessDate, totals, openingCash, countedCash, note, operatorId, now, hasQueued);
+      const settlement = createDailySettlement(
+        businessDate, totals, openingCash, countedCash, note, operatorId, now, hasQueued,
+        nextSettlementRevision(businessDate, state.dailySettlements),
+      );
 
       set(state => ({
         dailySettlements: [...state.dailySettlements, settlement],
@@ -84,14 +87,12 @@ export function createSessionActions(
 
       if (state.businessDateStatuses[businessDate] === 'open') return;
 
-      const existing = state.dailySettlements
-        .filter(s => s.businessDate === businessDate)
-        .sort((a, b) => b.settlementRevision - a.settlementRevision)[0];
+      const existing = latestSettlement(businessDate, state.dailySettlements);
 
       if (!existing) return;
 
       const now = new Date().toISOString();
-      const reopened = reopenSettlement(existing, reason, operatorId, now);
+      const reopened = reopenSettlement(existing, reason, operatorId, now, nextSettlementRevision(businessDate, state.dailySettlements));
 
       set(state => ({
         dailySettlements: [...state.dailySettlements, reopened],

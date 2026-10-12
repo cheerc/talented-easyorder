@@ -55,6 +55,21 @@ describe('SettlementHistoryTable', () => {
     expect(rows[0].textContent).toContain('2026-05-30');
   });
 
+  it('M3：同一天最新的版本排最上面；舊資料共用編號的列各自展開', () => {
+    const closed = { ...baseSettlements[0], status: 'closed' as const, settlementRevision: 1, countedCash: 1090, closedAt: '2026-05-30T10:00:00.000Z' };
+    const reopened = { ...closed, status: 'reopened' as const, settlementRevision: 2, reopenedBy: 'op-1', reopenedAt: '2026-05-30T11:00:00.000Z', reopenReason: '補登' };
+    const reclosed = { ...closed, countedCash: 1100, closedAt: '2026-05-30T12:00:00.000Z', note: '第二次' };
+    store.dailySettlements = [closed, reopened, reclosed];
+    const { container } = render(<SettlementHistoryTable />);
+    const rows = container.querySelectorAll('.rpt-tr:not(.rpt-th)');
+    const data = Array.from(rows).filter(r => r.textContent?.includes('2026-05-30'));
+    expect(data.map(r => r.textContent?.includes('已重開') ? 'reopened' : r.textContent?.includes('$1,100') ? 'reclosed' : 'closed'))
+      .toEqual(['reclosed', 'reopened', 'closed']);
+    fireEvent.click(data[1]);
+    expect(container.querySelectorAll('.rpt-expand')).toHaveLength(1);
+    expect(container.textContent).toContain('補登');
+  });
+
   it('shows status labels', () => {
     const { container } = render(<SettlementHistoryTable />);
     expect(container.textContent).toContain('已關帳');
