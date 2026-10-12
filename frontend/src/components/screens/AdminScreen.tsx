@@ -61,12 +61,14 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
     setMenuError('');
   }
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  // M3：開帳金額只預填，不自動生效；沒有設定時預填前一天關帳的實際點算，本人按儲存才算數。
-  const initialCashDraft = String(openingCash ?? suggestedOpeningCash ?? '');
+  // M3：開帳金額只預填，不自動生效；沒有設定時預填建議值（重開日用上次關帳的開帳金額，否則用前一天關帳點算），本人按儲存才算數。
+  const initialCashDraft = String(openingCash ?? suggestedOpeningCash?.amount ?? '');
   const [openingCashDraft, setOpeningCashDraft] = useState(initialCashDraft);
-  const [cashDraftDate, setCashDraftDate] = useState(viewDate);
-  if (cashDraftDate !== viewDate) {
-    setCashDraftDate(viewDate);
+  // 換日期，或還原快照、重開帳讓建議值改變時，重新預填（render 期間調整）。
+  const cashDraftKey = `${viewDate}|${initialCashDraft}`;
+  const [cashDraftSource, setCashDraftSource] = useState(cashDraftKey);
+  if (cashDraftSource !== cashDraftKey) {
+    setCashDraftSource(cashDraftKey);
     setOpeningCashDraft(initialCashDraft);
   }
   const [cashSavedMsg, setCashSavedMsg] = useState('');
@@ -181,7 +183,7 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
               {openingCash !== null
                 ? `${viewDate} 的開帳金額：$${openingCash.toLocaleString()}`
                 : suggestedOpeningCash !== null
-                  ? `${viewDate} 還沒設定開帳金額。已預填前一天關帳點算的 $${suggestedOpeningCash.toLocaleString()}，確認後按「儲存開帳金額」。`
+                  ? `${viewDate} 還沒設定開帳金額。已預填${suggestedOpeningCash.source === 'same_day' ? '這一天上次關帳用的開帳金額' : '前一天關帳點算的'} $${suggestedOpeningCash.amount.toLocaleString()}，確認後按「儲存開帳金額」。`
                   : `${viewDate} 還沒設定開帳金額；設定後才能關帳。`}
             </p>
           </div>

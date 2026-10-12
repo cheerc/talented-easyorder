@@ -130,7 +130,8 @@ describe('DailySettlement state machine', () => {
     it('preserves all original financial fields', () => {
       const reopened = reopenBusinessDate(closed, '更正金額', 'manager', '2026-05-15T20:00:00.000Z');
 
-      expect(reopened.settlementId).toBe(closed.settlementId);
+      // M3：重開是新的一版，有自己的編號（以前沿用原編號，結帳歷史會有兩列同一個編號）。
+      expect(reopened.settlementId).toBe('settle-2026-05-15-2026-05-15T20:00:00.000Z-r2');
       expect(reopened.businessDate).toBe(closed.businessDate);
       expect(reopened.openingCash).toBe(closed.openingCash);
       expect(reopened.netCash).toBe(closed.netCash);

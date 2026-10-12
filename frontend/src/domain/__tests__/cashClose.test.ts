@@ -7,6 +7,8 @@ import {
   isBusinessDateWritable,
   getConfirmedOpeningCash,
   suggestOpeningCash,
+  latestSettlement,
+  nextSettlementRevision,
 } from '../cashClose';
 import type { LedgerTotals } from '../ledgerReport';
 
@@ -184,11 +186,33 @@ describe('M3：開帳金額只認本人確認的設定', () => {
 
   it('suggestOpeningCash：只當預填建議，取前一天最後一版「已關帳」的實際點算', () => {
     const v1 = createDailySettlement('2026-05-14', makeTotals({ netCash: 500 }), 1000, 1520, '平帳', 'op', '2026-05-14T10:00:00.000Z', false);
-    expect(suggestOpeningCash('2026-05-15', [v1])).toBe(1520);
-    const reopened = { ...v1, status: 'reopened' as const, settlementRevision: 2 };
-    const v3 = { ...v1, settlementRevision: 3, countedCash: 1540 };
-    expect(suggestOpeningCash('2026-05-15', [v1, reopened, v3])).toBe(1540);
-    expect(suggestOpeningCash('2026-05-15', [v1, reopened])).toBe(1520);
+    const prev = (amount: number) => ({ amount, source: 'previous_day' });
+    expect(suggestOpeningCash('2026-05-15', [v1])).toEqual(prev(1520));
+    const reopened = reopenBusinessDate(v1, '補登', 'op', '2026-05-14T11:00:00.000Z');
+    const v3 = createDailySettlement('2026-05-14', makeTotals({ netCash: 500 }), 1000, 1540, '多 20', 'op', '2026-05-14T12:00:00.000Z', false, 3);
+    expect(suggestOpeningCash('2026-05-15', [v1, reopened, v3])).toEqual(prev(1540));
+    expect(suggestOpeningCash('2026-05-15', [v1, reopened])).toEqual(prev(1520));
     expect(suggestOpeningCash('2026-05-16', [v1])).toBeNull();
+  });
+
+  it('suggestOpeningCash：重開的日子優先預填那次關帳用的開帳金額', () => {
+    const old = createDailySettlement('2026-05-15', makeTotals({ netCash: 500 }), 4000, 4500, '', 'op', '2026-05-15T10:00:00.000Z', false);
+    const yesterday = createDailySettlement('2026-05-14', makeTotals(), 1000, 1520, '', 'op', '2026-05-14T10:00:00.000Z', false);
+    const reopened = reopenBusinessDate(old, '補登', 'op', '2026-05-15T11:00:00.000Z');
+    expect(suggestOpeningCash('2026-05-15', [yesterday, old, reopened])).toEqual({ amount: 4000, source: 'same_day' });
+  });
+
+  it('latestSettlement：舊資料重開後再關帳版次都是 1，改比時間取最新的一版', () => {
+    const first = createDailySettlement('2026-05-15', makeTotals(), 1000, 1090, '', 'op', '2026-05-15T10:00:00.000Z', false);
+    const reopened = reopenBusinessDate(first, '補登', 'op', '2026-05-15T11:00:00.000Z');
+    const legacySecond = createDailySettlement('2026-05-15', makeTotals(), 1000, 1100, '', 'op', '2026-05-15T12:00:00.000Z', false);
+    const all = [first, reopened, legacySecond];
+    // 最後發生的是第二次關帳，雖然版次寫成 1；新的版次要接在最高的 2 之後。
+    expect(latestSettlement('2026-05-15', all)).toBe(legacySecond);
+    expect(latestSettlement('2026-05-15', [legacySecond, reopened, first])).toBe(legacySecond);
+    expect(nextSettlementRevision('2026-05-15', all)).toBe(3);
+    expect(suggestOpeningCash('2026-05-16', all)).toEqual({ amount: 1100, source: 'previous_day' });
+    expect(nextSettlementRevision('2026-05-16', all)).toBe(1);
+    expect(reopened.settlementId).not.toBe(first.settlementId);
   });
 });

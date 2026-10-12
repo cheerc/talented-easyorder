@@ -167,4 +167,27 @@ describe('sessionActions — close / reopen', () => {
     expect(ok).toEqual({ ok: true });
     expect(usePosStore.getState().dailySettlements[0].expectedCash).toBe(1100);
   });
+
+  it('M3：重開後再關帳，新紀錄的版次接在最高版次之後；隔天預填用最新的點算', async () => {
+    const { suggestOpeningCash, latestSettlement } = await import('../../domain/cashClose');
+    const store = usePosStore.getState();
+    const close = (counted: number) => usePosStore.getState().closeBusinessDate({
+      businessDate: '2026-05-15', countedCash: counted, note: counted === 1000 ? '' : '點算不同', queuedSettlementAccepted: false, operatorId: 'counter',
+    });
+    const reopen = () => usePosStore.getState().reopenBusinessDate({ businessDate: '2026-05-15', reason: '補登', operatorId: 'counter' });
+    store.openCashSession({ businessDate: '2026-05-15', openingCash: 1000, operatorId: 'counter', openedAt: '2026-05-15T08:00:00.000Z' });
+
+    expect(close(1090)).toEqual({ ok: true });
+    reopen();
+    expect(close(1100)).toEqual({ ok: true });
+    reopen();
+    const all = usePosStore.getState().dailySettlements;
+    expect(all.map(s => [s.status, s.settlementRevision])).toEqual([
+      ['closed', 1], ['reopened', 2], ['closed', 3], ['reopened', 4],
+    ]);
+    // 第二次重開是從第二次關帳（$1,100）複製，不是第一次。
+    expect(latestSettlement('2026-05-15', all)!.countedCash).toBe(1100);
+    expect(suggestOpeningCash('2026-05-16', all)).toEqual({ amount: 1100, source: 'previous_day' });
+    expect(new Set(all.map(s => s.settlementId)).size).toBe(4);
+  });
 });

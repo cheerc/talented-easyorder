@@ -3,6 +3,7 @@ import { useSession } from '../../store/selectors';
 import { fmt, sign } from '../pos-components';
 import { formatTaipeiDateTime, formatTaipeiTime } from '../../utils/dateTime';
 import { operatorLabel } from '../../domain/operatorId';
+import { compareSettlementVersionDesc } from '../../domain/cashClose';
 
 const PAGE_SIZE = 20;
 
@@ -24,7 +25,8 @@ export const SettlementHistoryTable = React.memo(function SettlementHistoryTable
   const [page, setPage] = useState(0);
 
   const sorted = useMemo(() => {
-    return [...dailySettlements].sort((a, b) => b.businessDate.localeCompare(a.businessDate));
+    // 同一天最新的版本排最上面，一眼看到目前狀態（舊資料版次相同時比時間）。
+    return [...dailySettlements].sort((a, b) => b.businessDate.localeCompare(a.businessDate) || compareSettlementVersionDesc(a, b));
   }, [dailySettlements]);
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
@@ -46,12 +48,15 @@ export const SettlementHistoryTable = React.memo(function SettlementHistoryTable
         <div>關帳人</div>
         <div>關帳時間</div>
       </div>
-      {paged.map((s) => (
-        <React.Fragment key={s.settlementId}>
+      {paged.map((s, i) => {
+        // 舊資料的重開列和原關帳列共用 settlementId，用版次、狀態和位置區分每一列。
+        const rowKey = `${s.settlementId}|${s.settlementRevision}|${s.status}|${i}`;
+        return (
+        <React.Fragment key={rowKey}>
           <div
             className="rpt-tr"
             style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 100px 100px 80px 100px 120px', cursor: 'pointer' }}
-            onClick={() => setExpandedId(expandedId === s.settlementId ? null : s.settlementId)}
+            onClick={() => setExpandedId(expandedId === rowKey ? null : rowKey)}
           >
             <div className="mono">{s.businessDate}</div>
             <div><span className={statusClass(s.status)}>{statusLabel(s.status)}</span></div>
@@ -64,7 +69,7 @@ export const SettlementHistoryTable = React.memo(function SettlementHistoryTable
             <div>{operatorLabel(s.closedBy)}</div>
             <div className="mono dim" style={{ fontSize: '12px' }}>{formatTaipeiTime(s.closedAt)}</div>
           </div>
-          {expandedId === s.settlementId && (
+          {expandedId === rowKey && (
             <div className="rpt-expand" style={{ padding: '12px 16px', background: 'var(--bg-card)', borderBottom: '1px solid var(--line-2)' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '8px', fontSize: '13px' }}>
                 <div title="2026-10 起關帳的紀錄含未付款訂餐；更早的紀錄只算有收付現金的交易"><span className="dim">交易筆數：</span><span className="mono">{s.transactionCount}</span></div>
@@ -81,7 +86,8 @@ export const SettlementHistoryTable = React.memo(function SettlementHistoryTable
             </div>
           )}
         </React.Fragment>
-      ))}
+        );
+      })}
       {sorted.length > PAGE_SIZE && (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', padding: '12px 0' }}>
           <button className="ghost-btn" disabled={page === 0} onClick={() => setPage(page - 1)}>上一頁</button>
