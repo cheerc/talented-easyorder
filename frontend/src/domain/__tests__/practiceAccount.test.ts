@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { validateNewAccount, createLocalAccount, type StudentAccount } from '../student';
 import { recalculateStudentBalances, type LedgerTransaction } from '../ledger';
 import { isMenuReady } from '../menu';
+import { INITIAL_STUDENTS } from '../../mocks/initialData';
 
 // M0 S03／S04：手動建帳戶與期初。期待值為手算，不用被測函式產生。
 
@@ -71,6 +72,15 @@ describe('recalculateStudentBalances with opening balance', () => {
   it('keeps the opening balance when all transactions are removed', () => {
     const student = createLocalAccount({ studentId: '001', displayName: '甲生', openingBalance: -50, openingNote: '', asOfDate: '2026-10-12' }, '2026-10-12T00:00:00Z');
     expect(recalculateStudentBalances([student], []).students[0].currentBalance).toBe(-50);
+  });
+});
+
+describe('sample dataset opening balances', () => {
+  it('recalculating the sample with no transactions keeps every balance (S001 1000, S002 500)', () => {
+    const r = recalculateStudentBalances(INITIAL_STUDENTS, []);
+    expect(r.students.map(s => s.currentBalance)).toEqual(INITIAL_STUDENTS.map(s => s.currentBalance));
+    expect(r.students.find(s => s.studentId === 'S001')?.currentBalance).toBe(1000);
+    expect(r.students.find(s => s.studentId === 'S002')?.currentBalance).toBe(500);
   });
 });
 
