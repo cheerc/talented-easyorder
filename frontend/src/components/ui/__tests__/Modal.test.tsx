@@ -55,4 +55,21 @@ describe('Modal', () => {
     );
     expect(screen.getByRole('dialog')).toBeDefined();
   });
+
+  it('M1 K09：Esc 只關對話框，背景的 Esc 監聽收不到；onClose 換新函式也照樣有效', () => {
+    const background = vi.fn();
+    window.addEventListener('keydown', background);
+    try {
+      const first = vi.fn();
+      const second = vi.fn();
+      const { rerender } = render(<Modal open title="t" onClose={first}><p>x</p></Modal>);
+      rerender(<Modal open title="t" onClose={second}><p>x</p></Modal>);
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+      expect(second).toHaveBeenCalledOnce();
+      expect(first).not.toHaveBeenCalled();
+      expect(background).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('keydown', background);
+    }
+  });
 });

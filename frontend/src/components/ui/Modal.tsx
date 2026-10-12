@@ -19,14 +19,19 @@ export const Modal = React.memo(function Modal({
   className = '',
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; });
 
+  // M1 K09：對話框開著時 Esc 只關對話框。在 capture 階段處理並停止傳遞，背景的「取消整筆」收不到同一次 Esc；
+  // 監聽不隨 onClose 重新註冊，避免背景先觸發重繪時把這次 Esc 的監聽拆掉。
   useEffect(() => {
     if (!open) return;
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        e.stopImmediatePropagation();
+        onCloseRef.current();
         return;
       }
       if (e.key === 'Tab') {
@@ -49,9 +54,9 @@ export const Modal = React.memo(function Modal({
         }
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [open]);
 
   if (!open) return null;
 

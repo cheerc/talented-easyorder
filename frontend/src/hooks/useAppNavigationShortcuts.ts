@@ -27,6 +27,11 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
   useEffect(() => {
     if (isDialogOpen) return;
     const onGlobalKey = (e: KeyboardEvent) => {
+      // M1 K09：任何對話框（修改交易、取消訂餐等）開著時，F 鍵不能繞過它切頁，否則對話框直接消失、編輯中的內容遺失。
+      if (/^F[1-6]$/.test(e.key) && document.querySelector('[role="dialog"][aria-modal="true"]')) {
+        e.preventDefault();
+        return;
+      }
       if (e.key === 'F1') {
         e.preventDefault();
         setSearchText('');

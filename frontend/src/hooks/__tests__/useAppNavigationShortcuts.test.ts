@@ -35,6 +35,21 @@ function keydown(key: string, target?: Element) {
 }
 
 describe('useAppNavigationShortcuts — F-keys', () => {
+  it('M1 K09：有對話框開著時 F 鍵不切頁', () => {
+    const setTab = vi.fn();
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    document.body.appendChild(dialog);
+    try {
+      renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, setTab }));
+      keydown('F2');
+      expect(setTab).not.toHaveBeenCalled();
+    } finally {
+      dialog.remove();
+    }
+  });
+
   it('A1: F1 focuses POS tab, clears search, sets tab to pos', () => {
     const props = { ...DEFAULT_PROPS, tab: 'report', setSearchText: vi.fn(), setSearchFocusKey: vi.fn(), setTab: vi.fn() };
     renderHook(() => useAppNavigationShortcuts(props));
