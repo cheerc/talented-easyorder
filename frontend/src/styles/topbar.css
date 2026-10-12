@@ -118,6 +118,10 @@
   background: var(--warn);
 }
 
+.sync-local .dot {
+  background: var(--ink-3);
+}
+
 .dot-pulse {
   animation: pulse 1.2s ease-in-out infinite;
 }

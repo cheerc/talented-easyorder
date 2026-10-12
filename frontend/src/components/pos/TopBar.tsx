@@ -1,4 +1,5 @@
 import React from "react";
+import type { StorageMode } from "../../appMode";
 
 interface TopBarProps {
   tab: string;
@@ -13,8 +14,10 @@ interface TopBarProps {
   failedSyncCount?: number;
   conflictSyncCount?: number;
   onDashboard?: () => void;
+  /** 資料保存位置；非 cloud 時不顯示任何雲端同步狀態。 */
+  storageMode?: StorageMode;
 }
-export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate, queuedCount = 0, failedSyncCount = 0, conflictSyncCount = 0, onDashboard }: TopBarProps) {
+export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate, queuedCount = 0, failedSyncCount = 0, conflictSyncCount = 0, onDashboard, storageMode = 'cloud' }: TopBarProps) {
   const tabs = [
     { id: 'pos', label: '櫃台', hint: 'F1' },
     { id: 'report', label: '今日帳', hint: 'F2' },
@@ -71,13 +74,24 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing,
         ))}
       </nav>
       <div className="status">
-        <div className={'sync ' + (online ? 'sync-on' : 'sync-off')}>
-          <span className={'dot ' + (syncing ? 'dot-pulse' : '') + (!online ? ' dot-red' : '')}></span>
-          <div className="sync-txt">
-            <div className="sync-label">{online ? '雲端已同步' : '⚠ 離線中'}</div>
-            <div className="sync-meta">{syncing ? '推送中…' : online ? `上次 ${lastSync}` : '等待連線恢復…'}</div>
+        {storageMode === 'cloud' ? (
+          <div className={'sync ' + (online ? 'sync-on' : 'sync-off')}>
+            <span className={'dot ' + (syncing ? 'dot-pulse' : '') + (!online ? ' dot-red' : '')}></span>
+            <div className="sync-txt">
+              <div className="sync-label">{online ? '雲端已同步' : '⚠ 離線中'}</div>
+              <div className="sync-meta">{syncing ? '推送中…' : online ? `上次 ${lastSync}` : '等待連線恢復…'}</div>
+            </div>
           </div>
-        </div>
+        ) : (
+          // M0／F06：本機模式沒有遠端確認，不顯示「已同步／推送中」。
+          <div className="sync sync-local" data-storage-mode={storageMode}>
+            <span className="dot"></span>
+            <div className="sync-txt">
+              <div className="sync-label">{storageMode === 'prototype' ? '本機練習 · 僅此瀏覽器' : '本機模式 · 未連雲端'}</div>
+              <div className="sync-meta">資料只存在這個瀏覽器</div>
+            </div>
+          </div>
+        )}
         {(failedSyncCount > 0 || conflictSyncCount > 0) && (
           <div className="sync sync-err" style={{ marginLeft: '8px', padding: '2px 8px', borderRadius: 'var(--r)', background: 'var(--red-soft)', border: '1px solid var(--red)', fontSize: '12px', color: 'var(--red)' }}>
             <span>⚠ 同步異常</span>

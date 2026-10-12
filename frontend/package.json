@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:prototype": "vite --mode prototype --port 5174 --strictPort",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",

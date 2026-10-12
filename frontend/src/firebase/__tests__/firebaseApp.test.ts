@@ -35,6 +35,23 @@ describe('readFirebaseConfig', () => {
     });
   });
 
+  it('treats Firebase as not configured in prototype mode even with full env (M0 S-ENV)', () => {
+    const fullEnv = {
+      VITE_FIREBASE_API_KEY: 'api-key',
+      VITE_FIREBASE_AUTH_DOMAIN: 'easyorder.firebaseapp.com',
+      VITE_FIREBASE_PROJECT_ID: 'talented-easyorder-prod',
+      VITE_FIREBASE_APP_ID: 'app-id',
+      VITE_FIREBASE_MESSAGING_SENDER_ID: 'sender',
+      VITE_FIREBASE_STORAGE_BUCKET: 'talented-easyorder-prod.appspot.com',
+    };
+    expect(isFirebaseConfigured({ ...fullEnv, MODE: 'development' })).toBe(true);
+    expect(isFirebaseConfigured({ ...fullEnv, MODE: 'prototype' })).toBe(false);
+    expect(getFirebaseConfigState({ ...fullEnv, MODE: 'prototype' })).toEqual({
+      configured: false,
+      error: '本機練習模式不連線 Firebase',
+    });
+  });
+
   it('config state is valid when no VITE_RECAPTCHA_SITE_KEY is set (#287)', () => {
     // App Check is opt-in — missing reCAPTCHA key should not affect config
     const state = getFirebaseConfigState({

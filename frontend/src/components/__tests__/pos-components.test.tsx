@@ -284,6 +284,30 @@ describe('TopBar', () => {
     );
     expect(container.textContent).toContain('櫃台');
   });
+
+  const baseTopBarProps = {
+    tab: 'pos', setTab: () => {}, online: true, syncing: true, lastSync: '12:00',
+    todayCount: 3, viewDate: '2026-05-29', setViewDate: () => {},
+  };
+
+  it('shows cloud sync status only in cloud mode', () => {
+    const { container } = render(<TopBar {...baseTopBarProps} />);
+    expect(container.textContent).toContain('雲端已同步');
+  });
+
+  it('never claims cloud sync in prototype mode (M0 F06)', () => {
+    const { container } = render(<TopBar {...baseTopBarProps} storageMode="prototype" />);
+    expect(container.textContent).toContain('本機練習 · 僅此瀏覽器');
+    expect(container.textContent).not.toContain('雲端已同步');
+    expect(container.textContent).not.toContain('推送中');
+  });
+
+  it('never claims cloud sync in local-only mode (M0 F06)', () => {
+    const { container } = render(<TopBar {...baseTopBarProps} storageMode="local-only" />);
+    expect(container.textContent).toContain('本機模式 · 未連雲端');
+    expect(container.textContent).not.toContain('雲端已同步');
+    expect(container.textContent).not.toContain('推送中');
+  });
 });
 
 describe('MidnightBanner', () => {

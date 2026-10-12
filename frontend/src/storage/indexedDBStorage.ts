@@ -1,6 +1,7 @@
 import type { PersistStorage, StorageValue } from 'zustand/middleware';
+import { namespacedStorageName } from '../appMode';
 
-const DB_NAME = 'easyorder-pos';
+const DB_NAME = namespacedStorageName('easyorder-pos');
 const STORE_NAME = 'persist';
 
 let _dbPromise: Promise<IDBDatabase> | null = null;

@@ -1,4 +1,5 @@
 import { onError } from './errorBus';
+import { namespacedStorageName } from '../appMode';
 
 export interface ErrorLogEntry {
   id: string;
@@ -9,7 +10,7 @@ export interface ErrorLogEntry {
   context?: Record<string, string | number | boolean | null>;
 }
 
-const LOG_KEY = 'easyorder-error-log';
+const LOG_KEY = namespacedStorageName('easyorder-error-log');
 const MAX_LOG_ENTRIES = 100;
 const LOG_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 

@@ -27,6 +27,7 @@ import { usePosColumnProps } from './hooks/usePosColumnProps';
 import { FirebaseProvider } from './providers/FirebaseProvider';
 import { isConfigured as isFirebaseConfigured } from './firebase/firebaseApp';
 import { useFirebase } from './hooks/useFirebase';
+import { isPrototypeMode } from './appMode';
 import { AuthGate } from './auth/AuthGate';
 import { POS_DAILY_TX_DISPLAY_LIMIT } from './domain/constants';
 import { SYSTEM_OPERATOR_ID } from './domain/operatorId';
@@ -192,6 +193,7 @@ function AppContent() {
       todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate}
       queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount}
       onDashboard={() => setShowDashboard(true)}
+      storageMode={fb ? 'cloud' : isPrototypeMode ? 'prototype' : 'local-only'}
       flashData={flashData} onDismissFlash={dismissFlash}
       onUndo={handleUndo} undoCountdown={undoCountdown}
       cancelDialogOpen={cancelDialogOpen} picked={picked}

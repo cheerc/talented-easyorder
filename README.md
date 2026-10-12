@@ -14,6 +14,15 @@ npm install
 npm run dev
 ```
 
+### 本機練習模式
+
+```bash
+cd frontend
+npm run dev:prototype   # http://localhost:5174
+```
+
+練習模式不初始化 Firebase（即使有 `.env` 也一樣），不需登入，資料存在獨立的瀏覽器儲存區（`*-prototype`），不影響一般模式。畫面右上與分頁標題標示「本機練習」。
+
 ## Fork & Setup
 
 1. Fork this repo
