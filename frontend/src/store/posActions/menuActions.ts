@@ -1,4 +1,5 @@
 import type { PosState } from '../posTypes';
+import { isMenuReady } from '../../domain/menu';
 import { INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX } from '../../mocks/initialData';
 
 const defaultState = {
@@ -16,7 +17,11 @@ export function createMenuActions(
     setMenuForDate: (date, menu, now) => set((state) => {
       const prev = state.menusByDate[date];
       const saved = { ...menu, businessDate: date, updatedAt: now, revision: (prev?.revision ?? 0) + 1 };
-      const menusByDate = { ...state.menusByDate, [date]: saved };
+      // 第一次依日期儲存時，把原本的單一菜單留在它自己的日期，較早的日子仍沿用它而不是新設定。
+      const legacy = state.todayMenu;
+      const seed = Object.keys(state.menusByDate).length === 0 && isMenuReady(legacy) && legacy.businessDate < date
+        ? { [legacy.businessDate]: legacy } : {};
+      const menusByDate = { ...seed, ...state.menusByDate, [date]: saved };
       // todayMenu 保持為最新營業日的設定，給仍讀單一菜單的舊路徑與沒有日期設定時的後備。
       const isLatest = Object.keys(menusByDate).every(k => k <= date);
       return isLatest ? { menusByDate, todayMenu: saved } : { menusByDate };

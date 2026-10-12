@@ -52,6 +52,12 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
     setVendor(todayMenu.vendorNameSnapshot || vendors[0]?.name || '');
   }, [todayMenu, vendors]);
   const [menuSavedMsg, setMenuSavedMsg] = useState('');
+  // 切換檢視日期時清掉上一天的「已儲存」提示（render 期間調整，避免 effect 連鎖更新）。
+  const [menuMsgDate, setMenuMsgDate] = useState(viewDate);
+  if (menuMsgDate !== viewDate) {
+    setMenuMsgDate(viewDate);
+    setMenuSavedMsg('');
+  }
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [openingCashDraft, setOpeningCashDraft] = useState(String(openingCash));
   const [cashSavedMsg, setCashSavedMsg] = useState('');
@@ -114,6 +120,9 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
       <div className="admin-grid admin-grid-2">
         <div className="card adm-card">
           <div className="card-h">今日便當設定 <span className="card-h-sub mono">{viewDate}</span></div>
+          {resolvedMenu.source === 'none' && (
+            <p className="dim" style={{ fontSize: '12px', margin: '0 0 8px' }}>這天之前還沒有設定晚餐；儲存後才可訂餐。</p>
+          )}
           {resolvedMenu.source === 'inherited' && (
             <p className="dim" style={{ fontSize: '12px', margin: '0 0 8px' }}>這天還沒有自己的設定，目前沿用 {resolvedMenu.fromDate} 的晚餐；儲存後只改這一天起的菜單。</p>
           )}

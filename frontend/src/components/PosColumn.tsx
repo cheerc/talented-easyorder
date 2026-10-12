@@ -66,12 +66,18 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
     [editTransaction, operatorUid],
   );
 
-  const [activeIdx, setActiveIdx] = useState(0);
+  // M1 F01：選取以帳戶編號記住，不用可能過期的位置；清單變動後找不到就回到第一筆。
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   const suggestions = useMemo(() => {
     const query = state.kind === 'idle' ? state.searchText : '';
     return filterSearchSuggestions(students, query);
   }, [state, students]);
+
+  const activeIdx = Math.max(0, suggestions.findIndex(s => s.studentId === activeId));
+  const setActiveIdx = useCallback((idx: number) => {
+    setActiveId(suggestions[idx]?.studentId ?? null);
+  }, [suggestions]);
 
   const choose = (s: StudentAccount) => {
     selectStudent(s.studentId, 'manual');
@@ -135,9 +141,9 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 )}
                 <SearchBox
                   value={state.kind === 'idle' ? state.searchText : ''}
-                  onChange={(v) => { setSearchText(v); setActiveIdx(0); }}
+                  onChange={(v) => { setSearchText(v); setActiveId(null); }}
                   onSubmit={submitSearch}
-                  onEsc={() => { setSearchText(''); setActiveIdx(0); }}
+                  onEsc={() => { setSearchText(''); setActiveId(null); }}
                   suggestions={suggestions}
                   activeIdx={activeIdx}
                   onPick={choose}

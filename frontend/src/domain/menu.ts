@@ -82,11 +82,13 @@ export type MenusByDate = Record<string, TodayMenu>;
 export type ResolvedMenu =
   | { source: 'own'; menu: TodayMenu }
   | { source: 'inherited'; menu: TodayMenu; fromDate: string }
-  | { source: 'legacy'; menu: TodayMenu };
+  | { source: 'legacy'; menu: TodayMenu }
+  | { source: 'none'; menu: TodayMenu };
 
 /**
  * M0 日期 key 菜單：該營業日有自己的設定就用它；沒有就沿用最近一個較早日期的設定；
- * 都沒有時用舊版單一 todayMenu。回傳菜單的 businessDate 一律是查詢的營業日。
+ * 還沒有任何日期設定時用舊版單一 todayMenu；已有日期設定但都比查詢日晚，則視為這天未設定。
+ * 回傳菜單的 businessDate 一律是查詢的營業日。
  */
 export function resolveMenuForDate(menusByDate: MenusByDate, legacyMenu: TodayMenu, date: string): ResolvedMenu {
   const own = menusByDate[date];
@@ -96,6 +98,9 @@ export function resolveMenuForDate(menusByDate: MenusByDate, legacyMenu: TodayMe
     if (key < date && (fromDate === null || key > fromDate)) fromDate = key;
   }
   if (fromDate !== null) return { source: 'inherited', menu: { ...menusByDate[fromDate], businessDate: date }, fromDate };
+  if (Object.keys(menusByDate).length > 0) {
+    return { source: 'none', menu: { businessDate: date, itemName: '', price: 0, vendorId: '', vendorNameSnapshot: '', updatedAt: '', revision: 1 } };
+  }
   return { source: 'legacy', menu: legacyMenu.businessDate === date ? legacyMenu : { ...legacyMenu, businessDate: date } };
 }
 

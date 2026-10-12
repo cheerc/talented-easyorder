@@ -93,6 +93,18 @@
   border-top: 0;
 }
 
+/* M1 F01：候選全部列出，超過高度時捲動；高亮列由 SearchBox 捲進可視範圍。 */
+.sug-list {
+  max-height: min(360px, 45vh);
+  overflow-y: auto;
+}
+
+.sug-empty {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
 .sug-on {
   background: var(--accent-soft);
 }
