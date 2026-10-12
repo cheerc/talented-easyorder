@@ -10,6 +10,8 @@ export interface UseConfirmHandlerArgs {
   requestConfirm: () => void;
   confirmDuplicate: () => void;
   confirmExpenseAmount: (n: number) => void;
+  /** M0：今日晚餐未設定時擋下訂餐（繳費仍可）。 */
+  orderBlocked?: boolean;
 }
 
 export function useConfirmHandler({
@@ -17,16 +19,19 @@ export function useConfirmHandler({
   requestConfirm,
   confirmDuplicate,
   confirmExpenseAmount,
+  orderBlocked = false,
 }: UseConfirmHandlerArgs): () => void {
   const stateRef = useRef(state);
   const requestConfirmRef = useRef(requestConfirm);
   const confirmDuplicateRef = useRef(confirmDuplicate);
   const confirmExpenseAmountRef = useRef(confirmExpenseAmount);
+  const orderBlockedRef = useRef(orderBlocked);
 
   useEffect(() => { stateRef.current = state; });
   useEffect(() => { requestConfirmRef.current = requestConfirm; });
   useEffect(() => { confirmDuplicateRef.current = confirmDuplicate; });
   useEffect(() => { confirmExpenseAmountRef.current = confirmExpenseAmount; });
+  useEffect(() => { orderBlockedRef.current = orderBlocked; });
 
   return useCallback(() => {
     const s = stateRef.current;
@@ -37,6 +42,7 @@ export function useConfirmHandler({
     }
     if (s.kind === 'duplicate_warning') { confirmDuplicateRef.current(); return; }
     if (s.kind !== 'student_selected') return;
+    if (s.mode === 'order' && orderBlockedRef.current) return;
     requestConfirmRef.current();
   }, []);
 }

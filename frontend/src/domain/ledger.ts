@@ -102,8 +102,9 @@ export function recalculateStudentBalances(
   });
 
   const balanceMap = new Map<string, number>();
+  // M0：以期初餘額為起點，重算不可把期初歸零。
   for (const s of students) {
-    balanceMap.set(s.studentId, 0);
+    balanceMap.set(s.studentId, s.openingBalance?.amount ?? 0);
   }
 
   const updatedTx = sorted.map(tx => {

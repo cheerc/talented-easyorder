@@ -25,8 +25,8 @@ export const INITIAL_STUDENTS: StudentAccount[] = [
   { studentId: '018', displayName: '潘柏宇', status: 'active', currentBalance: 0, aliases: [], faceEnrollmentStatus: 'none', createdAt: '2026-01-10T08:00:00Z', updatedAt: '2026-01-10T08:00:00Z', revision: 1 },
   { studentId: '019', displayName: '簡宥成', status: 'active', currentBalance: 0, aliases: [], faceEnrollmentStatus: 'none', createdAt: '2026-01-10T08:00:00Z', updatedAt: '2026-01-10T08:00:00Z', revision: 1 },
   { studentId: '020', displayName: '鄭婉婷', status: 'active', currentBalance: 0, aliases: [], faceEnrollmentStatus: 'none', createdAt: '2026-01-10T08:00:00Z', updatedAt: '2026-01-10T08:00:00Z', revision: 1 },
-  { studentId: 'S001', displayName: '王小明', status: 'active', currentBalance: 1000, aliases: [], faceEnrollmentStatus: 'none', createdAt: '2026-01-10T08:00:00Z', updatedAt: '2026-01-10T08:00:00Z', revision: 1 },
-  { studentId: 'S002', displayName: '李小華', status: 'active', currentBalance: 500, aliases: [], faceEnrollmentStatus: 'none', createdAt: '2026-01-10T08:00:00Z', updatedAt: '2026-01-10T08:00:00Z', revision: 1 },
+  { studentId: 'S001', displayName: '王小明', status: 'active', currentBalance: 1000, aliases: [], faceEnrollmentStatus: 'none', openingBalance: { amount: 1000, asOfDate: '2026-01-10', note: '範例期初', createdAt: '2026-01-10T08:00:00Z' }, createdAt: '2026-01-10T08:00:00Z', updatedAt: '2026-01-10T08:00:00Z', revision: 1 },
+  { studentId: 'S002', displayName: '李小華', status: 'active', currentBalance: 500, aliases: [], faceEnrollmentStatus: 'none', openingBalance: { amount: 500, asOfDate: '2026-01-10', note: '範例期初', createdAt: '2026-01-10T08:00:00Z' }, createdAt: '2026-01-10T08:00:00Z', updatedAt: '2026-01-10T08:00:00Z', revision: 1 },
 ];
 
 export const VENDORS: Vendor[] = [
@@ -49,3 +49,14 @@ export const INITIAL_TODAY_MENU: TodayMenu = {
 export const INITIAL_TODAY_TX: LedgerTransaction[] = [];
 
 export const INITIAL_ORDERED_TODAY: Record<string, number> = {};
+
+/** M0：從空白開始時的今日晚餐（未設定；不可訂餐）。 */
+export const EMPTY_TODAY_MENU: TodayMenu = {
+  businessDate: '',
+  itemName: '',
+  price: 0,
+  vendorId: '',
+  vendorNameSnapshot: '',
+  updatedAt: '',
+  revision: 1,
+};

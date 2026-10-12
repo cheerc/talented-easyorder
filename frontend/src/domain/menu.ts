@@ -71,6 +71,11 @@ export function filterActiveVendors(vendors: Vendor[]): Vendor[] {
   return vendors.filter(v => v.status === 'active');
 }
 
+/** M0：空白資料集尚未設定今日晚餐時不可訂餐。 */
+export function isMenuReady(menu: TodayMenu): boolean {
+  return menu.itemName.trim() !== '' && Number.isSafeInteger(menu.price) && menu.price > 0;
+}
+
 export function createMenuSnapshot(menu: TodayMenu): MenuSnapshot {
   return {
     menuNameSnapshot: menu.itemName,

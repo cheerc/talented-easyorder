@@ -77,6 +77,12 @@ const globalActionsSelector = (s: ReturnType<typeof usePosStore.getState>) => ({
   resetData: s.resetData,
 });
 
+const practiceDataActionsSelector = (s: ReturnType<typeof usePosStore.getState>) => ({
+  startBlankData: s.startBlankData,
+  loadSampleData: s.loadSampleData,
+  addLocalStudent: s.addLocalStudent,
+});
+
 /** Transaction actions. Stable references — will not cause re-renders. */
 export function useTransactionActions() {
   return usePosStore(useShallow(transactionActionsSelector));
@@ -100,4 +106,9 @@ export function useStudentActions() {
 /** Global actions. */
 export function useGlobalActions() {
   return usePosStore(useShallow(globalActionsSelector));
+}
+
+/** M0 本機練習資料 actions. Stable references. */
+export function usePracticeDataActions() {
+  return usePosStore(useShallow(practiceDataActionsSelector));
 }
