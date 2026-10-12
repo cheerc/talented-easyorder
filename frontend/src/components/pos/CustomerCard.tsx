@@ -158,7 +158,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
             </div>
             {mode === 'order' && (
               <div className="bill-item no-border">
-                <span className="bill-label">今日便當 ({priceOverrideLabel || todayMenu.itemName})</span>
+                <span className="bill-label">今日便當 ({(priceOverride !== null && priceOverrideLabel) || todayMenu.itemName})</span>
                 <span className="bill-val neg">−${fmt(effectiveMealPrice)}</span>
               </div>
             )}
@@ -206,7 +206,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                         onChange={v => setPriceOverride(Number(v || todayMenu.price))}
                       />
                     </label>
-                    <button type="button" className="ghost-btn" onClick={() => setPriceOverride(null)}>
+                    <button type="button" className="ghost-btn" onClick={() => { setPriceOverride(null); setPriceOverrideLabel(''); }}>
                       取消
                     </button>
                   </div>
