@@ -213,6 +213,9 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 locked={showHistoricalLock}
                 allStudentTransactions={allStudentTransactions}
                 onViewHistoryBack={() => setFocusZone('mode-' + currentMode)}
+                onConfirm={handleConfirm}
+                onCancel={cancelFlow}
+                busy={state.kind === 'committing'}
               />
               </>
             )}

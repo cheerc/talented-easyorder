@@ -112,6 +112,15 @@ describe('useAppNavigationShortcuts — F-keys', () => {
     expect(handleConfirm).not.toHaveBeenCalled();
   });
 
+  it('M1：焦點在按鈕上時 Enter 交給按鈕（取消鍵不會被當成送出）', () => {
+    const handleConfirm = vi.fn();
+    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, handleConfirm, focusZone: 'mode-order', currentMode: 'order' }));
+
+    keydown('Enter', document.createElement('button'));
+
+    expect(handleConfirm).not.toHaveBeenCalled();
+  });
+
   it('A7b: Enter on view-status is no-op (does not call cancelOrder)', () => {
     const cancelOrder = vi.fn();
     renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, picked: {}, cancelOrder, focusZone: 'view-status' }));

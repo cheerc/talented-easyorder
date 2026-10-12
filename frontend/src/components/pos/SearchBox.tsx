@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { StudentAccount } from '../../domain/student';
 import { fmt } from './utils';
 
@@ -18,6 +18,8 @@ interface SearchBoxProps {
 }
 export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubmit, onEsc, suggestions, activeIdx, onPick, onHover, focusKey, disabled, onEnterExpense, disableHoverSelection = true }: SearchBoxProps) {
   const ref = useRef<HTMLInputElement>(null);
+  // M1：游標在搜尋框裡時 A 會打進框內，不是快捷鍵；這時按鈕提示改成 Tab，避免誤導。
+  const [inputFocused, setInputFocused] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => { if (focusKey > 0 && !disabled) ref.current?.focus(); }, [focusKey, disabled]);
   // M1 F01：高亮的那一筆一定捲到看得見的位置，Enter 選到的就是畫面上高亮的人。
@@ -45,6 +47,8 @@ export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubm
             spellCheck="false"
             placeholder="例如 015 或 周映彤"
             onChange={e => onChange(e.target.value)}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
             onKeyDown={e => {
               // 輸入法選字中的 Enter 只是選字，不選人。
               if (e.nativeEvent.isComposing || e.keyCode === 229) return;
@@ -56,7 +60,12 @@ export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubm
                   onSubmit();
                 }
               }
-              else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); e.currentTarget.blur(); onEsc(); }
+              else if (e.key === 'Escape') {
+                // M1：有字時 Esc 只清空，游標留在框內可以直接重打；空的再按一次才離開搜尋框（A 鍵才有作用）。
+                e.preventDefault(); e.stopPropagation();
+                if (value === '') e.currentTarget.blur();
+                onEsc();
+              }
               else if (e.key === 'ArrowDown') { e.preventDefault(); if (lastIdx >= 0) onHover(Math.min(shownIdx + 1, lastIdx)); }
               else if (e.key === 'ArrowUp') { e.preventDefault(); if (lastIdx >= 0) onHover(Math.max(shownIdx - 1, 0)); }
             }}
@@ -64,8 +73,9 @@ export const SearchBox = React.memo(function SearchBox({ value, onChange, onSubm
           <span className="search-enter"><span className="kbd kbd-lg">↵</span></span>
         </div>
         {onEnterExpense && (
-          <button className="mode" onClick={onEnterExpense} style={{ flex: 'none', width: 'auto', padding: '14px 28px' }}>
-            <span className="mode-key">A</span>
+          <button className="mode" onClick={onEnterExpense} style={{ flex: 'none', width: 'auto', padding: '14px 28px' }}
+            title={inputFocused ? '游標在搜尋框時按 Tab 移到這裡再按 Enter' : '按 A 開始櫃台收支'}>
+            <span className="mode-key">{inputFocused ? 'Tab' : 'A'}</span>
             <span className="mode-lbl" style={{ fontSize: '22px' }}>新增櫃台收支</span>
           </button>
         )}

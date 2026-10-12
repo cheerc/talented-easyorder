@@ -394,7 +394,7 @@ describe('CustomerCard', () => {
     fireEvent.click(screen.getByRole('button', { name: '訂購其他餐點' }));
     fireEvent.change(screen.getByLabelText('品項或原因'), { target: { value: '雞腿便當' } });
     expect(container.textContent).toContain('今日便當 (雞腿便當)');
-    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    fireEvent.click(screen.getByRole('button', { name: '取消其他餐點' }));
     expect(container.textContent).toContain('今日便當 (排骨便當)');
     expect(container.textContent).not.toContain('雞腿便當');
     fireEvent.click(screen.getByRole('button', { name: '訂購其他餐點' }));
@@ -411,6 +411,49 @@ describe('CustomerCard', () => {
       />
     );
     expect(container.textContent).toContain('今日便當 (排骨便當)');
+  });
+
+  describe('M1：看得到的送出與取消鍵', () => {
+    function renderCard(over: Partial<React.ComponentProps<typeof CustomerCard>> = {}) {
+      const onConfirm = vi.fn();
+      const onCancel = vi.fn();
+      render(
+        <CustomerCard
+          student={mockStudent} todayMenu={mockMenu} mode="order" orderedTodayCount={0}
+          payAmount="" setPayAmount={() => {}}
+          priceOverride={null} priceOverrideLabel=""
+          setPriceOverride={() => {}} setPriceOverrideLabel={() => {}}
+          onConfirm={onConfirm} onCancel={onCancel}
+          {...over}
+        />
+      );
+      return { onConfirm, onCancel };
+    }
+
+    it('按鈕與 Enter／Esc 走同一個動作', () => {
+      const { onConfirm, onCancel } = renderCard();
+      fireEvent.click(screen.getByRole('button', { name: /確認訂餐/ }));
+      fireEvent.click(screen.getByRole('button', { name: /^取消/ }));
+      expect(onConfirm).toHaveBeenCalledOnce();
+      expect(onCancel).toHaveBeenCalledOnce();
+    });
+
+    it('今天已訂過時送出鍵寫明是第幾份', () => {
+      renderCard({ orderedTodayCount: 1 });
+      expect(screen.getByRole('button', { name: /再訂一份（今日第 2 份）/ })).toBeDefined();
+    });
+
+    it('繳費沒有金額時送出鍵停用並提示', () => {
+      renderCard({ mode: 'payment' });
+      expect((screen.getByRole('button', { name: /確認收款/ }) as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByText('請先輸入收款金額。')).toBeDefined();
+    });
+
+    it('存檔中兩顆鍵都停用', () => {
+      renderCard({ busy: true });
+      expect((screen.getByRole('button', { name: /確認訂餐/ }) as HTMLButtonElement).disabled).toBe(true);
+      expect((screen.getByRole('button', { name: /^取消/ }) as HTMLButtonElement).disabled).toBe(true);
+    });
   });
 });
 

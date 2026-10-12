@@ -29,9 +29,9 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
     const onGlobalKey = (e: KeyboardEvent) => {
       if (e.key === 'F1') {
         e.preventDefault();
-        (document.activeElement as HTMLElement)?.blur();
         setSearchText('');
-        setSearchFocusKey(() => 0);
+        // M1：F1 回櫃台後游標直接在搜尋框。
+        setSearchFocusKey(k => k + 1);
         setTab('pos');
         return;
       }
@@ -65,6 +65,8 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
       if (e.key.startsWith('Arrow') && ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA')) return;
 
       if (e.key === 'Enter') {
+        // M1：焦點在按鈕上時讓按鈕自己處理，Enter 按到哪顆就是哪顆（例如「取消」不會被當成送出）。
+        if ((e.target as HTMLElement).tagName === 'BUTTON') return;
         e.preventDefault();
         // M1 K08：長按 Enter 的重複事件不送出。
         if (e.repeat) return;
