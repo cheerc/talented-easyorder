@@ -124,7 +124,8 @@ describe('TodayDashboard', () => {
   it('shows settlement closer and time when todaySettlement exists', () => {
     const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
     expect(container.textContent).toContain('op-1');
-    expect(container.textContent).toContain('18:00:00');
+    // F10：關帳時間 18:00Z 顯示為台北時間 02:00:00
+    expect(container.textContent).toContain('02:00:00');
   });
 
   it('shows queued count synced when 0', () => {

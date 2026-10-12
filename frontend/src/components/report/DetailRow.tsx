@@ -3,6 +3,7 @@ import { fmt } from '../pos-components';
 import type { MergedTransaction } from '../../domain/ledger';
 import type { ReportTransactionView } from '../../domain/transactionViews';
 import { CASHIER_SENTINEL } from '../../store/posStore';
+import { formatTaipeiTime } from '../../utils/dateTime';
 
 export interface DetailRowProps {
   tx: ReportTransactionView;
@@ -20,7 +21,7 @@ export const DetailRow = React.memo(function DetailRow({ tx: t, locked, displayM
   const merged = t as Partial<MergedTransaction>;
   return (
     <div key={`d-${t.transactionId}`} className="rpt-detail-row" style={{ display: 'grid', gridTemplateColumns: '80px 60px 100px 1fr 1fr 1fr auto', height: DETAIL_ROW_HEIGHT, alignItems: 'center', padding: '0 18px' }}>
-      <div className="mono dim">{t.createdAt.slice(11, 19)}</div>
+      <div className="mono dim">{formatTaipeiTime(t.createdAt)}</div>
       <div className="dim">{TYPE_LABEL[t.type] ?? t.type}</div>
       <div className="dim"></div>
       <div className={'r mono ' + (t.mealPrice > 0 ? 'neg' : t.mealPrice < 0 ? 'pos' : '')}>

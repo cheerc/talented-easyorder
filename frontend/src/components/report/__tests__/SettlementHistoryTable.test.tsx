@@ -86,7 +86,8 @@ describe('SettlementHistoryTable', () => {
   it('shows closedBy and closedAt', () => {
     const { container } = render(<SettlementHistoryTable />);
     expect(container.textContent).toContain('op-1');
-    expect(container.textContent).toContain('18:00:00');
+    // F10：18:00Z 顯示為台北時間 02:00:00
+    expect(container.textContent).toContain('02:00:00');
   });
 
   it('expands row on click to show details', () => {
@@ -110,6 +111,6 @@ describe('SettlementHistoryTable', () => {
     const secondRow = container.querySelectorAll('.rpt-tr')[1] as HTMLElement;
     fireEvent.click(secondRow);
     expect(container.textContent).toContain('missed tx');
-    expect(container.textContent).toContain('18:30:00');
+    expect(container.textContent).toContain('2026-05-30 02:30:00');
   });
 });
