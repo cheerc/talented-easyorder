@@ -19,6 +19,8 @@ export interface PracticeDataset {
   transactions: LedgerTransaction[];
   vendors: Vendor[];
   todayMenu: TodayMenu;
+  /** 依營業日保存的晚餐設定。 */
+  menusByDate: Record<string, TodayMenu>;
   auditEvents: LedgerAuditEvent[];
   dailySettlements: DailySettlement[];
   businessDateStatuses: Record<string, 'open' | 'closed' | 'reopened'>;
@@ -54,12 +56,15 @@ export function countDataset(d: PracticeDataset): DatasetCounts {
   };
 }
 
-export function pickDataset(state: Omit<PracticeDataset, 'simulationDate'> & { simulationDate?: string | null }): PracticeDataset {
+export function pickDataset(
+  state: Omit<PracticeDataset, 'simulationDate' | 'menusByDate'> & { simulationDate?: string | null; menusByDate?: Record<string, TodayMenu> },
+): PracticeDataset {
   return {
     students: state.students,
     transactions: state.transactions,
     vendors: state.vendors,
     todayMenu: state.todayMenu,
+    menusByDate: state.menusByDate ?? {},
     auditEvents: state.auditEvents,
     dailySettlements: state.dailySettlements,
     businessDateStatuses: state.businessDateStatuses,
@@ -116,13 +121,16 @@ export function parseSnapshot(text: string): ParseSnapshotResult {
   const validation = validatePersistedState(r.data);
   if (!validation.ok) return { ok: false, reason: `資料格式不正確：${validation.reason}` };
   const rawData = r.data as Record<string, unknown>;
-  const data = { ...(r.data as Omit<PracticeDataset, 'simulationDate'>), simulationDate: null } as PracticeDataset;
+  const data = { ...(r.data as Omit<PracticeDataset, 'simulationDate' | 'menusByDate'>), menusByDate: {}, simulationDate: null } as PracticeDataset;
 
   const sim = rawData.simulationDate;
   if (sim !== undefined && sim !== null) {
     if (typeof sim !== 'string' || !DATE_RE.test(sim)) return { ok: false, reason: `模擬營業日格式不正確：${String(sim)}` };
     data.simulationDate = sim;
   }
+
+  // 舊快照沒有 menusByDate：視為尚未有日期設定，沿用 todayMenu。內容已由 validatePersistedState 檢查。
+  if (rawData.menusByDate !== undefined) data.menusByDate = rawData.menusByDate as Record<string, TodayMenu>;
 
   for (const [date, session] of Object.entries(data.cashSessions as Record<string, unknown>)) {
     const reason = cashSessionProblem(date, session);
@@ -157,7 +165,7 @@ export function parseSnapshot(text: string): ParseSnapshotResult {
 }
 
 /**
- * 只清除練習交易：保留名單（含期初）、供應商與今日菜單；
+ * 只清除練習交易：保留名單（含期初）、供應商與各日菜單；
  * 交易、更正稽核、關帳、營業日狀態與開帳一併清除，餘額回到期初。
  */
 export function clearTransactionsKeepRoster(state: PracticeDataset): PracticeDataset {
@@ -167,6 +175,7 @@ export function clearTransactionsKeepRoster(state: PracticeDataset): PracticeDat
     transactions: [],
     vendors: state.vendors,
     todayMenu: state.todayMenu,
+    menusByDate: state.menusByDate,
     auditEvents: [],
     dailySettlements: [],
     businessDateStatuses: {},

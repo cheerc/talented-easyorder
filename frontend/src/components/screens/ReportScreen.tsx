@@ -10,7 +10,7 @@ import { LedgerGroupedTable } from '../report/LedgerGroupedTable';
 import { CashClosePanel } from '../report/CashClosePanel';
 import { ExportActions } from '../report/ExportActions';
 import { ReopenDialog } from '../report/ReopenDialog';
-import { useSessionActions, useTransactionActions, useMenu } from '../../store/selectors';
+import { useSessionActions, useTransactionActions, useMenuForDate } from '../../store/selectors';
 import { useLedgerReport } from '../../store/derived/useLedgerReport';
 import { useCashClose } from '../../store/derived/useCashClose';
 import { useLedgerExport } from '../../store/derived/useLedgerExport';
@@ -23,7 +23,7 @@ interface ReportScreenProps {
   onClearStudentFilter?: () => void;
 }
 export const ReportScreen = React.memo(function ReportScreen({ viewDate, studentFilter, onClearStudentFilter }: ReportScreenProps) {
-  const { todayMenu } = useMenu();
+  const { menu: todayMenu } = useMenuForDate(viewDate);
   const { access } = useFirebase();
   // Ref: #310 — Real operator UID for audit trail
   const operatorUid = (access.ok && access.profile?.uid) ? access.profile.uid : SYSTEM_OPERATOR_ID;

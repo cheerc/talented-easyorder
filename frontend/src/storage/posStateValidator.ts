@@ -219,6 +219,17 @@ export function validatePersistedState(
   const menuResult = validateTodayMenu(state.todayMenu);
   if (!menuResult.ok) return { ok: false, reason: `invalid todayMenu: ${menuResult.reason}` };
 
+  // Optional (M0): menusByDate — 舊資料沒有這個欄位；有的話每一筆都要合法且日期與 key 一致。
+  if ('menusByDate' in state && state.menusByDate !== undefined) {
+    const mbd = state.menusByDate;
+    if (!isRecord(mbd) || Array.isArray(mbd)) return { ok: false, reason: 'expected object for key: menusByDate' };
+    for (const [date, menu] of Object.entries(mbd)) {
+      const r = validateTodayMenu(menu);
+      if (!r.ok) return { ok: false, reason: `invalid menusByDate[${date}]: ${r.reason}` };
+      if ((menu as Record<string, unknown>).businessDate !== date) return { ok: false, reason: `menusByDate[${date}] businessDate mismatch` };
+    }
+  }
+
   // Full: vendors (typically <100)
   const vendors = state.vendors as unknown[];
   for (const v of vendors) {

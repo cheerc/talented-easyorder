@@ -76,6 +76,29 @@ export function isMenuReady(menu: TodayMenu): boolean {
   return menu.itemName.trim() !== '' && Number.isSafeInteger(menu.price) && menu.price > 0;
 }
 
+/** 依營業日保存的晚餐設定（key 為 YYYY-MM-DD）。 */
+export type MenusByDate = Record<string, TodayMenu>;
+
+export type ResolvedMenu =
+  | { source: 'own'; menu: TodayMenu }
+  | { source: 'inherited'; menu: TodayMenu; fromDate: string }
+  | { source: 'legacy'; menu: TodayMenu };
+
+/**
+ * M0 日期 key 菜單：該營業日有自己的設定就用它；沒有就沿用最近一個較早日期的設定；
+ * 都沒有時用舊版單一 todayMenu。回傳菜單的 businessDate 一律是查詢的營業日。
+ */
+export function resolveMenuForDate(menusByDate: MenusByDate, legacyMenu: TodayMenu, date: string): ResolvedMenu {
+  const own = menusByDate[date];
+  if (own) return { source: 'own', menu: own };
+  let fromDate: string | null = null;
+  for (const key of Object.keys(menusByDate)) {
+    if (key < date && (fromDate === null || key > fromDate)) fromDate = key;
+  }
+  if (fromDate !== null) return { source: 'inherited', menu: { ...menusByDate[fromDate], businessDate: date }, fromDate };
+  return { source: 'legacy', menu: legacyMenu.businessDate === date ? legacyMenu : { ...legacyMenu, businessDate: date } };
+}
+
 export function createMenuSnapshot(menu: TodayMenu): MenuSnapshot {
   return {
     menuNameSnapshot: menu.itemName,

@@ -18,7 +18,7 @@ import { MainLayout } from './components/MainLayout';
 import { ErrorBoundary, AppCrashPage } from './components/ErrorBoundary';
 import { appendErrorLog } from './errors/errorLogger';
 import { AppRouter } from './components/AppRouter';
-import { useStudents, useTransactions, useMenu, useSessionActions } from './store/selectors';
+import { useStudents, useTransactions, useMenu, useMenuForDate, useSessionActions } from './store/selectors';
 import { useFlashData } from './hooks/useFlashData';
 import { useFocusSync } from './hooks/useFocusSync';
 import { useCancelDialog } from './hooks/useCancelDialog';
@@ -39,7 +39,9 @@ function AppContent() {
 
   const { students } = useStudents();
   const { transactions: allTx } = useTransactions();
-  const { todayMenu, vendors } = useMenu();
+  const { vendors } = useMenu();
+  // M0：檢視中營業日的晚餐（日期 key 菜單）。只有檢視日＝可寫營業日時才能訂餐。
+  const { menu: todayMenu } = useMenuForDate(viewDate);
   const { getBusinessDateStatus } = useSessionActions();
 
   // Ref: #298 — Inline computations previously in useAppState.
