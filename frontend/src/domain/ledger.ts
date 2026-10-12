@@ -122,6 +122,63 @@ export function recalculateStudentBalances(
   return { students: updatedStudents, transactions: updatedTx };
 }
 
+/**
+ * M2 F03／R04：任何一筆交易新增、修改、刪除後，受影響帳戶的整串餘額都從起點重算。
+ * 起點：有期初就用期初；舊資料沒有期初時，用「改動前的目前餘額 − 改動前所有交易」反推，避免把沒有交易紀錄的舊餘額歸零。
+ * 依營業日、建立時間（同時間依陣列先後）排序後逐筆累加，回寫每筆的 afterBalance 與帳戶 currentBalance；交易陣列維持原本的順序。
+ */
+export function rebalanceAccounts(
+  studentsBefore: StudentAccount[],
+  transactionsBefore: LedgerTransaction[],
+  transactionsAfter: LedgerTransaction[],
+  studentIds: Iterable<string>,
+): { students: StudentAccount[]; transactions: LedgerTransaction[] } {
+  const ids = new Set([...studentIds].filter(id => id !== CASHIER_SENTINEL));
+  if (ids.size === 0) return { students: studentsBefore, transactions: transactionsAfter };
+
+  const base = new Map<string, number>();
+  for (const s of studentsBefore) {
+    if (!ids.has(s.studentId)) continue;
+    if (s.openingBalance) {
+      base.set(s.studentId, s.openingBalance.amount);
+    } else {
+      const sumBefore = transactionsBefore
+        .filter(t => t.studentId === s.studentId)
+        .reduce((sum, t) => sum + t.amount, 0);
+      base.set(s.studentId, s.currentBalance - sumBefore);
+    }
+  }
+
+  // 同一毫秒建立的交易以陣列位置排先後：store 的交易陣列新的在前，位置越後面越早發生。
+  const position = new Map(transactionsAfter.map((t, i) => [t.transactionId, i]));
+  const ordered = transactionsAfter
+    .filter(t => ids.has(t.studentId))
+    .sort((a, b) => {
+      if (a.businessDate !== b.businessDate) return a.businessDate.localeCompare(b.businessDate);
+      if (a.createdAt !== b.createdAt) return a.createdAt.localeCompare(b.createdAt);
+      return (position.get(b.transactionId) ?? 0) - (position.get(a.transactionId) ?? 0);
+    });
+
+  const running = new Map(base);
+  const after = new Map<string, number>();
+  for (const t of ordered) {
+    const next = Math.round((running.get(t.studentId) ?? 0) + t.amount);
+    running.set(t.studentId, next);
+    after.set(t.transactionId, next);
+  }
+
+  const transactions = transactionsAfter.map(t => {
+    const bal = after.get(t.transactionId);
+    return bal === undefined || bal === t.afterBalance ? t : { ...t, afterBalance: bal };
+  });
+  const students = studentsBefore.map(s =>
+    ids.has(s.studentId) && base.has(s.studentId)
+      ? { ...s, currentBalance: Math.round(running.get(s.studentId) ?? s.currentBalance) }
+      : s,
+  );
+  return { students, transactions };
+}
+
 export interface MergedTransaction extends LedgerTransaction {
   depositAmount: number;
   unpaidAmount: number;

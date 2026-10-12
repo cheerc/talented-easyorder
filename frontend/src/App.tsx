@@ -30,7 +30,6 @@ import { useFirebase } from './hooks/useFirebase';
 import { isPrototypeMode } from './appMode';
 import { isMenuReady } from './domain/menu';
 import { AuthGate } from './auth/AuthGate';
-import { POS_DAILY_TX_DISPLAY_LIMIT } from './domain/constants';
 import { SYSTEM_OPERATOR_ID } from './domain/operatorId';
 
 function AppContent() {
@@ -45,8 +44,9 @@ function AppContent() {
   const { getBusinessDateStatus } = useSessionActions();
 
   // Ref: #298 — Inline computations previously in useAppState.
+  // M2：當天交易全部列入，不截斷。原本先反轉再取前 200 筆，超過時留下最舊的、丟掉最新的，份數也跟著少算。
   const tx = useMemo(() =>
-    allTx.filter(t => t.businessDate === viewDate).reverse().slice(0, POS_DAILY_TX_DISPLAY_LIMIT),
+    allTx.filter(t => t.businessDate === viewDate).reverse(),
   [allTx, viewDate]);
   const todayCount = useMemo(() => {
     const defaultBentoOrders = tx.filter(t =>

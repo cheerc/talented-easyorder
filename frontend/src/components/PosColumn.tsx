@@ -36,6 +36,11 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
     [tx],
   );
 
+  const currentBalances = useMemo(
+    () => new Map(students.map(s => [s.studentId, s.currentBalance])),
+    [students],
+  );
+
   // Edit modal state
   const [editingTx, setEditingTx] = useState<TransactionEditView | null>(null);
 
@@ -236,6 +241,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
       <div className="col-side">
         <RecentStrip
           groups={recentGroups}
+          balances={currentBalances}
           onStudentClick={!isHistorical && dateStatus !== 'closed' ? (sid) => { selectStudent(sid, 'manual', 'view-status'); setFocusZone('view-status'); } : undefined}
           dateStatus={dateStatus}
         />
