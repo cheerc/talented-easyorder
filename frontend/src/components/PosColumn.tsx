@@ -21,7 +21,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
     setPaidAmountText, handleConfirm, cancelFlow, changeMode, setFocusZone, focusZone, openCancelConfirmForTx,
     setSearchText, searchFocusKey, hasFlash,
     crashDraftRestored, setCrashDraftRestored,
-    todayMenu, todayCount, vendors, enterExpenseMode, tweaks,
+    todayMenu, todayCount, todayOtherCount = 0, vendors, enterExpenseMode, tweaks,
     tx, operatorUid, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
     onViewHistory,
   } = props;
@@ -182,6 +182,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 <IdleHero
                   todayMenu={todayMenu}
                   todayCount={todayCount}
+                  todayOtherCount={todayOtherCount}
                   vendorPhone={(vendors.find(v => v.vendorId === todayMenu.vendorId) ?? vendors.find(v => v.name === todayMenu.vendorNameSnapshot))?.phone}
                 />
               </>

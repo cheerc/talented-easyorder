@@ -1,4 +1,5 @@
-import type { LedgerTransaction } from './ledger';
+import type { LedgerTransaction, MergedTransaction } from './ledger';
+import { isOtherMealOrder, otherMealName } from './ledger';
 import type { DailySettlement } from './cashClose';
 import type { LedgerTotals, LedgerGroup } from './ledgerReport';
 
@@ -25,6 +26,8 @@ export const TRANSACTION_CSV_COLUMNS = [
   'void_reason',
   'deposit_amount',
   'unpaid_amount',
+  'bento_count',
+  'other_meal_items',
 ] as const;
 
 export const SETTLEMENT_CSV_COLUMNS = [
@@ -44,6 +47,15 @@ export const SETTLEMENT_CSV_COLUMNS = [
   'reopen_reason',
   'sync_status',
 ] as const;
+
+/**
+ * 份數兩欄：今日便當份數、其他餐點品項（以「、」分隔）。合併模式的列帶有整組的計數；原始模式每筆訂餐一份。
+ */
+function mealColumns(t: LedgerTransaction | MergedTransaction): [string, string] {
+  if ('otherMealItems' in t) return [String(t.bentoOrderCount), t.otherMealItems.join('、')];
+  if (t.type !== 'order') return ['0', ''];
+  return isOtherMealOrder(t) ? ['0', otherMealName(t)] : ['1', ''];
+}
 
 export function buildTransactionCsvRows(transactions: LedgerTransaction[]): string[][] {
   return transactions.map(t => [
@@ -69,6 +81,7 @@ export function buildTransactionCsvRows(transactions: LedgerTransaction[]): stri
     t.voidReason ?? '',
     String(t.depositAmount ?? 0),
     String(t.unpaidAmount ?? 0),
+    ...mealColumns(t),
   ]);
 }
 

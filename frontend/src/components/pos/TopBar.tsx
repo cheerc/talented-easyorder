@@ -9,6 +9,8 @@ interface TopBarProps {
   syncing: boolean;
   lastSync: string;
   todayCount: number;
+  /** 其他餐點份數；大於 0 時在今日便當旁註明。 */
+  todayOtherCount?: number;
   viewDate: string;
   setViewDate: (date: string) => void;
   queuedCount?: number;
@@ -18,7 +20,7 @@ interface TopBarProps {
   /** 資料保存位置；非 cloud 時不顯示任何雲端同步狀態。 */
   storageMode?: StorageMode;
 }
-export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, viewDate, setViewDate, queuedCount = 0, failedSyncCount = 0, conflictSyncCount = 0, onDashboard, storageMode = 'cloud' }: TopBarProps) {
+export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, todayOtherCount = 0, viewDate, setViewDate, queuedCount = 0, failedSyncCount = 0, conflictSyncCount = 0, onDashboard, storageMode = 'cloud' }: TopBarProps) {
   const simulationDate = useSimulationDate();
   const tabs = [
     { id: 'pos', label: '櫃台', hint: 'F1' },
@@ -112,7 +114,7 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing,
         )}
         <div className="counter">
           <div className="counter-num">{todayCount}</div>
-          <div className="counter-lbl">今日訂單</div>
+          <div className="counter-lbl">今日便當{todayOtherCount > 0 ? ` ＋其他 ${todayOtherCount}` : ''}</div>
           {queuedCount > 0 && (
             <div className="counter-queued">{queuedCount} 筆待傳</div>
           )}

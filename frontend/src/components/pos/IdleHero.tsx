@@ -7,11 +7,13 @@ import { useMenuForDate } from '../../store/selectors';
 interface IdleHeroProps {
   todayMenu: TodayMenu;
   todayCount: number;
+  /** 其他餐點份數（不算進今日便當）。 */
+  todayOtherCount?: number;
   vendorPhone: string;
   queueHint?: string;
   onEnterExpense?: () => void;
 }
-export const IdleHero = React.memo(function IdleHero({ todayMenu, todayCount, vendorPhone }: IdleHeroProps) {
+export const IdleHero = React.memo(function IdleHero({ todayMenu, todayCount, todayOtherCount = 0, vendorPhone }: IdleHeroProps) {
   // M3 D06：這天沒有自己的晚餐設定、沿用較早日期時提醒確認，不讓新的一天默默用舊菜單。
   const resolved = useMenuForDate(todayMenu.businessDate);
   const inheritedFrom = resolved.source === 'inherited' ? resolved.fromDate : null;
@@ -40,7 +42,10 @@ export const IdleHero = React.memo(function IdleHero({ todayMenu, todayCount, ve
             <span>{todayMenu.vendorNameSnapshot}</span>
             {vendorPhone && <span className="mono">{vendorPhone}</span>}
           </div>
-          <div>已訂 <span className="mono">{todayCount}</span> 份</div>
+          <div>
+            已訂 今日便當 <span className="mono">{todayCount}</span> 份
+            {todayOtherCount > 0 && <> ＋ 其他 <span className="mono">{todayOtherCount}</span> 份</>}
+          </div>
           {inheritedFrom && (
             <div role="note" style={{ color: 'var(--c-warn)' }}>
               {todayMenu.businessDate} 還沒有自己的晚餐設定，目前沿用 {inheritedFrom} 的菜單；請到 F3 確認後按「儲存今日設定」。

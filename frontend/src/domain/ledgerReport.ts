@@ -1,5 +1,5 @@
 import type { LedgerTransaction } from './ledger';
-import { isStudentTransaction, sortLedgerChronologically } from './ledger';
+import { countMeals, isStudentTransaction, sortLedgerChronologically } from './ledger';
 
 export type LedgerDateRangeKind = 'today' | 'week' | 'month' | 'custom';
 
@@ -11,7 +11,8 @@ export interface LedgerDateRange {
 
 /**
  * M2 F08 報表口徑。畫面上的卡片名稱與這裡的欄位一一對應：
- * - orderCount 份數：訂餐筆數（每筆一份）。
+ * - orderCount 份數：訂餐筆數（每筆一份）＝ bentoCount 今日便當 ＋ otherMealCount 其他餐點。
+ *   向供應商叫便當看 bentoCount；「訂購其他餐點」另列（isOtherMealOrder）。
  * - mealTotal 餐費：訂餐的應收餐費合計。
  * - orderUnpaid 訂餐當下未收：每筆訂餐「餐費 − 當筆收款」不足的部分合計。之後補繳不會扣回，所以不是帳戶欠款。
  * - totalIncome 收現：實際收進的現金＝訂餐當筆收款＋繳費＋櫃台收入。
@@ -22,6 +23,8 @@ export interface LedgerDateRange {
  */
 export interface LedgerTotals {
   orderCount: number;
+  bentoCount: number;
+  otherMealCount: number;
   mealTotal: number;
   orderUnpaid: number;
   totalIncome: number;
@@ -88,6 +91,9 @@ export function filterTransactionsByBusinessDate(
   return transactions.filter(tx => tx.businessDate >= range.startDate && tx.businessDate <= range.endDate);
 }
 
+// 其他餐點的判斷放在 ledger.ts（合併列與報表共用）。
+export { OTHER_MEAL_NOTE_PREFIX, isOtherMealOrder, otherMealName, countMeals } from './ledger';
+
 export function calculateLedgerTotals(transactions: LedgerTransaction[]): LedgerTotals {
   let orderCount = 0;
   let mealTotal = 0;
@@ -115,8 +121,11 @@ export function calculateLedgerTotals(transactions: LedgerTransaction[]): Ledger
     }
   }
 
+  const meals = countMeals(transactions);
   return {
     orderCount,
+    bentoCount: meals.bento,
+    otherMealCount: meals.other,
     mealTotal,
     orderUnpaid,
     totalIncome,

@@ -111,9 +111,11 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
   const payError = payParse.ok ? null : payParse.message;
   const parsedPayAmount = payParse.ok ? payParse.value : 0;
   // M1：送出鍵的條件與 Enter 一致：繳費要有正整數金額；訂餐要有當天晚餐。
+  // 訂購其他餐點時價格要是正整數（價格欄清空時是 0）。
+  const otherPriceMissing = mode === 'order' && priceOverride !== null && !(Number.isSafeInteger(priceOverride) && priceOverride > 0);
   const canConfirm = !payError && (mode === 'payment'
     ? Number.isSafeInteger(parsedPayAmount) && parsedPayAmount > 0
-    : mode === 'order' ? isMenuReady(todayMenu) : false);
+    : mode === 'order' ? isMenuReady(todayMenu) && !otherPriceMissing : false);
   const confirmLabel = mode === 'payment'
     ? '確認收款'
     : orderedTodayCount > 0 ? `再訂一份（今日第 ${orderedTodayCount + 1} 份）` : '確認訂餐';
@@ -221,8 +223,9 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                       <NumericInput
                         className="adm-input mono"
                         aria-label="價格"
-                        value={priceOverride}
-                        onChange={v => setPriceOverride(Number(v || todayMenu.price))}
+                        value={priceOverride === 0 ? '' : priceOverride ?? ''}
+                        // 清空時先存 0（送出前會擋），不再立刻跳回今日便當的價格；以前倒退鍵刪掉 90 再打 110 會變成 90110。
+                        onChange={v => setPriceOverride(v === '' ? 0 : Number(v))}
                       />
                     </label>
                     <button type="button" className="ghost-btn" onClick={() => { setPriceOverride(null); setPriceOverrideLabel(''); }}>
@@ -275,7 +278,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
               )}
               {onConfirm && !locked && !canConfirm && (
                 <div className="pay-actions-hint">
-                  {payError ?? (mode === 'payment' ? '請先輸入收款金額。' : '這天還沒設定晚餐，不能訂餐；可以按 W 改成只繳費。')}
+                  {payError ?? (mode === 'payment' ? '請先輸入收款金額。' : otherPriceMissing ? '請輸入其他餐點的價格。' : '這天還沒設定晚餐，不能訂餐；可以按 W 改成只繳費。')}
                 </div>
               )}
             </div>

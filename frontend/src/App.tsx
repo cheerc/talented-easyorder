@@ -19,6 +19,7 @@ import { ErrorBoundary, AppCrashPage } from './components/ErrorBoundary';
 import { appendErrorLog } from './errors/errorLogger';
 import { AppRouter } from './components/AppRouter';
 import { useStudents, useTransactions, useMenu, useMenuForDate, useSessionActions } from './store/selectors';
+import { countMeals } from './domain/ledgerReport';
 import { useFlashData } from './hooks/useFlashData';
 import { useFocusSync } from './hooks/useFocusSync';
 import { useCancelDialog } from './hooks/useCancelDialog';
@@ -48,15 +49,11 @@ function AppContent() {
   const tx = useMemo(() =>
     allTx.filter(t => t.businessDate === viewDate).reverse(),
   [allTx, viewDate]);
-  const todayCount = useMemo(() => {
-    const defaultBentoOrders = tx.filter(t =>
-      t.type === 'order' &&
-      t.menuNameSnapshot === todayMenu.itemName &&
-      t.mealPrice === todayMenu.price &&
-      (!t.note || !t.note.startsWith('單筆改價：'))
-    );
-    return defaultBentoOrders.length;
-  }, [tx, todayMenu.itemName, todayMenu.price]);
+  // 今日便當份數與其他餐點分開算（向供應商叫便當只看今日便當）。
+  // 以前要求品項與單價都等於現在的菜單，當天改價後前面的訂單就不算了。
+  const meals = useMemo(() => countMeals(tx), [tx]);
+  const todayCount = meals.bento;
+  const todayOtherCount = meals.other;
   const queuedCount = useMemo(() => allTx.filter(t => t.syncStatus === 'queued').length, [allTx]);
   const failedSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'failed').length, [allTx]);
   const conflictSyncCount = useMemo(() => allTx.filter(t => t.syncStatus === 'conflict').length, [allTx]);
@@ -115,7 +112,7 @@ function AppContent() {
   });
 
   // Ref: #281 — Extracted to useConfirmHandler hook
-  const handleConfirm = useConfirmHandler({ state, requestConfirm, confirmDuplicate, confirmExpenseAmount, orderBlocked: !isMenuReady(todayMenu) });
+  const handleConfirm = useConfirmHandler({ state, requestConfirm, confirmDuplicate, confirmExpenseAmount, orderBlocked: !isMenuReady(todayMenu) || (priceOverride !== null && !(Number.isSafeInteger(priceOverride) && priceOverride > 0)) });
 
   const { cancelDialogOpen, setCancelDialogOpen, noOrderDialogOpen, setNoOrderDialogOpen,
     orderTx: cancelOrderTx, openCancelConfirm, openCancelConfirmForTx, handleDeleteOrder } = useCancelDialog({ picked, allTx, viewDate, allStudents: students, selectStudent, operatorId: operatorUid });
@@ -195,8 +192,8 @@ function AppContent() {
   }), [setSearchText, searchFocusKey]);
 
   const menuArgs = useMemo(() => ({
-    allTx, students, todayMenu, todayCount, vendors, tx, operatorUid, tweaks,
-  }), [allTx, students, todayMenu, todayCount, vendors, tx, operatorUid, tweaks]);
+    allTx, students, todayMenu, todayCount, todayOtherCount, vendors, tx, operatorUid, tweaks,
+  }), [allTx, students, todayMenu, todayCount, todayOtherCount, vendors, tx, operatorUid, tweaks]);
 
   const pricingArgs = useMemo(() => ({
     priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
@@ -215,7 +212,7 @@ function AppContent() {
   const mainContent = (
     <MainLayout
       tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync}
-      todayCount={todayCount} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate}
+      todayCount={todayCount} todayOtherCount={todayOtherCount} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate}
       queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount}
       onDashboard={() => setShowDashboard(true)}
       storageMode={fb ? 'cloud' : isPrototypeMode ? 'prototype' : 'local-only'}

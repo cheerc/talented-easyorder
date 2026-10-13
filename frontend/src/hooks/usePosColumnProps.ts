@@ -66,6 +66,8 @@ export interface PosColumnMenuArgs {
   students: PosColumnProps['students'];
   todayMenu: PosColumnProps['todayMenu'];
   todayCount: number;
+  /** 其他餐點份數（不算進今日便當）。 */
+  todayOtherCount?: number;
   vendors: PosColumnProps['vendors'];
   tx: PosColumnProps['tx'];
   operatorUid: string;
@@ -115,6 +117,8 @@ export function buildPosColumnProps(args: {
   setCrashDraftRestored: (v: boolean) => void;
   todayMenu: PosColumnProps['todayMenu'];
   todayCount: number;
+  /** 其他餐點份數（不算進今日便當）。 */
+  todayOtherCount?: number;
   vendors: PosColumnProps['vendors'];
   enterExpenseMode: PosColumnProps['enterExpenseMode'];
   tweaks: PosColumnProps['tweaks'];
@@ -162,6 +166,7 @@ export function buildPosColumnProps(args: {
     setCrashDraftRestored: args.setCrashDraftRestored,
     todayMenu: args.todayMenu,
     todayCount: args.todayCount,
+    todayOtherCount: args.todayOtherCount,
     vendors: args.vendors,
     enterExpenseMode: args.enterExpenseMode,
     tweaks: args.tweaks,
@@ -235,6 +240,7 @@ export function usePosColumnProps(
     students: menu.students,
     todayMenu: menu.todayMenu,
     todayCount: menu.todayCount,
+    todayOtherCount: menu.todayOtherCount,
     vendors: menu.vendors,
     tx: menu.tx,
     operatorUid: menu.operatorUid,

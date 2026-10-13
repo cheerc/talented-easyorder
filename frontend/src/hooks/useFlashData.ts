@@ -24,19 +24,14 @@ export function useFlashData(args: {
       if (isSuccess && !picked) {
         const latestExpense = allTx.find(t => t.studentId === '__cashier__' && t.type === 'expense');
         if (!latestExpense) return null;
-        const counterNetCash = allTx
-          .filter(t => t.studentId === '__cashier__' && t.type === 'expense')
-          .reduce((sum, t) => sum + (t.paidAmount > 0 ? t.paidAmount : -t.mealPrice), 0);
         const isIncome = latestExpense.paidAmount > 0;
+        // 櫃台收支只顯示這一筆；櫃台現金在日末點現金時才核對，不在這裡顯示累計（以前是全部日期加總，金額也重複出現）。
         return {
           id: flashKey,
           name: '櫃台',
           sid: '',
-          detail: isIncome
-            ? `收入: ${latestExpense.note} +$${latestExpense.paidAmount}`
-            : `支出: ${latestExpense.note} −$${latestExpense.mealPrice}`,
+          detail: isIncome ? `收入：${latestExpense.note}` : `支出：${latestExpense.note}`,
           amount: isIncome ? latestExpense.paidAmount : -latestExpense.mealPrice,
-          after: counterNetCash,
         };
       }
       return null;

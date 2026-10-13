@@ -7,7 +7,7 @@ interface FlashData {
   sid: string;
   detail: string;
   amount: number;
-  after: number;
+  after?: number;
 }
 interface ConfirmBannerProps {
   flash: FlashData | null;
@@ -38,18 +38,20 @@ export const ConfirmBanner = React.memo(function ConfirmBanner({ flash, onDismis
       <div className="flash-card">
         <div className="flash-tick" data-testid="payment-success">✓</div>
         <div className="flash-body">
-          <div className="flash-name">{flash.name} <span className="mono flash-id">#{flash.sid}</span></div>
+          <div className="flash-name">{flash.name}{flash.sid && <> <span className="mono flash-id">#{flash.sid}</span></>}</div>
           <div className="flash-detail">{flash.detail}</div>
           <div className={'flash-amt mono ' + (flash.amount > 0 ? 'pos' : 'neg')}>
             {sign(flash.amount)}${fmt(flash.amount)}
           </div>
         </div>
-        <div className="flash-after">
-          <div className="flash-after-lbl">餘額</div>
-          <div className="flash-after-num mono">
-            {flash.after < 0 ? '−' : ''}${fmt(flash.after)}
+        {flash.after !== undefined && (
+          <div className="flash-after">
+            <div className="flash-after-lbl">餘額</div>
+            <div className="flash-after-num mono">
+              {flash.after < 0 ? '−' : ''}${fmt(flash.after)}
+            </div>
           </div>
-        </div>
+        )}
       </div>
       <div className="flash-count" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
         <span><span className="kbd kbd-light">↵</span> 下一位 · <span className="kbd kbd-light">Esc</span> 關閉</span>

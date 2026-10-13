@@ -5,6 +5,8 @@ import type { LedgerTotals } from '../../domain/ledgerReport';
 
 const baseTotals: LedgerTotals = {
   orderCount: 10,
+  bentoCount: 10,
+  otherMealCount: 0,
   mealTotal: 900,
   orderUnpaid: 0,
   totalIncome: 900,
@@ -18,6 +20,17 @@ describe('ReportSummaryStats', () => {
     const { container } = render(<ReportSummaryStats totals={baseTotals} itemName="排骨便當" />);
     expect(container.textContent).toContain('10');
     expect(container.textContent).toContain('份');
+  });
+
+  it('份數顯示今日便當，其他餐點另外寫「＋ 其他 M 份」', () => {
+    const { container } = render(<ReportSummaryStats totals={{ ...baseTotals, bentoCount: 8, otherMealCount: 2 }} itemName="排骨便當" />);
+    const card = container.querySelector('.stat-strong')!;
+    expect(card.textContent).toBe('份數8 份今日便當（排骨便當）＋ 其他 2 份');
+  });
+
+  it('淨現金是負的時候顯示「−」（先付了便當錢、還沒收到現金）', () => {
+    const { container } = render(<ReportSummaryStats totals={{ ...baseTotals, totalIncome: 0, totalExpense: 270, netCash: -270 }} itemName="排骨便當" />);
+    expect(container.textContent).toContain('−$270');
   });
 
   it('displays itemName as subtitle', () => {
