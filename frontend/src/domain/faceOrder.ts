@@ -74,6 +74,24 @@ export interface FaceDeviceStatus {
   modelVersion?: string;
 }
 
+/**
+ * 時間一律存 UTC ISO（…Z），和櫃台的 new Date().toISOString() 一致。
+ * 交易依 createdAt 字串排序，混入 +08:00 會讓「最後一筆」判斷錯誤（#463 review）。無法解析時用現在時間。
+ */
+export function normalizeFaceTime(value: string | undefined | null): string {
+  const d = value ? new Date(value) : null;
+  return d && !Number.isNaN(d.getTime()) ? d.toISOString() : new Date().toISOString();
+}
+
+const BUSINESS_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** 事件是否有基本資料且格式正確：缺欄位、日期不是 YYYY-MM-DD、平板編號不是 faceorder- 開頭都算不完整。 */
+export function isFaceRequestComplete(request: FaceOrderRequest): boolean {
+  return Boolean(request.eventId && request.studentId)
+    && typeof request.businessDate === 'string' && BUSINESS_DATE_RE.test(request.businessDate)
+    && isFaceDevice(request.deviceId);
+}
+
 export function isFaceDevice(operatorId: string | undefined | null): boolean {
   return typeof operatorId === 'string' && operatorId.startsWith(FACE_DEVICE_PREFIX);
 }

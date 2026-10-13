@@ -4,7 +4,7 @@ import { createStudentSnapshot } from '../../domain/student';
 import { createMenuSnapshot, isMenuReady, resolveMenuForDate } from '../../domain/menu';
 import {
   FACE_CANCEL_REASON, FACE_REFUND_NOTICE, FACE_REJECT_MESSAGES, FACE_SOURCE_DEVICE,
-  cancelNeedsRefundNotice, faceOrderNote, pickOrderToCancel,
+  cancelNeedsRefundNotice, faceOrderNote, isFaceRequestComplete, normalizeFaceTime, pickOrderToCancel,
   type FaceOrderEvent, type FaceOrderRequest,
 } from '../../domain/faceOrder';
 
@@ -28,7 +28,12 @@ export function createFaceActions(
   };
 
   return {
-    handleFaceEvent: (request: FaceOrderRequest, now: string): FaceOrderEvent => {
+    handleFaceEvent: (request: FaceOrderRequest, nowInput: string): FaceOrderEvent => {
+      const now = normalizeFaceTime(nowInput);
+      // 資料不完整或格式不對：退回但不寫入事件、不登記平板（也不會被重送快取命中）。
+      if (!isFaceRequestComplete(request)) {
+        return { ...request, status: 'rejected', reason: FACE_REJECT_MESSAGES.invalid, handledAt: now };
+      }
       const state = get();
       // 同一個事件重送（例如平板沒收到回覆又送一次）：回傳第一次的結果，不重複入帳。
       const existing = state.faceEvents.find(e => e.eventId === request.eventId);
@@ -37,9 +42,6 @@ export function createFaceActions(
       const reject = (reason: string, studentName?: string) =>
         record({ ...request, status: 'rejected', reason, studentName, handledAt: now });
 
-      if (!request.eventId || !request.studentId || !request.businessDate || !request.deviceId) {
-        return reject(FACE_REJECT_MESSAGES.invalid);
-      }
       const student = state.students.find(s => s.studentId === request.studentId);
       if (!student) return reject(FACE_REJECT_MESSAGES.noAccount);
       if (student.status !== 'active') return reject(FACE_REJECT_MESSAGES.inactive, student.displayName);
@@ -90,7 +92,8 @@ export function createFaceActions(
       });
     },
 
-    applyFaceEnrollment: (update) => {
+    applyFaceEnrollment: (input) => {
+      const update = { ...input, reportedAt: normalizeFaceTime(input.reportedAt) };
       const state = get();
       if (!state.students.some(s => s.studentId === update.studentId)) return false;
       set({
@@ -111,8 +114,11 @@ export function createFaceActions(
       return true;
     },
 
-    setFaceDeviceStatus: (status) => set((state) => ({
-      faceDevices: { ...state.faceDevices, [status.deviceId]: { ...(state.faceDevices[status.deviceId] ?? {}), ...status } },
-    })),
+    setFaceDeviceStatus: (input) => {
+      const status = { ...input, lastSeenAt: normalizeFaceTime(input.lastSeenAt) };
+      set((state) => ({
+        faceDevices: { ...state.faceDevices, [status.deviceId]: { ...(state.faceDevices[status.deviceId] ?? {}), ...status } },
+      }));
+    },
   };
 }
