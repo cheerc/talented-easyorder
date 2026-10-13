@@ -74,13 +74,16 @@ A′ 的細節：
 1. **多台 PC 同時開著**：處理前用 Firestore transaction 讀事件，確定還是 `pending` 才寫入；兩台搶同一筆時只有一台成功，另一台放棄。
 2. **重送**：`eventId` 就是文件 ID，平板重送會因為文件已存在而失敗；平板此時改讀那份文件的結果（等同練習模式的「回傳第一次的結果」）。
 3. **逾時與櫃台接手（#465 review 阻擋項目）**：只調逾時秒數不夠。反例：平板 10 秒逾時叫人到櫃台 → 櫃台另訂一份 C → PC 恢復後在 2 分鐘內處理原事件 E → 同一個意圖變成兩份；而產品允許同帳戶加訂，不能靠「已有訂單就拒絕」擋。所以要讓「自動處理 E」和「櫃台替這個人登記」**在同一份文件上競爭**：
-   - 帳戶文件 `students/{studentId}` 加一個欄位 `lastCounterActivityAt`。櫃台登記任何交易（訂餐、繳費、更正、取消；刷臉處理不算）時，在同一個 transaction 裡把它設成 `request.time`。
-   - 自動處理 E 的 transaction 也讀這份帳戶文件：`lastCounterActivityAt` 晚於 E 的 `createdAt`，就把 E 退回「櫃台已經處理過這個帳戶，請到櫃台確認。」，不入帳。Firestore transaction 會讓兩條路徑在帳戶文件上序列化，誰先 commit 誰算數。
-   - 櫃台畫面（F1）選到某人時，如果這個人有 `pending` 的刷臉事件，顯示「平板訂餐處理中」與兩個選項：「等它處理」或「改由櫃台處理」。後者在一個 transaction 裡把 E 改成 `rejected`（理由「已由櫃台接手」）。E 已經是 `accepted` 時，櫃台直接顯示原結果，不另建一份。
+   - 帳戶文件 `students/{studentId}` 加一個欄位 `lastCounterActivityAt`。櫃台登記**這個營業日的訂餐**（含加訂與取消訂餐；繳費、更正其他日期的帳、刷臉處理都不算）時，在同一個 transaction 裡把它設成 `request.time`，並記下 `lastCounterActivityDate`（營業日）。只有餐點意圖會推高它，避免繳費或更正昨天的帳誤擋無關的刷臉。
+   - 自動處理 E 的 transaction 也讀這份帳戶文件（只讀，不寫任何欄位）：`lastCounterActivityDate` 等於 E 的營業日且 `lastCounterActivityAt` **大於或等於** E 的 `createdAt`，就把 E 退回「櫃台已經處理過這個帳戶，請到櫃台確認。」，不入帳。Firestore transaction 會讓兩條路徑在帳戶文件上序列化，誰先 commit 誰算數。
+   - 櫃台畫面（F1）選到某人時，如果這個人有 `pending` 的刷臉事件，顯示「平板訂餐處理中」與兩個選項：「等它處理」或「改由櫃台處理」。「改由櫃台處理」的 transaction **必須先讀事件文件，確認 `status` 仍是 `pending`**；不是的話中止，改顯示既有結果（`accepted` 就顯示已入帳那一份，不另建）。確認仍是 `pending` 時，**在同一個 transaction 裡**完成三件事：把 E 改成 `rejected`（理由「已由櫃台接手」）、建立櫃台的交易、更新 `lastCounterActivityAt`。這樣畫面上的「處理中」即使已過期，也不會把已入帳的 E 蓋成退回；中途失敗也不會留下「E 已退回、櫃台單卻不存在」。
+   - 「等它處理」＝畫面訂閱這個 `eventId`：`accepted` 時顯示結果並關閉提示；`rejected`（含逾時）時顯示理由，並直接打開這個人的訂餐畫面，讓櫃台接著登記，不會無聲消失。提示上顯示事件已等了多久。
+   - 櫃台側的鏡像保護：櫃台替某人建立訂餐的 transaction 也讀這個人當天的 `dailyOrderStatus`；當天已經有刷臉入帳的份數時，先顯示「今天已經刷臉訂了 N 份」，再問是否加訂（加訂合法，不能硬擋）。
    - PC 處理時，**超過 2 分鐘的 `pending` 事件一律退回**「逾時，請到櫃台。」（以伺服器的 `createdAt` 判斷）。這是上面兩道保護之外的收尾，不是唯一的保護。
 4. **平板只在線上送出，不補送**：平板用必須連線的寫入（例如 transaction 建立事件文件），**不使用 Firestore SDK 的離線寫入佇列**，以免恢復連線後把舊意圖用新的伺服器 `createdAt` 補送成新事件。送出後到顯示「請到櫃台」之前，只能用**同一個 `eventId`** 重試；一旦顯示「還沒有收到後台回覆，請到櫃台確認。」，這個事件就放棄，平板之後不再送它。寫入其實成功、只是回覆遺失的情況，E 會在 Firestore 留下 `pending`，由第 3 點的接手協定處理。
 5. **營業日**：PC 只接受 `businessDate` 等於自己當下營業日（台北時間）的事件，其他退回「日期不對，請到櫃台。」。
 6. **取消時錢留在帳戶**：沿用 spec §2 的規則（有收款的改成同金額繳費），B2 驗收要明列。
+7. **實作約束**：transaction 重試用盡（`ABORTED`）不能當成成功，事件維持 `pending` 交給下一輪或接手協定；平板（重）送一律用 `create()`，不准 `set` 覆寫既有事件；同一個成員幾秒內重複送出，由平板端去重。
 
 ## 5. 驗證要變嚴格的地方（#464 review 留下的）
 
@@ -110,6 +113,6 @@ A′ 的細節：
 |---|---|---|
 | B0 | 正式帳務上雲（另寫計畫） | M0–M3 驗收步驟在雲端版重跑 |
 | B1 | 規則：`staffOperator`／`kioskOperator`、五個集合；舊 operator 補 `role`；平板帳號建立流程（`deviceId` 唯一）；`isValidOperatorDoc` 接受 kiosk | emulator 規則測試：平板讀不到 `students`／`transactions`／`daily_settlements`；只能建立自己的 `pending` 事件且 `createdAt == request.time`；結果欄位只能從 `pending` 改一次、請求欄位不可變；`appliedAt` 只有 staff 能寫 |
-| B2 | 拆出無副作用的刷臉規則函式與兩個 adapter；櫃台 PC：投影維護（`faceRoster`、`dailyOrderStatus`）、處理 `pending` 事件、`lastCounterActivityAt`、F1「平板訂餐處理中」與接手、逾時退回、註冊回報套用、平板在線判斷 | emulator：兩台 PC 搶同一筆、重送、逾時、關帳日；**平板逾時後 10–120 秒內櫃台另訂、PC 隨後恢復**（E 必須退回，只有一份）；櫃台按「改由櫃台處理」與自動處理同時發生；取消時錢留在帳戶 |
+| B2 | 拆出無副作用的刷臉規則函式與兩個 adapter；櫃台 PC：投影維護（`faceRoster`、`dailyOrderStatus`）、處理 `pending` 事件、`lastCounterActivityAt`、F1「平板訂餐處理中」與接手、逾時退回、註冊回報套用、平板在線判斷 | emulator：兩台 PC 搶同一筆、重送、逾時、關帳日；**平板逾時後 10–120 秒內櫃台另訂、PC 隨後恢復**（E 必須退回，只有一份）；櫃台按「改由櫃台處理」與自動處理同時發生（含畫面還顯示「處理中」但 E 已入帳）；「等它處理」後 E 被逾時退回；繳費或更正昨天的帳不會誤擋刷臉；取消時錢留在帳戶 |
 | B3 | faceorder Phase 2（在 faceorder repo，由它自己的計畫執行；含只在線上送出、逾時後放棄事件） | 真平板在 emulator／測試專案上訂、加訂、取消；**斷網送出、恢復連線後不會補送** |
 | B4 | 試營運 | 一個晚餐日真平板＋櫃台並行，日末對帳 |
