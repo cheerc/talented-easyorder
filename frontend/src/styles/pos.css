@@ -704,7 +704,7 @@ input::-webkit-inner-spin-button {
 }
 
 .adm-stu-2col {
-  grid-template-columns: 50px 1fr auto;
+  grid-template-columns: 50px 1fr auto auto;
 }
 
 .mode {
@@ -1011,6 +1011,31 @@ input::-webkit-inner-spin-button {
   letter-spacing: 0.04em;
 }
 
+/* ============ 刷臉訂餐動態（F1 側欄，不擋主操作） ============ */
+.face-activity {
+  flex: 0 0 auto;
+  max-height: 300px;
+  padding: 14px 16px;
+}
+
+.face-activity-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  grid-template-areas: "time who action" "time result result";
+  column-gap: 8px;
+  row-gap: 2px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line-2);
+  font-size: 13px;
+}
+
+.face-activity-row:last-child { border-bottom: 0; }
+.face-activity-row .recent-time { grid-area: time; padding-top: 2px; }
+.face-activity-who { grid-area: who; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.face-activity-action { grid-area: action; font-size: 12px; color: var(--ink-2); }
+.face-activity-result { grid-area: result; font-size: 12px; color: var(--ink-3); }
+.face-activity-row--rejected .face-activity-result { color: var(--warn); }
+
 /* ============ RECENT ============ */
 .recent {
   background: var(--panel);
@@ -1159,7 +1184,7 @@ input::-webkit-inner-spin-button {
 .tx-status-header,
 .tx-status-row {
   display: grid;
-  grid-template-columns: 70px 30px 1fr 1fr 60px;
+  grid-template-columns: 70px 64px 1fr 1fr 60px;
   gap: 4px;
   padding: 3px 8px;
   align-items: center;
@@ -1172,6 +1197,22 @@ input::-webkit-inner-spin-button {
 .tx-col-income { color: var(--c-pos, #2e7d32); text-align: right; }
 .tx-col-expense { color: var(--c-neg, #c62828); text-align: right; }
 .tx-time { color: var(--ink-2); font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
+.tx-type-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 刷臉平板來的交易（F1 個人當日狀況不顯示備註，用這個小標示看得出是刷臉） */
+.tx-face-tag {
+  font-size: 11px;
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 3px;
+  white-space: nowrap;
+}
+
 .tx-type-badge {
   display: inline-block;
   width: 24px; height: 24px;

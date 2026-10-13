@@ -2,6 +2,7 @@ import React from 'react';
 import type { LedgerTransaction } from '../../domain/ledger';
 import { getIncome, getExpense } from '../../domain/transactionUtils';
 import { formatTaipeiTime } from '../../utils/dateTime';
+import { isFaceTransaction } from '../../domain/faceOrder';
 
 interface TransactionStatusViewProps {
   transactions: LedgerTransaction[];
@@ -54,7 +55,10 @@ export const TransactionStatusView = React.memo(function TransactionStatusView({
         return (
           <div key={tx.transactionId} className="tx-status-row">
             <span className="tx-time">{formatTaipeiTime(tx.createdAt)}</span>
-            <span className={'tx-type-badge tx-type-' + tx.type}>{TYPE_LABELS[tx.type] ?? tx.type}</span>
+            <span className="tx-type-cell">
+              <span className={'tx-type-badge tx-type-' + tx.type}>{TYPE_LABELS[tx.type] ?? tx.type}</span>
+              {isFaceTransaction(tx) && <span className="tx-face-tag" title={tx.note}>刷臉</span>}
+            </span>
             <span className="tx-col-income">{income != null ? `+${income}` : ''}</span>
             <span className="tx-col-expense">{expense != null ? `-${expense}` : ''}</span>
             {/* Action buttons (#419) — always render .tx-actions for grid alignment (#423) */}

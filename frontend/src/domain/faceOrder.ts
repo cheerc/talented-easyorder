@@ -62,6 +62,8 @@ export interface FaceOrderEvent extends FaceOrderRequest {
   transactionId?: string;
   /** 帳戶名稱（處理當下）。 */
   studentName?: string;
+  /** 訂餐時這個人當天已經有訂餐（第二次刷臉的「加訂一份」）。舊事件沒有這個欄位。 */
+  additional?: boolean;
   handledAt: string;
 }
 
@@ -72,6 +74,24 @@ export interface FaceDeviceStatus {
   lastSeenAt: string;
   appVersion?: string;
   modelVersion?: string;
+}
+
+/**
+ * 時間一律存 UTC ISO（…Z），和櫃台的 new Date().toISOString() 一致。
+ * 交易依 createdAt 字串排序，混入 +08:00 會讓「最後一筆」判斷錯誤（#463 review）。無法解析時用現在時間。
+ */
+export function normalizeFaceTime(value: string | undefined | null): string {
+  const d = value ? new Date(value) : null;
+  return d && !Number.isNaN(d.getTime()) ? d.toISOString() : new Date().toISOString();
+}
+
+const BUSINESS_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** 事件是否有基本資料且格式正確：缺欄位、日期不是 YYYY-MM-DD、平板編號不是 faceorder- 開頭都算不完整。 */
+export function isFaceRequestComplete(request: FaceOrderRequest): boolean {
+  return Boolean(request.eventId && request.studentId)
+    && typeof request.businessDate === 'string' && BUSINESS_DATE_RE.test(request.businessDate)
+    && isFaceDevice(request.deviceId);
 }
 
 export function isFaceDevice(operatorId: string | undefined | null): boolean {
@@ -153,3 +173,30 @@ export const FACE_ENROLLMENT_LABELS: Record<FaceEnrollmentStatus, string> = {
   disabled: '已停用',
   needs_review: '待確認',
 };
+
+/** F1「刷臉訂餐」動態：某一天的刷臉事件，新的在前。 */
+export function faceEventsForDate(events: readonly FaceOrderEvent[], businessDate: string, limit = 10): FaceOrderEvent[] {
+  return events
+    .filter(e => e.businessDate === businessDate)
+    .sort((a, b) => b.handledAt.localeCompare(a.handledAt))
+    .slice(0, limit);
+}
+
+/** 動態上的動作：訂餐／加訂／取消。 */
+export function faceEventActionLabel(ev: Pick<FaceOrderEvent, 'action' | 'additional'>): string {
+  if (ev.action === 'cancel') return '取消';
+  return ev.additional ? '加訂' : '訂餐';
+}
+
+/** 動態上的結果：入帳、已取消（附提醒）或退回＋原因。 */
+export function faceEventResultLabel(ev: Pick<FaceOrderEvent, 'action' | 'status' | 'reason' | 'notice'>): string {
+  if (ev.status === 'rejected') return `退回：${ev.reason ?? '請到櫃台。'}`;
+  const base = ev.action === 'cancel' ? '已取消' : '入帳';
+  return ev.notice ? `${base} · ${ev.notice}` : base;
+}
+
+/** F3 帳戶清單的人臉欄（唯讀）：狀態，平板回報過張數時加「（N 張）」。 */
+export function faceEnrollmentText(student: Pick<StudentAccount, 'faceEnrollmentStatus' | 'faceCount'>): string {
+  const label = FACE_ENROLLMENT_LABELS[student.faceEnrollmentStatus] ?? FACE_ENROLLMENT_LABELS.none;
+  return typeof student.faceCount === 'number' ? `${label}（${student.faceCount} 張）` : label;
+}

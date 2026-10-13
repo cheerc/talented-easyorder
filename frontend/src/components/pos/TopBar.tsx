@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from "react";
 import type { StorageMode } from "../../appMode";
-import { useSimulationDate } from "../../store/selectors";
+import { useFace, useSimulationDate } from "../../store/selectors";
+import { faceDeviceLabel } from "../../domain/faceOrder";
+import { formatTaipeiDateTime } from "../../utils/dateTime";
 
 interface TopBarProps {
   tab: string;
@@ -22,6 +24,8 @@ interface TopBarProps {
 }
 export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, todayOtherCount = 0, viewDate, setViewDate, queuedCount = 0, failedSyncCount = 0, conflictSyncCount = 0, onDashboard, storageMode = 'cloud' }: TopBarProps) {
   const simulationDate = useSimulationDate();
+  const { faceDevices } = useFace();
+  const faceDeviceList = Object.values(faceDevices).sort((a, b) => a.deviceId.localeCompare(b.deviceId));
   const tabs = [
     { id: 'pos', label: '櫃台', hint: 'F1' },
     { id: 'report', label: '今日帳', hint: 'F2' },
@@ -112,6 +116,25 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing,
             </span>
           </div>
         )}
+        {/* 刷臉平板只顯示在線／離線（CheerC 2026-10-13：頂部不放刷臉統計數字）。沒有平板登記時不顯示。 */}
+        {faceDeviceList.map(d => {
+          const detail = [
+            `最後上線 ${formatTaipeiDateTime(d.lastSeenAt) || '—'}`,
+            d.appVersion ? `App ${d.appVersion}` : '',
+            d.modelVersion ? `模型 ${d.modelVersion}` : '',
+          ].filter(Boolean).join(' · ');
+          return (
+            <div
+              key={d.deviceId}
+              className={'face-device ' + (d.online ? 'face-device-on' : 'face-device-off')}
+              title={`${faceDeviceLabel(d.deviceId)}：${detail}`}
+              aria-label={`${faceDeviceLabel(d.deviceId)} ${d.online ? '在線' : '離線'}，${detail}`}
+            >
+              <span className="dot"></span>
+              <span>{faceDeviceList.length > 1 ? faceDeviceLabel(d.deviceId) : '刷臉平板'} · {d.online ? '在線' : '離線'}</span>
+            </div>
+          );
+        })}
         <div className="counter">
           <div className="counter-num">{todayCount}</div>
           <div className="counter-lbl">今日便當{todayOtherCount > 0 ? ` ＋其他 ${todayOtherCount}` : ''}</div>

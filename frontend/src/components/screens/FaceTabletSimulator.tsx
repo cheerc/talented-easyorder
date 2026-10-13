@@ -5,7 +5,6 @@ import {
   type FaceOrderEvent, type FaceEventAction,
 } from '../../domain/faceOrder';
 import type { FaceEnrollmentStatus } from '../../domain/student';
-import { getTaiwanISOString } from '../../utils/dateTime';
 
 const DEVICE_ID = 'faceorder-01';
 
@@ -45,7 +44,7 @@ export const FaceTabletSimulator = React.memo(function FaceTabletSimulator({ bus
 
   const send = (action: FaceEventAction) => {
     if (!studentId) return;
-    const now = getTaiwanISOString();
+    const now = new Date().toISOString();
     const ev = handleFaceEvent({
       eventId: crypto.randomUUID(), deviceId: DEVICE_ID, action, studentId,
       ...(memberName.trim() ? { memberName: memberName.trim() } : {}),
@@ -60,7 +59,7 @@ export const FaceTabletSimulator = React.memo(function FaceTabletSimulator({ bus
     const ok = applyFaceEnrollment({
       deviceId: DEVICE_ID, studentId, status: enrollStatus,
       ...(Number.isSafeInteger(n) && n >= 0 ? { faceCount: n } : {}),
-      reportedAt: getTaiwanISOString(),
+      reportedAt: new Date().toISOString(),
     });
     setLastMessage(ok ? `已回報 ${studentId} 的人臉註冊：${FACE_ENROLLMENT_LABELS[enrollStatus]}` : '找不到這個帳戶。');
   };
@@ -73,7 +72,7 @@ export const FaceTabletSimulator = React.memo(function FaceTabletSimulator({ bus
         <span>
           {faceDeviceLabel(DEVICE_ID)} · {device?.online ? '在線' : '離線'}
           <button className="ghost-btn" style={{ marginLeft: '8px' }}
-                  onClick={() => setFaceDeviceStatus({ deviceId: DEVICE_ID, online: !device?.online, lastSeenAt: getTaiwanISOString(), appVersion: '練習', modelVersion: 'w600k_r50' })}>
+                  onClick={() => setFaceDeviceStatus({ deviceId: DEVICE_ID, online: !device?.online, lastSeenAt: new Date().toISOString(), appVersion: '練習', modelVersion: 'w600k_r50' })}>
             {device?.online ? '設為離線' : '設為上線'}
           </button>
         </span>

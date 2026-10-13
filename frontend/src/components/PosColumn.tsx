@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { SearchBox, CustomerCard, ActionBar, IdleHero, RecentStrip, MidnightBanner, ExpensePanel, DeleteConfirmDialog } from './pos-components';
+import { SearchBox, CustomerCard, ActionBar, IdleHero, RecentStrip, FaceActivityStrip, MidnightBanner, ExpensePanel, DeleteConfirmDialog } from './pos-components';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { useActiveOrderCount } from '../store/derived/useLedger';
 import { useTransactionActions } from '../store/selectors';
@@ -40,6 +40,11 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
     () => new Map(students.map(s => [s.studentId, s.currentBalance])),
     [students],
   );
+
+  // 側欄（刷臉訂餐動態、最近帳戶）點一個人：選到 F1 看當日狀況。歷史或關帳日不能點。
+  const onSideStudentClick = !isHistorical && dateStatus !== 'closed'
+    ? (sid: string) => { selectStudent(sid, 'manual', 'view-status'); setFocusZone('view-status'); }
+    : undefined;
 
   // Edit modal state
   const [editingTx, setEditingTx] = useState<TransactionEditView | null>(null);
@@ -256,10 +261,14 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
         )}
       </div>
       <div className="col-side">
+        <FaceActivityStrip
+          viewDate={viewDate}
+          onStudentClick={onSideStudentClick}
+        />
         <RecentStrip
           groups={recentGroups}
           balances={currentBalances}
-          onStudentClick={!isHistorical && dateStatus !== 'closed' ? (sid) => { selectStudent(sid, 'manual', 'view-status'); setFocusZone('view-status'); } : undefined}
+          onStudentClick={onSideStudentClick}
           dateStatus={dateStatus}
         />
       </div>

@@ -13,6 +13,7 @@ import { useFirebase } from '../../hooks/useFirebase';
 import { SYSTEM_OPERATOR_ID } from '../../domain/operatorId';
 import { getTaiwanISOString } from '../../utils/dateTime';
 import { filterActiveVendors, resolveMenuVendor } from '../../domain/menu';
+import { faceEnrollmentText } from '../../domain/faceOrder';
 
 interface AdminScreenProps {
   viewDate: string;
@@ -308,6 +309,10 @@ const StudentList = React.memo(function StudentList({ students, editable = false
               {s.displayName}
               {s.aliases.length > 0 && <span className="dim" style={{ fontWeight: 400, marginLeft: '6px' }}>（{s.aliases.join('、')}）</span>}
               {s.status === 'inactive' && <span className="adm-stu-grade" style={{ marginLeft: '6px' }}>已停用</span>}
+            </span>
+            {/* 人臉註冊狀態由刷臉平板回報，這裡唯讀 */}
+            <span className="adm-stu-face" data-testid={`student-face-${s.studentId}`} title="人臉註冊狀態（由刷臉平板回報，唯讀）">
+              <span className="dim">人臉 </span>{faceEnrollmentText(s)}
             </span>
             <span className={'mono adm-stu-bal ' + (s.currentBalance < 0 ? 'warn' : '')}>
               {s.currentBalance < 0 ? `欠 $${fmt(s.currentBalance)}` : `$${fmt(s.currentBalance)}`}
