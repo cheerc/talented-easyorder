@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
+import type { TransactionActions } from '../../store/posTypes';
 
 // Mock usePosStore for all screen components
 const mockState = {
@@ -36,7 +37,7 @@ vi.mock('../../store/selectors', () => ({
     deleteOrderWithRefundCheck: mockState.deleteOrderWithRefundCheck,
     deleteTransaction: mockState.deleteTransaction,
     editTransaction: mockState.editTransaction,
-    commitPosTransactionDraft: vi.fn(() => ({ ok: true })),
+    commitPosTransactionDraft: vi.fn<TransactionActions['commitPosTransactionDraft']>(() => ({ ok: true, transactionId: 'tx-mock' })),
     processTransaction: vi.fn(),
     updateTransaction: vi.fn(),
   }),
