@@ -189,6 +189,7 @@ export function useTransactionCommit(
           paidAmount: paidAmountVal,
           note,
           sourceDevice: toPosSourceDevice(source),
+          ...(attrs.otherItemName !== undefined ? { otherItemName: attrs.otherItemName } : {}),
         };
 
         const draft = buildPosTransactionDraft({

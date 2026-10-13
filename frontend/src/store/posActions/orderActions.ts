@@ -30,6 +30,7 @@ export function buildOrderTransaction(
     previousBalance: student.currentBalance,
     sourceDevice: draft.intent.sourceDevice,
     note: draft.intent.note,
+    otherItemName: draft.intent.otherItemName,
   });
 
   return { newStudents, newTransaction };

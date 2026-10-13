@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useSession } from '../store/selectors';
-import { fmt } from './pos-components';
+import { fmt, money } from './pos-components';
 import { useLedgerReport } from '../store/derived/useLedgerReport';
 import { formatTaipeiTime } from '../utils/dateTime';
 import { operatorLabel } from '../domain/operatorId';
@@ -60,13 +60,15 @@ export const TodayDashboard = React.memo(function TodayDashboard({ systemDate, o
           </div>
           <div className="db-card">
             <div className="db-card-lbl">份數</div>
-            <div className="db-card-num">{totals.orderCount}</div>
-            <div className="db-card-sub">餐費 ${fmt(totals.mealTotal)}</div>
+            <div className="db-card-num">{totals.bentoCount}</div>
+            <div className="db-card-sub">
+              今日便當{totals.otherMealCount > 0 ? ` ＋ 其他 ${totals.otherMealCount} 份` : ''} · 餐費 ${fmt(totals.mealTotal)}
+            </div>
           </div>
           <div className="db-card db-card-accent">
             <div className="db-card-lbl">收現</div>
             <div className="db-card-num">${fmt(totals.totalIncome)}</div>
-            <div className="db-card-sub">淨現金 ${fmt(totals.netCash)}</div>
+            <div className="db-card-sub">淨現金 {money(totals.netCash)}</div>
           </div>
           <div className={`db-card ${dateStatus === 'closed' ? 'db-card-ok' : dateStatus === 'reopened' ? 'db-card-warn' : 'db-card-open'}`}>
             <div className="db-card-lbl">關帳狀態</div>

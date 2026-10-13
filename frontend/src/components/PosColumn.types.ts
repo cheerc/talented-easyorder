@@ -45,6 +45,7 @@ export interface PosColumnProps {
   setCrashDraftRestored: (v: boolean) => void;
   todayMenu: TodayMenu;
   todayCount: number;
+  todayOtherCount?: number;
   vendors: Vendor[];
   enterExpenseMode: () => void;
   tweaks: { theme: string; fontSize: string; disableHoverSelection: boolean };

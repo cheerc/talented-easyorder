@@ -99,7 +99,7 @@ describe('TodayDashboard', () => {
     const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
     const cards = Array.from(container.querySelectorAll('.db-card')).map(el => el.textContent);
     expect(cards[0]).toBe('筆數2含未付款訂餐');
-    expect(cards[1]).toBe('份數1餐費 $90');
+    expect(cards[1]).toBe('份數1今日便當 · 餐費 $90');
     expect(cards[2]).toBe('收現$500淨現金 $500');
     expect(container.textContent).not.toMatch(/undefined|NaN/);
   });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { fmt } from '../pos-components';
+import { fmt, money } from '../pos-components';
 import type { DailySettlement } from '../../domain/cashClose';
 import { operatorLabel } from '../../domain/operatorId';
 import { formatTaipeiTime } from '../../utils/dateTime';
@@ -39,7 +39,7 @@ export const DayEndBar = React.memo(function DayEndBar({
           {settlement && (
             <>
               <span className="pill">第 {settlement.settlementRevision} 版</span>
-              <span className="mono">應有 ${fmt(settlement.expectedCash)}</span>
+              <span className="mono">應有 {money(settlement.expectedCash)}</span>
               <span className="mono">實點 ${fmt(settlement.countedCash)}</span>
               <span className={'mono ' + (settlement.difference === 0 ? '' : settlement.difference > 0 ? 'pos' : 'warn')}>
                 差異 {signed(settlement.difference)}
@@ -69,8 +69,8 @@ export const DayEndBar = React.memo(function DayEndBar({
           </span>
         )}
         <span className="mono">開帳 {openingCash === null ? '未設定' : `$${fmt(openingCash)}`}</span>
-        <span className="mono">淨現金 ${fmt(netCash)}</span>
-        <span className="mono">應有 {expected === null ? '—' : `$${fmt(expected)}`}</span>
+        <span className="mono">淨現金 {money(netCash)}</span>
+        <span className="mono">應有 {expected === null ? '—' : money(expected)}</span>
         <span style={{ flex: 1 }} />
         <button
           className={expanded ? 'ghost-btn' : 'btn-confirm'}

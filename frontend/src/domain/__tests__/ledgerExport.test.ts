@@ -1,3 +1,4 @@
+import { mergeLedgerTransactions } from '../ledger';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   TRANSACTION_CSV_COLUMNS,
@@ -33,8 +34,9 @@ const makeTx = (overrides: Partial<LedgerTransaction> = {}): LedgerTransaction =
 });
 
 describe('CSV column definitions', () => {
-  it('transaction CSV has exactly 22 columns', () => {
-    expect(TRANSACTION_CSV_COLUMNS).toHaveLength(22);
+  it('transaction CSV has exactly 24 columns', () => {
+    expect(TRANSACTION_CSV_COLUMNS).toHaveLength(24);
+    expect(TRANSACTION_CSV_COLUMNS.slice(22)).toEqual(['bento_count', 'other_meal_items']);
   });
 
   it('transaction CSV columns match documented order', () => {
@@ -52,7 +54,7 @@ describe('buildTransactionCsvRows', () => {
   it('maps one ledger row to one CSV row', () => {
     const rows = buildTransactionCsvRows([makeTx()]);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toHaveLength(22);
+    expect(rows[0]).toHaveLength(24);
     expect(rows[0][0]).toBe('2026-05-15');
     expect(rows[0][1]).toBe('tx-1');
     expect(rows[0][4]).toBe('王小明');
@@ -77,6 +79,28 @@ describe('buildTransactionCsvRows', () => {
   it('handles empty array', () => {
     const rows = buildTransactionCsvRows([]);
     expect(rows).toHaveLength(0);
+  });
+});
+
+describe('今日便當與其他餐點欄位', () => {
+  it('原始模式：今日便當 1 份；其他餐點列出品項（新資料看 otherItemName，舊資料看備註）；繳費 0', () => {
+    const rows = buildTransactionCsvRows([
+      makeTx(),
+      makeTx({ transactionId: 'o1', otherItemName: '雞腿', note: '雞腿' }),
+      makeTx({ transactionId: 'o2', note: '單筆改價：魚排' }),
+      makeTx({ transactionId: 'p1', type: 'payment', mealPrice: 0, paidAmount: 100 }),
+    ]);
+    expect(rows.map(r => r.slice(22))).toEqual([['1', ''], ['0', '雞腿'], ['0', '魚排'], ['0', '']]);
+  });
+
+  it('合併模式：同一人的今日便當份數與其他餐點品項合在一列，不沿用第一筆的品項', () => {
+    const merged = mergeLedgerTransactions([
+      makeTx({ transactionId: 'a', otherItemName: '雞腿', createdAt: '2026-05-15T11:00:00.000Z' }),
+      makeTx({ transactionId: 'b', createdAt: '2026-05-15T12:00:00.000Z' }),
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].otherItemName).toBeUndefined();
+    expect(buildTransactionCsvRows(merged)[0].slice(22)).toEqual(['1', '雞腿']);
   });
 });
 
@@ -197,6 +221,8 @@ describe('buildLedgerPrintViewModel', () => {
   it('includes header, totals, and grouped rows', () => {
     const totals: LedgerTotals = {
       orderCount: 1,
+      bentoCount: 1,
+      otherMealCount: 0,
       totalIncome: 0,
       totalExpense: 0,
       netCash: 0,

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useSession } from '../../store/selectors';
-import { fmt, sign } from '../pos-components';
+import { fmt, sign, money } from '../pos-components';
 import { formatTaipeiDateTime, formatTaipeiTime } from '../../utils/dateTime';
 import { operatorLabel } from '../../domain/operatorId';
 import { compareSettlementVersionDesc } from '../../domain/cashClose';
@@ -61,7 +61,7 @@ export const SettlementHistoryTable = React.memo(function SettlementHistoryTable
             <div className="mono">{s.businessDate}</div>
             <div><span className={statusClass(s.status)}>{statusLabel(s.status)}</span></div>
             <div className="mono">{s.orderCount}</div>
-            <div className="mono">${fmt(s.expectedCash)}</div>
+            <div className="mono">{money(s.expectedCash)}</div>
             <div className="mono">${fmt(s.countedCash)}</div>
             <div className={`mono ${s.difference !== 0 ? 'warn' : ''}`}>
               {sign(s.difference)}${fmt(s.difference)}

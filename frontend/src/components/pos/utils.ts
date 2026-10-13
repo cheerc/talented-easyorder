@@ -2,6 +2,8 @@ export interface KeyboardEventWithFlag extends KeyboardEvent { __handledByExpens
 
 export const fmt = (n: number) => new Intl.NumberFormat('zh-TW').format(Math.abs(n));
 export const sign = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '');
+/** 金額：負數前面加「−」（fmt 只給絕對值）。淨現金、應有現金可能是負的，不能顯示成正數。 */
+export const money = (n: number) => `${n < 0 ? '−' : ''}$${fmt(n)}`;
 
 export function getQuickAmounts(input: {
   mode: import('../../domain/posFlow').PosMode;

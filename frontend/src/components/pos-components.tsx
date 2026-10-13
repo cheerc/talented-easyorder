@@ -1,6 +1,6 @@
 // Utility functions
 // eslint-disable-next-line react-refresh/only-export-components
-export { fmt, sign, getQuickAmounts } from './pos/utils';
+export { fmt, sign, money, getQuickAmounts } from './pos/utils';
 
 // Components
 export { TopBar } from './pos/TopBar';

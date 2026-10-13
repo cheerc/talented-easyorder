@@ -9,6 +9,7 @@ import { DeleteConfirmDialog } from '../pos/DeleteConfirmDialog';
 import type { LedgerDateRangeKind } from '../../domain/ledgerReport';
 import { ReportDateRangeControls } from '../report/ReportDateRangeControls';
 import { ReportSummaryStats } from '../report/ReportSummaryStats';
+import { OtherMealsList } from '../report/OtherMealsList';
 import { LedgerGroupedTable } from '../report/LedgerGroupedTable';
 import { CashClosePanel } from '../report/CashClosePanel';
 import { ExportActions } from '../report/ExportActions';
@@ -194,6 +195,7 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
       />
 
       <ReportSummaryStats totals={totals} itemName={todayMenu.itemName} counterCashFlow={counterCashFlow} />
+      <OtherMealsList transactions={filtered} />
 
       <DayEndBar
         businessDate={viewDate}

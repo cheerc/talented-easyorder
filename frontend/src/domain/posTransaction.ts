@@ -13,6 +13,8 @@ export interface PosTransactionIntent {
   paidAmount: number;
   note: string;
   sourceDevice: PosSourceDevice;
+  /** 訂購其他餐點的品項；今日便當不帶。 */
+  otherItemName?: string;
 }
 
 export interface PosTransactionSnapshotInput {
@@ -83,6 +85,8 @@ export interface DerivedTransactionAttrs {
   mealPrice: number;
   paidAmount: number;
   note: string;
+  /** 訂購其他餐點時的品項；今日便當為 undefined。 */
+  otherItemName?: string;
 }
 
 export function deriveTransactionAttributes(args: {
@@ -126,7 +130,11 @@ export function deriveTransactionAttributes(args: {
     note = args.expenseNote ?? '';
   }
 
-  return { mealPrice, paidAmount, note };
+  // 訂購其他餐點：記下品項，份數另算，不併入今日便當。
+  const otherItemName = mode === 'order' && priceOverride !== null
+    ? (priceOverrideLabel.trim() || '其他餐點')
+    : undefined;
+  return { mealPrice, paidAmount, note, ...(otherItemName !== undefined ? { otherItemName } : {}) };
 }
 
 export function buildExpenseTransactionDraft(args: BuildExpenseTransactionDraftArgs): PosTransactionDraft {

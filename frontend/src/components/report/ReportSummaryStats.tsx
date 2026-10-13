@@ -1,4 +1,4 @@
-import { fmt } from '../pos-components';
+import { fmt, money } from '../pos-components';
 import type { LedgerTotals } from '../../domain/ledgerReport';
 
 interface CounterCashFlow {
@@ -20,8 +20,12 @@ export function ReportSummaryStats({ totals, itemName, counterCashFlow }: Report
     <div className="rpt-stats">
       <div className="stat stat-strong">
         <div className="stat-lbl">份數</div>
-        <div className="stat-num mono">{totals.orderCount}<span className="stat-of"> 份</span></div>
-        <div className="stat-sub">{itemName}</div>
+        {/* 向供應商叫便當只看今日便當；訂購其他餐點另計。 */}
+        <div className="stat-num mono">{totals.bentoCount}<span className="stat-of"> 份</span></div>
+        <div className="stat-sub">
+          今日便當{itemName ? `（${itemName}）` : ''}
+          {totals.otherMealCount > 0 && <>＋ 其他 {totals.otherMealCount} 份</>}
+        </div>
       </div>
       <div className="stat">
         <div className="stat-lbl">餐費</div>
@@ -40,7 +44,7 @@ export function ReportSummaryStats({ totals, itemName, counterCashFlow }: Report
       </div>
       <div className="stat">
         <div className="stat-lbl">淨現金</div>
-        <div className="stat-num mono">${fmt(totals.netCash)}</div>
+        <div className="stat-num mono">{money(totals.netCash)}</div>
         <div className="stat-sub">收現 − 支出</div>
       </div>
       {counterCashFlow && (counterCashFlow.incomeCount > 0 || counterCashFlow.expenseCount > 0) && (

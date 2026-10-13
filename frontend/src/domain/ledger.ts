@@ -20,6 +20,11 @@ export interface LedgerTransaction {
   note: string;
   depositAmount?: number;
   unpaidAmount?: number;
+  /**
+   * 「訂購其他餐點」的品項（不是當天統一的便當）。有值時這一份不算進今日便當份數，另列其他餐點。
+   * 舊資料沒有這個欄位，改用備註開頭「單筆改價：」判斷（見 ledgerReport 的 isOtherMealOrder）。
+   */
+  otherItemName?: string;
 }
 
 import type { StudentSnapshot } from './student';
@@ -45,6 +50,8 @@ export interface CreateLedgerTransactionInput {
   sourceDevice: LedgerTransaction['sourceDevice'];
   operatorId?: string;
   note: string;
+  /** 訂購其他餐點的品項；今日便當不帶。 */
+  otherItemName?: string;
 }
 
 export function calculateTransactionAmount(mealPrice: number, paidAmount: number): number {
@@ -72,6 +79,7 @@ export function createLedgerTransaction(input: CreateLedgerTransactionInput): Le
     syncStatus: 'local',
     revision: 1,
     note: input.note,
+    ...(input.otherItemName !== undefined ? { otherItemName: input.otherItemName } : {}),
   };
 }
 
@@ -185,11 +193,46 @@ export function rebalanceAccounts(
   return { students, transactions };
 }
 
+/** 舊資料的「訂購其他餐點」只留在備註開頭。 */
+export const OTHER_MEAL_NOTE_PREFIX = '單筆改價：';
+
+/**
+ * 這筆訂餐是不是「訂購其他餐點」（不是當天統一的便當）。新資料看 otherItemName；
+ * 舊資料沒有這個欄位，看備註開頭。品項名稱或價格和今天菜單不同不算，避免當天改價後前面的訂單被算成其他餐點。
+ */
+export function isOtherMealOrder(tx: Pick<LedgerTransaction, 'type' | 'note' | 'otherItemName'>): boolean {
+  if (tx.type !== 'order') return false;
+  if (tx.otherItemName !== undefined) return true;
+  return typeof tx.note === 'string' && tx.note.startsWith(OTHER_MEAL_NOTE_PREFIX);
+}
+
+/** 其他餐點的品項名稱。 */
+export function otherMealName(tx: Pick<LedgerTransaction, 'note' | 'otherItemName' | 'menuNameSnapshot'>): string {
+  if (tx.otherItemName) return tx.otherItemName;
+  if (tx.note.startsWith(OTHER_MEAL_NOTE_PREFIX)) return tx.note.slice(OTHER_MEAL_NOTE_PREFIX.length).trim() || '其他餐點';
+  return tx.menuNameSnapshot || '其他餐點';
+}
+
+/** 份數拆成今日便當與其他餐點（向供應商叫便當時只看今日便當）。 */
+export function countMeals(transactions: Pick<LedgerTransaction, 'type' | 'note' | 'otherItemName'>[]): { bento: number; other: number } {
+  let bento = 0;
+  let other = 0;
+  for (const tx of transactions) {
+    if (tx.type !== 'order') continue;
+    if (isOtherMealOrder(tx)) other++; else bento++;
+  }
+  return { bento, other };
+}
+
 export interface MergedTransaction extends LedgerTransaction {
   depositAmount: number;
   unpaidAmount: number;
   orderCount: number;
   displayBalance: number;
+  /** 合併列裡今日便當的份數。 */
+  bentoOrderCount: number;
+  /** 合併列裡「訂購其他餐點」的品項（每份一個）。 */
+  otherMealItems: string[];
 }
 
 export interface TransactionEditView {
@@ -224,6 +267,8 @@ export function mergeLedgerTransactions(transactions: LedgerTransaction[]): Merg
       unpaidAmount: 0,
       orderCount: 0,
       displayBalance: 0,
+      bentoOrderCount: 0,
+      otherMealItems: [],
     });
   }
 
@@ -248,9 +293,15 @@ export function mergeLedgerTransactions(transactions: LedgerTransaction[]): Merg
       const unpaidAmount = Math.max(0, totalMealPrice - totalPaid);
       const mergedNote = orders.map(o => o.note).filter(Boolean).join(', ');
 
+      // 合併列不能沿用第一筆的 otherItemName，份數改看整組訂單。
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 只為了把第一筆的 otherItemName 拿掉。
+      const { otherItemName: _firstOther, ...earliestRest } = earliestTx;
+      const otherOrders = orders.filter(isOtherMealOrder);
       mergedList.push({
-        ...earliestTx,
+        ...earliestRest,
         type: 'order',
+        bentoOrderCount: orderCount - otherOrders.length,
+        otherMealItems: otherOrders.map(otherMealName),
         mealPrice: totalMealPrice,
         paidAmount: totalPaid,
         amount: totalPaid - totalMealPrice,
@@ -270,6 +321,8 @@ export function mergeLedgerTransactions(transactions: LedgerTransaction[]): Merg
           unpaidAmount: 0,
           orderCount: 0,
           displayBalance,
+          bentoOrderCount: 0,
+          otherMealItems: [],
         });
       }
     }

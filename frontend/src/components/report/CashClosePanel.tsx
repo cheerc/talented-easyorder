@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fmt } from '../pos-components';
+import { fmt, money } from '../pos-components';
 import { NumericInput } from '../ui/NumericInput';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
@@ -86,11 +86,11 @@ export function CashClosePanel({
         </div>
         <div>
           <div className="dim" style={{ fontSize: '12px', marginBottom: '4px' }}>淨現金</div>
-          <div className="mono" style={{ fontSize: '20px', fontWeight: 600 }}>${fmt(totals.netCash)}</div>
+          <div className="mono" style={{ fontSize: '20px', fontWeight: 600 }}>{money(totals.netCash)}</div>
         </div>
         <div>
           <div className="dim" style={{ fontSize: '12px', marginBottom: '4px' }}>系統應有抽屜現金</div>
-          <div className="mono" style={{ fontSize: '20px', fontWeight: 600 }}>{hasOpeningCash ? `$${fmt(expectedDrawerCash)}` : '—'}</div>
+          <div className="mono" style={{ fontSize: '20px', fontWeight: 600 }}>{hasOpeningCash ? money(expectedDrawerCash) : '—'}</div>
         </div>
         <div>
           <label className="dim" htmlFor="counted-cash" style={{ fontSize: '12px', marginBottom: '4px', display: 'block' }}>
@@ -157,8 +157,8 @@ export function CashClosePanel({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><label>日期</label><span className="mono">{businessDate}</span></div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><label>開帳金額</label><span className="mono">${fmt(openingCash ?? 0)}</span></div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}><label>淨現金</label><span className="mono">${fmt(totals.netCash)}</span></div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}><label>系統應有抽屜現金</label><span className="mono">${fmt(expectedDrawerCash)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><label>淨現金</label><span className="mono">{money(totals.netCash)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><label>系統應有抽屜現金</label><span className="mono">{money(expectedDrawerCash)}</span></div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><label>實際點算</label><span className="mono">${fmt(countedNum)}</span></div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <label>差異</label>
