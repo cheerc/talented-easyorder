@@ -110,7 +110,7 @@ React 19、Vite 8、TypeScript 6、Zustand 5（persist 到 IndexedDB，失敗時
 |---|---|---|---|
 | `prototype` 練習 | `npm run dev:prototype` | 瀏覽器 IndexedDB（獨立命名空間 `*-prototype`） | **本人驗收的就是這個** |
 | `local-only` | 沒設 Firebase 環境變數 | 瀏覽器 IndexedDB | 可用，無登入 |
-| `cloud` | 有 Firebase 環境變數 | 登入走 Firebase，**帳務仍然存在瀏覽器 IndexedDB** | 只有登入是雲端的。**不能放真實資料**：「登出」會呼叫 `clearSensitiveData()`，刪掉整個本機帳務；F3 以 `isLocal = !fb` 控制，cloud 模式沒有新增／編輯帳戶與練習資料面板 |
+| `cloud` | 有 Firebase 環境變數 | 登入走 Firebase，**帳務仍然存在瀏覽器 IndexedDB** | 只有登入是雲端的。**不能放真實資料**：「登出」會呼叫 `clearSensitiveData()`，刪掉整個本機帳務；F3 以 `isLocal = !fb` 控制，cloud 模式沒有新增／編輯帳戶與練習資料面板，只剩「危險區域：重置系統數據」（`resetData`，見 3.3） |
 
 ### 3.2 要搬上雲的資料（store 的實體）
 
@@ -137,12 +137,13 @@ React 19、Vite 8、TypeScript 6、Zustand 5（persist 到 IndexedDB，失敗時
 |---|---|---|
 | 新增交易 | `commitPosTransactionDraft`、`processTransaction` | `checkNewLedgerEntry`（關帳鎖）→ `rebalanceAccounts`；**不寫稽核** |
 | 改交易 | `editTransaction`、`deleteTransaction`、`deleteOrderWithRefundCheck`（含 `keepPaymentAsDeposit`）；撤回走刪除 | `checkLedgerMutation`（關帳鎖＋理由必填）→ `rebalanceAccounts` → 交易、稽核、帳戶同一次寫入 |
-| 日結 | `openCashSession`、`updateOpeningCash`、`closeBusinessDate`、`reopenBusinessDate` | 各自檢查；關帳／重開新增 `DailySettlement` 版次 |
+| 日結 | `openCashSession`、`updateOpeningCash`、`closeBusinessDate`、`reopenBusinessDate` | `openCashSession`：當天已有開帳就不寫入；`updateOpeningCash`：已關帳的日子不寫入；`closeBusinessDate`：檢查開帳、差額原因、重複關帳；關帳／重開新增 `DailySettlement` 版次 |
 | 營業日狀態 | `setBusinessDateStatus` | **沒有任何檢查的 setter**（`useSessionActions` 對外暴露，畫面沒用到）；伺服器端不能開放等價操作 |
 | 菜單 | `setMenuForDate`、`setTodayMenu` | 畫面層驗證；不經關帳鎖 |
 | 供應商 | `setVendors(vendors[])` | **整份陣列覆寫**；上雲後多台同時改會「最後寫入覆蓋前面」，要改成逐筆操作 |
 | 帳戶 | `addLocalStudent`、`updateLocalStudent`（只能改姓名、別名）、`setLocalStudentStatus` | 期初只能在建立時設定；不經關帳鎖 |
 | 刷臉 | `handleFaceEvent`、`applyFaceEnrollment`、`setFaceDeviceStatus` | 訂餐分支自己判斷 `=== 'closed'`；取消走 `deleteOrderWithRefundCheck` |
+| 整體重設／練習資料 | `resetData`（重設成範例初始值，**連稽核都清空**；掛在 F3「危險區域：重置系統數據」，**只在 cloud 模式顯示**）；練習專用：`startBlankData`、`loadSampleData`、`restoreDataset`、`clearPracticeTransactions` | 正式版要移除 `resetData`，或只限管理者並留紀錄；練習動作不進正式版 |
 
 ### 3.4 雲端程式的現況
 
@@ -185,7 +186,7 @@ React 19、Vite 8、TypeScript 6、Zustand 5（persist 到 IndexedDB，失敗時
   | 同步狀態 | `firebase/syncStatus.ts`、`LedgerTransaction.syncStatus`／`revision` | 練習模式沒有實際同步 |
   | 當機草稿 | `storage/crashDraft.ts` | F1 草稿復原 |
   | 儲存健康檢查 | `storage/storageHealth.ts` | `useTransactionCommit` 依它決定送出前要不要存當機草稿 |
-  | 錯誤紀錄 | `errors/errorLogger.ts` | 存在 localStorage，已去識別化 |
+  | 錯誤紀錄 | `errors/errorLogger.ts` | 存在 localStorage；以規則式遮蔽常見個資格式（「姓名：」「餘額：」、09 開頭電話等），屬 best-effort，不保證遮掉所有個資 |
   | 儲存退路 | `storage/indexedDBStorage.ts` | IndexedDB 失敗時退回 localStorage |
 - **279 個既有型別錯誤**（見 1.1）。
 - **`clearSensitiveData`**（`posPersistence.ts`）在登出時清掉 IndexedDB。上雲後，本機快取的角色要重新定義。
