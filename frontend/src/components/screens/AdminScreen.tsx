@@ -6,6 +6,7 @@ import { validateNewAccount, createLocalAccount, parseAliases, NEW_ACCOUNT_ERROR
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useMenu, useMenuForDate, useMenuActions, useStudents, useGlobalActions, useSessionActions, usePracticeDataActions } from '../../store/selectors';
 import { PracticeDataPanel } from './PracticeDataPanel';
+import { FaceTabletSimulator } from './FaceTabletSimulator';
 import { useCashClose } from '../../store/derived/useCashClose';
 import { useTweaks } from '../../hooks/useTweaks';
 import { useFirebase } from '../../hooks/useFirebase';
@@ -226,7 +227,10 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
           </div>
 
           {isLocal ? (
-            <PracticeDataPanel hasCashSession={hasCashSession} />
+            <>
+              <PracticeDataPanel hasCashSession={hasCashSession} />
+              <FaceTabletSimulator businessDate={viewDate} />
+            </>
           ) : (
             <div style={{ marginTop: '40px', borderTop: '1px solid #eee', paddingTop: '20px' }}>
               <div className="card-h" style={{ color: '#d32f2f' }}>危險區域</div>

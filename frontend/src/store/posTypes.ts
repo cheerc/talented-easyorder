@@ -1,3 +1,4 @@
+import type { FaceDeviceStatus, FaceEnrollmentUpdate, FaceOrderEvent, FaceOrderRequest } from '../domain/faceOrder';
 // TODO: [#289] Split into domain-specific stores for full decoupling
 import type { StudentAccount } from '../domain/student';
 import type { Vendor, TodayMenu } from '../domain/menu';
@@ -81,7 +82,9 @@ export interface PosState
     SessionActions,
     StudentActions,
     PracticeStateSlice,
-    PracticeDataActions {}
+    PracticeDataActions,
+    FaceStateSlice,
+    FaceActions {}
 
 // ─── Per-Domain Action Interfaces (Ref: #264) ───
 
@@ -128,6 +131,23 @@ export interface StudentActions {
   disableStudent: (input: { studentId: string; operatorId: string }) => Promise<void>;
 }
 
+
+/** 刷臉訂餐：平板送來的事件與處理結果、平板連線狀態。 */
+export interface FaceStateSlice {
+  /** 新的在前。 */
+  faceEvents: FaceOrderEvent[];
+  faceDevices: Record<string, FaceDeviceStatus>;
+}
+
+/** 刷臉訂餐 actions。平板（或練習模式的模擬平板）呼叫；規則見 domain/faceOrder.ts。 */
+export interface FaceActions {
+  /** 處理一個訂餐／取消事件並回傳結果；同一個 eventId 重送時回傳第一次的結果，不重複入帳。 */
+  handleFaceEvent: (request: FaceOrderRequest, now: string) => FaceOrderEvent;
+  /** 平板回報註冊異動，更新帳戶的人臉註冊狀態。找不到帳戶時回傳 false。 */
+  applyFaceEnrollment: (update: FaceEnrollmentUpdate) => boolean;
+  /** 平板上線、離線或心跳。 */
+  setFaceDeviceStatus: (status: FaceDeviceStatus) => void;
+}
 
 /** M0：練習模式的模擬營業日；null 表示使用今天的實際日期。 */
 export interface PracticeStateSlice {

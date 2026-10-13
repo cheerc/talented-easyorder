@@ -11,6 +11,8 @@ export interface StudentAccount {
   groupName?: string;
   faceProfileId?: string;
   faceEnrollmentStatus: FaceEnrollmentStatus;
+  /** 平板上這個帳戶註冊了幾張臉（共用帳戶的兄弟姊妹各一張）；平板回報才有。 */
+  faceCount?: number;
   /** M0：開帳前的期初餘額。獨立於交易，重算餘額時作為起點。 */
   openingBalance?: OpeningBalance;
   createdAt: string;

@@ -56,6 +56,8 @@ vi.mock('../../store/selectors', () => ({
   useStudentActions: () => ({ addStudent: vi.fn(), disableStudent: vi.fn() }),
   usePracticeDataActions: () => ({ startBlankData: vi.fn(), loadSampleData: vi.fn(), addLocalStudent: vi.fn(), setSimulationDate: vi.fn(), updateLocalStudent: vi.fn(), setLocalStudentStatus: vi.fn() }),
   useSimulationDate: () => null,
+  useFace: () => ({ faceEvents: [], faceDevices: {} }),
+  useFaceActions: () => ({ handleFaceEvent: vi.fn(), applyFaceEnrollment: vi.fn(), setFaceDeviceStatus: vi.fn() }),
 }));
 
 vi.mock('../../store/derived/useCashClose', () => ({

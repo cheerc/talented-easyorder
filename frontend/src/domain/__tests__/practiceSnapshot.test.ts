@@ -30,6 +30,8 @@ function dataset(): PracticeDataset {
     cashSessions: { '2026-10-12': { cashSessionId: 'c1', businessDate: '2026-10-12', openingCash: 1000, openedBy: 'op', openedAt: '2026-10-12T08:00:00Z', status: 'open', revision: 1 } },
     menusByDate: { '2026-10-12': { businessDate: '2026-10-12', itemName: '晚餐', price: 90, vendorId: 'v1', vendorNameSnapshot: '練習店', updatedAt: '2026-10-12T00:00:00Z', revision: 1 } },
     simulationDate: null,
+    faceEvents: [],
+    faceDevices: {},
   };
 }
 
@@ -47,7 +49,7 @@ describe('practice snapshot round trip', () => {
   });
 
   it('round-trips a blank dataset', () => {
-    const blank: PracticeDataset = { students: [], transactions: [], vendors: [], todayMenu: EMPTY_TODAY_MENU, auditEvents: [], dailySettlements: [], businessDateStatuses: {}, cashSessions: {}, menusByDate: {}, simulationDate: null };
+    const blank: PracticeDataset = { students: [], transactions: [], vendors: [], todayMenu: EMPTY_TODAY_MENU, auditEvents: [], dailySettlements: [], businessDateStatuses: {}, cashSessions: {}, menusByDate: {}, simulationDate: null, faceEvents: [], faceDevices: {} };
     const r = parseSnapshot(text(buildSnapshot(blank, '2026-10-12T09:30:00Z')));
     expect(r.ok).toBe(true);
   });
@@ -55,7 +57,7 @@ describe('practice snapshot round trip', () => {
   it('pickDataset drops actions and unrelated fields', () => {
     const withExtras = { ...dataset(), someAction: () => {}, schemaVersion: 2 };
     expect(Object.keys(pickDataset(withExtras)).sort()).toEqual(
-      ['auditEvents', 'businessDateStatuses', 'cashSessions', 'dailySettlements', 'menusByDate', 'simulationDate', 'students', 'todayMenu', 'transactions', 'vendors'],
+      ['auditEvents', 'businessDateStatuses', 'cashSessions', 'dailySettlements', 'faceDevices', 'faceEvents', 'menusByDate', 'simulationDate', 'students', 'todayMenu', 'transactions', 'vendors'],
     );
   });
 });
@@ -104,6 +106,25 @@ describe('snapshot hardening (review on #443)', () => {
     expect(ok.ok && ok.snapshot.data.simulationDate).toBe('2026-10-14');
     const bad = parseSnapshot(text(buildSnapshot({ ...d, simulationDate: '10/14' }, 'x')));
     expect(bad).toEqual({ ok: false, reason: '模擬營業日格式不正確：10/14' });
+  });
+
+  it('刷臉事件與平板狀態跟著快照匯出還原；舊快照沒有時視為空；格式錯誤擋下', () => {
+    const ev = { eventId: 'e1', deviceId: 'faceorder-01', action: 'order' as const, studentId: '001', businessDate: '2026-10-12',
+      recognizedAt: 'x', status: 'accepted' as const, handledAt: 'y' };
+    const d = { ...dataset(), faceEvents: [ev], faceDevices: { 'faceorder-01': { deviceId: 'faceorder-01', online: true, lastSeenAt: 'y' } } };
+    const ok = parseSnapshot(text(buildSnapshot(d, 'x')));
+    expect(ok.ok && ok.snapshot.data.faceEvents).toEqual([ev]);
+    expect(ok.ok && Object.keys(ok.snapshot.data.faceDevices)).toEqual(['faceorder-01']);
+
+    const old = JSON.parse(text(buildSnapshot(dataset(), 'x')));
+    delete old.data.faceEvents;
+    delete old.data.faceDevices;
+    const r = parseSnapshot(JSON.stringify(old));
+    expect(r.ok && r.snapshot.data.faceEvents).toEqual([]);
+
+    const bad = JSON.parse(text(buildSnapshot(d, 'x')));
+    bad.data.faceEvents[0].action = 'pay';
+    expect(parseSnapshot(JSON.stringify(bad)).ok).toBe(false);
   });
 
   it('treats a snapshot without simulationDate (older export) as real date', () => {

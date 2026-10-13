@@ -1,3 +1,4 @@
+import type { FaceDeviceStatus, FaceOrderEvent } from './faceOrder';
 // M0：本機練習快照（完整 JSON 匯出／還原）與「只清除練習交易」。
 // 見 docs/superpowers/specs/frontend-prototype-workflow-spec.md §3 S-DATA。
 
@@ -27,6 +28,9 @@ export interface PracticeDataset {
   cashSessions: Record<string, DailyCashSession>;
   /** 練習模式的模擬營業日；null 表示使用實際日期。 */
   simulationDate: string | null;
+  /** 刷臉平板送來的事件與處理結果（舊快照沒有，還原時視為空）。 */
+  faceEvents: FaceOrderEvent[];
+  faceDevices: Record<string, FaceDeviceStatus>;
 }
 
 export interface PracticeSnapshot {
@@ -57,7 +61,12 @@ export function countDataset(d: PracticeDataset): DatasetCounts {
 }
 
 export function pickDataset(
-  state: Omit<PracticeDataset, 'simulationDate' | 'menusByDate'> & { simulationDate?: string | null; menusByDate?: Record<string, TodayMenu> },
+  state: Omit<PracticeDataset, 'simulationDate' | 'menusByDate' | 'faceEvents' | 'faceDevices'> & {
+    simulationDate?: string | null;
+    menusByDate?: Record<string, TodayMenu>;
+    faceEvents?: FaceOrderEvent[];
+    faceDevices?: Record<string, FaceDeviceStatus>;
+  },
 ): PracticeDataset {
   return {
     students: state.students,
@@ -70,6 +79,8 @@ export function pickDataset(
     businessDateStatuses: state.businessDateStatuses,
     cashSessions: state.cashSessions,
     simulationDate: state.simulationDate ?? null,
+    faceEvents: state.faceEvents ?? [],
+    faceDevices: state.faceDevices ?? {},
   };
 }
 
@@ -121,7 +132,7 @@ export function parseSnapshot(text: string): ParseSnapshotResult {
   const validation = validatePersistedState(r.data);
   if (!validation.ok) return { ok: false, reason: `資料格式不正確：${validation.reason}` };
   const rawData = r.data as Record<string, unknown>;
-  const data = { ...(r.data as Omit<PracticeDataset, 'simulationDate' | 'menusByDate'>), menusByDate: {}, simulationDate: null } as PracticeDataset;
+  const data = { ...(r.data as Omit<PracticeDataset, 'simulationDate' | 'menusByDate'>), menusByDate: {}, simulationDate: null, faceEvents: [], faceDevices: {} } as PracticeDataset;
 
   const sim = rawData.simulationDate;
   if (sim !== undefined && sim !== null) {
@@ -131,6 +142,25 @@ export function parseSnapshot(text: string): ParseSnapshotResult {
 
   // 舊快照沒有 menusByDate：視為尚未有日期設定，沿用 todayMenu。內容已由 validatePersistedState 檢查。
   if (rawData.menusByDate !== undefined) data.menusByDate = rawData.menusByDate as Record<string, TodayMenu>;
+
+  // 刷臉事件與平板狀態：舊快照沒有，視為空。
+  if (rawData.faceEvents !== undefined) {
+    if (!Array.isArray(rawData.faceEvents)) return { ok: false, reason: '刷臉事件格式不正確。' };
+    for (const e of rawData.faceEvents as unknown[]) {
+      const ev = e as Record<string, unknown>;
+      if (typeof ev !== 'object' || ev === null || typeof ev.eventId !== 'string' || typeof ev.studentId !== 'string'
+        || (ev.action !== 'order' && ev.action !== 'cancel') || (ev.status !== 'accepted' && ev.status !== 'rejected')) {
+        return { ok: false, reason: '刷臉事件格式不正確。' };
+      }
+    }
+    data.faceEvents = rawData.faceEvents as FaceOrderEvent[];
+  }
+  if (rawData.faceDevices !== undefined) {
+    if (typeof rawData.faceDevices !== 'object' || rawData.faceDevices === null || Array.isArray(rawData.faceDevices)) {
+      return { ok: false, reason: '平板狀態格式不正確。' };
+    }
+    data.faceDevices = rawData.faceDevices as Record<string, FaceDeviceStatus>;
+  }
 
   for (const [date, session] of Object.entries(data.cashSessions as Record<string, unknown>)) {
     const reason = cashSessionProblem(date, session);
@@ -181,5 +211,8 @@ export function clearTransactionsKeepRoster(state: PracticeDataset): PracticeDat
     businessDateStatuses: {},
     cashSessions: {},
     simulationDate: state.simulationDate,
+    // 刷臉事件跟著交易一起清掉；平板登記保留。
+    faceEvents: [],
+    faceDevices: state.faceDevices,
   };
 }
