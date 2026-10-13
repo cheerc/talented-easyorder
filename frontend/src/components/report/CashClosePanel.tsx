@@ -18,6 +18,8 @@ interface CashClosePanelProps {
   /** 本人在 F3 確認過的開帳金額；null 表示還沒設定，不能關帳。 */
   openingCash: number | null;
   onClose: (countedCash: number, note: string) => LedgerMutationResult;
+  /** M3：放在 F2「日末點現金」裡展開時，不再自己畫卡片與標題。 */
+  embedded?: boolean;
 }
 
 export function CashClosePanel({
@@ -29,6 +31,7 @@ export function CashClosePanel({
   openingCash,
   onClose,
   queuedRowCount = 0,
+  embedded = false,
 }: CashClosePanelProps) {
   const [countedCash, setCountedCash] = useState<number | ''>('');
   const [note, setNote] = useState('');
@@ -68,12 +71,13 @@ export function CashClosePanel({
   };
 
   return (
-    <div className="card cash-close-panel" style={{ marginBottom: '16px', padding: '16px 20px' }}>
-      <div className="card-h" style={{ marginBottom: '12px' }}>
-        結帳關帳
-        {dateStatus === 'closed' && <span className="pill" style={{ marginLeft: '8px', background: 'var(--c-warn)' }}>已關閉</span>}
-        {dateStatus === 'reopened' && <span className="pill" style={{ marginLeft: '8px', background: 'var(--accent)' }}>已重開</span>}
-      </div>
+    <div className={embedded ? 'cash-close-panel' : 'card cash-close-panel'} style={embedded ? undefined : { marginBottom: '16px', padding: '16px 20px' }}>
+      {!embedded && (
+        <div className="card-h" style={{ marginBottom: '12px' }}>
+          結帳關帳
+          {dateStatus === 'reopened' && <span className="pill" style={{ marginLeft: '8px', background: 'var(--accent)' }}>已重開</span>}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div>

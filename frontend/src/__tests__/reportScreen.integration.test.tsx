@@ -47,6 +47,8 @@ describe('reportScreen integration', () => {
 
     await renderApp();
     await userEvent.click(screen.getByText('今日帳'));
+    // M3：關帳表單收在「日末點現金」裡。
+    await userEvent.click(await screen.findByRole('button', { name: '日末點現金' }));
     await waitFor(() => {
       expect(screen.getByText('開帳金額')).toBeTruthy();
       expect(screen.getByText('系統應有抽屜現金')).toBeTruthy();

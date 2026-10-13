@@ -13,7 +13,9 @@ import { LedgerGroupedTable } from '../report/LedgerGroupedTable';
 import { CashClosePanel } from '../report/CashClosePanel';
 import { ExportActions } from '../report/ExportActions';
 import { ReopenDialog } from '../report/ReopenDialog';
-import { useSessionActions, useTransactionActions, useMenuForDate, useStudents, useTransactions } from '../../store/selectors';
+import { DayEndBar } from '../report/DayEndBar';
+import { useSession, useSessionActions, useTransactionActions, useMenuForDate, useStudents, useTransactions } from '../../store/selectors';
+import { latestSettlement } from '../../domain/cashClose';
 import { useLedgerReport } from '../../store/derived/useLedgerReport';
 import { useCashClose } from '../../store/derived/useCashClose';
 import { useLedgerExport } from '../../store/derived/useLedgerExport';
@@ -36,6 +38,13 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
   const [customEnd, setCustomEnd] = useState(viewDate);
   const [expandedSids, setExpandedSids] = useState<Set<string>>(new Set());
   const [showReopen, setShowReopen] = useState(false);
+  // M3：關帳表單收在「日末點現金」裡，換日期時收起。
+  const [dayEndOpen, setDayEndOpen] = useState(false);
+  const [dayEndDate, setDayEndDate] = useState(viewDate);
+  if (dayEndDate !== viewDate) {
+    setDayEndDate(viewDate);
+    setDayEndOpen(false);
+  }
   const [editingTx, setEditingTx] = useState<TransactionEditView | null>(null);
   const [studentSearch, setStudentSearch] = useState(studentFilter || '');
 
@@ -57,6 +66,11 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
     [deletingTx, students],
   );
   const { dateStatus, openingCash } = useCashClose(viewDate);
+  const { dailySettlements } = useSession();
+  const daySettlement = useMemo(() => latestSettlement(viewDate, dailySettlements), [viewDate, dailySettlements]);
+  const dayLastClosed = useMemo(() => latestSettlement(viewDate, dailySettlements.filter(s => s.status === 'closed')), [viewDate, dailySettlements]);
+  // 關帳成功後表單收起；重開後要再按「日末點現金」才展開。
+  if (dateStatus === 'closed' && dayEndOpen) setDayEndOpen(false);
 
   const { filtered, totals, groups } = useLedgerReport({
     dateRange, viewDate, customStart, customEnd,
@@ -181,30 +195,32 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
 
       <ReportSummaryStats totals={totals} itemName={todayMenu.itemName} counterCashFlow={counterCashFlow} />
 
-      {dateStatus === 'closed' && (
-        <button className="ghost-btn" style={{ marginBottom: '12px' }} onClick={() => setShowReopen(true)}>
-          重新開啟日期
-        </button>
-      )}
-
-      <CashClosePanel
-        key={viewDate}
-        totals={dayTotals}
+      <DayEndBar
         businessDate={viewDate}
         dateStatus={dateStatus}
-        hasQueuedRows={hasQueuedRows}
-        queuedRowCount={queuedRowCount}
-        hasFailedConflict={hasFailedConflict}
         openingCash={openingCash}
-        onClose={handleCashClose}
-      />
+        netCash={dayTotals.netCash}
+        settlement={daySettlement}
+        lastClosed={dayLastClosed}
+        expanded={dayEndOpen}
+        onToggle={() => setDayEndOpen(o => !o)}
+        onReopen={() => setShowReopen(true)}
+      >
+        <CashClosePanel
+          key={viewDate}
+          embedded
+          totals={dayTotals}
+          businessDate={viewDate}
+          dateStatus={dateStatus}
+          hasQueuedRows={hasQueuedRows}
+          queuedRowCount={queuedRowCount}
+          hasFailedConflict={hasFailedConflict}
+          openingCash={openingCash}
+          onClose={handleCashClose}
+        />
+      </DayEndBar>
 
-      <ExportActions
-        onExportCsv={() => exportCsv(filtered, displayMode)}
-        onPrint={() => window.print()}
-      />
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
         <input
           className="adm-input"
           aria-label="搜尋學員編號或姓名"
@@ -219,6 +235,11 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
             清除
           </button>
         )}
+        <span style={{ flex: 1 }} />
+        <ExportActions
+          onExportCsv={() => exportCsv(filtered, displayMode)}
+          onPrint={() => window.print()}
+        />
       </div>
 
       <LedgerGroupedTable
