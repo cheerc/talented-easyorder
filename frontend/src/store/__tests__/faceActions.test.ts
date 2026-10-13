@@ -51,6 +51,7 @@ describe('刷臉訂餐自動入帳', () => {
     s().handleFaceEvent(req('001'), t(2));
     const again = s().handleFaceEvent(first, t(3));
     expect(again.handledAt).toBe(t(1));
+    expect(s().faceEvents.map(e => e.additional)).toEqual([true, undefined]);
     expect(s().transactions.filter(t => t.type === 'order')).toHaveLength(2);
     expect(bal('001')).toBe(20);
     expect(s().faceEvents).toHaveLength(2);

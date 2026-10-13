@@ -62,6 +62,8 @@ export interface FaceOrderEvent extends FaceOrderRequest {
   transactionId?: string;
   /** 帳戶名稱（處理當下）。 */
   studentName?: string;
+  /** 訂餐時這個人當天已經有訂餐（第二次刷臉的「加訂一份」）。舊事件沒有這個欄位。 */
+  additional?: boolean;
   handledAt: string;
 }
 
@@ -171,3 +173,30 @@ export const FACE_ENROLLMENT_LABELS: Record<FaceEnrollmentStatus, string> = {
   disabled: '已停用',
   needs_review: '待確認',
 };
+
+/** F1「刷臉訂餐」動態：某一天的刷臉事件，新的在前。 */
+export function faceEventsForDate(events: readonly FaceOrderEvent[], businessDate: string, limit = 10): FaceOrderEvent[] {
+  return events
+    .filter(e => e.businessDate === businessDate)
+    .sort((a, b) => b.handledAt.localeCompare(a.handledAt))
+    .slice(0, limit);
+}
+
+/** 動態上的動作：訂餐／加訂／取消。 */
+export function faceEventActionLabel(ev: Pick<FaceOrderEvent, 'action' | 'additional'>): string {
+  if (ev.action === 'cancel') return '取消';
+  return ev.additional ? '加訂' : '訂餐';
+}
+
+/** 動態上的結果：入帳、已取消（附提醒）或退回＋原因。 */
+export function faceEventResultLabel(ev: Pick<FaceOrderEvent, 'action' | 'status' | 'reason' | 'notice'>): string {
+  if (ev.status === 'rejected') return `退回：${ev.reason ?? '請到櫃台。'}`;
+  const base = ev.action === 'cancel' ? '已取消' : '入帳';
+  return ev.notice ? `${base} · ${ev.notice}` : base;
+}
+
+/** F3 帳戶清單的人臉欄（唯讀）：狀態，平板回報過張數時加「（N 張）」。 */
+export function faceEnrollmentText(student: Pick<StudentAccount, 'faceEnrollmentStatus' | 'faceCount'>): string {
+  const label = FACE_ENROLLMENT_LABELS[student.faceEnrollmentStatus] ?? FACE_ENROLLMENT_LABELS.none;
+  return typeof student.faceCount === 'number' ? `${label}（${student.faceCount} 張）` : label;
+}

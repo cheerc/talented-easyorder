@@ -66,6 +66,7 @@ export function createFaceActions(
         });
       }
 
+      const additional = state.transactions.some(t => t.studentId === student.studentId && t.businessDate === request.businessDate && t.type === 'order');
       const menu = resolveMenuForDate(state.menusByDate, state.todayMenu, request.businessDate).menu;
       if (!isMenuReady(menu)) return reject(FACE_REJECT_MESSAGES.noMenu, student.displayName);
 
@@ -88,7 +89,7 @@ export function createFaceActions(
       set(rebalanceAccounts(latest.students, latest.transactions, [tx, ...latest.transactions], [student.studentId]));
       return record({
         ...request, status: 'accepted', transactionId: tx.transactionId,
-        studentName: student.displayName, handledAt: now,
+        studentName: student.displayName, handledAt: now, ...(additional ? { additional: true } : {}),
       });
     },
 

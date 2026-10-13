@@ -183,3 +183,27 @@
     padding: 12px 16px;
   }
 }
+
+/* 刷臉平板在線／離線（只有登記過平板才顯示；不放刷臉統計數字） */
+.face-device {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--line-2);
+  font-size: 12px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  cursor: help;
+}
+
+.face-device .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.face-device-off { color: var(--warn); }
+.face-device-off .dot { background: var(--warn); }

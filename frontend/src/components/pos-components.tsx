@@ -12,6 +12,7 @@ export { IdleHero } from './pos/IdleHero';
 export { DuplicateWarningBanner } from './pos/DuplicateWarningBanner';
 export { ConfirmBanner } from './pos/ConfirmBanner';
 export { RecentStrip } from './pos/RecentStrip';
+export { FaceActivityStrip } from './pos/FaceActivityStrip';
 export { ExpensePanel } from './pos/ExpensePanel';
 export { TransactionStatusView } from './pos/TransactionStatusView';
 export { DeleteConfirmDialog } from './pos/DeleteConfirmDialog';

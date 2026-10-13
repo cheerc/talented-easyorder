@@ -64,11 +64,12 @@
 .adm-stu-list {
   display: flex;
   flex-direction: column;
+  container-type: inline-size;
 }
 
 .adm-stu {
   display: grid;
-  grid-template-columns: 50px 1fr auto auto;
+  grid-template-columns: 50px 1fr auto auto auto;
   gap: 10px;
   align-items: center;
   padding: 9px 0;
@@ -91,6 +92,19 @@
   padding: 2px 7px;
   background: var(--line-2);
   border-radius: 99px;
+}
+
+.adm-stu-face {
+  font-size: 12px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+/* 清單窄的時候，人臉欄移到姓名下方，不擠壓姓名 */
+@container (max-width: 420px) {
+  .adm-stu { grid-template-columns: 50px minmax(0, 1fr) auto auto; row-gap: 2px; }
+  .adm-stu.adm-stu-2col { grid-template-columns: 50px minmax(0, 1fr) auto; }
+  .adm-stu-face { grid-column: 2; grid-row: 2; }
 }
 
 .adm-stu-bal {
