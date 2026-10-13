@@ -318,7 +318,7 @@ const StudentList = React.memo(function StudentList({ students, editable = false
               {s.currentBalance < 0 ? `欠 $${fmt(s.currentBalance)}` : `$${fmt(s.currentBalance)}`}
             </span>
             {editable && (
-              <span style={{ display: 'flex', gap: '4px' }}>
+              <span className="adm-stu-actions">
                 <button className="ghost-btn" aria-label={`編輯 ${s.studentId}`} onClick={() => setEditingId(s.studentId)}>編輯</button>
                 <button
                   className="ghost-btn"
