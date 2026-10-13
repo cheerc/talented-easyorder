@@ -156,6 +156,13 @@ describe('TodayDashboard', () => {
     expect(card?.textContent).toContain('20:00:00');
   });
 
+  it('M3：最近交易的類型顯示中文，負數有減號', () => {
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
+    const rows = Array.from(container.querySelectorAll('.db-tx-row')).map(r => r.textContent ?? '');
+    expect(rows.join('')).not.toMatch(/order|payment|expense/);
+    expect(rows.some(r => r.includes('−90'))).toBe(true);
+  });
+
   it('shows queued count synced when 0', () => {
     store.transactions.forEach(t => { t.syncStatus = 'local'; });
     const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);

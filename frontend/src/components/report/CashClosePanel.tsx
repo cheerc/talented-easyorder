@@ -99,6 +99,8 @@ export function CashClosePanel({
           <NumericInput
             id="counted-cash"
             aria-label="實際點算金額"
+            // 在 F2「日末點現金」展開時直接可以輸入點算金額（#460 review 建議）。
+            autoFocus={embedded}
             className="adm-input mono"
             style={{ width: '140px', fontSize: '18px' }}
             value={countedCash}
