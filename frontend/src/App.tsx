@@ -123,6 +123,7 @@ function AppContent() {
   // Ref: #281 — Extracted to useCommitLifecycle hook
   const { lastSync } = useCommitLifecycle({
     stateKind: state.kind,
+    successTransactionId: state.kind === 'success' ? state.transactionId : null,
     lastCommittedTxIdRef,
     setUndoCountdown,
     setSyncing,

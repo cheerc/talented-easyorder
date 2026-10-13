@@ -6,7 +6,7 @@ import { createOrderActions } from './orderActions';
 import { createPaymentActions } from './paymentActions';
 import { createEditActions } from './editActions';
 import { rebalanceAccounts } from '../../domain/ledger';
-import { checkNewLedgerEntry, type LedgerMutationResult } from '../../domain/ledgerAudit';
+import { checkNewLedgerEntry, type LedgerCommitResult } from '../../domain/ledgerAudit';
 
 export function createTransactionActions(
   set: (partial: Partial<PosState> | ((state: PosState) => Partial<PosState>)) => void,
@@ -17,7 +17,7 @@ export function createTransactionActions(
   const editActions = createEditActions(set, get);
 
   return {
-    commitPosTransactionDraft: (draft: PosTransactionDraft): LedgerMutationResult => {
+    commitPosTransactionDraft: (draft: PosTransactionDraft): LedgerCommitResult => {
       const state = get();
       // M2：關帳日在 store 層就擋下，畫面鎖之外再多一道。
       const check = checkNewLedgerEntry(state.businessDateStatuses[draft.intent.businessDate]);
@@ -29,7 +29,7 @@ export function createTransactionActions(
       if (isExpense) {
         const newTransaction = buildExpenseTransaction(draft);
         set({ transactions: [newTransaction, ...state.transactions] });
-        return { ok: true };
+        return { ok: true, transactionId: newTransaction.transactionId };
       }
 
       const studentIndex = state.students.findIndex(s => s.studentId === sid);
@@ -39,7 +39,7 @@ export function createTransactionActions(
 
       // M2 F03：補登前幾天的交易時，之後各筆的結餘也要一起重算。
       set(rebalanceAccounts(state.students, state.transactions, [newTransaction, ...state.transactions], [sid]));
-      return { ok: true };
+      return { ok: true, transactionId: newTransaction.transactionId };
     },
 
     ...orderActions,

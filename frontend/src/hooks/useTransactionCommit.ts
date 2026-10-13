@@ -11,7 +11,7 @@ import type { TodayMenu } from '../domain/menu';
 import type { LedgerTransaction } from '../domain/ledger';
 import { countActiveOrdersForStudent, CASHIER_SENTINEL } from '../domain/ledger';
 import type { PosTransactionDraft } from '../domain/posTransaction';
-import type { LedgerMutationResult } from '../domain/ledgerAudit';
+import type { LedgerCommitResult } from '../domain/ledgerAudit';
 import { buildPosTransactionDraft, deriveTransactionAttributes, parsePaidAmount } from '../domain/posTransaction';
 import { saveCrashDraft } from '../storage/crashDraft';
 import { checkStorageHealth } from '../storage/storageHealth';
@@ -28,7 +28,7 @@ export function useTransactionCommit(
   students: StudentAccount[],
   todayMenu: TodayMenu,
   transactions: LedgerTransaction[],
-  commitPosTransactionDraft: (draft: PosTransactionDraft) => LedgerMutationResult,
+  commitPosTransactionDraft: (draft: PosTransactionDraft) => LedgerCommitResult,
   args: UseTransactionCommitArgs,
 ) {
   const committingRef = useRef(false);
@@ -169,7 +169,8 @@ export function useTransactionCommit(
         }
         dispatch({
           type: 'commitSucceeded',
-          transactionId: draft.intent.businessDate + '-' + Date.now(),
+          // M2 L05：成功畫面的撤回要用真正存進去的那一筆編號。
+          transactionId: result.transactionId,
           syncStatus: 'queued',
         });
       } else {
@@ -204,7 +205,8 @@ export function useTransactionCommit(
         }
         dispatch({
           type: 'commitSucceeded',
-          transactionId: draft.intent.businessDate + '-' + Date.now(),
+          // M2 L05：成功畫面的撤回要用真正存進去的那一筆編號。
+          transactionId: result.transactionId,
           syncStatus: 'queued',
         });
       }

@@ -2,7 +2,7 @@
 import type { StudentAccount } from '../domain/student';
 import type { Vendor, TodayMenu } from '../domain/menu';
 import type { LedgerTransaction } from '../domain/ledger';
-import type { LedgerAuditEvent, LedgerMutationOptions, LedgerMutationResult } from '../domain/ledgerAudit';
+import type { LedgerAuditEvent, LedgerMutationOptions, LedgerMutationResult, LedgerCommitResult } from '../domain/ledgerAudit';
 import type { PosTransactionDraft } from '../domain/posTransaction';
 import type { DailyCashSession } from '../domain/cashSession';
 import type { DailySettlement } from '../domain/cashClose';
@@ -88,7 +88,7 @@ export interface PosState
 /** Transaction domain actions */
 export interface TransactionActions {
   /** M2：關帳日回傳失敗、不寫入。 */
-  commitPosTransactionDraft: (draft: PosTransactionDraft) => LedgerMutationResult;
+  commitPosTransactionDraft: (draft: PosTransactionDraft) => LedgerCommitResult;
   processTransaction: (
     studentId: string,
     type: LedgerTransaction['type'],

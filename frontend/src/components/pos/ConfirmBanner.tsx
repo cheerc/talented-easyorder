@@ -20,6 +20,8 @@ export const ConfirmBanner = React.memo(function ConfirmBanner({ flash, onDismis
     if (!flash) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') {
+        // M2 L05：焦點在撤回鍵上時，Enter／空白鍵交給按鈕本身，不當成「下一位」。
+        if (e.key !== 'Escape' && e.target instanceof HTMLElement && e.target.dataset.undo === 'true') return;
         e.preventDefault();
         // M1 K08：送出那一下的長按不能順手把成功畫面關掉，要放開再按一次才回搜尋。
         if (e.repeat) return;
@@ -54,10 +56,11 @@ export const ConfirmBanner = React.memo(function ConfirmBanner({ flash, onDismis
         {onUndo && undoCountdown !== undefined && undoCountdown > 0 && (
           <button
             className="rpt-mini-btn rpt-mini-del"
+            data-undo="true"
             onClick={(e) => { e.stopPropagation(); onUndo(); }}
             style={{ padding: '4px 12px', fontSize: '13px' }}
           >
-            復原 ({undoCountdown}s)
+            撤回這筆（{undoCountdown} 秒）
           </button>
         )}
       </div>
