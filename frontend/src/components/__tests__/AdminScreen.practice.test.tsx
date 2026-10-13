@@ -131,6 +131,24 @@ describe('AdminScreen practice data (local mode)', () => {
     expect(s.students.map(x => [x.studentId, x.currentBalance])).toEqual([['001', 200]]);
   });
 
+  it('只清除練習交易的確認視窗寫明刷臉訂餐動態一起清掉，平板狀態與人臉註冊欄保留', () => {
+    usePosStore.getState().startBlankData();
+    render(<AdminScreen viewDate="2026-10-12" />);
+    fillAccount('001', '甲生', '200');
+    usePosStore.getState().setMenuForDate('2026-10-12', { itemName: '排骨便當', price: 90, vendorId: '', vendorNameSnapshot: '' }, 'now');
+    usePosStore.getState().handleFaceEvent({ eventId: 'e1', deviceId: 'faceorder-01', action: 'order', studentId: '001', businessDate: '2026-10-12', recognizedAt: '2026-10-12T02:00:00.000Z' }, '2026-10-12T02:00:00.000Z');
+    usePosStore.getState().applyFaceEnrollment({ deviceId: 'faceorder-01', studentId: '001', status: 'enrolled', faceCount: 2, reportedAt: '2026-10-12T02:00:00.000Z' });
+
+    fireEvent.click(screen.getByRole('button', { name: '只清除練習交易…' }));
+    expect(screen.getByText(/、1 筆刷臉訂餐動態；/)).toBeTruthy();
+    expect(screen.getByText(/保留.*刷臉平板狀態與人臉註冊欄/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '確認清除交易' }));
+    const s = usePosStore.getState();
+    expect(s.faceEvents).toEqual([]);
+    expect(s.faceDevices['faceorder-01']).toBeDefined();
+    expect(s.students[0]).toMatchObject({ faceEnrollmentStatus: 'enrolled', faceCount: 2 });
+  });
+
   it('edits aliases and name; deactivated accounts leave F1 search but keep history (S04)', () => {
     usePosStore.getState().startBlankData();
     render(<AdminScreen viewDate="2026-10-12" />);

@@ -485,6 +485,13 @@
   color: var(--warn);
 }
 
+/* M4：櫃台收支「←→ 選擇」提示和面板正文一樣大，看得清楚 */
+.expense-key-hint {
+  text-align: center;
+  font-size: var(--fs);
+  color: var(--ink-2);
+}
+
 .dup-warn-h {
   font-size: 18px;
   font-weight: 600;

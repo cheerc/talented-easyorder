@@ -124,7 +124,7 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
               </button>
             </div>
           </div>
-          <div className="dim" style={{ textAlign: 'center', fontSize: '12px' }}>
+          <div className="expense-key-hint">
             <span className="kbd">←</span><span className="kbd">→</span> 選擇 · <span className="kbd">↵</span> 確認 · <span className="kbd">Esc</span> 取消
           </div>
         </>
@@ -146,7 +146,7 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
               ))}
             </div>
           </div>
-          <div className="dim" style={{ textAlign: 'center', fontSize: '12px' }}>
+          <div className="expense-key-hint">
             <span className="kbd">←</span><span className="kbd">→</span> 選擇 · <span className="kbd">↵</span> 確認 · <span className="kbd">Esc</span> 取消
           </div>
         </>

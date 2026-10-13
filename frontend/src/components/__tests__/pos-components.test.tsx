@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
@@ -551,19 +551,69 @@ describe('ConfirmBanner', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('M1 K08：長按 Enter 的重複事件不關閉成功畫面，放開再按才回搜尋', () => {
-    const onDismiss = vi.fn();
-    render(
-      <ConfirmBanner flash={{ id: 1, name: '甲', sid: '001', detail: '訂餐: 便當', amount: -90, after: 110 }} onDismiss={onDismiss} />
-    );
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', repeat: true }));
-    expect(onDismiss).not.toHaveBeenCalled();
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
-    expect(onDismiss).toHaveBeenCalledOnce();
+  describe('M4：送出那一下的 Enter 不能直接帶到下一位，要放開後再按', () => {
+    const flash = { id: 1, name: '甲', sid: '001', detail: '訂餐: 便當', amount: -90, after: 110 };
+    const down = (repeat = false) => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', repeat }));
+    const up = () => window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter' }));
+    beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-13T02:00:00.000Z')); });
+    afterEach(() => { vi.useRealTimers(); });
+    const later = (ms: number) => vi.setSystemTime(new Date(Date.now() + ms));
+
+    it('長按 Enter 的重複事件不關閉成功畫面；還沒放開時再來的 Enter 也不算', () => {
+      const onDismiss = vi.fn();
+      render(<ConfirmBanner flash={flash} onDismiss={onDismiss} />);
+      later(600); down(true); down(true);
+      later(600); down();
+      expect(onDismiss).not.toHaveBeenCalled();
+      up(); later(50); down();
+      expect(onDismiss).toHaveBeenCalledOnce();
+    });
+
+    it('送出後很快的第二下（連按兩下）不關閉成功畫面', () => {
+      const onDismiss = vi.fn();
+      render(<ConfirmBanner flash={flash} onDismiss={onDismiss} />);
+      later(80); up();
+      later(80); down(); up();
+      expect(onDismiss).not.toHaveBeenCalled();
+    });
+
+    it('放開後隔一下再按一次 Enter，照常回下一位（正常流程不變）', () => {
+      const onDismiss = vi.fn();
+      render(<ConfirmBanner flash={flash} onDismiss={onDismiss} />);
+      later(80); up();
+      later(500); down();
+      expect(onDismiss).toHaveBeenCalledOnce();
+    });
+
+    it('用滑鼠送出（沒有按著 Enter）：隔一下按一次 Enter 就回下一位', () => {
+      const onDismiss = vi.fn();
+      render(<ConfirmBanner flash={flash} onDismiss={onDismiss} />);
+      later(500); down();
+      expect(onDismiss).toHaveBeenCalledOnce();
+    });
+
+    it('Esc 不受影響，馬上可以關閉', () => {
+      const onDismiss = vi.fn();
+      render(<ConfirmBanner flash={flash} onDismiss={onDismiss} />);
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(onDismiss).toHaveBeenCalledOnce();
+    });
   });
 });
 
 describe('ExpensePanel smoke', () => {
+  it('M4：選支出／收入的「←→ 選擇」提示用正文大小的樣式，不再是 12px 淡字', () => {
+    const { container } = render(
+      <ExpensePanel kind="expense_direction" amountText="50" amount={50}
+        onAmountChange={() => {}} onAmountConfirm={() => {}} onDirectionSelect={() => {}}
+        onReasonSelect={() => {}} onNoteChange={() => {}} onNoteConfirm={() => {}} onCancel={() => {}} />
+    );
+    const hint = container.querySelector('.expense-key-hint') as HTMLElement;
+    expect(hint.textContent).toContain('選擇');
+    expect(hint.style.fontSize).toBe('');
+    expect(hint.classList.contains('dim')).toBe(false);
+  });
+
   it('renders amount input in expense_input kind', () => {
     const { container } = render(
       <ExpensePanel
