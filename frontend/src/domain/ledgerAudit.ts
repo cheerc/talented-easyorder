@@ -81,6 +81,9 @@ export function createLedgerAuditEvent(input: AuditEventInput): LedgerAuditEvent
 /** M2：更正、刪除、取消訂餐共用的檢查結果。ok=false 時 message 直接顯示給櫃台人員。 */
 export type LedgerMutationResult = { ok: true } | { ok: false; message: string };
 
+/** 新增交易的結果：成功時帶回新交易的編號，F1 送出後的撤回用它找到這一筆。 */
+export type LedgerCommitResult = { ok: true; transactionId: string } | { ok: false; message: string };
+
 /** 改帳時一定要帶的資訊：理由必填；操作員沒給時記為系統。 */
 export interface LedgerMutationOptions {
   reason: string;

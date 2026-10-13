@@ -291,7 +291,7 @@ describe('M2：關帳日在 store 層擋下所有新增入口', () => {
   it('重開（reopened）後可以新增', () => {
     const date = usePosStore.getState().todayMenu.businessDate;
     usePosStore.setState(s => ({ businessDateStatuses: { ...s.businessDateStatuses, [date]: 'reopened' } }));
-    expect(usePosStore.getState().commitPosTransactionDraft(draftFor('order'))).toEqual({ ok: true });
+    expect(usePosStore.getState().commitPosTransactionDraft(draftFor('order'))).toMatchObject({ ok: true });
   });
 
   it('processTransaction 也不寫入', () => {
