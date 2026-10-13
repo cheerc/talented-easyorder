@@ -51,7 +51,7 @@ export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
       {tab === 'vendors' && (
         <ErrorBoundary fallback={<SectionError name="供應商" />}>
         <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
-        <VendorsScreen />
+        <VendorsScreen viewDate={viewDate} />
         </Suspense>
         </ErrorBoundary>
       )}

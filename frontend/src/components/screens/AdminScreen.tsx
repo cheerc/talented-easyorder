@@ -11,6 +11,7 @@ import { useTweaks } from '../../hooks/useTweaks';
 import { useFirebase } from '../../hooks/useFirebase';
 import { SYSTEM_OPERATOR_ID } from '../../domain/operatorId';
 import { getTaiwanISOString } from '../../utils/dateTime';
+import { filterActiveVendors, resolveMenuVendor } from '../../domain/menu';
 
 interface AdminScreenProps {
   viewDate: string;
@@ -43,13 +44,16 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
   }, [viewDate, updateOpeningCash]);
   const [name, setName] = useState(todayMenu.itemName);
   const [price, setPrice] = useState(todayMenu.price);
-  const [vendor, setVendor] = useState(todayMenu.vendorNameSnapshot || vendors[0]?.name || '');
+  // M3 F4：供應商以編號選，只列使用中的；這天菜單的供應商已停用或刪除時不預選，並提醒改選。
+  const menuVendor = resolveMenuVendor(todayMenu, vendors);
+  const activeVendors = filterActiveVendors(vendors);
+  const [vendorId, setVendorId] = useState(menuVendor.vendorId);
 
   // M0：切換空白／範例後，表單草稿跟著目前的菜單與供應商。
   useEffect(() => {
     setName(todayMenu.itemName);
     setPrice(todayMenu.price);
-    setVendor(todayMenu.vendorNameSnapshot || vendors[0]?.name || '');
+    setVendorId(resolveMenuVendor(todayMenu, vendors).vendorId);
   }, [todayMenu, vendors]);
   const [menuSavedMsg, setMenuSavedMsg] = useState('');
   // 切換檢視日期時清掉上一天的「已儲存」提示（render 期間調整，避免 effect 連鎖更新）。
@@ -101,8 +105,9 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
       return;
     }
     setMenuError('');
-    const selectedVendor = vendors.find(v => v.name === vendor);
-    setMenuForDate(viewDate, { itemName: name.trim(), price: n, vendorId: selectedVendor?.vendorId ?? todayMenu.vendorId, vendorNameSnapshot: vendor }, getTaiwanISOString());
+    // 下拉只有使用中的供應商；選「未指定」時不帶供應商。
+    const selectedVendor = activeVendors.find(v => v.vendorId === vendorId);
+    setMenuForDate(viewDate, { itemName: name.trim(), price: n, vendorId: selectedVendor?.vendorId ?? '', vendorNameSnapshot: selectedVendor?.name ?? '' }, getTaiwanISOString());
     setMenuSavedMsg(`已儲存 ${viewDate} 的晚餐`);
   };
 
@@ -157,10 +162,16 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
           </div>
           <div className="adm-row">
             <label>供應商</label>
-            <select className="adm-input" value={vendor} onChange={e => setVendor(e.target.value)}>
-              {vendors.map(v => <option key={v.vendorId} value={v.name}>{v.name} ({v.phone})</option>)}
+            <select className="adm-input" aria-label="供應商" value={vendorId} onChange={e => setVendorId(e.target.value)}>
+              <option value="">（未指定）</option>
+              {activeVendors.map(v => <option key={v.vendorId} value={v.vendorId}>{v.name}{v.phone ? ` (${v.phone})` : ''}</option>)}
             </select>
           </div>
+          {menuVendor.unavailableName && (
+            <p role="note" style={{ fontSize: '12px', margin: '0 0 8px', color: 'var(--c-warn)' }}>
+              這天的晚餐設定用的供應商「{menuVendor.unavailableName}」已停用或刪除，請改選供應商後儲存。已登記的訂單不受影響。
+            </p>
+          )}
           <div className="adm-foot">
             <button className="btn-confirm wide" onClick={save}>儲存今日設定</button>
             {menuError && <span role="alert" style={{ marginLeft: '8px', color: 'var(--c-warn)', fontSize: '13px' }}>{menuError}</span>}

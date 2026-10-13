@@ -128,6 +128,34 @@ describe('TodayDashboard', () => {
     expect(container.textContent).toContain('02:00:00');
   });
 
+  it('M3：同一天有多版時取最後一版；舊資料版次都是 1 也不會取到重開那一列', () => {
+    const base = baseSettlements[0];
+    store.dailySettlements = [
+      { ...base, settlementId: 's-1', closedBy: 'op-1', closedAt: '2026-05-30T11:00:00.000Z' },
+      { ...base, settlementId: 's-1r', status: 'reopened', closedBy: 'op-1', closedAt: '2026-05-30T11:00:00.000Z',
+        reopenedBy: 'op-2', reopenedAt: '2026-05-30T12:00:00.000Z', reopenReason: '漏記' },
+      { ...base, settlementId: 's-2', closedBy: 'op-3', closedAt: '2026-05-30T13:00:00.000Z' },
+    ];
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
+    const card = Array.from(container.querySelectorAll('.db-card')).find(el => el.textContent?.includes('關帳狀態'));
+    expect(card?.textContent).toContain('op-3');
+    expect(card?.textContent).toContain('21:00:00');
+    expect(card?.textContent).not.toContain('op-2');
+  });
+
+  it('M3：最後一版是重開時顯示重開的人和時間', () => {
+    const base = baseSettlements[0];
+    store.dailySettlements = [
+      { ...base, settlementId: 's-1', closedBy: 'op-1', closedAt: '2026-05-30T11:00:00.000Z' },
+      { ...base, settlementId: 's-1r', status: 'reopened', settlementRevision: 2, closedBy: 'op-1', closedAt: '2026-05-30T11:00:00.000Z',
+        reopenedBy: 'op-2', reopenedAt: '2026-05-30T12:00:00.000Z', reopenReason: '漏記' },
+    ];
+    const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
+    const card = Array.from(container.querySelectorAll('.db-card')).find(el => el.textContent?.includes('關帳狀態'));
+    expect(card?.textContent).toContain('重開：op-2');
+    expect(card?.textContent).toContain('20:00:00');
+  });
+
   it('shows queued count synced when 0', () => {
     store.transactions.forEach(t => { t.syncStatus = 'local'; });
     const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
