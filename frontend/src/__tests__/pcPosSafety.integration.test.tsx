@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { resetStoreForTest } from './helpers/storeSetup';
-import { renderApp } from './helpers/renderApp';
+import { renderApp, pressEnterForNext } from './helpers/renderApp';
 
 describe('pcPosSafety — duplicate submit guard', () => {
   beforeEach(() => resetStoreForTest());
@@ -64,7 +64,7 @@ describe('pcPosSafety — duplicate order warning', () => {
     await waitFor(() => expect(screen.getByText('✓')).toBeTruthy());
 
     // Dismiss flash by pressing Enter
-    await user.keyboard('{Enter}');
+    await pressEnterForNext(user);
     await waitFor(() => expect(screen.queryByText('✓')).toBeFalsy());
 
     // Second selection on same student — hasOrderToday=true → defaults to payment mode

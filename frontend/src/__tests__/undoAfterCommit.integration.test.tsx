@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { resetStoreForTest } from './helpers/storeSetup';
-import { renderApp } from './helpers/renderApp';
+import { renderApp, pressEnterForNext } from './helpers/renderApp';
 import { usePosStore } from '../store/posStore';
 import { UNDO_REASON } from '../hooks/useUndoCountdown';
 
@@ -69,7 +69,7 @@ describe('F1 送出後撤回（L05）', () => {
 
     await payFor015(user, '100');
     expect(screen.getByRole('button', { name: /撤回這筆/ })).toBeTruthy();
-    await user.keyboard('{Enter}');
+    await pressEnterForNext(user);
 
     await waitFor(() => expect(screen.queryByTestId('payment-success')).toBeNull());
     expect(usePosStore.getState().transactions.length).toBe(txCountBefore + 1);

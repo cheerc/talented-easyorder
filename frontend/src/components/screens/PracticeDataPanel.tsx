@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
-import { useMenu, useStudents, useTransactions, usePracticeDataActions, useSession, useSimulationDate, useMenuForDate } from '../../store/selectors';
+import { useMenu, useStudents, useTransactions, usePracticeDataActions, useSession, useSimulationDate, useMenuForDate, useFace } from '../../store/selectors';
 import { shiftBusinessDate } from '../../domain/businessDate';
 import { getTaiwanDate } from '../../utils/dateTime';
 import { usePosStore } from '../../store/posStore';
@@ -42,6 +42,7 @@ export const PracticeDataPanel = React.memo(function PracticeDataPanel({ hasCash
   const { transactions } = useTransactions();
   const { vendors } = useMenu();
   const { auditEvents, dailySettlements, cashSessions } = useSession();
+  const { faceEvents } = useFace();
   const { startBlankData, loadSampleData, restoreDataset, clearPracticeTransactions, setSimulationDate } = usePracticeDataActions();
   const simulationDate = useSimulationDate();
   const practiceDate = simulationDate ?? getTaiwanDate();
@@ -114,8 +115,9 @@ export const PracticeDataPanel = React.memo(function PracticeDataPanel({ hasCash
       case 'clearTx':
         return {
           title: '只清除練習交易',
-          message: `將清除 ${current.transactions} 筆交易、${current.auditEvents} 筆更正紀錄、${current.dailySettlements} 筆關帳、${current.cashSessions} 天開帳；`
-            + `保留 ${current.students} 位帳戶（餘額回到期初）、${current.vendors} 家供應商與今日菜單。${exportHint}`,
+          // 刷臉訂餐動態跟著交易一起清；平板狀態與人臉註冊欄是設定，保留。
+          message: `將清除 ${current.transactions} 筆交易、${current.auditEvents} 筆更正紀錄、${current.dailySettlements} 筆關帳、${current.cashSessions} 天開帳、${faceEvents.length} 筆刷臉訂餐動態；`
+            + `保留 ${current.students} 位帳戶（餘額回到期初）、${current.vendors} 家供應商、今日菜單、刷臉平板狀態與人臉註冊欄。${exportHint}`,
           confirmLabel: '確認清除交易',
         };
       case 'restore':

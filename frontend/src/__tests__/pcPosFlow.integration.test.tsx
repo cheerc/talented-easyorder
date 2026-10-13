@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { resetStoreForTest } from './helpers/storeSetup';
-import { renderApp } from './helpers/renderApp';
+import { renderApp, pressEnterForNext } from './helpers/renderApp';
 
 describe('pcPosFlow integration — keyboard flow', () => {
   beforeEach(() => resetStoreForTest());
@@ -68,7 +68,7 @@ describe('pcPosFlow integration — keyboard flow', () => {
     });
 
     // Dismiss the flash
-    await user.keyboard('{Enter}');
+    await pressEnterForNext(user);
 
     await waitFor(() => {
       expect(screen.queryByTestId('payment-success')).toBeNull();

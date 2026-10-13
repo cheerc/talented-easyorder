@@ -184,3 +184,13 @@ export function groupLedgerRowsByStudent(
 
   return groups;
 }
+/**
+ * F2 帳戶列摘要：依交易「現在」的類型計數。取消訂餐但收款留在帳戶時原單會改成繳費，
+ * 要算成繳費而不是訂餐（M4）。兩種都沒有時只寫筆數。
+ */
+export function groupRecordSummary(transactions: readonly Pick<LedgerTransaction, 'type'>[]): string {
+  const orders = transactions.filter(t => t.type === 'order').length;
+  const payments = transactions.filter(t => t.type === 'payment').length;
+  const parts = [orders > 0 ? `訂餐 ${orders} 筆` : '', payments > 0 ? `繳費 ${payments} 筆` : ''].filter(Boolean);
+  return parts.length > 0 ? parts.join('・') : `${transactions.length} 筆`;
+}

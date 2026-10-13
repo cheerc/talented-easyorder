@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { resetStoreForTest } from './helpers/storeSetup';
-import { renderApp } from './helpers/renderApp';
+import { renderApp, pressEnterForNext } from './helpers/renderApp';
 import { usePosStore } from '../store/posStore';
 import { countMeals, isOtherMealOrder } from '../domain/ledgerReport';
 
@@ -23,7 +23,7 @@ async function selectAndOrder(user: ReturnType<typeof userEvent.setup>, id: stri
   }
   await user.keyboard('{Enter}');
   await waitFor(() => expect(screen.getByTestId('payment-success')).toBeTruthy());
-  await user.keyboard('{Enter}');
+  await pressEnterForNext(user);
   await waitFor(() => expect(screen.queryByTestId('payment-success')).toBeNull());
 }
 
