@@ -4,6 +4,7 @@ import { fmt } from './pos-components';
 import { useLedgerReport } from '../store/derived/useLedgerReport';
 import { formatTaipeiTime } from '../utils/dateTime';
 import { operatorLabel } from '../domain/operatorId';
+import { latestSettlement } from '../domain/cashClose';
 
 // systemDate 由 App 傳入（練習模式下為練習營業日），不在這裡自行取實際日期。
 export const TodayDashboard = React.memo(function TodayDashboard({ systemDate, onClose }: { systemDate: string; onClose: () => void }) {
@@ -18,10 +19,9 @@ export const TodayDashboard = React.memo(function TodayDashboard({ systemDate, o
 
   const dateStatus = businessDateStatuses[systemDate] || 'open';
 
-  const todaySettlement = (() => {
-    const daySet = dailySettlements.filter(s => s.businessDate === systemDate);
-    return daySet.sort((a, b) => b.settlementRevision - a.settlementRevision)[0] ?? null;
-  })();
+  // M3：同一天取最後一版（先比重開／關帳時間再比版次），和結帳歷史、關帳面板用同一個判斷。
+  // 舊資料重開後再關帳的版次都是 1，只比版次會取到重開那一列的人和時間。
+  const todaySettlement = latestSettlement(systemDate, dailySettlements) ?? null;
 
   // M2：更正與刪除各自計數（稽核事件只有 transaction_edited 與 transaction_deleted／transaction_hard_deleted）。
   const correctionCount = auditEvents.filter(e => e.eventType === 'transaction_edited' && e.businessDate === systemDate).length;
@@ -70,7 +70,9 @@ export const TodayDashboard = React.memo(function TodayDashboard({ systemDate, o
             <div className="db-card-num"><span className={statusClass} style={{ fontSize: '14px' }}>{statusLabel}</span></div>
             {todaySettlement && (
               <div className="db-card-sub">
-                {operatorLabel(todaySettlement.closedBy)} · {formatTaipeiTime(todaySettlement.closedAt)}
+                {todaySettlement.status === 'reopened' && todaySettlement.reopenedAt
+                  ? `重開：${operatorLabel(todaySettlement.reopenedBy ?? '')} · ${formatTaipeiTime(todaySettlement.reopenedAt)}`
+                  : `${operatorLabel(todaySettlement.closedBy)} · ${formatTaipeiTime(todaySettlement.closedAt)}`}
               </div>
             )}
           </div>

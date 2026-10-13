@@ -54,7 +54,7 @@ export function useCommitLifecycle({
       return () => clearTimeout(t);
     }
     prevKindRef.current = stateKind;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- setSyncing/setUndoCountdown are stable setters from parent; lastCommittedTxIdRef is a ref. Only stateKind transitions should trigger this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setSyncing/setUndoCountdown are stable setters from parent; lastCommittedTxIdRef is a ref; successTransactionId changes in the same render as stateKind turning 'success', so listing it would only risk restarting the undo countdown. Only stateKind transitions should trigger this effect.
   }, [stateKind]);
 
   return { lastSync };
