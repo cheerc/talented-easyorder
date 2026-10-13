@@ -46,6 +46,8 @@ export const defaultState = {
   businessDateStatuses: {} as PosState['businessDateStatuses'],
   cashSessions: {} as PosState['cashSessions'],
   menusByDate: {} as PosState['menusByDate'],
+  faceEvents: [] as PosState['faceEvents'],
+  faceDevices: {} as PosState['faceDevices'],
 };
 
 export const posPersistenceConfig: PersistOptions<PosState> = {
@@ -63,6 +65,8 @@ export const posPersistenceConfig: PersistOptions<PosState> = {
     businessDateStatuses: state.businessDateStatuses,
     cashSessions: state.cashSessions,
     simulationDate: state.simulationDate,
+    faceEvents: state.faceEvents,
+    faceDevices: state.faceDevices,
   }) as unknown as PosState,
   onRehydrateStorage: () => {
     return (state, error) => {

@@ -1,5 +1,7 @@
 # iPad Face Auth Handoff Spec
 
+> **2026-10-13：已由 [faceorder-handoff-spec](faceorder-handoff-spec.md) 取代。** 辨識端改為 Android 平板 App talented-faceorder，平板訂餐改為自動入帳（CheerC 決定）。本檔只保留歷史參考。
+
 > **2026-09-29 範圍更新：** 本檔保留為既有設計／實作基線。本輪目標見 [Frontend prototype workflow spec](frontend-prototype-workflow-spec.md)。本輪不開發 iPad／人臉辨識。保留本檔作未來參考，不列入前端 prototype 驗收。
 
 ## 功能描述

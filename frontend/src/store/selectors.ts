@@ -132,3 +132,17 @@ export function usePracticeDataActions() {
 export function useSimulationDate() {
   return usePosStore((s) => s.simulationDate);
 }
+
+/** 刷臉訂餐：平板事件與連線狀態。 */
+export function useFace() {
+  return usePosStore(useShallow((s) => ({ faceEvents: s.faceEvents, faceDevices: s.faceDevices })));
+}
+
+/** 刷臉訂餐 actions（平板或練習模式的模擬平板）。 */
+export function useFaceActions() {
+  return usePosStore(useShallow((s) => ({
+    handleFaceEvent: s.handleFaceEvent,
+    applyFaceEnrollment: s.applyFaceEnrollment,
+    setFaceDeviceStatus: s.setFaceDeviceStatus,
+  })));
+}
