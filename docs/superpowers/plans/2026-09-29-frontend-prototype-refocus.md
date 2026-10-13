@@ -100,7 +100,7 @@ M4 本人驗收 2026-10-13 通過後開始。規格：[faceorder-handoff-spec](.
 
 1. 第一批：刷臉事件模型與自動入帳／取消規則、平板讀到的今日訂餐狀態、註冊異動、平板狀態、快照、模擬刷臉平板。
 2. 第二批：F1「刷臉訂餐」動態、頂部平板在線／離線、F3 人臉註冊欄、明細與 F5 顯示刷臉來源。
-3. 第三批：驗收步驟；後端計畫文件（只寫文件，見 [faceorder-backend-plan](2026-10-13-faceorder-backend-plan.md)）；給 faceorder 的修改 brief；#464 review 小修（平板回報與狀態檢查平板編號、F3 窄視窗帳戶清單排版）。
+3. 第三批（2026-10-13 完成，FA01–FA10 通過）：驗收步驟；後端計畫文件（只寫文件，見 [faceorder-backend-plan](2026-10-13-faceorder-backend-plan.md)）；給 faceorder 的修改 brief；#464 review 小修（平板回報與狀態檢查平板編號、F3 窄視窗帳戶清單排版）。
 
 ## 待排項目（已決定要做，順序未定）
 
