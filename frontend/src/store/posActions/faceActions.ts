@@ -4,7 +4,7 @@ import { createStudentSnapshot } from '../../domain/student';
 import { createMenuSnapshot, isMenuReady, resolveMenuForDate } from '../../domain/menu';
 import {
   FACE_CANCEL_REASON, FACE_REFUND_NOTICE, FACE_REJECT_MESSAGES, FACE_SOURCE_DEVICE,
-  cancelNeedsRefundNotice, faceOrderNote, isFaceRequestComplete, normalizeFaceTime, pickOrderToCancel,
+  cancelNeedsRefundNotice, faceOrderNote, isFaceDevice, isFaceRequestComplete, normalizeFaceTime, pickOrderToCancel,
   type FaceOrderEvent, type FaceOrderRequest,
 } from '../../domain/faceOrder';
 
@@ -94,6 +94,8 @@ export function createFaceActions(
     },
 
     applyFaceEnrollment: (input) => {
+      // 不是刷臉平板送來的（平板編號不是 faceorder- 開頭）或沒有帳戶編號：不改帳戶、不登記平板。
+      if (!isFaceDevice(input.deviceId) || !input.studentId) return false;
       const update = { ...input, reportedAt: normalizeFaceTime(input.reportedAt) };
       const state = get();
       if (!state.students.some(s => s.studentId === update.studentId)) return false;
@@ -116,10 +118,12 @@ export function createFaceActions(
     },
 
     setFaceDeviceStatus: (input) => {
+      if (!isFaceDevice(input.deviceId)) return false;
       const status = { ...input, lastSeenAt: normalizeFaceTime(input.lastSeenAt) };
       set((state) => ({
         faceDevices: { ...state.faceDevices, [status.deviceId]: { ...(state.faceDevices[status.deviceId] ?? {}), ...status } },
       }));
+      return true;
     },
   };
 }

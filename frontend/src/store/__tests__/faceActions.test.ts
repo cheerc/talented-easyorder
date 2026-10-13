@@ -170,6 +170,24 @@ describe('#463 review：時間一律存 UTC、資料不完整不寫入', () => {
 });
 
 describe('人臉註冊異動與平板狀態', () => {
+  it.each([
+    ['平板編號空白', { deviceId: '' }],
+    ['平板編號不是 faceorder- 開頭', { deviceId: 'evil' }],
+    ['帳戶編號空白', { studentId: '' }],
+  ])('註冊回報（%s）：回傳 false，不改帳戶、不登記平板', (_label, extra) => {
+    const before = s().students;
+    expect(s().applyFaceEnrollment({ deviceId: 'faceorder-01', studentId: '001', status: 'enrolled', faceCount: 2, reportedAt: T, ...extra })).toBe(false);
+    expect(s().students).toBe(before);
+    expect(s().faceDevices).toEqual({});
+  });
+
+  it.each([['平板編號空白', ''], ['平板編號不是 faceorder- 開頭', 'evil']])('平板狀態（%s）：回傳 false，不登記平板', (_label, deviceId) => {
+    expect(s().setFaceDeviceStatus({ deviceId, online: true, lastSeenAt: T })).toBe(false);
+    expect(s().faceDevices).toEqual({});
+    expect(s().setFaceDeviceStatus({ deviceId: 'faceorder-01', online: true, lastSeenAt: T })).toBe(true);
+    expect(Object.keys(s().faceDevices)).toEqual(['faceorder-01']);
+  });
+
   it('平板回報註冊狀態與張數，更新帳戶；找不到帳戶回傳 false', () => {
     expect(s().applyFaceEnrollment({ deviceId: 'faceorder-01', studentId: '001', status: 'enrolled', faceCount: 2, reportedAt: T })).toBe(true);
     expect(s().students.find(x => x.studentId === '001')).toMatchObject({ faceEnrollmentStatus: 'enrolled', faceCount: 2 });

@@ -143,10 +143,10 @@ export interface FaceStateSlice {
 export interface FaceActions {
   /** 處理一個訂餐／取消事件並回傳結果；同一個 eventId 重送時回傳第一次的結果，不重複入帳。 */
   handleFaceEvent: (request: FaceOrderRequest, now: string) => FaceOrderEvent;
-  /** 平板回報註冊異動，更新帳戶的人臉註冊狀態。找不到帳戶時回傳 false。 */
+  /** 平板回報註冊異動，更新帳戶的人臉註冊狀態。平板編號不是 faceorder- 開頭、沒有帳戶編號或找不到帳戶時回傳 false，不寫入。 */
   applyFaceEnrollment: (update: FaceEnrollmentUpdate) => boolean;
-  /** 平板上線、離線或心跳。 */
-  setFaceDeviceStatus: (status: FaceDeviceStatus) => void;
+  /** 平板上線、離線或心跳。平板編號不是 faceorder- 開頭時回傳 false，不寫入。 */
+  setFaceDeviceStatus: (status: FaceDeviceStatus) => boolean;
 }
 
 /** M0：練習模式的模擬營業日；null 表示使用今天的實際日期。 */
