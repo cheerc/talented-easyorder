@@ -58,7 +58,7 @@ export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
       {tab === 'history' && (
         <ErrorBoundary fallback={<SectionError name="歷史紀錄" />}>
         <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
-        <HistoryScreen />
+        <HistoryScreen viewDate={viewDate} />
         </Suspense>
         </ErrorBoundary>
       )}

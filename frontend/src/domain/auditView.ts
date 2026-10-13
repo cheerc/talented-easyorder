@@ -20,8 +20,24 @@ export interface AuditRowView {
   subject: string;
   reason: string;
   changes: string;
-  /** 篩選用：帳戶編號、姓名、營業日、交易編號。 */
+  /**
+   * 篩選用：帳戶編號、當時的姓名、目前的姓名與別名、營業日。
+   * M3：不再比對交易編號，打短數字（例如「01」）不會查到不相干的列。
+   */
   searchText: string;
+  /** M3 F12：交易類稽核指向的原單編號；關帳、匯出等沒有。 */
+  transactionId?: string;
+  /** 原單的帳戶編號（櫃台收支是 CASHIER_SENTINEL）。 */
+  studentId?: string;
+  /** 原單現在還在不在；刪除、撤回或取消訂餐退款後只剩稽核裡的原單內容。 */
+  originalExists: boolean;
+}
+
+/** 目前帳戶的姓名與別名，讓改名後用新名字也查得到改名前的稽核列。 */
+export interface AuditAccountInfo {
+  studentId: string;
+  displayName: string;
+  aliases?: string[];
 }
 
 const FIELD_LABELS: Record<string, string> = {
@@ -104,24 +120,28 @@ function accountLabel(ref: AccountRef): string {
   return ref.name ? `${ref.studentId} ${ref.name}` : ref.studentId;
 }
 
-export function describeAuditEvents(events: LedgerAuditEvent[], transactions: LedgerTransaction[]): AuditRowView[] {
+export function describeAuditEvents(events: LedgerAuditEvent[], transactions: LedgerTransaction[], currentAccounts: AuditAccountInfo[] = []): AuditRowView[] {
   // 交易的帳戶：先看目前的交易，已刪除的從稽核留下的原單找。
   const accounts = new Map<string, AccountRef>();
   for (const e of events) {
     const ref = accountOf(e.before) ?? accountOf(e.after);
     if (e.entityType === 'transaction' && ref) accounts.set(e.entityId, ref);
   }
+  const existing = new Set<string>();
   for (const t of transactions) {
     accounts.set(t.transactionId, { studentId: t.studentId, name: t.studentNameSnapshot });
+    existing.add(t.transactionId);
   }
+  const currentNames = new Map(currentAccounts.map(a => [a.studentId, [a.displayName, ...(a.aliases ?? [])].join(' ')]));
 
   return [...events]
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .map(e => {
       const type = typeOf(e);
       let subject: string;
+      let ref: AccountRef | undefined;
       if (e.entityType === 'transaction') {
-        const ref = accounts.get(e.entityId);
+        ref = accounts.get(e.entityId);
         subject = ref ? accountLabel(ref) : '（找不到帳戶）';
       } else if (e.entityType === 'business_date' || e.entityType === 'settlement') {
         subject = `營業日 ${e.businessDate}`;
@@ -138,7 +158,21 @@ export function describeAuditEvents(events: LedgerAuditEvent[], transactions: Le
         subject,
         reason: readableReason(e.reason),
         changes: describeChanges(e.before, e.after),
-        searchText: `${subject} ${e.businessDate} ${e.entityId}`.toLowerCase(),
+        searchText: `${subject} ${ref ? currentNames.get(ref.studentId) ?? '' : ''} ${e.businessDate}`.toLowerCase(),
+        transactionId: e.entityType === 'transaction' ? e.entityId : undefined,
+        studentId: ref?.studentId,
+        originalExists: e.entityType === 'transaction' && existing.has(e.entityId),
       };
     });
+}
+
+/**
+ * M3：稽核查詢。只打數字時當作帳戶編號，比對編號開頭（「01」查不到「001」以外的帳戶，也不會撞到日期或交易編號）；
+ * 其他文字比對帳戶編號、當時與目前的姓名、別名、營業日。
+ */
+export function matchesAuditQuery(row: AuditRowView, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  if (/^\d+$/.test(q)) return !!row.studentId && row.studentId.toLowerCase().startsWith(q);
+  return row.searchText.includes(q);
 }

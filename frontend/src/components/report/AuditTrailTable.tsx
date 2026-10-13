@@ -1,25 +1,28 @@
 import React, { useMemo, useState } from 'react';
-import { useSession, useTransactions } from '../../store/selectors';
-import { describeAuditEvents } from '../../domain/auditView';
+import { useSession, useStudents, useTransactions } from '../../store/selectors';
+import { describeAuditEvents, matchesAuditQuery, type AuditRowView } from '../../domain/auditView';
 
 const PAGE_SIZE = 20;
-const COLUMNS = '160px 90px 110px 150px 1fr 100px';
+const COLUMNS = '160px 90px 110px 150px 1fr 100px 90px';
 
 /**
  * M2 F09／F10：稽核紀錄以帳戶、營業日或交易編號查詢；每列寫出帳戶、中文欄名的前後值與理由，
  * 時間一律台北時間，營業日另成一欄。
  */
-export const AuditTrailTable = React.memo(function AuditTrailTable() {
+interface AuditTrailTableProps {
+  /** M3 F12：按「看原單」時開啟交易查詢並標出這一筆。 */
+  onOpenOriginal?: (row: AuditRowView) => void;
+}
+
+export const AuditTrailTable = React.memo(function AuditTrailTable({ onOpenOriginal }: AuditTrailTableProps) {
   const { auditEvents } = useSession();
   const { transactions } = useTransactions();
+  const { students } = useStudents();
   const [page, setPage] = useState(0);
   const [query, setQuery] = useState('');
 
-  const rows = useMemo(() => describeAuditEvents(auditEvents, transactions), [auditEvents, transactions]);
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return q ? rows.filter(r => r.searchText.includes(q)) : rows;
-  }, [rows, query]);
+  const rows = useMemo(() => describeAuditEvents(auditEvents, transactions, students), [auditEvents, transactions, students]);
+  const filtered = useMemo(() => rows.filter(r => matchesAuditQuery(r, query)), [rows, query]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages - 1);
@@ -48,6 +51,7 @@ export const AuditTrailTable = React.memo(function AuditTrailTable() {
         <div>帳戶</div>
         <div>變更內容與理由</div>
         <div>營業日</div>
+        <div>原單</div>
       </div>
       {paged.length === 0 && <div className="rpt-empty">沒有符合「{query.trim()}」的紀錄</div>}
       {paged.map(r => (
@@ -61,6 +65,14 @@ export const AuditTrailTable = React.memo(function AuditTrailTable() {
             {r.reason && <div className="dim">理由：{r.reason}</div>}
           </div>
           <div className="mono">{r.businessDate}</div>
+          <div>
+            {r.transactionId && onOpenOriginal && (
+              <button className="rpt-mini-btn" onClick={() => onOpenOriginal(r)}
+                      title={r.originalExists ? '到交易查詢看這一筆' : '原單已刪除，到交易查詢看這個帳戶當天的交易'}>
+                {r.originalExists ? '看原單' : '看當天'}
+              </button>
+            )}
+          </div>
         </div>
       ))}
       {filtered.length > PAGE_SIZE && (

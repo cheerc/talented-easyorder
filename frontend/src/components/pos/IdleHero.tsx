@@ -2,6 +2,7 @@ import React from "react";
 import type { TodayMenu } from '../../domain/menu';
 import { fmt } from './utils';
 import { isMenuReady } from '../../domain/menu';
+import { useMenuForDate } from '../../store/selectors';
 
 interface IdleHeroProps {
   todayMenu: TodayMenu;
@@ -11,6 +12,9 @@ interface IdleHeroProps {
   onEnterExpense?: () => void;
 }
 export const IdleHero = React.memo(function IdleHero({ todayMenu, todayCount, vendorPhone }: IdleHeroProps) {
+  // M3 D06：這天沒有自己的晚餐設定、沿用較早日期時提醒確認，不讓新的一天默默用舊菜單。
+  const resolved = useMenuForDate(todayMenu.businessDate);
+  const inheritedFrom = resolved.source === 'inherited' ? resolved.fromDate : null;
   if (!isMenuReady(todayMenu)) {
     // M0：空白資料集尚未設定今日晚餐。
     return (
@@ -37,6 +41,11 @@ export const IdleHero = React.memo(function IdleHero({ todayMenu, todayCount, ve
             {vendorPhone && <span className="mono">{vendorPhone}</span>}
           </div>
           <div>已訂 <span className="mono">{todayCount}</span> 份</div>
+          {inheritedFrom && (
+            <div role="note" style={{ color: 'var(--c-warn)' }}>
+              {todayMenu.businessDate} 還沒有自己的晚餐設定，目前沿用 {inheritedFrom} 的菜單；請到 F3 確認後按「儲存今日設定」。
+            </div>
+          )}
         </div>
       </div>
     </div>

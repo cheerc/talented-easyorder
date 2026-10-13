@@ -6,6 +6,9 @@ import { formatTaipeiTime } from '../utils/dateTime';
 import { operatorLabel } from '../domain/operatorId';
 import { latestSettlement } from '../domain/cashClose';
 
+// M3：最近交易的類型用中文，不顯示 order／payment／expense。
+const TX_TYPE_LABELS: Record<string, string> = { order: '訂餐', payment: '繳費', expense: '櫃台收支' };
+
 // systemDate 由 App 傳入（練習模式下為練習營業日），不在這裡自行取實際日期。
 export const TodayDashboard = React.memo(function TodayDashboard({ systemDate, onClose }: { systemDate: string; onClose: () => void }) {
   const { auditEvents, dailySettlements, businessDateStatuses } = useSession();
@@ -98,9 +101,9 @@ export const TodayDashboard = React.memo(function TodayDashboard({ systemDate, o
                 <div key={tx.transactionId} className="db-tx-row">
                   <div className="mono dim" style={{ fontSize: '12px' }}>{formatTaipeiTime(tx.createdAt)}</div>
                   <div>{tx.studentNameSnapshot}</div>
-                  <div><span className={`pill pill-${tx.type}`}>{tx.type}</span></div>
+                  <div><span className={`pill pill-${tx.type}`}>{TX_TYPE_LABELS[tx.type] ?? tx.type}</span></div>
                   <div className={`mono ${tx.amount >= 0 ? 'accent' : 'warn'}`} style={{ textAlign: 'right' }}>
-                    {tx.amount >= 0 ? '+' : ''}{fmt(tx.amount)}
+                    {tx.amount >= 0 ? '+' : '−'}{fmt(Math.abs(tx.amount))}
                   </div>
                 </div>
               ))}

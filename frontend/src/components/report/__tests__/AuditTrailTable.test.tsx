@@ -29,7 +29,7 @@ const { store, baseEvents, baseTransactions } = vi.hoisted(() => {
   const tx = (id: string, studentId: string, name: string) => ({ transactionId: id, studentId, studentNameSnapshot: name }) as unknown as LedgerTransaction;
   const transactions = [tx('tx-1', '001', '王小明'), tx('tx-3', '003', '陳小美')];
   return {
-    store: { auditEvents: [...events], transactions: [...transactions] },
+    store: { auditEvents: [...events], transactions: [...transactions], students: [] as { studentId: string; displayName: string; aliases?: string[] }[] },
     baseEvents: events,
     baseTransactions: transactions,
   };
@@ -43,6 +43,7 @@ vi.mock('../../../store/selectors', () => ({
     cashSessions: {},
   }),
   useTransactions: () => ({ transactions: store.transactions }),
+  useStudents: () => ({ students: store.students }),
 }));
 
 import { AuditTrailTable } from '../AuditTrailTable';
@@ -53,6 +54,7 @@ describe('AuditTrailTable（M2 F09／F10）', () => {
   beforeEach(() => {
     store.auditEvents = [...baseEvents];
     store.transactions = [...baseTransactions];
+    store.students = [];
   });
 
   it('依操作時間由新到舊，時間是台北時間，營業日另成一欄', () => {
@@ -98,6 +100,41 @@ describe('AuditTrailTable（M2 F09／F10）', () => {
     fireEvent.change(input, { target: { value: '999' } });
     expect(rowTexts(container)).toHaveLength(0);
     expect(container.textContent).toContain('沒有符合「999」的紀錄');
+  });
+
+  it('M3：只打數字時比對帳戶編號開頭，不會撞到交易編號或日期', () => {
+    store.auditEvents = [...baseEvents, {
+      auditEventId: 'ae-4', eventType: 'transaction_edited', entityType: 'transaction',
+      entityId: 'tx-01-xyz', businessDate: '2026-01-05',
+      before: { studentId: '120', studentNameSnapshot: '林大同', note: '' }, after: { note: 'x' },
+      reason: '補備註', operatorId: '__system__', createdAt: '2026-01-05T03:00:00.000Z',
+    }];
+    const { container, getByLabelText } = render(<AuditTrailTable />);
+    fireEvent.change(getByLabelText('查詢稽核紀錄'), { target: { value: '01' } });
+    expect(rowTexts(container)).toHaveLength(0);
+    fireEvent.change(getByLabelText('查詢稽核紀錄'), { target: { value: '001' } });
+    expect(rowTexts(container)).toHaveLength(1);
+    fireEvent.change(getByLabelText('查詢稽核紀錄'), { target: { value: '12' } });
+    expect(rowTexts(container)).toHaveLength(1);
+  });
+
+  it('M3：帳戶改名後，用新名字或別名也查得到改名前的列', () => {
+    store.students = [{ studentId: '001', displayName: '王大明', aliases: ['小明'] }];
+    const { container, getByLabelText } = render(<AuditTrailTable />);
+    fireEvent.change(getByLabelText('查詢稽核紀錄'), { target: { value: '王大明' } });
+    expect(rowTexts(container)).toHaveLength(1);
+    fireEvent.change(getByLabelText('查詢稽核紀錄'), { target: { value: '小明' } });
+    expect(rowTexts(container)).toHaveLength(1);
+  });
+
+  it('M3 F12：交易類稽核列有「看原單」，原單已刪除時改為「看當天」', () => {
+    const onOpen = vi.fn();
+    const { container, getAllByRole } = render(<AuditTrailTable onOpenOriginal={onOpen} />);
+    const rows = Array.from(container.querySelectorAll('.rpt-tr'));
+    expect(rows[0].textContent).toContain('看原單');
+    expect(rows[2].textContent).toContain('看當天');
+    fireEvent.click(getAllByRole('button', { name: '看原單' })[0]);
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ transactionId: 'tx-1', studentId: '001', originalExists: true }));
   });
 
   it('沒有稽核紀錄時顯示尚無稽核紀錄', () => {
