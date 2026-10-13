@@ -55,7 +55,7 @@ describe('F2 日末點現金（D03／D04）', () => {
     expect(bar().textContent).toContain('淨現金 $330');
     expect(bar().textContent).toContain('應有 $1,330');
     fireEvent.click(screen.getByRole('button', { name: '日末點現金' }));
-    expect(screen.getByLabelText('實際點算金額')).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByLabelText('實際點算金額'));
     fireEvent.click(screen.getByRole('button', { name: '收起點現金' }));
     expect(screen.queryByLabelText('實際點算金額')).toBeNull();
   });
