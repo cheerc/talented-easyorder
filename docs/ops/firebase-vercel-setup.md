@@ -1,5 +1,7 @@
 # EasyOrder Firebase + Vercel Setup
 
+> **2026-10-13 適用範圍：** 本文保留既有設計／實作參考；新正式後端以[零費用 spec](../superpowers/specs/2026-10-13-free-production-backend-spec.md)及[階段計畫](../superpowers/plans/2026-10-13-free-production-backend-plan.md)為準，尚未實作。不得依舊文將 EasyOrder 部署到 payroll 計費專案；正式部署、備份與安全操作須等計畫中對應階段更新並驗證。
+
 ## Firebase Project
 
 1. Create an independent Firebase project for EasyOrder.
