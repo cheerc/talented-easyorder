@@ -1,6 +1,6 @@
 # 零費用正式後端：現況與證據
 
-狀態截至 2026-10-14。此頁是 P00 基線；新正式後端**尚未實作、部署或通過上線驗收**。規格是目標契約，不代表功能、雲端資源或部署狀態已成立。前端原本人驗收紀錄仍以 [PROJECT-STATUS](../PROJECT-STATUS.md) 為準。
+狀態截至 2026-10-14。此頁保留 P00 基線並記錄進行中的 phase 證據；新正式後端**尚未實作、部署或通過上線驗收**。規格是目標契約，不代表功能、雲端資源或部署狀態已成立。前端原本人驗收紀錄仍以 [PROJECT-STATUS](../PROJECT-STATUS.md) 為準。
 
 ## 範圍與正式操作界線
 
@@ -84,5 +84,27 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 ### 文件與 emulator 準備
 
 - README、PROJECT-STATUS、此 evidence 與舊部署指南皆連至同一 spec/plan/evidence；本次只補 P00 狀態，不重述 schema 或歷史前端本人驗收。
-- 2026-10-14 coordinator 回報：本 Cloud runtime 的 Firebase Emulator binary 下載由 `storage.googleapis.com` 回 HTTP 403 `Domain forbidden`。環境網域設定 draft 已加該 host，但需使用者保存／發布後 runtime 才會套用；目前 local Firestore Emulator prerequisite **未就緒**。Coordinator 另確認現有 GitHub Actions runner 是可嘗試的獨立 emulator 驗證路徑；P01 尚待建立 proof suite 並實際執行該路徑。此回報不等同 Rules 測試通過。
+- P00 當時沒有本地 emulator，原因是下載 `storage.googleapis.com` 曾回 HTTP 403 `Domain forbidden`；該歷史阻擋在 P01 期間已解除。P00 當時尚無 P01 proof suite 或任何新 Rules 驗證。
 - P00 沒有跑 app tests、build、Firestore emulator、Rules suite、production smoke/deploy；因此不宣稱 P01–P18 任一雲端驗收已通過。
+
+## P01 Rules 可行性 proof（進行中；尚未通過 review／驗收）
+
+### 邊界與目前狀態
+
+- P01 base：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`（P00 #471 merge）；實作分支 `codex/backend-p01-rules-proof`；draft PR [#472](https://github.com/cheerc/talented-easyorder/pull/472)。初版行為 RED source `6ca1545a8e97df4a96c8a75c5429f35f5438a2a9` 的 Actions run [38514043015](https://github.com/cheerc/talented-easyorder/actions/runs/38514043015) 真實日誌為 2 tests、1 passed、1 failed、0 skipped；預期的額外未命令交易 `assertFails` 因交易實際成功而失敗，證明寬鬆 fixture 的行為 RED。
+- 歷史 tight WIP source `520dd2de75ede44d41becbb9617a872aea9d4d25` 的真 Emulator run 為 26 tests、18 passed、8 failed、0 skipped，exit 1；當時日誌包含 1000-expression-limit 訊息。歷史調查亦發現，這段 WIP 修正迭代有 command `reason`／`cashEffect` schema 未對齊、合法 helper 缺 seed operators／lease 前置資料、`withSecurityRulesDisabled` callback 回傳值未正確取得，以及零收款 delta 遇到 `-Number(0)` 等缺陷。這些是該迭代的混合診斷，不能據此推論 schema 正確的合法模型也不可行。checkpoint 摘要保留於[歷史 expression-limit 記錄](diagnostics/p01-rules-expression-limit-wip.txt)，其當時結論不代表目前結論。
+- 後續 source `5c55936fc0a0cbc82da3058b4a466364a0d0da1f` 的完整真 Emulator proof 為 exit 0、30 passed、0 failed、0 skipped；正向鏈包含 Close → Reopen → 新訂單 → 再 Close，settlement revision 到 3。這是該 checkpoint 的工程測試證據，不是 P01 最終 GREEN：SOL review 仍發現必要 head／student／transaction writer 未被中央強制實際推進、攻擊者可省略 writer 並把 command snapshot 改成未變 server map、settlement revision 仍硬編碼 1／2／3、新交易的 `studentNameSnapshot` 未與伺服器讀到的學生顯示名比較，以及部分負測 actor 不匹配而掩蓋目標防線。這些是阻擋項，作者仍在同一 PR 修正；P02 不得開始。PR 最新 head／CI 結果以 PR body 為權威；handoff 與 phase receipt 見[開發交接入口](../DEVELOPMENT-HANDOFF.md)。
+- Actions 的 CI checkpoint commit `b4201b9c99520a821250dec5f087e097c1bf0d13`、run [38519397752](https://github.com/cheerc/talented-easyorder/actions/runs/38519397752) 對應上述 `5c55936` proof 狀態。Coordinator 讀取原始 Actions logs：build-and-test 與 e2e jobs 成功；一般 Vitest 為 1232 passed／38 skipped（其中 30 個 proof 測試與 8 個舊 Rules 測試在無 emulator 的一般 job 中 skip），獨立舊 Rules Emulator suite 為 8 passed，獨立 proof JSON 為 30 tests／30 passed／0 failed／0 skipped，e2e 為 10 passed。這仍是有上述 review 缺口的中間 checkpoint，不是最終 SHA 的 merge gate。
+- 新的 [cloud Rules proof suite](../../frontend/src/firebase/__tests__/cloudRulesProof.spec.ts) 只透過 `initializeTestEnvironment` 載入 [`cloudRulesProof.rules`](../../frontend/src/firebase/__tests__/fixtures/cloudRulesProof.rules)；fixture 不在 `firebase.json` 或 production rules 部署路徑。production [`firestore.rules`](../../firestore.rules) 本 phase 不改，沒有部署。
+- Cloud agent 僅使用本地／GitHub runner 的 `demo-easyorder` Emulator 與匿名 synthetic fixtures；沒有連線到 production、payroll、Android 或任何真實資料。此 proof 不是正式功能部署或本人營運驗收。
+- RED scaffold 的行為已由上述 Actions run 驗證：匿名五文件 CreateOrder 同批附加不受 command 管理的 extra transaction；寬鬆 fixture 先讓它成功作為負例見證，隨後 `assertFails` 的拒絕斷言因交易實際成功而失敗。此 RED 僅證明該攻擊在寬鬆 fixture 被放行，不代表 tight Rules 或正式 Rules 的狀態。
+- Emulator CI 已加 Java 21、明確 `--project demo-easyorder --only firestore`、`EASYORDER_REQUIRE_CLOUD_RULES_PROOF=true` 與 Vitest JSON gate；runner exit code 優先保留，另拒絕缺報告、測試數為零、全 skipped、失敗或計數欄位無效。一般本機 Vitest 無 emulator 時可明確 skip；CI 必須因缺 host 而 fail closed。
+- Emulator prerequisite 已就緒：Node `v24.19.0`、Java `21.0.12.1`、Firebase CLI `14.27.0`；官方 Firestore Emulator `1.19.8` JAR 安裝完成，SHA-256 `9d43599ed6151199e8d604dc87fac51218e49e5f3a48519b1ae560bbe5e3382d` 與鎖定 firebase-tools metadata 相符。先前 GitHub Actions log host 的 403 亦已解除，本次讀取 RED run 真實日誌；沒有用 artifact 搬運。
+- 最終 no-cache 呼叫預算與 expression/access limit 驗收仍待作者修正及實測：Create／Correct／Void 各 18 calls，首次 Close 14，後續 Close／Reopen 15；每個 write 不超過 10 calls、每 transaction 不超過 20 calls。需按實際 Rules path 證明，不能依賴 SDK 快取；設計數字及驗收契約見 spec §7 及計畫 P01。歷史 tight WIP 的 1000-expression 訊息不是這項驗收的定論。
+
+### 本階段本地診斷
+
+- 於 P01 base 上，在 `frontend/` 重跑 `node --version`、`npx --no-install tsc --version` 及 `npx --no-install tsc -p tsconfig.app.json --noEmit`：Node `v24.19.0`、TypeScript `Version 6.0.3`、真實 exit **2**、diagnostic headers **279**。將去行號後的完整輸出逐筆與 P00 [baseline](baselines/75e7a96-tsc-app.txt) 比較，順序／重複項相同，無新增診斷；新 suite 使用 Vite `?raw` fixture import，避免本檔增加 app TypeScript baseline errors。這個既有 compiler failure 不是 P01 Rules failure，也不是此 phase 修 bug 範圍。
+- `npx --no-install eslint src/firebase/__tests__/cloudRulesProof.spec.ts` exit 0。未在無 emulator 環境把 skip 當 Rules pass；初始本地 Vitest JSON 為 2 total、0 passed、0 failed、2 skipped，僅確認 skip 行為，不算 Rules 證據。
+- `reason` 與 `cashEffect` 頂層欄位目前仍待校準至 spec §5／§7；下一個 P01 WIP 應把理由／現金貢獻前後值、delta、reasonKind、refundAmount 納入 exact schema 和規則斷言，並測防止修正被偽標 refund 或退款在關帳 expectedCash 重複扣除。
+- P01 完整 RED／GREEN、expression/call limit acceptance、SOL review 及 required checks 未完成；不得稱 P01 已通過。有效寫入 fixture 目前仍有 expression-cap failure，不可啟動 P02。

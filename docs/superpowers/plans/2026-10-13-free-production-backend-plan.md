@@ -1,6 +1,6 @@
 # EasyOrder 零費用正式後端分階段實作計畫
 
-日期：2026-10-13。狀態：**規劃交付；P00 文件／基線工作正在 PR review；P01–P18 尚未開始或驗收**。
+日期：2026-10-13。狀態：**規劃已交付；P00 已合併；P01 有完整真 Emulator 中間 checkpoint（30 passed），但仍在修正 SOL review blockers 並待最終呼叫預算／expression 驗收、required CI 與 review；P02–P18 尚未開始或驗收**。
 
 **Source of truth：** [正式後端 spec](../specs/2026-10-13-free-production-backend-spec.md)，包含使用者最新「多白名單、等權、同時單一Google帳號」修正；來源 [PR #469](https://github.com/cheerc/talented-easyorder/pull/469)。
 
@@ -34,8 +34,9 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 
 | Phase | 狀態 | 交付摘要與證據 |
 |---|---|---|
-| P00 | 文件與基線已在 PR 提交，待 review | Base：`75e7a96e6cad722a41076df66e5b2cf9014e9d47`；PR head SHA、變更檔清單與檢查結果記在 PR 描述。新增[現況與證據](../../ops/free-production-evidence.md)，含完整 279 筆 TypeScript diagnostics、舊寫入／部署路徑分類與 R/U 對照。docs links／diff check pass；diagnostic 命令真實 exit 2；無 app tests 或 app demo（本 phase 純文件）。下一 phase：P01 Rules proof。 |
-| P01–P18 | 尚未開始／未驗 | 不代表任何新雲端功能已實作或通過。P01 所需本機 Emulator 下載目前被 `storage.googleapis.com` 403 擋下；既有 GitHub Actions runner 是待驗的替代驗證路徑，狀態記於[現況與證據](../../ops/free-production-evidence.md)。 |
+| P00 | 已合併 #471 | Base：`75e7a96e6cad722a41076df66e5b2cf9014e9d47`；PR head：`7a7128f14cf32268808de4e0a57f6986a0ca806e`；main merge SHA：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。新增[現況與證據](../../ops/free-production-evidence.md)，含完整 279 筆 TypeScript diagnostics、舊寫入／部署路徑分類及 R/U 對照。docs links／diff check pass；基線 tsc exit 2；PR CI 識別 docs-only 並跳過 app steps。 |
+| P01 | 行為 RED 已由 Actions 確認；真 Emulator 中間 proof 通過，但 SOL review blockers／最終驗收未完成 | [PR #472](https://github.com/cheerc/talented-easyorder/pull/472)，base `1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。RED source `6ca1545a8e97df4a96c8a75c5429f35f5438a2a9` 的 Actions run [38514043015](https://github.com/cheerc/talented-easyorder/actions/runs/38514043015)：2 tests，1 passed、1 failed、0 skipped；未命令 extra transaction 的拒絕斷言因該交易實際成功而失敗。歷史 tight WIP source `520dd2de75ede44d41becbb9617a872aea9d4d25` 真 Emulator 為 26 tests、18 passed／8 failed／0 skipped，含 1000-expression-limit 訊息；歷史調查亦發現該 WIP 修正迭代有 command schema、seed operators／lease、callback 回傳值與 `-Number(0)` 缺陷，不能推論合法模型不可行，見[歷史診斷與後續脈絡](../../ops/diagnostics/p01-rules-expression-limit-wip.txt)。後續 source `5c55936fc0a0cbc82da3058b4a466364a0d0da1f` 完整真 Emulator proof exit 0、30 passed／0 failed／0 skipped，含 Close → Reopen → order → Close revision 3；Actions checkpoint commit `b4201b9c99520a821250dec5f087e097c1bf0d13`、run [38519397752](https://github.com/cheerc/talented-easyorder/actions/runs/38519397752) 對應此 proof 狀態，proof 30／0／0、舊 Rules 8 passed、e2e 10 passed，兩個工作 job 成功；一般 Vitest 1232 passed／38 skipped（其中 proof 30 與舊 Rules 8 在一般 job 無 emulator 而 skip）。這些皆為中間 checkpoint，非最終 GREEN／merge gate。SOL blockers：強制必要 head／student／transaction writers 實際推進並拒絕省略 writer、server map 未變的命令；以伺服器前版連續推進 settlement revision 並驗證第 4／5 版；新交易 snapshot 比對 server-read 學生顯示名；以有效 builder 起始對抗案例修正 actor 不匹配的負測。最終 no-cache call/expression/access budget、修正後完整 Emulator run、SOL review 與 required CI 尚待，未 review、未部署。 |
+| P02–P18 | 尚未開始／未驗 | 不代表任何新雲端功能已實作或通過。 |
 
 ## 2. 現有檔案與規劃新檔
 
@@ -104,13 +105,13 @@ npm run test:e2e
 
 ### P01 — 證明Spark Rules能守住最複雜改帳
 
-**Scope/files：** 新`cloudRulesProof.spec.ts`、暫存於測試fixture的proof rules、`free-production-evidence.md`；只emulator，不換production rules。
+**Scope/files：** 新`frontend/src/firebase/__tests__/cloudRulesProof.spec.ts`與同目錄`fixtures/cloudRulesProof.rules`，更新`.github/workflows/ci.yml`及`docs/ops/free-production-evidence.md`。Proof rules 只由 `initializeTestEnvironment` 載入，不能放入 `firebase.json`／部署設定；不改 production `firestore.rules`。CI 使用 Java 21、`--project demo-easyorder --only firestore`，固定 `FIRESTORE_EMULATOR_HOST` gate，並檢查 Vitest JSON 確實有通過測試且 skipped 為0。
 
-**Consumes/produces：** spec §5–7→最小可執行五文件交易、租約與closed-day proof、精確access-call表。proof fixtures不能部署；後續P05搬成正式code。
+**Consumes/produces：** spec §4–7→Google verified provider／精確 operator allowlist、lease/serverTimestamp/epoch、dataHead seq＋immutable command、完整 typed targets/before-after、revision+1、五文件帳務及 day contribution、`reason`／`cashEffect`、closed-day／maintenance proof、租約與 settlement 版本。產物含未快取 access-call graph、expression/call limit 評估及真 Emulator 結果。proof fixture 不能部署；後續 P05 才移入正式 rules/code。因 fixture 只覆蓋選定交易與日期 kind，未覆蓋學生／供應商設定、櫃台 expense、備份稽核；搬入 P05 前必須按正式 command union 對完整 kind 做一次 schema／expression／access budget 再證明。
 
-**RED/GREEN：** 建立L09/L10與A03對抗案例，證明寬鬆基線會接受非法變更，再使之拒絕；合法CreateOrder、更正、zero-paid取消、close/reopen均成功。租約 Rules 另須有合法 acquire、有效租約 renew、release 三個 allow 案例；三者都用 `serverTimestamp()`，並驗證 Rules 看到的 `updatedAt == request.time`。client 傳入本機絕對時間須拒絕；有效期由 `updatedAt + duration.value(5, 'm') > request.time` 推導，等於到期界線時視為逾期。命令：`npx firebase emulators:exec --project demo-easyorder --only firestore "npx vitest run src/firebase/__tests__/cloudRulesProof.spec.ts"`。
+**RED/GREEN：** 建立 L09/L10/A03 對抗案例：extra row、缺 student/day/command、雙 command、歷史 command 重放、偽造 seq/actor/serverTime、不同帳戶／日期篡改、schema 數值界線、負數／小數／超界／zero payment、非 holder／舊 epoch／過期 lease、closed／maintenance day、舊 settlement 改寫；拒絕後核對原子未寫。合法 CreateOrder／CorrectTransaction／zero-paid cancellation／CloseDay／ReopenDay 全通過。Lease 使用 server timestamp 驗 acquire／renew／release、拒絕 client timestamp 與過期 renew。CI 專用命令明確指定 `demo-easyorder`，並驗 JSON report 有通過測試且零 skipped；本機一般 Vitest 在 emulator 未設定時可清楚 skip。
 
-**Acceptance：** 未快取計數每write≤10／每transaction≤20；測extra row、缺student/day、雙command、歷史command重放、偽造seq/actor、過期lease、closed日。記錄expression size／call graph；若失敗先修spec，不開下一phase、不弱化檢查。Spike上限兩個工程日，屆時交可重現結果和所需模型修正；驗證成功才放行。
+**Acceptance：** no-cache 計數每 write≤10／每 transaction≤20，不依賴 SDK 重複存取快取；預算為 Create／Correct／Void 各 18 calls、首次 Close 14、後續 Close／Reopen 15，逐 operation 記 `get`／`exists`／`getAfter` 呼叫圖並由 Emulator 驗證 expression 與 access budget。source `5c55936fc0a0cbc82da3058b4a466364a0d0da1f` 的完整 proof 曾有 30 passed／0 failed／0 skipped，但 SOL review 找到必要 counterpart 可省略、snapshot 可沿用 server 舊 map、settlement revision 硬編碼 1／2／3、新交易學生姓名快照未比對，以及負測 actor 不匹配等 blockers；需在有效正向 builder 起始下補相應對抗案例，包括省略 writer 同時提交未變 snapshot 的原子拒絕，以及 Close／Reopen／order／Close／Reopen／Close 的第 4／5 版連續鏈。新交易 `studentNameSnapshot` 必須等於 server-read 學生顯示名。最終 call/expression/access budget 尚待修正後實測。歷史 source `520dd2de75ede44d41becbb9617a872aea9d4d25` 有 26 cases、18 passed／8 failed／0 skipped 並記錄 1000-expression-limit；歷史調查亦發現該 WIP 修正迭代有 command schema、seed operators／lease、callback return、負零 delta 等缺陷，不能證明合法模型不可行，見 ops evidence diagnostic。保留完整 schema、安全檢查與 typed before/after，不得刪安全檢查、假稱通過或開 Blaze。若修正後的合法 schema 模型仍超限，按規格停 P01 並提出可重現失敗與必要架構修正。
 
 ### P02 — 雲端command／投影介面與模式隔離
 
