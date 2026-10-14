@@ -1,6 +1,6 @@
 # Project Status — Talented EasyOrder
 
-> **2026-10-14 正式後端進度：** [零費用正式後端 spec](superpowers/specs/2026-10-13-free-production-backend-spec.md)與[19 階段計畫](superpowers/plans/2026-10-13-free-production-backend-plan.md)為權威規格與順序。P00–P03 已合併；P04 PR #475 正在 review/rework，原始檢查不足且 SOL review 未通過，尚未 merge；P05 不得開始。身份／租約階段不等於業務寫入或上線。Android 另案；下方既有前端追蹤與本人驗收紀錄維持原狀。
+> **2026-10-14 正式後端進度：** [零費用正式後端 spec](superpowers/specs/2026-10-13-free-production-backend-spec.md)與[19 階段計畫](superpowers/plans/2026-10-13-free-production-backend-plan.md)為權威規格與順序。P00–P03 已合併；P04 PR #475 的 rework 候選本地驗證已完成，等待新 immutable head 的獨立 review 與 required CI，尚未 merge；P05 不得開始。身份／租約階段不等於業務寫入或上線。Android 另案；下方既有前端追蹤與本人驗收紀錄維持原狀。
 
 > **已合併基線：** P00 #471、P01 #472、P02 #473、P03 #474；GitHub 實際 merge SHA 與 P01 限制見[現況與證據](ops/free-production-evidence.md)。P04 #475 尚未通過 review/驗收，仍在原 PR 修正；P05–P18 未開始。新後端尚無業務 command 寫入或正式部署。此更新不更改下方歷史前端本人驗收紀錄。逐 PR 接手流程見[開發交接入口](DEVELOPMENT-HANDOFF.md)。
 

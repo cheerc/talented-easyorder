@@ -17,11 +17,13 @@ import {
   acquireLease,
   renewLease,
   releaseLease,
+  LEASE_DURATION_MS,
 } from '../activeAccountLease';
 
 declare const process: { env: Record<string, string | undefined>; cwd: () => string };
 
 let env: RulesTestEnvironment;
+let rulesSource = '';
 
 const firestoreEmulatorHost =
   process.env.FIRESTORE_EMULATOR_HOST ?? process.env.FIREBASE_FIRESTORE_EMULATOR_ADDRESS;
@@ -93,12 +95,12 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     // @ts-expect-error dynamic node import in test environment
     const path = await import('node:path');
     const rulesPath = path.resolve(process.cwd(), '../firestore.rules');
-    const rules = fs.readFileSync(rulesPath, 'utf8');
+    rulesSource = fs.readFileSync(rulesPath, 'utf8');
 
     env = await initializeTestEnvironment({
       projectId: 'demo-easyorder',
       firestore: {
-        rules,
+        rules: rulesSource,
         host: firestoreEmulatorHost!.split(':')[0],
         port: Number(firestoreEmulatorHost!.split(':')[1] || '8080'),
       },
@@ -209,10 +211,9 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     }
   });
 
-  it('A02.6: 租約逾期（超過 5 分鐘）：即使 A 未手動釋放，B 也能成功取得新租約', async () => {
-    // 模擬 6 分鐘前的租約
-    const sixMinutesAgo = new Date(Date.now() - 6 * 60 * 1000);
-    await seedInitialLease(operatorA.uid, 1, sixMinutesAgo);
+  it('A02.6: server time beyond the expiry boundary allows B to acquire (90-second safety window)', async () => {
+    const expiredAt = new Date(Date.now() - LEASE_DURATION_MS - 90_000);
+    await seedInitialLease(operatorA.uid, 1, expiredAt);
 
     const dbB = authedDb(operatorB.uid, operatorB.email);
     const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1);
@@ -221,6 +222,71 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
       expect(result.holderUid).toBe(operatorB.uid);
       expect(result.epoch).toBe(2);
     }
+  });
+
+  it('A02.7: a lease remains active before the server expiry boundary (90-second safety window)', async () => {
+    const expiresAt = new Date(Date.now() + 90_000);
+    await seedInitialLease(operatorA.uid, 1, new Date(expiresAt.getTime() - LEASE_DURATION_MS));
+    const dbB = authedDb(operatorB.uid, operatorB.email);
+
+    const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1);
+    expect(result.status).toBe('busy');
+    if (result.status === 'busy') expect(result.currentHolderUid).toBe(operatorA.uid);
+
+    const leaseDoc = await getDoc(doc(dbB, 'system/accessLease'));
+    expect(leaseDoc.data()?.holderUid).toBe(operatorA.uid);
+    expect(leaseDoc.data()?.epoch).toBe(1);
+  });
+
+  it('A02.8: concurrent acquire calls with the same expected epoch have exactly one winner', async () => {
+    await seedInitialLease(null, 0);
+    const dbA = authedDb(operatorA.uid, operatorA.email);
+    const dbB = authedDb(operatorB.uid, operatorB.email);
+
+    const results = await Promise.all([
+      acquireLease(dbA as unknown as Firestore, operatorA.uid, 0),
+      acquireLease(dbB as unknown as Firestore, operatorB.uid, 0),
+    ]);
+    const winners = results.filter(result => result.status === 'acquired');
+    const losers = results.filter(result => result.status !== 'acquired');
+
+    expect(winners).toHaveLength(1);
+    expect(losers).toHaveLength(1);
+    const winner = winners[0];
+    expect(winner?.status).toBe('acquired');
+    if (!winner || winner.status !== 'acquired') throw new Error('Expected one successful acquire');
+
+    const loser = losers[0];
+    expect(['busy', 'stale_epoch', 'lost']).toContain(loser?.status);
+    if (loser?.status === 'busy') {
+      expect(loser.currentHolderUid).toBe(winner.holderUid);
+      expect(loser.epoch).toBe(1);
+    }
+    if (loser?.status === 'stale_epoch') {
+      expect(loser.expectedEpoch).toBe(0);
+      expect(loser.actualEpoch).toBe(1);
+    }
+
+    const leaseDoc = await getDoc(doc(dbA, 'system/accessLease'));
+    expect(leaseDoc.data()?.holderUid).toBe(winner.holderUid);
+    expect(leaseDoc.data()?.epoch).toBe(1);
+  });
+
+  it('A02.9: concurrent renew and release leave the lease vacant at a new epoch', async () => {
+    await seedInitialLease(operatorA.uid, 1, new Date());
+    const dbA = authedDb(operatorA.uid, operatorA.email);
+
+    const [renewResult, releaseResult] = await Promise.all([
+      renewLease(dbA as unknown as Firestore, operatorA.uid, 1),
+      releaseLease(dbA as unknown as Firestore, operatorA.uid, 1),
+    ]);
+
+    expect(['acquired', 'stale_epoch', 'lost']).toContain(renewResult.status);
+    expect(releaseResult).toBe(true);
+
+    const leaseDoc = await getDoc(doc(dbA, 'system/accessLease'));
+    expect(leaseDoc.data()?.holderUid).toBeNull();
+    expect(leaseDoc.data()?.epoch).toBe(2);
   });
 
   it('A03.1: Stale epoch 防護：傳入舊 expectedEpoch 時在寫入前中止', async () => {
@@ -282,6 +348,31 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     } finally {
       fakeClock.mockRestore();
     }
+  });
+
+  it('A03.5: Rules reject renew after expiry and leave the server lease unchanged', async () => {
+    const expiredAt = new Date(Date.now() - LEASE_DURATION_MS - 90_000);
+    await seedInitialLease(operatorA.uid, 1, expiredAt);
+    const dbA = authedDb(operatorA.uid, operatorA.email);
+
+    const result = await renewLease(dbA as unknown as Firestore, operatorA.uid, 1);
+    expect(result.status).toBe('lost');
+
+    await assertFails(updateDoc(doc(dbA, 'system/accessLease'), {
+      holderUid: operatorA.uid,
+      epoch: 1,
+      updatedAt: serverTimestamp(),
+    }));
+
+    const leaseDoc = await getDoc(doc(dbA, 'system/accessLease'));
+    expect(leaseDoc.data()?.holderUid).toBe(operatorA.uid);
+    expect(leaseDoc.data()?.epoch).toBe(1);
+    expect((leaseDoc.data()?.updatedAt as { toDate: () => Date }).toDate().getTime()).toBe(expiredAt.getTime());
+  });
+
+  it('A04.5: static Rules contract makes exact equality expired (<= acquire, > renew)', () => {
+    expect(rulesSource).toMatch(/resource\.data\.updatedAt\s*\+\s*duration\.value\(5,\s*'m'\)\s*<=\s*request\.time/);
+    expect(rulesSource).toMatch(/resource\.data\.updatedAt\s*\+\s*duration\.value\(5,\s*'m'\)\s*>\s*request\.time/);
   });
 
   it('A04.2: Client 禁止使用本機時間（非 serverTimestamp()）更新 updatedAt', async () => {

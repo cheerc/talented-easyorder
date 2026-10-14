@@ -193,4 +193,73 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     expect(response.status, body).toBe(403);
     await expect.poll(readAccessLease).toMatchObject({ holderUid: null, epoch: 0 });
   });
+
+  test('A08: same-UID pages preserve confirmed access across leader and follower heartbeats', async ({ browser }) => {
+    const context = await browser.newContext({ baseURL: E2E_BASE_URL });
+    const pageA = await context.newPage();
+    const pageB = await context.newPage();
+    const heartbeatLockName = 'easyorder:system-access-lease-heartbeat';
+    const initialClock = new Date();
+
+    const heartbeatLockCounts = async (page: typeof pageA) => page.evaluate(async lockName => {
+      const { held = [], pending = [] } = await navigator.locks.query();
+      return {
+        held: held.filter(lock => lock.name === lockName).length,
+        pending: pending.filter(lock => lock.name === lockName).length,
+      };
+    }, heartbeatLockName);
+
+    try {
+      // Freeze only browser clocks. Firestore Emulator server time remains authoritative.
+      await pageA.clock.install({ time: initialClock });
+      await pageB.clock.install({ time: initialClock });
+
+      const sessionA = await signInGoogle(pageA, E2E_IDENTITIES.operatorA.email);
+      await pageA.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(pageA.locator('.operator-strip')).toBeVisible();
+      await expect(pageA.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect.poll(readAccessLease).toMatchObject({ holderUid: sessionA.uid, epoch: 1 });
+      // Wait for A's real heartbeat request to hold the origin-wide Web Lock before B signs in.
+      await expect.poll(() => heartbeatLockCounts(pageA)).toEqual({ held: 1, pending: 0 });
+
+      const sessionB = await signInGoogle(pageB, E2E_IDENTITIES.operatorA.email);
+      expect(sessionB.uid).toBe(sessionA.uid);
+      // B's initial server-authorized renew probe confirms the existing same-UID lease.
+      await expect(pageB.locator('.operator-strip')).toBeVisible();
+      await expect(pageB.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect.poll(readAccessLease).toMatchObject({ holderUid: sessionA.uid, epoch: 1 });
+      // The native lock query is supporting evidence: A holds it while B is queued.
+      await expect.poll(() => heartbeatLockCounts(pageA)).toEqual({ held: 1, pending: 1 });
+
+      const beforeLeaderHeartbeat = await readAccessLease();
+      expect(beforeLeaderHeartbeat).toMatchObject({ holderUid: sessionA.uid, epoch: 1 });
+      await pageA.clock.runFor(60_001);
+      await expect.poll(async () => (await readAccessLease()).updatedAt.getTime()).toBeGreaterThan(
+        beforeLeaderHeartbeat.updatedAt.getTime(),
+      );
+      await expect(pageA.locator('.operator-strip')).toBeVisible();
+      await expect(pageA.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(pageB.locator('.operator-strip')).toBeVisible();
+      await expect(pageB.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect.poll(readAccessLease).toMatchObject({ holderUid: sessionA.uid, epoch: 1 });
+
+      // Closing the leader releases its Web Lock without releasing the server lease.
+      await pageA.close();
+      await expect.poll(() => heartbeatLockCounts(pageB)).toEqual({ held: 1, pending: 0 });
+      await expect(pageB.locator('.operator-strip')).toBeVisible();
+      await expect(pageB.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      const beforeFollowerHeartbeat = await readAccessLease();
+      expect(beforeFollowerHeartbeat).toMatchObject({ holderUid: sessionA.uid, epoch: 1 });
+
+      await pageB.clock.runFor(60_001);
+      await expect.poll(async () => (await readAccessLease()).updatedAt.getTime()).toBeGreaterThan(
+        beforeFollowerHeartbeat.updatedAt.getTime(),
+      );
+      await expect(pageB.locator('.operator-strip')).toBeVisible();
+      await expect(pageB.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect.poll(readAccessLease).toMatchObject({ holderUid: sessionA.uid, epoch: 1 });
+    } finally {
+      await context.close();
+    }
+  });
 });

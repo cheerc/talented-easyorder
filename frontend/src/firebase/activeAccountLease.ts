@@ -338,8 +338,11 @@ export async function getLeaseStatus(db: Firestore, currentUid?: string): Promis
 }
 
 /**
- * Observe server lease changes. Cache-only, pending-write, missing and malformed
- * snapshots remain unknown and can never authorize the operator UI.
+ * Observe server lease changes. Cache-only and pending-write observations are not
+ * emitted: they cannot grant access or revoke a previously server-confirmed lease.
+ * The initial provider state remains unknown until a server-confirmed snapshot or
+ * server-authorized renew probe arrives. Missing/malformed/server-error states are
+ * emitted as unknown so the provider fails closed.
  */
 export function subscribeLease(
   db: Firestore,
@@ -354,7 +357,6 @@ export function subscribeLease(
       { includeMetadataChanges: true },
       snapshot => {
         if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) {
-          onUpdate(unknownLeaseState('租約尚未由伺服器確認'));
           return;
         }
         if (!snapshot.exists()) {
