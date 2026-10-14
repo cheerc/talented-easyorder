@@ -35,10 +35,11 @@ git log -1 --oneline --decorate
 ## 目前 PR：P05（WIP）
 
 - 計畫入口：[P05 — 正式原子寫入器與冪等收據](superpowers/plans/2026-10-13-free-production-backend-plan.md#p05--正式原子寫入器與冪等收據)；契約來源為 spec §6.2。
-- 目標範圍：`cloudCommandRepository.ts`、`cloudCommands.spec.ts`、production `firestore.rules`／schema；dataHead bootstrapping 與 maintenance guard。首批只啟用 `EnsureDay`、`CreateOrder`、`CreatePayment`，不接 UI；其餘 command kinds 一律 deny。
+- 目標範圍：`cloudCommandRepository.ts`、`cloudCommands.spec.ts`、production `firestore.rules`／schema；dataHead bootstrapping 與 maintenance guard。首批只啟用 `EnsureDay`、`CreateOrder`、`CreatePayment`，不接 UI；其餘 command kinds 一律 deny。最新本地 WIP Emulator checkpoint 是 11/11 pass、0 fail、0 skipped；這不是 phase pass。
 - 產物與驗收：P01 proof/P02 型別/P04 lease → 唯一 commitCommand/readCommand。完整 22-kind typed targets/schema 與 no-cache budget/expression-risk matrix 是靜態設計材料；本 phase 只對 EnsureDay、CreateOrder、CreatePayment 跑真實 production Rules Emulator 正向、拒絕、call-budget 與 atomic unchanged gate，其餘 19 kinds 維持 deny。尚未完成的 P05 gates 不得在文件／PR 中標成通過。
 - `readCommand` 僅允許 server-only讀取且每次都檢查目前有效 Google operator／lease；合法目前 holder 可讀其他 actor、舊 leaseEpoch 的歷史 receipt。只有成功的 server read 確認不存在時回 `null`。
 - 同 command ID 的語義完全一致才回既有 receipt；不同 kind/target/payload/expected revisions 一律 `INVALID_INPUT` 且不增 seq。呼叫端與 repository 對結果不確定時回 `UNKNOWN_RESULT`，保留原 ID 並查詢，不盲目換 ID 重送。
+- 最近 P05 Emulator 命令：`EASYORDER_REQUIRE_CLOUD_COMMANDS=true npx firebase emulators:exec --project demo-easyorder --only firestore "EASYORDER_REQUIRE_CLOUD_COMMANDS=true npx vitest run src/firebase/__tests__/cloudCommands.spec.ts --reporter=default --reporter=json --outputFile=/tmp/easyorder-p05-cloudcommands-r6.json"`；11/11、0 skipped。僅為目前 source checkpoint 的基本 contract cases；raw SDK 多攻擊同批寫入的逐文件 atomic unchanged、並發 head 衝突、ambiguous ack/read、真正 no-cache budget 矩陣、dataHead manifest、legacy writer adapter、full Vitest／CI 與獨立 review 尚待完成。完整數據、TSC diff 與限制見 [ops evidence](ops/free-production-evidence.md)。
 
 ## 每個 PR 的協作與交接要求
 

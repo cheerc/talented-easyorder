@@ -157,6 +157,8 @@ npm run test:e2e
 
 **Acceptance：** `readCommand` 使用 server-only read；只有 server 成功確認缺件才回 `null`。既有 receipt fast path 仍要求當下合法 operator/current holder；目前合法 holder 可讀其他 actor、歷史 leaseEpoch receipt。receipt decoder 要求精確 schema 與真正 Firestore Timestamp，不用 `timestampToISOString`／本機時間 fallback。Rules 每一 write 最多 10、整筆最多 20 access calls，按未快取的每次 `get`／`exists`／`getAfter` 靜態逐路徑計數並從 Emulator 正向證據確認。合法 positive 不得因 expression cap 失敗；negative 如有 cap 診斷如實標記限制，仍提供靜態 contract 與 atomic unchanged 證據。bootstrap 僅以 IAM/Admin 建空白 dataHead manifest，不建立學生、交易或財務初值；不執行正式環境 bootstrap。舊裸 writer fail-closed，prototype 不連 Firebase、不建立第二個 cloud writer；此 PR 不實作 cloud hydrate/UI、不宣稱 POS 雲端流程已交付。
 
+**WIP checkpoint（尚未驗收）：** 本地真 Firestore Emulator command suite 首批 11/11 pass，0 failed、0 skipped；包含三種 enabled kind 正向、相同語義重播、同 ID 異 payload atomic unchanged、current holder 讀舊 actor／epoch receipt、既存日不重設、stale revision、maintenance 與若干直接寫入 deny。測試與 JSON 路徑、命令及限制記錄在 `docs/ops/free-production-evidence.md`。raw SDK 交易閉合攻擊的完整 atomic unchanged、同 revision 競爭、ambiguous result、Rules access/expression budget、IAM manifest、legacy adapter 與 required CI 仍未完成。
+
 ### P06 — 學生名單與期初從零建檔
 
 **Scope/files：** `studentRepository.ts`→新command adapter，`firebaseActions.ts`、Auth後hydrate、`cloudReadRepository.ts`、F3現有帳戶表單呼叫端。

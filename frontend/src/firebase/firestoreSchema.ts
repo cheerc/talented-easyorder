@@ -3,7 +3,7 @@ import { getFirestoreMod } from './firebaseModules';
 import type { ValidationResult } from '../types/validation';
 import type { LedgerTransaction } from '../domain/ledger';
 import type { StudentAccount } from '../domain/student';
-import type { CommandCashEffect } from '../domain/cloudCommands';
+import type { StoredCloudCommandDoc } from '../domain/cloudCommandSchema';
 
 export type FirestoreTimestamp = Timestamp | FieldValue;
 export type FirestoreTransactionType = 'order' | 'payment' | 'refund' | 'cancel' | 'correction' | 'void';
@@ -173,6 +173,7 @@ export interface CloudTransactionDoc {
   menuPriceSnapshot: number;
   vendorIdSnapshot: string;
   vendorNameSnapshot: string;
+  otherItemName: string | null;
   status: 'active' | 'voided';
   revision: number;
   createdAt: FirestoreTimestamp;
@@ -185,24 +186,8 @@ export interface CloudTransactionDoc {
   updatedAt: FirestoreTimestamp;
 }
 
-/** commands/{commandId} */
-export interface CloudCommandDoc {
-  commandId: string;
-  kind: string;
-  seq: number;
-  leaseEpoch: number;
-  actor: { uid: string; email: string };
-  committedAt: FirestoreTimestamp;
-  businessDate: string | null;
-  studentId: string | null;
-  targets: Record<string, unknown>;
-  before: Record<string, unknown> | null;
-  after: Record<string, unknown> | null;
-  reason: string | null;
-  cashEffect: CommandCashEffect;
-  payload: Record<string, unknown>;
-  inputFingerprint: string;
-}
+/** commands/{commandId}; full 22-kind typed schema, with runtime enabling limited to P05 kinds. */
+export type CloudCommandDoc = StoredCloudCommandDoc;
 
 /** days/{date}/settlements/{revision} */
 export interface CloudSettlementDoc {
