@@ -62,19 +62,19 @@ Google sign-in 後要求 `email_verified=true`、provider 為 Google，且 `oper
 
 ### 4.2 使用權租約
 
-`system/accessLease`：`holderUid: string|null`、`epoch: integer`、`expiresAt: Timestamp`、`updatedAt: Timestamp`。由 Firestore transaction 取得，時間以 Rules 的 `request.time` 為準。
+`system/accessLease`：`holderUid: string|null`、`epoch: integer`、`updatedAt: Timestamp`。不儲存 `expiresAt`；有效期限由 Rules 以 `updatedAt + duration.value(5, 'm')` 推導。Acquire、Renew、Release 都以 Firestore `serverTimestamp()` 寫入 `updatedAt`，Rules 驗證其解析值等於 `request.time`。空租約初始化的 `updatedAt` 不授予任何使用權；第一次 client 狀態轉換必須使用伺服器時間。
 
-- 空租約／逾期才能取得；`epoch` 必須加一，UID 必須為本人。期限精確為本次伺服器時間＋5 分鐘。
-- 持有帳號每 60 秒續約；背景頁可能停 timer，逾期即失去權限。更新只能延長本人仍有效租約，不能修改 epoch。多頁協調只選一頁續約；即使協調失效，rules 仍是權威。
+- `holderUid == null` 或 `updatedAt + duration.value(5, 'm') <= request.time` 才能取得；`epoch` 必須加一，UID 必須為本人。有效界線是嚴格大於：到達 `updatedAt + 5 分鐘` 時已逾期。
+- 持有帳號每 60 秒續約；背景頁可能停 timer，逾期即失去權限。更新只能延長本人仍有效租約，不能修改 epoch。多頁協調只選一頁續約；即使協調失效，Rules 仍是權威。UI 只用 server-confirmed `updatedAt` 顯示估計期限；本機時鐘與 timer 不授予、延長或證明使用權。
 - B 帳號登入 Firebase 成功不等於獲得系統使用權；A 仍使用時 B 只顯示「目前有人使用，請對方登出或等待逾時」，不載入名單與帳務，不自動搶占。重新檢查須限流（至少 15 秒）。
-- A 登出先處理送出中的結果確認，再釋放租約（holder=null、epoch+1、expiresAt=request.time），最後 Firebase signOut／清快取。釋放失敗仍可本機登出，至多等租約到期，不宣稱已完成交接。
+- A 登出先處理送出中的結果確認，再釋放租約（`holderUid=null`、`epoch+1`、`updatedAt=serverTimestamp()`），最後 Firebase signOut／清快取。釋放失敗仍可本機登出，至多等租約到期，不宣稱已完成交接。
 - 關閉視窗／斷電不依賴 unload 釋放；最長等待 5 分鐘。逾期後 B 取得新 epoch，A 舊頁面的寫入全部拒絕。
 - 同一 UID 的兩個分頁／電腦可操作同一份帳，視為同一帳號；Firestore revision 防衝突。任一頁「登出」釋放全帳號使用權，其餘頁必須回登入遮罩並清資料。此處限制的是同時活躍的 Google 身分，沒有把多人共用一個帳號偽稱為可辨識每個真人。
 - Auth token 不會因租約失效而立即撤銷；安全承諾是 **每次伺服器讀寫都檢查當下使用權**。無法收回使用者已看到／下載的資料。
 
-租約 Rules 狀態機（不使用業務 command）：維護工具先建唯一文件，holder=null、epoch=0，client create/delete 一律拒絕。每次 update 限上述四個欄位，updatedAt=request.time，且呼叫者須為有效白名單。Acquire 只准舊holder為null或expiresAt≤request.time，新holder=auth.uid、epoch=舊值+1、expiresAt=request.time+5分鐘；Renew只准舊holder=auth.uid且舊期限>request.time，新holder/epoch不變、期限=request.time+5分鐘；Release只准舊holder=auth.uid，新holder=null、epoch=舊值+1、期限=request.time。其他狀態變更全部拒絕。transaction必須比對呼叫端持有的expectedEpoch；B已取得後A不得release B的租約。維護復原只建立空租約，不從備份恢復占用狀態。
+租約 Rules 狀態機（不使用業務 command）：維護工具先建唯一文件，`holderUid=null`、`epoch=0`，client create/delete 一律拒絕。每次 client update 只允許 `holderUid`、`epoch`、`updatedAt`，`updatedAt == request.time`，且呼叫者須為有效白名單；client 寫 `serverTimestamp()`，不得送本機產生的絕對時間。Acquire 只准舊 `holderUid == null` 或 `resource.data.updatedAt + duration.value(5, 'm') <= request.time`，新 `holderUid=auth.uid`、`epoch=舊值+1`。Renew 只准舊 `holderUid == auth.uid` 且 `resource.data.updatedAt + duration.value(5, 'm') > request.time`，`holderUid`／`epoch` 不變。Release 只准舊 `holderUid == auth.uid` 且文件 `epoch` 等於呼叫端 `expectedEpoch`，新 `holderUid=null`、`epoch=舊值+1`。以上每種轉換都把 `updatedAt` 設為 `request.time`；其他狀態變更全部拒絕。B 已取得新 epoch 後，A 不得 release B 的租約。維護復原只建立空租約，不從備份恢復占用狀態。
 
-Rules：讀 operator 僅可讀本人；有效白名單者可讀不含個資的 lease 占用狀態；每次業務讀取與業務寫入必須同時滿足 `operators/{uid}.active == true`、白名單email/provider吻合、`lease.holderUid == request.auth.uid`、`lease.expiresAt > request.time`；所有業務 command 還須 `leaseEpoch == lease.epoch`。寫入可透過新command的集中規則與每個投影的強制counterpart鏈證明上述條件，不能省略auth檢查。App 監聽 lease、停用／token 更新事件，失去使用權立即 unsubscribe、遮罩與清記憶體；被 rules 拒絕時也做相同處理。
+Rules：讀 operator 僅可讀本人；有效白名單者可讀不含個資的 lease 占用狀態；每次業務讀取與業務寫入必須同時滿足 `operators/{uid}.active == true`、白名單 email／provider 吻合、`lease.holderUid == request.auth.uid`、`lease.updatedAt + duration.value(5, 'm') > request.time`；所有業務 command 還須 `leaseEpoch == lease.epoch`。寫入可透過新 command 的集中規則與每個投影的強制 counterpart 鏈證明上述條件，不能省略 auth 檢查。App 監聽 lease、停用／token 更新事件，失去使用權立即 unsubscribe、遮罩與清記憶體；被 Rules 拒絕時也做相同處理。UI 可用 server-confirmed `updatedAt` 計算顯示期限，但本機時鐘／倒數僅是提示；業務授權只由每次 Firestore Rules 對伺服器 `request.time` 的檢查決定。
 
 ## 5. 儲存模型與現有前端對映
 
@@ -240,7 +240,7 @@ P16 須計入 client document/index-entry reads、Rules dependent reads（拒絕
 
 Hosting 使用 HTTPS、SPA rewrites、CSP／安全header承接 `vercel.json` 的用途但改為正確EasyOrder網域，不直接複製 payroll 的 authDomain。靜態資產hash長快取，index與service worker可更新；不公開source map／私密備份。Firebase web config是公開識別資訊，真正權限靠rules；私鑰、ADC、真姓名／餘額／截圖不得進公開repo。錯誤日誌只記commandId、錯誤碼、版本與匿名technical context，不記完整payload。
 
-部署順序：index準備→相容rules→前端→smoke；schemaVersion不合即停止寫入。保留上一版可相容前端作回退；不可回退到會忽略新規則／資料的版本，不用回滾資料取消已入帳交易。日常rules部署顯式指定EasyOrder project，移除與payroll合併rules的deploy路徑；驗證產物無payroll target。Google Auth設定authorized domain、custom authDomain及OAuth redirect，測試popup被擋的可用fallback。來源：[Google sign-in](https://firebase.google.com/docs/auth/web/google-signin)、[redirect best practices](https://firebase.google.com/docs/auth/web/redirect-best-practices)。
+部署順序：index準備→相容rules→前端→smoke；schemaVersion不合即停止寫入。保留上一版可相容前端作回退；不可回退到會忽略新規則／資料的版本，不用回滾資料取消已入帳交易。日常rules部署顯式指定EasyOrder project，移除與payroll合併rules的deploy路徑；驗證產物無payroll target。Google Auth設定authorized domain、custom authDomain及OAuth redirect，測試popup被擋的可用fallback。來源：[Google sign-in](https://firebase.google.com/docs/auth/web/google-signin)、[redirect best practices](https://firebase.google.com/docs/auth/web/redirect-best-practices)。所有正式 Firebase 專案、DNS、Auth、Hosting、Rules／indexes、正式環境變數與管理憑證均由使用者在其電腦設定和操作；Cloud agent 僅使用 Emulator／合成資料，提供範本、runbook 與可供本機執行的 release，不部署正式資源，也不接收正式 keys。Firebase Web config 是瀏覽器可見的專案識別設定，不是 Admin 私鑰；仍由使用者在本機配置。P17 的正式驗證只能記錄使用者回報的匿名結果，Cloud agent 不推定或宣稱已驗。
 
 ## 11. 固定驗收案例
 
@@ -300,7 +300,7 @@ D1–D9帳務／菜單業務意圖保留；雲端供應商「移除」改用保�
 
 ## 14. 留給本人或後續 session 的事項（集中於末尾）
 
-**部署必要輸入，不需要重新設計：** 實際獲准Google email／UID名單、Firebase資源建立與DNS帳號的操作權限、最終未被占用的子網域、上線日、核對後學生期初與開帳現金、備份密碼及第二副本保管位置。不得在公開PR填真實名單或憑證；維護者在P17–P18依runbook私下輸入。
+**部署必要輸入，不需要重新設計：** 實際獲准Google email／UID名單、Firebase資源建立與DNS帳號的操作權限、最終未被占用的子網域、上線日、核對後學生期初與開帳現金、備份密碼及第二副本保管位置。正式環境變數、Admin／復原憑證與 Firebase 資源操作只在使用者自己的電腦進行；Cloud agent 不收取正式 keys、不部署正式資源。不得在公開PR填真實名單或憑證；使用者在P17–P18依runbook私下輸入並回報匿名驗證結果。
 
 **必須取得工程證據的gate，不是假裝已完成：** P01直接Rules的18-call設計能否通過全部惡意路徑；P16真實大小／讀寫頻率可否落在Spark內；P15復原量能否達RTO。若失敗先交具體evidence與最小修訂方案，不讓實作team自行降低安全性或開計費。
 

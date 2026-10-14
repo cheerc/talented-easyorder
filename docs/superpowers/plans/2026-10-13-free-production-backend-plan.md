@@ -65,7 +65,7 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 
 `BusinessCommand` 為spec §6 kind的discriminated union；共用 `{commandId,kind,leaseEpoch,expectedRevisions,payload}`。repository注入actor與serverTimestamp；`CommandReceipt` 包含commandId/seq/committedAt/typed targets/結果。`commitCommand`回Promise，cloud actions不能再同步假裝成功。讀取器回帶 `complete` 與 `sourceSeq` 的projection，未完整不得給精確afterBalance／CSV完成狀態。
 
-`acquireLease(): Promise<LeaseResult>`、`renewLease(epoch): Promise<LeaseResult>`、`releaseLease(epoch): Promise<void>`；LeaseResult區分 acquired/busy/lost，期限使用server校驗。`exportCommandRange(fromExclusive,toInclusive)` 與 `replayBackup(packages)` 按spec §9驗連續序號與before/after鏈。
+`acquireLease(): Promise<LeaseResult>`、`renewLease(epoch): Promise<LeaseResult>`、`releaseLease(epoch): Promise<void>`；LeaseResult區分 acquired/busy/lost，包含 server-confirmed `holderUid`／`epoch`／`updatedAt`，不保存或回傳 `expiresAt`。Rules 以 `updatedAt + duration.value(5, 'm')` 和 `request.time` 校驗期限；UI期限只供提示，不授權讀寫。`exportCommandRange(fromExclusive,toInclusive)` 與 `replayBackup(packages)` 按spec §9驗連續序號與before/after鏈。
 
 以下命令工作目錄為 `frontend/`，新測試檔於對應phase建立後才執行：
 
@@ -101,7 +101,7 @@ npm run test:e2e
 
 **Consumes/produces：** spec §5–7→最小可執行五文件交易、租約與closed-day proof、精確access-call表。proof fixtures不能部署；後續P05搬成正式code。
 
-**RED/GREEN：** 建立L09/L10與A03對抗案例，證明寬鬆基線會接受非法變更，再使之拒絕；合法CreateOrder、更正、zero-paid取消、close/reopen均成功。命令：`npx firebase emulators:exec --project demo-easyorder --only firestore "npx vitest run src/firebase/__tests__/cloudRulesProof.spec.ts"`。
+**RED/GREEN：** 建立L09/L10與A03對抗案例，證明寬鬆基線會接受非法變更，再使之拒絕；合法CreateOrder、更正、zero-paid取消、close/reopen均成功。租約 Rules 另須有合法 acquire、有效租約 renew、release 三個 allow 案例；三者都用 `serverTimestamp()`，並驗證 Rules 看到的 `updatedAt == request.time`。client 傳入本機絕對時間須拒絕；有效期由 `updatedAt + duration.value(5, 'm') > request.time` 推導，等於到期界線時視為逾期。命令：`npx firebase emulators:exec --project demo-easyorder --only firestore "npx vitest run src/firebase/__tests__/cloudRulesProof.spec.ts"`。
 
 **Acceptance：** 未快取計數每write≤10／每transaction≤20；測extra row、缺student/day、雙command、歷史command重放、偽造seq/actor、過期lease、closed日。記錄expression size／call graph；若失敗先修spec，不開下一phase、不弱化檢查。Spike上限兩個工程日，屆時交可重現結果和所需模型修正；驗證成功才放行。
 
@@ -131,9 +131,9 @@ npm run test:e2e
 
 **Consumes/produces：** P03 allowlist→acquire/renew/release、epoch與失權遮罩。
 
-**RED/GREEN：** `activeAccountLease.spec.ts`（emulator）對A02–A04；A/B同時acquire、expiry邊界、renew/release races、舊epoch、停用帳號、同UID多頁登出。E2E用`npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test e2e/cloud-production.spec.ts --grep A0"`，實際執行A01–A04，不以skip通過。
+**RED/GREEN：** `activeAccountLease.spec.ts`（emulator）對A02–A04；A/B同時acquire、`updatedAt + 5 分鐘`到期界線（小於／等於／大於）、renew/release races、舊epoch、停用帳號、同UID多頁登出。client 只能以 `serverTimestamp()` 更新 `updatedAt`；調快／調慢本機時鐘不得取得、延長或保留 Rules 授權。E2E用`npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test e2e/cloud-production.spec.ts --grep A0"`，實際執行A01–A04，不以skip通過。
 
-**Acceptance/demo：** A使用時B只能等待；A釋放或5分鐘到期後B可用；不得靠localStorage鎖冒充全域互斥；沒有活租約強制踢人功能。
+**Acceptance/demo：** A使用時B只能等待；A釋放或 Rules 判定 `updatedAt + 5 分鐘 <= request.time` 後B可取得新epoch；不得靠localStorage鎖或本機時鐘冒充全域互斥；沒有活租約強制踢人功能。UI的期限提示取自 server-confirmed `updatedAt`，是否可讀寫一律由 Rules 依伺服器時間決定。
 
 ### P05 — 正式原子寫入器與冪等收據
 
@@ -261,9 +261,9 @@ npm run test:e2e
 
 **Consumes/produces：** P16驗證產物→可部署release、實際Spark／no billing證據、Google登入domain、清晰rollback與quota流程。
 
-**Acceptance：** 明確EasyOrder project與region，非payroll；Hosting不是App Hosting；CLI目標固定且部署前再次核對；官方方案重查、自訂domain可登入、rules/index/前端版本配對；CI emulator使用demo project，無production credential。先預設HTTPS網域匿名smoke，再DNS切換。既有子網域若占用只選備選，不覆寫既有服務。
+**Acceptance：** 明確EasyOrder project與region，非payroll；Hosting不是App Hosting；CLI目標固定且部署前再次核對；官方方案重查、自訂domain可登入、rules/index/前端版本配對；CI emulator使用demo project，無production credential。**所有正式環境變數、Admin／復原憑證、Firebase project／DNS／Auth／Hosting／Rules／indexes設定與正式部署／smoke test，均由使用者在其電腦上從本機repo執行；Cloud agent只處理Emulator、合成資料、設定範本與runbook，不接收正式keys、不操作或部署正式資源。**Firebase Web config是瀏覽器可見的project識別資訊、不是Admin私鑰，但正式值仍由使用者本機配置。先由使用者在預設HTTPS網域執行匿名smoke，再由使用者決定DNS切換。既有子網域若占用只選備選，不覆寫既有服務。
 
-**Evidence：** source／build產物／CSP检查，命令按實際新project參數記在私有部署紀錄；公共文件只用`<easyorder-project-id>`占位參數。資源名稱／帳號權限是部署輸入，不是待設計問題。cloud console收費狀態未讀到就寫UNVERIFIED，不能用budget alert當硬上限。
+**Evidence：** Cloud agent可提供source／本機build產物／CSP檢查與部署範本；正式project、計費狀態、DNS/Auth/Hosting、Rules/index部署及smoke結果，只能由使用者操作後回報匿名證據，否則一律標`UNVERIFIED`，不得由Cloud agent猜測或聲稱已驗。正式命令按實際新project參數記在使用者本機私有部署紀錄；公共文件只用`<easyorder-project-id>`占位參數。正式環境變數與管理憑證不進repo、雲端任務或PR。資源名稱／帳號權限是部署輸入，不是待設計問題。cloud console收費狀態未讀到就寫UNVERIFIED，不能用budget alert當硬上限。
 
 ### P18 — 空白建檔與三日真實營運驗收
 
