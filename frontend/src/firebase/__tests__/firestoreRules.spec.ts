@@ -7,7 +7,15 @@ import {
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
-import { deleteDoc, doc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+} from 'firebase/firestore';
 
 let env: RulesTestEnvironment;
 
@@ -16,93 +24,58 @@ const rulesPath = path.resolve(import.meta.dirname, '../../../../firestore.rules
 const firestoreEmulatorHost =
   process.env.FIRESTORE_EMULATOR_HOST ?? process.env.FIREBASE_FIRESTORE_EMULATOR_ADDRESS;
 
-/**
- * Ref: #333 — Firestore security rules integration tests.
- *
- * These tests require a running Firestore emulator and are automatically
- * skipped when FIRESTORE_EMULATOR_HOST is not set. This is intentional:
- * security rules can only be meaningfully tested against the actual rules
- * engine, not mocks.
- *
- * To run locally:
- *   firebase emulators:start --only firestore
- *   FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npx vitest run src/firebase/__tests__/firestoreRules.spec.ts
- *
- * CI: Add a Firestore emulator service to the CI pipeline to enable these
- * tests. Until then, they remain skipped (not a code issue, infra gap).
- */
 const describeOrSkip = firestoreEmulatorHost ? describe : describe.skip;
 
-async function seedOperator(uid: string, email: string, role: 'counter' | 'admin' = 'counter', active = true) {
+const operatorA = {
+  uid: 'uid-operator-a',
+  email: 'operator-a@example.com',
+  displayName: '操作員 A',
+  active: true,
+};
+
+const operatorB = {
+  uid: 'uid-operator-b',
+  email: 'operator-b@example.com',
+  displayName: '操作員 B',
+  active: true,
+};
+
+const inactiveOperator = {
+  uid: 'uid-inactive',
+  email: 'inactive@example.com',
+  displayName: '停用操作員',
+  active: false,
+};
+
+async function seedOperatorDoc(op: { uid: string; email: string; displayName: string; active: boolean }) {
   await env.withSecurityRulesDisabled(async context => {
-    await setDoc(doc(context.firestore(), `operators/${uid}`), {
-      uid,
-      email,
-      displayName: email,
-      role,
-      active,
-      createdAt: new Date('2026-05-16T08:00:00.000Z'),
-      updatedAt: new Date('2026-05-16T08:00:00.000Z'),
+    await setDoc(doc(context.firestore(), `operators/${op.uid}`), {
+      uid: op.uid,
+      email: op.email,
+      displayName: op.displayName,
+      active: op.active,
+      createdAt: new Date('2026-10-14T08:00:00.000Z'),
+      updatedAt: new Date('2026-10-14T08:00:00.000Z'),
     });
   });
 }
 
-async function seedStudent(studentId: string, balance = 500) {
-  await env.withSecurityRulesDisabled(async context => {
-    await setDoc(doc(context.firestore(), `students/${studentId}`), {
-      id: studentId,
-      displayName: '王小明',
-      aliases: [],
-      className: null,
-      groupName: null,
-      openingBalance: balance,
-      currentBalance: balance,
-      status: 'active',
-      createdAt: new Date('2026-05-16T08:00:00.000Z'),
-      createdBy: 'seed',
-      updatedAt: new Date('2026-05-16T08:00:00.000Z'),
-      updatedBy: 'seed',
-      revision: 1,
-      lastTransactionId: null,
-    });
-  });
+function authedDb(
+  uid: string,
+  email: string,
+  claims: { email_verified?: boolean; signInProvider?: 'google.com' | 'password' | 'anonymous' | 'github.com' } = {},
+) {
+  return env.authenticatedContext(uid, {
+    email,
+    email_verified: claims.email_verified ?? true,
+    firebase: { sign_in_provider: claims.signInProvider ?? 'google.com' },
+  }).firestore();
 }
 
-async function seedTransaction(transactionId: string, studentId = '015', amount = 100) {
-  await env.withSecurityRulesDisabled(async context => {
-    await setDoc(doc(context.firestore(), `transactions/${transactionId}`), {
-      id: transactionId,
-      studentId,
-      studentNameSnapshot: '王小明',
-      type: 'payment',
-      amount,
-      balanceBefore: 500,
-      balanceAfter: 500 + amount,
-      clientBalanceAfterPreview: 500 + amount,
-      menuNameSnapshot: '',
-      price: 0,
-      paidAmount: amount,
-      operatorId: 'uid-counter',
-      operatorEmail: 'counter@talented.com.tw',
-      deviceId: 'pc-1',
-      businessDate: '2026-05-16',
-      sourceDevice: 'pc',
-      note: 'seeded transaction',
-      status: 'pending',
-      createdAt: new Date('2026-05-16T08:00:00.000Z'),
-      committedAt: null,
-    });
-  });
-}
-
-function authedDb(uid: string, email: string) {
-  return env.authenticatedContext(uid, { email, email_verified: true }).firestore();
-}
-
-describeOrSkip('firestore.rules required cases', () => {
+describeOrSkip('firestore.rules — P03 A01: Google 登入與等權白名單規範', () => {
   beforeAll(async () => {
     env = await initializeTestEnvironment({
-      projectId: 'easyorder-rules-test',
+      projectId: 'demo-easyorder',
       firestore: {
         rules: readFileSync(rulesPath, 'utf8'),
         host: firestoreEmulatorHost!.split(':')[0],
@@ -119,181 +92,132 @@ describeOrSkip('firestore.rules required cases', () => {
     await env.cleanup();
   });
 
-  it('allows active @talented.com.tw operator to create a transaction with matching operatorId', async () => {
-    await seedOperator('uid-counter', 'counter@talented.com.tw');
-    const db = authedDb('uid-counter', 'counter@talented.com.tw');
+  it('A01.1: 兩個已核准的 Google 測試身分都能讀取本人 operator 文件（等權，無 role）', async () => {
+    await seedOperatorDoc(operatorA);
+    await seedOperatorDoc(operatorB);
 
-    await assertSucceeds(setDoc(doc(db, 'transactions/tx-1'), {
-      id: 'tx-1',
-      studentId: '015',
-      studentNameSnapshot: '王小明',
-      type: 'payment',
-      amount: 100,
-      balanceBefore: 0,
-      balanceAfter: 100,
-      clientBalanceAfterPreview: 100,
-      menuNameSnapshot: '',
-      price: 0,
-      paidAmount: 100,
-      operatorId: 'uid-counter',
-      operatorEmail: 'counter@talented.com.tw',
-      deviceId: 'pc-1',
-      businessDate: '2026-05-16',
-      sourceDevice: 'pc',
-      note: '補錢',
-      status: 'pending',
-      createdAt: new Date('2026-05-16T08:00:00.000Z'),
-      committedAt: null,
-    }));
+    const dbA = authedDb(operatorA.uid, operatorA.email);
+    const dbB = authedDb(operatorB.uid, operatorB.email);
+
+    await assertSucceeds(getDoc(doc(dbA, `operators/${operatorA.uid}`)));
+    await assertSucceeds(getDoc(doc(dbB, `operators/${operatorB.uid}`)));
   });
 
-  it('rejects non-talented email even if signed in', async () => {
-    await seedOperator('uid-outsider', 'outsider@gmail.com');
-    const db = authedDb('uid-outsider', 'outsider@gmail.com');
+  it('A01.2: 禁止讀取其他人的 operator 文件（跨 UID 讀取拒絕）', async () => {
+    await seedOperatorDoc(operatorA);
+    await seedOperatorDoc(operatorB);
 
-    await assertFails(setDoc(doc(db, 'transactions/tx-outsider'), {
-      id: 'tx-outsider',
-      studentId: '015',
-      type: 'payment',
-      amount: 100,
-      operatorId: 'uid-outsider',
-      businessDate: '2026-05-16',
-    }));
+    const dbA = authedDb(operatorA.uid, operatorA.email);
+    // A 嘗試讀取 B 的 operator 文件
+    await assertFails(getDoc(doc(dbA, `operators/${operatorB.uid}`)));
   });
 
-  it('rejects hard deletion of students and transactions', async () => {
-    await seedOperator('uid-counter', 'counter@talented.com.tw');
-    const db = authedDb('uid-counter', 'counter@talented.com.tw');
+  it('A01.3: 禁止 client 列出所有 operators 文件（list 拒絕，防名單外洩）', async () => {
+    await seedOperatorDoc(operatorA);
+    const dbA = authedDb(operatorA.uid, operatorA.email);
 
-    await assertFails(deleteDoc(doc(db, 'students/015')));
-    await assertFails(deleteDoc(doc(db, 'transactions/tx-1')));
+    await assertFails(getDocs(collection(dbA, 'operators')));
   });
 
-  it('rejects direct student balance changes without a matching transaction in the same write', async () => {
-    await seedOperator('uid-counter', 'counter@talented.com.tw');
-    await seedStudent('015', 500);
-    const db = authedDb('uid-counter', 'counter@talented.com.tw');
+  it('A01.4: 禁止 client 自建、修改、刪除 operators 文件（只有維護者可管理）', async () => {
+    await seedOperatorDoc(operatorA);
+    const dbA = authedDb(operatorA.uid, operatorA.email);
 
-    await assertFails(updateDoc(doc(db, 'students/015'), {
-      currentBalance: 999,
-      revision: 2,
-      updatedAt: new Date('2026-05-16T08:01:00.000Z'),
-      updatedBy: 'uid-counter',
-      lastTransactionId: 'tx-missing',
-    }));
+    // 嘗試建立新 operator
+    await assertFails(
+      setDoc(doc(dbA, 'operators/uid-attacker'), {
+        uid: 'uid-attacker',
+        email: 'attacker@example.com',
+        displayName: '攻擊者',
+        active: true,
+      }),
+    );
+
+    // 嘗試修改本人 active 或 email
+    await assertFails(
+      updateDoc(doc(dbA, `operators/${operatorA.uid}`), {
+        active: false,
+      }),
+    );
+
+    // 嘗試刪除本人文件
+    await assertFails(deleteDoc(doc(dbA, `operators/${operatorA.uid}`)));
   });
 
-  it('rejects projection update that reuses an existing transaction ID', async () => {
-    await seedOperator('uid-counter', 'counter@talented.com.tw');
-    await seedStudent('015', 500);
-    await seedTransaction('tx-existing', '015', 100);
-    const db = authedDb('uid-counter', 'counter@talented.com.tw');
+  it('A01.5: 同網域但未在白名單的 Google 帳號不可讀取他人文件，亦無法存取業務資料', async () => {
+    // 未在 operators 文件中建立此 UID
+    const unapprovedUid = 'uid-unapproved-colleague';
+    const unapprovedEmail = 'colleague@example.com';
+    const dbUnapproved = authedDb(unapprovedUid, unapprovedEmail);
 
-    await assertFails(updateDoc(doc(db, 'students/015'), {
-      currentBalance: 600,
-      revision: 2,
-      updatedAt: new Date('2026-05-16T08:02:00.000Z'),
-      updatedBy: 'uid-counter',
-      lastTransactionId: 'tx-existing',
-    }));
+    await assertFails(getDoc(doc(dbUnapproved, `operators/${operatorA.uid}`)));
+    await assertFails(getDoc(doc(dbUnapproved, 'students/stu-1')));
   });
 
-  it('allows student balance projection only when the same batch creates the matching transaction', async () => {
-    await seedOperator('uid-counter', 'counter@talented.com.tw');
-    await seedStudent('015', 500);
-    const db = authedDb('uid-counter', 'counter@talented.com.tw');
-    const batch = writeBatch(db);
+  it('A01.6: 改 email（Auth token email 與 operator doc 不吻合）拒絕認可為有效白名單', async () => {
+    await seedOperatorDoc(operatorA);
+    // 雖然 UID 吻合，但使用不同 email 登入
+    const dbSpoofed = authedDb(operatorA.uid, 'spoofed@attacker.com');
 
-    batch.set(doc(db, 'transactions/tx-2'), {
-      id: 'tx-2',
-      studentId: '015',
-      studentNameSnapshot: '王小明',
-      type: 'payment',
-      amount: 100,
-      balanceBefore: 500,
-      balanceAfter: 600,
-      clientBalanceAfterPreview: 600,
-      menuNameSnapshot: '',
-      price: 0,
-      paidAmount: 100,
-      operatorId: 'uid-counter',
-      operatorEmail: 'counter@talented.com.tw',
-      deviceId: 'pc-1',
-      businessDate: '2026-05-16',
-      sourceDevice: 'pc',
-      note: '補錢',
-      status: 'pending',
-      createdAt: new Date('2026-05-16T08:01:00.000Z'),
-      committedAt: null,
-    });
-    batch.update(doc(db, 'students/015'), {
-      currentBalance: 600,
-      revision: 2,
-      updatedAt: new Date('2026-05-16T08:01:00.000Z'),
-      updatedBy: 'uid-counter',
-      lastTransactionId: 'tx-2',
-    });
-
-    await assertSucceeds(batch.commit());
+    // 業務資料必須 deny
+    await assertFails(getDoc(doc(dbSpoofed, 'students/stu-1')));
+    await assertFails(getDoc(doc(dbSpoofed, 'transactions/tx-1')));
   });
 
-  it('rejects a second projection update with the same transaction ID', async () => {
-    await seedOperator('uid-counter', 'counter@talented.com.tw');
-    await seedStudent('015', 500);
-    const db = authedDb('uid-counter', 'counter@talented.com.tw');
-    const batch = writeBatch(db);
+  it('A01.7: 非 Google Provider 拒絕（必須為 google.com）', async () => {
+    await seedOperatorDoc(operatorA);
+    const dbPassword = authedDb(operatorA.uid, operatorA.email, { signInProvider: 'password' });
 
-    batch.set(doc(db, 'transactions/tx-replay'), {
-      id: 'tx-replay',
-      studentId: '015',
-      studentNameSnapshot: '王小明',
-      type: 'payment',
-      amount: 100,
-      balanceBefore: 500,
-      balanceAfter: 600,
-      clientBalanceAfterPreview: 600,
-      menuNameSnapshot: '',
-      price: 0,
-      paidAmount: 100,
-      operatorId: 'uid-counter',
-      operatorEmail: 'counter@talented.com.tw',
-      deviceId: 'pc-1',
-      businessDate: '2026-05-16',
-      sourceDevice: 'pc',
-      note: '補錢',
-      status: 'pending',
-      createdAt: new Date('2026-05-16T08:03:00.000Z'),
-      committedAt: null,
-    });
-    batch.update(doc(db, 'students/015'), {
-      currentBalance: 600,
-      revision: 2,
-      updatedAt: new Date('2026-05-16T08:03:00.000Z'),
-      updatedBy: 'uid-counter',
-      lastTransactionId: 'tx-replay',
-    });
-    await assertSucceeds(batch.commit());
-
-    await assertFails(updateDoc(doc(db, 'students/015'), {
-      currentBalance: 700,
-      revision: 3,
-      updatedAt: new Date('2026-05-16T08:04:00.000Z'),
-      updatedBy: 'uid-counter',
-      lastTransactionId: 'tx-replay',
-    }));
+    // 非 Google provider 存取業務資料拒絕
+    await assertFails(getDoc(doc(dbPassword, 'students/stu-1')));
   });
 
-  it('rejects transaction create when operatorId does not match auth uid', async () => {
-    await seedOperator('uid-counter', 'counter@talented.com.tw');
-    const db = authedDb('uid-counter', 'counter@talented.com.tw');
+  it('A01.8: 未驗證 Email（email_verified == false）拒絕', async () => {
+    await seedOperatorDoc(operatorA);
+    const dbUnverified = authedDb(operatorA.uid, operatorA.email, { email_verified: false });
 
-    await assertFails(setDoc(doc(db, 'transactions/tx-mismatch'), {
-      id: 'tx-mismatch',
-      studentId: '015',
-      type: 'payment',
-      amount: 100,
-      operatorId: 'different-uid',
-      businessDate: '2026-05-16',
-    }));
+    // 未驗證 email 存取業務資料拒絕
+    await assertFails(getDoc(doc(dbUnverified, 'students/stu-1')));
+  });
+
+  it('A01.9: 停用帳號（active == false）禁止存取業務資料', async () => {
+    await seedOperatorDoc(inactiveOperator);
+    const dbInactive = authedDb(inactiveOperator.uid, inactiveOperator.email);
+
+    // 停用帳號可讀本人狀態以顯示停用通知
+    await assertSucceeds(getDoc(doc(dbInactive, `operators/${inactiveOperator.uid}`)));
+
+    // 但業務資料嚴格禁止
+    await assertFails(getDoc(doc(dbInactive, 'students/stu-1')));
+    await assertFails(getDoc(doc(dbInactive, 'transactions/tx-1')));
+  });
+
+  it('A01.10: P03 業務資料全面 Deny（核准身分亦不能在此 phase 讀寫 students, transactions, days 等）', async () => {
+    await seedOperatorDoc(operatorA);
+    const dbA = authedDb(operatorA.uid, operatorA.email);
+
+    // students deny
+    await assertFails(getDoc(doc(dbA, 'students/stu-1')));
+    await assertFails(setDoc(doc(dbA, 'students/stu-1'), { studentId: 'stu-1' }));
+
+    // transactions deny
+    await assertFails(getDoc(doc(dbA, 'transactions/tx-1')));
+    await assertFails(setDoc(doc(dbA, 'transactions/tx-1'), { transactionId: 'tx-1' }));
+
+    // commands deny
+    await assertFails(getDoc(doc(dbA, 'commands/cmd-1')));
+    await assertFails(setDoc(doc(dbA, 'commands/cmd-1'), { commandId: 'cmd-1' }));
+
+    // days deny
+    await assertFails(getDoc(doc(dbA, 'days/2026-10-14')));
+    await assertFails(setDoc(doc(dbA, 'days/2026-10-14'), { businessDate: '2026-10-14' }));
+
+    // vendors deny
+    await assertFails(getDoc(doc(dbA, 'vendors/ven-1')));
+    await assertFails(setDoc(doc(dbA, 'vendors/ven-1'), { vendorId: 'ven-1' }));
+
+    // system deny
+    await assertFails(getDoc(doc(dbA, 'system/accessLease')));
+    await assertFails(setDoc(doc(dbA, 'system/accessLease'), { epoch: 1 }));
   });
 });
