@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { Auth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import { signInWithGoogle, signOutOperator, type OperatorAccess } from '../firebase/authService';
@@ -47,6 +47,20 @@ export function AuthGate({
   const [throttleMessage, setThrottleMessage] = useState<string>('');
   const [busyError, setBusyError] = useState<string>('');
   const [isAcquiring, setIsAcquiring] = useState<boolean>(false);
+
+  // 當白名單通過且租約目前處於閒置或逾期狀態時，自動嘗試取得閒置租約進入系統
+  useEffect(() => {
+    if (access.ok && activeLease && !activeLease.isHolder) {
+      const isOccupied = activeLease.holderUid !== null && !activeLease.isExpired;
+      if (!isOccupied && doAcquire) {
+        void doAcquire().then(res => {
+          if (res.status === 'busy') {
+            setBusyError('目前有人使用中，無法取得使用權');
+          }
+        });
+      }
+    }
+  }, [access.ok, activeLease, doAcquire]);
 
   // 1. 白名單未通過處理
   if (!access.ok) {

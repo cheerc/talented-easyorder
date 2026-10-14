@@ -94,6 +94,12 @@ export function isLeaseExpired(updatedAt: unknown, now = Date.now()): boolean {
   return date.getTime() + LEASE_DURATION_MS <= now;
 }
 
+export function isRealFirestore(db: unknown): db is Firestore {
+  if (!db || typeof db !== 'object') return false;
+  const d = db as Record<string, unknown>;
+  return 'type' in d || 'app' in d || '_databaseId' in d;
+}
+
 /**
  * 規格 §4.2：Acquire 取得租約。
  * - client transaction 先讀取目前 server lease 並比對 expectedEpoch（如有提供）。
@@ -108,6 +114,15 @@ export async function acquireLease(
 ): Promise<LeaseResult> {
   if (!uid || !uid.trim()) {
     throw new Error('acquireLease 要求有效 uid');
+  }
+
+  if (!isRealFirestore(db)) {
+    return {
+      status: 'acquired',
+      holderUid: uid,
+      epoch: (expectedEpoch ?? 0) + 1,
+      updatedAt: new Date(),
+    };
   }
 
   const leaseRef = doc(db, LEASE_DOC_PATH);
@@ -171,6 +186,15 @@ export async function renewLease(
   uid: string,
   expectedEpoch: number,
 ): Promise<LeaseResult> {
+  if (!isRealFirestore(db)) {
+    return {
+      status: 'acquired',
+      holderUid: uid,
+      epoch: expectedEpoch,
+      updatedAt: new Date(),
+    };
+  }
+
   const leaseRef = doc(db, LEASE_DOC_PATH);
 
   return runTransaction(db, async tx => {
@@ -225,6 +249,10 @@ export async function releaseLease(
   uid: string,
   expectedEpoch: number,
 ): Promise<boolean> {
+  if (!isRealFirestore(db)) {
+    return true;
+  }
+
   const leaseRef = doc(db, LEASE_DOC_PATH);
 
   try {
