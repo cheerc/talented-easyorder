@@ -1,10 +1,690 @@
-// Intentionally permissive RED fixture. The P01 suite must show that the
-// invalid write is accepted here before this fixture is tightened.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedGoogle() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.firebase.sign_in_provider == 'google.com';
+    }
+
+    function activeOperator() {
+      let operator = get(/databases/$(database)/documents/operators/$(request.auth.uid)).data;
+      return signedGoogle()
+        && operator.uid == request.auth.uid
+        && operator.email == request.auth.token.email
+        && operator.active == true
+        && operator.keys().hasOnly(['uid', 'email', 'displayName', 'active']);
+    }
+
+    function liveHolder() {
+      let lease = get(/databases/$(database)/documents/system/accessLease).data;
+      return lease.holderUid == request.auth.uid
+        && lease.epoch is int
+        && lease.updatedAt is timestamp
+        && lease.updatedAt + duration.value(5, 'm') > request.time;
+    }
+
+    function approvedOperator() {
+      return activeOperator();
+    }
+
+    function approvedHolder() {
+      return activeOperator() && liveHolder();
+    }
+
+    function exactKeys(value, keys) {
+      // Required keys are checked where they are read. hasOnly keeps the
+      // schema closed without paying twice for every key in hasAll.
+      return value is map && value.keys().hasOnly(keys);
+    }
+
+    function validAmount(value, allowZero) {
+      return value is int
+        && value >= (allowZero ? 0 : 1)
+        && value <= 1000000;
+    }
+
+    function boundedBalance(value) {
+      return value is int && value >= -1000000000 && value <= 1000000000;
+    }
+
+    function headProjection(commandId, after) {
+      let commandPath = /databases/$(database)/documents/commands/$(commandId);
+      let command = getAfter(commandPath).data;
+      return !exists(commandPath)
+        && command.commandId == commandId
+        && command.after.head == after;
+    }
+
+    function studentProjection(studentId, commandId, before, after) {
+      let commandPath = /databases/$(database)/documents/commands/$(commandId);
+      let command = getAfter(commandPath).data;
+      return !exists(commandPath)
+        && command.commandId == commandId
+        && command.targets.studentId == studentId
+        && command.before.student == before
+        && command.after.student == after;
+    }
+
+    function dayProjection(dayId, commandId, before, after) {
+      let commandPath = /databases/$(database)/documents/commands/$(commandId);
+      let command = getAfter(commandPath).data;
+      return !exists(commandPath)
+        && command.commandId == commandId
+        && command.targets.dayId == dayId
+        && command.before.day == before
+        && command.after.day == after;
+    }
+
+    function settlementProjection(dayId, revision, commandId, after) {
+      let commandPath = /databases/$(database)/documents/commands/$(commandId);
+      let command = getAfter(commandPath).data;
+      return !exists(commandPath)
+        && command.commandId == commandId
+        && command.targets.dayId == dayId
+        && ((revision == '1' && command.targets.settlementRevision == 1)
+          || (revision == '2' && command.targets.settlementRevision == 2))
+        && command.after.settlement == after;
+    }
+
+    function transactionCreateProjection(transactionId, commandId, after) {
+      let commandPath = /databases/$(database)/documents/commands/$(commandId);
+      let command = getAfter(commandPath).data;
+      return !exists(commandPath)
+        && command.commandId == commandId
+        && command.kind in ['CreateOrder', 'CreatePayment']
+        && command.targets.transactionId == transactionId
+        && command.before.transaction == null
+        && command.after.transaction == after;
+    }
+
+    function transactionUpdateProjection(transactionId, commandId, before, after) {
+      let commandPath = /databases/$(database)/documents/commands/$(commandId);
+      let command = getAfter(commandPath).data;
+      return !exists(commandPath)
+        && command.commandId == commandId
+        && command.targets.transactionId == transactionId
+        && command.before.transaction == before
+        && command.after.transaction == after;
+    }
+
+    function headAdvanced(headBefore, headAfter, command) {
+      return exactKeys(headBefore, [
+          'schemaVersion', 'datasetId', 'seq', 'lastCommandId', 'maintenance', 'goLiveDate', 'updatedAt'
+        ])
+        && headBefore.schemaVersion == 1
+        && headBefore.datasetId is string
+        && headBefore.maintenance == false
+        && (headBefore.lastCommandId == null || headBefore.lastCommandId is string)
+        && headBefore.goLiveDate is string
+        && headBefore.updatedAt is timestamp
+        && headBefore.seq is int
+        && headBefore.seq >= 0
+        && headAfter.diff(headBefore).affectedKeys().hasOnly(['seq', 'lastCommandId', 'updatedAt'])
+        && headAfter.seq == headBefore.seq + 1
+        && headAfter.seq == command.seq
+        && headAfter.lastCommandId == command.commandId
+        && headAfter.updatedAt == request.time;
+    }
+
+    function validCommandEnvelope(commandId, command) {
+      return exactKeys(command, [
+          'commandId', 'kind', 'seq', 'leaseEpoch', 'actor', 'committedAt',
+          'businessDate', 'studentId', 'targets', 'before', 'after',
+          'payload', 'reason', 'cashEffect', 'inputFingerprint'
+        ])
+        && command.commandId == commandId
+        && command.seq is int
+        && command.seq > 0
+        && command.leaseEpoch is int
+        && exactKeys(command.actor, ['uid', 'email'])
+        && command.actor.uid == request.auth.uid
+        && command.actor.email == request.auth.token.email
+        && command.committedAt == request.time
+        && (command.reason == null || (command.reason is string && command.reason.size() >= 1 && command.reason.size() <= 500))
+        && exactKeys(command.cashEffect, ['before', 'after', 'delta', 'reasonKind', 'refundAmount'])
+        && command.cashEffect.before is int
+        && command.cashEffect.after is int
+        && command.cashEffect.delta is int
+        && command.cashEffect.refundAmount is int
+        && boundedBalance(command.cashEffect.before)
+        && boundedBalance(command.cashEffect.after)
+        && command.cashEffect.delta == command.cashEffect.after - command.cashEffect.before
+        && command.cashEffect.refundAmount >= 0
+        && command.cashEffect.refundAmount <= 1000000
+        && command.cashEffect.reasonKind in ['collection', 'payout', 'refund', 'correction', 'reversal', 'none']
+        && command.inputFingerprint is string
+        && command.inputFingerprint.size() >= 1
+        && command.inputFingerprint.size() <= 128
+        && exactKeys(command.before, ['head', 'transaction', 'student', 'day', 'previousSettlement'])
+        && command.before.keys().hasAll(['head', 'transaction', 'student', 'day', 'previousSettlement'])
+        && exactKeys(command.after, ['head', 'transaction', 'student', 'day', 'settlement']);
+    }
+
+    function validStudentSnapshot(studentId, before, after, commandId) {
+      return exactKeys(before, [
+          'studentId', 'displayName', 'aliases', 'status', 'openingBalance',
+          'currentBalance', 'createdAt', 'revision', 'lastCommandId', 'updatedAt'
+        ])
+        && before.studentId == studentId
+        && before.displayName is string
+        && before.displayName.size() >= 1
+        && before.displayName.size() <= 100
+        && before.aliases is list
+        && before.aliases.size() <= 10
+        && before.status == 'active'
+        && exactKeys(before.openingBalance, ['amount', 'asOfDate', 'note', 'createdAt'])
+        && before.openingBalance.amount is int
+        && boundedBalance(before.openingBalance.amount)
+        && before.openingBalance.asOfDate is string
+        && before.openingBalance.note is string
+        && before.openingBalance.createdAt is timestamp
+        && before.createdAt is timestamp
+        && before.lastCommandId is string
+        && before.updatedAt is timestamp
+        && before.revision is int
+        && after.diff(before).affectedKeys().hasOnly(['currentBalance', 'revision', 'lastCommandId', 'updatedAt'])
+        && after.revision == before.revision + 1
+        && after.lastCommandId == commandId
+        && after.updatedAt == request.time
+        && boundedBalance(before.currentBalance)
+        && boundedBalance(after.currentBalance);
+    }
+
+    function validTotals(totals) {
+      return exactKeys(totals, [
+          'activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal',
+          'retainedReceipts', 'cashierIncome', 'cashierExpense'
+        ])
+        && totals.activeTransactionCount is int
+        && totals.activeTransactionCount >= 0
+        && totals.bentoCount is int
+        && totals.bentoCount >= 0
+        && totals.otherMealCount is int
+        && totals.otherMealCount >= 0
+        && boundedBalance(totals.mealTotal)
+        && boundedBalance(totals.retainedReceipts)
+        && boundedBalance(totals.cashierIncome)
+        && boundedBalance(totals.cashierExpense);
+    }
+
+    function validDaySnapshot(dayId, before, after, commandId) {
+      return exactKeys(before, [
+          'status', 'revision', 'menu', 'openingCash', 'openedBy', 'openedAt',
+          'totals', 'lastSettlementRevision', 'lastCommandId', 'updatedAt'
+        ])
+        && dayId.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && before.status in ['open', 'closed']
+        && after.status in ['open', 'closed']
+        && (before.menu == null || before.menu is map)
+        && before.openedBy is string
+        && before.openedAt is timestamp
+        && before.revision is int
+        && after.revision == before.revision + 1
+        && (before.openingCash == null || (before.openingCash is int && before.openingCash >= 0 && before.openingCash <= 20000))
+        && validTotals(before.totals)
+        && exactKeys(after.totals, [
+          'activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal',
+          'retainedReceipts', 'cashierIncome', 'cashierExpense'
+        ])
+        && after.diff(before).affectedKeys().hasOnly([
+          'status', 'revision', 'totals', 'lastSettlementRevision', 'lastCommandId', 'updatedAt'
+        ])
+        && after.totals.diff(before.totals).affectedKeys().hasOnly([
+          'activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal', 'retainedReceipts'
+        ])
+        && before.lastSettlementRevision is int
+        && before.lastCommandId is string
+        && before.updatedAt is timestamp
+        && after.lastCommandId == commandId
+        && after.updatedAt == request.time;
+    }
+
+    function validOrderTransaction(tx, transactionId, studentId, dayId, commandId, seq, kind) {
+      return exactKeys(tx, [
+          'transactionId', 'studentId', 'businessDate', 'type', 'mealKind',
+          'mealPrice', 'paidAmount', 'status', 'revision', 'createdAt',
+          'createdSeq', 'operatorUid', 'operatorEmail', 'source',
+          'lastCommandId', 'updatedAt'
+        ])
+        && tx.transactionId == transactionId
+        && tx.studentId == studentId
+        && tx.businessDate == dayId
+        && tx.businessDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && tx.type == (kind == 'CreateOrder' ? 'order' : 'payment')
+        && (kind == 'CreateOrder' ? tx.mealKind in ['bento', 'other'] : tx.mealKind == null)
+        && validAmount(tx.mealPrice, true)
+        && validAmount(tx.paidAmount, kind == 'CreateOrder')
+        && tx.status == 'active'
+        && tx.revision == 1
+        && tx.createdAt == request.time
+        && tx.createdSeq == seq
+        && tx.operatorUid == request.auth.uid
+        && tx.operatorEmail == request.auth.token.email
+        && tx.source == 'pc'
+        && tx.lastCommandId == commandId
+        && tx.updatedAt == request.time;
+    }
+
+    function cashEffectIs(command, before, after, reasonKind, refundAmount) {
+      return command.cashEffect.before == before
+        && command.cashEffect.after == after
+        && command.cashEffect.delta == after - before
+        && command.cashEffect.reasonKind == reasonKind
+        && command.cashEffect.refundAmount == refundAmount;
+    }
+
+    function createLedgerTransaction(commandId, command) {
+      let headBefore = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let studentBefore = get(/databases/$(database)/documents/students/$(command.studentId)).data;
+      let studentAfter = getAfter(/databases/$(database)/documents/students/$(command.studentId)).data;
+      let dayBefore = get(/databases/$(database)/documents/days/$(command.businessDate)).data;
+      let dayAfter = getAfter(/databases/$(database)/documents/days/$(command.businessDate)).data;
+      let txAfter = getAfter(/databases/$(database)/documents/transactions/$(command.targets.transactionId)).data;
+      return approvedHolder()
+        && validCommandEnvelope(commandId, command)
+        && command.kind in ['CreateOrder', 'CreatePayment']
+        && command.reason == null
+        && exactKeys(command.targets, ['transactionId', 'studentId', 'dayId'])
+        && command.targets.studentId == command.studentId
+        && command.targets.dayId == command.businessDate
+        && command.targets.transactionId is string
+        && command.businessDate is string
+        && exactKeys(command.payload, ['mealPrice', 'paidAmount', 'mealKind'])
+        && validAmount(command.payload.mealPrice, true)
+        && validAmount(command.payload.paidAmount, command.kind == 'CreateOrder')
+        && (command.kind == 'CreateOrder' ? command.payload.mealKind in ['bento', 'other'] : command.payload.mealKind == null && command.payload.mealPrice == 0)
+        && cashEffectIs(command, 0, command.payload.paidAmount, 'collection', 0)
+        && command.before.head == headBefore
+        && command.after.head == headAfter
+        && headAdvanced(headBefore, headAfter, command)
+        && command.before.transaction == null
+        && !exists(/databases/$(database)/documents/transactions/$(command.targets.transactionId))
+        && command.after.transaction == txAfter
+        && validOrderTransaction(txAfter, command.targets.transactionId, command.studentId, command.businessDate, commandId, command.seq, command.kind)
+        && command.before.student == studentBefore
+        && command.after.student == studentAfter
+        && validStudentSnapshot(command.studentId, studentBefore, studentAfter, commandId)
+        && studentAfter.currentBalance == studentBefore.currentBalance + command.payload.paidAmount - command.payload.mealPrice
+        && command.before.day == dayBefore
+        && command.after.day == dayAfter
+        && validDaySnapshot(command.businessDate, dayBefore, dayAfter, commandId)
+        && dayBefore.status == 'open'
+        && dayBefore.lastSettlementRevision == 0
+        && dayAfter.totals.activeTransactionCount == dayBefore.totals.activeTransactionCount + 1
+        && dayAfter.totals.bentoCount == dayBefore.totals.bentoCount + (command.kind == 'CreateOrder' && command.payload.mealKind == 'bento' ? 1 : 0)
+        && dayAfter.totals.otherMealCount == dayBefore.totals.otherMealCount + (command.kind == 'CreateOrder' && command.payload.mealKind == 'other' ? 1 : 0)
+        && dayAfter.totals.mealTotal == dayBefore.totals.mealTotal + command.payload.mealPrice
+        && dayAfter.totals.retainedReceipts == dayBefore.totals.retainedReceipts + command.payload.paidAmount
+        && dayAfter.totals.cashierIncome == dayBefore.totals.cashierIncome
+        && dayAfter.totals.cashierExpense == dayBefore.totals.cashierExpense
+        && boundedBalance(dayAfter.totals.mealTotal)
+        && boundedBalance(dayAfter.totals.retainedReceipts)
+        && txAfter.mealPrice == command.payload.mealPrice
+        && txAfter.paidAmount == command.payload.paidAmount
+        && txAfter.mealKind == command.payload.mealKind;
+    }
+
+    function correctTransaction(commandId, command) {
+      let headBefore = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let txBefore = get(/databases/$(database)/documents/transactions/$(command.targets.transactionId)).data;
+      let txAfter = getAfter(/databases/$(database)/documents/transactions/$(command.targets.transactionId)).data;
+      let studentBefore = get(/databases/$(database)/documents/students/$(command.studentId)).data;
+      let studentAfter = getAfter(/databases/$(database)/documents/students/$(command.studentId)).data;
+      let dayBefore = get(/databases/$(database)/documents/days/$(command.businessDate)).data;
+      let dayAfter = getAfter(/databases/$(database)/documents/days/$(command.businessDate)).data;
+      return approvedHolder()
+        && validCommandEnvelope(commandId, command)
+        && command.kind == 'CorrectTransaction'
+        && exactKeys(command.targets, ['transactionId', 'studentId', 'dayId'])
+        && command.targets.studentId == command.studentId
+        && command.targets.dayId == command.businessDate
+        && exactKeys(command.payload, ['mealPrice', 'paidAmount'])
+        && validAmount(command.payload.mealPrice, true)
+        && validAmount(command.payload.paidAmount, true)
+        && command.reason is string
+        && command.reason.size() >= 1
+        && command.reason.size() <= 500
+        && command.before.head == headBefore
+        && command.after.head == headAfter
+        && headAdvanced(headBefore, headAfter, command)
+        && command.before.transaction == txBefore
+        && command.after.transaction == txAfter
+        && exactKeys(txBefore, [
+          'transactionId', 'studentId', 'businessDate', 'type', 'mealKind',
+          'mealPrice', 'paidAmount', 'status', 'revision', 'createdAt',
+          'createdSeq', 'operatorUid', 'operatorEmail', 'source', 'lastCommandId', 'updatedAt'
+        ])
+        && txBefore.transactionId == command.targets.transactionId
+        && txBefore.studentId == command.studentId
+        && txBefore.businessDate == command.businessDate
+        && txBefore.type == 'order'
+        && txBefore.status == 'active'
+        && validAmount(txBefore.mealPrice, true)
+        && validAmount(txBefore.paidAmount, true)
+        && validAmount(txAfter.mealPrice, true)
+        && validAmount(txAfter.paidAmount, true)
+        && cashEffectIs(command, txBefore.paidAmount, txAfter.paidAmount, 'correction', 0)
+        && txAfter.diff(txBefore).affectedKeys().hasOnly(['mealPrice', 'paidAmount', 'revision', 'lastCommandId', 'updatedAt'])
+        && txAfter.transactionId == txBefore.transactionId
+        && txAfter.studentId == txBefore.studentId
+        && txAfter.businessDate == txBefore.businessDate
+        && txAfter.type == txBefore.type
+        && txAfter.mealKind == txBefore.mealKind
+        && txAfter.status == txBefore.status
+        && txAfter.mealPrice == command.payload.mealPrice
+        && txAfter.paidAmount == command.payload.paidAmount
+        && txAfter.revision == txBefore.revision + 1
+        && txAfter.createdAt == txBefore.createdAt
+        && txAfter.createdSeq == txBefore.createdSeq
+        && txAfter.operatorUid == txBefore.operatorUid
+        && txAfter.operatorEmail == txBefore.operatorEmail
+        && txAfter.source == txBefore.source
+        && txAfter.lastCommandId == commandId
+        && txAfter.updatedAt == request.time
+        && command.before.student == studentBefore
+        && command.after.student == studentAfter
+        && validStudentSnapshot(command.studentId, studentBefore, studentAfter, commandId)
+        && studentAfter.currentBalance == studentBefore.currentBalance
+          + txAfter.paidAmount - txBefore.paidAmount
+          - txAfter.mealPrice + txBefore.mealPrice
+        && command.before.day == dayBefore
+        && command.after.day == dayAfter
+        && validDaySnapshot(command.businessDate, dayBefore, dayAfter, commandId)
+        && dayBefore.status == 'open'
+        && dayBefore.lastSettlementRevision == 0
+        && dayAfter.totals.activeTransactionCount == dayBefore.totals.activeTransactionCount
+        && dayAfter.totals.bentoCount == dayBefore.totals.bentoCount
+        && dayAfter.totals.otherMealCount == dayBefore.totals.otherMealCount
+        && dayAfter.totals.mealTotal == dayBefore.totals.mealTotal + txAfter.mealPrice - txBefore.mealPrice
+        && dayAfter.totals.retainedReceipts == dayBefore.totals.retainedReceipts + txAfter.paidAmount - txBefore.paidAmount
+        && dayAfter.totals.cashierIncome == dayBefore.totals.cashierIncome
+        && dayAfter.totals.cashierExpense == dayBefore.totals.cashierExpense
+        && boundedBalance(dayAfter.totals.mealTotal)
+        && boundedBalance(dayAfter.totals.retainedReceipts);
+    }
+
+    function voidTransaction(commandId, command) {
+      let headBefore = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let txBefore = get(/databases/$(database)/documents/transactions/$(command.targets.transactionId)).data;
+      let txAfter = getAfter(/databases/$(database)/documents/transactions/$(command.targets.transactionId)).data;
+      let studentBefore = get(/databases/$(database)/documents/students/$(command.studentId)).data;
+      let studentAfter = getAfter(/databases/$(database)/documents/students/$(command.studentId)).data;
+      let dayBefore = get(/databases/$(database)/documents/days/$(command.businessDate)).data;
+      let dayAfter = getAfter(/databases/$(database)/documents/days/$(command.businessDate)).data;
+      return approvedHolder()
+        && validCommandEnvelope(commandId, command)
+        && command.kind == 'VoidTransaction'
+        && exactKeys(command.targets, ['transactionId', 'studentId', 'dayId'])
+        && command.targets.studentId == command.studentId
+        && command.targets.dayId == command.businessDate
+        && command.reason is string
+        && command.reason.size() >= 1
+        && command.reason.size() <= 500
+        && command.before.head == headBefore
+        && command.after.head == headAfter
+        && headAdvanced(headBefore, headAfter, command)
+        && command.before.transaction == txBefore
+        && command.after.transaction == txAfter
+        && txBefore.transactionId == command.targets.transactionId
+        && txBefore.studentId == command.studentId
+        && txBefore.businessDate == command.businessDate
+        && txBefore.type == 'order'
+        && txBefore.status == 'active'
+        && txBefore.mealKind in ['bento', 'other']
+        && validAmount(txBefore.mealPrice, true)
+        && validAmount(txBefore.paidAmount, true)
+        && cashEffectIs(command, txBefore.paidAmount, 0,
+          txBefore.paidAmount > 0 ? 'refund' : 'none', txBefore.paidAmount)
+        && txAfter.diff(txBefore).affectedKeys().hasOnly(['status', 'revision', 'lastCommandId', 'updatedAt'])
+        && txAfter.status == 'voided'
+        && txAfter.revision == txBefore.revision + 1
+        && txAfter.createdAt == txBefore.createdAt
+        && txAfter.createdSeq == txBefore.createdSeq
+        && txAfter.studentId == txBefore.studentId
+        && txAfter.businessDate == txBefore.businessDate
+        && txAfter.mealPrice == txBefore.mealPrice
+        && txAfter.paidAmount == txBefore.paidAmount
+        && txAfter.lastCommandId == commandId
+        && txAfter.updatedAt == request.time
+        && command.before.student == studentBefore
+        && command.after.student == studentAfter
+        && validStudentSnapshot(command.studentId, studentBefore, studentAfter, commandId)
+        && studentAfter.currentBalance == studentBefore.currentBalance - txBefore.paidAmount + txBefore.mealPrice
+        && command.before.day == dayBefore
+        && command.after.day == dayAfter
+        && validDaySnapshot(command.businessDate, dayBefore, dayAfter, commandId)
+        && dayBefore.status == 'open'
+        && dayBefore.lastSettlementRevision == 0
+        && dayAfter.totals.activeTransactionCount == dayBefore.totals.activeTransactionCount - 1
+        && dayAfter.totals.bentoCount == dayBefore.totals.bentoCount - (txBefore.mealKind == 'bento' ? 1 : 0)
+        && dayAfter.totals.otherMealCount == dayBefore.totals.otherMealCount - (txBefore.mealKind == 'other' ? 1 : 0)
+        && dayAfter.totals.mealTotal == dayBefore.totals.mealTotal - txBefore.mealPrice
+        && dayAfter.totals.retainedReceipts == dayBefore.totals.retainedReceipts - txBefore.paidAmount
+        && dayAfter.totals.cashierIncome == dayBefore.totals.cashierIncome
+        && dayAfter.totals.cashierExpense == dayBefore.totals.cashierExpense
+        && dayBefore.totals.activeTransactionCount >= 1
+        && (txBefore.mealKind == 'bento' ? dayBefore.totals.bentoCount >= 1 : dayBefore.totals.otherMealCount >= 1);
+    }
+
+    function validSettlement(settlement, dayId, revision, commandId, previousRevision, sourceSeq) {
+      return exactKeys(settlement, [
+          'dayId', 'revision', 'status', 'totals', 'openingCash', 'expectedCash',
+          'countedCash', 'difference', 'note', 'actorUid', 'actorEmail',
+          'sourceSeq', 'committedAt', 'previousRevision', 'lastCommandId'
+        ])
+        && settlement.dayId == dayId
+        && settlement.revision == revision
+        && settlement.status in ['closed', 'reopened']
+        && validTotals(settlement.totals)
+        && settlement.openingCash is int
+        && settlement.openingCash >= 0
+        && boundedBalance(settlement.expectedCash)
+        && settlement.countedCash is int
+        && settlement.countedCash >= 0
+        && boundedBalance(settlement.difference)
+        && settlement.difference == settlement.countedCash - settlement.expectedCash
+        && settlement.note is string
+        && settlement.note.size() <= 500
+        && settlement.actorUid == request.auth.uid
+        && settlement.actorEmail == request.auth.token.email
+        && settlement.sourceSeq == sourceSeq
+        && settlement.committedAt == request.time
+        && settlement.previousRevision == previousRevision
+        && settlement.lastCommandId == commandId;
+    }
+
+    function closeDay(commandId, command) {
+      let headPath = /databases/$(database)/documents/system/dataHead;
+      let dayPath = /databases/$(database)/documents/days/$(command.businessDate);
+      let settlementPath = /databases/$(database)/documents/days/$(command.businessDate)/settlements/$(command.targets.settlementRevision);
+      let headBefore = get(headPath).data;
+      let headAfter = getAfter(headPath).data;
+      let dayBefore = get(dayPath).data;
+      let dayAfter = getAfter(dayPath).data;
+      let settlementAfter = getAfter(settlementPath).data;
+      return approvedHolder()
+        && validCommandEnvelope(commandId, command)
+        && command.kind == 'CloseDay'
+        && exactKeys(command.targets, ['dayId', 'settlementRevision'])
+        && command.targets.dayId == command.businessDate
+        && command.targets.settlementRevision == 1
+        && exactKeys(command.payload, ['countedCash', 'note'])
+        && command.payload.countedCash is int
+        && command.payload.countedCash >= 0
+        && command.payload.note is string
+        && command.payload.note.size() <= 500
+        && command.before.head == headBefore
+        && command.after.head == headAfter
+        && headAdvanced(headBefore, headAfter, command)
+        && command.before.transaction == null
+        && command.before.student == null
+        && command.before.day == dayBefore
+        && command.after.day == dayAfter
+        && validDaySnapshot(command.businessDate, dayBefore, dayAfter, commandId)
+        && dayBefore.status == 'open'
+        && dayBefore.openingCash is int
+        && dayBefore.lastSettlementRevision == 0
+        && dayAfter.status == 'closed'
+        && dayAfter.lastSettlementRevision == 1
+        && dayAfter.totals == dayBefore.totals
+        && command.before.previousSettlement == null
+        && command.after.settlement == settlementAfter
+        && validSettlement(settlementAfter, command.businessDate, 1, commandId, null, command.seq)
+        && settlementAfter.totals == dayBefore.totals
+        && settlementAfter.openingCash == dayBefore.openingCash
+        && settlementAfter.expectedCash == dayBefore.openingCash + dayBefore.totals.retainedReceipts + dayBefore.totals.cashierIncome - dayBefore.totals.cashierExpense
+        && settlementAfter.countedCash == command.payload.countedCash
+        && settlementAfter.note == command.payload.note
+        && settlementAfter.sourceSeq == command.seq
+        && !exists(settlementPath);
+    }
+
+    function reopenDay(commandId, command) {
+      let headPath = /databases/$(database)/documents/system/dataHead;
+      let dayPath = /databases/$(database)/documents/days/$(command.businessDate);
+      let previousSettlementPath = /databases/$(database)/documents/days/$(command.businessDate)/settlements/1;
+      let settlementPath = /databases/$(database)/documents/days/$(command.businessDate)/settlements/2;
+      let headBefore = get(headPath).data;
+      let headAfter = getAfter(headPath).data;
+      let dayBefore = get(dayPath).data;
+      let dayAfter = getAfter(dayPath).data;
+      let previousSettlement = get(previousSettlementPath).data;
+      let settlementAfter = getAfter(settlementPath).data;
+      return approvedHolder()
+        && validCommandEnvelope(commandId, command)
+        && command.kind == 'ReopenDay'
+        && exactKeys(command.targets, ['dayId', 'settlementRevision'])
+        && command.targets.dayId == command.businessDate
+        && command.targets.settlementRevision == 2
+        && exactKeys(command.payload, ['reason'])
+        && command.payload.reason is string
+        && command.payload.reason.size() >= 1
+        && command.payload.reason.size() <= 500
+        && command.before.head == headBefore
+        && command.after.head == headAfter
+        && headAdvanced(headBefore, headAfter, command)
+        && command.before.transaction == null
+        && command.before.student == null
+        && command.before.day == dayBefore
+        && command.after.day == dayAfter
+        && validDaySnapshot(command.businessDate, dayBefore, dayAfter, commandId)
+        && dayBefore.status == 'closed'
+        && dayBefore.lastSettlementRevision == 1
+        && dayAfter.status == 'open'
+        && dayAfter.lastSettlementRevision == 2
+        && dayAfter.totals == dayBefore.totals
+        && command.before.previousSettlement == previousSettlement
+        && previousSettlement.status == 'closed'
+        && previousSettlement.revision == 1
+        && command.after.settlement == settlementAfter
+        && validSettlement(settlementAfter, command.businessDate, 2, commandId, 1, command.seq)
+        && settlementAfter.status == 'reopened'
+        && settlementAfter.totals == dayBefore.totals
+        && settlementAfter.openingCash == dayBefore.openingCash
+        && settlementAfter.expectedCash == previousSettlement.expectedCash
+        && settlementAfter.countedCash == previousSettlement.countedCash
+        && settlementAfter.note == command.payload.reason
+        && settlementAfter.sourceSeq == command.seq
+        && !exists(settlementPath);
+    }
+
+    match /operators/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    match /system/accessLease {
+      allow read: if approvedOperator();
+      allow create, delete: if false;
+      allow update: if approvedOperator()
+        && exactKeys(request.resource.data, ['holderUid', 'epoch', 'updatedAt'])
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.epoch is int
+        && request.resource.data.epoch >= 0
+        && (
+          (
+            (resource.data.holderUid == null
+              || resource.data.updatedAt + duration.value(5, 'm') <= request.time)
+            && request.resource.data.holderUid == request.auth.uid
+            && request.resource.data.epoch == resource.data.epoch + 1
+          )
+          ||
+          (
+            resource.data.holderUid == request.auth.uid
+            && resource.data.updatedAt + duration.value(5, 'm') > request.time
+            && request.resource.data.holderUid == resource.data.holderUid
+            && request.resource.data.epoch == resource.data.epoch
+          )
+          ||
+          (
+            resource.data.holderUid == request.auth.uid
+            && request.resource.data.holderUid == null
+            && request.resource.data.epoch == resource.data.epoch + 1
+          )
+        );
+    }
+
+    match /system/dataHead {
+      allow read: if approvedHolder();
+      allow create, delete: if false;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['seq', 'lastCommandId', 'updatedAt'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasAll(['seq', 'lastCommandId', 'updatedAt'])
+        && headProjection(request.resource.data.lastCommandId, request.resource.data);
+    }
+
+    match /students/{studentId} {
+      allow read: if approvedHolder();
+      allow create, delete: if false;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentBalance', 'revision', 'lastCommandId', 'updatedAt'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasAll(['currentBalance', 'revision', 'lastCommandId', 'updatedAt'])
+        && studentProjection(studentId, request.resource.data.lastCommandId, resource.data, request.resource.data);
+    }
+
+    match /days/{dayId} {
+      allow read: if approvedHolder();
+      allow create, delete: if false;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'revision', 'totals', 'lastSettlementRevision', 'lastCommandId', 'updatedAt'
+        ])
+        && request.resource.data.diff(resource.data).affectedKeys().hasAll(['revision', 'lastCommandId', 'updatedAt'])
+        && dayProjection(dayId, request.resource.data.lastCommandId, resource.data, request.resource.data);
+
+      match /settlements/{revision} {
+        allow read: if approvedHolder();
+        allow update, delete: if false;
+        allow create: if settlementProjection(dayId, revision, request.resource.data.lastCommandId, request.resource.data);
+      }
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if approvedHolder();
+      allow delete: if false;
+      allow create: if transactionCreateProjection(transactionId, request.resource.data.lastCommandId, request.resource.data);
+      allow update: if transactionUpdateProjection(transactionId, request.resource.data.lastCommandId, resource.data, request.resource.data);
+    }
+
+    match /commands/{commandId} {
+      allow read: if approvedHolder();
+      allow create: if request.resource.data.kind in ['CreateOrder', 'CreatePayment']
+        ? createLedgerTransaction(commandId, request.resource.data)
+        : request.resource.data.kind == 'CorrectTransaction'
+          ? correctTransaction(commandId, request.resource.data)
+          : request.resource.data.kind == 'VoidTransaction'
+            ? voidTransaction(commandId, request.resource.data)
+            : request.resource.data.kind == 'CloseDay'
+              ? closeDay(commandId, request.resource.data)
+              : request.resource.data.kind == 'ReopenDay'
+                ? reopenDay(commandId, request.resource.data)
+                : false;
+      allow update, delete: if false;
+    }
+
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }
