@@ -108,6 +108,7 @@ service cloud.firestore {
         && student.openingBalance.amount >= -1000000000 && student.openingBalance.amount <= 1000000000
         && student.openingBalance.asOfDate is string && validCalendarDate(student.openingBalance.asOfDate)
         && student.openingBalance.note is string
+        && student.openingBalance.note.size() <= 500
         && student.openingBalance.createdAt is timestamp
         && student.currentBalance is int
         && student.currentBalance >= -1000000000 && student.currentBalance <= 1000000000

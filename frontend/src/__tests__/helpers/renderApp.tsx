@@ -3,6 +3,11 @@ import { vi } from 'vitest';
 import App from '../../App';
 import { NEXT_ENTER_GUARD_MS } from '../../components/pos/ConfirmBanner';
 
+vi.mock('../../appMode', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../appMode')>()),
+  isPrototypeMode: true,
+}));
+
 // These UI regression tests exercise the prototype POS shell. Auth/lease protocol
 // behavior has dedicated tests; give the shell a verified, server-confirmed lease.
 vi.mock('../../firebase/activeAccountLease', () => {

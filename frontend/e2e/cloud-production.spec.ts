@@ -262,4 +262,16 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
       await context.close();
     }
   });
+
+  test('A09: an authenticated lease holder sees the closed cloud business boundary without mounting POS controls', async ({ googleSession }) => {
+    const { page, uid } = googleSession;
+    await page.getByRole('button', { name: '取得系統使用權' }).click();
+    await expect(page.locator('.operator-strip')).toBeVisible();
+    await expect.poll(readAccessLease).toMatchObject({ holderUid: uid, epoch: 1 });
+
+    await expect(page.getByTestId('cloud-business-closed')).toContainText('業務功能暫未開放');
+    await expect(page.locator('.app')).toHaveCount(0);
+    await expect(page.getByRole('tab')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '釋放使用權並登出' })).toBeVisible();
+  });
 });

@@ -108,7 +108,7 @@ function decodeStudent(value: unknown): Data {
     || !hasExactKeys(value.openingBalance, ['amount', 'asOfDate', 'note', 'createdAt'])
     || !integer(value.openingBalance.amount, -1_000_000_000)
     || !validDate(value.openingBalance.asOfDate)
-    || typeof value.openingBalance.note !== 'string'
+    || typeof value.openingBalance.note !== 'string' || value.openingBalance.note.length > 500
     || !(value.openingBalance.createdAt instanceof Timestamp)
     || !integer(value.currentBalance, -1_000_000_000)
     || Math.abs(value.currentBalance) > 1_000_000_000

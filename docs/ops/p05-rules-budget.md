@@ -2,17 +2,17 @@
 
 ## 快照與範圍
 
-- 讀取時間：2026-10-14（UTC）。Repo：`/workspace/talented-easyorder`；branch `codex/backend-p05-command-core`。
+- 讀取時間：2026-10-15（Asia/Taipei）。Repo：`/workspace/talented-easyorder`；branch `codex/backend-p05-command-core`。
 - P05 base：`837a1e871468db217463e9799480beeb6d7b0ab0`；本盤點隨 PR #476 更新。下列 source SHA-256 用來識別 Rules／schema／repository 快照；文件只做靜態 closure/估值，並非未啟用 kinds 的 Emulator 證據。
-- 本次取樣 SHA-256：
-  - `firestore.rules`: `23c1c254a83a3fde0819f143a457229bff0f9c5dfafb814d499c73468b521824`
-  - `frontend/src/domain/cloudCommandSchema.ts`: `23cf7a7d748fdbf6364f3aab4cb5544c88d792117cc34144fb496ccb24ad289f`
-  - `frontend/src/firebase/cloudCommandRepository.ts`: `ddcd63dbd130f55312c25f1208d701f28a4a336b467c8fec5c581ef9252a4db4`
+- 本次候選 source snapshot SHA-256：
+  - `firestore.rules`: `d2b5151669613ea4399ff6ea182b07d69f9c6ba0c00b30cdf2694f67a1382a58`
+  - `frontend/src/domain/cloudCommandSchema.ts`: `fe556079917d00e1c1d6a411a8f70640d7e30375fe93249808fc092676d5bcb8`
+  - `frontend/src/firebase/cloudCommandRepository.ts`: `7bf2028313578584bea343179545e4b03037106d90cacc7d07bf888b7da764f1`
   - `frontend/src/domain/cloudCommands.ts`: `64a7330a893d53a35c1966efa4d7e1c00185f31727d8ea949db598ca82a13b7b`
   - `docs/superpowers/specs/2026-10-13-free-production-backend-spec.md`: `7552e63c204fa3e878cca78310c34f0641c8a14f8842db8367254ae7152ef692`
-  - `docs/superpowers/plans/2026-10-13-free-production-backend-plan.md`: `56e400570182d5e57f32a37c0e7bcb5677cbf6f4b8e611c7bc3cf917f5f9b184`
+  - `docs/superpowers/plans/2026-10-13-free-production-backend-plan.md`: `0cfe6772d0bdc5967267cca19c37da2fe85b219b6adc7379775d4c8ebd8aea23`
 - 另讀 `frontend/src/firebase/cloudCommandRepository.ts`、`frontend/src/domain/cloudCommands.ts`、canonical spec §6.1–6.3 及 plan P05。Rules/schema source anchors 及 hash 如上；任何 source 續改都必須重新算 SHA 並逐路徑盤點。
-- 本文件的 call graph 與 expression-risk 分析是靜態盤點。當前真 Emulator 證據：`cloudCommands.spec.ts` 與 post-commit failure suite 在 `demo-easyorder` 使用 production `firestore.rules` 合計 49/49、0 skipped；A01/P01/P04/P05 sequential regression 114/114、0 skipped。完整命令、JSON 與限制見 [free-production evidence](free-production-evidence.md)。Emulator 沒有逐 expression／access-call runtime counter；正向通過證明選定合法樣本被接受，不把靜態呼叫圖稱為 runtime 計數。只有 `EnsureDay`、`CreateOrder`、`CreatePayment` 是當前 Rules 中允許建立的命令。表中其餘 19 kind 的 call 數是設計估值，不是實作 closure、Rules pass 或 Emulator pass。
+- 本文件的 call graph 與 expression-risk 分析是靜態盤點。當前真 Emulator 證據：`cloudCommands.spec.ts` 與 post-commit failure suite 在 `demo-easyorder` 使用 production `firestore.rules` 合計 79/79、0 skipped；A01/P01/P04/P05 sequential regression 144/144、0 skipped。完整命令、JSON 與限制見 [free-production evidence](free-production-evidence.md)。Emulator 沒有逐 expression／access-call runtime counter；正向通過證明選定合法樣本被接受，不把靜態呼叫圖稱為 runtime 計數。只有 `EnsureDay`、`CreateOrder`、`CreatePayment` 是當前 Rules 中允許建立的命令。表中其餘 19 kind 的 call 數是設計估值，不是實作 closure、Rules pass 或 Emulator pass。
 
 ## 當前三個 enabled kind：Repo writer 與 Rules no-cache call 圖
 
@@ -32,7 +32,7 @@ Repo transaction read set：`commands/{commandId}`、`system/dataHead`、`operat
 | Commit `VerifyMutation` for `system/accessLease` | `approvedOperator` → `get operators/{uid}` ×1 | **+1** |
 | **Commit atomic-request no-cache total** | **10 + 0 + 1** | **11/20** |
 
-最大單文件 Rules evaluation 為 command create 的 6 次；整筆 10 次，符合每寫入文件 ≤10、整筆 ≤20。不存在日以 `exists(day)` 作 before 檢查，再讀一次 after；不以 cache 把這兩次併成一次。
+最大單一 write Rules evaluation 為 command create 的 6 次；SDK commit atomic-request no-cache closure 為 11 次，符合每 write ≤10、整筆 ≤20。不存在日以 `exists(day)` 作 before 檢查，再讀一次 after；不以 cache 把這兩次併成一次。operator 與 accessLease 是已讀未寫的 VerifyMutation：operator 的 `signedGoogle` dependency 為 0，accessLease 的 `approvedOperator` dependency 為 1。
 
 ### CreateOrder 與 CreatePayment
 
@@ -97,10 +97,10 @@ SDK transaction read set 另按各自 BatchGetDocuments RPC 計：EnsureDay 有 
 
 僅作估值的投影模式假設：中央 command validator 對 head 做 before/after 兩次，對每個 N 個業務 targets 做 before/after 兩次，並做 operator + lease 各一次；每個 projection leaf 只做「command 舊不存在 + command getAfter」兩次，head leaf也是兩次。照這個尚待設計的模式：
 
-- Command create per-write 預估 `4 + 2N`；含 head leaf 與 N 個 projection leaves 的整筆預估 `6 + 4N`。
-- N=0 → 4 calls/create、6 total；N=1 → 6、10；N=2 → 8、14；N=3 → 10、18。目標新建時 before 用 `exists`（一次）替代舊 doc `get`（一次），仍按兩次加總。
+- Command create write-path per-write 預估 `4 + 2N`；含 head leaf 與 N 個 projection leaves 的 write-path 小計 `6 + 4N`。若 repository transaction 同樣先讀取未寫入的 operator 與 lease，另依目前 SDK `VerifyMutation` dependency 保守加 lease `approvedOperator` 的 1 次（operator verify dependency 為 0），所以 atomic-request no-cache 估值為 `7 + 4N`。其餘 target/payload validation 和 Rules expression 不能由此算式代替。
+- N=0 → 4 calls/create、6 write-path／7 conservative total；N=1 → 6、10／11；N=2 → 8、14／15；N=3 → 10、18／19。目標新建時 before 用 `exists`（一次）替代舊 doc `get`（一次），仍按兩次加總。這些是未啟用 kinds 的保守估值，不是已閉合的 Rules implementation 或 Emulator pass。
 - 這個 generic formula 不包含額外 previous-command、vendor、target-of-target、settlement-history 查找；每加一個 Rules lookup 就在所在 write/total 各加一次。若 central `command` writer 已達10，像 `Undo` 的原 command lookup 會越過每 write 上限，必須重分配/改契約且由 Emulator 實證，不可仰賴 cache。
-- Reads/writes 計數不是 expression 數量。expression 使用無法由這個 call graph推出的 Rules bytecode/短路路徑估值；高風險候選是 Correct/void/cancel/Undo、Close/Reopen、CorrectOpening。這些會同時驗完整 before/after、金額轉換、revision、immutable snapshot 和多份投影。先以靜態拆函數與短路路徑盤點，再逐合法路徑 Emulator 記錄 expression-limit diagnostics；negative 若只因 expression cap 被拒絕，不代表預期 guard 行為通過。P01 已知 negative-deny 有 expression-cap 診斷，此風險特別不能略去。
+- Reads/writes 計數不是 expression 數量。expression 使用無法由這個 call graph推出的 Rules bytecode/短路路徑估值；高風險候選是 Correct/void/cancel/Undo、Close/Reopen、CorrectOpening。這些會同時驗完整 before/after、金額轉換、revision、immutable snapshot 和多份投影。當前 P05 production Rules Emulator 合法 positive 無 expression-cap failure；r7 negative 日誌在 31 個 case names 下出現一個或多個 cap diagnostics，31 是案例名稱數而非 diagnostic 事件數。案例數：P05.13 omitted head/student/day/transaction writer 4；P05.14 extra transaction 1；P05.15 two commands 1；P05.16 replay 1；P05.17/18 forged before/after 2；P05.21 inactive order 1；P05.28 forged actor/time/seq/epoch 4；P05.29 expired lease 1；P05.30 closed day 1；P05.31 negative/fractional/over-ceiling amounts 3；P05.32 opening amount/note, day total, menu price, vendor ID slash/length, vendor name 7；P05.34 omitted head/student/day/transaction writer while `after` matches unchanged server state 4；P05.35 approved non-holder 1。對應 `assertFails` 與 atomic unchanged assertions 通過，但不證明每個 guard individually cap-free isolated。P01 舊 proof 的 cap 診斷另外依 evidence 說明；不移除安全檢查或合法正向案例。
 - Disabled kinds 現在被 `commandEnvelope` 的三-kind allowlist / create dispatcher，以及 catch-all、vendor、daily_settlements deny 關閉；這只證明目前 deny surface，不能證明任何 future Rules model 符合預算。依 P05 plan，每個 kind 開啟前須更新 schema/typed targets、中心 validator、leaf rules、逐 write no-cache call graph，並以真 Emulator 正向、拒絕、atomic unchanged 關閉。
 
 ## 主要 source anchors
@@ -112,10 +112,9 @@ SDK transaction read set 另按各自 BatchGetDocuments RPC 計：EnsureDay 有 
 - Installed Firestore SDK source at `frontend/node_modules/@firebase/firestore/dist/common-b12d6a5a.node.mjs`: transaction lookup builds `BatchGetDocuments` requests at `29131`; commit appends `VerifyMutation` for read-but-unwritten documents at `29165`; commit writes are assembled at `25132` (line anchors are tied to the installed package in this workspace)。
 - canonical spec §6.1–6.3 (business targets, commit closure, 18/20/10 design) and plan P05 §150–160 (three enabled kinds and required Emulator gates).
 
-## 待核對項目
+## Future disabled-kind design constraints
 
 1. This no-cache graph is tied to the hashes in the snapshot section. Any Rules/schema/repository change requires recomputing hashes and reviewing every path; use actual Emulator positive/negative/atomic unchanged evidence alongside the graph.
 2. The read graph is based on installed SDK source and Firestore Rules paths. Preserve the separate 7/11 BatchGet read-RPC dependency ledger for P16 cost estimates; do not count it as zero or add it again to the commit request’s 11/19 closure.
-3. Define whether transaction correction/cancel/undo supports expense records without a student document, and align union target nullability/sentinel rules.
-4. Design `Undo` source-command verification without making a 3-target command create exceed 10 calls; preserve Rules-authoritative original command lookup/proof.
-5. Recompute source hashes if any P05 author continues editing before consuming this draft.
+3. Before enabling disabled correction/cancel/undo kinds, define expense-record target nullability/sentinel rules and preserve command-to-original-command verification within per-write and per-request limits.
+4. Each disabled kind requires its own runtime closure, no-cache write/read graph, legal positive, raw-SDK negative, and atomic unchanged Emulator proof before enablement. This inventory is not Emulator evidence for those kinds.

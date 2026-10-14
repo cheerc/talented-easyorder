@@ -305,8 +305,14 @@ function receiptTimestamp(value: unknown, label: string): asserts value is Times
   if (!(value instanceof Timestamp)) throw new InvalidCloudCommandInput(`${label} 必須是 Firestore Timestamp`);
 }
 
-function receiptInteger(value: unknown, label: string, minimum = 0): asserts value is number {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || Object.is(value, -0) || value < minimum) {
+function receiptInteger(
+  value: unknown,
+  label: string,
+  minimum = 0,
+  maximum = Number.MAX_SAFE_INTEGER,
+): asserts value is number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || Object.is(value, -0)
+    || value < minimum || value > maximum) {
     throw new InvalidCloudCommandInput(`${label} 必須是整數`);
   }
 }
@@ -337,9 +343,11 @@ function validateReceiptStudent(value: unknown, label: string): Record<string, u
     throw new InvalidCloudCommandInput(`${label} schema 不支援`);
   }
   const opening = receiptRecord(student.openingBalance, `${label}.openingBalance`, ['amount', 'asOfDate', 'note', 'createdAt']);
-  receiptInteger(opening.amount, `${label}.openingBalance.amount`, -1_000_000_000);
+  receiptInteger(opening.amount, `${label}.openingBalance.amount`, -1_000_000_000, 1_000_000_000);
   dateValue(opening.asOfDate, `${label}.openingBalance.asOfDate`);
-  if (typeof opening.note !== 'string') throw new InvalidCloudCommandInput(`${label}.openingBalance.note 不合法`);
+  if (typeof opening.note !== 'string' || opening.note.length > 500) {
+    throw new InvalidCloudCommandInput(`${label}.openingBalance.note 不合法`);
+  }
   receiptTimestamp(opening.createdAt, `${label}.openingBalance.createdAt`);
   receiptInteger(student.currentBalance, `${label}.currentBalance`, -1_000_000_000);
   if (Math.abs(student.currentBalance) > 1_000_000_000) throw new InvalidCloudCommandInput(`${label}.currentBalance 超出範圍`);
@@ -366,17 +374,20 @@ function validateReceiptDay(value: unknown, dayId: string, label: string): Recor
   const totals = receiptRecord(day.totals, `${label}.totals`, [
     'activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal', 'retainedReceipts', 'cashierIncome', 'cashierExpense',
   ]);
-  for (const [key, amount] of Object.entries(totals)) receiptInteger(amount, `${label}.totals.${key}`);
+  for (const [key, amount] of Object.entries(totals)) {
+    receiptInteger(amount, `${label}.totals.${key}`, 0, 1_000_000_000);
+  }
   if (day.menu !== null) {
     const menu = receiptRecord(day.menu, `${label}.menu`, [
       'businessDate', 'itemName', 'price', 'vendorId', 'vendorNameSnapshot', 'updatedAt', 'revision', 'inheritedFromDate',
     ]);
     if (menu.businessDate !== dayId || typeof menu.itemName !== 'string' || menu.itemName.length < 1 || menu.itemName.length > 100
-      || typeof menu.vendorId !== 'string' || !menu.vendorId || typeof menu.vendorNameSnapshot !== 'string' || !menu.vendorNameSnapshot
+      || typeof menu.vendorId !== 'string' || menu.vendorId.length < 1 || menu.vendorId.length > 64 || menu.vendorId.includes('/')
+      || typeof menu.vendorNameSnapshot !== 'string' || menu.vendorNameSnapshot.length < 1 || menu.vendorNameSnapshot.length > 100
       || (menu.inheritedFromDate !== null && typeof menu.inheritedFromDate !== 'string')) {
       throw new InvalidCloudCommandInput(`${label}.menu schema 不支援`);
     }
-    receiptInteger(menu.price, `${label}.menu.price`, 1);
+    receiptInteger(menu.price, `${label}.menu.price`, 1, 1_000_000);
     receiptInteger(menu.revision, `${label}.menu.revision`, 1);
     dateValue(menu.businessDate, `${label}.menu.businessDate`);
     if (menu.inheritedFromDate !== null) dateValue(menu.inheritedFromDate, `${label}.menu.inheritedFromDate`);
@@ -445,7 +456,8 @@ function validateReceiptSnapshots(
 
   const cash = receipt.cashEffect as Record<string, unknown>;
   if (normalized.kind === 'EnsureDay') {
-    if (before.day !== null || receipt.businessDate !== normalized.payload.businessDate || receipt.studentId !== null) {
+    if (before.day !== null || receipt.businessDate !== normalized.payload.businessDate || receipt.studentId !== null
+      || normalized.targets.dayId < String(headBefore.goLiveDate)) {
       throw new InvalidCloudCommandInput('EnsureDay receipt before/common 欄位不一致');
     }
     const dayAfter = validateReceiptDay(after.day, normalized.targets.dayId, 'receipt.after.day');
@@ -483,6 +495,7 @@ function validateReceiptSnapshots(
   if (normalized.targets.dayId < String(headBefore.goLiveDate)
     || normalized.targets.dayId !== committedBusinessDate
     || dayBefore.status === 'closed'
+    || (order && studentBefore.status !== 'active')
     || normalized.targets.dayId < String((studentBefore.openingBalance as Record<string, unknown>).asOfDate)
     || (orderPayload?.mealKind === 'bento'
       && (menu?.revision !== orderPayload.menuRevision || menu?.price !== orderPayload.mealPrice))) {
@@ -599,7 +612,7 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
   if (!(raw.committedAt instanceof Timestamp)) throw new InvalidCloudCommandInput('receipt.committedAt 必須是 Firestore Timestamp');
   if (raw.businessDate !== null) dateValue(raw.businessDate, 'receipt.businessDate');
   if (raw.studentId !== null && typeof raw.studentId !== 'string') throw new InvalidCloudCommandInput('receipt.studentId 不合法');
-  if (raw.reason !== null && typeof raw.reason !== 'string') throw new InvalidCloudCommandInput('receipt.reason 不合法');
+  if (raw.reason !== null) throw new InvalidCloudCommandInput('enabled command receipt.reason 必須為 null');
   if (typeof raw.inputFingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(raw.inputFingerprint)) {
     throw new InvalidCloudCommandInput('receipt.inputFingerprint 不合法');
   }
