@@ -98,6 +98,7 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
       holderUid: 'uid-other-operator',
       epoch: 2,
       updatedAt: new Date(),
+      isKnown: true,
       isHolder: false,
       isExpired: false,
     };
@@ -122,6 +123,7 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
       holderUid: 'uid-other-operator',
       epoch: 2,
       updatedAt: new Date(),
+      isKnown: true,
       isHolder: false,
       isExpired: false,
     };
@@ -162,6 +164,7 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
       holderUid: null,
       epoch: 0,
       updatedAt: null,
+      isKnown: true,
       isHolder: false,
       isExpired: true,
     };
@@ -186,6 +189,7 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
       holderUid: 'uid-me',
       epoch: 3,
       updatedAt: new Date(),
+      isKnown: true,
       isHolder: true,
       isExpired: false,
     };
@@ -200,5 +204,98 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
     expect(screen.getByText('[租約 Epoch: 3]')).toBeTruthy();
     expect(screen.getByText('釋放使用權並登出')).toBeTruthy();
     expect(screen.getByTestId('business-content')).toBeTruthy();
+  });
+
+  it('P04: idle lease does not auto-acquire; acquisition requires an explicit click', () => {
+    const acquire = vi.fn().mockResolvedValue({
+      status: 'acquired', holderUid: 'uid-me', epoch: 1, updatedAt: new Date(),
+    });
+    const access: OperatorAccess = {
+      ok: true,
+      profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' },
+    };
+    const idleLease: ActiveLeaseState = {
+      holderUid: null, epoch: 0, updatedAt: null, isKnown: true,
+      isHolder: false, isExpired: true,
+    };
+
+    render(
+      <AuthGate auth={mockAuth} db={mockDb} access={access} lease={idleLease} onAcquireLease={acquire}>
+        <div data-testid="business-content">業務機密資料</div>
+      </AuthGate>,
+    );
+
+    expect(acquire).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('business-content')).toBeNull();
+    fireEvent.click(screen.getByText('取得系統使用權'));
+    expect(acquire).toHaveBeenCalledOnce();
+  });
+
+  it('P04: rejected acquire is caught and shown in the gate', async () => {
+    const acquire = vi.fn().mockRejectedValue(new Error('offline test failure'));
+    const access: OperatorAccess = {
+      ok: true,
+      profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' },
+    };
+    const idleLease: ActiveLeaseState = {
+      holderUid: null, epoch: 0, updatedAt: null, isKnown: true,
+      isHolder: false, isExpired: true,
+    };
+
+    render(
+      <AuthGate auth={mockAuth} db={mockDb} access={access} lease={idleLease} onAcquireLease={acquire}>
+        <div data-testid="business-content">業務機密資料</div>
+      </AuthGate>,
+    );
+
+    fireEvent.click(screen.getByText('取得系統使用權'));
+    expect(await screen.findByText('offline test failure')).toBeTruthy();
+    expect(screen.queryByTestId('business-content')).toBeNull();
+  });
+
+  it('P04: same UID observed in the lease stays masked until an explicit server recheck', async () => {
+    const acquire = vi.fn().mockResolvedValue({
+      status: 'acquired', holderUid: 'uid-me', epoch: 4, updatedAt: new Date(),
+    });
+    const access: OperatorAccess = {
+      ok: true,
+      profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' },
+    };
+    const observedLease: ActiveLeaseState = {
+      holderUid: 'uid-me', epoch: 4, updatedAt: new Date(),
+      isKnown: true, isHolder: false, isExpired: false,
+    };
+
+    render(
+      <AuthGate auth={mockAuth} db={mockDb} access={access} lease={observedLease} onAcquireLease={acquire}>
+        <div data-testid="business-content">業務機密資料</div>
+      </AuthGate>,
+    );
+
+    expect(screen.getByText('正在確認此分頁的使用權')).toBeTruthy();
+    expect(screen.queryByTestId('business-content')).toBeNull();
+    expect(acquire).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('重新確認使用權'));
+    expect(acquire).toHaveBeenCalledOnce();
+  });
+
+  it('P04: a stale holder flag for a different UID never opens the business UI', () => {
+    const access: OperatorAccess = {
+      ok: true,
+      profile: { uid: 'uid-current', email: 'current@example.com', displayName: 'Current' },
+    };
+    const staleLease: ActiveLeaseState = {
+      holderUid: 'uid-previous', epoch: 8, updatedAt: new Date(),
+      isKnown: true, isHolder: true, isExpired: false,
+    };
+
+    render(
+      <AuthGate auth={mockAuth} db={mockDb} access={access} lease={staleLease}>
+        <div data-testid="business-content">業務機密資料</div>
+      </AuthGate>,
+    );
+
+    expect(screen.getByText('目前有人使用中')).toBeTruthy();
+    expect(screen.queryByTestId('business-content')).toBeNull();
   });
 });

@@ -11,13 +11,13 @@
 
 ## 已合併與目前接手點
 
-- **目前工作：P04，PR [#475](https://github.com/cheerc/talented-easyorder/pull/475)，分支 `codex/backend-p04-active-lease`，base `fd8cba1b933a3ceee4ae1d5500c920fca56627a9`。** 實作全公司單一活躍 Google 帳號使用權租約（spec §4.2 狀態機：Acquire/Renew/Release）、`system/accessLease` Firestore Rules（強制 serverTimestamp、嚴格 5 分鐘到期界線）、AuthGate 與 FirebaseProvider 租約監聽、60 秒心跳續約、15 秒限流防護與失權遮罩清理快取。A02–A04 emulator 測試全數通過（11/11），全套 Vitest 1271 passed，tsc app baseline 零新增錯誤，lint 與 build 通過。業務資料此 phase 仍全面 deny。
-- 最近已合併：PR [#474](https://github.com/cheerc/talented-easyorder/pull/474)，P03 Google 登入與等權白名單；merge commit `fd8cba1b933a3ceee4ae1d5500c920fca56627a9`。
-- 前次已合併：PR [#473](https://github.com/cheerc/talented-easyorder/pull/473)，P02 雲端 command／投影介面與模式隔離；merge commit `bc5bb250db2687cfa75043bf72462e0cae25e985`。
-- 更早已合併：PR [#472](https://github.com/cheerc/talented-easyorder/pull/472)，P01 Rules 可行性 proof；merge commit `e7c406ce59ec4779268f760dafa3bb006f1ae8d4`。
-- 最早已合併：PR [#471](https://github.com/cheerc/talented-easyorder/pull/471)，P00 文件與 diagnostics baseline；merge commit `1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。
+- **目前工作：P04，PR [#475](https://github.com/cheerc/talented-easyorder/pull/475) 尚未 merge，rework 候選的本地實作與檢查已完成，等待新 immutable head 的 SOL review 與 required CI。** 分支 `codex/backend-p04-active-lease`，base 為 #474 的實際 merge SHA `fd8cba1b84c0b2146c1f450192e2c99739193e46`。最初 CI run [38541150763](https://github.com/cheerc/talented-easyorder/actions/runs/38541150763) 的 lease suite 11 個案例在一般 Vitest 全部 skipped，14 個 E2E 案例中的 A02–A04 僅為 strip/button smoke；原始 SOL review 未通過。rework 本地全套 Vitest 為 1286 passed、60 skipped、0 failed；lease Emulator 14/14、A01 Rules 10/10、P01 Rules proof 36/36，均無該獨立 gate 的 skip。system Chromium 154 下 cloud 10/10＋隔離 prototype 7/7，合計 17/17、0 skipped；官方 pinned-browser CI 仍待推送後實跑。app TypeScript baseline 為 295→290，逐筆 normalized diff 新增 0、移除 5 項舊錯；app tsc 本身仍 exit 2。P01 negative-deny 有 expression-cap 診斷限制，行為 RED/GREEN 與所有測試證據見[ops evidence](ops/free-production-evidence.md)。目前仍待 SOL exact-head review 與 required CI；P05 不得開始，業務 command/write path 尚未實作，也未部署。
+- 最近已合併：PR [#474](https://github.com/cheerc/talented-easyorder/pull/474)，P03 Google 登入與等權白名單；實際 merge SHA `fd8cba1b84c0b2146c1f450192e2c99739193e46`。
+- 前次已合併：PR [#473](https://github.com/cheerc/talented-easyorder/pull/473)，P02 雲端 command／投影介面與模式隔離；實際 merge SHA `bc5bb2588e616f40a605ea8cd682b1d1642bbc71`。
+- 更早已合併：PR [#472](https://github.com/cheerc/talented-easyorder/pull/472)，P01 Rules 可行性 proof；實際 merge SHA `e7c406c93af197cda0bedaa220a4575728612f0f`。
+- 最早已合併：PR [#471](https://github.com/cheerc/talented-easyorder/pull/471)，P00 文件與 diagnostics baseline；實際 merge SHA `1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。
 - Emulator 工具鏈已可用：本地 Node `v24.19.0`、Java `21.0.12.1`、Firebase CLI `14.27.0`、Firestore Emulator `1.19.8`，官方 JAR SHA-256 `9d43599ed6151199e8d604dc87fac51218e49e5f3a48519b1ae560bbe5e3382d` 已核對。
-- Production Firebase keys／設定／管理憑證只由使用者保存在自己的電腦；所有正式資源、部署與正式 smoke test 由使用者本機執行。Cloud agent 僅可用 demo Emulator，Spark 不開 billing／Blaze、不接 payroll、不改 Android。後端尚未實作或部署。
+- Production Firebase keys／設定／管理憑證只由使用者保存在自己的電腦；所有正式資源、部署與正式 smoke test 由使用者本機執行。Cloud agent 僅可用 demo Emulator，Spark 不開 billing／Blaze、不接 payroll、不改 Android。P00–P03 已合併、P04 尚在 review/rework；業務 command/write path 尚未實作，沒有正式部署。
 
 ## 接手時的第一步
 
@@ -35,8 +35,8 @@ git log -1 --oneline --decorate
 ## 下一個 PR：P05（僅在 P04 review 通過並由 coordinator merge 後）
 
 - 計畫入口：[P05 — 正式原子寫入器與冪等收據](superpowers/plans/2026-10-13-free-production-backend-plan.md#p05--正式原子寫入器與冪等收據)；契約來源為 spec §6.2。
-- 目標範圍：`cloudCommandRepository.ts`、`cloudCommands.spec.ts`、production `firestore.rules`／schema；dataHead bootstrapping 與 maintenance guard。
-- 產物與驗收：P01 proof/P02 型別/P04 lease → 唯一 commitCommand/readCommand。P04 未 review 通過、required checks 未綠及 coordinator 未 merge 前，P05 不得啟動。
+- 目標範圍：`cloudCommandRepository.ts`、`cloudCommands.spec.ts`、production `firestore.rules`／schema；dataHead bootstrapping 與 maintenance guard。首批只啟用 `EnsureDay`、`CreateOrder`、`CreatePayment`，不接 UI；其餘 command kinds 一律 deny。
+- 產物與驗收：P01 proof/P02 型別/P04 lease → 唯一 commitCommand/readCommand。各 kind 在啟用前都要以 Emulator 重驗正向、拒絕與 atomic unchanged；22-kind targets/budget 靜態盤點不能替代逐 kind 實測。P04 未 review 通過、required checks 未綠及 coordinator 未 merge 前，P05 不得啟動。
 
 ## 每個 PR 的協作與交接要求
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { Auth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import { signInWithGoogle, signOutOperator, type OperatorAccess } from '../firebase/authService';
@@ -28,8 +28,6 @@ export function AuthGate({
   onReleaseLease: propRelease,
   children,
 }: AuthGateProps) {
-  const domain = import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN;
-
   // 嘗試從 FirebaseProvider 取得 context，若不在 Provider 內則使用 props
   let contextValue: ReturnType<typeof useFirebase> | null;
   try {
@@ -48,25 +46,17 @@ export function AuthGate({
   const [busyError, setBusyError] = useState<string>('');
   const [isAcquiring, setIsAcquiring] = useState<boolean>(false);
 
-  // 當白名單通過且租約目前處於閒置或逾期狀態時，自動嘗試取得閒置租約進入系統
-  useEffect(() => {
-    if (access.ok && activeLease && !activeLease.isHolder) {
-      const isOccupied = activeLease.holderUid !== null && !activeLease.isExpired;
-      if (!isOccupied && doAcquire) {
-        void doAcquire().then(res => {
-          if (res.status === 'busy') {
-            setBusyError('目前有人使用中，無法取得使用權');
-          }
-        });
-      }
-    }
-  }, [access.ok, activeLease, doAcquire]);
-
   // 1. 白名單未通過處理
   if (!access.ok) {
     return (
       <main className="auth-gate" aria-label="登入 EasyOrder">
         <h1>Talented EasyOrder</h1>
+
+        {access.reason === 'checking' && (
+          <div className="auth-gate-checking" role="status">
+            正在確認 Google 帳號與操作員權限…
+          </div>
+        )}
 
         {access.reason === 'signed_out' && (
           <>
@@ -119,15 +109,6 @@ export function AuthGate({
           </div>
         )}
 
-        {access.reason === 'wrong_domain' && (
-          <>
-            <p>此帳號不是 @{domain ?? 'example.com'}，請切換公司帳號。</p>
-            <button type="button" onClick={() => void signInWithGoogle(auth, db)}>
-              切換帳號登入
-            </button>
-          </>
-        )}
-
         {access.reason === 'unverified_email' && (
           <div className="auth-gate-unverified" aria-label="Email 尚未驗證">
             <h2>Email 尚未驗證</h2>
@@ -161,60 +142,85 @@ export function AuthGate({
     );
   }
 
-  // 2. 租約閘門判斷（P04 核心）：
-  // 如果提供了 activeLease 且當前未持有租約
-  if (activeLease && !activeLease.isHolder) {
-    const isOccupied = activeLease.holderUid !== null && !activeLease.isExpired;
-
-    const handleRecheck = async () => {
-      const now = Date.now();
-      const elapsed = now - lastCheckTime;
-      if (elapsed < LEASE_RECHECK_THROTTLE_MS) {
-        const remainingSeconds = Math.ceil((LEASE_RECHECK_THROTTLE_MS - elapsed) / 1000);
-        setThrottleMessage(`檢查過於頻繁，請等待 ${remainingSeconds} 秒後再試`);
-        return;
+  const attemptAcquire = async () => {
+    setIsAcquiring(true);
+    setBusyError('');
+    try {
+      if (!doAcquire) throw new Error('租約服務尚未就緒，請重新連線後再試');
+      const result = await doAcquire();
+      if (result.status === 'busy') {
+        setBusyError(`目前由操作員 ${result.currentHolderUid} 使用中`);
+      } else if (result.status === 'stale_epoch') {
+        setBusyError('租約狀態已更新，請重新檢查後再試');
+      } else if (result.status === 'lost') {
+        setBusyError(result.message);
       }
+    } catch (error) {
+      setBusyError(error instanceof Error ? error.message : '目前無法連線確認使用權，請稍後重試');
+    } finally {
+      setIsAcquiring(false);
+    }
+  };
 
-      setLastCheckTime(now);
-      setThrottleMessage('');
-      setBusyError('');
+  const handleRecheck = async () => {
+    const now = Date.now();
+    const elapsed = now - lastCheckTime;
+    if (elapsed < LEASE_RECHECK_THROTTLE_MS) {
+      const remainingSeconds = Math.ceil((LEASE_RECHECK_THROTTLE_MS - elapsed) / 1000);
+      setThrottleMessage(`檢查過於頻繁，請等待 ${remainingSeconds} 秒後再試`);
+      return;
+    }
 
-      if (doAcquire) {
-        setIsAcquiring(true);
-        try {
-          const res = await doAcquire();
-          if (res.status === 'busy') {
-            setBusyError(`目前仍由操作員 ${res.currentHolderUid} 使用中`);
-          }
-        } finally {
-          setIsAcquiring(false);
-        }
-      }
-    };
+    setLastCheckTime(now);
+    setThrottleMessage('');
+    await attemptAcquire();
+  };
 
-    const handleAcquire = async () => {
-      if (doAcquire) {
-        setIsAcquiring(true);
-        setBusyError('');
-        try {
-          const res = await doAcquire();
-          if (res.status === 'busy') {
-            setBusyError(`目前有人使用中，無法取得使用權`);
-          }
-        } finally {
-          setIsAcquiring(false);
-        }
-      }
-    };
+  // Unknown/cache-only lease data never opens the business UI or appears idle.
+  if (!activeLease?.isKnown) {
+    return (
+      <main className="auth-gate" aria-label="EasyOrder 使用權租約">
+        <h1>Talented EasyOrder</h1>
+        <div className="auth-gate-checking" role="status">
+          <h2>正在確認系統使用權</h2>
+          <p>{activeLease?.error ?? '尚未從伺服器確認租約狀態。'}</p>
+        </div>
+        {busyError && <div role="alert">{busyError}</div>}
+        {throttleMessage && <div>{throttleMessage}</div>}
+        <button type="button" onClick={() => void handleRecheck()} disabled={isAcquiring}>
+          {isAcquiring ? '檢查中...' : '重新確認使用權'}
+        </button>
+        <button type="button" onClick={() => void signOutOperator(auth)}>登出</button>
+      </main>
+    );
+  }
+
+  const hasCurrentLease = activeLease.isHolder && activeLease.holderUid === access.profile.uid;
+
+  // 2. Lease observations never auto-acquire. Only an explicit operator action writes.
+  if (!hasCurrentLease) {
+    const isSameUidUnconfirmed = activeLease.holderUid === access.profile.uid;
+    const isOccupied = activeLease.holderUid !== null && !activeLease.isExpired && !isSameUidUnconfirmed;
 
     return (
       <main className="auth-gate" aria-label="EasyOrder 使用權租約">
         <h1>Talented EasyOrder</h1>
 
-        {isOccupied ? (
+        {isSameUidUnconfirmed ? (
+          <div className="auth-gate-checking" aria-label="正在確認目前帳號使用權">
+            <h2>正在確認此分頁的使用權</h2>
+            <p>伺服器觀察到此帳號先前持有租約；確認成功前不會開放業務資料。</p>
+            {busyError && <div role="alert">{busyError}</div>}
+            {throttleMessage && <div>{throttleMessage}</div>}
+            <button type="button" onClick={() => void handleRecheck()} disabled={isAcquiring}>
+              {isAcquiring ? '檢查中...' : '重新確認使用權'}
+            </button>
+            <button type="button" onClick={() => void signOutOperator(auth)}>登出</button>
+          </div>
+        ) : isOccupied ? (
           <div className="auth-gate-busy" aria-label="目前有人使用中">
             <h2>目前有人使用中</h2>
-            <p>全公司同一時間僅限一位操作員使用。目前已有其他帳號持有使用權，請請對方登出或等待 5 分鐘逾時交接。</p>
+            <p>全公司同一時間僅限一位操作員使用。伺服器觀察到其他持有人；租約到期與否由伺服器時間判定，您可以重新檢查並提出交接。</p>
             <div
               style={{
                 margin: '16px 0',
@@ -227,7 +233,7 @@ export function AuthGate({
               <div><strong>目前持有者：</strong><code>{activeLease.holderUid}</code></div>
               <div><strong>目前租約世代 (Epoch)：</strong>{activeLease.epoch}</div>
               {activeLease.updatedAt && (
-                <div><strong>最後活動時間：</strong>{activeLease.updatedAt.toLocaleTimeString()}</div>
+                <div><strong>最後活動時間：</strong>{activeLease.updatedAt.toLocaleTimeString('zh-TW', { timeZone: 'Asia/Taipei' })}</div>
               )}
             </div>
 
@@ -246,10 +252,10 @@ export function AuthGate({
         ) : (
           <div className="auth-gate-acquire" aria-label="待取得使用權">
             <h2>待取得使用權</h2>
-            <p>租約目前閒置或已逾期，您可以取得使用權開始操作系統。</p>
+            <p>租約目前看起來閒置或可能已逾期。送出申請後，伺服器會依權威時間確認能否取得使用權。</p>
             {busyError && <div style={{ color: 'var(--color-danger, #d32f2f)', margin: '8px 0' }}>{busyError}</div>}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-              <button type="button" onClick={() => void handleAcquire()} disabled={isAcquiring}>
+              <button type="button" onClick={() => void attemptAcquire()} disabled={isAcquiring}>
                 {isAcquiring ? '取得中...' : '取得系統使用權'}
               </button>
               <button type="button" onClick={() => void signOutOperator(auth)}>

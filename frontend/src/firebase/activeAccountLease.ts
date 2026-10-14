@@ -5,8 +5,9 @@
  */
 
 import {
+  Timestamp,
   doc,
-  getDoc,
+  getDocFromServer,
   onSnapshot,
   runTransaction,
   serverTimestamp,
@@ -24,10 +25,12 @@ export const LEASE_HEARTBEAT_INTERVAL_MS = 60 * 1000;
 /** 重新檢查限流門檻：15 秒 */
 export const LEASE_RECHECK_THROTTLE_MS = 15 * 1000;
 
+const LEASE_HEARTBEAT_LOCK_NAME = 'easyorder:system-access-lease-heartbeat';
+
 export interface AccessLeaseDoc {
   holderUid: string | null;
   epoch: number;
-  updatedAt: unknown;
+  updatedAt: Timestamp;
 }
 
 export type LeaseResult =
@@ -57,327 +60,326 @@ export interface ActiveLeaseState {
   holderUid: string | null;
   epoch: number;
   updatedAt: Date | null;
+  /** Only a server snapshot with valid fields sets this true. */
+  isKnown: boolean;
+  /** Set only after a successful Rules-authorized renew transaction and server readback. */
   isHolder: boolean;
+  /** Client-clock estimate for display only. It never authorizes access or blocks an acquire attempt. */
   isExpired: boolean;
+  error?: string;
 }
 
 export const defaultLeaseState: ActiveLeaseState = {
   holderUid: null,
   epoch: 0,
   updatedAt: null,
+  isKnown: false,
   isHolder: false,
-  isExpired: true,
+  isExpired: false,
+  error: '尚未從伺服器確認租約狀態',
 };
 
-/**
- * 將 Firestore Timestamp 或 Date 或 ISO 字串轉換為 Date。
- */
-export function toLeaseDate(val: unknown): Date {
-  if (val instanceof Date) return val;
-  if (val && typeof (val as { toDate?: () => Date }).toDate === 'function') {
-    return (val as { toDate: () => Date }).toDate();
-  }
-  if (typeof val === 'string') {
-    const d = new Date(val);
-    if (!Number.isNaN(d.getTime())) return d;
-  }
-  return new Date();
+function validEpoch(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function readLeaseData(raw: unknown): { data: AccessLeaseDoc; updatedAt: Date } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const value = raw as Record<string, unknown>;
+  const holderUid = value.holderUid;
+  if (holderUid !== null && (typeof holderUid !== 'string' || holderUid.length === 0)) return null;
+  if (!validEpoch(value.epoch) || !(value.updatedAt instanceof Timestamp)) return null;
+
+  const updatedAt = value.updatedAt.toDate();
+  if (!(updatedAt instanceof Date) || !Number.isFinite(updatedAt.getTime())) return null;
+
+  return {
+    data: { holderUid: holderUid as string | null, epoch: value.epoch, updatedAt: value.updatedAt },
+    updatedAt,
+  };
+}
+
+/** Convert a Firestore Timestamp to Date; malformed and local values stay unknown. */
+export function toLeaseDate(value: unknown): Date | null {
+  if (!(value instanceof Timestamp)) return null;
+  const date = value.toDate();
+  return Number.isFinite(date.getTime()) ? date : null;
 }
 
 /**
- * 判斷租約是否已逾期（updatedAt + 5 分鐘 <= now）。
- * 規格 §4.2：到達 updatedAt + 5 分鐘時已逾期（嚴格大於才有效）。
+ * Client time is only a display hint. Firestore Rules `request.time` decide whether a
+ * lease can be acquired or renewed.
  */
 export function isLeaseExpired(updatedAt: unknown, now = Date.now()): boolean {
-  if (!updatedAt) return true;
   const date = toLeaseDate(updatedAt);
-  return date.getTime() + LEASE_DURATION_MS <= now;
+  return date === null || date.getTime() + LEASE_DURATION_MS <= now;
 }
 
-export function isRealFirestore(db: unknown): db is Firestore {
-  if (!db || typeof db !== 'object') return false;
-  const d = db as Record<string, unknown>;
-  return 'type' in d || 'app' in d || '_databaseId' in d;
+function unknownLeaseState(error: string): ActiveLeaseState {
+  return { ...defaultLeaseState, error };
+}
+
+function stateFromServerLease(
+  data: AccessLeaseDoc,
+  updatedAt: Date,
+): ActiveLeaseState {
+  return {
+    holderUid: data.holderUid,
+    epoch: data.epoch,
+    updatedAt,
+    isKnown: true,
+    // A UID match is an observation, not proof that Rules currently consider the lease valid.
+    isHolder: false,
+    isExpired: isLeaseExpired(data.updatedAt),
+  };
+}
+
+function validateEpochArgument(epoch: number): void {
+  if (!validEpoch(epoch)) throw new Error('租約操作要求非負整數 expectedEpoch');
+}
+
+async function readServerLease(db: Firestore): Promise<{ data: AccessLeaseDoc; updatedAt: Date } | null> {
+  const snapshot = await getDocFromServer(doc(db, LEASE_DOC_PATH));
+  if (!snapshot.exists()) return null;
+  return readLeaseData(snapshot.data());
+}
+
+function lost(message: string): LeaseResult {
+  return { status: 'lost', message };
+}
+
+async function classifyAcquireFailure(
+  db: Firestore,
+  expectedEpoch: number,
+): Promise<LeaseResult> {
+  try {
+    const serverLease = await readServerLease(db);
+    if (!serverLease) return lost('伺服器租約不存在或資料格式無效，無法確認使用權');
+
+    const { data, updatedAt } = serverLease;
+    if (data.epoch !== expectedEpoch) {
+      return { status: 'stale_epoch', expectedEpoch, actualEpoch: data.epoch };
+    }
+    if (data.holderUid !== null) {
+      return {
+        status: 'busy',
+        currentHolderUid: data.holderUid,
+        epoch: data.epoch,
+        updatedAt,
+      };
+    }
+    return lost('伺服器未確認取得使用權；請重新檢查連線與帳號狀態');
+  } catch {
+    return lost('目前無法連線確認租約，請重新連線後再試');
+  }
+}
+
+async function confirmCommittedLease(
+  db: Firestore,
+  uid: string,
+  epoch: number,
+): Promise<LeaseResult> {
+  try {
+    const serverLease = await readServerLease(db);
+    if (!serverLease) return lost('租約交易完成後無法從伺服器確認狀態');
+    const { data, updatedAt } = serverLease;
+    if (data.holderUid !== uid || data.epoch !== epoch) {
+      return lost('租約在伺服器確認前已變更，請重新檢查');
+    }
+    return { status: 'acquired', holderUid: uid, epoch, updatedAt };
+  } catch {
+    return lost('租約交易完成，但伺服器回讀失敗；目前不會開放業務資料');
+  }
 }
 
 /**
- * 規格 §4.2：Acquire 取得租約。
- * - client transaction 先讀取目前 server lease 並比對 expectedEpoch（如有提供）。
- * - 只有在 holderUid == null 或已逾期時方可取得。
- * - epoch 必須遞增 +1，holderUid 設為本人 UID。
- * - 寫入必須使用 serverTimestamp()。
+ * Acquire always reaches Firestore Rules. Local time is never used to decide whether
+ * another holder has expired; Rules compare the old timestamp with request.time.
  */
 export async function acquireLease(
   db: Firestore,
   uid: string,
-  expectedEpoch?: number,
+  expectedEpoch: number,
 ): Promise<LeaseResult> {
-  if (!uid || !uid.trim()) {
-    throw new Error('acquireLease 要求有效 uid');
-  }
+  if (!uid || !uid.trim()) throw new Error('acquireLease 要求有效 uid');
+  validateEpochArgument(expectedEpoch);
 
-  if (!isRealFirestore(db)) {
-    return {
-      status: 'acquired',
-      holderUid: uid,
-      epoch: (expectedEpoch ?? 0) + 1,
-      updatedAt: new Date(),
-    };
-  }
+  try {
+    const leaseRef = doc(db, LEASE_DOC_PATH);
+    const result = await runTransaction(db, async tx => {
+      const snapshot = await tx.get(leaseRef);
+      if (!snapshot.exists()) return { status: 'lost' as const, message: '伺服器租約不存在，需由維護流程初始化' };
 
-  const leaseRef = doc(db, LEASE_DOC_PATH);
+      const parsed = readLeaseData(snapshot.data());
+      if (!parsed) return { status: 'lost' as const, message: '伺服器租約格式無效，拒絕取得使用權' };
+      const { data } = parsed;
 
-  return runTransaction(db, async tx => {
-    const snapshot = await tx.get(leaseRef);
-    const data = (snapshot.data() as AccessLeaseDoc | undefined) ?? {
-      holderUid: null,
-      epoch: 0,
-      updatedAt: null,
-    };
+      if (data.epoch !== expectedEpoch) {
+        return { status: 'stale_epoch' as const, expectedEpoch, actualEpoch: data.epoch };
+      }
+      if (data.epoch === Number.MAX_SAFE_INTEGER) {
+        return { status: 'lost' as const, message: '租約 epoch 已達安全上限，拒絕更新' };
+      }
 
-    const currentEpoch = Number(data.epoch) || 0;
-    const currentHolder = data.holderUid ?? null;
-
-    // Stale-view guard: 如果呼叫者傳入預期的 expectedEpoch 且與伺服器不同，中止
-    if (expectedEpoch !== undefined && currentEpoch !== expectedEpoch) {
-      return {
-        status: 'stale_epoch',
-        expectedEpoch,
-        actualEpoch: currentEpoch,
-      };
-    }
-
-    // 檢查是否被他人有效占用
-    const expired = isLeaseExpired(data.updatedAt);
-    if (currentHolder !== null && currentHolder !== uid && !expired) {
-      return {
-        status: 'busy',
-        currentHolderUid: currentHolder,
-        epoch: currentEpoch,
-        updatedAt: toLeaseDate(data.updatedAt),
-      };
-    }
-
-    // 可取得新租約
-    const nextEpoch = currentEpoch + 1;
-    tx.update(leaseRef, {
-      holderUid: uid,
-      epoch: nextEpoch,
-      updatedAt: serverTimestamp(),
+      // The Rules decide whether this holder is null/expired using request.time.
+      tx.update(leaseRef, {
+        holderUid: uid,
+        epoch: data.epoch + 1,
+        updatedAt: serverTimestamp(),
+      });
+      return { status: 'pending' as const, epoch: data.epoch + 1 };
     });
 
-    return {
-      status: 'acquired',
-      holderUid: uid,
-      epoch: nextEpoch,
-      updatedAt: new Date(),
-    };
-  });
+    if (result.status !== 'pending') return result;
+    return confirmCommittedLease(db, uid, result.epoch);
+  } catch {
+    return classifyAcquireFailure(db, expectedEpoch);
+  }
 }
 
-/**
- * 規格 §4.2：Renew 續約。
- * - 只能由目前持有人 (holderUid == auth.uid) 續約，且尚未逾期。
- * - expectedEpoch 必須相符。
- * - holderUid 與 epoch 保持不變，updatedAt 更新為 serverTimestamp()。
- */
+/** Renew is also the server-authorized proof used before rendering a holder's data. */
 export async function renewLease(
   db: Firestore,
   uid: string,
   expectedEpoch: number,
 ): Promise<LeaseResult> {
-  if (!isRealFirestore(db)) {
-    return {
-      status: 'acquired',
-      holderUid: uid,
-      epoch: expectedEpoch,
-      updatedAt: new Date(),
-    };
-  }
+  if (!uid || !uid.trim()) throw new Error('renewLease 要求有效 uid');
+  validateEpochArgument(expectedEpoch);
 
-  const leaseRef = doc(db, LEASE_DOC_PATH);
+  try {
+    const leaseRef = doc(db, LEASE_DOC_PATH);
+    const result = await runTransaction(db, async tx => {
+      const snapshot = await tx.get(leaseRef);
+      if (!snapshot.exists()) return { status: 'lost' as const, message: '伺服器租約不存在' };
 
-  return runTransaction(db, async tx => {
-    const snapshot = await tx.get(leaseRef);
-    const data = (snapshot.data() as AccessLeaseDoc | undefined) ?? {
-      holderUid: null,
-      epoch: 0,
-      updatedAt: null,
-    };
+      const parsed = readLeaseData(snapshot.data());
+      if (!parsed) return { status: 'lost' as const, message: '伺服器租約格式無效，拒絕續約' };
+      const { data } = parsed;
+      if (data.epoch !== expectedEpoch) {
+        return { status: 'stale_epoch' as const, expectedEpoch, actualEpoch: data.epoch };
+      }
+      if (data.holderUid !== uid) {
+        return { status: 'lost' as const, message: '租約持有人已變更，續約中止' };
+      }
 
-    const currentEpoch = Number(data.epoch) || 0;
-    const currentHolder = data.holderUid ?? null;
-
-    if (currentEpoch !== expectedEpoch) {
-      return {
-        status: 'stale_epoch',
-        expectedEpoch,
-        actualEpoch: currentEpoch,
-      };
-    }
-
-    if (currentHolder !== uid) {
-      return {
-        status: 'lost',
-        message: '租約持有人已變更，續約中止',
-      };
-    }
-
-    tx.update(leaseRef, {
-      holderUid: uid,
-      epoch: currentEpoch,
-      updatedAt: serverTimestamp(),
+      tx.update(leaseRef, {
+        holderUid: uid,
+        epoch: data.epoch,
+        updatedAt: serverTimestamp(),
+      });
+      return { status: 'pending' as const };
     });
 
-    return {
-      status: 'acquired',
-      holderUid: uid,
-      epoch: currentEpoch,
-      updatedAt: new Date(),
-    };
-  });
+    if (result.status !== 'pending') return result;
+    return confirmCommittedLease(db, uid, expectedEpoch);
+  } catch {
+    try {
+      const serverLease = await readServerLease(db);
+      if (serverLease && serverLease.data.epoch !== expectedEpoch) {
+        return { status: 'stale_epoch', expectedEpoch, actualEpoch: serverLease.data.epoch };
+      }
+      return lost('伺服器未確認續約；請重新檢查使用權');
+    } catch {
+      return lost('目前無法連線確認續約；系統已停止授權資料存取');
+    }
+  }
 }
 
-/**
- * 規格 §4.2：Release 釋放租約。
- * - 只能由目前持有人 (holderUid == auth.uid) 釋放。
- * - expectedEpoch 必須相符。
- * - holderUid 設為 null，epoch 遞增 +1，updatedAt 更新為 serverTimestamp()。
- */
+/** Release succeeds only when its post-commit server read confirms the exact new state. */
 export async function releaseLease(
   db: Firestore,
   uid: string,
   expectedEpoch: number,
 ): Promise<boolean> {
-  if (!isRealFirestore(db)) {
-    return true;
-  }
-
-  const leaseRef = doc(db, LEASE_DOC_PATH);
-
+  if (!uid || !uid.trim()) return false;
   try {
-    return await runTransaction(db, async tx => {
+    validateEpochArgument(expectedEpoch);
+    const leaseRef = doc(db, LEASE_DOC_PATH);
+    const result = await runTransaction(db, async tx => {
       const snapshot = await tx.get(leaseRef);
-      const data = (snapshot.data() as AccessLeaseDoc | undefined) ?? {
-        holderUid: null,
-        epoch: 0,
-        updatedAt: null,
-      };
-
-      const currentEpoch = Number(data.epoch) || 0;
-      const currentHolder = data.holderUid ?? null;
-
-      if (currentEpoch !== expectedEpoch || currentHolder !== uid) {
-        return false;
+      if (!snapshot.exists()) return { status: 'not_released' as const };
+      const parsed = readLeaseData(snapshot.data());
+      if (!parsed) return { status: 'not_released' as const };
+      const { data } = parsed;
+      if (data.epoch !== expectedEpoch || data.holderUid !== uid || data.epoch === Number.MAX_SAFE_INTEGER) {
+        return { status: 'not_released' as const };
       }
 
       tx.update(leaseRef, {
         holderUid: null,
-        epoch: currentEpoch + 1,
+        epoch: data.epoch + 1,
         updatedAt: serverTimestamp(),
       });
-
-      return true;
+      return { status: 'pending' as const, epoch: data.epoch + 1 };
     });
+    if (result.status !== 'pending') return false;
+
+    const serverLease = await readServerLease(db);
+    return Boolean(
+      serverLease &&
+      serverLease.data.holderUid === null &&
+      serverLease.data.epoch === result.epoch,
+    );
   } catch {
     return false;
   }
 }
 
-/**
- * 取得當前租約狀態快照。
- */
+/** Server-only lease read. A UID match here is not itself an authorization proof. */
 export async function getLeaseStatus(db: Firestore, currentUid?: string): Promise<ActiveLeaseState> {
-  let docRef;
+  void currentUid;
   try {
-    docRef = doc(db, LEASE_DOC_PATH);
+    const serverLease = await readServerLease(db);
+    if (!serverLease) return unknownLeaseState('伺服器租約不存在或資料格式無效');
+    return stateFromServerLease(serverLease.data, serverLease.updatedAt);
   } catch {
-    return {
-      holderUid: currentUid ?? null,
-      epoch: 1,
-      updatedAt: new Date(),
-      isHolder: Boolean(currentUid),
-      isExpired: false,
-    };
+    return unknownLeaseState('目前無法從伺服器讀取租約');
   }
-
-  const snapshot = await getDoc(docRef);
-  const data = (snapshot.data() as AccessLeaseDoc | undefined) ?? {
-    holderUid: null,
-    epoch: 0,
-    updatedAt: null,
-  };
-
-  const updatedAt = data.updatedAt ? toLeaseDate(data.updatedAt) : null;
-  const isExpired = isLeaseExpired(data.updatedAt);
-  const isHolder = Boolean(currentUid && data.holderUid === currentUid && !isExpired);
-
-  return {
-    holderUid: data.holderUid,
-    epoch: Number(data.epoch) || 0,
-    updatedAt,
-    isHolder,
-    isExpired,
-  };
 }
 
 /**
- * 監聽租約文件變更。
+ * Observe server lease changes. Cache-only, pending-write, missing and malformed
+ * snapshots remain unknown and can never authorize the operator UI.
  */
 export function subscribeLease(
   db: Firestore,
   currentUid: string | null,
   onUpdate: (state: ActiveLeaseState) => void,
 ): () => void {
-  let docRef;
+  void currentUid;
   try {
-    docRef = doc(db, LEASE_DOC_PATH);
+    const leaseRef = doc(db, LEASE_DOC_PATH);
+    return onSnapshot(
+      leaseRef,
+      { includeMetadataChanges: true },
+      snapshot => {
+        if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) {
+          onUpdate(unknownLeaseState('租約尚未由伺服器確認'));
+          return;
+        }
+        if (!snapshot.exists()) {
+          onUpdate(unknownLeaseState('伺服器租約不存在'));
+          return;
+        }
+        const parsed = readLeaseData(snapshot.data());
+        if (!parsed) {
+          onUpdate(unknownLeaseState('伺服器租約格式無效'));
+          return;
+        }
+        onUpdate(stateFromServerLease(parsed.data, parsed.updatedAt));
+      },
+      () => onUpdate(unknownLeaseState('無法監聽伺服器租約')),
+    );
   } catch {
-    // 兼容測試環境使用空物件 {} 作為 mock db 的情況
-    onUpdate({
-      holderUid: currentUid,
-      epoch: 1,
-      updatedAt: new Date(),
-      isHolder: Boolean(currentUid),
-      isExpired: false,
-    });
+    onUpdate(unknownLeaseState('無法建立伺服器租約監聽'));
     return () => {};
   }
-
-  return onSnapshot(
-    docRef,
-    snapshot => {
-      const data = (snapshot.data() as AccessLeaseDoc | undefined) ?? {
-        holderUid: null,
-        epoch: 0,
-        updatedAt: null,
-      };
-      const updatedAt = data.updatedAt ? toLeaseDate(data.updatedAt) : null;
-      const isExpired = isLeaseExpired(data.updatedAt);
-      const isHolder = Boolean(currentUid && data.holderUid === currentUid && !isExpired);
-
-      onUpdate({
-        holderUid: data.holderUid,
-        epoch: Number(data.epoch) || 0,
-        updatedAt,
-        isHolder,
-        isExpired,
-      });
-    },
-    () => {
-      onUpdate({
-        holderUid: null,
-        epoch: 0,
-        updatedAt: null,
-        isHolder: false,
-        isExpired: true,
-      });
-    },
-  );
 }
 
 /**
- * 每 60 秒定期續約心跳計時器。
+ * Elect one same-origin tab to perform scheduled renewals. Web Locks are available
+ * on the supported HTTPS/modern Chromium clients; browsers without Web Locks fail
+ * closed rather than allowing multiple tabs to write renewals.
  */
 export function startLeaseHeartbeat(
   db: Firestore,
@@ -385,19 +387,70 @@ export function startLeaseHeartbeat(
   getEpoch: () => number,
   onLost: (reason: string) => void,
 ): () => void {
-  const timer = setInterval(async () => {
-    try {
-      const epoch = getEpoch();
-      const result = await renewLease(db, uid, epoch);
-      if (result.status !== 'acquired') {
-        onLost(`租約續約失敗：${result.status}`);
-      }
-    } catch (err) {
-      onLost(err instanceof Error ? err.message : String(err));
-    }
-  }, LEASE_HEARTBEAT_INTERVAL_MS);
+  let stopped = false;
+  let failureReported = false;
+  let inFlight = false;
+  let timer: ReturnType<typeof setInterval> | null = null;
+  let releaseLeadership: (() => void) | null = null;
+  const abortController = new AbortController();
 
-  return () => {
-    clearInterval(timer);
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    abortController.abort();
+    if (timer !== null) clearInterval(timer);
+    timer = null;
+    releaseLeadership?.();
+    releaseLeadership = null;
   };
+
+  const reportLost = (reason: string) => {
+    if (stopped || failureReported) return;
+    failureReported = true;
+    stop();
+    void onLost(reason);
+  };
+
+  const renew = async () => {
+    if (stopped || inFlight) return;
+    inFlight = true;
+    try {
+      const result = await renewLease(db, uid, getEpoch());
+      if (stopped) return;
+      if (result.status !== 'acquired') reportLost(`租約續約失敗：${result.status === 'lost' ? result.message : result.status}`);
+    } catch (error) {
+      if (!stopped) reportLost(error instanceof Error ? error.message : String(error));
+    } finally {
+      inFlight = false;
+    }
+  };
+
+  const lockManager = typeof navigator === 'undefined' ? undefined : navigator.locks;
+  if (!lockManager) {
+    reportLost('此瀏覽器不支援安全的跨分頁續約，已停止授權資料存取');
+    return stop;
+  }
+
+  const isAbortError = (error: unknown) =>
+    typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError';
+
+  void Promise.resolve().then(() => lockManager.request(
+    LEASE_HEARTBEAT_LOCK_NAME,
+    { mode: 'exclusive', signal: abortController.signal },
+    async lock => {
+      if (!lock || stopped) return;
+      timer = setInterval(() => { void renew(); }, LEASE_HEARTBEAT_INTERVAL_MS);
+      await new Promise<void>(resolve => {
+        releaseLeadership = resolve;
+        if (stopped) resolve();
+      });
+      if (timer !== null) clearInterval(timer);
+      timer = null;
+    },
+  )).catch(error => {
+    if (stopped || isAbortError(error)) return;
+    reportLost(error instanceof Error ? error.message : String(error));
+  });
+
+  return stop;
 }

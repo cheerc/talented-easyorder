@@ -3,7 +3,7 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { afterAll, beforeAll, beforeEach, describe, it, expect } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
 import {
   doc,
   getDoc,
@@ -25,6 +25,11 @@ let env: RulesTestEnvironment;
 
 const firestoreEmulatorHost =
   process.env.FIRESTORE_EMULATOR_HOST ?? process.env.FIREBASE_FIRESTORE_EMULATOR_ADDRESS;
+
+const requiresLeaseProof = process.env.EASYORDER_REQUIRE_ACTIVE_ACCOUNT_LEASE_PROOF === 'true';
+if (requiresLeaseProof && !firestoreEmulatorHost) {
+  throw new Error('P04 lease proof requires FIRESTORE_EMULATOR_HOST; refusing to skip the emulator suite.');
+}
 
 const describeOrSkip = firestoreEmulatorHost ? describe : describe.skip;
 
@@ -113,7 +118,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     await seedInitialLease(null, 0);
     const dbA = authedDb(operatorA.uid, operatorA.email);
 
-    const result = await acquireLease(dbA as unknown as Firestore, operatorA.uid);
+    const result = await acquireLease(dbA as unknown as Firestore, operatorA.uid, 0);
     expect(result.status).toBe('acquired');
     if (result.status === 'acquired') {
       expect(result.holderUid).toBe(operatorA.uid);
@@ -130,7 +135,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     const dbB = authedDb(operatorB.uid, operatorB.email);
 
     // Client transaction 檢查發現 busy
-    const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid);
+    const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1);
     expect(result.status).toBe('busy');
 
     // 直接以 Rules 攻擊覆寫也必須被 Rules 拒絕
@@ -196,7 +201,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     expect(leaseAfterRelease.data()?.epoch).toBe(2);
 
     // B acquire
-    const resultB = await acquireLease(dbB as unknown as Firestore, operatorB.uid);
+    const resultB = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 2);
     expect(resultB.status).toBe('acquired');
     if (resultB.status === 'acquired') {
       expect(resultB.holderUid).toBe(operatorB.uid);
@@ -210,7 +215,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     await seedInitialLease(operatorA.uid, 1, sixMinutesAgo);
 
     const dbB = authedDb(operatorB.uid, operatorB.email);
-    const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid);
+    const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1);
     expect(result.status).toBe('acquired');
     if (result.status === 'acquired') {
       expect(result.holderUid).toBe(operatorB.uid);
@@ -234,7 +239,49 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     await seedInitialLease(null, 0);
     const dbInactive = authedDb(inactiveOperator.uid, inactiveOperator.email);
 
-    await expect(acquireLease(dbInactive as unknown as Firestore, inactiveOperator.uid)).rejects.toThrow();
+    const result = await acquireLease(dbInactive as unknown as Firestore, inactiveOperator.uid, 0);
+    expect(result.status).toBe('lost');
+  });
+
+  it('A03.2: stale expectedEpoch prevents acquire without changing the server lease', async () => {
+    await seedInitialLease(operatorA.uid, 2, new Date());
+    const dbA = authedDb(operatorA.uid, operatorA.email);
+
+    const result = await acquireLease(dbA as unknown as Firestore, operatorA.uid, 1);
+    expect(result).toEqual({ status: 'stale_epoch', expectedEpoch: 1, actualEpoch: 2 });
+
+    const leaseDoc = await getDoc(doc(dbA, 'system/accessLease'));
+    expect(leaseDoc.data()?.holderUid).toBe(operatorA.uid);
+    expect(leaseDoc.data()?.epoch).toBe(2);
+  });
+
+  it('A03.3: a slow client clock cannot block a server-approved expired handoff', async () => {
+    const realNow = Date.now();
+    await seedInitialLease(operatorA.uid, 1, new Date(realNow - 6 * 60 * 1000));
+    const dbB = authedDb(operatorB.uid, operatorB.email);
+    const fakeClock = vi.spyOn(Date, 'now').mockReturnValue(realNow - 10 * 60 * 1000);
+
+    try {
+      const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1);
+      expect(result.status).toBe('acquired');
+    } finally {
+      fakeClock.mockRestore();
+    }
+  });
+
+  it('A03.4: a fast client clock cannot acquire a lease that Rules still consider active', async () => {
+    const realNow = Date.now();
+    await seedInitialLease(operatorA.uid, 1, new Date(realNow));
+    const dbB = authedDb(operatorB.uid, operatorB.email);
+    const fakeClock = vi.spyOn(Date, 'now').mockReturnValue(realNow + 10 * 60 * 1000);
+
+    try {
+      const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1);
+      expect(result.status).toBe('busy');
+      if (result.status === 'busy') expect(result.currentHolderUid).toBe(operatorA.uid);
+    } finally {
+      fakeClock.mockRestore();
+    }
   });
 
   it('A04.2: Client 禁止使用本機時間（非 serverTimestamp()）更新 updatedAt', async () => {

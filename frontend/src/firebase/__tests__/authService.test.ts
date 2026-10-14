@@ -6,27 +6,29 @@ vi.unmock('../firebaseModules');
 
 const mocks = vi.hoisted(() => {
   const mockSignOut = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
-  const mockOnAuthStateChanged = vi.fn().mockReturnValue(vi.fn());
+  const mockOnIdTokenChanged = vi.fn().mockReturnValue(vi.fn());
+  const mockDoc = vi.fn(() => ({ path: 'operators/test-user' }));
+  const mockOnSnapshot = vi.fn();
   const mockClearSensitiveData = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
   const mockEmitError = vi.fn();
-  return { mockSignOut, mockOnAuthStateChanged, mockClearSensitiveData, mockEmitError };
+  return { mockSignOut, mockOnIdTokenChanged, mockDoc, mockOnSnapshot, mockClearSensitiveData, mockEmitError };
 });
 
 vi.mock('../firebaseModules', () => ({
   getAuthMod: () => ({
     signOut: mocks.mockSignOut,
-    onAuthStateChanged: mocks.mockOnAuthStateChanged,
+    onIdTokenChanged: mocks.mockOnIdTokenChanged,
     GoogleAuthProvider: vi.fn(),
     signInWithPopup: vi.fn(),
   }),
   getFirestoreMod: () => ({
-    doc: vi.fn(),
-    onSnapshot: vi.fn(),
+    doc: mocks.mockDoc,
+    onSnapshot: mocks.mockOnSnapshot,
   }),
 }));
 
-vi.mock('../../store/posPersistence', () => ({
-  clearSensitiveData: mocks.mockClearSensitiveData,
+vi.mock('../../store/clearSensitivePosData', () => ({
+  clearSensitivePosData: mocks.mockClearSensitiveData,
 }));
 
 vi.mock('../../errors/errorBus', () => ({
@@ -37,7 +39,9 @@ import { signOutOperator, subscribeOperatorAccess, isValidOperatorDoc } from '..
 
 beforeEach(() => {
   mocks.mockSignOut.mockClear().mockResolvedValue(undefined);
-  mocks.mockOnAuthStateChanged.mockClear().mockReturnValue(vi.fn());
+  mocks.mockOnIdTokenChanged.mockClear().mockReturnValue(vi.fn());
+  mocks.mockDoc.mockClear();
+  mocks.mockOnSnapshot.mockClear();
   mocks.mockClearSensitiveData.mockClear().mockResolvedValue(undefined);
   mocks.mockEmitError.mockClear();
 });
@@ -69,25 +73,68 @@ describe('isValidOperatorDoc', () => {
 });
 
 describe('subscribeOperatorAccess — signOut race (#301)', () => {
-  it('emits wrong_domain rejection after signOut', async () => {
+  it('requires emailVerified to be exactly true before subscribing to the operator document', async () => {
+    const auth = {} as Parameters<typeof subscribeOperatorAccess>[0];
+    const db = {} as Parameters<typeof subscribeOperatorAccess>[1];
+    const onAccess = vi.fn();
+
+    subscribeOperatorAccess(auth, db, onAccess);
+    const callback = mocks.mockOnIdTokenChanged.mock.calls[0][1] as (user: unknown) => Promise<void>;
+    await callback({
+      uid: 'test-user',
+      email: 'operator@example.com',
+      emailVerified: undefined,
+      providerData: [{ providerId: 'google.com' }],
+    });
+
+    expect(onAccess).toHaveBeenLastCalledWith(expect.objectContaining({ ok: false, reason: 'unverified_email' }));
+    expect(mocks.mockDoc).not.toHaveBeenCalled();
+    expect(mocks.mockOnSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('allows an explicitly approved Gmail Google identity', async () => {
     const auth = {} as Parameters<typeof subscribeOperatorAccess>[0];
     const db = {} as Parameters<typeof subscribeOperatorAccess>[1];
     const onAccess = vi.fn();
 
     subscribeOperatorAccess(auth, db, onAccess);
 
-    const callback = mocks.mockOnAuthStateChanged.mock.calls[0][1] as (user: unknown) => Promise<void>;
+    const callback = mocks.mockOnIdTokenChanged.mock.calls[0][1] as (user: unknown) => Promise<void>;
     await callback({
       uid: 'u1',
-      email: 'user@wrong-domain.com',
-      displayName: 'Wrong User',
-      photoURL: null,
+      email: 'operator@gmail.com',
+      displayName: 'Approved Gmail Operator',
+      emailVerified: true,
+      providerData: [{ providerId: 'google.com' }],
     });
 
-    expect(mocks.mockSignOut).toHaveBeenCalledWith(auth);
-    expect(onAccess).toHaveBeenCalledWith(
-      expect.objectContaining({ ok: false, reason: 'wrong_domain' }),
-    );
+    expect(mocks.mockSignOut).not.toHaveBeenCalled();
+    expect(mocks.mockOnSnapshot).toHaveBeenCalledOnce();
+    const operatorSnapshot = mocks.mockOnSnapshot.mock.calls[0][1] as (snapshot: { data: () => unknown }) => void;
+    operatorSnapshot({ data: () => ({ uid: 'u1', email: 'operator@gmail.com', active: true }) });
+
+    expect(onAccess).toHaveBeenLastCalledWith({
+      ok: true,
+      profile: { uid: 'u1', email: 'operator@gmail.com', displayName: 'Approved Gmail Operator' },
+      role: 'counter',
+    });
+  });
+
+  it('denies an unlisted company-domain Google identity', async () => {
+    const auth = {} as Parameters<typeof subscribeOperatorAccess>[0];
+    const db = {} as Parameters<typeof subscribeOperatorAccess>[1];
+    const onAccess = vi.fn();
+
+    subscribeOperatorAccess(auth, db, onAccess);
+    const callback = mocks.mockOnIdTokenChanged.mock.calls[0][1] as (user: unknown) => Promise<void>;
+    await callback({
+      uid: 'unlisted', email: 'staff@talented.com.tw', emailVerified: true,
+      providerData: [{ providerId: 'google.com' }],
+    });
+    const operatorSnapshot = mocks.mockOnSnapshot.mock.calls[0][1] as (snapshot: { data: () => unknown }) => void;
+    operatorSnapshot({ data: () => undefined });
+
+    expect(onAccess).toHaveBeenLastCalledWith(expect.objectContaining({ ok: false, reason: 'not_whitelisted' }));
   });
 
   it('emits signed_out when no user', async () => {
@@ -97,34 +144,66 @@ describe('subscribeOperatorAccess — signOut race (#301)', () => {
 
     subscribeOperatorAccess(auth, db, onAccess);
 
-    const callback = mocks.mockOnAuthStateChanged.mock.calls[0][1] as (user: unknown) => Promise<void>;
+    const callback = mocks.mockOnIdTokenChanged.mock.calls[0][1] as (user: unknown) => Promise<void>;
     await callback(null);
 
     expect(onAccess).toHaveBeenCalledWith({ ok: false, reason: 'signed_out' });
   });
 
-  it('still emits rejected if signOut throws', async () => {
-    mocks.mockSignOut.mockRejectedValueOnce(new Error('network'));
-
+  it('rejects an exact UID whose operator email differs by case from the verified Auth email', async () => {
     const auth = {} as Parameters<typeof subscribeOperatorAccess>[0];
     const db = {} as Parameters<typeof subscribeOperatorAccess>[1];
     const onAccess = vi.fn();
 
     subscribeOperatorAccess(auth, db, onAccess);
 
-    const callback = mocks.mockOnAuthStateChanged.mock.calls[0][1] as (user: unknown) => Promise<void>;
+    const callback = mocks.mockOnIdTokenChanged.mock.calls[0][1] as (user: unknown) => Promise<void>;
     await callback({
-      uid: 'u2',
-      email: 'user@wrong-domain.com',
-      displayName: 'Bad User',
-      photoURL: null,
+      uid: 'u3',
+      email: 'operator@gmail.com',
+      emailVerified: true,
+      providerData: [{ providerId: 'google.com' }],
     });
+    const operatorSnapshot = mocks.mockOnSnapshot.mock.calls[0][1] as (snapshot: { data: () => unknown }) => void;
+    operatorSnapshot({ data: () => ({ email: 'OPERATOR@gmail.com', active: true }) });
 
-    expect(onAccess).toHaveBeenCalledWith(
-      expect.objectContaining({ ok: false, reason: 'wrong_domain' }),
-    );
-    expect(mocks.mockEmitError).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'auth' }),
-    );
+    expect(onAccess).toHaveBeenLastCalledWith(expect.objectContaining({ ok: false, reason: 'email_mismatch' }));
+  });
+
+  it('rejects an inactive allowlisted Google identity', async () => {
+    const auth = {} as Parameters<typeof subscribeOperatorAccess>[0];
+    const db = {} as Parameters<typeof subscribeOperatorAccess>[1];
+    const onAccess = vi.fn();
+
+    subscribeOperatorAccess(auth, db, onAccess);
+    const callback = mocks.mockOnIdTokenChanged.mock.calls[0][1] as (user: unknown) => Promise<void>;
+    await callback({
+      uid: 'u4', email: 'inactive@gmail.com', emailVerified: true,
+      providerData: [{ providerId: 'google.com' }],
+    });
+    const operatorSnapshot = mocks.mockOnSnapshot.mock.calls[0][1] as (snapshot: { data: () => unknown }) => void;
+    operatorSnapshot({ data: () => ({ email: 'inactive@gmail.com', active: false }) });
+
+    expect(onAccess).toHaveBeenLastCalledWith(expect.objectContaining({ ok: false, reason: 'inactive' }));
+  });
+
+  it('masks a prior active operator snapshot after an Auth token update invalidates email verification', async () => {
+    const auth = {} as Parameters<typeof subscribeOperatorAccess>[0];
+    const db = {} as Parameters<typeof subscribeOperatorAccess>[1];
+    const onAccess = vi.fn();
+
+    subscribeOperatorAccess(auth, db, onAccess);
+    const callback = mocks.mockOnIdTokenChanged.mock.calls[0][1] as (user: unknown) => Promise<void>;
+    const verifiedUser = {
+      uid: 'u5', email: 'operator@gmail.com', emailVerified: true,
+      providerData: [{ providerId: 'google.com' }],
+    };
+    await callback(verifiedUser);
+    const staleSnapshot = mocks.mockOnSnapshot.mock.calls[0][1] as (snapshot: { data: () => unknown }) => void;
+
+    await callback({ ...verifiedUser, emailVerified: false });
+    staleSnapshot({ data: () => ({ email: 'operator@gmail.com', active: true }) });
+
+    expect(onAccess).toHaveBeenLastCalledWith(expect.objectContaining({ ok: false, reason: 'unverified_email' }));
   });
 });

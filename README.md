@@ -1,6 +1,6 @@
 # Talented EasyOrder (PC Counter Prototype)
 
-PC 晚餐櫃台前端 prototype，使用 React、Vite 與 Zustand。目前實作以鍵盤登記、收款、餘額與可追溯查帳為主。正式後端已另有規劃，尚未實作；Android 整合另案。
+PC 晚餐櫃台前端 prototype，使用 React、Vite 與 Zustand。目前實作以鍵盤登記、收款、餘額與可追溯查帳為主。正式後端依獨立分階段計畫開發；P00–P03 已合併，P04 PR #475 正在 review/rework，尚未通過或 merge。Android 整合另案。
 
 Project team 請先讀 [前端交接入口](docs/FRONTEND-PROTOTYPE-HANDOFF.md) 與 [本人操作驗證清單](docs/superpowers/verification/2026-09-29-operator-prototype-checklist.md)。文件描述的新版練習工具仍待分批實作。
 
@@ -8,7 +8,7 @@ Project team 請先讀 [前端交接入口](docs/FRONTEND-PROTOTYPE-HANDOFF.md) 
 
 ## 正式後端交接（2026-10-13 規劃，尚未上線）
 
-接手團隊先讀[零費用正式後端 spec](docs/superpowers/specs/2026-10-13-free-production-backend-spec.md)，再依[19 個小階段計畫](docs/superpowers/plans/2026-10-13-free-production-backend-plan.md)執行。目標採獨立 Firebase Spark＋Hosting；多個等權 Google 白名單帳號、同時只允許一個帳號使用。既有 Firebase setup／部署腳本尚未符合新規格，不能直接用於正式真實資料或 payroll 專案。P00 盤點、診斷基線及目前未就緒的 Emulator 前提見[現況與證據](docs/ops/free-production-evidence.md)；新後端尚未實作或部署。
+接手團隊先讀[零費用正式後端 spec](docs/superpowers/specs/2026-10-13-free-production-backend-spec.md)，再依[19 個小階段計畫](docs/superpowers/plans/2026-10-13-free-production-backend-plan.md)執行。目標採獨立 Firebase Spark＋Hosting；多個等權 Google 白名單帳號、同時只允許一個帳號使用。既有 Firebase setup／部署腳本尚未符合新規格，不能直接用於正式真實資料或 payroll 專案。P00–P03 已合併；P04 PR #475 的原始 CI 有跳過 lease 測試與不足的 E2E 覆蓋，目前 review/rework 尚未通過；P05 仍不得啟動。狀態、診斷基線、歷史限制與 Emulator 證據見[現況與證據](docs/ops/free-production-evidence.md)。目前尚無業務 command 寫入流程或正式部署。
 
 ## Getting Started
 

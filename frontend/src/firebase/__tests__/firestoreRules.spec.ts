@@ -164,12 +164,33 @@ describeOrSkip('firestore.rules — P03 A01: Google 登入與等權白名單規�
     await assertFails(getDoc(doc(dbSpoofed, 'transactions/tx-1')));
   });
 
-  it('A01.7: 非 Google Provider 拒絕（必須為 google.com）', async () => {
+  it('A01.7: exact legacy test email with matching active UID is still denied for password provider', async () => {
     await seedOperatorDoc(operatorA);
     const dbPassword = authedDb(operatorA.uid, operatorA.email, { signInProvider: 'password' });
 
-    // 非 Google provider 存取業務資料拒絕
+    // This identity deliberately matches an active operator document; provider alone must deny it.
     await assertFails(getDoc(doc(dbPassword, 'students/stu-1')));
+
+    const legacyTestOperator = {
+      uid: 'uid-password-exception-regression',
+      email: 'test@talented.com.tw',
+      displayName: 'Password regression identity',
+      active: true,
+    };
+    await seedOperatorDoc(legacyTestOperator);
+    await env.withSecurityRulesDisabled(async context => {
+      await setDoc(doc(context.firestore(), 'system/accessLease'), {
+        holderUid: null,
+        epoch: 0,
+        updatedAt: new Date(),
+      });
+    });
+    const exactEmailPassword = authedDb(
+      legacyTestOperator.uid,
+      legacyTestOperator.email,
+      { signInProvider: 'password' },
+    );
+    await assertFails(getDoc(doc(exactEmailPassword, 'system/accessLease')));
   });
 
   it('A01.8: 未驗證 Email（email_verified == false）拒絕', async () => {

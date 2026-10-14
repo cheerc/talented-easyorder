@@ -1,23 +1,23 @@
-// Order flow e2e test — Login → Select student → Confirm order → Success flash
+// Prototype POS regression — Select student → Confirm order → Success flash
 // Ref: #269
 
-import { test, expect } from './fixtures';
+import { test, expect } from './prototype-fixtures';
 
 test.describe('Order Flow', () => {
-  test('complete an order for a student', async ({ authedPage: page }) => {
-    // 1. Type student name in search box to get suggestions
+  test('complete an order for a prototype student', async ({ prototypePage: page }) => {
+    // 1. Search by the synthetic prototype fixture ID.
     const searchInput = page.locator('.search-input');
-    await searchInput.fill('王');
+    await searchInput.fill('S001');
     
     // 2. Should see student suggestion
-    await expect(page.locator('.sug-name').filter({ hasText: '王小明' })).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.sug-id').filter({ hasText: 'S001' })).toBeVisible({ timeout: 5000 });
     
     // 3. Click on the student suggestion
-    await page.locator('.sug-row').filter({ hasText: '王小明' }).click();
+    await page.locator('.sug-row').filter({ hasText: 'S001' }).click();
     
-    // 4. Customer card should appear with student name
+    // 4. Customer card should show the selected fixture ID.
     await expect(page.locator('.customer')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('.cust-name')).toContainText('王小明');
+    await expect(page.locator('.cust-id')).toContainText('S001');
     
     // 5. The mode should default to '訂便當' (first-time order)
     await expect(page.locator('.mode.mode-on')).toContainText('訂便當');

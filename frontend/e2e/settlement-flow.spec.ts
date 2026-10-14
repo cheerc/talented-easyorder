@@ -1,10 +1,10 @@
 // Settlement flow e2e test — Login → Navigate to Admin → Set opening cash → Navigate to Report
 // Ref: #269
 
-import { test, expect } from './fixtures';
+import { test, expect } from './prototype-fixtures';
 
 test.describe('Settlement Flow', () => {
-  test('navigate to admin and view today settings', async ({ authedPage: page }) => {
+  test('navigate to admin and view today settings', async ({ prototypePage: page }) => {
     // 1. Navigate to Admin tab (今日設定)
     await page.locator('button.tab').filter({ hasText: '今日設定' }).click();
     
@@ -15,7 +15,7 @@ test.describe('Settlement Flow', () => {
     await expect(page.locator('.card-h').filter({ hasText: '每日開帳金額' })).toBeVisible();
   });
 
-  test('navigate to report tab and view report', async ({ authedPage: page }) => {
+  test('navigate to report tab and view report', async ({ prototypePage: page }) => {
     // 1. Navigate to Report tab (今日帳)
     await page.locator('button.tab').filter({ hasText: '今日帳' }).click();
     
@@ -23,7 +23,7 @@ test.describe('Settlement Flow', () => {
     await expect(page.locator('.screen.report, .report-screen')).toBeVisible({ timeout: 5000 });
   });
 
-  test('full flow: admin settings then report', async ({ authedPage: page }) => {
+  test('full flow: admin settings then report', async ({ prototypePage: page }) => {
     // 1. Go to Admin tab
     await page.locator('button.tab').filter({ hasText: '今日設定' }).click();
     

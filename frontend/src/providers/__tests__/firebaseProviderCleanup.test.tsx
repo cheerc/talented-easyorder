@@ -13,6 +13,8 @@ vi.mock('../../firebase/authService', () => ({
 import { FirebaseProvider, useFirebase } from '../FirebaseProvider';
 import { ensureFirebaseInitialized } from '../../firebase/firebaseApp';
 import { subscribeOperatorAccess } from '../../firebase/authService';
+import type { FirebaseServices } from '../../firebase/firebaseApp';
+import type { OperatorAccess } from '../../firebase/authService';
 import type { ReactNode } from 'react';
 import React from 'react';
 
@@ -28,10 +30,15 @@ describe('#320 — FirebaseProvider cleanup race', () => {
     // ensureFirebaseInitialized resolves with mock services
     const mockAuth = {} as Record<string, unknown>;
     const mockDb = {} as Record<string, unknown>;
-    mockEnsure.mockResolvedValue({ auth: mockAuth, db: mockDb, app: {} as Record<string, unknown> } as ReturnType<typeof ensureFirebaseInitialized> extends Promise<infer T> ? T : never);
+    const mockServices = {
+      auth: mockAuth,
+      db: mockDb,
+      app: {} as Record<string, unknown>,
+    } as unknown as FirebaseServices;
+    mockEnsure.mockResolvedValue(mockServices);
 
     // Capture the callback passed to subscribeOperatorAccess
-    let capturedCallback: ((a: Record<string, unknown>) => void) | null = null;
+    let capturedCallback: ((access: OperatorAccess) => void) | null = null;
     const mockUnsub = vi.fn();
     mockSubscribe.mockImplementation((_auth, _db, cb) => {
       capturedCallback = cb;
@@ -60,6 +67,6 @@ describe('#320 — FirebaseProvider cleanup race', () => {
 
     // After unmount, calling the captured callback should NOT throw
     // (it's guarded by the cancelled flag)
-    expect(() => capturedCallback!({ ok: true, profile: { uid: 'test' } })).not.toThrow();
+    expect(() => capturedCallback!({ ok: false, reason: 'signed_out' })).not.toThrow();
   });
 });
