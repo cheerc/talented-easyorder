@@ -1,6 +1,5 @@
 import type { Firestore } from 'firebase/firestore';
 import { getFirestoreMod } from './firebaseModules';
-import { studentPath } from './firestorePaths';
 
 export function buildStudentDoc(input: {
   studentId: string;
@@ -28,15 +27,13 @@ export function buildStudentDoc(input: {
 }
 
 export async function addStudent(db: Firestore, input: Parameters<typeof buildStudentDoc>[0]): Promise<void> {
-  const { doc, setDoc } = getFirestoreMod();
-  await setDoc(doc(db, studentPath(input.studentId)), buildStudentDoc(input));
+  void db;
+  void input;
+  throw new Error('業務功能暫未開放');
 }
 
 export async function disableStudent(db: Firestore, input: { studentId: string; operatorId: string }): Promise<void> {
-  const { doc, updateDoc, serverTimestamp } = getFirestoreMod();
-  await updateDoc(doc(db, studentPath(input.studentId)), {
-    status: 'inactive',
-    updatedAt: serverTimestamp(),
-    updatedBy: input.operatorId,
-  });
+  void db;
+  void input;
+  throw new Error('業務功能暫未開放');
 }

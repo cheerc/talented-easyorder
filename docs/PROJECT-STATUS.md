@@ -1,6 +1,6 @@
 # Project Status — Talented EasyOrder
 
-> **2026-10-14 正式後端進度：** [零費用正式後端 spec](superpowers/specs/2026-10-13-free-production-backend-spec.md)與[19 階段計畫](superpowers/plans/2026-10-13-free-production-backend-plan.md)為權威規格與順序。P00–P04 已合併；P04 #475 合併 SHA 為 `837a1e871468db217463e9799480beeb6d7b0ab0`，獨立 review pass，required CI run 38579765651 成功。P05 command-core 正在 WIP，尚未完成或通過測試。身份／租約與開發中的 command-core 不代表已部署或開放正式帳務操作。Android 另案；下方既有前端追蹤與本人驗收紀錄維持原狀。
+> **2026-10-14 正式後端進度：** [零費用正式後端 spec](superpowers/specs/2026-10-13-free-production-backend-spec.md)與[19 階段計畫](superpowers/plans/2026-10-13-free-production-backend-plan.md)為權威規格與順序。P00–P04 已合併；P04 #475 合併 SHA 為 `837a1e871468db217463e9799480beeb6d7b0ab0`，獨立 review pass，required CI run 38579765651 成功。P05 command-core 仍為 WIP：真實 production Rules Emulator 47/47，舊 writer fail-closed adapter targeted 13/13；full regression、ambiguous receipt-read failure proof、required CI 與獨立 review 尚待完成。身份／租約與開發中的 command-core 不代表已部署或開放正式帳務操作。Android 另案；下方既有前端追蹤與本人驗收紀錄維持原狀。
 
 > **已合併基線：** P00 #471、P01 #472、P02 #473、P03 #474、P04 #475；GitHub 實際 merge SHA 與 P01 限制見[現況與證據](ops/free-production-evidence.md)。P05 WIP 尚未驗收；P06–P18 未開始。新後端尚未部署或開放正式帳務操作。此更新不更改下方歷史前端本人驗收紀錄。逐 PR 接手流程見[開發交接入口](DEVELOPMENT-HANDOFF.md)。
 

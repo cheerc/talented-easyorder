@@ -8,7 +8,7 @@ Project team 請先讀 [前端交接入口](docs/FRONTEND-PROTOTYPE-HANDOFF.md) 
 
 ## 正式後端交接（2026-10-13 規劃，尚未上線）
 
-接手團隊先讀[零費用正式後端 spec](docs/superpowers/specs/2026-10-13-free-production-backend-spec.md)，再依[19 個小階段計畫](docs/superpowers/plans/2026-10-13-free-production-backend-plan.md)執行。目標採獨立 Firebase Spark＋Hosting；多個等權 Google 白名單帳號、同時只允許一個帳號使用。既有 Firebase setup／部署腳本尚未符合新規格，不能直接用於正式真實資料或 payroll 專案。P00–P04 已合併。P04 #475 的合併 SHA 為 `837a1e871468db217463e9799480beeb6d7b0ab0`；獨立 review pass、required CI run 38579765651 成功。P05 目前是 WIP：首批 command Rules Emulator 有 11/11 案例通過的本地 checkpoint；完整 raw SDK 原子拒絕、併發／ambiguous-result 證據、完整 budget matrix、回歸與 CI 尚待完成，不能視為 P05 通過。P01 負向測試的 expression-cap 限制與 TypeScript diagnostics 詳見[現況與證據](docs/ops/free-production-evidence.md)。尚未部署或開放正式帳務操作。
+接手團隊先讀[零費用正式後端 spec](docs/superpowers/specs/2026-10-13-free-production-backend-spec.md)，再依[19 個小階段計畫](docs/superpowers/plans/2026-10-13-free-production-backend-plan.md)執行。目標採獨立 Firebase Spark＋Hosting；多個等權 Google 白名單帳號、同時只允許一個帳號使用。既有 Firebase setup／部署腳本尚未符合新規格，不能直接用於正式真實資料或 payroll 專案。P00–P04 已合併。P04 #475 的合併 SHA 為 `837a1e871468db217463e9799480beeb6d7b0ab0`；獨立 review pass、required CI run 38579765651 成功。P05 目前是 WIP：目前 production Rules Emulator command suite 47/47 通過，另有舊 writer adapter 13/13 targeted tests；P05 尚待完整 Vitest／P01-P04-E2E 回歸、ambiguous receipt-read proof、CI 與獨立 review，不能視為 phase pass。完整 WIP 證據與 Rules budget／expression 限制見[現況與證據](docs/ops/free-production-evidence.md)及[Rules budget盤點](docs/ops/p05-rules-budget.md)。尚未部署或開放正式帳務操作。
 
 ## Getting Started
 

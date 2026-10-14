@@ -9,18 +9,22 @@ import {
 } from '@firebase/rules-unit-testing';
 import {
   collection,
+  disableNetwork,
   doc,
+  enableNetwork,
   getDoc,
   getDocs,
   serverTimestamp,
   setDoc,
   updateDoc,
+  writeBatch,
   type Firestore,
 } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { User } from 'firebase/auth';
 import { ALL_COMMAND_KINDS } from '../../domain/cloudCommands';
-import { createCloudCommandRepository } from '../cloudCommandRepository';
+import { fingerprintCommandInput, normalizeEnabledCommandInput } from '../../domain/cloudCommandSchema';
+import { CloudCommandReadError, createCloudCommandRepository } from '../cloudCommandRepository';
 
 declare const process: { env: Record<string, string | undefined>; cwd: () => string };
 
@@ -161,6 +165,182 @@ function paymentInput(commandId: string, transactionId: string, paidAmount = 200
   };
 }
 
+type RawOrderArtifacts = {
+  commandId: string;
+  transactionId: string;
+  command: RawMap;
+  headAfter: RawMap;
+  studentAfter: RawMap;
+  dayAfter: RawMap;
+  transactionAfter: RawMap;
+};
+
+// Emulator fixtures deliberately mutate nested Firestore maps to model raw SDK clients.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- map fields vary by command and attack case
+type RawMap = Record<string, any>;
+
+async function rawOrderArtifacts(input = orderInput('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'p05-raw-order')): Promise<RawOrderArtifacts> {
+  const canonical = normalizeEnabledCommandInput(input);
+  const fingerprint = await fingerprintCommandInput(canonical);
+  const [headSnapshot, daySnapshot, studentSnapshot] = await withAdmin(async admin => Promise.all([
+    getDoc(doc(admin, 'system/dataHead')),
+    getDoc(doc(admin, `days/${input.targets.dayId}`)),
+    getDoc(doc(admin, `students/${input.targets.studentId}`)),
+  ]));
+  if (!headSnapshot.exists() || !daySnapshot.exists() || !studentSnapshot.exists()) {
+    throw new Error('Raw SDK order fixture requires head, day, and student documents');
+  }
+  const headBefore = headSnapshot.data() as RawMap;
+  const dayBefore = daySnapshot.data() as RawMap;
+  const studentBefore = studentSnapshot.data() as RawMap;
+  const seq = headBefore.seq + 1;
+  const now = serverTimestamp();
+  const commandId = input.commandId;
+  const transactionId = input.targets.transactionId;
+  const payload = canonical.payload as { mealPrice: number; paidAmount: number; mealKind: 'bento' | 'other'; menuRevision: number | null; otherItemName: string | null; note: string };
+  const menu = dayBefore.menu as RawMap | null;
+  const bento = payload.mealKind === 'bento';
+  const mealPrice = payload.mealPrice;
+  const headAfter = { ...headBefore, seq, lastCommandId: commandId, updatedAt: now };
+  const studentAfter = {
+    ...studentBefore,
+    currentBalance: studentBefore.currentBalance + payload.paidAmount - mealPrice,
+    revision: studentBefore.revision + 1,
+    lastCommandId: commandId,
+    updatedAt: now,
+  };
+  const totals = dayBefore.totals as Record<string, number>;
+  const dayAfter = {
+    ...dayBefore,
+    revision: dayBefore.revision + 1,
+    totals: {
+      ...totals,
+      activeTransactionCount: totals.activeTransactionCount + 1,
+      bentoCount: totals.bentoCount + (bento ? 1 : 0),
+      otherMealCount: totals.otherMealCount + (payload.mealKind === 'other' ? 1 : 0),
+      mealTotal: totals.mealTotal + mealPrice,
+      retainedReceipts: totals.retainedReceipts + payload.paidAmount,
+    },
+    lastCommandId: commandId,
+    updatedAt: now,
+  };
+  const transactionAfter = {
+    transactionId,
+    studentId: input.targets.studentId,
+    businessDate: input.targets.dayId,
+    type: 'order',
+    mealKind: payload.mealKind,
+    mealPrice,
+    paidAmount: payload.paidAmount,
+    amount: payload.paidAmount - mealPrice,
+    studentNameSnapshot: studentBefore.displayName,
+    menuNameSnapshot: bento ? menu?.itemName : '',
+    menuPriceSnapshot: bento ? menu?.price : 0,
+    vendorIdSnapshot: bento ? menu?.vendorId : '',
+    vendorNameSnapshot: bento ? menu?.vendorNameSnapshot : '',
+    otherItemName: payload.otherItemName,
+    status: 'active',
+    revision: 1,
+    createdAt: now,
+    createdSeq: seq,
+    operatorUid: operatorA.uid,
+    operatorEmail: operatorA.email,
+    sourceDevice: 'pc',
+    note: payload.note,
+    lastCommandId: commandId,
+    updatedAt: now,
+  };
+  const command = {
+    commandId,
+    kind: 'CreateOrder',
+    seq,
+    leaseEpoch: input.leaseEpoch,
+    actor: { uid: operatorA.uid, email: operatorA.email },
+    committedAt: now,
+    businessDate: input.targets.dayId,
+    studentId: input.targets.studentId,
+    targets: canonical.targets,
+    expectedRevisions: canonical.expectedRevisions,
+    before: { head: headBefore, student: studentBefore, day: dayBefore, transaction: null },
+    after: { head: headAfter, student: studentAfter, day: dayAfter, transaction: transactionAfter },
+    reason: null,
+    cashEffect: { before: 0, after: payload.paidAmount, delta: payload.paidAmount, reasonKind: 'collection', refundAmount: 0 },
+    payload,
+    inputFingerprint: fingerprint,
+  };
+  return { commandId, transactionId, command, headAfter, studentAfter, dayAfter, transactionAfter };
+}
+
+function rawOrderBatch(
+  db: Firestore,
+  artifacts: RawOrderArtifacts,
+  options: { omit?: Array<'head' | 'student' | 'day' | 'transaction'>; extraTransaction?: boolean; secondCommand?: RawMap } = {},
+) {
+  const omitted = new Set(options.omit ?? []);
+  const batch = writeBatch(db);
+  if (!omitted.has('head')) batch.set(doc(db, 'system/dataHead'), artifacts.headAfter);
+  if (!omitted.has('student')) batch.set(doc(db, `students/${studentId}`), artifacts.studentAfter);
+  if (!omitted.has('day')) batch.set(doc(db, `days/${dayId}`), artifacts.dayAfter);
+  if (!omitted.has('transaction')) batch.set(doc(db, `transactions/${artifacts.transactionId}`), artifacts.transactionAfter);
+  batch.set(doc(db, `commands/${artifacts.commandId}`), artifacts.command);
+  if (options.extraTransaction) {
+    batch.set(doc(db, 'transactions/p05-unlisted-extra'), {
+      ...artifacts.transactionAfter,
+      transactionId: 'p05-unlisted-extra',
+    });
+  }
+  if (options.secondCommand) {
+    batch.set(doc(db, 'commands/dddddddd-dddd-4ddd-8ddd-dddddddddddd'), options.secondCommand);
+  }
+  return batch;
+}
+
+async function capturePaths(paths: string[]): Promise<Record<string, { exists: boolean; data: unknown }>> {
+  return withAdmin(async db => {
+    const snapshots = await Promise.all(paths.map(relativePath => getDoc(doc(db, relativePath))));
+    return Object.fromEntries(paths.map((relativePath, index) => [relativePath, {
+      exists: snapshots[index].exists(),
+      data: snapshots[index].data() ?? null,
+    }]));
+  });
+}
+
+function rawPaths(artifacts: RawOrderArtifacts, extra: string[] = []): string[] {
+  return [
+    'system/dataHead',
+    `students/${studentId}`,
+    `days/${dayId}`,
+    `transactions/${artifacts.transactionId}`,
+    `commands/${artifacts.commandId}`,
+    ...extra,
+  ];
+}
+
+async function expectRawBatchDeniedUnchanged(
+  db: Firestore,
+  artifacts: RawOrderArtifacts,
+  options: Parameters<typeof rawOrderBatch>[2] = {},
+  extraPaths: string[] = [],
+) {
+  const paths = rawPaths(artifacts, extraPaths);
+  const before = await capturePaths(paths);
+  await assertFails(rawOrderBatch(db, artifacts, options).commit());
+  expect(await capturePaths(paths)).toEqual(before);
+}
+
+function replaceRawCommandId(artifacts: RawOrderArtifacts, commandId: string): void {
+  artifacts.commandId = commandId;
+  artifacts.command.commandId = commandId;
+  artifacts.headAfter.lastCommandId = commandId;
+  artifacts.studentAfter.lastCommandId = commandId;
+  artifacts.dayAfter.lastCommandId = commandId;
+  artifacts.transactionAfter.lastCommandId = commandId;
+  artifacts.command.after.head = artifacts.headAfter;
+  artifacts.command.after.student = artifacts.studentAfter;
+  artifacts.command.after.day = artifacts.dayAfter;
+  artifacts.command.after.transaction = artifacts.transactionAfter;
+}
+
 describeWithEmulator('P05 production command repository and Rules', () => {
   beforeAll(async () => {
     env = await initializeTestEnvironment({
@@ -291,10 +471,11 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     expect(state.tx?.paidAmount).toBe(110);
   });
 
-  it('P05.6: an active new holder can read a receipt from a prior actor and lease epoch', async () => {
+  it('P05.6: an active new holder can read and replay a receipt from a prior actor and lease epoch', async () => {
     await seedBase({ withBusinessDocs: true });
-    const commandId = '66666666-6666-4666-8666-666666666666';
-    const result = await repository(operatorA).commitCommand(orderInput(commandId, 'p05-order-history'));
+    const input = orderInput('66666666-6666-4666-8666-666666666666', 'p05-order-history');
+    const commandId = input.commandId;
+    const result = await repository(operatorA).commitCommand(input);
     expect(result.ok, JSON.stringify(result)).toBe(true);
     await withAdmin(async db => {
       await updateDoc(doc(db, 'system/accessLease'), {
@@ -303,6 +484,10 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     });
     const history = await repository(operatorB).readCommand(commandId);
     expect(history).toMatchObject({ commandId, seq: 1, kind: 'CreateOrder' });
+    const replay = await repository(operatorB).commitCommand({ ...input, leaseEpoch: 2 });
+    expect(replay).toEqual(result);
+    const head = await withAdmin(db => getDoc(doc(db, 'system/dataHead')));
+    expect(head.data()?.seq).toBe(1);
   });
 
   it('P05.7: EnsureDay with a new ID never resets an existing day', async () => {
@@ -330,6 +515,31 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     expect(stale).toMatchObject({ ok: false, error: { code: 'REVISION_CONFLICT' } });
     const head = await withAdmin(db => getDoc(doc(db, 'system/dataHead')));
     expect(head.data()?.seq).toBe(1);
+  });
+
+  it('P05.24: concurrent commands retain their original expected revisions and only one advances the head', async () => {
+    await seedBase({ withBusinessDocs: true });
+    const repo = repository(operatorA);
+    const [left, right] = await Promise.all([
+      repo.commitCommand(orderInput('e4444444-4444-4444-8444-444444444444', 'p05-concurrent-left')),
+      repo.commitCommand(orderInput('e5555555-5555-4555-8555-555555555555', 'p05-concurrent-right')),
+    ]);
+    const results = [left, right];
+    expect(results.filter(result => result.ok)).toHaveLength(1);
+    expect(results.filter(result => !result.ok)).toMatchObject([
+      { ok: false, error: { code: 'REVISION_CONFLICT' } },
+    ]);
+    const state = await withAdmin(async db => {
+      const [head, student, day, transactions, commands] = await Promise.all([
+        getDoc(doc(db, 'system/dataHead')),
+        getDoc(doc(db, `students/${studentId}`)),
+        getDoc(doc(db, `days/${dayId}`)),
+        getDocs(collection(db, 'transactions')),
+        getDocs(collection(db, 'commands')),
+      ]);
+      return { head: head.data(), student: student.data(), day: day.data(), transactionCount: transactions.size, commandCount: commands.size };
+    });
+    expect(state).toMatchObject({ head: { seq: 1 }, student: { revision: 2 }, day: { revision: 2 }, transactionCount: 1, commandCount: 1 });
   });
 
   it('P05.9: direct old writers, disabled kinds and forged dataHead writes are denied atomically', async () => {
@@ -361,6 +571,152 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     });
   });
 
+  it('P05.12: raw SDK with a complete command closure can commit the same typed contract', async () => {
+    await seedBase({ withBusinessDocs: true });
+    const db = authedDb(operatorA);
+    const artifacts = await rawOrderArtifacts();
+    const before = await capturePaths(rawPaths(artifacts));
+    await rawOrderBatch(db, artifacts).commit();
+    const after = await capturePaths(rawPaths(artifacts));
+    expect(after['system/dataHead'].exists).toBe(true);
+    expect(after[`commands/${artifacts.commandId}`].exists).toBe(true);
+    expect(after['system/dataHead'].data).not.toEqual(before['system/dataHead'].data);
+    expect(after[`transactions/${artifacts.transactionId}`].data).toMatchObject({ createdSeq: 1, lastCommandId: artifacts.commandId });
+  });
+
+  it.each([
+    ['head', 'd1111111-1111-4111-8111-111111111111'],
+    ['student', 'd1212121-1212-4121-8121-121212121212'],
+    ['day', 'd1313131-1313-4131-8131-131313131313'],
+    ['transaction', 'd1414141-1414-4141-8141-141414141414'],
+  ] as const)('P05.13: raw SDK omitting the %s writer is rejected with every projection unchanged', async (writer, commandId) => {
+    await seedBase({ withBusinessDocs: true });
+    const artifacts = await rawOrderArtifacts(orderInput(commandId, `p05-raw-missing-${writer}`));
+    await expectRawBatchDeniedUnchanged(authedDb(operatorA), artifacts, { omit: [writer] });
+  });
+
+  it('P05.14: raw SDK extra transaction writer is rejected atomically', async () => {
+    await seedBase({ withBusinessDocs: true });
+    const artifacts = await rawOrderArtifacts(orderInput('d2222222-2222-4222-8222-222222222222', 'p05-raw-extra'));
+    await expectRawBatchDeniedUnchanged(
+      authedDb(operatorA), artifacts, { extraTransaction: true }, ['transactions/p05-unlisted-extra'],
+    );
+  });
+
+  it('P05.15: two raw commands cannot share one five-document transaction', async () => {
+    await seedBase({ withBusinessDocs: true });
+    const artifacts = await rawOrderArtifacts(orderInput('d3333333-3333-4333-8333-333333333333', 'p05-raw-double'));
+    const secondId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    const secondCommand = { ...artifacts.command, commandId: secondId };
+    await expectRawBatchDeniedUnchanged(
+      authedDb(operatorA), artifacts, { secondCommand }, [`commands/${secondId}`],
+    );
+  });
+
+  it('P05.16: raw SDK replay of an already committed immutable command is rejected unchanged', async () => {
+    await seedBase({ withBusinessDocs: true });
+    const db = authedDb(operatorA);
+    const artifacts = await rawOrderArtifacts(orderInput('d4444444-4444-4444-8444-444444444444', 'p05-raw-replay'));
+    await rawOrderBatch(db, artifacts).commit();
+    const beforeReplay = await capturePaths(rawPaths(artifacts));
+    await assertFails(rawOrderBatch(db, artifacts).commit());
+    expect(await capturePaths(rawPaths(artifacts))).toEqual(beforeReplay);
+  });
+
+  it('P05.17: raw SDK forged before snapshot is rejected unchanged', async () => {
+    await seedBase({ withBusinessDocs: true });
+    const artifacts = await rawOrderArtifacts(orderInput('d5555555-5555-4555-8555-555555555555', 'p05-raw-before'));
+    artifacts.command.before.student.displayName = '偽造前值';
+    await expectRawBatchDeniedUnchanged(authedDb(operatorA), artifacts);
+  });
+
+  it('P05.18: raw SDK forged after snapshot is rejected unchanged', async () => {
+    await seedBase({ withBusinessDocs: true });
+    const artifacts = await rawOrderArtifacts(orderInput('d6666666-6666-4666-8666-666666666666', 'p05-raw-after'));
+    artifacts.command.after.student.currentBalance += 1;
+    await expectRawBatchDeniedUnchanged(authedDb(operatorA), artifacts);
+  });
+
+  it('P05.19: malformed raw SDK command ID is rejected atomically', async () => {
+    await seedBase({ withBusinessDocs: true });
+    const artifacts = await rawOrderArtifacts(orderInput('d7777777-7777-4777-8777-777777777777', 'p05-raw-bad-id'));
+    replaceRawCommandId(artifacts, 'not-a-uuid');
+    await expectRawBatchDeniedUnchanged(authedDb(operatorA), artifacts);
+  });
+
+  it('P05.20: inactive students can pay, while inactive students cannot receive new orders', async () => {
+    await seedBase({ withBusinessDocs: true });
+    await withAdmin(async db => updateDoc(doc(db, `students/${studentId}`), { status: 'inactive' }));
+    const payment = await repository(operatorA).commitCommand(paymentInput('d8888888-8888-4888-8888-888888888888', 'p05-inactive-payment'));
+    expect(payment.ok, JSON.stringify(payment)).toBe(true);
+    const paidState = await withAdmin(async db => {
+      const [head, student, day, tx] = await Promise.all([
+        getDoc(doc(db, 'system/dataHead')),
+        getDoc(doc(db, `students/${studentId}`)),
+        getDoc(doc(db, `days/${dayId}`)),
+        getDoc(doc(db, 'transactions/p05-inactive-payment')),
+      ]);
+      return { head: head.data(), student: student.data(), day: day.data(), tx: tx.data() };
+    });
+    expect(paidState.student).toMatchObject({ status: 'inactive', currentBalance: 200, revision: 2 });
+    expect(paidState.day).toMatchObject({ revision: 2, totals: { activeTransactionCount: 1, retainedReceipts: 200 } });
+    expect(paidState.head).toMatchObject({ seq: 1, lastCommandId: 'd8888888-8888-4888-8888-888888888888' });
+    expect(paidState.tx).toMatchObject({ type: 'payment', studentId, lastCommandId: 'd8888888-8888-4888-8888-888888888888' });
+  });
+
+  it('P05.21: inactive student order is atomically denied by production Rules', async () => {
+    await seedBase({ withBusinessDocs: true });
+    await withAdmin(async db => updateDoc(doc(db, `students/${studentId}`), { status: 'inactive' }));
+    const artifacts = await rawOrderArtifacts(orderInput('d9999999-9999-4999-8999-999999999999', 'p05-inactive-order'));
+    await expectRawBatchDeniedUnchanged(authedDb(operatorA), artifacts);
+  });
+
+  it('P05.22: only the current server-confirmed holder can read receipts, and absence is explicit', async () => {
+    await seedBase();
+    const commandId = 'e1111111-1111-4111-8111-111111111111';
+    expect(await repository(operatorA).readCommand(commandId)).toBeNull();
+    const holderDb = authedDb(operatorA);
+    const holderRepository = createCloudCommandRepository(holderDb, { currentUser: () => fakeCurrentUser(operatorA) });
+    await disableNetwork(holderDb);
+    try {
+      await expect(holderRepository.readCommand(commandId)).rejects.toMatchObject({
+        name: 'CloudCommandReadError', code: 'UNKNOWN_RESULT',
+      });
+    } finally {
+      await enableNetwork(holderDb);
+    }
+    await expect(repository(operatorB).readCommand(commandId)).rejects.toMatchObject({
+      name: 'CloudCommandReadError', code: 'LEASE_LOST',
+    });
+  });
+
+  it('P05.23: malformed or tampered server receipts fail closed as unsupported schema', async () => {
+    await seedBase({ withBusinessDocs: true });
+    const commandId = 'e2222222-2222-4222-8222-222222222222';
+    const result = await repository(operatorA).commitCommand(orderInput(commandId, 'p05-malformed-receipt'));
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    await withAdmin(async db => updateDoc(doc(db, `commands/${commandId}`), { after: null }));
+    await expect(repository(operatorA).readCommand(commandId)).rejects.toMatchObject({
+      name: 'CloudCommandReadError', code: 'UNSUPPORTED_SCHEMA',
+    } satisfies Partial<CloudCommandReadError>);
+
+    const fingerprintId = 'e3333333-3333-4333-8333-333333333333';
+    const second = await repository(operatorA).commitCommand(orderInput(fingerprintId, 'p05-tampered-fingerprint', 2, 2));
+    expect(second.ok, JSON.stringify(second)).toBe(true);
+    await withAdmin(async db => updateDoc(doc(db, `commands/${fingerprintId}`), { inputFingerprint: '0'.repeat(64) }));
+    await expect(repository(operatorA).readCommand(fingerprintId)).rejects.toMatchObject({
+      name: 'CloudCommandReadError', code: 'UNSUPPORTED_SCHEMA',
+    });
+
+    const pathId = 'e4444444-4444-4444-8444-444444444444';
+    const third = await repository(operatorA).commitCommand(orderInput(pathId, 'p05-path-mismatch', 3, 3));
+    expect(third.ok, JSON.stringify(third)).toBe(true);
+    await withAdmin(async db => updateDoc(doc(db, `commands/${pathId}`), { commandId: 'e5555555-5555-4555-8555-555555555555' }));
+    await expect(repository(operatorA).readCommand(pathId)).rejects.toMatchObject({
+      name: 'CloudCommandReadError', code: 'UNSUPPORTED_SCHEMA',
+    });
+  });
+
   it('P05.10: maintenance blocks commands before any business projection changes', async () => {
     await seedBase({ maintenance: true, withBusinessDocs: true });
     const result = await repository(operatorA).commitCommand(orderInput('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'p05-maintenance'));
@@ -378,10 +734,76 @@ describeWithEmulator('P05 production command repository and Rules', () => {
   it('P05.11: only the three enabled kinds pass runtime validation', async () => {
     await seedBase();
     expect(ALL_COMMAND_KINDS).toHaveLength(22);
-    const disabled = await repository(operatorA).commitCommand({
-      commandId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', kind: 'CreateStudent', leaseEpoch: 1,
-      targets: { studentId }, expectedRevisions: { student: 0 }, payload: { displayName: 'Disabled' },
+    const disabledKinds = ALL_COMMAND_KINDS.filter(kind => !['EnsureDay', 'CreateOrder', 'CreatePayment'].includes(kind));
+    expect(disabledKinds).toHaveLength(19);
+    for (const [index, kind] of disabledKinds.entries()) {
+      const commandId = `f0000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
+      const disabled = await repository(operatorA).commitCommand({
+        commandId, kind, leaseEpoch: 1, targets: {}, expectedRevisions: {}, payload: {},
+      });
+      expect(disabled).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    }
+  });
+
+  it.each(ALL_COMMAND_KINDS.filter(kind => !['EnsureDay', 'CreateOrder', 'CreatePayment'].includes(kind)))(
+    'P05.25: production Rules directly deny disabled raw SDK kind %s atomically', async kind => {
+      await seedBase();
+      const index = ALL_COMMAND_KINDS.indexOf(kind);
+      const commandId = `f1111111-1111-4111-8111-${index.toString(16).padStart(12, '0')}`;
+      const db = authedDb(operatorA);
+      await assertFails(setDoc(doc(db, `commands/${commandId}`), { commandId, kind }));
+      const [head, command] = await withAdmin(async admin => Promise.all([
+        getDoc(doc(admin, 'system/dataHead')),
+        getDoc(doc(admin, `commands/${commandId}`)),
+      ]));
+      expect(head.data()?.seq).toBe(0);
+      expect(command.exists()).toBe(false);
+    },
+  );
+
+  it('P05.26: historical order and payment dates are denied atomically without a reason field', async () => {
+    const historicalDayId = shiftDate(today, -1);
+    await seedBase({ withBusinessDocs: true });
+    await withAdmin(async db => {
+      await updateDoc(doc(db, 'system/dataHead'), { goLiveDate: historicalDayId });
+      await updateDoc(doc(db, `students/${studentId}`), {
+        openingBalance: { amount: 0, asOfDate: historicalDayId, note: '', createdAt: serverTimestamp() },
+      });
+      await setDoc(doc(db, `days/${historicalDayId}`), {
+        status: 'open',
+        revision: 1,
+        menu: { ...menu, businessDate: historicalDayId },
+        openingCash: 1000,
+        openedBy: operatorA.uid,
+        openedAt: serverTimestamp(),
+        totals: {
+          activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0,
+          mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0,
+        },
+        lastSettlementRevision: 0,
+        lastCommandId: 'p05-synthetic-historical-day-seed',
+        updatedAt: serverTimestamp(),
+      });
     });
-    expect(disabled).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+
+    const orderId = 'e3333333-3333-4333-8333-333333333333';
+    const paymentId = 'e4444444-4444-4444-8444-444444444444';
+    const paths = [
+      'system/dataHead', `students/${studentId}`, `days/${dayId}`, `days/${historicalDayId}`,
+      'transactions/p05-historical-order', 'transactions/p05-historical-payment',
+      `commands/${orderId}`, `commands/${paymentId}`,
+    ];
+    const before = await capturePaths(paths);
+    const order = await repository(operatorA).commitCommand({
+      ...orderInput(orderId, 'p05-historical-order'),
+      targets: { transactionId: 'p05-historical-order', studentId, dayId: historicalDayId },
+    });
+    const payment = await repository(operatorA).commitCommand({
+      ...paymentInput(paymentId, 'p05-historical-payment'),
+      targets: { transactionId: 'p05-historical-payment', studentId, dayId: historicalDayId },
+    });
+    expect(order).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(payment).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(await capturePaths(paths)).toEqual(before);
   });
 });

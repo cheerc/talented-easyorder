@@ -42,6 +42,11 @@ service cloud.firestore {
       return value is string && value.size() >= 1 && value.size() <= 64 && !value.matches('.*[/].*');
     }
 
+    function validCommandId(value) {
+      return value is string
+        && value.matches('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$');
+    }
+
     function validCalendarDate(date) {
       return date is string
         && date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
@@ -164,6 +169,7 @@ service cloud.firestore {
           'studentId', 'targets', 'expectedRevisions', 'before', 'after', 'reason',
           'cashEffect', 'payload', 'inputFingerprint'
         ])
+        && validCommandId(commandId)
         && command.commandId == commandId
         && command.kind in ['EnsureDay', 'CreateOrder', 'CreatePayment']
         && command.seq is int && command.seq == head.seq + 1
@@ -331,7 +337,7 @@ service cloud.firestore {
     function validStudentAdvance(commandId, command, studentBefore, studentAfter, mealPrice) {
       return command.after.student == studentAfter
         && validStudent(studentAfter, command.targets.studentId)
-        && studentBefore.status == 'active'
+        && (command.kind == 'CreatePayment' || studentBefore.status == 'active')
         && studentBefore.openingBalance.asOfDate <= command.targets.dayId
         && studentAfter.diff(studentBefore).affectedKeys().hasOnly(['currentBalance', 'revision', 'lastCommandId', 'updatedAt'])
         && studentAfter.currentBalance is int
@@ -403,7 +409,7 @@ service cloud.firestore {
         && validTransactionDoc(transactionAfter, commandId, command, head.seq + 1, head, dayBefore, studentBefore)
         && validReceiptTransaction(commandId, command, transactionAfter)
         && validCashEffect(command.cashEffect, command.payload.paidAmount)
-        && studentBefore.status == 'active'
+        && (command.kind == 'CreatePayment' || studentBefore.status == 'active')
         && studentBefore.openingBalance.asOfDate <= command.targets.dayId
         && dayBefore.status in ['open', 'reopened']
         && command.targets.dayId >= head.goLiveDate

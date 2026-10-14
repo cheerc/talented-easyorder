@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import type { CommandErrorCode, CommandReceipt, CommandResult } from '../domain/cloudCommands';
 import {
+  InvalidCloudCommandInput,
   decodeEnabledCommandDoc,
   fingerprintCommandInput,
   normalizeEnabledCommandInput,
@@ -193,14 +194,16 @@ function requireDateAfterGoLive(date: string, goLiveDate: string): void {
 }
 
 function buildReceipt(stored: StoredEnabledCommandDoc): CommandReceipt {
-  if (!(stored.committedAt instanceof Timestamp)) throw new RejectCommand('UNSUPPORTED_SCHEMA', 'receipt 缺少伺服器 Timestamp');
+  if (!(stored.committedAt instanceof Timestamp) || stored.after === null) {
+    throw new RejectCommand('UNSUPPORTED_SCHEMA', 'receipt 缺少伺服器 Timestamp 或 after snapshot');
+  }
   return {
     commandId: stored.commandId,
     seq: stored.seq,
     committedAt: stored.committedAt.toDate().toISOString(),
     kind: stored.kind,
     targets: stored.targets,
-    result: stored.after ?? {},
+    result: stored.after,
   };
 }
 
@@ -241,11 +244,64 @@ function resultFromUnknownError(message = '提交回應不確定，請用原 com
   return errorResult('UNKNOWN_RESULT', message);
 }
 
+async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput): Promise<CommandErrorCode | null> {
+  try {
+    if (input.kind === 'EnsureDay') {
+      await getDocFromServer(doc(db, dayPath(input.targets.dayId)));
+      return 'INVALID_INPUT';
+    }
+    const [student, day, transaction] = await Promise.all([
+      getDocFromServer(doc(db, studentPath(input.targets.studentId))),
+      getDocFromServer(doc(db, dayPath(input.targets.dayId))),
+      getDocFromServer(doc(db, transactionPath(input.targets.transactionId))),
+    ]);
+    if (transaction.exists()) return 'INVALID_INPUT';
+    if (!student.exists() || !day.exists()) return null;
+    const studentValue = student.data();
+    const dayValue = day.data();
+    if (studentValue.revision !== input.expectedRevisions.student || dayValue.revision !== input.expectedRevisions.day) {
+      return 'REVISION_CONFLICT';
+    }
+    // A successful server-only projection read proves that the current-holder read guard passed.
+    // If the revisions still match, the Rules rejected this command's content/state (for example,
+    // an unsupported historical transaction date), not a stale revision.
+    return 'INVALID_INPUT';
+  } catch {
+    // Server-only reads are also the current-holder/lease validity check. A denied read is not evidence of a conflict.
+    return null;
+  }
+}
+
 export function createCloudCommandRepository(db: Firestore, options: CloudCommandRepositoryOptions = {}) {
   async function verifiedReceipt(commandId: string): Promise<StoredEnabledCommandDoc | null> {
     const snapshot = await getDocFromServer(doc(db, commandPath(commandId)));
     if (!snapshot.exists()) return null;
-    return decodeEnabledCommandDoc(snapshot.data());
+    let stored: StoredEnabledCommandDoc;
+    try {
+      stored = decodeEnabledCommandDoc(snapshot.data());
+    } catch (error) {
+      if (error instanceof InvalidCloudCommandInput) {
+        throw new RejectCommand('UNSUPPORTED_SCHEMA', '伺服器 command receipt schema 不支援');
+      }
+      throw error;
+    }
+    if (stored.commandId !== commandId) {
+      throw new RejectCommand('UNSUPPORTED_SCHEMA', 'receipt commandId 與文件路徑不一致');
+    }
+    try {
+      const normalized = normalizeEnabledCommandInput(storedInput(stored));
+      const actualFingerprint = await fingerprintCommandInput(normalized);
+      if (stored.inputFingerprint !== actualFingerprint) {
+        throw new RejectCommand('UNSUPPORTED_SCHEMA', 'receipt semantic input 與 fingerprint 不一致');
+      }
+    } catch (error) {
+      if (error instanceof RejectCommand) throw error;
+      if (error instanceof InvalidCloudCommandInput) {
+        throw new RejectCommand('UNSUPPORTED_SCHEMA', 'receipt semantic input schema 不支援');
+      }
+      throw error;
+    }
+    return stored;
   }
 
   async function readCommand(commandId: string): Promise<CommandReceipt | null> {
@@ -367,7 +423,9 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         checkRevision(0, input.expectedRevisions.transaction, '交易版本');
         if (dayBefore.status === 'closed') throw new RejectCommand('DAY_CLOSED', '該日已關帳');
         requireDateAfterGoLive(input.targets.dayId, String(headBefore.goLiveDate));
-        if (studentBefore.status !== 'active') throw new RejectCommand('INVALID_INPUT', '停用學生不能新增交易');
+        if (input.kind === 'CreateOrder' && studentBefore.status !== 'active') {
+          throw new RejectCommand('INVALID_INPUT', '停用學生不能新增餐點');
+        }
         const opening = studentBefore.openingBalance as Data;
         if (String(opening.asOfDate) > input.targets.dayId) throw new RejectCommand('INVALID_INPUT', '營業日早於學生期初日');
 
@@ -487,6 +545,15 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
           return { ok: true, receipt: buildReceipt(stored) };
         }
         if (resultCode === 'REVISION_CONFLICT' || resultCode === 'LEASE_LOST' || resultCode === 'QUOTA_EXCEEDED') {
+          if (resultCode === 'LEASE_LOST') {
+            const conflict = await readRevisionConflict(db, input);
+            if (conflict === 'REVISION_CONFLICT') {
+              return errorResult(conflict, '伺服器資料已變更；請保留 commandId 並重新確認');
+            }
+            if (conflict === 'INVALID_INPUT') {
+              return errorResult(conflict, '目前 Rules 不允許這筆命令；請檢查日期與資料狀態');
+            }
+          }
           return errorResult(resultCode, '提交遭伺服器拒絕；請保留 commandId 並確認目前狀態');
         }
       } catch (readError) {
