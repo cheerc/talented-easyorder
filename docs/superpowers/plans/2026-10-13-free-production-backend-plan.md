@@ -1,6 +1,6 @@
 # EasyOrder 零費用正式後端分階段實作計畫
 
-日期：2026-10-13。狀態：**規劃已交付；P00 已合併；P01 有完整真 Emulator 中間 checkpoint（30 passed），但仍在修正 SOL review blockers 並待最終呼叫預算／expression 驗收、required CI 與 review；P02–P18 尚未開始或驗收**。
+日期：2026-10-14。狀態：**P00/P01 已合併；P02 實作完成待 review；P03–P18 尚未開始或驗收**。
 
 **Source of truth：** [正式後端 spec](../specs/2026-10-13-free-production-backend-spec.md)，包含使用者最新「多白名單、等權、同時單一Google帳號」修正；來源 [PR #469](https://github.com/cheerc/talented-easyorder/pull/469)。
 
@@ -35,8 +35,9 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 | Phase | 狀態 | 交付摘要與證據 |
 |---|---|---|
 | P00 | 已合併 #471 | Base：`75e7a96e6cad722a41076df66e5b2cf9014e9d47`；PR head：`7a7128f14cf32268808de4e0a57f6986a0ca806e`；main merge SHA：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。新增[現況與證據](../../ops/free-production-evidence.md)，含完整 279 筆 TypeScript diagnostics、舊寫入／部署路徑分類及 R/U 對照。docs links／diff check pass；基線 tsc exit 2；PR CI 識別 docs-only 並跳過 app steps。 |
-| P01 | 行為 RED 已由 Actions 確認；真 Emulator 中間 proof 通過，但 SOL review blockers／最終驗收未完成 | [PR #472](https://github.com/cheerc/talented-easyorder/pull/472)，base `1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。RED source `6ca1545a8e97df4a96c8a75c5429f35f5438a2a9` 的 Actions run [38514043015](https://github.com/cheerc/talented-easyorder/actions/runs/38514043015)：2 tests，1 passed、1 failed、0 skipped；未命令 extra transaction 的拒絕斷言因該交易實際成功而失敗。歷史 tight WIP source `520dd2de75ede44d41becbb9617a872aea9d4d25` 真 Emulator 為 26 tests、18 passed／8 failed／0 skipped，含 1000-expression-limit 訊息；歷史調查亦發現該 WIP 修正迭代有 command schema、seed operators／lease、callback 回傳值與 `-Number(0)` 缺陷，不能推論合法模型不可行，見[歷史診斷與後續脈絡](../../ops/diagnostics/p01-rules-expression-limit-wip.txt)。後續 source `5c55936fc0a0cbc82da3058b4a466364a0d0da1f` 完整真 Emulator proof exit 0、30 passed／0 failed／0 skipped，含 Close → Reopen → order → Close revision 3；Actions checkpoint commit `b4201b9c99520a821250dec5f087e097c1bf0d13`、run [38519397752](https://github.com/cheerc/talented-easyorder/actions/runs/38519397752) 對應此 proof 狀態，proof 30／0／0、舊 Rules 8 passed、e2e 10 passed，兩個工作 job 成功；一般 Vitest 1232 passed／38 skipped（其中 proof 30 與舊 Rules 8 在一般 job 無 emulator 而 skip）。這些皆為中間 checkpoint，非最終 GREEN／merge gate。SOL blockers：強制必要 head／student／transaction writers 實際推進並拒絕省略 writer、server map 未變的命令；以伺服器前版連續推進 settlement revision 並驗證第 4／5 版；新交易 snapshot 比對 server-read 學生顯示名；以有效 builder 起始對抗案例修正 actor 不匹配的負測。最終 no-cache call/expression/access budget、修正後完整 Emulator run、SOL review 與 required CI 尚待，未 review、未部署。 |
-| P02–P18 | 尚未開始／未驗 | 不代表任何新雲端功能已實作或通過。 |
+| P01 | 已合併 #472 | Base：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`；merge commit：`e7c406ce59ec4779268f760dafa3bb006f1ae8d4`。完整真 Emulator proof 通過，SOL review 完成，由 Coordinator merge。 |
+| P02 | 實作完成待 review | [PR #473](https://github.com/cheerc/talented-easyorder/pull/473)，Base：`e7c406ce59ec4779268f760dafa3bb006f1ae8d4`。新建 `cloudCommands.ts`（22種kind、11種錯誤碼、cashEffect、schemaVersion=1）、`cloudLedgerProjection.ts`（L01–L04、expense 雙方向、void 零貢獻、同毫秒排序、缺頁標示）；修改 `appMode.ts`（cloud mode runtime判定與seed/reset防護）、`posPersistence.ts`（記憶體快取與IndexedDB隔離）、`firestoreSchema.ts`（新schemaVersion=1映射）。Vitest 1259 passed，tsc app baseline 零新增錯誤，lint 與 build 通過。 |
+| P03–P18 | 尚未開始／未驗 | 不代表任何新雲端功能已實作或通過。 |
 
 ## 2. 現有檔案與規劃新檔
 

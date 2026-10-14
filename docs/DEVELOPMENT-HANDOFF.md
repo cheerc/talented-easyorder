@@ -11,12 +11,10 @@
 
 ## 已合併與目前接手點
 
-- **目前唯一工作：P01，PR [#472](https://github.com/cheerc/talented-easyorder/pull/472)，分支 `codex/backend-p01-rules-proof`，base `1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。** 最新可恢復 checkpoint 為 `5c55936fc0a0cbc82da3058b4a466364a0d0da1f`；完整真 Emulator proof 對該 SHA exit 0、30 passed／0 failed／0 skipped。當前 PR head 以 PR body／GitHub 為權威。這是本機工程測試證據，P01 尚未 review 完成、required CI 尚待、未 merge／未部署，不能啟動 P02。
-- **SOL review 尚有 P01 blocking findings：** command handler 需強制每個必要 head／student／transaction counterpart 真正寫入及 revision／command／server-time marker，並加「省略 writer 同時把 command snapshot 改成未變 server map」的原子拒絕案例；settlement 版本與路徑需依伺服器前版連續遞增（不只硬編碼 1／2／3），加入第 4／5 版鏈驗證；新交易 `studentNameSnapshot` 必須等於已讀學生顯示名。下一步在同一 P01 分支修正、補有效正向 builder 起始的對抗案例，重跑 Emulator 與所有檢查，更新證據，再由 SOL review 最終 SHA。不得以 checkpoint 30／0／0 覆蓋這些 review findings。
-- RED Actions run [38514043015](https://github.com/cheerc/talented-easyorder/actions/runs/38514043015) 的原始日誌證實 2 tests、1 passed／1 failed／0 skipped，預期的 extra transaction `assertFails` 在寬鬆 fixture 真實失敗。歷史 tight WIP `520dd2de75ede44d41becbb9617a872aea9d4d25` 有 26 tests、18 passed／8 failed／0 skipped，曾報 1000-expression limit；該 checkpoint 同時存在未對齊的 command schema、合法 builder／授權前置缺漏及零收款負零 delta，不能推論當前 schema-correct proof 必然超限。`5c55936` 的完整 suite 已越過此歷史失敗，但仍受上述 SOL review findings 阻擋。
-- 最近已合併：PR [#471](https://github.com/cheerc/talented-easyorder/pull/471)，P00 文件與 diagnostics baseline；merge commit `1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。
-- P00 base 是 `75e7a96e6cad722a41076df66e5b2cf9014e9d47`；完整紀錄見 P00 receipt 與 evidence，不把舊前端本人驗收改寫成後端驗收。
-- Emulator 工具鏈已可用：本地 Node `v24.19.0`、Java `21.0.12.1`、Firebase CLI `14.27.0`、Firestore Emulator `1.19.8`，官方 JAR SHA-256 `9d43599ed6151199e8d604dc87fac51218e49e5f3a48519b1ae560bbe5e3382d` 已核對。先前 storage／Actions log 下載 403 已解除；測試只用 `demo-easyorder` 與匿名合成資料，沒有下載 CI artifact、碰 production、payroll 或 Android。PR 仍 draft、P01 GREEN／review／required CI 尚未完成；正式後端仍未實作部署。
+- **目前工作：P02，PR [#473](https://github.com/cheerc/talented-easyorder/pull/473)，分支 `codex/backend-p02-cloud-commands`，base `e7c406ce59ec4779268f760dafa3bb006f1ae8d4`。** 實作雲端 typed business command 介面系統、帳務投影數學（L01–L04、expense 雙方向、void 零貢獻、同毫秒排序、缺頁不可精算 afterBalance）、appMode cloud 判斷與 seed/reset 禁止、posPersistence 記憶體快取與邊界隔離，以及 firestoreSchema 新 schemaVersion=1 映射。所有 Vitest 測試通過、tsc 比對 base 零新增錯誤、lint 與 build 通過。本 phase 不接正式 Firebase 寫入、不開放雲端 kind、不改 UI、不碰 Auth/deploy/payroll/Android。
+- 最近已合併：PR [#472](https://github.com/cheerc/talented-easyorder/pull/472)，P01 Rules 可行性 proof；merge commit `e7c406ce59ec4779268f760dafa3bb006f1ae8d4`。
+- 前次已合併：PR [#471](https://github.com/cheerc/talented-easyorder/pull/471)，P00 文件與 diagnostics baseline；merge commit `1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。
+- Emulator 工具鏈已可用：本地 Node `v24.19.0`、Java `21.0.12.1`、Firebase CLI `14.27.0`、Firestore Emulator `1.19.8`，官方 JAR SHA-256 `9d43599ed6151199e8d604dc87fac51218e49e5f3a48519b1ae560bbe5e3382d` 已核對。
 - Production Firebase keys／設定／管理憑證只由使用者保存在自己的電腦；所有正式資源、部署與正式 smoke test 由使用者本機執行。Cloud agent 僅可用 demo Emulator，Spark 不開 billing／Blaze、不接 payroll、不改 Android。後端尚未實作或部署。
 
 ## 接手時的第一步
@@ -30,14 +28,13 @@ git branch --show-current
 git log -1 --oneline --decorate
 ```
 
-若目前 PR 未完成，先在原分支完成修正、重跑失敗的 CI、取得 review 並等 coordinator merge；不可跳到 P02。若交接時已有未提交變更，先檢視並和當前 PR 對齊，勿覆蓋。
+若目前 PR 未完成，先在原分支完成修正、重跑失敗的 CI、取得 review 並等 coordinator merge；不可跳到 P03。若交接時已有未提交變更，先檢視並和當前 PR 對齊，勿覆蓋。
 
-## 下一個 PR：P02（僅在 P01 review 通過並由 coordinator merge 後）
+## 下一個 PR：P03（僅在 P02 review 通過並由 coordinator merge 後）
 
-- 計畫入口：[P02 — 雲端 command／投影介面與模式隔離](superpowers/plans/2026-10-13-free-production-backend-plan.md#p02--雲端command投影介面與模式隔離)；契約來源為 spec §5–§8。
-- 目標範圍：建立 typed business command／result/error 與 ledger projection math；切出 prototype 與 cloud mode 的 storage／dispatch 邊界；未完成 cloud UI 保持鎖住。本 phase 不接正式 Firebase 寫入，不開放雲端 kind。
-- 計畫產物：`frontend/src/domain/cloudCommands.ts`、`frontend/src/domain/cloudLedgerProjection.ts`、`frontend/src/domain/__tests__/cloudLedgerProjection.test.ts`，及 plan 指定的最小 mode/persistence 接點。不得改超出 P02 的 UI 或開始 P03 Auth。
-- 驗收：先對 L01–L04、expense 雙方向、void 零貢獻、同毫秒排序及缺頁不可精算 afterBalance 建立可觀察 RED，再實作至 GREEN；prototype 現有測試不退化；缺 Firebase config 不可悄悄降為 local-only；跑計畫中的 tsc baseline comparison、lint、Vitest、build 並記錄實際結果。P01 未 review 通過、required checks 未綠及 coordinator 未 merge前，P02 不得啟動。
+- 計畫入口：[P03 — Google登入與等權白名單](superpowers/plans/2026-10-13-free-production-backend-plan.md#p03--google登入與等權白名單)；契約來源為 spec §4.1。
+- 目標範圍：`authService.ts`、`AuthGate.tsx`、`FirebaseProvider.tsx`、`firestore.rules`、既有 rules suite；本地初始化工具僅加入 bootstrap 必要資料。
+- 產物與驗收：Verified Google UID 驗證、未核准畫面、權限停用。此 phase 業務資料仍 deny，供 P04 接續。P02 未 review 通過、required checks 未綠及 coordinator 未 merge 前，P03 不得啟動。
 
 ## 每個 PR 的協作與交接要求
 

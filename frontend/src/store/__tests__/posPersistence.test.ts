@@ -85,3 +85,70 @@ describe('posPersistence — onRehydrateStorage fallback', () => {
     expect(hasValidationFail).toBe(false);
   });
 });
+
+describe('posPersistence: storage 邊界與模式隔離', () => {
+  it('createMemoryStorage 提供獨立記憶體存取', async () => {
+    const { createMemoryStorage } = await import('../posPersistence');
+    const storage = createMemoryStorage();
+    expect(await storage.getItem('test-key')).toBeNull();
+
+    await storage.setItem('test-key', { state: { foo: 'bar' }, version: 1 });
+    const loaded = await storage.getItem('test-key');
+    expect(loaded).toEqual({ state: { foo: 'bar' }, version: 1 });
+
+    await storage.removeItem('test-key');
+    expect(await storage.getItem('test-key')).toBeNull();
+  });
+
+  it('Cloud mode 持久化設定：不把完整帳務 persist 到本機資料庫', async () => {
+    const { createPosPersistenceConfig } = await import('../posPersistence');
+    const cloudConfig = createPosPersistenceConfig('cloud');
+    expect(cloudConfig.name).toBe('pos-storage-cloud');
+
+    const fakeState = {
+      students: [{ studentId: '001', displayName: '學生' }],
+      transactions: [{ transactionId: 'tx-1' }],
+      vendors: [],
+      todayMenu: {},
+      simulationDate: null,
+    } as unknown as PosState;
+
+    if (cloudConfig.partialize) {
+      const partial = cloudConfig.partialize(fakeState);
+      expect(partial).toEqual({});
+    }
+  });
+
+  it('Prototype mode 持久化設定：保留完整帳務 persist 且命名空間隔離', async () => {
+    const { createPosPersistenceConfig } = await import('../posPersistence');
+    const protoConfig = createPosPersistenceConfig('prototype');
+    expect(protoConfig.name).toBe('pos-storage-prototype');
+
+    const fakeState = {
+      students: [{ studentId: '001', displayName: '學生' }],
+      transactions: [{ transactionId: 'tx-1' }],
+      vendors: [],
+      todayMenu: {},
+      menusByDate: {},
+      auditEvents: [],
+      dailySettlements: [],
+      businessDateStatuses: {},
+      cashSessions: {},
+      simulationDate: '2026-10-14',
+      faceEvents: [],
+      faceDevices: {},
+    } as unknown as PosState;
+
+    if (protoConfig.partialize) {
+      const partial = protoConfig.partialize(fakeState);
+      expect((partial as PosState).students).toHaveLength(1);
+      expect((partial as PosState).transactions).toHaveLength(1);
+    }
+  });
+
+  it('clearSensitiveData 正常執行無異常', async () => {
+    const { clearSensitiveData } = await import('../posPersistence');
+    await expect(clearSensitiveData()).resolves.toBeUndefined();
+  });
+});
+
