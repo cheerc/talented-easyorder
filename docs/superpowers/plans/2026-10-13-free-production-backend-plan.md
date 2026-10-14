@@ -1,6 +1,6 @@
 # EasyOrder 零費用正式後端分階段實作計畫
 
-日期：2026-10-13。狀態：**規劃交付；P00 文件／基線工作正在 PR review；P01–P18 尚未開始或驗收**。
+日期：2026-10-13。狀態：**規劃已交付；P00 已合併；P01 正在建立 Rules 可行性證據；P02–P18 尚未開始或驗收**。
 
 **Source of truth：** [正式後端 spec](../specs/2026-10-13-free-production-backend-spec.md)，包含使用者最新「多白名單、等權、同時單一Google帳號」修正；來源 [PR #469](https://github.com/cheerc/talented-easyorder/pull/469)。
 
@@ -34,8 +34,9 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 
 | Phase | 狀態 | 交付摘要與證據 |
 |---|---|---|
-| P00 | 文件與基線已在 PR 提交，待 review | Base：`75e7a96e6cad722a41076df66e5b2cf9014e9d47`；PR head SHA、變更檔清單與檢查結果記在 PR 描述。新增[現況與證據](../../ops/free-production-evidence.md)，含完整 279 筆 TypeScript diagnostics、舊寫入／部署路徑分類與 R/U 對照。docs links／diff check pass；diagnostic 命令真實 exit 2；無 app tests 或 app demo（本 phase 純文件）。下一 phase：P01 Rules proof。 |
-| P01–P18 | 尚未開始／未驗 | 不代表任何新雲端功能已實作或通過。P01 所需本機 Emulator 下載目前被 `storage.googleapis.com` 403 擋下；既有 GitHub Actions runner 是待驗的替代驗證路徑，狀態記於[現況與證據](../../ops/free-production-evidence.md)。 |
+| P00 | 已合併 #471 | Base：`75e7a96e6cad722a41076df66e5b2cf9014e9d47`；PR head：`7a7128f14cf32268808de4e0a57f6986a0ca806e`；main merge SHA：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。新增[現況與證據](../../ops/free-production-evidence.md)，含完整 279 筆 TypeScript diagnostics、舊寫入／部署路徑分類及 R/U 對照。docs links／diff check pass；基線 tsc exit 2；PR CI 識別 docs-only 並跳過 app steps。 |
+| P01 | 實作與 RED/GREEN Emulator proof 進行中 | Base：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。Proof 使用 test-only rules fixture 與 `demo-easyorder`；不能部署 fixture 或改 production rules。CI 將明確 setup Java 21、指定 demo project，並檢查 Vitest JSON 中實際測試數與 skip 數。Red／green SHA 與結果稍後回填。 |
+| P02–P18 | 尚未開始／未驗 | 不代表任何新雲端功能已實作或通過。 |
 
 ## 2. 現有檔案與規劃新檔
 
@@ -104,13 +105,13 @@ npm run test:e2e
 
 ### P01 — 證明Spark Rules能守住最複雜改帳
 
-**Scope/files：** 新`cloudRulesProof.spec.ts`、暫存於測試fixture的proof rules、`free-production-evidence.md`；只emulator，不換production rules。
+**Scope/files：** 新`frontend/src/firebase/__tests__/cloudRulesProof.spec.ts`與同目錄`fixtures/cloudRulesProof.rules`，更新`.github/workflows/ci.yml`及`docs/ops/free-production-evidence.md`。Proof rules 只由 `initializeTestEnvironment` 載入，不能放入 `firebase.json`／部署設定；不改 production `firestore.rules`。CI 使用 Java 21、`--project demo-easyorder --only firestore`，固定 `FIRESTORE_EMULATOR_HOST` gate，並檢查 Vitest JSON 確實有通過測試且 skipped 為0。
 
-**Consumes/produces：** spec §5–7→最小可執行五文件交易、租約與closed-day proof、精確access-call表。proof fixtures不能部署；後續P05搬成正式code。
+**Consumes/produces：** spec §4–7→Google verified provider／精確 operator allowlist、lease/serverTimestamp/epoch、dataHead seq＋immutable command、完整 typed targets/before-after、revision+1、五文件帳務及 day contribution、closed-day／maintenance proof、租約與 settlement 版本。產物含未快取 access-call graph、expression/call limit 評估及真 Emulator 結果。proof fixture 不能部署；後續 P05 才移入正式 rules/code。
 
-**RED/GREEN：** 建立L09/L10與A03對抗案例，證明寬鬆基線會接受非法變更，再使之拒絕；合法CreateOrder、更正、zero-paid取消、close/reopen均成功。租約 Rules 另須有合法 acquire、有效租約 renew、release 三個 allow 案例；三者都用 `serverTimestamp()`，並驗證 Rules 看到的 `updatedAt == request.time`。client 傳入本機絕對時間須拒絕；有效期由 `updatedAt + duration.value(5, 'm') > request.time` 推導，等於到期界線時視為逾期。命令：`npx firebase emulators:exec --project demo-easyorder --only firestore "npx vitest run src/firebase/__tests__/cloudRulesProof.spec.ts"`。
+**RED/GREEN：** 建立 L09/L10/A03 對抗案例：extra row、缺 student/day/command、雙 command、歷史 command 重放、偽造 seq/actor/serverTime、不同帳戶／日期篡改、schema 數值界線、負數／小數／超界／zero payment、非 holder／舊 epoch／過期 lease、closed／maintenance day、舊 settlement 改寫；拒絕後核對原子未寫。合法 CreateOrder／CorrectTransaction／zero-paid cancellation／CloseDay／ReopenDay 全通過。Lease 使用 server timestamp 驗 acquire／renew／release、拒絕 client timestamp 與過期 renew。CI 專用命令明確指定 `demo-easyorder`，並驗 JSON report 有通過測試且零 skipped；本機一般 Vitest 在 emulator 未設定時可清楚 skip。
 
-**Acceptance：** 未快取計數每write≤10／每transaction≤20；測extra row、缺student/day、雙command、歷史command重放、偽造seq/actor、過期lease、closed日。記錄expression size／call graph；若失敗先修spec，不開下一phase、不弱化檢查。Spike上限兩個工程日，屆時交可重現結果和所需模型修正；驗證成功才放行。
+**Acceptance：** 未快取計數每 write≤10／每 transaction≤20，不依賴重複 `get` 快取；五文件 commit 的設計 18 calls 須由 emulator 實際通過。逐 operation 記 get/exists/getAfter 呼叫圖，評估每 write expression 上限及 access budget。若超限先在同一 Spark 模型調整並更新 spec；不得刪安全檢查、假稱通過或開 Blaze。Spike 上限兩個工程日，屆時交可重現結果和必要模型修正；未成功就停在 P01。
 
 ### P02 — 雲端command／投影介面與模式隔離
 

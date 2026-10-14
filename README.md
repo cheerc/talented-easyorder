@@ -4,6 +4,8 @@ PC 晚餐櫃台前端 prototype，使用 React、Vite 與 Zustand。目前實作
 
 Project team 請先讀 [前端交接入口](docs/FRONTEND-PROTOTYPE-HANDOFF.md) 與 [本人操作驗證清單](docs/superpowers/verification/2026-09-29-operator-prototype-checklist.md)。文件描述的新版練習工具仍待分批實作。
 
+正式後端逐 PR 接手方式見[開發交接入口](docs/DEVELOPMENT-HANDOFF.md)；權威規格、階段計畫與執行證據分別連到下方後端索引。
+
 ## 正式後端交接（2026-10-13 規劃，尚未上線）
 
 接手團隊先讀[零費用正式後端 spec](docs/superpowers/specs/2026-10-13-free-production-backend-spec.md)，再依[19 個小階段計畫](docs/superpowers/plans/2026-10-13-free-production-backend-plan.md)執行。目標採獨立 Firebase Spark＋Hosting；多個等權 Google 白名單帳號、同時只允許一個帳號使用。既有 Firebase setup／部署腳本尚未符合新規格，不能直接用於正式真實資料或 payroll 專案。P00 盤點、診斷基線及目前未就緒的 Emulator 前提見[現況與證據](docs/ops/free-production-evidence.md)；新後端尚未實作或部署。

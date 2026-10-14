@@ -86,3 +86,20 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - README、PROJECT-STATUS、此 evidence 與舊部署指南皆連至同一 spec/plan/evidence；本次只補 P00 狀態，不重述 schema 或歷史前端本人驗收。
 - 2026-10-14 coordinator 回報：本 Cloud runtime 的 Firebase Emulator binary 下載由 `storage.googleapis.com` 回 HTTP 403 `Domain forbidden`。環境網域設定 draft 已加該 host，但需使用者保存／發布後 runtime 才會套用；目前 local Firestore Emulator prerequisite **未就緒**。Coordinator 另確認現有 GitHub Actions runner 是可嘗試的獨立 emulator 驗證路徑；P01 尚待建立 proof suite 並實際執行該路徑。此回報不等同 Rules 測試通過。
 - P00 沒有跑 app tests、build、Firestore emulator、Rules suite、production smoke/deploy；因此不宣稱 P01–P18 任一雲端驗收已通過。
+
+## P01 Rules 可行性 proof（進行中）
+
+### 邊界與目前狀態
+
+- P01 base：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`（P00 #471 merge）；實作分支 `codex/backend-p01-rules-proof`。當次 PR URL、base/head SHA 與 RED/GREEN CI 證據由 [開發交接入口](../DEVELOPMENT-HANDOFF.md)、此處 phase receipt 及 PR body 持續回填。
+- 新的 [cloud Rules proof suite](../../frontend/src/firebase/__tests__/cloudRulesProof.spec.ts) 只透過 `initializeTestEnvironment` 載入 [`cloudRulesProof.rules`](../../frontend/src/firebase/__tests__/fixtures/cloudRulesProof.rules)；fixture 不在 `firebase.json` 或 production rules 部署路徑。production [`firestore.rules`](../../firestore.rules) 本 phase 不改，沒有部署。
+- Cloud Firestore 僅允許 GitHub runner 的 `demo-easyorder` Emulator 與匿名 synthetic fixtures；沒有連線到 production、payroll、Android 或任何真實資料。此 proof 不是正式功能部署或本人營運驗收。
+- 當前 scaffold 是**行為 RED**：匿名五文件 CreateOrder 同批附加不受 command 管理的 extra transaction；寬鬆 fixture 先讓它成功作為負例見證，隨後同樣寫入以 `assertFails` 斷言拒絕並檢查 batch 原子性。它目前還不含完整對抗矩陣，且寬鬆 fixture 預期會令第二個 `assertFails` 測試真實失敗；尚無 RED GitHub run 證據，因此不能稱 RED 已跑過。
+- Emulator CI 已加 Java 21、明確 `--project demo-easyorder --only firestore`、`EASYORDER_REQUIRE_CLOUD_RULES_PROOF=true` 與 Vitest JSON gate；runner exit code 優先保留，另拒絕缺報告、測試數為零、全 skipped、失敗或計數欄位無效。一般本機 Vitest 無 emulator 時可明確 skip；CI 必須因缺 host 而 fail closed。
+- 本 cloud runtime 下載 Firebase Emulator binary 曾回 `storage.googleapis.com` HTTP 403 `Domain forbidden`；GitHub Actions job metadata 可讀，但下載 log 的 `results-receiver.actions.githubusercontent.com` 也曾遇 HTTP 403。Coordinator 已新增該網域的環境 draft；runtime 套用狀態未確認。這些限制不等於 emulator 測試成功。禁止用 artifact 搬運繞過網域白名單；可由 Actions metadata確認 workflow／job／step conclusion，但未讀到原始日誌前不猜測測試 counts。
+
+### 本階段本地診斷
+
+- 於 P01 base 上，在 `frontend/` 重跑 `node --version`、`npx --no-install tsc --version` 及 `npx --no-install tsc -p tsconfig.app.json --noEmit`：Node `v24.19.0`、TypeScript `Version 6.0.3`、真實 exit **2**、diagnostic headers **279**。將去行號後的完整輸出逐筆與 P00 [baseline](baselines/75e7a96-tsc-app.txt) 比較，順序／重複項相同，無新增診斷；新 suite 使用 Vite `?raw` fixture import，避免本檔增加 app TypeScript baseline errors。這個既有 compiler failure 不是 P01 Rules failure，也不是此 phase 修 bug 範圍。
+- `npx --no-install eslint src/firebase/__tests__/cloudRulesProof.spec.ts` exit 0。未在無 emulator 環境把 skip 當 Rules pass；初始本地 Vitest JSON 為 2 total、0 passed、0 failed、2 skipped，僅確認 skip 行為，不算 Rules 證據。
+- P01 完整 RED／GREEN 和其他 required checks 未完成；不得稱 P01 已通過。具體 run SHA、URL、command exit、可核對的實際 test counts、Rules access graph 和 expression limit 評估，待真 Emulator suite tight fixture 通過後回填。
