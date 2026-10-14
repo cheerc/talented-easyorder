@@ -61,6 +61,14 @@ export async function seedOperator(uid: string, email: string, role: string = 'a
   });
 }
 
+export async function seedInitialLease(): Promise<void> {
+  await createDoc('system', 'accessLease', {
+    holderUid: null,
+    epoch: 0,
+    updatedAt: new Date(),
+  });
+}
+
 export async function seedStudent(studentId: string, name: string, balance: number): Promise<void> {
   await createDoc('students', studentId, {
     id: studentId,
