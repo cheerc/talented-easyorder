@@ -1,6 +1,7 @@
-# EasyOrder 正式部署指南
+# 舊版 EasyOrder 部署指南（已停用；不適用於新正式後端）
 
 > **2026-10-13 適用範圍：** 本文保留既有設計／實作參考；新正式後端以[零費用 spec](../superpowers/specs/2026-10-13-free-production-backend-spec.md)及[階段計畫](../superpowers/plans/2026-10-13-free-production-backend-plan.md)為準，尚未實作。不得依舊文將 EasyOrder 部署到 payroll 計費專案；正式部署、備份與安全操作須等計畫中對應階段更新並驗證。
+> **舊流程停用：** 下方 payroll 共用 Firebase project、合併 rules、複製 payroll Firebase config 的命令僅作歷史盤點，不能當作 EasyOrder 新正式環境的操作指示。新正式環境及部署只能按 P17 新流程，由使用者在本機執行；P00 盤點見[現況與證據](free-production-evidence.md)。本次沒有執行本文命令或操作 payroll 資源。
 
 > 適用情境：第一次部署到 production（全新空資料庫），使用 talented-payroll 的 Firebase project。
 

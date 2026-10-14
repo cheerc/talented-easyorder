@@ -2,6 +2,8 @@
 
 > **2026-10-13 後端規劃追加：** [零費用正式後端 spec](superpowers/specs/2026-10-13-free-production-backend-spec.md)與[19 階段計畫](superpowers/plans/2026-10-13-free-production-backend-plan.md)已寫成，實作與上線驗收未開始。多個等權 Google 白名單帳號、同時一個帳號使用；Android 另案。下方為既有前端追蹤，不代表新後端已完成。
 
+> **2026-10-14 P00 基線：** 文件／現況盤點正在本 PR 交付；以 base `75e7a96e6cad722a41076df66e5b2cf9014e9d47` 重跑的 `tsc` 完整診斷與舊寫入路徑、payroll 部署依賴分類見[現況與證據](ops/free-production-evidence.md)。P01–P18 尚未驗收，新正式後端仍未實作、未部署。此更新不更改下方歷史前端本人驗收紀錄。
+
 > **Last inspected:** 2026-09-29，程式基準 `884a996`。
 > 本輪只更新 spec／計畫／驗收文件；沒有改應用程式、沒有完成本人驗收。
 

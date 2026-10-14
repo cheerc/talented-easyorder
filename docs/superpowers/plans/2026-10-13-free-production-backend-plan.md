@@ -1,6 +1,6 @@
 # EasyOrder 零費用正式後端分階段實作計畫
 
-日期：2026-10-13。狀態：**規劃交付，P00–P18 全部尚未執行**。
+日期：2026-10-13。狀態：**規劃交付；P00 文件／基線工作正在 PR review；P01–P18 尚未開始或驗收**。
 
 **Source of truth：** [正式後端 spec](../specs/2026-10-13-free-production-backend-spec.md)，包含使用者最新「多白名單、等權、同時單一Google帳號」修正；來源 [PR #469](https://github.com/cheerc/talented-easyorder/pull/469)。
 
@@ -29,6 +29,13 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 ```
 
 每phase receipt：base/current完整SHA、實際變更檔、對應spec節／案例ID、測試指令和結果、三分鐘demo、已知限制、docs-check、下一phase可消費的介面。只用匿名fixture；reviewer只review，由coordinator檢查結果與CI再依團隊規則合併。不得自動把後續phase標完成或把本人驗收代簽。
+
+### Phase receipts
+
+| Phase | 狀態 | 交付摘要與證據 |
+|---|---|---|
+| P00 | 文件與基線已在 PR 提交，待 review | Base：`75e7a96e6cad722a41076df66e5b2cf9014e9d47`；PR head SHA、變更檔清單與檢查結果記在 PR 描述。新增[現況與證據](../../ops/free-production-evidence.md)，含完整 279 筆 TypeScript diagnostics、舊寫入／部署路徑分類與 R/U 對照。docs links／diff check pass；diagnostic 命令真實 exit 2；無 app tests 或 app demo（本 phase 純文件）。下一 phase：P01 Rules proof。 |
+| P01–P18 | 尚未開始／未驗 | 不代表任何新雲端功能已實作或通過。P01 所需本機 Emulator 下載目前被 `storage.googleapis.com` 403 擋下；既有 GitHub Actions runner 是待驗的替代驗證路徑，狀態記於[現況與證據](../../ops/free-production-evidence.md)。 |
 
 ## 2. 現有檔案與規劃新檔
 
