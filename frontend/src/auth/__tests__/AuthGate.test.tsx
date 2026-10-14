@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AuthGate } from '../AuthGate';
 import type { OperatorAccess } from '../../firebase/authService';
+import type { ActiveLeaseState } from '../../firebase/activeAccountLease';
 
 vi.mock('../../firebase/authService', () => ({
   signInWithGoogle: vi.fn(),
@@ -88,23 +89,116 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
     expect(screen.queryByTestId('business-content')).toBeNull();
   });
 
-  it('核准使用者（ok: true）進入系統，顯示操作員資訊與內容', async () => {
+  it('P04: 白名單通過但租約被他人占用時，顯示目前有人使用中且不渲染業務內容', () => {
     const access: OperatorAccess = {
       ok: true,
-      profile: {
-        uid: 'uid-approved-1',
-        email: 'operator1@example.com',
-        displayName: '操作員 1',
-      },
+      profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' },
     };
+    const occupiedLease: ActiveLeaseState = {
+      holderUid: 'uid-other-operator',
+      epoch: 2,
+      updatedAt: new Date(),
+      isHolder: false,
+      isExpired: false,
+    };
+
     render(
-      <AuthGate auth={mockAuth} db={mockDb} access={access}>
+      <AuthGate auth={mockAuth} db={mockDb} access={access} lease={occupiedLease}>
+        <div data-testid="business-content">業務機密資料</div>
+      </AuthGate>,
+    );
+
+    expect(screen.getByText('目前有人使用中')).toBeTruthy();
+    expect(screen.getByText('uid-other-operator')).toBeTruthy();
+    expect(screen.queryByTestId('business-content')).toBeNull();
+  });
+
+  it('P04: 15 秒重新檢查限流防護', async () => {
+    const access: OperatorAccess = {
+      ok: true,
+      profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' },
+    };
+    const occupiedLease: ActiveLeaseState = {
+      holderUid: 'uid-other-operator',
+      epoch: 2,
+      updatedAt: new Date(),
+      isHolder: false,
+      isExpired: false,
+    };
+    const mockAcquire = vi.fn().mockResolvedValue({ status: 'busy', currentHolderUid: 'uid-other-operator' });
+
+    render(
+      <AuthGate
+        auth={mockAuth}
+        db={mockDb}
+        access={access}
+        lease={occupiedLease}
+        onAcquireLease={mockAcquire}
+      >
+        <div data-testid="business-content">業務機密資料</div>
+      </AuthGate>,
+    );
+
+    const recheckBtn = screen.getByText('重新檢查');
+    // 第一次點擊：可執行
+    fireEvent.click(recheckBtn);
+    expect(mockAcquire).toHaveBeenCalledTimes(1);
+
+    // 等候第一次非同步檢查完成，按鈕恢復非 disabled
+    await waitFor(() => expect(screen.getByText('重新檢查')).not.toBeDisabled());
+
+    // 15 秒內再次點擊：觸發限流
+    fireEvent.click(screen.getByText('重新檢查'));
+    expect(mockAcquire).toHaveBeenCalledTimes(1); // 未再增加呼叫
+    expect(screen.getByText(/檢查過於頻繁/)).toBeTruthy();
+  });
+
+  it('P04: 白名單通過且租約閒置時，顯示待取得使用權按鈕', () => {
+    const access: OperatorAccess = {
+      ok: true,
+      profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' },
+    };
+    const idleLease: ActiveLeaseState = {
+      holderUid: null,
+      epoch: 0,
+      updatedAt: null,
+      isHolder: false,
+      isExpired: true,
+    };
+
+    render(
+      <AuthGate auth={mockAuth} db={mockDb} access={access} lease={idleLease}>
+        <div data-testid="business-content">業務機密資料</div>
+      </AuthGate>,
+    );
+
+    expect(screen.getByText('待取得使用權')).toBeTruthy();
+    expect(screen.getByText('取得系統使用權')).toBeTruthy();
+    expect(screen.queryByTestId('business-content')).toBeNull();
+  });
+
+  it('P04: 核准且持有租約（isHolder: true）進入系統，顯示操作員條與業務畫面', () => {
+    const access: OperatorAccess = {
+      ok: true,
+      profile: { uid: 'uid-me', email: 'me@example.com', displayName: '操作員 1' },
+    };
+    const activeLease: ActiveLeaseState = {
+      holderUid: 'uid-me',
+      epoch: 3,
+      updatedAt: new Date(),
+      isHolder: true,
+      isExpired: false,
+    };
+
+    render(
+      <AuthGate auth={mockAuth} db={mockDb} access={access} lease={activeLease}>
         <div data-testid="business-content">已核准操作畫面</div>
       </AuthGate>,
     );
 
     expect(screen.getByText('操作員 1')).toBeTruthy();
-    expect(screen.getByText('登出')).toBeTruthy();
+    expect(screen.getByText('[租約 Epoch: 3]')).toBeTruthy();
+    expect(screen.getByText('釋放使用權並登出')).toBeTruthy();
     expect(screen.getByTestId('business-content')).toBeTruthy();
   });
 });

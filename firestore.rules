@@ -25,13 +25,44 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
-    // P03 階段：業務資料與系統集合嚴格 deny（留待 P04 租約、P05 原子寫入器開放）
+    // system/accessLease: 規格 §4.2 全公司單一活躍 Google 身分使用權租約狀態機
+    match /system/accessLease {
+      allow get: if isApprovedOperator();
+      allow list: if false;
+      allow create, delete: if false;
+      allow update: if isApprovedOperator()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['holderUid', 'epoch', 'updatedAt'])
+        && request.resource.data.updatedAt == request.time
+        && (
+          // 1. Acquire: 舊為空或逾期(<= request.time)，新 holder 為本人，epoch = 舊 + 1
+          (
+            (resource.data.holderUid == null || resource.data.updatedAt + duration.value(5, 'm') <= request.time)
+            && request.resource.data.holderUid == request.auth.uid
+            && request.resource.data.epoch == resource.data.epoch + 1
+          )
+          // 2. Renew: 舊為本人且未逾期(> request.time)，holder 與 epoch 保持不變
+          || (
+            resource.data.holderUid == request.auth.uid
+            && resource.data.updatedAt + duration.value(5, 'm') > request.time
+            && request.resource.data.holderUid == request.auth.uid
+            && request.resource.data.epoch == resource.data.epoch
+          )
+          // 3. Release: 舊為本人，新 holder 為 null，epoch = 舊 + 1
+          || (
+            resource.data.holderUid == request.auth.uid
+            && request.resource.data.holderUid == null
+            && request.resource.data.epoch == resource.data.epoch + 1
+          )
+        );
+    }
+
+    // P04 階段：業務資料與其餘系統集合嚴格 deny（留待 P05 原子寫入器開放）
     match /students/{document=**} { allow read, write: if false; }
     match /transactions/{document=**} { allow read, write: if false; }
     match /commands/{document=**} { allow read, write: if false; }
     match /days/{document=**} { allow read, write: if false; }
     match /vendors/{document=**} { allow read, write: if false; }
-    match /system/{document=**} { allow read, write: if false; }
+    match /system/dataHead { allow read, write: if false; }
     match /daily_settlements/{document=**} { allow read, write: if false; }
   }
 }

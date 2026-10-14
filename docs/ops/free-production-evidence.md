@@ -114,42 +114,44 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - 已於 2026-10-14 由 Coordinator 完成 review 並 merge 至 main（merge commit `bc5bb250db2687cfa75043bf72462e0cae25e985`）。
 - 驗收成果：L01–L04 與投影數學全數通過，cloud/prototype 邊界與記憶體快取隔離就緒。
 
-## P03 Google 登入與等權白名單（實作完成，待 review）
+## P03 Google 登入與等權白名單（已合併 #474）
+
+- 已於 2026-10-14 由 Coordinator 完成 review 並 merge 至 main（merge commit `fd8cba1b933a3ceee4ae1d5500c920fca56627a9`）。
+- 驗收成果：A01 等權白名單測試全數通過，未核准畫面、browserSessionPersistence 與 operators 規則就緒。
+
+## P04 全公司單一活躍 Google 身分使用權租約（實作完成，待 review）
 
 ### 範圍與產物
 
-- Base：`bc5bb250db2687cfa75043bf72462e0cae25e985`（PR #473 merge commit）
-- 分支：`codex/backend-p03-google-auth`
-- 修改與新建產物：
-  1. `firestore.rules`：production Rules 加入 operators 等權白名單驗證（`operators/{uid}` 讀取限本人，禁止 client create/update/delete/list，業務資料 students/transactions/commands/days/vendors/system 全面 deny，無 role schema）。
-  2. `frontend/src/firebase/__tests__/firestoreRules.spec.ts`：更新為完整 A01 測試套件（涵蓋核准帳號等權讀取本人、跨 UID 讀取拒絕、list 拒絕、自建/修改/刪除拒絕、同網域未核准拒絕、改 email 拒絕、非 Google provider 拒絕、未驗證 email 拒絕、停用帳號拒絕業務資料、業務資料全面 deny）。
-  3. `frontend/src/firebase/authService.ts`：Google sign-in 驗證（要求 `email_verified=true` 與 Google provider）、設定 `browserSessionPersistence`、檢查 `operators/{uid}` active 與 email 精確相符、等權無 role、登出清快取與 Auth。
-  4. `frontend/src/auth/AuthGate.tsx`：未核准帳號顯示「尚未取得使用權」（提供 Email 與 UID 供維護者核准）、停用帳號顯示停用通知、未驗證/非 Google 提示，白名單通過前絕對不渲染業務資料。
-  5. `frontend/src/providers/FirebaseProvider.tsx`：監聽 operator 文件與 Auth 狀態，即時攔截停用狀態。
-  6. `frontend/src/firebase/operatorAdmin.ts`：本地初始化工具最小輔助，供維護者本機建立/更新等權操作員文件。
-  7. 單元測試：`AuthGate.test.tsx`、`operatorAdmin.test.ts`。
+- Base：`fd8cba1b933a3ceee4ae1d5500c920fca56627a9`（PR #474 merge commit）
+- 分支：`codex/backend-p04-active-lease`
+- 新建與修改產物：
+  1. `frontend/src/firebase/activeAccountLease.ts`：實作 spec §4.2 全公司單一活躍帳號使用權租約狀態機（`acquireLease`, `renewLease`, `releaseLease`, `getLeaseStatus`, `subscribeLease`, `startLeaseHeartbeat`）。強制所有狀態變更透過 `runTransaction` 進行，使用 `serverTimestamp()` 更新 `updatedAt`，比對 `expectedEpoch` 防止過期 snapshot 覆寫（stale-view guard）。
+  2. `frontend/src/firebase/__tests__/activeAccountLease.spec.ts`：Emulator 驗證 A02–A04（11/11 passed），涵蓋 A/B 互斥、renew/release races、5 分鐘到期界線、逾期自動交接、停用帳號拒絕、禁止 client 絕對時間、禁止 create/delete、禁止未授權欄位。
+  3. `firestore.rules`：加入 `system/accessLease` 規則狀態機，強制僅允許 `holderUid`/`epoch`/`updatedAt` 三欄、`updatedAt == request.time`、嚴格 5 分鐘到期判斷；白名單核准者可讀取 lease 狀態；業務資料仍全面 deny。
+  4. `frontend/src/auth/AuthGate.tsx`：租約閘門實作。白名單通過後檢查租約：他人使用中顯示「目前有人使用中」與 UID/最後更新時間；15 秒重新檢查限流防護；閒置或逾期時提供「取得系統使用權」；持有者進入系統並提供「釋放使用權並登出」。
+  5. `frontend/src/providers/FirebaseProvider.tsx`：監聽 `system/accessLease` 文件，持有者啟動 60 秒心跳續約，失去使用權時即時觸發遮罩並呼叫 `clearSensitiveData()`。
+  6. `frontend/e2e/cloud-production.spec.ts`：建立 A01–A04 E2E 規格測試。
+  7. 單元測試：`AuthGate.test.tsx` 擴充 P04 租約與 15 秒限流測試（8 passed）。
 
 ### 驗收證據
 
-1. **RED 驗證**：既有 `firestore.rules` 執行新 A01 測試時，因舊有 `@talented.com.tw` 與舊 RBAC 限制，A01.1 與 A01.9 exit 1 失敗（2 failed / 8 passed）。
-2. **GREEN 驗證**：更新 `firestore.rules` 後，在 Firestore Emulator 下執行 `firestoreRules.spec.ts`，10 passed（10/10）全部通過。
-3. **P01 Rules proof 回歸驗證**：在 Emulator 下執行 `cloudRulesProof.spec.ts`，36 passed（36/36）全部通過。
-4. **單元與元件測試**：
-   - `npx vitest run src/firebase/__tests__/authService.test.ts`：6 passed（6/6）。
-   - `npx vitest run src/auth/__tests__/AuthGate.test.tsx`：5 passed（5/5）。
-   - `npx vitest run src/firebase/__tests__/operatorAdmin.test.ts`：4 passed（4/4）。
+1. **RED 驗證**：初期因尚未建立 `activeAccountLease.ts` 模組，`activeAccountLease.spec.ts` 執行 exit 1 失敗。
+2. **GREEN 驗證**：實作完成後，在 Firestore Emulator 下執行 `activeAccountLease.spec.ts`，11 passed（11/11）全數通過。
+3. **P03 A01 測試更新與回歸驗證**：在 Emulator 下執行 `firestoreRules.spec.ts`，10 passed（10/10）全數通過。
+4. **P01 Rules proof 回歸驗證**：在 Emulator 下執行 `cloudRulesProof.spec.ts`，36 passed（36/36）全數通過。
 5. **全套件 Vitest 執行**：
-   - `cd frontend && npx vitest run`：138 passed | 2 skipped (140 test files), 1268 passed | 46 skipped (1314 tests)，無任何測試失敗或回歸。
+   - `cd frontend && npx vitest run`：138 passed | 3 skipped (141 test files), 1271 passed | 57 skipped (1328 tests)，零失敗、零回歸。
 6. **Lint 與 Build**：
    - `npm run lint`：exit 0，無任何 error 或 warning。
    - `npm run build`：exit 0，Vite production build 成功。
 7. **TypeScript app diagnostics 比對**：
    - 命令：`npx --no-install tsc -p tsconfig.app.json --noEmit`
-   - base (`bc5bb25`)：exit 2, diagnostics 295
-   - head (P03)：exit 2, diagnostics 295
+   - base (`fd8cba1`)：exit 2, diagnostics 295
+   - head (P04)：exit 2, diagnostics 295
    - 零新增診斷錯誤。
 8. **邊界防守**：
-   - 業務資料嚴格保持 deny（P04 租約、P05 寫入器才開放）。
+   - 業務資料嚴格保持 deny（留待 P05 原子寫入器開放）。
    - 不碰 payroll 或 Android。
 
 

@@ -216,8 +216,9 @@ describeOrSkip('firestore.rules — P03 A01: Google 登入與等權白名單規�
     await assertFails(getDoc(doc(dbA, 'vendors/ven-1')));
     await assertFails(setDoc(doc(dbA, 'vendors/ven-1'), { vendorId: 'ven-1' }));
 
-    // system deny
-    await assertFails(getDoc(doc(dbA, 'system/accessLease')));
-    await assertFails(setDoc(doc(dbA, 'system/accessLease'), { epoch: 1 }));
+    // system: P04 開放白名單讀取 accessLease 狀態；dataHead 仍全面 deny
+    await assertSucceeds(getDoc(doc(dbA, 'system/accessLease')));
+    await assertFails(getDoc(doc(dbA, 'system/dataHead')));
+    await assertFails(setDoc(doc(dbA, 'system/dataHead'), { seq: 1 }));
   });
 });

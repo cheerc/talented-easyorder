@@ -11,10 +11,11 @@
 
 ## 已合併與目前接手點
 
-- **目前工作：P03，PR [#474](https://github.com/cheerc/talented-easyorder/pull/474)，分支 `codex/backend-p03-google-auth`，base `bc5bb250db2687cfa75043bf72462e0cae25e985`。** 實作 Google Auth 等權白名單驗證、未核准者「尚未取得使用權」畫面（含 UID 提供給維護者核准）、停用帳號即時阻擋、browserSessionPersistence、production `firestore.rules` 嚴格限制 `operators/{uid}` 限讀本人且禁止 client 寫入/列出、業務資料全面 deny、更新 A01 Rules 測試套件（10/10 通過）以及提供本地最小維護者初始化工具（`operatorAdmin.ts`）。全套 Vitest 1268 passed，tsc app baseline 零新增錯誤，lint 與 build 通過。
-- 最近已合併：PR [#473](https://github.com/cheerc/talented-easyorder/pull/473)，P02 雲端 command／投影介面與模式隔離；merge commit `bc5bb250db2687cfa75043bf72462e0cae25e985`。
-- 前次已合併：PR [#472](https://github.com/cheerc/talented-easyorder/pull/472)，P01 Rules 可行性 proof；merge commit `e7c406ce59ec4779268f760dafa3bb006f1ae8d4`。
-- 更早已合併：PR [#471](https://github.com/cheerc/talented-easyorder/pull/471)，P00 文件與 diagnostics baseline；merge commit `1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。
+- **目前工作：P04，分支 `codex/backend-p04-active-lease`，base `fd8cba1b933a3ceee4ae1d5500c920fca56627a9`。** 實作全公司單一活躍 Google 帳號使用權租約（spec §4.2 狀態機：Acquire/Renew/Release）、`system/accessLease` Firestore Rules（強制 serverTimestamp、嚴格 5 分鐘到期界線）、AuthGate 與 FirebaseProvider 租約監聽、60 秒心跳續約、15 秒限流防護與失權遮罩清理快取。A02–A04 emulator 測試全數通過（11/11），全套 Vitest 1271 passed，tsc app baseline 零新增錯誤，lint 與 build 通過。業務資料此 phase 仍全面 deny。
+- 最近已合併：PR [#474](https://github.com/cheerc/talented-easyorder/pull/474)，P03 Google 登入與等權白名單；merge commit `fd8cba1b933a3ceee4ae1d5500c920fca56627a9`。
+- 前次已合併：PR [#473](https://github.com/cheerc/talented-easyorder/pull/473)，P02 雲端 command／投影介面與模式隔離；merge commit `bc5bb250db2687cfa75043bf72462e0cae25e985`。
+- 更早已合併：PR [#472](https://github.com/cheerc/talented-easyorder/pull/472)，P01 Rules 可行性 proof；merge commit `e7c406ce59ec4779268f760dafa3bb006f1ae8d4`。
+- 最早已合併：PR [#471](https://github.com/cheerc/talented-easyorder/pull/471)，P00 文件與 diagnostics baseline；merge commit `1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。
 - Emulator 工具鏈已可用：本地 Node `v24.19.0`、Java `21.0.12.1`、Firebase CLI `14.27.0`、Firestore Emulator `1.19.8`，官方 JAR SHA-256 `9d43599ed6151199e8d604dc87fac51218e49e5f3a48519b1ae560bbe5e3382d` 已核對。
 - Production Firebase keys／設定／管理憑證只由使用者保存在自己的電腦；所有正式資源、部署與正式 smoke test 由使用者本機執行。Cloud agent 僅可用 demo Emulator，Spark 不開 billing／Blaze、不接 payroll、不改 Android。後端尚未實作或部署。
 
@@ -29,13 +30,13 @@ git branch --show-current
 git log -1 --oneline --decorate
 ```
 
-若目前 PR 未完成，先在原分支完成修正、重跑失敗的 CI、取得 review 並等 coordinator merge；不可跳到 P04。若交接時已有未提交變更，先檢視並和當前 PR 對齊，勿覆蓋。
+若目前 PR 未完成，先在原分支完成修正、重跑失敗的 CI、取得 review 並等 coordinator merge；不可跳到 P05。若交接時已有未提交變更，先檢視並和當前 PR 對齊，勿覆蓋。
 
-## 下一個 PR：P04（僅在 P03 review 通過並由 coordinator merge 後）
+## 下一個 PR：P05（僅在 P04 review 通過並由 coordinator merge 後）
 
-- 計畫入口：[P04 — 全公司單一活躍Google身分](superpowers/plans/2026-10-13-free-production-backend-plan.md#p04--全公司單一活躍google身分)；契約來源為 spec §4.2。
-- 目標範圍：新 `activeAccountLease.ts`／test；AuthGate、FirebaseProvider、rules 與 cloud e2e auth 部分。
-- 產物與驗收：P03 allowlist → acquire/renew/release、epoch 與失權遮罩。P03 未 review 通過、required checks 未綠及 coordinator 未 merge 前，P04 不得啟動。
+- 計畫入口：[P05 — 正式原子寫入器與冪等收據](superpowers/plans/2026-10-13-free-production-backend-plan.md#p05--正式原子寫入器與冪等收據)；契約來源為 spec §6.2。
+- 目標範圍：`cloudCommandRepository.ts`、`cloudCommands.spec.ts`、production `firestore.rules`／schema；dataHead bootstrapping 與 maintenance guard。
+- 產物與驗收：P01 proof/P02 型別/P04 lease → 唯一 commitCommand/readCommand。P04 未 review 通過、required checks 未綠及 coordinator 未 merge 前，P05 不得啟動。
 
 ## 每個 PR 的協作與交接要求
 
