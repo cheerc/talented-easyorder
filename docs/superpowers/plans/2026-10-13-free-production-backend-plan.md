@@ -35,7 +35,7 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 | Phase | 狀態 | 交付摘要與證據 |
 |---|---|---|
 | P00 | 已合併 #471 | Base：`75e7a96e6cad722a41076df66e5b2cf9014e9d47`；PR head：`7a7128f14cf32268808de4e0a57f6986a0ca806e`；main merge SHA：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。新增[現況與證據](../../ops/free-production-evidence.md)，含完整 279 筆 TypeScript diagnostics、舊寫入／部署路徑分類及 R/U 對照。docs links／diff check pass；基線 tsc exit 2；PR CI 識別 docs-only 並跳過 app steps。 |
-| P01 | 實作與 RED/GREEN Emulator proof 進行中 | Base：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。Proof 使用 test-only rules fixture 與 `demo-easyorder`；不能部署 fixture 或改 production rules。CI 將明確 setup Java 21、指定 demo project，並檢查 Vitest JSON 中實際測試數與 skip 數。Red／green SHA 與結果稍後回填。 |
+| P01 | 行為 RED draft PR 已開，等真 Emulator 結果 | [PR #472](https://github.com/cheerc/talented-easyorder/pull/472)，base `1da09039ab57f2b13f965ce98277bd1d41ce8e5e`，RED scaffold head `6ca1545a8e97df4a96c8a75c5429f35f5438a2a9`，Actions run [38514043015](https://github.com/cheerc/talented-easyorder/actions/runs/38514043015) 執行中。Proof 用 test-only fixture 與 `demo-easyorder`；不可部署 fixture 或改 production rules。CI 明確 setup Java 21、檢查實際測試數／skip 數。GREEN 與 review 尚未完成。 |
 | P02–P18 | 尚未開始／未驗 | 不代表任何新雲端功能已實作或通過。 |
 
 ## 2. 現有檔案與規劃新檔

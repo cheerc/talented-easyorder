@@ -91,7 +91,7 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 
 ### 邊界與目前狀態
 
-- P01 base：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`（P00 #471 merge）；實作分支 `codex/backend-p01-rules-proof`。當次 PR URL、base/head SHA 與 RED/GREEN CI 證據由 [開發交接入口](../DEVELOPMENT-HANDOFF.md)、此處 phase receipt 及 PR body 持續回填。
+- P01 base：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`（P00 #471 merge）；實作分支 `codex/backend-p01-rules-proof`；draft PR [#472](https://github.com/cheerc/talented-easyorder/pull/472)。RED scaffold head `6ca1545a8e97df4a96c8a75c5429f35f5438a2a9`，Actions run [38514043015](https://github.com/cheerc/talented-easyorder/actions/runs/38514043015) 執行中。GREEN SHA、最終 CI run 與結果待完成後回填；目前 handoff、phase receipt 與 PR body 連結見[開發交接入口](../DEVELOPMENT-HANDOFF.md)。
 - 新的 [cloud Rules proof suite](../../frontend/src/firebase/__tests__/cloudRulesProof.spec.ts) 只透過 `initializeTestEnvironment` 載入 [`cloudRulesProof.rules`](../../frontend/src/firebase/__tests__/fixtures/cloudRulesProof.rules)；fixture 不在 `firebase.json` 或 production rules 部署路徑。production [`firestore.rules`](../../firestore.rules) 本 phase 不改，沒有部署。
 - Cloud Firestore 僅允許 GitHub runner 的 `demo-easyorder` Emulator 與匿名 synthetic fixtures；沒有連線到 production、payroll、Android 或任何真實資料。此 proof 不是正式功能部署或本人營運驗收。
 - 當前 scaffold 是**行為 RED**：匿名五文件 CreateOrder 同批附加不受 command 管理的 extra transaction；寬鬆 fixture 先讓它成功作為負例見證，隨後同樣寫入以 `assertFails` 斷言拒絕並檢查 batch 原子性。它目前還不含完整對抗矩陣，且寬鬆 fixture 預期會令第二個 `assertFails` 測試真實失敗；尚無 RED GitHub run 證據，因此不能稱 RED 已跑過。
