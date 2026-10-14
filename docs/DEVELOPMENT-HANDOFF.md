@@ -11,7 +11,7 @@
 
 ## 已合併與目前接手點
 
-- **目前工作：P04，分支 `codex/backend-p04-active-lease`，base `fd8cba1b933a3ceee4ae1d5500c920fca56627a9`。** 實作全公司單一活躍 Google 帳號使用權租約（spec §4.2 狀態機：Acquire/Renew/Release）、`system/accessLease` Firestore Rules（強制 serverTimestamp、嚴格 5 分鐘到期界線）、AuthGate 與 FirebaseProvider 租約監聽、60 秒心跳續約、15 秒限流防護與失權遮罩清理快取。A02–A04 emulator 測試全數通過（11/11），全套 Vitest 1271 passed，tsc app baseline 零新增錯誤，lint 與 build 通過。業務資料此 phase 仍全面 deny。
+- **目前工作：P04，PR [#475](https://github.com/cheerc/talented-easyorder/pull/475)，分支 `codex/backend-p04-active-lease`，base `fd8cba1b933a3ceee4ae1d5500c920fca56627a9`。** 實作全公司單一活躍 Google 帳號使用權租約（spec §4.2 狀態機：Acquire/Renew/Release）、`system/accessLease` Firestore Rules（強制 serverTimestamp、嚴格 5 分鐘到期界線）、AuthGate 與 FirebaseProvider 租約監聽、60 秒心跳續約、15 秒限流防護與失權遮罩清理快取。A02–A04 emulator 測試全數通過（11/11），全套 Vitest 1271 passed，tsc app baseline 零新增錯誤，lint 與 build 通過。業務資料此 phase 仍全面 deny。
 - 最近已合併：PR [#474](https://github.com/cheerc/talented-easyorder/pull/474)，P03 Google 登入與等權白名單；merge commit `fd8cba1b933a3ceee4ae1d5500c920fca56627a9`。
 - 前次已合併：PR [#473](https://github.com/cheerc/talented-easyorder/pull/473)，P02 雲端 command／投影介面與模式隔離；merge commit `bc5bb250db2687cfa75043bf72462e0cae25e985`。
 - 更早已合併：PR [#472](https://github.com/cheerc/talented-easyorder/pull/472)，P01 Rules 可行性 proof；merge commit `e7c406ce59ec4779268f760dafa3bb006f1ae8d4`。

@@ -38,7 +38,7 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 | P01 | 已合併 #472 | Base：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`；merge commit：`e7c406ce59ec4779268f760dafa3bb006f1ae8d4`。完整真 Emulator proof 通過，SOL review 完成，由 Coordinator merge。 |
 | P02 | 已合併 #473 | Base：`e7c406ce59ec4779268f760dafa3bb006f1ae8d4`；merge commit：`bc5bb250db2687cfa75043bf72462e0cae25e985`。新建 `cloudCommands.ts`、`cloudLedgerProjection.ts`；修改 `appMode.ts`、`posPersistence.ts`、`firestoreSchema.ts`。Vitest 1259 passed，tsc app baseline 零新增錯誤，lint 與 build 通過。 |
 | P03 | 已合併 #474 | Base：`bc5bb250db2687cfa75043bf72462e0cae25e985`；merge commit：`fd8cba1b933a3ceee4ae1d5500c920fca56627a9`。修改 `firestore.rules`、`authService.ts`、`AuthGate.tsx`、`FirebaseProvider.tsx`、`operatorAdmin.ts`。A01 測試通過，全套 Vitest 1268 passed，tsc baseline 零新增錯誤，lint 與 build 通過。 |
-| P04 | 實作完成待 review | [PR 待填]，Base：`fd8cba1b933a3ceee4ae1d5500c920fca56627a9`。新建 `activeAccountLease.ts`、`activeAccountLease.spec.ts`、`cloud-production.spec.ts`；修改 `firestore.rules`、`AuthGate.tsx`、`FirebaseProvider.tsx`。A02–A04 emulator 測試全數通過（11/11），全套 Vitest 1271 passed，tsc baseline 零新增錯誤，lint 與 build 通過。 |
+| P04 | 實作完成待 review | [PR #475](https://github.com/cheerc/talented-easyorder/pull/475)，Base：`fd8cba1b933a3ceee4ae1d5500c920fca56627a9`。新建 `activeAccountLease.ts`、`activeAccountLease.spec.ts`、`cloud-production.spec.ts`；修改 `firestore.rules`、`AuthGate.tsx`、`FirebaseProvider.tsx`。A02–A04 emulator 測試全數通過（11/11），全套 Vitest 1271 passed，tsc baseline 零新增錯誤，lint 與 build 通過。 |
 | P05–P18 | 尚未開始／未驗 | 不代表任何新雲端功能已實作或通過。 |
 
 ## 2. 現有檔案與規劃新檔
