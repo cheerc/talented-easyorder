@@ -11,7 +11,7 @@
 
 ## 已合併與目前接手點
 
-- **目前工作：P03，分支 `codex/backend-p03-google-auth`，base `bc5bb250db2687cfa75043bf72462e0cae25e985`。** 實作 Google Auth 等權白名單驗證、未核准者「尚未取得使用權」畫面（含 UID 提供給維護者核准）、停用帳號即時阻擋、browserSessionPersistence、production `firestore.rules` 嚴格限制 `operators/{uid}` 限讀本人且禁止 client 寫入/列出、業務資料全面 deny、更新 A01 Rules 測試套件（10/10 通過）以及提供本地最小維護者初始化工具（`operatorAdmin.ts`）。全套 Vitest 1268 passed，tsc app baseline 零新增錯誤，lint 與 build 通過。
+- **目前工作：P03，PR [#474](https://github.com/cheerc/talented-easyorder/pull/474)，分支 `codex/backend-p03-google-auth`，base `bc5bb250db2687cfa75043bf72462e0cae25e985`。** 實作 Google Auth 等權白名單驗證、未核准者「尚未取得使用權」畫面（含 UID 提供給維護者核准）、停用帳號即時阻擋、browserSessionPersistence、production `firestore.rules` 嚴格限制 `operators/{uid}` 限讀本人且禁止 client 寫入/列出、業務資料全面 deny、更新 A01 Rules 測試套件（10/10 通過）以及提供本地最小維護者初始化工具（`operatorAdmin.ts`）。全套 Vitest 1268 passed，tsc app baseline 零新增錯誤，lint 與 build 通過。
 - 最近已合併：PR [#473](https://github.com/cheerc/talented-easyorder/pull/473)，P02 雲端 command／投影介面與模式隔離；merge commit `bc5bb250db2687cfa75043bf72462e0cae25e985`。
 - 前次已合併：PR [#472](https://github.com/cheerc/talented-easyorder/pull/472)，P01 Rules 可行性 proof；merge commit `e7c406ce59ec4779268f760dafa3bb006f1ae8d4`。
 - 更早已合併：PR [#471](https://github.com/cheerc/talented-easyorder/pull/471)，P00 文件與 diagnostics baseline；merge commit `1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。
