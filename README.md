@@ -1,8 +1,12 @@
 # Talented EasyOrder (PC Counter Prototype)
 
-PC 晚餐櫃台前端 prototype，使用 React、Vite 與 Zustand。當前重點是鍵盤登記、收款、餘額與可追溯查帳；iPad／人臉辨識及後端擴充暫緩。
+PC 晚餐櫃台前端 prototype，使用 React、Vite 與 Zustand。目前實作以鍵盤登記、收款、餘額與可追溯查帳為主。正式後端已另有規劃，尚未實作；Android 整合另案。
 
 Project team 請先讀 [前端交接入口](docs/FRONTEND-PROTOTYPE-HANDOFF.md) 與 [本人操作驗證清單](docs/superpowers/verification/2026-09-29-operator-prototype-checklist.md)。文件描述的新版練習工具仍待分批實作。
+
+## 正式後端交接（2026-10-13 規劃，尚未上線）
+
+接手團隊先讀[零費用正式後端 spec](docs/superpowers/specs/2026-10-13-free-production-backend-spec.md)，再依[19 個小階段計畫](docs/superpowers/plans/2026-10-13-free-production-backend-plan.md)執行。目標採獨立 Firebase Spark＋Hosting；多個等權 Google 白名單帳號、同時只允許一個帳號使用。既有 Firebase setup／部署腳本尚未符合新規格，不能直接用於正式真實資料或 payroll 專案。
 
 ## Getting Started
 

@@ -1,5 +1,7 @@
 # Project Status — Talented EasyOrder
 
+> **2026-10-13 後端規劃追加：** [零費用正式後端 spec](superpowers/specs/2026-10-13-free-production-backend-spec.md)與[19 階段計畫](superpowers/plans/2026-10-13-free-production-backend-plan.md)已寫成，實作與上線驗收未開始。多個等權 Google 白名單帳號、同時一個帳號使用；Android 另案。下方為既有前端追蹤，不代表新後端已完成。
+
 > **Last inspected:** 2026-09-29，程式基準 `884a996`。
 > 本輪只更新 spec／計畫／驗收文件；沒有改應用程式、沒有完成本人驗收。
 
