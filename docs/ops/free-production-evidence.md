@@ -109,41 +109,47 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - `reason` 與 `cashEffect` 頂層欄位目前仍待校準至 spec §5／§7；下一個 P01 WIP 應把理由／現金貢獻前後值、delta、reasonKind、refundAmount 納入 exact schema 和規則斷言，並測防止修正被偽標 refund 或退款在關帳 expectedCash 重複扣除。
 - P01 完整 RED／GREEN、expression/call limit acceptance、SOL review 及 required checks 已於 PR #472 完成，並由 Coordinator 於 2026-10-14 merge 至 main（commit `e7c406ce59ec4779268f760dafa3bb006f1ae8d4`）。P02 依交接程序正式啟動。
 
-## P02 雲端 command／投影介面與模式隔離（實作完成，待 review）
+## P02 雲端 command／投影介面與模式隔離（已合併 #473）
+
+- 已於 2026-10-14 由 Coordinator 完成 review 並 merge 至 main（merge commit `bc5bb250db2687cfa75043bf72462e0cae25e985`）。
+- 驗收成果：L01–L04 與投影數學全數通過，cloud/prototype 邊界與記憶體快取隔離就緒。
+
+## P03 Google 登入與等權白名單（實作完成，待 review）
 
 ### 範圍與產物
 
-- Base：`e7c406ce59ec4779268f760dafa3bb006f1ae8d4`（PR #472 merge commit）
-- 分支：`codex/backend-p02-cloud-commands`
-- 新建產物：
-  1. `frontend/src/domain/cloudCommands.ts`：涵蓋 spec §6.1 全部 22 種 `BusinessCommand` discriminated union、`CommandResult`／`CommandReceipt`、`CommandErrorCode`、`schemaVersion = 1`、`cashEffect`（含 `reasonKind`）及 `buildCashEffect` helper。
-  2. `frontend/src/domain/cloudLedgerProjection.ts`：投影數學 `contribution(tx)`、`deriveDayTotals`、`deriveStudentBalance`、`(businessDate ASC, createdAt ASC, transactionId ASC)` 排序與缺頁不可精算 afterBalance 旗標（`complete: false`）。
-  3. `frontend/src/domain/__tests__/cloudLedgerProjection.test.ts`：先 RED 再 GREEN 驗證 L01–L04、expense 雙方向、void 零貢獻、同毫秒排序、缺頁標示與其他餐點分類。
-  4. `frontend/src/domain/__tests__/cloudCommands.test.ts`：驗證 22 種 command kind、11 種錯誤碼與 cashEffect 數學。
-- 修改既有檔案：
-  4. `frontend/src/appMode.ts`：新增 cloud mode 判定（非 prototype 且有完整 Firebase config）、storageMode 解析、`canResetData`/`canSeedData`（cloud 下禁止）、命名空間隔離與正式環境防降級檢查（`validateAppModeConfig`）。
-  5. `frontend/src/store/posPersistence.ts`：cloud mode 使用記憶體快取（`createMemoryStorage`），不把完整帳務寫入 IndexedDB；prototype 保留原 persist 到 IndexedDB；命名空間隔離。
-  6. `frontend/src/firebase/firestoreSchema.ts`：新 schemaVersion=1 文件型別與 domain adapter；保留 prototype 舊 schema 與既有型別相容。
+- Base：`bc5bb250db2687cfa75043bf72462e0cae25e985`（PR #473 merge commit）
+- 分支：`codex/backend-p03-google-auth`
+- 修改與新建產物：
+  1. `firestore.rules`：production Rules 加入 operators 等權白名單驗證（`operators/{uid}` 讀取限本人，禁止 client create/update/delete/list，業務資料 students/transactions/commands/days/vendors/system 全面 deny，無 role schema）。
+  2. `frontend/src/firebase/__tests__/firestoreRules.spec.ts`：更新為完整 A01 測試套件（涵蓋核准帳號等權讀取本人、跨 UID 讀取拒絕、list 拒絕、自建/修改/刪除拒絕、同網域未核准拒絕、改 email 拒絕、非 Google provider 拒絕、未驗證 email 拒絕、停用帳號拒絕業務資料、業務資料全面 deny）。
+  3. `frontend/src/firebase/authService.ts`：Google sign-in 驗證（要求 `email_verified=true` 與 Google provider）、設定 `browserSessionPersistence`、檢查 `operators/{uid}` active 與 email 精確相符、等權無 role、登出清快取與 Auth。
+  4. `frontend/src/auth/AuthGate.tsx`：未核准帳號顯示「尚未取得使用權」（提供 Email 與 UID 供維護者核准）、停用帳號顯示停用通知、未驗證/非 Google 提示，白名單通過前絕對不渲染業務資料。
+  5. `frontend/src/providers/FirebaseProvider.tsx`：監聽 operator 文件與 Auth 狀態，即時攔截停用狀態。
+  6. `frontend/src/firebase/operatorAdmin.ts`：本地初始化工具最小輔助，供維護者本機建立/更新等權操作員文件。
+  7. 單元測試：`AuthGate.test.tsx`、`operatorAdmin.test.ts`。
 
 ### 驗收證據
 
-1. **RED 驗證**：先建 `cloudLedgerProjection.test.ts`，確認因 `cloudLedgerProjection` 模組未建立而 exit 1，`Failed to resolve import "../cloudLedgerProjection"`。
-2. **GREEN 驗證**：實作完成後，`npx vitest run src/domain/__tests__/cloudLedgerProjection.test.ts` 9 passed（9/9）。
-3. **相關模組測試**：
-   - `npx vitest run src/domain/__tests__/cloudCommands.test.ts`：8 passed（8/8）。
-   - `npx vitest run src/__tests__/appMode.test.ts`：6 passed（6/6）。
-   - `npx vitest run src/store/__tests__/posPersistence.test.ts`：9 passed（9/9）。
-   - `npx vitest run src/firebase/__tests__/firestoreSchema.test.ts`：5 passed（5/5）。
-4. **全套件 Vitest 執行**：
-   - `cd frontend && npx vitest run`：136 passed | 2 skipped (138 test files), 1254 passed | 44 skipped (1298 tests)，無失敗、無退化。
-5. **Lint 與 Build**：
+1. **RED 驗證**：既有 `firestore.rules` 執行新 A01 測試時，因舊有 `@talented.com.tw` 與舊 RBAC 限制，A01.1 與 A01.9 exit 1 失敗（2 failed / 8 passed）。
+2. **GREEN 驗證**：更新 `firestore.rules` 後，在 Firestore Emulator 下執行 `firestoreRules.spec.ts`，10 passed（10/10）全部通過。
+3. **P01 Rules proof 回歸驗證**：在 Emulator 下執行 `cloudRulesProof.spec.ts`，36 passed（36/36）全部通過。
+4. **單元與元件測試**：
+   - `npx vitest run src/firebase/__tests__/authService.test.ts`：6 passed（6/6）。
+   - `npx vitest run src/auth/__tests__/AuthGate.test.tsx`：5 passed（5/5）。
+   - `npx vitest run src/firebase/__tests__/operatorAdmin.test.ts`：4 passed（4/4）。
+5. **全套件 Vitest 執行**：
+   - `cd frontend && npx vitest run`：138 passed | 2 skipped (140 test files), 1268 passed | 46 skipped (1314 tests)，無任何測試失敗或回歸。
+6. **Lint 與 Build**：
    - `npm run lint`：exit 0，無任何 error 或 warning。
    - `npm run build`：exit 0，Vite production build 成功。
-6. **TypeScript app diagnostics 比對**：
+7. **TypeScript app diagnostics 比對**：
    - 命令：`npx --no-install tsc -p tsconfig.app.json --noEmit`
-   - base (`e7c406c`)：exit 2, diagnostics 295（包含 P01 的 cloudRulesProof.spec.ts）
-   - head (P02)：exit 2, diagnostics 295
-   - normalized diff 為空，新增的 P02 雲端模組引入 0 筆 TypeScript 錯誤。
-7. **邊界防守**：
-   - 不接正式 Firebase 寫入、不開放雲端 kind、不改 UI、不碰 Auth/deploy/payroll/Android。
+   - base (`bc5bb25`)：exit 2, diagnostics 295
+   - head (P03)：exit 2, diagnostics 295
+   - 零新增診斷錯誤。
+8. **邊界防守**：
+   - 業務資料嚴格保持 deny（P04 租約、P05 寫入器才開放）。
+   - 不碰 payroll 或 Android。
+
 

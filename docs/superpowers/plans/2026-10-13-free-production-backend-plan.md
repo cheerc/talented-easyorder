@@ -1,6 +1,6 @@
 # EasyOrder 零費用正式後端分階段實作計畫
 
-日期：2026-10-14。狀態：**P00/P01 已合併；P02 實作完成待 review；P03–P18 尚未開始或驗收**。
+日期：2026-10-14。狀態：**P00–P02 已合併；P03 實作完成待 review；P04–P18 尚未開始或驗收**。
 
 **Source of truth：** [正式後端 spec](../specs/2026-10-13-free-production-backend-spec.md)，包含使用者最新「多白名單、等權、同時單一Google帳號」修正；來源 [PR #469](https://github.com/cheerc/talented-easyorder/pull/469)。
 
@@ -36,8 +36,9 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 |---|---|---|
 | P00 | 已合併 #471 | Base：`75e7a96e6cad722a41076df66e5b2cf9014e9d47`；PR head：`7a7128f14cf32268808de4e0a57f6986a0ca806e`；main merge SHA：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。新增[現況與證據](../../ops/free-production-evidence.md)，含完整 279 筆 TypeScript diagnostics、舊寫入／部署路徑分類及 R/U 對照。docs links／diff check pass；基線 tsc exit 2；PR CI 識別 docs-only 並跳過 app steps。 |
 | P01 | 已合併 #472 | Base：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`；merge commit：`e7c406ce59ec4779268f760dafa3bb006f1ae8d4`。完整真 Emulator proof 通過，SOL review 完成，由 Coordinator merge。 |
-| P02 | 實作完成待 review | [PR #473](https://github.com/cheerc/talented-easyorder/pull/473)，Base：`e7c406ce59ec4779268f760dafa3bb006f1ae8d4`。新建 `cloudCommands.ts`（22種kind、11種錯誤碼、cashEffect、schemaVersion=1）、`cloudLedgerProjection.ts`（L01–L04、expense 雙方向、void 零貢獻、同毫秒排序、缺頁標示）；修改 `appMode.ts`（cloud mode runtime判定與seed/reset防護）、`posPersistence.ts`（記憶體快取與IndexedDB隔離）、`firestoreSchema.ts`（新schemaVersion=1映射）。Vitest 1259 passed，tsc app baseline 零新增錯誤，lint 與 build 通過。 |
-| P03–P18 | 尚未開始／未驗 | 不代表任何新雲端功能已實作或通過。 |
+| P02 | 已合併 #473 | Base：`e7c406ce59ec4779268f760dafa3bb006f1ae8d4`；merge commit：`bc5bb250db2687cfa75043bf72462e0cae25e985`。新建 `cloudCommands.ts`、`cloudLedgerProjection.ts`；修改 `appMode.ts`、`posPersistence.ts`、`firestoreSchema.ts`。Vitest 1259 passed，tsc app baseline 零新增錯誤，lint 與 build 通過。 |
+| P03 | 實作完成待 review | [PR 待填]，Base：`bc5bb250db2687cfa75043bf72462e0cae25e985`。修改 `firestore.rules`（A01 案例 10/10 通過，業務資料全面 deny，無 role 等權白名單）、`authService.ts`（Google sign-in 要求 email_verified、browserSessionPersistence、operator 檢核）、`AuthGate.tsx`（未核准顯示「尚未取得使用權」與 UID、停用即時阻擋）、`FirebaseProvider.tsx`、`operatorAdmin.ts`。Vitest 1268 passed，tsc app baseline 零新增錯誤，lint 與 build 通過。 |
+| P04–P18 | 尚未開始／未驗 | 不代表任何新雲端功能已實作或通過。 |
 
 ## 2. 現有檔案與規劃新檔
 
