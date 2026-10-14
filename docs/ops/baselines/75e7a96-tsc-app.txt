@@ -1,0 +1,537 @@
+TypeScript diagnostic baseline
+Base commit: 75e7a96e6cad722a41076df66e5b2cf9014e9d47
+Command (working directory: frontend): npx --no-install tsc -p tsconfig.app.json --noEmit
+Node: v24.19.0
+TypeScript: Version 6.0.3
+Exit status: 2
+Diagnostic count: 279 (compiler error headers; multiline details are retained)
+Normalization: source line and column are removed. File paths, diagnostic codes and full messages remain. Compiler order and duplicate entries are preserved; no deduplication was applied.
+
+--- diagnostics ---
+src/App.tsx: error TS2322: Type '(studentId: string, source: PosSelectionSource, intent?: "order" | "view-status" | undefined) => void' is not assignable to type '(studentId: string, source: string) => void'.
+  Types of parameters 'source' and 'source' are incompatible.
+    Type 'string' is not assignable to type 'PosSelectionSource'.
+src/App.tsx: error TS2345: Argument of type '{ expenseProps: ExpenseProps | null; enterExpenseMode: () => void; updateExpenseAmount: (text: string) => void; confirmExpenseAmount: (amount: number) => void; selectExpenseDirection: (direction: ExpenseDirection) => void; selectExpenseReason: (reason: "\u4ED8\u4FBF\u7576\u9322" | "\u652F\u51FA\u5176\u4ED6" | "\u653...' is not assignable to parameter of type 'PosColumnExpenseArgs'.
+  Types of property 'selectExpenseReason' are incompatible.
+    Type '(reason: "付便當錢" | "支出其他" | "收入其他") => void' is not assignable to type '(r: string) => void'.
+      Types of parameters 'reason' and 'r' are incompatible.
+        Type 'string' is not assignable to type '"付便當錢" | "支出其他" | "收入其他"'.
+src/__tests__/helpers/renderApp.tsx: error TS2304: Cannot find name 'expect'.
+src/__tests__/helpers/renderApp.tsx: error TS2304: Cannot find name 'expect'.
+src/__tests__/posStateValidator.test.ts: error TS18048: 'tx' is possibly 'undefined'.
+src/__tests__/posStateValidator.test.ts: error TS18048: 's1' is possibly 'undefined'.
+src/__tests__/storeActions.test.ts: error TS2741: Property 'amount' is missing in type '{ intent: { businessDate: string; studentId: "__cashier__"; type: "expense"; mealPrice: number; paidAmount: number; note: string; sourceDevice: "pc"; }; snapshots: { student: { studentId: "__cashier__"; studentNameSnapshot: string; }; menu: { ...; }; }; expectedBalanceAfter: number; }' but required in type 'PosTransactionDraft'.
+src/__tests__/storeActions.test.ts: error TS2339: Property 'commitPaymentTransaction' does not exist on type 'PosState'.
+src/components/PosColumn.tsx: error TS2554: Expected 2 arguments, but got 3.
+src/components/PosColumn.tsx: error TS2322: Type 'string' is not assignable to type '"expense_input" | "expense_direction" | "expense_reason" | "expense_other_note"'.
+src/components/PosColumn.tsx: error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/components/PosColumn.tsx: error TS2322: Type 'string' is not assignable to type '"expense_input" | "expense_direction" | "expense_reason" | "expense_other_note"'.
+src/components/__tests__/ErrorBoundary.test.tsx: error TS2593: Cannot find name 'beforeEach'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/__tests__/ErrorBoundary.test.tsx: error TS2304: Cannot find name 'afterEach'.
+src/components/__tests__/ErrorBoundary.test.tsx: error TS2786: 'Boom' cannot be used as a JSX component.
+  Its type '({ msg }: { msg?: string | undefined; }) => void' is not a valid JSX element type.
+    Type '({ msg }: { msg?: string | undefined; }) => void' is not assignable to type '(props: any) => ReactNode | Promise<ReactNode>'.
+      Type 'void' is not assignable to type 'ReactNode | Promise<ReactNode>'.
+src/components/__tests__/ErrorBoundary.test.tsx: error TS2786: 'Boom' cannot be used as a JSX component.
+  Its type '({ msg }: { msg?: string | undefined; }) => void' is not a valid JSX element type.
+    Type '({ msg }: { msg?: string | undefined; }) => void' is not assignable to type '(props: any) => ReactNode | Promise<ReactNode>'.
+      Type 'void' is not assignable to type 'ReactNode | Promise<ReactNode>'.
+src/components/__tests__/ErrorBoundary.test.tsx: error TS2786: 'Boom' cannot be used as a JSX component.
+  Its type '({ msg }: { msg?: string | undefined; }) => void' is not a valid JSX element type.
+    Type '({ msg }: { msg?: string | undefined; }) => void' is not assignable to type '(props: any) => ReactNode | Promise<ReactNode>'.
+      Type 'void' is not assignable to type 'ReactNode | Promise<ReactNode>'.
+src/components/__tests__/TodayDashboard.test.tsx: error TS2307: Cannot find module '../../domain/transaction' or its corresponding type declarations.
+src/components/pos/__tests__/CustomerCard.test.tsx: error TS2352: Conversion of type '{ student: { studentId: string; displayName: string; currentBalance: number; }; todayMenu: { itemName: string; price: number; vendorNameSnapshot: string; }; mode: "order"; orderedTodayCount: number; ... 6 more ...; focusZone: string; }' to type 'CustomerCardProps' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Types of property 'student' are incompatible.
+    Type '{ studentId: string; displayName: string; currentBalance: number; }' is missing the following properties from type 'StudentAccount': status, aliases, faceEnrollmentStatus, createdAt, and 2 more.
+src/components/pos/__tests__/CustomerCard.test.tsx: error TS2352: Conversion of type '{ student: { studentId: string; displayName: string; currentBalance: number; }; todayMenu: { itemName: string; price: number; vendorNameSnapshot: string; }; mode: "order"; orderedTodayCount: number; ... 7 more ...; studentTransactions: never[]; }' to type 'CustomerCardProps' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Types of property 'student' are incompatible.
+    Type '{ studentId: string; displayName: string; currentBalance: number; }' is missing the following properties from type 'StudentAccount': status, aliases, faceEnrollmentStatus, createdAt, and 2 more.
+src/components/pos/__tests__/CustomerCard.test.tsx: error TS2352: Conversion of type '{ focusZone: string; student: { studentId: string; displayName: string; currentBalance: number; }; todayMenu: { itemName: string; price: number; vendorNameSnapshot: string; }; mode: "order"; orderedTodayCount: number; ... 6 more ...; studentTransactions: never[]; }' to type 'CustomerCardProps' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Types of property 'student' are incompatible.
+    Type '{ studentId: string; displayName: string; currentBalance: number; }' is missing the following properties from type 'StudentAccount': status, aliases, faceEnrollmentStatus, createdAt, and 2 more.
+src/components/pos/__tests__/CustomerCard.test.tsx: error TS2593: Cannot find name 'beforeEach'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/CustomerCard.test.tsx: error TS2304: Cannot find name 'afterEach'.
+src/components/pos/__tests__/CustomerCard.test.tsx: error TS2783: 'transactionId' is specified more than once, so this usage will be overwritten.
+src/components/pos/__tests__/CustomerCard.test.tsx: error TS2593: Cannot find name 'beforeEach'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/CustomerCard.test.tsx: error TS2304: Cannot find name 'afterEach'.
+src/components/pos/__tests__/CustomerCard.test.tsx: error TS2783: 'transactionId' is specified more than once, so this usage will be overwritten.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'describe'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'vi'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'vi'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'vi'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'vi'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'vi'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'vi'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'vi'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'vi'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'describe'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'vi'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'vi'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'vi'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'vi'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/components/pos/__tests__/TransactionStatusView.test.tsx: error TS2304: Cannot find name 'expect'.
+src/components/report/__tests__/CashClosePanel.test.tsx: error TS2307: Cannot find module '../../domain/ledgerReport' or its corresponding type declarations.
+src/components/report/__tests__/LedgerGroupedTable.test.tsx: error TS2322: Type '{ studentId: string; studentNameSnapshot: string; latestCreatedAt: string; mealTotal: number; paidTotal: number; afterBalance: number; recordCount: number; transactions: { transactionId: string; ... 11 more ...; syncStatus: "local"; }[]; }[]' is not assignable to type 'LedgerGroup[]'.
+  Type '{ studentId: string; studentNameSnapshot: string; latestCreatedAt: string; mealTotal: number; paidTotal: number; afterBalance: number; recordCount: number; transactions: { transactionId: string; ... 11 more ...; syncStatus: "local"; }[]; }' is not assignable to type 'LedgerGroup'.
+    Types of property 'transactions' are incompatible.
+      Type '{ transactionId: string; studentId: string; studentNameSnapshot: string; type: "order"; businessDate: string; mealPrice: number; paidAmount: number; amount: number; note: string; afterBalance: number; createdAt: string; createdBy: string; syncStatus: "local"; }[]' is not assignable to type 'LedgerTransaction[]'.
+        Type '{ transactionId: string; studentId: string; studentNameSnapshot: string; type: "order"; businessDate: string; mealPrice: number; paidAmount: number; amount: number; note: string; afterBalance: number; createdAt: string; createdBy: string; syncStatus: "local"; }' is missing the following properties from type 'LedgerTransaction': menuNameSnapshot, vendorNameSnapshot, sourceDevice, revision
+src/components/report/__tests__/LedgerGroupedTable.test.tsx: error TS2322: Type '{ transactionId: string; studentId: string; studentNameSnapshot: string; type: "order"; businessDate: string; mealPrice: number; paidAmount: number; amount: number; note: string; afterBalance: number; createdAt: string; createdBy: string; syncStatus: "local"; }[]' is not assignable to type 'ReportTransactionView[]'.
+  Type '{ transactionId: string; studentId: string; studentNameSnapshot: string; type: "order"; businessDate: string; mealPrice: number; paidAmount: number; amount: number; note: string; afterBalance: number; createdAt: string; createdBy: string; syncStatus: "local"; }' is missing the following properties from type 'ReportTransactionView': menuNameSnapshot, vendorNameSnapshot
+src/components/report/__tests__/LedgerGroupedTable.test.tsx: error TS2322: Type '{ studentId: string; studentNameSnapshot: string; latestCreatedAt: string; mealTotal: number; paidTotal: number; afterBalance: number; recordCount: number; transactions: { transactionId: string; ... 11 more ...; syncStatus: "local"; }[]; }[]' is not assignable to type 'LedgerGroup[]'.
+  Type '{ studentId: string; studentNameSnapshot: string; latestCreatedAt: string; mealTotal: number; paidTotal: number; afterBalance: number; recordCount: number; transactions: { transactionId: string; ... 11 more ...; syncStatus: "local"; }[]; }' is not assignable to type 'LedgerGroup'.
+    Types of property 'transactions' are incompatible.
+      Type '{ transactionId: string; studentId: string; studentNameSnapshot: string; type: "order"; businessDate: string; mealPrice: number; paidAmount: number; amount: number; note: string; afterBalance: number; createdAt: string; createdBy: string; syncStatus: "local"; }[]' is not assignable to type 'LedgerTransaction[]'.
+        Type '{ transactionId: string; studentId: string; studentNameSnapshot: string; type: "order"; businessDate: string; mealPrice: number; paidAmount: number; amount: number; note: string; afterBalance: number; createdAt: string; createdBy: string; syncStatus: "local"; }' is missing the following properties from type 'LedgerTransaction': menuNameSnapshot, vendorNameSnapshot, sourceDevice, revision
+src/components/report/__tests__/LedgerGroupedTable.test.tsx: error TS2322: Type '{ transactionId: string; studentId: string; studentNameSnapshot: string; type: "expense"; businessDate: string; mealPrice: number; paidAmount: number; amount: number; note: string; afterBalance: number; createdAt: string; syncStatus: "local"; revision: number; sourceDevice: "pc"; }[]' is not assignable to type 'ReportTransactionView[]'.
+  Type '{ transactionId: string; studentId: string; studentNameSnapshot: string; type: "expense"; businessDate: string; mealPrice: number; paidAmount: number; amount: number; note: string; afterBalance: number; createdAt: string; syncStatus: "local"; revision: number; sourceDevice: "pc"; }' is missing the following properties from type 'ReportTransactionView': menuNameSnapshot, vendorNameSnapshot
+src/components/report/__tests__/ReportDateRangeControls.test.tsx: error TS2307: Cannot find module '../../domain/ledgerReport' or its corresponding type declarations.
+src/components/report/__tests__/ReportSummaryStats.test.tsx: error TS2307: Cannot find module '../../domain/ledgerReport' or its corresponding type declarations.
+src/components/report/__tests__/SettlementHistoryTable.test.tsx: error TS2307: Cannot find module '../../domain/cashClose' or its corresponding type declarations.
+src/domain/__tests__/cashClose.test.ts: error TS2353: Object literal may only specify known properties, and 'orderSalesAmount' does not exist in type 'LedgerTotals'.
+src/domain/__tests__/cashClose.test.ts: error TS2554: Expected 8-9 arguments, but got 7.
+src/domain/__tests__/cashClose.test.ts: error TS2554: Expected 8-9 arguments, but got 7.
+src/domain/__tests__/dailySettlement.test.ts: error TS2353: Object literal may only specify known properties, and 'orderSalesAmount' does not exist in type 'LedgerTotals'.
+src/domain/__tests__/ledgerSyncBoundary.test.ts: error TS2739: Type '{ settlementId: string; businessDate: string; status: "closed"; settlementRevision: number; orderCount: number; transactionCount: number; expectedCash: number; countedCash: number; difference: number; ... 4 more ...; revision: number; }' is missing the following properties from type 'DailySettlement': totalIncome, totalExpense, openingCash, netCash
+src/domain/__tests__/ledgerSyncBoundary.test.ts: error TS2820: Type '"transaction_corrected"' is not assignable to type 'LedgerAuditEventType'. Did you mean '"transaction_edited"'?
+src/domain/__tests__/posFlow.test.ts: error TS2322: Type '{ kind: "success"; transactionId: string; syncStatus: "queued"; }' is not assignable to type 'PosFlowState'.
+  Type '{ kind: "success"; transactionId: string; syncStatus: "queued"; }' is missing the following properties from type '{ kind: "success"; transactionId: string; syncStatus: "queued" | "synced" | "failed"; studentId?: string | undefined; mode: PosMode; paidAmountText: string; }': mode, paidAmountText
+src/domain/__tests__/posTransaction.test.ts: error TS2304: Cannot find name 'PosMode'.
+src/domain/__tests__/posTransaction.test.ts: error TS2304: Cannot find name 'PosSourceDevice'.
+src/domain/__tests__/transactionUtils.test.ts: error TS2593: Cannot find name 'describe'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/domain/__tests__/transactionUtils.test.ts: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/domain/__tests__/transactionUtils.test.ts: error TS2304: Cannot find name 'expect'.
+src/domain/__tests__/transactionUtils.test.ts: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/domain/__tests__/transactionUtils.test.ts: error TS2304: Cannot find name 'expect'.
+src/domain/__tests__/transactionUtils.test.ts: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/domain/__tests__/transactionUtils.test.ts: error TS2304: Cannot find name 'expect'.
+src/domain/__tests__/transactionUtils.test.ts: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/domain/__tests__/transactionUtils.test.ts: error TS2304: Cannot find name 'expect'.
+src/domain/__tests__/transactionUtils.test.ts: error TS2593: Cannot find name 'describe'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/domain/__tests__/transactionUtils.test.ts: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/domain/__tests__/transactionUtils.test.ts: error TS2304: Cannot find name 'expect'.
+src/domain/__tests__/transactionUtils.test.ts: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/domain/__tests__/transactionUtils.test.ts: error TS2304: Cannot find name 'expect'.
+src/domain/__tests__/transactionUtils.test.ts: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/domain/__tests__/transactionUtils.test.ts: error TS2304: Cannot find name 'expect'.
+src/domain/__tests__/transactionUtils.test.ts: error TS2593: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha` and then add 'jest' or 'mocha' to the types field in your tsconfig.
+src/domain/__tests__/transactionUtils.test.ts: error TS2304: Cannot find name 'expect'.
+src/domain/ledger.ts: error TS2304: Cannot find name 'TransactionType'.
+src/domain/ledger.ts: error TS2304: Cannot find name 'LedgerSyncStatus'.
+src/domain/ledger.ts: error TS2304: Cannot find name 'TransactionType'.
+src/domain/ledgerAudit.ts: error TS6133: 'tx' is declared but its value is never read.
+src/domain/ledgerAudit.ts: error TS6133: 'tx' is declared but its value is never read.
+src/domain/ledgerExport.ts: error TS2339: Property 'voidedAt' does not exist on type 'LedgerTransaction'.
+src/domain/ledgerExport.ts: error TS2339: Property 'voidedBy' does not exist on type 'LedgerTransaction'.
+src/domain/ledgerExport.ts: error TS2339: Property 'voidReason' does not exist on type 'LedgerTransaction'.
+src/domain/posTransaction.ts: error TS2739: Type '{ menuNameSnapshot: string; vendorNameSnapshot: string; }' is missing the following properties from type 'MenuSnapshot': menuPriceSnapshot, vendorIdSnapshot
+src/domain/transactionViews.ts: error TS6196: '_AssertReportCompat' is declared but never used.
+src/domain/transactionViews.ts: error TS6196: '_AssertWorkflowCompat' is declared but never used.
+src/firebase/__tests__/firestoreRules.spec.ts: error TS2591: Cannot find name 'node:fs'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+src/firebase/__tests__/firestoreRules.spec.ts: error TS2591: Cannot find name 'node:path'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+src/firebase/__tests__/firestoreRules.spec.ts: error TS2339: Property 'dirname' does not exist on type 'ImportMeta'.
+src/firebase/__tests__/firestoreRules.spec.ts: error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+src/firebase/__tests__/firestoreRules.spec.ts: error TS2591: Cannot find name 'process'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
+src/firebase/realtimeSubscriptions.ts: error TS2352: Conversion of type 'QuerySnapshot<DocumentData, DocumentData>' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'QuerySnapshot<DocumentData, DocumentData>'.
+src/hooks/__tests__/useCancelDialog.test.ts: error TS2352: Conversion of type '{ picked: Record<string, unknown> | null; allTx: Record<string, unknown>[]; viewDate: string; }' to type '{ picked: StudentAccount | null; allTx: WorkflowTransactionView[]; viewDate: string; allStudents?: StudentAccount[] | undefined; selectStudent?: ((studentId: string, source: string) => void) | undefined; operatorId?: string | undefined; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Types of property 'allTx' are incompatible.
+    Type 'Record<string, unknown>[]' is not comparable to type 'WorkflowTransactionView[]'.
+      Type 'Record<string, unknown>' is missing the following properties from type 'WorkflowTransactionView': transactionId, businessDate, type, amount, and 6 more.
+src/hooks/__tests__/useCancelDialog.test.ts: error TS2352: Conversion of type '{ picked: Record<string, unknown> | null; allTx: Record<string, unknown>[]; viewDate: string; }' to type '{ picked: StudentAccount | null; allTx: WorkflowTransactionView[]; viewDate: string; allStudents?: StudentAccount[] | undefined; selectStudent?: ((studentId: string, source: string) => void) | undefined; operatorId?: string | undefined; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Types of property 'allTx' are incompatible.
+    Type 'Record<string, unknown>[]' is not comparable to type 'WorkflowTransactionView[]'.
+      Type 'Record<string, unknown>' is missing the following properties from type 'WorkflowTransactionView': transactionId, businessDate, type, amount, and 6 more.
+src/hooks/__tests__/useCancelDialog.test.ts: error TS2352: Conversion of type '{ picked: Record<string, unknown> | null; allTx: Record<string, unknown>[]; viewDate: string; }' to type '{ picked: StudentAccount | null; allTx: WorkflowTransactionView[]; viewDate: string; allStudents?: StudentAccount[] | undefined; selectStudent?: ((studentId: string, source: string) => void) | undefined; operatorId?: string | undefined; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Types of property 'allTx' are incompatible.
+    Type 'Record<string, unknown>[]' is not comparable to type 'WorkflowTransactionView[]'.
+      Type 'Record<string, unknown>' is missing the following properties from type 'WorkflowTransactionView': transactionId, businessDate, type, amount, and 6 more.
+src/hooks/__tests__/useCancelDialog.test.ts: error TS2352: Conversion of type '{ picked: Record<string, unknown> | null; allTx: Record<string, unknown>[]; viewDate: string; }' to type '{ picked: StudentAccount | null; allTx: WorkflowTransactionView[]; viewDate: string; allStudents?: StudentAccount[] | undefined; selectStudent?: ((studentId: string, source: string) => void) | undefined; operatorId?: string | undefined; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Types of property 'allTx' are incompatible.
+    Type 'Record<string, unknown>[]' is not comparable to type 'WorkflowTransactionView[]'.
+      Type 'Record<string, unknown>' is missing the following properties from type 'WorkflowTransactionView': transactionId, businessDate, type, amount, and 6 more.
+src/hooks/__tests__/useCancelDialog.test.ts: error TS2352: Conversion of type '{ picked: Record<string, unknown> | null; allTx: Record<string, unknown>[]; viewDate: string; }' to type '{ picked: StudentAccount | null; allTx: WorkflowTransactionView[]; viewDate: string; allStudents?: StudentAccount[] | undefined; selectStudent?: ((studentId: string, source: string) => void) | undefined; operatorId?: string | undefined; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Types of property 'allTx' are incompatible.
+    Type 'Record<string, unknown>[]' is not comparable to type 'WorkflowTransactionView[]'.
+      Type 'Record<string, unknown>' is missing the following properties from type 'WorkflowTransactionView': transactionId, businessDate, type, amount, and 6 more.
+src/hooks/__tests__/useCancelDialog.test.ts: error TS2352: Conversion of type '{ picked: Record<string, unknown> | null; allTx: Record<string, unknown>[]; viewDate: string; }' to type '{ picked: StudentAccount | null; allTx: WorkflowTransactionView[]; viewDate: string; allStudents?: StudentAccount[] | undefined; selectStudent?: ((studentId: string, source: string) => void) | undefined; operatorId?: string | undefined; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Types of property 'allTx' are incompatible.
+    Type 'Record<string, unknown>[]' is not comparable to type 'WorkflowTransactionView[]'.
+      Type 'Record<string, unknown>' is missing the following properties from type 'WorkflowTransactionView': transactionId, businessDate, type, amount, and 6 more.
+src/hooks/__tests__/useExpenseFlow.test.ts: error TS2345: Argument of type '"out"' is not assignable to parameter of type 'ExpenseDirection'.
+src/hooks/__tests__/useFocusSync.test.ts: error TS2345: Argument of type 'Mock<Procedure | Constructable>' is not assignable to parameter of type '(text: string) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(text: string) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(text: string): void'.
+src/hooks/__tests__/useFocusSync.test.ts: error TS2345: Argument of type 'Mock<Procedure | Constructable>' is not assignable to parameter of type '(text: string) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(text: string) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(text: string): void'.
+src/hooks/__tests__/useIpadHandoff.test.ts: error TS2305: Module '"../../domain/student"' has no exported member 'Student'.
+src/hooks/__tests__/useIpadHandoff.test.ts: error TS2352: Conversion of type '{ ok: false; error: string; }' to type 'ValidateHandoffResult' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Property 'code' is missing in type '{ ok: false; error: string; }' but required in type '{ ok: false; code: "missing_student_id" | "invalid_action" | "unsupported_version" | "invalid_timestamp" | "invalid_source" | "expired"; }'.
+src/hooks/__tests__/useIpadHandoff.test.ts: error TS2352: Conversion of type '{ raw: string; source: string; }' to type 'ScannerInput' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '{ raw: string; source: string; }' is missing the following properties from type 'ScannerInput': rawCode, terminator
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(mode: PosMode) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(mode: PosMode) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(mode: PosMode): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(mode: PosMode) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(mode: PosMode) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(mode: PosMode): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(mode: PosMode) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(mode: PosMode) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(mode: PosMode): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(mode: PosMode) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(mode: PosMode) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(mode: PosMode): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(() => void) | undefined'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(() => void) | undefined'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(mode: PosMode) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(mode: PosMode) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(mode: PosMode): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(() => void) | undefined'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(() => void) | undefined'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(mode: PosMode) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(mode: PosMode) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(mode: PosMode): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(mode: PosMode) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(mode: PosMode) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(mode: PosMode): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(mode: PosMode) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(mode: PosMode) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(mode: PosMode): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(mode: PosMode) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(mode: PosMode) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(mode: PosMode): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(() => void) | undefined'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(() => void) | undefined'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(mode: PosMode) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(mode: PosMode) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(mode: PosMode): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(() => void) | undefined'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(() => void) | undefined'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(mode: PosMode) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(mode: PosMode) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(mode: PosMode): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(() => void) | undefined'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(() => void) | undefined'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(mode: PosMode) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(mode: PosMode) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(mode: PosMode): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(mode: PosMode) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(mode: PosMode) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(mode: PosMode): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(mode: PosMode) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(mode: PosMode) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(mode: PosMode): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(() => void) | undefined'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(() => void) | undefined'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(mode: PosMode) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(mode: PosMode) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(mode: PosMode): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(() => void) | undefined'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(() => void) | undefined'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(mode: PosMode) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(mode: PosMode) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(mode: PosMode): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(() => void) | undefined'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(() => void) | undefined'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(mode: PosMode) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(mode: PosMode) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(mode: PosMode): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '() => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '() => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(): void'.
+src/hooks/__tests__/useKeyboardShortcuts.test.ts: error TS2322: Type 'Mock<Procedure | Constructable>' is not assignable to type '(() => void) | undefined'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(() => void) | undefined'.
+src/hooks/__tests__/usePinnedStudent.test.ts: error TS2353: Object literal may only specify known properties, and 'balance' does not exist in type 'StudentAccount'.
+src/hooks/__tests__/usePinnedStudent.test.ts: error TS2353: Object literal may only specify known properties, and 'balance' does not exist in type 'StudentAccount'.
+src/hooks/__tests__/usePosColumnProps.test.ts: error TS2322: Type 'string' is not assignable to type 'PosFlowState'.
+src/hooks/__tests__/usePosColumnProps.test.ts: error TS2322: Type '"normal"' is not assignable to type 'PosMode'.
+src/hooks/__tests__/usePosColumnProps.test.ts: error TS2739: Type '{ itemName: string; price: number; vendorNameSnapshot: string; }' is missing the following properties from type 'TodayMenu': businessDate, vendorId, updatedAt, revision
+src/hooks/__tests__/usePosColumnProps.test.ts: error TS2352: Conversion of type 'Record<string, unknown>' to type 'StudentAccount' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Record<string, unknown>' is missing the following properties from type 'StudentAccount': studentId, displayName, status, currentBalance, and 5 more.
+src/hooks/__tests__/useSystemDate.test.ts: error TS2304: Cannot find name 'global'.
+src/hooks/__tests__/useTransactionCommit.test.ts: error TS2322: Type '"out"' is not assignable to type 'ExpenseDirection | undefined'.
+src/hooks/__tests__/useTransactionCommit.test.ts: error TS2345: Argument of type 'Mock<Procedure | Constructable>' is not assignable to parameter of type '(action: PosFlowEvent) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(action: PosFlowEvent) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(action: PosFlowEvent): void'.
+src/hooks/__tests__/useTransactionCommit.test.ts: error TS2345: Argument of type 'Mock<Procedure | Constructable>' is not assignable to parameter of type '(action: PosFlowEvent) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(action: PosFlowEvent) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(action: PosFlowEvent): void'.
+src/hooks/__tests__/useTransactionCommit.test.ts: error TS2345: Argument of type 'Mock<Procedure | Constructable>' is not assignable to parameter of type '(action: PosFlowEvent) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(action: PosFlowEvent) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(action: PosFlowEvent): void'.
+src/hooks/__tests__/useTransactionCommit.test.ts: error TS2345: Argument of type 'Mock<Procedure | Constructable>' is not assignable to parameter of type '(draft: PosTransactionDraft) => LedgerCommitResult'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(draft: PosTransactionDraft) => LedgerCommitResult'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(draft: PosTransactionDraft): LedgerCommitResult'.
+src/hooks/__tests__/useTransactionCommit.test.ts: error TS2561: Object literal may only specify known properties, but 'searchTextHint' does not exist in type '{ kind: "idle"; searchText: string; }'. Did you mean to write 'searchText'?
+src/hooks/__tests__/useTransactionCommit.test.ts: error TS2345: Argument of type 'Mock<Procedure | Constructable>' is not assignable to parameter of type '(action: PosFlowEvent) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(action: PosFlowEvent) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(action: PosFlowEvent): void'.
+src/hooks/__tests__/useTransactionCommit.test.ts: error TS2353: Object literal may only specify known properties, and 'searchTextHint' does not exist in type '{ kind: "committing"; studentId?: string | undefined; mode: PosMode; source: PosSelectionSource; paidAmountText: string; expenseAmount?: number | undefined; expenseNote?: string | undefined; expenseDirection?: ExpenseDirection | undefined; }'.
+src/hooks/__tests__/useTransactionCommit.test.ts: error TS2345: Argument of type 'Mock<Procedure | Constructable>' is not assignable to parameter of type '(action: PosFlowEvent) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(action: PosFlowEvent) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(action: PosFlowEvent): void'.
+src/hooks/__tests__/useTransactionCommit.test.ts: error TS2561: Object literal may only specify known properties, but 'searchTextHint' does not exist in type '{ kind: "idle"; searchText: string; }'. Did you mean to write 'searchText'?
+src/hooks/__tests__/useTransactionCommit.test.ts: error TS2345: Argument of type 'Mock<Procedure | Constructable>' is not assignable to parameter of type '(action: PosFlowEvent) => void'.
+  Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' is not assignable to type '(action: PosFlowEvent) => void'.
+    Type 'MockInstance<Procedure | Constructable> & (new (...args: any[]) => any) & {}' provides no match for the signature '(action: PosFlowEvent): void'.
+src/hooks/useFocusSync.ts: error TS2339: Property 'mode' does not exist on type 'PosFlowState'.
+  Property 'mode' does not exist on type '{ kind: "idle"; searchText: string; }'.
+src/hooks/useIpadHandoff.ts: error TS2305: Module '"../domain/student"' has no exported member 'Student'.
+src/hooks/useScannerInput.ts: error TS2305: Module '"../domain/student"' has no exported member 'Student'.
+src/providers/__tests__/FirebaseProvider.test.tsx: error TS2352: Conversion of type '{ app: Record<string, unknown>; auth: Record<string, unknown>; db: Record<string, unknown>; }' to type 'FirebaseServices' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Types of property 'app' are incompatible.
+    Type 'Record<string, unknown>' is missing the following properties from type 'FirebaseApp': name, options, automaticDataCollectionEnabled
+src/providers/__tests__/FirebaseProvider.test.tsx: error TS2352: Conversion of type '{ app: Record<string, unknown>; auth: Record<string, unknown>; db: Record<string, unknown>; }' to type 'FirebaseServices' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Types of property 'app' are incompatible.
+    Type 'Record<string, unknown>' is missing the following properties from type 'FirebaseApp': name, options, automaticDataCollectionEnabled
+src/providers/__tests__/FirebaseProvider.test.tsx: error TS2322: Type '(access: OperatorAccess) => void' is not assignable to type '(a: Record<string, unknown>) => void'.
+  Types of parameters 'access' and 'a' are incompatible.
+    Type 'Record<string, unknown>' is not assignable to type 'OperatorAccess'.
+      Type 'Record<string, unknown>' is missing the following properties from type '{ ok: false; reason: "inactive" | "signed_out" | "wrong_domain" | "not_whitelisted"; profile?: OperatorProfile | undefined; }': ok, reason
+src/providers/__tests__/firebaseProviderCleanup.test.tsx: error TS2352: Conversion of type '{ auth: Record<string, unknown>; db: Record<string, unknown>; app: Record<string, unknown>; }' to type 'FirebaseServices' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Types of property 'app' are incompatible.
+    Type 'Record<string, unknown>' is missing the following properties from type 'FirebaseApp': name, options, automaticDataCollectionEnabled
+src/providers/__tests__/firebaseProviderCleanup.test.tsx: error TS2322: Type '(access: OperatorAccess) => void' is not assignable to type '(a: Record<string, unknown>) => void'.
+  Types of parameters 'access' and 'a' are incompatible.
+    Type 'Record<string, unknown>' is not assignable to type 'OperatorAccess'.
+      Type 'Record<string, unknown>' is missing the following properties from type '{ ok: false; reason: "inactive" | "signed_out" | "wrong_domain" | "not_whitelisted"; profile?: OperatorProfile | undefined; }': ok, reason
+src/storage/__tests__/crashDraft.test.ts: error TS2352: Conversion of type 'Record<string, unknown>' to type 'IDBOpenDBRequest' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Record<string, unknown>' is missing the following properties from type 'IDBOpenDBRequest': onblocked, onupgradeneeded, addEventListener, removeEventListener, and 8 more.
+src/storage/__tests__/migration.test.ts: error TS2352: Conversion of type 'PosState' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PosState'.
+src/storage/__tests__/migration.test.ts: error TS2352: Conversion of type 'PosState' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PosState'.
+src/storage/__tests__/migration.test.ts: error TS2352: Conversion of type 'PosState' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PosState'.
+src/storage/__tests__/migration.test.ts: error TS2352: Conversion of type 'PosState' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PosState'.
+src/storage/__tests__/migration.test.ts: error TS2352: Conversion of type 'StudentAccount[]' to type 'Record<string, unknown>[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'StudentAccount' is not comparable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'StudentAccount'.
+src/storage/__tests__/migration.test.ts: error TS2352: Conversion of type 'LedgerTransaction[]' to type 'Record<string, unknown>[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'LedgerTransaction' is not comparable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'LedgerTransaction'.
+src/storage/__tests__/migration.test.ts: error TS2352: Conversion of type 'LedgerTransaction[]' to type 'Record<string, unknown>[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'LedgerTransaction' is not comparable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'LedgerTransaction'.
+src/storage/__tests__/migration.test.ts: error TS2352: Conversion of type 'Vendor[]' to type 'Record<string, unknown>[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Vendor' is not comparable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'Vendor'.
+src/storage/__tests__/migration.test.ts: error TS2352: Conversion of type 'Vendor[]' to type 'Record<string, unknown>[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Vendor' is not comparable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'Vendor'.
+src/storage/__tests__/migration.test.ts: error TS2352: Conversion of type 'TodayMenu' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'TodayMenu'.
+src/storage/__tests__/migration.test.ts: error TS2352: Conversion of type 'TodayMenu' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'TodayMenu'.
+src/storage/__tests__/migration.test.ts: error TS2352: Conversion of type 'StudentAccount[]' to type 'Record<string, unknown>[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'StudentAccount' is not comparable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'StudentAccount'.
+src/storage/__tests__/migration.test.ts: error TS2352: Conversion of type 'LedgerTransaction[]' to type 'Record<string, unknown>[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'LedgerTransaction' is not comparable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'LedgerTransaction'.
+src/storage/__tests__/migration.test.ts: error TS2352: Conversion of type 'Vendor[]' to type 'Record<string, unknown>[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Vendor' is not comparable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'Vendor'.
+src/storage/__tests__/migration.test.ts: error TS2352: Conversion of type 'TodayMenu' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'TodayMenu'.
+src/storage/__tests__/migration.test.ts: error TS2352: Conversion of type 'PosState' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PosState'.
+src/storage/__tests__/migration.test.ts: error TS2352: Conversion of type 'PosState' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PosState'.
+src/storage/__tests__/storageHealth.test.ts: error TS1484: 'StorageHealth' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.
+src/storage/migration.ts: error TS2352: Conversion of type 'Record<string, unknown>[]' to type 'StudentAccount[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Record<string, unknown>' is missing the following properties from type 'StudentAccount': studentId, displayName, status, currentBalance, and 5 more.
+src/storage/migration.ts: error TS2352: Conversion of type 'Record<string, unknown>' to type 'PosState' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Record<string, unknown>' is missing the following properties from type 'PosState': students, transactions, vendors, todayMenu, and 36 more.
+src/storage/posStateValidator.ts: error TS18046: 'r.revision' is of type 'unknown'.
+src/storage/posStateValidator.ts: error TS18046: 'r.revision' is of type 'unknown'.
+src/storage/posStateValidator.ts: error TS18046: 'r.price' is of type 'unknown'.
+src/storage/posStateValidator.ts: error TS18046: 'r.revision' is of type 'unknown'.
+src/storage/posStateValidator.ts: error TS18046: 'r.revision' is of type 'unknown'.
+src/store/__tests__/ledgerStore.test.ts: error TS2352: Conversion of type 'PosState | Promise<PosState> | undefined' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<PosState>' is not comparable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'Promise<PosState>'.
+src/store/__tests__/ledgerStore.test.ts: error TS2352: Conversion of type 'PosState | Promise<PosState> | undefined' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<PosState>' is not comparable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'Promise<PosState>'.
+src/store/__tests__/ledgerStore.test.ts: error TS2352: Conversion of type 'PosState | Promise<PosState> | undefined' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<PosState>' is not comparable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'Promise<PosState>'.
+src/store/__tests__/ledgerStore.test.ts: error TS2304: Cannot find name 'PosState'.
+src/store/__tests__/ledgerStore.test.ts: error TS2352: Conversion of type 'PosState | Promise<PosState> | undefined' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Promise<PosState>' is not comparable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'Promise<PosState>'.
+src/store/__tests__/paymentActions.test.ts: error TS2339: Property 'commitPaymentTransaction' does not exist on type 'PosState'.
+src/store/__tests__/paymentActions.test.ts: error TS2339: Property 'commitPaymentTransaction' does not exist on type 'PosState'.
+src/store/__tests__/paymentActions.test.ts: error TS2339: Property 'commitPaymentTransaction' does not exist on type 'PosState'.
+src/store/__tests__/paymentActions.test.ts: error TS2339: Property 'commitPaymentTransaction' does not exist on type 'PosState'.
+src/store/__tests__/paymentActions.test.ts: error TS2339: Property 'commitPaymentTransaction' does not exist on type 'PosState'.
+src/store/__tests__/paymentActions.test.ts: error TS2339: Property 'commitPaymentTransaction' does not exist on type 'PosState'.
+src/store/__tests__/posPersistence.test.ts: error TS2554: Expected 1 arguments, but got 0.
+src/store/__tests__/posPersistence.test.ts: error TS2345: Argument of type '([arg]: [{ message: string; }]) => boolean' is not assignable to parameter of type '(value: any[], index: number, array: any[][]) => unknown'.
+  Types of parameters '__0' and 'value' are incompatible.
+    Type 'any[]' is not assignable to type '[{ message: string; }]'.
+      Target requires 1 element(s) but source may have fewer.
+src/store/__tests__/transactionActions.test.ts: error TS2739: Type '{ menuNameSnapshot: string; vendorNameSnapshot: string; }' is missing the following properties from type 'MenuSnapshot': menuPriceSnapshot, vendorIdSnapshot
+src/store/posActions/expenseActions.ts: error TS2739: Type '{ menuNameSnapshot: string; vendorNameSnapshot: string; }' is missing the following properties from type 'MenuSnapshot': menuPriceSnapshot, vendorIdSnapshot
+src/store/posPersistence.ts: error TS2322: Type 'PersistStorage<unknown, unknown>' is not assignable to type 'PersistStorage<PosState, unknown>'.
+  The types returned by 'getItem(...)' are incompatible between these types.
+    Type 'StorageValue<unknown> | Promise<StorageValue<unknown> | null> | null' is not assignable to type 'StorageValue<PosState> | Promise<StorageValue<PosState> | null> | null'.
+      Type 'StorageValue<unknown>' is not assignable to type 'StorageValue<PosState> | Promise<StorageValue<PosState> | null> | null'.
+        Type 'StorageValue<unknown>' is not assignable to type 'StorageValue<PosState>'.
+          Type 'unknown' is not assignable to type 'PosState'.
+src/store/posPersistence.ts: error TS2352: Conversion of type 'PosState' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PosState'.
+src/store/posPersistence.ts: error TS2769: No overload matches this call.
+  Overload 1 of 4, '(target: {}, source: { auditEvents: LedgerAuditEvent[]; dailySettlements: DailySettlement[]; businessDateStatuses: Record<string, BusinessDateStatus>; ... 7 more ...; todayMenu: TodayMenu; }): { ...; }', gave the following error.
+    Argument of type 'PosState | undefined' is not assignable to parameter of type '{}'.
+      Type 'undefined' is not assignable to type '{}'.
+  Overload 2 of 4, '(target: object, ...sources: any[]): any', gave the following error.
+    Argument of type 'PosState | undefined' is not assignable to parameter of type 'object'.
+      Type 'undefined' is not assignable to type 'object'.
