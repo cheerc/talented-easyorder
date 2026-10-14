@@ -32,10 +32,10 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 | [`sessionActions.ts`](../../frontend/src/store/posActions/sessionActions.ts) 的 `setBusinessDateStatus`、[`posTypes.ts`](../../frontend/src/store/posTypes.ts)、[`selectors.ts`](../../frontend/src/store/selectors.ts) | **裸 setter，未連 UI：** `setBusinessDateStatus(date,status)` 無條件直接改日期狀態，雖經 selector 暴露，repo 搜尋沒有非測試畫面呼叫。`setTodayMenu` 亦保留舊單菜單 setter，未見目前畫面呼叫。測試會直接呼叫這些 API。它們不得成為雲端命令或授權入口。 | P05 起 Rules 僅允許已定義 command；P11 只以關帳／重開命令轉換日期狀態。 |
 | [`menuActions.ts`](../../frontend/src/store/posActions/menuActions.ts) 的 `setVendors`、[`VendorsScreen.tsx`](../../frontend/src/components/screens/VendorsScreen.tsx) | **正式 UI 可達的整份清單覆寫：** F4 每次新增／編輯／停用／恢復／移除後以 `setVendors(vendors[])` 取代整份陣列；沒有逐筆雲端 revision／衝突控制。 | P07 改為逐筆 Vendor command，保留刪除 tombstone 與歷史。 |
 | [`practiceDataActions.ts`](../../frontend/src/store/posActions/practiceDataActions.ts)、[`PracticeDataPanel.tsx`](../../frontend/src/components/screens/PracticeDataPanel.tsx)、[`FaceTabletSimulator.tsx`](../../frontend/src/components/screens/FaceTabletSimulator.tsx) | **本機 prototype／local-only UI：** 空白／範例資料、snapshot restore、只清練習交易、模擬刷臉、裝置狀態及註冊更新，僅在 `!fb` 時顯示；`prototype` mode 即使有 Firebase env 也不初始化 Firebase，且使用獨立 port 與 storage namespace。 | 保留 prototype 訓練用途；P02/P13 確保正式 UI 不掛載、不呼叫這些動作。 |
-| [`studentRepository.ts`](../../frontend/src/firebase/studentRepository.ts)、[`firebaseActions.ts`](../../frontend/src/store/posActions/firebaseActions.ts) | **未接 UI 的 Firestore 寫入程式，另有單元測試：** store 暴露 `addStudent`／`disableStudent`，但目前畫面沒有呼叫。 | P05–P06 以新 schema command 替代；不可當正式學生寫入流程。 |
+| [`studentRepository.ts`](../../frontend/src/firebase/studentRepository.ts)、[`firebaseActions.ts`](../../frontend/src/store/posActions/firebaseActions.ts)、[`posStore.ts`](../../frontend/src/store/posStore.ts)、[`selectors.ts`](../../frontend/src/store/selectors.ts) | **存在非測試的舊 Firestore writer，但未接目前畫面：** `createFirebaseActions()` 已接入 store，selectors 也暴露 `addStudent`／`disableStudent`；它們會呼叫舊 `studentRepository` 寫入舊 schema。repo 搜尋未找到 screen/component 呼叫端，所以目前不是 active Cloud UI 流程，但不能稱為沒有非測試 caller。 | P05–P06 以新 schema command 替代並移除／明確隔離舊 writer；不得讓它成為第二條正式學生寫入路徑。 |
 | [`ledgerRepository.ts`](../../frontend/src/firebase/ledgerRepository.ts) | **未接 UI 的舊 Firestore 寫入程式：** `commitLedgerOnline` 以 transaction 直接新增舊 schema 交易並增量更新學生餘額；`commitLedgerOfflineBatch` 用 `writeBatch` 將交易與餘額更新寫入佇列。沒有目前 UI 呼叫端。 | P05 起以單筆 immutable command 原子更新全部受控投影；P08–P10 逐項驗收冪等與重送。移除舊離線補送語義。 |
 | [`settlementRepository.ts`](../../frontend/src/firebase/settlementRepository.ts)、[`realtimeSubscriptions.ts`](../../frontend/src/firebase/realtimeSubscriptions.ts) | **未接業務 UI 的舊程式，部分有測試：** settlement repository 提供 offline close attempt、online promotion、cash adjustment 寫入；realtime subscription 可訂閱舊集合。除 `authService` 的白名單訂閱外，業務訂閱與寫入無畫面呼叫端。 | P11–P13 依新命令／讀取投影重做；不沿用舊 pending/offline 關帳。 |
-| [`firebaseApp.ts`](../../frontend/src/firebase/firebaseApp.ts) 的 `persistentLocalCache`／`persistentMultipleTabManager` | **設定已接入 cloud 模式；業務程式目前未用：** Firestore persistent cache 可快取本機資料；Firestore SDK 對離線寫入具排隊行為。舊 `writeBatch`／offline close functions 同樣未被 UI 呼叫，不能宣稱它們是正在同步的正式帳務。 | 新規格是 PC online-only；P13 移除正式帳務離線佇列與本機未確認成功狀態。 |
+| [`firebaseApp.ts`](../../frontend/src/firebase/firebaseApp.ts) 的 Firestore SDK cache 設定 | **Firestore SDK cache 與 Zustand store persistence 是兩層設定。** P02 的 cloud store 記憶體 persistence 不代表 `firebaseApp.ts` 已把 Firestore SDK 改成 `memoryLocalCache`；SDK cache 遷移仍是 P13 planned。Firestore SDK 的離線寫入排隊語義也未因此移除。舊 `writeBatch`／offline close functions 同樣未被 UI 呼叫，不能宣稱它們是正在同步的正式帳務。 | 新規格是 PC online-only；P13 驗收 SDK memory cache、移除正式帳務離線佇列與本機未確認成功狀態。 |
 | [`faceActions.ts`](../../frontend/src/store/posActions/faceActions.ts)、[`ipadHandoff.ts`](../../frontend/src/domain/ipadHandoff.ts)、iPad 舊 handoff／FaceOrder 計畫 | **模擬／歷史程式，沒有正式雲端入口：** `FaceTabletSimulator` 僅 local-only；舊 iPad handoff 不應接入新 PC 正式資料流程。交易來源字串 `ipad_handoff` 仍須保留作歷史來源辨識。 | R7 對應 spec §5、§12；Android 另案，不改 Android repo、不開舊 iPad 雲端寫入。 |
 | [`deploy.sh`](../../deploy.sh)、[`workflow-lib.sh`](../../workflow-lib.sh)、[`docs/ops/DEPLOYMENT-GUIDE.md`](DEPLOYMENT-GUIDE.md) | **舊部署依賴，非本輪部署依據：** deploy script 透過 `PAYROLL_DIR` 讀 payroll `firestore.rules`，合併後部署 rules；缺 `.env` 時有從 payroll 複製 Firebase config 的流程；舊 guide 寫明共用 payroll project，也含由 payroll 側再部署 rules 的命令。這些只證明 repo 內存在舊依賴，**不能證明曾部署、目前 project ID、production 資料或帳單狀態**。 | P17 改為固定獨立 EasyOrder Spark 目標與使用者本機部署流程。勿執行本舊流程；本次未讀取／複製任何 `.env` 或 credential，未改 payroll 資源。 |
 | [`firestore.rules`](../../firestore.rules)、[`firestore.indexes.json`](../../firestore.indexes.json)、Firestore rules tests | **舊 schema 與測試：** rules 只含 operators、students、transactions、daily settlements 等既有結構；tests 使用 emulator/fixture，不能證明新 Rules 或 production 資料安全。 | P01 先以 emulator 證明新 Rules 關鍵交易；P05 後才把經證明的規則搬入正式檔案。 |
@@ -87,69 +87,73 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - P00 當時沒有本地 emulator，原因是下載 `storage.googleapis.com` 曾回 HTTP 403 `Domain forbidden`；該歷史阻擋在 P01 期間已解除。P00 當時尚無 P01 proof suite 或任何新 Rules 驗證。
 - P00 沒有跑 app tests、build、Firestore emulator、Rules suite、production smoke/deploy；因此不宣稱 P01–P18 任一雲端驗收已通過。
 
-## P01 Rules 可行性 proof（進行中；尚未通過 review／驗收）
+## P01 Rules 可行性 proof（已合併 #472；以下保留歷史 checkpoint）
 
 ### 邊界與目前狀態
 
-- P01 base：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`（P00 #471 merge）；實作分支 `codex/backend-p01-rules-proof`；draft PR [#472](https://github.com/cheerc/talented-easyorder/pull/472)。初版行為 RED source `6ca1545a8e97df4a96c8a75c5429f35f5438a2a9` 的 Actions run [38514043015](https://github.com/cheerc/talented-easyorder/actions/runs/38514043015) 真實日誌為 2 tests、1 passed、1 failed、0 skipped；預期的額外未命令交易 `assertFails` 因交易實際成功而失敗，證明寬鬆 fixture 的行為 RED。
+- P01 base：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`（#471 實際 merge SHA）；PR [#472](https://github.com/cheerc/talented-easyorder/pull/472) 已合併，GitHub API 實際 merge SHA `e7c406c93af197cda0bedaa220a4575728612f0f`。以下 run/source 是開發期間的歷史 checkpoint，不等同最終合併狀態。初版行為 RED source `6ca1545a8e97df4a96c8a75c5429f35f5438a2a9` 的 Actions run [38514043015](https://github.com/cheerc/talented-easyorder/actions/runs/38514043015) 真實日誌為 2 tests、1 passed、1 failed、0 skipped；預期的額外未命令交易 `assertFails` 因交易實際成功而失敗，證明寬鬆 fixture 的行為 RED。
 - 歷史 tight WIP source `520dd2de75ede44d41becbb9617a872aea9d4d25` 的真 Emulator run 為 26 tests、18 passed、8 failed、0 skipped，exit 1；當時日誌包含 1000-expression-limit 訊息。歷史調查亦發現，這段 WIP 修正迭代有 command `reason`／`cashEffect` schema 未對齊、合法 helper 缺 seed operators／lease 前置資料、`withSecurityRulesDisabled` callback 回傳值未正確取得，以及零收款 delta 遇到 `-Number(0)` 等缺陷。這些是該迭代的混合診斷，不能據此推論 schema 正確的合法模型也不可行。checkpoint 摘要保留於[歷史 expression-limit 記錄](diagnostics/p01-rules-expression-limit-wip.txt)，其當時結論不代表目前結論。
-- 後續 source `5c55936fc0a0cbc82da3058b4a466364a0d0da1f` 的完整真 Emulator proof 為 exit 0、30 passed、0 failed、0 skipped；正向鏈包含 Close → Reopen → 新訂單 → 再 Close，settlement revision 到 3。這是該 checkpoint 的工程測試證據，不是 P01 最終 GREEN：SOL review 仍發現必要 head／student／transaction writer 未被中央強制實際推進、攻擊者可省略 writer 並把 command snapshot 改成未變 server map、settlement revision 仍硬編碼 1／2／3、新交易的 `studentNameSnapshot` 未與伺服器讀到的學生顯示名比較，以及部分負測 actor 不匹配而掩蓋目標防線。這些是阻擋項，作者仍在同一 PR 修正；P02 不得開始。PR 最新 head／CI 結果以 PR body 為權威；handoff 與 phase receipt 見[開發交接入口](../DEVELOPMENT-HANDOFF.md)。
+- 後續 source `5c55936fc0a0cbc82da3058b4a466364a0d0da1f` 的真 Emulator proof 為 exit 0、30 passed、0 failed、0 skipped；正向鏈包含 Close → Reopen → 新訂單 → 再 Close，settlement revision 到 3。這只是當時工程 checkpoint，不是最終 GREEN：SOL review 後續仍找到必要 head／student／transaction writer 可省略、command snapshot 可偽造成未變 server map、settlement revision 硬編碼、新交易 `studentNameSnapshot` 未比對，以及部分負測 actor 不匹配等缺口。這些當時確實阻擋合併；歷史狀態已在 #472 合併前處理，不能把此 checkpoint 的 30 pass 說成 P01 最終通過依據。後續 source、合併 SHA 與最終結果以 GitHub PR body／merge 狀態為準；phase receipt 見[開發交接入口](../DEVELOPMENT-HANDOFF.md)。
 - Actions 的 CI checkpoint commit `b4201b9c99520a821250dec5f087e097c1bf0d13`、run [38519397752](https://github.com/cheerc/talented-easyorder/actions/runs/38519397752) 對應上述 `5c55936` proof 狀態。Coordinator 讀取原始 Actions logs：build-and-test 與 e2e jobs 成功；一般 Vitest 為 1232 passed／38 skipped（其中 30 個 proof 測試與 8 個舊 Rules 測試在無 emulator 的一般 job 中 skip），獨立舊 Rules Emulator suite 為 8 passed，獨立 proof JSON 為 30 tests／30 passed／0 failed／0 skipped，e2e 為 10 passed。這仍是有上述 review 缺口的中間 checkpoint，不是最終 SHA 的 merge gate。
 - 新的 [cloud Rules proof suite](../../frontend/src/firebase/__tests__/cloudRulesProof.spec.ts) 只透過 `initializeTestEnvironment` 載入 [`cloudRulesProof.rules`](../../frontend/src/firebase/__tests__/fixtures/cloudRulesProof.rules)；fixture 不在 `firebase.json` 或 production rules 部署路徑。production [`firestore.rules`](../../firestore.rules) 本 phase 不改，沒有部署。
 - Cloud agent 僅使用本地／GitHub runner 的 `demo-easyorder` Emulator 與匿名 synthetic fixtures；沒有連線到 production、payroll、Android 或任何真實資料。此 proof 不是正式功能部署或本人營運驗收。
 - RED scaffold 的行為已由上述 Actions run 驗證：匿名五文件 CreateOrder 同批附加不受 command 管理的 extra transaction；寬鬆 fixture 先讓它成功作為負例見證，隨後 `assertFails` 的拒絕斷言因交易實際成功而失敗。此 RED 僅證明該攻擊在寬鬆 fixture 被放行，不代表 tight Rules 或正式 Rules 的狀態。
 - Emulator CI 已加 Java 21、明確 `--project demo-easyorder --only firestore`、`EASYORDER_REQUIRE_CLOUD_RULES_PROOF=true` 與 Vitest JSON gate；runner exit code 優先保留，另拒絕缺報告、測試數為零、全 skipped、失敗或計數欄位無效。一般本機 Vitest 無 emulator 時可明確 skip；CI 必須因缺 host 而 fail closed。
 - Emulator prerequisite 已就緒：Node `v24.19.0`、Java `21.0.12.1`、Firebase CLI `14.27.0`；官方 Firestore Emulator `1.19.8` JAR 安裝完成，SHA-256 `9d43599ed6151199e8d604dc87fac51218e49e5f3a48519b1ae560bbe5e3382d` 與鎖定 firebase-tools metadata 相符。先前 GitHub Actions log host 的 403 亦已解除，本次讀取 RED run 真實日誌；沒有用 artifact 搬運。
-- 最終 no-cache 呼叫預算與 expression/access limit 驗收仍待作者修正及實測：Create／Correct／Void 各 18 calls，首次 Close 14，後續 Close／Reopen 15；每個 write 不超過 10 calls、每 transaction 不超過 20 calls。需按實際 Rules path 證明，不能依賴 SDK 快取；設計數字及驗收契約見 spec §7 及計畫 P01。歷史 tight WIP 的 1000-expression 訊息不是這項驗收的定論。
+- P01 最終合併 SHA `e7c406c93af197cda0bedaa220a4575728612f0f` 的 test-only proof 覆蓋所選合法正向案例、Rules 靜態閉合檢查、拒絕後 atomic unchanged 與已列 lease/日期 guard。歷史負例中共同 builder 當時未成立，rules 見證只是一個 fixture/一次 call-graph 導致的 1000-expression-cap 診斷；它不是 corrected schema 的合法交易也不可行的結論。合併 proof 有 positive cases 通過，但範圍只限選定操作，並非完整 22-kind，也不宣稱每個 guard 都有一個完全隔離的測試。呼叫預算仍須在後續正式 command kinds 啟用時按實際 Rules path 重算並用 Emulator 驗證；設計數字與契約見 spec §7 及計畫 P01。
 
 ### 本階段本地診斷
 
 - 於 P01 base 上，在 `frontend/` 重跑 `node --version`、`npx --no-install tsc --version` 及 `npx --no-install tsc -p tsconfig.app.json --noEmit`：Node `v24.19.0`、TypeScript `Version 6.0.3`、真實 exit **2**、diagnostic headers **279**。將去行號後的完整輸出逐筆與 P00 [baseline](baselines/75e7a96-tsc-app.txt) 比較，順序／重複項相同，無新增診斷；新 suite 使用 Vite `?raw` fixture import，避免本檔增加 app TypeScript baseline errors。這個既有 compiler failure 不是 P01 Rules failure，也不是此 phase 修 bug 範圍。
 - `npx --no-install eslint src/firebase/__tests__/cloudRulesProof.spec.ts` exit 0。未在無 emulator 環境把 skip 當 Rules pass；初始本地 Vitest JSON 為 2 total、0 passed、0 failed、2 skipped，僅確認 skip 行為，不算 Rules 證據。
-- `reason` 與 `cashEffect` 頂層欄位目前仍待校準至 spec §5／§7；下一個 P01 WIP 應把理由／現金貢獻前後值、delta、reasonKind、refundAmount 納入 exact schema 和規則斷言，並測防止修正被偽標 refund 或退款在關帳 expectedCash 重複扣除。
-- P01 完整 RED／GREEN、expression/call limit acceptance、SOL review 及 required checks 已於 PR #472 完成，並由 Coordinator 於 2026-10-14 merge 至 main（commit `e7c406ce59ec4779268f760dafa3bb006f1ae8d4`）。P02 依交接程序正式啟動。
+- 上述 `reason`／`cashEffect` 未對齊、fixture helper 前置資料、callback return、`-0` 等是歷史 WIP 診斷，不是目前 P01 待辦。PR #472 已於 2026-10-14 合併；當時 required checks／SOL review gate 通過後才啟動 P02。此節保留早期 checkpoints 供追溯，遇到矛盾以最終 GitHub merge 狀態與本段結果為準。
 
 ## P02 雲端 command／投影介面與模式隔離（已合併 #473）
 
-- 已於 2026-10-14 由 Coordinator 完成 review 並 merge 至 main（merge commit `bc5bb250db2687cfa75043bf72462e0cae25e985`）。
-- 驗收成果：L01–L04 與投影數學全數通過，cloud/prototype 邊界與記憶體快取隔離就緒。
+- 已於 2026-10-14 由 Coordinator 完成 review 並 merge 至 main（GitHub API 實際 merge SHA `bc5bb2588e616f40a605ea8cd682b1d1642bbc71`）。
+- 驗收成果：L01–L04 與投影數學全數通過；Zustand cloud store 的記憶體 persistence 與 prototype 分離。這不代表 Firestore SDK cache 已改用 memory cache；SDK cache 遷移仍列 P13。
 
-## P03 Google 登入與等權白名單（實作完成，待 review）
+## P03 Google 登入與等權白名單（已合併 #474）
 
-### 範圍與產物
+- 已於 2026-10-14 由 Coordinator 完成 review 並 merge 至 main（實際 merge SHA `fd8cba1b84c0b2146c1f450192e2c99739193e46`）。
+- 驗收成果：A01 等權白名單測試全數通過，未核准畫面、browserSessionPersistence 與 operators 規則就緒。
 
-- Base：`bc5bb250db2687cfa75043bf72462e0cae25e985`（PR #473 merge commit）
-- 分支：`codex/backend-p03-google-auth`
-- 修改與新建產物：
-  1. `firestore.rules`：production Rules 加入 operators 等權白名單驗證（`operators/{uid}` 讀取限本人，禁止 client create/update/delete/list，業務資料 students/transactions/commands/days/vendors/system 全面 deny，無 role schema）。
-  2. `frontend/src/firebase/__tests__/firestoreRules.spec.ts`：更新為完整 A01 測試套件（涵蓋核准帳號等權讀取本人、跨 UID 讀取拒絕、list 拒絕、自建/修改/刪除拒絕、同網域未核准拒絕、改 email 拒絕、非 Google provider 拒絕、未驗證 email 拒絕、停用帳號拒絕業務資料、業務資料全面 deny）。
-  3. `frontend/src/firebase/authService.ts`：Google sign-in 驗證（要求 `email_verified=true` 與 Google provider）、設定 `browserSessionPersistence`、檢查 `operators/{uid}` active 與 email 精確相符、等權無 role、登出清快取與 Auth。
-  4. `frontend/src/auth/AuthGate.tsx`：未核准帳號顯示「尚未取得使用權」（提供 Email 與 UID 供維護者核准）、停用帳號顯示停用通知、未驗證/非 Google 提示，白名單通過前絕對不渲染業務資料。
-  5. `frontend/src/providers/FirebaseProvider.tsx`：監聽 operator 文件與 Auth 狀態，即時攔截停用狀態。
-  6. `frontend/src/firebase/operatorAdmin.ts`：本地初始化工具最小輔助，供維護者本機建立/更新等權操作員文件。
-  7. 單元測試：`AuthGate.test.tsx`、`operatorAdmin.test.ts`。
+## P04 全公司單一活躍 Google 身分使用權租約（PR #475 review/rework；尚未通過）
 
-### 驗收證據
+### 範圍與狀態
 
-1. **RED 驗證**：既有 `firestore.rules` 執行新 A01 測試時，因舊有 `@talented.com.tw` 與舊 RBAC 限制，A01.1 與 A01.9 exit 1 失敗（2 failed / 8 passed）。
-2. **GREEN 驗證**：更新 `firestore.rules` 後，在 Firestore Emulator 下執行 `firestoreRules.spec.ts`，10 passed（10/10）全部通過。
-3. **P01 Rules proof 回歸驗證**：在 Emulator 下執行 `cloudRulesProof.spec.ts`，36 passed（36/36）全部通過。
-4. **單元與元件測試**：
-   - `npx vitest run src/firebase/__tests__/authService.test.ts`：6 passed（6/6）。
-   - `npx vitest run src/auth/__tests__/AuthGate.test.tsx`：5 passed（5/5）。
-   - `npx vitest run src/firebase/__tests__/operatorAdmin.test.ts`：4 passed（4/4）。
-5. **全套件 Vitest 執行**：
-   - `cd frontend && npx vitest run`：138 passed | 2 skipped (140 test files), 1268 passed | 46 skipped (1314 tests)，無任何測試失敗或回歸。
-6. **Lint 與 Build**：
-   - `npm run lint`：exit 0，無任何 error 或 warning。
-   - `npm run build`：exit 0，Vite production build 成功。
-7. **TypeScript app diagnostics 比對**：
-   - 命令：`npx --no-install tsc -p tsconfig.app.json --noEmit`
-   - base (`bc5bb25`)：exit 2, diagnostics 295
-   - head (P03)：exit 2, diagnostics 295
-   - 零新增診斷錯誤。
-8. **邊界防守**：
-   - 業務資料嚴格保持 deny（P04 租約、P05 寫入器才開放）。
-   - 不碰 payroll 或 Android。
+- PR：[#475](https://github.com/cheerc/talented-easyorder/pull/475)，分支 `codex/backend-p04-active-lease`；base 是 #474 實際 merge SHA `fd8cba1b84c0b2146c1f450192e2c99739193e46`。PR 尚未 merge。immutable head `4c1aeb196ca94d7da14d12ba832c050783b2227c` 的獨立 review 提出 pending/cache snapshot 會錯誤撤銷已確認租約與清除畫面等 P1，以及 concurrency、Web Locks、heartbeat E2E 證據不足等 P2；本輪 rework 已補正並完成本地驗證，待新候選推送後再做獨立 review 與 required CI。下列本地 gate 不替代它們或 Coordinator merge。
+- 原始候選包含 `activeAccountLease.ts`、`activeAccountLease.spec.ts`、`firestore.rules`、`AuthGate.tsx`、`FirebaseProvider.tsx`、`cloud-production.spec.ts`。這份清單描述 PR 的範圍，不是每個行為都已驗收。
+- 業務資料目前仍 deny。P04 review/rework、required checks、獨立 review 及 Coordinator merge 全部完成前不得啟動 P05。
+
+### 原始 CI run 與已知缺口
+
+- GitHub Actions 原始 CI [run 38541150763](https://github.com/cheerc/talented-easyorder/actions/runs/38541150763) 有 `build-and-test` 與 `e2e` 兩個綠色 job。原始完整日誌另保存在執行工作區 `/tmp/easyorder-pr475-inherited-ci.log`；這是 rework 前的 checkpoint，不是目前 PR 的通過證據。
+- 一般 `npx vitest run`：138 個 test files passed、3 skipped；1328 個 tests 中 1271 passed、57 skipped。P04 `activeAccountLease.spec.ts` 的 11 個案例全數在此一般 job skipped，沒有在這個 job 中驗租約 Emulator 行為。
+- 獨立 P03 `firestoreRules.spec.ts` Emulator suite：A01 共 10 passed；獨立 P01 test-only proof suite：36 passed、0 skipped。這些是其各自的測試證據，不是 P04 租約 suite 通過的替代品。
+- E2E 共 14 passed。A02–A04 只檢查畫面 strip/button smoke，沒有驗證完整雙帳戶互斥、租約期限、renew/release 或失權契約；因此不能記為 A02–A04 contract pass。
+- 原始 GREEN CI 不能抵銷原始 review 未通過。缺模組／compile failure 只證明程式未能載入，不算行為 RED。本輪另有 exact-email password-provider 行為 RED/GREEN 證據，並完成 lease／Rules Emulator 與 Cloud/prototype E2E；新候選仍須跑 GitHub required checks，並由獨立 review 對 immutable head 重審。
+
+### 本輪本地修正與驗證（待新 immutable head 的獨立 review 與 required CI）
+
+- 定向核心 Vitest：修正後 full `npx vitest run` 為 140 個 test files passed、3 skipped；1291 passed、65 skipped、0 failed；log `/tmp/easyorder-p04-full-vitest-r9.log`。一般 Vitest 的 skipped 含需 Emulator 才執行的 Rules tests，因此不能代替下列獨立 gates。
+- 獨立 Emulator gate：在 `demo-easyorder` 以同一個 Firestore Emulator 順序執行 P04 lease 19/19、A01 `firestoreRules.spec.ts` 10/10、P01 `cloudRulesProof.spec.ts` 36/36，三者均 0 failed、0 pending/skipped；合併 log `/tmp/easyorder-p04-emulator-gates-r9.log`，lease JSON `/tmp/active-account-lease-proof-p04-rework.json`、P01 JSON `/tmp/cloud-rules-proof-p04-rework.json`。新增 P04 Emulator 案例涵蓋 90 秒有效餘裕／逾期窗、兩 UID 同 epoch acquire 競爭僅一方成功、renew/release race 最終為 null holder/new epoch、expired renew deny 且文件不變；Rules 等號界線由靜態 `<= request.time`／`> request.time` 檢查證明，不把網路往返時間附近的 Emulator 結果稱為精確 equality 實測。
+- Web Locks 與 pending snapshot：unit test 驗證 cache/pending metadata observation 不回呼、不授權也不撤銷已確認狀態；server ack 才發布，authoritative missing/malformed/error 仍 fail closed。Provider 測試確認該非權威 observation 不清除 cloud POS memory，server-confirmed holder/epoch 變更才 stop heartbeat 並清資料。test-only lock manager 驗證兩個 starter 只有一個 leader、leader 退出後排隊頁接手、queued abort 與 inflight completion after stop 均不呼叫 stale loss callback。
+- P01 budget 診斷限制：本輪 P01 JSON 中 36/36 tests passed，合法 positive assertions 通過，原子未變斷言亦通過；同一 run 的 Rules log 在 25 個預期拒絕測試案例名稱下出現一次或多次 `maximum of 1000 expressions` diagnostics。部分拒絕由 `assertFails` 驗收時，expression cap 本身可能是拒絕原因，因此不能稱這些目標 guard 已各自 cap-free 證明。這不否定合法 positive 用例，也不把靜態契約稱為 Emulator 驗收；P05 每個 kind 開放前仍須重算並驗證其 Rules path。
+- 行為 RED/GREEN：針對 `A01.7: exact legacy test email with matching active UID is still denied for password provider`，暫時載入 immutable PR #475 初始 head `6264660974d4c678f897d5734201bbd842655442` 的舊 Rules。精確 test email、matching active operator UID 的 password identity 成功讀取 lease，預期的 `assertFails` 真正失敗，訊息為 `Expected request to fail, but it succeeded.`；該 target 1 failed、9 filtered，log `/tmp/easyorder-p04-rules-A01-7-old-head-behavior-red.log`。現行 Rules 已 byte-for-byte 恢復（SHA-256 `cf2f72a9948022daf448d7f4d9d8262efff3f898bc7839cdd7f1a153492df35c`），恢復後完整 A01 為 10/10，log `/tmp/easyorder-p04-rules-A01-current-after-red.log`。因此禁止 password-provider exact-email 例外有可重現行為 RED/GREEN 證據。
+- E2E phase 邊界：舊 Cloud POS order/deposit 因 `/students/**` 在 base/current Rules deny、P05 尚無 read/hydrate adapter，無法找到 Cloud student suggestions。沒有放寬 Rules 或讓 Cloud 回退 prototype seed；四個純 POS specs 的原有 7 個 cases 由 no-Firebase、no-auth、無 Emulator/global setup 的 genuine prototype config 執行，並要求出現「本機練習 · 僅此瀏覽器」標示。最終 frozen-source 合併命令為 `npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test --config /tmp/p04-playwright-cloud-system-chromium.config.mjs && npx playwright test --config /tmp/p04-playwright-prototype-system-chromium.config.mjs"`；Cloud 11/11、prototype 7/7，合計 18/18、0 skipped、exit 0，log `/tmp/p04-e2e-final-heartbeat-system-chromium-2026-10-14.log`。Cloud 含 auth／smoke、A01–A08；A08 同 BrowserContext 兩個同 UID 頁面以 page clock 推進兩次 60,001 ms，驗證 server `updatedAt` 兩次前進、holder/epoch/UI 保持，關閉 leader 後 follower 接手並續約。Prototype 7 項只驗本機練習流程，**不表示 Cloud POS、P05 student reads 或雲端業務資料完成**。
+- 本機瀏覽器限制：Playwright pinned Chromium shell 下載因 CDN HTTP 403 `Domain forbidden`，見 `/tmp/p04-playwright-install-2026-10-14.log`。上述最終 E2E 使用可啟動的 system Chromium 154 與 `/tmp` 診斷 config，不改官方 tracked config；此結果不是 pinned-browser GitHub Actions gate。推送後仍需看實際 required GHA run。
+- 靜態／build：`npm run lint` exit 0，log `/tmp/easyorder-p04-eslint-r9.log`；`npm run build` exit 0，log `/tmp/easyorder-p04-build-r9.log`（Vite 保留既有 `__dirname` warning）；`npx --no-install tsc --noEmit` exit 0，log `/tmp/easyorder-p04-tsc-r9.log`；`git diff --check` exit 0。Cloud package runner與兩條 workflow 在 demo emulator 先跑 Cloud suite、再跑隔離 prototype suite；本地 pinned Chromium CDN 下載回 403，故上述 E2E 用 system Chromium 154 與 `/tmp` 診斷 configs，仍須由 GitHub pinned-browser run 驗證。
+- app TypeScript config `npx --no-install tsc -p tsconfig.app.json --noEmit` 仍因 inherited diagnostics exit 2；保留完整順序與重複項的 normalized multiline diff 為 base 295、current 290、新增 0、移除 5 項既有 Provider test typing errors。diff `/tmp/easyorder-p04-r8-normalized.diff`，normalized current `/tmp/easyorder-p04-current-r8-normalized.txt`，raw current `/tmp/easyorder-p04-app_tsc-r8.log`；兩個本輪觸及的 lease/provider modules 無 diagnostics。P00 的 279 與 P04 base 295 是不同 source 觀察，不可混為同一基線。
+- 本地 rework gates 已完成，但 source/docs 尚待 commit/push；PR #475 尚待新候選 immutable head 的實際 required CI 與獨立 review。不得將上述本地診斷稱為 PR 通過、merge 或 production 驗收。P05 仍須等 Coordinator 明確 gate 與 merge 後再開始。
+
+### TypeScript 診斷基線
+
+- P00 的 `75e7a96` 歷史 baseline 為 exit 2、279 diagnostics；P04 base 另以 `npx --no-install tsc -p tsconfig.app.json --noEmit` 擷取為 exit 2、295 diagnostics，原始輸出在目前執行環境 `/tmp/easyorder-p04-base-tsc.raw.txt`。
+- 279 與 295 是不同 base 的不同觀察。原始報告稱 P04 base/head 都是 295，不能由相同數量推論逐筆 diagnostics 完全相同或零新增。本輪最終有 295→290 的逐筆 multiline normalized 比較、0 新增／5 項舊錯移除；後續 code/merge candidate 若再變動，仍需重新比對並以當前 PR body 記錄。
+
+### 更新規則
+
+新 RED/GREEN、Emulator/E2E 數量、lint/build、TypeScript diagnostic diff、CI run 與 review 結果只在實際執行並確認後追加；當前 PR head／base 與完整 receipt 以 PR body 為版本權威。本節不預錄尚未發生的 merge 或未驗證 SHA。
 
 

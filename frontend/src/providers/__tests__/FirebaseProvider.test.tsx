@@ -2,6 +2,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import React from 'react';
+import type { OperatorAccess } from '../../firebase/authService';
+import type { ActiveLeaseState } from '../../firebase/activeAccountLease';
+
+const leaseMocks = vi.hoisted(() => ({
+  acquireLease: vi.fn(),
+  getLeaseStatus: vi.fn(),
+  releaseLease: vi.fn(),
+  renewLease: vi.fn(),
+  subscribeLease: vi.fn((...args: [unknown, string | null, (state: ActiveLeaseState) => void]) => {
+    void args;
+    return vi.fn();
+  }),
+  startLeaseHeartbeat: vi.fn(() => vi.fn()),
+}));
 
 // Mock Firebase modules before importing
 vi.mock('../../firebase/firebaseApp', () => ({
@@ -11,14 +25,33 @@ vi.mock('../../firebase/firebaseApp', () => ({
 vi.mock('../../firebase/authService', () => ({
   subscribeOperatorAccess: vi.fn(),
 }));
+vi.mock('../../firebase/activeAccountLease', () => ({
+  acquireLease: leaseMocks.acquireLease,
+  getLeaseStatus: leaseMocks.getLeaseStatus,
+  releaseLease: leaseMocks.releaseLease,
+  renewLease: leaseMocks.renewLease,
+  subscribeLease: leaseMocks.subscribeLease,
+  startLeaseHeartbeat: leaseMocks.startLeaseHeartbeat,
+  defaultLeaseState: {
+    holderUid: null,
+    epoch: 0,
+    updatedAt: null,
+    isKnown: false,
+    isHolder: false,
+    isExpired: false,
+  },
+}));
+vi.mock('../../store/clearSensitivePosData', () => ({ clearSensitivePosData: vi.fn().mockResolvedValue(undefined) }));
 
 import { FirebaseProvider, useFirebase } from '../FirebaseProvider';
 import { ensureFirebaseInitialized, isFirebaseConfigured } from '../../firebase/firebaseApp';
 import { subscribeOperatorAccess } from '../../firebase/authService';
+import { clearSensitivePosData } from '../../store/clearSensitivePosData';
 
 const mockEnsure = vi.mocked(ensureFirebaseInitialized);
 const mockIsConfigured = vi.mocked(isFirebaseConfigured);
 const mockSubscribe = vi.mocked(subscribeOperatorAccess);
+const mockClearSensitivePosData = vi.mocked(clearSensitivePosData);
 
 function wrapper({ children }: { children: ReactNode }) {
   return React.createElement(FirebaseProvider, null, children);
@@ -29,6 +62,14 @@ describe('#331 — FirebaseProvider lifecycle tests', () => {
     vi.clearAllMocks();
     // Default: Firebase is configured
     mockIsConfigured.mockReturnValue(true);
+    leaseMocks.acquireLease.mockReset();
+    leaseMocks.getLeaseStatus.mockReset().mockResolvedValue({
+      holderUid: null, epoch: 0, updatedAt: null, isKnown: false, isHolder: false, isExpired: false,
+    });
+    leaseMocks.releaseLease.mockReset().mockResolvedValue(false);
+    leaseMocks.renewLease.mockReset();
+    leaseMocks.subscribeLease.mockReset().mockReturnValue(vi.fn());
+    leaseMocks.startLeaseHeartbeat.mockReset().mockReturnValue(vi.fn());
   });
 
   it('provides initial state: fb=null, fbError=null, access=signed_out', () => {
@@ -48,7 +89,7 @@ describe('#331 — FirebaseProvider lifecycle tests', () => {
       auth: { currentUser: null } as Record<string, unknown>,
       db: {} as Record<string, unknown>,
     };
-    mockEnsure.mockResolvedValue(mockServices as ReturnType<typeof ensureFirebaseInitialized> extends Promise<infer T> ? T : never);
+    mockEnsure.mockResolvedValue(mockServices as unknown as ReturnType<typeof ensureFirebaseInitialized> extends Promise<infer T> ? T : never);
     mockSubscribe.mockReturnValue(() => {});
 
     const { result } = renderHook(() => useFirebase(), { wrapper });
@@ -80,9 +121,9 @@ describe('#331 — FirebaseProvider lifecycle tests', () => {
       auth: { currentUser: null } as Record<string, unknown>,
       db: {} as Record<string, unknown>,
     };
-    mockEnsure.mockResolvedValue(mockServices as ReturnType<typeof ensureFirebaseInitialized> extends Promise<infer T> ? T : never);
+    mockEnsure.mockResolvedValue(mockServices as unknown as ReturnType<typeof ensureFirebaseInitialized> extends Promise<infer T> ? T : never);
 
-    let capturedCallback: ((a: Record<string, unknown>) => void) | null = null;
+    let capturedCallback: ((access: OperatorAccess) => void) | null = null;
     const mockUnsub = vi.fn();
     mockSubscribe.mockImplementation((_auth, _db, cb) => {
       capturedCallback = cb;
@@ -96,11 +137,127 @@ describe('#331 — FirebaseProvider lifecycle tests', () => {
     });
 
     // Simulate access granted
+    const access: OperatorAccess = {
+      ok: true,
+      profile: { uid: 'op-1', email: 'op-1@example.com', displayName: 'Operator 1' },
+    };
     await act(async () => {
-      capturedCallback!({ ok: true, operatorId: 'op-1', storeId: 'store-1' });
+      capturedCallback!(access);
     });
 
-    expect(result.current.access).toEqual({ ok: true, operatorId: 'op-1', storeId: 'store-1' });
+    expect(result.current.access).toEqual(access);
+  });
+
+  it('does not publish an acquire result after the authenticated UID changes', async () => {
+    const mockServices = {
+      app: {} as Record<string, unknown>,
+      auth: { currentUser: null } as Record<string, unknown>,
+      db: {} as Record<string, unknown>,
+    };
+    mockEnsure.mockResolvedValue(mockServices as unknown as ReturnType<typeof ensureFirebaseInitialized> extends Promise<infer T> ? T : never);
+
+    let capturedCallback: ((access: OperatorAccess) => void) | null = null;
+    mockSubscribe.mockImplementation((_auth, _db, cb) => {
+      capturedCallback = cb;
+      return () => {};
+    });
+
+    let resolveServerRead!: (value: {
+      holderUid: string | null;
+      epoch: number;
+      updatedAt: Date | null;
+      isKnown: boolean;
+      isHolder: boolean;
+      isExpired: boolean;
+    }) => void;
+    leaseMocks.getLeaseStatus.mockReturnValueOnce(new Promise(resolve => { resolveServerRead = resolve; }));
+
+    const { result } = renderHook(() => useFirebase(), { wrapper });
+    await waitFor(() => expect(capturedCallback).not.toBeNull());
+
+    const firstAccess: OperatorAccess = {
+      ok: true,
+      profile: { uid: 'uid-first', email: 'first@example.com', displayName: 'First' },
+    };
+    const nextAccess: OperatorAccess = {
+      ok: true,
+      profile: { uid: 'uid-next', email: 'next@example.com', displayName: 'Next' },
+    };
+    await act(async () => { capturedCallback!(firstAccess); });
+
+    const pendingAcquire = result.current.acquireLease();
+    await act(async () => { capturedCallback!(nextAccess); });
+    resolveServerRead({
+      holderUid: null, epoch: 0, updatedAt: null, isKnown: true, isHolder: false, isExpired: true,
+    });
+
+    await expect(pendingAcquire).resolves.toEqual({
+      status: 'lost', message: '帳號或租約狀態已變更，請重新確認',
+    });
+    expect(leaseMocks.acquireLease).not.toHaveBeenCalled();
+    expect(result.current.access).toEqual(nextAccess);
+    expect(result.current.lease.isHolder).toBe(false);
+  });
+
+  it('retains confirmed holder state across ignored pending snapshots and clears only on server-confirmed loss', async () => {
+    const mockServices = {
+      app: {} as Record<string, unknown>,
+      auth: { currentUser: null } as Record<string, unknown>,
+      db: {} as Record<string, unknown>,
+    };
+    mockEnsure.mockResolvedValue(mockServices as unknown as ReturnType<typeof ensureFirebaseInitialized> extends Promise<infer T> ? T : never);
+
+    let accessCallback: ((access: OperatorAccess) => void) | null = null;
+    mockSubscribe.mockImplementation((_auth, _db, callback) => {
+      accessCallback = callback;
+      return vi.fn();
+    });
+
+    let leaseCallback: ((state: ActiveLeaseState) => void) | null = null;
+    leaseMocks.subscribeLease.mockImplementation((_db, _uid, callback) => {
+      leaseCallback = callback;
+      return vi.fn();
+    });
+    const stopHeartbeat = vi.fn();
+    leaseMocks.startLeaseHeartbeat.mockReturnValueOnce(stopHeartbeat);
+    leaseMocks.renewLease.mockResolvedValue({
+      status: 'acquired', holderUid: 'op-1', epoch: 1, updatedAt: new Date(),
+    });
+
+    const { result } = renderHook(() => useFirebase(), { wrapper });
+    await waitFor(() => expect(accessCallback).not.toBeNull());
+    await act(async () => {
+      accessCallback!({
+        ok: true,
+        profile: { uid: 'op-1', email: 'op-1@example.com', displayName: 'Operator 1' },
+      });
+    });
+    await waitFor(() => expect(leaseCallback).not.toBeNull());
+
+    await act(async () => {
+      leaseCallback!({
+        holderUid: 'op-1', epoch: 1, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false,
+      });
+    });
+    await waitFor(() => expect(result.current.lease.isHolder).toBe(true));
+    expect(leaseMocks.startLeaseHeartbeat).toHaveBeenCalledOnce();
+    expect(mockClearSensitivePosData).not.toHaveBeenCalled();
+
+    // activeAccountLease suppresses cache/pending metadata callbacks. With no
+    // authoritative observation, the confirmed holder and cloud memory remain live.
+    await act(async () => {});
+    expect(result.current.lease).toMatchObject({ holderUid: 'op-1', epoch: 1, isKnown: true, isHolder: true });
+    expect(mockClearSensitivePosData).not.toHaveBeenCalled();
+    expect(stopHeartbeat).not.toHaveBeenCalled();
+
+    await act(async () => {
+      leaseCallback!({
+        holderUid: 'op-2', epoch: 2, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false,
+      });
+    });
+    await waitFor(() => expect(result.current.lease).toMatchObject({ holderUid: 'op-2', epoch: 2, isHolder: false }));
+    expect(stopHeartbeat).toHaveBeenCalled();
+    expect(mockClearSensitivePosData).toHaveBeenCalledOnce();
   });
 
   it('throws when useFirebase is used outside FirebaseProvider', () => {

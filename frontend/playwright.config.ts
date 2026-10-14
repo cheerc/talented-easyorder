@@ -2,9 +2,21 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
+  // Cloud suite: authenticated access/lease and signed-out gate behavior only.
+  testMatch: ['**/auth.spec.ts', '**/cloud-production.spec.ts', '**/smoke.spec.ts'],
+  testIgnore: [
+    '**/deposit-flow.spec.ts',
+    '**/expense-flow.spec.ts',
+    '**/order-flow.spec.ts',
+    '**/settlement-flow.spec.ts',
+  ],
   globalSetup: './e2e/global-setup.ts',
   timeout: 30000,
-  retries: 1,
+  retries: 0,
+  // Every E2E identity contends on the one demo accessLease document.
+  // Keep all cloud cases sequential so no test races the P04 lease scenarios.
+  workers: 1,
+  fullyParallel: false,
   projects: [{ name: 'chromium' }],
   use: {
     baseURL: 'http://127.0.0.1:4173',
@@ -26,6 +38,7 @@ export default defineConfig({
       'npm run build && npx vite preview --host 127.0.0.1 --port 4173 --strictPort',
     port: 4173,
     timeout: 120000,
-    reuseExistingServer: !process.env.CI,
+    // Always build and start this source revision; fail if another process owns 4173.
+    reuseExistingServer: false,
   },
 });

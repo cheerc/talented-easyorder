@@ -3,7 +3,7 @@ import type { Firestore } from 'firebase/firestore';
 import { getAuthMod, getFirestoreMod } from './firebaseModules';
 import { operatorPath } from './firestorePaths';
 import { emitError } from '../errors/errorBus';
-import { clearSensitiveData } from '../store/posPersistence';
+import { clearSensitivePosData } from '../store/clearSensitivePosData';
 
 // Ref: #285 — Runtime type guard for Firestore operator doc data.
 // P03: 等權白名單，不強制要求 role，但相容舊有可選 role 欄位
@@ -26,8 +26,6 @@ export function isValidOperatorDoc(data: unknown): data is OperatorDocData {
   return true;
 }
 
-const ALLOWED_DOMAIN = import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? 'example.com';
-
 export interface OperatorProfile {
   uid: string;
   email: string;
@@ -39,8 +37,8 @@ export type OperatorAccess =
   | {
       ok: false;
       reason:
+        | 'checking'
         | 'signed_out'
-        | 'wrong_domain'
         | 'unverified_email'
         | 'non_google_provider'
         | 'not_whitelisted'
@@ -49,19 +47,8 @@ export type OperatorAccess =
       profile?: OperatorProfile;
     };
 
-export function isAllowedWorkspaceEmail(email: string | null): boolean {
-  if (!ALLOWED_DOMAIN) return true;
-  return Boolean(email && email.toLowerCase().endsWith('@' + ALLOWED_DOMAIN));
-}
-
 export function isGoogleUser(user: User): boolean {
-  // 在 Firebase Auth Emulator 測試環境下（VITE_FIREBASE_USE_EMULATOR === 'true'），
-  // Playwright E2E 透過 emulator REST API / signInWithEmailAndPassword 登入，允許測試
-  if (import.meta.env.VITE_FIREBASE_USE_EMULATOR === 'true') {
-    return true;
-  }
-  if (!user.providerData || user.providerData.length === 0) return true;
-  return user.providerData.some(p => p.providerId === 'google.com');
+  return Boolean(user.providerData?.some(provider => provider.providerId === 'google.com'));
 }
 
 export function toOperatorProfile(user: Pick<User, 'uid' | 'email' | 'displayName'>): OperatorProfile {
@@ -72,20 +59,11 @@ export function toOperatorProfile(user: Pick<User, 'uid' | 'email' | 'displayNam
   };
 }
 
-export function shouldForceSignOut(access: OperatorAccess): boolean {
-  // 只在明確網域錯誤時強制登出；未核准與停用者需留在登入狀態檢視說明與 UID
-  return !access.ok && access.reason === 'wrong_domain';
-}
-
 export async function getOperatorAccess(db: Firestore, user: User): Promise<OperatorAccess> {
   const profile = toOperatorProfile(user);
 
-  if (ALLOWED_DOMAIN && !isAllowedWorkspaceEmail(profile.email)) {
-    return { ok: false, reason: 'wrong_domain', profile };
-  }
-
   // 規格 §4.1: Google sign-in 要求 email_verified=true
-  if (user.emailVerified === false) {
+  if (user.emailVerified !== true) {
     return { ok: false, reason: 'unverified_email', profile };
   }
 
@@ -103,8 +81,8 @@ export async function getOperatorAccess(db: Firestore, user: User): Promise<Oper
   }
   if (!raw.active) return { ok: false, reason: 'inactive', profile };
 
-  // 規格 §4.1: operators/{uid} 的 email 必須與登入 Google email 精確相符
-  if (raw.email && raw.email.toLowerCase() !== profile.email.toLowerCase()) {
+  // Rules require the same exact email value as the verified Auth token.
+  if (raw.email !== profile.email) {
     return { ok: false, reason: 'email_mismatch', profile };
   }
 
@@ -112,11 +90,8 @@ export async function getOperatorAccess(db: Firestore, user: User): Promise<Oper
 }
 
 export async function verifyUserAuthorization(auth: Auth, db: Firestore, user: User): Promise<OperatorAccess> {
-  const access = await getOperatorAccess(db, user);
-  if (shouldForceSignOut(access)) {
-    await getAuthMod().signOut(auth);
-  }
-  return access;
+  void auth;
+  return getOperatorAccess(db, user);
 }
 
 export async function signInWithGoogle(auth: Auth, db: Firestore): Promise<OperatorAccess> {
@@ -131,11 +106,7 @@ export async function signInWithGoogle(auth: Auth, db: Firestore): Promise<Opera
   }
 
   const provider = new authMod.GoogleAuthProvider();
-  const customParams: Record<string, string> = { prompt: 'select_account' };
-  if (ALLOWED_DOMAIN) {
-    customParams.hd = ALLOWED_DOMAIN;
-  }
-  provider.setCustomParameters(customParams);
+  provider.setCustomParameters({ prompt: 'select_account' });
 
   const credential = await authMod.signInWithPopup(auth, provider);
   return verifyUserAuthorization(auth, db, credential.user);
@@ -143,7 +114,7 @@ export async function signInWithGoogle(auth: Auth, db: Firestore): Promise<Opera
 
 // Ref: #286 — Clear sensitive POS data on signOut to protect PII on shared devices.
 export async function signOutOperator(auth: Auth): Promise<void> {
-  await clearSensitiveData();
+  await clearSensitivePosData();
   return getAuthMod().signOut(auth);
 }
 
@@ -152,47 +123,38 @@ export function subscribeOperatorAccess(
   db: Firestore,
   onAccess: (access: OperatorAccess) => void,
 ): () => void {
-  const { onAuthStateChanged, signOut } = getAuthMod();
+  const { onIdTokenChanged } = getAuthMod();
   const { doc, onSnapshot } = getFirestoreMod();
   let unsubscribeOperator: (() => void) | null = null;
+  let generation = 0;
 
-  const unsubscribeAuth = onAuthStateChanged(auth, async user => {
+  const unsubscribeAuth = onIdTokenChanged(auth, async user => {
+    const currentGeneration = ++generation;
     unsubscribeOperator?.();
     unsubscribeOperator = null;
+    onAccess({ ok: false, reason: 'checking' });
 
     if (!user) {
-      onAccess({ ok: false, reason: 'signed_out' });
+      if (currentGeneration === generation) onAccess({ ok: false, reason: 'signed_out' });
       return;
     }
 
     const profile = toOperatorProfile(user);
 
-    if (ALLOWED_DOMAIN && !isAllowedWorkspaceEmail(profile.email)) {
-      try {
-        await signOut(auth);
-      } catch (err) {
-        emitError({
-          source: 'auth',
-          message: '[auth] force signOut failed: ' + (err instanceof Error ? err.message : String(err)),
-        });
-      }
-      onAccess({ ok: false, reason: 'wrong_domain', profile });
-      return;
-    }
-
-    if (user.emailVerified === false) {
-      onAccess({ ok: false, reason: 'unverified_email', profile });
+    if (user.emailVerified !== true) {
+      if (currentGeneration === generation) onAccess({ ok: false, reason: 'unverified_email', profile });
       return;
     }
 
     if (!isGoogleUser(user)) {
-      onAccess({ ok: false, reason: 'non_google_provider', profile });
+      if (currentGeneration === generation) onAccess({ ok: false, reason: 'non_google_provider', profile });
       return;
     }
 
     unsubscribeOperator = onSnapshot(
       doc(db, operatorPath(profile.uid)),
       snapshot => {
+        if (currentGeneration !== generation) return;
         const raw = snapshot.data();
         const data = isValidOperatorDoc(raw) ? raw : null;
         if (raw && !data) {
@@ -206,13 +168,14 @@ export function subscribeOperatorAccess(
           onAccess({ ok: false, reason: 'inactive', profile });
           return;
         }
-        if (data.email && data.email.toLowerCase() !== profile.email.toLowerCase()) {
+        if (data.email !== profile.email) {
           onAccess({ ok: false, reason: 'email_mismatch', profile });
           return;
         }
         onAccess({ ok: true, profile, role: data.role ?? 'counter' });
       },
       err => {
+        if (currentGeneration !== generation) return;
         emitError({ source: 'auth', message: '[auth] operator onSnapshot error: ' + err.message });
         onAccess({ ok: false, reason: 'not_whitelisted', profile });
       },
@@ -220,6 +183,7 @@ export function subscribeOperatorAccess(
   });
 
   return () => {
+    generation += 1;
     unsubscribeOperator?.();
     unsubscribeAuth();
   };

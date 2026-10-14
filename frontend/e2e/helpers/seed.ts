@@ -2,7 +2,13 @@
 // Ref: #269
 
 const FIRESTORE_EMULATOR = 'http://127.0.0.1:8080';
-export const PROJECT = process.env.FIREBASE_PROJECT_ID || 'demo-easyorder';
+export const PROJECT = 'demo-easyorder';
+
+export interface EmulatorAccessLease {
+  holderUid: string | null;
+  epoch: number;
+  updatedAt: Date;
+}
 
 
 function toFirestoreValue(v: unknown): Record<string, unknown> {
@@ -49,16 +55,99 @@ async function createDoc(collection: string, docId: string, data: Record<string,
   }
 }
 
-export async function seedOperator(uid: string, email: string, role: string = 'admin'): Promise<void> {
-  await createDoc('operators', uid, {
+async function patchDoc(collection: string, docId: string, data: Record<string, unknown>): Promise<void> {
+  const mask = new URLSearchParams();
+  for (const field of Object.keys(data)) mask.append('updateMask.fieldPaths', field);
+  const url = `${FIRESTORE_EMULATOR}/v1/projects/${PROJECT}/databases/(default)/documents/${collection}/${docId}?${mask}`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer owner',
+    },
+    body: JSON.stringify(toFirestoreDoc(data)),
+  });
+  if (!res.ok) throw new Error(`Failed to update ${collection}/${docId}: ${await res.text()}`);
+}
+
+function operatorData(uid: string, email: string, active: boolean, role: string): Record<string, unknown> {
+  return {
     uid,
     email,
     displayName: email.split('@')[0],
     role,
-    active: true,
+    active,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
+  };
+}
+
+export async function seedOperator(
+  uid: string,
+  email: string,
+  role: string = 'admin',
+  active = true,
+): Promise<void> {
+  await createDoc('operators', uid, operatorData(uid, email, active, role));
+}
+
+export async function setOperatorActive(uid: string, active: boolean): Promise<void> {
+  await patchDoc('operators', uid, { active, updatedAt: new Date() });
+}
+
+export async function seedInitialLease(): Promise<void> {
+  await createDoc('system', 'accessLease', {
+    holderUid: null,
+    epoch: 0,
+    updatedAt: new Date(),
   });
+}
+
+/** Admin REST seed for deliberate server-time/epoch scenarios in the Emulator only. */
+export async function seedAccessLease(lease: EmulatorAccessLease): Promise<void> {
+  await patchDoc('system', 'accessLease', { ...lease });
+}
+
+function decodeFirestoreValue(value: unknown): unknown {
+  if (!value || typeof value !== 'object') return undefined;
+  const fields = value as Record<string, unknown>;
+  if ('stringValue' in fields) return fields.stringValue;
+  if ('integerValue' in fields) return Number(fields.integerValue);
+  if ('doubleValue' in fields) return fields.doubleValue;
+  if ('booleanValue' in fields) return fields.booleanValue;
+  if ('timestampValue' in fields) return new Date(String(fields.timestampValue));
+  if ('nullValue' in fields) return null;
+  return undefined;
+}
+
+/** Read authoritative holder/epoch/time through the Emulator's admin REST route. */
+export async function readAccessLease(): Promise<EmulatorAccessLease> {
+  const res = await fetch(
+    `${FIRESTORE_EMULATOR}/v1/projects/${PROJECT}/databases/(default)/documents/system/accessLease`,
+    { headers: { Authorization: 'Bearer owner' } },
+  );
+  if (!res.ok) throw new Error(`Failed to read system/accessLease: ${await res.text()}`);
+  const body = (await res.json()) as { fields?: Record<string, unknown> };
+  const fields = body.fields ?? {};
+  const holderUid = decodeFirestoreValue(fields.holderUid);
+  const epoch = decodeFirestoreValue(fields.epoch);
+  const updatedAt = decodeFirestoreValue(fields.updatedAt);
+  if (!(updatedAt instanceof Date) || typeof epoch !== 'number') {
+    throw new Error('system/accessLease has an invalid Emulator REST shape');
+  }
+  return {
+    holderUid: typeof holderUid === 'string' ? holderUid : null,
+    epoch,
+    updatedAt,
+  };
+}
+
+/** Authenticated REST request used to verify that non-Google identities are denied by Rules. */
+export async function readLeaseWithIdToken(idToken: string): Promise<Response> {
+  return fetch(
+    `${FIRESTORE_EMULATOR}/v1/projects/${PROJECT}/databases/(default)/documents/system/accessLease`,
+    { headers: { Authorization: `Bearer ${idToken}` } },
+  );
 }
 
 export async function seedStudent(studentId: string, name: string, balance: number): Promise<void> {
@@ -93,8 +182,9 @@ export async function seedTodayMenu(itemName: string, price: number): Promise<vo
 }
 
 export async function clearFirestoreData(): Promise<void> {
-  await fetch(
+  const res = await fetch(
     `${FIRESTORE_EMULATOR}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`,
     { method: 'DELETE' },
   );
+  if (!res.ok) throw new Error(`Failed to clear Firestore Emulator data: ${await res.text()}`);
 }

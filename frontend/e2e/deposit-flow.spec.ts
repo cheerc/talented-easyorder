@@ -1,20 +1,21 @@
-// Deposit (payment) flow e2e test — Login → Select student → Switch to payment → Enter amount → Confirm
+// Prototype POS regression — Select student → Switch to payment → Enter amount → Confirm
 // Ref: #269
 
-import { test, expect } from './fixtures';
+import { test, expect } from './prototype-fixtures';
 
 test.describe('Deposit Flow', () => {
-  test('deposit payment for a student', async ({ authedPage: page }) => {
-    // 1. Type student name in search box
+  test('deposit payment for a prototype student', async ({ prototypePage: page }) => {
+    // 1. Search by the synthetic prototype fixture ID.
     const searchInput = page.locator('.search-input');
-    await searchInput.fill('李');
+    await searchInput.fill('S002');
     
     // 2. Select student from suggestions
-    await expect(page.locator('.sug-name').filter({ hasText: '李小華' })).toBeVisible({ timeout: 5000 });
-    await page.locator('.sug-row').filter({ hasText: '李小華' }).click();
+    await expect(page.locator('.sug-id').filter({ hasText: 'S002' })).toBeVisible({ timeout: 5000 });
+    await page.locator('.sug-row').filter({ hasText: 'S002' }).click();
     
     // 3. Customer card should appear
-    await expect(page.locator('.cust-name')).toContainText('李小華');
+    await expect(page.locator('.customer')).toBeVisible();
+    await expect(page.locator('.cust-id')).toContainText('S002');
     
     // 4. Switch to payment (繳費) mode
     await page.locator('.mode').filter({ hasText: '繳費' }).click();

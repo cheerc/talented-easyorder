@@ -1,6 +1,6 @@
 # EasyOrder 零費用正式後端分階段實作計畫
 
-日期：2026-10-14。狀態：**P00–P02 已合併；P03 實作完成待 review；P04–P18 尚未開始或驗收**。
+日期：2026-10-14。狀態：**P00–P03 已合併；P04 PR #475 正在 review/rework、尚未通過或 merge；P05–P18 尚未開始或驗收**。
 
 **Source of truth：** [正式後端 spec](../specs/2026-10-13-free-production-backend-spec.md)，包含使用者最新「多白名單、等權、同時單一Google帳號」修正；來源 [PR #469](https://github.com/cheerc/talented-easyorder/pull/469)。
 
@@ -34,11 +34,12 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 
 | Phase | 狀態 | 交付摘要與證據 |
 |---|---|---|
-| P00 | 已合併 #471 | Base：`75e7a96e6cad722a41076df66e5b2cf9014e9d47`；PR head：`7a7128f14cf32268808de4e0a57f6986a0ca806e`；main merge SHA：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。新增[現況與證據](../../ops/free-production-evidence.md)，含完整 279 筆 TypeScript diagnostics、舊寫入／部署路徑分類及 R/U 對照。docs links／diff check pass；基線 tsc exit 2；PR CI 識別 docs-only 並跳過 app steps。 |
-| P01 | 已合併 #472 | Base：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`；merge commit：`e7c406ce59ec4779268f760dafa3bb006f1ae8d4`。完整真 Emulator proof 通過，SOL review 完成，由 Coordinator merge。 |
-| P02 | 已合併 #473 | Base：`e7c406ce59ec4779268f760dafa3bb006f1ae8d4`；merge commit：`bc5bb250db2687cfa75043bf72462e0cae25e985`。新建 `cloudCommands.ts`、`cloudLedgerProjection.ts`；修改 `appMode.ts`、`posPersistence.ts`、`firestoreSchema.ts`。Vitest 1259 passed，tsc app baseline 零新增錯誤，lint 與 build 通過。 |
-| P03 | 實作完成待 review | [PR #474](https://github.com/cheerc/talented-easyorder/pull/474)，Base：`bc5bb250db2687cfa75043bf72462e0cae25e985`。修改 `firestore.rules`（A01 案例 10/10 通過，業務資料全面 deny，無 role 等權白名單）、`authService.ts`（Google sign-in 要求 email_verified、browserSessionPersistence、operator 檢核）、`AuthGate.tsx`（未核准顯示「尚未取得使用權」與 UID、停用即時阻擋）、`FirebaseProvider.tsx`、`operatorAdmin.ts`。Vitest 1268 passed，tsc app baseline 零新增錯誤，lint 與 build 通過。 |
-| P04–P18 | 尚未開始／未驗 | 不代表任何新雲端功能已實作或通過。 |
+| P00 | 已合併 #471 | Base：`75e7a96e6cad722a41076df66e5b2cf9014e9d47`；PR head：`7a7128f14cf32268808de4e0a57f6986a0ca806e`；實際 merge SHA：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。新增[現況與證據](../../ops/free-production-evidence.md)，含完整 279 筆 TypeScript diagnostics、舊寫入／部署路徑分類及 R/U 對照。docs links／diff check pass；基線 tsc exit 2；PR CI 識別 docs-only 並跳過 app steps。 |
+| P01 | 已合併 #472 | Base：#471 實際 merge SHA `1da09039ab57f2b13f965ce98277bd1d41ce8e5e`；GitHub API 實際 merge SHA：`e7c406c93af197cda0bedaa220a4575728612f0f`。合併的是 test-only proof，僅覆蓋所選 command/lease/日期路徑；合法正向案例、Rules 靜態閉合檢查及拒絕後 atomic unchanged 通過。歷史 RED/WIP/review 限制見 ops evidence；不代表完整 22 kind 或 production rules 已驗收。 |
+| P02 | 已合併 #473 | Base：#472 實際 merge SHA `e7c406c93af197cda0bedaa220a4575728612f0f`；GitHub API 實際 merge SHA：`bc5bb2588e616f40a605ea8cd682b1d1642bbc71`。新建 `cloudCommands.ts`、`cloudLedgerProjection.ts`；修改 `appMode.ts`、`posPersistence.ts`、`firestoreSchema.ts`。Vitest 1259 passed，tsc app baseline 零新增錯誤，lint 與 build 通過。 |
+| P03 | 已合併 #474 | Base：#473 實際 merge SHA `bc5bb2588e616f40a605ea8cd682b1d1642bbc71`；GitHub API 實際 merge SHA：`fd8cba1b84c0b2146c1f450192e2c99739193e46`。修改 `firestore.rules`、`authService.ts`、`AuthGate.tsx`、`FirebaseProvider.tsx`、`operatorAdmin.ts`。A01 測試通過，全套 Vitest 1268 passed，tsc baseline 零新增錯誤，lint 與 build 通過。 |
+| P04 | 本地 rework gates 通過；review／required CI pending；尚未 merge | [PR #475](https://github.com/cheerc/talented-easyorder/pull/475)，base 是 #474 實際 merge SHA `fd8cba1b84c0b2146c1f450192e2c99739193e46`。原 CI lease suite 11 個案例在一般 Vitest 全部 skipped，原始 E2E 對 A02–A04 僅做 UI smoke；immutable head `4c1aeb196ca94d7da14d12ba832c050783b2227c` 的獨立 review 指出 pending/cache snapshot、Web Locks、競爭寫入與跨分頁 heartbeat 證據不足，本輪已修正並補測。全套 Vitest 1291 passed／65 skipped／0 failed；獨立 Emulator gate：lease 19/19、A01 Rules 10/10、P01 proof 36/36。P01 的 25 個負向測試案例名稱有 expression-cap 診斷；合法 positive 及 atomic unchanged assertions 通過，但拒絕原因不代表每個目標 guard 都已 cap-free 隔離證明。舊 Rules A01.7 行為 RED 與修正 Rules A01 10/10 GREEN 見 ops evidence。system Chromium 154 本地合併 E2E 為 Cloud 11/11＋prototype 7/7，18/18、0 skipped，含 A08 同 UID 兩頁的 server-confirmed heartbeat 與 leader handoff；7 項純 POS assertions 仍明確跑在無 Firebase/Auth/Emulator 的 prototype config，不代表 Cloud POS 或 P05 data hydration 完成。Playwright pinned-browser CDN 本環境回 403，system Chromium 是診斷而非 GHA pinned-browser gate。ESLint/build 通過；app tsc exit 2，base 295→current 290，逐筆 normalized diff 新增 0／移除 5 項既有錯。新 immutable head 的 required CI 與獨立 review 尚待完成，PR 未 merge；詳見[ops evidence](../../ops/free-production-evidence.md)。 |
+| P05–P18 | 尚未開始／未驗 | 不代表任何新雲端功能已實作或通過。 |
 
 ## 2. 現有檔案與規劃新檔
 
@@ -91,7 +92,7 @@ npm run test:e2e
 
 每phase先建立其失敗案例、記錄RED，再最小實作至GREEN；不以刻意缺檔／compile error當行為RED。表中targeted命令之外，改動程式的PR跑上述已存在測試與build。Rules需要真emulator，skip不算通過；CI務必檢查suite實際執行。E2E以現有script啟動Auth／Firestore emulator；雲端suite必須驗證自己實際使用cloud adapter，而非prototype。
 
-`npx tsc -p tsconfig.app.json --noEmit` 必須額外跑：#469記載279個既有錯誤，只是歷史資料。P00在接手HEAD擷取完整diagnostic（去行號作穩定比對），後續不得新增錯誤／用同數量不同錯誤過關；本次新增／修改的雲端模組必須無錯。若消除既有錯誤，更新baseline附差異，不必恢復舊錯來湊數。
+`npx tsc -p tsconfig.app.json --noEmit` 必須額外跑：P00歷史基線為279筆，P04實際base另有295筆 diagnostic；這些數字是不同時間／source 的觀察，數量相同或不同都不能代替逐筆 normalized diagnostic 比較。後續不得只靠計數宣稱零新增錯誤；本次新增／修改的雲端模組必須無錯。若消除既有錯誤，更新 baseline 附差異，不必恢復舊錯來湊數。
 
 ## 4. 分階段PR
 
@@ -113,7 +114,7 @@ npm run test:e2e
 
 **RED/GREEN：** 建立 L09/L10/A03 對抗案例：extra row、缺 student/day/command、雙 command、歷史 command 重放、偽造 seq/actor/serverTime、不同帳戶／日期篡改、schema 數值界線、負數／小數／超界／zero payment、非 holder／舊 epoch／過期 lease、closed／maintenance day、舊 settlement 改寫；拒絕後核對原子未寫。合法 CreateOrder／CorrectTransaction／zero-paid cancellation／CloseDay／ReopenDay 全通過。Lease 使用 server timestamp 驗 acquire／renew／release、拒絕 client timestamp 與過期 renew。CI 專用命令明確指定 `demo-easyorder`，並驗 JSON report 有通過測試且零 skipped；本機一般 Vitest 在 emulator 未設定時可清楚 skip。
 
-**Acceptance：** no-cache 計數每 write≤10／每 transaction≤20，不依賴 SDK 重複存取快取；預算為 Create／Correct／Void 各 18 calls、首次 Close 14、後續 Close／Reopen 15，逐 operation 記 `get`／`exists`／`getAfter` 呼叫圖並由 Emulator 驗證 expression 與 access budget。source `5c55936fc0a0cbc82da3058b4a466364a0d0da1f` 的完整 proof 曾有 30 passed／0 failed／0 skipped，但 SOL review 找到必要 counterpart 可省略、snapshot 可沿用 server 舊 map、settlement revision 硬編碼 1／2／3、新交易學生姓名快照未比對，以及負測 actor 不匹配等 blockers；需在有效正向 builder 起始下補相應對抗案例，包括省略 writer 同時提交未變 snapshot 的原子拒絕，以及 Close／Reopen／order／Close／Reopen／Close 的第 4／5 版連續鏈。新交易 `studentNameSnapshot` 必須等於 server-read 學生顯示名。最終 call/expression/access budget 尚待修正後實測。歷史 source `520dd2de75ede44d41becbb9617a872aea9d4d25` 有 26 cases、18 passed／8 failed／0 skipped 並記錄 1000-expression-limit；歷史調查亦發現該 WIP 修正迭代有 command schema、seed operators／lease、callback return、負零 delta 等缺陷，不能證明合法模型不可行，見 ops evidence diagnostic。保留完整 schema、安全檢查與 typed before/after，不得刪安全檢查、假稱通過或開 Blaze。若修正後的合法 schema 模型仍超限，按規格停 P01 並提出可重現失敗與必要架構修正。
+**Acceptance and historical outcome：** no-cache 計數每 write≤10／每 transaction≤20，不依賴 SDK 重複存取快取；計畫預算為 Create／Correct／Void 各 18 calls、首次 Close 14、後續 Close／Reopen 15，需逐 operation 記 `get`／`exists`／`getAfter` 呼叫圖。歷史 source `5c55936fc0a0cbc82da3058b4a466364a0d0da1f` 曾有 30 passed／0 failed／0 skipped，但 SOL review 發現必要 writer 可省略、snapshot 可偽造為未變 map、settlement revision 硬編碼及新交易學生姓名未比對等 blockers；那是未接受的中間 checkpoint。更早 WIP `520dd2de75ede44d41becbb9617a872aea9d4d25` 有 26 cases、18 passed／8 failed／0 skipped 並記錄 1000-expression-limit，且混有 fixture/schema/callback/`-0` 缺陷；expression cap 是該 WIP 的限制，不證明符合 schema 的合法模型不可行。P01 最終經 #472 merge 的 proof 驗證所選合法正向案例、Rules 靜態閉合及拒絕後 atomic unchanged；測試只覆蓋選定路徑，不能宣稱完整 22 kind 或每個 guard 都由單獨案例隔離。保留完整 schema、安全檢查與 typed before/after，不得刪安全檢查、假稱通過或開 Blaze；詳見 ops evidence 中的歷史 checkpoint 與邊界。
 
 ### P02 — 雲端command／投影介面與模式隔離
 
@@ -141,15 +142,15 @@ npm run test:e2e
 
 **Consumes/produces：** P03 allowlist→acquire/renew/release、epoch與失權遮罩。
 
-**RED/GREEN：** `activeAccountLease.spec.ts`（emulator）對A02–A04；A/B同時acquire、`updatedAt + 5 分鐘`到期界線（小於／等於／大於）、renew/release races、停用帳號、同UID多頁登出。Acquire／Renew／Release transaction 都比對 server-read lease 的 `expectedEpoch`，過期 snapshot／stale epoch 必須在寫入前中止；Rules 不接受 client `expectedEpoch` 作授權依據，而驗舊 holder／epoch 與新狀態。client 只能以 `serverTimestamp()` 更新 `updatedAt`；調快／調慢本機時鐘不得取得、延長或保留 Rules 授權。E2E用`npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test e2e/cloud-production.spec.ts --grep A0"`，實際執行A01–A04，不以skip通過。
+**RED/GREEN：** `activeAccountLease.spec.ts` 實際 Emulator gate 涵蓋有效／逾期安全窗、A/B 同 expected epoch acquire race（唯一成功 holder）、renew/release race、expired renew deny、停用帳號、stale epoch 與原子不變。本輪 active lease gate 19/19；一般 Vitest skip 不計通過。Rules 的期限 predicate 用 `updatedAt + 5 分鐘 <= request.time` 判 acquire expiry，續約要求嚴格 `>`；精確 equality 以靜態 Rules source assertion 證明，Emulator 只測離界線 90 秒的 active 與 expired 狀態，不把 request/response RTT 當 equality 測試。Acquire／Renew／Release transaction 都比對 server-read lease 的 mandatory `expectedEpoch`，過期 snapshot／stale epoch 必須在寫入前中止；Rules 不接受 client `expectedEpoch` 作授權依據，而驗舊 holder／epoch 與新狀態。client 只能以 `serverTimestamp()` 更新 `updatedAt`；調快／調慢本機時鐘不得取得、延長或保留 Rules 授權。Web Locks unit gate 驗證同源頁面單一 heartbeat leader、排隊 abort、stop 後不發布 inflight stale result；Cloud E2E A08 實際用兩個同 UID 頁面驗證兩次 60 秒 heartbeat、server timestamp 更新、holder/epoch/UI 保持，以及 leader 關閉後 follower 接手。Cloud E2E 共 11/11，另有 7 個 prototype-only POS regression；兩組分開執行，不以skip通過。
 
-**Acceptance/demo：** A使用時B只能等待；A釋放或 Rules 判定 `updatedAt + 5 分鐘 <= request.time` 後B可取得新epoch；不得靠localStorage鎖或本機時鐘冒充全域互斥；沒有活租約強制踢人功能。UI的期限提示取自 server-confirmed `updatedAt`，是否可讀寫一律由 Rules 依伺服器時間決定。
+**Acceptance/demo：** A使用時B只能等待；A釋放或 Rules 判定 `updatedAt + 5 分鐘 <= request.time` 後B可取得新epoch；不得靠localStorage鎖或本機時鐘冒充全域互斥；沒有活租約強制踢人功能。Cache/pending snapshot 不得取消已確認 holder 狀態或清 cloud memory；initial unknown、server-confirmed UID/epoch change、missing/malformed/server error 仍 fail closed。UI的期限提示取自 server-confirmed `updatedAt`，是否可讀寫一律由 Rules 依伺服器時間決定。P04 PR 需新 immutable head 的 required CI 與獨立 review 通過並由 Coordinator merge，才能開始 P05。
 
 ### P05 — 正式原子寫入器與冪等收據
 
-**Scope/files：** `cloudCommandRepository.ts`、`cloudCommands.spec.ts`、production`firestore.rules`／schema；dataHead bootstrapping與maintenance guard。
+**Scope/files：** `cloudCommandRepository.ts`、`cloudCommands.spec.ts`、production`firestore.rules`／schema；dataHead bootstrapping與maintenance guard。首批只啟用 `EnsureDay`、`CreateOrder`、`CreatePayment`，不接 UI；其餘所有 command kind 都必須 deny。完整 typed target／budget 靜態盤點只是後續分期設計材料，各 kind 開放前都需以 Emulator 重新驗正向、拒絕與 atomic unchanged。
 
-**Consumes/produces：** P01proof/P02型別/P04lease→唯一commitCommand/readCommand；此時只開EnsureDay與最小fixture業務kind給測試，未交付UI不開放。
+**Consumes/produces：** P01proof/P02型別/P04lease→唯一commitCommand/readCommand；首批 Emulator 僅證明並啟用 `EnsureDay`、`CreateOrder`、`CreatePayment`，未交付 UI 不開放。其餘 kind 保持 deny，後續 phase 逐項重做 Emulator proof 與 Rules budget 驗收。
 
 **RED/GREEN：** emulator `cloudCommands.spec.ts`：L08/L09、同ID異payload、head衝突重試、expectedRevision衝突、時間不可信、maintenance deny；hook到現有rules suite避免舊schema漏放。
 

@@ -35,44 +35,25 @@ export function createMemoryStorage(): PersistStorage<unknown> {
  * transactions) from persisting after the operator signs out.
  */
 export async function clearSensitiveData(): Promise<void> {
+  // Cloud operator/logout cleanup must never erase the separate prototype/local namespace.
+  if (!isCloudMode) return;
+
   try {
-    // Clear IndexedDB across namespaces
+    // Cloud POS persistence is memory-only today; clear only its cloud crash-draft namespace.
     if (typeof indexedDB !== 'undefined') {
-      const dbNames = [
-        namespacedStorageName('easyorder-pos', 'local-only'),
-        namespacedStorageName('easyorder-pos', 'prototype'),
-        namespacedStorageName('easyorder-pos', 'cloud'),
-      ];
-      await Promise.all(
-        dbNames.map(
-          dbName =>
-            new Promise<void>((resolve) => {
-              const req = indexedDB.deleteDatabase(dbName);
-              req.onsuccess = () => resolve();
-              req.onerror = () => resolve(); // best-effort
-              req.onblocked = () => resolve();
-            }),
-        ),
-      );
-      // Also clear crash draft
-      const crashDbNames = [
-        namespacedStorageName('easyorder-crash-draft', 'local-only'),
-        namespacedStorageName('easyorder-crash-draft', 'prototype'),
-        namespacedStorageName('easyorder-crash-draft', 'cloud'),
-      ];
-      for (const cName of crashDbNames) {
-        const reqCrash = indexedDB.deleteDatabase(cName);
-        reqCrash.onerror = () => { /* best-effort */ };
-      }
+      const crashDbName = namespacedStorageName('easyorder-crash-draft', 'cloud');
+      await new Promise<void>(resolve => {
+        const request = indexedDB.deleteDatabase(crashDbName);
+        request.onsuccess = () => resolve();
+        request.onerror = () => resolve();
+        request.onblocked = () => resolve();
+      });
     }
   } catch { /* best-effort */ }
 
   try {
-    // Clear localStorage fallback across namespaces
-    localStorage.removeItem(namespacedStorageName('pos-storage', 'local-only'));
-    localStorage.removeItem(namespacedStorageName('pos-storage', 'prototype'));
+    // Remove only the Cloud namespace; prototype/local-only data remain intact.
     localStorage.removeItem(namespacedStorageName('pos-storage', 'cloud'));
-    // Ref: #315 — Clear error log on signOut (may contain sensitive context)
     clearErrorLog();
   } catch { /* best-effort */ }
 }

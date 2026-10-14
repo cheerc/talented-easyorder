@@ -134,10 +134,50 @@ export async function ensureFirebaseInitialized(env: FirebaseEnv = import.meta.e
       emulatorConnected = true;
 
       if (typeof window !== 'undefined') {
-        const win = window as unknown as { emulatorSignIn?: (email: string, pass: string) => unknown };
-        win.emulatorSignIn = (email: string, pass: string) => {
-          return getAuthMod().signInWithEmailAndPassword(auth, email, pass);
+        const syntheticGoogleSubject = (email: string): string => {
+          const hex = Array.from(new TextEncoder().encode(email.toLowerCase()))
+            .map(byte => byte.toString(16).padStart(2, '0'))
+            .join('');
+          return BigInt(`0x${hex}`).toString(10);
         };
+        const base64UrlJson = (value: Record<string, unknown>): string =>
+          btoa(JSON.stringify(value)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+        const googleCredentialFor = (email: string) => {
+          const nowSeconds = Math.floor(Date.now() / 1000);
+          const idToken = [
+            base64UrlJson({ alg: 'none', typ: 'JWT' }),
+            base64UrlJson({
+              iss: 'https://accounts.google.com',
+              aud: state.config.projectId,
+              sub: syntheticGoogleSubject(email),
+              email,
+              email_verified: true,
+              name: email.split('@')[0],
+              given_name: 'E2E',
+              family_name: 'Operator',
+              iat: nowSeconds,
+              exp: nowSeconds + 60 * 60,
+            }),
+            'e2e-emulator-signature',
+          ].join('.');
+          const authMod = getAuthMod();
+          return authMod.GoogleAuthProvider.credential(idToken);
+        };
+        const signInGoogle = async (email: string) => {
+          const result = await getAuthMod().signInWithCredential(auth, googleCredentialFor(email));
+          return {
+            uid: result.user.uid,
+            email: result.user.email,
+            providerIds: result.user.providerData.map(provider => provider.providerId),
+          };
+        };
+        const win = window as unknown as {
+          emulatorSignIn?: (email: string, legacyUnusedPassword?: string) => Promise<{ uid: string; email: string | null; providerIds: string[] }>;
+          emulatorSignInGoogle?: (email: string) => Promise<{ uid: string; email: string | null; providerIds: string[] }>;
+        };
+        win.emulatorSignInGoogle = signInGoogle;
+        // Keep the old helper name for fixtures while never authenticating through password.
+        win.emulatorSignIn = email => signInGoogle(email);
       }
     }
 
