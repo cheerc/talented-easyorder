@@ -10,7 +10,7 @@
   - `frontend/src/firebase/cloudCommandRepository.ts`: `7bf2028313578584bea343179545e4b03037106d90cacc7d07bf888b7da764f1`
   - `frontend/src/domain/cloudCommands.ts`: `64a7330a893d53a35c1966efa4d7e1c00185f31727d8ea949db598ca82a13b7b`
   - `docs/superpowers/specs/2026-10-13-free-production-backend-spec.md`: `7552e63c204fa3e878cca78310c34f0641c8a14f8842db8367254ae7152ef692`
-  - `docs/superpowers/plans/2026-10-13-free-production-backend-plan.md`: `0cfe6772d0bdc5967267cca19c37da2fe85b219b6adc7379775d4c8ebd8aea23`
+  - `docs/superpowers/plans/2026-10-13-free-production-backend-plan.md`: `66edf8a0a4261cba57d3d7ef2e1524f4aeb515de023f2e745beed75ee75c8a2d`
 - 另讀 `frontend/src/firebase/cloudCommandRepository.ts`、`frontend/src/domain/cloudCommands.ts`、canonical spec §6.1–6.3 及 plan P05。Rules/schema source anchors 及 hash 如上；任何 source 續改都必須重新算 SHA 並逐路徑盤點。
 - 本文件的 call graph 與 expression-risk 分析是靜態盤點。當前真 Emulator 證據：`cloudCommands.spec.ts` 與 post-commit failure suite 在 `demo-easyorder` 使用 production `firestore.rules` 合計 79/79、0 skipped；A01/P01/P04/P05 sequential regression 144/144、0 skipped。完整命令、JSON 與限制見 [free-production evidence](free-production-evidence.md)。Emulator 沒有逐 expression／access-call runtime counter；正向通過證明選定合法樣本被接受，不把靜態呼叫圖稱為 runtime 計數。只有 `EnsureDay`、`CreateOrder`、`CreatePayment` 是當前 Rules 中允許建立的命令。表中其餘 19 kind 的 call 數是設計估值，不是實作 closure、Rules pass 或 Emulator pass。
 
