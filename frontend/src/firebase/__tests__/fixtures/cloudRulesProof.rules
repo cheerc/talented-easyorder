@@ -105,7 +105,7 @@ service cloud.firestore {
       return !exists(commandPath)
         && command.commandId == commandId
         && command.targets.dayId == dayId
-        && validDaySnapshot(dayId, before, after, commandId)
+        && validDaySnapshot(before, after)
         && dayTransition(command, before, after);
     }
 
@@ -115,10 +115,8 @@ service cloud.firestore {
       return !exists(commandPath)
         && command.commandId == commandId
         && command.targets.dayId == dayId
-        && ((revision == '1' && command.targets.settlementRevision == 1)
-          || (revision == '2' && command.targets.settlementRevision == 2)
-          || (revision == '3' && command.targets.settlementRevision == 3))
-        && settlementTransition(command, dayId, revision, after);
+        && revision == string(command.targets.settlementRevision)
+        && settlementTransition(command, dayId, command.targets.settlementRevision, after);
     }
 
     function transactionCreateProjection(transactionId, commandId, after) {
@@ -129,11 +127,13 @@ service cloud.firestore {
         && command.kind in ['CreateOrder', 'CreatePayment']
         && command.targets.transactionId == transactionId
         && command.before.transaction == null
+        && command.after.transaction == after
         && validCreatePayload(command, after)
         && (command.kind == 'CreateOrder' && command.payload.mealKind == 'bento'
           ? validActiveBentoMenu(command.before.day, command.businessDate, command, after)
           : true)
-        && validOrderTransaction(after, transactionId, command.studentId, command.businessDate, commandId, command.seq, command.kind);
+        && validOrderTransaction(after, transactionId, command.studentId, command.businessDate, commandId, command.seq, command.kind)
+        && after.studentNameSnapshot == command.before.student.displayName;
     }
 
     function transactionUpdateProjection(transactionId, commandId, before, after) {
@@ -142,6 +142,8 @@ service cloud.firestore {
       return !exists(commandPath)
         && command.commandId == commandId
         && command.targets.transactionId == transactionId
+        && command.before.transaction == before
+        && command.after.transaction == after
         && transactionMutation(command, before, after);
     }
 
@@ -235,6 +237,20 @@ service cloud.firestore {
         && after.updatedAt == request.time;
     }
 
+    function transactionProjectionMarked(before, after, commandId) {
+      return after.revision == before.revision + 1
+        && after.lastCommandId == commandId
+        && after.updatedAt == request.time;
+    }
+
+    function transactionCreateMarked(after, transactionId, commandId) {
+      return after.transactionId == transactionId
+        && after.revision == 1
+        && after.createdAt == request.time
+        && after.lastCommandId == commandId
+        && after.updatedAt == request.time;
+    }
+
     function validTotals(totals) {
       return exactKeys(totals, [
           'activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal',
@@ -263,18 +279,30 @@ service cloud.firestore {
         && totals.bentoCount >= 0
         && totals.otherMealCount is int
         && totals.otherMealCount >= 0
+        && totals.bentoCount + totals.otherMealCount <= totals.activeTransactionCount
         && boundedBalance(totals.mealTotal)
-        && boundedBalance(totals.retainedReceipts);
+        && boundedBalance(totals.retainedReceipts)
+        && boundedBalance(totals.cashierIncome)
+        && boundedBalance(totals.cashierExpense);
     }
 
-    function validDaySnapshot(dayId, before, after, commandId) {
+    function validDaySnapshot(before, after) {
       return exactKeys(before, [
           'status', 'revision', 'menu', 'openingCash', 'openedBy', 'openedAt',
           'totals', 'lastSettlementRevision', 'lastCommandId', 'updatedAt'
         ])
+        && before.status in ['open', 'closed', 'reopened']
         && before.revision is int
+        && before.revision >= 1
         // Menu/opening metadata is immutable in these mutation kinds; its
         // value schema is checked by the day/menu constructor and close rules.
+        && before.openingCash is int
+        && before.openingCash >= 0
+        && before.openingCash <= 20000
+        && before.openedBy is string
+        && before.openedAt is timestamp
+        && before.updatedAt is timestamp
+        && (before.lastCommandId == null || before.lastCommandId is string)
         && validLedgerTotals(before.totals)
         && after.diff(before).affectedKeys().hasOnly([
           'status', 'revision', 'totals', 'lastSettlementRevision', 'lastCommandId', 'updatedAt'
@@ -282,7 +310,8 @@ service cloud.firestore {
         && after.totals.diff(before.totals).affectedKeys().hasOnly([
           'activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal', 'retainedReceipts'
         ])
-        && before.lastSettlementRevision is int;
+        && before.lastSettlementRevision is int
+        && before.lastSettlementRevision >= 0;
     }
 
     function validOrderTransaction(tx, transactionId, studentId, dayId, commandId, seq, kind) {
@@ -295,9 +324,6 @@ service cloud.firestore {
         ])
         && tx.transactionId == transactionId
         && tx.studentId == studentId
-        && tx.studentNameSnapshot is string
-        && tx.studentNameSnapshot.size() >= 1
-        && tx.studentNameSnapshot.size() <= 100
         && tx.businessDate == dayId
         && validTaipeiBusinessDate(tx.businessDate)
         && tx.type == (kind == 'CreateOrder' ? 'order' : 'payment')
@@ -383,8 +409,8 @@ service cloud.firestore {
     function studentBalanceTransition(command, before, after) {
       let txBefore = command.before.transaction;
       let txAfter = command.after.transaction;
-      return ((command.kind in ['CreateOrder', 'CreatePayment']
-          && validBusinessDate(command.businessDate, command.before.head.goLiveDate, before.openingBalance.asOfDate)
+      return validBusinessDate(command.businessDate, command.before.head.goLiveDate, before.openingBalance.asOfDate)
+        && ((command.kind in ['CreateOrder', 'CreatePayment']
           && after.currentBalance == before.currentBalance + command.payload.paidAmount - command.payload.mealPrice)
         || (command.kind == 'CorrectTransaction'
           && after.currentBalance == before.currentBalance + txAfter.amount - txBefore.amount)
@@ -445,7 +471,6 @@ service cloud.firestore {
     }
 
     function createDayTransition(command, before, after) {
-      let tx = command.after.transaction;
       return before.status in ['open', 'reopened']
         && after.status == before.status
         && after.lastSettlementRevision == before.lastSettlementRevision
@@ -491,7 +516,7 @@ service cloud.firestore {
 
     function closeDayTransition(command, before, after) {
       return ((before.status == 'open' && before.lastSettlementRevision == 0)
-          || (before.status == 'reopened' && before.lastSettlementRevision == 2))
+          || (before.status == 'reopened' && before.lastSettlementRevision >= 2))
         && before.openingCash is int
         && after.status == 'closed'
         && after.lastSettlementRevision == before.lastSettlementRevision + 1
@@ -501,9 +526,9 @@ service cloud.firestore {
 
     function reopenDayTransition(command, before, after) {
       return before.status == 'closed'
-        && before.lastSettlementRevision == 1
+        && before.lastSettlementRevision >= 1
         && after.status == 'reopened'
-        && after.lastSettlementRevision == 2
+        && after.lastSettlementRevision == before.lastSettlementRevision + 1
         && after.totals == before.totals
         && validBusinessDate(command.businessDate, command.before.head.goLiveDate, command.before.head.goLiveDate);
     }
@@ -518,13 +543,15 @@ service cloud.firestore {
 
     function settlementTransition(command, dayId, revision, settlement) {
       let beforeDay = command.before.day;
-      let revisionNumber = revision == '1' ? 1 : revision == '2' ? 2 : 3;
+      let previousRevision = beforeDay.lastSettlementRevision;
       let previous = command.before.previousSettlement;
-      return validSettlement(settlement, dayId, revisionNumber, command.commandId,
-          command.kind == 'CloseDay' ? (revisionNumber == 1 ? null : revisionNumber - 1) : revisionNumber - 1, command.seq)
+      return revision == previousRevision + 1
+        && validSettlement(settlement, dayId, revision, command.commandId,
+          previousRevision == 0 ? null : previousRevision, command.seq)
         && cashEffectIs(command, 0, 0, 'none', 0)
         && ((command.kind == 'CloseDay'
-            && revision in ['1', '3']
+            && ((beforeDay.status == 'open' && previousRevision == 0)
+              || (beforeDay.status == 'reopened' && previousRevision >= 2))
             && command.payload.countedCash is int
             && command.payload.countedCash >= 0
             && boundedBalance(command.payload.countedCash)
@@ -535,23 +562,27 @@ service cloud.firestore {
             && settlement.countedCash == command.payload.countedCash
             && settlement.note == (command.reason == null ? '' : command.reason)
             && (settlement.difference == 0 || (command.reason is string && command.reason.size() >= 1))
-            && (revision == '1' ? previous == null : previous.status == 'reopened'
-              && previous.revision == 2 && previous.sourceSeq <= command.before.head.seq))
+            && (previousRevision == 0 ? previous == null : previous.status == 'reopened'
+              && previous.dayId == dayId && previous.revision == previousRevision
+              && previous.sourceSeq <= command.before.head.seq))
           || (command.kind == 'ReopenDay'
-            && revision == '2'
+            && beforeDay.status == 'closed'
+            && previousRevision >= 1
             && command.payload is map
             && exactKeys(command.payload, [])
             && command.reason is string
             && command.reason.size() >= 1
             && command.reason.size() <= 500
             && previous.status == 'closed'
-            && previous.revision == 1
+            && previous.dayId == dayId
+            && previous.revision == previousRevision
             && previous.sourceSeq <= command.before.head.seq
             && settlement.status == 'reopened'
             && settlement.totals == beforeDay.totals
             && settlement.openingCash == beforeDay.openingCash
             && settlement.expectedCash == previous.expectedCash
             && settlement.countedCash == previous.countedCash
+            && settlement.difference == previous.difference
             && settlement.note == command.reason));
     }
 
@@ -574,13 +605,16 @@ service cloud.firestore {
         && command.businessDate is string
         && command.before.head == headBefore
         && command.after.head == headAfter
+        && headAdvanced(headBefore, headAfter, command)
         && command.before.transaction == null
         && !exists(/databases/$(database)/documents/transactions/$(command.targets.transactionId))
         && command.after.transaction == txAfter
+        && transactionCreateMarked(txAfter, command.targets.transactionId, commandId)
         && command.before.previousSettlement == null
         && command.after.settlement == null
         && command.before.student == studentBefore
         && command.after.student == studentAfter
+        && projectionMarked(studentBefore, studentAfter, commandId)
         && command.before.day == dayBefore
         && command.after.day == dayAfter
         && projectionMarked(dayBefore, dayAfter, commandId);
@@ -604,10 +638,13 @@ service cloud.firestore {
         && exactKeys(command.payload, ['mealPrice', 'paidAmount'])
         && command.before.head == headBefore
         && command.after.head == headAfter
+        && headAdvanced(headBefore, headAfter, command)
         && command.before.transaction == txBefore
         && command.after.transaction == txAfter
+        && transactionProjectionMarked(txBefore, txAfter, commandId)
         && command.before.student == studentBefore
         && command.after.student == studentAfter
+        && projectionMarked(studentBefore, studentAfter, commandId)
         && command.before.day == dayBefore
         && command.after.day == dayAfter
         && projectionMarked(dayBefore, dayAfter, commandId)
@@ -633,10 +670,13 @@ service cloud.firestore {
         && exactKeys(command.payload, [])
         && command.before.head == headBefore
         && command.after.head == headAfter
+        && headAdvanced(headBefore, headAfter, command)
         && command.before.transaction == txBefore
         && command.after.transaction == txAfter
+        && transactionProjectionMarked(txBefore, txAfter, commandId)
         && command.before.student == studentBefore
         && command.after.student == studentAfter
+        && projectionMarked(studentBefore, studentAfter, commandId)
         && command.before.day == dayBefore
         && command.after.day == dayAfter
         && projectionMarked(dayBefore, dayAfter, commandId)
@@ -674,13 +714,13 @@ service cloud.firestore {
     }
 
     function closeDay(commandId, command) {
-      let headPath = /databases/$(database)/documents/system/dataHead;
       let dayPath = /databases/$(database)/documents/days/$(command.businessDate);
       let dayBefore = get(dayPath).data;
-      let settlementPath = /databases/$(database)/documents/days/$(command.businessDate)/settlements/$(dayBefore.lastSettlementRevision + 1);
+      let nextRevision = dayBefore.lastSettlementRevision + 1;
+      let settlementPath = /databases/$(database)/documents/days/$(command.businessDate)/settlements/$(nextRevision);
       let previousSettlementPath = /databases/$(database)/documents/days/$(command.businessDate)/settlements/$(dayBefore.lastSettlementRevision);
-      let headBefore = get(headPath).data;
-      let headAfter = getAfter(headPath).data;
+      let headBefore = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
       let dayAfter = getAfter(dayPath).data;
       let settlementAfter = getAfter(settlementPath).data;
       let previousSettlement = dayBefore.lastSettlementRevision == 0 ? null : get(previousSettlementPath).data;
@@ -689,11 +729,11 @@ service cloud.firestore {
         && command.kind == 'CloseDay'
         && exactKeys(command.targets, ['dayId', 'settlementRevision'])
         && command.targets.dayId == command.businessDate
-        && command.targets.settlementRevision == dayBefore.lastSettlementRevision + 1
-        && command.targets.settlementRevision in [1, 3]
+        && command.targets.settlementRevision == nextRevision
         && exactKeys(command.payload, ['countedCash'])
         && command.before.head == headBefore
         && command.after.head == headAfter
+        && headAdvanced(headBefore, headAfter, command)
         && command.before.transaction == null
         && command.before.student == null
         && command.after.transaction == null
@@ -704,17 +744,20 @@ service cloud.firestore {
         && projectionMarked(dayBefore, dayAfter, commandId)
         && command.before.previousSettlement == previousSettlement
         && command.after.settlement == settlementAfter
+        && settlementAfter.revision == nextRevision
+        && settlementAfter.lastCommandId == commandId
+        && settlementAfter.committedAt == request.time
         && !exists(settlementPath);
     }
 
     function reopenDay(commandId, command) {
-      let headPath = /databases/$(database)/documents/system/dataHead;
       let dayPath = /databases/$(database)/documents/days/$(command.businessDate);
       let dayBefore = get(dayPath).data;
       let previousSettlementPath = /databases/$(database)/documents/days/$(command.businessDate)/settlements/$(dayBefore.lastSettlementRevision);
-      let settlementPath = /databases/$(database)/documents/days/$(command.businessDate)/settlements/$(dayBefore.lastSettlementRevision + 1);
-      let headBefore = get(headPath).data;
-      let headAfter = getAfter(headPath).data;
+      let nextRevision = dayBefore.lastSettlementRevision + 1;
+      let settlementPath = /databases/$(database)/documents/days/$(command.businessDate)/settlements/$(nextRevision);
+      let headBefore = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
       let dayAfter = getAfter(dayPath).data;
       let previousSettlement = get(previousSettlementPath).data;
       let settlementAfter = getAfter(settlementPath).data;
@@ -723,11 +766,11 @@ service cloud.firestore {
         && command.kind == 'ReopenDay'
         && exactKeys(command.targets, ['dayId', 'settlementRevision'])
         && command.targets.dayId == command.businessDate
-        && command.targets.settlementRevision == dayBefore.lastSettlementRevision + 1
-        && command.targets.settlementRevision == 2
+        && command.targets.settlementRevision == nextRevision
         && exactKeys(command.payload, [])
         && command.before.head == headBefore
         && command.after.head == headAfter
+        && headAdvanced(headBefore, headAfter, command)
         && command.before.transaction == null
         && command.before.student == null
         && command.after.transaction == null
@@ -738,6 +781,9 @@ service cloud.firestore {
         && projectionMarked(dayBefore, dayAfter, commandId)
         && command.before.previousSettlement == previousSettlement
         && command.after.settlement == settlementAfter
+        && settlementAfter.revision == nextRevision
+        && settlementAfter.lastCommandId == commandId
+        && settlementAfter.committedAt == request.time
         && !exists(settlementPath);
     }
 

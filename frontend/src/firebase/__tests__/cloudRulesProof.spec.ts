@@ -65,8 +65,12 @@ type OrderDraft = {
   transaction: Data;
   command: Data;
 };
+type DayCommandDraft = { dayId: string; command: Data; headAfter: Data; dayAfter: Data; settlement: Data };
 type OrderOptions = {
   commandId?: string;
+  transactionId?: string;
+  actorUid?: string;
+  actorEmail?: string;
   kind?: 'CreateOrder' | 'CreatePayment';
   mealPrice?: number;
   paidAmount?: number;
@@ -75,6 +79,7 @@ type OrderOptions = {
   withHead?: boolean;
   withStudent?: boolean;
   withDay?: boolean;
+  withTransaction?: boolean;
   extraTransaction?: boolean;
   secondCommand?: boolean;
   leaseEpoch?: number;
@@ -278,11 +283,13 @@ function operatorDb(
 function orderDraft(state: SeedState, options: OrderOptions = {}): OrderDraft {
   const commandId = options.commandId ?? 'cmd-create-order-1';
   const kind = options.kind ?? 'CreateOrder';
+  const actorUid = options.actorUid ?? operatorA.uid;
+  const actorEmail = options.actorEmail ?? operatorA.email;
   const mealPrice = options.mealPrice ?? (kind === 'CreatePayment' ? 0 : 100);
   const paidAmount = options.paidAmount ?? 90;
   const mealKind = options.mealKind === undefined ? (kind === 'CreatePayment' ? null : 'bento') : options.mealKind;
   const menu = state.day.menu as Data;
-  const transactionId = 'tx-create-order-1';
+  const transactionId = options.transactionId ?? 'tx-create-order-1';
   const previousTotals = state.day.totals as Data;
   const headBefore = state.head;
   const headAfter: Data = {
@@ -309,8 +316,8 @@ function orderDraft(state: SeedState, options: OrderOptions = {}): OrderDraft {
     revision: 1,
     createdAt: serverTimestamp(),
     createdSeq: Number(headBefore.seq) + 1,
-    operatorUid: operatorA.uid,
-    operatorEmail: operatorA.email,
+    operatorUid: actorUid,
+    operatorEmail: actorEmail,
     sourceDevice: 'pc',
     note: '',
     lastCommandId: commandId,
@@ -344,7 +351,7 @@ function orderDraft(state: SeedState, options: OrderOptions = {}): OrderDraft {
     kind,
     seq: Number(headBefore.seq) + 1,
     leaseEpoch: options.leaseEpoch ?? 4,
-    actor: { uid: operatorA.uid, email: operatorA.email },
+    actor: { uid: actorUid, email: actorEmail },
     committedAt: serverTimestamp(),
     businessDate: state.dayId,
     studentId,
@@ -375,14 +382,14 @@ function buildOrderBatch(db: ReturnType<typeof operatorDb>, state: SeedState, op
   const batch = writeBatch(db);
   if (options.withCommand !== false) batch.set(doc(db, `commands/${commandId}`), draft.command);
   if (options.withHead !== false) batch.update(doc(db, 'system/dataHead'), draft.headAfter);
-  batch.set(doc(db, 'transactions/tx-create-order-1'), draft.transaction);
+  if (options.withTransaction !== false) batch.set(doc(db, `transactions/${String(draft.transaction.transactionId)}`), draft.transaction);
   if (options.withStudent !== false) batch.update(doc(db, `students/${studentId}`), draft.studentAfter);
   if (options.withDay !== false) batch.update(doc(db, `days/${draft.dayId}`), draft.dayAfter);
   if (options.extraTransaction) {
     batch.set(doc(db, 'transactions/tx-extra'), { ...draft.transaction, transactionId: 'tx-extra' });
   }
   if (options.secondCommand) {
-    batch.set(doc(db, 'commands/cmd-second'), { ...draft.command, commandId: 'cmd-second', seq: Number(draft.command.seq) + 1 });
+    batch.set(doc(db, 'commands/cmd-second'), { ...draft.command, commandId: 'cmd-second' });
   }
   return { batch, draft, commandId };
 }
@@ -453,15 +460,20 @@ function correctionDraft(state: SeedState & { transaction: Data }, commandId = '
   };
 }
 
-function buildCorrectionBatch(db: ReturnType<typeof operatorDb>, state: SeedState & { transaction: Data }, adjust?: (draft: OrderDraft) => void) {
+function buildCorrectionBatch(
+  db: ReturnType<typeof operatorDb>,
+  state: SeedState & { transaction: Data },
+  adjust?: (draft: OrderDraft) => void,
+  options: { withTransaction?: boolean; withHead?: boolean; withStudent?: boolean; withDay?: boolean } = {},
+) {
   const draft = correctionDraft(state);
   adjust?.(draft);
   const batch = writeBatch(db);
   batch.set(doc(db, 'commands/cmd-correct-1'), draft.command);
-  batch.update(doc(db, 'system/dataHead'), draft.headAfter);
-  batch.update(doc(db, 'transactions/tx-existing'), draft.transaction);
-  batch.update(doc(db, `students/${studentId}`), draft.studentAfter);
-  batch.update(doc(db, `days/${draft.dayId}`), draft.dayAfter);
+  if (options.withHead !== false) batch.update(doc(db, 'system/dataHead'), draft.headAfter);
+  if (options.withTransaction !== false) batch.update(doc(db, 'transactions/tx-existing'), draft.transaction);
+  if (options.withStudent !== false) batch.update(doc(db, `students/${studentId}`), draft.studentAfter);
+  if (options.withDay !== false) batch.update(doc(db, `days/${draft.dayId}`), draft.dayAfter);
   return { batch, draft };
 }
 
@@ -516,18 +528,24 @@ function cancellationDraft(state: SeedState & { transaction: Data }, commandId =
   return { dayId: state.dayId, headBefore: state.head, headAfter, studentBefore: state.student, studentAfter, dayBefore: state.day, dayAfter, transaction: txAfter, command };
 }
 
-function buildCancellationBatch(db: ReturnType<typeof operatorDb>, state: SeedState & { transaction: Data }) {
+function buildCancellationBatch(
+  db: ReturnType<typeof operatorDb>,
+  state: SeedState & { transaction: Data },
+  adjust?: (draft: OrderDraft) => void,
+  options: { withTransaction?: boolean; withHead?: boolean; withStudent?: boolean; withDay?: boolean } = {},
+) {
   const draft = cancellationDraft(state);
+  adjust?.(draft);
   const batch = writeBatch(db);
   batch.set(doc(db, 'commands/cmd-void-1'), draft.command);
-  batch.update(doc(db, 'system/dataHead'), draft.headAfter);
-  batch.update(doc(db, 'transactions/tx-existing'), draft.transaction);
-  batch.update(doc(db, `students/${studentId}`), draft.studentAfter);
-  batch.update(doc(db, `days/${draft.dayId}`), draft.dayAfter);
+  if (options.withHead !== false) batch.update(doc(db, 'system/dataHead'), draft.headAfter);
+  if (options.withTransaction !== false) batch.update(doc(db, 'transactions/tx-existing'), draft.transaction);
+  if (options.withStudent !== false) batch.update(doc(db, `students/${studentId}`), draft.studentAfter);
+  if (options.withDay !== false) batch.update(doc(db, `days/${draft.dayId}`), draft.dayAfter);
   return { batch, draft };
 }
 
-function dayCommandDraft(state: SeedState, kind: 'CloseDay' | 'ReopenDay'): { dayId: string; command: Data; headAfter: Data; dayAfter: Data; settlement: Data } {
+function dayCommandDraft(state: SeedState, kind: 'CloseDay' | 'ReopenDay'): DayCommandDraft {
   const revision = Number(state.day.lastSettlementRevision) + 1;
   const commandId = `cmd-${kind.toLowerCase()}-${revision}`;
   const seq = Number(state.head.seq) + 1;
@@ -592,14 +610,47 @@ function dayCommandDraft(state: SeedState, kind: 'CloseDay' | 'ReopenDay'): { da
   return { dayId: state.dayId, command, headAfter, dayAfter, settlement };
 }
 
-function buildDayCommandBatch(db: ReturnType<typeof operatorDb>, state: SeedState, kind: 'CloseDay' | 'ReopenDay') {
+function buildDayCommandBatch(
+  db: ReturnType<typeof operatorDb>,
+  state: SeedState,
+  kind: 'CloseDay' | 'ReopenDay',
+  adjust?: (draft: DayCommandDraft) => void,
+  settlementPathRevision?: number,
+) {
   const draft = dayCommandDraft(state, kind);
+  adjust?.(draft);
   const batch = writeBatch(db);
   batch.set(doc(db, `commands/${String(draft.command.commandId)}`), draft.command);
   batch.update(doc(db, 'system/dataHead'), draft.headAfter);
   batch.update(doc(db, `days/${draft.dayId}`), draft.dayAfter);
-  batch.set(doc(db, `days/${draft.dayId}/settlements/${String(draft.settlement.revision)}`), draft.settlement);
+  batch.set(doc(db, `days/${draft.dayId}/settlements/${settlementPathRevision ?? String(draft.settlement.revision)}`), draft.settlement);
   return { batch, draft };
+}
+
+async function expectDayCommandFailureIsAtomic(
+  state: SeedState,
+  kind: 'CloseDay' | 'ReopenDay',
+  adjust?: (draft: DayCommandDraft) => void,
+  settlementPathRevision?: number,
+) {
+  const { batch, draft } = buildDayCommandBatch(operatorDb(), state, kind, adjust, settlementPathRevision);
+  await assertFails(batch.commit());
+  await env.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    const [head, day, command, targetSettlement, alternateSettlement] = await Promise.all([
+      getDoc(doc(db, 'system/dataHead')),
+      getDoc(doc(db, `days/${state.dayId}`)),
+      getDoc(doc(db, `commands/${String(draft.command.commandId)}`)),
+      getDoc(doc(db, `days/${state.dayId}/settlements/${Number(state.day.lastSettlementRevision) + 1}`)),
+      getDoc(doc(db, `days/${state.dayId}/settlements/${Number(state.day.lastSettlementRevision) + 2}`)),
+    ]);
+    expect(head.data()?.seq).toBe(state.head.seq);
+    expect(day.data()?.revision).toBe(state.day.revision);
+    expect(day.data()?.lastSettlementRevision).toBe(state.day.lastSettlementRevision);
+    expect(command.exists()).toBe(false);
+    expect(targetSettlement.exists()).toBe(false);
+    expect(alternateSettlement.exists()).toBe(false);
+  });
 }
 
 async function expectCreateOrderFailureIsAtomic(
@@ -615,7 +666,7 @@ async function expectCreateOrderFailureIsAtomic(
       getDoc(doc(adminDb, 'system/dataHead')),
       getDoc(doc(adminDb, `students/${studentId}`)),
       getDoc(doc(adminDb, `days/${state.dayId}`)),
-      getDoc(doc(adminDb, 'transactions/tx-create-order-1')),
+      getDoc(doc(adminDb, `transactions/${options.transactionId ?? 'tx-create-order-1'}`)),
       getDoc(doc(adminDb, `commands/${commandId}`)),
       getDoc(doc(adminDb, 'transactions/tx-extra')),
       getDoc(doc(adminDb, 'commands/cmd-second')),
@@ -716,6 +767,31 @@ describeWithEmulator('P01 temporary cloud Rules proof', () => {
     }
   });
 
+  it('requires head, student, day and transaction writes even when the command snapshot is forged unchanged', async () => {
+    const missingProjectionCases: OrderOptions[] = [
+      {
+        withHead: false,
+        adjust: draft => { draft.command.after.head = draft.headBefore; },
+      },
+      {
+        withStudent: false,
+        adjust: draft => { draft.command.after.student = draft.studentBefore; },
+      },
+      {
+        withDay: false,
+        adjust: draft => { draft.command.after.day = draft.dayBefore; },
+      },
+      {
+        withTransaction: false,
+        adjust: draft => { draft.command.after.transaction = null; },
+      },
+    ];
+    for (const options of missingProjectionCases) {
+      const state = await seedBaseState();
+      await expectCreateOrderFailureIsAtomic(operatorDb(), state, options);
+    }
+  });
+
   it('rejects two commands attempting to claim one sequence atomically', async () => {
     const state = await seedBaseState();
     await expectCreateOrderFailureIsAtomic(operatorDb(), state, { secondCommand: true });
@@ -760,7 +836,7 @@ describeWithEmulator('P01 temporary cloud Rules proof', () => {
       await expectCreateOrderFailureIsAtomic(operatorDb(), state, { adjust });
     }
     const state = await seedBaseState({ epoch: 5 });
-    await expectCreateOrderFailureIsAtomic(operatorDb(), state, { leaseEpoch: 4 });
+    await expectCreateOrderFailureIsAtomic(operatorDb(), state, { leaseEpoch: 3 });
   });
 
   it.each([
@@ -793,6 +869,7 @@ describeWithEmulator('P01 temporary cloud Rules proof', () => {
       ({ command }: OrderDraft) => { (command.payload as Data).menuRevision = 2; },
       ({ transaction }: OrderDraft) => { transaction.menuPriceSnapshot = 99; },
       ({ transaction }: OrderDraft) => { transaction.vendorNameSnapshot = 'Other Vendor'; },
+      ({ transaction }: OrderDraft) => { transaction.studentNameSnapshot = 'Forged Student'; },
     ]) {
       const state = await seedBaseState();
       await expectCreateOrderFailureIsAtomic(operatorDb(), state, { adjust });
@@ -824,16 +901,22 @@ describeWithEmulator('P01 temporary cloud Rules proof', () => {
   });
 
   it('requires the exact active verified Google allowlist identity and current lease holder', async () => {
-    for (const db of [
-      operatorDb('uid-a', 'operator-a@example.test', { email_verified: false }),
-      operatorDb('uid-a', 'operator-a@example.test', { signInProvider: 'password' }),
-      operatorDb('uid-a', 'mismatched@example.test'),
-      operatorDb('uid-unlisted', 'unlisted@example.test'),
-      operatorDb(operatorB.uid, operatorB.email),
-    ]) {
+    const cases = [
+      { db: operatorDb('uid-a', 'operator-a@example.test', { email_verified: false }), actorUid: operatorA.uid, actorEmail: operatorA.email },
+      { db: operatorDb('uid-a', 'operator-a@example.test', { signInProvider: 'password' }), actorUid: operatorA.uid, actorEmail: operatorA.email },
+      { db: operatorDb('uid-a', 'mismatched@example.test'), actorUid: operatorA.uid, actorEmail: 'mismatched@example.test' },
+      { db: operatorDb('uid-unlisted', 'unlisted@example.test'), actorUid: 'uid-unlisted', actorEmail: 'unlisted@example.test' },
+      { db: operatorDb(operatorB.uid, operatorB.email), actorUid: operatorB.uid, actorEmail: operatorB.email },
+    ];
+    for (const { db, actorUid, actorEmail } of cases) {
       const state = await seedBaseState();
-      await expectCreateOrderFailureIsAtomic(db, state);
+      await expectCreateOrderFailureIsAtomic(db, state, { actorUid, actorEmail });
     }
+    const inactive = await seedBaseState();
+    await env.withSecurityRulesDisabled(async context => {
+      await updateDoc(doc(context.firestore(), `operators/${operatorA.uid}`), { active: false });
+    });
+    await expectCreateOrderFailureIsAtomic(operatorDb(), inactive);
   });
 
   it('rejects expired lease, closed business day, maintenance mode and direct uncommanded writes atomically', async () => {
@@ -866,6 +949,49 @@ describeWithEmulator('P01 temporary cloud Rules proof', () => {
       expect((await getDoc(doc(db, `days/${dayId}`))).data()?.totals).toMatchObject({ mealTotal: 110, retainedReceipts: 70 });
       expect((await getDoc(doc(db, 'system/dataHead'))).data()?.seq).toBe(2);
     });
+  });
+
+  it('requires a CorrectTransaction writer even when command.after.transaction is forged unchanged', async () => {
+    const state = await seedExistingOrder(90);
+    const { batch } = buildCorrectionBatch(
+      operatorDb(),
+      state,
+      draft => { draft.command.after.transaction = state.transaction; draft.transaction = state.transaction; },
+      { withTransaction: false },
+    );
+    await assertFails(batch.commit());
+    await env.withSecurityRulesDisabled(async context => {
+      const db = context.firestore();
+      expect((await getDoc(doc(db, 'system/dataHead'))).data()?.seq).toBe(1);
+      expect((await getDoc(doc(db, 'transactions/tx-existing'))).data()).toMatchObject({ paidAmount: 90, mealPrice: 100, revision: 1 });
+      expect((await getDoc(doc(db, `students/${studentId}`))).data()?.currentBalance).toBe(-10);
+      expect((await getDoc(doc(db, `days/${dayId}`))).data()?.revision).toBe(2);
+      expect((await getDoc(doc(db, 'commands/cmd-correct-1'))).exists()).toBe(false);
+    });
+  });
+
+  it('requires CorrectTransaction head, student and day projections when their command snapshots are forged unchanged', async () => {
+    const omitCases: Array<{
+      options: { withHead?: boolean; withStudent?: boolean; withDay?: boolean };
+      adjust: (draft: OrderDraft, state: SeedState & { transaction: Data }) => void;
+    }> = [
+      { options: { withHead: false }, adjust: (draft, state) => { draft.command.after.head = state.head; } },
+      { options: { withStudent: false }, adjust: (draft, state) => { draft.command.after.student = state.student; } },
+      { options: { withDay: false }, adjust: (draft, state) => { draft.command.after.day = state.day; } },
+    ];
+    for (const { options, adjust } of omitCases) {
+      const state = await seedExistingOrder(90);
+      const { batch } = buildCorrectionBatch(operatorDb(), state, draft => adjust(draft, state), options);
+      await assertFails(batch.commit());
+      await env.withSecurityRulesDisabled(async context => {
+        const db = context.firestore();
+        expect((await getDoc(doc(db, 'system/dataHead'))).data()?.seq).toBe(1);
+        expect((await getDoc(doc(db, 'transactions/tx-existing'))).data()).toMatchObject({ mealPrice: 100, paidAmount: 90, revision: 1 });
+        expect((await getDoc(doc(db, `students/${studentId}`))).data()?.currentBalance).toBe(-10);
+        expect((await getDoc(doc(db, `days/${dayId}`))).data()?.revision).toBe(2);
+        expect((await getDoc(doc(db, 'commands/cmd-correct-1'))).exists()).toBe(false);
+      });
+    }
   });
 
   it('rejects changing an existing transaction account, business date or revision atomically', async () => {
@@ -915,6 +1041,25 @@ describeWithEmulator('P01 temporary cloud Rules proof', () => {
     });
   });
 
+  it('requires a VoidTransaction writer even when command.after.transaction is forged unchanged', async () => {
+    const state = await seedExistingOrder(0);
+    const { batch } = buildCancellationBatch(
+      operatorDb(),
+      state,
+      draft => { draft.command.after.transaction = state.transaction; draft.transaction = state.transaction; },
+      { withTransaction: false },
+    );
+    await assertFails(batch.commit());
+    await env.withSecurityRulesDisabled(async context => {
+      const db = context.firestore();
+      expect((await getDoc(doc(db, 'system/dataHead'))).data()?.seq).toBe(1);
+      expect((await getDoc(doc(db, 'transactions/tx-existing'))).data()).toMatchObject({ status: 'active', paidAmount: 0, revision: 1 });
+      expect((await getDoc(doc(db, `students/${studentId}`))).data()?.currentBalance).toBe(-100);
+      expect((await getDoc(doc(db, `days/${dayId}`))).data()?.revision).toBe(2);
+      expect((await getDoc(doc(db, 'commands/cmd-void-1'))).exists()).toBe(false);
+    });
+  });
+
   it('refunds a paid order once and closes against the effective receipt total', async () => {
     const state = await seedExistingOrder(90);
     const cancellation = buildCancellationBatch(operatorDb(), state);
@@ -945,7 +1090,6 @@ describeWithEmulator('P01 temporary cloud Rules proof', () => {
   it('allows CloseDay and then ReopenDay as immutable settlement revisions', async () => {
     const open = await seedBaseState();
     const close = buildDayCommandBatch(operatorDb(), open, 'CloseDay');
-    console.log('stage-close1');
     await assertSucceeds(close.batch.commit());
     let closedState: SeedState | undefined;
     await env.withSecurityRulesDisabled(async context => {
@@ -958,7 +1102,6 @@ describeWithEmulator('P01 temporary cloud Rules proof', () => {
       closedState = { ...open, head: head.data() as Data, day: day.data() as Data, settlement: settlement.data() as Data };
     });
     const reopen = buildDayCommandBatch(operatorDb(), closedState, 'ReopenDay');
-    console.log('stage-reopen2');
     await assertSucceeds(reopen.batch.commit());
     await env.withSecurityRulesDisabled(async context => {
       const db = context.firestore();
@@ -987,7 +1130,6 @@ describeWithEmulator('P01 temporary cloud Rules proof', () => {
     });
     expect(reopenedState?.day.status).toBe('reopened');
     const orderAfterReopen = buildOrderBatch(operatorDb(), reopenedState as SeedState, { commandId: 'cmd-create-order-after-reopen' });
-    console.log('stage-order');
     await assertSucceeds(orderAfterReopen.batch.commit());
     await env.withSecurityRulesDisabled(async context => {
       const db = context.firestore();
@@ -1014,13 +1156,152 @@ describeWithEmulator('P01 temporary cloud Rules proof', () => {
       };
     });
     const closeAgain = buildDayCommandBatch(operatorDb(), reopenedAfterOrder as SeedState, 'CloseDay');
-    console.log('stage-close3');
     await assertSucceeds(closeAgain.batch.commit());
     await env.withSecurityRulesDisabled(async context => {
       const db = context.firestore();
       expect((await getDoc(doc(db, `days/${dayId}`))).data()).toMatchObject({ status: 'closed', lastSettlementRevision: 3 });
       expect((await getDoc(doc(db, `days/${dayId}/settlements/3`))).data()).toMatchObject({ status: 'closed', revision: 3, previousRevision: 2 });
     });
+
+    let closedAgainState: SeedState | undefined;
+    await env.withSecurityRulesDisabled(async context => {
+      const db = context.firestore();
+      const [head, student, day, settlement] = await Promise.all([
+        getDoc(doc(db, 'system/dataHead')),
+        getDoc(doc(db, `students/${studentId}`)),
+        getDoc(doc(db, `days/${dayId}`)),
+        getDoc(doc(db, `days/${dayId}/settlements/3`)),
+      ]);
+      closedAgainState = {
+        ...reopenedAfterOrder,
+        head: head.data() as Data,
+        student: student.data() as Data,
+        day: day.data() as Data,
+        settlement: settlement.data() as Data,
+      };
+    });
+    const reopenFourth = buildDayCommandBatch(operatorDb(), closedAgainState as SeedState, 'ReopenDay');
+    await assertSucceeds(reopenFourth.batch.commit());
+
+    let reopenedFourthState: SeedState | undefined;
+    await env.withSecurityRulesDisabled(async context => {
+      const db = context.firestore();
+      const [head, student, day, settlement] = await Promise.all([
+        getDoc(doc(db, 'system/dataHead')),
+        getDoc(doc(db, `students/${studentId}`)),
+        getDoc(doc(db, `days/${dayId}`)),
+        getDoc(doc(db, `days/${dayId}/settlements/4`)),
+      ]);
+      reopenedFourthState = {
+        ...closedAgainState,
+        head: head.data() as Data,
+        student: student.data() as Data,
+        day: day.data() as Data,
+        settlement: settlement.data() as Data,
+      };
+      expect(day.data()).toMatchObject({ status: 'reopened', lastSettlementRevision: 4 });
+      expect(settlement.data()).toMatchObject({ status: 'reopened', revision: 4, previousRevision: 3 });
+    });
+    const secondOrderAfterReopen = buildOrderBatch(operatorDb(), reopenedFourthState as SeedState, {
+      commandId: 'cmd-create-order-after-reopen-2',
+      transactionId: 'tx-create-order-after-reopen-2',
+    });
+    await assertSucceeds(secondOrderAfterReopen.batch.commit());
+
+    let reopenedFourthAfterOrder: SeedState | undefined;
+    await env.withSecurityRulesDisabled(async context => {
+      const db = context.firestore();
+      const [head, student, day, settlement] = await Promise.all([
+        getDoc(doc(db, 'system/dataHead')),
+        getDoc(doc(db, `students/${studentId}`)),
+        getDoc(doc(db, `days/${dayId}`)),
+        getDoc(doc(db, `days/${dayId}/settlements/4`)),
+      ]);
+      reopenedFourthAfterOrder = {
+        ...reopenedFourthState,
+        head: head.data() as Data,
+        student: student.data() as Data,
+        day: day.data() as Data,
+        settlement: settlement.data() as Data,
+      };
+    });
+    const closeFifth = buildDayCommandBatch(operatorDb(), reopenedFourthAfterOrder as SeedState, 'CloseDay');
+    await assertSucceeds(closeFifth.batch.commit());
+    await env.withSecurityRulesDisabled(async context => {
+      const db = context.firestore();
+      const [day, revisionOne, revisionTwo, revisionThree, revisionFour, revisionFive] = await Promise.all([
+        getDoc(doc(db, `days/${dayId}`)),
+        getDoc(doc(db, `days/${dayId}/settlements/1`)),
+        getDoc(doc(db, `days/${dayId}/settlements/2`)),
+        getDoc(doc(db, `days/${dayId}/settlements/3`)),
+        getDoc(doc(db, `days/${dayId}/settlements/4`)),
+        getDoc(doc(db, `days/${dayId}/settlements/5`)),
+      ]);
+      expect(day.data()).toMatchObject({ status: 'closed', lastSettlementRevision: 5 });
+      expect(revisionOne.data()).toMatchObject({ status: 'closed', revision: 1 });
+      expect(revisionTwo.data()).toMatchObject({ status: 'reopened', revision: 2, previousRevision: 1 });
+      expect(revisionThree.data()).toMatchObject({ status: 'closed', revision: 3, previousRevision: 2 });
+      expect(revisionFour.data()).toMatchObject({ status: 'reopened', revision: 4, previousRevision: 3 });
+      expect(revisionFive.data()).toMatchObject({ status: 'closed', revision: 5, previousRevision: 4 });
+    });
+  });
+
+  it('rejects forged close state transitions, missing variance reason and settlement path links atomically', async () => {
+    const closeMutations: Array<{
+      adjust?: (draft: DayCommandDraft) => void;
+      pathRevision?: number;
+    }> = [
+      {
+        adjust: draft => {
+          draft.command.reason = null;
+          draft.settlement.note = '';
+        },
+      },
+      { adjust: draft => { (draft.command.targets as Data).settlementRevision = 9; } },
+      { pathRevision: 2 },
+      { adjust: draft => { draft.dayAfter.lastSettlementRevision = 9; } },
+      { adjust: draft => { draft.dayAfter.status = 'reopened'; } },
+    ];
+    for (const mutation of closeMutations) {
+      await env.clearFirestore();
+      const state = await seedBaseState();
+      await expectDayCommandFailureIsAtomic(state, 'CloseDay', mutation.adjust, mutation.pathRevision);
+    }
+  });
+
+  it('rejects a ReopenDay with forged previous revision or a mismatched settlement path atomically', async () => {
+    const reopenMutations: Array<{
+      adjust?: (draft: DayCommandDraft) => void;
+      pathRevision?: number;
+    }> = [
+      { adjust: (draft: DayCommandDraft) => { (((draft.command.before as Data).previousSettlement) as Data).revision = 9; } },
+      { adjust: (draft: DayCommandDraft) => { draft.settlement.previousRevision = 9; } },
+      { adjust: undefined, pathRevision: 3 },
+    ];
+    for (const mutation of reopenMutations) {
+      await env.clearFirestore();
+      const open = await seedBaseState();
+      const firstClose = buildDayCommandBatch(operatorDb(), open, 'CloseDay');
+      await assertSucceeds(firstClose.batch.commit());
+      let closed: SeedState | undefined;
+      await env.withSecurityRulesDisabled(async context => {
+        const db = context.firestore();
+        const [head, student, day, settlement] = await Promise.all([
+          getDoc(doc(db, 'system/dataHead')),
+          getDoc(doc(db, `students/${studentId}`)),
+          getDoc(doc(db, `days/${dayId}`)),
+          getDoc(doc(db, `days/${dayId}/settlements/1`)),
+        ]);
+        closed = {
+          ...open,
+          head: head.data() as Data,
+          student: student.data() as Data,
+          day: day.data() as Data,
+          settlement: settlement.data() as Data,
+        };
+      });
+      await expectDayCommandFailureIsAtomic(closed as SeedState, 'ReopenDay', mutation.adjust, mutation.pathRevision);
+    }
   });
 
   it('denies updates and deletes of historical immutable command and settlement documents', async () => {
