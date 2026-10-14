@@ -1,6 +1,6 @@
 # EasyOrder 零費用正式後端分階段實作計畫
 
-日期：2026-10-13。狀態：**規劃已交付；P00 已合併；P01 正在建立 Rules 可行性證據；P02–P18 尚未開始或驗收**。
+日期：2026-10-13。狀態：**規劃已交付；P00 已合併；P01 正在縮減真 Emulator 發現的 expression-limit failure 並補齊 command schema；P02–P18 尚未開始或驗收**。
 
 **Source of truth：** [正式後端 spec](../specs/2026-10-13-free-production-backend-spec.md)，包含使用者最新「多白名單、等權、同時單一Google帳號」修正；來源 [PR #469](https://github.com/cheerc/talented-easyorder/pull/469)。
 
@@ -35,7 +35,7 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 | Phase | 狀態 | 交付摘要與證據 |
 |---|---|---|
 | P00 | 已合併 #471 | Base：`75e7a96e6cad722a41076df66e5b2cf9014e9d47`；PR head：`7a7128f14cf32268808de4e0a57f6986a0ca806e`；main merge SHA：`1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。新增[現況與證據](../../ops/free-production-evidence.md)，含完整 279 筆 TypeScript diagnostics、舊寫入／部署路徑分類及 R/U 對照。docs links／diff check pass；基線 tsc exit 2；PR CI 識別 docs-only 並跳過 app steps。 |
-| P01 | 行為 RED draft PR 已開，等真 Emulator 結果 | [PR #472](https://github.com/cheerc/talented-easyorder/pull/472)，base `1da09039ab57f2b13f965ce98277bd1d41ce8e5e`，RED scaffold head `6ca1545a8e97df4a96c8a75c5429f35f5438a2a9`，Actions run [38514043015](https://github.com/cheerc/talented-easyorder/actions/runs/38514043015) 執行中。Proof 用 test-only fixture 與 `demo-easyorder`；不可部署 fixture 或改 production rules。CI 明確 setup Java 21、檢查實際測試數／skip 數。GREEN 與 review 尚未完成。 |
+| P01 | RED 已由 Actions 確認；tight proof WIP 遇 expression limit | [PR #472](https://github.com/cheerc/talented-easyorder/pull/472)，base `1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。RED source `6ca1545a8e97df4a96c8a75c5429f35f5438a2a9` 的 Actions run [38514043015](https://github.com/cheerc/talented-easyorder/actions/runs/38514043015)：2 tests，1 passed、1 failed、0 skipped，未命令 extra transaction 的 `assertFails` 預期失敗。Local tight Rules WIP source `520dd2de75ede44d41becbb9617a872aea9d4d25` 在真 Emulator 有 26 tests：18 passed、8 failed、0 skipped；多個有效 commit 觸發 1000 expression cap，細節見[evidence](../../ops/diagnostics/p01-rules-expression-limit-wip.txt)。WIP schema 尚缺 spec command 頂層 reason／cashEffect，未 GREEN、未 review、未部署。 |
 | P02–P18 | 尚未開始／未驗 | 不代表任何新雲端功能已實作或通過。 |
 
 ## 2. 現有檔案與規劃新檔
@@ -107,11 +107,11 @@ npm run test:e2e
 
 **Scope/files：** 新`frontend/src/firebase/__tests__/cloudRulesProof.spec.ts`與同目錄`fixtures/cloudRulesProof.rules`，更新`.github/workflows/ci.yml`及`docs/ops/free-production-evidence.md`。Proof rules 只由 `initializeTestEnvironment` 載入，不能放入 `firebase.json`／部署設定；不改 production `firestore.rules`。CI 使用 Java 21、`--project demo-easyorder --only firestore`，固定 `FIRESTORE_EMULATOR_HOST` gate，並檢查 Vitest JSON 確實有通過測試且 skipped 為0。
 
-**Consumes/produces：** spec §4–7→Google verified provider／精確 operator allowlist、lease/serverTimestamp/epoch、dataHead seq＋immutable command、完整 typed targets/before-after、revision+1、五文件帳務及 day contribution、closed-day／maintenance proof、租約與 settlement 版本。產物含未快取 access-call graph、expression/call limit 評估及真 Emulator 結果。proof fixture 不能部署；後續 P05 才移入正式 rules/code。
+**Consumes/produces：** spec §4–7→Google verified provider／精確 operator allowlist、lease/serverTimestamp/epoch、dataHead seq＋immutable command、完整 typed targets/before-after、revision+1、五文件帳務及 day contribution、`reason`／`cashEffect`、closed-day／maintenance proof、租約與 settlement 版本。產物含未快取 access-call graph、expression/call limit 評估及真 Emulator 結果。proof fixture 不能部署；後續 P05 才移入正式 rules/code。因 fixture 只覆蓋選定交易與日期 kind，未覆蓋學生／供應商設定、櫃台 expense、備份稽核；搬入 P05 前必須按正式 command union 對完整 kind 做一次 schema／expression／access budget 再證明。
 
 **RED/GREEN：** 建立 L09/L10/A03 對抗案例：extra row、缺 student/day/command、雙 command、歷史 command 重放、偽造 seq/actor/serverTime、不同帳戶／日期篡改、schema 數值界線、負數／小數／超界／zero payment、非 holder／舊 epoch／過期 lease、closed／maintenance day、舊 settlement 改寫；拒絕後核對原子未寫。合法 CreateOrder／CorrectTransaction／zero-paid cancellation／CloseDay／ReopenDay 全通過。Lease 使用 server timestamp 驗 acquire／renew／release、拒絕 client timestamp 與過期 renew。CI 專用命令明確指定 `demo-easyorder`，並驗 JSON report 有通過測試且零 skipped；本機一般 Vitest 在 emulator 未設定時可清楚 skip。
 
-**Acceptance：** 未快取計數每 write≤10／每 transaction≤20，不依賴重複 `get` 快取；五文件 commit 的設計 18 calls 須由 emulator 實際通過。逐 operation 記 get/exists/getAfter 呼叫圖，評估每 write expression 上限及 access budget。若超限先在同一 Spark 模型調整並更新 spec；不得刪安全檢查、假稱通過或開 Blaze。Spike 上限兩個工程日，屆時交可重現結果和必要模型修正；未成功就停在 P01。
+**Acceptance：** 未快取計數每 write≤10／每 transaction≤20，不依賴重複 `get` 快取；五文件 commit 的設計 18 calls 須由 emulator 實際通過。逐 operation 記 get/exists/getAfter 呼叫圖，評估每 write expression 上限及 access budget。WIP source `520dd2de75ede44d41becbb9617a872aea9d4d25` 真 Emulator 實跑 26 cases（18 passed／8 failed／0 skipped）：五文件 CreateOrder 與其他有效 command 遇到 1000 expression cap，詳見 ops evidence diagnostic。緊接的修改需保留完整 schema、安全檢查與 typed before/after，並把頂層 `reason`／cashEffect 前後貢獻、delta、reasonKind、refundAmount 納入驗證；不得刪安全檢查、假稱通過或開 Blaze。若同一 Spark 模型仍超限，按規格停 P01 並提出可重現失敗與必要架構修正。
 
 ### P02 — 雲端command／投影介面與模式隔離
 

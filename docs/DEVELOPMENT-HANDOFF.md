@@ -13,9 +13,8 @@
 
 - 最近已合併：PR [#471](https://github.com/cheerc/talented-easyorder/pull/471)，P00 文件與 diagnostics baseline；merge commit `1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。
 - P00 base 是 `75e7a96e6cad722a41076df66e5b2cf9014e9d47`；完整紀錄見 P00 receipt 與 evidence，不把舊前端本人驗收改寫成後端驗收。
-- 目前 phase：P01 Rules 可行性 proof。分支 `codex/backend-p01-rules-proof`，base `1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。Draft PR [#472](https://github.com/cheerc/talented-easyorder/pull/472)，RED scaffold head `6ca1545a8e97df4a96c8a75c5429f35f5438a2a9`；目前 Actions run [38514043015](https://github.com/cheerc/talented-easyorder/actions/runs/38514043015) 執行中。RED/GREEN SHA、CI run 與可確認的測試數以 PR body 及其後更新的 P01 receipt 為準。
-- P01 到目前交付 test-only fixture 與行為 RED scaffold；RED run 尚未完成，GREEN 尚未開始。P01 review／required CI 尚未通過，尚無正式後端功能部署。
-- 未完成／阻擋：本地 Emulator binary 下載的 `storage.googleapis.com` 被環境回應 403；下載 GitHub Actions log 的 `results-receiver.actions.githubusercontent.com` 亦遇 403。這不妨礙 GitHub runner 執行 demo Firestore Emulator；CI gate 將解析 Vitest JSON 並拒絕零測試、全部 skip 或失敗。未讀到日誌前不得猜測測試數。只可用 `demo-easyorder` 與匿名合成資料；不可把 CI artifact 下載回 cloud 環境繞過網域限制。
+- P01 RED scaffold 的 Actions run [38514043015](https://github.com/cheerc/talented-easyorder/actions/runs/38514043015) 已讀到原始日誌：2 tests、1 passed、1 failed、0 skipped；`assertFails` 對未命令 extra transaction 的預期行為真實失敗，故確認為行為 RED。其後 tight proof WIP source commit `520dd2de75ede44d41becbb9617a872aea9d4d25` 在本地真 Firestore Emulator 跑 26 tests：18 passed、8 failed、0 skipped；5-doc CreateOrder 與其他有效業務 commit 觸發 1000 expression limit，具體命令／count／log excerpt 在 [P01 expression-limit checkpoint](ops/diagnostics/p01-rules-expression-limit-wip.txt)。這是 Rules 設計失敗，不是 GREEN；該 checkpoint schema 尚未對齊 spec 頂層 `reason`／`cashEffect`。目前下一步仍在 P01：縮減重複 expression，納入頂層 reason/cashEffect 及 before/after 貢獻校驗，重新實測完整 Emulator suite；不要跳 P02。
+- Emulator 工具鏈已可用：本地 Node `v24.19.0`、Java `21.0.12.1`、Firebase CLI `14.27.0`、Firestore Emulator `1.19.8`，官方 JAR SHA-256 `9d43599ed6151199e8d604dc87fac51218e49e5f3a48519b1ae560bbe5e3382d` 已核對。先前 storage／Actions log 下載 403 已解除；測試只用 `demo-easyorder` 與匿名合成資料，沒有下載 CI artifact、碰 production、payroll 或 Android。PR 仍 draft、P01 GREEN／review／required CI 尚未完成；正式後端仍未實作部署。
 - Production Firebase keys／設定／管理憑證只由使用者保存在自己的電腦；所有正式資源、部署與正式 smoke test 由使用者本機執行。Cloud agent 僅可用 demo Emulator，Spark 不開 billing／Blaze、不接 payroll、不改 Android。後端尚未實作或部署。
 
 ## 接手時的第一步

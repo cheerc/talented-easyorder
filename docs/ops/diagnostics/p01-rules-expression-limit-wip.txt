@@ -1,0 +1,53 @@
+P01 local Firestore Emulator expression-limit checkpoint
+==========================================================
+
+Source snapshot: 520dd2de75ede44d41becbb9617a872aea9d4d25
+Run time: 2026-10-14 05:11 UTC
+Environment: Node v24.19.0; Firebase CLI 14.27.0; OpenJDK 21.0.12.1;
+Firestore Emulator 1.19.8, installed through the official CLI and verified
+against the locked firebase-tools expected SHA-256.
+Emulator JAR SHA-256:
+  9d43599ed6151199e8d604dc87fac51218e49e5f3a48519b1ae560bbe5e3382d
+
+Command (run from frontend/):
+
+  EASYORDER_REQUIRE_CLOUD_RULES_PROOF=true npx --no-install firebase emulators:exec \
+    --project demo-easyorder --only firestore \
+    "npx --no-install vitest run src/firebase/__tests__/cloudRulesProof.spec.ts \
+      --maxWorkers=2 --reporter=default --reporter=json \
+      --outputFile=/tmp/easyorder-p01-preopt.json"
+
+Result: Firebase Emulator command exit 1; Vitest total 26, passed 18,
+failed 8, pending 0, skipped 0. These were real Rules evaluations on the
+demo emulator with synthetic fixtures; this is not a skipped suite and is
+not the earlier intentionally failing RED witness.
+
+The first five-document CreateOrder was denied with this evaluator error:
+
+  Unable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached.
+
+The same cap also denied other intended-positive business commits. The eight
+failed test names were:
+
+  allows a valid five-document CreateOrder with exact command, sequence, actor, time and projection snapshots
+  allows a zero-paid order while preserving its unpaid balance and meal contribution
+  allows positive CreatePayment and applies only its payment balance and receipt contribution
+  rejects replay of a historical command without changing the original receipt or projections
+  allows CorrectTransaction with immutable account/date/creation identity and exact revision plus one
+  allows zero-paid cancellation as a void with zero remaining business contribution
+  allows CloseDay and then ReopenDay as immutable settlement revisions
+  denies updates and deletes of historical immutable command and settlement documents
+
+The remaining 18 tests passed. The raw captured Vitest/CLI output and JSON
+report were `/tmp/easyorder-p01-preopt.log` and
+`/tmp/easyorder-p01-preopt.json` in the shared implementation environment.
+The concise committed record here preserves the command, environment, exact
+counts, evaluator message and failing case list without emulator log boilerplate.
+No production project, fixture deployment, payroll data or Android project
+was accessed.
+
+This checkpoint is a reproducible design failure to fix within the Spark
+Rules model. It does not satisfy P01 acceptance and must not be described as
+GREEN. Continue reducing duplicate expressions while retaining closed
+schemas, complete typed before/after snapshots, exact projections, immutable
+command links and the no-cache 18-call access design.
