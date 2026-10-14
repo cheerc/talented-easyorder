@@ -1,18 +1,18 @@
-# P05 command Rules access / expression budget（靜態草稿，待主作者核對）
+# P05 command Rules access / expression budget（靜態盤點；只有三個 enabled kind 有 Emulator 證據）
 
 ## 快照與範圍
 
 - 讀取時間：2026-10-14（UTC）。Repo：`/workspace/talented-easyorder`；branch `codex/backend-p05-command-core`。
-- Git HEAD：`9aa8e75105ca58d04ea95022b77f09efb5fbd85e`。工作樹有未提交的 P05 變更；HEAD 不含下面所列全部內容，SHA-256 用來識別取樣到的 dirty 檔案。
+- P05 base：`837a1e871468db217463e9799480beeb6d7b0ab0`；本盤點隨 PR #476 更新。下列 source SHA-256 用來識別 Rules／schema／repository 快照；文件只做靜態 closure/估值，並非未啟用 kinds 的 Emulator 證據。
 - 本次取樣 SHA-256：
   - `firestore.rules`: `23c1c254a83a3fde0819f143a457229bff0f9c5dfafb814d499c73468b521824`
   - `frontend/src/domain/cloudCommandSchema.ts`: `23cf7a7d748fdbf6364f3aab4cb5544c88d792117cc34144fb496ccb24ad289f`
   - `frontend/src/firebase/cloudCommandRepository.ts`: `ddcd63dbd130f55312c25f1208d701f28a4a336b467c8fec5c581ef9252a4db4`
   - `frontend/src/domain/cloudCommands.ts`: `64a7330a893d53a35c1966efa4d7e1c00185f31727d8ea949db598ca82a13b7b`
   - `docs/superpowers/specs/2026-10-13-free-production-backend-spec.md`: `7552e63c204fa3e878cca78310c34f0641c8a14f8842db8367254ae7152ef692`
-  - `docs/superpowers/plans/2026-10-13-free-production-backend-plan.md`: `40e56433d1ba28967744e914b07685d812b113d5dd2fbb3cb3e2a37e3bb23100`
-- 另讀 `frontend/src/firebase/cloudCommandRepository.ts`、`frontend/src/domain/cloudCommands.ts`、canonical spec §6.1–6.3 及 plan P05。Rules/schema 是 dirty working-tree 快照；作者若有續改，合併前必須重算 SHA、重新逐路徑盤點。
-- 本文件的 call graph 與 expression-risk 分析是靜態盤點。另有真實 Emulator 證據：`cloudCommands.spec.ts` 在 `demo-easyorder` 以目前 production `firestore.rules` 執行 47/47、0 skipped；完整命令與限制記於 [free-production evidence](free-production-evidence.md)。Emulator 沒有輸出可作逐 expression／access call 計量的計數器；此成功證明合法樣本被接受，不把靜態呼叫圖說成 runtime 計數。只有 `EnsureDay`、`CreateOrder`、`CreatePayment` 是當前 Rules 中允許建立的命令。表中另外 19 kind 的 call 數是設計估值，不是實作 closure、Rules pass 或 Emulator pass。
+  - `docs/superpowers/plans/2026-10-13-free-production-backend-plan.md`: `56e400570182d5e57f32a37c0e7bcb5677cbf6f4b8e611c7bc3cf917f5f9b184`
+- 另讀 `frontend/src/firebase/cloudCommandRepository.ts`、`frontend/src/domain/cloudCommands.ts`、canonical spec §6.1–6.3 及 plan P05。Rules/schema source anchors 及 hash 如上；任何 source 續改都必須重新算 SHA 並逐路徑盤點。
+- 本文件的 call graph 與 expression-risk 分析是靜態盤點。當前真 Emulator 證據：`cloudCommands.spec.ts` 與 post-commit failure suite 在 `demo-easyorder` 使用 production `firestore.rules` 合計 49/49、0 skipped；A01/P01/P04/P05 sequential regression 114/114、0 skipped。完整命令、JSON 與限制見 [free-production evidence](free-production-evidence.md)。Emulator 沒有逐 expression／access-call runtime counter；正向通過證明選定合法樣本被接受，不把靜態呼叫圖稱為 runtime 計數。只有 `EnsureDay`、`CreateOrder`、`CreatePayment` 是當前 Rules 中允許建立的命令。表中其餘 19 kind 的 call 數是設計估值，不是實作 closure、Rules pass 或 Emulator pass。
 
 ## 當前三個 enabled kind：Repo writer 與 Rules no-cache call 圖
 
