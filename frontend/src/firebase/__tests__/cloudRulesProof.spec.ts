@@ -860,7 +860,7 @@ describeWithEmulator('P01 temporary cloud Rules proof', () => {
     });
     const dateState = await seedBaseState();
     await expectCreateOrderFailureIsAtomic(operatorDb(), dateState, {
-      adjust: ({ transaction }) => { transaction.businessDate = '2026-10-15'; },
+      adjust: ({ transaction }) => { transaction.businessDate = shiftDate(dayId, 1); },
     });
   });
 
@@ -997,7 +997,7 @@ describeWithEmulator('P01 temporary cloud Rules proof', () => {
   it('rejects changing an existing transaction account, business date or revision atomically', async () => {
     for (const mutate of [
       (draft: OrderDraft) => { draft.transaction.studentId = 'stu-b'; },
-      (draft: OrderDraft) => { draft.transaction.businessDate = '2026-10-15'; },
+      (draft: OrderDraft) => { draft.transaction.businessDate = shiftDate(dayId, 1); },
       (draft: OrderDraft) => { draft.transaction.revision = 9; },
     ]) {
       const state = await seedExistingOrder(90);

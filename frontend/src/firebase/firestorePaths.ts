@@ -1,4 +1,8 @@
 export const operatorPath = (uid: string) => `operators/${uid}`;
+export const accessLeasePath = () => 'system/accessLease';
+export const dataHeadPath = () => 'system/dataHead';
+export const dayPath = (dayId: string) => `days/${dayId}`;
+export const commandPath = (commandId: string) => `commands/${commandId}`;
 export const studentPath = (studentId: string) => `students/${studentId}`;
 export const transactionPath = (transactionId: string) => `transactions/${transactionId}`;
 export const settlementPath = (businessDate: string) => `daily_settlements/${businessDate}`;

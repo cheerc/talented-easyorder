@@ -1,6 +1,4 @@
 import type { Firestore } from 'firebase/firestore';
-import { getFirestoreMod } from './firebaseModules';
-import { closeAttemptPath, settlementPath, cashAdjustmentPath } from './firestorePaths';
 
 export function createCloseAttemptId(deviceId: string, businessDate: string, sequence: number): string {
   return `${deviceId}:close:${businessDate}:${sequence}`;
@@ -26,12 +24,9 @@ export async function writeOfflineCloseAttempt(db: Firestore, input: {
   deviceId: string;
   note: string;
 }) {
-  const { doc, setDoc, serverTimestamp } = getFirestoreMod();
-  await setDoc(doc(db, closeAttemptPath(input.businessDate, input.id)), {
-    ...input,
-    status: 'pending',
-    createdAt: serverTimestamp(),
-  });
+  void db;
+  void input;
+  throw new Error('業務功能暫未開放');
 }
 
 export async function promoteCloseAttemptOnline(db: Firestore, input: {
@@ -39,17 +34,9 @@ export async function promoteCloseAttemptOnline(db: Firestore, input: {
   closeAttemptId: string;
   summary: Record<string, unknown>;
 }) {
-  const { doc, runTransaction } = getFirestoreMod();
-  const summaryRef = doc(db, settlementPath(input.businessDate));
-  const attemptRef = doc(db, closeAttemptPath(input.businessDate, input.closeAttemptId));
-  await runTransaction(db, async transaction => {
-    const existing = await transaction.get(summaryRef);
-    if (existing.exists() && existing.data().status === 'closed') {
-      throw new Error(`Business date already closed: ${input.businessDate}`);
-    }
-    transaction.set(summaryRef, input.summary);
-    transaction.update(attemptRef, { status: 'accepted' });
-  });
+  void db;
+  void input;
+  throw new Error('業務功能暫未開放');
 }
 
 export async function addCashAdjustment(db: Firestore, input: {
@@ -62,10 +49,7 @@ export async function addCashAdjustment(db: Firestore, input: {
   operatorEmail: string;
   deviceId: string;
 }) {
-  const { doc, setDoc, serverTimestamp } = getFirestoreMod();
-  await setDoc(doc(db, cashAdjustmentPath(input.businessDate, input.id)), {
-    ...input,
-    status: 'pending',
-    createdAt: serverTimestamp(),
-  });
+  void db;
+  void input;
+  throw new Error('業務功能暫未開放');
 }

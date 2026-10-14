@@ -2,22 +2,47 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { buildStudentDoc, addStudent, disableStudent } from '../studentRepository';
 import type { Firestore } from 'firebase/firestore';
 
-vi.mock('firebase/firestore', () => ({
-  doc: vi.fn(),
-  serverTimestamp: vi.fn(() => new Date('2026-06-01T00:00:00.000Z')),
-  setDoc: vi.fn(),
-  updateDoc: vi.fn(),
+const mockFirestore = vi.hoisted(() => {
+  const mockDocRef = { _mock: 'doc-ref' };
+  const batch = { set: vi.fn(), update: vi.fn(), delete: vi.fn(), commit: vi.fn() };
+  const sdk = {
+    doc: vi.fn(() => mockDocRef),
+    serverTimestamp: vi.fn(() => new Date('2026-06-01T00:00:00.000Z')),
+    setDoc: vi.fn(),
+    updateDoc: vi.fn(),
+    getDoc: vi.fn(),
+    getDocs: vi.fn(),
+    onSnapshot: vi.fn(),
+    deleteDoc: vi.fn(),
+    runTransaction: vi.fn(),
+    writeBatch: vi.fn(() => batch),
+    increment: vi.fn(),
+  };
+  return { sdk, batch, mockDocRef };
+});
+
+vi.mock('../firebaseModules', () => ({
+  getFirestoreMod: vi.fn(() => mockFirestore.sdk),
 }));
 
-import { doc, setDoc, updateDoc } from 'firebase/firestore';
+import { getFirestoreMod } from '../firebaseModules';
 
 const mockDb = {} as Firestore;
-const mockDocRef = { _mock: 'doc-ref' };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(doc).mockReturnValue(mockDocRef as unknown as ReturnType<typeof doc>);
 });
+
+function expectNoFirestoreActivity() {
+  expect(getFirestoreMod).not.toHaveBeenCalled();
+  for (const method of Object.values(mockFirestore.sdk)) {
+    expect(method).not.toHaveBeenCalled();
+  }
+  expect(mockFirestore.batch.set).not.toHaveBeenCalled();
+  expect(mockFirestore.batch.update).not.toHaveBeenCalled();
+  expect(mockFirestore.batch.delete).not.toHaveBeenCalled();
+  expect(mockFirestore.batch.commit).not.toHaveBeenCalled();
+}
 
 describe('studentRepository', () => {
   it('builds a Firestore student doc from import row data', () => {
@@ -40,7 +65,7 @@ describe('studentRepository', () => {
     });
   });
 
-  it('addStudent calls setDoc with correct path and built document', async () => {
+  it('rejects addStudent without calling Firestore', async () => {
     const input = {
       studentId: '020',
       displayName: '李小華',
@@ -48,27 +73,18 @@ describe('studentRepository', () => {
       operatorId: 'uid-admin',
     };
 
-    await addStudent(mockDb, input);
+    await expect(addStudent(mockDb, input)).rejects.toMatchObject({
+      name: 'Error',
+      message: '業務功能暫未開放',
+    });
 
-    expect(doc).toHaveBeenCalledWith(mockDb, 'students/020');
-    expect(setDoc).toHaveBeenCalledWith(mockDocRef, expect.objectContaining({
-      id: '020',
-      displayName: '李小華',
-      openingBalance: 300,
-      currentBalance: 300,
-      status: 'active',
-      revision: 1,
-    }));
+    expectNoFirestoreActivity();
   });
 
-  it('disableStudent calls updateDoc with inactive status', async () => {
-    await disableStudent(mockDb, { studentId: '015', operatorId: 'uid-admin' });
+  it('rejects disableStudent without calling Firestore', async () => {
+    await expect(disableStudent(mockDb, { studentId: '015', operatorId: 'uid-admin' }))
+      .rejects.toMatchObject({ name: 'Error', message: '業務功能暫未開放' });
 
-    expect(doc).toHaveBeenCalledWith(mockDb, 'students/015');
-    expect(updateDoc).toHaveBeenCalledWith(mockDocRef, {
-      status: 'inactive',
-      updatedAt: expect.any(Date),
-      updatedBy: 'uid-admin',
-    });
+    expectNoFirestoreActivity();
   });
 });

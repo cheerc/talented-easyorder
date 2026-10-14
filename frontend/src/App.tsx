@@ -28,7 +28,7 @@ import { usePosColumnProps } from './hooks/usePosColumnProps';
 import { FirebaseProvider } from './providers/FirebaseProvider';
 import { isConfigured as isFirebaseConfigured } from './firebase/firebaseApp';
 import { useFirebase } from './hooks/useFirebase';
-import { isPrototypeMode } from './appMode';
+import { isPrototypeMode, validateAppModeConfig } from './appMode';
 import { isMenuReady } from './domain/menu';
 import { AuthGate } from './auth/AuthGate';
 import { SYSTEM_OPERATOR_ID } from './domain/operatorId';
@@ -263,10 +263,47 @@ function AppContent() {
   );
 }
 
+function CloudAppContent() {
+  const { fb, fbError, access } = useFirebase();
+
+  if (fbError) return <AppCrashPage />;
+  if (!fb) {
+    return <div className="app-loading" aria-label="載入中"><div className="app-loading-spinner" />載入中...</div>;
+  }
+
+  return (
+    <ErrorBoundary fallback={<AppCrashPage />} onError={(error) => appendErrorLog({ source: 'react', message: error.message, stack: error.stack })}>
+      <AuthGate auth={fb.auth} db={fb.db} access={access}>
+        <main className="auth-gate" aria-label="雲端業務尚未開放">
+          <h1>Talented EasyOrder</h1>
+          <section data-testid="cloud-business-closed" role="status">
+            <h2>業務功能暫未開放</h2>
+            <p>雲端資料與使用權驗證已啟用；帳務操作介面尚未開放。</p>
+          </section>
+        </main>
+      </AuthGate>
+    </ErrorBoundary>
+  );
+}
+
+function AppModeContent() {
+  if (isPrototypeMode) return <AppContent />;
+  const config = validateAppModeConfig(import.meta.env.MODE, import.meta.env);
+  if (!config.ok) {
+    return (
+      <main className="auth-gate" aria-label="Firebase 設定錯誤">
+        <h1>Talented EasyOrder</h1>
+        <p role="alert">{config.error}</p>
+      </main>
+    );
+  }
+  return <CloudAppContent />;
+}
+
 export default function App() {
   return (
     <FirebaseProvider>
-      <AppContent />
+      <AppModeContent />
     </FirebaseProvider>
   );
 }

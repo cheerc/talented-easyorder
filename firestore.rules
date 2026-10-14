@@ -1,68 +1,596 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() {
-      return request.auth != null;
-    }
-
-    function isGoogleProvider() {
-      return signedIn()
+    function signedGoogle() {
+      return request.auth != null
         && request.auth.token.email_verified == true
         && request.auth.token.firebase.sign_in_provider == 'google.com';
     }
 
-    function isApprovedOperator() {
-      return isGoogleProvider()
-        && exists(/databases/$(database)/documents/operators/$(request.auth.uid))
-        && get(/databases/$(database)/documents/operators/$(request.auth.uid)).data.active == true
-        && get(/databases/$(database)/documents/operators/$(request.auth.uid)).data.email == request.auth.token.email;
+    function approvedOperator() {
+      let operator = get(/databases/$(database)/documents/operators/$(request.auth.uid)).data;
+      return signedGoogle()
+        && operator.uid == request.auth.uid
+        && operator.email == request.auth.token.email
+        && operator.active == true;
     }
 
-    // operators/{uid}: 讀取限本人；禁止 client list、create、update、delete（維護者管理）
-    match /operators/{uid} {
-      allow get: if signedIn() && request.auth.uid == uid;
-      allow list: if false;
-      allow create, update, delete: if false;
+    function currentHolder() {
+      let lease = get(/databases/$(database)/documents/system/accessLease).data;
+      return approvedOperator()
+        && lease.holderUid == request.auth.uid
+        && lease.epoch is int
+        && lease.updatedAt is timestamp
+        && lease.updatedAt + duration.value(5, 'm') > request.time;
     }
 
-    // system/accessLease: 規格 §4.2 全公司單一活躍 Google 身分使用權租約狀態機
-    match /system/accessLease {
-      allow get: if isApprovedOperator();
-      allow list: if false;
-      allow create, delete: if false;
-      allow update: if isApprovedOperator()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['holderUid', 'epoch', 'updatedAt'])
-        && request.resource.data.updatedAt == request.time
-        && (
-          // 1. Acquire: 舊為空或逾期(<= request.time)，新 holder 為本人，epoch = 舊 + 1
-          (
-            (resource.data.holderUid == null || resource.data.updatedAt + duration.value(5, 'm') <= request.time)
-            && request.resource.data.holderUid == request.auth.uid
-            && request.resource.data.epoch == resource.data.epoch + 1
-          )
-          // 2. Renew: 舊為本人且未逾期(> request.time)，holder 與 epoch 保持不變
-          || (
-            resource.data.holderUid == request.auth.uid
-            && resource.data.updatedAt + duration.value(5, 'm') > request.time
-            && request.resource.data.holderUid == request.auth.uid
-            && request.resource.data.epoch == resource.data.epoch
-          )
-          // 3. Release: 舊為本人，新 holder 為 null，epoch = 舊 + 1
-          || (
-            resource.data.holderUid == request.auth.uid
-            && request.resource.data.holderUid == null
-            && request.resource.data.epoch == resource.data.epoch + 1
-          )
+    function commandHolder(epoch) {
+      let lease = get(/databases/$(database)/documents/system/accessLease).data;
+      return approvedOperator()
+        && lease.holderUid == request.auth.uid
+        && lease.epoch is int
+        && lease.epoch == epoch
+        && lease.updatedAt is timestamp
+        && lease.updatedAt + duration.value(5, 'm') > request.time;
+    }
+
+    function exactMap(value, keys) {
+      return value is map && value.keys().hasOnly(keys);
+    }
+
+    function validId(value) {
+      return value is string && value.size() >= 1 && value.size() <= 64 && !value.matches('.*[/].*');
+    }
+
+    function validCommandId(value) {
+      return value is string
+        && value.matches('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$');
+    }
+
+    function validCalendarDate(date) {
+      return date is string
+        && date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && timestamp.value(date + 'T00:00:00Z') is timestamp;
+    }
+
+    function validTaipeiDate(date) {
+      return date is string
+        && validCalendarDate(date)
+        && timestamp.value(date + 'T00:00:00Z') <= request.time + duration.value(8, 'h');
+    }
+
+    function validCurrentTaipeiDate(date) {
+      let start = timestamp.value(date + 'T00:00:00Z');
+      return validCalendarDate(date)
+        && start <= request.time + duration.value(8, 'h')
+        && start + duration.value(24, 'h') > request.time + duration.value(8, 'h');
+    }
+
+    function validHead(head) {
+      return exactMap(head, ['schemaVersion', 'datasetId', 'seq', 'lastCommandId', 'maintenance', 'goLiveDate', 'updatedAt'])
+        && head.schemaVersion == 1
+        && head.datasetId is string
+        && head.datasetId.size() > 0
+        && head.seq is int
+        && head.seq >= 0
+        && (head.lastCommandId == null || head.lastCommandId is string)
+        && head.maintenance is bool
+        && head.goLiveDate is string
+        && validCalendarDate(head.goLiveDate)
+        && head.updatedAt is timestamp;
+    }
+
+    function validTotals(totals) {
+      return exactMap(totals, [
+          'activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal',
+          'retainedReceipts', 'cashierIncome', 'cashierExpense'
+        ])
+        && totals.activeTransactionCount is int && totals.activeTransactionCount >= 0
+        && totals.bentoCount is int && totals.bentoCount >= 0
+        && totals.otherMealCount is int && totals.otherMealCount >= 0
+        && totals.mealTotal is int && totals.mealTotal >= 0 && totals.mealTotal <= 1000000000
+        && totals.retainedReceipts is int && totals.retainedReceipts >= 0 && totals.retainedReceipts <= 1000000000
+        && totals.cashierIncome is int && totals.cashierIncome >= 0 && totals.cashierIncome <= 1000000000
+        && totals.cashierExpense is int && totals.cashierExpense >= 0 && totals.cashierExpense <= 1000000000;
+    }
+
+    function validStudent(student, studentId) {
+      return exactMap(student, [
+          'studentId', 'displayName', 'aliases', 'status', 'openingBalance', 'currentBalance',
+          'createdAt', 'revision', 'lastCommandId', 'updatedAt'
+        ])
+        && student.studentId == studentId
+        && student.displayName is string && student.displayName.size() >= 1 && student.displayName.size() <= 100
+        && student.aliases is list && student.aliases.size() <= 10
+        && student.status in ['active', 'inactive']
+        && exactMap(student.openingBalance, ['amount', 'asOfDate', 'note', 'createdAt'])
+        && student.openingBalance.amount is int
+        && student.openingBalance.amount >= -1000000000 && student.openingBalance.amount <= 1000000000
+        && student.openingBalance.asOfDate is string && validCalendarDate(student.openingBalance.asOfDate)
+        && student.openingBalance.note is string
+        && student.openingBalance.note.size() <= 500
+        && student.openingBalance.createdAt is timestamp
+        && student.currentBalance is int
+        && student.currentBalance >= -1000000000 && student.currentBalance <= 1000000000
+        && student.createdAt is timestamp
+        && student.revision is int && student.revision >= 1
+        && student.lastCommandId is string
+        && student.updatedAt is timestamp;
+    }
+
+    function validMenu(menu, dayId) {
+      return exactMap(menu, [
+          'businessDate', 'itemName', 'price', 'vendorId', 'vendorNameSnapshot',
+          'updatedAt', 'revision', 'inheritedFromDate'
+        ])
+        && menu.businessDate == dayId
+        && menu.itemName is string && menu.itemName.size() >= 1 && menu.itemName.size() <= 100
+        && menu.price is int && menu.price >= 1 && menu.price <= 1000000
+        && validId(menu.vendorId)
+        && menu.vendorNameSnapshot is string && menu.vendorNameSnapshot.size() >= 1 && menu.vendorNameSnapshot.size() <= 100
+        && menu.updatedAt is timestamp
+        && menu.revision is int && menu.revision >= 1
+        && (menu.inheritedFromDate == null || (menu.inheritedFromDate is string && validCalendarDate(menu.inheritedFromDate)));
+    }
+
+    function validDay(day, dayId) {
+      return exactMap(day, [
+          'status', 'revision', 'menu', 'openingCash', 'openedBy', 'openedAt',
+          'totals', 'lastSettlementRevision', 'lastCommandId', 'updatedAt'
+        ])
+        && day.status in ['open', 'closed', 'reopened']
+        && day.revision is int && day.revision >= 1
+        && (day.menu == null || validMenu(day.menu, dayId))
+        && (day.openingCash == null || (day.openingCash is int && day.openingCash >= 0 && day.openingCash <= 20000))
+        && (day.openedBy == null || day.openedBy is string)
+        && (day.openedAt == null || day.openedAt is timestamp)
+        && validTotals(day.totals)
+        && day.lastSettlementRevision is int && day.lastSettlementRevision >= 0
+        && day.lastCommandId is string
+        && day.updatedAt is timestamp;
+    }
+
+    function validHeadAdvance(before, after, commandId) {
+      return validHead(before)
+        && validHead(after)
+        && before.maintenance == false
+        && after.schemaVersion == before.schemaVersion
+        && after.datasetId == before.datasetId
+        && after.maintenance == before.maintenance
+        && after.goLiveDate == before.goLiveDate
+        && after.seq == before.seq + 1
+        && after.lastCommandId == commandId
+        && after.updatedAt == request.time
+        && after.diff(before).affectedKeys().hasOnly(['seq', 'lastCommandId', 'updatedAt']);
+    }
+
+    function commandEnvelope(commandId, command, head, headAfter) {
+      return exactMap(command, [
+          'commandId', 'kind', 'seq', 'leaseEpoch', 'actor', 'committedAt', 'businessDate',
+          'studentId', 'targets', 'expectedRevisions', 'before', 'after', 'reason',
+          'cashEffect', 'payload', 'inputFingerprint'
+        ])
+        && validCommandId(commandId)
+        && command.commandId == commandId
+        && command.kind in ['EnsureDay', 'CreateOrder', 'CreatePayment']
+        && command.seq is int && command.seq == head.seq + 1
+        && command.leaseEpoch is int && command.leaseEpoch >= 0
+        && command.actor is map
+        && exactMap(command.actor, ['uid', 'email'])
+        && command.actor.uid == request.auth.uid
+        && command.actor.email == request.auth.token.email
+        && command.committedAt == request.time
+        && command.reason == null
+        && command.inputFingerprint is string
+        && command.inputFingerprint.matches('^[0-9a-f]{64}$')
+        && command.before is map && command.after is map
+        && command.before.head == head
+        && command.after.head == headAfter
+        // The dataHead writer validates the complete fixed schema and diff.
+        // Keep the command-side linkage cheap while still requiring a real advance.
+        && head.maintenance == false
+        && head.seq is int
+        && headAfter.seq == head.seq + 1
+        && headAfter.lastCommandId == commandId
+        && headAfter.updatedAt == request.time
+        && headAfter.schemaVersion == head.schemaVersion
+        && headAfter.datasetId == head.datasetId
+        && headAfter.maintenance == false
+        && headAfter.goLiveDate == head.goLiveDate;
+    }
+
+    function validCashEffect(effect, amount) {
+      return exactMap(effect, ['before', 'after', 'delta', 'reasonKind', 'refundAmount'])
+        && effect.before == 0
+        && effect.after == amount
+        && effect.delta == amount
+        && effect.reasonKind == (amount > 0 ? 'collection' : 'none')
+        && effect.refundAmount == 0;
+    }
+
+    function validNewDay(dayId, day, commandId) {
+      let totals = day.totals;
+      return exactMap(day, [
+          'status', 'revision', 'menu', 'openingCash', 'openedBy', 'openedAt',
+          'totals', 'lastSettlementRevision', 'lastCommandId', 'updatedAt'
+        ])
+        && validCalendarDate(dayId)
+        && day.status == 'open'
+        && day.revision == 1
+        && day.menu == null
+        && day.openingCash == null
+        && day.openedBy == null
+        && day.openedAt == null
+        && exactMap(totals, [
+          'activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal',
+          'retainedReceipts', 'cashierIncome', 'cashierExpense'
+        ])
+        && totals.activeTransactionCount == 0
+        && totals.bentoCount == 0
+        && totals.otherMealCount == 0
+        && totals.mealTotal == 0
+        && totals.retainedReceipts == 0
+        && totals.cashierIncome == 0
+        && totals.cashierExpense == 0
+        && day.lastSettlementRevision == 0
+        && day.lastCommandId == commandId
+        && day.updatedAt == request.time;
+    }
+
+    function validEnsureDay(commandId, command) {
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let dayId = command.targets.dayId;
+      let dayAfter = getAfter(/databases/$(database)/documents/days/$(dayId)).data;
+      return commandHolder(command.leaseEpoch)
+        && commandEnvelope(commandId, command, head, headAfter)
+        && command.kind == 'EnsureDay'
+        && exactMap(command.targets, ['dayId'])
+        && command.targets.dayId is string
+        && exactMap(command.expectedRevisions, ['day'])
+        && command.expectedRevisions.day == 0
+        && exactMap(command.payload, ['businessDate'])
+        && command.payload.businessDate == dayId
+        && command.businessDate == dayId
+        && command.studentId == null
+        && exactMap(command.before, ['head', 'day'])
+        && exactMap(command.after, ['head', 'day'])
+        && command.before.day == null
+        && command.after.day == dayAfter
+        && !exists(/databases/$(database)/documents/days/$(dayId))
+        && dayAfter.lastCommandId == commandId
+        && validNewDay(dayId, dayAfter, commandId)
+        && dayId >= head.goLiveDate
+        && validCashEffect(command.cashEffect, 0);
+    }
+
+    function validTransactionDoc(tx, commandId, command, seq, head, dayBefore, studentBefore) {
+      let order = command.kind == 'CreateOrder';
+      let bento = order && command.payload.mealKind == 'bento';
+      let menu = dayBefore.menu;
+      return exactMap(tx, [
+          'transactionId', 'studentId', 'businessDate', 'type', 'mealKind', 'mealPrice', 'paidAmount',
+          'amount', 'studentNameSnapshot', 'menuNameSnapshot', 'menuPriceSnapshot', 'vendorIdSnapshot',
+          'vendorNameSnapshot', 'otherItemName', 'status', 'revision', 'createdAt', 'createdSeq',
+          'operatorUid', 'operatorEmail', 'sourceDevice', 'note', 'lastCommandId', 'updatedAt'
+        ])
+        && tx.transactionId == command.targets.transactionId
+        && tx.studentId == command.targets.studentId
+        && tx.businessDate == command.targets.dayId
+        && tx.businessDate >= head.goLiveDate
+        && validCurrentTaipeiDate(tx.businessDate)
+        && tx.type == (order ? 'order' : 'payment')
+        && tx.mealKind == (order ? command.payload.mealKind : null)
+        && tx.mealPrice == (order ? command.payload.mealPrice : 0)
+        && tx.mealPrice is int && tx.mealPrice >= 0 && tx.mealPrice <= 1000000
+        && tx.paidAmount == command.payload.paidAmount
+        && tx.paidAmount is int && tx.paidAmount >= (order ? 0 : 1) && tx.paidAmount <= 1000000
+        && tx.amount == tx.paidAmount - tx.mealPrice
+        && tx.amount is int && tx.amount >= -1000000 && tx.amount <= 1000000
+        && tx.studentNameSnapshot == studentBefore.displayName
+        && tx.menuNameSnapshot == (bento ? menu.itemName : '')
+        && tx.menuPriceSnapshot == (bento ? menu.price : 0)
+        && tx.vendorIdSnapshot == (bento ? menu.vendorId : '')
+        && tx.vendorNameSnapshot == (bento ? menu.vendorNameSnapshot : '')
+        && tx.otherItemName == (order && command.payload.mealKind == 'other' ? command.payload.otherItemName : null)
+        && tx.status == 'active'
+        && tx.revision == 1
+        && tx.createdAt == request.time
+        && tx.createdSeq == seq
+        && tx.operatorUid == request.auth.uid
+        && tx.operatorEmail == request.auth.token.email
+        && tx.sourceDevice == 'pc'
+        && tx.note == command.payload.note
+        && tx.lastCommandId == commandId
+        && tx.updatedAt == request.time;
+    }
+
+    function validTransactionCommand(commandId, command, head, headAfter, dayBefore, studentBefore) {
+      return commandHolder(command.leaseEpoch)
+        && commandEnvelope(commandId, command, head, headAfter)
+        && command.kind in ['CreateOrder', 'CreatePayment']
+        && exactMap(command.targets, ['transactionId', 'studentId', 'dayId'])
+        && validId(command.targets.transactionId)
+        && validId(command.targets.studentId)
+        && command.targets.studentId != '__cashier__'
+        && validCalendarDate(command.targets.dayId)
+        && exactMap(command.expectedRevisions, ['transaction', 'student', 'day'])
+        && command.expectedRevisions.transaction == 0
+        && command.expectedRevisions.student == studentBefore.revision
+        && command.expectedRevisions.day == dayBefore.revision
+        && exactMap(command.before, ['head', 'student', 'day', 'transaction'])
+        && exactMap(command.after, ['head', 'student', 'day', 'transaction'])
+        && command.before.head == head
+        && command.before.student == studentBefore
+        && command.before.day == dayBefore
+        && command.before.transaction == null
+        && command.targets.dayId >= head.goLiveDate
+        && command.businessDate == command.targets.dayId
+        && command.studentId == command.targets.studentId;
+    }
+
+    function validReceiptTransaction(commandId, command, transactionAfter) {
+      return command.after.transaction == transactionAfter
+        && transactionAfter.transactionId == command.targets.transactionId
+        && transactionAfter.lastCommandId == commandId;
+    }
+
+    function validStudentAdvance(commandId, command, studentBefore, studentAfter, mealPrice) {
+      return command.after.student == studentAfter
+        && validStudent(studentAfter, command.targets.studentId)
+        && (command.kind == 'CreatePayment' || studentBefore.status == 'active')
+        && studentBefore.openingBalance.asOfDate <= command.targets.dayId
+        && studentAfter.diff(studentBefore).affectedKeys().hasOnly(['currentBalance', 'revision', 'lastCommandId', 'updatedAt'])
+        && studentAfter.currentBalance is int
+        && studentAfter.currentBalance == studentBefore.currentBalance + command.payload.paidAmount - mealPrice
+        && studentAfter.currentBalance >= -1000000000 && studentAfter.currentBalance <= 1000000000
+        && studentAfter.revision is int
+        && studentAfter.revision == studentBefore.revision + 1
+        && studentAfter.lastCommandId == commandId
+        && studentAfter.updatedAt == request.time;
+    }
+
+    function validDayAdvance(commandId, command, dayBefore, dayAfter, mealPrice, order) {
+      let beforeTotals = dayBefore.totals;
+      let afterTotals = dayAfter.totals;
+      return command.after.day == dayAfter
+        && validDay(dayAfter, command.targets.dayId)
+        && validTotals(beforeTotals)
+        && dayBefore.status in ['open', 'reopened']
+        && dayAfter.diff(dayBefore).affectedKeys().hasOnly(['revision', 'totals', 'lastCommandId', 'updatedAt'])
+        && dayAfter.revision is int
+        && dayAfter.revision == dayBefore.revision + 1
+        && exactMap(afterTotals, [
+          'activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal',
+          'retainedReceipts', 'cashierIncome', 'cashierExpense'
+        ])
+        && afterTotals.activeTransactionCount is int && afterTotals.activeTransactionCount >= 0 && afterTotals.activeTransactionCount <= 1000000000
+        && afterTotals.activeTransactionCount == beforeTotals.activeTransactionCount + 1
+        && afterTotals.bentoCount is int && afterTotals.bentoCount >= 0 && afterTotals.bentoCount <= 1000000000
+        && afterTotals.bentoCount == beforeTotals.bentoCount + (order && command.payload.mealKind == 'bento' ? 1 : 0)
+        && afterTotals.otherMealCount is int && afterTotals.otherMealCount >= 0 && afterTotals.otherMealCount <= 1000000000
+        && afterTotals.otherMealCount == beforeTotals.otherMealCount + (order && command.payload.mealKind == 'other' ? 1 : 0)
+        && afterTotals.mealTotal is int && afterTotals.mealTotal >= 0 && afterTotals.mealTotal <= 1000000000
+        && afterTotals.mealTotal == beforeTotals.mealTotal + mealPrice
+        && afterTotals.retainedReceipts is int && afterTotals.retainedReceipts >= 0 && afterTotals.retainedReceipts <= 1000000000
+        && afterTotals.retainedReceipts == beforeTotals.retainedReceipts + command.payload.paidAmount
+        && afterTotals.cashierIncome == beforeTotals.cashierIncome
+        && afterTotals.cashierExpense == beforeTotals.cashierExpense
+        && dayAfter.status == dayBefore.status
+        && dayAfter.menu == dayBefore.menu
+        && dayAfter.openingCash == dayBefore.openingCash
+        && dayAfter.openedBy == dayBefore.openedBy
+        && dayAfter.openedAt == dayBefore.openedAt
+        && dayAfter.lastSettlementRevision == dayBefore.lastSettlementRevision
+        && dayAfter.lastCommandId == commandId
+        && dayAfter.updatedAt == request.time;
+    }
+
+    function validTransactionPayload(commandId, command, head, dayBefore, studentBefore, transactionAfter) {
+      let order = command.kind == 'CreateOrder';
+      let mealPrice = order ? command.payload.mealPrice : 0;
+      return (order
+          ? exactMap(command.payload, ['mealPrice', 'paidAmount', 'mealKind', 'menuRevision', 'otherItemName', 'note'])
+            && command.payload.mealPrice is int && command.payload.mealPrice >= 0 && command.payload.mealPrice <= 1000000
+            && command.payload.paidAmount is int && command.payload.paidAmount >= 0 && command.payload.paidAmount <= 1000000
+            && command.payload.mealKind in ['bento', 'other']
+            && command.payload.note is string && command.payload.note.size() <= 500
+            && (command.payload.mealKind == 'bento'
+              ? validMenu(dayBefore.menu, command.targets.dayId)
+                && command.payload.menuRevision == dayBefore.menu.revision
+                && command.payload.mealPrice == dayBefore.menu.price
+                && command.payload.otherItemName == null
+              : command.payload.menuRevision == null
+                && command.payload.otherItemName is string
+                && command.payload.otherItemName.size() >= 1
+                && command.payload.otherItemName.size() <= 100)
+          : exactMap(command.payload, ['paidAmount', 'note'])
+            && command.payload.paidAmount is int && command.payload.paidAmount > 0 && command.payload.paidAmount <= 1000000
+            && command.payload.note is string && command.payload.note.size() <= 500)
+        && validTransactionDoc(transactionAfter, commandId, command, head.seq + 1, head, dayBefore, studentBefore)
+        && validReceiptTransaction(commandId, command, transactionAfter)
+        && validCashEffect(command.cashEffect, command.payload.paidAmount)
+        && (command.kind == 'CreatePayment' || studentBefore.status == 'active')
+        && studentBefore.openingBalance.asOfDate <= command.targets.dayId
+        && dayBefore.status in ['open', 'reopened']
+        && command.targets.dayId >= head.goLiveDate
+        && validCurrentTaipeiDate(command.targets.dayId)
+        && (order || mealPrice == 0);
+    }
+
+    function validCreateTransaction(commandId, command) {
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let dayBefore = get(/databases/$(database)/documents/days/$(command.targets.dayId)).data;
+      let studentBefore = get(/databases/$(database)/documents/students/$(command.targets.studentId)).data;
+      let dayAfter = getAfter(/databases/$(database)/documents/days/$(command.targets.dayId)).data;
+      let studentAfter = getAfter(/databases/$(database)/documents/students/$(command.targets.studentId)).data;
+      let transactionAfter = getAfter(/databases/$(database)/documents/transactions/$(command.targets.transactionId)).data;
+      let transactionExists = exists(/databases/$(database)/documents/transactions/$(command.targets.transactionId));
+      let order = command.kind == 'CreateOrder';
+      let mealPrice = order ? command.payload.mealPrice : 0;
+      return validTransactionCommand(commandId, command, head, headAfter, dayBefore, studentBefore)
+        && !transactionExists
+        && command.before.transaction == null
+        && command.after.student == studentAfter
+        && studentAfter.revision == studentBefore.revision + 1
+        && studentAfter.lastCommandId == commandId
+        && studentAfter.updatedAt == request.time
+        && command.after.day == dayAfter
+        && dayAfter.revision == dayBefore.revision + 1
+        && dayAfter.lastCommandId == commandId
+        && dayAfter.updatedAt == request.time
+        && command.after.transaction == transactionAfter
+        && transactionAfter.createdAt == request.time
+        && transactionAfter.createdSeq == head.seq + 1
+        && transactionAfter.lastCommandId == commandId
+        && transactionAfter.operatorUid == request.auth.uid
+        && transactionAfter.operatorEmail == request.auth.token.email;
+    }
+
+    function headCommand(commandId, before, after) {
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      return !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && command.before.head == before
+        && command.after.head == after;
+    }
+
+    function ensureDayCommand(commandId, dayId, dayAfter) {
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      return !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && command.kind == 'EnsureDay'
+        && command.targets.dayId == dayId
+        && command.before.day == null
+        && command.after.day == dayAfter;
+    }
+
+    function dayCommand(commandId, dayId, before, after) {
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      let order = command.kind == 'CreateOrder';
+      let mealPrice = order ? command.payload.mealPrice : 0;
+      return !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && command.kind in ['CreateOrder', 'CreatePayment']
+        && command.targets.dayId == dayId
+        && command.before.day == before
+        && command.after.day == after
+        && validDayAdvance(commandId, command, before, after, mealPrice, order);
+    }
+
+    function studentCommand(commandId, studentId, before, after) {
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      let mealPrice = command.kind == 'CreateOrder' ? command.payload.mealPrice : 0;
+      return !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && command.kind in ['CreateOrder', 'CreatePayment']
+        && command.targets.studentId == studentId
+        && command.before.student == before
+        && command.after.student == after
+        && validStudentAdvance(commandId, command, before, after, mealPrice);
+    }
+
+    function transactionCommand(commandId, transactionId, after) {
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      return !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && command.kind in ['CreateOrder', 'CreatePayment']
+        && command.targets.transactionId == transactionId
+        && command.before.transaction == null
+        && command.after.transaction == after
+        && validTransactionPayload(
+          commandId,
+          command,
+          command.before.head,
+          command.before.day,
+          command.before.student,
+          after
         );
     }
 
-    // P04 階段：業務資料與其餘系統集合嚴格 deny（留待 P05 原子寫入器開放）
-    match /students/{document=**} { allow read, write: if false; }
-    match /transactions/{document=**} { allow read, write: if false; }
-    match /commands/{document=**} { allow read, write: if false; }
-    match /days/{document=**} { allow read, write: if false; }
+    // Operators are provisioned by the maintainer. Clients cannot mutate this allowlist.
+    match /operators/{uid} {
+      allow get: if signedGoogle() && request.auth.uid == uid;
+      allow list, create, update, delete: if false;
+    }
+
+    // P04 global lease state machine.
+    match /system/accessLease {
+      allow get: if approvedOperator();
+      allow list, create, delete: if false;
+      allow update: if approvedOperator()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['holderUid', 'epoch', 'updatedAt'])
+        && request.resource.data.updatedAt == request.time
+        && (
+          ((resource.data.holderUid == null || resource.data.updatedAt + duration.value(5, 'm') <= request.time)
+            && request.resource.data.holderUid == request.auth.uid
+            && request.resource.data.epoch == resource.data.epoch + 1)
+          || (resource.data.holderUid == request.auth.uid
+            && resource.data.updatedAt + duration.value(5, 'm') > request.time
+            && request.resource.data.holderUid == request.auth.uid
+            && request.resource.data.epoch == resource.data.epoch)
+          || (resource.data.holderUid == request.auth.uid
+            && request.resource.data.holderUid == null
+            && request.resource.data.epoch == resource.data.epoch + 1)
+        );
+    }
+
+    match /system/dataHead {
+      allow get: if currentHolder();
+      allow list, create, delete: if false;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['seq', 'lastCommandId', 'updatedAt'])
+        && headCommand(request.resource.data.lastCommandId, resource.data, request.resource.data)
+        && validHeadAdvance(resource.data, request.resource.data, request.resource.data.lastCommandId);
+    }
+
+    match /commands/{commandId} {
+      allow get: if currentHolder();
+      allow list, update, delete: if false;
+      allow create: if commandId == request.resource.data.commandId
+        && ((request.resource.data.kind == 'EnsureDay' && validEnsureDay(commandId, request.resource.data))
+          || (request.resource.data.kind in ['CreateOrder', 'CreatePayment']
+            && validCreateTransaction(commandId, request.resource.data)));
+    }
+
+    match /days/{dayId} {
+      allow get: if currentHolder();
+      allow list, delete: if false;
+      allow create: if request.resource.data.lastCommandId is string
+        && ensureDayCommand(request.resource.data.lastCommandId, dayId, request.resource.data)
+        && request.resource.data.updatedAt == request.time;
+      allow update: if (request.resource.data.lastCommandId is string)
+        && dayCommand(request.resource.data.lastCommandId, dayId, resource.data, request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revision', 'totals', 'lastCommandId', 'updatedAt'])
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    match /students/{studentId} {
+      allow get: if currentHolder();
+      allow list, create, delete: if false;
+      allow update: if request.resource.data.lastCommandId is string
+        && studentCommand(request.resource.data.lastCommandId, studentId, resource.data, request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentBalance', 'revision', 'lastCommandId', 'updatedAt'])
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    match /transactions/{transactionId} {
+      allow get: if currentHolder();
+      allow list, update, delete: if false;
+      allow create: if request.resource.data.lastCommandId is string
+        && transactionCommand(request.resource.data.lastCommandId, transactionId, request.resource.data)
+        && validId(transactionId);
+    }
+
     match /vendors/{document=**} { allow read, write: if false; }
-    match /system/dataHead { allow read, write: if false; }
     match /daily_settlements/{document=**} { allow read, write: if false; }
+    match /{document=**} { allow read, write: if false; }
   }
 }

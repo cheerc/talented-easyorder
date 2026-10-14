@@ -1,0 +1,653 @@
+import { Timestamp } from 'firebase/firestore';
+import { ALL_COMMAND_KINDS, type BusinessCommandKind, type CommandActor, type CommandCashEffect } from './cloudCommands';
+
+export type RevisionExpectation = number;
+
+export interface CommandTargetsByKind {
+  CreateStudent: { studentId: string };
+  EditStudent: { studentId: string };
+  SetStudentStatus: { studentId: string };
+  CorrectOpening: { studentId: string; dayId: string };
+  SaveVendor: { vendorId: string };
+  RemoveVendor: { vendorId: string };
+  EnsureDay: { dayId: string };
+  SetDayMenu: { dayId: string };
+  SetOpeningCash: { dayId: string };
+  CreateOrder: { transactionId: string; studentId: string; dayId: string };
+  CreatePayment: { transactionId: string; studentId: string; dayId: string };
+  CreateCashMovement: { transactionId: string; dayId: string };
+  CorrectTransaction: { transactionId: string; studentId: string; dayId: string };
+  VoidTransaction: { transactionId: string; studentId: string; dayId: string };
+  CancelKeepDeposit: { transactionId: string; studentId: string; dayId: string };
+  CancelRefund: { transactionId: string; studentId: string; dayId: string };
+  Undo: { transactionId: string; studentId?: string | null; dayId: string };
+  CloseDay: { dayId: string; settlementRevision: number };
+  ReopenDay: { dayId: string; settlementRevision: number };
+  RecordExport: Record<string, never>;
+  RecordPrint: Record<string, never>;
+  RecordBackup: Record<string, never>;
+}
+
+export interface CommandPayloadByKind {
+  CreateStudent: { displayName: string; aliases: string[]; openingBalance: { amount: number; asOfDate: string; note: string } };
+  EditStudent: { displayName?: string; aliases?: string[]; note?: string };
+  SetStudentStatus: { status: 'active' | 'inactive'; reason?: string };
+  CorrectOpening: { amount: number; note: string; reason: string };
+  SaveVendor: { vendorId: string; name: string; phone: string; note: string; status: 'active' | 'inactive' };
+  RemoveVendor: { reason: string };
+  EnsureDay: { businessDate: string };
+  SetDayMenu: { itemName: string; price: number; vendorId: string; vendorNameSnapshot: string; inheritedFromDate: string | null };
+  SetOpeningCash: { openingCash: number };
+  CreateOrder: { mealPrice: number; paidAmount: number; mealKind: 'bento' | 'other'; menuRevision: number | null; otherItemName: string | null; note: string };
+  CreatePayment: { paidAmount: number; note: string };
+  CreateCashMovement: { mealPrice: number; paidAmount: number; note: string; reason: string };
+  CorrectTransaction: { mealPrice: number; paidAmount: number; note: string; reason: string };
+  VoidTransaction: { reason: string };
+  CancelKeepDeposit: { reason: string };
+  CancelRefund: { reason: string };
+  Undo: { targetCommandId: string; reason: string };
+  CloseDay: { countedCash: number; note: string; expectedCash: number };
+  ReopenDay: { reason: string };
+  RecordExport: { exportType: string; dateRange: { start: string; end: string } | null; sourceSeq: number };
+  RecordPrint: { printType: string; businessDate: string; sourceSeq: number };
+  RecordBackup: { backupType: string; sourceSeq: number; fromSeq: number; toSeq: number; sha256: string };
+}
+
+export interface ExpectedRevisionsByKind {
+  CreateStudent: { student: 0 };
+  EditStudent: { student: RevisionExpectation };
+  SetStudentStatus: { student: RevisionExpectation };
+  CorrectOpening: { student: RevisionExpectation; day: RevisionExpectation };
+  SaveVendor: { vendor: RevisionExpectation };
+  RemoveVendor: { vendor: RevisionExpectation };
+  EnsureDay: { day: 0 };
+  SetDayMenu: { day: RevisionExpectation };
+  SetOpeningCash: { day: RevisionExpectation };
+  CreateOrder: { transaction: 0; student: RevisionExpectation; day: RevisionExpectation };
+  CreatePayment: { transaction: 0; student: RevisionExpectation; day: RevisionExpectation };
+  CreateCashMovement: { transaction: 0; day: RevisionExpectation };
+  CorrectTransaction: { transaction: RevisionExpectation; student: RevisionExpectation; day: RevisionExpectation };
+  VoidTransaction: { transaction: RevisionExpectation; student: RevisionExpectation; day: RevisionExpectation };
+  CancelKeepDeposit: { transaction: RevisionExpectation; student: RevisionExpectation; day: RevisionExpectation };
+  CancelRefund: { transaction: RevisionExpectation; student: RevisionExpectation; day: RevisionExpectation };
+  Undo: { transaction: RevisionExpectation; student?: RevisionExpectation; day: RevisionExpectation };
+  CloseDay: { day: RevisionExpectation; settlement: RevisionExpectation };
+  ReopenDay: { day: RevisionExpectation; settlement: RevisionExpectation };
+  RecordExport: Record<string, never>;
+  RecordPrint: Record<string, never>;
+  RecordBackup: Record<string, never>;
+}
+
+export type FullCloudCommandInput = {
+  [K in BusinessCommandKind]: {
+    commandId: string;
+    kind: K;
+    leaseEpoch: number;
+    targets: CommandTargetsByKind[K];
+    expectedRevisions: ExpectedRevisionsByKind[K];
+    payload: CommandPayloadByKind[K];
+  }
+}[BusinessCommandKind];
+
+export type EnabledCommandKind = 'EnsureDay' | 'CreateOrder' | 'CreatePayment';
+export type EnabledCloudCommandInput = Extract<FullCloudCommandInput, { kind: EnabledCommandKind }>;
+
+export type StoredCloudCommandDoc = {
+  [K in BusinessCommandKind]: {
+    commandId: string;
+    kind: K;
+    seq: number;
+    leaseEpoch: number;
+    actor: CommandActor;
+    committedAt: Timestamp;
+    businessDate: string | null;
+    studentId: string | null;
+    targets: CommandTargetsByKind[K];
+    expectedRevisions: ExpectedRevisionsByKind[K];
+    before: Record<string, unknown> | null;
+    after: Record<string, unknown> | null;
+    reason: string | null;
+    cashEffect: CommandCashEffect;
+    payload: CommandPayloadByKind[K];
+    inputFingerprint: string;
+  }
+}[BusinessCommandKind];
+
+export type StoredEnabledCommandDoc = Extract<StoredCloudCommandDoc, { kind: EnabledCommandKind }>;
+
+export type CanonicalEnabledInput =
+  | (Extract<EnabledCloudCommandInput, { kind: 'EnsureDay' }>)
+  | {
+      commandId: string;
+      kind: 'CreateOrder';
+      leaseEpoch: number;
+      targets: CommandTargetsByKind['CreateOrder'];
+      expectedRevisions: ExpectedRevisionsByKind['CreateOrder'];
+      payload: CommandPayloadByKind['CreateOrder'];
+    }
+  | {
+      commandId: string;
+      kind: 'CreatePayment';
+      leaseEpoch: number;
+      targets: CommandTargetsByKind['CreatePayment'];
+      expectedRevisions: ExpectedRevisionsByKind['CreatePayment'];
+      payload: CommandPayloadByKind['CreatePayment'];
+    };
+
+export class InvalidCloudCommandInput extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidCloudCommandInput';
+  }
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function exactKeys(value: Record<string, unknown>, required: string[], optional: string[] = []): void {
+  const keys = Object.keys(value);
+  if (keys.some(key => key === '__proto__' || key === 'constructor' || key === 'prototype')) {
+    throw new InvalidCloudCommandInput('命令含不允許的物件欄位');
+  }
+  const allowed = new Set([...required, ...optional]);
+  if (required.some(key => !Object.hasOwn(value, key)) || keys.some(key => !allowed.has(key))) {
+    throw new InvalidCloudCommandInput('命令欄位與固定 schema 不符');
+  }
+}
+
+function stringValue(value: unknown, label: string, max = 128): asserts value is string {
+  if (typeof value !== 'string' || value.length < 1 || value.length > max || value.includes('/')) {
+    throw new InvalidCloudCommandInput(`${label} 不合法`);
+  }
+}
+
+function dateValue(value: unknown, label: string): asserts value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new InvalidCloudCommandInput(`${label} 必須是 YYYY-MM-DD`);
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw new InvalidCloudCommandInput(`${label} 不是有效日期`);
+  }
+}
+
+function safeInteger(value: unknown, label: string, max = 1_000_000_000): asserts value is number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || Object.is(value, -0) || value < 0 || value > max) {
+    throw new InvalidCloudCommandInput(`${label} 必須是範圍內的非負整數`);
+  }
+}
+
+function validateRevisionMap(value: unknown, keys: string[], createKeys: string[] = []): Record<string, number> {
+  if (!isPlainRecord(value)) throw new InvalidCloudCommandInput('expectedRevisions 必須是固定物件');
+  exactKeys(value, keys);
+  for (const key of keys) safeInteger(value[key], `expectedRevisions.${key}`);
+  for (const key of createKeys) {
+    if (value[key] !== 0) throw new InvalidCloudCommandInput(`expectedRevisions.${key} 必須為 0`);
+  }
+  return value as Record<string, number>;
+}
+
+function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayloadByKind[EnabledCommandKind] {
+  if (!isPlainRecord(value)) throw new InvalidCloudCommandInput('payload 必須是固定物件');
+  if (kind === 'EnsureDay') {
+    exactKeys(value, ['businessDate']);
+    dateValue(value.businessDate, 'businessDate');
+    return { businessDate: value.businessDate };
+  }
+  if (kind === 'CreatePayment') {
+    exactKeys(value, ['paidAmount'], ['note']);
+    safeInteger(value.paidAmount, 'paidAmount', 1_000_000);
+    if (value.paidAmount <= 0) throw new InvalidCloudCommandInput('繳費金額必須大於零');
+    const note = value.note ?? '';
+    if (typeof note !== 'string' || note.length > 500) throw new InvalidCloudCommandInput('note 不合法');
+    return { paidAmount: value.paidAmount, note };
+  }
+
+  exactKeys(value, ['mealPrice', 'paidAmount', 'mealKind'], ['menuRevision', 'otherItemName', 'note']);
+  safeInteger(value.mealPrice, 'mealPrice', 1_000_000);
+  safeInteger(value.paidAmount, 'paidAmount', 1_000_000);
+  if (value.mealKind !== 'bento' && value.mealKind !== 'other') {
+    throw new InvalidCloudCommandInput('mealKind 必須是 bento 或 other');
+  }
+  const menuRevision = value.menuRevision ?? null;
+  if (value.mealKind === 'bento') {
+    safeInteger(menuRevision, 'menuRevision');
+    if (menuRevision < 1) throw new InvalidCloudCommandInput('menuRevision 必須大於零');
+  } else if (menuRevision !== null) {
+    throw new InvalidCloudCommandInput('其他餐點不接受便當菜單版次');
+  }
+  const otherItemName: string | null = value.otherItemName === undefined ? null : value.otherItemName as string | null;
+  if (otherItemName !== null && (typeof otherItemName !== 'string' || otherItemName.length > 100)) {
+    throw new InvalidCloudCommandInput('otherItemName 不合法');
+  }
+  if (value.mealKind === 'other' && !otherItemName?.trim()) throw new InvalidCloudCommandInput('其他餐點必須提供品名');
+  if (value.mealKind === 'bento' && otherItemName !== null) throw new InvalidCloudCommandInput('便當不能帶 otherItemName');
+  const note = value.note ?? '';
+  if (typeof note !== 'string' || note.length > 500) throw new InvalidCloudCommandInput('note 不合法');
+  return {
+    mealPrice: value.mealPrice,
+    paidAmount: value.paidAmount,
+    mealKind: value.mealKind,
+    menuRevision,
+    otherItemName,
+    note,
+  };
+}
+
+export function normalizeEnabledCommandInput(input: unknown): CanonicalEnabledInput {
+  if (!isPlainRecord(input)) throw new InvalidCloudCommandInput('命令必須是固定物件');
+  exactKeys(input, ['commandId', 'kind', 'leaseEpoch', 'targets', 'expectedRevisions', 'payload']);
+  if (typeof input.kind !== 'string' || !['EnsureDay', 'CreateOrder', 'CreatePayment'].includes(input.kind)) {
+    throw new InvalidCloudCommandInput('此命令種類尚未啟用');
+  }
+  const kind = input.kind as EnabledCommandKind;
+  if (typeof input.commandId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.commandId)) {
+    throw new InvalidCloudCommandInput('commandId 必須是 UUID');
+  }
+  safeInteger(input.leaseEpoch, 'leaseEpoch');
+  if (kind === 'EnsureDay') {
+    if (!isPlainRecord(input.targets)) throw new InvalidCloudCommandInput('targets 必須是固定物件');
+    exactKeys(input.targets, ['dayId']);
+    dateValue(input.targets.dayId, 'targets.dayId');
+    const expectedRevisions = validateRevisionMap(input.expectedRevisions, ['day'], ['day']);
+    const payload = normalizePayload(kind, input.payload) as CommandPayloadByKind['EnsureDay'];
+    if (input.targets.dayId !== payload.businessDate) throw new InvalidCloudCommandInput('dayId 必須等於 businessDate');
+    return {
+      commandId: input.commandId,
+      kind,
+      leaseEpoch: input.leaseEpoch,
+      targets: { dayId: input.targets.dayId },
+      expectedRevisions: expectedRevisions as ExpectedRevisionsByKind['EnsureDay'],
+      payload,
+    };
+  }
+
+  if (!isPlainRecord(input.targets)) throw new InvalidCloudCommandInput('targets 必須是固定物件');
+  exactKeys(input.targets, ['transactionId', 'studentId', 'dayId']);
+  stringValue(input.targets.transactionId, 'transactionId', 64);
+  stringValue(input.targets.studentId, 'studentId', 64);
+  if (input.targets.studentId === '__cashier__') throw new InvalidCloudCommandInput('studentId 不合法');
+  dateValue(input.targets.dayId, 'targets.dayId');
+  const expectedRevisions = validateRevisionMap(input.expectedRevisions, ['transaction', 'student', 'day'], ['transaction']);
+  const payload = normalizePayload(kind, input.payload);
+  return {
+    commandId: input.commandId,
+    kind,
+    leaseEpoch: input.leaseEpoch,
+    targets: {
+      transactionId: input.targets.transactionId,
+      studentId: input.targets.studentId,
+      dayId: input.targets.dayId,
+    },
+    expectedRevisions: expectedRevisions as ExpectedRevisionsByKind[typeof kind],
+    payload,
+  } as CanonicalEnabledInput;
+}
+
+function canonicalValue(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalValue).join(',')}]`;
+  if (isPlainRecord(value)) {
+    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalValue(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function receiptRecord(value: unknown, label: string, keys: string[]): Record<string, unknown> {
+  if (!isPlainRecord(value)) throw new InvalidCloudCommandInput(`${label} 必須是固定物件`);
+  exactKeys(value, keys);
+  return value;
+}
+
+function receiptTimestamp(value: unknown, label: string): asserts value is Timestamp {
+  if (!(value instanceof Timestamp)) throw new InvalidCloudCommandInput(`${label} 必須是 Firestore Timestamp`);
+}
+
+function receiptInteger(
+  value: unknown,
+  label: string,
+  minimum = 0,
+  maximum = Number.MAX_SAFE_INTEGER,
+): asserts value is number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || Object.is(value, -0)
+    || value < minimum || value > maximum) {
+    throw new InvalidCloudCommandInput(`${label} 必須是整數`);
+  }
+}
+
+function validateReceiptHead(value: unknown, label: string): Record<string, unknown> {
+  const head = receiptRecord(value, label, ['schemaVersion', 'datasetId', 'seq', 'lastCommandId', 'maintenance', 'goLiveDate', 'updatedAt']);
+  if (head.schemaVersion !== 1 || typeof head.datasetId !== 'string' || !head.datasetId
+    || (head.lastCommandId !== null && typeof head.lastCommandId !== 'string')
+    || typeof head.maintenance !== 'boolean') {
+    throw new InvalidCloudCommandInput(`${label} schema 不支援`);
+  }
+  receiptInteger(head.seq, `${label}.seq`);
+  dateValue(head.goLiveDate, `${label}.goLiveDate`);
+  receiptTimestamp(head.updatedAt, `${label}.updatedAt`);
+  return head;
+}
+
+function validateReceiptStudent(value: unknown, label: string): Record<string, unknown> {
+  const student = receiptRecord(value, label, [
+    'studentId', 'displayName', 'aliases', 'status', 'openingBalance', 'currentBalance', 'createdAt', 'revision', 'lastCommandId', 'updatedAt',
+  ]);
+  if (typeof student.studentId !== 'string' || !student.studentId
+    || typeof student.displayName !== 'string' || student.displayName.length < 1 || student.displayName.length > 100
+    || !Array.isArray(student.aliases) || student.aliases.length > 10
+    || !student.aliases.every(alias => typeof alias === 'string' && alias.length <= 100)
+    || (student.status !== 'active' && student.status !== 'inactive')
+    || typeof student.lastCommandId !== 'string') {
+    throw new InvalidCloudCommandInput(`${label} schema 不支援`);
+  }
+  const opening = receiptRecord(student.openingBalance, `${label}.openingBalance`, ['amount', 'asOfDate', 'note', 'createdAt']);
+  receiptInteger(opening.amount, `${label}.openingBalance.amount`, -1_000_000_000, 1_000_000_000);
+  dateValue(opening.asOfDate, `${label}.openingBalance.asOfDate`);
+  if (typeof opening.note !== 'string' || opening.note.length > 500) {
+    throw new InvalidCloudCommandInput(`${label}.openingBalance.note 不合法`);
+  }
+  receiptTimestamp(opening.createdAt, `${label}.openingBalance.createdAt`);
+  receiptInteger(student.currentBalance, `${label}.currentBalance`, -1_000_000_000);
+  if (Math.abs(student.currentBalance) > 1_000_000_000) throw new InvalidCloudCommandInput(`${label}.currentBalance 超出範圍`);
+  receiptInteger(student.revision, `${label}.revision`, 1);
+  receiptTimestamp(student.createdAt, `${label}.createdAt`);
+  receiptTimestamp(student.updatedAt, `${label}.updatedAt`);
+  return student;
+}
+
+function validateReceiptDay(value: unknown, dayId: string, label: string): Record<string, unknown> {
+  const day = receiptRecord(value, label, [
+    'status', 'revision', 'menu', 'openingCash', 'openedBy', 'openedAt', 'totals', 'lastSettlementRevision', 'lastCommandId', 'updatedAt',
+  ]);
+  if (!['open', 'closed', 'reopened'].includes(String(day.status))
+    || (day.openingCash !== null && (typeof day.openingCash !== 'number' || !Number.isSafeInteger(day.openingCash) || day.openingCash < 0 || day.openingCash > 20_000))
+    || (day.openedBy !== null && typeof day.openedBy !== 'string')
+    || (day.openedAt !== null && !(day.openedAt instanceof Timestamp))
+    || typeof day.lastCommandId !== 'string') {
+    throw new InvalidCloudCommandInput(`${label} schema 不支援`);
+  }
+  receiptInteger(day.revision, `${label}.revision`, 1);
+  receiptInteger(day.lastSettlementRevision, `${label}.lastSettlementRevision`);
+  receiptTimestamp(day.updatedAt, `${label}.updatedAt`);
+  const totals = receiptRecord(day.totals, `${label}.totals`, [
+    'activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal', 'retainedReceipts', 'cashierIncome', 'cashierExpense',
+  ]);
+  for (const [key, amount] of Object.entries(totals)) {
+    receiptInteger(amount, `${label}.totals.${key}`, 0, 1_000_000_000);
+  }
+  if (day.menu !== null) {
+    const menu = receiptRecord(day.menu, `${label}.menu`, [
+      'businessDate', 'itemName', 'price', 'vendorId', 'vendorNameSnapshot', 'updatedAt', 'revision', 'inheritedFromDate',
+    ]);
+    if (menu.businessDate !== dayId || typeof menu.itemName !== 'string' || menu.itemName.length < 1 || menu.itemName.length > 100
+      || typeof menu.vendorId !== 'string' || menu.vendorId.length < 1 || menu.vendorId.length > 64 || menu.vendorId.includes('/')
+      || typeof menu.vendorNameSnapshot !== 'string' || menu.vendorNameSnapshot.length < 1 || menu.vendorNameSnapshot.length > 100
+      || (menu.inheritedFromDate !== null && typeof menu.inheritedFromDate !== 'string')) {
+      throw new InvalidCloudCommandInput(`${label}.menu schema 不支援`);
+    }
+    receiptInteger(menu.price, `${label}.menu.price`, 1, 1_000_000);
+    receiptInteger(menu.revision, `${label}.menu.revision`, 1);
+    dateValue(menu.businessDate, `${label}.menu.businessDate`);
+    if (menu.inheritedFromDate !== null) dateValue(menu.inheritedFromDate, `${label}.menu.inheritedFromDate`);
+    receiptTimestamp(menu.updatedAt, `${label}.menu.updatedAt`);
+  }
+  return day;
+}
+
+function validateReceiptTransaction(value: unknown, label: string): Record<string, unknown> {
+  const transaction = receiptRecord(value, label, [
+    'transactionId', 'studentId', 'businessDate', 'type', 'mealKind', 'mealPrice', 'paidAmount', 'amount',
+    'studentNameSnapshot', 'menuNameSnapshot', 'menuPriceSnapshot', 'vendorIdSnapshot', 'vendorNameSnapshot',
+    'otherItemName', 'status', 'revision', 'createdAt', 'createdSeq', 'operatorUid', 'operatorEmail',
+    'sourceDevice', 'note', 'lastCommandId', 'updatedAt',
+  ]);
+  for (const key of ['transactionId', 'studentId', 'studentNameSnapshot', 'menuNameSnapshot', 'vendorIdSnapshot', 'vendorNameSnapshot', 'operatorUid', 'operatorEmail', 'sourceDevice', 'note', 'lastCommandId']) {
+    if (typeof transaction[key] !== 'string') throw new InvalidCloudCommandInput(`${label}.${key} 不合法`);
+  }
+  dateValue(transaction.businessDate, `${label}.businessDate`);
+  if ((transaction.type !== 'order' && transaction.type !== 'payment')
+    || (transaction.mealKind !== null && transaction.mealKind !== 'bento' && transaction.mealKind !== 'other')
+    || transaction.status !== 'active'
+    || (transaction.otherItemName !== null && typeof transaction.otherItemName !== 'string')) {
+    throw new InvalidCloudCommandInput(`${label} schema 不支援`);
+  }
+  receiptInteger(transaction.mealPrice, `${label}.mealPrice`);
+  receiptInteger(transaction.paidAmount, `${label}.paidAmount`);
+  receiptInteger(transaction.menuPriceSnapshot, `${label}.menuPriceSnapshot`);
+  receiptInteger(transaction.revision, `${label}.revision`, 1);
+  receiptInteger(transaction.createdSeq, `${label}.createdSeq`, 1);
+  if (typeof transaction.amount !== 'number' || !Number.isSafeInteger(transaction.amount)) {
+    throw new InvalidCloudCommandInput(`${label}.amount 不合法`);
+  }
+  receiptTimestamp(transaction.createdAt, `${label}.createdAt`);
+  receiptTimestamp(transaction.updatedAt, `${label}.updatedAt`);
+  return transaction;
+}
+
+function timestampMatches(actual: unknown, expected: Timestamp): boolean {
+  return actual instanceof Timestamp && actual.isEqual(expected);
+}
+
+function equalExcept(before: Record<string, unknown>, after: Record<string, unknown>, mutableKeys: string[]): boolean {
+  const mutable = new Set(mutableKeys);
+  return Object.keys(before).every(key => mutable.has(key) || canonicalJson(before[key]) === canonicalJson(after[key]));
+}
+
+function validateReceiptSnapshots(
+  receipt: Record<string, unknown>,
+  normalized: CanonicalEnabledInput,
+): void {
+  const committedAt = receipt.committedAt as Timestamp;
+  const commandId = normalized.commandId;
+  const before = receiptRecord(receipt.before, 'receipt.before', normalized.kind === 'EnsureDay'
+    ? ['head', 'day'] : ['head', 'student', 'day', 'transaction']);
+  const after = receiptRecord(receipt.after, 'receipt.after', normalized.kind === 'EnsureDay'
+    ? ['head', 'day'] : ['head', 'student', 'day', 'transaction']);
+  const headBefore = validateReceiptHead(before.head, 'receipt.before.head');
+  const headAfter = validateReceiptHead(after.head, 'receipt.after.head');
+  if (Number(headBefore.seq) + 1 !== receipt.seq || headAfter.seq !== receipt.seq
+    || headBefore.maintenance !== false || headAfter.maintenance !== false
+    || headAfter.lastCommandId !== commandId || !timestampMatches(headAfter.updatedAt, committedAt)
+    || !equalExcept(headBefore, headAfter, ['seq', 'lastCommandId', 'updatedAt'])) {
+    throw new InvalidCloudCommandInput('receipt dataHead snapshots 不一致');
+  }
+
+  const cash = receipt.cashEffect as Record<string, unknown>;
+  if (normalized.kind === 'EnsureDay') {
+    if (before.day !== null || receipt.businessDate !== normalized.payload.businessDate || receipt.studentId !== null
+      || normalized.targets.dayId < String(headBefore.goLiveDate)) {
+      throw new InvalidCloudCommandInput('EnsureDay receipt before/common 欄位不一致');
+    }
+    const dayAfter = validateReceiptDay(after.day, normalized.targets.dayId, 'receipt.after.day');
+    const totals = dayAfter.totals as Record<string, unknown>;
+    if (dayAfter.status !== 'open' || dayAfter.revision !== 1 || dayAfter.menu !== null || dayAfter.openingCash !== null
+      || dayAfter.openedBy !== null || dayAfter.openedAt !== null || dayAfter.lastSettlementRevision !== 0
+      || dayAfter.lastCommandId !== commandId || !timestampMatches(dayAfter.updatedAt, committedAt)
+      || Object.values(totals).some(value => value !== 0)
+      || cash.before !== 0 || cash.after !== 0 || cash.delta !== 0 || cash.reasonKind !== 'none' || cash.refundAmount !== 0) {
+      throw new InvalidCloudCommandInput('EnsureDay receipt after snapshot 不一致');
+    }
+    return;
+  }
+
+  if (receipt.businessDate !== normalized.targets.dayId || receipt.studentId !== normalized.targets.studentId || before.transaction !== null) {
+    throw new InvalidCloudCommandInput('交易 receipt common/before 欄位不一致');
+  }
+  const studentBefore = validateReceiptStudent(before.student, 'receipt.before.student');
+  const studentAfter = validateReceiptStudent(after.student, 'receipt.after.student');
+  const dayBefore = validateReceiptDay(before.day, normalized.targets.dayId, 'receipt.before.day');
+  const dayAfter = validateReceiptDay(after.day, normalized.targets.dayId, 'receipt.after.day');
+  const transactionAfter = validateReceiptTransaction(after.transaction, 'receipt.after.transaction');
+  const paidAmount = normalized.payload.paidAmount;
+  const order = normalized.kind === 'CreateOrder';
+  const orderPayload = order ? normalized.payload as CommandPayloadByKind['CreateOrder'] : null;
+  const mealPrice = orderPayload?.mealPrice ?? 0;
+  const mealKind = orderPayload?.mealKind ?? null;
+  const menu = dayBefore.menu as Record<string, unknown> | null;
+  if (orderPayload?.mealKind === 'bento' && menu === null) {
+    throw new InvalidCloudCommandInput('CreateOrder receipt 缺少便當菜單 snapshot');
+  }
+  const committedBusinessDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(committedAt.toDate());
+  if (normalized.targets.dayId < String(headBefore.goLiveDate)
+    || normalized.targets.dayId !== committedBusinessDate
+    || dayBefore.status === 'closed'
+    || (order && studentBefore.status !== 'active')
+    || normalized.targets.dayId < String((studentBefore.openingBalance as Record<string, unknown>).asOfDate)
+    || (orderPayload?.mealKind === 'bento'
+      && (menu?.revision !== orderPayload.menuRevision || menu?.price !== orderPayload.mealPrice))) {
+    throw new InvalidCloudCommandInput('交易 receipt 日期、營業日或菜單快照不一致');
+  }
+  const expectedStudentBalance = Number(studentBefore.currentBalance) + paidAmount - mealPrice;
+  if (studentBefore.studentId !== normalized.targets.studentId || studentAfter.studentId !== normalized.targets.studentId
+    || studentBefore.revision !== normalized.expectedRevisions.student
+    || studentAfter.revision !== Number(studentBefore.revision) + 1
+    || studentAfter.currentBalance !== expectedStudentBalance
+    || studentAfter.lastCommandId !== commandId || !timestampMatches(studentAfter.updatedAt, committedAt)
+    || !equalExcept(studentBefore, studentAfter, ['currentBalance', 'revision', 'lastCommandId', 'updatedAt'])) {
+    throw new InvalidCloudCommandInput('receipt student snapshots 不一致');
+  }
+  const totalsBefore = dayBefore.totals as Record<string, unknown>;
+  const totalsAfter = dayAfter.totals as Record<string, unknown>;
+  const expectedTotals = {
+    activeTransactionCount: Number(totalsBefore.activeTransactionCount) + 1,
+    bentoCount: Number(totalsBefore.bentoCount) + (order && mealKind === 'bento' ? 1 : 0),
+    otherMealCount: Number(totalsBefore.otherMealCount) + (order && mealKind === 'other' ? 1 : 0),
+    mealTotal: Number(totalsBefore.mealTotal) + mealPrice,
+    retainedReceipts: Number(totalsBefore.retainedReceipts) + paidAmount,
+  };
+  if (dayBefore.revision !== normalized.expectedRevisions.day || dayAfter.revision !== Number(dayBefore.revision) + 1
+    || dayAfter.lastCommandId !== commandId || !timestampMatches(dayAfter.updatedAt, committedAt)
+    || !equalExcept(dayBefore, dayAfter, ['revision', 'totals', 'lastCommandId', 'updatedAt'])
+    || Object.entries(expectedTotals).some(([key, value]) => totalsAfter[key] !== value)
+    || totalsAfter.cashierIncome !== totalsBefore.cashierIncome || totalsAfter.cashierExpense !== totalsBefore.cashierExpense) {
+    throw new InvalidCloudCommandInput('receipt day snapshots 不一致');
+  }
+  const payload = normalized.payload;
+  const expectedTransaction = {
+    transactionId: normalized.targets.transactionId,
+    studentId: normalized.targets.studentId,
+    businessDate: normalized.targets.dayId,
+    type: order ? 'order' : 'payment',
+    mealKind,
+    mealPrice,
+    paidAmount,
+    amount: paidAmount - mealPrice,
+    studentNameSnapshot: studentBefore.displayName,
+    menuNameSnapshot: orderPayload?.mealKind === 'bento' ? menu?.itemName : '',
+    menuPriceSnapshot: orderPayload?.mealKind === 'bento' ? menu?.price : 0,
+    vendorIdSnapshot: orderPayload?.mealKind === 'bento' ? menu?.vendorId : '',
+    vendorNameSnapshot: orderPayload?.mealKind === 'bento' ? menu?.vendorNameSnapshot : '',
+    otherItemName: orderPayload?.otherItemName ?? null,
+    status: 'active',
+    revision: 1,
+    createdSeq: receipt.seq,
+    operatorUid: (receipt.actor as Record<string, unknown>).uid,
+    operatorEmail: (receipt.actor as Record<string, unknown>).email,
+    sourceDevice: 'pc',
+    note: payload.note,
+    lastCommandId: commandId,
+  };
+  if (Object.entries(expectedTransaction).some(([key, value]) => transactionAfter[key] !== value)
+    || !timestampMatches(transactionAfter.createdAt, committedAt)
+    || !timestampMatches(transactionAfter.updatedAt, committedAt)
+    || cash.before !== 0 || cash.after !== paidAmount || cash.delta !== paidAmount
+    || cash.reasonKind !== (paidAmount > 0 ? 'collection' : 'none') || cash.refundAmount !== 0) {
+    throw new InvalidCloudCommandInput('transaction receipt snapshot 或 cashEffect 不一致');
+  }
+}
+
+export function canonicalJson(value: unknown): string {
+  return canonicalValue(value);
+}
+
+function commandSemanticInput(input: CanonicalEnabledInput) {
+  return {
+    commandId: input.commandId,
+    kind: input.kind,
+    targets: input.targets,
+    expectedRevisions: input.expectedRevisions,
+    payload: input.payload,
+  };
+}
+
+export async function fingerprintCommandInput(input: CanonicalEnabledInput): Promise<string> {
+  if (!globalThis.crypto?.subtle) throw new Error('Web Crypto SHA-256 is unavailable');
+  const bytes = new TextEncoder().encode(canonicalJson(commandSemanticInput(input)));
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export function sameCommandSemantics(left: CanonicalEnabledInput, right: unknown): boolean {
+  try {
+    const normalized = normalizeEnabledCommandInput(right);
+    return canonicalJson(commandSemanticInput(left)) === canonicalJson(commandSemanticInput(normalized));
+  } catch {
+    return false;
+  }
+}
+
+export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
+  if (!isPlainRecord(raw)) throw new InvalidCloudCommandInput('command receipt 不是物件');
+  exactKeys(raw, [
+    'commandId', 'kind', 'seq', 'leaseEpoch', 'actor', 'committedAt', 'businessDate', 'studentId',
+    'targets', 'expectedRevisions', 'before', 'after', 'reason', 'cashEffect', 'payload', 'inputFingerprint',
+  ]);
+  if (typeof raw.kind !== 'string' || !ALL_COMMAND_KINDS.includes(raw.kind as BusinessCommandKind)) {
+    throw new InvalidCloudCommandInput('command receipt kind 不支援');
+  }
+  if (!['EnsureDay', 'CreateOrder', 'CreatePayment'].includes(raw.kind)) {
+    throw new InvalidCloudCommandInput('此 command kind 尚未啟用');
+  }
+  safeInteger(raw.seq, 'receipt.seq');
+  if (raw.seq < 1) throw new InvalidCloudCommandInput('receipt.seq 必須大於零');
+  safeInteger(raw.leaseEpoch, 'receipt.leaseEpoch');
+  stringValue(raw.commandId, 'receipt.commandId', 36);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw.commandId)) {
+    throw new InvalidCloudCommandInput('receipt.commandId 必須是 UUID');
+  }
+  if (!(raw.committedAt instanceof Timestamp)) throw new InvalidCloudCommandInput('receipt.committedAt 必須是 Firestore Timestamp');
+  if (raw.businessDate !== null) dateValue(raw.businessDate, 'receipt.businessDate');
+  if (raw.studentId !== null && typeof raw.studentId !== 'string') throw new InvalidCloudCommandInput('receipt.studentId 不合法');
+  if (raw.reason !== null) throw new InvalidCloudCommandInput('enabled command receipt.reason 必須為 null');
+  if (typeof raw.inputFingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(raw.inputFingerprint)) {
+    throw new InvalidCloudCommandInput('receipt.inputFingerprint 不合法');
+  }
+  if (!isPlainRecord(raw.actor)) throw new InvalidCloudCommandInput('receipt.actor 不合法');
+  exactKeys(raw.actor, ['uid', 'email']);
+  stringValue(raw.actor.uid, 'receipt.actor.uid');
+  if (typeof raw.actor.email !== 'string' || raw.actor.email.length < 3 || raw.actor.email.length > 254) {
+    throw new InvalidCloudCommandInput('receipt.actor.email 不合法');
+  }
+  if (!isPlainRecord(raw.cashEffect)) throw new InvalidCloudCommandInput('receipt.cashEffect 不合法');
+  exactKeys(raw.cashEffect, ['before', 'after', 'delta', 'reasonKind', 'refundAmount']);
+  for (const key of ['before', 'after', 'delta', 'refundAmount']) {
+    if (typeof raw.cashEffect[key] !== 'number' || !Number.isSafeInteger(raw.cashEffect[key])) {
+      throw new InvalidCloudCommandInput(`receipt.cashEffect.${key} 不合法`);
+    }
+  }
+  if (!['collection', 'payout', 'refund', 'correction', 'reversal', 'none'].includes(String(raw.cashEffect.reasonKind))) {
+    throw new InvalidCloudCommandInput('receipt.cashEffect.reasonKind 不合法');
+  }
+
+  const normalized = normalizeEnabledCommandInput({
+    commandId: raw.commandId,
+    kind: raw.kind,
+    leaseEpoch: raw.leaseEpoch,
+    targets: raw.targets,
+    expectedRevisions: raw.expectedRevisions,
+    payload: raw.payload,
+  });
+  if (normalized.kind === 'EnsureDay') {
+    if (raw.businessDate !== normalized.payload.businessDate || raw.studentId !== null) {
+      throw new InvalidCloudCommandInput('EnsureDay receipt 共用欄位不一致');
+    }
+  } else if (raw.businessDate !== normalized.targets.dayId || raw.studentId !== normalized.targets.studentId) {
+    throw new InvalidCloudCommandInput('交易 receipt 共用欄位不一致');
+  }
+  validateReceiptSnapshots(raw, normalized);
+  return raw as unknown as StoredEnabledCommandDoc;
+}

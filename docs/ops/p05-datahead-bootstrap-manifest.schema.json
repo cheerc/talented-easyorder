@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EasyOrder P05 dataHead bootstrap manifest",
+  "description": "Output contract only. It is not an executable bootstrap command and contains no credentials or financial seed data.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifestVersion",
+    "projectId",
+    "createdAt",
+    "bootstrapMethod",
+    "dataHead",
+    "createdPaths",
+    "financialDocumentsCreated"
+  ],
+  "properties": {
+    "manifestVersion": { "const": 1 },
+    "projectId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "bootstrapMethod": { "const": "IAM/Admin SDK local maintenance tool" },
+    "dataHead": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "datasetId", "seq", "lastCommandId", "maintenance", "goLiveDate", "updatedAt"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "datasetId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "seq": { "const": 0 },
+        "lastCommandId": { "const": null },
+        "maintenance": { "const": true },
+        "goLiveDate": { "type": "string", "format": "date" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "createdPaths": { "const": ["system/dataHead"] },
+    "financialDocumentsCreated": { "const": false }
+  }
+}

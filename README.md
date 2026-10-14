@@ -1,6 +1,6 @@
 # Talented EasyOrder (PC Counter Prototype)
 
-PC 晚餐櫃台前端 prototype，使用 React、Vite 與 Zustand。目前實作以鍵盤登記、收款、餘額與可追溯查帳為主。正式後端依獨立分階段計畫開發；P00–P03 已合併，P04 PR #475 正在 review/rework，尚未通過或 merge。Android 整合另案。
+PC 晚餐櫃台前端 prototype，使用 React、Vite 與 Zustand。目前實作以鍵盤登記、收款、餘額與可追溯查帳為主。正式後端依獨立分階段計畫開發；P00–P04 已合併，P05 command-core 正在實作，尚未完成驗收或部署。Android 整合另案。
 
 Project team 請先讀 [前端交接入口](docs/FRONTEND-PROTOTYPE-HANDOFF.md) 與 [本人操作驗證清單](docs/superpowers/verification/2026-09-29-operator-prototype-checklist.md)。文件描述的新版練習工具仍待分批實作。
 
@@ -8,7 +8,7 @@ Project team 請先讀 [前端交接入口](docs/FRONTEND-PROTOTYPE-HANDOFF.md) 
 
 ## 正式後端交接（2026-10-13 規劃，尚未上線）
 
-接手團隊先讀[零費用正式後端 spec](docs/superpowers/specs/2026-10-13-free-production-backend-spec.md)，再依[19 個小階段計畫](docs/superpowers/plans/2026-10-13-free-production-backend-plan.md)執行。目標採獨立 Firebase Spark＋Hosting；多個等權 Google 白名單帳號、同時只允許一個帳號使用。既有 Firebase setup／部署腳本尚未符合新規格，不能直接用於正式真實資料或 payroll 專案。P00–P03 已合併；P04 PR #475 的 rework 候選本地全套 Vitest 為 1291 passed／65 skipped，獨立 lease Emulator 19/19、A01 10/10、P01 proof 36/36，system Chromium 154 下 Cloud 11/11＋本機 prototype 7/7；新 immutable head 的 required CI 與獨立 review 尚待完成，PR 未 merge，P05 仍不得啟動。P01 負向測試的 expression-cap 限制、TypeScript diagnostics 與原始 CI 缺口詳見[現況與證據](docs/ops/free-production-evidence.md)。目前尚無業務 command 寫入流程或正式部署。
+接手團隊先讀[零費用正式後端 spec](docs/superpowers/specs/2026-10-13-free-production-backend-spec.md)，再依[19 個小階段計畫](docs/superpowers/plans/2026-10-13-free-production-backend-plan.md)執行。目標採獨立 Firebase Spark＋Hosting；多個等權 Google 白名單帳號、同時只允許一個帳號使用。既有 Firebase setup／部署腳本尚未符合新規格，不能直接用於正式真實資料或 payroll 專案。P00–P04 已合併。P04 #475 的合併 SHA 為 `837a1e871468db217463e9799480beeb6d7b0ab0`；獨立 review pass、required CI run 38579765651 成功。P05 候選 production Rules Emulator 為 79/79；A01/P01/P04/P05 sequential Emulator regression 為 144/144、0 skipped；Cloud E2E 12/12、隔離 prototype 7/7 通過。完整 Vitest 1,297 passed、144 skipped（五個 Emulator-only suites，已由獨立 Emulator regression 執行），full lint/build 通過；app TypeScript 仍 exit 2，290 項 inherited diagnostics 的完整 normalized multiline diff 為 0 bytes。P05 尚待新 immutable head 的 required CI 與獨立 review，不是 phase pass。P05 合併後的下一階段是 P06 學生名單與期初從零建檔；本輪尚未開始 P06。完整證據與 Rules budget／expression 限制見[現況與證據](docs/ops/free-production-evidence.md)及[Rules budget盤點](docs/ops/p05-rules-budget.md)。尚未部署或開放正式帳務操作。
 
 ## Getting Started
 

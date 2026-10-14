@@ -61,6 +61,7 @@ describe('firestoreSchema: 新舊 Schema 型別與 Adapter 驗證', () => {
       menuNameSnapshot: '素食餐點',
       menuPriceSnapshot: 95,
       vendorIdSnapshot: 'ven-1',
+      otherItemName: '素食餐點',
       vendorNameSnapshot: '蔬食坊',
       status: 'active',
       revision: 1,
