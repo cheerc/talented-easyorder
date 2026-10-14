@@ -1,6 +1,6 @@
 # 零費用正式後端：現況與證據
 
-狀態截至 2026-10-14。此頁保留 P00 基線並記錄進行中的 phase 證據；新正式後端**尚未實作、部署或通過上線驗收**。規格是目標契約，不代表功能、雲端資源或部署狀態已成立。前端原本人驗收紀錄仍以 [PROJECT-STATUS](../PROJECT-STATUS.md) 為準。
+狀態截至 2026-10-14。此頁保留 P00 基線與 P01–P04 實際證據；P04 #475 已合併，P05 command-core 正在實作，相關 P05 gates 尚未完成。新正式後端未部署、未通過上線驗收。規格是目標契約，不代表功能、雲端資源或部署狀態已成立。前端原本人驗收紀錄仍以 [PROJECT-STATUS](../PROJECT-STATUS.md) 為準。
 
 ## 範圍與正式操作界線
 
@@ -118,13 +118,13 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - 已於 2026-10-14 由 Coordinator 完成 review 並 merge 至 main（實際 merge SHA `fd8cba1b84c0b2146c1f450192e2c99739193e46`）。
 - 驗收成果：A01 等權白名單測試全數通過，未核准畫面、browserSessionPersistence 與 operators 規則就緒。
 
-## P04 全公司單一活躍 Google 身分使用權租約（PR #475 review/rework；尚未通過）
+## P04 全公司單一活躍 Google 身分使用權租約（已合併 #475）
 
 ### 範圍與狀態
 
-- PR：[#475](https://github.com/cheerc/talented-easyorder/pull/475)，分支 `codex/backend-p04-active-lease`；base 是 #474 實際 merge SHA `fd8cba1b84c0b2146c1f450192e2c99739193e46`。PR 尚未 merge。immutable head `4c1aeb196ca94d7da14d12ba832c050783b2227c` 的獨立 review 提出 pending/cache snapshot 會錯誤撤銷已確認租約與清除畫面等 P1，以及 concurrency、Web Locks、heartbeat E2E 證據不足等 P2；本輪 rework 已補正並完成本地驗證，待新候選推送後再做獨立 review 與 required CI。下列本地 gate 不替代它們或 Coordinator merge。
+- PR：[#475](https://github.com/cheerc/talented-easyorder/pull/475)，P04 branch `codex/backend-p04-active-lease`，base `fd8cba1b84c0b2146c1f450192e2c99739193e46`，final source head `cf0cd10af4171f24cf5faa6dff0814393cb71340`，實際 squash merge SHA `837a1e871468db217463e9799480beeb6d7b0ab0`。固定版本獨立 review comment `5519480848` pass；required CI run [38579765651](https://github.com/cheerc/talented-easyorder/actions/runs/38579765651) 已 completed/success，build-and-test 與 E2E 兩個 jobs 均成功；Coordinator 已 merge。上一個候選 `4c1aeb196ca94d7da14d12ba832c050783b2227c` 的 P1/P2 review blockers 在最終 source head 修正並由以上 review/re-run 接受。
 - 原始候選包含 `activeAccountLease.ts`、`activeAccountLease.spec.ts`、`firestore.rules`、`AuthGate.tsx`、`FirebaseProvider.tsx`、`cloud-production.spec.ts`。這份清單描述 PR 的範圍，不是每個行為都已驗收。
-- 業務資料目前仍 deny。P04 review/rework、required checks、獨立 review 及 Coordinator merge 全部完成前不得啟動 P05。
+- P04 完成的是 Google operator lease 與登入/失權邊界，不等於業務 UI／歷史 business data hydrate 或正式營運。P05 目前已獲授權並正在進行；P05 code/tests/CI 仍不可標 pass。
 
 ### 原始 CI run 與已知缺口
 
@@ -134,7 +134,7 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - E2E 共 14 passed。A02–A04 只檢查畫面 strip/button smoke，沒有驗證完整雙帳戶互斥、租約期限、renew/release 或失權契約；因此不能記為 A02–A04 contract pass。
 - 原始 GREEN CI 不能抵銷原始 review 未通過。缺模組／compile failure 只證明程式未能載入，不算行為 RED。本輪另有 exact-email password-provider 行為 RED/GREEN 證據，並完成 lease／Rules Emulator 與 Cloud/prototype E2E；新候選仍須跑 GitHub required checks，並由獨立 review 對 immutable head 重審。
 
-### 本輪本地修正與驗證（待新 immutable head 的獨立 review 與 required CI）
+### P04 最終本地與 GitHub 證據
 
 - 定向核心 Vitest：修正後 full `npx vitest run` 為 140 個 test files passed、3 skipped；1291 passed、65 skipped、0 failed；log `/tmp/easyorder-p04-full-vitest-r9.log`。一般 Vitest 的 skipped 含需 Emulator 才執行的 Rules tests，因此不能代替下列獨立 gates。
 - 獨立 Emulator gate：在 `demo-easyorder` 以同一個 Firestore Emulator 順序執行 P04 lease 19/19、A01 `firestoreRules.spec.ts` 10/10、P01 `cloudRulesProof.spec.ts` 36/36，三者均 0 failed、0 pending/skipped；合併 log `/tmp/easyorder-p04-emulator-gates-r9.log`，lease JSON `/tmp/active-account-lease-proof-p04-rework.json`、P01 JSON `/tmp/cloud-rules-proof-p04-rework.json`。新增 P04 Emulator 案例涵蓋 90 秒有效餘裕／逾期窗、兩 UID 同 epoch acquire 競爭僅一方成功、renew/release race 最終為 null holder/new epoch、expired renew deny 且文件不變；Rules 等號界線由靜態 `<= request.time`／`> request.time` 檢查證明，不把網路往返時間附近的 Emulator 結果稱為精確 equality 實測。
@@ -145,7 +145,16 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - 本機瀏覽器限制：Playwright pinned Chromium shell 下載因 CDN HTTP 403 `Domain forbidden`，見 `/tmp/p04-playwright-install-2026-10-14.log`。上述最終 E2E 使用可啟動的 system Chromium 154 與 `/tmp` 診斷 config，不改官方 tracked config；此結果不是 pinned-browser GitHub Actions gate。推送後仍需看實際 required GHA run。
 - 靜態／build：`npm run lint` exit 0，log `/tmp/easyorder-p04-eslint-r9.log`；`npm run build` exit 0，log `/tmp/easyorder-p04-build-r9.log`（Vite 保留既有 `__dirname` warning）；`npx --no-install tsc --noEmit` exit 0，log `/tmp/easyorder-p04-tsc-r9.log`；`git diff --check` exit 0。Cloud package runner與兩條 workflow 在 demo emulator 先跑 Cloud suite、再跑隔離 prototype suite；本地 pinned Chromium CDN 下載回 403，故上述 E2E 用 system Chromium 154 與 `/tmp` 診斷 configs，仍須由 GitHub pinned-browser run 驗證。
 - app TypeScript config `npx --no-install tsc -p tsconfig.app.json --noEmit` 仍因 inherited diagnostics exit 2；保留完整順序與重複項的 normalized multiline diff 為 base 295、current 290、新增 0、移除 5 項既有 Provider test typing errors。diff `/tmp/easyorder-p04-r8-normalized.diff`，normalized current `/tmp/easyorder-p04-current-r8-normalized.txt`，raw current `/tmp/easyorder-p04-app_tsc-r8.log`；兩個本輪觸及的 lease/provider modules 無 diagnostics。P00 的 279 與 P04 base 295 是不同 source 觀察，不可混為同一基線。
-- 本地 rework gates 已完成，但 source/docs 尚待 commit/push；PR #475 尚待新候選 immutable head 的實際 required CI 與獨立 review。不得將上述本地診斷稱為 PR 通過、merge 或 production 驗收。P05 仍須等 Coordinator 明確 gate 與 merge 後再開始。
+- P04 source head、獨立 review、required CI 與 merge 已全部完成；這些 P04 數據不是 P05 測試證據。P05 的目前 branch 從 merge SHA `837a1e871468db217463e9799480beeb6d7b0ab0` 起始。本地 Chromium 154 只屬診斷 run；正式 pinned-browser 的 GitHub E2E job 已在 run 38579765651 成功。
+
+## P05 正式原子寫入器與冪等收據（WIP，尚未驗收）
+
+- 授權 base：P04 merge SHA `837a1e871468db217463e9799480beeb6d7b0ab0`；目前 branch `codex/backend-p05-command-core`。範圍只建立 `EnsureDay`、`CreateOrder`、`CreatePayment` production write path，其餘 19 個 `BusinessCommand` kinds 及舊 writer 路徑維持 deny/fail-closed。暫不接 business UI、read hydration、P06 student management、settlement、backup 或 production setup。
+- 需要產出完整 22-kind typed union／固定 target schema 與靜態 no-cache access/expression-risk matrix。該盤點只代表設計估算；未啟 kind 不算已 Emulator 驗證，也不稱 complete union Rules pass。每 write ≤10、transaction ≤20 必須按未快取的實際 `get`／`exists`／`getAfter` 呼叫圖逐項算；P01 negative expression-cap 限制照實保留，合法 positive cases 必須通過且不得因 cap fail。
+- 預定唯一 writer：`cloudCommandRepository.ts` 的 `commitCommand`／server-only `readCommand`。repo 從 Auth、目前 server-confirmed lease、dataHead 與 typed target snapshots 推導 actor/seq/time/before-after/revision/cashEffect/canonical fingerprint；所有 transaction reads 先完成才寫。命令 ID 的 semantic input 由 repo 正規化，既有 receipt 比較實際 kind/targets/payload/expectedRevisions，不信 caller 或 stored fingerprint 單獨作證。相同 ID/相同語義回舊 receipt；同 ID 異語義拒絕且不增 seq。target revision conflict 不覆寫；有限 SDK retry 維持 command ID 和 expected revisions。response-loss／不確定結果回 `UNKNOWN_RESULT`，server read 查 receipt，不能盲換 ID 重送。`readCommand` 只在成功 server read 確認缺件時回 `null`；任何 current valid holder 可讀其他 actor 或過去 leaseEpoch 的 receipt。
+- Rules 必須由 operator／lease／server time／maintenance=false 中央條件封閉，固定 target 必須實際 `getAfter` 推進並與新 command receipt 相符，額外／缺少 writer、回放、偽造 snapshot、雙 command 均 atomic deny。EnsureDay 建既有 day 不可 reset/reopen/清 totals；同 ID 重試可取舊 receipt，新 ID 對現有 day 不得假成功。dataHead 只由 IAM/Admin bootstrap manifest 建立空白 metadata；不得含 student、交易或財務種子，這輪不執行任何 production bootstrap。
+- 舊 `studentRepository` 有 `firebaseActions.ts` 非測試 caller，但尚未證明 active Cloud UI 可達；舊 `ledgerRepository` 和 `settlementRepository` symbol scan 未見 declaration 之外非測試 caller。P05 必須逐一路徑移除裸寫或改成明確拒絕 adapter；不得將本機練習資料接到 Firebase，亦不得留下第二個 cloud writer。Firestore `persistentLocalCache` 尚未改；memory-only 是 P13 後續項目。
+- 目前 P05 tests、Emulator counts、full suite、E2E／CI 和 SOL review 尚未完成。此處記錄的是進行中 scope，不是通過聲明。正式部署及任何真實資料操作仍由使用者本機執行。
 
 ### TypeScript 診斷基線
 

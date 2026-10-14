@@ -1,8 +1,8 @@
 # Project Status — Talented EasyOrder
 
-> **2026-10-14 正式後端進度：** [零費用正式後端 spec](superpowers/specs/2026-10-13-free-production-backend-spec.md)與[19 階段計畫](superpowers/plans/2026-10-13-free-production-backend-plan.md)為權威規格與順序。P00–P03 已合併；P04 PR #475 的 rework 候選本地驗證已完成，等待新 immutable head 的獨立 review 與 required CI，尚未 merge；P05 不得開始。身份／租約階段不等於業務寫入或上線。Android 另案；下方既有前端追蹤與本人驗收紀錄維持原狀。
+> **2026-10-14 正式後端進度：** [零費用正式後端 spec](superpowers/specs/2026-10-13-free-production-backend-spec.md)與[19 階段計畫](superpowers/plans/2026-10-13-free-production-backend-plan.md)為權威規格與順序。P00–P04 已合併；P04 #475 合併 SHA 為 `837a1e871468db217463e9799480beeb6d7b0ab0`，獨立 review pass，required CI run 38579765651 成功。P05 command-core 正在 WIP，尚未完成或通過測試。身份／租約與開發中的 command-core 不代表已部署或開放正式帳務操作。Android 另案；下方既有前端追蹤與本人驗收紀錄維持原狀。
 
-> **已合併基線：** P00 #471、P01 #472、P02 #473、P03 #474；GitHub 實際 merge SHA 與 P01 限制見[現況與證據](ops/free-production-evidence.md)。P04 #475 尚未通過 review/驗收，仍在原 PR 修正；P05–P18 未開始。新後端尚無業務 command 寫入或正式部署。此更新不更改下方歷史前端本人驗收紀錄。逐 PR 接手流程見[開發交接入口](DEVELOPMENT-HANDOFF.md)。
+> **已合併基線：** P00 #471、P01 #472、P02 #473、P03 #474、P04 #475；GitHub 實際 merge SHA 與 P01 限制見[現況與證據](ops/free-production-evidence.md)。P05 WIP 尚未驗收；P06–P18 未開始。新後端尚未部署或開放正式帳務操作。此更新不更改下方歷史前端本人驗收紀錄。逐 PR 接手流程見[開發交接入口](DEVELOPMENT-HANDOFF.md)。
 
 > **Last inspected:** 2026-09-29，程式基準 `884a996`。
 > 本輪只更新 spec／計畫／驗收文件；沒有改應用程式、沒有完成本人驗收。
@@ -11,7 +11,7 @@
 
 PC 晚餐櫃台前端 prototype：鍵盤為主、滑鼠為輔，保留 operator 約七成滿意的 F1。每天一餐（晚餐）；餐費90找零後記90，多留10元則記100。支援1920×1080 PC及MacBook Pro 13吋，按可用視窗重排，不整頁縮小。
 
-前端本人驗收仍依下方清單；正式後端另依 P00–P18 計畫推進，目前停在 P04 review/rework。iPad、真實人臉裝置整合與 Android 另案。
+前端本人驗收仍依下方清單；正式後端另依 P00–P18 計畫推進，目前進行 P05 command-core。iPad、真實人臉裝置整合與 Android 另案。
 
 交接入口：[FRONTEND-PROTOTYPE-HANDOFF](FRONTEND-PROTOTYPE-HANDOFF.md)；後端起手：[BACKEND-HANDOFF](BACKEND-HANDOFF.md)（前端完成盤點、雲端現況、待決策事項、Android 銜接）。現行排程：[ROADMAP](superpowers/plans/ROADMAP.md)／[詳細計畫](superpowers/plans/2026-09-29-frontend-prototype-refocus.md)。原 Google Sheets roadmap 已封存，不再作排程來源。
 
