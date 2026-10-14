@@ -55,6 +55,11 @@ export function isAllowedWorkspaceEmail(email: string | null): boolean {
 }
 
 export function isGoogleUser(user: User): boolean {
+  // 在 Firebase Auth Emulator 測試環境下（VITE_FIREBASE_USE_EMULATOR === 'true'），
+  // Playwright E2E 透過 emulator REST API / signInWithEmailAndPassword 登入，允許測試
+  if (import.meta.env.VITE_FIREBASE_USE_EMULATOR === 'true') {
+    return true;
+  }
   if (!user.providerData || user.providerData.length === 0) return true;
   return user.providerData.some(p => p.providerId === 'google.com');
 }
