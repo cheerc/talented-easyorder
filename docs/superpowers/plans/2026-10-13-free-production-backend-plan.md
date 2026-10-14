@@ -65,7 +65,7 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 
 `BusinessCommand` 為spec §6 kind的discriminated union；共用 `{commandId,kind,leaseEpoch,expectedRevisions,payload}`。repository注入actor與serverTimestamp；`CommandReceipt` 包含commandId/seq/committedAt/typed targets/結果。`commitCommand`回Promise，cloud actions不能再同步假裝成功。讀取器回帶 `complete` 與 `sourceSeq` 的projection，未完整不得給精確afterBalance／CSV完成狀態。
 
-`acquireLease(): Promise<LeaseResult>`、`renewLease(epoch): Promise<LeaseResult>`、`releaseLease(epoch): Promise<void>`；LeaseResult區分 acquired/busy/lost，包含 server-confirmed `holderUid`／`epoch`／`updatedAt`，不保存或回傳 `expiresAt`。Rules 以 `updatedAt + duration.value(5, 'm')` 和 `request.time` 校驗期限；UI期限只供提示，不授權讀寫。`exportCommandRange(fromExclusive,toInclusive)` 與 `replayBackup(packages)` 按spec §9驗連續序號與before/after鏈。
+`acquireLease(expectedEpoch: number): Promise<LeaseResult>`、`renewLease(expectedEpoch: number): Promise<LeaseResult>`、`releaseLease(expectedEpoch: number): Promise<void>`；每個 client transaction 都先讀 server lease 並比對 `expectedEpoch`，stale view 即中止。LeaseResult區分 acquired/busy/lost，包含 server-confirmed `holderUid`／`epoch`／`updatedAt`，不保存或回傳 `expiresAt`。Rules 不接收 `expectedEpoch`，只驗文件舊狀態與合法轉移，並以 `updatedAt + duration.value(5, 'm')` 和 `request.time` 校驗期限；UI期限只供提示，不授權讀寫。`exportCommandRange(fromExclusive,toInclusive)` 與 `replayBackup(packages)` 按spec §9驗連續序號與before/after鏈。
 
 以下命令工作目錄為 `frontend/`，新測試檔於對應phase建立後才執行：
 
@@ -131,7 +131,7 @@ npm run test:e2e
 
 **Consumes/produces：** P03 allowlist→acquire/renew/release、epoch與失權遮罩。
 
-**RED/GREEN：** `activeAccountLease.spec.ts`（emulator）對A02–A04；A/B同時acquire、`updatedAt + 5 分鐘`到期界線（小於／等於／大於）、renew/release races、舊epoch、停用帳號、同UID多頁登出。client 只能以 `serverTimestamp()` 更新 `updatedAt`；調快／調慢本機時鐘不得取得、延長或保留 Rules 授權。E2E用`npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test e2e/cloud-production.spec.ts --grep A0"`，實際執行A01–A04，不以skip通過。
+**RED/GREEN：** `activeAccountLease.spec.ts`（emulator）對A02–A04；A/B同時acquire、`updatedAt + 5 分鐘`到期界線（小於／等於／大於）、renew/release races、停用帳號、同UID多頁登出。Acquire／Renew／Release transaction 都比對 server-read lease 的 `expectedEpoch`，過期 snapshot／stale epoch 必須在寫入前中止；Rules 不接受 client `expectedEpoch` 作授權依據，而驗舊 holder／epoch 與新狀態。client 只能以 `serverTimestamp()` 更新 `updatedAt`；調快／調慢本機時鐘不得取得、延長或保留 Rules 授權。E2E用`npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test e2e/cloud-production.spec.ts --grep A0"`，實際執行A01–A04，不以skip通過。
 
 **Acceptance/demo：** A使用時B只能等待；A釋放或 Rules 判定 `updatedAt + 5 分鐘 <= request.time` 後B可取得新epoch；不得靠localStorage鎖或本機時鐘冒充全域互斥；沒有活租約強制踢人功能。UI的期限提示取自 server-confirmed `updatedAt`，是否可讀寫一律由 Rules 依伺服器時間決定。
 
