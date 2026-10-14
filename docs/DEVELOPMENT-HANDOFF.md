@@ -11,7 +11,7 @@
 
 ## 已合併與目前接手點
 
-- **目前工作：P02，分支 `codex/backend-p02-cloud-commands`，base `e7c406ce59ec4779268f760dafa3bb006f1ae8d4`。** 實作雲端 typed business command 介面系統、帳務投影數學（L01–L04、expense 雙方向、void 零貢獻、同毫秒排序、缺頁不可精算 afterBalance）、appMode cloud 判斷與 seed/reset 禁止、posPersistence 記憶體快取與邊界隔離，以及 firestoreSchema 新 schemaVersion=1 映射。所有 Vitest 測試通過、tsc 比對 base 零新增錯誤、lint 與 build 通過。本 phase 不接正式 Firebase 寫入、不開放雲端 kind、不改 UI、不碰 Auth/deploy/payroll/Android。
+- **目前工作：P02，PR [#473](https://github.com/cheerc/talented-easyorder/pull/473)，分支 `codex/backend-p02-cloud-commands`，base `e7c406ce59ec4779268f760dafa3bb006f1ae8d4`。** 實作雲端 typed business command 介面系統、帳務投影數學（L01–L04、expense 雙方向、void 零貢獻、同毫秒排序、缺頁不可精算 afterBalance）、appMode cloud 判斷與 seed/reset 禁止、posPersistence 記憶體快取與邊界隔離，以及 firestoreSchema 新 schemaVersion=1 映射。所有 Vitest 測試通過、tsc 比對 base 零新增錯誤、lint 與 build 通過。本 phase 不接正式 Firebase 寫入、不開放雲端 kind、不改 UI、不碰 Auth/deploy/payroll/Android。
 - 最近已合併：PR [#472](https://github.com/cheerc/talented-easyorder/pull/472)，P01 Rules 可行性 proof；merge commit `e7c406ce59ec4779268f760dafa3bb006f1ae8d4`。
 - 前次已合併：PR [#471](https://github.com/cheerc/talented-easyorder/pull/471)，P00 文件與 diagnostics baseline；merge commit `1da09039ab57f2b13f965ce98277bd1d41ce8e5e`。
 - Emulator 工具鏈已可用：本地 Node `v24.19.0`、Java `21.0.12.1`、Firebase CLI `14.27.0`、Firestore Emulator `1.19.8`，官方 JAR SHA-256 `9d43599ed6151199e8d604dc87fac51218e49e5f3a48519b1ae560bbe5e3382d` 已核對。
