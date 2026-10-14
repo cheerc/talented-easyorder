@@ -1,3 +1,15 @@
+Historical context added 2026-10-14 — The checkpoint below is preserved as
+written and records the observed run at source 520dd2de75ede44d41becbb9617a872aea9d4d25.
+Its `1000 expressions` evaluator message is a historical observation, not a
+current conclusion that a schema-correct Spark Rules model is infeasible. That
+WIP also had a command `reason`/`cashEffect` schema mismatch, missing seeded
+operators/lease in a helper, a `withSecurityRulesDisabled` helper that did not
+return its callback result, and a zero-delta `-Number(0)` mismatch. Later source
+5c55936fc0a0cbc82da3058b4a466364a0d0da1f passed the full Emulator suite
+(30 passed, 0 failed, 0 skipped), but SOL review found blocking security
+coverage gaps. P01 remains in progress; final no-cache call/access/expression
+budget evidence is still required. See the current [P01 evidence](../free-production-evidence.md).
+
 P01 local Firestore Emulator expression-limit checkpoint
 ==========================================================
 
