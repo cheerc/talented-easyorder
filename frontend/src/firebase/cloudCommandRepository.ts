@@ -17,7 +17,7 @@ import {
   type CanonicalEnabledInput,
   type StoredEnabledCommandDoc,
 } from '../domain/cloudCommandSchema';
-import { accessLeasePath, commandPath, dataHeadPath, dayPath, studentPath, transactionPath } from './firestorePaths';
+import { accessLeasePath, commandPath, dataHeadPath, dayPath, studentPath, transactionPath, vendorPath } from './firestorePaths';
 
 type Data = Record<string, unknown>;
 type CurrentUser = Pick<User, 'uid' | 'email' | 'emailVerified' | 'providerData'>;
@@ -134,11 +134,19 @@ function decodeDay(value: unknown): Data {
     || !['open', 'closed', 'reopened'].includes(String(value.status))
     || !integer(value.revision, 1)
     || (value.openingCash !== null && (!integer(value.openingCash) || value.openingCash > 20_000))
-    || (value.openedBy !== null && typeof value.openedBy !== 'string')
+    || (value.openedBy !== null && (typeof value.openedBy !== 'string' || !value.openedBy))
     || (value.openedAt !== null && !(value.openedAt instanceof Timestamp))
+    || ((value.openingCash === null) !== (value.openedBy === null))
+    || ((value.openingCash === null) !== (value.openedAt === null))
     || !plainRecord(value.totals)
     || !hasExactKeys(value.totals, ['activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal', 'retainedReceipts', 'cashierIncome', 'cashierExpense'])
-    || !Object.values(value.totals).every(n => integer(n))
+    || !integer(value.totals.activeTransactionCount)
+    || !integer(value.totals.bentoCount)
+    || !integer(value.totals.otherMealCount)
+    || !integer(value.totals.mealTotal) || value.totals.mealTotal > 1_000_000_000
+    || !integer(value.totals.retainedReceipts) || value.totals.retainedReceipts > 1_000_000_000
+    || !integer(value.totals.cashierIncome) || value.totals.cashierIncome > 1_000_000_000
+    || !integer(value.totals.cashierExpense) || value.totals.cashierExpense > 1_000_000_000
     || !integer(value.lastSettlementRevision)
     || typeof value.lastCommandId !== 'string'
     || !(value.updatedAt instanceof Timestamp)) {
@@ -160,6 +168,30 @@ function decodeDay(value: unknown): Data {
     }
   }
   return value;
+}
+
+function decodeVendor(value: unknown): Data {
+  const keys = ['vendorId', 'name', 'phone', 'note', 'status', 'deleted', 'createdAt', 'revision', 'lastCommandId', 'updatedAt'];
+  if (!hasExactKeys(value, keys)
+    || typeof value.vendorId !== 'string' || value.vendorId.length < 1 || value.vendorId.length > 64 || value.vendorId.includes('/')
+    || typeof value.name !== 'string' || value.name.length < 1 || value.name.length > 100
+    || typeof value.phone !== 'string' || value.phone.length > 100
+    || typeof value.note !== 'string' || value.note.length > 500
+    || (value.status !== 'active' && value.status !== 'inactive') || typeof value.deleted !== 'boolean'
+    || !(value.createdAt instanceof Timestamp) || !integer(value.revision, 1)
+    || typeof value.lastCommandId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.lastCommandId)
+    || !(value.updatedAt instanceof Timestamp)) {
+    throw new RejectCommand('UNSUPPORTED_SCHEMA', '供應商文件 schema 不支援');
+  }
+  return value;
+}
+
+function taipeiCalendarDate(timestamp: Timestamp): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(timestamp.toDate());
+  const part = (type: string) => parts.find(item => item.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
 function getCurrentUser(options: CloudCommandRepositoryOptions): CurrentUser | null {
@@ -356,12 +388,20 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     const headRef = doc(db, dataHeadPath());
     const leaseRef = doc(db, accessLeasePath());
     const operatorRef = doc(db, `operators/${user.uid}`);
-    const hasDayTarget = input.kind === 'EnsureDay' || input.kind === 'CreateOrder' || input.kind === 'CreatePayment';
+    const hasDayTarget = input.kind === 'EnsureDay' || input.kind === 'CreateOrder' || input.kind === 'CreatePayment'
+      || input.kind === 'SetDayMenu' || input.kind === 'SetOpeningCash';
     const targetDayId = input.kind === 'EnsureDay' ? input.targets.dayId
-      : input.kind === 'CreateOrder' || input.kind === 'CreatePayment' ? input.targets.dayId : null;
+      : input.kind === 'CreateOrder' || input.kind === 'CreatePayment' || input.kind === 'SetDayMenu' || input.kind === 'SetOpeningCash'
+        ? input.targets.dayId : null;
     const dayRef = targetDayId ? doc(db, dayPath(targetDayId)) : null;
-    const targetStudentId = input.kind === 'EnsureDay' ? null : input.targets.studentId;
+    const targetStudentId = input.kind === 'CreateStudent' || input.kind === 'EditStudent' || input.kind === 'SetStudentStatus'
+      || input.kind === 'CreateOrder' || input.kind === 'CreatePayment' ? input.targets.studentId : null;
     const targetStudentRef = targetStudentId ? doc(db, studentPath(targetStudentId)) : null;
+    const targetVendorId = input.kind === 'SaveVendor' || input.kind === 'RemoveVendor' ? input.targets.vendorId
+      : input.kind === 'SetDayMenu' ? input.payload.vendorId : null;
+    const targetVendorRef = targetVendorId ? doc(db, vendorPath(targetVendorId)) : null;
+    const sourceDayRef = input.kind === 'SetDayMenu' && input.payload.inheritedFromDate
+      ? doc(db, dayPath(input.payload.inheritedFromDate)) : null;
     const targetTransactionRef = input.kind === 'CreateOrder' || input.kind === 'CreatePayment'
       ? doc(db, transactionPath(input.targets.transactionId))
       : null;
@@ -391,6 +431,8 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         }
 
         const daySnapshot = dayRef ? await tx.get(dayRef) : null;
+        const vendorSnapshot = targetVendorRef ? await tx.get(targetVendorRef) : null;
+        const sourceDaySnapshot = sourceDayRef ? await tx.get(sourceDayRef) : null;
         let studentBefore: Data | null = null;
         let transactionExists = false;
         if (targetStudentRef && targetStudentId) {
@@ -432,6 +474,166 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
             reason: null, cashEffect: zeroCash, payload: input.payload, inputFingerprint: fingerprint,
           };
           tx.set(dayRef!, dayAfter);
+          tx.update(headRef, headAfter);
+          tx.set(commandRef, stored);
+          return { existing: null } as const;
+        }
+
+        if (input.kind === 'SaveVendor' || input.kind === 'RemoveVendor') {
+          if (!targetVendorRef || !vendorSnapshot) throw new RejectCommand('UNSUPPORTED_SCHEMA', '供應商命令缺少 target 參照');
+          const vendorId = input.targets.vendorId;
+          const expectedRevision = input.expectedRevisions.vendor;
+          const vendorBefore = vendorSnapshot.exists() ? decodeVendor(vendorSnapshot.data()) : null;
+          if (vendorBefore && vendorBefore.vendorId !== vendorId) {
+            throw new RejectCommand('UNSUPPORTED_SCHEMA', '供應商文件 ID 與路徑不一致');
+          }
+          checkRevision(vendorBefore?.revision ?? 0, expectedRevision, '供應商版本');
+
+          if (input.kind === 'SaveVendor') {
+            const payload = input.payload;
+            if (expectedRevision === 0) {
+              if (vendorBefore) throw new RejectCommand('INVALID_INPUT', '供應商 ID 已存在或曾使用；不得重用');
+              const vendorAfter: Data = {
+                vendorId, name: payload.name, phone: payload.phone, note: payload.note,
+                status: 'active', deleted: false, createdAt: now, revision: 1,
+                lastCommandId: input.commandId, updatedAt: now,
+              };
+              const stored: StoredEnabledCommandDoc = {
+                commandId: input.commandId, kind: 'SaveVendor', seq, leaseEpoch: input.leaseEpoch,
+                actor: { uid: user.uid, email: user.email! }, committedAt: now as Timestamp,
+                businessDate: null, studentId: null, targets: input.targets,
+                expectedRevisions: input.expectedRevisions,
+                before: { head: headBefore, vendor: null }, after: { head: headAfter, vendor: vendorAfter },
+                reason: null, cashEffect: zeroCash, payload: input.payload, inputFingerprint: fingerprint,
+              };
+              tx.set(targetVendorRef, vendorAfter);
+              tx.update(headRef, headAfter);
+              tx.set(commandRef, stored);
+              return { existing: null } as const;
+            }
+            if (!vendorBefore || vendorBefore.deleted) throw new RejectCommand('INVALID_INPUT', '供應商不存在或已刪除');
+            const vendorAfter: Data = {
+              ...vendorBefore, name: payload.name, phone: payload.phone, note: payload.note,
+              status: payload.status, deleted: false, revision: expectedRevision + 1,
+              lastCommandId: input.commandId, updatedAt: now,
+            };
+            const stored: StoredEnabledCommandDoc = {
+              commandId: input.commandId, kind: 'SaveVendor', seq, leaseEpoch: input.leaseEpoch,
+              actor: { uid: user.uid, email: user.email! }, committedAt: now as Timestamp,
+              businessDate: null, studentId: null, targets: input.targets,
+              expectedRevisions: input.expectedRevisions,
+              before: { head: headBefore, vendor: vendorBefore }, after: { head: headAfter, vendor: vendorAfter },
+              reason: null, cashEffect: zeroCash, payload: input.payload, inputFingerprint: fingerprint,
+            };
+            tx.update(targetVendorRef, vendorAfter);
+            tx.update(headRef, headAfter);
+            tx.set(commandRef, stored);
+            return { existing: null } as const;
+          }
+
+          if (!vendorBefore || vendorBefore.deleted || vendorBefore.status !== 'inactive') {
+            throw new RejectCommand('INVALID_INPUT', '只有未刪除的停用供應商可以封存');
+          }
+          const vendorAfter: Data = {
+            ...vendorBefore, deleted: true, revision: expectedRevision + 1,
+            lastCommandId: input.commandId, updatedAt: now,
+          };
+          const stored: StoredEnabledCommandDoc = {
+            commandId: input.commandId, kind: 'RemoveVendor', seq, leaseEpoch: input.leaseEpoch,
+            actor: { uid: user.uid, email: user.email! }, committedAt: now as Timestamp,
+            businessDate: null, studentId: null, targets: input.targets,
+            expectedRevisions: input.expectedRevisions,
+            before: { head: headBefore, vendor: vendorBefore }, after: { head: headAfter, vendor: vendorAfter },
+            reason: input.payload.reason, cashEffect: zeroCash, payload: input.payload, inputFingerprint: fingerprint,
+          };
+          tx.update(targetVendorRef, vendorAfter);
+          tx.update(headRef, headAfter);
+          tx.set(commandRef, stored);
+          return { existing: null } as const;
+        }
+
+        if (input.kind === 'SetDayMenu' || input.kind === 'SetOpeningCash') {
+          if (!dayRef || !daySnapshot?.exists()) throw new RejectCommand('INVALID_INPUT', '營業日不存在；請先建立空白日期');
+          const dayBefore = decodeDay(daySnapshot.data());
+          checkRevision(dayBefore.revision, input.expectedRevisions.day, '營業日版本');
+          if (dayBefore.status === 'closed') throw new RejectCommand('DAY_CLOSED', '已關帳的營業日不能修改');
+          requireDateAfterGoLive(input.targets.dayId, String(headBefore.goLiveDate));
+
+          if (input.kind === 'SetDayMenu') {
+            const payload = input.payload;
+            if (input.expectedRevisions.headSeq !== headBefore.seq) {
+              throw new RejectCommand('REVISION_CONFLICT', '讀取菜單來源後雲端資料已變更，請重新載入');
+            }
+            if (taipeiCalendarDate((leaseSnapshot.data() as Data).updatedAt as Timestamp) !== payload.selectionDate) {
+              throw new RejectCommand('REVISION_CONFLICT', '伺服器租約日期已變更，請重新載入後再儲存菜單');
+            }
+            if (!vendorSnapshot?.exists()) throw new RejectCommand('INVALID_INPUT', '菜單供應商不存在');
+            const vendor = decodeVendor(vendorSnapshot.data());
+            if (vendor.vendorId !== payload.vendorId || vendor.deleted || vendor.status !== 'active'
+              || vendor.name !== payload.vendorNameSnapshot) {
+              throw new RejectCommand('INVALID_INPUT', '菜單供應商已停用、刪除或名稱已變更；請重新確認');
+            }
+            if (payload.inheritedFromDate !== null) {
+              if (payload.inheritedFromDate >= input.targets.dayId || payload.inheritedFromDate > payload.selectionDate
+                || !sourceDaySnapshot?.exists()) {
+                throw new RejectCommand('INVALID_INPUT', '繼承來源日期或文件不合法');
+              }
+              const source = decodeDay(sourceDaySnapshot.data());
+              const sourceMenu = source.menu as Data | null;
+              if (!sourceMenu || sourceMenu.businessDate !== payload.inheritedFromDate
+                || sourceMenu.itemName !== payload.itemName || sourceMenu.price !== payload.price
+                || sourceMenu.vendorId !== payload.vendorId
+                || sourceMenu.vendorNameSnapshot !== payload.vendorNameSnapshot
+                || vendor.name !== sourceMenu.vendorNameSnapshot) {
+                throw new RejectCommand('INVALID_INPUT', '最近來源菜單或供應商已變更；請重新載入或直接確認新菜單');
+              }
+            } else if (sourceDaySnapshot) {
+              throw new RejectCommand('UNSUPPORTED_SCHEMA', '直接菜單命令不應帶繼承來源參照');
+            }
+            const previousMenu = dayBefore.menu as Data | null;
+            const menuAfter: Data = {
+              businessDate: input.targets.dayId, itemName: payload.itemName, price: payload.price,
+              vendorId: payload.vendorId, vendorNameSnapshot: payload.vendorNameSnapshot,
+              updatedAt: now, revision: previousMenu ? Number(previousMenu.revision) + 1 : 1,
+              inheritedFromDate: payload.inheritedFromDate,
+            };
+            const dayAfter: Data = {
+              ...dayBefore, menu: menuAfter, revision: Number(dayBefore.revision) + 1,
+              lastCommandId: input.commandId, updatedAt: now,
+            };
+            const stored: StoredEnabledCommandDoc = {
+              commandId: input.commandId, kind: 'SetDayMenu', seq, leaseEpoch: input.leaseEpoch,
+              actor: { uid: user.uid, email: user.email! }, committedAt: now as Timestamp,
+              businessDate: input.targets.dayId, studentId: null, targets: input.targets,
+              expectedRevisions: input.expectedRevisions,
+              before: { head: headBefore, day: dayBefore }, after: { head: headAfter, day: dayAfter },
+              reason: null, cashEffect: zeroCash, payload: input.payload, inputFingerprint: fingerprint,
+            };
+            tx.update(dayRef, dayAfter);
+            tx.update(headRef, headAfter);
+            tx.set(commandRef, stored);
+            return { existing: null } as const;
+          }
+
+          const payload = input.payload;
+          const today = taipeiCalendarDate((leaseSnapshot.data() as Data).updatedAt as Timestamp);
+          if (input.targets.dayId !== today) throw new RejectCommand('INVALID_INPUT', '開帳現金只可設定伺服器台北今日');
+          const wasUnconfirmed = dayBefore.openingCash === null;
+          const dayAfter: Data = {
+            ...dayBefore, openingCash: payload.openingCash,
+            openedBy: wasUnconfirmed ? user.uid : dayBefore.openedBy,
+            openedAt: wasUnconfirmed ? now : dayBefore.openedAt,
+            revision: Number(dayBefore.revision) + 1, lastCommandId: input.commandId, updatedAt: now,
+          };
+          const stored: StoredEnabledCommandDoc = {
+            commandId: input.commandId, kind: 'SetOpeningCash', seq, leaseEpoch: input.leaseEpoch,
+            actor: { uid: user.uid, email: user.email! }, committedAt: now as Timestamp,
+            businessDate: input.targets.dayId, studentId: null, targets: input.targets,
+            expectedRevisions: input.expectedRevisions,
+            before: { head: headBefore, day: dayBefore }, after: { head: headAfter, day: dayAfter },
+            reason: null, cashEffect: zeroCash, payload: input.payload, inputFingerprint: fingerprint,
+          };
+          tx.update(dayRef, dayAfter);
           tx.update(headRef, headAfter);
           tx.set(commandRef, stored);
           return { existing: null } as const;

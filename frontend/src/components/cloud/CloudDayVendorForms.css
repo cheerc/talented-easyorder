@@ -1,0 +1,103 @@
+.cloud-day-form {
+  display: grid;
+  gap: 14px;
+  margin: 16px 0;
+  padding: 20px;
+  background: var(--surface-subtle, #f7f9fb);
+  border: 1px solid var(--line, #dce1e7);
+  border-radius: 10px;
+}
+
+.cloud-day-form h3 {
+  margin: 0;
+  color: var(--ink, #20252b);
+  font-size: 18px;
+}
+
+.cloud-day-form__help,
+.cloud-day-form__empty {
+  margin: 0;
+  color: var(--ink-2, #536170);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.cloud-day-form__empty {
+  color: #78351f;
+}
+
+.cloud-day-form__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.cloud-day-form label {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  color: var(--ink, #20252b);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.cloud-day-form__input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 9px 10px;
+  color: var(--ink, #20252b);
+  background: var(--panel, #fff);
+  border: 1px solid var(--line, #cbd3dc);
+  border-radius: 7px;
+  font: inherit;
+}
+
+.cloud-day-form textarea.cloud-day-form__input {
+  resize: vertical;
+}
+
+.cloud-day-form__mono {
+  font-variant-numeric: tabular-nums;
+}
+
+.cloud-day-form__input:focus-visible,
+.cloud-day-form button:focus-visible {
+  outline: 3px solid rgba(23, 107, 135, .3);
+  outline-offset: 2px;
+}
+
+.cloud-day-form__input:disabled,
+.cloud-day-form button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.cloud-day-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cloud-day-form__primary {
+  min-height: 38px;
+  padding: 8px 14px;
+  color: #fff;
+  background: var(--accent, #176b87);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+}
+
+@media (max-width: 680px) {
+  .cloud-day-form {
+    padding: 16px;
+  }
+
+  .cloud-day-form__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

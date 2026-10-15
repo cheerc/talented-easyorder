@@ -55,7 +55,7 @@ git log -1 --oneline --decorate
 
 ## P07 目前交接狀態
 
-1. P07 契約已凍結並以 tracked spec 保存：[cloud day/vendor contract](superpowers/specs/2026-10-15-cloud-day-vendors-contract.md)。唯一 implementation branch 從 P06 merge SHA `b518eca5fdc2b2d2d3e9197c30b29d6a5f74ce10` 起步；目前在實作與分線 review，尚無 P07 merge、CI 或 production 驗收收據。
+1. P07 契約已凍結並以 tracked spec 保存：[cloud day/vendor contract](superpowers/specs/2026-10-15-cloud-day-vendors-contract.md)。唯一 implementation branch 從 P06 merge SHA `b518eca5fdc2b2d2d3e9197c30b29d6a5f74ce10` 起步；第一個程式 checkpoint 僅含 core/repository、domain/mock tests 與 Cloud page/forms，不含 App/CI/E2E 或未完成 Rules gate。詳細範圍與未完成驗收見 [ops evidence](ops/free-production-evidence.md#p07-wip-checkpoint--2026-10-15)；尚無 P07 merge、CI 或 production 驗收收據。
 2. 沿用已存在的 `EnsureDay` future empty day 契約。四種新 kind 為 SaveVendor、RemoveVendor、SetDayMenu、SetOpeningCash；合計 10 enabled、12 deny。Repository read、lease-based selectionDate、500 vendor／2,000 source-day exact-cap probes、cross-midnight denial、opening first actor/time 與 no-cache Rules budget 依 tracked spec 落實。
 3. P07 維持獨立 Cloud UI，不恢復 `legacyAppContent`／POS，不開 P08。測試只用 `demo-easyorder` Emulator 與合成資料；production keys/resources/bootstrap/deploy 仍只由使用者本機處理；SDK `persistentLocalCache` 改造仍屬 P13。
 

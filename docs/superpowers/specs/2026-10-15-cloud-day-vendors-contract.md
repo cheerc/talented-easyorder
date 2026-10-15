@@ -57,12 +57,12 @@ interface CloudDayTotalsRecord {
 ```ts
 interface CloudDayVendorRepository {
   loadSnapshot(targetDayId?: string): Promise<CloudDayVendorSnapshot>;
-  ensureDay(input: EnsureDayInput): Promise<CloudCommandResult>;
-  saveVendor(input: SaveVendorInput): Promise<CloudCommandResult>;
-  removeVendor(input: RemoveVendorInput): Promise<CloudCommandResult>;
-  setDayMenu(input: SetDayMenuInput): Promise<CloudCommandResult>;
-  setOpeningCash(input: SetOpeningCashInput): Promise<CloudCommandResult>;
-  readCommand(commandId: string): Promise<CloudCommandResult | null>;
+  ensureDay(input: EnsureDayInput): Promise<CommandResult>;
+  saveVendor(input: SaveVendorInput): Promise<CommandResult>;
+  removeVendor(input: RemoveVendorInput): Promise<CommandResult>;
+  setDayMenu(input: SetDayMenuInput): Promise<CommandResult>;
+  setOpeningCash(input: SetOpeningCashInput): Promise<CommandResult>;
+  readCommand(commandId: string): Promise<CommandReceipt | null>;
 }
 function createCloudDayVendorRepository(
   db: Firestore,
