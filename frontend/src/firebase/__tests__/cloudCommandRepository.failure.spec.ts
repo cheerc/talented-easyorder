@@ -19,16 +19,25 @@ import type { User } from 'firebase/auth';
 import { createCloudCommandRepository } from '../cloudCommandRepository';
 
 type ServerRead = typeof import('firebase/firestore').getDocFromServer;
+type RunTransaction = typeof import('firebase/firestore').runTransaction;
 const firestoreMock = vi.hoisted(() => ({
   serverRead: vi.fn(),
   realServerRead: undefined as unknown as ServerRead,
+  runTransaction: vi.fn(),
+  realRunTransaction: undefined as unknown as RunTransaction,
 }));
 
 vi.mock('firebase/firestore', async importOriginal => {
   const actual = await importOriginal<typeof import('firebase/firestore')>();
   firestoreMock.realServerRead = actual.getDocFromServer;
   firestoreMock.serverRead.mockImplementation(actual.getDocFromServer);
-  return { ...actual, getDocFromServer: firestoreMock.serverRead };
+  firestoreMock.realRunTransaction = actual.runTransaction;
+  firestoreMock.runTransaction.mockImplementation(actual.runTransaction);
+  return {
+    ...actual,
+    getDocFromServer: firestoreMock.serverRead,
+    runTransaction: firestoreMock.runTransaction,
+  };
 });
 
 declare const process: { env: Record<string, string | undefined>; cwd: () => string };
@@ -111,6 +120,10 @@ async function seedBase() {
   });
 }
 
+function permissionDenied() {
+  return Object.assign(new Error('synthetic Firestore Rules denial before any write'), { code: 'permission-denied' });
+}
+
 describeWithEmulator('P05 post-commit receipt read failures', () => {
   beforeAll(async () => {
     env = await initializeTestEnvironment({
@@ -126,6 +139,8 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
   beforeEach(async () => {
     await env.clearFirestore();
     firestoreMock.serverRead.mockClear();
+    firestoreMock.runTransaction.mockImplementation(firestoreMock.realRunTransaction);
+    firestoreMock.runTransaction.mockClear();
   });
 
   afterAll(async () => {
@@ -197,4 +212,114 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
       expect(finalHead.data()?.seq).toBe(1);
     },
   );
+
+  it('P07.22: current-holder server diagnosis classifies all four P07 kinds after a denied write', async () => {
+    await seedBase();
+    await withAdmin(async db => {
+      await setDoc(doc(db, 'vendors/p07-diagnosis-vendor'), {
+        vendorId: 'p07-diagnosis-vendor', name: 'Synthetic Vendor', phone: '', note: '',
+        status: 'inactive', deleted: false, createdAt: serverTimestamp(), revision: 1,
+        lastCommandId: 'e8999999-9999-4999-8999-999999999999', updatedAt: serverTimestamp(),
+      });
+    });
+
+    const cases = [
+      {
+        commandId: 'e8111111-1111-4111-8111-111111111111',
+        kind: 'SaveVendor' as const,
+        leaseEpoch: 1,
+        targets: { vendorId: 'p07-diagnosis-vendor' },
+        expectedRevisions: { vendor: 1 },
+        payload: {
+          vendorId: 'p07-diagnosis-vendor', name: 'Synthetic Vendor',
+          phone: '', note: '', status: 'inactive' as const,
+        },
+      },
+      {
+        commandId: 'e8222222-2222-4222-8222-222222222222',
+        kind: 'RemoveVendor' as const,
+        leaseEpoch: 1,
+        targets: { vendorId: 'p07-diagnosis-vendor' },
+        expectedRevisions: { vendor: 1 },
+        payload: { reason: 'Synthetic retirement' },
+      },
+      {
+        commandId: 'e8333333-3333-4333-8333-333333333333',
+        kind: 'SetDayMenu' as const,
+        leaseEpoch: 1,
+        targets: { dayId: today },
+        expectedRevisions: { day: 1, headSeq: 0 },
+        payload: {
+          selectionDate: today, itemName: 'Synthetic Menu', price: 125,
+          vendorId: 'p05-vendor', vendorNameSnapshot: 'Synthetic Vendor', inheritedFromDate: null,
+        },
+      },
+      {
+        commandId: 'e8444444-4444-4444-8444-444444444444',
+        kind: 'SetOpeningCash' as const,
+        leaseEpoch: 1,
+        targets: { dayId: today },
+        expectedRevisions: { day: 1 },
+        payload: { openingCash: 125 },
+      },
+    ];
+
+    for (const input of cases) {
+      firestoreMock.runTransaction.mockRejectedValueOnce(permissionDenied());
+      const result = await repository(operatorA).commitCommand(input);
+      expect(result, input.kind).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    }
+    expect(firestoreMock.runTransaction).toHaveBeenCalledTimes(4);
+  });
+
+  it('P07.23: current-holder head and day revision diagnoses return REVISION_CONFLICT', async () => {
+    await seedBase();
+    const repo = repository(operatorA);
+
+    firestoreMock.runTransaction.mockRejectedValueOnce(permissionDenied());
+    const staleHead = await repo.commitCommand({
+      commandId: 'e8555555-5555-4555-8555-555555555555',
+      kind: 'SetDayMenu', leaseEpoch: 1, targets: { dayId: today },
+      expectedRevisions: { day: 1, headSeq: 1 },
+      payload: {
+        selectionDate: today, itemName: 'Synthetic Menu', price: 125,
+        vendorId: 'p05-vendor', vendorNameSnapshot: 'Synthetic Vendor', inheritedFromDate: null,
+      },
+    });
+    expect(staleHead).toMatchObject({ ok: false, error: { code: 'REVISION_CONFLICT' } });
+
+    await withAdmin(db => updateDoc(doc(db, `days/${today}`), { revision: 2 }));
+    firestoreMock.runTransaction.mockRejectedValueOnce(permissionDenied());
+    const staleDay = await repo.commitCommand({
+      commandId: 'e8666666-6666-4666-8666-666666666666',
+      kind: 'SetOpeningCash', leaseEpoch: 1, targets: { dayId: today },
+      expectedRevisions: { day: 1 }, payload: { openingCash: 125 },
+    });
+    expect(staleDay).toMatchObject({ ok: false, error: { code: 'REVISION_CONFLICT' } });
+  });
+
+  it('P07.24: a current-holder server diagnosis classifies a closed business day as DAY_CLOSED', async () => {
+    await seedBase();
+    await withAdmin(db => updateDoc(doc(db, `days/${today}`), { status: 'closed' }));
+    firestoreMock.runTransaction.mockRejectedValueOnce(permissionDenied());
+
+    const result = await repository(operatorA).commitCommand({
+      commandId: 'e8777777-7777-4777-8777-777777777777',
+      kind: 'SetOpeningCash', leaseEpoch: 1, targets: { dayId: today },
+      expectedRevisions: { day: 1 }, payload: { openingCash: 125 },
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: 'DAY_CLOSED' } });
+  });
+
+  it('P07.25: denied diagnosis reads from a nonholder remain LEASE_LOST', async () => {
+    await seedBase();
+    firestoreMock.runTransaction.mockRejectedValueOnce(permissionDenied());
+
+    const result = await repository(operatorB).commitCommand({
+      commandId: 'e8888888-8888-4888-8888-888888888888',
+      kind: 'SetOpeningCash', leaseEpoch: 1, targets: { dayId: today },
+      expectedRevisions: { day: 1 }, payload: { openingCash: 125 },
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: 'LEASE_LOST' } });
+  });
 });
