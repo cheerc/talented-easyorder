@@ -304,7 +304,7 @@ export function mergeLedgerTransactions(transactions: LedgerTransaction[]): Merg
 
     if (orderCount > 0) {
       // Merge all orders and payments into a single order row
-      const earliestTx = studentTxs[0];
+      const earliestTx = orders[0];
       const depositAmount = Math.max(0, totalPaid - totalMealPrice);
       const unpaidAmount = Math.max(0, totalMealPrice - totalPaid);
       const mergedNote = orders.map(o => o.note).filter(Boolean).join(', ');

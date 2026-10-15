@@ -36,6 +36,10 @@ export function createTransactionActions(
       if (studentIndex === -1) return { ok: false, message: '找不到這個帳戶。' };
 
       if (draft.intent.type === 'refund') {
+        const activeDate = state.simulationDate ?? state.todayMenu.businessDate;
+        if (draft.intent.businessDate !== activeDate) {
+          return { ok: false, message: '退款只能記在當前營業日。' };
+        }
         const student = state.students[studentIndex];
         const refundAmount = draft.amount;
         if (!Number.isInteger(refundAmount) || refundAmount < 1) {

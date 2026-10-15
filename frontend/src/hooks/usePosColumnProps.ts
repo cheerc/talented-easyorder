@@ -32,6 +32,7 @@ export interface PosColumnFlowArgs {
   handleDeleteOrder: PosColumnProps['handleDeleteOrder'];
   onViewAllHistory?: PosColumnProps['onViewAllHistory'];
   onRefund?: PosColumnProps['onRefund'];
+  onRefundDialogOpenChange?: PosColumnProps['onRefundDialogOpenChange'];
 }
 
 /** Expense flow actions */
@@ -132,6 +133,7 @@ export function buildPosColumnProps(args: {
   handleDeleteOrder: PosColumnProps['handleDeleteOrder'];
   onViewAllHistory?: PosColumnProps['onViewAllHistory'];
   onRefund?: PosColumnProps['onRefund'];
+  onRefundDialogOpenChange?: PosColumnProps['onRefundDialogOpenChange'];
 }): PosColumnProps {
   return {
     state: args.state,
@@ -181,6 +183,7 @@ export function buildPosColumnProps(args: {
     handleDeleteOrder: args.handleDeleteOrder,
     onViewAllHistory: args.onViewAllHistory,
     onRefund: args.onRefund,
+    onRefundDialogOpenChange: args.onRefundDialogOpenChange,
   };
 }
 
@@ -221,6 +224,7 @@ export function usePosColumnProps(
     handleDeleteOrder: flow.handleDeleteOrder,
     onViewAllHistory: flow.onViewAllHistory,
     onRefund: flow.onRefund,
+    onRefundDialogOpenChange: flow.onRefundDialogOpenChange,
     // expense
     expenseProps: expense.expenseProps,
     enterExpenseMode: expense.enterExpenseMode,

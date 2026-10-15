@@ -25,6 +25,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
     tx, operatorUid, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
     onViewAllHistory,
     onRefund,
+    onRefundDialogOpenChange,
   } = props;
 
   const orderedTodayCount = useActiveOrderCount(picked?.studentId ?? null, viewDate);
@@ -56,8 +57,10 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
   const handleRecentEditClick = (t: LedgerTransaction) => {
     setEditingTx({
       transactionId: t.transactionId,
+      type: t.type,
       mealPrice: t.mealPrice,
       paidAmount: t.paidAmount,
+      amount: t.amount,
       note: t.note,
     });
   };
@@ -71,7 +74,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
   };
 
   const handleRecentEditSave = useCallback(
-    (transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }, reason: string) =>
+    (transactionId: string, updates: { mealPrice: number; paidAmount: number; amount?: number; note: string }, reason: string) =>
       editTransaction(transactionId, updates, { reason, operatorId: operatorUid }),
     [editTransaction, operatorUid],
   );
@@ -235,6 +238,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 onCancel={cancelFlow}
                 busy={state.kind === 'committing'}
                 onRefund={onRefund}
+                onRefundDialogOpenChange={onRefundDialogOpenChange}
               />
               </>
             )}

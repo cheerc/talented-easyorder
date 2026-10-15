@@ -120,10 +120,26 @@ export function createEditActions(
       if (!check.ok) return check;
 
       const isRefund = original.type === 'refund';
+      // 退款金額必須在四捨五入「之前」就是正整數，否則 10.5 會被 Math.round 成 11 繞過檢查。
+      if (isRefund) {
+        const rawAmount = updates.amount ?? original.amount;
+        if (typeof rawAmount !== 'number' || !Number.isInteger(rawAmount) || rawAmount <= 0) {
+          return { ok: false, message: '退款金額必須是大於 0 的整數。' };
+        }
+        const student = state.students.find(s => s.studentId === original.studentId);
+        if (student) {
+          // 還原原退款後的可用餘額：更正後的退款不能讓餘額變成負數。
+          const availableBalance = student.currentBalance + original.amount;
+          if (rawAmount > availableBalance) {
+            return { ok: false, message: '退款金額不能超過目前可用餘額。' };
+          }
+        }
+      }
+
       const newMealPrice = Math.round(updates.mealPrice ?? original.mealPrice);
       const newPaidAmount = Math.round(updates.paidAmount ?? original.paidAmount);
       const newAmount = isRefund
-        ? Math.round(updates.amount ?? original.amount)
+        ? (updates.amount ?? original.amount)
         : calculateTransactionAmount(newMealPrice, newPaidAmount);
       const newNote = updates.note ?? original.note;
 

@@ -4,11 +4,13 @@ import { Button } from '../ui/Button';
 import { NumericInput } from '../ui/NumericInput';
 import { fmt } from '../pos-components';
 import type { StudentAccount } from '../../domain/student';
+import type { LedgerMutationResult } from '../../domain/ledgerAudit';
 
 export interface RefundDialogProps {
   open: boolean;
   student: StudentAccount;
-  onConfirm: (amount: number, reason: string) => void;
+  /** 寫入失敗（例如已關帳、超出可退餘額）時回傳結果，留在對話框並顯示原因。 */
+  onConfirm: (amount: number, reason: string) => LedgerMutationResult;
   onCancel: () => void;
   busy?: boolean;
 }
@@ -57,7 +59,10 @@ export const RefundDialog = React.memo(function RefundDialog({
       setError(validationMsg);
       return;
     }
-    onConfirm(numAmount, reason.trim());
+    const result = onConfirm(numAmount, reason.trim());
+    if (!result.ok) {
+      setError(result.message);
+    }
   };
 
   if (!open) return null;

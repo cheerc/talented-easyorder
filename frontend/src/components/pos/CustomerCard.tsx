@@ -10,6 +10,7 @@ import { parsePaidAmount } from '../../domain/posTransaction';
 import { TransactionStatusView } from './TransactionStatusView';
 import { RefundDialog } from './RefundDialog';
 import { fmt } from './utils';
+import type { LedgerMutationResult } from '../../domain/ledgerAudit';
 
 interface CustomerCardProps {
   student: StudentAccount;
@@ -35,8 +36,12 @@ interface CustomerCardProps {
   onCancel?: () => void;
   /** 存檔中：按鈕暫時停用，避免重複送出。 */
   busy?: boolean;
-  /** 學生退款回調 */
-  onRefund?: (amount: number, reason: string) => void;
+  /**
+ * 學生退款回調；寫入失敗時回傳失敗結果，留在對話框顯示原因。
+ * 帶 studentId 讓 F1 與 F3 共用同一條 store 路徑（F3 可對未選取的帳戶退款）。
+ */
+  onRefund?: (studentId: string, amount: number, reason: string) => LedgerMutationResult;
+  onRefundDialogOpenChange?: (open: boolean) => void;
 }
 
 export const CustomerCard = React.memo(function CustomerCard({
@@ -60,8 +65,18 @@ export const CustomerCard = React.memo(function CustomerCard({
   onCancel,
   busy = false,
   onRefund,
+  onRefundDialogOpenChange,
 }: CustomerCardProps) {
   const [showRefundDialog, setShowRefundDialog] = useState(false);
+
+  const handleOpenRefund = () => {
+    setShowRefundDialog(true);
+    onRefundDialogOpenChange?.(true);
+  };
+  const handleCloseRefund = () => {
+    setShowRefundDialog(false);
+    onRefundDialogOpenChange?.(false);
+  };
   const effectiveMealPrice = mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
   const payInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -208,7 +223,7 @@ export const CustomerCard = React.memo(function CustomerCard({
                     type="button"
                     className="ghost-btn"
                     style={{ fontSize: '13px', padding: '4px 10px', marginLeft: 'auto' }}
-                    onClick={() => setShowRefundDialog(true)}
+                    onClick={handleOpenRefund}
                     disabled={student.currentBalance <= 0}
                     title={student.currentBalance <= 0 ? '目前無餘額可退' : '從帳戶退還現金給學生'}
                   >
@@ -261,10 +276,11 @@ export const CustomerCard = React.memo(function CustomerCard({
           open={showRefundDialog}
           student={student}
           onConfirm={(amt, reason) => {
-            setShowRefundDialog(false);
-            onRefund(amt, reason);
+            const result = onRefund(student.studentId, amt, reason);
+            if (result.ok) handleCloseRefund();
+            return result;
           }}
-          onCancel={() => setShowRefundDialog(false)}
+          onCancel={handleCloseRefund}
           busy={busy}
         />
       )}

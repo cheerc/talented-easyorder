@@ -9,6 +9,7 @@ const VendorsScreen = React.lazy(() => import('./screens/VendorsScreen').then(m 
 const HistoryScreen = React.lazy(() => import('./screens/HistoryScreen').then(m => ({ default: m.HistoryScreen })));
 
 import type { HistoryLookupTarget } from './screens/HistoryScreen';
+import type { LedgerMutationResult } from '../domain/ledgerAudit';
 
 type PosColumnProps = ComponentProps<typeof PosColumn>;
 
@@ -20,6 +21,9 @@ interface AppRouterProps {
   // PosColumn
   posColumnProps: PosColumnProps;
   historyLookupTarget?: HistoryLookupTarget | null;
+  // U4：F1 與 F3 共用的退款寫入路徑（含停用帳戶）
+  onRefund?: (studentId: string, amount: number, reason: string) => LedgerMutationResult;
+  onRefundDialogOpenChange?: (open: boolean) => void;
 }
 
 export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
@@ -47,7 +51,7 @@ export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
       {tab === 'admin' && (
         <ErrorBoundary fallback={<SectionError name="今日設定" />}>
         <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
-        <AdminScreen viewDate={viewDate} />
+        <AdminScreen viewDate={viewDate} onRefund={props.onRefund} onRefundDialogOpenChange={props.onRefundDialogOpenChange} />
         </Suspense>
         </ErrorBoundary>
       )}

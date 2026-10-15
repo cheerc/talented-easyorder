@@ -14,6 +14,7 @@ function formatRecentMealSummary(transactions: LedgerGroup['transactions']): str
   let bento = 0;
   let other = 0;
   let payments = 0;
+  let refunds = 0;
 
   for (const t of transactions) {
     if (t.type === 'order') {
@@ -24,6 +25,8 @@ function formatRecentMealSummary(transactions: LedgerGroup['transactions']): str
       }
     } else if (t.type === 'payment') {
       payments++;
+    } else if (t.type === 'refund') {
+      refunds++;
     }
   }
 
@@ -36,8 +39,14 @@ function formatRecentMealSummary(transactions: LedgerGroup['transactions']): str
   if (other > 0) {
     return `其他餐點 ${other}`;
   }
+  if (payments > 0 && refunds > 0) {
+    return '繳費・退款';
+  }
   if (payments > 0) {
     return '僅繳費';
+  }
+  if (refunds > 0) {
+    return '僅退款';
   }
   return '';
 }

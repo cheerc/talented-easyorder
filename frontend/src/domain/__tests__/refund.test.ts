@@ -25,12 +25,14 @@ const makeStudent = (overrides: Partial<StudentAccount> = {}): StudentAccount =>
   ...overrides,
 });
 
+const TODAY = '2026-10-15';
+
 describe('Refund domain accounting', () => {
   it('createLedgerTransaction initializes refund with mealPrice=0, paidAmount=0, and reduces afterBalance', () => {
     const student = makeStudent({ currentBalance: 300 });
     const tx = createLedgerTransaction({
       transactionId: 'tx-refund-1',
-      businessDate: '2026-10-15',
+      businessDate: TODAY,
       createdAt: '2026-10-15T12:00:00.000Z',
       studentSnapshot: { studentId: student.studentId, studentNameSnapshot: student.displayName },
       menuSnapshot: { menuNameSnapshot: '', menuPriceSnapshot: 0, vendorNameSnapshot: '', vendorIdSnapshot: '' },
@@ -135,7 +137,10 @@ describe('Refund domain accounting', () => {
 describe('Refund store actions and lifecycle', () => {
   beforeEach(() => {
     usePosStore.getState().loadSampleData();
+    // #9：退款只認當前營業日（prototype 以 simulationDate 為準），所以測試要先設定當前營業日。
     usePosStore.setState(state => ({
+      simulationDate: TODAY,
+      todayMenu: { ...state.todayMenu, businessDate: TODAY },
       students: state.students.map((s, i) => i === 0 ? { ...s, currentBalance: 500 } : s),
     }));
   });
@@ -146,7 +151,7 @@ describe('Refund store actions and lifecycle', () => {
     expect(initialBalance).toBeGreaterThan(0);
 
     const draft = buildRefundTransactionDraft({
-      businessDate: '2026-10-15',
+      businessDate: TODAY,
       student,
       amount: 50,
       note: '結清離班',
@@ -169,7 +174,7 @@ describe('Refund store actions and lifecycle', () => {
   it('rejects refund when amount exceeds student currentBalance', () => {
     const student = usePosStore.getState().students[0];
     const draft = buildRefundTransactionDraft({
-      businessDate: '2026-10-15',
+      businessDate: TODAY,
       student,
       amount: student.currentBalance + 100,
       note: '超額退款',
@@ -186,7 +191,7 @@ describe('Refund store actions and lifecycle', () => {
   it('rejects refund when amount is 0, negative, or not integer', () => {
     const student = usePosStore.getState().students[0];
     const draft = buildRefundTransactionDraft({
-      businessDate: '2026-10-15',
+      businessDate: TODAY,
       student,
       amount: 0,
       note: '無效退款',
@@ -203,7 +208,7 @@ describe('Refund store actions and lifecycle', () => {
   it('rejects refund when reason is empty', () => {
     const student = usePosStore.getState().students[0];
     const draft = buildRefundTransactionDraft({
-      businessDate: '2026-10-15',
+      businessDate: TODAY,
       student,
       amount: 50,
       note: '   ',
@@ -227,7 +232,7 @@ describe('Refund store actions and lifecycle', () => {
     expect(student.status).toBe('inactive');
 
     const draft = buildRefundTransactionDraft({
-      businessDate: '2026-10-15',
+      businessDate: TODAY,
       student,
       amount: 200,
       note: '停用離班結清',
@@ -246,7 +251,7 @@ describe('Refund store actions and lifecycle', () => {
     const initialBalance = student.currentBalance;
 
     const draft = buildRefundTransactionDraft({
-      businessDate: '2026-10-15',
+      businessDate: TODAY,
       student,
       amount: 70,
       note: '送出測試',
@@ -277,7 +282,7 @@ describe('Refund store actions and lifecycle', () => {
     const student = makeStudent();
     const refundTx: LedgerTransaction = {
       transactionId: 'tx-csv-ref',
-      businessDate: '2026-10-15',
+      businessDate: TODAY,
       createdAt: '2026-10-15T15:30:00.000Z',
       studentId: student.studentId,
       studentNameSnapshot: student.displayName,

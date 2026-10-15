@@ -21,7 +21,7 @@ describe('RefundDialog', () => {
       <RefundDialog
         open={true}
         student={mockStudent}
-        onConfirm={vi.fn()}
+        onConfirm={vi.fn().mockReturnValue({ ok: true })}
         onCancel={vi.fn()}
       />
     );
@@ -43,7 +43,7 @@ describe('RefundDialog', () => {
       <RefundDialog
         open={true}
         student={mockStudent}
-        onConfirm={vi.fn()}
+        onConfirm={vi.fn().mockReturnValue({ ok: true })}
         onCancel={vi.fn()}
       />
     );
@@ -75,7 +75,7 @@ describe('RefundDialog', () => {
       <RefundDialog
         open={true}
         student={mockStudent}
-        onConfirm={vi.fn()}
+        onConfirm={vi.fn().mockReturnValue({ ok: true })}
         onCancel={vi.fn()}
       />
     );
@@ -93,7 +93,7 @@ describe('RefundDialog', () => {
       <RefundDialog
         open={true}
         student={mockStudent}
-        onConfirm={vi.fn()}
+        onConfirm={vi.fn().mockReturnValue({ ok: true })}
         onCancel={vi.fn()}
       />
     );
@@ -108,7 +108,7 @@ describe('RefundDialog', () => {
   });
 
   it('submits on confirm and passes parsed amount and trimmed reason', () => {
-    const onConfirm = vi.fn();
+    const onConfirm = vi.fn().mockReturnValue({ ok: true });
 
     render(
       <RefundDialog
@@ -134,7 +134,7 @@ describe('RefundDialog', () => {
       <RefundDialog
         open={true}
         student={mockStudent}
-        onConfirm={vi.fn()}
+        onConfirm={vi.fn().mockReturnValue({ ok: true })}
         onCancel={onCancel}
       />
     );
