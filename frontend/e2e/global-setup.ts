@@ -3,7 +3,37 @@
 // Ref: #269
 
 import { clearEmulatorAuth, createGoogleEmulatorUser, E2E_IDENTITIES } from './helpers/auth';
-import { clearFirestoreData, seedInitialLease, seedOperator, seedStudent, seedTodayMenu } from './helpers/seed';
+import { clearFirestoreData, PROJECT, seedInitialLease, seedOperator } from './helpers/seed';
+
+const FIRESTORE_EMULATOR = 'http://127.0.0.1:8080';
+
+function taipeiToday(): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const value = (type: string) => parts.find(part => part.type === type)?.value ?? '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+async function seedEmptyDataHead(): Promise<void> {
+  const url = `${FIRESTORE_EMULATOR}/v1/projects/${PROJECT}/databases/(default)/documents/system?documentId=dataHead`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer owner' },
+    body: JSON.stringify({
+      fields: {
+        schemaVersion: { integerValue: '1' },
+        datasetId: { stringValue: 'e2e-empty-p06-dataset' },
+        seq: { integerValue: '0' },
+        lastCommandId: { nullValue: null },
+        maintenance: { booleanValue: false },
+        goLiveDate: { stringValue: taipeiToday() },
+        updatedAt: { timestampValue: new Date().toISOString() },
+      },
+    }),
+  });
+  if (!res.ok) throw new Error(`Failed to initialize the empty P06 Emulator dataHead: ${await res.text()}`);
+}
 
 export default async function globalSetup() {
   console.log('[e2e] Global setup: clearing emulator state...');
@@ -18,11 +48,7 @@ export default async function globalSetup() {
   await seedOperator(operatorB.localId, E2E_IDENTITIES.operatorB.email, 'admin');
   await seedOperator(inactiveOperator.localId, E2E_IDENTITIES.inactive.email, 'admin', false);
   await seedInitialLease();
+  await seedEmptyDataHead();
 
-  console.log('[e2e] Global setup: seeding test data...');
-  await seedStudent('S001', 'E2E Student One', 1000);
-  await seedStudent('S002', 'E2E Student Two', 500);
-  await seedTodayMenu('雞腿便當', 80);
-
-  console.log('[e2e] Global setup complete.');
+  console.log('[e2e] Global setup complete with an empty P06 dataset; no financial students were seeded.');
 }

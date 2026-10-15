@@ -64,7 +64,7 @@ export class CloudStudentRepositoryError extends Error {
   }
 }
 
-export interface CloudStudentRepositoryOptions extends CloudCommandRepositoryOptions {}
+export type CloudStudentRepositoryOptions = CloudCommandRepositoryOptions;
 
 export interface CreateCloudStudentInput {
   commandId: string;
@@ -157,9 +157,9 @@ function decodeStudent(id: string, value: unknown): CloudStudentRecord {
   if (!validStudentId(id)
     || !exactKeys(value, keys)
     || value.studentId !== id
-    || typeof value.displayName !== 'string' || value.displayName.trim().length < 1 || value.displayName.length > 100
+    || typeof value.displayName !== 'string' || value.displayName.length < 1 || value.displayName.length > 100
     || !Array.isArray(value.aliases) || value.aliases.length > 10
-    || !value.aliases.every(alias => typeof alias === 'string' && alias.trim().length > 0 && alias.length <= 100)
+    || !value.aliases.every(alias => typeof alias === 'string' && alias.length > 0 && alias.length <= 100)
     || (value.status !== 'active' && value.status !== 'inactive')
     || !exactKeys(value.openingBalance, ['amount', 'asOfDate', 'note', 'createdAt'])
     || !integer(value.openingBalance.amount, -1_000_000_000)
@@ -209,18 +209,18 @@ function readError(error: unknown): CloudStudentRepositoryError {
 }
 
 function assertAuthenticated(options: CloudStudentRepositoryOptions): void {
-  let user: CurrentUser | null = null;
-  if (options.currentUser) user = options.currentUser();
-  else {
-    try {
-      user = getAuth().currentUser;
-    } catch {
-      user = null;
-    }
-  }
+  const user = options.currentUser ? options.currentUser() : getCurrentUser();
   if (!user || !user.uid || !user.email || user.emailVerified !== true
     || !user.providerData.some(provider => provider.providerId === 'google.com')) {
     throw new CloudStudentRepositoryError('UNAUTHORIZED', '需要已驗證的 Google 操作員身分');
+  }
+}
+
+function getCurrentUser(): CurrentUser | null {
+  try {
+    return getAuth().currentUser;
+  } catch {
+    return null;
   }
 }
 

@@ -46,6 +46,10 @@ service cloud.firestore {
       return validId(value) && value != '__cashier__';
     }
 
+    function validDisplayName(value) {
+      return value is string && value.size() >= 1 && value.size() <= 100;
+    }
+
     function validAliases(aliases) {
       return aliases is list && aliases.size() <= 10
         && (aliases.size() < 1 || (aliases[0] is string && aliases[0].size() > 0 && aliases[0].size() <= 100))
@@ -119,7 +123,7 @@ service cloud.firestore {
         ])
         && student.studentId == studentId
         && validStudentId(studentId)
-        && student.displayName is string && student.displayName.size() >= 1 && student.displayName.size() <= 100
+        && validDisplayName(student.displayName)
         && student.aliases is list && validAliases(student.aliases)
         && student.status in ['active', 'inactive']
         && exactMap(student.openingBalance, ['amount', 'asOfDate', 'note', 'createdAt'])
@@ -199,7 +203,9 @@ service cloud.firestore {
         && command.actor.uid == request.auth.uid
         && command.actor.email == request.auth.token.email
         && command.committedAt == request.time
-        && command.reason == null
+        && (command.kind == 'SetStudentStatus'
+          ? (command.reason is string && command.reason.size() <= 500)
+          : command.reason == null)
         && command.inputFingerprint is string
         && command.inputFingerprint.matches('^[0-9a-f]{64}$')
         && command.before is map && command.after is map
@@ -275,7 +281,7 @@ service cloud.firestore {
       let head = get(/databases/$(database)/documents/system/dataHead).data;
       let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
       let studentId = command.targets.studentId;
-      let studentAfter = command.after.student;
+      let studentAfter = getAfter(/databases/$(database)/documents/students/$(studentId)).data;
       let opening = command.payload.openingBalance;
       return commandHolder(command.leaseEpoch)
         && commandEnvelope(commandId, command, head, headAfter)
@@ -285,10 +291,6 @@ service cloud.firestore {
         && exactMap(command.expectedRevisions, ['student'])
         && command.expectedRevisions.student == 0
         && exactMap(command.payload, ['displayName', 'aliases', 'openingBalance'])
-        && command.payload.displayName is string
-        && command.payload.displayName.size() >= 1
-        && command.payload.displayName.size() <= 100
-        && validAliases(command.payload.aliases)
         && exactMap(opening, ['amount', 'asOfDate', 'note'])
         && opening.amount is int
         && opening.amount >= -1000000000 && opening.amount <= 1000000000
@@ -298,7 +300,9 @@ service cloud.firestore {
         && exactMap(command.after, ['head', 'student'])
         && command.before.head == head
         && command.after.head == headAfter
+        && !exists(/databases/$(database)/documents/students/$(studentId))
         && command.before.student == null
+        && command.after.student == studentAfter
         && command.studentId == studentId
         && command.businessDate == null
         && command.reason == null
@@ -330,9 +334,6 @@ service cloud.firestore {
         && command.expectedRevisions.student >= 1
         && payload is map && payload.keys().hasOnly(['displayName', 'aliases'])
         && payload.keys().hasAny(['displayName', 'aliases'])
-        && (!('displayName' in payload)
-          || (payload.displayName is string && payload.displayName.size() >= 1 && payload.displayName.size() <= 100))
-        && (!('aliases' in payload) || validAliases(payload.aliases))
         && before is map && after is map
         && before.studentId == command.targets.studentId
         && after.studentId == command.targets.studentId
@@ -377,6 +378,8 @@ service cloud.firestore {
     function validStudentMutation(commandId, command) {
       let head = get(/databases/$(database)/documents/system/dataHead).data;
       let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let studentBefore = get(/databases/$(database)/documents/students/$(command.targets.studentId)).data;
+      let studentAfter = getAfter(/databases/$(database)/documents/students/$(command.targets.studentId)).data;
       return commandHolder(command.leaseEpoch)
         && commandEnvelope(commandId, command, head, headAfter)
         && command.kind in ['EditStudent', 'SetStudentStatus']
@@ -384,6 +387,8 @@ service cloud.firestore {
         && exactMap(command.after, ['head', 'student'])
         && command.before.head == head
         && command.after.head == headAfter
+        && command.before.student == studentBefore
+        && command.after.student == studentAfter
         && command.studentId == command.targets.studentId
         && command.businessDate == null
         && validStudentCashEffect(command.cashEffect)
@@ -637,17 +642,20 @@ service cloud.firestore {
         && validDayAdvance(commandId, command, before, after, mealPrice, order);
     }
 
-    function studentCommand(commandId, studentId, before, after) {
+    function studentWriteCommand(commandId, studentId, before, after) {
       let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
       let mealPrice = command.kind == 'CreateOrder' ? command.payload.mealPrice : 0;
       return !exists(/databases/$(database)/documents/commands/$(commandId))
         && command.commandId == commandId
         && command.committedAt == request.time
-        && command.kind in ['CreateOrder', 'CreatePayment']
         && command.targets.studentId == studentId
         && command.before.student == before
         && command.after.student == after
-        && validStudentAdvance(commandId, command, before, after, mealPrice);
+        && ((command.kind in ['CreateOrder', 'CreatePayment']
+          && command.expectedRevisions.student == before.revision
+          && validStudentAdvance(commandId, command, before, after, mealPrice))
+          || (command.kind in ['EditStudent', 'SetStudentStatus']
+            && command.expectedRevisions.student == before.revision));
     }
 
     function studentCreateCommand(commandId, studentId, after) {
@@ -659,18 +667,6 @@ service cloud.firestore {
         && command.targets.studentId == studentId
         && command.before.student == null
         && command.after.student == after;
-    }
-
-    function studentMutationCommand(commandId, studentId, before, after) {
-      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
-      return !exists(/databases/$(database)/documents/commands/$(commandId))
-        && command.commandId == commandId
-        && command.committedAt == request.time
-        && command.kind in ['EditStudent', 'SetStudentStatus']
-        && command.targets.studentId == studentId
-        && command.before.student == before
-        && command.after.student == after
-        && command.expectedRevisions.student == before.revision;
     }
 
     function transactionCommand(commandId, transactionId, after) {
@@ -753,21 +749,21 @@ service cloud.firestore {
     }
 
     match /students/{studentId} {
-      allow get, list: if currentHolder() && validStudent(resource.data, studentId);
+      // Query authorization cannot filter by student schema; every returned record is
+      // strict-decoded by the server-only repository before any UI state is published.
+      allow get, list: if currentHolder();
       allow create: if request.resource.data.lastCommandId is string
         && studentCreateCommand(request.resource.data.lastCommandId, studentId, request.resource.data)
         && validStudent(request.resource.data, studentId);
       allow delete: if false;
       allow update: if request.resource.data.lastCommandId is string
-        && ((studentCommand(request.resource.data.lastCommandId, studentId, resource.data, request.resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentBalance', 'revision', 'lastCommandId', 'updatedAt'])
-          && request.resource.data.revision == resource.data.revision + 1
-          && request.resource.data.updatedAt == request.time)
-          || (studentMutationCommand(request.resource.data.lastCommandId, studentId, resource.data, request.resource.data)
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'aliases', 'status', 'revision', 'lastCommandId', 'updatedAt'])
-            && validStudent(request.resource.data, studentId)
-            && request.resource.data.revision == resource.data.revision + 1
-            && request.resource.data.updatedAt == request.time));
+        && studentWriteCommand(request.resource.data.lastCommandId, studentId, resource.data, request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'currentBalance', 'displayName', 'aliases', 'status', 'revision', 'lastCommandId', 'updatedAt'
+        ])
+        && validStudent(request.resource.data, studentId)
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.updatedAt == request.time;
     }
 
     match /transactions/{transactionId} {

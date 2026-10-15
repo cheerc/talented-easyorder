@@ -185,7 +185,7 @@ function studentIdValue(value: unknown, label: string): asserts value is string 
 
 function aliasesValue(value: unknown, label: string): asserts value is string[] {
   if (!Array.isArray(value) || value.length > 10
-    || !value.every(alias => typeof alias === 'string' && alias.length <= 100)) {
+    || !value.every(alias => typeof alias === 'string' && alias.length > 0 && alias.length <= 100)) {
     throw new InvalidCloudCommandInput(`${label} 最多 10 個，每個不得超過 100 字`);
   }
 }
@@ -204,7 +204,7 @@ function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayl
   if (!isPlainRecord(value)) throw new InvalidCloudCommandInput('payload 必須是固定物件');
   if (kind === 'CreateStudent') {
     exactKeys(value, ['displayName', 'aliases', 'openingBalance']);
-    if (typeof value.displayName !== 'string' || value.displayName.trim().length < 1 || value.displayName.length > 100) {
+    if (typeof value.displayName !== 'string' || value.displayName.length < 1 || value.displayName.length > 100) {
       throw new InvalidCloudCommandInput('displayName 必須是 1 至 100 字');
     }
     aliasesValue(value.aliases, 'aliases');
@@ -231,7 +231,7 @@ function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayl
       throw new InvalidCloudCommandInput('EditStudent 至少須修改姓名或別名');
     }
     if (Object.hasOwn(value, 'displayName')
-      && (typeof value.displayName !== 'string' || value.displayName.trim().length < 1 || value.displayName.length > 100)) {
+      && (typeof value.displayName !== 'string' || value.displayName.length < 1 || value.displayName.length > 100)) {
       throw new InvalidCloudCommandInput('displayName 必須是 1 至 100 字');
     }
     if (Object.hasOwn(value, 'aliases')) aliasesValue(value.aliases, 'aliases');
@@ -411,7 +411,7 @@ function validateReceiptStudent(value: unknown, label: string): Record<string, u
     || student.studentId.includes('/') || student.studentId === '__cashier__'
     || typeof student.displayName !== 'string' || student.displayName.length < 1 || student.displayName.length > 100
     || !Array.isArray(student.aliases) || student.aliases.length > 10
-    || !student.aliases.every(alias => typeof alias === 'string' && alias.length <= 100)
+    || !student.aliases.every(alias => typeof alias === 'string' && alias.length > 0 && alias.length <= 100)
     || (student.status !== 'active' && student.status !== 'inactive')
     || typeof student.lastCommandId !== 'string') {
     throw new InvalidCloudCommandInput(`${label} schema 不支援`);
@@ -504,6 +504,14 @@ function timestampMatches(actual: unknown, expected: Timestamp): boolean {
   return actual instanceof Timestamp && actual.isEqual(expected);
 }
 
+function taipeiCalendarDate(timestamp: Timestamp): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(timestamp.toDate());
+  const part = (type: string) => parts.find(item => item.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
 function equalExcept(before: Record<string, unknown>, after: Record<string, unknown>, mutableKeys: string[]): boolean {
   const mutable = new Set(mutableKeys);
   return Object.keys(before).every(key => mutable.has(key) || canonicalJson(before[key]) === canonicalJson(after[key]));
@@ -579,6 +587,12 @@ function validateReceiptSnapshots(
         || !timestampMatches(opening.createdAt, committedAt)) {
         throw new InvalidCloudCommandInput('CreateStudent opening snapshot 不一致');
       }
+      const goLiveDate = String(headBefore.goLiveDate);
+      const committedTaipeiDate = taipeiCalendarDate(committedAt);
+      if (goLiveDate > committedTaipeiDate
+        || (opening.asOfDate !== goLiveDate && opening.asOfDate !== committedTaipeiDate)) {
+        throw new InvalidCloudCommandInput('CreateStudent opening 日期必須是系統 goLive 日期或提交當下的台北日期');
+      }
       return;
     }
 
@@ -595,6 +609,8 @@ function validateReceiptSnapshots(
         || (edit.aliases !== undefined && canonicalJson(studentAfter.aliases) !== canonicalJson(edit.aliases))
         || (edit.displayName === undefined && studentAfter.displayName !== studentBefore.displayName)
         || (edit.aliases === undefined && canonicalJson(studentAfter.aliases) !== canonicalJson(studentBefore.aliases))
+        || (studentAfter.displayName === studentBefore.displayName
+          && canonicalJson(studentAfter.aliases) === canonicalJson(studentBefore.aliases))
         || studentAfter.status !== studentBefore.status) {
         throw new InvalidCloudCommandInput('EditStudent receipt 欄位不一致');
       }
@@ -602,6 +618,7 @@ function validateReceiptSnapshots(
       const status = payload as CommandPayloadByKind['SetStudentStatus'];
       if (studentAfter.status !== status.status || studentAfter.displayName !== studentBefore.displayName
         || canonicalJson(studentAfter.aliases) !== canonicalJson(studentBefore.aliases)
+        || studentAfter.status === studentBefore.status
         || receipt.reason !== (status.reason || null)) {
         throw new InvalidCloudCommandInput('SetStudentStatus receipt 欄位不一致');
       }

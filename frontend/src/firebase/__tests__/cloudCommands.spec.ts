@@ -26,6 +26,7 @@ import type { User } from 'firebase/auth';
 import { ALL_COMMAND_KINDS } from '../../domain/cloudCommands';
 import { fingerprintCommandInput, normalizeEnabledCommandInput } from '../../domain/cloudCommandSchema';
 import { CloudCommandReadError, createCloudCommandRepository } from '../cloudCommandRepository';
+import { listCloudStudents } from '../cloudStudentRepository';
 
 declare const process: { env: Record<string, string | undefined>; cwd: () => string };
 
@@ -166,6 +167,28 @@ function paymentInput(commandId: string, transactionId: string, paidAmount = 200
   };
 }
 
+function studentInput(
+  commandId: string,
+  targetStudentId: string,
+  amount: number,
+  asOfDate = today,
+  displayName = 'Synthetic Student',
+  aliases: string[] = [],
+) {
+  return {
+    commandId,
+    kind: 'CreateStudent' as const,
+    leaseEpoch: 1,
+    targets: { studentId: targetStudentId },
+    expectedRevisions: { student: 0 as const },
+    payload: {
+      displayName,
+      aliases,
+      openingBalance: { amount, asOfDate, note: 'Synthetic opening' },
+    },
+  };
+}
+
 type RawOrderArtifacts = {
   commandId: string;
   transactionId: string;
@@ -174,6 +197,23 @@ type RawOrderArtifacts = {
   studentAfter: RawMap;
   dayAfter: RawMap;
   transactionAfter: RawMap;
+};
+
+type RawStudentArtifacts = {
+  commandId: string;
+  studentId: string;
+  command: RawMap;
+  headAfter: RawMap;
+  studentAfter: RawMap;
+};
+
+type RawStudentMutationInput = {
+  commandId: string;
+  kind: 'EditStudent' | 'SetStudentStatus';
+  leaseEpoch: number;
+  targets: { studentId: string };
+  expectedRevisions: { student: number };
+  payload: Record<string, unknown>;
 };
 
 // Emulator fixtures deliberately mutate nested Firestore maps to model raw SDK clients.
@@ -270,6 +310,147 @@ async function rawOrderArtifacts(input = orderInput('cccccccc-cccc-4ccc-8ccc-ccc
     inputFingerprint: fingerprint,
   };
   return { commandId, transactionId, command, headAfter, studentAfter, dayAfter, transactionAfter };
+}
+
+async function rawStudentCreateArtifacts(
+  input = studentInput('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '001', 0),
+  allowExisting = false,
+): Promise<RawStudentArtifacts> {
+  const canonical = normalizeEnabledCommandInput(input);
+  if (canonical.kind !== 'CreateStudent') throw new Error('Expected CreateStudent input');
+  const fingerprint = await fingerprintCommandInput(canonical);
+  const [headSnapshot, studentSnapshot] = await withAdmin(async admin => Promise.all([
+    getDoc(doc(admin, 'system/dataHead')),
+    getDoc(doc(admin, `students/${input.targets.studentId}`)),
+  ]));
+  if (!headSnapshot.exists()) throw new Error('Raw SDK student fixture requires dataHead');
+  if (studentSnapshot.exists() && !allowExisting) throw new Error('Raw SDK student fixture requires an unused student ID');
+  const headBefore = headSnapshot.data() as RawMap;
+  const seq = headBefore.seq + 1;
+  const now = serverTimestamp();
+  const headAfter = { ...headBefore, seq, lastCommandId: input.commandId, updatedAt: now };
+  const studentAfter = {
+    studentId: input.targets.studentId,
+    displayName: canonical.payload.displayName,
+    aliases: canonical.payload.aliases,
+    status: 'active',
+    openingBalance: { ...canonical.payload.openingBalance, createdAt: now },
+    currentBalance: canonical.payload.openingBalance.amount,
+    createdAt: now,
+    revision: 1,
+    lastCommandId: input.commandId,
+    updatedAt: now,
+  };
+  const command = {
+    commandId: input.commandId,
+    kind: 'CreateStudent',
+    seq,
+    leaseEpoch: input.leaseEpoch,
+    actor: { uid: operatorA.uid, email: operatorA.email },
+    committedAt: now,
+    businessDate: null,
+    studentId: input.targets.studentId,
+    targets: canonical.targets,
+    expectedRevisions: canonical.expectedRevisions,
+    before: { head: headBefore, student: null },
+    after: { head: headAfter, student: studentAfter },
+    reason: null,
+    cashEffect: { before: 0, after: 0, delta: 0, reasonKind: 'none', refundAmount: 0 },
+    payload: canonical.payload,
+    inputFingerprint: fingerprint,
+  };
+  return { commandId: input.commandId, studentId: input.targets.studentId, command, headAfter, studentAfter };
+}
+
+async function rawStudentMutationArtifacts(input: RawStudentMutationInput): Promise<RawStudentArtifacts> {
+  const canonical = normalizeEnabledCommandInput(input);
+  if (canonical.kind !== 'EditStudent' && canonical.kind !== 'SetStudentStatus') {
+    throw new Error('Expected EditStudent or SetStudentStatus input');
+  }
+  const fingerprint = await fingerprintCommandInput(canonical);
+  const [headSnapshot, studentSnapshot] = await withAdmin(async admin => Promise.all([
+    getDoc(doc(admin, 'system/dataHead')),
+    getDoc(doc(admin, `students/${canonical.targets.studentId}`)),
+  ]));
+  if (!headSnapshot.exists() || !studentSnapshot.exists()) throw new Error('Raw SDK mutation fixture requires dataHead and student');
+  const headBefore = headSnapshot.data() as RawMap;
+  const studentBefore = studentSnapshot.data() as RawMap;
+  const seq = headBefore.seq + 1;
+  const now = serverTimestamp();
+  const headAfter = { ...headBefore, seq, lastCommandId: input.commandId, updatedAt: now };
+  const payload = canonical.payload as RawMap;
+  const studentAfter = {
+    ...studentBefore,
+    ...(canonical.kind === 'EditStudent' && payload.displayName === undefined ? {} : canonical.kind === 'EditStudent' ? { displayName: payload.displayName } : {}),
+    ...(canonical.kind === 'EditStudent' && payload.aliases === undefined ? {} : canonical.kind === 'EditStudent' ? { aliases: payload.aliases } : {}),
+    ...(canonical.kind === 'SetStudentStatus' ? { status: payload.status } : {}),
+    revision: studentBefore.revision + 1,
+    lastCommandId: input.commandId,
+    updatedAt: now,
+  };
+  const reason = canonical.kind === 'SetStudentStatus' ? (String(payload.reason ?? '') || null) : null;
+  const command = {
+    commandId: input.commandId,
+    kind: canonical.kind,
+    seq,
+    leaseEpoch: input.leaseEpoch,
+    actor: { uid: operatorA.uid, email: operatorA.email },
+    committedAt: now,
+    businessDate: null,
+    studentId: canonical.targets.studentId,
+    targets: canonical.targets,
+    expectedRevisions: canonical.expectedRevisions,
+    before: { head: headBefore, student: studentBefore },
+    after: { head: headAfter, student: studentAfter },
+    reason,
+    cashEffect: { before: 0, after: 0, delta: 0, reasonKind: 'none', refundAmount: 0 },
+    payload: canonical.payload,
+    inputFingerprint: fingerprint,
+  };
+  return { commandId: input.commandId, studentId: canonical.targets.studentId, command, headAfter, studentAfter };
+}
+
+function rawStudentCreateBatch(
+  db: Firestore,
+  artifacts: RawStudentArtifacts,
+  options: { omit?: Array<'head' | 'student'> } = {},
+) {
+  const omitted = new Set(options.omit ?? []);
+  const batch = writeBatch(db);
+  if (!omitted.has('head')) batch.update(doc(db, 'system/dataHead'), artifacts.headAfter);
+  if (!omitted.has('student')) batch.set(doc(db, `students/${artifacts.studentId}`), artifacts.studentAfter);
+  batch.set(doc(db, `commands/${artifacts.commandId}`), artifacts.command);
+  return batch;
+}
+
+function rawStudentMutationBatch(
+  db: Firestore,
+  artifacts: RawStudentArtifacts,
+  options: { omit?: Array<'head' | 'student'> } = {},
+) {
+  const omitted = new Set(options.omit ?? []);
+  const batch = writeBatch(db);
+  if (!omitted.has('head')) batch.update(doc(db, 'system/dataHead'), artifacts.headAfter);
+  if (!omitted.has('student')) batch.update(doc(db, `students/${artifacts.studentId}`), artifacts.studentAfter);
+  batch.set(doc(db, `commands/${artifacts.commandId}`), artifacts.command);
+  return batch;
+}
+
+async function expectRawStudentMutationDeniedUnchanged(
+  artifacts: RawStudentArtifacts,
+  options: Parameters<typeof rawStudentMutationBatch>[2] = {},
+) {
+  const paths = ['system/dataHead', `students/${artifacts.studentId}`, `commands/${artifacts.commandId}`];
+  const before = await capturePaths(paths);
+  await assertFails(rawStudentMutationBatch(authedDb(operatorA), artifacts, options).commit());
+  expect(await capturePaths(paths)).toEqual(before);
+}
+
+async function expectRawStudentCreateDeniedUnchanged(artifacts: RawStudentArtifacts) {
+  const paths = ['system/dataHead', `students/${artifacts.studentId}`, `commands/${artifacts.commandId}`];
+  const before = await capturePaths(paths);
+  await assertFails(rawStudentCreateBatch(authedDb(operatorA), artifacts).commit());
+  expect(await capturePaths(paths)).toEqual(before);
 }
 
 function rawOrderBatch(
@@ -928,11 +1109,13 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     expect(day.data()?.revision).toBe(1);
   });
 
-  it('P05.11: only the three enabled kinds pass runtime validation', async () => {
+  it('P06.1: only the six P05/P06 enabled kinds pass runtime validation', async () => {
     await seedBase();
     expect(ALL_COMMAND_KINDS).toHaveLength(22);
-    const disabledKinds = ALL_COMMAND_KINDS.filter(kind => !['EnsureDay', 'CreateOrder', 'CreatePayment'].includes(kind));
-    expect(disabledKinds).toHaveLength(19);
+    const enabledKinds = ['EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus'];
+    const disabledKinds = ALL_COMMAND_KINDS.filter(kind => !enabledKinds.includes(kind));
+    expect(enabledKinds).toHaveLength(6);
+    expect(disabledKinds).toHaveLength(16);
     for (const [index, kind] of disabledKinds.entries()) {
       const commandId = `f0000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
       const disabled = await repository(operatorA).commitCommand({
@@ -942,8 +1125,8 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     }
   });
 
-  it.each(ALL_COMMAND_KINDS.filter(kind => !['EnsureDay', 'CreateOrder', 'CreatePayment'].includes(kind)))(
-    'P05.25: production Rules directly deny disabled raw SDK kind %s atomically', async kind => {
+  it.each(ALL_COMMAND_KINDS.filter(kind => !['EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus'].includes(kind)))(
+    'P06.2: production Rules directly deny unsupported raw SDK kind %s atomically', async kind => {
       await seedBase();
       const index = ALL_COMMAND_KINDS.indexOf(kind);
       const commandId = `f1111111-1111-4111-8111-${index.toString(16).padStart(12, '0')}`;
@@ -957,6 +1140,286 @@ describeWithEmulator('P05 production command repository and Rules', () => {
       expect(command.exists()).toBe(false);
     },
   );
+
+  it('P06.3: creates string IDs with baseline/current opening dates, signed boundaries, and no financial side effects', async () => {
+    await seedBase();
+    const goLiveDate = shiftDate(today, -20);
+    await withAdmin(db => updateDoc(doc(db, 'system/dataHead'), { goLiveDate }));
+    const aliases = Array.from({ length: 10 }, (_, index) => `${String(index).padStart(2, '0')}${'a'.repeat(98)}`);
+    const inputs = [
+      studentInput('f2111111-1111-4111-8111-111111111111', '001', 0, goLiveDate, 'Same Name', aliases),
+      studentInput('f2222222-2222-4222-8222-222222222222', '002', -1_000_000_000, today, 'Same Name'),
+      studentInput('f2333333-3333-4333-8333-333333333333', '003', 1_000_000_000, goLiveDate, 'Same Name'),
+    ];
+    const results = [];
+    for (const input of inputs) results.push(await repository(operatorA).commitCommand(input));
+    expect(results.map(result => result.ok)).toEqual([true, true, true]);
+    const state = await withAdmin(async db => {
+      const [head, students, commands, transactions, days] = await Promise.all([
+        getDoc(doc(db, 'system/dataHead')),
+        Promise.all(['001', '002', '003'].map(id => getDoc(doc(db, `students/${id}`)))),
+        getDocs(collection(db, 'commands')),
+        getDocs(collection(db, 'transactions')),
+        getDocs(collection(db, 'days')),
+      ]);
+      return { head: head.data(), students: students.map(snapshot => snapshot.data()), commands, transactions, days };
+    });
+    expect(state.head).toMatchObject({ seq: 3, lastCommandId: inputs[2].commandId });
+    expect(state.students.map(student => student?.studentId)).toEqual(['001', '002', '003']);
+    expect(state.students.map(student => student?.displayName)).toEqual(['Same Name', 'Same Name', 'Same Name']);
+    expect(state.students.map(student => student?.currentBalance)).toEqual([0, -1_000_000_000, 1_000_000_000]);
+    expect(state.students[0]?.aliases).toEqual(aliases);
+    for (const [index, student] of state.students.entries()) {
+      expect(student?.status).toBe('active');
+      expect(student?.openingBalance).toMatchObject({ amount: student?.currentBalance, asOfDate: inputs[index].payload.openingBalance.asOfDate });
+      expect(student?.createdAt).toBeInstanceOf(Timestamp);
+      expect(student?.updatedAt).toBeInstanceOf(Timestamp);
+      expect((student?.openingBalance as RawMap).createdAt).toBeInstanceOf(Timestamp);
+      expect(await repository(operatorA).readCommand(inputs[index].commandId)).toMatchObject({
+        commandId: inputs[index].commandId,
+        seq: index + 1,
+        kind: 'CreateStudent',
+        targets: { studentId: inputs[index].targets.studentId },
+      });
+    }
+    expect(state.commands.size).toBe(3);
+    expect(state.transactions.size).toBe(0);
+    expect(state.days.size).toBe(0);
+  });
+
+  it('P06.4: semantic replay returns the original receipt; ID collision and duplicate student ID do not advance state', async () => {
+    await seedBase();
+    const repo = repository(operatorA);
+    const input = studentInput('f3111111-1111-4111-8111-111111111111', '001', -25);
+    const first = await repo.commitCommand(input);
+    const replay = await repo.commitCommand(input);
+    expect(first.ok, JSON.stringify(first)).toBe(true);
+    expect(replay).toEqual(first);
+    const collision = await repo.commitCommand({ ...input, payload: { ...input.payload, openingBalance: { ...input.payload.openingBalance, amount: 20 } } });
+    expect(collision).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    const duplicateId = await repo.commitCommand(studentInput('f3222222-2222-4222-8222-222222222222', '001', 0));
+    expect(duplicateId).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    const state = await withAdmin(async db => {
+      const [head, student, commands] = await Promise.all([
+        getDoc(doc(db, 'system/dataHead')),
+        getDoc(doc(db, 'students/001')),
+        getDocs(collection(db, 'commands')),
+      ]);
+      return { head: head.data(), student: student.data(), commandCount: commands.size };
+    });
+    expect(state).toMatchObject({ head: { seq: 1, lastCommandId: input.commandId }, student: { studentId: '001', currentBalance: -25, revision: 1 }, commandCount: 1 });
+  });
+
+  it('P06.5: only EditStudent fields and explicit status changes advance the student revision', async () => {
+    await seedBase();
+    const create = await repository(operatorA).commitCommand(studentInput('f4111111-1111-4111-8111-111111111111', '001', -25));
+    expect(create.ok, JSON.stringify(create)).toBe(true);
+    const edit = await repository(operatorA).commitCommand({
+      commandId: 'f4222222-2222-4222-8222-222222222222', kind: 'EditStudent', leaseEpoch: 1,
+      targets: { studentId: '001' }, expectedRevisions: { student: 1 },
+      payload: { displayName: 'Renamed Synthetic', aliases: ['A', 'B'] },
+    });
+    expect(edit.ok, JSON.stringify(edit)).toBe(true);
+    const deactivate = await repository(operatorA).commitCommand({
+      commandId: 'f4333333-3333-4333-8333-333333333333', kind: 'SetStudentStatus', leaseEpoch: 1,
+      targets: { studentId: '001' }, expectedRevisions: { student: 2 },
+      payload: { status: 'inactive', reason: 'Synthetic roster correction' },
+    });
+    expect(deactivate.ok, JSON.stringify(deactivate)).toBe(true);
+    if (deactivate.ok) expect(await repository(operatorA).readCommand('f4333333-3333-4333-8333-333333333333')).toMatchObject({ kind: 'SetStudentStatus', seq: 3 });
+    const reactivate = await repository(operatorA).commitCommand({
+      commandId: 'f4444444-4444-4444-8444-444444444444', kind: 'SetStudentStatus', leaseEpoch: 1,
+      targets: { studentId: '001' }, expectedRevisions: { student: 3 },
+      payload: { status: 'active', reason: 'Synthetic roster restore' },
+    });
+    expect(reactivate.ok, JSON.stringify(reactivate)).toBe(true);
+    const noOpEdit = await repository(operatorA).commitCommand({
+      commandId: 'f4555555-5555-4555-8555-555555555555', kind: 'EditStudent', leaseEpoch: 1,
+      targets: { studentId: '001' }, expectedRevisions: { student: 4 },
+      payload: { displayName: 'Renamed Synthetic' },
+    });
+    const noOpStatus = await repository(operatorA).commitCommand({
+      commandId: 'f4666666-6666-4666-8666-666666666666', kind: 'SetStudentStatus', leaseEpoch: 1,
+      targets: { studentId: '001' }, expectedRevisions: { student: 4 },
+      payload: { status: 'active', reason: 'No actual status change' },
+    });
+    const stale = await repository(operatorA).commitCommand({
+      commandId: 'f4777777-7777-4777-8777-777777777777', kind: 'EditStudent', leaseEpoch: 1,
+      targets: { studentId: '001' }, expectedRevisions: { student: 3 },
+      payload: { displayName: 'Stale Writer' },
+    });
+    expect(noOpEdit).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(noOpStatus).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(stale).toMatchObject({ ok: false, error: { code: 'REVISION_CONFLICT' } });
+    const [head, student, tx, day] = await withAdmin(async db => Promise.all([
+      getDoc(doc(db, 'system/dataHead')),
+      getDoc(doc(db, 'students/001')),
+      getDocs(collection(db, 'transactions')),
+      getDocs(collection(db, 'days')),
+    ]));
+    expect(head.data()).toMatchObject({ seq: 4, lastCommandId: 'f4444444-4444-4444-8444-444444444444' });
+    expect(student.data()).toMatchObject({
+      studentId: '001', displayName: 'Renamed Synthetic', aliases: ['A', 'B'], status: 'active',
+      currentBalance: -25, revision: 4, openingBalance: { amount: -25 },
+    });
+    expect(tx.size).toBe(0);
+    expect(day.size).toBe(0);
+  });
+
+  it.each([
+    ['intermediate historical date', shiftDate(today, -2)],
+    ['future date', shiftDate(today, 1)],
+  ])('P06.6: rejects a student opening on %s atomically', async (_label, date) => {
+    await seedBase();
+    const goLiveDate = shiftDate(today, -5);
+    await withAdmin(db => updateDoc(doc(db, 'system/dataHead'), { goLiveDate }));
+    const input = studentInput('f5111111-1111-4111-8111-111111111111', '001', 0, date);
+    const result = await repository(operatorA).commitCommand(input);
+    expect(result).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(await capturePaths(['system/dataHead', 'students/001', `commands/${input.commandId}`])).toMatchObject({
+      'system/dataHead': { exists: true },
+      'students/001': { exists: false },
+    });
+  });
+
+  it('P06.7: production Rules accept a complete raw SDK CreateStudent closure with ten maximum-length aliases', async () => {
+    await seedBase();
+    const aliases = Array.from({ length: 10 }, (_, index) => `${String(index).padStart(2, '0')}${'b'.repeat(98)}`);
+    const artifacts = await rawStudentCreateArtifacts(studentInput(
+      'f6111111-1111-4111-8111-111111111111', '001', 0, today, 'Raw Synthetic', aliases,
+    ));
+    const paths = ['system/dataHead', 'students/001', `commands/${artifacts.commandId}`];
+    const before = await capturePaths(paths);
+    await rawStudentCreateBatch(authedDb(operatorA), artifacts).commit();
+    const after = await capturePaths(paths);
+    expect(after['system/dataHead'].data).toMatchObject({ seq: 1, lastCommandId: artifacts.commandId });
+    expect((after['students/001'].data as RawMap).aliases).toEqual(aliases);
+    expect(after[`commands/${artifacts.commandId}`].exists).toBe(true);
+    expect(after['system/dataHead'].data).not.toEqual(before['system/dataHead'].data);
+  });
+
+  it.each([
+    ['head writer', ['head'] as const],
+    ['student writer', ['student'] as const],
+  ])('P06.8: Rules reject CreateStudent when the raw batch omits its %s', async (_label, omit) => {
+    await seedBase();
+    const artifacts = await rawStudentCreateArtifacts();
+    const paths = ['system/dataHead', `students/${artifacts.studentId}`, `commands/${artifacts.commandId}`];
+    const before = await capturePaths(paths);
+    await assertFails(rawStudentCreateBatch(authedDb(operatorA), artifacts, { omit: [...omit] }).commit());
+    expect(await capturePaths(paths)).toEqual(before);
+  });
+
+  it('P06.9: Rules require an actually absent target when raw SDK creates a student ID', async () => {
+    await seedBase();
+    expect((await repository(operatorA).commitCommand(studentInput('f7111111-1111-4111-8111-111111111111', '001', 0))).ok).toBe(true);
+    const artifacts = await rawStudentCreateArtifacts(
+      studentInput('f7222222-2222-4222-8222-222222222222', '001', 0),
+      true,
+    );
+    const paths = ['system/dataHead', 'students/001', `commands/${artifacts.commandId}`];
+    const before = await capturePaths(paths);
+    await assertFails(rawStudentCreateBatch(authedDb(operatorA), artifacts).commit());
+    expect(await capturePaths(paths)).toEqual(before);
+  });
+
+  it.each([
+    ['payload display name', (artifacts: RawStudentArtifacts) => { artifacts.command.payload.displayName = 'Forged Name'; }],
+    ['actual projection balance', (artifacts: RawStudentArtifacts) => { artifacts.studentAfter.currentBalance = 1; }],
+    ['receipt after projection', (artifacts: RawStudentArtifacts) => { artifacts.command.after.student.currentBalance = 1; }],
+    ['actor identity', (artifacts: RawStudentArtifacts) => { artifacts.command.actor.uid = operatorB.uid; }],
+    ['server commit timestamp', (artifacts: RawStudentArtifacts) => { artifacts.command.committedAt = Timestamp.fromMillis(0); }],
+    ['head sequence', (artifacts: RawStudentArtifacts) => { artifacts.command.seq += 1; }],
+  ])('P06.10: Rules deny a raw student closure with forged %s unchanged', async (_field, mutate) => {
+    await seedBase();
+    const artifacts = await rawStudentCreateArtifacts();
+    mutate(artifacts);
+    const paths = ['system/dataHead', `students/${artifacts.studentId}`, `commands/${artifacts.commandId}`];
+    const before = await capturePaths(paths);
+    await assertFails(rawStudentCreateBatch(authedDb(operatorA), artifacts).commit());
+    expect(await capturePaths(paths)).toEqual(before);
+  });
+
+  it('P06.11: a student document can be read before creation and the holder can read the complete server list', async () => {
+    await seedBase();
+    const db = authedDb(operatorA);
+    expect((await getDoc(doc(db, 'students/001'))).exists()).toBe(false);
+    expect((await getDocs(collection(db, 'students'))).size).toBe(0);
+    expect((await repository(operatorA).commitCommand(studentInput('f8111111-1111-4111-8111-111111111111', '001', 0))).ok).toBe(true);
+    expect((await getDocs(collection(db, 'students'))).docs.map(snapshot => snapshot.id)).toEqual(['001']);
+    await expect(repository(operatorB).readCommand('f8111111-1111-4111-8111-111111111111')).rejects.toMatchObject({ code: 'LEASE_LOST' });
+    await expect(getDocs(collection(authedDb(operatorB), 'students'))).rejects.toThrow();
+  });
+
+  it('P06.12: raw SetStudentStatus accepts a nonempty reason and projects only the requested status', async () => {
+    await seedBase({ withBusinessDocs: true });
+    const artifacts = await rawStudentMutationArtifacts({
+      commandId: 'f9111111-1111-4111-8111-111111111111',
+      kind: 'SetStudentStatus', leaseEpoch: 1, targets: { studentId },
+      expectedRevisions: { student: 1 }, payload: { status: 'inactive', reason: 'Synthetic disable' },
+    });
+    await rawStudentMutationBatch(authedDb(operatorA), artifacts).commit();
+    const [head, student, command] = await withAdmin(async db => Promise.all([
+      getDoc(doc(db, 'system/dataHead')),
+      getDoc(doc(db, `students/${studentId}`)),
+      getDoc(doc(db, `commands/${artifacts.commandId}`)),
+    ]));
+    expect(head.data()).toMatchObject({ seq: 1, lastCommandId: artifacts.commandId });
+    expect(student.data()).toMatchObject({ status: 'inactive', currentBalance: 0, revision: 2 });
+    expect(command.data()).toMatchObject({ kind: 'SetStudentStatus', reason: 'Synthetic disable', businessDate: null, studentId });
+  });
+
+  it.each([
+    ['head writer', ['head'] as const],
+    ['student writer', ['student'] as const],
+  ])('P06.13: Rules reject an EditStudent closure that omits its %s', async (_label, omit) => {
+    await seedBase({ withBusinessDocs: true });
+    const artifacts = await rawStudentMutationArtifacts({
+      commandId: 'fa111111-1111-4111-8111-111111111111',
+      kind: 'EditStudent', leaseEpoch: 1, targets: { studentId },
+      expectedRevisions: { student: 1 }, payload: { displayName: 'Changed Synthetic' },
+    });
+    await expectRawStudentMutationDeniedUnchanged(artifacts, { omit: [...omit] });
+  });
+
+  it.each([
+    ['no-op edit', {
+      commandId: 'fb111111-1111-4111-8111-111111111111', kind: 'EditStudent' as const,
+      leaseEpoch: 1, targets: { studentId }, expectedRevisions: { student: 1 }, payload: { displayName: 'Synthetic Student' },
+    }],
+    ['no-op status', {
+      commandId: 'fb222222-2222-4222-8222-222222222222', kind: 'SetStudentStatus' as const,
+      leaseEpoch: 1, targets: { studentId }, expectedRevisions: { student: 1 }, payload: { status: 'active', reason: 'No change' },
+    }],
+  ])('P06.14: Rules reject raw %s receipts without changing any projection', async (_label, input) => {
+    await seedBase({ withBusinessDocs: true });
+    const artifacts = await rawStudentMutationArtifacts(input);
+    await expectRawStudentMutationDeniedUnchanged(artifacts);
+  });
+
+  it('P06.15: Rules, receipt decoding, and server list accept literal nonempty names consistently', async () => {
+    await seedBase();
+    const names = [' ', '\t', '\u00a0', '\ufeff', 'name\ncontinued'];
+    for (const [index, displayName] of names.entries()) {
+      const commandId = `fc000000-0000-4000-8000-${(index + 1).toString(16).padStart(12, '0')}`;
+      const studentId = `name-${index}`;
+      const artifacts = await rawStudentCreateArtifacts(studentInput(commandId, studentId, 0, today, displayName));
+      await rawStudentCreateBatch(authedDb(operatorA), artifacts).commit();
+      expect(await repository(operatorA).readCommand(commandId)).toMatchObject({ commandId, kind: 'CreateStudent' });
+    }
+    const db = authedDb(operatorA);
+    const listed = await listCloudStudents(db, { currentUser: () => fakeCurrentUser(operatorA) });
+    expect(listed.students.map(student => student.displayName)).toEqual(names);
+  });
+
+  it('P06.16: Rules reject a raw student projection with an empty display name', async () => {
+    await seedBase();
+    const artifacts = await rawStudentCreateArtifacts();
+    artifacts.command.payload.displayName = '';
+    artifacts.studentAfter.displayName = '';
+    artifacts.command.after.student.displayName = '';
+    await expectRawStudentCreateDeniedUnchanged(artifacts);
+  });
 
   it('P05.26: historical order and payment dates are denied atomically without a reason field', async () => {
     const historicalDayId = shiftDate(today, -1);
