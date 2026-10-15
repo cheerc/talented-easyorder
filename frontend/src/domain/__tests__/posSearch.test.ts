@@ -143,8 +143,19 @@ describe('filterSearchSuggestions (F1 search rule, M1 F01)', () => {
   ];
 
   it('puts an exact ID first, then ID prefix, then other matches, keeping roster order inside a group', () => {
-    expect(filterSearchSuggestions(roster, '1').map(s => s.studentId)).toEqual(['1', '101', '015', '001']);
-    expect(filterSearchSuggestions(roster, '001').map(s => s.studentId)).toEqual(['001']);
+    expect(filterSearchSuggestions(roster, '1').map(s => s.studentId)).toEqual(['1', '001', '101', '015']);
+    expect(filterSearchSuggestions(roster, '001').map(s => s.studentId)).toEqual(['001', '1']);
+  });
+
+  it('U3 Review Finding 1: 正規化候選搜尋，輸入 0005、５ 或 5 皆能精確匹配到 005', () => {
+    const list = [
+      acc('005', '五號學員'),
+      acc('050', '五十號'),
+    ];
+    expect(filterSearchSuggestions(list, '0005').map(s => s.studentId)).toEqual(['005']);
+    expect(filterSearchSuggestions(list, '５').map(s => s.studentId)).toEqual(['005']);
+    expect(filterSearchSuggestions(list, '5').map(s => s.studentId)).toEqual(['005', '050']);
+    expect(filterSearchSuggestions(list, '005').map(s => s.studentId)).toEqual(['005']);
   });
 
   it('matches aliases case-insensitively, exact alias before partial, and never inactive accounts', () => {

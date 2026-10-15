@@ -426,6 +426,11 @@ const StudentList = React.memo(function StudentList({
                 {s.displayName}
                 {s.aliases.length > 0 && <span className="dim" style={{ fontWeight: 400, marginLeft: '6px' }}>（{s.aliases.join('、')}）</span>}
                 {s.status === 'inactive' && <span className="adm-stu-grade" style={{ marginLeft: '6px' }}>已停用</span>}
+                {item.isCollision && (
+                  <span className="pill pill-err" style={{ marginLeft: '6px' }} title="與其他帳戶編號數值衝突，請編輯改號">
+                    編號衝突
+                  </span>
+                )}
               </span>
               {/* 人臉註冊狀態由刷臉平板回報，這裡唯讀 */}
               <span className="adm-stu-face" data-testid={`student-face-${s.studentId}`} title="人臉註冊狀態（由刷臉平板回報，唯讀）">
@@ -510,9 +515,12 @@ const StudentEditRow = React.memo(function StudentEditRow({
         return;
       }
       const newCode = norm.code;
-      const collision = allStudents.find(
-        s => s.studentId === newCode && s.studentId !== student.studentId
-      );
+      const collision = allStudents.find(s => {
+        if (s.studentId === student.studentId) return false;
+        if (s.studentId.trim() === studentId.trim() || s.studentId.trim() === newCode) return true;
+        const sNorm = normalizeStudentCode(s.studentId);
+        return sNorm.ok && sNorm.code === newCode;
+      });
       if (collision) {
         setError(`編號 ${newCode} 已經有人使用（${collision.displayName}）。若兩位學生要互換號碼，請先將其中一位改為暫時空號，再分兩次改號。`);
         return;

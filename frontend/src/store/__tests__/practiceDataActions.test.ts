@@ -144,9 +144,21 @@ describe('practiceDataActions', () => {
 
       const auditNew = s.auditEvents.find(e => e.auditEventId.startsWith('audit-change-code-'))!;
       expect(auditNew).toBeDefined();
+      expect(auditNew.eventType).toBe('student_code_changed');
+      expect(auditNew.entityType).toBe('student');
+      expect(auditNew.entityId).toBe('008');
+      expect(auditNew.studentId).toBe('008');
       expect(auditNew.reason).toBe('學員指定幸運號碼');
       expect(auditNew.before).toMatchObject({ studentId: '001', displayName: '甲生' });
       expect(auditNew.after).toMatchObject({ studentId: '008', displayName: '甲生' });
+
+      // U3 Review Finding 3: 舊號 001 後續若再分配給新生，改號稽核紀錄仍正確歸屬於 008，不混淆給新生
+      const newStudent001 = createLocalAccount({ studentId: '001', displayName: '新生小王', openingBalance: 0, openingNote: '', asOfDate: '2026-10-12' }, '2026-10-12T12:00:00Z');
+      usePosStore.getState().addLocalStudent(newStudent001);
+      const afterState = usePosStore.getState();
+      const codeChangeEvent = afterState.auditEvents.find(e => e.auditEventId.startsWith('audit-change-code-'))!;
+      expect(codeChangeEvent.studentId).toBe('008');
+      expect(codeChangeEvent.studentId).not.toBe('001');
     });
 
     it('新編號已被其他帳戶占用時阻擋不變更', () => {

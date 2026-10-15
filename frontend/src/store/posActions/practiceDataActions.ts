@@ -106,10 +106,11 @@ export function createPracticeDataActions(
 
       const changeEvent: LedgerAuditEvent = {
         auditEventId: `audit-change-code-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        eventType: 'transaction_edited',
-        entityType: 'transaction',
+        eventType: 'student_code_changed',
+        entityType: 'student',
         entityId: newId,
         businessDate: state.simulationDate || new Date().toISOString().slice(0, 10),
+        studentId: newId,
         before: { studentId: oldId, displayName: target.displayName },
         after: { studentId: newId, displayName: changes.displayName },
         reason: changes.reason || '修改學生編號',

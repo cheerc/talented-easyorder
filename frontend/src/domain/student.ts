@@ -153,12 +153,13 @@ export function normalizeStudentCode(raw: string):
 }
 
 export type StudentListItem =
-  | { type: 'student'; student: StudentAccount; sortKey: number }
+  | { type: 'student'; student: StudentAccount; sortKey: number; isCollision?: boolean }
   | { type: 'gap'; startCode: string; endCode: string; count: number; label: string };
 
 /**
  * 依編號數值由小到大排序學員清單，並列出從 001 到「目前最大使用號碼（含停用帳戶）」之間的空號（缺號列）。
  * - 停用帳戶仍然占用號碼，不算空號。
+ * - 舊資料若有未正規化導致數值碰撞（如既有 5 與 005），完整列出不隱藏、不合併帳務，並標記 isCollision 供人工改號。
  * - 搜尋框有文字時，不列出空號列（只顯示符合搜尋的帳戶，仍按數值排序）。
  * - 非純數字 ID（如舊測試資料）安全排於數值編號之後。
  */
@@ -194,15 +195,17 @@ export function buildStudentListWithGaps(
     return [];
   }
 
-  // 找出所有有效數字編號的學員
-  const studentByNum = new Map<number, StudentAccount>();
+  // 找出所有有效數字編號的學員；使用陣列避免同一數值之舊帳戶互相覆蓋
+  const studentByNum = new Map<number, StudentAccount[]>();
   const nonNumericStudents: StudentAccount[] = [];
   let maxNum = 0;
 
   for (const s of students) {
     const norm = normalizeStudentCode(s.studentId);
     if (norm.ok) {
-      studentByNum.set(norm.numericValue, s);
+      const arr = studentByNum.get(norm.numericValue) ?? [];
+      arr.push(s);
+      studentByNum.set(norm.numericValue, arr);
       if (norm.numericValue > maxNum) {
         maxNum = norm.numericValue;
       }
@@ -222,8 +225,8 @@ export function buildStudentListWithGaps(
   let gapStart: number | null = null;
 
   for (let num = 1; num <= maxNum; num++) {
-    const existing = studentByNum.get(num);
-    if (existing) {
+    const existingList = studentByNum.get(num);
+    if (existingList && existingList.length > 0) {
       // 若先前有累積缺號，先輸出缺號
       if (gapStart !== null) {
         const gapEnd = num - 1;
@@ -236,7 +239,16 @@ export function buildStudentListWithGaps(
         result.push({ type: 'gap', startCode, endCode, count, label });
         gapStart = null;
       }
-      result.push({ type: 'student', student: existing, sortKey: num });
+      // 碰撞帳戶依 studentId 排序全部列出，不遺失任何帳戶
+      existingList.sort((a, b) => a.studentId.localeCompare(b.studentId));
+      for (const existing of existingList) {
+        result.push({
+          type: 'student',
+          student: existing,
+          sortKey: num,
+          isCollision: existingList.length > 1,
+        });
+      }
     } else {
       // 缺號累積
       if (gapStart === null) {
@@ -298,7 +310,13 @@ export function validateNewAccount(input: NewAccountInput, existing: StudentAcco
       errors.push('invalid_id');
     } else {
       studentId = norm.code;
-      if (existing.some(s => s.studentId === norm.code)) {
+      // 比對既有帳戶之原始編號與正規化編號，避免未正規化既有帳戶（如既有 5）被新增 005/05 碰撞
+      const isDuplicate = existing.some(s => {
+        if (s.studentId.trim() === rawId || s.studentId.trim() === norm.code) return true;
+        const sNorm = normalizeStudentCode(s.studentId);
+        return sNorm.ok && sNorm.code === norm.code;
+      });
+      if (isDuplicate) {
         errors.push('duplicate_id');
       }
     }

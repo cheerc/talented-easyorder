@@ -45,6 +45,7 @@ const FIELD_LABELS: Record<string, string> = {
   paidAmount: '實收金額',
   note: '備註',
   type: '類型',
+  studentId: '編號',
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -81,6 +82,10 @@ function describeChanges(before: Record<string, unknown> | null, after: Record<s
     const note = typeof before.note === 'string' && before.note ? `，備註「${before.note}」` : '';
     return `刪除原單：${parts.join('、')}${note}`;
   }
+  // 學生改號變更描述
+  if (before.studentId !== undefined && after.studentId !== undefined && before.studentId !== after.studentId) {
+    return `編號 ${String(before.studentId)} → ${String(after.studentId)}`;
+  }
   const changes: string[] = [];
   const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
   for (const key of keys) {
@@ -94,6 +99,8 @@ function describeChanges(before: Record<string, unknown> | null, after: Record<s
 
 function typeOf(e: LedgerAuditEvent): { label: string; cls: string } {
   switch (e.eventType) {
+    case 'student_code_changed':
+      return { label: '改編號', cls: 'pill-warn' };
     case 'transaction_edited':
       // 取消訂餐並保留繳費：原單從訂餐改成繳費。
       if (e.before?.type === 'order' && e.after?.type === 'payment') return { label: '取消訂餐', cls: 'pill-warn' };
@@ -140,14 +147,27 @@ export function describeAuditEvents(events: LedgerAuditEvent[], transactions: Le
       const type = typeOf(e);
       let subject: string;
       let ref: AccountRef | undefined;
-      if (e.entityType === 'transaction') {
+      const isStudentChange = e.entityType === 'student' || e.eventType === 'student_code_changed';
+
+      if (e.entityType === 'transaction' && !isStudentChange) {
         ref = accounts.get(e.entityId);
         subject = ref ? accountLabel(ref) : '（找不到帳戶）';
+      } else if (isStudentChange) {
+        // 學生改號／資料變更事件：明確歸屬至新帳戶（目前帳戶），不產生虛擬 transactionId
+        const currentSid = String(e.after?.studentId ?? e.studentId ?? e.entityId);
+        const currentAccount = currentAccounts.find(a => a.studentId === currentSid);
+        const name = currentAccount?.displayName ?? String(e.after?.displayName ?? e.before?.displayName ?? '');
+        ref = { studentId: currentSid, name };
+        subject = accountLabel(ref);
       } else if (e.entityType === 'business_date' || e.entityType === 'settlement') {
         subject = `營業日 ${e.businessDate}`;
       } else {
         subject = '匯出';
       }
+
+      const oldSid = isStudentChange ? String(e.before?.studentId ?? '') : '';
+      const extraSearch = oldSid && oldSid !== ref?.studentId ? ` ${oldSid}` : '';
+
       return {
         auditEventId: e.auditEventId,
         time: formatTaipeiDateTime(e.createdAt),
@@ -158,21 +178,25 @@ export function describeAuditEvents(events: LedgerAuditEvent[], transactions: Le
         subject,
         reason: readableReason(e.reason),
         changes: describeChanges(e.before, e.after),
-        searchText: `${subject} ${ref ? currentNames.get(ref.studentId) ?? '' : ''} ${e.businessDate}`.toLowerCase(),
-        transactionId: e.entityType === 'transaction' ? e.entityId : undefined,
+        searchText: `${subject}${extraSearch} ${ref ? currentNames.get(ref.studentId) ?? '' : ''} ${e.businessDate}`.toLowerCase(),
+        transactionId: e.entityType === 'transaction' && !isStudentChange ? e.entityId : undefined,
         studentId: ref?.studentId,
-        originalExists: e.entityType === 'transaction' && existing.has(e.entityId),
+        originalExists: e.entityType === 'transaction' && !isStudentChange && existing.has(e.entityId),
       };
     });
 }
 
 /**
  * M3：稽核查詢。只打數字時當作帳戶編號，比對編號開頭（「01」查不到「001」以外的帳戶，也不會撞到日期或交易編號）；
- * 其他文字比對帳戶編號、當時與目前的姓名、別名、營業日。
+ * 其他文字比對帳戶編號、當時與目前的姓名、別名、營業日。改號事件同時支援以新號或舊號查出。
  */
 export function matchesAuditQuery(row: AuditRowView, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  if (/^\d+$/.test(q)) return !!row.studentId && row.studentId.toLowerCase().startsWith(q);
+  if (/^\d+$/.test(q)) {
+    const matchesId = !!row.studentId && row.studentId.toLowerCase().startsWith(q);
+    const matchesTokens = row.searchText.split(' ').some(tok => tok === q || tok.startsWith(q));
+    return matchesId || matchesTokens;
+  }
   return row.searchText.includes(q);
 }

@@ -244,6 +244,20 @@ describe('buildStudentListWithGaps (U3 #2)', () => {
       '001', '002', 'guest-1',
     ]);
   });
+
+  it('U3 Review Finding 2: 舊資料若已有未正規化碰撞（如既有 5 與 005），完整列出不隱藏並標記 isCollision', () => {
+    const list = [
+      mk('5', '五號舊資料'),
+      mk('005', '五號新格式'),
+      mk('002', '二號'),
+    ];
+    const result = buildStudentListWithGaps(list);
+    // 應有缺號 001、學員 002、缺號 003–004、以及兩名五號學員
+    expect(result).toHaveLength(5);
+    const students5 = result.filter(r => r.type === 'student' && (r.student.studentId === '5' || r.student.studentId === '005'));
+    expect(students5).toHaveLength(2);
+    expect(students5.every(s => s.type === 'student' && s.isCollision === true)).toBe(true);
+  });
 });
 
 describe('validateNewAccount (U3 #1)', () => {
@@ -298,6 +312,27 @@ describe('validateNewAccount (U3 #1)', () => {
       openingBalanceText: '0',
       openingNote: '',
     }, existing)).toEqual({
+      ok: false,
+      errors: ['duplicate_id'],
+    });
+
+    // U3 Review Finding 2: 既有資料有未正規化 '5'，新增 '05' 或 '005' 仍能正確判定重複阻擋
+    const unnormalizedExisting = [mk('5', '舊五號')];
+    expect(validateNewAccount({
+      studentId: '05',
+      displayName: '新帳戶',
+      openingBalanceText: '0',
+      openingNote: '',
+    }, unnormalizedExisting)).toEqual({
+      ok: false,
+      errors: ['duplicate_id'],
+    });
+    expect(validateNewAccount({
+      studentId: '005',
+      displayName: '新帳戶',
+      openingBalanceText: '0',
+      openingNote: '',
+    }, unnormalizedExisting)).toEqual({
       ok: false,
       errors: ['duplicate_id'],
     });
