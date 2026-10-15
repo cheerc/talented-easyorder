@@ -3,7 +3,12 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './e2e',
   // Cloud suite: authenticated access/lease and signed-out gate behavior only.
-  testMatch: ['**/auth.spec.ts', '**/cloud-production.spec.ts', '**/smoke.spec.ts'],
+  testMatch: [
+    '**/auth.spec.ts',
+    '**/cloud-production.spec.ts',
+    '**/cloud-day-vendors.spec.ts',
+    '**/smoke.spec.ts',
+  ],
   testIgnore: [
     '**/deposit-flow.spec.ts',
     '**/expense-flow.spec.ts',

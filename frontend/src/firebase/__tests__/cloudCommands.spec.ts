@@ -216,6 +216,15 @@ type RawStudentMutationInput = {
   payload: Record<string, unknown>;
 };
 
+type RawP07Artifacts = {
+  commandId: string;
+  targetPath: string;
+  targetMode: 'create' | 'update';
+  command: RawMap;
+  headAfter: RawMap;
+  targetAfter: RawMap;
+};
+
 // Emulator fixtures deliberately mutate nested Firestore maps to model raw SDK clients.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- map fields vary by command and attack case
 type RawMap = Record<string, any>;
@@ -510,6 +519,221 @@ async function expectRawBatchDeniedUnchanged(
   expect(await capturePaths(paths)).toEqual(before);
 }
 
+async function seedP07Vendor(
+  vendorId: string,
+  options: { name?: string; status?: 'active' | 'inactive'; deleted?: boolean } = {},
+) {
+  await withAdmin(db => setDoc(doc(db, `vendors/${vendorId}`), {
+    vendorId,
+    name: options.name ?? 'Synthetic Vendor',
+    phone: '',
+    note: '',
+    status: options.status ?? 'active',
+    deleted: options.deleted ?? false,
+    createdAt: serverTimestamp(),
+    revision: 1,
+    lastCommandId: 'p07-synthetic-vendor-seed',
+    updatedAt: serverTimestamp(),
+  }));
+}
+
+async function seedP07Day(dayId: string, overrides: Partial<RawMap> = {}) {
+  await withAdmin(db => setDoc(doc(db, `days/${dayId}`), {
+    status: 'open',
+    revision: 1,
+    menu: null,
+    openingCash: null,
+    openedBy: null,
+    openedAt: null,
+    totals: {
+      activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0,
+      mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0,
+    },
+    lastSettlementRevision: 0,
+    lastCommandId: 'p07-synthetic-day-seed',
+    updatedAt: serverTimestamp(),
+    ...overrides,
+  }));
+}
+
+async function rawP07VendorArtifacts(input: {
+  commandId: string;
+  kind: 'SaveVendor' | 'RemoveVendor';
+  vendorId: string;
+  payload: RawMap;
+  expectedRevision?: number;
+}): Promise<RawP07Artifacts> {
+  const [headSnapshot, vendorSnapshot] = await withAdmin(async db => Promise.all([
+    getDoc(doc(db, 'system/dataHead')),
+    getDoc(doc(db, `vendors/${input.vendorId}`)),
+  ]));
+  if (!headSnapshot.exists()) throw new Error('P07 raw vendor fixture requires dataHead');
+  const headBefore = headSnapshot.data() as RawMap;
+  const vendorBefore = vendorSnapshot.exists() ? vendorSnapshot.data() as RawMap : null;
+  if (input.kind === 'RemoveVendor' && vendorBefore === null) {
+    throw new Error('P07 raw RemoveVendor fixture requires an existing vendor');
+  }
+  const seq = Number(headBefore.seq) + 1;
+  const headAfter = { ...headBefore, seq, lastCommandId: input.commandId, updatedAt: serverTimestamp() };
+  const vendorAfter = input.kind === 'SaveVendor'
+    ? {
+      ...(vendorBefore ?? {}),
+      vendorId: input.vendorId,
+      name: input.payload.name,
+      phone: input.payload.phone,
+      note: input.payload.note,
+      status: input.payload.status,
+      deleted: false,
+      createdAt: vendorBefore?.createdAt ?? serverTimestamp(),
+      revision: Number(vendorBefore?.revision ?? 0) + 1,
+      lastCommandId: input.commandId,
+      updatedAt: serverTimestamp(),
+    }
+    : {
+      ...(vendorBefore ?? {}),
+      deleted: true,
+      revision: Number(vendorBefore?.revision ?? 0) + 1,
+      lastCommandId: input.commandId,
+      updatedAt: serverTimestamp(),
+    };
+  const expectedRevision = input.expectedRevision ?? Number(vendorBefore?.revision ?? 0);
+  const command: RawMap = {
+    commandId: input.commandId,
+    kind: input.kind,
+    seq,
+    leaseEpoch: 1,
+    actor: { uid: operatorA.uid, email: operatorA.email },
+    committedAt: serverTimestamp(),
+    businessDate: null,
+    studentId: null,
+    targets: { vendorId: input.vendorId },
+    expectedRevisions: { vendor: expectedRevision },
+    before: { head: headBefore, vendor: vendorBefore },
+    after: { head: headAfter, vendor: vendorAfter },
+    reason: input.kind === 'RemoveVendor' ? input.payload.reason : null,
+    cashEffect: { before: 0, after: 0, delta: 0, reasonKind: 'none', refundAmount: 0 },
+    payload: input.payload,
+    inputFingerprint: 'a'.repeat(64),
+  };
+  return {
+    commandId: input.commandId,
+    targetPath: `vendors/${input.vendorId}`,
+    targetMode: vendorBefore === null ? 'create' : 'update',
+    command,
+    headAfter,
+    targetAfter: vendorAfter,
+  };
+}
+
+async function rawP07DayArtifacts(input: {
+  commandId: string;
+  kind: 'SetDayMenu' | 'SetOpeningCash';
+  dayId: string;
+  payload: RawMap;
+  expectedRevision?: number;
+  expectedHeadSeq?: number;
+}): Promise<RawP07Artifacts> {
+  const [headSnapshot, daySnapshot] = await withAdmin(async db => Promise.all([
+    getDoc(doc(db, 'system/dataHead')),
+    getDoc(doc(db, `days/${input.dayId}`)),
+  ]));
+  if (!headSnapshot.exists() || !daySnapshot.exists()) {
+    throw new Error('P07 raw day fixture requires dataHead and an existing target day');
+  }
+  const headBefore = headSnapshot.data() as RawMap;
+  const dayBefore = daySnapshot.data() as RawMap;
+  const seq = Number(headBefore.seq) + 1;
+  const headAfter = { ...headBefore, seq, lastCommandId: input.commandId, updatedAt: serverTimestamp() };
+  const expectedRevisions = input.kind === 'SetDayMenu'
+    ? {
+      day: input.expectedRevision ?? Number(dayBefore.revision),
+      headSeq: input.expectedHeadSeq ?? Number(headBefore.seq),
+    }
+    : { day: input.expectedRevision ?? Number(dayBefore.revision) };
+  const dayAfter = input.kind === 'SetDayMenu'
+    ? {
+      ...dayBefore,
+      menu: {
+        businessDate: input.dayId,
+        itemName: input.payload.itemName,
+        price: input.payload.price,
+        vendorId: input.payload.vendorId,
+        vendorNameSnapshot: input.payload.vendorNameSnapshot,
+        updatedAt: serverTimestamp(),
+        revision: dayBefore.menu === null ? 1 : Number(dayBefore.menu.revision) + 1,
+        inheritedFromDate: input.payload.inheritedFromDate,
+      },
+      revision: Number(dayBefore.revision) + 1,
+      lastCommandId: input.commandId,
+      updatedAt: serverTimestamp(),
+    }
+    : {
+      ...dayBefore,
+      openingCash: input.payload.openingCash,
+      openedBy: dayBefore.openingCash === null ? operatorA.uid : dayBefore.openedBy,
+      openedAt: dayBefore.openingCash === null ? serverTimestamp() : dayBefore.openedAt,
+      revision: Number(dayBefore.revision) + 1,
+      lastCommandId: input.commandId,
+      updatedAt: serverTimestamp(),
+    };
+  const command: RawMap = {
+    commandId: input.commandId,
+    kind: input.kind,
+    seq,
+    leaseEpoch: 1,
+    actor: { uid: operatorA.uid, email: operatorA.email },
+    committedAt: serverTimestamp(),
+    businessDate: input.dayId,
+    studentId: null,
+    targets: { dayId: input.dayId },
+    expectedRevisions,
+    before: { head: headBefore, day: dayBefore },
+    after: { head: headAfter, day: dayAfter },
+    reason: null,
+    cashEffect: { before: 0, after: 0, delta: 0, reasonKind: 'none', refundAmount: 0 },
+    payload: input.payload,
+    inputFingerprint: 'b'.repeat(64),
+  };
+  return {
+    commandId: input.commandId,
+    targetPath: `days/${input.dayId}`,
+    targetMode: 'update',
+    command,
+    headAfter,
+    targetAfter: dayAfter,
+  };
+}
+
+function rawP07Batch(
+  db: Firestore,
+  artifacts: RawP07Artifacts,
+  options: { omit?: Array<'head' | 'target' | 'command'>; extraPaths?: string[] } = {},
+) {
+  const omitted = new Set(options.omit ?? []);
+  const batch = writeBatch(db);
+  if (!omitted.has('head')) batch.update(doc(db, 'system/dataHead'), artifacts.headAfter);
+  if (!omitted.has('target')) {
+    const targetRef = doc(db, artifacts.targetPath);
+    if (artifacts.targetMode === 'create') batch.set(targetRef, artifacts.targetAfter);
+    else batch.update(targetRef, artifacts.targetAfter);
+  }
+  if (!omitted.has('command')) batch.set(doc(db, `commands/${artifacts.commandId}`), artifacts.command);
+  for (const extraPath of options.extraPaths ?? []) {
+    batch.set(doc(db, extraPath), { unexpected: true });
+  }
+  return batch;
+}
+
+async function expectRawP07DeniedUnchanged(
+  artifacts: RawP07Artifacts,
+  options: Parameters<typeof rawP07Batch>[2] = {},
+) {
+  const paths = ['system/dataHead', artifacts.targetPath, `commands/${artifacts.commandId}`, ...(options.extraPaths ?? [])];
+  const before = await capturePaths(paths);
+  await assertFails(rawP07Batch(authedDb(operatorA), artifacts, options).commit());
+  expect(await capturePaths(paths)).toEqual(before);
+}
+
 async function expectMalformedReceiptRejected(
   commandId: string,
   mutate: (receipt: RawMap) => void,
@@ -554,6 +778,25 @@ function replaceRawCommandId(artifacts: RawOrderArtifacts, commandId: string): v
   artifacts.command.after.day = artifacts.dayAfter;
   artifacts.command.after.transaction = artifacts.transactionAfter;
 }
+
+const invalidDirectMenuCases: Array<[string, 'active' | 'inactive' | null, string, boolean]> = [
+  ['missing vendor', null, 'Synthetic Vendor', false],
+  ['inactive vendor', 'inactive', 'Synthetic Vendor', false],
+  ['deleted vendor', 'active', 'Synthetic Vendor', true],
+  ['forged vendor name snapshot', 'active', 'Wrong Name', false],
+];
+
+const invalidOpeningCommandMutations: Array<[string, (artifacts: RawP07Artifacts) => void]> = [
+  ['actor', artifacts => { artifacts.command.actor.uid = operatorB.uid; }],
+  ['server time', artifacts => { artifacts.command.committedAt = Timestamp.fromMillis(0); }],
+  ['sequence', artifacts => { artifacts.command.seq += 1; }],
+  ['lease epoch', artifacts => { artifacts.command.leaseEpoch += 1; }],
+  ['expected day revision', artifacts => { artifacts.command.expectedRevisions.day += 1; }],
+  ['before snapshot', artifacts => { artifacts.command.before.day.revision += 1; }],
+  ['after snapshot', artifacts => { artifacts.command.after.day.openingCash += 1; }],
+  ['projection payload', artifacts => { artifacts.targetAfter.openingCash += 1; }],
+  ['forbidden top-level reason', artifacts => { artifacts.command.reason = 'unexpected'; }],
+];
 
 describeWithEmulator('P05 production command repository and Rules', () => {
   beforeAll(async () => {
@@ -1109,13 +1352,16 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     expect(day.data()?.revision).toBe(1);
   });
 
-  it('P06.1: only the six P05/P06 enabled kinds pass runtime validation', async () => {
+  it('P07.1: only the ten P05/P06/P07 enabled kinds pass runtime validation', async () => {
     await seedBase();
     expect(ALL_COMMAND_KINDS).toHaveLength(22);
-    const enabledKinds = ['EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus'];
+    const enabledKinds = [
+      'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus',
+      'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash',
+    ];
     const disabledKinds = ALL_COMMAND_KINDS.filter(kind => !enabledKinds.includes(kind));
-    expect(enabledKinds).toHaveLength(6);
-    expect(disabledKinds).toHaveLength(16);
+    expect(enabledKinds).toHaveLength(10);
+    expect(disabledKinds).toHaveLength(12);
     for (const [index, kind] of disabledKinds.entries()) {
       const commandId = `f0000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
       const disabled = await repository(operatorA).commitCommand({
@@ -1146,8 +1392,11 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     expect(command.exists()).toBe(false);
   });
 
-  it.each(ALL_COMMAND_KINDS.filter(kind => !['EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus'].includes(kind)))(
-    'P06.2: production Rules directly deny unsupported raw SDK kind %s atomically', async kind => {
+  it.each(ALL_COMMAND_KINDS.filter(kind => ![
+    'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus',
+    'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash',
+  ].includes(kind)))(
+    'P07.2: production Rules directly deny unsupported raw SDK kind %s atomically', async kind => {
       await seedBase();
       const index = ALL_COMMAND_KINDS.indexOf(kind);
       const commandId = `f1111111-1111-4111-8111-${index.toString(16).padStart(12, '0')}`;
@@ -1161,6 +1410,515 @@ describeWithEmulator('P05 production command repository and Rules', () => {
       expect(command.exists()).toBe(false);
     },
   );
+
+  it('P07.3: raw SaveVendor creates then revisions one vendor without array replacement', async () => {
+    await seedBase();
+    const create = await rawP07VendorArtifacts({
+      commandId: 'f7111111-1111-4111-8111-111111111111',
+      kind: 'SaveVendor',
+      vendorId: 'p07-vendor-create',
+      payload: { vendorId: 'p07-vendor-create', name: 'New Vendor', phone: '02-1234', note: 'fresh', status: 'active' },
+    });
+    await rawP07Batch(authedDb(operatorA), create).commit();
+    const edit = await rawP07VendorArtifacts({
+      commandId: 'f7222222-2222-4222-8222-222222222222',
+      kind: 'SaveVendor',
+      vendorId: 'p07-vendor-create',
+      payload: { vendorId: 'p07-vendor-create', name: 'Updated Vendor', phone: '', note: '', status: 'inactive' },
+    });
+    await rawP07Batch(authedDb(operatorA), edit).commit();
+    const boundary = await rawP07VendorArtifacts({
+      commandId: 'f7333333-3333-4333-8333-333333333335',
+      kind: 'SaveVendor',
+      vendorId: 'p07-vendor-boundaries',
+      payload: {
+        vendorId: 'p07-vendor-boundaries', name: 'n'.repeat(100),
+        phone: 'p'.repeat(100), note: 'x'.repeat(500), status: 'active',
+      },
+    });
+    await rawP07Batch(authedDb(operatorA), boundary).commit();
+    const state = await withAdmin(async db => {
+      const [head, vendor, boundaryVendor] = await Promise.all([
+        getDoc(doc(db, 'system/dataHead')),
+        getDoc(doc(db, 'vendors/p07-vendor-create')),
+        getDoc(doc(db, 'vendors/p07-vendor-boundaries')),
+      ]);
+      return { head: head.data(), vendor: vendor.data(), boundaryVendor: boundaryVendor.data() };
+    });
+    expect(state.head).toMatchObject({ seq: 3, lastCommandId: boundary.commandId });
+    expect(state.vendor).toMatchObject({
+      vendorId: 'p07-vendor-create', name: 'Updated Vendor', phone: '', note: '',
+      status: 'inactive', deleted: false, revision: 2, lastCommandId: edit.commandId,
+    });
+    expect(state.boundaryVendor).toMatchObject({ name: 'n'.repeat(100), phone: 'p'.repeat(100), note: 'x'.repeat(500) });
+  });
+
+  it('P07.4: raw RemoveVendor tombstones an inactive vendor and the ID cannot be reused', async () => {
+    await seedBase();
+    await seedP07Vendor('p07-vendor-remove', { name: 'Inactive Vendor', status: 'inactive' });
+    const remove = await rawP07VendorArtifacts({
+      commandId: 'f7333333-3333-4333-8333-333333333333',
+      kind: 'RemoveVendor',
+      vendorId: 'p07-vendor-remove',
+      payload: { reason: 'r'.repeat(500) },
+    });
+    await rawP07Batch(authedDb(operatorA), remove).commit();
+    const tombstone = await withAdmin(db => getDoc(doc(db, 'vendors/p07-vendor-remove')));
+    expect(tombstone.data()).toMatchObject({ deleted: true, status: 'inactive', revision: 2 });
+    const reuse = await rawP07VendorArtifacts({
+      commandId: 'f7444444-4444-4444-8444-444444444444',
+      kind: 'SaveVendor',
+      vendorId: 'p07-vendor-remove',
+      expectedRevision: 0,
+      payload: { vendorId: 'p07-vendor-remove', name: 'Reused Vendor', phone: '', note: '', status: 'active' },
+    });
+    await expectRawP07DeniedUnchanged(reuse);
+  });
+
+  it.each([
+    ['active vendor', 'active', false],
+    ['already removed vendor', 'inactive', true],
+  ] as const)('P07.5: raw RemoveVendor rejects an %s atomically', async (_label, status, deleted) => {
+    await seedBase();
+    await seedP07Vendor('p07-invalid-remove', { status, deleted });
+    const artifacts = await rawP07VendorArtifacts({
+      commandId: 'f7555555-5555-4555-8555-555555555555',
+      kind: 'RemoveVendor',
+      vendorId: 'p07-invalid-remove',
+      payload: { reason: 'Invalid removal attempt' },
+    });
+    await expectRawP07DeniedUnchanged(artifacts);
+  });
+
+  it('P07.6a: raw SaveVendor rejects an overlong document ID atomically', async () => {
+    await seedBase();
+    const vendorId = 'v'.repeat(65);
+    const artifacts = await rawP07VendorArtifacts({
+      commandId: 'f7a11111-1111-4111-8111-111111111111',
+      kind: 'SaveVendor', vendorId,
+      payload: { vendorId, name: 'Valid Name', phone: '', note: '', status: 'active' },
+    });
+    await expectRawP07DeniedUnchanged(artifacts);
+  });
+
+  it.each([
+    ['empty name', { name: '', phone: '', note: '', status: 'active' }],
+    ['overlong name', { name: 'n'.repeat(101), phone: '', note: '', status: 'active' }],
+    ['overlong phone', { name: 'Valid Name', phone: 'p'.repeat(101), note: '', status: 'active' }],
+    ['overlong note', { name: 'Valid Name', phone: '', note: 'n'.repeat(501), status: 'active' }],
+    ['nonliteral status', { name: 'Valid Name', phone: '', note: '', status: 'deleted' }],
+  ])('P07.6: raw SaveVendor rejects a %s without changing the target or head', async (_label, values) => {
+    await seedBase();
+    const vendorId = 'p07-invalid-save';
+    const artifacts = await rawP07VendorArtifacts({
+      commandId: 'f7666666-6666-4666-8666-666666666666',
+      kind: 'SaveVendor',
+      vendorId,
+      payload: { vendorId, ...values },
+    });
+    await expectRawP07DeniedUnchanged(artifacts);
+  });
+
+  it.each([
+    ['empty reason', ''],
+    ['overlong reason', 'r'.repeat(501)],
+  ])('P07.7: raw RemoveVendor rejects a %s atomically', async (_label, reason) => {
+    await seedBase();
+    await seedP07Vendor('p07-invalid-reason', { status: 'inactive' });
+    const artifacts = await rawP07VendorArtifacts({
+      commandId: 'f7777777-7777-4777-8777-777777777777',
+      kind: 'RemoveVendor',
+      vendorId: 'p07-invalid-reason',
+      payload: { reason },
+    });
+    await expectRawP07DeniedUnchanged(artifacts);
+  });
+
+  it('P07.8: raw SetDayMenu preplans a future empty day after EnsureDay', async () => {
+    await seedBase();
+    await seedP07Vendor('p07-menu-vendor');
+    const futureDay = shiftDate(today, 1);
+    const ensured = await repository(operatorA).commitCommand({
+      commandId: 'f7888888-8888-4888-8888-888888888888',
+      kind: 'EnsureDay', leaseEpoch: 1,
+      targets: { dayId: futureDay }, expectedRevisions: { day: 0 }, payload: { businessDate: futureDay },
+    });
+    expect(ensured.ok, JSON.stringify(ensured)).toBe(true);
+    const artifacts = await rawP07DayArtifacts({
+      commandId: 'f7999999-9999-4999-8999-999999999999',
+      kind: 'SetDayMenu',
+      dayId: futureDay,
+      payload: {
+        selectionDate: today,
+        itemName: 'Future Menu', price: 125, vendorId: 'p07-menu-vendor',
+        vendorNameSnapshot: 'Synthetic Vendor', inheritedFromDate: null,
+      },
+    });
+    await rawP07Batch(authedDb(operatorA), artifacts).commit();
+    const [head, day] = await withAdmin(async db => Promise.all([
+      getDoc(doc(db, 'system/dataHead')),
+      getDoc(doc(db, `days/${futureDay}`)),
+    ]));
+    expect(head.data()).toMatchObject({ seq: 2, lastCommandId: artifacts.commandId });
+    expect(day.data()).toMatchObject({
+      status: 'open', revision: 2,
+      menu: {
+        businessDate: futureDay, itemName: 'Future Menu', price: 125,
+        vendorId: 'p07-menu-vendor', vendorNameSnapshot: 'Synthetic Vendor',
+        revision: 1, inheritedFromDate: null,
+      },
+    });
+  });
+
+  it('P07.9: raw SetDayMenu inherits the immediate source menu with a frozen snapshot', async () => {
+    await seedBase({ withBusinessDocs: true });
+    await seedP07Vendor('p05-vendor', { name: 'Synthetic Vendor' });
+    const futureDay = shiftDate(today, 1);
+    const ensured = await repository(operatorA).commitCommand({
+      commandId: 'f7aaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      kind: 'EnsureDay', leaseEpoch: 1,
+      targets: { dayId: futureDay }, expectedRevisions: { day: 0 }, payload: { businessDate: futureDay },
+    });
+    expect(ensured.ok, JSON.stringify(ensured)).toBe(true);
+    const artifacts = await rawP07DayArtifacts({
+      commandId: 'f7bbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      kind: 'SetDayMenu',
+      dayId: futureDay,
+      payload: {
+        selectionDate: today,
+        itemName: menu.itemName, price: menu.price, vendorId: menu.vendorId,
+        vendorNameSnapshot: menu.vendorNameSnapshot, inheritedFromDate: today,
+      },
+    });
+    await rawP07Batch(authedDb(operatorA), artifacts).commit();
+    const day = await withAdmin(db => getDoc(doc(db, `days/${futureDay}`)));
+    expect(day.data()?.menu).toMatchObject({
+      businessDate: futureDay, itemName: menu.itemName, price: menu.price,
+      vendorId: menu.vendorId, vendorNameSnapshot: menu.vendorNameSnapshot,
+      inheritedFromDate: today, revision: 1,
+    });
+  });
+
+  it('P07.10: raw SetOpeningCash confirms zero then preserves the first actor and time', async () => {
+    await seedBase();
+    await seedP07Day(today);
+    const first = await rawP07DayArtifacts({
+      commandId: 'f7cccccc-cccc-4ccc-8ccc-cccccccccccc',
+      kind: 'SetOpeningCash', dayId: today, payload: { openingCash: 0 },
+    });
+    await rawP07Batch(authedDb(operatorA), first).commit();
+    const firstDay = await withAdmin(async db => {
+      const snapshot = await getDoc(doc(db, `days/${today}`));
+      return snapshot.data() as RawMap;
+    });
+    expect(firstDay.openingCash).toBe(0);
+    expect(firstDay.openedBy).toBe(operatorA.uid);
+    expect(firstDay.openedAt).toBeInstanceOf(Timestamp);
+    const firstActor = firstDay.openedBy;
+    const firstAt = firstDay.openedAt;
+    const second = await rawP07DayArtifacts({
+      commandId: 'f7dddddd-dddd-4ddd-8ddd-dddddddddddd',
+      kind: 'SetOpeningCash', dayId: today, payload: { openingCash: 20000 },
+    });
+    await rawP07Batch(authedDb(operatorA), second).commit();
+    const finalDay = await withAdmin(db => getDoc(doc(db, `days/${today}`)));
+    expect(finalDay.data()).toMatchObject({ openingCash: 20000, openedBy: firstActor, openedAt: firstAt });
+  });
+
+  it.each([
+    ['above the ceiling', 20001, today],
+    ['fractionally', 1.5, today],
+    ['unconfirmed null', null, today],
+    ['on a future date', 0, shiftDate(today, 1)],
+  ])('P07.11: raw SetOpeningCash rejects an amount %s atomically', async (_label, openingCash, targetDate) => {
+    await seedBase();
+    await seedP07Day(targetDate);
+    const artifacts = await rawP07DayArtifacts({
+      commandId: 'f7eeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      kind: 'SetOpeningCash', dayId: targetDate, payload: { openingCash },
+    });
+    await expectRawP07DeniedUnchanged(artifacts);
+  });
+
+  it('P07.12: raw SetOpeningCash rejects closed days and inconsistent unconfirmed metadata', async () => {
+    await seedBase();
+    await seedP07Day(today, { status: 'closed' });
+    const closed = await rawP07DayArtifacts({
+      commandId: 'f7f11111-1111-4111-8111-111111111111',
+      kind: 'SetOpeningCash', dayId: today, payload: { openingCash: 100 },
+    });
+    await expectRawP07DeniedUnchanged(closed);
+
+    await seedP07Day(today, { openingCash: null, openedBy: operatorA.uid, openedAt: Timestamp.fromDate(new Date()) });
+    const malformed = await rawP07DayArtifacts({
+      commandId: 'f7f22222-2222-4222-8222-222222222222',
+      kind: 'SetOpeningCash', dayId: today, payload: { openingCash: 100 },
+    });
+    await expectRawP07DeniedUnchanged(malformed);
+  });
+
+  it.each(invalidDirectMenuCases)(
+    'P07.13: direct menu assignment rejects a %s atomically', async (_label, status, snapshot, deleted) => {
+    await seedBase({ withBusinessDocs: true });
+    if (status !== null) await seedP07Vendor('p05-vendor', { name: 'Synthetic Vendor', status, deleted });
+    const artifacts = await rawP07DayArtifacts({
+      commandId: 'f7333333-3333-4333-8333-333333333334',
+      kind: 'SetDayMenu', dayId: today,
+      payload: {
+        selectionDate: today, itemName: 'New Menu', price: 125,
+        vendorId: 'p05-vendor', vendorNameSnapshot: snapshot, inheritedFromDate: null,
+      },
+    });
+    await expectRawP07DeniedUnchanged(artifacts);
+  });
+
+  it.each([
+    ['future selection date', shiftDate(today, 1), today, 'Synthetic Vendor'],
+    ['closed target day', today, today, 'Synthetic Vendor'],
+    ['stale head sequence', today, today, 'Synthetic Vendor'],
+    ['malformed target day ID', today, 'not-a-date', 'Synthetic Vendor'],
+  ])('P07.14: SetDayMenu rejects a %s atomically', async (_label, selectionDate, dayId, vendorNameSnapshot) => {
+    await seedBase({ withBusinessDocs: true });
+    await seedP07Vendor('p05-vendor', { name: 'Synthetic Vendor' });
+    if (dayId !== today) await seedP07Day(dayId);
+    if (_label === 'closed target day') {
+      await withAdmin(db => updateDoc(doc(db, `days/${dayId}`), { status: 'closed' }));
+    }
+    const artifacts = await rawP07DayArtifacts({
+      commandId: 'f7444444-4444-4444-8444-444444444445',
+      kind: 'SetDayMenu', dayId,
+      expectedHeadSeq: _label === 'stale head sequence' ? 1 : undefined,
+      payload: {
+        selectionDate, itemName: 'New Menu', price: 125,
+        vendorId: 'p05-vendor', vendorNameSnapshot, inheritedFromDate: null,
+      },
+    });
+    await expectRawP07DeniedUnchanged(artifacts);
+  });
+
+  it('P07.15: inheritance rejects a source whose vendor was renamed', async () => {
+    await seedBase({ withBusinessDocs: true });
+    await seedP07Vendor('p05-vendor', { name: 'Renamed Vendor' });
+    const futureDay = shiftDate(today, 1);
+    const ensured = await repository(operatorA).commitCommand({
+      commandId: 'f7555555-5555-4555-8555-555555555556',
+      kind: 'EnsureDay', leaseEpoch: 1,
+      targets: { dayId: futureDay }, expectedRevisions: { day: 0 }, payload: { businessDate: futureDay },
+    });
+    expect(ensured.ok, JSON.stringify(ensured)).toBe(true);
+    const artifacts = await rawP07DayArtifacts({
+      commandId: 'f7666666-6666-4666-8666-666666666667',
+      kind: 'SetDayMenu', dayId: futureDay,
+      payload: {
+        selectionDate: today,
+        itemName: menu.itemName, price: menu.price, vendorId: menu.vendorId,
+        vendorNameSnapshot: menu.vendorNameSnapshot, inheritedFromDate: today,
+      },
+    });
+    await expectRawP07DeniedUnchanged(artifacts);
+  });
+
+  it('P07.16: inherited menus cannot cite a source after the selected date', async () => {
+    await seedBase();
+    await seedP07Vendor('p07-source-vendor');
+    const sourceDate = shiftDate(today, 1);
+    const targetDate = shiftDate(today, 2);
+    await seedP07Day(sourceDate, {
+      menu: {
+        businessDate: sourceDate, itemName: 'Future Source', price: 125,
+        vendorId: 'p07-source-vendor', vendorNameSnapshot: 'Synthetic Vendor',
+        updatedAt: Timestamp.fromDate(new Date()), revision: 1, inheritedFromDate: null,
+      },
+    });
+    await seedP07Day(targetDate);
+    const artifacts = await rawP07DayArtifacts({
+      commandId: 'f7777777-7777-4777-8777-777777777778',
+      kind: 'SetDayMenu', dayId: targetDate,
+      payload: {
+        selectionDate: today,
+        itemName: 'Future Source', price: 125, vendorId: 'p07-source-vendor',
+        vendorNameSnapshot: 'Synthetic Vendor', inheritedFromDate: sourceDate,
+      },
+    });
+    await expectRawP07DeniedUnchanged(artifacts);
+  });
+
+  it('P07.17: missing day writer, extra writes, and raw replay are denied atomically', async () => {
+    await seedBase();
+    await seedP07Day(today);
+    const omitted = await rawP07DayArtifacts({
+      commandId: 'f7888888-8888-4888-8888-888888888889',
+      kind: 'SetOpeningCash', dayId: today, payload: { openingCash: 0 },
+    });
+    await expectRawP07DeniedUnchanged(omitted, { omit: ['target'] });
+    const noHead = await rawP07DayArtifacts({
+      commandId: 'f7899999-9999-4999-8999-999999999989',
+      kind: 'SetOpeningCash', dayId: today, payload: { openingCash: 0 },
+    });
+    await expectRawP07DeniedUnchanged(noHead, { omit: ['head'] });
+    const noCommand = await rawP07DayArtifacts({
+      commandId: 'f7900000-0000-4000-8000-000000000090',
+      kind: 'SetOpeningCash', dayId: today, payload: { openingCash: 0 },
+    });
+    await expectRawP07DeniedUnchanged(noCommand, { omit: ['command'] });
+    const extra = await rawP07DayArtifacts({
+      commandId: 'f7999999-9999-4999-8999-999999999990',
+      kind: 'SetOpeningCash', dayId: today, payload: { openingCash: 0 },
+    });
+    await expectRawP07DeniedUnchanged(extra, { extraPaths: ['vendors/p07-extra-write'] });
+    const db = authedDb(operatorA);
+    await rawP07Batch(db, extra).commit();
+    const beforeReplay = await capturePaths(['system/dataHead', `days/${today}`, `commands/${extra.commandId}`]);
+    await assertFails(rawP07Batch(db, extra).commit());
+    expect(await capturePaths(['system/dataHead', `days/${today}`, `commands/${extra.commandId}`])).toEqual(beforeReplay);
+  });
+
+  it.each(invalidOpeningCommandMutations)(
+    'P07.19: raw SetOpeningCash rejects a forged %s with all state unchanged', async (_label, mutate) => {
+      await seedBase();
+      await seedP07Day(today);
+      const artifacts = await rawP07DayArtifacts({
+        commandId: 'f7aaaaaa-aaaa-4aaa-8aaa-aaaaaaaabbbb',
+        kind: 'SetOpeningCash', dayId: today, payload: { openingCash: 0 },
+      });
+      mutate(artifacts);
+      await expectRawP07DeniedUnchanged(artifacts);
+    },
+  );
+
+  it('P07.20: raw direct deletes remain denied for vendors and business days', async () => {
+    await seedBase();
+    await seedP07Vendor('p07-delete-vendor', { status: 'inactive' });
+    await seedP07Day(today);
+    const paths = ['system/dataHead', 'days/' + today, 'vendors/p07-delete-vendor'];
+    const before = await capturePaths(paths);
+    const db = authedDb(operatorA);
+    const dayDelete = writeBatch(db);
+    dayDelete.delete(doc(db, `days/${today}`));
+    await assertFails(dayDelete.commit());
+    const vendorDelete = writeBatch(db);
+    vendorDelete.delete(doc(db, 'vendors/p07-delete-vendor'));
+    await assertFails(vendorDelete.commit());
+    expect(await capturePaths(paths)).toEqual(before);
+  });
+
+  it('P07.21: later menu and vendor changes preserve an order’s frozen snapshots and financial totals', async () => {
+    await seedBase({ withBusinessDocs: true });
+    const vendorId = 'p05-vendor';
+    const removeCommandId = 'f7666666-6666-4666-8666-666666666666';
+    const vendorCreate = await repository(operatorA).commitCommand({
+      commandId: 'f7211111-1111-4111-8111-111111111111',
+      kind: 'SaveVendor', leaseEpoch: 1, targets: { vendorId },
+      expectedRevisions: { vendor: 0 },
+      payload: { vendorId, name: 'Synthetic Vendor', phone: '', note: '', status: 'active' },
+    });
+    expect(vendorCreate.ok, JSON.stringify(vendorCreate)).toBe(true);
+
+    const order = await repository(operatorA).commitCommand(
+      orderInput('f7222222-2222-4222-8222-222222222222', 'p07-snapshot-order'),
+    );
+    expect(order.ok, JSON.stringify(order)).toBe(true);
+    const orderState = await withAdmin(async db => {
+      const [head, student, day, transaction] = await Promise.all([
+        getDoc(doc(db, 'system/dataHead')),
+        getDoc(doc(db, `students/${studentId}`)),
+        getDoc(doc(db, `days/${dayId}`)),
+        getDoc(doc(db, 'transactions/p07-snapshot-order')),
+      ]);
+      return {
+        head: head.data() as RawMap,
+        student: student.data() as RawMap,
+        day: day.data() as RawMap,
+        transaction: transaction.data() as RawMap,
+      };
+    });
+    expect(orderState.transaction).toMatchObject({
+      menuNameSnapshot: 'Synthetic Bento', menuPriceSnapshot: 100,
+      vendorIdSnapshot: vendorId, vendorNameSnapshot: 'Synthetic Vendor',
+    });
+    expect(orderState.student).toMatchObject({ currentBalance: 10, revision: 2 });
+    expect(orderState.day).toMatchObject({
+      revision: 2,
+      totals: { activeTransactionCount: 1, bentoCount: 1, otherMealCount: 0, mealTotal: 100, retainedReceipts: 110 },
+    });
+
+    const menuUpdate = await repository(operatorA).commitCommand({
+      commandId: 'f7333333-3333-4333-8333-333333333333',
+      kind: 'SetDayMenu', leaseEpoch: 1, targets: { dayId },
+      expectedRevisions: { day: 2, headSeq: 2 },
+      payload: {
+        selectionDate: today, itemName: 'Updated Bento', price: 125,
+        vendorId, vendorNameSnapshot: 'Synthetic Vendor', inheritedFromDate: null,
+      },
+    });
+    expect(menuUpdate.ok, JSON.stringify(menuUpdate)).toBe(true);
+
+    const rename = await repository(operatorA).commitCommand({
+      commandId: 'f7444444-4444-4444-8444-444444444444',
+      kind: 'SaveVendor', leaseEpoch: 1, targets: { vendorId },
+      expectedRevisions: { vendor: 1 },
+      payload: { vendorId, name: 'Renamed Vendor', phone: '', note: '', status: 'active' },
+    });
+    expect(rename.ok, JSON.stringify(rename)).toBe(true);
+    const deactivate = await repository(operatorA).commitCommand({
+      commandId: 'f7555555-5555-4555-8555-555555555555',
+      kind: 'SaveVendor', leaseEpoch: 1, targets: { vendorId },
+      expectedRevisions: { vendor: 2 },
+      payload: { vendorId, name: 'Renamed Vendor', phone: '', note: '', status: 'inactive' },
+    });
+    expect(deactivate.ok, JSON.stringify(deactivate)).toBe(true);
+    const remove = await repository(operatorA).commitCommand({
+      commandId: removeCommandId,
+      kind: 'RemoveVendor', leaseEpoch: 1, targets: { vendorId },
+      expectedRevisions: { vendor: 3 }, payload: { reason: 'Vendor retired' },
+    });
+    expect(remove.ok, JSON.stringify(remove)).toBe(true);
+
+    const finalState = await withAdmin(async db => {
+      const [head, student, day, transaction, vendor] = await Promise.all([
+        getDoc(doc(db, 'system/dataHead')),
+        getDoc(doc(db, `students/${studentId}`)),
+        getDoc(doc(db, `days/${dayId}`)),
+        getDoc(doc(db, 'transactions/p07-snapshot-order')),
+        getDoc(doc(db, `vendors/${vendorId}`)),
+      ]);
+      return {
+        head: head.data() as RawMap,
+        student: student.data() as RawMap,
+        day: day.data() as RawMap,
+        transaction: transaction.data() as RawMap,
+        vendor: vendor.data() as RawMap,
+      };
+    });
+    expect(finalState.head).toMatchObject({ seq: 6, lastCommandId: removeCommandId });
+    expect(finalState.transaction).toMatchObject({
+      menuNameSnapshot: 'Synthetic Bento', menuPriceSnapshot: 100,
+      vendorIdSnapshot: vendorId, vendorNameSnapshot: 'Synthetic Vendor',
+    });
+    expect(finalState.day).toMatchObject({
+      revision: 3,
+      menu: {
+        businessDate: dayId, itemName: 'Updated Bento', price: 125,
+        vendorId, vendorNameSnapshot: 'Synthetic Vendor',
+      },
+      totals: { activeTransactionCount: 1, bentoCount: 1, otherMealCount: 0, mealTotal: 100, retainedReceipts: 110 },
+    });
+    expect(finalState.student).toMatchObject({ currentBalance: 10, revision: 2 });
+    expect(finalState.vendor).toMatchObject({ name: 'Renamed Vendor', status: 'inactive', deleted: true, revision: 4 });
+  });
+
+  it('P07.18: raw RemoveVendor requires matching top-level and payload reasons', async () => {
+    await seedBase();
+    await seedP07Vendor('p07-reason-vendor', { status: 'inactive' });
+    const artifacts = await rawP07VendorArtifacts({
+      commandId: 'f7fffff7-ffff-4fff-8fff-fffffffffff7',
+      kind: 'RemoveVendor',
+      vendorId: 'p07-reason-vendor',
+      payload: { reason: 'Correct reason' },
+    });
+    artifacts.command.reason = 'Different reason';
+    await expectRawP07DeniedUnchanged(artifacts);
+  });
 
   it('P06.3: creates string IDs with baseline/current opening dates, signed boundaries, and no financial side effects', async () => {
     await seedBase();

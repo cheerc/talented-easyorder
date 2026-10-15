@@ -156,6 +156,24 @@ service cloud.firestore {
         && (menu.inheritedFromDate == null || (menu.inheritedFromDate is string && validCalendarDate(menu.inheritedFromDate)));
     }
 
+    function validVendor(vendor, vendorId) {
+      return exactMap(vendor, [
+          'vendorId', 'name', 'phone', 'note', 'status', 'deleted',
+          'createdAt', 'revision', 'lastCommandId', 'updatedAt'
+        ])
+        && validId(vendorId)
+        && vendor.vendorId == vendorId
+        && validDisplayName(vendor.name)
+        && vendor.phone is string && vendor.phone.size() <= 100
+        && vendor.note is string && vendor.note.size() <= 500
+        && vendor.status in ['active', 'inactive']
+        && vendor.deleted is bool
+        && vendor.createdAt is timestamp
+        && vendor.revision is int && vendor.revision >= 1
+        && vendor.lastCommandId is string
+        && vendor.updatedAt is timestamp;
+    }
+
     function validDay(day, dayId) {
       return exactMap(day, [
           'status', 'revision', 'menu', 'openingCash', 'openedBy', 'openedAt',
@@ -165,8 +183,9 @@ service cloud.firestore {
         && day.revision is int && day.revision >= 1
         && (day.menu == null || validMenu(day.menu, dayId))
         && (day.openingCash == null || (day.openingCash is int && day.openingCash >= 0 && day.openingCash <= 20000))
-        && (day.openedBy == null || day.openedBy is string)
-        && (day.openedAt == null || day.openedAt is timestamp)
+        && (day.openingCash == null
+          ? day.openedBy == null && day.openedAt == null
+          : day.openedBy is string && day.openedBy.size() > 0 && day.openedAt is timestamp)
         && validTotals(day.totals)
         && day.lastSettlementRevision is int && day.lastSettlementRevision >= 0
         && day.lastCommandId is string
@@ -195,7 +214,10 @@ service cloud.firestore {
         ])
         && validCommandId(commandId)
         && command.commandId == commandId
-        && command.kind in ['EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus']
+        && command.kind in [
+          'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus',
+          'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash'
+        ]
         && command.seq is int && command.seq == head.seq + 1
         && command.leaseEpoch is int && command.leaseEpoch >= 0
         && command.actor is map
@@ -203,7 +225,7 @@ service cloud.firestore {
         && command.actor.uid == request.auth.uid
         && command.actor.email == request.auth.token.email
         && command.committedAt == request.time
-        && (command.kind == 'SetStudentStatus'
+        && (command.kind in ['SetStudentStatus', 'RemoveVendor']
           ? (command.reason is string && command.reason.size() >= 1 && command.reason.size() <= 500)
           : command.reason == null)
         && command.inputFingerprint is string
@@ -224,6 +246,31 @@ service cloud.firestore {
         && headAfter.goLiveDate == head.goLiveDate;
     }
 
+    function p07CommandEnvelope(commandId, command, head, headAfter) {
+      return exactMap(command, [
+          'commandId', 'kind', 'seq', 'leaseEpoch', 'actor', 'committedAt', 'businessDate',
+          'studentId', 'targets', 'expectedRevisions', 'before', 'after', 'reason',
+          'cashEffect', 'payload', 'inputFingerprint'
+        ])
+        && validCommandId(commandId)
+        && command.commandId == commandId
+        && command.seq is int && command.seq == head.seq + 1
+        && command.leaseEpoch is int && command.leaseEpoch >= 0
+        && command.actor == {'uid': request.auth.uid, 'email': request.auth.token.email}
+        && command.committedAt == request.time
+        && (command.kind == 'RemoveVendor'
+          ? (command.reason is string && command.reason.size() >= 1 && command.reason.size() <= 500)
+          : command.reason == null)
+        && command.inputFingerprint is string
+        && command.inputFingerprint.matches('^[0-9a-f]{64}$')
+        && command.before is map && command.after is map
+        && head.maintenance == false
+        && head.seq is int
+        && headAfter.seq == head.seq + 1
+        && headAfter.lastCommandId == commandId
+        && headAfter.updatedAt == request.time;
+    }
+
     function validCashEffect(effect, amount) {
       return exactMap(effect, ['before', 'after', 'delta', 'reasonKind', 'refundAmount'])
         && effect.before == 0
@@ -231,6 +278,10 @@ service cloud.firestore {
         && effect.delta == amount
         && effect.reasonKind == (amount > 0 ? 'collection' : 'none')
         && effect.refundAmount == 0;
+    }
+
+    function zeroCashEffect(effect) {
+      return effect == {'before': 0, 'after': 0, 'delta': 0, 'reasonKind': 'none', 'refundAmount': 0};
     }
 
     function validNewDay(dayId, day, commandId) {
@@ -424,6 +475,234 @@ service cloud.firestore {
         && validCashEffect(command.cashEffect, 0);
     }
 
+    function validSaveVendorCommon(commandId, command, head, headAfter, vendorBefore, vendorAfter, createVendor) {
+      let vendorId = command.targets.vendorId;
+      return commandHolder(command.leaseEpoch)
+        && p07CommandEnvelope(commandId, command, head, headAfter)
+        && command.kind == 'SaveVendor'
+        && exactMap(command.targets, ['vendorId'])
+        && validId(vendorId)
+        && exactMap(command.expectedRevisions, ['vendor'])
+        && exactMap(command.payload, ['vendorId', 'name', 'phone', 'note', 'status'])
+        && command.payload.vendorId == vendorId
+        && command.businessDate == null
+        && command.studentId == null
+        && command.reason == null
+        && zeroCashEffect(command.cashEffect)
+        && exactMap(command.before, ['head', 'vendor'])
+        && exactMap(command.after, ['head', 'vendor'])
+        && command.before.head == head
+        && command.after.head == headAfter
+        && (createVendor
+          ? command.expectedRevisions.vendor == 0 && vendorBefore == null
+            && vendorAfter is map
+            && vendorAfter.vendorId == vendorId
+            && vendorAfter.name == command.payload.name
+            && vendorAfter.phone == command.payload.phone
+            && vendorAfter.note == command.payload.note
+            && vendorAfter.status == 'active'
+            && vendorAfter.deleted == false
+            && vendorAfter.revision == 1
+            && vendorAfter.lastCommandId == commandId
+            && vendorAfter.createdAt == request.time
+            && vendorAfter.updatedAt == request.time
+          : vendorBefore.deleted == false
+            && command.expectedRevisions.vendor == vendorBefore.revision
+            && vendorAfter is map
+            && vendorAfter.vendorId == vendorId
+            && vendorAfter.name == command.payload.name
+            && vendorAfter.phone == command.payload.phone
+            && vendorAfter.note == command.payload.note
+            && vendorAfter.status == command.payload.status
+            && vendorAfter.deleted == false
+            && vendorAfter.revision == vendorBefore.revision + 1
+            && vendorAfter.lastCommandId == commandId
+            && vendorAfter.createdAt == vendorBefore.createdAt
+            && vendorAfter.updatedAt == request.time);
+    }
+
+    function validSaveVendorCreate(commandId, command) {
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let vendorId = command.targets.vendorId;
+      let vendorAfter = getAfter(/databases/$(database)/documents/vendors/$(vendorId)).data;
+      return validSaveVendorCommon(commandId, command, head, headAfter, null, vendorAfter, true)
+        && !exists(/databases/$(database)/documents/vendors/$(vendorId));
+    }
+
+    function validSaveVendorUpdate(commandId, command) {
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let vendorId = command.targets.vendorId;
+      let vendorBefore = get(/databases/$(database)/documents/vendors/$(vendorId)).data;
+      let vendorAfter = getAfter(/databases/$(database)/documents/vendors/$(vendorId)).data;
+      return validSaveVendorCommon(commandId, command, head, headAfter, vendorBefore, vendorAfter, false);
+    }
+
+    function validSaveVendor(commandId, command) {
+      return command.kind == 'SaveVendor'
+        && exactMap(command.expectedRevisions, ['vendor'])
+        && (command.expectedRevisions.vendor == 0
+          ? validSaveVendorCreate(commandId, command)
+          : validSaveVendorUpdate(commandId, command));
+    }
+
+    function validRemoveVendor(commandId, command) {
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let vendorId = command.targets.vendorId;
+      let vendorBefore = get(/databases/$(database)/documents/vendors/$(vendorId)).data;
+      let vendorAfter = getAfter(/databases/$(database)/documents/vendors/$(vendorId)).data;
+      return commandHolder(command.leaseEpoch)
+        && p07CommandEnvelope(commandId, command, head, headAfter)
+        && command.kind == 'RemoveVendor'
+        && exactMap(command.targets, ['vendorId'])
+        && validId(vendorId)
+        && exactMap(command.expectedRevisions, ['vendor'])
+        && exactMap(command.payload, ['reason'])
+        && command.payload.reason is string
+        && command.payload.reason.size() >= 1 && command.payload.reason.size() <= 500
+        && command.businessDate == null
+        && command.studentId == null
+        && command.reason == command.payload.reason
+        && zeroCashEffect(command.cashEffect)
+        && exactMap(command.before, ['head', 'vendor'])
+        && exactMap(command.after, ['head', 'vendor'])
+        && command.before.head == head
+        && command.after.head == headAfter
+        && vendorBefore.status == 'inactive'
+        && vendorBefore.deleted == false
+        && command.expectedRevisions.vendor == vendorBefore.revision
+        && vendorAfter.name == vendorBefore.name
+        && vendorAfter.phone == vendorBefore.phone
+        && vendorAfter.note == vendorBefore.note
+        && vendorAfter.status == 'inactive'
+        && vendorAfter.deleted == true
+        && vendorAfter.createdAt == vendorBefore.createdAt
+        && vendorAfter.revision == vendorBefore.revision + 1
+        && vendorAfter.lastCommandId == commandId
+        && vendorAfter.updatedAt == request.time;
+    }
+
+    function validSetDayMenuCommon(commandId, command, head, headAfter, dayBefore, dayAfter, vendor) {
+      let dayId = command.targets.dayId;
+      let payload = command.payload;
+      let menuAfter = dayAfter.menu;
+      return commandHolder(command.leaseEpoch)
+        && p07CommandEnvelope(commandId, command, head, headAfter)
+        && command.kind == 'SetDayMenu'
+        && exactMap(command.targets, ['dayId'])
+        && validCalendarDate(dayId)
+        && exactMap(command.expectedRevisions, ['day', 'headSeq'])
+        && exactMap(payload, ['selectionDate', 'itemName', 'price', 'vendorId', 'vendorNameSnapshot', 'inheritedFromDate'])
+        && payload.selectionDate is string
+        && validCurrentTaipeiDate(payload.selectionDate)
+        && dayBefore.revision is int && dayBefore.revision >= 1
+        && command.expectedRevisions.day == dayBefore.revision
+        && command.expectedRevisions.headSeq == head.seq
+        && command.businessDate == dayId
+        && command.studentId == null
+        && command.reason == null
+        && zeroCashEffect(command.cashEffect)
+        && exactMap(command.before, ['head', 'day'])
+        && exactMap(command.after, ['head', 'day'])
+        && command.before.head == head
+        && command.after.head == headAfter
+        && dayId >= head.goLiveDate
+        && dayBefore.status in ['open', 'reopened']
+        && validVendor(vendor, payload.vendorId)
+        && vendor.status == 'active'
+        && vendor.deleted == false
+        && payload.vendorNameSnapshot == vendor.name
+        && menuAfter.itemName == payload.itemName
+        && menuAfter.price == payload.price
+        && menuAfter.vendorId == payload.vendorId
+        && menuAfter.vendorNameSnapshot == payload.vendorNameSnapshot
+        && menuAfter.inheritedFromDate == payload.inheritedFromDate
+        && menuAfter.businessDate == dayId
+        && dayAfter.revision == dayBefore.revision + 1
+        && dayAfter.lastCommandId == commandId
+        && dayAfter.updatedAt == request.time
+        && menuAfter.revision == (dayBefore.menu == null ? 1 : dayBefore.menu.revision + 1)
+        && menuAfter.updatedAt == request.time;
+    }
+
+    function validSetDayMenuDirect(commandId, command) {
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let dayId = command.targets.dayId;
+      let dayBefore = get(/databases/$(database)/documents/days/$(dayId)).data;
+      let dayAfter = getAfter(/databases/$(database)/documents/days/$(dayId)).data;
+      let vendor = get(/databases/$(database)/documents/vendors/$(command.payload.vendorId)).data;
+      return command.payload.inheritedFromDate == null
+        && validSetDayMenuCommon(commandId, command, head, headAfter, dayBefore, dayAfter, vendor);
+    }
+
+    function validSetDayMenuInherited(commandId, command) {
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let dayId = command.targets.dayId;
+      let dayBefore = get(/databases/$(database)/documents/days/$(dayId)).data;
+      let dayAfter = getAfter(/databases/$(database)/documents/days/$(dayId)).data;
+      let vendor = get(/databases/$(database)/documents/vendors/$(command.payload.vendorId)).data;
+      let sourceDate = command.payload.inheritedFromDate;
+      let sourceDay = get(/databases/$(database)/documents/days/$(sourceDate)).data;
+      let sourceMenu = sourceDay.menu;
+      return sourceDate is string
+        && validCalendarDate(sourceDate)
+        && sourceDate < dayId
+        && sourceDate <= command.payload.selectionDate
+        && validDay(sourceDay, sourceDate)
+        && sourceMenu is map
+        && sourceMenu.businessDate == sourceDate
+        && command.payload.itemName == sourceMenu.itemName
+        && command.payload.price == sourceMenu.price
+        && command.payload.vendorId == sourceMenu.vendorId
+        && command.payload.vendorNameSnapshot == sourceMenu.vendorNameSnapshot
+        && sourceMenu.vendorId == vendor.vendorId
+        && sourceMenu.vendorNameSnapshot == vendor.name
+        && validSetDayMenuCommon(commandId, command, head, headAfter, dayBefore, dayAfter, vendor);
+    }
+
+    function validSetDayMenu(commandId, command) {
+      return command.kind == 'SetDayMenu'
+        && (command.payload.inheritedFromDate == null
+          ? validSetDayMenuDirect(commandId, command)
+          : validSetDayMenuInherited(commandId, command));
+    }
+
+    function validSetOpeningCash(commandId, command) {
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let dayId = command.targets.dayId;
+      let dayBefore = get(/databases/$(database)/documents/days/$(dayId)).data;
+      let dayAfter = getAfter(/databases/$(database)/documents/days/$(dayId)).data;
+      return commandHolder(command.leaseEpoch)
+        && p07CommandEnvelope(commandId, command, head, headAfter)
+        && command.kind == 'SetOpeningCash'
+        && exactMap(command.targets, ['dayId'])
+        && exactMap(command.expectedRevisions, ['day'])
+        && dayBefore.revision is int && dayBefore.revision >= 1
+        && command.expectedRevisions.day == dayBefore.revision
+        && exactMap(command.payload, ['openingCash'])
+        && command.payload.openingCash is int
+        && command.payload.openingCash >= 0 && command.payload.openingCash <= 20000
+        && validCurrentTaipeiDate(dayId)
+        && dayId >= head.goLiveDate
+        && command.businessDate == dayId
+        && command.studentId == null
+        && command.reason == null
+        && zeroCashEffect(command.cashEffect)
+        && exactMap(command.before, ['head', 'day'])
+        && exactMap(command.after, ['head', 'day'])
+        && command.before.head == head
+        && command.after.head == headAfter
+        && dayAfter.openingCash == command.payload.openingCash
+        && dayAfter.lastCommandId == commandId
+        && dayAfter.revision == dayBefore.revision + 1
+        && dayAfter.updatedAt == request.time;
+    }
+
     function validTransactionDoc(tx, commandId, command, seq, head, dayBefore, studentBefore) {
       let order = command.kind == 'CreateOrder';
       let bento = order && command.payload.mealKind == 'bento';
@@ -588,7 +867,6 @@ service cloud.firestore {
       let transactionAfter = getAfter(/databases/$(database)/documents/transactions/$(command.targets.transactionId)).data;
       let transactionExists = exists(/databases/$(database)/documents/transactions/$(command.targets.transactionId));
       let order = command.kind == 'CreateOrder';
-      let mealPrice = order ? command.payload.mealPrice : 0;
       return validTransactionCommand(commandId, command, head, headAfter, dayBefore, studentBefore)
         && !transactionExists
         && command.before.transaction == null
@@ -688,6 +966,83 @@ service cloud.firestore {
         );
     }
 
+    function vendorCreateCommand(commandId, vendorId, after) {
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      return !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && command.kind == 'SaveVendor'
+        && command.targets.vendorId == vendorId
+        && command.after.vendor == after;
+    }
+
+    function vendorUpdateCommand(commandId, vendorId, before, after) {
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      return !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && command.kind in ['SaveVendor', 'RemoveVendor']
+        && command.targets.vendorId == vendorId
+        && command.before.vendor == before
+        && command.after.vendor == after
+        && (command.kind == 'SaveVendor'
+          ? before.deleted == false && after.deleted == false
+            && after.diff(before).affectedKeys().hasOnly([
+              'name', 'phone', 'note', 'status', 'revision', 'lastCommandId', 'updatedAt'
+            ])
+          : before.deleted == false && before.status == 'inactive'
+            && after.deleted == true && after.status == 'inactive'
+            && after.lastCommandId == commandId
+            && command.expectedRevisions.vendor == before.revision
+            && exactMap(command.payload, ['reason'])
+            && command.reason == command.payload.reason
+            && after.diff(before).affectedKeys().hasOnly(['deleted', 'revision', 'lastCommandId', 'updatedAt']));
+    }
+
+    function daySetMenuCommand(commandId, dayId, before, after) {
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      return !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && command.kind == 'SetDayMenu'
+        && command.targets.dayId == dayId
+        && command.before.day == before
+        && command.after.day == after
+        && after.diff(before).affectedKeys().hasOnly(['menu', 'revision', 'lastCommandId', 'updatedAt'])
+        && validDay(after, dayId)
+        && before.keys().hasAll([
+          'status', 'revision', 'menu', 'openingCash', 'openedBy', 'openedAt',
+          'totals', 'lastSettlementRevision', 'lastCommandId', 'updatedAt'
+        ])
+        && (before.menu == null || validMenu(before.menu, dayId))
+        && before.status in ['open', 'reopened']
+        && before.revision is int && before.revision >= 1
+        && before.lastCommandId is string
+        && before.updatedAt is timestamp;
+    }
+
+    function daySetOpeningCashCommand(commandId, dayId, before, after) {
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      let firstConfirmation = before.openingCash == null;
+      return !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && command.kind == 'SetOpeningCash'
+        && command.targets.dayId == dayId
+        && command.before.day == before
+        && command.after.day == after
+        && validDay(before, dayId)
+        && before.status in ['open', 'reopened']
+        && (firstConfirmation
+          ? before.openedBy == null && before.openedAt == null
+            && after.openedBy == request.auth.uid && after.openedAt == request.time
+          : before.openedBy is string && before.openedAt is timestamp
+            && after.openedBy == before.openedBy && after.openedAt == before.openedAt)
+        && after.diff(before).affectedKeys().hasOnly([
+          'openingCash', 'openedBy', 'openedAt', 'revision', 'lastCommandId', 'updatedAt'
+        ]);
+    }
+
     // Operators are provisioned by the maintainer. Clients cannot mutate this allowlist.
     match /operators/{uid} {
       allow get: if signedGoogle() && request.auth.uid == uid;
@@ -731,19 +1086,28 @@ service cloud.firestore {
           || (request.resource.data.kind == 'CreateStudent' && validCreateStudent(commandId, request.resource.data))
           || (request.resource.data.kind in ['EditStudent', 'SetStudentStatus']
             && validStudentMutation(commandId, request.resource.data))
+          || (request.resource.data.kind == 'SaveVendor' && validSaveVendor(commandId, request.resource.data))
+          || (request.resource.data.kind == 'RemoveVendor' && validRemoveVendor(commandId, request.resource.data))
+          || (request.resource.data.kind == 'SetDayMenu' && validSetDayMenu(commandId, request.resource.data))
+          || (request.resource.data.kind == 'SetOpeningCash' && validSetOpeningCash(commandId, request.resource.data))
           || (request.resource.data.kind in ['CreateOrder', 'CreatePayment']
             && validCreateTransaction(commandId, request.resource.data)));
     }
 
     match /days/{dayId} {
       allow get: if currentHolder();
-      allow list, delete: if false;
+      allow list: if currentHolder();
+      allow delete: if false;
       allow create: if request.resource.data.lastCommandId is string
         && ensureDayCommand(request.resource.data.lastCommandId, dayId, request.resource.data)
         && request.resource.data.updatedAt == request.time;
       allow update: if (request.resource.data.lastCommandId is string)
-        && dayCommand(request.resource.data.lastCommandId, dayId, resource.data, request.resource.data)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revision', 'totals', 'lastCommandId', 'updatedAt'])
+        && (dayCommand(request.resource.data.lastCommandId, dayId, resource.data, request.resource.data)
+          || daySetMenuCommand(request.resource.data.lastCommandId, dayId, resource.data, request.resource.data)
+          || daySetOpeningCashCommand(request.resource.data.lastCommandId, dayId, resource.data, request.resource.data))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'revision', 'totals', 'menu', 'openingCash', 'openedBy', 'openedAt', 'lastCommandId', 'updatedAt'
+        ])
         && request.resource.data.revision == resource.data.revision + 1
         && request.resource.data.updatedAt == request.time;
     }
@@ -774,7 +1138,25 @@ service cloud.firestore {
         && validId(transactionId);
     }
 
-    match /vendors/{document=**} { allow read, write: if false; }
+    match /vendors/{vendorId} {
+      allow get, list: if currentHolder();
+      allow create: if request.resource.data.lastCommandId is string
+        && vendorCreateCommand(request.resource.data.lastCommandId, vendorId, request.resource.data)
+        && validVendor(request.resource.data, vendorId)
+        && request.resource.data.status == 'active'
+        && request.resource.data.deleted == false
+        && request.resource.data.revision == 1
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if request.resource.data.lastCommandId is string
+        && vendorUpdateCommand(request.resource.data.lastCommandId, vendorId, resource.data, request.resource.data)
+        && validVendor(resource.data, vendorId)
+        && validVendor(request.resource.data, vendorId)
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
     match /daily_settlements/{document=**} { allow read, write: if false; }
     match /{document=**} { allow read, write: if false; }
   }

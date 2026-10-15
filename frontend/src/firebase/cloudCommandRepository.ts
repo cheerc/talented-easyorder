@@ -296,6 +296,31 @@ async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput)
       await getDocFromServer(doc(db, dayPath(input.targets.dayId)));
       return 'INVALID_INPUT';
     }
+    if (input.kind === 'SaveVendor' || input.kind === 'RemoveVendor') {
+      const vendor = await getDocFromServer(doc(db, vendorPath(input.targets.vendorId)));
+      if (!vendor.exists()) {
+        return input.expectedRevisions.vendor === 0 ? 'INVALID_INPUT' : 'REVISION_CONFLICT';
+      }
+      const current = decodeVendor(vendor.data());
+      return current.revision === input.expectedRevisions.vendor ? 'INVALID_INPUT' : 'REVISION_CONFLICT';
+    }
+    if (input.kind === 'SetDayMenu' || input.kind === 'SetOpeningCash') {
+      const daySnapshot = await getDocFromServer(doc(db, dayPath(input.targets.dayId)));
+      if (!daySnapshot.exists()) return 'INVALID_INPUT';
+      const day = decodeDay(daySnapshot.data());
+      if (day.revision !== input.expectedRevisions.day) return 'REVISION_CONFLICT';
+      if (input.kind === 'SetDayMenu') {
+        const headSnapshot = await getDocFromServer(doc(db, dataHeadPath()));
+        if (!headSnapshot.exists()) return 'UNSUPPORTED_SCHEMA';
+        const head = decodeHead(headSnapshot.data());
+        if (head.seq !== input.expectedRevisions.headSeq) return 'REVISION_CONFLICT';
+      }
+      if (day.status === 'closed') return 'DAY_CLOSED';
+      // A successful server-only day read proves this operator still has read access under
+      // the active lease. Rules may still reject frozen selectionDate or other command content;
+      // those are retryable data/input errors, not evidence that the lease was lost.
+      return 'INVALID_INPUT';
+    }
     if (input.kind !== 'CreateOrder' && input.kind !== 'CreatePayment') return null;
     const [student, day, transaction] = await Promise.all([
       getDocFromServer(doc(db, studentPath(input.targets.studentId))),
@@ -313,10 +338,28 @@ async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput)
     // If the revisions still match, the Rules rejected this command's content/state (for example,
     // an unsupported historical transaction date), not a stale revision.
     return 'INVALID_INPUT';
-  } catch {
+  } catch (error) {
+    if (error instanceof RejectCommand && error.code === 'UNSUPPORTED_SCHEMA') return error.code;
     // Server-only reads are also the current-holder/lease validity check. A denied read is not evidence of a conflict.
     return null;
   }
+}
+
+function leaseDenialResult(code: CommandErrorCode | null): CommandResult | null {
+  if (code === null) return null;
+  if (code === 'REVISION_CONFLICT') {
+    return errorResult(code, '伺服器資料已變更；請保留 commandId 並重新確認');
+  }
+  if (code === 'INVALID_INPUT') {
+    return errorResult(code, '目前 Rules 不允許這筆命令；請檢查日期與資料狀態');
+  }
+  if (code === 'DAY_CLOSED') {
+    return errorResult(code, '營業日已關閉；請重新載入日期資料');
+  }
+  if (code === 'UNSUPPORTED_SCHEMA') {
+    return errorResult(code, '伺服器日期或資料版本不支援；請聯絡管理者');
+  }
+  return null;
 }
 
 export function createCloudCommandRepository(db: Firestore, options: CloudCommandRepositoryOptions = {}) {
@@ -852,19 +895,18 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         }
         if (resultCode === 'REVISION_CONFLICT' || resultCode === 'LEASE_LOST' || resultCode === 'QUOTA_EXCEEDED') {
           if (resultCode === 'LEASE_LOST') {
-            const conflict = await readRevisionConflict(db, input);
-            if (conflict === 'REVISION_CONFLICT') {
-              return errorResult(conflict, '伺服器資料已變更；請保留 commandId 並重新確認');
-            }
-            if (conflict === 'INVALID_INPUT') {
-              return errorResult(conflict, '目前 Rules 不允許這筆命令；請檢查日期與資料狀態');
-            }
+            const diagnosed = leaseDenialResult(await readRevisionConflict(db, input));
+            if (diagnosed) return diagnosed;
           }
           return errorResult(resultCode, '提交遭伺服器拒絕；請保留 commandId 並確認目前狀態');
         }
       } catch (readError) {
         if (readError instanceof RejectCommand && readError.code === 'INVALID_INPUT') {
           return errorResult(readError.code, readError.message);
+        }
+        if (resultCode === 'LEASE_LOST') {
+          const diagnosed = leaseDenialResult(await readRevisionConflict(db, input));
+          return diagnosed ?? errorResult('LEASE_LOST', '目前操作使用權已失效；請重新確認使用權');
         }
       }
       return resultFromUnknownError();

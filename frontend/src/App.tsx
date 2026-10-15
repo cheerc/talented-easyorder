@@ -33,6 +33,7 @@ import { isMenuReady } from './domain/menu';
 import { AuthGate } from './auth/AuthGate';
 import { SYSTEM_OPERATOR_ID } from './domain/operatorId';
 import { CloudStudentsPage } from './components/cloud/CloudStudentsPage';
+import { CloudDayVendorsPage } from './components/cloud/CloudDayVendorsPage';
 
 function AppContent() {
   const { fb, fbError, access } = useFirebase();
@@ -266,6 +267,7 @@ function AppContent() {
 
 function CloudAppContent() {
   const { fb, fbError, access, lease } = useFirebase();
+  const [cloudSection, setCloudSection] = useState<'students' | 'day-vendors'>('students');
 
   if (fbError) return <AppCrashPage />;
   if (!fb) {
@@ -275,13 +277,29 @@ function CloudAppContent() {
   return (
     <ErrorBoundary fallback={<AppCrashPage />} onError={(error) => appendErrorLog({ source: 'react', message: error.message, stack: error.stack })}>
       <AuthGate auth={fb.auth} db={fb.db} access={access}>
-        <main className="cloud-app" aria-label="雲端學生管理">
+        <main className="cloud-app" aria-label={cloudSection === 'students' ? '雲端學生管理' : '雲端日期與供應商管理'}>
           <h1>Talented EasyOrder</h1>
-          <CloudStudentsPage
-            db={fb.db}
-            leaseEpoch={lease.epoch}
-            identityKey={access.ok ? `${access.profile.uid}:${lease.epoch}` : ''}
-          />
+          <nav className="cloud-app__nav" aria-label="雲端資料管理">
+            <button type="button" aria-pressed={cloudSection === 'students'} onClick={() => setCloudSection('students')}>
+              學生管理
+            </button>
+            <button type="button" aria-pressed={cloudSection === 'day-vendors'} onClick={() => setCloudSection('day-vendors')}>
+              日期與供應商
+            </button>
+          </nav>
+          {cloudSection === 'students' ? (
+            <CloudStudentsPage
+              db={fb.db}
+              leaseEpoch={lease.epoch}
+              identityKey={access.ok ? `${access.profile.uid}:${lease.epoch}` : ''}
+            />
+          ) : (
+            <CloudDayVendorsPage
+              db={fb.db}
+              leaseEpoch={lease.epoch}
+              identityKey={access.ok ? `${access.profile.uid}:${lease.epoch}` : ''}
+            />
+          )}
         </main>
       </AuthGate>
     </ErrorBoundary>

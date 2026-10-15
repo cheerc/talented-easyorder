@@ -837,7 +837,9 @@ function validateReceiptSnapshots(
       const payload = normalized.payload as CommandPayloadByKind['SetDayMenu'];
       const beforeMenu = dayBefore.menu as Record<string, unknown> | null;
       const afterMenu = dayAfter.menu as Record<string, unknown> | null;
-      if (dayId < String(headBefore.goLiveDate) || payload.selectionDate !== committedTaipeiDate
+      if (dayId < String(headBefore.goLiveDate)
+        || normalized.expectedRevisions.headSeq !== headBefore.seq
+        || payload.selectionDate !== committedTaipeiDate
         || !afterMenu || afterMenu.businessDate !== dayId || afterMenu.itemName !== payload.itemName
         || afterMenu.price !== payload.price || afterMenu.vendorId !== payload.vendorId
         || afterMenu.vendorNameSnapshot !== payload.vendorNameSnapshot

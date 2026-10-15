@@ -439,6 +439,27 @@ describe('day and vendor command input contract', () => {
     expect(() => decodeEnabledCommandDoc(invalid)).toThrow();
   });
 
+  it('rejects a SetDayMenu receipt whose stored headSeq differs from before.head.seq even with a matching recomputed fingerprint', async () => {
+    const receipt = dayReceipt('SetDayMenu');
+    const storedInput = normalizeEnabledCommandInput({
+      commandId: receipt.commandId,
+      kind: receipt.kind,
+      leaseEpoch: receipt.leaseEpoch,
+      targets: receipt.targets,
+      expectedRevisions: { ...receipt.expectedRevisions, headSeq: 49 },
+      payload: receipt.payload,
+    });
+    const tamperedReceipt = {
+      ...receipt,
+      expectedRevisions: storedInput.expectedRevisions,
+      inputFingerprint: await fingerprintCommandInput(storedInput),
+    };
+
+    expect(tamperedReceipt.expectedRevisions).toMatchObject({ day: 2, headSeq: 49 });
+    expect((tamperedReceipt.before.head as Record<string, unknown>).seq).toBe(50);
+    expect(() => decodeEnabledCommandDoc(tamperedReceipt)).toThrow();
+  });
+
   it('requires RemoveVendor receipt envelope reason to exactly match its frozen payload reason', () => {
     const receipt = vendorReceipt('RemoveVendor');
     expect(receipt.reason).toBe(receipt.payload.reason);
