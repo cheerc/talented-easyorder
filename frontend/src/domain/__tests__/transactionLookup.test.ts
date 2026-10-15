@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildLookupRows, balanceAtEndOf, findLookupAccountIds } from '../transactionLookup';
+import { buildLookupRows, balanceAtEndOf, findLookupAccountIds, findStudentEarliestDate } from '../transactionLookup';
 import { CASHIER_SENTINEL, type LedgerTransaction } from '../ledger';
 import type { LedgerAuditEvent } from '../ledgerAudit';
 import type { StudentAccount } from '../student';
@@ -61,5 +61,22 @@ describe('M3 F5 交易查詢（D05）', () => {
     expect(balanceAtEndOf(transactions, students[1], '2026-10-13')).toBe(30);
     const withOpening = acct('003', '測試丙', { openingBalance: { amount: -50 } as StudentAccount['openingBalance'] });
     expect(balanceAtEndOf(transactions, withOpening, '2026-10-13')).toBe(-50);
+  });
+
+  describe('findStudentEarliestDate', () => {
+    it('若有期初且早於交易，取期初日期', () => {
+      const student = acct('002', '測試乙', { openingBalance: { asOfDate: '2026-10-01' } as StudentAccount['openingBalance'] });
+      expect(findStudentEarliestDate(student, transactions, '2026-10-15')).toBe('2026-10-01');
+    });
+
+    it('若交易早於期初，取較早的交易日', () => {
+      const student = acct('002', '測試乙', { openingBalance: { asOfDate: '2026-10-14' } as StudentAccount['openingBalance'] });
+      expect(findStudentEarliestDate(student, transactions, '2026-10-15')).toBe('2026-10-12');
+    });
+
+    it('若無期初無交易，回傳 fallbackDate', () => {
+      const student = acct('003', '測試丙');
+      expect(findStudentEarliestDate(student, transactions, '2026-10-15')).toBe('2026-10-15');
+    });
   });
 });

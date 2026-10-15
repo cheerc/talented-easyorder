@@ -1,6 +1,46 @@
 import React from 'react';
 import type { LedgerGroup } from '../../domain/ledgerReport';
+import { isOtherMealOrder } from '../../domain/ledger';
 import { fmt } from './utils';
+
+/**
+ * M2 #2：依該帳戶當天的有效交易內容計算摘要字串：
+ * - 只有今日餐點：`今日餐點 N`
+ * - 只有其他餐點：`其他餐點 M`
+ * - 兩種都有：`今日餐點 N・其他餐點 M`
+ * - 沒有訂餐、只有繳費：`僅繳費`
+ */
+function formatRecentMealSummary(transactions: LedgerGroup['transactions']): string {
+  let bento = 0;
+  let other = 0;
+  let payments = 0;
+
+  for (const t of transactions) {
+    if (t.type === 'order') {
+      if (isOtherMealOrder(t)) {
+        other++;
+      } else {
+        bento++;
+      }
+    } else if (t.type === 'payment') {
+      payments++;
+    }
+  }
+
+  if (bento > 0 && other > 0) {
+    return `今日餐點 ${bento}・其他餐點 ${other}`;
+  }
+  if (bento > 0) {
+    return `今日餐點 ${bento}`;
+  }
+  if (other > 0) {
+    return `其他餐點 ${other}`;
+  }
+  if (payments > 0) {
+    return '僅繳費';
+  }
+  return '';
+}
 
 interface RecentStripProps {
   groups: LedgerGroup[];
@@ -27,6 +67,7 @@ export const RecentStrip = React.memo(function RecentStrip({
         {displayGroups.map(g => {
           const balance = balances?.get(g.studentId) ?? g.afterBalance;
           const isNeg = balance < 0;
+          const summary = formatRecentMealSummary(g.transactions);
           return (
             <div key={g.studentId} className="recent-group">
               <div
@@ -34,8 +75,10 @@ export const RecentStrip = React.memo(function RecentStrip({
                 onClick={() => onStudentClick?.(g.studentId)}
                 style={{ cursor: onStudentClick ? 'pointer' : 'default' }}
               >
-                <span className="recent-name">{g.studentNameSnapshot}</span>
-                <span className="recent-group-count">{g.transactions.filter(t => t.type === 'order').length}個便當</span>
+                <span className="recent-name" title={g.studentNameSnapshot}>{g.studentNameSnapshot}</span>
+                {summary && (
+                  <span className="recent-group-count" title={summary}>{summary}</span>
+                )}
                 <span className={'recent-amt mono ' + (isNeg ? 'neg' : 'pos')}>
                   餘額 {isNeg ? '−' : '+'}{fmt(balance)}
                 </span>

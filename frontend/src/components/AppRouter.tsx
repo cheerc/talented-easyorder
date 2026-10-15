@@ -8,6 +8,8 @@ const AdminScreen = React.lazy(() => import('./screens/AdminScreen').then(m => (
 const VendorsScreen = React.lazy(() => import('./screens/VendorsScreen').then(m => ({ default: m.VendorsScreen })));
 const HistoryScreen = React.lazy(() => import('./screens/HistoryScreen').then(m => ({ default: m.HistoryScreen })));
 
+import type { HistoryLookupTarget } from './screens/HistoryScreen';
+
 type PosColumnProps = ComponentProps<typeof PosColumn>;
 
 interface AppRouterProps {
@@ -17,10 +19,11 @@ interface AppRouterProps {
   onClearStudentFilter: () => void;
   // PosColumn
   posColumnProps: PosColumnProps;
+  historyLookupTarget?: HistoryLookupTarget | null;
 }
 
 export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
-  const { tab, viewDate, reportStudentFilter, onClearStudentFilter, posColumnProps } = props;
+  const { tab, viewDate, reportStudentFilter, onClearStudentFilter, posColumnProps, historyLookupTarget } = props;
 
   return (
     <>
@@ -58,7 +61,7 @@ export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
       {tab === 'history' && (
         <ErrorBoundary fallback={<SectionError name="歷史紀錄" />}>
         <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
-        <HistoryScreen viewDate={viewDate} />
+        <HistoryScreen viewDate={viewDate} lookupTarget={historyLookupTarget} />
         </Suspense>
         </ErrorBoundary>
       )}

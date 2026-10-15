@@ -32,6 +32,9 @@ import { isPrototypeMode, validateAppModeConfig } from './appMode';
 import { isMenuReady } from './domain/menu';
 import { AuthGate } from './auth/AuthGate';
 import { SYSTEM_OPERATOR_ID } from './domain/operatorId';
+import { findStudentEarliestDate } from './domain/transactionLookup';
+import type { HistoryLookupTarget } from './components/screens/HistoryScreen';
+import type { StudentAccount } from './domain/student';
 import { CloudStudentsPage } from './components/cloud/CloudStudentsPage';
 import { CloudDayVendorsPage } from './components/cloud/CloudDayVendorsPage';
 
@@ -92,6 +95,7 @@ function AppContent() {
   }, [systemDate, cancelFlow]);
 
   const [tab, setTab] = useState('pos');
+  const [historyLookupTarget, setHistoryLookupTarget] = useState<HistoryLookupTarget | null>(null);
   const [reportStudentFilter, setReportStudentFilter] = useState('');
   const [focusZone, setFocusZone] = useState('mode-order');
   const [showDashboard, setShowDashboard] = useState(false);
@@ -166,14 +170,25 @@ function AppContent() {
     isHistorical, dateStatus, viewDate, systemDate, setViewDate,
   }), [isHistorical, dateStatus, viewDate, systemDate, setViewDate]);
 
+  const handleViewAllHistory = useCallback((student: StudentAccount) => {
+    const earliestDate = findStudentEarliestDate(student, allTx, viewDate);
+    setHistoryLookupTarget({
+      query: student.studentId,
+      exactStudentId: student.studentId,
+      startDate: earliestDate,
+      endDate: viewDate,
+    });
+    setTab('history');
+  }, [allTx, viewDate]);
+
   const flowArgs = useMemo(() => ({
     state, picked, currentMode, currentPaidAmount, selectStudent,
     setPaidAmountText, handleConfirm, cancelFlow, changeMode, openCancelConfirm, openCancelConfirmForTx,
     handleDeleteOrder,
-    onViewHistory: () => { setFocusZone('view-history'); },
+    onViewAllHistory: handleViewAllHistory,
   }), [state, picked, currentMode, currentPaidAmount, selectStudent,
     setPaidAmountText, handleConfirm, cancelFlow, changeMode, openCancelConfirm, openCancelConfirmForTx,
-    handleDeleteOrder]);
+    handleDeleteOrder, handleViewAllHistory]);
 
   const expenseArgs = useMemo(() => ({
     expenseProps, enterExpenseMode,
@@ -214,7 +229,7 @@ function AppContent() {
   const mainContent = (
     <MainLayout
       tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync}
-      todayCount={todayCount} todayOtherCount={todayOtherCount} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate}
+      todayCount={todayCount} todayOtherCount={todayOtherCount} todayMenu={todayMenu} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate}
       queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount}
       onDashboard={() => setShowDashboard(true)}
       storageMode={fb ? 'cloud' : isPrototypeMode ? 'prototype' : 'local-only'}
@@ -238,6 +253,7 @@ function AppContent() {
         reportStudentFilter={reportStudentFilter}
         onClearStudentFilter={() => setReportStudentFilter('')}
         posColumnProps={posColumnProps}
+        historyLookupTarget={historyLookupTarget}
       />
     </MainLayout>
   );

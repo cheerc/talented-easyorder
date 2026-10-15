@@ -85,6 +85,39 @@ describe('F5 交易查詢與看原單（D05）', () => {
     fireEvent.change(screen.getByLabelText('結束營業日'), { target: { value: D2 } });
     expect(screen.getByText('這段期間沒有交易')).toBeTruthy();
   });
+
+  it('U2a #9: 支援傳入 lookupTarget 精確鎖定帳戶與起訖區間，手動修改搜尋文字後解除鎖定', () => {
+    // 建立 A002 與 A0020 兩個帳戶（兩者 ID 皆包含 002）
+    usePosStore.getState().addLocalStudent(createLocalAccount({ studentId: 'A002', displayName: '測試二', openingBalance: 0, openingNote: '', asOfDate: D1 }, 'now'));
+    usePosStore.getState().addLocalStudent(createLocalAccount({ studentId: 'A0020', displayName: '測試二十', openingBalance: 0, openingNote: '', asOfDate: D1 }, 'now'));
+    commit('A002', 'order', 90, 0);
+    commit('A0020', 'order', 90, 0);
+
+    const target = {
+      query: '002',
+      exactStudentId: 'A002',
+      startDate: D1,
+      endDate: D1,
+    };
+    render(<HistoryScreen viewDate={D1} lookupTarget={target} />);
+
+    // 自動切換到交易查詢子分頁
+    const queryInput = screen.getByLabelText('查詢帳戶') as HTMLInputElement;
+    expect(queryInput.value).toBe('002');
+    expect((screen.getByLabelText('起始營業日') as HTMLInputElement).value).toBe(D1);
+    expect((screen.getByLabelText('結束營業日') as HTMLInputElement).value).toBe(D1);
+
+    // 精確鎖定只有 A002 測試二，沒有 A0020 測試二十
+    expect(screen.getByRole('note').textContent).toContain('A002 測試二');
+    expect(screen.queryByText(/A0020 測試二十/)).toBeNull();
+
+    // 手動修改文字框：解除精確鎖定，回到模糊查詢（多個帳戶姓名含「測試」，故非單一帳戶 note 摘要）
+    fireEvent.change(queryInput, { target: { value: '測試' } });
+    expect(screen.queryByRole('note')).toBeNull();
+    // 列表中此時可見所有含「測試」之帳戶交易
+    expect(screen.getByText('A002 測試二')).toBeInTheDocument();
+    expect(screen.getByText('A0020 測試二十')).toBeInTheDocument();
+  });
 });
 
 describe('跨日檢查（D06）', () => {

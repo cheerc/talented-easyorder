@@ -12,10 +12,17 @@ const TYPE_LABELS: Record<string, string> = { order: '訂餐', payment: '繳費'
 export interface TransactionLookupProps {
   /** 預設的區間（起訖同一天）。 */
   defaultDate: string;
-  /** 從稽核「看原單」帶進來的帳戶查詢字。 */
+  /** 起始營業日（選填）。 */
+  initialStartDate?: string;
+  /** 結束營業日（選填）。 */
+  initialEndDate?: string;
+  /** 從稽核「看原單」或 E「付款明細」帶進來的帳戶查詢字。 */
   initialQuery?: string;
   /** 要標出來的交易。 */
   highlightTransactionId?: string;
+  /** 精確帳戶鎖定（選填；指定時優先精確鎖定該帳戶，手動修改搜尋文字時解除鎖定）。 */
+  exactStudentId?: string;
+  exactAccountId?: string;
 }
 
 const money = (n: number) => `${n < 0 ? '−' : ''}$${fmt(Math.abs(n))}`;
@@ -24,17 +31,32 @@ const money = (n: number) => `${n < 0 ? '−' : ''}$${fmt(Math.abs(n))}`;
  * M3 F12／D05：F5「交易查詢」。依帳戶編號、姓名或別名與營業日區間查交易，
  * 已刪除的原單從稽核找回並標示；每筆可展開看更正紀錄。
  */
-export const TransactionLookup = React.memo(function TransactionLookup({ defaultDate, initialQuery = '', highlightTransactionId }: TransactionLookupProps) {
+export const TransactionLookup = React.memo(function TransactionLookup({
+  defaultDate,
+  initialStartDate,
+  initialEndDate,
+  initialQuery = '',
+  highlightTransactionId,
+  exactStudentId,
+  exactAccountId,
+}: TransactionLookupProps) {
+  const initialExactId = exactStudentId ?? exactAccountId;
   const { transactions } = useTransactions();
   const { auditEvents } = useSession();
   const { students } = useStudents();
   const [query, setQuery] = useState(initialQuery);
-  const [start, setStart] = useState(defaultDate);
-  const [end, setEnd] = useState(defaultDate);
+  const [exactId, setExactId] = useState<string | undefined>(initialExactId);
+  const [start, setStart] = useState(initialStartDate ?? defaultDate);
+  const [end, setEnd] = useState(initialEndDate ?? defaultDate);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(highlightTransactionId ? [highlightTransactionId] : []));
   const highlightRef = useRef<HTMLDivElement | null>(null);
 
-  const accountIds = useMemo(() => findLookupAccountIds(students, query), [students, query]);
+  const accountIds = useMemo(() => {
+    if (exactId) {
+      return [exactId];
+    }
+    return findLookupAccountIds(students, query);
+  }, [students, query, exactId]);
   const [from, to] = start <= end ? [start, end] : [end, start];
   const rows = useMemo(
     () => buildLookupRows({ transactions, auditEvents, accountIds, start: from, end: to }),
@@ -61,7 +83,10 @@ export const TransactionLookup = React.memo(function TransactionLookup({ default
           aria-label="查詢帳戶"
           placeholder="帳戶編號、姓名或別名；空白＝全部，「櫃台」＝櫃台收支"
           value={query}
-          onChange={e => setQuery(e.target.value)}
+          onChange={e => {
+            setQuery(e.target.value);
+            setExactId(undefined);
+          }}
           style={{ width: '100%', maxWidth: '340px' }}
         />
         <label className="dim" style={{ fontSize: '13px' }}>營業日</label>

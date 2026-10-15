@@ -48,7 +48,7 @@ function makeMockArgs(): Parameters<typeof buildPosColumnProps>[0] {
     setPriceOverride: vi.fn(),
     setPriceOverrideLabel: vi.fn(),
     handleDeleteOrder: vi.fn(),
-    onViewHistory: vi.fn(),
+    onViewAllHistory: vi.fn(),
   };
 }
 
@@ -86,7 +86,7 @@ describe('buildPosColumnProps', () => {
     expect(result.enterExpenseMode).toBe(args.enterExpenseMode);
     expect(result.setPriceOverride).toBe(args.setPriceOverride);
     expect(result.handleDeleteOrder).toBe(args.handleDeleteOrder);
-    expect(result.onViewHistory).toBe(args.onViewHistory);
+    expect(result.onViewAllHistory).toBe(args.onViewAllHistory);
   });
 
   it('passes through object references unchanged', () => {

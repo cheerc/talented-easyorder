@@ -54,7 +54,7 @@ describe('RecentStrip', () => {
     render(<RecentStrip groups={groups} dateStatus="open" />);
     expect(screen.getByText('王小明')).toBeInTheDocument();
     expect(screen.getByText(/餘額/)).toBeInTheDocument();
-    expect(screen.getByText('1個便當')).toBeInTheDocument();
+    expect(screen.getByText('今日餐點 1')).toBeInTheDocument();
   });
 
   it('M2 F03：有目前餘額時顯示它，不用這串交易最後一筆的舊結餘', () => {
@@ -146,8 +146,34 @@ describe('RecentStrip', () => {
       makeTx({ transactionId: 't2', studentId: 'S001', type: 'payment', paidAmount: 500 }),
     ], 410)];
     render(<RecentStrip groups={groups} dateStatus="open" />);
-    // Should show "1個便當" (only order type counted), not "2筆"
-    expect(screen.getByText('1個便當')).toBeInTheDocument();
+    // Should show "今日餐點 1" (only order type counted), not "2筆"
+    expect(screen.getByText('今日餐點 1')).toBeInTheDocument();
+  });
+
+  it('U2a #2: 依有效交易顯示其他餐點、兩種都有或僅繳費', () => {
+    // 只有其他餐點
+    const otherGroup = [makeGroup('S001', '王小明', [
+      makeTx({ transactionId: 't1', studentId: 'S001', type: 'order', mealPrice: 110, otherItemName: '雞腿' }),
+    ], -110)];
+    const { unmount } = render(<RecentStrip groups={otherGroup} dateStatus="open" />);
+    expect(screen.getByText('其他餐點 1')).toBeInTheDocument();
+    unmount();
+
+    // 兩種都有
+    const bothGroup = [makeGroup('S001', '王小明', [
+      makeTx({ transactionId: 't1', studentId: 'S001', type: 'order', mealPrice: 90 }),
+      makeTx({ transactionId: 't2', studentId: 'S001', type: 'order', mealPrice: 110, otherItemName: '雞腿' }),
+    ], -200)];
+    const { unmount: unmount2 } = render(<RecentStrip groups={bothGroup} dateStatus="open" />);
+    expect(screen.getByText('今日餐點 1・其他餐點 1')).toBeInTheDocument();
+    unmount2();
+
+    // 沒有訂餐只有繳費
+    const payGroup = [makeGroup('S001', '王小明', [
+      makeTx({ transactionId: 't1', studentId: 'S001', type: 'payment', paidAmount: 500 }),
+    ], 500)];
+    render(<RecentStrip groups={payGroup} dateStatus="open" />);
+    expect(screen.getByText('僅繳費')).toBeInTheDocument();
   });
 
   it('shows positive sign prefix for non-negative balance', () => {
@@ -318,6 +344,31 @@ describe('TopBar', () => {
     expect(container.textContent).toContain('本機模式 · 未連雲端');
     expect(container.textContent).not.toContain('雲端已同步');
     expect(container.textContent).not.toContain('推送中');
+  });
+
+  it('U2a #4: 右上角固定兩行，其他餐點是 0 也顯示，有菜單顯示名稱，無菜單顯示未設定', () => {
+    // 有菜單
+    const { container, unmount } = render(
+      <TopBar {...baseTopBarProps} todayCount={3} todayOtherCount={0} todayMenu={{ itemName: '排骨便當' }} />
+    );
+    const counter = container.querySelector('.counter')!;
+    expect(counter.textContent).toContain('今日餐點（排骨便當）');
+    expect(counter.textContent).toContain('3');
+    expect(counter.textContent).toContain('其他餐點');
+    expect(counter.textContent).toContain('0');
+    const nameEl = counter.querySelector('.counter-name')!;
+    expect(nameEl.getAttribute('title')).toBe('今日餐點（排骨便當）');
+    unmount();
+
+    // 無菜單
+    const { container: container2 } = render(
+      <TopBar {...baseTopBarProps} todayCount={0} todayOtherCount={2} todayMenu={null} />
+    );
+    const counter2 = container2.querySelector('.counter')!;
+    expect(counter2.textContent).toContain('今日餐點（未設定）');
+    expect(counter2.textContent).toContain('0');
+    expect(counter2.textContent).toContain('其他餐點');
+    expect(counter2.textContent).toContain('2');
   });
 });
 
@@ -492,7 +543,7 @@ describe('ActionBar', () => {
     expect(container.textContent).not.toContain('確認');
   });
 
-  it('renders 訂餐狀況 button when onStatusMode provided', () => {
+  it('renders 付款明細 button when onStatusMode provided', () => {
     render(
       <ActionBar
         mode="order"
@@ -501,10 +552,10 @@ describe('ActionBar', () => {
         focusZone="mode-order"
       />
     );
-    expect(screen.getByText('訂餐狀況')).toBeInTheDocument();
+    expect(screen.getByText('付款明細')).toBeInTheDocument();
   });
 
-  it('calls onStatusMode when 訂餐狀況 button clicked', () => {
+  it('calls onStatusMode when 付款明細 button clicked', () => {
     const onStatusMode = vi.fn();
     render(
       <ActionBar
@@ -514,7 +565,7 @@ describe('ActionBar', () => {
         focusZone="mode-order"
       />
     );
-    fireEvent.click(screen.getByText('訂餐狀況'));
+    fireEvent.click(screen.getByText('付款明細'));
     expect(onStatusMode).toHaveBeenCalled();
   });
 });

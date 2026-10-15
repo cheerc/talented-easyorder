@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useEffect, useRef } from "react";
 import type { StudentAccount } from '../../domain/student';
 import type { TodayMenu } from '../../domain/menu';
 import { isMenuReady } from '../../domain/menu';
@@ -17,7 +17,6 @@ interface CustomerCardProps {
   orderedTodayCount: number;
   payAmount: string;
   setPayAmount: (val: string) => void;
-  onViewHistory?: () => void;
   priceOverride: number | null;
   priceOverrideLabel: string;
   setPriceOverride: (value: number | null) => void;
@@ -27,9 +26,8 @@ interface CustomerCardProps {
   studentTransactions?: LedgerTransaction[];
   onEditClick?: (tx: LedgerTransaction) => void;
   onDeleteClick?: (tx: LedgerTransaction) => void;
+  onViewAllHistory?: () => void;
   locked?: boolean;
-  allStudentTransactions?: LedgerTransaction[];
-  onViewHistoryBack?: () => void;
   /** M1：看得到的送出鍵，與 Enter 同一個動作。 */
   onConfirm?: () => void;
   /** M1：看得到的取消鍵，與 Esc 同一個動作。 */
@@ -37,67 +35,28 @@ interface CustomerCardProps {
   /** 存檔中：按鈕暫時停用，避免重複送出。 */
   busy?: boolean;
 }
-// Ref: #423 — weekly pagination helper
-function getWeekRange(offset: number): { start: string; end: string; label: string } {
-  const now = new Date();
-  const day = now.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
-  // Calculate Monday of current week
-  const mondayDiff = day === 0 ? -6 : 1 - day;
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayDiff + offset * 7);
-  const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
-  return { start: fmt(monday), end: fmt(sunday), label: `${fmt(monday)} ~ ${fmt(sunday)}` };
-}
 
-// Ref: #423 — weekly history sub-component (weekOffset is internal; reset via key={studentId})
-function WeeklyHistoryView({ allStudentTransactions, onViewHistoryBack }: {
-  allStudentTransactions?: LedgerTransaction[];
-  onViewHistoryBack?: () => void;
-}) {
-  const [weekOffset, setWeekOffset] = useState(0);
-  const { start, end, label } = getWeekRange(weekOffset);
-  const weekTxs = useMemo(() => {
-    if (!allStudentTransactions) return [];
-    return allStudentTransactions.filter(tx => tx.businessDate >= start && tx.businessDate <= end);
-  }, [allStudentTransactions, start, end]);
-
-  // Group by businessDate
-  const grouped = useMemo(() => {
-    const map = new Map<string, LedgerTransaction[]>();
-    for (const tx of weekTxs) {
-      const arr = map.get(tx.businessDate) ?? [];
-      arr.push(tx);
-      map.set(tx.businessDate, arr);
-    }
-    return Array.from(map.entries());
-  }, [weekTxs]);
-
-  return (
-    <div className="tx-history-view">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-        <div className="pay-title">交易歷史</div>
-        <button className="ghost-btn" onClick={onViewHistoryBack} style={{ fontSize: '13px' }}>返回</button>
-      </div>
-      <div className="tx-week-nav">
-        <button className="ghost-btn" onClick={() => setWeekOffset(weekOffset - 1)} aria-label="上一週">&lt;</button>
-        <span className="tx-week-label">{label}</span>
-        <button className="ghost-btn" onClick={() => setWeekOffset(weekOffset + 1)} aria-label="下一週" disabled={weekOffset >= 0}>&gt;</button>
-      </div>
-      {grouped.length > 0 ? (
-        grouped.map(([date, txs]) => (
-          <div key={date} className="tx-history-date-group">
-            <div className="tx-history-date-label">{date}</div>
-            <TransactionStatusView transactions={txs} />
-          </div>
-        ))
-      ) : (
-        <div className="tx-status-empty">本週無交易紀錄</div>
-      )}
-    </div>
-  );
-}
-
-export const CustomerCard = React.memo(function CustomerCard({ student, todayMenu, mode, orderedTodayCount, payAmount, setPayAmount, onViewHistory, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel, focusZone, studentTransactions, onEditClick, onDeleteClick, locked, allStudentTransactions, onViewHistoryBack, onConfirm, onCancel, busy = false }: CustomerCardProps) {
+export const CustomerCard = React.memo(function CustomerCard({
+  student,
+  todayMenu,
+  mode,
+  orderedTodayCount,
+  payAmount,
+  setPayAmount,
+  priceOverride,
+  priceOverrideLabel,
+  setPriceOverride,
+  setPriceOverrideLabel,
+  focusZone,
+  studentTransactions,
+  onEditClick,
+  onDeleteClick,
+  onViewAllHistory,
+  locked,
+  onConfirm,
+  onCancel,
+  busy = false,
+}: CustomerCardProps) {
   const effectiveMealPrice = mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
   const payInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -136,12 +95,6 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
           <div className={'bal-num mono ' + (student.currentBalance < 0 ? 'warn' : student.currentBalance < 90 ? 'low' : '')}>
             {student.currentBalance < 0 ? '−' : ''}${fmt(student.currentBalance)}
           </div>
-          {onViewHistory && (
-            <button className="ghost-btn" style={{ marginTop: '6px', fontSize: '11px', padding: '2px 10px' }}
-              onClick={onViewHistory}>
-              檢視歷史
-            </button>
-          )}
           {orderedTodayCount > 0 && (
             <div className="bal-debt warn-soft-chip">
               ⚠ 今日已訂過 <b>{orderedTodayCount}</b> 次便當
@@ -153,19 +106,16 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
 
       <div className="action-block">
         <div className="action-grid">
-          {/* Left Side: Summary — Ref: #423 full-width for view-status/view-history */}
-          <div className={`bill-summary${focusZone === 'view-status' || focusZone === 'view-history' ? ' full-width' : ''}`}>
-            {focusZone === 'view-history' ? (
-              <WeeklyHistoryView
-                key={student.studentId}
-                allStudentTransactions={allStudentTransactions}
-                onViewHistoryBack={onViewHistoryBack}
-              />
-            ) : focusZone === 'view-status' ? (
+          {/* Left Side: Summary — Ref: #423 full-width for view-status */}
+          <div className={`bill-summary${focusZone === 'view-status' ? ' full-width' : ''}`}>
+            {focusZone === 'view-status' ? (
               <TransactionStatusView
+                student={student}
+                todayMenu={todayMenu}
                 transactions={studentTransactions ?? []}
                 onEditClick={onEditClick}
                 onDeleteClick={onDeleteClick}
+                onViewAllHistory={onViewAllHistory}
                 locked={locked}
               />
             ) : (mode === 'order' || mode === 'payment') ? (<>
@@ -241,7 +191,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
           </div>
 
           {/* Right Side: Payment Panel */}
-          {focusZone !== 'view-status' && focusZone !== 'view-history' && mode !== 'expense' ? (
+          {focusZone !== 'view-status' && mode !== 'expense' ? (
             <div className="pay-panel">
               <div className="pay-header">
                 <span className="pay-title">
@@ -282,7 +232,7 @@ export const CustomerCard = React.memo(function CustomerCard({ student, todayMen
                 </div>
               )}
             </div>
-          ) : focusZone !== 'view-status' && focusZone !== 'view-history' ? (
+          ) : focusZone !== 'view-status' ? (
             <div className="cancel-empty">
               <div>支出模式 — 請在下方輸入金額</div>
             </div>
