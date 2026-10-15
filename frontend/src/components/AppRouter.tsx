@@ -21,11 +21,21 @@ interface AppRouterProps {
   // PosColumn
   posColumnProps: PosColumnProps;
   historyLookupTarget?: HistoryLookupTarget | null;
+  onConsumeHistoryLookupTarget?: () => void;
   onViewStudentHistory?: (student: StudentAccount) => void;
 }
 
 export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
-  const { tab, viewDate, reportStudentFilter, onClearStudentFilter, posColumnProps, historyLookupTarget, onViewStudentHistory } = props;
+  const {
+    tab,
+    viewDate,
+    reportStudentFilter,
+    onClearStudentFilter,
+    posColumnProps,
+    historyLookupTarget,
+    onConsumeHistoryLookupTarget,
+    onViewStudentHistory,
+  } = props;
 
   return (
     <>
@@ -63,7 +73,11 @@ export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
       {tab === 'history' && (
         <ErrorBoundary fallback={<SectionError name="歷史紀錄" />}>
         <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
-        <HistoryScreen viewDate={viewDate} lookupTarget={historyLookupTarget} />
+        <HistoryScreen
+          viewDate={viewDate}
+          lookupTarget={historyLookupTarget}
+          onConsumeLookupTarget={onConsumeHistoryLookupTarget}
+        />
         </Suspense>
         </ErrorBoundary>
       )}

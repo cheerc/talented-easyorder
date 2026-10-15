@@ -96,6 +96,13 @@ function AppContent() {
 
   const [tab, setTab] = useState('pos');
   const [historyLookupTarget, setHistoryLookupTarget] = useState<HistoryLookupTarget | null>(null);
+
+  const handleSelectTab = useCallback((nextTab: string) => {
+    if (nextTab !== 'history') {
+      setHistoryLookupTarget(null);
+    }
+    setTab(nextTab);
+  }, []);
   const [reportStudentFilter, setReportStudentFilter] = useState('');
   const [focusZone, setFocusZone] = useState('mode-order');
   const [showDashboard, setShowDashboard] = useState(false);
@@ -156,7 +163,7 @@ function AppContent() {
   const flashData = useFlashData({ isSuccess, picked, currentMode, currentPaidAmount, todayMenu, flashKey, priceOverride, priceOverrideLabel, allTx });
 
   useAppNavigationShortcuts({
-    tab, setTab, setShowDashboard,
+    tab, setTab: handleSelectTab, setShowDashboard,
     picked, expenseProps, currentMode, hasFlash, focusZone, setFocusZone,
     changeMode: changeMode as (m: PosMode) => void,
     cancelFlow, handleConfirm, setSearchText, setSearchFocusKey,
@@ -228,7 +235,7 @@ function AppContent() {
   // bypassing AuthGate. fb will remain null with no fbError.
   const mainContent = (
     <MainLayout
-      tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync}
+      tab={tab} setTab={handleSelectTab} online={online} syncing={syncing} lastSync={lastSync}
       todayCount={todayCount} todayOtherCount={todayOtherCount} todayMenu={todayMenu} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate}
       queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount}
       onDashboard={() => setShowDashboard(true)}
@@ -254,6 +261,7 @@ function AppContent() {
         onClearStudentFilter={() => setReportStudentFilter('')}
         posColumnProps={posColumnProps}
         historyLookupTarget={historyLookupTarget}
+        onConsumeHistoryLookupTarget={() => setHistoryLookupTarget(null)}
         onViewStudentHistory={handleViewAllHistory}
       />
     </MainLayout>

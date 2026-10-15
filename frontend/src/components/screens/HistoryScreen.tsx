@@ -21,6 +21,8 @@ interface HistoryScreenProps {
   viewDate?: string;
   initialSubtab?: Subtab;
   lookupTarget?: HistoryLookupTarget | null;
+  /** 當外部傳入之 lookupTarget 已被消費設定至內部 state 後呼叫，避免殘留。 */
+  onConsumeLookupTarget?: () => void;
 }
 
 interface LookupTarget {
@@ -37,6 +39,7 @@ export const HistoryScreen = React.memo(function HistoryScreen({
   viewDate,
   initialSubtab,
   lookupTarget,
+  onConsumeLookupTarget,
 }: HistoryScreenProps) {
   const [subtab, setSubtab] = useState<Subtab>(() => initialSubtab ?? (lookupTarget ? 'lookup' : 'settlement'));
   const [target, setTarget] = useState<LookupTarget>(() => {
@@ -57,20 +60,23 @@ export const HistoryScreen = React.memo(function HistoryScreen({
   const prevLookupTargetRef = useRef(lookupTarget);
 
   useEffect(() => {
-    if (lookupTarget && lookupTarget !== prevLookupTargetRef.current) {
-      prevLookupTargetRef.current = lookupTarget;
-      setSubtab('lookup');
-      setTarget(t => ({
-        query: lookupTarget.query ?? '',
-        exactStudentId: lookupTarget.exactStudentId,
-        date: viewDate ?? '',
-        startDate: lookupTarget.startDate,
-        endDate: lookupTarget.endDate,
-        highlight: lookupTarget.highlight,
-        key: t.key + 1,
-      }));
+    if (lookupTarget) {
+      if (lookupTarget !== prevLookupTargetRef.current) {
+        prevLookupTargetRef.current = lookupTarget;
+        setSubtab('lookup');
+        setTarget(t => ({
+          query: lookupTarget.query ?? '',
+          exactStudentId: lookupTarget.exactStudentId,
+          date: viewDate ?? '',
+          startDate: lookupTarget.startDate,
+          endDate: lookupTarget.endDate,
+          highlight: lookupTarget.highlight,
+          key: t.key + 1,
+        }));
+      }
+      onConsumeLookupTarget?.();
     }
-  }, [lookupTarget, viewDate]);
+  }, [lookupTarget, viewDate, onConsumeLookupTarget]);
 
   // 換檢視日期時，若非經由跳轉鎖定特定帳戶，交易查詢回到那一天（render 期間調整）。
   if (targetDate !== viewDate) {

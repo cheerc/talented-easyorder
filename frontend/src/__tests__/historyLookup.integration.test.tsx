@@ -118,6 +118,25 @@ describe('F5 交易查詢與看原單（D05）', () => {
     expect(screen.getByText('A002 測試二')).toBeInTheDocument();
     expect(screen.getByText('A0020 測試二十')).toBeInTheDocument();
   });
+
+  it('U3: onConsumeLookupTarget 在消費後觸發，且離開 F5 再由頂部導覽進入回到預設狀態（不殘留上次鎖定）', () => {
+    const onConsume = vi.fn();
+    const target = {
+      query: '002',
+      exactStudentId: '002',
+      startDate: D1,
+      endDate: D1,
+    };
+    const { unmount } = render(<HistoryScreen viewDate={D1} lookupTarget={target} onConsumeLookupTarget={onConsume} />);
+    expect(onConsume).toHaveBeenCalled();
+    unmount();
+
+    // 重新掛載（如同切到 F1 卸載後，再從頂部導覽列點 F5 進入）
+    render(<HistoryScreen viewDate={D1} lookupTarget={null} />);
+    // 預設為結帳歷史子分頁，不殘留上次交易查詢之搜尋框
+    expect(screen.getByText('結帳歷史')).toHaveClass('tab-on');
+    expect(screen.queryByLabelText('查詢帳戶')).toBeNull();
+  });
 });
 
 describe('跨日檢查（D06）', () => {
