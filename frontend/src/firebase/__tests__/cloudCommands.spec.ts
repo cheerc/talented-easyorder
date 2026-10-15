@@ -724,6 +724,135 @@ function rawP07Batch(
   return batch;
 }
 
+function encodeRulesMockToken(operator: typeof operatorA): string {
+  const encode = (value: Record<string, unknown>) => btoa(JSON.stringify(value))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+  const header = encode({ alg: 'none', type: 'JWT' });
+  const payload = encode({
+    iss: 'https://securetoken.google.com/demo-easyorder',
+    aud: 'demo-easyorder',
+    iat: 0,
+    exp: 3600,
+    auth_time: 0,
+    sub: operator.uid,
+    user_id: operator.uid,
+    firebase: { sign_in_provider: 'google.com', identities: {} },
+    email: operator.email,
+    email_verified: true,
+  });
+  return `${header}.${payload}.`;
+}
+
+function encodeRestValue(value: unknown, fieldPath: string, doubleValuePaths: Set<string>): Record<string, unknown> {
+  if (value === null) return { nullValue: null };
+  if (value instanceof Timestamp) return { timestampValue: value.toDate().toISOString() };
+  if (value instanceof Date) return { timestampValue: value.toISOString() };
+  if (typeof value === 'string') return { stringValue: value };
+  if (typeof value === 'boolean') return { booleanValue: value };
+  if (typeof value === 'number') {
+    return doubleValuePaths.has(fieldPath)
+      ? { doubleValue: value }
+      : Number.isInteger(value) ? { integerValue: String(value) } : { doubleValue: value };
+  }
+  if (Array.isArray(value)) {
+    return { arrayValue: { values: value.map((item, index) => encodeRestValue(item, `${fieldPath}.${index}`, doubleValuePaths)) } };
+  }
+  if (typeof value === 'object') {
+    const fields = Object.fromEntries(Object.entries(value as RawMap).map(([key, child]) => [
+      key,
+      encodeRestValue(child, fieldPath ? `${fieldPath}.${key}` : key, doubleValuePaths),
+    ]));
+    return { mapValue: { fields } };
+  }
+  throw new Error(`Cannot encode unsupported Firestore REST fixture value at ${fieldPath}`);
+}
+
+function encodeRestFields(data: RawMap, doubleValuePaths: Set<string>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(data).map(([key, value]) => [key, encodeRestValue(value, key, doubleValuePaths)]));
+}
+
+function restMaskPaths(fields: Record<string, unknown>, prefix = ''): string[] {
+  return Object.entries(fields).flatMap(([key, rawValue]) => {
+    const fieldPath = prefix ? `${prefix}.${key}` : key;
+    const value = rawValue as RawMap;
+    const nestedFields = value.mapValue?.fields as Record<string, unknown> | undefined;
+    return nestedFields && Object.keys(nestedFields).length > 0
+      ? restMaskPaths(nestedFields, fieldPath)
+      : [fieldPath];
+  });
+}
+
+function restWrite(
+  path: string,
+  data: RawMap,
+  options: {
+    transforms?: string[];
+    doubleValuePaths?: Set<string>;
+    mustNotExist?: boolean;
+  } = {},
+) {
+  const fields = encodeRestFields(data, options.doubleValuePaths ?? new Set());
+  return {
+    update: {
+      name: `projects/demo-easyorder/databases/(default)/documents/${path}`,
+      fields,
+    },
+    updateMask: { fieldPaths: restMaskPaths(fields) },
+    ...(options.transforms && options.transforms.length > 0 ? {
+      updateTransforms: options.transforms.map(fieldPath => ({
+        fieldPath,
+        setToServerValue: 'REQUEST_TIME',
+      })),
+    } : {}),
+    ...(options.mustNotExist ? { currentDocument: { exists: false } } : {}),
+  };
+}
+
+async function commitRawP07OpeningCashViaRest(
+  artifacts: RawP07Artifacts,
+  doubleValuePaths: string[] = [],
+): Promise<Response> {
+  const host = emulatorHost?.includes('://') ? emulatorHost : `http://${emulatorHost}`;
+  const url = `${host}/v1/projects/demo-easyorder/databases/(default)/documents:commit`;
+  const headAfter = { ...artifacts.headAfter };
+  delete headAfter.updatedAt;
+  const targetAfter = { ...artifacts.targetAfter };
+  delete targetAfter.openedAt;
+  delete targetAfter.updatedAt;
+  const command = { ...artifacts.command };
+  delete command.committedAt;
+  const commandAfter = command.after as RawMap;
+  const headReceiptAfter = { ...commandAfter.head };
+  delete headReceiptAfter.updatedAt;
+  const dayReceiptAfter = { ...commandAfter.day };
+  delete dayReceiptAfter.openedAt;
+  delete dayReceiptAfter.updatedAt;
+  command.after = { ...commandAfter, head: headReceiptAfter, day: dayReceiptAfter };
+  const doublePaths = new Set(doubleValuePaths);
+  const writes = [
+    restWrite('system/dataHead', headAfter, { transforms: ['updatedAt'] }),
+    restWrite(artifacts.targetPath, targetAfter, {
+      transforms: ['openedAt', 'updatedAt'],
+      doubleValuePaths: doublePaths,
+    }),
+    restWrite(`commands/${artifacts.commandId}`, command, {
+      transforms: ['committedAt', 'after.head.updatedAt', 'after.day.openedAt', 'after.day.updatedAt'],
+      doubleValuePaths: new Set(doubleValuePaths.map(path => `after.day.${path}`)),
+      mustNotExist: true,
+    }),
+  ];
+  return fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${encodeRulesMockToken(operatorA)}`,
+    },
+    body: JSON.stringify({ writes }),
+  });
+}
+
 async function expectRawP07DeniedUnchanged(
   artifacts: RawP07Artifacts,
   options: Parameters<typeof rawP07Batch>[2] = {},
@@ -1502,6 +1631,71 @@ describeWithEmulator('P05 production command repository and Rules', () => {
   });
 
   it.each([
+    ['missing', 'p07-create-status-missing', 'f7b11111-1111-4111-8111-111111111111', {
+      vendorId: 'p07-create-status-missing', name: 'Valid Name', phone: '', note: '',
+    }],
+    ['inactive', 'p07-create-status-inactive', 'f7b22222-2222-4222-8222-222222222222', {
+      vendorId: 'p07-create-status-inactive', name: 'Valid Name', phone: '', note: '', status: 'inactive',
+    }],
+    ['invalid', 'p07-create-status-invalid', 'f7b33333-3333-4333-8333-333333333333', {
+      vendorId: 'p07-create-status-invalid', name: 'Valid Name', phone: '', note: '', status: 'invalid',
+    }],
+    ['null', 'p07-create-status-null', 'f7b44444-4444-4444-8444-444444444444', {
+      vendorId: 'p07-create-status-null', name: 'Valid Name', phone: '', note: '', status: null,
+    }],
+  ] as const)(
+    'P07.6b: raw SaveVendor rejects a create payload with %s status even when the new vendor projection is active',
+    async (_label, vendorId, commandId, payload) => {
+      await seedBase();
+      const artifacts = await rawP07VendorArtifacts({
+        commandId,
+        kind: 'SaveVendor',
+        vendorId,
+        payload,
+      });
+      artifacts.targetAfter.status = 'active';
+      (artifacts.command.after as RawMap).vendor = artifacts.targetAfter;
+      await expectRawP07DeniedUnchanged(artifacts);
+    },
+  );
+
+  it.each([
+    ['missing', 'missing'],
+    ['non-null', 'non-null'],
+  ] as const)(
+    'P07.6c: raw SaveVendor create rejects a %s before.vendor receipt snapshot atomically',
+    async (_label, beforeVendorShape) => {
+      await seedBase();
+      const vendorId = 'p07-create-before-vendor';
+      const artifacts = await rawP07VendorArtifacts({
+        commandId: 'f7c11111-1111-4111-8111-111111111111',
+        kind: 'SaveVendor',
+        vendorId,
+        payload: { vendorId, name: 'New Vendor', phone: '', note: '', status: 'active' },
+      });
+      const before = artifacts.command.before as RawMap;
+      if (beforeVendorShape === 'missing') {
+        delete before.vendor;
+      } else {
+        const timestamp = Timestamp.fromMillis(1);
+        before.vendor = {
+          vendorId,
+          name: 'Existing Snapshot',
+          phone: '',
+          note: '',
+          status: 'inactive',
+          deleted: true,
+          createdAt: timestamp,
+          revision: 1,
+          lastCommandId: 'p07-prior-vendor-snapshot',
+          updatedAt: timestamp,
+        };
+      }
+      await expectRawP07DeniedUnchanged(artifacts);
+    },
+  );
+
+  it.each([
     ['empty name', { name: '', phone: '', note: '', status: 'active' }],
     ['overlong name', { name: 'n'.repeat(101), phone: '', note: '', status: 'active' }],
     ['overlong phone', { name: 'Valid Name', phone: 'p'.repeat(101), note: '', status: 'active' }],
@@ -1624,6 +1818,52 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     const finalDay = await withAdmin(db => getDoc(doc(db, `days/${today}`)));
     expect(finalDay.data()).toMatchObject({ openingCash: 20000, openedBy: firstActor, openedAt: firstAt });
   });
+
+  it('P07.10a: authenticated REST integerValue control accepts a valid SetOpeningCash commit', async () => {
+    await seedBase();
+    await seedP07Day(today);
+    const artifacts = await rawP07DayArtifacts({
+      commandId: 'f7c11111-1111-4111-8111-111111111111',
+      kind: 'SetOpeningCash',
+      dayId: today,
+      payload: { openingCash: 321 },
+    });
+    const response = await commitRawP07OpeningCashViaRest(artifacts);
+    const responseBody = await response.text();
+    expect(response.status, responseBody).toBe(200);
+    const [head, day, command] = await withAdmin(async db => Promise.all([
+      getDoc(doc(db, 'system/dataHead')),
+      getDoc(doc(db, `days/${today}`)),
+      getDoc(doc(db, `commands/${artifacts.commandId}`)),
+    ]));
+    expect(head.data()).toMatchObject({ seq: 1, lastCommandId: artifacts.commandId });
+    expect(day.data()).toMatchObject({ openingCash: 321, openedBy: operatorA.uid, revision: 2 });
+    expect(day.data()?.openedAt).toBeInstanceOf(Timestamp);
+    expect(command.data()).toMatchObject({ kind: 'SetOpeningCash', commandId: artifacts.commandId });
+  });
+
+  it.each([
+    ['openingCash', 'f7c22222-2222-4222-8222-222222222222'],
+    ['revision', 'f7c33333-3333-4333-8333-333333333333'],
+  ] as const)(
+    'P07.10b: authenticated REST doubleValue %s projection is denied atomically',
+    async (doubleField, commandId) => {
+      await seedBase();
+      await seedP07Day(today);
+      const artifacts = await rawP07DayArtifacts({
+        commandId,
+        kind: 'SetOpeningCash',
+        dayId: today,
+        payload: { openingCash: 321 },
+      });
+      const paths = ['system/dataHead', artifacts.targetPath, `commands/${artifacts.commandId}`];
+      const before = await capturePaths(paths);
+      const response = await commitRawP07OpeningCashViaRest(artifacts, [doubleField]);
+      const responseBody = await response.text();
+      expect(response.status, responseBody).toBe(403);
+      expect(await capturePaths(paths)).toEqual(before);
+    },
+  );
 
   it.each([
     ['above the ceiling', 20001, today],

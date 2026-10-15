@@ -91,12 +91,16 @@ function successful(commandId: string, kind: CommandReceipt['kind'], targets: Co
   return { ok: true, receipt: receipt(commandId, kind, targets) };
 }
 
-function renderPage(props: Partial<{ leaseEpoch: number; identityKey: string }> = {}) {
+function renderPage(
+  props: Partial<{ leaseEpoch: number; identityKey: string }> = {},
+  onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void,
+) {
   return render(
     <CloudDayVendorsPage
       db={{} as Firestore}
       leaseEpoch={props.leaseEpoch ?? 4}
       identityKey={props.identityKey ?? 'uid-a:4'}
+      onNavigationStateChange={onNavigationStateChange}
     />,
   );
 }
@@ -364,24 +368,28 @@ describe('CloudDayVendorsPage', () => {
   });
 
   it('keeps confirmed receipts and retries only the server read if refresh fails', async () => {
+    const reportNavigationState = vi.fn();
     repository.setOpeningCash.mockResolvedValueOnce(successful('00000000-0000-4000-8000-000000000007', 'SetOpeningCash', { dayId: today }));
     repository.loadSnapshot
       .mockResolvedValueOnce(snapshot())
       .mockRejectedValueOnce({ code: 'OFFLINE', message: 'offline' })
       .mockResolvedValueOnce(snapshot({ day: { ...snapshot().day!, revision: 4, openingCash: 80, openedBy: 'uid-a', openedAt: '2026-10-15T01:00:00.000Z' } }));
-    renderPage();
+    renderPage({}, reportNavigationState);
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
     fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '80' } });
     fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
 
     expect(await screen.findByText('已找到伺服器回執，資料尚待再次讀取。')).toBeInTheDocument();
+    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
     fireEvent.click(screen.getByRole('button', { name: '重新讀取伺服器資料' }));
     expect(await screen.findByText(/已確認 確認 2026-10-15 開帳現金 完成/)).toBeInTheDocument();
     expect(repository.setOpeningCash).toHaveBeenCalledTimes(1);
     expect(repository.loadSnapshot).toHaveBeenCalledTimes(3);
+    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'resolved');
   });
 
   it('recovers an unknown opening command with the same UUID and frozen semantic input', async () => {
+    const reportNavigationState = vi.fn();
     const commandId = '00000000-0000-4000-8000-000000000007';
     repository.setOpeningCash
       .mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } })
@@ -390,18 +398,30 @@ describe('CloudDayVendorsPage', () => {
     repository.loadSnapshot.mockResolvedValueOnce(snapshot()).mockResolvedValueOnce(snapshot({
       day: { ...snapshot().day!, revision: 4, openingCash: 90, openedBy: 'uid-a', openedAt: '2026-10-15T01:00:00.000Z' },
     }));
-    renderPage();
+    renderPage({}, reportNavigationState);
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
     fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '90' } });
     fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
 
     expect(await screen.findByText('結果確認中，請勿重複操作。')).toBeInTheDocument();
+    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
     expect(await screen.findByText(/已確認 確認 2026-10-15 開帳現金 完成/)).toBeInTheDocument();
     expect(repository.readCommand).toHaveBeenCalledWith(commandId);
     expect(repository.setOpeningCash).toHaveBeenCalledTimes(2);
     expect(repository.setOpeningCash.mock.calls[0][0]).toEqual(repository.setOpeningCash.mock.calls[1][0]);
     expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'resolved');
+  });
+
+  it('keeps navigation locked after same-identity authorization loss without a command ID', async () => {
+    const reportNavigationState = vi.fn();
+    repository.loadSnapshot.mockRejectedValueOnce({ code: 'UNAUTHORIZED', message: 'not allowed' });
+    renderPage({}, reportNavigationState);
+
+    expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
+    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'revoked');
+    expect(repository.loadSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it('clears vendor drafts synchronously on authorization loss and ignores an old command result', async () => {

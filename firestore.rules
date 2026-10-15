@@ -498,12 +498,14 @@ service cloud.firestore {
         && command.after.head == headAfter
         && (createVendor
           ? command.expectedRevisions.vendor == 0 && vendorBefore == null
+            && command.before.vendor == null
             && vendorAfter is map
             && vendorAfter.vendorId == vendorId
             && vendorAfter.name == command.payload.name
             && vendorAfter.phone == command.payload.phone
             && vendorAfter.note == command.payload.note
-            && vendorAfter.status == 'active'
+            && vendorAfter.status == command.payload.status
+            && command.payload.status == 'active'
             && vendorAfter.deleted == false
             && vendorAfter.revision == 1
             && vendorAfter.lastCommandId == commandId
@@ -713,8 +715,10 @@ service cloud.firestore {
         && exactMap(command.after, ['head', 'day'])
         && command.before.head == head
         && command.after.head == headAfter
+        && dayAfter.openingCash is int
         && dayAfter.openingCash == command.payload.openingCash
         && dayAfter.lastCommandId == commandId
+        && dayAfter.revision is int
         && dayAfter.revision == dayBefore.revision + 1
         && dayAfter.updatedAt == request.time;
     }

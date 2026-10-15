@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { usePosFlow } from './hooks/usePosFlow';
 import { posDraftKey, type PosMode } from './domain/posFlow';
 import { checkStorageHealth } from './storage/storageHealth';
@@ -268,6 +268,28 @@ function AppContent() {
 function CloudAppContent() {
   const { fb, fbError, access, lease } = useFirebase();
   const [cloudSection, setCloudSection] = useState<'students' | 'day-vendors'>('students');
+  const [navigationLocked, setNavigationLocked] = useState(false);
+  const navigationLockRef = useRef<{ identityKey: string; locked: boolean; revoked: boolean } | null>(null);
+  const reportNavigationState = useCallback((identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => {
+    let lock = navigationLockRef.current;
+    if (!lock || lock.identityKey !== identityKey) {
+      lock = { identityKey, locked: false, revoked: false };
+    }
+    if (state === 'revoked') {
+      lock.revoked = true;
+      lock.locked = true;
+    } else if (state === 'recovering') {
+      lock.locked = true;
+    } else if (!lock.revoked) {
+      lock.locked = false;
+    }
+    navigationLockRef.current = lock;
+    setNavigationLocked(lock.locked);
+  }, []);
+  const selectSection = (section: 'students' | 'day-vendors') => {
+    if (navigationLockRef.current?.locked) return;
+    setCloudSection(section);
+  };
 
   if (fbError) return <AppCrashPage />;
   if (!fb) {
@@ -280,10 +302,10 @@ function CloudAppContent() {
         <main className="cloud-app" aria-label={cloudSection === 'students' ? '雲端學生管理' : '雲端日期與供應商管理'}>
           <h1>Talented EasyOrder</h1>
           <nav className="cloud-app__nav" aria-label="雲端資料管理">
-            <button type="button" aria-pressed={cloudSection === 'students'} onClick={() => setCloudSection('students')}>
+            <button type="button" aria-pressed={cloudSection === 'students'} disabled={navigationLocked} onClick={() => selectSection('students')}>
               學生管理
             </button>
-            <button type="button" aria-pressed={cloudSection === 'day-vendors'} onClick={() => setCloudSection('day-vendors')}>
+            <button type="button" aria-pressed={cloudSection === 'day-vendors'} disabled={navigationLocked} onClick={() => selectSection('day-vendors')}>
               日期與供應商
             </button>
           </nav>
@@ -292,12 +314,14 @@ function CloudAppContent() {
               db={fb.db}
               leaseEpoch={lease.epoch}
               identityKey={access.ok ? `${access.profile.uid}:${lease.epoch}` : ''}
+              onNavigationStateChange={reportNavigationState}
             />
           ) : (
             <CloudDayVendorsPage
               db={fb.db}
               leaseEpoch={lease.epoch}
               identityKey={access.ok ? `${access.profile.uid}:${lease.epoch}` : ''}
+              onNavigationStateChange={reportNavigationState}
             />
           )}
         </main>

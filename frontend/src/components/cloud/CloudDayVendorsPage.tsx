@@ -24,6 +24,7 @@ export interface CloudDayVendorsPageProps {
   db: Firestore;
   leaseEpoch: number;
   identityKey: string;
+  onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
 }
 
 type PreparedCommand =
@@ -267,7 +268,7 @@ function dispatchPreparedCommand(
   return repository.setOpeningCash(input);
 }
 
-export function CloudDayVendorsPage({ db, leaseEpoch, identityKey }: CloudDayVendorsPageProps) {
+export function CloudDayVendorsPage({ db, leaseEpoch, identityKey, onNavigationStateChange }: CloudDayVendorsPageProps) {
   const repository = useMemo(() => createCloudDayVendorRepository(db), [db]);
   const scopeKey = `${identityKey}:${leaseEpoch}`;
   const [pageState, setPageStateRaw] = useState<PageState>(() => initialPageState(scopeKey));
@@ -311,6 +312,7 @@ export function CloudDayVendorsPage({ db, leaseEpoch, identityKey }: CloudDayVen
     commandFlightRef.current = null;
     const retainedCommandId = commandId ?? pendingCommandIdRef.current;
     pendingCommandIdRef.current = retainedCommandId;
+    onNavigationStateChange?.(identityKey, 'revoked');
 
     setPageStateRaw(previous => {
       if (previous.scopeKey !== key) return previous;
@@ -322,7 +324,7 @@ export function CloudDayVendorsPage({ db, leaseEpoch, identityKey }: CloudDayVen
         recovery: retainedCommandId ? { commandId: retainedCommandId, phase: 'access-lost' } : null,
       };
     });
-  }, [isCurrent]);
+  }, [identityKey, isCurrent, onNavigationStateChange]);
 
   const loadSnapshot = useCallback(async (targetDayId?: string, confirmedReceipt?: CommandReceipt) => {
     const key = scopeKey;
@@ -398,6 +400,14 @@ export function CloudDayVendorsPage({ db, leaseEpoch, identityKey }: CloudDayVen
     };
   }, [loadSnapshot, scopeKey]);
 
+  const hasRecovery = page.recovery !== null;
+  useEffect(() => {
+    onNavigationStateChange?.(
+      identityKey,
+      page.authorizationRevoked ? 'revoked' : hasRecovery ? 'recovering' : 'resolved',
+    );
+  }, [hasRecovery, identityKey, onNavigationStateChange, page.authorizationRevoked]);
+
   const finishCommandResult = async (command: PreparedCommand, result: CommandResult, key: string, generation: number) => {
     if (!isCurrent(key, generation)) return;
     if (!result.ok) {
@@ -457,6 +467,7 @@ export function CloudDayVendorsPage({ db, leaseEpoch, identityKey }: CloudDayVen
   const runPreparedCommand = async (command: PreparedCommand) => {
     const key = scopeKey;
     const generation = generationRef.current;
+    onNavigationStateChange?.(identityKey, 'recovering');
     if (revokedScopeRef.current === key) return;
     if (!identityKey || !Number.isSafeInteger(leaseEpoch) || leaseEpoch < 1) {
       revokeAuthorization(key, generation, command.commandId, {
