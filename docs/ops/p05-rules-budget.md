@@ -179,4 +179,4 @@ Measured headroom on the current Rules, in probe units (one unit = `pad10()`), f
 
 Static no-cache access calls for the inherited path change by one: the head leaf now also `get`s the source day (head 2 → 3). Atomic total **18/20**; max per write is still **6/10**. Direct and other P07 kinds are unchanged.
 
-Exact-source sequential Emulator regression (demo-easyorder, no skips): A01 10/10, P01 36/36, P04 19/19, P05/P07 commands 150/150 (including new `P07.9a`), post-commit 6/6, P06 student reads 11/11, P07 day/vendor reads 10/10. Total 242 passed, 0 failed, 0 skipped.
+Exact-source sequential Emulator regression (demo-easyorder, no skips): A01 10/10, P01 36/36, P04 19/19, P05/P07 commands 156/156 (including `P07.9a` and six `P07.9b` source-day negatives that fail on a mutant with the dataHead check removed), post-commit 6/6, P06 student reads 11/11, P07 day/vendor reads 10/10. Total 248 passed, 0 failed, 0 skipped.

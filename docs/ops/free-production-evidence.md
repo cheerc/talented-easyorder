@@ -90,13 +90,14 @@
 - **Rules expression-cap blocker, root cause and fix:** the ceiling is per document rule evaluation (see [P07 per-document ceiling](p05-rules-budget.md#p07-per-document-expression-ceiling-and-inherited-source-split--2026-10-15)). With CheerC's approval, `validDay(sourceDay)` moves from the day update rule to `headInheritedMenuSourceDay` on the mandatory dataHead write of the same commit. No check was removed. A new worst-case positive, `P07.9a` (re-inherit over an existing target menu from a reopened source with confirmed opening and nonzero totals), passes. Rules SHA-256 `e06d11add203dc253ad66d699d0592bfbb9f1511086610477f214e3df91a3fab`; static inherited closure 18/20, max 6/10 per write.
 - **Browser blocker, root cause and fix:** D02 failed because of the Rules cap above. It also had a loose `getByText` locator that matched both the saved menu and the earlier-source line (now `exact`). Separately, the P07 suite's `afterEach` left an isolated dataHead (`goLiveDate` yesterday), which broke P06 D01 when the whole Cloud suite ran in order. It now restores the global-setup empty head.
 - **Exact-source gates in this environment:**
-  - Seven sequential unfiltered `demo-easyorder` Emulator suites with no skips: A01 10/10, P01 36/36, P04 19/19, P05/P07 commands 150/150, post-commit 6/6, P06 student reads 11/11, P07 day/vendor reads 10/10 — 242 passed, 0 failed, 0 skipped.
+  - Seven sequential unfiltered `demo-easyorder` Emulator suites with no skips: A01 10/10, P01 36/36, P04 19/19, P05/P07 commands 156/156, post-commit 6/6, P06 student reads 11/11, P07 day/vendor reads 10/10 — 248 passed, 0 failed, 0 skipped. The 156 include six `P07.9b` negatives added after review.
   - Full `npx vitest run`: exit 0, 147 files passed / 7 Emulator-only skipped, 1,400 passed / 242 skipped / 0 failed.
   - `npm run lint` and `npm run build`: exit 0.
   - Root `npx tsc --noEmit`: exit 0.
   - App `tsc -p tsconfig.app.json`: exit 2 with 290 diagnostic headers / 542 lines. After normalizing `(line,column)`, it is byte-identical to `b518eca`, so this is not a clean TSC pass.
   - Chromium 141 diagnostic E2E: Cloud 15/15 (auth, P06, both P07 cases) and prototype 7/7.
   - Raw logs stayed in this session's scratch directory and are not tracked.
+- **Review follow-up (PR #480):** the reviewer showed that the relocated `headInheritedMenuSourceDay` check had no negative test. Six `P07.9b` cases now cover it. Each seeds a source day with a legal menu plus one defect: an extra top-level field, incomplete totals, `openingCash` without opener, a menu `businessDate` that is not the source day, an invalid status, or an extra menu key. On the current Rules all six deny atomically with head, target day and receipt unchanged. On a mutant where the check returns `true`, all six commits succeed, so the suite now catches removal of the check.
 - Still outstanding: required GitHub CI on the pushed head, an independent exact-SHA review, the PR and merge receipt. No production configuration or deploy. Do not start P08.
 
 ## 舊寫入路徑盤點

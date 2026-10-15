@@ -1839,6 +1839,34 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     });
   });
 
+  // The complete source-day schema check runs on the dataHead write (headInheritedMenuSourceDay).
+  // Each source below keeps a legal menu, so only that check can deny the inherited commit.
+  it.each([
+    ['an extra top-level field', (sourceDay: string) => ({ menu: { ...menu, businessDate: sourceDay }, extraField: 'x' })],
+    ['incomplete totals', (sourceDay: string) => ({ menu: { ...menu, businessDate: sourceDay }, totals: { activeTransactionCount: 0 } })],
+    ['openingCash without openedBy/openedAt', (sourceDay: string) => ({ menu: { ...menu, businessDate: sourceDay }, openingCash: 100 })],
+    ['a menu businessDate that is not the source day', (sourceDay: string) => ({ menu: { ...menu, businessDate: shiftDate(sourceDay, -1) } })],
+    ['an invalid status', (sourceDay: string) => ({ menu: { ...menu, businessDate: sourceDay }, status: 'archived' })],
+    ['an extra menu key', (sourceDay: string) => ({ menu: { ...menu, businessDate: sourceDay, extra: 1 } })],
+  ])('P07.9b: raw inherited SetDayMenu rejects a source day with %s atomically', async (_label, sourceOverrides) => {
+    await seedBase();
+    await seedP07Vendor('p05-vendor', { name: 'Synthetic Vendor' });
+    const futureDay = shiftDate(today, 1);
+    await seedP07Day(today, sourceOverrides(today));
+    await seedP07Day(futureDay);
+    const artifacts = await rawP07DayArtifacts({
+      commandId: 'f7b9b9b9-b9b9-4b9b-8b9b-b9b9b9b9b9b9',
+      kind: 'SetDayMenu',
+      dayId: futureDay,
+      payload: {
+        selectionDate: today,
+        itemName: menu.itemName, price: menu.price, vendorId: menu.vendorId,
+        vendorNameSnapshot: menu.vendorNameSnapshot, inheritedFromDate: today,
+      },
+    });
+    await expectRawP07DeniedUnchanged(artifacts);
+  });
+
   it('P07.10: raw SetOpeningCash confirms zero then preserves the first actor and time', async () => {
     await seedBase();
     await seedP07Day(today);
