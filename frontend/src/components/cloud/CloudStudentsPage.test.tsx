@@ -230,7 +230,7 @@ describe('CloudStudentsPage', () => {
     openCreateForm();
     const form = within(screen.getByRole('form', { name: '新增學生' }));
     fireEvent.change(form.getByLabelText('學員編號'), { target: { value: 'STUDENT-PII-77' } });
-    fireEvent.change(form.getByRole('textbox', { name: '姓名', exact: true }), { target: { value: '敏感姓名' } });
+    fireEvent.change(form.getByRole('textbox', { name: /^姓名$/ }), { target: { value: '敏感姓名' } });
     fireEvent.change(form.getByRole('textbox', { name: /別名（逗號、頓號/ }), { target: { value: '敏感別名' } });
     fireEvent.change(form.getByLabelText(/期初結餘/), { target: { value: '-7' } });
     fireEvent.click(form.getByRole('radio', { name: /沿用既有核對結餘/ }));
