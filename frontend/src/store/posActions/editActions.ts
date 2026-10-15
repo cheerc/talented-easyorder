@@ -134,6 +134,12 @@ export function createEditActions(
             return { ok: false, message: '退款金額不能超過目前可用餘額。' };
           }
         }
+        // U4 #2 複審：退款的 note 是「退款業務理由」（validator 與 snapshot 都要求非空），
+        // opts.reason 是「更正理由」，兩者不可互相頂替。`updates.note` 給空白字串時
+        // 會產生 validator／parseSnapshot 都拒絕的退款交易，所以要保留原 note 或擋下。
+        if (updates.note !== undefined && updates.note.trim().length === 0) {
+          return { ok: false, message: '退款原因不能清空；若要改寫請填入新的退款原因。' };
+        }
       }
 
       const newMealPrice = Math.round(updates.mealPrice ?? original.mealPrice);

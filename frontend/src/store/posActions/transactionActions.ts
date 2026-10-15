@@ -7,6 +7,7 @@ import { createPaymentActions } from './paymentActions';
 import { createEditActions } from './editActions';
 import { rebalanceAccounts } from '../../domain/ledger';
 import { checkNewLedgerEntry, type LedgerCommitResult } from '../../domain/ledgerAudit';
+import { resolveCurrentBusinessDate } from '../currentBusinessDate';
 
 export function createTransactionActions(
   set: (partial: Partial<PosState> | ((state: PosState) => Partial<PosState>)) => void,
@@ -36,7 +37,9 @@ export function createTransactionActions(
       if (studentIndex === -1) return { ok: false, message: '找不到這個帳戶。' };
 
       if (draft.intent.type === 'refund') {
-        const activeDate = state.simulationDate ?? state.todayMenu.businessDate;
+        // U4 #9：退款只能記在目前營業日。來源與 useSystemDate 相同（模擬營業日或台北當天），
+        // 不用 viewDate 或菜單快照日期，否則還原舊資料時會誤擋／誤准。
+        const activeDate = resolveCurrentBusinessDate(state.simulationDate);
         if (draft.intent.businessDate !== activeDate) {
           return { ok: false, message: '退款只能記在當前營業日。' };
         }

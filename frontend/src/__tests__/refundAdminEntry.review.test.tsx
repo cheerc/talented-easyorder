@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { screen, waitFor, fireEvent, render, within } from '@testing-library/react';
 import { usePosStore } from '../store/posStore';
 import { buildRefundTransactionDraft } from '../domain/posTransaction';
+import { resolveCurrentBusinessDate } from '../store/currentBusinessDate';
 import { AdminScreen } from '../components/screens/AdminScreen';
 import { FirebaseProvider } from '../providers/FirebaseProvider';
 import { resetStoreForTest } from './helpers/storeSetup';
@@ -30,7 +31,8 @@ async function renderAdmin(onRefund: RefundWriter) {
   );
 }
 
-const TODAY = '2026-10-15';
+/** 與 store 擋下檢查同一個日期來源（測試環境不是 prototype mode）。 */
+const TODAY = resolveCurrentBusinessDate(null);
 
 function seedStudent(overrides: Partial<StudentAccount> = {}): StudentAccount {
   return {

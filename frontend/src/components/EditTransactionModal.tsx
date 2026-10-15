@@ -48,6 +48,10 @@ export const EditTransactionModal = React.memo(function EditTransactionModal({
       if (!Number.isInteger(amount) || amount <= 0) {
         nextErrors.amount = '退款金額必須是大於 0 的整數';
       }
+      // 退款原因不可清空（validator 與 snapshot 都要求非空）；更正理由是另一個欄位。
+      if (note.trim().length === 0) {
+        nextErrors.note = '退款原因不能清空；若要改寫請填入新的退款原因。';
+      }
     } else {
       if (!Number.isInteger(mealPrice) || mealPrice < 0) {
         nextErrors.mealPrice = '金額必須是 0 或正整數';
@@ -104,10 +108,19 @@ export const EditTransactionModal = React.memo(function EditTransactionModal({
           </>
         )}
         <TextField
-          label="備註"
+          label={isRefund ? '退款原因（不可清空）' : '備註'}
           value={note}
-          onChange={setNote}
-          placeholder="例如：單筆改價或備註說明"
+          onChange={v => {
+            setNote(v);
+            setErrors(prev => {
+              if (!prev.note) return prev;
+              const next = { ...prev };
+              delete next.note;
+              return next;
+            });
+          }}
+          error={errors.note}
+          placeholder={isRefund ? '例如：結清離班、溢繳退還' : '例如：單筆改價或備註說明'}
         />
         <ReasonField
           value={reason}

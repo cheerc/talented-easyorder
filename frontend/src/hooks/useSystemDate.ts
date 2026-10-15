@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { getTaiwanDate } from '../utils/dateTime';
 import { useSimulationDate } from '../store/selectors';
+import { resolveCurrentBusinessDate } from '../store/currentBusinessDate';
 import { isPrototypeMode } from '../appMode';
 
 export function useSystemDate() {
   const getSystemDate = () => getTaiwanDate();
   const [realDate, setRealDate] = useState(getSystemDate);
   // M0 S-DATE：本機練習模式可設定模擬營業日，取代實際日期作為可寫入的營業日。
+  // U4 #9：與 store 的退款擋下檢查共用同一個來源，避免兩邊對「今天」的分歧。
   const simulationDate = useSimulationDate();
-  const systemDate = (isPrototypeMode && simulationDate) ? simulationDate : realDate;
+  const systemDate = resolveCurrentBusinessDate(simulationDate, realDate);
   const [viewDate, setViewDate] = useState(systemDate);
 
   useEffect(() => {

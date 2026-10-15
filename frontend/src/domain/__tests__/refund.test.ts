@@ -10,6 +10,7 @@ import { calculateLedgerTotals } from '../ledgerReport';
 import { buildRefundTransactionDraft } from '../posTransaction';
 import { buildTransactionCsvRows } from '../ledgerExport';
 import { usePosStore } from '../../store/posStore';
+import { resolveCurrentBusinessDate } from '../../store/currentBusinessDate';
 import type { StudentAccount } from '../student';
 
 const makeStudent = (overrides: Partial<StudentAccount> = {}): StudentAccount => ({
@@ -25,7 +26,11 @@ const makeStudent = (overrides: Partial<StudentAccount> = {}): StudentAccount =>
   ...overrides,
 });
 
-const TODAY = '2026-10-15';
+/**
+ * 退款可寫入的「今天」：與 store 擋下檢查同一個來源。
+ * 測試環境不是 prototype mode，所以模擬營業日不生效，不能寫死日期。
+ */
+const TODAY = resolveCurrentBusinessDate(null);
 
 describe('Refund domain accounting', () => {
   it('createLedgerTransaction initializes refund with mealPrice=0, paidAmount=0, and reduces afterBalance', () => {

@@ -7,6 +7,7 @@ import { screen, waitFor, fireEvent, render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { usePosStore } from '../store/posStore';
 import { buildRefundTransactionDraft } from '../domain/posTransaction';
+import { resolveCurrentBusinessDate } from '../store/currentBusinessDate';
 import { validateLedgerTransaction } from '../storage/posStateValidator';
 import { mergeLedgerTransactions, computeTransactionBalanceDelta, type LedgerTransaction } from '../domain/ledger';
 import { calculateLedgerTotals } from '../domain/ledgerReport';
@@ -18,7 +19,16 @@ import { resetStoreForTest } from './helpers/storeSetup';
 import { renderApp } from './helpers/renderApp';
 import type { StudentAccount } from '../domain/student';
 
-const TODAY = '2026-10-15';
+/**
+ * 退款可寫入的「今天」：用 store 擋下檢查同一個來源。
+ * 測試環境不是 prototype mode，模擬營業日不生效，所以不能寫死日期。
+ */
+function currentDate() {
+  return resolveCurrentBusinessDate(usePosStore.getState().simulationDate);
+}
+
+/** 固定 fixture 日期，只用於組造不依賴「今天」的靜態交易資料。 */
+const DATE = '2026-10-15';
 
 function seedStudent(overrides: Partial<StudentAccount> = {}): StudentAccount {
   return {
@@ -49,14 +59,7 @@ async function seedOnlyStudentAfterRehydrate(student: StudentAccount) {
   usePosStore.setState({ students: [student] });
 }
 
-function setBusinessDate(date: string) {
-  usePosStore.setState(state => ({
-    simulationDate: date,
-    todayMenu: { ...state.todayMenu, businessDate: date },
-  }));
-}
-
-function commitRefund(student: StudentAccount, amount: number, note: string, businessDate = TODAY) {
+function commitRefund(student: StudentAccount, amount: number, note: string, businessDate = currentDate()) {
   return usePosStore.getState().commitPosTransactionDraft(
     buildRefundTransactionDraft({ businessDate, student, amount, note, sourceDevice: 'pc' }),
   );
@@ -64,7 +67,6 @@ function commitRefund(student: StudentAccount, amount: number, note: string, bus
 
 beforeEach(() => {
   resetStoreForTest();
-  setBusinessDate(TODAY);
   seedOnlyStudent(seedStudent());
 });
 
@@ -227,8 +229,8 @@ describe('U4 #4：撤回退款後成功遮罩一併清除', () => {
 describe('U4 #6：E／最近帳戶／F2 消費端顯示退款類型與金額', () => {
   const refundTx: LedgerTransaction = {
     transactionId: 'tx-refund-1',
-    businessDate: TODAY,
-    createdAt: `${TODAY}T09:00:00.000Z`,
+    businessDate: DATE,
+    createdAt: `${DATE}T09:00:00.000Z`,
     studentId: '015',
     studentNameSnapshot: '周映彤',
     type: 'refund',
@@ -280,8 +282,8 @@ describe('U4 #7：先退款再訂餐時合併列不沿用退款 transactionId', 
   it('合併訂餐列以訂餐原單為代表，退款維持獨立列', () => {
     const makeTx = (over: Partial<LedgerTransaction>): LedgerTransaction => ({
       transactionId: 'tx',
-      businessDate: TODAY,
-      createdAt: `${TODAY}T09:00:00.000Z`,
+      businessDate: DATE,
+      createdAt: `${DATE}T09:00:00.000Z`,
       studentId: '015',
       studentNameSnapshot: '周映彤',
       type: 'order',
@@ -303,7 +305,7 @@ describe('U4 #7：先退款再訂餐時合併列不沿用退款 transactionId', 
       type: 'refund',
       amount: 50,
       afterBalance: 50,
-      createdAt: `${TODAY}T10:00:00.000Z`,
+      createdAt: `${DATE}T10:00:00.000Z`,
       note: '結清離班',
     });
     const order = makeTx({
@@ -313,7 +315,7 @@ describe('U4 #7：先退款再訂餐時合併列不沿用退款 transactionId', 
       paidAmount: 0,
       amount: -90,
       afterBalance: -40,
-      createdAt: `${TODAY}T11:00:00.000Z`,
+      createdAt: `${DATE}T11:00:00.000Z`,
       menuNameSnapshot: '排骨便當',
     });
 
@@ -334,8 +336,8 @@ describe('U4 #7：先退款再訂餐時合併列不沿用退款 transactionId', 
 describe('U4 #8：persist／snapshot validator 嚴驗退款契約', () => {
   const base = {
     transactionId: 'tx-r',
-    businessDate: TODAY,
-    createdAt: `${TODAY}T09:00:00.000Z`,
+    businessDate: DATE,
+    createdAt: `${DATE}T09:00:00.000Z`,
     studentId: '015',
     studentNameSnapshot: '周映彤',
     type: 'refund',
@@ -380,12 +382,13 @@ describe('U4 #9：store 嚴格限制退款只能記在當前營業日', () => {
     expect(usePosStore.getState().transactions.filter(t => t.type === 'refund')).toHaveLength(0);
   });
 
-  it('simulationDate 存在時以模擬營業日為準：模擬日可寫、其他日不可', () => {
-    setBusinessDate('2026-10-20');
+  it('當前營業日可寫、其他日不可（含菜單快照日期）', () => {
     const student = usePosStore.getState().students[0];
+    const today = currentDate();
 
-    expect(commitRefund(student, 50, '模擬日退款', '2026-10-20').ok).toBe(true);
-    expect(commitRefund(student, 50, '非模擬日', '2026-10-15').ok).toBe(false);
+    expect(commitRefund(student, 50, '今天退款', today).ok).toBe(true);
+    expect(commitRefund(student, 50, '菜單舊日期', '2020-01-01').ok).toBe(false);
+    expect(commitRefund(student, 50, '其他未來日', '2099-12-31').ok).toBe(false);
   });
 });
 
