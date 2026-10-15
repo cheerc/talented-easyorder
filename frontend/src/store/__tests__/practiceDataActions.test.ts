@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { usePosStore } from '../posStore';
 import { createLocalAccount } from '../../domain/student';
 import { validateTodayMenu, validatePersistedState, validateStudentAccount } from '../../storage/posStateValidator';
+import { buildSnapshot, pickDataset, parseSnapshot } from '../../domain/practiceSnapshot';
 
 // M0 S02：空白與範例是分開的起點。
 
@@ -178,6 +179,86 @@ describe('practiceDataActions', () => {
       const s = usePosStore.getState();
       expect(s.students.find(x => x.studentId === '001')?.displayName).toBe('甲生');
       expect(s.students.find(x => x.studentId === '002')?.displayName).toBe('乙生');
+    });
+
+    it('U3 Review Finding 1: 改號後快照匯出與還原可成功通過驗證，不被重置回範例資料', () => {
+      usePosStore.getState().startBlankData();
+      const a = createLocalAccount({ studentId: '005', displayName: '五號', openingBalance: 100, openingNote: '', asOfDate: '2026-10-12' }, '2026-10-12T00:00:00Z');
+      usePosStore.getState().addLocalStudent(a);
+      usePosStore.getState().updateLocalStudent(
+        '005',
+        { displayName: '五號改七號', aliases: [], newStudentId: '007', reason: '改號驗證' },
+        '2026-10-12T01:00:00Z'
+      );
+
+      const state = usePosStore.getState();
+      expect(validatePersistedState(state).ok).toBe(true);
+
+      const snapshot = buildSnapshot(pickDataset(state), '2026-10-12T02:00:00Z');
+      const text = JSON.stringify(snapshot);
+      const parsed = parseSnapshot(text);
+      expect(parsed.ok).toBe(true);
+      if (parsed.ok) {
+        usePosStore.getState().restoreDataset(parsed.snapshot.data);
+      }
+      const restored = usePosStore.getState();
+      expect(restored.students).toHaveLength(1);
+      expect(restored.students[0].studentId).toBe('007');
+      expect(restored.auditEvents.some(e => e.eventType === 'student_code_changed')).toBe(true);
+    });
+
+    it('U3 Review Finding 2: 同一人多次改號與他人重用舊號時，歷史改號快照不被覆寫污染', () => {
+      usePosStore.getState().startBlankData();
+      const a = createLocalAccount({ studentId: '005', displayName: '甲生', openingBalance: 100, openingNote: '', asOfDate: '2026-10-12' }, '2026-10-12T00:00:00Z');
+      usePosStore.getState().addLocalStudent(a);
+
+      // 甲 005 -> 007
+      usePosStore.getState().updateLocalStudent(
+        '005',
+        { displayName: '甲生', aliases: [], newStudentId: '007', reason: '甲第一次改號' },
+        '2026-10-12T01:00:00Z'
+      );
+
+      // 甲 007 -> 009
+      usePosStore.getState().updateLocalStudent(
+        '007',
+        { displayName: '甲生', aliases: [], newStudentId: '009', reason: '甲第二次改號' },
+        '2026-10-12T02:00:00Z'
+      );
+
+      // 乙 使用空出的 005，隨後 005 -> 008
+      const b = createLocalAccount({ studentId: '005', displayName: '乙生', openingBalance: 200, openingNote: '', asOfDate: '2026-10-12' }, '2026-10-12T03:00:00Z');
+      usePosStore.getState().addLocalStudent(b);
+      usePosStore.getState().updateLocalStudent(
+        '005',
+        { displayName: '乙生', aliases: [], newStudentId: '008', reason: '乙改號' },
+        '2026-10-12T04:00:00Z'
+      );
+
+      const s = usePosStore.getState();
+      const codeEvents = s.auditEvents.filter(e => e.eventType === 'student_code_changed');
+      expect(codeEvents).toHaveLength(3);
+
+      // 甲的第一次改號：快照必須是 005 -> 007，不可被改為 008 -> 007 或 005 -> 009，目前歸屬應為 009
+      const event1 = codeEvents.find(e => e.reason === '甲第一次改號')!;
+      expect(event1.before).toMatchObject({ studentId: '005' });
+      expect(event1.after).toMatchObject({ studentId: '007' });
+      expect(event1.entityId).toBe('009');
+      expect(event1.studentId).toBe('009');
+
+      // 甲的第二次改號：快照必須是 007 -> 009
+      const event2 = codeEvents.find(e => e.reason === '甲第二次改號')!;
+      expect(event2.before).toMatchObject({ studentId: '007' });
+      expect(event2.after).toMatchObject({ studentId: '009' });
+      expect(event2.entityId).toBe('009');
+      expect(event2.studentId).toBe('009');
+
+      // 乙的改號：快照為 005 -> 008，歸屬 008
+      const event3 = codeEvents.find(e => e.reason === '乙改號')!;
+      expect(event3.before).toMatchObject({ studentId: '005' });
+      expect(event3.after).toMatchObject({ studentId: '008' });
+      expect(event3.entityId).toBe('008');
+      expect(event3.studentId).toBe('008');
     });
   });
 });

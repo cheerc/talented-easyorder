@@ -78,29 +78,34 @@ export function createPracticeDataActions(
         t.studentId === oldId ? { ...t, studentId: newId } : t
       );
 
-      // 3. 稽核紀錄同步更新
-      const updateRef = (obj: Record<string, unknown> | null): Record<string, unknown> | null => {
-        if (!obj || typeof obj !== 'object') return obj;
-        if (obj.studentId === oldId) {
-          return { ...obj, studentId: newId };
-        }
-        return obj;
-      };
-
+      // 3. 稽核紀錄同步更新：區分「交易事件」與「改號事件」
+      // 改號事件的 before/after 是歷史快照，不可變！只更新 entityId 與 studentId 為新號碼以正確歸屬目前帳戶
       const updatedAuditEvents = (state.auditEvents || []).map(e => {
+        if (e.entityType === 'student' || e.eventType === 'student_code_changed') {
+          if (e.entityId === oldId || e.studentId === oldId) {
+            return { ...e, entityId: newId, studentId: newId };
+          }
+          return e;
+        }
+
         let changed = false;
-        let nextEntityId = e.entityId;
-        if (e.entityId === oldId) {
-          nextEntityId = newId;
+        let nextSid = e.studentId;
+        if (e.studentId === oldId) {
+          nextSid = newId;
           changed = true;
         }
-        const nextBefore = updateRef(e.before);
-        const nextAfter = updateRef(e.after);
-        if (nextBefore !== e.before || nextAfter !== e.after) {
+        let nextBefore = e.before;
+        if (e.before && typeof e.before === 'object' && e.before.studentId === oldId) {
+          nextBefore = { ...e.before, studentId: newId };
+          changed = true;
+        }
+        let nextAfter = e.after;
+        if (e.after && typeof e.after === 'object' && e.after.studentId === oldId) {
+          nextAfter = { ...e.after, studentId: newId };
           changed = true;
         }
         return changed
-          ? { ...e, entityId: nextEntityId, before: nextBefore, after: nextAfter }
+          ? { ...e, studentId: nextSid, before: nextBefore, after: nextAfter }
           : e;
       });
 

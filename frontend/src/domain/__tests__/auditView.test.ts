@@ -47,6 +47,8 @@ describe('describeAuditEvents and matchesAuditQuery (U3 Review Finding 3)', () =
     expect(matchesAuditQuery(row, '王小明')).toBe(true);
     // 以別名查詢
     expect(matchesAuditQuery(row, 'Ming')).toBe(true);
+    // U3 Review Finding 3: 以年份（如 2026）做純數字查詢時，不撞到營業日，不會誤匹配為帳戶
+    expect(matchesAuditQuery(row, '2026')).toBe(false);
     // 無關查詢查不到
     expect(matchesAuditQuery(row, '999')).toBe(false);
   });

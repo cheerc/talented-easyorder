@@ -29,6 +29,8 @@ export interface AuditRowView {
   transactionId?: string;
   /** 原單的帳戶編號（櫃台收支是 CASHIER_SENTINEL）。 */
   studentId?: string;
+  /** 學生改號等事件涉及之歷史曾用編號集合，供純數字查詢使用 */
+  historicalStudentIds?: string[];
   /** 原單現在還在不在；刪除、撤回或取消訂餐退款後只剩稽核裡的原單內容。 */
   originalExists: boolean;
 }
@@ -165,7 +167,8 @@ export function describeAuditEvents(events: LedgerAuditEvent[], transactions: Le
         subject = '匯出';
       }
 
-      const oldSid = isStudentChange ? String(e.before?.studentId ?? '') : '';
+      const oldSid = isStudentChange && e.before?.studentId ? String(e.before.studentId) : '';
+      const historicalStudentIds = oldSid && oldSid !== ref?.studentId ? [oldSid] : undefined;
       const extraSearch = oldSid && oldSid !== ref?.studentId ? ` ${oldSid}` : '';
 
       return {
@@ -181,22 +184,28 @@ export function describeAuditEvents(events: LedgerAuditEvent[], transactions: Le
         searchText: `${subject}${extraSearch} ${ref ? currentNames.get(ref.studentId) ?? '' : ''} ${e.businessDate}`.toLowerCase(),
         transactionId: e.entityType === 'transaction' && !isStudentChange ? e.entityId : undefined,
         studentId: ref?.studentId,
+        historicalStudentIds,
         originalExists: e.entityType === 'transaction' && !isStudentChange && existing.has(e.entityId),
       };
     });
 }
 
 /**
- * M3：稽核查詢。只打數字時當作帳戶編號，比對編號開頭（「01」查不到「001」以外的帳戶，也不會撞到日期或交易編號）；
- * 其他文字比對帳戶編號、當時與目前的姓名、別名、營業日。改號事件同時支援以新號或舊號查出。
+ * M3：稽核查詢。只打數字時當作帳戶編號，比對目前或歷史帳戶編號開頭（「01」查不到「001」以外的帳戶，也不會撞到日期或交易編號）；
+ * 其他文字比對帳戶編號、當時與目前的姓名、別名、營業日。
  */
 export function matchesAuditQuery(row: AuditRowView, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
   if (/^\d+$/.test(q)) {
-    const matchesId = !!row.studentId && row.studentId.toLowerCase().startsWith(q);
-    const matchesTokens = row.searchText.split(' ').some(tok => tok === q || tok.startsWith(q));
-    return matchesId || matchesTokens;
+    const checkId = (id: string | undefined): boolean => {
+      if (!id) return false;
+      return id.toLowerCase().startsWith(q);
+    };
+
+    if (checkId(row.studentId)) return true;
+    if (row.historicalStudentIds?.some(checkId)) return true;
+    return false;
   }
   return row.searchText.includes(q);
 }
