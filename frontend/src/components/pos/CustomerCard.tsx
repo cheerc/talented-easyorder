@@ -97,7 +97,7 @@ export const CustomerCard = React.memo(function CustomerCard({
           </div>
           {orderedTodayCount > 0 && (
             <div className="bal-debt warn-soft-chip">
-              ⚠ 今日已訂過 <b>{orderedTodayCount}</b> 次便當
+              ⚠ 今天已訂 <b>{orderedTodayCount}</b> 份餐點
             </div>
           )}
 
@@ -129,7 +129,7 @@ export const CustomerCard = React.memo(function CustomerCard({
             </div>
             {mode === 'order' && (
               <div className="bill-item no-border">
-                <span className="bill-label">今日便當 ({(priceOverride !== null && priceOverrideLabel) || todayMenu.itemName})</span>
+                <span className="bill-label">今日餐點 ({(priceOverride !== null && priceOverrideLabel) || todayMenu.itemName})</span>
                 <span className="bill-val neg">−${fmt(effectiveMealPrice)}</span>
               </div>
             )}
@@ -174,7 +174,7 @@ export const CustomerCard = React.memo(function CustomerCard({
                         className="adm-input mono"
                         aria-label="價格"
                         value={priceOverride === 0 ? '' : priceOverride ?? ''}
-                        // 清空時先存 0（送出前會擋），不再立刻跳回今日便當的價格；以前倒退鍵刪掉 90 再打 110 會變成 90110。
+                        // 清空時先存 0（送出前會擋），不再立刻跳回今日餐點的價格；以前倒退鍵刪掉 90 再打 110 會變成 90110。
                         onChange={v => setPriceOverride(v === '' ? 0 : Number(v))}
                       />
                     </label>

@@ -101,7 +101,7 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
     const n = Number(price);
     // M3 D01：名稱空白或單價不合法時不存，並說明原因；以前會顯示「已儲存」但 F1 仍不能訂餐。
     const errors: string[] = [];
-    if (!name.trim()) errors.push('請填寫便當名稱。');
+    if (!name.trim()) errors.push('請填寫餐點名稱。');
     // Ref: #311, #347 — Financial input validation
     if (!isPositiveInt(n)) errors.push('單價要是大於 0 的整數。');
     if (errors.length > 0) {
@@ -169,7 +169,7 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
     <div className="screen admin">
       <div className="admin-grid admin-grid-2">
         <div className="card adm-card">
-          <div className="card-h">今日便當設定 <span className="card-h-sub mono">{viewDate}</span></div>
+          <div className="card-h">今日餐點設定 <span className="card-h-sub mono">{viewDate}</span></div>
           {resolvedMenu.source === 'none' && (
             <p className="dim" style={{ fontSize: '12px', margin: '0 0 8px' }}>這天之前還沒有設定晚餐；儲存後才可訂餐。</p>
           )}
@@ -177,12 +177,12 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
             <p className="dim" style={{ fontSize: '12px', margin: '0 0 8px' }}>這天還沒有自己的設定，目前沿用 {resolvedMenu.fromDate} 的晚餐；儲存後只改這一天起的菜單。</p>
           )}
           <div className="adm-row">
-            <label>便當名稱</label>
-            <input className="adm-input" aria-label="便當名稱" value={name} onChange={e => setName(e.target.value)} />
+            <label>餐點名稱</label>
+            <input className="adm-input" aria-label="餐點名稱" value={name} onChange={e => setName(e.target.value)} />
           </div>
           <div className="adm-row">
             <label>單價 (元)</label>
-            <NumericInput className="adm-input mono" aria-label="便當單價" value={price} onChange={v => setPrice(Number(v))} />
+            <NumericInput className="adm-input mono" aria-label="餐點單價" value={price} onChange={v => setPrice(Number(v))} />
           </div>
           <div className="adm-row">
             <label>供應商</label>

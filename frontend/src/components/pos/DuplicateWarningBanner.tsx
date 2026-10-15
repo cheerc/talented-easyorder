@@ -10,7 +10,7 @@ export const DuplicateWarningBanner = React.memo(function DuplicateWarningBanner
     <div className="dup-warn">
       <div className="dup-warn-icon">⚠</div>
       <div className="dup-warn-body">
-        <div className="dup-warn-h">已經訂過 {orderedTodayCount} 次便當</div>
+        <div className="dup-warn-h">今天已訂 {orderedTodayCount} 份餐點</div>
         <div className="dup-warn-sub">
           確定要再訂一份嗎? (家長可能用同一帳號為多位學員訂餐)
         </div>

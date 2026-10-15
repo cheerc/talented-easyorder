@@ -11,8 +11,8 @@ export interface LedgerDateRange {
 
 /**
  * M2 F08 報表口徑。畫面上的卡片名稱與這裡的欄位一一對應：
- * - orderCount 份數：訂餐筆數（每筆一份）＝ bentoCount 今日便當 ＋ otherMealCount 其他餐點。
- *   向供應商叫便當看 bentoCount；「訂購其他餐點」另列（isOtherMealOrder）。
+ * - orderCount 份數：訂餐筆數（每筆一份）＝ bentoCount 今日餐點 ＋ otherMealCount 其他餐點。
+ *   向供應商叫餐看 bentoCount；「訂購其他餐點」另列（isOtherMealOrder）。
  * - mealTotal 餐費：訂餐的應收餐費合計。
  * - orderUnpaid 訂餐當下未收：每筆訂餐「餐費 − 當筆收款」不足的部分合計。之後補繳不會扣回，所以不是帳戶欠款。
  * - totalIncome 收現：實際收進的現金＝訂餐當筆收款＋繳費＋櫃台收入。

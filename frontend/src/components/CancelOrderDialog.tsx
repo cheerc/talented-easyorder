@@ -73,7 +73,7 @@ export const CancelOrderDialog = React.memo(function CancelOrderDialog({
     <Modal open={open} title="取消訂餐" onClose={onCancel}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <p style={{ margin: 0, color: 'var(--ink-1)', fontSize: '15px', fontWeight: 500 }}>
-          取消 {account.displayName} 的訂餐 — {orderTx.menuNameSnapshot || orderTx.note || '今日便當'}（${orderTx.mealPrice}）
+          取消 {account.displayName} 的訂餐 — {orderTx.menuNameSnapshot || orderTx.note || '今日餐點'}（${orderTx.mealPrice}）
         </p>
         {hasPaidAmount && (
           <>
