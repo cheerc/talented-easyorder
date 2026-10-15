@@ -204,25 +204,43 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
           <div style={{ marginTop: '32px', borderTop: '1px solid var(--line)', paddingTop: '20px' }}>
             <div className="card-h">顯示設定</div>
             <div className="adm-row">
-              <label>主題</label>
-              <select className="adm-input" value={tweaks.theme} onChange={e => setTweak('theme', e.target.value)}>
+              <label htmlFor="tweak-theme">主題</label>
+              <select
+                id="tweak-theme"
+                aria-label="主題"
+                className="adm-input"
+                value={tweaks.theme}
+                onChange={e => setTweak('theme', e.target.value)}
+              >
                 <option value="light">亮色</option>
                 <option value="dark">深色</option>
                 <option value="warm">暖色</option>
               </select>
             </div>
             <div className="adm-row">
-              <label>字體大小</label>
-              <select className="adm-input" value={tweaks.fontSize} onChange={e => setTweak('fontSize', e.target.value)}>
-                <option value="md">普通</option>
-                <option value="lg">大字</option>
+              <label htmlFor="tweak-scale">字體大小</label>
+              <select
+                id="tweak-scale"
+                aria-label="字體大小"
+                className="adm-input"
+                value={tweaks.scale}
+                onChange={e => setTweak('scale', e.target.value)}
+              >
+                <option value="normal">普通</option>
+                <option value="large">大字</option>
               </select>
             </div>
             <div className="adm-row">
-              <label>停用滑鼠 hover 選取</label>
-              <select className="adm-input" value={tweaks.disableHoverSelection ? 'true' : 'false'} onChange={e => setTweak('disableHoverSelection', e.target.value)}>
-                <option value="true">停用 (預設)</option>
-                <option value="false">啟用 (傳統行為)</option>
+              <label htmlFor="tweak-hover">停用滑鼠 hover 選取</label>
+              <select
+                id="tweak-hover"
+                aria-label="停用滑鼠 hover 選取"
+                className="adm-input"
+                value={tweaks.disableHoverSelection ? 'true' : 'false'}
+                onChange={e => setTweak('disableHoverSelection', e.target.value)}
+              >
+                <option value="false">啟用</option>
+                <option value="true">停用</option>
               </select>
             </div>
           </div>

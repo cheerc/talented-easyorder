@@ -25,6 +25,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+body[data-scale="large"],
 body[data-fs="lg"] {
   --fs: 17px;
 }

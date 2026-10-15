@@ -137,3 +137,33 @@ F1 大字身份、目前餘額、餐費、實收、完成後餘額要能一次�
 不以顏色作唯一狀態；欠款、加訂、保存中、已關帳均有文字。按鍵提示清楚、文字欄 label 可關聯。保留現有 theme token，不加新 design system。
 
 固定數字驗證見 [本人清單](../verification/2026-09-29-operator-prototype-checklist.md)。正常一筆編號訂餐目標仍為「輸入 ID → Enter →（收款）→ Enter → Enter 下一位」，不加不必要步驟；先記錄實際速度及錯誤，不把任意秒數當目前已達成的效能。
+
+## 8. 外觀偏好與顯示設定
+
+本機練習模式與雲端模式共用同一套外觀偏好，由單一 UI tweaks store 管理並持久化至瀏覽器本機儲存（不分模式 namespace），解決多元件個別維護狀態與重新整理後遺失的問題。
+
+### 8.1 儲存契約與欄位
+- **儲存位置與鍵名**：使用本機 `localStorage`，固定使用鍵名 `easyorder-ui-tweaks`（跨模式共用，不分 prototype/cloud namespace）。
+- **資料格式**：JSON 物件，包含三個外觀偏好選項：
+  - `theme`：`'warm' | 'light' | 'dark'`（預設 `'warm'`）
+  - `scale`：`'normal' | 'large'`（預設 `'large'`）
+  - `disableHoverSelection`：`boolean`（預設 `false`）
+- **預設值**：`{ theme: 'warm', scale: 'large', disableHoverSelection: false }`。
+- **容錯與防護**：
+  - 讀取時遭遇遺失、非法 JSON、非預期型別或缺漏欄位時，安全 fallback 至預設值。
+  - 所有 `localStorage` 讀取與寫入一律包覆於 `try/catch`，避免無痕瀏覽模式、安全性限制或儲存空間配額耗盡（QuotaExceededError）中斷畫面渲染。
+- **生命週期與隔離**：
+  - 本偏好僅保存操作介面外觀設定，不含任何學生個資、帳務或認證憑證。
+  - 操作者登出、換日、重置練習資料（`resetData`）或執行清除機密資料（`clearSensitiveData`）時，**不得清除**此鍵。
+
+### 8.2 DOM 屬性與樣式同步
+- store 狀態更新時同步寫入 `document.body` 屬性：
+  - `data-theme`：`'warm' | 'light' | 'dark'`
+  - `data-scale`：`'large' | 'normal'`
+  - `data-fs`：`'lg' | 'md'`（相容既有字級 CSS 選擇器，`large` 對映 `lg`、`normal` 對映 `md`）
+- 在 F3（今日設定）修改顯示設定後，切換分頁導致 F3 卸載與重建時，偏好狀態保持不變，`document.body` 屬性不會被重設回預設值。
+
+### 8.3 跨元件連動
+- `hooks/useTweaks.ts` 作為統一存取門面，底層訂閱單一 Zustand store。
+- 在 F3 修改「停用滑鼠 hover 選取」後，F1（`PosColumn.tsx` / `SearchBox.tsx`）即時連動套用，在不需重新整理頁面下立即改變建議清單 hover 選取行為。
+
