@@ -1,6 +1,6 @@
 # 零費用正式後端：現況與證據
 
-狀態截至 2026-10-15。此頁保留 P00 基線、P01–P05 已合併證據與 P06 WIP checkpoint。P04 #475、P05 #476 已合併；P06 尚未完成 phase acceptance，新的正式後端未部署、未通過上線驗收。規格是目標契約，不代表功能、雲端資源或部署狀態已成立。前端原本人驗收紀錄仍以 [PROJECT-STATUS](../PROJECT-STATUS.md) 為準。
+狀態截至 2026-10-15。此頁保留 P00 基線、P01–P06 合併證據與 P06 開發期間 checkpoint。P04 #475、P05 #476、P06 #478 已合併；P06 merge receipt 在下方。新的正式後端未部署、未通過正式上線驗收。規格是目標契約，不代表雲端資源或部署狀態已成立。前端原本人驗收紀錄仍以 [PROJECT-STATUS](../PROJECT-STATUS.md) 為準。
 
 ## 範圍與正式操作界線
 
@@ -32,9 +32,18 @@
 - App TSC 不是 clean pass：base/current 都 exit 2、290 diagnostic headers／542 normalized lines。base 由 `git archive b53423aa71ed4cfac2428f290c648e5a999a0cae` 解出到 `/tmp/p06-resume-tsc-base`，共用安裝依賴；只正規化診斷位置，保留多行內容、順序與重複項，normalized diff 為 0 行。raw、normalized、diff、exit 記錄於 `/tmp/p06-resume-{base,current}-app-tsc.{raw.txt,normalized.txt,exit}` 與 `/tmp/p06-resume-app-tsc.diff`。首次比較曾發現一個 test selector `exact` 型別診斷，改為精確 regex 後重跑，最終完整內容相同。
 - Browser：以 Playwright 1.60.0、system Chromium 154.0.8037.57、`/tmp` config 指向 `/usr/bin/chromium`，在 demo-only Auth／Firestore Emulator sequential 跑 Cloud/auth 13/13 與 isolated prototype 7/7，exit 0；含修正後 D01 three-student empty-dataset browser flow。log `/tmp/p06-resume-system-e2e.log`。本機 pinned Playwright browser cache 為空，這是 system-browser diagnostic，不能替代 official pinned-browser required CI。
 - **Independent review checkpoint：** 獨立 reviewer 對固定 source SHA `ccd625db68f58e8acac8267c3fedb4af26839463` 給予 source review PASS；審查涵蓋同步授權撤銷／舊 flight invalidation、PII 清除與同 identity gate、confirmed receipt list retry、unknown receipt semantic replay、SetStudentStatus required reason 與 Rules/adapter 一致性，未發現該 SHA 的 blocker。reviewer 同時核對 Emulator JSON：A01 10、P01 36、P04 19、command/failure 103、command/list 112，重複 command suite 去重 179 cases，均零失敗／pending；reviewer 未自行啟動 Emulator 或重跑測試。報告原檔 `/tmp/p06-review-ccd625d.md`；審查摘要已保存於此文件。最終 source SHA `7494b521098080f719d7c59a09536667eb942591` 僅在 unit test 中把 testing-library 不接受的 `exact` option 改為 `/^姓名$/`，focused test、TSC 與所有 source verification 均已重跑；最終 source SHA 的獨立 delta review 已 PASS，且核對下列完整執行證據；兩份報告已保存於 [tracked review](p06-source-review.md)。review 尚未發佈到 GitHub。
-- **尚未完成的 gate：** 最後文件 checkpoint 的獨立複審、GitHub review 發佈、P06 JSON skip gate 的 GitHub CI、official pinned-browser required CI、PR body publication。GitHub API 目前遭 network policy `Forbidden`，Coordinator 已保存只新增 `api.github.com` 的設定草稿，需使用者在環境設定 review／儲存並 Publish 後重新核實；不得把 local Emulator／system Chromium 結果稱為 official CI、phase acceptance 或 merge approval。不得把未完成項目視為 P06 acceptance。
+- **當時尚未完成的 gate（歷史狀態）：** 在此 source checkpoint 寫成時，最後文件 checkpoint 的獨立複審、GitHub review 發佈、P06 JSON skip gate 的 GitHub CI、official pinned-browser required CI、PR body publication 尚未完成；後續全部狀態以本頁 [P06 merge receipt](#p06-merge-receipt--2026-10-15) 為準。舊的 GitHub API network-policy blocker 描述只適用於該 checkpoint，不代表目前 PR 未合併。
 - displayName 與 alias 的 current schema 在 Rules、normalizer、receipt decoder、list decoder 統一採 literal non-empty string 長度 1–100（alias 最多 10 個）；UI 可額外修整輸入，但讀寫安全判定不使用 JS trim/Rules whitespace regex 以免 Unicode whitespace 不一致。Emulator 覆蓋 ASCII whitespace、NBSP、BOM、含換行文字合法與空字串拒絕。
 - 僅使用 `demo-easyorder` Firestore/Auth Emulator 和合成 operator/student fixtures；不讀取／建立 production credentials、Firebase project、Admin bootstrap 或部署。Firestore SDK `persistentLocalCache` 尚未修改；memory-cache 生命週期限制仍屬 P13。
+
+## P06 merge receipt — 2026-10-15
+
+- PR [#478](https://github.com/cheerc/talented-easyorder/pull/478) 由使用者在 GitHub normal web 手動合併；頁面/API receipt 狀態為 `MERGED`，merge SHA `b518eca5fdc2b2d2d3e9197c30b29d6a5f74ce10`，時間 `2026-10-15T05:32:37Z`（台北時間 13:32:37）。PR base 是 `b53423aa71ed4cfac2428f290c648e5a999a0cae`，final source head 是 `17da94f3ffea7b116c0ce157fb784011e0b00c89`；GitHub 採 rebase 整合 5 commits。不能將此結果稱 squash merge。
+- merge 前驗證 `git diff 17da94f3ffea7b116c0ce157fb784011e0b00c89..origin/main` exit 0，source 與 main tree 完全一致。官方 GitHub Actions run [38685129628](https://github.com/cheerc/talented-easyorder/actions/runs/38685129628) 對 exact source head 成功：build-and-test job `116258195493`、E2E job `116259321882`。狀態由允許的 GitHub 網頁核實；raw logs 要求登入，因此本收據不聲稱見過其 pinned-browser 版本或 raw log test counts。
+- P06 獨立 source review 與 final source delta review 均 PASS，報告見 [P06 source review](p06-source-review.md)；最後 4-doc 差異 review 與 merge gate 摘要曾保存於 `/tmp/p06-final-docs-review.md`、`/tmp/p06-final-merge-gate.md`，均 PASS。
+- 本機 production Rules Emulator 使用 `demo-easyorder` 與合成資料，按 prescribed order 的 A01 10、P01 36、P04 lease 19、command/failure 103、P06 command/list 112 均為 0 failed／0 skipped；command suite 去重後 179 passed。Full Vitest 1,329 passed／179 Emulator-only skipped／0 failed；完整 lint/build exit 0。System Chromium 154＋Playwright 1.60 的 demo Cloud/auth 13/13、isolated prototype 7/7，共 20/20。App TSC exit 2；base/current 都為 290 diagnostic headers、542 normalized lines，保留順序與重複項的完整 diff 0，不是 clean TSC pass。
+- 名單完整讀取只驗證至 500 人；501 人 fail closed 為 `INCOMPLETE_SNAPSHOT`。沒有建立／部署 production resources，沒有用正式 keys；`persistentLocalCache` 尚未改，memory-only cache 仍列 P13。
+- 後續 P07 從 merge SHA `b518eca5fdc2b2d2d3e9197c30b29d6a5f74ce10` 開始。現有 `EnsureDay` 已允許合規的 future empty day；先核對 days/menu/vendor reads 及 write Rules transaction graph，提交具體契約與驗收方案交 Coordinator 確認並加入 positive regression；確認前不改程式，不開 P08。
 
 ## 舊寫入路徑盤點
 
