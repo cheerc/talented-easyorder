@@ -178,28 +178,29 @@ export interface OpeningCashSuggestion {
   amount: number;
   /** same_day：這一天上一次關帳用的開帳金額（重開的日子）；previous_day：前一天關帳的實際點算。 */
   source: 'same_day' | 'previous_day';
+  /** source === 'previous_day' 時，記錄該前一個營業日的日期字串 (YYYY-MM-DD) */
+  fromDate?: string;
 }
 
 /**
  * M3：F3 開帳金額欄位的預填建議值，本人仍要按儲存確認。
- * 這一天已經關帳過（後來重開）時，優先用那次關帳記錄的開帳金額；否則用前一天最後一版「已關帳」的實際點算。
+ * 這一天已經關帳過（後來重開）時，優先用那次關帳記錄的開帳金額；
+ * 否則找 businessDate 之前最近一個已關帳（status === 'closed'）的營業日最後一版的實際點算。
  */
 export function suggestOpeningCash(businessDate: string, dailySettlements: DailySettlement[]): OpeningCashSuggestion | null {
   const sameDay = latestSettlement(businessDate, dailySettlements);
   if (sameDay) return { amount: sameDay.openingCash, source: 'same_day' };
-  const yesterday = shiftDateStr(businessDate, -1);
-  const lastClosed = latestSettlement(yesterday, dailySettlements.filter(s => s.status === 'closed'));
-  return lastClosed ? { amount: lastClosed.countedCash, source: 'previous_day' } : null;
+
+  const closedSettlements = dailySettlements.filter(s => s.status === 'closed' && s.businessDate < businessDate);
+  if (closedSettlements.length === 0) return null;
+
+  const previousDates = Array.from(
+    new Set(closedSettlements.map(s => s.businessDate))
+  ).sort((a, b) => b.localeCompare(a));
+
+  const mostRecentDate = previousDates[0];
+  const lastClosed = latestSettlement(mostRecentDate, closedSettlements);
+  return lastClosed ? { amount: lastClosed.countedCash, source: 'previous_day', fromDate: lastClosed.businessDate } : null;
 }
 
 export const OPENING_CASH_MISSING_MESSAGE = '還沒設定這一天的開帳金額，請先到今日設定（F3）設定，才能關帳。';
-
-function shiftDateStr(dateStr: string, offset: number): string {
-  const parts = dateStr.split('-').map(Number);
-  const d = new Date(parts[0], parts[1] - 1, parts[2]);
-  d.setDate(d.getDate() + offset);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}

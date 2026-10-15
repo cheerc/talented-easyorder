@@ -3,6 +3,7 @@ import {
   calculateExpectedDrawerCash,
   createDailyCashSession,
   createDrawerCloseout,
+  validateOpeningCash,
 } from '../cashSession';
 
 describe('cashSession', () => {
@@ -46,6 +47,25 @@ describe('cashSession', () => {
       countedCash: 5250,
       difference: -10,
       note: '少 10 元，櫃台已註記',
+    });
+  });
+
+  describe('validateOpeningCash', () => {
+    it('accepts 0, positive integers up to 20,000', () => {
+      expect(validateOpeningCash(0)).toEqual({ ok: true });
+      expect(validateOpeningCash(100)).toEqual({ ok: true });
+      expect(validateOpeningCash(20000)).toEqual({ ok: true });
+    });
+
+    it('rejects negative numbers and decimals', () => {
+      expect(validateOpeningCash(-1)).toEqual({ ok: false, reason: '開帳金額必須是 0 或正整數' });
+      expect(validateOpeningCash(10.5)).toEqual({ ok: false, reason: '開帳金額必須是 0 或正整數' });
+      expect(validateOpeningCash(NaN)).toEqual({ ok: false, reason: '開帳金額必須是 0 或正整數' });
+    });
+
+    it('rejects values greater than 20,000 with warning reason', () => {
+      expect(validateOpeningCash(20001)).toEqual({ ok: false, reason: '開帳金額異常，請確認是否輸入錯誤' });
+      expect(validateOpeningCash(50000)).toEqual({ ok: false, reason: '開帳金額異常，請確認是否輸入錯誤' });
     });
   });
 });
