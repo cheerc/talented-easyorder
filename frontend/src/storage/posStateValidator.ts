@@ -48,7 +48,7 @@ export type PersistedStateValidationResult =
 
 const VALID_STUDENT_STATUSES = new Set(['active', 'inactive']);
 const VALID_FACE_STATUSES = new Set(['none', 'enrolled', 'disabled', 'needs_review']);
-const VALID_TX_TYPES = new Set(['order', 'payment', 'expense']);
+const VALID_TX_TYPES = new Set(['order', 'payment', 'expense', 'refund']);
 const VALID_SYNC_STATUSES = new Set(['local', 'queued', 'synced', 'failed', 'conflict']);
 const VALID_SOURCE_DEVICES = new Set(['pc', 'barcode_scanner', 'ipad_handoff']);
 const VALID_SETTLEMENT_STATUSES = new Set(['open', 'closed', 'reopened']);

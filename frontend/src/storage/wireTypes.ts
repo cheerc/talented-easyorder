@@ -1,5 +1,5 @@
 // --- Enum unions (structurally identical to domain) ---
-export type WireTransactionType = 'order' | 'payment' | 'expense';
+export type WireTransactionType = 'order' | 'payment' | 'expense' | 'refund';
 export type WireSyncStatus = 'local' | 'queued' | 'synced' | 'failed' | 'conflict';
 export type WireSourceDevice = 'pc' | 'barcode_scanner' | 'ipad_handoff';
 export type WireStudentStatus = 'active' | 'inactive';

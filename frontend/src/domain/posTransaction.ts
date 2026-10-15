@@ -3,12 +3,12 @@ import type { TodayMenu, MenuSnapshot } from './menu';
 import type { PosMode, PosSourceDevice } from './posFlow';
 import { createStudentSnapshot } from './student';
 import { createMenuSnapshot } from './menu';
-import { calculateTransactionAmount, CASHIER_SENTINEL } from './ledger';
+import { calculateTransactionAmount, CASHIER_SENTINEL, type TransactionType } from './ledger';
 
 export interface PosTransactionIntent {
   businessDate: string;
   studentId: string;
-  type: PosMode;
+  type: TransactionType;
   mealPrice: number;
   paidAmount: number;
   note: string;
@@ -29,7 +29,7 @@ export interface PosTransactionDraft {
   expectedBalanceAfter: number;
 }
 
-export const PAID_AMOUNT_NEGATIVE_MESSAGE = '收款金額不能是負數。退錢請用取消訂餐或更正交易。';
+export const PAID_AMOUNT_NEGATIVE_MESSAGE = '收款金額不能是負數。要退錢給學生請用「退款」。';
 
 export function parsePaidAmount(text: string): { ok: true; value: number } | { ok: false; message: string } {
   const trimmed = text.trim();
@@ -70,6 +70,44 @@ export function buildPosTransactionDraft(args: BuildPosTransactionDraftArgs): Po
     intent: args.intent,
     snapshots,
     amount,
+    expectedBalanceAfter,
+  };
+}
+
+export interface BuildRefundTransactionDraftArgs {
+  businessDate: string;
+  student: StudentAccount;
+  amount: number;
+  note: string;
+  sourceDevice: PosSourceDevice;
+  operatorId?: string;
+}
+
+export function buildRefundTransactionDraft(args: BuildRefundTransactionDraftArgs): PosTransactionDraft {
+  const snapshots: PosTransactionSnapshotInput = {
+    student: createStudentSnapshot(args.student),
+    menu: {
+      menuNameSnapshot: '',
+      menuPriceSnapshot: 0,
+      vendorNameSnapshot: '',
+      vendorIdSnapshot: '',
+    },
+  };
+
+  const expectedBalanceAfter = Math.round(args.student.currentBalance - args.amount);
+
+  return {
+    intent: {
+      businessDate: args.businessDate,
+      studentId: args.student.studentId,
+      type: 'refund',
+      mealPrice: 0,
+      paidAmount: 0,
+      note: args.note,
+      sourceDevice: args.sourceDevice,
+    },
+    snapshots,
+    amount: args.amount,
     expectedBalanceAfter,
   };
 }

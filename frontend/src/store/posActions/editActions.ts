@@ -108,7 +108,7 @@ export function createEditActions(
     // Ref: #310 — operatorId for audit trail
     editTransaction: (
       id: string,
-      updates: { mealPrice?: number; paidAmount?: number; note?: string },
+      updates: { mealPrice?: number; paidAmount?: number; amount?: number; note?: string },
       opts: LedgerMutationOptions,
     ): LedgerMutationResult => {
       const state = get();
@@ -119,22 +119,26 @@ export function createEditActions(
       const check = checkLedgerMutation(state.businessDateStatuses[original.businessDate], opts.reason);
       if (!check.ok) return check;
 
+      const isRefund = original.type === 'refund';
       const newMealPrice = Math.round(updates.mealPrice ?? original.mealPrice);
       const newPaidAmount = Math.round(updates.paidAmount ?? original.paidAmount);
+      const newAmount = isRefund
+        ? Math.round(updates.amount ?? original.amount)
+        : calculateTransactionAmount(newMealPrice, newPaidAmount);
       const newNote = updates.note ?? original.note;
 
       const auditEvent = audit(
         'transaction_edited', original,
-        { mealPrice: original.mealPrice, paidAmount: original.paidAmount, note: original.note },
-        { mealPrice: newMealPrice, paidAmount: newPaidAmount, note: newNote },
+        { mealPrice: original.mealPrice, paidAmount: original.paidAmount, amount: original.amount, note: original.note },
+        { mealPrice: newMealPrice, paidAmount: newPaidAmount, amount: newAmount, note: newNote },
         opts,
       );
 
       const newTx: LedgerTransaction = {
         ...original,
-        mealPrice: newMealPrice,
-        paidAmount: newPaidAmount,
-        amount: calculateTransactionAmount(newMealPrice, newPaidAmount),
+        mealPrice: isRefund ? 0 : newMealPrice,
+        paidAmount: isRefund ? 0 : newPaidAmount,
+        amount: newAmount,
         note: newNote,
         revision: original.revision + 1,
       };

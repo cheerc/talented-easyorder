@@ -43,6 +43,7 @@ export interface AuditAccountInfo {
 const FIELD_LABELS: Record<string, string> = {
   mealPrice: '應收金額',
   paidAmount: '實收金額',
+  amount: '金額',
   note: '備註',
   type: '類型',
 };
@@ -51,9 +52,10 @@ const TYPE_LABELS: Record<string, string> = {
   order: '訂餐',
   payment: '繳費',
   expense: '櫃台收支',
+  refund: '退款',
 };
 
-const MONEY_FIELDS = new Set(['mealPrice', 'paidAmount']);
+const MONEY_FIELDS = new Set(['mealPrice', 'paidAmount', 'amount']);
 
 function formatValue(key: string, value: unknown): string {
   if (value === undefined || value === null) return '（無）';
@@ -72,6 +74,10 @@ function describeChanges(before: Record<string, unknown> | null, after: Record<s
   if (!before) return after ? '新建' : '-';
   if (!after) {
     // M2：刪除時原單整筆存在 before，列出類型與金額方便對照。
+    if (before.type === 'refund') {
+      const note = typeof before.note === 'string' && before.note ? `，備註「${before.note}」` : '';
+      return `刪除原單：退款、金額 ${formatValue('amount', before.amount ?? 0)}${note}`;
+    }
     if (before.mealPrice === undefined && before.paidAmount === undefined) return '刪除原單';
     const parts = [
       before.type ? formatValue('type', before.type) : '',

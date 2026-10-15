@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'vitest';
 import { getIncome, getExpense } from '../transactionUtils';
 
 const baseTx = {
@@ -28,6 +29,9 @@ describe('getExpense', () => {
   });
   it('returns amount for expense', () => {
     expect(getExpense({ ...baseTx, type: 'expense', amount: 100 })).toBe(100);
+  });
+  it('returns amount for refund', () => {
+    expect(getExpense({ ...baseTx, type: 'refund', amount: 50 })).toBe(50);
   });
   it('returns null for payment', () => {
     expect(getExpense({ ...baseTx, type: 'payment', paidAmount: 300 })).toBeNull();

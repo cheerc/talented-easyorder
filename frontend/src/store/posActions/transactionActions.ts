@@ -35,6 +35,20 @@ export function createTransactionActions(
       const studentIndex = state.students.findIndex(s => s.studentId === sid);
       if (studentIndex === -1) return { ok: false, message: '找不到這個帳戶。' };
 
+      if (draft.intent.type === 'refund') {
+        const student = state.students[studentIndex];
+        const refundAmount = draft.amount;
+        if (!Number.isInteger(refundAmount) || refundAmount < 1) {
+          return { ok: false, message: '退款金額必須是大於 0 的整數。' };
+        }
+        if (refundAmount > student.currentBalance) {
+          return { ok: false, message: '退款金額不能超過目前餘額。' };
+        }
+        if (!draft.intent.note || draft.intent.note.trim().length === 0) {
+          return { ok: false, message: '退款原因必填。' };
+        }
+      }
+
       const { newTransaction } = buildOrderTransaction(state, draft, studentIndex);
 
       // M2 F03：補登前幾天的交易時，之後各筆的結餘也要一起重算。

@@ -14,11 +14,13 @@ import { useCommitLifecycle } from './hooks/useCommitLifecycle';
 import { useConfirmHandler } from './hooks/useConfirmHandler';
 import { useExpenseProps } from './hooks/useExpenseProps';
 
+import { buildRefundTransactionDraft } from './domain/posTransaction';
 import { MainLayout } from './components/MainLayout';
+import type { FlashData } from './components/MainLayout';
 import { ErrorBoundary, AppCrashPage } from './components/ErrorBoundary';
 import { appendErrorLog } from './errors/errorLogger';
 import { AppRouter } from './components/AppRouter';
-import { useStudents, useTransactions, useMenu, useMenuForDate, useSessionActions } from './store/selectors';
+import { useStudents, useTransactions, useMenu, useMenuForDate, useSessionActions, useTransactionActions } from './store/selectors';
 import { countMeals } from './domain/ledgerReport';
 import { useFlashData } from './hooks/useFlashData';
 import { useFocusSync } from './hooks/useFocusSync';
@@ -101,6 +103,7 @@ function AppContent() {
   const [showDashboard, setShowDashboard] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const online = useOnlineStatus();
+  const { commitPosTransactionDraft } = useTransactionActions();
 
   const storageHealthyRef = useRef(true);
   useEffect(() => { const health = checkStorageHealth(); storageHealthyRef.current = health.ok; }, []);
@@ -113,9 +116,15 @@ function AppContent() {
 
   const [searchFocusKey, setSearchFocusKey] = useState(0);
   const [flashKey, setFlashKey] = useState(0);
+  const [manualFlash, setManualFlash] = useState<FlashData | null>(null);
   const { undoCountdown, setUndoCountdown, lastCommittedTxIdRef, dismissFlash, handleUndo } = useUndoCountdown({
     dismissSuccess, setFlashKey, setSyncing, setPriceOverride, setPriceOverrideLabel, operatorId: operatorUid,
   });
+
+  const onDismissFlash = useCallback(() => {
+    setManualFlash(null);
+    dismissFlash();
+  }, [dismissFlash]);
 
   // Ref: #281 — Extracted to useConfirmHandler hook
   const handleConfirm = useConfirmHandler({ state, requestConfirm, confirmDuplicate, confirmExpenseAmount, orderBlocked: !isMenuReady(todayMenu) || (priceOverride !== null && !(Number.isSafeInteger(priceOverride) && priceOverride > 0)) });
@@ -132,7 +141,7 @@ function AppContent() {
     setSyncing,
   });
 
-  const hasFlash = state.kind === 'success';
+  const hasFlash = state.kind === 'success' || manualFlash !== null;
   const isStudentSelected = picked !== null && (state.kind === 'student_selected' || state.kind === 'duplicate_warning' || state.kind === 'committing' || state.kind === 'error');
   const isExpenseFlow = state.kind === 'expense_input' || state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note';
 
@@ -181,14 +190,42 @@ function AppContent() {
     setTab('history');
   }, [allTx, viewDate]);
 
+  const handleRefund = useCallback((amount: number, reason: string) => {
+    if (!picked) return;
+    const draft = buildRefundTransactionDraft({
+      businessDate: viewDate,
+      student: picked,
+      amount,
+      note: reason,
+      sourceDevice: 'pc',
+      operatorId: operatorUid,
+    });
+    const result = commitPosTransactionDraft(draft);
+    if (!result.ok) {
+      return;
+    }
+    lastCommittedTxIdRef.current = result.transactionId;
+    setUndoCountdown(5);
+    setManualFlash({
+      id: flashKey,
+      name: picked.displayName,
+      sid: picked.studentId,
+      detail: `退款：${reason}`,
+      amount: -amount,
+      after: picked.currentBalance - amount,
+    });
+    cancelFlow();
+  }, [picked, viewDate, operatorUid, commitPosTransactionDraft, flashKey, cancelFlow, lastCommittedTxIdRef, setUndoCountdown]);
+
   const flowArgs = useMemo(() => ({
     state, picked, currentMode, currentPaidAmount, selectStudent,
     setPaidAmountText, handleConfirm, cancelFlow, changeMode, openCancelConfirm, openCancelConfirmForTx,
     handleDeleteOrder,
     onViewAllHistory: handleViewAllHistory,
+    onRefund: handleRefund,
   }), [state, picked, currentMode, currentPaidAmount, selectStudent,
     setPaidAmountText, handleConfirm, cancelFlow, changeMode, openCancelConfirm, openCancelConfirmForTx,
-    handleDeleteOrder, handleViewAllHistory]);
+    handleDeleteOrder, handleViewAllHistory, handleRefund]);
 
   const expenseArgs = useMemo(() => ({
     expenseProps, enterExpenseMode,
@@ -233,7 +270,7 @@ function AppContent() {
       queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount}
       onDashboard={() => setShowDashboard(true)}
       storageMode={fb ? 'cloud' : isPrototypeMode ? 'prototype' : 'local-only'}
-      flashData={flashData} onDismissFlash={dismissFlash}
+      flashData={manualFlash ?? flashData} onDismissFlash={onDismissFlash}
       onUndo={handleUndo} undoCountdown={undoCountdown}
       cancelDialogOpen={cancelDialogOpen} picked={picked}
       orderTx={cancelOrderTx}

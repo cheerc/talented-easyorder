@@ -43,9 +43,14 @@ export function ReportSummaryStats({ totals, itemName, counterCashFlow }: Report
         <div className="stat-sub">櫃台付出的現金</div>
       </div>
       <div className="stat">
+        <div className="stat-lbl">退款</div>
+        <div className="stat-num mono warn">−${fmt(totals.totalRefund ?? 0)}</div>
+        <div className="stat-sub">從帳戶退還的現金</div>
+      </div>
+      <div className="stat">
         <div className="stat-lbl">淨現金</div>
         <div className="stat-num mono">{money(totals.netCash)}</div>
-        <div className="stat-sub">收現 − 支出</div>
+        <div className="stat-sub">收現 − 支出 − 退款</div>
       </div>
       {counterCashFlow && (counterCashFlow.incomeCount > 0 || counterCashFlow.expenseCount > 0) && (
         <>

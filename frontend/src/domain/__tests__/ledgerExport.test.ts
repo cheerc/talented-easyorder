@@ -225,6 +225,7 @@ describe('buildLedgerPrintViewModel', () => {
       otherMealCount: 0,
       totalIncome: 0,
       totalExpense: 0,
+      totalRefund: 0,
       netCash: 0,
       mealTotal: 0,
       orderUnpaid: 85,

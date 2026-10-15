@@ -24,6 +24,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
     todayMenu, todayCount, todayOtherCount = 0, vendors, enterExpenseMode, tweaks,
     tx, operatorUid, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
     onViewAllHistory,
+    onRefund,
   } = props;
 
   const orderedTodayCount = useActiveOrderCount(picked?.studentId ?? null, viewDate);
@@ -233,6 +234,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 onConfirm={handleConfirm}
                 onCancel={cancelFlow}
                 busy={state.kind === 'committing'}
+                onRefund={onRefund}
               />
               </>
             )}
@@ -271,8 +273,8 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
       <DeleteConfirmDialog
         open={deleteConfirmTx !== null}
         studentName={deleteConfirmTx ? (students.find(s => s.studentId === deleteConfirmTx.studentId)?.displayName ?? '') : ''}
-        transactionType={(deleteConfirmTx?.type === 'expense' ? 'expense' : 'payment') as 'payment' | 'expense'}
-        amount={deleteConfirmTx ? (deleteConfirmTx.type === 'expense' ? deleteConfirmTx.amount : deleteConfirmTx.paidAmount) : 0}
+        transactionType={(deleteConfirmTx?.type === 'expense' ? 'expense' : deleteConfirmTx?.type === 'refund' ? 'refund' : 'payment') as 'payment' | 'expense' | 'refund'}
+        amount={deleteConfirmTx ? (deleteConfirmTx.type === 'expense' || deleteConfirmTx.type === 'refund' ? deleteConfirmTx.amount : deleteConfirmTx.paidAmount) : 0}
         onConfirm={(reason) => {
           if (!deleteConfirmTx) return { ok: true };
           const result = deleteTransaction(deleteConfirmTx.transactionId, { reason, operatorId: operatorUid });
