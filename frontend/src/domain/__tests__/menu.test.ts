@@ -72,7 +72,7 @@ describe('createMenuSnapshot', () => {
   it('preserves menu and vendor values', () => {
     const snapshot = createMenuSnapshot(TODAY_MENU_KARAAGE);
     expect(snapshot).toEqual({
-      menuNameSnapshot: '日式唐揚雞便當',
+      menuNameSnapshot: '日式唐揚雞餐點',
       menuPriceSnapshot: 90,
       vendorIdSnapshot: 'v1',
       vendorNameSnapshot: '阿榮便當',
@@ -84,7 +84,7 @@ describe('createMenuSnapshot', () => {
     const snapshot = createMenuSnapshot(menu);
     menu.itemName = '排骨飯';
     menu.price = 100;
-    expect(snapshot.menuNameSnapshot).toBe('日式唐揚雞便當');
+    expect(snapshot.menuNameSnapshot).toBe('日式唐揚雞餐點');
     expect(snapshot.menuPriceSnapshot).toBe(90);
   });
 });
@@ -93,7 +93,7 @@ describe('promoteCatalogItemToTodayMenu', () => {
   it('creates a valid TodayMenu from catalog item', () => {
     const result = promoteCatalogItemToTodayMenu(CATALOG_ITEM_KARAAGE, VENDOR_ARONG, FIXTURE_BUSINESS_DATE, '2026-05-07T07:30:00Z');
     expect(result.businessDate).toBe(FIXTURE_BUSINESS_DATE);
-    expect(result.itemName).toBe('日式唐揚雞便當');
+    expect(result.itemName).toBe('日式唐揚雞餐點');
     expect(result.price).toBe(90);
     expect(result.vendorId).toBe('v1');
     expect(result.vendorNameSnapshot).toBe('阿榮便當');

@@ -9,7 +9,7 @@ test.describe('Settlement Flow', () => {
     await page.locator('button.tab').filter({ hasText: '今日設定' }).click();
     
     // 2. Should see admin screen with menu settings
-    await expect(page.locator('.card-h').filter({ hasText: '今日便當設定' })).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.card-h').filter({ hasText: '今日餐點設定' })).toBeVisible({ timeout: 5000 });
     
     // 3. Opening cash section should be visible
     await expect(page.locator('.card-h').filter({ hasText: '每日開帳金額' })).toBeVisible();

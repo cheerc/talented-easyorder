@@ -57,7 +57,7 @@ export interface CloudDayTotals extends DayTotalsContribution {
  * 規格 §7.1：contribution(tx)
  * 每次用同一 contribution 函式計 before/after 差額。
  * - voided 全部貢獻零
- * - active order 計餐費與份數（便當／其他餐點分開）
+ * - active order 計餐費與份數（今日餐點／其他餐點分開）
  * - 所有非 expense 的 paidAmount 計 retainedReceipts
  * - expense 分到 cashierIncome／cashierExpense
  */

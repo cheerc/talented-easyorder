@@ -60,7 +60,7 @@ describe('posStore Domain Integration', () => {
     const store = usePosStore.getState();
     store.processTransaction('001', 'order', 90, 0);
     const tx = usePosStore.getState().transactions[0];
-    expect(tx.menuNameSnapshot).toBe('日式唐揚雞便當');
+    expect(tx.menuNameSnapshot).toBe('日式唐揚雞餐點');
     expect(tx.vendorNameSnapshot).toBe('阿榮便當');
   });
 

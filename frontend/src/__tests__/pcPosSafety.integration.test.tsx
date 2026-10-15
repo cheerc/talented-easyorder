@@ -16,7 +16,7 @@ describe('pcPosSafety — duplicate submit guard', () => {
     await user.keyboard('{Enter}');
 
     await waitFor(() => {
-      expect(screen.getByText('訂便當')).toBeTruthy();
+      expect(screen.getByText('訂餐')).toBeTruthy();
     });
 
     // Press Enter to commit (keyboard shortcut replaces confirm button)
@@ -40,7 +40,7 @@ describe('pcPosSafety — duplicate order warning', () => {
     await user.keyboard('{Enter}');
 
     await waitFor(() => {
-      expect(screen.getByText('訂便當')).toBeTruthy();
+      expect(screen.getByText('訂餐')).toBeTruthy();
     });
 
     // Press Enter to commit (keyboard shortcut replaces confirm button)
@@ -59,7 +59,7 @@ describe('pcPosSafety — duplicate order warning', () => {
     const input = screen.getByPlaceholderText(/015/) as HTMLInputElement;
     await user.click(input);
     await user.keyboard('015{Enter}');
-    await waitFor(() => expect(screen.getByText('訂便當')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('訂餐')).toBeTruthy());
     await user.keyboard('{Enter}');
     await waitFor(() => expect(screen.getByText('✓')).toBeTruthy());
 

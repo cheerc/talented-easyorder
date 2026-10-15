@@ -21,7 +21,7 @@ describe('transactionActions — commitPosTransactionDraft', () => {
         type: 'order',
         mealPrice: 90,
         paidAmount: 0,
-        note: '日式唐揚雞便當',
+        note: '日式唐揚雞餐點',
         sourceDevice: 'pc',
       },
       student,
@@ -85,7 +85,7 @@ describe('transactionActions — commitPosTransactionDraft', () => {
         type: 'expense',
         mealPrice: 200,
         paidAmount: 0,
-        note: '付便當錢',
+        note: '付餐費給廠商',
         sourceDevice: 'pc',
       },
       snapshots: {

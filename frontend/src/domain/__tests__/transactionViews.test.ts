@@ -26,7 +26,7 @@ describe('transactionViews', () => {
       paidAmount: 90,
       amount: -90,
       afterBalance: 10,
-      menuNameSnapshot: '排骨便當',
+      menuNameSnapshot: '排骨餐點',
       vendorNameSnapshot: '老王',
       note: '',
       syncStatus: 'local',

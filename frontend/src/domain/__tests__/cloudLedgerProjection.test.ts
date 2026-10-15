@@ -8,8 +8,8 @@ import {
 } from '../cloudLedgerProjection';
 
 describe('cloudLedgerProjection: 投影數學與帳務計算', () => {
-  // L01：期初100，便當90收0，再繳200 → 餘額210；餐費90、收現200、便當1、交易2
-  it('L01: 期初100，便當90收0，再繳200 → 餘額210；餐費90、收現200、便當1、交易2', () => {
+  // L01：期初100，餐點90收0，再繳200 → 餘額210；餐費90、收現200、餐點1、交易2
+  it('L01: 期初100，餐點90收0，再繳200 → 餘額210；餐費90、收現200、餐點1、交易2', () => {
     const studentId = 'stu-001';
     const opening = { amount: 100, asOfDate: '2026-10-14' };
     const tx1: CloudTransactionInput = {
@@ -55,8 +55,8 @@ describe('cloudLedgerProjection: 投影數學與帳務計算', () => {
     expect(dayTotals.netCash).toBe(200);
   });
 
-  // L02：更正便當90→110 → 餘額190；所有畫面一致
-  it('L02: 更正便當90→110 → 餘額190；所有畫面一致', () => {
+  // L02：更正餐點90→110 → 餘額190；所有畫面一致
+  it('L02: 更正餐點90→110 → 餘額190；所有畫面一致', () => {
     const studentId = 'stu-001';
     const opening = { amount: 100, asOfDate: '2026-10-14' };
     const tx1Corrected: CloudTransactionInput = {

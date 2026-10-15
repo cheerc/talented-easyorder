@@ -21,7 +21,7 @@ const makeTx = (overrides: Partial<LedgerTransaction> = {}): LedgerTransaction =
   amount: -85,
   afterBalance: 15,
   menuNameSnapshot: '雞腿飯',
-  vendorNameSnapshot: '便當王',
+  vendorNameSnapshot: '餐點王',
   sourceDevice: 'pc',
   syncStatus: 'local',
   revision: 1,

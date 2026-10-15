@@ -115,7 +115,7 @@ describe('ConfirmDialog', () => {
       const onConfirm = vi.fn();
       const onCancel = vi.fn();
       render(
-        <ConfirmDialog open title="已經訂過便當" message="再訂一份？" onConfirm={onConfirm} onCancel={onCancel}
+        <ConfirmDialog open title="已經訂過餐點" message="再訂一份？" onConfirm={onConfirm} onCancel={onCancel}
           confirmLabel="是，再訂一份" cancelLabel="否，不加訂" defaultAction="cancel" />
       );
       return { onConfirm, onCancel };

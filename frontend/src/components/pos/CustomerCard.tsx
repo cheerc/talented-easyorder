@@ -165,7 +165,7 @@ export const CustomerCard = React.memo(function CustomerCard({
                         aria-label="品項或原因"
                         value={priceOverrideLabel}
                         onChange={e => setPriceOverrideLabel(e.target.value)}
-                        placeholder="例如：雞腿便當"
+                        placeholder="例如：雞腿餐點"
                       />
                     </label>
                     <label>

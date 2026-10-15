@@ -10,7 +10,7 @@ import { UNDO_REASON } from '../hooks/useUndoCountdown';
 async function payFor015(user: ReturnType<typeof userEvent.setup>, amount: string) {
   await user.type(screen.getByPlaceholderText(/015/), '015');
   await user.keyboard('{Enter}');
-  await waitFor(() => expect(screen.getByText('訂便當')).toBeTruthy());
+  await waitFor(() => expect(screen.getByText('訂餐')).toBeTruthy());
   await user.click(screen.getByRole('radio', { name: /繳費/ }));
   await user.type(screen.getByLabelText('付款金額'), amount);
   await user.keyboard('{Enter}');

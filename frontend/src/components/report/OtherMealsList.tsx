@@ -10,7 +10,7 @@ interface OtherMealsListProps {
 }
 
 /**
- * 「訂購其他餐點」清單：今日便當份數以外另外要叫的餐，列出營業日、時間、帳戶、品項、價錢，
+ * 「訂購其他餐點」清單：今日餐點份數以外另外要叫的餐，列出營業日、時間、帳戶、品項、價錢，
  * 方便和供應商分開下訂。沒有其他餐點時不顯示。
  */
 export const OtherMealsList = React.memo(function OtherMealsList({ transactions }: OtherMealsListProps) {

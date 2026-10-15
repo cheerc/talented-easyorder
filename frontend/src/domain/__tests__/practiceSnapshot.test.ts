@@ -67,7 +67,7 @@ describe('parseSnapshot rejects bad files without partial data', () => {
 
   it.each([
     ['not json', '{oops', '不是有效的 JSON'],
-    ['wrong format', text({ ...good(), format: 'other' }), '不是便當櫃台的練習快照檔'],
+    ['wrong format', text({ ...good(), format: 'other' }), '不是訂餐櫃台的練習快照檔'],
     ['unsupported version', text({ ...good(), schemaVersion: 99 }), '不支援的快照版本：99'],
     ['missing exportedAt', text({ ...good(), exportedAt: undefined }), '缺少匯出時間'],
     ['missing collection', text({ ...good(), data: { ...good().data, vendors: undefined } }), '資料格式不正確'],

@@ -39,8 +39,8 @@ describe('#332 — useExpenseFlow', () => {
     const dispatch = vi.fn();
     const { result } = renderHook(() => useExpenseFlow(dispatch));
 
-    act(() => { result.current.selectExpenseReason('付便當錢'); });
-    expect(dispatch).toHaveBeenCalledWith({ type: 'expenseSelectReason', reason: '付便當錢' });
+    act(() => { result.current.selectExpenseReason('付餐費給廠商'); });
+    expect(dispatch).toHaveBeenCalledWith({ type: 'expenseSelectReason', reason: '付餐費給廠商' });
   });
 
   it('dispatches expenseUpdateNote', () => {
