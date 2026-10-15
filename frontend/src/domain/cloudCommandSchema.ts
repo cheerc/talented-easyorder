@@ -30,7 +30,7 @@ export interface CommandTargetsByKind {
 
 export interface CommandPayloadByKind {
   CreateStudent: { displayName: string; aliases: string[]; openingBalance: { amount: number; asOfDate: string; note: string } };
-  EditStudent: { displayName?: string; aliases?: string[]; note?: string };
+  EditStudent: { displayName?: string; aliases?: string[] };
   SetStudentStatus: { status: 'active' | 'inactive'; reason?: string };
   CorrectOpening: { amount: number; note: string; reason: string };
   SaveVendor: { vendorId: string; name: string; phone: string; note: string; status: 'active' | 'inactive' };
@@ -89,7 +89,13 @@ export type FullCloudCommandInput = {
   }
 }[BusinessCommandKind];
 
-export type EnabledCommandKind = 'EnsureDay' | 'CreateOrder' | 'CreatePayment';
+export type EnabledCommandKind =
+  | 'EnsureDay'
+  | 'CreateOrder'
+  | 'CreatePayment'
+  | 'CreateStudent'
+  | 'EditStudent'
+  | 'SetStudentStatus';
 export type EnabledCloudCommandInput = Extract<FullCloudCommandInput, { kind: EnabledCommandKind }>;
 
 export type StoredCloudCommandDoc = {
@@ -116,23 +122,7 @@ export type StoredCloudCommandDoc = {
 export type StoredEnabledCommandDoc = Extract<StoredCloudCommandDoc, { kind: EnabledCommandKind }>;
 
 export type CanonicalEnabledInput =
-  | (Extract<EnabledCloudCommandInput, { kind: 'EnsureDay' }>)
-  | {
-      commandId: string;
-      kind: 'CreateOrder';
-      leaseEpoch: number;
-      targets: CommandTargetsByKind['CreateOrder'];
-      expectedRevisions: ExpectedRevisionsByKind['CreateOrder'];
-      payload: CommandPayloadByKind['CreateOrder'];
-    }
-  | {
-      commandId: string;
-      kind: 'CreatePayment';
-      leaseEpoch: number;
-      targets: CommandTargetsByKind['CreatePayment'];
-      expectedRevisions: ExpectedRevisionsByKind['CreatePayment'];
-      payload: CommandPayloadByKind['CreatePayment'];
-    };
+  | (Extract<EnabledCloudCommandInput, { kind: EnabledCommandKind }>);
 
 export class InvalidCloudCommandInput extends Error {
   constructor(message: string) {
@@ -180,6 +170,26 @@ function safeInteger(value: unknown, label: string, max = 1_000_000_000): assert
   }
 }
 
+function signedInteger(value: unknown, label: string): asserts value is number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || Object.is(value, -0)
+    || value < -1_000_000_000 || value > 1_000_000_000) {
+    throw new InvalidCloudCommandInput(`${label} 必須是 -1,000,000,000 至 1,000,000,000 的整數`);
+  }
+}
+
+function studentIdValue(value: unknown, label: string): asserts value is string {
+  if (typeof value !== 'string' || value.length < 1 || value.length > 64 || value.includes('/') || value === '__cashier__') {
+    throw new InvalidCloudCommandInput(`${label} 不合法`);
+  }
+}
+
+function aliasesValue(value: unknown, label: string): asserts value is string[] {
+  if (!Array.isArray(value) || value.length > 10
+    || !value.every(alias => typeof alias === 'string' && alias.length <= 100)) {
+    throw new InvalidCloudCommandInput(`${label} 最多 10 個，每個不得超過 100 字`);
+  }
+}
+
 function validateRevisionMap(value: unknown, keys: string[], createKeys: string[] = []): Record<string, number> {
   if (!isPlainRecord(value)) throw new InvalidCloudCommandInput('expectedRevisions 必須是固定物件');
   exactKeys(value, keys);
@@ -192,6 +202,53 @@ function validateRevisionMap(value: unknown, keys: string[], createKeys: string[
 
 function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayloadByKind[EnabledCommandKind] {
   if (!isPlainRecord(value)) throw new InvalidCloudCommandInput('payload 必須是固定物件');
+  if (kind === 'CreateStudent') {
+    exactKeys(value, ['displayName', 'aliases', 'openingBalance']);
+    if (typeof value.displayName !== 'string' || value.displayName.trim().length < 1 || value.displayName.length > 100) {
+      throw new InvalidCloudCommandInput('displayName 必須是 1 至 100 字');
+    }
+    aliasesValue(value.aliases, 'aliases');
+    if (!isPlainRecord(value.openingBalance)) throw new InvalidCloudCommandInput('openingBalance 必須是固定物件');
+    exactKeys(value.openingBalance, ['amount', 'asOfDate', 'note']);
+    signedInteger(value.openingBalance.amount, 'openingBalance.amount');
+    dateValue(value.openingBalance.asOfDate, 'openingBalance.asOfDate');
+    if (typeof value.openingBalance.note !== 'string' || value.openingBalance.note.length > 500) {
+      throw new InvalidCloudCommandInput('openingBalance.note 不合法');
+    }
+    return {
+      displayName: value.displayName,
+      aliases: [...value.aliases],
+      openingBalance: {
+        amount: value.openingBalance.amount,
+        asOfDate: value.openingBalance.asOfDate,
+        note: value.openingBalance.note,
+      },
+    } as CommandPayloadByKind['CreateStudent'];
+  }
+  if (kind === 'EditStudent') {
+    exactKeys(value, [], ['displayName', 'aliases']);
+    if (!Object.hasOwn(value, 'displayName') && !Object.hasOwn(value, 'aliases')) {
+      throw new InvalidCloudCommandInput('EditStudent 至少須修改姓名或別名');
+    }
+    if (Object.hasOwn(value, 'displayName')
+      && (typeof value.displayName !== 'string' || value.displayName.trim().length < 1 || value.displayName.length > 100)) {
+      throw new InvalidCloudCommandInput('displayName 必須是 1 至 100 字');
+    }
+    if (Object.hasOwn(value, 'aliases')) aliasesValue(value.aliases, 'aliases');
+    return {
+      ...(Object.hasOwn(value, 'displayName') ? { displayName: value.displayName as string } : {}),
+      ...(Object.hasOwn(value, 'aliases') ? { aliases: [...value.aliases as string[]] } : {}),
+    } as CommandPayloadByKind['EditStudent'];
+  }
+  if (kind === 'SetStudentStatus') {
+    exactKeys(value, ['status'], ['reason']);
+    if (value.status !== 'active' && value.status !== 'inactive') {
+      throw new InvalidCloudCommandInput('status 必須是 active 或 inactive');
+    }
+    const reason = value.reason ?? '';
+    if (typeof reason !== 'string' || reason.length > 500) throw new InvalidCloudCommandInput('reason 不合法');
+    return { status: value.status, reason } as CommandPayloadByKind['SetStudentStatus'];
+  }
   if (kind === 'EnsureDay') {
     exactKeys(value, ['businessDate']);
     dateValue(value.businessDate, 'businessDate');
@@ -240,7 +297,7 @@ function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayl
 export function normalizeEnabledCommandInput(input: unknown): CanonicalEnabledInput {
   if (!isPlainRecord(input)) throw new InvalidCloudCommandInput('命令必須是固定物件');
   exactKeys(input, ['commandId', 'kind', 'leaseEpoch', 'targets', 'expectedRevisions', 'payload']);
-  if (typeof input.kind !== 'string' || !['EnsureDay', 'CreateOrder', 'CreatePayment'].includes(input.kind)) {
+  if (typeof input.kind !== 'string' || !['EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus'].includes(input.kind)) {
     throw new InvalidCloudCommandInput('此命令種類尚未啟用');
   }
   const kind = input.kind as EnabledCommandKind;
@@ -263,6 +320,22 @@ export function normalizeEnabledCommandInput(input: unknown): CanonicalEnabledIn
       expectedRevisions: expectedRevisions as ExpectedRevisionsByKind['EnsureDay'],
       payload,
     };
+  }
+
+  if (kind === 'CreateStudent' || kind === 'EditStudent' || kind === 'SetStudentStatus') {
+    if (!isPlainRecord(input.targets)) throw new InvalidCloudCommandInput('targets 必須是固定物件');
+    exactKeys(input.targets, ['studentId']);
+    studentIdValue(input.targets.studentId, 'targets.studentId');
+    const expectedRevisions = validateRevisionMap(input.expectedRevisions, ['student'], kind === 'CreateStudent' ? ['student'] : []);
+    const payload = normalizePayload(kind, input.payload);
+    return {
+      commandId: input.commandId,
+      kind,
+      leaseEpoch: input.leaseEpoch,
+      targets: { studentId: input.targets.studentId },
+      expectedRevisions: expectedRevisions as ExpectedRevisionsByKind[typeof kind],
+      payload,
+    } as CanonicalEnabledInput;
   }
 
   if (!isPlainRecord(input.targets)) throw new InvalidCloudCommandInput('targets 必須是固定物件');
@@ -334,7 +407,8 @@ function validateReceiptStudent(value: unknown, label: string): Record<string, u
   const student = receiptRecord(value, label, [
     'studentId', 'displayName', 'aliases', 'status', 'openingBalance', 'currentBalance', 'createdAt', 'revision', 'lastCommandId', 'updatedAt',
   ]);
-  if (typeof student.studentId !== 'string' || !student.studentId
+  if (typeof student.studentId !== 'string' || !student.studentId || student.studentId.length > 64
+    || student.studentId.includes('/') || student.studentId === '__cashier__'
     || typeof student.displayName !== 'string' || student.displayName.length < 1 || student.displayName.length > 100
     || !Array.isArray(student.aliases) || student.aliases.length > 10
     || !student.aliases.every(alias => typeof alias === 'string' && alias.length <= 100)
@@ -441,10 +515,11 @@ function validateReceiptSnapshots(
 ): void {
   const committedAt = receipt.committedAt as Timestamp;
   const commandId = normalized.commandId;
+  const studentKind = normalized.kind === 'CreateStudent' || normalized.kind === 'EditStudent' || normalized.kind === 'SetStudentStatus';
   const before = receiptRecord(receipt.before, 'receipt.before', normalized.kind === 'EnsureDay'
-    ? ['head', 'day'] : ['head', 'student', 'day', 'transaction']);
+    ? ['head', 'day'] : studentKind ? ['head', 'student'] : ['head', 'student', 'day', 'transaction']);
   const after = receiptRecord(receipt.after, 'receipt.after', normalized.kind === 'EnsureDay'
-    ? ['head', 'day'] : ['head', 'student', 'day', 'transaction']);
+    ? ['head', 'day'] : studentKind ? ['head', 'student'] : ['head', 'student', 'day', 'transaction']);
   const headBefore = validateReceiptHead(before.head, 'receipt.before.head');
   const headAfter = validateReceiptHead(after.head, 'receipt.after.head');
   if (Number(headBefore.seq) + 1 !== receipt.seq || headAfter.seq !== receipt.seq
@@ -470,6 +545,72 @@ function validateReceiptSnapshots(
       throw new InvalidCloudCommandInput('EnsureDay receipt after snapshot 不一致');
     }
     return;
+  }
+
+  if (studentKind) {
+    const studentId = normalized.targets.studentId;
+    const payload = normalized.payload;
+    if (receipt.businessDate !== null || receipt.studentId !== studentId
+      || cash.before !== 0 || cash.after !== 0 || cash.delta !== 0
+      || cash.reasonKind !== 'none' || cash.refundAmount !== 0) {
+      throw new InvalidCloudCommandInput('學生 receipt 共用欄位或 cashEffect 不一致');
+    }
+
+    const studentAfter = validateReceiptStudent(after.student, 'receipt.after.student');
+    if (studentAfter.studentId !== studentId || studentAfter.lastCommandId !== commandId
+      || studentAfter.revision !== (normalized.kind === 'CreateStudent' ? 1 : normalized.expectedRevisions.student + 1)
+      || !timestampMatches(studentAfter.updatedAt, committedAt)) {
+      throw new InvalidCloudCommandInput('學生 receipt after snapshot 不一致');
+    }
+
+    if (normalized.kind === 'CreateStudent') {
+      const studentPayload = payload as CommandPayloadByKind['CreateStudent'];
+      if (before.student !== null || receipt.reason !== null
+        || studentAfter.status !== 'active' || studentAfter.currentBalance !== studentPayload.openingBalance.amount
+        || studentAfter.displayName !== studentPayload.displayName
+        || canonicalJson(studentAfter.aliases) !== canonicalJson(studentPayload.aliases)
+        || !timestampMatches(studentAfter.createdAt, committedAt)) {
+        throw new InvalidCloudCommandInput('CreateStudent receipt 欄位不一致');
+      }
+      const opening = studentAfter.openingBalance as Record<string, unknown>;
+      if (opening.amount !== studentPayload.openingBalance.amount
+        || opening.asOfDate !== studentPayload.openingBalance.asOfDate
+        || opening.note !== studentPayload.openingBalance.note
+        || !timestampMatches(opening.createdAt, committedAt)) {
+        throw new InvalidCloudCommandInput('CreateStudent opening snapshot 不一致');
+      }
+      return;
+    }
+
+    const studentBefore = validateReceiptStudent(before.student, 'receipt.before.student');
+    if (studentBefore.studentId !== studentId || studentBefore.revision !== normalized.expectedRevisions.student
+      || studentAfter.revision !== studentBefore.revision + 1
+      || !equalExcept(studentBefore, studentAfter, ['displayName', 'aliases', 'status', 'revision', 'lastCommandId', 'updatedAt'])) {
+      throw new InvalidCloudCommandInput('學生 receipt revision 或欄位差異不一致');
+    }
+    if (normalized.kind === 'EditStudent') {
+      const edit = payload as CommandPayloadByKind['EditStudent'];
+      if (receipt.reason !== null
+        || (edit.displayName !== undefined && studentAfter.displayName !== edit.displayName)
+        || (edit.aliases !== undefined && canonicalJson(studentAfter.aliases) !== canonicalJson(edit.aliases))
+        || (edit.displayName === undefined && studentAfter.displayName !== studentBefore.displayName)
+        || (edit.aliases === undefined && canonicalJson(studentAfter.aliases) !== canonicalJson(studentBefore.aliases))
+        || studentAfter.status !== studentBefore.status) {
+        throw new InvalidCloudCommandInput('EditStudent receipt 欄位不一致');
+      }
+    } else {
+      const status = payload as CommandPayloadByKind['SetStudentStatus'];
+      if (studentAfter.status !== status.status || studentAfter.displayName !== studentBefore.displayName
+        || canonicalJson(studentAfter.aliases) !== canonicalJson(studentBefore.aliases)
+        || receipt.reason !== (status.reason || null)) {
+        throw new InvalidCloudCommandInput('SetStudentStatus receipt 欄位不一致');
+      }
+    }
+    return;
+  }
+
+  if (normalized.kind !== 'CreateOrder' && normalized.kind !== 'CreatePayment') {
+    throw new InvalidCloudCommandInput('command receipt kind 不支援');
   }
 
   if (receipt.businessDate !== normalized.targets.dayId || receipt.studentId !== normalized.targets.studentId || before.transaction !== null) {
@@ -599,7 +740,7 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
   if (typeof raw.kind !== 'string' || !ALL_COMMAND_KINDS.includes(raw.kind as BusinessCommandKind)) {
     throw new InvalidCloudCommandInput('command receipt kind 不支援');
   }
-  if (!['EnsureDay', 'CreateOrder', 'CreatePayment'].includes(raw.kind)) {
+  if (!['EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus'].includes(raw.kind)) {
     throw new InvalidCloudCommandInput('此 command kind 尚未啟用');
   }
   safeInteger(raw.seq, 'receipt.seq');
@@ -612,7 +753,9 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
   if (!(raw.committedAt instanceof Timestamp)) throw new InvalidCloudCommandInput('receipt.committedAt 必須是 Firestore Timestamp');
   if (raw.businessDate !== null) dateValue(raw.businessDate, 'receipt.businessDate');
   if (raw.studentId !== null && typeof raw.studentId !== 'string') throw new InvalidCloudCommandInput('receipt.studentId 不合法');
-  if (raw.reason !== null) throw new InvalidCloudCommandInput('enabled command receipt.reason 必須為 null');
+  if (raw.reason !== null && !(raw.kind === 'SetStudentStatus' && typeof raw.reason === 'string' && raw.reason.length <= 500)) {
+    throw new InvalidCloudCommandInput('command receipt.reason 不合法');
+  }
   if (typeof raw.inputFingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(raw.inputFingerprint)) {
     throw new InvalidCloudCommandInput('receipt.inputFingerprint 不合法');
   }
@@ -645,7 +788,12 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
     if (raw.businessDate !== normalized.payload.businessDate || raw.studentId !== null) {
       throw new InvalidCloudCommandInput('EnsureDay receipt 共用欄位不一致');
     }
-  } else if (raw.businessDate !== normalized.targets.dayId || raw.studentId !== normalized.targets.studentId) {
+  } else if (normalized.kind === 'CreateStudent' || normalized.kind === 'EditStudent' || normalized.kind === 'SetStudentStatus') {
+    if (raw.businessDate !== null || raw.studentId !== normalized.targets.studentId) {
+      throw new InvalidCloudCommandInput('學生 receipt 共用欄位不一致');
+    }
+  } else if ((normalized.kind === 'CreateOrder' || normalized.kind === 'CreatePayment')
+    && (raw.businessDate !== normalized.targets.dayId || raw.studentId !== normalized.targets.studentId)) {
     throw new InvalidCloudCommandInput('交易 receipt 共用欄位不一致');
   }
   validateReceiptSnapshots(raw, normalized);

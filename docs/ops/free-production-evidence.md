@@ -17,6 +17,14 @@
 | ADR | [spec §2](../superpowers/specs/2026-10-13-free-production-backend-spec.md) 記錄獨立 Spark、Firestore、傳統 Hosting 的選擇及成本界線。 |
 | Area：Auth／ledger／ops | 本文件依 AuthGate／operator、交易與結帳寫入、local persistence／舊部署操作分區列出依賴和後續 phase。 |
 
+## P06 WIP checkpoint — 2026-10-15
+
+- Phase branch：`codex/backend-p06-students`；actual base `b53423aa71ed4cfac2428f290c648e5a999a0cae`，包含 P05 code merge `41cd08715c435bc5d72ee38985fccd40e0ee4dd1` 與 #477 receipt。P06 PR/head SHA 尚待 checkpoint 建立後記入 PR body；本節記錄 scope 與未完成證據，不代表 phase acceptance。
+- 範圍：server-only complete student list/read、學生建立／編輯／狀態切換與獨立 cloud page。production command kinds 為 `CreateStudent`、`EditStudent`、`SetStudentStatus`。P05 `EnsureDay`、`CreateOrder`、`CreatePayment` 必須保留；其餘 16 kinds 必須保持拒絕。不得恢復 prototype POS/local business store、開 P07/P08/P10 功能或部署正式環境。
+- Contract：所有 student command `businessDate=null`，`studentId` 為固定 target；學生 ID 是字串（`001` 保留前導零），create 不生 transaction/payment/day effect。Create opening 日期只允許 metadata `head.goLiveDate` 或 Rules server 當前台北日期，且不能為未來；這是允許的日期集合，不代表 Rules 能強制辨識 baseline roster 與今天新學生。Edit 只允許 display name／aliases；opening、ID、balance 的更正留 P10。
+- 當前 checkpoint 是未完成 WIP。strict paged server list、完整 DTO/path/meta 驗證與 stale-result 清除、安全 UI mount、真 production Rules Emulator RED/GREEN、empty-fixture D01 E2E、non-holder denial、A01/P01/P04/P05/P06 sequential regression、full Vitest/lint/build/TSC full-output comparison、CI skip gate、官方 pinned-browser CI 與獨立 review 尚未證明通過。不可把 P05 的 gate 結果挪用為 P06 通過。
+- 僅使用 `demo-easyorder` Firestore/Auth Emulator 和合成 operator/student fixtures；不讀取／建立 production credentials、Firebase project、Admin bootstrap 或部署。Firestore SDK `persistentLocalCache` 尚未修改；memory-cache 生命週期限制仍屬 P13。
+
 ## 舊寫入路徑盤點
 
 分類表示程式與 UI 可達性，不推斷正式環境是否設定或曾部署。Cloud 登入只表示 Auth 路徑已連線；它**不表示帳務寫入雲端**。

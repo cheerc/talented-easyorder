@@ -1,6 +1,6 @@
 # EasyOrder 零費用正式後端分階段實作計畫
 
-日期：2026-10-14。狀態：**P00–P05 已合併；P06 已排定、尚未開始；P07–P18 尚未開始或驗收**。
+日期：2026-10-15。狀態：**P00–P05 已合併；P06 實作中（WIP，未驗收）；P07–P18 尚未開始或驗收**。
 
 **Source of truth：** [正式後端 spec](../specs/2026-10-13-free-production-backend-spec.md)，包含使用者最新「多白名單、等權、同時單一Google帳號」修正；來源 [PR #469](https://github.com/cheerc/talented-easyorder/pull/469)。
 
@@ -40,7 +40,7 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 | P03 | 已合併 #474 | Base：#473 實際 merge SHA `bc5bb2588e616f40a605ea8cd682b1d1642bbc71`；GitHub API 實際 merge SHA：`fd8cba1b84c0b2146c1f450192e2c99739193e46`。修改 `firestore.rules`、`authService.ts`、`AuthGate.tsx`、`FirebaseProvider.tsx`、`operatorAdmin.ts`。A01 測試通過，全套 Vitest 1268 passed，tsc baseline 零新增錯誤，lint 與 build 通過。 |
 | P04 | 已合併 #475 | Base `fd8cba1b84c0b2146c1f450192e2c99739193e46`；最終 PR head `cf0cd10af4171f24cf5faa6dff0814393cb71340`；獨立 review comment `5519480848` 通過；required GitHub Actions run [38579765651](https://github.com/cheerc/talented-easyorder/actions/runs/38579765651) 的 build-and-test 與 E2E 兩個 jobs 均成功；實際 squash merge SHA `837a1e871468db217463e9799480beeb6d7b0ab0`。本地全套 Vitest 1291 passed／65 skipped；獨立 Emulator lease 19/19、A01 Rules 10/10、P01 proof 36/36；Cloud E2E 11/11＋prototype-only 7/7，18/18。app tsc normalized baseline 295→290，新增 0、移除 5 項既有診斷，command/backend相關新增檔零診斷。P01 負向案例的 expression-cap 限制、期限 equality 靜態證據及 system Chromium 本機診斷限制見 [ops evidence](../../ops/free-production-evidence.md)。未部署。 |
 | P05 | 已合併 #476 | Base `837a1e871468db217463e9799480beeb6d7b0ab0`；PR source head `0fe7ac738c8495def1c9fdc19580745ff4b4e33f`；實際 merge SHA `41cd08715c435bc5d72ee38985fccd40e0ee4dd1`（2026-10-14 16:22:05Z）。[獨立 review PASS](https://github.com/cheerc/talented-easyorder/pull/476#pullrequestreview-5521098252)；required CI [38596486712](https://github.com/cheerc/talented-easyorder/actions/runs/38596486712) 兩個 jobs SUCCESS，官方 pinned Chromium 148.0.7778.96／Playwright v1223。production Rules 79/79；A01/P01/P05/P04 lease Emulator sequential 144/144、0 skipped；Cloud E2E 12/12＋prototype 7/7；full Vitest 1,297 passed／144 Emulator-only skipped、lint/build pass。App TSC exit 2，290 inherited diagnostics，完整 542 行 normalized output 與 base 相同。只啟用三 kind，其餘 19 kind deny；expression-cap 與 negative-test causality 限制、未部署等見 [ops evidence](../../ops/free-production-evidence.md)。 |
-| P06 | Ready，尚未開始 | 學生名單與期初手動建檔。逐項開啟已接上 `commitCommand`、server read/hydrate、receipt confirmation 並通過 Rules/review 的學生功能；不可恢復整個 legacy `AppContent`／POS。 |
+| P06 | 實作中，WIP 未驗收 | Branch `codex/backend-p06-students`，實際 PR base `b53423aa71ed4cfac2428f290c648e5a999a0cae`（包含 P05 code merge `41cd08715c435bc5d72ee38985fccd40e0ee4dd1` 與 #477 receipt）。三種學生 kind／Rules/schema/repository 與獨立學生頁正在實作；source 尚未完成。Server-only complete list、strict DTO、auth/lease stale-result clearing、真 Emulator RED/GREEN、D01 E2E、完整回歸、CI／review 尚未通過。不可恢復整個 legacy `AppContent`／POS；PR URL 與當前 head 由 PR body 記錄。 |
 | P07–P18 | 尚未開始／未驗 | 不代表任何後續雲端功能已實作或通過。 |
 
 ## 2. 現有檔案與規劃新檔
@@ -162,13 +162,13 @@ npm run test:e2e
 
 ### P06 — 學生名單與期初從零建檔
 
-**Scope/files：** `studentRepository.ts`→新command adapter，`firebaseActions.ts`、Auth後hydrate、`cloudReadRepository.ts`、F3現有帳戶表單呼叫端。P06 只能逐項開啟已接入 `commitCommand`、server read/hydrate、receipt confirmation 並通過 Rules／review 的學生功能；不可恢復整個舊 `AppContent`／POS，也不可在 Firebase config 缺少時靜默降級為本機資料。
+**Scope/files：** `studentRepository.ts`→新 command adapter；strict server-only student list/read；isolated Cloud student page 與 `App.tsx` wiring。不得 mount `legacyAppContent`、POS hooks 或 local business store；Firebase config 缺失時 fail closed。
 
-**Consumes/produces：** commitCommand→CreateStudent/EditStudent/SetStudentStatus、server讀回名單與搜尋。
+**Consumes/produces：** `commitCommand`→`CreateStudent`／`EditStudent`／`SetStudentStatus`、server讀回完整名單與搜尋。三種命令 `businessDate=null`，固定 target `studentId`；ID 維持字串，含 `001`。Edit 僅修改 `displayName`／`aliases`；status 分別切換 active/inactive，不碰歷史或餘額。
 
-**RED/GREEN：** D01：`001`不可變1、重複ID拒絕、同名允許、明確0／負期初、超界拒絕、直接改balance拒絕、停用／恢復後重登入還在。對應cloud e2e與rules suite。
+**RED/GREEN：** D01：從真空集合建立三名學生，`001` 字串不變、重複 ID 拒絕、同名允許、明確 0／負期初、±1e9 邊界合法、超界／fraction／負零拒絕、直接改 balance/ID/opening/date 拒絕、停用／恢復保留歷史與餘額、重登後 server 一致。Rules 需證明新 command+head+student projection 原子閉合與其餘 16 kind 仍 deny。期初日期只可為 `head.goLiveDate` 或 Rules `currentTaipeiDate` 且非未來；前者用於既有 roster baseline，後者用於今天新增，Rules 不知道 roster 類別且不宣稱強制分類。Create 不新增 transaction/payment/day effect。
 
-**Acceptance/demo：** 從空庫手動建3名、修改／停用／恢復、登出換瀏覽器一致。期初不新增付款。更正期初入口待P10，不先留不安全任意更新。
+**Acceptance/demo：** 從 empty valid metadata head 開始，server list 明確區分 ready-empty／unavailable/error；完整讀最多 500 並偵測超額，不快取假空集合。建立、修改、停用／恢復，登出後第二瀏覽器一致；非 holder denied/masked；失去 UID/token/lease 立即遮罩清空，舊 in-flight result 不可回填。成功只在 receipt confirmed 後回報；list refresh 失敗保留同 command ID recovery。prototype 7 cases 保持。期初不新增付款；更正期初入口留 P10。 |
 
 ### P07 — 日期設定、供應商與開帳
 

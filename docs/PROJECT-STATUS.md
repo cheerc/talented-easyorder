@@ -1,8 +1,8 @@
 # Project Status — Talented EasyOrder
 
-> **2026-10-14 正式後端進度：** [零費用正式後端 spec](superpowers/specs/2026-10-13-free-production-backend-spec.md)與[19 階段計畫](superpowers/plans/2026-10-13-free-production-backend-plan.md)為權威規格與順序。P00–P05 已合併。P05 #476 base `837a1e871468db217463e9799480beeb6d7b0ab0`、source head `0fe7ac738c8495def1c9fdc19580745ff4b4e33f`、實際 merge SHA `41cd08715c435bc5d72ee38985fccd40e0ee4dd1`；[獨立 review 通過](https://github.com/cheerc/talented-easyorder/pull/476#pullrequestreview-5521098252)，required CI run [38596486712](https://github.com/cheerc/talented-easyorder/actions/runs/38596486712) 兩個 jobs 均成功，使用 pinned Chromium 148.0.7778.96／Playwright v1223。P05 production Rules Emulator 79/79；A01/P01/P05/P04 lease sequential regression 144/144、0 skipped；Cloud E2E 12/12、隔離 prototype 7/7，19/19。完整 Vitest 1,297 passed、144 skipped（五個 Emulator-only suites，另由 Emulator 回歸實跑 144/144），full lint/build 通過。app TypeScript exit 2，290 項 inherited diagnostics；完整 542 行 normalized output 與 base 相同，無新增診斷。P06 學生名單與期初手動建檔已排定但尚未開始；新後端未部署或開放正式帳務操作。Android 另案；下方既有前端追蹤與本人驗收紀錄維持原狀。
+> **2026-10-15 正式後端進度：** [零費用正式後端 spec](superpowers/specs/2026-10-13-free-production-backend-spec.md)與[19 階段計畫](superpowers/plans/2026-10-13-free-production-backend-plan.md)為權威規格與順序。P00–P05 已合併。P05 #476 base `837a1e871468db217463e9799480beeb6d7b0ab0`、source head `0fe7ac738c8495def1c9fdc19580745ff4b4e33f`、實際 merge SHA `41cd08715c435bc5d72ee38985fccd40e0ee4dd1`；[獨立 review 通過](https://github.com/cheerc/talented-easyorder/pull/476#pullrequestreview-5521098252)，required CI run [38596486712](https://github.com/cheerc/talented-easyorder/actions/runs/38596486712) 兩個 jobs 均成功，使用 pinned Chromium 148.0.7778.96／Playwright v1223。P05 production Rules Emulator 79/79；A01/P01/P05/P04 lease sequential regression 144/144、0 skipped；Cloud E2E 12/12、隔離 prototype 7/7，19/19。完整 Vitest 1,297 passed、144 skipped（五個 Emulator-only suites，另由 Emulator 回歸實跑 144/144），full lint/build 通過。app TypeScript exit 2，290 項 inherited diagnostics；完整 542 行 normalized output 與 base 相同，無新增診斷。P06 正在實作，尚未完成或通過任何本 phase 驗收；新後端未部署或開放正式帳務操作。Android 另案；下方既有前端追蹤與本人驗收紀錄維持原狀。
 
-> **已合併基線：** P00 #471、P01 #472、P02 #473、P03 #474、P04 #475、P05 #476；各 PR 實際 merge SHA 與歷史限制見[現況與證據](ops/free-production-evidence.md)。下一階段 P06 學生名單與期初手動建檔已就緒但尚未開始；P07–P18 尚未開始／未驗。新後端尚未部署或開放正式帳務操作。此更新不更改下方歷史前端本人驗收紀錄。逐 PR 接手流程見[開發交接入口](DEVELOPMENT-HANDOFF.md)。
+> **已合併基線：** P00 #471、P01 #472、P02 #473、P03 #474、P04 #475、P05 #476；各 PR 實際 merge SHA 與歷史限制見[現況與證據](ops/free-production-evidence.md)。P06 學生名單與期初手動建檔目前位於 `codex/backend-p06-students`，base `b53423aa71ed4cfac2428f290c648e5a999a0cae`，WIP 未驗收；production Rules、server read、安全 UI、Emulator／E2E、回歸與 CI 均未完成證明。P07–P18 尚未開始／未驗。新後端尚未部署或開放正式帳務操作。此更新不更改下方歷史前端本人驗收紀錄。逐 PR 接手流程見[開發交接入口](DEVELOPMENT-HANDOFF.md)。
 
 > **Last inspected:** 2026-09-29，程式基準 `884a996`。
 > 本輪只更新 spec／計畫／驗收文件；沒有改應用程式、沒有完成本人驗收。
@@ -11,7 +11,7 @@
 
 PC 晚餐櫃台前端 prototype：鍵盤為主、滑鼠為輔，保留 operator 約七成滿意的 F1。每天一餐（晚餐）；餐費90找零後記90，多留10元則記100。支援1920×1080 PC及MacBook Pro 13吋，按可用視窗重排，不整頁縮小。
 
-前端本人驗收仍依下方清單；正式後端另依 P00–P18 計畫推進，下一階段為尚未開始的 P06 學生名單與期初手動建檔。iPad、真實人臉裝置整合與 Android 另案。
+前端本人驗收仍依下方清單；正式後端另依 P00–P18 計畫推進，目前 P06 學生名單與期初手動建檔正在實作，驗收尚未完成。iPad、真實人臉裝置整合與 Android 另案。
 
 交接入口：[FRONTEND-PROTOTYPE-HANDOFF](FRONTEND-PROTOTYPE-HANDOFF.md)；後端起手：[BACKEND-HANDOFF](BACKEND-HANDOFF.md)（前端完成盤點、雲端現況、待決策事項、Android 銜接）。現行排程：[ROADMAP](superpowers/plans/ROADMAP.md)／[詳細計畫](superpowers/plans/2026-09-29-frontend-prototype-refocus.md)。原 Google Sheets roadmap 已封存，不再作排程來源。
 

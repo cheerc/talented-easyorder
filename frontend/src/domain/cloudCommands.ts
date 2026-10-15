@@ -150,10 +150,9 @@ export interface BaseCommand<TKind extends BusinessCommandKind, TPayload, TTarge
 export type CreateStudentCommand = BaseCommand<
   'CreateStudent',
   {
-    studentId: string;
     displayName: string;
-    aliases?: string[];
-    openingBalance?: {
+    aliases: string[];
+    openingBalance: {
       amount: number;
       asOfDate: string;
       note?: string;
@@ -168,7 +167,6 @@ export type EditStudentCommand = BaseCommand<
   {
     displayName?: string;
     aliases?: string[];
-    note?: string;
   },
   { studentId: string }
 >;
