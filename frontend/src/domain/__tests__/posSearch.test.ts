@@ -90,10 +90,15 @@ describe('resolveScannedStudent', () => {
     return { rawCode: code, terminator: 'Enter' };
   }
 
-  it('scan exact studentId selects one student', () => {
+  it('scan exact studentId selects one student (including unpadded numeric input)', () => {
     const result = resolveScannedStudent(students, scan('001'));
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.students[0].studentId).toBe('001');
+
+    // U3 #1: 輸入 1 也能精確匹配到 001
+    const resultUnpadded = resolveScannedStudent(students, scan('1'));
+    expect(resultUnpadded.ok).toBe(true);
+    if (resultUnpadded.ok) expect(resultUnpadded.students[0].studentId).toBe('001');
   });
 
   it('scan exact alias selects one student', () => {

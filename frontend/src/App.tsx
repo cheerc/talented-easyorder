@@ -254,6 +254,7 @@ function AppContent() {
         onClearStudentFilter={() => setReportStudentFilter('')}
         posColumnProps={posColumnProps}
         historyLookupTarget={historyLookupTarget}
+        onViewStudentHistory={handleViewAllHistory}
       />
     </MainLayout>
   );

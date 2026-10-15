@@ -4,6 +4,9 @@ import {
   filterActiveStudents,
   searchActiveStudents,
   validateStudentImportRows,
+  normalizeStudentCode,
+  buildStudentListWithGaps,
+  validateNewAccount,
 } from '../student';
 import type { StudentAccount } from '../student';
 import { STUDENT_001, STUDENT_004 } from './fixtures';
@@ -126,5 +129,177 @@ describe('validateStudentImportRows', () => {
     const result = validateStudentImportRows(rows);
     expect(result.valid).toHaveLength(0);
     expect(result.errors).toHaveLength(2);
+  });
+});
+
+describe('normalizeStudentCode (U3 #1 / Q2 定案)', () => {
+  it('去除前後空白、全形數字轉半形、補零至至少 3 位', () => {
+    expect(normalizeStudentCode(' 5 ')).toEqual({ ok: true, code: '005', numericValue: 5 });
+    expect(normalizeStudentCode('05')).toEqual({ ok: true, code: '005', numericValue: 5 });
+    expect(normalizeStudentCode('005')).toEqual({ ok: true, code: '005', numericValue: 5 });
+    expect(normalizeStudentCode('0005')).toEqual({ ok: true, code: '005', numericValue: 5 });
+    expect(normalizeStudentCode(' ５ ')).toEqual({ ok: true, code: '005', numericValue: 5 });
+    expect(normalizeStudentCode('001')).toEqual({ ok: true, code: '001', numericValue: 1 });
+    expect(normalizeStudentCode('1000')).toEqual({ ok: true, code: '1000', numericValue: 1000 });
+    expect(normalizeStudentCode('999999')).toEqual({ ok: true, code: '999999', numericValue: 999999 });
+  });
+
+  it('拒絕 0、000、負數、包含非數字字元、超出 6 位數或空字串', () => {
+    expect(normalizeStudentCode('0').ok).toBe(false);
+    expect(normalizeStudentCode('000').ok).toBe(false);
+    expect(normalizeStudentCode('-5').ok).toBe(false);
+    expect(normalizeStudentCode('abc').ok).toBe(false);
+    expect(normalizeStudentCode('001a').ok).toBe(false);
+    expect(normalizeStudentCode('1000000').ok).toBe(false);
+    expect(normalizeStudentCode('').ok).toBe(false);
+    expect(normalizeStudentCode('   ').ok).toBe(false);
+  });
+});
+
+describe('buildStudentListWithGaps (U3 #2)', () => {
+  const mk = (id: string, name: string, status: StudentAccount['status'] = 'active'): StudentAccount => ({
+    studentId: id,
+    displayName: name,
+    status,
+    currentBalance: 0,
+    aliases: [],
+    faceEnrollmentStatus: 'none',
+    createdAt: '',
+    updatedAt: '',
+    revision: 1,
+  });
+
+  it('依編號數值由小到大排序，並從 001 列出至最大使用號碼的空號', () => {
+    const list = [
+      mk('005', '五號'),
+      mk('002', '二號'),
+    ];
+    const result = buildStudentListWithGaps(list);
+    expect(result).toHaveLength(4);
+    expect(result[0]).toEqual({
+      type: 'gap',
+      startCode: '001',
+      endCode: '001',
+      count: 1,
+      label: '001 尚無人使用',
+    });
+    expect(result[1]).toMatchObject({
+      type: 'student',
+      student: expect.objectContaining({ studentId: '002', displayName: '二號' }),
+      sortKey: 2,
+    });
+    expect(result[2]).toEqual({
+      type: 'gap',
+      startCode: '003',
+      endCode: '004',
+      count: 2,
+      label: '003–004 尚無人使用（2 個號碼）',
+    });
+    expect(result[3]).toMatchObject({
+      type: 'student',
+      student: expect.objectContaining({ studentId: '005', displayName: '五號' }),
+      sortKey: 5,
+    });
+  });
+
+  it('停用帳戶占用自身號碼（Q3 定案），不視為空號', () => {
+    const list = [
+      mk('001', '一號'),
+      mk('002', '停用二號', 'inactive'),
+      mk('003', '三號'),
+    ];
+    const result = buildStudentListWithGaps(list);
+    expect(result).toHaveLength(3);
+    expect(result.every(r => r.type === 'student')).toBe(true);
+    expect(result[1]).toMatchObject({
+      type: 'student',
+      student: expect.objectContaining({ studentId: '002', status: 'inactive' }),
+    });
+  });
+
+  it('搜尋框有文字時不顯示空號列，只回傳符合之帳戶（仍按數值排序）', () => {
+    const list = [
+      mk('001', '王一'),
+      mk('010', '王十'),
+      mk('020', '李二十'),
+    ];
+    const result = buildStudentListWithGaps(list, '王');
+    expect(result).toHaveLength(2);
+    expect(result.every(r => r.type === 'student')).toBe(true);
+    expect(result.map(r => r.type === 'student' ? r.student.studentId : null)).toEqual(['001', '010']);
+  });
+
+  it('全系統無學員時回傳空陣列', () => {
+    expect(buildStudentListWithGaps([])).toEqual([]);
+  });
+
+  it('舊測試資料若有非數字編號安全排於數值編號之後', () => {
+    const list = [
+      mk('guest-1', '訪客'),
+      mk('002', '二號'),
+      mk('001', '一號'),
+    ];
+    const result = buildStudentListWithGaps(list);
+    expect(result.map(r => r.type === 'student' ? r.student.studentId : null)).toEqual([
+      '001', '002', 'guest-1',
+    ]);
+  });
+});
+
+describe('validateNewAccount (U3 #1)', () => {
+  const mk = (id: string, name: string, status: StudentAccount['status'] = 'active'): StudentAccount => ({
+    studentId: id, displayName: name, status, currentBalance: 0, aliases: [], faceEnrollmentStatus: 'none',
+    createdAt: '', updatedAt: '', revision: 1,
+  });
+
+  it('新編號自動正規化（例如輸入 5 存為 005）', () => {
+    const result = validateNewAccount({
+      studentId: '5',
+      displayName: '五號學生',
+      openingBalanceText: '0',
+      openingNote: '',
+    }, []);
+    expect(result).toMatchObject({
+      ok: true,
+      studentId: '005',
+    });
+  });
+
+  it('非合法純數字編號報 invalid_id 錯誤', () => {
+    const result = validateNewAccount({
+      studentId: 'abc',
+      displayName: '小明',
+      openingBalanceText: '0',
+      openingNote: '',
+    }, []);
+    expect(result).toEqual({
+      ok: false,
+      errors: ['invalid_id'],
+    });
+  });
+
+  it('重複編號（含格式不同正規化後相同者，及停用帳戶）阻擋', () => {
+    const existing = [mk('005', '五號'), mk('010', '十號停用', 'inactive')];
+    // 輸入 ' 05 ' 與 005 重複
+    expect(validateNewAccount({
+      studentId: ' 05 ',
+      displayName: '新人',
+      openingBalanceText: '0',
+      openingNote: '',
+    }, existing)).toEqual({
+      ok: false,
+      errors: ['duplicate_id'],
+    });
+
+    // 輸入 '10' 與停用帳戶 010 重複
+    expect(validateNewAccount({
+      studentId: '10',
+      displayName: '新人',
+      openingBalanceText: '0',
+      openingNote: '',
+    }, existing)).toEqual({
+      ok: false,
+      errors: ['duplicate_id'],
+    });
   });
 });

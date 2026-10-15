@@ -1,5 +1,6 @@
 import type { PosState } from '../posTypes';
 import type { StudentAccount } from '../../domain/student';
+import type { LedgerAuditEvent } from '../../domain/ledgerAudit';
 import { defaultState } from '../posPersistence';
 import { clearTransactionsKeepRoster, type PracticeDataset } from '../../domain/practiceSnapshot';
 import {
@@ -42,11 +43,92 @@ export function createPracticeDataActions(
 
     setSimulationDate: (date) => set({ simulationDate: date }),
 
-    updateLocalStudent: (studentId, changes, now) => set((state) => ({
-      students: state.students.map(s => s.studentId === studentId
-        ? { ...s, displayName: changes.displayName, aliases: changes.aliases, updatedAt: now, revision: s.revision + 1 }
-        : s),
-    })),
+    updateLocalStudent: (studentId, changes, now) => set((state) => {
+      const target = state.students.find(s => s.studentId === studentId);
+      if (!target) return {};
+
+      const oldId = studentId;
+      const isCodeChanged = Boolean(changes.newStudentId && changes.newStudentId !== oldId);
+      const newId = isCodeChanged ? changes.newStudentId! : oldId;
+
+      // 檢查新編號是否與其他帳戶重複
+      if (isCodeChanged && state.students.some(s => s.studentId === newId && s.studentId !== oldId)) {
+        return {};
+      }
+
+      // 1. 更新學生名冊
+      const nextStudents = state.students.map(s => s.studentId === oldId
+        ? {
+            ...s,
+            studentId: newId,
+            displayName: changes.displayName,
+            aliases: changes.aliases,
+            updatedAt: now,
+            revision: s.revision + 1,
+          }
+        : s
+      );
+
+      if (!isCodeChanged) {
+        return { students: nextStudents };
+      }
+
+      // 2. 交易歷史中 studentId 同步更新
+      const nextTransactions = state.transactions.map(t =>
+        t.studentId === oldId ? { ...t, studentId: newId } : t
+      );
+
+      // 3. 稽核紀錄同步更新
+      const updateRef = (obj: Record<string, unknown> | null): Record<string, unknown> | null => {
+        if (!obj || typeof obj !== 'object') return obj;
+        if (obj.studentId === oldId) {
+          return { ...obj, studentId: newId };
+        }
+        return obj;
+      };
+
+      const updatedAuditEvents = (state.auditEvents || []).map(e => {
+        let changed = false;
+        let nextEntityId = e.entityId;
+        if (e.entityId === oldId) {
+          nextEntityId = newId;
+          changed = true;
+        }
+        const nextBefore = updateRef(e.before);
+        const nextAfter = updateRef(e.after);
+        if (nextBefore !== e.before || nextAfter !== e.after) {
+          changed = true;
+        }
+        return changed
+          ? { ...e, entityId: nextEntityId, before: nextBefore, after: nextAfter }
+          : e;
+      });
+
+      const changeEvent: LedgerAuditEvent = {
+        auditEventId: `audit-change-code-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        eventType: 'transaction_edited',
+        entityType: 'transaction',
+        entityId: newId,
+        businessDate: state.simulationDate || new Date().toISOString().slice(0, 10),
+        before: { studentId: oldId, displayName: target.displayName },
+        after: { studentId: newId, displayName: changes.displayName },
+        reason: changes.reason || '修改學生編號',
+        operatorId: 'operator',
+        createdAt: now,
+      };
+
+      // 4. 刷臉紀錄
+      const nextFaceEvents = (state.faceEvents || []).map(fe =>
+        fe.studentId === oldId ? { ...fe, studentId: newId } : fe
+      );
+
+      return {
+        students: nextStudents,
+        transactions: nextTransactions,
+        auditEvents: [...updatedAuditEvents, changeEvent],
+        faceEvents: nextFaceEvents,
+      };
+    }),
 
     setLocalStudentStatus: (studentId, status, now) => set((state) => ({
       students: state.students.map(s => s.studentId === studentId && s.status !== status

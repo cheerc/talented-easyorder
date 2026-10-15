@@ -168,8 +168,8 @@ export interface PracticeDataActions {
   clearPracticeTransactions: () => void;
   /** 設定模擬營業日（YYYY-MM-DD）；null 回到實際日期。 */
   setSimulationDate: (date: string | null) => void;
-  /** 修改本機帳戶的姓名與別名；交易內的姓名快照不變。 */
-  updateLocalStudent: (studentId: string, changes: { displayName: string; aliases: string[] }, now: string) => void;
+  /** 修改本機帳戶的姓名、別名，或改編號（含同步改寫交易／稽核／刷臉紀錄）；交易內的姓名快照不變。 */
+  updateLocalStudent: (studentId: string, changes: { displayName: string; aliases: string[]; newStudentId?: string; reason?: string }, now: string) => void;
   /** 停用或恢復本機帳戶。停用者不出現在訂餐搜尋，歷史仍可查。 */
   setLocalStudentStatus: (studentId: string, status: StudentAccount['status'], now: string) => void;
 }

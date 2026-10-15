@@ -1,4 +1,5 @@
 import type { StudentAccount } from './student';
+import { normalizeStudentCode } from './student';
 
 export type PosSearchMode = 'text' | 'scan';
 
@@ -19,8 +20,12 @@ export function searchPosStudents(students: StudentAccount[], query: string): Po
     return { ok: true, mode: 'text', students: [...activeStudents] };
   }
 
+  const norm = normalizeStudentCode(trimmed);
+  const normCode = norm.ok ? norm.code : null;
+
   const results = activeStudents.filter(s =>
     s.studentId.includes(trimmed) ||
+    (normCode && s.studentId === normCode) ||
     s.displayName.includes(trimmed) ||
     s.aliases.some(a => a.includes(trimmed))
   );
@@ -60,8 +65,10 @@ export function resolveScannedStudent(students: StudentAccount[], input: Scanner
   }
 
   const activeStudents = students.filter(s => s.status === 'active');
+  const norm = normalizeStudentCode(code);
+  const normalizedCode = norm.ok ? norm.code : code;
 
-  const exactIdMatches = activeStudents.filter(s => s.studentId === code);
+  const exactIdMatches = activeStudents.filter(s => s.studentId === code || s.studentId === normalizedCode);
   if (exactIdMatches.length === 1) {
     return { ok: true, mode: 'scan', students: [exactIdMatches[0]] };
   }
