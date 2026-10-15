@@ -4,6 +4,7 @@ import { fmt } from "../pos-components";
 import type { StudentAccount } from '../../domain/student';
 import { validateNewAccount, createLocalAccount, parseAliases, NEW_ACCOUNT_ERROR_MESSAGES, type NewAccountError } from '../../domain/student';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { OpeningCashConfirmDialog } from '../admin/OpeningCashConfirmDialog';
 import { useMenu, useMenuForDate, useMenuActions, useStudents, useGlobalActions, useSessionActions, usePracticeDataActions } from '../../store/selectors';
 import { PracticeDataPanel } from './PracticeDataPanel';
 import { FaceTabletSimulator } from './FaceTabletSimulator';
@@ -14,6 +15,7 @@ import { SYSTEM_OPERATOR_ID } from '../../domain/operatorId';
 import { getTaiwanISOString } from '../../utils/dateTime';
 import { filterActiveVendors, resolveMenuVendor } from '../../domain/menu';
 import { faceEnrollmentText } from '../../domain/faceOrder';
+import { validateOpeningCash } from '../../domain/cashSession';
 
 interface AdminScreenProps {
   viewDate: string;
@@ -60,11 +62,13 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
   const [menuSavedMsg, setMenuSavedMsg] = useState('');
   // 切換檢視日期時清掉上一天的「已儲存」提示（render 期間調整，避免 effect 連鎖更新）。
   const [menuError, setMenuError] = useState('');
+  const [openingCashError, setOpeningCashError] = useState('');
   const [menuMsgDate, setMenuMsgDate] = useState(viewDate);
   if (menuMsgDate !== viewDate) {
     setMenuMsgDate(viewDate);
     setMenuSavedMsg('');
     setMenuError('');
+    setOpeningCashError('');
   }
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   // M3：開帳金額只預填，不自動生效；沒有設定時預填建議值（重開日用上次關帳的開帳金額，否則用前一天關帳點算），本人按儲存才算數。
@@ -92,7 +96,6 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
 
   // Ref: #347 — DRY validation helpers for financial input guards
   const isPositiveInt = (n: number) => Number.isFinite(n) && Number.isSafeInteger(n) && n > 0;
-  const isNonNegativeInt = (n: number) => Number.isFinite(n) && Number.isSafeInteger(n) && n >= 0;
 
   const save = () => {
     const n = Number(price);
@@ -120,25 +123,44 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
   };
 
   const doSaveOpeningCash = () => {
-    const n = Number(openingCashDraft);
-    // Ref: #311, #347 — Financial input validation
-    if (!isNonNegativeInt(n)) return;
+    const trimmed = openingCashDraft.trim();
+    if (trimmed === '') {
+      setOpeningCashError('開帳金額必須是 0 或正整數');
+      setShowOpeningCashConfirm(false);
+      return;
+    }
+    const n = Number(trimmed);
+    const validation = validateOpeningCash(n);
+    if (!validation.ok) {
+      setOpeningCashError(validation.reason);
+      setShowOpeningCashConfirm(false);
+      return;
+    }
     if (hasCashSession) {
       onUpdateOpeningCash(n);
     } else {
       onOpeningCashChange(n);
     }
     setShowOpeningCashConfirm(false);
+    setOpeningCashError('');
     setCashSavedMsg('已儲存');
     if (cashSavedTimeoutRef.current !== null) clearTimeout(cashSavedTimeoutRef.current);
     cashSavedTimeoutRef.current = setTimeout(() => { setCashSavedMsg(''); cashSavedTimeoutRef.current = null; }, 2000);
   };
 
   const handleSaveOpeningCash = () => {
-    if (openingCashDraft.trim() === '') return;
-    const n = Number(openingCashDraft);
-    // Ref: #311, #347 — Financial input validation
-    if (!isNonNegativeInt(n)) return;
+    const trimmed = openingCashDraft.trim();
+    if (trimmed === '') {
+      setOpeningCashError('開帳金額必須是 0 或正整數');
+      return;
+    }
+    const n = Number(trimmed);
+    const validation = validateOpeningCash(n);
+    if (!validation.ok) {
+      setOpeningCashError(validation.reason);
+      return;
+    }
+    setOpeningCashError('');
     if (n === openingCash) return;
     setShowOpeningCashConfirm(true);
   };
@@ -184,12 +206,26 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
             <div className="card-h">每日開帳金額</div>
             <div className="adm-row">
               <label>開帳金額 (元)</label>
-              <NumericInput className="adm-input mono" aria-label="開帳金額" value={openingCashDraft} onChange={setOpeningCashDraft} disabled={isClosed} />
+              <NumericInput
+                className="adm-input mono"
+                aria-label="開帳金額"
+                value={openingCashDraft}
+                onChange={v => {
+                  setOpeningCashDraft(v);
+                  if (openingCashError) setOpeningCashError('');
+                }}
+                disabled={isClosed}
+              />
             </div>
             <div className="adm-foot">
               <button className="btn-confirm wide" onClick={handleSaveOpeningCash} disabled={isClosed}>
                 儲存開帳金額
               </button>
+              {openingCashError && (
+                <span role="alert" style={{ marginLeft: '8px', color: 'var(--c-warn)', fontSize: '13px' }}>
+                  {openingCashError}
+                </span>
+              )}
               {cashSavedMsg && <span style={{ marginLeft: '8px', color: 'var(--accent-ink)', fontSize: '13px' }}>{cashSavedMsg}</span>}
             </div>
             <p className="dim" style={{ fontSize: '12px', margin: '8px 0 0' }}>
@@ -256,16 +292,13 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate }: AdminSc
         confirmLabel="確認重置"
         variant="danger"
       />
-      <ConfirmDialog
+      <OpeningCashConfirmDialog
         open={showOpeningCashConfirm}
-        title={hasCashSession ? "修改開帳金額" : "設定開帳金額"}
-        message={hasCashSession
-          ? "修改開帳金額會影響今日所有帳務計算，確定要繼續嗎？"
-          : `確定要將今日開帳金額設為 $${Number(openingCashDraft).toLocaleString()} 嗎？`}
+        hasCashSession={hasCashSession}
+        draftAmount={Number(openingCashDraft)}
+        suggestedOpeningCash={suggestedOpeningCash}
         onConfirm={doSaveOpeningCash}
         onCancel={() => setShowOpeningCashConfirm(false)}
-        confirmLabel={hasCashSession ? "確認修改" : "確認設定"}
-        variant={hasCashSession ? "danger" : "primary"}
       />
     </div>
   );

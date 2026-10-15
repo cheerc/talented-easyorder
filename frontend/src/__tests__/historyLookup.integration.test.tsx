@@ -106,7 +106,7 @@ describe('跨日檢查（D06）', () => {
     // D2 的開帳沒有確認前是 null，只有預填建議（D1 最後一版的實點）。
     const { result } = renderHook(() => useCashClose(D2));
     expect(result.current.openingCash).toBeNull();
-    expect(result.current.suggestedOpeningCash).toEqual({ amount: 1100, source: 'previous_day' });
+    expect(result.current.suggestedOpeningCash).toEqual({ amount: 1100, source: 'previous_day', fromDate: D1 });
 
     // D1 已關帳：store 層擋下新增。
     expect(() => commit('002', 'payment', 0, 50, D1)).toThrow(/關帳/);

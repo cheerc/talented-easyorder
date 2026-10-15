@@ -187,7 +187,7 @@ describe('sessionActions — close / reopen', () => {
     ]);
     // 第二次重開是從第二次關帳（$1,100）複製，不是第一次。
     expect(latestSettlement('2026-05-15', all)!.countedCash).toBe(1100);
-    expect(suggestOpeningCash('2026-05-16', all)).toEqual({ amount: 1100, source: 'previous_day' });
+    expect(suggestOpeningCash('2026-05-16', all)).toEqual({ amount: 1100, source: 'previous_day', fromDate: '2026-05-15' });
     expect(new Set(all.map(s => s.settlementId)).size).toBe(4);
   });
 });

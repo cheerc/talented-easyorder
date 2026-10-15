@@ -184,15 +184,18 @@ describe('M3：開帳金額只認本人確認的設定', () => {
     expect(getConfirmedOpeningCash(undefined)).toBeNull();
   });
 
-  it('suggestOpeningCash：只當預填建議，取前一天最後一版「已關帳」的實際點算', () => {
+  it('suggestOpeningCash：只當預填建議，取前一天最後一版「已關帳」的實際點算與日期', () => {
     const v1 = createDailySettlement('2026-05-14', makeTotals({ netCash: 500 }), 1000, 1520, '平帳', 'op', '2026-05-14T10:00:00.000Z', false);
-    const prev = (amount: number) => ({ amount, source: 'previous_day' });
+    const prev = (amount: number, fromDate: string = '2026-05-14') => ({ amount, source: 'previous_day', fromDate });
     expect(suggestOpeningCash('2026-05-15', [v1])).toEqual(prev(1520));
     const reopened = reopenBusinessDate(v1, '補登', 'op', '2026-05-14T11:00:00.000Z');
     const v3 = createDailySettlement('2026-05-14', makeTotals({ netCash: 500 }), 1000, 1540, '多 20', 'op', '2026-05-14T12:00:00.000Z', false, 3);
     expect(suggestOpeningCash('2026-05-15', [v1, reopened, v3])).toEqual(prev(1540));
     expect(suggestOpeningCash('2026-05-15', [v1, reopened])).toEqual(prev(1520));
-    expect(suggestOpeningCash('2026-05-16', [v1])).toBeNull();
+    // 跨日或週末：若昨天無關帳紀錄，往前找最近一個已關帳營業日
+    expect(suggestOpeningCash('2026-05-16', [v1])).toEqual(prev(1520, '2026-05-14'));
+    // 沒有更早的已關帳日則為 null
+    expect(suggestOpeningCash('2026-05-13', [v1])).toBeNull();
   });
 
   it('suggestOpeningCash：重開的日子優先預填那次關帳用的開帳金額', () => {
@@ -211,7 +214,7 @@ describe('M3：開帳金額只認本人確認的設定', () => {
     expect(latestSettlement('2026-05-15', all)).toBe(legacySecond);
     expect(latestSettlement('2026-05-15', [legacySecond, reopened, first])).toBe(legacySecond);
     expect(nextSettlementRevision('2026-05-15', all)).toBe(3);
-    expect(suggestOpeningCash('2026-05-16', all)).toEqual({ amount: 1100, source: 'previous_day' });
+    expect(suggestOpeningCash('2026-05-16', all)).toEqual({ amount: 1100, source: 'previous_day', fromDate: '2026-05-15' });
     expect(nextSettlementRevision('2026-05-16', all)).toBe(1);
     expect(reopened.settlementId).not.toBe(first.settlementId);
   });
