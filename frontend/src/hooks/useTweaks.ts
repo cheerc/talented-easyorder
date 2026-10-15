@@ -1,18 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
+import { useUiTweaksStore, applyBodyAttributes, type UiTweaks } from '../store/uiTweaksStore';
 
 export function useTweaks() {
-  const [tweaks, setTweaks] = useState({ theme: 'warm', fontSize: 'lg', disableHoverSelection: true });
-  const setTweak = (k: string, v: string) => setTweaks(prev => {
-    if (k === 'disableHoverSelection') {
-      return { ...prev, disableHoverSelection: v === 'true' };
-    }
-    return { ...prev, [k]: v };
-  });
+  const theme = useUiTweaksStore(s => s.theme);
+  const scale = useUiTweaksStore(s => s.scale);
+  const disableHoverSelection = useUiTweaksStore(s => s.disableHoverSelection);
+  const setTweak = useUiTweaksStore(s => s.setTweak);
+
+  const tweaks: UiTweaks = useMemo(() => ({
+    theme,
+    scale,
+    disableHoverSelection,
+    fontSize: scale === 'large' ? 'lg' : 'md',
+  }), [theme, scale, disableHoverSelection]);
 
   useEffect(() => {
-    document.body.setAttribute('data-fs', tweaks.fontSize);
-    document.body.setAttribute('data-theme', tweaks.theme);
-  }, [tweaks]);
+    applyBodyAttributes({ theme, scale });
+  }, [theme, scale]);
 
   return { tweaks, setTweak };
 }

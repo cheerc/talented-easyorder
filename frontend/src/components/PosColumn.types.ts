@@ -48,7 +48,7 @@ export interface PosColumnProps {
   todayOtherCount?: number;
   vendors: Vendor[];
   enterExpenseMode: () => void;
-  tweaks: { theme: string; fontSize: string; disableHoverSelection: boolean };
+  tweaks: { theme: string; fontSize: string; scale?: string; disableHoverSelection: boolean };
   // Recent strip
   tx: WorkflowTransactionView[];
   operatorUid: string;
