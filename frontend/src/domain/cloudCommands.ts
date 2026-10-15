@@ -195,9 +195,9 @@ export type SaveVendorCommand = BaseCommand<
   {
     vendorId: string;
     name: string;
-    phone?: string;
-    note?: string;
-    status?: 'active' | 'inactive';
+    phone: string;
+    note: string;
+    status: 'active' | 'inactive';
   },
   { vendorId: string }
 >;
@@ -205,7 +205,7 @@ export type SaveVendorCommand = BaseCommand<
 // 6. RemoveVendor
 export type RemoveVendorCommand = BaseCommand<
   'RemoveVendor',
-  { reason?: string },
+  { reason: string },
   { vendorId: string }
 >;
 
@@ -220,11 +220,12 @@ export type EnsureDayCommand = BaseCommand<
 export type SetDayMenuCommand = BaseCommand<
   'SetDayMenu',
   {
+    selectionDate: string;
     itemName: string;
     price: number;
     vendorId: string;
     vendorNameSnapshot: string;
-    inheritedFromDate?: string | null;
+    inheritedFromDate: string | null;
   },
   { dayId: string }
 >;

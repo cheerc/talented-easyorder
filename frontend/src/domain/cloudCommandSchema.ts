@@ -36,7 +36,7 @@ export interface CommandPayloadByKind {
   SaveVendor: { vendorId: string; name: string; phone: string; note: string; status: 'active' | 'inactive' };
   RemoveVendor: { reason: string };
   EnsureDay: { businessDate: string };
-  SetDayMenu: { itemName: string; price: number; vendorId: string; vendorNameSnapshot: string; inheritedFromDate: string | null };
+  SetDayMenu: { selectionDate: string; itemName: string; price: number; vendorId: string; vendorNameSnapshot: string; inheritedFromDate: string | null };
   SetOpeningCash: { openingCash: number };
   CreateOrder: { mealPrice: number; paidAmount: number; mealKind: 'bento' | 'other'; menuRevision: number | null; otherItemName: string | null; note: string };
   CreatePayment: { paidAmount: number; note: string };
@@ -61,7 +61,7 @@ export interface ExpectedRevisionsByKind {
   SaveVendor: { vendor: RevisionExpectation };
   RemoveVendor: { vendor: RevisionExpectation };
   EnsureDay: { day: 0 };
-  SetDayMenu: { day: RevisionExpectation };
+  SetDayMenu: { day: RevisionExpectation; headSeq: RevisionExpectation };
   SetOpeningCash: { day: RevisionExpectation };
   CreateOrder: { transaction: 0; student: RevisionExpectation; day: RevisionExpectation };
   CreatePayment: { transaction: 0; student: RevisionExpectation; day: RevisionExpectation };
@@ -95,7 +95,11 @@ export type EnabledCommandKind =
   | 'CreatePayment'
   | 'CreateStudent'
   | 'EditStudent'
-  | 'SetStudentStatus';
+  | 'SetStudentStatus'
+  | 'SaveVendor'
+  | 'RemoveVendor'
+  | 'SetDayMenu'
+  | 'SetOpeningCash';
 export type EnabledCloudCommandInput = Extract<FullCloudCommandInput, { kind: EnabledCommandKind }>;
 
 export type StoredCloudCommandDoc = {
@@ -183,6 +187,12 @@ function studentIdValue(value: unknown, label: string): asserts value is string 
   }
 }
 
+function vendorIdValue(value: unknown, label: string): asserts value is string {
+  if (typeof value !== 'string' || value.length < 1 || value.length > 64 || value.includes('/')) {
+    throw new InvalidCloudCommandInput(`${label} 不合法`);
+  }
+}
+
 function aliasesValue(value: unknown, label: string): asserts value is string[] {
   if (!Array.isArray(value) || value.length > 10
     || !value.every(alias => typeof alias === 'string' && alias.length > 0 && alias.length <= 100)) {
@@ -202,6 +212,49 @@ function validateRevisionMap(value: unknown, keys: string[], createKeys: string[
 
 function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayloadByKind[EnabledCommandKind] {
   if (!isPlainRecord(value)) throw new InvalidCloudCommandInput('payload 必須是固定物件');
+  if (kind === 'SaveVendor') {
+    exactKeys(value, ['vendorId', 'name', 'phone', 'note', 'status']);
+    vendorIdValue(value.vendorId, 'vendorId');
+    if (typeof value.name !== 'string' || value.name.length < 1 || value.name.length > 100
+      || typeof value.phone !== 'string' || value.phone.length > 100
+      || typeof value.note !== 'string' || value.note.length > 500
+      || (value.status !== 'active' && value.status !== 'inactive')) {
+      throw new InvalidCloudCommandInput('供應商欄位不合法');
+    }
+    return {
+      vendorId: value.vendorId, name: value.name, phone: value.phone,
+      note: value.note, status: value.status,
+    } as CommandPayloadByKind['SaveVendor'];
+  }
+  if (kind === 'RemoveVendor') {
+    exactKeys(value, ['reason']);
+    if (typeof value.reason !== 'string' || value.reason.length < 1 || value.reason.length > 500) {
+      throw new InvalidCloudCommandInput('reason 必須為 1 至 500 字');
+    }
+    return { reason: value.reason } as CommandPayloadByKind['RemoveVendor'];
+  }
+  if (kind === 'SetDayMenu') {
+    exactKeys(value, ['selectionDate', 'itemName', 'price', 'vendorId', 'vendorNameSnapshot', 'inheritedFromDate']);
+    dateValue(value.selectionDate, 'selectionDate');
+    if (typeof value.itemName !== 'string' || value.itemName.length < 1 || value.itemName.length > 100
+      || typeof value.vendorNameSnapshot !== 'string' || value.vendorNameSnapshot.length < 1 || value.vendorNameSnapshot.length > 100) {
+      throw new InvalidCloudCommandInput('菜單品名或供應商快照不合法');
+    }
+    safeInteger(value.price, 'price', 1_000_000);
+    if (value.price < 1) throw new InvalidCloudCommandInput('price 必須大於零');
+    vendorIdValue(value.vendorId, 'vendorId');
+    if (value.inheritedFromDate !== null) dateValue(value.inheritedFromDate, 'inheritedFromDate');
+    return {
+      selectionDate: value.selectionDate, itemName: value.itemName, price: value.price,
+      vendorId: value.vendorId, vendorNameSnapshot: value.vendorNameSnapshot,
+      inheritedFromDate: value.inheritedFromDate,
+    } as CommandPayloadByKind['SetDayMenu'];
+  }
+  if (kind === 'SetOpeningCash') {
+    exactKeys(value, ['openingCash']);
+    safeInteger(value.openingCash, 'openingCash', 20_000);
+    return { openingCash: value.openingCash };
+  }
   if (kind === 'CreateStudent') {
     exactKeys(value, ['displayName', 'aliases', 'openingBalance']);
     if (typeof value.displayName !== 'string' || value.displayName.length < 1 || value.displayName.length > 100) {
@@ -299,7 +352,10 @@ function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayl
 export function normalizeEnabledCommandInput(input: unknown): CanonicalEnabledInput {
   if (!isPlainRecord(input)) throw new InvalidCloudCommandInput('命令必須是固定物件');
   exactKeys(input, ['commandId', 'kind', 'leaseEpoch', 'targets', 'expectedRevisions', 'payload']);
-  if (typeof input.kind !== 'string' || !['EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus'].includes(input.kind)) {
+  if (typeof input.kind !== 'string' || ![
+    'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus',
+    'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash',
+  ].includes(input.kind)) {
     throw new InvalidCloudCommandInput('此命令種類尚未啟用');
   }
   const kind = input.kind as EnabledCommandKind;
@@ -320,6 +376,68 @@ export function normalizeEnabledCommandInput(input: unknown): CanonicalEnabledIn
       leaseEpoch: input.leaseEpoch,
       targets: { dayId: input.targets.dayId },
       expectedRevisions: expectedRevisions as ExpectedRevisionsByKind['EnsureDay'],
+      payload,
+    };
+  }
+
+  if (kind === 'SaveVendor' || kind === 'RemoveVendor') {
+    if (!isPlainRecord(input.targets)) throw new InvalidCloudCommandInput('targets 必須是固定物件');
+    exactKeys(input.targets, ['vendorId']);
+    vendorIdValue(input.targets.vendorId, 'targets.vendorId');
+    const isCreate = kind === 'SaveVendor' && isPlainRecord(input.expectedRevisions)
+      && input.expectedRevisions.vendor === 0;
+    const expectedRevisions = validateRevisionMap(input.expectedRevisions, ['vendor'], isCreate ? ['vendor'] : []);
+    if (kind === 'RemoveVendor' && expectedRevisions.vendor < 1) {
+      throw new InvalidCloudCommandInput('RemoveVendor 須指定既有供應商版本');
+    }
+    const payload = normalizePayload(kind, input.payload);
+    if (kind === 'SaveVendor') {
+      const vendorPayload = payload as CommandPayloadByKind['SaveVendor'];
+      if (vendorPayload.vendorId !== input.targets.vendorId) throw new InvalidCloudCommandInput('vendorId 必須與 target 相同');
+      if (isCreate && vendorPayload.status !== 'active') throw new InvalidCloudCommandInput('新供應商必須以 active 狀態建立');
+    }
+    return {
+      commandId: input.commandId,
+      kind,
+      leaseEpoch: input.leaseEpoch,
+      targets: { vendorId: input.targets.vendorId },
+      expectedRevisions: expectedRevisions as ExpectedRevisionsByKind[typeof kind],
+      payload,
+    } as CanonicalEnabledInput;
+  }
+
+  if (kind === 'SetDayMenu') {
+    if (!isPlainRecord(input.targets)) throw new InvalidCloudCommandInput('targets 必須是固定物件');
+    exactKeys(input.targets, ['dayId']);
+    dateValue(input.targets.dayId, 'targets.dayId');
+    const expectedRevisions = validateRevisionMap(input.expectedRevisions, ['day', 'headSeq']);
+    const payload = normalizePayload(kind, input.payload) as CommandPayloadByKind['SetDayMenu'];
+    if (payload.inheritedFromDate !== null
+      && (payload.inheritedFromDate >= input.targets.dayId || payload.inheritedFromDate > payload.selectionDate)) {
+      throw new InvalidCloudCommandInput('繼承來源必須早於目標日且不晚於 selectionDate');
+    }
+    return {
+      commandId: input.commandId,
+      kind,
+      leaseEpoch: input.leaseEpoch,
+      targets: { dayId: input.targets.dayId },
+      expectedRevisions: expectedRevisions as ExpectedRevisionsByKind['SetDayMenu'],
+      payload,
+    };
+  }
+
+  if (kind === 'SetOpeningCash') {
+    if (!isPlainRecord(input.targets)) throw new InvalidCloudCommandInput('targets 必須是固定物件');
+    exactKeys(input.targets, ['dayId']);
+    dateValue(input.targets.dayId, 'targets.dayId');
+    const expectedRevisions = validateRevisionMap(input.expectedRevisions, ['day']);
+    const payload = normalizePayload(kind, input.payload) as CommandPayloadByKind['SetOpeningCash'];
+    return {
+      commandId: input.commandId,
+      kind,
+      leaseEpoch: input.leaseEpoch,
+      targets: { dayId: input.targets.dayId },
+      expectedRevisions: expectedRevisions as ExpectedRevisionsByKind['SetOpeningCash'],
       payload,
     };
   }
@@ -439,8 +557,10 @@ function validateReceiptDay(value: unknown, dayId: string, label: string): Recor
   ]);
   if (!['open', 'closed', 'reopened'].includes(String(day.status))
     || (day.openingCash !== null && (typeof day.openingCash !== 'number' || !Number.isSafeInteger(day.openingCash) || day.openingCash < 0 || day.openingCash > 20_000))
-    || (day.openedBy !== null && typeof day.openedBy !== 'string')
+    || (day.openedBy !== null && (typeof day.openedBy !== 'string' || !day.openedBy))
     || (day.openedAt !== null && !(day.openedAt instanceof Timestamp))
+    || ((day.openingCash === null) !== (day.openedBy === null))
+    || ((day.openingCash === null) !== (day.openedAt === null))
     || typeof day.lastCommandId !== 'string') {
     throw new InvalidCloudCommandInput(`${label} schema 不支援`);
   }
@@ -470,6 +590,23 @@ function validateReceiptDay(value: unknown, dayId: string, label: string): Recor
     receiptTimestamp(menu.updatedAt, `${label}.menu.updatedAt`);
   }
   return day;
+}
+
+function validateReceiptVendor(value: unknown, vendorId: string, label: string): Record<string, unknown> {
+  const vendor = receiptRecord(value, label, [
+    'vendorId', 'name', 'phone', 'note', 'status', 'deleted', 'createdAt', 'revision', 'lastCommandId', 'updatedAt',
+  ]);
+  if (vendor.vendorId !== vendorId || typeof vendor.name !== 'string' || vendor.name.length < 1 || vendor.name.length > 100
+    || typeof vendor.phone !== 'string' || vendor.phone.length > 100
+    || typeof vendor.note !== 'string' || vendor.note.length > 500
+    || (vendor.status !== 'active' && vendor.status !== 'inactive') || typeof vendor.deleted !== 'boolean'
+    || typeof vendor.lastCommandId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(vendor.lastCommandId)) {
+    throw new InvalidCloudCommandInput(`${label} schema 不支援`);
+  }
+  receiptInteger(vendor.revision, `${label}.revision`, 1);
+  receiptTimestamp(vendor.createdAt, `${label}.createdAt`);
+  receiptTimestamp(vendor.updatedAt, `${label}.updatedAt`);
+  return vendor;
 }
 
 function validateReceiptTransaction(value: unknown, label: string): Record<string, unknown> {
@@ -526,10 +663,14 @@ function validateReceiptSnapshots(
   const committedAt = receipt.committedAt as Timestamp;
   const commandId = normalized.commandId;
   const studentKind = normalized.kind === 'CreateStudent' || normalized.kind === 'EditStudent' || normalized.kind === 'SetStudentStatus';
-  const before = receiptRecord(receipt.before, 'receipt.before', normalized.kind === 'EnsureDay'
-    ? ['head', 'day'] : studentKind ? ['head', 'student'] : ['head', 'student', 'day', 'transaction']);
-  const after = receiptRecord(receipt.after, 'receipt.after', normalized.kind === 'EnsureDay'
-    ? ['head', 'day'] : studentKind ? ['head', 'student'] : ['head', 'student', 'day', 'transaction']);
+  const vendorKind = normalized.kind === 'SaveVendor' || normalized.kind === 'RemoveVendor';
+  const dayCommandKind = normalized.kind === 'SetDayMenu' || normalized.kind === 'SetOpeningCash';
+  const snapshotKeys = normalized.kind === 'EnsureDay' || dayCommandKind
+    ? ['head', 'day']
+    : vendorKind ? ['head', 'vendor'] : studentKind ? ['head', 'student']
+      : ['head', 'student', 'day', 'transaction'];
+  const before = receiptRecord(receipt.before, 'receipt.before', snapshotKeys);
+  const after = receiptRecord(receipt.after, 'receipt.after', snapshotKeys);
   const headBefore = validateReceiptHead(before.head, 'receipt.before.head');
   const headAfter = validateReceiptHead(after.head, 'receipt.after.head');
   if (Number(headBefore.seq) + 1 !== receipt.seq || headAfter.seq !== receipt.seq
@@ -623,6 +764,106 @@ function validateReceiptSnapshots(
         || studentAfter.status === studentBefore.status
         || receipt.reason !== (status.reason || null)) {
         throw new InvalidCloudCommandInput('SetStudentStatus receipt 欄位不一致');
+      }
+    }
+    return;
+  }
+
+  if (vendorKind) {
+    const vendorId = normalized.targets.vendorId;
+    const payload = normalized.payload as CommandPayloadByKind['SaveVendor' | 'RemoveVendor'];
+    const expectedReason = normalized.kind === 'RemoveVendor'
+      ? (payload as CommandPayloadByKind['RemoveVendor']).reason : null;
+    if (receipt.businessDate !== null || receipt.studentId !== null || receipt.reason !== expectedReason
+      || cash.before !== 0 || cash.after !== 0 || cash.delta !== 0
+      || cash.reasonKind !== 'none' || cash.refundAmount !== 0) {
+      throw new InvalidCloudCommandInput('供應商 receipt 共用欄位或 cashEffect 不一致');
+    }
+    const vendorAfter = validateReceiptVendor(after.vendor, vendorId, 'receipt.after.vendor');
+    if (vendorAfter.lastCommandId !== commandId || !timestampMatches(vendorAfter.updatedAt, committedAt)) {
+      throw new InvalidCloudCommandInput('供應商 receipt after metadata 不一致');
+    }
+    if (normalized.kind === 'SaveVendor') {
+      const save = payload as CommandPayloadByKind['SaveVendor'];
+      if (save.vendorId !== vendorId || vendorAfter.name !== save.name || vendorAfter.phone !== save.phone
+        || vendorAfter.note !== save.note || vendorAfter.status !== save.status || vendorAfter.deleted !== false) {
+        throw new InvalidCloudCommandInput('SaveVendor receipt after 欄位不一致');
+      }
+      if (normalized.expectedRevisions.vendor === 0) {
+        if (before.vendor !== null || vendorAfter.revision !== 1 || !timestampMatches(vendorAfter.createdAt, committedAt)) {
+          throw new InvalidCloudCommandInput('SaveVendor create receipt 不一致');
+        }
+      } else {
+        const vendorBefore = validateReceiptVendor(before.vendor, vendorId, 'receipt.before.vendor');
+        if (vendorBefore.revision !== normalized.expectedRevisions.vendor || vendorBefore.deleted
+          || vendorAfter.revision !== vendorBefore.revision + 1
+          || !timestampMatches(vendorAfter.createdAt, vendorBefore.createdAt as Timestamp)
+          || !equalExcept(vendorBefore, vendorAfter, ['name', 'phone', 'note', 'status', 'revision', 'lastCommandId', 'updatedAt'])) {
+          throw new InvalidCloudCommandInput('SaveVendor update receipt revisions/snapshot 不一致');
+        }
+      }
+    } else {
+      const remove = payload as CommandPayloadByKind['RemoveVendor'];
+      const vendorBefore = validateReceiptVendor(before.vendor, vendorId, 'receipt.before.vendor');
+      if (vendorBefore.revision !== normalized.expectedRevisions.vendor || vendorBefore.deleted
+        || vendorBefore.status !== 'inactive' || vendorAfter.revision !== vendorBefore.revision + 1
+        || vendorAfter.deleted !== true || vendorAfter.status !== 'inactive'
+        || vendorAfter.name !== vendorBefore.name || vendorAfter.phone !== vendorBefore.phone
+        || vendorAfter.note !== vendorBefore.note || !timestampMatches(vendorAfter.createdAt, vendorBefore.createdAt as Timestamp)
+        || remove.reason.length < 1) {
+        throw new InvalidCloudCommandInput('RemoveVendor receipt snapshot 不一致');
+      }
+    }
+    return;
+  }
+
+  if (dayCommandKind) {
+    const dayId = normalized.targets.dayId;
+    if (receipt.businessDate !== dayId || receipt.studentId !== null || receipt.reason !== null
+      || cash.before !== 0 || cash.after !== 0 || cash.delta !== 0
+      || cash.reasonKind !== 'none' || cash.refundAmount !== 0) {
+      throw new InvalidCloudCommandInput('營業日命令 receipt 共用欄位或 cashEffect 不一致');
+    }
+    const dayBefore = validateReceiptDay(before.day, dayId, 'receipt.before.day');
+    const dayAfter = validateReceiptDay(after.day, dayId, 'receipt.after.day');
+    const committedTaipeiDate = taipeiCalendarDate(committedAt);
+    if (dayBefore.revision !== normalized.expectedRevisions.day
+      || dayAfter.revision !== Number(dayBefore.revision) + 1
+      || dayAfter.lastCommandId !== commandId || !timestampMatches(dayAfter.updatedAt, committedAt)
+      || dayBefore.status === 'closed' || dayAfter.status !== dayBefore.status) {
+      throw new InvalidCloudCommandInput('營業日命令 receipt revision/status 不一致');
+    }
+    if (normalized.kind === 'SetDayMenu') {
+      const payload = normalized.payload as CommandPayloadByKind['SetDayMenu'];
+      const beforeMenu = dayBefore.menu as Record<string, unknown> | null;
+      const afterMenu = dayAfter.menu as Record<string, unknown> | null;
+      if (dayId < String(headBefore.goLiveDate)
+        || normalized.expectedRevisions.headSeq !== headBefore.seq
+        || payload.selectionDate !== committedTaipeiDate
+        || !afterMenu || afterMenu.businessDate !== dayId || afterMenu.itemName !== payload.itemName
+        || afterMenu.price !== payload.price || afterMenu.vendorId !== payload.vendorId
+        || afterMenu.vendorNameSnapshot !== payload.vendorNameSnapshot
+        || afterMenu.inheritedFromDate !== payload.inheritedFromDate
+        || afterMenu.revision !== (beforeMenu === null ? 1 : Number(beforeMenu.revision) + 1)
+        || !timestampMatches(afterMenu.updatedAt, committedAt)
+        || !equalExcept(dayBefore, dayAfter, ['menu', 'revision', 'lastCommandId', 'updatedAt'])) {
+        throw new InvalidCloudCommandInput('SetDayMenu receipt snapshot/date 不一致');
+      }
+    } else {
+      const payload = normalized.payload as CommandPayloadByKind['SetOpeningCash'];
+      if (dayId !== committedTaipeiDate || dayId < String(headBefore.goLiveDate)
+        || dayAfter.openingCash !== payload.openingCash
+        || !equalExcept(dayBefore, dayAfter, ['openingCash', 'openedBy', 'openedAt', 'revision', 'lastCommandId', 'updatedAt'])) {
+        throw new InvalidCloudCommandInput('SetOpeningCash receipt date/snapshot 不一致');
+      }
+      const actorUid = (receipt.actor as Record<string, unknown>).uid;
+      if (dayBefore.openingCash === null) {
+        if (dayAfter.openedBy !== actorUid || !timestampMatches(dayAfter.openedAt, committedAt)) {
+          throw new InvalidCloudCommandInput('首次 SetOpeningCash receipt actor/time 不一致');
+        }
+      } else if (dayAfter.openedBy !== dayBefore.openedBy
+        || !(dayAfter.openedAt as Timestamp).isEqual(dayBefore.openedAt as Timestamp)) {
+        throw new InvalidCloudCommandInput('SetOpeningCash receipt 不可更改首次開帳資訊');
       }
     }
     return;
@@ -759,7 +1000,10 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
   if (typeof raw.kind !== 'string' || !ALL_COMMAND_KINDS.includes(raw.kind as BusinessCommandKind)) {
     throw new InvalidCloudCommandInput('command receipt kind 不支援');
   }
-  if (!['EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus'].includes(raw.kind)) {
+  if (![
+    'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus',
+    'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash',
+  ].includes(raw.kind)) {
     throw new InvalidCloudCommandInput('此 command kind 尚未啟用');
   }
   safeInteger(raw.seq, 'receipt.seq');
@@ -772,7 +1016,7 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
   if (!(raw.committedAt instanceof Timestamp)) throw new InvalidCloudCommandInput('receipt.committedAt 必須是 Firestore Timestamp');
   if (raw.businessDate !== null) dateValue(raw.businessDate, 'receipt.businessDate');
   if (raw.studentId !== null && typeof raw.studentId !== 'string') throw new InvalidCloudCommandInput('receipt.studentId 不合法');
-  if (raw.kind === 'SetStudentStatus') {
+  if (raw.kind === 'SetStudentStatus' || raw.kind === 'RemoveVendor') {
     if (typeof raw.reason !== 'string' || raw.reason.length < 1 || raw.reason.length > 500) {
       throw new InvalidCloudCommandInput('command receipt.reason 不合法');
     }
@@ -807,6 +1051,10 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
     expectedRevisions: raw.expectedRevisions,
     payload: raw.payload,
   });
+  if (normalized.kind === 'RemoveVendor'
+    && raw.reason !== (normalized.payload as CommandPayloadByKind['RemoveVendor']).reason) {
+    throw new InvalidCloudCommandInput('RemoveVendor receipt reason 必須與 payload.reason 相同');
+  }
   if (normalized.kind === 'EnsureDay') {
     if (raw.businessDate !== normalized.payload.businessDate || raw.studentId !== null) {
       throw new InvalidCloudCommandInput('EnsureDay receipt 共用欄位不一致');

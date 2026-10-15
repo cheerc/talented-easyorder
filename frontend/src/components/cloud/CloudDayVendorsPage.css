@@ -1,0 +1,385 @@
+.cloud-day-vendors {
+  width: min(1180px, calc(100% - 32px));
+  min-height: calc(100vh - 82px);
+  margin: 24px auto 48px;
+  padding: 28px;
+  color: var(--ink, #20252b);
+  background: var(--panel, #fff);
+  border: 1px solid var(--line, #dce1e7);
+  border-radius: 14px;
+  box-shadow: 0 12px 36px rgba(20, 33, 48, .07);
+}
+
+.cloud-day-vendors button,
+.cloud-day-vendors input,
+.cloud-day-vendors textarea,
+.cloud-day-vendors select {
+  font: inherit;
+}
+
+.cloud-day-vendors__header,
+.cloud-day-vendors__section-heading,
+.cloud-day-vendors__date-form,
+.cloud-day-vendors__actions,
+.cloud-day-vendors__row-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cloud-day-vendors__header,
+.cloud-day-vendors__section-heading {
+  justify-content: space-between;
+}
+
+.cloud-day-vendors__header {
+  gap: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line, #dce1e7);
+}
+
+.cloud-day-vendors__header h1 {
+  margin: 2px 0 8px;
+  font-size: clamp(22px, 3vw, 30px);
+  letter-spacing: -.025em;
+}
+
+.cloud-day-vendors__eyebrow {
+  margin: 0;
+  color: var(--ink-3, #627182);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+
+.cloud-day-vendors__intro {
+  max-width: 760px;
+  margin: 0;
+  color: var(--ink-2, #536170);
+  line-height: 1.6;
+}
+
+.cloud-day-vendors__primary,
+.cloud-day-vendors__secondary,
+.cloud-day-vendors__danger {
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.cloud-day-vendors__primary {
+  color: #fff;
+  background: var(--accent, #176b87);
+}
+
+.cloud-day-vendors__secondary {
+  color: var(--ink, #20252b);
+  background: var(--panel, #fff);
+  border-color: var(--line, #dce1e7);
+}
+
+.cloud-day-vendors__danger {
+  color: #78351f;
+  background: #fff1e9;
+  border-color: #f4c6b1;
+}
+
+.cloud-day-vendors button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.cloud-day-vendors button:focus-visible,
+.cloud-day-vendors input:focus-visible,
+.cloud-day-vendors textarea:focus-visible,
+.cloud-day-vendors select:focus-visible {
+  outline: 3px solid rgba(23, 107, 135, .3);
+  outline-offset: 2px;
+}
+
+.cloud-day-vendors__alert,
+.cloud-day-vendors__notice,
+.cloud-day-vendors__warning,
+.cloud-day-vendors__recovery,
+.cloud-day-vendors__loading,
+.cloud-day-vendors__empty,
+.cloud-day-vendors__unavailable {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: 9px;
+  line-height: 1.55;
+}
+
+.cloud-day-vendors__alert,
+.cloud-day-vendors__recovery,
+.cloud-day-vendors__warning {
+  color: #78351f;
+  background: #fff1e9;
+  border: 1px solid #f4c6b1;
+}
+
+.cloud-day-vendors__notice {
+  color: #15513b;
+  background: #e9f6ef;
+  border: 1px solid #b9e2ca;
+}
+
+.cloud-day-vendors__loading,
+.cloud-day-vendors__empty,
+.cloud-day-vendors__unavailable {
+  color: var(--ink-2, #536170);
+  background: var(--surface-subtle, #f5f7f9);
+  border: 1px solid var(--line, #dce1e7);
+}
+
+.cloud-day-vendors__recovery {
+  display: grid;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+
+.cloud-day-vendors__date-panel,
+.cloud-day-vendors__day-section,
+.cloud-day-vendors__vendor-section {
+  margin-top: 22px;
+  padding: 20px;
+  border: 1px solid var(--line, #dce1e7);
+  border-radius: 10px;
+}
+
+.cloud-day-vendors__date-panel {
+  background: var(--surface-subtle, #f7f9fb);
+}
+
+.cloud-day-vendors__date-form {
+  flex-wrap: wrap;
+}
+
+.cloud-day-vendors__date-form label {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.cloud-day-vendors__input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  color: var(--ink, #20252b);
+  background: var(--panel, #fff);
+  border: 1px solid var(--line, #cbd3dc);
+  border-radius: 7px;
+}
+
+.cloud-day-vendors__date-form .cloud-day-vendors__input {
+  width: auto;
+  min-height: 38px;
+}
+
+.cloud-day-vendors__date-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 12px;
+  color: var(--ink-3, #627182);
+  font-size: 12px;
+}
+
+.cloud-day-vendors__help,
+.cloud-day-vendors__date-panel > p,
+.cloud-day-vendors__section-heading p,
+.cloud-day-vendors__footnote {
+  color: var(--ink-3, #627182);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.cloud-day-vendors__help {
+  margin: 12px 0 0;
+}
+
+.cloud-day-vendors__day-section > .cloud-day-vendors__section-heading h2,
+.cloud-day-vendors__vendor-section > .cloud-day-vendors__section-heading h2 {
+  margin: 0 0 4px;
+  font-size: 21px;
+}
+
+.cloud-day-vendors__section-heading p {
+  margin: 0;
+}
+
+.cloud-day-vendors__card {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--line, #dce1e7);
+  border-radius: 9px;
+}
+
+.cloud-day-vendors__card h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.cloud-day-vendors__summary {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 14px;
+  margin: 10px 0 0;
+}
+
+.cloud-day-vendors__summary dt {
+  color: var(--ink-3, #627182);
+  font-size: 13px;
+}
+
+.cloud-day-vendors__summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.cloud-day-vendors__inherit-card {
+  margin: 12px 0;
+  padding: 14px;
+  background: var(--surface-subtle, #f7f9fb);
+  border: 1px solid var(--line, #dce1e7);
+  border-radius: 8px;
+}
+
+.cloud-day-vendors__inherit-card p {
+  margin: 0 0 8px;
+  color: var(--ink-2, #536170);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.cloud-day-vendors__actions,
+.cloud-day-vendors__row-actions {
+  flex-wrap: wrap;
+}
+
+.cloud-day-vendors__actions {
+  margin-top: 12px;
+}
+
+.cloud-day-vendors__vendor-section > .cloud-day-vendors__section-heading {
+  margin-bottom: 12px;
+}
+
+.cloud-day-vendors__form-wrap {
+  margin-bottom: 16px;
+}
+
+.cloud-day-vendors__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line, #dce1e7);
+  border-radius: 8px;
+}
+
+.cloud-day-vendors table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+}
+
+.cloud-day-vendors th,
+.cloud-day-vendors td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line, #e5e9ee);
+  text-align: left;
+  vertical-align: top;
+}
+
+.cloud-day-vendors th {
+  color: var(--ink-3, #627182);
+  background: var(--surface-subtle, #f7f9fb);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cloud-day-vendors tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.cloud-day-vendors__mono {
+  font-variant-numeric: tabular-nums;
+}
+
+.cloud-day-vendors__status {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cloud-day-vendors__status--active {
+  color: #15513b;
+  background: #e9f6ef;
+}
+
+.cloud-day-vendors__status--inactive {
+  color: #78351f;
+  background: #fff1e9;
+}
+
+.cloud-day-vendors__remove-form {
+  display: grid;
+  min-width: 250px;
+  gap: 8px;
+}
+
+.cloud-day-vendors__remove-form p {
+  margin: 0;
+  color: var(--ink-3, #627182);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cloud-day-vendors__remove-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.cloud-day-vendors__footnote {
+  margin: 12px 0 0;
+}
+
+@media (max-width: 760px) {
+  .cloud-day-vendors {
+    width: calc(100% - 20px);
+    margin: 10px auto 28px;
+    padding: 18px;
+  }
+
+  .cloud-day-vendors__header,
+  .cloud-day-vendors__section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .cloud-day-vendors__header > button {
+    width: 100%;
+  }
+
+  .cloud-day-vendors__date-panel,
+  .cloud-day-vendors__day-section,
+  .cloud-day-vendors__vendor-section {
+    padding: 14px;
+  }
+
+  .cloud-day-vendors__date-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cloud-day-vendors__date-form .cloud-day-vendors__input,
+  .cloud-day-vendors__date-form button {
+    width: 100%;
+  }
+}

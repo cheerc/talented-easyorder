@@ -12,6 +12,7 @@ export interface CloudStudentsPageProps {
   db: Firestore;
   leaseEpoch: number;
   identityKey: string;
+  onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
 }
 
 type OpeningMode = '' | 'existing-balance' | 'new-student';
@@ -182,7 +183,7 @@ function commandLabel(command: PreparedCommand): string {
   return command.status === 'inactive' ? `停用 ${command.studentId}` : `恢復 ${command.studentId}`;
 }
 
-export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudentsPageProps) {
+export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationStateChange }: CloudStudentsPageProps) {
   const repository = useMemo(() => createCloudStudentRepository(db), [db]);
   const [pageState, setPageStateRaw] = useState<PageState>(() => initialPageState(identityKey));
   const identityRef = useRef(identityKey);
@@ -234,6 +235,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
     commandFlightRef.current = null;
     const retainedCommandId = commandId ?? pendingCommandIdRef.current;
     pendingCommandIdRef.current = retainedCommandId;
+    onNavigationStateChange?.(key, 'revoked');
 
     setPageStateRaw(previous => {
       if (previous.identityKey !== key) return previous;
@@ -250,7 +252,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
         recovery: onlyCommandId ? { commandId: onlyCommandId, phase: 'access-lost' } : null,
       };
     });
-  }, [isCurrent]);
+  }, [isCurrent, onNavigationStateChange]);
 
   const loadSnapshot = useCallback(async (confirmedReceipt?: CommandReceipt) => {
     const key = identityKey;
@@ -324,9 +326,18 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
     };
   }, [identityKey, repository, loadSnapshot]);
 
+  const hasRecovery = page.recovery !== null;
+  useEffect(() => {
+    onNavigationStateChange?.(
+      identityKey,
+      page.authorizationRevoked ? 'revoked' : hasRecovery ? 'recovering' : 'resolved',
+    );
+  }, [hasRecovery, identityKey, onNavigationStateChange, page.authorizationRevoked]);
+
   const runPreparedCommand = async (command: PreparedCommand) => {
     const key = identityKey;
     const generation = generationRef.current;
+    onNavigationStateChange?.(key, 'recovering');
     if (revokedIdentityRef.current === key) return;
     if (!key || !Number.isSafeInteger(leaseEpoch) || leaseEpoch < 1) {
       revokeAuthorization(key, generation, command.commandId, {

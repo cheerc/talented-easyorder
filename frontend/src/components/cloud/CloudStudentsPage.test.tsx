@@ -54,12 +54,16 @@ function successful(commandId: string, kind: CommandReceipt['kind'], studentId: 
   return { ok: true, receipt: receipt(commandId, kind, studentId) };
 }
 
-function renderPage(props: Partial<{ leaseEpoch: number; identityKey: string }> = {}) {
+function renderPage(
+  props: Partial<{ leaseEpoch: number; identityKey: string }> = {},
+  onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void,
+) {
   return render(
     <CloudStudentsPage
       db={{} as Firestore}
       leaseEpoch={props.leaseEpoch ?? 4}
       identityKey={props.identityKey ?? 'uid-a:4'}
+      onNavigationStateChange={onNavigationStateChange}
     />,
   );
 }
@@ -199,19 +203,21 @@ describe('CloudStudentsPage', () => {
   });
 
   it('keeps an unknown command ID and frozen payload for receipt lookup and same-ID retry', async () => {
+    const reportNavigationState = vi.fn();
     repository.createStudent
       .mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } })
       .mockResolvedValueOnce(successful('cmd-ui-001', 'CreateStudent', '001'));
     repository.list
       .mockResolvedValueOnce(snapshot())
       .mockResolvedValueOnce(snapshot([student('001', { displayName: '新學生' })]));
-    renderPage();
+    renderPage({}, reportNavigationState);
     await screen.findByText(/目前伺服器名單是空的/);
     openCreateForm();
     fillCreateForm({ amount: '0', mode: '沿用既有核對結餘' });
     fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
     expect(await screen.findByText('結果確認中，請勿重複建立／修改。')).toBeInTheDocument();
     expect(repository.createStudent).toHaveBeenCalledTimes(1);
+    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
 
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
     expect(await screen.findByText(/伺服器目前尚未找到這筆命令/)).toBeInTheDocument();
@@ -220,6 +226,7 @@ describe('CloudStudentsPage', () => {
     expect(repository.createStudent.mock.calls[0][0]).toEqual(repository.createStudent.mock.calls[1][0]);
     expect(repository.readCommand).toHaveBeenCalledWith('cmd-ui-001');
     expect(await screen.findByText(/已確認 新增 001 完成/)).toBeInTheDocument();
+    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'resolved');
   });
 
   it('drops every sensitive field on lease loss while retaining only the command ID', async () => {
@@ -249,17 +256,19 @@ describe('CloudStudentsPage', () => {
   });
 
   it('keeps a confirmed receipt when list reload fails and retries only the server list', async () => {
+    const reportNavigationState = vi.fn();
     repository.list
       .mockResolvedValueOnce(snapshot())
       .mockRejectedValueOnce({ code: 'OFFLINE', message: 'offline' })
       .mockResolvedValueOnce(snapshot([student('001', { displayName: '新學生' })]));
-    renderPage();
+    renderPage({}, reportNavigationState);
     await screen.findByText(/目前伺服器名單是空的/);
     openCreateForm();
     fillCreateForm({ amount: '0', mode: '沿用既有核對結餘' });
     fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
 
     expect(await screen.findByText('已找到伺服器回執，名單尚待再次讀取。')).toBeInTheDocument();
+    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
     expect(screen.getByText('伺服器命令序號 1')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '查詢原命令結果' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '重新讀取伺服器名單' }));
@@ -267,6 +276,7 @@ describe('CloudStudentsPage', () => {
     expect(await screen.findByText(/已確認 新增 001 完成/)).toBeInTheDocument();
     expect(repository.list).toHaveBeenCalledTimes(3);
     expect(repository.readCommand).not.toHaveBeenCalled();
+    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'resolved');
   });
 
   it('does not accept a receipt with the same ID until replay verifies the frozen command semantics', async () => {
@@ -325,10 +335,20 @@ describe('CloudStudentsPage', () => {
   });
 
   it('blocks same-identity retries after an initial list authorization denial', async () => {
+    const reportNavigationState = vi.fn();
     repository.list.mockRejectedValueOnce({ code: 'LEASE_LOST', message: 'lease changed' });
-    renderPage();
+    const view = renderPage({}, reportNavigationState);
 
     expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
+    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'revoked');
+    view.rerender(
+      <CloudStudentsPage
+        db={{} as Firestore}
+        leaseEpoch={4}
+        identityKey="uid-a:4"
+        onNavigationStateChange={reportNavigationState}
+      />,
+    );
     const reload = screen.getByRole('button', { name: '重新載入名單' });
     expect(reload).toBeDisabled();
     fireEvent.click(reload);
