@@ -124,6 +124,41 @@ describe('uiTweaksStore', () => {
         localStorage.getItem = origGetItem;
       }
     });
+
+    it('safely handles window.localStorage getter throwing SecurityError on load and save', () => {
+      const origDesc = Object.getOwnPropertyDescriptor(window, 'localStorage');
+      try {
+        Object.defineProperty(window, 'localStorage', {
+          get() {
+            throw new DOMException('Blocked', 'SecurityError');
+          },
+          configurable: true,
+        });
+
+        // Test 1: loading returns default without throwing
+        expect(loadPersistedUiTweaks()).toEqual(DEFAULT_UI_TWEAKS);
+
+        // Test 2: saving does not throw
+        expect(() => {
+          savePersistedUiTweaks({ theme: 'dark', scale: 'normal', disableHoverSelection: true });
+        }).not.toThrow();
+
+        // Test 3: setTweak updates in-memory state and DOM attributes even when localStorage getter throws
+        act(() => {
+          useUiTweaksStore.getState().setTweak('theme', 'dark');
+          useUiTweaksStore.getState().setTweak('scale', 'normal');
+        });
+
+        expect(useUiTweaksStore.getState().theme).toBe('dark');
+        expect(useUiTweaksStore.getState().scale).toBe('normal');
+        expect(document.body.getAttribute('data-theme')).toBe('dark');
+        expect(document.body.getAttribute('data-scale')).toBe('normal');
+      } finally {
+        if (origDesc) {
+          Object.defineProperty(window, 'localStorage', origDesc);
+        }
+      }
+    });
   });
 
   describe('DOM body attributes synchronization', () => {

@@ -55,10 +55,10 @@ export function parseUiTweaks(raw: unknown): UiTweaksPersisted {
 }
 
 export function loadPersistedUiTweaks(): UiTweaksPersisted {
-  if (typeof window === 'undefined' || !window.localStorage) {
-    return { ...DEFAULT_UI_TWEAKS };
-  }
   try {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return { ...DEFAULT_UI_TWEAKS };
+    }
     const raw = window.localStorage.getItem(UI_TWEAKS_STORAGE_KEY);
     if (!raw) return { ...DEFAULT_UI_TWEAKS };
     const parsed = JSON.parse(raw);
@@ -69,8 +69,8 @@ export function loadPersistedUiTweaks(): UiTweaksPersisted {
 }
 
 export function savePersistedUiTweaks(tweaks: UiTweaksPersisted): void {
-  if (typeof window === 'undefined' || !window.localStorage) return;
   try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
     const payload: UiTweaksPersisted = {
       theme: tweaks.theme,
       scale: tweaks.scale,
@@ -78,7 +78,7 @@ export function savePersistedUiTweaks(tweaks: UiTweaksPersisted): void {
     };
     window.localStorage.setItem(UI_TWEAKS_STORAGE_KEY, JSON.stringify(payload));
   } catch {
-    // QuotaExceededError or private browsing restrictions
+    // QuotaExceededError or private browsing / SecurityError restrictions
   }
 }
 
