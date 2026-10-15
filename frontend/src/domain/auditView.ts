@@ -143,6 +143,26 @@ export function describeAuditEvents(events: LedgerAuditEvent[], transactions: Le
   }
   const currentNames = new Map(currentAccounts.map(a => [a.studentId, [a.displayName, ...(a.aliases ?? [])].join(' ')]));
 
+  // U3 複審：改號事件以「目前歸戶」為準，before/after 的編號只是當時的歷史快照。
+  // 先把每個改號事件曾經用過的編號全部收起來（頂層 studentId／entityId 與快照編號），
+  // 扣掉目前歸戶的編號後剩下的就是歷史曾用號，供純數字查詢命中。
+  const codeChangeIds = new Map<string, Set<string>>();
+  for (const e of events) {
+    if (e.entityType !== 'student' && e.eventType !== 'student_code_changed') continue;
+    const ids = new Set<string>();
+    for (const id of [e.studentId, e.entityId, e.before?.studentId, e.after?.studentId]) {
+      if (typeof id === 'string' && id) ids.add(id);
+    }
+    // 以目前歸戶（頂層 studentId／entityId）為索引
+    const key = typeof e.studentId === 'string' && e.studentId
+      ? e.studentId
+      : (typeof e.entityId === 'string' ? e.entityId : [...ids][0]);
+    if (!key) continue;
+    const bucket = codeChangeIds.get(key) ?? new Set<string>();
+    for (const id of ids) bucket.add(id);
+    codeChangeIds.set(key, bucket);
+  }
+
   return [...events]
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .map(e => {
@@ -155,8 +175,9 @@ export function describeAuditEvents(events: LedgerAuditEvent[], transactions: Le
         ref = accounts.get(e.entityId);
         subject = ref ? accountLabel(ref) : '（找不到帳戶）';
       } else if (isStudentChange) {
-        // 學生改號／資料變更事件：明確歸屬至新帳戶（目前帳戶），不產生虛擬 transactionId
-        const currentSid = String(e.after?.studentId ?? e.studentId ?? e.entityId);
+        // 學生改號／資料變更事件：以事件頂層的目前 studentId／entityId 歸戶，
+        // 不使用 before/after 的編號（那是當時的歷史快照，號碼可能已被他人重用）。
+        const currentSid = String(e.studentId ?? e.entityId);
         const currentAccount = currentAccounts.find(a => a.studentId === currentSid);
         const name = currentAccount?.displayName ?? String(e.after?.displayName ?? e.before?.displayName ?? '');
         ref = { studentId: currentSid, name };
@@ -168,7 +189,12 @@ export function describeAuditEvents(events: LedgerAuditEvent[], transactions: Le
       }
 
       const oldSid = isStudentChange && e.before?.studentId ? String(e.before.studentId) : '';
-      const historicalStudentIds = oldSid && oldSid !== ref?.studentId ? [oldSid] : undefined;
+      // 歷史曾用號：改號事件收該帳戶所有出現過的編號，扣掉目前歸戶的編號；
+      // 其他事件維持只記當時的舊編號。
+      const codeChangeSet = isStudentChange ? codeChangeIds.get(ref?.studentId ?? '') : undefined;
+      const historicalStudentIds = (codeChangeSet
+        ? [...codeChangeSet].filter(id => id !== ref?.studentId)
+        : oldSid && oldSid !== ref?.studentId ? [oldSid] : undefined) || undefined;
       const extraSearch = oldSid && oldSid !== ref?.studentId ? ` ${oldSid}` : '';
 
       return {

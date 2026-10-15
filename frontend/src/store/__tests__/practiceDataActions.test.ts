@@ -3,6 +3,7 @@ import { usePosStore } from '../posStore';
 import { createLocalAccount } from '../../domain/student';
 import { validateTodayMenu, validatePersistedState, validateStudentAccount } from '../../storage/posStateValidator';
 import { buildSnapshot, pickDataset, parseSnapshot } from '../../domain/practiceSnapshot';
+import { describeAuditEvents, matchesAuditQuery } from '../../domain/auditView';
 
 // M0 S02：空白與範例是分開的起點。
 
@@ -259,6 +260,62 @@ describe('practiceDataActions', () => {
       expect(event3.after).toMatchObject({ studentId: '008' });
       expect(event3.entityId).toBe('008');
       expect(event3.studentId).toBe('008');
+    });
+  });
+
+  // ac 複審（issuecomment-6198029518）：整條鏈路跑完後，
+  // 甲的歷史改號列必須呈現甲目前帳戶（009／甲目前姓名／甲現別名），
+  // 不因中間號碼 007 被乙重用而掛到乙名下。
+  describe('改號事件 presenter 目前歸戶（ac 複審 P2）', () => {
+    it('甲 005→007→009 後改名加別名、乙重用 007，甲的歷史改號列仍歸甲目前帳戶', () => {
+      usePosStore.getState().startBlankData();
+      const a = createLocalAccount({ studentId: '005', displayName: '甲同學', openingBalance: 100, openingNote: '', asOfDate: '2026-10-12' }, '2026-10-12T00:00:00Z');
+      usePosStore.getState().addLocalStudent(a);
+
+      // 甲 005 -> 007
+      usePosStore.getState().updateLocalStudent(
+        '005',
+        { displayName: '甲同學', aliases: [], newStudentId: '007', reason: '甲第一次改號' },
+        '2026-10-12T01:00:00Z'
+      );
+      // 甲 007 -> 009
+      usePosStore.getState().updateLocalStudent(
+        '007',
+        { displayName: '甲同學', aliases: [], newStudentId: '009', reason: '甲第二次改號' },
+        '2026-10-12T02:00:00Z'
+      );
+      // 甲改成目前姓名並加別名
+      usePosStore.getState().updateLocalStudent(
+        '009',
+        { displayName: '甲目前姓名', aliases: ['甲現別名'] },
+        '2026-10-12T03:00:00Z'
+      );
+      // 乙接手甲空出的 007
+      const b = createLocalAccount({ studentId: '007', displayName: '乙重用七號', openingBalance: 0, openingNote: '', asOfDate: '2026-10-12' }, '2026-10-12T04:00:00Z');
+      usePosStore.getState().addLocalStudent(b);
+
+      const s = usePosStore.getState();
+      const rows = describeAuditEvents(s.auditEvents, s.transactions, s.students);
+      const firstChangeRow = rows.find(r => r.reason === '甲第一次改號')!;
+
+      expect(firstChangeRow).toBeDefined();
+      // 目前歸戶是甲的 009，不是已被乙重用的 007
+      expect(firstChangeRow.studentId).toBe('009');
+      expect(firstChangeRow.subject).toBe('009 甲目前姓名');
+      expect(firstChangeRow.subject).not.toContain('乙重用七號');
+      // 歷史快照不變，變更文字仍呈現當時的編號變化
+      expect(firstChangeRow.changes).toBe('編號 005 → 007');
+      // 依目前歸戶查得到（編號、目前姓名、別名）
+      expect(matchesAuditQuery(firstChangeRow, '009')).toBe(true);
+      expect(matchesAuditQuery(firstChangeRow, '甲目前姓名')).toBe(true);
+      expect(matchesAuditQuery(firstChangeRow, '甲現別名')).toBe(true);
+      // 歷史號碼 005／007 仍可用純數字查詢命中
+      expect(matchesAuditQuery(firstChangeRow, '005')).toBe(true);
+      expect(matchesAuditQuery(firstChangeRow, '007')).toBe(true);
+      // 不會命中乙的目前姓名
+      expect(matchesAuditQuery(firstChangeRow, '乙重用七號')).toBe(false);
+      // 純數字查詢不撞營業日
+      expect(matchesAuditQuery(firstChangeRow, '2026')).toBe(false);
     });
   });
 });

@@ -52,4 +52,53 @@ describe('describeAuditEvents and matchesAuditQuery (U3 Review Finding 3)', () =
     // 無關查詢查不到
     expect(matchesAuditQuery(row, '999')).toBe(false);
   });
+
+  // ac 複審（55b8421）：改號事件必須以頂層目前 studentId／entityId 歸戶，
+  // before/after 只供變更文字與歷史號碼查詢，不可拿來決定目前歸屬。
+  describe('多次改號 + 舊號被他人重用', () => {
+    const accountsAfterChain: AuditAccountInfo[] = [
+      { studentId: '009', displayName: '甲生改名', aliases: ['A1'] },
+      { studentId: '007', displayName: '乙生' },
+    ];
+
+    // 甲 005 -> 007 -> 009（後續改名並加別名），乙接手甲空出的 007。
+    const firstChange: LedgerAuditEvent = {
+      auditEventId: 'audit-code-1',
+      eventType: 'student_code_changed',
+      entityType: 'student',
+      entityId: '009',
+      businessDate: '2026-10-15',
+      studentId: '009',
+      before: { studentId: '005', displayName: '甲生' },
+      after: { studentId: '007', displayName: '甲生' },
+      reason: '甲第一次改號',
+      operatorId: 'op-1',
+      createdAt: '2026-10-15T10:00:00.000Z',
+    };
+
+    const rows = describeAuditEvents([firstChange], [], accountsAfterChain);
+    const row = rows[0];
+
+    it('改號事件歸屬於目前帳戶（頂層 studentId 009），不是事件當下的新號 007', () => {
+      expect(row.studentId).toBe('009');
+      expect(row.subject).toBe('009 甲生改名');
+      expect(row.subject).not.toContain('007');
+    });
+
+    it('仍以目前姓名與別名搜尋得到', () => {
+      expect(matchesAuditQuery(row, '009')).toBe(true);
+      expect(matchesAuditQuery(row, '甲生改名')).toBe(true);
+      expect(matchesAuditQuery(row, 'a1')).toBe(true);
+    });
+
+    it('歷史號碼 005／007 仍可用純數字查詢命中', () => {
+      expect(matchesAuditQuery(row, '005')).toBe(true);
+      expect(matchesAuditQuery(row, '007')).toBe(true);
+    });
+
+    it('變更文字仍呈現當時的編號變化，且不撞其他帳戶的目前姓名', () => {
+      expect(row.changes).toBe('編號 005 → 007');
+      expect(matchesAuditQuery(row, '乙生')).toBe(false);
+    });
+  });
 });
