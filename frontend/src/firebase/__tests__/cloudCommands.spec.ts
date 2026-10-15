@@ -1793,6 +1793,52 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     });
   });
 
+  it('P07.9a: raw SetDayMenu inherits over an existing target menu from a confirmed, nonzero source day', async () => {
+    await seedBase();
+    await seedP07Vendor('p05-vendor', { name: 'Synthetic Vendor' });
+    const futureDay = shiftDate(today, 1);
+    await seedP07Day(today, {
+      revision: 7,
+      menu: { ...menu, businessDate: today, revision: 3 },
+      openingCash: 20_000,
+      openedBy: operatorA.uid,
+      openedAt: serverTimestamp(),
+      totals: {
+        activeTransactionCount: 12, bentoCount: 9, otherMealCount: 3,
+        mealTotal: 1_200, retainedReceipts: 800, cashierIncome: 50, cashierExpense: 20,
+      },
+      lastSettlementRevision: 2,
+      status: 'reopened',
+    });
+    await seedP07Day(futureDay, {
+      revision: 4,
+      menu: {
+        ...menu, businessDate: futureDay, itemName: 'Direct Future Menu', price: 175, revision: 2,
+        inheritedFromDate: null,
+      },
+    });
+    const artifacts = await rawP07DayArtifacts({
+      commandId: 'f7b9a9a9-a9a9-4a9a-8a9a-a9a9a9a9a9a9',
+      kind: 'SetDayMenu',
+      dayId: futureDay,
+      payload: {
+        selectionDate: today,
+        itemName: menu.itemName, price: menu.price, vendorId: menu.vendorId,
+        vendorNameSnapshot: menu.vendorNameSnapshot, inheritedFromDate: today,
+      },
+    });
+    await rawP07Batch(authedDb(operatorA), artifacts).commit();
+    const day = await withAdmin(db => getDoc(doc(db, `days/${futureDay}`)));
+    expect(day.data()).toMatchObject({
+      revision: 5,
+      menu: {
+        businessDate: futureDay, itemName: menu.itemName, price: menu.price,
+        vendorId: menu.vendorId, vendorNameSnapshot: menu.vendorNameSnapshot,
+        inheritedFromDate: today, revision: 3,
+      },
+    });
+  });
+
   it('P07.10: raw SetOpeningCash confirms zero then preserves the first actor and time', async () => {
     await seedBase();
     await seedP07Day(today);

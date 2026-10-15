@@ -91,16 +91,19 @@ async function deleteAdminDocument(collection: string, documentId: string): Prom
   if (!response.ok) throw new Error(`Failed to delete Emulator ${collection}/${documentId}: ${await response.text()}`);
 }
 
-async function resetDemoP07Data(): Promise<void> {
+async function resetDemoP07Data(head: 'p07-isolated' | 'global-empty'): Promise<void> {
   for (const collection of ['days', 'vendors', 'commands']) {
     const documents = await listAdminDocuments(collection);
     for (const document of documents) await deleteAdminDocument(collection, document.id);
   }
 
-  const goLiveDate = shiftDate(taipeiToday(), -1);
+  // The P07 fixture starts one day earlier so D02 can create a previous source day; the
+  // global-empty head matches e2e/global-setup.ts so later suites see their initial dataset.
+  const isolated = head === 'p07-isolated';
+  const goLiveDate = isolated ? shiftDate(taipeiToday(), -1) : taipeiToday();
   const fields: Record<string, Record<string, unknown>> = {
     schemaVersion: { integerValue: '1' },
-    datasetId: { stringValue: 'e2e-p07-d02-isolated' },
+    datasetId: { stringValue: isolated ? 'e2e-p07-d02-isolated' : 'e2e-empty-p06-dataset' },
     seq: { integerValue: '0' },
     lastCommandId: { nullValue: null },
     maintenance: { booleanValue: false },
@@ -123,12 +126,12 @@ async function resetDemoP07Data(): Promise<void> {
 test.describe('P07 Cloud day vendors', () => {
   test.beforeEach(async () => {
     // Demo Emulator only: keep operators and the shared access lease intact.
-    await resetDemoP07Data();
+    await resetDemoP07Data('p07-isolated');
   });
 
   test.afterEach(async () => {
-    // Return only the P07 business collections/head to an empty isolated fixture.
-    await resetDemoP07Data();
+    // Remove P07 business documents and restore the global empty head for later suites.
+    await resetDemoP07Data('global-empty');
   });
 
   test('operator creates today, an active vendor, a menu, and an explicitly confirmed zero opening', async ({ authedPage }) => {
@@ -200,7 +203,7 @@ test.describe('P07 Cloud day vendors', () => {
     await previousMenuForm.getByLabel('價格（新臺幣整數）').fill('125');
     await previousMenuForm.getByLabel('供應商').selectOption(oldVendorId);
     await previousMenuForm.getByRole('button', { name: '儲存菜單' }).click();
-    await expect(main.getByText('昨日菜單快照')).toBeVisible();
+    await expect(main.getByText('昨日菜單快照', { exact: true })).toBeVisible();
     const earlierDayBeforeLaterChanges = await readAdminDocument('days', previousDate);
     expect(earlierDayBeforeLaterChanges).toMatchObject({
       id: previousDate,
@@ -226,7 +229,7 @@ test.describe('P07 Cloud day vendors', () => {
     await expect(todayMenuForm.getByLabel('菜單名稱')).toHaveValue('昨日菜單快照');
     await expect(todayMenuForm.getByLabel('菜單名稱')).toBeDisabled();
     await todayMenuForm.getByRole('button', { name: '儲存菜單' }).click();
-    await expect(main.getByText('昨日菜單快照')).toBeVisible();
+    await expect(main.getByText('昨日菜單快照', { exact: true })).toBeVisible();
     let todayDay = await readAdminDocument('days', today);
     expect(todayDay?.menu).toMatchObject({
       businessDate: today,

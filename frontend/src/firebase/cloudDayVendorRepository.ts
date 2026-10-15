@@ -11,7 +11,9 @@ import {
   query,
   startAfter,
   where,
+  type CollectionReference,
   type DocumentSnapshot,
+  type QueryFieldFilterConstraint,
   type Firestore,
 } from 'firebase/firestore';
 import type { CommandErrorCode, CommandReceipt, CommandResult } from '../domain/cloudCommands';
@@ -28,6 +30,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const PAGE_SIZE = 200;
 const MAX_VENDOR_DOCUMENTS = 500;
 const MAX_SOURCE_DAY_DOCUMENTS = 2_000;
+const INITIAL_SOURCE_WINDOW_DAYS = 32;
+const MAX_SOURCE_WINDOW_DAYS = 4_096;
 
 export interface CloudVendorRecord {
   vendorId: string;
@@ -390,6 +394,40 @@ async function readVendorRecords(db: Firestore, pageSize: number): Promise<Cloud
   return vendors;
 }
 
+function shiftDayId(dayId: string, days: number): string | null {
+  const value = new Date(Date.parse(`${dayId}T00:00:00.000Z`) + days * 86_400_000);
+  if (Number.isNaN(value.getTime()) || value.getUTCFullYear() < 1) return null;
+  return value.toISOString().slice(0, 10);
+}
+
+// Firestore Emulator rejects document-ID DESC scans ("descending key scans"), so the newest
+// eligible source is found by walking calendar-date windows backwards. Each window is read in
+// ascending document-ID order and then processed newest-first, so the processing order, the
+// 2,000-document scan cap and every strict row decode match a descending document-ID scan.
+async function readSourceWindow(
+  days: CollectionReference,
+  bounds: QueryFieldFilterConstraint[],
+  maximum: number,
+  pageSize: number,
+): Promise<DocumentSnapshot[]> {
+  const found: DocumentSnapshot[] = [];
+  let cursor: DocumentSnapshot | undefined;
+  while (found.length < maximum) {
+    const size = Math.min(pageSize, maximum - found.length);
+    const page = await getDocsFromServer(query(
+      days,
+      ...bounds,
+      orderBy(documentId()),
+      ...(cursor ? [startAfter(cursor)] : []),
+      limit(size),
+    ));
+    found.push(...page.docs);
+    if (page.docs.length < size) break;
+    cursor = page.docs[page.docs.length - 1];
+  }
+  return found;
+}
+
 async function readLatestEarlierMenu(
   db: Firestore,
   targetDayId: string,
@@ -398,20 +436,34 @@ async function readLatestEarlierMenu(
   pageSize: number,
 ): Promise<CloudMenuSource | null> {
   const days = collection(db, 'days');
-  let cursor: DocumentSnapshot | undefined;
+  const eligible = [where(documentId(), '<', targetDayId), where(documentId(), '<=', selectionDate)];
+  const previousDay = shiftDayId(targetDayId, -1);
+  const newest = previousDay !== null && previousDay < selectionDate ? previousDay : selectionDate;
+  let upper: string | null = null;
+  let span = INITIAL_SOURCE_WINDOW_DAYS;
   let scanned = 0;
-  while (scanned < MAX_SOURCE_DAY_DOCUMENTS) {
+  for (;;) {
     const remaining = MAX_SOURCE_DAY_DOCUMENTS - scanned;
-    const size = Math.min(pageSize, remaining);
-    const page = await getDocsFromServer(query(
-      days,
-      where(documentId(), '<', targetDayId),
-      where(documentId(), '<=', selectionDate),
-      orderBy(documentId(), 'desc'),
-      ...(cursor ? [startAfter(cursor)] : []),
-      limit(size),
-    ));
-    for (const snapshot of page.docs) {
+    // Canonical day IDs hold at most one document per calendar date, so a window no wider than
+    // the remaining cap cannot overflow unless malformed IDs exist.
+    span = Math.max(1, Math.min(span, remaining));
+    const windowNewest: string | null = upper === null ? newest : shiftDayId(upper, -1);
+    const lower: string | null = windowNewest === null ? null : shiftDayId(windowNewest, -(span - 1));
+    const bounds = [
+      ...eligible,
+      ...(upper === null ? [] : [where(documentId(), '<', upper)]),
+      ...(lower === null ? [] : [where(documentId(), '>=', lower)]),
+    ];
+    const window = await readSourceWindow(days, bounds, remaining + 1, pageSize);
+    if (window.length > remaining) {
+      // More physical rows than the cap allows: narrow the window so only its newest rows count.
+      if (span > 1 && lower !== null) {
+        span = Math.max(1, Math.floor(span / 2));
+        continue;
+      }
+      throw new CloudDayVendorRepositoryError('INCOMPLETE_SNAPSHOT', '最近菜單來源超過完整掃描上限 2,000 個營業日');
+    }
+    for (const snapshot of window.reverse()) {
       scanned += 1;
       const day = decodeDay(snapshot.id, snapshot.data());
       if (!day.menu) continue;
@@ -423,19 +475,17 @@ async function readLatestEarlierMenu(
       else if (vendor.name !== day.menu.vendorNameSnapshot) blocked = 'vendor-renamed';
       return { sourceDayId: snapshot.id, menu: day.menu, sourceVendor: vendor, blocked };
     }
-    if (page.docs.length < size) return null;
-    cursor = page.docs[page.docs.length - 1];
+    if (lower === null) return null;
+    const older = await getDocsFromServer(query(
+      days, ...eligible, where(documentId(), '<', lower), orderBy(documentId()), limit(1),
+    ));
+    if (older.empty) return null;
+    if (scanned >= MAX_SOURCE_DAY_DOCUMENTS) {
+      throw new CloudDayVendorRepositoryError('INCOMPLETE_SNAPSHOT', '最近菜單來源超過完整掃描上限 2,000 個營業日');
+    }
+    upper = lower;
+    span = Math.min(span * 2, MAX_SOURCE_WINDOW_DAYS);
   }
-  const probe = await getDocsFromServer(query(
-    days,
-    where(documentId(), '<', targetDayId),
-    where(documentId(), '<=', selectionDate),
-    orderBy(documentId(), 'desc'),
-    startAfter(cursor!),
-    limit(1),
-  ));
-  if (!probe.empty) throw new CloudDayVendorRepositoryError('INCOMPLETE_SNAPSHOT', '最近菜單來源超過完整掃描上限 2,000 個營業日');
-  return null;
 }
 
 export function createCloudDayVendorRepository(

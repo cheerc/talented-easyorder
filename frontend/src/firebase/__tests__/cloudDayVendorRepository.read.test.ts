@@ -204,17 +204,26 @@ function setupReadMocks(options: {
   firestoreMocks.getDocsFromServer.mockImplementation(async (request: MockQuery) => {
     const count = request.constraints.find(item => item.type === 'limit')?.count ?? 200;
     const cursor = request.constraints.find(item => item.type === 'startAfter');
+    const ordering = request.constraints.find(item => item.type === 'orderBy');
+    if (ordering?.field === '__document_id__' && ordering.direction === 'desc') {
+      // Mirrors Firestore Emulator: descending document-ID (key) scans are rejected.
+      throw Object.assign(new Error('Firestore does not support descending key scans'), { code: 'failed-precondition' });
+    }
+    const filters = request.constraints
+      .filter((item): item is Extract<QueryConstraint, { type: 'where' }> => item.type === 'where');
+    const matches = (id: string) => filters.every(filter => {
+      const value = String(filter.value);
+      if (filter.op === '<') return id < value;
+      if (filter.op === '<=') return id <= value;
+      if (filter.op === '>=') return id >= value;
+      if (filter.op === '>') return id > value;
+      throw new Error(`Unexpected filter operator: ${filter.op}`);
+    });
+    const ascending = (left: MockDocument, right: MockDocument) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
     const source = request.collection.path === 'vendors'
-      ? [...vendors].sort((left, right) => left.id.localeCompare(right.id))
+      ? [...vendors].sort(ascending)
       : request.collection.path === 'days'
-        ? [...sourceDays]
-          .filter(item => {
-            const lessThan = request.constraints.find(constraint => constraint.type === 'where' && constraint.op === '<') as Extract<QueryConstraint, { type: 'where' }> | undefined;
-            const lessThanOrEqual = request.constraints.find(constraint => constraint.type === 'where' && constraint.op === '<=') as Extract<QueryConstraint, { type: 'where' }> | undefined;
-            return (!lessThan || item.id < String(lessThan.value))
-              && (!lessThanOrEqual || item.id <= String(lessThanOrEqual.value));
-          })
-          .sort((left, right) => right.id.localeCompare(left.id))
+        ? [...sourceDays].filter(item => matches(item.id)).sort(ascending)
         : (() => { throw new Error(`Unexpected server collection read: ${request.collection.path}`); })();
     const startIndex = cursor ? source.findIndex(item => item.id === cursor.cursor.id) + 1 : 0;
     const docs = source.slice(startIndex, startIndex + count);
@@ -342,7 +351,38 @@ describe('cloud day/vendor repository mocked server reads', () => {
     });
     const sourceReads = firestoreMocks.getDocsFromServer.mock.calls
       .filter(([request]) => (request as MockQuery).collection.path === 'days');
-    expect(sourceReads).toHaveLength(2);
+    expect(sourceReads).toHaveLength(3);
+  });
+
+  it('walks older calendar windows to the newest sparse source without a descending key scan', async () => {
+    const sourceDays = [
+      sourceDay('2026-10-01'),
+      sourceDay('2026-08-20'),
+      sourceDay('2024-03-05', validMenu('2024-03-05', 'vendor-active', 'Vendor vendor-active')),
+      sourceDay('2023-01-01', validMenu('2023-01-01', 'vendor-active', 'Vendor vendor-active')),
+    ];
+    setupReadMocks({ vendors: [document('vendor-active', validVendor('vendor-active'))], sourceDays });
+
+    const result = await repo().loadSnapshot('2026-10-16');
+
+    expect(result.latestEarlierMenu).toMatchObject({ sourceDayId: '2024-03-05', blocked: null });
+    const sourceReads = firestoreMocks.getDocsFromServer.mock.calls
+      .map(([request]) => request as MockQuery)
+      .filter(request => request.collection.path === 'days');
+    expect(sourceReads.every(request => request.constraints.every(item => item.type !== 'orderBy' || item.direction === undefined)))
+      .toBe(true);
+  });
+
+  it('fails closed on a malformed source-day row that is newer than the first menu', async () => {
+    setupReadMocks({
+      vendors: [document('vendor-active', validVendor('vendor-active'))],
+      sourceDays: [
+        document('2026-10-14', { ...validDay('2026-10-14'), totals: null }),
+        sourceDay('2026-10-13', validMenu('2026-10-13', 'vendor-active', 'Vendor vendor-active')),
+      ],
+    });
+
+    await expect(repo().loadSnapshot('2026-10-16')).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
   });
 
   it('probes beyond exactly 2,000 null-menu day documents to confirm exhaustion', async () => {
@@ -358,7 +398,7 @@ describe('cloud day/vendor repository mocked server reads', () => {
     const sourceReads = firestoreMocks.getDocsFromServer.mock.calls
       .map(([request]) => request as MockQuery)
       .filter(request => request.collection.path === 'days');
-    expect(sourceReads).toHaveLength(11);
+    expect(sourceReads).toHaveLength(20);
     expect(sourceReads.at(-1)?.constraints).toContainEqual({ type: 'limit', count: 1 });
   });
 
@@ -372,7 +412,7 @@ describe('cloud day/vendor repository mocked server reads', () => {
     await expect(repo().loadSnapshot('2026-10-16')).rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT' });
     const sourceReads = firestoreMocks.getDocsFromServer.mock.calls
       .filter(([request]) => (request as MockQuery).collection.path === 'days');
-    expect(sourceReads).toHaveLength(11);
+    expect(sourceReads).toHaveLength(20);
   });
 
   it.each([

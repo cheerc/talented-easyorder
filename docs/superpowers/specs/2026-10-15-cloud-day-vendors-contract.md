@@ -74,6 +74,8 @@ function createCloudDayVendorRepository(
 
 For latest-earlier lookup, page day documents in descending canonical document-ID order where `sourceDayId < targetDayId` and `sourceDayId <= selectionDate`; scan across null menus until the first non-null menu or confirmed exhaustion. Scan cap is 2,000 physical day documents; probe beyond the cap to distinguish exact exhaustion from overflow. A cap reached with more results, malformed rows, query errors, or unstable head is explicit INCOMPLETE_SNAPSHOT/STALE_SNAPSHOT, never “no earlier menu”. Read dataHead before and after all reads; require seq/datasetId/goLiveDate unchanged. If the newest source menu's vendor is missing, inactive, deleted, or renamed relative to `vendorNameSnapshot`, expose the corresponding blocked state and do not silently fall back to an older menu. Direct and inherited assignments both require current vendor active and not deleted. Existing menu/transaction snapshots never change.
 
+Implementation note (2026-10-15, user-approved, same semantics): Firestore Emulator 1.19.8 and 1.22.0 both reject document-ID DESC queries (`descending key scans`). The repository therefore reads backward calendar-date windows of document IDs in ascending order and processes each window newest-first. Window width never exceeds the remaining scan cap, and a probe below each window confirms exhaustion. Processing order, the 2,000-document cap, overflow detection, and strict decoding of every processed row match a descending document-ID scan; rows older than the first non-null menu are not decoded.
+
 ## Command input signatures and canonical fields
 
 ```ts

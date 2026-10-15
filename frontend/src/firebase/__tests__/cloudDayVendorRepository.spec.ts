@@ -294,6 +294,31 @@ describeWithEmulator('P07 server-only day/vendor repository reads and production
     expect(result.latestEarlierMenu?.sourceDayId).not.toBe(olderMenuDay);
   });
 
+  it('finds a sparse source across empty calendar gaps and ignores an older menu', async () => {
+    await withAdmin(db => updateDoc(doc(db, 'system/dataHead'), {
+      goLiveDate: shiftDate(selectionDate, -3_000),
+    }));
+    const nullDay = shiftDate(selectionDate, -3);
+    const sparseSource = shiftDate(selectionDate, -900);
+    const olderSource = shiftDate(selectionDate, -1_500);
+    await withAdmin(async db => {
+      await setDoc(doc(db, 'vendors/active-source-vendor'), vendorDocument('active-source-vendor', 1, { name: 'Active Source' }));
+      await setDoc(doc(db, `days/${nullDay}`), dayDocument(1));
+      await setDoc(doc(db, `days/${sparseSource}`), dayDocument(2, menuDocument(sparseSource, {
+        vendorId: 'active-source-vendor', vendorNameSnapshot: 'Active Source', itemName: 'Sparse Source',
+      })));
+      await setDoc(doc(db, `days/${olderSource}`), dayDocument(3, menuDocument(olderSource, {
+        vendorId: 'active-source-vendor', vendorNameSnapshot: 'Active Source', itemName: 'Older Source',
+      })));
+    });
+    const result = await repository(operatorA, 2).loadSnapshot(targetDate);
+    expect(result.latestEarlierMenu).toMatchObject({
+      sourceDayId: sparseSource,
+      menu: { itemName: 'Sparse Source' },
+      blocked: null,
+    });
+  });
+
   it('probes beyond exactly 2,000 empty source days and rejects an additional physical day', async () => {
     await withAdmin(db => updateDoc(doc(db, 'system/dataHead'), {
       goLiveDate: shiftDate(selectionDate, -3_000),
@@ -309,7 +334,8 @@ describeWithEmulator('P07 server-only day/vendor repository reads and production
     await expect(repository(operatorA, 200).loadSnapshot(targetDate)).rejects.toMatchObject({
       name: 'CloudDayVendorRepositoryError', code: 'INCOMPLETE_SNAPSHOT',
     });
-  });
+    // Seeding 2,001 physical days plus two complete scans exceeds the 5s default on cold runners.
+  }, 60_000);
 
   it('uses server reads and distinguishes an offline state from a successful empty result', async () => {
     const db = authedDb(operatorA);

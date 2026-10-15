@@ -659,8 +659,9 @@ service cloud.firestore {
       let sourceDay = get(/databases/$(database)/documents/days/$(sourceDate)).data;
       let sourceMenu = sourceDay.menu;
       let vendor = get(/databases/$(database)/documents/vendors/$(command.payload.vendorId)).data;
-      return validDay(sourceDay, sourceDate)
-        && sourceMenu is map
+      // validDay(sourceDay, sourceDate) runs in headCommand on the same atomic commit's
+      // mandatory dataHead write; the per-document expression ceiling cannot hold both here.
+      return sourceMenu is map
         && command.payload.itemName == sourceMenu.itemName
         && command.payload.price == sourceMenu.price
         && command.payload.vendorId == sourceMenu.vendorId
@@ -909,7 +910,21 @@ service cloud.firestore {
     function headCommand(commandId, before, after) {
       let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
       return !exists(/databases/$(database)/documents/commands/$(commandId))
-        && command.commandId == commandId;
+        && command.commandId == commandId
+        && headInheritedMenuSourceDay(command);
+    }
+
+    // Firestore applies its 1,000-expression ceiling to each document's rule evaluation. An
+    // inherited SetDayMenu cannot validate the target day, the complete source day and the vendor
+    // within the day write alone, so the source day's full schema is validated here, on the dataHead
+    // write that every command commit must include. All checks still bind the same atomic commit.
+    function headInheritedMenuSourceDay(command) {
+      return command.kind != 'SetDayMenu'
+        || command.payload.inheritedFromDate == null
+        || validDay(
+          get(/databases/$(database)/documents/days/$(command.payload.inheritedFromDate)).data,
+          command.payload.inheritedFromDate
+        );
     }
 
     function ensureDayCommand(commandId, dayId, dayAfter) {
