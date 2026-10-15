@@ -32,6 +32,7 @@ import { isPrototypeMode, validateAppModeConfig } from './appMode';
 import { isMenuReady } from './domain/menu';
 import { AuthGate } from './auth/AuthGate';
 import { SYSTEM_OPERATOR_ID } from './domain/operatorId';
+import { CloudStudentsPage } from './components/cloud/CloudStudentsPage';
 
 function AppContent() {
   const { fb, fbError, access } = useFirebase();
@@ -264,7 +265,7 @@ function AppContent() {
 }
 
 function CloudAppContent() {
-  const { fb, fbError, access } = useFirebase();
+  const { fb, fbError, access, lease } = useFirebase();
 
   if (fbError) return <AppCrashPage />;
   if (!fb) {
@@ -274,12 +275,13 @@ function CloudAppContent() {
   return (
     <ErrorBoundary fallback={<AppCrashPage />} onError={(error) => appendErrorLog({ source: 'react', message: error.message, stack: error.stack })}>
       <AuthGate auth={fb.auth} db={fb.db} access={access}>
-        <main className="auth-gate" aria-label="雲端業務尚未開放">
+        <main className="cloud-app" aria-label="雲端學生管理">
           <h1>Talented EasyOrder</h1>
-          <section data-testid="cloud-business-closed" role="status">
-            <h2>業務功能暫未開放</h2>
-            <p>雲端資料與使用權驗證已啟用；帳務操作介面尚未開放。</p>
-          </section>
+          <CloudStudentsPage
+            db={fb.db}
+            leaseEpoch={lease.epoch}
+            identityKey={access.ok ? `${access.profile.uid}:${lease.epoch}` : ''}
+          />
         </main>
       </AuthGate>
     </ErrorBoundary>

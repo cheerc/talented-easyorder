@@ -1,6 +1,6 @@
 # 零費用正式後端：現況與證據
 
-狀態截至 2026-10-14。此頁保留 P00 基線與 P01–P04 實際證據；P04 #475 與 P05 #476 均已合併。P05 合併 SHA、immutable review 與 required CI 已確認，但新正式後端未部署、未通過上線驗收。規格是目標契約，不代表功能、雲端資源或部署狀態已成立。前端原本人驗收紀錄仍以 [PROJECT-STATUS](../PROJECT-STATUS.md) 為準。
+狀態截至 2026-10-15。此頁保留 P00 基線、P01–P05 已合併證據與 P06 WIP checkpoint。P04 #475、P05 #476 已合併；P06 尚未完成 phase acceptance，新的正式後端未部署、未通過上線驗收。規格是目標契約，不代表功能、雲端資源或部署狀態已成立。前端原本人驗收紀錄仍以 [PROJECT-STATUS](../PROJECT-STATUS.md) 為準。
 
 ## 範圍與正式操作界線
 
@@ -19,10 +19,16 @@
 
 ## P06 WIP checkpoint — 2026-10-15
 
-- Phase branch：`codex/backend-p06-students`；actual base `b53423aa71ed4cfac2428f290c648e5a999a0cae`，包含 P05 code merge `41cd08715c435bc5d72ee38985fccd40e0ee4dd1` 與 #477 receipt。P06 PR/head SHA 尚待 checkpoint 建立後記入 PR body；本節記錄 scope 與未完成證據，不代表 phase acceptance。
+- Phase branch：`codex/backend-p06-students`；唯一 actual PR base `b53423aa71ed4cfac2428f290c648e5a999a0cae`，包含 P05 code merge `41cd08715c435bc5d72ee38985fccd40e0ee4dd1` 與 #477 receipt（41cd 是 merge commit，不是 P06 PR base）。本文件不抄錄 PR head SHA，commit 建立後以 PR body 為版本權威。本節記錄已完成的局部 evidence 與未完成項目，不代表 phase acceptance。
 - 範圍：server-only complete student list/read、學生建立／編輯／狀態切換與獨立 cloud page。production command kinds 為 `CreateStudent`、`EditStudent`、`SetStudentStatus`。P05 `EnsureDay`、`CreateOrder`、`CreatePayment` 必須保留；其餘 16 kinds 必須保持拒絕。不得恢復 prototype POS/local business store、開 P07/P08/P10 功能或部署正式環境。
 - Contract：所有 student command `businessDate=null`，`studentId` 為固定 target；學生 ID 是字串（`001` 保留前導零），create 不生 transaction/payment/day effect。Create opening 日期只允許 metadata `head.goLiveDate` 或 Rules server 當前台北日期，且不能為未來；這是允許的日期集合，不代表 Rules 能強制辨識 baseline roster 與今天新學生。Edit 只允許 display name／aliases；opening、ID、balance 的更正留 P10。
-- 當前 checkpoint 是未完成 WIP。strict paged server list、完整 DTO/path/meta 驗證與 stale-result 清除、安全 UI mount、真 production Rules Emulator RED/GREEN、empty-fixture D01 E2E、non-holder denial、A01/P01/P04/P05/P06 sequential regression、full Vitest/lint/build/TSC full-output comparison、CI skip gate、官方 pinned-browser CI 與獨立 review 尚未證明通過。不可把 P05 的 gate 結果挪用為 P06 通過。
+- **已完成的真 production Rules Emulator 局部證據（2026-10-15，demo-easyorder，production `firestore.rules`）：** unfiltered `cloudCommands.spec.ts` 97/97 + `cloudStudentRepository.spec.ts` 11/11 = 108 passed、0 failed、0 skipped，exit 0；JSON `/tmp/p06-unfiltered-cloud.json`。`cloudCommandRepository.failure.spec.ts` 2/2，exit 0，真 commit 後注入 `unavailable` 與換 lease 的 `permission-denied` 均回 `UNKNOWN_RESULT`，同 ID recovery 取得既有 receipt：JSON `/tmp/p06-p05-failure.json`。A01 `firestoreRules.spec.ts` 10/10、P01 `cloudRulesProof.spec.ts` 36/36、P04 `activeAccountLease.spec.ts` 19/19 也分別以 Emulator sequential 執行；JSON `/tmp/p06-a01.json`、`/tmp/p06-p01.json`、`/tmp/p06-p04-lease.json`。所選 suites 共 175 個 production Emulator tests 分別真跑通過，尚未組成規定順序的單輪 regression。
+- 先前 P06 focused filter `cloudCommands.spec.ts -t P06` 為 40 passed、57 not-selected；57 是未執行測試，不能標成通過或完整 command suite gate。完整未篩選 suite 另以 97/97 通過；repository list 另 11/11。此前曾遇到 max-1000 expression 診斷，修正為中央 receipt 與實際 projection 相等、由 student leaf 一次執行 student schema 驗證後，合法 positive／最大 10 個 100 字 alias 的 raw SDK 路徑目前通過。P05 舊負例及 P06 omission/forgery deny 仍可出現 cap 訊息；測試 assert deny+atomic unchanged，不將未隔離 case 說成每一個 guard 的獨立 cap-free 證明。細節依 source case names 與 [P06 rules budget](p05-rules-budget.md#p06-student-write-budget-wip) 查閱。
+- server list 使用 `getDocsFromServer`、依 document ID 有序 cursor pages、strict 完整 DTO/path 驗證及讀取前後 `dataHead` seq/dataset/goLiveDate 比對；真 Emulator 500 人跨頁完整通過，501 人明確回 `INCOMPLETE_SNAPSHOT`，不發布部分結果。這個 phase 的已驗上限為 500，不宣稱 501 或無上限名單可完整瀏覽；如需超過 500，完整 pagination UX／容量處理要在後續 phase 解決。
+- 完整 Vitest exit 0：1,322 passed／175 Emulator-only skipped／0 failed（JSON `/tmp/p06-full-vitest.json`）；這 175 個 skip 與上方 175/175 個已由真 Emulator 執行的案例一致。`npm run lint`、`npm run build` 均 exit 0（保留 Vite config `__dirname` warning）。App TSC exit 2、290 diagnostic headers／542 normalized lines，與 `/tmp/p06-base-app-tsc.normalized.txt` 比較 diff 0 行；raw/normalized/diff 為 `/tmp/p06-current-app-tsc.{raw.txt,normalized.txt,diff}`。這不是 clean TSC pass。
+- Browser：標準 `npm run test:e2e` 因本機缺 Playwright pinned headless Chromium executable，在瀏覽器 launch 階段失敗；沒有把 launch failures 當 assertion failures。使用 `/tmp` config 指定 system `/usr/bin/chromium` 的診斷執行，P04/Auth 與其他 Cloud cases 12 pass；D01 在「新增學生」名稱輸入定位器因搜尋欄同樣含「姓名」造成 strict-mode ambiguity 而失敗，已在本 checkpoint 收斂為 exact textbox locator，但尚未重跑此修正。prototype 7 cases 尚未執行。此診斷不取代官方 pinned Chromium CI。
+- **尚未完成的 gate：** prescribed-order A01/P01/P04/P05/P06 全量 regression（以上 suite 雖已分別以 Emulator 通過，還未按正式順序重跑成一組）；D01 修正後的 three-student empty-fixture browser E2E、non-holder masking/auth loss/stale-result browser coverage；prototype 7 cases；P06 JSON skip gate 的 GitHub CI、官方 pinned-browser required CI、獨立 source review。不可把局部 Emulator 結果寫成 P06 acceptance。
+- displayName 與 alias 的 current schema 在 Rules、normalizer、receipt decoder、list decoder 統一採 literal non-empty string 長度 1–100（alias 最多 10 個）；UI 可額外修整輸入，但讀寫安全判定不使用 JS trim/Rules whitespace regex 以免 Unicode whitespace 不一致。Emulator 覆蓋 ASCII whitespace、NBSP、BOM、含換行文字合法與空字串拒絕。
 - 僅使用 `demo-easyorder` Firestore/Auth Emulator 和合成 operator/student fixtures；不讀取／建立 production credentials、Firebase project、Admin bootstrap 或部署。Firestore SDK `persistentLocalCache` 尚未修改；memory-cache 生命週期限制仍屬 P13。
 
 ## 舊寫入路徑盤點

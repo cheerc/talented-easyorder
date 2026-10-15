@@ -12,9 +12,80 @@ import {
   seedAccessLease,
   seedOperator,
   setOperatorActive,
+  PROJECT,
 } from './helpers/seed';
 
 const VACANT_LEASE = { holderUid: null, epoch: 0, updatedAt: new Date() };
+const FIRESTORE_EMULATOR = 'http://127.0.0.1:8080';
+
+type AdminDocument = Record<string, unknown> & { id: string };
+
+function decodeAdminValue(value: unknown): unknown {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  if ('stringValue' in raw) return raw.stringValue;
+  if ('integerValue' in raw) return Number(raw.integerValue);
+  if ('doubleValue' in raw) return raw.doubleValue;
+  if ('booleanValue' in raw) return raw.booleanValue;
+  if ('nullValue' in raw) return null;
+  if ('timestampValue' in raw) return new Date(String(raw.timestampValue));
+  if ('mapValue' in raw) {
+    const fields = (raw.mapValue as { fields?: Record<string, unknown> } | undefined)?.fields ?? {};
+    return decodeAdminFields(fields);
+  }
+  if ('arrayValue' in raw) {
+    const values = (raw.arrayValue as { values?: unknown[] } | undefined)?.values ?? [];
+    return values.map(decodeAdminValue);
+  }
+  return undefined;
+}
+
+function decodeAdminFields(fields: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, decodeAdminValue(value)]));
+}
+
+async function readAdminDocument(collection: string, documentId: string): Promise<AdminDocument | null> {
+  const response = await fetch(
+    `${FIRESTORE_EMULATOR}/v1/projects/${PROJECT}/databases/(default)/documents/${collection}/${encodeURIComponent(documentId)}`,
+    { headers: { Authorization: 'Bearer owner' } },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Failed to read Emulator ${collection}/${documentId}: ${await response.text()}`);
+  const body = await response.json() as { name?: string; fields?: Record<string, unknown> };
+  const id = body.name?.split('/').at(-1);
+  if (!id) throw new Error(`Emulator returned an invalid document path for ${collection}/${documentId}`);
+  return { id, ...decodeAdminFields(body.fields ?? {}) };
+}
+
+async function listAdminDocuments(collection: string): Promise<AdminDocument[]> {
+  const documents: AdminDocument[] = [];
+  let pageToken = '';
+  do {
+    const query = new URLSearchParams({ pageSize: '100' });
+    if (pageToken) query.set('pageToken', pageToken);
+    const response = await fetch(
+      `${FIRESTORE_EMULATOR}/v1/projects/${PROJECT}/databases/(default)/documents/${collection}?${query}`,
+      { headers: { Authorization: 'Bearer owner' } },
+    );
+    if (!response.ok) throw new Error(`Failed to list Emulator ${collection}: ${await response.text()}`);
+    const body = await response.json() as { documents?: Array<{ name?: string; fields?: Record<string, unknown> }>; nextPageToken?: string };
+    for (const document of body.documents ?? []) {
+      const id = document.name?.split('/').at(-1);
+      if (!id) throw new Error(`Emulator returned an invalid ${collection} document path`);
+      documents.push({ id, ...decodeAdminFields(document.fields ?? {}) });
+    }
+    pageToken = body.nextPageToken ?? '';
+  } while (pageToken);
+  return documents;
+}
+
+function taipeiToday(): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const value = (type: string) => parts.find(part => part.type === type)?.value ?? '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
 
 test.describe('P04 Cloud Authentication & Access Lease', () => {
   test.setTimeout(60000);
@@ -263,15 +334,137 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     }
   });
 
-  test('A09: an authenticated lease holder sees the closed cloud business boundary without mounting POS controls', async ({ googleSession }) => {
+  test('A09: an authenticated lease holder sees the P06 student surface without mounting POS controls', async ({ googleSession }) => {
     const { page, uid } = googleSession;
     await page.getByRole('button', { name: '取得系統使用權' }).click();
     await expect(page.locator('.operator-strip')).toBeVisible();
     await expect.poll(readAccessLease).toMatchObject({ holderUid: uid, epoch: 1 });
 
-    await expect(page.getByTestId('cloud-business-closed')).toContainText('業務功能暫未開放');
+    await expect(page.getByRole('heading', { name: '學生名單與期初結餘' })).toBeVisible();
     await expect(page.locator('.app')).toHaveCount(0);
     await expect(page.getByRole('tab')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /訂餐|繳費|送出訂單/ })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '釋放使用權並登出' })).toBeVisible();
+  });
+});
+
+test.describe('P06 Cloud Students', () => {
+  test.setTimeout(120000);
+
+  test.beforeEach(async () => {
+    await seedAccessLease({ ...VACANT_LEASE, updatedAt: new Date() });
+  });
+
+  test.afterEach(async () => {
+    await seedAccessLease({ ...VACANT_LEASE, updatedAt: new Date() });
+  });
+
+  test('D01: manually creates, edits, deactivates, restores and reloads three students from an empty server dataset', async ({ browser }) => {
+    const startingHead = await readAdminDocument('system', 'dataHead');
+    expect(startingHead).toMatchObject({ seq: 0, maintenance: false, goLiveDate: taipeiToday() });
+    expect(await listAdminDocuments('students')).toEqual([]);
+
+    const first = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
+    try {
+      await first.page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(first.page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(first.page.getByRole('heading', { name: '學生名單與期初結餘' })).toBeVisible();
+      await expect(first.page.getByText('目前伺服器名單是空的，請手動新增學生。')).toBeVisible();
+
+      const createStudent = async (input: { id: string; name: string; aliases: string; amount: string; mode: '沿用既有核對結餘' | '建立新學生' }) => {
+        const page = first.page;
+        await page.getByRole('button', { name: '新增學生' }).click();
+        await page.getByLabel('學員編號').fill(input.id);
+        await page.getByRole('textbox', { name: '姓名', exact: true }).fill(input.name);
+        await page.getByLabel(/別名/).fill(input.aliases);
+        await page.getByLabel(/期初結餘/).fill(input.amount);
+        await page.getByRole('radio', { name: new RegExp(input.mode) }).check();
+        await page.getByRole('button', { name: '建立學生' }).click();
+        await expect(page.getByTestId(`cloud-student-row-${input.id}`)).toBeVisible();
+        await expect(page.getByText(new RegExp(`已確認新增 ${input.id} 完成`))).toBeVisible();
+      };
+
+      await createStudent({ id: '001', name: 'P06 同名學生', aliases: '一號', amount: '0', mode: '沿用既有核對結餘' });
+      await createStudent({ id: '002', name: 'P06 同名學生', aliases: '二號', amount: '-25', mode: '建立新學生' });
+      await createStudent({ id: '003', name: 'P06 第三位', aliases: '', amount: '140', mode: '沿用既有核對結餘' });
+
+      // The component rejects the duplicate ID before dispatch; the authoritative server head stays unchanged.
+      await first.page.getByRole('button', { name: '新增學生' }).click();
+      await first.page.getByLabel('學員編號').fill('001');
+      await first.page.getByLabel('姓名').fill('重複編號');
+      await first.page.getByLabel(/期初結餘/).fill('0');
+      await first.page.getByRole('radio', { name: /沿用既有核對結餘/ }).check();
+      await first.page.getByRole('button', { name: '建立學生' }).click();
+      await expect(first.page.getByRole('alert')).toContainText('學員編號 001 已存在');
+      expect(await readAdminDocument('system', 'dataHead')).toMatchObject({ seq: 3 });
+      await first.page.getByRole('button', { name: '取消' }).click();
+
+      const row002 = first.page.getByTestId('cloud-student-row-002');
+      await row002.getByRole('button', { name: '編輯姓名與別名' }).click();
+      const editForm = row002.getByRole('form', { name: '編輯學生 002' });
+      await editForm.getByLabel('姓名').fill('P06 已修改學生');
+      await editForm.getByLabel('別名').fill('改名別名');
+      await editForm.getByRole('button', { name: '儲存姓名與別名' }).click();
+      await expect(first.page.getByText(/已確認修改 002 完成/)).toBeVisible();
+      await expect(row002).toContainText('P06 已修改學生');
+
+      await row002.getByRole('button', { name: '停用' }).click();
+      const deactivateForm = row002.getByRole('form', { name: '停用學生 002' });
+      await deactivateForm.getByLabel('原因（必填）').fill('操作員確認資料後暫時停用此學生');
+      await deactivateForm.getByRole('button', { name: '確認停用' }).click();
+      await expect(row002).toContainText('已停用');
+
+      await row002.getByRole('button', { name: '恢復' }).click();
+      const restoreForm = row002.getByRole('form', { name: '恢復學生 002' });
+      await restoreForm.getByLabel('原因（必填）').fill('已完成確認，恢復學生使用狀態');
+      await restoreForm.getByRole('button', { name: '確認恢復' }).click();
+      await expect(row002).toContainText('使用中');
+
+      const head = await readAdminDocument('system', 'dataHead');
+      expect(head).toMatchObject({ seq: 6, maintenance: false });
+      const students = await listAdminDocuments('students');
+      expect(students).toHaveLength(3);
+      const byId = new Map(students.map(student => [student.id, student]));
+      expect(byId.get('001')).toMatchObject({ studentId: '001', displayName: 'P06 同名學生', currentBalance: 0 });
+      expect(byId.get('002')).toMatchObject({
+        studentId: '002', displayName: 'P06 已修改學生', aliases: ['改名別名'], status: 'active', currentBalance: -25,
+        openingBalance: { amount: -25, asOfDate: taipeiToday() },
+      });
+      expect(byId.get('003')).toMatchObject({ studentId: '003', currentBalance: 140 });
+      expect(await listAdminDocuments('transactions')).toEqual([]);
+
+      const commands = await listAdminDocuments('commands');
+      expect(commands).toHaveLength(6);
+      expect(commands.map(command => command.seq).sort((a, b) => Number(a) - Number(b))).toEqual([1, 2, 3, 4, 5, 6]);
+      expect(commands.map(command => command.kind).sort()).toEqual([
+        'CreateStudent', 'CreateStudent', 'CreateStudent', 'EditStudent', 'SetStudentStatus', 'SetStudentStatus',
+      ].sort());
+      expect(commands.filter(command => String(command.kind).includes('Student')).every(command => command.businessDate === null)).toBe(true);
+
+      await first.page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await expect(first.page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
+
+      const second = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
+      try {
+        await second.page.getByRole('button', { name: '取得系統使用權' }).click();
+        await expect(second.page.locator('.operator-strip')).toBeVisible();
+        await expect(second.page.getByTestId('cloud-student-row-001')).toContainText('001');
+        await expect(second.page.getByTestId('cloud-student-row-002')).toContainText('P06 已修改學生');
+        await expect(second.page.getByTestId('cloud-student-row-002')).toContainText('使用中');
+        await expect(second.page.getByTestId('cloud-student-row-003')).toContainText('003');
+        await expect(second.page.locator('.app')).toHaveCount(0);
+        await expect(second.page.getByRole('tab')).toHaveCount(0);
+        await expect(second.page.getByRole('button', { name: /訂餐|繳費|送出訂單/ })).toHaveCount(0);
+        await second.page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      } finally {
+        await second.close();
+      }
+    } finally {
+      if (!first.page.isClosed()) {
+        const release = first.page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
+        if (await release.isVisible().catch(() => false)) await release.click();
+      }
+      await first.close();
+    }
   });
 });

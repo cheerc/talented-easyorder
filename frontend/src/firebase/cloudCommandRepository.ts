@@ -66,6 +66,12 @@ function integer(value: unknown, minimum = 0): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && !Object.is(value, -0) && value >= minimum;
 }
 
+function sameStringList(left: unknown, right: unknown): boolean {
+  return Array.isArray(left) && Array.isArray(right)
+    && left.length === right.length
+    && left.every((value, index) => value === right[index]);
+}
+
 function validDate(value: unknown): value is string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -102,7 +108,7 @@ function decodeStudent(value: unknown): Data {
   if (!hasExactKeys(value, keys)
     || typeof value.studentId !== 'string' || value.studentId.length < 1 || value.studentId.length > 64
     || value.studentId.includes('/') || value.studentId === '__cashier__'
-    || typeof value.displayName !== 'string' || value.displayName.trim().length < 1 || value.displayName.length > 100
+    || typeof value.displayName !== 'string' || value.displayName.length < 1 || value.displayName.length > 100
     || !Array.isArray(value.aliases) || value.aliases.length > 10 || !value.aliases.every(x => typeof x === 'string' && x.length > 0 && x.length <= 100)
     || (value.status !== 'active' && value.status !== 'inactive')
     || !plainRecord(value.openingBalance)
@@ -249,8 +255,8 @@ async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput)
   try {
     if (input.kind === 'CreateStudent' || input.kind === 'EditStudent' || input.kind === 'SetStudentStatus') {
       const student = await getDocFromServer(doc(db, studentPath(input.targets.studentId)));
-      if (input.kind === 'CreateStudent') return student.exists() ? 'INVALID_INPUT' : null;
-      if (!student.exists()) return null;
+      if (input.kind === 'CreateStudent') return 'INVALID_INPUT';
+      if (!student.exists()) return 'INVALID_INPUT';
       const current = decodeStudent(student.data());
       return current.revision === input.expectedRevisions.student ? 'INVALID_INPUT' : 'REVISION_CONFLICT';
     }
@@ -468,15 +474,23 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
           let reason: string | null = null;
           let studentAfter: Data;
           if (input.kind === 'EditStudent') {
+            const nextDisplayName = input.payload.displayName ?? String(studentBefore.displayName);
+            const nextAliases = input.payload.aliases ?? studentBefore.aliases;
+            if (nextDisplayName === studentBefore.displayName && sameStringList(nextAliases, studentBefore.aliases)) {
+              throw new RejectCommand('INVALID_INPUT', '學生資料沒有變更');
+            }
             studentAfter = {
               ...studentBefore,
-              ...(input.payload.displayName === undefined ? {} : { displayName: input.payload.displayName }),
-              ...(input.payload.aliases === undefined ? {} : { aliases: input.payload.aliases }),
+              displayName: nextDisplayName,
+              aliases: nextAliases,
               revision: Number(studentBefore.revision) + 1,
               lastCommandId: input.commandId,
               updatedAt: now,
             };
           } else {
+            if (input.payload.status === studentBefore.status) {
+              throw new RejectCommand('INVALID_INPUT', '學生狀態沒有變更');
+            }
             reason = input.payload.reason || null;
             studentAfter = {
               ...studentBefore,
