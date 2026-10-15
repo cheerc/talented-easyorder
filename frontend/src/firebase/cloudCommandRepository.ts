@@ -100,9 +100,10 @@ function decodeLease(value: unknown): Data {
 function decodeStudent(value: unknown): Data {
   const keys = ['studentId', 'displayName', 'aliases', 'status', 'openingBalance', 'currentBalance', 'createdAt', 'revision', 'lastCommandId', 'updatedAt'];
   if (!hasExactKeys(value, keys)
-    || typeof value.studentId !== 'string'
-    || typeof value.displayName !== 'string' || value.displayName.length < 1 || value.displayName.length > 100
-    || !Array.isArray(value.aliases) || value.aliases.length > 10 || !value.aliases.every(x => typeof x === 'string' && x.length <= 100)
+    || typeof value.studentId !== 'string' || value.studentId.length < 1 || value.studentId.length > 64
+    || value.studentId.includes('/') || value.studentId === '__cashier__'
+    || typeof value.displayName !== 'string' || value.displayName.trim().length < 1 || value.displayName.length > 100
+    || !Array.isArray(value.aliases) || value.aliases.length > 10 || !value.aliases.every(x => typeof x === 'string' && x.length > 0 && x.length <= 100)
     || (value.status !== 'active' && value.status !== 'inactive')
     || !plainRecord(value.openingBalance)
     || !hasExactKeys(value.openingBalance, ['amount', 'asOfDate', 'note', 'createdAt'])
@@ -246,10 +247,18 @@ function resultFromUnknownError(message = '提交回應不確定，請用原 com
 
 async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput): Promise<CommandErrorCode | null> {
   try {
+    if (input.kind === 'CreateStudent' || input.kind === 'EditStudent' || input.kind === 'SetStudentStatus') {
+      const student = await getDocFromServer(doc(db, studentPath(input.targets.studentId)));
+      if (input.kind === 'CreateStudent') return student.exists() ? 'INVALID_INPUT' : null;
+      if (!student.exists()) return null;
+      const current = decodeStudent(student.data());
+      return current.revision === input.expectedRevisions.student ? 'INVALID_INPUT' : 'REVISION_CONFLICT';
+    }
     if (input.kind === 'EnsureDay') {
       await getDocFromServer(doc(db, dayPath(input.targets.dayId)));
       return 'INVALID_INPUT';
     }
+    if (input.kind !== 'CreateOrder' && input.kind !== 'CreatePayment') return null;
     const [student, day, transaction] = await Promise.all([
       getDocFromServer(doc(db, studentPath(input.targets.studentId))),
       getDocFromServer(doc(db, dayPath(input.targets.dayId))),
@@ -341,9 +350,12 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     const headRef = doc(db, dataHeadPath());
     const leaseRef = doc(db, accessLeasePath());
     const operatorRef = doc(db, `operators/${user.uid}`);
-    const targetDayId = input.kind === 'EnsureDay' ? input.targets.dayId : input.targets.dayId;
-    const dayRef = doc(db, dayPath(targetDayId));
-    const targetStudentRef = input.kind === 'EnsureDay' ? null : doc(db, studentPath(input.targets.studentId));
+    const hasDayTarget = input.kind === 'EnsureDay' || input.kind === 'CreateOrder' || input.kind === 'CreatePayment';
+    const targetDayId = input.kind === 'EnsureDay' ? input.targets.dayId
+      : input.kind === 'CreateOrder' || input.kind === 'CreatePayment' ? input.targets.dayId : null;
+    const dayRef = targetDayId ? doc(db, dayPath(targetDayId)) : null;
+    const targetStudentId = input.kind === 'EnsureDay' ? null : input.targets.studentId;
+    const targetStudentRef = targetStudentId ? doc(db, studentPath(targetStudentId)) : null;
     const targetTransactionRef = input.kind === 'CreateOrder' || input.kind === 'CreatePayment'
       ? doc(db, transactionPath(input.targets.transactionId))
       : null;
@@ -372,13 +384,18 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
           return { existing: stored } as const;
         }
 
-        const daySnapshot = await tx.get(dayRef);
+        const daySnapshot = dayRef ? await tx.get(dayRef) : null;
         let studentBefore: Data | null = null;
         let transactionExists = false;
-        if (targetStudentRef) {
+        if (targetStudentRef && targetStudentId) {
           const studentSnapshot = await tx.get(targetStudentRef);
-          if (!studentSnapshot.exists()) throw new RejectCommand('INVALID_INPUT', '目標學生不存在');
-          studentBefore = decodeStudent(studentSnapshot.data());
+          if (input.kind === 'CreateStudent') {
+            if (studentSnapshot.exists()) throw new RejectCommand('INVALID_INPUT', '學生編號已存在');
+          } else {
+            if (!studentSnapshot.exists()) throw new RejectCommand('INVALID_INPUT', '目標學生不存在');
+            studentBefore = decodeStudent(studentSnapshot.data());
+            if (studentBefore.studentId !== targetStudentId) throw new RejectCommand('UNSUPPORTED_SCHEMA', '學生文件 ID 與路徑不一致');
+          }
         }
         if (targetTransactionRef) {
           const transactionSnapshot = await tx.get(targetTransactionRef);
@@ -391,6 +408,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         const zeroCash = { before: 0, after: 0, delta: 0, reasonKind: 'none' as const, refundAmount: 0 };
 
         if (input.kind === 'EnsureDay') {
+          if (!daySnapshot) throw new RejectCommand('UNSUPPORTED_SCHEMA', 'EnsureDay 缺少目標日期參照');
           if (daySnapshot.exists()) throw new RejectCommand('INVALID_INPUT', '該營業日已存在；不會重設或重開日期');
           const businessDate = input.payload.businessDate;
           requireDateAfterGoLive(businessDate, String(headBefore.goLiveDate));
@@ -407,13 +425,85 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
             after: { head: headAfter, day: dayAfter },
             reason: null, cashEffect: zeroCash, payload: input.payload, inputFingerprint: fingerprint,
           };
-          tx.set(dayRef, dayAfter);
+          tx.set(dayRef!, dayAfter);
           tx.update(headRef, headAfter);
           tx.set(commandRef, stored);
           return { existing: null } as const;
         }
 
-        if (!daySnapshot.exists() || !studentBefore || !targetStudentRef || !targetTransactionRef) {
+        if (input.kind === 'CreateStudent') {
+          if (!targetStudentRef || studentBefore !== null || !daySnapshot && hasDayTarget) {
+            throw new RejectCommand('INVALID_INPUT', '建立學生命令目標不合法');
+          }
+          const opening = input.payload.openingBalance;
+          const studentAfter: Data = {
+            studentId: input.targets.studentId,
+            displayName: input.payload.displayName,
+            aliases: input.payload.aliases,
+            status: 'active',
+            openingBalance: { ...opening, createdAt: now },
+            currentBalance: opening.amount,
+            createdAt: now,
+            revision: 1,
+            lastCommandId: input.commandId,
+            updatedAt: now,
+          };
+          const stored: StoredEnabledCommandDoc = {
+            commandId: input.commandId, kind: 'CreateStudent', seq, leaseEpoch: input.leaseEpoch,
+            actor: { uid: user.uid, email: user.email! }, committedAt: now as Timestamp,
+            businessDate: null, studentId: input.targets.studentId, targets: input.targets,
+            expectedRevisions: input.expectedRevisions,
+            before: { head: headBefore, student: null }, after: { head: headAfter, student: studentAfter },
+            reason: null, cashEffect: zeroCash, payload: input.payload, inputFingerprint: fingerprint,
+          };
+          tx.set(targetStudentRef, studentAfter);
+          tx.update(headRef, headAfter);
+          tx.set(commandRef, stored);
+          return { existing: null } as const;
+        }
+
+        if (input.kind === 'EditStudent' || input.kind === 'SetStudentStatus') {
+          if (!targetStudentRef || !studentBefore) throw new RejectCommand('INVALID_INPUT', '目標學生不存在');
+          checkRevision(studentBefore.revision, input.expectedRevisions.student, '學生版本');
+          let reason: string | null = null;
+          let studentAfter: Data;
+          if (input.kind === 'EditStudent') {
+            studentAfter = {
+              ...studentBefore,
+              ...(input.payload.displayName === undefined ? {} : { displayName: input.payload.displayName }),
+              ...(input.payload.aliases === undefined ? {} : { aliases: input.payload.aliases }),
+              revision: Number(studentBefore.revision) + 1,
+              lastCommandId: input.commandId,
+              updatedAt: now,
+            };
+          } else {
+            reason = input.payload.reason || null;
+            studentAfter = {
+              ...studentBefore,
+              status: input.payload.status,
+              revision: Number(studentBefore.revision) + 1,
+              lastCommandId: input.commandId,
+              updatedAt: now,
+            };
+          }
+          const storedCommon = {
+            commandId: input.commandId, kind: input.kind, seq, leaseEpoch: input.leaseEpoch,
+            actor: { uid: user.uid, email: user.email! }, committedAt: now as Timestamp,
+            businessDate: null, studentId: input.targets.studentId, targets: input.targets,
+            expectedRevisions: input.expectedRevisions,
+            before: { head: headBefore, student: studentBefore }, after: { head: headAfter, student: studentAfter },
+            reason, cashEffect: zeroCash, inputFingerprint: fingerprint,
+          };
+          const stored: StoredEnabledCommandDoc = input.kind === 'EditStudent'
+            ? { ...storedCommon, kind: 'EditStudent', payload: input.payload }
+            : { ...storedCommon, kind: 'SetStudentStatus', payload: input.payload };
+          tx.update(targetStudentRef, studentAfter);
+          tx.update(headRef, headAfter);
+          tx.set(commandRef, stored);
+          return { existing: null } as const;
+        }
+
+        if (!daySnapshot?.exists() || !studentBefore || !targetTransactionRef || !dayRef) {
           throw new RejectCommand('INVALID_INPUT', '建立交易需要已存在的營業日與學生');
         }
         if (transactionExists) throw new RejectCommand('INVALID_INPUT', 'transactionId 已存在');
@@ -511,8 +601,8 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
           ? { ...storedCommon, kind: 'CreateOrder', payload: input.payload }
           : { ...storedCommon, kind: 'CreatePayment', payload: input.payload };
         // All gets above are completed before the first write.
-        tx.update(targetStudentRef, studentAfter);
-        tx.update(dayRef, dayAfter);
+          tx.update(targetStudentRef!, studentAfter);
+          tx.update(dayRef!, dayAfter);
         tx.set(targetTransactionRef, transactionAfter);
         tx.update(headRef, headAfter);
         tx.set(commandRef, stored);
