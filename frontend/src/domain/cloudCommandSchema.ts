@@ -31,7 +31,7 @@ export interface CommandTargetsByKind {
 export interface CommandPayloadByKind {
   CreateStudent: { displayName: string; aliases: string[]; openingBalance: { amount: number; asOfDate: string; note: string } };
   EditStudent: { displayName?: string; aliases?: string[] };
-  SetStudentStatus: { status: 'active' | 'inactive'; reason?: string };
+  SetStudentStatus: { status: 'active' | 'inactive'; reason: string };
   CorrectOpening: { amount: number; note: string; reason: string };
   SaveVendor: { vendorId: string; name: string; phone: string; note: string; status: 'active' | 'inactive' };
   RemoveVendor: { reason: string };
@@ -241,12 +241,14 @@ function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayl
     } as CommandPayloadByKind['EditStudent'];
   }
   if (kind === 'SetStudentStatus') {
-    exactKeys(value, ['status'], ['reason']);
+    exactKeys(value, ['status', 'reason']);
     if (value.status !== 'active' && value.status !== 'inactive') {
       throw new InvalidCloudCommandInput('status 必須是 active 或 inactive');
     }
-    const reason = value.reason ?? '';
-    if (typeof reason !== 'string' || reason.length > 500) throw new InvalidCloudCommandInput('reason 不合法');
+    const reason = value.reason;
+    if (typeof reason !== 'string' || reason.length < 1 || reason.length > 500) {
+      throw new InvalidCloudCommandInput('reason 必須為 1 至 500 字');
+    }
     return { status: value.status, reason } as CommandPayloadByKind['SetStudentStatus'];
   }
   if (kind === 'EnsureDay') {
@@ -770,7 +772,11 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
   if (!(raw.committedAt instanceof Timestamp)) throw new InvalidCloudCommandInput('receipt.committedAt 必須是 Firestore Timestamp');
   if (raw.businessDate !== null) dateValue(raw.businessDate, 'receipt.businessDate');
   if (raw.studentId !== null && typeof raw.studentId !== 'string') throw new InvalidCloudCommandInput('receipt.studentId 不合法');
-  if (raw.reason !== null && !(raw.kind === 'SetStudentStatus' && typeof raw.reason === 'string' && raw.reason.length <= 500)) {
+  if (raw.kind === 'SetStudentStatus') {
+    if (typeof raw.reason !== 'string' || raw.reason.length < 1 || raw.reason.length > 500) {
+      throw new InvalidCloudCommandInput('command receipt.reason 不合法');
+    }
+  } else if (raw.reason !== null) {
     throw new InvalidCloudCommandInput('command receipt.reason 不合法');
   }
   if (typeof raw.inputFingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(raw.inputFingerprint)) {

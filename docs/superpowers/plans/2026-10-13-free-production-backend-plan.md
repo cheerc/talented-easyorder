@@ -164,7 +164,7 @@ npm run test:e2e
 
 **Scope/files：** `studentRepository.ts`→新 command adapter；strict server-only student list/read；isolated Cloud student page 與 `App.tsx` wiring。不得 mount `legacyAppContent`、POS hooks 或 local business store；Firebase config 缺失時 fail closed。
 
-**Consumes/produces：** `commitCommand`→`CreateStudent`／`EditStudent`／`SetStudentStatus`、server讀回完整名單與搜尋。三種命令 `businessDate=null`，固定 target `studentId`；ID 維持字串，含 `001`。Edit 僅修改 `displayName`／`aliases`；status 分別切換 active/inactive，不碰歷史或餘額。
+**Consumes/produces：** `commitCommand`→`CreateStudent`／`EditStudent`／`SetStudentStatus`、server讀回完整名單與搜尋。三種命令 `businessDate=null`，固定 target `studentId`；ID 維持字串，含 `001`。Edit 僅修改 `displayName`／`aliases`；status 分別切換 active/inactive，不碰歷史或餘額，並要求 1–500 字理由。
 
 **RED/GREEN：** D01：從真空集合建立三名學生，`001` 字串不變、重複 ID 拒絕、同名允許、明確 0／負期初、±1e9 邊界合法、超界／fraction／負零拒絕、直接改 balance/ID/opening/date 拒絕、停用／恢復保留歷史與餘額、重登後 server 一致。Rules 需證明新 command+head+student projection 原子閉合與其餘 16 kind 仍 deny。期初日期只可為 `head.goLiveDate` 或 Rules `currentTaipeiDate` 且非未來；前者用於既有 roster baseline，後者用於今天新增，Rules 不知道 roster 類別且不宣稱強制分類。Create 不新增 transaction/payment/day effect。
 

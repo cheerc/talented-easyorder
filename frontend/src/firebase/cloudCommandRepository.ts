@@ -491,7 +491,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
             if (input.payload.status === studentBefore.status) {
               throw new RejectCommand('INVALID_INPUT', '學生狀態沒有變更');
             }
-            reason = input.payload.reason || null;
+            reason = input.payload.reason;
             studentAfter = {
               ...studentBefore,
               status: input.payload.status,

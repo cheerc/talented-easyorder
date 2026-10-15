@@ -204,7 +204,7 @@ service cloud.firestore {
         && command.actor.email == request.auth.token.email
         && command.committedAt == request.time
         && (command.kind == 'SetStudentStatus'
-          ? (command.reason is string && command.reason.size() <= 500)
+          ? (command.reason is string && command.reason.size() >= 1 && command.reason.size() <= 500)
           : command.reason == null)
         && command.inputFingerprint is string
         && command.inputFingerprint.matches('^[0-9a-f]{64}$')
@@ -361,7 +361,7 @@ service cloud.firestore {
         && command.expectedRevisions.student >= 1
         && exactMap(payload, ['status', 'reason'])
         && payload.status in ['active', 'inactive']
-        && payload.reason is string && payload.reason.size() <= 500
+        && payload.reason is string && payload.reason.size() >= 1 && payload.reason.size() <= 500
         && before is map && after is map
         && before.studentId == command.targets.studentId
         && after.studentId == command.targets.studentId
@@ -372,7 +372,7 @@ service cloud.firestore {
         && after.lastCommandId == commandId
         && after.updatedAt == request.time
         && after.diff(before).affectedKeys().hasOnly(['status', 'revision', 'lastCommandId', 'updatedAt'])
-        && command.reason == (payload.reason == '' ? null : payload.reason);
+        && command.reason == payload.reason;
     }
 
     function validStudentMutation(commandId, command) {

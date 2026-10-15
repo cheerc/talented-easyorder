@@ -51,14 +51,18 @@ type PreparedCommand =
       reason: string;
     };
 
+type RecoveryPhase = 'submitting' | 'unknown' | 'checking' | 'receipt' | 'access-lost';
+
 interface RecoveryState {
-  command: PreparedCommand;
-  phase: 'submitting' | 'unknown' | 'checking' | 'receipt';
+  commandId: string;
+  command?: PreparedCommand;
+  phase: RecoveryPhase;
   receipt?: CommandReceipt;
 }
 
 interface PageState {
   identityKey: string;
+  authorizationRevoked: boolean;
   snapshot: CloudStudentList | null;
   loading: boolean;
   loadError: string;
@@ -86,6 +90,7 @@ const freshCreateDraft = (): CreateDraft => ({
 
 const initialPageState = (identityKey: string): PageState => ({
   identityKey,
+  authorizationRevoked: false,
   snapshot: null,
   loading: true,
   loadError: '',
@@ -157,6 +162,16 @@ function displayError(error: unknown): string {
   return '雲端操作無法完成，學生資料已清除。請重新載入後再試。';
 }
 
+function errorCode(error: unknown): string {
+  return error && typeof error === 'object' && 'code' in error
+    ? String((error as { code?: unknown }).code)
+    : '';
+}
+
+function isAuthorizationLoss(error: unknown): boolean {
+  return ['LEASE_LOST', 'UNAUTHORIZED', 'ACCESS_BUSY'].includes(errorCode(error));
+}
+
 function formatBalance(amount: number): string {
   return `NT$ ${new Intl.NumberFormat('zh-TW').format(amount)}`;
 }
@@ -174,11 +189,15 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
   const generationRef = useRef(0);
   const listRequestRef = useRef(0);
   const commandFlightRef = useRef<symbol | null>(null);
+  const revokedIdentityRef = useRef<string | null>(null);
+  const pendingCommandIdRef = useRef<string | null>(null);
 
   if (identityRef.current !== identityKey) {
     identityRef.current = identityKey;
     generationRef.current += 1;
     commandFlightRef.current = null;
+    revokedIdentityRef.current = null;
+    pendingCommandIdRef.current = null;
   }
 
   const page = pageState.identityKey === identityKey ? pageState : initialPageState(identityKey);
@@ -199,9 +218,44 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
     typeof action === 'function' ? action(previous) : action
   ));
 
+  const revokeAuthorization = useCallback((
+    key: string,
+    generation: number,
+    commandId: string | null,
+    error: unknown,
+  ) => {
+    if (!isCurrent(key, generation)) return;
+
+    // Invalidate every list, command, and receipt request before scheduling a
+    // React update. Their later completions must not restore identity data.
+    revokedIdentityRef.current = key;
+    generationRef.current += 1;
+    listRequestRef.current += 1;
+    commandFlightRef.current = null;
+    const retainedCommandId = commandId ?? pendingCommandIdRef.current;
+    pendingCommandIdRef.current = retainedCommandId;
+
+    setPageStateRaw(previous => {
+      if (previous.identityKey !== key) return previous;
+      const onlyCommandId = retainedCommandId ?? previous.recovery?.commandId ?? null;
+      return {
+        ...previous,
+        ...clearDrafts(),
+        authorizationRevoked: true,
+        snapshot: null,
+        loading: false,
+        loadError: displayError(error),
+        actionError: '',
+        notice: '',
+        recovery: onlyCommandId ? { commandId: onlyCommandId, phase: 'access-lost' } : null,
+      };
+    });
+  }, [isCurrent]);
+
   const loadSnapshot = useCallback(async (confirmedReceipt?: CommandReceipt) => {
     const key = identityKey;
     const generation = generationRef.current;
+    if (revokedIdentityRef.current === key) return;
     const requestId = ++listRequestRef.current;
     updateFor(key, generation, previous => ({
       ...previous,
@@ -215,9 +269,11 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
     try {
       const snapshot = await repository.list();
       if (!isCurrent(key, generation) || requestId !== listRequestRef.current) return;
+      if (confirmedReceipt?.commandId === pendingCommandIdRef.current) pendingCommandIdRef.current = null;
       updateFor(key, generation, previous => {
         const confirmsPending = confirmedReceipt
-          && previous.recovery?.command.commandId === confirmedReceipt.commandId;
+          && previous.recovery?.commandId === confirmedReceipt.commandId
+          && previous.recovery.command !== undefined;
         const confirmedCommand = confirmsPending ? previous.recovery?.command : null;
         return {
           ...previous,
@@ -234,22 +290,29 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
       });
     } catch (error) {
       if (!isCurrent(key, generation) || requestId !== listRequestRef.current) return;
-      updateFor(key, generation, previous => ({
-        ...previous,
-        ...clearDrafts(),
-        snapshot: null,
-        loading: false,
-        loadError: displayError(error),
-        actionError: confirmedReceipt
-          ? '已找到命令回執，但尚未完成伺服器名單再次讀取；請重新載入確認。'
-          : '',
-        recovery: confirmedReceipt && previous.recovery?.command.commandId === confirmedReceipt.commandId
-          ? { ...previous.recovery, phase: 'receipt', receipt: confirmedReceipt }
-          : previous.recovery,
-        notice: '',
-      }));
+      if (isAuthorizationLoss(error)) {
+        revokeAuthorization(key, generation, confirmedReceipt?.commandId ?? null, error);
+        return;
+      }
+      updateFor(key, generation, previous => {
+        const recovery = confirmedReceipt && previous.recovery?.commandId === confirmedReceipt.commandId
+          ? { ...previous.recovery, phase: 'receipt' as const, receipt: confirmedReceipt }
+          : previous.recovery;
+        return {
+          ...previous,
+          ...clearDrafts(),
+          snapshot: null,
+          loading: false,
+          loadError: displayError(error),
+          actionError: confirmedReceipt
+            ? '已找到命令回執，但尚未完成伺服器名單再次讀取；請重新載入確認。'
+            : '',
+          recovery,
+          notice: '',
+        };
+      });
     }
-  }, [identityKey, isCurrent, repository, updateFor]);
+  }, [identityKey, isCurrent, repository, revokeAuthorization, updateFor]);
 
   useEffect(() => {
     const generation = ++generationRef.current;
@@ -264,17 +327,18 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
   const runPreparedCommand = async (command: PreparedCommand) => {
     const key = identityKey;
     const generation = generationRef.current;
+    if (revokedIdentityRef.current === key) return;
     if (!key || !Number.isSafeInteger(leaseEpoch) || leaseEpoch < 1) {
-      updateFor(key, generation, previous => ({
-        ...previous,
-        snapshot: null,
-        actionError: '目前沒有有效的操作使用權，學生資料已清除。請重新確認使用權。',
-      }));
+      revokeAuthorization(key, generation, command.commandId, {
+        code: 'LEASE_LOST',
+        message: '目前沒有有效的操作使用權，學生資料已清除。請重新確認使用權。',
+      });
       return;
     }
     if (commandFlightRef.current) return;
     const flightToken = Symbol('cloud-student-command');
     commandFlightRef.current = flightToken;
+    pendingCommandIdRef.current = command.commandId;
     const releaseFlight = () => {
       if (commandFlightRef.current === flightToken) commandFlightRef.current = null;
     };
@@ -286,7 +350,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
       loadError: '',
       actionError: '',
       notice: '',
-      recovery: { command, phase: 'submitting' },
+      recovery: { commandId: command.commandId, command, phase: 'submitting' },
     }));
 
     let result: CommandResult;
@@ -319,15 +383,19 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
           reason: command.reason,
         });
       }
-    } catch {
+    } catch (error) {
       releaseFlight();
       if (!isCurrent(key, generation)) return;
+      if (isAuthorizationLoss(error)) {
+        revokeAuthorization(key, generation, command.commandId, error);
+        return;
+      }
       updateFor(key, generation, previous => ({
         ...previous,
         snapshot: null,
         loadError: '',
         actionError: '',
-        recovery: { command, phase: 'unknown' },
+        recovery: { commandId: command.commandId, command, phase: 'unknown' },
       }));
       return;
     }
@@ -337,6 +405,11 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
       return;
     }
     if (!result.ok) {
+      if (isAuthorizationLoss(result.error)) {
+        releaseFlight();
+        revokeAuthorization(key, generation, command.commandId, result.error);
+        return;
+      }
       if (result.error.code === 'UNKNOWN_RESULT') {
         releaseFlight();
         updateFor(key, generation, previous => ({
@@ -344,12 +417,13 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
           snapshot: null,
           loadError: '',
           actionError: '',
-          recovery: { command, phase: 'unknown' },
+          recovery: { commandId: command.commandId, command, phase: 'unknown' },
         }));
         return;
       }
       releaseFlight();
-      const clearIdentityData = ['OFFLINE', 'UNAUTHORIZED', 'LEASE_LOST', 'ACCESS_BUSY'].includes(result.error.code);
+      const clearIdentityData = result.error.code === 'OFFLINE';
+      pendingCommandIdRef.current = clearIdentityData ? command.commandId : null;
       updateFor(key, generation, previous => ({
         ...previous,
         ...(clearIdentityData ? clearDrafts() : {}),
@@ -357,14 +431,16 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
         loading: false,
         loadError: '操作未完成；請重新載入伺服器名單後繼續。',
         actionError: displayError(result.error),
-        recovery: null,
+        recovery: clearIdentityData
+          ? { commandId: command.commandId, phase: 'access-lost' }
+          : null,
       }));
       return;
     }
 
     updateFor(key, generation, previous => ({
       ...previous,
-      recovery: { command, phase: 'receipt', receipt: result.receipt },
+      recovery: { commandId: command.commandId, command, phase: 'receipt', receipt: result.receipt },
     }));
     await loadSnapshot(result.receipt);
     releaseFlight();
@@ -503,12 +579,17 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
 
   const checkPendingCommand = async () => {
     const recovery = page.recovery;
-    if (!recovery || recovery.phase === 'submitting' || recovery.phase === 'checking') return;
+    if (revokedIdentityRef.current === identityKey) return;
+    if (!recovery || !recovery.command || recovery.phase === 'submitting' || recovery.phase === 'checking') return;
+    if (recovery.phase === 'receipt') {
+      if (recovery.receipt) await loadSnapshot(recovery.receipt);
+      return;
+    }
     const key = identityKey;
     const generation = generationRef.current;
     updateFor(key, generation, previous => ({ ...previous, actionError: '', recovery: { ...recovery, phase: 'checking' } }));
     try {
-      const receipt = await repository.readCommand(recovery.command.commandId);
+      const receipt = await repository.readCommand(recovery.commandId);
       if (!isCurrent(key, generation)) return;
       if (!receipt) {
         updateFor(key, generation, previous => ({
@@ -516,20 +597,71 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
           snapshot: null,
           loadError: '',
           actionError: '伺服器目前尚未找到這筆命令。沒有產生新的命令編號；可用相同編號與原資料重試。',
-          recovery: { ...recovery, phase: 'unknown' },
+          recovery: { commandId: recovery.commandId, command: recovery.command, phase: 'unknown' },
         }));
         return;
       }
-      if (receipt.commandId !== recovery.command.commandId) {
+      if (receipt.commandId !== recovery.commandId) {
         throw new Error('伺服器回傳的命令編號不符，無法確認結果。');
+      }
+      // A receipt ID alone is not proof that this is the same business command.
+      // Re-submit the frozen input under the same ID; the repository compares all
+      // semantic fields and returns the stored receipt without another write.
+      const verification = recovery.command.kind === 'create'
+        ? await repository.createStudent({
+          commandId: recovery.command.commandId,
+          leaseEpoch,
+          studentId: recovery.command.studentId,
+          displayName: recovery.command.displayName,
+          aliases: recovery.command.aliases,
+          openingBalance: recovery.command.openingBalance,
+        })
+        : recovery.command.kind === 'edit'
+          ? await repository.editStudent({
+            commandId: recovery.command.commandId,
+            leaseEpoch,
+            studentId: recovery.command.studentId,
+            expectedRevision: recovery.command.expectedRevision,
+            ...(recovery.command.displayName !== undefined ? { displayName: recovery.command.displayName } : {}),
+            ...(recovery.command.aliases !== undefined ? { aliases: recovery.command.aliases } : {}),
+          })
+          : await repository.setStudentStatus({
+            commandId: recovery.command.commandId,
+            leaseEpoch,
+            studentId: recovery.command.studentId,
+            expectedRevision: recovery.command.expectedRevision,
+            status: recovery.command.status,
+            reason: recovery.command.reason,
+          });
+      if (!isCurrent(key, generation)) return;
+      if (!verification.ok) {
+        if (isAuthorizationLoss(verification.error)) {
+          revokeAuthorization(key, generation, recovery.commandId, verification.error);
+          return;
+        }
+        updateFor(key, generation, previous => ({
+          ...previous,
+          snapshot: null,
+          loading: false,
+          loadError: '',
+          actionError: verification.error.code === 'UNKNOWN_RESULT'
+            ? '已找到命令回執，但語義比對結果不明；請使用相同命令編號再查詢。'
+            : `命令編號已存在，但伺服器內容與原操作不符，仍未確認完成。${verification.error.message}`,
+          recovery: { commandId: recovery.commandId, command: recovery.command, phase: 'unknown' },
+        }));
+        return;
       }
       updateFor(key, generation, previous => ({
         ...previous,
-        recovery: { command: recovery.command, phase: 'receipt', receipt },
+        recovery: { commandId: recovery.commandId, command: recovery.command, phase: 'receipt', receipt: verification.receipt },
       }));
-      await loadSnapshot(receipt);
+      await loadSnapshot(verification.receipt);
     } catch (error) {
       if (!isCurrent(key, generation)) return;
+      if (isAuthorizationLoss(error)) {
+        revokeAuthorization(key, generation, recovery.commandId, error);
+        return;
+      }
       updateFor(key, generation, previous => ({
         ...previous,
         ...clearDrafts(),
@@ -537,7 +669,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
         loading: false,
         loadError: '',
         actionError: `目前無法確認命令結果。${displayError(error)}`,
-        recovery: { ...recovery, phase: 'unknown' },
+        recovery: { commandId: recovery.commandId, command: recovery.command, phase: 'unknown' },
       }));
     }
   };
@@ -562,7 +694,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
           type="button"
           className="cloud-students__secondary"
           onClick={() => void loadSnapshot(page.recovery?.phase === 'receipt' ? page.recovery.receipt : undefined)}
-          disabled={page.loading || !identityKey}
+          disabled={page.loading || !identityKey || page.authorizationRevoked}
         >
           {page.loading ? '載入中…' : '重新載入名單'}
         </button>
@@ -570,33 +702,54 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey }: CloudStudents
 
       {page.loadError && <div className="cloud-students__alert" role="alert">{page.loadError}</div>}
       {page.actionError && <div className="cloud-students__alert" role="alert">{page.actionError}</div>}
+      {page.authorizationRevoked && (
+        <div className="cloud-students__notice" role="status">
+          授權狀態已失效。請重新登入並取得有效使用權；若登入狀態尚未更新，重新載入整頁會再次向伺服器驗證。
+        </div>
+      )}
       {page.notice && <div className="cloud-students__notice" role="status">{page.notice}</div>}
 
       {page.recovery && (
         <section className="cloud-students__recovery" aria-label="命令結果確認" role="alert">
           <strong>{page.recovery.phase === 'receipt'
             ? '已找到伺服器回執，名單尚待再次讀取。'
+            : page.recovery.phase === 'access-lost'
+              ? '使用權已變更；敏感操作內容已清除。'
             : page.recovery.phase === 'checking'
               ? '正在查詢原命令結果…'
               : '結果確認中，請勿重複建立／修改。'}</strong>
-          <span>{commandLabel(page.recovery.command)} · 命令編號 {page.recovery.command.commandId}</span>
+          {page.recovery.command && <span>{commandLabel(page.recovery.command)} · 命令編號 {page.recovery.commandId}</span>}
+          {!page.recovery.command && <span>命令編號 {page.recovery.commandId}</span>}
+          {page.recovery.phase === 'access-lost' && <span>只保留命令編號供稍後同編號核對；請先重新確認登入帳號與使用權。</span>}
           {page.recovery.phase === 'receipt' && page.recovery.receipt && (
             <span>伺服器命令序號 {page.recovery.receipt.seq}</span>
           )}
           <div className="cloud-students__actions">
-            {page.recovery.phase !== 'submitting' && page.recovery.phase !== 'checking' && (
+            {page.recovery.command && page.recovery.phase !== 'submitting' && page.recovery.phase !== 'checking' && page.recovery.phase !== 'receipt' && (
               <button type="button" className="cloud-students__primary" onClick={() => void checkPendingCommand()}>
                 查詢原命令結果
               </button>
             )}
-            {page.recovery.phase === 'unknown' && page.actionError.includes('尚未找到') && (
-              <button type="button" className="cloud-students__secondary" onClick={() => void runPreparedCommand(page.recovery!.command)}>
+            {page.recovery.phase === 'unknown' && page.recovery.command && page.actionError.includes('尚未找到') && (
+              <button type="button" className="cloud-students__secondary" onClick={() => void runPreparedCommand(page.recovery!.command!)}>
                 以相同命令編號重試
               </button>
             )}
             {page.recovery.phase === 'receipt' && (
               <button type="button" className="cloud-students__secondary" onClick={() => void loadSnapshot(page.recovery?.receipt)} disabled={page.loading}>
                 重新讀取伺服器名單
+              </button>
+            )}
+            {page.recovery.phase === 'access-lost' && page.snapshot && (
+              <button
+                type="button"
+                className="cloud-students__secondary"
+                onClick={() => {
+                  pendingCommandIdRef.current = null;
+                  setPageState(previous => ({ ...previous, recovery: null, actionError: '', notice: '請依保留的命令編號完成人工核對後，再繼續操作。' }));
+                }}
+              >
+                我已記下命令編號並完成人工核對，清除追蹤
               </button>
             )}
           </div>

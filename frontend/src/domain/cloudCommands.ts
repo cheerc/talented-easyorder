@@ -174,7 +174,7 @@ export type EditStudentCommand = BaseCommand<
 // 3. SetStudentStatus
 export type SetStudentStatusCommand = BaseCommand<
   'SetStudentStatus',
-  { status: 'active' | 'inactive'; reason?: string },
+  { status: 'active' | 'inactive'; reason: string },
   { studentId: string }
 >;
 

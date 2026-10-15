@@ -1125,6 +1125,27 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     }
   });
 
+  it.each([
+    ['missing', { status: 'inactive' }],
+    ['empty', { status: 'inactive', reason: '' }],
+  ])('P06.3a: rejects a %s status reason before Rules and leaves all state unchanged', async (_label, payload) => {
+    await seedBase();
+    const commandId = _label === 'missing'
+      ? 'f0a11111-1111-4111-8111-111111111111'
+      : 'f0a22222-2222-4222-8222-222222222222';
+    const result = await repository(operatorA).commitCommand({
+      commandId, kind: 'SetStudentStatus', leaseEpoch: 1,
+      targets: { studentId }, expectedRevisions: { student: 1 }, payload,
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    const [head, command] = await withAdmin(async db => Promise.all([
+      getDoc(doc(db, 'system/dataHead')),
+      getDoc(doc(db, `commands/${commandId}`)),
+    ]));
+    expect(head.data()).toMatchObject({ seq: 0, lastCommandId: null });
+    expect(command.exists()).toBe(false);
+  });
+
   it.each(ALL_COMMAND_KINDS.filter(kind => !['EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus'].includes(kind)))(
     'P06.2: production Rules directly deny unsupported raw SDK kind %s atomically', async kind => {
       await seedBase();
@@ -1368,6 +1389,27 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     expect(student.data()).toMatchObject({ status: 'inactive', currentBalance: 0, revision: 2 });
     expect(command.data()).toMatchObject({ kind: 'SetStudentStatus', reason: 'Synthetic disable', businessDate: null, studentId });
   });
+
+  it.each(['missing payload reason', 'empty reason'] as const)(
+    'P06.13: Rules reject raw status receipt with %s atomically', async reasonCase => {
+      await seedBase({ withBusinessDocs: true });
+      const artifacts = await rawStudentMutationArtifacts({
+        commandId: reasonCase === 'missing payload reason'
+          ? 'f9222222-2222-4222-8222-222222222222'
+          : 'f9333333-3333-4333-8333-333333333333',
+        kind: 'SetStudentStatus', leaseEpoch: 1, targets: { studentId },
+        expectedRevisions: { student: 1 }, payload: { status: 'inactive', reason: 'Synthetic disable' },
+      });
+      const payload = artifacts.command.payload as RawMap;
+      if (reasonCase === 'missing payload reason') {
+        delete payload.reason;
+      } else {
+        payload.reason = '';
+        artifacts.command.reason = '';
+      }
+      await expectRawStudentMutationDeniedUnchanged(artifacts);
+    },
+  );
 
   it.each([
     ['head writer', ['head'] as const],
