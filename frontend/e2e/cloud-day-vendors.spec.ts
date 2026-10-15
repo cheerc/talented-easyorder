@@ -202,13 +202,16 @@ test.describe('P07 Cloud day vendors', () => {
     await previousMenuForm.getByRole('button', { name: '儲存菜單' }).click();
     await expect(main.getByText('昨日菜單快照')).toBeVisible();
     const earlierDayBeforeLaterChanges = await readAdminDocument('days', previousDate);
-    expect(earlierDayBeforeLaterChanges?.menu).toMatchObject({
-      businessDate: previousDate,
-      itemName: '昨日菜單快照',
-      price: 125,
-      vendorId: oldVendorId,
-      vendorNameSnapshot: '昨日供應商快照',
-      inheritedFromDate: null,
+    expect(earlierDayBeforeLaterChanges).toMatchObject({
+      id: previousDate,
+      menu: {
+        businessDate: previousDate,
+        itemName: '昨日菜單快照',
+        price: 125,
+        vendorId: oldVendorId,
+        vendorNameSnapshot: '昨日供應商快照',
+        inheritedFromDate: null,
+      },
     });
 
     await dateField.fill(today);
@@ -325,7 +328,7 @@ test.describe('P07 Cloud day vendors', () => {
       deleted: false,
     });
     expect(await readAdminDocument('days', futureDate)).toMatchObject({
-      dayId: futureDate,
+      id: futureDate,
       menu: {
         itemName: '未來直接菜單',
         price: 210,
@@ -343,8 +346,9 @@ test.describe('P07 Cloud day vendors', () => {
     expect(commands.find(command => command.kind === 'EnsureDay' && (command.targets as Record<string, unknown>).dayId === previousDate)).toMatchObject({
       kind: 'EnsureDay',
       actor: { uid: operatorUid },
+      targets: { dayId: previousDate },
       payload: { businessDate: previousDate },
-      after: { day: { dayId: previousDate, menu: null, openingCash: null } },
+      after: { day: { menu: null, openingCash: null } },
     });
     expect(commands.find(command => command.kind === 'SetDayMenu' && command.businessDate === today && (command.payload as Record<string, unknown>).inheritedFromDate === previousDate)).toMatchObject({
       kind: 'SetDayMenu',

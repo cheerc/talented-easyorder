@@ -103,10 +103,7 @@ service cloud.firestore {
     }
 
     function validTotals(totals) {
-      return exactMap(totals, [
-          'activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal',
-          'retainedReceipts', 'cashierIncome', 'cashierExpense'
-        ])
+      return totals is map && totals.size() == 7
         && totals.activeTransactionCount is int && totals.activeTransactionCount >= 0
         && totals.bentoCount is int && totals.bentoCount >= 0
         && totals.otherMealCount is int && totals.otherMealCount >= 0
@@ -142,10 +139,7 @@ service cloud.firestore {
     }
 
     function validMenu(menu, dayId) {
-      return exactMap(menu, [
-          'businessDate', 'itemName', 'price', 'vendorId', 'vendorNameSnapshot',
-          'updatedAt', 'revision', 'inheritedFromDate'
-        ])
+      return menu is map && menu.size() == 8
         && menu.businessDate == dayId
         && menu.itemName is string && menu.itemName.size() >= 1 && menu.itemName.size() <= 100
         && menu.price is int && menu.price >= 1 && menu.price <= 1000000
@@ -157,10 +151,7 @@ service cloud.firestore {
     }
 
     function validVendor(vendor, vendorId) {
-      return exactMap(vendor, [
-          'vendorId', 'name', 'phone', 'note', 'status', 'deleted',
-          'createdAt', 'revision', 'lastCommandId', 'updatedAt'
-        ])
+      return vendor is map && vendor.size() == 10
         && validId(vendorId)
         && vendor.vendorId == vendorId
         && validDisplayName(vendor.name)
@@ -175,10 +166,7 @@ service cloud.firestore {
     }
 
     function validDay(day, dayId) {
-      return exactMap(day, [
-          'status', 'revision', 'menu', 'openingCash', 'openedBy', 'openedAt',
-          'totals', 'lastSettlementRevision', 'lastCommandId', 'updatedAt'
-        ])
+      return day is map && day.size() == 10
         && day.status in ['open', 'closed', 'reopened']
         && day.revision is int && day.revision >= 1
         && (day.menu == null || validMenu(day.menu, dayId))
@@ -192,17 +180,33 @@ service cloud.firestore {
         && day.updatedAt is timestamp;
     }
 
+    function validDayNonMenu(day) {
+      return exactMap(day, [
+          'status', 'revision', 'menu', 'openingCash', 'openedBy', 'openedAt',
+          'totals', 'lastSettlementRevision', 'lastCommandId', 'updatedAt'
+        ])
+        && day.status in ['open', 'closed', 'reopened']
+        && day.revision is int && day.revision >= 1
+        && (day.openingCash == null || (day.openingCash is int && day.openingCash >= 0 && day.openingCash <= 20000))
+        && (day.openingCash == null
+          ? day.openedBy == null && day.openedAt == null
+          : day.openedBy is string && day.openedBy.size() > 0 && day.openedAt is timestamp)
+        && validTotals(day.totals)
+        && day.lastSettlementRevision is int && day.lastSettlementRevision >= 0
+        && day.lastCommandId is string
+        && day.updatedAt is timestamp;
+    }
+
     function validHeadAdvance(before, after, commandId) {
       return validHead(before)
-        && validHead(after)
         && before.maintenance == false
         && after.schemaVersion == before.schemaVersion
         && after.datasetId == before.datasetId
         && after.maintenance == before.maintenance
         && after.goLiveDate == before.goLiveDate
-        && after.seq == before.seq + 1
-        && after.lastCommandId == commandId
-        && after.updatedAt == request.time
+        && after.seq is int && after.seq >= 0 && after.seq > before.seq && after.seq == before.seq + 1
+        && after.lastCommandId is string && after.lastCommandId == commandId
+        && after.updatedAt is timestamp && after.updatedAt == request.time
         && after.diff(before).affectedKeys().hasOnly(['seq', 'lastCommandId', 'updatedAt']);
     }
 
@@ -263,7 +267,6 @@ service cloud.firestore {
           : command.reason == null)
         && command.inputFingerprint is string
         && command.inputFingerprint.matches('^[0-9a-f]{64}$')
-        && command.before is map && command.after is map
         && head.maintenance == false
         && head.seq is int
         && headAfter.seq == head.seq + 1
@@ -584,18 +587,16 @@ service cloud.firestore {
         && vendorAfter.updatedAt == request.time;
     }
 
-    function validSetDayMenuCommon(commandId, command, head, headAfter, dayBefore, dayAfter, vendor) {
+    function validSetDayMenuCommon(commandId, command, head, headAfter, dayBefore, dayAfter) {
       let dayId = command.targets.dayId;
       let payload = command.payload;
-      let menuAfter = dayAfter.menu;
       return commandHolder(command.leaseEpoch)
         && p07CommandEnvelope(commandId, command, head, headAfter)
-        && command.kind == 'SetDayMenu'
         && exactMap(command.targets, ['dayId'])
         && validCalendarDate(dayId)
         && exactMap(command.expectedRevisions, ['day', 'headSeq'])
         && exactMap(payload, ['selectionDate', 'itemName', 'price', 'vendorId', 'vendorNameSnapshot', 'inheritedFromDate'])
-        && payload.selectionDate is string
+        && payload.price is int
         && validCurrentTaipeiDate(payload.selectionDate)
         && dayBefore.revision is int && dayBefore.revision >= 1
         && command.expectedRevisions.day == dayBefore.revision
@@ -604,27 +605,14 @@ service cloud.firestore {
         && command.studentId == null
         && command.reason == null
         && zeroCashEffect(command.cashEffect)
-        && exactMap(command.before, ['head', 'day'])
-        && exactMap(command.after, ['head', 'day'])
-        && command.before.head == head
-        && command.after.head == headAfter
+        && command.before == {'head': head, 'day': command.before.day}
+        && command.after == {'head': headAfter, 'day': command.after.day}
         && dayId >= head.goLiveDate
         && dayBefore.status in ['open', 'reopened']
-        && validVendor(vendor, payload.vendorId)
-        && vendor.status == 'active'
-        && vendor.deleted == false
-        && payload.vendorNameSnapshot == vendor.name
-        && menuAfter.itemName == payload.itemName
-        && menuAfter.price == payload.price
-        && menuAfter.vendorId == payload.vendorId
-        && menuAfter.vendorNameSnapshot == payload.vendorNameSnapshot
-        && menuAfter.inheritedFromDate == payload.inheritedFromDate
-        && menuAfter.businessDate == dayId
+        && dayAfter.revision > dayBefore.revision
         && dayAfter.revision == dayBefore.revision + 1
         && dayAfter.lastCommandId == commandId
-        && dayAfter.updatedAt == request.time
-        && menuAfter.revision == (dayBefore.menu == null ? 1 : dayBefore.menu.revision + 1)
-        && menuAfter.updatedAt == request.time;
+        && dayAfter.updatedAt == request.time;
     }
 
     function validSetDayMenuDirect(commandId, command) {
@@ -633,9 +621,22 @@ service cloud.firestore {
       let dayId = command.targets.dayId;
       let dayBefore = get(/databases/$(database)/documents/days/$(dayId)).data;
       let dayAfter = getAfter(/databases/$(database)/documents/days/$(dayId)).data;
+      let menuAfter = dayAfter.menu;
       let vendor = get(/databases/$(database)/documents/vendors/$(command.payload.vendorId)).data;
       return command.payload.inheritedFromDate == null
-        && validSetDayMenuCommon(commandId, command, head, headAfter, dayBefore, dayAfter, vendor);
+        && validSetDayMenuCommon(commandId, command, head, headAfter, dayBefore, dayAfter)
+        && validVendor(vendor, command.payload.vendorId)
+        && vendor.status == 'active'
+        && vendor.deleted == false
+        && command.payload.vendorNameSnapshot == vendor.name
+        && menuAfter.itemName == command.payload.itemName
+        && menuAfter.price == command.payload.price
+        && menuAfter.vendorId == command.payload.vendorId
+        && menuAfter.vendorNameSnapshot == command.payload.vendorNameSnapshot
+        && menuAfter.inheritedFromDate == null
+        && menuAfter.businessDate == dayId
+        && menuAfter.revision == (dayBefore.menu == null ? 1 : dayBefore.menu.revision + 1)
+        && menuAfter.updatedAt == request.time;
     }
 
     function validSetDayMenuInherited(commandId, command) {
@@ -644,31 +645,46 @@ service cloud.firestore {
       let dayId = command.targets.dayId;
       let dayBefore = get(/databases/$(database)/documents/days/$(dayId)).data;
       let dayAfter = getAfter(/databases/$(database)/documents/days/$(dayId)).data;
-      let vendor = get(/databases/$(database)/documents/vendors/$(command.payload.vendorId)).data;
+      let sourceDate = command.payload.inheritedFromDate;
+      return validCalendarDate(sourceDate)
+        && sourceDate < dayId
+        && sourceDate <= command.payload.selectionDate
+        && validSetDayMenuCommon(commandId, command, head, headAfter, dayBefore, dayAfter);
+    }
+
+    function validSetDayMenuInheritedBusiness(command, dayId, dayBefore, dayAfter) {
       let sourceDate = command.payload.inheritedFromDate;
       let sourceDay = get(/databases/$(database)/documents/days/$(sourceDate)).data;
       let sourceMenu = sourceDay.menu;
-      return sourceDate is string
-        && validCalendarDate(sourceDate)
-        && sourceDate < dayId
-        && sourceDate <= command.payload.selectionDate
-        && validDay(sourceDay, sourceDate)
+      let vendor = get(/databases/$(database)/documents/vendors/$(command.payload.vendorId)).data;
+      return validDay(sourceDay, sourceDate)
         && sourceMenu is map
-        && sourceMenu.businessDate == sourceDate
         && command.payload.itemName == sourceMenu.itemName
         && command.payload.price == sourceMenu.price
         && command.payload.vendorId == sourceMenu.vendorId
         && command.payload.vendorNameSnapshot == sourceMenu.vendorNameSnapshot
-        && sourceMenu.vendorId == vendor.vendorId
-        && sourceMenu.vendorNameSnapshot == vendor.name
-        && validSetDayMenuCommon(commandId, command, head, headAfter, dayBefore, dayAfter, vendor);
+        && validVendor(vendor, command.payload.vendorId)
+        && vendor.status == 'active'
+        && vendor.deleted == false
+        && command.payload.vendorNameSnapshot == vendor.name
+        && dayAfter.menu == {
+          'businessDate': dayId,
+          'itemName': sourceMenu.itemName,
+          'price': sourceMenu.price,
+          'vendorId': sourceMenu.vendorId,
+          'vendorNameSnapshot': sourceMenu.vendorNameSnapshot,
+          'updatedAt': request.time,
+          'revision': dayBefore.menu == null ? 1 : dayBefore.menu.revision + 1,
+          'inheritedFromDate': sourceDate
+        }
+        && dayAfter.menu.price is int
+        && dayAfter.menu.revision is int && dayAfter.menu.revision >= 1;
     }
 
     function validSetDayMenu(commandId, command) {
-      return command.kind == 'SetDayMenu'
-        && (command.payload.inheritedFromDate == null
-          ? validSetDayMenuDirect(commandId, command)
-          : validSetDayMenuInherited(commandId, command));
+      return command.payload.inheritedFromDate == null
+        ? validSetDayMenuDirect(commandId, command)
+        : validSetDayMenuInherited(commandId, command);
     }
 
     function validSetOpeningCash(commandId, command) {
@@ -889,10 +905,7 @@ service cloud.firestore {
     function headCommand(commandId, before, after) {
       let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
       return !exists(/databases/$(database)/documents/commands/$(commandId))
-        && command.commandId == commandId
-        && command.committedAt == request.time
-        && command.before.head == before
-        && command.after.head == after;
+        && command.commandId == commandId;
     }
 
     function ensureDayCommand(commandId, dayId, dayAfter) {
@@ -906,18 +919,65 @@ service cloud.firestore {
         && command.after.day == dayAfter;
     }
 
-    function dayCommand(commandId, dayId, before, after) {
-      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+    function validDayTransactionProjection(commandId, command, dayId, before, after) {
       let order = command.kind == 'CreateOrder';
       let mealPrice = order ? command.payload.mealPrice : 0;
-      return !exists(/databases/$(database)/documents/commands/$(commandId))
-        && command.commandId == commandId
-        && command.committedAt == request.time
-        && command.kind in ['CreateOrder', 'CreatePayment']
-        && command.targets.dayId == dayId
+      return command.targets.dayId == dayId
         && command.before.day == before
         && command.after.day == after
         && validDayAdvance(commandId, command, before, after, mealPrice, order);
+    }
+
+    function validDaySetMenuProjection(command, dayId, before, after) {
+      return command.targets.dayId == dayId
+        && command.before.day == before
+        && command.after.day == after
+        && after.diff(before).affectedKeys().hasOnly(['menu', 'revision', 'lastCommandId', 'updatedAt'])
+        && (command.payload.inheritedFromDate == null
+          ? validDay(after, dayId)
+          : validDayNonMenu(after))
+        && before.keys().hasAll([
+          'status', 'revision', 'menu', 'openingCash', 'openedBy', 'openedAt',
+          'totals', 'lastSettlementRevision', 'lastCommandId', 'updatedAt'
+        ])
+        && (before.menu == null || validMenu(before.menu, dayId))
+        && before.status in ['open', 'reopened']
+        && before.revision is int && before.revision >= 1
+        && before.lastCommandId is string
+        && before.updatedAt is timestamp
+        && (command.payload.inheritedFromDate == null
+          || validSetDayMenuInheritedBusiness(command, dayId, before, after));
+    }
+
+    function validDayOpeningCashProjection(command, dayId, before, after) {
+      let firstConfirmation = before.openingCash == null;
+      return command.targets.dayId == dayId
+        && command.before.day == before
+        && command.after.day == after
+        && validDay(before, dayId)
+        && before.status in ['open', 'reopened']
+        && (firstConfirmation
+          ? before.openedBy == null && before.openedAt == null
+            && after.openedBy == request.auth.uid && after.openedAt == request.time
+          : before.openedBy is string && before.openedAt is timestamp
+            && after.openedBy == before.openedBy && after.openedAt == before.openedAt)
+        && after.diff(before).affectedKeys().hasOnly([
+          'openingCash', 'openedBy', 'openedAt', 'revision', 'lastCommandId', 'updatedAt'
+        ]);
+    }
+
+    function dayWriteCommand(commandId, dayId, before, after) {
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      return command.kind in ['CreateOrder', 'CreatePayment', 'SetDayMenu', 'SetOpeningCash']
+        && !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && ((command.kind in ['CreateOrder', 'CreatePayment']
+            && validDayTransactionProjection(commandId, command, dayId, before, after))
+          || (command.kind == 'SetDayMenu'
+            && validDaySetMenuProjection(command, dayId, before, after))
+          || (command.kind == 'SetOpeningCash'
+            && validDayOpeningCashProjection(command, dayId, before, after)));
     }
 
     function studentWriteCommand(commandId, studentId, before, after) {
@@ -999,50 +1059,6 @@ service cloud.firestore {
             && after.diff(before).affectedKeys().hasOnly(['deleted', 'revision', 'lastCommandId', 'updatedAt']));
     }
 
-    function daySetMenuCommand(commandId, dayId, before, after) {
-      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
-      return !exists(/databases/$(database)/documents/commands/$(commandId))
-        && command.commandId == commandId
-        && command.committedAt == request.time
-        && command.kind == 'SetDayMenu'
-        && command.targets.dayId == dayId
-        && command.before.day == before
-        && command.after.day == after
-        && after.diff(before).affectedKeys().hasOnly(['menu', 'revision', 'lastCommandId', 'updatedAt'])
-        && validDay(after, dayId)
-        && before.keys().hasAll([
-          'status', 'revision', 'menu', 'openingCash', 'openedBy', 'openedAt',
-          'totals', 'lastSettlementRevision', 'lastCommandId', 'updatedAt'
-        ])
-        && (before.menu == null || validMenu(before.menu, dayId))
-        && before.status in ['open', 'reopened']
-        && before.revision is int && before.revision >= 1
-        && before.lastCommandId is string
-        && before.updatedAt is timestamp;
-    }
-
-    function daySetOpeningCashCommand(commandId, dayId, before, after) {
-      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
-      let firstConfirmation = before.openingCash == null;
-      return !exists(/databases/$(database)/documents/commands/$(commandId))
-        && command.commandId == commandId
-        && command.committedAt == request.time
-        && command.kind == 'SetOpeningCash'
-        && command.targets.dayId == dayId
-        && command.before.day == before
-        && command.after.day == after
-        && validDay(before, dayId)
-        && before.status in ['open', 'reopened']
-        && (firstConfirmation
-          ? before.openedBy == null && before.openedAt == null
-            && after.openedBy == request.auth.uid && after.openedAt == request.time
-          : before.openedBy is string && before.openedAt is timestamp
-            && after.openedBy == before.openedBy && after.openedAt == before.openedAt)
-        && after.diff(before).affectedKeys().hasOnly([
-          'openingCash', 'openedBy', 'openedAt', 'revision', 'lastCommandId', 'updatedAt'
-        ]);
-    }
-
     // Operators are provisioned by the maintainer. Clients cannot mutate this allowlist.
     match /operators/{uid} {
       allow get: if signedGoogle() && request.auth.uid == uid;
@@ -1102,9 +1118,7 @@ service cloud.firestore {
         && ensureDayCommand(request.resource.data.lastCommandId, dayId, request.resource.data)
         && request.resource.data.updatedAt == request.time;
       allow update: if (request.resource.data.lastCommandId is string)
-        && (dayCommand(request.resource.data.lastCommandId, dayId, resource.data, request.resource.data)
-          || daySetMenuCommand(request.resource.data.lastCommandId, dayId, resource.data, request.resource.data)
-          || daySetOpeningCashCommand(request.resource.data.lastCommandId, dayId, resource.data, request.resource.data))
+        && dayWriteCommand(request.resource.data.lastCommandId, dayId, resource.data, request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'revision', 'totals', 'menu', 'openingCash', 'openedBy', 'openedAt', 'lastCommandId', 'updatedAt'
         ])
