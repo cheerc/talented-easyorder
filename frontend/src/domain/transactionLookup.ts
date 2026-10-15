@@ -28,6 +28,29 @@ export interface LookupRow {
 
 export const CASHIER_QUERY = '櫃台';
 
+/**
+ * 依學生期初日期與該生所有歷史交易，取得這個帳戶最早的營業日。
+ * 若無期初也無交易，回傳 fallbackDate（通常為當前 viewDate）。
+ */
+export function findStudentEarliestDate(
+  student: Pick<StudentAccount, 'studentId' | 'openingBalance'>,
+  transactions: Pick<LedgerTransaction, 'studentId' | 'businessDate'>[],
+  fallbackDate: string
+): string {
+  const dates: string[] = [];
+  if (student.openingBalance?.asOfDate) {
+    dates.push(student.openingBalance.asOfDate);
+  }
+  for (const t of transactions) {
+    if (t.studentId === student.studentId && t.businessDate) {
+      dates.push(t.businessDate);
+    }
+  }
+  if (dates.length === 0) return fallbackDate;
+  dates.sort();
+  return dates[0];
+}
+
 /** 帳戶查詢：比對編號、姓名、別名；停用的帳戶也列出（歷史要查得到）。輸入「櫃台」時找櫃台收支。 */
 export function findLookupAccountIds(students: StudentAccount[], query: string): string[] | null {
   const q = query.trim().toLowerCase();

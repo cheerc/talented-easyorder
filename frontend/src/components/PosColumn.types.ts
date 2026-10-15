@@ -58,5 +58,5 @@ export interface PosColumnProps {
   setPriceOverride: (v: number | null) => void;
   setPriceOverrideLabel: (v: string) => void;
   handleDeleteOrder: (keepPaymentAsDeposit: boolean, reason: string) => LedgerMutationResult;
-  onViewHistory: () => void;
+  onViewAllHistory?: (student: StudentAccount) => void;
 }

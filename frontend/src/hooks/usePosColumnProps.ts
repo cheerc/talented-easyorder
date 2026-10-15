@@ -30,7 +30,7 @@ export interface PosColumnFlowArgs {
   openCancelConfirm: PosColumnProps['openCancelConfirm'];
   openCancelConfirmForTx: PosColumnProps['openCancelConfirmForTx'];
   handleDeleteOrder: PosColumnProps['handleDeleteOrder'];
-  onViewHistory: () => void;
+  onViewAllHistory?: PosColumnProps['onViewAllHistory'];
 }
 
 /** Expense flow actions */
@@ -129,7 +129,7 @@ export function buildPosColumnProps(args: {
   setPriceOverride: (v: number | null) => void;
   setPriceOverrideLabel: (v: string) => void;
   handleDeleteOrder: PosColumnProps['handleDeleteOrder'];
-  onViewHistory: () => void;
+  onViewAllHistory?: PosColumnProps['onViewAllHistory'];
 }): PosColumnProps {
   return {
     state: args.state,
@@ -177,7 +177,7 @@ export function buildPosColumnProps(args: {
     setPriceOverride: args.setPriceOverride,
     setPriceOverrideLabel: args.setPriceOverrideLabel,
     handleDeleteOrder: args.handleDeleteOrder,
-    onViewHistory: args.onViewHistory,
+    onViewAllHistory: args.onViewAllHistory,
   };
 }
 
@@ -216,7 +216,7 @@ export function usePosColumnProps(
     openCancelConfirm: flow.openCancelConfirm,
     openCancelConfirmForTx: flow.openCancelConfirmForTx,
     handleDeleteOrder: flow.handleDeleteOrder,
-    onViewHistory: flow.onViewHistory,
+    onViewAllHistory: flow.onViewAllHistory,
     // expense
     expenseProps: expense.expenseProps,
     enterExpenseMode: expense.enterExpenseMode,

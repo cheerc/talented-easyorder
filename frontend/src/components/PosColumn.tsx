@@ -23,7 +23,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
     crashDraftRestored, setCrashDraftRestored,
     todayMenu, todayCount, todayOtherCount = 0, vendors, enterExpenseMode, tweaks,
     tx, operatorUid, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
-    onViewHistory,
+    onViewAllHistory,
   } = props;
 
   const orderedTodayCount = useActiveOrderCount(picked?.studentId ?? null, viewDate);
@@ -104,14 +104,6 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
     if (!picked) return [];
     return (tx as LedgerTransaction[]).filter(t => t.studentId === picked.studentId);
   }, [tx, picked]);
-
-  // All-date transactions for history view (sorted newest-first)
-  const allStudentTransactions = useMemo(() => {
-    if (!picked) return [];
-    return (props.allTx as LedgerTransaction[])
-      .filter(t => t.studentId === picked.studentId)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [props.allTx, picked]);
 
   // M1／M2：送出失敗要讓櫃台看到原因。櫃台收支沒有選帳戶，畫面回到搜尋列，也要在那裡顯示；
   // 它的金額與原因沒有留在錯誤狀態裡，所以不說「草稿還在」。訊息本身可能已帶句號，避免出現「。。」。
@@ -227,7 +219,6 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 orderedTodayCount={orderedTodayCount}
                 payAmount={currentPaidAmount}
                 setPayAmount={setPaidAmountText}
-                onViewHistory={onViewHistory}
                 priceOverride={priceOverride}
                 priceOverrideLabel={priceOverrideLabel}
                 setPriceOverride={setPriceOverride}
@@ -237,9 +228,8 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 studentTransactions={studentTransactions}
                 onEditClick={handleRecentEditClick}
                 onDeleteClick={handleRecentDeleteClick}
+                onViewAllHistory={() => picked && onViewAllHistory?.(picked)}
                 locked={showHistoricalLock}
-                allStudentTransactions={allStudentTransactions}
-                onViewHistoryBack={() => setFocusZone('mode-' + currentMode)}
                 onConfirm={handleConfirm}
                 onCancel={cancelFlow}
                 busy={state.kind === 'committing'}

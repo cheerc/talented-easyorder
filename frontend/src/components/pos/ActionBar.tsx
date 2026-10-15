@@ -39,7 +39,7 @@ export const ActionBar = React.memo(function ActionBar({ mode, setMode, onStatus
             style={{ flex: 1 }}
           >
             <span className="mode-key">E</span>
-            <span className="mode-lbl">訂餐狀況</span>
+            <span className="mode-lbl">付款明細</span>
           </button>
         )}
       </div>

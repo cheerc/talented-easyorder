@@ -41,7 +41,8 @@ describe('今日便當 N 份 + 其他 M 份', () => {
     expect(other.otherItemName).toBe('雞腿便當');
     expect(isOtherMealOrder(other)).toBe(true);
     expect(counter().textContent).toContain('1');
-    expect(counter().textContent).toContain('今日便當 ＋其他 1');
+    expect(counter().textContent).toContain('今日餐點');
+    expect(counter().textContent).toContain('其他餐點');
     expect(document.querySelector('.idle')!.textContent).toContain('已訂 今日便當 1 份 ＋ 其他 1 份');
 
     // 用 E 改掉備註：仍是其他餐點（以前只靠備註開頭判斷，改了就被算成今日便當）。
@@ -51,7 +52,10 @@ describe('今日便當 N 份 + 其他 M 份', () => {
     act(() => { usePosStore.getState().setMenuForDate(date, { itemName: '排骨便當', price: 100, vendorId: '', vendorNameSnapshot: '' }, 'now'); });
     const todays = usePosStore.getState().transactions.filter(t => t.businessDate === date);
     expect(countMeals(todays)).toEqual({ bento: 1, other: 1 });
-    await waitFor(() => expect(counter().textContent).toContain('今日便當 ＋其他 1'));
+    await waitFor(() => {
+      expect(counter().textContent).toContain('今日餐點（排骨便當）');
+      expect(counter().textContent).toContain('其他餐點');
+    });
   });
 });
 
