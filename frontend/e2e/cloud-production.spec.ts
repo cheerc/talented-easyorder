@@ -374,14 +374,15 @@ test.describe('P06 Cloud Students', () => {
       const createStudent = async (input: { id: string; name: string; aliases: string; amount: string; mode: '沿用既有核對結餘' | '建立新學生' }) => {
         const page = first.page;
         await page.getByRole('button', { name: '新增學生' }).click();
-        await page.getByLabel('學員編號').fill(input.id);
-        await page.getByRole('textbox', { name: '姓名', exact: true }).fill(input.name);
-        await page.getByLabel(/別名/).fill(input.aliases);
-        await page.getByLabel(/期初結餘/).fill(input.amount);
-        await page.getByRole('radio', { name: new RegExp(input.mode) }).check();
-        await page.getByRole('button', { name: '建立學生' }).click();
+        const form = page.getByRole('form', { name: '新增學生' });
+        await form.getByLabel('學員編號').fill(input.id);
+        await form.getByRole('textbox', { name: '姓名', exact: true }).fill(input.name);
+        await form.getByRole('textbox', { name: /別名（逗號、頓號/ }).fill(input.aliases);
+        await form.getByRole('textbox', { name: /期初結餘（整數/ }).fill(input.amount);
+        await form.getByRole('radio', { name: new RegExp(input.mode) }).check();
+        await form.getByRole('button', { name: '建立學生' }).click();
         await expect(page.getByTestId(`cloud-student-row-${input.id}`)).toBeVisible();
-        await expect(page.getByText(new RegExp(`已確認新增 ${input.id} 完成`))).toBeVisible();
+        await expect(page.getByText(new RegExp(`已確認 新增 ${input.id} 完成`))).toBeVisible();
       };
 
       await createStudent({ id: '001', name: 'P06 同名學生', aliases: '一號', amount: '0', mode: '沿用既有核對結餘' });
@@ -390,11 +391,12 @@ test.describe('P06 Cloud Students', () => {
 
       // The component rejects the duplicate ID before dispatch; the authoritative server head stays unchanged.
       await first.page.getByRole('button', { name: '新增學生' }).click();
-      await first.page.getByLabel('學員編號').fill('001');
-      await first.page.getByLabel('姓名').fill('重複編號');
-      await first.page.getByLabel(/期初結餘/).fill('0');
-      await first.page.getByRole('radio', { name: /沿用既有核對結餘/ }).check();
-      await first.page.getByRole('button', { name: '建立學生' }).click();
+      const duplicateForm = first.page.getByRole('form', { name: '新增學生' });
+      await duplicateForm.getByLabel('學員編號').fill('001');
+      await duplicateForm.getByRole('textbox', { name: '姓名', exact: true }).fill('重複編號');
+      await duplicateForm.getByRole('textbox', { name: /期初結餘（整數/ }).fill('0');
+      await duplicateForm.getByRole('radio', { name: /沿用既有核對結餘/ }).check();
+      await duplicateForm.getByRole('button', { name: '建立學生' }).click();
       await expect(first.page.getByRole('alert')).toContainText('學員編號 001 已存在');
       expect(await readAdminDocument('system', 'dataHead')).toMatchObject({ seq: 3 });
       await first.page.getByRole('button', { name: '取消' }).click();
@@ -405,7 +407,7 @@ test.describe('P06 Cloud Students', () => {
       await editForm.getByLabel('姓名').fill('P06 已修改學生');
       await editForm.getByLabel('別名').fill('改名別名');
       await editForm.getByRole('button', { name: '儲存姓名與別名' }).click();
-      await expect(first.page.getByText(/已確認修改 002 完成/)).toBeVisible();
+      await expect(first.page.getByText(/已確認 修改 002 完成/)).toBeVisible();
       await expect(row002).toContainText('P06 已修改學生');
 
       await row002.getByRole('button', { name: '停用' }).click();

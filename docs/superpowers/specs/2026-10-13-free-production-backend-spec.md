@@ -119,7 +119,7 @@ readCommand(commandId: string): Promise<CommandReceipt | null>
 
 | kind | 固定受影響文件（另加 command＋dataHead） | 驗證重點 |
 |---|---|---|
-| CreateStudent／EditStudent／SetStudentStatus | student | 建檔唯一 ID；不可直接改 balance；停用不刪歷史 |
+| CreateStudent／EditStudent／SetStudentStatus | student | 建檔唯一 ID；不可直接改 balance；停用不刪歷史；SetStudentStatus 理由必填 1–500 字 |
 | CorrectOpening | student＋期初日 day | 原日期不改、理由必填、該日須可寫；餘額加期初差額；不增加收現 |
 | SaveVendor／RemoveVendor | vendor | revision、防整陣列覆寫、移除須先停用 |
 | EnsureDay／SetDayMenu／SetOpeningCash | day | 合法台北日期、未關帳；opening 明確確認且非負，沿用既有 20,000 上限 |

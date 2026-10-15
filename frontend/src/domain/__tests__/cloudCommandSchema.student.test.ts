@@ -19,6 +19,17 @@ function createStudent(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function setStudentStatus(payload: Record<string, unknown>) {
+  return {
+    commandId,
+    kind: 'SetStudentStatus',
+    leaseEpoch: 1,
+    targets: { studentId: '001' },
+    expectedRevisions: { student: 1 },
+    payload,
+  };
+}
+
 describe('student command input contract', () => {
   it.each([-1_000_000_000, 0, 1_000_000_000])('accepts signed integer opening balance %s and preserves string IDs', amount => {
     const normalized = normalizeEnabledCommandInput(createStudent({
@@ -67,6 +78,16 @@ describe('student command input contract', () => {
     const normalized = normalizeEnabledCommandInput(createStudent({ aliases: ['   '] }));
     expect(normalized.kind).toBe('CreateStudent');
     if (normalized.kind === 'CreateStudent') expect(normalized.payload.aliases).toEqual(['   ']);
+  });
+
+  it('requires a literal nonempty status reason before a command can reach Rules', () => {
+    expect(normalizeEnabledCommandInput(setStudentStatus({ status: 'inactive', reason: '整理名單' }))).toMatchObject({
+      kind: 'SetStudentStatus',
+      payload: { status: 'inactive', reason: '整理名單' },
+    });
+    expect(() => normalizeEnabledCommandInput(setStudentStatus({ status: 'inactive' }))).toThrow();
+    expect(() => normalizeEnabledCommandInput(setStudentStatus({ status: 'inactive', reason: '' }))).toThrow();
+    expect(() => normalizeEnabledCommandInput(setStudentStatus({ status: 'inactive', reason: 'x'.repeat(501) }))).toThrow();
   });
 
   it.each([' ', '\t', '\u00a0', '\ufeff', 'name\ncontinued'])('accepts displayName with exact literal schema value %j', displayName => {

@@ -90,7 +90,7 @@ export interface SetCloudStudentStatusInput {
   studentId: string;
   expectedRevision: number;
   status: 'active' | 'inactive';
-  reason?: string;
+  reason: string;
 }
 
 function plainRecord(value: unknown): value is Data {
