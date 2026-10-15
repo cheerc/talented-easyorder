@@ -1,6 +1,6 @@
 # 零費用正式後端：現況與證據
 
-狀態截至 2026-10-15。此頁保留 P00 基線、P01–P06 合併證據與 P06 開發期間 checkpoint。P04 #475、P05 #476、P06 #478 已合併；P06 merge receipt 在下方。新的正式後端未部署、未通過正式上線驗收。規格是目標契約，不代表雲端資源或部署狀態已成立。前端原本人驗收紀錄仍以 [PROJECT-STATUS](../PROJECT-STATUS.md) 為準。
+狀態截至 2026-10-15。此頁保留 P00 基線、P01–P06 合併證據、P06 開發期間 checkpoint 與 P07 WIP checkpoint。P04 #475、P05 #476、P06 #478 已合併；P06 merge receipt 在下方。P07 契約已凍結、implementation 與驗證進行中，尚未 acceptance。新的正式後端未部署、未通過正式上線驗收。規格是目標契約，不代表雲端資源或部署狀態已成立。前端原本人驗收紀錄仍以 [PROJECT-STATUS](../PROJECT-STATUS.md) 為準。
 
 ## 範圍與正式操作界線
 
@@ -43,7 +43,15 @@
 - P06 獨立 source review 與 final source-delta review 均 PASS，報告見 [P06 source review](p06-source-review.md)；最後 4-doc 差異 review PASS，摘要曾保存於 `/tmp/p06-final-docs-review.md`。使用者在完成其核對後手動 merge；此收據不回溯聲稱所有 merge gate 均 PASS。
 - 本機 production Rules Emulator 使用 `demo-easyorder` 與合成資料，按 prescribed order 的 A01 10、P01 36、P04 lease 19、command/failure 103、P06 command/list 112 均為 0 failed／0 skipped；command suite 去重後 179 passed。Full Vitest 1,329 passed／179 Emulator-only skipped／0 failed；完整 lint/build exit 0。System Chromium 154＋Playwright 1.60 的 demo Cloud/auth 13/13、isolated prototype 7/7，共 20/20。App TSC exit 2；base/current 都為 290 diagnostic headers、542 normalized lines，保留順序與重複項的完整 diff 0，不是 clean TSC pass。
 - 名單完整讀取只驗證至 500 人；501 人 fail closed 為 `INCOMPLETE_SNAPSHOT`。沒有建立／部署 production resources，沒有用正式 keys；`persistentLocalCache` 尚未改，memory-only cache 仍列 P13。
-- 後續 P07 從 merge SHA `b518eca5fdc2b2d2d3e9197c30b29d6a5f74ce10` 開始。現有 `EnsureDay` 已允許合規的 future empty day；先核對 days/menu/vendor reads 及 write Rules transaction graph，提交具體契約與驗收方案交 Coordinator 確認並加入 positive regression；確認前不改程式，不開 P08。
+- 後續 P07 從 merge SHA `b518eca5fdc2b2d2d3e9197c30b29d6a5f74ce10` 開始；該階段目前狀態見下節 [P07 WIP checkpoint](#p07-wip-checkpoint--2026-10-15)。
+
+## P07 WIP checkpoint — 2026-10-15
+
+- Branch `codex/backend-p07-day-vendors` 起於 P06 merge SHA `b518eca5fdc2b2d2d3e9197c30b29d6a5f74ce10`。本 checkpoint 記錄 P07 implementation WIP，不是 source acceptance；P07 contract 已由 Coordinator 凍結並追蹤於 [cloud day/vendor contract](../superpowers/specs/2026-10-15-cloud-day-vendors-contract.md)。P08 尚未開始；沒有 P07 PR、CI、merge 或 production 驗收收據。
+- Source WIP 範圍包含既有 `commitCommand` 的四種新 kind、strict server-only day/vendor repository、AuthGate 下獨立 Cloud day/vendor UI 與四個 kind 的 Rules branches；EnsureDay 沿用既有 future-empty-day 行為。UI、normalizer 與 repository mocked read focused suites 分別由 owners 報告 21/21、23/23、21/21 通過；相關 owner 檔 ESLint 亦報告通過。這些 focused／mock 結果不取代真 Rules／read Emulator gate 或完整 UI E2E。
+- 第一次早期 filtered `cloudCommands.spec.ts -t P07` Emulator 啟動因 Rules compile error 退出，139 個測試全部未執行／skip；log `/tmp/p07-early-rules-smoke.log`。Rules 修正後第二次 smoke 使用 `EASYORDER_REQUIRE_CLOUD_COMMANDS=true`、`demo-easyorder` Auth/Firestore Emulator、JSON reporter，執行 55 個選中案例：46 passed、9 failed、84 not-selected。Rules 解析成功；六個 positive/raw closure 案例遇到 Firestore 1,000-expression ceiling，另三個 opening-cash negative fixtures 因前序 day setup 未成立而 cascade-fail，不能解讀為獨立驗收。報告 `/tmp/p07-early-rules-smoke-r2.json`，console `/tmp/p07-early-rules-smoke-r2.log`。Rules owner 正在修整預讀／branch 評估圖；未完成重跑前不得稱 P07 Rules 通過。
+- True server-read `cloudDayVendorRepository.spec.ts` 已由 Rules owner 編寫，含 server-only/cap/source/head cases；尚未由 primary 在 Emulator 執行。Mocked negative/bounds coverage 位於 `cloudDayVendorRepository.read.test.ts`，不可替代該 server gate。Full Vitest、lint/build、app TSC normalized baseline comparison、required CI、system-browser Cloud+prototype E2E、source review、final review 均未在此 checkpoint 完成。
+- 無 production credentials/resources/bootstrap/deploy；不宣稱任何 demo/P07 production rollout。SDK `persistentLocalCache` 仍屬 P13。
 
 ## 舊寫入路徑盤點
 
