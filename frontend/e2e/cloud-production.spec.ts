@@ -426,13 +426,22 @@ test.describe('P06 Cloud Students', () => {
       expect(head).toMatchObject({ seq: 6, maintenance: false });
       const students = await listAdminDocuments('students');
       expect(students).toHaveLength(3);
-      const byId = new Map(students.map(student => [student.id, student]));
-      expect(byId.get('001')).toMatchObject({ studentId: '001', displayName: 'P06 同名學生', currentBalance: 0 });
-      expect(byId.get('002')).toMatchObject({
-        studentId: '002', displayName: 'P06 已修改學生', aliases: ['改名別名'], status: 'active', currentBalance: -25,
+      const byCode = new Map(students.map(student => [student.studentCode, student]));
+      expect(byCode.get('001')).toMatchObject({ studentCode: '001', displayName: 'P06 同名學生', currentBalance: 0 });
+      expect(byCode.get('002')).toMatchObject({
+        studentCode: '002', displayName: 'P06 已修改學生', aliases: ['改名別名'], status: 'active', currentBalance: -25,
         openingBalance: { amount: -25, asOfDate: taipeiToday() },
       });
-      expect(byId.get('003')).toMatchObject({ studentId: '003', currentBalance: 140 });
+      expect(byCode.get('003')).toMatchObject({ studentCode: '003', currentBalance: 140 });
+      for (const s of students) {
+        expect(s.studentId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+      }
+      const studentCodes = await listAdminDocuments('studentCodes');
+      expect(studentCodes).toHaveLength(3);
+      const codeMap = new Map(studentCodes.map(c => [c.id, c]));
+      expect(codeMap.get('001')).toMatchObject({ studentId: byCode.get('001')!.studentId });
+      expect(codeMap.get('002')).toMatchObject({ studentId: byCode.get('002')!.studentId });
+      expect(codeMap.get('003')).toMatchObject({ studentId: byCode.get('003')!.studentId });
       expect(await listAdminDocuments('transactions')).toEqual([]);
 
       const commands = await listAdminDocuments('commands');
@@ -457,6 +466,87 @@ test.describe('P06 Cloud Students', () => {
         await expect(second.page.locator('.app')).toHaveCount(0);
         await expect(second.page.getByRole('tab')).toHaveCount(0);
         await expect(second.page.getByRole('button', { name: /訂餐|繳費|送出訂單/ })).toHaveCount(0);
+
+        // --- P06b: 改號 -> 重載 / 缺號列預填 / 搜尋隱藏缺號 / 搶號衝突 / 停用改號 ---
+        const page = second.page;
+        const row002 = page.getByTestId('cloud-student-row-002');
+        await row002.getByRole('button', { name: '改編號' }).click();
+        const codeForm002 = row002.getByRole('form', { name: '改編號 002' });
+        await codeForm002.getByLabel('新編號').fill('015');
+        await codeForm002.getByLabel('改號原因（必填）').fill('調班改號至十五號');
+        await codeForm002.getByRole('button', { name: '確認改號' }).click();
+        await expect(page.getByText(/已確認 改編號 002 → 015 完成/)).toBeVisible();
+        await expect(page.getByTestId('cloud-student-row-015')).toBeVisible();
+        await expect(page.getByTestId('cloud-student-row-002')).toHaveCount(0);
+
+        // 重載驗證持久化
+        await page.reload();
+        await expect(page.getByTestId('cloud-student-row-015')).toBeVisible();
+        await expect(page.getByTestId('cloud-student-row-002')).toHaveCount(0);
+
+        // 缺號列驗證：目前有 001, 003, 015。002 釋出後成為空號，004–014 為連續空號
+        await expect(page.getByTestId('cloud-student-gap-002')).toContainText('002 尚無人使用');
+        const gap004 = page.getByTestId('cloud-student-gap-004');
+        await expect(gap004).toContainText('004–014 尚無人使用（11 個號碼）');
+
+        // 點擊缺號列預填新增
+        await gap004.click();
+        const createForm = page.getByRole('form', { name: '新增學生' });
+        await expect(createForm.getByLabel('學員編號')).toHaveValue('004');
+        await createForm.getByRole('button', { name: '取消' }).click();
+
+        // 搜尋時隱藏缺號列
+        await page.getByLabel('搜尋編號、姓名或別名').fill('修改學生');
+        await expect(page.getByTestId('cloud-student-gap-002')).toHaveCount(0);
+        await expect(page.getByTestId('cloud-student-gap-004')).toHaveCount(0);
+        await expect(page.getByTestId('cloud-student-row-015')).toBeVisible();
+        await page.getByLabel('搜尋編號、姓名或別名').fill('');
+        await expect(page.getByTestId('cloud-student-gap-002')).toBeVisible();
+
+        // 搶號衝突 UI 提示：015 嘗試改為已佔用的 001
+        const row015 = page.getByTestId('cloud-student-row-015');
+        await row015.getByRole('button', { name: '改編號' }).click();
+        const codeForm015 = row015.getByRole('form', { name: '改編號 015' });
+        await codeForm015.getByLabel('新編號').fill('001');
+        await codeForm015.getByLabel('改號原因（必填）').fill('嘗試搶號');
+        await codeForm015.getByRole('button', { name: '確認改號' }).click();
+        await expect(page.getByRole('alert')).toContainText('編號 001 已經有人使用');
+        await codeForm015.getByRole('button', { name: '取消' }).click();
+
+        // 停用學生改號釋出號碼：停用 001，並將其編號改為 099
+        const row001 = page.getByTestId('cloud-student-row-001');
+        await row001.getByRole('button', { name: '停用' }).click();
+        const statusForm001 = row001.getByRole('form', { name: '停用學生 001' });
+        await statusForm001.getByLabel('原因（必填）').fill('停用讓號');
+        await statusForm001.getByRole('button', { name: '確認停用' }).click();
+        await expect(row001).toContainText('已停用');
+
+        await row001.getByRole('button', { name: '改編號' }).click();
+        const codeForm001 = row001.getByRole('form', { name: '改編號 001' });
+        await codeForm001.getByLabel('新編號').fill('099');
+        await codeForm001.getByLabel('改號原因（必填）').fill('停用學生退讓號碼');
+        await codeForm001.getByRole('button', { name: '確認改號' }).click();
+        await expect(page.getByText(/已確認 改編號 001 → 099 完成/)).toBeVisible();
+        await expect(page.getByTestId('cloud-student-row-099')).toContainText('已停用');
+        await expect(page.getByTestId('cloud-student-row-001')).toHaveCount(0);
+
+        // 釋出的 001 立即供新學生建檔
+        await page.getByRole('button', { name: '新增學生' }).click();
+        const newForm001 = page.getByRole('form', { name: '新增學生' });
+        await newForm001.getByLabel('學員編號').fill('001');
+        await newForm001.getByRole('textbox', { name: '姓名', exact: true }).fill('新同學');
+        await newForm001.getByRole('textbox', { name: /期初結餘（整數/ }).fill('50');
+        await newForm001.getByRole('radio', { name: /沿用既有核對結餘/ }).check();
+        await newForm001.getByRole('button', { name: '建立學生' }).click();
+        await expect(page.getByTestId('cloud-student-row-001')).toContainText('新同學');
+
+        // 驗證後端 Firestore 最終文件狀態
+        const finalStudents = await listAdminDocuments('students');
+        expect(finalStudents).toHaveLength(4);
+        const finalCodes = await listAdminDocuments('studentCodes');
+        expect(finalCodes.map(c => c.id).sort()).toEqual(['001', '003', '015', '099']);
+        expect(finalCodes.find(c => c.id === '002')).toBeUndefined();
+
         await second.page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
       } finally {
         await second.close();

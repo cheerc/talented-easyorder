@@ -48,7 +48,7 @@ describe('CustomerCard', () => {
 
   it('shows ordered-today warning when orderedTodayCount > 0', () => {
     renderCard({ orderedTodayCount: 2 });
-    expect(screen.getByText(/今日已訂過/)).toBeDefined();
+    expect(screen.getByText(/今天已訂/)).toBeDefined();
   });
 
   it('U2a #6: 不再顯示檢視歷史按鈕', () => {
@@ -104,7 +104,7 @@ describe('CustomerCard', () => {
     const { container } = renderCard({
       mode: 'order',
       student: { studentId: 's1', displayName: '王小明', currentBalance: 500 },
-      todayMenu: { itemName: '排骨便當', price: 90, vendorNameSnapshot: 'A' },
+      todayMenu: { itemName: '排骨餐點', price: 90, vendorNameSnapshot: 'A' },
       payAmount: '100',
     });
 
@@ -117,9 +117,9 @@ describe('CustomerCard', () => {
     expect(firstItem.querySelector('.bill-val')?.textContent).toBe('$500');
     expect(firstItem.querySelector('.bill-val')?.className).not.toContain('neg');
 
-    // 2nd item: 今日便當 (排骨便當)
+    // 2nd item: 今日餐點 (排骨餐點)
     const secondItem = billItems[1];
-    expect(secondItem.querySelector('.bill-label')?.textContent).toBe('今日便當 (排骨便當)');
+    expect(secondItem.querySelector('.bill-label')?.textContent).toBe('今日餐點 (排骨餐點)');
     expect(secondItem.querySelector('.bill-val')?.textContent).toBe('−$90');
     expect(secondItem.querySelector('.bill-val')?.className).toContain('neg');
 

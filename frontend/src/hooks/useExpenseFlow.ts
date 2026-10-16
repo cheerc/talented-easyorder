@@ -23,7 +23,7 @@ export function useExpenseFlow(dispatch: (action: PosFlowEvent) => void) {
     dispatch({ type: 'expenseSelectDirection', direction });
   }, [dispatch]);
 
-  const selectExpenseReason = useCallback((reason: '付便當錢' | '支出其他' | '收入其他') => {
+  const selectExpenseReason = useCallback((reason: '付餐費給廠商' | '支出其他' | '收入其他') => {
     dispatch({ type: 'expenseSelectReason', reason });
   }, [dispatch]);
 

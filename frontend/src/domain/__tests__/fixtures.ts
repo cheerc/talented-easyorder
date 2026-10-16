@@ -41,7 +41,7 @@ export const VENDOR_ARONG: Vendor = {
 
 export const TODAY_MENU_KARAAGE: TodayMenu = {
   businessDate: FIXTURE_BUSINESS_DATE,
-  itemName: '日式唐揚雞便當',
+  itemName: '日式唐揚雞餐點',
   price: 90,
   vendorId: 'v1',
   vendorNameSnapshot: '阿榮便當',
@@ -51,7 +51,7 @@ export const TODAY_MENU_KARAAGE: TodayMenu = {
 
 export const CATALOG_ITEM_KARAAGE: MenuCatalogItem = {
   itemId: 'cat-001',
-  name: '日式唐揚雞便當',
+  name: '日式唐揚雞餐點',
   defaultPrice: 90,
   defaultVendorId: 'v1',
   category: '便當',
@@ -72,12 +72,12 @@ export const TX_ORDER_001: LedgerTransaction = {
   paidAmount: 0,
   amount: -90,
   afterBalance: 1160,
-  menuNameSnapshot: '日式唐揚雞便當',
+  menuNameSnapshot: '日式唐揚雞餐點',
   vendorNameSnapshot: '阿榮便當',
   sourceDevice: 'pc',
   syncStatus: 'local',
   revision: 1,
-  note: '日式唐揚雞便當',
+  note: '日式唐揚雞餐點',
 };
 
 export const TX_TOPUP_002: LedgerTransaction = {

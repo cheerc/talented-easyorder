@@ -11,8 +11,8 @@ export interface LedgerDateRange {
 
 /**
  * M2 F08 報表口徑。畫面上的卡片名稱與這裡的欄位一一對應：
- * - orderCount 份數：訂餐筆數（每筆一份）＝ bentoCount 今日便當 ＋ otherMealCount 其他餐點。
- *   向供應商叫便當看 bentoCount；「訂購其他餐點」另列（isOtherMealOrder）。
+ * - orderCount 份數：訂餐筆數（每筆一份）＝ bentoCount 今日餐點 ＋ otherMealCount 其他餐點。
+ *   向供應商叫餐看 bentoCount；「訂購其他餐點」另列（isOtherMealOrder）。
  * - mealTotal 餐費：訂餐的應收餐費合計。
  * - orderUnpaid 訂餐當下未收：每筆訂餐「餐費 − 當筆收款」不足的部分合計。之後補繳不會扣回，所以不是帳戶欠款。
  * - totalIncome 收現：實際收進的現金＝訂餐當筆收款＋繳費＋櫃台收入。
@@ -29,6 +29,7 @@ export interface LedgerTotals {
   orderUnpaid: number;
   totalIncome: number;
   totalExpense: number;
+  totalRefund?: number;
   netCash: number;
   transactionCount: number;
 }
@@ -100,6 +101,7 @@ export function calculateLedgerTotals(transactions: LedgerTransaction[]): Ledger
   let orderUnpaid = 0;
   let totalIncome = 0;
   let totalExpense = 0;
+  let totalRefund = 0;
 
   for (const tx of transactions) {
     const roundedMealPrice = Math.round(tx.mealPrice);
@@ -118,6 +120,8 @@ export function calculateLedgerTotals(transactions: LedgerTransaction[]): Ledger
       if (roundedMealPrice > 0) {
         totalExpense += roundedMealPrice;
       }
+    } else if (tx.type === 'refund') {
+      totalRefund += Math.round(Math.max(0, tx.amount));
     }
   }
 
@@ -130,7 +134,8 @@ export function calculateLedgerTotals(transactions: LedgerTransaction[]): Ledger
     orderUnpaid,
     totalIncome,
     totalExpense,
-    netCash: totalIncome - totalExpense,
+    totalRefund,
+    netCash: totalIncome - totalExpense - totalRefund,
     transactionCount: transactions.length,
   };
 }
@@ -191,6 +196,11 @@ export function groupLedgerRowsByStudent(
 export function groupRecordSummary(transactions: readonly Pick<LedgerTransaction, 'type'>[]): string {
   const orders = transactions.filter(t => t.type === 'order').length;
   const payments = transactions.filter(t => t.type === 'payment').length;
-  const parts = [orders > 0 ? `訂餐 ${orders} 筆` : '', payments > 0 ? `繳費 ${payments} 筆` : ''].filter(Boolean);
+  const refunds = transactions.filter(t => t.type === 'refund').length;
+  const parts = [
+    orders > 0 ? `訂餐 ${orders} 筆` : '',
+    payments > 0 ? `繳費 ${payments} 筆` : '',
+    refunds > 0 ? `退款 ${refunds} 筆` : '',
+  ].filter(Boolean);
   return parts.length > 0 ? parts.join('・') : `${transactions.length} 筆`;
 }

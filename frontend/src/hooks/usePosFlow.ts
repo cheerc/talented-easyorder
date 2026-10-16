@@ -51,7 +51,7 @@ export interface UsePosFlowReturn {
   updateExpenseAmount: (text: string) => void;
   confirmExpenseAmount: (amount: number) => void;
   selectExpenseDirection: (direction: ExpenseDirection) => void;
-  selectExpenseReason: (reason: '付便當錢' | '支出其他' | '收入其他') => void;
+  selectExpenseReason: (reason: '付餐費給廠商' | '支出其他' | '收入其他') => void;
   updateExpenseNote: (note: string) => void;
   confirmExpenseNote: (note: string) => void;
   receiveScannerInput: (input: ScannerInput) => void;

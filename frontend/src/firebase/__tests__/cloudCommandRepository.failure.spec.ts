@@ -45,13 +45,14 @@ const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST ?? process.env.FIREBASE
 const required = process.env.EASYORDER_REQUIRE_CLOUD_COMMANDS === 'true';
 if (required && !emulatorHost) throw new Error('P05 command Emulator gate requires FIRESTORE_EMULATOR_HOST; refusing to skip.');
 const describeWithEmulator = emulatorHost ? describe : describe.skip;
-const rulesPath = path.resolve(process.cwd(), '../firestore.rules');
+const defaultRulesPath = path.resolve(process.cwd(), process.cwd().endsWith('frontend') ? '../firestore.rules' : 'firestore.rules');
+const rulesPath = path.resolve(process.env.EASYORDER_TEST_RULES_PATH ?? defaultRulesPath);
 const today = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date());
 const operatorA = { uid: 'p05-failure-a', email: 'p05-failure-a@example.test', displayName: 'Synthetic A', active: true };
 const operatorB = { uid: 'p05-failure-b', email: 'p05-failure-b@example.test', displayName: 'Synthetic B', active: true };
-const studentId = 'p05-failure-student';
+const studentId = '22222222-2222-4222-8222-222222222222';
 let env: RulesTestEnvironment;
 
 async function withAdmin<T>(callback: (db: Firestore) => Promise<T>): Promise<T> {
@@ -99,10 +100,13 @@ async function seedBase() {
       maintenance: false, goLiveDate: today, updatedAt: serverTimestamp(),
     });
     await setDoc(doc(db, `students/${studentId}`), {
-      studentId, displayName: 'Synthetic Student', aliases: [], status: 'active',
+      studentId, studentCode: '001', displayName: 'Synthetic Student', aliases: [], status: 'active',
       openingBalance: { amount: 0, asOfDate: today, note: '', createdAt: serverTimestamp() },
       currentBalance: 0, createdAt: serverTimestamp(), revision: 1,
       lastCommandId: 'p05-failure-seed-student', updatedAt: serverTimestamp(),
+    });
+    await setDoc(doc(db, 'studentCodes/001'), {
+      studentId, lastCommandId: 'p05-failure-seed-student', updatedAt: serverTimestamp(),
     });
     await setDoc(doc(db, `days/${today}`), {
       status: 'open', revision: 1,

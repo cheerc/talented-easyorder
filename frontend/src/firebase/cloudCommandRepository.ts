@@ -17,7 +17,8 @@ import {
   type CanonicalEnabledInput,
   type StoredEnabledCommandDoc,
 } from '../domain/cloudCommandSchema';
-import { accessLeasePath, commandPath, dataHeadPath, dayPath, studentPath, transactionPath, vendorPath } from './firestorePaths';
+import { STUDENT_CODE_REGEX } from '../domain/student';
+import { accessLeasePath, commandPath, dataHeadPath, dayPath, studentCodePath, studentPath, transactionPath, vendorPath } from './firestorePaths';
 
 type Data = Record<string, unknown>;
 type CurrentUser = Pick<User, 'uid' | 'email' | 'emailVerified' | 'providerData'>;
@@ -104,10 +105,10 @@ function decodeLease(value: unknown): Data {
 }
 
 function decodeStudent(value: unknown): Data {
-  const keys = ['studentId', 'displayName', 'aliases', 'status', 'openingBalance', 'currentBalance', 'createdAt', 'revision', 'lastCommandId', 'updatedAt'];
+  const keys = ['studentId', 'studentCode', 'displayName', 'aliases', 'status', 'openingBalance', 'currentBalance', 'createdAt', 'revision', 'lastCommandId', 'updatedAt'];
   if (!hasExactKeys(value, keys)
-    || typeof value.studentId !== 'string' || value.studentId.length < 1 || value.studentId.length > 64
-    || value.studentId.includes('/') || value.studentId === '__cashier__'
+    || typeof value.studentId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.studentId)
+    || typeof value.studentCode !== 'string' || !STUDENT_CODE_REGEX.test(value.studentCode)
     || typeof value.displayName !== 'string' || value.displayName.length < 1 || value.displayName.length > 100
     || !Array.isArray(value.aliases) || value.aliases.length > 10 || !value.aliases.every(x => typeof x === 'string' && x.length > 0 && x.length <= 100)
     || (value.status !== 'active' && value.status !== 'inactive')
@@ -285,7 +286,7 @@ function resultFromUnknownError(message = '提交回應不確定，請用原 com
 
 async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput): Promise<CommandErrorCode | null> {
   try {
-    if (input.kind === 'CreateStudent' || input.kind === 'EditStudent' || input.kind === 'SetStudentStatus') {
+    if (input.kind === 'CreateStudent' || input.kind === 'ChangeStudentCode' || input.kind === 'EditStudent' || input.kind === 'SetStudentStatus') {
       const student = await getDocFromServer(doc(db, studentPath(input.targets.studentId)));
       if (input.kind === 'CreateStudent') return 'INVALID_INPUT';
       if (!student.exists()) return 'INVALID_INPUT';
@@ -437,7 +438,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
       : input.kind === 'CreateOrder' || input.kind === 'CreatePayment' || input.kind === 'SetDayMenu' || input.kind === 'SetOpeningCash'
         ? input.targets.dayId : null;
     const dayRef = targetDayId ? doc(db, dayPath(targetDayId)) : null;
-    const targetStudentId = input.kind === 'CreateStudent' || input.kind === 'EditStudent' || input.kind === 'SetStudentStatus'
+    const targetStudentId = input.kind === 'CreateStudent' || input.kind === 'ChangeStudentCode' || input.kind === 'EditStudent' || input.kind === 'SetStudentStatus'
       || input.kind === 'CreateOrder' || input.kind === 'CreatePayment' ? input.targets.studentId : null;
     const targetStudentRef = targetStudentId ? doc(db, studentPath(targetStudentId)) : null;
     const targetVendorId = input.kind === 'SaveVendor' || input.kind === 'RemoveVendor' ? input.targets.vendorId
@@ -481,7 +482,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         if (targetStudentRef && targetStudentId) {
           const studentSnapshot = await tx.get(targetStudentRef);
           if (input.kind === 'CreateStudent') {
-            if (studentSnapshot.exists()) throw new RejectCommand('INVALID_INPUT', '學生編號已存在');
+            if (studentSnapshot.exists()) throw new RejectCommand('INVALID_INPUT', '學生 ID 已存在');
           } else {
             if (!studentSnapshot.exists()) throw new RejectCommand('INVALID_INPUT', '目標學生不存在');
             studentBefore = decodeStudent(studentSnapshot.data());
@@ -491,6 +492,33 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         if (targetTransactionRef) {
           const transactionSnapshot = await tx.get(targetTransactionRef);
           transactionExists = transactionSnapshot.exists();
+        }
+
+        const codeIndexRef = input.kind === 'CreateStudent'
+          ? doc(db, studentCodePath(input.payload.studentCode))
+          : null;
+        if (codeIndexRef) {
+          const codeIndexSnapshot = await tx.get(codeIndexRef);
+          if (codeIndexSnapshot.exists()) throw new RejectCommand('INVALID_INPUT', '該學生編號已被使用');
+        }
+
+        let oldIndexRef: ReturnType<typeof doc> | null = null;
+        let newIndexRef: ReturnType<typeof doc> | null = null;
+        if (input.kind === 'ChangeStudentCode') {
+          if (!studentBefore) throw new RejectCommand('INVALID_INPUT', '目標學生不存在');
+          const oldCode = String(studentBefore.studentCode);
+          const newCode = input.payload.studentCode;
+          if (oldCode === newCode) throw new RejectCommand('INVALID_INPUT', '新舊編號相同，無需變更');
+          oldIndexRef = doc(db, studentCodePath(oldCode));
+          newIndexRef = doc(db, studentCodePath(newCode));
+          const oldIndexSnapshot = await tx.get(oldIndexRef);
+          const newIndexSnapshot = await tx.get(newIndexRef);
+          if (!oldIndexSnapshot.exists() || oldIndexSnapshot.data()?.studentId !== targetStudentId) {
+            throw new RejectCommand('UNSUPPORTED_SCHEMA', '舊編號索引不存在或指向不正確');
+          }
+          if (newIndexSnapshot.exists()) {
+            throw new RejectCommand('INVALID_INPUT', '目標編號已被使用');
+          }
         }
 
         const seq = Number(headBefore.seq) + 1;
@@ -683,12 +711,13 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         }
 
         if (input.kind === 'CreateStudent') {
-          if (!targetStudentRef || studentBefore !== null || !daySnapshot && hasDayTarget) {
+          if (!targetStudentRef || !codeIndexRef || studentBefore !== null || !daySnapshot && hasDayTarget) {
             throw new RejectCommand('INVALID_INPUT', '建立學生命令目標不合法');
           }
           const opening = input.payload.openingBalance;
           const studentAfter: Data = {
             studentId: input.targets.studentId,
+            studentCode: input.payload.studentCode,
             displayName: input.payload.displayName,
             aliases: input.payload.aliases,
             status: 'active',
@@ -696,6 +725,11 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
             currentBalance: opening.amount,
             createdAt: now,
             revision: 1,
+            lastCommandId: input.commandId,
+            updatedAt: now,
+          };
+          const codeIndexAfter: Data = {
+            studentId: input.targets.studentId,
             lastCommandId: input.commandId,
             updatedAt: now,
           };
@@ -708,6 +742,40 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
             reason: null, cashEffect: zeroCash, payload: input.payload, inputFingerprint: fingerprint,
           };
           tx.set(targetStudentRef, studentAfter);
+          tx.set(codeIndexRef, codeIndexAfter);
+          tx.update(headRef, headAfter);
+          tx.set(commandRef, stored);
+          return { existing: null } as const;
+        }
+
+        if (input.kind === 'ChangeStudentCode') {
+          if (!targetStudentRef || !studentBefore || !oldIndexRef || !newIndexRef) {
+            throw new RejectCommand('INVALID_INPUT', '目標學生不存在');
+          }
+          checkRevision(studentBefore.revision, input.expectedRevisions.student, '學生版本');
+          const studentAfter: Data = {
+            ...studentBefore,
+            studentCode: input.payload.studentCode,
+            revision: Number(studentBefore.revision) + 1,
+            lastCommandId: input.commandId,
+            updatedAt: now,
+          };
+          const newIndexAfter: Data = {
+            studentId: input.targets.studentId,
+            lastCommandId: input.commandId,
+            updatedAt: now,
+          };
+          const stored: StoredEnabledCommandDoc = {
+            commandId: input.commandId, kind: 'ChangeStudentCode', seq, leaseEpoch: input.leaseEpoch,
+            actor: { uid: user.uid, email: user.email! }, committedAt: now as Timestamp,
+            businessDate: null, studentId: input.targets.studentId, targets: input.targets,
+            expectedRevisions: input.expectedRevisions,
+            before: { head: headBefore, student: studentBefore }, after: { head: headAfter, student: studentAfter },
+            reason: input.payload.reason, cashEffect: zeroCash, payload: input.payload, inputFingerprint: fingerprint,
+          };
+          tx.update(targetStudentRef, studentAfter);
+          tx.set(newIndexRef, newIndexAfter);
+          tx.delete(oldIndexRef);
           tx.update(headRef, headAfter);
           tx.set(commandRef, stored);
           return { existing: null } as const;

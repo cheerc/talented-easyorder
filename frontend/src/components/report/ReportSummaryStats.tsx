@@ -20,10 +20,10 @@ export function ReportSummaryStats({ totals, itemName, counterCashFlow }: Report
     <div className="rpt-stats">
       <div className="stat stat-strong">
         <div className="stat-lbl">份數</div>
-        {/* 向供應商叫便當只看今日便當；訂購其他餐點另計。 */}
+        {/* 向供應商叫餐只看今日餐點；訂購其他餐點另計。 */}
         <div className="stat-num mono">{totals.bentoCount}<span className="stat-of"> 份</span></div>
         <div className="stat-sub">
-          今日便當{itemName ? `（${itemName}）` : ''}
+          今日餐點{itemName ? `（${itemName}）` : ''}
           {totals.otherMealCount > 0 && <>＋ 其他 {totals.otherMealCount} 份</>}
         </div>
       </div>
@@ -43,9 +43,14 @@ export function ReportSummaryStats({ totals, itemName, counterCashFlow }: Report
         <div className="stat-sub">櫃台付出的現金</div>
       </div>
       <div className="stat">
+        <div className="stat-lbl">退款</div>
+        <div className="stat-num mono warn">−${fmt(totals.totalRefund ?? 0)}</div>
+        <div className="stat-sub">從帳戶退還的現金</div>
+      </div>
+      <div className="stat">
         <div className="stat-lbl">淨現金</div>
         <div className="stat-num mono">{money(totals.netCash)}</div>
-        <div className="stat-sub">收現 − 支出</div>
+        <div className="stat-sub">收現 − 支出 − 退款</div>
       </div>
       {counterCashFlow && (counterCashFlow.incomeCount > 0 || counterCashFlow.expenseCount > 0) && (
         <>

@@ -35,7 +35,7 @@ describe('menuActions', () => {
     const originalCount = store.vendors.length;
 
     const newVendors: Vendor[] = [
-      { vendorId: 'v9', name: '測試便當店', phone: '0911-111-111', note: '', status: 'active', createdAt: '', updatedAt: '', revision: 1 },
+      { vendorId: 'v9', name: '測試餐點店', phone: '0911-111-111', note: '', status: 'active', createdAt: '', updatedAt: '', revision: 1 },
     ];
 
     store.setVendors(newVendors);
@@ -43,7 +43,7 @@ describe('menuActions', () => {
     const next = usePosStore.getState();
     expect(next.vendors).toHaveLength(1);
     expect(next.vendors).not.toHaveLength(originalCount);
-    expect(next.vendors[0].name).toBe('測試便當店');
+    expect(next.vendors[0].name).toBe('測試餐點店');
   });
 
   it('M3: resetData restores all state to initial values', () => {

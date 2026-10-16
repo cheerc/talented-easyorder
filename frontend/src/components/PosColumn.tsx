@@ -24,6 +24,8 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
     todayMenu, todayCount, todayOtherCount = 0, vendors, enterExpenseMode, tweaks,
     tx, operatorUid, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
     onViewAllHistory,
+    onRefund,
+    onRefundDialogOpenChange,
   } = props;
 
   const orderedTodayCount = useActiveOrderCount(picked?.studentId ?? null, viewDate);
@@ -55,8 +57,10 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
   const handleRecentEditClick = (t: LedgerTransaction) => {
     setEditingTx({
       transactionId: t.transactionId,
+      type: t.type,
       mealPrice: t.mealPrice,
       paidAmount: t.paidAmount,
+      amount: t.amount,
       note: t.note,
     });
   };
@@ -70,7 +74,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
   };
 
   const handleRecentEditSave = useCallback(
-    (transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }, reason: string) =>
+    (transactionId: string, updates: { mealPrice: number; paidAmount: number; amount?: number; note: string }, reason: string) =>
       editTransaction(transactionId, updates, { reason, operatorId: operatorUid }),
     [editTransaction, operatorUid],
   );
@@ -233,13 +237,15 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 onConfirm={handleConfirm}
                 onCancel={cancelFlow}
                 busy={state.kind === 'committing'}
+                onRefund={onRefund}
+                onRefundDialogOpenChange={onRefundDialogOpenChange}
               />
               </>
             )}
             <ConfirmDialog
               open={state.kind === 'duplicate_warning'}
-              title="❗ 已經訂過便當"
-              message={`該學生今天已經訂過 ${orderedTodayCount} 次便當。確定要再訂一份嗎？（家長可能用同一帳號為多位學員訂餐）預設是不加訂；要加訂請按 → 移到「是，再訂一份」再按 Enter，或直接點它。`}
+              title="❗ 已經訂過餐點"
+              message={`該學生今天已訂 ${orderedTodayCount} 份餐點。確定要再訂一份嗎？（家長可能用同一帳號為多位學員訂餐）預設是不加訂；要加訂請按 → 移到「是，再訂一份」再按 Enter，或直接點它。`}
               onConfirm={handleConfirm}
               onCancel={cancelFlow}
               confirmLabel="是，再訂一份"
@@ -271,8 +277,8 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
       <DeleteConfirmDialog
         open={deleteConfirmTx !== null}
         studentName={deleteConfirmTx ? (students.find(s => s.studentId === deleteConfirmTx.studentId)?.displayName ?? '') : ''}
-        transactionType={(deleteConfirmTx?.type === 'expense' ? 'expense' : 'payment') as 'payment' | 'expense'}
-        amount={deleteConfirmTx ? (deleteConfirmTx.type === 'expense' ? deleteConfirmTx.amount : deleteConfirmTx.paidAmount) : 0}
+        transactionType={(deleteConfirmTx?.type === 'expense' ? 'expense' : deleteConfirmTx?.type === 'refund' ? 'refund' : 'payment') as 'payment' | 'expense' | 'refund'}
+        amount={deleteConfirmTx ? (deleteConfirmTx.type === 'expense' || deleteConfirmTx.type === 'refund' ? deleteConfirmTx.amount : deleteConfirmTx.paidAmount) : 0}
         onConfirm={(reason) => {
           if (!deleteConfirmTx) return { ok: true };
           const result = deleteTransaction(deleteConfirmTx.transactionId, { reason, operatorId: operatorUid });

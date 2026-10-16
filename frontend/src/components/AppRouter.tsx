@@ -9,6 +9,8 @@ const VendorsScreen = React.lazy(() => import('./screens/VendorsScreen').then(m 
 const HistoryScreen = React.lazy(() => import('./screens/HistoryScreen').then(m => ({ default: m.HistoryScreen })));
 
 import type { HistoryLookupTarget } from './screens/HistoryScreen';
+import type { StudentAccount } from '../domain/student';
+import type { LedgerMutationResult } from '../domain/ledgerAudit';
 
 type PosColumnProps = ComponentProps<typeof PosColumn>;
 
@@ -20,10 +22,26 @@ interface AppRouterProps {
   // PosColumn
   posColumnProps: PosColumnProps;
   historyLookupTarget?: HistoryLookupTarget | null;
+  onConsumeHistoryLookupTarget?: () => void;
+  onViewStudentHistory?: (student: StudentAccount) => void;
+  // U4：F1 與 F3 共用的退款寫入路徑（含停用帳戶）
+  onRefund?: (studentId: string, amount: number, reason: string) => LedgerMutationResult;
+  onRefundDialogOpenChange?: (open: boolean) => void;
 }
 
 export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
-  const { tab, viewDate, reportStudentFilter, onClearStudentFilter, posColumnProps, historyLookupTarget } = props;
+  const {
+    tab,
+    viewDate,
+    reportStudentFilter,
+    onClearStudentFilter,
+    posColumnProps,
+    historyLookupTarget,
+    onConsumeHistoryLookupTarget,
+    onViewStudentHistory,
+    onRefund,
+    onRefundDialogOpenChange,
+  } = props;
 
   return (
     <>
@@ -47,7 +65,12 @@ export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
       {tab === 'admin' && (
         <ErrorBoundary fallback={<SectionError name="今日設定" />}>
         <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
-        <AdminScreen viewDate={viewDate} />
+        <AdminScreen
+          viewDate={viewDate}
+          onViewStudentHistory={onViewStudentHistory}
+          onRefund={onRefund}
+          onRefundDialogOpenChange={onRefundDialogOpenChange}
+        />
         </Suspense>
         </ErrorBoundary>
       )}
@@ -61,7 +84,11 @@ export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
       {tab === 'history' && (
         <ErrorBoundary fallback={<SectionError name="歷史紀錄" />}>
         <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
-        <HistoryScreen viewDate={viewDate} lookupTarget={historyLookupTarget} />
+        <HistoryScreen
+          viewDate={viewDate}
+          lookupTarget={historyLookupTarget}
+          onConsumeLookupTarget={onConsumeHistoryLookupTarget}
+        />
         </Suspense>
         </ErrorBoundary>
       )}

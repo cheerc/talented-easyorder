@@ -23,7 +23,7 @@ beforeEach(() => {
   s().startBlankData();
   s().addLocalStudent(createLocalAccount({ studentId: '005', displayName: '陳小明/陳大強', openingBalance: 300, openingNote: '', asOfDate: D }, 'now'));
   s().addLocalStudent(createLocalAccount({ studentId: '006', displayName: '林小華', openingBalance: 0, openingNote: '', asOfDate: D }, 'now'));
-  s().setMenuForDate(D, { itemName: '排骨便當', price: 90, vendorId: '', vendorNameSnapshot: '' }, 'now');
+  s().setMenuForDate(D, { itemName: '排骨餐點', price: 90, vendorId: '', vendorNameSnapshot: '' }, 'now');
 });
 
 describe('F1 刷臉訂餐動態', () => {

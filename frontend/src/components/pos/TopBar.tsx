@@ -49,7 +49,7 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing,
       <div className="brand">
         <div className="brand-mark" aria-hidden="true">●</div>
         <div className="brand-text">
-          <div className="brand-name">便當櫃台</div>
+          <div className="brand-name">訂餐櫃台</div>
           <div className="brand-sub" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <input
               type="date"

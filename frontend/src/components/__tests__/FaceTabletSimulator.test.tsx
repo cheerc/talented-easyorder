@@ -10,7 +10,7 @@ const s = () => usePosStore.getState();
 beforeEach(() => {
   s().startBlankData();
   s().addLocalStudent(createLocalAccount({ studentId: '005', displayName: '張家', openingBalance: 300, openingNote: '', asOfDate: D }, 'now'));
-  s().setMenuForDate(D, { itemName: '排骨便當', price: 90, vendorId: '', vendorNameSnapshot: '' }, 'now');
+  s().setMenuForDate(D, { itemName: '排骨餐點', price: 90, vendorId: '', vendorNameSnapshot: '' }, 'now');
 });
 
 describe('模擬刷臉平板', () => {

@@ -7,7 +7,7 @@ import { formatTaipeiTime } from '../../utils/dateTime';
 import { fmt } from '../pos-components';
 
 const COLUMNS = '100px 80px 150px 80px 90px 90px 110px 1fr 90px';
-const TYPE_LABELS: Record<string, string> = { order: '訂餐', payment: '繳費', expense: '櫃台收支' };
+const TYPE_LABELS: Record<string, string> = { order: '訂餐', payment: '繳費', expense: '櫃台收支', refund: '退款' };
 
 export interface TransactionLookupProps {
   /** 預設的區間（起訖同一天）。 */
@@ -131,8 +131,8 @@ export const TransactionLookup = React.memo(function TransactionLookup({
               <div className="mono dim" style={{ fontSize: '12px' }}>{formatTaipeiTime(r.createdAt)}</div>
               <div>{r.studentId === CASHIER_SENTINEL ? '櫃台' : `${r.studentId} ${r.studentName}`}</div>
               <div>{TYPE_LABELS[r.type] ?? r.type}{r.deleted && <span className="pill pill-err" style={{ marginLeft: '4px', fontSize: '11px', textDecoration: 'none' }}>已刪除</span>}</div>
-              <div className="r mono">{money(r.mealPrice)}</div>
-              <div className="r mono">{money(r.paidAmount)}</div>
+              <div className="r mono">{r.type === 'refund' ? `−${money(r.amount ?? 0)}` : money(r.mealPrice)}</div>
+              <div className="r mono">{r.type === 'refund' ? '—' : money(r.paidAmount)}</div>
               <div className="r mono">{r.afterBalance === null ? '—' : money(r.afterBalance)}</div>
               <div className="dim" style={{ fontSize: '13px' }}>{r.note || '-'}</div>
               <div>

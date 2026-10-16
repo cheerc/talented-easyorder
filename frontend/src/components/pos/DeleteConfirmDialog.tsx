@@ -7,14 +7,14 @@ import type { LedgerMutationResult } from '../../domain/ledgerAudit';
 interface DeleteConfirmDialogProps {
   open: boolean;
   studentName: string;
-  transactionType: 'payment' | 'expense';
+  transactionType: 'payment' | 'expense' | 'refund';
   amount: number;
   /** M2：理由必填；回傳失敗（例如已關帳）時對話框留著並顯示原因。 */
   onConfirm: (reason: string) => LedgerMutationResult;
   onCancel: () => void;
 }
 
-const TYPE_LABELS = { payment: '繳費', expense: '支出' } as const;
+const TYPE_LABELS = { payment: '繳費', expense: '支出', refund: '退款' } as const;
 
 export const DeleteConfirmDialog = React.memo(function DeleteConfirmDialog({
   open, studentName, transactionType, amount, onConfirm, onCancel,

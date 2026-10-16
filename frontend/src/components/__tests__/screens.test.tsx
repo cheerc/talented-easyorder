@@ -8,7 +8,7 @@ const mockState = {
   transactions: [],
   students: [],
   vendors: [],
-  todayMenu: { itemName: '排骨便當', price: 90, vendorId: 'v1', vendorNameSnapshot: '老王便當' },
+  todayMenu: { itemName: '排骨餐點', price: 90, vendorId: 'v1', vendorNameSnapshot: '老王便當' },
   closeBusinessDate: vi.fn(),
   reopenBusinessDate: vi.fn(),
   deleteOrderWithRefundCheck: vi.fn(),

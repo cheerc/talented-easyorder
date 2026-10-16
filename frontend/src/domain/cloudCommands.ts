@@ -80,6 +80,7 @@ export type CommandResult<TTargets = Record<string, unknown>, TResult = Record<s
 
 export type BusinessCommandKind =
   | 'CreateStudent'
+  | 'ChangeStudentCode'
   | 'EditStudent'
   | 'SetStudentStatus'
   | 'CorrectOpening'
@@ -104,6 +105,7 @@ export type BusinessCommandKind =
 
 export const ALL_COMMAND_KINDS: readonly BusinessCommandKind[] = [
   'CreateStudent',
+  'ChangeStudentCode',
   'EditStudent',
   'SetStudentStatus',
   'CorrectOpening',
@@ -150,6 +152,7 @@ export interface BaseCommand<TKind extends BusinessCommandKind, TPayload, TTarge
 export type CreateStudentCommand = BaseCommand<
   'CreateStudent',
   {
+    studentCode: string;
     displayName: string;
     aliases: string[];
     openingBalance: {
@@ -157,6 +160,16 @@ export type CreateStudentCommand = BaseCommand<
       asOfDate: string;
       note?: string;
     };
+  },
+  { studentId: string }
+>;
+
+// 1b. ChangeStudentCode (P06b)
+export type ChangeStudentCodeCommand = BaseCommand<
+  'ChangeStudentCode',
+  {
+    studentCode: string;
+    reason: string;
   },
   { studentId: string }
 >;
@@ -368,6 +381,7 @@ export type RecordBackupCommand = BaseCommand<
 /** Spec §6.1 完整 BusinessCommand discriminated union */
 export type BusinessCommand =
   | CreateStudentCommand
+  | ChangeStudentCodeCommand
   | EditStudentCommand
   | SetStudentStatusCommand
   | CorrectOpeningCommand

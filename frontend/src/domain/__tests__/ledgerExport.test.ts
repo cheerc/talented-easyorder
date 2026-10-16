@@ -25,7 +25,7 @@ const makeTx = (overrides: Partial<LedgerTransaction> = {}): LedgerTransaction =
   amount: -85,
   afterBalance: 15,
   menuNameSnapshot: '雞腿飯',
-  vendorNameSnapshot: '便當王',
+  vendorNameSnapshot: '餐點王',
   sourceDevice: 'pc',
   syncStatus: 'local',
   revision: 1,
@@ -82,8 +82,8 @@ describe('buildTransactionCsvRows', () => {
   });
 });
 
-describe('今日便當與其他餐點欄位', () => {
-  it('原始模式：今日便當 1 份；其他餐點列出品項（新資料看 otherItemName，舊資料看備註）；繳費 0', () => {
+describe('今日餐點與其他餐點欄位', () => {
+  it('原始模式：今日餐點 1 份；其他餐點列出品項（新資料看 otherItemName，舊資料看備註）；繳費 0', () => {
     const rows = buildTransactionCsvRows([
       makeTx(),
       makeTx({ transactionId: 'o1', otherItemName: '雞腿', note: '雞腿' }),
@@ -93,7 +93,7 @@ describe('今日便當與其他餐點欄位', () => {
     expect(rows.map(r => r.slice(22))).toEqual([['1', ''], ['0', '雞腿'], ['0', '魚排'], ['0', '']]);
   });
 
-  it('合併模式：同一人的今日便當份數與其他餐點品項合在一列，不沿用第一筆的品項', () => {
+  it('合併模式：同一人的今日餐點份數與其他餐點品項合在一列，不沿用第一筆的品項', () => {
     const merged = mergeLedgerTransactions([
       makeTx({ transactionId: 'a', otherItemName: '雞腿', createdAt: '2026-05-15T11:00:00.000Z' }),
       makeTx({ transactionId: 'b', createdAt: '2026-05-15T12:00:00.000Z' }),
@@ -225,6 +225,7 @@ describe('buildLedgerPrintViewModel', () => {
       otherMealCount: 0,
       totalIncome: 0,
       totalExpense: 0,
+      totalRefund: 0,
       netCash: 0,
       mealTotal: 0,
       orderUnpaid: 85,

@@ -30,7 +30,7 @@ const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST ?? process.env.FIREBASE
 const required = process.env.EASYORDER_REQUIRE_CLOUD_STUDENTS === 'true';
 if (required && !emulatorHost) throw new Error('P06 student-list Emulator gate requires FIRESTORE_EMULATOR_HOST; refusing to skip.');
 const describeWithEmulator = emulatorHost ? describe : describe.skip;
-const defaultRulesPath = path.resolve(process.cwd(), '../firestore.rules');
+const defaultRulesPath = path.resolve(process.cwd(), process.cwd().endsWith('frontend') ? '../firestore.rules' : 'firestore.rules');
 const rulesPath = path.resolve(process.env.EASYORDER_TEST_RULES_PATH ?? defaultRulesPath);
 const today = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -41,6 +41,10 @@ const operatorB = { uid: 'p06-list-operator-b', email: 'p06-list-b@example.test'
 const syntheticTimestamp = Timestamp.fromDate(new Date('2026-10-13T00:00:00.000Z'));
 
 let env: RulesTestEnvironment;
+
+function makeUuid(index: number): string {
+  return `10000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
+}
 
 async function withAdmin<T>(callback: (db: Firestore) => Promise<T>): Promise<T> {
   let result!: T;
@@ -70,8 +74,10 @@ function authedDb(operator: typeof operatorA): Firestore {
 
 function studentDocument(id: string, index: number) {
   const commandId = `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
+  const studentCode = index < 1000 ? index.toString().padStart(3, '0') : index.toString();
   return {
     studentId: id,
+    studentCode,
     displayName: `Synthetic Student ${index}`,
     aliases: [],
     status: 'active',
@@ -114,7 +120,7 @@ async function seedStudents(count: number): Promise<void> {
       const batch = writeBatch(db);
       const end = Math.min(offset + 450, count);
       for (let index = offset; index < end; index += 1) {
-        const id = `synthetic-${index.toString().padStart(4, '0')}`;
+        const id = makeUuid(index);
         batch.set(doc(db, `students/${id}`), studentDocument(id, index + 1));
       }
       await batch.commit();
@@ -153,12 +159,14 @@ describeWithEmulator('P06 server-only student-list repository and production Rul
     });
   });
 
-  it('loads all 500 records across server pages and preserves sorted string IDs', async () => {
+  it('loads all 500 records across server pages and preserves sorted string IDs and codes', async () => {
     await seedStudents(500);
     const result = await listCloudStudents(authedDb(operatorA), { currentUser: () => fakeCurrentUser(operatorA) });
     expect(result.students).toHaveLength(500);
-    expect(result.students[0]?.studentId).toBe('synthetic-0000');
-    expect(result.students[499]?.studentId).toBe('synthetic-0499');
+    expect(result.students[0]?.studentId).toBe(makeUuid(0));
+    expect(result.students[499]?.studentId).toBe(makeUuid(499));
+    expect(result.students[0]?.studentCode).toBe('001');
+    expect(result.students[499]?.studentCode).toBe('500');
     expect(result.students[0]?.createdAt).toBe('2026-10-13T00:00:00.000Z');
   });
 
@@ -170,18 +178,19 @@ describeWithEmulator('P06 server-only student-list repository and production Rul
 
   it('rejects a malformed student in any page without returning a partial list', async () => {
     await seedStudents(201);
-    await withAdmin(async db => setDoc(doc(db, 'students/synthetic-0200'), {
-      ...studentDocument('synthetic-0200', 201), currentBalance: 1.25,
+    await withAdmin(async db => setDoc(doc(db, `students/${makeUuid(200)}`), {
+      ...studentDocument(makeUuid(200), 201), currentBalance: 1.25,
     }));
     await expect(listCloudStudents(authedDb(operatorA), { currentUser: () => fakeCurrentUser(operatorA) }))
       .rejects.toMatchObject({ name: 'CloudStudentRepositoryError', code: 'UNSUPPORTED_SCHEMA' });
   });
 
   it.each([
-    ['mismatched studentId', 'path-001', studentDocument('other-id', 1)],
-    ['student ID above the application limit', 's'.repeat(65), studentDocument('s'.repeat(65), 1)],
-    ['empty aliases', 'empty-alias', { ...studentDocument('empty-alias', 1), aliases: [''] }],
-    ['malformed server timestamp', 'bad-timestamp', { ...studentDocument('bad-timestamp', 1), updatedAt: null }],
+    ['mismatched studentId', makeUuid(1), studentDocument(makeUuid(2), 1)],
+    ['invalid studentId format', 'not-a-uuid', studentDocument('not-a-uuid', 1)],
+    ['invalid studentCode format', makeUuid(1), { ...studentDocument(makeUuid(1), 1), studentCode: '000' }],
+    ['empty aliases', makeUuid(1), { ...studentDocument(makeUuid(1), 1), aliases: [''] }],
+    ['malformed server timestamp', makeUuid(1), { ...studentDocument(makeUuid(1), 1), updatedAt: null }],
   ])('fails closed on %s', async (_label, id, data) => {
     await withAdmin(async db => setDoc(doc(db, `students/${id}`), data));
     await expect(listCloudStudents(authedDb(operatorA), { currentUser: () => fakeCurrentUser(operatorA) }))
@@ -224,6 +233,6 @@ describeWithEmulator('P06 server-only student-list repository and production Rul
   it('denies raw nonholder reads at the production Rules boundary', async () => {
     await seedStudents(1);
     const db = authedDb(operatorB);
-    await assertFails(getDoc(doc(db, 'students/synthetic-0000')));
+    await assertFails(getDoc(doc(db, `students/${makeUuid(0)}`)));
   });
 });

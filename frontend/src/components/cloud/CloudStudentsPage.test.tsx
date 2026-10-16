@@ -10,6 +10,7 @@ import { CloudStudentsPage } from './CloudStudentsPage';
 const repository = vi.hoisted(() => ({
   list: vi.fn(),
   createStudent: vi.fn(),
+  changeStudentCode: vi.fn(),
   editStudent: vi.fn(),
   setStudentStatus: vi.fn(),
   readCommand: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock('../../firebase/cloudStudentRepository', () => ({
 function student(studentId: string, overrides: Partial<CloudStudentRecord> = {}): CloudStudentRecord {
   return {
     studentId,
+    studentCode: overrides.studentCode ?? studentId,
     displayName: '測試學生',
     aliases: [],
     status: 'active',
@@ -89,6 +91,7 @@ describe('CloudStudentsPage', () => {
     vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValue('cmd-ui-001') });
     repository.list.mockResolvedValue(snapshot());
     repository.createStudent.mockResolvedValue(successful('cmd-ui-001', 'CreateStudent', '001'));
+    repository.changeStudentCode.mockResolvedValue(successful('cmd-ui-001', 'ChangeStudentCode', '001'));
     repository.editStudent.mockResolvedValue(successful('cmd-ui-001', 'EditStudent', '001'));
     repository.setStudentStatus.mockResolvedValue(successful('cmd-ui-001', 'SetStudentStatus', '001'));
     repository.readCommand.mockResolvedValue(null);
@@ -132,7 +135,7 @@ describe('CloudStudentsPage', () => {
     await waitFor(() => expect(repository.createStudent).toHaveBeenCalledWith(expect.objectContaining({
       commandId: 'cmd-ui-001',
       leaseEpoch: 4,
-      studentId: '001',
+      studentCode: '001',
       displayName: '新學生',
       openingBalance: expect.objectContaining({ amount: -25, note: '' }),
     })));
@@ -236,7 +239,7 @@ describe('CloudStudentsPage', () => {
     await screen.findByText(/目前伺服器名單是空的/);
     openCreateForm();
     const form = within(screen.getByRole('form', { name: '新增學生' }));
-    fireEvent.change(form.getByLabelText('學員編號'), { target: { value: 'STUDENT-PII-77' } });
+    fireEvent.change(form.getByLabelText('學員編號'), { target: { value: '077' } });
     fireEvent.change(form.getByRole('textbox', { name: /^姓名$/ }), { target: { value: '敏感姓名' } });
     fireEvent.change(form.getByRole('textbox', { name: /別名（逗號、頓號/ }), { target: { value: '敏感別名' } });
     fireEvent.change(form.getByLabelText(/期初結餘/), { target: { value: '-7' } });
@@ -250,7 +253,7 @@ describe('CloudStudentsPage', () => {
     expect(screen.getByText('命令編號 cmd-ui-001')).toBeInTheDocument();
     expect(screen.queryByText('查詢原命令結果')).not.toBeInTheDocument();
     const pageText = screen.getByRole('main', { name: '雲端學生名單' }).textContent ?? '';
-    for (const sensitiveValue of ['STUDENT-PII-77', '敏感姓名', '敏感別名', '敏感備註']) {
+    for (const sensitiveValue of ['077', '敏感姓名', '敏感別名', '敏感備註']) {
       expect(pageText).not.toContain(sensitiveValue);
     }
   });
@@ -311,7 +314,7 @@ describe('CloudStudentsPage', () => {
     renderPage();
     await screen.findByText(/目前伺服器名單是空的/);
     openCreateForm();
-    fireEvent.change(screen.getByLabelText('學員編號'), { target: { value: 'STUDENT-PII-77' } });
+    fireEvent.change(screen.getByLabelText('學員編號'), { target: { value: '077' } });
     fireEvent.change(screen.getByLabelText('姓名'), { target: { value: '敏感姓名' } });
     fireEvent.change(screen.getByLabelText(/別名（逗號、頓號/), { target: { value: '敏感別名' } });
     fireEvent.change(screen.getByLabelText(/期初結餘/), { target: { value: '-7' } });
@@ -323,12 +326,12 @@ describe('CloudStudentsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '重新載入名單' }));
     expect(await screen.findByText('使用權已變更；敏感操作內容已清除。')).toBeInTheDocument();
 
-    await act(async () => resolveCommand(successful('cmd-ui-001', 'CreateStudent', 'STUDENT-PII-77')));
+    await act(async () => resolveCommand(successful('cmd-ui-001', 'CreateStudent', '077')));
 
     expect(screen.getByText('命令編號 cmd-ui-001')).toBeInTheDocument();
     expect(screen.queryByText(/已找到伺服器回執/)).not.toBeInTheDocument();
     const pageText = screen.getByRole('main', { name: '雲端學生名單' }).textContent ?? '';
-    for (const sensitiveValue of ['STUDENT-PII-77', '敏感姓名', '敏感別名', '敏感備註']) {
+    for (const sensitiveValue of ['077', '敏感姓名', '敏感別名', '敏感備註']) {
       expect(pageText).not.toContain(sensitiveValue);
     }
     expect(repository.list).toHaveBeenCalledTimes(2);
@@ -372,7 +375,7 @@ describe('CloudStudentsPage', () => {
     renderPage();
     await screen.findByText(/目前伺服器名單是空的/);
     openCreateForm();
-    fillCreateForm({ id: 'STUDENT-PII-88', name: '另一敏感姓名', amount: '0', mode: '沿用既有核對結餘' });
+    fillCreateForm({ id: '088', name: '另一敏感姓名', amount: '0', mode: '沿用既有核對結餘' });
     fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
     await screen.findByText('結果確認中，請勿重複建立／修改。');
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
@@ -381,14 +384,14 @@ describe('CloudStudentsPage', () => {
 
     await act(async () => rejectReceiptRead({ code: 'UNAUTHORIZED', message: 'token revoked' }));
     expect(await screen.findByText('使用權已變更；敏感操作內容已清除。')).toBeInTheDocument();
-    await act(async () => resolveList(snapshot([student('STALE-PII-99', { displayName: '過期敏感名單' })])));
+    await act(async () => resolveList(snapshot([student('099', { displayName: '過期敏感名單' })])));
 
     expect(screen.getByText('命令編號 cmd-ui-001')).toBeInTheDocument();
     const pageText = screen.getByRole('main', { name: '雲端學生名單' }).textContent ?? '';
-    for (const sensitiveValue of ['STUDENT-PII-88', '另一敏感姓名', 'STALE-PII-99', '過期敏感名單']) {
+    for (const sensitiveValue of ['088', '另一敏感姓名', '099', '過期敏感名單']) {
       expect(pageText).not.toContain(sensitiveValue);
     }
-    expect(screen.queryByTestId('cloud-student-row-STALE-PII-99')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('cloud-student-row-099')).not.toBeInTheDocument();
     expect(repository.list).toHaveBeenCalledTimes(2);
   });
 
@@ -410,5 +413,84 @@ describe('CloudStudentsPage', () => {
     await act(async () => resolveOld(snapshot([student('OLD-PII', { displayName: '前一位操作員資料' })])));
     expect(screen.queryByText('前一位操作員資料')).not.toBeInTheDocument();
     expect(screen.getByText('目前操作員資料')).toBeInTheDocument();
+  });
+
+  it('sorts students numerically by studentCode', async () => {
+    repository.list.mockResolvedValue(snapshot([
+      student('uuid-100', { studentCode: '100', displayName: '學生一百' }),
+      student('uuid-002', { studentCode: '002', displayName: '學生二號' }),
+      student('uuid-010', { studentCode: '010', displayName: '學生十號' }),
+    ]));
+    renderPage();
+
+    await screen.findByTestId('cloud-student-row-002');
+    const rows = screen.getAllByTestId(/^cloud-student-row-/);
+    expect(rows[0]).toHaveTextContent('002');
+    expect(rows[1]).toHaveTextContent('010');
+    expect(rows[2]).toHaveTextContent('100');
+  });
+
+  it('renders gap rows for missing student codes and prefills code on click', async () => {
+    repository.list.mockResolvedValue(snapshot([
+      student('uuid-002', { studentCode: '002', displayName: '學生二號' }),
+      student('uuid-005', { studentCode: '005', displayName: '學生五號' }),
+    ]));
+    renderPage();
+
+    await screen.findByTestId('cloud-student-row-002');
+    // 001 is missing (single gap)
+    expect(screen.getByTestId('cloud-student-gap-001')).toHaveTextContent('001 尚無人使用');
+    // 003..004 are missing (consecutive gap)
+    expect(screen.getByTestId('cloud-student-gap-003')).toHaveTextContent('003–004 尚無人使用（2 個號碼）');
+
+    // Click gap row 003–004 to prefill 003 into create form
+    fireEvent.click(screen.getByTestId('cloud-student-gap-003'));
+    const form = screen.getByRole('form', { name: '新增學生' });
+    expect(within(form).getByLabelText('學員編號')).toHaveValue('003');
+  });
+
+  it('hides gap rows when searching', async () => {
+    repository.list.mockResolvedValue(snapshot([
+      student('uuid-002', { studentCode: '002', displayName: '學生二號' }),
+      student('uuid-005', { studentCode: '005', displayName: '學生五號' }),
+    ]));
+    renderPage();
+
+    await screen.findByTestId('cloud-student-row-002');
+    expect(screen.getByTestId('cloud-student-gap-001')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('搜尋編號、姓名或別名'), { target: { value: '二號' } });
+    expect(screen.queryByTestId('cloud-student-gap-001')).not.toBeInTheDocument();
+    expect(screen.getByTestId('cloud-student-row-002')).toBeInTheDocument();
+    expect(screen.queryByTestId('cloud-student-row-005')).not.toBeInTheDocument();
+  });
+
+  it('supports changing student code with ChangeStudentCode command and reason', async () => {
+    repository.list
+      .mockResolvedValueOnce(snapshot([
+        student('uuid-002', { studentCode: '002', displayName: '王小明', revision: 2 }),
+      ]))
+      .mockResolvedValueOnce(snapshot([
+        student('uuid-002', { studentCode: '015', displayName: '王小明', revision: 3 }),
+      ]));
+    renderPage();
+
+    await screen.findByTestId('cloud-student-row-002');
+    const row = screen.getByTestId('cloud-student-row-002');
+    fireEvent.click(within(row).getByRole('button', { name: '改編號' }));
+
+    const codeForm = within(row).getByRole('form', { name: '改編號 002' });
+    fireEvent.change(within(codeForm).getByLabelText('新編號'), { target: { value: '015' } });
+    fireEvent.change(within(codeForm).getByLabelText('改號原因（必填）'), { target: { value: '調班改號' } });
+    fireEvent.click(within(codeForm).getByRole('button', { name: '確認改號' }));
+
+    await waitFor(() => expect(repository.changeStudentCode).toHaveBeenCalledWith({
+      commandId: 'cmd-ui-001',
+      leaseEpoch: 4,
+      studentId: 'uuid-002',
+      expectedRevision: 2,
+      studentCode: '015',
+      reason: '調班改號',
+    }));
   });
 });

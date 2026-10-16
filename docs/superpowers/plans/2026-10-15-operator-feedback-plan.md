@@ -1,6 +1,8 @@
 # 2026-10-15 操作回饋排程計畫（10 項）
 
-日期：2026-10-15。狀態：**計畫，尚未實作**。來源：CheerC 2026-10-15 操作時發現的 10 個問題。
+日期：2026-10-15（2026-10-16 更新進度）。
+狀態：**前端 prototype 定稿線推進中（U1、U2a、U2c 已合入 main；U2b、U3、U4 已獲 ac 審查 PASS 待正式核准 merge；整合預備完成）；本回饋新增雲端範圍尚未交付至 main（P06b 現正於獨立分支 WIP 契約／實作中）**。
+來源：CheerC 2026-10-15 操作時發現的 10 個問題。
 程式現況以 main `b518eca`（P06 已合併）和 P07 分支 `codex/backend-p07-day-vendors` 的 `6780cfd` 為準。
 
 這份文件回答兩件事：
@@ -345,18 +347,25 @@
 
 prototype 的稽核軌跡維持現狀（它只是練習資料），不再補強。
 
-## 4. 前端定稿線（U 批次）
+## 4. 前端定稿線（U 批次）與目前交付狀態
 
-每批一個小 PR：implementer 實作，reviewer 只 review、不合併，coordinator 檢查 review 和 CI 後合併。每批都要更新 prototype workflow spec 的對應段落（U1 與 U2b 新增 §8），並在 `npm run dev:prototype` 上給 CheerC 一份驗收步驟。
+每批一個小 PR：implementer 實作，reviewer 只 review、不合併，coordinator 檢查 review 和 CI 後合併。每批都要更新 prototype workflow spec 的對應段落（U1 與 U2b 新增 §8），並在 `npm run dev:prototype` 上給 CheerC 一份驗收步驟。**（注意：以下狀態為自動化測試與 ac 代碼審查結果，不代簽 CheerC 本人之業務驗收）**。
 
-| 批次 | 內容 | 前置 | 主要檔案 |
-|---|---|---|---|
-| U1 | #10 顯示設定：單一 store、localStorage 保存（不分模式共用）、hover 設定真的生效、測試 | 無，可立即開始 | `hooks/useTweaks.ts`、`App.tsx`（AppContent）、`AdminScreen.tsx`、新 store、`screens.test.tsx` |
-| U2a | #4 右上角兩行、#2 最近帳戶、#5 E 付款明細、#6 移除檢視歷史、#9 E「查看全部紀錄」跳 F5（含 `TransactionLookup` 起訖區間與精確帳戶鎖定） | 無 | `TopBar.tsx`、`RecentStrip.tsx`、`TransactionStatusView.tsx`、`CustomerCard.tsx`、`ActionBar.tsx`、`HistoryScreen.tsx`、`TransactionLookup.tsx`、`transactionLookup.ts` |
-| U2b | #4 全系統「便當」→「餐點」、e2e 斷言、測試字串 | U2a 合併；Q5 品牌名 | 約 30 個非測試檔、45 個測試檔、2 個 e2e |
-| U2c | #3 開帳確認框三種情況、0–20,000 元上限（改用 `validateOpeningCash`） | Q6 | `AdminScreen.tsx`、`cashSession.ts`、`cashClose.ts` |
-| U3 | #7 編號排序、缺號列、改編號（練習資料連同交易／稽核／刷臉紀錄改寫）、F3「交易紀錄」入口 | Q2–Q4 | `AdminScreen.tsx`、`practiceDataActions.ts`、`domain/student.ts` |
-| U4 | #1 退款：交易類型 `refund`、餘額與現金算式、F1 W 退款框、F2 退款一行、E、CSV、稽核顯示 | Q1 | `domain/ledger.ts`、`ledgerReport.ts`、`ledgerExport.ts`、`cashClose.ts`、`domain/types.ts`、`posTransaction.ts`、F1／F2 元件 |
+| 批次 | 內容 | 前置 | 主要檔案 | 目前交付狀態（截至 2026-10-16） |
+|---|---|---|---|---|
+| U1 | #10 顯示設定：單一 store、localStorage 保存（不分模式共用）、hover 設定真的生效、測試 | 無，可立即開始 | `hooks/useTweaks.ts`、`App.tsx`（AppContent）、`AdminScreen.tsx`、新 store、`screens.test.tsx` | **已合入 main**（PR #481，source `d197545`，main squash `423f008`） |
+| U2a | #4 右上角兩行、#2 最近帳戶、#5 E 付款明細、#6 移除檢視歷史、#9 E「查看全部紀錄」跳 F5（含 `TransactionLookup` 起訖區間與精確帳戶鎖定） | 無 | `TopBar.tsx`、`RecentStrip.tsx`、`TransactionStatusView.tsx`、`CustomerCard.tsx`、`ActionBar.tsx`、`HistoryScreen.tsx`、`TransactionLookup.tsx`、`transactionLookup.ts` | **已合入 main**（PR #483，merge `15de317`） |
+| U2b | #4 全系統「便當」→「餐點」、e2e 斷言、測試字串、PWA manifest 品牌更新 | U2a 合併；Q5 品牌名 | 約 30 個非測試檔、45 個測試檔、2 個 e2e、`public/manifest.json` | **已審核 PASS，待 merge**（PR #486，source `4827cc6`，待 CheerC 正式核准） |
+| U2c | #3 開帳確認框三種情況、0–20,000 元上限（改用 `validateOpeningCash`） | Q6 | `AdminScreen.tsx`、`cashSession.ts`、`cashClose.ts` | **已合入 main**（PR #482，merge `bc8fdf12d2046272333b8b35c1c2a272d99323d6`） |
+| U3 | #7 編號排序、缺號列、改編號（練習資料連同交易／稽核／刷臉紀錄改寫）、F3「交易紀錄」入口 | Q2–Q4 | `AdminScreen.tsx`、`practiceDataActions.ts`、`domain/student.ts` | **已審核 PASS，待 merge**（PR #484，source `efaa9ce`，待 CheerC 正式核准） |
+| U4 | #1 退款：交易類型 `refund`、餘額與現金算式、F1 W 退款框、F2 退款一行、E、CSV、稽核顯示 | Q1 | `domain/ledger.ts`、`ledgerReport.ts`、`ledgerExport.ts`、`cashClose.ts`、`domain/types.ts`、`posTransaction.ts`、F1／F2 元件 | **已審核 PASS，待 merge**（PR #485，source `b38563c`，待 CheerC 正式核准） |
+
+### 跨批次本地整合進度（integration/operator-feedback）
+
+- **已審產品整合基準 SHA**：`3bfa4d6df86f595287bf529fb9cfa825a905daaa`（依序合入 U3 `efaa9ce`、U2b `4827cc6`、U4 `b38563c`，手工解決 5 處衝突，並獲 ac 本地審查 PASS）。
+- **審查收據**：見 [本地整合審查收據](../../ops/integration-review-3bfa4d6.md)，ac 本地審查結論為 PASS。
+- **增量證據與測試提交**：後續 commit（`9d68f25` 及後續）將 ac 外部驗收測試正式移植為 repo 永久測試 `src/__tests__/integrationApp.test.tsx`（完整 App F3 改號、退款、modal guard、F5 查詢與離頁清除、真實 storage 新 reader 重載、5 秒撤回時窗），並校正 `src/__tests__/crossFeatureIntegration.test.tsx`（模組層級算式/校驗器/Presenter）之層級名稱。
+- **雲端正式後端狀態**：P00–P07 已在 main；本回饋排程所涉及之新增雲端範圍（P06b、P08、P09b、P10–P13 等）尚未正式交付至 main。其中 P06b 學生內部鍵與編號索引目前由後端 agent 於獨立分支進行 WIP 契約與實作，兩條線並行不互相阻塞；待 CheerC 在 prototype 練習模式完成業務驗收並正式核准合併後，依修訂排程陸續於後端線展開後續 phase。
 
 **注意：**
 

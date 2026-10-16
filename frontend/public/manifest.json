@@ -1,7 +1,7 @@
 {
-  "name": "便當櫃台",
-  "short_name": "便當櫃台",
-  "description": "校園便當 POS 管理系統",
+  "name": "訂餐櫃台",
+  "short_name": "訂餐櫃台",
+  "description": "校園訂餐 POS 管理系統",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f4f4f2",

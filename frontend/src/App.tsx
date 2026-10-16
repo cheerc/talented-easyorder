@@ -14,11 +14,14 @@ import { useCommitLifecycle } from './hooks/useCommitLifecycle';
 import { useConfirmHandler } from './hooks/useConfirmHandler';
 import { useExpenseProps } from './hooks/useExpenseProps';
 
+import { buildRefundTransactionDraft } from './domain/posTransaction';
+import type { LedgerMutationResult } from './domain/ledgerAudit';
 import { MainLayout } from './components/MainLayout';
+import type { FlashData } from './components/MainLayout';
 import { ErrorBoundary, AppCrashPage } from './components/ErrorBoundary';
 import { appendErrorLog } from './errors/errorLogger';
 import { AppRouter } from './components/AppRouter';
-import { useStudents, useTransactions, useMenu, useMenuForDate, useSessionActions } from './store/selectors';
+import { useStudents, useTransactions, useMenu, useMenuForDate, useSessionActions, useTransactionActions } from './store/selectors';
 import { countMeals } from './domain/ledgerReport';
 import { useFlashData } from './hooks/useFlashData';
 import { useFocusSync } from './hooks/useFocusSync';
@@ -54,7 +57,7 @@ function AppContent() {
   const tx = useMemo(() =>
     allTx.filter(t => t.businessDate === viewDate).reverse(),
   [allTx, viewDate]);
-  // 今日便當份數與其他餐點分開算（向供應商叫便當只看今日便當）。
+  // 今日餐點份數與其他餐點分開算（向供應商叫餐只看今日餐點）。
   // 以前要求品項與單價都等於現在的菜單，當天改價後前面的訂單就不算了。
   const meals = useMemo(() => countMeals(tx), [tx]);
   const todayCount = meals.bento;
@@ -96,11 +99,19 @@ function AppContent() {
 
   const [tab, setTab] = useState('pos');
   const [historyLookupTarget, setHistoryLookupTarget] = useState<HistoryLookupTarget | null>(null);
+
+  const handleSelectTab = useCallback((nextTab: string) => {
+    if (nextTab !== 'history') {
+      setHistoryLookupTarget(null);
+    }
+    setTab(nextTab);
+  }, []);
   const [reportStudentFilter, setReportStudentFilter] = useState('');
   const [focusZone, setFocusZone] = useState('mode-order');
   const [showDashboard, setShowDashboard] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const online = useOnlineStatus();
+  const { commitPosTransactionDraft } = useTransactionActions();
 
   const storageHealthyRef = useRef(true);
   useEffect(() => { const health = checkStorageHealth(); storageHealthyRef.current = health.ok; }, []);
@@ -113,9 +124,21 @@ function AppContent() {
 
   const [searchFocusKey, setSearchFocusKey] = useState(0);
   const [flashKey, setFlashKey] = useState(0);
+  const [manualFlash, setManualFlash] = useState<FlashData | null>(null);
+  const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const { undoCountdown, setUndoCountdown, lastCommittedTxIdRef, dismissFlash, handleUndo } = useUndoCountdown({
     dismissSuccess, setFlashKey, setSyncing, setPriceOverride, setPriceOverrideLabel, operatorId: operatorUid,
   });
+
+  const onDismissFlash = useCallback(() => {
+    setManualFlash(null);
+    dismissFlash();
+  }, [dismissFlash]);
+
+  const handleUndoWithManualFlash = useCallback(() => {
+    setManualFlash(null);
+    handleUndo();
+  }, [handleUndo]);
 
   // Ref: #281 — Extracted to useConfirmHandler hook
   const handleConfirm = useConfirmHandler({ state, requestConfirm, confirmDuplicate, confirmExpenseAmount, orderBlocked: !isMenuReady(todayMenu) || (priceOverride !== null && !(Number.isSafeInteger(priceOverride) && priceOverride > 0)) });
@@ -132,12 +155,12 @@ function AppContent() {
     setSyncing,
   });
 
-  const hasFlash = state.kind === 'success';
+  const hasFlash = state.kind === 'success' || manualFlash !== null;
   const isStudentSelected = picked !== null && (state.kind === 'student_selected' || state.kind === 'duplicate_warning' || state.kind === 'committing' || state.kind === 'error');
   const isExpenseFlow = state.kind === 'expense_input' || state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note';
 
   // M1 K08：重複訂餐確認也是對話框，開著時背景的 Enter／方向鍵／Q W 都不處理，交給對話框。
-  const isDialogOpen = cancelDialogOpen || noOrderDialogOpen || state.kind === 'duplicate_warning';
+  const isDialogOpen = cancelDialogOpen || noOrderDialogOpen || state.kind === 'duplicate_warning' || refundDialogOpen;
 
   useKeyboardShortcuts({
     enabled: tab === 'pos' && !hasFlash && !isExpenseFlow,
@@ -156,7 +179,7 @@ function AppContent() {
   const flashData = useFlashData({ isSuccess, picked, currentMode, currentPaidAmount, todayMenu, flashKey, priceOverride, priceOverrideLabel, allTx });
 
   useAppNavigationShortcuts({
-    tab, setTab, setShowDashboard,
+    tab, setTab: handleSelectTab, setShowDashboard,
     picked, expenseProps, currentMode, hasFlash, focusZone, setFocusZone,
     changeMode: changeMode as (m: PosMode) => void,
     cancelFlow, handleConfirm, setSearchText, setSearchFocusKey,
@@ -181,14 +204,45 @@ function AppContent() {
     setTab('history');
   }, [allTx, viewDate]);
 
+  const handleRefund = useCallback((studentId: string, amount: number, reason: string): LedgerMutationResult => {
+    const student = students.find(s => s.studentId === studentId) ?? null;
+    if (!student) return { ok: false, message: '找不到這個帳戶。' };
+    const draft = buildRefundTransactionDraft({
+      businessDate: viewDate,
+      student,
+      amount,
+      note: reason,
+      sourceDevice: 'pc',
+      operatorId: operatorUid,
+    });
+    const result = commitPosTransactionDraft(draft);
+    if (!result.ok) {
+      return { ok: false, message: result.message };
+    }
+    lastCommittedTxIdRef.current = result.transactionId;
+    setUndoCountdown(5);
+    setManualFlash({
+      id: flashKey,
+      name: student.displayName,
+      sid: student.studentId,
+      detail: `退款：${reason}`,
+      amount: -amount,
+      after: student.currentBalance - amount,
+    });
+    cancelFlow();
+    return { ok: true };
+  }, [students, viewDate, operatorUid, commitPosTransactionDraft, flashKey, cancelFlow, lastCommittedTxIdRef, setUndoCountdown]);
+
   const flowArgs = useMemo(() => ({
     state, picked, currentMode, currentPaidAmount, selectStudent,
     setPaidAmountText, handleConfirm, cancelFlow, changeMode, openCancelConfirm, openCancelConfirmForTx,
     handleDeleteOrder,
     onViewAllHistory: handleViewAllHistory,
+    onRefund: handleRefund,
+    onRefundDialogOpenChange: setRefundDialogOpen,
   }), [state, picked, currentMode, currentPaidAmount, selectStudent,
     setPaidAmountText, handleConfirm, cancelFlow, changeMode, openCancelConfirm, openCancelConfirmForTx,
-    handleDeleteOrder, handleViewAllHistory]);
+    handleDeleteOrder, handleViewAllHistory, handleRefund, setRefundDialogOpen]);
 
   const expenseArgs = useMemo(() => ({
     expenseProps, enterExpenseMode,
@@ -228,13 +282,13 @@ function AppContent() {
   // bypassing AuthGate. fb will remain null with no fbError.
   const mainContent = (
     <MainLayout
-      tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync}
+      tab={tab} setTab={handleSelectTab} online={online} syncing={syncing} lastSync={lastSync}
       todayCount={todayCount} todayOtherCount={todayOtherCount} todayMenu={todayMenu} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate}
       queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount}
       onDashboard={() => setShowDashboard(true)}
       storageMode={fb ? 'cloud' : isPrototypeMode ? 'prototype' : 'local-only'}
-      flashData={flashData} onDismissFlash={dismissFlash}
-      onUndo={handleUndo} undoCountdown={undoCountdown}
+      flashData={manualFlash ?? flashData} onDismissFlash={onDismissFlash}
+      onUndo={handleUndoWithManualFlash} undoCountdown={undoCountdown}
       cancelDialogOpen={cancelDialogOpen} picked={picked}
       orderTx={cancelOrderTx}
       onCancelDialogConfirm={(keepPaymentAsDeposit, reason) => {
@@ -254,6 +308,10 @@ function AppContent() {
         onClearStudentFilter={() => setReportStudentFilter('')}
         posColumnProps={posColumnProps}
         historyLookupTarget={historyLookupTarget}
+        onConsumeHistoryLookupTarget={() => setHistoryLookupTarget(null)}
+        onViewStudentHistory={handleViewAllHistory}
+        onRefund={handleRefund}
+        onRefundDialogOpenChange={setRefundDialogOpen}
       />
     </MainLayout>
   );

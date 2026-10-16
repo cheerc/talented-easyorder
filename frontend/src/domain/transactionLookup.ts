@@ -17,6 +17,7 @@ export interface LookupRow {
   type: LedgerTransaction['type'];
   mealPrice: number;
   paidAmount: number;
+  amount?: number;
   note: string;
   /** 這筆之後的結餘；已刪除的原單沒有。 */
   afterBalance: number | null;
@@ -100,6 +101,7 @@ export function buildLookupRows(args: {
       type: t.type,
       mealPrice: t.mealPrice,
       paidAmount: t.paidAmount,
+      amount: t.amount,
       note: t.note,
       afterBalance: t.studentId === CASHIER_SENTINEL ? null : t.afterBalance,
       deleted: false,
@@ -125,6 +127,7 @@ export function buildLookupRows(args: {
       type: (str(b.type, 'payment') as LedgerTransaction['type']),
       mealPrice: num(b.mealPrice),
       paidAmount: num(b.paidAmount),
+      amount: num(b.amount),
       note: str(b.note),
       afterBalance: null,
       deleted: true,

@@ -43,7 +43,7 @@ describe('SummaryRow 依交易現在的類型計數', () => {
   beforeEach(() => {
     s().startBlankData();
     s().addLocalStudent(createLocalAccount({ studentId: '003', displayName: '丙', openingBalance: 0, openingNote: '', asOfDate: D }, 'now'));
-    s().setMenuForDate(D, { itemName: '排骨便當', price: 90, vendorId: '', vendorNameSnapshot: '' }, 'now');
+    s().setMenuForDate(D, { itemName: '排骨餐點', price: 90, vendorId: '', vendorNameSnapshot: '' }, 'now');
   });
 
   it('平板取消（付過現金）後原單改成繳費：合併模式摘要顯示繳費 1 筆，不是訂餐', () => {

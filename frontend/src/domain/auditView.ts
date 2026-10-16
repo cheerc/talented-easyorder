@@ -29,6 +29,8 @@ export interface AuditRowView {
   transactionId?: string;
   /** 原單的帳戶編號（櫃台收支是 CASHIER_SENTINEL）。 */
   studentId?: string;
+  /** 學生改號等事件涉及之歷史曾用編號集合，供純數字查詢使用 */
+  historicalStudentIds?: string[];
   /** 原單現在還在不在；刪除、撤回或取消訂餐退款後只剩稽核裡的原單內容。 */
   originalExists: boolean;
 }
@@ -43,17 +45,20 @@ export interface AuditAccountInfo {
 const FIELD_LABELS: Record<string, string> = {
   mealPrice: '應收金額',
   paidAmount: '實收金額',
+  amount: '金額',
   note: '備註',
   type: '類型',
+  studentId: '編號',
 };
 
 const TYPE_LABELS: Record<string, string> = {
   order: '訂餐',
   payment: '繳費',
   expense: '櫃台收支',
+  refund: '退款',
 };
 
-const MONEY_FIELDS = new Set(['mealPrice', 'paidAmount']);
+const MONEY_FIELDS = new Set(['mealPrice', 'paidAmount', 'amount']);
 
 function formatValue(key: string, value: unknown): string {
   if (value === undefined || value === null) return '（無）';
@@ -72,6 +77,10 @@ function describeChanges(before: Record<string, unknown> | null, after: Record<s
   if (!before) return after ? '新建' : '-';
   if (!after) {
     // M2：刪除時原單整筆存在 before，列出類型與金額方便對照。
+    if (before.type === 'refund') {
+      const note = typeof before.note === 'string' && before.note ? `，備註「${before.note}」` : '';
+      return `刪除原單：退款、金額 ${formatValue('amount', before.amount ?? 0)}${note}`;
+    }
     if (before.mealPrice === undefined && before.paidAmount === undefined) return '刪除原單';
     const parts = [
       before.type ? formatValue('type', before.type) : '',
@@ -80,6 +89,10 @@ function describeChanges(before: Record<string, unknown> | null, after: Record<s
     ].filter(Boolean);
     const note = typeof before.note === 'string' && before.note ? `，備註「${before.note}」` : '';
     return `刪除原單：${parts.join('、')}${note}`;
+  }
+  // 學生改號變更描述
+  if (before.studentId !== undefined && after.studentId !== undefined && before.studentId !== after.studentId) {
+    return `編號 ${String(before.studentId)} → ${String(after.studentId)}`;
   }
   const changes: string[] = [];
   const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
@@ -94,6 +107,8 @@ function describeChanges(before: Record<string, unknown> | null, after: Record<s
 
 function typeOf(e: LedgerAuditEvent): { label: string; cls: string } {
   switch (e.eventType) {
+    case 'student_code_changed':
+      return { label: '改編號', cls: 'pill-warn' };
     case 'transaction_edited':
       // 取消訂餐並保留繳費：原單從訂餐改成繳費。
       if (e.before?.type === 'order' && e.after?.type === 'payment') return { label: '取消訂餐', cls: 'pill-warn' };
@@ -134,20 +149,60 @@ export function describeAuditEvents(events: LedgerAuditEvent[], transactions: Le
   }
   const currentNames = new Map(currentAccounts.map(a => [a.studentId, [a.displayName, ...(a.aliases ?? [])].join(' ')]));
 
+  // U3 複審：改號事件以「目前歸戶」為準，before/after 的編號只是當時的歷史快照。
+  // 先把每個改號事件曾經用過的編號全部收起來（頂層 studentId／entityId 與快照編號），
+  // 扣掉目前歸戶的編號後剩下的就是歷史曾用號，供純數字查詢命中。
+  const codeChangeIds = new Map<string, Set<string>>();
+  for (const e of events) {
+    if (e.entityType !== 'student' && e.eventType !== 'student_code_changed') continue;
+    const ids = new Set<string>();
+    for (const id of [e.studentId, e.entityId, e.before?.studentId, e.after?.studentId]) {
+      if (typeof id === 'string' && id) ids.add(id);
+    }
+    // 以目前歸戶（頂層 studentId／entityId）為索引
+    const key = typeof e.studentId === 'string' && e.studentId
+      ? e.studentId
+      : (typeof e.entityId === 'string' ? e.entityId : [...ids][0]);
+    if (!key) continue;
+    const bucket = codeChangeIds.get(key) ?? new Set<string>();
+    for (const id of ids) bucket.add(id);
+    codeChangeIds.set(key, bucket);
+  }
+
   return [...events]
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .map(e => {
       const type = typeOf(e);
       let subject: string;
       let ref: AccountRef | undefined;
-      if (e.entityType === 'transaction') {
+      const isStudentChange = e.entityType === 'student' || e.eventType === 'student_code_changed';
+
+      if (e.entityType === 'transaction' && !isStudentChange) {
         ref = accounts.get(e.entityId);
         subject = ref ? accountLabel(ref) : '（找不到帳戶）';
+      } else if (isStudentChange) {
+        // 學生改號／資料變更事件：以事件頂層的目前 studentId／entityId 歸戶，
+        // 不使用 before/after 的編號（那是當時的歷史快照，號碼可能已被他人重用）。
+        const currentSid = String(e.studentId ?? e.entityId);
+        const currentAccount = currentAccounts.find(a => a.studentId === currentSid);
+        const name = currentAccount?.displayName ?? String(e.after?.displayName ?? e.before?.displayName ?? '');
+        ref = { studentId: currentSid, name };
+        subject = accountLabel(ref);
       } else if (e.entityType === 'business_date' || e.entityType === 'settlement') {
         subject = `營業日 ${e.businessDate}`;
       } else {
         subject = '匯出';
       }
+
+      const oldSid = isStudentChange && e.before?.studentId ? String(e.before.studentId) : '';
+      // 歷史曾用號：改號事件收該帳戶所有出現過的編號，扣掉目前歸戶的編號；
+      // 其他事件維持只記當時的舊編號。
+      const codeChangeSet = isStudentChange ? codeChangeIds.get(ref?.studentId ?? '') : undefined;
+      const historicalStudentIds = (codeChangeSet
+        ? [...codeChangeSet].filter(id => id !== ref?.studentId)
+        : oldSid && oldSid !== ref?.studentId ? [oldSid] : undefined) || undefined;
+      const extraSearch = oldSid && oldSid !== ref?.studentId ? ` ${oldSid}` : '';
+
       return {
         auditEventId: e.auditEventId,
         time: formatTaipeiDateTime(e.createdAt),
@@ -158,21 +213,31 @@ export function describeAuditEvents(events: LedgerAuditEvent[], transactions: Le
         subject,
         reason: readableReason(e.reason),
         changes: describeChanges(e.before, e.after),
-        searchText: `${subject} ${ref ? currentNames.get(ref.studentId) ?? '' : ''} ${e.businessDate}`.toLowerCase(),
-        transactionId: e.entityType === 'transaction' ? e.entityId : undefined,
+        searchText: `${subject}${extraSearch} ${ref ? currentNames.get(ref.studentId) ?? '' : ''} ${e.businessDate}`.toLowerCase(),
+        transactionId: e.entityType === 'transaction' && !isStudentChange ? e.entityId : undefined,
         studentId: ref?.studentId,
-        originalExists: e.entityType === 'transaction' && existing.has(e.entityId),
+        historicalStudentIds,
+        originalExists: e.entityType === 'transaction' && !isStudentChange && existing.has(e.entityId),
       };
     });
 }
 
 /**
- * M3：稽核查詢。只打數字時當作帳戶編號，比對編號開頭（「01」查不到「001」以外的帳戶，也不會撞到日期或交易編號）；
+ * M3：稽核查詢。只打數字時當作帳戶編號，比對目前或歷史帳戶編號開頭（「01」查不到「001」以外的帳戶，也不會撞到日期或交易編號）；
  * 其他文字比對帳戶編號、當時與目前的姓名、別名、營業日。
  */
 export function matchesAuditQuery(row: AuditRowView, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  if (/^\d+$/.test(q)) return !!row.studentId && row.studentId.toLowerCase().startsWith(q);
+  if (/^\d+$/.test(q)) {
+    const checkId = (id: string | undefined): boolean => {
+      if (!id) return false;
+      return id.toLowerCase().startsWith(q);
+    };
+
+    if (checkId(row.studentId)) return true;
+    if (row.historicalStudentIds?.some(checkId)) return true;
+    return false;
+  }
   return row.searchText.includes(q);
 }

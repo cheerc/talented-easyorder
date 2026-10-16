@@ -13,9 +13,10 @@ describe('cloudCommands: 型別常數與 cashEffect 驗證', () => {
     expect(schemaVersion).toBe(1);
   });
 
-  it('涵蓋 spec §6.1 規定的 22 種 command kinds', () => {
-    expect(ALL_COMMAND_KINDS).toHaveLength(22);
+  it('涵蓋 spec §6.1 規定的 23 種 command kinds', () => {
+    expect(ALL_COMMAND_KINDS).toHaveLength(23);
     expect(ALL_COMMAND_KINDS).toContain('CreateStudent');
+    expect(ALL_COMMAND_KINDS).toContain('ChangeStudentCode');
     expect(ALL_COMMAND_KINDS).toContain('EditStudent');
     expect(ALL_COMMAND_KINDS).toContain('SetStudentStatus');
     expect(ALL_COMMAND_KINDS).toContain('CorrectOpening');

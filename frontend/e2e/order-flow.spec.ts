@@ -19,8 +19,8 @@ test.describe('Order Flow', () => {
     await expect(page.locator('.customer')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('.cust-id')).toContainText('S001');
     
-    // 5. The mode should default to '訂便當' (first-time order)
-    await expect(page.locator('.mode.mode-on')).toContainText('訂便當');
+    // 5. The mode should default to '訂餐' (first-time order)
+    await expect(page.locator('.mode.mode-on')).toContainText('訂餐');
     
     // 6. Press Enter to confirm (Ref: #399 — btn-confirm removed, keyboard Enter confirms)
     await page.keyboard.press('Enter');

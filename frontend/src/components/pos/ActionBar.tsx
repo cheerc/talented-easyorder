@@ -9,7 +9,7 @@ interface ActionBarProps {
 }
 export const ActionBar = React.memo(function ActionBar({ mode, setMode, onStatusMode, focusZone }: ActionBarProps) {
   const opts = [
-    { id: 'order' as PosMode, label: '訂便當', hint: 'Q' },
+    { id: 'order' as PosMode, label: '訂餐', hint: 'Q' },
     { id: 'payment' as PosMode, label: '繳費', hint: 'W' },
   ];
 

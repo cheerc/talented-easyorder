@@ -59,4 +59,6 @@ export interface PosColumnProps {
   setPriceOverrideLabel: (v: string) => void;
   handleDeleteOrder: (keepPaymentAsDeposit: boolean, reason: string) => LedgerMutationResult;
   onViewAllHistory?: (student: StudentAccount) => void;
+  onRefund?: (studentId: string, amount: number, reason: string) => LedgerMutationResult;
+  onRefundDialogOpenChange?: (open: boolean) => void;
 }

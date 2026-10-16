@@ -62,7 +62,7 @@ export const TodayDashboard = React.memo(function TodayDashboard({ systemDate, o
             <div className="db-card-lbl">份數</div>
             <div className="db-card-num">{totals.bentoCount}</div>
             <div className="db-card-sub">
-              今日便當{totals.otherMealCount > 0 ? ` ＋ 其他 ${totals.otherMealCount} 份` : ''} · 餐費 ${fmt(totals.mealTotal)}
+              今日餐點{totals.otherMealCount > 0 ? ` ＋ 其他 ${totals.otherMealCount} 份` : ''} · 餐費 ${fmt(totals.mealTotal)}
             </div>
           </div>
           <div className="db-card db-card-accent">

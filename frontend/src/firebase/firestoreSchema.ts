@@ -2,7 +2,7 @@ import type { FieldValue, Timestamp } from 'firebase/firestore';
 import { getFirestoreMod } from './firebaseModules';
 import type { ValidationResult } from '../types/validation';
 import type { LedgerTransaction } from '../domain/ledger';
-import type { StudentAccount } from '../domain/student';
+import { STUDENT_CODE_REGEX, type StudentAccount } from '../domain/student';
 import type { StoredCloudCommandDoc } from '../domain/cloudCommandSchema';
 
 export type FirestoreTimestamp = Timestamp | FieldValue;
@@ -96,6 +96,7 @@ export interface CloudStudentOpeningBalance {
 
 export interface CloudStudentDoc {
   studentId: string;
+  studentCode: string;
   displayName: string;
   aliases: string[];
   status: 'active' | 'inactive';
@@ -103,6 +104,13 @@ export interface CloudStudentDoc {
   currentBalance: number;
   createdAt: FirestoreTimestamp;
   revision: number;
+  lastCommandId: string;
+  updatedAt: FirestoreTimestamp;
+}
+
+/** studentCodes/{studentCode} */
+export interface CloudStudentCodeIndexDoc {
+  studentId: string;
   lastCommandId: string;
   updatedAt: FirestoreTimestamp;
 }
@@ -257,6 +265,7 @@ export function cloudTransactionToLedgerTransaction(
 export function cloudStudentToStudentAccount(doc: CloudStudentDoc): StudentAccount {
   return {
     studentId: doc.studentId,
+    studentCode: doc.studentCode,
     displayName: doc.displayName,
     status: doc.status,
     currentBalance: doc.currentBalance,
@@ -279,6 +288,12 @@ export function validateCloudStudentDoc(input: Record<string, unknown>): Validat
   if (typeof input.studentId !== 'string' || !input.studentId.trim()) {
     return { ok: false, reason: 'studentId 必須為非空字串' };
   }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.studentId)) {
+    return { ok: false, reason: 'studentId 必須為 UUID 格式' };
+  }
+  if (typeof input.studentCode !== 'string' || !STUDENT_CODE_REGEX.test(input.studentCode)) {
+    return { ok: false, reason: 'studentCode 必須為有效正規化格式（001–999999）' };
+  }
   if (input.status !== 'active' && input.status !== 'inactive') {
     return { ok: false, reason: 'status 必須為 active 或 inactive' };
   }
@@ -290,6 +305,20 @@ export function validateCloudStudentDoc(input: Record<string, unknown>): Validat
   }
   if (typeof input.revision !== 'number' || input.revision < 1) {
     return { ok: false, reason: 'revision 必須為正整數' };
+  }
+  return { ok: true };
+}
+
+/** 驗證新版 CloudStudentCodeIndexDoc */
+export function validateCloudStudentCodeIndexDoc(input: Record<string, unknown>): ValidationResult {
+  if (typeof input.studentId !== 'string' || !input.studentId.trim()) {
+    return { ok: false, reason: 'studentId 必須為非空字串' };
+  }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.studentId)) {
+    return { ok: false, reason: 'studentId 必須為 UUID 格式' };
+  }
+  if (typeof input.lastCommandId !== 'string' || !input.lastCommandId.trim()) {
+    return { ok: false, reason: 'lastCommandId 必須為非空字串' };
   }
   return { ok: true };
 }

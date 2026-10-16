@@ -78,7 +78,7 @@ Rules：讀 operator 僅可讀本人；有效白名單者可讀不含個資的 l
 
 ## 5. 儲存模型與現有前端對映
 
-使用單公司 namespace，不先建多租戶系統。以下是**新 schemaVersion=1**，不直接沿用舊 Firestore schema。每筆 mutable head 都有 `revision`、`lastCommandId`、`updatedAt`；由 command 驅動的欄位不允許任意 set。金額以整數 TWD 儲存，`abs <= 1,000,000,000`，累加亦檢查界線；單筆非負餐費／收款最多 1,000,000，付款必須大於零。姓名 1–100 字、別名最多 10 個且各 100 字、備註／理由 1–500 字（非必填備註可空），編號 1–64 字、不得含 `/` 或為 `__cashier__`；不轉數字。
+使用單公司 namespace，不先建多租戶系統。以下是**新 schemaVersion=1**，不直接沿用舊 Firestore schema。每筆 mutable head 都有 `revision`、`lastCommandId`、`updatedAt`；由 command 驅動的欄位不允許任意 set。金額以整數 TWD 儲存，`abs <= 1,000,000,000`，累加亦檢查界線；單筆非負餐費／收款最多 1,000,000，付款必須大於零。姓名 1–100 字、別名最多 10 個且各 100 字、備註／理由 1–500 字（非必填備註可空）。依 P06b 決策，學生識別區分為內部穩定鍵 `studentId`（UUID，自建立起永不改變、不含 `/` 且非 `__cashier__`）與畫面編號 `studentCode`（唯一正規形式 `001`–`999999`，Rules regex `^(00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,5})$`，由 `studentCodes/{code}` 唯一索引集合保證不重複；支援修改與缺號列出）。
 
 Firestore 時間為伺服器 Timestamp，repository adapter 輸出 UTC ISO `…Z` 給既有 domain／備份。營業日獨立為台北 `YYYY-MM-DD`。不可使用瀏覽器時間決定稽核、租約或排序；本機時間僅可作 diagnostic。
 
@@ -87,7 +87,8 @@ Firestore 時間為伺服器 Timestamp，repository adapter 輸出 UTC ISO `…Z
 | `operators/{uid}` | uid、email、displayName、active；維護者管理 | 取代舊 counter/admin 驗證 |
 | `system/accessLease` | §4 使用權 | AuthGate／登入交接 |
 | `system/dataHead` | schemaVersion、datasetId、seq、lastCommandId、maintenance、goLiveDate | 全域 command 序號與復原隔離 |
-| `students/{studentId}` | displayName、aliases、status、openingBalance `{amount,asOfDate,note,createdAt}`、currentBalance、createdAt、revision | `StudentAccount`；face 欄預設 none/0、不接受裝置寫入 |
+| `students/{studentId}` | studentId（UUID）、studentCode（正規化編號）、displayName、aliases、status、openingBalance `{amount,asOfDate,note,createdAt}`、currentBalance、createdAt、revision | `StudentAccount`；face 欄預設 none/0、不接受裝置寫入 |
+| `studentCodes/{studentCode}` | 唯一索引：studentId（UUID）、lastCommandId、updatedAt；保證 studentCode 不重複 | 唯一索引，CreateStudent 建立、ChangeStudentCode 原子換新刪舊 |
 | `vendors/{vendorId}` | name、phone、note、status、deleted、createdAt、revision | `Vendor`；正常清單排除 deleted |
 | `days/{YYYY-MM-DD}` | status、revision、menu 或 null、openingCash 或 null、開帳人／時間、totals、lastSettlementRevision | `menusByDate`、`DailyCashSession`、businessDateStatuses 的唯一雲端來源 |
 | `transactions/{transactionId}` | 現行有效交易欄位＋`status:active\|voided`、revision、createdAt、createdSeq、operatorUid/email、source、cash metadata | `LedgerTransaction`；不保存 afterBalance／同步佇列狀態為權威 |
@@ -119,7 +120,8 @@ readCommand(commandId: string): Promise<CommandReceipt | null>
 
 | kind | 固定受影響文件（另加 command＋dataHead） | 驗證重點 |
 |---|---|---|
-| CreateStudent／EditStudent／SetStudentStatus | student | 建檔唯一 ID；不可直接改 balance；停用不刪歷史；SetStudentStatus 理由必填 1–500 字 |
+| CreateStudent／EditStudent／SetStudentStatus | student（CreateStudent 另建 studentCodes 索引） | studentId 為 UUID 穩定鍵；CreateStudent 同步建立 studentCodes 唯一索引；不可直接改 balance；停用不刪歷史；SetStudentStatus 理由必填 1–500 字（停用仍保留編號） |
+| ChangeStudentCode | student＋studentCodes/{newCode}（create）＋studentCodes/{oldCode}（delete） | 理由必填 1–500 字（command.reason == payload.reason）；允許停用帳戶改號；原子刪舊建新索引；兩帳戶互換號碼須經暫時空號分兩次；舊索引刪除為 §6.3 唯一 client delete 例外 |
 | CorrectOpening | student＋期初日 day | 原日期不改、理由必填、該日須可寫；餘額加期初差額；不增加收現 |
 | SaveVendor／RemoveVendor | vendor | revision、防整陣列覆寫、移除須先停用 |
 | EnsureDay／SetDayMenu／SetOpeningCash | day | 合法台北日期、未關帳；opening 明確確認且非負，沿用既有 20,000 上限 |
@@ -141,7 +143,7 @@ readCommand(commandId: string): Promise<CommandReceipt | null>
 
 ### 6.3 伺服器 Rules 必須證明的事
 
-登入只保護入口，Rules 才是後端：除明列路徑外 deny all；禁止 normal client delete 任何財務／command／結帳文件，禁止跨欄位多塞值。command create 的規則集中檢查 Auth、allowlist、有效 lease、maintenance=false、schema、合法 kind 與所有固定 counterpart。每個投影文件自身規則須證明 **原 command 不存在且本次 getAfter(command) 存在**、path／before／after／revision 完全符合該 command；不能引用歷史 command 重放，也不能夾帶額外學生／交易變更。
+登入只保護入口，Rules 才是後端：除明列路徑外 deny all；禁止 normal client delete 任何財務／command／結帳文件（唯一例外：P06b 明文授權由 `ChangeStudentCode` 原子刪除 `studentCodes/{oldCode}` 索引文件，透過 `getAfter(commands/{commandId})` 驗證 `before.student.studentCode == oldCode` 且 `after.student.studentCode == newCode`），禁止跨欄位多塞值。command create 的規則集中檢查 Auth、allowlist、有效 lease、maintenance=false、schema、合法 kind 與所有固定 counterpart。每個投影文件自身規則須證明 **原 command 不存在且本次 getAfter(command) 存在**、path／before／after／revision 完全符合該 command；不能引用歷史 command 重放，也不能夾帶額外學生／交易變更。
 
 最大一般帳務 commit 五份文件：command、dataHead、transaction、student、day。設計 call budget（不依賴規則快取）：command 規則讀 allowlist＋lease 共2，head／tx／student／day 各 before/after 共8，合計10；四個投影各查舊 command 不存在＋新 command 共2，合計8；整筆18，低於總20。新建目標用 exists-before 取代 get-before，不額外疊加；Rules helper 不得重複 get。菜單／帳戶驗證共用已讀 day/student，不能任意加第11個存取。正常交易 day 必須先由 EnsureDay 建立。
 
@@ -195,7 +197,7 @@ quota exceeded／permission denied／schema mismatch／maintenance 均阻止操�
 
 查詢策略：
 
-- 學生名單依 ID 載入（驗證規模500名），server snapshot 後本機搜尋；同 UID 頁面共享訂閱協調為優化，不是安全依賴。
+- 學生名單依 ID 載入（驗證規模500名），server snapshot 後按 `studentCode` 數值升冪排序，並自 `001` 列出至當前最大號的缺號列（停用帳戶算已使用，搜尋時隱藏缺號列）；F5 查帳由記憶體 `studentCode -> studentId` 對映直接查詢，不另讀 `studentCodes` 集合；同 UID 頁面共享訂閱協調為優化，不是安全依賴。
 - 只監聽 lease、目前日期 day、必要學生 heads 與當日交易；不監聽全歷史／全 commands。歷史 query cursor 分頁，預設每頁100。
 - F2 週從台北週一開始，月為曆月；加總最多31個 day heads。原始明細與 CSV 分頁完整讀取，不能只匯出第一頁。
 - F5 account history 按 studentId＋businessDate＋createdAt＋transactionId 分頁；計算 afterBalance 需讀取期初起至所需日期的前綴。快取繫於 student.revision，變動即失效。
@@ -275,7 +277,7 @@ Hosting 使用 HTTPS、SPA rewrites、CSP／安全header承接 `vercel.json` 的
 
 ## 12. Android 往後入口（非本輪交付）
 
-保留 `studentId`（字串，前導零）供 faceorder `orderCode` 一對一對應帳戶；帳戶可代表多人。未來 adapter 將 `eventId + deviceId + businessDate + studentId + action` 轉為同一套受規則保護的 BusinessCommand，eventId映射穩定commandId，成功只在取得receipt後回覆；不得直接改student balance或插交易繞command。
+保留內部穩定鍵 `studentId`（UUID）供 faceorder / 平板名冊註冊與訂餐事件作為穩定帳戶識別鍵；畫面編號 `studentCode`（前導零字串 `001`–`999999`）僅供現場人員視覺識別與輸入查詢，不作底層關聯鍵，避免改編號導致平板註冊脫節；帳戶可代表多人。未來 adapter 將 `eventId + deviceId + businessDate + studentId + action` 轉為同一套受規則保護的 BusinessCommand，eventId映射穩定commandId，成功只在取得receipt後回覆；不得直接改student balance或插交易繞command。
 
 本輪不建立kiosk登入／白名單、faceRoster、dailyOrderStatus、heartbeat或consumer。預留的collection一律deny，不因欄位預留就開權限。將來需要獨立的最小名冊投影（編號／姓名／啟用／當日份數）、獨立裝置認證，不能讓Android讀完整student、transaction或command；價錢、餘額、歷史與生物特徵不從本輪通道流出。
 

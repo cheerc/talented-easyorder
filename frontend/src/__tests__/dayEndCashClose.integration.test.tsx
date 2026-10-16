@@ -11,7 +11,7 @@ import { buildPosTransactionDraft } from '../domain/posTransaction';
 import { CASHIER_SENTINEL } from '../domain/ledger';
 
 // M3 F2（D03／D04）：固定的晚餐日情境，數字照驗收清單手算。
-// 開帳 1000；甲訂 90 收 0、乙訂 90 收 100、丙只繳 500、甲另訂 110 收 0、櫃台付便當錢 270。
+// 開帳 1000；甲訂 90 收 0、乙訂 90 收 100、丙只繳 500、甲另訂 110 收 0、櫃台付餐費給廠商 270。
 // 淨現金 = 100 + 500 − 270 = 330，應有 1330。
 const DATE = '2026-10-13';
 
@@ -34,7 +34,7 @@ beforeEach(() => {
   commit('002', 'order', 90, 100);
   commit('003', 'payment', 0, 500);
   commit('001', 'order', 110, 0);
-  commit(CASHIER_SENTINEL, 'expense', 270, 0, '付便當錢');
+  commit(CASHIER_SENTINEL, 'expense', 270, 0, '付餐費給廠商');
 });
 
 const bar = () => screen.getByRole('region', { name: '日末結帳' });

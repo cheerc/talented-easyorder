@@ -15,7 +15,7 @@ export interface DetailRowProps {
 
 export const DETAIL_ROW_HEIGHT = 40;
 
-const TYPE_LABEL: Record<string, string> = { order: '訂餐', payment: '繳費', expense: '支出' };
+const TYPE_LABEL: Record<string, string> = { order: '訂餐', payment: '繳費', expense: '支出', refund: '退款' };
 
 export const DetailRow = React.memo(function DetailRow({ tx: t, locked, displayMode, onEditClick, onDeleteClick }: DetailRowProps) {
   const merged = t as Partial<MergedTransaction>;
@@ -27,8 +27,10 @@ export const DetailRow = React.memo(function DetailRow({ tx: t, locked, displayM
       <div className={'r mono ' + (t.mealPrice > 0 ? 'neg' : t.mealPrice < 0 ? 'pos' : '')}>
         {t.mealPrice !== 0 ? <>{t.mealPrice > 0 ? '−' : '+'}${fmt(Math.abs(t.mealPrice))}</> : <>-</>}
       </div>
-      <div className={'r mono ' + (t.paidAmount > 0 ? 'pos' : '')}>
-        {t.paidAmount > 0 ? (
+      <div className={'r mono ' + (t.type === 'refund' ? 'warn' : t.paidAmount > 0 ? 'pos' : '')}>
+        {t.type === 'refund' ? (
+          <>−${fmt(t.amount)}</>
+        ) : t.paidAmount > 0 ? (
           <>
             +${fmt(t.paidAmount)}
             {displayMode === 'merged' && (merged.depositAmount ?? 0) > 0 && (

@@ -31,11 +31,11 @@ beforeEach(() => {
   s().startBlankData();
   s().addLocalStudent(createLocalAccount({ studentId: '001', displayName: '測試甲', openingBalance: 200, openingNote: '', asOfDate: D }, 'now'));
   s().addLocalStudent(createLocalAccount({ studentId: '002', displayName: '測試乙', openingBalance: 0, openingNote: '', asOfDate: D }, 'now'));
-  s().setMenuForDate(D, { itemName: '排骨便當', price: 90, vendorId: '', vendorNameSnapshot: '' }, 'now');
+  s().setMenuForDate(D, { itemName: '排骨餐點', price: 90, vendorId: '', vendorNameSnapshot: '' }, 'now');
 });
 
 describe('刷臉訂餐自動入帳', () => {
-  it('訂餐：今日便當、應收 90、實收 0，來源刷臉平板，備註寫刷臉（含成員），帳戶扣 90', () => {
+  it('訂餐：今日餐點、應收 90、實收 0，來源刷臉平板，備註寫刷臉（含成員），帳戶扣 90', () => {
     const ev = s().handleFaceEvent(req('001', 'order', { memberName: '小甲' }), `${D}T10:00:01.000Z`);
     expect(ev).toMatchObject({ status: 'accepted', studentName: '測試甲' });
     const tx = s().transactions.find(t => t.transactionId === ev.transactionId)!;

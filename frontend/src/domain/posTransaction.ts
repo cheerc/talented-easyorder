@@ -3,17 +3,17 @@ import type { TodayMenu, MenuSnapshot } from './menu';
 import type { PosMode, PosSourceDevice } from './posFlow';
 import { createStudentSnapshot } from './student';
 import { createMenuSnapshot } from './menu';
-import { calculateTransactionAmount, CASHIER_SENTINEL } from './ledger';
+import { calculateTransactionAmount, CASHIER_SENTINEL, type TransactionType } from './ledger';
 
 export interface PosTransactionIntent {
   businessDate: string;
   studentId: string;
-  type: PosMode;
+  type: TransactionType;
   mealPrice: number;
   paidAmount: number;
   note: string;
   sourceDevice: PosSourceDevice;
-  /** 訂購其他餐點的品項；今日便當不帶。 */
+  /** 訂購其他餐點的品項；今日餐點不帶。 */
   otherItemName?: string;
 }
 
@@ -29,7 +29,7 @@ export interface PosTransactionDraft {
   expectedBalanceAfter: number;
 }
 
-export const PAID_AMOUNT_NEGATIVE_MESSAGE = '收款金額不能是負數。退錢請用取消訂餐或更正交易。';
+export const PAID_AMOUNT_NEGATIVE_MESSAGE = '收款金額不能是負數。要退錢給學生請用「退款」。';
 
 export function parsePaidAmount(text: string): { ok: true; value: number } | { ok: false; message: string } {
   const trimmed = text.trim();
@@ -74,6 +74,44 @@ export function buildPosTransactionDraft(args: BuildPosTransactionDraftArgs): Po
   };
 }
 
+export interface BuildRefundTransactionDraftArgs {
+  businessDate: string;
+  student: StudentAccount;
+  amount: number;
+  note: string;
+  sourceDevice: PosSourceDevice;
+  operatorId?: string;
+}
+
+export function buildRefundTransactionDraft(args: BuildRefundTransactionDraftArgs): PosTransactionDraft {
+  const snapshots: PosTransactionSnapshotInput = {
+    student: createStudentSnapshot(args.student),
+    menu: {
+      menuNameSnapshot: '',
+      menuPriceSnapshot: 0,
+      vendorNameSnapshot: '',
+      vendorIdSnapshot: '',
+    },
+  };
+
+  const expectedBalanceAfter = Math.round(args.student.currentBalance - args.amount);
+
+  return {
+    intent: {
+      businessDate: args.businessDate,
+      studentId: args.student.studentId,
+      type: 'refund',
+      mealPrice: 0,
+      paidAmount: 0,
+      note: args.note,
+      sourceDevice: args.sourceDevice,
+    },
+    snapshots,
+    amount: args.amount,
+    expectedBalanceAfter,
+  };
+}
+
 export interface BuildExpenseTransactionDraftArgs {
   businessDate: string;
   amount: number;
@@ -85,7 +123,7 @@ export interface DerivedTransactionAttrs {
   mealPrice: number;
   paidAmount: number;
   note: string;
-  /** 訂購其他餐點時的品項；今日便當為 undefined。 */
+  /** 訂購其他餐點時的品項；今日餐點為 undefined。 */
   otherItemName?: string;
 }
 
@@ -130,7 +168,7 @@ export function deriveTransactionAttributes(args: {
     note = args.expenseNote ?? '';
   }
 
-  // 訂購其他餐點：記下品項，份數另算，不併入今日便當。
+  // 訂購其他餐點：記下品項，份數另算，不併入今日餐點。
   const otherItemName = mode === 'order' && priceOverride !== null
     ? (priceOverrideLabel.trim() || '其他餐點')
     : undefined;

@@ -108,7 +108,7 @@ export function createEditActions(
     // Ref: #310 — operatorId for audit trail
     editTransaction: (
       id: string,
-      updates: { mealPrice?: number; paidAmount?: number; note?: string },
+      updates: { mealPrice?: number; paidAmount?: number; amount?: number; note?: string },
       opts: LedgerMutationOptions,
     ): LedgerMutationResult => {
       const state = get();
@@ -119,22 +119,48 @@ export function createEditActions(
       const check = checkLedgerMutation(state.businessDateStatuses[original.businessDate], opts.reason);
       if (!check.ok) return check;
 
+      const isRefund = original.type === 'refund';
+      // 退款金額必須在四捨五入「之前」就是正整數，否則 10.5 會被 Math.round 成 11 繞過檢查。
+      if (isRefund) {
+        const rawAmount = updates.amount ?? original.amount;
+        if (typeof rawAmount !== 'number' || !Number.isInteger(rawAmount) || rawAmount <= 0) {
+          return { ok: false, message: '退款金額必須是大於 0 的整數。' };
+        }
+        const student = state.students.find(s => s.studentId === original.studentId);
+        if (student) {
+          // 還原原退款後的可用餘額：更正後的退款不能讓餘額變成負數。
+          const availableBalance = student.currentBalance + original.amount;
+          if (rawAmount > availableBalance) {
+            return { ok: false, message: '退款金額不能超過目前可用餘額。' };
+          }
+        }
+        // U4 #2 複審：退款的 note 是「退款業務理由」（validator 與 snapshot 都要求非空），
+        // opts.reason 是「更正理由」，兩者不可互相頂替。`updates.note` 給空白字串時
+        // 會產生 validator／parseSnapshot 都拒絕的退款交易，所以要保留原 note 或擋下。
+        if (updates.note !== undefined && updates.note.trim().length === 0) {
+          return { ok: false, message: '退款原因不能清空；若要改寫請填入新的退款原因。' };
+        }
+      }
+
       const newMealPrice = Math.round(updates.mealPrice ?? original.mealPrice);
       const newPaidAmount = Math.round(updates.paidAmount ?? original.paidAmount);
+      const newAmount = isRefund
+        ? (updates.amount ?? original.amount)
+        : calculateTransactionAmount(newMealPrice, newPaidAmount);
       const newNote = updates.note ?? original.note;
 
       const auditEvent = audit(
         'transaction_edited', original,
-        { mealPrice: original.mealPrice, paidAmount: original.paidAmount, note: original.note },
-        { mealPrice: newMealPrice, paidAmount: newPaidAmount, note: newNote },
+        { mealPrice: original.mealPrice, paidAmount: original.paidAmount, amount: original.amount, note: original.note },
+        { mealPrice: newMealPrice, paidAmount: newPaidAmount, amount: newAmount, note: newNote },
         opts,
       );
 
       const newTx: LedgerTransaction = {
         ...original,
-        mealPrice: newMealPrice,
-        paidAmount: newPaidAmount,
-        amount: calculateTransactionAmount(newMealPrice, newPaidAmount),
+        mealPrice: isRefund ? 0 : newMealPrice,
+        paidAmount: isRefund ? 0 : newPaidAmount,
+        amount: newAmount,
         note: newNote,
         revision: original.revision + 1,
       };

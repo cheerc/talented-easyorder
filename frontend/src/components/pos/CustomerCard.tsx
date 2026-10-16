@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { StudentAccount } from '../../domain/student';
 import type { TodayMenu } from '../../domain/menu';
 import { isMenuReady } from '../../domain/menu';
@@ -8,7 +8,9 @@ import type { LedgerTransaction } from '../../domain/ledger';
 import { NumericInput } from '../ui/NumericInput';
 import { parsePaidAmount } from '../../domain/posTransaction';
 import { TransactionStatusView } from './TransactionStatusView';
+import { RefundDialog } from './RefundDialog';
 import { fmt } from './utils';
+import type { LedgerMutationResult } from '../../domain/ledgerAudit';
 
 interface CustomerCardProps {
   student: StudentAccount;
@@ -34,6 +36,12 @@ interface CustomerCardProps {
   onCancel?: () => void;
   /** 存檔中：按鈕暫時停用，避免重複送出。 */
   busy?: boolean;
+  /**
+ * 學生退款回調；寫入失敗時回傳失敗結果，留在對話框顯示原因。
+ * 帶 studentId 讓 F1 與 F3 共用同一條 store 路徑（F3 可對未選取的帳戶退款）。
+ */
+  onRefund?: (studentId: string, amount: number, reason: string) => LedgerMutationResult;
+  onRefundDialogOpenChange?: (open: boolean) => void;
 }
 
 export const CustomerCard = React.memo(function CustomerCard({
@@ -56,7 +64,19 @@ export const CustomerCard = React.memo(function CustomerCard({
   onConfirm,
   onCancel,
   busy = false,
+  onRefund,
+  onRefundDialogOpenChange,
 }: CustomerCardProps) {
+  const [showRefundDialog, setShowRefundDialog] = useState(false);
+
+  const handleOpenRefund = () => {
+    setShowRefundDialog(true);
+    onRefundDialogOpenChange?.(true);
+  };
+  const handleCloseRefund = () => {
+    setShowRefundDialog(false);
+    onRefundDialogOpenChange?.(false);
+  };
   const effectiveMealPrice = mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
   const payInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -97,7 +117,7 @@ export const CustomerCard = React.memo(function CustomerCard({
           </div>
           {orderedTodayCount > 0 && (
             <div className="bal-debt warn-soft-chip">
-              ⚠ 今日已訂過 <b>{orderedTodayCount}</b> 次便當
+              ⚠ 今天已訂 <b>{orderedTodayCount}</b> 份餐點
             </div>
           )}
 
@@ -129,7 +149,7 @@ export const CustomerCard = React.memo(function CustomerCard({
             </div>
             {mode === 'order' && (
               <div className="bill-item no-border">
-                <span className="bill-label">今日便當 ({(priceOverride !== null && priceOverrideLabel) || todayMenu.itemName})</span>
+                <span className="bill-label">今日餐點 ({(priceOverride !== null && priceOverrideLabel) || todayMenu.itemName})</span>
                 <span className="bill-val neg">−${fmt(effectiveMealPrice)}</span>
               </div>
             )}
@@ -165,7 +185,7 @@ export const CustomerCard = React.memo(function CustomerCard({
                         aria-label="品項或原因"
                         value={priceOverrideLabel}
                         onChange={e => setPriceOverrideLabel(e.target.value)}
-                        placeholder="例如：雞腿便當"
+                        placeholder="例如：雞腿餐點"
                       />
                     </label>
                     <label>
@@ -174,7 +194,7 @@ export const CustomerCard = React.memo(function CustomerCard({
                         className="adm-input mono"
                         aria-label="價格"
                         value={priceOverride === 0 ? '' : priceOverride ?? ''}
-                        // 清空時先存 0（送出前會擋），不再立刻跳回今日便當的價格；以前倒退鍵刪掉 90 再打 110 會變成 90110。
+                        // 清空時先存 0（送出前會擋），不再立刻跳回今日餐點的價格；以前倒退鍵刪掉 90 再打 110 會變成 90110。
                         onChange={v => setPriceOverride(v === '' ? 0 : Number(v))}
                       />
                     </label>
@@ -198,6 +218,18 @@ export const CustomerCard = React.memo(function CustomerCard({
                   {mode === 'order' ? '本次繳費' : '繳費金額'}
                 </span>
                 {mode === 'order' && <span className="dim" style={{ fontSize: '12px' }}>留空為記帳</span>}
+                {mode === 'payment' && !locked && (
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    style={{ fontSize: '13px', padding: '4px 10px', marginLeft: 'auto' }}
+                    onClick={handleOpenRefund}
+                    disabled={student.currentBalance <= 0}
+                    title={student.currentBalance <= 0 ? '目前無餘額可退' : '從帳戶退還現金給學生'}
+                  >
+                    退款
+                  </button>
+                )}
               </div>
 
               <div className="pay-input-container">
@@ -239,6 +271,19 @@ export const CustomerCard = React.memo(function CustomerCard({
           ) : null}
         </div>
       </div>
+      {showRefundDialog && onRefund && (
+        <RefundDialog
+          open={showRefundDialog}
+          student={student}
+          onConfirm={(amt, reason) => {
+            const result = onRefund(student.studentId, amt, reason);
+            if (result.ok) handleCloseRefund();
+            return result;
+          }}
+          onCancel={handleCloseRefund}
+          busy={busy}
+        />
+      )}
     </div>
   );
 });

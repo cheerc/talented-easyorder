@@ -31,6 +31,8 @@ export interface PosColumnFlowArgs {
   openCancelConfirmForTx: PosColumnProps['openCancelConfirmForTx'];
   handleDeleteOrder: PosColumnProps['handleDeleteOrder'];
   onViewAllHistory?: PosColumnProps['onViewAllHistory'];
+  onRefund?: PosColumnProps['onRefund'];
+  onRefundDialogOpenChange?: PosColumnProps['onRefundDialogOpenChange'];
 }
 
 /** Expense flow actions */
@@ -66,7 +68,7 @@ export interface PosColumnMenuArgs {
   students: PosColumnProps['students'];
   todayMenu: PosColumnProps['todayMenu'];
   todayCount: number;
-  /** 其他餐點份數（不算進今日便當）。 */
+  /** 其他餐點份數（不算進今日餐點）。 */
   todayOtherCount?: number;
   vendors: PosColumnProps['vendors'];
   tx: PosColumnProps['tx'];
@@ -117,7 +119,7 @@ export function buildPosColumnProps(args: {
   setCrashDraftRestored: (v: boolean) => void;
   todayMenu: PosColumnProps['todayMenu'];
   todayCount: number;
-  /** 其他餐點份數（不算進今日便當）。 */
+  /** 其他餐點份數（不算進今日餐點）。 */
   todayOtherCount?: number;
   vendors: PosColumnProps['vendors'];
   enterExpenseMode: PosColumnProps['enterExpenseMode'];
@@ -130,6 +132,8 @@ export function buildPosColumnProps(args: {
   setPriceOverrideLabel: (v: string) => void;
   handleDeleteOrder: PosColumnProps['handleDeleteOrder'];
   onViewAllHistory?: PosColumnProps['onViewAllHistory'];
+  onRefund?: PosColumnProps['onRefund'];
+  onRefundDialogOpenChange?: PosColumnProps['onRefundDialogOpenChange'];
 }): PosColumnProps {
   return {
     state: args.state,
@@ -178,6 +182,8 @@ export function buildPosColumnProps(args: {
     setPriceOverrideLabel: args.setPriceOverrideLabel,
     handleDeleteOrder: args.handleDeleteOrder,
     onViewAllHistory: args.onViewAllHistory,
+    onRefund: args.onRefund,
+    onRefundDialogOpenChange: args.onRefundDialogOpenChange,
   };
 }
 
@@ -217,6 +223,8 @@ export function usePosColumnProps(
     openCancelConfirmForTx: flow.openCancelConfirmForTx,
     handleDeleteOrder: flow.handleDeleteOrder,
     onViewAllHistory: flow.onViewAllHistory,
+    onRefund: flow.onRefund,
+    onRefundDialogOpenChange: flow.onRefundDialogOpenChange,
     // expense
     expenseProps: expense.expenseProps,
     enterExpenseMode: expense.enterExpenseMode,

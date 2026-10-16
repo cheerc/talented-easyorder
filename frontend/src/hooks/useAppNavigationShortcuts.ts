@@ -71,7 +71,7 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
 
       if (e.key === 'Enter') {
         // M1：焦點在動作按鈕上時讓按鈕自己處理，Enter 按到哪顆就是哪顆（例如「取消」不會被當成送出）。
-        // 上方的模式鍵（訂便當／繳費／訂餐狀況）例外：滑鼠點過後按 Enter 仍照目前模式送出。
+        // 上方的模式鍵（訂餐／繳費／訂餐狀況）例外：滑鼠點過後按 Enter 仍照目前模式送出。
         const target = e.target as HTMLElement;
         if (target.tagName === 'BUTTON' && !target.closest('.actionbar')) return;
         // 對話框裡的 Enter 由對話框自己處理，不送出背景的草稿。

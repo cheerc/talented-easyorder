@@ -123,7 +123,7 @@ export function parseSnapshot(text: string): ParseSnapshotResult {
   }
   if (typeof raw !== 'object' || raw === null) return { ok: false, reason: '檔案內容不是快照。' };
   const r = raw as Record<string, unknown>;
-  if (r.format !== SNAPSHOT_FORMAT) return { ok: false, reason: '這不是便當櫃台的練習快照檔。' };
+  if (r.format !== SNAPSHOT_FORMAT) return { ok: false, reason: '這不是訂餐櫃台的練習快照檔。' };
   if (r.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
     return { ok: false, reason: `不支援的快照版本：${String(r.schemaVersion)}（目前支援 ${SNAPSHOT_SCHEMA_VERSION}）。` };
   }
