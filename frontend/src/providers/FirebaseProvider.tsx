@@ -358,3 +358,8 @@ export function useFirebase(): FirebaseContextValue {
   if (!ctx) throw new Error('useFirebase must be used within FirebaseProvider');
   return ctx;
 }
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function useFirebaseOptional(): FirebaseContextValue | null {
+  return useContext(FirebaseContext);
+}

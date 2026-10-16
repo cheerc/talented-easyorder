@@ -1,103 +1,127 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from 'react';
+import { useFirebaseOptional } from '../../providers/FirebaseProvider';
+import { createCloudBackupRepository } from '../../firebase/cloudBackupRepository';
+import { createCloudCommandRepository } from '../../firebase/cloudCommandRepository';
+import { decryptBackup, encryptBackup, sha256Hex, verifyBackupFile, type BackupManifest } from '../../firebase/cloudBackup';
 
-/**
- * Ref: #329 — BackupScreen is a UI placeholder / prototype.
- *
- * ⚠️ PLACEHOLDER: The progress bar, data counts, and timestamps are all
- * hardcoded. No actual backup/restore logic is connected. This screen
- * serves as a UI mockup for future backup functionality.
- *
- * TODO: Connect to real backup service when implemented.
- */
+type BackupStage = 'idle' | 'generated' | 'downloadRequested' | 'verifiedLocal';
+
 export const BackupScreen = React.memo(function BackupScreen() {
-  const [step, setStep] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const [op, setOp] = useState<keyof typeof opMeta | null>(null); // 'export-local' | 'import-local' | 'restore-cloud'
+  const firebase = useFirebaseOptional();
+  const fb = firebase?.fb ?? null;
+  const access = firebase?.access ?? { ok: false as const };
+  const lease = firebase?.lease ?? { isHolder: false, epoch: 0 };
+  const [stage, setStage] = useState<BackupStage>('idle');
+  const [headSeq, setHeadSeq] = useState<number | null>(null);
+  const [fromSeq, setFromSeq] = useState(0);
+  const [packageBytes, setPackageBytes] = useState<Uint8Array<ArrayBuffer> | null>(null);
+  const [packageSha, setPackageSha] = useState<string | null>(null);
+  const [manifest, setManifest] = useState<BackupManifest | null>(null);
+  const [previousManifest, setPreviousManifest] = useState<BackupManifest | null>(null);
+  const [previousPackageSha, setPreviousPackageSha] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const operationRef = useRef(0);
 
-  React.useEffect(() => {
-    if (step !== 2) return;
-    const t = setInterval(() => {
-      setProgress(p => {
-        if (p >= 100) { clearInterval(t); setStep(3); return 100; }
-        return p + 5;
-      });
-    }, 60);
-    return () => clearInterval(t);
-  }, [step]);
+  useEffect(() => {
+    operationRef.current += 1;
+    setStage('idle'); setHeadSeq(null); setPackageBytes(null); setPackageSha(null);
+    setManifest(null); setPreviousManifest(null); setPreviousPackageSha(null); setPassword(''); setError(''); setBusy(false);
+    if (lease.isHolder) return;
+    return () => { operationRef.current += 1; };
+  }, [access.ok, lease.isHolder, lease.epoch]);
 
-  const start = (kind: keyof typeof opMeta) => { setOp(kind); setStep(1); };
-  const go    = () => { setProgress(0); setStep(2); };
-  const reset = () => { setStep(0); setOp(null); setProgress(0); };
-
-  const opMeta = {
-    'export-local': { title: '匯出本地備份',  desc: '將目前的 SQLite 資料庫匯出為 .json 檔。', danger: false, btn: '匯出檔案' },
-    'import-local': { title: '匯入本地備份',  desc: '從 .json 檔還原資料庫。會覆蓋目前所有資料。', danger: true, btn: '選擇檔案並匯入' },
-    'restore-cloud':{ title: '從雲端還原 (DR)', desc: '從 Google Sheets 完整下載並重建本地 SQLite。會覆蓋目前所有資料。', danger: true, btn: '我了解,開始還原' },
+  const readPrevious = async (file: File) => {
+    const id = ++operationRef.current;
+    try {
+      const bytes = await file.arrayBuffer();
+      const loaded = await decryptBackup(bytes, password);
+      if (id !== operationRef.current || !lease.isHolder) return;
+      const hash = await sha256Hex(new Uint8Array(bytes));
+      if (id !== operationRef.current || !lease.isHolder) return;
+      setPreviousManifest(loaded); setPreviousPackageSha(hash); setFromSeq(loaded.toSeq); setError('');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : '無法讀取前次備份'); }
   };
 
-  return (
-    <div className="screen backup">
-      {step === 0 && (
-        <div className="bk-cards">
-          <div className="card bk-card" onClick={() => start('export-local')}>
-            <div className="bk-icon">⬇</div>
-            <div className="bk-h">匯出本地備份</div>
-            <div className="bk-sub">下載一份 .json 檔做為手動備份。建議每日下班前執行一次。</div>
-            <div className="bk-meta mono">最後匯出 · 2026/05/06 18:32</div>
-          </div>
-          <div className="card bk-card" onClick={() => start('import-local')}>
-            <div className="bk-icon">⬆</div>
-            <div className="bk-h">匯入本地備份</div>
-            <div className="bk-sub">從之前匯出的 .json 檔還原。會覆蓋目前資料。</div>
-            <div className="bk-meta dim">小心使用 · 此動作無法復原</div>
-          </div>
-          <div className="card bk-card bk-card-cloud" onClick={() => start('restore-cloud')}>
-            <div className="bk-icon">☁︎</div>
-            <div className="bk-h">從雲端還原 (DR)</div>
-            <div className="bk-sub">PC 毀損後使用。從 Google Sheets 完整下載並重建本地 SQLite。</div>
-            <div className="bk-meta mono">雲端最後更新 · 2026/05/07 11:42</div>
-          </div>
-        </div>
-      )}
+  const generate = async () => {
+    if (!fb?.db || !access.ok || !lease.isHolder || !password) return;
+    const id = ++operationRef.current;
+    setBusy(true); setError(''); setPackageBytes(null); setPackageSha(null); setManifest(null); setStage('idle');
+    try {
+      const repository = createCloudBackupRepository(fb.db, { currentUid: () => lease.isHolder ? access.profile.uid : null });
+      const exported = await repository.exportRange({
+        fromSeq, previousManifest,
+        previousPackageSha256: previousPackageSha,
+      });
+      if (id !== operationRef.current || !lease.isHolder) return;
+      const bytes = await encryptBackup(exported.manifest, password);
+      const hash = await sha256Hex(bytes);
+      if (id !== operationRef.current || !lease.isHolder) return;
+      setHeadSeq(exported.toSeq); setPackageBytes(bytes); setPackageSha(hash); setManifest(exported.manifest); setStage('generated');
+    } catch (cause) { if (id === operationRef.current) setError(cause instanceof Error ? cause.message : '備份產生失敗'); }
+    finally { if (id === operationRef.current) setBusy(false); }
+  };
 
-      {step >= 1 && op && (
-        <div className="card bk-flow">
-          <div className="bk-flow-h">{opMeta[op].title}</div>
-          <div className="bk-flow-sub">{opMeta[op].desc}</div>
+  const download = () => {
+    if (!packageBytes || !manifest) return;
+    const blob = new Blob([packageBytes.buffer], { type: 'application/json' });
+    const url = URL.createObjectURL(blob); const anchor = document.createElement('a');
+    anchor.href = url; anchor.download = `easyorder-backup-${manifest.fromSeq}-${manifest.toSeq}.eobackup`;
+    document.body.append(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
+    setStage('downloadRequested');
+  };
 
-          <div className="rest-meta">
-            <div className="rest-meta-row"><span>本地資料筆數</span><span className="mono">12,847</span></div>
-            <div className="rest-meta-row"><span>本地最後備份</span><span className="mono">2026/05/06 18:32:14</span></div>
-            <div className="rest-meta-row"><span>雲端最後更新</span><span className="mono">2026/05/07 11:42:08</span></div>
-          </div>
+  const verifySelected = async (file: File | undefined) => {
+    if (!file || !manifest || !packageSha || !fb?.db || !access.ok || !lease.isHolder) return;
+    const id = operationRef.current;
+    setBusy(true); setError('');
+    try {
+      const readback = await verifyBackupFile(file, password, packageSha);
+      if (readback.datasetId !== manifest.datasetId || readback.fromSeq !== manifest.fromSeq || readback.toSeq !== manifest.toSeq) {
+        throw new Error('重新選取的備份範圍或 dataset 不一致');
+      }
+      if (id !== operationRef.current || !lease.isHolder) return;
+      const commands = createCloudCommandRepository(fb.db);
+      const result = await commands.commitCommand({
+        commandId: crypto.randomUUID(), kind: 'RecordBackup', leaseEpoch: lease.epoch,
+        targets: {}, expectedRevisions: {},
+        payload: { backupType: 'command-incremental', sourceSeq: manifest.toSeq, fromSeq: manifest.fromSeq,
+          toSeq: manifest.toSeq, sha256: packageSha },
+      });
+      if (id !== operationRef.current || !lease.isHolder) return;
+      if (!result.ok) throw new Error(result.error.message);
+      setStage('verifiedLocal');
+    } catch (cause) { if (id === operationRef.current) setError(cause instanceof Error ? cause.message : '本機備份驗證失敗'); }
+    finally { if (id === operationRef.current) setBusy(false); }
+  };
 
-          {step === 1 && (
-            <>
-              {opMeta[op].danger && <div className="rest-warn">⚠ 此動作會覆蓋本地資料,無法復原</div>}
-              <div className="rest-btns">
-                <button className="btn-cancel wide" onClick={reset}>取消</button>
-                <button className={'btn-confirm wide ' + (opMeta[op].danger ? 'danger' : '')} onClick={go}>
-                  {opMeta[op].btn}
-                </button>
-              </div>
-            </>
-          )}
-          {step === 2 && (
-            <div className="rest-prog">
-              <div className="rest-prog-bar"><div className="rest-prog-fill" style={{ width: `${progress}%` }}></div></div>
-              <div className="rest-prog-txt mono">{progress}%  ‧  處理中…</div>
-            </div>
-          )}
-          {step === 3 && (
-            <div className="rest-done">
-              <div className="rest-done-tick">✓</div>
-              <div className="rest-done-h">完成</div>
-              <div className="rest-done-sub">{op === 'export-local' ? '備份檔已下載 (bento-backup-20260507.json)' : '本地資料庫已重建。'}</div>
-              <button className="btn-confirm wide" onClick={reset}>返回</button>
-            </div>
-          )}
-        </div>
-      )}
+  return <section className="screen backup" aria-label="每日增量備份">
+    <div className="card bk-flow">
+      <h2 className="bk-flow-h">每日加密備份</h2>
+      <p className="bk-flow-sub">手動下載每日增量。下載後請重新選取檔案驗證；第二份副本需由操作者複製至公司受控電腦或加密離線媒體並確認。</p>
+      <label>備份密碼
+        <input type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} disabled={busy} />
+      </label>
+      <label>前次可讀備份（首次完整備份可留空）
+        <input type="file" accept=".eobackup,application/json" onChange={event => { const file = event.target.files?.[0]; if (file) void readPrevious(file); }} disabled={busy} />
+      </label>
+      {previousManifest && <p>前包已解密：seq {previousManifest.fromSeq}–{previousManifest.toSeq}，增量從 {previousManifest.toSeq + 1} 開始。</p>}
+      {headSeq !== null && <p role="status">固定匯出 head H={headSeq}；範圍 {fromSeq}–{headSeq}。{stage === 'verifiedLocal' ? '本機副本已驗證。' : `狀態：${stage}。`}</p>}
+      <div className="rest-btns">
+        <button type="button" className="btn-confirm" onClick={() => void generate()} disabled={busy || !lease.isHolder || !password || (fromSeq > 0 && !previousManifest)}>
+          {busy ? '處理中…' : '產生加密備份'}
+        </button>
+        <button type="button" className="btn-confirm" onClick={download} disabled={!packageBytes || busy}>下載備份</button>
+      </div>
+      {packageBytes && <label>重新選取剛存下的備份檔
+        <input ref={fileRef} type="file" accept=".eobackup,application/json" disabled={busy || stage === 'verifiedLocal'}
+          onChange={event => void verifySelected(event.target.files?.[0])} />
+      </label>}
+      {stage === 'verifiedLocal' && <p role="status">備份雜湊與 manifest 已從本機檔案驗證，且已登記 RecordBackup。</p>}
+      {error && <p role="alert">{error}</p>}
+      <p>產生備份與瀏覽器發起下載都不代表檔案已存好；只有重新選取、解密並比對成功後才登記。取消、錯誤或失去使用權不會推進驗證狀態。</p>
     </div>
-  );
+  </section>;
 });

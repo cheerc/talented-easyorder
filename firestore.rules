@@ -1218,7 +1218,43 @@ service cloud.firestore {
       let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
       return !exists(/databases/$(database)/documents/commands/$(commandId))
         && command.commandId == commandId
-        && headInheritedMenuSourceDay(command);
+        && headInheritedMenuSourceDay(command)
+        && (command.kind != 'RecordBackup' || validRecordBackup(commandId, command, before, after));
+    }
+
+    function validRecordBackup(commandId, command, headBefore, headAfter) {
+      let lease = get(/databases/$(database)/documents/system/accessLease).data;
+      let actualHead = get(/databases/$(database)/documents/system/dataHead).data;
+      let committedHead = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      return currentHolder()
+        && exactMap(command, [
+          'commandId', 'kind', 'seq', 'leaseEpoch', 'actor', 'committedAt', 'businessDate',
+          'studentId', 'targets', 'expectedRevisions', 'before', 'after', 'reason',
+          'cashEffect', 'payload', 'inputFingerprint'
+        ])
+        && commandId == command.commandId && command.kind == 'RecordBackup'
+        && command.seq == headBefore.seq + 1 && command.leaseEpoch == lease.epoch
+        && command.actor is map && exactMap(command.actor, ['uid', 'email'])
+        && command.actor.uid == request.auth.uid && command.actor.email == request.auth.token.email
+        && command.committedAt == request.time && command.businessDate == null && command.studentId == null
+        && exactMap(command.targets, []) && exactMap(command.expectedRevisions, [])
+        && exactMap(command.payload, ['backupType', 'sourceSeq', 'fromSeq', 'toSeq', 'sha256'])
+        && command.payload.backupType == 'command-incremental'
+        && command.payload.sourceSeq is int && command.payload.sourceSeq == headBefore.seq
+        && command.payload.fromSeq is int && command.payload.fromSeq >= 0
+        && command.payload.fromSeq <= command.payload.toSeq
+        && command.payload.toSeq == command.payload.sourceSeq
+        && command.payload.sha256 is string && command.payload.sha256.matches('^[a-f0-9]{64}$')
+        && command.inputFingerprint is string && command.inputFingerprint.matches('^[a-f0-9]{64}$')
+        && command.reason == null
+        && exactMap(command.cashEffect, ['before', 'after', 'delta', 'reasonKind', 'refundAmount'])
+        && command.cashEffect.before == 0 && command.cashEffect.after == 0 && command.cashEffect.delta == 0
+        && command.cashEffect.reasonKind == 'none' && command.cashEffect.refundAmount == 0
+        && exactMap(command.before, ['head']) && command.before.head == headBefore
+        && exactMap(command.after, ['head']) && command.after.head == headAfter
+        && headBefore == actualHead
+        && committedHead.seq == command.seq && committedHead.lastCommandId == commandId
+        && committedHead.updatedAt == request.time;
     }
 
     // Firestore applies its 1,000-expression ceiling to each document's rule evaluation. An
@@ -1473,7 +1509,8 @@ service cloud.firestore {
 
     match /commands/{commandId} {
       allow get: if currentHolder();
-      allow list, update, delete: if false;
+      allow list: if currentHolder();
+      allow update, delete: if false;
       allow create: if commandId == request.resource.data.commandId
         && ((request.resource.data.kind == 'EnsureDay' && validEnsureDay(commandId, request.resource.data))
           || (request.resource.data.kind == 'CreateStudent' && validCreateStudent(commandId, request.resource.data))
@@ -1489,7 +1526,10 @@ service cloud.firestore {
           || (request.resource.data.kind == 'CreateCashMovement'
             && validCreateCashMovement(commandId, request.resource.data))
           || (request.resource.data.kind == 'CreateRefund'
-            && validCreateRefund(commandId, request.resource.data)));
+            && validCreateRefund(commandId, request.resource.data))
+          || (request.resource.data.kind == 'RecordBackup'
+            && validRecordBackup(commandId, request.resource.data,
+              request.resource.data.before.head, request.resource.data.after.head)));
     }
 
     match /days/{dayId} {
