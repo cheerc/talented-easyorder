@@ -118,6 +118,154 @@ export function validateStudentImportRows(rows: StudentImportRow[]): StudentImpo
   return { valid, errors };
 }
 
+// ─── M0 / U3：學員編號正規化與缺號清單 ───
+
+/**
+ * Q2 已定案規則：學生編號唯一正規化
+ * - 去頭尾空白
+ * - 全形數字（０–９）轉半形（0–9）
+ * - 必須全為純數字，範圍 1–999999（即 001–999999；0、000 不接受）
+ * - 唯一正規形式：補零至至少 3 位（'5' -> '005', '1000' -> '1000'）
+ */
+export function normalizeStudentCode(raw: string):
+  | { ok: true; code: string; numericValue: number }
+  | { ok: false; reason: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { ok: false, reason: '請輸入學員編號' };
+  }
+  // 全形數字轉半形
+  const halfwidth = trimmed.replace(/[０-９]/g, ch =>
+    String.fromCharCode(ch.charCodeAt(0) - 0xfee0)
+  );
+  if (!/^\d+$/.test(halfwidth)) {
+    return { ok: false, reason: '學員編號必須為純數字' };
+  }
+  const numericValue = parseInt(halfwidth, 10);
+  if (numericValue < 1) {
+    return { ok: false, reason: '學員編號必須大於 0（從 001 開始）' };
+  }
+  if (numericValue > 999999) {
+    return { ok: false, reason: '學員編號上限為 6 位數（999999）' };
+  }
+  const code = String(numericValue).padStart(3, '0');
+  return { ok: true, code, numericValue };
+}
+
+export type StudentListItem =
+  | { type: 'student'; student: StudentAccount; sortKey: number; isCollision?: boolean }
+  | { type: 'gap'; startCode: string; endCode: string; count: number; label: string };
+
+/**
+ * 依編號數值由小到大排序學員清單，並列出從 001 到「目前最大使用號碼（含停用帳戶）」之間的空號（缺號列）。
+ * - 停用帳戶仍然占用號碼，不算空號。
+ * - 舊資料若有未正規化導致數值碰撞（如既有 5 與 005），完整列出不隱藏、不合併帳務，並標記 isCollision 供人工改號。
+ * - 搜尋框有文字時，不列出空號列（只顯示符合搜尋的帳戶，仍按數值排序）。
+ * - 非純數字 ID（如舊測試資料）安全排於數值編號之後。
+ */
+export function buildStudentListWithGaps(
+  students: StudentAccount[],
+  searchQuery?: string
+): StudentListItem[] {
+  const query = searchQuery?.trim().toLowerCase();
+
+  // 1. 若有搜尋條件，不列空號，僅過濾並排序既有學員
+  if (query) {
+    const matched = students.filter(s => {
+      const id = s.studentId.toLowerCase();
+      const name = s.displayName.toLowerCase();
+      const aliases = s.aliases.map(a => a.toLowerCase());
+      return id.includes(query) || name.includes(query) || aliases.some(a => a.includes(query));
+    });
+
+    return matched
+      .map(s => {
+        const norm = normalizeStudentCode(s.studentId);
+        return {
+          type: 'student' as const,
+          student: s,
+          sortKey: norm.ok ? norm.numericValue : Infinity,
+        };
+      })
+      .sort((a, b) => a.sortKey - b.sortKey || a.student.studentId.localeCompare(b.student.studentId));
+  }
+
+  // 2. 無搜尋條件：由 001 檢查至目前最大號碼
+  if (students.length === 0) {
+    return [];
+  }
+
+  // 找出所有有效數字編號的學員；使用陣列避免同一數值之舊帳戶互相覆蓋
+  const studentByNum = new Map<number, StudentAccount[]>();
+  const nonNumericStudents: StudentAccount[] = [];
+  let maxNum = 0;
+
+  for (const s of students) {
+    const norm = normalizeStudentCode(s.studentId);
+    if (norm.ok) {
+      const arr = studentByNum.get(norm.numericValue) ?? [];
+      arr.push(s);
+      studentByNum.set(norm.numericValue, arr);
+      if (norm.numericValue > maxNum) {
+        maxNum = norm.numericValue;
+      }
+    } else {
+      nonNumericStudents.push(s);
+    }
+  }
+
+  if (maxNum === 0) {
+    // 全為非數字編號
+    return nonNumericStudents
+      .sort((a, b) => a.studentId.localeCompare(b.studentId))
+      .map(s => ({ type: 'student' as const, student: s, sortKey: Infinity }));
+  }
+
+  const result: StudentListItem[] = [];
+  let gapStart: number | null = null;
+
+  for (let num = 1; num <= maxNum; num++) {
+    const existingList = studentByNum.get(num);
+    if (existingList && existingList.length > 0) {
+      // 若先前有累積缺號，先輸出缺號
+      if (gapStart !== null) {
+        const gapEnd = num - 1;
+        const count = gapEnd - gapStart + 1;
+        const startCode = String(gapStart).padStart(3, '0');
+        const endCode = String(gapEnd).padStart(3, '0');
+        const label = count === 1
+          ? `${startCode} 尚無人使用`
+          : `${startCode}–${endCode} 尚無人使用（${count} 個號碼）`;
+        result.push({ type: 'gap', startCode, endCode, count, label });
+        gapStart = null;
+      }
+      // 碰撞帳戶依 studentId 排序全部列出，不遺失任何帳戶
+      existingList.sort((a, b) => a.studentId.localeCompare(b.studentId));
+      for (const existing of existingList) {
+        result.push({
+          type: 'student',
+          student: existing,
+          sortKey: num,
+          isCollision: existingList.length > 1,
+        });
+      }
+    } else {
+      // 缺號累積
+      if (gapStart === null) {
+        gapStart = num;
+      }
+    }
+  }
+
+  // 非數字編號排在最後
+  nonNumericStudents.sort((a, b) => a.studentId.localeCompare(b.studentId));
+  for (const s of nonNumericStudents) {
+    result.push({ type: 'student', student: s, sortKey: Infinity });
+  }
+
+  return result;
+}
+
 // ─── M0：本機手動建帳戶 ───
 
 export interface NewAccountInput {
@@ -128,7 +276,7 @@ export interface NewAccountInput {
   openingNote: string;
 }
 
-export type NewAccountError = 'missing_id' | 'duplicate_id' | 'missing_name' | 'missing_opening' | 'invalid_opening';
+export type NewAccountError = 'missing_id' | 'invalid_id' | 'duplicate_id' | 'missing_name' | 'missing_opening' | 'invalid_opening';
 
 export type NewAccountValidation =
   | { ok: true; studentId: string; displayName: string; openingBalance: number; sameNameIds: string[] }
@@ -136,6 +284,7 @@ export type NewAccountValidation =
 
 export const NEW_ACCOUNT_ERROR_MESSAGES: Record<NewAccountError, string> = {
   missing_id: '請輸入帳戶編號',
+  invalid_id: '編號必須為純數字，範圍 001–999999',
   duplicate_id: '這個帳戶編號已經存在',
   missing_name: '請輸入姓名',
   missing_opening: '請輸入期初餘額（沒有就填 0）',
@@ -143,17 +292,36 @@ export const NEW_ACCOUNT_ERROR_MESSAGES: Record<NewAccountError, string> = {
 };
 
 /**
- * 驗證新帳戶。編號保留原字串（例如前導 0 的 `001`），重複編號阻擋；
+ * 驗證新帳戶。編號唯一正規化（前導 0 補足至少 3 位，例如 `5` -> `005`），重複編號阻擋；
  * 同名不阻擋，只回傳同名帳戶的編號供畫面提示。
  */
 export function validateNewAccount(input: NewAccountInput, existing: StudentAccount[]): NewAccountValidation {
   const errors: NewAccountError[] = [];
-  const studentId = input.studentId.trim();
+  const rawId = input.studentId.trim();
   const displayName = input.displayName.trim();
   const openingText = input.openingBalanceText.trim();
 
-  if (!studentId) errors.push('missing_id');
-  else if (existing.some(s => s.studentId === studentId)) errors.push('duplicate_id');
+  let studentId = rawId;
+  if (!rawId) {
+    errors.push('missing_id');
+  } else {
+    const norm = normalizeStudentCode(rawId);
+    if (!norm.ok) {
+      errors.push('invalid_id');
+    } else {
+      studentId = norm.code;
+      // 比對既有帳戶之原始編號與正規化編號，避免未正規化既有帳戶（如既有 5）被新增 005/05 碰撞
+      const isDuplicate = existing.some(s => {
+        if (s.studentId.trim() === rawId || s.studentId.trim() === norm.code) return true;
+        const sNorm = normalizeStudentCode(s.studentId);
+        return sNorm.ok && sNorm.code === norm.code;
+      });
+      if (isDuplicate) {
+        errors.push('duplicate_id');
+      }
+    }
+  }
+
   if (!displayName) errors.push('missing_name');
 
   const openingBalance = Number(openingText);
@@ -161,7 +329,7 @@ export function validateNewAccount(input: NewAccountInput, existing: StudentAcco
   else if (!/^-?\d+$/.test(openingText) || !Number.isSafeInteger(openingBalance)) errors.push('invalid_opening');
 
   if (errors.length > 0) return { ok: false, errors };
-  const sameNameIds = existing.filter(s => s.displayName === displayName).map(s => s.studentId);
+  const sameNameIds = existing.filter(s => s.displayName === displayName && s.studentId !== studentId).map(s => s.studentId);
   return { ok: true, studentId, displayName, openingBalance, sameNameIds };
 }
 

@@ -55,8 +55,9 @@ const VALID_SETTLEMENT_STATUSES = new Set(['open', 'closed', 'reopened']);
 const VALID_AUDIT_EVENT_TYPES = new Set([
   'transaction_edited', 'transaction_deleted', 'transaction_hard_deleted',
   'business_date_closed', 'business_date_reopened', 'csv_exported', 'report_printed',
+  'student_code_changed',
 ]);
-const VALID_AUDIT_ENTITY_TYPES = new Set(['transaction', 'settlement', 'business_date', 'export']);
+const VALID_AUDIT_ENTITY_TYPES = new Set(['transaction', 'settlement', 'business_date', 'export', 'student']);
 const VALID_VENDOR_STATUSES = new Set(['active', 'inactive']);
 
 function hasStr(v: Record<string, unknown>, key: string): boolean {

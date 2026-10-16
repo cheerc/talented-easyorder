@@ -7,12 +7,13 @@ export type LedgerAuditEventType =
   | 'business_date_closed'
   | 'business_date_reopened'
   | 'csv_exported'
-  | 'report_printed';
+  | 'report_printed'
+  | 'student_code_changed';
 
 export interface LedgerAuditEvent {
   auditEventId: string;
   eventType: LedgerAuditEventType;
-  entityType: 'transaction' | 'settlement' | 'business_date' | 'export';
+  entityType: 'transaction' | 'settlement' | 'business_date' | 'export' | 'student';
   entityId: string;
   businessDate: string;
   before: Record<string, unknown> | null;
@@ -20,6 +21,7 @@ export interface LedgerAuditEvent {
   reason: string;
   operatorId: string;
   createdAt: string;
+  studentId?: string;
 }
 
 export type LedgerMutationDecision =

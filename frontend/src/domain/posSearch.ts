@@ -1,4 +1,5 @@
 import type { StudentAccount } from './student';
+import { normalizeStudentCode } from './student';
 
 export type PosSearchMode = 'text' | 'scan';
 
@@ -19,8 +20,12 @@ export function searchPosStudents(students: StudentAccount[], query: string): Po
     return { ok: true, mode: 'text', students: [...activeStudents] };
   }
 
+  const norm = normalizeStudentCode(trimmed);
+  const normCode = norm.ok ? norm.code : null;
+
   const results = activeStudents.filter(s =>
     s.studentId.includes(trimmed) ||
+    (normCode && s.studentId === normCode) ||
     s.displayName.includes(trimmed) ||
     s.aliases.some(a => a.includes(trimmed))
   );
@@ -29,16 +34,23 @@ export function searchPosStudents(students: StudentAccount[], query: string): Po
 }
 
 /**
- * F1 搜尋框的候選清單（M1 F01 的共同規則）：只列啟用中的帳戶，比對編號、姓名與別名（不分大小寫）。
- * 排序：編號完全相同 → 別名完全相同 → 編號開頭相同 → 其他部分符合；同一組內維持名單順序。
+ * F1 搜尋框的候選清單（M1 F01 的共同規則 / U3 #1）：只列啟用中的帳戶，比對編號、姓名與別名（不分大小寫）。
+ * 排序：原始編號完全相同 → 正規化編號完全相同（如 0005/５/5 匹配 005） → 別名完全相同 → 編號開頭相同 → 其他部分符合；同一組內維持名單順序。
  */
 export function filterSearchSuggestions(students: StudentAccount[], query: string): StudentAccount[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
+  const norm = normalizeStudentCode(q);
+  const normCode = norm.ok ? norm.code.toLowerCase() : null;
+
   const rank = (s: StudentAccount): number => {
     const id = s.studentId.toLowerCase();
+    const normId = normalizeStudentCode(id);
+    const studentNormCode = normId.ok ? normId.code.toLowerCase() : id;
     const aliases = s.aliases.map(a => a.toLowerCase());
+
     if (id === q) return 0;
+    if (normCode && (id === normCode || studentNormCode === normCode)) return 0.5;
     if (aliases.includes(q)) return 1;
     if (id.startsWith(q)) return 2;
     if (id.includes(q) || s.displayName.toLowerCase().includes(q) || aliases.some(a => a.includes(q))) return 3;
@@ -60,8 +72,10 @@ export function resolveScannedStudent(students: StudentAccount[], input: Scanner
   }
 
   const activeStudents = students.filter(s => s.status === 'active');
+  const norm = normalizeStudentCode(code);
+  const normalizedCode = norm.ok ? norm.code : code;
 
-  const exactIdMatches = activeStudents.filter(s => s.studentId === code);
+  const exactIdMatches = activeStudents.filter(s => s.studentId === code || s.studentId === normalizedCode);
   if (exactIdMatches.length === 1) {
     return { ok: true, mode: 'scan', students: [exactIdMatches[0]] };
   }

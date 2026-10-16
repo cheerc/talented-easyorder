@@ -185,6 +185,29 @@ describe('posStateValidator', () => {
       if (!result.ok) expect(result.reason).toContain('auditEventId');
     });
 
+    it('U3 Review Finding 1: 接受 student_code_changed 與 entityType student 的稽核事件', () => {
+      const stateWithCodeChange = {
+        ...validState,
+        auditEvents: [
+          {
+            auditEventId: 'audit-code-1',
+            eventType: 'student_code_changed',
+            entityType: 'student',
+            entityId: '007',
+            businessDate: '2026-10-15',
+            studentId: '007',
+            before: { studentId: '005', displayName: '王小明' },
+            after: { studentId: '007', displayName: '王小明' },
+            reason: '指定號碼',
+            operatorId: 'op-1',
+            createdAt: '2026-10-15T10:00:00Z',
+          },
+        ],
+      };
+      const result = validatePersistedState(stateWithCodeChange);
+      expect(result.ok).toBe(true);
+    });
+
     it('rejects vendor with missing name', () => {
       const bad = {
         ...validState,
