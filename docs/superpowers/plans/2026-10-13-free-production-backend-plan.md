@@ -1,6 +1,6 @@
 # EasyOrder 零費用正式後端分階段實作計畫
 
-日期：2026-10-16。狀態：**P00–P07 與 P06b 已合併至 main（P06b 隨整合 PR #488 合併）；P08 雲端訂餐實作進行中；P09–P18 尚未開始或驗收**。
+日期：2026-10-16。狀態：**P00–P07 與 P06b 已合併至 main（P06b 隨整合 PR #488 合併）；P08 雲端訂餐已合併（#491）；P09–P18 尚未開始或驗收**。
 
 **Source of truth：** [正式後端 spec](../specs/2026-10-13-free-production-backend-spec.md)，包含使用者最新「多白名單、等權、同時單一Google帳號」修正；來源 [PR #469](https://github.com/cheerc/talented-easyorder/pull/469)。
 
@@ -43,7 +43,7 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 | P06 | 已合併 #478 | PR base `b53423aa71ed4cfac2428f290c648e5a999a0cae`；source head `17da94f3ffea7b116c0ce157fb784011e0b00c89`；merge SHA `b518eca5fdc2b2d2d3e9197c30b29d6a5f74ce10`，2026-10-15 05:32:37Z；GitHub 以 rebase 整合 5 commits。官方 Actions run [38685129628](https://github.com/cheerc/talented-easyorder/actions/runs/38685129628) 對 exact source head 的 build-and-test `116258195493`、E2E `116259321882` 均成功（以正常 GitHub 網頁核實；raw logs 需登入，故不聲稱其內部版本／計數）。本機真 demo Rules Emulator 去重 179/179、0 fail／skip；full Vitest 1,329 passed／179 Emulator-only skipped／0 failed；system Chromium Cloud/auth 13/13、isolated prototype 7/7；lint/build 通過。App TSC exit 2，base/current 均 290 diagnostic headers／542 normalized lines，完整 diff 0。source/final delta 與最後文件 review 均 PASS。完整收據及邊界見 [ops evidence](../../ops/free-production-evidence.md#p06-merge-receipt--2026-10-15)。名單完整快照上限 500，超額 fail closed；未部署，SDK memory-only cache 仍屬 P13。 |
 | P07 | 已合併 #480 | PR #480 合併 SHA `436b119`；日期菜單與供應商、SaveVendor／RemoveVendor／SetDayMenu／SetOpeningCash 啟用；Rules 存取次數與單文件 expression 預算已覆蓋；Full Vitest、lint、build 通過。 |
 | P06b | 已合併 #488 | PR #487（source `2a03953b90a3cd477a7918ebea6741675ac2e428`）經獨立 review PASS 後，隨操作回饋前端 U3/U4/U2b 於整合 PR #488（source `58191718e2388bfbf954314128f5357370e65123`，squash merge SHA `6ae1909639f56aa6d36524406e700554891f6328`）合併至 main。分離穩定 UUID studentId 與畫面 studentCode（001–999999）；studentCodes 唯一索引集合；ChangeStudentCode 命令與舊索引刪除授權閉合；Emulator tests 全 pass；Rules 預算 20/20、單 write 10/10；整合收據見 [P06b＋前端整合審查收據](../../ops/integration-p06b-review-5819171.md)。 |
-| P08 | 實作進行中 | 雲端訂餐與菜單快照；現正由後端 agent 於獨立分支進行中，契約訂定於 `2026-10-16-cloud-orders-contract.md`；不開 P09/P09b/P10+。 |
+| P08 | 已合併 #491 | PR [#491](https://github.com/cheerc/talented-easyorder/pull/491)（取代 #490）：base `5ff889a8c7dc9a411383c8f1a37e23f243e0ce8d`；source head `452edd5abce63f1eda329d90dcae245984104721`；squash merge SHA `889c75c`（2026-10-16）。獨立複審 PASS（review `5545234938`）；required CI [38875033302](https://github.com/cheerc/talented-easyorder/actions/runs/38875033302) build-and-test 與 e2e 均成功，其中 P08 Emulator 步驟 10/10。CreateOrder 雲端入帳、交易清單讀取（分頁、對帳、新鮮度檢查、fail closed）、未知結果同編號重試、失權遮罩；transactions 只開放目前持有者 get／list；本機 demo Emulator 281/281、Vitest 1,573 passed／281 skipped、lint／build 通過。契約見 `2026-10-16-cloud-orders-contract.md`，證據見 [ops evidence](../../ops/free-production-evidence.md)。未部署；正式部署 Rules 時須一併部署 `firestore.indexes.json`。 |
 | P09–P18 | 尚未開始／未驗 | 不代表任何後續雲端功能已實作或通過。 |
 
 ## 2. 現有檔案與規劃新檔
