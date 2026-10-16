@@ -1,7 +1,7 @@
 # 2026-10-15 操作回饋排程計畫（10 項）
 
 日期：2026-10-15（2026-10-16 更新進度）。
-狀態：**前端 prototype 定稿線（U1、U2a、U2c 先前已合入 main；U3、U4、U2b 與 P06b 現由整合 PR #488 合入 main，source 5819171，squash merge 6ae1909）；前端 Prototype 功能完成 ≠ 雲端正式後端全完成 ≠ CheerC 本人營運驗收；雲端線 P06b 已由 #488 合入 main，P08 正由後端 agent 開發中，P09/P09b/P10+ 尚未交付**。
+狀態：**前端 prototype 定稿線（U1、U2a、U2c 先前已合入 main；U3、U4、U2b 與 P06b 現由整合 PR #488 合入 main，source 5819171，squash merge 6ae1909）；前端 Prototype 功能完成 ≠ 雲端正式後端全完成 ≠ CheerC 本人營運驗收；雲端線 P06b 已由 #488 合入 main，P08 已由 #491 合入 main（`889c75c`），P09/P09b/P10+ 尚未交付**。
 來源：CheerC 2026-10-15 操作時發現的 10 個問題。
 程式現況以 main `6ae1909`（整合 PR #488，含 P00–P07、P06b 與 U1–U4）為準。
 
