@@ -1,6 +1,7 @@
 # P06b 介面與資料契約：學生穩定內部鍵與可改編號
 
-Base: `origin/main`（SHA `15de317765520c51e368783afcabc0d5be7273ef`，包含 P06、P07、U1 #481、U2c #482、U2a #483）。本契約為 P06b 雲端後端、Repository、畫面元件與 Firestore Security Rules 實作之正式依據。
+Base: `origin/main`（SHA `15de317765520c51e368783afcabc0d5be7273ef`，包含 P06、P07、U1 #481、U2c #482、U2a #483）。
+狀態：**已實作完成並經獨立 review PASS，隨整合 PR #488（source `58191718e2388bfbf954314128f5357370e65123`，squash merge `6ae1909639f56aa6d36524406e700554891f6328`）合併至 main 生效**。審查收據見 [P06b＋前端整合審查收據](../../ops/integration-p06b-review-5819171.md)。本契約為 P06b 雲端後端、Repository、畫面元件與 Firestore Security Rules 實作之正式依據。
 
 ---
 
