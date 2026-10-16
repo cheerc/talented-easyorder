@@ -2843,6 +2843,28 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     await expectRawStudentChangeCodeDeniedUnchanged(artifacts, { omit: ['oldIndex'] });
   });
 
+  it('P06b.6b: raw ChangeStudentCode fails closed when old index was missing beforehand and delete writer is omitted', async () => {
+    await seedBase();
+    const repo = repository(operatorA);
+    await repo.commitCommand(studentInput('fa833333-3333-4333-8333-333333333333', sid001, 0, today, 'Student', [], '001'));
+
+    // Simulate inconsistent prior state: old index was deleted beforehand by admin
+    await withAdmin(db => deleteDoc(doc(db, 'studentCodes/001')));
+
+    const artifacts = await rawStudentChangeCodeArtifacts(changeStudentCodeInput(
+      'fa844444-4444-4444-8444-444444444444', sid001, '015', 1, '無舊索引前態省略刪除',
+    ));
+    const paths = [
+      'system/dataHead',
+      `students/${artifacts.studentId}`,
+      `studentCodes/${artifacts.newCode}`,
+      `commands/${artifacts.commandId}`,
+    ];
+    const before = await capturePaths(paths);
+    await assertFails(rawStudentChangeCodeBatch(authedDb(operatorA), artifacts, { omit: ['oldIndex'] }).commit());
+    expect(await capturePaths(paths)).toEqual(before);
+  });
+
   it('P06b.7: raw SDK ChangeStudentCode fails and leaves state unchanged when omitting new index create', async () => {
     await seedBase();
     const repo = repository(operatorA);
@@ -2899,6 +2921,43 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     ));
     await assertFails(rawStudentChangeCodeBatch(authedDb(operatorA), artifacts, { extraIndex: true }).commit());
     expect((await getDoc(doc(authedDb(operatorA), 'studentCodes/999'))).exists()).toBe(false);
+  });
+
+  it('P06b.12: production Rules accept maximum legal payload with 10 max aliases, 500-char note and reason without hitting expression ceiling', async () => {
+    await seedBase();
+    const repo = repository(operatorA);
+    const maxAliases = Array.from({ length: 10 }, (_, index) => `${String(index).padStart(2, '0')}${'x'.repeat(98)}`);
+    const maxReason = 'R'.repeat(500);
+
+    const create = await repo.commitCommand(studentInput(
+      'fc111111-1111-4111-8111-111111111111',
+      sid001,
+      0,
+      today,
+      'M'.repeat(100),
+      maxAliases,
+      '001',
+    ));
+    expect(create.ok, JSON.stringify(create)).toBe(true);
+
+    const change = await repo.commitCommand(changeStudentCodeInput(
+      'fc222222-2222-4222-8222-222222222222',
+      sid001,
+      '015',
+      1,
+      maxReason,
+    ));
+    expect(change.ok, JSON.stringify(change)).toBe(true);
+
+    const db = authedDb(operatorA);
+    const studentDoc = await getDoc(doc(db, `students/${sid001}`));
+    expect(studentDoc.data()).toMatchObject({
+      studentId: sid001,
+      studentCode: '015',
+      revision: 2,
+    });
+    expect((await getDoc(doc(db, 'studentCodes/001'))).exists()).toBe(false);
+    expect((await getDoc(doc(db, 'studentCodes/015'))).exists()).toBe(true);
   });
 
   it('P05.26: historical order and payment dates are denied atomically without a reason field', async () => {

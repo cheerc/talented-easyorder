@@ -195,8 +195,9 @@ Rules 規則存取限制為：**單一 write evaluation ≤ 10 次存取；單�
    - `getAfter students/{studentId}` × 1
    - `exists studentCodes/{newCode}` × 1
    - `getAfter studentCodes/{newCode}` × 1
+   - `get studentCodes/{oldCode}` × 1（確認舊索引存在且屬於該學生，防止不一致前態省略刪除）
    - `existsAfter studentCodes/{oldCode}` × 1（確認舊索引確實被刪除）
-   小計：**9 次**（≤ 10）。
+   小計：**10 次**（= 10/10，觸頂）。
 2. `system/dataHead` update leaf：`getAfter command` (1) + `exists command` (1) = **2 次**。
 3. `students/{studentId}` update leaf：`getAfter command` (1) + `exists command` (1) = **2 次**。
 4. `studentCodes/{newCode}` create leaf：`getAfter command` (1) + `exists command` (1) = **2 次**。
@@ -205,13 +206,13 @@ Rules 規則存取限制為：**單一 write evaluation ≤ 10 次存取；單�
    - `getAfter commands/{commandId}` × 1
    - `exists commands/{commandId}` × 1
    小計：**3 次**（≤ 10）。
-6. 寫入 Rules 總計：9 + 2 + 2 + 2 + 3 = **18 次**。
+6. 寫入 Rules 總計：10 + 2 + 2 + 2 + 3 = **19 次**。
 7. SDK Commit `VerifyMutation`（針對 lease）：**+1 次**。
-8. **整筆 commit 總存取：18 + 1 = 19 / 20 次**。
+8. **整筆 commit 總存取：19 + 1 = 20 / 20 次**（恰達上限 20/20）。
 
 **注意（WIP 警示）：**
-- 單一 write 最大估算 9（≤10），整筆原子 request 估算 19/20 次，**距離 20 次上限僅餘 1 次 access 額度**。
-- Firestore 另有每份文件 Rules 1,000-expression 上限，此為獨立限制，不能由 access 次數推導。
+- 單一 write 最大估算 10/10，整筆原子 request 估算 20/20 次，**已達 Firestore Rules 存取次數上限頂界**，不得再增加額外存取呼叫，亦不可靠 cache 折抵。
+- Firestore 另有每份文件 Rules 1,000-expression 上限，此為獨立限制，不能由 access 次數推導。需以最壞情況（包含最大別名數 10 個、500 字理由等）進行合法正向路徑測試證明不觸頂。
 - 以上均為靜態 call graph 估值，本契約嚴禁宣稱已證明合規；必須在後續步驟以真 Firestore Emulator 進行完整正向路徑與對抗性測試，產出實際 pass 證據後方可結案。
 
 ---

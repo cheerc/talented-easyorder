@@ -41,6 +41,7 @@ type PreparedCommand =
       kind: 'edit';
       commandId: string;
       studentId: string;
+      studentCode: string;
       expectedRevision: number;
       displayName?: string;
       aliases?: string[];
@@ -49,14 +50,16 @@ type PreparedCommand =
       kind: 'code';
       commandId: string;
       studentId: string;
-      expectedRevision: number;
       studentCode: string;
+      expectedRevision: number;
+      newStudentCode: string;
       reason: string;
     }
   | {
       kind: 'status';
       commandId: string;
       studentId: string;
+      studentCode: string;
       expectedRevision: number;
       status: 'active' | 'inactive';
       reason: string;
@@ -198,9 +201,9 @@ function formatBalance(amount: number): string {
 
 function commandLabel(command: PreparedCommand): string {
   if (command.kind === 'create') return `新增 ${command.studentCode}`;
-  if (command.kind === 'edit') return `修改 ${command.studentId}`;
-  if (command.kind === 'code') return `改編號 ${command.studentCode}`;
-  return command.status === 'inactive' ? `停用 ${command.studentId}` : `恢復 ${command.studentId}`;
+  if (command.kind === 'edit') return `修改 ${command.studentCode}`;
+  if (command.kind === 'code') return `改編號 ${command.studentCode} → ${command.newStudentCode}`;
+  return command.status === 'inactive' ? `停用 ${command.studentCode}` : `恢復 ${command.studentCode}`;
 }
 
 export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationStateChange }: CloudStudentsPageProps) {
@@ -411,7 +414,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
           leaseEpoch,
           studentId: command.studentId,
           expectedRevision: command.expectedRevision,
-          studentCode: command.studentCode,
+          studentCode: command.newStudentCode,
           reason: command.reason,
         });
       } else {
@@ -590,8 +593,9 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
       kind: 'code',
       commandId,
       studentId: student.studentId,
+      studentCode: student.studentCode,
       expectedRevision: student.revision,
-      studentCode,
+      newStudentCode: studentCode,
       reason,
     });
   };
@@ -635,6 +639,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
       kind: 'edit',
       commandId,
       studentId: student.studentId,
+      studentCode: student.studentCode,
       expectedRevision: student.revision,
       ...(changes.displayName !== undefined ? { displayName: changes.displayName } : {}),
       ...(changes.aliases !== undefined ? { aliases: changes.aliases } : {}),
@@ -656,6 +661,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
       kind: 'status',
       commandId,
       studentId: student.studentId,
+      studentCode: student.studentCode,
       expectedRevision: student.revision,
       status: student.status === 'active' ? 'inactive' : 'active',
       reason,
@@ -717,7 +723,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
               leaseEpoch,
               studentId: recovery.command.studentId,
               expectedRevision: recovery.command.expectedRevision,
-              studentCode: recovery.command.studentCode,
+              studentCode: recovery.command.newStudentCode,
               reason: recovery.command.reason,
             })
             : await repository.setStudentStatus({

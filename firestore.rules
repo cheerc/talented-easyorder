@@ -400,6 +400,7 @@ service cloud.firestore {
       let newCode = command.payload.studentCode;
       let oldCode = studentBefore.studentCode;
       let newIndexAfter = getAfter(/databases/$(database)/documents/studentCodes/$(newCode)).data;
+      let oldIndexBefore = get(/databases/$(database)/documents/studentCodes/$(oldCode)).data;
       return commandHolder(command.leaseEpoch)
         && commandEnvelope(commandId, command, head, headAfter)
         && command.kind == 'ChangeStudentCode'
@@ -432,6 +433,8 @@ service cloud.firestore {
         && newIndexAfter.studentId == studentId
         && newIndexAfter.lastCommandId == commandId
         && newIndexAfter.updatedAt == request.time
+        && oldIndexBefore is map
+        && oldIndexBefore.studentId == studentId
         && !existsAfter(/databases/$(database)/documents/studentCodes/$(oldCode))
         && validStudentCashEffect(command.cashEffect);
     }

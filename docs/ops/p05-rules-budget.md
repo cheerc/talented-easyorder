@@ -194,7 +194,7 @@ P06b also introduces the unique index collection `studentCodes/{studentCode}` an
 | Command / write path | Central command-create Rules calls | Projection leaves Rules calls | Read-but-unwritten `VerifyMutation` dependencies | Atomic no-cache total | Max per write |
 |---|---:|---:|---:|---:|---:|
 | `CreateStudent` (creates student + studentCode index) | commandHolder 2 + head before/after 2 + student exists/getAfter 2 + studentCode exists/getAfter 2 = **8** | head 2 + student 2 + studentCode create 2 = **6** | operator 0 + lease `approvedOperator` 1 = **1** | **15/20** | **8/10** |
-| `ChangeStudentCode` (updates student, creates newCode index, deletes oldCode index) | commandHolder 2 + head before/after 2 + student before/after 2 + newCode exists/getAfter 2 + oldCode existsAfter 1 = **9** | head 2 + student 2 + newCode create 2 + oldCode delete (studentAfter 1 + command 1 + exists 1) 3 = **9** | operator 0 + lease `approvedOperator` 1 = **1** | **19/20** | **9/10** |
+| `ChangeStudentCode` (updates student, creates newCode index, deletes oldCode index) | commandHolder 2 + head before/after 2 + student before/after 2 + newCode exists/getAfter 2 + oldCode get/existsAfter 2 = **10** | head 2 + student 2 + newCode create 2 + oldCode delete (studentAfter 1 + command 1 + exists 1) 3 = **9** | operator 0 + lease `approvedOperator` 1 = **1** | **20/20** | **10/10** |
 | `EditStudent` / `SetStudentStatus` (unchanged from P06) | commandHolder 2 + head before/after 2 + student before/after 2 = **6** | head 2 + student 2 = **4** | operator 0 + lease `approvedOperator` 1 = **1** | **11/20** | **6/10** |
 
 ### Old index delete authorization closure
@@ -212,5 +212,4 @@ In Firestore Security Rules for `delete` operations, `request.resource` is null.
    - `command.after.student.studentCode != code && command.after.student.studentCode == command.payload.studentCode`
    - `studentAfter.studentCode == command.payload.studentCode`
 
-This design specifies the static authorization closure without relying on client-supplied IDs or caching. It estimates 3 access calls in the delete leaf rule evaluation and 19 no-cache access calls for the entire atomic commit (leaving only 1 call below the 20-call limit). These figures are static WIP estimates subject to Emulator proof, and the independent 1,000-expression ceiling per document write must be verified in the test suite before claiming compliance.
-
+This design specifies the static authorization closure without relying on client-supplied IDs or caching. It estimates 3 access calls in the delete leaf rule evaluation and 20 no-cache access calls for the entire atomic commit (10 for central create, 9 for projection leaves, 1 for lease VerifyMutation, reaching the exact 20/20 limit and 10/10 single write ceiling). These figures are static WIP estimates subject to Emulator proof, and the independent 1,000-expression ceiling per document write must be verified in the test suite before claiming compliance.
