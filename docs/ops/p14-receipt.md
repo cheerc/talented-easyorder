@@ -5,11 +5,11 @@ Date: 2026-10-16 (Asia/Taipei)
 Branch: `codex/p14-incremental-backup`
 
 Implementation base: `e01ebdff5e784522b15a6f16278ef303a9c63110`
-Tested implementation commit: `6cce710` (source and behavior under test; this receipt is a documentation-only follow-up).
+Reviewed implementation: PR #496, updated after the initial review blockers. This receipt records the current working-tree changes and their evidence; the final commit SHA is recorded in the PR after push.
 
 ## Delivered
 
-- Added paged, server-only command export over a fixed dataHead `H`, contiguous sequence and dataset/schema checks, empty `S=H` increments, previous-package validation, immutable command replay, projection before/after chain checks, settlement revision replay, and recalculated/reconciled daily totals.
+- Added paged, server-only command export over a fixed dataHead `H`, stable `(seq, documentId)` pagination, contiguous sequence and dataset/schema checks, empty `S=H` increments, previous-package validation, immutable command replay, strict per-kind target/revision/projection checks, student balance semantics, projection before/after chain checks, settlement revision replay, and recalculated/reconciled daily totals.
 - Added versioned encrypted packages using Web Crypto AES-GCM and PBKDF2-SHA256 at 600,000 iterations with fresh salt and IV. Wrong passwords, malformed/corrupt packages, unsupported kinds, incompatible ranges and oversized packages fail closed.
 - Added `RecordBackup` to the fixed command schema/writer/Rules. It records only verified local file sequence/range/hash, advances the immutable head atomically and changes no accounting projection.
 - Embedded the backup flow in F3 `今日設定`. It needs a downloaded file to be reselected, hashed and decrypted before it writes `RecordBackup`. Session/lease changes clear package and password state. No live restore or overwrite control is added.
@@ -17,13 +17,15 @@ Tested implementation commit: `6cce710` (source and behavior under test; this re
 
 ## Focused behavior evidence
 
-Real Firestore Emulator tests use anonymous synthetic fixtures and the repository's actual Rules file. `frontend/src/firebase/__tests__/cloudBackup.spec.ts` covers H=0, contiguous prefix including an earlier `RecordBackup`, fixed H while the head advances during paging, `S=H` and resume, missing/duplicate seq, non-holder denial, dataset/schema mismatch, atomic receipt, fabricated receipt denial, fresh encryption parameters, bad passphrase/tampering, and synthetic P10 `CorrectTransaction` plus P11 `CloseDay`/`ReopenDay` replay with a wrong-target rejection.
+Real Firestore Emulator tests use anonymous synthetic fixtures and the repository's actual Rules file. `frontend/src/firebase/__tests__/cloudBackup.spec.ts` covers H=0, contiguous prefix including an earlier `RecordBackup`, fixed H while the head advances during paging, `S=H` and resume, missing/duplicate seq including a duplicate split across pageSize=1, non-holder denial, dataset/schema mismatch, old-H receipt acceptance, atomic receipt, fabricated/old-epoch/extra-projection/replayed receipt denial, `leaseEpoch` export/decrypt round-trip, fresh encryption parameters, bad passphrase/tampering, and synthetic P10 `CorrectTransaction` plus P11 `CloseDay`/`ReopenDay` replay with a wrong-target rejection. It also commits a real production `EnsureDay` writer command, exports it, replays and encrypts/decrypts the result.
 
-The dedicated `BackupScreen.test.tsx` renders the F3 screen with an anonymous test lease and mocked repository boundary. It proves generate alone makes no receipt call, file selection invokes verification, and only after verification the component sends `RecordBackup`. Repository export and Rules behavior are separately tested against the real Firestore Emulator.
+The dedicated `BackupScreen.test.tsx` renders the F3 screen with an anonymous test lease and mocked repository boundary. It proves generate alone makes no receipt call, selection verifies the file before `RecordBackup`, an `UNKNOWN_RESULT` retry reuses the same commandId, and unmounting during verification prevents a write. Repository export and Rules behavior are separately tested against the real Firestore Emulator.
 
 ## Verification
 
-- `npx firebase emulators:exec --project demo-easyorder --config ../firebase.json --only firestore "npx vitest run --maxWorkers=1"` — **174 files, 1,978 tests passed**. Serial execution is required because the test files share one emulator database.
+- `npm run test:cloud-backup` — **15/15 passed** against the real Firestore Emulator. This script sets `EASYORDER_REQUIRE_CLOUD_BACKUP=true`; the suite throws if the Emulator is missing. The regular Vitest run safely skips these Emulator-only tests when no Emulator is configured.
+- `npx firebase emulators:exec --project demo-easyorder --config ../firebase.json --only firestore "npx vitest run --maxWorkers=1"` — **174 files, 1,984 tests passed**. Serial execution is required because the test files share one emulator database.
+- `.github/workflows/ci.yml` now has a required P14 Emulator proof step that also asserts its JSON report has at least one test and zero failures or skips.
 - A full Vitest run with default parallel workers produced cross-suite emulator collisions and unrelated Rules failures; it is discarded as evidence. The passing serial run is the evidence used here.
 - `npm run lint` — pass.
 - `npm run build` — pass (Vite prints its existing native-config `__dirname` warning).

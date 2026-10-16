@@ -1,6 +1,6 @@
 import {
-  Timestamp, collection, doc, getDocFromServer, getDocsFromServer, limit, orderBy, query, where,
-  type Firestore, type QueryDocumentSnapshot,
+  Timestamp, collection, doc, documentId, getDocFromServer, getDocsFromServer, limit, orderBy, query, startAfter, where,
+  type DocumentData, type Firestore, type Query, type QueryDocumentSnapshot, type QuerySnapshot,
 } from 'firebase/firestore';
 import {
   BackupValidationError, createBackupManifest, recalculateBackupTotals, replayBackupProjections, validateBackupManifest,
@@ -46,7 +46,7 @@ function recordFromSnapshot(snapshot: QueryDocumentSnapshot, datasetId: string, 
     throw new BackupValidationError(`command ${snapshot.id} schema 不支援，備份已停止`);
   }
   return {
-    commandId: snapshot.id, kind: String(raw.kind), seq: Number(raw.seq), datasetId, schemaVersion,
+    commandId: snapshot.id, kind: String(raw.kind), seq: Number(raw.seq), leaseEpoch: Number(raw.leaseEpoch), datasetId, schemaVersion,
     targets: raw.targets, expectedRevisions: raw.expectedRevisions,
     before: serializable(raw.before ?? null) as Record<string, unknown> | null,
     after: serializable(raw.after ?? null) as Record<string, unknown> | null,
@@ -112,14 +112,21 @@ export function createCloudBackupRepository(db: Firestore, options: CloudBackupR
     const targetSeq = head.seq;
     const records: BackupCommandRecord[] = [];
     let lastSeq = fromSeq;
-    while (lastSeq < targetSeq) {
+    let lastDocument: QueryDocumentSnapshot | null = null;
+    while (lastSeq < targetSeq || lastDocument) {
       if (records.length >= MAX_RECORDS) throw new BackupValidationError('單次備份超過 100,000 筆上限');
-      const page = query(
-        collection(db, 'commands'), where('seq', '>', lastSeq), where('seq', '<=', targetSeq),
-        orderBy('seq', 'asc'), limit(Math.min(pageSize, MAX_RECORDS - records.length)),
+      const pageLimit = Math.min(pageSize, MAX_RECORDS - records.length);
+      const page: Query<DocumentData> = query(
+        collection(db, 'commands'), where('seq', '>', fromSeq), where('seq', '<=', targetSeq),
+        orderBy('seq', 'asc'), orderBy(documentId(), 'asc'),
+        ...(lastDocument ? [startAfter(lastDocument)] : []),
+        limit(pageLimit),
       );
-      const result = await getDocsFromServer(page);
-      if (result.empty) throw new BackupValidationError(`備份命令鏈缺少 seq ${lastSeq + 1}`);
+      const result: QuerySnapshot<DocumentData> = await getDocsFromServer(page);
+      if (result.empty) {
+        if (lastSeq < targetSeq) throw new BackupValidationError(`備份命令鏈缺少 seq ${lastSeq + 1}`);
+        break;
+      }
       for (const snapshot of result.docs) {
         const record = recordFromSnapshot(snapshot, head.datasetId, head.schemaVersion);
         if (record.seq !== lastSeq + 1) throw new BackupValidationError(`備份命令鏈在 seq ${lastSeq + 1} 中斷或重複`);
@@ -130,9 +137,11 @@ export function createCloudBackupRepository(db: Firestore, options: CloudBackupR
         }
         records.push(record);
         lastSeq = record.seq;
+        lastDocument = snapshot;
         if (records.length > MAX_RECORDS) throw new BackupValidationError('單次備份超過 100,000 筆上限');
       }
       await options.afterPageRead?.(lastSeq);
+      if (result.size < pageLimit) break;
     }
     if (lastSeq !== targetSeq || records.length !== targetSeq - fromSeq) throw new BackupValidationError('雲端命令範圍未完整取得');
     if (records.length > 0 && records.at(-1)?.commandId !== head.lastCommandId) {

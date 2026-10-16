@@ -1240,7 +1240,8 @@ service cloud.firestore {
         && exactMap(command.targets, []) && exactMap(command.expectedRevisions, [])
         && exactMap(command.payload, ['backupType', 'sourceSeq', 'fromSeq', 'toSeq', 'sha256'])
         && command.payload.backupType == 'command-incremental'
-        && command.payload.sourceSeq is int && command.payload.sourceSeq == headBefore.seq
+        && command.payload.sourceSeq is int && command.payload.sourceSeq >= 0
+        && command.payload.sourceSeq <= headBefore.seq
         && command.payload.fromSeq is int && command.payload.fromSeq >= 0
         && command.payload.fromSeq <= command.payload.toSeq
         && command.payload.toSeq == command.payload.sourceSeq

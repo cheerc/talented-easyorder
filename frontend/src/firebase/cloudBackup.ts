@@ -8,6 +8,7 @@ export interface BackupCommandRecord {
   commandId: string;
   kind: string;
   seq: number;
+  leaseEpoch: number;
   datasetId: string;
   schemaVersion: number;
   targets: Record<string, unknown>;
@@ -54,6 +55,159 @@ export interface EncryptedBackupFile {
 
 export class BackupValidationError extends Error {
   constructor(message: string) { super(message); this.name = 'BackupValidationError'; }
+}
+
+const TARGET_KEYS_BY_KIND: Record<string, string[]> = {
+  EnsureDay: ['dayId'], CreateStudent: ['studentId'], ChangeStudentCode: ['studentId'],
+  EditStudent: ['studentId'], SetStudentStatus: ['studentId'], CorrectOpening: ['studentId', 'dayId'],
+  SaveVendor: ['vendorId'], RemoveVendor: ['vendorId'], SetDayMenu: ['dayId'], SetOpeningCash: ['dayId'],
+  CreateOrder: ['transactionId', 'studentId', 'dayId'], CreatePayment: ['transactionId', 'studentId', 'dayId'],
+  CreateCashMovement: ['transactionId', 'dayId'], CreateRefund: ['transactionId', 'studentId', 'dayId'],
+  CorrectTransaction: ['transactionId', 'studentId', 'dayId'], VoidTransaction: ['transactionId', 'studentId', 'dayId'],
+  CancelKeepDeposit: ['transactionId', 'studentId', 'dayId'], CancelRefund: ['transactionId', 'studentId', 'dayId'],
+  Undo: ['transactionId', 'dayId'], CloseDay: ['dayId', 'settlementRevision'],
+  ReopenDay: ['dayId', 'settlementRevision'], RecordExport: [], RecordPrint: [], RecordBackup: [],
+};
+const REVISION_KEYS_BY_KIND: Record<string, string[]> = {
+  EnsureDay: ['day'], CreateStudent: ['student'], ChangeStudentCode: ['student'], EditStudent: ['student'],
+  SetStudentStatus: ['student'], CorrectOpening: ['day', 'student'], SaveVendor: ['vendor'], RemoveVendor: ['vendor'],
+  SetDayMenu: ['day', 'headSeq'], SetOpeningCash: ['day'], CreateOrder: ['day', 'student', 'transaction'],
+  CreatePayment: ['day', 'student', 'transaction'], CreateCashMovement: ['day', 'transaction'],
+  CreateRefund: ['day', 'student', 'transaction'], CorrectTransaction: ['day', 'student', 'transaction'],
+  VoidTransaction: ['day', 'student', 'transaction'], CancelKeepDeposit: ['day', 'student', 'transaction'],
+  CancelRefund: ['day', 'student', 'transaction'], Undo: ['day', 'transaction'],
+  CloseDay: ['day', 'settlement'], ReopenDay: ['day', 'settlement'],
+  RecordExport: [], RecordPrint: [], RecordBackup: [],
+};
+const PROJECTIONS_BY_KIND: Record<string, string[]> = {
+  EnsureDay: ['day'], CreateStudent: ['student'], ChangeStudentCode: ['student'], EditStudent: ['student'],
+  SetStudentStatus: ['student'], CorrectOpening: ['day', 'student'], SaveVendor: ['vendor'], RemoveVendor: ['vendor'],
+  SetDayMenu: ['day'], SetOpeningCash: ['day'], CreateOrder: ['day', 'student', 'transaction'],
+  CreatePayment: ['day', 'student', 'transaction'], CreateCashMovement: ['day', 'transaction'],
+  CreateRefund: ['day', 'student', 'transaction'], CorrectTransaction: ['day', 'student', 'transaction'],
+  VoidTransaction: ['day', 'student', 'transaction'], CancelKeepDeposit: ['day', 'student', 'transaction'],
+  CancelRefund: ['day', 'student', 'transaction'], Undo: ['day', 'transaction'],
+  CloseDay: ['day', 'settlement'], ReopenDay: ['day', 'settlement'],
+  RecordExport: [], RecordPrint: [], RecordBackup: [],
+};
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function hasExactlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
+  const actual = Object.keys(value).sort();
+  return JSON.stringify(actual) === JSON.stringify([...keys].sort());
+}
+
+function revisionOf(projection: string, value: unknown): number | null {
+  if (value === null) return 0;
+  if (!isPlainRecord(value)) throw new BackupValidationError(`${projection} projection 必須是固定物件或 null`);
+  const revision = projection === 'settlement' ? value.revision : value.revision;
+  if (!Number.isSafeInteger(revision) || (revision as number) < 1) {
+    throw new BackupValidationError(`${projection} projection revision 無效`);
+  }
+  return revision as number;
+}
+
+function signedSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Math.abs(value as number) <= 1_000_000_000;
+}
+
+function validBusinessDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function isSerializedTimestamp(value: unknown): boolean {
+  return isPlainRecord(value) && value._type === 'timestamp'
+    && Number.isSafeInteger(value.seconds) && Number.isSafeInteger(value.nanoseconds)
+    && (value.nanoseconds as number) >= 0 && (value.nanoseconds as number) < 1_000_000_000;
+}
+
+function validateProjectionSnapshot(
+  projection: string, value: unknown, record: BackupCommandRecord, target: Record<string, unknown>, after: boolean,
+): void {
+  if (value === null) {
+    const allowedCreation = !after && (
+      projection === 'day' && record.kind === 'EnsureDay'
+      || projection === 'student' && record.kind === 'CreateStudent'
+      || projection === 'vendor' && record.kind === 'SaveVendor'
+      || projection === 'transaction' && ['CreateOrder', 'CreatePayment', 'CreateCashMovement', 'CreateRefund'].includes(record.kind)
+      || projection === 'settlement' && record.kind === 'CloseDay'
+    );
+    if (!allowedCreation) {
+      throw new BackupValidationError(`command seq ${record.seq} ${projection} 不可為 null`);
+    }
+    return;
+  }
+  if (!isPlainRecord(value)) throw new BackupValidationError(`command seq ${record.seq} ${projection} projection 型別無效`);
+  const revision = revisionOf(projection, value);
+  if (after && value.lastCommandId !== record.commandId) {
+    throw new BackupValidationError(`command seq ${record.seq} ${projection} after lastCommandId 不符`);
+  }
+  if (projection === 'day') {
+    const totalsKeys = ['activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal', 'retainedReceipts', 'cashierIncome', 'cashierExpense', 'accountRefunds'];
+    if (!['open', 'closed', 'reopened'].includes(String(value.status)) || !isPlainRecord(value.totals)
+      || !hasExactlyKeys(value.totals, totalsKeys)
+      || Object.values(value.totals).some(item => !Number.isSafeInteger(item) || (item as number) < 0)
+      || !Number.isSafeInteger(value.lastSettlementRevision) || (value.lastSettlementRevision as number) < 0
+      || !isSerializedTimestamp(value.updatedAt)) {
+      throw new BackupValidationError(`command seq ${record.seq} day projection schema 無效`);
+    }
+  } else if (projection === 'student') {
+    if (value.studentId !== target.studentId || !signedSafeInteger(value.currentBalance)
+      || !isPlainRecord(value.openingBalance) || !signedSafeInteger(value.openingBalance.amount)
+      || !validBusinessDate(value.openingBalance.asOfDate) || !['active', 'inactive'].includes(String(value.status))
+      || !isSerializedTimestamp(value.openingBalance.createdAt) || !isSerializedTimestamp(value.createdAt)
+      || !isSerializedTimestamp(value.updatedAt)) {
+      throw new BackupValidationError(`command seq ${record.seq} student identity/balance schema 無效`);
+    }
+  } else if (projection === 'vendor') {
+    if (value.vendorId !== target.vendorId || typeof value.deleted !== 'boolean'
+      || !['active', 'inactive'].includes(String(value.status))
+      || !isSerializedTimestamp(value.createdAt) || !isSerializedTimestamp(value.updatedAt)) {
+      throw new BackupValidationError(`command seq ${record.seq} vendor identity/schema 無效`);
+    }
+  } else if (projection === 'transaction') {
+    if (value.transactionId !== target.transactionId || value.businessDate !== target.dayId
+      || !['order', 'payment', 'expense', 'refund'].includes(String(value.type))
+      || !['active', 'voided'].includes(String(value.status))
+      || !signedSafeInteger(value.mealPrice) || !signedSafeInteger(value.paidAmount) || !signedSafeInteger(value.amount)
+      || !isSerializedTimestamp(value.createdAt) || !isSerializedTimestamp(value.updatedAt)) {
+      throw new BackupValidationError(`command seq ${record.seq} transaction identity/schema 無效`);
+    }
+    if (target.studentId !== undefined && value.studentId !== target.studentId) {
+      throw new BackupValidationError(`command seq ${record.seq} transaction studentId 不符`);
+    }
+    if (value.type === 'order' && value.amount !== Number(value.paidAmount) - Number(value.mealPrice)
+      || value.type === 'payment' && (value.mealPrice !== 0 || value.amount !== value.paidAmount)
+      || value.type === 'expense' && value.amount !== Number(value.paidAmount) - Number(value.mealPrice)
+      || value.type === 'refund' && (value.mealPrice !== 0 || value.paidAmount !== 0 || (value.amount as number) < 1)) {
+      throw new BackupValidationError(`command seq ${record.seq} transaction 金額語義無效`);
+    }
+  } else if (projection === 'settlement') {
+    if (value.dayId !== target.dayId || !['closed', 'reopened'].includes(String(value.status))
+      || (after && (value.revision !== target.settlementRevision || value.sourceSeq !== record.seq))
+      || (!after && (value.revision !== Number(target.settlementRevision) - 1 || !Number.isSafeInteger(value.sourceSeq)
+        || (value.sourceSeq as number) >= record.seq))
+      || !isSerializedTimestamp(value.committedAt)) {
+      throw new BackupValidationError(`command seq ${record.seq} settlement identity/schema 無效`);
+    }
+  }
+  if (revision === null) throw new BackupValidationError(`command seq ${record.seq} ${projection} revision 無效`);
+}
+
+function balanceContribution(value: unknown): number {
+  if (value === null) return 0;
+  if (!isPlainRecord(value) || value.status !== 'active') return 0;
+  if (value.type === 'order') return Number(value.paidAmount) - Number(value.mealPrice);
+  if (value.type === 'payment') return Number(value.paidAmount);
+  if (value.type === 'refund') return -Number(value.amount);
+  return 0;
 }
 
 function resourcePath(projection: string, targets: Record<string, unknown>): string {
@@ -104,7 +258,16 @@ function replayProjections(records: BackupCommandRecord[], initial: Record<strin
   for (const record of records) {
     const before = record.before ?? {};
     const after = record.after ?? {};
+    if (record.kind === 'CloseDay' || record.kind === 'ReopenDay') {
+      const settlementPath = resourcePath('settlement', record.targets);
+      const previousSettlement = Object.hasOwn(state, settlementPath) ? state[settlementPath] : null;
+      if (!sameValue(previousSettlement, before.previousSettlement)) {
+        throw new BackupValidationError(`command seq ${record.seq} settlement before 與前序重播狀態不符`);
+      }
+      state[settlementPath] = after.settlement;
+    }
     for (const projection of ['day', 'student', 'vendor', 'transaction', 'settlement']) {
+      if (projection === 'settlement' && (record.kind === 'CloseDay' || record.kind === 'ReopenDay')) continue;
       if (!(projection in before) && !(projection in after)) continue;
       if (!(projection in before) || !(projection in after)) {
         throw new BackupValidationError(`command ${record.commandId} 的 ${projection} before/after 投影不完整`);
@@ -118,7 +281,7 @@ function replayProjections(records: BackupCommandRecord[], initial: Record<strin
       state[key] = after[projection];
     }
     const unknownProjection = [...new Set([...Object.keys(before), ...Object.keys(after)])]
-      .filter(key => key !== 'head' && !['day', 'student', 'vendor', 'transaction', 'settlement'].includes(key));
+      .filter(key => key !== 'head' && !['day', 'student', 'vendor', 'transaction', 'settlement', 'previousSettlement'].includes(key));
     if (unknownProjection.length) throw new BackupValidationError(`command seq ${record.seq} 含未知投影：${unknownProjection.join(', ')}`);
   }
   recalculateDayTotals(state);
@@ -206,17 +369,6 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
     }
   }
   const ids = new Set<string>();
-  const targetKeysByKind: Record<string, string[]> = {
-    EnsureDay: ['dayId'], CreateStudent: ['studentId'], ChangeStudentCode: ['studentId'],
-    EditStudent: ['studentId'], SetStudentStatus: ['studentId'], CorrectOpening: ['studentId', 'dayId'],
-    SaveVendor: ['vendorId'], RemoveVendor: ['vendorId'], SetDayMenu: ['dayId'], SetOpeningCash: ['dayId'],
-    CreateOrder: ['transactionId', 'studentId', 'dayId'], CreatePayment: ['transactionId', 'studentId', 'dayId'],
-    CreateCashMovement: ['transactionId', 'dayId'], CreateRefund: ['transactionId', 'studentId', 'dayId'],
-    CorrectTransaction: ['transactionId', 'studentId', 'dayId'], VoidTransaction: ['transactionId', 'studentId', 'dayId'],
-    CancelKeepDeposit: ['transactionId', 'studentId', 'dayId'], CancelRefund: ['transactionId', 'studentId', 'dayId'],
-    Undo: ['transactionId', 'studentId', 'dayId'], CloseDay: ['dayId', 'settlementRevision'],
-    ReopenDay: ['dayId', 'settlementRevision'], RecordExport: [], RecordPrint: [], RecordBackup: [],
-  };
   const payloadFieldsByKind: Record<string, { required: string[]; optional?: string[] }> = {
     EnsureDay: { required: ['businessDate'] }, CreateStudent: { required: ['studentCode', 'displayName', 'aliases', 'openingBalance'] },
     ChangeStudentCode: { required: ['studentCode', 'reason'] }, EditStudent: { required: [], optional: ['displayName', 'aliases'] },
@@ -234,44 +386,141 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
     RecordPrint: { required: ['printType', 'businessDate', 'sourceSeq'] },
     RecordBackup: { required: ['backupType', 'sourceSeq', 'fromSeq', 'toSeq', 'sha256'] },
   };
-  const revisionProjection: Record<string, string> = {
-    day: 'day', student: 'student', vendor: 'vendor', transaction: 'transaction', settlement: 'settlement',
-  };
   manifest.records.forEach((record, index) => {
     const seq = fromSeq + index + 1;
     const targets = record?.targets;
     const before = record?.before;
     const after = record?.after;
-    const expectedTargets = targetKeysByKind[record?.kind ?? ''];
+    const undoHasStudent = record?.kind === 'Undo' && isPlainRecord(targets) && Object.hasOwn(targets, 'studentId');
+    const expectedTargets = TARGET_KEYS_BY_KIND[record?.kind ?? '']
+      ? [...TARGET_KEYS_BY_KIND[record?.kind ?? ''], ...(undoHasStudent ? ['studentId'] : [])] : undefined;
     const payloadFields = payloadFieldsByKind[record?.kind ?? ''];
     const payloadNames = record?.payload && typeof record.payload === 'object' ? Object.keys(record.payload) : [];
     const targetNames = targets && typeof targets === 'object' ? Object.keys(targets).sort() : [];
-    const beforeNames = before && typeof before === 'object' ? Object.keys(before).sort() : [];
-    const afterNames = after && typeof after === 'object' ? Object.keys(after).sort() : [];
     const expectedRevisions = record?.expectedRevisions as Record<string, unknown> | undefined;
-    const validRevisionKeys = expectedRevisions && Object.entries(expectedRevisions).every(([key, revision]) =>
-      Number.isSafeInteger(revision) && (revision as number) >= 0
-      && (key === 'headSeq' || key in revisionProjection));
+    const expectedRevisionKeys = REVISION_KEYS_BY_KIND[record?.kind ?? '']
+      ? [...REVISION_KEYS_BY_KIND[record?.kind ?? ''], ...(undoHasStudent ? ['student'] : [])] : undefined;
     const headBefore = before?.head as Record<string, unknown> | undefined;
     const headAfter = after?.head as Record<string, unknown> | undefined;
+    const requiredProjections = PROJECTIONS_BY_KIND[record?.kind ?? '']
+      ? [...PROJECTIONS_BY_KIND[record?.kind ?? ''], ...(undoHasStudent ? ['student'] : [])] : undefined;
+    const requiredBeforeKeys = record?.kind === 'CloseDay' || record?.kind === 'ReopenDay'
+      ? ['head', 'day', 'previousSettlement'] : ['head', ...(requiredProjections ?? [])];
+    const requiredAfterKeys = record?.kind === 'CloseDay' || record?.kind === 'ReopenDay'
+      ? ['head', 'day', 'settlement'] : ['head', ...(requiredProjections ?? [])];
     if (!record || record.seq !== seq || !record.commandId || ids.has(record.commandId)
       || record.datasetId !== manifest.datasetId || record.schemaVersion !== manifest.commandSchemaVersion
-      || !record.kind || !record.targets || !record.expectedRevisions || !record.payload || !record.actor
+      || !record.kind || !isPlainRecord(targets) || !isPlainRecord(expectedRevisions) || !isPlainRecord(record.payload) || !isPlainRecord(record.actor)
       || !record.cashEffect || !/^[a-f0-9]{64}$/.test(record.inputFingerprint)
-      || !expectedTargets || !(JSON.stringify(targetNames) === JSON.stringify([...expectedTargets].sort())
-        || record.kind === 'Undo' && JSON.stringify(targetNames) === JSON.stringify(['dayId', 'transactionId']))
+      || !expectedTargets || !requiredProjections
+      || !hasExactlyKeys(targets!, expectedTargets)
+      || !hasExactlyKeys(expectedRevisions!, expectedRevisionKeys ?? [])
       || !payloadFields || payloadFields.required.some(key => !payloadNames.includes(key))
       || payloadNames.some(key => ![...payloadFields.required, ...(payloadFields.optional ?? [])].includes(key))
-      || !validRevisionKeys || !before || !after || !headBefore || !headAfter
+      || !before || !after || !isPlainRecord(before) || !isPlainRecord(after) || !headBefore || !headAfter
+      || !hasExactlyKeys(before, requiredBeforeKeys) || !hasExactlyKeys(after, requiredAfterKeys)
       || headBefore.seq !== seq - 1 || headAfter.seq !== seq || headAfter.lastCommandId !== record.commandId
-      || !beforeNames.includes('head') || !afterNames.includes('head')) {
+      || headBefore.datasetId !== manifest.datasetId || headAfter.datasetId !== manifest.datasetId
+      || headBefore.schemaVersion !== manifest.commandSchemaVersion || headAfter.schemaVersion !== manifest.commandSchemaVersion
+      || !hasExactlyKeys(headBefore, ['schemaVersion', 'datasetId', 'seq', 'lastCommandId', 'maintenance', 'goLiveDate', 'updatedAt'])
+      || !hasExactlyKeys(headAfter, ['schemaVersion', 'datasetId', 'seq', 'lastCommandId', 'maintenance', 'goLiveDate', 'updatedAt'])
+      || (seq === 1 ? headBefore.lastCommandId !== null : typeof headBefore.lastCommandId !== 'string')
+      || !validBusinessDate(headBefore.goLiveDate) || !validBusinessDate(headAfter.goLiveDate)
+      || !isSerializedTimestamp(headBefore.updatedAt) || !isSerializedTimestamp(headAfter.updatedAt)
+      || typeof headBefore.maintenance !== 'boolean' || typeof headAfter.maintenance !== 'boolean'
+      || !Number.isSafeInteger(record.leaseEpoch) || record.leaseEpoch < 0) {
       throw new BackupValidationError(`備份命令鏈在 seq ${seq} 不連續或欄位無效`);
+    }
+    const normalizedTargetKeys = [...expectedTargets].sort();
+    if (JSON.stringify(targetNames) !== JSON.stringify(normalizedTargetKeys)
+      || ('dayId' in targets && !validBusinessDate(targets.dayId))
+      || ('studentId' in targets && (typeof targets.studentId !== 'string'
+        || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targets.studentId)))
+      || ('transactionId' in targets && (typeof targets.transactionId !== 'string' || !targets.transactionId || targets.transactionId.includes('/')))
+      || ('vendorId' in targets && (typeof targets.vendorId !== 'string' || !targets.vendorId || targets.vendorId.length > 64 || targets.vendorId.includes('/')))
+      || (targets.settlementRevision !== undefined && (!Number.isSafeInteger(targets.settlementRevision) || (targets.settlementRevision as number) < 1))) {
+      throw new BackupValidationError(`command seq ${seq} targets schema 無效`);
+    }
+    const numericPayloadFields: Record<string, string[]> = {
+      CorrectOpening: ['amount'], SetDayMenu: ['price'], SetOpeningCash: ['openingCash'],
+      CreateOrder: ['mealPrice', 'paidAmount'], CreatePayment: ['paidAmount'], CreateCashMovement: ['mealPrice', 'paidAmount'],
+      CreateRefund: ['amount'], CorrectTransaction: ['mealPrice', 'paidAmount'], CloseDay: ['countedCash'],
+      RecordExport: ['sourceSeq'], RecordPrint: ['sourceSeq'], RecordBackup: ['sourceSeq', 'fromSeq', 'toSeq'],
+    };
+    for (const key of numericPayloadFields[record.kind] ?? []) {
+      if (!Number.isSafeInteger(record.payload[key]) || Math.abs(record.payload[key] as number) > 1_000_000_000) {
+        throw new BackupValidationError(`command seq ${seq} payload.${key} 無效`);
+      }
+    }
+    if (record.kind === 'EnsureDay' && !validBusinessDate(record.payload.businessDate)
+      || record.kind === 'CreateStudent' && (!isPlainRecord(record.payload.openingBalance)
+        || !signedSafeInteger(record.payload.openingBalance.amount)
+        || !validBusinessDate(record.payload.openingBalance.asOfDate))
+      || record.kind === 'SetDayMenu' && (!validBusinessDate(record.payload.selectionDate)
+        || (record.payload.inheritedFromDate !== null && !validBusinessDate(record.payload.inheritedFromDate)))
+      || record.kind === 'RecordBackup' && (record.payload.backupType !== 'command-incremental'
+        || record.payload.toSeq !== record.payload.sourceSeq || (record.payload.fromSeq as number) > (record.payload.toSeq as number))) {
+      throw new BackupValidationError(`command seq ${seq} payload schema 無效`);
+    }
+    for (const [key, revision] of Object.entries(expectedRevisions)) {
+      if (!Number.isSafeInteger(revision) || (revision as number) < 0
+        || key === 'headSeq' && revision !== headBefore.seq) {
+        throw new BackupValidationError(`command seq ${seq} expectedRevisions.${key} 無效`);
+      }
     }
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(record.commandId)
       || !/^[a-f0-9]{64}$/.test(record.inputFingerprint)
       || !record.actor || typeof record.actor.uid !== 'string' || !record.actor.uid
       || typeof record.actor.email !== 'string' || !record.actor.email.includes('@')) {
       throw new BackupValidationError(`command seq ${seq} actor、commandId 或 fingerprint 欄位無效`);
+    }
+    const projections = requiredProjections!;
+    const beforeProjectionKey = (projection: string) => projection === 'settlement' ? 'previousSettlement' : projection;
+    for (const projection of projections) {
+      const beforeValue = before[beforeProjectionKey(projection)];
+      const afterValue = after[projection];
+      validateProjectionSnapshot(projection, beforeValue, record, targets!, false);
+      validateProjectionSnapshot(projection, afterValue, record, targets!, true);
+      const expectedRevision = expectedRevisions![projection];
+      if (revisionOf(projection, beforeValue) !== expectedRevision
+        || revisionOf(projection, afterValue) !== (expectedRevision as number) + 1) {
+        throw new BackupValidationError(`command seq ${seq} ${projection} before/after revision 不連續`);
+      }
+    }
+    if (record.kind === 'CloseDay' || record.kind === 'ReopenDay') {
+      const settlementAfter = after.settlement as Record<string, unknown>;
+      if (settlementAfter.revision !== targets!.settlementRevision
+        || (record.kind === 'CloseDay' && settlementAfter.status !== 'closed')
+        || (record.kind === 'ReopenDay' && settlementAfter.status !== 'reopened')) {
+        throw new BackupValidationError(`command seq ${seq} settlement revision/status 不符`);
+      }
+    }
+    const beforeStudent = before.student;
+    const afterStudent = after.student;
+    if (projections.includes('student')) {
+      if (record.kind === 'CreateStudent') {
+        const studentAfter = afterStudent as Record<string, unknown>;
+        const opening = studentAfter.openingBalance as Record<string, unknown>;
+        if (studentAfter.currentBalance !== opening.amount) throw new BackupValidationError(`command seq ${seq} 新學生餘額不等於期初`);
+      } else if (record.kind === 'CorrectOpening') {
+        const studentBefore = beforeStudent as Record<string, unknown>;
+        const studentAfter = afterStudent as Record<string, unknown>;
+        const openingBefore = studentBefore.openingBalance as Record<string, unknown>;
+        const openingAfter = studentAfter.openingBalance as Record<string, unknown>;
+        if (Number(studentAfter.currentBalance) - Number(studentBefore.currentBalance)
+          !== Number(openingAfter.amount) - Number(openingBefore.amount)) {
+          throw new BackupValidationError(`command seq ${seq} CorrectOpening 餘額差額不一致`);
+        }
+      } else if (projections.includes('transaction')) {
+        const expectedDelta = balanceContribution(after.transaction) - balanceContribution(before.transaction);
+        if (Number((afterStudent as Record<string, unknown>).currentBalance)
+          - Number((beforeStudent as Record<string, unknown>).currentBalance) !== expectedDelta) {
+          throw new BackupValidationError(`command seq ${seq} 學生餘額與交易影響不一致`);
+        }
+      } else if ((afterStudent as Record<string, unknown>).currentBalance
+        !== (beforeStudent as Record<string, unknown>).currentBalance) {
+        throw new BackupValidationError(`command seq ${seq} 非帳務命令不可改變學生餘額`);
+      }
     }
     const cashEffect = record.cashEffect as Record<string, unknown>;
     const cashKeys = ['before', 'after', 'delta', 'reasonKind', 'refundAmount'];
@@ -284,26 +533,13 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
       const payload = record.payload;
       if (headBefore.datasetId !== manifest.datasetId || headAfter.datasetId !== manifest.datasetId
         || headBefore.schemaVersion !== manifest.commandSchemaVersion || headAfter.schemaVersion !== manifest.commandSchemaVersion
-        || beforeNames.join(',') !== 'head' || afterNames.join(',') !== 'head'
-        || payload.backupType !== 'command-incremental' || payload.sourceSeq !== seq - 1
+        || !hasExactlyKeys(before, ['head']) || !hasExactlyKeys(after, ['head'])
+        || payload.backupType !== 'command-incremental' || !Number.isSafeInteger(payload.sourceSeq)
+        || (payload.sourceSeq as number) < 0 || (payload.sourceSeq as number) > headBefore.seq
         || payload.toSeq !== payload.sourceSeq || !Number.isSafeInteger(payload.fromSeq)
         || (payload.fromSeq as number) < 0 || (payload.fromSeq as number) > (payload.toSeq as number)
         || !/^[a-f0-9]{64}$/.test(String(payload.sha256))) {
         throw new BackupValidationError(`RecordBackup receipt 在 seq ${seq} 無法驗證`);
-      }
-    } else {
-      for (const [revisionName, projectionName] of Object.entries(revisionProjection)) {
-        if (!(revisionName in (expectedRevisions ?? {}))) continue;
-        const expected = (expectedRevisions as Record<string, number>)[revisionName];
-        const snapshot = before?.[projectionName] as Record<string, unknown> | null | undefined;
-        const actual = snapshot === null ? 0 : snapshot?.revision ?? snapshot?.settlementRevision;
-        if (actual !== expected) throw new BackupValidationError(`command seq ${seq} ${revisionName} before revision 不一致`);
-        const afterSnapshot = after?.[projectionName] as Record<string, unknown> | null | undefined;
-        const afterRevision = afterSnapshot?.revision ?? afterSnapshot?.settlementRevision;
-        if (afterRevision !== expected + 1) throw new BackupValidationError(`command seq ${seq} ${revisionName} after revision 不連續`);
-      }
-      if ('headSeq' in expectedRevisions && expectedRevisions.headSeq !== headBefore.seq) {
-        throw new BackupValidationError(`command seq ${seq} headSeq before revision 不一致`);
       }
     }
     ids.add(record.commandId);

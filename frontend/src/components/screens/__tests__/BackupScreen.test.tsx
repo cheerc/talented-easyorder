@@ -55,13 +55,36 @@ describe('BackupScreen verified-local gate', () => {
     expect(screen.getByRole('status')).toHaveTextContent('固定匯出 head H=1');
     expect(mocks.commitCommand).not.toHaveBeenCalled();
 
+    mocks.commitCommand.mockResolvedValueOnce({ ok: false, error: { message: 'UNKNOWN_RESULT' } })
+      .mockResolvedValueOnce({ ok: true });
     const file = new File(['fixture'], 'easyorder-backup-0-1.eobackup', { type: 'application/json' });
     fireEvent.change(reselect, { target: { files: [file] } });
     await waitFor(() => expect(mocks.commitCommand).toHaveBeenCalledTimes(1));
     expect(mocks.verifyBackupFile).toHaveBeenCalledWith(file, 'fixture-passphrase', 'a'.repeat(64));
+    const commandId = mocks.commitCommand.mock.calls[0]?.[0].commandId;
+    await screen.findByRole('alert');
+    fireEvent.change(reselect, { target: { files: [file] } });
+    await waitFor(() => expect(mocks.commitCommand).toHaveBeenCalledTimes(2));
+    expect(mocks.commitCommand.mock.calls[1]?.[0].commandId).toBe(commandId);
     expect(mocks.commitCommand.mock.calls[0]?.[0]).toMatchObject({
       kind: 'RecordBackup', payload: { fromSeq: 0, toSeq: 1, sourceSeq: 1, sha256: 'a'.repeat(64) },
     });
     expect(await screen.findByText(/已登記 RecordBackup/)).toBeVisible();
+  });
+
+  it('does not commit after the screen unmounts while file verification is pending', async () => {
+    const user = userEvent.setup();
+    let resolveVerification: ((value: typeof manifest) => void) | undefined;
+    mocks.verifyBackupFile.mockReturnValueOnce(new Promise(resolve => { resolveVerification = resolve; }));
+    const view = render(<BackupScreen />);
+    await user.type(screen.getByLabelText('備份密碼'), 'fixture-passphrase');
+    await user.click(screen.getByRole('button', { name: '產生加密備份' }));
+    const reselect = await screen.findByLabelText('重新選取剛存下的備份檔');
+    fireEvent.change(reselect, { target: { files: [new File(['fixture'], 'backup.eobackup')] } });
+    await waitFor(() => expect(mocks.verifyBackupFile).toHaveBeenCalledTimes(1));
+    view.unmount();
+    resolveVerification?.(manifest);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(mocks.commitCommand).not.toHaveBeenCalled();
   });
 });

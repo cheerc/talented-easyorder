@@ -24,12 +24,13 @@ export const BackupScreen = React.memo(function BackupScreen() {
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const operationRef = useRef(0);
+  const receiptCommandIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     operationRef.current += 1;
+    receiptCommandIdRef.current = null;
     setStage('idle'); setHeadSeq(null); setPackageBytes(null); setPackageSha(null);
     setManifest(null); setPreviousManifest(null); setPreviousPackageSha(null); setPassword(''); setError(''); setBusy(false);
-    if (lease.isHolder) return;
     return () => { operationRef.current += 1; };
   }, [access.ok, lease.isHolder, lease.epoch]);
 
@@ -42,12 +43,13 @@ export const BackupScreen = React.memo(function BackupScreen() {
       const hash = await sha256Hex(new Uint8Array(bytes));
       if (id !== operationRef.current || !lease.isHolder) return;
       setPreviousManifest(loaded); setPreviousPackageSha(hash); setFromSeq(loaded.toSeq); setError('');
-    } catch (cause) { setError(cause instanceof Error ? cause.message : '無法讀取前次備份'); }
+    } catch (cause) { if (id === operationRef.current) setError(cause instanceof Error ? cause.message : '無法讀取前次備份'); }
   };
 
   const generate = async () => {
     if (!fb?.db || !access.ok || !lease.isHolder || !password) return;
     const id = ++operationRef.current;
+    receiptCommandIdRef.current = null;
     setBusy(true); setError(''); setPackageBytes(null); setPackageSha(null); setManifest(null); setStage('idle');
     try {
       const repository = createCloudBackupRepository(fb.db, { currentUid: () => lease.isHolder ? access.profile.uid : null });
@@ -75,7 +77,7 @@ export const BackupScreen = React.memo(function BackupScreen() {
 
   const verifySelected = async (file: File | undefined) => {
     if (!file || !manifest || !packageSha || !fb?.db || !access.ok || !lease.isHolder) return;
-    const id = operationRef.current;
+    const id = ++operationRef.current;
     setBusy(true); setError('');
     try {
       const readback = await verifyBackupFile(file, password, packageSha);
@@ -85,7 +87,8 @@ export const BackupScreen = React.memo(function BackupScreen() {
       if (id !== operationRef.current || !lease.isHolder) return;
       const commands = createCloudCommandRepository(fb.db);
       const result = await commands.commitCommand({
-        commandId: crypto.randomUUID(), kind: 'RecordBackup', leaseEpoch: lease.epoch,
+        commandId: receiptCommandIdRef.current ?? (receiptCommandIdRef.current = crypto.randomUUID()),
+        kind: 'RecordBackup', leaseEpoch: lease.epoch,
         targets: {}, expectedRevisions: {},
         payload: { backupType: 'command-incremental', sourceSeq: manifest.toSeq, fromSeq: manifest.fromSeq,
           toSeq: manifest.toSeq, sha256: packageSha },
@@ -94,7 +97,12 @@ export const BackupScreen = React.memo(function BackupScreen() {
       if (!result.ok) throw new Error(result.error.message);
       setStage('verifiedLocal');
     } catch (cause) { if (id === operationRef.current) setError(cause instanceof Error ? cause.message : '本機備份驗證失敗'); }
-    finally { if (id === operationRef.current) setBusy(false); }
+    finally {
+      if (id === operationRef.current) {
+        setBusy(false);
+        if (fileRef.current) fileRef.current.value = '';
+      }
+    }
   };
 
   return <section className="screen backup" aria-label="每日增量備份">
