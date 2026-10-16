@@ -1,13 +1,13 @@
 /**
- * 跨功能整合測試：
+ * 跨功能模組整合測試（Domain / Store / 元件單元層級）：
  * 整合 U3（改編號與缺號、歷史歸戶）、U2b（全系統「便當」→「餐點」新用語、PWA 品牌）、
  * U4（學生帳戶退款、F1 退款框、F2 現金算式、停用退款入口）。
  *
- * 涵蓋要求：
- * 1. 改號後退款 → E / F2 / F5 / undo / reload 一致
- * 2. 停用改號後可退款
- * 3. 改號稽核 snapshot 與 refund validator 共存
- * 4. 品牌 / 付款理由流程
+ * 【層級說明】：
+ * - 本檔聚焦於 Store actions、Domain 算式／校驗器（Validator）、Presenter 歸戶與個別 UI 對話框元件的整合行為。
+ * - 本檔之撤回為底層 store `deleteTransaction` 呼叫、F5 為 `describeAuditEvents` 純函式、儲存為 `validatePersistedState` 檢驗。
+ * - 包含完整 App 掛載、5 秒倒數計時器時窗、使用者鍵盤滑鼠互動與真實 storage persist reader / rehydrate 之端到端驗證，
+ *   請參見 `src/__tests__/integrationApp.test.tsx`。
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { screen, render } from '@testing-library/react';
@@ -45,9 +45,9 @@ beforeEach(() => {
   }));
 });
 
-describe('跨功能整合測試 (U3 改號 + U2b 新用語 + U4 學生退款)', () => {
-  describe('1. 改號後退款 → E / F2 / F5 / undo / reload 一致', () => {
-    it('學生改號後執行退款，E 明細、F2 報表、F5 查詢、undo 撤回與 reload 持久化皆完全一致', async () => {
+describe('跨功能模組整合測試 (U3 改號 + U2b 新用語 + U4 學生退款)', () => {
+  describe('1. 改號後退款：元件明細、報表純函式、稽核 Presenter 與 Store 撤回／驗證器一致性', () => {
+    it('學生改號後退款，TransactionStatusView 明細、calculateLedgerTotals 算式、describeAuditEvents 歸戶、deleteTransaction 撤回與 validatePersistedState 驗證皆一致', async () => {
       const store = usePosStore.getState();
 
       // 1.1 建立學生 005，初始餘額 500
@@ -105,7 +105,7 @@ describe('跨功能整合測試 (U3 改號 + U2b 新用語 + U4 學生退款)', 
       const currentStudent = usePosStore.getState().students.find(s => s.studentId === '009')!;
       expect(currentStudent.currentBalance).toBe(310);
 
-      // 1.6 驗證 E（TransactionStatusView 付款明細）
+      // 1.6 驗證 E 區塊元件（TransactionStatusView 付款明細獨立元件）
       const studentTxList = usePosStore.getState().transactions.filter(t => t.studentId === '009');
       expect(studentTxList.some(t => t.type === 'refund')).toBe(true);
 
@@ -120,7 +120,7 @@ describe('跨功能整合測試 (U3 改號 + U2b 新用語 + U4 學生退款)', 
       expect(statusContainer.textContent).toContain('−$200');
       expect(statusContainer.textContent).toContain('多繳退款');
 
-      // 1.7 驗證 F2（calculateLedgerTotals 報表算式）
+      // 1.7 驗證 F2 報表純函式算式（calculateLedgerTotals）
       const totals = calculateLedgerTotals(usePosStore.getState().transactions);
       expect(totals.totalRefund).toBe(200);
       expect(totals.totalIncome).toBe(100);
@@ -129,7 +129,7 @@ describe('跨功能整合測試 (U3 改號 + U2b 新用語 + U4 學生退款)', 
       // 淨現金公式：收現 − 支出 − 退款 = 100 - 0 - 200 = -100
       expect(totals.netCash).toBe(-100);
 
-      // 1.8 驗證 F5（AuditView / 歷史查詢歸戶）
+      // 1.8 驗證 F5 稽核 Presenter 與查詢匹配函式（describeAuditEvents 與 matchesAuditQuery 純函式層級）
       const auditRows = describeAuditEvents(
         usePosStore.getState().auditEvents,
         usePosStore.getState().transactions,
@@ -142,7 +142,7 @@ describe('跨功能整合測試 (U3 改號 + U2b 新用語 + U4 學生退款)', 
       // 查別名「小甲」
       expect(auditRows.some(r => matchesAuditQuery(r, '小甲'))).toBe(true);
 
-      // 1.9 驗證 Undo（5 秒撤回退款，透過 deleteTransaction）
+      // 1.9 驗證 Store 撤回動作（deleteTransaction 帶 UNDO_REASON 底層 action，非 5 秒計時器 UI 時窗）
       const undoRes = usePosStore.getState().deleteTransaction(refundTxId, { reason: UNDO_REASON });
       expect(undoRes.ok).toBe(true);
       // 餘額回復為 510
@@ -152,7 +152,7 @@ describe('跨功能整合測試 (U3 改號 + U2b 新用語 + U4 學生退款)', 
       expect(totalsAfterUndo.totalRefund).toBe(0);
       expect(totalsAfterUndo.netCash).toBe(100);
 
-      // 1.10 再次退款並驗證 Reload / Validator
+      // 1.10 驗證持久化驗證器（validateLedgerTransaction 與 validatePersistedState schema 檢核，非真實 storage rehydrate）
       const refundDraft2 = buildRefundTransactionDraft({
         businessDate: TODAY,
         student: usePosStore.getState().students.find(s => s.studentId === '009')!,
