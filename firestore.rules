@@ -969,6 +969,128 @@ service cloud.firestore {
         && transactionAfter.operatorEmail == request.auth.token.email;
     }
 
+    // P09a CreateCashMovement: the counter's own cash income or expense, never a student row.
+    // Income is mealPrice 0 / paidAmount > 0, expense the reverse (spec §6.1); exactly one side is positive.
+    function validCashMovementPayload(payload) {
+      return exactMap(payload, ['mealPrice', 'paidAmount', 'reason'])
+        && payload.mealPrice is int && payload.mealPrice >= 0 && payload.mealPrice <= 1000000
+        && payload.paidAmount is int && payload.paidAmount >= 0 && payload.paidAmount <= 1000000
+        && ((payload.mealPrice == 0 && payload.paidAmount > 0) || (payload.paidAmount == 0 && payload.mealPrice > 0))
+        && payload.reason is string && payload.reason.size() >= 1 && payload.reason.size() <= 500;
+    }
+
+    function validCashMovementEffect(effect, payload) {
+      return effect == (payload.paidAmount > 0
+        ? {'before': 0, 'after': payload.paidAmount, 'delta': payload.paidAmount, 'reasonKind': 'collection', 'refundAmount': 0}
+        : {'before': 0, 'after': -payload.mealPrice, 'delta': -payload.mealPrice, 'reasonKind': 'payout', 'refundAmount': 0});
+    }
+
+    function validCashMovementTransactionDoc(tx, commandId, command, seq) {
+      // 與逐欄 exactMap＋等式相同語義：整份文件必須恰等於這 24 個欄位；用一次 map 比較以節省 expression。
+      return tx == {
+        'transactionId': command.targets.transactionId,
+        'studentId': '__cashier__',
+        'businessDate': command.targets.dayId,
+        'type': 'expense',
+        'mealKind': null,
+        'mealPrice': command.payload.mealPrice,
+        'paidAmount': command.payload.paidAmount,
+        'amount': command.payload.paidAmount - command.payload.mealPrice,
+        'studentNameSnapshot': '櫃台',
+        'menuNameSnapshot': '',
+        'menuPriceSnapshot': 0,
+        'vendorIdSnapshot': '',
+        'vendorNameSnapshot': '',
+        'otherItemName': null,
+        'status': 'active',
+        'revision': 1,
+        'createdAt': request.time,
+        'createdSeq': seq,
+        'operatorUid': request.auth.uid,
+        'operatorEmail': request.auth.token.email,
+        'sourceDevice': 'pc',
+        'note': command.payload.reason,
+        'lastCommandId': commandId,
+        'updatedAt': request.time
+      };
+    }
+
+    function cashCommandEnvelope(commandId, command, head, headAfter) {
+      return exactMap(command, [
+          'commandId', 'kind', 'seq', 'leaseEpoch', 'actor', 'committedAt', 'businessDate',
+          'studentId', 'targets', 'expectedRevisions', 'before', 'after', 'reason',
+          'cashEffect', 'payload', 'inputFingerprint'
+        ])
+        && validCommandId(commandId)
+        && command.commandId == commandId
+        && command.seq is int && command.seq == head.seq + 1
+        && command.leaseEpoch is int && command.leaseEpoch >= 0
+        && command.actor == {'uid': request.auth.uid, 'email': request.auth.token.email}
+        && command.committedAt == request.time
+        && command.inputFingerprint is string
+        && command.inputFingerprint.matches('^[0-9a-f]{64}$')
+        && head.maintenance == false
+        && head.seq is int
+        && headAfter.seq == head.seq + 1
+        && headAfter.lastCommandId == commandId
+        && headAfter.updatedAt == request.time;
+    }
+
+    function validCreateCashMovement(commandId, command) {
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let dayId = command.targets.dayId;
+      let dayBefore = get(/databases/$(database)/documents/days/$(dayId)).data;
+      let dayAfter = getAfter(/databases/$(database)/documents/days/$(dayId)).data;
+      let transactionAfter = getAfter(/databases/$(database)/documents/transactions/$(command.targets.transactionId)).data;
+      return commandHolder(command.leaseEpoch)
+        && cashCommandEnvelope(commandId, command, head, headAfter)
+        && command.kind == 'CreateCashMovement'
+        && exactMap(command.targets, ['transactionId', 'dayId'])
+        && validId(command.targets.transactionId)
+        && validCalendarDate(dayId)
+        && exactMap(command.expectedRevisions, ['transaction', 'day'])
+        && command.expectedRevisions.transaction == 0
+        && command.expectedRevisions.day == dayBefore.revision
+        && validCashMovementPayload(command.payload)
+        && command.reason == command.payload.reason
+        && validCashMovementEffect(command.cashEffect, command.payload)
+        && command.businessDate == dayId
+        && command.studentId == '__cashier__'
+        && command.before == {'head': head, 'day': dayBefore, 'transaction': null}
+        && command.after == {'head': headAfter, 'day': dayAfter, 'transaction': transactionAfter}
+        && !exists(/databases/$(database)/documents/transactions/$(command.targets.transactionId))
+        && dayBefore.status in ['open', 'reopened']
+        && dayId >= head.goLiveDate
+        && validCurrentTaipeiDate(dayId)
+        && dayAfter.revision == dayBefore.revision + 1
+        && dayAfter.lastCommandId == commandId
+        && dayAfter.updatedAt == request.time
+        && validCashMovementTransactionDoc(transactionAfter, commandId, command, head.seq + 1);
+    }
+
+    function validDayCashMovementProjection(commandId, command, dayId, before, after) {
+      let beforeTotals = before.totals;
+      let afterTotals = after.totals;
+      return command.targets.dayId == dayId
+        && command.before.day == before
+        && command.after.day == after
+        && validDay(after, dayId)
+        && validTotals(beforeTotals)
+        && before.status in ['open', 'reopened']
+        && after.diff(before).affectedKeys().hasOnly(['revision', 'totals', 'lastCommandId', 'updatedAt'])
+        && after.revision == before.revision + 1
+        && afterTotals.activeTransactionCount == beforeTotals.activeTransactionCount + 1
+        && afterTotals.bentoCount == beforeTotals.bentoCount
+        && afterTotals.otherMealCount == beforeTotals.otherMealCount
+        && afterTotals.mealTotal == beforeTotals.mealTotal
+        && afterTotals.retainedReceipts == beforeTotals.retainedReceipts
+        && afterTotals.cashierIncome == beforeTotals.cashierIncome + command.payload.paidAmount
+        && afterTotals.cashierExpense == beforeTotals.cashierExpense + command.payload.mealPrice
+        && after.lastCommandId == commandId
+        && after.updatedAt == request.time;
+    }
+
     function headCommand(commandId, before, after) {
       let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
       return !exists(/databases/$(database)/documents/commands/$(commandId))
@@ -1049,7 +1171,8 @@ service cloud.firestore {
 
     function dayWriteCommand(commandId, dayId, before, after) {
       let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
-      return command.kind in ['CreateOrder', 'CreatePayment', 'SetDayMenu', 'SetOpeningCash']
+      return (command.kind in ['CreateOrder', 'CreatePayment', 'SetDayMenu', 'SetOpeningCash']
+          || command.kind == 'CreateCashMovement')
         && !exists(/databases/$(database)/documents/commands/$(commandId))
         && command.commandId == commandId
         && command.committedAt == request.time
@@ -1058,7 +1181,9 @@ service cloud.firestore {
           || (command.kind == 'SetDayMenu'
             && validDaySetMenuProjection(command, dayId, before, after))
           || (command.kind == 'SetOpeningCash'
-            && validDayOpeningCashProjection(command, dayId, before, after)));
+            && validDayOpeningCashProjection(command, dayId, before, after))
+          || (command.kind == 'CreateCashMovement'
+            && validDayCashMovementProjection(commandId, command, dayId, before, after)));
     }
 
     function studentWriteCommand(commandId, studentId, before, after) {
@@ -1123,18 +1248,24 @@ service cloud.firestore {
       return !exists(/databases/$(database)/documents/commands/$(commandId))
         && command.commandId == commandId
         && command.committedAt == request.time
-        && command.kind in ['CreateOrder', 'CreatePayment']
         && command.targets.transactionId == transactionId
         && command.before.transaction == null
         && command.after.transaction == after
-        && validTransactionPayload(
-          commandId,
-          command,
-          command.before.head,
-          command.before.day,
-          command.before.student,
-          after
-        );
+        && ((command.kind in ['CreateOrder', 'CreatePayment']
+            && validTransactionPayload(
+              commandId,
+              command,
+              command.before.head,
+              command.before.day,
+              command.before.student,
+              after
+            ))
+          || (command.kind == 'CreateCashMovement'
+            && validCashMovementPayload(command.payload)
+            && command.before.day.status in ['open', 'reopened']
+            && validCurrentTaipeiDate(command.targets.dayId)
+            && command.targets.dayId >= command.before.head.goLiveDate
+            && validCashMovementTransactionDoc(after, commandId, command, command.before.head.seq + 1)));
     }
 
     function vendorCreateCommand(commandId, vendorId, after) {
@@ -1219,7 +1350,9 @@ service cloud.firestore {
           || (request.resource.data.kind == 'SetDayMenu' && validSetDayMenu(commandId, request.resource.data))
           || (request.resource.data.kind == 'SetOpeningCash' && validSetOpeningCash(commandId, request.resource.data))
           || (request.resource.data.kind in ['CreateOrder', 'CreatePayment']
-            && validCreateTransaction(commandId, request.resource.data)));
+            && validCreateTransaction(commandId, request.resource.data))
+          || (request.resource.data.kind == 'CreateCashMovement'
+            && validCreateCashMovement(commandId, request.resource.data)));
     }
 
     match /days/{dayId} {

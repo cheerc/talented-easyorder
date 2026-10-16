@@ -2,11 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import type { Firestore } from 'firebase/firestore';
 import type { CommandResult } from '../../domain/cloudCommands';
 import { normalizeStudentCode } from '../../domain/student';
+import { expectedCashFromTotals } from '../../domain/cloudLedgerProjection';
 import {
   createCloudOrderRepository,
+  type CloudOrderRepository,
   type CloudOrderSnapshot,
   type CloudOrderTransactionRecord,
+  type CreateCloudCashMovementInput,
   type CreateCloudOrderInput,
+  type CreateCloudPaymentInput,
 } from '../../firebase/cloudOrderRepository';
 import type { CloudStudentRecord } from '../../firebase/cloudStudentRepository';
 import { formatTaipeiTime } from '../../utils/dateTime';
@@ -19,8 +23,20 @@ export interface CloudOrdersPageProps {
   onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
 }
 
-/** Frozen order command: commandId and transactionId never change while its result is unresolved. */
-type PreparedOrder = Omit<CreateCloudOrderInput, 'leaseEpoch'> & { label: string; datasetId: string };
+interface PreparedMeta {
+  /** Who or what the command is for, shown in notices: `001 王小明` or `櫃台支出 $80`. */
+  label: string;
+  datasetId: string;
+}
+
+/** Frozen F1 command: commandId and transactionId never change while its result is unresolved. */
+type PreparedCommand =
+  | ({ kind: 'order' } & Omit<CreateCloudOrderInput, 'leaseEpoch'> & PreparedMeta)
+  | ({ kind: 'payment' } & Omit<CreateCloudPaymentInput, 'leaseEpoch'> & PreparedMeta)
+  | ({ kind: 'cash' } & Omit<CreateCloudCashMovementInput, 'leaseEpoch'> & PreparedMeta);
+
+/** F1 entry: today's meal (Q), other meal, or a payment (W). */
+type EntryMode = 'bento' | 'other' | 'payment';
 
 type RecoveryPhase = 'submitting' | 'unknown' | 'checking';
 
@@ -40,14 +56,18 @@ interface OrdersPageState {
   notice: string;
   search: string;
   selectedStudentId: string | null;
-  mealKind: 'bento' | 'other';
+  mode: EntryMode;
   otherItemName: string;
   otherPriceText: string;
   paidAmountText: string;
   note: string;
   confirmDuplicateOpen: boolean;
   paymentDetailsOpen: boolean;
-  recovery: { command: PreparedOrder; phase: RecoveryPhase } | null;
+  cashOpen: boolean;
+  cashDirection: 'expense' | 'income';
+  cashAmountText: string;
+  cashReason: string;
+  recovery: { command: PreparedCommand; phase: RecoveryPhase } | null;
   /** An unresolved command left by an earlier page load (refresh or closed tab). */
   storedPending: (PendingRecord & { checking: boolean; message: string }) | null;
 }
@@ -57,13 +77,17 @@ const PENDING_STORAGE_KEY = 'easyorder-cloud-pending-order';
 const freshDraft = () => ({
   search: '',
   selectedStudentId: null,
-  mealKind: 'bento' as const,
+  mode: 'bento' as EntryMode,
   otherItemName: '',
   otherPriceText: '',
   paidAmountText: '',
   note: '',
   confirmDuplicateOpen: false,
   paymentDetailsOpen: false,
+  cashOpen: false,
+  cashDirection: 'expense' as const,
+  cashAmountText: '',
+  cashReason: '',
 });
 
 function initialState(scopeKey: string): OrdersPageState {
@@ -132,6 +156,59 @@ function errorText(error: unknown): string {
 
 function isAuthorizationLoss(error: unknown): boolean {
   return ['LEASE_LOST', 'UNAUTHORIZED', 'ACCESS_BUSY'].includes(errorCode(error));
+}
+
+function commandNoun(command: PreparedCommand): string {
+  return command.kind === 'order' ? '訂餐' : command.kind === 'payment' ? '繳費' : '櫃台收支';
+}
+
+function successText(command: PreparedCommand, seq: number): string {
+  if (command.kind === 'order') return `已確認 ${command.label} 訂餐完成（命令序號 ${seq}）`;
+  if (command.kind === 'payment') return `已確認 ${command.label} 繳費 $${command.paidAmount} 完成（命令序號 ${seq}）`;
+  return `已確認${command.label}入帳（命令序號 ${seq}）`;
+}
+
+function sendCommand(repository: CloudOrderRepository, command: PreparedCommand, leaseEpoch: number) {
+  if (command.kind === 'payment') {
+    return repository.createPayment({
+      commandId: command.commandId,
+      transactionId: command.transactionId,
+      leaseEpoch,
+      studentId: command.studentId,
+      dayId: command.dayId,
+      expectedStudentRevision: command.expectedStudentRevision,
+      expectedDayRevision: command.expectedDayRevision,
+      paidAmount: command.paidAmount,
+      note: command.note,
+    });
+  }
+  if (command.kind === 'cash') {
+    return repository.createCashMovement({
+      commandId: command.commandId,
+      transactionId: command.transactionId,
+      leaseEpoch,
+      dayId: command.dayId,
+      expectedDayRevision: command.expectedDayRevision,
+      direction: command.direction,
+      amount: command.amount,
+      reason: command.reason,
+    });
+  }
+  return repository.createOrder({
+    commandId: command.commandId,
+    transactionId: command.transactionId,
+    leaseEpoch,
+    studentId: command.studentId,
+    dayId: command.dayId,
+    expectedStudentRevision: command.expectedStudentRevision,
+    expectedDayRevision: command.expectedDayRevision,
+    mealKind: command.mealKind,
+    mealPrice: command.mealPrice,
+    paidAmount: command.paidAmount,
+    menuRevision: command.menuRevision,
+    otherItemName: command.otherItemName,
+    note: command.note,
+  });
 }
 
 function definiteFailureText(code: string, message: string): string {
@@ -246,7 +323,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
         updateFor(key, generation, previous => ({
           ...previous,
           storedPending: null,
-          notice: `上次未確認的訂餐已確認入帳（命令序號 ${receipt.seq}），下方資料已包含這筆，勿重複登記。`,
+          notice: `上次未確認的登記已確認入帳（命令序號 ${receipt.seq}），下方資料已包含這筆，勿重複登記。`,
         }));
         return;
       }
@@ -390,18 +467,32 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const orderingBlocked = !snapshot ? '雲端資料尚未載入'
     : today < snapshot.goLiveDate ? `伺服器營業日 ${today} 早於系統啟用日期 ${snapshot.goLiveDate}，不能訂餐`
       : !day ? `今日（${today}）營業日尚未建立，請先到「日期與供應商」建立營業日`
-        : day.status === 'closed' ? '今日已關帳，不能新增餐點'
+        : day.status === 'closed' ? '今日已關帳，不能訂餐、繳費或新增櫃台收支'
           : '';
 
-  const mealPrice = page.mealKind === 'bento' ? todayMenu?.price ?? null : parseAmount(page.otherPriceText, null);
-  const paidAmount = parseAmount(page.paidAmountText, 0);
+  // Inactive accounts can still pay (spec §6.1) but never order, whatever mode was last chosen.
+  const mode: EntryMode = selectedStudent?.status === 'inactive' ? 'payment' : page.mode;
+  const mealPrice = mode === 'payment' ? 0
+    : mode === 'bento' ? todayMenu?.price ?? null : parseAmount(page.otherPriceText, null);
+  const paidAmount = parseAmount(page.paidAmountText, mode === 'payment' ? null : 0);
   const busy = page.recovery !== null;
   const previewBalance = selectedStudent && mealPrice !== null && paidAmount !== null
     ? selectedStudent.currentBalance + paidAmount - mealPrice
     : null;
+  const cashierRows = useMemo(() => activeTransactions.filter(tx => tx.type === 'expense'), [activeTransactions]);
+  const cashPosition = day ? expectedCashFromTotals(day.openingCash, day.totals) : null;
+  const cashAmount = parseAmount(page.cashAmountText, null);
 
   const selectStudent = (student: CloudStudentRecord) => {
-    setPageStateRaw(previous => ({ ...previous, selectedStudentId: student.studentId, search: '', actionError: '', notice: '' }));
+    setPageStateRaw(previous => ({
+      ...previous,
+      selectedStudentId: student.studentId,
+      search: '',
+      actionError: '',
+      notice: '',
+      cashOpen: false,
+      mode: student.status === 'inactive' ? 'payment' : previous.mode,
+    }));
   };
 
   const cancelSelection = useCallback(() => {
@@ -410,12 +501,12 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     searchInputRef.current?.focus();
   }, [pageState.recovery]);
 
-  const finishResult = async (command: PreparedOrder, result: CommandResult, key: string, generation: number) => {
+  const finishResult = async (command: PreparedCommand, result: CommandResult, key: string, generation: number) => {
     if (!isCurrent(key, generation)) return;
     if (result.ok && result.receipt.commandId === command.commandId) {
       clearPendingIf(command.commandId);
       updateFor(key, generation, previous => ({ ...previous, recovery: null }));
-      await loadSnapshot({ notice: `已確認 ${command.label} 訂餐完成（命令序號 ${result.receipt.seq}）` });
+      await loadSnapshot({ notice: successText(command, result.receipt.seq) });
       return;
     }
     if (!result.ok && isAuthorizationLoss(result.error)) {
@@ -436,7 +527,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     await loadSnapshot({ keepDraft: true, actionError: definiteFailureText(result.error.code, result.error.message) });
   };
 
-  const dispatch = async (command: PreparedOrder, phase: RecoveryPhase) => {
+  const dispatch = async (command: PreparedCommand, phase: RecoveryPhase) => {
     const key = scopeKey;
     const generation = generationRef.current;
     if (flightRef.current || revokedRef.current) return;
@@ -454,21 +545,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     }));
     let result: CommandResult;
     try {
-      result = await repository.createOrder({
-        commandId: command.commandId,
-        transactionId: command.transactionId,
-        leaseEpoch,
-        studentId: command.studentId,
-        dayId: command.dayId,
-        expectedStudentRevision: command.expectedStudentRevision,
-        expectedDayRevision: command.expectedDayRevision,
-        mealKind: command.mealKind,
-        mealPrice: command.mealPrice,
-        paidAmount: command.paidAmount,
-        menuRevision: command.menuRevision,
-        otherItemName: command.otherItemName,
-        note: command.note,
-      });
+      result = await sendCommand(repository, command, leaseEpoch);
     } catch (error) {
       result = { ok: false, error: { code: isAuthorizationLoss(error) ? 'LEASE_LOST' : 'UNKNOWN_RESULT', message: errorText(error) } };
     } finally {
@@ -483,12 +560,13 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       setPageStateRaw(previous => ({ ...previous, confirmDuplicateOpen: false, actionError: '此帳戶已停用，禁止新增餐點' }));
       return;
     }
-    if (page.mealKind === 'bento' && !todayMenu) {
+    if (mode === 'payment') return;
+    if (mode === 'bento' && !todayMenu) {
       setPageStateRaw(previous => ({ ...previous, confirmDuplicateOpen: false, actionError: '今日尚未設定菜單，無法訂購今日餐點' }));
       return;
     }
     const otherItemName = page.otherItemName.trim();
-    if (page.mealKind === 'other' && (!otherItemName || otherItemName.length > 100)) {
+    if (mode === 'other' && (!otherItemName || otherItemName.length > 100)) {
       setPageStateRaw(previous => ({ ...previous, confirmDuplicateOpen: false, actionError: '其他餐點品名必填且不能超過 100 字' }));
       return;
     }
@@ -506,18 +584,19 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       setPageStateRaw(previous => ({ ...previous, confirmDuplicateOpen: false, actionError: '此瀏覽器無法產生安全的命令編號，未送出。' }));
       return;
     }
-    const command: PreparedOrder = {
+    const command: PreparedCommand = {
+      kind: 'order',
       commandId,
       transactionId,
       studentId: selectedStudent.studentId,
       dayId: today,
       expectedStudentRevision: selectedStudent.revision,
       expectedDayRevision: day.revision,
-      mealKind: page.mealKind,
+      mealKind: mode,
       mealPrice,
       paidAmount,
-      menuRevision: page.mealKind === 'bento' ? todayMenu!.revision : null,
-      otherItemName: page.mealKind === 'other' ? otherItemName : null,
+      menuRevision: mode === 'bento' ? todayMenu!.revision : null,
+      otherItemName: mode === 'other' ? otherItemName : null,
       note: page.note.trim(),
       label: `${selectedStudent.studentCode} ${selectedStudent.displayName}`,
       datasetId: snapshot.datasetId,
@@ -526,9 +605,83 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     void dispatch(command, 'submitting');
   };
 
+  const submitPayment = () => {
+    if (!snapshot || !day || !selectedStudent || busy || orderingBlocked) return;
+    const amount = parseAmount(page.paidAmountText, null);
+    if (amount === null || amount < 1) {
+      setPageStateRaw(previous => ({ ...previous, actionError: '繳費金額必須是 1 到 1,000,000 的整數' }));
+      return;
+    }
+    const commandId = newId();
+    const transactionId = newId();
+    if (!commandId || !transactionId) {
+      setPageStateRaw(previous => ({ ...previous, actionError: '此瀏覽器無法產生安全的命令編號，未送出。' }));
+      return;
+    }
+    const command: PreparedCommand = {
+      kind: 'payment',
+      commandId,
+      transactionId,
+      studentId: selectedStudent.studentId,
+      dayId: today,
+      expectedStudentRevision: selectedStudent.revision,
+      expectedDayRevision: day.revision,
+      paidAmount: amount,
+      note: page.note.trim(),
+      label: `${selectedStudent.studentCode} ${selectedStudent.displayName}`,
+      datasetId: snapshot.datasetId,
+    };
+    writePending({ uid: uidFromIdentity(identityKey), datasetId: snapshot.datasetId, commandId });
+    void dispatch(command, 'submitting');
+  };
+
+  const submitCashMovement = (event?: FormEvent) => {
+    event?.preventDefault();
+    if (!snapshot || !day || busy || orderingBlocked) return;
+    if (cashAmount === null || cashAmount < 1) {
+      setPageStateRaw(previous => ({ ...previous, actionError: '櫃台收支金額必須是 1 到 1,000,000 的整數' }));
+      return;
+    }
+    const reason = page.cashReason.trim();
+    if (!reason || reason.length > 500) {
+      setPageStateRaw(previous => ({ ...previous, actionError: '櫃台收支原因必填，且不能超過 500 字' }));
+      return;
+    }
+    const commandId = newId();
+    const transactionId = newId();
+    if (!commandId || !transactionId) {
+      setPageStateRaw(previous => ({ ...previous, actionError: '此瀏覽器無法產生安全的命令編號，未送出。' }));
+      return;
+    }
+    const direction = page.cashDirection;
+    const command: PreparedCommand = {
+      kind: 'cash',
+      commandId,
+      transactionId,
+      dayId: today,
+      expectedDayRevision: day.revision,
+      direction,
+      amount: cashAmount,
+      reason,
+      label: `櫃台${direction === 'income' ? '收入' : '支出'} $${cashAmount}`,
+      datasetId: snapshot.datasetId,
+    };
+    writePending({ uid: uidFromIdentity(identityKey), datasetId: snapshot.datasetId, commandId });
+    void dispatch(command, 'submitting');
+  };
+
+  const openCashPanel = () => {
+    if (busy) return;
+    setPageStateRaw(previous => ({ ...previous, ...freshDraft(), cashOpen: true, actionError: '', notice: '' }));
+  };
+
   const requestSubmit = (event?: FormEvent) => {
     event?.preventDefault();
     if (!selectedStudent || busy) return;
+    if (mode === 'payment') {
+      submitPayment();
+      return;
+    }
     if (selectedOrderCount > 0) {
       setPageStateRaw(previous => ({ ...previous, confirmDuplicateOpen: true }));
       return;
@@ -567,10 +720,16 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       if (typing) return;
       if (event.key === 'q' || event.key === 'Q') {
         event.preventDefault();
-        setPageStateRaw(previous => ({ ...previous, mealKind: 'bento' }));
+        setPageStateRaw(previous => ({ ...previous, mode: 'bento' }));
+      } else if ((event.key === 'w' || event.key === 'W') && pageState.selectedStudentId) {
+        event.preventDefault();
+        setPageStateRaw(previous => ({ ...previous, mode: 'payment' }));
       } else if ((event.key === 'e' || event.key === 'E') && pageState.selectedStudentId) {
         event.preventDefault();
         setPageStateRaw(previous => ({ ...previous, paymentDetailsOpen: true }));
+      } else if ((event.key === 'a' || event.key === 'A') && !pageState.selectedStudentId) {
+        event.preventDefault();
+        setPageStateRaw(previous => ({ ...previous, ...freshDraft(), cashOpen: true, actionError: '', notice: '' }));
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -615,7 +774,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
             <>
               <p><strong>結果確認中，勿重新收款。</strong></p>
               <p>
-                {page.recovery.command.label} 的訂餐已送出，但伺服器回應不確定。命令編號 {page.recovery.command.commandId} 保持不變；
+                {page.recovery.command.label} 的{commandNoun(page.recovery.command)}已送出，但伺服器回應不確定。命令編號 {page.recovery.command.commandId} 保持不變；
                 確認前不會產生新的命令。
               </p>
               <button type="button" onClick={retryRecovery} data-testid="order-recovery-retry">
@@ -624,7 +783,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
             </>
           ) : (
             <p>
-              {page.recovery.phase === 'checking' ? '正在以相同命令編號確認' : '正在送出'} {page.recovery.command.label} 的訂餐，
+              {page.recovery.phase === 'checking' ? '正在以相同命令編號確認' : '正在送出'} {page.recovery.command.label} 的{commandNoun(page.recovery.command)}，
               請等待伺服器確認，勿重新收款。
             </p>
           )}
@@ -633,7 +792,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
 
       {page.storedPending && (
         <div className="cloud-orders__error" role="alert" data-testid="stored-pending-panel">
-          <p><strong>上次有一筆訂餐的結果尚未確認，勿重新收款。</strong>命令編號 {page.storedPending.commandId}</p>
+          <p><strong>上次有一筆登記的結果尚未確認，勿重新收款。</strong>命令編號 {page.storedPending.commandId}</p>
           {page.storedPending.message && <p>{page.storedPending.message}</p>}
           <div className="cloud-orders__actions">
             <button
@@ -715,6 +874,19 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                       ))}
                     </ul>
                   )}
+                  {!page.cashOpen && (
+                    <div className="cloud-orders__actions">
+                      <button
+                        type="button"
+                        className="cloud-orders__btn-secondary"
+                        onClick={openCashPanel}
+                        disabled={busy || Boolean(orderingBlocked)}
+                        data-testid="open-cash-movement-button"
+                      >
+                        櫃台收支（A）
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="cloud-orders__selected-student" data-testid="selected-student-card">
@@ -731,158 +903,297 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
               )}
             </div>
 
-            {selectedStudent && (
-              <div className="cloud-orders__card">
-                {selectedStudent.status === 'inactive' ? (
-                  <div className="cloud-orders__error" role="alert">此帳戶已停用，禁止新增餐點</div>
-                ) : (
-                  <form onSubmit={requestSubmit} aria-label="訂餐">
-                    <div className="cloud-orders__mode-selector">
-                      <button
-                        type="button"
-                        className="cloud-orders__mode-btn"
-                        aria-pressed={page.mealKind === 'bento'}
-                        onClick={() => setPageStateRaw(previous => ({ ...previous, mealKind: 'bento' }))}
+            {!selectedStudent && page.cashOpen && (
+              <div className="cloud-orders__card" data-testid="cash-movement-card">
+                <form onSubmit={submitCashMovement} aria-label="櫃台收支">
+                  <h3>櫃台收支</h3>
+                  <p className="cloud-orders__muted">櫃台自己的現金進出，不影響任何學生餘額。</p>
+                  <div className="cloud-orders__mode-selector">
+                    <button
+                      type="button"
+                      className="cloud-orders__mode-btn"
+                      aria-pressed={page.cashDirection === 'expense'}
+                      onClick={() => setPageStateRaw(previous => ({ ...previous, cashDirection: 'expense' }))}
+                      disabled={busy}
+                    >
+                      支出
+                    </button>
+                    <button
+                      type="button"
+                      className="cloud-orders__mode-btn"
+                      aria-pressed={page.cashDirection === 'income'}
+                      onClick={() => setPageStateRaw(previous => ({ ...previous, cashDirection: 'income' }))}
+                      disabled={busy}
+                    >
+                      收入
+                    </button>
+                  </div>
+                  <div className="cloud-orders__form-grid">
+                    <div className="cloud-orders__field">
+                      <label htmlFor="cash-amount">金額（必填）</label>
+                      <input
+                        id="cash-amount"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={page.cashAmountText}
+                        onChange={event => {
+                          const value = event.target.value;
+                          setPageStateRaw(previous => ({ ...previous, cashAmountText: value }));
+                        }}
                         disabled={busy}
-                      >
-                        今日餐點（Q）
-                      </button>
-                      <button
-                        type="button"
-                        className="cloud-orders__mode-btn"
-                        aria-pressed={page.mealKind === 'other'}
-                        onClick={() => setPageStateRaw(previous => ({ ...previous, mealKind: 'other' }))}
+                        autoFocus
+                      />
+                    </div>
+                    <div className="cloud-orders__field">
+                      <label htmlFor="cash-reason">原因（必填）</label>
+                      <input
+                        id="cash-reason"
+                        type="text"
+                        placeholder={page.cashDirection === 'expense' ? '例如：付餐費給廠商' : '例如：零錢補充'}
+                        value={page.cashReason}
+                        onChange={event => {
+                          const value = event.target.value;
+                          setPageStateRaw(previous => ({ ...previous, cashReason: value }));
+                        }}
+                        maxLength={500}
                         disabled={busy}
-                      >
-                        其他餐點
-                      </button>
+                      />
                     </div>
-
-                    {page.mealKind === 'bento' ? (
-                      <div className="cloud-orders__bento-info">
-                        {todayMenu ? (
-                          <p>品名：<strong>{todayMenu.itemName}</strong>｜單價：<strong>${todayMenu.price}</strong></p>
-                        ) : (
-                          <p className="cloud-orders__error">今日尚未設定菜單，無法訂購今日餐點；其他餐點仍可登記。</p>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="cloud-orders__form-grid">
-                        <div className="cloud-orders__field">
-                          <label htmlFor="other-item-name">餐點品名（必填）</label>
-                          <input
-                            id="other-item-name"
-                            type="text"
-                            placeholder="例如：炒麵、水餃"
-                            value={page.otherItemName}
-                            onChange={event => {
-                              const value = event.target.value;
-                              setPageStateRaw(previous => ({ ...previous, otherItemName: value }));
-                            }}
-                            maxLength={100}
-                            disabled={busy}
-                          />
-                        </div>
-                        <div className="cloud-orders__field">
-                          <label htmlFor="other-item-price">餐點單價（必填）</label>
-                          <input
-                            id="other-item-price"
-                            type="text"
-                            inputMode="numeric"
-                            placeholder="0"
-                            value={page.otherPriceText}
-                            onChange={event => {
-                              const value = event.target.value;
-                              setPageStateRaw(previous => ({ ...previous, otherPriceText: value }));
-                            }}
-                            disabled={busy}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="cloud-orders__form-grid">
-                      <div className="cloud-orders__field">
-                        <label htmlFor="paid-amount">實收金額（留空為 0 元）</label>
-                        <input
-                          id="paid-amount"
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="0"
-                          value={page.paidAmountText}
-                          onChange={event => {
-                            const value = event.target.value;
-                            setPageStateRaw(previous => ({ ...previous, paidAmountText: value }));
-                          }}
-                          disabled={busy}
-                        />
-                      </div>
-                      <div className="cloud-orders__field">
-                        <label htmlFor="order-note">備註（選填）</label>
-                        <input
-                          id="order-note"
-                          type="text"
-                          placeholder="選填備註..."
-                          value={page.note}
-                          onChange={event => {
-                            const value = event.target.value;
-                            setPageStateRaw(previous => ({ ...previous, note: value }));
-                          }}
-                          maxLength={500}
-                          disabled={busy}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="cloud-orders__preview-bar">
-                      <span>本次餐費：{mealPrice === null ? '—' : `$${mealPrice}`}</span>
-                      <span>實收金額：{paidAmount === null ? '金額格式不正確' : `$${paidAmount}`}</span>
-                      <span>
-                        預估結餘：{previewBalance === null ? '—' : `$${previewBalance}`}
-                        {previewBalance !== null && previewBalance < 0 && (
-                          <strong className="cloud-orders__debt">（欠款 ${Math.abs(previewBalance)}）</strong>
-                        )}
-                      </span>
-                    </div>
-
+                  </div>
+                  {page.cashDirection === 'expense' && (
                     <div className="cloud-orders__actions">
-                      <button
-                        type="submit"
-                        className="cloud-orders__btn-primary"
-                        disabled={
-                          busy
-                          || Boolean(orderingBlocked)
-                          || (page.mealKind === 'bento' && !todayMenu)
-                          || (page.mealKind === 'other' && (!page.otherItemName.trim() || !page.otherPriceText.trim()))
-                        }
-                        data-testid="submit-order-button"
-                      >
-                        {busy ? '等待伺服器確認…' : '確認登記（Enter）'}
-                      </button>
                       <button
                         type="button"
                         className="cloud-orders__btn-secondary"
-                        onClick={() => setPageStateRaw(previous => ({ ...previous, paymentDetailsOpen: true }))}
+                        onClick={() => setPageStateRaw(previous => ({ ...previous, cashReason: '付餐費給廠商' }))}
                         disabled={busy}
-                        data-testid="open-payment-details-button"
                       >
-                        付款明細（E）
-                      </button>
-                      <button type="button" className="cloud-orders__btn-secondary" onClick={cancelSelection} disabled={busy}>
-                        取消（Esc）
+                        付餐費給廠商
                       </button>
                     </div>
-                  </form>
+                  )}
+                  <div className="cloud-orders__preview-bar">
+                    <span>
+                      現金影響：{cashAmount === null || cashAmount < 1
+                        ? '金額格式不正確'
+                        : `${page.cashDirection === 'income' ? '+' : '−'}$${cashAmount}`}
+                    </span>
+                  </div>
+                  <div className="cloud-orders__actions">
+                    <button
+                      type="submit"
+                      className="cloud-orders__btn-primary"
+                      disabled={busy || Boolean(orderingBlocked) || !page.cashAmountText.trim() || !page.cashReason.trim()}
+                      data-testid="submit-cash-movement-button"
+                    >
+                      {busy ? '等待伺服器確認…' : '確認登記（Enter）'}
+                    </button>
+                    <button type="button" className="cloud-orders__btn-secondary" onClick={cancelSelection} disabled={busy}>
+                      取消（Esc）
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {selectedStudent && (
+              <div className="cloud-orders__card">
+                {selectedStudent.status === 'inactive' && (
+                  <div className="cloud-orders__error" role="alert">此帳戶已停用，禁止新增餐點；仍可繳費。</div>
                 )}
+                <form onSubmit={requestSubmit} aria-label={mode === 'payment' ? '繳費' : '訂餐'}>
+                  <div className="cloud-orders__mode-selector">
+                    <button
+                      type="button"
+                      className="cloud-orders__mode-btn"
+                      aria-pressed={mode === 'bento'}
+                      onClick={() => setPageStateRaw(previous => ({ ...previous, mode: 'bento' }))}
+                      disabled={busy || selectedStudent.status === 'inactive'}
+                    >
+                      今日餐點（Q）
+                    </button>
+                    <button
+                      type="button"
+                      className="cloud-orders__mode-btn"
+                      aria-pressed={mode === 'other'}
+                      onClick={() => setPageStateRaw(previous => ({ ...previous, mode: 'other' }))}
+                      disabled={busy || selectedStudent.status === 'inactive'}
+                    >
+                      其他餐點
+                    </button>
+                    <button
+                      type="button"
+                      className="cloud-orders__mode-btn"
+                      aria-pressed={mode === 'payment'}
+                      onClick={() => setPageStateRaw(previous => ({ ...previous, mode: 'payment' }))}
+                      disabled={busy}
+                    >
+                      繳費（W）
+                    </button>
+                  </div>
+
+                  {mode === 'bento' && (
+                    <div className="cloud-orders__bento-info">
+                      {todayMenu ? (
+                        <p>品名：<strong>{todayMenu.itemName}</strong>｜單價：<strong>${todayMenu.price}</strong></p>
+                      ) : (
+                        <p className="cloud-orders__error">今日尚未設定菜單，無法訂購今日餐點；其他餐點仍可登記。</p>
+                      )}
+                    </div>
+                  )}
+                  {mode === 'other' && (
+                    <div className="cloud-orders__form-grid">
+                      <div className="cloud-orders__field">
+                        <label htmlFor="other-item-name">餐點品名（必填）</label>
+                        <input
+                          id="other-item-name"
+                          type="text"
+                          placeholder="例如：炒麵、水餃"
+                          value={page.otherItemName}
+                          onChange={event => {
+                            const value = event.target.value;
+                            setPageStateRaw(previous => ({ ...previous, otherItemName: value }));
+                          }}
+                          maxLength={100}
+                          disabled={busy}
+                        />
+                      </div>
+                      <div className="cloud-orders__field">
+                        <label htmlFor="other-item-price">餐點單價（必填）</label>
+                        <input
+                          id="other-item-price"
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="0"
+                          value={page.otherPriceText}
+                          onChange={event => {
+                            const value = event.target.value;
+                            setPageStateRaw(previous => ({ ...previous, otherPriceText: value }));
+                          }}
+                          disabled={busy}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {mode === 'payment' && (
+                    <p className="cloud-orders__muted">繳費只記實際留存的現金，不計找零；金額會加進帳戶餘額。</p>
+                  )}
+
+                  <div className="cloud-orders__form-grid">
+                    <div className="cloud-orders__field">
+                      <label htmlFor="paid-amount">{mode === 'payment' ? '繳費金額（必填）' : '實收金額（留空為 0 元）'}</label>
+                      <input
+                        id="paid-amount"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={page.paidAmountText}
+                        onChange={event => {
+                          const value = event.target.value;
+                          setPageStateRaw(previous => ({ ...previous, paidAmountText: value }));
+                        }}
+                        disabled={busy}
+                      />
+                    </div>
+                    <div className="cloud-orders__field">
+                      <label htmlFor="order-note">備註（選填）</label>
+                      <input
+                        id="order-note"
+                        type="text"
+                        placeholder="選填備註..."
+                        value={page.note}
+                        onChange={event => {
+                          const value = event.target.value;
+                          setPageStateRaw(previous => ({ ...previous, note: value }));
+                        }}
+                        maxLength={500}
+                        disabled={busy}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="cloud-orders__preview-bar">
+                    {mode !== 'payment' && <span>本次餐費：{mealPrice === null ? '—' : `$${mealPrice}`}</span>}
+                    <span>
+                      {mode === 'payment' ? '繳費金額' : '實收金額'}：
+                      {paidAmount === null || (mode === 'payment' && paidAmount < 1) ? '金額格式不正確' : `$${paidAmount}`}
+                    </span>
+                    <span>
+                      預估結餘：{previewBalance === null ? '—' : `$${previewBalance}`}
+                      {previewBalance !== null && previewBalance < 0 && (
+                        <strong className="cloud-orders__debt">（欠款 ${Math.abs(previewBalance)}）</strong>
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="cloud-orders__actions">
+                    <button
+                      type="submit"
+                      className="cloud-orders__btn-primary"
+                      disabled={
+                        busy
+                        || Boolean(orderingBlocked)
+                        || (mode === 'bento' && !todayMenu)
+                        || (mode === 'other' && (!page.otherItemName.trim() || !page.otherPriceText.trim()))
+                        || (mode === 'payment' && !page.paidAmountText.trim())
+                      }
+                      data-testid="submit-order-button"
+                    >
+                      {busy ? '等待伺服器確認…' : '確認登記（Enter）'}
+                    </button>
+                    <button
+                      type="button"
+                      className="cloud-orders__btn-secondary"
+                      onClick={() => setPageStateRaw(previous => ({ ...previous, paymentDetailsOpen: true }))}
+                      disabled={busy}
+                      data-testid="open-payment-details-button"
+                    >
+                      付款明細（E）
+                    </button>
+                    <button type="button" className="cloud-orders__btn-secondary" onClick={cancelSelection} disabled={busy}>
+                      取消（Esc）
+                    </button>
+                  </div>
+                </form>
               </div>
             )}
           </div>
 
           <div className="cloud-orders__side-panel">
+            {day && cashPosition && (
+              <div className="cloud-orders__card" data-testid="cloud-cash-summary">
+                <h3>今日現金</h3>
+                <dl className="cloud-orders__cash-list">
+                  <dt>開帳現金</dt>
+                  <dd>{day.openingCash === null ? '尚未確認' : `$${day.openingCash}`}</dd>
+                  <dt>學生收款</dt>
+                  <dd>${day.totals.retainedReceipts}</dd>
+                  <dt>櫃台收入</dt>
+                  <dd>${day.totals.cashierIncome}</dd>
+                  <dt>櫃台支出</dt>
+                  <dd>${day.totals.cashierExpense}</dd>
+                  <dt>應有現金</dt>
+                  <dd data-testid="cloud-expected-cash">
+                    {cashPosition.expectedCash === null ? '開帳現金未確認，無法計算' : `$${cashPosition.expectedCash}`}
+                  </dd>
+                </dl>
+                {cashierRows.length > 0 && (
+                  <ul className="cloud-orders__recent-list" data-testid="cash-movement-list">
+                    {cashierRows.map(tx => (
+                      <li key={tx.transactionId} className="cloud-orders__recent-item">
+                        <span>{formatTaipeiTime(tx.createdAt)} {tx.paidAmount > 0 ? '收入' : '支出'} ${tx.paidAmount > 0 ? tx.paidAmount : tx.mealPrice}</span>
+                        <span className="cloud-orders__recent-badge">{tx.note}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             <div className="cloud-orders__card" data-testid="recent-accounts-card">
               <h3>最近帳戶</h3>
               {recentAccounts.length === 0 ? (
-                <p className="cloud-orders__muted">今日尚無交易紀錄</p>
+                <p className="cloud-orders__muted">今日尚無學生交易紀錄</p>
               ) : (
                 <ul className="cloud-orders__recent-list" data-testid="recent-accounts-list">
                   {recentAccounts.map(({ student, summary }) => (

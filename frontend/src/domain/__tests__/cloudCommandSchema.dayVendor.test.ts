@@ -282,14 +282,14 @@ describe('day and vendor command input contract', () => {
     });
   });
 
-  it('keeps exactly the seven prior kinds plus these four enabled and rejects the remaining twelve', () => {
+  it('keeps the seven prior kinds, these four and P09a CreateCashMovement enabled and rejects the remaining eleven', () => {
     const enabled = new Set([
       'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
-      'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash',
+      'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement',
     ]);
     const disabled = ALL_COMMAND_KINDS.filter(kind => !enabled.has(kind));
     expect(ALL_COMMAND_KINDS).toHaveLength(23);
-    expect(disabled).toHaveLength(12);
+    expect(disabled).toHaveLength(11);
     for (const kind of disabled) {
       expect(() => normalizeEnabledCommandInput({
         commandId, kind, leaseEpoch: 1, targets: {}, expectedRevisions: {}, payload: {},

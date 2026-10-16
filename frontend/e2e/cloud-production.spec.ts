@@ -753,3 +753,137 @@ test.describe('P08 Cloud Orders', () => {
     }
   });
 });
+
+test.describe('P09a Cloud Payments and Counter Cash', () => {
+  test.setTimeout(120000);
+
+  test.beforeEach(async () => {
+    await seedAccessLease({ ...VACANT_LEASE, updatedAt: new Date() });
+  });
+
+  test.afterEach(async () => {
+    await seedAccessLease({ ...VACANT_LEASE, updatedAt: new Date() });
+  });
+
+  test('D04: records a student payment, counter income and a vendor payout, shows expected cash and persists after reload', async ({ browser }) => {
+    const session = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
+    try {
+      const page = session.page;
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toBeVisible();
+
+      // 1. 今日營業日存在且開帳現金確認為 1,000（前面的案例可能已建立營業日）
+      const today = taipeiToday();
+      await page.getByRole('button', { name: '日期與供應商' }).click();
+      const mainVendors = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
+      const dateField = mainVendors.getByLabel('查看或設定日期');
+      if ((await dateField.inputValue()) !== today) {
+        await dateField.fill(today);
+        await mainVendors.getByRole('button', { name: '載入日期' }).click();
+      }
+      await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
+      const createDayBtn = page.getByRole('button', { name: '建立空白營業日' });
+      if (await createDayBtn.isVisible().catch(() => false)) {
+        await createDayBtn.click();
+      }
+      const openingForm = mainVendors.getByRole('form', { name: `${today} 開帳現金` });
+      await openingForm.getByLabel(/開帳現金/).fill('1000');
+      await openingForm.getByRole('button', { name: /開帳金額/ }).click();
+      await expect(openingForm.getByText(/伺服器已確認開帳現金 NT\$ 1,000/)).toBeVisible();
+
+      // 2. 建立學生 006（期初 0）
+      await page.getByRole('button', { name: '學生管理' }).click();
+      await page.getByRole('button', { name: '新增學生' }).click();
+      const studentForm = page.getByRole('form', { name: '新增學生' });
+      await studentForm.getByLabel('學員編號').fill('006');
+      await studentForm.getByRole('textbox', { name: '姓名', exact: true }).fill('陳小美');
+      await studentForm.getByRole('textbox', { name: /期初結餘（整數/ }).fill('0');
+      await studentForm.getByRole('radio', { name: /沿用既有核對結餘/ }).check();
+      await studentForm.getByRole('button', { name: '建立學生' }).click();
+      await expect(page.getByTestId('cloud-student-row-006')).toContainText('陳小美');
+
+      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await expect(page.getByTestId('cloud-orders-page')).toBeVisible();
+      await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
+
+      const before = await readAdminDocument('days', today);
+      const beforeTotals = before?.totals as Record<string, number>;
+      expect(before).toMatchObject({ openingCash: 1000 });
+      const retained = beforeTotals.retainedReceipts;
+      const income = beforeTotals.cashierIncome;
+      const expense = beforeTotals.cashierExpense;
+      const beforeTransactions = await listAdminDocuments('transactions');
+      await expect(page.getByTestId('cloud-expected-cash')).toHaveText(`$${1000 + retained + income - expense}`);
+
+      // 3. 學生 006 繳費 $200（W 模式）
+      await page.getByLabel('搜尋編號、姓名或別名').fill('006');
+      await page.getByTestId('search-result-006').click();
+      await expect(page.getByTestId('selected-student-card')).toContainText('陳小美');
+      await page.getByRole('button', { name: '繳費（W）' }).click();
+      await page.getByLabel('繳費金額（必填）').fill('200');
+      await page.getByTestId('submit-order-button').click();
+      await expect(page.getByText(/已確認 006 陳小美 繳費 \$200 完成/)).toBeVisible();
+      await expect(page.getByTestId('cloud-expected-cash')).toHaveText(`$${1000 + retained + 200 + income - expense}`);
+
+      // 4. 櫃台收入 $50（零錢補充）
+      await page.getByTestId('open-cash-movement-button').click();
+      const cashForm = page.getByRole('form', { name: '櫃台收支' });
+      await cashForm.getByRole('button', { name: '收入' }).click();
+      await cashForm.getByLabel('金額（必填）').fill('50');
+      await cashForm.getByLabel('原因（必填）').fill('零錢補充');
+      await page.getByTestId('submit-cash-movement-button').click();
+      await expect(page.getByText(/已確認櫃台收入 \$50入帳/)).toBeVisible();
+
+      // 5. 櫃台支出 $80（付餐費給廠商）
+      await page.getByTestId('open-cash-movement-button').click();
+      await cashForm.getByLabel('金額（必填）').fill('80');
+      await cashForm.getByRole('button', { name: '付餐費給廠商' }).click();
+      await page.getByTestId('submit-cash-movement-button').click();
+      await expect(page.getByText(/已確認櫃台支出 \$80入帳/)).toBeVisible();
+
+      const expectedCash = 1000 + retained + 200 + income + 50 - expense - 80;
+      await expect(page.getByTestId('cloud-expected-cash')).toHaveText(`$${expectedCash}`);
+      const cashList = page.getByTestId('cash-movement-list');
+      await expect(cashList).toContainText('收入 $50');
+      await expect(cashList).toContainText('零錢補充');
+      await expect(cashList).toContainText('支出 $80');
+      await expect(cashList).toContainText('付餐費給廠商');
+
+      // 6. 重新整理後仍從伺服器讀回同樣的現金口徑
+      await page.reload();
+      await expect(page.locator('.operator-strip')).toBeVisible();
+      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
+      await expect(page.getByTestId('cloud-expected-cash')).toHaveText(`$${expectedCash}`);
+      await expect(page.getByTestId('cash-movement-list')).toContainText('付餐費給廠商');
+      await expect(page.getByTestId('recent-item-006')).toContainText('006 陳小美');
+
+      // 7. 核對伺服器文件：櫃台列不動學生、學生餘額 +200、day totals 正確
+      const after = await readAdminDocument('days', today);
+      expect(after?.totals).toMatchObject({
+        retainedReceipts: retained + 200,
+        cashierIncome: income + 50,
+        cashierExpense: expense + 80,
+      });
+      const transactions = await listAdminDocuments('transactions');
+      const added = transactions.filter(tx => !beforeTransactions.some(prior => prior.id === tx.id));
+      expect(added).toHaveLength(3);
+      const payment = added.find(tx => tx.type === 'payment');
+      expect(payment).toMatchObject({ paidAmount: 200, mealPrice: 0, amount: 200 });
+      const cashRows = added.filter(tx => tx.type === 'expense');
+      expect(cashRows).toHaveLength(2);
+      for (const row of cashRows) {
+        expect(row).toMatchObject({ studentId: '__cashier__', studentNameSnapshot: '櫃台' });
+      }
+      expect(cashRows.map(row => [row.paidAmount, row.mealPrice, row.note]).sort())
+        .toEqual([[0, 80, '付餐費給廠商'], [50, 0, '零錢補充']].sort());
+      const student = await readAdminDocument('students', String(payment?.studentId));
+      expect(student).toMatchObject({ currentBalance: 200 });
+
+      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
+    } finally {
+      await session.close();
+    }
+  });
+});

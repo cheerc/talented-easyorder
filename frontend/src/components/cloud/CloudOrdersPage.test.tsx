@@ -10,6 +10,8 @@ import { CloudOrdersPage } from './CloudOrdersPage';
 const repositoryMock = vi.hoisted(() => ({
   loadSnapshot: vi.fn(),
   createOrder: vi.fn(),
+  createPayment: vi.fn(),
+  createCashMovement: vi.fn(),
   readCommand: vi.fn(),
 }));
 
@@ -163,6 +165,8 @@ describe('CloudOrdersPage', () => {
     repositoryMock.loadSnapshot.mockResolvedValue(snapshot());
     repositoryMock.readCommand.mockResolvedValue(null);
     repositoryMock.createOrder.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId));
+    repositoryMock.createPayment.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 12));
+    repositoryMock.createCashMovement.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 13));
   });
 
   it('renders the two-row meal counters from the reconciled server day (U2a contract)', async () => {
@@ -304,11 +308,19 @@ describe('CloudOrdersPage', () => {
     expect(repositoryMock.createOrder).not.toHaveBeenCalled();
   });
 
-  it('blocks inactive students and missing or closed days', async () => {
+  it('lets an inactive student pay but never order', async () => {
     renderComponent();
     await selectStudent('003');
     expect(screen.getByRole('alert')).toHaveTextContent('此帳戶已停用，禁止新增餐點');
-    expect(screen.queryByTestId('submit-order-button')).toBeNull();
+    expect(screen.getByRole('button', { name: '今日餐點（Q）' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '其他餐點' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '繳費（W）' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '30' } });
+    fireEvent.click(screen.getByTestId('submit-order-button'));
+    await waitFor(() => expect(repositoryMock.createPayment).toHaveBeenCalledWith(expect.objectContaining({
+      studentId: 's3', paidAmount: 30,
+    })));
+    expect(repositoryMock.createOrder).not.toHaveBeenCalled();
   });
 
   it('blocks ordering when today has no business day', async () => {
@@ -364,7 +376,7 @@ describe('CloudOrdersPage', () => {
     window.localStorage.setItem(PENDING_KEY, JSON.stringify({ uid: 'uid-1', datasetId: 'ds-1', commandId: 'cmd-old' }));
     repositoryMock.readCommand.mockResolvedValue({ commandId: 'cmd-old', seq: 8 });
     renderComponent();
-    expect(await screen.findByText(/上次未確認的訂餐已確認入帳（命令序號 8）/)).toBeVisible();
+    expect(await screen.findByText(/上次未確認的登記已確認入帳（命令序號 8）/)).toBeVisible();
     expect(repositoryMock.readCommand).toHaveBeenCalledWith('cmd-old');
     expect(window.localStorage.getItem(PENDING_KEY)).toBeNull();
   });
@@ -378,5 +390,138 @@ describe('CloudOrdersPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '確認未入帳並清除提醒' }));
     await waitFor(() => expect(screen.queryByTestId('stored-pending-panel')).toBeNull());
     expect(window.localStorage.getItem(PENDING_KEY)).toBeNull();
+  });
+  it('W switches to payment; a payment freezes IDs and revisions and confirms only after the server receipt', async () => {
+    renderComponent();
+    await selectStudent('001');
+    fireEvent.keyDown(window, { key: 'w' });
+    expect(screen.getByRole('button', { name: '繳費（W）' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '200' } });
+    fireEvent.change(screen.getByLabelText(/備註/), { target: { value: '預存' } });
+    expect(screen.getByText(/預估結餘：/)).toHaveTextContent('$300');
+    fireEvent.click(screen.getByTestId('submit-order-button'));
+
+    await waitFor(() => expect(repositoryMock.createPayment).toHaveBeenCalledTimes(1));
+    const input = repositoryMock.createPayment.mock.calls[0][0];
+    expect(input).toEqual({
+      commandId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      transactionId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      leaseEpoch: 1, studentId: 's1', dayId: TODAY,
+      expectedStudentRevision: 3, expectedDayRevision: 5, paidAmount: 200, note: '預存',
+    });
+    expect(screen.queryByTestId('confirm-duplicate-button')).toBeNull();
+    expect(await screen.findByText(/已確認 001 王小明 繳費 \$200 完成（命令序號 12）/)).toBeVisible();
+    expect(repositoryMock.createOrder).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(PENDING_KEY)).toBeNull();
+  });
+
+  it('rejects a zero, decimal or oversized payment before sending', async () => {
+    renderComponent();
+    await selectStudent('001');
+    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    for (const value of ['0', '1.5', '1e3', '1000001']) {
+      fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value } });
+      fireEvent.click(screen.getByTestId('submit-order-button'));
+      expect(await screen.findByText('繳費金額必須是 1 到 1,000,000 的整數')).toBeVisible();
+    }
+    expect(repositoryMock.createPayment).not.toHaveBeenCalled();
+  });
+
+  it('keeps the same payment command when its result is unknown', async () => {
+    repositoryMock.createPayment
+      .mockResolvedValueOnce(errorResult('UNKNOWN_RESULT'))
+      .mockImplementationOnce(async (input: { commandId: string }) => okResult(input.commandId, 14));
+    renderComponent();
+    await selectStudent('002');
+    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '100' } });
+    fireEvent.click(screen.getByTestId('submit-order-button'));
+    expect(await screen.findByTestId('order-recovery-panel')).toHaveTextContent('李小華 的繳費已送出');
+    fireEvent.click(screen.getByTestId('order-recovery-retry'));
+    await waitFor(() => expect(repositoryMock.createPayment).toHaveBeenCalledTimes(2));
+    expect(repositoryMock.createPayment.mock.calls[1][0]).toEqual(repositoryMock.createPayment.mock.calls[0][0]);
+    expect(await screen.findByText(/繳費 \$100 完成（命令序號 14）/)).toBeVisible();
+  });
+
+  it('A opens counter cash; an expense with a reason is sent as a cash movement, never a student row', async () => {
+    renderComponent();
+    await screen.findByTestId('cloud-cash-summary');
+    fireEvent.keyDown(window, { key: 'a' });
+    const card = await screen.findByTestId('cash-movement-card');
+    expect(card).toHaveTextContent('不影響任何學生餘額');
+    fireEvent.change(screen.getByLabelText(/金額（必填）/), { target: { value: '80' } });
+    expect(screen.getByTestId('submit-cash-movement-button')).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '付餐費給廠商' }));
+    expect(card).toHaveTextContent('現金影響：−$80');
+    fireEvent.click(screen.getByTestId('submit-cash-movement-button'));
+
+    await waitFor(() => expect(repositoryMock.createCashMovement).toHaveBeenCalledTimes(1));
+    expect(repositoryMock.createCashMovement.mock.calls[0][0]).toEqual({
+      commandId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      transactionId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      leaseEpoch: 1, dayId: TODAY, expectedDayRevision: 5, direction: 'expense', amount: 80, reason: '付餐費給廠商',
+    });
+    expect(await screen.findByText(/已確認櫃台支出 \$80入帳（命令序號 13）/)).toBeVisible();
+    expect(repositoryMock.createOrder).not.toHaveBeenCalled();
+    expect(repositoryMock.createPayment).not.toHaveBeenCalled();
+  });
+
+  it('requires a counter cash reason and a positive whole amount', async () => {
+    renderComponent();
+    fireEvent.click(await screen.findByTestId('open-cash-movement-button'));
+    fireEvent.click(screen.getByRole('button', { name: '收入' }));
+    fireEvent.change(screen.getByLabelText(/原因（必填）/), { target: { value: '   ' } });
+    fireEvent.change(screen.getByLabelText(/金額（必填）/), { target: { value: '50' } });
+    fireEvent.submit(screen.getByRole('form', { name: '櫃台收支' }));
+    expect(await screen.findByText('櫃台收支原因必填，且不能超過 500 字')).toBeVisible();
+    fireEvent.change(screen.getByLabelText(/原因（必填）/), { target: { value: '零錢補充' } });
+    fireEvent.change(screen.getByLabelText(/金額（必填）/), { target: { value: '0' } });
+    fireEvent.click(screen.getByTestId('submit-cash-movement-button'));
+    expect(await screen.findByText('櫃台收支金額必須是 1 到 1,000,000 的整數')).toBeVisible();
+    expect(repositoryMock.createCashMovement).not.toHaveBeenCalled();
+  });
+
+  it('shows L05 expected cash from the reconciled day and lists counter rows without adding them to recent accounts', async () => {
+    const day = mockDay();
+    repositoryMock.loadSnapshot.mockResolvedValue(snapshot({
+      day: {
+        ...day,
+        openingCash: 1000,
+        totals: { ...day.totals, activeTransactionCount: 4, retainedReceipts: 200, cashierIncome: 50, cashierExpense: 80 },
+      },
+      transactions: [
+        mockTx('tx-1', 's1', 'bento', 90, 0),
+        { ...mockTx('tx-2', 's1', 'bento', 0, 200), type: 'payment', mealKind: null, menuNameSnapshot: '', menuPriceSnapshot: 0, vendorIdSnapshot: '', vendorNameSnapshot: '', amount: 200 },
+        { ...mockTx('tx-3', '__cashier__', 'other', 0, 50), type: 'expense', mealKind: null, otherItemName: null, studentNameSnapshot: '櫃台', note: '零錢補充' },
+        { ...mockTx('tx-4', '__cashier__', 'other', 80, 0), type: 'expense', mealKind: null, otherItemName: null, studentNameSnapshot: '櫃台', note: '付餐費給廠商', amount: -80 },
+      ],
+    }));
+    renderComponent();
+    const summary = await screen.findByTestId('cloud-cash-summary');
+    expect(summary).toHaveTextContent('開帳現金$1000');
+    expect(summary).toHaveTextContent('學生收款$200');
+    expect(summary).toHaveTextContent('櫃台收入$50');
+    expect(summary).toHaveTextContent('櫃台支出$80');
+    expect(screen.getByTestId('cloud-expected-cash')).toHaveTextContent('$1170');
+    const rows = screen.getByTestId('cash-movement-list');
+    expect(rows).toHaveTextContent('收入 $50');
+    expect(rows).toHaveTextContent('支出 $80');
+    expect(rows).toHaveTextContent('付餐費給廠商');
+    expect(screen.getByTestId('recent-accounts-list').children).toHaveLength(1);
+    expect(screen.getByTestId('recent-item-001')).toHaveTextContent('今日餐點 1');
+
+    await selectStudent('001');
+    fireEvent.click(screen.getByTestId('open-payment-details-button'));
+    const modal = await screen.findByTestId('payment-details-modal');
+    expect(modal).toHaveTextContent('繳費');
+    expect(screen.getByTestId('payment-details-summary')).toHaveTextContent('今日收款：$200');
+  });
+
+  it('does not compute expected cash before the opening cash is confirmed', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(snapshot({
+      day: { ...mockDay(), openingCash: null, openedBy: null, openedAt: null },
+    }));
+    renderComponent();
+    expect(await screen.findByTestId('cloud-expected-cash')).toHaveTextContent('開帳現金未確認，無法計算');
   });
 });

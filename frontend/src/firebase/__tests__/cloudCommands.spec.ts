@@ -1655,16 +1655,16 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     expect(day.data()?.revision).toBe(1);
   });
 
-  it('P07.1: only the eleven P05/P06/P06b/P07 enabled kinds pass runtime validation', async () => {
+  it('P07.1: only the twelve P05/P06/P06b/P07/P09a enabled kinds pass runtime validation', async () => {
     await seedBase();
     expect(ALL_COMMAND_KINDS).toHaveLength(23);
     const enabledKinds = [
       'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
-      'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash',
+      'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement',
     ];
     const disabledKinds = ALL_COMMAND_KINDS.filter(kind => !enabledKinds.includes(kind));
-    expect(enabledKinds).toHaveLength(11);
-    expect(disabledKinds).toHaveLength(12);
+    expect(enabledKinds).toHaveLength(12);
+    expect(disabledKinds).toHaveLength(11);
     for (const [index, kind] of disabledKinds.entries()) {
       const commandId = `f0000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
       const disabled = await repository(operatorA).commitCommand({
@@ -1697,7 +1697,7 @@ describeWithEmulator('P05 production command repository and Rules', () => {
 
   it.each(ALL_COMMAND_KINDS.filter(kind => ![
     'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
-    'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash',
+    'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement',
   ].includes(kind)))(
     'P07.2: production Rules directly deny unsupported raw SDK kind %s atomically', async kind => {
       await seedBase();

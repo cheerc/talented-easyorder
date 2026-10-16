@@ -24,7 +24,7 @@ Base: `origin/main`（SHA `6ae1909639f56aa6d36524406e700554891f6328`，包含 P0
    - 沿用 U1 顯示偏好 store（`easyorder-ui-tweaks`）：`CloudAppContent` 呼叫 `useTweaks`，雲端頁套用同一份主題與字級（body `data-theme`／`data-scale`）。雲端模式沒有設定入口，要改偏好需在本機模式設定；雲端訂餐頁沒有 hover 選取行為，所以 hover 設定在雲端無作用。
    - 沿用 U2a/U2b 定稿：右上角固定兩行＋品名；最近帳戶（RecentStrip）顯示分類；E「付款明細」顯示當日明細與底部合計（暫不提供「查看全部紀錄」入口，留待 P12 開放）。
    - 移除舊「檢視歷史」（WeeklyHistoryView）。
-   - 5 秒撤回（undo）維持關閉（留待 P10 開啟）；不開放 W 繳費與 A 櫃台收支（留待 P09a）。
+   - 5 秒撤回（undo）維持關閉（留待 P10 開啟）；不開放 W 繳費與 A 櫃台收支（留待 P09a；P09a 契約見 `2026-10-16-cloud-payments-cash-contract.md`）。
 
 ---
 
@@ -245,4 +245,4 @@ export interface CloudTransactionDoc {
   - 送出前把 `{uid, datasetId, commandId}` 存到 localStorage（`easyorder-cloud-pending-order`，依 spec §8 只存這三項，不存姓名、金額）。重新整理或重新取得使用權後，用 `readCommand` 查詢：已入帳就提示並清除；查不到就保留提醒，由操作員按「確認未入帳並清除提醒」後才清除。
 - 明確失敗（`REVISION_CONFLICT`、`INVALID_INPUT` 等）：清除待確認紀錄，重讀快照並保留輸入，請操作員依最新價格與餘額重新確認。
 - 租約失效、`UNAUTHORIZED`、`ACCESS_BUSY` 或操作員失權時，立即呈現遮罩並清空所有在記憶體中的資料與輸入，回報導覽為 revoked。
-- 5 秒撤回（undo）維持關閉（留待 P10 開啟）；不開放 W 繳費與 A 櫃台收支（留待 P09a）。
+- 5 秒撤回（undo）維持關閉（留待 P10 開啟）；不開放 W 繳費與 A 櫃台收支（留待 P09a；P09a 契約見 `2026-10-16-cloud-payments-cash-contract.md`）。

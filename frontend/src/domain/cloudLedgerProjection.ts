@@ -173,6 +173,28 @@ export function deriveDayTotals(transactions: readonly CloudTransactionInput[]):
   };
 }
 
+export interface CloudCashPosition {
+  totalIncome: number;
+  totalExpense: number;
+  netCash: number;
+  /** null 表示開帳現金尚未確認，不能算出應有現金。 */
+  expectedCash: number | null;
+}
+
+/**
+ * 規格 §7.1 唯一現金口徑：totalIncome=retainedReceipts+cashierIncome；totalExpense=cashierExpense；
+ * netCash=totalIncome-totalExpense；expectedCash=openingCash+netCash。餐費不是現金支出。
+ */
+export function expectedCashFromTotals(
+  openingCash: number | null,
+  totals: Pick<CloudDayTotals, 'retainedReceipts' | 'cashierIncome' | 'cashierExpense'>,
+): CloudCashPosition {
+  const totalIncome = totals.retainedReceipts + totals.cashierIncome;
+  const totalExpense = totals.cashierExpense;
+  const netCash = totalIncome - totalExpense;
+  return { totalIncome, totalExpense, netCash, expectedCash: openingCash === null ? null : openingCash + netCash };
+}
+
 /**
  * 規格 §7.3：交易排序固定為 `(businessDate ASC, createdAt ASC, transactionId ASC)`。
  * 伺服器時間為準，同一毫秒時依 transactionId 排序。

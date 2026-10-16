@@ -268,3 +268,13 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 ### 更新規則
 
 新 RED/GREEN、Emulator/E2E 數量、lint/build、TypeScript diagnostic diff、CI run、review 與 merge 結果只在實際執行並確認後追加；PR head／base 與完整 receipt 以該 PR body 為版本權威。本節中 P05 #476 merge 狀態已於 2026-10-14 核實；未來尚未發生的 merge／未驗證 SHA 不預錄。
+
+## P09a 雲端繳費與櫃台收支 checkpoint — 2026-10-16
+
+- 依 CheerC 2026-10-16 指示推進 P09。branch `claude/project-thread-uaazo9`，base `fc7943970a5ceb86d841eeca8be6a75d3ba75dec`；PR、head SHA 與 CI 以 PR body 為準。契約：[P09a contract](../superpowers/specs/2026-10-16-cloud-payments-cash-contract.md)。
+- Rules：新增 `CreateCashMovement` 的指令、day 與 transaction 分支（都放在各 `||` 鏈最後）；`CreatePayment` Rules 未改。存取次數 15/20、單寫最多 8；探測餘裕見 [P09a 預算附錄](p05-rules-budget.md#p09a-cloud-payments-and-counter-cash-movement--budget-and-probe-receipt)。
+- RED：新 `cloudCashMovement.spec.ts`（37 項）在 main 的 Rules 上 7 項失敗。GREEN：同一 spec 37/37 通過。逐項負例都做過移除對應檢查的 mutant 確認。
+- demo-easyorder Emulator 一次跑完 `src/firebase/__tests__` 與 `src/rules` 全部 20 個檔案（所有 `EASYORDER_REQUIRE_*` 旗標開啟）：395/395、0 skipped。
+- Vitest 1,594 passed／317 Emulator-only skipped／0 failed；`npx tsc --noEmit`、`npm run lint`、`npm run build` exit 0；app tsc 208 個 `error TS` 診斷，與 base 相同。
+- Cloud E2E 14/14（auth、P07 日期供應商、P04、P06、P08 D03、新 P09a D04：繳費 200、收入 50、支出 80，reload 後應有現金與伺服器文件一致），使用本機 Chromium 1194，不取代 CI pinned Chromium。
+- 無 production 部署、無正式金鑰。
