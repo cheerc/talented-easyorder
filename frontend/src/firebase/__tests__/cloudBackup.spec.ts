@@ -20,6 +20,7 @@ const rulesPath = path.resolve(process.env.EASYORDER_TEST_RULES_PATH ?? path.res
 const projectId = 'demo-easyorder';
 const operator = { uid: 'p14-backup-operator', email: 'p14-backup@example.test', active: true };
 const now = Timestamp.now();
+const taipeiToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date());
 let env: RulesTestEnvironment;
 
 function authedDb(): Firestore {
@@ -238,9 +239,9 @@ describeWithEmulator('P14 cloud backup', () => {
       commandId: uuid(97), kind: 'CreateStudent', leaseEpoch: 7,
       targets: { studentId }, expectedRevisions: { student: 0 },
       payload: { studentCode: '096', displayName: 'Anonymous fixture', aliases: [],
-        openingBalance: { amount: 100, asOfDate: '2026-10-16', note: '' } },
+        openingBalance: { amount: 100, asOfDate: taipeiToday(), note: '' } },
     });
-    expect(committed.ok).toBe(true);
+    expect(committed, JSON.stringify(committed)).toMatchObject({ ok: true });
     const { manifest } = await createCloudBackupRepository(db, { currentUid: () => operator.uid })
       .exportRange({ fromSeq: 0, generatedAt: '2026-10-16T03:00:00.000Z' });
     const wrongBalance = structuredClone(manifest);
@@ -352,7 +353,7 @@ describeWithEmulator('P14 cloud backup', () => {
     await expect(decryptBackup(broken, 'synthetic-passphrase')).rejects.toThrow();
   });
 
-  it('replays P10 correction and P11 close/reopen settlement snapshots without skipping commands', () => {
+  it('fails closed for inactive P10/P11 kinds, including plausible but unsafe projection changes', () => {
     const head = (seq: number, commandId: string | null) => ({ schemaVersion: 1, datasetId: 'anonymous-p14-fixture', seq,
       lastCommandId: commandId, maintenance: false, goLiveDate: '2026-10-01', updatedAt: { _type: 'timestamp', seconds: seq, nanoseconds: 0 } });
     const timestamp = (seconds: number) => ({ _type: 'timestamp', seconds, nanoseconds: 0 });
@@ -401,22 +402,45 @@ describeWithEmulator('P14 cloud backup', () => {
     const baseState = { 'days/2026-10-16': day(4, 'open', 0, orderTotals, uuid(4)),
       [`students/${studentId}`]: student(2, 80, uuid(4)),
       'transactions/transaction-1': transaction(3, 50, 30, uuid(3)) };
-    const projectionState = replayBackupProjections(records, baseState);
-    const manifest = createBackupManifest({ datasetId: 'anonymous-p14-fixture', commandSchemaVersion: 1,
-      fromSeq: 4, toSeq: 7, headCommandId: records.at(-1)?.commandId ?? null,
-      previousPackageSha256: null, generatedAt: '2026-10-16T03:00:00.000Z',
-      records, baseState, projectionState, totals: recalculateBackupTotals(projectionState) });
-    expect(manifest.records.map(record => record.kind)).toContain('CorrectTransaction');
-    expect(manifest.projectionState['daily_settlements/2026-10-16']).toMatchObject({ revision: 2, status: 'reopened' });
-    const invalidClose = structuredClone(records);
-    (invalidClose[1]!.after!.day as Record<string, unknown>).status = 'open';
-    (invalidClose[1]!.after!.day as Record<string, unknown>).lastSettlementRevision = 0;
-    expect(() => validateBackupManifest({ ...manifest, records: invalidClose })).toThrow(/CloseDay payload\/day\/settlement/);
-    const invalidPayload = structuredClone(records);
-    invalidPayload[0]!.payload.mealPrice = { value: 60 };
-    expect(() => validateBackupManifest({ ...manifest, records: invalidPayload })).toThrow();
-    const bad = records.map(record => ({ ...record }));
-    bad[0] = { ...bad[0], targets: { transactionId: 'other-transaction', studentId, dayId: '2026-10-16' } };
-    expect(() => replayBackupProjections(bad, baseState)).toThrow(/before 與前序重播狀態不符/);
+    const plausibleProjectionState = replayBackupProjections(records, baseState);
+    const correctedState = {
+      'days/2026-10-16': day(5, 'open', 0, correctedTotals, uuid(5)),
+      [`students/${studentId}`]: student(3, 70, uuid(5)),
+      'transactions/transaction-1': transaction(4, 60, 30, uuid(5)),
+    };
+    const assertRejected = (candidate: BackupCommandRecord[], initial: Record<string, unknown> = baseState) => {
+      // Kind rejection happens before the manifest's final replay comparison.
+      // Keep a valid, independently replayed projection snapshot even when the
+      // candidate record contains an intentionally forged semantic mutation.
+      expect(() => validateBackupManifest({
+        format: 'easyorder-command-backup', schemaVersion: 1, datasetId: 'anonymous-p14-fixture',
+        commandSchemaVersion: 1, fromSeq: candidate[0]!.seq - 1, toSeq: candidate.at(-1)!.seq,
+        previousPackageSha256: null, generatedAt: '2026-10-16T03:00:00.000Z', recordCount: candidate.length,
+        records: candidate, baseState: initial, headCommandId: candidate.at(-1)?.commandId ?? null,
+        projectionState: plausibleProjectionState, totals: recalculateBackupTotals(plausibleProjectionState),
+      })).toThrow(/尚無完整備份語義，拒絕匯出/);
+    };
+    assertRejected(records);
+
+    const changedType = structuredClone(records);
+    const changedTransaction = changedType[0]!.after!.transaction as Record<string, unknown>;
+    changedTransaction.type = 'payment';
+    changedTransaction.mealPrice = 0;
+    changedTransaction.amount = 30;
+    assertRejected([changedType[0]!]);
+
+    const changedOpeningCash = structuredClone(records);
+    (changedOpeningCash[1]!.after!.day as Record<string, unknown>).openingCash = 999;
+    assertRejected([changedOpeningCash[1]!], correctedState);
+
+    const closedState: Record<string, unknown> = {
+      ...correctedState,
+      'days/2026-10-16': day(6, 'closed', 1, correctedTotals, uuid(6)),
+      'daily_settlements/2026-10-16': { dayId: '2026-10-16', revision: 1, status: 'closed', sourceSeq: 6,
+        lastCommandId: uuid(6), committedAt: timestamp(6) },
+    };
+    for (const [kind, initial] of [['CorrectTransaction', baseState], ['CloseDay', correctedState], ['ReopenDay', closedState]] as const) {
+      assertRejected([records.find(item => item.kind === kind)!], initial);
+    }
   });
 });

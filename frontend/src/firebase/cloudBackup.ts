@@ -98,7 +98,6 @@ const DECODABLE_COMMAND_KINDS = new Set([
   'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateOrder', 'CreatePayment', 'CreateCashMovement',
   'CreateRefund', 'RecordBackup',
 ]);
-const SUPPORTED_INACTIVE_KINDS = new Set(['CorrectTransaction', 'CloseDay', 'ReopenDay']);
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -165,69 +164,6 @@ function validateEnabledReceiptSemantics(record: BackupCommandRecord): void {
     cashEffect: record.cashEffect, payload: record.payload, inputFingerprint: record.inputFingerprint,
   });
   if (decoded.commandId !== record.commandId) throw new BackupValidationError(`command seq ${record.seq} receipt commandId 不符`);
-}
-
-function validateNonEnabledP10P11Semantics(record: BackupCommandRecord): void {
-  const payload = record.payload;
-  const before = record.before as Record<string, unknown>;
-  const after = record.after as Record<string, unknown>;
-  if (record.kind === 'CorrectTransaction') {
-    if (!hasExactlyKeys(payload, ['mealPrice', 'paidAmount', 'note', 'reason'])
-      || !signedSafeInteger(payload.mealPrice) || (payload.mealPrice as number) < 0
-      || !signedSafeInteger(payload.paidAmount) || (payload.paidAmount as number) < 0
-      || typeof payload.note !== 'string' || payload.note.length > 500
-      || typeof payload.reason !== 'string' || payload.reason.length < 1 || payload.reason.length > 500
-      || record.reason !== payload.reason) {
-      throw new BackupValidationError(`command seq ${record.seq} CorrectTransaction payload schema 無效`);
-    }
-    const transaction = after.transaction as Record<string, unknown>;
-    if (transaction.mealPrice !== payload.mealPrice || transaction.paidAmount !== payload.paidAmount
-      || transaction.note !== payload.note || transaction.amount !== Number(payload.paidAmount) - Number(payload.mealPrice)) {
-      throw new BackupValidationError(`command seq ${record.seq} CorrectTransaction payload 與交易投影不一致`);
-    }
-    return;
-  }
-  const target = record.targets as Record<string, unknown>;
-  const revisions = record.expectedRevisions as Record<string, unknown>;
-  const dayBefore = before.day as Record<string, unknown>;
-  const dayAfter = after.day as Record<string, unknown>;
-  const settlementBefore = before.previousSettlement as Record<string, unknown> | null;
-  const settlementAfter = after.settlement as Record<string, unknown>;
-  const expectedSettlementRevision = Number(revisions.settlement) + 1;
-  if (record.kind === 'CloseDay') {
-    const dayTotals = dayBefore.totals as Record<string, unknown>;
-    const expectedCash = Number(dayBefore.openingCash) + Number(dayTotals.retainedReceipts)
-      + Number(dayTotals.cashierIncome) - Number(dayTotals.cashierExpense) - Number(dayTotals.accountRefunds);
-    if (!hasExactlyKeys(payload, ['countedCash', 'note', 'expectedCash'])
-      || !signedSafeInteger(payload.countedCash) || (payload.countedCash as number) < 0
-      || !signedSafeInteger(payload.expectedCash) || (payload.expectedCash as number) < 0
-      || typeof payload.note !== 'string' || payload.note.length > 500
-      || !Number.isSafeInteger(expectedCash) || payload.expectedCash !== expectedCash
-      || typeof dayBefore.openingCash !== 'number'
-      || payload.expectedCash !== payload.countedCash && !(payload.note as string).trim()
-      || !['open', 'reopened'].includes(String(dayBefore.status)) || dayAfter.status !== 'closed'
-      || Number(dayBefore.lastSettlementRevision) !== Number(revisions.settlement)
-      || Number(target.settlementRevision) !== Number(revisions.settlement) + 1
-      || (settlementBefore !== null && settlementBefore.status !== 'reopened')
-      || Number(dayAfter.lastSettlementRevision) !== expectedSettlementRevision
-      || Number(target.settlementRevision) !== expectedSettlementRevision
-      || settlementAfter.status !== 'closed') {
-      throw new BackupValidationError(`command seq ${record.seq} CloseDay payload/day/settlement 語義無效`);
-    }
-  } else if (record.kind === 'ReopenDay') {
-    if (!hasExactlyKeys(payload, ['reason']) || typeof payload.reason !== 'string'
-      || payload.reason.length < 1 || payload.reason.length > 500
-      || record.reason !== payload.reason
-      || dayBefore.status !== 'closed' || dayAfter.status !== 'reopened'
-      || Number(dayBefore.lastSettlementRevision) !== Number(revisions.settlement)
-      || Number(target.settlementRevision) !== Number(revisions.settlement) + 1
-      || settlementBefore?.status !== 'closed'
-      || Number(dayAfter.lastSettlementRevision) !== expectedSettlementRevision
-      || Number(target.settlementRevision) !== expectedSettlementRevision
-      || settlementAfter.status !== 'reopened') {
-      throw new BackupValidationError(`command seq ${record.seq} ReopenDay payload/day/settlement 語義無效`);
-    }
-  }
 }
 
 function validateProjectionSnapshot(
@@ -492,6 +428,9 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
   };
   manifest.records.forEach((record, index) => {
     const seq = fromSeq + index + 1;
+    if (!record || !DECODABLE_COMMAND_KINDS.has(record.kind)) {
+      throw new BackupValidationError(`command seq ${seq} kind ${record?.kind ?? 'unknown'} 尚無完整備份語義，拒絕匯出`);
+    }
     const targets = record?.targets;
     const before = record?.before;
     const after = record?.after;
@@ -647,16 +586,10 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
         throw new BackupValidationError(`RecordBackup receipt 在 seq ${seq} 無法驗證`);
       }
     }
-    if (DECODABLE_COMMAND_KINDS.has(record.kind)) {
-      try {
-        validateEnabledReceiptSemantics(record);
-      } catch (error) {
-        throw new BackupValidationError(`command seq ${seq} payload/receipt 語義無效：${error instanceof Error ? error.message : 'unknown error'}`);
-      }
-    } else if (SUPPORTED_INACTIVE_KINDS.has(record.kind)) {
-      validateNonEnabledP10P11Semantics(record);
-    } else {
-      throw new BackupValidationError(`command seq ${seq} kind ${record.kind} 尚無完整備份語義，拒絕匯出`);
+    try {
+      validateEnabledReceiptSemantics(record);
+    } catch (error) {
+      throw new BackupValidationError(`command seq ${seq} payload/receipt 語義無效：${error instanceof Error ? error.message : 'unknown error'}`);
     }
     ids.add(record.commandId);
   });

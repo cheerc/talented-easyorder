@@ -1,15 +1,15 @@
 # P14 implementation receipt
 
-Date: 2026-10-16 (Asia/Taipei)
+Date: 2026-10-17 (Asia/Taipei)
 
 Branch: `codex/p14-incremental-backup`
 
 Implementation base: `e01ebdff5e784522b15a6f16278ef303a9c63110`
-Reviewed implementation: PR #496, updated after the initial review blockers. This receipt records the current working-tree changes and their evidence; the final commit SHA is recorded in the PR after push.
+Reviewed implementation: PR #496, updated after review findings. This receipt records the current working-tree changes and their evidence; the final commit SHA is recorded in the PR after push.
 
 ## Delivered
 
-- Added paged, server-only command export over a fixed dataHead `H`, stable `(seq, documentId)` pagination, contiguous sequence and dataset/schema checks, empty `S=H` increments, previous-package validation, immutable command replay, strict per-kind target/revision/projection checks, enabled-kind payload and receipt semantics via the production decoder, student balance semantics, projection before/after chain checks, settlement revision replay, and recalculated/reconciled daily totals.
+- Added paged, server-only command export over a fixed dataHead `H`, stable `(seq, documentId)` pagination, contiguous sequence and dataset/schema checks, empty `S=H` increments, previous-package validation, immutable command replay, strict per-kind target/revision/projection checks, enabled-kind payload and receipt semantics via the production decoder, student balance semantics, projection before/after chain checks, and recalculated/reconciled daily totals.
 - Added versioned encrypted packages using Web Crypto AES-GCM and PBKDF2-SHA256 at 600,000 iterations with fresh salt and IV. Wrong passwords, malformed/corrupt packages, unsupported kinds, incompatible ranges and oversized packages fail closed.
 - Added `RecordBackup` to the fixed command schema/writer/Rules. It records only verified local file sequence/range/hash, advances the immutable head atomically and changes no accounting projection.
 - Embedded the backup flow in F3 `今日設定`. It needs a downloaded file to be reselected, hashed and decrypted before it writes `RecordBackup`. Session/lease changes clear package and password state. No live restore or overwrite control is added.
@@ -17,14 +17,14 @@ Reviewed implementation: PR #496, updated after the initial review blockers. Thi
 
 ## Focused behavior evidence
 
-Real Firestore Emulator tests use anonymous synthetic fixtures and the repository's actual Rules file. `frontend/src/firebase/__tests__/cloudBackup.spec.ts` covers H=0, contiguous prefix including an earlier `RecordBackup`, fixed H while the head advances during paging, `S=H` and resume, missing/duplicate seq including a duplicate split across pageSize=1, non-holder denial, dataset/schema mismatch, and stale-H sequencing: export at H, commit a later writer command, then register the verified original H. It also covers atomic receipt, fabricated/old-epoch/extra-projection/replayed receipt denial, `leaseEpoch` export/decrypt round-trip, fresh encryption parameters, bad passphrase/tampering, and synthetic P10 `CorrectTransaction` plus P11 `CloseDay`/`ReopenDay` replay with malformed payload/day-state rejection. A real `CreateStudent` writer integration verifies payload mutations (including non-string `studentCode`) cannot be repackaged against unchanged snapshots. Other known but currently inactive kinds without complete P14 semantics fail closed; no future-kind or P10/P11 production-writer compatibility is claimed by these synthetic fixtures.
+Real Firestore Emulator tests use anonymous synthetic fixtures and the repository's actual Rules file. `frontend/src/firebase/__tests__/cloudBackup.spec.ts` covers H=0, contiguous prefix including an earlier `RecordBackup`, fixed H while the head advances during paging, `S=H` and resume, missing/duplicate seq including a duplicate split across pageSize=1, non-holder denial, dataset/schema mismatch, and stale-H sequencing: export at H, commit a later writer command, then register the verified original H. It also covers atomic receipt, fabricated/old-epoch/extra-projection/replayed receipt denial, `leaseEpoch` export/decrypt round-trip, fresh encryption parameters, bad passphrase/tampering, and explicit fail-closed behavior for inactive P10/P11 kinds, including attempted order-to-payment mutation and day openingCash mutation. A real `CreateStudent` writer integration verifies payload mutations (including non-string `studentCode`) cannot be repackaged against unchanged snapshots; its opening date is derived from the current Asia/Taipei date to remain valid across midnight. Only enabled command kinds with production decoder and replay semantics are accepted.
 
 The dedicated `BackupScreen.test.tsx` renders the F3 screen with an anonymous test lease and mocked repository boundary. It proves generate alone makes no receipt call, selection verifies the file before `RecordBackup`, an `UNKNOWN_RESULT` retry reuses the same commandId, and unmounting during verification prevents a write. Repository export and Rules behavior are separately tested against the real Firestore Emulator.
 
 ## Verification
 
 - `npm run test:cloud-backup` — **16/16 passed** against the real Firestore Emulator. This script sets `EASYORDER_REQUIRE_CLOUD_BACKUP=true`; the suite throws if the Emulator is missing. The regular Vitest run safely skips these Emulator-only tests when no Emulator is configured.
-- `npx firebase emulators:exec --project demo-easyorder --config ../firebase.json --only firestore "npx vitest run --maxWorkers=1"` — **174 files, 1,985 tests passed** after strict command payload semantics were added. Serial execution is required because the test files share one emulator database.
+- `npx firebase emulators:exec --project demo-easyorder --config ../firebase.json --only firestore "npx vitest run --maxWorkers=1"` — **174 files, 1,985 tests passed** on 2026-10-17 after inactive P10/P11 kinds were set to fail closed. Serial execution is required because the test files share one emulator database.
 - `.github/workflows/ci.yml` now has a required P14 Emulator proof step that also asserts its JSON report has at least one test and zero failures or skips.
 - A full Vitest run with default parallel workers produced cross-suite emulator collisions and unrelated Rules failures; it is discarded as evidence. The passing serial run is the evidence used here.
 - `npm run lint` — pass.
@@ -34,7 +34,7 @@ The dedicated `BackupScreen.test.tsx` renders the F3 screen with an anonymous te
 
 ## Remaining limits
 
-- P10/P11 real production writers and the latest `main` command schema/Rules are outside this branch's base; synthetic replay coverage is not proof of compatibility with their final merged shape. Re-run the compatibility gate against latest `main` before merge. Known inactive kinds other than `CorrectTransaction`, `CloseDay`, and `ReopenDay` are deliberately rejected because P14 has no complete payload-to-projection semantics for them. This branch makes no future-kind compatibility claim.
+- P10/P11 production writers are outside this branch's base. All currently inactive kinds, including `CorrectTransaction`, `CloseDay`, and `ReopenDay`, are deliberately rejected until their production decoder and complete payload-to-projection replay semantics are implemented and tested in their phase. Re-run the compatibility gate against latest `main` and extend P14 replay validation before enabling those kinds. This branch makes no future-kind compatibility claim.
 - There is no P15 restore CLI, compact checkpoint merger, or automated second-copy/retention enforcement. Monthly archives, 90-day retention and the independent second copy are manual operator responsibilities in the runbook.
 - No production Firebase project, production Spark deployment, or operational restore drill is claimed or tested.
 - The stock Playwright A05 timing scenario was flaky once, then passed isolated; see E2E results above.
