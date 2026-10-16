@@ -288,3 +288,4 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - Vitest 1,602 passed／365 Emulator-only skipped／0 failed；`npm run lint`、`npm run build` exit 0；app tsc 208 個 `error TS` 診斷，與 base 相同。畫面測試新增退款流程、退款與櫃台收支的結果不明同 commandId 重試。
 - Cloud E2E 18/18（新 D05：學生期初 150、W 面板退款 100，應有現金只扣一次，reload 後與伺服器文件一致），使用本機 Chromium 1194，不取代 CI pinned Chromium。
 - 無 production 部署、無正式金鑰。正式部署 Rules 時，既有 7 欄日統計的營業日會被拒；目前沒有正式資料。
+- 合併收據：PR #494 source head `f82a5afed689d0b793fcc8c45e2d52fe24cc60c5`，CI [38905988081](https://github.com/cheerc/talented-easyorder/actions/runs/38905988081)（build-and-test、e2e）成功，獨立審查 PASS（無必修項；審查者重跑 Vitest 1,601 passed／366 skipped、`cloudRefund.spec.ts` 43/43），squash merge `5b6f9a495244c2a800a64ce0677bb1645b33f0a6`。P09 完成，P10 未開始。
