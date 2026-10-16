@@ -886,4 +886,103 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       await session.close();
     }
   });
+
+  test('D05: refunds part of a student balance from the W panel, subtracts it from expected cash once and persists after reload', async ({ browser }) => {
+    const session = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
+    try {
+      const page = session.page;
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toBeVisible();
+
+      // 1. 今日營業日存在且開帳現金確認為 1,000
+      const today = taipeiToday();
+      await page.getByRole('button', { name: '日期與供應商' }).click();
+      const mainVendors = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
+      const dateField = mainVendors.getByLabel('查看或設定日期');
+      if ((await dateField.inputValue()) !== today) {
+        await dateField.fill(today);
+        await mainVendors.getByRole('button', { name: '載入日期' }).click();
+      }
+      await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
+      const createDayBtn = page.getByRole('button', { name: '建立空白營業日' });
+      if (await createDayBtn.isVisible().catch(() => false)) {
+        await createDayBtn.click();
+      }
+      const openingForm = mainVendors.getByRole('form', { name: `${today} 開帳現金` });
+      await openingForm.getByLabel(/開帳現金/).fill('1000');
+      await openingForm.getByRole('button', { name: /開帳金額/ }).click();
+      await expect(openingForm.getByText(/伺服器已確認開帳現金 NT\$ 1,000/)).toBeVisible();
+
+      // 2. 建立學生 007（期初 150）
+      await page.getByRole('button', { name: '學生管理' }).click();
+      await page.getByRole('button', { name: '新增學生' }).click();
+      const studentForm = page.getByRole('form', { name: '新增學生' });
+      await studentForm.getByLabel('學員編號').fill('007');
+      await studentForm.getByRole('textbox', { name: '姓名', exact: true }).fill('林退款');
+      await studentForm.getByRole('textbox', { name: /期初結餘（整數/ }).fill('150');
+      await studentForm.getByRole('radio', { name: /沿用既有核對結餘/ }).check();
+      await studentForm.getByRole('button', { name: '建立學生' }).click();
+      await expect(page.getByTestId('cloud-student-row-007')).toContainText('林退款');
+
+      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await expect(page.getByTestId('cloud-orders-page')).toBeVisible();
+      await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
+
+      const before = await readAdminDocument('days', today);
+      const beforeTotals = before?.totals as Record<string, number>;
+      const openingCash = before?.openingCash as number;
+      const beforeExpected = openingCash + beforeTotals.retainedReceipts + beforeTotals.cashierIncome
+        - beforeTotals.cashierExpense - beforeTotals.accountRefunds;
+      const beforeTransactions = await listAdminDocuments('transactions');
+      await expect(page.getByTestId('cloud-expected-cash')).toHaveText(`$${beforeExpected}`);
+
+      // 3. 學生 007 在 W 面板退款 $100（預設全額 150，改成 100）
+      await page.getByLabel('搜尋編號、姓名或別名').fill('007');
+      await page.getByTestId('search-result-007').click();
+      await expect(page.getByTestId('selected-student-card')).toContainText('林退款');
+      await page.getByRole('button', { name: '繳費（W）' }).click();
+      await page.getByTestId('open-refund-button').click();
+      const refundForm = page.getByRole('form', { name: '退款' });
+      await expect(refundForm.getByLabel('退款金額（必填）')).toHaveValue('150');
+      await refundForm.getByLabel('退款金額（必填）').fill('100');
+      await refundForm.getByLabel('退款原因（必填）').fill('學期結束退還');
+      await page.getByTestId('submit-refund-button').click();
+      await expect(page.getByTestId('refund-confirm-modal')).toContainText('確定從 林退款 的帳戶退還 $100 現金嗎？退款後餘額 $50');
+      await page.getByTestId('confirm-refund-button').click();
+      await expect(page.getByText(/已確認 007 林退款 退款 \$100 完成/)).toBeVisible();
+
+      const expectedCash = beforeExpected - 100;
+      await expect(page.getByTestId('cloud-expected-cash')).toHaveText(`$${expectedCash}`);
+      await expect(page.getByTestId('cloud-account-refunds')).toHaveText(`$${beforeTotals.accountRefunds + 100}`);
+      await expect(page.getByTestId('recent-item-007')).toContainText('僅退款');
+
+      // 4. 重新整理後仍從伺服器讀回同樣的現金口徑
+      await page.reload();
+      await expect(page.locator('.operator-strip')).toBeVisible();
+      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
+      await expect(page.getByTestId('cloud-expected-cash')).toHaveText(`$${expectedCash}`);
+
+      // 5. 核對伺服器文件：只動 accountRefunds 與筆數，學生餘額 −100
+      const after = await readAdminDocument('days', today);
+      expect(after?.totals).toMatchObject({
+        retainedReceipts: beforeTotals.retainedReceipts,
+        cashierIncome: beforeTotals.cashierIncome,
+        cashierExpense: beforeTotals.cashierExpense,
+        accountRefunds: beforeTotals.accountRefunds + 100,
+        activeTransactionCount: beforeTotals.activeTransactionCount + 1,
+      });
+      const transactions = await listAdminDocuments('transactions');
+      const added = transactions.filter(tx => !beforeTransactions.some(prior => prior.id === tx.id));
+      expect(added).toHaveLength(1);
+      expect(added[0]).toMatchObject({ type: 'refund', amount: 100, mealPrice: 0, paidAmount: 0, note: '學期結束退還' });
+      const student = await readAdminDocument('students', String(added[0].studentId));
+      expect(student).toMatchObject({ currentBalance: 50 });
+
+      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
+    } finally {
+      await session.close();
+    }
+  });
 });

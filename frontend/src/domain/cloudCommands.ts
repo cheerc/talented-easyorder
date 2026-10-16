@@ -92,6 +92,7 @@ export type BusinessCommandKind =
   | 'CreateOrder'
   | 'CreatePayment'
   | 'CreateCashMovement'
+  | 'CreateRefund'
   | 'CorrectTransaction'
   | 'VoidTransaction'
   | 'CancelKeepDeposit'
@@ -117,6 +118,7 @@ export const ALL_COMMAND_KINDS: readonly BusinessCommandKind[] = [
   'CreateOrder',
   'CreatePayment',
   'CreateCashMovement',
+  'CreateRefund',
   'CorrectTransaction',
   'VoidTransaction',
   'CancelKeepDeposit',
@@ -284,6 +286,16 @@ export type CreateCashMovementCommand = BaseCommand<
   { transactionId: string; dayId: string }
 >;
 
+// 12b. CreateRefund（P09b）：把學生帳戶的正餘額退成現金，帳戶與櫃台現金各減 amount。
+export type CreateRefundCommand = BaseCommand<
+  'CreateRefund',
+  {
+    amount: number;
+    reason: string;
+  },
+  { transactionId: string; studentId: string; dayId: string }
+>;
+
 // 13. CorrectTransaction
 export type CorrectTransactionCommand = BaseCommand<
   'CorrectTransaction',
@@ -392,6 +404,7 @@ export type BusinessCommand =
   | CreateOrderCommand
   | CreatePaymentCommand
   | CreateCashMovementCommand
+  | CreateRefundCommand
   | CorrectTransactionCommand
   | VoidTransactionCommand
   | CancelKeepDepositCommand

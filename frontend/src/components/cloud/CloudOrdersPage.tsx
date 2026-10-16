@@ -11,6 +11,7 @@ import {
   type CreateCloudCashMovementInput,
   type CreateCloudOrderInput,
   type CreateCloudPaymentInput,
+  type CreateCloudRefundInput,
 } from '../../firebase/cloudOrderRepository';
 import type { CloudStudentRecord } from '../../firebase/cloudStudentRepository';
 import { formatTaipeiTime } from '../../utils/dateTime';
@@ -33,7 +34,8 @@ interface PreparedMeta {
 type PreparedCommand =
   | ({ kind: 'order' } & Omit<CreateCloudOrderInput, 'leaseEpoch'> & PreparedMeta)
   | ({ kind: 'payment' } & Omit<CreateCloudPaymentInput, 'leaseEpoch'> & PreparedMeta)
-  | ({ kind: 'cash' } & Omit<CreateCloudCashMovementInput, 'leaseEpoch'> & PreparedMeta);
+  | ({ kind: 'cash' } & Omit<CreateCloudCashMovementInput, 'leaseEpoch'> & PreparedMeta)
+  | ({ kind: 'refund' } & Omit<CreateCloudRefundInput, 'leaseEpoch'> & PreparedMeta);
 
 /** F1 entry: today's meal (Q), other meal, or a payment (W). */
 type EntryMode = 'bento' | 'other' | 'payment';
@@ -67,6 +69,11 @@ interface OrdersPageState {
   cashDirection: 'expense' | 'income';
   cashAmountText: string;
   cashReason: string;
+  /** P09b：W 面板內的退款框；確認對話框開著時才送出。 */
+  refundOpen: boolean;
+  refundAmountText: string;
+  refundReason: string;
+  refundConfirmOpen: boolean;
   recovery: { command: PreparedCommand; phase: RecoveryPhase } | null;
   /** An unresolved command left by an earlier page load (refresh or closed tab). */
   storedPending: (PendingRecord & { checking: boolean; message: string }) | null;
@@ -88,6 +95,10 @@ const freshDraft = () => ({
   cashDirection: 'expense' as const,
   cashAmountText: '',
   cashReason: '',
+  refundOpen: false,
+  refundAmountText: '',
+  refundReason: '',
+  refundConfirmOpen: false,
 });
 
 function initialState(scopeKey: string): OrdersPageState {
@@ -159,12 +170,16 @@ function isAuthorizationLoss(error: unknown): boolean {
 }
 
 function commandNoun(command: PreparedCommand): string {
-  return command.kind === 'order' ? '訂餐' : command.kind === 'payment' ? '繳費' : '櫃台收支';
+  if (command.kind === 'order') return '訂餐';
+  if (command.kind === 'payment') return '繳費';
+  if (command.kind === 'refund') return '退款';
+  return '櫃台收支';
 }
 
 function successText(command: PreparedCommand, seq: number): string {
   if (command.kind === 'order') return `已確認 ${command.label} 訂餐完成（命令序號 ${seq}）`;
   if (command.kind === 'payment') return `已確認 ${command.label} 繳費 $${command.paidAmount} 完成（命令序號 ${seq}）`;
+  if (command.kind === 'refund') return `已確認 ${command.label} 退款 $${command.amount} 完成（命令序號 ${seq}）`;
   return `已確認${command.label}入帳（命令序號 ${seq}）`;
 }
 
@@ -180,6 +195,19 @@ function sendCommand(repository: CloudOrderRepository, command: PreparedCommand,
       expectedDayRevision: command.expectedDayRevision,
       paidAmount: command.paidAmount,
       note: command.note,
+    });
+  }
+  if (command.kind === 'refund') {
+    return repository.createRefund({
+      commandId: command.commandId,
+      transactionId: command.transactionId,
+      leaseEpoch,
+      studentId: command.studentId,
+      dayId: command.dayId,
+      expectedStudentRevision: command.expectedStudentRevision,
+      expectedDayRevision: command.expectedDayRevision,
+      amount: command.amount,
+      reason: command.reason,
     });
   }
   if (command.kind === 'cash') {
@@ -243,6 +271,7 @@ function uidFromIdentity(identityKey: string): string {
 
 function itemLabel(tx: CloudOrderTransactionRecord): string {
   if (tx.type === 'payment') return '繳費';
+  if (tx.type === 'refund') return `退款：${tx.note}`;
   if (tx.mealKind === 'bento') return `今日餐點：${tx.menuNameSnapshot}`;
   return `其他餐點：${tx.otherItemName ?? ''}`;
 }
@@ -253,6 +282,9 @@ function recentSummary(transactions: CloudOrderTransactionRecord[]): string {
   if (bento > 0 && other > 0) return `今日餐點 ${bento}・其他餐點 ${other}`;
   if (bento > 0) return `今日餐點 ${bento}`;
   if (other > 0) return `其他餐點 ${other}`;
+  const payments = transactions.some(tx => tx.type === 'payment');
+  const refunds = transactions.some(tx => tx.type === 'refund');
+  if (refunds) return payments ? '繳費・退款' : '僅退款';
   return '僅繳費';
 }
 
@@ -482,6 +514,10 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const cashierRows = useMemo(() => activeTransactions.filter(tx => tx.type === 'expense'), [activeTransactions]);
   const cashPosition = day ? expectedCashFromTotals(day.openingCash, day.totals) : null;
   const cashAmount = parseAmount(page.cashAmountText, null);
+  const refundAmount = parseAmount(page.refundAmountText, null);
+  const refundValid = selectedStudent !== null && refundAmount !== null && refundAmount >= 1
+    && refundAmount <= selectedStudent.currentBalance;
+  const refundPreviewBalance = selectedStudent && refundValid ? selectedStudent.currentBalance - refundAmount! : null;
 
   const selectStudent = (student: CloudStudentRecord) => {
     setPageStateRaw(previous => ({
@@ -491,6 +527,10 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       actionError: '',
       notice: '',
       cashOpen: false,
+      refundOpen: false,
+      refundAmountText: '',
+      refundReason: '',
+      refundConfirmOpen: false,
       mode: student.status === 'inactive' ? 'payment' : previous.mode,
     }));
   };
@@ -517,6 +557,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       updateFor(key, generation, previous => ({
         ...previous,
         confirmDuplicateOpen: false,
+        refundConfirmOpen: false,
         recovery: { command, phase: 'unknown' },
       }));
       return;
@@ -541,6 +582,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       actionError: '',
       notice: '',
       confirmDuplicateOpen: false,
+      refundConfirmOpen: false,
       recovery: { command, phase },
     }));
     let result: CommandResult;
@@ -608,6 +650,10 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const submitPayment = () => {
     if (!snapshot || !day || !selectedStudent || busy || orderingBlocked) return;
     const amount = parseAmount(page.paidAmountText, null);
+    if (page.paidAmountText.trim().startsWith('-')) {
+      setPageStateRaw(previous => ({ ...previous, actionError: '收款金額不能是負數。要退錢給學生請用「退款」。' }));
+      return;
+    }
     if (amount === null || amount < 1) {
       setPageStateRaw(previous => ({ ...previous, actionError: '繳費金額必須是 1 到 1,000,000 的整數' }));
       return;
@@ -670,6 +716,71 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     void dispatch(command, 'submitting');
   };
 
+  /** 驗證退款框；通過才打開確認對話框（spec §7.2：退款一律先確認）。 */
+  const requestRefund = (event?: FormEvent) => {
+    event?.preventDefault();
+    if (!snapshot || !day || !selectedStudent || busy || orderingBlocked) return;
+    if (selectedStudent.currentBalance < 1) {
+      setPageStateRaw(previous => ({ ...previous, refundConfirmOpen: false, actionError: '帳戶餘額不是正數，沒有可退的金額' }));
+      return;
+    }
+    if (refundAmount === null || refundAmount < 1 || refundAmount > selectedStudent.currentBalance) {
+      setPageStateRaw(previous => ({
+        ...previous,
+        refundConfirmOpen: false,
+        actionError: `退款金額必須是 1 到 ${selectedStudent.currentBalance} 的整數（不能超過目前餘額）`,
+      }));
+      return;
+    }
+    const reason = page.refundReason.trim();
+    if (!reason || reason.length > 500) {
+      setPageStateRaw(previous => ({ ...previous, refundConfirmOpen: false, actionError: '退款原因必填，且不能超過 500 字' }));
+      return;
+    }
+    setPageStateRaw(previous => ({ ...previous, actionError: '', refundConfirmOpen: true }));
+  };
+
+  const submitRefund = () => {
+    if (!snapshot || !day || !selectedStudent || busy || orderingBlocked || !refundValid) return;
+    const reason = page.refundReason.trim();
+    if (!reason || reason.length > 500) return;
+    const commandId = newId();
+    const transactionId = newId();
+    if (!commandId || !transactionId) {
+      setPageStateRaw(previous => ({ ...previous, refundConfirmOpen: false, actionError: '此瀏覽器無法產生安全的命令編號，未送出。' }));
+      return;
+    }
+    const command: PreparedCommand = {
+      kind: 'refund',
+      commandId,
+      transactionId,
+      studentId: selectedStudent.studentId,
+      dayId: today,
+      expectedStudentRevision: selectedStudent.revision,
+      expectedDayRevision: day.revision,
+      amount: refundAmount!,
+      reason,
+      label: `${selectedStudent.studentCode} ${selectedStudent.displayName}`,
+      datasetId: snapshot.datasetId,
+    };
+    writePending({ uid: uidFromIdentity(identityKey), datasetId: snapshot.datasetId, commandId });
+    void dispatch(command, 'submitting');
+  };
+
+  const openRefundPanel = () => {
+    if (busy || !selectedStudent) return;
+    const balance = selectedStudent.currentBalance;
+    setPageStateRaw(previous => ({
+      ...previous,
+      refundOpen: true,
+      refundAmountText: balance > 0 ? String(Math.min(balance, 1_000_000)) : '',
+      refundReason: '',
+      refundConfirmOpen: false,
+      actionError: '',
+      notice: '',
+    }));
+  };
+
   const openCashPanel = () => {
     if (busy) return;
     setPageStateRaw(previous => ({ ...previous, ...freshDraft(), cashOpen: true, actionError: '', notice: '' }));
@@ -704,9 +815,9 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (pageState.recovery) return;
-      if (pageState.confirmDuplicateOpen || pageState.paymentDetailsOpen) {
+      if (pageState.confirmDuplicateOpen || pageState.paymentDetailsOpen || pageState.refundConfirmOpen) {
         if (event.key === 'Escape') {
-          setPageStateRaw(previous => ({ ...previous, confirmDuplicateOpen: false, paymentDetailsOpen: false }));
+          setPageStateRaw(previous => ({ ...previous, confirmDuplicateOpen: false, paymentDetailsOpen: false, refundConfirmOpen: false }));
         }
         return;
       }
@@ -734,7 +845,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cancelSelection, pageState.confirmDuplicateOpen, pageState.paymentDetailsOpen, pageState.recovery, pageState.selectedStudentId]);
+  }, [cancelSelection, pageState.confirmDuplicateOpen, pageState.paymentDetailsOpen, pageState.refundConfirmOpen, pageState.recovery, pageState.selectedStudentId]);
 
   const bentoCount = day?.totals.bentoCount ?? 0;
   const otherMealCount = day?.totals.otherMealCount ?? 0;
@@ -1000,7 +1111,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
             {selectedStudent && (
               <div className="cloud-orders__card">
                 {selectedStudent.status === 'inactive' && (
-                  <div className="cloud-orders__error" role="alert">此帳戶已停用，禁止新增餐點；仍可繳費。</div>
+                  <div className="cloud-orders__error" role="alert">此帳戶已停用，禁止新增餐點；仍可繳費或退款。</div>
                 )}
                 <form onSubmit={requestSubmit} aria-label={mode === 'payment' ? '繳費' : '訂餐'}>
                   <div className="cloud-orders__mode-selector">
@@ -1077,7 +1188,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                     </div>
                   )}
                   {mode === 'payment' && (
-                    <p className="cloud-orders__muted">繳費只記實際留存的現金，不計找零；金額會加進帳戶餘額。</p>
+                    <p className="cloud-orders__muted">繳費只記實際留存的現金，不計找零；金額會加進帳戶餘額。要退錢給學生請用「退款」。</p>
                   )}
 
                   <div className="cloud-orders__form-grid">
@@ -1142,6 +1253,17 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                     >
                       {busy ? '等待伺服器確認…' : '確認登記（Enter）'}
                     </button>
+                    {mode === 'payment' && !page.refundOpen && (
+                      <button
+                        type="button"
+                        className="cloud-orders__btn-secondary"
+                        onClick={openRefundPanel}
+                        disabled={busy || Boolean(orderingBlocked)}
+                        data-testid="open-refund-button"
+                      >
+                        退款
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="cloud-orders__btn-secondary"
@@ -1153,6 +1275,77 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                     </button>
                     <button type="button" className="cloud-orders__btn-secondary" onClick={cancelSelection} disabled={busy}>
                       取消（Esc）
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {selectedStudent && mode === 'payment' && page.refundOpen && (
+              <div className="cloud-orders__card" data-testid="refund-card">
+                <form onSubmit={requestRefund} aria-label="退款">
+                  <h3>退款</h3>
+                  <p className="cloud-orders__muted">
+                    從帳戶餘額退還現金給學生，會從今日應有現金扣除。目前餘額 ${selectedStudent.currentBalance}。
+                  </p>
+                  {selectedStudent.currentBalance < 1 && (
+                    <p className="cloud-orders__error" data-testid="refund-no-balance">帳戶餘額不是正數，沒有可退的金額。</p>
+                  )}
+                  <div className="cloud-orders__form-grid">
+                    <div className="cloud-orders__field">
+                      <label htmlFor="refund-amount">退款金額（必填）</label>
+                      <input
+                        id="refund-amount"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={page.refundAmountText}
+                        onChange={event => {
+                          const value = event.target.value;
+                          setPageStateRaw(previous => ({ ...previous, refundAmountText: value }));
+                        }}
+                        disabled={busy}
+                      />
+                    </div>
+                    <div className="cloud-orders__field">
+                      <label htmlFor="refund-reason">退款原因（必填）</label>
+                      <input
+                        id="refund-reason"
+                        type="text"
+                        placeholder="例如：學期結束退還餘額"
+                        value={page.refundReason}
+                        onChange={event => {
+                          const value = event.target.value;
+                          setPageStateRaw(previous => ({ ...previous, refundReason: value }));
+                        }}
+                        maxLength={500}
+                        disabled={busy}
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  <div className="cloud-orders__preview-bar">
+                    <span>現金影響：{refundValid ? `−$${refundAmount}` : '金額格式不正確'}</span>
+                    <span>退款後餘額：{refundPreviewBalance === null ? '—' : `$${refundPreviewBalance}`}</span>
+                  </div>
+                  <div className="cloud-orders__actions">
+                    <button
+                      type="submit"
+                      className="cloud-orders__btn-primary"
+                      disabled={busy || Boolean(orderingBlocked) || !page.refundAmountText.trim() || !page.refundReason.trim()}
+                      data-testid="submit-refund-button"
+                    >
+                      {busy ? '等待伺服器確認…' : '確認退款'}
+                    </button>
+                    <button
+                      type="button"
+                      className="cloud-orders__btn-secondary"
+                      onClick={() => setPageStateRaw(previous => ({
+                        ...previous, refundOpen: false, refundAmountText: '', refundReason: '', refundConfirmOpen: false, actionError: '',
+                      }))}
+                      disabled={busy}
+                    >
+                      取消退款
                     </button>
                   </div>
                 </form>
@@ -1173,6 +1366,8 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                   <dd>${day.totals.cashierIncome}</dd>
                   <dt>櫃台支出</dt>
                   <dd>${day.totals.cashierExpense}</dd>
+                  <dt>帳戶退款</dt>
+                  <dd data-testid="cloud-account-refunds">${day.totals.accountRefunds}</dd>
                   <dt>應有現金</dt>
                   <dd data-testid="cloud-expected-cash">
                     {cashPosition.expectedCash === null ? '開帳現金未確認，無法計算' : `$${cashPosition.expectedCash}`}
@@ -1235,6 +1430,27 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
         </div>
       )}
 
+      {page.refundConfirmOpen && selectedStudent && refundValid && !busy && (
+        <div className="cloud-orders__modal-backdrop" role="dialog" aria-modal="true" aria-label="確認退款">
+          <div className="cloud-orders__modal" data-testid="refund-confirm-modal">
+            <h3>確認退款</h3>
+            <p>確定從 {selectedStudent.displayName} 的帳戶退還 ${refundAmount} 現金嗎？退款後餘額 ${refundPreviewBalance}</p>
+            <div className="cloud-orders__actions">
+              <button type="button" className="cloud-orders__btn-primary" onClick={submitRefund} data-testid="confirm-refund-button">
+                確認退款
+              </button>
+              <button
+                type="button"
+                className="cloud-orders__btn-secondary"
+                onClick={() => setPageStateRaw(previous => ({ ...previous, refundConfirmOpen: false }))}
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {page.paymentDetailsOpen && selectedStudent && (
         <div className="cloud-orders__modal-backdrop" role="dialog" aria-modal="true" aria-label="付款明細">
           <div className="cloud-orders__modal" data-testid="payment-details-modal">
@@ -1244,7 +1460,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
             ) : (
               <table className="cloud-orders__table">
                 <thead>
-                  <tr><th>時間</th><th>項目</th><th>餐費</th><th>收款</th></tr>
+                  <tr><th>時間</th><th>項目</th><th>餐費</th><th>收款</th><th>退款</th></tr>
                 </thead>
                 <tbody>
                   {selectedTransactions.map(tx => (
@@ -1253,6 +1469,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                       <td>{itemLabel(tx)}</td>
                       <td>${tx.mealPrice}</td>
                       <td>${tx.paidAmount}</td>
+                      <td>{tx.type === 'refund' ? `$${tx.amount}` : '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1261,6 +1478,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
             <div className="cloud-orders__preview-bar" data-testid="payment-details-summary">
               <span>今日餐費：${selectedTransactions.reduce((sum, tx) => sum + tx.mealPrice, 0)}</span>
               <span>今日收款：${selectedTransactions.reduce((sum, tx) => sum + tx.paidAmount, 0)}</span>
+              <span>今日退款：${selectedTransactions.reduce((sum, tx) => sum + (tx.type === 'refund' ? tx.amount : 0), 0)}</span>
               <span>帳戶餘額：${selectedStudent.currentBalance}</span>
             </div>
             <div className="cloud-orders__actions">

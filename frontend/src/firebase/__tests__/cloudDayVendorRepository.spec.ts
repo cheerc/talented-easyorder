@@ -114,7 +114,7 @@ function dayDocument(index: number, menu: Record<string, unknown> | null = null)
     openedAt: null,
     totals: {
       activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0,
-      mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0,
+      mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0,
     },
     lastSettlementRevision: 0,
     lastCommandId: `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`,

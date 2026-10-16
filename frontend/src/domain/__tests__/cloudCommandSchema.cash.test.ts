@@ -73,7 +73,7 @@ describe('P09a CreateCashMovement schema', () => {
     });
     const totals = (count: number, expense: number) => ({
       activeTransactionCount: count, bentoCount: 0, otherMealCount: 0, mealTotal: 0,
-      retainedReceipts: 0, cashierIncome: 0, cashierExpense: expense,
+      retainedReceipts: 0, cashierIncome: 0, cashierExpense: expense, accountRefunds: 0,
     });
     const day = (revision: number, last: string, at: Timestamp, count: number, expense: number) => ({
       status: 'open', revision, menu: null, openingCash: 1000, openedBy: 'synthetic-uid', openedAt: earlier,
@@ -113,11 +113,11 @@ describe('P09a CreateCashMovement schema', () => {
 
 describe('spec §7.1 expected cash', () => {
   it('L05: opening 1000, receipts 200, counter income 50 and expense 80 give expected cash 1170', () => {
-    expect(expectedCashFromTotals(1000, { retainedReceipts: 200, cashierIncome: 50, cashierExpense: 80 }))
-      .toEqual({ totalIncome: 250, totalExpense: 80, netCash: 170, expectedCash: 1170 });
+    expect(expectedCashFromTotals(1000, { retainedReceipts: 200, cashierIncome: 50, cashierExpense: 80, accountRefunds: 0 }))
+      .toEqual({ totalIncome: 250, totalExpense: 80, totalRefund: 0, netCash: 170, expectedCash: 1170 });
   });
 
   it('has no expected cash until the opening cash is confirmed', () => {
-    expect(expectedCashFromTotals(null, { retainedReceipts: 200, cashierIncome: 0, cashierExpense: 0 }).expectedCash).toBeNull();
+    expect(expectedCashFromTotals(null, { retainedReceipts: 200, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0 }).expectedCash).toBeNull();
   });
 });

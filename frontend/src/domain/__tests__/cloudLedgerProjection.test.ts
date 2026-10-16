@@ -254,7 +254,7 @@ describe('cloudLedgerProjection: 投影數學與帳務計算', () => {
       mealTotal: 0,
       retainedReceipts: 0,
       cashierIncome: 0,
-      cashierExpense: 0,
+      cashierExpense: 0, accountRefunds: 0,
     });
 
     const c2 = contribution(voidedExpense);
@@ -265,7 +265,7 @@ describe('cloudLedgerProjection: 投影數學與帳務計算', () => {
       mealTotal: 0,
       retainedReceipts: 0,
       cashierIncome: 0,
-      cashierExpense: 0,
+      cashierExpense: 0, accountRefunds: 0,
     });
   });
 

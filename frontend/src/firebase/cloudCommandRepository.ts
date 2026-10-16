@@ -13,6 +13,7 @@ import {
   CASHIER_STUDENT_ID,
   InvalidCloudCommandInput,
   cashMovementEffect,
+  refundCashEffect,
   decodeEnabledCommandDoc,
   fingerprintCommandInput,
   normalizeEnabledCommandInput,
@@ -143,7 +144,7 @@ function decodeDay(value: unknown): Data {
     || ((value.openingCash === null) !== (value.openedBy === null))
     || ((value.openingCash === null) !== (value.openedAt === null))
     || !plainRecord(value.totals)
-    || !hasExactKeys(value.totals, ['activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal', 'retainedReceipts', 'cashierIncome', 'cashierExpense'])
+    || !hasExactKeys(value.totals, ['activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal', 'retainedReceipts', 'cashierIncome', 'cashierExpense', 'accountRefunds'])
     || !integer(value.totals.activeTransactionCount)
     || !integer(value.totals.bentoCount)
     || !integer(value.totals.otherMealCount)
@@ -151,6 +152,7 @@ function decodeDay(value: unknown): Data {
     || !integer(value.totals.retainedReceipts) || value.totals.retainedReceipts > 1_000_000_000
     || !integer(value.totals.cashierIncome) || value.totals.cashierIncome > 1_000_000_000
     || !integer(value.totals.cashierExpense) || value.totals.cashierExpense > 1_000_000_000
+    || !integer(value.totals.accountRefunds) || value.totals.accountRefunds > 1_000_000_000
     || !integer(value.lastSettlementRevision)
     || typeof value.lastCommandId !== 'string'
     || !(value.updatedAt instanceof Timestamp)) {
@@ -336,7 +338,7 @@ async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput)
       if (current.status === 'closed') return 'DAY_CLOSED';
       return 'INVALID_INPUT';
     }
-    if (input.kind !== 'CreateOrder' && input.kind !== 'CreatePayment') return null;
+    if (input.kind !== 'CreateOrder' && input.kind !== 'CreatePayment' && input.kind !== 'CreateRefund') return null;
     const [student, day, transaction] = await Promise.all([
       getDocFromServer(doc(db, studentPath(input.targets.studentId))),
       getDocFromServer(doc(db, dayPath(input.targets.dayId))),
@@ -349,6 +351,7 @@ async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput)
     if (studentValue.revision !== input.expectedRevisions.student || dayValue.revision !== input.expectedRevisions.day) {
       return 'REVISION_CONFLICT';
     }
+    if (input.kind === 'CreateRefund' && decodeDay(dayValue).status === 'closed') return 'DAY_CLOSED';
     // A successful server-only projection read proves that the current-holder read guard passed.
     // If the revisions still match, the Rules rejected this command's content/state (for example,
     // an unsupported historical transaction date), not a stale revision.
@@ -447,14 +450,14 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     const leaseRef = doc(db, accessLeasePath());
     const operatorRef = doc(db, `operators/${user.uid}`);
     const hasDayTarget = input.kind === 'EnsureDay' || input.kind === 'CreateOrder' || input.kind === 'CreatePayment'
-      || input.kind === 'CreateCashMovement' || input.kind === 'SetDayMenu' || input.kind === 'SetOpeningCash';
+      || input.kind === 'CreateCashMovement' || input.kind === 'CreateRefund' || input.kind === 'SetDayMenu' || input.kind === 'SetOpeningCash';
     const targetDayId = input.kind === 'EnsureDay' ? input.targets.dayId
       : input.kind === 'CreateOrder' || input.kind === 'CreatePayment' || input.kind === 'CreateCashMovement'
-        || input.kind === 'SetDayMenu' || input.kind === 'SetOpeningCash'
+        || input.kind === 'CreateRefund' || input.kind === 'SetDayMenu' || input.kind === 'SetOpeningCash'
         ? input.targets.dayId : null;
     const dayRef = targetDayId ? doc(db, dayPath(targetDayId)) : null;
     const targetStudentId = input.kind === 'CreateStudent' || input.kind === 'ChangeStudentCode' || input.kind === 'EditStudent' || input.kind === 'SetStudentStatus'
-      || input.kind === 'CreateOrder' || input.kind === 'CreatePayment' ? input.targets.studentId : null;
+      || input.kind === 'CreateOrder' || input.kind === 'CreatePayment' || input.kind === 'CreateRefund' ? input.targets.studentId : null;
     const targetStudentRef = targetStudentId ? doc(db, studentPath(targetStudentId)) : null;
     const targetVendorId = input.kind === 'SaveVendor' || input.kind === 'RemoveVendor' ? input.targets.vendorId
       : input.kind === 'SetDayMenu' ? input.payload.vendorId : null;
@@ -462,6 +465,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     const sourceDayRef = input.kind === 'SetDayMenu' && input.payload.inheritedFromDate
       ? doc(db, dayPath(input.payload.inheritedFromDate)) : null;
     const targetTransactionRef = input.kind === 'CreateOrder' || input.kind === 'CreatePayment' || input.kind === 'CreateCashMovement'
+      || input.kind === 'CreateRefund'
       ? doc(db, transactionPath(input.targets.transactionId))
       : null;
 
@@ -548,7 +552,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
           requireDateAfterGoLive(businessDate, String(headBefore.goLiveDate));
           const dayAfter: Data = {
             status: 'open', revision: 1, menu: null, openingCash: null, openedBy: null, openedAt: null,
-            totals: { activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0, mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0 },
+            totals: { activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0, mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0 },
             lastSettlementRevision: 0, lastCommandId: input.commandId, updatedAt: now,
           };
           const stored: StoredEnabledCommandDoc = {
@@ -898,6 +902,78 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
             after: { head: headAfter, day: dayAfter, transaction: transactionAfter },
             reason, cashEffect: cashMovementEffect(input.payload), payload: input.payload, inputFingerprint: fingerprint,
           };
+          tx.update(dayRef, dayAfter);
+          tx.set(targetTransactionRef, transactionAfter);
+          tx.update(headRef, headAfter);
+          tx.set(commandRef, stored);
+          return { existing: null } as const;
+        }
+
+        if (input.kind === 'CreateRefund') {
+          if (!daySnapshot?.exists() || !studentBefore || !targetTransactionRef || !dayRef || !targetStudentRef) {
+            throw new RejectCommand('INVALID_INPUT', '退款需要已存在的營業日與學生');
+          }
+          if (transactionExists) throw new RejectCommand('INVALID_INPUT', 'transactionId 已存在');
+          const dayBefore = decodeDay(daySnapshot.data());
+          checkRevision(studentBefore.revision, input.expectedRevisions.student, '學生版本');
+          checkRevision(dayBefore.revision, input.expectedRevisions.day, '營業日版本');
+          if (dayBefore.status === 'closed') throw new RejectCommand('DAY_CLOSED', '該日已關帳');
+          requireDateAfterGoLive(input.targets.dayId, String(headBefore.goLiveDate));
+          const opening = studentBefore.openingBalance as Data;
+          if (String(opening.asOfDate) > input.targets.dayId) throw new RejectCommand('INVALID_INPUT', '營業日早於學生期初日');
+          const { amount, reason } = input.payload;
+          const currentBalance = Number(studentBefore.currentBalance);
+          if (amount > currentBalance) throw new RejectCommand('INVALID_INPUT', '退款金額不能超過目前餘額');
+          const totalsBefore = dayBefore.totals as Data;
+          const totalsAfter = {
+            ...totalsBefore,
+            activeTransactionCount: Number(totalsBefore.activeTransactionCount) + 1,
+            accountRefunds: Number(totalsBefore.accountRefunds) + amount,
+          };
+          if (Object.values(totalsAfter).some(value => !Number.isSafeInteger(value) || Math.abs(value as number) > 1_000_000_000)) {
+            throw new RejectCommand('INVALID_INPUT', '營業日合計超出允許範圍');
+          }
+          const studentAfter: Data = {
+            ...studentBefore,
+            currentBalance: currentBalance - amount,
+            revision: Number(studentBefore.revision) + 1,
+            lastCommandId: input.commandId,
+            updatedAt: now,
+          };
+          const dayAfter: Data = {
+            ...dayBefore,
+            revision: Number(dayBefore.revision) + 1,
+            totals: totalsAfter,
+            lastCommandId: input.commandId,
+            updatedAt: now,
+          };
+          const transactionAfter: Data = {
+            transactionId: input.targets.transactionId,
+            studentId: input.targets.studentId,
+            businessDate: input.targets.dayId,
+            type: 'refund',
+            mealKind: null,
+            mealPrice: 0,
+            paidAmount: 0,
+            amount,
+            studentNameSnapshot: studentBefore.displayName,
+            menuNameSnapshot: '', menuPriceSnapshot: 0, vendorIdSnapshot: '', vendorNameSnapshot: '',
+            otherItemName: null,
+            status: 'active', revision: 1, createdAt: now, createdSeq: seq,
+            operatorUid: user.uid, operatorEmail: user.email,
+            sourceDevice: 'pc', note: reason,
+            lastCommandId: input.commandId, updatedAt: now,
+          };
+          const stored: StoredEnabledCommandDoc = {
+            commandId: input.commandId, kind: 'CreateRefund', seq, leaseEpoch: input.leaseEpoch,
+            actor: { uid: user.uid, email: user.email! }, committedAt: now as Timestamp,
+            businessDate: input.targets.dayId, studentId: input.targets.studentId,
+            targets: input.targets, expectedRevisions: input.expectedRevisions,
+            before: { head: headBefore, student: studentBefore, day: dayBefore, transaction: null },
+            after: { head: headAfter, student: studentAfter, day: dayAfter, transaction: transactionAfter },
+            reason, cashEffect: refundCashEffect(amount), payload: input.payload, inputFingerprint: fingerprint,
+          };
+          tx.update(targetStudentRef, studentAfter);
           tx.update(dayRef, dayAfter);
           tx.set(targetTransactionRef, transactionAfter);
           tx.update(headRef, headAfter);

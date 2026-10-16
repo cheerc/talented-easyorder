@@ -157,13 +157,13 @@ readCommand(commandId: string): Promise<CommandReceipt | null>
 
 ### 7.1 唯一計算口徑
 
-有效學生交易 `delta=paidAmount-mealPrice`；expense 不影響學生。帳戶目前餘額＝期初＋所有 active 學生交易 delta。允許欠款（負餘額），不自動擋單。改／void 舊交易時原子寫 `currentBalance += newEffectiveDelta-oldEffectiveDelta`；期初更正加期初差額。無直接「指定現在餘額」入口。
+有效學生交易 `delta=paidAmount-mealPrice`；有效 refund（P09b 帳戶退款）`delta=-amount`；expense 不影響學生。帳戶目前餘額＝期初＋所有 active 學生交易 delta。允許欠款（負餘額），不自動擋單。改／void 舊交易時原子寫 `currentBalance += newEffectiveDelta-oldEffectiveDelta`；期初更正加期初差額。無直接「指定現在餘額」入口。
 
 CorrectOpening是本輪新增的明確功能：鎖定原openingBalance.asOfDate，金額／說明可更正，createdAt與asOfDate不變；原期初日closed就先ReopenDay，day不存在則先EnsureDay。命令保存原／新opening物件、理由、伺服器committedAt，student balance加差額；day只增revision記錄異動，不改現金totals，之後重新關帳產生新版本。學生的交易營業日不得早於其asOfDate，因此期初永遠是該學生交易序列的起點。
 
-day.totals 固定包含 activeTransactionCount、bentoCount、otherMealCount、mealTotal、retainedReceipts、cashierIncome、cashierExpense。active order 計餐費與份數；所有非 expense 的 paidAmount 計 retainedReceipts；expense 分到 cashierIncome／cashierExpense。voided 全部貢獻零。每次用同一 contribution 函式計 before/after 差額，Rules 寫等價整數驗證。關帳與報表不得有另一套算式。
+day.totals 固定包含 activeTransactionCount、bentoCount、otherMealCount、mealTotal、retainedReceipts、cashierIncome、cashierExpense、accountRefunds（P09b 起 8 欄）。active order 計餐費與份數；order／payment 的 paidAmount 計 retainedReceipts；expense 分到 cashierIncome／cashierExpense；refund 的 amount 計 accountRefunds（不計份數、餐費或 retainedReceipts，只加 activeTransactionCount）。voided 全部貢獻零。每次用同一 contribution 函式計 before/after 差額，Rules 寫等價整數驗證。關帳與報表不得有另一套算式。
 
-`totalIncome=retainedReceipts+cashierIncome`；`totalExpense=cashierExpense`；`netCash=totalIncome-totalExpense`；`expectedCash=openingCash+netCash`；`difference=countedCash-expectedCash`。餐費不當現金支出；期初學生餘額不是今天收到的錢。退款後的 effective paidAmount 已減少，**不得再在 expectedCash 重複減一次 command.cashEffect.refundAmount**。command.cashEffect 固定為 `{before,after,delta,reasonKind,refundAmount}`：非expense有效列的cashContribution=paidAmount，expense=paidAmount-mealPrice，void／不存在=0；before/after取該列改動前後contribution，delta=after-before。reasonKind為collection（新收款／收入）、payout（櫃台支出）、refund（取消退現／有收款撤回）、correction（帳面修正）、reversal（櫃台收支撤回）、none（無現金影響）；refundAmount僅refund時為原paidAmount，其他為0，Rules依kind與前後值驗證，不任操作者填。
+`totalIncome=retainedReceipts+cashierIncome`；`totalExpense=cashierExpense`；`netCash=retainedReceipts+cashierIncome-cashierExpense-accountRefunds`；`expectedCash=openingCash+netCash`；`difference=countedCash-expectedCash`。餐費不當現金支出；期初學生餘額不是今天收到的錢。退款後的 effective paidAmount 已減少，**不得再在 expectedCash 重複減一次 command.cashEffect.refundAmount**。command.cashEffect 固定為 `{before,after,delta,reasonKind,refundAmount}`：非expense有效列的cashContribution=paidAmount，expense=paidAmount-mealPrice，void／不存在=0；before/after取該列改動前後contribution，delta=after-before。reasonKind為collection（新收款／收入）、payout（櫃台支出）、refund（取消退現／有收款撤回）、correction（帳面修正）、reversal（櫃台收支撤回）、none（無現金影響）；refundAmount僅refund時為原paidAmount，其他為0，Rules依kind與前後值驗證，不任操作者填。P09b 的帳戶退款 `CreateRefund` 固定為 `{before:0, after:-amount, delta:-amount, reasonKind:'refund', refundAmount:amount}`；應有現金只透過 `day.totals.accountRefunds` 扣一次，**不得再另減 `cashEffect.refundAmount`**（cashEffect 只是稽核紀錄，不參與 expectedCash）。
 
 例：新單收100為0→100、delta+100；取消退100為100→0、delta−100/refundAmount100；留款100為100→100、delta0；收款誤記100更正80為100→80、delta−20/reasonKind=correction；櫃台支出80為0→−80。更正記的是帳面變動，不假稱真的另退20。F5可查原收款與退款命令；F2的「收現」是有效／退款沖回後口徑，副標說明「已扣除作廢退款；原始收退款見稽核」，**不是未沖回的gross cashflow報表**。
 
@@ -171,7 +171,7 @@ day.totals 固定包含 activeTransactionCount、bentoCount、otherMealCount、m
 
 收款欄是實際留存金額；不加入找零計算。取消有收款訂單：留款轉繳費，餘額加回餐費、現金不變；退還原收款則 void 原單、餘額回復原單之前的貢獻，現金減原 paidAmount，不能退別筆存款。5 秒撤回是收到成功確認後的UI時窗；僅原建立UID、原revision=1、原單為台北今天且可寫時提供。亦走同樣 Rules 與稽核，固定理由「送出後立即撤回」；超過UI時窗仍可走一般取消／作廢，不把5秒UI當安全權限界線。沒有取消／退款以後刪 audit 的功能。Undo適用order、payment以及兩個方向的expense：payment收100撤回為cashEffect 100→0、delta−100、refundAmount100；櫃台收入50撤回為50→0、delta−50、reasonKind=reversal；櫃台支出80撤回為−80→0、delta+80、reasonKind=reversal。expense撤回refundAmount=0、不影響學生餘額；只沖回原記錄，不證明已發生一筆新的現金流，畫面須顯示現金影響供本人核對。
 
-現金退款只在原單為台北今天且該日可寫時提供。歷史日期重開後更正表示「修正那一天的記錄」，必須確認不是今天新收／退的現金；不把今天退款偷偷回記舊日。跨日退既有存款的獨立現金業務不在既有三類交易契約內，留至末節 enhancement；本輪仍完整保留當日訂餐退款。金額更正畫面顯示對學生餘額／原日現金的影響並要求理由。
+現金退款只在原單為台北今天且該日可寫時提供。歷史日期重開後更正表示「修正那一天的記錄」，必須確認不是今天新收／退的現金；不把今天退款偷偷回記舊日。P09b 起支援**當日帳戶餘額退款**（`CreateRefund`，交易 `type:'refund'`）：從學生目前餘額退還現金，金額為 1 到目前餘額的整數（不退成欠款）、理由必填、只記台北今天且 open／reopened 的營業日、停用帳戶也可退；學生餘額 −amount、`day.totals.accountRefunds += amount`。把退款回記到歷史日期仍走 P13 的 F2 補登；本輪仍完整保留當日訂餐退款。金額更正畫面顯示對學生餘額／原日現金的影響並要求理由。
 
 ### 7.3 每筆交易後餘額與跨日更正
 

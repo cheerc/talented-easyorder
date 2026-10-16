@@ -139,7 +139,7 @@ function validDay(id: string, overrides: Record<string, unknown> = {}) {
       mealTotal: 0,
       retainedReceipts: 0,
       cashierIncome: 0,
-      cashierExpense: 0,
+      cashierExpense: 0, accountRefunds: 0,
     },
     lastSettlementRevision: 0,
     lastCommandId: previousCommandId,
@@ -313,7 +313,7 @@ describe('cloud day/vendor repository mocked server reads', () => {
     await expect(repo().loadSnapshot('2026-10-16')).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
   });
 
-  it.each(['mealTotal', 'retainedReceipts', 'cashierIncome', 'cashierExpense'] as const)(
+  it.each(['mealTotal', 'retainedReceipts', 'cashierIncome', 'cashierExpense', 'accountRefunds'] as const)(
     'rejects day money total %s above 1,000,000,000', async field => {
       setupReadMocks({
         targetDays: {

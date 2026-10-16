@@ -44,6 +44,8 @@ Base: `origin/main`（SHA `fc7943970a5ceb86d841eeca8be6a75d3ba75dec`，含 P08 #
 
 `totalIncome = retainedReceipts + cashierIncome`；`totalExpense = cashierExpense`；`netCash = totalIncome − totalExpense`；`expectedCash = openingCash + netCash`。餐費不是現金支出。開帳現金未確認時顯示「開帳現金未確認，無法計算」。
 
+P09b 起 `netCash` 另減 `accountRefunds`（帳戶退款），見 [P09b 退款契約](2026-10-16-cloud-refund-contract.md) §5。
+
 右欄「今日現金」卡片列出開帳現金、學生收款、櫃台收入、櫃台支出、應有現金與當日櫃台收支明細。L05 範例：開帳 1,000、學生收款 200、收入 50、支出 80，應有現金 1,170。
 
 ## 5. 讀取與對帳

@@ -13,8 +13,8 @@ describe('cloudCommands: 型別常數與 cashEffect 驗證', () => {
     expect(schemaVersion).toBe(1);
   });
 
-  it('涵蓋 spec §6.1 規定的 23 種 command kinds', () => {
-    expect(ALL_COMMAND_KINDS).toHaveLength(23);
+  it('涵蓋 spec §6.1 規定的 24 種 command kinds（含 P09b CreateRefund）', () => {
+    expect(ALL_COMMAND_KINDS).toHaveLength(24);
     expect(ALL_COMMAND_KINDS).toContain('CreateStudent');
     expect(ALL_COMMAND_KINDS).toContain('ChangeStudentCode');
     expect(ALL_COMMAND_KINDS).toContain('EditStudent');
@@ -28,6 +28,7 @@ describe('cloudCommands: 型別常數與 cashEffect 驗證', () => {
     expect(ALL_COMMAND_KINDS).toContain('CreateOrder');
     expect(ALL_COMMAND_KINDS).toContain('CreatePayment');
     expect(ALL_COMMAND_KINDS).toContain('CreateCashMovement');
+    expect(ALL_COMMAND_KINDS).toContain('CreateRefund');
     expect(ALL_COMMAND_KINDS).toContain('CorrectTransaction');
     expect(ALL_COMMAND_KINDS).toContain('VoidTransaction');
     expect(ALL_COMMAND_KINDS).toContain('CancelKeepDeposit');
