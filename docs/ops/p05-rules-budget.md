@@ -303,7 +303,7 @@ The Rules suite without the P09b Rules (main's Rules against the refund spec) fa
 
 ## P10a transaction mutations — budget and probe receipt
 
-P10a enables `CorrectTransaction`, `VoidTransaction`, `CancelKeepDeposit`, `CancelRefund` and `Undo` (18 enabled kinds; 6 still denied). Contract: [P10a transaction mutations contract](../superpowers/specs/2026-10-16-cloud-transaction-mutations-contract.md).
+P10a enables `CorrectTransaction`, `VoidTransaction`, `CancelKeepDeposit`, `CancelRefund` and `Undo`. After merging main `b33fc6b` (P14 adds `RecordBackup`), 19 kinds are enabled and 5 still denied. Contract: [P10a transaction mutations contract](../superpowers/specs/2026-10-16-cloud-transaction-mutations-contract.md).
 
 ### Write budget
 
@@ -391,3 +391,20 @@ Each mutant removes one P10a check from `firestore.rules` and runs all of `cloud
 | expense keeps its direction | survived, not isolated: under the mutant, the both-sides attacks in `P10.25` are still denied, but at the 1,000-expression cap on the deny path rather than by logic (the same caveat as the P05 negative cases). The legal counter-cash correction path has +20 on the command rule. |
 
 The new Emulator suite against main's Rules fails 21 of 47 cases (RED); with the P10a Rules it passes 47/47.
+
+### After merging P14 (`b33fc6b`)
+
+`validCommandCreate` gains a last `RecordBackup` branch with the same `validRecordBackup(commandId, command, command.before.head, command.after.head)` arguments as main; `headCommand` keeps main's `RecordBackup` clause. Re-measured on the merged Rules:
+
+| Rule anchor | Case | Main `b33fc6b` | P10a merged |
+|---|---|---:|---:|
+| command create | `P10.17` every kind, 500-char reason and note | — | +19 / +20 |
+| dataHead update | `P10.17` | — | +95 / +96 |
+| command create | `P10.12` refund corrections | — | +19 / +20 |
+| command create | `P09b.9` refund, max payload | — | +19 / +20 |
+| command create | `P08.8` CreateOrder | — | +20 / +21 |
+| command create | P14 atomic `RecordBackup` receipt | — | +74 / +75 |
+| dataHead update | P14 atomic `RecordBackup` receipt | — | +41 / +42 |
+| command create | P14 `CreateStudent` writer integration | +2 / +4 | +3 / +4 |
+
+The new P14 compatibility case (real P10a receipts through export and replay) is capped at **+3** on the command rule by its `CreateStudent` write. That limit already exists on main (+2 to +3, measured with the same probe on main's Rules), so it is not caused by P10a; the dispatch rewrite gives it one more term. Re-measure `CreateStudent` before adding any check to the command rule's earlier branches.

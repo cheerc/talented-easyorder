@@ -303,3 +303,4 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - 畫面測試新增 8 項（撤回、5 秒消失、更正預覽、取消退款／留款、作廢列、櫃台收支更正、退款更正負餘額、版本衝突）；單元測試 `cloudTransactionMutation.test.ts` 25 項。
 - Cloud E2E 19/19（新 D06：繳費 200 在 5 秒內撤回；其他餐點 80／實收 100 更正為 70，再取消並退款；reload 後兩筆都是已作廢，命令保留前值與理由），使用本機 Chromium 1194，不取代 CI pinned Chromium。
 - 無 production 部署、無正式金鑰。
+- 審查後合併 main `b33fc6b3015d277664a47dba86d8ccde5cf4ed44`（P14 #496、#498）：`validCommandCreate` 加入 `RecordBackup`（已啟用 19、拒絕 5）；備份 decoder／replay 接受 5 種 P10a kind，`cloudBackup.spec.ts` 新增真實 P10a 命令的匯出→解密→replay 案例（17/17）。合併後重量：指令規則 P10.17／P10.12／P09b.9 仍 +19；`CreateStudent` 指令規則只有 +3（main 上就是 +2～+3，不是 P10a 造成）。驗證數字以 PR body 為準。
