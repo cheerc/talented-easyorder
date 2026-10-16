@@ -385,6 +385,9 @@ export type RecordBackupCommand = BaseCommand<
   {
     backupType: string;
     sourceSeq: number;
+    fromSeq: number;
+    toSeq: number;
+    sha256: string;
   },
   Record<string, unknown>
 >;
