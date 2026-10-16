@@ -19,6 +19,7 @@ import {
   createCloudCommandRepository,
   type CloudCommandRepositoryOptions,
 } from './cloudCommandRepository';
+import { CASHIER_NAME_SNAPSHOT, CASHIER_STUDENT_ID } from '../domain/cloudCommandSchema';
 import { decodeCloudDayRecord, type CloudDayRecord } from './cloudDayVendorRepository';
 import { listCloudStudents, type CloudStudentRecord } from './cloudStudentRepository';
 import { accessLeasePath, dataHeadPath, dayPath } from './firestorePaths';
@@ -35,7 +36,8 @@ export interface CloudOrderTransactionRecord {
   transactionId: string;
   studentId: string;
   businessDate: string;
-  type: 'order' | 'payment';
+  /** `expense` rows are counter cash (studentId `__cashier__`): income has paidAmount, expense has mealPrice. */
+  type: 'order' | 'payment' | 'expense';
   mealKind: 'bento' | 'other' | null;
   mealPrice: number;
   paidAmount: number;
@@ -106,6 +108,29 @@ export interface CreateCloudOrderInput {
   menuRevision: number | null;
   otherItemName: string | null;
   note: string;
+}
+
+export interface CreateCloudPaymentInput {
+  commandId: string;
+  transactionId: string;
+  leaseEpoch: number;
+  studentId: string;
+  dayId: string;
+  expectedStudentRevision: number;
+  expectedDayRevision: number;
+  paidAmount: number;
+  note: string;
+}
+
+export interface CreateCloudCashMovementInput {
+  commandId: string;
+  transactionId: string;
+  leaseEpoch: number;
+  dayId: string;
+  expectedDayRevision: number;
+  direction: 'income' | 'expense';
+  amount: number;
+  reason: string;
 }
 
 function plainRecord(value: unknown): value is Data {
@@ -208,7 +233,10 @@ function decodeLease(value: unknown, uid: string): string {
   return taipeiDate(value.updatedAt);
 }
 
-/** Strict decode matching the Rules `validTransactionDoc` shape; unknown types (P09+) fail closed. */
+/**
+ * Strict decode matching the Rules `validTransactionDoc` (order/payment) and `validCashMovementTransactionDoc`
+ * (expense) shapes; any other type fails closed.
+ */
 export function decodeCloudOrderTransaction(id: string, value: unknown, businessDate: string, headSeq: number): CloudOrderTransactionRecord {
   const keys = [
     'transactionId', 'studentId', 'businessDate', 'type', 'mealKind', 'mealPrice', 'paidAmount',
@@ -219,16 +247,20 @@ export function decodeCloudOrderTransaction(id: string, value: unknown, business
   const fail = () => new CloudOrderRepositoryError('UNSUPPORTED_SCHEMA', `交易文件 ${id} schema 不支援`);
   if (!validDocumentId(id) || !exactKeys(value, keys) || value.transactionId !== id) throw fail();
   const order = value.type === 'order';
+  const expense = value.type === 'expense';
   const bento = order && value.mealKind === 'bento';
   const other = order && value.mealKind === 'other';
-  if ((value.type !== 'order' && value.type !== 'payment')
-    || !validDocumentId(value.studentId) || value.studentId === '__cashier__'
+  if ((value.type !== 'order' && value.type !== 'payment' && !expense)
+    || !validDocumentId(value.studentId) || (expense ? value.studentId !== CASHIER_STUDENT_ID : value.studentId === CASHIER_STUDENT_ID)
     || value.businessDate !== businessDate
     || (order ? !(bento || other) : value.mealKind !== null)
-    || !integer(value.mealPrice, 0, 1_000_000) || (!order && value.mealPrice !== 0)
-    || !integer(value.paidAmount, order ? 0 : 1, 1_000_000)
+    || !integer(value.mealPrice, 0, 1_000_000) || (value.type === 'payment' && value.mealPrice !== 0)
+    || !integer(value.paidAmount, value.type === 'payment' ? 1 : 0, 1_000_000)
+    || (expense && !((value.mealPrice === 0 && value.paidAmount > 0) || (value.paidAmount === 0 && value.mealPrice > 0)))
     || value.amount !== (value.paidAmount as number) - (value.mealPrice as number)
+    || typeof value.note !== 'string' || value.note.length > 500
     || typeof value.studentNameSnapshot !== 'string' || value.studentNameSnapshot.length < 1 || value.studentNameSnapshot.length > 100
+    || (expense && (value.studentNameSnapshot !== CASHIER_NAME_SNAPSHOT || value.note.length < 1))
     || typeof value.menuNameSnapshot !== 'string' || typeof value.vendorIdSnapshot !== 'string'
     || typeof value.vendorNameSnapshot !== 'string' || !integer(value.menuPriceSnapshot, 0, 1_000_000)
     || (bento
@@ -245,7 +277,6 @@ export function decodeCloudOrderTransaction(id: string, value: unknown, business
     || typeof value.operatorUid !== 'string' || !value.operatorUid
     || typeof value.operatorEmail !== 'string' || !value.operatorEmail
     || typeof value.sourceDevice !== 'string' || !value.sourceDevice
-    || typeof value.note !== 'string' || value.note.length > 500
     || typeof value.lastCommandId !== 'string' || !UUID.test(value.lastCommandId)) {
     throw fail();
   }
@@ -256,7 +287,7 @@ export function decodeCloudOrderTransaction(id: string, value: unknown, business
     transactionId: id,
     studentId: value.studentId,
     businessDate,
-    type: value.type as 'order' | 'payment',
+    type: value.type as 'order' | 'payment' | 'expense',
     mealKind: value.mealKind as 'bento' | 'other' | null,
     mealPrice: value.mealPrice,
     paidAmount: value.paidAmount,
@@ -281,8 +312,9 @@ export function decodeCloudOrderTransaction(id: string, value: unknown, business
 }
 
 /**
- * The same contribution rules as spec §7.1 / Rules `validDayAdvance`: active orders count meals and meal price,
- * every active non-expense row counts retained receipts, voided rows contribute nothing.
+ * The same contribution rules as spec §7.1 / Rules `validDayAdvance` and `validDayCashMovementProjection`:
+ * active orders count meals and meal price, every active non-expense row counts retained receipts, active
+ * expense rows split into cashierIncome (paidAmount) and cashierExpense (mealPrice), voided rows contribute nothing.
  */
 export function reconcileDayTotals(day: CloudDayRecord | null, transactions: CloudOrderTransactionRecord[]): void {
   const active = transactions.filter(tx => tx.status === 'active');
@@ -297,9 +329,9 @@ export function reconcileDayTotals(day: CloudDayRecord | null, transactions: Clo
     bentoCount: active.filter(tx => tx.type === 'order' && tx.mealKind === 'bento').length,
     otherMealCount: active.filter(tx => tx.type === 'order' && tx.mealKind === 'other').length,
     mealTotal: active.reduce((sum, tx) => sum + (tx.type === 'order' ? tx.mealPrice : 0), 0),
-    retainedReceipts: active.reduce((sum, tx) => sum + tx.paidAmount, 0),
-    cashierIncome: 0,
-    cashierExpense: 0,
+    retainedReceipts: active.reduce((sum, tx) => sum + (tx.type === 'expense' ? 0 : tx.paidAmount), 0),
+    cashierIncome: active.reduce((sum, tx) => sum + (tx.type === 'expense' ? tx.paidAmount : 0), 0),
+    cashierExpense: active.reduce((sum, tx) => sum + (tx.type === 'expense' ? tx.mealPrice : 0), 0),
   };
   const mismatched = (Object.keys(computed) as Array<keyof typeof computed>)
     .filter(key => computed[key] !== day.totals[key]);
@@ -363,7 +395,7 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
       const { students } = await listCloudStudents(db, options);
       const transactions = await readDayTransactions(db, today, before.seq, pageSize);
       const studentIds = new Set(students.map(student => student.studentId));
-      const orphan = transactions.find(tx => !studentIds.has(tx.studentId));
+      const orphan = transactions.find(tx => tx.type !== 'expense' && !studentIds.has(tx.studentId));
       if (orphan) {
         throw new CloudOrderRepositoryError('RECONCILIATION_FAILED', `交易 ${orphan.transactionId} 指向不存在的學生；請聯絡系統維護者`);
       }
@@ -412,9 +444,41 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
     });
   }
 
+  function createPayment(input: CreateCloudPaymentInput): Promise<CommandResult> {
+    return commands.commitCommand({
+      commandId: input.commandId,
+      kind: 'CreatePayment',
+      leaseEpoch: input.leaseEpoch,
+      targets: { transactionId: input.transactionId, studentId: input.studentId, dayId: input.dayId },
+      expectedRevisions: {
+        transaction: 0,
+        student: input.expectedStudentRevision,
+        day: input.expectedDayRevision,
+      },
+      payload: { paidAmount: input.paidAmount, note: input.note },
+    });
+  }
+
+  function createCashMovement(input: CreateCloudCashMovementInput): Promise<CommandResult> {
+    return commands.commitCommand({
+      commandId: input.commandId,
+      kind: 'CreateCashMovement',
+      leaseEpoch: input.leaseEpoch,
+      targets: { transactionId: input.transactionId, dayId: input.dayId },
+      expectedRevisions: { transaction: 0, day: input.expectedDayRevision },
+      payload: {
+        mealPrice: input.direction === 'expense' ? input.amount : 0,
+        paidAmount: input.direction === 'income' ? input.amount : 0,
+        reason: input.reason,
+      },
+    });
+  }
+
   return {
     loadSnapshot,
     createOrder,
+    createPayment,
+    createCashMovement,
     readCommand: (commandId: string): Promise<CommandReceipt | null> => commands.readCommand(commandId),
   };
 }

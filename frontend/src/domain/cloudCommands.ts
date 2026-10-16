@@ -279,7 +279,6 @@ export type CreateCashMovementCommand = BaseCommand<
   {
     mealPrice: number;
     paidAmount: number;
-    note: string;
     reason: string;
   },
   { transactionId: string; dayId: string }

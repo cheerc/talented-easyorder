@@ -363,3 +363,20 @@
 .cloud-orders__muted {
   color: #64748b;
 }
+
+.cloud-orders__cash-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.cloud-orders__cash-list dt {
+  color: #475569;
+}
+
+.cloud-orders__cash-list dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

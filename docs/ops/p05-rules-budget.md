@@ -213,3 +213,34 @@ In Firestore Security Rules for `delete` operations, `request.resource` is null.
    - `studentAfter.studentCode == command.payload.studentCode`
 
 This design specifies the static authorization closure without relying on client-supplied IDs or caching. It estimates 3 access calls in the delete leaf rule evaluation and 20 no-cache access calls for the entire atomic commit (10 for central create, 9 for projection leaves, 1 for lease VerifyMutation, reaching the exact 20/20 limit and 10/10 single write ceiling). These figures are static WIP estimates subject to Emulator proof, and the independent 1,000-expression ceiling per document write must be verified in the test suite before claiming compliance.
+
+## P09a cloud payments and counter cash movement — budget and probe receipt
+
+P09a enables `CreateCashMovement` (12 enabled kinds; 11 still denied). `CreatePayment` keeps its P05 path and Rules unchanged; P09a only opens its F1 entry (W). Contract: [P09a cloud payments and cash contract](../superpowers/specs/2026-10-16-cloud-payments-cash-contract.md).
+
+### Write budget
+
+| Command / write path | Central command-create Rules calls | Projection leaves Rules calls | Read-but-unwritten `VerifyMutation` dependencies | Atomic no-cache total | Max per write |
+|---|---:|---:|---:|---:|---:|
+| `CreateCashMovement` (command + dataHead + day + new transaction; no student) | commandHolder 2 + head before/after 2 + day before/after 2 + transaction getAfter/exists 2 = **8** | head 2 + day (command getAfter/exists) 2 + transaction (command getAfter/exists) 2 = **6** | operator 0 + lease `approvedOperator` 1 = **1** | **15/20** | **8/10** |
+
+### Placement and expression headroom
+
+Each new branch is the last alternative in its `||` chain (command create dispatch, `dayWriteCommand`, `transactionCommand`), so existing kinds stop before reaching it. The transaction document check is one exact map equality (24 keys) instead of `exactMap` plus 24 field equalities; the semantics are the same and it is evaluated in both the command rule and the transaction leaf.
+
+Probe method: insert N inline `1 == 1 &&` terms at the start of one rule's condition and bisect pass/fail against an existing positive Emulator case (`EASYORDER_TEST_RULES_PATH` points the suite at the probe file). One unit is one inline term, finer than the `pad10()` units used in the P07 appendix. These are probe margins, not runtime counters.
+
+| Rule anchor | Case | main `fc79439` (pass / fail) | P09a (pass / fail) |
+|---|---|---:|---:|
+| day update | `P07.9a` inherited menu (worst day path) | +28 / +29 | +28 / +29 |
+| day update | `P08.8` CreateOrder | +11 / +12 | +11 / +12 |
+| transaction create | `P08.8` CreateOrder | +34 / +35 | +34 / +35 |
+| command create | `P08.8` CreateOrder | +17 / +18 | +16 / +17 |
+| day update | `P09.8` cash movement, max payload | — | +48 / +49 |
+| transaction create | `P09.8` cash movement, max payload | — | +95 / +96 |
+| command create | `P09.8` cash movement, max payload | — | +26 / +27 |
+| dataHead update | `P09.8` cash movement, max payload | — | passes at +80 |
+
+The first cash-path draft compared the transaction document field by field and left the command rule at +0 / +1 for `P09.8`. Rewriting that check as one map equality raised it to +26 without dropping any check; a mutant that changes one expected field (`sourceDevice`) makes the seven positive cash cases fail.
+
+P09b (`CreateRefund` plus `day.totals.accountRefunds`) touches `validTotals`, `validNewDay`, `validDayAdvance` and `validDayNonMenu`, which every day path evaluates. Re-measure `P07.9a` (day +28) and `P08.8` (day +11) before and after that change.
