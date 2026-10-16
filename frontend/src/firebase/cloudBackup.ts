@@ -1,4 +1,7 @@
 /** Versioned, client-side encrypted command archive. No credentials or keys are persisted. */
+import { Timestamp } from 'firebase/firestore';
+import { decodeEnabledCommandDoc, normalizeEnabledCommandInput } from '../domain/cloudCommandSchema';
+
 export const BACKUP_FORMAT = 'easyorder-command-backup' as const;
 export const BACKUP_SCHEMA_VERSION = 1 as const;
 export const BACKUP_KDF_ITERATIONS = 600_000;
@@ -90,6 +93,12 @@ const PROJECTIONS_BY_KIND: Record<string, string[]> = {
   CloseDay: ['day', 'settlement'], ReopenDay: ['day', 'settlement'],
   RecordExport: [], RecordPrint: [], RecordBackup: [],
 };
+const DECODABLE_COMMAND_KINDS = new Set([
+  'EnsureDay', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus', 'SaveVendor',
+  'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateOrder', 'CreatePayment', 'CreateCashMovement',
+  'CreateRefund', 'RecordBackup',
+]);
+const SUPPORTED_INACTIVE_KINDS = new Set(['CorrectTransaction', 'CloseDay', 'ReopenDay']);
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -126,6 +135,99 @@ function isSerializedTimestamp(value: unknown): boolean {
   return isPlainRecord(value) && value._type === 'timestamp'
     && Number.isSafeInteger(value.seconds) && Number.isSafeInteger(value.nanoseconds)
     && (value.nanoseconds as number) >= 0 && (value.nanoseconds as number) < 1_000_000_000;
+}
+
+function reviveTimestamps(value: unknown): unknown {
+  if (isPlainRecord(value) && value._type === 'timestamp'
+    && Number.isSafeInteger(value.seconds) && Number.isSafeInteger(value.nanoseconds)) {
+    return new Timestamp(value.seconds as number, value.nanoseconds as number);
+  }
+  if (Array.isArray(value)) return value.map(reviveTimestamps);
+  if (isPlainRecord(value)) return Object.fromEntries(Object.entries(value).map(([key, nested]) => [key, reviveTimestamps(nested)]));
+  return value;
+}
+
+function validateEnabledReceiptSemantics(record: BackupCommandRecord): void {
+  const input = normalizeEnabledCommandInput({
+    commandId: record.commandId, kind: record.kind, leaseEpoch: record.leaseEpoch,
+    targets: record.targets, expectedRevisions: record.expectedRevisions, payload: record.payload,
+  });
+  if (!sameValue(input.targets, record.targets) || !sameValue(input.expectedRevisions, record.expectedRevisions)
+    || !sameValue(input.payload, record.payload)) {
+    throw new BackupValidationError(`command seq ${record.seq} payload 不是正規化命令值`);
+  }
+  const committedAt = reviveTimestamps(record.committedAt);
+  const decoded = decodeEnabledCommandDoc({
+    commandId: record.commandId, kind: record.kind, seq: record.seq, leaseEpoch: record.leaseEpoch,
+    actor: record.actor, committedAt, businessDate: record.businessDate, studentId: record.studentId,
+    targets: record.targets, expectedRevisions: record.expectedRevisions,
+    before: reviveTimestamps(record.before), after: reviveTimestamps(record.after), reason: record.reason,
+    cashEffect: record.cashEffect, payload: record.payload, inputFingerprint: record.inputFingerprint,
+  });
+  if (decoded.commandId !== record.commandId) throw new BackupValidationError(`command seq ${record.seq} receipt commandId 不符`);
+}
+
+function validateNonEnabledP10P11Semantics(record: BackupCommandRecord): void {
+  const payload = record.payload;
+  const before = record.before as Record<string, unknown>;
+  const after = record.after as Record<string, unknown>;
+  if (record.kind === 'CorrectTransaction') {
+    if (!hasExactlyKeys(payload, ['mealPrice', 'paidAmount', 'note', 'reason'])
+      || !signedSafeInteger(payload.mealPrice) || (payload.mealPrice as number) < 0
+      || !signedSafeInteger(payload.paidAmount) || (payload.paidAmount as number) < 0
+      || typeof payload.note !== 'string' || payload.note.length > 500
+      || typeof payload.reason !== 'string' || payload.reason.length < 1 || payload.reason.length > 500
+      || record.reason !== payload.reason) {
+      throw new BackupValidationError(`command seq ${record.seq} CorrectTransaction payload schema 無效`);
+    }
+    const transaction = after.transaction as Record<string, unknown>;
+    if (transaction.mealPrice !== payload.mealPrice || transaction.paidAmount !== payload.paidAmount
+      || transaction.note !== payload.note || transaction.amount !== Number(payload.paidAmount) - Number(payload.mealPrice)) {
+      throw new BackupValidationError(`command seq ${record.seq} CorrectTransaction payload 與交易投影不一致`);
+    }
+    return;
+  }
+  const target = record.targets as Record<string, unknown>;
+  const revisions = record.expectedRevisions as Record<string, unknown>;
+  const dayBefore = before.day as Record<string, unknown>;
+  const dayAfter = after.day as Record<string, unknown>;
+  const settlementBefore = before.previousSettlement as Record<string, unknown> | null;
+  const settlementAfter = after.settlement as Record<string, unknown>;
+  const expectedSettlementRevision = Number(revisions.settlement) + 1;
+  if (record.kind === 'CloseDay') {
+    const dayTotals = dayBefore.totals as Record<string, unknown>;
+    const expectedCash = Number(dayBefore.openingCash) + Number(dayTotals.retainedReceipts)
+      + Number(dayTotals.cashierIncome) - Number(dayTotals.cashierExpense) - Number(dayTotals.accountRefunds);
+    if (!hasExactlyKeys(payload, ['countedCash', 'note', 'expectedCash'])
+      || !signedSafeInteger(payload.countedCash) || (payload.countedCash as number) < 0
+      || !signedSafeInteger(payload.expectedCash) || (payload.expectedCash as number) < 0
+      || typeof payload.note !== 'string' || payload.note.length > 500
+      || !Number.isSafeInteger(expectedCash) || payload.expectedCash !== expectedCash
+      || typeof dayBefore.openingCash !== 'number'
+      || payload.expectedCash !== payload.countedCash && !(payload.note as string).trim()
+      || !['open', 'reopened'].includes(String(dayBefore.status)) || dayAfter.status !== 'closed'
+      || Number(dayBefore.lastSettlementRevision) !== Number(revisions.settlement)
+      || Number(target.settlementRevision) !== Number(revisions.settlement) + 1
+      || (settlementBefore !== null && settlementBefore.status !== 'reopened')
+      || Number(dayAfter.lastSettlementRevision) !== expectedSettlementRevision
+      || Number(target.settlementRevision) !== expectedSettlementRevision
+      || settlementAfter.status !== 'closed') {
+      throw new BackupValidationError(`command seq ${record.seq} CloseDay payload/day/settlement 語義無效`);
+    }
+  } else if (record.kind === 'ReopenDay') {
+    if (!hasExactlyKeys(payload, ['reason']) || typeof payload.reason !== 'string'
+      || payload.reason.length < 1 || payload.reason.length > 500
+      || record.reason !== payload.reason
+      || dayBefore.status !== 'closed' || dayAfter.status !== 'reopened'
+      || Number(dayBefore.lastSettlementRevision) !== Number(revisions.settlement)
+      || Number(target.settlementRevision) !== Number(revisions.settlement) + 1
+      || settlementBefore?.status !== 'closed'
+      || Number(dayAfter.lastSettlementRevision) !== expectedSettlementRevision
+      || Number(target.settlementRevision) !== expectedSettlementRevision
+      || settlementAfter.status !== 'reopened') {
+      throw new BackupValidationError(`command seq ${record.seq} ReopenDay payload/day/settlement 語義無效`);
+    }
+  }
 }
 
 function validateProjectionSnapshot(
@@ -190,7 +292,8 @@ function validateProjectionSnapshot(
       throw new BackupValidationError(`command seq ${record.seq} transaction 金額語義無效`);
     }
   } else if (projection === 'settlement') {
-    if (value.dayId !== target.dayId || !['closed', 'reopened'].includes(String(value.status))
+    if (!hasExactlyKeys(value, ['dayId', 'revision', 'status', 'sourceSeq', 'lastCommandId', 'committedAt'])
+      || value.dayId !== target.dayId || !['closed', 'reopened'].includes(String(value.status))
       || (after && (value.revision !== target.settlementRevision || value.sourceSeq !== record.seq))
       || (!after && (value.revision !== Number(target.settlementRevision) - 1 || !Number.isSafeInteger(value.sourceSeq)
         || (value.sourceSeq as number) >= record.seq))
@@ -283,6 +386,7 @@ function replayProjections(records: BackupCommandRecord[], initial: Record<strin
     const unknownProjection = [...new Set([...Object.keys(before), ...Object.keys(after)])]
       .filter(key => key !== 'head' && !['day', 'student', 'vendor', 'transaction', 'settlement', 'previousSettlement'].includes(key));
     if (unknownProjection.length) throw new BackupValidationError(`command seq ${record.seq} 含未知投影：${unknownProjection.join(', ')}`);
+    recalculateDayTotals(state);
   }
   recalculateDayTotals(state);
   return state;
@@ -427,6 +531,7 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
       || (seq === 1 ? headBefore.lastCommandId !== null : typeof headBefore.lastCommandId !== 'string')
       || !validBusinessDate(headBefore.goLiveDate) || !validBusinessDate(headAfter.goLiveDate)
       || !isSerializedTimestamp(headBefore.updatedAt) || !isSerializedTimestamp(headAfter.updatedAt)
+      || !isSerializedTimestamp(record.committedAt)
       || typeof headBefore.maintenance !== 'boolean' || typeof headAfter.maintenance !== 'boolean'
       || !Number.isSafeInteger(record.leaseEpoch) || record.leaseEpoch < 0) {
       throw new BackupValidationError(`備份命令鏈在 seq ${seq} 不連續或欄位無效`);
@@ -541,6 +646,17 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
         || !/^[a-f0-9]{64}$/.test(String(payload.sha256))) {
         throw new BackupValidationError(`RecordBackup receipt 在 seq ${seq} 無法驗證`);
       }
+    }
+    if (DECODABLE_COMMAND_KINDS.has(record.kind)) {
+      try {
+        validateEnabledReceiptSemantics(record);
+      } catch (error) {
+        throw new BackupValidationError(`command seq ${seq} payload/receipt 語義無效：${error instanceof Error ? error.message : 'unknown error'}`);
+      }
+    } else if (SUPPORTED_INACTIVE_KINDS.has(record.kind)) {
+      validateNonEnabledP10P11Semantics(record);
+    } else {
+      throw new BackupValidationError(`command seq ${seq} kind ${record.kind} 尚無完整備份語義，拒絕匯出`);
     }
     ids.add(record.commandId);
   });

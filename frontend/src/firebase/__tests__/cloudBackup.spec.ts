@@ -229,18 +229,51 @@ describeWithEmulator('P14 cloud backup', () => {
     expect(opened.totals?.['2026-10-16']).toMatchObject({ activeTransactionCount: 0 });
   });
 
-  it('allows a verified old H receipt when dataHead advanced after package creation', async () => {
-    const first = uuid(88);
-    await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 1, [first]));
-    const input = {
-      commandId: uuid(89), kind: 'RecordBackup', leaseEpoch: 7,
-      targets: {}, expectedRevisions: {},
-      payload: { backupType: 'command-incremental', sourceSeq: 1, fromSeq: 1, toSeq: 1, sha256: 'c'.repeat(64) },
-    };
+  it('rejects CreateStudent payload mutations that disagree with the stored projection', async () => {
+    await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 0, []));
+    const db = authedDb();
     const user = { uid: operator.uid, email: operator.email, emailVerified: true, providerData: [{ providerId: 'google.com' }] } as unknown as User;
-    const result = await createCloudCommandRepository(authedDb(), { currentUser: () => user }).commitCommand(input);
+    const studentId = uuid(96);
+    const committed = await createCloudCommandRepository(db, { currentUser: () => user }).commitCommand({
+      commandId: uuid(97), kind: 'CreateStudent', leaseEpoch: 7,
+      targets: { studentId }, expectedRevisions: { student: 0 },
+      payload: { studentCode: '096', displayName: 'Anonymous fixture', aliases: [],
+        openingBalance: { amount: 100, asOfDate: '2026-10-16', note: '' } },
+    });
+    expect(committed.ok).toBe(true);
+    const { manifest } = await createCloudBackupRepository(db, { currentUid: () => operator.uid })
+      .exportRange({ fromSeq: 0, generatedAt: '2026-10-16T03:00:00.000Z' });
+    const wrongBalance = structuredClone(manifest);
+    (wrongBalance.records[0]!.payload.openingBalance as Record<string, unknown>).amount = 50;
+    expect(() => validateBackupManifest(wrongBalance)).toThrow(/payload\/receipt 語義無效/);
+    const wrongPayloadType = structuredClone(manifest);
+    wrongPayloadType.records[0]!.payload.studentCode = { value: '096' };
+    expect(() => validateBackupManifest(wrongPayloadType)).toThrow(/payload\/receipt 語義無效/);
+  });
+
+  it('allows a verified old H receipt when dataHead advanced after package creation', async () => {
+    await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 0, []));
+    const db = authedDb();
+    const user = { uid: operator.uid, email: operator.email, emailVerified: true, providerData: [{ providerId: 'google.com' }] } as unknown as User;
+    const writer = createCloudCommandRepository(db, { currentUser: () => user });
+    const first = await writer.commitCommand({ commandId: uuid(88), kind: 'EnsureDay', leaseEpoch: 7,
+      targets: { dayId: '2026-10-16' }, expectedRevisions: { day: 0 }, payload: { businessDate: '2026-10-16' } });
+    expect(first.ok).toBe(true);
+    const exportedAtH = await createCloudBackupRepository(db, { currentUid: () => operator.uid })
+      .exportRange({ fromSeq: 0, generatedAt: '2026-10-16T03:00:00.000Z' });
+    expect(exportedAtH.toSeq).toBe(1);
+    const later = await writer.commitCommand({ commandId: uuid(89), kind: 'EnsureDay', leaseEpoch: 7,
+      targets: { dayId: '2026-10-17' }, expectedRevisions: { day: 0 }, payload: { businessDate: '2026-10-17' } });
+    expect(later.ok).toBe(true);
+    const input = {
+      commandId: uuid(98), kind: 'RecordBackup', leaseEpoch: 7,
+      targets: {}, expectedRevisions: {},
+      payload: { backupType: 'command-incremental', sourceSeq: 1, fromSeq: 0, toSeq: 1, sha256: await sha256Hex(await encryptBackup(exportedAtH.manifest, 'stale-head-fixture')) },
+    };
+    const result = await writer.commitCommand(input);
     expect(result.ok).toBe(true);
-    expect((await getDoc(doc(authedDb(), 'system/dataHead'))).data()?.seq).toBe(2);
+    expect((await getDoc(doc(db, 'system/dataHead'))).data()?.seq).toBe(3);
+    expect((await getDoc(doc(db, 'commands', uuid(98)))).data()?.before.head.seq).toBe(2);
   });
 
   it('Rules reject an unpaired or fabricated backup receipt', async () => {
@@ -302,7 +335,7 @@ describeWithEmulator('P14 cloud backup', () => {
       datasetId: 'anonymous-p14-fixture', schemaVersion: 1,
       targets: {}, expectedRevisions: {}, before: { head: head(0, null) }, after: { head: head(1, uuid(1)) },
       payload: { backupType: 'command-incremental', sourceSeq: 0, fromSeq: 0, toSeq: 0, sha256: 'd'.repeat(64) },
-      actor: { uid: 'anonymous-fixture', email: 'anonymous@example.test' }, committedAt: '2026-10-16T03:00:00.000Z',
+      actor: { uid: 'anonymous-fixture', email: 'anonymous@example.test' }, committedAt: { _type: 'timestamp', seconds: 1, nanoseconds: 0 },
       businessDate: null, studentId: null, reason: null,
       cashEffect: { before: 0, after: 0, delta: 0, reasonKind: 'none', refundAmount: 0 }, inputFingerprint: 'c'.repeat(64),
     } as BackupCommandRecord;
@@ -323,69 +356,67 @@ describeWithEmulator('P14 cloud backup', () => {
     const head = (seq: number, commandId: string | null) => ({ schemaVersion: 1, datasetId: 'anonymous-p14-fixture', seq,
       lastCommandId: commandId, maintenance: false, goLiveDate: '2026-10-01', updatedAt: { _type: 'timestamp', seconds: seq, nanoseconds: 0 } });
     const timestamp = (seconds: number) => ({ _type: 'timestamp', seconds, nanoseconds: 0 });
-    const zeroTotals = { activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0, mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0 };
-    const orderTotals = { ...zeroTotals, activeTransactionCount: 1, bentoCount: 1, mealTotal: 50, retainedReceipts: 30 };
+    const orderTotals = { activeTransactionCount: 1, bentoCount: 1, otherMealCount: 0, mealTotal: 50, retainedReceipts: 30, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0 };
     const correctedTotals = { ...orderTotals, mealTotal: 60 };
     const studentId = uuid(2);
-    const student = (revision: number, currentBalance: number, lastCommandId: string) => ({ studentId, revision, currentBalance,
+    const student = (revision: number, currentBalance: number, lastCommandId: string) => ({ studentId, studentCode: '001',
+      displayName: 'Synthetic', aliases: [], revision, currentBalance,
       openingBalance: { amount: 100, asOfDate: '2026-10-16', note: '', createdAt: timestamp(1) },
       status: 'active', createdAt: timestamp(1), updatedAt: timestamp(revision), lastCommandId });
-    const day = (revision: number, status: string, lastSettlementRevision: number, totals: typeof zeroTotals, lastCommandId: string) => ({
-      revision, status, lastSettlementRevision, totals, lastCommandId, updatedAt: timestamp(revision),
+    const day = (revision: number, status: string, lastSettlementRevision: number, totals: typeof orderTotals, lastCommandId: string) => ({
+      revision, status, menu: null, openingCash: 0, openedBy: 'anonymous-fixture', openedAt: timestamp(1),
+      lastSettlementRevision, totals, lastCommandId, updatedAt: timestamp(revision),
     });
     const transaction = (revision: number, mealPrice: number, paidAmount: number, lastCommandId: string) => ({
       transactionId: 'transaction-1', studentId, businessDate: '2026-10-16', type: 'order',
-      mealKind: 'bento', mealPrice, paidAmount, amount: paidAmount - mealPrice, status: 'active', revision,
+      mealKind: 'bento', mealPrice, paidAmount, amount: paidAmount - mealPrice, studentNameSnapshot: 'Synthetic',
+      menuNameSnapshot: '', menuPriceSnapshot: 0, vendorIdSnapshot: '', vendorNameSnapshot: '', otherItemName: null,
+      status: 'active', revision, createdSeq: 3, operatorUid: 'anonymous-fixture',
+      operatorEmail: 'anonymous@example.test', sourceDevice: 'pc', note: revision === 4 ? 'synthetic correction' : '',
       createdAt: timestamp(1), updatedAt: timestamp(revision), lastCommandId,
     });
     const make = (index: number, kind: string, targets: Record<string, unknown>, expectedRevisions: Record<string, number>, before: Record<string, unknown>, after: Record<string, unknown>, payload: Record<string, unknown>): BackupCommandRecord => ({
       commandId: uuid(index), kind, seq: index, leaseEpoch: 7, datasetId: 'anonymous-p14-fixture', schemaVersion: 1,
-      targets, expectedRevisions, before: { head: head(index - 1, index === 1 ? null : uuid(index - 1)), ...before },
+      targets, expectedRevisions, before: { head: head(index - 1, uuid(index - 1)), ...before },
       after: { head: head(index, uuid(index)), ...after }, payload, actor: { uid: 'anonymous-fixture', email: 'anonymous@example.test' },
-      committedAt: '2026-10-16T03:00:00.000Z', businessDate: '2026-10-16', studentId: null,
-      reason: null, cashEffect: { before: 0, after: 0, delta: 0, reasonKind: 'none', refundAmount: 0 }, inputFingerprint: 'c'.repeat(64),
+      committedAt: timestamp(index), businessDate: kind === 'CorrectTransaction' ? '2026-10-16' : null,
+      studentId: kind === 'CorrectTransaction' ? studentId : null,
+      reason: kind === 'CorrectTransaction' || kind === 'ReopenDay' ? String(payload.reason) : null,
+      cashEffect: { before: 0, after: 0, delta: 0, reasonKind: 'none', refundAmount: 0 }, inputFingerprint: 'c'.repeat(64),
     });
     const records = [
-      make(1, 'EnsureDay', { dayId: '2026-10-16' }, { day: 0 }, { day: null }, { day: day(1, 'open', 0, zeroTotals, uuid(1)) }, { businessDate: '2026-10-16' }),
-      make(2, 'CreateStudent', { studentId }, { student: 0 }, { student: null },
-        { student: student(1, 100, uuid(2)) }, { studentCode: '001', displayName: 'Synthetic', aliases: [], openingBalance: { amount: 100, asOfDate: '2026-10-16', note: '' } }),
-      make(3, 'CreateOrder', { transactionId: 'transaction-1', studentId, dayId: '2026-10-16' },
-        { transaction: 0, student: 1, day: 1 }, { transaction: null, student: student(1, 100, uuid(2)), day: day(1, 'open', 0, zeroTotals, uuid(1)) },
-        { transaction: transaction(1, 50, 30, uuid(3)), student: student(2, 80, uuid(3)), day: day(2, 'open', 0, orderTotals, uuid(3)) },
-        { mealPrice: 50, paidAmount: 30, mealKind: 'bento', menuRevision: 1, otherItemName: null, note: '' }),
-      make(4, 'CorrectTransaction', { transactionId: 'transaction-1', studentId, dayId: '2026-10-16' },
-        { transaction: 1, student: 2, day: 2 }, { transaction: transaction(1, 50, 30, uuid(3)), student: student(2, 80, uuid(3)), day: day(2, 'open', 0, orderTotals, uuid(3)) },
-        { transaction: transaction(2, 60, 30, uuid(4)), student: student(3, 70, uuid(4)), day: day(3, 'open', 0, correctedTotals, uuid(4)) },
+      make(5, 'CorrectTransaction', { transactionId: 'transaction-1', studentId, dayId: '2026-10-16' },
+        { transaction: 3, student: 2, day: 4 }, { transaction: transaction(3, 50, 30, uuid(3)), student: student(2, 80, uuid(4)), day: day(4, 'open', 0, orderTotals, uuid(4)) },
+        { transaction: transaction(4, 60, 30, uuid(5)), student: student(3, 70, uuid(5)), day: day(5, 'open', 0, correctedTotals, uuid(5)) },
         { mealPrice: 60, paidAmount: 30, note: 'synthetic correction', reason: 'fixture' }),
-      make(5, 'CloseDay', { dayId: '2026-10-16', settlementRevision: 1 }, { day: 3, settlement: 0 },
-        { day: day(3, 'open', 0, correctedTotals, uuid(4)), previousSettlement: null },
-        { day: day(4, 'closed', 1, correctedTotals, uuid(5)), settlement: { dayId: '2026-10-16', revision: 1, status: 'closed', sourceSeq: 5, lastCommandId: uuid(5), committedAt: timestamp(5) } }, { countedCash: 30 }),
-      make(6, 'ReopenDay', { dayId: '2026-10-16', settlementRevision: 2 }, { day: 4, settlement: 1 },
-        { day: day(4, 'closed', 1, correctedTotals, uuid(5)), previousSettlement: { dayId: '2026-10-16', revision: 1, status: 'closed', sourceSeq: 5, lastCommandId: uuid(5), committedAt: timestamp(5) } },
-        { day: day(5, 'reopened', 2, correctedTotals, uuid(6)), settlement: { dayId: '2026-10-16', revision: 2, status: 'reopened', sourceSeq: 6, lastCommandId: uuid(6), committedAt: timestamp(6) } }, { reason: 'synthetic reopen' }),
+      make(6, 'CloseDay', { dayId: '2026-10-16', settlementRevision: 1 }, { day: 5, settlement: 0 },
+        { day: day(5, 'open', 0, correctedTotals, uuid(5)), previousSettlement: null },
+        { day: day(6, 'closed', 1, correctedTotals, uuid(6)), settlement: { dayId: '2026-10-16', revision: 1, status: 'closed', sourceSeq: 6, lastCommandId: uuid(6), committedAt: timestamp(6) } },
+        { countedCash: 30, note: '', expectedCash: 30 }),
+      make(7, 'ReopenDay', { dayId: '2026-10-16', settlementRevision: 2 }, { day: 6, settlement: 1 },
+        { day: day(6, 'closed', 1, correctedTotals, uuid(6)), previousSettlement: { dayId: '2026-10-16', revision: 1, status: 'closed', sourceSeq: 6, lastCommandId: uuid(6), committedAt: timestamp(6) } },
+        { day: day(7, 'reopened', 2, correctedTotals, uuid(7)), settlement: { dayId: '2026-10-16', revision: 2, status: 'reopened', sourceSeq: 7, lastCommandId: uuid(7), committedAt: timestamp(7) } },
+        { reason: 'synthetic reopen' }),
     ];
-    const projectionState = replayBackupProjections(records);
+    const baseState = { 'days/2026-10-16': day(4, 'open', 0, orderTotals, uuid(4)),
+      [`students/${studentId}`]: student(2, 80, uuid(4)),
+      'transactions/transaction-1': transaction(3, 50, 30, uuid(3)) };
+    const projectionState = replayBackupProjections(records, baseState);
     const manifest = createBackupManifest({ datasetId: 'anonymous-p14-fixture', commandSchemaVersion: 1,
-      fromSeq: 0, toSeq: records.length, headCommandId: records.at(-1)?.commandId ?? null,
+      fromSeq: 4, toSeq: 7, headCommandId: records.at(-1)?.commandId ?? null,
       previousPackageSha256: null, generatedAt: '2026-10-16T03:00:00.000Z',
-      records, baseState: {}, projectionState, totals: recalculateBackupTotals(projectionState) });
+      records, baseState, projectionState, totals: recalculateBackupTotals(projectionState) });
     expect(manifest.records.map(record => record.kind)).toContain('CorrectTransaction');
     expect(manifest.projectionState['daily_settlements/2026-10-16']).toMatchObject({ revision: 2, status: 'reopened' });
-    const invalidCases = [
-      (rows: BackupCommandRecord[]) => { rows[1]!.expectedRevisions = {}; },
-      (rows: BackupCommandRecord[]) => { (rows[1]!.before!.head as Record<string, unknown>).datasetId = 'other-dataset'; },
-      (rows: BackupCommandRecord[]) => { (rows[1]!.after!.head as Record<string, unknown>).schemaVersion = 2; },
-      (rows: BackupCommandRecord[]) => { ((rows[1]!.after!.student) as Record<string, unknown>).studentId = uuid(77); },
-      (rows: BackupCommandRecord[]) => { ((rows[1]!.after!.student) as Record<string, unknown>).revision = -1; },
-      (rows: BackupCommandRecord[]) => { ((rows[1]!.after!.student) as Record<string, unknown>).currentBalance = 300; },
-    ];
-    for (const mutate of invalidCases) {
-      const invalidRecords = structuredClone(records);
-      mutate(invalidRecords);
-      expect(() => validateBackupManifest({ ...manifest, records: invalidRecords })).toThrow();
-    }
+    const invalidClose = structuredClone(records);
+    (invalidClose[1]!.after!.day as Record<string, unknown>).status = 'open';
+    (invalidClose[1]!.after!.day as Record<string, unknown>).lastSettlementRevision = 0;
+    expect(() => validateBackupManifest({ ...manifest, records: invalidClose })).toThrow(/CloseDay payload\/day\/settlement/);
+    const invalidPayload = structuredClone(records);
+    invalidPayload[0]!.payload.mealPrice = { value: 60 };
+    expect(() => validateBackupManifest({ ...manifest, records: invalidPayload })).toThrow();
     const bad = records.map(record => ({ ...record }));
-    bad[3] = { ...bad[3], targets: { transactionId: 'other-transaction', studentId, dayId: '2026-10-16' } };
-    expect(() => replayBackupProjections(bad)).toThrow(/before 與前序重播狀態不符/);
+    bad[0] = { ...bad[0], targets: { transactionId: 'other-transaction', studentId, dayId: '2026-10-16' } };
+    expect(() => replayBackupProjections(bad, baseState)).toThrow(/before 與前序重播狀態不符/);
   });
 });
