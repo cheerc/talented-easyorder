@@ -3005,4 +3005,344 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     expect(payment).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
     expect(await capturePaths(paths)).toEqual(before);
   });
+
+  it('P08.1: legal bento CreateOrder with UUID studentId advances day totals and student balance atomically', async () => {
+    await seedBase({ withBusinessDocs: true });
+    const repo = repository(operatorA);
+    const commandId = 'b8011111-1111-4111-8111-111111111111';
+    const txId = 'b8012222-2222-4222-8222-222222222222';
+    const result = await repo.commitCommand({
+      commandId,
+      kind: 'CreateOrder',
+      leaseEpoch: 1,
+      targets: { transactionId: txId, studentId, dayId },
+      expectedRevisions: { transaction: 0, student: 1, day: 1 },
+      payload: {
+        mealKind: 'bento',
+        mealPrice: 100,
+        paidAmount: 110,
+        menuRevision: 1,
+        otherItemName: null,
+        note: 'P08 bento order',
+      },
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+
+    const db = authedDb(operatorA);
+    const headDoc = await getDoc(doc(db, 'system/dataHead'));
+    const studentDoc = await getDoc(doc(db, `students/${studentId}`));
+    const dayDoc = await getDoc(doc(db, `days/${dayId}`));
+    const txDoc = await getDoc(doc(db, `transactions/${txId}`));
+    const cmdDoc = await getDoc(doc(db, `commands/${commandId}`));
+
+    expect(headDoc.data()?.seq).toBe(1);
+    expect(headDoc.data()?.lastCommandId).toBe(commandId);
+
+    expect(studentDoc.data()).toMatchObject({
+      studentId,
+      studentCode: '001',
+      currentBalance: 10,
+      revision: 2,
+      lastCommandId: commandId,
+    });
+
+    expect(dayDoc.data()?.totals).toMatchObject({
+      activeTransactionCount: 1,
+      bentoCount: 1,
+      otherMealCount: 0,
+      mealTotal: 100,
+      retainedReceipts: 110,
+    });
+
+    expect(txDoc.data()).toMatchObject({
+      transactionId: txId,
+      studentId,
+      businessDate: dayId,
+      type: 'order',
+      mealKind: 'bento',
+      mealPrice: 100,
+      paidAmount: 110,
+      amount: 10,
+      menuNameSnapshot: 'Synthetic Bento',
+      otherItemName: null,
+      status: 'active',
+      revision: 1,
+      lastCommandId: commandId,
+    });
+
+    expect(cmdDoc.data()).toMatchObject({
+      commandId,
+      kind: 'CreateOrder',
+      seq: 1,
+      targets: { transactionId: txId, studentId, dayId },
+    });
+  });
+
+  it('P08.2: legal other meal CreateOrder with custom name and zero paid amount creates debit atomically', async () => {
+    await seedBase({ withBusinessDocs: true });
+    const repo = repository(operatorA);
+    const commandId = 'b8021111-1111-4111-8111-111111111111';
+    const txId = 'b8022222-2222-4222-8222-222222222222';
+    const result = await repo.commitCommand({
+      commandId,
+      kind: 'CreateOrder',
+      leaseEpoch: 1,
+      targets: { transactionId: txId, studentId, dayId },
+      expectedRevisions: { transaction: 0, student: 1, day: 1 },
+      payload: {
+        mealKind: 'other',
+        mealPrice: 80,
+        paidAmount: 0,
+        menuRevision: null,
+        otherItemName: '素食炒麵',
+        note: 'zero paid other meal',
+      },
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+
+    const db = authedDb(operatorA);
+    const studentDoc = await getDoc(doc(db, `students/${studentId}`));
+    const dayDoc = await getDoc(doc(db, `days/${dayId}`));
+    const txDoc = await getDoc(doc(db, `transactions/${txId}`));
+
+    expect(studentDoc.data()?.currentBalance).toBe(-80);
+    expect(studentDoc.data()?.revision).toBe(2);
+
+    expect(dayDoc.data()?.totals).toMatchObject({
+      activeTransactionCount: 1,
+      bentoCount: 0,
+      otherMealCount: 1,
+      mealTotal: 80,
+      retainedReceipts: 0,
+    });
+
+    expect(txDoc.data()).toMatchObject({
+      transactionId: txId,
+      type: 'order',
+      mealKind: 'other',
+      mealPrice: 80,
+      paidAmount: 0,
+      amount: -80,
+      menuNameSnapshot: '',
+      otherItemName: '素食炒麵',
+      status: 'active',
+    });
+  });
+
+  it('P08.3: ordering bento when day menu is null is rejected atomically', async () => {
+    await seedBase({ withBusinessDocs: true });
+    await withAdmin(async db => {
+      await updateDoc(doc(db, `days/${dayId}`), { menu: null });
+    });
+
+    const repo = repository(operatorA);
+    const commandId = 'b8031111-1111-4111-8111-111111111111';
+    const txId = 'b8032222-2222-4222-8222-222222222222';
+    const paths = ['system/dataHead', `students/${studentId}`, `days/${dayId}`, `commands/${commandId}`, `transactions/${txId}`];
+    const before = await capturePaths(paths);
+
+    const result = await repo.commitCommand({
+      commandId,
+      kind: 'CreateOrder',
+      leaseEpoch: 1,
+      targets: { transactionId: txId, studentId, dayId },
+      expectedRevisions: { transaction: 0, student: 1, day: 1 },
+      payload: {
+        mealKind: 'bento',
+        mealPrice: 100,
+        paidAmount: 100,
+        menuRevision: 1,
+        otherItemName: null,
+        note: '',
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(await capturePaths(paths)).toEqual(before);
+  });
+
+  it('P08.4: ordering other meal when day menu is null is accepted atomically', async () => {
+    await seedBase({ withBusinessDocs: true });
+    await withAdmin(async db => {
+      await updateDoc(doc(db, `days/${dayId}`), { menu: null });
+    });
+
+    const repo = repository(operatorA);
+    const commandId = 'b8041111-1111-4111-8111-111111111111';
+    const txId = 'b8042222-2222-4222-8222-222222222222';
+
+    const result = await repo.commitCommand({
+      commandId,
+      kind: 'CreateOrder',
+      leaseEpoch: 1,
+      targets: { transactionId: txId, studentId, dayId },
+      expectedRevisions: { transaction: 0, student: 1, day: 1 },
+      payload: {
+        mealKind: 'other',
+        mealPrice: 65,
+        paidAmount: 65,
+        menuRevision: null,
+        otherItemName: '特製湯麵',
+        note: '',
+      },
+    });
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+
+    const db = authedDb(operatorA);
+    const txDoc = await getDoc(doc(db, `transactions/${txId}`));
+    expect(txDoc.data()).toMatchObject({
+      transactionId: txId,
+      mealKind: 'other',
+      otherItemName: '特製湯麵',
+      mealPrice: 65,
+    });
+  });
+
+  it('P08.5: bento order with stale menuRevision is rejected as REVISION_CONFLICT', async () => {
+    await seedBase({ withBusinessDocs: true });
+    await withAdmin(async db => {
+      await updateDoc(doc(db, `days/${dayId}`), {
+        'menu.revision': 2,
+        'menu.price': 120,
+        revision: 2,
+      });
+    });
+
+    const repo = repository(operatorA);
+    const commandId = 'b8051111-1111-4111-8111-111111111111';
+    const txId = 'b8052222-2222-4222-8222-222222222222';
+    const paths = ['system/dataHead', `students/${studentId}`, `days/${dayId}`, `commands/${commandId}`, `transactions/${txId}`];
+    const before = await capturePaths(paths);
+
+    const result = await repo.commitCommand({
+      commandId,
+      kind: 'CreateOrder',
+      leaseEpoch: 1,
+      targets: { transactionId: txId, studentId, dayId },
+      expectedRevisions: { transaction: 0, student: 1, day: 2 },
+      payload: {
+        mealKind: 'bento',
+        mealPrice: 100,
+        paidAmount: 100,
+        menuRevision: 1, // stale
+        otherItemName: null,
+        note: '',
+      },
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'REVISION_CONFLICT' } });
+    expect(await capturePaths(paths)).toEqual(before);
+  });
+
+  it('P08.6: other meal carrying menuRevision or empty otherItemName is rejected atomically', async () => {
+    await seedBase({ withBusinessDocs: true });
+    const repo = repository(operatorA);
+    const commandId1 = 'b8061111-1111-4111-8111-111111111111';
+    const commandId2 = 'b8062222-2222-4222-8222-222222222222';
+    const paths = ['system/dataHead', `students/${studentId}`, `days/${dayId}`];
+    const before = await capturePaths(paths);
+
+    const withMenuRev = await repo.commitCommand({
+      commandId: commandId1,
+      kind: 'CreateOrder',
+      leaseEpoch: 1,
+      targets: { transactionId: 'tx-bad-1', studentId, dayId },
+      expectedRevisions: { transaction: 0, student: 1, day: 1 },
+      payload: {
+        mealKind: 'other',
+        mealPrice: 80,
+        paidAmount: 80,
+        menuRevision: 1, // invalid for other
+        otherItemName: '炒麵',
+        note: '',
+      },
+    });
+    expect(withMenuRev.ok).toBe(false);
+
+    const withEmptyName = await repo.commitCommand({
+      commandId: commandId2,
+      kind: 'CreateOrder',
+      leaseEpoch: 1,
+      targets: { transactionId: 'tx-bad-2', studentId, dayId },
+      expectedRevisions: { transaction: 0, student: 1, day: 1 },
+      payload: {
+        mealKind: 'other',
+        mealPrice: 80,
+        paidAmount: 80,
+        menuRevision: null,
+        otherItemName: '   ', // empty
+        note: '',
+      },
+    });
+    expect(withEmptyName.ok).toBe(false);
+    expect(await capturePaths(paths)).toEqual(before);
+  });
+
+  it('P08.7: bento order carrying otherItemName is rejected atomically', async () => {
+    await seedBase({ withBusinessDocs: true });
+    const repo = repository(operatorA);
+    const commandId = 'b8071111-1111-4111-8111-111111111111';
+    const paths = ['system/dataHead', `students/${studentId}`, `days/${dayId}`];
+    const before = await capturePaths(paths);
+
+    const result = await repo.commitCommand({
+      commandId,
+      kind: 'CreateOrder',
+      leaseEpoch: 1,
+      targets: { transactionId: 'tx-bad-bento', studentId, dayId },
+      expectedRevisions: { transaction: 0, student: 1, day: 1 },
+      payload: {
+        mealKind: 'bento',
+        mealPrice: 100,
+        paidAmount: 100,
+        menuRevision: 1,
+        otherItemName: '不該存在的品名',
+        note: '',
+      },
+    });
+    expect(result.ok).toBe(false);
+    expect(await capturePaths(paths)).toEqual(before);
+  });
+
+  it('P08.8: legal maximum payload (100-char otherItemName, 500-char note, 100-char student name) does not hit 1,000-expression ceiling', async () => {
+    await seedBase({ withBusinessDocs: true });
+    const maxName = '姓'.repeat(50) + '名'.repeat(50);
+    const maxOther = '餐'.repeat(50) + '點'.repeat(50);
+    const maxNote = '備註說明'.repeat(125); // 500 chars
+
+    await withAdmin(async db => {
+      await updateDoc(doc(db, `students/${studentId}`), {
+        displayName: maxName,
+      });
+    });
+
+    const repo = repository(operatorA);
+    const commandId = 'b8081111-1111-4111-8111-111111111111';
+    const txId = 'b8082222-2222-4222-8222-222222222222';
+
+    const result = await repo.commitCommand({
+      commandId,
+      kind: 'CreateOrder',
+      leaseEpoch: 1,
+      targets: { transactionId: txId, studentId, dayId },
+      expectedRevisions: { transaction: 0, student: 1, day: 1 },
+      payload: {
+        mealKind: 'other',
+        mealPrice: 999_999,
+        paidAmount: 999_999,
+        menuRevision: null,
+        otherItemName: maxOther,
+        note: maxNote,
+      },
+    });
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+
+    const db = authedDb(operatorA);
+    const txDoc = await getDoc(doc(db, `transactions/${txId}`));
+    expect(txDoc.data()?.studentNameSnapshot).toBe(maxName);
+    expect(txDoc.data()?.otherItemName).toBe(maxOther);
+    expect(txDoc.data()?.note).toBe(maxNote);
+  });
 });

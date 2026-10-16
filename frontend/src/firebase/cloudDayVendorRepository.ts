@@ -167,6 +167,7 @@ export interface SetOpeningCashInput {
 
 export interface CloudDayVendorRepository {
   loadSnapshot(targetDayId?: string): Promise<CloudDayVendorSnapshot>;
+  getDay(dayId: string): Promise<CloudDayRecord | null>;
   ensureDay(input: EnsureDayInput): Promise<CommandResult>;
   saveVendor(input: SaveVendorInput): Promise<CommandResult>;
   removeVendor(input: RemoveVendorInput): Promise<CommandResult>;
@@ -538,8 +539,21 @@ export function createCloudDayVendorRepository(
     }
   }
 
+  async function getDay(dayId: string): Promise<CloudDayRecord | null> {
+    requireGoogleUser(options);
+    if (!validDate(dayId)) throw new CloudDayVendorRepositoryError('INVALID_INPUT', '營業日必須是 YYYY-MM-DD');
+    try {
+      const daySnapshot = await getDocFromServer(doc(db, dayPath(dayId)));
+      if (!daySnapshot.exists()) return null;
+      return decodeDay(dayId, daySnapshot.data());
+    } catch (error) {
+      throw readError(error);
+    }
+  }
+
   return {
     loadSnapshot,
+    getDay,
     ensureDay: input => commandRepository.commitCommand({
       commandId: input.commandId, kind: 'EnsureDay', leaseEpoch: input.leaseEpoch,
       targets: { dayId: input.dayId }, expectedRevisions: { day: 0 },

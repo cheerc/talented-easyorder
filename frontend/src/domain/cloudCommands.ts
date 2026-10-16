@@ -146,6 +146,7 @@ export interface BaseCommand<TKind extends BusinessCommandKind, TPayload, TTarge
   payload: TPayload;
   inputFingerprint: string;
   expectedRevision?: number | Record<string, number>;
+  expectedRevisions?: Record<string, number>;
 }
 
 // 1. CreateStudent
@@ -259,6 +260,7 @@ export type CreateOrderCommand = BaseCommand<
     mealKind: 'bento' | 'other' | null;
     menuRevision?: number;
     otherItemName?: string;
+    note?: string;
   },
   { transactionId: string; studentId: string; dayId: string }
 >;

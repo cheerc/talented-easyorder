@@ -560,3 +560,196 @@ test.describe('P06 Cloud Students', () => {
     }
   });
 });
+
+test.describe('P08 Cloud Orders', () => {
+  test.setTimeout(120000);
+
+  test.beforeEach(async () => {
+    await seedAccessLease({ ...VACANT_LEASE, updatedAt: new Date() });
+  });
+
+  test.afterEach(async () => {
+    await seedAccessLease({ ...VACANT_LEASE, updatedAt: new Date() });
+  });
+
+  test('D03: creates bento and other meal orders, handles duplicate confirmation, displays E details and persists after reload', async ({ browser }) => {
+    const session = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
+    try {
+      const page = session.page;
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toBeVisible();
+
+      // 1. 先至「日期與供應商」設定今日菜單
+      const today = taipeiToday();
+      await page.getByRole('button', { name: '日期與供應商' }).click();
+      const mainVendors = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
+      await expect(mainVendors.getByRole('heading', { name: '營業日、菜單與供應商' })).toBeVisible();
+      const dateField = mainVendors.getByLabel('查看或設定日期');
+      if ((await dateField.inputValue()) !== today) {
+        await dateField.fill(today);
+        await mainVendors.getByRole('button', { name: '載入日期' }).click();
+      }
+      await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
+
+      const createDayBtn = page.getByRole('button', { name: '建立空白營業日' });
+      if (await createDayBtn.isVisible().catch(() => false)) {
+        await createDayBtn.click();
+      }
+      const menuForm = mainVendors.getByRole('form', { name: `${today} 菜單` });
+      await expect(menuForm).toBeVisible();
+
+      // 新增供應商
+      await page.getByRole('button', { name: '新增供應商' }).click();
+      const vendorForm = mainVendors.getByRole('form', { name: '新增供應商' });
+      await vendorForm.getByLabel('供應商編號').fill('p08-vendor-1');
+      await vendorForm.getByLabel('供應商名稱').fill('阿榮排骨');
+      await vendorForm.getByRole('button', { name: '建立供應商' }).click();
+      await expect(page.getByTestId('cloud-vendor-row-p08-vendor-1')).toContainText('阿榮排骨');
+
+      // 設定今日菜單
+      await menuForm.getByLabel('菜單名稱').fill('排骨便當');
+      await menuForm.getByLabel('價格（新臺幣整數）').fill('90');
+      await menuForm.getByLabel('供應商').selectOption('p08-vendor-1');
+      await menuForm.getByRole('button', { name: '儲存菜單' }).click();
+      await expect(mainVendors.getByText(/已確認 設定 .* 菜單 完成/)).toBeVisible();
+
+      // 設定開帳金額
+      const openingForm = mainVendors.getByRole('form', { name: `${today} 開帳現金` });
+      await openingForm.getByLabel(/開帳現金/).fill('3000');
+      await openingForm.getByRole('button', { name: /開帳金額/ }).click();
+      await expect(mainVendors.getByText(/已確認 確認 .* 開帳現金 完成/)).toBeVisible();
+
+      // 2. 切換至「學生管理」建立學生 004 與 005
+      await page.getByRole('button', { name: '學生管理' }).click();
+      await expect(page.getByRole('heading', { name: '學生名單與期初結餘' })).toBeVisible();
+
+      // 建立學生 004
+      await page.getByRole('button', { name: '新增學生' }).click();
+      const studentForm1 = page.getByRole('form', { name: '新增學生' });
+      await studentForm1.getByLabel('學員編號').fill('004');
+      await studentForm1.getByRole('textbox', { name: '姓名', exact: true }).fill('王小明');
+      await studentForm1.getByRole('textbox', { name: /期初結餘（整數/ }).fill('100');
+      await studentForm1.getByRole('radio', { name: /沿用既有核對結餘/ }).check();
+      await studentForm1.getByRole('button', { name: '建立學生' }).click();
+      await expect(page.getByTestId('cloud-student-row-004')).toContainText('王小明');
+
+      // 建立學生 005
+      await page.getByRole('button', { name: '新增學生' }).click();
+      const studentForm2 = page.getByRole('form', { name: '新增學生' });
+      await studentForm2.getByLabel('學員編號').fill('005');
+      await studentForm2.getByRole('textbox', { name: '姓名', exact: true }).fill('李小華');
+      await studentForm2.getByRole('textbox', { name: /期初結餘（整數/ }).fill('50');
+      await studentForm2.getByRole('radio', { name: /沿用既有核對結餘/ }).check();
+      await studentForm2.getByRole('button', { name: '建立學生' }).click();
+      await expect(page.getByTestId('cloud-student-row-005')).toContainText('李小華');
+
+      // 3. 切換至「櫃台點餐」
+      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await expect(page.getByTestId('cloud-orders-page')).toBeVisible();
+      await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
+
+      // 驗證頂部兩行餐點計數（今日餐點 0，其他餐點 0）
+      const bentoRow = page.getByTestId('cloud-topbar-bento');
+      await expect(bentoRow).toContainText('今日餐點（排骨便當）');
+      await expect(bentoRow).toContainText('0');
+      const otherRow = page.getByTestId('cloud-topbar-other');
+      await expect(otherRow).toContainText('其他餐點');
+      await expect(otherRow).toContainText('0');
+
+      // 4. 搜尋 004，選取王小明，訂購今日餐點（排骨便當 $90，實收 $100）
+      const searchBox = page.getByLabel('搜尋編號、姓名或別名');
+      await searchBox.fill('004');
+      await page.getByTestId('search-result-004').click();
+      await expect(page.getByTestId('selected-student-card')).toContainText('王小明');
+
+      await page.getByLabel('實收金額（留空為 0 元）').fill('100');
+      await page.getByTestId('submit-order-button').click();
+      await expect(page.getByText('已確認 004 王小明 訂餐完成')).toBeVisible();
+
+      // 驗證頂部計數：今日餐點變 1，其他餐點 0
+      await expect(bentoRow).toContainText('1');
+      await expect(otherRow).toContainText('0');
+
+      // 驗證最近帳戶列：出現 004 王小明，標籤「今日餐點 1」
+      const recent004 = page.getByTestId('recent-item-004');
+      await expect(recent004).toContainText('004 王小明');
+      await expect(recent004).toContainText('今日餐點 1');
+
+      // 5. 搜尋 005，選取李小華，訂購其他餐點（素食炒麵 $70，實收 0，扣結餘產生欠款）
+      await searchBox.fill('005');
+      await page.getByTestId('search-result-005').click();
+      await expect(page.getByTestId('selected-student-card')).toContainText('李小華');
+
+      await page.getByRole('button', { name: '其他餐點' }).click();
+      await page.getByLabel('餐點品名（必填）').fill('素食炒麵');
+      await page.getByLabel('餐點單價（必填）').fill('70');
+      await page.getByTestId('submit-order-button').click();
+      await expect(page.getByText('已確認 005 李小華 訂餐完成')).toBeVisible();
+
+      // 驗證頂部計數：今日餐點 1，其他餐點 1
+      await expect(bentoRow).toContainText('1');
+      await expect(otherRow).toContainText('1');
+
+      // 驗證最近帳戶列：出現 005 李小華，標籤「其他餐點 1」
+      const recent005 = page.getByTestId('recent-item-005');
+      await expect(recent005).toContainText('005 李小華');
+      await expect(recent005).toContainText('其他餐點 1');
+
+      // 6. 再次選取 004 王小明，加訂今日餐點（觸發重複加訂確認）
+      await recent004.click();
+      await expect(page.getByTestId('selected-student-card')).toContainText('王小明');
+      await page.getByTestId('submit-order-button').click();
+
+      // 彈出加訂確認對話框
+      await expect(page.getByText(/今天已訂過 1 份餐點， 確定要再加訂 1 份嗎？/)).toBeVisible();
+      await page.getByTestId('confirm-duplicate-button').click();
+      await expect(page.getByText('已確認 004 王小明 訂餐完成')).toBeVisible();
+
+      // 頂部計數：今日餐點變 2，其他餐點 1
+      await expect(bentoRow).toContainText('2');
+      await expect(otherRow).toContainText('1');
+
+      // 最近帳戶 004 標籤變為「今日餐點 2」
+      await expect(recent004).toContainText('今日餐點 2');
+
+      // 7. 選取 004，開啟 E「付款明細」
+      await recent004.click();
+      await page.getByTestId('open-payment-details-button').click();
+      const modal = page.getByTestId('payment-details-modal');
+      await expect(modal).toBeVisible();
+      await expect(modal).toContainText('王小明 今日付款明細');
+      await expect(modal.getByTestId('payment-details-summary')).toContainText('今日餐費：$180');
+      await expect(modal.getByTestId('payment-details-summary')).toContainText('今日收款：$100');
+      // 驗證不包含查看全部紀錄（P08 邊界）
+      await expect(modal.getByRole('button', { name: '查看全部紀錄' })).toHaveCount(0);
+      await page.getByTestId('close-payment-details-button').click();
+      await expect(modal).toHaveCount(0);
+
+      // 8. 瀏覽器重新整理（Reload）驗證遠端 Firestore 資料持久化
+      await page.reload();
+      await expect(page.locator('.operator-strip')).toBeVisible();
+      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await expect(page.getByTestId('cloud-orders-page')).toBeVisible();
+      await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
+
+      // 重新整理後計數與最近帳戶依然完全一致
+      await expect(page.getByTestId('cloud-topbar-bento')).toContainText('今日餐點（排骨便當）');
+      await expect(page.getByTestId('cloud-topbar-bento')).toContainText('2');
+      await expect(page.getByTestId('cloud-topbar-other')).toContainText('其他餐點');
+      await expect(page.getByTestId('cloud-topbar-other')).toContainText('1');
+      await expect(page.getByTestId('recent-item-004')).toContainText('今日餐點 2');
+      await expect(page.getByTestId('recent-item-005')).toContainText('其他餐點 1');
+
+      // 9. 核對後端 Firestore 最終文件
+      const transactions = await listAdminDocuments('transactions');
+      expect(transactions).toHaveLength(3);
+      expect(transactions.filter(t => (t as Record<string, unknown>).mealKind === 'bento')).toHaveLength(2);
+      expect(transactions.filter(t => (t as Record<string, unknown>).mealKind === 'other')).toHaveLength(1);
+
+      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
+    } finally {
+      await session.close();
+    }
+  });
+});

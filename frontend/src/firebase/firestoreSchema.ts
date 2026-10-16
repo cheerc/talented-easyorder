@@ -220,7 +220,7 @@ export interface CloudSettlementDoc {
 // Adapters: Cloud Doc <-> Domain Types
 // ---------------------------------------------------------------------------
 
-function timestampToISOString(ts: unknown): string {
+export function timestampToISOString(ts: unknown): string {
   if (typeof ts === 'string') return ts;
   if (ts && typeof (ts as { toDate?: () => Date }).toDate === 'function') {
     return (ts as { toDate: () => Date }).toDate().toISOString();
@@ -255,7 +255,7 @@ export function cloudTransactionToLedgerTransaction(
     syncStatus: doc.status === 'voided' ? 'voided' : 'synced',
     revision: doc.revision,
     note: doc.note,
-    otherItemName: doc.mealKind === 'other' ? doc.menuNameSnapshot : undefined,
+    otherItemName: doc.mealKind === 'other' ? (doc.otherItemName ?? doc.menuNameSnapshot ?? undefined) : undefined,
   };
 }
 
