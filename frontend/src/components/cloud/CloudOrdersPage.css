@@ -355,3 +355,11 @@
   border-radius: 6px;
   padding: 0.75rem 1rem;
 }
+
+.cloud-orders__debt {
+  color: #dc2626;
+}
+
+.cloud-orders__muted {
+  color: #64748b;
+}

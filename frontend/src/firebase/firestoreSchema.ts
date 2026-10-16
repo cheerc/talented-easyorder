@@ -220,7 +220,7 @@ export interface CloudSettlementDoc {
 // Adapters: Cloud Doc <-> Domain Types
 // ---------------------------------------------------------------------------
 
-export function timestampToISOString(ts: unknown): string {
+function timestampToISOString(ts: unknown): string {
   if (typeof ts === 'string') return ts;
   if (ts && typeof (ts as { toDate?: () => Date }).toDate === 'function') {
     return (ts as { toDate: () => Date }).toDate().toISOString();

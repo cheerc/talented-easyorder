@@ -342,6 +342,8 @@ function AppContent() {
 
 function CloudAppContent() {
   const { fb, fbError, access, lease } = useFirebase();
+  // 與本機模式共用 U1 顯示偏好（easyorder-ui-tweaks）：主題與字級套在 body 上。
+  useTweaks();
   const [cloudSection, setCloudSection] = useState<'orders' | 'students' | 'day-vendors'>('students');
   const [navigationLocked, setNavigationLocked] = useState(false);
   const navigationLockRef = useRef<{ identityKey: string; locked: boolean; revoked: boolean } | null>(null);

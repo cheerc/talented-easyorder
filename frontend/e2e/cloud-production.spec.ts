@@ -701,7 +701,7 @@ test.describe('P08 Cloud Orders', () => {
       await page.getByTestId('submit-order-button').click();
 
       // 彈出加訂確認對話框
-      await expect(page.getByText(/今天已訂過 1 份餐點， 確定要再加訂 1 份嗎？/)).toBeVisible();
+      await expect(page.getByText(/今天已訂 1 份餐點，確定要再加訂 1 份嗎？/)).toBeVisible();
       await page.getByTestId('confirm-duplicate-button').click();
       await expect(page.getByText('已確認 004 王小明 訂餐完成')).toBeVisible();
 

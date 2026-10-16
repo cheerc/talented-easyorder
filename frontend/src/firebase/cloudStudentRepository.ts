@@ -289,7 +289,6 @@ export function createCloudStudentRepository(db: Firestore, options: CloudStuden
 
   return {
     list: () => listCloudStudents(db, options),
-    listStudents: () => listCloudStudents(db, options),
     createStudent(input: CreateCloudStudentInput): Promise<CommandResult> {
       return commands.commitCommand({
         commandId: input.commandId,
@@ -346,5 +345,3 @@ export function createCloudStudentRepository(db: Firestore, options: CloudStuden
     },
   };
 }
-
-export type CloudStudentRepository = ReturnType<typeof createCloudStudentRepository>;
