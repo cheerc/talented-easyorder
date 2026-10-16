@@ -11,7 +11,7 @@
 
 ## 已合併與目前接手點
 
-- **目前接手點：P09b（帳戶退款 `CreateRefund`）PR 審查中**，branch `claude/project-thread-uaazo9`，見下方「P09 交接狀態」。CheerC 2026-10-16 指示推進 P09（P09a＋P09b），全部合併後停下，不開 P10。P09a 已合併（#493，squash `c444621`）；P08 已合併（#491，merge SHA `889c75c`）。 P07 PR [#480](https://github.com/cheerc/talented-easyorder/pull/480) 已合併（merge SHA `436b119`）；P06b 學生穩定內部鍵與可改編號（PR #487，source `2a03953`）經獨立 review PASS 後，已隨操作回饋前端 U3/U4/U2b 於整合 PR [#488](https://github.com/cheerc/talented-easyorder/pull/488)（source head `58191718e2388bfbf954314128f5357370e65123`，由使用者授權 `--admin` squash merge SHA `6ae1909639f56aa6d36524406e700554891f6328`）合併至 main。審查收據見 [P06b＋前端整合審查收據](ops/integration-p06b-review-5819171.md)。P08 雲端訂餐的第一版 PR #490（`feat/p08-cloud-orders`，head `bca7d048f9743be0b2026938a3f3831ccafdf624`）經審查列出 B1–B8 必修項，已由 #491 修正並取代、合併（merge `889c75c`，見下方「P08 交接狀態（已合併）」），不開 P09/P09b/P10+；前端 prototype 批次 U1–U4 均已合入 main，並提供使用者可操作之 [Prototype U1–U4 本人操作驗收步驟清單](superpowers/verification/2026-10-16-prototype-u1-u4-verification-checklist.md)。
+- **目前接手點：P09 已全部合併，暫停中；P10 尚未開始，須等 CheerC 指示**。見下方「P09 交接狀態」。P09b 已合併（#494，squash `5b6f9a495244c2a800a64ce0677bb1645b33f0a6`）；P09a 已合併（#493，squash `c444621`）；P08 已合併（#491，merge SHA `889c75c`）。 P07 PR [#480](https://github.com/cheerc/talented-easyorder/pull/480) 已合併（merge SHA `436b119`）；P06b 學生穩定內部鍵與可改編號（PR #487，source `2a03953`）經獨立 review PASS 後，已隨操作回饋前端 U3/U4/U2b 於整合 PR [#488](https://github.com/cheerc/talented-easyorder/pull/488)（source head `58191718e2388bfbf954314128f5357370e65123`，由使用者授權 `--admin` squash merge SHA `6ae1909639f56aa6d36524406e700554891f6328`）合併至 main。審查收據見 [P06b＋前端整合審查收據](ops/integration-p06b-review-5819171.md)。P08 雲端訂餐的第一版 PR #490（`feat/p08-cloud-orders`，head `bca7d048f9743be0b2026938a3f3831ccafdf624`）經審查列出 B1–B8 必修項，已由 #491 修正並取代、合併（merge `889c75c`，見下方「P08 交接狀態（已合併）」），不開 P09/P09b/P10+；前端 prototype 批次 U1–U4 均已合入 main，並提供使用者可操作之 [Prototype U1–U4 本人操作驗收步驟清單](superpowers/verification/2026-10-16-prototype-u1-u4-verification-checklist.md)。
 - 已合併 P08：PR [#491](https://github.com/cheerc/talented-easyorder/pull/491)（取代 #490），squash merge SHA `889c75c`，source head `452edd5abce63f1eda329d90dcae245984104721`，CI [38875033302](https://github.com/cheerc/talented-easyorder/actions/runs/38875033302) 成功，獨立複審 PASS。
 - 已合併 P07：PR [#480](https://github.com/cheerc/talented-easyorder/pull/480)，merge SHA `436b119`，包含日期菜單與供應商管理。
 - 已合併 P06：PR [#478](https://github.com/cheerc/talented-easyorder/pull/478)，merge SHA `b518eca5fdc2b2d2d3e9197c30b29d6a5f74ce10`。
@@ -56,7 +56,7 @@ git log -1 --oneline --decorate
 - **P06 local gates：** prescribed-order production `firestore.rules` Emulator sequence 的階段計數是 A01 10、P01 36、P04 19、command/failure 103（`cloudCommands.spec.ts` 101 + failure 2）、P06 students 112（同一 command suite 101 + repository list 11）；0 fail／0 skipped，後兩階段的重複 command suite 不重複加總。Focused student page/schema unit 32/32；full Vitest 1,329/179/0、full lint/build pass。app TSC exit 2、base/current 290 headers／542 normalized lines，保留多行與順序的全內容 normalized diff 0，不是 clean pass。system Chromium 154＋Playwright 1.60 demo E2E Cloud/auth 13/13、prototype 7/7；此 system-browser diagnostic 不取代官方 pinned Chromium CI。500 人為本 phase 完整名單上限，501 以上 fail closed；更大 roster UX 留待後續容量 phase。
 - **P06 merge receipt：** PR #478 在 GitHub normal web 核實為 `MERGED`；merge SHA `b518eca5fdc2b2d2d3e9197c30b29d6a5f74ce10`、merge time `2026-10-15T05:32:37Z`。PR 以 rebase 整合 5 commits；source head `17da94f3ffea7b116c0ce157fb784011e0b00c89` 與 `origin/main` tree 完全一致（merge 後 fetch，再執行 `git diff 17da94..origin/main` exit 0）。官方 Actions run [38685129628](https://github.com/cheerc/talented-easyorder/actions/runs/38685129628) 對 exact source head 的 build job 116258195493、E2E job 116259321882 均成功；核實方式是允許的 GitHub 網頁，raw logs 要求登入，因此不記錄未見到的 pinned browser 版本或 log counts。source 與 final source-delta review PASS，最後 4-doc 差異 review PASS；使用者其後手動 merge。這些狀態不等同宣稱所有 merge gate 均 PASS。demo Rules Emulator 去重 179/179、完整 Vitest 1,329 passed／179 Emulator-only skipped／0 failed、system Chromium Cloud/auth 13/13＋isolated prototype 7/7、lint/build 通過；app TSC exit 2，base/current 完整比較為 290 diagnostic headers／542 normalized lines、diff 0。500 人完整名單上限、501 人 fail-closed。沒有 production deploy；SDK `persistentLocalCache` 尚未改，memory-only 仍為 P13。
 
-## P09 交接狀態（進行中）
+## P09 交接狀態（已合併）
 
 1. **P09a 雲端繳費與櫃台收支（已合併，#493，squash `c444621`）**：契約見 [cloud payments and cash contract](superpowers/specs/2026-10-16-cloud-payments-cash-contract.md)；base `fc7943970a5ceb86d841eeca8be6a75d3ba75dec`。PR、head SHA 與 CI 以 PR body 為準。
    - 啟用 `CreateCashMovement`（已啟用 12 種、拒絕 11 種）；F1 開放 W 繳費（停用帳戶仍可繳費）、A 櫃台收支（支出／收入、理由必填、付餐費給廠商快捷）、右欄「今日現金」與應有現金（spec §7.1）。
@@ -64,13 +64,15 @@ git log -1 --oneline --decorate
    - Rules 預算：15/20 存取、單寫最多 8；探測餘裕與量測方式見 [P09a 預算附錄](ops/p05-rules-budget.md#p09a-cloud-payments-and-counter-cash-movement--budget-and-probe-receipt)。
    - 本機驗證（demo-easyorder Emulator＋合成資料）：Emulator 20 個檔案 395/395、0 skipped（含新 `cloudCashMovement.spec.ts` 37 項，在 main 的 Rules 上 7 項失敗＝RED）；Vitest 1,594 passed／317 Emulator-only skipped；lint、build、`tsc --noEmit` 通過；app tsc 208 個診斷與 base 相同；Cloud E2E 14/14（含新 D04，本機 Chromium 1194，不取代 CI pinned Chromium）。
    - 合併後審查 PASS；審查者要求的「交易文件多欄、少欄、改固定欄位」Rules 測試與「櫃台收支結果不明以同 commandId 重試」畫面測試併入 P09b。
-2. **P09b 帳戶退款（PR 審查中）**：契約見 [cloud refund contract](superpowers/specs/2026-10-16-cloud-refund-contract.md)；base `c444621`。PR、head SHA 與 CI 以 PR body 為準。
+2. **P09b 帳戶退款（已合併，#494，source head `f82a5afed689d0b793fcc8c45e2d52fe24cc60c5`，squash `5b6f9a495244c2a800a64ce0677bb1645b33f0a6`）**：契約見 [cloud refund contract](superpowers/specs/2026-10-16-cloud-refund-contract.md)；base `c444621`；CI [38905988081](https://github.com/cheerc/talented-easyorder/actions/runs/38905988081) 成功，獨立審查 PASS。
    - 啟用 `CreateRefund`（已啟用 13 種、拒絕 11 種）；`day.totals` 由 7 欄改 8 欄（新增 `accountRefunds`），所有已啟用 kind 的投影都要求它不變。舊 7 欄日統計讀取回 `UNSUPPORTED_SCHEMA`、寫入被拒；目前沒有正式資料，不需搬移。
    - 規則（Q1）：金額 1 到目前餘額、理由必填、只記台北今天且未關帳、停用帳戶可退。應有現金 = 開帳 + 學生收款 + 櫃台收入 − 櫃台支出 − 帳戶退款，只扣一次（spec §7.1／§7.2 已改寫）。
    - F1：W 面板「退款」框（預設全額、確認框、退款後餘額）、右欄「帳戶退款」、E 明細退款列、最近帳戶「僅退款」；負數繳費改提示用退款。
    - Rules 預算：19/20 存取、單寫最多 10；最緊的是退款指令規則 +14，見 [P09b 預算附錄](ops/p05-rules-budget.md#p09b-account-refund--budget-and-probe-receipt)。
    - 本機驗證（demo-easyorder Emulator＋合成資料）：Emulator 21 個檔案 444/444、0 skipped（新 `cloudRefund.spec.ts` 43 項，在 main 的 Rules 上 8 項失敗＝RED）；Vitest 1,602 passed／365 Emulator-only skipped；lint、build 通過；app tsc 208 個診斷與 base 相同；Cloud E2E 18/18（含新 D05，本機 Chromium 1194）。
-   - 下一步：P09b CI 綠 → 獨立審查 → 合併 → 回報 P09 完成並停下。
+   - 審查不擋合併的備註（留給 P10 之後）：退款指令規則餘裕 +14，加檢查前先重量測；退款框開著時按 Q 會切到便當模式並隱藏退款框（`refundOpen` 仍為 true，切回 W 會再出現）；非今天日期由 Rules 擋下、回較籠統的 `INVALID_INPUT`（與 P09a 同）。
+   - 部署（CheerC 本機）：Rules 與 `firestore.indexes.json` 一起上；7→8 欄後舊營業日文件讀不到也寫不進，目前沒有正式資料。
+   - 下一步：無。P09 完成後暫停，P10 等 CheerC 指示。
 3. 測試只用 `demo-easyorder` Emulator 與合成資料；正式部署（Rules＋`firestore.indexes.json`）仍由 CheerC 本機處理。P09 全部合併後停下，**不開始 P10**。
 
 ## P08 交接狀態（已合併）
