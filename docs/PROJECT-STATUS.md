@@ -3,9 +3,9 @@
 > **2026-10-16 整合與進度更新：**
 > - **前端 Prototype 定稿線**：U1（PR #481）、U2a（PR #483）、U2c（PR #482）先前已合併至 main。U3（PR #484）、U4（PR #485）、U2b（PR #486）與雲端 P06b（PR #487）經各自獨立 review PASS 後，已由整合 PR [#488](https://github.com/cheerc/talented-easyorder/pull/488)（source head `58191718e2388bfbf954314128f5357370e65123`，由使用者授權 `--admin` squash merge SHA `6ae1909639f56aa6d36524406e700554891f6328`）合入 main。審查收據見 [前端整合審查收據](ops/integration-review-3bfa4d6.md) 及 [P06b＋前端整合審查收據](ops/integration-p06b-review-5819171.md)。提供使用者可操作之 [Prototype U1–U4 本人操作驗收步驟清單](superpowers/verification/2026-10-16-prototype-u1-u4-verification-checklist.md)。
 > - **重要邊界聲明**：**Prototype 前端功能完成 ≠ 雲端正式後端全完成 ≠ CheerC 本人營運驗收**。自動化測試與代碼審查 PASS 僅為技術交付基準，不代簽營運驗收。
-> - **正式後端進度**：[零費用正式後端 spec](superpowers/specs/2026-10-13-free-production-backend-spec.md)與[19 階段計畫](superpowers/plans/2026-10-13-free-production-backend-plan.md)為權威依據。P00–P08 與 P06b 已合併至 main（P07 merge `436b119`，P06b merge `6ae1909`，P08 雲端訂餐 #491 merge `889c75c`）。P09 依 CheerC 2026-10-16 指示推進中：P09a（繳費與櫃台收支）已合併（#493，`c444621`），P09b（退款）已合併（#494，`5b6f9a4`），P09 完成後暫停；P10+ 尚未開始。新後端尚未部署或開放正式帳務操作。
+> - **正式後端進度**：[零費用正式後端 spec](superpowers/specs/2026-10-13-free-production-backend-spec.md)與[19 階段計畫](superpowers/plans/2026-10-13-free-production-backend-plan.md)為權威依據。P00–P09 與 P06b 已合併至 main（P07 merge `436b119`，P06b merge `6ae1909`，P08 雲端訂餐 #491 merge `889c75c`）。P09（依 CheerC 2026-10-16 指示）已完成：P09a 繳費與櫃台收支（#493，`c444621`），P09b 退款（#494，`5b6f9a4`）；目前暫停，P10+ 尚未開始。新後端尚未部署或開放正式帳務操作。
 
-> **已合併基線：** P00 #471、P01 #472、P02 #473、P03 #474、P04 #475、P05 #476、P06 #478、P07 #480、P08 #491、U1 #481、U2c #482、U2a #483、整合 PR #488（含 U3/U4/U2b/P06b）；merge SHA 與驗收限制見[現況與證據](ops/free-production-evidence.md)及各 phase receipts。逐 PR 接手流程見[開發交接入口](DEVELOPMENT-HANDOFF.md)。
+> **已合併基線：** P00 #471、P01 #472、P02 #473、P03 #474、P04 #475、P05 #476、P06 #478、P07 #480、P08 #491、P09a #493、P09b #494、U1 #481、U2c #482、U2a #483、整合 PR #488（含 U3/U4/U2b/P06b）；merge SHA 與驗收限制見[現況與證據](ops/free-production-evidence.md)及各 phase receipts。逐 PR 接手流程見[開發交接入口](DEVELOPMENT-HANDOFF.md)。
 
 > **Last inspected:** 2026-09-29，程式基準 `884a996`。
 > 本輪只更新 spec／計畫／驗收文件；沒有改應用程式、沒有完成本人驗收。
