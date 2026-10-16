@@ -1,8 +1,11 @@
 # Project Status — Talented EasyOrder
 
-> **2026-10-15 正式後端進度：** [零費用正式後端 spec](superpowers/specs/2026-10-13-free-production-backend-spec.md)與[19 階段計畫](superpowers/plans/2026-10-13-free-production-backend-plan.md)為權威規格與順序。P00–P06 已合併。P06 PR [#478](https://github.com/cheerc/talented-easyorder/pull/478) base `b53423aa71ed4cfac2428f290c648e5a999a0cae`、source head `17da94f3ffea7b116c0ce157fb784011e0b00c89`、merge SHA `b518eca5fdc2b2d2d3e9197c30b29d6a5f74ce10`；使用者於 2026-10-15 05:32:37Z 在 GitHub 網頁以 rebase 合併 5 commits。官方 Actions run [38685129628](https://github.com/cheerc/talented-easyorder/actions/runs/38685129628) exact source head 的 build-and-test `116258195493` 與 E2E `116259321882` 均成功，狀態由正常 GitHub 網頁核實；raw logs 要求登入，不記其內部 pinned-browser 版本或 test counts。本機 demo Rules Emulator prescribed-order 去重 179/179、0 skipped；full Vitest 1,329 passed／179 Emulator-only skipped／0 failed；system Chromium Cloud/auth 13/13、isolated prototype 7/7；lint/build 通過。App TSC exit 2，base/current 均 290 diagnostic headers／542 normalized lines，完整 diff 0。source/final delta 與最後 docs review 均 PASS；500 人為已驗完整名單上限，501 fail closed。P07 契約已凍結並保存於[追蹤規格](superpowers/specs/2026-10-15-cloud-day-vendors-contract.md)，implementation 正在既有 branch 進行；尚無 P07 Emulator/CI/PR/merge 驗收收據。新後端未部署或開放正式帳務操作；Android 另案，下方前端追蹤維持原狀。
+> **2026-10-16 整合與進度更新：**
+> - **前端 Prototype 定稿線**：U1（PR #481）、U2a（PR #483）、U2c（PR #482）先前已合併至 main。U3（PR #484）、U4（PR #485）、U2b（PR #486）與雲端 P06b（PR #487）經各自獨立 review PASS 後，已由整合 PR [#488](https://github.com/cheerc/talented-easyorder/pull/488)（source head `58191718e2388bfbf954314128f5357370e65123`，由使用者授權 `--admin` squash merge SHA `6ae1909639f56aa6d36524406e700554891f6328`）合入 main。審查收據見 [前端整合審查收據](ops/integration-review-3bfa4d6.md) 及 [P06b＋前端整合審查收據](ops/integration-p06b-review-5819171.md)。提供使用者可操作之 [Prototype U1–U4 本人操作驗收步驟清單](superpowers/verification/2026-10-16-prototype-u1-u4-verification-checklist.md)。
+> - **重要邊界聲明**：**Prototype 前端功能完成 ≠ 雲端正式後端全完成 ≠ CheerC 本人營運驗收**。自動化測試與代碼審查 PASS 僅為技術交付基準，不代簽營運驗收。
+> - **正式後端進度**：[零費用正式後端 spec](superpowers/specs/2026-10-13-free-production-backend-spec.md)與[19 階段計畫](superpowers/plans/2026-10-13-free-production-backend-plan.md)為權威依據。P00–P07 與 P06b 已合併至 main（P07 merge `436b119`，P06b merge `6ae1909`）。目前後端接手點為 **P08 雲端訂餐**，正由後端 agent 於獨立 worktree（`feat/p08-cloud-orders`）進行中；P09（P09a 繳費）、P09b（退款）、P10+ 等尚未交付。新後端尚未部署或開放正式帳務操作。
 
-> **已合併基線：** P00 #471、P01 #472、P02 #473、P03 #474、P04 #475、P05 #476、P06 #478；merge SHA 與驗收限制見[現況與證據](ops/free-production-evidence.md)。P06 學生名單與期初手動建檔已合併至 `b518eca5fdc2b2d2d3e9197c30b29d6a5f74ce10`。production Rules Emulator prescribed-order regression 去重 179/179，full Vitest 1,329/179/0，lint/build、demo system-browser E2E 與 exact-source required CI 已完成；完整測試、browser 與 TypeScript 基線邊界見 P06 receipt。500 人可完整讀取、501 人 fail closed；不宣稱支援完整大於 500 人名單。P07 contract 已追蹤且 implementation 進行中，P08–P18 尚未開始／未驗；P07 尚無 Emulator/CI/PR/merge 收據。新後端尚未部署或開放正式帳務操作。此更新不更改下方歷史前端本人驗收紀錄。逐 PR 接手流程見[開發交接入口](DEVELOPMENT-HANDOFF.md)。
+> **已合併基線：** P00 #471、P01 #472、P02 #473、P03 #474、P04 #475、P05 #476、P06 #478、P07 #480、U1 #481、U2c #482、U2a #483、整合 PR #488（含 U3/U4/U2b/P06b）；merge SHA 與驗收限制見[現況與證據](ops/free-production-evidence.md)及各 phase receipts。逐 PR 接手流程見[開發交接入口](DEVELOPMENT-HANDOFF.md)。
 
 > **Last inspected:** 2026-09-29，程式基準 `884a996`。
 > 本輪只更新 spec／計畫／驗收文件；沒有改應用程式、沒有完成本人驗收。
@@ -11,7 +14,7 @@
 
 PC 晚餐櫃台前端 prototype：鍵盤為主、滑鼠為輔，保留 operator 約七成滿意的 F1。每天一餐（晚餐）；餐費90找零後記90，多留10元則記100。支援1920×1080 PC及MacBook Pro 13吋，按可用視窗重排，不整頁縮小。
 
-前端本人驗收仍依下方清單；正式後端另依 P00–P18 計畫推進，目前 P06 學生名單與期初手動建檔已合併，P07 契約已凍結、implementation 進行中。iPad、真實人臉裝置整合與 Android 另案。
+前端本人驗收仍依下方清單；正式後端另依 P00–P18 計畫推進，目前 P00–P07 與 P06b 已合併，P08 雲端訂餐實作進行中。iPad、真實人臉裝置整合與 Android 另案。
 
 交接入口：[FRONTEND-PROTOTYPE-HANDOFF](FRONTEND-PROTOTYPE-HANDOFF.md)；後端起手：[BACKEND-HANDOFF](BACKEND-HANDOFF.md)（前端完成盤點、雲端現況、待決策事項、Android 銜接）。現行排程：[ROADMAP](superpowers/plans/ROADMAP.md)／[詳細計畫](superpowers/plans/2026-09-29-frontend-prototype-refocus.md)。原 Google Sheets roadmap 已封存，不再作排程來源。
 
