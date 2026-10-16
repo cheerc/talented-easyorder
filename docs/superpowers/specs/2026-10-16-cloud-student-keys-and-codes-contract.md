@@ -9,7 +9,7 @@ Base: `origin/main`（SHA `15de317765520c51e368783afcabc0d5be7273ef`，包含 P0
 正式後端規格（`docs/superpowers/specs/2026-10-13-free-production-backend-spec.md`）原先以使用者輸入的「編號」作為 `students/{studentId}` 的文件鍵。由於交易、稽核、command 均引用此鍵，一旦開始寫入交易，更換編號將牽動大量歷史文件重寫（而 Firestore 安全規則無法跨任意查詢批量更新）。
 
 為因應實務上學生編號可能異動、調換或空號回收之需求（見 `docs/superpowers/plans/2026-10-15-operator-feedback-plan.md` §3 #7），P06b 將「**內部穩定鍵**」與「**畫面顯示編號**」明確分離：
-1. **內部鍵 `studentId`**：系統自動產生的 UUID（v4 格式），自建立起永不改變。所有交易、command、稽核紀錄均以 `studentId` 關聯學生，改編號完全不變更歷史交易與餘額。
+1. **內部鍵 `studentId`**：客戶端建檔時產生標準 RFC 4122 v4 UUID（`crypto.randomUUID()`），自建立起永不改變。Rules 端的 `validStudentId(value)` 沿用系統既有通用 UUID regex 驗證（接受 version 1–8）。所有交易、command、稽核紀錄均以 `studentId` 關聯學生，改編號完全不變更歷史交易與餘額。
 2. **畫面編號 `studentCode`**：使用者可見與輸入的編號，為唯一正規化的數字字串（`001`–`999999`）。由獨立唯一索引集合 `studentCodes/{studentCode}` 保證全系統不重複。
 3. **不可變與唯一性**：改編號走專屬命令 `ChangeStudentCode`，一次原子交易內更新學生主檔 `studentCode`、建立新編號索引並刪除舊編號索引。
 
@@ -20,7 +20,7 @@ Base: `origin/main`（SHA `15de317765520c51e368783afcabc0d5be7273ef`，包含 P0
 ### 2.1 學生主檔 `/students/{studentId}`
 
 - 文件路徑：`/students/{studentId}`
-- 文件 ID `studentId`：標準 UUID 字串，符合正規表示式 `^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`。
+- 文件 ID `studentId`：標準 UUID 字串。系統建檔時產生 v4 UUID，Rules 端接受既有通用 UUID 正規表示式 `^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`。
 - 文件內容：
 ```ts
 export interface CloudStudentDoc {
@@ -114,7 +114,11 @@ P06b 新增一個 enabled command kind：`ChangeStudentCode`。啟用 kinds 總�
   ```
 - `reason`: 等於 `payload.reason`
 - 狀態寬容性：允許對 `active` 或 `inactive` 停用狀態之學生帳戶執行改號（停用帳戶改號可用於讓出編號給新進學生）。
-- 兩帳戶互換號碼：不可在單筆交易內互換。必須藉由一個臨時空號，分兩次改號完成。
+- 兩帳戶互換號碼：不可在單筆交易內直接互換。若帳戶 A（原持號 a）與帳戶 B（原持號 b）欲互換號碼，必須藉由一個臨時空號 t，分三次改號完成：
+  1. `A: a → t`（釋出號碼 a，A 暫時改為 t）
+  2. `B: b → a`（B 取得號碼 a，釋出號碼 b）
+  3. `A: t → b`（A 取得號碼 b，完成互換）
+  UI 衝突確認框應明確說明此三步調換流程。
 - 寫入集合（5 份）：
   1. `commands/{commandId}`（create）
   2. `system/dataHead`（update: seq + 1, lastCommandId, updatedAt）
@@ -128,7 +132,7 @@ P06b 新增一個 enabled command kind：`ChangeStudentCode`。啟用 kinds 總�
 
 ---
 
-## 5. Security Rules 閉合證明、刪除授權與 Access Budget
+## 5. Security Rules 授權閉合設計、刪除授權與 Access Budget（靜態設計估值 WIP，待 Emulator 驗證）
 
 ### 5.1 舊索引刪除授權：如何取得本次 commandId
 
@@ -136,7 +140,7 @@ P06b 新增一個 enabled command kind：`ChangeStudentCode`。啟用 kinds 總�
 - `request.resource` 為 `null`，無法直接取得客戶端隨請求傳送的欄位。
 - `resource.data` 僅有被刪除文件的現有內容 `{ studentId, lastCommandId, updatedAt }`，其中的 `lastCommandId` 為**過去建立該索引的舊命令**，而非當前發起刪除的新命令。
 
-**閉合授權設計：**
+**靜態閉合授權設計（待實質驗證）：**
 1. 刪除規則定位主檔：
    從舊索引的 `resource.data.studentId` 讀取同筆交易中學生主檔的最新狀態：
    `let studentAfter = getAfter(/databases/$(database)/documents/students/$(resource.data.studentId)).data;`
@@ -155,11 +159,11 @@ P06b 新增一個 enabled command kind：`ChangeStudentCode`。啟用 kinds 總�
    - `command.after.student.studentCode == command.payload.studentCode`
    - `studentAfter.studentCode == command.payload.studentCode`
 
-此設計保證：
-- 任何獨立的 `delete` 請求若無同筆原子交易的 `ChangeStudentCode` command 與 student 配合，皆被拒絕。
-- 舊索引不可能被偽造 commandId 刪除，亦無法刪除非此學生所持有的編號索引。
+設計預期防護目標（需由 Emulator 對抗案例實證，不得在無測試前宣稱已保證）：
+- 任何獨立的 `delete` 請求若無同筆原子交易的 `ChangeStudentCode` command 與 student 配合，皆應被拒絕。
+- 舊索引不可被偽造 commandId 刪除，亦無法刪除非此學生所持有的編號索引。
 
-### 5.2 Access Call Budget 盤點（依照 p05-rules-budget 無快取計算法）
+### 5.2 Access Call Budget 盤點（依照 p05-rules-budget 無快取靜態估算法）
 
 Rules 規則存取限制為：**單一 write evaluation ≤ 10 次存取；單一原子 request ≤ 20 次存取**。
 
@@ -205,7 +209,10 @@ Rules 規則存取限制為：**單一 write evaluation ≤ 10 次存取；單�
 7. SDK Commit `VerifyMutation`（針對 lease）：**+1 次**。
 8. **整筆 commit 總存取：18 + 1 = 19 / 20 次**。
 
-單一 write 最大 9（≤10），整筆原子 request 最大 19（≤20），完全合規且具備安全裕度。
+**注意（WIP 警示）：**
+- 單一 write 最大估算 9（≤10），整筆原子 request 估算 19/20 次，**距離 20 次上限僅餘 1 次 access 額度**。
+- Firestore 另有每份文件 Rules 1,000-expression 上限，此為獨立限制，不能由 access 次數推導。
+- 以上均為靜態 call graph 估值，本契約嚴禁宣稱已證明合規；必須在後續步驟以真 Firestore Emulator 進行完整正向路徑與對抗性測試，產出實際 pass 證據後方可結案。
 
 ---
 

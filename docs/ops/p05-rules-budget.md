@@ -212,5 +212,5 @@ In Firestore Security Rules for `delete` operations, `request.resource` is null.
    - `command.after.student.studentCode != code && command.after.student.studentCode == command.payload.studentCode`
    - `studentAfter.studentCode == command.payload.studentCode`
 
-This design closes the authorization chain completely without relying on client-supplied IDs or caching, and requires exactly 3 access calls in the delete leaf rule evaluation (well within the per-write limit of 10). The entire atomic commit requires 19 no-cache access calls (within the limit of 20).
+This design specifies the static authorization closure without relying on client-supplied IDs or caching. It estimates 3 access calls in the delete leaf rule evaluation and 19 no-cache access calls for the entire atomic commit (leaving only 1 call below the 20-call limit). These figures are static WIP estimates subject to Emulator proof, and the independent 1,000-expression ceiling per document write must be verified in the test suite before claiming compliance.
 
