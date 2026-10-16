@@ -14,7 +14,7 @@
 
 PC 晚餐櫃台前端 prototype：鍵盤為主、滑鼠為輔，保留 operator 約七成滿意的 F1。每天一餐（晚餐）；餐費90找零後記90，多留10元則記100。支援1920×1080 PC及MacBook Pro 13吋，按可用視窗重排，不整頁縮小。
 
-前端本人驗收仍依下方清單；正式後端另依 P00–P18 計畫推進，目前 P06 學生名單與期初手動建檔已合併，P07 契約已凍結、implementation 進行中。iPad、真實人臉裝置整合與 Android 另案。
+前端本人驗收仍依下方清單；正式後端另依 P00–P18 計畫推進，目前 P00–P07 與 P06b 已合併，P08 雲端訂餐實作進行中。iPad、真實人臉裝置整合與 Android 另案。
 
 交接入口：[FRONTEND-PROTOTYPE-HANDOFF](FRONTEND-PROTOTYPE-HANDOFF.md)；後端起手：[BACKEND-HANDOFF](BACKEND-HANDOFF.md)（前端完成盤點、雲端現況、待決策事項、Android 銜接）。現行排程：[ROADMAP](superpowers/plans/ROADMAP.md)／[詳細計畫](superpowers/plans/2026-09-29-frontend-prototype-refocus.md)。原 Google Sheets roadmap 已封存，不再作排程來源。
 

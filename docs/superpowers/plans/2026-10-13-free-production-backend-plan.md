@@ -1,6 +1,6 @@
 # EasyOrder 零費用正式後端分階段實作計畫
 
-日期：2026-10-16。狀態：**P00–P07 已合併；P06b 契約已凍結、implementation 進行中；P08–P18 尚未開始或驗收**。
+日期：2026-10-16。狀態：**P00–P07 與 P06b 已合併至 main（P06b 隨整合 PR #488 合併）；P08 雲端訂餐實作進行中；P09–P18 尚未開始或驗收**。
 
 **Source of truth：** [正式後端 spec](../specs/2026-10-13-free-production-backend-spec.md)，包含使用者最新「多白名單、等權、同時單一Google帳號」修正；來源 [PR #469](https://github.com/cheerc/talented-easyorder/pull/469)。
 
@@ -185,7 +185,7 @@ npm run test:e2e
 
 **Acceptance/demo：** P07 isolated UI server reload 後仍見遠端供應商、當日開帳與 future menu；失權清空並使舊 request 無法回填；receipt confirmed 前不顯示成功，讀取刷新失敗只重試讀取。closed-day guard 不變；完整 close UI 留 P11。此契約不開 P08、不部署 production。
 
-**Current WIP checkpoint (2026-10-15):** Rules review findings for SaveVendor create receipts and stored SetOpeningCash integer types are fixed and covered by nine passing raw cases. Navigation recovery lock and sticky same-UID/epoch authorization latch are implemented. However, the legal inherited-menu Rules positive still hits the 1,000-expression ceiling; five true server-read tests fail on Emulator 1.19.8 document-ID DESC queries; both P07 browser cases fail before their functional assertions. Seven sequential Emulator suites total 234 passed / 6 failed / 0 skipped; full Vitest, lint and build pass, and TSC remains exit 2 with no new baseline diagnostics. **Update:** the latest checkpoint fixes all three blockers: the per-document Rules ceiling split, the backward date-window source scan, and the E2E fixes. Results: 248/248 Emulator (including six `P07.9b` negatives for the relocated source check), Vitest 1,400/0 failed, E2E 15+7. See [exact checkpoint evidence](../../ops/free-production-evidence.md#p07-latest-source-checkpoint--2026-10-15). This is not acceptance or merge-ready; required CI and fresh exact-SHA review are still outstanding. Stop after P07 closeout; do not start P08.
+**Current WIP checkpoint (2026-10-15):** Rules review findings for SaveVendor create receipts and stored SetOpeningCash integer types are fixed and covered by nine passing raw cases. Navigation recovery lock and sticky same-UID/epoch authorization latch are implemented. However, the legal inherited-menu Rules positive still hits the 1,000-expression ceiling; five true server-read tests fail on Emulator 1.19.8 document-ID DESC queries; both P07 browser cases fail before their functional assertions. Seven sequential Emulator suites total 234 passed / 6 failed / 0 skipped; full Vitest, lint and build pass, and TSC remains exit 2 with no new baseline diagnostics. **Update:** the latest checkpoint fixes all three blockers: the per-document Rules ceiling split, the backward date-window source scan, and the E2E fixes. Results: 248/248 Emulator (including six `P07.9b` negatives for the relocated source check), Vitest 1,400/0 failed, E2E 15+7. See [exact checkpoint evidence](../../ops/free-production-evidence.md#p07-latest-source-checkpoint--2026-10-15). P07 已合併（PR #480，merge SHA `436b119`）。
 
 ### P06b — 學生穩定內部鍵與可改編號
 
