@@ -107,9 +107,9 @@ Base: `origin/main`（SHA `e01ebdf`，含 P09b #494 與收據 #495）。本契�
 
 ## 9. 驗證
 
-- **Emulator**：`cloudTransactionMutation.spec.ts`（`EASYORDER_REQUIRE_CLOUD_MUTATIONS=true`，CI 步驟「P10a transaction mutation proof」）45 個案例，涵蓋：
+- **Emulator**：`cloudTransactionMutation.spec.ts`（`EASYORDER_REQUIRE_CLOUD_MUTATIONS=true`，CI 步驟「P10a transaction mutation proof」）47 個案例（main 的 Rules 上 21 項失敗），涵蓋：
   - L02／L03／L04／L07／L08／L09／L11、A03 同時修改、關帳與重開日、停用帳戶、最大 payload；
-  - 原始 SDK 的 22 種竄改、少寫投影、直接改刪交易、撤回與取消的誤用、櫃台收支夾帶學生。
+  - 原始 SDK 的 22 種竄改、少寫投影、直接改刪交易、撤回與取消的誤用、櫃台收支夾帶學生，以及用戶端會擋、但改用原始 SDK 直送的違規內容（`P10.25`）。
 - **單元**：`cloudTransactionMutation.test.ts`（算式與命令格式）。
 - **畫面**：`CloudOrdersPage.test.tsx` 的 P10a 區塊（撤回、5 秒消失、更正預覽、取消退款、作廢列顯示、櫃台收支更正、退款更正負餘額、版本衝突）。
 - **E2E**：`cloud-production.spec.ts` D06。繳費後 5 秒內撤回，訂餐更正後取消並退款；重新整理後由伺服器讀回，兩筆都保留為已作廢，命令留著前後值與理由。

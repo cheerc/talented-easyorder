@@ -697,6 +697,7 @@ describeWithEmulator('P10a transaction corrections, voids, cancels and undo: rep
     ['the payload reason is empty', a => { a.command.payload = { ...a.command.payload, reason: '' }; a.command.reason = ''; }],
     ['the command claims another student', a => { a.command.studentId = studentB; }],
     ['the expected transaction revision is stale', a => { a.command.expectedRevisions = { ...a.command.expectedRevisions, transaction: 7 }; }],
+    ['the expected student revision is stale', a => { a.command.expectedRevisions = { ...a.command.expectedRevisions, student: 7 }; }],
     ['the command before-snapshot lies about the old row', a => {
       a.command.before = { ...a.command.before, transaction: { ...a.txBefore, mealPrice: 0, amount: 0 } };
     }],
@@ -705,6 +706,101 @@ describeWithEmulator('P10a transaction corrections, voids, cancels and undo: rep
     const raw = await rawMutationArtifacts(meal.transactionId, correct(await txDoc(meal.transactionId), { mealPrice: 110 }) as TransactionMutationPayload);
     attack(raw);
     await expectRawDenied(raw);
+  });
+
+  /** Re-derives the student, day and cashEffect after an attack edits the transaction, so only the edited rule can refuse it. */
+  function recompute(a: RawMutation) {
+    const x = totalsContribution(a.txBefore as unknown as MutableTransaction) as unknown as Record<string, number>;
+    const y = totalsContribution(a.transactionAfter as unknown as MutableTransaction) as unknown as Record<string, number>;
+    const totals = a.dayBefore.totals as Record<string, number>;
+    a.dayAfter.totals = Object.fromEntries(Object.keys(totals).map(key => [key, totals[key] - x[key] + y[key]]));
+    if (a.studentAfter && a.studentBefore) {
+      a.studentAfter.currentBalance = a.studentBefore.currentBalance
+        - studentContribution(a.txBefore as unknown as MutableTransaction)
+        + studentContribution(a.transactionAfter as unknown as MutableTransaction);
+    }
+    a.command.cashEffect = mutationCashEffect(
+      a.command.kind, a.txBefore as unknown as MutableTransaction, a.transactionAfter as unknown as MutableTransaction,
+    );
+    syncSnapshots(a);
+  }
+
+  function setCorrection(a: RawMutation, values: { mealPrice: number; paidAmount: number; amount: number; note?: string }) {
+    const note = values.note ?? a.txBefore.note;
+    Object.assign(a.transactionAfter, { mealPrice: values.mealPrice, paidAmount: values.paidAmount, amount: values.amount, note });
+    a.command.payload = { ...a.command.payload, mealPrice: values.mealPrice, paidAmount: values.paidAmount, amount: values.amount, note };
+    recompute(a);
+  }
+
+  it('P10.25 (L09): raw SDK closures that the client would refuse are denied by Rules too', async () => {
+    // Undo with a free-text reason, and Undo naming another command.
+    const pay = await payment(studentA, 100);
+    const undo = { kind: 'Undo', payload: { targetCommandId: pay.commandId, reason: UNDO_REASON } } as TransactionMutationPayload;
+    const freeReason = await rawMutationArtifacts(pay.transactionId, undo);
+    freeReason.command.payload = { ...freeReason.command.payload, reason: '其他理由' };
+    freeReason.command.reason = '其他理由';
+    await expectRawDenied(freeReason);
+    const otherTarget = await rawMutationArtifacts(pay.transactionId, undo);
+    otherTarget.command.payload = { ...otherTarget.command.payload, targetCommandId: uuid() };
+    await expectRawDenied(otherTarget);
+
+    // A payment corrected to zero (must be a void), and a correction that changes nothing.
+    const toZero = await rawMutationArtifacts(pay.transactionId, correct(await txDoc(pay.transactionId), { paidAmount: 50 }) as TransactionMutationPayload);
+    setCorrection(toZero, { mealPrice: 0, paidAmount: 0, amount: 0 });
+    await expectRawDenied(toZero);
+    const unchanged = await rawMutationArtifacts(pay.transactionId, correct(await txDoc(pay.transactionId), { paidAmount: 50 }) as TransactionMutationPayload);
+    setCorrection(unchanged, { mealPrice: 0, paidAmount: 100, amount: 100 });
+    await expectRawDenied(unchanged);
+
+    // A counter expense turned into income.
+    const expense = await cash('expense', 80);
+    const flipped = await rawMutationArtifacts(expense.transactionId, correct(await txDoc(expense.transactionId), { mealPrice: 70 }) as TransactionMutationPayload);
+    setCorrection(flipped, { mealPrice: 0, paidAmount: 70, amount: 70 });
+    await expectRawDenied(flipped);
+    // Both sides at once keeps a positive expense side but is no longer a pure expense.
+    const bothSides = await rawMutationArtifacts(expense.transactionId, correct(await txDoc(expense.transactionId), { mealPrice: 70 }) as TransactionMutationPayload);
+    setCorrection(bothSides, { mealPrice: 70, paidAmount: 10, amount: -60 });
+    await expectRawDenied(bothSides);
+    const income = await cash('income', 50);
+    const incomeBoth = await rawMutationArtifacts(income.transactionId, correct(await txDoc(income.transactionId), { paidAmount: 40 }) as TransactionMutationPayload);
+    setCorrection(incomeBoth, { mealPrice: 10, paidAmount: 40, amount: 30 });
+    await expectRawDenied(incomeBoth);
+
+    // A refund corrected upward into debt: A has 200 after the payment; refund 200 leaves 0, then 250 would be −50.
+    const back = await refund(studentA, 200);
+    const debt = await rawMutationArtifacts(back.transactionId, correct(await txDoc(back.transactionId), { amount: 150 }) as TransactionMutationPayload);
+    setCorrection(debt, { mealPrice: 0, paidAmount: 0, amount: 250 });
+    expect(debt.studentAfter?.currentBalance).toBe(-50);
+    await expectRawDenied(debt);
+
+    // Keep-deposit that leaves the menu snapshot on the new payment.
+    const meal = await order(studentB, 90);
+    const keep = await rawMutationArtifacts(meal.transactionId, { kind: 'CancelKeepDeposit', payload: { reason: '請假' } });
+    keep.transactionAfter.menuNameSnapshot = 'Synthetic Meal';
+    recompute(keep);
+    await expectRawDenied(keep);
+
+    // A cash refund on an earlier reopened day.
+    const yesterday = shiftDate(today, -1);
+    const oldId = uuid();
+    await withAdmin(async db => {
+      await setDoc(doc(db, `days/${yesterday}`), {
+        ...dayDoc(yesterday, 'reopened'),
+        totals: { ...emptyTotals(), activeTransactionCount: 1, bentoCount: 1, mealTotal: 90, retainedReceipts: 90 },
+      });
+      await setDoc(doc(db, `transactions/${oldId}`), {
+        transactionId: oldId, studentId: studentA, businessDate: yesterday, type: 'order', mealKind: 'bento',
+        mealPrice: 90, paidAmount: 90, amount: 0, studentNameSnapshot: 'Synthetic 001', menuNameSnapshot: 'Synthetic Meal',
+        menuPriceSnapshot: 90, vendorIdSnapshot: 'p10-vendor', vendorNameSnapshot: 'Synthetic Vendor', otherItemName: null,
+        status: 'active', revision: 1, createdAt: serverTimestamp(), createdSeq: 1, operatorUid: operatorA.uid,
+        operatorEmail: operatorA.email, sourceDevice: 'pc', note: '', lastCommandId: seedCommandId, updatedAt: serverTimestamp(),
+      });
+    });
+    await expectRawDenied(await rawMutationArtifacts(oldId, { kind: 'CancelRefund', payload: { reason: '補退現' } }));
+
+    // Positive control: the same shapes commit when they are legal.
+    const legal = await rawMutationArtifacts(pay.transactionId, correct(await txDoc(pay.transactionId), { paidAmount: 50 }) as TransactionMutationPayload);
+    await assertSucceeds(rawMutationBatch(authedDb(operatorA), legal).commit());
   });
 
   it('P10.20 (L09): a raw SDK mutation cannot skip the transaction, student or day write', async () => {

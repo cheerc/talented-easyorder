@@ -297,8 +297,8 @@ Repo-wide search also found references in tests, mocks and archived planning doc
   - 新增 5 種修改的指令分支，營業日、學生與交易的投影分支都放在各 `||` 鏈最後；`transactions` 新增只透過命令的 `allow update`，`allow delete: if false`。
   - 指令建立改由 `validCommandCreate` 分派（`kind` 只讀一次），並省去已由既有不變量保證的檢查；新指令分支餘裕由 +1 回到 +19，既有 kind 的指令規則餘裕也增加 4–5。
   - 存取次數 19/20、單寫最多 10。見 [P10a 預算附錄](p05-rules-budget.md#p10a-transaction-mutations--budget-and-probe-receipt)。
-- RED：新 `cloudTransactionMutation.spec.ts`（45 項）在 main 的 Rules 上 20 項失敗。GREEN：45/45。
-- demo-easyorder Emulator 一次跑完 `src/firebase/__tests__` 全部 22 個 Emulator 檔案（所有 `EASYORDER_REQUIRE_*` 旗標開啟，含新 `EASYORDER_REQUIRE_CLOUD_MUTATIONS`）：489/489、0 skipped（Rules 精簡前後各跑一次）。
+- RED：新 `cloudTransactionMutation.spec.ts`（47 項）在 main 的 Rules 上 21 項失敗。GREEN：47/47。mutant 18 個：13 個被殺；4 個是由其他規則保證的重複檢查；1 個（櫃台收支方向）在拒絕路徑碰到運算上限，無法單獨證明。見預算附錄。
+- demo-easyorder Emulator 一次跑完 `src/firebase/__tests__` 全部 22 個 Emulator 檔案（所有 `EASYORDER_REQUIRE_*` 旗標開啟，含新 `EASYORDER_REQUIRE_CLOUD_MUTATIONS`）：491/491、0 skipped。
 - Vitest 1,634 passed／411 Emulator-only skipped／0 failed；`npm run lint`、`npm run build`、`npx tsc --noEmit` exit 0；app tsc 208 個 `error TS` 診斷，與 base 相同，觸及的檔案沒有診斷。
 - 畫面測試新增 8 項（撤回、5 秒消失、更正預覽、取消退款／留款、作廢列、櫃台收支更正、退款更正負餘額、版本衝突）；單元測試 `cloudTransactionMutation.test.ts` 25 項。
 - Cloud E2E 19/19（新 D06：繳費 200 在 5 秒內撤回；其他餐點 80／實收 100 更正為 70，再取消並退款；reload 後兩筆都是已作廢，命令保留前值與理由），使用本機 Chromium 1194，不取代 CI pinned Chromium。

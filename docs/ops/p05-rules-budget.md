@@ -325,7 +325,7 @@ The mutation branch is the last of the command-create `||` chain. With the old d
    - `txAfter.lastCommandId` (the transaction update rule requires it; the revision bump proves that write is in the batch);
    - `txBefore.type != 'expense'` on the student path (every expense row belongs to `__cashier__`).
 
-Full Emulator regression after the rewrite: 22 files, 489/489.
+Full Emulator regression after the rewrite: 22 files, 491/491.
 
 ### Expression headroom
 
@@ -357,5 +357,37 @@ Same probe method as the P09a/P09b appendices: inline `1 == 1 &&` terms at the r
 | command create | `P10.12` refund corrections | — | +19 / +20 |
 | day update | `P10.12` | — | +37 / +38 † |
 | student update | `P10.12` | — | +78 / +79 |
+| command create | `P10.11` counter-cash corrections | — | +20 / +21 |
+| day update | `P10.11` | — | +13 / +14 † |
+| transaction update | `P10.11` | — | +96 / +97 |
+| command create | `P10.6` counter-cash undo | — | +31 / +32 |
+| day update | `P10.6` | — | +39 / +40 † |
 
 The tightest anchors are still the day rule for `CreateOrder` (+11) and the command rule for mutations and refunds (+19). Re-measure before adding checks to either.
+
+### Mutants
+
+Each mutant removes one P10a check from `firestore.rules` and runs all of `cloudTransactionMutation.spec.ts`. The first round left nine checks untested by raw SDK attacks (the repository refuses those inputs before Rules see them); `P10.25` and a stale-student-revision case in `P10.19` were added for them.
+
+| Removed check | Result |
+|---|---|
+| `cashEffect` equals `mutationCashEffect` | killed (`P10.19`) |
+| `command.reason == payload.reason` | killed (`P10.19`) |
+| student balance `before − old + new` | killed (`P10.19`) |
+| day totals `before − old + new` (8 keys) | killed (`P10.19`) |
+| `CancelRefund`／`Undo` only for today's Taipei date | killed (`P10.25`) |
+| Undo by the creator only | killed (`P10.22`) |
+| Undo names the creating command (`lastCommandId == targetCommandId`) | killed (`P10.25`) |
+| Undo fixed reason | killed (`P10.25`) |
+| cancel only on orders | killed (`P10.22`) |
+| a correction must change something | killed (`P10.25`) |
+| a payment correction stays ≥ 1 | killed (`P10.25`) |
+| a refund correction does not raise into debt | killed (`P10.25`) |
+| keep-deposit clears the menu snapshots | killed (`P10.25`) |
+| Undo requires revision 1 | survived: redundant. `lastCommandId == targetCommandId` already implies the row was written only by its create, since every mutation sets a new unique `lastCommandId`. |
+| `txBefore.status == 'active'` in the command rule | survived: redundant with `before.status == 'active'` in the transaction update rule. |
+| transaction revision bump in the command rule | survived: redundant. If the transaction write is omitted, `command.after.transaction` no longer equals `getAfter(transaction)` and the `cashEffect` check fails. |
+| `expectedRevisions.student` in the command rule | survived: redundant with the same check in the student projection rule. |
+| expense keeps its direction | survived, not isolated: under the mutant, the both-sides attacks in `P10.25` are still denied, but at the 1,000-expression cap on the deny path rather than by logic (the same caveat as the P05 negative cases). The legal counter-cash correction path has +20 on the command rule. |
+
+The new Emulator suite against main's Rules fails 21 of 47 cases (RED); with the P10a Rules it passes 47/47.
