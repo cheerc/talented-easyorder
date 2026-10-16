@@ -42,9 +42,9 @@
 
 - F3 學生／共用帳戶：手動建檔、編號與前導零、姓名、別名、明確輸入期初（含零／負數）、期初日期與說明；修改姓名／別名、停用／恢復、可追溯的期初更正。停用帳戶仍可查帳及補繳／更正，禁止新增餐點。
 - F4 供應商逐筆建立、編輯聯絡資料、停用／恢復、移除。停用才可移除；雲端保留稽核用 tombstone 與歷史快照，正常清單不再出現；不是清除歷史交易。
-- F3 按日菜單與當日開帳。每天只有晚餐；未設定菜單可沿用最近較早日期，F1 提醒但不阻擋；尚無任何菜單時擋標準便當，仍可繳費與明確輸入的其他餐點。
+- F3 按日菜單與當日開帳。每天只有晚餐；未設定菜單可沿用最近較早日期，F1 提醒但不阻擋；尚無任何菜單時擋今日餐點，仍可繳費與明確輸入的其他餐點。
 - F1 保留 Q/W/E、重複訂餐確認、每次一份、其他餐點、繳費、櫃台現金收入／支出、成功後 5 秒撤回；換人與取消不殘留金額。正式版必須等待雲端確認才顯示成功。
-- F2 今日／本週／本月，份數分便當與其他餐點，餐費、實際收現、支出、淨現金、筆數；依帳戶合併／原始明細；全日點現金、差異、關帳與重開。
+- F2 今日／本週／本月，份數分今日餐點與其他餐點，餐費、實際收現、支出、淨現金、筆數；依帳戶合併／原始明細；全日點現金、差異、關帳與重開。
 - F5 按帳戶與日期查交易、作廢原單、前後值與理由、結帳所有版次。匯出 CSV 與列印維持 `domain/ledgerExport.ts` 的既有欄位／兩種模式。
 - 每個業務異動、關帳／重開、應用內 CSV 匯出／列印發起、備份匯出皆有操作者 UID、email 快照、伺服器時間與結果。列印僅能記「發起」，不能聲稱印表機已印出；無法監控瀏覽器自有列印或截圖。
 
@@ -99,7 +99,7 @@ commands 的共用查詢欄位一律存在：studentId在學生／期初／學�
 
 `dataHead.maintenance`是控制面覆蓋旗標，只有維護者IAM可以切換，**不屬於業務重播狀態**；operator command必須保持它不變且只能在false時成立。正常command只更新seq/lastCommandId/updatedAt，其餘head metadata固定。備份重播核對業務seq/ID與投影，不要求還原維護旗標、Auth白名單或lease；復原時明確設定maintenance=true，完成對帳後由維護者設false。此安排沿用已讀head，不另增加Rules存取文件。
 
-交易保留既有 `type=order|payment|expense`、`studentId`、`mealPrice`、`paidAmount`、`amount`、name/menu/vendor 快照、note、otherItemName。新建交易 `operatorId` 對映 UID；更正 actor 在 command，原始建立人不覆寫。`sourceDevice='pc'`；保留既有 `'ipad_handoff'` 相容字串供未來 adapter，不在本輪接受 Android 寫入。`depositAmount/unpaidAmount/afterBalance` 由有效資料推導。
+交易保留既有 `type=order|payment|expense`、`studentId`、`mealPrice`、`paidAmount`、`amount`、name/menu/vendor 快照、note、otherItemName。新建交易 `operatorId` 對映 UID；更正 actor 在 command，原始建立人不覆寫。`sourceDevice='pc'`；保留既有 `'ipad_handoff'` 相容字串供未來 adapter，不在本輪接受 Android 寫入。`depositAmount/unpaidAmount/afterBalance` 由有效資料推導。依 U2b／P08 定稿，程式內部識別字（如 `bentoCount`、`mealKind: 'bento'`、CSV 欄名 `bento_count` 等）維持不變，對應使用者可見之「今日餐點」（當日菜單那一項），避免改名牽動 Rules、schema 與備份格式；使用者可見介面則一律使用「今日餐點」。
 
 `days.menu` 包含現有 TodayMenu 欄位與 `inheritedFromDate`（或 null）。EnsureDay 初始 totals=0、status=open、openingCash=null；若採沿用菜單，讀最新較早 menu 並經獨立設定 command 寫入當日快照。規則驗證來源文件、日期不晚於當天且內容吻合；查找「最新較早」由 repository query 完成。菜單異動不改已售餐點快照。選單設定與訂單之間 revision 變動時重新確認價格，不能默默採新價。
 

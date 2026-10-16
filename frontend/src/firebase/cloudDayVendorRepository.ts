@@ -575,3 +575,5 @@ export function createCloudDayVendorRepository(
     readCommand: commandRepository.readCommand,
   };
 }
+
+export { decodeDay as decodeCloudDayRecord };

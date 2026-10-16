@@ -61,6 +61,8 @@ vi.mock('../components/cloud/CloudDayVendorsPage', () => ({
 }));
 
 import App from '../App';
+import { act } from '@testing-library/react';
+import { useUiTweaksStore } from '../store/uiTweaksStore';
 
 describe('App mode gate', () => {
   beforeEach(() => {
@@ -125,5 +127,22 @@ describe('App mode gate', () => {
     expect(studentsTab).toBeEnabled();
     fireEvent.click(dayVendorsTab);
     expect(dayVendorsTab).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('applies the shared U1 display preferences in cloud mode and follows later changes', () => {
+    appMocks.cloudModeValid = true;
+    act(() => useUiTweaksStore.getState().setTweaks({ theme: 'dark', scale: 'normal' }));
+    // 模擬 body 被其他畫面改過：雲端頁掛載時要重新套用共用偏好。
+    document.body.setAttribute('data-theme', 'warm');
+    document.body.setAttribute('data-scale', 'large');
+    render(<App />);
+
+    expect(document.body).toHaveAttribute('data-theme', 'dark');
+    expect(document.body).toHaveAttribute('data-scale', 'normal');
+
+    act(() => useUiTweaksStore.getState().setTweaks({ theme: 'light', scale: 'large' }));
+    expect(document.body).toHaveAttribute('data-theme', 'light');
+    expect(document.body).toHaveAttribute('data-scale', 'large');
+    act(() => useUiTweaksStore.getState().resetToDefault());
   });
 });

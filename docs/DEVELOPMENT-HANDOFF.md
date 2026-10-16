@@ -11,7 +11,7 @@
 
 ## 已合併與目前接手點
 
-- **目前接手點：P08 雲端訂餐實作進行中。** P07 PR [#480](https://github.com/cheerc/talented-easyorder/pull/480) 已合併（merge SHA `436b119`）；P06b 學生穩定內部鍵與可改編號（PR #487，source `2a03953`）經獨立 review PASS 後，已隨操作回饋前端 U3/U4/U2b 於整合 PR [#488](https://github.com/cheerc/talented-easyorder/pull/488)（source head `58191718e2388bfbf954314128f5357370e65123`，由使用者授權 `--admin` squash merge SHA `6ae1909639f56aa6d36524406e700554891f6328`）合併至 main。審查收據見 [P06b＋前端整合審查收據](ops/integration-p06b-review-5819171.md)。目前後端線由 agent 於獨立 worktree（`feat/p08-cloud-orders`）進行 P08 雲端訂餐實作與契約訂定，不開 P09/P09b/P10+；前端 prototype 批次 U1–U4 均已合入 main，並提供使用者可操作之 [Prototype U1–U4 本人操作驗收步驟清單](superpowers/verification/2026-10-16-prototype-u1-u4-verification-checklist.md)。
+- **目前接手點：P08 雲端訂餐實作進行中。** P07 PR [#480](https://github.com/cheerc/talented-easyorder/pull/480) 已合併（merge SHA `436b119`）；P06b 學生穩定內部鍵與可改編號（PR #487，source `2a03953`）經獨立 review PASS 後，已隨操作回饋前端 U3/U4/U2b 於整合 PR [#488](https://github.com/cheerc/talented-easyorder/pull/488)（source head `58191718e2388bfbf954314128f5357370e65123`，由使用者授權 `--admin` squash merge SHA `6ae1909639f56aa6d36524406e700554891f6328`）合併至 main。審查收據見 [P06b＋前端整合審查收據](ops/integration-p06b-review-5819171.md)。P08 雲端訂餐的第一版 PR #490（`feat/p08-cloud-orders`，head `bca7d048f9743be0b2026938a3f3831ccafdf624`）經審查列出 B1–B8 必修項，改由分支 `claude/backend-p08-ps4e3x` 開新 PR 修正並取代 #490（狀態見下方「P08 目前交接狀態」），不開 P09/P09b/P10+；前端 prototype 批次 U1–U4 均已合入 main，並提供使用者可操作之 [Prototype U1–U4 本人操作驗收步驟清單](superpowers/verification/2026-10-16-prototype-u1-u4-verification-checklist.md)。
 - 已合併 P07：PR [#480](https://github.com/cheerc/talented-easyorder/pull/480)，merge SHA `436b119`，包含日期菜單與供應商管理。
 - 已合併 P06：PR [#478](https://github.com/cheerc/talented-easyorder/pull/478)，merge SHA `b518eca5fdc2b2d2d3e9197c30b29d6a5f74ce10`。
 - 已合併 P05：PR [#476](https://github.com/cheerc/talented-easyorder/pull/476)，base `837a1e871468db217463e9799480beeb6d7b0ab0`，source head `0fe7ac738c8495def1c9fdc19580745ff4b4e33f`，實際 merge SHA `41cd08715c435bc5d72ee38985fccd40e0ee4dd1`，合併時間 2026-10-14 16:22:05Z。獨立 [review PASS](https://github.com/cheerc/talented-easyorder/pull/476#pullrequestreview-5521098252)；required CI [run 38596486712](https://github.com/cheerc/talented-easyorder/actions/runs/38596486712) 兩個 jobs 均 SUCCESS，使用官方 pinned Chromium 148.0.7778.96／Playwright v1223。
@@ -58,7 +58,12 @@ git log -1 --oneline --decorate
 ## P08 目前交接狀態（P07 與 P06b 已合併）
 
 1. P07 日期菜單與供應商（PR [#480](https://github.com/cheerc/talented-easyorder/pull/480)，merge SHA `436b119`）與 P06b 學生穩定鍵與可改編號（PR #487，隨整合 PR [#488](https://github.com/cheerc/talented-easyorder/pull/488) 合併，merge SHA `6ae1909639f56aa6d36524406e700554891f6328`）均已正式合入 main。
-2. 目前正式後端接手點為 **P08 雲端訂餐**，契約由後端 agent 於獨立 worktree（`feat/p08-cloud-orders`）訂定中（`cloud-orders-contract.md`），進行實作與驗證，涵蓋 `CreateOrder`、菜單快照與 `bento` 識別字映射。
+2. 目前正式後端接手點為 **P08 雲端訂餐**，契約見 [cloud orders contract](superpowers/specs/2026-10-16-cloud-orders-contract.md)。
+   - PR #490（head `bca7d048f9743be0b2026938a3f3831ccafdf624`）審查未過，必修 B1–B8：未知結果重試與凍結 commandId、失去租約遮罩、伺服器營業日、交易清單讀取 fail closed（分頁、對帳、新鮮度）、transactions list Rule 與 Emulator 證明、明細不捏造品名、金額嚴格解析、文件同步。
+   - 修正版從 #490 head 接續，分支 `claude/backend-p08-ps4e3x`（base `origin/main` `5ff889a8c7dc9a411383c8f1a37e23f243e0ce8d`），以新 PR 取代 #490；完整 head SHA、CI run 記在該 PR body。
+   - 本機驗證（demo-easyorder Emulator＋合成資料）：Rules／Emulator 281/281（firestoreRules 10、cloudRulesProof 36、activeAccountLease 19、cloudCommands 178、failure 6、students 12、dayVendor 10、P08 orders 10）；P08 新 spec 在 main 的 Rules 上 10/10 失敗（RED）。Vitest 1,573 passed／281 Emulator-only skipped／0 failed；lint、build 通過；app tsc 208 個 `error TS` 診斷，與 base 相同（未新增）；E2E Cloud 16＋prototype 7 通過（本機 Chromium 1194，不取代 CI pinned Chromium）。
+   - 已知限制：雲端模式沒有顯示偏好設定入口（沿用本機模式設定的主題與字級）；單日交易讀取上限 2,000 筆，超過 fail closed；5 秒撤回、W 繳費、A 櫃台收支仍關閉。
+   - 下一步：新 PR CI 綠燈後由 reviewer 複審；合併後若 P08 計畫尚有剩餘項目再接續，P08 全部合併即停，不開 P09。
 3. 工作只推進到 P08 完成與收尾，**不得跨越開始 P09/P09b/P10+**。測試只用 `demo-easyorder` Emulator 與合成資料；production keys/resources/bootstrap/deploy 仍只由使用者本機處理；SDK `persistentLocalCache` 改造仍屬 P13。
 
 `/tmp` 原始結果檔可能在環境恢復後消失；本頁／evidence／tracked review 保存狀態與摘要。需要重新驗證時依 CI 與 suite 執行，不將缺失的原始檔視為當次新執行證據。production keys／資源／部署仍只由使用者本機處理。

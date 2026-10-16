@@ -245,6 +245,16 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - Cloud＋prototype E2E final source 19/19、0 skipped：Cloud 12/12、prototype 7/7，log `/tmp/easyorder-p05-e2e-final-r8.log`。使用同一個 demo auth/firestore Emulator 順序跑 Cloud then prototype，system Chromium 154 與 `/tmp` browser configs；A01–A09 包括 A08 heartbeat／leader takeover，以及 A09 cloud business closed shell。此為本機診斷執行，不是 pinned-browser gate；最終 required CI run 38596486712 已使用官方 pinned Chromium 148.0.7778.96／Playwright v1223 通過。prototype 7 個本機 POS cases 未 skip、未混入 cloud business pass。
 - Review／歷史：前一 immutable candidate 因 review NOT PASS；3cb review comment `5520752222` 的 P1/P2 findings 後續在 #476 source 修正，舊 head CI run 38591372284 不適用最終 source。PR #476 的 immutable review comment `5521098252` 最終 PASS，required CI run 38596486712 兩個 jobs 成功，coordinator 已於 2026-10-14 16:22:05Z merge 為 `41cd08715c435bc5d72ee38985fccd40e0ee4dd1`。P06 已排定為學生名單與期初手動建檔，尚未開始；只逐項開啟已接上 `commitCommand`、server read/hydrate、receipt confirmation 並通過 Rules/review 的學生功能，不可整批恢復舊 `AppContent`／POS。本次文件收據不啟動 P06。未部署或連接正式資源；部署與任何真實資料操作仍由使用者本機執行。`persistentLocalCache` 未改，Firestore SDK memory cache 仍屬 P13。
 
+## P08 雲端訂餐修正版 checkpoint — 2026-10-16（未合併）
+
+- 起點：PR #490 head `bca7d048f9743be0b2026938a3f3831ccafdf624`（已含 `origin/main` `5ff889a8c7dc9a411383c8f1a37e23f243e0ce8d`）。審查列出 B1–B8 必修；修正版在分支 `claude/backend-p08-ps4e3x` 以新 PR 取代 #490。最終 head SHA 與 CI run 以該 PR body 為準。
+- Rules 變更只有 `transactions` 的 `allow get, list: if currentHolder();`（`update, delete` 仍拒絕）；寫入 Rules、`days` 規則與 p05 存取次數盤點未改。新增複合索引 `transactions (businessDate, createdAt, __name__)`。
+- RED：新 `cloudOrderRepository.spec.ts` 在 main 的 Rules 上 10/10 失敗。GREEN：同一 spec 在修正版 Rules 上 10/10 通過。
+- demo-easyorder Emulator 全序列 281/281、0 skipped：firestoreRules 10、cloudRulesProof 36、activeAccountLease 19、cloudCommands 178、failure 6、students 12、dayVendor 10、orders 10。
+- Vitest 1,573 passed／281 Emulator-only skipped／0 failed；`npm run lint`、`npm run build` exit 0；app tsc 208 個 `error TS` 診斷，與 base 相同。
+- E2E：Cloud 16＋prototype 7 通過，使用本機 Chromium 1194（pinned headless shell 不在本環境），不取代 CI。
+- 無 production 部署、無正式金鑰；SDK `persistentLocalCache` 仍屬 P13。
+
 ### TypeScript 診斷基線
 
 - P00 的 `75e7a96` 歷史 baseline 為 exit 2、279 diagnostics；P04 base 另以 `npx --no-install tsc -p tsconfig.app.json --noEmit` 擷取為 exit 2、295 diagnostics，原始輸出在目前執行環境 `/tmp/easyorder-p04-base-tsc.raw.txt`。

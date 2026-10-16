@@ -1,0 +1,365 @@
+.cloud-orders {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.cloud-orders__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.cloud-orders__header-info h2 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.25rem;
+}
+
+.cloud-orders__topbar-counts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: right;
+}
+
+.cloud-orders__topbar-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.cloud-orders__topbar-label {
+  color: var(--text-muted, #64748b);
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloud-orders__topbar-number {
+  min-width: 2.5rem;
+  font-family: monospace;
+  font-weight: 700;
+  color: var(--text-main, #0f172a);
+}
+
+.cloud-orders__content {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(320px, 1fr);
+  gap: 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .cloud-orders__content {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cloud-orders__main-panel,
+.cloud-orders__side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.cloud-orders__card {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 8px;
+  padding: 1.25rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.cloud-orders__search-group {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cloud-orders__search-input {
+  width: 100%;
+  font-size: 1.125rem;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--border-color, #cbd5e1);
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
+.cloud-orders__search-input:focus {
+  border-color: var(--primary, #2563eb);
+  outline: none;
+}
+
+.cloud-orders__search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: #ffffff;
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: 6px;
+  margin-top: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  list-style: none;
+  padding: 0;
+}
+
+.cloud-orders__search-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.cloud-orders__search-item:last-child {
+  border-bottom: none;
+}
+
+.cloud-orders__search-item:hover,
+.cloud-orders__search-item[data-highlighted="true"] {
+  background-color: #f8fafc;
+}
+
+.cloud-orders__search-item--inactive {
+  opacity: 0.6;
+}
+
+.cloud-orders__student-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 9999px;
+  background: #ef4444;
+  color: #ffffff;
+  margin-left: 0.5rem;
+}
+
+.cloud-orders__selected-student {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.875rem 1rem;
+}
+
+.cloud-orders__selected-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 1.125rem;
+}
+
+.cloud-orders__mode-selector {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.cloud-orders__mode-btn {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border: 2px solid #cbd5e1;
+  background: #f8fafc;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.cloud-orders__mode-btn[aria-pressed="true"] {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.cloud-orders__form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.cloud-orders__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.cloud-orders__field label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.cloud-orders__field input {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+.cloud-orders__preview-bar {
+  display: flex;
+  justify-content: space-around;
+  background: #f1f5f9;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+}
+
+.cloud-orders__actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.cloud-orders__btn-primary {
+  flex: 2;
+  padding: 0.75rem 1.5rem;
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cloud-orders__btn-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.cloud-orders__btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cloud-orders__btn-secondary {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cloud-orders__btn-secondary:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.cloud-orders__recent-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cloud-orders__recent-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.cloud-orders__recent-item:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.cloud-orders__recent-badge {
+  font-size: 0.85rem;
+  color: #475569;
+  background: #e2e8f0;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+}
+
+.cloud-orders__modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.cloud-orders__modal {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 1.5rem;
+  width: 90%;
+  max-width: 560px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.cloud-orders__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+.cloud-orders__table th,
+.cloud-orders__table td {
+  padding: 0.625rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.cloud-orders__table th {
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 600;
+}
+
+.cloud-orders__notice {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+}
+
+.cloud-orders__error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+}
+
+.cloud-orders__debt {
+  color: #dc2626;
+}
+
+.cloud-orders__muted {
+  color: #64748b;
+}

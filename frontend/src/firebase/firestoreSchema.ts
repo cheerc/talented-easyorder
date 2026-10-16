@@ -255,7 +255,7 @@ export function cloudTransactionToLedgerTransaction(
     syncStatus: doc.status === 'voided' ? 'voided' : 'synced',
     revision: doc.revision,
     note: doc.note,
-    otherItemName: doc.mealKind === 'other' ? doc.menuNameSnapshot : undefined,
+    otherItemName: doc.mealKind === 'other' ? (doc.otherItemName ?? doc.menuNameSnapshot ?? undefined) : undefined,
   };
 }
 

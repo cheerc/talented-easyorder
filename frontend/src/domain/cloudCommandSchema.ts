@@ -356,14 +356,14 @@ function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayl
     safeInteger(menuRevision, 'menuRevision');
     if (menuRevision < 1) throw new InvalidCloudCommandInput('menuRevision 必須大於零');
   } else if (menuRevision !== null) {
-    throw new InvalidCloudCommandInput('其他餐點不接受便當菜單版次');
+    throw new InvalidCloudCommandInput('其他餐點不接受今日餐點菜單版次');
   }
   const otherItemName: string | null = value.otherItemName === undefined ? null : value.otherItemName as string | null;
   if (otherItemName !== null && (typeof otherItemName !== 'string' || otherItemName.length > 100)) {
     throw new InvalidCloudCommandInput('otherItemName 不合法');
   }
   if (value.mealKind === 'other' && !otherItemName?.trim()) throw new InvalidCloudCommandInput('其他餐點必須提供品名');
-  if (value.mealKind === 'bento' && otherItemName !== null) throw new InvalidCloudCommandInput('便當不能帶 otherItemName');
+  if (value.mealKind === 'bento' && otherItemName !== null) throw new InvalidCloudCommandInput('今日餐點不能帶 otherItemName');
   const note = value.note ?? '';
   if (typeof note !== 'string' || note.length > 500) throw new InvalidCloudCommandInput('note 不合法');
   return {
@@ -932,7 +932,7 @@ function validateReceiptSnapshots(
   const mealKind = orderPayload?.mealKind ?? null;
   const menu = dayBefore.menu as Record<string, unknown> | null;
   if (orderPayload?.mealKind === 'bento' && menu === null) {
-    throw new InvalidCloudCommandInput('CreateOrder receipt 缺少便當菜單 snapshot');
+    throw new InvalidCloudCommandInput('CreateOrder receipt 缺少今日餐點菜單 snapshot');
   }
   const committedBusinessDate = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',

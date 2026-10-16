@@ -1266,8 +1266,8 @@ service cloud.firestore {
     }
 
     match /transactions/{transactionId} {
-      allow get: if currentHolder();
-      allow list, update, delete: if false;
+      allow get, list: if currentHolder();
+      allow update, delete: if false;
       allow create: if request.resource.data.lastCommandId is string
         && transactionCommand(request.resource.data.lastCommandId, transactionId, request.resource.data)
         && validId(transactionId);
