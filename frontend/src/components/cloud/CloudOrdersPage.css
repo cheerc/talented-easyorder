@@ -380,3 +380,27 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+/* P10a：撤回列、作廢列與列上的修改按鈕 */
+.cloud-orders__undo-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cloud-orders__row--voided {
+  color: var(--color-text-muted, #6b7280);
+  text-decoration: line-through;
+}
+
+.cloud-orders__row--voided .cloud-orders__student-badge,
+.cloud-orders__row--voided .cloud-orders__recent-badge {
+  text-decoration: none;
+}
+
+.cloud-orders__row-actions {
+  display: inline-flex;
+  gap: 6px;
+}

@@ -289,3 +289,17 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - Cloud E2E 18/18（新 D05：學生期初 150、W 面板退款 100，應有現金只扣一次，reload 後與伺服器文件一致），使用本機 Chromium 1194，不取代 CI pinned Chromium。
 - 無 production 部署、無正式金鑰。正式部署 Rules 時，既有 7 欄日統計的營業日會被拒；目前沒有正式資料。
 - 合併收據：PR #494 source head `f82a5afed689d0b793fcc8c45e2d52fe24cc60c5`，CI [38905988081](https://github.com/cheerc/talented-easyorder/actions/runs/38905988081)（build-and-test、e2e）成功，獨立審查 PASS（無必修項；審查者重跑 Vitest 1,601 passed／366 skipped、`cloudRefund.spec.ts` 43/43），squash merge `5b6f9a495244c2a800a64ce0677bb1645b33f0a6`。P09 完成，P10 未開始。
+
+## P10a 交易更正、作廢、取消與 5 秒撤回 checkpoint — 2026-10-16
+
+- P09b 已合併（#494，squash `5b6f9a4`）；收據 #495（`e01ebdff5e784522b15a6f16278ef303a9c63110`）。P10a branch `claude/project-thread-iq5n8l`，base `e01ebdff5e784522b15a6f16278ef303a9c63110`；PR、head SHA 與 CI 以 PR body 為準。契約：[P10a contract](../superpowers/specs/2026-10-16-cloud-transaction-mutations-contract.md)。
+- Rules：
+  - 新增 5 種修改的指令分支，營業日、學生與交易的投影分支都放在各 `||` 鏈最後；`transactions` 新增只透過命令的 `allow update`，`allow delete: if false`。
+  - 指令建立改由 `validCommandCreate` 分派（`kind` 只讀一次），並省去已由既有不變量保證的檢查；新指令分支餘裕由 +1 回到 +19，既有 kind 的指令規則餘裕也增加 4–5。
+  - 存取次數 19/20、單寫最多 10。見 [P10a 預算附錄](p05-rules-budget.md#p10a-transaction-mutations--budget-and-probe-receipt)。
+- RED：新 `cloudTransactionMutation.spec.ts`（45 項）在 main 的 Rules 上 20 項失敗。GREEN：45/45。
+- demo-easyorder Emulator 一次跑完 `src/firebase/__tests__` 全部 22 個 Emulator 檔案（所有 `EASYORDER_REQUIRE_*` 旗標開啟，含新 `EASYORDER_REQUIRE_CLOUD_MUTATIONS`）：489/489、0 skipped（Rules 精簡前後各跑一次）。
+- Vitest 1,634 passed／411 Emulator-only skipped／0 failed；`npm run lint`、`npm run build`、`npx tsc --noEmit` exit 0；app tsc 208 個 `error TS` 診斷，與 base 相同，觸及的檔案沒有診斷。
+- 畫面測試新增 8 項（撤回、5 秒消失、更正預覽、取消退款／留款、作廢列、櫃台收支更正、退款更正負餘額、版本衝突）；單元測試 `cloudTransactionMutation.test.ts` 25 項。
+- Cloud E2E 19/19（新 D06：繳費 200 在 5 秒內撤回；其他餐點 80／實收 100 更正為 70，再取消並退款；reload 後兩筆都是已作廢，命令保留前值與理由），使用本機 Chromium 1194，不取代 CI pinned Chromium。
+- 無 production 部署、無正式金鑰。

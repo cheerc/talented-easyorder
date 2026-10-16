@@ -22,6 +22,17 @@ import {
   type StoredEnabledCommandDoc,
 } from '../domain/cloudCommandSchema';
 import { STUDENT_CODE_REGEX } from '../domain/student';
+import {
+  TransactionMutationRejected,
+  applyTransactionMutation,
+  isTransactionMutationKind,
+  mutationCashEffect,
+  studentContribution,
+  totalsContribution,
+  type MutableTransaction,
+  type TransactionMutationKind,
+  type TransactionMutationPayload,
+} from '../domain/cloudTransactionMutation';
 import { accessLeasePath, commandPath, dataHeadPath, dayPath, studentCodePath, studentPath, transactionPath, vendorPath } from './firestorePaths';
 
 type Data = Record<string, unknown>;
@@ -192,6 +203,30 @@ function decodeVendor(value: unknown): Data {
   return value;
 }
 
+/** Same 24-key transaction document as Rules `validTransactionDoc` and the P10a mutations. */
+function decodeTransaction(value: unknown): Data {
+  const keys = [
+    'transactionId', 'studentId', 'businessDate', 'type', 'mealKind', 'mealPrice', 'paidAmount', 'amount',
+    'studentNameSnapshot', 'menuNameSnapshot', 'menuPriceSnapshot', 'vendorIdSnapshot', 'vendorNameSnapshot',
+    'otherItemName', 'status', 'revision', 'createdAt', 'createdSeq', 'operatorUid', 'operatorEmail',
+    'sourceDevice', 'note', 'lastCommandId', 'updatedAt',
+  ];
+  if (!hasExactKeys(value, keys)
+    || typeof value.transactionId !== 'string' || typeof value.studentId !== 'string' || !validDate(value.businessDate)
+    || !['order', 'payment', 'expense', 'refund'].includes(String(value.type))
+    || (value.mealKind !== null && value.mealKind !== 'bento' && value.mealKind !== 'other')
+    || !integer(value.mealPrice) || value.mealPrice > 1_000_000
+    || !integer(value.paidAmount) || value.paidAmount > 1_000_000
+    || !integer(value.amount, -1_000_000) || value.amount > 1_000_000
+    || (value.status !== 'active' && value.status !== 'voided')
+    || !integer(value.revision, 1) || !integer(value.createdSeq, 1)
+    || typeof value.note !== 'string' || typeof value.operatorUid !== 'string' || typeof value.lastCommandId !== 'string'
+    || !(value.createdAt instanceof Timestamp) || !(value.updatedAt instanceof Timestamp)) {
+    throw new RejectCommand('UNSUPPORTED_SCHEMA', '交易文件 schema 不支援');
+  }
+  return value;
+}
+
 function taipeiCalendarDate(timestamp: Timestamp): string {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -338,6 +373,25 @@ async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput)
       if (current.status === 'closed') return 'DAY_CLOSED';
       return 'INVALID_INPUT';
     }
+    if (isTransactionMutationKind(input.kind)) {
+      const mutation = input as Extract<CanonicalEnabledInput, { kind: TransactionMutationKind }>;
+      const cashier = mutation.targets.studentId === CASHIER_STUDENT_ID;
+      const [transaction, day, student] = await Promise.all([
+        getDocFromServer(doc(db, transactionPath(mutation.targets.transactionId))),
+        getDocFromServer(doc(db, dayPath(mutation.targets.dayId))),
+        cashier ? Promise.resolve(null) : getDocFromServer(doc(db, studentPath(mutation.targets.studentId))),
+      ]);
+      if (!transaction.exists() || !day.exists() || (student !== null && !student.exists())) return 'INVALID_INPUT';
+      const transactionValue = decodeTransaction(transaction.data());
+      const dayValue = decodeDay(day.data());
+      if (transactionValue.revision !== mutation.expectedRevisions.transaction
+        || dayValue.revision !== mutation.expectedRevisions.day
+        || (student !== null && decodeStudent(student.data()).revision !== mutation.expectedRevisions.student)) {
+        return 'REVISION_CONFLICT';
+      }
+      if (dayValue.status === 'closed') return 'DAY_CLOSED';
+      return 'INVALID_INPUT';
+    }
     if (input.kind !== 'CreateOrder' && input.kind !== 'CreatePayment' && input.kind !== 'CreateRefund') return null;
     const [student, day, transaction] = await Promise.all([
       getDocFromServer(doc(db, studentPath(input.targets.studentId))),
@@ -449,15 +503,18 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     const headRef = doc(db, dataHeadPath());
     const leaseRef = doc(db, accessLeasePath());
     const operatorRef = doc(db, `operators/${user.uid}`);
+    const mutation = isTransactionMutationKind(input.kind) ? input as Extract<CanonicalEnabledInput, { kind: TransactionMutationKind }> : null;
     const hasDayTarget = input.kind === 'EnsureDay' || input.kind === 'CreateOrder' || input.kind === 'CreatePayment'
-      || input.kind === 'CreateCashMovement' || input.kind === 'CreateRefund' || input.kind === 'SetDayMenu' || input.kind === 'SetOpeningCash';
+      || input.kind === 'CreateCashMovement' || input.kind === 'CreateRefund' || input.kind === 'SetDayMenu' || input.kind === 'SetOpeningCash'
+      || mutation !== null;
     const targetDayId = input.kind === 'EnsureDay' ? input.targets.dayId
       : input.kind === 'CreateOrder' || input.kind === 'CreatePayment' || input.kind === 'CreateCashMovement'
         || input.kind === 'CreateRefund' || input.kind === 'SetDayMenu' || input.kind === 'SetOpeningCash'
-        ? input.targets.dayId : null;
+        ? input.targets.dayId : mutation ? mutation.targets.dayId : null;
     const dayRef = targetDayId ? doc(db, dayPath(targetDayId)) : null;
     const targetStudentId = input.kind === 'CreateStudent' || input.kind === 'ChangeStudentCode' || input.kind === 'EditStudent' || input.kind === 'SetStudentStatus'
-      || input.kind === 'CreateOrder' || input.kind === 'CreatePayment' || input.kind === 'CreateRefund' ? input.targets.studentId : null;
+      || input.kind === 'CreateOrder' || input.kind === 'CreatePayment' || input.kind === 'CreateRefund' ? input.targets.studentId
+      : mutation && mutation.targets.studentId !== CASHIER_STUDENT_ID ? mutation.targets.studentId : null;
     const targetStudentRef = targetStudentId ? doc(db, studentPath(targetStudentId)) : null;
     const targetVendorId = input.kind === 'SaveVendor' || input.kind === 'RemoveVendor' ? input.targets.vendorId
       : input.kind === 'SetDayMenu' ? input.payload.vendorId : null;
@@ -467,7 +524,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     const targetTransactionRef = input.kind === 'CreateOrder' || input.kind === 'CreatePayment' || input.kind === 'CreateCashMovement'
       || input.kind === 'CreateRefund'
       ? doc(db, transactionPath(input.targets.transactionId))
-      : null;
+      : mutation ? doc(db, transactionPath(mutation.targets.transactionId)) : null;
 
     try {
       const transactionOutcome = await runTransaction(db, async tx => {
@@ -498,6 +555,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         const sourceDaySnapshot = sourceDayRef ? await tx.get(sourceDayRef) : null;
         let studentBefore: Data | null = null;
         let transactionExists = false;
+        let transactionData: unknown = null;
         if (targetStudentRef && targetStudentId) {
           const studentSnapshot = await tx.get(targetStudentRef);
           if (input.kind === 'CreateStudent') {
@@ -511,6 +569,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         if (targetTransactionRef) {
           const transactionSnapshot = await tx.get(targetTransactionRef);
           transactionExists = transactionSnapshot.exists();
+          transactionData = transactionExists ? transactionSnapshot.data() : null;
         }
 
         const codeIndexRef = input.kind === 'CreateStudent'
@@ -981,6 +1040,116 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
           return { existing: null } as const;
         }
 
+        if (mutation) {
+          if (!daySnapshot?.exists() || !dayRef || !targetTransactionRef || !transactionExists) {
+            throw new RejectCommand('INVALID_INPUT', '要更正的交易或營業日不存在');
+          }
+          const { transactionId, studentId, dayId } = mutation.targets;
+          const cashier = studentId === CASHIER_STUDENT_ID;
+          const transactionBefore = decodeTransaction(transactionData);
+          if (transactionBefore.transactionId !== transactionId || transactionBefore.studentId !== studentId
+            || transactionBefore.businessDate !== dayId || cashier !== (transactionBefore.type === 'expense')) {
+            throw new RejectCommand('INVALID_INPUT', '交易的帳戶或營業日與命令不一致');
+          }
+          if (!cashier && (!studentBefore || !targetStudentRef)) throw new RejectCommand('INVALID_INPUT', '交易的學生不存在');
+          const dayBefore = decodeDay(daySnapshot.data());
+          checkRevision(transactionBefore.revision, mutation.expectedRevisions.transaction, '交易版本');
+          if (studentBefore) checkRevision(studentBefore.revision, mutation.expectedRevisions.student ?? -1, '學生版本');
+          checkRevision(dayBefore.revision, mutation.expectedRevisions.day, '營業日版本');
+          if (transactionBefore.status !== 'active') throw new RejectCommand('INVALID_INPUT', '這筆交易已作廢，不能再更正或取消');
+          if (dayBefore.status === 'closed') throw new RejectCommand('DAY_CLOSED', '該日已關帳，不能更正');
+          requireDateAfterGoLive(dayId, String(headBefore.goLiveDate));
+          if (mutation.kind === 'CancelRefund' || mutation.kind === 'Undo') {
+            const today = taipeiCalendarDate((leaseSnapshot.data() as Data).updatedAt as Timestamp);
+            if (dayId !== today) throw new RejectCommand('INVALID_INPUT', '只能撤回或退還台北今天的交易');
+          }
+          if (mutation.kind === 'Undo' && (transactionBefore.revision !== 1 || transactionBefore.operatorUid !== user.uid
+            || transactionBefore.lastCommandId !== mutation.payload.targetCommandId)) {
+            throw new RejectCommand('INVALID_INPUT', '只能撤回本人剛送出且未更動的交易');
+          }
+          let applied: Data;
+          try {
+            applied = applyTransactionMutation(
+              transactionBefore as unknown as MutableTransaction,
+              { kind: mutation.kind, payload: mutation.payload } as TransactionMutationPayload,
+            ) as unknown as Data;
+          } catch (error) {
+            if (error instanceof TransactionMutationRejected) throw new RejectCommand('INVALID_INPUT', error.message);
+            throw error;
+          }
+          const transactionAfter: Data = {
+            ...applied,
+            revision: Number(transactionBefore.revision) + 1,
+            lastCommandId: input.commandId,
+            updatedAt: now,
+          };
+          const contributionBefore = totalsContribution(transactionBefore as unknown as MutableTransaction);
+          const contributionAfter = totalsContribution(transactionAfter as unknown as MutableTransaction);
+          const totalsBefore = dayBefore.totals as Record<string, number>;
+          const totalsAfter = Object.fromEntries(
+            (Object.keys(contributionBefore) as Array<keyof typeof contributionBefore>).map(key => [
+              key, totalsBefore[key] - contributionBefore[key] + contributionAfter[key],
+            ]),
+          );
+          if (Object.values(totalsAfter).some(value => !Number.isSafeInteger(value) || value < 0 || value > 1_000_000_000)) {
+            throw new RejectCommand('INVALID_INPUT', '營業日合計超出允許範圍');
+          }
+          const dayAfter: Data = {
+            ...dayBefore,
+            revision: Number(dayBefore.revision) + 1,
+            totals: totalsAfter,
+            lastCommandId: input.commandId,
+            updatedAt: now,
+          };
+          let studentAfter: Data | null = null;
+          if (studentBefore) {
+            const nextBalance = Number(studentBefore.currentBalance)
+              - studentContribution(transactionBefore as unknown as MutableTransaction)
+              + studentContribution(transactionAfter as unknown as MutableTransaction);
+            if (!Number.isSafeInteger(nextBalance) || Math.abs(nextBalance) > 1_000_000_000) {
+              throw new RejectCommand('INVALID_INPUT', '餘額超出允許範圍');
+            }
+            if (mutation.kind === 'CorrectTransaction' && transactionBefore.type === 'refund'
+              && Number(transactionAfter.amount) > Number(transactionBefore.amount) && nextBalance < 0) {
+              throw new RejectCommand('INVALID_INPUT', '退款更正後餘額不能是負數');
+            }
+            studentAfter = {
+              ...studentBefore,
+              currentBalance: nextBalance,
+              revision: Number(studentBefore.revision) + 1,
+              lastCommandId: input.commandId,
+              updatedAt: now,
+            };
+          }
+          const cashEffect = mutationCashEffect(
+            mutation.kind,
+            transactionBefore as unknown as MutableTransaction,
+            transactionAfter as unknown as MutableTransaction,
+          );
+          const stored = {
+            commandId: input.commandId, kind: mutation.kind, seq, leaseEpoch: input.leaseEpoch,
+            actor: { uid: user.uid, email: user.email! }, committedAt: now as Timestamp,
+            businessDate: dayId, studentId,
+            targets: mutation.targets, expectedRevisions: mutation.expectedRevisions,
+            before: studentAfter
+              ? { head: headBefore, student: studentBefore, day: dayBefore, transaction: transactionBefore }
+              : { head: headBefore, day: dayBefore, transaction: transactionBefore },
+            after: studentAfter
+              ? { head: headAfter, student: studentAfter, day: dayAfter, transaction: transactionAfter }
+              : { head: headAfter, day: dayAfter, transaction: transactionAfter },
+            reason: mutation.payload.reason, cashEffect, payload: mutation.payload, inputFingerprint: fingerprint,
+          } as StoredEnabledCommandDoc;
+          if (studentAfter) tx.update(targetStudentRef!, studentAfter);
+          tx.update(dayRef, dayAfter);
+          tx.update(targetTransactionRef, transactionAfter);
+          tx.update(headRef, headAfter);
+          tx.set(commandRef, stored);
+          return { existing: null } as const;
+        }
+
+        if (input.kind !== 'CreateOrder' && input.kind !== 'CreatePayment') {
+          throw new RejectCommand('UNSUPPORTED_SCHEMA', '命令種類沒有對應的寫入流程');
+        }
         if (!daySnapshot?.exists() || !studentBefore || !targetTransactionRef || !dayRef) {
           throw new RejectCommand('INVALID_INPUT', '建立交易需要已存在的營業日與學生');
         }

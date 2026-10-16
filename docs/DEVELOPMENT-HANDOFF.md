@@ -11,7 +11,7 @@
 
 ## 已合併與目前接手點
 
-- **目前接手點：P09 已全部合併，暫停中；P10 尚未開始，須等 CheerC 指示**。見下方「P09 交接狀態」。P09b 已合併（#494，squash `5b6f9a495244c2a800a64ce0677bb1645b33f0a6`）；P09a 已合併（#493，squash `c444621`）；P08 已合併（#491，merge SHA `889c75c`）。 P07 PR [#480](https://github.com/cheerc/talented-easyorder/pull/480) 已合併（merge SHA `436b119`）；P06b 學生穩定內部鍵與可改編號（PR #487，source `2a03953`）經獨立 review PASS 後，已隨操作回饋前端 U3/U4/U2b 於整合 PR [#488](https://github.com/cheerc/talented-easyorder/pull/488)（source head `58191718e2388bfbf954314128f5357370e65123`，由使用者授權 `--admin` squash merge SHA `6ae1909639f56aa6d36524406e700554891f6328`）合併至 main。審查收據見 [P06b＋前端整合審查收據](ops/integration-p06b-review-5819171.md)。P08 雲端訂餐的第一版 PR #490（`feat/p08-cloud-orders`，head `bca7d048f9743be0b2026938a3f3831ccafdf624`）經審查列出 B1–B8 必修項，已由 #491 修正並取代、合併（merge `889c75c`，見下方「P08 交接狀態（已合併）」），不開 P10+；前端 prototype 批次 U1–U4 均已合入 main，並提供使用者可操作之 [Prototype U1–U4 本人操作驗收步驟清單](superpowers/verification/2026-10-16-prototype-u1-u4-verification-checklist.md)。
+- **目前接手點：P10a（交易更正、作廢、取消與 5 秒撤回）PR 進行中；CheerC 已指示續作 P10**。見下方「P10 交接狀態（進行中）」。P10b 期初更正在 P10a 合併後另開 PR；P10 全部合併後停下，不開始 P11。P09b 已合併（#494，squash `5b6f9a495244c2a800a64ce0677bb1645b33f0a6`）；P09a 已合併（#493，squash `c444621`）；P08 已合併（#491，merge SHA `889c75c`）。 P07 PR [#480](https://github.com/cheerc/talented-easyorder/pull/480) 已合併（merge SHA `436b119`）；P06b 學生穩定內部鍵與可改編號（PR #487，source `2a03953`）經獨立 review PASS 後，已隨操作回饋前端 U3/U4/U2b 於整合 PR [#488](https://github.com/cheerc/talented-easyorder/pull/488)（source head `58191718e2388bfbf954314128f5357370e65123`，由使用者授權 `--admin` squash merge SHA `6ae1909639f56aa6d36524406e700554891f6328`）合併至 main。審查收據見 [P06b＋前端整合審查收據](ops/integration-p06b-review-5819171.md)。P08 雲端訂餐的第一版 PR #490（`feat/p08-cloud-orders`，head `bca7d048f9743be0b2026938a3f3831ccafdf624`）經審查列出 B1–B8 必修項，已由 #491 修正並取代、合併（merge `889c75c`，見下方「P08 交接狀態（已合併）」），不開 P10+；前端 prototype 批次 U1–U4 均已合入 main，並提供使用者可操作之 [Prototype U1–U4 本人操作驗收步驟清單](superpowers/verification/2026-10-16-prototype-u1-u4-verification-checklist.md)。
 - 已合併 P08：PR [#491](https://github.com/cheerc/talented-easyorder/pull/491)（取代 #490），squash merge SHA `889c75c`，source head `452edd5abce63f1eda329d90dcae245984104721`，CI [38875033302](https://github.com/cheerc/talented-easyorder/actions/runs/38875033302) 成功，獨立複審 PASS。
 - 已合併 P07：PR [#480](https://github.com/cheerc/talented-easyorder/pull/480)，merge SHA `436b119`，包含日期菜單與供應商管理。
 - 已合併 P06：PR [#478](https://github.com/cheerc/talented-easyorder/pull/478)，merge SHA `b518eca5fdc2b2d2d3e9197c30b29d6a5f74ce10`。
@@ -56,6 +56,17 @@ git log -1 --oneline --decorate
 - **P06 local gates：** prescribed-order production `firestore.rules` Emulator sequence 的階段計數是 A01 10、P01 36、P04 19、command/failure 103（`cloudCommands.spec.ts` 101 + failure 2）、P06 students 112（同一 command suite 101 + repository list 11）；0 fail／0 skipped，後兩階段的重複 command suite 不重複加總。Focused student page/schema unit 32/32；full Vitest 1,329/179/0、full lint/build pass。app TSC exit 2、base/current 290 headers／542 normalized lines，保留多行與順序的全內容 normalized diff 0，不是 clean pass。system Chromium 154＋Playwright 1.60 demo E2E Cloud/auth 13/13、prototype 7/7；此 system-browser diagnostic 不取代官方 pinned Chromium CI。500 人為本 phase 完整名單上限，501 以上 fail closed；更大 roster UX 留待後續容量 phase。
 - **P06 merge receipt：** PR #478 在 GitHub normal web 核實為 `MERGED`；merge SHA `b518eca5fdc2b2d2d3e9197c30b29d6a5f74ce10`、merge time `2026-10-15T05:32:37Z`。PR 以 rebase 整合 5 commits；source head `17da94f3ffea7b116c0ce157fb784011e0b00c89` 與 `origin/main` tree 完全一致（merge 後 fetch，再執行 `git diff 17da94..origin/main` exit 0）。官方 Actions run [38685129628](https://github.com/cheerc/talented-easyorder/actions/runs/38685129628) 對 exact source head 的 build job 116258195493、E2E job 116259321882 均成功；核實方式是允許的 GitHub 網頁，raw logs 要求登入，因此不記錄未見到的 pinned browser 版本或 log counts。source 與 final source-delta review PASS，最後 4-doc 差異 review PASS；使用者其後手動 merge。這些狀態不等同宣稱所有 merge gate 均 PASS。demo Rules Emulator 去重 179/179、完整 Vitest 1,329 passed／179 Emulator-only skipped／0 failed、system Chromium Cloud/auth 13/13＋isolated prototype 7/7、lint/build 通過；app TSC exit 2，base/current 完整比較為 290 diagnostic headers／542 normalized lines、diff 0。500 人完整名單上限、501 人 fail-closed。沒有 production deploy；SDK `persistentLocalCache` 尚未改，memory-only 仍為 P13。
 
+## P10 交接狀態（進行中）
+
+1. **P10a 交易更正、作廢、取消與 5 秒撤回（PR 進行中）**：branch `claude/project-thread-iq5n8l`，base `e01ebdff5e784522b15a6f16278ef303a9c63110`（P09b 收據 #495 合併後的 main）。契約見 [cloud transaction mutations contract](superpowers/specs/2026-10-16-cloud-transaction-mutations-contract.md)。PR、head SHA 與 CI 以 PR body 為準。
+   - 啟用 `CorrectTransaction`、`VoidTransaction`、`CancelKeepDeposit`、`CancelRefund`、`Undo`（已啟用 18 種、拒絕 6 種）。交易永不刪除，作廢只改 `status`。
+   - 規則：理由必填；撤回理由固定「送出後立即撤回」且只限原建立者、revision 1、台北今天；取消退款只限台北今天；更正不改列的種類；退款更正調高時餘額不得變負；零收款訂餐取消後作廢。
+   - F1：新增成功後 5 秒撤回列；E 付款明細與今日現金列上的「更正／作廢／取消」與預覽；作廢列顯示「已作廢」。雲端 F2 尚無頁面，repository `mutateTransaction` 已備妥。
+   - Rules：指令建立改由 `validCommandCreate` 一次綁定 `kind` 後分派，並省去已由既有不變量保證的檢查；新指令分支餘裕 +1 → +19，見 [P10a 預算附錄](ops/p05-rules-budget.md#p10a-transaction-mutations--budget-and-probe-receipt)。
+   - 驗證數字與 RED 見 PR body 與 [ops evidence](ops/free-production-evidence.md)。
+   - 下一步：P10a 綠燈後交獨立審查；合併後開文件收據 PR，再做 P10b（`CorrectOpening`，F3 期初更正表單）。
+2. 測試只用 `demo-easyorder` Emulator 與合成資料；正式部署仍由 CheerC 本機處理。
+
 ## P09 交接狀態（已合併）
 
 1. **P09a 雲端繳費與櫃台收支（已合併，#493，squash `c444621`）**：契約見 [cloud payments and cash contract](superpowers/specs/2026-10-16-cloud-payments-cash-contract.md)；base `fc7943970a5ceb86d841eeca8be6a75d3ba75dec`。PR、head SHA 與 CI 以 PR body 為準。
@@ -72,8 +83,8 @@ git log -1 --oneline --decorate
    - 本機驗證（demo-easyorder Emulator＋合成資料）：Emulator 21 個檔案 444/444、0 skipped（新 `cloudRefund.spec.ts` 43 項，在 main 的 Rules 上 8 項失敗＝RED）；Vitest 1,602 passed／365 Emulator-only skipped；lint、build 通過；app tsc 208 個診斷與 base 相同；Cloud E2E 18/18（含新 D05，本機 Chromium 1194）。
    - 審查不擋合併的備註（留給 P10 之後）：退款指令規則餘裕 +14，加檢查前先重量測；退款框開著時按 Q 會切到便當模式並隱藏退款框（`refundOpen` 仍為 true，切回 W 會再出現）；非今天日期由 Rules 擋下、回較籠統的 `INVALID_INPUT`（與 P09a 同）。
    - 部署（CheerC 本機）：Rules 與 `firestore.indexes.json` 一起上；7→8 欄後舊營業日文件讀不到也寫不進，目前沒有正式資料。
-   - 下一步：無。P09 完成後暫停，P10 等 CheerC 指示。
-3. 測試只用 `demo-easyorder` Emulator 與合成資料；正式部署（Rules＋`firestore.indexes.json`）仍由 CheerC 本機處理。P09 全部合併後停下，**不開始 P10**。
+   - 下一步：已由 P10 接續（見上方「P10 交接狀態」）。
+3. 測試只用 `demo-easyorder` Emulator 與合成資料；正式部署（Rules＋`firestore.indexes.json`）仍由 CheerC 本機處理。P09 全部合併後曾停下；CheerC 其後指示續作 P10。
 
 ## P08 交接狀態（已合併）
 

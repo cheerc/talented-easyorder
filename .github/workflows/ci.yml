@@ -256,6 +256,32 @@ jobs:
           set -e
           if [ "$emulator_test_status" -ne 0 ]; then exit "$emulator_test_status"; fi
           exit "$count_check_status"
+      - name: P10a transaction mutation proof (demo-only Firestore Emulator)
+        if: steps.check-docs.outputs.docs_only != 'true'
+        env:
+          EASYORDER_REQUIRE_CLOUD_MUTATIONS: 'true'
+        run: |
+          rm -f /tmp/p10a-cloud-mutation-proof.json
+          set +e
+          npx firebase emulators:exec --project demo-easyorder --only firestore "EASYORDER_REQUIRE_CLOUD_MUTATIONS=true npx vitest run src/firebase/__tests__/cloudTransactionMutation.spec.ts --no-file-parallelism --reporter=default --reporter=json --outputFile=/tmp/p10a-cloud-mutation-proof.json"
+          emulator_test_status=$?
+          if [ -f /tmp/p10a-cloud-mutation-proof.json ]; then
+            node <<'NODE'
+          const report = require('/tmp/p10a-cloud-mutation-proof.json');
+          const counts = [report.numTotalTests, report.numPassedTests, report.numFailedTests, report.numPendingTests];
+          const files = (report.testResults || []).map(result => result.name || '');
+          const mutationFilePresent = files.some(name => name.endsWith('cloudTransactionMutation.spec.ts'));
+          console.log(`P10a cloud mutation proof: total=${counts[0]}, passed=${counts[1]}, failed=${counts[2]}, skipped=${counts[3]}, requiredFile=${mutationFilePresent}`);
+          if (!counts.every(Number.isInteger) || counts[0] < 1 || counts[1] !== counts[0] || counts[2] !== 0 || counts[3] !== 0 || !mutationFilePresent) process.exit(1);
+          NODE
+            count_check_status=$?
+          else
+            echo 'Vitest JSON report is missing; P10a cloud mutation proof execution cannot be confirmed.'
+            count_check_status=1
+          fi
+          set -e
+          if [ "$emulator_test_status" -ne 0 ]; then exit "$emulator_test_status"; fi
+          exit "$count_check_status"
 
       - name: P04 active lease Rules proof (demo-only Firestore Emulator)
         if: steps.check-docs.outputs.docs_only != 'true'

@@ -20,6 +20,7 @@ import {
   type CloudCommandRepositoryOptions,
 } from './cloudCommandRepository';
 import { CASHIER_NAME_SNAPSHOT, CASHIER_STUDENT_ID } from '../domain/cloudCommandSchema';
+import type { CorrectTransactionPayload } from '../domain/cloudTransactionMutation';
 import { decodeCloudDayRecord, type CloudDayRecord } from './cloudDayVendorRepository';
 import { listCloudStudents, type CloudStudentRecord } from './cloudStudentRepository';
 import { accessLeasePath, dataHeadPath, dayPath } from './firestorePaths';
@@ -147,6 +148,25 @@ export interface CreateCloudRefundInput {
   amount: number;
   reason: string;
 }
+
+/**
+ * P10a：更正、作廢、取消（留款／退款）或撤回一筆既有交易。commandId 在結果確認前不得更換；
+ * 櫃台收支列（studentId `__cashier__`）沒有學生版本，`expectedStudentRevision` 傳 null。
+ */
+export type CloudTransactionMutationInput = {
+  commandId: string;
+  leaseEpoch: number;
+  transactionId: string;
+  studentId: string;
+  dayId: string;
+  expectedTransactionRevision: number;
+  expectedStudentRevision: number | null;
+  expectedDayRevision: number;
+} & (
+  | { kind: 'CorrectTransaction'; payload: CorrectTransactionPayload }
+  | { kind: 'VoidTransaction' | 'CancelKeepDeposit' | 'CancelRefund'; payload: { reason: string } }
+  | { kind: 'Undo'; payload: { targetCommandId: string; reason: string } }
+);
 
 function plainRecord(value: unknown): value is Data {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -510,8 +530,26 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
     });
   }
 
+  function mutateTransaction(input: CloudTransactionMutationInput): Promise<CommandResult> {
+    return commands.commitCommand({
+      commandId: input.commandId,
+      kind: input.kind,
+      leaseEpoch: input.leaseEpoch,
+      targets: { transactionId: input.transactionId, studentId: input.studentId, dayId: input.dayId },
+      expectedRevisions: input.expectedStudentRevision === null
+        ? { transaction: input.expectedTransactionRevision, day: input.expectedDayRevision }
+        : {
+          transaction: input.expectedTransactionRevision,
+          student: input.expectedStudentRevision,
+          day: input.expectedDayRevision,
+        },
+      payload: input.payload,
+    });
+  }
+
   return {
     loadSnapshot,
+    mutateTransaction,
     createOrder,
     createPayment,
     createCashMovement,
