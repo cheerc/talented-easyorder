@@ -1,6 +1,6 @@
 # EasyOrder 零費用正式後端分階段實作計畫
 
-日期：2026-10-15。狀態：**P00–P06 已合併；P07 契約已凍結、implementation 與驗證進行中；P08–P18 尚未開始或驗收**。
+日期：2026-10-16。狀態：**P00–P07 已合併；P06b 契約已凍結、implementation 進行中；P08–P18 尚未開始或驗收**。
 
 **Source of truth：** [正式後端 spec](../specs/2026-10-13-free-production-backend-spec.md)，包含使用者最新「多白名單、等權、同時單一Google帳號」修正；來源 [PR #469](https://github.com/cheerc/talented-easyorder/pull/469)。
 
@@ -41,7 +41,8 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 | P04 | 已合併 #475 | Base `fd8cba1b84c0b2146c1f450192e2c99739193e46`；最終 PR head `cf0cd10af4171f24cf5faa6dff0814393cb71340`；獨立 review comment `5519480848` 通過；required GitHub Actions run [38579765651](https://github.com/cheerc/talented-easyorder/actions/runs/38579765651) 的 build-and-test 與 E2E 兩個 jobs 均成功；實際 squash merge SHA `837a1e871468db217463e9799480beeb6d7b0ab0`。本地全套 Vitest 1291 passed／65 skipped；獨立 Emulator lease 19/19、A01 Rules 10/10、P01 proof 36/36；Cloud E2E 11/11＋prototype-only 7/7，18/18。app tsc normalized baseline 295→290，新增 0、移除 5 項既有診斷，command/backend相關新增檔零診斷。P01 負向案例的 expression-cap 限制、期限 equality 靜態證據及 system Chromium 本機診斷限制見 [ops evidence](../../ops/free-production-evidence.md)。未部署。 |
 | P05 | 已合併 #476 | Base `837a1e871468db217463e9799480beeb6d7b0ab0`；PR source head `0fe7ac738c8495def1c9fdc19580745ff4b4e33f`；實際 merge SHA `41cd08715c435bc5d72ee38985fccd40e0ee4dd1`（2026-10-14 16:22:05Z）。[獨立 review PASS](https://github.com/cheerc/talented-easyorder/pull/476#pullrequestreview-5521098252)；required CI [38596486712](https://github.com/cheerc/talented-easyorder/actions/runs/38596486712) 兩個 jobs SUCCESS，官方 pinned Chromium 148.0.7778.96／Playwright v1223。production Rules 79/79；A01/P01/P05/P04 lease Emulator sequential 144/144、0 skipped；Cloud E2E 12/12＋prototype 7/7；full Vitest 1,297 passed／144 Emulator-only skipped、lint/build pass。App TSC exit 2，290 inherited diagnostics，完整 542 行 normalized output 與 base 相同。只啟用三 kind，其餘 19 kind deny；expression-cap 與 negative-test causality 限制、未部署等見 [ops evidence](../../ops/free-production-evidence.md)。 |
 | P06 | 已合併 #478 | PR base `b53423aa71ed4cfac2428f290c648e5a999a0cae`；source head `17da94f3ffea7b116c0ce157fb784011e0b00c89`；merge SHA `b518eca5fdc2b2d2d3e9197c30b29d6a5f74ce10`，2026-10-15 05:32:37Z；GitHub 以 rebase 整合 5 commits。官方 Actions run [38685129628](https://github.com/cheerc/talented-easyorder/actions/runs/38685129628) 對 exact source head 的 build-and-test `116258195493`、E2E `116259321882` 均成功（以正常 GitHub 網頁核實；raw logs 需登入，故不聲稱其內部版本／計數）。本機真 demo Rules Emulator 去重 179/179、0 fail／skip；full Vitest 1,329 passed／179 Emulator-only skipped／0 failed；system Chromium Cloud/auth 13/13、isolated prototype 7/7；lint/build 通過。App TSC exit 2，base/current 均 290 diagnostic headers／542 normalized lines，完整 diff 0。source/final delta 與最後文件 review 均 PASS。完整收據及邊界見 [ops evidence](../../ops/free-production-evidence.md#p06-merge-receipt--2026-10-15)。名單完整快照上限 500，超額 fail closed；未部署，SDK memory-only cache 仍屬 P13。 |
-| P07 | 契約已凍結；implementation／驗證進行中 | 最新 source checkpoint、Emulator／browser 計數與阻擋見 [P07 evidence](../../ops/free-production-evidence.md#p07-latest-source-checkpoint--2026-10-15)。P07.9、server-read 與兩個 P07 browser cases 已在最新 checkpoint 通過；待 required CI、獨立 review 與 merge；不開 P08。 |
+| P07 | 已合併 #480 | PR #480 合併 SHA `436b119`；日期菜單與供應商、SaveVendor／RemoveVendor／SetDayMenu／SetOpeningCash 啟用；Rules 存取次數與單文件 expression 預算已覆蓋；Full Vitest、lint、build 通過。 |
+| P06b | 契約已凍結；實作進行中 | Base origin/main `15de317`；契約已於 `docs/superpowers/specs/2026-10-16-cloud-student-keys-and-codes-contract.md` 凍結；分離穩定 UUID studentId 與畫面 studentCode（001–999999）；studentCodes 唯一索引集合；新增 ChangeStudentCode 命令；Rules budget 附錄與 spec 已更新；獨立 worktree feat-p06b-student-keys-and-codes 實作進行中；不開 P08。 |
 | P08–P18 | 尚未開始／未驗 | 不代表任何後續雲端功能已實作或通過。 |
 
 ## 2. 現有檔案與規劃新檔
@@ -184,6 +185,14 @@ npm run test:e2e
 **Acceptance/demo：** P07 isolated UI server reload 後仍見遠端供應商、當日開帳與 future menu；失權清空並使舊 request 無法回填；receipt confirmed 前不顯示成功，讀取刷新失敗只重試讀取。closed-day guard 不變；完整 close UI 留 P11。此契約不開 P08、不部署 production。
 
 **Current WIP checkpoint (2026-10-15):** Rules review findings for SaveVendor create receipts and stored SetOpeningCash integer types are fixed and covered by nine passing raw cases. Navigation recovery lock and sticky same-UID/epoch authorization latch are implemented. However, the legal inherited-menu Rules positive still hits the 1,000-expression ceiling; five true server-read tests fail on Emulator 1.19.8 document-ID DESC queries; both P07 browser cases fail before their functional assertions. Seven sequential Emulator suites total 234 passed / 6 failed / 0 skipped; full Vitest, lint and build pass, and TSC remains exit 2 with no new baseline diagnostics. **Update:** the latest checkpoint fixes all three blockers: the per-document Rules ceiling split, the backward date-window source scan, and the E2E fixes. Results: 248/248 Emulator (including six `P07.9b` negatives for the relocated source check), Vitest 1,400/0 failed, E2E 15+7. See [exact checkpoint evidence](../../ops/free-production-evidence.md#p07-latest-source-checkpoint--2026-10-15). This is not acceptance or merge-ready; required CI and fresh exact-SHA review are still outstanding. Stop after P07 closeout; do not start P08.
+
+### P06b — 學生穩定內部鍵與可改編號
+
+**Scope/files：** `docs/superpowers/specs/2026-10-16-cloud-student-keys-and-codes-contract.md`；`firestore.rules`、`firestoreSchema.ts`、`cloudCommandSchema.ts`、`cloudCommands.ts`、`cloudCommandRepository.ts`、`cloudStudentRepository.ts`、`CloudStudentsPage.tsx` 與對應測試。
+
+**Consumes/produces：** 內部鍵 `studentId`（UUID）取代原使用者輸入編號成為穩定鍵；新增畫面編號 `studentCode`（唯一正規形式 `001`–`999999`）；新增唯一索引集合 `studentCodes/{studentCode}`；`CreateStudent` 同步建索引；新增命令 `ChangeStudentCode`（含 spec §6.3 唯一 client delete 授權）；名冊數值排序與缺號列；供 P08 訂餐使用穩定 `studentId`。
+
+**RED/GREEN：** 重複編號被拒；非正規編號（`000`、負數、小數、文字）被拒；停用帳戶改號成功並讓出號碼；兩帳戶搶號僅一成功；Rules access budget ≤10/write、≤20/transaction，expression limits 安全；舊索引 delete 授權 closure；缺號列正確計算與填入；搜尋時隱藏缺號列。
 
 ### P08 — F1一般／其他餐點雲端入帳
 
