@@ -98,8 +98,5 @@ npm --prefix frontend run test:e2e
 3. **文件維護更新**：
    - 於 `docs/ops/integration-review-3bfa4d6.md` 保存匿名化相對路徑之審查收據。
    - 更新 `docs/superpowers/plans/2026-10-15-operator-feedback-plan.md` 交付狀態。
-4. **增量提交之本地驗證數據**：
-   - `npm --prefix frontend exec -- vitest run --root frontend` → **exit 0；160 files passed／7 skipped；1535 tests passed／248 skipped**（新增 `integrationApp.test.tsx` 3 tests 全數通過）。
-   - `npm run lint && npm run build` → **exit 0**。
-   - `npx tsc -p tsconfig.app.json --noEmit` → **460 行**（新增測試零新增診斷）。
-   - `git diff --check 15de317 HEAD` → clean。
+4. **增量審查驗證**：
+   - ac 已對精確 SHA `0ec9c9f8d6cc907ebccc9f895dda49e4ff64ab31` 執行 scoped 審查：永久 App 3 案 ＋ 模組 4 案共 7/7 passed（無 skip）、lint／links／diff check 通過、無產品差異。
