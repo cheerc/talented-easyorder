@@ -9,7 +9,7 @@ const baseTx: LedgerTransaction = {
   createdAt: '2026-06-18T09:13:41Z',
   studentId: 's1',
   studentNameSnapshot: '王柏翰',
-  menuNameSnapshot: '排骨便當',
+  menuNameSnapshot: '排骨餐點',
   vendorNameSnapshot: '老王便當',
   type: 'order',
   mealPrice: 90,
@@ -71,11 +71,11 @@ describe('TransactionStatusView (U2a #5)', () => {
   it('displays other meal item label when isOtherMealOrder is true', () => {
     render(
       <TransactionStatusView
-        transactions={[mockTx({ type: 'order', otherItemName: '雞腿便當' })]}
+        transactions={[mockTx({ type: 'order', otherItemName: '雞腿餐點' })]}
         student={student}
       />
     );
-    expect(screen.getByText('其他餐點：雞腿便當')).toBeInTheDocument();
+    expect(screen.getByText('其他餐點：雞腿餐點')).toBeInTheDocument();
   });
 
   it('displays "繳費" for payment transaction', () => {

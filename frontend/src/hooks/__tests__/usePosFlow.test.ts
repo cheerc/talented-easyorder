@@ -108,7 +108,7 @@ describe('usePosFlow — expense flow', () => {
     expect(result.current.state.kind).toBe('expense_reason');
 
     // Select reason → transitions to committing
-    act(() => result.current.selectExpenseReason('付便當錢'));
+    act(() => result.current.selectExpenseReason('付餐費給廠商'));
     // After selecting reason, the reducer transitions to committing state,
     // useEffect auto-triggers commitTransaction
     expect(result.current.state.kind).toBe('success');

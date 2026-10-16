@@ -49,7 +49,7 @@ export const SETTLEMENT_CSV_COLUMNS = [
 ] as const;
 
 /**
- * 份數兩欄：今日便當份數、其他餐點品項（以「、」分隔）。合併模式的列帶有整組的計數；原始模式每筆訂餐一份。
+ * 份數兩欄：今日餐點份數、其他餐點品項（以「、」分隔）。合併模式的列帶有整組的計數；原始模式每筆訂餐一份。
  */
 function mealColumns(t: LedgerTransaction | MergedTransaction): [string, string] {
   if ('otherMealItems' in t) return [String(t.bentoOrderCount), t.otherMealItems.join('、')];

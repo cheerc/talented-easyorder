@@ -28,7 +28,7 @@ export type PosFlowEvent =
   | { type: 'expenseUpdateAmount'; text: string }
   | { type: 'expenseConfirmAmount'; amount: number }
   | { type: 'expenseSelectDirection'; direction: ExpenseDirection }
-  | { type: 'expenseSelectReason'; reason: '付便當錢' | '支出其他' | '收入其他' }
+  | { type: 'expenseSelectReason'; reason: '付餐費給廠商' | '支出其他' | '收入其他' }
   | { type: 'expenseUpdateNote'; note: string }
   | { type: 'expenseConfirmNote'; note: string }
   | { type: 'commitStarted' }
@@ -156,8 +156,8 @@ function reduceExpenseDirection(state: PosFlowState & { kind: 'expense_direction
 function reduceExpenseReason(state: PosFlowState & { kind: 'expense_reason' }, event: PosFlowEvent): PosFlowState {
   switch (event.type) {
     case 'expenseSelectReason': {
-      if (event.reason === '付便當錢') {
-        return { kind: 'committing', mode: 'expense', source: 'manual', paidAmountText: '', expenseAmount: state.amount, expenseNote: '付便當錢', expenseDirection: 'expense' };
+      if (event.reason === '付餐費給廠商') {
+        return { kind: 'committing', mode: 'expense', source: 'manual', paidAmountText: '', expenseAmount: state.amount, expenseNote: '付餐費給廠商', expenseDirection: 'expense' };
       }
       if (event.reason === '收入其他') {
         return { kind: 'expense_other_note', amount: state.amount, direction: 'income' };

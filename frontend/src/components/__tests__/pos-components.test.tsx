@@ -349,15 +349,15 @@ describe('TopBar', () => {
   it('U2a #4: 右上角固定兩行，其他餐點是 0 也顯示，有菜單顯示名稱，無菜單顯示未設定', () => {
     // 有菜單
     const { container, unmount } = render(
-      <TopBar {...baseTopBarProps} todayCount={3} todayOtherCount={0} todayMenu={{ itemName: '排骨便當' }} />
+      <TopBar {...baseTopBarProps} todayCount={3} todayOtherCount={0} todayMenu={{ itemName: '排骨餐點' }} />
     );
     const counter = container.querySelector('.counter')!;
-    expect(counter.textContent).toContain('今日餐點（排骨便當）');
+    expect(counter.textContent).toContain('今日餐點（排骨餐點）');
     expect(counter.textContent).toContain('3');
     expect(counter.textContent).toContain('其他餐點');
     expect(counter.textContent).toContain('0');
     const nameEl = counter.querySelector('.counter-name')!;
-    expect(nameEl.getAttribute('title')).toBe('今日餐點（排骨便當）');
+    expect(nameEl.getAttribute('title')).toBe('今日餐點（排骨餐點）');
     unmount();
 
     // 無菜單
@@ -417,7 +417,7 @@ describe('CustomerCard', () => {
     updatedAt: '',
     revision: 1,
   };
-  const mockMenu = { businessDate: '2026-06-01', itemName: '排骨便當', price: 90, vendorId: 'v1', vendorNameSnapshot: '老王便當', updatedAt: '', revision: 1 };
+  const mockMenu = { businessDate: '2026-06-01', itemName: '排骨餐點', price: 90, vendorId: 'v1', vendorNameSnapshot: '老王便當', updatedAt: '', revision: 1 };
 
   it('renders student balance card', () => {
     const { container } = render(
@@ -453,11 +453,11 @@ describe('CustomerCard', () => {
     }
     const { container } = render(<Harness />);
     fireEvent.click(screen.getByRole('button', { name: '訂購其他餐點' }));
-    fireEvent.change(screen.getByLabelText('品項或原因'), { target: { value: '雞腿便當' } });
-    expect(container.textContent).toContain('今日便當 (雞腿便當)');
+    fireEvent.change(screen.getByLabelText('品項或原因'), { target: { value: '雞腿餐點' } });
+    expect(container.textContent).toContain('今日餐點 (雞腿餐點)');
     fireEvent.click(screen.getByRole('button', { name: '取消其他餐點' }));
-    expect(container.textContent).toContain('今日便當 (排骨便當)');
-    expect(container.textContent).not.toContain('雞腿便當');
+    expect(container.textContent).toContain('今日餐點 (排骨餐點)');
+    expect(container.textContent).not.toContain('雞腿餐點');
     fireEvent.click(screen.getByRole('button', { name: '訂購其他餐點' }));
     expect((screen.getByLabelText('品項或原因') as HTMLInputElement).value).toBe('');
   });
@@ -467,11 +467,11 @@ describe('CustomerCard', () => {
       <CustomerCard
         student={mockStudent} todayMenu={mockMenu} mode="order" orderedTodayCount={0}
         payAmount="" setPayAmount={() => {}}
-        priceOverride={null} priceOverrideLabel="雞腿便當"
+        priceOverride={null} priceOverrideLabel="雞腿餐點"
         setPriceOverride={() => {}} setPriceOverrideLabel={() => {}}
       />
     );
-    expect(container.textContent).toContain('今日便當 (排骨便當)');
+    expect(container.textContent).toContain('今日餐點 (排骨餐點)');
   });
 
   describe('M1：看得到的送出與取消鍵', () => {
@@ -527,7 +527,7 @@ describe('ActionBar', () => {
         focusZone="mode-order"
       />
     );
-    expect(container.textContent).toContain('訂便當');
+    expect(container.textContent).toContain('訂餐');
     expect(container.textContent).toContain('繳費');
   });
 
@@ -571,13 +571,13 @@ describe('ActionBar', () => {
 });
 
 describe('IdleHero', () => {
-  const mockMenu = { businessDate: '2026-06-01', itemName: '排骨便當', price: 90, vendorId: 'v1', vendorNameSnapshot: '老王便當', updatedAt: '', revision: 1 };
+  const mockMenu = { businessDate: '2026-06-01', itemName: '排骨餐點', price: 90, vendorId: 'v1', vendorNameSnapshot: '老王便當', updatedAt: '', revision: 1 };
 
   it('renders today menu info', () => {
     const { container } = render(
       <IdleHero todayMenu={mockMenu} todayCount={3} vendorPhone="0912345678" />
     );
-    expect(container.textContent).toContain('排骨便當');
+    expect(container.textContent).toContain('排骨餐點');
   });
 });
 

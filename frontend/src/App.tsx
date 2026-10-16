@@ -54,7 +54,7 @@ function AppContent() {
   const tx = useMemo(() =>
     allTx.filter(t => t.businessDate === viewDate).reverse(),
   [allTx, viewDate]);
-  // 今日便當份數與其他餐點分開算（向供應商叫便當只看今日便當）。
+  // 今日餐點份數與其他餐點分開算（向供應商叫餐只看今日餐點）。
   // 以前要求品項與單價都等於現在的菜單，當天改價後前面的訂單就不算了。
   const meals = useMemo(() => countMeals(tx), [tx]);
   const todayCount = meals.bento;

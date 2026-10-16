@@ -21,7 +21,7 @@ export interface LedgerTransaction {
   depositAmount?: number;
   unpaidAmount?: number;
   /**
-   * 「訂購其他餐點」的品項（不是當天統一的便當）。有值時這一份不算進今日便當份數，另列其他餐點。
+   * 「訂購其他餐點」的品項（不是當天統一的餐點）。有值時這一份不算進今日餐點份數，另列其他餐點。
    * 舊資料沒有這個欄位，改用備註開頭「單筆改價：」判斷（見 ledgerReport 的 isOtherMealOrder）。
    */
   otherItemName?: string;
@@ -50,7 +50,7 @@ export interface CreateLedgerTransactionInput {
   sourceDevice: LedgerTransaction['sourceDevice'];
   operatorId?: string;
   note: string;
-  /** 訂購其他餐點的品項；今日便當不帶。 */
+  /** 訂購其他餐點的品項；今日餐點不帶。 */
   otherItemName?: string;
 }
 
@@ -197,7 +197,7 @@ export function rebalanceAccounts(
 export const OTHER_MEAL_NOTE_PREFIX = '單筆改價：';
 
 /**
- * 這筆訂餐是不是「訂購其他餐點」（不是當天統一的便當）。新資料看 otherItemName；
+ * 這筆訂餐是不是「訂購其他餐點」（不是當天統一的餐點）。新資料看 otherItemName；
  * 舊資料沒有這個欄位，看備註開頭。品項名稱或價格和今天菜單不同不算，避免當天改價後前面的訂單被算成其他餐點。
  */
 export function isOtherMealOrder(tx: Pick<LedgerTransaction, 'type' | 'note' | 'otherItemName'>): boolean {
@@ -213,7 +213,7 @@ export function otherMealName(tx: Pick<LedgerTransaction, 'note' | 'otherItemNam
   return tx.menuNameSnapshot || '其他餐點';
 }
 
-/** 份數拆成今日便當與其他餐點（向供應商叫便當時只看今日便當）。 */
+/** 份數拆成今日餐點與其他餐點（向供應商叫餐時只看今日餐點）。 */
 export function countMeals(transactions: Pick<LedgerTransaction, 'type' | 'note' | 'otherItemName'>[]): { bento: number; other: number } {
   let bento = 0;
   let other = 0;
@@ -229,7 +229,7 @@ export interface MergedTransaction extends LedgerTransaction {
   unpaidAmount: number;
   orderCount: number;
   displayBalance: number;
-  /** 合併列裡今日便當的份數。 */
+  /** 合併列裡今日餐點的份數。 */
   bentoOrderCount: number;
   /** 合併列裡「訂購其他餐點」的品項（每份一個）。 */
   otherMealItems: string[];

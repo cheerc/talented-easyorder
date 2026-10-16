@@ -70,7 +70,7 @@ export function createFaceActions(
       const menu = resolveMenuForDate(state.menusByDate, state.todayMenu, request.businessDate).menu;
       if (!isMenuReady(menu)) return reject(FACE_REJECT_MESSAGES.noMenu, student.displayName);
 
-      // 平板只訂今日便當、不收錢：應收是當天價格，實收 0。同一帳號可以第二份（兄弟姊妹共用）。
+      // 平板只訂今日餐點、不收錢：應收是當天價格，實收 0。同一帳號可以第二份（兄弟姊妹共用）。
       const tx = createLedgerTransaction({
         transactionId: crypto.randomUUID(),
         businessDate: request.businessDate,

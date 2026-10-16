@@ -5,7 +5,7 @@ import type { StudentAccount } from '../../domain/student';
 import type { TodayMenu } from '../../domain/menu';
 
 const menu: TodayMenu = {
-  businessDate: '2026-06-01', vendorId: 'v1', vendorNameSnapshot: '店', itemName: '排骨便當', price: 90,
+  businessDate: '2026-06-01', vendorId: 'v1', vendorNameSnapshot: '店', itemName: '排骨餐點', price: 90,
   updatedAt: '2026-06-01T08:00:00+08:00', revision: 1,
 } as TodayMenu;
 
@@ -25,10 +25,10 @@ const base: Args = {
 describe('useFlashData（M1 成功畫面）', () => {
   it('送出當下的結果凍結，之後餘額或菜單再變也不重算', () => {
     const { result, rerender } = renderHook((a: Args) => useFlashData(a), { initialProps: base });
-    expect(result.current).toMatchObject({ amount: -90, after: 110, detail: '訂餐: 排骨便當' });
+    expect(result.current).toMatchObject({ amount: -90, after: 110, detail: '訂餐: 排骨餐點' });
 
-    rerender({ ...base, picked: student(20), todayMenu: { ...menu, itemName: '雞腿便當', price: 120 } });
-    expect(result.current).toMatchObject({ amount: -90, after: 110, detail: '訂餐: 排骨便當' });
+    rerender({ ...base, picked: student(20), todayMenu: { ...menu, itemName: '雞腿餐點', price: 120 } });
+    expect(result.current).toMatchObject({ amount: -90, after: 110, detail: '訂餐: 排骨餐點' });
   });
 
   it('離開成功畫面後放掉，下一筆重新計算', () => {
@@ -41,8 +41,8 @@ describe('useFlashData（M1 成功畫面）', () => {
 
   it('特殊餐顯示特殊餐的品項與價格', () => {
     const { result } = renderHook((a: Args) => useFlashData(a), {
-      initialProps: { ...base, priceOverride: 110, priceOverrideLabel: '素食便當' },
+      initialProps: { ...base, priceOverride: 110, priceOverrideLabel: '素食餐點' },
     });
-    expect(result.current).toMatchObject({ amount: -110, detail: '訂餐: 素食便當' });
+    expect(result.current).toMatchObject({ amount: -110, detail: '訂餐: 素食餐點' });
   });
 });

@@ -78,7 +78,7 @@ export const MainLayout = React.memo(function MainLayout(props: MainLayoutProps)
       />
       <ConfirmDialog
         open={noOrderDialogOpen}
-        title="此學生今日尚未訂便當"
+        title="此學生今日尚未訂餐"
         message="學員今日尚未訂餐，無法執行取消動作。"
         confirmLabel="確認"
         cancelLabel="返回"

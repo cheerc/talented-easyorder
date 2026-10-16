@@ -29,7 +29,7 @@ describe('pcPosFlow integration — keyboard flow', () => {
     await user.keyboard('{Enter}');
 
     await waitFor(() => {
-      expect(screen.getByText('訂便當')).toBeTruthy();
+      expect(screen.getByText('訂餐')).toBeTruthy();
       expect(screen.getByText('繳費')).toBeTruthy();
     });
   });
@@ -56,7 +56,7 @@ describe('pcPosFlow integration — keyboard flow', () => {
     await user.keyboard('{Enter}');
 
     await waitFor(() => {
-      expect(screen.getByText('訂便當')).toBeTruthy();
+      expect(screen.getByText('訂餐')).toBeTruthy();
     });
 
     // Press Enter to commit (keyboard shortcut replaces confirm button)
@@ -84,7 +84,7 @@ describe('pcPosFlow integration — keyboard flow', () => {
     await user.keyboard('{Enter}');
 
     await waitFor(() => {
-      expect(screen.getByText('訂便當')).toBeTruthy();
+      expect(screen.getByText('訂餐')).toBeTruthy();
     });
 
     // Quick buttons should NOT appear in order mode (F5-2)
@@ -101,12 +101,12 @@ describe('pcPosFlow integration — keyboard flow', () => {
     await user.keyboard('{Enter}');
 
     await waitFor(() => {
-      expect(screen.getByText('訂便當')).toBeTruthy();
+      expect(screen.getByText('訂餐')).toBeTruthy();
     });
 
     await user.click(screen.getByRole('button', { name: '訂購其他餐點' }));
     await user.clear(screen.getByLabelText('品項或原因'));
-    await user.type(screen.getByLabelText('品項或原因'), '雞腿便當');
+    await user.type(screen.getByLabelText('品項或原因'), '雞腿餐點');
     await user.clear(screen.getByLabelText('價格'));
     await user.type(screen.getByLabelText('價格'), '110');
 
@@ -122,7 +122,7 @@ describe('pcPosFlow integration — keyboard flow', () => {
     await user.keyboard('{Enter}');
 
     await waitFor(() => {
-      expect(screen.getByText('訂便當')).toBeTruthy();
+      expect(screen.getByText('訂餐')).toBeTruthy();
     });
 
     // Switch to payment mode (W)

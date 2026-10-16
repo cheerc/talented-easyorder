@@ -50,13 +50,13 @@ describe('createLedgerTransaction', () => {
       paidAmount: 0,
       previousBalance: 1250,
       sourceDevice: 'pc',
-      note: '日式唐揚雞便當',
+      note: '日式唐揚雞餐點',
     });
 
     expect(tx.transactionId).toBe('tx-test-1');
     expect(tx.studentId).toBe('001');
     expect(tx.studentNameSnapshot).toBe('王柏翰');
-    expect(tx.menuNameSnapshot).toBe('日式唐揚雞便當');
+    expect(tx.menuNameSnapshot).toBe('日式唐揚雞餐點');
     expect(tx.vendorNameSnapshot).toBe('阿榮便當');
     expect(tx.amount).toBe(-90);
     expect(tx.afterBalance).toBe(1160);
@@ -173,7 +173,7 @@ describe('mergeLedgerTransactions', () => {
     ...overrides,
   });
 
-  // Edge case 1: 訂便當 90，沒付錢（餘額 −90）
+  // Edge case 1: 訂餐 90，沒付錢（餘額 −90）
   it('order 90 no payment: orderCount=1, displayBalance=-90, unpaidAmount=90', () => {
     const txs: LedgerTransaction[] = [
       baseTx({ transactionId: 'tx-1', mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: -90 }),
@@ -189,7 +189,7 @@ describe('mergeLedgerTransactions', () => {
     expect(merged[0].depositAmount).toBe(0);
   });
 
-  // Edge case 2: 訂便當 90，付 50（餘額 −40）
+  // Edge case 2: 訂餐 90，付 50（餘額 −40）
   it('order 90 + payment 50: merges into single order, displayBalance=-40', () => {
     const txs: LedgerTransaction[] = [
       baseTx({ transactionId: 'tx-1', mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: -90, createdAt: '2026-05-07T12:00:00Z' }),
@@ -207,7 +207,7 @@ describe('mergeLedgerTransactions', () => {
     expect(m.depositAmount).toBe(0);
   });
 
-  // Edge case 3: 訂便當 90，付 90（餘額 0）
+  // Edge case 3: 訂餐 90，付 90（餘額 0）
   it('order 90 + payment 90: displayBalance=0, unpaidAmount=0', () => {
     const txs: LedgerTransaction[] = [
       baseTx({ transactionId: 'tx-1', mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: -90, createdAt: '2026-05-07T12:00:00Z' }),
@@ -224,7 +224,7 @@ describe('mergeLedgerTransactions', () => {
     expect(m.depositAmount).toBe(0);
   });
 
-  // Edge case 4: 訂便當 90，付 100（餘額 10）
+  // Edge case 4: 訂餐 90，付 100（餘額 10）
   it('order 90 + payment 100: depositAmount=10, displayBalance=10', () => {
     const txs: LedgerTransaction[] = [
       baseTx({ transactionId: 'tx-1', mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: -90, createdAt: '2026-05-07T12:00:00Z' }),
@@ -241,7 +241,7 @@ describe('mergeLedgerTransactions', () => {
     expect(m.depositAmount).toBe(10);
   });
 
-  // Edge case 5: 訂便當 90×2，付 200（餘額 20）
+  // Edge case 5: 訂餐 90×2，付 200（餘額 20）
   it('two orders 90 each + payment 200: orderCount=2, displayBalance=20', () => {
     const txs: LedgerTransaction[] = [
       baseTx({ transactionId: 'tx-1', mealPrice: 90, paidAmount: 0, amount: -90, afterBalance: -90, createdAt: '2026-05-07T12:00:00Z' }),
@@ -259,7 +259,7 @@ describe('mergeLedgerTransactions', () => {
     expect(m.depositAmount).toBe(20);
   });
 
-  // Edge case 6: 先儲值 200，再訂便當 90（餘額 110）
+  // Edge case 6: 先儲值 200，再訂餐 90（餘額 110）
   it('payment 200 first then order 90: orderCount=1, displayBalance=110, depositAmount=110', () => {
     const txs: LedgerTransaction[] = [
       baseTx({ transactionId: 'tx-1', type: 'payment', mealPrice: 0, paidAmount: 200, amount: 200, afterBalance: 200, createdAt: '2026-05-07T12:00:00Z' }),
@@ -277,7 +277,7 @@ describe('mergeLedgerTransactions', () => {
     expect(m.unpaidAmount).toBe(0);
   });
 
-  // Edge case 7: 只繳費 500，沒訂便當 → 保留 payment 獨立行
+  // Edge case 7: 只繳費 500，沒訂餐 → 保留 payment 獨立行
   it('payment only no order: kept as independent row with orderCount=0', () => {
     const txs: LedgerTransaction[] = [
       baseTx({ transactionId: 'tx-1', type: 'payment', mealPrice: 0, paidAmount: 500, amount: 500, afterBalance: 500, createdAt: '2026-05-07T12:00:00Z' }),

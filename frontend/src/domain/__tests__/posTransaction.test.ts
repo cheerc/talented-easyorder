@@ -44,7 +44,7 @@ describe('buildPosTransactionDraft', () => {
       studentId: '001',
       mealPrice: 90,
       paidAmount: 0,
-      note: '日式唐揚雞便當',
+      note: '日式唐揚雞餐點',
       ...overrides,
     };
   }
@@ -83,23 +83,23 @@ describe('buildPosTransactionDraft', () => {
 
   it('draft snapshots preserve names/price from current objects', () => {
     const student: StudentAccount = { ...STUDENT_001, displayName: '王柏翰', currentBalance: 2000 };
-    const menu: TodayMenu = { ...TODAY_MENU_KARAAGE, itemName: '排骨便當', price: 100 };
+    const menu: TodayMenu = { ...TODAY_MENU_KARAAGE, itemName: '排骨餐點', price: 100 };
 
     const draft = buildPosTransactionDraft({
-      intent: makeIntent({ type: 'order', sourceDevice: 'pc', paidAmount: 50, mealPrice: 100, note: '排骨便當' }),
+      intent: makeIntent({ type: 'order', sourceDevice: 'pc', paidAmount: 50, mealPrice: 100, note: '排骨餐點' }),
       student,
       menu,
     });
 
     expect(draft.snapshots.student.studentNameSnapshot).toBe('王柏翰');
-    expect(draft.snapshots.menu.menuNameSnapshot).toBe('排骨便當');
+    expect(draft.snapshots.menu.menuNameSnapshot).toBe('排骨餐點');
     expect(draft.snapshots.menu.menuPriceSnapshot).toBe(100);
 
     // Mutating source after draft should not affect snapshots
     student.displayName = 'changed';
     menu.itemName = 'changed';
     expect(draft.snapshots.student.studentNameSnapshot).toBe('王柏翰');
-    expect(draft.snapshots.menu.menuNameSnapshot).toBe('排骨便當');
+    expect(draft.snapshots.menu.menuNameSnapshot).toBe('排骨餐點');
   });
 
   it('draft uses latest student balance at confirm time', () => {
@@ -114,7 +114,7 @@ describe('buildPosTransactionDraft', () => {
 
   it('uses per-order price override without changing today menu', () => {
     const draft = buildPosTransactionDraft({
-      intent: makeIntent({ type: 'order', sourceDevice: 'pc', mealPrice: 110, paidAmount: 110, note: '單筆改價：雞腿便當' }),
+      intent: makeIntent({ type: 'order', sourceDevice: 'pc', mealPrice: 110, paidAmount: 110, note: '單筆改價：雞腿餐點' }),
       student: STUDENT_001,
       menu: TODAY_MENU_KARAAGE,
     });
@@ -130,13 +130,13 @@ describe('deriveTransactionAttributes', () => {
     const result = deriveTransactionAttributes({
       mode: 'order',
       todayMenuPrice: 90,
-      todayMenuItemName: '日式唐揚雞便當',
+      todayMenuItemName: '日式唐揚雞餐點',
       priceOverride: null,
       priceOverrideLabel: '',
       paidAmountText: '90',
     });
     expect(result.paidAmount).toBe(90);
     expect(result.mealPrice).toBe(90);
-    expect(result.note).toBe('日式唐揚雞便當 (已付)');
+    expect(result.note).toBe('日式唐揚雞餐點 (已付)');
   });
 });

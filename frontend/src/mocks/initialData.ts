@@ -38,7 +38,7 @@ export const VENDORS: Vendor[] = [
 
 export const INITIAL_TODAY_MENU: TodayMenu = {
   businessDate: '2026-05-07',
-  itemName: '日式唐揚雞便當',
+  itemName: '日式唐揚雞餐點',
   price: 90,
   vendorId: 'v1',
   vendorNameSnapshot: '阿榮便當',

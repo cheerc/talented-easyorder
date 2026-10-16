@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { NumericInput } from '../ui/NumericInput';
 import type { KeyboardEventWithFlag } from './utils';
 
-const EXPENSE_QUICK_OPTIONS = ['付便當錢', '其他原因'] as const;
+const EXPENSE_QUICK_OPTIONS = ['付餐費給廠商', '其他原因'] as const;
 
 interface ExpensePanelProps {
   kind: 'expense_input' | 'expense_direction' | 'expense_reason' | 'expense_other_note';
@@ -11,7 +11,7 @@ interface ExpensePanelProps {
   onAmountChange: (text: string) => void;
   onAmountConfirm: (amount: number) => void;
   onDirectionSelect: (direction: import('../../domain/posFlow').ExpenseDirection) => void;
-  onReasonSelect: (reason: '付便當錢' | '支出其他' | '收入其他') => void;
+  onReasonSelect: (reason: '付餐費給廠商' | '支出其他' | '收入其他') => void;
   onNoteChange: (note: string) => void;
   onNoteConfirm: (note: string) => void;
   onCancel: () => void;
@@ -49,7 +49,7 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
           onDirectionSelect(selIdx === 0 ? 'expense' : 'income');
         } else {
           const opt = EXPENSE_QUICK_OPTIONS[selIdx];
-          onReasonSelect(opt === '其他原因' ? '支出其他' : '付便當錢');
+          onReasonSelect(opt === '其他原因' ? '支出其他' : '付餐費給廠商');
         }
       } else if (e.key === 'Escape') {
         e.preventDefault();
@@ -139,7 +139,7 @@ export const ExpensePanel = React.memo(function ExpensePanel(props: ExpensePanel
                 <button
                   key={opt}
                   className={'mode ' + (selIdx === i ? 'mode-on mode-focus' : '')}
-                  onClick={() => onReasonSelect(opt === '其他原因' ? '支出其他' : '付便當錢')}
+                  onClick={() => onReasonSelect(opt === '其他原因' ? '支出其他' : '付餐費給廠商')}
                 >
                   <span className="mode-lbl">{opt}</span>
                 </button>

@@ -63,7 +63,7 @@ export const PracticeDataPanel = React.memo(function PracticeDataPanel({ hasCash
   const steps = [
     { done: students.length > 0, label: '建立帳戶（右側「學員管理」）' },
     { done: vendors.length > 0, label: '新增供應商（F4 供應商）' },
-    { done: isMenuReady(practiceMenu), label: '設定今日晚餐（上方「今日便當設定」）' },
+    { done: isMenuReady(practiceMenu), label: '設定今日晚餐（上方「今日餐點設定」）' },
     { done: hasCashSession, label: '設定開帳金額（上方「每日開帳金額」）' },
   ];
 

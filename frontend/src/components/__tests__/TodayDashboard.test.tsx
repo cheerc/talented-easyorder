@@ -11,7 +11,7 @@ const { store, baseTrans, baseEvents, baseSettlements, baseStatuses, todayStr } 
       transactionId: 'tx-1', studentId: '001', studentNameSnapshot: '王小美', type: 'order',
       businessDate: systemDate, mealPrice: 90, paidAmount: 0,
       amount: -90, note: '', afterBalance: -90, createdAt: '2026-05-30T12:00:00.000Z',
-      menuNameSnapshot: '排骨便當', vendorNameSnapshot: '老王便當', sourceDevice: 'pc',
+      menuNameSnapshot: '排骨餐點', vendorNameSnapshot: '老王便當', sourceDevice: 'pc',
       revision: 1, syncStatus: 'local', depositAmount: 0, unpaidAmount: 90,
     },
     {
@@ -99,7 +99,7 @@ describe('TodayDashboard', () => {
     const { container } = render(<TodayDashboard systemDate={todayStr} onClose={vi.fn()} />);
     const cards = Array.from(container.querySelectorAll('.db-card')).map(el => el.textContent);
     expect(cards[0]).toBe('筆數2含未付款訂餐');
-    expect(cards[1]).toBe('份數1今日便當 · 餐費 $90');
+    expect(cards[1]).toBe('份數1今日餐點 · 餐費 $90');
     expect(cards[2]).toBe('收現$500淨現金 $500');
     expect(container.textContent).not.toMatch(/undefined|NaN/);
   });

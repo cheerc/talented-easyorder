@@ -101,7 +101,7 @@ describe('AdminScreen practice data (local mode)', () => {
     render(<AdminScreen viewDate="2026-10-12" />);
     const file = new File(['{"format":"other"}'], 'bad.json', { type: 'application/json' });
     fireEvent.change(screen.getByLabelText('選擇快照檔'), { target: { files: [file] } });
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('不是便當櫃台的練習快照檔'));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('不是訂餐櫃台的練習快照檔'));
     expect(screen.getByRole('alert').textContent).toContain('目前資料沒有變更');
     expect(usePosStore.getState().students).toHaveLength(22);
     expect(screen.queryByRole('button', { name: '確認還原' })).toBeNull();
@@ -135,7 +135,7 @@ describe('AdminScreen practice data (local mode)', () => {
     usePosStore.getState().startBlankData();
     render(<AdminScreen viewDate="2026-10-12" />);
     fillAccount('001', '甲生', '200');
-    usePosStore.getState().setMenuForDate('2026-10-12', { itemName: '排骨便當', price: 90, vendorId: '', vendorNameSnapshot: '' }, 'now');
+    usePosStore.getState().setMenuForDate('2026-10-12', { itemName: '排骨餐點', price: 90, vendorId: '', vendorNameSnapshot: '' }, 'now');
     usePosStore.getState().handleFaceEvent({ eventId: 'e1', deviceId: 'faceorder-01', action: 'order', studentId: '001', businessDate: '2026-10-12', recognizedAt: '2026-10-12T02:00:00.000Z' }, '2026-10-12T02:00:00.000Z');
     usePosStore.getState().applyFaceEnrollment({ deviceId: 'faceorder-01', studentId: '001', status: 'enrolled', faceCount: 2, reportedAt: '2026-10-12T02:00:00.000Z' });
 
@@ -184,14 +184,14 @@ describe('AdminScreen per-date dinner menu (M0)', () => {
     usePosStore.getState().startBlankData();
     usePosStore.getState().setVendors([{ vendorId: 'v1', name: '練習店', phone: '0', note: '', status: 'active', createdAt: 'x', updatedAt: 'x', revision: 1 }]);
     const { rerender } = render(<AdminScreen viewDate="2026-06-01" />);
-    fireEvent.change(screen.getByLabelText('便當單價'), { target: { value: '90' } });
+    fireEvent.change(screen.getByLabelText('餐點單價'), { target: { value: '90' } });
     fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: '排骨' } });
     fireEvent.click(screen.getByRole('button', { name: '儲存今日設定' }));
     expect(screen.getByText('已儲存 2026-06-01 的晚餐')).toBeTruthy();
 
     rerender(<AdminScreen viewDate="2026-06-02" />);
     expect(screen.getByText(/目前沿用 2026-06-01 的晚餐/)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('便當單價'), { target: { value: '120' } });
+    fireEvent.change(screen.getByLabelText('餐點單價'), { target: { value: '120' } });
     fireEvent.click(screen.getByRole('button', { name: '儲存今日設定' }));
 
     expect(screen.getByText('已儲存 2026-06-02 的晚餐')).toBeTruthy();
@@ -200,25 +200,25 @@ describe('AdminScreen per-date dinner menu (M0)', () => {
     rerender(<AdminScreen viewDate="2026-05-31" />);
     expect(screen.queryByText(/已儲存/)).toBeNull();
     expect(screen.getByText(/這天之前還沒有設定晚餐/)).toBeTruthy();
-    expect((screen.getByLabelText('便當單價') as HTMLInputElement).value).toBe('0');
+    expect((screen.getByLabelText('餐點單價') as HTMLInputElement).value).toBe('0');
 
     const s = usePosStore.getState();
     expect(s.menusByDate['2026-06-01']).toMatchObject({ itemName: '排骨', price: 90, vendorId: 'v1' });
     expect(s.menusByDate['2026-06-02']).toMatchObject({ itemName: '排骨', price: 120 });
   });
 
-  it('M3：便當名稱空白或單價不合法時不儲存，並說明原因', () => {
+  it('M3：餐點名稱空白或單價不合法時不儲存，並說明原因', () => {
     usePosStore.getState().startBlankData();
     render(<AdminScreen viewDate="2026-10-12" />);
-    fireEvent.change(screen.getByLabelText('便當名稱'), { target: { value: '  ' } });
-    fireEvent.change(screen.getByLabelText('便當單價'), { target: { value: '90' } });
+    fireEvent.change(screen.getByLabelText('餐點名稱'), { target: { value: '  ' } });
+    fireEvent.change(screen.getByLabelText('餐點單價'), { target: { value: '90' } });
     fireEvent.click(screen.getByRole('button', { name: '儲存今日設定' }));
-    expect(screen.getByRole('alert').textContent).toBe('請填寫便當名稱。');
+    expect(screen.getByRole('alert').textContent).toBe('請填寫餐點名稱。');
     expect(usePosStore.getState().menusByDate['2026-10-12']).toBeUndefined();
 
-    fireEvent.change(screen.getByLabelText('便當名稱'), { target: { value: ' 雞腿飯 ' } });
+    fireEvent.change(screen.getByLabelText('餐點名稱'), { target: { value: ' 雞腿飯 ' } });
     fireEvent.click(screen.getByRole('button', { name: '儲存今日設定' }));
-    expect(screen.queryByText('請填寫便當名稱。')).toBeNull();
+    expect(screen.queryByText('請填寫餐點名稱。')).toBeNull();
     expect(usePosStore.getState().menusByDate['2026-10-12']).toMatchObject({ itemName: '雞腿飯', price: 90 });
   });
 
