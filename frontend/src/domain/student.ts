@@ -3,6 +3,7 @@ export type FaceEnrollmentStatus = 'none' | 'enrolled' | 'disabled' | 'needs_rev
 
 export interface StudentAccount {
   studentId: string;
+  studentCode?: string;
   displayName: string;
   status: StudentStatus;
   currentBalance: number;
@@ -18,6 +19,77 @@ export interface StudentAccount {
   createdAt: string;
   updatedAt: string;
   revision: number;
+}
+
+// ─── M0 / U3 / P06b：學員編號正規化與缺號清單 ───
+
+export const STUDENT_CODE_REGEX = /^(00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,5})$/;
+
+export type StudentCodeNormalizationResult =
+  | { ok: true; code: string; numericValue: number }
+  | { ok: false; reason: string };
+
+/**
+ * 學生編號規範化核心（Canonical Normalization Core）：
+ * 統一 Prototype (U3) 與 Cloud (P06b) 的編號驗證與正規化規則：
+ * 1. 去頭尾空白
+ * 2. 全形數字（０–９）轉為半形數字（0–9）
+ * 3. 必須全部由純數字組成，不得包含小數點、負號、字母、空白或符號
+ * 4. 有界防護：去除前導零後長度不得大於 6 位（防範大於 999999 的超長輸入或 JS Number 溢位／科學記號）
+ * 5. 數值範圍必須介於 1 至 999999 之間（0、000、負數、>=1000000 均不接受）
+ * 6. 唯一正規化格式：數值 < 1000 時以 0 補齊至 3 位（例：5 / 05 / 0005 / ５ -> "005"）；1000 以上維持純數字（"1000"）
+ * 7. 正規化輸出嚴格匹配 STUDENT_CODE_REGEX: /^(00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,5})$/
+ */
+export function normalizeStudentCodeCore(input: unknown): StudentCodeNormalizationResult {
+  if (typeof input !== 'string') {
+    return { ok: false, reason: '學員編號必須為字串' };
+  }
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return { ok: false, reason: '請輸入學員編號' };
+  }
+  const halfWidth = trimmed.replace(/[０-９]/g, ch =>
+    String.fromCharCode(ch.charCodeAt(0) - 0xfee0)
+  );
+  if (!/^\d+$/.test(halfWidth)) {
+    return { ok: false, reason: '學員編號只能輸入數字' };
+  }
+  const unpadded = halfWidth.replace(/^0+/, '');
+  if (!unpadded) {
+    return { ok: false, reason: '學員編號必須大於 0（從 001 開始）' };
+  }
+  if (unpadded.length > 6) {
+    return { ok: false, reason: '學員編號上限為 6 位數（999999）' };
+  }
+  const num = parseInt(unpadded, 10);
+  if (!Number.isSafeInteger(num) || num < 1 || num > 999999) {
+    return { ok: false, reason: '學員編號範圍為 001 到 999999' };
+  }
+  const code = num < 1000 ? String(num).padStart(3, '0') : String(num);
+  if (!STUDENT_CODE_REGEX.test(code)) {
+    return { ok: false, reason: '學員編號正規化後格式不符' };
+  }
+  return { ok: true, code, numericValue: num };
+}
+
+/**
+ * U3 / Prototype 與通用查詢適配器：
+ * 回傳 Result 物件，維持 ok: false 與 reason 錯誤語義，供 UI 表單與查詢無拋錯消費。
+ */
+export function normalizeStudentCode(raw: string): StudentCodeNormalizationResult {
+  return normalizeStudentCodeCore(raw);
+}
+
+/**
+ * Cloud (P06b) 契約適配器：
+ * 成功時回傳 canonical code 字串；若格式不合法或超出範圍，拋出 Error，供 Cloud Command Schema 與 Page 消費。
+ */
+export function normalizeStudentCodeOrThrow(input: unknown): string {
+  const result = normalizeStudentCodeCore(input);
+  if (!result.ok) {
+    throw new Error(result.reason);
+  }
+  return result.code;
 }
 
 /** 期初餘額：有自己的日期、備註與建立時間，不偽裝成收款交易。 */
@@ -119,38 +191,6 @@ export function validateStudentImportRows(rows: StudentImportRow[]): StudentImpo
 }
 
 // ─── M0 / U3：學員編號正規化與缺號清單 ───
-
-/**
- * Q2 已定案規則：學生編號唯一正規化
- * - 去頭尾空白
- * - 全形數字（０–９）轉半形（0–9）
- * - 必須全為純數字，範圍 1–999999（即 001–999999；0、000 不接受）
- * - 唯一正規形式：補零至至少 3 位（'5' -> '005', '1000' -> '1000'）
- */
-export function normalizeStudentCode(raw: string):
-  | { ok: true; code: string; numericValue: number }
-  | { ok: false; reason: string } {
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return { ok: false, reason: '請輸入學員編號' };
-  }
-  // 全形數字轉半形
-  const halfwidth = trimmed.replace(/[０-９]/g, ch =>
-    String.fromCharCode(ch.charCodeAt(0) - 0xfee0)
-  );
-  if (!/^\d+$/.test(halfwidth)) {
-    return { ok: false, reason: '學員編號必須為純數字' };
-  }
-  const numericValue = parseInt(halfwidth, 10);
-  if (numericValue < 1) {
-    return { ok: false, reason: '學員編號必須大於 0（從 001 開始）' };
-  }
-  if (numericValue > 999999) {
-    return { ok: false, reason: '學員編號上限為 6 位數（999999）' };
-  }
-  const code = String(numericValue).padStart(3, '0');
-  return { ok: true, code, numericValue };
-}
 
 export type StudentListItem =
   | { type: 'student'; student: StudentAccount; sortKey: number; isCollision?: boolean }

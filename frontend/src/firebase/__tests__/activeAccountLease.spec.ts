@@ -94,7 +94,8 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     const fs = await import('node:fs');
     // @ts-expect-error dynamic node import in test environment
     const path = await import('node:path');
-    const rulesPath = path.resolve(process.cwd(), '../firestore.rules');
+    const defaultRulesPath = path.resolve(process.cwd(), process.cwd().endsWith('frontend') ? '../firestore.rules' : 'firestore.rules');
+    const rulesPath = process.env.EASYORDER_TEST_RULES_PATH ?? defaultRulesPath;
     rulesSource = fs.readFileSync(rulesPath, 'utf8');
 
     env = await initializeTestEnvironment({

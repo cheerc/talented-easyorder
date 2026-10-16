@@ -5,6 +5,8 @@ import {
   searchActiveStudents,
   validateStudentImportRows,
   normalizeStudentCode,
+  normalizeStudentCodeOrThrow,
+  STUDENT_CODE_REGEX,
   buildStudentListWithGaps,
   validateNewAccount,
 } from '../student';
@@ -132,7 +134,7 @@ describe('validateStudentImportRows', () => {
   });
 });
 
-describe('normalizeStudentCode (U3 #1 / Q2 定案)', () => {
+describe('normalizeStudentCode (U3 #1 / P06b 跨模式統一)', () => {
   it('去除前後空白、全形數字轉半形、補零至至少 3 位', () => {
     expect(normalizeStudentCode(' 5 ')).toEqual({ ok: true, code: '005', numericValue: 5 });
     expect(normalizeStudentCode('05')).toEqual({ ok: true, code: '005', numericValue: 5 });
@@ -141,6 +143,7 @@ describe('normalizeStudentCode (U3 #1 / Q2 定案)', () => {
     expect(normalizeStudentCode(' ５ ')).toEqual({ ok: true, code: '005', numericValue: 5 });
     expect(normalizeStudentCode('001')).toEqual({ ok: true, code: '001', numericValue: 1 });
     expect(normalizeStudentCode('1000')).toEqual({ ok: true, code: '1000', numericValue: 1000 });
+    expect(normalizeStudentCode('001000')).toEqual({ ok: true, code: '1000', numericValue: 1000 });
     expect(normalizeStudentCode('999999')).toEqual({ ok: true, code: '999999', numericValue: 999999 });
   });
 
@@ -153,6 +156,61 @@ describe('normalizeStudentCode (U3 #1 / Q2 定案)', () => {
     expect(normalizeStudentCode('1000000').ok).toBe(false);
     expect(normalizeStudentCode('').ok).toBe(false);
     expect(normalizeStudentCode('   ').ok).toBe(false);
+  });
+
+  it('超長輸入明確有界防護（防範 JS Number 溢位 / 科學記號 / Infinity 變別號）', () => {
+    // 超長純數字（100 位）
+    expect(normalizeStudentCode('1'.repeat(100)).ok).toBe(false);
+    expect(() => normalizeStudentCodeOrThrow('1'.repeat(100))).toThrow('學員編號上限為 6 位數');
+
+    // 冗餘大量前導零加上合法編號
+    expect(normalizeStudentCode('0'.repeat(100) + '5')).toEqual({ ok: true, code: '005', numericValue: 5 });
+    expect(normalizeStudentCodeOrThrow('0'.repeat(100) + '5')).toBe('005');
+
+    // 冗餘大量前導零加上 1000
+    expect(normalizeStudentCode('0'.repeat(100) + '1000')).toEqual({ ok: true, code: '1000', numericValue: 1000 });
+    expect(normalizeStudentCodeOrThrow('0'.repeat(100) + '1000')).toBe('1000');
+
+    // 冗餘大量前導零但純零（0）
+    expect(normalizeStudentCode('0'.repeat(100)).ok).toBe(false);
+    expect(() => normalizeStudentCodeOrThrow('0'.repeat(100))).toThrow('學員編號必須大於 0');
+
+    // 冗餘大量前導零但數值超出 6 位（1000000）
+    expect(normalizeStudentCode('0'.repeat(100) + '1000000').ok).toBe(false);
+    expect(() => normalizeStudentCodeOrThrow('0'.repeat(100) + '1000000')).toThrow('學員編號上限為 6 位數');
+  });
+
+  it('Cloud Adapter (normalizeStudentCodeOrThrow) 與 Prototype Adapter (normalizeStudentCode) 契約對齊', () => {
+    const validCases = [
+      [' 5 ', '005'],
+      ['05', '005'],
+      ['0005', '005'],
+      [' ５ ', '005'],
+      ['001', '001'],
+      ['1000', '1000'],
+      ['001000', '1000'],
+      ['999999', '999999'],
+    ] as const;
+
+    for (const [raw, expected] of validCases) {
+      const protoRes = normalizeStudentCode(raw);
+      expect(protoRes.ok).toBe(true);
+      if (protoRes.ok) {
+        expect(protoRes.code).toBe(expected);
+        expect(STUDENT_CODE_REGEX.test(protoRes.code)).toBe(true);
+      }
+      expect(normalizeStudentCodeOrThrow(raw)).toBe(expected);
+      expect(STUDENT_CODE_REGEX.test(normalizeStudentCodeOrThrow(raw))).toBe(true);
+    }
+
+    const invalidCases = [
+      '0', '00', '000', '-5', 'abc', '001a', '1000000', '', '   ', '1'.repeat(100),
+    ];
+
+    for (const raw of invalidCases) {
+      expect(normalizeStudentCode(raw).ok).toBe(false);
+      expect(() => normalizeStudentCodeOrThrow(raw)).toThrow();
+    }
   });
 });
 

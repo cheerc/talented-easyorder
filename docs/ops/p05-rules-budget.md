@@ -180,3 +180,36 @@ Measured headroom on the current Rules, in probe units (one unit = `pad10()`), f
 Static no-cache access calls for the inherited path change by one: the head leaf now also `get`s the source day (head 2 → 3). Atomic total **18/20**; max per write is still **6/10**. Direct and other P07 kinds are unchanged.
 
 Exact-source sequential Emulator regression (demo-easyorder, no skips): A01 10/10, P01 36/36, P04 19/19, P05/P07 commands 156/156 (including `P07.9a` and six `P07.9b` source-day negatives that fail on a mutant with the dataHead check removed), post-commit 6/6, P06 student reads 11/11, P07 day/vendor reads 10/10. Total 248 passed, 0 failed, 0 skipped.
+
+## P06b student stable keys and changeable code write budget — static design & call graph
+
+This appendix documents the P06b static design and Rules access budget for separating stable UUID internal keys (`studentId`) from changeable display codes (`studentCode`, canonical format `001`–`999999` with regex `^(00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,5})$`).
+
+P06b adds exactly one enabled command kind: `ChangeStudentCode`, bringing the total enabled kinds to 11 (`EnsureDay`, `CreateOrder`, `CreatePayment`, `CreateStudent`, `EditStudent`, `SetStudentStatus`, `SaveVendor`, `RemoveVendor`, `SetDayMenu`, `SetOpeningCash`, `ChangeStudentCode`); remaining 12 kinds stay denied.
+
+P06b also introduces the unique index collection `studentCodes/{studentCode}` and specifies the sole client delete exception under canonical spec §6.3: deleting `studentCodes/{oldCode}` during atomic `ChangeStudentCode`.
+
+### Write budget inventory for P06b kinds
+
+| Command / write path | Central command-create Rules calls | Projection leaves Rules calls | Read-but-unwritten `VerifyMutation` dependencies | Atomic no-cache total | Max per write |
+|---|---:|---:|---:|---:|---:|
+| `CreateStudent` (creates student + studentCode index) | commandHolder 2 + head before/after 2 + student exists/getAfter 2 + studentCode exists/getAfter 2 = **8** | head 2 + student 2 + studentCode create 2 = **6** | operator 0 + lease `approvedOperator` 1 = **1** | **15/20** | **8/10** |
+| `ChangeStudentCode` (updates student, creates newCode index, deletes oldCode index) | commandHolder 2 + head before/after 2 + student before/after 2 + newCode exists/getAfter 2 + oldCode get/existsAfter 2 = **10** | head 2 + student 2 + newCode create 2 + oldCode delete (studentAfter 1 + command 1 + exists 1) 3 = **9** | operator 0 + lease `approvedOperator` 1 = **1** | **20/20** | **10/10** |
+| `EditStudent` / `SetStudentStatus` (unchanged from P06) | commandHolder 2 + head before/after 2 + student before/after 2 = **6** | head 2 + student 2 = **4** | operator 0 + lease `approvedOperator` 1 = **1** | **11/20** | **6/10** |
+
+### Old index delete authorization closure
+
+In Firestore Security Rules for `delete` operations, `request.resource` is null. The delete rule on `studentCodes/{code}` securely acquires the authorizing `commandId` via:
+1. `let studentAfter = getAfter(/databases/$(database)/documents/students/$(resource.data.studentId)).data;`
+2. `let currentCommandId = studentAfter.lastCommandId;`
+3. `let command = getAfter(/databases/$(database)/documents/commands/$(currentCommandId)).data;`
+4. Strict validation:
+   - `!exists(/databases/$(database)/documents/commands/$(currentCommandId))` (command must be freshly created in the same atomic commit)
+   - `command.commandId == currentCommandId`
+   - `command.kind == 'ChangeStudentCode'`
+   - `command.targets.studentId == resource.data.studentId`
+   - `command.before.student.studentCode == code` (the code of the document being deleted matches the student's before snapshot)
+   - `command.after.student.studentCode != code && command.after.student.studentCode == command.payload.studentCode`
+   - `studentAfter.studentCode == command.payload.studentCode`
+
+This design specifies the static authorization closure without relying on client-supplied IDs or caching. It estimates 3 access calls in the delete leaf rule evaluation and 20 no-cache access calls for the entire atomic commit (10 for central create, 9 for projection leaves, 1 for lease VerifyMutation, reaching the exact 20/20 limit and 10/10 single write ceiling). These figures are static WIP estimates subject to Emulator proof, and the independent 1,000-expression ceiling per document write must be verified in the test suite before claiming compliance.

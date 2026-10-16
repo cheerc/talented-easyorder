@@ -4,6 +4,7 @@ export const dataHeadPath = () => 'system/dataHead';
 export const dayPath = (dayId: string) => `days/${dayId}`;
 export const commandPath = (commandId: string) => `commands/${commandId}`;
 export const studentPath = (studentId: string) => `students/${studentId}`;
+export const studentCodePath = (code: string) => `studentCodes/${code}`;
 export const vendorPath = (vendorId: string) => `vendors/${vendorId}`;
 export const transactionPath = (transactionId: string) => `transactions/${transactionId}`;
 export const settlementPath = (businessDate: string) => `daily_settlements/${businessDate}`;
