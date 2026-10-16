@@ -1,6 +1,6 @@
 # EasyOrder 零費用正式後端分階段實作計畫
 
-日期：2026-10-16。狀態：**P00–P07 與 P06b 已合併至 main（P06b 隨整合 PR #488 合併）；P08 雲端訂餐已合併（#491）；P09a 繳費與櫃台收支已合併（#493）；P09b 退款已合併（#494）；P10–P18 尚未開始或驗收**。
+日期：2026-10-17。狀態：**P00–P07 與 P06b 已合併至 main（P06b 隨整合 PR #488 合併）；P08 雲端訂餐已合併（#491）；P09a 繳費與櫃台收支已合併（#493）；P09b 退款已合併（#494）；P14 每日增量備份已平行實作並合併（#496）；P10–P13、P15–P18 尚未在本計畫驗收**。
 
 **Source of truth：** [正式後端 spec](../specs/2026-10-13-free-production-backend-spec.md)，包含使用者最新「多白名單、等權、同時單一Google帳號」修正；來源 [PR #469](https://github.com/cheerc/talented-easyorder/pull/469)。
 
@@ -46,7 +46,8 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 | P08 | 已合併 #491 | PR [#491](https://github.com/cheerc/talented-easyorder/pull/491)（取代 #490）：base `5ff889a8c7dc9a411383c8f1a37e23f243e0ce8d`；source head `452edd5abce63f1eda329d90dcae245984104721`；squash merge SHA `889c75c`（2026-10-16）。獨立複審 PASS（review `5545234938`）；required CI [38875033302](https://github.com/cheerc/talented-easyorder/actions/runs/38875033302) build-and-test 與 e2e 均成功，其中 P08 Emulator 步驟 10/10。CreateOrder 雲端入帳、交易清單讀取（分頁、對帳、新鮮度檢查、fail closed）、未知結果同編號重試、失權遮罩；transactions 只開放目前持有者 get／list；本機 demo Emulator 281/281、Vitest 1,573 passed／281 skipped、lint／build 通過。契約見 `2026-10-16-cloud-orders-contract.md`，證據見 [ops evidence](../../ops/free-production-evidence.md)。未部署；正式部署 Rules 時須一併部署 `firestore.indexes.json`。 |
 | P09a | 已合併 | PR #493，squash `c444621`，base `fc7943970a5ceb86d841eeca8be6a75d3ba75dec`。`CreateCashMovement` 啟用、F1 W 繳費與 A 櫃台收支、應有現金；本機 Emulator 395/395、Vitest 1,594 passed、Cloud E2E 14/14；獨立審查 PASS。契約 `2026-10-16-cloud-payments-cash-contract.md`。未部署。 |
 | P09b | 已合併 | PR #494，squash `5b6f9a4`，base `c444621`；獨立審查 PASS。`CreateRefund` 啟用、`day.totals.accountRefunds`（7→8 欄）、F1 W 面板退款、應有現金扣退款一次；本機 Emulator 444/444、Vitest 1,602 passed、Cloud E2E 18/18。契約 `2026-10-16-cloud-refund-contract.md`。未部署。 |
-| P10–P18 | 尚未開始／未驗 | 不代表任何後續雲端功能已實作或通過。 |
+| P14 | 已合併 #496 | Base `e01ebdff5e784522b15a6f16278ef303a9c63110`；source head `9df7926ac7f8670452f659ed7e0462d78a07fa3d`；squash merge `4b4425c3f6c5f5b1423b94d6aad3216c2c67397c`。獨立 subagent review 在四輪修正後對 exact head PASS；同 GitHub 帳號無法為自己 PR 提交 approving review，coordinator 記錄審查證據並以 admin gate 合併。CI [38929526636](https://github.com/cheerc/talented-easyorder/actions/runs/38929526636) `build-and-test` 成功；E2E 首跑遇 P04 A05 timing fail，failed-job rerun 18/18 成功，最終兩 job 均成功。真 Emulator P14 16/16、serial full Vitest 1,985/1,985、UI 2/2、lint/build 通過；app TSC 與 base 460 行 diagnostics byte-identical。固定 H 增量匯出、加密封包、F3 重新選檔驗證後 `RecordBackup` 已實作；只支援當前啟用的 command kinds。P10/P11 開啟新 kind 前，必須同步擴充 P14 replay validator 與相容性測試，否則備份會 fail closed。完整證據見 [P14 receipt](../../ops/p14-receipt.md)；未部署、未做 P15 復原演練。 |
+| P10–P13、P15–P18 | 尚未在本計畫驗收 | P10 有其他團隊開發中；不能因此宣稱 P10 或後續雲端功能已完成。 |
 
 ## 2. 現有檔案與規劃新檔
 
