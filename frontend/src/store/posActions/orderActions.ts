@@ -27,6 +27,7 @@ export function buildOrderTransaction(
     type: draft.intent.type,
     mealPrice: Math.round(draft.intent.mealPrice),
     paidAmount: Math.round(draft.intent.paidAmount),
+    amount: draft.amount,
     previousBalance: student.currentBalance,
     sourceDevice: draft.intent.sourceDevice,
     note: draft.intent.note,

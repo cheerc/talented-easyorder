@@ -11,6 +11,7 @@ const baseTotals: LedgerTotals = {
   orderUnpaid: 0,
   totalIncome: 900,
   totalExpense: 200,
+  totalRefund: 0,
   netCash: 700,
   transactionCount: 12,
 };
@@ -48,6 +49,13 @@ describe('ReportSummaryStats', () => {
     expect(container.textContent).toContain('−$200');
   });
 
+  it('displays totalRefund with −$ prefix', () => {
+    const { container } = render(<ReportSummaryStats totals={{ ...baseTotals, totalRefund: 150 }} itemName="排骨餐點" />);
+    expect(container.textContent).toContain('−$150');
+    expect(container.textContent).toContain('從帳戶退還的現金');
+    expect(container.textContent).toContain('收現 − 支出 − 退款');
+  });
+
   it('displays netCash formatted', () => {
     const { container } = render(<ReportSummaryStats totals={{ ...baseTotals, netCash: 1234 }} itemName="排骨餐點" />);
     expect(container.textContent).toContain('$1,234');
@@ -60,10 +68,10 @@ describe('ReportSummaryStats', () => {
     expect(container.textContent).not.toContain('新增欠款');
   });
 
-  it('F08：卡片名稱是份數／餐費／收現／支出／淨現金／筆數', () => {
+  it('F08：卡片名稱是份數／餐費／收現／支出／退款／淨現金／筆數', () => {
     const { container } = render(<ReportSummaryStats totals={baseTotals} itemName="排骨餐點" />);
     const labels = Array.from(container.querySelectorAll('.stat-lbl')).map(el => el.textContent);
-    expect(labels).toEqual(['份數', '餐費', '收現', '支出', '淨現金', '筆數']);
+    expect(labels).toEqual(['份數', '餐費', '收現', '支出', '退款', '淨現金', '筆數']);
   });
 
   it('displays transactionCount', () => {

@@ -51,7 +51,7 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
 
   const { closeBusinessDate, reopenBusinessDate } = useSessionActions();
   const { deleteOrderWithRefundCheck, deleteTransaction, editTransaction } = useTransactionActions();
-  const handleEditSave = useCallback((transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }, reason: string) =>
+  const handleEditSave = useCallback((transactionId: string, updates: { mealPrice: number; paidAmount: number; amount?: number; note: string }, reason: string) =>
     editTransaction(transactionId, updates, { reason, operatorId: operatorUid }),
   [editTransaction, operatorUid]);
   // M2：F2 的刪除也要先確認、填理由，和 F1 走同一套檢查。
@@ -138,8 +138,10 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
   const handleEditClick = (t: ReportTransactionView) => {
     setEditingTx({
       transactionId: t.transactionId,
+      type: t.type,
       mealPrice: t.mealPrice,
       paidAmount: t.paidAmount,
+      amount: t.amount,
       note: t.note,
     });
   };
@@ -285,8 +287,8 @@ export const ReportScreen = React.memo(function ReportScreen({ viewDate, student
       <DeleteConfirmDialog
         open={!!deletingTx && deletingTx.type !== 'order'}
         studentName={deletingAccount?.displayName ?? deletingTx?.studentNameSnapshot ?? ''}
-        transactionType={deletingTx?.type === 'expense' ? 'expense' : 'payment'}
-        amount={deletingTx ? (deletingTx.type === 'expense' ? Math.max(deletingTx.mealPrice, deletingTx.paidAmount) : deletingTx.paidAmount) : 0}
+        transactionType={(deletingTx?.type === 'expense' ? 'expense' : deletingTx?.type === 'refund' ? 'refund' : 'payment') as 'payment' | 'expense' | 'refund'}
+        amount={deletingTx ? (deletingTx.type === 'expense' || deletingTx.type === 'refund' ? deletingTx.amount : deletingTx.paidAmount) : 0}
         onConfirm={(reason) => {
           if (!deletingTx) return { ok: true };
           const result = deleteTransaction(deletingTx.transactionId, { reason, operatorId: operatorUid });

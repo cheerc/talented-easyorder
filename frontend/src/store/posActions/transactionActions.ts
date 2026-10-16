@@ -7,6 +7,7 @@ import { createPaymentActions } from './paymentActions';
 import { createEditActions } from './editActions';
 import { rebalanceAccounts } from '../../domain/ledger';
 import { checkNewLedgerEntry, type LedgerCommitResult } from '../../domain/ledgerAudit';
+import { resolveCurrentBusinessDate } from '../currentBusinessDate';
 
 export function createTransactionActions(
   set: (partial: Partial<PosState> | ((state: PosState) => Partial<PosState>)) => void,
@@ -34,6 +35,26 @@ export function createTransactionActions(
 
       const studentIndex = state.students.findIndex(s => s.studentId === sid);
       if (studentIndex === -1) return { ok: false, message: '找不到這個帳戶。' };
+
+      if (draft.intent.type === 'refund') {
+        // U4 #9：退款只能記在目前營業日。來源與 useSystemDate 相同（模擬營業日或台北當天），
+        // 不用 viewDate 或菜單快照日期，否則還原舊資料時會誤擋／誤准。
+        const activeDate = resolveCurrentBusinessDate(state.simulationDate);
+        if (draft.intent.businessDate !== activeDate) {
+          return { ok: false, message: '退款只能記在當前營業日。' };
+        }
+        const student = state.students[studentIndex];
+        const refundAmount = draft.amount;
+        if (!Number.isInteger(refundAmount) || refundAmount < 1) {
+          return { ok: false, message: '退款金額必須是大於 0 的整數。' };
+        }
+        if (refundAmount > student.currentBalance) {
+          return { ok: false, message: '退款金額不能超過目前餘額。' };
+        }
+        if (!draft.intent.note || draft.intent.note.trim().length === 0) {
+          return { ok: false, message: '退款原因必填。' };
+        }
+      }
 
       const { newTransaction } = buildOrderTransaction(state, draft, studentIndex);
 

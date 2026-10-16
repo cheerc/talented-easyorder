@@ -29,6 +29,7 @@ export interface LedgerTotals {
   orderUnpaid: number;
   totalIncome: number;
   totalExpense: number;
+  totalRefund?: number;
   netCash: number;
   transactionCount: number;
 }
@@ -100,6 +101,7 @@ export function calculateLedgerTotals(transactions: LedgerTransaction[]): Ledger
   let orderUnpaid = 0;
   let totalIncome = 0;
   let totalExpense = 0;
+  let totalRefund = 0;
 
   for (const tx of transactions) {
     const roundedMealPrice = Math.round(tx.mealPrice);
@@ -118,6 +120,8 @@ export function calculateLedgerTotals(transactions: LedgerTransaction[]): Ledger
       if (roundedMealPrice > 0) {
         totalExpense += roundedMealPrice;
       }
+    } else if (tx.type === 'refund') {
+      totalRefund += Math.round(Math.max(0, tx.amount));
     }
   }
 
@@ -130,7 +134,8 @@ export function calculateLedgerTotals(transactions: LedgerTransaction[]): Ledger
     orderUnpaid,
     totalIncome,
     totalExpense,
-    netCash: totalIncome - totalExpense,
+    totalRefund,
+    netCash: totalIncome - totalExpense - totalRefund,
     transactionCount: transactions.length,
   };
 }
@@ -191,6 +196,11 @@ export function groupLedgerRowsByStudent(
 export function groupRecordSummary(transactions: readonly Pick<LedgerTransaction, 'type'>[]): string {
   const orders = transactions.filter(t => t.type === 'order').length;
   const payments = transactions.filter(t => t.type === 'payment').length;
-  const parts = [orders > 0 ? `訂餐 ${orders} 筆` : '', payments > 0 ? `繳費 ${payments} 筆` : ''].filter(Boolean);
+  const refunds = transactions.filter(t => t.type === 'refund').length;
+  const parts = [
+    orders > 0 ? `訂餐 ${orders} 筆` : '',
+    payments > 0 ? `繳費 ${payments} 筆` : '',
+    refunds > 0 ? `退款 ${refunds} 筆` : '',
+  ].filter(Boolean);
   return parts.length > 0 ? parts.join('・') : `${transactions.length} 筆`;
 }

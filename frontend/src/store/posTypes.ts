@@ -102,7 +102,7 @@ export interface TransactionActions {
   /** M2：理由必填、已關帳的日期擋下；原單整筆寫進稽核。 */
   deleteTransaction: (id: string, opts: LedgerMutationOptions) => LedgerMutationResult;
   deleteOrderWithRefundCheck: (id: string, opts: LedgerMutationOptions & { keepPaymentAsDeposit?: boolean }) => DeleteOrderResult;
-  editTransaction: (id: string, updates: { mealPrice?: number; paidAmount?: number; note?: string }, opts: LedgerMutationOptions) => LedgerMutationResult;
+  editTransaction: (id: string, updates: { mealPrice?: number; paidAmount?: number; amount?: number; note?: string }, opts: LedgerMutationOptions) => LedgerMutationResult;
 }
 
 /** Menu domain actions */

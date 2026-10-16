@@ -26,6 +26,7 @@ describe('parsePaidAmount', () => {
   });
 
   it('rejects negative numbers with a clear message (M1 K07)', () => {
+    expect(PAID_AMOUNT_NEGATIVE_MESSAGE).toBe('收款金額不能是負數。要退錢給學生請用「退款」。');
     expect(parsePaidAmount('-50')).toEqual({ ok: false, message: PAID_AMOUNT_NEGATIVE_MESSAGE });
     expect(parsePaidAmount('-')).toEqual({ ok: false, message: PAID_AMOUNT_NEGATIVE_MESSAGE });
   });

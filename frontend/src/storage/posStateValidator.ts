@@ -48,7 +48,7 @@ export type PersistedStateValidationResult =
 
 const VALID_STUDENT_STATUSES = new Set(['active', 'inactive']);
 const VALID_FACE_STATUSES = new Set(['none', 'enrolled', 'disabled', 'needs_review']);
-const VALID_TX_TYPES = new Set(['order', 'payment', 'expense']);
+const VALID_TX_TYPES = new Set(['order', 'payment', 'expense', 'refund']);
 const VALID_SYNC_STATUSES = new Set(['local', 'queued', 'synced', 'failed', 'conflict']);
 const VALID_SOURCE_DEVICES = new Set(['pc', 'barcode_scanner', 'ipad_handoff']);
 const VALID_SETTLEMENT_STATUSES = new Set(['open', 'closed', 'reopened']);
@@ -111,6 +111,12 @@ export function validateLedgerTransaction(t: unknown): ValidationResult {
   if (!isSafeInt(r.paidAmount)) return { ok: false, reason: 'paidAmount not safe integer' };
   if (r.revision < 1) return { ok: false, reason: 'invalid revision' };
   if (!VALID_TX_TYPES.has(r.type as string)) return { ok: false, reason: `invalid type: ${String(r.type)}` };
+  if (r.type === 'refund') {
+    if (!isSafeInt(r.amount) || (r.amount as number) <= 0) return { ok: false, reason: 'refund amount must be positive safe integer' };
+    if (r.mealPrice !== 0) return { ok: false, reason: 'refund mealPrice must be 0' };
+    if (r.paidAmount !== 0) return { ok: false, reason: 'refund paidAmount must be 0' };
+    if (typeof r.note !== 'string' || r.note.trim().length === 0) return { ok: false, reason: 'refund note must be non-empty string' };
+  }
   if (!VALID_SYNC_STATUSES.has(r.syncStatus as string)) return { ok: false, reason: `invalid syncStatus: ${String(r.syncStatus)}` };
   if (!VALID_SOURCE_DEVICES.has(r.sourceDevice as string)) return { ok: false, reason: `invalid sourceDevice: ${String(r.sourceDevice)}` };
   return { ok: true };

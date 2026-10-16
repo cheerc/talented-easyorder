@@ -5,8 +5,11 @@ import type { LedgerTotals } from '../../domain/ledgerReport';
 
 const baseTotals: LedgerTotals = {
   orderCount: 10,
+  bentoCount: 10,
+  otherMealCount: 0,
   totalIncome: 900,
   totalExpense: 200,
+  totalRefund: 0,
   netCash: 700,
   mealTotal: 0,
   orderUnpaid: 900,

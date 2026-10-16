@@ -24,6 +24,8 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
     todayMenu, todayCount, todayOtherCount = 0, vendors, enterExpenseMode, tweaks,
     tx, operatorUid, priceOverride, priceOverrideLabel, setPriceOverride, setPriceOverrideLabel,
     onViewAllHistory,
+    onRefund,
+    onRefundDialogOpenChange,
   } = props;
 
   const orderedTodayCount = useActiveOrderCount(picked?.studentId ?? null, viewDate);
@@ -55,8 +57,10 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
   const handleRecentEditClick = (t: LedgerTransaction) => {
     setEditingTx({
       transactionId: t.transactionId,
+      type: t.type,
       mealPrice: t.mealPrice,
       paidAmount: t.paidAmount,
+      amount: t.amount,
       note: t.note,
     });
   };
@@ -70,7 +74,7 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
   };
 
   const handleRecentEditSave = useCallback(
-    (transactionId: string, updates: { mealPrice: number; paidAmount: number; note: string }, reason: string) =>
+    (transactionId: string, updates: { mealPrice: number; paidAmount: number; amount?: number; note: string }, reason: string) =>
       editTransaction(transactionId, updates, { reason, operatorId: operatorUid }),
     [editTransaction, operatorUid],
   );
@@ -233,6 +237,8 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
                 onConfirm={handleConfirm}
                 onCancel={cancelFlow}
                 busy={state.kind === 'committing'}
+                onRefund={onRefund}
+                onRefundDialogOpenChange={onRefundDialogOpenChange}
               />
               </>
             )}
@@ -271,8 +277,8 @@ export const PosColumn = React.memo(function PosColumn(props: PosColumnProps) {
       <DeleteConfirmDialog
         open={deleteConfirmTx !== null}
         studentName={deleteConfirmTx ? (students.find(s => s.studentId === deleteConfirmTx.studentId)?.displayName ?? '') : ''}
-        transactionType={(deleteConfirmTx?.type === 'expense' ? 'expense' : 'payment') as 'payment' | 'expense'}
-        amount={deleteConfirmTx ? (deleteConfirmTx.type === 'expense' ? deleteConfirmTx.amount : deleteConfirmTx.paidAmount) : 0}
+        transactionType={(deleteConfirmTx?.type === 'expense' ? 'expense' : deleteConfirmTx?.type === 'refund' ? 'refund' : 'payment') as 'payment' | 'expense' | 'refund'}
+        amount={deleteConfirmTx ? (deleteConfirmTx.type === 'expense' || deleteConfirmTx.type === 'refund' ? deleteConfirmTx.amount : deleteConfirmTx.paidAmount) : 0}
         onConfirm={(reason) => {
           if (!deleteConfirmTx) return { ok: true };
           const result = deleteTransaction(deleteConfirmTx.transactionId, { reason, operatorId: operatorUid });

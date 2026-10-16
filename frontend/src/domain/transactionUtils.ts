@@ -11,5 +11,6 @@ export function getIncome(tx: LedgerTransaction): number | null {
 export function getExpense(tx: LedgerTransaction): number | null {
   if (tx.type === 'order') return tx.mealPrice;
   if (tx.type === 'expense') return tx.amount;
+  if (tx.type === 'refund') return tx.amount;
   return null;
 }

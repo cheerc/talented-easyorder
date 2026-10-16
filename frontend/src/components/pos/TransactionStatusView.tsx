@@ -30,6 +30,9 @@ function getTxItemLabel(tx: LedgerTransaction, todayMenu?: { itemName: string } 
   if (tx.type === 'payment') {
     return '繳費';
   }
+  if (tx.type === 'refund') {
+    return tx.note ? `退款：${tx.note}` : '退款';
+  }
   return tx.note || '櫃台收支';
 }
 
@@ -44,11 +47,15 @@ export const TransactionStatusView = React.memo(function TransactionStatusView({
 }: TransactionStatusViewProps) {
   let totalMealPrice = 0;
   let totalPaidAmount = 0;
+  let totalRefundAmount = 0;
   for (const tx of transactions) {
     if (tx.type === 'order') {
       totalMealPrice += tx.mealPrice;
     }
     totalPaidAmount += tx.paidAmount;
+    if (tx.type === 'refund') {
+      totalRefundAmount += tx.amount;
+    }
   }
 
   const header = (
@@ -82,7 +89,9 @@ export const TransactionStatusView = React.memo(function TransactionStatusView({
         transactions.map((tx) => {
           const itemLabel = getTxItemLabel(tx, todayMenu);
           const mealPriceText = tx.type === 'order' ? `$${fmt(tx.mealPrice)}` : '—';
-          const paidAmountText = tx.paidAmount > 0 ? `$${fmt(tx.paidAmount)}` : (tx.type === 'order' ? '$0' : '—');
+          const paidAmountText = tx.type === 'refund'
+            ? `−$${fmt(tx.amount)}`
+            : (tx.paidAmount > 0 ? `$${fmt(tx.paidAmount)}` : (tx.type === 'order' ? '$0' : '—'));
           return (
             <div key={tx.transactionId} className="tx-status-row">
               <span className="tx-time">{formatTaipeiTime(tx.createdAt)}</span>
@@ -122,6 +131,12 @@ export const TransactionStatusView = React.memo(function TransactionStatusView({
           <span className="tx-status-total-label">今日收款</span>
           <span className="mono">${fmt(totalPaidAmount)}</span>
         </div>
+        {totalRefundAmount > 0 && (
+          <div className="tx-status-total-item">
+            <span className="tx-status-total-label">今日退款</span>
+            <span className="mono warn">−${fmt(totalRefundAmount)}</span>
+          </div>
+        )}
         <div className="tx-status-total-item">
           <span className="tx-status-total-label">帳戶餘額</span>
           <span className={'mono ' + (student.currentBalance < 0 ? 'neg' : '')}>

@@ -16,12 +16,23 @@ import { getTaiwanISOString } from '../../utils/dateTime';
 import { filterActiveVendors, resolveMenuVendor } from '../../domain/menu';
 import { faceEnrollmentText } from '../../domain/faceOrder';
 import { validateOpeningCash } from '../../domain/cashSession';
+import { RefundDialog } from '../pos/RefundDialog';
+import type { LedgerMutationResult } from '../../domain/ledgerAudit';
 
 interface AdminScreenProps {
   viewDate: string;
   onViewStudentHistory?: (student: StudentAccount) => void;
+  /** U4：F3 名單列的退款入口（含停用帳戶，不必先恢復）。寫入失敗回傳失敗結果。 */
+  onRefund?: (studentId: string, amount: number, reason: string) => LedgerMutationResult;
+  /** 退款對話框開關回報，讓 App 把退款框納入背景快捷鍵 guard。 */
+  onRefundDialogOpenChange?: (open: boolean) => void;
 }
-export const AdminScreen = React.memo(function AdminScreen({ viewDate, onViewStudentHistory }: AdminScreenProps) {
+export const AdminScreen = React.memo(function AdminScreen({
+  viewDate,
+  onViewStudentHistory,
+  onRefund,
+  onRefundDialogOpenChange,
+}: AdminScreenProps) {
   const { vendors } = useMenu();
   // M0：晚餐設定依營業日保存；編輯的是目前檢視的營業日。
   const resolvedMenu = useMenuForDate(viewDate);
@@ -311,6 +322,8 @@ export const AdminScreen = React.memo(function AdminScreen({ viewDate, onViewStu
             editable={isLocal}
             onSelectGapCode={setPresetStudentId}
             onViewStudentHistory={onViewStudentHistory}
+            onRefund={onRefund}
+            onRefundDialogOpenChange={onRefundDialogOpenChange}
           />
         </div>
       </div>
@@ -342,16 +355,22 @@ const StudentList = React.memo(function StudentList({
   editable = false,
   onSelectGapCode,
   onViewStudentHistory,
+  onRefund,
+  onRefundDialogOpenChange,
 }: {
   students: StudentAccount[];
   editable?: boolean;
   onSelectGapCode?: (code: string) => void;
   onViewStudentHistory?: (student: StudentAccount) => void;
+  onRefund?: (studentId: string, amount: number, reason: string) => LedgerMutationResult;
+  onRefundDialogOpenChange?: (open: boolean) => void;
 }) {
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [refundStudentId, setRefundStudentId] = useState<string | null>(null);
   const { setLocalStudentStatus } = usePracticeDataActions();
+  const refundStudent = refundStudentId ? students.find(s => s.studentId === refundStudentId) ?? null : null;
 
   const listItems = useMemo(
     () => buildStudentListWithGaps(students, search),
@@ -452,7 +471,20 @@ const StudentList = React.memo(function StudentList({
                     </button>
                   )}
                   <button className="ghost-btn" aria-label={`編輯 ${s.studentId}`} onClick={() => setEditingId(s.studentId)}>編輯</button>
+                  {onRefund && (
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      aria-label={`退款 ${s.studentId}`}
+                      disabled={s.currentBalance <= 0}
+                      title={s.currentBalance <= 0 ? '目前無餘額可退' : '從帳戶退還現金給學生'}
+                      onClick={() => { setRefundStudentId(s.studentId); onRefundDialogOpenChange?.(true); }}
+                    >
+                      退款
+                    </button>
+                  )}
                   <button
+                    type="button"
                     className="ghost-btn"
                     aria-label={`${s.status === 'active' ? '停用' : '恢復'} ${s.studentId}`}
                     onClick={() => setLocalStudentStatus(s.studentId, s.status === 'active' ? 'inactive' : 'active', new Date().toISOString())}
@@ -465,6 +497,21 @@ const StudentList = React.memo(function StudentList({
           );
         })}
       </div>
+      {refundStudent && onRefund && (
+        <RefundDialog
+          open={!!refundStudent}
+          student={refundStudent}
+          onConfirm={(amt, reason) => {
+            const result = onRefund(refundStudent.studentId, amt, reason);
+            if (result.ok) {
+              setRefundStudentId(null);
+              onRefundDialogOpenChange?.(false);
+            }
+            return result;
+          }}
+          onCancel={() => { setRefundStudentId(null); onRefundDialogOpenChange?.(false); }}
+        />
+      )}
       {totalPages > 1 && (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '12px' }}>
           <button className="ghost-btn" disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>上一頁</button>

@@ -33,7 +33,7 @@ export function useCrashDraftRecovery({
       if (draft.intent.paidAmount > 0) {
         setPaidAmountText(String(draft.intent.paidAmount));
       }
-      if (draft.intent.type !== 'order') {
+      if (draft.intent.type === 'payment' || draft.intent.type === 'expense') {
         changeMode(draft.intent.type);
       }
       setCrashDraftRestored(true);

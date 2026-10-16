@@ -14,6 +14,11 @@ import type { LedgerTotals } from '../ledgerReport';
 
 const makeTotals = (overrides: Partial<LedgerTotals> = {}): LedgerTotals => ({
   orderCount: 10,
+  bentoCount: 10,
+  otherMealCount: 0,
+  totalIncome: 500,
+  totalExpense: 0,
+  totalRefund: 0,
   orderSalesAmount: 850,
   cashCollected: 500,
   refundAmount: 0,

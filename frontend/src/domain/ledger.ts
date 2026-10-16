@@ -1,4 +1,5 @@
 export type { TransactionType, LedgerSyncStatus } from './types';
+import type { TransactionType as LocalTxType } from './types';
 
 export interface LedgerTransaction {
   transactionId: string;
@@ -46,6 +47,7 @@ export interface CreateLedgerTransactionInput {
   type: TransactionType;
   mealPrice: number;
   paidAmount: number;
+  amount?: number;
   previousBalance: number;
   sourceDevice: LedgerTransaction['sourceDevice'];
   operatorId?: string;
@@ -58,8 +60,18 @@ export function calculateTransactionAmount(mealPrice: number, paidAmount: number
   return paidAmount - mealPrice;
 }
 
+/** 計算交易對學生帳戶餘額的增減效果（order/payment: paidAmount - mealPrice, refund: -amount） */
+export function computeTransactionBalanceDelta(tx: Pick<LedgerTransaction, 'type' | 'paidAmount' | 'mealPrice' | 'amount'>): number {
+  if (tx.type === 'refund') {
+    return -Math.abs(tx.amount);
+  }
+  return tx.paidAmount - tx.mealPrice;
+}
+
 export function createLedgerTransaction(input: CreateLedgerTransactionInput): LedgerTransaction {
-  const amount = calculateTransactionAmount(input.mealPrice, input.paidAmount);
+  const isRefund = input.type === 'refund';
+  const amount = isRefund ? Math.round(input.amount ?? 0) : calculateTransactionAmount(input.mealPrice, input.paidAmount);
+  const balanceDelta = isRefund ? -amount : amount;
   const studentId = input.type === 'expense' ? CASHIER_SENTINEL : input.studentSnapshot.studentId;
   return {
     transactionId: input.transactionId,
@@ -68,12 +80,12 @@ export function createLedgerTransaction(input: CreateLedgerTransactionInput): Le
     studentId,
     studentNameSnapshot: input.type === 'expense' ? '櫃台' : input.studentSnapshot.studentNameSnapshot,
     type: input.type,
-    mealPrice: input.mealPrice,
-    paidAmount: input.paidAmount,
+    mealPrice: isRefund ? 0 : input.mealPrice,
+    paidAmount: isRefund ? 0 : input.paidAmount,
     amount,
-    afterBalance: input.type === 'expense' ? 0 : input.previousBalance + amount,
-    menuNameSnapshot: input.type === 'expense' ? '' : input.menuSnapshot.menuNameSnapshot,
-    vendorNameSnapshot: input.type === 'expense' ? '' : input.menuSnapshot.vendorNameSnapshot,
+    afterBalance: input.type === 'expense' ? 0 : input.previousBalance + balanceDelta,
+    menuNameSnapshot: input.type === 'expense' || isRefund ? '' : input.menuSnapshot.menuNameSnapshot,
+    vendorNameSnapshot: input.type === 'expense' || isRefund ? '' : input.menuSnapshot.vendorNameSnapshot,
     sourceDevice: input.sourceDevice,
     operatorId: input.operatorId,
     syncStatus: 'local',
@@ -131,7 +143,8 @@ export function recalculateStudentBalances(
 
   const updatedTx = sorted.map(tx => {
     const currentBalance = balanceMap.get(tx.studentId) ?? 0;
-    const newBalance = currentBalance + tx.amount;
+    const delta = computeTransactionBalanceDelta(tx);
+    const newBalance = currentBalance + delta;
     balanceMap.set(tx.studentId, newBalance);
     return { ...tx, afterBalance: newBalance };
   });
@@ -166,7 +179,7 @@ export function rebalanceAccounts(
     } else {
       const sumBefore = transactionsBefore
         .filter(t => t.studentId === s.studentId)
-        .reduce((sum, t) => sum + t.amount, 0);
+        .reduce((sum, t) => sum + computeTransactionBalanceDelta(t), 0);
       base.set(s.studentId, s.currentBalance - sumBefore);
     }
   }
@@ -176,7 +189,8 @@ export function rebalanceAccounts(
   const running = new Map(base);
   const after = new Map<string, number>();
   for (const t of ordered) {
-    const next = Math.round((running.get(t.studentId) ?? 0) + t.amount);
+    const delta = computeTransactionBalanceDelta(t);
+    const next = Math.round((running.get(t.studentId) ?? 0) + delta);
     running.set(t.studentId, next);
     after.set(t.transactionId, next);
   }
@@ -237,8 +251,10 @@ export interface MergedTransaction extends LedgerTransaction {
 
 export interface TransactionEditView {
   transactionId: string;
+  type?: LocalTxType;
   mealPrice: number;
   paidAmount: number;
+  amount?: number;
   note: string;
 }
 
@@ -288,7 +304,7 @@ export function mergeLedgerTransactions(transactions: LedgerTransaction[]): Merg
 
     if (orderCount > 0) {
       // Merge all orders and payments into a single order row
-      const earliestTx = studentTxs[0];
+      const earliestTx = orders[0];
       const depositAmount = Math.max(0, totalPaid - totalMealPrice);
       const unpaidAmount = Math.max(0, totalMealPrice - totalPaid);
       const mergedNote = orders.map(o => o.note).filter(Boolean).join(', ');
@@ -325,6 +341,20 @@ export function mergeLedgerTransactions(transactions: LedgerTransaction[]): Merg
           otherMealItems: [],
         });
       }
+    }
+
+    // Keep refunds as independent rows
+    const refunds = studentTxs.filter(t => t.type === 'refund');
+    for (const r of refunds) {
+      mergedList.push({
+        ...r,
+        depositAmount: 0,
+        unpaidAmount: 0,
+        orderCount: 0,
+        displayBalance: r.afterBalance,
+        bentoOrderCount: 0,
+        otherMealItems: [],
+      });
     }
   }
 
