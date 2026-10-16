@@ -5,7 +5,7 @@ Date: 2026-10-17 (Asia/Taipei)
 Branch: `codex/p14-incremental-backup`
 
 Implementation base: `e01ebdff5e784522b15a6f16278ef303a9c63110`
-Reviewed implementation: PR #496, updated after review findings. This receipt records the current working-tree changes and their evidence; the final commit SHA is recorded in the PR after push.
+Reviewed implementation: [PR #496](https://github.com/cheerc/talented-easyorder/pull/496), source head `9df7926ac7f8670452f659ed7e0462d78a07fa3d`, squash merge `4b4425c3f6c5f5b1423b94d6aad3216c2c67397c` on 2026-10-17 Asia/Taipei. Independent subagent review passed on the exact source head after four rounds; the same `cheerc` GitHub identity could not submit an approving review of its own PR. The coordinator recorded the review evidence in the PR and used the admin merge gate after both CI jobs passed.
 
 ## Delivered
 
@@ -26,11 +26,13 @@ The dedicated `BackupScreen.test.tsx` renders the F3 screen with an anonymous te
 - `npm run test:cloud-backup` — **16/16 passed** against the real Firestore Emulator. This script sets `EASYORDER_REQUIRE_CLOUD_BACKUP=true`; the suite throws if the Emulator is missing. The regular Vitest run safely skips these Emulator-only tests when no Emulator is configured.
 - `npx firebase emulators:exec --project demo-easyorder --config ../firebase.json --only firestore "npx vitest run --maxWorkers=1"` — **174 files, 1,985 tests passed** on 2026-10-17 after inactive P10/P11 kinds were set to fail closed. Serial execution is required because the test files share one emulator database.
 - `.github/workflows/ci.yml` now has a required P14 Emulator proof step that also asserts its JSON report has at least one test and zero failures or skips.
+- [CI run 38929526636](https://github.com/cheerc/talented-easyorder/actions/runs/38929526636) finished successfully for the exact source head: `build-and-test` and `e2e` both succeeded. The E2E job first failed 17/18 at the P04 A05 timing case, then its failed-job rerun passed 18/18; this is one workflow run with a successful final conclusion, not a claim that the first attempt passed.
 - A full Vitest run with default parallel workers produced cross-suite emulator collisions and unrelated Rules failures; it is discarded as evidence. The passing serial run is the evidence used here.
 - `npm run lint` — pass.
 - `npm run build` — pass (Vite prints its existing native-config `__dirname` warning).
 - `npx tsc -p tsconfig.app.json --noEmit` — exits 2 on this base because of existing project diagnostics. The base commit was extracted with `git archive` to `/tmp/p14-base` and checked with the same dependencies; base and final outputs are exactly 460 lines and byte-identical. No diagnostics mention changed P14 modules.
 - `npm run test:e2e` — first Chromium run: **17/18 passed**; existing P04 A05 lease-clock scenario timed out waiting for its auth-gate element after reload. An isolated rerun of A05 passed **1/1**, indicating a flaky timing failure. Because the chained command stopped on that first-suite failure, prototype E2E was run separately and passed **7/7**. These existing Playwright suites do not exercise P14 backup UI.
+- `npm run test:e2e` on the final source head was rerun end-to-end locally: Chromium **18/18 passed**, prototype **7/7 passed**. The stock Playwright suites still do not exercise the P14 backup UI; the dedicated UI, repository, and Rules tests provide that evidence.
 
 ## Remaining limits
 
