@@ -244,3 +244,59 @@ Probe method: insert N inline `1 == 1 &&` terms at the start of one rule's condi
 The first cash-path draft compared the transaction document field by field and left the command rule at +0 / +1 for `P09.8`. Rewriting that check as one map equality raised it to +26 without dropping any check; a mutant that changes one expected field (`sourceDevice`) makes the seven positive cash cases fail.
 
 P09b (`CreateRefund` plus `day.totals.accountRefunds`) touches `validTotals`, `validNewDay`, `validDayAdvance` and `validDayNonMenu`, which every day path evaluates. Re-measure `P07.9a` (day +28) and `P08.8` (day +11) before and after that change.
+
+## P09b account refund — budget and probe receipt
+
+P09b enables `CreateRefund` (13 enabled kinds; 11 still denied) and adds `accountRefunds` as the eighth `day.totals` field. Contract: [P09b account refund contract](../superpowers/specs/2026-10-16-cloud-refund-contract.md).
+
+### Write budget
+
+| Command / write path | Central command-create Rules calls | Projection leaves Rules calls | Read-but-unwritten `VerifyMutation` dependencies | Atomic no-cache total | Max per write |
+|---|---:|---:|---:|---:|---:|
+| `CreateRefund` (command + dataHead + day + student + new transaction) | commandHolder 2 + head before/after 2 + day before/after 2 + student before/after 2 + transaction getAfter/exists 2 = **10** | head 2 + day 2 + student 2 + transaction 2 = **8** | operator 0 + lease `approvedOperator` 1 = **1** | **19/20** | **10/10** |
+
+Same shape as `CreatePayment` (P05), as the operator-feedback plan requires.
+
+### Day totals 7 → 8 fields
+
+`validTotals` now requires exactly 8 keys, `validNewDay` requires `accountRefunds == 0`, and every existing projection (`CreateOrder`, `CreatePayment`, `CreateCashMovement`) requires `accountRefunds` unchanged. `validDayNonMenu` uses `validTotals`, so it is covered. A day document with the old 7-field totals is refused on read (`UNSUPPORTED_SCHEMA`) and every write to it is denied (`P09b.13`). There is no production data yet (nothing has been deployed), so no migration is needed; any Emulator data from before P09b must be recreated.
+
+To pay for the extra field, `validDayAdvance` compares the unchanged totals as one map equality over all 8 keys instead of `exactMap` plus per-key equalities. The per-field `is int`, `>= 0` and `<= 1e9` bounds are kept. The refund transaction document check is one 24-key map equality, like P09a's cash movement.
+
+### Expression headroom
+
+Same probe method as the P09a appendix (inline `1 == 1 &&` terms, bisected against an existing positive Emulator case). A student-rule anchor was added for P09b.
+
+| Rule anchor | Case | main `c444621` (pass / fail) | P09b (pass / fail) |
+|---|---|---:|---:|
+| day update | `P07.9a` inherited menu | +28 / +29 | +24 / +25 |
+| day update | `P08.8` CreateOrder | +11 / +12 | +11 / +12 |
+| transaction create | `P08.8` CreateOrder | +34 / +35 | +34 / +35 |
+| command create | `P08.8` CreateOrder | +16 / +17 | +16 / +17 |
+| student update | `P08.8` CreateOrder | +22 / +23 | +22 / +23 |
+| day update | `P09.8` cash movement, max payload | +48 / +49 | +39 / +40 |
+| command create | `P09.8` cash movement, max payload | +26 / +27 | +26 / +27 |
+| day update | `P09b.9` refund, max payload | — | +38 / +39 |
+| transaction create | `P09b.9` refund, max payload | — | +95 / +96 |
+| student update | `P09b.9` refund, max payload | — | +88 / +89 |
+| command create | `P09b.9` refund, max payload | — | +14 / +15 |
+| dataHead update | `P09b.9` refund, max payload | — | passes at +80 |
+
+Without the `validDayAdvance` rewrite, the day rule for `P08.8` fell from +11 to +1. The tightest anchor is now the refund command rule (+14); re-measure it before adding checks there.
+
+### Mutants
+
+Each mutant removes one refund check from `firestore.rules` and runs the matching `cloudRefund.spec.ts` case:
+
+| Removed check | Result |
+|---|---|
+| amount ≤ current balance (command and student rules) | killed |
+| `accountRefunds` advanced by amount | killed |
+| student balance lowered by amount | killed |
+| `cashEffect` literal | killed |
+| `command.reason == payload.reason` | killed |
+| student diff limited to balance / revision / lastCommandId / updatedAt | killed |
+| `command.studentId == studentId` | killed |
+| day `status in ['open', 'reopened']` in the refund projection | survived: redundant, because the day `affectedKeys` limit already blocks status changes and the command rule checks the status too |
+
+The Rules suite without the P09b Rules (main's Rules against the refund spec) fails 8 of 43 refund cases, so the new tests depend on the new Rules.

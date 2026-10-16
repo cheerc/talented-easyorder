@@ -12,6 +12,7 @@ const repositoryMock = vi.hoisted(() => ({
   createOrder: vi.fn(),
   createPayment: vi.fn(),
   createCashMovement: vi.fn(),
+  createRefund: vi.fn(),
   readCommand: vi.fn(),
 }));
 
@@ -63,7 +64,7 @@ function mockDay(options: { menu?: boolean; bento?: number; other?: number; stat
       mealTotal: 150,
       retainedReceipts: 100,
       cashierIncome: 0,
-      cashierExpense: 0,
+      cashierExpense: 0, accountRefunds: 0,
     },
     lastSettlementRevision: 0,
     lastCommandId: '00000000-0000-4000-8000-000000000002',
@@ -167,6 +168,7 @@ describe('CloudOrdersPage', () => {
     repositoryMock.createOrder.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId));
     repositoryMock.createPayment.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 12));
     repositoryMock.createCashMovement.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 13));
+    repositoryMock.createRefund.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 15));
   });
 
   it('renders the two-row meal counters from the reconciled server day (U2a contract)', async () => {
@@ -523,5 +525,164 @@ describe('CloudOrdersPage', () => {
     }));
     renderComponent();
     expect(await screen.findByTestId('cloud-expected-cash')).toHaveTextContent('開帳現金未確認，無法計算');
+  });
+
+  it('keeps the same counter cash command when its result is unknown and confirms it with the same commandId', async () => {
+    repositoryMock.createCashMovement
+      .mockResolvedValueOnce(errorResult('UNKNOWN_RESULT'))
+      .mockImplementationOnce(async (input: { commandId: string }) => okResult(input.commandId, 16));
+    renderComponent();
+    fireEvent.click(await screen.findByTestId('open-cash-movement-button'));
+    fireEvent.change(screen.getByLabelText(/金額（必填）/), { target: { value: '80' } });
+    fireEvent.click(screen.getByRole('button', { name: '付餐費給廠商' }));
+    fireEvent.click(screen.getByTestId('submit-cash-movement-button'));
+
+    const panel = await screen.findByTestId('order-recovery-panel');
+    expect(panel).toHaveTextContent('櫃台支出 $80 的櫃台收支已送出');
+    expect(panel).toHaveTextContent('勿重新收款');
+    expect(screen.getByTestId('submit-cash-movement-button')).toBeDisabled();
+    const first = repositoryMock.createCashMovement.mock.calls[0][0];
+    expect(JSON.parse(window.localStorage.getItem(PENDING_KEY) ?? '{}')).toEqual({ uid: 'uid-1', datasetId: 'ds-1', commandId: first.commandId });
+
+    fireEvent.click(screen.getByTestId('order-recovery-retry'));
+    await waitFor(() => expect(repositoryMock.createCashMovement).toHaveBeenCalledTimes(2));
+    expect(repositoryMock.createCashMovement.mock.calls[1][0]).toEqual(first);
+    expect(await screen.findByText(/已確認櫃台支出 \$80入帳（命令序號 16）/)).toBeVisible();
+    expect(window.localStorage.getItem(PENDING_KEY)).toBeNull();
+  });
+
+  it('P09b: refunds from the W panel after confirmation, defaulting to the full balance', async () => {
+    renderComponent();
+    await selectStudent('001');
+    fireEvent.keyDown(window, { key: 'w' });
+    fireEvent.click(screen.getByTestId('open-refund-button'));
+    const card = await screen.findByTestId('refund-card');
+    expect(screen.getByLabelText(/退款金額/)).toHaveValue('100');
+    expect(screen.getByTestId('submit-refund-button')).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/退款金額/), { target: { value: '60' } });
+    fireEvent.change(screen.getByLabelText(/退款原因/), { target: { value: '學期結束' } });
+    expect(card).toHaveTextContent('現金影響：−$60');
+    expect(card).toHaveTextContent('退款後餘額：$40');
+    fireEvent.click(screen.getByTestId('submit-refund-button'));
+
+    const modal = await screen.findByTestId('refund-confirm-modal');
+    expect(modal).toHaveTextContent('確定從 王小明 的帳戶退還 $60 現金嗎？退款後餘額 $40');
+    expect(repositoryMock.createRefund).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('confirm-refund-button'));
+
+    await waitFor(() => expect(repositoryMock.createRefund).toHaveBeenCalledTimes(1));
+    expect(repositoryMock.createRefund.mock.calls[0][0]).toEqual({
+      commandId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      transactionId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      leaseEpoch: 1, studentId: 's1', dayId: TODAY,
+      expectedStudentRevision: 3, expectedDayRevision: 5, amount: 60, reason: '學期結束',
+    });
+    expect(await screen.findByText(/已確認 001 王小明 退款 \$60 完成（命令序號 15）/)).toBeVisible();
+    expect(repositoryMock.createPayment).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(PENDING_KEY)).toBeNull();
+  });
+
+  it('P09b: rejects refunds over the balance, zero, decimals or without a reason before sending', async () => {
+    renderComponent();
+    await selectStudent('002');
+    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.click(screen.getByTestId('open-refund-button'));
+    fireEvent.change(screen.getByLabelText(/退款原因/), { target: { value: '退餘額' } });
+    for (const value of ['51', '0', '1.5', '-10', '1e2']) {
+      fireEvent.change(screen.getByLabelText(/退款金額/), { target: { value } });
+      fireEvent.click(screen.getByTestId('submit-refund-button'));
+      expect(await screen.findByText('退款金額必須是 1 到 50 的整數（不能超過目前餘額）')).toBeVisible();
+      expect(screen.queryByTestId('refund-confirm-modal')).toBeNull();
+    }
+    fireEvent.change(screen.getByLabelText(/退款金額/), { target: { value: '50' } });
+    fireEvent.change(screen.getByLabelText(/退款原因/), { target: { value: '   ' } });
+    fireEvent.submit(screen.getByRole('form', { name: '退款' }));
+    expect(await screen.findByText('退款原因必填，且不能超過 500 字')).toBeVisible();
+    expect(repositoryMock.createRefund).not.toHaveBeenCalled();
+  });
+
+  it('P09b: an inactive account with a positive balance can refund; a zero balance has nothing to refund', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(snapshot({
+      students: [
+        mockStudent('s1', '001', '王小明', 0),
+        mockStudent('s2', '002', '李小華', 50),
+        mockStudent('s3', '003', '張小停', 30, 'inactive'),
+      ],
+    }));
+    renderComponent();
+    await selectStudent('003');
+    expect(screen.getByText('此帳戶已停用，禁止新增餐點；仍可繳費或退款。')).toBeVisible();
+    fireEvent.click(screen.getByTestId('open-refund-button'));
+    expect(screen.getByLabelText(/退款金額/)).toHaveValue('30');
+    fireEvent.change(screen.getByLabelText(/退款原因/), { target: { value: '離校' } });
+    fireEvent.click(screen.getByTestId('submit-refund-button'));
+    fireEvent.click(await screen.findByTestId('confirm-refund-button'));
+    await waitFor(() => expect(repositoryMock.createRefund).toHaveBeenCalledWith(expect.objectContaining({ studentId: 's3', amount: 30 })));
+
+    expect(await screen.findByText(/已確認 003 張小停 退款 \$30 完成/)).toBeVisible();
+    await selectStudent('001');
+    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.click(screen.getByTestId('open-refund-button'));
+    expect(screen.getByTestId('refund-no-balance')).toBeVisible();
+    expect(screen.getByLabelText(/退款金額/)).toHaveValue('');
+    expect(repositoryMock.createRefund).toHaveBeenCalledTimes(1);
+  });
+
+  it('P09b: keeps the same refund command when its result is unknown', async () => {
+    repositoryMock.createRefund
+      .mockResolvedValueOnce(errorResult('UNKNOWN_RESULT'))
+      .mockImplementationOnce(async (input: { commandId: string }) => okResult(input.commandId, 17));
+    renderComponent();
+    await selectStudent('001');
+    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.click(screen.getByTestId('open-refund-button'));
+    fireEvent.change(screen.getByLabelText(/退款原因/), { target: { value: '退餘額' } });
+    fireEvent.click(screen.getByTestId('submit-refund-button'));
+    fireEvent.click(await screen.findByTestId('confirm-refund-button'));
+    expect(await screen.findByTestId('order-recovery-panel')).toHaveTextContent('001 王小明 的退款已送出');
+    fireEvent.click(screen.getByTestId('order-recovery-retry'));
+    await waitFor(() => expect(repositoryMock.createRefund).toHaveBeenCalledTimes(2));
+    expect(repositoryMock.createRefund.mock.calls[1][0]).toEqual(repositoryMock.createRefund.mock.calls[0][0]);
+    expect(await screen.findByText(/退款 \$100 完成（命令序號 17）/)).toBeVisible();
+  });
+
+  it('P09b: a negative payment points to refund instead of being sent', async () => {
+    renderComponent();
+    await selectStudent('001');
+    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '-50' } });
+    fireEvent.click(screen.getByTestId('submit-order-button'));
+    expect(await screen.findByText('收款金額不能是負數。要退錢給學生請用「退款」。')).toBeVisible();
+    expect(repositoryMock.createPayment).not.toHaveBeenCalled();
+  });
+
+  it('P09b: expected cash subtracts account refunds once; details list refunds apart from receipts', async () => {
+    const day = mockDay();
+    repositoryMock.loadSnapshot.mockResolvedValue(snapshot({
+      students: [mockStudent('s1', '001', '王小明', 40), mockStudent('s2', '002', '李小華', 50)],
+      day: {
+        ...day,
+        openingCash: 1000,
+        totals: { ...day.totals, activeTransactionCount: 3, retainedReceipts: 200, cashierIncome: 50, cashierExpense: 80, accountRefunds: 60 },
+      },
+      transactions: [
+        { ...mockTx('tx-2', 's1', 'bento', 0, 200), type: 'payment', mealKind: null, menuNameSnapshot: '', menuPriceSnapshot: 0, vendorIdSnapshot: '', vendorNameSnapshot: '', amount: 200 },
+        { ...mockTx('tx-5', 's1', 'bento', 0, 0), type: 'refund', mealKind: null, menuNameSnapshot: '', menuPriceSnapshot: 0, vendorIdSnapshot: '', vendorNameSnapshot: '', amount: 60, note: '學期結束' },
+      ],
+    }));
+    renderComponent();
+    const summary = await screen.findByTestId('cloud-cash-summary');
+    expect(summary).toHaveTextContent('學生收款$200');
+    expect(screen.getByTestId('cloud-account-refunds')).toHaveTextContent('$60');
+    expect(screen.getByTestId('cloud-expected-cash')).toHaveTextContent('$1110');
+    expect(screen.getByTestId('recent-item-001')).toHaveTextContent('繳費・退款');
+
+    await selectStudent('001');
+    fireEvent.click(screen.getByTestId('open-payment-details-button'));
+    const modal = await screen.findByTestId('payment-details-modal');
+    expect(modal).toHaveTextContent('退款：學期結束');
+    const totals = screen.getByTestId('payment-details-summary');
+    expect(totals).toHaveTextContent('今日收款：$200');
+    expect(totals).toHaveTextContent('今日退款：$60');
   });
 });

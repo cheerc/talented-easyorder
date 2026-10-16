@@ -153,7 +153,7 @@ async function seedBase(options: { maintenance?: boolean; withBusinessDocs?: boo
         openedAt: serverTimestamp(),
         totals: {
           activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0,
-          mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0,
+          mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0,
         },
         lastSettlementRevision: 0,
         lastCommandId: 'p05-synthetic-day-seed',
@@ -721,7 +721,7 @@ async function seedP07Day(dayId: string, overrides: Partial<RawMap> = {}) {
     openedAt: null,
     totals: {
       activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0,
-      mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0,
+      mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0,
     },
     lastSettlementRevision: 0,
     lastCommandId: 'p07-synthetic-day-seed',
@@ -1655,15 +1655,15 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     expect(day.data()?.revision).toBe(1);
   });
 
-  it('P07.1: only the twelve P05/P06/P06b/P07/P09a enabled kinds pass runtime validation', async () => {
+  it('P07.1: only the thirteen P05/P06/P06b/P07/P09a/P09b enabled kinds pass runtime validation', async () => {
     await seedBase();
-    expect(ALL_COMMAND_KINDS).toHaveLength(23);
+    expect(ALL_COMMAND_KINDS).toHaveLength(24);
     const enabledKinds = [
       'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
-      'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement',
+      'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement', 'CreateRefund',
     ];
     const disabledKinds = ALL_COMMAND_KINDS.filter(kind => !enabledKinds.includes(kind));
-    expect(enabledKinds).toHaveLength(12);
+    expect(enabledKinds).toHaveLength(13);
     expect(disabledKinds).toHaveLength(11);
     for (const [index, kind] of disabledKinds.entries()) {
       const commandId = `f0000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
@@ -1697,7 +1697,7 @@ describeWithEmulator('P05 production command repository and Rules', () => {
 
   it.each(ALL_COMMAND_KINDS.filter(kind => ![
     'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
-    'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement',
+    'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement', 'CreateRefund',
   ].includes(kind)))(
     'P07.2: production Rules directly deny unsupported raw SDK kind %s atomically', async kind => {
       await seedBase();
@@ -1979,7 +1979,7 @@ describeWithEmulator('P05 production command repository and Rules', () => {
       openedAt: serverTimestamp(),
       totals: {
         activeTransactionCount: 12, bentoCount: 9, otherMealCount: 3,
-        mealTotal: 1_200, retainedReceipts: 800, cashierIncome: 50, cashierExpense: 20,
+        mealTotal: 1_200, retainedReceipts: 800, cashierIncome: 50, cashierExpense: 20, accountRefunds: 0,
       },
       lastSettlementRevision: 2,
       status: 'reopened',
@@ -2977,7 +2977,7 @@ describeWithEmulator('P05 production command repository and Rules', () => {
         openedAt: serverTimestamp(),
         totals: {
           activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0,
-          mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0,
+          mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0,
         },
         lastSettlementRevision: 0,
         lastCommandId: 'p05-synthetic-historical-day-seed',

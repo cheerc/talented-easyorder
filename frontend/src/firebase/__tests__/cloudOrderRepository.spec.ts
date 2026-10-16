@@ -123,7 +123,7 @@ async function seed(options: { withMenu?: boolean } = {}) {
       openingCash: null, openedBy: null, openedAt: null,
       totals: {
         activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0, mealTotal: 0,
-        retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0,
+        retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0,
       },
       lastSettlementRevision: 0, lastCommandId: seedCommandId, updatedAt: serverTimestamp(),
     });
@@ -226,7 +226,7 @@ describeWithEmulator('P08 cloud order repository reads, retries and transactions
     expect(snapshot.students.find(item => item.studentId === studentB)?.currentBalance).toBe(-20);
     expect(snapshot.day?.totals).toEqual({
       activeTransactionCount: 3, bentoCount: 1, otherMealCount: 2, mealTotal: 210,
-      retainedReceipts: 100, cashierIncome: 0, cashierExpense: 0,
+      retainedReceipts: 100, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0,
     });
     expect(snapshot.transactions.map(tx => [tx.mealKind, tx.mealPrice, tx.paidAmount, tx.createdSeq])).toEqual([
       ['bento', 90, 0, 1], ['other', 70, 0, 2], ['other', 50, 100, 3],

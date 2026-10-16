@@ -18,6 +18,7 @@ export interface CommandTargetsByKind {
   CreateOrder: { transactionId: string; studentId: string; dayId: string };
   CreatePayment: { transactionId: string; studentId: string; dayId: string };
   CreateCashMovement: { transactionId: string; dayId: string };
+  CreateRefund: { transactionId: string; studentId: string; dayId: string };
   CorrectTransaction: { transactionId: string; studentId: string; dayId: string };
   VoidTransaction: { transactionId: string; studentId: string; dayId: string };
   CancelKeepDeposit: { transactionId: string; studentId: string; dayId: string };
@@ -44,6 +45,7 @@ export interface CommandPayloadByKind {
   CreateOrder: { mealPrice: number; paidAmount: number; mealKind: 'bento' | 'other'; menuRevision: number | null; otherItemName: string | null; note: string };
   CreatePayment: { paidAmount: number; note: string };
   CreateCashMovement: { mealPrice: number; paidAmount: number; reason: string };
+  CreateRefund: { amount: number; reason: string };
   CorrectTransaction: { mealPrice: number; paidAmount: number; note: string; reason: string };
   VoidTransaction: { reason: string };
   CancelKeepDeposit: { reason: string };
@@ -70,6 +72,7 @@ export interface ExpectedRevisionsByKind {
   CreateOrder: { transaction: 0; student: RevisionExpectation; day: RevisionExpectation };
   CreatePayment: { transaction: 0; student: RevisionExpectation; day: RevisionExpectation };
   CreateCashMovement: { transaction: 0; day: RevisionExpectation };
+  CreateRefund: { transaction: 0; student: RevisionExpectation; day: RevisionExpectation };
   CorrectTransaction: { transaction: RevisionExpectation; student: RevisionExpectation; day: RevisionExpectation };
   VoidTransaction: { transaction: RevisionExpectation; student: RevisionExpectation; day: RevisionExpectation };
   CancelKeepDeposit: { transaction: RevisionExpectation; student: RevisionExpectation; day: RevisionExpectation };
@@ -105,7 +108,8 @@ export type EnabledCommandKind =
   | 'RemoveVendor'
   | 'SetDayMenu'
   | 'SetOpeningCash'
-  | 'CreateCashMovement';
+  | 'CreateCashMovement'
+  | 'CreateRefund';
 export type EnabledCloudCommandInput = Extract<FullCloudCommandInput, { kind: EnabledCommandKind }>;
 
 export type StoredCloudCommandDoc = {
@@ -349,6 +353,15 @@ function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayl
     }
     return { mealPrice: value.mealPrice, paidAmount: value.paidAmount, reason: value.reason };
   }
+  if (kind === 'CreateRefund') {
+    exactKeys(value, ['amount', 'reason']);
+    safeInteger(value.amount, 'amount', 1_000_000);
+    if (value.amount <= 0) throw new InvalidCloudCommandInput('退款金額必須大於零');
+    if (typeof value.reason !== 'string' || value.reason.length < 1 || value.reason.length > 500) {
+      throw new InvalidCloudCommandInput('reason 必須為 1 至 500 字');
+    }
+    return { amount: value.amount, reason: value.reason };
+  }
   if (kind === 'CreatePayment') {
     exactKeys(value, ['paidAmount'], ['note']);
     safeInteger(value.paidAmount, 'paidAmount', 1_000_000);
@@ -394,7 +407,7 @@ export function normalizeEnabledCommandInput(input: unknown): CanonicalEnabledIn
   exactKeys(input, ['commandId', 'kind', 'leaseEpoch', 'targets', 'expectedRevisions', 'payload']);
   if (typeof input.kind !== 'string' || ![
     'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
-    'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement',
+    'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement', 'CreateRefund',
   ].includes(input.kind)) {
     throw new InvalidCloudCommandInput('此命令種類尚未啟用');
   }
@@ -628,6 +641,7 @@ function validateReceiptDay(value: unknown, dayId: string, label: string): Recor
   receiptTimestamp(day.updatedAt, `${label}.updatedAt`);
   const totals = receiptRecord(day.totals, `${label}.totals`, [
     'activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal', 'retainedReceipts', 'cashierIncome', 'cashierExpense',
+    'accountRefunds',
   ]);
   for (const [key, amount] of Object.entries(totals)) {
     receiptInteger(amount, `${label}.totals.${key}`, 0, 1_000_000_000);
@@ -679,7 +693,7 @@ function validateReceiptTransaction(value: unknown, label: string): Record<strin
     if (typeof transaction[key] !== 'string') throw new InvalidCloudCommandInput(`${label}.${key} 不合法`);
   }
   dateValue(transaction.businessDate, `${label}.businessDate`);
-  if ((transaction.type !== 'order' && transaction.type !== 'payment' && transaction.type !== 'expense')
+  if ((transaction.type !== 'order' && transaction.type !== 'payment' && transaction.type !== 'expense' && transaction.type !== 'refund')
     || (transaction.mealKind !== null && transaction.mealKind !== 'bento' && transaction.mealKind !== 'other')
     || transaction.status !== 'active'
     || (transaction.otherItemName !== null && typeof transaction.otherItemName !== 'string')) {
@@ -758,6 +772,7 @@ function validateCashMovementReceipt(
     retainedReceipts: Number(totalsBefore.retainedReceipts),
     cashierIncome: Number(totalsBefore.cashierIncome) + payload.paidAmount,
     cashierExpense: Number(totalsBefore.cashierExpense) + payload.mealPrice,
+    accountRefunds: Number(totalsBefore.accountRefunds),
   };
   if (dayBefore.revision !== normalized.expectedRevisions.day || dayAfter.revision !== Number(dayBefore.revision) + 1
     || dayAfter.lastCommandId !== commandId || !timestampMatches(dayAfter.updatedAt, committedAt)
@@ -797,6 +812,95 @@ function validateCashMovementReceipt(
     || !timestampMatches(transactionAfter.updatedAt, committedAt)
     || canonicalJson(cash) !== canonicalJson(expectedCash)) {
     throw new InvalidCloudCommandInput('櫃台收支 receipt transaction 或 cashEffect 不一致');
+  }
+}
+
+/** Spec §7.1 refund cash effect: 0→−amount, reasonKind refund. Expected cash subtracts it once, via day.totals.accountRefunds. */
+export function refundCashEffect(amount: number): CommandCashEffect {
+  return { before: 0, after: -amount, delta: -amount, reasonKind: 'refund', refundAmount: amount };
+}
+
+function validateRefundReceipt(
+  receipt: Record<string, unknown>,
+  normalized: Extract<CanonicalEnabledInput, { kind: 'CreateRefund' }>,
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  headBefore: Record<string, unknown>,
+  committedAt: Timestamp,
+): void {
+  const commandId = normalized.commandId;
+  const { dayId, studentId, transactionId } = normalized.targets;
+  const payload = normalized.payload;
+  if (receipt.businessDate !== dayId || receipt.studentId !== studentId || before.transaction !== null
+    || receipt.reason !== payload.reason) {
+    throw new InvalidCloudCommandInput('退款 receipt common/before 欄位不一致');
+  }
+  const studentBefore = validateReceiptStudent(before.student, 'receipt.before.student');
+  const studentAfter = validateReceiptStudent(after.student, 'receipt.after.student');
+  const dayBefore = validateReceiptDay(before.day, dayId, 'receipt.before.day');
+  const dayAfter = validateReceiptDay(after.day, dayId, 'receipt.after.day');
+  const transactionAfter = validateReceiptTransaction(after.transaction, 'receipt.after.transaction');
+  if (dayId < String(headBefore.goLiveDate) || dayId !== taipeiCalendarDate(committedAt) || dayBefore.status === 'closed'
+    || dayId < String((studentBefore.openingBalance as Record<string, unknown>).asOfDate)) {
+    throw new InvalidCloudCommandInput('退款 receipt 日期或營業日狀態不一致');
+  }
+  if (studentBefore.studentId !== studentId || studentAfter.studentId !== studentId
+    || studentBefore.revision !== normalized.expectedRevisions.student
+    || studentAfter.revision !== Number(studentBefore.revision) + 1
+    || payload.amount > Number(studentBefore.currentBalance)
+    || studentAfter.currentBalance !== Number(studentBefore.currentBalance) - payload.amount
+    || studentAfter.lastCommandId !== commandId || !timestampMatches(studentAfter.updatedAt, committedAt)
+    || !equalExcept(studentBefore, studentAfter, ['currentBalance', 'revision', 'lastCommandId', 'updatedAt'])) {
+    throw new InvalidCloudCommandInput('退款 receipt student snapshots 不一致');
+  }
+  const totalsBefore = dayBefore.totals as Record<string, unknown>;
+  const totalsAfter = dayAfter.totals as Record<string, unknown>;
+  const expectedTotals: Record<string, number> = {
+    activeTransactionCount: Number(totalsBefore.activeTransactionCount) + 1,
+    bentoCount: Number(totalsBefore.bentoCount),
+    otherMealCount: Number(totalsBefore.otherMealCount),
+    mealTotal: Number(totalsBefore.mealTotal),
+    retainedReceipts: Number(totalsBefore.retainedReceipts),
+    cashierIncome: Number(totalsBefore.cashierIncome),
+    cashierExpense: Number(totalsBefore.cashierExpense),
+    accountRefunds: Number(totalsBefore.accountRefunds) + payload.amount,
+  };
+  if (dayBefore.revision !== normalized.expectedRevisions.day || dayAfter.revision !== Number(dayBefore.revision) + 1
+    || dayAfter.lastCommandId !== commandId || !timestampMatches(dayAfter.updatedAt, committedAt)
+    || !equalExcept(dayBefore, dayAfter, ['revision', 'totals', 'lastCommandId', 'updatedAt'])
+    || Object.entries(expectedTotals).some(([key, value]) => totalsAfter[key] !== value)) {
+    throw new InvalidCloudCommandInput('退款 receipt day snapshots 不一致');
+  }
+  const actor = receipt.actor as Record<string, unknown>;
+  const expectedTransaction: Record<string, unknown> = {
+    transactionId,
+    studentId,
+    businessDate: dayId,
+    type: 'refund',
+    mealKind: null,
+    mealPrice: 0,
+    paidAmount: 0,
+    amount: payload.amount,
+    studentNameSnapshot: studentBefore.displayName,
+    menuNameSnapshot: '',
+    menuPriceSnapshot: 0,
+    vendorIdSnapshot: '',
+    vendorNameSnapshot: '',
+    otherItemName: null,
+    status: 'active',
+    revision: 1,
+    createdSeq: receipt.seq,
+    operatorUid: actor.uid,
+    operatorEmail: actor.email,
+    sourceDevice: 'pc',
+    note: payload.reason,
+    lastCommandId: commandId,
+  };
+  if (Object.entries(expectedTransaction).some(([key, value]) => transactionAfter[key] !== value)
+    || !timestampMatches(transactionAfter.createdAt, committedAt)
+    || !timestampMatches(transactionAfter.updatedAt, committedAt)
+    || canonicalJson(receipt.cashEffect) !== canonicalJson(refundCashEffect(payload.amount))) {
+    throw new InvalidCloudCommandInput('退款 receipt transaction 或 cashEffect 不一致');
   }
 }
 
@@ -1033,6 +1137,11 @@ function validateReceiptSnapshots(
     return;
   }
 
+  if (normalized.kind === 'CreateRefund') {
+    validateRefundReceipt(receipt, normalized, before, after, headBefore, committedAt);
+    return;
+  }
+
   if (normalized.kind !== 'CreateOrder' && normalized.kind !== 'CreatePayment') {
     throw new InvalidCloudCommandInput('command receipt kind 不支援');
   }
@@ -1088,7 +1197,8 @@ function validateReceiptSnapshots(
     || dayAfter.lastCommandId !== commandId || !timestampMatches(dayAfter.updatedAt, committedAt)
     || !equalExcept(dayBefore, dayAfter, ['revision', 'totals', 'lastCommandId', 'updatedAt'])
     || Object.entries(expectedTotals).some(([key, value]) => totalsAfter[key] !== value)
-    || totalsAfter.cashierIncome !== totalsBefore.cashierIncome || totalsAfter.cashierExpense !== totalsBefore.cashierExpense) {
+    || totalsAfter.cashierIncome !== totalsBefore.cashierIncome || totalsAfter.cashierExpense !== totalsBefore.cashierExpense
+    || totalsAfter.accountRefunds !== totalsBefore.accountRefunds) {
     throw new InvalidCloudCommandInput('receipt day snapshots 不一致');
   }
   const payload = normalized.payload;
@@ -1166,7 +1276,7 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
   }
   if (![
     'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
-    'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement',
+    'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement', 'CreateRefund',
   ].includes(raw.kind)) {
     throw new InvalidCloudCommandInput('此 command kind 尚未啟用');
   }
@@ -1181,7 +1291,7 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
   if (raw.businessDate !== null) dateValue(raw.businessDate, 'receipt.businessDate');
   if (raw.studentId !== null && typeof raw.studentId !== 'string') throw new InvalidCloudCommandInput('receipt.studentId 不合法');
   if (raw.kind === 'SetStudentStatus' || raw.kind === 'RemoveVendor' || raw.kind === 'ChangeStudentCode'
-    || raw.kind === 'CreateCashMovement') {
+    || raw.kind === 'CreateCashMovement' || raw.kind === 'CreateRefund') {
     if (typeof raw.reason !== 'string' || raw.reason.length < 1 || raw.reason.length > 500) {
       throw new InvalidCloudCommandInput('command receipt.reason 不合法');
     }
@@ -1216,7 +1326,8 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
     expectedRevisions: raw.expectedRevisions,
     payload: raw.payload,
   });
-  if ((normalized.kind === 'RemoveVendor' || normalized.kind === 'ChangeStudentCode' || normalized.kind === 'CreateCashMovement')
+  if ((normalized.kind === 'RemoveVendor' || normalized.kind === 'ChangeStudentCode' || normalized.kind === 'CreateCashMovement'
+    || normalized.kind === 'CreateRefund')
     && raw.reason !== (normalized.payload as { reason: string }).reason) {
     throw new InvalidCloudCommandInput(`${normalized.kind} receipt reason 必須與 payload.reason 相同`);
   }
@@ -1228,7 +1339,7 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
     if (raw.businessDate !== null || raw.studentId !== normalized.targets.studentId) {
       throw new InvalidCloudCommandInput('學生 receipt 共用欄位不一致');
     }
-  } else if ((normalized.kind === 'CreateOrder' || normalized.kind === 'CreatePayment')
+  } else if ((normalized.kind === 'CreateOrder' || normalized.kind === 'CreatePayment' || normalized.kind === 'CreateRefund')
     && (raw.businessDate !== normalized.targets.dayId || raw.studentId !== normalized.targets.studentId)) {
     throw new InvalidCloudCommandInput('交易 receipt 共用欄位不一致');
   } else if (normalized.kind === 'CreateCashMovement'

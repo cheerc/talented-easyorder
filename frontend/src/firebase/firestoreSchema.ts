@@ -138,6 +138,8 @@ export interface CloudDayTotalsDoc {
   retainedReceipts: number;
   cashierIncome: number;
   cashierExpense: number;
+  /** P09b：當日學生帳戶退款合計（現金減少，不和收款抵銷）。 */
+  accountRefunds: number;
 }
 
 /** days/{YYYY-MM-DD} menu */
@@ -171,7 +173,7 @@ export interface CloudTransactionDoc {
   transactionId: string;
   studentId: string;
   businessDate: string;
-  type: 'order' | 'payment' | 'expense';
+  type: 'order' | 'payment' | 'expense' | 'refund';
   mealKind: 'bento' | 'other' | null;
   mealPrice: number;
   paidAmount: number;
@@ -194,7 +196,7 @@ export interface CloudTransactionDoc {
   updatedAt: FirestoreTimestamp;
 }
 
-/** commands/{commandId}; full 22-kind typed schema, with runtime enabling limited to P05 kinds. */
+/** commands/{commandId}; full 24-kind typed schema; runtime enabling is limited to the kinds in cloudCommandSchema. */
 export type CloudCommandDoc = StoredCloudCommandDoc;
 
 /** days/{date}/settlements/{revision} */

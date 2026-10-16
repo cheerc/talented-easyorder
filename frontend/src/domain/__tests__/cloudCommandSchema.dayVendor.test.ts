@@ -50,7 +50,7 @@ function daySnapshot(options: {
       mealTotal: 0,
       retainedReceipts: 0,
       cashierIncome: 0,
-      cashierExpense: 0,
+      cashierExpense: 0, accountRefunds: 0,
     },
     lastSettlementRevision: 0,
     lastCommandId: options.lastCommandId,
@@ -282,13 +282,13 @@ describe('day and vendor command input contract', () => {
     });
   });
 
-  it('keeps the seven prior kinds, these four and P09a CreateCashMovement enabled and rejects the remaining eleven', () => {
+  it('keeps the seven prior kinds, these four, P09a CreateCashMovement and P09b CreateRefund enabled and rejects the remaining eleven', () => {
     const enabled = new Set([
       'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
-      'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement',
+      'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement', 'CreateRefund',
     ]);
     const disabled = ALL_COMMAND_KINDS.filter(kind => !enabled.has(kind));
-    expect(ALL_COMMAND_KINDS).toHaveLength(23);
+    expect(ALL_COMMAND_KINDS).toHaveLength(24);
     expect(disabled).toHaveLength(11);
     for (const kind of disabled) {
       expect(() => normalizeEnabledCommandInput({

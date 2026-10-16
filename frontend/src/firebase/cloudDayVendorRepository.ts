@@ -65,6 +65,7 @@ export interface CloudDayTotalsRecord {
   retainedReceipts: number;
   cashierIncome: number;
   cashierExpense: number;
+  accountRefunds: number;
 }
 
 export interface CloudDayRecord {
@@ -303,7 +304,7 @@ function decodeDay(id: string, value: unknown): CloudDayRecord {
     || ((value.openingCash === null) !== (value.openedAt === null))
     || !hasExactKeys(value.totals, [
       'activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal',
-      'retainedReceipts', 'cashierIncome', 'cashierExpense',
+      'retainedReceipts', 'cashierIncome', 'cashierExpense', 'accountRefunds',
     ]) || !integer(value.totals.activeTransactionCount)
     || !integer(value.totals.bentoCount)
     || !integer(value.totals.otherMealCount)
@@ -311,6 +312,7 @@ function decodeDay(id: string, value: unknown): CloudDayRecord {
     || !integer(value.totals.retainedReceipts, 0, 1_000_000_000)
     || !integer(value.totals.cashierIncome, 0, 1_000_000_000)
     || !integer(value.totals.cashierExpense, 0, 1_000_000_000)
+    || !integer(value.totals.accountRefunds, 0, 1_000_000_000)
     || !integer(value.lastSettlementRevision)
     || typeof value.lastCommandId !== 'string' || !UUID.test(value.lastCommandId)) {
     throw new CloudDayVendorRepositoryError('UNSUPPORTED_SCHEMA', `營業日文件 ${id} schema 不支援`);
@@ -357,6 +359,7 @@ function decodeDay(id: string, value: unknown): CloudDayRecord {
       retainedReceipts: totals.retainedReceipts as number,
       cashierIncome: totals.cashierIncome as number,
       cashierExpense: totals.cashierExpense as number,
+      accountRefunds: totals.accountRefunds as number,
     },
     lastSettlementRevision: value.lastSettlementRevision as number,
     lastCommandId: value.lastCommandId as string,

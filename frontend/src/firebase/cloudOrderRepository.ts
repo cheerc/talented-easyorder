@@ -36,8 +36,11 @@ export interface CloudOrderTransactionRecord {
   transactionId: string;
   studentId: string;
   businessDate: string;
-  /** `expense` rows are counter cash (studentId `__cashier__`): income has paidAmount, expense has mealPrice. */
-  type: 'order' | 'payment' | 'expense';
+  /**
+   * `expense` rows are counter cash (studentId `__cashier__`): income has paidAmount, expense has mealPrice.
+   * `refund` rows pay a student's balance back in cash: positive `amount`, mealPrice and paidAmount 0.
+   */
+  type: 'order' | 'payment' | 'expense' | 'refund';
   mealKind: 'bento' | 'other' | null;
   mealPrice: number;
   paidAmount: number;
@@ -129,6 +132,18 @@ export interface CreateCloudCashMovementInput {
   dayId: string;
   expectedDayRevision: number;
   direction: 'income' | 'expense';
+  amount: number;
+  reason: string;
+}
+
+export interface CreateCloudRefundInput {
+  commandId: string;
+  transactionId: string;
+  leaseEpoch: number;
+  studentId: string;
+  dayId: string;
+  expectedStudentRevision: number;
+  expectedDayRevision: number;
   amount: number;
   reason: string;
 }
@@ -234,8 +249,8 @@ function decodeLease(value: unknown, uid: string): string {
 }
 
 /**
- * Strict decode matching the Rules `validTransactionDoc` (order/payment) and `validCashMovementTransactionDoc`
- * (expense) shapes; any other type fails closed.
+ * Strict decode matching the Rules `validTransactionDoc` (order/payment), `validCashMovementTransactionDoc`
+ * (expense) and `validRefundTransactionDoc` (refund) shapes; any other type fails closed.
  */
 export function decodeCloudOrderTransaction(id: string, value: unknown, businessDate: string, headSeq: number): CloudOrderTransactionRecord {
   const keys = [
@@ -248,19 +263,23 @@ export function decodeCloudOrderTransaction(id: string, value: unknown, business
   if (!validDocumentId(id) || !exactKeys(value, keys) || value.transactionId !== id) throw fail();
   const order = value.type === 'order';
   const expense = value.type === 'expense';
+  const refund = value.type === 'refund';
   const bento = order && value.mealKind === 'bento';
   const other = order && value.mealKind === 'other';
-  if ((value.type !== 'order' && value.type !== 'payment' && !expense)
+  if ((value.type !== 'order' && value.type !== 'payment' && !expense && !refund)
     || !validDocumentId(value.studentId) || (expense ? value.studentId !== CASHIER_STUDENT_ID : value.studentId === CASHIER_STUDENT_ID)
     || value.businessDate !== businessDate
     || (order ? !(bento || other) : value.mealKind !== null)
-    || !integer(value.mealPrice, 0, 1_000_000) || (value.type === 'payment' && value.mealPrice !== 0)
-    || !integer(value.paidAmount, value.type === 'payment' ? 1 : 0, 1_000_000)
+    || !integer(value.mealPrice, 0, 1_000_000) || ((value.type === 'payment' || refund) && value.mealPrice !== 0)
+    || !integer(value.paidAmount, value.type === 'payment' ? 1 : 0, 1_000_000) || (refund && value.paidAmount !== 0)
     || (expense && !((value.mealPrice === 0 && value.paidAmount > 0) || (value.paidAmount === 0 && value.mealPrice > 0)))
-    || value.amount !== (value.paidAmount as number) - (value.mealPrice as number)
+    || (refund
+      ? !integer(value.amount, 1, 1_000_000)
+      : value.amount !== (value.paidAmount as number) - (value.mealPrice as number))
     || typeof value.note !== 'string' || value.note.length > 500
     || typeof value.studentNameSnapshot !== 'string' || value.studentNameSnapshot.length < 1 || value.studentNameSnapshot.length > 100
     || (expense && (value.studentNameSnapshot !== CASHIER_NAME_SNAPSHOT || value.note.length < 1))
+    || (refund && value.note.length < 1)
     || typeof value.menuNameSnapshot !== 'string' || typeof value.vendorIdSnapshot !== 'string'
     || typeof value.vendorNameSnapshot !== 'string' || !integer(value.menuPriceSnapshot, 0, 1_000_000)
     || (bento
@@ -287,7 +306,7 @@ export function decodeCloudOrderTransaction(id: string, value: unknown, business
     transactionId: id,
     studentId: value.studentId,
     businessDate,
-    type: value.type as 'order' | 'payment' | 'expense',
+    type: value.type as CloudOrderTransactionRecord['type'],
     mealKind: value.mealKind as 'bento' | 'other' | null,
     mealPrice: value.mealPrice,
     paidAmount: value.paidAmount,
@@ -313,8 +332,9 @@ export function decodeCloudOrderTransaction(id: string, value: unknown, business
 
 /**
  * The same contribution rules as spec §7.1 / Rules `validDayAdvance` and `validDayCashMovementProjection`:
- * active orders count meals and meal price, every active non-expense row counts retained receipts, active
- * expense rows split into cashierIncome (paidAmount) and cashierExpense (mealPrice), voided rows contribute nothing.
+ * active orders count meals and meal price, active order/payment rows count retained receipts, active
+ * expense rows split into cashierIncome (paidAmount) and cashierExpense (mealPrice), active refund rows count
+ * accountRefunds (amount), voided rows contribute nothing.
  */
 export function reconcileDayTotals(day: CloudDayRecord | null, transactions: CloudOrderTransactionRecord[]): void {
   const active = transactions.filter(tx => tx.status === 'active');
@@ -329,9 +349,10 @@ export function reconcileDayTotals(day: CloudDayRecord | null, transactions: Clo
     bentoCount: active.filter(tx => tx.type === 'order' && tx.mealKind === 'bento').length,
     otherMealCount: active.filter(tx => tx.type === 'order' && tx.mealKind === 'other').length,
     mealTotal: active.reduce((sum, tx) => sum + (tx.type === 'order' ? tx.mealPrice : 0), 0),
-    retainedReceipts: active.reduce((sum, tx) => sum + (tx.type === 'expense' ? 0 : tx.paidAmount), 0),
+    retainedReceipts: active.reduce((sum, tx) => sum + (tx.type === 'order' || tx.type === 'payment' ? tx.paidAmount : 0), 0),
     cashierIncome: active.reduce((sum, tx) => sum + (tx.type === 'expense' ? tx.paidAmount : 0), 0),
     cashierExpense: active.reduce((sum, tx) => sum + (tx.type === 'expense' ? tx.mealPrice : 0), 0),
+    accountRefunds: active.reduce((sum, tx) => sum + (tx.type === 'refund' ? tx.amount : 0), 0),
   };
   const mismatched = (Object.keys(computed) as Array<keyof typeof computed>)
     .filter(key => computed[key] !== day.totals[key]);
@@ -474,11 +495,27 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
     });
   }
 
+  function createRefund(input: CreateCloudRefundInput): Promise<CommandResult> {
+    return commands.commitCommand({
+      commandId: input.commandId,
+      kind: 'CreateRefund',
+      leaseEpoch: input.leaseEpoch,
+      targets: { transactionId: input.transactionId, studentId: input.studentId, dayId: input.dayId },
+      expectedRevisions: {
+        transaction: 0,
+        student: input.expectedStudentRevision,
+        day: input.expectedDayRevision,
+      },
+      payload: { amount: input.amount, reason: input.reason },
+    });
+  }
+
   return {
     loadSnapshot,
     createOrder,
     createPayment,
     createCashMovement,
+    createRefund,
     readCommand: (commandId: string): Promise<CommandReceipt | null> => commands.readCommand(commandId),
   };
 }

@@ -278,3 +278,13 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - Vitest 1,594 passed／317 Emulator-only skipped／0 failed；`npx tsc --noEmit`、`npm run lint`、`npm run build` exit 0；app tsc 208 個 `error TS` 診斷，與 base 相同。
 - Cloud E2E 14/14（auth、P07 日期供應商、P04、P06、P08 D03、新 P09a D04：繳費 200、收入 50、支出 80，reload 後應有現金與伺服器文件一致），使用本機 Chromium 1194，不取代 CI pinned Chromium。
 - 無 production 部署、無正式金鑰。
+
+## P09b 帳戶退款 checkpoint — 2026-10-16
+
+- P09a 已合併（#493，squash `c444621`）。P09b branch `claude/project-thread-uaazo9`，base `c444621`；PR、head SHA 與 CI 以 PR body 為準。契約：[P09b contract](../superpowers/specs/2026-10-16-cloud-refund-contract.md)。
+- Rules：新增 `CreateRefund` 的指令、day、student 與 transaction 分支（都放在各 `||` 鏈最後）；`day.totals` 加 `accountRefunds`（7→8 欄）。`validDayAdvance` 的不變欄位改成一次 map 比較來補回 day 規則餘裕。存取次數 19/20、單寫最多 10；探測餘裕與 mutant 結果見 [P09b 預算附錄](p05-rules-budget.md#p09b-account-refund--budget-and-probe-receipt)。
+- RED：新 `cloudRefund.spec.ts`（43 項）在 main 的 Rules 上 8 項失敗。GREEN：43/43 通過。`cloudCashMovement.spec.ts` P09.9 依 P09a 審查補上交易文件多欄、少欄、改固定欄位與連帶改動 `accountRefunds` 的拒絕案例。
+- demo-easyorder Emulator 一次跑完 `src/firebase/__tests__` 全部 21 個 Emulator 檔案（所有 `EASYORDER_REQUIRE_*` 旗標開啟，含新 `EASYORDER_REQUIRE_CLOUD_REFUND`）：444/444、0 skipped。
+- Vitest 1,602 passed／365 Emulator-only skipped／0 failed；`npm run lint`、`npm run build` exit 0；app tsc 208 個 `error TS` 診斷，與 base 相同。畫面測試新增退款流程、退款與櫃台收支的結果不明同 commandId 重試。
+- Cloud E2E 18/18（新 D05：學生期初 150、W 面板退款 100，應有現金只扣一次，reload 後與伺服器文件一致），使用本機 Chromium 1194，不取代 CI pinned Chromium。
+- 無 production 部署、無正式金鑰。正式部署 Rules 時，既有 7 欄日統計的營業日會被拒；目前沒有正式資料。

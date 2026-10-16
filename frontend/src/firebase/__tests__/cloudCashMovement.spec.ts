@@ -105,7 +105,7 @@ function student(studentId: string, code: string, opening: number, displayName =
 function emptyTotals() {
   return {
     activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0, mealTotal: 0,
-    retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0,
+    retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0,
   };
 }
 
@@ -325,7 +325,7 @@ describeWithEmulator('P09a payments and counter cash movements: repository, read
     expect(snapshot.students.find(item => item.studentId === studentA)?.currentBalance).toBe(210);
     expect(snapshot.day?.totals).toEqual({
       activeTransactionCount: 2, bentoCount: 1, otherMealCount: 0, mealTotal: 90,
-      retainedReceipts: 200, cashierIncome: 0, cashierExpense: 0,
+      retainedReceipts: 200, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0,
     });
     expect(snapshot.transactions.map(tx => [tx.type, tx.mealPrice, tx.paidAmount, tx.amount, tx.note])).toEqual([
       ['order', 90, 0, -90, ''], ['payment', 0, 200, 200, 'Synthetic deposit'],
@@ -356,7 +356,7 @@ describeWithEmulator('P09a payments and counter cash movements: repository, read
     expect(snapshot.students.find(item => item.studentId === studentB)?.currentBalance).toBe(0);
     expect(snapshot.day?.totals).toEqual({
       activeTransactionCount: 4, bentoCount: 1, otherMealCount: 0, mealTotal: 90,
-      retainedReceipts: 200, cashierIncome: 50, cashierExpense: 80,
+      retainedReceipts: 200, cashierIncome: 50, cashierExpense: 80, accountRefunds: 0,
     });
     expect(snapshot.transactions.slice(2).map(tx => [tx.type, tx.studentId, tx.mealPrice, tx.paidAmount, tx.amount, tx.note]))
       .toEqual([
@@ -364,7 +364,7 @@ describeWithEmulator('P09a payments and counter cash movements: repository, read
         ['expense', '__cashier__', 80, 0, -80, '付餐費給廠商'],
       ]);
     expect(expectedCashFromTotals(snapshot.day!.openingCash, snapshot.day!.totals)).toEqual({
-      totalIncome: 250, totalExpense: 80, netCash: 170, expectedCash: 1170,
+      totalIncome: 250, totalExpense: 80, totalRefund: 0, netCash: 170, expectedCash: 1170,
     });
 
     const receipt = await repo.readCommand((expense as { receipt: { commandId: string } }).receipt.commandId);
@@ -481,6 +481,15 @@ describeWithEmulator('P09a payments and counter cash movements: repository, read
       syncAfter(a);
     }],
     ['day status changes in the same write', a => { a.dayAfter.status = 'closed'; syncAfter(a); }],
+    // Pin the whole-document equality: one extra, one missing and one changed fixed field are each refused.
+    ['transaction has an extra field', a => { a.transactionAfter.extraField = 'x'; syncAfter(a); }],
+    ['transaction is missing a field', a => { delete a.transactionAfter.vendorNameSnapshot; syncAfter(a); }],
+    ['transaction sourceDevice is changed', a => { a.transactionAfter.sourceDevice = 'ipad_handoff'; syncAfter(a); }],
+    ['transaction menuPriceSnapshot is changed', a => { a.transactionAfter.menuPriceSnapshot = 1; syncAfter(a); }],
+    ['cash movement also moves account refunds', a => {
+      a.dayAfter.totals = { ...a.dayAfter.totals, accountRefunds: a.dayAfter.totals.accountRefunds + 80 };
+      syncAfter(a);
+    }],
   ])('P09.9: raw SDK cash movement is denied atomically when %s', async (_label, mutate) => {
     const artifacts = await rawCashArtifacts('expense', 80);
     mutate(artifacts);

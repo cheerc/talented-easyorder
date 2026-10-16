@@ -20,7 +20,7 @@ export interface CloudTransactionInput {
   studentId: string;
   businessDate: string;
   createdAt: string;
-  type: 'order' | 'payment' | 'expense';
+  type: 'order' | 'payment' | 'expense' | 'refund';
   mealKind?: 'bento' | 'other' | null;
   mealPrice?: number;
   paidAmount?: number;
@@ -33,7 +33,7 @@ export interface CloudTransactionInput {
 
 /**
  * 單筆交易對當日 totals 的貢獻數值。
- * 規格 §7.1：day.totals 固定包含 activeTransactionCount、bentoCount、otherMealCount、mealTotal、retainedReceipts、cashierIncome、cashierExpense。
+ * 規格 §7.1：day.totals 固定包含 activeTransactionCount、bentoCount、otherMealCount、mealTotal、retainedReceipts、cashierIncome、cashierExpense、accountRefunds。
  * voided 全部貢獻零。
  */
 export interface DayTotalsContribution {
@@ -44,6 +44,7 @@ export interface DayTotalsContribution {
   retainedReceipts: number;
   cashierIncome: number;
   cashierExpense: number;
+  accountRefunds: number;
 }
 
 export interface CloudDayTotals extends DayTotalsContribution {
@@ -60,6 +61,7 @@ export interface CloudDayTotals extends DayTotalsContribution {
  * - active order 計餐費與份數（便當／其他餐點分開）
  * - 所有非 expense 的 paidAmount 計 retainedReceipts
  * - expense 分到 cashierIncome／cashierExpense
+ * - refund 只計 accountRefunds（amount），不計收款、餐費或份數
  */
 export function contribution(tx: CloudTransactionInput): DayTotalsContribution {
   // voided 全部貢獻零
@@ -72,6 +74,20 @@ export function contribution(tx: CloudTransactionInput): DayTotalsContribution {
       retainedReceipts: 0,
       cashierIncome: 0,
       cashierExpense: 0,
+      accountRefunds: 0,
+    };
+  }
+
+  if (tx.type === 'refund') {
+    return {
+      activeTransactionCount: 1,
+      bentoCount: 0,
+      otherMealCount: 0,
+      mealTotal: 0,
+      retainedReceipts: 0,
+      cashierIncome: 0,
+      cashierExpense: 0,
+      accountRefunds: Math.max(0, Number(tx.amount) || 0),
     };
   }
 
@@ -97,6 +113,7 @@ export function contribution(tx: CloudTransactionInput): DayTotalsContribution {
       retainedReceipts: 0,
       cashierIncome,
       cashierExpense,
+      accountRefunds: 0,
     };
   }
 
@@ -127,6 +144,7 @@ export function contribution(tx: CloudTransactionInput): DayTotalsContribution {
     retainedReceipts: paidAmount,
     cashierIncome: 0,
     cashierExpense: 0,
+    accountRefunds: 0,
   };
 }
 
@@ -141,6 +159,7 @@ export function deriveDayTotals(transactions: readonly CloudTransactionInput[]):
   let retainedReceipts = 0;
   let cashierIncome = 0;
   let cashierExpense = 0;
+  let accountRefunds = 0;
 
   for (const tx of transactions) {
     const c = contribution(tx);
@@ -151,12 +170,13 @@ export function deriveDayTotals(transactions: readonly CloudTransactionInput[]):
     retainedReceipts += c.retainedReceipts;
     cashierIncome += c.cashierIncome;
     cashierExpense += c.cashierExpense;
+    accountRefunds += c.accountRefunds;
   }
 
   const orderCount = bentoCount + otherMealCount;
   const totalIncome = retainedReceipts + cashierIncome;
   const totalExpense = cashierExpense;
-  const netCash = totalIncome - totalExpense;
+  const netCash = totalIncome - totalExpense - accountRefunds;
 
   return {
     activeTransactionCount,
@@ -166,6 +186,7 @@ export function deriveDayTotals(transactions: readonly CloudTransactionInput[]):
     retainedReceipts,
     cashierIncome,
     cashierExpense,
+    accountRefunds,
     orderCount,
     totalIncome,
     totalExpense,
@@ -176,6 +197,8 @@ export function deriveDayTotals(transactions: readonly CloudTransactionInput[]):
 export interface CloudCashPosition {
   totalIncome: number;
   totalExpense: number;
+  /** 帳戶退款：獨立一行，不和收款抵銷。 */
+  totalRefund: number;
   netCash: number;
   /** null 表示開帳現金尚未確認，不能算出應有現金。 */
   expectedCash: number | null;
@@ -183,16 +206,18 @@ export interface CloudCashPosition {
 
 /**
  * 規格 §7.1 唯一現金口徑：totalIncome=retainedReceipts+cashierIncome；totalExpense=cashierExpense；
- * netCash=totalIncome-totalExpense；expectedCash=openingCash+netCash。餐費不是現金支出。
+ * totalRefund=accountRefunds；netCash=totalIncome-totalExpense-totalRefund；expectedCash=openingCash+netCash。
+ * 餐費不是現金支出；退款只從 accountRefunds 扣一次，不再另扣 cashEffect.refundAmount。
  */
 export function expectedCashFromTotals(
   openingCash: number | null,
-  totals: Pick<CloudDayTotals, 'retainedReceipts' | 'cashierIncome' | 'cashierExpense'>,
+  totals: Pick<CloudDayTotals, 'retainedReceipts' | 'cashierIncome' | 'cashierExpense' | 'accountRefunds'>,
 ): CloudCashPosition {
   const totalIncome = totals.retainedReceipts + totals.cashierIncome;
   const totalExpense = totals.cashierExpense;
-  const netCash = totalIncome - totalExpense;
-  return { totalIncome, totalExpense, netCash, expectedCash: openingCash === null ? null : openingCash + netCash };
+  const totalRefund = totals.accountRefunds;
+  const netCash = totalIncome - totalExpense - totalRefund;
+  return { totalIncome, totalExpense, totalRefund, netCash, expectedCash: openingCash === null ? null : openingCash + netCash };
 }
 
 /**
@@ -246,6 +271,12 @@ export interface DeriveBalanceOptions {
   complete?: boolean;
 }
 
+/** 學生餘額增減：order／payment 為 paidAmount − mealPrice，refund 為 −amount。 */
+function studentDelta(tx: CloudTransactionInput): number {
+  if (tx.type === 'refund') return -(Number(tx.amount) || 0);
+  return (Number(tx.paidAmount) || 0) - (Number(tx.mealPrice) || 0);
+}
+
 /**
  * 規格 §7.1, §7.3：從期初 + 完整有效歷史推導每筆 afterBalance。
  * - 缺頁旗標：未完整時回 `complete: false`，不可回精確 afterBalance。
@@ -267,9 +298,7 @@ export function deriveStudentBalance<T extends CloudTransactionInput>(
     const incompleteTx: Array<ProjectedTransaction<T>> = sorted.map(tx => {
       const isStudentTx = tx.studentId !== CASHIER_SENTINEL && tx.type !== 'expense';
       const isVoided = tx.status === 'voided';
-      const delta = isStudentTx && !isVoided
-        ? (Number(tx.paidAmount) || 0) - (Number(tx.mealPrice) || 0)
-        : 0;
+      const delta = isStudentTx && !isVoided ? studentDelta(tx) : 0;
       return {
         ...tx,
         delta,
@@ -297,7 +326,7 @@ export function deriveStudentBalance<T extends CloudTransactionInput>(
       };
     }
 
-    const delta = (Number(tx.paidAmount) || 0) - (Number(tx.mealPrice) || 0);
+    const delta = studentDelta(tx);
     runningBalance += delta;
     return {
       ...tx,
@@ -325,6 +354,7 @@ export function toLedgerTotals(dayTotals: CloudDayTotals): LedgerTotals {
     orderUnpaid: Math.max(0, dayTotals.mealTotal - dayTotals.retainedReceipts),
     totalIncome: dayTotals.totalIncome,
     totalExpense: dayTotals.totalExpense,
+    totalRefund: dayTotals.accountRefunds,
     netCash: dayTotals.netCash,
     transactionCount: dayTotals.activeTransactionCount,
   };

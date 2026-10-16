@@ -1,6 +1,6 @@
 # EasyOrder 零費用正式後端分階段實作計畫
 
-日期：2026-10-16。狀態：**P00–P07 與 P06b 已合併至 main（P06b 隨整合 PR #488 合併）；P08 雲端訂餐已合併（#491）；P09a 繳費與櫃台收支 PR 審查中；P09b–P18 尚未開始或驗收**。
+日期：2026-10-16。狀態：**P00–P07 與 P06b 已合併至 main（P06b 隨整合 PR #488 合併）；P08 雲端訂餐已合併（#491）；P09a 繳費與櫃台收支已合併（#493）；P09b 退款 PR 審查中；P10–P18 尚未開始或驗收**。
 
 **Source of truth：** [正式後端 spec](../specs/2026-10-13-free-production-backend-spec.md)，包含使用者最新「多白名單、等權、同時單一Google帳號」修正；來源 [PR #469](https://github.com/cheerc/talented-easyorder/pull/469)。
 
@@ -44,8 +44,9 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 | P07 | 已合併 #480 | PR #480 合併 SHA `436b119`；日期菜單與供應商、SaveVendor／RemoveVendor／SetDayMenu／SetOpeningCash 啟用；Rules 存取次數與單文件 expression 預算已覆蓋；Full Vitest、lint、build 通過。 |
 | P06b | 已合併 #488 | PR #487（source `2a03953b90a3cd477a7918ebea6741675ac2e428`）經獨立 review PASS 後，隨操作回饋前端 U3/U4/U2b 於整合 PR #488（source `58191718e2388bfbf954314128f5357370e65123`，squash merge SHA `6ae1909639f56aa6d36524406e700554891f6328`）合併至 main。分離穩定 UUID studentId 與畫面 studentCode（001–999999）；studentCodes 唯一索引集合；ChangeStudentCode 命令與舊索引刪除授權閉合；Emulator tests 全 pass；Rules 預算 20/20、單 write 10/10；整合收據見 [P06b＋前端整合審查收據](../../ops/integration-p06b-review-5819171.md)。 |
 | P08 | 已合併 #491 | PR [#491](https://github.com/cheerc/talented-easyorder/pull/491)（取代 #490）：base `5ff889a8c7dc9a411383c8f1a37e23f243e0ce8d`；source head `452edd5abce63f1eda329d90dcae245984104721`；squash merge SHA `889c75c`（2026-10-16）。獨立複審 PASS（review `5545234938`）；required CI [38875033302](https://github.com/cheerc/talented-easyorder/actions/runs/38875033302) build-and-test 與 e2e 均成功，其中 P08 Emulator 步驟 10/10。CreateOrder 雲端入帳、交易清單讀取（分頁、對帳、新鮮度檢查、fail closed）、未知結果同編號重試、失權遮罩；transactions 只開放目前持有者 get／list；本機 demo Emulator 281/281、Vitest 1,573 passed／281 skipped、lint／build 通過。契約見 `2026-10-16-cloud-orders-contract.md`，證據見 [ops evidence](../../ops/free-production-evidence.md)。未部署；正式部署 Rules 時須一併部署 `firestore.indexes.json`。 |
-| P09a | PR 審查中 | branch `claude/project-thread-uaazo9`，base `fc7943970a5ceb86d841eeca8be6a75d3ba75dec`。`CreateCashMovement` 啟用、F1 W 繳費與 A 櫃台收支、應有現金；本機 Emulator 395/395、Vitest 1,594 passed、Cloud E2E 14/14。契約 `2026-10-16-cloud-payments-cash-contract.md`；PR、head 與 CI 以 PR body 為準。未部署。 |
-| P09b–P18 | 尚未開始／未驗 | 不代表任何後續雲端功能已實作或通過。 |
+| P09a | 已合併 | PR #493，squash `c444621`，base `fc7943970a5ceb86d841eeca8be6a75d3ba75dec`。`CreateCashMovement` 啟用、F1 W 繳費與 A 櫃台收支、應有現金；本機 Emulator 395/395、Vitest 1,594 passed、Cloud E2E 14/14；獨立審查 PASS。契約 `2026-10-16-cloud-payments-cash-contract.md`。未部署。 |
+| P09b | PR 審查中 | branch `claude/project-thread-uaazo9`，base `c444621`。`CreateRefund` 啟用、`day.totals.accountRefunds`（7→8 欄）、F1 W 面板退款、應有現金扣退款一次；本機 Emulator 444/444、Vitest 1,602 passed、Cloud E2E 18/18。契約 `2026-10-16-cloud-refund-contract.md`；PR、head 與 CI 以 PR body 為準。未部署。 |
+| P10–P18 | 尚未開始／未驗 | 不代表任何後續雲端功能已實作或通過。 |
 
 ## 2. 現有檔案與規劃新檔
 

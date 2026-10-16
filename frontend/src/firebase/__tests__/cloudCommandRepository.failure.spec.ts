@@ -117,7 +117,7 @@ async function seedBase() {
       openingCash: 1000, openedBy: operatorA.uid, openedAt: serverTimestamp(),
       totals: {
         activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0, mealTotal: 0,
-        retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0,
+        retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0,
       },
       lastSettlementRevision: 0, lastCommandId: 'p05-failure-seed-day', updatedAt: serverTimestamp(),
     });

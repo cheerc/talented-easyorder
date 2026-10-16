@@ -107,14 +107,15 @@ service cloud.firestore {
     }
 
     function validTotals(totals) {
-      return totals is map && totals.size() == 7
+      return totals is map && totals.size() == 8
         && totals.activeTransactionCount is int && totals.activeTransactionCount >= 0
         && totals.bentoCount is int && totals.bentoCount >= 0
         && totals.otherMealCount is int && totals.otherMealCount >= 0
         && totals.mealTotal is int && totals.mealTotal >= 0 && totals.mealTotal <= 1000000000
         && totals.retainedReceipts is int && totals.retainedReceipts >= 0 && totals.retainedReceipts <= 1000000000
         && totals.cashierIncome is int && totals.cashierIncome >= 0 && totals.cashierIncome <= 1000000000
-        && totals.cashierExpense is int && totals.cashierExpense >= 0 && totals.cashierExpense <= 1000000000;
+        && totals.cashierExpense is int && totals.cashierExpense >= 0 && totals.cashierExpense <= 1000000000
+        && totals.accountRefunds is int && totals.accountRefunds >= 0 && totals.accountRefunds <= 1000000000;
     }
 
     function validStudent(student, studentId) {
@@ -307,7 +308,7 @@ service cloud.firestore {
         && day.openedAt == null
         && exactMap(totals, [
           'activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal',
-          'retainedReceipts', 'cashierIncome', 'cashierExpense'
+          'retainedReceipts', 'cashierIncome', 'cashierExpense', 'accountRefunds'
         ])
         && totals.activeTransactionCount == 0
         && totals.bentoCount == 0
@@ -316,6 +317,7 @@ service cloud.firestore {
         && totals.retainedReceipts == 0
         && totals.cashierIncome == 0
         && totals.cashierExpense == 0
+        && totals.accountRefunds == 0
         && day.lastSettlementRevision == 0
         && day.lastCommandId == commandId
         && day.updatedAt == request.time;
@@ -882,22 +884,23 @@ service cloud.firestore {
         && dayAfter.diff(dayBefore).affectedKeys().hasOnly(['revision', 'totals', 'lastCommandId', 'updatedAt'])
         && dayAfter.revision is int
         && dayAfter.revision == dayBefore.revision + 1
-        && exactMap(afterTotals, [
-          'activeTransactionCount', 'bentoCount', 'otherMealCount', 'mealTotal',
-          'retainedReceipts', 'cashierIncome', 'cashierExpense'
-        ])
+        // One whole-map equality: exactly these eight keys, each with its advanced or unchanged value
+        // (same meaning as exactMap plus per-key equalities, in fewer expressions).
+        && afterTotals == {
+          'activeTransactionCount': beforeTotals.activeTransactionCount + 1,
+          'bentoCount': beforeTotals.bentoCount + (order && command.payload.mealKind == 'bento' ? 1 : 0),
+          'otherMealCount': beforeTotals.otherMealCount + (order && command.payload.mealKind == 'other' ? 1 : 0),
+          'mealTotal': beforeTotals.mealTotal + mealPrice,
+          'retainedReceipts': beforeTotals.retainedReceipts + command.payload.paidAmount,
+          'cashierIncome': beforeTotals.cashierIncome,
+          'cashierExpense': beforeTotals.cashierExpense,
+          'accountRefunds': beforeTotals.accountRefunds
+        }
         && afterTotals.activeTransactionCount is int && afterTotals.activeTransactionCount >= 0 && afterTotals.activeTransactionCount <= 1000000000
-        && afterTotals.activeTransactionCount == beforeTotals.activeTransactionCount + 1
         && afterTotals.bentoCount is int && afterTotals.bentoCount >= 0 && afterTotals.bentoCount <= 1000000000
-        && afterTotals.bentoCount == beforeTotals.bentoCount + (order && command.payload.mealKind == 'bento' ? 1 : 0)
         && afterTotals.otherMealCount is int && afterTotals.otherMealCount >= 0 && afterTotals.otherMealCount <= 1000000000
-        && afterTotals.otherMealCount == beforeTotals.otherMealCount + (order && command.payload.mealKind == 'other' ? 1 : 0)
         && afterTotals.mealTotal is int && afterTotals.mealTotal >= 0 && afterTotals.mealTotal <= 1000000000
-        && afterTotals.mealTotal == beforeTotals.mealTotal + mealPrice
         && afterTotals.retainedReceipts is int && afterTotals.retainedReceipts >= 0 && afterTotals.retainedReceipts <= 1000000000
-        && afterTotals.retainedReceipts == beforeTotals.retainedReceipts + command.payload.paidAmount
-        && afterTotals.cashierIncome == beforeTotals.cashierIncome
-        && afterTotals.cashierExpense == beforeTotals.cashierExpense
         && dayAfter.status == dayBefore.status
         && dayAfter.menu == dayBefore.menu
         && dayAfter.openingCash == dayBefore.openingCash
@@ -1087,6 +1090,126 @@ service cloud.firestore {
         && afterTotals.retainedReceipts == beforeTotals.retainedReceipts
         && afterTotals.cashierIncome == beforeTotals.cashierIncome + command.payload.paidAmount
         && afterTotals.cashierExpense == beforeTotals.cashierExpense + command.payload.mealPrice
+        && afterTotals.accountRefunds == beforeTotals.accountRefunds
+        && after.lastCommandId == commandId
+        && after.updatedAt == request.time;
+    }
+
+    // P09b CreateRefund: pay a student's positive account balance back in cash (spec §7.1/§7.2).
+    // The refund is a positive `amount` with mealPrice/paidAmount 0; balance and counter cash both fall by it.
+    function validRefundPayload(payload) {
+      return exactMap(payload, ['amount', 'reason'])
+        && payload.amount is int && payload.amount >= 1 && payload.amount <= 1000000
+        && payload.reason is string && payload.reason.size() >= 1 && payload.reason.size() <= 500;
+    }
+
+    function validRefundTransactionDoc(tx, commandId, command, seq, studentName) {
+      // Whole-document equality: exactly these 24 keys and values (int and double are not equal).
+      return tx == {
+        'transactionId': command.targets.transactionId,
+        'studentId': command.targets.studentId,
+        'businessDate': command.targets.dayId,
+        'type': 'refund',
+        'mealKind': null,
+        'mealPrice': 0,
+        'paidAmount': 0,
+        'amount': command.payload.amount,
+        'studentNameSnapshot': studentName,
+        'menuNameSnapshot': '',
+        'menuPriceSnapshot': 0,
+        'vendorIdSnapshot': '',
+        'vendorNameSnapshot': '',
+        'otherItemName': null,
+        'status': 'active',
+        'revision': 1,
+        'createdAt': request.time,
+        'createdSeq': seq,
+        'operatorUid': request.auth.uid,
+        'operatorEmail': request.auth.token.email,
+        'sourceDevice': 'pc',
+        'note': command.payload.reason,
+        'lastCommandId': commandId,
+        'updatedAt': request.time
+      };
+    }
+
+    function validCreateRefund(commandId, command) {
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let dayId = command.targets.dayId;
+      let studentId = command.targets.studentId;
+      let dayBefore = get(/databases/$(database)/documents/days/$(dayId)).data;
+      let dayAfter = getAfter(/databases/$(database)/documents/days/$(dayId)).data;
+      let studentBefore = get(/databases/$(database)/documents/students/$(studentId)).data;
+      let studentAfter = getAfter(/databases/$(database)/documents/students/$(studentId)).data;
+      let transactionAfter = getAfter(/databases/$(database)/documents/transactions/$(command.targets.transactionId)).data;
+      return commandHolder(command.leaseEpoch)
+        && cashCommandEnvelope(commandId, command, head, headAfter)
+        && command.kind == 'CreateRefund'
+        && exactMap(command.targets, ['transactionId', 'studentId', 'dayId'])
+        && validId(command.targets.transactionId)
+        && validId(studentId)
+        && studentId != '__cashier__'
+        && validCalendarDate(dayId)
+        && exactMap(command.expectedRevisions, ['transaction', 'student', 'day'])
+        && command.expectedRevisions.transaction == 0
+        && command.expectedRevisions.student == studentBefore.revision
+        && command.expectedRevisions.day == dayBefore.revision
+        && validRefundPayload(command.payload)
+        && command.reason == command.payload.reason
+        && command.cashEffect == {
+          'before': 0, 'after': -command.payload.amount, 'delta': -command.payload.amount,
+          'reasonKind': 'refund', 'refundAmount': command.payload.amount
+        }
+        && command.businessDate == dayId
+        && command.studentId == studentId
+        && command.before == {'head': head, 'student': studentBefore, 'day': dayBefore, 'transaction': null}
+        && command.after == {'head': headAfter, 'student': studentAfter, 'day': dayAfter, 'transaction': transactionAfter}
+        && !exists(/databases/$(database)/documents/transactions/$(command.targets.transactionId))
+        && dayBefore.status in ['open', 'reopened']
+        && dayId >= head.goLiveDate
+        && validCurrentTaipeiDate(dayId)
+        && studentBefore.openingBalance.asOfDate <= dayId
+        && command.payload.amount <= studentBefore.currentBalance
+        && studentAfter.revision == studentBefore.revision + 1
+        && studentAfter.lastCommandId == commandId
+        && studentAfter.updatedAt == request.time
+        && dayAfter.revision == dayBefore.revision + 1
+        && dayAfter.lastCommandId == commandId
+        && dayAfter.updatedAt == request.time
+        && validRefundTransactionDoc(transactionAfter, commandId, command, head.seq + 1, studentBefore.displayName);
+    }
+
+    function validDayRefundProjection(commandId, command, dayId, before, after) {
+      let beforeTotals = before.totals;
+      let afterTotals = after.totals;
+      return command.targets.dayId == dayId
+        && command.before.day == before
+        && command.after.day == after
+        && validDay(after, dayId)
+        && validTotals(beforeTotals)
+        && before.status in ['open', 'reopened']
+        && after.diff(before).affectedKeys().hasOnly(['revision', 'totals', 'lastCommandId', 'updatedAt'])
+        && after.revision == before.revision + 1
+        && afterTotals.activeTransactionCount == beforeTotals.activeTransactionCount + 1
+        && afterTotals.bentoCount == beforeTotals.bentoCount
+        && afterTotals.otherMealCount == beforeTotals.otherMealCount
+        && afterTotals.mealTotal == beforeTotals.mealTotal
+        && afterTotals.retainedReceipts == beforeTotals.retainedReceipts
+        && afterTotals.cashierIncome == beforeTotals.cashierIncome
+        && afterTotals.cashierExpense == beforeTotals.cashierExpense
+        && afterTotals.accountRefunds == beforeTotals.accountRefunds + command.payload.amount
+        && after.lastCommandId == commandId
+        && after.updatedAt == request.time;
+    }
+
+    function validStudentRefund(commandId, command, before, after) {
+      return before.openingBalance.asOfDate <= command.targets.dayId
+        && after.diff(before).affectedKeys().hasOnly(['currentBalance', 'revision', 'lastCommandId', 'updatedAt'])
+        && command.payload.amount is int && command.payload.amount >= 1
+        && command.payload.amount <= before.currentBalance
+        && after.currentBalance == before.currentBalance - command.payload.amount
+        && after.revision == before.revision + 1
         && after.lastCommandId == commandId
         && after.updatedAt == request.time;
     }
@@ -1172,7 +1295,8 @@ service cloud.firestore {
     function dayWriteCommand(commandId, dayId, before, after) {
       let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
       return (command.kind in ['CreateOrder', 'CreatePayment', 'SetDayMenu', 'SetOpeningCash']
-          || command.kind == 'CreateCashMovement')
+          || command.kind == 'CreateCashMovement'
+          || command.kind == 'CreateRefund')
         && !exists(/databases/$(database)/documents/commands/$(commandId))
         && command.commandId == commandId
         && command.committedAt == request.time
@@ -1183,7 +1307,9 @@ service cloud.firestore {
           || (command.kind == 'SetOpeningCash'
             && validDayOpeningCashProjection(command, dayId, before, after))
           || (command.kind == 'CreateCashMovement'
-            && validDayCashMovementProjection(commandId, command, dayId, before, after)));
+            && validDayCashMovementProjection(commandId, command, dayId, before, after))
+          || (command.kind == 'CreateRefund'
+            && validDayRefundProjection(commandId, command, dayId, before, after)));
     }
 
     function studentWriteCommand(commandId, studentId, before, after) {
@@ -1199,7 +1325,10 @@ service cloud.firestore {
           && command.expectedRevisions.student == before.revision
           && validStudentAdvance(commandId, command, before, after, mealPrice))
           || (command.kind in ['EditStudent', 'SetStudentStatus', 'ChangeStudentCode']
-            && command.expectedRevisions.student == before.revision));
+            && command.expectedRevisions.student == before.revision)
+          || (command.kind == 'CreateRefund'
+            && command.expectedRevisions.student == before.revision
+            && validStudentRefund(commandId, command, before, after)));
     }
 
     function studentCreateCommand(commandId, studentId, after) {
@@ -1265,7 +1394,13 @@ service cloud.firestore {
             && command.before.day.status in ['open', 'reopened']
             && validCurrentTaipeiDate(command.targets.dayId)
             && command.targets.dayId >= command.before.head.goLiveDate
-            && validCashMovementTransactionDoc(after, commandId, command, command.before.head.seq + 1)));
+            && validCashMovementTransactionDoc(after, commandId, command, command.before.head.seq + 1))
+          || (command.kind == 'CreateRefund'
+            && validRefundPayload(command.payload)
+            && command.before.day.status in ['open', 'reopened']
+            && validCurrentTaipeiDate(command.targets.dayId)
+            && command.targets.dayId >= command.before.head.goLiveDate
+            && validRefundTransactionDoc(after, commandId, command, command.before.head.seq + 1, command.before.student.displayName)));
     }
 
     function vendorCreateCommand(commandId, vendorId, after) {
@@ -1352,7 +1487,9 @@ service cloud.firestore {
           || (request.resource.data.kind in ['CreateOrder', 'CreatePayment']
             && validCreateTransaction(commandId, request.resource.data))
           || (request.resource.data.kind == 'CreateCashMovement'
-            && validCreateCashMovement(commandId, request.resource.data)));
+            && validCreateCashMovement(commandId, request.resource.data))
+          || (request.resource.data.kind == 'CreateRefund'
+            && validCreateRefund(commandId, request.resource.data)));
     }
 
     match /days/{dayId} {

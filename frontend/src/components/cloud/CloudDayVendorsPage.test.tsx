@@ -61,7 +61,7 @@ function snapshot(overrides: Partial<CloudDayVendorSnapshot> = {}): CloudDayVend
         mealTotal: 0,
         retainedReceipts: 0,
         cashierIncome: 0,
-        cashierExpense: 0,
+        cashierExpense: 0, accountRefunds: 0,
       },
       lastSettlementRevision: 0,
       lastCommandId: 'prior-day-command',
