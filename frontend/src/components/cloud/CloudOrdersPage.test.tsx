@@ -843,6 +843,10 @@ describe('CloudOrdersPage', () => {
       fireEvent.change(screen.getByLabelText('退款金額'), { target: { value: '100' } });
       expect(screen.getByTestId('edit-preview')).toHaveTextContent('現金影響：−$40（帳本更正）');
       expect(screen.getByTestId('edit-preview')).toHaveTextContent('帳戶餘額：$40 → $0');
+      expect(screen.queryByTestId('void-ledger-warning')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: '作廢（記錯了）' }));
+      expect(screen.getByTestId('edit-preview')).toHaveTextContent('現金影響：+$60（帳本更正）');
+      expect(screen.getByTestId('void-ledger-warning')).toHaveTextContent('不是今天退現金或收現金');
     });
 
     it('a revision conflict on a mutation says the change did not take effect and keeps the form', async () => {

@@ -1879,6 +1879,11 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                     {editPreview.balanceAfter !== null && (
                       <span>帳戶餘額：${editPreview.balanceBefore} → ${editPreview.balanceAfter}</span>
                     )}
+                    {page.edit.action === 'void' && editPreview.cashDelta !== 0 && (
+                      <span data-testid="void-ledger-warning">
+                        作廢只更正帳本，不是今天退現金或收現金；要把錢退給學生請改用退款。
+                      </span>
+                    )}
                   </>
                 ) : null}
               </div>

@@ -604,6 +604,19 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         const headAfter: Data = { ...headBefore, seq, lastCommandId: input.commandId, updatedAt: now };
         const zeroCash = { before: 0, after: 0, delta: 0, reasonKind: 'none' as const, refundAmount: 0 };
 
+        if (input.kind === 'RecordBackup') {
+          const stored: StoredEnabledCommandDoc = {
+            commandId: input.commandId, kind: 'RecordBackup', seq, leaseEpoch: input.leaseEpoch,
+            actor: { uid: user.uid, email: user.email! }, committedAt: now as Timestamp,
+            businessDate: null, studentId: null, targets: {}, expectedRevisions: {},
+            before: { head: headBefore }, after: { head: headAfter }, reason: null,
+            cashEffect: zeroCash, payload: input.payload, inputFingerprint: fingerprint,
+          };
+          tx.update(headRef, headAfter);
+          tx.set(commandRef, stored);
+          return { existing: null } as const;
+        }
+
         if (input.kind === 'EnsureDay') {
           if (!daySnapshot) throw new RejectCommand('UNSUPPORTED_SCHEMA', 'EnsureDay 缺少目標日期參照');
           if (daySnapshot.exists()) throw new RejectCommand('INVALID_INPUT', '該營業日已存在；不會重設或重開日期');

@@ -1,10 +1,10 @@
 # P10a 介面與資料契約：交易更正、作廢、取消與 5 秒撤回
 
-Base: `origin/main`（SHA `e01ebdf`，含 P09b #494 與收據 #495）。本契約是 P10a 雲端交易修改、Rules 與 F1 畫面的實作依據。規則來源：[正式後端 spec](2026-10-13-free-production-backend-spec.md) §6.1、§7.1、§7.2、§11 L02–L04／L07／L09／L11；[後端計畫](../plans/2026-10-13-free-production-backend-plan.md) §P10；[操作回饋排程計畫](../plans/2026-10-15-operator-feedback-plan.md) 的 P10 列（退款可以更正、作廢、5 秒撤回）。
+Base: `origin/main`（SHA `e01ebdf`，含 P09b #494 與收據 #495）；之後合併 main `b33fc6b`（含 P14 每日增量備份 #496、#498）。本契約是 P10a 雲端交易修改、Rules 與 F1 畫面的實作依據。規則來源：[正式後端 spec](2026-10-13-free-production-backend-spec.md) §6.1、§7.1、§7.2、§11 L02–L04／L07／L09／L11；[後端計畫](../plans/2026-10-13-free-production-backend-plan.md) §P10；[操作回饋排程計畫](../plans/2026-10-15-operator-feedback-plan.md) 的 P10 列（退款可以更正、作廢、5 秒撤回）。
 
 ## 1. 範圍
 
-- 新啟用 5 種 kind：`CorrectTransaction`、`VoidTransaction`、`CancelKeepDeposit`、`CancelRefund`、`Undo`。已啟用 kind 由 13 種變為 18 種；仍拒絕的 6 種是 `CorrectOpening`（P10b）、`CloseDay`、`ReopenDay`、`RecordExport`、`RecordPrint`、`RecordBackup`。
+- 新啟用 5 種 kind：`CorrectTransaction`、`VoidTransaction`、`CancelKeepDeposit`、`CancelRefund`、`Undo`。合併 P14 後，已啟用 kind 由 14 種（含 `RecordBackup`）變為 19 種；仍拒絕的 5 種是 `CorrectOpening`（P10b）、`CloseDay`、`ReopenDay`、`RecordExport`、`RecordPrint`。
 - 可修改的列：學生的訂餐、繳費、退款，以及櫃台收支（`studentId` 為 `__cashier__`）。
 - 不刪除任何交易：Rules 的 `transactions` 一律 `allow delete: if false`，作廢只把 `status` 改成 `voided`。
 - 畫面只做 F1（雲端櫃台點餐）：5 秒撤回、E 付款明細與今日現金列上的「更正／作廢／取消」。雲端 F2 帳務頁與稽核頁還沒有，repository 的 `mutateTransaction` 已可供日後呼叫。
@@ -100,6 +100,7 @@ Base: `origin/main`（SHA `e01ebdf`，含 P09b #494 與收據 #495）。本契�
 
 - 交易清單本來就讀回 `voided` 列。`reconcileDayTotals` 以作廢列貢獻 0 重算，與 `day.totals` 不一致時 fail closed。
 - 收據驗證接受 `status: 'voided'` 的交易快照與 5 種新 kind。
+- P14 備份：`cloudBackup.ts` 的 decoder 與 replay validator 接受 5 種新 kind，形狀同第 3 節（targets 一律含 `studentId`；櫃台收支列沒有 student 投影與 student 版本）。replay 直接以命令的 after 快照覆寫交易（就地改寫、作廢、取消留款的 order→payment），重算 8 欄 totals 時作廢列貢獻 0，必須等於 `day.totals`，否則備份 fail closed。
 
 ## 8. Rules 預算
 
@@ -110,6 +111,7 @@ Base: `origin/main`（SHA `e01ebdf`，含 P09b #494 與收據 #495）。本契�
 - **Emulator**：`cloudTransactionMutation.spec.ts`（`EASYORDER_REQUIRE_CLOUD_MUTATIONS=true`，CI 步驟「P10a transaction mutation proof」）47 個案例（main 的 Rules 上 21 項失敗），涵蓋：
   - L02／L03／L04／L07／L08／L09／L11、A03 同時修改、關帳與重開日、停用帳戶、最大 payload；
   - 原始 SDK 的 22 種竄改、少寫投影、直接改刪交易、撤回與取消的誤用、櫃台收支夾帶學生，以及用戶端會擋、但改用原始 SDK 直送的違規內容（`P10.25`）。
+- **備份相容**：`cloudBackup.spec.ts`（`EASYORDER_REQUIRE_CLOUD_BACKUP=true`）用真實 P10a 命令（更正、取消留款、取消退款、撤回櫃台收支、撤回繳費、作廢退款）匯出、加密、解密、replay，totals 與 `day.totals` 一致；竄改 after 快照或少一個投影都被拒絕。
 - **單元**：`cloudTransactionMutation.test.ts`（算式與命令格式）。
 - **畫面**：`CloudOrdersPage.test.tsx` 的 P10a 區塊（撤回、5 秒消失、更正預覽、取消退款、作廢列顯示、櫃台收支更正、退款更正負餘額、版本衝突）。
 - **E2E**：`cloud-production.spec.ts` D06。繳費後 5 秒內撤回，訂餐更正後取消並退款；重新整理後由伺服器讀回，兩筆都保留為已作廢，命令留著前後值與理由。

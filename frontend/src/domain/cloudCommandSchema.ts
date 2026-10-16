@@ -124,7 +124,8 @@ export type EnabledCommandKind =
   | 'SetOpeningCash'
   | 'CreateCashMovement'
   | 'CreateRefund'
-  | TransactionMutationKind;
+  | TransactionMutationKind
+  | 'RecordBackup';
 export type EnabledCloudCommandInput = Extract<FullCloudCommandInput, { kind: EnabledCommandKind }>;
 
 export type StoredCloudCommandDoc = {
@@ -415,6 +416,19 @@ function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayl
     if (typeof note !== 'string' || note.length > 500) throw new InvalidCloudCommandInput('note 不合法');
     return { paidAmount: value.paidAmount, note };
   }
+  if (kind === 'RecordBackup') {
+    exactKeys(value, ['backupType', 'sourceSeq', 'fromSeq', 'toSeq', 'sha256']);
+    if (value.backupType !== 'command-incremental') throw new InvalidCloudCommandInput('backupType 不支援');
+    safeInteger(value.sourceSeq, 'sourceSeq');
+    safeInteger(value.fromSeq, 'fromSeq');
+    safeInteger(value.toSeq, 'toSeq');
+    if (value.sourceSeq !== value.toSeq || value.fromSeq > value.toSeq
+      || typeof value.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.sha256)) {
+      throw new InvalidCloudCommandInput('備份範圍或 SHA-256 不合法');
+    }
+    return { backupType: value.backupType, sourceSeq: value.sourceSeq, fromSeq: value.fromSeq,
+      toSeq: value.toSeq, sha256: value.sha256 };
+  }
 
   exactKeys(value, ['mealPrice', 'paidAmount', 'mealKind'], ['menuRevision', 'otherItemName', 'note']);
   safeInteger(value.mealPrice, 'mealPrice', 1_000_000);
@@ -452,7 +466,7 @@ export function normalizeEnabledCommandInput(input: unknown): CanonicalEnabledIn
   exactKeys(input, ['commandId', 'kind', 'leaseEpoch', 'targets', 'expectedRevisions', 'payload']);
   if (typeof input.kind !== 'string' || ![
     'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
-    'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement', 'CreateRefund',
+    'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement', 'CreateRefund', 'RecordBackup',
     ...TRANSACTION_MUTATION_KINDS,
   ].includes(input.kind)) {
     throw new InvalidCloudCommandInput('此命令種類尚未啟用');
@@ -462,6 +476,15 @@ export function normalizeEnabledCommandInput(input: unknown): CanonicalEnabledIn
     throw new InvalidCloudCommandInput('commandId 必須是 UUID');
   }
   safeInteger(input.leaseEpoch, 'leaseEpoch');
+  if (kind === 'RecordBackup') {
+    if (!isPlainRecord(input.targets) || !isPlainRecord(input.expectedRevisions)) {
+      throw new InvalidCloudCommandInput('targets 與 expectedRevisions 必須是固定物件');
+    }
+    exactKeys(input.targets, []);
+    exactKeys(input.expectedRevisions, []);
+    return { commandId: input.commandId, kind, leaseEpoch: input.leaseEpoch, targets: {}, expectedRevisions: {},
+      payload: normalizePayload(kind, input.payload) as CommandPayloadByKind['RecordBackup'] } as CanonicalEnabledInput;
+  }
   if (kind === 'EnsureDay') {
     if (!isPlainRecord(input.targets)) throw new InvalidCloudCommandInput('targets 必須是固定物件');
     exactKeys(input.targets, ['dayId']);
@@ -1073,10 +1096,11 @@ function validateReceiptSnapshots(
 ): void {
   const committedAt = receipt.committedAt as Timestamp;
   const commandId = normalized.commandId;
+  const backupKind = normalized.kind === 'RecordBackup';
   const studentKind = normalized.kind === 'CreateStudent' || normalized.kind === 'ChangeStudentCode' || normalized.kind === 'EditStudent' || normalized.kind === 'SetStudentStatus';
   const vendorKind = normalized.kind === 'SaveVendor' || normalized.kind === 'RemoveVendor';
   const dayCommandKind = normalized.kind === 'SetDayMenu' || normalized.kind === 'SetOpeningCash';
-  const snapshotKeys = normalized.kind === 'EnsureDay' || dayCommandKind
+  const snapshotKeys = backupKind ? ['head'] : normalized.kind === 'EnsureDay' || dayCommandKind
     ? ['head', 'day']
     : vendorKind ? ['head', 'vendor'] : studentKind ? ['head', 'student']
       : normalized.kind === 'CreateCashMovement' ? ['head', 'day', 'transaction']
@@ -1095,6 +1119,14 @@ function validateReceiptSnapshots(
   }
 
   const cash = receipt.cashEffect as Record<string, unknown>;
+  if (backupKind) {
+    if (receipt.businessDate !== null || receipt.studentId !== null || before.head === null
+      || after.head === null || cash.before !== 0 || cash.after !== 0 || cash.delta !== 0
+      || cash.reasonKind !== 'none' || cash.refundAmount !== 0) {
+      throw new InvalidCloudCommandInput('RecordBackup receipt snapshot 不一致');
+    }
+    return;
+  }
   if (normalized.kind === 'EnsureDay') {
     if (before.day !== null || receipt.businessDate !== normalized.payload.businessDate || receipt.studentId !== null
       || normalized.targets.dayId < String(headBefore.goLiveDate)) {
@@ -1446,7 +1478,7 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
   }
   if (![
     'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
-    'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement', 'CreateRefund',
+    'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement', 'CreateRefund', 'RecordBackup',
     ...TRANSACTION_MUTATION_KINDS,
   ].includes(raw.kind)) {
     throw new InvalidCloudCommandInput('此 command kind 尚未啟用');
@@ -1520,6 +1552,8 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
     && (raw.businessDate !== (normalized as MutationInput).targets.dayId
       || raw.studentId !== (normalized as MutationInput).targets.studentId)) {
     throw new InvalidCloudCommandInput('更正 receipt 共用欄位不一致');
+  } else if (normalized.kind === 'RecordBackup' && (raw.businessDate !== null || raw.studentId !== null)) {
+    throw new InvalidCloudCommandInput('RecordBackup receipt 共用欄位不一致');
   }
   validateReceiptSnapshots(raw, normalized);
   return raw as unknown as StoredEnabledCommandDoc;

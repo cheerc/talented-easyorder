@@ -18,6 +18,7 @@ import { faceEnrollmentText } from '../../domain/faceOrder';
 import { validateOpeningCash } from '../../domain/cashSession';
 import { RefundDialog } from '../pos/RefundDialog';
 import type { LedgerMutationResult } from '../../domain/ledgerAudit';
+import { BackupScreen } from './BackupScreen';
 
 interface AdminScreenProps {
   viewDate: string;
@@ -344,6 +345,12 @@ export const AdminScreen = React.memo(function AdminScreen({
         onConfirm={doSaveOpeningCash}
         onCancel={() => setShowOpeningCashConfirm(false)}
       />
+      {!isLocal && access.ok && (
+        <section aria-label="每日增量備份" style={{ marginTop: '24px', borderTop: '1px solid var(--line)', paddingTop: '20px' }}>
+          <div className="card-h">備份</div>
+          <BackupScreen />
+        </section>
+      )}
     </div>
   );
 });
