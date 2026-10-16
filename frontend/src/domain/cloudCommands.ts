@@ -296,13 +296,15 @@ export type CreateRefundCommand = BaseCommand<
   { transactionId: string; studentId: string; dayId: string }
 >;
 
-// 13. CorrectTransaction
+// 13. CorrectTransaction（P10a）：只改 mealPrice／paidAmount／amount／note，不改帳戶、日期、類型或建立時間。
+// 櫃台收支列的 studentId 為 `__cashier__`；退款列 mealPrice／paidAmount 為 0、amount 為正整數。
 export type CorrectTransactionCommand = BaseCommand<
   'CorrectTransaction',
   {
     mealPrice: number;
     paidAmount: number;
-    note?: string;
+    amount: number;
+    note: string;
     reason: string;
   },
   { transactionId: string; studentId: string; dayId: string }
@@ -336,7 +338,7 @@ export type UndoCommand = BaseCommand<
     targetCommandId: string;
     reason: string;
   },
-  { transactionId: string; studentId?: string | null; dayId: string }
+  { transactionId: string; studentId: string; dayId: string }
 >;
 
 // 18. CloseDay

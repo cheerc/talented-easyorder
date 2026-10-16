@@ -1,6 +1,7 @@
 /** Versioned, client-side encrypted command archive. No credentials or keys are persisted. */
 import { Timestamp } from 'firebase/firestore';
-import { decodeEnabledCommandDoc, normalizeEnabledCommandInput } from '../domain/cloudCommandSchema';
+import { CASHIER_STUDENT_ID, decodeEnabledCommandDoc, normalizeEnabledCommandInput } from '../domain/cloudCommandSchema';
+import { TRANSACTION_MUTATION_KINDS } from '../domain/cloudTransactionMutation';
 
 export const BACKUP_FORMAT = 'easyorder-command-backup' as const;
 export const BACKUP_SCHEMA_VERSION = 1 as const;
@@ -68,7 +69,7 @@ const TARGET_KEYS_BY_KIND: Record<string, string[]> = {
   CreateCashMovement: ['transactionId', 'dayId'], CreateRefund: ['transactionId', 'studentId', 'dayId'],
   CorrectTransaction: ['transactionId', 'studentId', 'dayId'], VoidTransaction: ['transactionId', 'studentId', 'dayId'],
   CancelKeepDeposit: ['transactionId', 'studentId', 'dayId'], CancelRefund: ['transactionId', 'studentId', 'dayId'],
-  Undo: ['transactionId', 'dayId'], CloseDay: ['dayId', 'settlementRevision'],
+  Undo: ['transactionId', 'studentId', 'dayId'], CloseDay: ['dayId', 'settlementRevision'],
   ReopenDay: ['dayId', 'settlementRevision'], RecordExport: [], RecordPrint: [], RecordBackup: [],
 };
 const REVISION_KEYS_BY_KIND: Record<string, string[]> = {
@@ -76,9 +77,9 @@ const REVISION_KEYS_BY_KIND: Record<string, string[]> = {
   SetStudentStatus: ['student'], CorrectOpening: ['day', 'student'], SaveVendor: ['vendor'], RemoveVendor: ['vendor'],
   SetDayMenu: ['day', 'headSeq'], SetOpeningCash: ['day'], CreateOrder: ['day', 'student', 'transaction'],
   CreatePayment: ['day', 'student', 'transaction'], CreateCashMovement: ['day', 'transaction'],
-  CreateRefund: ['day', 'student', 'transaction'], CorrectTransaction: ['day', 'student', 'transaction'],
-  VoidTransaction: ['day', 'student', 'transaction'], CancelKeepDeposit: ['day', 'student', 'transaction'],
-  CancelRefund: ['day', 'student', 'transaction'], Undo: ['day', 'transaction'],
+  CreateRefund: ['day', 'student', 'transaction'], CorrectTransaction: ['day', 'transaction'],
+  VoidTransaction: ['day', 'transaction'], CancelKeepDeposit: ['day', 'transaction'],
+  CancelRefund: ['day', 'transaction'], Undo: ['day', 'transaction'],
   CloseDay: ['day', 'settlement'], ReopenDay: ['day', 'settlement'],
   RecordExport: [], RecordPrint: [], RecordBackup: [],
 };
@@ -87,16 +88,19 @@ const PROJECTIONS_BY_KIND: Record<string, string[]> = {
   SetStudentStatus: ['student'], CorrectOpening: ['day', 'student'], SaveVendor: ['vendor'], RemoveVendor: ['vendor'],
   SetDayMenu: ['day'], SetOpeningCash: ['day'], CreateOrder: ['day', 'student', 'transaction'],
   CreatePayment: ['day', 'student', 'transaction'], CreateCashMovement: ['day', 'transaction'],
-  CreateRefund: ['day', 'student', 'transaction'], CorrectTransaction: ['day', 'student', 'transaction'],
-  VoidTransaction: ['day', 'student', 'transaction'], CancelKeepDeposit: ['day', 'student', 'transaction'],
-  CancelRefund: ['day', 'student', 'transaction'], Undo: ['day', 'transaction'],
+  CreateRefund: ['day', 'student', 'transaction'], CorrectTransaction: ['day', 'transaction'],
+  VoidTransaction: ['day', 'transaction'], CancelKeepDeposit: ['day', 'transaction'],
+  CancelRefund: ['day', 'transaction'], Undo: ['day', 'transaction'],
   CloseDay: ['day', 'settlement'], ReopenDay: ['day', 'settlement'],
   RecordExport: [], RecordPrint: [], RecordBackup: [],
 };
+// P10a transaction mutations always target { transactionId, studentId, dayId }. A counter cash row uses
+// the `__cashier__` sentinel and has no student projection or student revision; every other row adds them.
+const MUTATION_KINDS = new Set<string>(TRANSACTION_MUTATION_KINDS);
 const DECODABLE_COMMAND_KINDS = new Set([
   'EnsureDay', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus', 'SaveVendor',
   'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateOrder', 'CreatePayment', 'CreateCashMovement',
-  'CreateRefund', 'RecordBackup',
+  'CreateRefund', ...MUTATION_KINDS, 'RecordBackup',
 ]);
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -419,7 +423,7 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
     CreateOrder: { required: ['mealPrice', 'paidAmount', 'mealKind'], optional: ['menuRevision', 'otherItemName', 'note'] },
     CreatePayment: { required: ['paidAmount'], optional: ['note'] },
     CreateCashMovement: { required: ['mealPrice', 'paidAmount', 'reason'] }, CreateRefund: { required: ['amount', 'reason'] },
-    CorrectTransaction: { required: ['mealPrice', 'paidAmount', 'note', 'reason'] }, VoidTransaction: { required: ['reason'] },
+    CorrectTransaction: { required: ['mealPrice', 'paidAmount', 'amount', 'note', 'reason'] }, VoidTransaction: { required: ['reason'] },
     CancelKeepDeposit: { required: ['reason'] }, CancelRefund: { required: ['reason'] }, Undo: { required: ['targetCommandId', 'reason'] },
     CloseDay: { required: ['countedCash'], optional: ['note', 'expectedCash'] }, ReopenDay: { required: ['reason'] },
     RecordExport: { required: ['exportType', 'sourceSeq'], optional: ['dateRange'] },
@@ -434,19 +438,19 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
     const targets = record?.targets;
     const before = record?.before;
     const after = record?.after;
-    const undoHasStudent = record?.kind === 'Undo' && isPlainRecord(targets) && Object.hasOwn(targets, 'studentId');
-    const expectedTargets = TARGET_KEYS_BY_KIND[record?.kind ?? '']
-      ? [...TARGET_KEYS_BY_KIND[record?.kind ?? ''], ...(undoHasStudent ? ['studentId'] : [])] : undefined;
+    const mutationKind = MUTATION_KINDS.has(record.kind);
+    const mutationHasStudent = mutationKind && isPlainRecord(targets) && targets.studentId !== CASHIER_STUDENT_ID;
+    const expectedTargets = TARGET_KEYS_BY_KIND[record?.kind ?? ''];
     const payloadFields = payloadFieldsByKind[record?.kind ?? ''];
     const payloadNames = record?.payload && typeof record.payload === 'object' ? Object.keys(record.payload) : [];
     const targetNames = targets && typeof targets === 'object' ? Object.keys(targets).sort() : [];
     const expectedRevisions = record?.expectedRevisions as Record<string, unknown> | undefined;
     const expectedRevisionKeys = REVISION_KEYS_BY_KIND[record?.kind ?? '']
-      ? [...REVISION_KEYS_BY_KIND[record?.kind ?? ''], ...(undoHasStudent ? ['student'] : [])] : undefined;
+      ? [...REVISION_KEYS_BY_KIND[record?.kind ?? ''], ...(mutationHasStudent ? ['student'] : [])] : undefined;
     const headBefore = before?.head as Record<string, unknown> | undefined;
     const headAfter = after?.head as Record<string, unknown> | undefined;
     const requiredProjections = PROJECTIONS_BY_KIND[record?.kind ?? '']
-      ? [...PROJECTIONS_BY_KIND[record?.kind ?? ''], ...(undoHasStudent ? ['student'] : [])] : undefined;
+      ? [...PROJECTIONS_BY_KIND[record?.kind ?? ''], ...(mutationHasStudent ? ['student'] : [])] : undefined;
     const requiredBeforeKeys = record?.kind === 'CloseDay' || record?.kind === 'ReopenDay'
       ? ['head', 'day', 'previousSettlement'] : ['head', ...(requiredProjections ?? [])];
     const requiredAfterKeys = record?.kind === 'CloseDay' || record?.kind === 'ReopenDay'
@@ -478,7 +482,8 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
     const normalizedTargetKeys = [...expectedTargets].sort();
     if (JSON.stringify(targetNames) !== JSON.stringify(normalizedTargetKeys)
       || ('dayId' in targets && !validBusinessDate(targets.dayId))
-      || ('studentId' in targets && (typeof targets.studentId !== 'string'
+      || ('studentId' in targets && !(mutationKind && targets.studentId === CASHIER_STUDENT_ID)
+        && (typeof targets.studentId !== 'string'
         || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targets.studentId)))
       || ('transactionId' in targets && (typeof targets.transactionId !== 'string' || !targets.transactionId || targets.transactionId.includes('/')))
       || ('vendorId' in targets && (typeof targets.vendorId !== 'string' || !targets.vendorId || targets.vendorId.length > 64 || targets.vendorId.includes('/')))
@@ -488,7 +493,7 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
     const numericPayloadFields: Record<string, string[]> = {
       CorrectOpening: ['amount'], SetDayMenu: ['price'], SetOpeningCash: ['openingCash'],
       CreateOrder: ['mealPrice', 'paidAmount'], CreatePayment: ['paidAmount'], CreateCashMovement: ['mealPrice', 'paidAmount'],
-      CreateRefund: ['amount'], CorrectTransaction: ['mealPrice', 'paidAmount'], CloseDay: ['countedCash'],
+      CreateRefund: ['amount'], CorrectTransaction: ['mealPrice', 'paidAmount', 'amount'], CloseDay: ['countedCash'],
       RecordExport: ['sourceSeq'], RecordPrint: ['sourceSeq'], RecordBackup: ['sourceSeq', 'fromSeq', 'toSeq'],
     };
     for (const key of numericPayloadFields[record.kind] ?? []) {

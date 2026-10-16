@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Firestore } from 'firebase/firestore';
 import type { CloudStudentRecord } from '../../firebase/cloudStudentRepository';
@@ -13,6 +13,7 @@ const repositoryMock = vi.hoisted(() => ({
   createPayment: vi.fn(),
   createCashMovement: vi.fn(),
   createRefund: vi.fn(),
+  mutateTransaction: vi.fn(),
   readCommand: vi.fn(),
 }));
 
@@ -684,5 +685,182 @@ describe('CloudOrdersPage', () => {
     const totals = screen.getByTestId('payment-details-summary');
     expect(totals).toHaveTextContent('今日收款：$200');
     expect(totals).toHaveTextContent('今日退款：$60');
+  });
+
+  describe('P10a corrections, voids, cancels and the 5-second undo', () => {
+    const paymentRow = (txId: string, paid: number): CloudOrderTransactionRecord => ({
+      ...mockTx(txId, 's1', 'bento', 0, paid), type: 'payment', mealKind: null, menuNameSnapshot: '', menuPriceSnapshot: 0,
+      vendorIdSnapshot: '', vendorNameSnapshot: '', amount: paid,
+    });
+
+    beforeEach(() => {
+      repositoryMock.mutateTransaction.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 20));
+    });
+
+    async function payOnce() {
+      repositoryMock.loadSnapshot.mockImplementation(async () => {
+        const created = repositoryMock.createPayment.mock.calls[0]?.[0] as { transactionId: string; commandId: string } | undefined;
+        if (!created) return snapshot();
+        return snapshot({
+          students: [mockStudent('s1', '001', '王小明', 300), mockStudent('s2', '002', '李小華', 50)],
+          day: { ...mockDay(), revision: 6 },
+          transactions: [mockTx('tx-1', 's1', 'bento', 90, 100), { ...paymentRow(created.transactionId, 200), lastCommandId: created.commandId }],
+        });
+      });
+      renderComponent();
+      await selectStudent('001');
+      fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+      fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '200' } });
+      fireEvent.click(screen.getByTestId('submit-order-button'));
+      await screen.findByText(/繳費 \$200 完成/);
+      return repositoryMock.createPayment.mock.calls[0][0] as { transactionId: string; commandId: string };
+    }
+
+    it('offers a 5-second undo after a create, shows its cash impact and sends Undo for that command', async () => {
+      const created = await payOnce();
+      const bar = await screen.findByTestId('undo-bar');
+      expect(bar).toHaveTextContent('5 秒內可撤回 001 王小明 的繳費：現金 −$200，餘額回到 $100');
+      fireEvent.click(screen.getByTestId('undo-button'));
+      await waitFor(() => expect(repositoryMock.mutateTransaction).toHaveBeenCalledTimes(1));
+      expect(repositoryMock.mutateTransaction.mock.calls[0][0]).toMatchObject({
+        kind: 'Undo',
+        payload: { targetCommandId: created.commandId, reason: '送出後立即撤回' },
+        transactionId: created.transactionId,
+        studentId: 's1',
+        dayId: TODAY,
+        expectedTransactionRevision: 1,
+        expectedStudentRevision: 3,
+        expectedDayRevision: 6,
+        leaseEpoch: 1,
+      });
+      expect(await screen.findByText(/已撤回 001 王小明 的繳費，帳戶餘額與現金已回復（命令序號 20）/)).toBeVisible();
+      expect(screen.queryByTestId('undo-bar')).toBeNull();
+    });
+
+    it('hides the undo offer after 5 seconds', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      try {
+        await payOnce();
+        await screen.findByTestId('undo-bar');
+        await act(async () => { vi.advanceTimersByTime(4_000); });
+        expect(screen.getByTestId('undo-bar')).toBeVisible();
+        await act(async () => { vi.advanceTimersByTime(1_100); });
+        expect(screen.queryByTestId('undo-bar')).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('corrects a meal from 90 to 110 with a reason and previews the new balance (L02)', async () => {
+      renderComponent();
+      await selectStudent('001');
+      fireEvent.click(screen.getByTestId('open-payment-details-button'));
+      const row = within(await screen.findByTestId('detail-row-tx-1'));
+      fireEvent.click(row.getByRole('button', { name: '更正' }));
+      const modal = await screen.findByTestId('edit-transaction-modal');
+      fireEvent.change(screen.getByLabelText('餐費'), { target: { value: '110' } });
+      const preview = screen.getByTestId('edit-preview');
+      expect(preview).toHaveTextContent('現金影響：不變');
+      expect(preview).toHaveTextContent('帳戶餘額：$100 → $80');
+      expect(screen.getByTestId('submit-edit-button')).toBeDisabled();
+      fireEvent.change(screen.getByLabelText(/修改理由/), { target: { value: '價格記錯' } });
+      fireEvent.click(within(modal).getByTestId('submit-edit-button'));
+      await waitFor(() => expect(repositoryMock.mutateTransaction).toHaveBeenCalledTimes(1));
+      expect(repositoryMock.mutateTransaction.mock.calls[0][0]).toMatchObject({
+        kind: 'CorrectTransaction',
+        payload: { mealPrice: 110, paidAmount: 100, amount: -10, note: '', reason: '價格記錯' },
+        transactionId: 'tx-1', studentId: 's1', expectedTransactionRevision: 1, expectedStudentRevision: 3, expectedDayRevision: 5,
+      });
+      expect(await screen.findByText(/已確認 001 王小明 的更正完成/)).toBeVisible();
+    });
+
+    it('cancels a paid order with a refund (L04) or keeping the deposit (L03), with the cash impact shown', async () => {
+      renderComponent();
+      await selectStudent('001');
+      fireEvent.click(screen.getByTestId('open-payment-details-button'));
+      fireEvent.click(within(await screen.findByTestId('detail-row-tx-1')).getByRole('button', { name: '取消' }));
+      await screen.findByTestId('edit-transaction-modal');
+      expect(screen.getByTestId('edit-preview')).toHaveTextContent('現金影響：不變');
+      expect(screen.getByTestId('edit-preview')).toHaveTextContent('帳戶餘額：$100 → $190');
+      fireEvent.click(screen.getByRole('button', { name: '取消訂餐並退還 $100' }));
+      expect(screen.getByTestId('edit-preview')).toHaveTextContent('現金影響：−$100（退還現金給學生）');
+      expect(screen.getByTestId('edit-preview')).toHaveTextContent('帳戶餘額：$100 → $90');
+      fireEvent.change(screen.getByLabelText(/修改理由/), { target: { value: '學生請假' } });
+      fireEvent.click(screen.getByTestId('submit-edit-button'));
+      await waitFor(() => expect(repositoryMock.mutateTransaction).toHaveBeenCalledTimes(1));
+      expect(repositoryMock.mutateTransaction.mock.calls[0][0]).toMatchObject({ kind: 'CancelRefund', payload: { reason: '學生請假' } });
+    });
+
+    it('shows voided rows as 已作廢 without actions and leaves them out of the totals', async () => {
+      repositoryMock.loadSnapshot.mockResolvedValue(snapshot({
+        transactions: [mockTx('tx-1', 's1', 'bento', 90, 100), { ...paymentRow('tx-9', 50), status: 'voided', revision: 2 }],
+      }));
+      renderComponent();
+      await selectStudent('001');
+      fireEvent.click(screen.getByTestId('open-payment-details-button'));
+      const voided = await screen.findByTestId('detail-row-tx-9');
+      expect(voided).toHaveTextContent('已作廢');
+      expect(within(voided).queryByRole('button')).toBeNull();
+      expect(screen.getByTestId('payment-details-summary')).toHaveTextContent('今日收款：$100');
+    });
+
+    it('corrects a counter expense from 80 to 70 without any student revision', async () => {
+      repositoryMock.loadSnapshot.mockResolvedValue(snapshot({
+        transactions: [
+          { ...mockTx('tx-4', '__cashier__', 'other', 80, 0), type: 'expense', mealKind: null, otherItemName: null, studentNameSnapshot: '櫃台', note: '付餐費給廠商', amount: -80 },
+        ],
+      }));
+      renderComponent();
+      const row = within(await screen.findByTestId('cash-row-tx-4'));
+      fireEvent.click(row.getByRole('button', { name: '更正' }));
+      await screen.findByTestId('edit-transaction-modal');
+      fireEvent.change(screen.getByLabelText('支出金額'), { target: { value: '70' } });
+      expect(screen.getByTestId('edit-preview')).toHaveTextContent('現金影響：+$10（帳本更正）');
+      fireEvent.change(screen.getByLabelText(/修改理由/), { target: { value: '收據金額看錯' } });
+      fireEvent.click(screen.getByTestId('submit-edit-button'));
+      await waitFor(() => expect(repositoryMock.mutateTransaction).toHaveBeenCalledTimes(1));
+      expect(repositoryMock.mutateTransaction.mock.calls[0][0]).toMatchObject({
+        kind: 'CorrectTransaction',
+        payload: { mealPrice: 70, paidAmount: 0, amount: -70, note: '付餐費給廠商', reason: '收據金額看錯' },
+        studentId: '__cashier__', expectedStudentRevision: null, expectedDayRevision: 5,
+      });
+      expect(await screen.findByText(/已確認 櫃台支出 \$80 的更正完成/)).toBeVisible();
+    });
+
+    it('refuses a refund correction that would make the balance negative before sending', async () => {
+      repositoryMock.loadSnapshot.mockResolvedValue(snapshot({
+        students: [mockStudent('s1', '001', '王小明', 40)],
+        transactions: [{ ...paymentRow('tx-5', 0), type: 'refund', amount: 60, note: '學期結束' }],
+      }));
+      renderComponent();
+      await selectStudent('001');
+      fireEvent.click(screen.getByTestId('open-payment-details-button'));
+      fireEvent.click(within(await screen.findByTestId('detail-row-tx-5')).getByRole('button', { name: '更正' }));
+      fireEvent.change(await screen.findByLabelText('退款金額'), { target: { value: '120' } });
+      fireEvent.change(screen.getByLabelText(/修改理由/), { target: { value: '少記' } });
+      expect(screen.getByTestId('edit-preview')).toHaveTextContent('退款更正後帳戶餘額會變成 $-20，不能是負數');
+      expect(screen.getByTestId('submit-edit-button')).toBeDisabled();
+      fireEvent.change(screen.getByLabelText('退款金額'), { target: { value: '100' } });
+      expect(screen.getByTestId('edit-preview')).toHaveTextContent('現金影響：−$40（帳本更正）');
+      expect(screen.getByTestId('edit-preview')).toHaveTextContent('帳戶餘額：$40 → $0');
+      expect(screen.queryByTestId('void-ledger-warning')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: '作廢（記錯了）' }));
+      expect(screen.getByTestId('edit-preview')).toHaveTextContent('現金影響：+$60（帳本更正）');
+      expect(screen.getByTestId('void-ledger-warning')).toHaveTextContent('不是今天退現金或收現金');
+    });
+
+    it('a revision conflict on a mutation says the change did not take effect and keeps the form', async () => {
+      repositoryMock.mutateTransaction.mockResolvedValue(errorResult('REVISION_CONFLICT'));
+      renderComponent();
+      await selectStudent('001');
+      fireEvent.click(screen.getByTestId('open-payment-details-button'));
+      fireEvent.click(within(await screen.findByTestId('detail-row-tx-1')).getByRole('button', { name: '更正' }));
+      fireEvent.change(await screen.findByLabelText('實收金額'), { target: { value: '90' } });
+      fireEvent.change(screen.getByLabelText(/修改理由/), { target: { value: '收款記錯' } });
+      fireEvent.click(screen.getByTestId('submit-edit-button'));
+      expect(await screen.findByText(/更正沒有生效。已重新讀取最新資料/)).toBeVisible();
+      expect(await screen.findByTestId('edit-transaction-modal')).toBeVisible();
+      expect(window.localStorage.getItem(PENDING_KEY)).toBeNull();
+    });
   });
 });

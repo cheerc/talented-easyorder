@@ -1,6 +1,19 @@
 import { Timestamp } from 'firebase/firestore';
 import { ALL_COMMAND_KINDS, type BusinessCommandKind, type CommandActor, type CommandCashEffect } from './cloudCommands';
 import { normalizeStudentCodeOrThrow, STUDENT_CODE_REGEX } from './student';
+import {
+  TRANSACTION_MUTATION_KINDS,
+  TransactionMutationRejected,
+  UNDO_REASON,
+  applyTransactionMutation,
+  isTransactionMutationKind,
+  mutationCashEffect,
+  studentContribution,
+  totalsContribution,
+  type MutableTransaction,
+  type TransactionMutationKind,
+  type TransactionMutationPayload,
+} from './cloudTransactionMutation';
 
 export type RevisionExpectation = number;
 
@@ -23,7 +36,7 @@ export interface CommandTargetsByKind {
   VoidTransaction: { transactionId: string; studentId: string; dayId: string };
   CancelKeepDeposit: { transactionId: string; studentId: string; dayId: string };
   CancelRefund: { transactionId: string; studentId: string; dayId: string };
-  Undo: { transactionId: string; studentId?: string | null; dayId: string };
+  Undo: { transactionId: string; studentId: string; dayId: string };
   CloseDay: { dayId: string; settlementRevision: number };
   ReopenDay: { dayId: string; settlementRevision: number };
   RecordExport: Record<string, never>;
@@ -46,7 +59,7 @@ export interface CommandPayloadByKind {
   CreatePayment: { paidAmount: number; note: string };
   CreateCashMovement: { mealPrice: number; paidAmount: number; reason: string };
   CreateRefund: { amount: number; reason: string };
-  CorrectTransaction: { mealPrice: number; paidAmount: number; note: string; reason: string };
+  CorrectTransaction: { mealPrice: number; paidAmount: number; amount: number; note: string; reason: string };
   VoidTransaction: { reason: string };
   CancelKeepDeposit: { reason: string };
   CancelRefund: { reason: string };
@@ -73,10 +86,11 @@ export interface ExpectedRevisionsByKind {
   CreatePayment: { transaction: 0; student: RevisionExpectation; day: RevisionExpectation };
   CreateCashMovement: { transaction: 0; day: RevisionExpectation };
   CreateRefund: { transaction: 0; student: RevisionExpectation; day: RevisionExpectation };
-  CorrectTransaction: { transaction: RevisionExpectation; student: RevisionExpectation; day: RevisionExpectation };
-  VoidTransaction: { transaction: RevisionExpectation; student: RevisionExpectation; day: RevisionExpectation };
-  CancelKeepDeposit: { transaction: RevisionExpectation; student: RevisionExpectation; day: RevisionExpectation };
-  CancelRefund: { transaction: RevisionExpectation; student: RevisionExpectation; day: RevisionExpectation };
+  // P10a：櫃台收支列（studentId `__cashier__`）沒有 student 版本。
+  CorrectTransaction: { transaction: RevisionExpectation; student?: RevisionExpectation; day: RevisionExpectation };
+  VoidTransaction: { transaction: RevisionExpectation; student?: RevisionExpectation; day: RevisionExpectation };
+  CancelKeepDeposit: { transaction: RevisionExpectation; student?: RevisionExpectation; day: RevisionExpectation };
+  CancelRefund: { transaction: RevisionExpectation; student?: RevisionExpectation; day: RevisionExpectation };
   Undo: { transaction: RevisionExpectation; student?: RevisionExpectation; day: RevisionExpectation };
   CloseDay: { day: RevisionExpectation; settlement: RevisionExpectation };
   ReopenDay: { day: RevisionExpectation; settlement: RevisionExpectation };
@@ -110,6 +124,7 @@ export type EnabledCommandKind =
   | 'SetOpeningCash'
   | 'CreateCashMovement'
   | 'CreateRefund'
+  | TransactionMutationKind
   | 'RecordBackup';
 export type EnabledCloudCommandInput = Extract<FullCloudCommandInput, { kind: EnabledCommandKind }>;
 
@@ -363,6 +378,36 @@ function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayl
     }
     return { amount: value.amount, reason: value.reason };
   }
+  if (kind === 'CorrectTransaction') {
+    exactKeys(value, ['mealPrice', 'paidAmount', 'amount', 'note', 'reason']);
+    safeInteger(value.mealPrice, 'mealPrice', 1_000_000);
+    safeInteger(value.paidAmount, 'paidAmount', 1_000_000);
+    if (typeof value.amount !== 'number' || !Number.isSafeInteger(value.amount) || Object.is(value.amount, -0)
+      || value.amount < -1_000_000 || value.amount > 1_000_000) {
+      throw new InvalidCloudCommandInput('amount 必須是 -1,000,000 至 1,000,000 的整數');
+    }
+    if (typeof value.note !== 'string' || value.note.length > 500) throw new InvalidCloudCommandInput('note 不合法');
+    if (typeof value.reason !== 'string' || value.reason.length < 1 || value.reason.length > 500) {
+      throw new InvalidCloudCommandInput('更正理由必須為 1 至 500 字');
+    }
+    return { mealPrice: value.mealPrice, paidAmount: value.paidAmount, amount: value.amount, note: value.note, reason: value.reason };
+  }
+  if (kind === 'Undo') {
+    exactKeys(value, ['targetCommandId', 'reason']);
+    if (typeof value.targetCommandId !== 'string'
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.targetCommandId)) {
+      throw new InvalidCloudCommandInput('targetCommandId 必須是 UUID');
+    }
+    if (value.reason !== UNDO_REASON) throw new InvalidCloudCommandInput(`撤回理由固定為「${UNDO_REASON}」`);
+    return { targetCommandId: value.targetCommandId, reason: UNDO_REASON };
+  }
+  if (kind === 'VoidTransaction' || kind === 'CancelKeepDeposit' || kind === 'CancelRefund') {
+    exactKeys(value, ['reason']);
+    if (typeof value.reason !== 'string' || value.reason.length < 1 || value.reason.length > 500) {
+      throw new InvalidCloudCommandInput('理由必須為 1 至 500 字');
+    }
+    return { reason: value.reason };
+  }
   if (kind === 'CreatePayment') {
     exactKeys(value, ['paidAmount'], ['note']);
     safeInteger(value.paidAmount, 'paidAmount', 1_000_000);
@@ -422,6 +467,7 @@ export function normalizeEnabledCommandInput(input: unknown): CanonicalEnabledIn
   if (typeof input.kind !== 'string' || ![
     'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
     'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement', 'CreateRefund', 'RecordBackup',
+    ...TRANSACTION_MUTATION_KINDS,
   ].includes(input.kind)) {
     throw new InvalidCloudCommandInput('此命令種類尚未啟用');
   }
@@ -552,6 +598,34 @@ export function normalizeEnabledCommandInput(input: unknown): CanonicalEnabledIn
       expectedRevisions: expectedRevisions as ExpectedRevisionsByKind['CreateCashMovement'],
       payload: normalizePayload(kind, input.payload) as CommandPayloadByKind['CreateCashMovement'],
     };
+  }
+
+  if (isTransactionMutationKind(kind)) {
+    if (!isPlainRecord(input.targets)) throw new InvalidCloudCommandInput('targets 必須是固定物件');
+    exactKeys(input.targets, ['transactionId', 'studentId', 'dayId']);
+    stringValue(input.targets.transactionId, 'transactionId', 64);
+    const cashier = input.targets.studentId === CASHIER_STUDENT_ID;
+    if (!cashier) studentIdValue(input.targets.studentId, 'studentId');
+    dateValue(input.targets.dayId, 'targets.dayId');
+    const expectedRevisions = validateRevisionMap(
+      input.expectedRevisions,
+      cashier ? ['transaction', 'day'] : ['transaction', 'student', 'day'],
+    );
+    if (Object.values(expectedRevisions).some(revision => revision < 1)) {
+      throw new InvalidCloudCommandInput(`${kind} 須指定既有交易、學生與營業日版本`);
+    }
+    return {
+      commandId: input.commandId,
+      kind,
+      leaseEpoch: input.leaseEpoch,
+      targets: {
+        transactionId: input.targets.transactionId,
+        studentId: input.targets.studentId as string,
+        dayId: input.targets.dayId,
+      },
+      expectedRevisions: expectedRevisions as ExpectedRevisionsByKind[typeof kind],
+      payload: normalizePayload(kind, input.payload),
+    } as CanonicalEnabledInput;
   }
 
   if (!isPlainRecord(input.targets)) throw new InvalidCloudCommandInput('targets 必須是固定物件');
@@ -718,7 +792,7 @@ function validateReceiptTransaction(value: unknown, label: string): Record<strin
   dateValue(transaction.businessDate, `${label}.businessDate`);
   if ((transaction.type !== 'order' && transaction.type !== 'payment' && transaction.type !== 'expense' && transaction.type !== 'refund')
     || (transaction.mealKind !== null && transaction.mealKind !== 'bento' && transaction.mealKind !== 'other')
-    || transaction.status !== 'active'
+    || (transaction.status !== 'active' && transaction.status !== 'voided')
     || (transaction.otherItemName !== null && typeof transaction.otherItemName !== 'string')) {
     throw new InvalidCloudCommandInput(`${label} schema 不支援`);
   }
@@ -927,6 +1001,95 @@ function validateRefundReceipt(
   }
 }
 
+type MutationInput = Extract<CanonicalEnabledInput, { kind: TransactionMutationKind }>;
+
+function mutationPayload(normalized: MutationInput): TransactionMutationPayload {
+  return { kind: normalized.kind, payload: normalized.payload } as TransactionMutationPayload;
+}
+
+/** P10a receipt: the transaction, day totals, student balance and cashEffect all follow the shared mutation math. */
+function validateMutationReceipt(
+  receipt: Record<string, unknown>,
+  normalized: MutationInput,
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  headBefore: Record<string, unknown>,
+  committedAt: Timestamp,
+): void {
+  const commandId = normalized.commandId;
+  const { dayId, studentId, transactionId } = normalized.targets;
+  const cashier = studentId === CASHIER_STUDENT_ID;
+  if (receipt.businessDate !== dayId || receipt.studentId !== studentId
+    || receipt.reason !== (normalized.payload as { reason: string }).reason) {
+    throw new InvalidCloudCommandInput('更正 receipt 共用欄位不一致');
+  }
+  const txBefore = validateReceiptTransaction(before.transaction, 'receipt.before.transaction');
+  const txAfter = validateReceiptTransaction(after.transaction, 'receipt.after.transaction');
+  const dayBefore = validateReceiptDay(before.day, dayId, 'receipt.before.day');
+  const dayAfter = validateReceiptDay(after.day, dayId, 'receipt.after.day');
+  const actor = receipt.actor as Record<string, unknown>;
+  const today = taipeiCalendarDate(committedAt);
+  if (txBefore.transactionId !== transactionId || txBefore.studentId !== studentId || txBefore.businessDate !== dayId
+    || txBefore.status !== 'active' || txBefore.revision !== normalized.expectedRevisions.transaction
+    || cashier !== (txBefore.type === 'expense')
+    || dayId < String(headBefore.goLiveDate) || dayBefore.status === 'closed'
+    || ((normalized.kind === 'CancelRefund' || normalized.kind === 'Undo') && dayId !== today)) {
+    throw new InvalidCloudCommandInput('更正 receipt 原交易、日期或營業日狀態不一致');
+  }
+  if (normalized.kind === 'Undo' && (txBefore.revision !== 1 || txBefore.operatorUid !== actor.uid
+    || txBefore.lastCommandId !== normalized.payload.targetCommandId)) {
+    throw new InvalidCloudCommandInput('撤回 receipt 只能指向本人剛建立且未更動的交易');
+  }
+  let applied: Record<string, unknown>;
+  try {
+    applied = applyTransactionMutation(txBefore as unknown as MutableTransaction, mutationPayload(normalized)) as unknown as Record<string, unknown>;
+  } catch (error) {
+    if (error instanceof TransactionMutationRejected) throw new InvalidCloudCommandInput(`更正 receipt 不合法：${error.message}`);
+    throw error;
+  }
+  const expectedTransaction: Record<string, unknown> = { ...applied, revision: Number(txBefore.revision) + 1, lastCommandId: commandId };
+  if (Object.keys(txBefore).some(key => key !== 'updatedAt' && canonicalJson(expectedTransaction[key]) !== canonicalJson(txAfter[key]))
+    || !timestampMatches(txAfter.updatedAt, committedAt)) {
+    throw new InvalidCloudCommandInput('更正 receipt transaction snapshots 不一致');
+  }
+  const contributionBefore = totalsContribution(txBefore as unknown as MutableTransaction);
+  const contributionAfter = totalsContribution(txAfter as unknown as MutableTransaction);
+  const totalsBefore = dayBefore.totals as Record<string, number>;
+  const totalsAfter = dayAfter.totals as Record<string, unknown>;
+  if (dayBefore.revision !== normalized.expectedRevisions.day || dayAfter.revision !== Number(dayBefore.revision) + 1
+    || dayAfter.lastCommandId !== commandId || !timestampMatches(dayAfter.updatedAt, committedAt)
+    || !equalExcept(dayBefore, dayAfter, ['revision', 'totals', 'lastCommandId', 'updatedAt'])
+    || (Object.keys(contributionBefore) as Array<keyof typeof contributionBefore>).some(key =>
+      totalsAfter[key] !== totalsBefore[key] - contributionBefore[key] + contributionAfter[key])) {
+    throw new InvalidCloudCommandInput('更正 receipt day snapshots 不一致');
+  }
+  if (!cashier) {
+    const studentBefore = validateReceiptStudent(before.student, 'receipt.before.student');
+    const studentAfter = validateReceiptStudent(after.student, 'receipt.after.student');
+    const expectedBalance = Number(studentBefore.currentBalance)
+      - studentContribution(txBefore as unknown as MutableTransaction)
+      + studentContribution(txAfter as unknown as MutableTransaction);
+    if (studentBefore.studentId !== studentId || studentAfter.studentId !== studentId
+      || studentBefore.revision !== normalized.expectedRevisions.student
+      || studentAfter.revision !== Number(studentBefore.revision) + 1
+      || studentAfter.currentBalance !== expectedBalance
+      || (normalized.kind === 'CorrectTransaction' && txBefore.type === 'refund'
+        && Number(txAfter.amount) > Number(txBefore.amount) && expectedBalance < 0)
+      || studentAfter.lastCommandId !== commandId || !timestampMatches(studentAfter.updatedAt, committedAt)
+      || !equalExcept(studentBefore, studentAfter, ['currentBalance', 'revision', 'lastCommandId', 'updatedAt'])) {
+      throw new InvalidCloudCommandInput('更正 receipt student snapshots 不一致');
+    }
+  }
+  const expectedCash = mutationCashEffect(
+    normalized.kind,
+    txBefore as unknown as MutableTransaction,
+    txAfter as unknown as MutableTransaction,
+  );
+  if (canonicalJson(receipt.cashEffect) !== canonicalJson(expectedCash)) {
+    throw new InvalidCloudCommandInput('更正 receipt cashEffect 不一致');
+  }
+}
+
 function validateReceiptSnapshots(
   receipt: Record<string, unknown>,
   normalized: CanonicalEnabledInput,
@@ -941,7 +1104,9 @@ function validateReceiptSnapshots(
     ? ['head', 'day']
     : vendorKind ? ['head', 'vendor'] : studentKind ? ['head', 'student']
       : normalized.kind === 'CreateCashMovement' ? ['head', 'day', 'transaction']
-        : ['head', 'student', 'day', 'transaction'];
+        : isTransactionMutationKind(normalized.kind) && normalized.targets.studentId === CASHIER_STUDENT_ID
+          ? ['head', 'day', 'transaction']
+          : ['head', 'student', 'day', 'transaction'];
   const before = receiptRecord(receipt.before, 'receipt.before', snapshotKeys);
   const after = receiptRecord(receipt.after, 'receipt.after', snapshotKeys);
   const headBefore = validateReceiptHead(before.head, 'receipt.before.head');
@@ -1174,6 +1339,11 @@ function validateReceiptSnapshots(
     return;
   }
 
+  if (isTransactionMutationKind(normalized.kind)) {
+    validateMutationReceipt(receipt, normalized as MutationInput, before, after, headBefore, committedAt);
+    return;
+  }
+
   if (normalized.kind !== 'CreateOrder' && normalized.kind !== 'CreatePayment') {
     throw new InvalidCloudCommandInput('command receipt kind 不支援');
   }
@@ -1309,6 +1479,7 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
   if (![
     'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
     'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement', 'CreateRefund', 'RecordBackup',
+    ...TRANSACTION_MUTATION_KINDS,
   ].includes(raw.kind)) {
     throw new InvalidCloudCommandInput('此 command kind 尚未啟用');
   }
@@ -1323,7 +1494,7 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
   if (raw.businessDate !== null) dateValue(raw.businessDate, 'receipt.businessDate');
   if (raw.studentId !== null && typeof raw.studentId !== 'string') throw new InvalidCloudCommandInput('receipt.studentId 不合法');
   if (raw.kind === 'SetStudentStatus' || raw.kind === 'RemoveVendor' || raw.kind === 'ChangeStudentCode'
-    || raw.kind === 'CreateCashMovement' || raw.kind === 'CreateRefund') {
+    || raw.kind === 'CreateCashMovement' || raw.kind === 'CreateRefund' || isTransactionMutationKind(raw.kind)) {
     if (typeof raw.reason !== 'string' || raw.reason.length < 1 || raw.reason.length > 500) {
       throw new InvalidCloudCommandInput('command receipt.reason 不合法');
     }
@@ -1359,7 +1530,7 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
     payload: raw.payload,
   });
   if ((normalized.kind === 'RemoveVendor' || normalized.kind === 'ChangeStudentCode' || normalized.kind === 'CreateCashMovement'
-    || normalized.kind === 'CreateRefund')
+    || normalized.kind === 'CreateRefund' || isTransactionMutationKind(normalized.kind))
     && raw.reason !== (normalized.payload as { reason: string }).reason) {
     throw new InvalidCloudCommandInput(`${normalized.kind} receipt reason 必須與 payload.reason 相同`);
   }
@@ -1377,6 +1548,10 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
   } else if (normalized.kind === 'CreateCashMovement'
     && (raw.businessDate !== normalized.targets.dayId || raw.studentId !== CASHIER_STUDENT_ID)) {
     throw new InvalidCloudCommandInput('櫃台收支 receipt 共用欄位不一致');
+  } else if (isTransactionMutationKind(normalized.kind)
+    && (raw.businessDate !== (normalized as MutationInput).targets.dayId
+      || raw.studentId !== (normalized as MutationInput).targets.studentId)) {
+    throw new InvalidCloudCommandInput('更正 receipt 共用欄位不一致');
   } else if (normalized.kind === 'RecordBackup' && (raw.businessDate !== null || raw.studentId !== null)) {
     throw new InvalidCloudCommandInput('RecordBackup receipt 共用欄位不一致');
   }

@@ -37,6 +37,7 @@ The dedicated `BackupScreen.test.tsx` renders the F3 screen with an anonymous te
 ## Remaining limits
 
 - P10/P11 production writers are outside this branch's base. All currently inactive kinds, including `CorrectTransaction`, `CloseDay`, and `ReopenDay`, are deliberately rejected until their production decoder and complete payload-to-projection replay semantics are implemented and tested in their phase. Re-run the compatibility gate against latest `main` and extend P14 replay validation before enabling those kinds. This branch makes no future-kind compatibility claim.
+  - 後續（P10a，PR #497）：`CorrectTransaction`、`VoidTransaction`、`CancelKeepDeposit`、`CancelRefund`、`Undo` 已加入 decoder 與 replay validator，形狀與 P10a 契約一致（CorrectTransaction payload 含 `amount`；五種 kind 的 targets 都含 `studentId`，櫃台收支為 `__cashier__` 且沒有 student 投影）。`cloudBackup.spec.ts` 以真實 P10a 命令驗證匯出、解密、replay 與 `day.totals` 一致。`CloseDay`、`ReopenDay`、`CorrectOpening`、`RecordExport`、`RecordPrint` 仍 fail closed。
 - There is no P15 restore CLI, compact checkpoint merger, or automated second-copy/retention enforcement. Monthly archives, 90-day retention and the independent second copy are manual operator responsibilities in the runbook.
 - No production Firebase project, production Spark deployment, or operational restore drill is claimed or tested.
 - The stock Playwright A05 timing scenario was flaky once, then passed isolated; see E2E results above.

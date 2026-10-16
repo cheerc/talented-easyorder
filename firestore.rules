@@ -1214,6 +1214,281 @@ service cloud.firestore {
         && after.updatedAt == request.time;
     }
 
+    // P10a transaction mutations (spec §6.1, §7.1, §7.2): CorrectTransaction, VoidTransaction,
+    // CancelKeepDeposit, CancelRefund and Undo rewrite one existing active transaction in place.
+    // The command rule binds every before/after snapshot to the real documents and fixes the cash
+    // effect; the transaction, student and day rules each check their own transition from those
+    // snapshots. The transaction keeps its account, business date, creation time and creation seq.
+    // Command dispatch. `kind` is bound once: each branch costs one comparison, not a
+    // request.resource.data lookup, which keeps the later (mutation) branches under the
+    // 1,000-expression ceiling (see docs/ops/p05-rules-budget.md P10a appendix).
+    function validCommandCreate(commandId, command) {
+      let kind = command.kind;
+      return (kind == 'EnsureDay' && validEnsureDay(commandId, command))
+        || (kind == 'CreateStudent' && validCreateStudent(commandId, command))
+        || (kind == 'ChangeStudentCode' && validChangeStudentCode(commandId, command))
+        || (kind in ['EditStudent', 'SetStudentStatus'] && validStudentMutation(commandId, command))
+        || (kind == 'SaveVendor' && validSaveVendor(commandId, command))
+        || (kind == 'RemoveVendor' && validRemoveVendor(commandId, command))
+        || (kind == 'SetDayMenu' && validSetDayMenu(commandId, command))
+        || (kind == 'SetOpeningCash' && validSetOpeningCash(commandId, command))
+        || (kind in ['CreateOrder', 'CreatePayment'] && validCreateTransaction(commandId, command))
+        || (kind == 'CreateCashMovement' && validCreateCashMovement(commandId, command))
+        || (kind == 'CreateRefund' && validCreateRefund(commandId, command))
+        || (isMutationKind(kind) && validTransactionMutation(commandId, command))
+        || (kind == 'RecordBackup'
+          && validRecordBackup(commandId, command, command.before.head, command.after.head));
+    }
+
+    function isMutationKind(kind) {
+      return kind in ['CorrectTransaction', 'VoidTransaction', 'CancelKeepDeposit', 'CancelRefund', 'Undo'];
+    }
+
+    // Spec §7.1 cash contribution: order/payment paidAmount, expense paidAmount - mealPrice,
+    // refund -amount, voided 0.
+    function cashContribution(tx) {
+      return tx.status != 'active' ? 0
+        : tx.type == 'expense' ? tx.paidAmount - tx.mealPrice
+        : tx.type == 'refund' ? -tx.amount
+        : tx.paidAmount;
+    }
+
+    // Student balance contribution: order/payment amount (= paidAmount - mealPrice), refund -amount, voided 0.
+    function studentContribution(tx) {
+      return tx.status != 'active' ? 0 : (tx.type == 'refund' ? -tx.amount : tx.amount);
+    }
+
+    // Spec §7.1/§7.2 reasonKind: a correction or void records a book change; cancelling with a refund or
+    // undoing a collected order/payment returns that cash; undoing counter cash or a refund reverses it.
+    function mutationCashEffect(kind, before, after) {
+      let b = cashContribution(before);
+      let a = cashContribution(after);
+      let reasonKind = kind == 'CorrectTransaction' ? (a == b ? 'none' : 'correction')
+        : kind == 'VoidTransaction' ? (b == 0 ? 'none' : 'correction')
+        : kind == 'CancelKeepDeposit' ? 'none'
+        : before.type in ['expense', 'refund'] ? 'reversal'
+        : before.paidAmount > 0 ? 'refund' : 'none';
+      return {
+        'before': b, 'after': a, 'delta': a - b, 'reasonKind': reasonKind,
+        'refundAmount': reasonKind == 'refund' ? before.paidAmount : 0
+      };
+    }
+
+    function validMutationReason(reason) {
+      return reason is string && reason.size() >= 1 && reason.size() <= 500;
+    }
+
+    function validMutationPayload(command) {
+      let p = command.payload;
+      return command.kind == 'CorrectTransaction'
+        ? exactMap(p, ['mealPrice', 'paidAmount', 'amount', 'note', 'reason'])
+          && p.mealPrice is int && p.mealPrice >= 0 && p.mealPrice <= 1000000
+          && p.paidAmount is int && p.paidAmount >= 0 && p.paidAmount <= 1000000
+          && p.amount is int && p.amount >= -1000000 && p.amount <= 1000000
+          && p.note is string && p.note.size() <= 500
+          && validMutationReason(p.reason)
+        : command.kind == 'Undo'
+          ? exactMap(p, ['targetCommandId', 'reason'])
+            && validCommandId(p.targetCommandId)
+            && p.reason == '送出後立即撤回'
+          : exactMap(p, ['reason']) && validMutationReason(p.reason);
+    }
+
+    // Called only after the caller has bound command.before/after to the real documents.
+    // Omitted on purpose (already guaranteed, and the command rule is near the expression ceiling):
+    // the kind (dispatch checked it); transactionId format, dayId calendar format and goLiveDate
+    // (txBefore exists with businessDate == dayId, and both were validated when it was created;
+    // goLiveDate cannot change); txAfter.lastCommandId (the transaction update rule requires it, and
+    // the revision bump below proves that write is in this batch).
+    function validTransactionMutationCommon(commandId, command) {
+      let dayId = command.targets.dayId;
+      let head = command.before.head;
+      let headAfter = command.after.head;
+      let txBefore = command.before.transaction;
+      let txAfter = command.after.transaction;
+      let dayBefore = command.before.day;
+      let dayAfter = command.after.day;
+      return commandHolder(command.leaseEpoch)
+        && cashCommandEnvelope(commandId, command, head, headAfter)
+        && exactMap(command.targets, ['transactionId', 'studentId', 'dayId'])
+        && command.expectedRevisions.transaction == txBefore.revision
+        && command.expectedRevisions.day == dayBefore.revision
+        && validMutationPayload(command)
+        && command.reason == command.payload.reason
+        && command.businessDate == dayId
+        && command.studentId == command.targets.studentId
+        && txBefore.businessDate == dayId
+        && txBefore.studentId == command.targets.studentId
+        && txBefore.status == 'active'
+        && dayBefore.status in ['open', 'reopened']
+        // Cash goes back over the counter only for a row of today's Taipei date (spec §7.2).
+        && (!(command.kind in ['CancelRefund', 'Undo']) || validCurrentTaipeiDate(dayId))
+        && txAfter.revision == txBefore.revision + 1
+        && dayAfter.revision == dayBefore.revision + 1
+        && dayAfter.lastCommandId == commandId
+        && command.cashEffect == mutationCashEffect(command.kind, txBefore, txAfter);
+    }
+
+    function validCashierTransactionMutation(commandId, command) {
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let dayBefore = get(/databases/$(database)/documents/days/$(command.targets.dayId)).data;
+      let dayAfter = getAfter(/databases/$(database)/documents/days/$(command.targets.dayId)).data;
+      let txBefore = get(/databases/$(database)/documents/transactions/$(command.targets.transactionId)).data;
+      let txAfter = getAfter(/databases/$(database)/documents/transactions/$(command.targets.transactionId)).data;
+      return exactMap(command.expectedRevisions, ['transaction', 'day'])
+        && txBefore.type == 'expense'
+        && command.before == {'head': head, 'day': dayBefore, 'transaction': txBefore}
+        && command.after == {'head': headAfter, 'day': dayAfter, 'transaction': txAfter}
+        && validTransactionMutationCommon(commandId, command);
+    }
+
+    function validStudentTransactionMutation(commandId, command) {
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let dayBefore = get(/databases/$(database)/documents/days/$(command.targets.dayId)).data;
+      let dayAfter = getAfter(/databases/$(database)/documents/days/$(command.targets.dayId)).data;
+      let studentBefore = get(/databases/$(database)/documents/students/$(command.targets.studentId)).data;
+      let studentAfter = getAfter(/databases/$(database)/documents/students/$(command.targets.studentId)).data;
+      let txBefore = get(/databases/$(database)/documents/transactions/$(command.targets.transactionId)).data;
+      let txAfter = getAfter(/databases/$(database)/documents/transactions/$(command.targets.transactionId)).data;
+      // Not an expense: txBefore.studentId == targets.studentId != '__cashier__', and every expense row
+      // belongs to '__cashier__'.
+      return exactMap(command.expectedRevisions, ['transaction', 'student', 'day'])
+        && command.expectedRevisions.student == studentBefore.revision
+        && command.before == {'head': head, 'student': studentBefore, 'day': dayBefore, 'transaction': txBefore}
+        && command.after == {'head': headAfter, 'student': studentAfter, 'day': dayAfter, 'transaction': txAfter}
+        && studentAfter.revision == studentBefore.revision + 1
+        && studentAfter.lastCommandId == commandId
+        && validTransactionMutationCommon(commandId, command);
+    }
+
+    function validTransactionMutation(commandId, command) {
+      return command.targets.studentId == '__cashier__'
+        ? validCashierTransactionMutation(commandId, command)
+        : validStudentTransactionMutation(commandId, command);
+    }
+
+    // CorrectTransaction may change only mealPrice / paidAmount / amount / note, keeping the row's type
+    // (spec §6.1): payment stays > 0 (zero means void), expense keeps its direction, refund stays a
+    // positive amount; expense and refund rows keep a non-empty note (their reason).
+    function validCorrectedTransaction(before, after, payload) {
+      return after.diff(before).affectedKeys().hasOnly(['mealPrice', 'paidAmount', 'amount', 'note', 'revision', 'lastCommandId', 'updatedAt'])
+        && after.diff(before).affectedKeys().hasAny(['mealPrice', 'paidAmount', 'amount', 'note'])
+        && after.mealPrice == payload.mealPrice
+        && after.paidAmount == payload.paidAmount
+        && after.amount == payload.amount
+        && after.note == payload.note
+        && (before.type == 'refund'
+          ? payload.mealPrice == 0 && payload.paidAmount == 0 && payload.amount >= 1 && payload.note.size() >= 1
+          : payload.amount == payload.paidAmount - payload.mealPrice
+            && (before.type == 'order'
+              || (before.type == 'payment' && payload.mealPrice == 0 && payload.paidAmount >= 1)
+              || (before.type == 'expense' && payload.note.size() >= 1
+                && (before.paidAmount > 0
+                  ? payload.mealPrice == 0 && payload.paidAmount >= 1
+                  : payload.paidAmount == 0 && payload.mealPrice >= 1))));
+    }
+
+    // CancelKeepDeposit on an order with money: the row becomes that payment, meal and snapshots cleared.
+    function validKeepDepositTransaction(before, after) {
+      return before.type == 'order'
+        && after.diff(before).affectedKeys().hasOnly([
+          'type', 'mealKind', 'mealPrice', 'amount', 'menuNameSnapshot', 'menuPriceSnapshot',
+          'vendorIdSnapshot', 'vendorNameSnapshot', 'otherItemName', 'revision', 'lastCommandId', 'updatedAt'
+        ])
+        && after.type == 'payment'
+        && after.mealKind == null
+        && after.mealPrice == 0
+        && after.amount == before.paidAmount
+        && after.menuNameSnapshot == ''
+        && after.menuPriceSnapshot == 0
+        && after.vendorIdSnapshot == ''
+        && after.vendorNameSnapshot == ''
+        && after.otherItemName == null;
+    }
+
+    function transactionMutationCommand(commandId, transactionId, before, after) {
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      let kind = command.kind;
+      return !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && isMutationKind(kind)
+        && command.targets.transactionId == transactionId
+        && command.before.transaction == before
+        && command.after.transaction == after
+        && before.status == 'active'
+        && after.revision == before.revision + 1
+        && after.lastCommandId == commandId
+        && after.updatedAt == request.time
+        && (kind == 'CorrectTransaction'
+          ? validCorrectedTransaction(before, after, command.payload)
+          : kind == 'CancelKeepDeposit' && before.paidAmount > 0
+            ? validKeepDepositTransaction(before, after)
+            : after.diff(before).affectedKeys().hasOnly(['status', 'revision', 'lastCommandId', 'updatedAt'])
+              && after.status == 'voided'
+              && (!(kind in ['CancelKeepDeposit', 'CancelRefund']) || before.type == 'order')
+              // Undo: only the creator's untouched row, named by its creating command (spec §7.2).
+              && (kind != 'Undo'
+                || (before.revision == 1
+                  && before.operatorUid == request.auth.uid
+                  && before.lastCommandId == command.payload.targetCommandId)));
+    }
+
+    function validStudentMutationBalance(commandId, command, before, after) {
+      let txBefore = command.before.transaction;
+      let txAfter = command.after.transaction;
+      return after.diff(before).affectedKeys().hasOnly(['currentBalance', 'revision', 'lastCommandId', 'updatedAt'])
+        && after.currentBalance == before.currentBalance - studentContribution(txBefore) + studentContribution(txAfter)
+        && after.revision == before.revision + 1
+        && after.lastCommandId == commandId
+        && after.updatedAt == request.time
+        // A refund is never corrected upward into debt (P09b rule: no refund beyond the balance).
+        && (command.kind != 'CorrectTransaction' || txBefore.type != 'refund'
+          || txAfter.amount <= txBefore.amount || after.currentBalance >= 0);
+    }
+
+    // The same contribution as spec §7.1 / reconcileDayTotals; a voided row contributes nothing.
+    function totalsContribution(tx) {
+      let on = tx.status == 'active';
+      let order = on && tx.type == 'order';
+      let expense = on && tx.type == 'expense';
+      return {
+        'activeTransactionCount': on ? 1 : 0,
+        'bentoCount': order && tx.mealKind == 'bento' ? 1 : 0,
+        'otherMealCount': order && tx.mealKind == 'other' ? 1 : 0,
+        'mealTotal': order ? tx.mealPrice : 0,
+        'retainedReceipts': on && tx.type in ['order', 'payment'] ? tx.paidAmount : 0,
+        'cashierIncome': expense ? tx.paidAmount : 0,
+        'cashierExpense': expense ? tx.mealPrice : 0,
+        'accountRefunds': on && tx.type == 'refund' ? tx.amount : 0
+      };
+    }
+
+    function validDayMutationProjection(commandId, command, dayId, before, after) {
+      let b = before.totals;
+      let x = totalsContribution(command.before.transaction);
+      let y = totalsContribution(command.after.transaction);
+      return command.targets.dayId == dayId
+        && command.before.day == before
+        && command.after.day == after
+        && before.status in ['open', 'reopened']
+        && after.diff(before).affectedKeys().hasOnly(['revision', 'totals', 'lastCommandId', 'updatedAt'])
+        && after.lastCommandId == commandId
+        && validTotals(after.totals)
+        && after.totals == {
+          'activeTransactionCount': b.activeTransactionCount - x.activeTransactionCount + y.activeTransactionCount,
+          'bentoCount': b.bentoCount - x.bentoCount + y.bentoCount,
+          'otherMealCount': b.otherMealCount - x.otherMealCount + y.otherMealCount,
+          'mealTotal': b.mealTotal - x.mealTotal + y.mealTotal,
+          'retainedReceipts': b.retainedReceipts - x.retainedReceipts + y.retainedReceipts,
+          'cashierIncome': b.cashierIncome - x.cashierIncome + y.cashierIncome,
+          'cashierExpense': b.cashierExpense - x.cashierExpense + y.cashierExpense,
+          'accountRefunds': b.accountRefunds - x.accountRefunds + y.accountRefunds
+        };
+    }
+
     function headCommand(commandId, before, after) {
       let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
       return !exists(/databases/$(database)/documents/commands/$(commandId))
@@ -1333,7 +1608,8 @@ service cloud.firestore {
       let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
       return (command.kind in ['CreateOrder', 'CreatePayment', 'SetDayMenu', 'SetOpeningCash']
           || command.kind == 'CreateCashMovement'
-          || command.kind == 'CreateRefund')
+          || command.kind == 'CreateRefund'
+          || isMutationKind(command.kind))
         && !exists(/databases/$(database)/documents/commands/$(commandId))
         && command.commandId == commandId
         && command.committedAt == request.time
@@ -1346,7 +1622,9 @@ service cloud.firestore {
           || (command.kind == 'CreateCashMovement'
             && validDayCashMovementProjection(commandId, command, dayId, before, after))
           || (command.kind == 'CreateRefund'
-            && validDayRefundProjection(commandId, command, dayId, before, after)));
+            && validDayRefundProjection(commandId, command, dayId, before, after))
+          || (isMutationKind(command.kind)
+            && validDayMutationProjection(commandId, command, dayId, before, after)));
     }
 
     function studentWriteCommand(commandId, studentId, before, after) {
@@ -1365,7 +1643,10 @@ service cloud.firestore {
             && command.expectedRevisions.student == before.revision)
           || (command.kind == 'CreateRefund'
             && command.expectedRevisions.student == before.revision
-            && validStudentRefund(commandId, command, before, after)));
+            && validStudentRefund(commandId, command, before, after))
+          || (isMutationKind(command.kind)
+            && command.expectedRevisions.student == before.revision
+            && validStudentMutationBalance(commandId, command, before, after)));
     }
 
     function studentCreateCommand(commandId, studentId, after) {
@@ -1513,24 +1794,7 @@ service cloud.firestore {
       allow list: if currentHolder();
       allow update, delete: if false;
       allow create: if commandId == request.resource.data.commandId
-        && ((request.resource.data.kind == 'EnsureDay' && validEnsureDay(commandId, request.resource.data))
-          || (request.resource.data.kind == 'CreateStudent' && validCreateStudent(commandId, request.resource.data))
-          || (request.resource.data.kind == 'ChangeStudentCode' && validChangeStudentCode(commandId, request.resource.data))
-          || (request.resource.data.kind in ['EditStudent', 'SetStudentStatus']
-            && validStudentMutation(commandId, request.resource.data))
-          || (request.resource.data.kind == 'SaveVendor' && validSaveVendor(commandId, request.resource.data))
-          || (request.resource.data.kind == 'RemoveVendor' && validRemoveVendor(commandId, request.resource.data))
-          || (request.resource.data.kind == 'SetDayMenu' && validSetDayMenu(commandId, request.resource.data))
-          || (request.resource.data.kind == 'SetOpeningCash' && validSetOpeningCash(commandId, request.resource.data))
-          || (request.resource.data.kind in ['CreateOrder', 'CreatePayment']
-            && validCreateTransaction(commandId, request.resource.data))
-          || (request.resource.data.kind == 'CreateCashMovement'
-            && validCreateCashMovement(commandId, request.resource.data))
-          || (request.resource.data.kind == 'CreateRefund'
-            && validCreateRefund(commandId, request.resource.data))
-          || (request.resource.data.kind == 'RecordBackup'
-            && validRecordBackup(commandId, request.resource.data,
-              request.resource.data.before.head, request.resource.data.after.head)));
+        && validCommandCreate(commandId, request.resource.data);
     }
 
     match /days/{dayId} {
@@ -1578,7 +1842,10 @@ service cloud.firestore {
 
     match /transactions/{transactionId} {
       allow get, list: if currentHolder();
-      allow update, delete: if false;
+      allow delete: if false;
+      // P10a: an existing row changes only through a mutation command; nothing is ever deleted.
+      allow update: if request.resource.data.lastCommandId is string
+        && transactionMutationCommand(request.resource.data.lastCommandId, transactionId, resource.data, request.resource.data);
       allow create: if request.resource.data.lastCommandId is string
         && transactionCommand(request.resource.data.lastCommandId, transactionId, request.resource.data)
         && validId(transactionId);

@@ -9,6 +9,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createBackupManifest, decryptBackup, encryptBackup, recalculateBackupTotals, replayBackupProjections, sha256Hex, validateBackupManifest, type BackupCommandRecord } from '../cloudBackup';
 import { createCloudBackupRepository } from '../cloudBackupRepository';
 import { createCloudCommandRepository } from '../cloudCommandRepository';
+import { createCloudOrderRepository, type CloudTransactionMutationInput } from '../cloudOrderRepository';
+import { UNDO_REASON } from '../../domain/cloudTransactionMutation';
 
 declare const process: { env: Record<string, string | undefined>; cwd: () => string };
 
@@ -73,9 +75,10 @@ function backupReceipt(commandId: string, beforeHead: Record<string, unknown>, l
   };
 }
 
+// Loading the full Rules into a cold Emulator can exceed Vitest's 10 s default hook timeout.
 beforeAll(async () => {
   env = await initializeTestEnvironment({ projectId, firestore: { host: '127.0.0.1', port: 8080, rules: readFileSync(rulesPath, 'utf8') } });
-});
+}, 60_000);
 beforeEach(async () => env.clearFirestore());
 afterAll(async () => env.cleanup());
 
@@ -277,6 +280,112 @@ describeWithEmulator('P14 cloud backup', () => {
     expect((await getDoc(doc(db, 'commands', uuid(98)))).data()?.before.head.seq).toBe(2);
   });
 
+  it('exports, decrypts and replays real P10a mutation receipts with totals equal to day.totals', async () => {
+    await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 0, []));
+    const db = authedDb();
+    const user = { uid: operator.uid, email: operator.email, emailVerified: true, providerData: [{ providerId: 'google.com' }] } as unknown as User;
+    const writer = createCloudCommandRepository(db, { currentUser: () => user });
+    const orders = createCloudOrderRepository(db, { currentUser: () => user });
+    const today = taipeiToday();
+    const studentId = uuid(500);
+    let next = 500;
+    const id = () => uuid(++next);
+    const read = async (path: string) => (await getDoc(doc(db, path))).data() as Record<string, number & string>;
+    const okResult = (result: { ok: boolean }) => expect(result, JSON.stringify(result)).toMatchObject({ ok: true });
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: 7,
+      targets: { dayId: today }, expectedRevisions: { day: 0 }, payload: { businessDate: today } }));
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: 7,
+      targets: { studentId }, expectedRevisions: { student: 0 },
+      payload: { studentCode: '500', displayName: 'Anonymous P10a fixture', aliases: [],
+        openingBalance: { amount: 100, asOfDate: today, note: '' } } }));
+    const revisions = async () => ({ student: (await read(`students/${studentId}`)).revision, day: (await read(`days/${today}`)).revision });
+    const createOrder = async (mealPrice: number, paidAmount: number) => {
+      const r = await revisions(); const commandId = id(); const transactionId = id();
+      okResult(await orders.createOrder({ commandId, transactionId, leaseEpoch: 7, studentId, dayId: today,
+        expectedStudentRevision: r.student, expectedDayRevision: r.day, mealKind: 'other', mealPrice, paidAmount,
+        menuRevision: null, otherItemName: '自備便當', note: '' }));
+      return { commandId, transactionId };
+    };
+    const createPayment = async (paidAmount: number) => {
+      const r = await revisions(); const commandId = id(); const transactionId = id();
+      okResult(await orders.createPayment({ commandId, transactionId, leaseEpoch: 7, studentId, dayId: today,
+        expectedStudentRevision: r.student, expectedDayRevision: r.day, paidAmount, note: '' }));
+      return { commandId, transactionId };
+    };
+    const createRefund = async (amount: number) => {
+      const r = await revisions(); const commandId = id(); const transactionId = id();
+      okResult(await orders.createRefund({ commandId, transactionId, leaseEpoch: 7, studentId, dayId: today,
+        expectedStudentRevision: r.student, expectedDayRevision: r.day, amount, reason: '溢繳退還' }));
+      return { commandId, transactionId };
+    };
+    const createCash = async (direction: 'income' | 'expense', amount: number) => {
+      const commandId = id(); const transactionId = id();
+      okResult(await orders.createCashMovement({ commandId, transactionId, leaseEpoch: 7, dayId: today,
+        expectedDayRevision: (await read(`days/${today}`)).revision, direction, amount, reason: '零錢補充' }));
+      return { commandId, transactionId };
+    };
+    const mutate = async (transactionId: string, spec: Pick<CloudTransactionMutationInput, 'kind' | 'payload'>) => {
+      const tx = await read(`transactions/${transactionId}`);
+      const cashierRow = tx.studentId === '__cashier__';
+      okResult(await orders.mutateTransaction({ commandId: id(), leaseEpoch: 7, transactionId,
+        studentId: tx.studentId, dayId: today, expectedTransactionRevision: tx.revision,
+        expectedStudentRevision: cashierRow ? null : (await read(`students/${studentId}`)).revision,
+        expectedDayRevision: (await read(`days/${today}`)).revision, ...spec } as CloudTransactionMutationInput));
+    };
+
+    const corrected = await createOrder(80, 100);
+    await mutate(corrected.transactionId, { kind: 'CorrectTransaction',
+      payload: { mealPrice: 70, paidAmount: 100, amount: 30, note: '', reason: '餐費記錯' } });
+    const kept = await createOrder(80, 100);
+    await mutate(kept.transactionId, { kind: 'CancelKeepDeposit', payload: { reason: '學生今天不吃' } });
+    const refunded = await createOrder(80, 100);
+    await mutate(refunded.transactionId, { kind: 'CancelRefund', payload: { reason: '學生今天不吃，退現金' } });
+    const cashUndo = await createCash('income', 50);
+    await mutate(cashUndo.transactionId, { kind: 'Undo', payload: { targetCommandId: cashUndo.commandId, reason: UNDO_REASON } });
+    const paymentUndo = await createPayment(30);
+    await mutate(paymentUndo.transactionId, { kind: 'Undo', payload: { targetCommandId: paymentUndo.commandId, reason: UNDO_REASON } });
+    const voidedRefund = await createRefund(20);
+    await mutate(voidedRefund.transactionId, { kind: 'VoidTransaction', payload: { reason: '退款記錯' } });
+
+    const exported = await createCloudBackupRepository(db, { currentUid: () => operator.uid })
+      .exportRange({ fromSeq: 0, generatedAt: '2026-10-16T03:00:00.000Z' });
+    expect(exported.manifest.records.map(record => record.kind)).toEqual([
+      'EnsureDay', 'CreateStudent', 'CreateOrder', 'CorrectTransaction', 'CreateOrder', 'CancelKeepDeposit',
+      'CreateOrder', 'CancelRefund', 'CreateCashMovement', 'Undo', 'CreatePayment', 'Undo', 'CreateRefund', 'VoidTransaction',
+    ]);
+    const cashierUndo = exported.manifest.records[9]!;
+    expect(cashierUndo.targets).toEqual({ transactionId: cashUndo.transactionId, studentId: '__cashier__', dayId: today });
+    expect(Object.keys(cashierUndo.expectedRevisions).sort()).toEqual(['day', 'transaction']);
+    expect(Object.keys(exported.manifest.records[11]!.expectedRevisions).sort()).toEqual(['day', 'student', 'transaction']);
+
+    const opened = await decryptBackup(await encryptBackup(exported.manifest, 'p10a-round-trip'), 'p10a-round-trip');
+    const replayed = replayBackupProjections(opened.records);
+    expect(replayed).toEqual(opened.projectionState);
+    const dayTotals = (await read(`days/${today}`)).totals as unknown as Record<string, number>;
+    expect(opened.totals?.[today]).toEqual(dayTotals);
+    expect(recalculateBackupTotals(replayed)[today]).toEqual(dayTotals);
+    expect(dayTotals).toEqual({ activeTransactionCount: 2, bentoCount: 0, otherMealCount: 1, mealTotal: 70,
+      retainedReceipts: 200, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0 });
+    const projected = (transactionId: string) => replayed[`transactions/${transactionId}`] as Record<string, unknown>;
+    expect(projected(corrected.transactionId)).toMatchObject({ type: 'order', status: 'active', mealPrice: 70, amount: 30, revision: 2 });
+    expect(projected(kept.transactionId)).toMatchObject({ type: 'payment', status: 'active', mealPrice: 0, paidAmount: 100, amount: 100 });
+    for (const voided of [refunded, cashUndo, paymentUndo, voidedRefund]) {
+      expect(projected(voided.transactionId)).toMatchObject({ status: 'voided', revision: 2 });
+    }
+    expect((replayed[`students/${studentId}`] as Record<string, unknown>).currentBalance)
+      .toBe((await read(`students/${studentId}`)).currentBalance);
+    expect((await read(`students/${studentId}`)).currentBalance).toBe(230);
+
+    // A forged replay that keeps the receipt chain but changes the corrected price is rejected.
+    const forged = structuredClone(opened);
+    (forged.records[3]!.after!.transaction as Record<string, unknown>).mealPrice = 60;
+    expect(() => validateBackupManifest(forged)).toThrow(/seq 4/);
+    // A P10a receipt whose student projection is dropped no longer matches the fixed shape.
+    const dropped = structuredClone(opened);
+    delete (dropped.records[5]!.before as Record<string, unknown>).student;
+    expect(() => validateBackupManifest(dropped)).toThrow(/seq 6/);
+  });
+
   it('Rules reject an unpaired or fabricated backup receipt', async () => {
     await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 0, []));
     const db = authedDb();
@@ -353,7 +462,7 @@ describeWithEmulator('P14 cloud backup', () => {
     await expect(decryptBackup(broken, 'synthetic-passphrase')).rejects.toThrow();
   });
 
-  it('fails closed for inactive P10/P11 kinds, including plausible but unsafe projection changes', () => {
+  it('fails closed for inactive P11 kinds and for P10a receipts that do not follow the mutation math', () => {
     const head = (seq: number, commandId: string | null) => ({ schemaVersion: 1, datasetId: 'anonymous-p14-fixture', seq,
       lastCommandId: commandId, maintenance: false, goLiveDate: '2026-10-01', updatedAt: { _type: 'timestamp', seconds: seq, nanoseconds: 0 } });
     const timestamp = (seconds: number) => ({ _type: 'timestamp', seconds, nanoseconds: 0 });
@@ -408,7 +517,8 @@ describeWithEmulator('P14 cloud backup', () => {
       [`students/${studentId}`]: student(3, 70, uuid(5)),
       'transactions/transaction-1': transaction(4, 60, 30, uuid(5)),
     };
-    const assertRejected = (candidate: BackupCommandRecord[], initial: Record<string, unknown> = baseState) => {
+    const assertRejected = (candidate: BackupCommandRecord[], initial: Record<string, unknown> = baseState,
+      reason: RegExp = /尚無完整備份語義，拒絕匯出/) => {
       // Kind rejection happens before the manifest's final replay comparison.
       // Keep a valid, independently replayed projection snapshot even when the
       // candidate record contains an intentionally forged semantic mutation.
@@ -418,16 +528,19 @@ describeWithEmulator('P14 cloud backup', () => {
         previousPackageSha256: null, generatedAt: '2026-10-16T03:00:00.000Z', recordCount: candidate.length,
         records: candidate, baseState: initial, headCommandId: candidate.at(-1)?.commandId ?? null,
         projectionState: plausibleProjectionState, totals: recalculateBackupTotals(plausibleProjectionState),
-      })).toThrow(/尚無完整備份語義，拒絕匯出/);
+      })).toThrow(reason);
     };
-    assertRejected(records);
+    // P10a kinds are decodable now. This hand-built CorrectTransaction omits payload.amount and carries a
+    // zero cashEffect, so it must still fail closed; real P10a receipts are proven in the Emulator cases below.
+    assertRejected(records, baseState, /seq 5/);
 
     const changedType = structuredClone(records);
     const changedTransaction = changedType[0]!.after!.transaction as Record<string, unknown>;
     changedTransaction.type = 'payment';
     changedTransaction.mealPrice = 0;
     changedTransaction.amount = 30;
-    assertRejected([changedType[0]!]);
+    (changedType[0]!.payload as Record<string, unknown>).amount = 10;
+    assertRejected([changedType[0]!], baseState, /seq 5/);
 
     const changedOpeningCash = structuredClone(records);
     (changedOpeningCash[1]!.after!.day as Record<string, unknown>).openingCash = 999;
@@ -439,7 +552,8 @@ describeWithEmulator('P14 cloud backup', () => {
       'daily_settlements/2026-10-16': { dayId: '2026-10-16', revision: 1, status: 'closed', sourceSeq: 6,
         lastCommandId: uuid(6), committedAt: timestamp(6) },
     };
-    for (const [kind, initial] of [['CorrectTransaction', baseState], ['CloseDay', correctedState], ['ReopenDay', closedState]] as const) {
+    assertRejected([records.find(item => item.kind === 'CorrectTransaction')!], baseState, /seq 5/);
+    for (const [kind, initial] of [['CloseDay', correctedState], ['ReopenDay', closedState]] as const) {
       assertRejected([records.find(item => item.kind === kind)!], initial);
     }
   });

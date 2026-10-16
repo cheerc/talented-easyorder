@@ -4,6 +4,15 @@ import type { CommandResult } from '../../domain/cloudCommands';
 import { normalizeStudentCode } from '../../domain/student';
 import { expectedCashFromTotals } from '../../domain/cloudLedgerProjection';
 import {
+  applyTransactionMutation,
+  mutationCashEffect,
+  studentContribution,
+  UNDO_REASON,
+  UNDO_WINDOW_MS,
+  type TransactionMutationKind,
+  type TransactionMutationPayload,
+} from '../../domain/cloudTransactionMutation';
+import {
   createCloudOrderRepository,
   type CloudOrderRepository,
   type CloudOrderSnapshot,
@@ -12,6 +21,7 @@ import {
   type CreateCloudOrderInput,
   type CreateCloudPaymentInput,
   type CreateCloudRefundInput,
+  type CloudTransactionMutationInput,
 } from '../../firebase/cloudOrderRepository';
 import type { CloudStudentRecord } from '../../firebase/cloudStudentRepository';
 import { formatTaipeiTime } from '../../utils/dateTime';
@@ -35,7 +45,31 @@ type PreparedCommand =
   | ({ kind: 'order' } & Omit<CreateCloudOrderInput, 'leaseEpoch'> & PreparedMeta)
   | ({ kind: 'payment' } & Omit<CreateCloudPaymentInput, 'leaseEpoch'> & PreparedMeta)
   | ({ kind: 'cash' } & Omit<CreateCloudCashMovementInput, 'leaseEpoch'> & PreparedMeta)
-  | ({ kind: 'refund' } & Omit<CreateCloudRefundInput, 'leaseEpoch'> & PreparedMeta);
+  | ({ kind: 'refund' } & Omit<CreateCloudRefundInput, 'leaseEpoch'> & PreparedMeta)
+  | ({ kind: 'mutation'; commandId: string; input: Omit<CloudTransactionMutationInput, 'leaseEpoch'> } & PreparedMeta);
+
+/** P10a：剛確認入帳的新增，5 秒內可由原建立者撤回（spec §7.2）。 */
+interface UndoOffer {
+  commandId: string;
+  transactionId: string;
+  label: string;
+  expiresAt: number;
+}
+
+type EditAction = 'correct' | 'void' | 'cancel-keep' | 'cancel-refund';
+
+/** P10a：E 付款明細或櫃台收支列上的更正／作廢／取消表單。 */
+interface EditDraft {
+  transactionId: string;
+  action: EditAction;
+  mealPriceText: string;
+  paidAmountText: string;
+  amountText: string;
+  note: string;
+  reason: string;
+}
+
+const CASHIER_ID = '__cashier__';
 
 /** F1 entry: today's meal (Q), other meal, or a payment (W). */
 type EntryMode = 'bento' | 'other' | 'payment';
@@ -74,6 +108,8 @@ interface OrdersPageState {
   refundAmountText: string;
   refundReason: string;
   refundConfirmOpen: boolean;
+  edit: EditDraft | null;
+  undoOffer: UndoOffer | null;
   recovery: { command: PreparedCommand; phase: RecoveryPhase } | null;
   /** An unresolved command left by an earlier page load (refresh or closed tab). */
   storedPending: (PendingRecord & { checking: boolean; message: string }) | null;
@@ -99,6 +135,7 @@ const freshDraft = () => ({
   refundAmountText: '',
   refundReason: '',
   refundConfirmOpen: false,
+  edit: null as EditDraft | null,
 });
 
 function initialState(scopeKey: string): OrdersPageState {
@@ -111,6 +148,7 @@ function initialState(scopeKey: string): OrdersPageState {
     actionError: '',
     notice: '',
     ...freshDraft(),
+    undoOffer: null,
     recovery: null,
     storedPending: null,
   };
@@ -169,7 +207,16 @@ function isAuthorizationLoss(error: unknown): boolean {
   return ['LEASE_LOST', 'UNAUTHORIZED', 'ACCESS_BUSY'].includes(errorCode(error));
 }
 
+const MUTATION_NOUN: Record<TransactionMutationKind, string> = {
+  CorrectTransaction: '更正',
+  VoidTransaction: '作廢',
+  CancelKeepDeposit: '取消訂餐（留款）',
+  CancelRefund: '取消訂餐並退款',
+  Undo: '撤回',
+};
+
 function commandNoun(command: PreparedCommand): string {
+  if (command.kind === 'mutation') return MUTATION_NOUN[command.input.kind];
   if (command.kind === 'order') return '訂餐';
   if (command.kind === 'payment') return '繳費';
   if (command.kind === 'refund') return '退款';
@@ -177,6 +224,10 @@ function commandNoun(command: PreparedCommand): string {
 }
 
 function successText(command: PreparedCommand, seq: number): string {
+  if (command.kind === 'mutation') {
+    if (command.input.kind === 'Undo') return `已撤回 ${command.label}，帳戶餘額與現金已回復（命令序號 ${seq}）`;
+    return `已確認 ${command.label} 的${commandNoun(command)}完成（命令序號 ${seq}）`;
+  }
   if (command.kind === 'order') return `已確認 ${command.label} 訂餐完成（命令序號 ${seq}）`;
   if (command.kind === 'payment') return `已確認 ${command.label} 繳費 $${command.paidAmount} 完成（命令序號 ${seq}）`;
   if (command.kind === 'refund') return `已確認 ${command.label} 退款 $${command.amount} 完成（命令序號 ${seq}）`;
@@ -184,6 +235,9 @@ function successText(command: PreparedCommand, seq: number): string {
 }
 
 function sendCommand(repository: CloudOrderRepository, command: PreparedCommand, leaseEpoch: number) {
+  if (command.kind === 'mutation') {
+    return repository.mutateTransaction({ ...command.input, leaseEpoch } as CloudTransactionMutationInput);
+  }
   if (command.kind === 'payment') {
     return repository.createPayment({
       commandId: command.commandId,
@@ -239,7 +293,13 @@ function sendCommand(repository: CloudOrderRepository, command: PreparedCommand,
   });
 }
 
-function definiteFailureText(code: string, message: string): string {
+function definiteFailureText(command: PreparedCommand, code: string, message: string): string {
+  if (command.kind === 'mutation') {
+    const noun = commandNoun(command);
+    if (code === 'REVISION_CONFLICT') return `這筆交易、學生或營業日已在別處變更，${noun}沒有生效。已重新讀取最新資料，請確認後再操作。`;
+    if (code === 'DAY_CLOSED') return `這個營業日已關帳，${noun}沒有生效。`;
+    return `${noun}沒有生效：${message || '伺服器拒絕了這筆命令'}`;
+  }
   if (code === 'REVISION_CONFLICT') return '伺服器上的學生、菜單或營業日已變更，這筆沒有入帳。已重新讀取最新資料，請確認金額後再登記。';
   if (code === 'DAY_CLOSED') return '今日已關帳，這筆沒有入帳。';
   if (code === 'MAINTENANCE') return '系統正在維護，這筆沒有入帳。';
@@ -275,6 +335,91 @@ function itemLabel(tx: CloudOrderTransactionRecord): string {
   if (tx.mealKind === 'bento') return `今日餐點：${tx.menuNameSnapshot}`;
   return `其他餐點：${tx.otherItemName ?? ''}`;
 }
+
+function signedMoney(value: number): string {
+  if (value === 0) return '不變';
+  return value > 0 ? `+$${value}` : `−$${Math.abs(value)}`;
+}
+
+function cashierLabel(tx: CloudOrderTransactionRecord): string {
+  return tx.paidAmount > 0 ? `櫃台收入 $${tx.paidAmount}` : `櫃台支出 $${tx.mealPrice}`;
+}
+
+function editDraftFor(tx: CloudOrderTransactionRecord, action: EditAction): EditDraft {
+  return {
+    transactionId: tx.transactionId,
+    action,
+    mealPriceText: String(tx.mealPrice),
+    paidAmountText: String(tx.paidAmount),
+    amountText: tx.type === 'refund' ? String(tx.amount)
+      : tx.type === 'expense' ? String(tx.paidAmount > 0 ? tx.paidAmount : tx.mealPrice) : '',
+    note: tx.note,
+    reason: '',
+  };
+}
+
+/** Builds the mutation the edit form describes; amounts are checked here, the reason only on submit. */
+function editMutation(tx: CloudOrderTransactionRecord, edit: EditDraft): TransactionMutationPayload | { error: string } {
+  const reason = edit.reason.trim();
+  if (edit.action === 'void') return { kind: 'VoidTransaction', payload: { reason } };
+  if (edit.action === 'cancel-keep') return { kind: 'CancelKeepDeposit', payload: { reason } };
+  if (edit.action === 'cancel-refund') return { kind: 'CancelRefund', payload: { reason } };
+  const note = edit.note.trim();
+  const amountError = { error: '金額必須是 0 到 1,000,000 的整數' };
+  if (tx.type === 'order') {
+    const mealPrice = parseAmount(edit.mealPriceText, null);
+    const paidAmount = parseAmount(edit.paidAmountText, 0);
+    if (mealPrice === null || paidAmount === null) return amountError;
+    return { kind: 'CorrectTransaction', payload: { mealPrice, paidAmount, amount: paidAmount - mealPrice, note, reason } };
+  }
+  if (tx.type === 'payment') {
+    const paidAmount = parseAmount(edit.paidAmountText, null);
+    if (paidAmount === null) return amountError;
+    return { kind: 'CorrectTransaction', payload: { mealPrice: 0, paidAmount, amount: paidAmount, note, reason } };
+  }
+  const value = parseAmount(edit.amountText, null);
+  if (value === null) return amountError;
+  if (tx.type === 'refund') {
+    return { kind: 'CorrectTransaction', payload: { mealPrice: 0, paidAmount: 0, amount: value, note, reason } };
+  }
+  const income = tx.paidAmount > 0;
+  const mealPrice = income ? 0 : value;
+  const paidAmount = income ? value : 0;
+  return { kind: 'CorrectTransaction', payload: { mealPrice, paidAmount, amount: paidAmount - mealPrice, note, reason } };
+}
+
+interface MutationPreview {
+  cashDelta: number;
+  reasonKind: string;
+  balanceBefore: number | null;
+  balanceAfter: number | null;
+}
+
+/** Same arithmetic as Rules (shared module), so the preview shows exactly what the server will accept. */
+function previewMutation(
+  tx: CloudOrderTransactionRecord,
+  mutation: TransactionMutationPayload,
+  student: CloudStudentRecord | null,
+): MutationPreview | { error: string } {
+  try {
+    const after = applyTransactionMutation(tx, mutation);
+    const effect = mutationCashEffect(mutation.kind, tx, after);
+    const balanceAfter = student ? student.currentBalance - studentContribution(tx) + studentContribution(after) : null;
+    if (tx.type === 'refund' && balanceAfter !== null && balanceAfter < 0) {
+      return { error: `退款更正後帳戶餘額會變成 $${balanceAfter}，不能是負數` };
+    }
+    return { cashDelta: effect.delta, reasonKind: effect.reasonKind, balanceBefore: student?.currentBalance ?? null, balanceAfter };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : '這筆交易不能這樣修改' };
+  }
+}
+
+const REASON_KIND_TEXT: Record<string, string> = {
+  correction: '（帳本更正）',
+  refund: '（退還現金給學生）',
+  reversal: '（沖回）',
+  none: '',
+};
 
 function recentSummary(transactions: CloudOrderTransactionRecord[]): string {
   const bento = transactions.filter(tx => tx.type === 'order' && tx.mealKind === 'bento').length;
@@ -459,6 +604,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     () => (snapshot?.transactions ?? []).filter(tx => tx.status === 'active'),
     [snapshot],
   );
+  const allTransactions = useMemo(() => snapshot?.transactions ?? [], [snapshot]);
   const studentsById = useMemo(
     () => new Map((snapshot?.students ?? []).map(student => [student.studentId, student])),
     [snapshot],
@@ -467,6 +613,10 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const selectedTransactions = useMemo(
     () => activeTransactions.filter(tx => tx.studentId === page.selectedStudentId),
     [activeTransactions, page.selectedStudentId],
+  );
+  const selectedAllTransactions = useMemo(
+    () => allTransactions.filter(tx => tx.studentId === page.selectedStudentId),
+    [allTransactions, page.selectedStudentId],
   );
   const selectedOrderCount = selectedTransactions.filter(tx => tx.type === 'order').length;
 
@@ -511,7 +661,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const previewBalance = selectedStudent && mealPrice !== null && paidAmount !== null
     ? selectedStudent.currentBalance + paidAmount - mealPrice
     : null;
-  const cashierRows = useMemo(() => activeTransactions.filter(tx => tx.type === 'expense'), [activeTransactions]);
+  const cashierRows = useMemo(() => allTransactions.filter(tx => tx.type === 'expense'), [allTransactions]);
   const cashPosition = day ? expectedCashFromTotals(day.openingCash, day.totals) : null;
   const cashAmount = parseAmount(page.cashAmountText, null);
   const refundAmount = parseAmount(page.refundAmountText, null);
@@ -545,7 +695,13 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     if (!isCurrent(key, generation)) return;
     if (result.ok && result.receipt.commandId === command.commandId) {
       clearPendingIf(command.commandId);
-      updateFor(key, generation, previous => ({ ...previous, recovery: null }));
+      const undoOffer: UndoOffer | null = command.kind === 'mutation' ? null : {
+        commandId: command.commandId,
+        transactionId: command.transactionId,
+        label: `${command.label} 的${commandNoun(command)}`,
+        expiresAt: Date.now() + UNDO_WINDOW_MS,
+      };
+      updateFor(key, generation, previous => ({ ...previous, recovery: null, undoOffer }));
       await loadSnapshot({ notice: successText(command, result.receipt.seq) });
       return;
     }
@@ -565,7 +721,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     // A definite rejection: nothing was committed. Re-read the server so the next attempt sees fresh revisions.
     clearPendingIf(command.commandId);
     updateFor(key, generation, previous => ({ ...previous, recovery: null }));
-    await loadSnapshot({ keepDraft: true, actionError: definiteFailureText(result.error.code, result.error.message) });
+    await loadSnapshot({ keepDraft: true, actionError: definiteFailureText(command, result.error.code, result.error.message) });
   };
 
   const dispatch = async (command: PreparedCommand, phase: RecoveryPhase) => {
@@ -583,6 +739,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       notice: '',
       confirmDuplicateOpen: false,
       refundConfirmOpen: false,
+      undoOffer: null,
       recovery: { command, phase },
     }));
     let result: CommandResult;
@@ -767,6 +924,108 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     void dispatch(command, 'submitting');
   };
 
+  /** Freezes one mutation of an existing row with the revisions this screen last read (spec §6.2). */
+  const submitMutation = (tx: CloudOrderTransactionRecord, mutation: TransactionMutationPayload, label: string): boolean => {
+    if (!snapshot || !day || busy || orderingBlocked) return false;
+    const student = tx.studentId === CASHIER_ID ? null : studentsById.get(tx.studentId) ?? null;
+    if (tx.studentId !== CASHIER_ID && !student) {
+      setPageStateRaw(previous => ({ ...previous, actionError: '找不到這筆交易的帳戶，請重新載入。' }));
+      return false;
+    }
+    const commandId = newId();
+    if (!commandId) {
+      setPageStateRaw(previous => ({ ...previous, actionError: '此瀏覽器無法產生安全的命令編號，未送出。' }));
+      return false;
+    }
+    const command: PreparedCommand = {
+      kind: 'mutation',
+      commandId,
+      input: {
+        commandId,
+        transactionId: tx.transactionId,
+        studentId: tx.studentId,
+        dayId: tx.businessDate,
+        expectedTransactionRevision: tx.revision,
+        expectedStudentRevision: student ? student.revision : null,
+        expectedDayRevision: day.revision,
+        ...mutation,
+      } as Omit<CloudTransactionMutationInput, 'leaseEpoch'>,
+      label,
+      datasetId: snapshot.datasetId,
+    };
+    writePending({ uid: uidFromIdentity(identityKey), datasetId: snapshot.datasetId, commandId });
+    void dispatch(command, 'submitting');
+    return true;
+  };
+
+  const undoTransaction = page.undoOffer
+    ? allTransactions.find(tx => tx.transactionId === page.undoOffer!.transactionId && tx.status === 'active') ?? null
+    : null;
+  const undoMutation: TransactionMutationPayload | null = page.undoOffer
+    ? { kind: 'Undo', payload: { targetCommandId: page.undoOffer.commandId, reason: UNDO_REASON } }
+    : null;
+  const undoPreview = undoTransaction && undoMutation
+    ? previewMutation(undoTransaction, undoMutation, studentsById.get(undoTransaction.studentId) ?? null)
+    : null;
+
+  const undoLast = () => {
+    const offer = page.undoOffer;
+    if (!offer || !undoTransaction || !undoMutation) return;
+    if (Date.now() > offer.expiresAt) {
+      setPageStateRaw(previous => ({ ...previous, undoOffer: null }));
+      return;
+    }
+    submitMutation(undoTransaction, undoMutation, offer.label);
+  };
+
+  const openEdit = (tx: CloudOrderTransactionRecord, action: EditAction) => {
+    if (busy || tx.status !== 'active') return;
+    setPageStateRaw(previous => ({
+      ...previous,
+      paymentDetailsOpen: false,
+      edit: editDraftFor(tx, action),
+      actionError: '',
+      notice: '',
+    }));
+  };
+
+  const updateEdit = (change: Partial<EditDraft>) => {
+    setPageStateRaw(previous => (previous.edit ? { ...previous, edit: { ...previous.edit, ...change } } : previous));
+  };
+
+  const editTransaction = page.edit
+    ? allTransactions.find(tx => tx.transactionId === page.edit!.transactionId) ?? null
+    : null;
+  const editStudent = editTransaction && editTransaction.studentId !== CASHIER_ID
+    ? studentsById.get(editTransaction.studentId) ?? null
+    : null;
+  const editBuilt = editTransaction && page.edit ? editMutation(editTransaction, page.edit) : null;
+  const editPreview = editTransaction && editBuilt && !('error' in editBuilt)
+    ? previewMutation(editTransaction, editBuilt, editStudent)
+    : editBuilt && 'error' in editBuilt ? editBuilt : null;
+
+  const submitEdit = (event?: FormEvent) => {
+    event?.preventDefault();
+    if (!page.edit || !editTransaction || !editBuilt || busy) return;
+    if ('error' in editBuilt) {
+      setPageStateRaw(previous => ({ ...previous, actionError: editBuilt.error }));
+      return;
+    }
+    if (editPreview && 'error' in editPreview) {
+      setPageStateRaw(previous => ({ ...previous, actionError: editPreview.error }));
+      return;
+    }
+    const reason = page.edit.reason.trim();
+    if (!reason || reason.length > 500) {
+      setPageStateRaw(previous => ({ ...previous, actionError: '理由必填，且不能超過 500 字' }));
+      return;
+    }
+    const label = editTransaction.studentId === CASHIER_ID
+      ? cashierLabel(editTransaction)
+      : editStudent ? `${editStudent.studentCode} ${editStudent.displayName}` : '';
+    submitMutation(editTransaction, editBuilt, label);
+  };
+
   const openRefundPanel = () => {
     if (busy || !selectedStudent) return;
     const balance = selectedStudent.currentBalance;
@@ -812,12 +1071,24 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     setPageStateRaw(previous => ({ ...previous, storedPending: null }));
   };
 
+  const undoExpiresAt = page.undoOffer?.expiresAt ?? null;
+  useEffect(() => {
+    if (undoExpiresAt === null) return;
+    // The window is a screen convenience, not a security boundary (spec §7.2): Rules re-check creator, revision 1 and date.
+    const timer = window.setTimeout(() => {
+      setPageStateRaw(previous => (previous.undoOffer?.expiresAt === undoExpiresAt ? { ...previous, undoOffer: null } : previous));
+    }, Math.max(0, undoExpiresAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [undoExpiresAt]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (pageState.recovery) return;
-      if (pageState.confirmDuplicateOpen || pageState.paymentDetailsOpen || pageState.refundConfirmOpen) {
+      if (pageState.confirmDuplicateOpen || pageState.paymentDetailsOpen || pageState.refundConfirmOpen || pageState.edit) {
         if (event.key === 'Escape') {
-          setPageStateRaw(previous => ({ ...previous, confirmDuplicateOpen: false, paymentDetailsOpen: false, refundConfirmOpen: false }));
+          setPageStateRaw(previous => ({
+            ...previous, confirmDuplicateOpen: false, paymentDetailsOpen: false, refundConfirmOpen: false, edit: null,
+          }));
         }
         return;
       }
@@ -845,7 +1116,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cancelSelection, pageState.confirmDuplicateOpen, pageState.paymentDetailsOpen, pageState.refundConfirmOpen, pageState.recovery, pageState.selectedStudentId]);
+  }, [cancelSelection, pageState.confirmDuplicateOpen, pageState.edit, pageState.paymentDetailsOpen, pageState.refundConfirmOpen, pageState.recovery, pageState.selectedStudentId]);
 
   const bentoCount = day?.totals.bentoCount ?? 0;
   const otherMealCount = day?.totals.otherMealCount ?? 0;
@@ -925,6 +1196,25 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
 
       {page.notice && (
         <div className="cloud-orders__notice" role="status" aria-live="polite">{page.notice}</div>
+      )}
+
+      {page.undoOffer && !busy && (
+        <div className="cloud-orders__notice cloud-orders__undo-bar" data-testid="undo-bar">
+          <span>
+            送錯了？5 秒內可撤回 {page.undoOffer.label}
+            {undoPreview && !('error' in undoPreview) && `：現金 ${signedMoney(undoPreview.cashDelta)}`}
+            {undoPreview && !('error' in undoPreview) && undoPreview.balanceAfter !== null && `，餘額回到 $${undoPreview.balanceAfter}`}
+          </span>
+          <button
+            type="button"
+            className="cloud-orders__btn-secondary"
+            onClick={undoLast}
+            disabled={!undoTransaction || page.loading || Boolean(orderingBlocked) || (undoPreview !== null && 'error' in undoPreview)}
+            data-testid="undo-button"
+          >
+            撤回
+          </button>
+        </div>
       )}
 
       {page.actionError && (
@@ -1376,9 +1666,19 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                 {cashierRows.length > 0 && (
                   <ul className="cloud-orders__recent-list" data-testid="cash-movement-list">
                     {cashierRows.map(tx => (
-                      <li key={tx.transactionId} className="cloud-orders__recent-item">
+                      <li
+                        key={tx.transactionId}
+                        className={`cloud-orders__recent-item ${tx.status === 'voided' ? 'cloud-orders__row--voided' : ''}`}
+                        data-testid={`cash-row-${tx.transactionId}`}
+                      >
                         <span>{formatTaipeiTime(tx.createdAt)} {tx.paidAmount > 0 ? '收入' : '支出'} ${tx.paidAmount > 0 ? tx.paidAmount : tx.mealPrice}</span>
-                        <span className="cloud-orders__recent-badge">{tx.note}</span>
+                        <span className="cloud-orders__recent-badge">{tx.status === 'voided' ? '已作廢' : tx.note}</span>
+                        {tx.status === 'active' && (
+                          <span className="cloud-orders__row-actions">
+                            <button type="button" onClick={() => openEdit(tx, 'correct')} disabled={busy || Boolean(orderingBlocked)}>更正</button>
+                            <button type="button" onClick={() => openEdit(tx, 'void')} disabled={busy || Boolean(orderingBlocked)}>作廢</button>
+                          </span>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -1451,25 +1751,203 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
         </div>
       )}
 
+      {page.edit && editTransaction && !busy && (
+        <div className="cloud-orders__modal-backdrop" role="dialog" aria-modal="true" aria-label="修改交易">
+          <div className="cloud-orders__modal" data-testid="edit-transaction-modal">
+            <form onSubmit={submitEdit} aria-label="修改交易">
+              <h3>
+                修改：{editTransaction.studentId === CASHIER_ID
+                  ? cashierLabel(editTransaction)
+                  : `${editStudent?.displayName ?? ''} ${itemLabel(editTransaction)}`}
+              </h3>
+              <div className="cloud-orders__mode-selector">
+                <button
+                  type="button"
+                  className="cloud-orders__mode-btn"
+                  aria-pressed={page.edit.action === 'correct'}
+                  onClick={() => updateEdit({ action: 'correct' })}
+                >
+                  更正金額或備註
+                </button>
+                {editTransaction.type === 'order' ? (
+                  <>
+                    <button
+                      type="button"
+                      className="cloud-orders__mode-btn"
+                      aria-pressed={page.edit.action === 'cancel-keep'}
+                      onClick={() => updateEdit({ action: 'cancel-keep' })}
+                    >
+                      {editTransaction.paidAmount > 0 ? '取消訂餐，錢留在帳戶' : '取消訂餐'}
+                    </button>
+                    {editTransaction.paidAmount > 0 && (
+                      <button
+                        type="button"
+                        className="cloud-orders__mode-btn"
+                        aria-pressed={page.edit.action === 'cancel-refund'}
+                        onClick={() => updateEdit({ action: 'cancel-refund' })}
+                      >
+                        取消訂餐並退還 ${editTransaction.paidAmount}
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="cloud-orders__mode-btn"
+                    aria-pressed={page.edit.action === 'void'}
+                    onClick={() => updateEdit({ action: 'void' })}
+                  >
+                    作廢（記錯了）
+                  </button>
+                )}
+              </div>
+
+              {page.edit.action === 'correct' && (
+                <div className="cloud-orders__form-grid">
+                  {editTransaction.type === 'order' && (
+                    <div className="cloud-orders__field">
+                      <label htmlFor="edit-meal-price">餐費</label>
+                      <input
+                        id="edit-meal-price"
+                        type="text"
+                        inputMode="numeric"
+                        value={page.edit.mealPriceText}
+                        onChange={event => updateEdit({ mealPriceText: event.target.value })}
+                      />
+                    </div>
+                  )}
+                  {(editTransaction.type === 'order' || editTransaction.type === 'payment') && (
+                    <div className="cloud-orders__field">
+                      <label htmlFor="edit-paid-amount">{editTransaction.type === 'payment' ? '繳費金額' : '實收金額'}</label>
+                      <input
+                        id="edit-paid-amount"
+                        type="text"
+                        inputMode="numeric"
+                        value={page.edit.paidAmountText}
+                        onChange={event => updateEdit({ paidAmountText: event.target.value })}
+                      />
+                    </div>
+                  )}
+                  {(editTransaction.type === 'expense' || editTransaction.type === 'refund') && (
+                    <div className="cloud-orders__field">
+                      <label htmlFor="edit-amount">
+                        {editTransaction.type === 'refund' ? '退款金額' : editTransaction.paidAmount > 0 ? '收入金額' : '支出金額'}
+                      </label>
+                      <input
+                        id="edit-amount"
+                        type="text"
+                        inputMode="numeric"
+                        value={page.edit.amountText}
+                        onChange={event => updateEdit({ amountText: event.target.value })}
+                      />
+                    </div>
+                  )}
+                  <div className="cloud-orders__field">
+                    <label htmlFor="edit-note">
+                      {editTransaction.type === 'refund' ? '退款原因' : editTransaction.type === 'expense' ? '收支原因' : '備註'}
+                    </label>
+                    <input
+                      id="edit-note"
+                      type="text"
+                      value={page.edit.note}
+                      onChange={event => updateEdit({ note: event.target.value })}
+                      maxLength={500}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="cloud-orders__field">
+                <label htmlFor="edit-reason">修改理由（必填，會留在稽核紀錄）</label>
+                <input
+                  id="edit-reason"
+                  type="text"
+                  placeholder="例如：收款金額記錯"
+                  value={page.edit.reason}
+                  onChange={event => updateEdit({ reason: event.target.value })}
+                  maxLength={500}
+                  autoFocus
+                />
+              </div>
+
+              <div className="cloud-orders__preview-bar" data-testid="edit-preview">
+                {editPreview && 'error' in editPreview ? (
+                  <span className="cloud-orders__error">{editPreview.error}</span>
+                ) : editPreview ? (
+                  <>
+                    <span>現金影響：{signedMoney(editPreview.cashDelta)}{REASON_KIND_TEXT[editPreview.reasonKind] ?? ''}</span>
+                    {editPreview.balanceAfter !== null && (
+                      <span>帳戶餘額：${editPreview.balanceBefore} → ${editPreview.balanceAfter}</span>
+                    )}
+                    {page.edit.action === 'void' && editPreview.cashDelta !== 0 && (
+                      <span data-testid="void-ledger-warning">
+                        作廢只更正帳本，不是今天退現金或收現金；要把錢退給學生請改用退款。
+                      </span>
+                    )}
+                  </>
+                ) : null}
+              </div>
+
+              <div className="cloud-orders__actions">
+                <button
+                  type="submit"
+                  className="cloud-orders__btn-primary"
+                  disabled={!page.edit.reason.trim() || Boolean(orderingBlocked) || (editPreview !== null && 'error' in editPreview)}
+                  data-testid="submit-edit-button"
+                >
+                  {page.edit.action === 'correct' ? '確認更正' : page.edit.action === 'void' ? '確認作廢' : '確認取消'}
+                </button>
+                <button
+                  type="button"
+                  className="cloud-orders__btn-secondary"
+                  onClick={() => setPageStateRaw(previous => ({ ...previous, edit: null, actionError: '' }))}
+                >
+                  返回
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {page.paymentDetailsOpen && selectedStudent && (
         <div className="cloud-orders__modal-backdrop" role="dialog" aria-modal="true" aria-label="付款明細">
           <div className="cloud-orders__modal" data-testid="payment-details-modal">
             <h3>{selectedStudent.displayName} 今日付款明細</h3>
-            {selectedTransactions.length === 0 ? (
+            {selectedAllTransactions.length === 0 ? (
               <p className="cloud-orders__muted">今日尚無交易紀錄</p>
             ) : (
               <table className="cloud-orders__table">
                 <thead>
-                  <tr><th>時間</th><th>項目</th><th>餐費</th><th>收款</th><th>退款</th></tr>
+                  <tr><th>時間</th><th>項目</th><th>餐費</th><th>收款</th><th>退款</th><th>修改</th></tr>
                 </thead>
                 <tbody>
-                  {selectedTransactions.map(tx => (
-                    <tr key={tx.transactionId}>
+                  {selectedAllTransactions.map(tx => (
+                    <tr
+                      key={tx.transactionId}
+                      className={tx.status === 'voided' ? 'cloud-orders__row--voided' : ''}
+                      data-testid={`detail-row-${tx.transactionId}`}
+                    >
                       <td>{formatTaipeiTime(tx.createdAt)}</td>
-                      <td>{itemLabel(tx)}</td>
+                      <td>
+                        {itemLabel(tx)}
+                        {tx.status === 'voided' && <span className="cloud-orders__student-badge">已作廢</span>}
+                      </td>
                       <td>${tx.mealPrice}</td>
                       <td>${tx.paidAmount}</td>
                       <td>{tx.type === 'refund' ? `$${tx.amount}` : '—'}</td>
+                      <td>
+                        {tx.status === 'active' && (
+                          <span className="cloud-orders__row-actions">
+                            <button type="button" onClick={() => openEdit(tx, 'correct')} disabled={busy || Boolean(orderingBlocked)}>更正</button>
+                            {tx.type === 'order' ? (
+                              <button type="button" onClick={() => openEdit(tx, 'cancel-keep')} disabled={busy || Boolean(orderingBlocked)}>取消</button>
+                            ) : (
+                              <button type="button" onClick={() => openEdit(tx, 'void')} disabled={busy || Boolean(orderingBlocked)}>作廢</button>
+                            )}
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

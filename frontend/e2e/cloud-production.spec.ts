@@ -985,4 +985,139 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       await session.close();
     }
   });
+
+  test('D06: undoes a payment within 5 seconds, corrects a meal, cancels it with a refund and keeps every record after reload', async ({ browser }) => {
+    const session = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
+    try {
+      const page = session.page;
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toBeVisible();
+
+      // 1. 今日營業日存在且開帳現金確認為 1,000
+      const today = taipeiToday();
+      await page.getByRole('button', { name: '日期與供應商' }).click();
+      const mainVendors = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
+      const dateField = mainVendors.getByLabel('查看或設定日期');
+      if ((await dateField.inputValue()) !== today) {
+        await dateField.fill(today);
+        await mainVendors.getByRole('button', { name: '載入日期' }).click();
+      }
+      await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
+      const createDayBtn = page.getByRole('button', { name: '建立空白營業日' });
+      if (await createDayBtn.isVisible().catch(() => false)) {
+        await createDayBtn.click();
+      }
+      const openingForm = mainVendors.getByRole('form', { name: `${today} 開帳現金` });
+      await openingForm.getByLabel(/開帳現金/).fill('1000');
+      await openingForm.getByRole('button', { name: /開帳金額/ }).click();
+      await expect(openingForm.getByText(/伺服器已確認開帳現金 NT\$ 1,000/)).toBeVisible();
+
+      // 2. 建立學生 008（期初 0）
+      await page.getByRole('button', { name: '學生管理' }).click();
+      await page.getByRole('button', { name: '新增學生' }).click();
+      const studentForm = page.getByRole('form', { name: '新增學生' });
+      await studentForm.getByLabel('學員編號').fill('008');
+      await studentForm.getByRole('textbox', { name: '姓名', exact: true }).fill('林更正');
+      await studentForm.getByRole('textbox', { name: /期初結餘（整數/ }).fill('0');
+      await studentForm.getByRole('radio', { name: /沿用既有核對結餘/ }).check();
+      await studentForm.getByRole('button', { name: '建立學生' }).click();
+      await expect(page.getByTestId('cloud-student-row-008')).toContainText('林更正');
+
+      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await expect(page.getByTestId('cloud-orders-page')).toBeVisible();
+      await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
+      const before = await readAdminDocument('days', today);
+      const beforeTotals = before?.totals as Record<string, number>;
+      const beforeExpected = (before?.openingCash as number) + beforeTotals.retainedReceipts + beforeTotals.cashierIncome
+        - beforeTotals.cashierExpense - beforeTotals.accountRefunds;
+      const beforeTransactions = await listAdminDocuments('transactions');
+      await expect(page.getByTestId('cloud-expected-cash')).toHaveText(`$${beforeExpected}`);
+
+      // 3. 繳費 $200 後 5 秒內撤回：餘額與現金回復
+      await page.getByLabel('搜尋編號、姓名或別名').fill('008');
+      await page.getByTestId('search-result-008').click();
+      await page.getByRole('button', { name: '繳費（W）' }).click();
+      await page.getByLabel(/繳費金額/).fill('200');
+      await page.getByTestId('submit-order-button').click();
+      await expect(page.getByText(/已確認 008 林更正 繳費 \$200 完成/)).toBeVisible();
+      await expect(page.getByTestId('undo-bar')).toContainText('現金 −$200，餘額回到 $0');
+      await page.getByTestId('undo-button').click();
+      await expect(page.getByText(/已撤回 008 林更正 的繳費/)).toBeVisible();
+      await expect(page.getByTestId('cloud-expected-cash')).toHaveText(`$${beforeExpected}`);
+
+      // 4. 其他餐點 $80 實收 $100，再把餐費更正為 $70
+      await page.getByLabel('搜尋編號、姓名或別名').fill('008');
+      await page.getByTestId('search-result-008').click();
+      await page.getByRole('button', { name: '其他餐點' }).click();
+      await page.getByLabel(/餐點品名/).fill('炒麵');
+      await page.getByLabel(/餐點單價/).fill('80');
+      await page.getByLabel(/實收金額/).fill('100');
+      await page.getByTestId('submit-order-button').click();
+      await expect(page.getByText(/已確認 008 林更正 訂餐完成/)).toBeVisible();
+      await expect(page.getByTestId('cloud-expected-cash')).toHaveText(`$${beforeExpected + 100}`);
+
+      await page.getByLabel('搜尋編號、姓名或別名').fill('008');
+      await page.getByTestId('search-result-008').click();
+      await expect(page.getByTestId('selected-student-card')).toContainText('目前餘額：$20');
+      await page.getByTestId('open-payment-details-button').click();
+      const orderRow = page.getByTestId('payment-details-modal').locator('tbody tr').filter({ hasText: '炒麵' });
+      await orderRow.getByRole('button', { name: '更正' }).click();
+      const editModal = page.getByTestId('edit-transaction-modal');
+      await editModal.getByLabel('餐費').fill('70');
+      await expect(editModal.getByTestId('edit-preview')).toContainText('帳戶餘額：$20 → $30');
+      await editModal.getByLabel(/修改理由/).fill('價格記錯');
+      await editModal.getByTestId('submit-edit-button').click();
+      await expect(page.getByText(/已確認 008 林更正 的更正完成/)).toBeVisible();
+
+      // 5. 取消這筆訂餐並退還 $100：訂餐作廢、現金扣回 $100、餘額回到 0
+      await page.getByLabel('搜尋編號、姓名或別名').fill('008');
+      await page.getByTestId('search-result-008').click();
+      await expect(page.getByTestId('selected-student-card')).toContainText('目前餘額：$30');
+      await page.getByTestId('open-payment-details-button').click();
+      await page.getByTestId('payment-details-modal').locator('tbody tr').filter({ hasText: '炒麵' })
+        .getByRole('button', { name: '取消' }).click();
+      await editModal.getByRole('button', { name: '取消訂餐並退還 $100' }).click();
+      await expect(editModal.getByTestId('edit-preview')).toContainText('現金影響：−$100（退還現金給學生）');
+      await editModal.getByLabel(/修改理由/).fill('學生請假');
+      await editModal.getByTestId('submit-edit-button').click();
+      await expect(page.getByText(/已確認 008 林更正 的取消訂餐並退款完成/)).toBeVisible();
+      await expect(page.getByTestId('cloud-expected-cash')).toHaveText(`$${beforeExpected}`);
+
+      // 6. 重新整理後從伺服器讀回：兩筆都保留、都已作廢，命令留著前後值與理由
+      await page.reload();
+      await expect(page.locator('.operator-strip')).toBeVisible();
+      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
+      await expect(page.getByTestId('cloud-expected-cash')).toHaveText(`$${beforeExpected}`);
+      await page.getByLabel('搜尋編號、姓名或別名').fill('008');
+      await page.getByTestId('search-result-008').click();
+      await expect(page.getByTestId('selected-student-card')).toContainText('目前餘額：$0');
+      await page.getByTestId('open-payment-details-button').click();
+      await expect(page.getByTestId('payment-details-modal').locator('tbody tr').filter({ hasText: '已作廢' })).toHaveCount(2);
+
+      const transactions = await listAdminDocuments('transactions');
+      const added = transactions.filter(tx => !beforeTransactions.some(prior => prior.id === tx.id));
+      expect(added.map(tx => [tx.type, tx.status, tx.revision]).sort()).toEqual([['order', 'voided', 3], ['payment', 'voided', 2]]);
+      expect(added.find(tx => tx.type === 'order')).toMatchObject({ mealPrice: 70, paidAmount: 100 });
+      const commands = await listAdminDocuments('commands');
+      const order = added.find(tx => tx.type === 'order')!;
+      const orderCommands = commands.filter(command => (command.targets as Record<string, unknown>)?.transactionId === order.id);
+      expect(orderCommands.map(command => command.kind).sort()).toEqual(['CancelRefund', 'CorrectTransaction', 'CreateOrder']);
+      const correction = orderCommands.find(command => command.kind === 'CorrectTransaction')!;
+      expect(correction).toMatchObject({ reason: '價格記錯' });
+      expect(((correction.before as Record<string, Record<string, unknown>>).transaction).mealPrice).toBe(80);
+      const after = await readAdminDocument('days', today);
+      expect(after?.totals).toMatchObject({
+        retainedReceipts: beforeTotals.retainedReceipts,
+        accountRefunds: beforeTotals.accountRefunds,
+        activeTransactionCount: beforeTotals.activeTransactionCount,
+      });
+
+      await page.keyboard.press('Escape');
+      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
+    } finally {
+      await session.close();
+    }
+  });
 });

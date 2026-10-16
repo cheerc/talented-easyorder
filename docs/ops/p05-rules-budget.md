@@ -300,3 +300,111 @@ Each mutant removes one refund check from `firestore.rules` and runs the matchin
 | day `status in ['open', 'reopened']` in the refund projection | survived: redundant, because the day `affectedKeys` limit already blocks status changes and the command rule checks the status too |
 
 The Rules suite without the P09b Rules (main's Rules against the refund spec) fails 8 of 43 refund cases, so the new tests depend on the new Rules.
+
+## P10a transaction mutations — budget and probe receipt
+
+P10a enables `CorrectTransaction`, `VoidTransaction`, `CancelKeepDeposit`, `CancelRefund` and `Undo`. After merging main `b33fc6b` (P14 adds `RecordBackup`), 19 kinds are enabled and 5 still denied. Contract: [P10a transaction mutations contract](../superpowers/specs/2026-10-16-cloud-transaction-mutations-contract.md).
+
+### Write budget
+
+| Command / write path | Central command-create Rules calls | Projection leaves Rules calls | Read-but-unwritten `VerifyMutation` dependencies | Atomic no-cache total | Max per write |
+|---|---:|---:|---:|---:|---:|
+| Student row (command + dataHead + day + student + existing transaction update) | commandHolder 2 + head before/after 2 + day before/after 2 + student before/after 2 + transaction get/getAfter 2 = **10** | head 2 + day 2 + student 2 + transaction 2 = **8** | operator 0 + lease `approvedOperator` 1 = **1** | **19/20** | **10/10** |
+| Counter-cash row (`__cashier__`; no student write) | commandHolder 2 + head 2 + day 2 + transaction 2 = **8** | head 2 + day 2 + transaction 2 = **6** | **1** | **15/20** | **8/10** |
+
+The transaction leaf is the new `allow update` on `transactions/{id}` (`transactionMutationCommand`: `getAfter` + `exists` of the command). `allow delete` stays `false`.
+
+### Command dispatch rewrite
+
+The mutation branch is the last of the command-create `||` chain. With the old dispatch (`request.resource.data.kind` read in every branch), the first measurement of `P10.17` left only **+1**. Two changes recovered it:
+
+1. `allow create` now calls `validCommandCreate(commandId, command)`, which binds `let kind = command.kind` once; every earlier branch costs one comparison instead of a `request.resource.data` lookup. This also raises the headroom of every existing kind (table below).
+2. `validTransactionMutationCommon` leaves out checks that existing invariants already guarantee:
+   - the kind (the dispatch checked it);
+   - the `transactionId` format, the `dayId` calendar format and `dayId >= goLiveDate` (the transaction exists with `businessDate == dayId`, both were validated at creation, and `goLiveDate` cannot change);
+   - `txAfter.lastCommandId` (the transaction update rule requires it; the revision bump proves that write is in the batch);
+   - `txBefore.type != 'expense'` on the student path (every expense row belongs to `__cashier__`).
+
+Full Emulator regression after the rewrite: 22 files, 491/491.
+
+### Expression headroom
+
+Same probe method as the P09a/P09b appendices: inline `1 == 1 &&` terms at the rule anchor, bisected against a positive Emulator case. A probe raises the cost of **every** write to that document in the case, so a P10 case that first creates an order or payment is capped by that create. Cells marked † are therefore lower bounds for the mutation itself (they equal the create's own headroom).
+
+| Rule anchor | Case | P09b (main `e01ebdf`) | P10a |
+|---|---|---:|---:|
+| day update | `P07.9a` inherited menu | +24 / +25 | +23 / +24 |
+| day update | `P08.8` CreateOrder | +11 / +12 | +11 / +12 |
+| command create | `P08.8` CreateOrder | +16 / +17 | +20 / +21 |
+| student update | `P08.8` CreateOrder | +22 / +23 | +22 / +23 |
+| transaction create | `P08.8` CreateOrder | +34 / +35 | +34 / +35 |
+| day update | `P09.8` cash movement, max payload | +39 / +40 | +39 / +40 |
+| command create | `P09.8` cash movement, max payload | +26 / +27 | +31 / +32 |
+| command create | `P09b.9` refund, max payload | +14 / +15 | +19 / +20 |
+| day update | `P09b.9` refund, max payload | +38 / +39 | +37 / +38 |
+| student update | `P09b.9` refund, max payload | +88 / +89 | +88 / +89 |
+| command create | `P10.17` every kind, 500-char reason and note | — | +19 / +20 |
+| transaction update | `P10.17` | — | +96 / +97 |
+| dataHead update | `P10.17` | — | +95 / +96 |
+| command create | `P10.1` order correction | — | +20 / +21 |
+| day update | `P10.1` | — | +11 / +12 † |
+| student update | `P10.1` | — | +22 / +23 † |
+| command create | `P10.3` cancel with refund | — | +20 / +21 |
+| command create | `P10.5` payment undo | — | +20 / +21 |
+| day update | `P10.5` | — | +13 / +14 † |
+| student update | `P10.5` | — | +23 / +24 † |
+| transaction update | `P10.5` | — | +96 / +97 |
+| command create | `P10.12` refund corrections | — | +19 / +20 |
+| day update | `P10.12` | — | +37 / +38 † |
+| student update | `P10.12` | — | +78 / +79 |
+| command create | `P10.11` counter-cash corrections | — | +20 / +21 |
+| day update | `P10.11` | — | +13 / +14 † |
+| transaction update | `P10.11` | — | +96 / +97 |
+| command create | `P10.6` counter-cash undo | — | +31 / +32 |
+| day update | `P10.6` | — | +39 / +40 † |
+
+The tightest anchors are still the day rule for `CreateOrder` (+11) and the command rule for mutations and refunds (+19). Re-measure before adding checks to either.
+
+### Mutants
+
+Each mutant removes one P10a check from `firestore.rules` and runs all of `cloudTransactionMutation.spec.ts`. The first round left nine checks untested by raw SDK attacks (the repository refuses those inputs before Rules see them); `P10.25` and a stale-student-revision case in `P10.19` were added for them.
+
+| Removed check | Result |
+|---|---|
+| `cashEffect` equals `mutationCashEffect` | killed (`P10.19`) |
+| `command.reason == payload.reason` | killed (`P10.19`) |
+| student balance `before − old + new` | killed (`P10.19`) |
+| day totals `before − old + new` (8 keys) | killed (`P10.19`) |
+| `CancelRefund`／`Undo` only for today's Taipei date | killed (`P10.25`) |
+| Undo by the creator only | killed (`P10.22`) |
+| Undo names the creating command (`lastCommandId == targetCommandId`) | killed (`P10.25`) |
+| Undo fixed reason | killed (`P10.25`) |
+| cancel only on orders | killed (`P10.22`) |
+| a correction must change something | killed (`P10.25`) |
+| a payment correction stays ≥ 1 | killed (`P10.25`) |
+| a refund correction does not raise into debt | killed (`P10.25`) |
+| keep-deposit clears the menu snapshots | killed (`P10.25`) |
+| Undo requires revision 1 | survived: redundant. `lastCommandId == targetCommandId` already implies the row was written only by its create, since every mutation sets a new unique `lastCommandId`. |
+| `txBefore.status == 'active'` in the command rule | survived: redundant with `before.status == 'active'` in the transaction update rule. |
+| transaction revision bump in the command rule | survived: redundant. If the transaction write is omitted, `command.after.transaction` no longer equals `getAfter(transaction)` and the `cashEffect` check fails. |
+| `expectedRevisions.student` in the command rule | survived: redundant with the same check in the student projection rule. |
+| expense keeps its direction | survived, not isolated: under the mutant, the both-sides attacks in `P10.25` are still denied, but at the 1,000-expression cap on the deny path rather than by logic (the same caveat as the P05 negative cases). The legal counter-cash correction path has +20 on the command rule. |
+
+The new Emulator suite against main's Rules fails 21 of 47 cases (RED); with the P10a Rules it passes 47/47.
+
+### After merging P14 (`b33fc6b`)
+
+`validCommandCreate` gains a last `RecordBackup` branch with the same `validRecordBackup(commandId, command, command.before.head, command.after.head)` arguments as main; `headCommand` keeps main's `RecordBackup` clause. Re-measured on the merged Rules:
+
+| Rule anchor | Case | Main `b33fc6b` | P10a merged |
+|---|---|---:|---:|
+| command create | `P10.17` every kind, 500-char reason and note | — | +19 / +20 |
+| dataHead update | `P10.17` | — | +95 / +96 |
+| command create | `P10.12` refund corrections | — | +19 / +20 |
+| command create | `P09b.9` refund, max payload | — | +19 / +20 |
+| command create | `P08.8` CreateOrder | — | +20 / +21 |
+| command create | P14 atomic `RecordBackup` receipt | — | +74 / +75 |
+| dataHead update | P14 atomic `RecordBackup` receipt | — | +41 / +42 |
+| command create | P14 `CreateStudent` writer integration | +2 / +4 | +3 / +4 |
+
+The new P14 compatibility case (real P10a receipts through export and replay) is capped at **+3** on the command rule by its `CreateStudent` write. That limit already exists on main (+2 to +3, measured with the same probe on main's Rules), so it is not caused by P10a; the dispatch rewrite gives it one more term. Re-measure `CreateStudent` before adding any check to the command rule's earlier branches.
