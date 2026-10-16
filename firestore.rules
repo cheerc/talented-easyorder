@@ -43,7 +43,11 @@ service cloud.firestore {
     }
 
     function validStudentId(value) {
-      return validId(value) && value != '__cashier__';
+      return validCommandId(value);
+    }
+
+    function validStudentCode(value) {
+      return value is string && value.matches('^(00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,5})$');
     }
 
     function validDisplayName(value) {
@@ -115,11 +119,12 @@ service cloud.firestore {
 
     function validStudent(student, studentId) {
       return exactMap(student, [
-          'studentId', 'displayName', 'aliases', 'status', 'openingBalance', 'currentBalance',
+          'studentId', 'studentCode', 'displayName', 'aliases', 'status', 'openingBalance', 'currentBalance',
           'createdAt', 'revision', 'lastCommandId', 'updatedAt'
         ])
         && student.studentId == studentId
         && validStudentId(studentId)
+        && validStudentCode(student.studentCode)
         && validDisplayName(student.displayName)
         && student.aliases is list && validAliases(student.aliases)
         && student.status in ['active', 'inactive']
@@ -219,7 +224,7 @@ service cloud.firestore {
         && validCommandId(commandId)
         && command.commandId == commandId
         && command.kind in [
-          'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus',
+          'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
           'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash'
         ]
         && command.seq is int && command.seq == head.seq + 1
@@ -229,7 +234,7 @@ service cloud.firestore {
         && command.actor.uid == request.auth.uid
         && command.actor.email == request.auth.token.email
         && command.committedAt == request.time
-        && (command.kind in ['SetStudentStatus', 'RemoveVendor']
+        && (command.kind in ['SetStudentStatus', 'RemoveVendor', 'ChangeStudentCode']
           ? (command.reason is string && command.reason.size() >= 1 && command.reason.size() <= 500)
           : command.reason == null)
         && command.inputFingerprint is string
@@ -337,6 +342,8 @@ service cloud.firestore {
       let studentId = command.targets.studentId;
       let studentAfter = getAfter(/databases/$(database)/documents/students/$(studentId)).data;
       let opening = command.payload.openingBalance;
+      let code = command.payload.studentCode;
+      let codeIndexAfter = getAfter(/databases/$(database)/documents/studentCodes/$(code)).data;
       return commandHolder(command.leaseEpoch)
         && commandEnvelope(commandId, command, head, headAfter)
         && command.kind == 'CreateStudent'
@@ -344,7 +351,8 @@ service cloud.firestore {
         && validStudentId(studentId)
         && exactMap(command.expectedRevisions, ['student'])
         && command.expectedRevisions.student == 0
-        && exactMap(command.payload, ['displayName', 'aliases', 'openingBalance'])
+        && exactMap(command.payload, ['studentCode', 'displayName', 'aliases', 'openingBalance'])
+        && validStudentCode(code)
         && exactMap(opening, ['amount', 'asOfDate', 'note'])
         && opening.amount is int
         && opening.amount >= -1000000000 && opening.amount <= 1000000000
@@ -362,6 +370,7 @@ service cloud.firestore {
         && command.reason == null
         && studentAfter is map
         && studentAfter.studentId == studentId
+        && studentAfter.studentCode == code
         && studentAfter.displayName == command.payload.displayName
         && studentAfter.aliases == command.payload.aliases
         && studentAfter.status == 'active'
@@ -374,6 +383,56 @@ service cloud.firestore {
         && studentAfter.revision == 1
         && studentAfter.lastCommandId == commandId
         && studentAfter.updatedAt == request.time
+        && !exists(/databases/$(database)/documents/studentCodes/$(code))
+        && codeIndexAfter is map
+        && codeIndexAfter.studentId == studentId
+        && codeIndexAfter.lastCommandId == commandId
+        && codeIndexAfter.updatedAt == request.time
+        && validStudentCashEffect(command.cashEffect);
+    }
+
+    function validChangeStudentCode(commandId, command) {
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let studentId = command.targets.studentId;
+      let studentBefore = get(/databases/$(database)/documents/students/$(studentId)).data;
+      let studentAfter = getAfter(/databases/$(database)/documents/students/$(studentId)).data;
+      let newCode = command.payload.studentCode;
+      let oldCode = studentBefore.studentCode;
+      let newIndexAfter = getAfter(/databases/$(database)/documents/studentCodes/$(newCode)).data;
+      return commandHolder(command.leaseEpoch)
+        && commandEnvelope(commandId, command, head, headAfter)
+        && command.kind == 'ChangeStudentCode'
+        && exactMap(command.targets, ['studentId'])
+        && validStudentId(studentId)
+        && exactMap(command.expectedRevisions, ['student'])
+        && command.expectedRevisions.student is int
+        && command.expectedRevisions.student >= 1
+        && exactMap(command.payload, ['studentCode', 'reason'])
+        && validStudentCode(newCode)
+        && command.payload.reason is string && command.payload.reason.size() >= 1 && command.payload.reason.size() <= 500
+        && exactMap(command.before, ['head', 'student'])
+        && exactMap(command.after, ['head', 'student'])
+        && command.before.head == head
+        && command.after.head == headAfter
+        && command.before.student == studentBefore
+        && command.after.student == studentAfter
+        && command.studentId == studentId
+        && command.businessDate == null
+        && command.reason == command.payload.reason
+        && studentBefore.revision == command.expectedRevisions.student
+        && studentAfter.revision == studentBefore.revision + 1
+        && studentBefore.studentCode != newCode
+        && studentAfter.studentCode == newCode
+        && studentAfter.lastCommandId == commandId
+        && studentAfter.updatedAt == request.time
+        && studentAfter.diff(studentBefore).affectedKeys().hasOnly(['studentCode', 'revision', 'lastCommandId', 'updatedAt'])
+        && !exists(/databases/$(database)/documents/studentCodes/$(newCode))
+        && newIndexAfter is map
+        && newIndexAfter.studentId == studentId
+        && newIndexAfter.lastCommandId == commandId
+        && newIndexAfter.updatedAt == request.time
+        && !existsAfter(/databases/$(database)/documents/studentCodes/$(oldCode))
         && validStudentCashEffect(command.cashEffect);
     }
 
@@ -1011,7 +1070,7 @@ service cloud.firestore {
         && ((command.kind in ['CreateOrder', 'CreatePayment']
           && command.expectedRevisions.student == before.revision
           && validStudentAdvance(commandId, command, before, after, mealPrice))
-          || (command.kind in ['EditStudent', 'SetStudentStatus']
+          || (command.kind in ['EditStudent', 'SetStudentStatus', 'ChangeStudentCode']
             && command.expectedRevisions.student == before.revision));
     }
 
@@ -1022,8 +1081,38 @@ service cloud.firestore {
         && command.committedAt == request.time
         && command.kind == 'CreateStudent'
         && command.targets.studentId == studentId
+        && command.payload.studentCode == after.studentCode
         && command.before.student == null
         && command.after.student == after;
+    }
+
+    function studentCodeCreateCommand(commandId, code, after) {
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      return !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && command.kind in ['CreateStudent', 'ChangeStudentCode']
+        && command.payload.studentCode == code
+        && command.targets.studentId == after.studentId
+        && command.after.student.studentCode == code
+        && after.lastCommandId == commandId
+        && after.updatedAt == request.time
+        && exactMap(after, ['studentId', 'lastCommandId', 'updatedAt']);
+    }
+
+    function studentCodeDeleteCommand(code, beforeData) {
+      let studentAfter = getAfter(/databases/$(database)/documents/students/$(beforeData.studentId)).data;
+      let commandId = studentAfter.lastCommandId;
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      return !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && command.kind == 'ChangeStudentCode'
+        && command.targets.studentId == beforeData.studentId
+        && command.before.student.studentCode == code
+        && command.after.student.studentCode != code
+        && command.after.student.studentCode == command.payload.studentCode
+        && studentAfter.studentCode == command.payload.studentCode;
     }
 
     function transactionCommand(commandId, transactionId, after) {
@@ -1119,6 +1208,7 @@ service cloud.firestore {
       allow create: if commandId == request.resource.data.commandId
         && ((request.resource.data.kind == 'EnsureDay' && validEnsureDay(commandId, request.resource.data))
           || (request.resource.data.kind == 'CreateStudent' && validCreateStudent(commandId, request.resource.data))
+          || (request.resource.data.kind == 'ChangeStudentCode' && validChangeStudentCode(commandId, request.resource.data))
           || (request.resource.data.kind in ['EditStudent', 'SetStudentStatus']
             && validStudentMutation(commandId, request.resource.data))
           || (request.resource.data.kind == 'SaveVendor' && validSaveVendor(commandId, request.resource.data))
@@ -1156,11 +1246,20 @@ service cloud.firestore {
       allow update: if request.resource.data.lastCommandId is string
         && studentWriteCommand(request.resource.data.lastCommandId, studentId, resource.data, request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'currentBalance', 'displayName', 'aliases', 'status', 'revision', 'lastCommandId', 'updatedAt'
+          'currentBalance', 'displayName', 'aliases', 'status', 'studentCode', 'revision', 'lastCommandId', 'updatedAt'
         ])
         && validStudent(request.resource.data, studentId)
         && request.resource.data.revision == resource.data.revision + 1
         && request.resource.data.updatedAt == request.time;
+    }
+
+    match /studentCodes/{code} {
+      allow get, list: if currentHolder();
+      allow create: if request.resource.data.lastCommandId is string
+        && validStudentCode(code)
+        && studentCodeCreateCommand(request.resource.data.lastCommandId, code, request.resource.data);
+      allow delete: if studentCodeDeleteCommand(code, resource.data);
+      allow update: if false;
     }
 
     match /transactions/{transactionId} {

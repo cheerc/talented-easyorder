@@ -3,6 +3,7 @@ export type FaceEnrollmentStatus = 'none' | 'enrolled' | 'disabled' | 'needs_rev
 
 export interface StudentAccount {
   studentId: string;
+  studentCode?: string;
   displayName: string;
   status: StudentStatus;
   currentBalance: number;
@@ -18,6 +19,39 @@ export interface StudentAccount {
   createdAt: string;
   updatedAt: string;
   revision: number;
+}
+
+export const STUDENT_CODE_REGEX = /^(00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,5})$/;
+
+/**
+ * P06b 學生編號唯一正規化：
+ * 去頭尾空白 -> 全形數字轉半形 -> 轉整數 (1..999999) -> 補零到至少 3 位。
+ * 例：5 / 05 / 0005 / ５ 都正規化為 "005"；1000 維持 "1000"。
+ * 若格式不合法或超出範圍，拋出 Error。
+ */
+export function normalizeStudentCode(input: string): string {
+  if (typeof input !== 'string') {
+    throw new Error('學生編號必須為字串');
+  }
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new Error('學生編號不能為空');
+  }
+  const halfWidth = trimmed.replace(/[０-９]/g, ch =>
+    String.fromCharCode(ch.charCodeAt(0) - 0xfee0)
+  );
+  if (!/^\d+$/.test(halfWidth)) {
+    throw new Error('學生編號只能包含數字');
+  }
+  const num = parseInt(halfWidth, 10);
+  if (!Number.isSafeInteger(num) || num < 1 || num > 999999) {
+    throw new Error('學生編號範圍必須在 001 到 999999 之間');
+  }
+  const result = num < 1000 ? String(num).padStart(3, '0') : String(num);
+  if (!STUDENT_CODE_REGEX.test(result)) {
+    throw new Error('學生編號正規化後格式不符');
+  }
+  return result;
 }
 
 /** 期初餘額：有自己的日期、備註與建立時間，不偽裝成收款交易。 */

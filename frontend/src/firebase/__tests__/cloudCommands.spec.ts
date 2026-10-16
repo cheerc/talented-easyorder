@@ -10,6 +10,7 @@ import {
 import {
   Timestamp,
   collection,
+  deleteDoc,
   disableNetwork,
   doc,
   enableNetwork,
@@ -34,7 +35,7 @@ const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST ?? process.env.FIREBASE
 const required = process.env.EASYORDER_REQUIRE_CLOUD_COMMANDS === 'true';
 if (required && !emulatorHost) throw new Error('P05 command Emulator gate requires FIRESTORE_EMULATOR_HOST; refusing to skip.');
 const describeWithEmulator = emulatorHost ? describe : describe.skip;
-const defaultRulesPath = path.resolve(process.cwd(), '../firestore.rules');
+const defaultRulesPath = path.resolve(process.cwd(), process.cwd().endsWith('frontend') ? '../firestore.rules' : 'firestore.rules');
 const rulesPath = path.resolve(process.env.EASYORDER_TEST_RULES_PATH ?? defaultRulesPath);
 const today = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -48,7 +49,18 @@ function shiftDate(date: string, offset: number): string {
 
 const operatorA = { uid: 'p05-operator-a', email: 'p05-a@example.test', displayName: 'Synthetic A', active: true };
 const operatorB = { uid: 'p05-operator-b', email: 'p05-b@example.test', displayName: 'Synthetic B', active: true };
-const studentId = 'p05-student-001';
+const studentId = '22222222-2222-4222-8222-222222222222';
+const sid001 = '22222222-2222-4222-8222-303031000000';
+const sid002 = '22222222-2222-4222-8222-303032000000';
+const sid003 = '22222222-2222-4222-8222-303033000000';
+
+function toStudentUuid(id: string): string {
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    return id;
+  }
+  const hex = Array.from(id).map(c => c.charCodeAt(0).toString(16)).join('').padEnd(12, '0').slice(0, 12);
+  return `22222222-2222-4222-8222-${hex}`;
+}
 const dayId = today;
 const menu = {
   businessDate: dayId,
@@ -116,6 +128,7 @@ async function seedBase(options: { maintenance?: boolean; withBusinessDocs?: boo
     if (options.withBusinessDocs) {
       await setDoc(doc(db, `students/${studentId}`), {
         studentId,
+        studentCode: '001',
         displayName: 'Synthetic Student',
         aliases: [],
         status: 'active',
@@ -123,6 +136,11 @@ async function seedBase(options: { maintenance?: boolean; withBusinessDocs?: boo
         currentBalance: 0,
         createdAt: serverTimestamp(),
         revision: 1,
+        lastCommandId: 'p05-synthetic-student-seed',
+        updatedAt: serverTimestamp(),
+      });
+      await setDoc(doc(db, 'studentCodes/001'), {
+        studentId,
         lastCommandId: 'p05-synthetic-student-seed',
         updatedAt: serverTimestamp(),
       });
@@ -174,17 +192,41 @@ function studentInput(
   asOfDate = today,
   displayName = 'Synthetic Student',
   aliases: string[] = [],
+  studentCode?: string,
 ) {
+  const actualStudentId = toStudentUuid(targetStudentId);
+  const actualCode = studentCode ?? (/^\d+$/.test(targetStudentId) ? targetStudentId : '001');
   return {
     commandId,
     kind: 'CreateStudent' as const,
     leaseEpoch: 1,
-    targets: { studentId: targetStudentId },
+    targets: { studentId: actualStudentId },
     expectedRevisions: { student: 0 as const },
     payload: {
+      studentCode: actualCode,
       displayName,
       aliases,
       openingBalance: { amount, asOfDate, note: 'Synthetic opening' },
+    },
+  };
+}
+
+function changeStudentCodeInput(
+  commandId = '33333333-3333-4333-8333-333333333333',
+  targetStudentId = studentId,
+  studentCode = '015',
+  expectedRevision = 1,
+  reason = 'Synthetic code change',
+) {
+  return {
+    commandId,
+    kind: 'ChangeStudentCode' as const,
+    leaseEpoch: 1,
+    targets: { studentId: toStudentUuid(targetStudentId) },
+    expectedRevisions: { student: expectedRevision },
+    payload: {
+      studentCode,
+      reason,
     },
   };
 }
@@ -202,9 +244,22 @@ type RawOrderArtifacts = {
 type RawStudentArtifacts = {
   commandId: string;
   studentId: string;
+  studentCode: string;
   command: RawMap;
   headAfter: RawMap;
   studentAfter: RawMap;
+  codeIndexAfter: RawMap;
+};
+
+type RawChangeCodeArtifacts = {
+  commandId: string;
+  studentId: string;
+  oldCode: string;
+  newCode: string;
+  command: RawMap;
+  headAfter: RawMap;
+  studentAfter: RawMap;
+  newIndexAfter: RawMap;
 };
 
 type RawStudentMutationInput = {
@@ -340,6 +395,7 @@ async function rawStudentCreateArtifacts(
   const headAfter = { ...headBefore, seq, lastCommandId: input.commandId, updatedAt: now };
   const studentAfter = {
     studentId: input.targets.studentId,
+    studentCode: canonical.payload.studentCode,
     displayName: canonical.payload.displayName,
     aliases: canonical.payload.aliases,
     status: 'active',
@@ -368,7 +424,20 @@ async function rawStudentCreateArtifacts(
     payload: canonical.payload,
     inputFingerprint: fingerprint,
   };
-  return { commandId: input.commandId, studentId: input.targets.studentId, command, headAfter, studentAfter };
+  const codeIndexAfter = {
+    studentId: input.targets.studentId,
+    lastCommandId: input.commandId,
+    updatedAt: now,
+  };
+  return {
+    commandId: input.commandId,
+    studentId: input.targets.studentId,
+    studentCode: canonical.payload.studentCode,
+    command,
+    headAfter,
+    studentAfter,
+    codeIndexAfter,
+  };
 }
 
 async function rawStudentMutationArtifacts(input: RawStudentMutationInput): Promise<RawStudentArtifacts> {
@@ -416,20 +485,125 @@ async function rawStudentMutationArtifacts(input: RawStudentMutationInput): Prom
     payload: canonical.payload,
     inputFingerprint: fingerprint,
   };
-  return { commandId: input.commandId, studentId: canonical.targets.studentId, command, headAfter, studentAfter };
+  return {
+    commandId: input.commandId,
+    studentId: canonical.targets.studentId,
+    studentCode: studentBefore.studentCode ?? '001',
+    command,
+    headAfter,
+    studentAfter,
+    codeIndexAfter: {},
+  };
 }
 
 function rawStudentCreateBatch(
   db: Firestore,
   artifacts: RawStudentArtifacts,
-  options: { omit?: Array<'head' | 'student'> } = {},
+  options: { omit?: Array<'head' | 'student' | 'codeIndex'> } = {},
 ) {
   const omitted = new Set(options.omit ?? []);
   const batch = writeBatch(db);
   if (!omitted.has('head')) batch.update(doc(db, 'system/dataHead'), artifacts.headAfter);
   if (!omitted.has('student')) batch.set(doc(db, `students/${artifacts.studentId}`), artifacts.studentAfter);
+  if (!omitted.has('codeIndex')) batch.set(doc(db, `studentCodes/${artifacts.studentCode}`), artifacts.codeIndexAfter);
   batch.set(doc(db, `commands/${artifacts.commandId}`), artifacts.command);
   return batch;
+}
+
+async function rawStudentChangeCodeArtifacts(
+  input = changeStudentCodeInput(),
+): Promise<RawChangeCodeArtifacts> {
+  const canonical = normalizeEnabledCommandInput(input);
+  if (canonical.kind !== 'ChangeStudentCode') throw new Error('Expected ChangeStudentCode input');
+  const fingerprint = await fingerprintCommandInput(canonical);
+  const [headSnapshot, studentSnapshot] = await withAdmin(async admin => Promise.all([
+    getDoc(doc(admin, 'system/dataHead')),
+    getDoc(doc(admin, `students/${canonical.targets.studentId}`)),
+  ]));
+  if (!headSnapshot.exists() || !studentSnapshot.exists()) {
+    throw new Error('Raw SDK student fixture requires dataHead and student');
+  }
+  const headBefore = headSnapshot.data() as RawMap;
+  const studentBefore = studentSnapshot.data() as RawMap;
+  const seq = headBefore.seq + 1;
+  const now = serverTimestamp();
+  const headAfter = { ...headBefore, seq, lastCommandId: input.commandId, updatedAt: now };
+  const oldCode = String(studentBefore.studentCode);
+  const newCode = canonical.payload.studentCode;
+  const studentAfter = {
+    ...studentBefore,
+    studentCode: newCode,
+    revision: Number(studentBefore.revision) + 1,
+    lastCommandId: input.commandId,
+    updatedAt: now,
+  };
+  const newIndexAfter = {
+    studentId: canonical.targets.studentId,
+    lastCommandId: input.commandId,
+    updatedAt: now,
+  };
+  const command = {
+    commandId: input.commandId,
+    kind: 'ChangeStudentCode',
+    seq,
+    leaseEpoch: input.leaseEpoch,
+    actor: { uid: operatorA.uid, email: operatorA.email },
+    committedAt: now,
+    businessDate: null,
+    studentId: canonical.targets.studentId,
+    targets: canonical.targets,
+    expectedRevisions: canonical.expectedRevisions,
+    before: { head: headBefore, student: studentBefore },
+    after: { head: headAfter, student: studentAfter },
+    reason: canonical.payload.reason,
+    cashEffect: { before: 0, after: 0, delta: 0, reasonKind: 'none', refundAmount: 0 },
+    payload: canonical.payload,
+    inputFingerprint: fingerprint,
+  };
+  return {
+    commandId: input.commandId,
+    studentId: canonical.targets.studentId,
+    oldCode,
+    newCode,
+    command,
+    headAfter,
+    studentAfter,
+    newIndexAfter,
+  };
+}
+
+function rawStudentChangeCodeBatch(
+  db: Firestore,
+  artifacts: RawChangeCodeArtifacts,
+  options: { omit?: Array<'head' | 'student' | 'newIndex' | 'oldIndex'>; extraIndex?: boolean } = {},
+) {
+  const omitted = new Set(options.omit ?? []);
+  const batch = writeBatch(db);
+  if (!omitted.has('head')) batch.update(doc(db, 'system/dataHead'), artifacts.headAfter);
+  if (!omitted.has('student')) batch.update(doc(db, `students/${artifacts.studentId}`), artifacts.studentAfter);
+  if (!omitted.has('newIndex')) batch.set(doc(db, `studentCodes/${artifacts.newCode}`), artifacts.newIndexAfter);
+  if (!omitted.has('oldIndex')) batch.delete(doc(db, `studentCodes/${artifacts.oldCode}`));
+  if (options.extraIndex) {
+    batch.set(doc(db, 'studentCodes/999'), { studentId: artifacts.studentId, lastCommandId: artifacts.commandId, updatedAt: serverTimestamp() });
+  }
+  batch.set(doc(db, `commands/${artifacts.commandId}`), artifacts.command);
+  return batch;
+}
+
+async function expectRawStudentChangeCodeDeniedUnchanged(
+  artifacts: RawChangeCodeArtifacts,
+  options: { omit?: Array<'head' | 'student' | 'newIndex' | 'oldIndex'> } = {},
+) {
+  const paths = [
+    'system/dataHead',
+    `students/${artifacts.studentId}`,
+    `studentCodes/${artifacts.oldCode}`,
+    `studentCodes/${artifacts.newCode}`,
+    `commands/${artifacts.commandId}`,
+  ];
+  const before = await capturePaths(paths);
+  await assertFails(rawStudentChangeCodeBatch(authedDb(operatorA), artifacts, options).commit());
+  expect(await capturePaths(paths)).toEqual(before);
 }
 
 function rawStudentMutationBatch(
@@ -1481,15 +1655,15 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     expect(day.data()?.revision).toBe(1);
   });
 
-  it('P07.1: only the ten P05/P06/P07 enabled kinds pass runtime validation', async () => {
+  it('P07.1: only the eleven P05/P06/P06b/P07 enabled kinds pass runtime validation', async () => {
     await seedBase();
-    expect(ALL_COMMAND_KINDS).toHaveLength(22);
+    expect(ALL_COMMAND_KINDS).toHaveLength(23);
     const enabledKinds = [
-      'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus',
+      'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
       'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash',
     ];
     const disabledKinds = ALL_COMMAND_KINDS.filter(kind => !enabledKinds.includes(kind));
-    expect(enabledKinds).toHaveLength(10);
+    expect(enabledKinds).toHaveLength(11);
     expect(disabledKinds).toHaveLength(12);
     for (const [index, kind] of disabledKinds.entries()) {
       const commandId = `f0000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
@@ -1522,7 +1696,7 @@ describeWithEmulator('P05 production command repository and Rules', () => {
   });
 
   it.each(ALL_COMMAND_KINDS.filter(kind => ![
-    'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'EditStudent', 'SetStudentStatus',
+    'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
     'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash',
   ].includes(kind)))(
     'P07.2: production Rules directly deny unsupported raw SDK kind %s atomically', async kind => {
@@ -2234,31 +2408,34 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     await expectRawP07DeniedUnchanged(artifacts);
   });
 
-  it('P06.3: creates string IDs with baseline/current opening dates, signed boundaries, and no financial side effects', async () => {
+  it('P06.3: creates UUID studentId with studentCode index, baseline/current opening dates, signed boundaries, and no financial side effects', async () => {
     await seedBase();
     const goLiveDate = shiftDate(today, -20);
     await withAdmin(db => updateDoc(doc(db, 'system/dataHead'), { goLiveDate }));
     const aliases = Array.from({ length: 10 }, (_, index) => `${String(index).padStart(2, '0')}${'a'.repeat(98)}`);
     const inputs = [
-      studentInput('f2111111-1111-4111-8111-111111111111', '001', 0, goLiveDate, 'Same Name', aliases),
-      studentInput('f2222222-2222-4222-8222-222222222222', '002', -1_000_000_000, today, 'Same Name'),
-      studentInput('f2333333-3333-4333-8333-333333333333', '003', 1_000_000_000, goLiveDate, 'Same Name'),
+      studentInput('f2111111-1111-4111-8111-111111111111', sid001, 0, goLiveDate, 'Same Name', aliases, '001'),
+      studentInput('f2222222-2222-4222-8222-222222222222', sid002, -1_000_000_000, today, 'Same Name', [], '002'),
+      studentInput('f2333333-3333-4333-8333-333333333333', sid003, 1_000_000_000, goLiveDate, 'Same Name', [], '003'),
     ];
     const results = [];
     for (const input of inputs) results.push(await repository(operatorA).commitCommand(input));
     expect(results.map(result => result.ok)).toEqual([true, true, true]);
     const state = await withAdmin(async db => {
-      const [head, students, commands, transactions, days] = await Promise.all([
+      const [head, students, codes, commands, transactions, days] = await Promise.all([
         getDoc(doc(db, 'system/dataHead')),
-        Promise.all(['001', '002', '003'].map(id => getDoc(doc(db, `students/${id}`)))),
+        Promise.all([sid001, sid002, sid003].map(id => getDoc(doc(db, `students/${id}`)))),
+        Promise.all(['001', '002', '003'].map(c => getDoc(doc(db, `studentCodes/${c}`)))),
         getDocs(collection(db, 'commands')),
         getDocs(collection(db, 'transactions')),
         getDocs(collection(db, 'days')),
       ]);
-      return { head: head.data(), students: students.map(snapshot => snapshot.data()), commands, transactions, days };
+      return { head: head.data(), students: students.map(snapshot => snapshot.data()), codes: codes.map(snapshot => snapshot.data()), commands, transactions, days };
     });
     expect(state.head).toMatchObject({ seq: 3, lastCommandId: inputs[2].commandId });
-    expect(state.students.map(student => student?.studentId)).toEqual(['001', '002', '003']);
+    expect(state.students.map(student => student?.studentId)).toEqual([sid001, sid002, sid003]);
+    expect(state.students.map(student => student?.studentCode)).toEqual(['001', '002', '003']);
+    expect(state.codes.map(code => code?.studentId)).toEqual([sid001, sid002, sid003]);
     expect(state.students.map(student => student?.displayName)).toEqual(['Same Name', 'Same Name', 'Same Name']);
     expect(state.students.map(student => student?.currentBalance)).toEqual([0, -1_000_000_000, 1_000_000_000]);
     expect(state.students[0]?.aliases).toEqual(aliases);
@@ -2280,65 +2457,71 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     expect(state.days.size).toBe(0);
   });
 
-  it('P06.4: semantic replay returns the original receipt; ID collision and duplicate student ID do not advance state', async () => {
+  it('P06.4: semantic replay returns the original receipt; ID collision and duplicate student code do not advance state', async () => {
     await seedBase();
     const repo = repository(operatorA);
-    const input = studentInput('f3111111-1111-4111-8111-111111111111', '001', -25);
+    const input = studentInput('f3111111-1111-4111-8111-111111111111', sid001, -25, today, 'Synthetic Student', [], '001');
     const first = await repo.commitCommand(input);
     const replay = await repo.commitCommand(input);
     expect(first.ok, JSON.stringify(first)).toBe(true);
     expect(replay).toEqual(first);
     const collision = await repo.commitCommand({ ...input, payload: { ...input.payload, openingBalance: { ...input.payload.openingBalance, amount: 20 } } });
     expect(collision).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
-    const duplicateId = await repo.commitCommand(studentInput('f3222222-2222-4222-8222-222222222222', '001', 0));
-    expect(duplicateId).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    const duplicateCode = await repo.commitCommand(studentInput('f3222222-2222-4222-8222-222222222222', sid002, 0, today, 'Other Student', [], '001'));
+    expect(duplicateCode).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
     const state = await withAdmin(async db => {
-      const [head, student, commands] = await Promise.all([
+      const [head, student, codeIndex, commands] = await Promise.all([
         getDoc(doc(db, 'system/dataHead')),
-        getDoc(doc(db, 'students/001')),
+        getDoc(doc(db, `students/${sid001}`)),
+        getDoc(doc(db, 'studentCodes/001')),
         getDocs(collection(db, 'commands')),
       ]);
-      return { head: head.data(), student: student.data(), commandCount: commands.size };
+      return { head: head.data(), student: student.data(), codeIndex: codeIndex.data(), commandCount: commands.size };
     });
-    expect(state).toMatchObject({ head: { seq: 1, lastCommandId: input.commandId }, student: { studentId: '001', currentBalance: -25, revision: 1 }, commandCount: 1 });
+    expect(state).toMatchObject({
+      head: { seq: 1, lastCommandId: input.commandId },
+      student: { studentId: sid001, studentCode: '001', currentBalance: -25, revision: 1 },
+      codeIndex: { studentId: sid001, lastCommandId: input.commandId },
+      commandCount: 1,
+    });
   });
 
   it('P06.5: only EditStudent fields and explicit status changes advance the student revision', async () => {
     await seedBase();
-    const create = await repository(operatorA).commitCommand(studentInput('f4111111-1111-4111-8111-111111111111', '001', -25));
+    const create = await repository(operatorA).commitCommand(studentInput('f4111111-1111-4111-8111-111111111111', sid001, -25, today, 'Synthetic Student', [], '001'));
     expect(create.ok, JSON.stringify(create)).toBe(true);
     const edit = await repository(operatorA).commitCommand({
       commandId: 'f4222222-2222-4222-8222-222222222222', kind: 'EditStudent', leaseEpoch: 1,
-      targets: { studentId: '001' }, expectedRevisions: { student: 1 },
+      targets: { studentId: sid001 }, expectedRevisions: { student: 1 },
       payload: { displayName: 'Renamed Synthetic', aliases: ['A', 'B'] },
     });
     expect(edit.ok, JSON.stringify(edit)).toBe(true);
     const deactivate = await repository(operatorA).commitCommand({
       commandId: 'f4333333-3333-4333-8333-333333333333', kind: 'SetStudentStatus', leaseEpoch: 1,
-      targets: { studentId: '001' }, expectedRevisions: { student: 2 },
+      targets: { studentId: sid001 }, expectedRevisions: { student: 2 },
       payload: { status: 'inactive', reason: 'Synthetic roster correction' },
     });
     expect(deactivate.ok, JSON.stringify(deactivate)).toBe(true);
     if (deactivate.ok) expect(await repository(operatorA).readCommand('f4333333-3333-4333-8333-333333333333')).toMatchObject({ kind: 'SetStudentStatus', seq: 3 });
     const reactivate = await repository(operatorA).commitCommand({
       commandId: 'f4444444-4444-4444-8444-444444444444', kind: 'SetStudentStatus', leaseEpoch: 1,
-      targets: { studentId: '001' }, expectedRevisions: { student: 3 },
+      targets: { studentId: sid001 }, expectedRevisions: { student: 3 },
       payload: { status: 'active', reason: 'Synthetic roster restore' },
     });
     expect(reactivate.ok, JSON.stringify(reactivate)).toBe(true);
     const noOpEdit = await repository(operatorA).commitCommand({
       commandId: 'f4555555-5555-4555-8555-555555555555', kind: 'EditStudent', leaseEpoch: 1,
-      targets: { studentId: '001' }, expectedRevisions: { student: 4 },
+      targets: { studentId: sid001 }, expectedRevisions: { student: 4 },
       payload: { displayName: 'Renamed Synthetic' },
     });
     const noOpStatus = await repository(operatorA).commitCommand({
       commandId: 'f4666666-6666-4666-8666-666666666666', kind: 'SetStudentStatus', leaseEpoch: 1,
-      targets: { studentId: '001' }, expectedRevisions: { student: 4 },
+      targets: { studentId: sid001 }, expectedRevisions: { student: 4 },
       payload: { status: 'active', reason: 'No actual status change' },
     });
     const stale = await repository(operatorA).commitCommand({
       commandId: 'f4777777-7777-4777-8777-777777777777', kind: 'EditStudent', leaseEpoch: 1,
-      targets: { studentId: '001' }, expectedRevisions: { student: 3 },
+      targets: { studentId: sid001 }, expectedRevisions: { student: 3 },
       payload: { displayName: 'Stale Writer' },
     });
     expect(noOpEdit).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
@@ -2346,13 +2529,13 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     expect(stale).toMatchObject({ ok: false, error: { code: 'REVISION_CONFLICT' } });
     const [head, student, tx, day] = await withAdmin(async db => Promise.all([
       getDoc(doc(db, 'system/dataHead')),
-      getDoc(doc(db, 'students/001')),
+      getDoc(doc(db, `students/${sid001}`)),
       getDocs(collection(db, 'transactions')),
       getDocs(collection(db, 'days')),
     ]));
     expect(head.data()).toMatchObject({ seq: 4, lastCommandId: 'f4444444-4444-4444-8444-444444444444' });
     expect(student.data()).toMatchObject({
-      studentId: '001', displayName: 'Renamed Synthetic', aliases: ['A', 'B'], status: 'active',
+      studentId: sid001, studentCode: '001', displayName: 'Renamed Synthetic', aliases: ['A', 'B'], status: 'active',
       currentBalance: -25, revision: 4, openingBalance: { amount: -25 },
     });
     expect(tx.size).toBe(0);
@@ -2366,12 +2549,13 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     await seedBase();
     const goLiveDate = shiftDate(today, -5);
     await withAdmin(db => updateDoc(doc(db, 'system/dataHead'), { goLiveDate }));
-    const input = studentInput('f5111111-1111-4111-8111-111111111111', '001', 0, date);
+    const input = studentInput('f5111111-1111-4111-8111-111111111111', sid001, 0, date, 'Synthetic Student', [], '001');
     const result = await repository(operatorA).commitCommand(input);
     expect(result).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
-    expect(await capturePaths(['system/dataHead', 'students/001', `commands/${input.commandId}`])).toMatchObject({
+    expect(await capturePaths(['system/dataHead', `students/${sid001}`, 'studentCodes/001', `commands/${input.commandId}`])).toMatchObject({
       'system/dataHead': { exists: true },
-      'students/001': { exists: false },
+      [`students/${sid001}`]: { exists: false },
+      'studentCodes/001': { exists: false },
     });
   });
 
@@ -2379,14 +2563,15 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     await seedBase();
     const aliases = Array.from({ length: 10 }, (_, index) => `${String(index).padStart(2, '0')}${'b'.repeat(98)}`);
     const artifacts = await rawStudentCreateArtifacts(studentInput(
-      'f6111111-1111-4111-8111-111111111111', '001', 0, today, 'Raw Synthetic', aliases,
+      'f6111111-1111-4111-8111-111111111111', sid001, 0, today, 'Raw Synthetic', aliases, '001',
     ));
-    const paths = ['system/dataHead', 'students/001', `commands/${artifacts.commandId}`];
+    const paths = ['system/dataHead', `students/${sid001}`, 'studentCodes/001', `commands/${artifacts.commandId}`];
     const before = await capturePaths(paths);
     await rawStudentCreateBatch(authedDb(operatorA), artifacts).commit();
     const after = await capturePaths(paths);
     expect(after['system/dataHead'].data).toMatchObject({ seq: 1, lastCommandId: artifacts.commandId });
-    expect((after['students/001'].data as RawMap).aliases).toEqual(aliases);
+    expect((after[`students/${sid001}`].data as RawMap).aliases).toEqual(aliases);
+    expect(after['studentCodes/001'].data).toMatchObject({ studentId: sid001, lastCommandId: artifacts.commandId });
     expect(after[`commands/${artifacts.commandId}`].exists).toBe(true);
     expect(after['system/dataHead'].data).not.toEqual(before['system/dataHead'].data);
   });
@@ -2394,10 +2579,13 @@ describeWithEmulator('P05 production command repository and Rules', () => {
   it.each([
     ['head writer', ['head'] as const],
     ['student writer', ['student'] as const],
+    ['codeIndex writer', ['codeIndex'] as const],
   ])('P06.8: Rules reject CreateStudent when the raw batch omits its %s', async (_label, omit) => {
     await seedBase();
-    const artifacts = await rawStudentCreateArtifacts();
-    const paths = ['system/dataHead', `students/${artifacts.studentId}`, `commands/${artifacts.commandId}`];
+    const artifacts = await rawStudentCreateArtifacts(studentInput(
+      'f6222222-2222-4222-8222-222222222222', sid001, 0, today, 'Raw Synthetic', [], '001',
+    ));
+    const paths = ['system/dataHead', `students/${artifacts.studentId}`, `studentCodes/${artifacts.studentCode}`, `commands/${artifacts.commandId}`];
     const before = await capturePaths(paths);
     await assertFails(rawStudentCreateBatch(authedDb(operatorA), artifacts, { omit: [...omit] }).commit());
     expect(await capturePaths(paths)).toEqual(before);
@@ -2405,12 +2593,12 @@ describeWithEmulator('P05 production command repository and Rules', () => {
 
   it('P06.9: Rules require an actually absent target when raw SDK creates a student ID', async () => {
     await seedBase();
-    expect((await repository(operatorA).commitCommand(studentInput('f7111111-1111-4111-8111-111111111111', '001', 0))).ok).toBe(true);
+    expect((await repository(operatorA).commitCommand(studentInput('f7111111-1111-4111-8111-111111111111', sid001, 0, today, 'Synthetic Student', [], '001'))).ok).toBe(true);
     const artifacts = await rawStudentCreateArtifacts(
-      studentInput('f7222222-2222-4222-8222-222222222222', '001', 0),
+      studentInput('f7222222-2222-4222-8222-222222222222', sid001, 0, today, 'Synthetic Student', [], '001'),
       true,
     );
-    const paths = ['system/dataHead', 'students/001', `commands/${artifacts.commandId}`];
+    const paths = ['system/dataHead', `students/${sid001}`, 'studentCodes/001', `commands/${artifacts.commandId}`];
     const before = await capturePaths(paths);
     await assertFails(rawStudentCreateBatch(authedDb(operatorA), artifacts).commit());
     expect(await capturePaths(paths)).toEqual(before);
@@ -2427,7 +2615,7 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     await seedBase();
     const artifacts = await rawStudentCreateArtifacts();
     mutate(artifacts);
-    const paths = ['system/dataHead', `students/${artifacts.studentId}`, `commands/${artifacts.commandId}`];
+    const paths = ['system/dataHead', `students/${artifacts.studentId}`, `studentCodes/${artifacts.studentCode}`, `commands/${artifacts.commandId}`];
     const before = await capturePaths(paths);
     await assertFails(rawStudentCreateBatch(authedDb(operatorA), artifacts).commit());
     expect(await capturePaths(paths)).toEqual(before);
@@ -2436,10 +2624,12 @@ describeWithEmulator('P05 production command repository and Rules', () => {
   it('P06.11: a student document can be read before creation and the holder can read the complete server list', async () => {
     await seedBase();
     const db = authedDb(operatorA);
-    expect((await getDoc(doc(db, 'students/001'))).exists()).toBe(false);
+    expect((await getDoc(doc(db, `students/${sid001}`))).exists()).toBe(false);
+    expect((await getDoc(doc(db, 'studentCodes/001'))).exists()).toBe(false);
     expect((await getDocs(collection(db, 'students'))).size).toBe(0);
-    expect((await repository(operatorA).commitCommand(studentInput('f8111111-1111-4111-8111-111111111111', '001', 0))).ok).toBe(true);
-    expect((await getDocs(collection(db, 'students'))).docs.map(snapshot => snapshot.id)).toEqual(['001']);
+    expect((await repository(operatorA).commitCommand(studentInput('f8111111-1111-4111-8111-111111111111', sid001, 0, today, 'Synthetic Student', [], '001'))).ok).toBe(true);
+    expect((await getDocs(collection(db, 'students'))).docs.map(snapshot => snapshot.id)).toEqual([sid001]);
+    expect((await getDoc(doc(db, 'studentCodes/001'))).exists()).toBe(true);
     await expect(repository(operatorB).readCommand('f8111111-1111-4111-8111-111111111111')).rejects.toMatchObject({ code: 'LEASE_LOST' });
     await expect(getDocs(collection(authedDb(operatorB), 'students'))).rejects.toThrow();
   });
@@ -2517,7 +2707,8 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     for (const [index, displayName] of names.entries()) {
       const commandId = `fc000000-0000-4000-8000-${(index + 1).toString(16).padStart(12, '0')}`;
       const studentId = `name-${index}`;
-      const artifacts = await rawStudentCreateArtifacts(studentInput(commandId, studentId, 0, today, displayName));
+      const code = (index + 1).toString().padStart(3, '0');
+      const artifacts = await rawStudentCreateArtifacts(studentInput(commandId, studentId, 0, today, displayName, [], code));
       await rawStudentCreateBatch(authedDb(operatorA), artifacts).commit();
       expect(await repository(operatorA).readCommand(commandId)).toMatchObject({ commandId, kind: 'CreateStudent' });
     }
@@ -2533,6 +2724,181 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     artifacts.studentAfter.displayName = '';
     artifacts.command.after.student.displayName = '';
     await expectRawStudentCreateDeniedUnchanged(artifacts);
+  });
+
+  it('P06b.1: ChangeStudentCode advances studentCode, updates index, deletes old index, and frees old code', async () => {
+    await seedBase();
+    const repo = repository(operatorA);
+    const create = await repo.commitCommand(studentInput('fa111111-1111-4111-8111-111111111111', sid001, 0, today, 'Student One', [], '001'));
+    expect(create.ok, JSON.stringify(create)).toBe(true);
+
+    const change = await repo.commitCommand(changeStudentCodeInput(
+      'fa222222-2222-4222-8222-222222222222', sid001, '015', 1, '換號至十五號',
+    ));
+    expect(change.ok, JSON.stringify(change)).toBe(true);
+
+    const db = authedDb(operatorA);
+    const [studentSnap, oldIndexSnap, newIndexSnap, headSnap] = await Promise.all([
+      getDoc(doc(db, `students/${sid001}`)),
+      getDoc(doc(db, 'studentCodes/001')),
+      getDoc(doc(db, 'studentCodes/015')),
+      getDoc(doc(db, 'system/dataHead')),
+    ]);
+
+    expect(studentSnap.data()).toMatchObject({
+      studentId: sid001,
+      studentCode: '015',
+      revision: 2,
+      lastCommandId: 'fa222222-2222-4222-8222-222222222222',
+    });
+    expect(oldIndexSnap.exists()).toBe(false);
+    expect(newIndexSnap.data()).toMatchObject({
+      studentId: sid001,
+      lastCommandId: 'fa222222-2222-4222-8222-222222222222',
+    });
+    expect(headSnap.data()).toMatchObject({ seq: 2 });
+
+    // Verify freed code 001 can now be used by a new student
+    const create2 = await repo.commitCommand(studentInput('fa333333-3333-4333-8333-333333333333', sid002, 0, today, 'Student Two', [], '001'));
+    expect(create2.ok, JSON.stringify(create2)).toBe(true);
+    const reusedIndex = await getDoc(doc(db, 'studentCodes/001'));
+    expect(reusedIndex.data()).toMatchObject({ studentId: sid002 });
+  });
+
+  it('P06b.2: ChangeStudentCode is allowed on inactive students to release code', async () => {
+    await seedBase();
+    const repo = repository(operatorA);
+    await repo.commitCommand(studentInput('fa411111-1111-4111-8111-111111111111', sid001, 0, today, 'To Inactive', [], '001'));
+    await repo.commitCommand({
+      commandId: 'fa422222-2222-4222-8222-222222222222', kind: 'SetStudentStatus', leaseEpoch: 1,
+      targets: { studentId: sid001 }, expectedRevisions: { student: 1 },
+      payload: { status: 'inactive', reason: '畢業停用' },
+    });
+
+    const change = await repo.commitCommand(changeStudentCodeInput(
+      'fa433333-3333-4333-8333-333333333333', sid001, '999', 2, '停用學生退讓號碼',
+    ));
+    expect(change.ok, JSON.stringify(change)).toBe(true);
+
+    const db = authedDb(operatorA);
+    const studentDoc = await getDoc(doc(db, `students/${sid001}`));
+    expect(studentDoc.data()).toMatchObject({
+      studentId: sid001,
+      studentCode: '999',
+      status: 'inactive',
+      revision: 3,
+    });
+    expect((await getDoc(doc(db, 'studentCodes/001'))).exists()).toBe(false);
+    expect((await getDoc(doc(db, 'studentCodes/999'))).exists()).toBe(true);
+  });
+
+  it('P06b.3: ChangeStudentCode rejects collision when target code is already occupied', async () => {
+    await seedBase();
+    const repo = repository(operatorA);
+    await repo.commitCommand(studentInput('fa511111-1111-4111-8111-111111111111', sid001, 0, today, 'Student 1', [], '001'));
+    await repo.commitCommand(studentInput('fa522222-2222-4222-8222-222222222222', sid002, 0, today, 'Student 2', [], '002'));
+
+    const collision = await repo.commitCommand(changeStudentCodeInput(
+      'fa533333-3333-4333-8333-333333333333', sid001, '002', 1, '搶號測試',
+    ));
+    expect(collision).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+  });
+
+  it('P06b.4: ChangeStudentCode semantic replay returns original receipt', async () => {
+    await seedBase();
+    const repo = repository(operatorA);
+    await repo.commitCommand(studentInput('fa611111-1111-4111-8111-111111111111', sid001, 0, today, 'Student', [], '001'));
+
+    const input = changeStudentCodeInput('fa622222-2222-4222-8222-222222222222', sid001, '015', 1, '正常改號');
+    const first = await repo.commitCommand(input);
+    const replay = await repo.commitCommand(input);
+    expect(first.ok, JSON.stringify(first)).toBe(true);
+    expect(replay).toEqual(first);
+  });
+
+  it('P06b.5: raw SDK ChangeStudentCode accepts complete valid batch and denies missing writers atomically', async () => {
+    await seedBase();
+    const repo = repository(operatorA);
+    await repo.commitCommand(studentInput('fa711111-1111-4111-8111-111111111111', sid001, 0, today, 'Student', [], '001'));
+
+    const artifacts = await rawStudentChangeCodeArtifacts(changeStudentCodeInput(
+      'fa722222-2222-4222-8222-222222222222', sid001, '015', 1, 'Raw 改號',
+    ));
+    await rawStudentChangeCodeBatch(authedDb(operatorA), artifacts).commit();
+
+    const db = authedDb(operatorA);
+    expect((await getDoc(doc(db, `students/${sid001}`))).data()).toMatchObject({ studentCode: '015', revision: 2 });
+    expect((await getDoc(doc(db, 'studentCodes/001'))).exists()).toBe(false);
+    expect((await getDoc(doc(db, 'studentCodes/015'))).exists()).toBe(true);
+  });
+
+  it('P06b.6: raw SDK ChangeStudentCode fails and leaves state unchanged when omitting old index delete', async () => {
+    await seedBase();
+    const repo = repository(operatorA);
+    await repo.commitCommand(studentInput('fa811111-1111-4111-8111-111111111111', sid001, 0, today, 'Student', [], '001'));
+
+    const artifacts = await rawStudentChangeCodeArtifacts(changeStudentCodeInput(
+      'fa822222-2222-4222-8222-222222222222', sid001, '015', 1, '漏刪舊索引',
+    ));
+    await expectRawStudentChangeCodeDeniedUnchanged(artifacts, { omit: ['oldIndex'] });
+  });
+
+  it('P06b.7: raw SDK ChangeStudentCode fails and leaves state unchanged when omitting new index create', async () => {
+    await seedBase();
+    const repo = repository(operatorA);
+    await repo.commitCommand(studentInput('fa911111-1111-4111-8111-111111111111', sid001, 0, today, 'Student', [], '001'));
+
+    const artifacts = await rawStudentChangeCodeArtifacts(changeStudentCodeInput(
+      'fa922222-2222-4222-8222-222222222222', sid001, '015', 1, '漏建新索引',
+    ));
+    await expectRawStudentChangeCodeDeniedUnchanged(artifacts, { omit: ['newIndex'] });
+  });
+
+  it('P06b.8: isolated studentCodes delete is denied by Rules', async () => {
+    await seedBase();
+    const repo = repository(operatorA);
+    await repo.commitCommand(studentInput('fb011111-1111-4111-8111-111111111111', sid001, 0, today, 'Student', [], '001'));
+
+    const db = authedDb(operatorA);
+    await assertFails(deleteDoc(doc(db, 'studentCodes/001')));
+    expect((await getDoc(doc(db, 'studentCodes/001'))).exists()).toBe(true);
+  });
+
+  it('P06b.9: deleting another student code index in ChangeStudentCode is denied by Rules', async () => {
+    await seedBase();
+    const repo = repository(operatorA);
+    await repo.commitCommand(studentInput('fb111111-1111-4111-8111-111111111111', sid001, 0, today, 'Student 1', [], '001'));
+    await repo.commitCommand(studentInput('fb222222-2222-4222-8222-222222222222', sid002, 0, today, 'Student 2', [], '002'));
+
+    const artifacts = await rawStudentChangeCodeArtifacts(changeStudentCodeInput(
+      'fb333333-3333-4333-8333-333333333333', sid001, '015', 1, '刪別人索引',
+    ));
+    artifacts.oldCode = '002';
+    await expectRawStudentChangeCodeDeniedUnchanged(artifacts);
+  });
+
+  it('P06b.10: replaying historical command or forged student lastCommandId for delete is denied', async () => {
+    await seedBase();
+    const repo = repository(operatorA);
+    await repo.commitCommand(studentInput('fb411111-1111-4111-8111-111111111111', sid001, 0, today, 'Student', [], '001'));
+
+    const artifacts = await rawStudentChangeCodeArtifacts(changeStudentCodeInput(
+      'fb555555-5555-4555-8555-555555555555', sid001, '015', 1, '偽造命令',
+    ));
+    artifacts.studentAfter.lastCommandId = 'fb411111-1111-4111-8111-111111111111';
+    await expectRawStudentChangeCodeDeniedUnchanged(artifacts);
+  });
+
+  it('P06b.11: extra index writer in the same transaction is denied', async () => {
+    await seedBase();
+    const repo = repository(operatorA);
+    await repo.commitCommand(studentInput('fb611111-1111-4111-8111-111111111111', sid001, 0, today, 'Student', [], '001'));
+
+    const artifacts = await rawStudentChangeCodeArtifacts(changeStudentCodeInput(
+      'fb777777-7777-4777-8777-777777777777', sid001, '015', 1, '額外寫入者',
+    ));
+    await assertFails(rawStudentChangeCodeBatch(authedDb(operatorA), artifacts, { extraIndex: true }).commit());
+    expect((await getDoc(doc(authedDb(operatorA), 'studentCodes/999'))).exists()).toBe(false);
   });
 
   it('P05.26: historical order and payment dates are denied atomically without a reason field', async () => {

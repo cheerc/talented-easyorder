@@ -85,7 +85,8 @@ describe('firestoreSchema: 新舊 Schema 型別與 Adapter 驗證', () => {
 
   it('cloudStudentToStudentAccount 正確轉換新版學員 Doc', () => {
     const cloudStudent: CloudStudentDoc = {
-      studentId: 'stu-cloud-1',
+      studentId: '11111111-1111-4111-8111-111111111111',
+      studentCode: '001',
       displayName: '王小明',
       aliases: ['小明'],
       status: 'active',
@@ -98,12 +99,13 @@ describe('firestoreSchema: 新舊 Schema 型別與 Adapter 驗證', () => {
       currentBalance: 200,
       createdAt: '2026-10-14T08:00:00.000Z' as unknown as CloudStudentDoc['createdAt'],
       revision: 1,
-      lastCommandId: 'cmd-create-stu',
+      lastCommandId: '11111111-1111-4111-8111-111111111112',
       updatedAt: '2026-10-14T08:00:00.000Z' as unknown as CloudStudentDoc['updatedAt'],
     };
 
     const account = cloudStudentToStudentAccount(cloudStudent);
-    expect(account.studentId).toBe('stu-cloud-1');
+    expect(account.studentId).toBe('11111111-1111-4111-8111-111111111111');
+    expect(account.studentCode).toBe('001');
     expect(account.displayName).toBe('王小明');
     expect(account.openingBalance?.amount).toBe(200);
     expect(account.openingBalance?.asOfDate).toBe('2026-10-14');
@@ -112,7 +114,8 @@ describe('firestoreSchema: 新舊 Schema 型別與 Adapter 驗證', () => {
   it('新版 Doc 驗證函式運作正常', () => {
     expect(
       validateCloudStudentDoc({
-        studentId: 'stu-1',
+        studentId: '11111111-1111-4111-8111-111111111111',
+        studentCode: '001',
         displayName: '測試',
         status: 'active',
         currentBalance: 0,
@@ -123,6 +126,18 @@ describe('firestoreSchema: 新舊 Schema 型別與 Adapter 驗證', () => {
     expect(
       validateCloudStudentDoc({
         studentId: '',
+        studentCode: '001',
+        displayName: '測試',
+        status: 'active',
+        currentBalance: 0,
+        revision: 1,
+      }).ok,
+    ).toBe(false);
+
+    expect(
+      validateCloudStudentDoc({
+        studentId: '11111111-1111-4111-8111-111111111111',
+        studentCode: '000',
         displayName: '測試',
         status: 'active',
         currentBalance: 0,

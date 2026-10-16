@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type SetStateAction } from 'react';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
+import { normalizeStudentCode } from '../../domain/student';
 import {
   createCloudStudentRepository,
   type CloudStudentList,
@@ -18,7 +19,7 @@ export interface CloudStudentsPageProps {
 type OpeningMode = '' | 'existing-balance' | 'new-student';
 
 interface CreateDraft {
-  studentId: string;
+  studentCode: string;
   displayName: string;
   aliasesText: string;
   amountText: string;
@@ -31,6 +32,7 @@ type PreparedCommand =
       kind: 'create';
       commandId: string;
       studentId: string;
+      studentCode: string;
       displayName: string;
       aliases: string[];
       openingBalance: { amount: number; asOfDate: string; note: string };
@@ -42,6 +44,14 @@ type PreparedCommand =
       expectedRevision: number;
       displayName?: string;
       aliases?: string[];
+    }
+  | {
+      kind: 'code';
+      commandId: string;
+      studentId: string;
+      expectedRevision: number;
+      studentCode: string;
+      reason: string;
     }
   | {
       kind: 'status';
@@ -77,11 +87,14 @@ interface PageState {
   editAliasesText: string;
   statusStudent: CloudStudentRecord | null;
   statusReason: string;
+  codeStudent: CloudStudentRecord | null;
+  changeCodeValue: string;
+  changeCodeReason: string;
   recovery: RecoveryState | null;
 }
 
 const freshCreateDraft = (): CreateDraft => ({
-  studentId: '',
+  studentCode: '',
   displayName: '',
   aliasesText: '',
   amountText: '',
@@ -105,11 +118,14 @@ const initialPageState = (identityKey: string): PageState => ({
   editAliasesText: '',
   statusStudent: null,
   statusReason: '',
+  codeStudent: null,
+  changeCodeValue: '',
+  changeCodeReason: '',
   recovery: null,
 });
 
 function clearDrafts(): Pick<PageState,
-  'search' | 'createOpen' | 'createDraft' | 'editingId' | 'editDisplayName' | 'editAliasesText' | 'statusStudent' | 'statusReason'> {
+  'search' | 'createOpen' | 'createDraft' | 'editingId' | 'editDisplayName' | 'editAliasesText' | 'statusStudent' | 'statusReason' | 'codeStudent' | 'changeCodeValue' | 'changeCodeReason'> {
   return {
     search: '',
     createOpen: false,
@@ -119,6 +135,9 @@ function clearDrafts(): Pick<PageState,
     editAliasesText: '',
     statusStudent: null,
     statusReason: '',
+    codeStudent: null,
+    changeCodeValue: '',
+    changeCodeReason: '',
   };
 }
 
@@ -178,8 +197,9 @@ function formatBalance(amount: number): string {
 }
 
 function commandLabel(command: PreparedCommand): string {
-  if (command.kind === 'create') return `新增 ${command.studentId}`;
+  if (command.kind === 'create') return `新增 ${command.studentCode}`;
   if (command.kind === 'edit') return `修改 ${command.studentId}`;
+  if (command.kind === 'code') return `改編號 ${command.studentCode}`;
   return command.status === 'inactive' ? `停用 ${command.studentId}` : `恢復 ${command.studentId}`;
 }
 
@@ -371,6 +391,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
           commandId: command.commandId,
           leaseEpoch,
           studentId: command.studentId,
+          studentCode: command.studentCode,
           displayName: command.displayName,
           aliases: command.aliases,
           openingBalance: command.openingBalance,
@@ -383,6 +404,15 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
           expectedRevision: command.expectedRevision,
           ...(command.displayName !== undefined ? { displayName: command.displayName } : {}),
           ...(command.aliases !== undefined ? { aliases: command.aliases } : {}),
+        });
+      } else if (command.kind === 'code') {
+        result = await repository.changeStudentCode({
+          commandId: command.commandId,
+          leaseEpoch,
+          studentId: command.studentId,
+          expectedRevision: command.expectedRevision,
+          studentCode: command.studentCode,
+          reason: command.reason,
         });
       } else {
         result = await repository.setStudentStatus({
@@ -473,13 +503,15 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
     event.preventDefault();
     if (page.recovery || !page.snapshot) return;
     const draft = page.createDraft;
-    const studentId = draft.studentId;
-    if (!studentId.trim() || studentId.length > 64 || studentId.includes('/') || studentId === '__cashier__') {
-      setPageState(previous => ({ ...previous, actionError: '學員編號必須為 1 至 64 字，且不能包含斜線。' }));
+    let studentCode: string;
+    try {
+      studentCode = normalizeStudentCode(draft.studentCode);
+    } catch {
+      setPageState(previous => ({ ...previous, actionError: '學員編號必須是有效數字編號（001–999999）。' }));
       return;
     }
-    if (page.snapshot.students.some(student => student.studentId === studentId)) {
-      setPageState(previous => ({ ...previous, actionError: `學員編號 ${studentId} 已存在。` }));
+    if (page.snapshot.students.some(student => student.studentCode === studentCode)) {
+      setPageState(previous => ({ ...previous, actionError: `學員編號 ${studentCode} 已存在。` }));
       return;
     }
     const displayName = draft.displayName.trim();
@@ -512,13 +544,55 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
     const asOfDate = draft.openingMode === 'existing-balance' ? page.snapshot.goLiveDate : clientTaipeiDate();
     const commandId = makeCommandId();
     if (!commandId) return;
+    const studentId = makeCommandId() ?? `student-${commandId}`;
     void runPreparedCommand({
       kind: 'create',
       commandId,
       studentId,
+      studentCode,
       displayName,
       aliases: aliases.aliases,
       openingBalance: { amount: parsedAmount === 0 ? 0 : parsedAmount, asOfDate, note: draft.note },
+    });
+  };
+
+  const submitChangeCode = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const student = page.codeStudent;
+    if (!student || page.recovery || !page.snapshot) return;
+    let studentCode: string;
+    try {
+      studentCode = normalizeStudentCode(page.changeCodeValue);
+    } catch {
+      setPageState(previous => ({ ...previous, actionError: '學員編號必須是有效數字編號（001–999999）。' }));
+      return;
+    }
+    if (studentCode === student.studentCode) {
+      setPageState(previous => ({ ...previous, actionError: '新編號與原編號相同，無需變更。' }));
+      return;
+    }
+    const existing = page.snapshot.students.find(s => s.studentCode === studentCode);
+    if (existing) {
+      setPageState(previous => ({
+        ...previous,
+        actionError: `編號 ${studentCode} 已經有人使用（${existing.displayName}）。若欲互換號碼請經由暫時空號分步調換。`,
+      }));
+      return;
+    }
+    const reason = page.changeCodeReason.trim();
+    if (!reason || reason.length > 500) {
+      setPageState(previous => ({ ...previous, actionError: '請輸入具體的改編號原因（1 至 500 字）。' }));
+      return;
+    }
+    const commandId = makeCommandId();
+    if (!commandId) return;
+    void runPreparedCommand({
+      kind: 'code',
+      commandId,
+      studentId: student.studentId,
+      expectedRevision: student.revision,
+      studentCode,
+      reason,
     });
   };
 
@@ -623,6 +697,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
           commandId: recovery.command.commandId,
           leaseEpoch,
           studentId: recovery.command.studentId,
+          studentCode: recovery.command.studentCode,
           displayName: recovery.command.displayName,
           aliases: recovery.command.aliases,
           openingBalance: recovery.command.openingBalance,
@@ -636,14 +711,23 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
             ...(recovery.command.displayName !== undefined ? { displayName: recovery.command.displayName } : {}),
             ...(recovery.command.aliases !== undefined ? { aliases: recovery.command.aliases } : {}),
           })
-          : await repository.setStudentStatus({
-            commandId: recovery.command.commandId,
-            leaseEpoch,
-            studentId: recovery.command.studentId,
-            expectedRevision: recovery.command.expectedRevision,
-            status: recovery.command.status,
-            reason: recovery.command.reason,
-          });
+          : recovery.command.kind === 'code'
+            ? await repository.changeStudentCode({
+              commandId: recovery.command.commandId,
+              leaseEpoch,
+              studentId: recovery.command.studentId,
+              expectedRevision: recovery.command.expectedRevision,
+              studentCode: recovery.command.studentCode,
+              reason: recovery.command.reason,
+            })
+            : await repository.setStudentStatus({
+              commandId: recovery.command.commandId,
+              leaseEpoch,
+              studentId: recovery.command.studentId,
+              expectedRevision: recovery.command.expectedRevision,
+              status: recovery.command.status,
+              reason: recovery.command.reason,
+            });
       if (!isCurrent(key, generation)) return;
       if (!verification.ok) {
         if (isAuthorizationLoss(verification.error)) {
@@ -686,12 +770,76 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
   };
 
   const busy = page.recovery !== null;
-  const visibleStudents = page.snapshot?.students.filter(student => {
+
+  const sortedStudents = useMemo(() => {
+    if (!page.snapshot) return [];
+    return [...page.snapshot.students].sort((a, b) => {
+      const na = parseInt(a.studentCode, 10);
+      const nb = parseInt(b.studentCode, 10);
+      if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+      return a.studentCode.localeCompare(b.studentCode);
+    });
+  }, [page.snapshot]);
+
+  type DisplayRow =
+    | { type: 'student'; student: CloudStudentRecord }
+    | { type: 'gap'; startCode: string; endCode: string; count: number; prefillCode: string };
+
+  const displayRows = useMemo((): DisplayRow[] => {
     const query = page.search.trim().toLocaleLowerCase();
-    if (!query) return true;
-    return [student.studentId, student.displayName, ...student.aliases]
-      .some(value => value.toLocaleLowerCase().includes(query));
-  }) ?? [];
+    if (query) {
+      return sortedStudents
+        .filter(student => [student.studentCode, student.displayName, ...student.aliases]
+          .some(value => value.toLocaleLowerCase().includes(query)))
+        .map(student => ({ type: 'student', student }));
+    }
+
+    if (sortedStudents.length === 0) return [];
+
+    const studentByCode = new Map<number, CloudStudentRecord>();
+    const nonNumericStudents: CloudStudentRecord[] = [];
+    let maxCode = 0;
+    for (const student of sortedStudents) {
+      const num = parseInt(student.studentCode, 10);
+      if (Number.isFinite(num)) {
+        studentByCode.set(num, student);
+        if (num > maxCode) maxCode = num;
+      } else {
+        nonNumericStudents.push(student);
+      }
+    }
+
+    const rows: DisplayRow[] = [];
+    let n = 1;
+    while (n <= maxCode) {
+      if (studentByCode.has(n)) {
+        rows.push({ type: 'student', student: studentByCode.get(n)! });
+        n += 1;
+      } else {
+        const gapStart = n;
+        while (n <= maxCode && !studentByCode.has(n)) {
+          n += 1;
+        }
+        const gapEnd = n - 1;
+        const count = gapEnd - gapStart + 1;
+        const startCode = gapStart < 1000 ? String(gapStart).padStart(3, '0') : String(gapStart);
+        const endCode = gapEnd < 1000 ? String(gapEnd).padStart(3, '0') : String(gapEnd);
+        rows.push({
+          type: 'gap',
+          startCode,
+          endCode,
+          count,
+          prefillCode: startCode,
+        });
+      }
+    }
+    for (const student of nonNumericStudents) {
+      rows.push({ type: 'student', student });
+    }
+    return rows;
+  }, [sortedStudents, page.search]);
+
+  const visibleStudentCount = displayRows.filter(r => r.type === 'student').length;
 
   return (
     <main className="cloud-students" aria-label="雲端學生名單">
@@ -781,7 +929,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
               placeholder="輸入編號、姓名或別名"
               disabled={busy}
             />
-            <span className="cloud-students__count">{visibleStudents.length} / {page.snapshot.students.length} 位</span>
+            <span className="cloud-students__count">{visibleStudentCount} / {page.snapshot.students.length} 位</span>
             <button
               type="button"
               className="cloud-students__primary"
@@ -800,11 +948,11 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
           {page.createOpen && (
             <form className="cloud-students__form" aria-label="新增學生" onSubmit={submitCreate}>
               <h2>手動新增學生</h2>
-              <p>編號會以原字串儲存，例如 001；請自行核對實際結餘。金額沒有預設值，輸入 0 才代表零元。</p>
+              <p>編號會以正規化形式儲存（例如 001、099、1000）；請自行核對實際結餘。金額沒有預設值，輸入 0 才代表零元。</p>
               <div className="cloud-students__form-grid">
                 <label>
                   學員編號
-                  <input className="cloud-students__input cloud-students__mono" value={page.createDraft.studentId} maxLength={64} onChange={event => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, studentId: event.target.value } }))} disabled={busy} />
+                  <input className="cloud-students__input cloud-students__mono" value={page.createDraft.studentCode} maxLength={6} placeholder="001 至 999999" onChange={event => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, studentCode: event.target.value } }))} disabled={busy} />
                 </label>
                 <label>
                   姓名
@@ -843,7 +991,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
           )}
 
           <section className="cloud-students__list" aria-label="學生名單">
-            {visibleStudents.length === 0 ? (
+            {displayRows.length === 0 ? (
               <div className="cloud-students__empty" role="status">
                 {page.search.trim() ? `找不到符合「${page.search.trim()}」的學生。` : '目前伺服器名單是空的，請手動新增學生。'}
               </div>
@@ -854,59 +1002,94 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
                     <tr><th>編號</th><th>姓名與別名</th><th>狀態</th><th>目前結餘</th><th>期初資料</th><th>操作</th></tr>
                   </thead>
                   <tbody>
-                    {visibleStudents.map(student => (
-                      <tr key={student.studentId} data-testid={`cloud-student-row-${student.studentId}`}>
-                        <td className="cloud-students__mono">{student.studentId}</td>
-                        <td>
-                          {page.editingId === student.studentId ? (
-                            <form className="cloud-students__edit-form" aria-label={`編輯學生 ${student.studentId}`} onSubmit={event => submitEdit(event, student)}>
-                              <label>姓名<input className="cloud-students__input" value={page.editDisplayName} maxLength={100} onChange={event => setPageState(previous => ({ ...previous, editDisplayName: event.target.value }))} disabled={busy} /></label>
-                              <label>別名<textarea className="cloud-students__input" rows={2} value={page.editAliasesText} onChange={event => setPageState(previous => ({ ...previous, editAliasesText: event.target.value }))} disabled={busy} /></label>
-                              <div className="cloud-students__actions">
-                                <button type="submit" className="cloud-students__primary" disabled={busy}>儲存姓名與別名</button>
-                                <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, editingId: null, actionError: '' }))} disabled={busy}>取消</button>
+                    {displayRows.map(row => {
+                      if (row.type === 'gap') {
+                        return (
+                          <tr
+                            key={`gap-${row.startCode}-${row.endCode}`}
+                            className="cloud-students__gap-row"
+                            data-testid={`cloud-student-gap-${row.startCode}`}
+                            onClick={() => setPageState(previous => ({
+                              ...previous,
+                              createOpen: true,
+                              actionError: '',
+                              createDraft: { ...freshCreateDraft(), studentCode: row.prefillCode },
+                            }))}
+                            style={{ cursor: 'pointer', background: 'rgba(0, 0, 0, 0.03)' }}
+                          >
+                            <td colSpan={6} style={{ textAlign: 'center', padding: '10px' }}>
+                              <strong>{row.count === 1 ? `${row.startCode} 尚無人使用` : `${row.startCode}–${row.endCode} 尚無人使用（${row.count} 個號碼）`}</strong>
+                              <span style={{ marginLeft: '8px', fontSize: '0.85em', opacity: 0.8 }}>（點擊填入新增表單）</span>
+                            </td>
+                          </tr>
+                        );
+                      }
+                      const student = row.student;
+                      return (
+                        <tr key={student.studentId} data-testid={`cloud-student-row-${student.studentCode}`}>
+                          <td className="cloud-students__mono">{student.studentCode}</td>
+                          <td>
+                            {page.editingId === student.studentId ? (
+                              <form className="cloud-students__edit-form" aria-label={`編輯學生 ${student.studentCode}`} onSubmit={event => submitEdit(event, student)}>
+                                <label>姓名<input className="cloud-students__input" value={page.editDisplayName} maxLength={100} onChange={event => setPageState(previous => ({ ...previous, editDisplayName: event.target.value }))} disabled={busy} /></label>
+                                <label>別名<textarea className="cloud-students__input" rows={2} value={page.editAliasesText} onChange={event => setPageState(previous => ({ ...previous, editAliasesText: event.target.value }))} disabled={busy} /></label>
+                                <div className="cloud-students__actions">
+                                  <button type="submit" className="cloud-students__primary" disabled={busy}>儲存姓名與別名</button>
+                                  <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, editingId: null, actionError: '' }))} disabled={busy}>取消</button>
+                                </div>
+                              </form>
+                            ) : (
+                              <>
+                                <strong>{student.displayName}</strong>
+                                {student.aliases.length > 0 && <div className="cloud-students__aliases">別名：{student.aliases.join('、')}</div>}
+                              </>
+                            )}
+                          </td>
+                          <td><span className={`cloud-students__status cloud-students__status--${student.status}`}>{student.status === 'active' ? '使用中' : '已停用'}</span></td>
+                          <td className="cloud-students__balance">{formatBalance(student.currentBalance)}</td>
+                          <td>
+                            <details className="cloud-students__opening-details">
+                              <summary>查看期初資料</summary>
+                              <dl>
+                                <dt>期初結餘</dt><dd>{formatBalance(student.openingBalance.amount)}</dd>
+                                <dt>期初日期</dt><dd>{student.openingBalance.asOfDate}</dd>
+                                <dt>期初備註</dt><dd>{student.openingBalance.note || '（無）'}</dd>
+                              </dl>
+                            </details>
+                          </td>
+                          <td>
+                            {page.codeStudent?.studentId === student.studentId ? (
+                              <form className="cloud-students__code-form" aria-label={`改編號 ${student.studentCode}`} onSubmit={submitChangeCode}>
+                                <p>修改編號（原編號 {student.studentCode}）</p>
+                                <label>新編號<input className="cloud-students__input cloud-students__mono" value={page.changeCodeValue} maxLength={6} placeholder="例如 015" onChange={event => setPageState(previous => ({ ...previous, changeCodeValue: event.target.value }))} disabled={busy} /></label>
+                                <label>改號原因（必填）<textarea className="cloud-students__input" rows={2} maxLength={500} value={page.changeCodeReason} onChange={event => setPageState(previous => ({ ...previous, changeCodeReason: event.target.value }))} disabled={busy} /></label>
+                                <div className="cloud-students__actions">
+                                  <button type="submit" className="cloud-students__primary" disabled={busy}>確認改號</button>
+                                  <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, codeStudent: null, changeCodeValue: '', changeCodeReason: '', actionError: '' }))} disabled={busy}>取消</button>
+                                </div>
+                              </form>
+                            ) : page.statusStudent?.studentId === student.studentId ? (
+                              <form className="cloud-students__status-form" aria-label={`${student.status === 'active' ? '停用' : '恢復'}學生 ${student.studentCode}`} onSubmit={submitStatus}>
+                                <p>{student.status === 'active' ? '確認停用這位學生？' : '確認恢復這位學生？'}</p>
+                                <label>原因（必填）<textarea className="cloud-students__input" rows={2} maxLength={500} value={page.statusReason} onChange={event => setPageState(previous => ({ ...previous, statusReason: event.target.value }))} disabled={busy} /></label>
+                                <div className="cloud-students__actions">
+                                  <button type="submit" className="cloud-students__primary" disabled={busy}>{student.status === 'active' ? '確認停用' : '確認恢復'}</button>
+                                  <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, statusStudent: null, statusReason: '', actionError: '' }))} disabled={busy}>取消</button>
+                                </div>
+                              </form>
+                            ) : (
+                              <div className="cloud-students__row-actions">
+                                <button type="button" className="cloud-students__secondary" onClick={() => beginEdit(student)} disabled={busy}>編輯姓名與別名</button>
+                                <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, codeStudent: student, changeCodeValue: '', changeCodeReason: '', actionError: '' }))} disabled={busy}>改編號</button>
+                                <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, statusStudent: student, statusReason: '', actionError: '' }))} disabled={busy}>
+                                  {student.status === 'active' ? '停用' : '恢復'}
+                                </button>
                               </div>
-                            </form>
-                          ) : (
-                            <>
-                              <strong>{student.displayName}</strong>
-                              {student.aliases.length > 0 && <div className="cloud-students__aliases">別名：{student.aliases.join('、')}</div>}
-                            </>
-                          )}
-                        </td>
-                        <td><span className={`cloud-students__status cloud-students__status--${student.status}`}>{student.status === 'active' ? '使用中' : '已停用'}</span></td>
-                        <td className="cloud-students__balance">{formatBalance(student.currentBalance)}</td>
-                        <td>
-                          <details className="cloud-students__opening-details">
-                            <summary>查看期初資料</summary>
-                            <dl>
-                              <dt>期初結餘</dt><dd>{formatBalance(student.openingBalance.amount)}</dd>
-                              <dt>期初日期</dt><dd>{student.openingBalance.asOfDate}</dd>
-                              <dt>期初備註</dt><dd>{student.openingBalance.note || '（無）'}</dd>
-                            </dl>
-                          </details>
-                        </td>
-                        <td>
-                          {page.statusStudent?.studentId === student.studentId ? (
-                            <form className="cloud-students__status-form" aria-label={`${student.status === 'active' ? '停用' : '恢復'}學生 ${student.studentId}`} onSubmit={submitStatus}>
-                              <p>{student.status === 'active' ? '確認停用這位學生？' : '確認恢復這位學生？'}</p>
-                              <label>原因（必填）<textarea className="cloud-students__input" rows={2} maxLength={500} value={page.statusReason} onChange={event => setPageState(previous => ({ ...previous, statusReason: event.target.value }))} disabled={busy} /></label>
-                              <div className="cloud-students__actions">
-                                <button type="submit" className="cloud-students__primary" disabled={busy}>{student.status === 'active' ? '確認停用' : '確認恢復'}</button>
-                                <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, statusStudent: null, statusReason: '', actionError: '' }))} disabled={busy}>取消</button>
-                              </div>
-                            </form>
-                          ) : (
-                            <div className="cloud-students__row-actions">
-                              <button type="button" className="cloud-students__secondary" onClick={() => beginEdit(student)} disabled={busy}>編輯姓名與別名</button>
-                              <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, statusStudent: student, statusReason: '', actionError: '' }))} disabled={busy}>
-                                {student.status === 'active' ? '停用' : '恢復'}
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

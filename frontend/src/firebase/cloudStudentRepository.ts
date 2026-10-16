@@ -14,6 +14,7 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import type { CommandErrorCode, CommandReceipt, CommandResult } from '../domain/cloudCommands';
+import { STUDENT_CODE_REGEX } from '../domain/student';
 import {
   createCloudCommandRepository,
   type CloudCommandRepositoryOptions,
@@ -29,6 +30,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 
 export interface CloudStudentRecord {
   studentId: string;
+  studentCode: string;
   displayName: string;
   aliases: string[];
   status: 'active' | 'inactive';
@@ -70,9 +72,19 @@ export interface CreateCloudStudentInput {
   commandId: string;
   leaseEpoch: number;
   studentId: string;
+  studentCode: string;
   displayName: string;
   aliases: string[];
   openingBalance: { amount: number; asOfDate: string; note: string };
+}
+
+export interface ChangeCloudStudentCodeInput {
+  commandId: string;
+  leaseEpoch: number;
+  studentId: string;
+  expectedRevision: number;
+  studentCode: string;
+  reason: string;
 }
 
 export interface EditCloudStudentInput {
@@ -121,11 +133,11 @@ function validDate(value: unknown): value is string {
 }
 
 function validStudentId(value: unknown): value is string {
-  return typeof value === 'string'
-    && value.length >= 1
-    && value.length <= 64
-    && !value.includes('/')
-    && value !== '__cashier__';
+  return typeof value === 'string' && UUID.test(value);
+}
+
+function validStudentCode(value: unknown): value is string {
+  return typeof value === 'string' && STUDENT_CODE_REGEX.test(value);
 }
 
 function timestampIso(value: unknown): string | null {
@@ -153,10 +165,11 @@ function decodeHead(value: unknown): { seq: number; datasetId: string; goLiveDat
 }
 
 function decodeStudent(id: string, value: unknown): CloudStudentRecord {
-  const keys = ['studentId', 'displayName', 'aliases', 'status', 'openingBalance', 'currentBalance', 'createdAt', 'revision', 'lastCommandId', 'updatedAt'];
+  const keys = ['studentId', 'studentCode', 'displayName', 'aliases', 'status', 'openingBalance', 'currentBalance', 'createdAt', 'revision', 'lastCommandId', 'updatedAt'];
   if (!validStudentId(id)
     || !exactKeys(value, keys)
     || value.studentId !== id
+    || !validStudentCode(value.studentCode)
     || typeof value.displayName !== 'string' || value.displayName.length < 1 || value.displayName.length > 100
     || !Array.isArray(value.aliases) || value.aliases.length > 10
     || !value.aliases.every(alias => typeof alias === 'string' && alias.length > 0 && alias.length <= 100)
@@ -179,6 +192,7 @@ function decodeStudent(id: string, value: unknown): CloudStudentRecord {
   }
   return {
     studentId: id,
+    studentCode: value.studentCode,
     displayName: value.displayName,
     aliases: [...value.aliases] as string[],
     status: value.status,
@@ -283,9 +297,24 @@ export function createCloudStudentRepository(db: Firestore, options: CloudStuden
         targets: { studentId: input.studentId },
         expectedRevisions: { student: 0 },
         payload: {
+          studentCode: input.studentCode,
           displayName: input.displayName,
           aliases: input.aliases,
           openingBalance: input.openingBalance,
+        },
+      });
+    },
+    changeStudentCode(input: ChangeCloudStudentCodeInput): Promise<CommandResult> {
+      const { commandId, leaseEpoch, studentId, expectedRevision, studentCode, reason } = input;
+      return commands.commitCommand({
+        commandId,
+        kind: 'ChangeStudentCode',
+        leaseEpoch,
+        targets: { studentId },
+        expectedRevisions: { student: expectedRevision },
+        payload: {
+          studentCode,
+          reason,
         },
       });
     },
