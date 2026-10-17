@@ -63,7 +63,31 @@ type PreparedCommand =
       expectedRevision: number;
       status: 'active' | 'inactive';
       reason: string;
+    }
+  | {
+      kind: 'opening-day';
+      commandId: string;
+      studentCode: string;
+      dayId: string;
+    }
+  | {
+      kind: 'opening';
+      commandId: string;
+      studentId: string;
+      studentCode: string;
+      dayId: string;
+      expectedStudentRevision: number;
+      expectedDayRevision: number;
+      amount: number;
+      note: string;
+      reason: string;
     };
+
+type OpeningDayView =
+  | { state: 'loading' }
+  | { state: 'missing' }
+  | { state: 'ready'; revision: number; status: 'open' | 'closed' | 'reopened' }
+  | { state: 'error'; message: string };
 
 type RecoveryPhase = 'submitting' | 'unknown' | 'checking' | 'receipt' | 'access-lost';
 
@@ -93,6 +117,11 @@ interface PageState {
   codeStudent: CloudStudentRecord | null;
   changeCodeValue: string;
   changeCodeReason: string;
+  openingStudent: CloudStudentRecord | null;
+  openingAmountText: string;
+  openingNote: string;
+  openingReason: string;
+  openingDay: OpeningDayView;
   recovery: RecoveryState | null;
 }
 
@@ -124,11 +153,17 @@ const initialPageState = (identityKey: string): PageState => ({
   codeStudent: null,
   changeCodeValue: '',
   changeCodeReason: '',
+  openingStudent: null,
+  openingAmountText: '',
+  openingNote: '',
+  openingReason: '',
+  openingDay: { state: 'loading' },
   recovery: null,
 });
 
 function clearDrafts(): Pick<PageState,
-  'search' | 'createOpen' | 'createDraft' | 'editingId' | 'editDisplayName' | 'editAliasesText' | 'statusStudent' | 'statusReason' | 'codeStudent' | 'changeCodeValue' | 'changeCodeReason'> {
+  'search' | 'createOpen' | 'createDraft' | 'editingId' | 'editDisplayName' | 'editAliasesText' | 'statusStudent' | 'statusReason' | 'codeStudent' | 'changeCodeValue' | 'changeCodeReason'
+  | 'openingStudent' | 'openingAmountText' | 'openingNote' | 'openingReason' | 'openingDay'> {
   return {
     search: '',
     createOpen: false,
@@ -141,6 +176,11 @@ function clearDrafts(): Pick<PageState,
     codeStudent: null,
     changeCodeValue: '',
     changeCodeReason: '',
+    openingStudent: null,
+    openingAmountText: '',
+    openingNote: '',
+    openingReason: '',
+    openingDay: { state: 'loading' },
   };
 }
 
@@ -199,11 +239,91 @@ function formatBalance(amount: number): string {
   return `NT$ ${new Intl.NumberFormat('zh-TW').format(amount)}`;
 }
 
+function parseOpeningAmount(text: string): number | null {
+  if (!/^-?\d+$/.test(text)) return null;
+  const amount = Number(text);
+  if (!Number.isSafeInteger(amount) || amount < -1_000_000_000 || amount > 1_000_000_000) return null;
+  return amount === 0 ? 0 : amount;
+}
+
 function commandLabel(command: PreparedCommand): string {
   if (command.kind === 'create') return `新增 ${command.studentCode}`;
   if (command.kind === 'edit') return `修改 ${command.studentCode}`;
   if (command.kind === 'code') return `改編號 ${command.studentCode} → ${command.newStudentCode}`;
+  if (command.kind === 'opening-day') return `建立期初日營業日 ${command.dayId}（${command.studentCode} 期初更正前置）`;
+  if (command.kind === 'opening') return `更正 ${command.studentCode} 期初為 ${formatBalance(command.amount)}`;
   return command.status === 'inactive' ? `停用 ${command.studentCode}` : `恢復 ${command.studentCode}`;
+}
+
+interface OpeningCorrectionFormProps {
+  student: CloudStudentRecord;
+  day: OpeningDayView;
+  amountText: string;
+  note: string;
+  reason: string;
+  busy: boolean;
+  onAmountChange: (value: string) => void;
+  onNoteChange: (value: string) => void;
+  onReasonChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onEnsureDay: () => void;
+  onRetryDay: () => void;
+  onCancel: () => void;
+}
+
+function OpeningCorrectionForm({
+  student, day, amountText, note, reason, busy,
+  onAmountChange, onNoteChange, onReasonChange, onSubmit, onEnsureDay, onRetryDay, onCancel,
+}: OpeningCorrectionFormProps) {
+  const dayId = student.openingBalance.asOfDate;
+  const amount = parseOpeningAmount(amountText);
+  const nextBalance = amount === null ? null : student.currentBalance - student.openingBalance.amount + amount;
+  const cancel = <button type="button" className="cloud-students__secondary" onClick={onCancel} disabled={busy}>取消</button>;
+
+  if (day.state !== 'ready' || day.status === 'closed') {
+    return (
+      <div className="cloud-students__status-form cloud-students__opening-form" role="group" aria-label={`更正期初 ${student.studentCode}`}>
+        <p>更正期初（期初日 {dayId}）</p>
+        {day.state === 'loading' && <span role="status">正在向伺服器確認期初日營業日…</span>}
+        {day.state === 'error' && <span role="alert">{day.message}</span>}
+        {day.state === 'missing' && (
+          <span>期初日 {dayId} 還沒有營業日資料。期初更正會記在期初日，請先建立該營業日；建立營業日不影響現金。</span>
+        )}
+        {day.state === 'ready' && (
+          <span role="alert">期初日 {dayId} 已關帳。請先到營業日頁重開該日，再回來更正期初。</span>
+        )}
+        <div className="cloud-students__actions">
+          {day.state === 'missing' && (
+            <button type="button" className="cloud-students__primary" onClick={onEnsureDay} disabled={busy}>先建立營業日 {dayId}</button>
+          )}
+          {(day.state === 'error' || day.state === 'ready') && (
+            <button type="button" className="cloud-students__secondary" onClick={onRetryDay} disabled={busy}>重新確認營業日</button>
+          )}
+          {cancel}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <form className="cloud-students__status-form cloud-students__opening-form" aria-label={`更正期初 ${student.studentCode}`} onSubmit={onSubmit}>
+      <p>更正期初（期初日 {dayId} 不變）</p>
+      <label>期初結餘（整數新臺幣）<input className="cloud-students__input cloud-students__mono" type="text" inputMode="numeric" value={amountText} onChange={event => onAmountChange(event.target.value)} disabled={busy} /></label>
+      <label>期初備註（選填，最多 500 字）<input className="cloud-students__input" value={note} maxLength={500} onChange={event => onNoteChange(event.target.value)} disabled={busy} /></label>
+      <label>更正原因（必填）<textarea className="cloud-students__input" rows={2} maxLength={500} value={reason} onChange={event => onReasonChange(event.target.value)} disabled={busy} /></label>
+      <dl className="cloud-students__opening-preview" aria-label="期初更正預覽">
+        <dt>期初</dt>
+        <dd>{formatBalance(student.openingBalance.amount)} → {amount === null ? '（金額未完成）' : formatBalance(amount)}</dd>
+        <dt>目前結餘</dt>
+        <dd>{formatBalance(student.currentBalance)} → {nextBalance === null ? '（金額未完成）' : formatBalance(nextBalance)}</dd>
+      </dl>
+      <small>只調整這位學生的期初與目前結餘，不影響今日現金，也不改期初日。</small>
+      <div className="cloud-students__actions">
+        <button type="submit" className="cloud-students__primary" disabled={busy}>確認更正期初</button>
+        {cancel}
+      </div>
+    </form>
+  );
 }
 
 export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationStateChange }: CloudStudentsPageProps) {
@@ -215,6 +335,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
   const commandFlightRef = useRef<symbol | null>(null);
   const revokedIdentityRef = useRef<string | null>(null);
   const pendingCommandIdRef = useRef<string | null>(null);
+  const openingDayRequestRef = useRef(0);
 
   if (identityRef.current !== identityKey) {
     identityRef.current = identityKey;
@@ -309,7 +430,8 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
           actionError: '',
           recovery: confirmsPending ? null : previous.recovery,
           notice: confirmsPending
-            ? `已確認 ${confirmedCommand ? commandLabel(confirmedCommand) : '學生操作'} 完成；伺服器名單已重新載入（命令序號 ${confirmedReceipt.seq}）。`
+            ? `已確認 ${confirmedCommand ? commandLabel(confirmedCommand) : '學生操作'} 完成；伺服器名單已重新載入（命令序號 ${confirmedReceipt.seq}）。${
+              confirmedCommand?.kind === 'opening-day' ? '請再按該學生的「更正期初」繼續。' : ''}`
             : previous.notice,
         };
       });
@@ -357,6 +479,65 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
     );
   }, [hasRecovery, identityKey, onNavigationStateChange, page.authorizationRevoked]);
 
+  // 首次送出與同編號核對都走這裡，確保核對時送出的是凍結的原輸入。
+  const dispatchCommand = (command: PreparedCommand): Promise<CommandResult> => {
+    if (command.kind === 'create') {
+      return repository.createStudent({
+        commandId: command.commandId,
+        leaseEpoch,
+        studentId: command.studentId,
+        studentCode: command.studentCode,
+        displayName: command.displayName,
+        aliases: command.aliases,
+        openingBalance: command.openingBalance,
+      });
+    }
+    if (command.kind === 'edit') {
+      return repository.editStudent({
+        commandId: command.commandId,
+        leaseEpoch,
+        studentId: command.studentId,
+        expectedRevision: command.expectedRevision,
+        ...(command.displayName !== undefined ? { displayName: command.displayName } : {}),
+        ...(command.aliases !== undefined ? { aliases: command.aliases } : {}),
+      });
+    }
+    if (command.kind === 'code') {
+      return repository.changeStudentCode({
+        commandId: command.commandId,
+        leaseEpoch,
+        studentId: command.studentId,
+        expectedRevision: command.expectedRevision,
+        studentCode: command.newStudentCode,
+        reason: command.reason,
+      });
+    }
+    if (command.kind === 'opening-day') {
+      return repository.ensureOpeningDay({ commandId: command.commandId, leaseEpoch, dayId: command.dayId });
+    }
+    if (command.kind === 'opening') {
+      return repository.correctOpening({
+        commandId: command.commandId,
+        leaseEpoch,
+        studentId: command.studentId,
+        dayId: command.dayId,
+        expectedStudentRevision: command.expectedStudentRevision,
+        expectedDayRevision: command.expectedDayRevision,
+        amount: command.amount,
+        note: command.note,
+        reason: command.reason,
+      });
+    }
+    return repository.setStudentStatus({
+      commandId: command.commandId,
+      leaseEpoch,
+      studentId: command.studentId,
+      expectedRevision: command.expectedRevision,
+      status: command.status,
+      reason: command.reason,
+    });
+  };
+
   const runPreparedCommand = async (command: PreparedCommand) => {
     const key = identityKey;
     const generation = generationRef.current;
@@ -389,44 +570,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
 
     let result: CommandResult;
     try {
-      if (command.kind === 'create') {
-        result = await repository.createStudent({
-          commandId: command.commandId,
-          leaseEpoch,
-          studentId: command.studentId,
-          studentCode: command.studentCode,
-          displayName: command.displayName,
-          aliases: command.aliases,
-          openingBalance: command.openingBalance,
-        });
-      } else if (command.kind === 'edit') {
-        result = await repository.editStudent({
-          commandId: command.commandId,
-          leaseEpoch,
-          studentId: command.studentId,
-          expectedRevision: command.expectedRevision,
-          ...(command.displayName !== undefined ? { displayName: command.displayName } : {}),
-          ...(command.aliases !== undefined ? { aliases: command.aliases } : {}),
-        });
-      } else if (command.kind === 'code') {
-        result = await repository.changeStudentCode({
-          commandId: command.commandId,
-          leaseEpoch,
-          studentId: command.studentId,
-          expectedRevision: command.expectedRevision,
-          studentCode: command.newStudentCode,
-          reason: command.reason,
-        });
-      } else {
-        result = await repository.setStudentStatus({
-          commandId: command.commandId,
-          leaseEpoch,
-          studentId: command.studentId,
-          expectedRevision: command.expectedRevision,
-          status: command.status,
-          reason: command.reason,
-        });
-      }
+      result = await dispatchCommand(command);
     } catch (error) {
       releaseFlight();
       if (!isCurrent(key, generation)) return;
@@ -668,6 +812,111 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
     });
   };
 
+  const beginOpening = async (student: CloudStudentRecord) => {
+    const key = identityKey;
+    const generation = generationRef.current;
+    const requestId = ++openingDayRequestRef.current;
+    const dayId = student.openingBalance.asOfDate;
+    setPageState(previous => ({
+      ...previous,
+      actionError: '',
+      openingStudent: student,
+      openingAmountText: String(student.openingBalance.amount),
+      openingNote: student.openingBalance.note,
+      openingReason: '',
+      openingDay: { state: 'loading' },
+    }));
+    const stillWanted = (previous: PageState) => requestId === openingDayRequestRef.current
+      && previous.openingStudent?.studentId === student.studentId;
+    try {
+      const day = await repository.readOpeningDay(dayId);
+      if (!isCurrent(key, generation)) return;
+      updateFor(key, generation, previous => (stillWanted(previous) ? {
+        ...previous,
+        openingDay: day ? { state: 'ready', revision: day.revision, status: day.status } : { state: 'missing' },
+      } : previous));
+    } catch (error) {
+      if (!isCurrent(key, generation)) return;
+      if (isAuthorizationLoss(error)) {
+        revokeAuthorization(key, generation, null, error);
+        return;
+      }
+      updateFor(key, generation, previous => (stillWanted(previous) ? {
+        ...previous,
+        openingDay: { state: 'error', message: `無法確認期初日營業日。${displayError(error)}` },
+      } : previous));
+    }
+  };
+
+  const closeOpening = () => {
+    openingDayRequestRef.current += 1;
+    setPageState(previous => ({
+      ...previous,
+      openingStudent: null,
+      openingAmountText: '',
+      openingNote: '',
+      openingReason: '',
+      openingDay: { state: 'loading' },
+      actionError: '',
+    }));
+  };
+
+  const submitOpeningDay = () => {
+    const student = page.openingStudent;
+    if (!student || page.recovery || !page.snapshot || page.openingDay.state !== 'missing') return;
+    const commandId = makeCommandId();
+    if (!commandId) return;
+    void runPreparedCommand({
+      kind: 'opening-day',
+      commandId,
+      studentCode: student.studentCode,
+      dayId: student.openingBalance.asOfDate,
+    });
+  };
+
+  const submitOpening = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const student = page.openingStudent;
+    const day = page.openingDay;
+    if (!student || page.recovery || !page.snapshot || day.state !== 'ready') return;
+    if (day.status === 'closed') {
+      setPageState(previous => ({ ...previous, actionError: '期初日已關帳，請先重開該日再更正期初。' }));
+      return;
+    }
+    const amount = parseOpeningAmount(page.openingAmountText);
+    if (amount === null) {
+      setPageState(previous => ({ ...previous, actionError: '期初結餘限 -1,000,000,000 至 1,000,000,000 元的整數；沒有結餘請輸入 0。' }));
+      return;
+    }
+    if (page.openingNote.length > 500) {
+      setPageState(previous => ({ ...previous, actionError: '期初備註不得超過 500 字。' }));
+      return;
+    }
+    if (amount === student.openingBalance.amount && page.openingNote === student.openingBalance.note) {
+      setPageState(previous => ({ ...previous, actionError: '期初金額與備註都沒有變更，無需更正。' }));
+      return;
+    }
+    const reason = page.openingReason.trim();
+    if (!reason || reason.length > 500) {
+      setPageState(previous => ({ ...previous, actionError: '請輸入具體的期初更正原因（1 至 500 字）。' }));
+      return;
+    }
+    const commandId = makeCommandId();
+    if (!commandId) return;
+    void runPreparedCommand({
+      kind: 'opening',
+      commandId,
+      studentId: student.studentId,
+      studentCode: student.studentCode,
+      dayId: student.openingBalance.asOfDate,
+      expectedStudentRevision: student.revision,
+      expectedDayRevision: day.revision,
+      amount,
+      note: page.openingNote,
+      reason,
+    });
+  };
+
   const checkPendingCommand = async () => {
     const recovery = page.recovery;
     if (revokedIdentityRef.current === identityKey) return;
@@ -698,42 +947,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
       // A receipt ID alone is not proof that this is the same business command.
       // Re-submit the frozen input under the same ID; the repository compares all
       // semantic fields and returns the stored receipt without another write.
-      const verification = recovery.command.kind === 'create'
-        ? await repository.createStudent({
-          commandId: recovery.command.commandId,
-          leaseEpoch,
-          studentId: recovery.command.studentId,
-          studentCode: recovery.command.studentCode,
-          displayName: recovery.command.displayName,
-          aliases: recovery.command.aliases,
-          openingBalance: recovery.command.openingBalance,
-        })
-        : recovery.command.kind === 'edit'
-          ? await repository.editStudent({
-            commandId: recovery.command.commandId,
-            leaseEpoch,
-            studentId: recovery.command.studentId,
-            expectedRevision: recovery.command.expectedRevision,
-            ...(recovery.command.displayName !== undefined ? { displayName: recovery.command.displayName } : {}),
-            ...(recovery.command.aliases !== undefined ? { aliases: recovery.command.aliases } : {}),
-          })
-          : recovery.command.kind === 'code'
-            ? await repository.changeStudentCode({
-              commandId: recovery.command.commandId,
-              leaseEpoch,
-              studentId: recovery.command.studentId,
-              expectedRevision: recovery.command.expectedRevision,
-              studentCode: recovery.command.newStudentCode,
-              reason: recovery.command.reason,
-            })
-            : await repository.setStudentStatus({
-              commandId: recovery.command.commandId,
-              leaseEpoch,
-              studentId: recovery.command.studentId,
-              expectedRevision: recovery.command.expectedRevision,
-              status: recovery.command.status,
-              reason: recovery.command.reason,
-            });
+      const verification = await dispatchCommand(recovery.command);
       if (!isCurrent(key, generation)) return;
       if (!verification.ok) {
         if (isAuthorizationLoss(verification.error)) {
@@ -853,7 +1067,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
         <div>
           <p className="cloud-students__eyebrow">雲端資料 · 線上操作</p>
           <h1>學生名單與期初結餘</h1>
-          <p className="cloud-students__intro">名單由伺服器完整載入。期初結餘只在新增學生時建立；已建立的期初資料僅供查看。</p>
+          <p className="cloud-students__intro">名單由伺服器完整載入。期初結餘在新增學生時建立；之後只能以「更正期初」修改金額與備註，期初日不變，並須填寫原因。</p>
         </div>
         <button
           type="button"
@@ -1074,6 +1288,22 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
                                   <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, codeStudent: null, changeCodeValue: '', changeCodeReason: '', actionError: '' }))} disabled={busy}>取消</button>
                                 </div>
                               </form>
+                            ) : page.openingStudent?.studentId === student.studentId ? (
+                              <OpeningCorrectionForm
+                                student={student}
+                                day={page.openingDay}
+                                amountText={page.openingAmountText}
+                                note={page.openingNote}
+                                reason={page.openingReason}
+                                busy={busy}
+                                onAmountChange={value => setPageState(previous => ({ ...previous, openingAmountText: value }))}
+                                onNoteChange={value => setPageState(previous => ({ ...previous, openingNote: value }))}
+                                onReasonChange={value => setPageState(previous => ({ ...previous, openingReason: value }))}
+                                onSubmit={submitOpening}
+                                onEnsureDay={submitOpeningDay}
+                                onRetryDay={() => void beginOpening(student)}
+                                onCancel={closeOpening}
+                              />
                             ) : page.statusStudent?.studentId === student.studentId ? (
                               <form className="cloud-students__status-form" aria-label={`${student.status === 'active' ? '停用' : '恢復'}學生 ${student.studentCode}`} onSubmit={submitStatus}>
                                 <p>{student.status === 'active' ? '確認停用這位學生？' : '確認恢復這位學生？'}</p>
@@ -1087,6 +1317,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
                               <div className="cloud-students__row-actions">
                                 <button type="button" className="cloud-students__secondary" onClick={() => beginEdit(student)} disabled={busy}>編輯姓名與別名</button>
                                 <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, codeStudent: student, changeCodeValue: '', changeCodeReason: '', actionError: '' }))} disabled={busy}>改編號</button>
+                                <button type="button" className="cloud-students__secondary" onClick={() => void beginOpening(student)} disabled={busy}>更正期初</button>
                                 <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, statusStudent: student, statusReason: '', actionError: '' }))} disabled={busy}>
                                   {student.status === 'active' ? '停用' : '恢復'}
                                 </button>

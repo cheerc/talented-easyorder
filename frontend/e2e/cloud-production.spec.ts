@@ -1120,4 +1120,85 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       await session.close();
     }
   });
+
+  test('D07: corrects a student opening on its original date with a reason, leaves cash untouched and persists after reload', async ({ browser }) => {
+    const session = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
+    try {
+      const page = session.page;
+      const today = taipeiToday();
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toBeVisible();
+      await expect(page.getByRole('heading', { name: '學生名單與期初結餘' })).toBeVisible();
+
+      // 1. 建立學生 009，期初 100（期初日為上線日）
+      await page.getByRole('button', { name: '新增學生' }).click();
+      const studentForm = page.getByRole('form', { name: '新增學生' });
+      await studentForm.getByLabel('學員編號').fill('009');
+      await studentForm.getByRole('textbox', { name: '姓名', exact: true }).fill('陳期初');
+      await studentForm.getByRole('textbox', { name: /期初結餘（整數/ }).fill('100');
+      await studentForm.getByRole('radio', { name: /沿用既有核對結餘/ }).check();
+      await studentForm.getByRole('button', { name: '建立學生' }).click();
+      const row = page.getByTestId('cloud-student-row-009');
+      await expect(row).toContainText('陳期初');
+      const student = (await listAdminDocuments('students')).find(item => item.studentCode === '009')!;
+      const openingDate = (student.openingBalance as Record<string, string>).asOfDate;
+      expect(openingDate).toBe(today);
+
+      // 2. 期初日沒有營業日時先建立（不影響現金），再回來更正
+      await row.getByRole('button', { name: '更正期初' }).click();
+      const ensureDay = row.getByRole('button', { name: `先建立營業日 ${openingDate}` });
+      const openingForm = row.getByRole('form', { name: '更正期初 009' });
+      await expect(ensureDay.or(openingForm)).toBeVisible();
+      if (await ensureDay.isVisible()) {
+        await ensureDay.click();
+        await expect(page.getByText(/請再按該學生的「更正期初」繼續/)).toBeVisible();
+        await row.getByRole('button', { name: '更正期初' }).click();
+      }
+      await expect(openingForm).toBeVisible();
+      const dayBefore = await readAdminDocument('days', openingDate);
+
+      // 3. 期初 100 → 70：預覽顯示期初與目前結餘的變化，送出需要原因
+      await openingForm.getByLabel(/期初結餘/).fill('70');
+      await openingForm.getByLabel(/期初備註/).fill('核對紙本後更正');
+      await expect(openingForm.getByLabel('期初更正預覽')).toContainText('NT$ 100 → NT$ 70');
+      await openingForm.getByRole('button', { name: '確認更正期初' }).click();
+      await expect(page.getByRole('alert')).toContainText('請輸入具體的期初更正原因');
+      await openingForm.getByLabel('更正原因（必填）').fill('期初抄錯 30 元');
+      await openingForm.getByRole('button', { name: '確認更正期初' }).click();
+      await expect(page.getByText(/已確認 更正 009 期初為 NT\$ 70 完成/)).toBeVisible();
+      await expect(row).toContainText('NT$ 70');
+
+      const corrected = (await listAdminDocuments('students')).find(item => item.studentCode === '009')!;
+      expect(corrected).toMatchObject({
+        currentBalance: 70, openingBalance: { amount: 70, asOfDate: openingDate, note: '核對紙本後更正' },
+      });
+      const dayAfter = await readAdminDocument('days', openingDate);
+      expect(dayAfter).toMatchObject({ totals: dayBefore?.totals, openingCash: dayBefore?.openingCash, status: dayBefore?.status });
+      expect(dayAfter?.revision).toBe(Number(dayBefore?.revision) + 1);
+      const command = (await listAdminDocuments('commands')).find(item => item.kind === 'CorrectOpening'
+        && (item.targets as Record<string, unknown>).studentId === student.id)!;
+      expect(command).toMatchObject({
+        reason: '期初抄錯 30 元', businessDate: openingDate,
+        cashEffect: { before: 0, after: 0, delta: 0, reasonKind: 'none', refundAmount: 0 },
+      });
+      expect((command.before as Record<string, Record<string, Record<string, number>>>).student.openingBalance.amount).toBe(100);
+
+      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
+    } finally {
+      await session.close();
+    }
+
+    const second = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
+    try {
+      await second.page.getByRole('button', { name: '取得系統使用權' }).click();
+      const row = second.page.getByTestId('cloud-student-row-009');
+      await expect(row).toContainText('NT$ 70');
+      await row.getByText('查看期初資料').click();
+      await expect(row).toContainText('核對紙本後更正');
+      await second.page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+    } finally {
+      await second.close();
+    }
+  });
 });

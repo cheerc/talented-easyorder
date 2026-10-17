@@ -333,6 +333,20 @@ async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput)
       const current = decodeStudent(student.data());
       return current.revision === input.expectedRevisions.student ? 'INVALID_INPUT' : 'REVISION_CONFLICT';
     }
+    if (input.kind === 'CorrectOpening') {
+      const [student, day] = await Promise.all([
+        getDocFromServer(doc(db, studentPath(input.targets.studentId))),
+        getDocFromServer(doc(db, dayPath(input.targets.dayId))),
+      ]);
+      if (!student.exists() || !day.exists()) return 'INVALID_INPUT';
+      const dayValue = decodeDay(day.data());
+      if (decodeStudent(student.data()).revision !== input.expectedRevisions.student
+        || dayValue.revision !== input.expectedRevisions.day) {
+        return 'REVISION_CONFLICT';
+      }
+      if (dayValue.status === 'closed') return 'DAY_CLOSED';
+      return 'INVALID_INPUT';
+    }
     if (input.kind === 'EnsureDay') {
       await getDocFromServer(doc(db, dayPath(input.targets.dayId)));
       return 'INVALID_INPUT';
@@ -506,14 +520,16 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     const mutation = isTransactionMutationKind(input.kind) ? input as Extract<CanonicalEnabledInput, { kind: TransactionMutationKind }> : null;
     const hasDayTarget = input.kind === 'EnsureDay' || input.kind === 'CreateOrder' || input.kind === 'CreatePayment'
       || input.kind === 'CreateCashMovement' || input.kind === 'CreateRefund' || input.kind === 'SetDayMenu' || input.kind === 'SetOpeningCash'
-      || mutation !== null;
+      || mutation !== null || input.kind === 'CorrectOpening';
     const targetDayId = input.kind === 'EnsureDay' ? input.targets.dayId
       : input.kind === 'CreateOrder' || input.kind === 'CreatePayment' || input.kind === 'CreateCashMovement'
         || input.kind === 'CreateRefund' || input.kind === 'SetDayMenu' || input.kind === 'SetOpeningCash'
+        || input.kind === 'CorrectOpening'
         ? input.targets.dayId : mutation ? mutation.targets.dayId : null;
     const dayRef = targetDayId ? doc(db, dayPath(targetDayId)) : null;
     const targetStudentId = input.kind === 'CreateStudent' || input.kind === 'ChangeStudentCode' || input.kind === 'EditStudent' || input.kind === 'SetStudentStatus'
-      || input.kind === 'CreateOrder' || input.kind === 'CreatePayment' || input.kind === 'CreateRefund' ? input.targets.studentId
+      || input.kind === 'CreateOrder' || input.kind === 'CreatePayment' || input.kind === 'CreateRefund'
+      || input.kind === 'CorrectOpening' ? input.targets.studentId
       : mutation && mutation.targets.studentId !== CASHIER_STUDENT_ID ? mutation.targets.studentId : null;
     const targetStudentRef = targetStudentId ? doc(db, studentPath(targetStudentId)) : null;
     const targetVendorId = input.kind === 'SaveVendor' || input.kind === 'RemoveVendor' ? input.targets.vendorId
@@ -603,6 +619,55 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         const now = serverTimestamp();
         const headAfter: Data = { ...headBefore, seq, lastCommandId: input.commandId, updatedAt: now };
         const zeroCash = { before: 0, after: 0, delta: 0, reasonKind: 'none' as const, refundAmount: 0 };
+
+        if (input.kind === 'CorrectOpening') {
+          if (!daySnapshot?.exists() || !dayRef || !studentBefore || !targetStudentRef) {
+            throw new RejectCommand('INVALID_INPUT', '期初日的營業日或學生不存在');
+          }
+          const { dayId } = input.targets;
+          const dayBefore = decodeDay(daySnapshot.data());
+          checkRevision(studentBefore.revision, input.expectedRevisions.student, '學生版本');
+          checkRevision(dayBefore.revision, input.expectedRevisions.day, '營業日版本');
+          const openingBefore = studentBefore.openingBalance as Data;
+          if (openingBefore.asOfDate !== dayId) throw new RejectCommand('INVALID_INPUT', '期初日期不能更改');
+          if (dayBefore.status === 'closed') throw new RejectCommand('DAY_CLOSED', '期初日已關帳，請先重開該日再更正期初');
+          const openingAfter: Data = { ...openingBefore, amount: input.payload.amount, note: input.payload.note };
+          if (openingAfter.amount === openingBefore.amount && openingAfter.note === openingBefore.note) {
+            throw new RejectCommand('INVALID_INPUT', '期初金額與備註都沒有變更');
+          }
+          const nextBalance = Number(studentBefore.currentBalance) - Number(openingBefore.amount) + input.payload.amount;
+          if (!Number.isSafeInteger(nextBalance) || Math.abs(nextBalance) > 1_000_000_000) {
+            throw new RejectCommand('INVALID_INPUT', '更正後餘額超出允許範圍');
+          }
+          const studentAfter: Data = {
+            ...studentBefore,
+            openingBalance: openingAfter,
+            currentBalance: nextBalance,
+            revision: Number(studentBefore.revision) + 1,
+            lastCommandId: input.commandId,
+            updatedAt: now,
+          };
+          const dayAfter: Data = {
+            ...dayBefore,
+            revision: Number(dayBefore.revision) + 1,
+            lastCommandId: input.commandId,
+            updatedAt: now,
+          };
+          const stored = {
+            commandId: input.commandId, kind: 'CorrectOpening', seq, leaseEpoch: input.leaseEpoch,
+            actor: { uid: user.uid, email: user.email! }, committedAt: now as Timestamp,
+            businessDate: dayId, studentId: input.targets.studentId,
+            targets: input.targets, expectedRevisions: input.expectedRevisions,
+            before: { head: headBefore, student: studentBefore, day: dayBefore },
+            after: { head: headAfter, student: studentAfter, day: dayAfter },
+            reason: input.payload.reason, cashEffect: zeroCash, payload: input.payload, inputFingerprint: fingerprint,
+          } as StoredEnabledCommandDoc;
+          tx.update(targetStudentRef, studentAfter);
+          tx.update(dayRef, dayAfter);
+          tx.update(headRef, headAfter);
+          tx.set(commandRef, stored);
+          return { existing: null } as const;
+        }
 
         if (input.kind === 'RecordBackup') {
           const stored: StoredEnabledCommandDoc = {

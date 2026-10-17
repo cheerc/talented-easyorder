@@ -408,3 +408,70 @@ The new Emulator suite against main's Rules fails 21 of 47 cases (RED); with the
 | command create | P14 `CreateStudent` writer integration | +2 / +4 | +3 / +4 |
 
 The new P14 compatibility case (real P10a receipts through export and replay) is capped at **+3** on the command rule by its `CreateStudent` write. That limit already exists on main (+2 to +3, measured with the same probe on main's Rules), so it is not caused by P10a; the dispatch rewrite gives it one more term. Re-measure `CreateStudent` before adding any check to the command rule's earlier branches.
+
+## P10b opening correction — budget and probe receipt
+
+P10b enables `CorrectOpening` (F3). 20 kinds are enabled and 4 still denied (`CloseDay`, `ReopenDay`, `RecordExport`, `RecordPrint`). Contract: [P10b opening correction contract](../superpowers/specs/2026-10-17-cloud-opening-correction-contract.md).
+
+### Write budget
+
+| Command / write path | Central command-create Rules calls | Projection leaves Rules calls | Read-but-unwritten dependencies | Atomic no-cache total | Max per write |
+|---|---:|---:|---:|---:|---:|
+| `CorrectOpening` (command + dataHead + student + opening day) | commandHolder 2 + head before/after 2 + student before/after 2 + day before/after 2 = **8** | head 2 + student 2 + day 2 = **6** | lease `approvedOperator` **1** | **15/20** | **8/10** |
+
+Static derivation from the read graph, the same method as the earlier appendices; the Emulator has no runtime access counter.
+
+### Rule layout
+
+- The command branch `validCorrectOpening` is the last branch of `validCommandCreate`, so every earlier kind keeps its headroom.
+- The student check is a last branch of `studentWriteCommand` (`validStudentOpeningCorrection`). The `students` update key list gains `openingBalance`; every other branch already fixes its own changed keys.
+- The day check has its **own `allow update`** on `days/{dayId}` (`dayOpeningCorrectionCommand`) instead of a new `dayWriteCommand` branch. A first version added a branch to `dayWriteCommand` and cost the existing `CreateOrder` day path one unit (+11 → +10, also with `CorrectOpening` folded into the kind list). With a separate `allow update`, `P08.8` and `P10.1` are back to +11, equal to main. The separate rule checks its own keys (`revision`, `lastCommandId`, `updatedAt`), the revision bump and `updatedAt`.
+
+### Expression headroom
+
+Same probe as before: inline `1 == 1 &&` terms at one rule anchor, bisected against a positive Emulator case.
+
+| Rule anchor | Case | Main `95b7695` | P10b |
+|---|---|---:|---:|
+| command create | `P10b.7` max payload (500-char note and reason, −1e9) | — | +68 / +69 |
+| student update | `P10b.7` | — | +83 / +84 |
+| day update (`dayOpeningCorrectionCommand`) | `P10b.7` | — | +96 / +97 |
+| dataHead update | `P10b.7` | — | +95 / +96 |
+| day update (`dayWriteCommand`) | `P08.8` CreateOrder | +11 / +12 | +11 / +12 |
+| day update (`dayWriteCommand`) | `P10.1` order correction | +11 / +12 † | +11 / +12 † |
+| command create | `P08.8` CreateOrder | +20 / +21 | +20 / +21 |
+| command create | `P10.17` every mutation kind | +19 / +20 | +19 / +20 |
+| command create | `P09b.9` refund, max payload | +19 / +20 | +19 / +20 |
+| command create | P14 real P10a receipts (capped by `CreateStudent`) | +3 / +4 | +3 / +4 |
+| command create | P14 real P10b receipt (capped by `CreateStudent`) | — | +3 / +4 |
+
+† capped by the `CreateOrder` that the case runs first. Main values come from the P10a appendix, except `P08.8` day, re-measured on `95b7695` for this PR.
+
+The tightest anchors are unchanged: the day rule for `CreateOrder` (+11), the command rule for mutations and refunds (+19), and `CreateStudent` on the command rule (+3).
+
+### Mutants
+
+Each mutant removes one P10b check from `firestore.rules` and runs all of `cloudOpeningCorrection.spec.ts`. The first round left five checks without a raw attack; four cases were added (opening unchanged, extra `before`／`after` projection, an identical twin day written by the same command).
+
+| Removed check | Result |
+|---|---|
+| `asOfDate == dayId` (command) | killed (`P10b.10`) |
+| zero cash effect | killed (`P10b.9`) |
+| `reason == payload.reason` | killed (`P10b.9`) |
+| `businessDate == dayId` | killed (`P10b.9`) |
+| `studentId == targets.studentId` | killed (`P10b.9`) |
+| reason 1–500 | killed (`P10b.9`) |
+| payload exact keys | killed (`P10b.9`) |
+| `expectedRevisions.day` | killed (`P10b.9`) |
+| new opening object equals `{ amount, 原 asOfDate, note, 原 createdAt }` (student) | killed (`P10b.9`) |
+| the opening must change (student) | killed (`P10b.9`) |
+| balance `before − old opening + new opening` (student) | killed (`P10b.9`) |
+| student changed keys (student) | killed (`P10b.9`) |
+| day changed keys (day) | killed (`P10b.9`) |
+| day target equals the written day (day) | killed (`P10b.10`) |
+| `before`／`after` snapshot binding (command) | killed (`P10b.9`) |
+| day open／reopened (command) | survived: redundant with the same check in the day rule (and the reverse). `P10b.4` covers a closed day with both in place. |
+| note ≤ 500 (command) | survived: redundant with `validStudent` (opening note ≤ 500). |
+| student／day revision bump (command) | survived: redundant with the `revision + 1` checks in the student and day rules. |
+
+The new Emulator suite against main's Rules fails 8 of 42 cases (every positive path); the deny cases also pass on main because main denies every `CorrectOpening`. With the P10b Rules it passes 42/42.

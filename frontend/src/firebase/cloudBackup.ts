@@ -100,7 +100,7 @@ const MUTATION_KINDS = new Set<string>(TRANSACTION_MUTATION_KINDS);
 const DECODABLE_COMMAND_KINDS = new Set([
   'EnsureDay', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus', 'SaveVendor',
   'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateOrder', 'CreatePayment', 'CreateCashMovement',
-  'CreateRefund', ...MUTATION_KINDS, 'RecordBackup',
+  'CreateRefund', ...MUTATION_KINDS, 'RecordBackup', 'CorrectOpening',
 ]);
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

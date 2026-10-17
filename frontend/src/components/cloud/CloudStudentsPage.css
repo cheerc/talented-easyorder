@@ -406,3 +406,26 @@
     flex-direction: column;
   }
 }
+
+.cloud-students__opening-form > span,
+.cloud-students__opening-form small {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cloud-students__opening-preview {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.cloud-students__opening-preview dt {
+  font-weight: 700;
+}
+
+.cloud-students__opening-preview dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
