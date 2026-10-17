@@ -5,18 +5,23 @@ import {
   doc,
   getDocFromServer,
   getDocsFromServer,
+  limit,
+  query,
+  where,
   type Firestore,
 } from 'firebase/firestore';
 import type { CommandErrorCode, CommandReceipt, CommandResult } from '../domain/cloudCommands';
 import { InvalidCloudCommandInput, decodeSettlementDoc, settlementExpectedCash } from '../domain/cloudCommandSchema';
 import { createCloudCommandRepository, type CloudCommandRepositoryOptions } from './cloudCommandRepository';
-import { dataHeadPath, dayPath } from './firestorePaths';
+import { accessLeasePath, dataHeadPath, dayPath } from './firestorePaths';
 
 type Data = Record<string, unknown>;
 type CurrentUser = Pick<User, 'uid' | 'email' | 'emailVerified' | 'providerData'>;
 
 /** P11 settlement versions per day are small; more than this is out of spec and fails closed. */
 const MAX_SETTLEMENT_VERSIONS = 200;
+/** Unclosed days are closed daily; more than this means the overview cannot be shown completely. */
+const MAX_UNCLOSED_DAYS = 200;
 
 export type CloudDayCloseReadErrorCode = CommandErrorCode | 'INCOMPLETE_SNAPSHOT' | 'STALE_SNAPSHOT';
 
@@ -69,6 +74,38 @@ export interface CloudDayCloseState {
   /** Oldest first; versions 1..lastSettlementRevision, all present. */
   settlements: CloudSettlementVersion[];
   seq: number;
+}
+
+/**
+ * How an unclosed day is shown on the close page (contract §7). Only `needs-close` can be closed now;
+ * `no-business` is a past day without opening cash or transactions (for example one EnsureDay created
+ * for an opening correction) and is not a missing close; `missing-opening` has transactions or is today.
+ */
+export type UnclosedDayKind = 'needs-close' | 'missing-opening' | 'no-business';
+
+export interface CloudUnclosedDay {
+  dayId: string;
+  status: 'open' | 'reopened';
+  openingCash: number | null;
+  activeTransactionCount: number;
+  kind: UnclosedDayKind;
+}
+
+export interface CloudDayCloseOverview {
+  /** Taipei date of the server lease time; the browser clock never decides the business day. */
+  selectionDate: string;
+  goLiveDate: string;
+  /** Open or reopened days up to selectionDate, oldest first. Future pre-scheduled days are left out. */
+  unclosedDays: CloudUnclosedDay[];
+  seq: number;
+}
+
+export function classifyUnclosedDay(
+  day: { dayId: string; openingCash: number | null; activeTransactionCount: number },
+  selectionDate: string,
+): UnclosedDayKind {
+  if (day.openingCash !== null) return 'needs-close';
+  return day.dayId < selectionDate && day.activeTransactionCount === 0 ? 'no-business' : 'missing-opening';
 }
 
 export interface CloseCloudDayInput {
@@ -175,7 +212,7 @@ function readError(error: unknown): CloudDayCloseRepositoryError {
   return new CloudDayCloseRepositoryError('UNKNOWN_RESULT', '無法從伺服器確認日結');
 }
 
-function assertAuthenticated(options: CloudCommandRepositoryOptions): void {
+function assertAuthenticated(options: CloudCommandRepositoryOptions): CurrentUser {
   let user: CurrentUser | null;
   try {
     user = options.currentUser ? options.currentUser() : getAuth().currentUser;
@@ -186,16 +223,76 @@ function assertAuthenticated(options: CloudCommandRepositoryOptions): void {
     || !user.providerData.some(provider => provider.providerId === 'google.com')) {
     throw new CloudDayCloseRepositoryError('UNAUTHORIZED', '需要已驗證的 Google 操作員身分');
   }
+  return user;
 }
 
-async function readHeadSeq(db: Firestore): Promise<{ seq: number; datasetId: string }> {
+async function readHeadSeq(db: Firestore): Promise<{ seq: number; datasetId: string; goLiveDate: string }> {
   const snapshot = await getDocFromServer(doc(db, dataHeadPath()));
   const value: unknown = snapshot.exists() ? snapshot.data() : null;
   if (!plainRecord(value) || !integer(value.seq, 0, Number.MAX_SAFE_INTEGER) || typeof value.datasetId !== 'string') {
     throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', '雲端 dataHead 尚未初始化或 schema 不支援');
   }
   if (value.maintenance === true) throw new CloudDayCloseRepositoryError('MAINTENANCE', '系統正在維護，暫停讀取日結');
-  return { seq: value.seq, datasetId: value.datasetId };
+  if (!validDate(value.goLiveDate)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', '雲端 dataHead 缺少系統啟用日期');
+  return { seq: value.seq, datasetId: value.datasetId, goLiveDate: value.goLiveDate };
+}
+
+function taipeiDate(timestamp: Timestamp): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(timestamp.toDate());
+  const part = (type: string) => parts.find(value => value.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+/**
+ * Server-only list of every open or reopened day up to the lease date, classified for the close page.
+ * More than MAX_UNCLOSED_DAYS such days, or a head that moves during the read, fails closed.
+ */
+export async function readCloudDayCloseOverview(
+  db: Firestore,
+  options: CloudCommandRepositoryOptions = {},
+): Promise<CloudDayCloseOverview> {
+  try {
+    const user = assertAuthenticated(options);
+    const before = await readHeadSeq(db);
+    const lease = await getDocFromServer(doc(db, accessLeasePath()));
+    const leaseValue: unknown = lease.exists() ? lease.data() : null;
+    if (!plainRecord(leaseValue) || leaseValue.holderUid !== user.uid || !(leaseValue.updatedAt instanceof Timestamp)) {
+      throw new CloudDayCloseRepositoryError('LEASE_LOST', '目前沒有有效的伺服器使用權租約');
+    }
+    const selectionDate = taipeiDate(leaseValue.updatedAt);
+    const page = await getDocsFromServer(query(
+      collection(db, 'days'),
+      where('status', 'in', ['open', 'reopened']),
+      limit(MAX_UNCLOSED_DAYS + 1),
+    ));
+    if (page.size > MAX_UNCLOSED_DAYS) {
+      throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `未關帳營業日超過 ${MAX_UNCLOSED_DAYS} 天，無法完整列出`);
+    }
+    const unclosedDays = page.docs
+      .map(snapshot => {
+        if (!validDate(snapshot.id)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${snapshot.id} 路徑不支援`);
+        const day = decodeDay(snapshot.id, snapshot.data());
+        if (day.status === 'closed') throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${snapshot.id} 狀態不符查詢條件`);
+        const entry = {
+          dayId: snapshot.id,
+          status: day.status,
+          openingCash: day.openingCash,
+          activeTransactionCount: day.totals.activeTransactionCount,
+        };
+        return { ...entry, kind: classifyUnclosedDay(entry, selectionDate) };
+      })
+      .filter(day => day.dayId <= selectionDate)
+      .sort((left, right) => left.dayId.localeCompare(right.dayId));
+    const after = await readHeadSeq(db);
+    if (after.seq !== before.seq || after.datasetId !== before.datasetId) {
+      throw new CloudDayCloseRepositoryError('STALE_SNAPSHOT', '讀取期間雲端資料有更新，請重新載入日結');
+    }
+    return { selectionDate, goLiveDate: before.goLiveDate, unclosedDays, seq: after.seq };
+  } catch (error) {
+    throw readError(error);
+  }
 }
 
 /**
@@ -255,6 +352,7 @@ export function createCloudDayCloseRepository(db: Firestore, options: CloudComma
   const commands = createCloudCommandRepository(db, options);
   return {
     read: (dayId: string) => readCloudDayClose(db, dayId, options),
+    readOverview: () => readCloudDayCloseOverview(db, options),
     closeDay(input: CloseCloudDayInput): Promise<CommandResult> {
       const { commandId, leaseEpoch, dayId, expectedDayRevision, expectedSettlementRevision, countedCash, note, expectedCash } = input;
       return commands.commitCommand({

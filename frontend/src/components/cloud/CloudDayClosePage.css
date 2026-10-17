@@ -1,0 +1,444 @@
+.cloud-day-close {
+  width: min(1180px, calc(100% - 32px));
+  min-height: calc(100vh - 82px);
+  margin: 24px auto 48px;
+  padding: 28px;
+  color: var(--ink, #20252b);
+  background: var(--panel, #fff);
+  border: 1px solid var(--line, #dce1e7);
+  border-radius: 14px;
+  box-shadow: 0 12px 36px rgba(20, 33, 48, .07);
+}
+
+.cloud-day-close button,
+.cloud-day-close input,
+.cloud-day-close textarea,
+.cloud-day-close select {
+  font: inherit;
+}
+
+.cloud-day-close__header,
+.cloud-day-close__section-heading,
+.cloud-day-close__date-form,
+.cloud-day-close__actions,
+.cloud-day-close__row-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cloud-day-close__header,
+.cloud-day-close__section-heading {
+  justify-content: space-between;
+}
+
+.cloud-day-close__header {
+  gap: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line, #dce1e7);
+}
+
+.cloud-day-close__header h1 {
+  margin: 2px 0 8px;
+  font-size: clamp(22px, 3vw, 30px);
+  letter-spacing: -.025em;
+}
+
+.cloud-day-close__eyebrow {
+  margin: 0;
+  color: var(--ink-3, #627182);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+
+.cloud-day-close__intro {
+  max-width: 760px;
+  margin: 0;
+  color: var(--ink-2, #536170);
+  line-height: 1.6;
+}
+
+.cloud-day-close__primary,
+.cloud-day-close__secondary,
+.cloud-day-close__danger {
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.cloud-day-close__primary {
+  color: #fff;
+  background: var(--accent, #176b87);
+}
+
+.cloud-day-close__secondary {
+  color: var(--ink, #20252b);
+  background: var(--panel, #fff);
+  border-color: var(--line, #dce1e7);
+}
+
+.cloud-day-close__danger {
+  color: #78351f;
+  background: #fff1e9;
+  border-color: #f4c6b1;
+}
+
+.cloud-day-close button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.cloud-day-close button:focus-visible,
+.cloud-day-close input:focus-visible,
+.cloud-day-close textarea:focus-visible,
+.cloud-day-close select:focus-visible {
+  outline: 3px solid rgba(23, 107, 135, .3);
+  outline-offset: 2px;
+}
+
+.cloud-day-close__alert,
+.cloud-day-close__notice,
+.cloud-day-close__warning,
+.cloud-day-close__recovery,
+.cloud-day-close__loading,
+.cloud-day-close__empty,
+.cloud-day-close__unavailable {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: 9px;
+  line-height: 1.55;
+}
+
+.cloud-day-close__alert,
+.cloud-day-close__recovery,
+.cloud-day-close__warning {
+  color: #78351f;
+  background: #fff1e9;
+  border: 1px solid #f4c6b1;
+}
+
+.cloud-day-close__notice {
+  color: #15513b;
+  background: #e9f6ef;
+  border: 1px solid #b9e2ca;
+}
+
+.cloud-day-close__loading,
+.cloud-day-close__empty,
+.cloud-day-close__unavailable {
+  color: var(--ink-2, #536170);
+  background: var(--surface-subtle, #f5f7f9);
+  border: 1px solid var(--line, #dce1e7);
+}
+
+.cloud-day-close__recovery {
+  display: grid;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+
+.cloud-day-close__date-panel,
+.cloud-day-close__day-section,
+.cloud-day-close__vendor-section {
+  margin-top: 22px;
+  padding: 20px;
+  border: 1px solid var(--line, #dce1e7);
+  border-radius: 10px;
+}
+
+.cloud-day-close__date-panel {
+  background: var(--surface-subtle, #f7f9fb);
+}
+
+.cloud-day-close__date-form {
+  flex-wrap: wrap;
+}
+
+.cloud-day-close__date-form label {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.cloud-day-close__input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  color: var(--ink, #20252b);
+  background: var(--panel, #fff);
+  border: 1px solid var(--line, #cbd3dc);
+  border-radius: 7px;
+}
+
+.cloud-day-close__date-form .cloud-day-close__input {
+  width: auto;
+  min-height: 38px;
+}
+
+.cloud-day-close__date-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 12px;
+  color: var(--ink-3, #627182);
+  font-size: 12px;
+}
+
+.cloud-day-close__help,
+.cloud-day-close__date-panel > p,
+.cloud-day-close__section-heading p,
+.cloud-day-close__footnote {
+  color: var(--ink-3, #627182);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.cloud-day-close__help {
+  margin: 12px 0 0;
+}
+
+.cloud-day-close__day-section > .cloud-day-close__section-heading h2,
+.cloud-day-close__vendor-section > .cloud-day-close__section-heading h2 {
+  margin: 0 0 4px;
+  font-size: 21px;
+}
+
+.cloud-day-close__section-heading p {
+  margin: 0;
+}
+
+.cloud-day-close__card {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--line, #dce1e7);
+  border-radius: 9px;
+}
+
+.cloud-day-close__card h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.cloud-day-close__summary {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 14px;
+  margin: 10px 0 0;
+}
+
+.cloud-day-close__summary dt {
+  color: var(--ink-3, #627182);
+  font-size: 13px;
+}
+
+.cloud-day-close__summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.cloud-day-close__inherit-card {
+  margin: 12px 0;
+  padding: 14px;
+  background: var(--surface-subtle, #f7f9fb);
+  border: 1px solid var(--line, #dce1e7);
+  border-radius: 8px;
+}
+
+.cloud-day-close__inherit-card p {
+  margin: 0 0 8px;
+  color: var(--ink-2, #536170);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.cloud-day-close__actions,
+.cloud-day-close__row-actions {
+  flex-wrap: wrap;
+}
+
+.cloud-day-close__actions {
+  margin-top: 12px;
+}
+
+.cloud-day-close__vendor-section > .cloud-day-close__section-heading {
+  margin-bottom: 12px;
+}
+
+.cloud-day-close__form-wrap {
+  margin-bottom: 16px;
+}
+
+.cloud-day-close__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line, #dce1e7);
+  border-radius: 8px;
+}
+
+.cloud-day-close table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+}
+
+.cloud-day-close th,
+.cloud-day-close td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line, #e5e9ee);
+  text-align: left;
+  vertical-align: top;
+}
+
+.cloud-day-close th {
+  color: var(--ink-3, #627182);
+  background: var(--surface-subtle, #f7f9fb);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cloud-day-close tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.cloud-day-close__mono {
+  font-variant-numeric: tabular-nums;
+}
+
+.cloud-day-close__status {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cloud-day-close__status--active {
+  color: #15513b;
+  background: #e9f6ef;
+}
+
+.cloud-day-close__status--inactive {
+  color: #78351f;
+  background: #fff1e9;
+}
+
+.cloud-day-close__remove-form {
+  display: grid;
+  min-width: 250px;
+  gap: 8px;
+}
+
+.cloud-day-close__remove-form p {
+  margin: 0;
+  color: var(--ink-3, #627182);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cloud-day-close__remove-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.cloud-day-close__footnote {
+  margin: 12px 0 0;
+}
+
+@media (max-width: 760px) {
+  .cloud-day-close {
+    width: calc(100% - 20px);
+    margin: 10px auto 28px;
+    padding: 18px;
+  }
+
+  .cloud-day-close__header,
+  .cloud-day-close__section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .cloud-day-close__header > button {
+    width: 100%;
+  }
+
+  .cloud-day-close__date-panel,
+  .cloud-day-close__day-section,
+  .cloud-day-close__vendor-section {
+    padding: 14px;
+  }
+
+  .cloud-day-close__date-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cloud-day-close__date-form .cloud-day-close__input,
+  .cloud-day-close__date-form button {
+    width: 100%;
+  }
+}
+
+/* P11b close page additions. */
+.cloud-day-close__form {
+  display: grid;
+  gap: 12px;
+  max-width: 560px;
+  margin-top: 12px;
+}
+
+.cloud-day-close__form label {
+  display: grid;
+  gap: 6px;
+  font-weight: 650;
+}
+
+.cloud-day-close__difference {
+  margin: 0;
+  font-weight: 700;
+}
+
+.cloud-day-close__difference--zero {
+  color: var(--ok, #1d7a4a);
+}
+
+.cloud-day-close__difference--nonzero {
+  color: var(--warn, #9a5b00);
+}
+
+.cloud-day-close__status--open,
+.cloud-day-close__status--reopened {
+  color: #7a4b00;
+  background: #fff4dc;
+}
+
+.cloud-day-close__status--closed {
+  color: #1d5e3a;
+  background: #e5f4ea;
+}
+
+.cloud-day-close__list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cloud-day-close__list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.cloud-day-close__backup {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line, #dce1e7);
+}

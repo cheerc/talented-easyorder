@@ -563,7 +563,7 @@ describe('CloudStudentsPage', () => {
     repository.readOpeningDay.mockResolvedValueOnce({ dayId: '2026-01-01', revision: 7, status: 'closed' });
     row = await screen.findByTestId('cloud-student-row-001');
     fireEvent.click(within(row).getByRole('button', { name: '更正期初' }));
-    expect(await within(row).findByText(/已關帳。請先到營業日頁重開該日/)).toBeInTheDocument();
+    expect(await within(row).findByText(/已關帳。請先到「日結」頁填寫原因重開該日/)).toBeInTheDocument();
     expect(within(row).queryByRole('button', { name: '確認更正期初' })).not.toBeInTheDocument();
     expect(repository.correctOpening).not.toHaveBeenCalled();
   });

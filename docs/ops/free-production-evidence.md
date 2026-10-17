@@ -336,3 +336,14 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - schema 單元測試新增 5 項（§7.1 算式、差額需原因、負數與小數、版號綁定、重開原因）。
 - 沒有畫面、沒有 E2E（P11b）。無 production 部署、無正式金鑰。
 - **合併**：PR #503 squash `91b5909d960ba14cb6e448dad3d3c99292fba6f7`（2026-10-17），source head `ad701ef1b86368bf2b934e504292f9540f190563`。獨立審查 review `5557244382` 通過、無必修；審查本機重跑 `cloudDayClose.spec.ts`＋`cloudBackup.spec.ts`＋`cloudCommandSchema.dayClose.test.ts` 72/72。CI run 39020987035 build-and-test 與 e2e 成功。不擋合併：已關帳日的 P10a 更正類只實測 `VoidTransaction`（P11b 補測）；差額說明／重開原因純空白會過 Rules（畫面 trim）；期初日關帳後要先重開才能更正期初。P11b 進行中。
+
+## P11b 雲端日結頁 checkpoint — 2026-10-17
+
+- base 為 P11a 收據合併後的 main；PR、head SHA 與 CI 以 PR body 為準。契約第 9 節：[P11 contract](../superpowers/specs/2026-10-17-cloud-day-close-contract.md#9-p11b-雲端日結頁)。沒有改 Rules，Rules 餘裕不變。
+- 新增：雲端「日結」頁與導覽、`readCloudDayCloseOverview`（未關帳清單，超過 200 天或讀取期間 head 變動 fail closed）、P14 備份區塊掛在日結頁。已關帳日的菜單／開帳與期初更正提示改指向日結頁。
+- 審查備註處理：已關帳日 P10a 四種更正類（`CorrectTransaction`、`CancelKeepDeposit`、`CancelRefund`、`Undo`）以寫入器實測都回 `DAY_CLOSED`（`P11.6`，原有的作廢、建立、退款、櫃台收支、菜單、開帳、期初更正也改成斷言 `DAY_CLOSED`）；說明與重開原因送出前 trim，純空白不送。
+- demo-easyorder Auth＋Firestore Emulator 循序完整 Vitest（所有 `EASYORDER_REQUIRE_*`）：180 個檔案，2,013 passed，`cloudCommands.spec.ts` 的 `beforeAll` 在冷啟時逾時（10 秒）而跳過 177 項；該檔單獨重跑 177/177。合計 2,190/2,190。這個 `beforeAll` 逾時是既有現象（P10a 收據已記錄），本 PR 沒有改該檔。
+- `cloudDayClose.spec.ts` 49/49（新增 `P11.13`）；`CloudDayClosePage.test.tsx` 11/11；`src/components/cloud` 全部 89/89。
+- `npm run lint`、`npm run build`、`npx tsc --noEmit` exit 0；app tsc 208 個 `error TS` 診斷，與 base 逐行相同。
+- Cloud E2E（本機 Chromium 1194，不取代 CI pinned Chromium）：21 項中 20 過；新 D08 通過（關帳少 10 元需原因 → 櫃台不能入帳 → 重開需原因 → 相同金額再關帳成第 3 版 → 重新登入仍在）。A08（P04 同帳號雙頁租約心跳）整套跑時失敗一次，單獨重跑通過；本 PR 沒有改租約程式。
+- 無 production 部署、無正式金鑰。

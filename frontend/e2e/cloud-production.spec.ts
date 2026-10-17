@@ -1202,3 +1202,107 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
     }
   });
 });
+
+test.describe('P11 Cloud Day Close', () => {
+  test.setTimeout(120000);
+
+  test.beforeEach(async () => {
+    await seedAccessLease({ ...VACANT_LEASE, updatedAt: new Date() });
+  });
+
+  test.afterEach(async () => {
+    await seedAccessLease({ ...VACANT_LEASE, updatedAt: new Date() });
+  });
+
+  test('D08: counts cash and closes with a reason, reopens with a reason, re-closes into version 3 and persists after reload', async ({ browser }) => {
+    const today = taipeiToday();
+    const session = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
+    try {
+      const page = session.page;
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toBeVisible();
+
+      // 1. 今日營業日存在且已確認開帳現金（前面的案例可能已建立）
+      if ((await readAdminDocument('days', today))?.openingCash == null) {
+        await page.getByRole('button', { name: '日期與供應商' }).click();
+        const mainVendors = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
+        await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
+        const createDayBtn = page.getByRole('button', { name: '建立空白營業日' });
+        if (await createDayBtn.isVisible().catch(() => false)) await createDayBtn.click();
+        const openingForm = mainVendors.getByRole('form', { name: `${today} 開帳現金` });
+        await openingForm.getByLabel(/開帳現金/).fill('1000');
+        await openingForm.getByRole('button', { name: /開帳金額/ }).click();
+        await expect(openingForm.getByText(/伺服器已確認開帳現金 NT\$ 1,000/)).toBeVisible();
+      }
+      const before = (await readAdminDocument('days', today))!;
+      const t = before.totals as Record<string, number>;
+      const expected = Number(before.openingCash) + t.retainedReceipts + t.cashierIncome - t.cashierExpense - t.accountRefunds;
+      const money = (amount: number) => `${amount < 0 ? '−' : ''}NT$ ${Math.abs(amount).toLocaleString('en-US')}`;
+
+      // 2. 日結頁：應有現金由伺服器統計算出；實點少 10 元，沒填原因不能關帳
+      await page.getByRole('button', { name: '日結' }).click();
+      const main = page.getByRole('main', { name: '雲端日結' });
+      await expect(main.getByRole('heading', { name: `${today} 日結` })).toBeVisible();
+      await expect(main.getByLabel('營業日現金統計')).toContainText(money(expected));
+      await expect(main.getByTestId(`cloud-unclosed-${today}`)).toContainText('今天，尚未關帳');
+      const closeForm = main.getByRole('form', { name: `${today} 關帳` });
+      await closeForm.getByRole('textbox', { name: '實點現金（元）' }).fill(String(expected - 10));
+      await expect(closeForm).toContainText(`應有 ${money(expected)}，實點 ${money(expected - 10)}，少 NT$ 10`);
+      await closeForm.getByRole('button', { name: '確認關帳' }).click();
+      await expect(main.getByRole('alert')).toContainText('請填寫差額原因');
+      await closeForm.getByRole('textbox', { name: /差額原因/ }).fill('找零少收 10 元');
+      await closeForm.getByRole('button', { name: '確認關帳' }).click();
+      await expect(main.getByText(new RegExp(`已確認 ${today} 關帳 完成`))).toBeVisible();
+      await expect(main.getByTestId('cloud-settlement-1')).toContainText('少 NT$ 10');
+      await expect(main.getByTestId('cloud-settlement-1')).toContainText('找零少收 10 元');
+      expect(await readAdminDocument('days', today)).toMatchObject({ status: 'closed', lastSettlementRevision: 1, totals: before.totals });
+
+      // 3. 關帳後櫃台不能再入帳
+      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await expect(page.getByText('今日已關帳，不能訂餐、繳費或新增櫃台收支')).toBeVisible();
+
+      // 4. 重開需要原因；再以相同金額關帳，不需說明，成為第 3 版
+      await page.getByRole('button', { name: '日結' }).click();
+      await main.getByRole('button', { name: '重開這一天' }).click();
+      const reopenForm = main.getByRole('form', { name: `${today} 重開` });
+      await reopenForm.getByRole('button', { name: '確認重開' }).click();
+      await expect(reopenForm.getByRole('textbox', { name: /重開原因/ })).toBeVisible();
+      expect((await readAdminDocument('days', today))?.status).toBe('closed');
+      await reopenForm.getByRole('textbox', { name: /重開原因/ }).fill('補點後金額相符');
+      await reopenForm.getByRole('button', { name: '確認重開' }).click();
+      await expect(main.getByText(new RegExp(`已確認 ${today} 重開 完成`))).toBeVisible();
+      await expect(main.getByTestId('cloud-settlement-2')).toContainText('補點後金額相符');
+      await closeForm.getByRole('textbox', { name: '實點現金（元）' }).fill(String(expected));
+      await expect(closeForm).toContainText('無差額');
+      await closeForm.getByRole('button', { name: '確認關帳' }).click();
+      await expect(main.getByText(new RegExp(`已確認 ${today} 關帳 完成`))).toBeVisible();
+      await expect(main.getByTestId('cloud-settlement-3')).toContainText('無差額');
+
+      const settlements = (await listAdminDocuments(`days/${today}/settlements`))
+        .sort((left, right) => Number(left.revision) - Number(right.revision));
+      expect(settlements.map(item => [item.revision, item.status, item.countedCash, item.difference])).toEqual([
+        [1, 'closed', expected - 10, -10], [2, 'reopened', null, null], [3, 'closed', expected, 0],
+      ]);
+      await expect(main.getByRole('region', { name: '關帳後備份' })).toContainText('每日加密備份');
+
+      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
+    } finally {
+      await session.close();
+    }
+
+    const second = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
+    try {
+      await second.page.getByRole('button', { name: '取得系統使用權' }).click();
+      await second.page.getByRole('button', { name: '日結' }).click();
+      const main = second.page.getByRole('main', { name: '雲端日結' });
+      await expect(main.getByRole('heading', { name: `${today} 日結` })).toBeVisible();
+      await expect(main.getByText('已關帳', { exact: true })).toBeVisible();
+      await expect(main.getByTestId('cloud-settlement-1')).toContainText('找零少收 10 元');
+      await expect(main.getByTestId('cloud-settlement-3')).toBeVisible();
+      await second.page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+    } finally {
+      await second.close();
+    }
+  });
+});
