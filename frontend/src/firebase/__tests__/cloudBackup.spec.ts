@@ -386,6 +386,51 @@ describeWithEmulator('P14 cloud backup', () => {
     expect(() => validateBackupManifest(dropped)).toThrow(/seq 6/);
   });
 
+  it('exports, decrypts and replays a real P10b CorrectOpening receipt; a forged balance is rejected', async () => {
+    await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 0, []));
+    const db = authedDb();
+    const user = { uid: operator.uid, email: operator.email, emailVerified: true, providerData: [{ providerId: 'google.com' }] } as unknown as User;
+    const writer = createCloudCommandRepository(db, { currentUser: () => user });
+    const orders = createCloudOrderRepository(db, { currentUser: () => user });
+    const today = taipeiToday();
+    const studentId = uuid(600);
+    let next = 600;
+    const id = () => uuid(++next);
+    const read = async (path: string) => (await getDoc(doc(db, path))).data() as Record<string, number & string>;
+    const okResult = (result: { ok: boolean }) => expect(result, JSON.stringify(result)).toMatchObject({ ok: true });
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: 7,
+      targets: { dayId: today }, expectedRevisions: { day: 0 }, payload: { businessDate: today } }));
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: 7,
+      targets: { studentId }, expectedRevisions: { student: 0 },
+      payload: { studentCode: '600', displayName: 'Anonymous P10b fixture', aliases: [],
+        openingBalance: { amount: 100, asOfDate: today, note: '' } } }));
+    const revisions = async () => ({ student: (await read(`students/${studentId}`)).revision, day: (await read(`days/${today}`)).revision });
+    let r = await revisions();
+    okResult(await orders.createPayment({ commandId: id(), transactionId: id(), leaseEpoch: 7, studentId, dayId: today,
+      expectedStudentRevision: r.student, expectedDayRevision: r.day, paidAmount: 150, note: '' }));
+    r = await revisions();
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'CorrectOpening', leaseEpoch: 7,
+      targets: { studentId, dayId: today }, expectedRevisions: { student: r.student, day: r.day },
+      payload: { amount: 80, note: '核對後更正', reason: '期初抄錯' } }));
+
+    const exported = await createCloudBackupRepository(db, { currentUid: () => operator.uid })
+      .exportRange({ fromSeq: 0, generatedAt: '2026-10-17T03:00:00.000Z' });
+    expect(exported.manifest.records.map(record => record.kind)).toEqual(['EnsureDay', 'CreateStudent', 'CreatePayment', 'CorrectOpening']);
+    const opened = await decryptBackup(await encryptBackup(exported.manifest, 'p10b-round-trip'), 'p10b-round-trip');
+    const replayed = replayBackupProjections(opened.records);
+    expect(replayed).toEqual(opened.projectionState);
+    const studentAfter = replayed[`students/${studentId}`] as Record<string, unknown>;
+    expect(studentAfter).toMatchObject({ currentBalance: 230, openingBalance: { amount: 80, asOfDate: today, note: '核對後更正' } });
+    const dayTotals = (await read(`days/${today}`)).totals as unknown as Record<string, number>;
+    expect(opened.totals?.[today]).toEqual(dayTotals);
+    expect(recalculateBackupTotals(replayed)[today]).toEqual(dayTotals);
+
+    // Keeping the receipt chain but moving the balance by more than the opening difference is rejected.
+    const forged = structuredClone(opened);
+    ((forged.records[3]!.after!.student as Record<string, unknown>)).currentBalance = 200;
+    expect(() => validateBackupManifest(forged)).toThrow(/seq 4/);
+  });
+
   it('Rules reject an unpaired or fabricated backup receipt', async () => {
     await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 0, []));
     const db = authedDb();

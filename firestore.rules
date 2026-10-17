@@ -1237,7 +1237,61 @@ service cloud.firestore {
         || (kind == 'CreateRefund' && validCreateRefund(commandId, command))
         || (isMutationKind(kind) && validTransactionMutation(commandId, command))
         || (kind == 'RecordBackup'
-          && validRecordBackup(commandId, command, command.before.head, command.after.head));
+          && validRecordBackup(commandId, command, command.before.head, command.after.head))
+        || (kind == 'CorrectOpening' && validCorrectOpening(commandId, command));
+    }
+
+    // P10b CorrectOpening (spec §5 command table and the §7 opening-correction rule): corrects a student's opening amount and note on the
+    // original asOfDate. The asOfDate and createdAt never change, the cash effect is zero, and the
+    // balance moves by the opening difference. The command rule binds every snapshot to the real
+    // documents; the student and day rules check their own transitions from those snapshots.
+    function validCorrectOpening(commandId, command) {
+      let studentId = command.targets.studentId;
+      let dayId = command.targets.dayId;
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let studentBefore = get(/databases/$(database)/documents/students/$(studentId)).data;
+      let studentAfter = getAfter(/databases/$(database)/documents/students/$(studentId)).data;
+      let dayBefore = get(/databases/$(database)/documents/days/$(dayId)).data;
+      let dayAfter = getAfter(/databases/$(database)/documents/days/$(dayId)).data;
+      let p = command.payload;
+      return commandHolder(command.leaseEpoch)
+        && cashCommandEnvelope(commandId, command, head, headAfter)
+        && exactMap(command.targets, ['studentId', 'dayId'])
+        && exactMap(command.expectedRevisions, ['student', 'day'])
+        && command.expectedRevisions.student == studentBefore.revision
+        && command.expectedRevisions.day == dayBefore.revision
+        && exactMap(p, ['amount', 'note', 'reason'])
+        && p.amount is int && p.amount >= -1000000000 && p.amount <= 1000000000
+        && p.note is string && p.note.size() <= 500
+        && validMutationReason(p.reason)
+        && command.reason == p.reason
+        && command.businessDate == dayId
+        && command.studentId == studentId
+        && studentBefore.openingBalance.asOfDate == dayId
+        && dayBefore.status in ['open', 'reopened']
+        && zeroCashEffect(command.cashEffect)
+        && command.before == {'head': head, 'student': studentBefore, 'day': dayBefore}
+        && command.after == {'head': headAfter, 'student': studentAfter, 'day': dayAfter}
+        && studentAfter.revision == studentBefore.revision + 1
+        && studentAfter.lastCommandId == commandId
+        && dayAfter.revision == dayBefore.revision + 1
+        && dayAfter.lastCommandId == commandId;
+    }
+
+    // Only the opening amount and note change; the balance moves by the same difference.
+    function validStudentOpeningCorrection(commandId, command, before, after) {
+      let p = command.payload;
+      return after.diff(before).affectedKeys().hasOnly(['openingBalance', 'currentBalance', 'revision', 'lastCommandId', 'updatedAt'])
+        && after.openingBalance == {
+          'amount': p.amount, 'asOfDate': before.openingBalance.asOfDate,
+          'note': p.note, 'createdAt': before.openingBalance.createdAt
+        }
+        && after.openingBalance != before.openingBalance
+        && after.currentBalance == before.currentBalance - before.openingBalance.amount + p.amount
+        && after.revision == before.revision + 1
+        && after.lastCommandId == commandId
+        && after.updatedAt == request.time;
     }
 
     function isMutationKind(kind) {
@@ -1627,6 +1681,23 @@ service cloud.firestore {
             && validDayMutationProjection(commandId, command, dayId, before, after)));
     }
 
+    // CorrectOpening only records the change on the opening date: no totals, menu or cash. It has its
+    // own `allow update` so the existing day branches keep their expression headroom.
+    function dayOpeningCorrectionCommand(commandId, dayId, before, after) {
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      return command.kind == 'CorrectOpening'
+        && !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && command.targets.dayId == dayId
+        && command.before.day == before
+        && command.after.day == after
+        && before.status in ['open', 'reopened']
+        && after.diff(before).affectedKeys().hasOnly(['revision', 'lastCommandId', 'updatedAt'])
+        && after.revision == before.revision + 1
+        && after.updatedAt == request.time;
+    }
+
     function studentWriteCommand(commandId, studentId, before, after) {
       let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
       let mealPrice = command.kind == 'CreateOrder' ? command.payload.mealPrice : 0;
@@ -1646,7 +1717,10 @@ service cloud.firestore {
             && validStudentRefund(commandId, command, before, after))
           || (isMutationKind(command.kind)
             && command.expectedRevisions.student == before.revision
-            && validStudentMutationBalance(commandId, command, before, after)));
+            && validStudentMutationBalance(commandId, command, before, after))
+          || (command.kind == 'CorrectOpening'
+            && command.expectedRevisions.student == before.revision
+            && validStudentOpeningCorrection(commandId, command, before, after)));
     }
 
     function studentCreateCommand(commandId, studentId, after) {
@@ -1811,6 +1885,8 @@ service cloud.firestore {
         ])
         && request.resource.data.revision == resource.data.revision + 1
         && request.resource.data.updatedAt == request.time;
+      allow update: if request.resource.data.lastCommandId is string
+        && dayOpeningCorrectionCommand(request.resource.data.lastCommandId, dayId, resource.data, request.resource.data);
     }
 
     match /students/{studentId} {
@@ -1823,8 +1899,10 @@ service cloud.firestore {
       allow delete: if false;
       allow update: if request.resource.data.lastCommandId is string
         && studentWriteCommand(request.resource.data.lastCommandId, studentId, resource.data, request.resource.data)
+        // Every command branch above fixes its own changed keys; only CorrectOpening touches openingBalance.
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'currentBalance', 'displayName', 'aliases', 'status', 'studentCode', 'revision', 'lastCommandId', 'updatedAt'
+          'currentBalance', 'displayName', 'aliases', 'status', 'studentCode', 'openingBalance',
+          'revision', 'lastCommandId', 'updatedAt'
         ])
         && validStudent(request.resource.data, studentId)
         && request.resource.data.revision == resource.data.revision + 1

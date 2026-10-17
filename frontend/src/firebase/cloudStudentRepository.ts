@@ -19,7 +19,7 @@ import {
   createCloudCommandRepository,
   type CloudCommandRepositoryOptions,
 } from './cloudCommandRepository';
-import { dataHeadPath } from './firestorePaths';
+import { dataHeadPath, dayPath } from './firestorePaths';
 
 type Data = Record<string, unknown>;
 type CurrentUser = Pick<User, 'uid' | 'email' | 'emailVerified' | 'providerData'>;
@@ -103,6 +103,31 @@ export interface SetCloudStudentStatusInput {
   expectedRevision: number;
   status: 'active' | 'inactive';
   reason: string;
+}
+
+export interface CorrectCloudOpeningInput {
+  commandId: string;
+  leaseEpoch: number;
+  studentId: string;
+  dayId: string;
+  expectedStudentRevision: number;
+  expectedDayRevision: number;
+  amount: number;
+  note: string;
+  reason: string;
+}
+
+export interface EnsureCloudOpeningDayInput {
+  commandId: string;
+  leaseEpoch: number;
+  dayId: string;
+}
+
+/** 期初日營業日的最小狀態：期初更正只需要 revision 與是否已關帳。 */
+export interface CloudOpeningDayState {
+  dayId: string;
+  revision: number;
+  status: 'open' | 'closed' | 'reopened';
 }
 
 function plainRecord(value: unknown): value is Data {
@@ -282,6 +307,30 @@ export async function listCloudStudents(db: Firestore, options: CloudStudentRepo
   }
 }
 
+// 期初日的營業日文件可能還不存在（期初日沒有營業），所以 null 是正常結果，
+// 由畫面先送 EnsureDay。這裡只解出 revision 與狀態，完整 schema 由寫入端與 Rules 檢查。
+export async function readCloudOpeningDay(
+  db: Firestore,
+  dayId: string,
+  options: CloudStudentRepositoryOptions = {},
+): Promise<CloudOpeningDayState | null> {
+  try {
+    assertAuthenticated(options);
+    if (!validDate(dayId)) throw new CloudStudentRepositoryError('INVALID_INPUT', '期初日期格式不正確');
+    const snapshot = await getDocFromServer(doc(db, dayPath(dayId)));
+    if (!snapshot.exists()) return null;
+    const value: unknown = snapshot.data();
+    if (!plainRecord(value)
+      || !integer(value.revision, 1, Number.MAX_SAFE_INTEGER)
+      || (value.status !== 'open' && value.status !== 'closed' && value.status !== 'reopened')) {
+      throw new CloudStudentRepositoryError('UNSUPPORTED_SCHEMA', `營業日文件 ${dayId} schema 不支援`);
+    }
+    return { dayId, revision: value.revision, status: value.status };
+  } catch (error) {
+    throw readError(error);
+  }
+}
+
 export { CloudStudentRepositoryError as StudentRepositoryReadError };
 
 export function createCloudStudentRepository(db: Firestore, options: CloudStudentRepositoryOptions = {}) {
@@ -338,6 +387,28 @@ export function createCloudStudentRepository(db: Firestore, options: CloudStuden
         targets: { studentId },
         expectedRevisions: { student: expectedRevision },
         payload,
+      });
+    },
+    readOpeningDay: (dayId: string) => readCloudOpeningDay(db, dayId, options),
+    ensureOpeningDay(input: EnsureCloudOpeningDayInput): Promise<CommandResult> {
+      return commands.commitCommand({
+        commandId: input.commandId,
+        kind: 'EnsureDay',
+        leaseEpoch: input.leaseEpoch,
+        targets: { dayId: input.dayId },
+        expectedRevisions: { day: 0 },
+        payload: { businessDate: input.dayId },
+      });
+    },
+    correctOpening(input: CorrectCloudOpeningInput): Promise<CommandResult> {
+      const { commandId, leaseEpoch, studentId, dayId, expectedStudentRevision, expectedDayRevision, amount, note, reason } = input;
+      return commands.commitCommand({
+        commandId,
+        kind: 'CorrectOpening',
+        leaseEpoch,
+        targets: { studentId, dayId },
+        expectedRevisions: { student: expectedStudentRevision, day: expectedDayRevision },
+        payload: { amount, note, reason },
       });
     },
     readCommand(commandId: string): Promise<CommandReceipt | null> {

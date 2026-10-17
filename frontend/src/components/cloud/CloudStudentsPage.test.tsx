@@ -13,6 +13,9 @@ const repository = vi.hoisted(() => ({
   changeStudentCode: vi.fn(),
   editStudent: vi.fn(),
   setStudentStatus: vi.fn(),
+  readOpeningDay: vi.fn(),
+  ensureOpeningDay: vi.fn(),
+  correctOpening: vi.fn(),
   readCommand: vi.fn(),
 }));
 
@@ -95,6 +98,9 @@ describe('CloudStudentsPage', () => {
     repository.editStudent.mockResolvedValue(successful('cmd-ui-001', 'EditStudent', '001'));
     repository.setStudentStatus.mockResolvedValue(successful('cmd-ui-001', 'SetStudentStatus', '001'));
     repository.readCommand.mockResolvedValue(null);
+    repository.readOpeningDay.mockResolvedValue({ dayId: '2026-01-01', revision: 3, status: 'open' });
+    repository.ensureOpeningDay.mockResolvedValue({ ok: true, receipt: { ...receipt('cmd-ui-001', 'EnsureDay', '001'), targets: { dayId: '2026-01-01' } } });
+    repository.correctOpening.mockResolvedValue(successful('cmd-ui-001', 'CorrectOpening', '001'));
   });
 
   it('shows the exact student ID string, including leading zeroes, from the complete repository result', async () => {
@@ -492,5 +498,73 @@ describe('CloudStudentsPage', () => {
       studentCode: '015',
       reason: '調班改號',
     }));
+  });
+
+  it('corrects an opening amount and note with a reason, both revisions, and a balance preview', async () => {
+    const original = student('uuid-001', {
+      studentCode: '001',
+      revision: 4,
+      currentBalance: 250,
+      openingBalance: { amount: 100, asOfDate: '2026-01-01', note: '舊帳', createdAt: '2026-01-01T00:00:00.000Z' },
+    });
+    repository.list
+      .mockResolvedValueOnce(snapshot([original]))
+      .mockResolvedValueOnce(snapshot([{ ...original, revision: 5, currentBalance: 230, openingBalance: { ...original.openingBalance, amount: 80, note: '核對後' } }]));
+    renderPage();
+    const row = await screen.findByTestId('cloud-student-row-001');
+    fireEvent.click(within(row).getByRole('button', { name: '更正期初' }));
+    const form = await within(row).findByRole('form', { name: '更正期初 001' });
+    expect(repository.readOpeningDay).toHaveBeenCalledWith('2026-01-01');
+    expect(within(form).getByText(/期初日 2026-01-01 不變/)).toBeInTheDocument();
+    expect(within(form).getByLabelText(/期初結餘/)).toHaveValue('100');
+
+    fireEvent.click(within(form).getByRole('button', { name: '確認更正期初' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('期初金額與備註都沒有變更');
+
+    fireEvent.change(within(form).getByLabelText(/期初結餘/), { target: { value: '80' } });
+    fireEvent.change(within(form).getByLabelText(/期初備註/), { target: { value: '核對後' } });
+    const preview = within(form).getByLabelText('期初更正預覽');
+    expect(preview).toHaveTextContent(/期初\s*NT\$ 100 → NT\$ 80/);
+    expect(preview).toHaveTextContent(/目前結餘\s*NT\$ 250 → NT\$ 230/);
+    fireEvent.click(within(form).getByRole('button', { name: '確認更正期初' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('請輸入具體的期初更正原因');
+    expect(repository.correctOpening).not.toHaveBeenCalled();
+
+    fireEvent.change(within(form).getByLabelText('更正原因（必填）'), { target: { value: '對帳發現少記 20 元' } });
+    fireEvent.click(within(form).getByRole('button', { name: '確認更正期初' }));
+    await waitFor(() => expect(repository.correctOpening).toHaveBeenCalledWith({
+      commandId: 'cmd-ui-001',
+      leaseEpoch: 4,
+      studentId: 'uuid-001',
+      dayId: '2026-01-01',
+      expectedStudentRevision: 4,
+      expectedDayRevision: 3,
+      amount: 80,
+      note: '核對後',
+      reason: '對帳發現少記 20 元',
+    }));
+    expect(await screen.findByText(/已確認 更正 001 期初為/)).toBeInTheDocument();
+  });
+
+  it('creates the missing opening day first and never sends a correction against a closed day', async () => {
+    repository.list.mockResolvedValue(snapshot([student('uuid-001', { studentCode: '001' })]));
+    repository.readOpeningDay.mockResolvedValueOnce(null);
+    renderPage();
+    let row = await screen.findByTestId('cloud-student-row-001');
+    fireEvent.click(within(row).getByRole('button', { name: '更正期初' }));
+    fireEvent.click(await within(row).findByRole('button', { name: '先建立營業日 2026-01-01' }));
+    await waitFor(() => expect(repository.ensureOpeningDay).toHaveBeenCalledWith({
+      commandId: 'cmd-ui-001',
+      leaseEpoch: 4,
+      dayId: '2026-01-01',
+    }));
+    expect(await screen.findByText(/請再按該學生的「更正期初」繼續/)).toBeInTheDocument();
+
+    repository.readOpeningDay.mockResolvedValueOnce({ dayId: '2026-01-01', revision: 7, status: 'closed' });
+    row = await screen.findByTestId('cloud-student-row-001');
+    fireEvent.click(within(row).getByRole('button', { name: '更正期初' }));
+    expect(await within(row).findByText(/已關帳。請先到營業日頁重開該日/)).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: '確認更正期初' })).not.toBeInTheDocument();
+    expect(repository.correctOpening).not.toHaveBeenCalled();
   });
 });

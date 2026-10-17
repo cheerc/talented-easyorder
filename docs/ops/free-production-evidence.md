@@ -305,3 +305,18 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - 無 production 部署、無正式金鑰。
 - 審查後合併 main `b33fc6b3015d277664a47dba86d8ccde5cf4ed44`（P14 #496、#498）：`validCommandCreate` 加入 `RecordBackup`（已啟用 19、拒絕 5）；備份 decoder／replay 接受 5 種 P10a kind，`cloudBackup.spec.ts` 新增真實 P10a 命令的匯出→解密→replay 案例（17/17）。合併後重量：指令規則 P10.17／P10.12／P09b.9 仍 +19；`CreateStudent` 指令規則只有 +3（main 上就是 +2～+3，不是 P10a 造成）。驗證數字以 PR body 為準。
 - **合併**：PR #497 squash `1d61a475109c6642c20c56cbb9ae8e9180491e46`（2026-10-16），source head `4cd2286c84643cad97200cff9e4d1642883f03fb`。獨立複審 review `5551115175` 通過；CI run 38935317478 build-and-test 與 e2e 成功。複審本機重跑：`cloudTransactionMutation.spec.ts` 47/47、`cloudBackup.spec.ts` 17/17、Vitest 1,636 passed／430 skipped。
+
+## P10b 期初更正 checkpoint — 2026-10-17
+
+- P10a 已合併（#497，squash `1d61a47`）；收據 #499（`95b7695`）。P10b branch `claude/project-thread-iq5n8l`，base `a694b321b17cc0c5c6c80c23ff1ff8d9da41976e`（另含 CLAUDE.md 指引 #500）；PR、head SHA 與 CI 以 PR body 為準。契約：[P10b contract](../superpowers/specs/2026-10-17-cloud-opening-correction-contract.md)。
+- Rules：
+  - 新增 `CorrectOpening` 指令分支（`validCommandCreate` 最後）與學生投影分支；營業日改用獨立的 `allow update`（`dayOpeningCorrectionCommand`），訂餐的營業日餘裕維持 +11（與 main 相同）。
+  - 學生 update 欄位白名單加入 `openingBalance`；只有 `CorrectOpening` 分支能改期初。
+  - 存取次數 15/20、單寫最多 8。見 [P10b 預算附錄](p05-rules-budget.md#p10b-opening-correction--budget-and-probe-receipt)。
+- RED：新 `cloudOpeningCorrection.spec.ts`（42 項）在 main 的 Rules 上 8 項失敗（所有正向路徑）。GREEN：42/42。mutant 21 個：16 個被殺；5 個是由其他規則保證的重複檢查。見預算附錄。
+- demo-easyorder Emulator 一次跑完 `src/firebase/__tests__` 全部 24 個 Emulator 檔案（所有 `EASYORDER_REQUIRE_*` 旗標開啟，含新 `EASYORDER_REQUIRE_CLOUD_OPENING`）：551/551、0 skipped（在補上第二輪 mutant 的 3 個案例前；P10b 檔案之後單獨重跑 42/42）。
+- Vitest 1,652 passed／469 Emulator-only skipped／0 failed；`npm run lint`、`npm run build`、`npx tsc --noEmit` exit 0；app tsc 208 個 `error TS` 診斷，與 base 相同。
+- 備份：`cloudBackup.spec.ts` 新增真實 `CorrectOpening` 命令的匯出→解密→replay 案例，竄改餘額的收據被拒（18/18）。
+- 畫面測試新增 2 項（更正金額與備註、原因必填與預覽；缺營業日先建立、已關帳不出表單）；schema 單元測試新增 13 項。
+- Cloud E2E 20/20（新 D07：學生 009 期初 100；期初日沒有營業日時先建立；更正為 70 須填原因，預覽 NT$ 100 → NT$ 70；營業日統計與開帳現金不變；命令保留原期初與理由；重新登入後仍是 70），使用本機 Chromium，不取代 CI pinned Chromium。
+- 無 production 部署、無正式金鑰。

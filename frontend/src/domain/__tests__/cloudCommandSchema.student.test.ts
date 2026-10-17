@@ -44,6 +44,18 @@ function setStudentStatus(payload: Record<string, unknown>) {
   };
 }
 
+function correctOpening(payload: Record<string, unknown>, overrides: Record<string, unknown> = {}) {
+  return {
+    commandId,
+    kind: 'CorrectOpening',
+    leaseEpoch: 1,
+    targets: { studentId, dayId: '2026-10-12' },
+    expectedRevisions: { student: 3, day: 4 },
+    payload,
+    ...overrides,
+  };
+}
+
 describe('student command input contract', () => {
   it.each([-1_000_000_000, 0, 1_000_000_000])('accepts signed integer opening balance %s and preserves UUID and code', amount => {
     const normalized = normalizeEnabledCommandInput(createStudent({
@@ -144,5 +156,31 @@ describe('student command input contract', () => {
   it.each([' ', '\t', '\u00a0', '\ufeff', 'name\ncontinued'])('accepts displayName with exact literal schema value %j', displayName => {
     const normalized = normalizeEnabledCommandInput(createStudent({ displayName }));
     if (normalized.kind === 'CreateStudent') expect(normalized.payload.displayName).toBe(displayName);
+  });
+
+  it('CorrectOpening keeps amount, note and reason and targets the student and the opening date', () => {
+    expect(normalizeEnabledCommandInput(correctOpening({ amount: -40, note: '欠款補登', reason: '對帳更正' }))).toMatchObject({
+      kind: 'CorrectOpening',
+      targets: { studentId, dayId: '2026-10-12' },
+      expectedRevisions: { student: 3, day: 4 },
+      payload: { amount: -40, note: '欠款補登', reason: '對帳更正' },
+    });
+  });
+
+  it.each([
+    ['a missing reason', { amount: 80, note: '' }, {}],
+    ['an empty reason', { amount: 80, note: '', reason: '' }, {}],
+    ['a 501-char reason', { amount: 80, note: '', reason: 'x'.repeat(501) }, {}],
+    ['a 501-char note', { amount: 80, note: 'x'.repeat(501), reason: '更正' }, {}],
+    ['a fractional amount', { amount: 1.5, note: '', reason: '更正' }, {}],
+    ['an amount above bound', { amount: 1_000_000_001, note: '', reason: '更正' }, {}],
+    ['an extra asOfDate', { amount: 80, note: '', reason: '更正', asOfDate: '2026-10-13' }, {}],
+    ['a missing day target', { amount: 80, note: '', reason: '更正' }, { targets: { studentId } }],
+    ['a cashier target', { amount: 80, note: '', reason: '更正' }, { targets: { studentId: '__cashier__', dayId: '2026-10-12' } }],
+    ['an invalid date', { amount: 80, note: '', reason: '更正' }, { targets: { studentId, dayId: '2026-02-30' } }],
+    ['a zero day revision', { amount: 80, note: '', reason: '更正' }, { expectedRevisions: { student: 3, day: 0 } }],
+    ['a missing day revision', { amount: 80, note: '', reason: '更正' }, { expectedRevisions: { student: 3 } }],
+  ])('CorrectOpening rejects %s', (_label, payload, overrides) => {
+    expect(() => normalizeEnabledCommandInput(correctOpening(payload, overrides))).toThrow();
   });
 });
