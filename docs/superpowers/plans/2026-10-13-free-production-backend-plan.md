@@ -52,6 +52,7 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 | P11a | 已合併 #503 | squash `91b5909d960ba14cb6e448dad3d3c99292fba6f7`，source head `ad701ef1b86368bf2b934e504292f9540f190563`，base `32e90c6`；獨立審查通過、無必修（review `5557244382`）；CI [39020987035](https://github.com/cheerc/talented-easyorder/actions/runs/39020987035) 兩 job 成功。本機 Emulator 循序全套 2,178/2,178、P11 48/48（RED 16/48）、備份 19/19。啟用 `CloseDay`／`ReopenDay`：每個命令新增不可改、不可刪的日結版本 `days/{dayId}/settlements/{n}`；應有現金依 §7.1 由 Rules 計算，差額須填原因；重開須有原因；已關帳日業務寫入一律拒絕。寫入器、日結讀取 repository、P14 備份 decoder／replay 同步支援。契約 `2026-10-17-cloud-day-close-contract.md`。沒有畫面（P11b）。未部署。 |
 | P11b | 已合併 #505 | squash `5a030caec2345b7d322a4f32a12f05bf014fc1d2`，source head `77d272add0780184815c0a72b47df548d6deeb13`，base `d46287d`；獨立審查通過、無必修（review `5557388299`）；CI run [39024055068](https://github.com/cheerc/talented-easyorder/actions/runs/39024055068) 兩 job 成功。雲端「日結」頁：未關帳清單（過去無營業日標成不需關帳）、全日點現金、關帳、版本回查、重開；P14 備份區塊掛在日結頁下方；原因 trim；已關帳日提示指向日結頁。Rules 不變。Emulator 循序全套 2,190/2,190（含一次既有 `beforeAll` 冷啟逾時後單檔重跑）、畫面 11 項、Cloud E2E D08。未部署。 |
 | P11 補開帳 | 已合併 #507 | squash `2792ba2606c89d54818457136aabfbe7fc1ef913`，source head `dffed1c22f3af558723864ae1f7f82d4adf3271a`；獨立審查通過、無必修（review `5557963146`）；CI [39030734055](https://github.com/cheerc/talented-easyorder/actions/runs/39030734055) 兩 job 成功。CheerC 2026-10-17 指示。新增 `BackfillOpeningCash`：過去、未關帳、缺開帳現金的既有營業日可填開帳現金與必填原因補開帳，再照常關帳；不放寬既有開帳與交易 Rules，不能補登交易。日結頁表單、P14 decoder／replay 同步支援。契約 `2026-10-17-cloud-day-close-contract.md` §10。base `71ee1bc`。Emulator 循序全套 2,222/2,222、補開帳 Emulator 27 項、Cloud E2E 21/21。未部署。 |
+| P11c1 帳務異常與警示 | 已合併 #509 | squash `fb2fc11a7f6271ded1495d27af6a1e99300ebb12`，source head `a16afa4a4fd6dbc1327a1b8e60dc8430a96e190a`；獨立審查通過、無必修（review `5558759097`）；CI [39047364483](https://github.com/cheerc/talented-easyorder/actions/runs/39047364483) 兩 job 成功。唯讀異常計算、導覽「帳務異常（n）」、警示、`SetOpeningCash` 選填差額原因（唯一 Rules 變更）。契約 §11。P11c2 第一項必修：400 天掃描上限改為只找上一個已關帳日。未部署。 |
 | P12–P13、P15–P18 | 尚未開始／未驗 | 不代表任何後續雲端功能已實作或通過。 |
 
 ## 2. 現有檔案與規劃新檔
@@ -243,7 +244,7 @@ npm run test:e2e
 
 **Acceptance/demo：** 本人可全日點現金、關帳、回查並重開修正；日結不受F2搜尋或週月範圍影響，不能直接setBusinessDateStatus。過去日子因斷網沒確認開帳現金時，可填原因補開帳再關帳（`BackfillOpeningCash`，CheerC 2026-10-17）；不補登當天交易。
 
-**P11c 帳務斷層與異常處理（CheerC 2026-10-17）：** 分四批。P11c1（本批）只算出並顯示帳務異常：導覽列「帳務異常（n）」與異常頁、開帳與日結頁的未關帳橫幅、開帳現金與上次關帳實點不同時的差額原因（`SetOpeningCash` 選填 `reason`，唯一的 Rules 變更）。契約見 [P11 契約 §11](../specs/2026-10-17-cloud-day-close-contract.md#11-p11c1-帳務異常與開帳差額原因)。P11c2–c4（回填中間日子、關帳對齊、關帳後補記有標記的收支）是之後的修補工具，不在 P11c1。
+**P11c 帳務斷層與異常處理（CheerC 2026-10-17）：** 分四批。P11c1（已合併 #509）只算出並顯示帳務異常：導覽列「帳務異常（n）」與異常頁、開帳與日結頁的未關帳橫幅、開帳現金與上次關帳實點不同時的差額原因（`SetOpeningCash` 選填 `reason`，唯一的 Rules 變更）。契約見 [P11 契約 §11](../specs/2026-10-17-cloud-day-close-contract.md#11-p11c1-帳務異常與開帳差額原因)。P11c2–c4（回填中間日子、關帳對齊、關帳後補記有標記的收支）是之後的修補工具，不在 P11c1。
 
 ### P12 — 完整查帳、週月統計、CSV與列印
 

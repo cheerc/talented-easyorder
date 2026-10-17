@@ -132,7 +132,7 @@ CheerC（2026-10-17）：開帳現金應等於上一個已關帳日的實點現�
 
 - payload 由 `{openingCash}` 改為 `{openingCash}` 或 `{openingCash, reason}`。有 `reason` 時通過 `validMutationReason`（1–500 字）且命令頂層 `reason == payload.reason`；沒有時命令頂層 `reason == null`，與原本相同。
 - 只改 `validSetOpeningCash` 內部：`validCommandCreate` 沒有新增頂層 `||`；`days/{dayId}` 欄位與 `dayWriteCommand` 不變，營業日不存原因，原因只留在命令文件。因為 `p07CommandEnvelope` 把命令 `reason` 固定為 null（`RemoveVendor` 除外），`validSetOpeningCash` 改用內容相同、但不檢查 `reason` 的 `cashCommandEnvelope`（`BackfillOpeningCash` 等已在用），`reason` 由 `validSetOpeningCash` 自己的兩種形狀（無 reason 且命令 `reason == null`，或有合法 reason 且兩處相等）綁定；其他 kind 的 envelope 不變。
-- **「有差額才必填」由畫面與寫入器強制，不是 Rules 保證。** Rules 無法得知上一個已關帳日，所以直接送原始 SDK 的 `SetOpeningCash` 可以不帶原因。寫入器（`cloudDayVendorRepository.setOpeningCash`）送出前用 `createCloudLedgerReader` 找上一個已關帳日；開帳現金與它的實點不同而原因缺少或純空白時回 `INVALID_INPUT`，不送出命令；讀不到時回對應錯誤碼（`STALE_SNAPSHOT` → `REVISION_CONFLICT`、`INCOMPLETE_SNAPSHOT` → `UNSUPPORTED_SCHEMA`），不改用「不需原因」放行。原因送出前 trim。有原因而金額相同時不禁止。
+- **「有差額才必填」由畫面與寫入器強制，不是 Rules 保證。** Rules 無法得知上一個已關帳日，所以直接送原始 SDK 的 `SetOpeningCash` 可以不帶原因。寫入器（`cloudDayVendorRepository.setOpeningCash`）送出前用 `createCloudLedgerReader` 找上一個已關帳日；開帳現金與它的實點不同而原因缺少或純空白時回 `INVALID_INPUT`，不送出命令；讀不到時回對應錯誤碼（`STALE_SNAPSHOT` → `REVISION_CONFLICT`、`INCOMPLETE_SNAPSHOT` → `UNSUPPORTED_SCHEMA`），不改用「不需原因」放行。原因送出前 trim。有原因而金額相同時不禁止。純空白原因會通過 Rules 與 normalizer（與既有 `validMutationReason` 一致，Rules 不 trim），只由寫入器與畫面 trim 後擋下。
 - 型別、normalizer（`cloudCommandSchema.ts`）、回執解碼（命令 `reason` 必須等於 `payload.reason ?? null`）與 `SetOpeningCashInput` 同步。舊版前端送的 `SetOpeningCash` 不帶原因，仍然合法。
 - P14：`cloudBackup.ts` 的 `SetOpeningCash` 允許選填 `reason`；replay 沿用回執解碼驗證原因 1–500 字且與命令 `reason` 相同，沒有原因的舊備份照常通過。
 
