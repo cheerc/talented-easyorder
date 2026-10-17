@@ -321,3 +321,17 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - Cloud E2E 20/20（新 D07：學生 009 期初 100；期初日沒有營業日時先建立；更正為 70 須填原因，預覽 NT$ 100 → NT$ 70；營業日統計與開帳現金不變；命令保留原期初與理由；重新登入後仍是 70），使用本機 Chromium，不取代 CI pinned Chromium。
 - 無 production 部署、無正式金鑰。
 - **合併**：PR #501 squash `a92d1390c79900688bb36e0e1e6df910bce5b670`（2026-10-17），source head `b6b8cf4460ea23e16872bb0626c6ce28c3512d2c`。獨立審查 review `5555660163` 通過；CI run 38995746934 build-and-test 與 e2e 成功。審查本機重跑：`cloudOpeningCorrection.spec.ts`＋`cloudBackup.spec.ts` 60/60、`CloudStudentsPage.test.tsx`＋`cloudCommandSchema.student.test.ts` 67/67。不擋合併：F3 補建的過去日期營業日在 P11 啟用關帳時需決定處理方式。P10 完成，P11 未開始。
+
+## P11a 正式關帳與重開（後端）checkpoint — 2026-10-17
+
+- CheerC 於 2026-10-17 指示續作 P11。branch `claude/project-thread-7m93at`，base `32e90c6b7347f6c299036df5fe521cf07bc27cac`（P10b 收據 #502）；PR、head SHA 與 CI 以 PR body 為準。契約：[P11 contract](../superpowers/specs/2026-10-17-cloud-day-close-contract.md)。P11 拆成 P11a（本 checkpoint：Rules、寫入器、讀取、備份）與 P11b（雲端日結頁、P14 備份區塊、E2E）。
+- Rules：
+  - 新增 `CloseDay`／`ReopenDay` 指令檢查，巢狀放在 `validCommandCreate` 最後一個 operand 裡（與 `CorrectOpening` 共用），既有 kind 的餘裕不變；營業日用獨立的 `allow update`（`dayCloseCommand`）；日結版本 `days/{dayId}/settlements/{n}` 有自己的 `match`，只能由命令建立，不能改、刪。
+  - 應有現金由 Rules 依 §7.1 從營業日 totals 算出；差額須填原因；重開須有原因。
+  - 存取次數 14/20、單寫最多 8。新錨點最小餘裕 +53（指令）；既有最緊的錨點與 main 相同（訂餐營業日 +11、更正與退款指令 +19、`CreateStudent` +3）。見 [P11 預算附錄](p05-rules-budget.md#p11-day-close--budget-and-probe-receipt)。
+- RED：新 `cloudDayClose.spec.ts`（48 項）在 main 的 Rules 上 16 項失敗（所有正向路徑）。GREEN：48/48。mutant 26 個：第一輪 9 個存活，其中 3 個補上攻擊案例後被殺，6 個是由其他規則保證的重複檢查。
+- demo-easyorder Auth＋Firestore Emulator 一次循序跑完整個 Vitest（`--maxWorkers=1`，所有 `EASYORDER_REQUIRE_*` 旗標開啟，含新 `EASYORDER_REQUIRE_CLOUD_DAY_CLOSE`）：179 個檔案、2,178/2,178、0 skipped。前一輪（分派仍用三元運算時）出現過 `CloudStudentsPage.test.tsx` 一次時序失敗，單獨重跑 3 次都通過；該檔案本 PR 沒有改。
+- 無 Emulator 的一般 Vitest：1,657 passed／521 Emulator-only skipped／0 failed；`npm run lint`、`npm run build`、`npx tsc --noEmit` exit 0；app tsc（`tsc -p tsconfig.app.json`）208 個 `error TS` 診斷，與 base 逐行相同。
+- 備份：`npm run test:cloud-backup` 19/19。新案例以真實 close → 第一段匯出 → reopen → 作廢 → re-close → 第二段增量匯出 → 解密 → replay，版本 1／2／3 與 totals 相符；竄改差額、前一版快照或缺少前包版本都被拒。
+- schema 單元測試新增 5 項（§7.1 算式、差額需原因、負數與小數、版號綁定、重開原因）。
+- 沒有畫面、沒有 E2E（P11b）。無 production 部署、無正式金鑰。

@@ -9,6 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createBackupManifest, decryptBackup, encryptBackup, recalculateBackupTotals, replayBackupProjections, sha256Hex, validateBackupManifest, type BackupCommandRecord } from '../cloudBackup';
 import { createCloudBackupRepository } from '../cloudBackupRepository';
 import { createCloudCommandRepository } from '../cloudCommandRepository';
+import { createCloudDayCloseRepository } from '../cloudDayCloseRepository';
 import { createCloudOrderRepository, type CloudTransactionMutationInput } from '../cloudOrderRepository';
 import { UNDO_REASON } from '../../domain/cloudTransactionMutation';
 
@@ -431,6 +432,89 @@ describeWithEmulator('P14 cloud backup', () => {
     expect(() => validateBackupManifest(forged)).toThrow(/seq 4/);
   });
 
+  it('exports, decrypts and replays real P11 close／reopen／re-close receipts across two increments; forged versions are rejected', async () => {
+    await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 0, []));
+    const db = authedDb();
+    const user = { uid: operator.uid, email: operator.email, emailVerified: true, providerData: [{ providerId: 'google.com' }] } as unknown as User;
+    const writer = createCloudCommandRepository(db, { currentUser: () => user });
+    const orders = createCloudOrderRepository(db, { currentUser: () => user });
+    const closing = createCloudDayCloseRepository(db, { currentUser: () => user });
+    const backups = createCloudBackupRepository(db, { currentUid: () => operator.uid });
+    const today = taipeiToday();
+    const studentId = uuid(700);
+    let next = 700;
+    const id = () => uuid(++next);
+    const read = async (path: string) => (await getDoc(doc(db, path))).data() as Record<string, number & string>;
+    const okResult = (result: { ok: boolean }) => expect(result, JSON.stringify(result)).toMatchObject({ ok: true });
+    const day = async () => read(`days/${today}`);
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: 7,
+      targets: { dayId: today }, expectedRevisions: { day: 0 }, payload: { businessDate: today } }));
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'SetOpeningCash', leaseEpoch: 7,
+      targets: { dayId: today }, expectedRevisions: { day: (await day()).revision }, payload: { openingCash: 1000 } }));
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: 7,
+      targets: { studentId }, expectedRevisions: { student: 0 },
+      payload: { studentCode: '700', displayName: 'Anonymous P11 fixture', aliases: [],
+        openingBalance: { amount: 0, asOfDate: today, note: '' } } }));
+    const paymentId = id();
+    okResult(await orders.createPayment({ commandId: id(), transactionId: paymentId, leaseEpoch: 7, studentId, dayId: today,
+      expectedStudentRevision: (await read(`students/${studentId}`)).revision, expectedDayRevision: (await day()).revision,
+      paidAmount: 150, note: '' }));
+    const closeNow = async (countedCash: number, note: string) => {
+      const current = await day();
+      okResult(await closing.closeDay({ commandId: id(), leaseEpoch: 7, dayId: today,
+        expectedDayRevision: current.revision, expectedSettlementRevision: current.lastSettlementRevision,
+        expectedCash: (await closing.read(today))!.expectedCash!, countedCash, note }));
+    };
+    await closeNow(1140, '少 10 元');
+
+    // First increment: 0..5, ending with the first close.
+    const first = await backups.exportRange({ fromSeq: 0, generatedAt: '2026-10-17T03:00:00.000Z' });
+    expect(first.manifest.records.map(record => record.kind)).toEqual(['EnsureDay', 'SetOpeningCash', 'CreateStudent', 'CreatePayment', 'CloseDay']);
+    const firstOpened = await decryptBackup(await encryptBackup(first.manifest, 'p11-round-trip'), 'p11-round-trip');
+    expect(firstOpened.projectionState[`days/${today}/settlements/1`]).toMatchObject({ status: 'closed', expectedCash: 1150, difference: -10 });
+
+    const current = await day();
+    okResult(await closing.reopenDay({ commandId: id(), leaseEpoch: 7, dayId: today, expectedDayRevision: current.revision,
+      expectedSettlementRevision: current.lastSettlementRevision, reason: '收款記錯' }));
+    const payment = await read(`transactions/${paymentId}`);
+    const mutation: CloudTransactionMutationInput = {
+      commandId: id(), kind: 'VoidTransaction', leaseEpoch: 7, transactionId: paymentId, studentId, dayId: today,
+      expectedTransactionRevision: payment.revision, expectedStudentRevision: (await read(`students/${studentId}`)).revision,
+      expectedDayRevision: (await day()).revision, payload: { reason: '收款記錯' },
+    };
+    okResult(await orders.mutateTransaction(mutation));
+    await closeNow(1000, '');
+
+    // Second increment continues from the first package and replays on top of its projection state.
+    const firstSha = await sha256Hex(await encryptBackup(firstOpened, 'p11-round-trip'));
+    const second = await backups.exportRange({ fromSeq: 5, previousManifest: firstOpened, previousPackageSha256: firstSha,
+      generatedAt: '2026-10-17T04:00:00.000Z' });
+    expect(second.manifest.records.map(record => record.kind)).toEqual(['ReopenDay', 'VoidTransaction', 'CloseDay']);
+    const opened = await decryptBackup(await encryptBackup(second.manifest, 'p11-round-trip'), 'p11-round-trip');
+    const replayed = replayBackupProjections(opened.records, opened.baseState);
+    expect(replayed).toEqual(opened.projectionState);
+    expect(Object.keys(replayed).filter(key => key.startsWith(`days/${today}/settlements/`)).sort())
+      .toEqual([1, 2, 3].map(n => `days/${today}/settlements/${n}`));
+    expect(replayed[`days/${today}/settlements/1`]).toEqual(firstOpened.projectionState[`days/${today}/settlements/1`]);
+    expect(replayed[`days/${today}/settlements/3`]).toMatchObject({ status: 'closed', expectedCash: 1000, countedCash: 1000, previousRevision: 2 });
+    const dayTotals = (await day()).totals as unknown as Record<string, number>;
+    expect(opened.totals?.[today]).toEqual(dayTotals);
+    expect(recalculateBackupTotals(replayed)[today]).toEqual(dayTotals);
+
+    // A version whose difference does not follow the counted − expected formula is rejected.
+    const forgedDifference = structuredClone(opened);
+    ((forgedDifference.records[2]!.after!.settlement as Record<string, unknown>)).difference = 5;
+    expect(() => validateBackupManifest(forgedDifference)).toThrow(/seq 8/);
+    // A reopen whose previous-version snapshot does not match the replayed version 1 is rejected.
+    const forgedPrevious = structuredClone(opened);
+    ((forgedPrevious.records[0]!.before!.previousSettlement as Record<string, unknown>)).countedCash = 1150;
+    expect(() => validateBackupManifest(forgedPrevious)).toThrow();
+    // Replaying the increment without the first package's settlement state is rejected too.
+    const withoutBase = structuredClone(opened);
+    delete withoutBase.baseState[`days/${today}/settlements/1`];
+    expect(() => validateBackupManifest(withoutBase)).toThrow();
+  });
+
   it('Rules reject an unpaired or fabricated backup receipt', async () => {
     await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 0, []));
     const db = authedDb();
@@ -507,7 +591,7 @@ describeWithEmulator('P14 cloud backup', () => {
     await expect(decryptBackup(broken, 'synthetic-passphrase')).rejects.toThrow();
   });
 
-  it('fails closed for inactive P11 kinds and for P10a receipts that do not follow the mutation math', () => {
+  it('fails closed for hand-built P11 receipts and for P10a receipts that do not follow the mutation math', () => {
     const head = (seq: number, commandId: string | null) => ({ schemaVersion: 1, datasetId: 'anonymous-p14-fixture', seq,
       lastCommandId: commandId, maintenance: false, goLiveDate: '2026-10-01', updatedAt: { _type: 'timestamp', seconds: seq, nanoseconds: 0 } });
     const timestamp = (seconds: number) => ({ _type: 'timestamp', seconds, nanoseconds: 0 });
@@ -589,17 +673,18 @@ describeWithEmulator('P14 cloud backup', () => {
 
     const changedOpeningCash = structuredClone(records);
     (changedOpeningCash[1]!.after!.day as Record<string, unknown>).openingCash = 999;
-    assertRejected([changedOpeningCash[1]!], correctedState);
+    assertRejected([changedOpeningCash[1]!], correctedState, /seq 6/);
 
     const closedState: Record<string, unknown> = {
       ...correctedState,
       'days/2026-10-16': day(6, 'closed', 1, correctedTotals, uuid(6)),
-      'daily_settlements/2026-10-16': { dayId: '2026-10-16', revision: 1, status: 'closed', sourceSeq: 6,
+      'days/2026-10-16/settlements/1': { dayId: '2026-10-16', revision: 1, status: 'closed', sourceSeq: 6,
         lastCommandId: uuid(6), committedAt: timestamp(6) },
     };
     assertRejected([records.find(item => item.kind === 'CorrectTransaction')!], baseState, /seq 5/);
-    for (const [kind, initial] of [['CloseDay', correctedState], ['ReopenDay', closedState]] as const) {
-      assertRejected([records.find(item => item.kind === kind)!], initial);
-    }
+    // P11 kinds are decodable now. These hand-built versions lack the fixed settlement fields
+    // (totals, cash amounts, actor, previousRevision), so they still fail closed.
+    assertRejected([records.find(item => item.kind === 'CloseDay')!], correctedState, /seq 6/);
+    assertRejected([records.find(item => item.kind === 'ReopenDay')!], closedState, /seq 7/);
   });
 });

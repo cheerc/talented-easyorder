@@ -1238,7 +1238,117 @@ service cloud.firestore {
         || (isMutationKind(kind) && validTransactionMutation(commandId, command))
         || (kind == 'RecordBackup'
           && validRecordBackup(commandId, command, command.before.head, command.after.head))
-        || (kind == 'CorrectOpening' && validCorrectOpening(commandId, command));
+        // P11 is nested inside the last operand: a new top-level `||` adds one expression to every
+        // earlier kind (mutation and refund +19 → +18). A conditional here instead made the emulator
+        // fail a malformed command with a retryable error rather than a denial.
+        || ((kind == 'CorrectOpening' && validCorrectOpening(commandId, command))
+          || (kind in ['CloseDay', 'ReopenDay'] && validDaySettlementCommand(commandId, command)));
+    }
+
+    // P11 CloseDay／ReopenDay (spec §5 command table, §7.1 expectedCash and §7.4 day lifecycle). Each
+    // command adds one immutable settlement version `days/{dayId}/settlements/{n}` with n = the day's
+    // lastSettlementRevision + 1. CloseDay needs a confirmed openingCash and computes expectedCash from
+    // the day totals; a non-zero difference needs a note. ReopenDay needs a reason. The command rule
+    // binds every snapshot to the real documents; the day and settlement rules check their own shapes.
+    function validDaySettlementCommand(commandId, command) {
+      let dayId = command.targets.dayId;
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let dayBefore = get(/databases/$(database)/documents/days/$(dayId)).data;
+      let dayAfter = getAfter(/databases/$(database)/documents/days/$(dayId)).data;
+      let last = dayBefore.lastSettlementRevision;
+      let previous = last == 0 ? null
+        : get(/databases/$(database)/documents/days/$(dayId)/settlements/$(last)).data;
+      let settlement = getAfter(/databases/$(database)/documents/days/$(dayId)/settlements/$(last + 1)).data;
+      let close = command.kind == 'CloseDay';
+      let p = command.payload;
+      return commandHolder(command.leaseEpoch)
+        && cashCommandEnvelope(commandId, command, head, headAfter)
+        && exactMap(command.targets, ['dayId', 'settlementRevision'])
+        && exactMap(command.expectedRevisions, ['day', 'settlement'])
+        && command.expectedRevisions.day == dayBefore.revision
+        && command.expectedRevisions.settlement == last
+        && command.targets.settlementRevision == last + 1
+        && validTaipeiDate(dayId)
+        && command.businessDate == dayId
+        && command.studentId == null
+        && zeroCashEffect(command.cashEffect)
+        && (close
+          ? dayBefore.status in ['open', 'reopened']
+            && dayBefore.openingCash is int
+            && exactMap(p, ['countedCash', 'note', 'expectedCash'])
+            && p.countedCash is int && p.countedCash >= 0 && p.countedCash <= 1000000000
+            && p.note is string && p.note.size() <= 500
+            && p.expectedCash == settlementExpectedCash(dayBefore)
+            && (p.countedCash == p.expectedCash || p.note.size() >= 1)
+            && command.reason == null
+          : dayBefore.status == 'closed'
+            && exactMap(p, ['reason'])
+            && validMutationReason(p.reason)
+            && command.reason == p.reason)
+        && command.before == {'head': head, 'day': dayBefore, 'previousSettlement': previous}
+        && command.after == {'head': headAfter, 'day': dayAfter, 'settlement': settlement}
+        && dayAfter.revision == dayBefore.revision + 1
+        && dayAfter.lastCommandId == commandId
+        && settlement.lastCommandId == commandId;
+    }
+
+    // Spec §7.1: expectedCash = openingCash + retainedReceipts + cashierIncome − cashierExpense − accountRefunds.
+    function settlementExpectedCash(day) {
+      let t = day.totals;
+      return day.openingCash + t.retainedReceipts + t.cashierIncome - t.cashierExpense - t.accountRefunds;
+    }
+
+    // The day only changes its status, settlement pointer and revision; totals, menu and cash stay.
+    function dayCloseCommand(commandId, dayId, before, after) {
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      let close = command.kind == 'CloseDay';
+      return command.kind in ['CloseDay', 'ReopenDay']
+        && !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && command.targets.dayId == dayId
+        && command.before.day == before
+        && command.after.day == after
+        && (close ? before.status in ['open', 'reopened'] : before.status == 'closed')
+        && after.status == (close ? 'closed' : 'reopened')
+        && after.diff(before).affectedKeys().hasOnly(['status', 'lastSettlementRevision', 'revision', 'lastCommandId', 'updatedAt'])
+        && after.lastSettlementRevision == before.lastSettlementRevision + 1
+        && after.revision == before.revision + 1
+        && after.updatedAt == request.time;
+    }
+
+    // One immutable settlement version, fully determined by the command and the day before it.
+    function settlementCreateCommand(dayId, revision, settlement) {
+      let commandId = settlement.lastCommandId;
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      let day = command.before.day;
+      let close = command.kind == 'CloseDay';
+      let expected = settlementExpectedCash(day);
+      return command.kind in ['CloseDay', 'ReopenDay']
+        && !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && command.targets.dayId == dayId
+        && string(command.targets.settlementRevision) == revision
+        && command.after.settlement == settlement
+        && settlement == {
+          'dayId': dayId,
+          'revision': command.targets.settlementRevision,
+          'status': close ? 'closed' : 'reopened',
+          'totals': day.totals,
+          'openingCash': day.openingCash,
+          'expectedCash': expected,
+          'countedCash': close ? command.payload.countedCash : null,
+          'difference': close ? command.payload.countedCash - expected : null,
+          'note': close ? command.payload.note : command.payload.reason,
+          'actorUid': request.auth.uid,
+          'actorEmail': request.auth.token.email,
+          'sourceSeq': command.seq,
+          'committedAt': request.time,
+          'previousRevision': command.targets.settlementRevision - 1,
+          'lastCommandId': commandId
+        };
     }
 
     // P10b CorrectOpening (spec §5 command table and the §7 opening-correction rule): corrects a student's opening amount and note on the
@@ -1887,6 +1997,17 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
       allow update: if request.resource.data.lastCommandId is string
         && dayOpeningCorrectionCommand(request.resource.data.lastCommandId, dayId, resource.data, request.resource.data);
+      // P11: CloseDay／ReopenDay have their own rule so the other day branches keep their headroom.
+      allow update: if request.resource.data.lastCommandId is string
+        && dayCloseCommand(request.resource.data.lastCommandId, dayId, resource.data, request.resource.data);
+    }
+
+    // P11 immutable settlement versions: created once by CloseDay／ReopenDay, never changed or deleted.
+    match /days/{dayId}/settlements/{revision} {
+      allow get, list: if currentHolder();
+      allow update, delete: if false;
+      allow create: if request.resource.data.lastCommandId is string
+        && settlementCreateCommand(dayId, revision, request.resource.data);
     }
 
     match /students/{studentId} {

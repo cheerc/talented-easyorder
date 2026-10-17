@@ -1,6 +1,6 @@
 /** Versioned, client-side encrypted command archive. No credentials or keys are persisted. */
 import { Timestamp } from 'firebase/firestore';
-import { CASHIER_STUDENT_ID, decodeEnabledCommandDoc, normalizeEnabledCommandInput } from '../domain/cloudCommandSchema';
+import { CASHIER_STUDENT_ID, SETTLEMENT_KEYS, decodeEnabledCommandDoc, normalizeEnabledCommandInput } from '../domain/cloudCommandSchema';
 import { TRANSACTION_MUTATION_KINDS } from '../domain/cloudTransactionMutation';
 
 export const BACKUP_FORMAT = 'easyorder-command-backup' as const;
@@ -100,7 +100,7 @@ const MUTATION_KINDS = new Set<string>(TRANSACTION_MUTATION_KINDS);
 const DECODABLE_COMMAND_KINDS = new Set([
   'EnsureDay', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus', 'SaveVendor',
   'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateOrder', 'CreatePayment', 'CreateCashMovement',
-  'CreateRefund', ...MUTATION_KINDS, 'RecordBackup', 'CorrectOpening',
+  'CreateRefund', ...MUTATION_KINDS, 'RecordBackup', 'CorrectOpening', 'CloseDay', 'ReopenDay',
 ]);
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -232,8 +232,9 @@ function validateProjectionSnapshot(
       throw new BackupValidationError(`command seq ${record.seq} transaction 金額語義無效`);
     }
   } else if (projection === 'settlement') {
-    if (!hasExactlyKeys(value, ['dayId', 'revision', 'status', 'sourceSeq', 'lastCommandId', 'committedAt'])
+    if (!hasExactlyKeys(value, [...SETTLEMENT_KEYS])
       || value.dayId !== target.dayId || !['closed', 'reopened'].includes(String(value.status))
+      || value.previousRevision !== Number(value.revision) - 1
       || (after && (value.revision !== target.settlementRevision || value.sourceSeq !== record.seq))
       || (!after && (value.revision !== Number(target.settlementRevision) - 1 || !Number.isSafeInteger(value.sourceSeq)
         || (value.sourceSeq as number) >= record.seq))
@@ -258,14 +259,17 @@ function resourcePath(projection: string, targets: Record<string, unknown>): str
   if (projection === 'student' && typeof targets.studentId === 'string') return `students/${targets.studentId}`;
   if (projection === 'vendor' && typeof targets.vendorId === 'string') return `vendors/${targets.vendorId}`;
   if (projection === 'transaction' && typeof targets.transactionId === 'string') return `transactions/${targets.transactionId}`;
-  if (projection === 'settlement' && typeof targets.dayId === 'string') return `daily_settlements/${targets.dayId}`;
+  if (projection === 'settlement' && typeof targets.dayId === 'string' && Number.isSafeInteger(targets.settlementRevision)) {
+    return `days/${targets.dayId}/settlements/${targets.settlementRevision}`;
+  }
   throw new BackupValidationError(`無法從 targets 對映 ${projection} 投影`);
 }
 
 function sameValue(left: unknown, right: unknown): boolean { return stableJson(left) === stableJson(right); }
 
 function recalculateDayTotals(projections: Record<string, unknown>): Record<string, Record<string, number>> {
-  const days = Object.entries(projections).filter(([path, value]) => path.startsWith('days/') && value !== null);
+  // Settlement versions live under days/{dayId}/settlements/{n}; only the day documents carry totals.
+  const days = Object.entries(projections).filter(([path, value]) => /^days\/[^/]+$/.test(path) && value !== null);
   const transactions = Object.entries(projections).filter(([path, value]) => path.startsWith('transactions/') && value !== null)
     .map(([, value]) => value as Record<string, unknown>);
   const result: Record<string, Record<string, number>> = {};
@@ -302,9 +306,12 @@ function replayProjections(records: BackupCommandRecord[], initial: Record<strin
     const before = record.before ?? {};
     const after = record.after ?? {};
     if (record.kind === 'CloseDay' || record.kind === 'ReopenDay') {
+      // Each version is a new immutable document; the previous one must be exactly the replayed version n−1.
+      const revision = Number(record.targets.settlementRevision);
       const settlementPath = resourcePath('settlement', record.targets);
-      const previousSettlement = Object.hasOwn(state, settlementPath) ? state[settlementPath] : null;
-      if (!sameValue(previousSettlement, before.previousSettlement)) {
+      const previousPath = `days/${String(record.targets.dayId)}/settlements/${revision - 1}`;
+      const previousSettlement = revision > 1 && Object.hasOwn(state, previousPath) ? state[previousPath] : null;
+      if (Object.hasOwn(state, settlementPath) || !sameValue(previousSettlement, before.previousSettlement)) {
         throw new BackupValidationError(`command seq ${record.seq} settlement before 與前序重播狀態不符`);
       }
       state[settlementPath] = after.settlement;

@@ -7,8 +7,4 @@ export const studentPath = (studentId: string) => `students/${studentId}`;
 export const studentCodePath = (code: string) => `studentCodes/${code}`;
 export const vendorPath = (vendorId: string) => `vendors/${vendorId}`;
 export const transactionPath = (transactionId: string) => `transactions/${transactionId}`;
-export const settlementPath = (businessDate: string) => `daily_settlements/${businessDate}`;
-export const closeAttemptPath = (businessDate: string, closeAttemptId: string) =>
-  `daily_settlements/${businessDate}/close_attempts/${closeAttemptId}`;
-export const cashAdjustmentPath = (businessDate: string, adjustmentId: string) =>
-  `daily_settlements/${businessDate}/cash_adjustments/${adjustmentId}`;
+export const settlementPath = (dayId: string, revision: number) => `days/${dayId}/settlements/${revision}`;
