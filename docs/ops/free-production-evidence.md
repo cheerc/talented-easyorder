@@ -335,3 +335,4 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - 備份：`npm run test:cloud-backup` 19/19。新案例以真實 close → 第一段匯出 → reopen → 作廢 → re-close → 第二段增量匯出 → 解密 → replay，版本 1／2／3 與 totals 相符；竄改差額、前一版快照或缺少前包版本都被拒。
 - schema 單元測試新增 5 項（§7.1 算式、差額需原因、負數與小數、版號綁定、重開原因）。
 - 沒有畫面、沒有 E2E（P11b）。無 production 部署、無正式金鑰。
+- **合併**：PR #503 squash `91b5909d960ba14cb6e448dad3d3c99292fba6f7`（2026-10-17），source head `ad701ef1b86368bf2b934e504292f9540f190563`。獨立審查 review `5557244382` 通過、無必修；審查本機重跑 `cloudDayClose.spec.ts`＋`cloudBackup.spec.ts`＋`cloudCommandSchema.dayClose.test.ts` 72/72。CI run 39020987035 build-and-test 與 e2e 成功。不擋合併：已關帳日的 P10a 更正類只實測 `VoidTransaction`（P11b 補測）；差額說明／重開原因純空白會過 Rules（畫面 trim）；期初日關帳後要先重開才能更正期初。P11b 進行中。
