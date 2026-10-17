@@ -320,3 +320,4 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - 畫面測試新增 2 項（更正金額與備註、原因必填與預覽；缺營業日先建立、已關帳不出表單）；schema 單元測試新增 13 項。
 - Cloud E2E 20/20（新 D07：學生 009 期初 100；期初日沒有營業日時先建立；更正為 70 須填原因，預覽 NT$ 100 → NT$ 70；營業日統計與開帳現金不變；命令保留原期初與理由；重新登入後仍是 70），使用本機 Chromium，不取代 CI pinned Chromium。
 - 無 production 部署、無正式金鑰。
+- **合併**：PR #501 squash `a92d1390c79900688bb36e0e1e6df910bce5b670`（2026-10-17），source head `b6b8cf4460ea23e16872bb0626c6ce28c3512d2c`。獨立審查 review `5555660163` 通過；CI run 38995746934 build-and-test 與 e2e 成功。審查本機重跑：`cloudOpeningCorrection.spec.ts`＋`cloudBackup.spec.ts` 60/60、`CloudStudentsPage.test.tsx`＋`cloudCommandSchema.student.test.ts` 67/67。不擋合併：F3 補建的過去日期營業日在 P11 啟用關帳時需決定處理方式。P10 完成，P11 未開始。

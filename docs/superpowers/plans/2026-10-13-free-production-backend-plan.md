@@ -1,6 +1,6 @@
 # EasyOrder 零費用正式後端分階段實作計畫
 
-日期：2026-10-17。狀態：**P00–P07 與 P06b 已合併至 main（P06b 隨整合 PR #488 合併）；P08 雲端訂餐已合併（#491）；P09a 繳費與櫃台收支已合併（#493）；P09b 退款已合併（#494）；P14 每日增量備份已平行實作並合併（#496）；P10a 交易更正／作廢／取消／撤回已合併（#497）；P10b 期初更正 PR 進行中；P11–P13、P15–P18 尚未開始或驗收**。
+日期：2026-10-17。狀態：**P00–P07 與 P06b 已合併至 main（P06b 隨整合 PR #488 合併）；P08 雲端訂餐已合併（#491）；P09a 繳費與櫃台收支已合併（#493）；P09b 退款已合併（#494）；P14 每日增量備份已平行實作並合併（#496）；P10a 交易更正／作廢／取消／撤回已合併（#497）；P10b 期初更正已合併（#501）；P11–P13、P15–P18 尚未開始或驗收**。
 
 **Source of truth：** [正式後端 spec](../specs/2026-10-13-free-production-backend-spec.md)，包含使用者最新「多白名單、等權、同時單一Google帳號」修正；來源 [PR #469](https://github.com/cheerc/talented-easyorder/pull/469)。
 
@@ -48,7 +48,7 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 | P09b | 已合併 | PR #494，squash `5b6f9a4`，base `c444621`；獨立審查 PASS。`CreateRefund` 啟用、`day.totals.accountRefunds`（7→8 欄）、F1 W 面板退款、應有現金扣退款一次；本機 Emulator 444/444、Vitest 1,602 passed、Cloud E2E 18/18。契約 `2026-10-16-cloud-refund-contract.md`。未部署。 |
 | P10a | 已合併 #497 | squash `1d61a475109c6642c20c56cbb9ae8e9180491e46`，source head `4cd2286c84643cad97200cff9e4d1642883f03fb`，base `b33fc6b`（審查後合併 main）；獨立複審通過（review `5551115175`）；CI [38935317478](https://github.com/cheerc/talented-easyorder/actions/runs/38935317478) 兩 job 成功。本機 Emulator 508/508、Vitest 1,637 passed。啟用 `CorrectTransaction`／`VoidTransaction`／`CancelKeepDeposit`／`CancelRefund`／`Undo`；F1 5 秒撤回與 E 明細、今日現金列的更正／作廢／取消；指令建立改 `validCommandCreate` 分派（含 `RecordBackup`）；P14 備份 decoder／replay 同步支援 5 種新 kind。契約 `2026-10-16-cloud-transaction-mutations-contract.md`。未部署；正式部署 Rules 須與 `firestore.indexes.json` 一起。 |
 | P14 | 已合併 #496 | Base `e01ebdff5e784522b15a6f16278ef303a9c63110`；source head `9df7926ac7f8670452f659ed7e0462d78a07fa3d`；squash merge `4b4425c3f6c5f5b1423b94d6aad3216c2c67397c`。獨立 subagent review 在四輪修正後對 exact head PASS；同 GitHub 帳號無法為自己 PR 提交 approving review，coordinator 記錄審查證據並以 admin gate 合併。CI [38929526636](https://github.com/cheerc/talented-easyorder/actions/runs/38929526636) `build-and-test` 成功；E2E 首跑遇 P04 A05 timing fail，failed-job rerun 18/18 成功，最終兩 job 均成功。真 Emulator P14 16/16、serial full Vitest 1,985/1,985、UI 2/2、lint/build 通過；app TSC 與 base 460 行 diagnostics byte-identical。固定 H 增量匯出、加密封包、F3 重新選檔驗證後 `RecordBackup` 已實作；只支援當前啟用的 command kinds。P10/P11 開啟新 kind 前，必須同步擴充 P14 replay validator 與相容性測試，否則備份會 fail closed。完整證據見 [P14 receipt](../../ops/p14-receipt.md)；未部署、未做 P15 復原演練。 |
-| P10b | PR 進行中 | 啟用 `CorrectOpening`（F3 期初更正）：鎖定原期初日，只改金額與備註，原因必填；結餘加期初差額，期初日營業日只增 revision，零現金。期初日沒有營業日時先 `EnsureDay`，已關帳拒絕。F3 學生頁「更正期初」表單與預覽；P14 備份 decoder／replay 同步支援。契約 `2026-10-17-cloud-opening-correction-contract.md`。PR、head SHA 與 CI 以 PR body 為準。未部署。 |
+| P10b | 已合併 #501 | squash `a92d1390c79900688bb36e0e1e6df910bce5b670`，source head `b6b8cf4460ea23e16872bb0626c6ce28c3512d2c`，base `a694b32`；獨立審查通過（review `5555660163`）；CI [38995746934](https://github.com/cheerc/talented-easyorder/actions/runs/38995746934) 兩 job 成功。本機 Emulator 551/551、P10b 42/42、Vitest 1,652 passed、Cloud E2E 20/20。啟用 `CorrectOpening`（F3 期初更正）：鎖定原期初日，只改金額與備註，原因必填；結餘加期初差額，期初日營業日只增 revision，零現金。期初日沒有營業日時先 `EnsureDay`，已關帳拒絕。F3 學生頁「更正期初」表單與預覽；P14 備份 decoder／replay 同步支援。契約 `2026-10-17-cloud-opening-correction-contract.md`。未部署；P11 啟用關帳時要決定 F3 補建的過去日期營業日如何處理。 |
 | P11–P13、P15–P18 | 尚未開始／未驗 | 不代表任何後續雲端功能已實作或通過。 |
 
 ## 2. 現有檔案與規劃新檔
