@@ -290,7 +290,7 @@ function OpeningCorrectionForm({
           <span>期初日 {dayId} 還沒有營業日資料。期初更正會記在期初日，請先建立該營業日；建立營業日不影響現金。</span>
         )}
         {day.state === 'ready' && (
-          <span role="alert">期初日 {dayId} 已關帳。請先到營業日頁重開該日，再回來更正期初。</span>
+          <span role="alert">期初日 {dayId} 已關帳。請先到「日結」頁填寫原因重開該日，更正期初後再重新關帳。</span>
         )}
         <div className="cloud-students__actions">
           {day.state === 'missing' && (
@@ -880,7 +880,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
     const day = page.openingDay;
     if (!student || page.recovery || !page.snapshot || day.state !== 'ready') return;
     if (day.status === 'closed') {
-      setPageState(previous => ({ ...previous, actionError: '期初日已關帳，請先重開該日再更正期初。' }));
+      setPageState(previous => ({ ...previous, actionError: '期初日已關帳，請先到「日結」頁填寫原因重開該日，再更正期初。' }));
       return;
     }
     const amount = parseOpeningAmount(page.openingAmountText);

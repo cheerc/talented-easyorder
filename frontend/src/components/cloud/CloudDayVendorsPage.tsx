@@ -998,7 +998,7 @@ export function CloudDayVendorsPage({ db, leaseEpoch, identityKey, onNavigationS
                 </button>
               )}
             </div>
-            {snapshot.day?.status === 'closed' && <p className="cloud-day-vendors__warning">此日期已關帳。P07 不提供關帳或重開，也不能修改已關帳日期的菜單與開帳金額。</p>}
+            {snapshot.day?.status === 'closed' && <p className="cloud-day-vendors__warning">此日期已關帳，不能修改菜單與開帳金額。要修改請先到「日結」頁填寫原因重開。</p>}
 
             {snapshot.day && (
               <>

@@ -262,10 +262,12 @@ async function revisions() {
 async function createPayment(paidAmount: number) {
   const r = await revisions();
   const transactionId = uuid();
+  const commandId = uuid();
   return {
     transactionId,
+    commandId,
     result: await writer().commitCommand({
-      commandId: uuid(), kind: 'CreatePayment', leaseEpoch: 1,
+      commandId, kind: 'CreatePayment', leaseEpoch: 1,
       targets: { transactionId, studentId: studentA, dayId: today },
       expectedRevisions: { transaction: 0, student: r.student, day: r.day },
       payload: { paidAmount, note: '' },
@@ -388,7 +390,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
   });
 
   it('P11.6: on a closed day every business write is refused, and the day status cannot be set directly', async () => {
-    const { transactionId, result } = await createPayment(30);
+    const { transactionId, commandId: paymentCommandId, result } = await createPayment(30);
     ok(result);
     ok(await repository().closeDay(await closeInput({ countedCash: 1200 })));
     const before = await state();
@@ -406,6 +408,16 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
         expectedRevisions: { transaction: 0, student: r.student, day: r.day }, payload: { amount: 10, reason: '退款' } },
       { kind: 'VoidTransaction', targets: { transactionId, studentId: studentA, dayId: today },
         expectedRevisions: { transaction: tx.revision, student: r.student, day: r.day }, payload: { reason: '誤收' } },
+      { kind: 'CorrectTransaction', targets: { transactionId, studentId: studentA, dayId: today },
+        expectedRevisions: { transaction: tx.revision, student: r.student, day: r.day },
+        payload: { mealPrice: 0, paidAmount: 40, amount: 40, note: '', reason: '金額打錯' } },
+      { kind: 'CancelKeepDeposit', targets: { transactionId, studentId: studentA, dayId: today },
+        expectedRevisions: { transaction: tx.revision, student: r.student, day: r.day }, payload: { reason: '取消' } },
+      { kind: 'CancelRefund', targets: { transactionId, studentId: studentA, dayId: today },
+        expectedRevisions: { transaction: tx.revision, student: r.student, day: r.day }, payload: { reason: '取消退現' } },
+      { kind: 'Undo', targets: { transactionId, studentId: studentA, dayId: today },
+        expectedRevisions: { transaction: tx.revision, student: r.student, day: r.day },
+        payload: { targetCommandId: paymentCommandId, reason: '送出後立即撤回' } },
       { kind: 'SetOpeningCash', targets: { dayId: today }, expectedRevisions: { day: r.day }, payload: { openingCash: 900 } },
       { kind: 'SetDayMenu', targets: { dayId: today }, expectedRevisions: { day: r.day, headSeq: before.head!.seq },
         payload: { selectionDate: today, itemName: 'Other', price: 80, vendorId: 'p11-vendor', vendorNameSnapshot: 'Synthetic Vendor', inheritedFromDate: null } },
@@ -414,7 +426,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     ];
     for (const attempt of attempts) {
       const result = await writer().commitCommand({ commandId: uuid(), leaseEpoch: 1, ...(attempt as object) });
-      expect(result.ok, JSON.stringify(attempt)).toBe(false);
+      expect(result.ok ? 'ok' : result.error.code, JSON.stringify(attempt)).toBe('DAY_CLOSED');
     }
     expect(await state()).toEqual(before);
 
@@ -567,5 +579,33 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     // The settlement history is readable only by the current holder.
     await assertSucceeds(getDocs(collection(db, `days/${today}/settlements`)));
     await assertFails(getDocs(collection(authedDb(operatorB), `days/${today}/settlements`)));
+  });
+
+  it('P11.13 (P11b): the overview lists unclosed days up to the lease date and marks past days without business', async () => {
+    const zero = { ...totals(), activeTransactionCount: 0, bentoCount: 0, mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0 };
+    const noBusiness = shiftDate(today, -3);
+    const pastOpen = shiftDate(today, -2);
+    const pastMissing = shiftDate(today, -1);
+    const closedDay = shiftDate(today, -4);
+    const future = shiftDate(today, 2);
+    await withAdmin(async db => {
+      await setDoc(doc(db, `days/${noBusiness}`), { ...dayDoc(noBusiness, null), totals: zero });
+      await setDoc(doc(db, `days/${pastOpen}`), { ...dayDoc(pastOpen, 500), status: 'reopened' });
+      await setDoc(doc(db, `days/${pastMissing}`), dayDoc(pastMissing, null));
+      await setDoc(doc(db, `days/${closedDay}`), { ...dayDoc(closedDay, 500), status: 'closed' });
+      await setDoc(doc(db, `days/${future}`), { ...dayDoc(future, null), totals: zero });
+    });
+    const overview = await repository().readOverview();
+    expect(overview).toMatchObject({ selectionDate: today, goLiveDate: shiftDate(today, -30), seq: 0 });
+    expect(overview.unclosedDays.map(day => [day.dayId, day.status, day.kind])).toEqual([
+      [noBusiness, 'open', 'no-business'],
+      [pastOpen, 'reopened', 'needs-close'],
+      [pastMissing, 'open', 'missing-opening'],
+      [today, 'open', 'needs-close'],
+    ]);
+    // A day without opening cash on the lease date itself is not "no business": it still needs opening.
+    await withAdmin(async db => setDoc(doc(db, `days/${today}`), { ...dayDoc(today, null), totals: zero }));
+    expect((await repository().readOverview()).unclosedDays.at(-1)).toMatchObject({ dayId: today, kind: 'missing-opening' });
+    await expect(repository(operatorB).readOverview()).rejects.toMatchObject({ code: 'LEASE_LOST' });
   });
 });

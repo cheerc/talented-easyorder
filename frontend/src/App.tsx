@@ -41,6 +41,7 @@ import type { StudentAccount } from './domain/student';
 import { CloudOrdersPage } from './components/cloud/CloudOrdersPage';
 import { CloudStudentsPage } from './components/cloud/CloudStudentsPage';
 import { CloudDayVendorsPage } from './components/cloud/CloudDayVendorsPage';
+import { CloudDayClosePage } from './components/cloud/CloudDayClosePage';
 
 function AppContent() {
   const { fb, fbError, access } = useFirebase();
@@ -344,7 +345,7 @@ function CloudAppContent() {
   const { fb, fbError, access, lease } = useFirebase();
   // 與本機模式共用 U1 顯示偏好（easyorder-ui-tweaks）：主題與字級套在 body 上。
   useTweaks();
-  const [cloudSection, setCloudSection] = useState<'orders' | 'students' | 'day-vendors'>('students');
+  const [cloudSection, setCloudSection] = useState<'orders' | 'students' | 'day-vendors' | 'day-close'>('students');
   const [navigationLocked, setNavigationLocked] = useState(false);
   const navigationLockRef = useRef<{ identityKey: string; locked: boolean; revoked: boolean } | null>(null);
   const reportNavigationState = useCallback((identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => {
@@ -363,7 +364,7 @@ function CloudAppContent() {
     navigationLockRef.current = lock;
     setNavigationLocked(lock.locked);
   }, []);
-  const selectSection = (section: 'orders' | 'students' | 'day-vendors') => {
+  const selectSection = (section: 'orders' | 'students' | 'day-vendors' | 'day-close') => {
     if (navigationLockRef.current?.locked) return;
     setCloudSection(section);
   };
@@ -376,7 +377,7 @@ function CloudAppContent() {
   return (
     <ErrorBoundary fallback={<AppCrashPage />} onError={(error) => appendErrorLog({ source: 'react', message: error.message, stack: error.stack })}>
       <AuthGate auth={fb.auth} db={fb.db} access={access}>
-        <main className="cloud-app" aria-label={cloudSection === 'orders' ? '雲端櫃台點餐' : cloudSection === 'students' ? '雲端學生管理' : '雲端日期與供應商管理'}>
+        <main className="cloud-app" aria-label={cloudSection === 'orders' ? '雲端櫃台點餐' : cloudSection === 'students' ? '雲端學生管理' : cloudSection === 'day-vendors' ? '雲端日期與供應商管理' : '雲端日結'}>
           <h1>Talented EasyOrder</h1>
           <nav className="cloud-app__nav" aria-label="雲端資料管理">
             <button type="button" aria-pressed={cloudSection === 'orders'} disabled={navigationLocked} onClick={() => selectSection('orders')}>
@@ -387,6 +388,9 @@ function CloudAppContent() {
             </button>
             <button type="button" aria-pressed={cloudSection === 'day-vendors'} disabled={navigationLocked} onClick={() => selectSection('day-vendors')}>
               日期與供應商
+            </button>
+            <button type="button" aria-pressed={cloudSection === 'day-close'} disabled={navigationLocked} onClick={() => selectSection('day-close')}>
+              日結
             </button>
           </nav>
           {cloudSection === 'orders' ? (
@@ -403,8 +407,15 @@ function CloudAppContent() {
               identityKey={access.ok ? `${access.profile.uid}:${lease.epoch}` : ''}
               onNavigationStateChange={reportNavigationState}
             />
-          ) : (
+          ) : cloudSection === 'day-vendors' ? (
             <CloudDayVendorsPage
+              db={fb.db}
+              leaseEpoch={lease.epoch}
+              identityKey={access.ok ? `${access.profile.uid}:${lease.epoch}` : ''}
+              onNavigationStateChange={reportNavigationState}
+            />
+          ) : (
+            <CloudDayClosePage
               db={fb.db}
               leaseEpoch={lease.epoch}
               identityKey={access.ok ? `${access.profile.uid}:${lease.epoch}` : ''}
