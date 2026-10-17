@@ -10,7 +10,9 @@ import {
   type CloudUnclosedDay,
   type ReopenCloudDayInput,
 } from '../../firebase/cloudDayCloseRepository';
+import type { CloudLedgerView } from '../../hooks/useCloudLedger';
 import { BackupScreen } from '../screens/BackupScreen';
+import { LedgerUnclosedBanner } from './LedgerUnclosedBanner';
 import './CloudDayClosePage.css';
 
 export interface CloudDayClosePageProps {
@@ -20,6 +22,13 @@ export interface CloudDayClosePageProps {
   onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
   /** Tests replace the P14 backup block; the page mounts the real one by default. */
   backupBlock?: ReactNode;
+  /** 帳務異常快照（契約 §11）；沒提供時不顯示橫幅。 */
+  ledger?: CloudLedgerView;
+  onOpenAnomalies?: () => void;
+  /** 開帳補登、關帳或重開命令確認成功後呼叫，讓上層重讀帳務異常。 */
+  onLedgerChanged?: () => void;
+  /** 第一次載入時要選到的營業日（例如從異常頁帶過來）；沒提供則用伺服器租約日期。 */
+  initialDayId?: string;
 }
 
 type PreparedCommand =
@@ -177,7 +186,12 @@ function DayFigures({ day }: { day: CloudDayCloseState }) {
   );
 }
 
-export function CloudDayClosePage({ db, leaseEpoch, identityKey, onNavigationStateChange, backupBlock }: CloudDayClosePageProps) {
+export function CloudDayClosePage({
+  db, leaseEpoch, identityKey, onNavigationStateChange, backupBlock, ledger, onOpenAnomalies, onLedgerChanged, initialDayId,
+}: CloudDayClosePageProps) {
+  const initialDayIdRef = useRef(initialDayId);
+  const onLedgerChangedRef = useRef(onLedgerChanged);
+  useEffect(() => { onLedgerChangedRef.current = onLedgerChanged; }, [onLedgerChanged]);
   const repository = useMemo(() => createCloudDayCloseRepository(db), [db]);
   const scopeKey = `${identityKey}:${leaseEpoch}`;
   const [pageState, setPageStateRaw] = useState<PageState>(() => initialPageState(scopeKey));
@@ -254,6 +268,7 @@ export function CloudDayClosePage({ db, leaseEpoch, identityKey, onNavigationSta
       const day = await repository.read(dayId);
       if (!isCurrent(key, generation) || requestId !== readRequestRef.current) return;
       if (confirmedReceipt?.commandId === pendingCommandIdRef.current) pendingCommandIdRef.current = null;
+      if (confirmedReceipt) onLedgerChangedRef.current?.();
       updateFor(key, generation, previous => {
         const confirmsPending = confirmedReceipt
           && previous.recovery?.commandId === confirmedReceipt.commandId
@@ -302,7 +317,9 @@ export function CloudDayClosePage({ db, leaseEpoch, identityKey, onNavigationSta
   useEffect(() => {
     const generation = ++generationRef.current;
     setPageStateRaw(initialPageState(scopeKey));
-    void loadSnapshot();
+    const firstDayId = initialDayIdRef.current;
+    initialDayIdRef.current = undefined;
+    void loadSnapshot(firstDayId);
     return () => {
       readRequestRef.current += 1;
       if (generationRef.current === generation) generationRef.current += 1;
@@ -662,6 +679,7 @@ export function CloudDayClosePage({ db, leaseEpoch, identityKey, onNavigationSta
         </button>
       </header>
 
+      <LedgerUnclosedBanner ledger={ledger} onOpenAnomalies={onOpenAnomalies} />
       {page.loadError && <div className="cloud-day-close__alert" role="alert">{page.loadError}</div>}
       {page.actionError && <div className="cloud-day-close__alert" role="alert">{page.actionError}</div>}
       {page.authorizationRevoked && (

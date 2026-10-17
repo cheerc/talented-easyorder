@@ -823,4 +823,241 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     relabelled.command.kind = 'SetOpeningCash';
     await expectBackfillDenied(relabelled);
   });
+
+  // ---- P11c1: ledger anomalies and the opening-difference reason (contract §11) ----
+
+  const REASON = '前一天實點與開帳不同，原因待查';
+
+  async function setOpening(input: { dayId: string; openingCash: number; reason?: string }) {
+    const day = (await read(`days/${input.dayId}`))!;
+    return writer().commitCommand({
+      commandId: uuid(), kind: 'SetOpeningCash', leaseEpoch: 1,
+      targets: { dayId: input.dayId }, expectedRevisions: { day: day.revision },
+      payload: input.reason === undefined ? { openingCash: input.openingCash } : { openingCash: input.openingCash, reason: input.reason },
+    });
+  }
+
+  async function closePast(dayId: string, openingCash: number, countedCash: number) {
+    await seedPastDay(dayId, { openingCash, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    const note = countedCash === openingCash + 170 ? '' : '實點差額';
+    ok(await repository().closeDay(await closeInput({ countedCash, note }, dayId)));
+  }
+
+  it('P11c1.1: the ledger reader lists an unclosed past day and both opening mismatches, and nothing for continuous days', async () => {
+    const d1 = shiftDate(today, -6);
+    const d2 = shiftDate(today, -5);
+    const d3 = shiftDate(today, -2);
+    await closePast(d1, 500, 700); // expected 670, counted 700
+    await closePast(d2, 700, 870); // opens at the last counted cash: no anomaly
+    await seedPastDay(d3, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    // today's seeded opening is 1,000.
+    const snapshot = await repository().readLedger();
+    expect(snapshot).toMatchObject({ today, goLiveDate: shiftDate(today, -30) });
+    expect(snapshot.closedDays).toEqual([{ dayId: d1, countedCash: 700 }, { dayId: d2, countedCash: 870 }]);
+    expect(snapshot.anomalies).toEqual([
+      { kind: 'unclosed-past-day', dayId: d3, status: 'open', openingCash: 800, activeTransactionCount: 4 },
+      {
+        kind: 'opening-mismatch', dayId: d3, openingCash: 800, previousClosedDayId: d2,
+        previousCountedCash: 870, difference: -70, daysApart: 3,
+      },
+      {
+        kind: 'opening-mismatch', dayId: today, openingCash: 1000, previousClosedDayId: d2,
+        previousCountedCash: 870, difference: 130, daysApart: 5,
+      },
+    ]);
+    await expect(repository(operatorB).readLedger()).rejects.toMatchObject({ code: 'LEASE_LOST' });
+  });
+
+  it('P11c1.2: continuous days, a holiday gap with the same amount, and a go-live day are not anomalies', async () => {
+    const d1 = shiftDate(today, -4);
+    await closePast(d1, 500, 700);
+    // Today opens at 700 after a three-day gap with no business-day documents.
+    ok(await setOpening({ dayId: today, openingCash: 700 }));
+    expect((await repository().readLedger()).anomalies).toEqual([]);
+    // A fresh dataset whose only day is the first one has no previous closed day.
+    await env.clearFirestore();
+    await seed();
+    expect((await repository().readLedger()).anomalies).toEqual([]);
+  });
+
+  it('P11c1.3: a reopened day does not count as the last close; the latest closing version is used', async () => {
+    const d1 = shiftDate(today, -3);
+    const d2 = shiftDate(today, -2);
+    await closePast(d1, 500, 700);
+    await closePast(d2, 700, 870);
+    // Reopen d2 and close again at 900: the latest version (3) is the one that matters.
+    ok(await repository().reopenDay(await reopenInput('漏記一筆收入', d2)));
+    expect((await repository().readLedger()).anomalies.map(item => [item.kind, item.dayId])).toEqual([
+      ['unclosed-past-day', d2], ['opening-mismatch', today],
+    ]);
+    ok(await repository().closeDay(await closeInput({ countedCash: 900, note: '補記後' }, d2)));
+    const snapshot = await repository().readLedger();
+    expect(snapshot.closedDays).toEqual([{ dayId: d1, countedCash: 700 }, { dayId: d2, countedCash: 900 }]);
+    expect(snapshot.anomalies).toEqual([expect.objectContaining({
+      kind: 'opening-mismatch', dayId: today, previousClosedDayId: d2, previousCountedCash: 900, difference: 100, daysApart: 2,
+    })]);
+  });
+
+  it('P11c1.4: a past day without business, and today unclosed, are not anomalies', async () => {
+    await seedPastDay(shiftDate(today, -3), { totals: zeroTotals() });
+    await seedPastDay(shiftDate(today, -2), { totals: zeroTotals(), status: 'reopened' });
+    expect((await repository().readLedger()).anomalies).toEqual([]);
+  });
+
+  it('P11c1.5: more than 400 business-day documents fail closed; exactly 400 reads', async () => {
+    const goLive = shiftDate(today, -500);
+    const fill = async (count: number) => withAdmin(async db => {
+      await setDoc(doc(db, 'system/dataHead'), {
+        schemaVersion: 1, datasetId: 'p11-close-dataset', seq: 0, lastCommandId: null,
+        maintenance: false, goLiveDate: goLive, updatedAt: serverTimestamp(),
+      });
+      const batch = writeBatch(db);
+      for (let index = 1; index <= count; index += 1) {
+        const dayId = shiftDate(today, -index);
+        batch.set(doc(db, `days/${dayId}`), { ...dayDoc(dayId, null), totals: zeroTotals() });
+      }
+      await batch.commit();
+    });
+    await fill(399); // plus today's document = 400
+    expect((await repository().readLedger()).anomalies).toEqual([]);
+    await fill(400);
+    await expect(repository().readLedger()).rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT' });
+  });
+
+  it('P11c1.6: SetOpeningCash with a reason succeeds, retries return the same receipt, and the reason is stored on the command only', async () => {
+    const day = (await read(`days/${today}`))!;
+    const input = {
+      commandId: uuid(), kind: 'SetOpeningCash' as const, leaseEpoch: 1, targets: { dayId: today },
+      expectedRevisions: { day: day.revision }, payload: { openingCash: 700, reason: REASON },
+    };
+    const receipt = ok(await writer().commitCommand(input));
+    const stored = (await read(`commands/${receipt.commandId}`))!;
+    expect(stored).toMatchObject({ kind: 'SetOpeningCash', reason: REASON, payload: { openingCash: 700, reason: REASON } });
+    expect((await read(`days/${today}`))!).toMatchObject({ openingCash: 700 });
+    expect(Object.keys((await read(`days/${today}`))!).sort()).toEqual(Object.keys(day).sort());
+    for (let index = 0; index < 2; index += 1) expect(ok(await writer().commitCommand(input))).toEqual(receipt);
+    expect(await writer().commitCommand({ ...input, payload: { openingCash: 700, reason: 'other' } })).toMatchObject({ ok: false });
+    expect(await repository().readCommand(receipt.commandId)).toMatchObject({ kind: 'SetOpeningCash', commandId: receipt.commandId });
+    expect((await state()).commandCount).toBe(1);
+  });
+
+  it('P11c1.7: SetOpeningCash without a reason still works (old clients), with command reason null', async () => {
+    const receipt = ok(await writer().commitCommand({
+      commandId: uuid(), kind: 'SetOpeningCash', leaseEpoch: 1, targets: { dayId: today },
+      expectedRevisions: { day: (await read(`days/${today}`))!.revision }, payload: { openingCash: 650 },
+    }));
+    expect((await read(`commands/${receipt.commandId}`))!).toMatchObject({ reason: null, payload: { openingCash: 650 } });
+  });
+
+  it('P11c1.8: the legal maximum SetOpeningCash (20,000 with a 500-character reason) passes Rules', async () => {
+    const reason = '因'.repeat(500);
+    ok(await writer().commitCommand({
+      commandId: uuid(), kind: 'SetOpeningCash', leaseEpoch: 1, targets: { dayId: today },
+      expectedRevisions: { day: (await read(`days/${today}`))!.revision }, payload: { openingCash: 20_000, reason },
+    }));
+    expect((await read(`days/${today}`))!).toMatchObject({ openingCash: 20_000 });
+  });
+
+  /** A complete raw SetOpeningCash closure; attacks edit it before commit. */
+  async function rawSetOpening(change: { payload?: RawMap; reason?: string | null } = {}, actor = operatorA) {
+    const commandId = uuid();
+    const headBefore = (await read('system/dataHead'))!;
+    const dayBefore = (await read(`days/${today}`))!;
+    const payload: RawMap = change.payload ?? { openingCash: 700, reason: REASON };
+    const input = {
+      commandId, kind: 'SetOpeningCash', leaseEpoch: 1, targets: { dayId: today },
+      expectedRevisions: { day: dayBefore.revision }, payload,
+    };
+    let fingerprint = 'f'.repeat(64);
+    try { fingerprint = await fingerprintCommandInput(normalizeEnabledCommandInput(input)); } catch { /* invalid on purpose */ }
+    const now = serverTimestamp();
+    const headAfter: RawMap = { ...headBefore, seq: headBefore.seq + 1, lastCommandId: commandId, updatedAt: now };
+    const dayAfter: RawMap = {
+      ...dayBefore, openingCash: payload.openingCash, revision: dayBefore.revision + 1, lastCommandId: commandId, updatedAt: now,
+    };
+    const command: RawMap = {
+      commandId, kind: 'SetOpeningCash', seq: headBefore.seq + 1, leaseEpoch: 1,
+      actor: { uid: actor.uid, email: actor.email }, committedAt: now,
+      businessDate: today, studentId: null, targets: input.targets, expectedRevisions: input.expectedRevisions,
+      before: { head: headBefore, day: dayBefore }, after: { head: headAfter, day: dayAfter },
+      reason: change.reason === undefined ? (payload.reason ?? null) : change.reason,
+      cashEffect: { before: 0, after: 0, delta: 0, reasonKind: 'none', refundAmount: 0 },
+      payload, inputFingerprint: fingerprint,
+    };
+    return { commandId, command, headAfter, dayAfter };
+  }
+
+  type RawSetOpening = Awaited<ReturnType<typeof rawSetOpening>>;
+
+  function rawSetOpeningBatch(db: Firestore, a: RawSetOpening) {
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'system/dataHead'), a.headAfter);
+    batch.update(doc(db, `days/${today}`), a.dayAfter);
+    batch.set(doc(db, `commands/${a.commandId}`), a.command);
+    return batch;
+  }
+
+  it('P11c1.9: a raw SetOpeningCash with a reason works, and the plain form still works', async () => {
+    await assertSucceeds(rawSetOpeningBatch(authedDb(operatorA), await rawSetOpening()).commit());
+    await assertSucceeds(rawSetOpeningBatch(authedDb(operatorA), await rawSetOpening({ payload: { openingCash: 710 } })).commit());
+  });
+
+  it.each<[string, { payload?: RawMap; reason?: string | null }]>([
+    ['the reason is empty', { payload: { openingCash: 700, reason: '' }, reason: '' }],
+    ['the reason is 501 characters', { payload: { openingCash: 700, reason: 'x'.repeat(501) }, reason: 'x'.repeat(501) }],
+    ['the reason is not a string', { payload: { openingCash: 700, reason: 5 }, reason: 5 as unknown as string }],
+    ['the reason is null in the payload', { payload: { openingCash: 700, reason: null }, reason: null }],
+    ['the command reason differs from the payload reason', { reason: '另一個原因' }],
+    ['the command reason is null although the payload has one', { reason: null }],
+    ['the command reason is set although the payload has none', { payload: { openingCash: 700 }, reason: REASON }],
+    ['the payload gains an extra key', { payload: { openingCash: 700, reason: REASON, note: '' } }],
+    ['the payload has only an extra key', { payload: { openingCash: 700, note: REASON }, reason: null }],
+  ])('P11c1.10: Rules refuse a raw SetOpeningCash when %s', async (_label, change) => {
+    const attack = await rawSetOpening(change);
+    const before = await state();
+    await assertFails(rawSetOpeningBatch(authedDb(operatorA), attack).commit());
+    expect(await state()).toEqual(before);
+  });
+
+  it('P11c1.11: the writer refuses a differing opening without a reason, accepts it with one, and needs none when equal', async () => {
+    const d1 = shiftDate(today, -2);
+    await closePast(d1, 500, 700);
+    const day = async () => (await read(`days/${today}`))!;
+    const base = { commandId: uuid(), leaseEpoch: 1, dayId: today };
+    const vendor = (await import('../cloudDayVendorRepository')).createCloudDayVendorRepository(
+      authedDb(operatorA), { currentUser: () => fakeCurrentUser(operatorA) },
+    );
+    const before = await state();
+    for (const reason of [undefined, '', '   ']) {
+      expect(await vendor.setOpeningCash({
+        ...base, commandId: uuid(), expectedRevision: (await day()).revision, openingCash: 650, ...(reason === undefined ? {} : { reason }),
+      })).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    }
+    expect(await state()).toEqual(before);
+    // The same amount as the last close needs no reason.
+    ok(await vendor.setOpeningCash({ ...base, commandId: uuid(), expectedRevision: (await day()).revision, openingCash: 700 }));
+    // A different amount with a reason is accepted; surrounding spaces are trimmed.
+    const receipt = ok(await vendor.setOpeningCash({
+      ...base, commandId: uuid(), expectedRevision: (await day()).revision, openingCash: 650, reason: `  ${REASON}  `,
+    }));
+    expect((await read(`commands/${receipt.commandId}`))!).toMatchObject({ reason: REASON, payload: { openingCash: 650, reason: REASON } });
+    expect(await vendor.setOpeningCash({
+      ...base, commandId: uuid(), expectedRevision: (await day()).revision, openingCash: 650, reason: 'x'.repeat(501),
+    })).toMatchObject({ ok: false });
+  });
+
+  it('P11c1.12: without any closed day the writer needs no reason; a non-holder is refused', async () => {
+    const vendor = (await import('../cloudDayVendorRepository')).createCloudDayVendorRepository(
+      authedDb(operatorA), { currentUser: () => fakeCurrentUser(operatorA) },
+    );
+    ok(await vendor.setOpeningCash({
+      commandId: uuid(), leaseEpoch: 1, dayId: today, expectedRevision: (await read(`days/${today}`))!.revision, openingCash: 1234,
+    }));
+    const other = (await import('../cloudDayVendorRepository')).createCloudDayVendorRepository(
+      authedDb(operatorB), { currentUser: () => fakeCurrentUser(operatorB) },
+    );
+    expect(await other.setOpeningCash({
+      commandId: uuid(), leaseEpoch: 1, dayId: today, expectedRevision: (await read(`days/${today}`))!.revision, openingCash: 1,
+    })).toMatchObject({ ok: false, error: { code: 'LEASE_LOST' } });
+  });
 });

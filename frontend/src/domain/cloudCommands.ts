@@ -250,7 +250,7 @@ export type SetDayMenuCommand = BaseCommand<
 // 9. SetOpeningCash
 export type SetOpeningCashCommand = BaseCommand<
   'SetOpeningCash',
-  { openingCash: number },
+  { openingCash: number; reason?: string },
   { dayId: string }
 >;
 

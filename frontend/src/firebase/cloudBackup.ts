@@ -426,7 +426,7 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
     SetStudentStatus: { required: ['status', 'reason'] }, CorrectOpening: { required: ['amount', 'note', 'reason'] },
     SaveVendor: { required: ['vendorId', 'name', 'phone', 'note', 'status'] }, RemoveVendor: { required: ['reason'] },
     SetDayMenu: { required: ['selectionDate', 'itemName', 'price', 'vendorId', 'vendorNameSnapshot', 'inheritedFromDate'] },
-    SetOpeningCash: { required: ['openingCash'] },
+    SetOpeningCash: { required: ['openingCash'], optional: ['reason'] },
     CreateOrder: { required: ['mealPrice', 'paidAmount', 'mealKind'], optional: ['menuRevision', 'otherItemName', 'note'] },
     CreatePayment: { required: ['paidAmount'], optional: ['note'] },
     CreateCashMovement: { required: ['mealPrice', 'paidAmount', 'reason'] }, CreateRefund: { required: ['amount', 'reason'] },

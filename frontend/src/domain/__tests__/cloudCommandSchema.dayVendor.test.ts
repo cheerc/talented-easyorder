@@ -468,3 +468,41 @@ describe('day and vendor command input contract', () => {
     }
   });
 });
+
+describe('SetOpeningCash optional difference reason (contract §11)', () => {
+  const reason = '前一天實點與開帳不同';
+
+  it('normalizes a payload with or without a reason and keeps the two forms distinct', async () => {
+    expect(normalizeEnabledCommandInput(setOpeningCash({ payloadExtras: { reason } }))).toMatchObject({
+      kind: 'SetOpeningCash', payload: { openingCash: 0, reason },
+    });
+    expect(normalizeEnabledCommandInput(setOpeningCash())).toMatchObject({ payload: { openingCash: 0 } });
+    expect('reason' in normalizeEnabledCommandInput(setOpeningCash()).payload).toBe(false);
+    expect(sameCommandSemantics(normalizeEnabledCommandInput(setOpeningCash({ payloadExtras: { reason } })), setOpeningCash())).toBe(false);
+    expect(await fingerprintCommandInput(normalizeEnabledCommandInput(setOpeningCash({ payloadExtras: { reason } }))))
+      .not.toBe(await fingerprintCommandInput(normalizeEnabledCommandInput(setOpeningCash())));
+  });
+
+  it.each([
+    ['empty', ''],
+    ['501 characters', 'x'.repeat(501)],
+    ['a number', 5],
+    ['null', null],
+  ])('rejects a reason that is %s, and any extra payload key', (_label, bad) => {
+    expect(() => normalizeEnabledCommandInput(setOpeningCash({ payloadExtras: { reason: bad } }))).toThrow();
+    expect(() => normalizeEnabledCommandInput(setOpeningCash({ payloadExtras: { reason, note: '' } }))).toThrow();
+  });
+
+  it('accepts exactly 500 characters', () => {
+    expect(normalizeEnabledCommandInput(setOpeningCash({ payloadExtras: { reason: 'x'.repeat(500) } }))).toMatchObject({ kind: 'SetOpeningCash' });
+  });
+
+  it('decodes a receipt whose command reason mirrors the payload reason, and rejects mismatches', () => {
+    const base = dayReceipt('SetOpeningCash');
+    expect(decodeEnabledCommandDoc({ ...base, payload: { openingCash: 0, reason }, reason }).kind).toBe('SetOpeningCash');
+    expect(() => decodeEnabledCommandDoc({ ...base, payload: { openingCash: 0, reason }, reason: null })).toThrow();
+    expect(() => decodeEnabledCommandDoc({ ...base, payload: { openingCash: 0, reason }, reason: 'other' })).toThrow();
+    expect(() => decodeEnabledCommandDoc({ ...base, reason })).toThrow();
+    expect(() => decodeEnabledCommandDoc({ ...base, payload: { openingCash: 0, reason: '' }, reason: '' })).toThrow();
+  });
+});

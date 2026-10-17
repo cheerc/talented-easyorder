@@ -243,6 +243,8 @@ npm run test:e2e
 
 **Acceptance/demo：** 本人可全日點現金、關帳、回查並重開修正；日結不受F2搜尋或週月範圍影響，不能直接setBusinessDateStatus。過去日子因斷網沒確認開帳現金時，可填原因補開帳再關帳（`BackfillOpeningCash`，CheerC 2026-10-17）；不補登當天交易。
 
+**P11c 帳務斷層與異常處理（CheerC 2026-10-17）：** 分四批。P11c1（本批）只算出並顯示帳務異常：導覽列「帳務異常（n）」與異常頁、開帳與日結頁的未關帳橫幅、開帳現金與上次關帳實點不同時的差額原因（`SetOpeningCash` 選填 `reason`，唯一的 Rules 變更）。契約見 [P11 契約 §11](../specs/2026-10-17-cloud-day-close-contract.md#11-p11c1-帳務異常與開帳差額原因)。P11c2–c4（回填中間日子、關帳對齊、關帳後補記有標記的收支）是之後的修補工具，不在 P11c1。
+
 ### P12 — 完整查帳、週月統計、CSV與列印
 
 **Scope/files：** `cloudReadRepository.ts`、`realtimeSubscriptions.ts`、`ledgerReport.ts`／`ledgerExport.ts`／audit projection、F2/F5呼叫端與indexes。

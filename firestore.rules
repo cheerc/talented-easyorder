@@ -754,6 +754,9 @@ service cloud.firestore {
         : validSetDayMenuInherited(commandId, command);
     }
 
+    // The optional payload reason (the opening differs from the last close, contract §11) means this kind
+    // cannot use p07CommandEnvelope, which fixes the command reason to null for everything but RemoveVendor.
+    // cashCommandEnvelope is the same envelope without that reason check; the reason is bound below.
     function validSetOpeningCash(commandId, command) {
       let head = get(/databases/$(database)/documents/system/dataHead).data;
       let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
@@ -761,20 +764,22 @@ service cloud.firestore {
       let dayBefore = get(/databases/$(database)/documents/days/$(dayId)).data;
       let dayAfter = getAfter(/databases/$(database)/documents/days/$(dayId)).data;
       return commandHolder(command.leaseEpoch)
-        && p07CommandEnvelope(commandId, command, head, headAfter)
+        && cashCommandEnvelope(commandId, command, head, headAfter)
         && command.kind == 'SetOpeningCash'
         && exactMap(command.targets, ['dayId'])
         && exactMap(command.expectedRevisions, ['day'])
         && dayBefore.revision is int && dayBefore.revision >= 1
         && command.expectedRevisions.day == dayBefore.revision
-        && exactMap(command.payload, ['openingCash'])
+        && ((exactMap(command.payload, ['openingCash']) && command.reason == null)
+          || (exactMap(command.payload, ['openingCash', 'reason'])
+            && validMutationReason(command.payload.reason)
+            && command.reason == command.payload.reason))
         && command.payload.openingCash is int
         && command.payload.openingCash >= 0 && command.payload.openingCash <= 20000
         && validCurrentTaipeiDate(dayId)
         && dayId >= head.goLiveDate
         && command.businessDate == dayId
         && command.studentId == null
-        && command.reason == null
         && zeroCashEffect(command.cashEffect)
         && exactMap(command.before, ['head', 'day'])
         && exactMap(command.after, ['head', 'day'])

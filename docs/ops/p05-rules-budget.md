@@ -616,3 +616,50 @@ Each mutant removes one check from `firestore.rules` and runs all of `cloudDayCl
 | opening fields null in **both** rules | killed (`P11.19`) |
 | status open／reopened (command only, or day only) | survived: redundant with the same check in the other rule. |
 | opening fields null (command only, or day only) | survived: redundant with the same check in the other rule. |
+
+## P11c1 — SetOpeningCash optional reason — budget and probe receipt
+
+P11c1 changes one Rules function, `validSetOpeningCash`: the payload may carry an optional `reason` (1–500 characters) when the opening cash differs from the last closed day's counted cash. Kind count is unchanged (25 kinds, 23 enabled). Contract: [P11 day close contract §11](../superpowers/specs/2026-10-17-cloud-day-close-contract.md#11-p11c1-帳務異常與開帳差額原因). The ledger reads are client-side server reads and add no Rules paths.
+
+### Rule layout
+
+- `validSetOpeningCash` accepts exactly two shapes: payload `{openingCash}` with command `reason == null`, or payload `{openingCash, reason}` with `validMutationReason(reason)` and `command.reason == payload.reason`.
+- It now calls `cashCommandEnvelope` instead of `p07CommandEnvelope`. `p07CommandEnvelope` fixes the command `reason` to null for every kind except `RemoveVendor`, so a reason could never pass it. `cashCommandEnvelope` is the same envelope without that reason clause (already used by the cash, refund, backfill kinds); the reason is bound by `validSetOpeningCash` itself. `p07CommandEnvelope` is unchanged, so `SaveVendor`, `RemoveVendor` and `SetDayMenu` are untouched.
+- No new top-level `||` in `validCommandCreate`; `dayWriteCommand`, `validDayOpeningCashProjection` and the day fields are unchanged (the day stores no reason).
+- "A difference needs a reason" is enforced by the screen and the writer, not by Rules (Rules cannot know the last closed day).
+
+### Write budget
+
+Unchanged from the P07 `SetOpeningCash` row: command + dataHead + day, no new reads.
+
+### Expression headroom
+
+Same probe as earlier appendices (`1 == 1 &&` terms at one anchor, bisected against a positive Emulator case; main `8cd8dc3`). Main cannot run the reason case, so main is measured with the plain maximum (`P11c1.7`, 650) and this PR with both the plain case and the legal maximum (`P11c1.8`: 20,000 and a 500-character reason).
+
+| Rule anchor | Case | Main | This PR |
+|---|---|---:|---:|
+| command create | `P11c1.7` plain SetOpeningCash | +68 / +69 | +70 / +71 |
+| dataHead update | `P11c1.7` | +95 / +96 | +95 / +96 |
+| day update (`dayWriteCommand`) | `P11c1.7` | +80 / +81 | +80 / +81 |
+| command create | `P11c1.8` max reason payload | — | +62 / +63 |
+| dataHead update | `P11c1.8` | — | +95 / +96 |
+| day update (`dayWriteCommand`) | `P11c1.8` | — | +80 / +81 |
+| day update (`dayWriteCommand`) | `P08.8` CreateOrder | +11 / +12 | +11 / +12 |
+| command create | `P10.17` every mutation kind | +19 / +20 | +19 / +20 |
+| command create | `P09b.9` refund, max payload | +19 / +20 | +19 / +20 |
+| command create | P14 real P10a receipts (capped by `CreateStudent`) | +3 / +4 | +3 / +4 |
+
+The plain path gains two units because `cashCommandEnvelope` has no reason ternary. No existing anchor dropped; the tightest are unchanged (day rule for `CreateOrder` +11, command rule for mutations and refunds +19, `CreateStudent` +3). The earlier values of the other anchors are in the P11 appendices (same Rules outside `validSetOpeningCash`).
+
+### Mutants
+
+Each mutant changes one check in `validSetOpeningCash` and runs `cloudDayClose.spec.ts -t P11c1` (20 cases).
+
+| Mutant | Result |
+|---|---|
+| remove `validMutationReason(payload.reason)` | killed (4 cases: empty, 501, not a string, null) |
+| remove `command.reason == payload.reason` | killed (2 cases: differs, null with payload reason) |
+| plain shape without `command.reason == null` | killed (1 case: command reason set without payload reason) |
+| reason shape without exact keys `['openingCash','reason']` | killed (1 case: extra key) |
+| plain shape without exact keys `['openingCash']` | killed (3 cases) |
+

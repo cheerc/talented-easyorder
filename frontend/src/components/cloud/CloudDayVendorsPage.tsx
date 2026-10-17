@@ -18,6 +18,9 @@ import {
   type CloudDayMenuDraft,
   type CloudDayVendorDraft,
 } from './CloudDayVendorForms';
+import { openingDifference, previousClosedDay } from '../../domain/ledgerAnomalies';
+import type { CloudLedgerView } from '../../hooks/useCloudLedger';
+import { LedgerUnclosedBanner } from './LedgerUnclosedBanner';
 import './CloudDayVendorsPage.css';
 
 export interface CloudDayVendorsPageProps {
@@ -25,6 +28,11 @@ export interface CloudDayVendorsPageProps {
   leaseEpoch: number;
   identityKey: string;
   onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
+  /** 帳務異常快照（契約 §11）；沒提供時不顯示橫幅，也不要求開帳差額原因。 */
+  ledger?: CloudLedgerView;
+  onOpenAnomalies?: () => void;
+  /** 開帳現金命令確認成功後呼叫，讓上層重讀帳務異常。 */
+  onLedgerChanged?: () => void;
 }
 
 type PreparedCommand =
@@ -60,6 +68,7 @@ interface PageState {
   menuDraft: CloudDayMenuDraft;
   inheritedFromDate: string | null;
   openingCashText: string;
+  openingReasonText: string;
   recovery: RecoveryState | null;
 }
 
@@ -74,7 +83,7 @@ const freshVendorDraft = (): CloudDayVendorDraft => ({
 const freshMenuDraft = (): CloudDayMenuDraft => ({ itemName: '', priceText: '', vendorId: '' });
 
 function formDraftsFor(snapshot: CloudDayVendorSnapshot): Pick<PageState,
-  'createVendorOpen' | 'vendorDraft' | 'editingVendorId' | 'removingVendorId' | 'removeReason' | 'menuDraft' | 'inheritedFromDate' | 'openingCashText'> {
+  'createVendorOpen' | 'vendorDraft' | 'editingVendorId' | 'removingVendorId' | 'removeReason' | 'menuDraft' | 'inheritedFromDate' | 'openingCashText' | 'openingReasonText'> {
   return {
     createVendorOpen: false,
     vendorDraft: freshVendorDraft(),
@@ -94,6 +103,7 @@ function formDraftsFor(snapshot: CloudDayVendorSnapshot): Pick<PageState,
     openingCashText: snapshot.day?.openingCash === null || snapshot.day?.openingCash === undefined
       ? ''
       : String(snapshot.day.openingCash),
+    openingReasonText: '',
   };
 }
 
@@ -115,12 +125,13 @@ function initialPageState(scopeKey: string): PageState {
     menuDraft: freshMenuDraft(),
     inheritedFromDate: null,
     openingCashText: '',
+    openingReasonText: '',
     recovery: null,
   };
 }
 
 function clearFormDrafts(): Pick<PageState,
-  'createVendorOpen' | 'vendorDraft' | 'editingVendorId' | 'removingVendorId' | 'removeReason' | 'menuDraft' | 'inheritedFromDate' | 'openingCashText'> {
+  'createVendorOpen' | 'vendorDraft' | 'editingVendorId' | 'removingVendorId' | 'removeReason' | 'menuDraft' | 'inheritedFromDate' | 'openingCashText' | 'openingReasonText'> {
   return {
     createVendorOpen: false,
     vendorDraft: freshVendorDraft(),
@@ -130,6 +141,7 @@ function clearFormDrafts(): Pick<PageState,
     menuDraft: freshMenuDraft(),
     inheritedFromDate: null,
     openingCashText: '',
+    openingReasonText: '',
   };
 }
 
@@ -264,12 +276,17 @@ function dispatchPreparedCommand(
     dayId: command.dayId,
     expectedRevision: command.expectedRevision,
     openingCash: command.openingCash,
+    ...(command.reason === undefined ? {} : { reason: command.reason }),
   };
   return repository.setOpeningCash(input);
 }
 
-export function CloudDayVendorsPage({ db, leaseEpoch, identityKey, onNavigationStateChange }: CloudDayVendorsPageProps) {
+export function CloudDayVendorsPage({
+  db, leaseEpoch, identityKey, onNavigationStateChange, ledger, onOpenAnomalies, onLedgerChanged,
+}: CloudDayVendorsPageProps) {
   const repository = useMemo(() => createCloudDayVendorRepository(db), [db]);
+  const onLedgerChangedRef = useRef(onLedgerChanged);
+  useEffect(() => { onLedgerChangedRef.current = onLedgerChanged; }, [onLedgerChanged]);
   const scopeKey = `${identityKey}:${leaseEpoch}`;
   const [pageState, setPageStateRaw] = useState<PageState>(() => initialPageState(scopeKey));
   const scopeRef = useRef(scopeKey);
@@ -345,6 +362,7 @@ export function CloudDayVendorsPage({ db, leaseEpoch, identityKey, onNavigationS
       const snapshot = await repository.loadSnapshot(targetDayId);
       if (!isCurrent(key, generation) || requestId !== listRequestRef.current) return;
       if (confirmedReceipt?.commandId === pendingCommandIdRef.current) pendingCommandIdRef.current = null;
+      if (confirmedReceipt?.kind === 'SetOpeningCash') onLedgerChangedRef.current?.();
       updateFor(key, generation, previous => {
         const confirmsPending = confirmedReceipt
           && previous.recovery?.commandId === confirmedReceipt.commandId
@@ -868,12 +886,28 @@ export function CloudDayVendorsPage({ db, leaseEpoch, identityKey, onNavigationS
       updatePage(previous => ({ ...previous, actionError: '開帳現金限 0 至 20,000 元的整數。' }));
       return;
     }
+    let reason: string | undefined;
+    if (ledger) {
+      if (ledger.status !== 'ready') {
+        updatePage(previous => ({ ...previous, actionError: '尚未確認上一個已關帳日的實點現金，請稍候或重新整理後再開帳。' }));
+        return;
+      }
+      const previousClosed = previousClosedDay(ledger.snapshot.closedDays, snapshot.dayId);
+      if (openingDifference(previousClosed, openingCash) !== null) {
+        reason = page.openingReasonText.trim();
+        if (reason.length < 1 || reason.length > 500) {
+          updatePage(previous => ({ ...previous, actionError: '開帳現金與上次關帳實點不同，必須填寫 1 至 500 字的差額原因。' }));
+          return;
+        }
+      }
+    }
     const commandId = makePreparedCommandId();
     if (!commandId) return;
     const input: Omit<SetOpeningCashInput, 'commandId' | 'leaseEpoch'> = {
       dayId: snapshot.dayId,
       expectedRevision: day.revision,
       openingCash,
+      ...(reason === undefined ? {} : { reason }),
     };
     void runPreparedCommand({ kind: 'set-opening-cash', commandId, ...input });
   };
@@ -1057,6 +1091,7 @@ export function CloudDayVendorsPage({ db, leaseEpoch, identityKey, onNavigationS
                   {snapshot.dayId === snapshot.selectionDate && snapshot.selectionDate < snapshot.goLiveDate && (
                     <p className="cloud-day-vendors__warning">伺服器使用權日期早於系統啟用日，尚不能設定開帳現金。</p>
                   )}
+                  {canSetOpeningCash && <LedgerUnclosedBanner ledger={ledger} onOpenAnomalies={onOpenAnomalies} />}
                   {canSetOpeningCash ? (
                     <CloudDayOpeningCashForm
                       businessDate={snapshot.dayId}
@@ -1065,6 +1100,14 @@ export function CloudDayVendorsPage({ db, leaseEpoch, identityKey, onNavigationS
                       onAmountTextChange={value => updatePage(previous => ({ ...previous, openingCashText: value, actionError: '' }))}
                       onSubmit={submitOpeningCash}
                       disabled={busy}
+                      {...(ledger ? {
+                        previousClosed: ledger.status === 'ready'
+                          ? previousClosedDay(ledger.snapshot.closedDays, snapshot.dayId) : null,
+                        ledgerNotice: ledger.status === 'loading' ? '正在確認上一個已關帳日的實點現金…'
+                          : ledger.status === 'error' ? `無法確認上一個已關帳日的實點現金（${ledger.message}），暫時不能開帳。` : '',
+                        reasonText: page.openingReasonText,
+                        onReasonTextChange: (value: string) => updatePage(previous => ({ ...previous, openingReasonText: value, actionError: '' })),
+                      } : {})}
                     />
                   ) : snapshot.dayId === snapshot.selectionDate && snapshot.day.status === 'closed' ? (
                     <p className="cloud-day-vendors__warning">此日期已關帳，不能修改開帳現金。</p>

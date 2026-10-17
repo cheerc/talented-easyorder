@@ -42,6 +42,9 @@ import { CloudOrdersPage } from './components/cloud/CloudOrdersPage';
 import { CloudStudentsPage } from './components/cloud/CloudStudentsPage';
 import { CloudDayVendorsPage } from './components/cloud/CloudDayVendorsPage';
 import { CloudDayClosePage } from './components/cloud/CloudDayClosePage';
+import { CloudLedgerAnomaliesPage } from './components/cloud/CloudLedgerAnomaliesPage';
+import { useCloudLedger, type CloudLedgerView } from './hooks/useCloudLedger';
+import type { Firestore } from 'firebase/firestore';
 
 function AppContent() {
   const { fb, fbError, access } = useFirebase();
@@ -341,17 +344,33 @@ function AppContent() {
   );
 }
 
-function CloudAppContent() {
-  const { fb, fbError, access, lease } = useFirebase();
-  // 與本機模式共用 U1 顯示偏好（easyorder-ui-tweaks）：主題與字級套在 body 上。
-  useTweaks();
-  const [cloudSection, setCloudSection] = useState<'orders' | 'students' | 'day-vendors' | 'day-close'>('students');
+type CloudSection = 'orders' | 'students' | 'day-vendors' | 'day-close' | 'anomalies';
+
+const CLOUD_SECTION_LABELS: Record<CloudSection, string> = {
+  orders: '雲端櫃台點餐',
+  students: '雲端學生管理',
+  'day-vendors': '雲端日期與供應商管理',
+  'day-close': '雲端日結',
+  anomalies: '帳務異常',
+};
+
+function anomalyNavLabel(ledger: CloudLedgerView): string {
+  if (ledger.status === 'loading') return '帳務異常（…）';
+  if (ledger.status === 'error') return '帳務異常（?）';
+  return `帳務異常（${ledger.snapshot.anomalies.length}）`;
+}
+
+// 放在 AuthGate 之內：帳務異常只在已登入並持有使用權之後才從伺服器讀取。
+function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEpoch: number; identityKey: string }) {
+  const [cloudSection, setCloudSection] = useState<CloudSection>('students');
+  const [dayCloseFocus, setDayCloseFocus] = useState<string | undefined>(undefined);
   const [navigationLocked, setNavigationLocked] = useState(false);
   const navigationLockRef = useRef<{ identityKey: string; locked: boolean; revoked: boolean } | null>(null);
-  const reportNavigationState = useCallback((identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => {
+  const { ledger, reload: reloadLedger } = useCloudLedger(db, `${identityKey}:${leaseEpoch}`);
+  const reportNavigationState = useCallback((reportedKey: string, state: 'recovering' | 'revoked' | 'resolved') => {
     let lock = navigationLockRef.current;
-    if (!lock || lock.identityKey !== identityKey) {
-      lock = { identityKey, locked: false, revoked: false };
+    if (!lock || lock.identityKey !== reportedKey) {
+      lock = { identityKey: reportedKey, locked: false, revoked: false };
     }
     if (state === 'revoked') {
       lock.revoked = true;
@@ -364,10 +383,64 @@ function CloudAppContent() {
     navigationLockRef.current = lock;
     setNavigationLocked(lock.locked);
   }, []);
-  const selectSection = (section: 'orders' | 'students' | 'day-vendors' | 'day-close') => {
+  const selectSection = (section: CloudSection, dayId?: string) => {
     if (navigationLockRef.current?.locked) return;
+    if (section === 'anomalies') reloadLedger();
+    setDayCloseFocus(section === 'day-close' ? dayId : undefined);
     setCloudSection(section);
   };
+  const openAnomalies = () => selectSection('anomalies');
+  const common = { db, leaseEpoch, identityKey, onNavigationStateChange: reportNavigationState };
+
+  return (
+    <main className="cloud-app" aria-label={CLOUD_SECTION_LABELS[cloudSection]}>
+      <h1>Talented EasyOrder</h1>
+      <nav className="cloud-app__nav" aria-label="雲端資料管理">
+        <button type="button" aria-pressed={cloudSection === 'orders'} disabled={navigationLocked} onClick={() => selectSection('orders')}>
+          櫃台點餐
+        </button>
+        <button type="button" aria-pressed={cloudSection === 'students'} disabled={navigationLocked} onClick={() => selectSection('students')}>
+          學生管理
+        </button>
+        <button type="button" aria-pressed={cloudSection === 'day-vendors'} disabled={navigationLocked} onClick={() => selectSection('day-vendors')}>
+          日期與供應商
+        </button>
+        <button type="button" aria-pressed={cloudSection === 'day-close'} disabled={navigationLocked} onClick={() => selectSection('day-close')}>
+          日結
+        </button>
+        <button type="button" aria-pressed={cloudSection === 'anomalies'} disabled={navigationLocked} onClick={openAnomalies}>
+          {anomalyNavLabel(ledger)}
+        </button>
+      </nav>
+      {cloudSection === 'orders' ? (
+        <CloudOrdersPage {...common} />
+      ) : cloudSection === 'students' ? (
+        <CloudStudentsPage {...common} />
+      ) : cloudSection === 'day-vendors' ? (
+        <CloudDayVendorsPage {...common} ledger={ledger} onOpenAnomalies={openAnomalies} onLedgerChanged={reloadLedger} />
+      ) : cloudSection === 'day-close' ? (
+        <CloudDayClosePage
+          {...common}
+          ledger={ledger}
+          onOpenAnomalies={openAnomalies}
+          onLedgerChanged={reloadLedger}
+          initialDayId={dayCloseFocus}
+        />
+      ) : (
+        <CloudLedgerAnomaliesPage
+          ledger={ledger}
+          onReload={reloadLedger}
+          onOpenDayClose={dayId => selectSection('day-close', dayId)}
+        />
+      )}
+    </main>
+  );
+}
+
+function CloudAppContent() {
+  const { fb, fbError, access, lease } = useFirebase();
+  // 與本機模式共用 U1 顯示偏好（easyorder-ui-tweaks）：主題與字級套在 body 上。
+  useTweaks();
 
   if (fbError) return <AppCrashPage />;
   if (!fb) {
@@ -377,52 +450,11 @@ function CloudAppContent() {
   return (
     <ErrorBoundary fallback={<AppCrashPage />} onError={(error) => appendErrorLog({ source: 'react', message: error.message, stack: error.stack })}>
       <AuthGate auth={fb.auth} db={fb.db} access={access}>
-        <main className="cloud-app" aria-label={cloudSection === 'orders' ? '雲端櫃台點餐' : cloudSection === 'students' ? '雲端學生管理' : cloudSection === 'day-vendors' ? '雲端日期與供應商管理' : '雲端日結'}>
-          <h1>Talented EasyOrder</h1>
-          <nav className="cloud-app__nav" aria-label="雲端資料管理">
-            <button type="button" aria-pressed={cloudSection === 'orders'} disabled={navigationLocked} onClick={() => selectSection('orders')}>
-              櫃台點餐
-            </button>
-            <button type="button" aria-pressed={cloudSection === 'students'} disabled={navigationLocked} onClick={() => selectSection('students')}>
-              學生管理
-            </button>
-            <button type="button" aria-pressed={cloudSection === 'day-vendors'} disabled={navigationLocked} onClick={() => selectSection('day-vendors')}>
-              日期與供應商
-            </button>
-            <button type="button" aria-pressed={cloudSection === 'day-close'} disabled={navigationLocked} onClick={() => selectSection('day-close')}>
-              日結
-            </button>
-          </nav>
-          {cloudSection === 'orders' ? (
-            <CloudOrdersPage
-              db={fb.db}
-              leaseEpoch={lease.epoch}
-              identityKey={access.ok ? `${access.profile.uid}:${lease.epoch}` : ''}
-              onNavigationStateChange={reportNavigationState}
-            />
-          ) : cloudSection === 'students' ? (
-            <CloudStudentsPage
-              db={fb.db}
-              leaseEpoch={lease.epoch}
-              identityKey={access.ok ? `${access.profile.uid}:${lease.epoch}` : ''}
-              onNavigationStateChange={reportNavigationState}
-            />
-          ) : cloudSection === 'day-vendors' ? (
-            <CloudDayVendorsPage
-              db={fb.db}
-              leaseEpoch={lease.epoch}
-              identityKey={access.ok ? `${access.profile.uid}:${lease.epoch}` : ''}
-              onNavigationStateChange={reportNavigationState}
-            />
-          ) : (
-            <CloudDayClosePage
-              db={fb.db}
-              leaseEpoch={lease.epoch}
-              identityKey={access.ok ? `${access.profile.uid}:${lease.epoch}` : ''}
-              onNavigationStateChange={reportNavigationState}
-            />
-          )}
-        </main>
+        <CloudSections
+          db={fb.db}
+          leaseEpoch={lease.epoch}
+          identityKey={access.ok ? `${access.profile.uid}:${lease.epoch}` : ''}
+        />
       </AuthGate>
     </ErrorBoundary>
   );

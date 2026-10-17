@@ -21,6 +21,8 @@ import {
   createCloudCommandRepository,
   type CloudCommandRepositoryOptions,
 } from './cloudCommandRepository';
+import { openingDifference, previousClosedDay } from '../domain/ledgerAnomalies';
+import { CloudDayCloseRepositoryError, createCloudLedgerReader } from './cloudDayCloseRepository';
 import { accessLeasePath, dataHeadPath, dayPath } from './firestorePaths';
 
 type Data = Record<string, unknown>;
@@ -164,6 +166,11 @@ export interface SetOpeningCashInput {
   dayId: string;
   expectedRevision: number;
   openingCash: number;
+  /**
+   * Required (1–500 characters) when openingCash differs from the counted cash of the last closed day
+   * before dayId; the writer enforces this, not the Rules (contract §11). Omit it otherwise.
+   */
+  reason?: string;
 }
 
 export interface CloudDayVendorRepository {
@@ -500,6 +507,36 @@ export function createCloudDayVendorRepository(
     throw new RangeError('pageSize must be an integer from 1 through 200');
   }
   const commandRepository = createCloudCommandRepository(db, options);
+  const ledgerReader = createCloudLedgerReader(db, options);
+
+  async function setOpeningCash(input: SetOpeningCashInput): Promise<CommandResult> {
+    let previous: ReturnType<typeof previousClosedDay>;
+    try {
+      previous = previousClosedDay((await ledgerReader.read()).closedDays, input.dayId);
+    } catch (error) {
+      const code = error instanceof CloudDayCloseRepositoryError ? error.code : 'UNKNOWN_RESULT';
+      const mapped: CommandErrorCode = code === 'STALE_SNAPSHOT' ? 'REVISION_CONFLICT'
+        : code === 'INCOMPLETE_SNAPSHOT' ? 'UNSUPPORTED_SCHEMA' : code;
+      return {
+        ok: false,
+        error: {
+          code: mapped, message: error instanceof Error ? error.message : '無法確認上一個已關帳日的實點現金',
+        },
+      };
+    }
+    const reason = input.reason?.trim();
+    if (openingDifference(previous, input.openingCash) !== null && !reason) {
+      return {
+        ok: false,
+        error: { code: 'INVALID_INPUT', message: '開帳現金與上次關帳實點不同，必須填寫差額原因（1–500 字）' },
+      };
+    }
+    return commandRepository.commitCommand({
+      commandId: input.commandId, kind: 'SetOpeningCash', leaseEpoch: input.leaseEpoch,
+      targets: { dayId: input.dayId }, expectedRevisions: { day: input.expectedRevision },
+      payload: reason ? { openingCash: input.openingCash, reason } : { openingCash: input.openingCash },
+    });
+  }
 
   async function loadSnapshot(targetDayId?: string): Promise<CloudDayVendorSnapshot> {
     try {
@@ -570,11 +607,7 @@ export function createCloudDayVendorRepository(
         inheritedFromDate: input.inheritedFromDate,
       },
     }),
-    setOpeningCash: input => commandRepository.commitCommand({
-      commandId: input.commandId, kind: 'SetOpeningCash', leaseEpoch: input.leaseEpoch,
-      targets: { dayId: input.dayId }, expectedRevisions: { day: input.expectedRevision },
-      payload: { openingCash: input.openingCash },
-    }),
+    setOpeningCash,
     readCommand: commandRepository.readCommand,
   };
 }
