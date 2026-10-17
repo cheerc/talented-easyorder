@@ -360,3 +360,15 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - Cloud E2E（本機 Chromium 1194 暫時設定，不取代 CI pinned Chromium，設定未提交）：21/21。沒有新增 E2E：E2E 上線日是當天，沒有可補開帳的過去營業日。
 - 無 production 部署、無正式金鑰。
 - **合併**：PR #507 squash `2792ba2606c89d54818457136aabfbe7fc1ef913`（2026-10-17），source head `dffed1c22f3af558723864ae1f7f82d4adf3271a`，base `71ee1bc887c1ce03b5fa2250280963f336ccc874`。獨立審查 review `5557963146` 通過、無必修；審查本機重跑 lint 通過、一般 Vitest 166 檔通過／14 檔 skip（Emulator-only）、`cloudDayClose.spec.ts` 76/76、`test:cloud-backup` 20/20、`cloudCommands.spec.ts` 178/178（`beforeAll` 冷啟逾時與備份 P10a case 合併跑時 5 秒逾時各一次，單獨重跑通過）。CI run [39030734055](https://github.com/cheerc/talented-easyorder/actions/runs/39030734055) build-and-test 與 e2e 成功。不擋合併的備註：網路斷一整天時伺服器上可能根本沒有那天的營業日，目前不提供補開帳（Rules 的 `EnsureDay` 其實允許建立過去日期，要不要讓日結頁先建立再補開帳，與「是否補登交易」一起由 CheerC 決定）；補開帳只補現金，斷線當天沒送上去的交易不會算進應有現金；正式部署 Rules 要和前端一起上，舊版前端遇到 `BackfillOpeningCash` 會 fail closed。
+
+## P11c1 帳務異常與警示 checkpoint — 2026-10-17
+
+- CheerC 2026-10-17 規劃 P11c（帳務斷層與異常處理），本批只做 P11c1：唯讀異常計算、警示與開帳差額原因。base `8cd8dc35578144f620475fd930eccb2862b85cc4`（補開帳收據 #508）；PR、head SHA 與 CI 以 PR body 為準。契約 §11：[P11 contract](../superpowers/specs/2026-10-17-cloud-day-close-contract.md#11-p11c1-帳務異常與開帳差額原因)。
+- 兩種異常：`opening-mismatch`（開帳現金不等於前一已關帳日的點算現金）與 `unclosed-past-day`（過去未關帳）。伺服器讀取依文件編號遞增、不新增索引；超過 400 天回 `INCOMPLETE_SNAPSHOT`、前後 head 不同回 `STALE_SNAPSHOT`，一律 fail closed。導覽「帳務異常（n）」、異常頁、開帳區與日結頁警示、開帳表單差額原因（必填）。
+- Rules 只改 `validSetOpeningCash`：`SetOpeningCash` payload 可帶選填 `reason`（1–500 字）並與指令 `reason` 綁定；改用 `cashCommandEnvelope`（`p07CommandEnvelope` 不動）。「有差額必須填原因」由畫面與寫入器強制，Rules 不知道前一已關帳日。舊前端不帶原因的 `SetOpeningCash` 仍合法。
+- Rules 餘裕：既有錨點全部不低於 main（訂餐營業日 +11、更正與退款指令 +19、`CreateStudent` +3）；一般 `SetOpeningCash` 指令 +68→+70；帶最長原因 +62。突變 5 個全部被殺。見 [P11c1 預算附錄](p05-rules-budget.md#p11c1--setopeningcash-optional-reason--budget-and-probe-receipt)。
+- demo-easyorder Auth＋Firestore Emulator 循序 `src/firebase/__tests__`（所有 `EASYORDER_REQUIRE_*`）：26 檔 659/659。`cloudDayClose.spec.ts` 96/96（新增 `P11c1.1`–`P11c1.12`）；`test:cloud-backup` 21/21（新增偽造原因 round-trip）。
+- 一般 Vitest（Emulator-only 測試 skip）：170 檔通過／14 檔 skip，1,733 passed／572 skipped。`npm run lint`、`npm run build` exit 0；app tsc 208 個 `error TS` 診斷，與 base 相同。
+- E2E（本機 Chromium 1194 暫時設定，不取代 CI pinned Chromium，設定未提交）：cloud 21/21、prototype 7/7。**沒有新增 E2E**：E2E 上線日是當天，沒有過去營業日可產生異常；以 Emulator、備份與畫面測試涵蓋。
+- 未做：P11c2–c4 修復工具；異常頁尚未顯示 `SetOpeningCash` 差額原因（等修復工具一併）。
+- 無 production 部署、無正式金鑰。
