@@ -372,3 +372,5 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - E2E（本機 Chromium 1194 暫時設定，不取代 CI pinned Chromium，設定未提交）：cloud 21/21、prototype 7/7。**沒有新增 E2E**：E2E 上線日是當天，沒有過去營業日可產生異常；以 Emulator、備份與畫面測試涵蓋。
 - 未做：P11c2–c4 修復工具；異常頁尚未顯示 `SetOpeningCash` 差額原因（等修復工具一併）。
 - 無 production 部署、無正式金鑰。
+- **合併**：PR #509 squash `fb2fc11a7f6271ded1495d27af6a1e99300ebb12`（2026-10-17），source head `a16afa4a4fd6dbc1327a1b8e60dc8430a96e190a`，base `8cd8dc35578144f620475fd930eccb2862b85cc4`。獨立審查 review `5558759097` 通過、無必修；審查本機重跑 `cloudDayClose.spec.ts` 全檔 98/98（96 個原有案例，2 個暫時探測案例未提交）、突變複測（拿掉 `command.reason == command.payload.reason` 與改弱 `validMutationReason` 都被殺）、Rules 餘裕複測（`P08.8` +11、`P10.17` +19、`CreateStudent` +3、`P11c1.8` command +62／dayWrite +80，與預算附錄一致）。CI run [39047364483](https://github.com/cheerc/talented-easyorder/actions/runs/39047364483) build-and-test 與 e2e 成功。
+- 不擋合併的備註（已記入 handoff 為 P11c2 待辦）：400 天掃描上限會在營業日文件超過 400 份後擋住開帳，P11c2 第一項改為只找上一個已關帳日；每次開帳約讀三輪營業日、寫入器不共用快取；STALE 只有 mock 測試，P11c2 補 Emulator 案例；純空白原因通過 Rules（契約 §11.4 已寫明）；handoff 完整 head SHA 補在本收據。
