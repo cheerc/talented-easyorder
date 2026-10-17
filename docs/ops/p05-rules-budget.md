@@ -475,3 +475,80 @@ Each mutant removes one P10b check from `firestore.rules` and runs all of `cloud
 | student／day revision bump (command) | survived: redundant with the `revision + 1` checks in the student and day rules. |
 
 The new Emulator suite against main's Rules fails 8 of 42 cases (every positive path); the deny cases also pass on main because main denies every `CorrectOpening`. With the P10b Rules it passes 42/42.
+
+## P11 day close — budget and probe receipt
+
+P11a enables `CloseDay` and `ReopenDay`. 22 kinds are enabled and 2 still denied (`RecordExport`, `RecordPrint`). Contract: [P11 day close contract](../superpowers/specs/2026-10-17-cloud-day-close-contract.md).
+
+### Write budget
+
+| Command / write path | Central command-create Rules calls | Projection leaves Rules calls | Atomic no-cache total | Max per write |
+|---|---:|---:|---:|---:|
+| `CloseDay`／`ReopenDay` (command + dataHead + day + settlement n) | commandHolder 2 (lease, operator) + head before/after 2 + day before/after 2 + settlement n−1 `get` 1 (only when n > 1) + settlement n `getAfter` 1 = **8** | head 2 + day (`getAfter` command, `exists` command) 2 + settlement (`getAfter` command, `exists` command) 2 = **6** | **14/20** | **8/10** |
+
+Static derivation from the read graph, the same method as the earlier appendices; the Emulator has no runtime access counter.
+
+### Rule layout
+
+- The command check `validDaySettlementCommand` is nested inside the last operand of `validCommandCreate`, together with `CorrectOpening`: `|| ((kind == 'CorrectOpening' && …) || (kind in ['CloseDay', 'ReopenDay'] && …))`. A first version added a new top-level `||` operand. Even an operand that was only `kind in [...] && false` cost the mutation and refund cases one unit (`P10.17` and `P09b.9` +19 → +18), because every top-level `||` above an earlier kind's operand is counted. Nested, both are back to +19, equal to main. A conditional (`kind == 'CorrectOpening' ? … : …`) also kept +19, but the Emulator then answered a malformed `CloseDay` (`P07.2`, no `targets`) with a retryable error instead of a denial, so the client retried until the test timed out; the nested form denies it at once.
+- The day check has its **own `allow update`** on `days/{dayId}` (`dayCloseCommand`), like P10b. It fixes the changed keys (`status`, `lastSettlementRevision`, `revision`, `lastCommandId`, `updatedAt`), the status transition and the +1 bumps. `P08.8` keeps +11 on the `dayWriteCommand` rule.
+- Settlement versions have their own `match /days/{dayId}/settlements/{revision}`: create only through `settlementCreateCommand` (the whole 15-field document equals the map derived from the command and `before.day`), `update` and `delete` always false, `get`／`list` for the current holder.
+
+### Expression headroom
+
+Same probe as before: inline `1 == 1 &&` terms at one rule anchor, bisected against a positive Emulator case. Main is `32e90c6`.
+
+| Rule anchor | Case | Main `32e90c6` | P11a |
+|---|---|---:|---:|
+| command create | `P11.9` max payload (counted 1e9, 500-char note, 500-char reopen reason) | — | +53 / +54 |
+| dataHead update | `P11.9` | — | +95 / +96 |
+| day update (`dayCloseCommand`) | `P11.9` | — | +96 / +97 |
+| settlement create | `P11.9` | — | +96 / +97 |
+| command create | `P11.7` reopen → correction → re-close (capped by the correction) | — | +20 / +21 |
+| day update (`dayWriteCommand`) | `P08.8` CreateOrder | +11 / +12 | +11 / +12 |
+| command create | `P08.8` CreateOrder | +20 / +21 † | +20 / +21 |
+| command create | `P10.17` every mutation kind | +19 / +20 | +19 / +20 |
+| command create | `P09b.9` refund, max payload | +19 / +20 | +19 / +20 |
+| command create | `P10b.7` CorrectOpening max payload | +68 / +69 † | +68 / +69 |
+| command create | P14 atomic `RecordBackup` receipt | +74 / +75 | +74 / +75 |
+| command create | P14 real P10a receipts (capped by `CreateStudent`) | +3 / +4 | +3 / +4 |
+| command create | P14 real P11 receipts (capped by `CreateStudent`) | — | +3 / +4 |
+
+† from the P10b appendix (`95b7695`); the Rules did not change between `95b7695` and `32e90c6`. The other main values were re-measured on `32e90c6` for this PR.
+
+The tightest anchors are unchanged: the day rule for `CreateOrder` (+11), the command rule for mutations and refunds (+19), and `CreateStudent` on the command rule (+3).
+
+### Mutants
+
+Each mutant removes one P11 check from `firestore.rules` and runs all of `cloudDayClose.spec.ts`. The first round of 26 left nine checks alive; three were real gaps and got a raw attack each (a forged `payload.expectedCash` that equals the counted cash to skip the note, an extra key in the `ReopenDay` payload, an identical twin settlement at another path in the same batch). The other six are redundant with a check in another rule.
+
+| Removed check | Result |
+|---|---|
+| `expectedRevisions.settlement == last` (command) | killed (`P11.10`) |
+| `businessDate == dayId` (command) | killed (`P11.10`) |
+| `studentId == null` (command) | killed (`P11.10`) |
+| zero cash effect (command) | killed (`P11.10`) |
+| CloseDay payload exact keys (command) | killed (`P11.10`) |
+| `countedCash` 0..1e9 (command) | killed (`P11.10`) |
+| note ≤ 500 (command) | killed (`P11.10`) |
+| `payload.expectedCash` equals the §7.1 formula (command) | killed after round 2 (`P11.10` forged expected cash) |
+| a difference needs a note (command) | killed (`P11.1`) |
+| CloseDay `reason == null` (command) | killed (`P11.10`) |
+| ReopenDay payload exact keys (command) | killed after round 2 (`P11.11` extra key) |
+| reopen reason 1–500 (command) | killed (`P11.8`) |
+| `reason == payload.reason` (command) | killed (`P11.11`) |
+| `before` snapshot binding (command) | killed (`P11.10`, `P11.11`) |
+| `after` snapshot binding (command) | killed (`P11.10`) |
+| day after status (day) | killed (`P11.10`, `P11.11`) |
+| day changed keys (day) | killed (`P11.10`) |
+| day settlement pointer +1 (day) | killed (`P11.10`) |
+| settlement path equals `targets.settlementRevision` (settlement) | killed after round 2 (`P11.12` twin version) |
+| settlement whole map (settlement) | killed (`P11.10`, 11 cases) |
+| `targets.settlementRevision == last + 1` (command) | survived: redundant with the settlement path check and the command's `getAfter` of version `last + 1`. |
+| `validTaipeiDate(dayId)` (command) | survived: redundant; the day document must exist, and `EnsureDay` only creates valid dates. |
+| CloseDay day open／reopened (command) | survived: redundant with the same check in the day rule (and the reverse). |
+| ReopenDay day closed (command) | survived: redundant with the day rule (and the reverse). |
+| `openingCash is int` (command) | survived: redundant; with a null `openingCash` the §7.1 formula errors and the rule denies. `P11.3` covers it through the writer. |
+| day before status (day) | survived: redundant with the command rule (and the reverse). |
+
+The new Emulator suite (48 cases) against main's Rules fails 16 (every positive path); the deny cases also pass on main because main denies every `CloseDay`／`ReopenDay`. With the P11a Rules it passes 48/48.
