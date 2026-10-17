@@ -15,6 +15,7 @@ const repository = vi.hoisted(() => ({
   readOverview: vi.fn(),
   closeDay: vi.fn(),
   reopenDay: vi.fn(),
+  backfillOpening: vi.fn(),
   readCommand: vi.fn(),
 }));
 
@@ -110,6 +111,7 @@ describe('CloudDayClosePage', () => {
     repository.read.mockResolvedValue(dayState());
     repository.closeDay.mockResolvedValue(successful('CloseDay'));
     repository.reopenDay.mockResolvedValue(successful('ReopenDay'));
+    repository.backfillOpening.mockResolvedValue(successful('BackfillOpeningCash'));
     repository.readCommand.mockResolvedValue(null);
   });
 
@@ -207,9 +209,10 @@ describe('CloudDayClosePage', () => {
     }));
     repository.read.mockResolvedValue(dayState({ openingCash: null, expectedCash: null, totals: { ...dayState().totals, activeTransactionCount: 0 } }));
     renderPage();
-    expect(await screen.findByTestId('cloud-no-business-days')).toHaveTextContent('無營業，不需關帳：2026-10-10');
+    expect(await screen.findByTestId('cloud-no-business-days')).toHaveTextContent(/沒有開帳也沒有交易的過去日期/);
+    expect(screen.getByTestId('cloud-no-business-2026-10-10')).toHaveTextContent('2026-10-10');
     expect(screen.queryByTestId('cloud-unclosed-2026-10-10')).not.toBeInTheDocument();
-    expect(screen.getByTestId('cloud-unclosed-2026-10-12')).toHaveTextContent('缺開帳現金，無法關帳');
+    expect(screen.getByTestId('cloud-unclosed-2026-10-12')).toHaveTextContent('缺開帳現金，需補開帳後關帳');
     expect(screen.getByTestId(`cloud-unclosed-${past}`)).toHaveTextContent('尚未關帳（已重開）');
     expect(screen.getByTestId(`cloud-unclosed-${today}`)).toHaveTextContent('尚未確認開帳現金');
     expect(screen.getByText(/尚未確認開帳現金，不能關帳/)).toBeInTheDocument();
@@ -222,7 +225,7 @@ describe('CloudDayClosePage', () => {
     expect(screen.getByRole('form', { name: `${past} 關帳` })).toBeInTheDocument();
   });
 
-  it('shows a past day without opening cash or transactions as no business and offers no close', async () => {
+  it('shows a past day without opening cash or transactions as no business, offers backfill but no close', async () => {
     const past = '2026-10-10';
     repository.read.mockResolvedValue(dayState({
       dayId: past, openingCash: null, expectedCash: null, totals: { ...dayState().totals, activeTransactionCount: 0 },
@@ -230,8 +233,66 @@ describe('CloudDayClosePage', () => {
     renderPage();
     fireEvent.change(await screen.findByLabelText('查看日期'), { target: { value: past } });
     fireEvent.click(screen.getByRole('button', { name: '載入日期' }));
-    expect(await screen.findByText('無營業，不需關帳：這天沒有開帳現金，也沒有任何交易。')).toBeInTheDocument();
+    expect(await screen.findByText(/這天沒有開帳現金，也沒有任何交易。那天沒有營業就不需關帳/)).toBeInTheDocument();
     expect(screen.queryByRole('form', { name: `${past} 關帳` })).not.toBeInTheDocument();
+    expect(screen.getByRole('form', { name: `${past} 補開帳` })).toBeInTheDocument();
+  });
+
+  it('backfills a past day that has transactions but no opening cash, then offers the close form', async () => {
+    const past = '2026-10-12';
+    const missing = dayState({ dayId: past, revision: 5, openingCash: null, expectedCash: null });
+    repository.read.mockResolvedValue(missing);
+    renderPage();
+    fireEvent.change(await screen.findByLabelText('查看日期'), { target: { value: past } });
+    fireEvent.click(screen.getByRole('button', { name: '載入日期' }));
+    expect(await screen.findByText('這天有交易但沒有開帳現金，要先補開帳才能關帳。')).toBeInTheDocument();
+    expect(screen.queryByRole('form', { name: `${past} 關帳` })).not.toBeInTheDocument();
+    const form = screen.getByRole('form', { name: `${past} 補開帳` });
+
+    for (const value of ['', '-5', '10.5', '20001']) {
+      fireEvent.change(within(form).getByRole('textbox', { name: '開帳現金（元）' }), { target: { value } });
+      fireEvent.submit(form);
+      expect(await screen.findByText(/開帳現金必須明確輸入 0 至 20,000 元的整數/)).toBeInTheDocument();
+    }
+    fireEvent.change(within(form).getByRole('textbox', { name: '開帳現金（元）' }), { target: { value: '1000' } });
+    fireEvent.change(within(form).getByRole('textbox', { name: /補開帳原因/ }), { target: { value: '   ' } });
+    fireEvent.submit(form);
+    expect(await screen.findByText('補開帳原因必須為 1 至 500 個字元。')).toBeInTheDocument();
+    expect(repository.backfillOpening).not.toHaveBeenCalled();
+
+    repository.read.mockResolvedValue(dayState({ dayId: past, revision: 6, openingCash: 1000, expectedCash: 1170 }));
+    fireEvent.change(within(form).getByRole('textbox', { name: /補開帳原因/ }), { target: { value: ' 當天網路中斷 ' } });
+    fireEvent.click(within(form).getByRole('button', { name: '確認補開帳' }));
+    expect(await screen.findByText(/已確認 2026-10-12 補開帳 完成/)).toBeInTheDocument();
+    expect(repository.backfillOpening).toHaveBeenCalledWith({
+      commandId, leaseEpoch: 4, dayId: past, expectedDayRevision: 5, openingCash: 1000, reason: '當天網路中斷',
+    });
+    expect(screen.queryByRole('form', { name: `${past} 補開帳` })).not.toBeInTheDocument();
+    expect(screen.getByRole('form', { name: `${past} 關帳` })).toBeInTheDocument();
+  });
+
+  it('offers no backfill for today, a closed past day or a past day that already has opening cash', async () => {
+    repository.read.mockResolvedValue(dayState({ openingCash: null, expectedCash: null }));
+    renderPage();
+    expect(await screen.findByText(/尚未確認開帳現金，不能關帳/)).toBeInTheDocument();
+    expect(screen.queryByRole('form', { name: `${today} 補開帳` })).not.toBeInTheDocument();
+
+    const past = '2026-10-12';
+    for (const state of [
+      dayState({ dayId: past, status: 'closed', openingCash: null, expectedCash: null }),
+      dayState({ dayId: past, openingCash: 500, expectedCash: 670 }),
+    ]) {
+      repository.read.mockResolvedValue(state);
+      fireEvent.change(screen.getByLabelText('查看日期'), { target: { value: past } });
+      fireEvent.click(screen.getByRole('button', { name: '載入日期' }));
+      expect(await screen.findByRole('heading', { name: `${past} 日結` })).toBeInTheDocument();
+      expect(screen.queryByRole('form', { name: `${past} 補開帳` })).not.toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText('查看日期'), { target: { value: today } });
+      repository.read.mockResolvedValue(dayState({ openingCash: null, expectedCash: null }));
+      fireEvent.click(screen.getByRole('button', { name: '載入日期' }));
+      expect(await screen.findByRole('heading', { name: `${today} 日結` })).toBeInTheDocument();
+    }
+    expect(repository.backfillOpening).not.toHaveBeenCalled();
   });
 
   it('keeps the command ID after an unknown result and confirms it by replaying the same input', async () => {

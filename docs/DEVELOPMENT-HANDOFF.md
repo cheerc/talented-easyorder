@@ -11,7 +11,8 @@
 
 ## 已合併與目前接手點
 
-- **目前接手點：P11 已完成，暫停等 CheerC 指示**：P11b 雲端日結頁已合併（#505，squash `5a030caec2345b7d322a4f32a12f05bf014fc1d2`）；P11a 正式關帳與重開後端已合併（#503，squash `91b5909d960ba14cb6e448dad3d3c99292fba6f7`）。依 CheerC 指示 P11 完成後停下，不自行開始 P12。待 CheerC 決定：過去日期無營業日的處理（目前預設「無營業，不需關帳」）。正式部署（Rules＋`firestore.indexes.json` 一起上）由 CheerC 本機進行。見下方「P11 交接狀態」。
+- **目前接手點：P11 補開帳（`BackfillOpeningCash`）PR 待審查**：CheerC 2026-10-17 指示「避免網路問題造成一整天無法使用，應該要可以補開帳再關帳」。branch `claude/project-thread-7m93at`，base `71ee1bc887c1ce03b5fa2250280963f336ccc874`（P11b 收據 #506）；PR、head SHA、CI 以 PR body 為準。見下方「P11 交接狀態」第 5 項與契約 §10。下一步：CI 綠後由獨立 reviewer 審查合併，合併後開收據 PR；之後仍暫停，不開始 P12。
+- 前一接手點（P11 已完成，暫停等 CheerC 指示）：P11b 雲端日結頁已合併（#505，squash `5a030caec2345b7d322a4f32a12f05bf014fc1d2`）；P11a 正式關帳與重開後端已合併（#503，squash `91b5909d960ba14cb6e448dad3d3c99292fba6f7`）。依 CheerC 指示 P11 完成後停下，不自行開始 P12。待 CheerC 決定：過去日期無營業日的處理（目前預設「無營業，不需關帳」）。正式部署（Rules＋`firestore.indexes.json` 一起上）由 CheerC 本機進行。見下方「P11 交接狀態」。
 - 前一接手點（P10 已完成）：P10b 期初更正已合併（#501，squash `a92d1390c79900688bb36e0e1e6df910bce5b670`）；P10a 已合併（#497，squash `1d61a475109c6642c20c56cbb9ae8e9180491e46`）。P10 完成後曾依 CheerC 指示暫停，2026-10-17 CheerC 指示續作 P11。見下方「P10 交接狀態（已合併）」。P14 每日增量備份已平行實作並合併（#496，squash `4b4425c3f6c5f5b1423b94d6aad3216c2c67397c`；收據 #498，`b33fc6b3015d277664a47dba86d8ccde5cf4ed44`），P10a 已同步擴充其備份 decoder／replay。P09b 已合併（#494，squash `5b6f9a495244c2a800a64ce0677bb1645b33f0a6`）；P09a 已合併（#493，squash `c444621`）；P08 已合併（#491，merge SHA `889c75c`）。 P07 PR [#480](https://github.com/cheerc/talented-easyorder/pull/480) 已合併（merge SHA `436b119`）；P06b 學生穩定內部鍵與可改編號（PR #487，source `2a03953`）經獨立 review PASS 後，已隨操作回饋前端 U3/U4/U2b 於整合 PR [#488](https://github.com/cheerc/talented-easyorder/pull/488)（source head `58191718e2388bfbf954314128f5357370e65123`，由使用者授權 `--admin` squash merge SHA `6ae1909639f56aa6d36524406e700554891f6328`）合併至 main。審查收據見 [P06b＋前端整合審查收據](ops/integration-p06b-review-5819171.md)。P08 雲端訂餐的第一版 PR #490（`feat/p08-cloud-orders`，head `bca7d048f9743be0b2026938a3f3831ccafdf624`）經審查列出 B1–B8 必修項，已由 #491 修正並取代、合併（merge `889c75c`，見下方「P08 交接狀態（已合併）」），不開 P10+；前端 prototype 批次 U1–U4 均已合入 main，並提供使用者可操作之 [Prototype U1–U4 本人操作驗收步驟清單](superpowers/verification/2026-10-16-prototype-u1-u4-verification-checklist.md)。
 - 已合併 P10b：PR [#501](https://github.com/cheerc/talented-easyorder/pull/501)，squash merge SHA `a92d1390c79900688bb36e0e1e6df910bce5b670`，source head `b6b8cf4460ea23e16872bb0626c6ce28c3512d2c`，CI [38995746934](https://github.com/cheerc/talented-easyorder/actions/runs/38995746934) 成功，獨立審查通過（review `5555660163`）。
 - 已合併 P10a：PR [#497](https://github.com/cheerc/talented-easyorder/pull/497)，squash merge SHA `1d61a475109c6642c20c56cbb9ae8e9180491e46`，source head `4cd2286c84643cad97200cff9e4d1642883f03fb`，CI [38935317478](https://github.com/cheerc/talented-easyorder/actions/runs/38935317478) 成功，獨立複審通過（review `5551115175`）。
@@ -71,11 +72,17 @@ git log -1 --oneline --decorate
    - P14 相容：`cloudBackup.ts` decoder／replay 接受兩種 kind，日結版本以實際路徑保存；`cloudBackup.spec.ts` 以真實 close／reopen／re-close 分兩段增量匯出→解密→replay，竄改被拒。
    - 驗證數字與 RED 見 PR body 與 [ops evidence](ops/free-production-evidence.md)。
    - 審查不擋合併的備註（留給 P11b）：契約 §2.4 寫已關帳日「每一種寫入」都實測，但 P10a 更正類只測了 `VoidTransaction`（其他 mutation kind 走同一個營業日檢查），P11b 補測；差額說明與重開原因只有空白也會通過 Rules（與既有 `validMutationReason` 一致），畫面先 trim；期初日關帳後不能更正期初、要先重開，P11b 的提示要讓操作員看得懂；正式部署 Rules 要和 `firestore.indexes.json` 一起上（CheerC 本機）。
-2. **P10b 遺留的過去日期無營業營業日**：預設不放寬 Rules；P11b 日結頁把「沒有開帳現金、也沒有交易」的過去日子標成「無營業，不需關帳」，不列入未關帳提醒（契約 §7）。已請 CheerC 確認；若改選「允許補開帳」，另開變更。
+2. **P10b 遺留的過去日期無營業營業日**：P11b 日結頁把「沒有開帳現金、也沒有交易」的過去日子另列，不列入未關帳提醒（契約 §7）。CheerC 2026-10-17 改選允許補開帳，見第 5 項。
 3. **P14 備份畫面在雲端模式進不去**：備份區塊原本只在舊 AdminScreen（`AdminScreen.tsx` 的 `!isLocal && access.ok` 分支）。P11b 已把它掛在雲端日結頁的關帳區下方。
 4. **P11b 雲端日結頁（已合併 #505）**：squash `5a030caec2345b7d322a4f32a12f05bf014fc1d2`（2026-10-17），source head `77d272add0780184815c0a72b47df548d6deeb13`，base `d46287dee3a001c4d854c3a6e6a8e574b9aa8b85`；獨立審查通過、無必修（review `5557388299`）；CI run [39024055068](https://github.com/cheerc/talented-easyorder/actions/runs/39024055068) build-and-test 與 e2e 成功。契約第 9 節。雲端導覽新增「日結」：未關帳清單（只到租約日期，過去無營業日另列「無營業，不需關帳」）、全日點現金與差額、關帳、版本回查、重開，下方掛 P14 備份區塊。說明與重開原因先 trim。已關帳日的菜單／開帳與期初更正提示改指向日結頁。新增 `readOverview()`。Emulator `P11.6` 補上四種更正類、`P11.13` 未關帳清單；畫面測試 11 項；E2E D08。沒有改 Rules。驗證數字見 PR body 與 [ops evidence](ops/free-production-evidence.md)。
    - 不擋合併的備註：過去某天有交易但全部作廢時 `activeTransactionCount` 回到 0，也會標成「無營業，不需關帳」（帳務已回沖、不影響金額，只是用語不完全準確，若 CheerC 改選「允許補開帳」再一併處理）；「今天」取自租約 `updatedAt`（心跳），跨午夜而心跳未更新時會短暫顯示前一天（與日期與供應商頁相同的既有設計）；未關帳查詢上限 200 天也算入未來預排日；「以相同命令編號重試」按鈕靠 `actionError` 含「尚未找到」判斷（與既有頁面同模式），改文案時要一併改。
    - 未部署。P11 完成後停下，不開始 P12。
+5. **補開帳 `BackfillOpeningCash`（PR 待審查）**：契約 §10。過去（早於台北今天、不早於上線日）、未關帳、沒有開帳現金的既有營業日，可填開帳現金（0–20,000）與必填原因補開帳，之後照常關帳。營業日只改 `openingCash`、`openedBy`、`openedAt` 與版本；不放寬 `SetOpeningCash` 或任何交易 Rules，**不能補登當天交易**（交易仍只限台北今天）。
+   - Rules：命令檢查巢狀在 `validCommandCreate` 最後 operand；營業日是第三個獨立 `allow update`（`dayBackfillOpeningCommand`）。餘裕見 [補開帳預算附錄](ops/p05-rules-budget.md#p11-backfill-opening--budget-and-probe-receipt)。
+   - P14：decoder／replay 已擴充；新 kind 共 25 種，已啟用 23 種。
+   - 日結頁：過去未關帳、缺開帳現金的日子顯示「補開帳」表單；清單把缺開帳的過去日子標成「需補開帳後關帳」，無交易的過去日子另列並說明可補開帳。
+   - E2E 沒有新增（E2E 上線日是當天，沒有過去營業日可補）；以 Emulator、備份與畫面測試涵蓋。
+   - 待 CheerC 決定（決定卡）：是否也要能事後補登那天的訂餐與收支。預設只補開帳；若要補登交易，另開變更。
 
 ## P10 交接狀態（已合併）
 

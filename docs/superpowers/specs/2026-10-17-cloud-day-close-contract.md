@@ -64,7 +64,7 @@ Base: `origin/main`（SHA `32e90c6`，含 P10b #501／收據 #502 與 P14 #496�
 
 ## 7. 過去日期但沒有營業的營業日（P10b 遺留）
 
-期初日沒有營業日時，F3 會用 `EnsureDay` 建一個過去日期的 open 營業日。這種日子沒有開帳現金，而 `SetOpeningCash` 只能設台北今天，所以它無法關帳。P11 的預設處理：Rules 不放寬；P11b 的日結頁把「沒有開帳現金、也沒有任何交易（`activeTransactionCount == 0`）」的過去日子標成「無營業，不需關帳」，不列入未關帳提醒。若 CheerC 改選「允許補開帳」，另開變更。
+期初日沒有營業日時，F3 會用 `EnsureDay` 建一個過去日期的 open 營業日。這種日子沒有開帳現金，而 `SetOpeningCash` 只能設台北今天，所以原本無法關帳。P11b 的日結頁把「沒有開帳現金、也沒有任何交易（`activeTransactionCount == 0`）」的過去日子另列，不列入未關帳提醒；那天沒有營業就不需處理。CheerC 之後選了「允許補開帳」（2026-10-17），見第 10 節：這類日子與「有交易但缺開帳現金」的過去日子都可以補開帳後關帳。
 
 ## 8. 驗收
 
@@ -75,9 +75,24 @@ Base: `origin/main`（SHA `32e90c6`，含 P10b #501／收據 #502 與 P14 #496�
 ## 9. P11b 雲端日結頁
 
 - 雲端導覽新增「日結」。頁面只從伺服器讀：`readOverview()` 讀 head、租約與所有 open／reopened 營業日（超過 200 天、讀取期間 head 變動都 fail closed），`read(dayId)` 讀營業日與完整版本。預設日期是伺服器租約的台北日期，瀏覽器時鐘不決定營業日。
-- 未關帳清單只列到租約日期為止（未來的預排日期不列）。第 7 節的過去無營業日子另列「無營業，不需關帳」，不列入待關帳；缺開帳現金但有交易的過去日子標成「缺開帳現金，無法關帳」；今天沒有開帳現金時提示先到「日期與供應商」確認。
+- 未關帳清單只列到租約日期為止（未來的預排日期不列）。第 7 節的過去無營業日子另列（沒有營業就不需處理，有營業可查看後補開帳），不列入待關帳；缺開帳現金但有交易的過去日子標成「缺開帳現金，需補開帳後關帳」；今天沒有開帳現金時提示先到「日期與供應商」確認。（第 10 節修訂）
 - 關帳表單顯示伺服器算出的應有現金，輸入實點即時顯示差額；差額不為 0 時說明必填。說明與重開原因送出前先去頭尾空白，純空白視同未填（Rules 只檢查長度，這是畫面這一層的要求）。
 - 命令結果不明時保留原命令編號，用相同編號與相同內容查詢回執，不換編號重送；結果確認前不顯示表單，也不能切換頁面。
 - 已關帳日：菜單／開帳現金頁與學生期初更正的提示都指向「日結」頁填寫原因重開。
 - P14 備份區塊（原本只在舊 AdminScreen）掛在日結頁下方；失去使用權時整頁清除，也不顯示備份區塊。
 - 驗收：`CloudDayClosePage.test.tsx`（L05、相同金額免說明、實點格式、重開原因、未關帳清單與無營業、結果不明重試同編號、版本衝突、失去使用權、備份區塊、讀取不完整）；Emulator `P11.6`（四種更正類補測）、`P11.13`（未關帳清單分類）；E2E `D08`（關帳少 10 元需原因 → 櫃台不能入帳 → 重開需原因 → 相同金額再關帳成第 3 版 → 重新登入仍在）。
+
+## 10. 補開帳（`BackfillOpeningCash`）
+
+CheerC（2026-10-17）：網路問題可能讓某天整天沒確認開帳現金，事後應能補開帳再關帳。原本 `SetOpeningCash` 只能設台北今天，過去日子缺開帳現金就永遠不能關帳。
+
+- 新增第 25 種 kind `BackfillOpeningCash`，與 `SetOpeningCash` 分開，原有開帳檢查一條都不放寬，稽核紀錄也看得出是事後補登。已啟用 23 種；仍拒絕 `RecordExport`、`RecordPrint`。
+- 條件：營業日已存在、日期早於台北今天、不早於上線日、狀態 open 或 reopened、`openingCash`／`openedBy`／`openedAt` 都是 null。已關帳的日子要先重開；已有開帳現金的日子不能用補開帳改。
+- `targets {dayId}`、`expectedRevisions {day}`（= 目前版本，≥ 1）、`payload {openingCash, reason}`：`openingCash` 為 0 至 20,000 的整數（與 `SetOpeningCash` 同上限），`reason` 必填 1–500 字，命令 `reason` 等於 `payload.reason`。`businessDate == dayId`、`studentId == null`、現金影響為 0。`before`／`after` 為 `{head, day}`。
+- 一次 commit 寫 3 份文件：`system/dataHead`、`days/{dayId}`、`commands/{commandId}`。營業日只改 `openingCash`、`openedBy`（操作者 uid）、`openedAt`（伺服器時間）、`revision +1`、`lastCommandId`、`updatedAt`；`totals`、狀態、菜單不變。
+- Rules：命令檢查 `validBackfillOpeningCash` 與 `CloseDay`／`ReopenDay` 一起巢狀在 `validCommandCreate` 最後一個 operand 內；營業日檢查 `dayBackfillOpeningCommand` 是 `days/{dayId}` 上獨立的第三個 `allow update`。「早於台北今天」寫成 `dayId 00:00Z + 24h ≤ request.time + 8h`。預算與 probe 見 [P11 補開帳附錄](../../ops/p05-rules-budget.md#p11-backfill-opening--budget-and-probe-receipt)。
+- 寫入器：今天以租約 `updatedAt` 的台北日期為準（與日結頁相同），今天或未來日期回 `INVALID_INPUT`；已關帳回 `DAY_CLOSED`；版本不符回 `REVISION_CONFLICT`；已有開帳現金或早於上線日回 `INVALID_INPUT`。
+- 範圍外：補開帳**不會**讓那天補登訂餐、繳費或櫃台收支；所有交易 Rules 仍只接受台北今天。伺服器上不存在的過去日子也不提供補開帳。
+- 日結頁：查看過去、未關帳、沒有開帳現金的日子時出現「補開帳」表單（開帳現金、必填原因，送出前去頭尾空白）；完成後同一頁出現關帳表單。今天、已關帳或已有開帳現金的日子不顯示。
+- P14 備份：decoder／replay 接受此 kind（targets `dayId`、revision `day`、投影 `day`）；replay 驗證營業日日期早於提交時的台北日期、不早於上線日、前後快照只差上述 6 個欄位、補開帳者與時間等於命令的操作者與 `committedAt`。
+- 驗收：Emulator `cloudDayClose.spec.ts` `P11.14`–`P11.19`（有交易的過去日補開帳 → 重試冪等 → 應有現金含補登金額 → 關帳 → 再補開帳被拒；無營業日補 0 後關帳；寫入器拒絕今天、未來、已有開帳、已關帳、缺原因、過長原因、超過上限、負數與非持有人；合法最大 payload；22 種原始 SDK 竄改；Rules 拒絕今天、未來、已有開帳、已關帳、上線日前、略過營業日寫入、偽裝成 `SetOpeningCash`）；備份 `cloudBackup.spec.ts` 以真實 EnsureDay → 補開帳 → 關帳匯出 → 解密 → replay，偽造補開帳者、原因或前快照都被拒；畫面 `CloudDayClosePage.test.tsx` 補開帳表單與不顯示的情況。E2E 沒有新增：E2E 的上線日是當天，不存在可補開帳的過去營業日。

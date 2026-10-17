@@ -552,3 +552,67 @@ Each mutant removes one P11 check from `firestore.rules` and runs all of `cloudD
 | day before status (day) | survived: redundant with the command rule (and the reverse). |
 
 The new Emulator suite (48 cases) against main's Rules fails 16 (every positive path); the deny cases also pass on main because main denies every `CloseDay`／`ReopenDay`. With the P11a Rules it passes 48/48.
+
+## P11 backfill opening — budget and probe receipt
+
+CheerC (2026-10-17) asked for a way to backfill a past day's opening cash and then close it, so a network outage cannot leave a day permanently unclosable. `BackfillOpeningCash` is a new kind: 25 kinds, 23 enabled, `RecordExport` and `RecordPrint` still denied. Contract: [P11 day close contract §10](../superpowers/specs/2026-10-17-cloud-day-close-contract.md#10-補開帳backfillopeningcash).
+
+### Write budget
+
+| Command / write path | Central command-create Rules calls | Projection leaves Rules calls | Atomic no-cache total | Max per write |
+|---|---:|---:|---:|---:|
+| `BackfillOpeningCash` (command + dataHead + day) | commandHolder 2 (lease, operator) + head before/after 2 + day before/after 2 = **6** | head 2 + day (`getAfter` command, `exists` command) 2 = **4** | **10/20** | **6/10** |
+
+Static derivation from the read graph, the same method as the earlier appendices.
+
+### Rule layout
+
+- The command check `validBackfillOpeningCash` is nested inside the last operand of `validCommandCreate`, next to `CloseDay`／`ReopenDay`, so earlier kinds keep their headroom (see the P11 appendix for why a new top-level `||` operand costs them).
+- The day check is a **third, separate `allow update`** on `days/{dayId}` (`dayBackfillOpeningCommand`). It fixes the changed keys (`openingCash`, `openedBy`, `openedAt`, `revision`, `lastCommandId`, `updatedAt`), requires the three opening fields to be null before, binds `openedBy` to the caller and `openedAt` to `request.time`. `SetOpeningCash` and every transaction rule are unchanged, so they still only accept the Taipei today.
+- "Before the Taipei today" is `timestamp(dayId 00:00Z) + 24h <= request.time + 8h`.
+
+### Expression headroom
+
+Same probe: inline `1 == 1 &&` terms at one anchor, bisected against a positive Emulator case. Main is `71ee1bc` (Rules identical to `91b5909`, so main values are from the P11 appendix).
+
+| Rule anchor | Case | Main | This PR |
+|---|---|---:|---:|
+| command create | `P11.17` backfill max payload (20,000, 500-char reason) | — | +70 / +71 |
+| dataHead update | `P11.17` | — | +95 / +96 |
+| day update (`dayBackfillOpeningCommand`) | `P11.17` | — | +96 / +97 |
+| command create | P14 real `BackfillOpeningCash` receipts (EnsureDay → backfill → close) | — | +34 / +35 |
+| command create | `P11.9` CloseDay／ReopenDay max payload | +53 / +54 | +53 / +54 |
+| dataHead update | `P11.9` | +95 / +96 | +95 / +96 |
+| day update (`dayCloseCommand`) | `P11.9` | +96 / +97 | +96 / +97 |
+| settlement create | `P11.9` | +96 / +97 | +96 / +97 |
+| command create | `P11.7` reopen → correction → re-close | +20 / +21 | +20 / +21 |
+| day update (`dayWriteCommand`) | `P08.8` CreateOrder | +11 / +12 | +11 / +12 |
+| command create | `P08.8` CreateOrder | +20 / +21 | +20 / +21 |
+| command create | `P10.17` every mutation kind | +19 / +20 | +19 / +20 |
+| command create | `P09b.9` refund, max payload | +19 / +20 | +19 / +20 |
+| command create | `P10b.7` CorrectOpening max payload | +68 / +69 | +68 / +69 |
+| command create | P14 atomic `RecordBackup` receipt | +74 / +75 | +74 / +75 |
+| command create | P14 real P10a receipts (capped by `CreateStudent`) | +3 / +4 | +3 / +4 |
+| command create | P14 real P11 receipts (capped by `CreateStudent`) | +3 / +4 | +3 / +4 |
+
+Every existing anchor is unchanged. The tightest are still the day rule for `CreateOrder` (+11), the command rule for mutations and refunds (+19), and `CreateStudent` on the command rule (+3).
+
+### Mutants
+
+Each mutant removes one check from `firestore.rules` and runs all of `cloudDayClose.spec.ts` (76 cases).
+
+| Removed check | Result |
+|---|---|
+| holder／envelope (`commandHolder`, `cashCommandEnvelope`) (command) | killed (`P11.17`, operatorB self-signed raw batch) |
+| day before today (command) | killed (`P11.19`) |
+| `dayId >= goLiveDate` (command) | killed (`P11.19`) |
+| `openingCash` 0..20,000 (command) | killed (`P11.18`) |
+| `validMutationReason(reason)` (command) | killed (`P11.18`) |
+| `command.reason == payload.reason` (command) | killed (`P11.18`) |
+| `after.openingCash == payload.openingCash` (day) | killed (`P11.18`) |
+| `openedBy`／`openedAt` bound to caller and time (day) | killed (`P11.18`) |
+| day changed keys (day) | killed (`P11.18`) |
+| status open／reopened in **both** rules | killed (`P11.19`) |
+| opening fields null in **both** rules | killed (`P11.19`) |
+| status open／reopened (command only, or day only) | survived: redundant with the same check in the other rule. |
+| opening fields null (command only, or day only) | survived: redundant with the same check in the other rule. |
