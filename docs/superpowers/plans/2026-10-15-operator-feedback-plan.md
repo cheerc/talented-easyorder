@@ -399,7 +399,7 @@ Q2–Q4 已於 PR #479 確認定案，Q1、Q5–Q8 均依表列建議執行。
 | P08 | 照 U2a、U2b 定稿做雲端 F1：右上角兩行、最近帳戶、E 付款明細（暫不含「查看全部紀錄」按鈕，待 P12 開放）、沒有檢視歷史；共用顯示偏好 store；更新 spec §3.1 用語並於 §5 補註 `bento` 識別字對映；修改 `cloudCommandSchema.ts` 3 處「便當」訊息 | 雲端 F1 的用語和版面與 prototype 定稿一致；畫面上沒有「便當」二字（菜單名稱除外） |
 | P09a | 原 P09 不變；E 付款明細補繳費列 | — |
 | P09b（新） | `CreateRefund`、交易類型 `refund`、日統計 `accountRefunds`、所有已啟用 kind 與 `validTotals`／`validNewDay`／`validDayAdvance`／`validDayNonMenu` 的日統計格式同步更新、F1 退款框、`p05-rules-budget.md` 補 P09b 附錄、spec §7.1（含 `netCash`／`expectedCash` 算式）與 §7.2 改寫 | 退款超過餘額、0 元、負數、小數、缺理由、非今天、已關帳都被拒；帳戶與現金各 −X；F2 退款一行不和收現抵銷；應有現金不重複扣 |
-| P10 | 退款可以更正、作廢、5 秒撤回 | 撤回退款後餘額與現金回復（P10a 實作中：Emulator P10.7、P10.12 與畫面測試；契約 `2026-10-16-cloud-transaction-mutations-contract.md`） |
+| P10 | 退款可以更正、作廢、5 秒撤回 | 撤回退款後餘額與現金回復（P10a 已合併 #497：Emulator P10.7、P10.12 與畫面測試；契約 `2026-10-16-cloud-transaction-mutations-contract.md`） |
 | P11 | 雲端開帳預填前一天關帳點算，加三種確認框；F2 關帳算式含退款 | 相同時沒勾不能確認；不同時顯示差額 |
 | P12 | 帳戶完整紀錄（E 與 F3 入口，支援起訖日期與精確帳戶鎖定）；F5 稽核列出所有 command 類型，可依帳戶、日期、操作人、類型篩選；操作人顯示 email；同步補齊 `firestore.indexes.json` 正式索引 | 新增繳費能在 F5 查到送出金額、操作人、伺服器時間 |
 | P13 | `accessEvents`（隨 lease acquire／release 原子記錄取得、釋放、逾時被接手）；本機錯誤紀錄匯出；spec §4.2／§5 補 Rules | 交接一次產生對應紀錄；續約不產生紀錄；匯出檔不含金額和姓名 |

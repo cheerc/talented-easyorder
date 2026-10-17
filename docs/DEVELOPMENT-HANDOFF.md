@@ -11,7 +11,10 @@
 
 ## 已合併與目前接手點
 
-- **目前接手點：P10a（交易更正、作廢、取消與 5 秒撤回）PR 進行中；CheerC 已指示續作 P10**。見下方「P10 交接狀態（進行中）」。P10b 期初更正在 P10a 合併後另開 PR；P10 全部合併後停下，不開始 P11。P09b 已合併（#494，squash `5b6f9a495244c2a800a64ce0677bb1645b33f0a6`）；P09a 已合併（#493，squash `c444621`）；P08 已合併（#491，merge SHA `889c75c`）。 P07 PR [#480](https://github.com/cheerc/talented-easyorder/pull/480) 已合併（merge SHA `436b119`）；P06b 學生穩定內部鍵與可改編號（PR #487，source `2a03953`）經獨立 review PASS 後，已隨操作回饋前端 U3/U4/U2b 於整合 PR [#488](https://github.com/cheerc/talented-easyorder/pull/488)（source head `58191718e2388bfbf954314128f5357370e65123`，由使用者授權 `--admin` squash merge SHA `6ae1909639f56aa6d36524406e700554891f6328`）合併至 main。審查收據見 [P06b＋前端整合審查收據](ops/integration-p06b-review-5819171.md)。P08 雲端訂餐的第一版 PR #490（`feat/p08-cloud-orders`，head `bca7d048f9743be0b2026938a3f3831ccafdf624`）經審查列出 B1–B8 必修項，已由 #491 修正並取代、合併（merge `889c75c`，見下方「P08 交接狀態（已合併）」），不開 P10+；前端 prototype 批次 U1–U4 均已合入 main，並提供使用者可操作之 [Prototype U1–U4 本人操作驗收步驟清單](superpowers/verification/2026-10-16-prototype-u1-u4-verification-checklist.md)。
+- **目前接手點：P10a 已合併（#497，squash `1d61a475109c6642c20c56cbb9ae8e9180491e46`）；下一步 P10b 期初更正（`CorrectOpening`，F3）**。見下方「P10 交接狀態（進行中）」。P10 全部合併後停下，不開始 P11。P14 每日增量備份已平行實作並合併（#496，squash `4b4425c3f6c5f5b1423b94d6aad3216c2c67397c`；收據 #498，`b33fc6b3015d277664a47dba86d8ccde5cf4ed44`），P10a 已同步擴充其備份 decoder／replay。P09b 已合併（#494，squash `5b6f9a495244c2a800a64ce0677bb1645b33f0a6`）；P09a 已合併（#493，squash `c444621`）；P08 已合併（#491，merge SHA `889c75c`）。 P07 PR [#480](https://github.com/cheerc/talented-easyorder/pull/480) 已合併（merge SHA `436b119`）；P06b 學生穩定內部鍵與可改編號（PR #487，source `2a03953`）經獨立 review PASS 後，已隨操作回饋前端 U3/U4/U2b 於整合 PR [#488](https://github.com/cheerc/talented-easyorder/pull/488)（source head `58191718e2388bfbf954314128f5357370e65123`，由使用者授權 `--admin` squash merge SHA `6ae1909639f56aa6d36524406e700554891f6328`）合併至 main。審查收據見 [P06b＋前端整合審查收據](ops/integration-p06b-review-5819171.md)。P08 雲端訂餐的第一版 PR #490（`feat/p08-cloud-orders`，head `bca7d048f9743be0b2026938a3f3831ccafdf624`）經審查列出 B1–B8 必修項，已由 #491 修正並取代、合併（merge `889c75c`，見下方「P08 交接狀態（已合併）」），不開 P10+；前端 prototype 批次 U1–U4 均已合入 main，並提供使用者可操作之 [Prototype U1–U4 本人操作驗收步驟清單](superpowers/verification/2026-10-16-prototype-u1-u4-verification-checklist.md)。
+- 已合併 P10a：PR [#497](https://github.com/cheerc/talented-easyorder/pull/497)，squash merge SHA `1d61a475109c6642c20c56cbb9ae8e9180491e46`，source head `4cd2286c84643cad97200cff9e4d1642883f03fb`，CI [38935317478](https://github.com/cheerc/talented-easyorder/actions/runs/38935317478) 成功，獨立複審通過（review `5551115175`）。
+- 已合併 P14：PR [#496](https://github.com/cheerc/talented-easyorder/pull/496)，squash merge SHA `4b4425c3f6c5f5b1423b94d6aad3216c2c67397c`，CI [38929526636](https://github.com/cheerc/talented-easyorder/actions/runs/38929526636) 成功；收據 PR #498，`b33fc6b3015d277664a47dba86d8ccde5cf4ed44`。見 [P14 receipt](ops/p14-receipt.md)。
+- 已合併 P09b：PR [#494](https://github.com/cheerc/talented-easyorder/pull/494)，squash `5b6f9a495244c2a800a64ce0677bb1645b33f0a6`；P09a：PR [#493](https://github.com/cheerc/talented-easyorder/pull/493)，squash `c444621`。
 - 已合併 P08：PR [#491](https://github.com/cheerc/talented-easyorder/pull/491)（取代 #490），squash merge SHA `889c75c`，source head `452edd5abce63f1eda329d90dcae245984104721`，CI [38875033302](https://github.com/cheerc/talented-easyorder/actions/runs/38875033302) 成功，獨立複審 PASS。
 - 已合併 P07：PR [#480](https://github.com/cheerc/talented-easyorder/pull/480)，merge SHA `436b119`，包含日期菜單與供應商管理。
 - 已合併 P06：PR [#478](https://github.com/cheerc/talented-easyorder/pull/478)，merge SHA `b518eca5fdc2b2d2d3e9197c30b29d6a5f74ce10`。
@@ -58,7 +61,7 @@ git log -1 --oneline --decorate
 
 ## P10 交接狀態（進行中）
 
-1. **P10a 交易更正、作廢、取消與 5 秒撤回（PR 進行中）**：branch `claude/project-thread-iq5n8l`，base `e01ebdff5e784522b15a6f16278ef303a9c63110`（P09b 收據 #495 合併後的 main），審查後合併 main `b33fc6b3015d277664a47dba86d8ccde5cf4ed44`（P14 每日增量備份 #496 與收據 #498）。契約見 [cloud transaction mutations contract](superpowers/specs/2026-10-16-cloud-transaction-mutations-contract.md)。PR、head SHA 與 CI 以 PR body 為準。
+1. **P10a 交易更正、作廢、取消與 5 秒撤回（已合併 #497）**：squash `1d61a475109c6642c20c56cbb9ae8e9180491e46`（2026-10-16），source head `4cd2286c84643cad97200cff9e4d1642883f03fb`；獨立複審通過（review `5551115175`，前一輪 `5550757382` 的 B1／B2 已修）；CI run [38935317478](https://github.com/cheerc/talented-easyorder/actions/runs/38935317478) build-and-test 與 e2e 成功。branch `claude/project-thread-iq5n8l`，base `e01ebdff5e784522b15a6f16278ef303a9c63110`（P09b 收據 #495 合併後的 main），審查後合併 main `b33fc6b3015d277664a47dba86d8ccde5cf4ed44`（P14 每日增量備份 #496 與收據 #498）。契約見 [cloud transaction mutations contract](superpowers/specs/2026-10-16-cloud-transaction-mutations-contract.md)。
    - 啟用 `CorrectTransaction`、`VoidTransaction`、`CancelKeepDeposit`、`CancelRefund`、`Undo`（合併 P14 後已啟用 19 種、拒絕 5 種）。交易永不刪除，作廢只改 `status`。
    - 規則：理由必填；撤回理由固定「送出後立即撤回」且只限原建立者、revision 1、台北今天；取消退款只限台北今天；更正不改列的種類；退款更正調高時餘額不得變負；零收款訂餐取消後作廢。
    - F1：新增成功後 5 秒撤回列；E 付款明細與今日現金列上的「更正／作廢／取消」與預覽；作廢列顯示「已作廢」。雲端 F2 尚無頁面，repository `mutateTransaction` 已備妥。
@@ -67,7 +70,8 @@ git log -1 --oneline --decorate
    - F1 作廢預覽有現金影響時提示「作廢只更正帳本，不是今天退現金或收現金」。
    - 驗證數字與 RED 見 PR body 與 [ops evidence](ops/free-production-evidence.md)。
    - 審查不擋合併、留待之後：把櫃台收支方向檢查移到交易 update 規則（該處餘裕約 +96），讓 mutant 測試能單獨抓到。
-   - 下一步：P10a 修正版綠燈後交複審；合併後開文件收據 PR，再做 P10b（`CorrectOpening`，F3 期初更正表單）。
+   - 複審不擋合併的備註：`cloudTransactionMutation.spec.ts` 的 `beforeAll` 仍是預設 10 秒，與 P14 spec 同一次冷啟 Emulator 一起跑時逾時過一次（CI 分開跑不受影響），之後比照 P14 改 60 秒；正式部署 Rules 要和 `firestore.indexes.json` 一起上。
+   - 下一步：P10b（`CorrectOpening`，F3 期初更正表單），另開 PR；P10b 合併（含收據）後停下，不開始 P11。
 2. 測試只用 `demo-easyorder` Emulator 與合成資料；正式部署仍由 CheerC 本機處理。
 
 ## P09 交接狀態（已合併）
