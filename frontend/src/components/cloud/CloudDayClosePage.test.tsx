@@ -8,6 +8,7 @@ import type {
   CloudDayCloseState,
   CloudSettlementVersion,
 } from '../../firebase/cloudDayCloseRepository';
+import type { CloudLedgerView } from '../../hooks/useCloudLedger';
 import { CloudDayClosePage } from './CloudDayClosePage';
 
 const repository = vi.hoisted(() => ({
@@ -353,5 +354,94 @@ describe('CloudDayClosePage', () => {
     renderPage();
     expect(await screen.findByText(/伺服器日結資料不完整/)).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: `${today} 日結` })).not.toBeInTheDocument();
+  });
+});
+
+describe('CloudDayClosePage: ledger warnings (contract §11)', () => {
+  const unclosedLedger: CloudLedgerView = {
+    status: 'ready',
+    snapshot: {
+      today, goLiveDate: '2026-10-01', closedDays: [], seq: 20,
+      anomalies: [
+        { kind: 'unclosed-past-day', dayId: '2026-10-14', status: 'open', openingCash: 500, activeTransactionCount: 1 },
+        { kind: 'unclosed-past-day', dayId: '2026-10-15', status: 'open', openingCash: 600, activeTransactionCount: 2 },
+        { kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 1, previousClosedDayId: '2026-10-13', previousCountedCash: 2, difference: -1, daysApart: 3 },
+      ],
+    },
+  };
+  const cleanLedger: CloudLedgerView = {
+    status: 'ready', snapshot: { today, goLiveDate: '2026-10-01', closedDays: [], seq: 20, anomalies: [] },
+  };
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValue(commandId) });
+    repository.readOverview.mockResolvedValue(overview());
+    repository.read.mockResolvedValue(dayState());
+    repository.closeDay.mockResolvedValue(successful('CloseDay'));
+    repository.readCommand.mockResolvedValue(null);
+  });
+
+  function renderWithLedger(ledger: CloudLedgerView | undefined, extra: {
+    onOpenAnomalies?: () => void; onLedgerChanged?: () => void; initialDayId?: string;
+  } = {}) {
+    render(
+      <CloudDayClosePage
+        db={{} as Firestore}
+        leaseEpoch={4}
+        identityKey="uid-a:4"
+        backupBlock={<div />}
+        ledger={ledger}
+        {...extra}
+      />,
+    );
+  }
+
+  it('shows a banner listing every unclosed past day with a button to the anomalies page', async () => {
+    const onOpenAnomalies = vi.fn();
+    renderWithLedger(unclosedLedger, { onOpenAnomalies });
+    const banner = await screen.findByLabelText('過去未關帳警示');
+    expect(banner).toHaveTextContent('過去有 2 天尚未關帳（2026-10-14、2026-10-15），請儘速處理');
+    fireEvent.click(within(banner).getByRole('button', { name: '查看帳務異常' }));
+    expect(onOpenAnomalies).toHaveBeenCalledTimes(1);
+    expect(await closeForm()).toBeInTheDocument();
+  });
+
+  it.each<[string, CloudLedgerView | undefined]>([
+    ['no unclosed past day', cleanLedger],
+    ['a loading ledger', { status: 'loading' }],
+    ['a failed ledger', { status: 'error', message: 'x' }],
+    ['no ledger', undefined],
+  ])('shows no banner for %s', async (_label, ledger) => {
+    renderWithLedger(ledger);
+    await closeForm();
+    expect(screen.queryByLabelText('過去未關帳警示')).not.toBeInTheDocument();
+  });
+
+  it('opens on the day sent from the anomalies page', async () => {
+    const day = '2026-10-15';
+    repository.readOverview.mockResolvedValue(overview({
+      unclosedDays: [{ dayId: day, status: 'open', openingCash: 600, activeTransactionCount: 2, kind: 'needs-close' }],
+    }));
+    repository.read.mockResolvedValue(dayState({ dayId: day }));
+    renderWithLedger(unclosedLedger, { initialDayId: day });
+    expect(await screen.findByRole('heading', { name: `${day} 日結` })).toBeInTheDocument();
+    expect(repository.read).toHaveBeenCalledWith(day);
+    expect(repository.read).not.toHaveBeenCalledWith(today);
+  });
+
+  it('asks the parent to re-read the ledger after a confirmed command', async () => {
+    const onLedgerChanged = vi.fn();
+    repository.readOverview.mockResolvedValueOnce(overview()).mockResolvedValue(overview({ unclosedDays: [], seq: 21 }));
+    repository.read
+      .mockResolvedValueOnce(dayState())
+      .mockResolvedValue(dayState({ status: 'closed', revision: 7, lastSettlementRevision: 1, settlements: [version(1)], seq: 21 }));
+    renderWithLedger(unclosedLedger, { onLedgerChanged });
+    const form = await closeForm();
+    expect(onLedgerChanged).not.toHaveBeenCalled();
+    fireEvent.change(within(form).getByRole('textbox', { name: '實點現金（元）' }), { target: { value: '1170' } });
+    fireEvent.click(within(form).getByRole('button', { name: '確認關帳' }));
+    await screen.findByText(/已確認 2026-10-17 關帳 完成/);
+    expect(onLedgerChanged).toHaveBeenCalledTimes(1);
   });
 });

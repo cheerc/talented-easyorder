@@ -1,0 +1,64 @@
+.cloud-ledger-anomalies {
+  display: grid;
+  gap: 12px;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.cloud-ledger-anomalies__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cloud-ledger-anomalies__eyebrow {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.cloud-ledger-anomalies button {
+  padding: 6px 14px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.cloud-ledger-anomalies button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cloud-ledger-anomalies__list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cloud-ledger-anomalies__item {
+  padding: 12px 14px;
+  border: 1px solid #d97706;
+  border-radius: 8px;
+}
+
+.cloud-ledger-anomalies__item h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.cloud-ledger-anomalies__item p {
+  margin: 0 0 8px;
+}
+
+.cloud-ledger-anomalies__alert {
+  padding: 10px 14px;
+  border: 1px solid #b91c1c;
+  border-radius: 8px;
+}

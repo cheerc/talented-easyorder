@@ -55,7 +55,7 @@ export interface CommandPayloadByKind {
   RemoveVendor: { reason: string };
   EnsureDay: { businessDate: string };
   SetDayMenu: { selectionDate: string; itemName: string; price: number; vendorId: string; vendorNameSnapshot: string; inheritedFromDate: string | null };
-  SetOpeningCash: { openingCash: number };
+  SetOpeningCash: { openingCash: number; reason?: string };
   CreateOrder: { mealPrice: number; paidAmount: number; mealKind: 'bento' | 'other'; menuRevision: number | null; otherItemName: string | null; note: string };
   CreatePayment: { paidAmount: number; note: string };
   CreateCashMovement: { mealPrice: number; paidAmount: number; reason: string };
@@ -314,9 +314,13 @@ function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayl
     return { reason: value.reason } as CommandPayloadByKind['ReopenDay'];
   }
   if (kind === 'SetOpeningCash') {
-    exactKeys(value, ['openingCash']);
+    exactKeys(value, ['openingCash'], ['reason']);
     safeInteger(value.openingCash, 'openingCash', 20_000);
-    return { openingCash: value.openingCash };
+    if (!Object.hasOwn(value, 'reason')) return { openingCash: value.openingCash };
+    if (typeof value.reason !== 'string' || value.reason.length < 1 || value.reason.length > 500) {
+      throw new InvalidCloudCommandInput('reason 必須為 1 至 500 字');
+    }
+    return { openingCash: value.openingCash, reason: value.reason };
   }
   if (kind === 'BackfillOpeningCash') {
     exactKeys(value, ['openingCash', 'reason']);
@@ -1583,7 +1587,10 @@ function validateReceiptSnapshots(
 
   if (dayCommandKind) {
     const dayId = normalized.targets.dayId;
-    if (receipt.businessDate !== dayId || receipt.studentId !== null || receipt.reason !== null
+    // SetOpeningCash may carry an optional reason (opening differs from the last close, contract §11);
+    // the command-level reason mirrors it, and is null otherwise.
+    const expectedReason = normalized.kind === 'SetOpeningCash' ? (normalized.payload.reason ?? null) : null;
+    if (receipt.businessDate !== dayId || receipt.studentId !== null || receipt.reason !== expectedReason
       || cash.before !== 0 || cash.after !== 0 || cash.delta !== 0
       || cash.reasonKind !== 'none' || cash.refundAmount !== 0) {
       throw new InvalidCloudCommandInput('營業日命令 receipt 共用欄位或 cashEffect 不一致');
@@ -1803,6 +1810,11 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
     if (typeof raw.reason !== 'string' || raw.reason.length < 1 || raw.reason.length > 500) {
       throw new InvalidCloudCommandInput('command receipt.reason 不合法');
     }
+  } else if (raw.kind === 'SetOpeningCash') {
+    // Optional reason (contract §11); the equality with payload.reason is checked after normalization below.
+    if (raw.reason !== null && (typeof raw.reason !== 'string' || raw.reason.length < 1 || raw.reason.length > 500)) {
+      throw new InvalidCloudCommandInput('command receipt.reason 不合法');
+    }
   } else if (raw.reason !== null) {
     throw new InvalidCloudCommandInput('command receipt.reason 不合法');
   }
@@ -1839,6 +1851,9 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
     || normalized.kind === 'BackfillOpeningCash' || isTransactionMutationKind(normalized.kind))
     && raw.reason !== (normalized.payload as { reason: string }).reason) {
     throw new InvalidCloudCommandInput(`${normalized.kind} receipt reason 必須與 payload.reason 相同`);
+  }
+  if (normalized.kind === 'SetOpeningCash' && raw.reason !== (normalized.payload.reason ?? null)) {
+    throw new InvalidCloudCommandInput('SetOpeningCash receipt reason 必須與 payload.reason 相同');
   }
   if (normalized.kind === 'EnsureDay') {
     if (raw.businessDate !== normalized.payload.businessDate || raw.studentId !== null) {

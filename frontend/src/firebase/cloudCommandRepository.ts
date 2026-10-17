@@ -976,7 +976,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
             businessDate: input.targets.dayId, studentId: null, targets: input.targets,
             expectedRevisions: input.expectedRevisions,
             before: { head: headBefore, day: dayBefore }, after: { head: headAfter, day: dayAfter },
-            reason: null, cashEffect: zeroCash, payload: input.payload, inputFingerprint: fingerprint,
+            reason: payload.reason ?? null, cashEffect: zeroCash, payload: input.payload, inputFingerprint: fingerprint,
           };
           tx.update(dayRef, dayAfter);
           tx.update(headRef, headAfter);

@@ -3,9 +3,11 @@ import {
   Timestamp,
   collection,
   doc,
+  documentId,
   getDocFromServer,
   getDocsFromServer,
   limit,
+  orderBy,
   query,
   where,
   type Firestore,
@@ -13,7 +15,10 @@ import {
 import type { CommandErrorCode, CommandReceipt, CommandResult } from '../domain/cloudCommands';
 import { InvalidCloudCommandInput, decodeSettlementDoc, settlementExpectedCash } from '../domain/cloudCommandSchema';
 import { createCloudCommandRepository, type CloudCommandRepositoryOptions } from './cloudCommandRepository';
-import { accessLeasePath, dataHeadPath, dayPath } from './firestorePaths';
+import {
+  computeLedgerAnomalies, type LedgerAnomaly, type LedgerAnomalyDay, type PreviousClosedDay,
+} from '../domain/ledgerAnomalies';
+import { accessLeasePath, dataHeadPath, dayPath, settlementPath } from './firestorePaths';
 
 type Data = Record<string, unknown>;
 type CurrentUser = Pick<User, 'uid' | 'email' | 'emailVerified' | 'providerData'>;
@@ -22,6 +27,8 @@ type CurrentUser = Pick<User, 'uid' | 'email' | 'emailVerified' | 'providerData'
 const MAX_SETTLEMENT_VERSIONS = 200;
 /** Unclosed days are closed daily; more than this means the overview cannot be shown completely. */
 const MAX_UNCLOSED_DAYS = 200;
+/** Business-day documents between goLiveDate and today that the anomaly scan reads (contract §11). */
+const MAX_ANOMALY_DAYS = 400;
 
 export type CloudDayCloseReadErrorCode = CommandErrorCode | 'INCOMPLETE_SNAPSHOT' | 'STALE_SNAPSHOT';
 
@@ -256,6 +263,15 @@ function taipeiDate(timestamp: Timestamp): string {
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
+async function readLeaseDate(db: Firestore, user: CurrentUser): Promise<string> {
+  const lease = await getDocFromServer(doc(db, accessLeasePath()));
+  const leaseValue: unknown = lease.exists() ? lease.data() : null;
+  if (!plainRecord(leaseValue) || leaseValue.holderUid !== user.uid || !(leaseValue.updatedAt instanceof Timestamp)) {
+    throw new CloudDayCloseRepositoryError('LEASE_LOST', '目前沒有有效的伺服器使用權租約');
+  }
+  return taipeiDate(leaseValue.updatedAt);
+}
+
 /**
  * Server-only list of every open or reopened day up to the lease date, classified for the close page.
  * More than MAX_UNCLOSED_DAYS such days, or a head that moves during the read, fails closed.
@@ -267,12 +283,7 @@ export async function readCloudDayCloseOverview(
   try {
     const user = assertAuthenticated(options);
     const before = await readHeadSeq(db);
-    const lease = await getDocFromServer(doc(db, accessLeasePath()));
-    const leaseValue: unknown = lease.exists() ? lease.data() : null;
-    if (!plainRecord(leaseValue) || leaseValue.holderUid !== user.uid || !(leaseValue.updatedAt instanceof Timestamp)) {
-      throw new CloudDayCloseRepositoryError('LEASE_LOST', '目前沒有有效的伺服器使用權租約');
-    }
-    const selectionDate = taipeiDate(leaseValue.updatedAt);
+    const selectionDate = await readLeaseDate(db, user);
     const page = await getDocsFromServer(query(
       collection(db, 'days'),
       where('status', 'in', ['open', 'reopened']),
@@ -359,9 +370,96 @@ export async function readCloudDayClose(
   }
 }
 
+export interface CloudLedgerSnapshot {
+  /** Taipei date of the server lease time. */
+  today: string;
+  goLiveDate: string;
+  /** Sorted by date; see `computeLedgerAnomalies`. */
+  anomalies: LedgerAnomaly[];
+  /** Every closed day up to today with its latest settlement's counted cash, oldest first. */
+  closedDays: PreviousClosedDay[];
+  seq: number;
+}
+
+/**
+ * Server-only anomaly scan (contract §11): reads goLiveDate..today business days in ascending document-ID
+ * order and the latest settlement of each closed day. Settlement versions are immutable, so a reader keeps
+ * them in memory by (datasetId, dayId, revision) to spare Spark reads. More than MAX_ANOMALY_DAYS documents
+ * or a head that moves during the read fails closed instead of truncating.
+ */
+export function createCloudLedgerReader(db: Firestore, options: CloudCommandRepositoryOptions = {}) {
+  const settlementCache = new Map<string, number>();
+  async function read(): Promise<CloudLedgerSnapshot> {
+    try {
+      const user = assertAuthenticated(options);
+      const before = await readHeadSeq(db);
+      const today = await readLeaseDate(db, user);
+      const page = await getDocsFromServer(query(
+        collection(db, 'days'),
+        where(documentId(), '>=', before.goLiveDate),
+        where(documentId(), '<=', today),
+        orderBy(documentId()),
+        limit(MAX_ANOMALY_DAYS + 1),
+      ));
+      if (page.size > MAX_ANOMALY_DAYS) {
+        throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `營業日超過 ${MAX_ANOMALY_DAYS} 天，無法完整檢查帳務異常`);
+      }
+      const days: LedgerAnomalyDay[] = [];
+      for (const snapshot of page.docs) {
+        if (!validDate(snapshot.id)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${snapshot.id} 路徑不支援`);
+        const day = decodeDay(snapshot.id, snapshot.data());
+        let countedCash: number | null = null;
+        if (day.status === 'closed') {
+          if (day.lastSettlementRevision < 1) {
+            throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `已關帳營業日 ${snapshot.id} 沒有日結版本`);
+          }
+          const key = `${before.datasetId}/${snapshot.id}/${day.lastSettlementRevision}`;
+          let cached = settlementCache.get(key);
+          if (cached === undefined) {
+            const latest = await getDocFromServer(doc(db, settlementPath(snapshot.id, day.lastSettlementRevision)));
+            if (!latest.exists()) {
+              throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `營業日 ${snapshot.id} 缺少最新日結版本`);
+            }
+            const version = toVersion(snapshot.id, day.lastSettlementRevision, latest.data());
+            if (version.status !== 'closed' || version.countedCash === null) {
+              throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${snapshot.id} 最新日結版本不是關帳版本`);
+            }
+            cached = version.countedCash;
+            settlementCache.set(key, cached);
+          }
+          countedCash = cached;
+        }
+        days.push({
+          dayId: snapshot.id,
+          status: day.status,
+          openingCash: day.openingCash,
+          activeTransactionCount: day.totals.activeTransactionCount,
+          countedCash,
+        });
+      }
+      const after = await readHeadSeq(db);
+      if (after.seq !== before.seq || after.datasetId !== before.datasetId) {
+        throw new CloudDayCloseRepositoryError('STALE_SNAPSHOT', '讀取期間雲端資料有更新，請重新載入帳務異常');
+      }
+      return {
+        today,
+        goLiveDate: before.goLiveDate,
+        anomalies: computeLedgerAnomalies(days, today),
+        closedDays: days.filter(day => day.status === 'closed').map(day => ({ dayId: day.dayId, countedCash: day.countedCash as number })),
+        seq: after.seq,
+      };
+    } catch (error) {
+      throw readError(error);
+    }
+  }
+  return { read };
+}
+
 export function createCloudDayCloseRepository(db: Firestore, options: CloudCommandRepositoryOptions = {}) {
   const commands = createCloudCommandRepository(db, options);
+  const ledger = createCloudLedgerReader(db, options);
   return {
+    readLedger: () => ledger.read(),
     read: (dayId: string) => readCloudDayClose(db, dayId, options),
     readOverview: () => readCloudDayCloseOverview(db, options),
     closeDay(input: CloseCloudDayInput): Promise<CommandResult> {

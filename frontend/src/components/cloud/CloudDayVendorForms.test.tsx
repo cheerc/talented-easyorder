@@ -151,4 +151,74 @@ describe('CloudDayVendorForms', () => {
     expect(screen.getByRole('button', { name: '儲存菜單' })).toBeDisabled();
     expect(screen.getByText(/目前沒有可選供應商/)).toBeInTheDocument();
   });
+
+  describe('CloudDayOpeningCashForm: difference from the last close (contract §11)', () => {
+    const previousClosed = { dayId: '2026-10-14', countedCash: 870 };
+
+    function renderForm(props: { amountText: string; previousClosed?: typeof previousClosed | null; ledgerNotice?: string }) {
+      const onSubmit = vi.fn();
+      const onReasonTextChange = vi.fn();
+      render(
+        <CloudDayOpeningCashForm
+          businessDate="2026-10-16"
+          currentOpeningCash={null}
+          amountText={props.amountText}
+          onAmountTextChange={vi.fn()}
+          onSubmit={onSubmit}
+          reasonText=""
+          onReasonTextChange={onReasonTextChange}
+          {...('previousClosed' in props ? { previousClosed: props.previousClosed } : {})}
+          {...(props.ledgerNotice ? { ledgerNotice: props.ledgerNotice } : {})}
+        />,
+      );
+      return { onSubmit, onReasonTextChange };
+    }
+
+    it('shows the last closed day and its counted cash', () => {
+      renderForm({ amountText: '870', previousClosed });
+      expect(screen.getByText(/上一個已關帳日 2026-10-14 的實點現金為 NT\$ 870/)).toBeInTheDocument();
+    });
+
+    it('shows a difference warning and a required reason field when the amount differs, and still allows submitting', () => {
+      const { onSubmit, onReasonTextChange } = renderForm({ amountText: '800', previousClosed });
+      expect(screen.getByRole('alert')).toHaveTextContent('比上次關帳實點少了 NT$ 70');
+      fireEvent.change(screen.getByLabelText(/差額原因/), { target: { value: '漏記' } });
+      expect(onReasonTextChange).toHaveBeenCalledWith('漏記');
+      fireEvent.click(screen.getByRole('button', { name: '確認開帳金額' }));
+      expect(onSubmit).toHaveBeenCalledWith('800');
+    });
+
+    it('says more when the amount is higher', () => {
+      renderForm({ amountText: '900', previousClosed });
+      expect(screen.getByRole('alert')).toHaveTextContent('多了 NT$ 30');
+    });
+
+    it('shows no reason field when the amount equals the last close, is not a number yet, or there is no closed day', () => {
+      for (const props of [
+        { amountText: '870', previousClosed },
+        { amountText: '', previousClosed },
+        { amountText: 'abc', previousClosed },
+        { amountText: '800', previousClosed: null },
+        { amountText: '800' },
+      ]) {
+        const view = render(
+          <CloudDayOpeningCashForm
+            businessDate="2026-10-16" currentOpeningCash={null} amountText={props.amountText}
+            onAmountTextChange={vi.fn()} onSubmit={vi.fn()}
+            {...('previousClosed' in props ? { previousClosed: props.previousClosed } : {})}
+          />,
+        );
+        expect(screen.queryByLabelText(/差額原因/)).not.toBeInTheDocument();
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        view.unmount();
+      }
+    });
+
+    it('blocks submitting while the last close is still unknown', () => {
+      const { onSubmit } = renderForm({ amountText: '800', ledgerNotice: '正在確認上一個已關帳日的實點現金…' });
+      expect(screen.getByText('正在確認上一個已關帳日的實點現金…')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '確認開帳金額' })).toBeDisabled();
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+  });
 });
