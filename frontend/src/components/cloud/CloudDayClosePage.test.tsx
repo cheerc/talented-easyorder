@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
@@ -244,7 +244,7 @@ describe('CloudDayClosePage', () => {
     fireEvent.change(within(form).getByRole('textbox', { name: '實點現金（元）' }), { target: { value: '1170' } });
     fireEvent.click(within(form).getByRole('button', { name: '確認關帳' }));
     expect(await screen.findByText('結果確認中，請勿重複操作。')).toBeInTheDocument();
-    expect(report).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
+    await waitFor(() => expect(report).toHaveBeenLastCalledWith('uid-a:4', 'recovering'));
     expect(screen.queryByRole('form', { name: `${today} 關帳` })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
@@ -253,7 +253,8 @@ describe('CloudDayClosePage', () => {
     expect(repository.closeDay).toHaveBeenCalledTimes(2);
     expect(repository.closeDay.mock.calls[0][0]).toEqual(repository.closeDay.mock.calls[1][0]);
     expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
-    expect(report).toHaveBeenLastCalledWith('uid-a:4', 'resolved');
+    // 導覽狀態由 commit 後的 effect 回報，CI 較慢時會晚於成功訊息出現。
+    await waitFor(() => expect(report).toHaveBeenLastCalledWith('uid-a:4', 'resolved'));
   });
 
   it('explains a revision conflict and asks for a reload instead of resending', async () => {
