@@ -348,3 +348,14 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - Cloud E2E（本機 Chromium 1194，不取代 CI pinned Chromium）：21 項中 20 過；新 D08 通過（關帳少 10 元需原因 → 櫃台不能入帳 → 重開需原因 → 相同金額再關帳成第 3 版 → 重新登入仍在）。A08（P04 同帳號雙頁租約心跳）整套跑時失敗一次，單獨重跑通過；本 PR 沒有改租約程式。
 - 無 production 部署、無正式金鑰。
 - **合併**：PR #505 squash `5a030caec2345b7d322a4f32a12f05bf014fc1d2`（2026-10-17），source head `77d272add0780184815c0a72b47df548d6deeb13`，base `d46287dee3a001c4d854c3a6e6a8e574b9aa8b85`。CI 第一次（run 39023652853）`CloudDayClosePage.test.tsx` 有一項導覽狀態回報的時序失敗，`77d272a` 改用 `waitFor` 等待 effect 回報、斷言內容不變。獨立審查 review `5557388299` 通過、無必修；審查本機重跑 `cloudDayClose.spec.ts`＋`cloudBackup.spec.ts` 68/68、`src/components/cloud` 89/89、lint／build exit 0。CI run [39024055068](https://github.com/cheerc/talented-easyorder/actions/runs/39024055068) build-and-test 與 e2e 成功。不擋合併的備註：過去某天有交易但全部作廢時 `activeTransactionCount` 回到 0，也會標成「無營業，不需關帳」（帳務已回沖、不影響金額，只是用語不完全準確，若 CheerC 改選「允許補開帳」再一併處理）；「今天」取自租約 `updatedAt`（心跳），跨午夜而心跳未更新時會短暫顯示前一天（與日期與供應商頁相同的既有設計）；未關帳查詢上限 200 天也算入未來預排日；「以相同命令編號重試」按鈕靠 `actionError` 含「尚未找到」判斷（與既有頁面同模式），改文案時要一併改。P11 完成。
+
+## P11 補開帳（`BackfillOpeningCash`）checkpoint — 2026-10-17
+
+- CheerC 2026-10-17：「避免網路問題造成一整天無法使用，應該要可以補開帳再關帳」。base `71ee1bc887c1ce03b5fa2250280963f336ccc874`（P11b 收據 #506）；PR、head SHA 與 CI 以 PR body 為準。契約 §10：[P11 contract](../superpowers/specs/2026-10-17-cloud-day-close-contract.md#10-補開帳backfillopeningcash)。
+- 新 kind `BackfillOpeningCash`（25 種，已啟用 23 種）。只限早於台北今天、不早於上線日、未關帳、沒有開帳現金的既有營業日；原因必填；不放寬 `SetOpeningCash` 與交易 Rules，不補登交易。
+- Rules 餘裕：既有錨點全部與 main 相同（訂餐營業日 +11、更正與退款指令 +19、`CreateStudent` +3）；補開帳指令 +70、dataHead +95、營業日 +96。突變 15 個：每項單獨的檢查拿掉都被殺；只有兩組在指令與營業日規則重複的檢查（狀態、開帳欄位為 null）單邊拿掉存活，兩邊同時拿掉被殺。見 [補開帳預算附錄](p05-rules-budget.md#p11-backfill-opening--budget-and-probe-receipt)。
+- demo-easyorder Auth＋Firestore Emulator 循序完整 Vitest（所有 `EASYORDER_REQUIRE_*`）：180 個檔案，2,044 passed；`cloudCommands.spec.ts` 的 `beforeAll` 冷啟逾時（10 秒，既有現象）跳過 178 項，同一個 Emulator 暖機後單檔重跑 178/178。合計 2,222/2,222。
+- `cloudDayClose.spec.ts` 76/76（新增 `P11.14`–`P11.19` 共 27 項）；`cloudBackup.spec.ts` 20/20（新增補開帳 round-trip 與 3 種偽造）；`CloudDayClosePage.test.tsx` 13/13；`cloudCommandSchema.dayClose.test.ts` 6/6。一般 Vitest 1,671 passed／551 skipped（Emulator-only，已由上方循序全套執行）。
+- `npm run lint`、`npm run build` exit 0；app tsc 208 個 `error TS` 診斷，與 base 相同。
+- Cloud E2E（本機 Chromium 1194 暫時設定，不取代 CI pinned Chromium，設定未提交）：21/21。沒有新增 E2E：E2E 上線日是當天，沒有可補開帳的過去營業日。
+- 無 production 部署、無正式金鑰。
