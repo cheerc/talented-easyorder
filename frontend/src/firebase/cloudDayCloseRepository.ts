@@ -80,6 +80,8 @@ export interface CloudDayCloseState {
  * How an unclosed day is shown on the close page (contract §7). Only `needs-close` can be closed now;
  * `no-business` is a past day without opening cash or transactions (for example one EnsureDay created
  * for an opening correction) and is not a missing close; `missing-opening` has transactions or is today.
+ * A past day without opening cash (either kind) can get its opening cash backfilled with a reason and
+ * then be closed (contract §10).
  */
 export type UnclosedDayKind = 'needs-close' | 'missing-opening' | 'no-business';
 
@@ -125,6 +127,15 @@ export interface ReopenCloudDayInput {
   dayId: string;
   expectedDayRevision: number;
   expectedSettlementRevision: number;
+  reason: string;
+}
+
+export interface BackfillCloudDayOpeningInput {
+  commandId: string;
+  leaseEpoch: number;
+  dayId: string;
+  expectedDayRevision: number;
+  openingCash: number;
   reason: string;
 }
 
@@ -373,6 +384,17 @@ export function createCloudDayCloseRepository(db: Firestore, options: CloudComma
         targets: { dayId, settlementRevision: expectedSettlementRevision + 1 },
         expectedRevisions: { day: expectedDayRevision, settlement: expectedSettlementRevision },
         payload: { reason },
+      });
+    },
+    backfillOpening(input: BackfillCloudDayOpeningInput): Promise<CommandResult> {
+      const { commandId, leaseEpoch, dayId, expectedDayRevision, openingCash, reason } = input;
+      return commands.commitCommand({
+        commandId,
+        kind: 'BackfillOpeningCash',
+        leaseEpoch,
+        targets: { dayId },
+        expectedRevisions: { day: expectedDayRevision },
+        payload: { openingCash, reason },
       });
     },
     readCommand(commandId: string): Promise<CommandReceipt | null> {

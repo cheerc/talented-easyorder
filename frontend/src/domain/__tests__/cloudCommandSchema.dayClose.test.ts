@@ -27,6 +27,18 @@ function reopenDay(payload: Record<string, unknown>, overrides: Record<string, u
   };
 }
 
+function backfillOpening(payload: Record<string, unknown>, overrides: Record<string, unknown> = {}) {
+  return {
+    commandId,
+    kind: 'BackfillOpeningCash',
+    leaseEpoch: 1,
+    targets: { dayId: '2026-10-16' },
+    expectedRevisions: { day: 3 },
+    payload,
+    ...overrides,
+  };
+}
+
 describe('P11 CloseDay／ReopenDay command schema', () => {
   it('uses one expectedCash formula: opening + receipts + counter income − expense − account refunds (spec L05)', () => {
     expect(settlementExpectedCash({
@@ -73,5 +85,34 @@ describe('P11 CloseDay／ReopenDay command schema', () => {
     expect(() => normalizeEnabledCommandInput(reopenDay({ reason: '' }))).toThrow();
     expect(() => normalizeEnabledCommandInput(reopenDay({ reason: 'x'.repeat(501) }))).toThrow();
     expect(() => normalizeEnabledCommandInput(reopenDay({ reason: 'ok', note: '' }))).toThrow();
+  });
+
+  it('BackfillOpeningCash needs an integer 0–20,000 opening cash, a 1–500 character reason and only a day target', () => {
+    expect(normalizeEnabledCommandInput(backfillOpening({ openingCash: 800, reason: '當天網路中斷' })))
+      .toMatchObject({
+        kind: 'BackfillOpeningCash', targets: { dayId: '2026-10-16' }, expectedRevisions: { day: 3 },
+        payload: { openingCash: 800, reason: '當天網路中斷' },
+      });
+    expect(normalizeEnabledCommandInput(backfillOpening({ openingCash: 0, reason: 'x'.repeat(500) })).payload)
+      .toMatchObject({ openingCash: 0 });
+    expect(normalizeEnabledCommandInput(backfillOpening({ openingCash: 20_000, reason: 'r' })).payload)
+      .toMatchObject({ openingCash: 20_000 });
+    for (const payload of [
+      { openingCash: 800, reason: '' },
+      { openingCash: 800, reason: 'x'.repeat(501) },
+      { openingCash: 800 },
+      { openingCash: -1, reason: 'r' },
+      { openingCash: 20_001, reason: 'r' },
+      { openingCash: 1.5, reason: 'r' },
+      { openingCash: '800', reason: 'r' },
+      { openingCash: 800, reason: 'r', note: '' },
+    ]) {
+      expect(() => normalizeEnabledCommandInput(backfillOpening(payload)), JSON.stringify(payload)).toThrow();
+    }
+    const ok = { openingCash: 800, reason: 'r' };
+    expect(() => normalizeEnabledCommandInput(backfillOpening(ok, { targets: { dayId: '2026-02-30' } }))).toThrow();
+    expect(() => normalizeEnabledCommandInput(backfillOpening(ok, { targets: { dayId: '2026-10-16', studentId: 's' } }))).toThrow();
+    expect(() => normalizeEnabledCommandInput(backfillOpening(ok, { expectedRevisions: { day: 0 } }))).toThrow();
+    expect(() => normalizeEnabledCommandInput(backfillOpening(ok, { expectedRevisions: { day: 3, settlement: 0 } }))).toThrow();
   });
 });

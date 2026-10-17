@@ -100,6 +100,7 @@ export type BusinessCommandKind =
   | 'Undo'
   | 'CloseDay'
   | 'ReopenDay'
+  | 'BackfillOpeningCash'
   | 'RecordExport'
   | 'RecordPrint'
   | 'RecordBackup';
@@ -126,6 +127,7 @@ export const ALL_COMMAND_KINDS: readonly BusinessCommandKind[] = [
   'Undo',
   'CloseDay',
   'ReopenDay',
+  'BackfillOpeningCash',
   'RecordExport',
   'RecordPrint',
   'RecordBackup',
@@ -359,6 +361,13 @@ export type ReopenDayCommand = BaseCommand<
   { dayId: string; settlementRevision: number }
 >;
 
+// 19b. BackfillOpeningCash：過去日期補開帳（須填原因）
+export type BackfillOpeningCashCommand = BaseCommand<
+  'BackfillOpeningCash',
+  { openingCash: number; reason: string },
+  { dayId: string }
+>;
+
 // 20. RecordExport
 export type RecordExportCommand = BaseCommand<
   'RecordExport',
@@ -417,6 +426,7 @@ export type BusinessCommand =
   | UndoCommand
   | CloseDayCommand
   | ReopenDayCommand
+  | BackfillOpeningCashCommand
   | RecordExportCommand
   | RecordPrintCommand
   | RecordBackupCommand;

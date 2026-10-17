@@ -608,4 +608,219 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     expect((await repository().readOverview()).unclosedDays.at(-1)).toMatchObject({ dayId: today, kind: 'missing-opening' });
     await expect(repository(operatorB).readOverview()).rejects.toMatchObject({ code: 'LEASE_LOST' });
   });
+
+  // ---- BackfillOpeningCash: a past day that never confirmed its opening cash (contract §10) ----
+
+  const zeroTotals = () => ({ ...totals(), activeTransactionCount: 0, bentoCount: 0, mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0 });
+
+  async function seedPastDay(dayId: string, change: RawMap = {}) {
+    await withAdmin(async db => setDoc(doc(db, `days/${dayId}`), { ...dayDoc(dayId, null), ...change }));
+  }
+
+  async function backfillInput(openingCash: number, reason: string, dayId: string) {
+    const day = (await read(`days/${dayId}`))!;
+    return { commandId: uuid(), leaseEpoch: 1, dayId, expectedDayRevision: day.revision, openingCash, reason };
+  }
+
+  /** A complete raw SDK BackfillOpeningCash closure, built the same way as the repository. */
+  async function rawBackfill(dayId: string, change: { openingCash?: number; reason?: string } = {}, actor = operatorA) {
+    const commandId = uuid();
+    const headBefore = (await read('system/dataHead'))!;
+    const dayBefore = (await read(`days/${dayId}`))!;
+    const payload: RawMap = { openingCash: change.openingCash ?? 800, reason: change.reason ?? '當天網路中斷，事後補開帳' };
+    const input = {
+      commandId, kind: 'BackfillOpeningCash', leaseEpoch: 1, targets: { dayId },
+      expectedRevisions: { day: dayBefore.revision }, payload,
+    };
+    let fingerprint = 'f'.repeat(64);
+    try { fingerprint = await fingerprintCommandInput(normalizeEnabledCommandInput(input)); } catch { /* invalid on purpose */ }
+    const now = serverTimestamp();
+    const headAfter: RawMap = { ...headBefore, seq: headBefore.seq + 1, lastCommandId: commandId, updatedAt: now };
+    const dayAfter: RawMap = {
+      ...dayBefore, openingCash: payload.openingCash, openedBy: actor.uid, openedAt: now,
+      revision: dayBefore.revision + 1, lastCommandId: commandId, updatedAt: now,
+    };
+    const command: RawMap = {
+      commandId, kind: 'BackfillOpeningCash', seq: headBefore.seq + 1, leaseEpoch: 1,
+      actor: { uid: actor.uid, email: actor.email }, committedAt: now,
+      businessDate: dayId, studentId: null, targets: input.targets, expectedRevisions: input.expectedRevisions,
+      before: {}, after: {}, reason: payload.reason,
+      cashEffect: { before: 0, after: 0, delta: 0, reasonKind: 'none', refundAmount: 0 },
+      payload, inputFingerprint: fingerprint,
+    };
+    const artifacts = { commandId, dayId, command, headBefore, headAfter, dayBefore, dayAfter };
+    syncBackfill(artifacts);
+    return artifacts;
+  }
+
+  type RawBackfill = Awaited<ReturnType<typeof rawBackfill>>;
+
+  function syncBackfill(a: RawBackfill) {
+    a.command.before = { head: a.headBefore, day: a.dayBefore };
+    a.command.after = { head: a.headAfter, day: a.dayAfter };
+  }
+
+  function rawBackfillBatch(db: Firestore, a: RawBackfill, options: { omitDay?: boolean } = {}) {
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'system/dataHead'), a.headAfter);
+    if (!options.omitDay) batch.update(doc(db, `days/${a.dayId}`), a.dayAfter);
+    batch.set(doc(db, `commands/${a.commandId}`), a.command);
+    return batch;
+  }
+
+  async function expectBackfillDenied(a: RawBackfill, options: { omitDay?: boolean } = {}, actor = operatorA) {
+    const before = await state(a.dayId);
+    await assertFails(rawBackfillBatch(authedDb(actor), a, options).commit());
+    expect(await state(a.dayId)).toEqual(before);
+  }
+
+  it('P11.14 (backfill): a past day with transactions but no opening cash is backfilled with a reason, then closed', async () => {
+    const yesterday = shiftDate(today, -1);
+    await seedPastDay(yesterday);
+    expect((await repository().readOverview()).unclosedDays[0]).toMatchObject({ dayId: yesterday, kind: 'missing-opening' });
+    const before = await state(yesterday);
+
+    const input = await backfillInput(800, '當天網路中斷，事後補開帳', yesterday);
+    const receipt = ok(await repository().backfillOpening(input));
+    const after = await state(yesterday);
+    expect(after.day).toMatchObject({
+      status: 'open', revision: 7, openingCash: 800, openedBy: operatorA.uid, lastCommandId: receipt.commandId,
+      totals: totals(), lastSettlementRevision: 0,
+    });
+    expect(after.day!.menu).toEqual(before.day!.menu);
+    expect(after.day!.openedAt).toEqual(after.day!.updatedAt);
+    const stored = (await read(`commands/${receipt.commandId}`))!;
+    expect(stored).toMatchObject({
+      kind: 'BackfillOpeningCash', businessDate: yesterday, studentId: null, reason: '當天網路中斷，事後補開帳',
+      targets: { dayId: yesterday }, expectedRevisions: { day: 6 },
+      payload: { openingCash: 800, reason: '當天網路中斷，事後補開帳' },
+      actor: { uid: operatorA.uid, email: operatorA.email },
+      cashEffect: { before: 0, after: 0, delta: 0, reasonKind: 'none', refundAmount: 0 },
+    });
+    expect(stored.before.day.openingCash).toBeNull();
+    expect(await repository().readCommand(receipt.commandId)).toMatchObject({ commandId: receipt.commandId, kind: 'BackfillOpeningCash', seq: 1 });
+
+    // Retries return the same receipt; the same ID with other content is refused.
+    for (let index = 0; index < 2; index += 1) expect(ok(await repository().backfillOpening(input))).toEqual(receipt);
+    expect((await repository().backfillOpening({ ...input, openingCash: 900 })).ok).toBe(false);
+
+    // 800 + receipts 200 + income 50 − expense 80 = 970; the day now closes like any other.
+    const read2 = await repository().read(yesterday);
+    expect(read2).toMatchObject({ openingCash: 800, expectedCash: 970 });
+    expect((await repository().readOverview()).unclosedDays[0]).toMatchObject({ dayId: yesterday, kind: 'needs-close' });
+    ok(await repository().closeDay(await closeInput({ countedCash: 970 }, yesterday)));
+    expect((await state(yesterday)).settlements['1']).toMatchObject({ status: 'closed', openingCash: 800, expectedCash: 970, difference: 0 });
+
+    // A second backfill is refused once the opening cash exists (and on the closed day).
+    const again = await repository().backfillOpening(await backfillInput(500, '重複', yesterday));
+    expect(again).toMatchObject({ ok: false, error: { code: 'DAY_CLOSED' } });
+    expect((await state(yesterday)).commandCount).toBe(2);
+  });
+
+  it('P11.15 (backfill): a past day without business can be backfilled and closed at its opening cash', async () => {
+    const pastDay = shiftDate(today, -3);
+    await seedPastDay(pastDay, { totals: zeroTotals(), status: 'reopened' });
+    expect((await repository().readOverview()).unclosedDays[0]).toMatchObject({ dayId: pastDay, kind: 'no-business' });
+    ok(await repository().backfillOpening(await backfillInput(0, '那天沒有營業，補 0 元以便關帳', pastDay)));
+    expect((await state(pastDay)).day).toMatchObject({ status: 'reopened', openingCash: 0 });
+    ok(await repository().closeDay(await closeInput({ countedCash: 0 }, pastDay)));
+    expect((await state(pastDay)).day).toMatchObject({ status: 'closed', lastSettlementRevision: 1 });
+  });
+
+  it('P11.16 (backfill): the writer refuses today, future, confirmed, closed, unreasoned and oversized backfills', async () => {
+    const yesterday = shiftDate(today, -1);
+    const future = shiftDate(today, 1);
+    const confirmed = shiftDate(today, -2);
+    const closedDay = shiftDate(today, -4);
+    await seedPastDay(yesterday);
+    await seedPastDay(future, { totals: zeroTotals() });
+    await seedPastDay(confirmed, { openingCash: 600, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    await seedPastDay(closedDay, { status: 'closed' });
+    await withAdmin(async db => setDoc(doc(db, `days/${today}`), dayDoc(today, null)));
+    const cases: Array<[string, Promise<CommandResult>, string]> = [
+      ['today', repository().backfillOpening(await backfillInput(800, '補', today)), 'INVALID_INPUT'],
+      ['future', repository().backfillOpening(await backfillInput(800, '補', future)), 'INVALID_INPUT'],
+      ['confirmed', repository().backfillOpening(await backfillInput(800, '補', confirmed)), 'INVALID_INPUT'],
+      ['closed', repository().backfillOpening(await backfillInput(800, '補', closedDay)), 'DAY_CLOSED'],
+      ['no reason', repository().backfillOpening(await backfillInput(800, '', yesterday)), 'INVALID_INPUT'],
+      ['long reason', repository().backfillOpening(await backfillInput(800, 'x'.repeat(501), yesterday)), 'INVALID_INPUT'],
+      ['over 20,000', repository().backfillOpening(await backfillInput(20_001, '補', yesterday)), 'INVALID_INPUT'],
+      ['negative', repository().backfillOpening(await backfillInput(-1, '補', yesterday)), 'INVALID_INPUT'],
+    ];
+    const before = await withAdmin(async db => (await getDocs(collection(db, 'days'))).docs.map(item => [item.id, item.data()]));
+    for (const [label, pending, code] of cases) {
+      expect([label, await pending]).toMatchObject([label, { ok: false, error: { code } }]);
+    }
+    expect(await withAdmin(async db => (await getDocs(collection(db, 'days'))).docs.map(item => [item.id, item.data()]))).toEqual(before);
+    expect((await state()).commandCount).toBe(0);
+    // operatorB does not hold the lease.
+    expect(await repository(operatorB).backfillOpening(await backfillInput(800, '補', yesterday))).toMatchObject({ ok: false, error: { code: 'LEASE_LOST' } });
+  });
+
+  it('P11.17 (backfill): the legal maximum stays under the expression ceiling, and a raw backfill works only for the holder', async () => {
+    const yesterday = shiftDate(today, -1);
+    await seedPastDay(yesterday, { status: 'reopened', lastSettlementRevision: 2 });
+    // operatorB signs a self-consistent closure as itself but does not hold the lease.
+    await expectBackfillDenied(await rawBackfill(yesterday, { openingCash: 20_000, reason: '因'.repeat(500) }, operatorB), {}, operatorB);
+    const raw = await rawBackfill(yesterday, { openingCash: 20_000, reason: '因'.repeat(500) });
+    await expectBackfillDenied(raw, {}, operatorB);
+    await assertSucceeds(rawBackfillBatch(authedDb(operatorA), raw).commit());
+    expect((await state(yesterday)).day).toMatchObject({ status: 'reopened', openingCash: 20_000, openedBy: operatorA.uid, lastSettlementRevision: 2 });
+  });
+
+  it.each<[string, (a: RawBackfill) => void]>([
+    ['the payload has no reason', a => { a.command.payload = { openingCash: 800 }; a.command.reason = null; }],
+    ['the reason is empty', a => { a.command.payload = { ...a.command.payload, reason: '' }; a.command.reason = ''; }],
+    ['the reason is too long', a => { const reason = 'x'.repeat(501); a.command.payload = { ...a.command.payload, reason }; a.command.reason = reason; }],
+    ['the command reason differs from the payload', a => { a.command.reason = 'other'; }],
+    ['the payload gains an extra key', a => { a.command.payload = { ...a.command.payload, note: '' }; }],
+    ['the opening cash is over 20,000', a => { a.command.payload = { ...a.command.payload, openingCash: 20_001 }; a.dayAfter.openingCash = 20_001; syncBackfill(a); }],
+    ['the opening cash is negative', a => { a.command.payload = { ...a.command.payload, openingCash: -1 }; a.dayAfter.openingCash = -1; syncBackfill(a); }],
+    ['the day opening cash differs from the payload', a => { a.dayAfter.openingCash = 900; syncBackfill(a); }],
+    ['the opener is another operator', a => { a.dayAfter.openedBy = operatorB.uid; syncBackfill(a); }],
+    ['the opening time is not the commit time', a => { a.dayAfter.openedAt = a.dayBefore.updatedAt; syncBackfill(a); }],
+    ['the day totals change', a => { a.dayAfter.totals = { ...a.dayAfter.totals, retainedReceipts: 0 }; syncBackfill(a); }],
+    ['the day menu changes', a => { a.dayAfter.menu = null; syncBackfill(a); }],
+    ['the day status changes', a => { a.dayAfter.status = 'closed'; syncBackfill(a); }],
+    ['the day settlement pointer changes', a => { a.dayAfter.lastSettlementRevision = 1; syncBackfill(a); }],
+    ['the day revision is not advanced', a => { a.dayAfter.revision = a.dayBefore.revision; syncBackfill(a); }],
+    ['the cash effect is not zero', a => { a.command.cashEffect = { before: 0, after: 800, delta: 800, reasonKind: 'collection', refundAmount: 0 }; }],
+    ['the business date is another day', a => { a.command.businessDate = today; }],
+    ['the command names a student', a => { a.command.studentId = studentA; }],
+    ['the expected day revision is stale', a => { a.command.expectedRevisions = { day: 1 }; }],
+    ['the targets gain a key', a => { a.command.targets = { ...a.command.targets, settlementRevision: 1 }; }],
+    ['the before-snapshot lies about the opening cash', a => { a.command.before = { ...a.command.before, day: { ...a.dayBefore, openingCash: 0 } }; }],
+    ['the after-snapshot gains an extra projection', a => { a.command.after = { ...a.command.after, settlement: null }; }],
+  ])('P11.18 (backfill): a raw BackfillOpeningCash is denied atomically when %s', async (_label, attack) => {
+    const yesterday = shiftDate(today, -1);
+    await seedPastDay(yesterday);
+    const raw = await rawBackfill(yesterday);
+    attack(raw);
+    await expectBackfillDenied(raw);
+  });
+
+  it('P11.19 (backfill): Rules refuse a backfill on today, a future, confirmed, closed or pre-go-live day, or without the day write', async () => {
+    const future = shiftDate(today, 1);
+    const confirmed = shiftDate(today, -2);
+    const closedDay = shiftDate(today, -4);
+    const beforeGoLive = shiftDate(today, -31);
+    const yesterday = shiftDate(today, -1);
+    await withAdmin(async db => setDoc(doc(db, `days/${today}`), dayDoc(today, null)));
+    await seedPastDay(future, { totals: zeroTotals() });
+    await seedPastDay(confirmed, { openingCash: 600, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    await seedPastDay(closedDay, { status: 'closed' });
+    await seedPastDay(beforeGoLive);
+    await seedPastDay(yesterday);
+    await expectBackfillDenied(await rawBackfill(today));
+    await expectBackfillDenied(await rawBackfill(future));
+    const overwrite = await rawBackfill(confirmed);
+    await expectBackfillDenied(overwrite);
+    await expectBackfillDenied(await rawBackfill(closedDay));
+    await expectBackfillDenied(await rawBackfill(beforeGoLive));
+    await expectBackfillDenied(await rawBackfill(yesterday), { omitDay: true });
+    // The day write cannot be relabelled as another kind's update either.
+    const relabelled = await rawBackfill(yesterday);
+    relabelled.command.kind = 'SetOpeningCash';
+    await expectBackfillDenied(relabelled);
+  });
 });

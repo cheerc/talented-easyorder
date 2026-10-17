@@ -129,6 +129,7 @@ readCommand(commandId: string): Promise<CommandReceipt | null>
 | CreateCashMovement | transaction＋day | expense、cashier sentinel、收入或支出恰一方向>0、理由 |
 | CorrectTransaction／VoidTransaction／CancelKeepDeposit／CancelRefund／Undo | transaction＋student（expense 無）＋day | expectedRevision、理由、前後值、對應日未關帳；不改帳戶歸屬studentId／原營業日／建立時間 |
 | CloseDay／ReopenDay | day＋新的 settlement | 舊版不改、版號+1、統計與當下 head 一致、理由／差額 |
+| BackfillOpeningCash | day | 只限早於台北今天、不早於上線日、未關帳且尚無開帳現金的既有營業日；開帳 0–20,000、理由必填 1–500 字；不補登交易（[P11 契約 §10](2026-10-17-cloud-day-close-contract.md#10-補開帳backfillopeningcash)） |
 | RecordExport／RecordPrint／RecordBackup | 無業務投影 | 稽核發起範圍、sourceSeq、格式，不嵌入整份報表 |
 
 取消已 voided 的交易拒絕（同 command 重送則回原 receipt）。payment 更正仍須>0，改成零使用作廢；order 餐費可零、收款可零；expense 收入 `mealPrice=0,paidAmount>0`，支出相反。CancelKeepDeposit 在原 paidAmount>0 時將有效列改 payment、mealPrice=0；paidAmount=0 則 void，不能建立零元 payment。一般 CorrectTransaction 只准既有 mealPrice/paidAmount/note，不跨帳戶、不任意改 type；取消專用 kind 才准 order→payment。P10a 實作註記：CorrectTransaction 的 payload 固定為 `{ mealPrice, paidAmount, amount, note, reason }`。order／payment／expense 的 `amount` 是衍生值（`paidAmount − mealPrice`，payment 為 `paidAmount`），必須與前兩欄一致；退款列的 `mealPrice`、`paidAmount` 固定為 0，`amount` 才是要更正的欄位。Undo 的 targets 一律含 `studentId`（櫃台收支為 `__cashier__`），學生列的 `expectedRevisions` 另含 `student`。P14 備份的 replay validator 依同一形狀驗證。

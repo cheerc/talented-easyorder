@@ -1242,7 +1242,63 @@ service cloud.firestore {
         // earlier kind (mutation and refund +19 → +18). A conditional here instead made the emulator
         // fail a malformed command with a retryable error rather than a denial.
         || ((kind == 'CorrectOpening' && validCorrectOpening(commandId, command))
-          || (kind in ['CloseDay', 'ReopenDay'] && validDaySettlementCommand(commandId, command)));
+          || (kind in ['CloseDay', 'ReopenDay'] && validDaySettlementCommand(commandId, command))
+          || (kind == 'BackfillOpeningCash' && validBackfillOpeningCash(commandId, command)));
+    }
+
+    // BackfillOpeningCash: a past open／reopened day that never confirmed its opening cash (for
+    // example the network was down that day) gets one afterwards, with a reason, so it can be closed.
+    // SetOpeningCash stays limited to the Taipei today; this kind only fills a missing value on a
+    // day before today and never changes a confirmed one. The day rule checks its own transition.
+    function validBackfillOpeningCash(commandId, command) {
+      let dayId = command.targets.dayId;
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let dayBefore = get(/databases/$(database)/documents/days/$(dayId)).data;
+      let dayAfter = getAfter(/databases/$(database)/documents/days/$(dayId)).data;
+      let p = command.payload;
+      return commandHolder(command.leaseEpoch)
+        && cashCommandEnvelope(commandId, command, head, headAfter)
+        && exactMap(command.targets, ['dayId'])
+        && exactMap(command.expectedRevisions, ['day'])
+        && command.expectedRevisions.day == dayBefore.revision
+        && validCalendarDate(dayId)
+        && timestamp.value(dayId + 'T00:00:00Z') + duration.value(24, 'h') <= request.time + duration.value(8, 'h')
+        && dayId >= head.goLiveDate
+        && dayBefore.status in ['open', 'reopened']
+        && dayBefore.openingCash == null
+        && exactMap(p, ['openingCash', 'reason'])
+        && p.openingCash is int && p.openingCash >= 0 && p.openingCash <= 20000
+        && validMutationReason(p.reason)
+        && command.reason == p.reason
+        && command.businessDate == dayId
+        && command.studentId == null
+        && zeroCashEffect(command.cashEffect)
+        && command.before == {'head': head, 'day': dayBefore}
+        && command.after == {'head': headAfter, 'day': dayAfter}
+        && dayAfter.revision == dayBefore.revision + 1
+        && dayAfter.lastCommandId == commandId;
+    }
+
+    // The day only gains its first opening cash; totals, menu, status and settlements stay.
+    function dayBackfillOpeningCommand(commandId, dayId, before, after) {
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      return command.kind == 'BackfillOpeningCash'
+        && !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && command.targets.dayId == dayId
+        && command.before.day == before
+        && command.after.day == after
+        && before.status in ['open', 'reopened']
+        && before.openingCash == null && before.openedBy == null && before.openedAt == null
+        && after.openingCash == command.payload.openingCash
+        && after.openedBy == request.auth.uid && after.openedAt == request.time
+        && after.diff(before).affectedKeys().hasOnly([
+          'openingCash', 'openedBy', 'openedAt', 'revision', 'lastCommandId', 'updatedAt'
+        ])
+        && after.revision == before.revision + 1
+        && after.updatedAt == request.time;
     }
 
     // P11 CloseDay／ReopenDay (spec §5 command table, §7.1 expectedCash and §7.4 day lifecycle). Each
@@ -2000,6 +2056,9 @@ service cloud.firestore {
       // P11: CloseDay／ReopenDay have their own rule so the other day branches keep their headroom.
       allow update: if request.resource.data.lastCommandId is string
         && dayCloseCommand(request.resource.data.lastCommandId, dayId, resource.data, request.resource.data);
+      // Opening cash backfilled on a past day: its own rule, like CorrectOpening and CloseDay.
+      allow update: if request.resource.data.lastCommandId is string
+        && dayBackfillOpeningCommand(request.resource.data.lastCommandId, dayId, resource.data, request.resource.data);
     }
 
     // P11 immutable settlement versions: created once by CloseDay／ReopenDay, never changed or deleted.

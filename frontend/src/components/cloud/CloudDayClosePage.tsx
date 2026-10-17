@@ -3,6 +3,7 @@ import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
 import {
   createCloudDayCloseRepository,
+  type BackfillCloudDayOpeningInput,
   type CloseCloudDayInput,
   type CloudDayCloseOverview,
   type CloudDayCloseState,
@@ -23,7 +24,8 @@ export interface CloudDayClosePageProps {
 
 type PreparedCommand =
   | ({ kind: 'close-day' } & Omit<CloseCloudDayInput, 'leaseEpoch'>)
-  | ({ kind: 'reopen-day' } & Omit<ReopenCloudDayInput, 'leaseEpoch'>);
+  | ({ kind: 'reopen-day' } & Omit<ReopenCloudDayInput, 'leaseEpoch'>)
+  | ({ kind: 'backfill-opening' } & Omit<BackfillCloudDayOpeningInput, 'leaseEpoch'>);
 
 type RecoveryPhase = 'submitting' | 'unknown' | 'checking' | 'receipt' | 'access-lost';
 
@@ -54,11 +56,15 @@ interface PageState {
   note: string;
   reopenOpen: boolean;
   reopenReason: string;
+  backfillText: string;
+  backfillReason: string;
   recovery: RecoveryState | null;
 }
 
-function clearDrafts(): Pick<PageState, 'countedText' | 'note' | 'reopenOpen' | 'reopenReason'> {
-  return { countedText: '', note: '', reopenOpen: false, reopenReason: '' };
+type DraftKey = 'countedText' | 'note' | 'reopenOpen' | 'reopenReason' | 'backfillText' | 'backfillReason';
+
+function clearDrafts(): Pick<PageState, DraftKey> {
+  return { countedText: '', note: '', reopenOpen: false, reopenReason: '', backfillText: '', backfillReason: '' };
 }
 
 function initialPageState(scopeKey: string): PageState {
@@ -141,13 +147,14 @@ function statusLabel(status: CloudDayCloseState['status']): string {
 }
 
 function commandLabel(command: PreparedCommand): string {
+  if (command.kind === 'backfill-opening') return `${command.dayId} 補開帳`;
   return command.kind === 'close-day' ? `${command.dayId} 關帳` : `${command.dayId} 重開`;
 }
 
 function unclosedLabel(day: CloudUnclosedDay, selectionDate: string): string {
-  if (day.kind === 'no-business') return '無營業，不需關帳';
+  if (day.kind === 'no-business') return '沒有開帳也沒有交易';
   if (day.kind === 'missing-opening') {
-    return day.dayId === selectionDate ? '尚未確認開帳現金' : '缺開帳現金，無法關帳';
+    return day.dayId === selectionDate ? '尚未確認開帳現金' : '缺開帳現金，需補開帳後關帳';
   }
   return day.dayId === selectionDate ? '今天，尚未關帳' : '尚未關帳';
 }
@@ -311,6 +318,10 @@ export function CloudDayClosePage({ db, leaseEpoch, identityKey, onNavigationSta
   }, [hasRecovery, identityKey, onNavigationStateChange, page.authorizationRevoked]);
 
   const dispatch = (command: PreparedCommand): Promise<CommandResult> => {
+    if (command.kind === 'backfill-opening') {
+      const { commandId, dayId, expectedDayRevision, openingCash, reason } = command;
+      return repository.backfillOpening({ commandId, leaseEpoch, dayId, expectedDayRevision, openingCash, reason });
+    }
     const { commandId, dayId, expectedDayRevision, expectedSettlementRevision } = command;
     const base = { commandId, leaseEpoch, dayId, expectedDayRevision, expectedSettlementRevision };
     if (command.kind === 'close-day') {
@@ -548,6 +559,9 @@ export function CloudDayClosePage({ db, leaseEpoch, identityKey, onNavigationSta
     ? countedCash - day.expectedCash
     : null;
   const canClose = !!snapshot && !!day && day.status !== 'closed' && day.expectedCash !== null && snapshot.dayId <= selectionDate;
+  // A past day that never confirmed its opening cash (for example the network was down) can get it backfilled.
+  const canBackfill = !!snapshot && !!day && day.status !== 'closed' && day.openingCash === null && snapshot.dayId < selectionDate;
+  const backfillCash = /^\d+$/.test(page.backfillText) ? Number(page.backfillText) : null;
 
   const submitClose = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -595,6 +609,30 @@ export function CloudDayClosePage({ db, leaseEpoch, identityKey, onNavigationSta
       dayId: snapshot.dayId,
       expectedDayRevision: day.revision,
       expectedSettlementRevision: day.lastSettlementRevision,
+      reason,
+    });
+  };
+
+  const submitBackfill = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (page.recovery || !snapshot || !day || !canBackfill) return;
+    if (backfillCash === null || !Number.isSafeInteger(backfillCash) || backfillCash > 20_000) {
+      updatePage(previous => ({ ...previous, actionError: '開帳現金必須明確輸入 0 至 20,000 元的整數；空白、負數與小數均不接受。' }));
+      return;
+    }
+    const reason = page.backfillReason.trim();
+    if (reason.length < 1 || reason.length > 500) {
+      updatePage(previous => ({ ...previous, actionError: '補開帳原因必須為 1 至 500 個字元。' }));
+      return;
+    }
+    const commandId = makeCommandId();
+    if (!commandId) return;
+    void runPreparedCommand({
+      kind: 'backfill-opening',
+      commandId,
+      dayId: snapshot.dayId,
+      expectedDayRevision: day.revision,
+      openingCash: backfillCash,
       reason,
     });
   };
@@ -694,9 +732,22 @@ export function CloudDayClosePage({ db, leaseEpoch, identityKey, onNavigationSta
               </ul>
             )}
             {noBusiness.length > 0 && (
-              <p className="cloud-day-close__help" data-testid="cloud-no-business-days">
-                無營業，不需關帳：{noBusiness.map(item => item.dayId).join('、')}（過去日期、沒有開帳現金也沒有交易，例如為更正期初建立的營業日）。
-              </p>
+              <div className="cloud-day-close__help" data-testid="cloud-no-business-days">
+                <p>
+                  沒有開帳也沒有交易的過去日期（例如為更正期初建立的營業日）。那天沒有營業就不需處理；
+                  如果其實有營業但沒開帳（例如網路斷線），可以查看該日補開帳後再關帳。
+                </p>
+                <ul className="cloud-day-close__list">
+                  {noBusiness.map(item => (
+                    <li key={item.dayId} data-testid={`cloud-no-business-${item.dayId}`}>
+                      <span className="cloud-day-close__mono">{item.dayId}</span>
+                      <button type="button" className="cloud-day-close__secondary" onClick={() => void loadSnapshot(item.dayId)} disabled={busy || item.dayId === snapshot.dayId}>
+                        查看
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </section>
 
@@ -746,14 +797,49 @@ export function CloudDayClosePage({ db, leaseEpoch, identityKey, onNavigationSta
                   <p className="cloud-day-close__warning">未來日期只能預排菜單，不能關帳。</p>
                 )}
                 {currentKind === 'no-business' && (
-                  <p className="cloud-day-close__notice" role="status">無營業，不需關帳：這天沒有開帳現金，也沒有任何交易。</p>
+                  <p className="cloud-day-close__notice" role="status">這天沒有開帳現金，也沒有任何交易。那天沒有營業就不需關帳；如果其實有營業但沒開帳，可以在下方補開帳後再關帳。</p>
                 )}
                 {currentKind === 'missing-opening' && snapshot.dayId <= selectionDate && (
                   <p className="cloud-day-close__warning">
                     {snapshot.dayId === selectionDate
                       ? '尚未確認開帳現金，不能關帳。請先到「日期與供應商」確認開帳現金。'
-                      : '這天有交易但沒有開帳現金，不能關帳。請聯絡系統維護者處理。'}
+                      : '這天有交易但沒有開帳現金，要先補開帳才能關帳。'}
                   </p>
+                )}
+
+                {canBackfill && (
+                  <section className="cloud-day-close__card" aria-label="補開帳">
+                    <h3>補開帳</h3>
+                    <form className="cloud-day-close__form" aria-label={`${snapshot.dayId} 補開帳`} onSubmit={submitBackfill}>
+                      <label>
+                        開帳現金（元）
+                        <input
+                          className="cloud-day-close__input cloud-day-close__mono"
+                          inputMode="numeric"
+                          value={page.backfillText}
+                          onChange={event => updatePage(previous => ({ ...previous, backfillText: event.target.value.trim(), actionError: '' }))}
+                          disabled={busy}
+                          required
+                        />
+                      </label>
+                      <label>
+                        補開帳原因（必填，最多 500 字）
+                        <textarea
+                          className="cloud-day-close__input"
+                          rows={2}
+                          maxLength={500}
+                          value={page.backfillReason}
+                          onChange={event => updatePage(previous => ({ ...previous, backfillReason: event.target.value, actionError: '' }))}
+                          disabled={busy}
+                          required
+                        />
+                      </label>
+                      <div className="cloud-day-close__actions">
+                        <button type="submit" className="cloud-day-close__primary" disabled={busy}>確認補開帳</button>
+                      </div>
+                      <p className="cloud-day-close__help">填那天開店時抽屜裡的現金。補開帳會留下操作者、時間與原因，之後不能用補開帳修改；補完後在這一頁點現金關帳。</p>
+                    </form>
+                  </section>
                 )}
 
                 {canClose && (

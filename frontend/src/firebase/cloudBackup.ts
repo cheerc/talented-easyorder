@@ -70,7 +70,7 @@ const TARGET_KEYS_BY_KIND: Record<string, string[]> = {
   CorrectTransaction: ['transactionId', 'studentId', 'dayId'], VoidTransaction: ['transactionId', 'studentId', 'dayId'],
   CancelKeepDeposit: ['transactionId', 'studentId', 'dayId'], CancelRefund: ['transactionId', 'studentId', 'dayId'],
   Undo: ['transactionId', 'studentId', 'dayId'], CloseDay: ['dayId', 'settlementRevision'],
-  ReopenDay: ['dayId', 'settlementRevision'], RecordExport: [], RecordPrint: [], RecordBackup: [],
+  ReopenDay: ['dayId', 'settlementRevision'], BackfillOpeningCash: ['dayId'], RecordExport: [], RecordPrint: [], RecordBackup: [],
 };
 const REVISION_KEYS_BY_KIND: Record<string, string[]> = {
   EnsureDay: ['day'], CreateStudent: ['student'], ChangeStudentCode: ['student'], EditStudent: ['student'],
@@ -80,7 +80,7 @@ const REVISION_KEYS_BY_KIND: Record<string, string[]> = {
   CreateRefund: ['day', 'student', 'transaction'], CorrectTransaction: ['day', 'transaction'],
   VoidTransaction: ['day', 'transaction'], CancelKeepDeposit: ['day', 'transaction'],
   CancelRefund: ['day', 'transaction'], Undo: ['day', 'transaction'],
-  CloseDay: ['day', 'settlement'], ReopenDay: ['day', 'settlement'],
+  CloseDay: ['day', 'settlement'], ReopenDay: ['day', 'settlement'], BackfillOpeningCash: ['day'],
   RecordExport: [], RecordPrint: [], RecordBackup: [],
 };
 const PROJECTIONS_BY_KIND: Record<string, string[]> = {
@@ -91,7 +91,7 @@ const PROJECTIONS_BY_KIND: Record<string, string[]> = {
   CreateRefund: ['day', 'student', 'transaction'], CorrectTransaction: ['day', 'transaction'],
   VoidTransaction: ['day', 'transaction'], CancelKeepDeposit: ['day', 'transaction'],
   CancelRefund: ['day', 'transaction'], Undo: ['day', 'transaction'],
-  CloseDay: ['day', 'settlement'], ReopenDay: ['day', 'settlement'],
+  CloseDay: ['day', 'settlement'], ReopenDay: ['day', 'settlement'], BackfillOpeningCash: ['day'],
   RecordExport: [], RecordPrint: [], RecordBackup: [],
 };
 // P10a transaction mutations always target { transactionId, studentId, dayId }. A counter cash row uses
@@ -100,7 +100,7 @@ const MUTATION_KINDS = new Set<string>(TRANSACTION_MUTATION_KINDS);
 const DECODABLE_COMMAND_KINDS = new Set([
   'EnsureDay', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus', 'SaveVendor',
   'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateOrder', 'CreatePayment', 'CreateCashMovement',
-  'CreateRefund', ...MUTATION_KINDS, 'RecordBackup', 'CorrectOpening', 'CloseDay', 'ReopenDay',
+  'CreateRefund', ...MUTATION_KINDS, 'RecordBackup', 'CorrectOpening', 'CloseDay', 'ReopenDay', 'BackfillOpeningCash',
 ]);
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -433,6 +433,7 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
     CorrectTransaction: { required: ['mealPrice', 'paidAmount', 'amount', 'note', 'reason'] }, VoidTransaction: { required: ['reason'] },
     CancelKeepDeposit: { required: ['reason'] }, CancelRefund: { required: ['reason'] }, Undo: { required: ['targetCommandId', 'reason'] },
     CloseDay: { required: ['countedCash'], optional: ['note', 'expectedCash'] }, ReopenDay: { required: ['reason'] },
+    BackfillOpeningCash: { required: ['openingCash', 'reason'] },
     RecordExport: { required: ['exportType', 'sourceSeq'], optional: ['dateRange'] },
     RecordPrint: { required: ['printType', 'businessDate', 'sourceSeq'] },
     RecordBackup: { required: ['backupType', 'sourceSeq', 'fromSeq', 'toSeq', 'sha256'] },
@@ -498,7 +499,7 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
       throw new BackupValidationError(`command seq ${seq} targets schema 無效`);
     }
     const numericPayloadFields: Record<string, string[]> = {
-      CorrectOpening: ['amount'], SetDayMenu: ['price'], SetOpeningCash: ['openingCash'],
+      CorrectOpening: ['amount'], SetDayMenu: ['price'], SetOpeningCash: ['openingCash'], BackfillOpeningCash: ['openingCash'],
       CreateOrder: ['mealPrice', 'paidAmount'], CreatePayment: ['paidAmount'], CreateCashMovement: ['mealPrice', 'paidAmount'],
       CreateRefund: ['amount'], CorrectTransaction: ['mealPrice', 'paidAmount', 'amount'], CloseDay: ['countedCash'],
       RecordExport: ['sourceSeq'], RecordPrint: ['sourceSeq'], RecordBackup: ['sourceSeq', 'fromSeq', 'toSeq'],

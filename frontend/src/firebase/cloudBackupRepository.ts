@@ -35,7 +35,7 @@ function recordFromSnapshot(snapshot: QueryDocumentSnapshot, datasetId: string, 
     'EnsureDay', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus', 'CorrectOpening',
     'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateOrder', 'CreatePayment',
     'CreateCashMovement', 'CreateRefund', 'CorrectTransaction', 'VoidTransaction', 'CancelKeepDeposit',
-    'CancelRefund', 'Undo', 'CloseDay', 'ReopenDay', 'RecordExport', 'RecordPrint', 'RecordBackup',
+    'CancelRefund', 'Undo', 'CloseDay', 'ReopenDay', 'BackfillOpeningCash', 'RecordExport', 'RecordPrint', 'RecordBackup',
   ]);
   if (!raw || typeof raw !== 'object' || raw.commandId !== snapshot.id || !allowedKinds.has(String(raw.kind))
     || raw.schemaVersion !== undefined && raw.schemaVersion !== schemaVersion

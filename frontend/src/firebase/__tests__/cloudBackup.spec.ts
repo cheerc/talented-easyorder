@@ -515,6 +515,50 @@ describeWithEmulator('P14 cloud backup', () => {
     expect(() => validateBackupManifest(withoutBase)).toThrow();
   });
 
+  it('exports, decrypts and replays a real BackfillOpeningCash on a past day before its close; forged receipts are rejected', async () => {
+    await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 0, []));
+    const db = authedDb();
+    const user = { uid: operator.uid, email: operator.email, emailVerified: true, providerData: [{ providerId: 'google.com' }] } as unknown as User;
+    const writer = createCloudCommandRepository(db, { currentUser: () => user });
+    const closing = createCloudDayCloseRepository(db, { currentUser: () => user });
+    const backups = createCloudBackupRepository(db, { currentUid: () => operator.uid });
+    const shifted = new Date(`${taipeiToday()}T00:00:00.000Z`);
+    shifted.setUTCDate(shifted.getUTCDate() - 1);
+    const yesterday = shifted.toISOString().slice(0, 10);
+    let next = 800;
+    const id = () => uuid(++next);
+    const okResult = (result: { ok: boolean }) => expect(result, JSON.stringify(result)).toMatchObject({ ok: true });
+    const day = async () => (await getDoc(doc(db, `days/${yesterday}`))).data() as Record<string, number & string>;
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: 7,
+      targets: { dayId: yesterday }, expectedRevisions: { day: 0 }, payload: { businessDate: yesterday } }));
+    okResult(await closing.backfillOpening({ commandId: id(), leaseEpoch: 7, dayId: yesterday,
+      expectedDayRevision: (await day()).revision, openingCash: 600, reason: '當天網路中斷' }));
+    const current = await day();
+    okResult(await closing.closeDay({ commandId: id(), leaseEpoch: 7, dayId: yesterday,
+      expectedDayRevision: current.revision, expectedSettlementRevision: current.lastSettlementRevision,
+      expectedCash: 600, countedCash: 590, note: '少 10 元' }));
+
+    const exported = await backups.exportRange({ fromSeq: 0, generatedAt: '2026-10-17T05:00:00.000Z' });
+    expect(exported.manifest.records.map(record => record.kind)).toEqual(['EnsureDay', 'BackfillOpeningCash', 'CloseDay']);
+    const opened = await decryptBackup(await encryptBackup(exported.manifest, 'backfill-round-trip'), 'backfill-round-trip');
+    const replayed = replayBackupProjections(opened.records, opened.baseState);
+    expect(replayed).toEqual(opened.projectionState);
+    expect(replayed[`days/${yesterday}`]).toMatchObject({ status: 'closed', openingCash: 600, openedBy: operator.uid });
+    expect(replayed[`days/${yesterday}/settlements/1`]).toMatchObject({ openingCash: 600, expectedCash: 600, countedCash: 590, difference: -10 });
+    expect(opened.records[1]).toMatchObject({ kind: 'BackfillOpeningCash', reason: '當天網路中斷', payload: { openingCash: 600, reason: '當天網路中斷' } });
+
+    // A backfill whose day snapshot names another opener, or whose reason differs from the payload, is rejected.
+    const forgedOpener = structuredClone(opened);
+    (forgedOpener.records[1]!.after!.day as Record<string, unknown>).openedBy = 'someone-else';
+    expect(() => validateBackupManifest(forgedOpener)).toThrow(/seq 2/);
+    const forgedReason = structuredClone(opened);
+    forgedReason.records[1]!.reason = 'other';
+    expect(() => validateBackupManifest(forgedReason)).toThrow(/seq 2/);
+    const forgedBefore = structuredClone(opened);
+    (forgedBefore.records[1]!.before!.day as Record<string, unknown>).openingCash = 100;
+    expect(() => validateBackupManifest(forgedBefore)).toThrow();
+  });
+
   it('Rules reject an unpaired or fabricated backup receipt', async () => {
     await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 0, []));
     const db = authedDb();
