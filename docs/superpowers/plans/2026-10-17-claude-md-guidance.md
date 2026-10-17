@@ -1,6 +1,6 @@
 # 分層 CLAUDE.md 建立計畫
 
-日期：2026-10-17。狀態：文件實作與本機文件驗證完成；獨立 review 與 PR CI 待 Coordinator。本計畫是文件工作安排，不授權開發下一個產品 phase。
+日期：2026-10-17。狀態：第一版文件實作、獨立 review 與 CI 已完成；本次計畫增量待 Coordinator 核對，merge 狀態以 [PR #500](https://github.com/cheerc/talented-easyorder/pull/500) 為準。本計畫是文件工作安排，不授權開發下一個產品 phase。
 
 ## 目標與依據
 
@@ -50,7 +50,9 @@
 
 ## 實作與本機文件檢查
 
-已完成五檔範圍：`CLAUDE.md`、`frontend/CLAUDE.md`、`README.md`、`CONTRIBUTING.md` 與本計畫。兩份指引均少於 100 行；本機 `git diff --check` 通過；逐項核對所列 frontend scripts、Node engine、workflow 的 cwd 與 docs-only 分類，並檢查 36 個本機 Markdown 檔案連結及引用的核心 source paths，均存在（CONTRIBUTING 的既有 GitHub issues route 不作本機檔案路徑解析）。未執行 app lint/build/Vitest/Emulator/E2E；獨立 review 與 PR CI 尚待 Coordinator。
+第一版五檔變更 `CLAUDE.md`、`frontend/CLAUDE.md`、`README.md`、`CONTRIBUTING.md` 與本計畫，head 為 `d93dc3da5554adebebbc18dc207ce3df2cf15e60`，見 [PR #500](https://github.com/cheerc/talented-easyorder/pull/500)。兩份指引均少於 100 行；本機 `git diff --check` 通過；逐項核對所列 frontend scripts、Node engine、workflow 的 cwd 與 docs-only 分類，並檢查 36 個本機 Markdown 檔案連結及引用的核心 source paths，均存在（CONTRIBUTING 的既有 GitHub issues route 不作本機檔案路徑解析）。Coordinator 對此 exact head 完成獨立 review，0 findings；CI run [38993180291](https://github.com/cheerc/talented-easyorder/actions/runs/38993180291)：`build-and-test` docs-only 成功、`e2e` skipped。該 CI 沒有執行 app lint/build/Vitest/Emulator/E2E，本地亦未跑這些 app suites。
+
+Payroll 文件僅做唯讀 `CLAUDE.md` 寫法比較：root 以任務→延伸文件導航的模式已有相同目的，無需新增索引表或深層指引；更高密度的即時數字、CI 路由與測試細節不作為本 repo 的寫法範本。抽查沒有足夠證據宣稱任何特定規則已過時；未修改 payroll 檔案或執行業務操作。此比較未改動其餘四檔。本次計畫增量仍待 Coordinator 核對；新 head 的 CI 狀態獨立待確認，不沿用第一版 CI 結果。
 
 ## 驗收與驗證
 
