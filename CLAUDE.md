@@ -4,7 +4,7 @@
 
 - 先看 `git status --short --branch`、branch 與近期 log；保留所有既有未提交變更，不用 reset／checkout 覆寫。再讀 [正式後端交接](docs/DEVELOPMENT-HANDOFF.md) 的目前接手點，以及本次最新使用者授權。handoff 是後端續作權威；歷史 receipt、舊 setup/deploy 指令都不是新授權。不可自行推進下一 phase。
 - 本 repo 同時有 PC POS prototype 與逐步開發中的正式後端；功能完成、部署、使用者營運驗收是不同 gate。PR 必須如實記錄 revision、驗證範圍與未執行項目。
-- 實作與獨立 review 隔離。review 一律使用獨立 worktree，不碰主工作區；在新的 subagent worktree 派工時明確要求閱讀適用的 `CLAUDE.md`，不假設自動繼承載入。implementer 不自行 merge；Coordinator 依當次授權、review 與 CI 處理。
+- 實作與獨立 review 隔離。review 一律使用獨立 worktree，不碰主工作區；Coordinator 本人執行 review，不再轉派 review subagent。實作與指定研究可依授權委派；派工到新的 subagent worktree 時明確要求閱讀適用的 `CLAUDE.md`，不假設自動繼承載入。implementer 不自行 merge；Coordinator 依當次授權、review 與 CI 處理。
 
 ## 安全與操作邊界
 
