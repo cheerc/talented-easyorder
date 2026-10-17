@@ -9,17 +9,15 @@ See the [Fork & Setup section in README.md](./README.md#fork--setup) for environ
 ## Branch Flow
 
 1. **Fork** this repository
-2. Create a **feature branch** from `dev`: `git checkout -b feat/your-feature dev`
+2. Create a **feature branch** from the current default branch (`main`): `git checkout -b feat/your-feature main`
 3. Make your changes with clear, focused commits
-4. Open a **Pull Request** targeting the `dev` branch
+4. Open a **Pull Request** targeting the current default branch (`main`)
+
+For the formal backend, read the current [development handoff](./docs/DEVELOPMENT-HANDOFF.md) first; its phase and authorization boundaries take precedence over historical instructions.
 
 ## CI Requirements
 
-All PRs must pass the CI pipeline before merge:
-
-- `npm run build` — production build succeeds
-- `npm run lint` — zero ESLint errors
-- `npx vitest run` — all tests pass
+PR validation is determined by the current [CI workflow](./.github/workflows/ci.yml). Its npm commands run with working directory `frontend/`; the workflow also runs project-specific Emulator proofs on non-docs changes. A docs-only PR (changes limited to `docs/**` and Markdown files) is classified separately and skips build, lint, and test steps; required CI success for that path is not evidence that app checks ran. To run a command locally, first use `cd frontend`; select the checks applicable to your change and report skipped or unrun checks accurately.
 
 ## Code Review
 
