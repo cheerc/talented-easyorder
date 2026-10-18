@@ -336,7 +336,7 @@ CheerC 2026-10-15 的 10 項操作回饋排程見[操作回饋排程計畫](2026
 
 - CheerC 2026-10-17 規劃 P11c2，拆成 P11c2a（本批，後端）與 P11c2b（畫面）。base `f7cfc452971c05303d8cf60963cb6aec3b33c6c6`（#510）；PR、head SHA 與 CI 以 PR body 與 handoff 為準。契約 [§12](../specs/2026-10-17-cloud-day-close-contract.md#12-p11c2a-回填斷層日startbackfill)。
 - 第 1 項（#509 審查備註）：異常掃描不再有 400 天硬上限（每頁 200 筆、`startAfter`、每頁之後比對 head）；開帳表單與寫入器只找上一個已關帳日（每次 31 天往回），異常掃描失敗不擋開帳。第 2 項：`StartBackfill` 與 `backfillDays`；Rules 把交易日期檢查改為 `validTransactionDay`，並移除 `validTransactionPayload` 中與 `validTransactionDoc` 重複的日期檢查（不削弱檢查）。
-- 完整計畫與驗收見 handoff 與 [P11c2a 預算附錄](../../ops/p05-rules-budget.md#p11c2a-gap-day-backfill--budget-and-probe-receipt)。P11c2b 回填模式畫面、P11c3 關帳對齊、P11c4 關帳後補記尚未開始。P11c2b 待辦（#511 審查備註）：開帳表單查上一個已關帳日失敗後要有重試按鈕；`isBackfilled` 補台北午夜邊界測試（UTC 16:00:00 前後一秒）。
+- 完整計畫與驗收見 handoff 與 [P11c2a 預算附錄](../../ops/p05-rules-budget.md#p11c2a-gap-day-backfill--budget-and-probe-receipt)。P11c3 關帳對齊、P11c4 關帳後補記尚未開始；P11c2b 回填模式畫面見下一節（#511 審查備註的重試按鈕與 `isBackfilled` 午夜邊界測試已在 P11c2b 處理）。
 
 ## P11c2b 回填模式畫面 checkpoint — 2026-10-18
 
