@@ -1436,6 +1436,9 @@ export function CloudDayClosePage({
                     {day.status === 'closed' && <p className="cloud-day-close__help">
                       補記只記錄關帳後的現金收入或支出，不修改學生訂餐、繳費、交易或原關帳實點。差額超過 20,000 元時需依現場流程處理，不可拆成多筆補記。
                     </p>}
+                    {day.status === 'closed' && <p className="cloud-day-close__help">
+                      另一個視窗仍可能同時補記。同一筆差額請只在一個視窗操作，送出前先核對補記歷史。
+                    </p>}
                     {page.postCloseReference && (
                       <p className="cloud-day-close__difference cloud-day-close__difference--nonzero" role="status" data-testid="post-close-anomaly-preview">
                         由 {page.postCloseReference.dayId} 的開帳差額帶入：開帳現金 {formatMoney(page.postCloseReference.openingCash)}，
