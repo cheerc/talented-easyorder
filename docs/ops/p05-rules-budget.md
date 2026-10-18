@@ -788,7 +788,7 @@ P11c4a adds the 27th kind `RecordPostCloseEntry` (25 enabled) and the new collec
 
 ### Rule layout
 
-- `validRecordPostCloseEntry` is nested in the last operand of `validCommandCreate` next to `StartBackfill` (no new top-level `||`). It binds `expectedRevisions.day` to `dayBefore.revision` and `expectedRevisions.settlement` to `dayBefore.lastSettlementRevision`, requires `dayBefore.status == 'closed'` and `dayId >= goLiveDate`, restricts the payload to `{direction, amount 1–20,000, reason}`, ties the top-level `reason` to `payload.reason`, and pins `before = {head, day, postCloseEntry: null}` and `after = {headAfter, day (unchanged), entry}` with `entry` an exact map (`entryId == commandId`, `settlementRevision == dayBefore.lastSettlementRevision`, `createdBy == auth.uid`, `createdAt == request.time`).
+- `validRecordPostCloseEntry` is nested in the last operand of `validCommandCreate` next to `StartBackfill` (no new top-level `||`). It binds `expectedRevisions.day` to `dayBefore.revision` and `expectedRevisions.settlement` to `dayBefore.lastSettlementRevision`, requires `dayBefore.status == 'closed'` and `dayId >= goLiveDate`, restricts the payload to `{direction, amount 1–20,000, reason}`, and uses `p.reason.trim().size() >= 1` (Rules Emulator trim removes ASCII U+0000–U+0020) alongside `validMutationReason`. It ties the top-level `reason` to `payload.reason` and pins `before = {head, day, postCloseEntry: null}` and `after = {headAfter, day (unchanged), entry}` with `entry` an exact map (`entryId == commandId`, `settlementRevision == dayBefore.lastSettlementRevision`, `createdBy == auth.uid`, `createdAt == request.time`).
 - `postCloseEntries/{entryId}`: `get`/`list` for the current holder, `update`/`delete` false, `create` only through `postCloseEntryCommand` (the command exists after the commit, did not exist before, has the same ID, kind and commit time, and its `after.postCloseEntry` equals the written entry). The head rule is kind-agnostic, so `headCommand` is untouched. `dayWriteCommand`, `dayCloseCommand` and `StartBackfill` are untouched.
 
 ### Write budget
@@ -801,7 +801,7 @@ Static derivation like the earlier appendices (the Emulator has no access counte
 
 ### Expression headroom
 
-Same probe as before (`1 == 1 &&` terms at one anchor, bisected against a positive Emulator case; `+lo / +hi`). Main is `e824492`; this PR is measured on its final Rules (`firestore.rules` unchanged since the first Rules commit `d010464`). The probe has a new anchor `postClose` (the `postCloseEntries` create rule). Every anchor was measured on both sides; none dropped to +5 or lower, none is below main — all are equal.
+Same probe as before (`1 == 1 &&` terms at one anchor, bisected against a positive Emulator case; `+lo / +hi`). Main is `e824492`; the table records the source implementation report on final Rules head `5a3bd17` (`firestore.rules` unchanged since the first Rules commit `d010464`). That report measured each listed anchor on both sides and records the existing anchors equal to main. The later independent review on the same head reran a separate 9-anchor set; it did not claim to reproduce every row in this table (see the review receipt in [evidence](free-production-evidence.md#p11c4a-關帳後補記-checkpoint--2026-10-18)).
 
 | Rule anchor | Case | Main | This PR |
 |---|---|---:|---:|
@@ -819,7 +819,9 @@ Same probe as before (`1 == 1 &&` terms at one anchor, bisected against a positi
 | dataHead update | `P11c4.3` | — | +95 / +96 |
 | `postCloseEntries` create | `P11c4.3` | — | +96 / +97 |
 
-Review fix (`reason.trim().size() >= 1` on the command rule): the new kind's command anchor moved from +65 / +66 to +64 / +65; every other anchor is unchanged. Rules `trim()` strips only ASCII whitespace, so a Unicode-space-only reason (U+3000, U+00A0) still passes Rules. The schema (`ASCII_BLANK`, which the backup also runs through), the receipt, the entry read and the backup checks accept it on purpose: none of them may be stricter than Rules, or one such immutable entry would block every export (a first fix with a Unicode-aware JavaScript `trim()` in the schema failed the real-backup test this way).
+Review fix (`reason.trim().size() >= 1` on the command rule): in the source implementation report, the new kind's command anchor moved from +65 / +66 to +64 / +65; every other listed anchor is unchanged. Rules Emulator `trim()` removes ASCII U+0000–U+0020, including control characters. The client normalizer rejects an empty string and reasons made only of space, tab, CR or LF; it may accept other ASCII control-only reasons that Rules then rejects, so the two accepted sets are not identical. Unicode whitespace-only reasons (for example U+3000 and U+00A0) pass Rules and must remain accepted by receipt, entry reads and backup validation; otherwise an immutable value Rules accepted could block later reads or exports. The backup manifest validates the raw 1–500 length and equality without a stricter whitespace check.
+
+The independent reviewer on source head `5a3bd17` ran `probe.py` for 9 candidate anchors (18 lo／hi points) and `probe-base.py` for the 3 tightest base anchors (6 points). The reviewer explicitly confirmed base／candidate equality for `CreateStudent`, P08.8 dayWrite and the backfilled-order transaction; other source-table rows were not re-probed in that review. For the new head and entry anchors, the upper side reported “Expression is too complex to evaluate safely”; this is a compile-time expression limit, not a measured runtime 1,000-expression ceiling.
 
 The tightest anchors are unchanged: the transaction rule for a backfilled order (+16), the day rule for `CreateOrder` (+11), `CreateStudent` on the command rule (+3). The new kind has +64 on the command rule.
 
