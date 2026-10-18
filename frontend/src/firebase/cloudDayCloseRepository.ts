@@ -233,6 +233,12 @@ function integer(value: unknown, minimum: number, maximum = 1_000_000_000): valu
   return typeof value === 'number' && Number.isSafeInteger(value) && !Object.is(value, -0) && value >= minimum && value <= maximum;
 }
 
+function assertServerConfirmed(snapshot: { metadata: { fromCache: boolean; hasPendingWrites: boolean } }, source: string): void {
+  if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) {
+    throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `${source} 含快取或未確認的本機寫入`);
+  }
+}
+
 function validDate(value: unknown): value is string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -337,6 +343,8 @@ async function readPostCloseEntries(
       ...(last ? [startAfter(last)] : []),
       limit(pageSize),
     ));
+    assertServerConfirmed(page, '關帳後補記');
+    for (const snapshot of page.docs) assertServerConfirmed(snapshot, '關帳後補記');
     for (const snapshot of page.docs) {
       if (entries.length >= MAX_POST_CLOSE_ENTRIES) {
         throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `關帳後補記超過 ${MAX_POST_CLOSE_ENTRIES} 筆，無法完整計算有效關帳現金`);
@@ -392,6 +400,7 @@ export async function readCloudBackfillDay(db: Firestore, dayId: string): Promis
   try {
     if (!validDate(dayId)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', '營業日格式不支援');
     const snapshot = await getDocFromServer(doc(db, backfillDayPath(dayId)));
+    assertServerConfirmed(snapshot, `回填標記 ${dayId}`);
     return snapshot.exists() ? decodeBackfill(dayId, snapshot.data()) : null;
   } catch (error) {
     throw readError(error);
@@ -400,6 +409,7 @@ export async function readCloudBackfillDay(db: Firestore, dayId: string): Promis
 
 async function readHeadSeq(db: Firestore): Promise<{ seq: number; datasetId: string; goLiveDate: string }> {
   const snapshot = await getDocFromServer(doc(db, dataHeadPath()));
+  assertServerConfirmed(snapshot, 'dataHead');
   const value: unknown = snapshot.exists() ? snapshot.data() : null;
   if (!plainRecord(value) || !integer(value.seq, 0, Number.MAX_SAFE_INTEGER) || typeof value.datasetId !== 'string') {
     throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', '雲端 dataHead 尚未初始化或 schema 不支援');
@@ -419,6 +429,7 @@ function taipeiDate(timestamp: Timestamp): string {
 
 async function readLeaseDate(db: Firestore, user: CurrentUser): Promise<string> {
   const lease = await getDocFromServer(doc(db, accessLeasePath()));
+  assertServerConfirmed(lease, 'accessLease');
   const leaseValue: unknown = lease.exists() ? lease.data() : null;
   if (!plainRecord(leaseValue) || leaseValue.holderUid !== user.uid || !(leaseValue.updatedAt instanceof Timestamp)) {
     throw new CloudDayCloseRepositoryError('LEASE_LOST', '目前沒有有效的伺服器使用權租約');
@@ -509,9 +520,12 @@ export async function readCloudDayClose(
     if (!validDate(dayId)) throw new CloudDayCloseRepositoryError('INVALID_INPUT', '營業日日期格式不正確');
     const before = await readHeadSeq(db);
     const daySnapshot = await getDocFromServer(doc(db, dayPath(dayId)));
+    assertServerConfirmed(daySnapshot, `營業日 ${dayId}`);
     if (!daySnapshot.exists()) return null;
     const day = decodeDay(dayId, daySnapshot.data());
     const page = await getDocsFromServer(collection(db, dayPath(dayId), 'settlements'));
+    assertServerConfirmed(page, `營業日 ${dayId} 日結版本`);
+    for (const snapshot of page.docs) assertServerConfirmed(snapshot, `營業日 ${dayId} 日結版本`);
     if (page.size !== day.lastSettlementRevision) {
       throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `營業日 ${dayId} 的日結版本數與版號不一致`);
     }
