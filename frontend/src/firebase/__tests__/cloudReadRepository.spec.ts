@@ -364,7 +364,7 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
     expect(summary.mergedTransactions).toEqual([]);
   });
 
-  it('returns complete single-account history with verified per-row balances', async () => {
+  it('reconciles the full day before returning only selected account history', async () => {
     const history = await repository().readAccountHistory({
       studentId: studentA,
       range: { kind: 'custom', startDate: today, endDate: today },
@@ -372,6 +372,7 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
     });
     expect(history).toMatchObject({ complete: true, currentBalance: 630, openingBalance: 1_000, sourceSeq: 205 });
     expect(history.transactions).toHaveLength(199);
+    expect(history.transactions.every(row => row.studentId === studentA)).toBe(true);
     expect(history.transactions.every(row => row.afterBalance !== undefined && row.balanceApplicability === 'verified')).toBe(true);
     expect(history.transactions.find(row => row.status === 'voided')?.afterBalance).toBeDefined();
   });
@@ -413,6 +414,107 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
     await expect(repository().readReport({
       range: { kind: 'custom', startDate: today, endDate: today }, studentId: null, leaseEpoch: 7,
     })).rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
+  });
+
+  it('fails closed from single-account history when the visible day projection is missing', async () => {
+    const range = { kind: 'custom' as const, startDate: today, endDate: today };
+    await withAdmin(async db => {
+      await deleteDoc(doc(db, `days/${today}`));
+    });
+
+    await expect(repository().readAccountHistory({ studentId: studentA, range, leaseEpoch: 7 }))
+      .rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
+    await expect(repository().readReport({ studentId: studentA, range, leaseEpoch: 7 }))
+      .rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
+  });
+
+  it('returns an empty history for a fully queried day with no day document, transactions, or marker', async () => {
+    const emptyDay = shiftDate(today, -1);
+    const range = { kind: 'custom' as const, startDate: emptyDay, endDate: emptyDay };
+    const [history, report] = await Promise.all([
+      repository().readAccountHistory({ studentId: studentA, range, leaseEpoch: 7 }),
+      repository().readReport({ studentId: studentA, range, leaseEpoch: 7 }),
+    ]);
+
+    expect(history).toMatchObject({ complete: true, currentBalance: 630, transactions: [] });
+    expect(report).toMatchObject({ complete: true, scope: { studentId: studentA }, transactions: [] });
+  });
+
+  it('fails closed from single-account history when day totals omit all transactions', async () => {
+    const range = { kind: 'custom' as const, startDate: today, endDate: today };
+    await withAdmin(async db => {
+      await setDoc(doc(db, `days/${today}`), day({}));
+    });
+
+    await expect(repository().readAccountHistory({ studentId: studentA, range, leaseEpoch: 7 }))
+      .rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
+    await expect(repository().readReport({ studentId: studentA, range, leaseEpoch: 7 }))
+      .rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
+  });
+
+  it.each(['closed', 'reopened'] as const)(
+    'rejects a %s day with no settlement revision from summary and account history', async status => {
+      const range = { kind: 'custom' as const, startDate: prior, endDate: prior };
+      await withAdmin(async db => {
+        await setDoc(doc(db, `days/${prior}`), {
+          ...closedDay({ activeTransactionCount: 3, bentoCount: 1, mealTotal: 5, retainedReceipts: 21 }),
+          status,
+          lastSettlementRevision: 0,
+        });
+        await Promise.all([1, 2, 3].map(revision => deleteDoc(doc(db, `days/${prior}/settlements/${revision}`))));
+      });
+
+      await expect(repository().readSummary({ range, leaseEpoch: 7 }))
+        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+      await expect(repository().readAccountHistory({ studentId: studentA, range, leaseEpoch: 7 }))
+        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    },
+  );
+
+  it('accepts a verified closed day whose effective cash is exactly zero', async () => {
+    const emptyDay = shiftDate(today, -1);
+    const range = { kind: 'custom' as const, startDate: emptyDay, endDate: emptyDay };
+    const zeroTotals = {
+      activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0, mealTotal: 0,
+      retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0,
+    };
+    await withAdmin(async db => {
+      await setDoc(doc(db, `days/${emptyDay}`), {
+        ...day(zeroTotals),
+        status: 'closed',
+        revision: 2,
+        openingCash: 0,
+        openedBy: operator.uid,
+        openedAt: Timestamp.fromDate(new Date(`${emptyDay}T12:00:00.000Z`)),
+        lastSettlementRevision: 1,
+      });
+      await setDoc(doc(db, `days/${emptyDay}/settlements/1`), {
+        dayId: emptyDay,
+        revision: 1,
+        status: 'closed',
+        totals: zeroTotals,
+        openingCash: 0,
+        expectedCash: 0,
+        countedCash: 0,
+        difference: 0,
+        note: '',
+        actorUid: operator.uid,
+        actorEmail: operator.email,
+        sourceSeq: 200,
+        committedAt: Timestamp.fromDate(new Date(`${emptyDay}T13:00:00.000Z`)),
+        previousRevision: 0,
+        lastCommandId: uuidFrom(1_030),
+      });
+    });
+
+    const summary = await repository().readSummary({ range, leaseEpoch: 7 });
+    expect(summary.days[0]).toMatchObject({
+      exists: true,
+      status: 'closed',
+      lastSettlementRevision: 1,
+      effectiveCash: 0,
+      settlements: [{ revision: 1, countedCash: 0, difference: 0 }],
+    });
   });
 
   it('validates the expected lease epoch before reading a report', async () => {

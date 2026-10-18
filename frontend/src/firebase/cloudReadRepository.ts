@@ -535,6 +535,13 @@ async function loadRange(
     if (day && dayId < context.head.goLiveDate) {
       throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `系統啟用日前存在營業日投影 ${dayId}`);
     }
+    if (day) {
+      const requiresSettlement = day.status === 'closed' || day.status === 'reopened';
+      const hasSettlementRevision = day.lastSettlementRevision > 0;
+      if (requiresSettlement !== hasSettlementRevision) {
+        throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 狀態與日結版號不一致`);
+      }
+    }
     const backfill = await readCloudBackfillDay(db, dayId);
     if (backfill && !day) {
       throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `回填標記 ${dayId} 缺少營業日投影`);
@@ -542,6 +549,9 @@ async function loadRange(
     const close = day && day.lastSettlementRevision > 0
       ? await readCloudDayClose(db, dayId, { currentUser: () => user })
       : null;
+    if (day && day.lastSettlementRevision > 0 && close === null) {
+      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 缺少版號所指的完整日結歷史`);
+    }
     if (close) {
       const totalsMatch = JSON.stringify(close.totals) === JSON.stringify(day?.totals);
       if (close.status !== day?.status || close.revision !== day.revision
@@ -565,7 +575,7 @@ async function loadRange(
         throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `營業日 ${dayId} 的補記分頁與完整日結讀取不一致`);
       }
     }
-    if (day?.status === 'closed' && close?.effectiveCash === null) {
+    if (day?.status === 'closed' && (close === null || close.effectiveCash === null)) {
       throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `已關帳日 ${dayId} 缺少可驗證的有效關帳現金`);
     }
     days.push({
@@ -819,6 +829,7 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
       if (!student) throw new CloudReadRepositoryError('INVALID_INPUT', '查無此學生帳戶');
       const dates = rangeDates(range);
       const loaded = await loadRange(db, dates, context, user, pageSize, options.afterPageRead);
+      await readTransactionsForRange(db, loaded, dates, context, user, pageSize, options.afterPageRead);
       const prefix = await readAccountPrefix(db, student, range, loaded.backfills, context, user, pageSize, options.afterPageRead);
       await assertContextUnchanged(db, user, context);
       return {
