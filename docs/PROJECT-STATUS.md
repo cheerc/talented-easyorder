@@ -5,7 +5,7 @@
 > - **重要邊界聲明**：**Prototype 前端功能完成 ≠ 雲端正式後端全完成 ≠ CheerC 本人營運驗收**。自動化測試與代碼審查 PASS 僅為技術交付基準，不代簽營運驗收。
 > - **正式後端進度**：[零費用正式後端 spec](superpowers/specs/2026-10-13-free-production-backend-spec.md)與[19 階段計畫](superpowers/plans/2026-10-13-free-production-backend-plan.md)為權威依據。P00–P09 與 P06b 已合併至 main（P07 merge `436b119`，P06b merge `6ae1909`，P08 雲端訂餐 #491 merge `889c75c`）。P09（依 CheerC 2026-10-16 指示）已完成：P09a 繳費與櫃台收支（#493，`c444621`），P09b 退款（#494，`5b6f9a4`）。P14 每日增量備份平行實作並合併（#496，`4b4425c`；收據 #498）。P10a 交易更正／作廢／取消／5 秒撤回已合併（#497，`1d61a47`）；P10b 期初更正（`CorrectOpening`）已合併（#501，`a92d139`）。P10 已完成。P11 正式關帳與重開已完成（CheerC 2026-10-17 指示）：P11a 後端（#503，`91b5909`），P11b 日結頁（#505，`5a030ca`）。CheerC 2026-10-17 另指示加上過去日子的補開帳再關帳（`BackfillOpeningCash`，#507，`2792ba2`）。P11 後依 CheerC 指示暫停，不開始 P12。新後端尚未部署或開放正式帳務操作。
 
-> **已合併基線：** P00 #471、P01 #472、P02 #473、P03 #474、P04 #475、P05 #476、P06 #478、P07 #480、P08 #491、P09a #493、P09b #494、P14 #496（收據 #498）、P10a #497、P10b #501、P11a #503、P11b #505、P11 補開帳 #507、P11c1 #509、P11c2a #511、U1 #481、U2c #482、U2a #483、整合 PR #488（含 U3/U4/U2b/P06b）；merge SHA 與驗收限制見[現況與證據](ops/free-production-evidence.md)及各 phase receipts。逐 PR 接手流程見[開發交接入口](DEVELOPMENT-HANDOFF.md)。
+> **已合併基線：** P00 #471、P01 #472、P02 #473、P03 #474、P04 #475、P05 #476、P06 #478、P07 #480、P08 #491、P09a #493、P09b #494、P14 #496（收據 #498）、P10a #497、P10b #501、P11a #503、P11b #505、P11 補開帳 #507、P11c1 #509、P11c2a #511、P11c2b #513、U1 #481、U2c #482、U2a #483、整合 PR #488（含 U3/U4/U2b/P06b）；merge SHA 與驗收限制見[現況與證據](ops/free-production-evidence.md)及各 phase receipts。逐 PR 接手流程見[開發交接入口](DEVELOPMENT-HANDOFF.md)。
 
 > **Last inspected:** 2026-09-29，程式基準 `884a996`。
 > 本輪只更新 spec／計畫／驗收文件；沒有改應用程式、沒有完成本人驗收。
