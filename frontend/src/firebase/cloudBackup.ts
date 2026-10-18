@@ -70,7 +70,8 @@ const TARGET_KEYS_BY_KIND: Record<string, string[]> = {
   CorrectTransaction: ['transactionId', 'studentId', 'dayId'], VoidTransaction: ['transactionId', 'studentId', 'dayId'],
   CancelKeepDeposit: ['transactionId', 'studentId', 'dayId'], CancelRefund: ['transactionId', 'studentId', 'dayId'],
   Undo: ['transactionId', 'studentId', 'dayId'], CloseDay: ['dayId', 'settlementRevision'],
-  ReopenDay: ['dayId', 'settlementRevision'], BackfillOpeningCash: ['dayId'], StartBackfill: ['dayId'], RecordExport: [], RecordPrint: [], RecordBackup: [],
+  ReopenDay: ['dayId', 'settlementRevision'], BackfillOpeningCash: ['dayId'], StartBackfill: ['dayId'], RecordPostCloseEntry: ['dayId'],
+  RecordExport: [], RecordPrint: [], RecordBackup: [],
 };
 const REVISION_KEYS_BY_KIND: Record<string, string[]> = {
   EnsureDay: ['day'], CreateStudent: ['student'], ChangeStudentCode: ['student'], EditStudent: ['student'],
@@ -81,6 +82,7 @@ const REVISION_KEYS_BY_KIND: Record<string, string[]> = {
   VoidTransaction: ['day', 'transaction'], CancelKeepDeposit: ['day', 'transaction'],
   CancelRefund: ['day', 'transaction'], Undo: ['day', 'transaction'],
   CloseDay: ['day', 'settlement'], ReopenDay: ['day', 'settlement'], BackfillOpeningCash: ['day'], StartBackfill: ['day'],
+  RecordPostCloseEntry: ['day', 'settlement'],
   RecordExport: [], RecordPrint: [], RecordBackup: [],
 };
 const PROJECTIONS_BY_KIND: Record<string, string[]> = {
@@ -94,6 +96,8 @@ const PROJECTIONS_BY_KIND: Record<string, string[]> = {
   CloseDay: ['day', 'settlement'], ReopenDay: ['day', 'settlement'], BackfillOpeningCash: ['day'],
   // The day document stays unchanged; `backfill` is the new immutable marker (contract §12).
   StartBackfill: ['day', 'backfill'],
+  // Contract §15: the closed day stays unchanged; `postCloseEntry` is the new immutable entry keyed by the command ID.
+  RecordPostCloseEntry: ['day', 'postCloseEntry'],
   RecordExport: [], RecordPrint: [], RecordBackup: [],
 };
 // P10a transaction mutations always target { transactionId, studentId, dayId }. A counter cash row uses
@@ -103,6 +107,7 @@ const DECODABLE_COMMAND_KINDS = new Set([
   'EnsureDay', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus', 'SaveVendor',
   'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateOrder', 'CreatePayment', 'CreateCashMovement',
   'CreateRefund', ...MUTATION_KINDS, 'RecordBackup', 'CorrectOpening', 'CloseDay', 'ReopenDay', 'BackfillOpeningCash', 'StartBackfill',
+  'RecordPostCloseEntry',
 ]);
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -256,12 +261,13 @@ function balanceContribution(value: unknown): number {
   return 0;
 }
 
-function resourcePath(projection: string, targets: Record<string, unknown>): string {
+function resourcePath(projection: string, targets: Record<string, unknown>, commandId?: string): string {
   if (projection === 'day' && typeof targets.dayId === 'string') return `days/${targets.dayId}`;
   if (projection === 'student' && typeof targets.studentId === 'string') return `students/${targets.studentId}`;
   if (projection === 'vendor' && typeof targets.vendorId === 'string') return `vendors/${targets.vendorId}`;
   if (projection === 'transaction' && typeof targets.transactionId === 'string') return `transactions/${targets.transactionId}`;
   if (projection === 'backfill' && typeof targets.dayId === 'string') return `backfillDays/${targets.dayId}`;
+  if (projection === 'postCloseEntry' && typeof commandId === 'string' && commandId) return `postCloseEntries/${commandId}`;
   if (projection === 'settlement' && typeof targets.dayId === 'string' && Number.isSafeInteger(targets.settlementRevision)) {
     return `days/${targets.dayId}/settlements/${targets.settlementRevision}`;
   }
@@ -332,6 +338,18 @@ function checkBackfillReplay(record: BackupCommandRecord, state: Record<string, 
     }
     return;
   }
+  if (record.kind === 'RecordPostCloseEntry') {
+    // Contract §15: the day must be closed in the replayed state, and the entry names that settlement version.
+    const dayId = String(record.targets.dayId);
+    const entryPath = `postCloseEntries/${record.commandId}`;
+    const day = Object.hasOwn(state, `days/${dayId}`) ? state[`days/${dayId}`] as Record<string, unknown> | null : null;
+    const entry = after.postCloseEntry as Record<string, unknown>;
+    if (!day || day.status !== 'closed' || day.lastSettlementRevision !== entry.settlementRevision
+      || Object.hasOwn(state, entryPath)) {
+      throw new BackupValidationError(`command seq ${record.seq} 關帳後補記在重播狀態中不是已關帳營業日的目前版本`);
+    }
+    return;
+  }
   if (record.kind === 'CloseDay') {
     // Contract §14: a marked day closes with no difference and `alignWithDayId`; an ordinary day carries none.
     // A close from before P11c3 has no field on a marked day either, and still replays.
@@ -385,13 +403,13 @@ function replayProjections(records: BackupCommandRecord[], initial: Record<strin
       }
       state[settlementPath] = after.settlement;
     }
-    for (const projection of ['day', 'student', 'vendor', 'transaction', 'settlement', 'backfill']) {
+    for (const projection of ['day', 'student', 'vendor', 'transaction', 'settlement', 'backfill', 'postCloseEntry']) {
       if (projection === 'settlement' && (record.kind === 'CloseDay' || record.kind === 'ReopenDay')) continue;
       if (!(projection in before) && !(projection in after)) continue;
       if (!(projection in before) || !(projection in after)) {
         throw new BackupValidationError(`command ${record.commandId} 的 ${projection} before/after 投影不完整`);
       }
-      const key = resourcePath(projection, record.targets);
+      const key = resourcePath(projection, record.targets, record.commandId);
       const hasPrevious = Object.hasOwn(state, key);
       const previous = hasPrevious ? state[key] : null;
       if (!sameValue(previous, before[projection])) {
@@ -400,7 +418,7 @@ function replayProjections(records: BackupCommandRecord[], initial: Record<strin
       state[key] = after[projection];
     }
     const unknownProjection = [...new Set([...Object.keys(before), ...Object.keys(after)])]
-      .filter(key => key !== 'head' && !['day', 'student', 'vendor', 'transaction', 'settlement', 'previousSettlement', 'backfill'].includes(key));
+      .filter(key => key !== 'head' && !['day', 'student', 'vendor', 'transaction', 'settlement', 'previousSettlement', 'backfill', 'postCloseEntry'].includes(key));
     if (unknownProjection.length) throw new BackupValidationError(`command seq ${record.seq} 含未知投影：${unknownProjection.join(', ')}`);
     recalculateDayTotals(state);
   }
@@ -503,6 +521,7 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
     CancelKeepDeposit: { required: ['reason'] }, CancelRefund: { required: ['reason'] }, Undo: { required: ['targetCommandId', 'reason'] },
     CloseDay: { required: ['countedCash'], optional: ['note', 'expectedCash', 'alignWithDayId'] }, ReopenDay: { required: ['reason'] },
     BackfillOpeningCash: { required: ['openingCash', 'reason'] }, StartBackfill: { required: ['reason'] },
+    RecordPostCloseEntry: { required: ['direction', 'amount', 'reason'] },
     RecordExport: { required: ['exportType', 'sourceSeq'], optional: ['dateRange'] },
     RecordPrint: { required: ['printType', 'businessDate', 'sourceSeq'] },
     RecordBackup: { required: ['backupType', 'sourceSeq', 'fromSeq', 'toSeq', 'sha256'] },
@@ -571,6 +590,7 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
       CorrectOpening: ['amount'], SetDayMenu: ['price'], SetOpeningCash: ['openingCash'], BackfillOpeningCash: ['openingCash'],
       CreateOrder: ['mealPrice', 'paidAmount'], CreatePayment: ['paidAmount'], CreateCashMovement: ['mealPrice', 'paidAmount'],
       CreateRefund: ['amount'], CorrectTransaction: ['mealPrice', 'paidAmount', 'amount'], CloseDay: ['countedCash'],
+      RecordPostCloseEntry: ['amount'],
       RecordExport: ['sourceSeq'], RecordPrint: ['sourceSeq'], RecordBackup: ['sourceSeq', 'fromSeq', 'toSeq'],
     };
     if (record.kind === 'CloseDay' && Object.hasOwn(record.payload, 'alignWithDayId')
@@ -606,7 +626,7 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
     }
     const projections = requiredProjections!;
     const beforeProjectionKey = (projection: string) => projection === 'settlement' ? 'previousSettlement' : projection;
-    for (const projection of record.kind === 'StartBackfill' ? [] : projections) {
+    for (const projection of record.kind === 'StartBackfill' || record.kind === 'RecordPostCloseEntry' ? [] : projections) {
       const beforeValue = before[beforeProjectionKey(projection)];
       const afterValue = after[projection];
       validateProjectionSnapshot(projection, beforeValue, record, targets!, false);
@@ -626,6 +646,29 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
         || !hasExactlyKeys(after.backfill, ['dayId', 'reason', 'startedBy', 'startedAt', 'commandId'])
         || after.backfill.dayId !== targets!.dayId || !isSerializedTimestamp(after.backfill.startedAt)) {
         throw new BackupValidationError(`command seq ${seq} 開始回填的 day／標記 projection 無效`);
+      }
+    }
+    if (record.kind === 'RecordPostCloseEntry') {
+      // The closed day does not change; only the immutable entry is new (contract §15). Its fields are bound to
+      // the payload, actor and commit time here and again during replay, with the replayed day state.
+      validateProjectionSnapshot('day', before.day, record, targets!, false);
+      const entry = after.postCloseEntry;
+      if (!sameValue(before.day, after.day) || (before.day as Record<string, unknown>).status !== 'closed'
+        || revisionOf('day', before.day) !== expectedRevisions!.day
+        || (before.day as Record<string, unknown>).lastSettlementRevision !== expectedRevisions!.settlement
+        || before.postCloseEntry !== null || !isPlainRecord(entry)
+        || !hasExactlyKeys(entry, ['entryId', 'dayId', 'settlementRevision', 'direction', 'amount', 'reason', 'createdBy', 'createdAt', 'commandId'])
+        || entry.entryId !== record.commandId || entry.commandId !== record.commandId || entry.dayId !== targets!.dayId
+        || entry.settlementRevision !== expectedRevisions!.settlement
+        || !['income', 'expense'].includes(String(record.payload.direction)) || entry.direction !== record.payload.direction
+        || !Number.isSafeInteger(record.payload.amount) || (record.payload.amount as number) < 1 || (record.payload.amount as number) > 20_000
+        || entry.amount !== record.payload.amount
+        || typeof record.payload.reason !== 'string' || !record.payload.reason.trim() || record.payload.reason.length > 500
+        || entry.reason !== record.payload.reason || record.reason !== record.payload.reason
+        || entry.createdBy !== record.actor.uid || !isSerializedTimestamp(entry.createdAt)
+        || !sameValue(entry.createdAt, record.committedAt)
+        || String(targets!.dayId) < String(headBefore.goLiveDate)) {
+        throw new BackupValidationError(`command seq ${seq} 關帳後補記的 day／補記 projection 無效`);
       }
     }
     if (record.kind === 'CloseDay' || record.kind === 'ReopenDay') {

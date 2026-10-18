@@ -748,9 +748,10 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       return;
     }
     // A definite rejection: nothing was committed. Re-read the server so the next attempt sees fresh revisions.
+    // The list of backfilling days is re-read too: the rejection may be because the day just closed (P11c3 review).
     clearPendingIf(command.commandId);
     updateFor(key, generation, previous => ({ ...previous, recovery: null }));
-    await loadSnapshot({ keepDraft: true, actionError: definiteFailureText(command, result.error.code, result.error.message), reuseBackfillDays: true });
+    await loadSnapshot({ keepDraft: true, actionError: definiteFailureText(command, result.error.code, result.error.message) });
   };
 
   const dispatch = async (command: PreparedCommand, phase: RecoveryPhase) => {
