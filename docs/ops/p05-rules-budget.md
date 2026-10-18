@@ -801,7 +801,7 @@ Static derivation like the earlier appendices (the Emulator has no access counte
 
 ### Expression headroom
 
-Same probe as before (`1 == 1 &&` terms at one anchor, bisected against a positive Emulator case; `+lo / +hi`). Main is `e824492`; the table records the source implementation report on final Rules head `5a3bd17` (`firestore.rules` unchanged since the first Rules commit `d010464`). That report measured each listed anchor on both sides and records the existing anchors equal to main. The later independent review on the same head reran a separate 9-anchor set; it did not claim to reproduce every row in this table (see the review receipt in [evidence](free-production-evidence.md#p11c4a-關帳後補記-checkpoint--2026-10-18)).
+Same probe as before (`1 == 1 &&` terms at one anchor, bisected against a positive Emulator case; `+lo / +hi`). Main is `e824492`; the table records the source implementation report on final Rules head `5a3bd17`. That report measured each listed anchor on both sides and records the existing anchors equal to main. The later independent review on the same head reran a separate 9-anchor set; it did not claim to reproduce every row in this table (see the review receipt in [evidence](free-production-evidence.md#p11c4a-關帳後補記-checkpoint--2026-10-18)).
 
 | Rule anchor | Case | Main | This PR |
 |---|---|---:|---:|

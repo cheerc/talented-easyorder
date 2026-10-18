@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import type { OpeningMismatchAnomaly } from '../../domain/ledgerAnomalies';
 import type { CloudLedgerView } from '../../hooks/useCloudLedger';
 import { CloudLedgerAnomaliesPage } from './CloudLedgerAnomaliesPage';
 
@@ -11,8 +12,9 @@ const ready = (anomalies: Extract<CloudLedgerView, { status: 'ready' }>['snapsho
 function renderPage(ledger: CloudLedgerView) {
   const onReload = vi.fn();
   const onOpenDayClose = vi.fn();
-  render(<CloudLedgerAnomaliesPage ledger={ledger} onReload={onReload} onOpenDayClose={onOpenDayClose} />);
-  return { onReload, onOpenDayClose };
+  const onOpenPostCloseEntry = vi.fn();
+  render(<CloudLedgerAnomaliesPage ledger={ledger} onReload={onReload} onOpenDayClose={onOpenDayClose} onOpenPostCloseEntry={onOpenPostCloseEntry} />);
+  return { onReload, onOpenDayClose, onOpenPostCloseEntry };
 }
 
 describe('CloudLedgerAnomaliesPage', () => {
@@ -43,24 +45,24 @@ describe('CloudLedgerAnomaliesPage', () => {
     expect(screen.getByRole('listitem')).toHaveTextContent('開帳現金 NT$ 1,200');
   });
 
-  it('explains an opening mismatch without promising that the amount was corrected', () => {
-    renderPage(ready([
-      {
+  it('offers a reason-required post-close entry for a gap-free mismatch and passes the anomaly snapshot', () => {
+    const mismatch: OpeningMismatchAnomaly = {
         kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 800, previousClosedDayId: '2026-10-13',
         previousCountedCash: 870, previousPostCloseNet: 0, previousEffectiveCash: 870, difference: -70, daysApart: 3, gapDays: [], gapDayCount: 0,
-      },
-    ]));
+      };
+    const { onOpenPostCloseEntry } = renderPage(ready([mismatch]));
     const item = screen.getByRole('listitem');
     expect(item).toHaveTextContent('2026-10-16 開帳現金與上次關帳不符');
     expect(item).toHaveTextContent('開帳現金是 NT$ 800');
     expect(item).toHaveTextContent('2026-10-13 的實點現金是 NT$ 870');
     expect(item).toHaveTextContent('少了 NT$ 70');
     expect(item).toHaveTextContent('相隔 3 天');
-    expect(item).toHaveTextContent('在前一個已關帳日補記一筆有標記的收支還沒開放');
-    expect(item).toHaveTextContent('金額尚未更正');
+    expect(item).toHaveTextContent('有原因的關帳後補記');
+    expect(item).toHaveTextContent('不會修改原關帳實點');
     expect(item).toHaveTextContent('每一天都已經有營業日資料，沒有可以回填的空日');
     expect(item).not.toHaveTextContent(/已更正完成|已修正/);
-    expect(within(item).queryByRole('button')).not.toBeInTheDocument();
+    fireEvent.click(within(item).getByRole('button', { name: '到前一個已關帳日補記差額（2026-10-13）' }));
+    expect(onOpenPostCloseEntry).toHaveBeenCalledWith(mismatch);
   });
 
   it('compares the opening with the effective closing cash and names the post-close net when there are entries', () => {
@@ -90,6 +92,7 @@ describe('CloudLedgerAnomaliesPage', () => {
     expect(onOpenDayClose).toHaveBeenCalledWith('2026-10-15');
     fireEvent.click(within(gap).getByRole('button', { name: '回填這一天（2026-10-14）' }));
     expect(onOpenDayClose).toHaveBeenLastCalledWith('2026-10-14');
+    expect(screen.queryByTestId('post-close-shortcut-2026-10-16')).not.toBeInTheDocument();
   });
 
   it('says honestly when only the earliest gap days are listed', () => {
