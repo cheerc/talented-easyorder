@@ -385,4 +385,5 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - 一般 Vitest（Emulator-only 測試 skip）：171 檔通過／14 檔 skip，1,769 passed／609 skipped。`npm run lint`、`npm run build` exit 0；app tsc 與 main 逐行相同（行號不計）。畫面測試 `CloudDayVendorsPage.test.tsx` 多處改為 `waitFor`，原因是上一個已關帳日改為非同步查找，時序不穩（連跑 10 次穩定）。
 - E2E（本機 Chromium 1194 暫時設定，不取代 CI pinned Chromium，設定未提交）：cloud 21/21、prototype 7/7。**沒有新增 E2E**：E2E 上線日是當天，沒有過去營業日可回填。
 - 未做：P11c2b 回填模式畫面、P11c3、P11c4、角色權限。無 production 部署、無正式金鑰。
+- 合併收據：#511 squash `35ac95bd3f4f98a378fd01803f6c3a6beafae794`；獨立審查 review `5561303976` 無必修，審查者在 Emulator 另跑受影響 suite（`cloudDayClose` 133/133 含 2 個未提交的探測案例、`cloudCommands` 179/179、`cloudTransactionMutation` 47/47、`cloudCashMovement` 42/42、`cloudOrderRepository` 10/10、`cloudRefund` 43/43、`cloudBackup` 22/22、`cloudDayVendorRepository` 10/10），Rules 餘裕複測與預算附錄一致（回填訂餐交易建立 +16）。最終 head `f857b10bc10be92976dc7904a5b31d1aeca12f47` 的 CI [39094019150](https://github.com/cheerc/talented-easyorder/actions/runs/39094019150) build-and-test 與 e2e 成功。審查後續待辦（P11c2b）：開帳表單查上一個已關帳日失敗後的重試按鈕、`isBackfilled` 台北午夜（UTC 16:00:00）邊界測試。未部署。
 
