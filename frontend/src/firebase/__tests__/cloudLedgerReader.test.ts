@@ -91,7 +91,7 @@ function setup({ days = [], settlements = {}, heads = [head()], leaseUpdatedAt =
     for (const item of request.constraints) {
       if (item.type === 'where') {
         const value = String(item.value);
-        selected = selected.filter(([id]) => (item.op === '>=' ? id >= value : item.op === '<=' ? id <= value : item.op === '<' ? id < value : false));
+        selected = selected.filter(([id]) => (item.op === '>=' ? id >= value : item.op === '<=' ? id <= value : item.op === '<' ? id < value : item.op === '>' ? id > value : false));
       }
     }
     const after = request.constraints.find(item => item.type === 'startAfter') as unknown as { snapshot: FakeSnapshot } | undefined;
@@ -307,5 +307,78 @@ describe('createCloudLedgerReader.findPreviousClosed', () => {
     setup({ days: [['2026-10-02', closedDay()]], settlements: {} });
     await expect(reader().findPreviousClosed('2026-10-06')).rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT' });
     await expect(reader().findPreviousClosed('2026-13-40')).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  });
+});
+
+describe('createCloudLedgerReader.findNextOpened (contract §14.2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db = {} as Firestore;
+  });
+
+  it('returns the nearest day after the asked day that has a confirmed opening cash, skipping unopened days', async () => {
+    setup({
+      days: [
+        ['2026-10-01', dayDoc({ openingCash: 100 })],
+        ['2026-10-02', dayDoc({ openingCash: 999 })],
+        ['2026-10-03', dayDoc()],
+        ['2026-10-04', dayDoc({ openingCash: 950 })],
+        ['2026-10-05', dayDoc({ openingCash: 700 })],
+      ],
+    });
+    const result = await reader().findNextOpened('2026-10-02');
+    expect(result).toEqual({ next: { dayId: '2026-10-04', openingCash: 950 }, seq: 10 });
+    expect(dayQueries()).toEqual([[
+      { type: 'where', field: '__name__', op: '>', value: '2026-10-02' },
+      { type: 'where', field: '__name__', op: '<=', value: '2026-10-05' },
+      { type: 'orderBy', field: '__name__', direction: undefined },
+      { type: 'limit', count: 31 },
+    ]]);
+  });
+
+  it('counts a closed or reopened day as opened, and does not count the asked day itself', async () => {
+    setup({ days: [['2026-10-02', dayDoc({ openingCash: 800 })], ['2026-10-03', dayDoc({ status: 'closed', openingCash: 640, lastSettlementRevision: 1 })]] });
+    expect((await reader().findNextOpened('2026-10-02')).next).toEqual({ dayId: '2026-10-03', openingCash: 640 });
+  });
+
+  it('returns null when no later day up to the lease date is opened', async () => {
+    setup({ days: [['2026-10-02', dayDoc({ openingCash: 800 })], ['2026-10-04', dayDoc()]] });
+    expect((await reader().findNextOpened('2026-10-02')).next).toBeNull();
+  });
+
+  it('walks forward segment by segment until it finds an opened day, bounded by the lease date', async () => {
+    setup({
+      days: [['2026-10-20', dayDoc({ openingCash: 500 })]],
+      heads: [head({ goLiveDate: '2026-10-01' })],
+      leaseUpdatedAt: ts('2026-10-25T02:00:00.000Z'),
+    });
+    const result = await reader({ segmentDays: 5 }).findNextOpened('2026-10-02');
+    expect(result.next).toEqual({ dayId: '2026-10-20', openingCash: 500 });
+    const queries = dayQueries();
+    expect(queries[0]).toContainEqual({ type: 'where', field: '__name__', op: '>', value: '2026-10-02' });
+    expect(queries[0]).toContainEqual({ type: 'where', field: '__name__', op: '<=', value: '2026-10-07' });
+    expect(queries.at(-1)).toContainEqual({ type: 'where', field: '__name__', op: '<=', value: '2026-10-22' });
+    // One head read before the walk and one after every segment.
+    expect(headReads()).toHaveLength(1 + queries.length);
+  });
+
+  it('does not query when the asked day is the lease date or later', async () => {
+    setup({ days: [['2026-10-05', dayDoc({ openingCash: 100 })]] });
+    expect((await reader().findNextOpened('2026-10-05')).next).toBeNull();
+    expect(dayQueries()).toHaveLength(0);
+  });
+
+  it.each([
+    ['seq', { seq: 11 }],
+    ['datasetId', { datasetId: 'other-dataset' }],
+  ])('returns STALE_SNAPSHOT when the head %s changes between segments', async (_label, change) => {
+    setup({ days: [['2026-10-04', dayDoc()]], heads: [head(), head(change)] });
+    await expect(reader({ segmentDays: 2 }).findNextOpened('2026-10-01')).rejects.toMatchObject({ code: 'STALE_SNAPSHOT' });
+  });
+
+  it('fails closed on a malformed day path and a bad date', async () => {
+    setup({ days: [['2026-10-04x', dayDoc()]] });
+    await expect(reader().findNextOpened('2026-10-01')).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    await expect(reader().findNextOpened('2026-13-40')).rejects.toMatchObject({ code: 'INVALID_INPUT' });
   });
 });

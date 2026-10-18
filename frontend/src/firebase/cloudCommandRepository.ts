@@ -332,7 +332,7 @@ function resultFromUnknownError(message = '提交回應不確定，請用原 com
  * A diagnosis is a command error code, or one of two finer reasons a transaction on a past day is refused
  * (contract §12.2); `leaseDenialResult` turns them into the code and message the operator sees.
  */
-type Diagnosis = CommandErrorCode | 'DAY_REOPENED_AFTER_CLOSE' | 'DAY_NOT_BACKFILLING' | null;
+type Diagnosis = CommandErrorCode | 'DAY_REOPENED_AFTER_CLOSE' | 'DAY_REOPENED_NO_MARKER' | 'DAY_NOT_BACKFILLING' | null;
 
 /**
  * Revisions matched but Rules still refused an order, payment or cash movement: say why when the day is not today.
@@ -345,8 +345,8 @@ async function diagnoseTransactionDay(db: Firestore, dayId: string, dayValue: Da
   if (dayId === today) return dayValue.status === 'closed' ? 'DAY_CLOSED' : 'INVALID_INPUT';
   if (dayValue.status === 'closed') return 'DAY_CLOSED';
   if (dayId > today) return 'INVALID_INPUT';
-  if (Number(dayValue.lastSettlementRevision) > 0) return 'DAY_REOPENED_AFTER_CLOSE';
   const marker = await getDocFromServer(doc(db, backfillDayPath(dayId)));
+  if (Number(dayValue.lastSettlementRevision) > 0) return marker.exists() ? 'DAY_REOPENED_AFTER_CLOSE' : 'DAY_REOPENED_NO_MARKER';
   return marker.exists() ? 'INVALID_INPUT' : 'DAY_NOT_BACKFILLING';
 }
 
@@ -483,6 +483,9 @@ function leaseDenialResult(code: Diagnosis): CommandResult | null {
   if (code === null) return null;
   if (code === 'DAY_REOPENED_AFTER_CLOSE') {
     return errorResult('DAY_CLOSED', '這個營業日曾經關過帳（現在是重開狀態），不能再用回填補登訂餐、繳費或櫃台收支；要修正這一天的帳請用更正或作廢');
+  }
+  if (code === 'DAY_REOPENED_NO_MARKER') {
+    return errorResult('DAY_CLOSED', '這個營業日關過帳後重開，而且沒有回填標記，所以不能補登訂餐、繳費或櫃台收支；要修正這一天的帳請用更正或作廢');
   }
   if (code === 'DAY_NOT_BACKFILLING') {
     return errorResult('INVALID_INPUT', '這個過去的營業日沒有回填標記，不能補登；請先到日結頁把它標為回填');
@@ -739,6 +742,28 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
           const expectedCash = settlementExpectedCash(dayBefore);
           if (close && (input.payload as { expectedCash: number }).expectedCash !== expectedCash) {
             throw new RejectCommand('REVISION_CONFLICT', '應有現金已變更，請重新載入後再關帳');
+          }
+          if (close) {
+            // P11c3: a back-filled day (marker present) closes with no difference and aligned to the next opened
+            // day's opening cash; an ordinary day carries no `alignWithDayId`. Reading both here makes the client
+            // transaction fail on a concurrent change; Rules re-check the same facts at commit.
+            const closeValues = input.payload as { countedCash: number; alignWithDayId?: string | null };
+            const marked = (await tx.get(doc(db, backfillDayPath(dayId)))).exists();
+            const aligned = Object.hasOwn(closeValues, 'alignWithDayId');
+            if (marked && !aligned) throw new RejectCommand('INVALID_INPUT', '回填日關帳必須指定對齊日（alignWithDayId）');
+            if (!marked && aligned) throw new RejectCommand('INVALID_INPUT', '這個營業日沒有回填標記，不能帶對齊日');
+            if (marked && closeValues.countedCash !== expectedCash) {
+              throw new RejectCommand('INVALID_INPUT', `回填日關帳不得有差額（應有現金 ${expectedCash} 元）`);
+            }
+            if (typeof closeValues.alignWithDayId === 'string') {
+              const alignSnapshot = await tx.get(doc(db, dayPath(closeValues.alignWithDayId)));
+              if (!alignSnapshot.exists()) throw new RejectCommand('INVALID_INPUT', `對齊日 ${closeValues.alignWithDayId} 不存在`);
+              const alignOpening = decodeDay(alignSnapshot.data()).openingCash;
+              if (alignOpening === null) throw new RejectCommand('INVALID_INPUT', `對齊日 ${closeValues.alignWithDayId} 尚未確認開帳現金`);
+              if (alignOpening !== closeValues.countedCash) {
+                throw new RejectCommand('INVALID_INPUT', `實點 ${closeValues.countedCash} 元須等於 ${closeValues.alignWithDayId} 的開帳現金 ${alignOpening} 元`);
+              }
+            }
           }
           const previousRef = settlementRevision > 1 ? doc(db, settlementPath(dayId, settlementRevision - 1)) : null;
           const nextRef = doc(db, settlementPath(dayId, settlementRevision));

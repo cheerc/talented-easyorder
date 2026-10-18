@@ -970,6 +970,33 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     expect(screen.queryByRole('button', { name: /撤回/ })).toBeNull();
   });
 
+  it('re-reads the list of backfilling days on a day switch but reuses it after a counter operation (#513 review)', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot());
+    renderComponent('uid-1:1', GAP);
+    await selectStudent('001');
+    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
+    fireEvent.click(screen.getByTestId('submit-order-button'));
+    expect(await screen.findByText(/已確認/)).toBeVisible();
+    // First load: no list passed. After the payment: the list the page already holds is passed on.
+    expect(repositoryMock.loadSnapshot).toHaveBeenNthCalledWith(1, { dayId: GAP });
+    expect(repositoryMock.loadSnapshot).toHaveBeenNthCalledWith(2, { dayId: GAP, knownBackfillDays: [marker] });
+    // Switching the day asks the server again.
+    fireEvent.click(screen.getByTestId('leave-backfill-button'));
+    await waitFor(() => expect(repositoryMock.loadSnapshot).toHaveBeenLastCalledWith({ dayId: null }));
+  });
+
+  it('does not reuse a list that could not be read', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot({ backfillDays: [], backfillDaysError: '連線中斷' }));
+    renderComponent('uid-1:1', GAP);
+    await selectStudent('001');
+    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
+    fireEvent.click(screen.getByTestId('submit-order-button'));
+    expect(await screen.findByText(/已確認/)).toBeVisible();
+    expect(repositoryMock.loadSnapshot).toHaveBeenNthCalledWith(2, { dayId: GAP });
+  });
+
   it('records counter cash on the backfilled day', async () => {
     repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot());
     renderComponent('uid-1:1', GAP);

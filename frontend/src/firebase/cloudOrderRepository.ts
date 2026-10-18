@@ -438,8 +438,12 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
   }
   const commands = createCloudCommandRepository(db, options);
 
-  /** `dayId` null or omitted shows today; a past `dayId` must carry a backfill marker or the read is refused. */
-  async function loadSnapshot(request: { dayId?: string | null } = {}): Promise<CloudOrderSnapshot> {
+  /**
+   * `dayId` null or omitted shows today; a past `dayId` must carry a backfill marker or the read is refused.
+   * `knownBackfillDays` reuses a list the page already holds, so a counter operation does not pay for the
+   * day-close overview again (3–4 reads); only a reload that may change which days are being backfilled omits it.
+   */
+  async function loadSnapshot(request: { dayId?: string | null; knownBackfillDays?: CloudBackfillDay[] } = {}): Promise<CloudOrderSnapshot> {
     try {
       const user = requireGoogleUser(options);
       const before = await readHead(db);
@@ -472,7 +476,7 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
       let backfillDays: CloudBackfillDay[] = [];
       let backfillDaysError: string | null = null;
       try {
-        backfillDays = await listCloudBackfillingDays(db, options);
+        backfillDays = request.knownBackfillDays ?? await listCloudBackfillingDays(db, options);
       } catch (listError) {
         const failure = readError(listError);
         if (['LEASE_LOST', 'UNAUTHORIZED', 'ACCESS_BUSY'].includes(failure.code)) throw failure;

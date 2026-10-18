@@ -66,7 +66,8 @@ export interface CommandPayloadByKind {
   CancelKeepDeposit: { reason: string };
   CancelRefund: { reason: string };
   Undo: { targetCommandId: string; reason: string };
-  CloseDay: { countedCash: number; note: string; expectedCash: number };
+  /** P11c3: `alignWithDayId` exists only on back-filled days (marker present); absent on ordinary closes. */
+  CloseDay: { countedCash: number; note: string; expectedCash: number; alignWithDayId?: string | null };
   ReopenDay: { reason: string };
   BackfillOpeningCash: { openingCash: number; reason: string };
   StartBackfill: { reason: string };
@@ -299,7 +300,7 @@ function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayl
     } as CommandPayloadByKind['SetDayMenu'];
   }
   if (kind === 'CloseDay') {
-    exactKeys(value, ['countedCash', 'note', 'expectedCash']);
+    exactKeys(value, ['countedCash', 'note', 'expectedCash'], ['alignWithDayId']);
     safeInteger(value.countedCash, 'countedCash');
     signedInteger(value.expectedCash, 'expectedCash');
     if (typeof value.note !== 'string' || value.note.length > 500) {
@@ -308,7 +309,14 @@ function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayl
     if (value.countedCash !== value.expectedCash && value.note.length < 1) {
       throw new InvalidCloudCommandInput('實點與應有現金不同時必須填寫差額原因');
     }
-    return { countedCash: value.countedCash, note: value.note, expectedCash: value.expectedCash } as CommandPayloadByKind['CloseDay'];
+    const base = { countedCash: value.countedCash, note: value.note, expectedCash: value.expectedCash };
+    if (!Object.hasOwn(value, 'alignWithDayId')) return base as CommandPayloadByKind['CloseDay'];
+    // Back-filled day: no difference is accepted, the alignment day is a date or null.
+    if (value.countedCash !== value.expectedCash) {
+      throw new InvalidCloudCommandInput('回填日關帳不得有差額');
+    }
+    if (value.alignWithDayId !== null) dateValue(value.alignWithDayId, 'alignWithDayId');
+    return { ...base, alignWithDayId: value.alignWithDayId } as CommandPayloadByKind['CloseDay'];
   }
   if (kind === 'ReopenDay') {
     exactKeys(value, ['reason']);
@@ -684,13 +692,18 @@ export function normalizeEnabledCommandInput(input: unknown): CanonicalEnabledIn
     if (expectedRevisions.day < 1 || input.targets.settlementRevision !== expectedRevisions.settlement + 1) {
       throw new InvalidCloudCommandInput(`${kind} 須指定既有營業日版本，且新日結版號為目前版號加一`);
     }
+    const payload = normalizePayload(kind, input.payload);
+    const align = kind === 'CloseDay' ? (payload as CommandPayloadByKind['CloseDay']).alignWithDayId : undefined;
+    if (typeof align === 'string' && align <= input.targets.dayId) {
+      throw new InvalidCloudCommandInput('對齊日必須晚於回填日');
+    }
     return {
       commandId: input.commandId,
       kind,
       leaseEpoch: input.leaseEpoch,
       targets: { dayId: input.targets.dayId, settlementRevision: input.targets.settlementRevision },
       expectedRevisions: expectedRevisions as ExpectedRevisionsByKind[typeof kind],
-      payload: normalizePayload(kind, input.payload),
+      payload,
     } as CanonicalEnabledInput;
   }
 

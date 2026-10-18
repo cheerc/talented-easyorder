@@ -56,6 +56,11 @@ interface RecoveryState {
 /** The previous closed day's counted cash, the default opening cash of a backfilled day (contract §13). */
 type PreviousLookup = { status: 'ready'; previous: PreviousClosedDay | null } | { status: 'error'; message: string };
 
+/** The nearest opened day after a back-filled day, the day its close must align with (contract §14). */
+type AlignLookup =
+  | { status: 'ready'; next: { dayId: string; openingCash: number } | null }
+  | { status: 'error'; message: string };
+
 interface DaySnapshot {
   overview: CloudDayCloseOverview;
   dayId: string;
@@ -65,6 +70,8 @@ interface DaySnapshot {
   backfill: CloudBackfillDay | null;
   /** Only looked up while the backfill form may ask for an opening cash. */
   previous: PreviousLookup | null;
+  /** Only looked up for a back-filled day that is still open and has its opening cash. */
+  align: AlignLookup | null;
 }
 
 /**
@@ -349,6 +356,15 @@ export function CloudDayClosePage({
           previousLookup = { status: 'error', message: errorMessage(lookupError) };
         }
       }
+      let alignLookup: AlignLookup | null = null;
+      if (backfill && day && day.status !== 'closed' && day.openingCash !== null) {
+        try {
+          alignLookup = { status: 'ready', next: (await repository.findNextOpened(dayId)).next };
+        } catch (lookupError) {
+          if (isAuthorizationLoss(lookupError)) throw lookupError;
+          alignLookup = { status: 'error', message: errorMessage(lookupError) };
+        }
+      }
       if (!isCurrent(key, generation) || requestId !== readRequestRef.current) return;
       if (confirmedReceipt?.commandId === pendingCommandIdRef.current) pendingCommandIdRef.current = null;
       if (confirmedReceipt) onLedgerChangedRef.current?.();
@@ -367,7 +383,7 @@ export function CloudDayClosePage({
         return {
           ...previous,
           ...clearDrafts(),
-          snapshot: { overview, dayId, day, backfill, previous: previousLookup },
+          snapshot: { overview, dayId, day, backfill, previous: previousLookup, align: alignLookup },
           dayIdDraft: dayId,
           loading: false,
           loadError: '',
@@ -438,7 +454,10 @@ export function CloudDayClosePage({
     const { commandId, dayId, expectedDayRevision, expectedSettlementRevision } = command;
     const base = { commandId, leaseEpoch, dayId, expectedDayRevision, expectedSettlementRevision };
     if (command.kind === 'close-day') {
-      return repository.closeDay({ ...base, expectedCash: command.expectedCash, countedCash: command.countedCash, note: command.note });
+      return repository.closeDay({
+        ...base, expectedCash: command.expectedCash, countedCash: command.countedCash, note: command.note,
+        ...(command.alignWithDayId !== undefined ? { alignWithDayId: command.alignWithDayId } : {}),
+      });
     }
     return repository.reopenDay({ ...base, reason: command.reason });
   };
@@ -669,11 +688,21 @@ export function CloudDayClosePage({
   const snapshot = page.snapshot;
   const day = snapshot?.day ?? null;
   const selectionDate = snapshot?.overview.selectionDate ?? '';
-  const countedCash = /^\d+$/.test(page.countedText) ? Number(page.countedText) : null;
+  // Contract §14: a back-filled day closes with no difference, aligned to the next opened day's opening cash.
+  const backfillClose = !!snapshot?.backfill && !!day && day.status !== 'closed';
+  const alignLookup = backfillClose ? snapshot?.align ?? null : null;
+  const alignNext = alignLookup?.status === 'ready' ? alignLookup.next : null;
+  const alignTarget = alignNext ? alignNext.openingCash : day?.expectedCash ?? null;
+  const alignGap = alignLookup?.status === 'ready' && day?.expectedCash !== null && day?.expectedCash !== undefined && alignTarget !== null
+    ? day.expectedCash - alignTarget
+    : null;
+  const countedText = backfillClose && page.countedText === '' && alignTarget !== null ? String(alignTarget) : page.countedText;
+  const countedCash = /^\d+$/.test(countedText) ? Number(countedText) : null;
   const difference = countedCash !== null && day?.expectedCash !== null && day?.expectedCash !== undefined
     ? countedCash - day.expectedCash
     : null;
   const canClose = !!snapshot && !!day && day.status !== 'closed' && day.expectedCash !== null && snapshot.dayId <= selectionDate;
+  const closeBlocked = backfillClose && (alignLookup?.status !== 'ready' || alignGap !== 0);
   // A past day that never confirmed its opening cash (for example the network was down) can get it backfilled.
   const canBackfill = !!snapshot && !!day && day.status !== 'closed' && day.openingCash === null && snapshot.dayId < selectionDate;
   const backfillCash = /^\d+$/.test(page.backfillText) ? Number(page.backfillText) : null;
@@ -681,11 +710,21 @@ export function CloudDayClosePage({
   const submitClose = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (page.recovery || !snapshot || !day || !canClose || day.expectedCash === null) return;
+    if (closeBlocked) {
+      updatePage(previous => ({ ...previous, actionError: alignLookup?.status !== 'ready'
+        ? '還沒查到要對齊的開帳日，請重新載入後再關帳。'
+        : `回填日的應有現金還差 ${Math.abs(alignGap ?? 0)} 元，請先回訂餐頁補登交易或收支，再回來關帳。` }));
+      return;
+    }
     if (countedCash === null || !Number.isSafeInteger(countedCash) || countedCash > 1_000_000_000) {
       updatePage(previous => ({ ...previous, actionError: '實點現金必須明確輸入 0 至 1,000,000,000 元的整數；空白、負數與小數均不接受。' }));
       return;
     }
     const note = page.note.trim();
+    if (backfillClose && (countedCash !== day.expectedCash || countedCash !== alignTarget)) {
+      updatePage(previous => ({ ...previous, actionError: `回填日的實點必須等於 ${alignTarget === null ? '應有現金' : formatMoney(alignTarget)}，不接受差額說明。` }));
+      return;
+    }
     if (countedCash !== day.expectedCash && note.length < 1) {
       updatePage(previous => ({ ...previous, actionError: '實點與應有現金不同，請填寫差額原因後再關帳。' }));
       return;
@@ -705,6 +744,7 @@ export function CloudDayClosePage({
       expectedCash: day.expectedCash,
       countedCash,
       note,
+      ...(backfillClose ? { alignWithDayId: alignNext?.dayId ?? null } : {}),
     });
   };
 
@@ -1151,12 +1191,43 @@ export function CloudDayClosePage({
                   <section className="cloud-day-close__card" aria-label="全日點現金與關帳">
                     <h3>全日點現金與關帳</h3>
                     <form className="cloud-day-close__form" aria-label={`${snapshot.dayId} 關帳`} onSubmit={submitClose}>
+                      {backfillClose && alignLookup?.status === 'ready' && (
+                        <div className="cloud-day-close__notice" data-testid="backfill-align">
+                          <p data-testid="backfill-align-target">
+                            {alignNext
+                              ? `須等於 ${alignNext.dayId} 的開帳現金 ${formatMoney(alignNext.openingCash)}`
+                              : `${snapshot.dayId} 之後沒有已開帳的日子，不需對齊其他日子；實點只要等於應有現金。`}
+                          </p>
+                          <p>
+                            目前應有現金 {formatMoney(day.expectedCash!)}
+                            {alignNext && `，與對齊金額${alignGap === 0 ? '相符' : `差 ${formatMoney(Math.abs(alignGap ?? 0))}（${(alignGap ?? 0) < 0 ? '少' : '多'}）`}`}。
+                          </p>
+                          {alignGap !== null && alignGap !== 0 && (
+                            <p role="alert" data-testid="backfill-align-gap">
+                              差 {formatMoney(Math.abs(alignGap))}，不能關帳。請回到訂餐頁的回填模式，補登 {snapshot.dayId} 缺的交易，或補記收支（含呆帳）後再回來。
+                              {onOpenOrders && (
+                                <button type="button" className="cloud-day-close__secondary" onClick={() => onOpenOrders(snapshot.dayId)} disabled={busy} data-testid="backfill-align-orders">
+                                  到訂餐頁補登 {snapshot.dayId}
+                                </button>
+                              )}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {backfillClose && alignLookup?.status === 'error' && (
+                        <div className="cloud-day-close__alert" role="alert" data-testid="backfill-align-error">
+                          無法查詢要對齊的開帳日：{alignLookup.message}
+                          <button type="button" className="cloud-day-close__secondary" onClick={() => void loadSnapshot(snapshot.dayId)} disabled={busy || page.loading} data-testid="backfill-align-retry">
+                            重新查詢
+                          </button>
+                        </div>
+                      )}
                       <label>
                         實點現金（元）
                         <input
                           className="cloud-day-close__input cloud-day-close__mono"
                           inputMode="numeric"
-                          value={page.countedText}
+                          value={countedText}
                           onChange={event => updatePage(previous => ({ ...previous, countedText: event.target.value.trim(), actionError: '' }))}
                           disabled={busy}
                           required
@@ -1171,7 +1242,7 @@ export function CloudDayClosePage({
                         </p>
                       )}
                       <label>
-                        {difference !== null && difference !== 0 ? '差額原因（必填，最多 500 字）' : '備註（選填，最多 500 字）'}
+                        {!backfillClose && difference !== null && difference !== 0 ? '差額原因（必填，最多 500 字）' : '備註（選填，最多 500 字）'}
                         <textarea
                           className="cloud-day-close__input"
                           rows={2}
@@ -1182,7 +1253,7 @@ export function CloudDayClosePage({
                         />
                       </label>
                       <div className="cloud-day-close__actions">
-                        <button type="submit" className="cloud-day-close__primary" disabled={busy}>確認關帳</button>
+                        <button type="submit" className="cloud-day-close__primary" disabled={busy || closeBlocked} data-testid="close-submit">確認關帳</button>
                       </div>
                       <p className="cloud-day-close__help">關帳後這天不能再新增或更正交易、菜單與開帳現金；要修正必須先填原因重開，再重新關帳。</p>
                     </form>

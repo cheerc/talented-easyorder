@@ -20,6 +20,7 @@ const repository = vi.hoisted(() => ({
   ensureDay: vi.fn(),
   startBackfill: vi.fn(),
   findPreviousClosed: vi.fn(),
+  findNextOpened: vi.fn(),
   readCommand: vi.fn(),
 }));
 
@@ -497,6 +498,7 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     const queue = [...ids];
     vi.stubGlobal('crypto', { randomUUID: vi.fn().mockImplementation(() => queue.shift() ?? commandId) });
     repository.findPreviousClosed.mockResolvedValue({ previous: previousClosed, seq: 20 });
+    repository.findNextOpened.mockResolvedValue({ next: null, seq: 20 });
   });
 
   function renderAt(dayId: string, extra: { onOpenOrders?: (dayId: string) => void } = {}) {
@@ -735,5 +737,109 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     renderAt(dayId);
     await screen.findByRole('heading', { name: `${dayId} 日結` });
     expect(screen.queryByTestId('backfill-start')).not.toBeInTheDocument();
+  });
+});
+
+describe('CloudDayClosePage: aligned close of a backfilled day (contract §14)', () => {
+  const gap = '2026-10-14';
+  const marker = {
+    dayId: gap, reason: '那天斷線', startedBy: 'uid-a', startedAt: new Date('2026-10-17T01:00:00.000Z'), commandId: 'c-start',
+  };
+  const gapOverview = (backfill: typeof marker | null) => overview({
+    unclosedDays: [{ dayId: gap, status: 'open', openingCash: 1000, activeTransactionCount: 2, kind: 'needs-close', backfill }],
+  });
+  // Opening 1,000 and 50 of receipts leave 1,050 as the expected cash of the back-filled day.
+  const gapDay = (retainedReceipts: number) => dayState({
+    dayId: gap, openingCash: 1000, expectedCash: 1000 + retainedReceipts,
+    totals: { ...dayState().totals, retainedReceipts, cashierIncome: 0, cashierExpense: 0 },
+  });
+
+  function renderAt(dayId: string, extra: { onOpenOrders?: (dayId: string) => void } = {}) {
+    render(<CloudDayClosePage db={{} as Firestore} leaseEpoch={4} identityKey="uid-a:4" initialDayId={dayId} {...extra} />);
+  }
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    repository.readOverview.mockResolvedValue(gapOverview(marker));
+    repository.read.mockResolvedValue(gapDay(-50));
+    repository.closeDay.mockImplementation(async (input: { commandId: string; dayId: string }): Promise<CommandResult> => ({
+      ok: true, receipt: { ...receipt('CloseDay'), commandId: input.commandId, targets: { dayId: input.dayId } },
+    }));
+    repository.findNextOpened.mockResolvedValue({ next: { dayId: '2026-10-16', openingCash: 950 }, seq: 20 });
+    repository.readCommand.mockResolvedValue(null);
+    vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValue(commandId) });
+  });
+
+  it('shows the alignment day and amount, defaults the count to it and closes with alignWithDayId', async () => {
+    renderAt(gap);
+    expect(await screen.findByTestId('backfill-align-target')).toHaveTextContent('須等於 2026-10-16 的開帳現金 NT$ 950');
+    expect(repository.findNextOpened).toHaveBeenCalledWith(gap);
+    const form = screen.getByRole('form', { name: `${gap} 關帳` });
+    expect(within(form).getByRole('textbox', { name: /實點現金/ })).toHaveValue('950');
+    expect(screen.queryByTestId('backfill-align-gap')).not.toBeInTheDocument();
+    fireEvent.click(within(form).getByRole('button', { name: '確認關帳' }));
+    await waitFor(() => expect(repository.closeDay).toHaveBeenCalledTimes(1));
+    expect(repository.closeDay).toHaveBeenCalledWith(expect.objectContaining({
+      dayId: gap, countedCash: 950, expectedCash: 950, note: '', alignWithDayId: '2026-10-16',
+    }));
+  });
+
+  it('blocks the close, says how much is missing and points to the back-fill mode when the cash does not match', async () => {
+    repository.read.mockResolvedValue(gapDay(0));
+    const onOpenOrders = vi.fn();
+    renderAt(gap, { onOpenOrders });
+    const gapNote = await screen.findByTestId('backfill-align-gap');
+    expect(gapNote).toHaveTextContent('差 NT$ 50，不能關帳');
+    expect(gapNote).toHaveTextContent('回到訂餐頁的回填模式');
+    expect(screen.getByRole('button', { name: '確認關帳' })).toBeDisabled();
+    fireEvent.click(within(gapNote).getByRole('button', { name: `到訂餐頁補登 ${gap}` }));
+    expect(onOpenOrders).toHaveBeenCalledWith(gap);
+    expect(repository.closeDay).not.toHaveBeenCalled();
+  });
+
+  it('refuses a count that differs from the aligned cash even when a note is given', async () => {
+    renderAt(gap);
+    const form = await screen.findByRole('form', { name: `${gap} 關帳` });
+    fireEvent.change(within(form).getByRole('textbox', { name: /實點現金/ }), { target: { value: '940' } });
+    fireEvent.change(within(form).getByRole('textbox', { name: /備註/ }), { target: { value: '少了十元' } });
+    fireEvent.click(within(form).getByRole('button', { name: '確認關帳' }));
+    expect(await screen.findByText(/回填日的實點必須等於 NT\$ 950/)).toBeInTheDocument();
+    expect(repository.closeDay).not.toHaveBeenCalled();
+  });
+
+  it('closes with a null alignment when no later day is opened', async () => {
+    repository.findNextOpened.mockResolvedValue({ next: null, seq: 20 });
+    renderAt(gap);
+    expect(await screen.findByTestId('backfill-align-target')).toHaveTextContent('之後沒有已開帳的日子');
+    const form = screen.getByRole('form', { name: `${gap} 關帳` });
+    expect(within(form).getByRole('textbox', { name: /實點現金/ })).toHaveValue('950');
+    fireEvent.click(within(form).getByRole('button', { name: '確認關帳' }));
+    await waitFor(() => expect(repository.closeDay).toHaveBeenCalledTimes(1));
+    expect(repository.closeDay).toHaveBeenCalledWith(expect.objectContaining({ countedCash: 950, alignWithDayId: null }));
+  });
+
+  it('disables the close with a retry when the alignment day cannot be looked up', async () => {
+    repository.findNextOpened.mockRejectedValueOnce(new Error('連線中斷')).mockResolvedValue({ next: null, seq: 20 });
+    renderAt(gap);
+    expect(await screen.findByTestId('backfill-align-error')).toHaveTextContent('連線中斷');
+    expect(screen.getByRole('button', { name: '確認關帳' })).toBeDisabled();
+    fireEvent.click(screen.getByTestId('backfill-align-retry'));
+    await waitFor(() => expect(screen.getByRole('button', { name: '確認關帳' })).toBeEnabled());
+  });
+
+  it('leaves an ordinary day alone: no lookup, no alignment, a difference with a note still closes', async () => {
+    repository.readOverview.mockResolvedValue(overview());
+    repository.read.mockResolvedValue(dayState());
+    renderAt(today);
+    const form = await screen.findByRole('form', { name: `${today} 關帳` });
+    expect(repository.findNextOpened).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('backfill-align')).not.toBeInTheDocument();
+    fireEvent.change(within(form).getByRole('textbox', { name: /實點現金/ }), { target: { value: '1160' } });
+    fireEvent.change(within(form).getByRole('textbox', { name: /差額原因/ }), { target: { value: '找錯錢' } });
+    fireEvent.click(within(form).getByRole('button', { name: '確認關帳' }));
+    await waitFor(() => expect(repository.closeDay).toHaveBeenCalledTimes(1));
+    const sent = repository.closeDay.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(sent).toMatchObject({ countedCash: 1160, expectedCash: 1170, note: '找錯錢' });
+    expect(Object.hasOwn(sent, 'alignWithDayId')).toBe(false);
   });
 });

@@ -720,3 +720,64 @@ Each mutant changes one check and runs `cloudDayClose.spec.ts -t P11c2a` (36 cas
 | marker `reason` no longer bound to the payload reason | killed (`P11c2a.9`) |
 
 One check is deliberately not a mutant: `!exists(backfillDays/…)` in `validStartBackfill`. A second marker for the same day is a `create` on an existing document, which Firestore evaluates as an `update` and the `update` rule denies, so removing the check cannot change behaviour.
+
+## P11c3 — aligned close of a back-filled day — budget and probe receipt
+
+P11c3 changes two Rules functions and adds no kind (26 kinds, 24 enabled) and no collection. A `CloseDay` on a marked day (`backfillDays/{dayId}` present) must carry `alignWithDayId` and close with no difference; an ordinary close is unchanged. Contract: [P11 day close contract §14](../superpowers/specs/2026-10-17-cloud-day-close-contract.md#14-p11c3-回填日關帳對齊).
+
+### Rule layout
+
+- `validDaySettlementCommand` (command rule, the tight one): the close branch accepts either the old three-key payload (checked first, so an ordinary close short-circuits) or the four-key payload `{countedCash, note, expectedCash, alignWithDayId}` with `countedCash == expectedCash` and `alignWithDayId == null || (validTaipeiDate && > dayId && get(days/alignWithDayId).openingCash == countedCash)`. It does not look at the marker.
+- `dayCloseCommand` (day rule, +96 headroom): for a close, `('alignWithDayId' in command.payload) == exists(backfillDays/dayId)`. The command, the day update and the settlement version commit in one batch and the day update must pass this rule, so the link between marker and payload shape is enforced atomically without spending command-rule headroom. A first version put `exists(marker)` in the command rule: it cost three units there (P11.9 command rule +53 → +50, the P11c3.8 case +37), which is why it moved.
+- Rules cannot prove that no nearer opened day exists, or that `null` really means none; the writer scans (`findNextOpened`) and the anomaly page stays the safety net (contract §14.2). `validTaipeiDate(alignWithDayId)` is a redundant guard: `days/` only holds date IDs and a `get` on any other path denies.
+
+### Write budget
+
+| Command / write path | Central command-create Rules calls | Projection leaves Rules calls | Atomic no-cache total | Max per write |
+|---|---:|---:|---:|---:|
+| `CloseDay` on an ordinary day (n > 1) | 8 (unchanged) | head 2 + day 3 (`getAfter`, `exists` command, `exists` marker) + settlement 2 = 7 | **15/20** | **8/10** |
+| `CloseDay` on a marked day with a dated alignment (n > 1) | 8 + `get days/alignWithDayId` 1 = **9** | 7 | **16/20** | **9/10** |
+
+Static derivation like the earlier appendices (the Emulator has no access counter). The busiest path — a marked day closed, reopened and closed again (`P11c3.10`, settlement n = 3 and then 5) — passes in the Emulator for the repository and for a raw batch.
+
+### Expression headroom
+
+Same probe as before (`1 == 1 &&` terms at one anchor, bisected against a positive Emulator case; `+lo / +hi`). Main is `797b23e` (same Rules as `5fd45a0`); this PR is measured on its final Rules. The existing anchors from the instruction were all measured on both sides; none dropped to +5 or lower, and none is more than 3 below main.
+
+| Rule anchor | Case | Main | This PR |
+|---|---|---:|---:|
+| command create | `P11.9` ordinary max close | +53 / +54 | +52 / +53 |
+| dataHead update | `P11.9` | +95 / +96 | +95 / +96 |
+| day update (`dayCloseCommand`) | `P11.9` | +96 / +97 | +96 / +97 |
+| settlement create | `P11.9` | +96 / +97 | +96 / +97 |
+| day update (`dayWriteCommand`) | `P08.8` CreateOrder | +11 / +12 | +11 / +12 |
+| command create | `P08.8` CreateOrder | +20 / +21 | +20 / +21 |
+| command create | P14 real P10a receipts (capped by `CreateStudent`) | +3 / +4 | +3 / +4 |
+| transaction create | `P11c2a.14` backfilled order | +16 / +17 | +16 / +17 |
+| command create | `P11c3.8` aligned max close (500-character note, opening 20,000) | — | +36 / +37 |
+| dataHead update | `P11c3.8` | — | +95 / +96 |
+| day update (`dayCloseCommand`) | `P11c3.8` | — | +96 / +97 |
+| settlement create | `P11c3.8` | — | +96 / +97 |
+| command create | `P11c3.10` reclose of a reopened marked day (capped by the backfilled payment, not `CloseDay`) | — | +20 / +21 |
+| day update (`dayCloseCommand`) | `P11c3.10` | — | +96 / +97 |
+
+The tightest anchors are unchanged: the transaction rule for a backfilled order (+16), the day rule for `CreateOrder` (+11), `CreateStudent` on the command rule (+3). The only anchor that moved is the command rule on an ordinary close (−1, the extra `||` operand); the aligned close has +36.
+
+### Mutants
+
+Each Rules mutant changes one check and runs `cloudDayClose.spec.ts -t 'P11c3|P11.9|P11.1:|P11c2a.4'` (24 cases). Writer and backup mutants run `P11c3` and `aligned close`.
+
+| Mutant | Result |
+|---|---|
+| remove `countedCash == expectedCash` from the aligned branch | killed (`P11c3.7`: difference with a matching alignment and with a null alignment; the first version of the test was too weak and let this survive, now each case isolates the check) |
+| alignment day only has to exist (no `openingCash == countedCash`) | killed (`P11c3.7` amount mismatch and unopened day) |
+| remove `alignWithDayId > dayId` | killed (`P11c3.7` earlier day with the same opening cash; self alignment) |
+| an unopened alignment day (`openingCash == null`) also passes | killed (`P11c3.7` alignment day has no confirmed opening cash) |
+| remove the marker link in `dayCloseCommand` | killed (`P11c3.7` ordinary day with the key, marked day without it) |
+| marked day may omit `alignWithDayId` | killed |
+| unmarked day may carry `alignWithDayId` | killed |
+| `validTaipeiDate(alignWithDayId)` → `is string` | **equivalent**: a path-like or junk string only reaches a `get` on a path that does not exist and denies (`P11c3.7` path case stays denied) |
+| writer: skip the nearest-opened-day comparison | killed (`P11c3.3`) |
+| backup replay: do not compare the aligned day's opening cash | killed (`aligned close`: coherent forgery of the aligned day's opening) |
+| backup replay: allow `alignWithDayId` on an unmarked day | killed (`aligned close`) |
+| backup replay: drop `align > dayId` | **equivalent**: `normalizeEnabledCommandInput` rejects it first (the payload schema, §14.5) |
