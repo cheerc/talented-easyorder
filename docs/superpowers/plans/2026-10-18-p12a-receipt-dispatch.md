@@ -1,6 +1,6 @@
 # P12a 收據 dispatch brief
 
-Owner：coordinator。狀態：已獲 release，docs-only receipt PR 已發布，等待獨立 COMMENT review。Pinned base／#521 merge：`c9988b35912f761bb79c08476ac9636c0fcc49aa`；source head：`c161f9196d7836e310c45cdfe3312cefed611842`。獨立複審 [5564603618](https://github.com/cheerc/talented-easyorder/pull/521#pullrequestreview-5564603618) PASS；source CI [39158763724](https://github.com/cheerc/talented-easyorder/actions/runs/39158763724) build-and-test/e2e 均 SUCCESS。Main CI [39159574321](https://github.com/cheerc/talented-easyorder/actions/runs/39159574321) 派工時 pending，Coordinator 後續從 provider 核對為 COMPLETED／SUCCESS，main 仍是同一 merge SHA；本輪依 release 回報，不自行輪詢。Impl 不撰寫設計計畫，不在本批改程式或測試。
+Owner：coordinator。狀態：已獲 release，docs-only receipt PR [#522](https://github.com/cheerc/talented-easyorder/pull/522) 已發布，等待獨立 COMMENT review。Pinned base／#521 merge：`c9988b35912f761bb79c08476ac9636c0fcc49aa`；source head：`c161f9196d7836e310c45cdfe3312cefed611842`。獨立複審 [5564603618](https://github.com/cheerc/talented-easyorder/pull/521#pullrequestreview-5564603618) PASS；source CI [39158763724](https://github.com/cheerc/talented-easyorder/actions/runs/39158763724) build-and-test/e2e 均 SUCCESS。Main CI [39159574321](https://github.com/cheerc/talented-easyorder/actions/runs/39159574321) 派工時 pending，Coordinator 後續從 provider 核對為 COMPLETED／SUCCESS，main 仍是同一 merge SHA；本輪依 release 回報，不自行輪詢。Impl 不撰寫設計計畫，不在本批改程式或測試。
 
 ## 範圍
 

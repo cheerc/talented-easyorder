@@ -5,12 +5,12 @@
 ## 實際進度（2026-10-18）
 
 - P11c4b PR [#519](https://github.com/cheerc/talented-easyorder/pull/519) 已合併：base `fa214036e18d5e600cdb729a4e3b2732c51ec458`、source head `340726ff4b14343e4542eaa3bd936ede50fbfa0e`、merge SHA `855679804a12cd1bce5dce72fe2da20127e2c85d`。舊 head REWORK review [5563425902](https://github.com/cheerc/talented-easyorder/pull/519#pullrequestreview-5563425902) 與新 head COMMENT delta PASS review [5563479986](https://github.com/cheerc/talented-easyorder/pull/519#pullrequestreview-5563479986) 分開；source CI [39137275659](https://github.com/cheerc/talented-easyorder/actions/runs/39137275659) 兩個 jobs 成功。
-- P11c4b receipt 的 main CI [39138091279](https://github.com/cheerc/talented-easyorder/actions/runs/39138091279) 已 COMPLETED／SUCCESS（build-and-test、e2e 均成功）；沒有重跑。P11c 已完成；P12 已授權；P12a 資料層 PR #521 已合併，main CI 綠燈，docs-only 收據 PR 已發布並等待獨立 review。P12b 已授權、待 coordinator 具體派工；P12c 尚未開始。
+- P11c4b receipt 的 main CI [39138091279](https://github.com/cheerc/talented-easyorder/actions/runs/39138091279) 已 COMPLETED／SUCCESS（build-and-test、e2e 均成功）；沒有重跑。P11c 已完成；P12 已授權；P12a 資料層 PR #521 已合併，main CI 綠燈，docs-only 收據 PR [#522](https://github.com/cheerc/talented-easyorder/pull/522) 已發布並等待獨立 review。P12b 已授權、待 coordinator 具體派工；P12c 尚未開始。
 
 ## 實際進度（2026-10-19）
 
 - P12a cloud 查帳資料層 PR [#521](https://github.com/cheerc/talented-easyorder/pull/521) 已 squash merge：pinned base `dfdb982201e7fdd8dd9ba38a82f9d566b72598cf`、source head `c161f9196d7836e310c45cdfe3312cefed611842`、merge SHA `c9988b35912f761bb79c08476ac9636c0fcc49aa`。舊 head `a81fc31e7fe8fbbc1f6fc830f18ff8f17e7d377f` 的 REWORK review [5564521278](https://github.com/cheerc/talented-easyorder/pull/521#pullrequestreview-5564521278) 與 c161f91 的 PASS COMMENT review [5564603618](https://github.com/cheerc/talented-easyorder/pull/521#pullrequestreview-5564603618) 分開記錄；source CI [39158763724](https://github.com/cheerc/talented-easyorder/actions/runs/39158763724) build-and-test／e2e 均成功。
-- P12a 僅完成資料層，尚未完成 F2/F5 UI、匯出／列印使用流程或 R01/L07 UI E2E；P12 整體未完成。P12a docs-only 收據以 merge `c9988b35912f761bb79c08476ac9636c0fcc49aa` 為 pinned base。Main CI [39159574321](https://github.com/cheerc/talented-easyorder/actions/runs/39159574321) 派工時由 coordinator 回報 pending，之後由 coordinator 從 provider 核對為 COMPLETED／SUCCESS，main 仍為同一 SHA；本輪依此回報發布，不自行輪詢。收據 PR 發布後等待獨立 review。
+- P12a 僅完成資料層，尚未完成 F2/F5 UI、匯出／列印使用流程或 R01/L07 UI E2E；P12 整體未完成。P12a docs-only 收據 PR [#522](https://github.com/cheerc/talented-easyorder/pull/522) 以 merge `c9988b35912f761bb79c08476ac9636c0fcc49aa` 為 pinned base。Main CI [39159574321](https://github.com/cheerc/talented-easyorder/actions/runs/39159574321) 派工時由 coordinator 回報 pending，之後由 coordinator 從 provider 核對為 COMPLETED／SUCCESS，main 仍為同一 SHA；本輪依此回報發布，不自行輪詢。收據 PR 等待獨立 review。
 - P12b 已授權、待 coordinator 依已合併介面具體派工；不需再次等待 human approval。P12c 尚未開始。
 
 ## 授權與角色
@@ -40,7 +40,7 @@ CheerC 本輪指示：coordinator 負責推進至 P12 完成，撰寫 plan 與 d
 | P11c4b | 日結補記表單／歷史、異常差額入口、未知結果重試與 Q2 E2E | R0-receipt merge |
 | P11c4b-receipt | 文件收據，P11c 完成且 P12 已授權 | P11c4b merge |
 | P12a | 完整歷史讀取、cloud 餘額／彙總／輸出資料模型與索引；PR #521 已合併，僅資料層 | P11c4b-receipt merge |
-| P12a-receipt | 資料層證據與待接 UI／稽核；main CI 綠燈已確認，docs-only PR 等獨立複審 | P12a merge |
+| P12a-receipt | 資料層證據與待接 UI／稽核；main CI 綠燈已確認，docs-only PR #522 等獨立複審 | P12a merge |
 | P12b | `RecordExport`／`RecordPrint` 正式稽核命令、Rules／writer／backup 相容，無業務投影；已授權，待 coordinator 具體派工 | P12a-receipt merge |
 | P12b-receipt | 命令層證據與待接 UI | P12b merge |
 | P12c | cloud F2／F5、原始／合併輸出與列印、變更稽核／日結版次、R01／L07 E2E | P12b-receipt merge |
