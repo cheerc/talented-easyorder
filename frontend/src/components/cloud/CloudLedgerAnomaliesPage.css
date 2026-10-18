@@ -62,3 +62,24 @@
   border: 1px solid #b91c1c;
   border-radius: 8px;
 }
+
+.cloud-ledger-anomalies__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.cloud-ledger-anomalies__gap-days {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 0;
+  list-style: none;
+}
+
+.cloud-ledger-anomalies__gap-days li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}

@@ -30,7 +30,32 @@ describe('computeLedgerAnomalies', () => {
     expect(computeLedgerAnomalies(days, '2026-10-05')).toEqual([{
       kind: 'opening-mismatch', dayId: '2026-10-05', openingCash: 1000,
       previousClosedDayId: '2026-10-01', previousCountedCash: 1200, difference: -200, daysApart: 4,
+      gapDays: ['2026-10-02', '2026-10-03', '2026-10-04'], gapDayCount: 3,
     }]);
+  });
+
+  it('空日只列完全沒有營業日文件的日子，已有文件（例如沒開帳的過去日）不重複列出', () => {
+    const days = [closed('2026-10-01', 500, 1200), open('2026-10-03', null), open('2026-10-05', 1000)];
+    const mismatch = computeLedgerAnomalies(days, '2026-10-05').find(item => item.kind === 'opening-mismatch');
+    expect(mismatch).toMatchObject({ gapDays: ['2026-10-02', '2026-10-04'], gapDayCount: 2 });
+  });
+
+  it('連續兩天沒有空日', () => {
+    const days = [closed('2026-10-01', 500, 1200), open('2026-10-02', 1000)];
+    expect(computeLedgerAnomalies(days, '2026-10-02')).toMatchObject([{ gapDays: [], gapDayCount: 0 }]);
+  });
+
+  it('空日最多列出最早的 31 天，總數照實回報；跨月與閏年的日曆日都算對', () => {
+    const days = [closed('2028-02-20', 500, 1200), open('2028-04-10', 1000)];
+    const [mismatch] = computeLedgerAnomalies(days, '2028-04-10');
+    expect(mismatch).toMatchObject({ kind: 'opening-mismatch', daysApart: 50, gapDayCount: 49 });
+    if (mismatch.kind !== 'opening-mismatch') throw new Error('unreachable');
+    expect(mismatch.gapDays).toHaveLength(31);
+    expect(mismatch.gapDays.slice(0, 11)).toEqual([
+      '2028-02-21', '2028-02-22', '2028-02-23', '2028-02-24', '2028-02-25', '2028-02-26', '2028-02-27',
+      '2028-02-28', '2028-02-29', '2028-03-01', '2028-03-02',
+    ]);
+    expect(mismatch.gapDays.at(-1)).toBe('2028-03-22');
   });
 
   it('中間有一天完全沒有營業日文件，不影響前後比對', () => {

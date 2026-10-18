@@ -293,6 +293,8 @@ export function CloudDayVendorsPage({
   const onLedgerChangedRef = useRef(onLedgerChanged);
   useEffect(() => { onLedgerChangedRef.current = onLedgerChanged; }, [onLedgerChanged]);
   const [previousLookup, setPreviousLookup] = useState<PreviousClosedLookupView>({ status: 'idle' });
+  /** Bumped by the retry button so a failed previous-closed-day lookup can run again without reloading the page. */
+  const [lookupAttempt, setLookupAttempt] = useState(0);
   const scopeKey = `${identityKey}:${leaseEpoch}`;
   const [pageState, setPageStateRaw] = useState<PageState>(() => initialPageState(scopeKey));
   const scopeRef = useRef(scopeKey);
@@ -942,7 +944,7 @@ export function CloudDayVendorsPage({
       },
     );
     return () => { cancelled = true; };
-  }, [repository, lookupDayId, ledgerKey]);
+  }, [repository, lookupDayId, ledgerKey, lookupAttempt]);
   const lookupReady = previousLookup.status === 'ready' && previousLookup.dayId === lookupDayId;
   const lookupError = previousLookup.status === 'error' && previousLookup.dayId === lookupDayId;
   const source = snapshot?.latestEarlierMenu ?? null;
@@ -1116,6 +1118,17 @@ export function CloudDayVendorsPage({
                     <p className="cloud-day-vendors__warning">伺服器使用權日期早於系統啟用日，尚不能設定開帳現金。</p>
                   )}
                   {canSetOpeningCash && <LedgerUnclosedBanner ledger={ledger} onOpenAnomalies={onOpenAnomalies} />}
+                  {canSetOpeningCash && ledger && lookupError && (
+                    <button
+                      type="button"
+                      className="cloud-day-vendors__secondary"
+                      data-testid="opening-lookup-retry"
+                      disabled={busy}
+                      onClick={() => { setPreviousLookup({ status: 'idle' }); setLookupAttempt(value => value + 1); }}
+                    >
+                      重新查詢上一個已關帳日
+                    </button>
+                  )}
                   {canSetOpeningCash ? (
                     <CloudDayOpeningCashForm
                       businessDate={snapshot.dayId}

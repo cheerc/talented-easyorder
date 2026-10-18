@@ -642,7 +642,7 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
       anomalies: [
         { kind: 'unclosed-past-day', dayId: '2026-10-12', status: 'open', openingCash: 500, activeTransactionCount: 2 },
         { kind: 'unclosed-past-day', dayId: '2026-10-14', status: 'reopened', openingCash: null, activeTransactionCount: 1 },
-        { kind: 'opening-mismatch', dayId: '2026-10-14', openingCash: 1, previousClosedDayId: '2026-10-13', previousCountedCash: 2, difference: -1, daysApart: 1 },
+        { kind: 'opening-mismatch', dayId: '2026-10-14', openingCash: 1, previousClosedDayId: '2026-10-13', previousCountedCash: 2, difference: -1, daysApart: 1, gapDays: [], gapDayCount: 0 },
       ],
     }), { onOpenAnomalies });
     const banner = await screen.findByLabelText('過去未關帳警示');
@@ -749,5 +749,21 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
     expect(await within(form).findByText(/無法確認上一個已關帳日的實點現金（離線），暫時不能開帳/)).toBeInTheDocument();
     expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeDisabled();
+  });
+
+  it('retries a failed lookup from a button, without reloading the page', async () => {
+    repository.findPreviousClosed
+      .mockRejectedValueOnce(new Error('離線'))
+      .mockResolvedValue({ previous: { dayId: '2026-10-13', countedCash: 870 }, seq: 10 });
+    renderWithLedger(readyLedger());
+    const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
+    await within(form).findByText(/無法確認上一個已關帳日的實點現金（離線）/);
+    expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeDisabled();
+
+    fireEvent.click(screen.getByTestId('opening-lookup-retry'));
+    await waitFor(() => expect(within(form).getByText(/上一個已關帳日 2026-10-13 的實點現金為 NT\$ 870/)).toBeInTheDocument());
+    expect(repository.findPreviousClosed).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId('opening-lookup-retry')).not.toBeInTheDocument();
+    expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled();
   });
 });

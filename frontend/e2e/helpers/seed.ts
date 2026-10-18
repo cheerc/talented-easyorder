@@ -70,6 +70,20 @@ async function patchDoc(collection: string, docId: string, data: Record<string, 
   if (!res.ok) throw new Error(`Failed to update ${collection}/${docId}: ${await res.text()}`);
 }
 
+/** Demo Emulator only: create or update the given fields of one document through the Admin REST route. */
+export async function upsertDocument(collection: string, docId: string, data: Record<string, unknown>): Promise<void> {
+  await patchDoc(collection, docId, data);
+}
+
+/** Demo Emulator only: remove one document through the Admin REST route (missing documents are fine). */
+export async function removeDocument(collection: string, docId: string): Promise<void> {
+  const res = await fetch(
+    `${FIRESTORE_EMULATOR}/v1/projects/${PROJECT}/databases/(default)/documents/${collection}/${encodeURIComponent(docId)}`,
+    { method: 'DELETE', headers: { Authorization: 'Bearer owner' } },
+  );
+  if (!res.ok) throw new Error(`Failed to delete ${collection}/${docId}: ${await res.text()}`);
+}
+
 function operatorData(uid: string, email: string, active: boolean, role: string): Record<string, unknown> {
   return {
     uid,

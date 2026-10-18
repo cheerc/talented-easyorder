@@ -387,3 +387,11 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - 未做：P11c2b 回填模式畫面、P11c3、P11c4、角色權限。無 production 部署、無正式金鑰。
 - 合併收據：#511 squash `35ac95bd3f4f98a378fd01803f6c3a6beafae794`；獨立審查 review `5561303976` 無必修，審查者在 Emulator 另跑受影響 suite（`cloudDayClose` 133/133 含 2 個未提交的探測案例、`cloudCommands` 179/179、`cloudTransactionMutation` 47/47、`cloudCashMovement` 42/42、`cloudOrderRepository` 10/10、`cloudRefund` 43/43、`cloudBackup` 22/22、`cloudDayVendorRepository` 10/10），Rules 餘裕複測與預算附錄一致（回填訂餐交易建立 +16）。最終 head `f857b10bc10be92976dc7904a5b31d1aeca12f47` 的 CI [39094019150](https://github.com/cheerc/talented-easyorder/actions/runs/39094019150) build-and-test 與 e2e 成功。審查後續待辦（P11c2b）：開帳表單查上一個已關帳日失敗後的重試按鈕、`isBackfilled` 台北午夜（UTC 16:00:00）邊界測試。未部署。
 
+## P11c2b 回填模式畫面 checkpoint — 2026-10-18
+
+- 範圍：只改前端與讀取端；Rules 與 `firestore.indexes.json` 都沒改，所以 P11c2a 的 Rules 餘裕（回填訂餐交易建立 +16 最緊）不變。契約 §13：[P11 contract](../superpowers/specs/2026-10-17-cloud-day-close-contract.md#13-p11c2b-回填模式畫面)。base `35ac95bd3f4f98a378fd01803f6c3a6beafae794`；PR 與 head SHA 以 PR body 與 handoff 為準。
+- demo-easyorder Auth＋Firestore Emulator 循序 `src/firebase/__tests__` 全部 `*.spec.ts`（所有 `EASYORDER_REQUIRE_*`）：14 檔 615/615、0 skipped（P11c2a 為 609）。新增 `cloudDayClose.spec.ts` `P11c2b.1`（repository 三步與回填中清單）、`cloudOrderRepository.spec.ts` `P11c2b.R1`–`R3`（有標記的過去日可載入、無標記／上線日前／未來日 `INVALID_INPUT`、非持有人 `LEASE_LOST`）；`P11c1.1` 的異常物件帶 `gapDays`／`gapDayCount`；`P11c2a.7` 依新行為改為 `DAY_CLOSED` 並檢查訊息。
+- 一般 Vitest：171 檔通過／14 檔 skip，1,798 passed／615 skipped（P11c2a 為 1,769／609）。`npm run lint`、`npm run build` exit 0；app tsc 與 main 診斷逐行相同（行號不計）。
+- E2E（本機 Chromium 1194 暫時設定，不取代 CI pinned Chromium，設定已刪未提交）：cloud 22/22、prototype 7/7。新增 `D09`：Admin REST 種下過去未關帳的營業日與學生（只在 demo Emulator，測後清掉，上線日暫調前三天後復原），再由 UI 走異常頁 → 標為回填（原因必填）→ 日結頁確認 → 訂餐頁橫幅 → 登記其他餐點 → 「回填」標籤 → 退款停用 → 離開回填；並用 Admin 讀取確認標記與交易的 `businessDate`。**「營業日文件不存在」的三步沒有 E2E**（需要種下已關帳的前一日才會出現斷層日），由元件測試與 `P11c2b.1` 涵蓋。
+- 元件測試注意：`CloudDayClosePage.test.tsx` 回填案例的 repository mock 必須回傳「與送出的 command ID 相同」的 receipt，否則頁面會拒收回執；每個 describe 各自 `vi.resetAllMocks()`。
+- 未做：P11c3、P11c4、角色權限、P12。無 production 部署、無正式金鑰。

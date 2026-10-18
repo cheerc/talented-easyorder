@@ -328,7 +328,29 @@ function resultFromUnknownError(message = '提交回應不確定，請用原 com
   return errorResult('UNKNOWN_RESULT', message);
 }
 
-async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput): Promise<CommandErrorCode | null> {
+/**
+ * A diagnosis is a command error code, or one of two finer reasons a transaction on a past day is refused
+ * (contract §12.2); `leaseDenialResult` turns them into the code and message the operator sees.
+ */
+type Diagnosis = CommandErrorCode | 'DAY_REOPENED_AFTER_CLOSE' | 'DAY_NOT_BACKFILLING' | null;
+
+/**
+ * Revisions matched but Rules still refused an order, payment or cash movement: say why when the day is not today.
+ * Only rejection paths read these two extra documents.
+ */
+async function diagnoseTransactionDay(db: Firestore, dayId: string, dayValue: Data): Promise<Diagnosis> {
+  const lease = await getDocFromServer(doc(db, accessLeasePath()));
+  if (!lease.exists()) return 'INVALID_INPUT';
+  const today = taipeiCalendarDate((lease.data() as Data).updatedAt as Timestamp);
+  if (dayId === today) return dayValue.status === 'closed' ? 'DAY_CLOSED' : 'INVALID_INPUT';
+  if (dayValue.status === 'closed') return 'DAY_CLOSED';
+  if (dayId > today) return 'INVALID_INPUT';
+  if (Number(dayValue.lastSettlementRevision) > 0) return 'DAY_REOPENED_AFTER_CLOSE';
+  const marker = await getDocFromServer(doc(db, backfillDayPath(dayId)));
+  return marker.exists() ? 'INVALID_INPUT' : 'DAY_NOT_BACKFILLING';
+}
+
+async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput): Promise<Diagnosis> {
   try {
     if (input.kind === 'CreateStudent' || input.kind === 'ChangeStudentCode' || input.kind === 'EditStudent' || input.kind === 'SetStudentStatus') {
       const student = await getDocFromServer(doc(db, studentPath(input.targets.studentId)));
@@ -408,8 +430,7 @@ async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput)
       if (transaction.exists() || !day.exists()) return 'INVALID_INPUT';
       const current = decodeDay(day.data());
       if (current.revision !== input.expectedRevisions.day) return 'REVISION_CONFLICT';
-      if (current.status === 'closed') return 'DAY_CLOSED';
-      return 'INVALID_INPUT';
+      return await diagnoseTransactionDay(db, input.targets.dayId, current);
     }
     if (isTransactionMutationKind(input.kind)) {
       const mutation = input as Extract<CanonicalEnabledInput, { kind: TransactionMutationKind }>;
@@ -444,6 +465,9 @@ async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput)
       return 'REVISION_CONFLICT';
     }
     if (input.kind === 'CreateRefund' && decodeDay(dayValue).status === 'closed') return 'DAY_CLOSED';
+    if (input.kind === 'CreateOrder' || input.kind === 'CreatePayment') {
+      return await diagnoseTransactionDay(db, input.targets.dayId, decodeDay(dayValue));
+    }
     // A successful server-only projection read proves that the current-holder read guard passed.
     // If the revisions still match, the Rules rejected this command's content/state (for example,
     // an unsupported historical transaction date), not a stale revision.
@@ -455,8 +479,14 @@ async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput)
   }
 }
 
-function leaseDenialResult(code: CommandErrorCode | null): CommandResult | null {
+function leaseDenialResult(code: Diagnosis): CommandResult | null {
   if (code === null) return null;
+  if (code === 'DAY_REOPENED_AFTER_CLOSE') {
+    return errorResult('DAY_CLOSED', '這個營業日曾經關過帳（現在是重開狀態），不能再用回填補登訂餐、繳費或櫃台收支；要修正這一天的帳請用更正或作廢');
+  }
+  if (code === 'DAY_NOT_BACKFILLING') {
+    return errorResult('INVALID_INPUT', '這個過去的營業日沒有回填標記，不能補登；請先到日結頁把它標為回填');
+  }
   if (code === 'REVISION_CONFLICT') {
     return errorResult(code, '伺服器資料已變更；請保留 commandId 並重新確認');
   }

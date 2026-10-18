@@ -12,6 +12,8 @@ import {
   seedAccessLease,
   seedOperator,
   setOperatorActive,
+  removeDocument,
+  upsertDocument,
   PROJECT,
 } from './helpers/seed';
 
@@ -1303,6 +1305,114 @@ test.describe('P11 Cloud Day Close', () => {
       await second.page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
     } finally {
       await second.close();
+    }
+  });
+});
+
+test.describe('P11c2b Cloud Backfill', () => {
+  test.setTimeout(120000);
+  const studentId = '00000000-0000-4000-8000-0000000000e3';
+  let gap = '';
+  let originalGoLive = '';
+
+  function shift(dayId: string, days: number): string {
+    const date = new Date(`${dayId}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+  }
+
+  test.beforeEach(async () => {
+    await seedAccessLease({ ...VACANT_LEASE, updatedAt: new Date() });
+    const today = taipeiToday();
+    gap = shift(today, -2);
+    originalGoLive = String((await readAdminDocument('system', 'dataHead'))!.goLiveDate);
+    // A past open business day that was never marked: the situation after a whole day without the system.
+    await upsertDocument('system', 'dataHead', { goLiveDate: shift(today, -3) });
+    await upsertDocument('students', studentId, {
+      studentId, studentCode: '901', displayName: '回填測試生', aliases: [], status: 'active',
+      openingBalance: { amount: 100, asOfDate: shift(today, -3), note: '', createdAt: new Date() },
+      currentBalance: 100, createdAt: new Date(), revision: 1,
+      lastCommandId: '00000000-0000-4000-8000-0000000000e1', updatedAt: new Date(),
+    });
+    await upsertDocument('days', gap, {
+      status: 'open', revision: 2, menu: null, openingCash: 800, openedBy: 'e2e-seed', openedAt: new Date(),
+      totals: {
+        activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0, mealTotal: 0,
+        retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0,
+      },
+      lastSettlementRevision: 0, lastCommandId: '00000000-0000-4000-8000-0000000000e2', updatedAt: new Date(),
+    });
+  });
+
+  test.afterEach(async () => {
+    // Demo Emulator cleanup so later suites see their usual dataset.
+    for (const transaction of await listAdminDocuments('transactions')) {
+      if (transaction.businessDate === gap) await removeDocument('transactions', transaction.id);
+    }
+    await removeDocument('backfillDays', gap);
+    await removeDocument('days', gap);
+    await removeDocument('students', studentId);
+    await upsertDocument('system', 'dataHead', { goLiveDate: originalGoLive });
+    await seedAccessLease({ ...VACANT_LEASE, updatedAt: new Date() });
+  });
+
+  test('D09: marks an unclosed past day as backfilled with a reason, records an order on it from the orders page, tags it and leaves', async ({ browser }) => {
+    const session = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
+    try {
+      const page = session.page;
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toBeVisible();
+
+      // 1. 異常頁：過去沒關帳的日子有「標為回填」
+      await page.getByRole('button', { name: /^帳務異常/ }).click();
+      await page.getByTestId(`anomaly-mark-backfill-${gap}`).click();
+
+      // 2. 日結頁：回填原因必填，標記成功後可以到訂餐頁
+      const main = page.getByRole('main', { name: '雲端日結' });
+      await expect(main.getByRole('heading', { name: `${gap} 日結` })).toBeVisible();
+      const form = main.getByRole('form', { name: `${gap} 標為回填` });
+      await form.getByRole('button', { name: '確認標為回填' }).click();
+      // The empty reason is stopped in the form (native required); nothing reaches the server.
+      expect(await readAdminDocument('backfillDays', gap)).toBeNull();
+      await form.getByRole('textbox', { name: /回填原因/ }).fill('前天停電沒有用系統');
+      await form.getByRole('button', { name: '確認標為回填' }).click();
+      await expect(main.getByText(/已標為回填，可以到訂餐頁補登交易/)).toBeVisible();
+      expect(await readAdminDocument('backfillDays', gap)).toMatchObject({ dayId: gap, reason: '前天停電沒有用系統' });
+
+      // 3. 訂餐頁：橫幅、其他餐點、退款停用
+      await main.getByTestId('backfill-info').getByRole('button', { name: `到訂餐頁補登 ${gap}` }).click();
+      const orders = page.getByTestId('cloud-orders-page');
+      await expect(orders.getByTestId('backfill-banner')).toContainText(`正在回填 ${gap}（原因：前天停電沒有用系統）`);
+      await orders.getByLabel('搜尋編號、姓名或別名').fill('901');
+      await orders.getByTestId('search-result-901').click();
+      await orders.getByRole('button', { name: '其他餐點' }).click();
+      await orders.getByLabel(/餐點品名/).fill('補登炒麵');
+      await orders.getByLabel(/餐點單價/).fill('70');
+      await orders.getByTestId('submit-order-button').click();
+      await expect(orders.getByText(/已確認 901 回填測試生 訂餐完成/)).toBeVisible();
+      await expect(orders.getByTestId('backfill-tag-recent-901')).toContainText('回填');
+      await orders.getByLabel('搜尋編號、姓名或別名').fill('901');
+      await orders.getByTestId('search-result-901').click();
+      await orders.getByRole('button', { name: '繳費（W）' }).click();
+      await expect(orders.getByTestId('open-refund-button')).toBeDisabled();
+      await expect(orders.getByTestId('backfill-refund-note')).toBeVisible();
+
+      const rows = (await listAdminDocuments('transactions')).filter(item => item.businessDate === gap);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ type: 'order', mealKind: 'other', mealPrice: 70, otherItemName: '補登炒麵' });
+      await orders.getByTestId('open-payment-details-button').click();
+      await expect(orders.getByTestId(`backfill-tag-${rows[0].id}`)).toContainText('回填');
+
+      // 4. 離開回填：回到今天，橫幅消失
+      await page.keyboard.press('Escape');
+      await orders.getByTestId('leave-backfill-button').click();
+      await expect(orders.getByTestId('backfill-banner')).toHaveCount(0);
+      await expect(orders.getByText(`營業日：${taipeiToday()}`)).toBeVisible();
+
+      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
+    } finally {
+      await session.close();
     }
   });
 });

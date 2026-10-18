@@ -105,6 +105,10 @@ function mockTx(txId: string, studentId: string, mealKind: 'bento' | 'other', me
 function snapshot(overrides: Partial<CloudOrderSnapshot> = {}): CloudOrderSnapshot {
   return {
     today: TODAY,
+    businessDate: overrides.today ?? TODAY,
+    backfill: null,
+    backfillDays: [],
+    backfillDaysError: null,
     goLiveDate: '2026-10-01',
     datasetId: 'ds-1',
     seq: 9,
@@ -142,13 +146,14 @@ function errorResult(code: string, message = 'synthetic'): CommandResult {
 
 const onNavigationStateChange = vi.fn();
 
-function renderComponent(identityKey = 'uid-1:1') {
+function renderComponent(identityKey = 'uid-1:1', initialBackfillDayId?: string) {
   return render(
     <CloudOrdersPage
       db={{} as Firestore}
       leaseEpoch={1}
       identityKey={identityKey}
       onNavigationStateChange={onNavigationStateChange}
+      initialBackfillDayId={initialBackfillDayId}
     />,
   );
 }
@@ -862,5 +867,149 @@ describe('CloudOrdersPage', () => {
       expect(await screen.findByTestId('edit-transaction-modal')).toBeVisible();
       expect(window.localStorage.getItem(PENDING_KEY)).toBeNull();
     });
+  });
+});
+
+describe('CloudOrdersPage: backfill view (contract §13)', () => {
+  const GAP = '2026-10-14';
+  const marker = {
+    dayId: GAP, reason: '那天斷線', startedBy: 'uid-1', startedAt: new Date('2026-10-16T01:00:00.000Z'),
+    commandId: '00000000-0000-4000-8000-0000000000b1',
+  };
+  const gapDay = (overrides: Partial<CloudDayRecord> = {}): CloudDayRecord => ({
+    ...mockDay({ menu: false, bento: 0, other: 0 }), dayId: GAP, openingCash: 870, ...overrides,
+  });
+  // One row typed on the day itself, one entered two days later (a backfilled row).
+  const gapTx = (id: string, createdAt: string, paid = 100): CloudOrderTransactionRecord => ({
+    ...mockTx(id, 's1', 'other', 60, paid, '炒麵'), businessDate: GAP, createdAt, updatedAt: createdAt,
+  });
+  const backfillSnapshot = (overrides: Partial<CloudOrderSnapshot> = {}) => snapshot({
+    businessDate: GAP,
+    backfill: marker,
+    backfillDays: [marker],
+    day: gapDay(),
+    transactions: [gapTx('tx-live', '2026-10-14T04:30:00.000Z'), gapTx('tx-back', '2026-10-16T05:00:00.000Z')],
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.localStorage.clear();
+    repositoryMock.readCommand.mockResolvedValue(null);
+    repositoryMock.createOrder.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId));
+    repositoryMock.createPayment.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 12));
+    repositoryMock.createCashMovement.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 13));
+  });
+
+  it('changes nothing for a normal day: no banner, no day switch, no tags', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(snapshot());
+    renderComponent();
+    await screen.findByTestId('cloud-topbar-bento');
+    expect(repositoryMock.loadSnapshot).toHaveBeenCalledWith({ dayId: null });
+    expect(screen.queryByTestId('backfill-banner')).toBeNull();
+    expect(screen.queryByTestId('orders-day-select')).toBeNull();
+    expect(screen.queryByTestId('backfill-tag-tx-1')).toBeNull();
+  });
+
+  it('opens the day App asked for, shows a banner with the reason and tags only the rows entered later', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot());
+    renderComponent('uid-1:1', GAP);
+    const banner = await screen.findByTestId('backfill-banner');
+    expect(repositoryMock.loadSnapshot).toHaveBeenCalledWith({ dayId: GAP });
+    expect(banner).toHaveTextContent(`正在回填 ${GAP}（原因：那天斷線）`);
+    expect(screen.getByText(`營業日：${GAP}`)).toBeVisible();
+    await selectStudent('001');
+    fireEvent.click(screen.getByTestId('open-payment-details-button'));
+    expect(await screen.findByTestId('backfill-tag-tx-back')).toHaveTextContent('回填');
+    expect(screen.queryByTestId('backfill-tag-tx-live')).toBeNull();
+  });
+
+  it('switches to a backfilling day from the day selector and leaves with 離開回填', async () => {
+    repositoryMock.loadSnapshot.mockImplementation(async (options: { dayId?: string | null } = {}) => (
+      options.dayId ? backfillSnapshot() : snapshot({ backfillDays: [marker] })
+    ));
+    renderComponent();
+    const select = await screen.findByTestId('orders-day-select');
+    expect(screen.queryByTestId('backfill-banner')).toBeNull();
+    fireEvent.change(select, { target: { value: GAP } });
+    expect(await screen.findByTestId('backfill-banner')).toBeVisible();
+    expect(repositoryMock.loadSnapshot).toHaveBeenLastCalledWith({ dayId: GAP });
+
+    fireEvent.click(screen.getByTestId('leave-backfill-button'));
+    await waitFor(() => expect(screen.queryByTestId('backfill-banner')).toBeNull());
+    expect(repositoryMock.loadSnapshot).toHaveBeenLastCalledWith({ dayId: null });
+    expect(screen.getByText(`營業日：${TODAY}`)).toBeVisible();
+  });
+
+  it('records an other-meal order on the backfilled day, and points to the menu setup when the day has none', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot({ transactions: [] }));
+    renderComponent('uid-1:1', GAP);
+    await selectStudent('002');
+    expect(screen.getByText(new RegExp(`${GAP} 尚未設定菜單`))).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '其他餐點' }));
+    fireEvent.change(screen.getByLabelText(/餐點品名/), { target: { value: '水餃' } });
+    fireEvent.change(screen.getByLabelText(/餐點單價/), { target: { value: '70' } });
+    fireEvent.click(screen.getByTestId('submit-order-button'));
+    await waitFor(() => expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1));
+    expect(repositoryMock.createOrder.mock.calls[0][0]).toMatchObject({ dayId: GAP, mealKind: 'other', mealPrice: 70, expectedDayRevision: 5 });
+  });
+
+  it('sends payments on the backfilled day, and offers neither a refund nor the 5-second undo', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot());
+    renderComponent('uid-1:1', GAP);
+    await selectStudent('001');
+    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    expect(screen.getByTestId('open-refund-button')).toBeDisabled();
+    expect(screen.getByTestId('backfill-refund-note')).toHaveTextContent('回填中不能退款');
+    fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
+    fireEvent.click(screen.getByTestId('submit-order-button'));
+    await waitFor(() => expect(repositoryMock.createPayment).toHaveBeenCalledTimes(1));
+    expect(repositoryMock.createPayment.mock.calls[0][0]).toMatchObject({ dayId: GAP, paidAmount: 50 });
+    expect(await screen.findByText(/已確認/)).toBeVisible();
+    expect(screen.queryByTestId('undo-bar')).toBeNull();
+    expect(screen.queryByRole('button', { name: /撤回/ })).toBeNull();
+  });
+
+  it('records counter cash on the backfilled day', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot());
+    renderComponent('uid-1:1', GAP);
+    await screen.findByTestId('backfill-banner');
+    fireEvent.click(screen.getByTestId('open-cash-movement-button'));
+    fireEvent.change(await screen.findByLabelText(/金額/), { target: { value: '80' } });
+    fireEvent.change(screen.getByLabelText(/原因/), { target: { value: '補買零錢' } });
+    fireEvent.click(screen.getByTestId('submit-cash-movement-button'));
+    await waitFor(() => expect(repositoryMock.createCashMovement).toHaveBeenCalledTimes(1));
+    expect(repositoryMock.createCashMovement.mock.calls[0][0]).toMatchObject({ dayId: GAP });
+  });
+
+  it('hides 取消訂餐並退還 for a paid order and explains why', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot());
+    renderComponent('uid-1:1', GAP);
+    await selectStudent('001');
+    fireEvent.click(screen.getByTestId('open-payment-details-button'));
+    fireEvent.click(within(await screen.findByTestId('detail-row-tx-live')).getByRole('button', { name: '更正' }));
+    expect(await screen.findByRole('button', { name: '取消訂餐，錢留在帳戶' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: /取消訂餐並退還/ })).toBeNull();
+    expect(screen.getByTestId('backfill-cancel-refund-note')).toHaveTextContent('回填中不能');
+  });
+
+  it('refuses a day that was closed after being marked, and falls back to today with a button', async () => {
+    repositoryMock.loadSnapshot.mockImplementation(async (options: { dayId?: string | null } = {}) => {
+      if (options.dayId) throw { code: 'INVALID_INPUT', message: `${options.dayId} 沒有回填標記` };
+      return snapshot();
+    });
+    renderComponent('uid-1:1', GAP);
+    expect(await screen.findByText(/沒有回填標記/)).toBeVisible();
+    fireEvent.click(screen.getByTestId('back-to-today-button'));
+    expect(await screen.findByTestId('cloud-topbar-bento')).toBeVisible();
+    expect(repositoryMock.loadSnapshot).toHaveBeenLastCalledWith({ dayId: null });
+  });
+
+  it('keeps today usable when only the list of backfilling days could not be read', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(snapshot({ backfillDays: [], backfillDaysError: '網路中斷' }));
+    renderComponent();
+    expect(await screen.findByTestId('orders-backfill-list-error')).toHaveTextContent('網路中斷');
+    await selectStudent('001');
+    expect(screen.getByTestId('submit-order-button')).toBeEnabled();
   });
 });

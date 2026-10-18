@@ -162,6 +162,20 @@ export interface CloseCloudDayInput {
   note: string;
 }
 
+export interface EnsureCloudDayInput {
+  commandId: string;
+  leaseEpoch: number;
+  dayId: string;
+}
+
+export interface StartCloudBackfillInput {
+  commandId: string;
+  leaseEpoch: number;
+  dayId: string;
+  expectedDayRevision: number;
+  reason: string;
+}
+
 export interface ReopenCloudDayInput {
   commandId: string;
   leaseEpoch: number;
@@ -376,6 +390,20 @@ export async function readCloudDayCloseOverview(
   } catch (error) {
     throw readError(error);
   }
+}
+
+/**
+ * Days that are being backfilled right now and can still take transactions: marker present, day open and never
+ * closed (a reopened day was closed once, so Rules refuse transactions on it). Oldest first.
+ */
+export async function listCloudBackfillingDays(
+  db: Firestore,
+  options: CloudCommandRepositoryOptions = {},
+): Promise<CloudBackfillDay[]> {
+  const overview = await readCloudDayCloseOverview(db, options);
+  return overview.unclosedDays
+    .filter(day => day.backfill !== null && day.status === 'open')
+    .map(day => day.backfill as CloudBackfillDay);
 }
 
 /**
@@ -611,6 +639,26 @@ export function createCloudDayCloseRepository(db: Firestore, options: CloudComma
     read: (dayId: string) => readCloudDayClose(db, dayId, options),
     readOverview: () => readCloudDayCloseOverview(db, options),
     readBackfillDay: (dayId: string) => readCloudBackfillDay(db, dayId),
+    ensureDay(input: EnsureCloudDayInput): Promise<CommandResult> {
+      return commands.commitCommand({
+        commandId: input.commandId,
+        kind: 'EnsureDay',
+        leaseEpoch: input.leaseEpoch,
+        targets: { dayId: input.dayId },
+        expectedRevisions: { day: 0 },
+        payload: { businessDate: input.dayId },
+      });
+    },
+    startBackfill(input: StartCloudBackfillInput): Promise<CommandResult> {
+      return commands.commitCommand({
+        commandId: input.commandId,
+        kind: 'StartBackfill',
+        leaseEpoch: input.leaseEpoch,
+        targets: { dayId: input.dayId },
+        expectedRevisions: { day: input.expectedDayRevision },
+        payload: { reason: input.reason },
+      });
+    },
     closeDay(input: CloseCloudDayInput): Promise<CommandResult> {
       const { commandId, leaseEpoch, dayId, expectedDayRevision, expectedSettlementRevision, countedCash, note, expectedCash } = input;
       return commands.commitCommand({

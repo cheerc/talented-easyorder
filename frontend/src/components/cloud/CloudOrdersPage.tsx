@@ -24,6 +24,7 @@ import {
   type CloudTransactionMutationInput,
 } from '../../firebase/cloudOrderRepository';
 import type { CloudStudentRecord } from '../../firebase/cloudStudentRepository';
+import { isBackfilled } from '../../firebase/cloudDayCloseRepository';
 import { formatTaipeiTime } from '../../utils/dateTime';
 import './CloudOrdersPage.css';
 
@@ -32,6 +33,8 @@ export interface CloudOrdersPageProps {
   leaseEpoch: number;
   identityKey: string;
   onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
+  /** 第一次載入時要顯示的回填營業日（例如從日結頁或異常頁帶過來）；沒提供則顯示伺服器今天。 */
+  initialBackfillDayId?: string;
 }
 
 interface PreparedMeta {
@@ -90,6 +93,8 @@ interface OrdersPageState {
   loadError: string;
   actionError: string;
   notice: string;
+  /** The past backfill day this page asked for; null shows today (contract §13). */
+  viewDayId: string | null;
   search: string;
   selectedStudentId: string | null;
   mode: EntryMode;
@@ -147,6 +152,7 @@ function initialState(scopeKey: string): OrdersPageState {
     loadError: '',
     actionError: '',
     notice: '',
+    viewDayId: null,
     ...freshDraft(),
     undoOffer: null,
     recovery: null,
@@ -301,7 +307,7 @@ function definiteFailureText(command: PreparedCommand, code: string, message: st
     return `${noun}沒有生效：${message || '伺服器拒絕了這筆命令'}`;
   }
   if (code === 'REVISION_CONFLICT') return '伺服器上的學生、菜單或營業日已變更，這筆沒有入帳。已重新讀取最新資料，請確認金額後再登記。';
-  if (code === 'DAY_CLOSED') return '今日已關帳，這筆沒有入帳。';
+  if (code === 'DAY_CLOSED') return '這個營業日已關帳，這筆沒有入帳。';
   if (code === 'MAINTENANCE') return '系統正在維護，這筆沒有入帳。';
   if (code === 'QUOTA_EXCEEDED') return '雲端額度不足，這筆沒有入帳。';
   return `這筆沒有入帳：${message || '伺服器拒絕了這筆命令'}`;
@@ -433,8 +439,10 @@ function recentSummary(transactions: CloudOrderTransactionRecord[]): string {
   return '僅繳費';
 }
 
-export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationStateChange }: CloudOrdersPageProps) {
+export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationStateChange, initialBackfillDayId }: CloudOrdersPageProps) {
   const repository = useMemo(() => createCloudOrderRepository(db), [db]);
+  // Which business day the page reads: null is the server's today. Commands refresh through the same ref.
+  const viewDayRef = useRef<string | null>(initialBackfillDayId ?? null);
   const scopeKey = `${identityKey}:${leaseEpoch}`;
   const [pageState, setPageStateRaw] = useState<OrdersPageState>(() => initialState(scopeKey));
   const scopeRef = useRef(scopeKey);
@@ -450,6 +458,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     loadRequestRef.current += 1;
     flightRef.current = false;
     revokedRef.current = false;
+    viewDayRef.current = null;
   }
 
   const page = pageState.scopeKey === scopeKey ? pageState : initialState(scopeKey);
@@ -525,16 +534,21 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     }
   }, [isCurrent, repository, revoke, updateFor]);
 
-  const loadSnapshot = useCallback(async (options: { keepDraft?: boolean; notice?: string; actionError?: string } = {}) => {
+  const loadSnapshot = useCallback(async (
+    options: { keepDraft?: boolean; notice?: string; actionError?: string; dayId?: string | null } = {},
+  ) => {
     const key = scopeKey;
     const generation = generationRef.current;
     if (revokedRef.current) return;
     const requestId = ++loadRequestRef.current;
+    if (options.dayId !== undefined) viewDayRef.current = options.dayId;
+    const dayId = viewDayRef.current;
     updateFor(key, generation, previous => ({
       ...previous,
       snapshot: null,
       loading: true,
       loadError: '',
+      viewDayId: dayId,
       ...(options.keepDraft ? {} : freshDraft()),
       confirmDuplicateOpen: false,
       paymentDetailsOpen: false,
@@ -542,7 +556,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       actionError: options.actionError ?? '',
     }));
     try {
-      const snapshot = await repository.loadSnapshot();
+      const snapshot = await repository.loadSnapshot({ dayId });
       if (!isCurrent(key, generation) || requestId !== loadRequestRef.current) return;
       updateFor(key, generation, previous => ({
         ...previous,
@@ -598,8 +612,16 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
 
   const snapshot = page.snapshot;
   const today = snapshot?.today ?? '';
+  // The day every row, total and command on the page belongs to: today, or a backfill day (contract §13).
+  const businessDate = snapshot?.businessDate ?? today;
+  const backfill = snapshot?.backfill ?? null;
+  const backfillView = backfill !== null;
+  const dayWord = backfillView ? '這一天' : '今日';
   const day = snapshot?.day ?? null;
   const todayMenu = day?.menu ?? null;
+  const txBackfilled = (tx: CloudOrderTransactionRecord) => (
+    backfill !== null && isBackfilled({ businessDate: tx.businessDate, createdAt: new Date(tx.createdAt) }, backfill)
+  );
   const activeTransactions = useMemo(
     () => (snapshot?.transactions ?? []).filter(tx => tx.status === 'active'),
     [snapshot],
@@ -647,10 +669,11 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   }, [activeTransactions, studentsById]);
 
   const orderingBlocked = !snapshot ? '雲端資料尚未載入'
-    : today < snapshot.goLiveDate ? `伺服器營業日 ${today} 早於系統啟用日期 ${snapshot.goLiveDate}，不能訂餐`
-      : !day ? `今日（${today}）營業日尚未建立，請先到「日期與供應商」建立營業日`
-        : day.status === 'closed' ? '今日已關帳，不能訂餐、繳費或新增櫃台收支'
-          : '';
+    : businessDate < snapshot.goLiveDate ? `伺服器營業日 ${businessDate} 早於系統啟用日期 ${snapshot.goLiveDate}，不能訂餐`
+      : !day ? `${dayWord}（${businessDate}）營業日尚未建立，請先到「日期與供應商」建立營業日`
+        : day.status === 'closed' ? `${dayWord}已關帳，不能訂餐、繳費或新增櫃台收支`
+          : backfillView && day.lastSettlementRevision > 0 ? `${businessDate} 已經關過帳，不能再用回填補登；請回到今天作業`
+            : '';
 
   // Inactive accounts can still pay (spec §6.1) but never order, whatever mode was last chosen.
   const mode: EntryMode = selectedStudent?.status === 'inactive' ? 'payment' : page.mode;
@@ -695,7 +718,8 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     if (!isCurrent(key, generation)) return;
     if (result.ok && result.receipt.commandId === command.commandId) {
       clearPendingIf(command.commandId);
-      const undoOffer: UndoOffer | null = command.kind === 'mutation' ? null : {
+      // Rules refuse Undo outside today, so a backfilled row is corrected or voided instead of offering a 5-second undo.
+      const undoOffer: UndoOffer | null = command.kind === 'mutation' || backfillView ? null : {
         commandId: command.commandId,
         transactionId: command.transactionId,
         label: `${command.label} 的${commandNoun(command)}`,
@@ -761,7 +785,11 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     }
     if (mode === 'payment') return;
     if (mode === 'bento' && !todayMenu) {
-      setPageStateRaw(previous => ({ ...previous, confirmDuplicateOpen: false, actionError: '今日尚未設定菜單，無法訂購今日餐點' }));
+      setPageStateRaw(previous => ({
+        ...previous,
+        confirmDuplicateOpen: false,
+        actionError: backfillView ? '這一天尚未設定菜單，無法訂購當日餐點；請到「日期與供應商」選這一天設定菜單，或登記其他餐點' : '今日尚未設定菜單，無法訂購今日餐點',
+      }));
       return;
     }
     const otherItemName = page.otherItemName.trim();
@@ -788,7 +816,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       commandId,
       transactionId,
       studentId: selectedStudent.studentId,
-      dayId: today,
+      dayId: businessDate,
       expectedStudentRevision: selectedStudent.revision,
       expectedDayRevision: day.revision,
       mealKind: mode,
@@ -826,7 +854,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       commandId,
       transactionId,
       studentId: selectedStudent.studentId,
-      dayId: today,
+      dayId: businessDate,
       expectedStudentRevision: selectedStudent.revision,
       expectedDayRevision: day.revision,
       paidAmount: amount,
@@ -861,7 +889,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       kind: 'cash',
       commandId,
       transactionId,
-      dayId: today,
+      dayId: businessDate,
       expectedDayRevision: day.revision,
       direction,
       amount: cashAmount,
@@ -876,7 +904,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   /** 驗證退款框；通過才打開確認對話框（spec §7.2：退款一律先確認）。 */
   const requestRefund = (event?: FormEvent) => {
     event?.preventDefault();
-    if (!snapshot || !day || !selectedStudent || busy || orderingBlocked) return;
+    if (!snapshot || !day || !selectedStudent || busy || orderingBlocked || backfillView) return;
     if (selectedStudent.currentBalance < 1) {
       setPageStateRaw(previous => ({ ...previous, refundConfirmOpen: false, actionError: '帳戶餘額不是正數，沒有可退的金額' }));
       return;
@@ -898,7 +926,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   };
 
   const submitRefund = () => {
-    if (!snapshot || !day || !selectedStudent || busy || orderingBlocked || !refundValid) return;
+    if (!snapshot || !day || !selectedStudent || busy || orderingBlocked || backfillView || !refundValid) return;
     const reason = page.refundReason.trim();
     if (!reason || reason.length > 500) return;
     const commandId = newId();
@@ -912,7 +940,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       commandId,
       transactionId,
       studentId: selectedStudent.studentId,
-      dayId: today,
+      dayId: businessDate,
       expectedStudentRevision: selectedStudent.revision,
       expectedDayRevision: day.revision,
       amount: refundAmount!,
@@ -1027,7 +1055,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   };
 
   const openRefundPanel = () => {
-    if (busy || !selectedStudent) return;
+    if (busy || !selectedStudent || backfillView) return;
     const balance = selectedStudent.currentBalance;
     setPageStateRaw(previous => ({
       ...previous,
@@ -1126,13 +1154,34 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       <header className="cloud-orders__header">
         <div className="cloud-orders__header-info">
           <h2>雲端櫃台點餐</h2>
-          <span className="cloud-orders__date-label">營業日：{today || '—'}</span>
+          <span className="cloud-orders__date-label">營業日：{businessDate || '—'}</span>
+          {snapshot && (snapshot.backfillDays.length > 0 || backfillView) && (
+            <label className="cloud-orders__day-switch">
+              切換營業日
+              <select
+                data-testid="orders-day-select"
+                value={backfillView ? businessDate : ''}
+                disabled={busy || page.loading}
+                onChange={event => void loadSnapshot({ dayId: event.target.value === '' ? null : event.target.value })}
+              >
+                <option value="">今天（{snapshot.today}）</option>
+                {snapshot.backfillDays.map(item => (
+                  <option key={item.dayId} value={item.dayId}>回填中 {item.dayId}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {snapshot?.backfillDaysError && (
+            <span className="cloud-orders__muted" data-testid="orders-backfill-list-error">
+              無法讀取回填中的日子清單（{snapshot.backfillDaysError}）；今天的作業不受影響。
+            </span>
+          )}
         </div>
         {snapshot && (
           <div className="cloud-orders__topbar-counts" data-testid="cloud-topbar-counts">
             <div className="cloud-orders__topbar-row" data-testid="cloud-topbar-bento">
               <span className="cloud-orders__topbar-label" title={todayMenu ? todayMenu.itemName : '未設定'}>
-                今日餐點（{todayMenu ? todayMenu.itemName : '未設定'}）
+                {backfillView ? '當日餐點' : '今日餐點'}（{todayMenu ? todayMenu.itemName : '未設定'}）
               </span>
               <span className="cloud-orders__topbar-number">{bentoCount}</span>
             </div>
@@ -1147,6 +1196,24 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       {page.loading && (
         <div className="cloud-orders__notice" data-testid="cloud-orders-loading" role="status">
           正在從伺服器讀取訂餐資料…
+        </div>
+      )}
+
+      {snapshot && backfill && (
+        <div className="cloud-orders__backfill-banner" role="status" data-testid="backfill-banner">
+          <strong>正在回填 {backfill.dayId}（原因：{backfill.reason}）</strong>
+          <span>
+            這裡補登的訂餐、繳費與櫃台收支都記在 {backfill.dayId}，並標為「回填」。回填中不能退款，也不能撤回或取消並退款。
+          </span>
+          <button
+            type="button"
+            className="cloud-orders__btn-secondary"
+            onClick={() => void loadSnapshot({ dayId: null })}
+            disabled={busy || page.loading}
+            data-testid="leave-backfill-button"
+          >
+            離開回填
+          </button>
         </div>
       )}
 
@@ -1226,6 +1293,9 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
           {page.loadError}
           {!page.authorizationRevoked && (
             <button type="button" onClick={() => void loadSnapshot()}>重新載入</button>
+          )}
+          {!page.authorizationRevoked && page.viewDayId !== null && (
+            <button type="button" onClick={() => void loadSnapshot({ dayId: null })} data-testid="back-to-today-button">回到今天</button>
           )}
         </div>
       )}
@@ -1438,6 +1508,8 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                     <div className="cloud-orders__bento-info">
                       {todayMenu ? (
                         <p>品名：<strong>{todayMenu.itemName}</strong>｜單價：<strong>${todayMenu.price}</strong></p>
+                      ) : backfillView ? (
+                        <p className="cloud-orders__error">{backfill?.dayId} 尚未設定菜單，無法訂購當日餐點；請到「日期與供應商」選這一天設定菜單，或只登記其他餐點。</p>
                       ) : (
                         <p className="cloud-orders__error">今日尚未設定菜單，無法訂購今日餐點；其他餐點仍可登記。</p>
                       )}
@@ -1548,11 +1620,17 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                         type="button"
                         className="cloud-orders__btn-secondary"
                         onClick={openRefundPanel}
-                        disabled={busy || Boolean(orderingBlocked)}
+                        disabled={busy || Boolean(orderingBlocked) || backfillView}
+                        title={backfillView ? '回填中不能退款：退款會動到現場現金，只能在今天做' : undefined}
                         data-testid="open-refund-button"
                       >
                         退款
                       </button>
+                    )}
+                    {mode === 'payment' && backfillView && (
+                      <span className="cloud-orders__muted" data-testid="backfill-refund-note">
+                        回填中不能退款：退款會動到現場現金，只能在今天做。
+                      </span>
                     )}
                     <button
                       type="button"
@@ -1646,7 +1724,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
           <div className="cloud-orders__side-panel">
             {day && cashPosition && (
               <div className="cloud-orders__card" data-testid="cloud-cash-summary">
-                <h3>今日現金</h3>
+                <h3>{backfillView ? '當日現金' : '今日現金'}</h3>
                 <dl className="cloud-orders__cash-list">
                   <dt>開帳現金</dt>
                   <dd>{day.openingCash === null ? '尚未確認' : `$${day.openingCash}`}</dd>
@@ -1673,6 +1751,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                       >
                         <span>{formatTaipeiTime(tx.createdAt)} {tx.paidAmount > 0 ? '收入' : '支出'} ${tx.paidAmount > 0 ? tx.paidAmount : tx.mealPrice}</span>
                         <span className="cloud-orders__recent-badge">{tx.status === 'voided' ? '已作廢' : tx.note}</span>
+                        {txBackfilled(tx) && <span className="cloud-orders__backfill-tag" data-testid={`backfill-tag-${tx.transactionId}`}>回填</span>}
                         {tx.status === 'active' && (
                           <span className="cloud-orders__row-actions">
                             <button type="button" onClick={() => openEdit(tx, 'correct')} disabled={busy || Boolean(orderingBlocked)}>更正</button>
@@ -1699,7 +1778,12 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                       data-testid={`recent-item-${student.studentCode}`}
                     >
                       <span><strong>{student.studentCode}</strong> {student.displayName}</span>
-                      <span className="cloud-orders__recent-badge">{summary}</span>
+                      <span className="cloud-orders__recent-badge">
+                        {summary}
+                        {activeTransactions.some(tx => tx.studentId === student.studentId && txBackfilled(tx)) && (
+                          <span className="cloud-orders__backfill-tag" data-testid={`backfill-tag-recent-${student.studentCode}`}>回填</span>
+                        )}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -1779,7 +1863,12 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                     >
                       {editTransaction.paidAmount > 0 ? '取消訂餐，錢留在帳戶' : '取消訂餐'}
                     </button>
-                    {editTransaction.paidAmount > 0 && (
+                    {editTransaction.paidAmount > 0 && backfillView && (
+                      <p className="cloud-orders__muted" data-testid="backfill-cancel-refund-note">
+                        回填中不能「取消訂餐並退還現金」：退現金只能在今天做。
+                      </p>
+                    )}
+                    {editTransaction.paidAmount > 0 && !backfillView && (
                       <button
                         type="button"
                         className="cloud-orders__mode-btn"
@@ -1932,6 +2021,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                       <td>
                         {itemLabel(tx)}
                         {tx.status === 'voided' && <span className="cloud-orders__student-badge">已作廢</span>}
+                        {txBackfilled(tx) && <span className="cloud-orders__backfill-tag" data-testid={`backfill-tag-${tx.transactionId}`}>回填</span>}
                       </td>
                       <td>${tx.mealPrice}</td>
                       <td>${tx.paidAmount}</td>
