@@ -24,7 +24,7 @@ import {
   type CloudTransactionMutationInput,
 } from '../../firebase/cloudOrderRepository';
 import type { CloudStudentRecord } from '../../firebase/cloudStudentRepository';
-import { isBackfilled } from '../../firebase/cloudDayCloseRepository';
+import { isBackfilled, type CloudBackfillDay } from '../../firebase/cloudDayCloseRepository';
 import { formatTaipeiTime } from '../../utils/dateTime';
 import './CloudOrdersPage.css';
 
@@ -443,6 +443,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const repository = useMemo(() => createCloudOrderRepository(db), [db]);
   // Which business day the page reads: null is the server's today. Commands refresh through the same ref.
   const viewDayRef = useRef<string | null>(initialBackfillDayId ?? null);
+  const backfillDaysRef = useRef<CloudBackfillDay[] | null>(null);
   const scopeKey = `${identityKey}:${leaseEpoch}`;
   const [pageState, setPageStateRaw] = useState<OrdersPageState>(() => initialState(scopeKey));
   const scopeRef = useRef(scopeKey);
@@ -535,7 +536,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   }, [isCurrent, repository, revoke, updateFor]);
 
   const loadSnapshot = useCallback(async (
-    options: { keepDraft?: boolean; notice?: string; actionError?: string; dayId?: string | null } = {},
+    options: { keepDraft?: boolean; notice?: string; actionError?: string; dayId?: string | null; reuseBackfillDays?: boolean } = {},
   ) => {
     const key = scopeKey;
     const generation = generationRef.current;
@@ -556,8 +557,11 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       actionError: options.actionError ?? '',
     }));
     try {
-      const snapshot = await repository.loadSnapshot({ dayId });
+      // After a counter operation the days being backfilled cannot have changed on this page, so the list is reused.
+      const known = options.reuseBackfillDays ? backfillDaysRef.current : null;
+      const snapshot = await repository.loadSnapshot({ dayId, ...(known ? { knownBackfillDays: known } : {}) });
       if (!isCurrent(key, generation) || requestId !== loadRequestRef.current) return;
+      backfillDaysRef.current = snapshot.backfillDaysError === null ? snapshot.backfillDays : null;
       updateFor(key, generation, previous => ({
         ...previous,
         snapshot,
@@ -590,6 +594,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   useEffect(() => {
     const generation = ++generationRef.current;
     revokedRef.current = false;
+    backfillDaysRef.current = null;
     setPageStateRaw(initialState(scopeKey));
     if (!identityKey) {
       onNavigationStateChange?.(identityKey, 'revoked');
@@ -726,7 +731,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
         expiresAt: Date.now() + UNDO_WINDOW_MS,
       };
       updateFor(key, generation, previous => ({ ...previous, recovery: null, undoOffer }));
-      await loadSnapshot({ notice: successText(command, result.receipt.seq) });
+      await loadSnapshot({ notice: successText(command, result.receipt.seq), reuseBackfillDays: true });
       return;
     }
     if (!result.ok && isAuthorizationLoss(result.error)) {
@@ -745,7 +750,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     // A definite rejection: nothing was committed. Re-read the server so the next attempt sees fresh revisions.
     clearPendingIf(command.commandId);
     updateFor(key, generation, previous => ({ ...previous, recovery: null }));
-    await loadSnapshot({ keepDraft: true, actionError: definiteFailureText(command, result.error.code, result.error.message) });
+    await loadSnapshot({ keepDraft: true, actionError: definiteFailureText(command, result.error.code, result.error.message), reuseBackfillDays: true });
   };
 
   const dispatch = async (command: PreparedCommand, phase: RecoveryPhase) => {

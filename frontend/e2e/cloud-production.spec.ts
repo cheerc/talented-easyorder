@@ -89,6 +89,22 @@ function taipeiToday(): string {
   return `${value('year')}-${value('month')}-${value('day')}`;
 }
 
+/** Demo Emulator cleanup: drop every command committed after `seq` and put the data head back where it was. */
+async function restoreCommandHead(original: { seq: number; lastCommandId: unknown; goLiveDate: string }): Promise<void> {
+  for (const command of await listAdminDocuments('commands')) {
+    if (Number(command.seq) > original.seq) await removeDocument('commands', command.id);
+  }
+  await upsertDocument('system', 'dataHead', {
+    seq: original.seq, lastCommandId: original.lastCommandId ?? null, goLiveDate: original.goLiveDate,
+  });
+}
+
+function shiftDay(dayId: string, days: number): string {
+  const date = new Date(`${dayId}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 test.describe('P04 Cloud Authentication & Access Lease', () => {
   test.setTimeout(60000);
 
@@ -1313,19 +1329,15 @@ test.describe('P11c2b Cloud Backfill', () => {
   test.setTimeout(120000);
   const studentId = '00000000-0000-4000-8000-0000000000e3';
   let gap = '';
-  let originalGoLive = '';
-
-  function shift(dayId: string, days: number): string {
-    const date = new Date(`${dayId}T00:00:00Z`);
-    date.setUTCDate(date.getUTCDate() + days);
-    return date.toISOString().slice(0, 10);
-  }
+  let originalHead = { seq: 0, lastCommandId: null as unknown, goLiveDate: '' };
+  const shift = shiftDay;
 
   test.beforeEach(async () => {
     await seedAccessLease({ ...VACANT_LEASE, updatedAt: new Date() });
     const today = taipeiToday();
     gap = shift(today, -2);
-    originalGoLive = String((await readAdminDocument('system', 'dataHead'))!.goLiveDate);
+    const head = (await readAdminDocument('system', 'dataHead'))!;
+    originalHead = { seq: Number(head.seq), lastCommandId: head.lastCommandId, goLiveDate: String(head.goLiveDate) };
     // A past open business day that was never marked: the situation after a whole day without the system.
     await upsertDocument('system', 'dataHead', { goLiveDate: shift(today, -3) });
     await upsertDocument('students', studentId, {
@@ -1352,7 +1364,8 @@ test.describe('P11c2b Cloud Backfill', () => {
     await removeDocument('backfillDays', gap);
     await removeDocument('days', gap);
     await removeDocument('students', studentId);
-    await upsertDocument('system', 'dataHead', { goLiveDate: originalGoLive });
+    // The commands this case committed and the head they advanced go too, so later cases start from the same head.
+    await restoreCommandHead(originalHead);
     await seedAccessLease({ ...VACANT_LEASE, updatedAt: new Date() });
   });
 
@@ -1409,6 +1422,138 @@ test.describe('P11c2b Cloud Backfill', () => {
       await expect(orders.getByTestId('backfill-banner')).toHaveCount(0);
       await expect(orders.getByText(`營業日：${taipeiToday()}`)).toBeVisible();
 
+      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
+    } finally {
+      await session.close();
+    }
+  });
+});
+
+test.describe('P11c3 Cloud Backfill Align', () => {
+  test.setTimeout(180000);
+  const studentId = '00000000-0000-4000-8000-0000000000f3';
+  const zeroTotals = {
+    activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0, mealTotal: 0,
+    retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0,
+  };
+  let previous = '';
+  let gap = '';
+  let later = '';
+  let originalHead = { seq: 0, lastCommandId: null as unknown, goLiveDate: '' };
+
+  async function seedClosedDay(dayId: string, cash: number) {
+    await upsertDocument('days', dayId, {
+      status: 'closed', revision: 5, menu: null, openingCash: cash, openedBy: 'e2e-seed', openedAt: new Date(),
+      totals: zeroTotals, lastSettlementRevision: 1, lastCommandId: '00000000-0000-4000-8000-0000000000f2', updatedAt: new Date(),
+    });
+    await upsertDocument(`days/${dayId}/settlements`, '1', {
+      dayId, revision: 1, status: 'closed', totals: zeroTotals, openingCash: cash, expectedCash: cash, countedCash: cash,
+      difference: 0, note: '', actorUid: 'e2e-seed', actorEmail: 'e2e-seed@example.test', sourceSeq: 1,
+      committedAt: new Date(), previousRevision: 0, lastCommandId: '00000000-0000-4000-8000-0000000000f2',
+    });
+  }
+
+  test.beforeEach(async () => {
+    await seedAccessLease({ ...VACANT_LEASE, updatedAt: new Date() });
+    const today = taipeiToday();
+    previous = shiftDay(today, -4);
+    gap = shiftDay(today, -3);
+    later = shiftDay(today, -2);
+    const head = (await readAdminDocument('system', 'dataHead'))!;
+    originalHead = { seq: Number(head.seq), lastCommandId: head.lastCommandId, goLiveDate: String(head.goLiveDate) };
+    await upsertDocument('system', 'dataHead', { goLiveDate: shiftDay(today, -6) });
+    await upsertDocument('students', studentId, {
+      studentId, studentCode: '902', displayName: '對齊測試生', aliases: [], status: 'active',
+      openingBalance: { amount: 100, asOfDate: shiftDay(today, -6), note: '', createdAt: new Date() },
+      currentBalance: 100, createdAt: new Date(), revision: 1,
+      lastCommandId: '00000000-0000-4000-8000-0000000000f1', updatedAt: new Date(),
+    });
+    // Closed at 870, then (after a day that was never recorded) opened again at 970: the gap day must end at 970.
+    await seedClosedDay(previous, 870);
+    await seedClosedDay(later, 970);
+  });
+
+  test.afterEach(async () => {
+    for (const transaction of await listAdminDocuments('transactions')) {
+      if (transaction.businessDate === gap) await removeDocument('transactions', transaction.id);
+    }
+    for (const dayId of [previous, gap, later]) {
+      await removeDocument(`days/${dayId}/settlements`, '1');
+      await removeDocument('days', dayId);
+    }
+    await removeDocument('backfillDays', gap);
+    await removeDocument('students', studentId);
+    await restoreCommandHead(originalHead);
+    await seedAccessLease({ ...VACANT_LEASE, updatedAt: new Date() });
+  });
+
+  test('D10: backfills a day that does not exist yet in three steps, tops the cash up to the next opening, then closes aligned', async ({ browser }) => {
+    const session = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
+    try {
+      const page = session.page;
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toBeVisible();
+      expect(await readAdminDocument('days', gap)).toBeNull();
+
+      // 1. 異常頁：開帳 970 與上次關帳 870 不符，中間的空日有「回填這一天」
+      await page.getByRole('button', { name: /^帳務異常/ }).click();
+      await page.getByTestId(`backfill-gap-${gap}`).click();
+
+      // 2. 日結頁三步：建日 → 補開帳（預設 870）→ 標記，一次表單送出
+      const main = page.getByRole('main', { name: '雲端日結' });
+      await expect(main.getByRole('heading', { name: `${gap} 日結` })).toBeVisible();
+      const form = main.getByRole('form', { name: `${gap} 回填` });
+      await expect(form.getByRole('textbox', { name: /開帳現金（元）/ })).toHaveValue('870');
+      await form.getByRole('textbox', { name: /回填原因/ }).fill('那天網路中斷，整天沒有用系統');
+      await form.getByRole('button', { name: '確認回填這一天' }).click();
+      await expect(main.getByText(/已標為回填，可以到訂餐頁補登交易/)).toBeVisible();
+      expect(await readAdminDocument('days', gap)).toMatchObject({ status: 'open', openingCash: 870, lastSettlementRevision: 0 });
+      expect(await readAdminDocument('backfillDays', gap)).toMatchObject({ dayId: gap, reason: '那天網路中斷，整天沒有用系統' });
+      const kinds = (await listAdminDocuments('commands')).filter(item => item.businessDate === gap).map(item => item.kind).sort();
+      expect(kinds).toEqual(['BackfillOpeningCash', 'EnsureDay', 'StartBackfill']);
+
+      // 3. 關帳區：須等於 later 的開帳 970，目前應有 870，差 100，關帳停用並引導回填
+      await expect(main.getByTestId('backfill-align-target')).toContainText(`須等於 ${later} 的開帳現金 NT$ 970`);
+      await expect(main.getByTestId('backfill-align-gap')).toContainText('差 NT$ 100，不能關帳');
+      const closeForm = main.getByRole('form', { name: `${gap} 關帳` });
+      await expect(closeForm.getByRole('textbox', { name: '實點現金（元）' })).toHaveValue('970');
+      await expect(closeForm.getByRole('button', { name: '確認關帳' })).toBeDisabled();
+
+      // 4. 訂餐頁補登 60 元繳費：仍差 40，再補 40：剛好對上
+      for (const amount of ['60', '40']) {
+        if (amount === '40') {
+          await page.getByRole('button', { name: '日結' }).click();
+          await main.getByLabel('查看日期').fill(gap);
+          await main.getByRole('button', { name: '載入日期' }).click();
+          await expect(main.getByTestId('backfill-align-gap')).toContainText('差 NT$ 40，不能關帳');
+        }
+        await main.getByTestId('backfill-align-orders').click();
+        const orders = page.getByTestId('cloud-orders-page');
+        await expect(orders.getByTestId('backfill-banner')).toContainText(`正在回填 ${gap}`);
+        await orders.getByLabel('搜尋編號、姓名或別名').fill('902');
+        await orders.getByTestId('search-result-902').click();
+        await orders.getByRole('button', { name: '繳費（W）' }).click();
+        await orders.getByLabel(/繳費金額/).fill(amount);
+        await orders.getByTestId('submit-order-button').click();
+        await expect(orders.getByText(new RegExp(`已確認 902 對齊測試生 繳費 \\$${amount} 完成`))).toBeVisible();
+      }
+
+      // 5. 回到日結頁：差額 0，用預設的 970 關帳
+      await page.getByRole('button', { name: '日結' }).click();
+      await main.getByLabel('查看日期').fill(gap);
+      await main.getByRole('button', { name: '載入日期' }).click();
+      await expect(main.getByTestId('backfill-align-target')).toContainText('NT$ 970');
+      await expect(main.getByTestId('backfill-align-gap')).toHaveCount(0);
+      await main.getByRole('form', { name: `${gap} 關帳` }).getByRole('button', { name: '確認關帳' }).click();
+      await expect(main.getByText(new RegExp(`已確認 ${gap} 關帳 完成`))).toBeVisible();
+
+      expect(await readAdminDocument('days', gap)).toMatchObject({ status: 'closed', lastSettlementRevision: 1 });
+      expect(await readAdminDocument(`days/${gap}/settlements`, '1')).toMatchObject({
+        status: 'closed', openingCash: 870, expectedCash: 970, countedCash: 970, difference: 0,
+      });
+      const close = (await listAdminDocuments('commands')).find(item => item.businessDate === gap && item.kind === 'CloseDay');
+      expect(close?.payload).toMatchObject({ countedCash: 970, expectedCash: 970, alignWithDayId: later });
       await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
       await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
     } finally {

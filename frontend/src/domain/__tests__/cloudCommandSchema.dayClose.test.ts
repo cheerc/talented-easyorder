@@ -146,3 +146,38 @@ describe('P11 CloseDay／ReopenDay command schema', () => {
     });
   });
 });
+
+describe('P11c3 CloseDay alignWithDayId', () => {
+  const base = { countedCash: 950, note: '', expectedCash: 950 };
+
+  it('leaves an ordinary close exactly as before: no alignWithDayId in, none out', () => {
+    const normalized = normalizeEnabledCommandInput(closeDay({ countedCash: 940, note: '少十元', expectedCash: 950 }));
+    expect(normalized.payload).toEqual({ countedCash: 940, note: '少十元', expectedCash: 950 });
+    expect(Object.hasOwn(normalized.payload, 'alignWithDayId')).toBe(false);
+  });
+
+  it('keeps a later date or null, and rejects a missing key only by leaving it out', () => {
+    expect(normalizeEnabledCommandInput(closeDay({ ...base, alignWithDayId: '2026-10-18' })).payload)
+      .toEqual({ ...base, alignWithDayId: '2026-10-18' });
+    expect(normalizeEnabledCommandInput(closeDay({ ...base, alignWithDayId: null })).payload)
+      .toEqual({ ...base, alignWithDayId: null });
+  });
+
+  it.each([
+    ['an alignment day equal to the day', '2026-10-17'],
+    ['an alignment day before the day', '2026-10-16'],
+    ['a malformed date', '2026-10-1'],
+    ['a path-like value', '2026-10-18/x'],
+    ['a number', 20261018],
+  ])('rejects %s', (_label, value) => {
+    expect(() => normalizeEnabledCommandInput(closeDay({ ...base, alignWithDayId: value }))).toThrow();
+  });
+
+  it('rejects an aligned close with a difference, even with a note', () => {
+    expect(() => normalizeEnabledCommandInput(closeDay({ countedCash: 940, note: '少十元', expectedCash: 950, alignWithDayId: null }))).toThrow(/差額/);
+  });
+
+  it('rejects unknown extra keys on CloseDay', () => {
+    expect(() => normalizeEnabledCommandInput(closeDay({ ...base, alignWithDayId: null, extra: 1 }))).toThrow();
+  });
+});

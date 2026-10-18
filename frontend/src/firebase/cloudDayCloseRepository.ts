@@ -160,6 +160,11 @@ export interface CloseCloudDayInput {
   expectedCash: number;
   countedCash: number;
   note: string;
+  /**
+   * P11c3: set only for a back-filled day. The day the close aligns with (the nearest opened day after it,
+   * as the day-close page showed it) or null when no later day is opened. Leave it out on ordinary days.
+   */
+  alignWithDayId?: string | null;
 }
 
 export interface EnsureCloudDayInput {
@@ -476,6 +481,12 @@ export interface CloudPreviousClosedLookup {
   seq: number;
 }
 
+export interface CloudNextOpenedLookup {
+  /** The nearest day dated after the asked day whose opening cash is confirmed, or null when none exists up to today. */
+  next: { dayId: string; openingCash: number } | null;
+  seq: number;
+}
+
 export interface CloudLedgerReaderTuning {
   /** Documents per scan page (default 200). */
   pageSize?: number;
@@ -627,7 +638,51 @@ export function createCloudLedgerReader(
     }
   }
 
-  return { read, findPreviousClosed };
+  /**
+   * P11c3: the nearest opened day after `dayId` (contract §14.2), the day a back-filled close must align with.
+   * Forward segments of calendar days up to the lease date; the first day with a confirmed openingCash wins, so
+   * the number of reads follows the gap and never the length of the history.
+   */
+  async function findNextOpened(dayId: string): Promise<CloudNextOpenedLookup> {
+    try {
+      const user = assertAuthenticated(options);
+      if (!validDate(dayId)) throw new CloudDayCloseRepositoryError('INVALID_INPUT', '營業日日期格式不正確');
+      const before = await readHeadSeq(db);
+      const today = await readLeaseDate(db, user);
+      let start = dayId;
+      let next: CloudNextOpenedLookup['next'] = null;
+      while (start < today && !next) {
+        const candidate = addCalendarDays(start, segmentDays);
+        const end = candidate < today ? candidate : today;
+        const page: QuerySnapshot<DocumentData> = await getDocsFromServer(query(
+          collection(db, 'days'),
+          where(documentId(), '>', start),
+          where(documentId(), '<=', end),
+          orderBy(documentId()),
+          limit(segmentDays),
+        ));
+        for (const snapshot of page.docs) {
+          if (!validDate(snapshot.id)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${snapshot.id} 路徑不支援`);
+          const day = decodeDay(snapshot.id, snapshot.data());
+          if (day.openingCash !== null) {
+            next = { dayId: snapshot.id, openingCash: day.openingCash };
+            break;
+          }
+        }
+        assertHeadUnchanged(before, await readHeadSeq(db), '下一個已開帳日');
+        start = end;
+      }
+      return { next, seq: before.seq };
+    } catch (error) {
+      throw readError(error);
+    }
+  }
+
+  return { read, findPreviousClosed, findNextOpened };
+}
+
+function refused(code: CommandErrorCode, message: string): CommandResult {
+  return { ok: false, error: { code, message } };
 }
 
 export function createCloudDayCloseRepository(db: Firestore, options: CloudCommandRepositoryOptions = {}) {
@@ -636,6 +691,7 @@ export function createCloudDayCloseRepository(db: Firestore, options: CloudComma
   return {
     readLedger: () => ledger.read(),
     findPreviousClosed: (dayId: string) => ledger.findPreviousClosed(dayId),
+    findNextOpened: (dayId: string) => ledger.findNextOpened(dayId),
     read: (dayId: string) => readCloudDayClose(db, dayId, options),
     readOverview: () => readCloudDayCloseOverview(db, options),
     readBackfillDay: (dayId: string) => readCloudBackfillDay(db, dayId),
@@ -659,15 +715,36 @@ export function createCloudDayCloseRepository(db: Firestore, options: CloudComma
         payload: { reason: input.reason },
       });
     },
-    closeDay(input: CloseCloudDayInput): Promise<CommandResult> {
-      const { commandId, leaseEpoch, dayId, expectedDayRevision, expectedSettlementRevision, countedCash, note, expectedCash } = input;
+    async closeDay(input: CloseCloudDayInput): Promise<CommandResult> {
+      const { commandId, leaseEpoch, dayId, expectedDayRevision, expectedSettlementRevision, countedCash, note, expectedCash, alignWithDayId } = input;
+      if (alignWithDayId !== undefined) {
+        // Rules cannot prove that no nearer opened day exists, so the writer does (contract §14.2). A command
+        // with this ID that already committed is answered from its receipt by `commitCommand`, so a retry
+        // after an unknown result keeps working even if the scan now differs.
+        const receipt = await commands.readCommand(commandId).catch(() => null);
+        if (!receipt) {
+          let lookup: CloudNextOpenedLookup;
+          try {
+            lookup = await ledger.findNextOpened(dayId);
+          } catch (error) {
+            const stale = error instanceof CloudDayCloseRepositoryError && error.code === 'STALE_SNAPSHOT';
+            return refused(stale ? 'REVISION_CONFLICT' : 'INVALID_INPUT', error instanceof Error ? error.message : '讀取下一個已開帳日失敗');
+          }
+          const nearest = lookup.next?.dayId ?? null;
+          if (nearest !== alignWithDayId) {
+            return refused('REVISION_CONFLICT', nearest
+              ? `最近的已開帳日是 ${nearest}，不是 ${alignWithDayId ?? '（無）'}；請重新載入日結頁後再關帳`
+              : `${dayId} 之後沒有已開帳的日子，不能對齊 ${alignWithDayId}；請重新載入日結頁後再關帳`);
+          }
+        }
+      }
       return commands.commitCommand({
         commandId,
         kind: 'CloseDay',
         leaseEpoch,
         targets: { dayId, settlementRevision: expectedSettlementRevision + 1 },
         expectedRevisions: { day: expectedDayRevision, settlement: expectedSettlementRevision },
-        payload: { countedCash, note, expectedCash },
+        payload: alignWithDayId === undefined ? { countedCash, note, expectedCash } : { countedCash, note, expectedCash, alignWithDayId },
       });
     },
     reopenDay(input: ReopenCloudDayInput): Promise<CommandResult> {

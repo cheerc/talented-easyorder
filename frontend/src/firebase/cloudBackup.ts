@@ -332,6 +332,27 @@ function checkBackfillReplay(record: BackupCommandRecord, state: Record<string, 
     }
     return;
   }
+  if (record.kind === 'CloseDay') {
+    // Contract §14: a marked day closes with no difference and `alignWithDayId`; an ordinary day carries none.
+    // A close from before P11c3 has no field on a marked day either, and still replays.
+    const dayId = String(record.targets.dayId);
+    const marked = Object.hasOwn(state, `backfillDays/${dayId}`) && state[`backfillDays/${dayId}`] !== null;
+    const align = record.payload.alignWithDayId;
+    const aligned = Object.hasOwn(record.payload, 'alignWithDayId');
+    if (!marked && aligned) throw new BackupValidationError(`command seq ${record.seq} 沒有回填標記的營業日不得帶對齊日`);
+    if (!aligned) return;
+    const settlement = after.settlement as Record<string, unknown> | undefined;
+    if (!settlement || settlement.difference !== 0 || record.payload.countedCash !== settlement.expectedCash) {
+      throw new BackupValidationError(`command seq ${record.seq} 回填日關帳有差額`);
+    }
+    if (align === null) return;
+    const alignDay = typeof align === 'string' && align > dayId && Object.hasOwn(state, `days/${align}`)
+      ? state[`days/${align}`] as Record<string, unknown> | null : null;
+    if (!alignDay || typeof alignDay.openingCash !== 'number' || alignDay.openingCash !== record.payload.countedCash) {
+      throw new BackupValidationError(`command seq ${record.seq} 對齊日 ${String(align)} 在關帳當時沒有相等的開帳現金`);
+    }
+    return;
+  }
   if (TRANSACTION_CREATE_KINDS.has(record.kind) && isPlainRecord(after.transaction)) {
     const dayId = String(record.targets.dayId);
     const committed = taipeiDateOfSerialized(record.committedAt);
@@ -480,7 +501,7 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
     CreateCashMovement: { required: ['mealPrice', 'paidAmount', 'reason'] }, CreateRefund: { required: ['amount', 'reason'] },
     CorrectTransaction: { required: ['mealPrice', 'paidAmount', 'amount', 'note', 'reason'] }, VoidTransaction: { required: ['reason'] },
     CancelKeepDeposit: { required: ['reason'] }, CancelRefund: { required: ['reason'] }, Undo: { required: ['targetCommandId', 'reason'] },
-    CloseDay: { required: ['countedCash'], optional: ['note', 'expectedCash'] }, ReopenDay: { required: ['reason'] },
+    CloseDay: { required: ['countedCash'], optional: ['note', 'expectedCash', 'alignWithDayId'] }, ReopenDay: { required: ['reason'] },
     BackfillOpeningCash: { required: ['openingCash', 'reason'] }, StartBackfill: { required: ['reason'] },
     RecordExport: { required: ['exportType', 'sourceSeq'], optional: ['dateRange'] },
     RecordPrint: { required: ['printType', 'businessDate', 'sourceSeq'] },
@@ -552,6 +573,10 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
       CreateRefund: ['amount'], CorrectTransaction: ['mealPrice', 'paidAmount', 'amount'], CloseDay: ['countedCash'],
       RecordExport: ['sourceSeq'], RecordPrint: ['sourceSeq'], RecordBackup: ['sourceSeq', 'fromSeq', 'toSeq'],
     };
+    if (record.kind === 'CloseDay' && Object.hasOwn(record.payload, 'alignWithDayId')
+      && record.payload.alignWithDayId !== null && !validBusinessDate(record.payload.alignWithDayId)) {
+      throw new BackupValidationError(`command seq ${seq} payload.alignWithDayId 無效`);
+    }
     for (const key of numericPayloadFields[record.kind] ?? []) {
       if (!Number.isSafeInteger(record.payload[key]) || Math.abs(record.payload[key] as number) > 1_000_000_000) {
         throw new BackupValidationError(`command seq ${seq} payload.${key} 無效`);

@@ -1365,7 +1365,9 @@ service cloud.firestore {
     // P11 CloseDay／ReopenDay (spec §5 command table, §7.1 expectedCash and §7.4 day lifecycle). Each
     // command adds one immutable settlement version `days/{dayId}/settlements/{n}` with n = the day's
     // lastSettlementRevision + 1. CloseDay needs a confirmed openingCash and computes expectedCash from
-    // the day totals; a non-zero difference needs a note. ReopenDay needs a reason. The command rule
+    // the day totals; a non-zero difference needs a note. A back-filled day (P11c3, marker present) must
+    // close with no difference and carry `alignWithDayId`: null, or a later day whose openingCash equals
+    // the count. Rules cannot prove no nearer opened day exists; the writer scans for it. ReopenDay needs a reason. The command rule
     // binds every snapshot to the real documents; the day and settlement rules check their own shapes.
     function validDaySettlementCommand(commandId, command) {
       let dayId = command.targets.dayId;
@@ -1393,7 +1395,14 @@ service cloud.firestore {
         && (close
           ? dayBefore.status in ['open', 'reopened']
             && dayBefore.openingCash is int
-            && exactMap(p, ['countedCash', 'note', 'expectedCash'])
+            && (exists(/databases/$(database)/documents/backfillDays/$(dayId))
+              ? exactMap(p, ['countedCash', 'note', 'expectedCash', 'alignWithDayId'])
+                && p.countedCash == p.expectedCash
+                && (p.alignWithDayId == null
+                  || (validTaipeiDate(p.alignWithDayId)
+                    && p.alignWithDayId > dayId
+                    && get(/databases/$(database)/documents/days/$(p.alignWithDayId)).data.openingCash == p.countedCash))
+              : exactMap(p, ['countedCash', 'note', 'expectedCash']))
             && p.countedCash is int && p.countedCash >= 0 && p.countedCash <= 1000000000
             && p.note is string && p.note.size() <= 500
             && p.expectedCash == settlementExpectedCash(dayBefore)

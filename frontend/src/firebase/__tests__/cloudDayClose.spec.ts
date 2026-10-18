@@ -175,10 +175,16 @@ async function state(dayId = today) {
   });
 }
 
-async function closeInput(change: { countedCash: number; note?: string; expectedCash?: number }, dayId = today) {
+/** `align: 'auto'` asks the repository's own nearest-opened-day lookup (P11c3); a date or null is sent as given. */
+async function closeInput(
+  change: { countedCash: number; note?: string; expectedCash?: number; align?: 'auto' | string | null },
+  dayId = today,
+) {
   const day = (await read(`days/${dayId}`))!;
   const t = day.totals;
+  const align = change.align === 'auto' ? (await repository().findNextOpened(dayId)).next?.dayId ?? null : change.align;
   return {
+    ...(align !== undefined ? { alignWithDayId: align } : {}),
     commandId: uuid(), leaseEpoch: 1, dayId,
     expectedDayRevision: day.revision, expectedSettlementRevision: day.lastSettlementRevision,
     expectedCash: change.expectedCash ?? day.openingCash + t.retainedReceipts + t.cashierIncome - t.cashierExpense - t.accountRefunds,
@@ -195,9 +201,13 @@ async function reopenInput(reason: string, dayId = today) {
 }
 
 /** A complete raw SDK CloseDay／ReopenDay closure, built the same way as the repository. */
-async function rawSettlement(kind: 'CloseDay' | 'ReopenDay', change: { countedCash?: number; note?: string; reason?: string } = {}, actor = operatorA) {
+async function rawSettlement(
+  kind: 'CloseDay' | 'ReopenDay',
+  change: { countedCash?: number; note?: string; reason?: string; dayId?: string; align?: unknown } = {},
+  actor = operatorA,
+) {
   const commandId = uuid();
-  const dayId = today;
+  const dayId = change.dayId ?? today;
   const headBefore = (await read('system/dataHead'))!;
   const dayBefore = (await read(`days/${dayId}`))!;
   const last = dayBefore.lastSettlementRevision as number;
@@ -207,7 +217,10 @@ async function rawSettlement(kind: 'CloseDay' | 'ReopenDay', change: { countedCa
   const expectedCash = (dayBefore.openingCash ?? 0) + t.retainedReceipts + t.cashierIncome - t.cashierExpense - t.accountRefunds;
   const close = kind === 'CloseDay';
   const payload: RawMap = close
-    ? { countedCash: change.countedCash ?? expectedCash, note: change.note ?? '', expectedCash }
+    ? {
+      countedCash: change.countedCash ?? expectedCash, note: change.note ?? '', expectedCash,
+      ...('align' in change ? { alignWithDayId: change.align } : {}),
+    }
     : { reason: change.reason ?? '補登漏記的繳費' };
   const input = {
     commandId, kind, leaseEpoch: 1, targets: { dayId, settlementRevision: revision },
@@ -1115,7 +1128,9 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     expect((await read(`days/${gap}`))!.totals).toMatchObject({ activeTransactionCount: 3, retainedReceipts: 200, cashierIncome: 50 });
 
     // 800 + receipts 200 + income 50 = 1,050; the day closes like any other.
-    ok(await repository().closeDay(await closeInput({ countedCash: 1050 }, gap)));
+    // Today is opened with 1,000, so the nearest opened day after the gap is today; make the books meet.
+    await withAdmin(async db => updateDoc(doc(db, `days/${today}`), { openingCash: 1050 }));
+    ok(await repository().closeDay(await closeInput({ countedCash: 1050, align: 'auto' }, gap)));
     expect((await state(gap)).settlements['1']).toMatchObject({ status: 'closed', openingCash: 800, expectedCash: 1050, difference: 0 });
     // The marker survives the close.
     expect((await read(`backfillDays/${gap}`))!.commandId).toBe(commandId);
@@ -1182,7 +1197,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     await seedGapDay(gap, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
     ok(await startBackfill(gap));
     ok((await backfillPayment(gap, 200)).result);
-    ok(await repository().closeDay(await closeInput({ countedCash: 1000 }, gap)));
+    ok(await repository().closeDay(await closeInput({ countedCash: 1000, align: 'auto' }, gap)));
     ok(await repository().reopenDay(await reopenInput('補登漏掉的繳費', gap)));
     const before = await state(gap);
     expect(before.day).toMatchObject({ status: 'reopened', lastSettlementRevision: 2 });
@@ -1280,7 +1295,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     expect((await listCloudBackfillingDays(authedDb(operatorA), options)).map(day => day.dayId)).toEqual([gap, doneAlready]);
 
     // Closing a marked day removes it from the list of days that still take transactions after a reopen.
-    ok(await repository().closeDay(await closeInput({ countedCash: 800 }, gap)));
+    ok(await repository().closeDay(await closeInput({ countedCash: 800, align: 'auto' }, gap)));
     ok(await repository().reopenDay(await reopenInput('補登漏掉的繳費', gap)));
     expect((await listCloudBackfillingDays(authedDb(operatorA), options)).map(day => day.dayId)).toEqual([doneAlready]);
   });
@@ -1466,6 +1481,199 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     await assertFails(getDoc(doc(authedDb(operatorB), `backfillDays/${gap}`)));
     await assertSucceeds(getDocs(collection(holder, 'backfillDays')));
     await assertFails(getDocs(collection(authedDb(operatorB), 'backfillDays')));
+  });
+
+  // ---- P11c3: a back-filled day closes aligned with the next opened day (contract §14) ----
+
+  /** A marked gap day with opening 800 and receipts 200 (expected 1,000), then a day opened with `nextOpening`. */
+  async function seedAlignedScene(options: { nextOpening?: number | null } = {}) {
+    const gap = shiftDate(today, -3);
+    const next = shiftDate(today, -1);
+    await seedGapDay(gap, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    const nextOpening = options.nextOpening === undefined ? 1000 : options.nextOpening;
+    await seedPastDay(next, {
+      totals: zeroTotals(), openingCash: nextOpening,
+      openedBy: nextOpening === null ? null : operatorA.uid, openedAt: nextOpening === null ? null : serverTimestamp(),
+    });
+    ok(await startBackfill(gap));
+    ok((await backfillPayment(gap, 200)).result);
+    return { gap, next };
+  }
+
+  it('P11c3.1: the nearest opened day after the gap is found, and a close that meets its opening cash goes through; a retry returns the same receipt', async () => {
+    const { gap, next } = await seedAlignedScene();
+    expect((await repository().findNextOpened(gap)).next).toEqual({ dayId: next, openingCash: 1000 });
+    const input = await closeInput({ countedCash: 1000, align: next }, gap);
+    const receipt = ok(await repository().closeDay(input));
+    const stored = (await read(`commands/${receipt.commandId}`))!;
+    expect(stored).toMatchObject({
+      kind: 'CloseDay', businessDate: gap, reason: null,
+      payload: { countedCash: 1000, note: '', expectedCash: 1000, alignWithDayId: next },
+    });
+    expect((await state(gap)).settlements['1']).toMatchObject({ status: 'closed', openingCash: 800, expectedCash: 1000, countedCash: 1000, difference: 0 });
+    // The day keeps its marker and the aligned day is untouched.
+    expect((await read(`backfillDays/${gap}`))!.dayId).toBe(gap);
+    expect((await read(`days/${next}`))!.openingCash).toBe(1000);
+    const commandCount = (await state(gap)).commandCount;
+    for (let index = 0; index < 2; index += 1) expect(ok(await repository().closeDay(input))).toEqual(receipt);
+    expect((await state(gap)).commandCount).toBe(commandCount);
+    expect(await repository().readCommand(receipt.commandId)).toMatchObject({ kind: 'CloseDay' });
+  });
+
+  it('P11c3.2: with no opened day after the gap, a null alignment closes it at the expected cash', async () => {
+    const gap = shiftDate(today, -3);
+    await seedGapDay(gap, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    ok(await startBackfill(gap));
+    ok((await backfillPayment(gap, 200)).result);
+    // Today is the only later day, and it has no confirmed opening cash yet.
+    await withAdmin(async db => updateDoc(doc(db, `days/${today}`), { openingCash: null, openedBy: null, openedAt: null }));
+    expect((await repository().findNextOpened(gap)).next).toBeNull();
+    const receipt = ok(await repository().closeDay(await closeInput({ countedCash: 1000, align: null }, gap)));
+    expect((await read(`commands/${receipt.commandId}`))!.payload).toEqual({ countedCash: 1000, note: '', expectedCash: 1000, alignWithDayId: null });
+    expect((await state(gap)).settlements['1']).toMatchObject({ status: 'closed', difference: 0 });
+  });
+
+  it('P11c3.3: the writer refuses a farther opened day, a null when a later day is opened, and an alignment that no longer matches', async () => {
+    const { gap, next } = await seedAlignedScene();
+    const before = await state(gap);
+    // `today` also has 1,000 as its opening cash, so Rules alone would accept it; the writer does not.
+    const farther = await repository().closeDay(await closeInput({ countedCash: 1000, align: today }, gap));
+    expect(farther).toMatchObject({ ok: false, error: { code: 'REVISION_CONFLICT', message: expect.stringContaining(next) } });
+    const none = await repository().closeDay(await closeInput({ countedCash: 1000, align: null }, gap));
+    expect(none).toMatchObject({ ok: false, error: { code: 'REVISION_CONFLICT', message: expect.stringContaining(next) } });
+    expect(await state(gap)).toEqual(before);
+    // The automatic lookup finds the nearest day by itself.
+    ok(await repository().closeDay(await closeInput({ countedCash: 1000, align: 'auto' }, gap)));
+  });
+
+  it('P11c3.4: the writer refuses a marked day without an alignment, an ordinary day with one, and any difference on a marked day', async () => {
+    const { gap, next } = await seedAlignedScene();
+    const before = await state(gap);
+    expect(await repository().closeDay(await closeInput({ countedCash: 1000 }, gap))).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(await repository().closeDay(await closeInput({ countedCash: 990, note: '少十元', align: next }, gap))).toMatchObject({ ok: false });
+    expect(await repository().closeDay(await closeInput({ countedCash: 1000, align: next, expectedCash: 990 }, gap))).toMatchObject({ ok: false });
+    expect(await state(gap)).toEqual(before);
+    const ordinary = await state(today);
+    expect(await repository().closeDay(await closeInput({ countedCash: 1170, align: null }, today)))
+      .toMatchObject({ ok: false, error: { code: 'INVALID_INPUT', message: expect.stringContaining('沒有回填標記') } });
+    expect(await state(today)).toEqual(ordinary);
+  });
+
+  it('P11c3.5: the books must meet — a gap that is short of the next opening cash cannot close until a cash movement fills it', async () => {
+    const { gap, next } = await seedAlignedScene({ nextOpening: 1050 });
+    expect(await repository().closeDay(await closeInput({ countedCash: 1000, align: next }, gap)))
+      .toMatchObject({ ok: false, error: { code: 'INVALID_INPUT', message: expect.stringContaining('開帳現金') } });
+    expect(await repository().closeDay(await closeInput({ countedCash: 1050, align: next }, gap))).toMatchObject({ ok: false });
+    ok((await backfillCash(gap, 50)).result);
+    ok(await repository().closeDay(await closeInput({ countedCash: 1050, align: next }, gap)));
+    expect((await state(gap)).settlements['1']).toMatchObject({ openingCash: 800, expectedCash: 1050, countedCash: 1050, difference: 0 });
+  });
+
+  it('P11c3.6: an ordinary day closes exactly as before — a difference with a note passes, an alignment key is refused', async () => {
+    ok(await repository().closeDay(await closeInput({ countedCash: 1160, note: '少十元' })));
+    expect((await state()).settlements['1']).toMatchObject({ countedCash: 1160, difference: -10, note: '少十元' });
+    expect((await read(`commands/${(await state()).day!.lastCommandId}`))!.payload).toEqual({ countedCash: 1160, note: '少十元', expectedCash: 1170 });
+  });
+
+  describe('P11c3.7: Rules on a raw CloseDay of a marked day', () => {
+    it('accepts the aligned close and the null close, only for the holder', async () => {
+      const { gap, next } = await seedAlignedScene();
+      const ok1 = await rawSettlement('CloseDay', { dayId: gap, align: next });
+      await expectRawDenied(ok1, {}, operatorB);
+      await assertSucceeds(rawBatch(authedDb(operatorA), ok1).commit());
+      expect((await state(gap)).settlements['1']).toMatchObject({ status: 'closed', countedCash: 1000 });
+      // The same raw closure with a null alignment on another marked day.
+      const other = shiftDate(today, -5);
+      await seedGapDay(other, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+      ok(await startBackfill(other));
+      ok((await backfillPayment(other, 200)).result);
+      const nullAlign = await rawSettlement('CloseDay', { dayId: other, align: null });
+      await assertSucceeds(rawBatch(authedDb(operatorA), nullAlign).commit());
+      expect((await read(`commands/${nullAlign.commandId}`))!.payload.alignWithDayId).toBeNull();
+    });
+
+    it.each<[string, (scene: { gap: string; next: string }) => Promise<{ change: Parameters<typeof rawSettlement>[1]; attack?: (a: RawClose) => void }>]>([
+      ['the difference is not zero, even with a note', async ({ gap, next }) => ({
+        change: { dayId: gap, align: next, countedCash: 990, note: '少十元' },
+      })],
+      ['the aligned amount does not match the next opening cash', async ({ gap, next }) => ({
+        change: { dayId: gap, align: next, countedCash: 1000 },
+        attack: () => { /* the next day is edited below */ },
+      })],
+      ['the alignment day is the day itself', async ({ gap }) => ({ change: { dayId: gap, align: gap } })],
+      // The earlier day has the same opening cash as the count, so only the "later than the day" check can refuse it.
+      ['the alignment day is before the day', async ({ gap }) => ({ change: { dayId: gap, align: shiftDate(gap, -1) } })],
+      ['the alignment day does not exist', async ({ gap }) => ({ change: { dayId: gap, align: shiftDate(today, -2) } })],
+      ['the alignment day has no confirmed opening cash', async ({ gap }) => ({ change: { dayId: gap, align: today } })],
+      ['the alignment is a number', async ({ gap }) => ({ change: { dayId: gap, align: 20261018 } })],
+      ['the alignment is a path into another collection', async ({ gap, next }) => ({ change: { dayId: gap, align: `${next}/settlements/1` } })],
+      ['the alignment is undefined-by-omission on a marked day', async ({ gap }) => ({ change: { dayId: gap } })],
+    ])('denies atomically when %s', async (label, build) => {
+      const scene = await seedAlignedScene();
+      if (label.startsWith('the aligned amount')) {
+        await withAdmin(async db => updateDoc(doc(db, `days/${scene.next}`), { openingCash: 950 }));
+      }
+      if (label.startsWith('the alignment day is before')) {
+        await seedPastDay(shiftDate(scene.gap, -1), {
+          totals: zeroTotals(), openingCash: 1000, openedBy: operatorA.uid, openedAt: serverTimestamp(),
+        });
+      }
+      if (label.startsWith('the alignment is a path')) {
+        // A settlement document of the next day carries the same openingCash: only the date-shape check refuses the path.
+        await withAdmin(async db => setDoc(doc(db, `days/${scene.next}/settlements/1`), { openingCash: 1000 }));
+      }
+      if (label.startsWith('the alignment day has no confirmed')) {
+        await withAdmin(async db => updateDoc(doc(db, `days/${today}`), { openingCash: null, openedBy: null, openedAt: null }));
+      }
+      const { change, attack } = await build(scene);
+      const raw = await rawSettlement('CloseDay', change);
+      attack?.(raw);
+      await expectRawDenied(raw);
+    });
+
+    it('denies aligning with the day itself when its own opening cash equals the count', async () => {
+      // No receipts: expected cash = opening cash = 800, so the self-alignment passes every check but "later than the day".
+      const gap = shiftDate(today, -3);
+      await seedGapDay(gap, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+      ok(await startBackfill(gap));
+      await expectRawDenied(await rawSettlement('CloseDay', { dayId: gap, align: gap }));
+      await assertSucceeds(rawBatch(authedDb(operatorA), await rawSettlement('CloseDay', { dayId: gap, align: null })).commit());
+    });
+
+    it('denies an alignment key on an ordinary day, and a forged before-snapshot on a marked day', async () => {
+      const ordinary = await rawSettlement('CloseDay', { countedCash: 1170, align: null });
+      await expectRawDenied(ordinary);
+      const { gap, next } = await seedAlignedScene();
+      const forged = await rawSettlement('CloseDay', { dayId: gap, align: next });
+      forged.command.before = { ...forged.command.before, day: { ...forged.dayBefore, openingCash: 900 } };
+      await expectRawDenied(forged);
+      const extra = await rawSettlement('CloseDay', { dayId: gap, align: next });
+      extra.command.payload = { ...extra.command.payload, extra: 1 };
+      await expectRawDenied(extra);
+    });
+  });
+
+  it('P11c3.8: the legal maximum aligned close (500-character note, opening of 20,000) passes Rules for the holder', async () => {
+    const gap = shiftDate(today, -3);
+    const next = shiftDate(today, -1);
+    await seedGapDay(gap, { openingCash: 20_000, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    await seedPastDay(next, { totals: zeroTotals(), openingCash: 20_000, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    ok(await startBackfill(gap));
+    const raw = await rawSettlement('CloseDay', { dayId: gap, align: next, note: '備'.repeat(500) });
+    await expectRawDenied(raw, {}, operatorB);
+    await assertSucceeds(rawBatch(authedDb(operatorA), raw).commit());
+    expect((await state(gap)).settlements['1']).toMatchObject({ countedCash: 20_000, note: '備'.repeat(500), difference: 0 });
+  });
+
+  it('P11c3.9 (#513 review): a day that closed and reopened without ever being marked says "no backfill marker", not just "closed before"', async () => {
+    const gap = shiftDate(today, -2);
+    await seedGapDay(gap, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp(), status: 'reopened', lastSettlementRevision: 2 });
+    const before = await state(gap);
+    for (const attempt of [backfillOrder(gap), backfillPayment(gap), backfillCash(gap)]) {
+      const { result } = await attempt;
+      expect(result).toMatchObject({ ok: false, error: { code: 'DAY_CLOSED', message: expect.stringContaining('沒有回填標記') } });
+    }
+    expect(await state(gap)).toEqual(before);
   });
 
   it('P11c1.6: SetOpeningCash with a reason succeeds, retries return the same receipt, and the reason is stored on the command only', async () => {

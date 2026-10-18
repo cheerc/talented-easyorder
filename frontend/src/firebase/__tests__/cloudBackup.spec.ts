@@ -599,7 +599,7 @@ describeWithEmulator('P14 cloud backup', () => {
     const current = await read(`days/${gap}`);
     okResult(await closing.closeDay({ commandId: id(), leaseEpoch: 7, dayId: gap,
       expectedDayRevision: current.revision, expectedSettlementRevision: current.lastSettlementRevision,
-      expectedCash: 850, countedCash: 850, note: '' }));
+      expectedCash: 850, countedCash: 850, note: '', alignWithDayId: null }));
 
     const exported = await backups.exportRange({ fromSeq: 0, generatedAt: '2026-10-18T05:00:00.000Z' });
     expect(exported.manifest.records.map(record => record.kind)).toEqual([
@@ -649,6 +649,108 @@ describeWithEmulator('P14 cloud backup', () => {
     expect(forToday.records[3]!.targets.dayId).toBe(gap);
     forToday.records[3]!.committedAt = { _type: 'timestamp', seconds: 1_760_000_000, nanoseconds: 0 };
     expect(() => validateBackupManifest(forToday)).toThrow(/seq 4/);
+  });
+
+  it('exports, decrypts and replays a real aligned close of a back-filled day (EnsureDay → opening → marker → entries → aligned close); forged alignments are rejected', async () => {
+    await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 0, []));
+    const db = authedDb();
+    const user = { uid: operator.uid, email: operator.email, emailVerified: true, providerData: [{ providerId: 'google.com' }] } as unknown as User;
+    const writer = createCloudCommandRepository(db, { currentUser: () => user });
+    const orders = createCloudOrderRepository(db, { currentUser: () => user });
+    const closing = createCloudDayCloseRepository(db, { currentUser: () => user });
+    const backups = createCloudBackupRepository(db, { currentUid: () => operator.uid });
+    const shift = (offset: number) => {
+      const date = new Date(`${taipeiToday()}T00:00:00.000Z`);
+      date.setUTCDate(date.getUTCDate() + offset);
+      return date.toISOString().slice(0, 10);
+    };
+    const gap = shift(-3);
+    const later = shift(-1);
+    const studentId = uuid(950);
+    let next = 950;
+    const id = () => uuid(++next);
+    const read = async (path: string) => (await getDoc(doc(db, path))).data() as Record<string, number & string>;
+    const okResult = (result: { ok: boolean }) => expect(result, JSON.stringify(result)).toMatchObject({ ok: true });
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: 7,
+      targets: { studentId }, expectedRevisions: { student: 0 },
+      payload: { studentCode: '950', displayName: 'Anonymous align fixture', aliases: [],
+        openingBalance: { amount: 100, asOfDate: '2026-10-01', note: '' } } }));
+    // The later day is opened first (850), so the gap day must end at 850: opening 600 + receipts 200 + income 50.
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: 7,
+      targets: { dayId: later }, expectedRevisions: { day: 0 }, payload: { businessDate: later } }));
+    okResult(await closing.backfillOpening({ commandId: id(), leaseEpoch: 7, dayId: later,
+      expectedDayRevision: (await read(`days/${later}`)).revision, openingCash: 850, reason: '隔天照常開店' }));
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: 7,
+      targets: { dayId: gap }, expectedRevisions: { day: 0 }, payload: { businessDate: gap } }));
+    okResult(await closing.backfillOpening({ commandId: id(), leaseEpoch: 7, dayId: gap,
+      expectedDayRevision: (await read(`days/${gap}`)).revision, openingCash: 600, reason: '整天沒有用系統' }));
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'StartBackfill', leaseEpoch: 7,
+      targets: { dayId: gap }, expectedRevisions: { day: (await read(`days/${gap}`)).revision },
+      payload: { reason: '那天斷線，事後補登' } }));
+    const revisions = async () => ({ student: (await read(`students/${studentId}`)).revision, day: (await read(`days/${gap}`)).revision });
+    const r = await revisions();
+    okResult(await orders.createPayment({ commandId: id(), transactionId: id(), leaseEpoch: 7, studentId, dayId: gap,
+      expectedStudentRevision: r.student, expectedDayRevision: r.day, paidAmount: 200, note: '' }));
+    okResult(await orders.createCashMovement({ commandId: id(), transactionId: id(), leaseEpoch: 7, dayId: gap,
+      expectedDayRevision: (await read(`days/${gap}`)).revision, direction: 'income', amount: 50, reason: '零錢補充' }));
+    const current = await read(`days/${gap}`);
+    const closeInput = { commandId: id(), leaseEpoch: 7, dayId: gap,
+      expectedDayRevision: current.revision, expectedSettlementRevision: current.lastSettlementRevision,
+      expectedCash: 850, countedCash: 850, note: '' };
+    // The nearest opened day is `later`; the writer refuses a null alignment.
+    expect(await closing.closeDay({ ...closeInput, alignWithDayId: null })).toMatchObject({ ok: false });
+    okResult(await closing.closeDay({ ...closeInput, alignWithDayId: later }));
+
+    const exported = await backups.exportRange({ fromSeq: 0, generatedAt: '2026-10-18T05:00:00.000Z' });
+    const kinds = exported.manifest.records.map(record => record.kind);
+    expect(kinds).toEqual([
+      'CreateStudent', 'EnsureDay', 'BackfillOpeningCash', 'EnsureDay', 'BackfillOpeningCash', 'StartBackfill',
+      'CreatePayment', 'CreateCashMovement', 'CloseDay',
+    ]);
+    const opened = await decryptBackup(await encryptBackup(exported.manifest, 'align-round-trip'), 'align-round-trip');
+    expect(opened.records[8]).toMatchObject({ kind: 'CloseDay', payload: { countedCash: 850, expectedCash: 850, alignWithDayId: later } });
+    const replayed = replayBackupProjections(opened.records, opened.baseState);
+    expect(replayed).toEqual(opened.projectionState);
+    expect(replayed[`days/${gap}`]).toMatchObject({ status: 'closed', openingCash: 600 });
+
+    const closeAt = 8;
+    const forge = (change: (record: BackupCommandRecord) => void) => {
+      const copy = structuredClone(opened);
+      change(copy.records[closeAt]!);
+      return copy;
+    };
+    const payloadOf = (record: BackupCommandRecord) => record.payload as Record<string, unknown>;
+    // Forged alignment day: missing, not later, the day itself, malformed.
+    for (const align of [shift(-2), gap, shift(-5), '2026-10-1', 5]) {
+      expect(() => validateBackupManifest(forge(record => { payloadOf(record).alignWithDayId = align; })), String(align)).toThrow(/對齊日|alignWithDayId|payload/);
+    }
+    // Forged amount: the counted cash no longer meets the aligned day's opening cash.
+    expect(() => validateBackupManifest(forge(record => {
+      payloadOf(record).countedCash = 840;
+      payloadOf(record).expectedCash = 840;
+    }))).toThrow(/對齊日|settlement|差額|expectedCash|receipt/);
+    // Forged difference: the stored settlement says the close was not even.
+    expect(() => validateBackupManifest(forge(record => {
+      const settlement = (record.after as Record<string, Record<string, unknown>>).settlement!;
+      settlement.difference = -10; settlement.countedCash = 840;
+      payloadOf(record).countedCash = 840;
+    }))).toThrow(/差額|settlement|對齊日/);
+    // The aligned day was opened with another amount (a coherent forgery of its own opening record): the close no longer meets it.
+    const otherOpening = structuredClone(opened);
+    (otherOpening.records[2]!.payload as Record<string, unknown>).openingCash = 800;
+    (otherOpening.records[2]!.after!.day as Record<string, unknown>).openingCash = 800;
+    expect(() => replayBackupProjections(otherOpening.records, otherOpening.baseState)).toThrow(/對齊日/);
+    // At the time of the close the aligned day had no opening cash: replay the close before it was opened.
+    const early = [...opened.records.slice(0, 3), opened.records[8]!, ...opened.records.slice(3, 8)];
+    expect(() => replayBackupProjections(early, opened.baseState)).toThrow(/對齊日|settlement|前序重播/);
+    // A null alignment passes the decoder but the later opened day is a replay-time fact only when the key is present:
+    // an alignment on a day without a marker is refused.
+    const unmarked = opened.records.filter(record => !['StartBackfill', 'CreatePayment', 'CreateCashMovement'].includes(record.kind));
+    expect(() => replayBackupProjections(unmarked, opened.baseState)).toThrow(/沒有回填標記/);
+    // A close from before P11c3 (no alignWithDayId on a marked day) still replays.
+    const legacy = structuredClone(opened);
+    delete (legacy.records[closeAt]!.payload as Record<string, unknown>).alignWithDayId;
+    expect(replayBackupProjections(legacy.records, legacy.baseState)).toEqual(opened.projectionState);
   });
 
   it('exports, decrypts and replays a real SetOpeningCash with a difference reason, and an older one without; forged reasons are rejected', async () => {
