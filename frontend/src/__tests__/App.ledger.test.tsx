@@ -64,7 +64,7 @@ const unclosed = (dayId: string) => ({
 });
 const mismatch = {
   kind: 'opening-mismatch' as const, dayId: '2026-10-16', openingCash: 800, previousClosedDayId: '2026-10-14',
-  previousCountedCash: 870, difference: -70, daysApart: 2, gapDays: [], gapDayCount: 0,
+  previousCountedCash: 870, previousPostCloseNet: 0, previousEffectiveCash: 870, difference: -70, daysApart: 2, gapDays: [], gapDayCount: 0,
 };
 
 describe('cloud navigation: ledger anomalies entry', () => {

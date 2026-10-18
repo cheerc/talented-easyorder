@@ -888,12 +888,12 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
       { kind: 'unclosed-past-day', dayId: d3, status: 'open', openingCash: 800, activeTransactionCount: 4 },
       {
         kind: 'opening-mismatch', dayId: d3, openingCash: 800, previousClosedDayId: d2,
-        previousCountedCash: 870, difference: -70, daysApart: 3,
+        previousCountedCash: 870, previousPostCloseNet: 0, previousEffectiveCash: 870, difference: -70, daysApart: 3,
         gapDays: [shiftDate(today, -4), shiftDate(today, -3)], gapDayCount: 2,
       },
       {
         kind: 'opening-mismatch', dayId: today, openingCash: 1000, previousClosedDayId: d2,
-        previousCountedCash: 870, difference: 130, daysApart: 5,
+        previousCountedCash: 870, previousPostCloseNet: 0, previousEffectiveCash: 870, difference: 130, daysApart: 5,
         gapDays: [shiftDate(today, -4), shiftDate(today, -3), shiftDate(today, -1)], gapDayCount: 3,
       },
     ]);
@@ -926,7 +926,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     const snapshot = await repository().readLedger();
     expect(snapshot.closedDays).toEqual([{ dayId: d1, countedCash: 700 }, { dayId: d2, countedCash: 900 }]);
     expect(snapshot.anomalies).toEqual([expect.objectContaining({
-      kind: 'opening-mismatch', dayId: today, previousClosedDayId: d2, previousCountedCash: 900, difference: 100, daysApart: 2,
+      kind: 'opening-mismatch', dayId: today, previousClosedDayId: d2, previousCountedCash: 900, previousPostCloseNet: 0, previousEffectiveCash: 900, difference: 100, daysApart: 2,
     })]);
   });
 

@@ -59,6 +59,8 @@ function dayState(overrides: Partial<CloudDayCloseState> = {}): CloudDayCloseSta
     lastSettlementRevision: 0,
     expectedCash: 1170,
     settlements: [],
+    postCloseEntries: [],
+    effectiveCash: null,
     seq: 20,
     ...overrides,
   };
@@ -372,7 +374,7 @@ describe('CloudDayClosePage: ledger warnings (contract §11)', () => {
       anomalies: [
         { kind: 'unclosed-past-day', dayId: '2026-10-14', status: 'open', openingCash: 500, activeTransactionCount: 1 },
         { kind: 'unclosed-past-day', dayId: '2026-10-15', status: 'open', openingCash: 600, activeTransactionCount: 2 },
-        { kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 1, previousClosedDayId: '2026-10-13', previousCountedCash: 2, difference: -1, daysApart: 3, gapDays: [], gapDayCount: 0 },
+        { kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 1, previousClosedDayId: '2026-10-13', previousCountedCash: 2, previousPostCloseNet: 0, previousEffectiveCash: 2, difference: -1, daysApart: 3, gapDays: [], gapDayCount: 0 },
       ],
     },
   };

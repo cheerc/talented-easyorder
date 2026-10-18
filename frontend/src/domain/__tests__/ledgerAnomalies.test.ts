@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  computeLedgerAnomalies, openingDifference, previousClosedDay, type LedgerAnomalyDay,
+  computeLedgerAnomalies, effectiveCashOf, openingDifference, previousClosedDay, type LedgerAnomalyDay,
 } from '../ledgerAnomalies';
 
 const closed = (dayId: string, openingCash: number, countedCash: number): LedgerAnomalyDay => ({
@@ -29,7 +29,7 @@ describe('computeLedgerAnomalies', () => {
     const days = [closed('2026-10-01', 500, 1200), open('2026-10-05', 1000)];
     expect(computeLedgerAnomalies(days, '2026-10-05')).toEqual([{
       kind: 'opening-mismatch', dayId: '2026-10-05', openingCash: 1000,
-      previousClosedDayId: '2026-10-01', previousCountedCash: 1200, difference: -200, daysApart: 4,
+      previousClosedDayId: '2026-10-01', previousCountedCash: 1200, previousPostCloseNet: 0, previousEffectiveCash: 1200, difference: -200, daysApart: 4,
       gapDays: ['2026-10-02', '2026-10-03', '2026-10-04'], gapDayCount: 3,
     }]);
   });
@@ -131,5 +131,41 @@ describe('previousClosedDay / openingDifference', () => {
     expect(openingDifference({ dayId: '2026-10-03', countedCash: 900 }, 900)).toBeNull();
     expect(openingDifference({ dayId: '2026-10-03', countedCash: 900 }, 1000)).toBe(100);
     expect(openingDifference(null, 1000)).toBeNull();
+  });
+});
+
+describe('有效關帳現金（P11c4a，契約 §15.3）', () => {
+  const withNet = (day: LedgerAnomalyDay, postCloseNet: number): LedgerAnomalyDay => ({ ...day, postCloseNet });
+
+  it('Q2：星期一關帳 1,000、星期三開帳 950，中間補記 50 元支出後，開帳不符消失', () => {
+    const days = [closed('2026-10-05', 500, 1000), open('2026-10-07', 950)];
+    expect(computeLedgerAnomalies(days, '2026-10-07')).toMatchObject([{ kind: 'opening-mismatch', difference: -50, previousEffectiveCash: 1000 }]);
+    const fixed = [withNet(closed('2026-10-05', 500, 1000), -50), open('2026-10-07', 950)];
+    expect(computeLedgerAnomalies(fixed, '2026-10-07')).toEqual([]);
+  });
+
+  it('補記收入把有效關帳現金調高；仍不一致時差額以有效關帳現金計算並帶出補記淨額', () => {
+    const days = [withNet(closed('2026-10-05', 500, 1000), 30), open('2026-10-06', 1000)];
+    expect(computeLedgerAnomalies(days, '2026-10-06')).toEqual([{
+      kind: 'opening-mismatch', dayId: '2026-10-06', openingCash: 1000,
+      previousClosedDayId: '2026-10-05', previousCountedCash: 1000, previousPostCloseNet: 30, previousEffectiveCash: 1030,
+      difference: -30, daysApart: 1, gapDays: [], gapDayCount: 0,
+    }]);
+  });
+
+  it('沒有補記淨額時，有效關帳現金就是實點', () => {
+    expect(effectiveCashOf({ dayId: '2026-10-05', countedCash: 800 })).toBe(800);
+    expect(effectiveCashOf({ dayId: '2026-10-05', countedCash: 800, postCloseNet: -25 })).toBe(775);
+  });
+
+  it('開帳表單的差額用有效關帳現金：開帳等於有效關帳現金不需差額原因', () => {
+    const previous = { dayId: '2026-10-05', countedCash: 1000, postCloseNet: -50 };
+    expect(openingDifference(previous, 950)).toBeNull();
+    expect(openingDifference(previous, 1000)).toBe(50);
+  });
+
+  it('closedDays 逐日帶出補記淨額', () => {
+    expect(previousClosedDay([{ dayId: '2026-10-05', countedCash: 1000, postCloseNet: -50 }], '2026-10-06'))
+      .toEqual({ dayId: '2026-10-05', countedCash: 1000, postCloseNet: -50 });
   });
 });

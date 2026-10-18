@@ -12,6 +12,8 @@ export interface LedgerAnomalyDay {
   activeTransactionCount: number;
   /** 已關帳日最新日結版本的實點現金；其他狀態為 null。 */
   countedCash: number | null;
+  /** 已關帳日目前日結版本的關帳後補記淨額（income − expense，契約 §15.3）；沒有補記或其他狀態為 0。 */
+  postCloseNet?: number;
 }
 
 export interface OpeningMismatchAnomaly {
@@ -22,7 +24,11 @@ export interface OpeningMismatchAnomaly {
   /** 日期早於 D 的最近一個已關帳日（P）與它最新日結版本的實點。 */
   previousClosedDayId: string;
   previousCountedCash: number;
-  /** openingCash − previousCountedCash，不為 0。 */
+  /** P 目前日結版本的關帳後補記淨額（income − expense），契約 §15.3。 */
+  previousPostCloseNet: number;
+  /** P 的有效關帳現金 = 實點 + 補記淨額；開帳要和它比對。 */
+  previousEffectiveCash: number;
+  /** openingCash − previousEffectiveCash，不為 0。 */
   difference: number;
   /** D 與 P 相差幾個日曆天（連續兩天為 1）。 */
   daysApart: number;
@@ -76,6 +82,13 @@ export function missingDaysBetween(earlier: string, later: string, existing: Rea
 export interface PreviousClosedDay {
   dayId: string;
   countedCash: number;
+  /** 目前日結版本的關帳後補記淨額（契約 §15.3）；省略視為 0。 */
+  postCloseNet?: number;
+}
+
+/** 有效關帳現金：實點加上目前日結版本的關帳後補記淨額。 */
+export function effectiveCashOf(day: PreviousClosedDay): number {
+  return day.countedCash + (day.postCloseNet ?? 0);
 }
 
 /** 日期早於 dayId 的最近一個已關帳日；`days` 須依日期升冪。 */
@@ -111,7 +124,7 @@ export function computeLedgerAnomalies(days: readonly LedgerAnomalyDay[], today:
     }
     if (day.openingCash !== null) {
       const previous = previousClosedDay(closedDays, day.dayId);
-      if (previous && previous.countedCash !== day.openingCash) {
+      if (previous && effectiveCashOf(previous) !== day.openingCash) {
         const gap = missingDaysBetween(previous.dayId, day.dayId, existingDayIds);
         anomalies.push({
           kind: 'opening-mismatch',
@@ -119,7 +132,9 @@ export function computeLedgerAnomalies(days: readonly LedgerAnomalyDay[], today:
           openingCash: day.openingCash,
           previousClosedDayId: previous.dayId,
           previousCountedCash: previous.countedCash,
-          difference: day.openingCash - previous.countedCash,
+          previousPostCloseNet: previous.postCloseNet ?? 0,
+          previousEffectiveCash: effectiveCashOf(previous),
+          difference: day.openingCash - effectiveCashOf(previous),
           daysApart: calendarDaysBetween(previous.dayId, day.dayId),
           gapDays: gap.listed,
           gapDayCount: gap.count,
@@ -128,7 +143,7 @@ export function computeLedgerAnomalies(days: readonly LedgerAnomalyDay[], today:
     }
     if (day.status === 'closed') {
       if (day.countedCash === null) throw new Error(`已關帳日 ${day.dayId} 缺少實點現金`);
-      closedDays.push({ dayId: day.dayId, countedCash: day.countedCash });
+      closedDays.push({ dayId: day.dayId, countedCash: day.countedCash, postCloseNet: day.postCloseNet ?? 0 });
     }
   }
   return anomalies;
@@ -136,6 +151,6 @@ export function computeLedgerAnomalies(days: readonly LedgerAnomalyDay[], today:
 
 /** 開帳表單用：輸入金額與上一個已關帳日的實點不同時回傳差額，否則 null。 */
 export function openingDifference(previous: PreviousClosedDay | null, openingCash: number): number | null {
-  if (!previous || previous.countedCash === openingCash) return null;
-  return openingCash - previous.countedCash;
+  if (!previous || effectiveCashOf(previous) === openingCash) return null;
+  return openingCash - effectiveCashOf(previous);
 }

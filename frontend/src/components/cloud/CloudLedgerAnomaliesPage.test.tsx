@@ -47,7 +47,7 @@ describe('CloudLedgerAnomaliesPage', () => {
     renderPage(ready([
       {
         kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 800, previousClosedDayId: '2026-10-13',
-        previousCountedCash: 870, difference: -70, daysApart: 3, gapDays: [], gapDayCount: 0,
+        previousCountedCash: 870, previousPostCloseNet: 0, previousEffectiveCash: 870, difference: -70, daysApart: 3, gapDays: [], gapDayCount: 0,
       },
     ]));
     const item = screen.getByRole('listitem');
@@ -67,7 +67,7 @@ describe('CloudLedgerAnomaliesPage', () => {
     const { onOpenDayClose } = renderPage(ready([
       {
         kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 800, previousClosedDayId: '2026-10-13',
-        previousCountedCash: 870, difference: -70, daysApart: 3, gapDays: ['2026-10-14', '2026-10-15'], gapDayCount: 2,
+        previousCountedCash: 870, previousPostCloseNet: 0, previousEffectiveCash: 870, difference: -70, daysApart: 3, gapDays: ['2026-10-14', '2026-10-15'], gapDayCount: 2,
       },
     ]));
     const gap = screen.getByTestId('gap-days-2026-10-16');
@@ -83,7 +83,7 @@ describe('CloudLedgerAnomaliesPage', () => {
     renderPage(ready([
       {
         kind: 'opening-mismatch', dayId: '2026-12-01', openingCash: 800, previousClosedDayId: '2026-10-01',
-        previousCountedCash: 870, difference: -70, daysApart: 61, gapDays: ['2026-10-02', '2026-10-03'], gapDayCount: 59,
+        previousCountedCash: 870, previousPostCloseNet: 0, previousEffectiveCash: 870, difference: -70, daysApart: 61, gapDays: ['2026-10-02', '2026-10-03'], gapDayCount: 59,
       },
     ]));
     expect(screen.getByTestId('gap-days-2026-12-01')).toHaveTextContent('共 59 天，這裡先列出最早的 2 天');
@@ -103,7 +103,7 @@ describe('CloudLedgerAnomaliesPage', () => {
     renderPage(ready([
       {
         kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 900, previousClosedDayId: '2026-10-15',
-        previousCountedCash: 870, difference: 30, daysApart: 1, gapDays: [], gapDayCount: 0,
+        previousCountedCash: 870, previousPostCloseNet: 0, previousEffectiveCash: 870, difference: 30, daysApart: 1, gapDays: [], gapDayCount: 0,
       },
     ]));
     expect(screen.getByRole('listitem')).toHaveTextContent('多了 NT$ 30');

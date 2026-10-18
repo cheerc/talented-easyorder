@@ -45,7 +45,11 @@ function AnomalyItem({ anomaly, onOpenDayClose }: { anomaly: LedgerAnomaly; onOp
       <h3>{anomaly.dayId} 開帳現金與上次關帳不符</h3>
       <p>
         {anomaly.dayId} 的開帳現金是 {formatMoney(anomaly.openingCash)}，上一個已關帳日 {anomaly.previousClosedDayId} 的實點現金是
-        {' '}{formatMoney(anomaly.previousCountedCash)}，開帳比實點{direction}了 {formatMoney(Math.abs(anomaly.difference))}。
+        {' '}{formatMoney(anomaly.previousCountedCash)}
+        {anomaly.previousPostCloseNet !== 0
+          ? `，關帳後補記淨額 ${anomaly.previousPostCloseNet > 0 ? '+' : '−'}${formatMoney(Math.abs(anomaly.previousPostCloseNet))}，有效關帳現金 ${formatMoney(anomaly.previousEffectiveCash)}`
+          : ''}
+        ，開帳比{anomaly.previousPostCloseNet !== 0 ? '有效關帳現金' : '實點'}{direction}了 {formatMoney(Math.abs(anomaly.difference))}。
         兩天相隔 {anomaly.daysApart} 天。
       </p>
       <p>
