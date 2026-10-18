@@ -1367,7 +1367,9 @@ service cloud.firestore {
     // lastSettlementRevision + 1. CloseDay needs a confirmed openingCash and computes expectedCash from
     // the day totals; a non-zero difference needs a note. A back-filled day (P11c3, marker present) must
     // close with no difference and carry `alignWithDayId`: null, or a later day whose openingCash equals
-    // the count. Rules cannot prove no nearer opened day exists; the writer scans for it. ReopenDay needs a reason. The command rule
+    // the count. Rules cannot prove that no nearer opened day exists; the writer scans for it (contract §14).
+    // This rule only checks the shape of the alignment; that the key is present exactly when the day is marked is
+    // checked by `dayCloseCommand`, which has the headroom. ReopenDay needs a reason. The command rule
     // binds every snapshot to the real documents; the day and settlement rules check their own shapes.
     function validDaySettlementCommand(commandId, command) {
       let dayId = command.targets.dayId;
@@ -1395,14 +1397,13 @@ service cloud.firestore {
         && (close
           ? dayBefore.status in ['open', 'reopened']
             && dayBefore.openingCash is int
-            && (exists(/databases/$(database)/documents/backfillDays/$(dayId))
-              ? exactMap(p, ['countedCash', 'note', 'expectedCash', 'alignWithDayId'])
+            && (exactMap(p, ['countedCash', 'note', 'expectedCash'])
+              || (exactMap(p, ['countedCash', 'note', 'expectedCash', 'alignWithDayId'])
                 && p.countedCash == p.expectedCash
                 && (p.alignWithDayId == null
                   || (validTaipeiDate(p.alignWithDayId)
                     && p.alignWithDayId > dayId
-                    && get(/databases/$(database)/documents/days/$(p.alignWithDayId)).data.openingCash == p.countedCash))
-              : exactMap(p, ['countedCash', 'note', 'expectedCash']))
+                    && get(/databases/$(database)/documents/days/$(p.alignWithDayId)).data.openingCash == p.countedCash))))
             && p.countedCash is int && p.countedCash >= 0 && p.countedCash <= 1000000000
             && p.note is string && p.note.size() <= 500
             && p.expectedCash == settlementExpectedCash(dayBefore)
@@ -1438,6 +1439,8 @@ service cloud.firestore {
         && command.after.day == after
         && (close ? before.status in ['open', 'reopened'] : before.status == 'closed')
         && after.status == (close ? 'closed' : 'reopened')
+        // P11c3: a close carries `alignWithDayId` exactly when the day has a backfill marker.
+        && (!close || ('alignWithDayId' in command.payload) == exists(/databases/$(database)/documents/backfillDays/$(dayId)))
         && after.diff(before).affectedKeys().hasOnly(['status', 'lastSettlementRevision', 'revision', 'lastCommandId', 'updatedAt'])
         && after.lastSettlementRevision == before.lastSettlementRevision + 1
         && after.revision == before.revision + 1

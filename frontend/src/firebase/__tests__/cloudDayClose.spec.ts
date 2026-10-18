@@ -1593,8 +1593,12 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     });
 
     it.each<[string, (scene: { gap: string; next: string }) => Promise<{ change: Parameters<typeof rawSettlement>[1]; attack?: (a: RawClose) => void }>]>([
-      ['the difference is not zero, even with a note', async ({ gap, next }) => ({
+      // The next day opens with 990, so the count meets it and only "difference is zero" can refuse the close.
+      ['the difference is not zero, even with a note and a matching alignment', async ({ gap, next }) => ({
         change: { dayId: gap, align: next, countedCash: 990, note: '少十元' },
+      })],
+      ['the difference is not zero, even with a note and a null alignment', async ({ gap }) => ({
+        change: { dayId: gap, align: null, countedCash: 990, note: '少十元' },
       })],
       ['the aligned amount does not match the next opening cash', async ({ gap, next }) => ({
         change: { dayId: gap, align: next, countedCash: 1000 },
@@ -1610,6 +1614,9 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
       ['the alignment is undefined-by-omission on a marked day', async ({ gap }) => ({ change: { dayId: gap } })],
     ])('denies atomically when %s', async (label, build) => {
       const scene = await seedAlignedScene();
+      if (label.startsWith('the difference is not zero, even with a note and a matching')) {
+        await withAdmin(async db => updateDoc(doc(db, `days/${scene.next}`), { openingCash: 990 }));
+      }
       if (label.startsWith('the aligned amount')) {
         await withAdmin(async db => updateDoc(doc(db, `days/${scene.next}`), { openingCash: 950 }));
       }
@@ -1663,6 +1670,21 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     await expectRawDenied(raw, {}, operatorB);
     await assertSucceeds(rawBatch(authedDb(operatorA), raw).commit());
     expect((await state(gap)).settlements['1']).toMatchObject({ countedCash: 20_000, note: '備'.repeat(500), difference: 0 });
+  });
+
+  it('P11c3.10: re-closing a reopened marked day still passes — the CloseDay rules stay within the document-access limits at their busiest', async () => {
+    // Accesses on the command rule: lease, operator, head ×2, day ×2, previous settlement, settlement n, alignment day = 9; the day rule adds the marker lookup.
+    const { gap, next } = await seedAlignedScene();
+    ok(await repository().closeDay(await closeInput({ countedCash: 1000, align: next }, gap)));
+    ok(await repository().reopenDay(await reopenInput('漏登一筆收支', gap)));
+    ok(await repository().closeDay(await closeInput({ countedCash: 1000, align: 'auto' }, gap)));
+    expect((await state(gap)).settlements['3']).toMatchObject({ status: 'closed', countedCash: 1000, difference: 0 });
+    // A raw closure through the same path (version 4 after another reopen) is accepted only for the holder.
+    ok(await repository().reopenDay(await reopenInput('再漏登一筆', gap)));
+    const raw = await rawSettlement('CloseDay', { dayId: gap, align: next });
+    await expectRawDenied(raw, {}, operatorB);
+    await assertSucceeds(rawBatch(authedDb(operatorA), raw).commit());
+    expect((await state(gap)).settlements['5']).toMatchObject({ status: 'closed' });
   });
 
   it('P11c3.9 (#513 review): a day that closed and reopened without ever being marked says "no backfill marker", not just "closed before"', async () => {
