@@ -166,7 +166,7 @@ CheerC（2026-10-17）：某天整天沒用系統，事後要能補登那天的�
 ### 12.2 寫入器與錯誤碼
 
 - `cloudCommandRepository`：新增 `StartBackfill`；三種交易命令不在客戶端判斷日期，由 Rules 決定，被拒時以讀回的營業日診斷。今天的判斷照舊用租約 `updatedAt` 的台北日期。
-- 錯誤碼：已關過帳（狀態 closed 或 `lastSettlementRevision > 0`）→ `DAY_CLOSED`；今天、未來、上線日前、營業日不存在、已有標記、缺原因或過長 → `INVALID_INPUT`；沒有標記的過去日交易 → `INVALID_INPUT`；版本不符 → `REVISION_CONFLICT`；非持有人 → `LEASE_LOST`。
+- 錯誤碼：`StartBackfill` 對關過帳的日子（狀態 closed 或 `lastSettlementRevision > 0`）→ `DAY_CLOSED`；三種交易的診斷只在營業日目前為 closed 時回 `DAY_CLOSED`，已標記、關帳後重開（open 但 `lastSettlementRevision > 0`）的日子被 Rules 拒絕時回 `INVALID_INPUT`；今天、未來、上線日前、營業日不存在、已有標記、缺原因或過長 → `INVALID_INPUT`；沒有標記的過去日交易 → `INVALID_INPUT`；版本不符 → `REVISION_CONFLICT`；非持有人 → `LEASE_LOST`。
 - 回填日的開帳現金仍用 `BackfillOpeningCash`（原因本來就必填），Rules 不改；預設帶入上一個已關帳日實點、金額不同時原因必填是畫面（P11c2b）的事。
 - 型別、normalizer、回執解碼（`validateStartBackfillReceipt`：營業日前後相同、標記欄位等於 payload 原因、操作者 uid、`committedAt` 與 `commandId`）同步；交易回執解碼的日期條件改為「台北今天，或從沒關過帳的過去日」（標記是否存在不在回執內，由 Rules 與 P14 replay 證明）。
 
@@ -180,7 +180,7 @@ CheerC（2026-10-17）：某天整天沒用系統，事後要能補登那天的�
 
 - 回填路徑多一次 `exists(backfillDays/{dayId})`：以 Emulator 的回填 `CreateOrder`／`CreatePayment`／`CreateCashMovement` 正向案例（`P11c2a.14`）證明沒有超過每請求 10 次、batch 20 次的上限；預算見 [P11c2a 附錄](../../ops/p05-rules-budget.md#p11c2a-gap-day-backfill--budget-and-probe-receipt)。
 - `backfillDays` 是新集合，只用 document ID 的 `get` 與 `documentId() in [...]`（overview 每 30 個營業日一個查詢），**不需要新 index**；`firestore.indexes.json` 不變。
-- 部署（CheerC 本機）：Rules 與前端一起上（`firestore.indexes.json` 不變也一併帶上）；舊前端不會送 `StartBackfill`，既有今天的交易路徑不變。
+- 部署（CheerC 本機）：Rules、前端、`firestore.indexes.json` 一起上（indexes 這批不變，也一併帶上）；舊前端不會送 `StartBackfill`，既有今天的交易路徑不變。
 
 ### 12.5 驗收與範圍
 
