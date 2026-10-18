@@ -36,7 +36,7 @@ import {
   type TransactionMutationPayload,
 } from '../domain/cloudTransactionMutation';
 import {
-  accessLeasePath, backfillDayPath, commandPath, dataHeadPath, dayPath, settlementPath, studentCodePath, studentPath, transactionPath, vendorPath,
+  accessLeasePath, backfillDayPath, commandPath, dataHeadPath, dayPath, postCloseEntryPath, settlementPath, studentCodePath, studentPath, transactionPath, vendorPath,
 } from './firestorePaths';
 
 type Data = Record<string, unknown>;
@@ -405,6 +405,16 @@ async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput)
       if (input.kind === 'StartBackfill' && day.lastSettlementRevision !== 0) return 'DAY_CLOSED';
       return 'INVALID_INPUT';
     }
+    if (input.kind === 'RecordPostCloseEntry') {
+      const daySnapshot = await getDocFromServer(doc(db, dayPath(input.targets.dayId)));
+      if (!daySnapshot.exists()) return 'INVALID_INPUT';
+      const day = decodeDay(daySnapshot.data());
+      if (day.revision !== input.expectedRevisions.day
+        || day.lastSettlementRevision !== input.expectedRevisions.settlement) {
+        return 'REVISION_CONFLICT';
+      }
+      return 'INVALID_INPUT';
+    }
     if (input.kind === 'SetDayMenu' || input.kind === 'SetOpeningCash') {
       const daySnapshot = await getDocFromServer(doc(db, dayPath(input.targets.dayId)));
       if (!daySnapshot.exists()) return 'INVALID_INPUT';
@@ -578,12 +588,12 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     const hasDayTarget = input.kind === 'EnsureDay' || input.kind === 'CreateOrder' || input.kind === 'CreatePayment'
       || input.kind === 'CreateCashMovement' || input.kind === 'CreateRefund' || input.kind === 'SetDayMenu' || input.kind === 'SetOpeningCash'
       || mutation !== null || input.kind === 'CorrectOpening' || input.kind === 'CloseDay' || input.kind === 'ReopenDay'
-      || input.kind === 'BackfillOpeningCash' || input.kind === 'StartBackfill';
+      || input.kind === 'BackfillOpeningCash' || input.kind === 'StartBackfill' || input.kind === 'RecordPostCloseEntry';
     const targetDayId = input.kind === 'EnsureDay' ? input.targets.dayId
       : input.kind === 'CreateOrder' || input.kind === 'CreatePayment' || input.kind === 'CreateCashMovement'
         || input.kind === 'CreateRefund' || input.kind === 'SetDayMenu' || input.kind === 'SetOpeningCash'
         || input.kind === 'CorrectOpening' || input.kind === 'CloseDay' || input.kind === 'ReopenDay'
-        || input.kind === 'BackfillOpeningCash' || input.kind === 'StartBackfill'
+        || input.kind === 'BackfillOpeningCash' || input.kind === 'StartBackfill' || input.kind === 'RecordPostCloseEntry'
         ? input.targets.dayId : mutation ? mutation.targets.dayId : null;
     const dayRef = targetDayId ? doc(db, dayPath(targetDayId)) : null;
     const targetStudentId = input.kind === 'CreateStudent' || input.kind === 'ChangeStudentCode' || input.kind === 'EditStudent' || input.kind === 'SetStudentStatus'
@@ -870,6 +880,39 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
             reason: payload.reason, cashEffect: zeroCash, payload: input.payload, inputFingerprint: fingerprint,
           } as StoredEnabledCommandDoc;
           tx.set(markerRef, marker);
+          tx.update(headRef, headAfter);
+          tx.set(commandRef, stored);
+          return { existing: null } as const;
+        }
+
+        if (input.kind === 'RecordPostCloseEntry') {
+          if (!daySnapshot?.exists() || !dayRef) throw new RejectCommand('INVALID_INPUT', '營業日不存在');
+          const { dayId } = input.targets;
+          const dayBefore = decodeDay(daySnapshot.data());
+          checkRevision(dayBefore.revision, input.expectedRevisions.day, '營業日版本');
+          checkRevision(Number(dayBefore.lastSettlementRevision), input.expectedRevisions.settlement, '日結版本');
+          if (dayBefore.status !== 'closed') {
+            throw new RejectCommand('INVALID_INPUT', '只有已關帳的營業日可以補記；還沒關帳或重開中的日子請直接登錄');
+          }
+          requireDateAfterGoLive(dayId, String(headBefore.goLiveDate));
+          const payload = input.payload as { direction: 'income' | 'expense'; amount: number; reason: string };
+          const entryRef = doc(db, postCloseEntryPath(input.commandId));
+          if ((await tx.get(entryRef)).exists()) throw new RejectCommand('INVALID_INPUT', '這筆補記已存在');
+          const entry: Data = {
+            entryId: input.commandId, dayId, settlementRevision: Number(dayBefore.lastSettlementRevision),
+            direction: payload.direction, amount: payload.amount, reason: payload.reason,
+            createdBy: user.uid, createdAt: now, commandId: input.commandId,
+          };
+          const stored = {
+            commandId: input.commandId, kind: 'RecordPostCloseEntry', seq, leaseEpoch: input.leaseEpoch,
+            actor: { uid: user.uid, email: user.email! }, committedAt: now as Timestamp,
+            businessDate: dayId, studentId: null, targets: input.targets,
+            expectedRevisions: input.expectedRevisions,
+            before: { head: headBefore, day: dayBefore, postCloseEntry: null },
+            after: { head: headAfter, day: dayBefore, postCloseEntry: entry },
+            reason: payload.reason, cashEffect: zeroCash, payload: input.payload, inputFingerprint: fingerprint,
+          } as StoredEnabledCommandDoc;
+          tx.set(entryRef, entry);
           tx.update(headRef, headAfter);
           tx.set(commandRef, stored);
           return { existing: null } as const;

@@ -9,3 +9,5 @@ export const vendorPath = (vendorId: string) => `vendors/${vendorId}`;
 export const transactionPath = (transactionId: string) => `transactions/${transactionId}`;
 export const settlementPath = (dayId: string, revision: number) => `days/${dayId}/settlements/${revision}`;
 export const backfillDayPath = (dayId: string) => `backfillDays/${dayId}`;
+export const postCloseEntryPath = (entryId: string) => `postCloseEntries/${entryId}`;
+export const postCloseEntriesCollectionPath = () => 'postCloseEntries';

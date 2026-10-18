@@ -41,6 +41,7 @@ export interface CommandTargetsByKind {
   ReopenDay: { dayId: string; settlementRevision: number };
   BackfillOpeningCash: { dayId: string };
   StartBackfill: { dayId: string };
+  RecordPostCloseEntry: { dayId: string };
   RecordExport: Record<string, never>;
   RecordPrint: Record<string, never>;
   RecordBackup: Record<string, never>;
@@ -71,6 +72,7 @@ export interface CommandPayloadByKind {
   ReopenDay: { reason: string };
   BackfillOpeningCash: { openingCash: number; reason: string };
   StartBackfill: { reason: string };
+  RecordPostCloseEntry: { direction: 'income' | 'expense'; amount: number; reason: string };
   RecordExport: { exportType: string; dateRange: { start: string; end: string } | null; sourceSeq: number };
   RecordPrint: { printType: string; businessDate: string; sourceSeq: number };
   RecordBackup: { backupType: string; sourceSeq: number; fromSeq: number; toSeq: number; sha256: string };
@@ -101,6 +103,7 @@ export interface ExpectedRevisionsByKind {
   ReopenDay: { day: RevisionExpectation; settlement: RevisionExpectation };
   BackfillOpeningCash: { day: RevisionExpectation };
   StartBackfill: { day: RevisionExpectation };
+  RecordPostCloseEntry: { day: RevisionExpectation; settlement: RevisionExpectation };
   RecordExport: Record<string, never>;
   RecordPrint: Record<string, never>;
   RecordBackup: Record<string, never>;
@@ -137,7 +140,8 @@ export type EnabledCommandKind =
   | 'CloseDay'
   | 'ReopenDay'
   | 'BackfillOpeningCash'
-  | 'StartBackfill';
+  | 'StartBackfill'
+  | 'RecordPostCloseEntry';
 export type EnabledCloudCommandInput = Extract<FullCloudCommandInput, { kind: EnabledCommandKind }>;
 
 export type StoredCloudCommandDoc = {
@@ -349,6 +353,19 @@ function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayl
     }
     return { reason: value.reason } as CommandPayloadByKind['StartBackfill'];
   }
+  if (kind === 'RecordPostCloseEntry') {
+    exactKeys(value, ['direction', 'amount', 'reason']);
+    if (value.direction !== 'income' && value.direction !== 'expense') {
+      throw new InvalidCloudCommandInput('補記方向必須是 income 或 expense');
+    }
+    if (typeof value.amount !== 'number' || !Number.isSafeInteger(value.amount) || value.amount < 1 || value.amount > 20_000) {
+      throw new InvalidCloudCommandInput('補記金額必須是 1 至 20,000 的整數');
+    }
+    if (typeof value.reason !== 'string' || value.reason.length < 1 || value.reason.length > 500) {
+      throw new InvalidCloudCommandInput('reason 必須為 1 至 500 字');
+    }
+    return { direction: value.direction, amount: value.amount, reason: value.reason } as CommandPayloadByKind['RecordPostCloseEntry'];
+  }
   if (kind === 'CreateStudent') {
     exactKeys(value, ['studentCode', 'displayName', 'aliases', 'openingBalance']);
     const studentCode = studentCodeValue(value.studentCode, 'studentCode');
@@ -535,7 +552,7 @@ export function normalizeEnabledCommandInput(input: unknown): CanonicalEnabledIn
   if (typeof input.kind !== 'string' || ![
     'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
     'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement', 'CreateRefund', 'RecordBackup',
-    'CorrectOpening', 'CloseDay', 'ReopenDay', 'BackfillOpeningCash', 'StartBackfill', ...TRANSACTION_MUTATION_KINDS,
+    'CorrectOpening', 'CloseDay', 'ReopenDay', 'BackfillOpeningCash', 'StartBackfill', 'RecordPostCloseEntry', ...TRANSACTION_MUTATION_KINDS,
   ].includes(input.kind)) {
     throw new InvalidCloudCommandInput('此命令種類尚未啟用');
   }
@@ -661,6 +678,23 @@ export function normalizeEnabledCommandInput(input: unknown): CanonicalEnabledIn
       targets: { dayId: input.targets.dayId },
       expectedRevisions: expectedRevisions as ExpectedRevisionsByKind['StartBackfill'],
       payload: normalizePayload(kind, input.payload) as CommandPayloadByKind['StartBackfill'],
+    } as CanonicalEnabledInput;
+  }
+
+  if (kind === 'RecordPostCloseEntry') {
+    if (!isPlainRecord(input.targets)) throw new InvalidCloudCommandInput('targets 必須是固定物件');
+    exactKeys(input.targets, ['dayId']);
+    dateValue(input.targets.dayId, 'targets.dayId');
+    const expectedRevisions = validateRevisionMap(input.expectedRevisions, ['day', 'settlement']);
+    if (expectedRevisions.day < 1) throw new InvalidCloudCommandInput('RecordPostCloseEntry 須指定既有營業日版本');
+    if (expectedRevisions.settlement < 1) throw new InvalidCloudCommandInput('RecordPostCloseEntry 只能補記在已關帳的日子');
+    return {
+      commandId: input.commandId,
+      kind,
+      leaseEpoch: input.leaseEpoch,
+      targets: { dayId: input.targets.dayId },
+      expectedRevisions: expectedRevisions as ExpectedRevisionsByKind['RecordPostCloseEntry'],
+      payload: normalizePayload(kind, input.payload) as CommandPayloadByKind['RecordPostCloseEntry'],
     } as CanonicalEnabledInput;
   }
 
@@ -1490,6 +1524,71 @@ function validateStartBackfillReceipt(
   }
 }
 
+/** `postCloseEntries/{entryId}`（契約 §15）：關帳後補記，建立後不可改也不可刪；文件 ID 就是 command ID。 */
+export function decodePostCloseEntryDoc(value: unknown, entryId: string): Record<string, unknown> {
+  if (!isPlainRecord(value)) throw new InvalidCloudCommandInput('關帳後補記不是物件');
+  exactKeys(value, [
+    'entryId', 'dayId', 'settlementRevision', 'direction', 'amount', 'reason', 'createdBy', 'createdAt', 'commandId',
+  ]);
+  if (value.entryId !== entryId || value.commandId !== entryId) throw new InvalidCloudCommandInput('關帳後補記 ID 與路徑不一致');
+  dateValue(value.dayId, '關帳後補記 dayId');
+  safeInteger(value.settlementRevision, '關帳後補記 settlementRevision');
+  if (value.settlementRevision < 1) throw new InvalidCloudCommandInput('關帳後補記 settlementRevision 必須大於零');
+  if (value.direction !== 'income' && value.direction !== 'expense') throw new InvalidCloudCommandInput('關帳後補記方向不合法');
+  if (typeof value.amount !== 'number' || !Number.isSafeInteger(value.amount) || value.amount < 1 || value.amount > 20_000) {
+    throw new InvalidCloudCommandInput('關帳後補記金額不合法');
+  }
+  if (typeof value.reason !== 'string' || value.reason.length < 1 || value.reason.length > 500) {
+    throw new InvalidCloudCommandInput('關帳後補記原因不合法');
+  }
+  stringValue(value.createdBy, '關帳後補記 createdBy');
+  if (!(value.createdAt instanceof Timestamp)) throw new InvalidCloudCommandInput('關帳後補記 createdAt 必須是 Firestore Timestamp');
+  return value;
+}
+
+/** 關帳後補記 receipt：營業日文件不變，只多一份補記文件。 */
+function validatePostCloseEntryReceipt(
+  receipt: Record<string, unknown>,
+  normalized: Extract<CanonicalEnabledInput, { kind: 'RecordPostCloseEntry' }>,
+  committedAt: Timestamp,
+): void {
+  const commandId = normalized.commandId;
+  const { dayId } = normalized.targets;
+  const before = receiptRecord(receipt.before, 'receipt.before', ['head', 'day', 'postCloseEntry']);
+  const after = receiptRecord(receipt.after, 'receipt.after', ['head', 'day', 'postCloseEntry']);
+  const headBefore = validateReceiptHead(before.head, 'receipt.before.head');
+  const headAfter = validateReceiptHead(after.head, 'receipt.after.head');
+  if (Number(headBefore.seq) + 1 !== receipt.seq || headAfter.seq !== receipt.seq
+    || headBefore.maintenance !== false || headAfter.maintenance !== false
+    || headAfter.lastCommandId !== commandId || !timestampMatches(headAfter.updatedAt, committedAt)
+    || !equalExcept(headBefore, headAfter, ['seq', 'lastCommandId', 'updatedAt'])) {
+    throw new InvalidCloudCommandInput('receipt dataHead snapshots 不一致');
+  }
+  const cash = receipt.cashEffect as Record<string, unknown>;
+  const payload = normalized.payload;
+  if (receipt.businessDate !== dayId || receipt.studentId !== null || receipt.reason !== payload.reason
+    || cash.before !== 0 || cash.after !== 0 || cash.delta !== 0 || cash.reasonKind !== 'none' || cash.refundAmount !== 0) {
+    throw new InvalidCloudCommandInput('關帳後補記 receipt 共用欄位或 cashEffect 不一致');
+  }
+  const dayBefore = validateReceiptDay(before.day, dayId, 'receipt.before.day');
+  const dayAfter = validateReceiptDay(after.day, dayId, 'receipt.after.day');
+  if (dayId < String(headBefore.goLiveDate)
+    || dayBefore.revision !== normalized.expectedRevisions.day
+    || dayBefore.lastSettlementRevision !== normalized.expectedRevisions.settlement
+    || dayBefore.status !== 'closed'
+    || canonicalJson(dayBefore) !== canonicalJson(dayAfter)) {
+    throw new InvalidCloudCommandInput('關帳後補記 receipt day snapshots 不一致');
+  }
+  if (before.postCloseEntry !== null) throw new InvalidCloudCommandInput('關帳後補記 receipt 不應有舊補記');
+  const entry = decodePostCloseEntryDoc(after.postCloseEntry, commandId);
+  const actorUid = (receipt.actor as Record<string, unknown>).uid;
+  if (entry.dayId !== dayId || entry.settlementRevision !== dayBefore.lastSettlementRevision
+    || entry.direction !== payload.direction || entry.amount !== payload.amount || entry.reason !== payload.reason
+    || entry.createdBy !== actorUid || !timestampMatches(entry.createdAt, committedAt)) {
+    throw new InvalidCloudCommandInput('關帳後補記 receipt 補記文件不一致');
+  }
+}
+
 function validateReceiptSnapshots(
   receipt: Record<string, unknown>,
   normalized: CanonicalEnabledInput,
@@ -1506,6 +1605,10 @@ function validateReceiptSnapshots(
   }
   if (normalized.kind === 'StartBackfill') {
     validateStartBackfillReceipt(receipt, normalized, committedAt);
+    return;
+  }
+  if (normalized.kind === 'RecordPostCloseEntry') {
+    validatePostCloseEntryReceipt(receipt, normalized, committedAt);
     return;
   }
   const backupKind = normalized.kind === 'RecordBackup';
@@ -1896,7 +1999,7 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
   if (![
     'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
     'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement', 'CreateRefund', 'RecordBackup',
-    'CorrectOpening', 'CloseDay', 'ReopenDay', 'BackfillOpeningCash', 'StartBackfill', ...TRANSACTION_MUTATION_KINDS,
+    'CorrectOpening', 'CloseDay', 'ReopenDay', 'BackfillOpeningCash', 'StartBackfill', 'RecordPostCloseEntry', ...TRANSACTION_MUTATION_KINDS,
   ].includes(raw.kind)) {
     throw new InvalidCloudCommandInput('此 command kind 尚未啟用');
   }
@@ -1912,7 +2015,8 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
   if (raw.studentId !== null && typeof raw.studentId !== 'string') throw new InvalidCloudCommandInput('receipt.studentId 不合法');
   if (raw.kind === 'SetStudentStatus' || raw.kind === 'RemoveVendor' || raw.kind === 'ChangeStudentCode'
     || raw.kind === 'CreateCashMovement' || raw.kind === 'CreateRefund' || raw.kind === 'CorrectOpening'
-    || raw.kind === 'ReopenDay' || raw.kind === 'BackfillOpeningCash' || raw.kind === 'StartBackfill' || isTransactionMutationKind(raw.kind)) {
+    || raw.kind === 'ReopenDay' || raw.kind === 'BackfillOpeningCash' || raw.kind === 'StartBackfill' || raw.kind === 'RecordPostCloseEntry'
+    || isTransactionMutationKind(raw.kind)) {
     if (typeof raw.reason !== 'string' || raw.reason.length < 1 || raw.reason.length > 500) {
       throw new InvalidCloudCommandInput('command receipt.reason 不合法');
     }
@@ -1954,7 +2058,8 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
   });
   if ((normalized.kind === 'RemoveVendor' || normalized.kind === 'ChangeStudentCode' || normalized.kind === 'CreateCashMovement'
     || normalized.kind === 'CreateRefund' || normalized.kind === 'CorrectOpening' || normalized.kind === 'ReopenDay'
-    || normalized.kind === 'BackfillOpeningCash' || normalized.kind === 'StartBackfill' || isTransactionMutationKind(normalized.kind))
+    || normalized.kind === 'BackfillOpeningCash' || normalized.kind === 'StartBackfill' || normalized.kind === 'RecordPostCloseEntry'
+    || isTransactionMutationKind(normalized.kind))
     && raw.reason !== (normalized.payload as { reason: string }).reason) {
     throw new InvalidCloudCommandInput(`${normalized.kind} receipt reason 必須與 payload.reason 相同`);
   }
@@ -1982,7 +2087,8 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
   } else if (normalized.kind === 'CorrectOpening'
     && (raw.businessDate !== normalized.targets.dayId || raw.studentId !== normalized.targets.studentId)) {
     throw new InvalidCloudCommandInput('期初更正 receipt 共用欄位不一致');
-  } else if ((normalized.kind === 'CloseDay' || normalized.kind === 'ReopenDay' || normalized.kind === 'BackfillOpeningCash' || normalized.kind === 'StartBackfill')
+  } else if ((normalized.kind === 'CloseDay' || normalized.kind === 'ReopenDay' || normalized.kind === 'BackfillOpeningCash' || normalized.kind === 'StartBackfill'
+    || normalized.kind === 'RecordPostCloseEntry')
     && (raw.businessDate !== normalized.targets.dayId || raw.studentId !== null)) {
     throw new InvalidCloudCommandInput('日結 receipt 共用欄位不一致');
   } else if (normalized.kind === 'RecordBackup' && (raw.businessDate !== null || raw.studentId !== null)) {

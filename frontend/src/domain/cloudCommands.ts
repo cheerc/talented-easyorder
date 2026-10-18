@@ -102,6 +102,7 @@ export type BusinessCommandKind =
   | 'ReopenDay'
   | 'BackfillOpeningCash'
   | 'StartBackfill'
+  | 'RecordPostCloseEntry'
   | 'RecordExport'
   | 'RecordPrint'
   | 'RecordBackup';
@@ -130,6 +131,7 @@ export const ALL_COMMAND_KINDS: readonly BusinessCommandKind[] = [
   'ReopenDay',
   'BackfillOpeningCash',
   'StartBackfill',
+  'RecordPostCloseEntry',
   'RecordExport',
   'RecordPrint',
   'RecordBackup',
@@ -377,6 +379,13 @@ export type StartBackfillCommand = BaseCommand<
   { dayId: string }
 >;
 
+// 19d. RecordPostCloseEntry：在已關帳的日子補記一筆有標記、原因必填的櫃台收支（契約 §15）
+export type RecordPostCloseEntryCommand = BaseCommand<
+  'RecordPostCloseEntry',
+  { direction: 'income' | 'expense'; amount: number; reason: string },
+  { dayId: string }
+>;
+
 // 20. RecordExport
 export type RecordExportCommand = BaseCommand<
   'RecordExport',
@@ -437,6 +446,7 @@ export type BusinessCommand =
   | ReopenDayCommand
   | BackfillOpeningCashCommand
   | StartBackfillCommand
+  | RecordPostCloseEntryCommand
   | RecordExportCommand
   | RecordPrintCommand
   | RecordBackupCommand;
