@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react';
-import { openingDifference, type PreviousClosedDay } from '../../domain/ledgerAnomalies';
+import { effectiveCashOf, openingDifference, type PreviousClosedDay } from '../../domain/ledgerAnomalies';
 import './CloudDayVendorForms.css';
 
 export type CloudDayVendorStatus = 'active' | 'inactive';
@@ -251,7 +251,9 @@ export function CloudDayOpeningCashForm({
       )}
       {previousClosed && (
         <p className="cloud-day-form__help" role="status">
-          上一個已關帳日 {previousClosed.dayId} 的實點現金為 {formatMoney(previousClosed.countedCash)}，開帳現金通常應與它相同。
+          上一個已關帳日 {previousClosed.dayId} 的實點現金為 {formatMoney(previousClosed.countedCash)}
+          {(previousClosed.postCloseNet ?? 0) !== 0 && `，關帳後補記淨${(previousClosed.postCloseNet ?? 0) > 0 ? '收入' : '支出'} ${formatMoney(Math.abs(previousClosed.postCloseNet ?? 0))}，有效關帳現金 ${formatMoney(effectiveCashOf(previousClosed))}`}
+          ，開帳現金通常應與有效關帳現金相同。
         </p>
       )}
       {ledgerNotice && <p className="cloud-day-form__help" role="status">{ledgerNotice}</p>}

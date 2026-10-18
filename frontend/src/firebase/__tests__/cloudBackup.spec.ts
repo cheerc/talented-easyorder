@@ -830,6 +830,10 @@ describeWithEmulator('P14 cloud backup', () => {
     expect(() => validateBackupManifest(forge(3, (_entry, record) => { record.reason = '另一個原因'; }))).toThrow(/seq 4/);
     expect(() => validateBackupManifest(forge(3, (_entry, record) => { record.payload = { ...record.payload, amount: 20_001 }; }))).toThrow(/seq 4/);
     expect(() => validateBackupManifest(forge(3, (_entry, record) => { record.payload = { ...record.payload, direction: 'transfer' }; }))).toThrow(/seq 4/);
+    // A day before the go-live date cannot take an entry.
+    const beforeGoLive = structuredClone(opened);
+    for (const head of [beforeGoLive.records[3]!.before!.head, beforeGoLive.records[3]!.after!.head] as Array<Record<string, unknown>>) head.goLiveDate = '2099-01-01';
+    expect(() => validateBackupManifest(beforeGoLive)).toThrow(/seq 4/);
     // The day must stay unchanged and must be closed with the revisions the command names.
     const dayChanged = structuredClone(opened);
     (dayChanged.records[3]!.after!.day as Record<string, unknown>).openingCash = 1;

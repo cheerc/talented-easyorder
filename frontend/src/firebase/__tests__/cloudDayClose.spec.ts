@@ -2088,8 +2088,10 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     const wednesday = shiftDate(today, -1);
     await closePast(monday, 830, 1000);
     await seedPastDay(wednesday, { openingCash: 950, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    // Today also opened at 950 (Wednesday is not closed, so Monday is still the last closed day for both).
+    await withAdmin(async db => updateDoc(doc(db, `days/${today}`), { openingCash: 950 }));
     const before = await repository().readLedger();
-    expect(mismatchDays(before)).toEqual([wednesday]);
+    expect(mismatchDays(before)).toEqual([wednesday, today]);
     expect(before.anomalies.find(item => item.kind === 'opening-mismatch')).toMatchObject({ difference: -50, previousPostCloseNet: 0, previousEffectiveCash: 1000 });
     ok(await recordEntry(monday, { direction: 'expense', amount: 50, reason: '星期一漏記買零錢' }));
     const after = await repository().readLedger();

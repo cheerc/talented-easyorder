@@ -63,6 +63,19 @@ describe('CloudLedgerAnomaliesPage', () => {
     expect(within(item).queryByRole('button')).not.toBeInTheDocument();
   });
 
+  it('compares the opening with the effective closing cash and names the post-close net when there are entries', () => {
+    renderPage(ready([
+      {
+        kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 950, previousClosedDayId: '2026-10-13',
+        previousCountedCash: 1000, previousPostCloseNet: -30, previousEffectiveCash: 970, difference: -20, daysApart: 3, gapDays: [], gapDayCount: 0,
+      },
+    ]));
+    const item = screen.getByRole('listitem');
+    expect(item).toHaveTextContent('2026-10-13 的實點現金是 NT$ 1,000');
+    expect(item).toHaveTextContent('關帳後補記淨額 −NT$ 30，有效關帳現金 NT$ 970');
+    expect(item).toHaveTextContent('開帳比有效關帳現金少了 NT$ 20');
+  });
+
   it('lists the gap days of an opening mismatch with a backfill button each', () => {
     const { onOpenDayClose } = renderPage(ready([
       {
