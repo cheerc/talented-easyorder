@@ -92,7 +92,7 @@ CheerC（2026-10-17）：網路問題可能讓某天整天沒確認開帳現金�
 - 一次 commit 寫 3 份文件：`system/dataHead`、`days/{dayId}`、`commands/{commandId}`。營業日只改 `openingCash`、`openedBy`（操作者 uid）、`openedAt`（伺服器時間）、`revision +1`、`lastCommandId`、`updatedAt`；`totals`、狀態、菜單不變。
 - Rules：命令檢查 `validBackfillOpeningCash` 與 `CloseDay`／`ReopenDay` 一起巢狀在 `validCommandCreate` 最後一個 operand 內；營業日檢查 `dayBackfillOpeningCommand` 是 `days/{dayId}` 上獨立的第三個 `allow update`。「早於台北今天」寫成 `dayId 00:00Z + 24h ≤ request.time + 8h`。預算與 probe 見 [P11 補開帳附錄](../../ops/p05-rules-budget.md#p11-backfill-opening--budget-and-probe-receipt)。
 - 寫入器：今天以租約 `updatedAt` 的台北日期為準（與日結頁相同），今天或未來日期回 `INVALID_INPUT`；已關帳回 `DAY_CLOSED`；版本不符回 `REVISION_CONFLICT`；已有開帳現金或早於上線日回 `INVALID_INPUT`。
-- 範圍外：補開帳**不會**讓那天補登訂餐、繳費或櫃台收支；所有交易 Rules 仍只接受台北今天。伺服器上不存在的過去日子也不提供補開帳。
+- 範圍外：補開帳本身**不會**讓那天補登訂餐、繳費或櫃台收支（回填交易見 [§12](#12-p11c2a-回填斷層日startbackfill)）。伺服器上不存在的過去日子不提供補開帳；要先用 `EnsureDay` 建立。
 - 日結頁：查看過去、未關帳、沒有開帳現金的日子時出現「補開帳」表單（開帳現金、必填原因，送出前去頭尾空白）；完成後同一頁出現關帳表單。今天、已關帳或已有開帳現金的日子不顯示。
 - P14 備份：decoder／replay 接受此 kind（targets `dayId`、revision `day`、投影 `day`）；replay 驗證營業日日期早於提交時的台北日期、不早於上線日、前後快照只差上述 6 個欄位、補開帳者與時間等於命令的操作者與 `committedAt`。
 - 驗收：Emulator `cloudDayClose.spec.ts` `P11.14`–`P11.19`（有交易的過去日補開帳 → 重試冪等 → 應有現金含補登金額 → 關帳 → 再補開帳被拒；無營業日補 0 後關帳；寫入器拒絕今天、未來、已有開帳、已關帳、缺原因、過長原因、超過上限、負數與非持有人；合法最大 payload；22 種原始 SDK 竄改；Rules 拒絕今天、未來、已有開帳、已關帳、上線日前、略過營業日寫入、偽裝成 `SetOpeningCash`）；備份 `cloudBackup.spec.ts` 以真實 EnsureDay → 補開帳 → 關帳匯出 → 解密 → replay，偽造補開帳者、原因或前快照都被拒；畫面 `CloudDayClosePage.test.tsx` 補開帳表單與不顯示的情況。E2E 沒有新增：E2E 的上線日是當天，不存在可補開帳的過去營業日。
@@ -115,11 +115,12 @@ CheerC（2026-10-17）：開帳現金應等於上一個已關帳日的實點現�
 
 `createCloudLedgerReader(db).read()`（`cloudDayCloseRepository.ts`，`readLedger()` 為同一個讀取）。
 
-- 只從伺服器讀：dataHead → 租約日期 → `days` 依 document ID 升冪、範圍 `goLiveDate`..今天 → 每個已關帳日的 `days/{id}/settlements/{lastSettlementRevision}` → 再讀一次 dataHead。`seq` 或 `datasetId` 在讀取期間變動回 `STALE_SNAPSHOT`。
-- 營業日文件超過 400 份（讀 401 份判斷）回 `INCOMPLETE_SNAPSHOT`，fail closed，不截斷。已關帳日缺最新版本回 `INCOMPLETE_SNAPSHOT`；最新版本不是關帳版本、沒有日結版本或 schema 不符回 `UNSUPPORTED_SCHEMA`。
+- 只從伺服器讀：dataHead → 租約日期 → `days` 依 document ID 升冪、範圍 `goLiveDate`..今天，**每頁 200 筆、以 `startAfter` 分頁讀完**（P11c2a 取代 P11c1 的 400 份硬上限）→ 每個已關帳日的 `days/{id}/settlements/{lastSettlementRevision}` → **每一頁之後都再讀一次 dataHead**。`seq` 或 `datasetId` 在讀取期間變動回 `STALE_SNAPSHOT`。
+- **讀取次數約等於營業日數**（每份營業日文件 1 次讀取，加上每個已關帳日 1 次日結版本讀取，版本在同一個 Firestore 實例內快取）；這只發生在異常頁與導覽列計數，開帳表單與寫入器不做完整掃描（見下一條）。完整掃描的失敗上限是 20,000 份營業日文件（約 55 年），超過回 `INCOMPLETE_SNAPSHOT`，不截斷。已關帳日缺最新版本回 `INCOMPLETE_SNAPSHOT`；最新版本不是關帳版本、沒有日結版本或 schema 不符回 `UNSUPPORTED_SCHEMA`。
+- **上一個已關帳日的查找**（`findPreviousClosed(dayId)`，開帳表單與 `SetOpeningCash` 寫入器共用）：從 `dayId` 往回，每次讀 `[dayId−31 天, dayId)` 的營業日（升冪、由後往前找第一個 `closed`），找不到再往前一段，直到上線日；每一段之後都比對 dataHead。讀取量只取決於「離上一個已關帳日多遠」，與歷史總長度無關，所以營業日超過 400 份後仍能設定開帳現金。表單的「可送出」條件只依賴這個查找，異常掃描失敗（導覽列顯示「?」）不會擋住開帳。
 - 日結版本不可改，讀取器在記憶體以 `(datasetId, dayId, revision)` 快取，省 Spark 讀取額度；快取只活在該讀取器實例內。
 - 沒有新增 index（只用 document ID 範圍與排序）。
-- 回傳 `{ today, goLiveDate, anomalies, closedDays, seq }`；`closedDays` 是截至今天的所有已關帳日與其最新實點，開帳表單與寫入器用它找上一個已關帳日（`previousClosedDay`）。
+- 回傳 `{ today, goLiveDate, anomalies, closedDays, seq }`。
 
 ### 11.3 畫面
 
@@ -145,3 +146,44 @@ CheerC（2026-10-17）：開帳現金應等於上一個已關帳日的實點現�
 - 不做：P11c2–c4 修補工具；異常頁顯示開帳原因；角色權限（重開仍所有人可用）。
 - 部署（CheerC 本機）：Rules 與前端一起上；舊前端不帶原因仍合法，只是不會被要求填差額原因。
 
+## 12. P11c2a 回填斷層日（`StartBackfill`）
+
+CheerC（2026-10-17）：某天整天沒用系統，事後要能補登那天的訂餐、繳費與櫃台收支（含呆帳）；回填的資料要有標記與原因；已關過帳的日子不能用回填改。本節是後端；回填模式的畫面是 P11c2b，「關帳要與下一天開帳對齊」是 P11c3，已關帳日的事後補記是 P11c4。
+
+### 12.1 機制
+
+- **建立那一天**：沿用 `EnsureDay`（Rules 已允許上線日後的過去日期）與 `BackfillOpeningCash`（§10），不另做建日命令。
+- **新 kind `StartBackfill`**（第 26 種，已啟用 24 種）：把一個過去的營業日標成「回填中」並寫下原因。
+  - 條件：營業日存在、早於台北今天、不早於上線日、狀態 open 或 reopened、**`lastSettlementRevision == 0`**（從沒關過帳）、還沒有標記。
+  - `targets {dayId}`、`expectedRevisions {day}`（= 目前版本，≥ 1）、`payload {reason}`（1–500 字，命令 `reason` 等於 `payload.reason`）、`businessDate == dayId`、`studentId == null`、現金影響為 0、`before`／`after` 為 `{head, day, backfill}`。
+  - 一次 commit 寫 3 份文件：`system/dataHead`、`commands/{commandId}`、新集合 `backfillDays/{dayId}` = `{dayId, reason, startedBy, startedAt, commandId}`。營業日文件**不動**（它是固定形狀，不加欄位）；命令的 `before.day` 與 `after.day` 相同。
+- **標記不可改也不可刪**：`backfillDays/{dayId}` 的 `get`／`list` 只給目前持有人，`create` 只能經由 `StartBackfill` 命令（`backfillDayCommand` 綁住命令的 kind、commandId、`committedAt == request.time`、`targets.dayId`，並要求命令的 `after.backfill` 等於這份文件），`update`／`delete` 一律 false。
+- **放寬「只限今天」，只開三種**：`CreateOrder`、`CreatePayment`、`CreateCashMovement`。這些路徑上的日期檢查由 `validCurrentTaipeiDate(d)` 改為 `validTransactionDay(d, day)` = `validCurrentTaipeiDate(d) || (day.lastSettlementRevision == 0 && exists(backfillDays/d))`（今天的交易先短路，不多一次文件存取；`day` 沿用該路徑已讀的營業日快照，沒有額外的 `get`）。涉及：交易文件 `validTransactionDoc`（`businessDate`）、`validTransactionPayload`（`targets.dayId`）、`validCreateCashMovement`（命令與交易兩處）。`dayWriteCommand` 不動。
+- **不開放**：`CreateRefund`（會動現場現金）、`Undo`、`CancelRefund`（維持只限今天）。作廢、更正等 mutation 本來就允許過去未關帳的日子，維持原狀。`SetDayMenu` 直接設定本來就能設過去未關帳日的菜單（只有 `selectionDate` 要是今天），不需要放寬；繼承路徑不放寬。
+- **標記判定（交易不加欄位）**：交易文件的形狀不變。一筆交易是「回填的」，當且僅當該日有 `backfillDays/{dayId}`，而且交易 `createdAt`（伺服器時間）換成台北日期後晚於 `businessDate`。兩個條件都由 Rules 保證，無法偽造。讀取端提供 `readBackfillDay(dayId)`（回 `CloudBackfillDay | null`）與 `isBackfilled(tx, backfill)`；日結 overview 的每個未關帳日帶 `backfill`（原因、開始者、時間），P11c2b 的畫面與 P12 報表用。原因記在日的層級，櫃台收支本身另有自己的 reason。
+- **關帳之後**：標記之後該日一旦關過帳（`lastSettlementRevision > 0`），即使重開，三種交易也被拒；要改只能走 mutation 或之後的 P11c4。
+
+### 12.2 寫入器與錯誤碼
+
+- `cloudCommandRepository`：新增 `StartBackfill`；三種交易命令不在客戶端判斷日期，由 Rules 決定，被拒時以讀回的營業日診斷。今天的判斷照舊用租約 `updatedAt` 的台北日期。
+- 錯誤碼：已關過帳（狀態 closed 或 `lastSettlementRevision > 0`）→ `DAY_CLOSED`；今天、未來、上線日前、營業日不存在、已有標記、缺原因或過長 → `INVALID_INPUT`；沒有標記的過去日交易 → `INVALID_INPUT`；版本不符 → `REVISION_CONFLICT`；非持有人 → `LEASE_LOST`。
+- 回填日的開帳現金仍用 `BackfillOpeningCash`（原因本來就必填），Rules 不改；預設帶入上一個已關帳日實點、金額不同時原因必填是畫面（P11c2b）的事。
+- 型別、normalizer、回執解碼（`validateStartBackfillReceipt`：營業日前後相同、標記欄位等於 payload 原因、操作者 uid、`committedAt` 與 `commandId`）同步；交易回執解碼的日期條件改為「台北今天，或從沒關過帳的過去日」（標記是否存在不在回執內，由 Rules 與 P14 replay 證明）。
+
+### 12.3 P14 備份
+
+- decoder／replay 接受 `StartBackfill`（targets `dayId`、revision `day`、投影 `day`＋`backfill`；`backfillDays` 以實際路徑 `backfillDays/{dayId}` 存進 projectionState）。
+- replay 驗證：標記日期早於提交時的台北日期、`lastSettlementRevision == 0`、狀態 open／reopened、之前沒有同日標記、`startedBy` 與 `startedAt` 等於命令的操作者與 `committedAt`、原因等於 payload。
+- 回填交易 replay：`CreateOrder`／`CreatePayment`／`CreateCashMovement` 若提交時的台北日期晚於 `businessDate`，該日必須已有較早重播出的標記且營業日從沒關過帳；營業日晚於提交日期也被拒。因此偽造標記、標記前的回填交易、竄改原因都會被拒。舊備份（沒有回填）照常通過。
+
+### 12.4 文件存取與部署
+
+- 回填路徑多一次 `exists(backfillDays/{dayId})`：以 Emulator 的回填 `CreateOrder`／`CreatePayment`／`CreateCashMovement` 正向案例（`P11c2a.14`）證明沒有超過每請求 10 次、batch 20 次的上限；預算見 [P11c2a 附錄](../../ops/p05-rules-budget.md#p11c2a-gap-day-backfill--budget-and-probe-receipt)。
+- `backfillDays` 是新集合，只用 document ID 的 `get` 與 `documentId() in [...]`（overview 每 30 個營業日一個查詢），**不需要新 index**；`firestore.indexes.json` 不變。
+- 部署（CheerC 本機）：Rules 與前端一起上（`firestore.indexes.json` 不變也一併帶上）；舊前端不會送 `StartBackfill`，既有今天的交易路徑不變。
+
+### 12.5 驗收與範圍
+
+- 單元：`cloudLedgerReader.test.ts`（分頁、分段往回、可注入的頁大小與分段天數、head 變動）、`cloudBackfillReader.test.ts`（`isBackfilled` 台北日界、`decodeBackfillDoc`）。
+- Emulator：`cloudDayClose.spec.ts` `P11c2a.1`–`.3`（分頁掃描超過 400 份、上一個已關帳日超過 400 天仍找得到、讀取中 head 變動回 `STALE_SNAPSHOT`）與 `P11c2a.4`–`.14`（完整回填流程後關帳與重試冪等；沒有標記的過去日交易被拒；寫入器的 7 種拒絕與錯誤碼；標記後關帳再重開仍拒；合法最大 `StartBackfill`；原始 SDK 21 種竄改；Rules 拒絕今天、未來、上線日前、已關帳、關過帳；標記不可改、刪、手動建立；回填日不能退款或作廢；讀取端；三種交易各自的正向案例）；備份 `cloudBackup.spec.ts` 真實 EnsureDay → 補開帳 → 開始回填 → 回填訂餐／繳費／收支 → 關帳 → 匯出 → 解密 → replay，偽造標記、標記前的交易、竄改原因被拒。
+- 不做：回填模式的畫面（P11c2b）、關帳對齊（P11c3）、已關帳日補記（P11c4）、角色權限。
