@@ -61,6 +61,8 @@ function settlementDoc(dayId: string, revision: number, change: Data = {}) {
 
 interface Setup {
   days?: Array<[string, Data]>;
+  /** `postCloseEntries/{entryId}` documents (contract §15). */
+  entries?: Array<[string, Data]>;
   settlements?: Record<string, Data | undefined>;
   heads?: Data[];
   leaseUpdatedAt?: Timestamp;
@@ -68,7 +70,7 @@ interface Setup {
 
 type FakeSnapshot = { id: string; data: () => Data };
 
-function setup({ days = [], settlements = {}, heads = [head()], leaseUpdatedAt = ts('2026-10-05T02:00:00.000Z') }: Setup = {}) {
+function setup({ days = [], entries = [], settlements = {}, heads = [head()], leaseUpdatedAt = ts('2026-10-05T02:00:00.000Z') }: Setup = {}) {
   let headReads = 0;
   firestoreMocks.documentId.mockReturnValue('__name__');
   firestoreMocks.doc.mockImplementation((_db: unknown, path: string) => ({ path }));
@@ -86,10 +88,12 @@ function setup({ days = [], settlements = {}, heads = [head()], leaseUpdatedAt =
     return { id: ref.path.split('/').at(-1), exists: () => value !== undefined, data: () => value };
   });
   // A small query evaluator: where on the document ID, ascending order, startAfter and limit.
-  firestoreMocks.getDocsFromServer.mockImplementation(async (request: { constraints: Constraint[] }) => {
-    let selected = [...days].sort(([left], [right]) => left.localeCompare(right));
+  firestoreMocks.getDocsFromServer.mockImplementation(async (request: { collectionRef: { path: string }; constraints: Constraint[] }) => {
+    let selected = [...(request.collectionRef.path === 'postCloseEntries' ? entries : days)].sort(([left], [right]) => left.localeCompare(right));
     for (const item of request.constraints) {
-      if (item.type === 'where') {
+      if (item.type === 'where' && item.op === '==') {
+        selected = selected.filter(([, data]) => data[String(item.field)] === item.value);
+      } else if (item.type === 'where') {
         const value = String(item.value);
         selected = selected.filter(([id]) => (item.op === '>=' ? id >= value : item.op === '<=' ? id <= value : item.op === '<' ? id < value : item.op === '>' ? id > value : false));
       }
@@ -105,7 +109,10 @@ function setup({ days = [], settlements = {}, heads = [head()], leaseUpdatedAt =
 const reader = (tuning?: { pageSize?: number; segmentDays?: number }) => createCloudLedgerReader(db, { currentUser: () => user }, tuning);
 const settlementReads = () => firestoreMocks.getDocFromServer.mock.calls.filter(([ref]) => String(ref.path).includes('/settlements/'));
 const headReads = () => firestoreMocks.getDocFromServer.mock.calls.filter(([ref]) => ref.path === 'system/dataHead');
-const dayQueries = () => firestoreMocks.query.mock.calls.map(call => (call.slice(1) as Constraint[]));
+const dayQueries = () => firestoreMocks.query.mock.calls
+  .filter(call => (call[0] as { path: string }).path === 'days').map(call => (call.slice(1) as Constraint[]));
+const entryQueries = () => firestoreMocks.query.mock.calls
+  .filter(call => (call[0] as { path: string }).path === 'postCloseEntries').map(call => (call.slice(1) as Constraint[]));
 const dateAt = (index: number, start = Date.UTC(2026, 0, 1)) => new Date(start + index * 86_400_000).toISOString().slice(0, 10);
 
 describe('createCloudLedgerReader.read', () => {
@@ -124,7 +131,7 @@ describe('createCloudLedgerReader.read', () => {
     });
     const snapshot = await reader().read();
     expect(snapshot).toMatchObject({ today: '2026-10-05', goLiveDate: '2026-10-01', seq: 10 });
-    expect(snapshot.closedDays).toEqual([{ dayId: '2026-10-01', countedCash: 120 }]);
+    expect(snapshot.closedDays).toEqual([{ dayId: '2026-10-01', countedCash: 120, postCloseNet: 0 }]);
     expect(snapshot.anomalies.map(item => [item.kind, item.dayId])).toEqual([
       ['unclosed-past-day', '2026-10-03'], ['opening-mismatch', '2026-10-03'],
     ]);
@@ -162,8 +169,8 @@ describe('createCloudLedgerReader.read', () => {
     expect(queries).toHaveLength(3);
     expect(queries.map(constraints => constraints.some(item => item.type === 'startAfter'))).toEqual([false, true, true]);
     expect(queries.map(constraints => constraints.find(item => item.type === 'limit')?.count)).toEqual([200, 200, 200]);
-    // One head read before the scan and one after every page.
-    expect(headReads()).toHaveLength(1 + 3);
+    // One head read before the scan, one after the (empty) post-close entries page and one after every day page.
+    expect(headReads()).toHaveLength(1 + 1 + 3);
   });
 
   it('reports an anomaly found beyond the 400th business day', async () => {
@@ -191,8 +198,8 @@ describe('createCloudLedgerReader.read', () => {
 
   it('returns STALE_SNAPSHOT when the head changes between two pages', async () => {
     const days: Array<[string, Data]> = Array.from({ length: 7 }, (_, index) => [dateAt(index, Date.UTC(2026, 9, 1)), dayDoc()]);
-    // initial head, after page 1 (unchanged), after page 2 (changed).
-    setup({ days, heads: [head(), head(), head({ seq: 12 })], leaseUpdatedAt: ts('2026-10-20T02:00:00.000Z') });
+    // initial head, after the post-close entries page, after day page 1 (unchanged), after day page 2 (changed).
+    setup({ days, heads: [head(), head(), head(), head({ seq: 12 })], leaseUpdatedAt: ts('2026-10-20T02:00:00.000Z') });
     await expect(reader({ pageSize: 3 }).read()).rejects.toMatchObject({ code: 'STALE_SNAPSHOT' });
     expect(dayQueries()).toHaveLength(2);
   });
@@ -236,7 +243,7 @@ describe('createCloudLedgerReader.findPreviousClosed', () => {
       settlements: { ...closedSettlements('2026-10-02', 90), ...closedSettlements('2026-10-05', 130) },
     });
     const result = await reader().findPreviousClosed('2026-10-06');
-    expect(result).toEqual({ previous: { dayId: '2026-10-05', countedCash: 130 }, seq: 10 });
+    expect(result).toEqual({ previous: { dayId: '2026-10-05', countedCash: 130, postCloseNet: 0 }, seq: 10 });
     expect(settlementReads().map(([ref]) => ref.path)).toEqual(['days/2026-10-05/settlements/1']);
     expect(dayQueries()).toEqual([[
       { type: 'where', field: '__name__', op: '>=', value: '2026-10-01' },
@@ -251,7 +258,7 @@ describe('createCloudLedgerReader.findPreviousClosed', () => {
       days: [['2026-10-02', closedDay()], ['2026-10-03', dayDoc()], ['2026-10-04', closedDay()], ['2026-10-05', dayDoc({ status: 'reopened', lastSettlementRevision: 1 })]],
       settlements: { ...closedSettlements('2026-10-02', 90), ...closedSettlements('2026-10-04', 70) },
     });
-    expect((await reader().findPreviousClosed('2026-10-04')).previous).toEqual({ dayId: '2026-10-02', countedCash: 90 });
+    expect((await reader().findPreviousClosed('2026-10-04')).previous).toEqual({ dayId: '2026-10-02', countedCash: 90, postCloseNet: 0 });
   });
 
   it('walks back segment by segment until it finds a closed day, beyond any fixed day limit', async () => {
@@ -261,7 +268,7 @@ describe('createCloudLedgerReader.findPreviousClosed', () => {
       heads: [head({ goLiveDate: '2026-01-01' })],
     });
     const result = await reader({ segmentDays: 5 }).findPreviousClosed('2026-10-20');
-    expect(result.previous).toEqual({ dayId: '2026-01-03', countedCash: 55 });
+    expect(result.previous).toEqual({ dayId: '2026-01-03', countedCash: 55, postCloseNet: 0 });
     // Every 5-day segment from 2026-10-15 back to the one that holds 2026-01-03 was queried, newest first.
     const queries = dayQueries();
     expect(queries.length).toBeGreaterThan(40);
@@ -380,5 +387,85 @@ describe('createCloudLedgerReader.findNextOpened (contract §14.2)', () => {
     setup({ days: [['2026-10-04x', dayDoc()]] });
     await expect(reader().findNextOpened('2026-10-01')).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
     await expect(reader().findNextOpened('2026-13-40')).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  });
+});
+
+describe('createCloudLedgerReader: post-close entries (contract §15)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db = {} as Firestore;
+  });
+
+  const entry = (id: string, dayId: string, change: Data = {}): [string, Data] => [id, {
+    entryId: id, dayId, settlementRevision: 1, direction: 'expense', amount: 50, reason: '關帳後發現漏記',
+    createdBy: uid, createdAt: ts('2026-10-03T10:00:00.000Z'), commandId: id, ...change,
+  }];
+  const uuidOf = (index: number) => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
+  // Monday closed at 1,000; Wednesday opens at 950 (the Q2 example).
+  const q2Days: Array<[string, Data]> = [
+    ['2026-10-01', dayDoc({ status: 'closed', openingCash: 830, lastSettlementRevision: 1, totals: totals(1) })],
+    ['2026-10-03', dayDoc({ openingCash: 950, totals: totals(1) })],
+  ];
+  const q2Settlements = { 'days/2026-10-01/settlements/1': settlementDoc('2026-10-01', 1, { countedCash: 1000, openingCash: 830, expectedCash: 1000 }) };
+
+  it('counts the current settlement version\'s entries in the closed day\'s effective cash, so the Q2 mismatch disappears', async () => {
+    setup({ days: q2Days, settlements: q2Settlements });
+    const without = await reader().read();
+    const mismatches = (anomalies: Array<{ kind: string; dayId: string }>) => anomalies.filter(item => item.kind === 'opening-mismatch').map(item => item.dayId);
+    expect(mismatches(without.anomalies)).toEqual(['2026-10-03']);
+
+    setup({ days: q2Days, settlements: q2Settlements, entries: [entry(uuidOf(1), '2026-10-01')] });
+    const withEntry = await reader().read();
+    expect(withEntry.closedDays).toEqual([{ dayId: '2026-10-01', countedCash: 1000, postCloseNet: -50 }]);
+    expect(mismatches(withEntry.anomalies)).toEqual([]);
+  });
+
+  it('adds income and subtracts expense, and ignores entries of an older settlement version', async () => {
+    const days: Array<[string, Data]> = [['2026-10-01', dayDoc({ status: 'closed', openingCash: 830, lastSettlementRevision: 3, totals: totals(1) })]];
+    setup({
+      days,
+      settlements: { 'days/2026-10-01/settlements/3': settlementDoc('2026-10-01', 3, { countedCash: 1000 }) },
+      entries: [
+        entry(uuidOf(1), '2026-10-01', { settlementRevision: 1, amount: 900 }),
+        entry(uuidOf(2), '2026-10-01', { settlementRevision: 3, direction: 'income', amount: 70 }),
+        entry(uuidOf(3), '2026-10-01', { settlementRevision: 3, amount: 20 }),
+        entry(uuidOf(4), '2026-10-02', { settlementRevision: 1, amount: 5 }),
+      ],
+    });
+    expect((await reader().read()).closedDays).toEqual([{ dayId: '2026-10-01', countedCash: 1000, postCloseNet: 50 }]);
+  });
+
+  it('reads the whole collection once with startAfter, compares the head after each page, and fails closed on a change', async () => {
+    const entries = Array.from({ length: 5 }, (_, index) => entry(uuidOf(index + 1), '2026-10-01'));
+    setup({ days: q2Days, settlements: q2Settlements, entries });
+    await reader({ pageSize: 2 }).read();
+    const queries = entryQueries();
+    expect(queries).toHaveLength(3);
+    expect(queries.map(constraints => constraints.some(item => item.type === 'startAfter'))).toEqual([false, true, true]);
+    expect(queries.every(constraints => constraints.some(item => item.type === 'orderBy') && !constraints.some(item => item.type === 'where'))).toBe(true);
+    vi.clearAllMocks();
+    // initial head, then a changed head after the first entries page.
+    setup({ days: q2Days, settlements: q2Settlements, entries, heads: [head(), head({ seq: 12 })] });
+    await expect(reader({ pageSize: 2 }).read()).rejects.toMatchObject({ code: 'STALE_SNAPSHOT' });
+    expect(dayQueries()).toHaveLength(0);
+  });
+
+  it('fails closed on an entry the schema does not know', async () => {
+    setup({ days: q2Days, settlements: q2Settlements, entries: [entry(uuidOf(1), '2026-10-01', { amount: 0 })] });
+    await expect(reader().read()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    setup({ days: q2Days, settlements: q2Settlements, entries: [entry(uuidOf(1), '2026-10-01', { extra: true })] });
+    await expect(reader().read()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+  });
+
+  it('findPreviousClosed returns the entries\' net of just the closed day it found, by an equality query on dayId', async () => {
+    setup({
+      days: q2Days, settlements: q2Settlements,
+      entries: [entry(uuidOf(1), '2026-10-01', { direction: 'income', amount: 30 }), entry(uuidOf(2), '2026-10-02')],
+    });
+    const result = await reader().findPreviousClosed('2026-10-03');
+    expect(result.previous).toEqual({ dayId: '2026-10-01', countedCash: 1000, postCloseNet: 30 });
+    const queries = entryQueries();
+    expect(queries).toHaveLength(1);
+    expect(queries[0]!.find(item => item.type === 'where')).toMatchObject({ field: 'dayId', op: '==', value: '2026-10-01' });
   });
 });

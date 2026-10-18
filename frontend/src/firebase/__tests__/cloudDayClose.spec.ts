@@ -883,7 +883,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     // today's seeded opening is 1,000.
     const snapshot = await repository().readLedger();
     expect(snapshot).toMatchObject({ today, goLiveDate: shiftDate(today, -30) });
-    expect(snapshot.closedDays).toEqual([{ dayId: d1, countedCash: 700 }, { dayId: d2, countedCash: 870 }]);
+    expect(snapshot.closedDays).toEqual([{ dayId: d1, countedCash: 700, postCloseNet: 0 }, { dayId: d2, countedCash: 870, postCloseNet: 0 }]);
     expect(snapshot.anomalies).toEqual([
       { kind: 'unclosed-past-day', dayId: d3, status: 'open', openingCash: 800, activeTransactionCount: 4 },
       {
@@ -924,7 +924,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     ]);
     ok(await repository().closeDay(await closeInput({ countedCash: 900, note: '補記後' }, d2)));
     const snapshot = await repository().readLedger();
-    expect(snapshot.closedDays).toEqual([{ dayId: d1, countedCash: 700 }, { dayId: d2, countedCash: 900 }]);
+    expect(snapshot.closedDays).toEqual([{ dayId: d1, countedCash: 700, postCloseNet: 0 }, { dayId: d2, countedCash: 900, postCloseNet: 0 }]);
     expect(snapshot.anomalies).toEqual([expect.objectContaining({
       kind: 'opening-mismatch', dayId: today, previousClosedDayId: d2, previousCountedCash: 900, previousPostCloseNet: 0, previousEffectiveCash: 900, difference: 100, daysApart: 2,
     })]);
@@ -975,7 +975,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     await closePast(farClosed, 500, 700);
     await fillQuietDays(goLive, 1, 449); // every day between the closed day and today has a quiet document
     const lookup = await repository().findPreviousClosed(today);
-    expect(lookup.previous).toEqual({ dayId: farClosed, countedCash: 700 });
+    expect(lookup.previous).toEqual({ dayId: farClosed, countedCash: 700, postCloseNet: 0 });
     const vendor = (await import('../cloudDayVendorRepository')).createCloudDayVendorRepository(
       authedDb(operatorA), { currentUser: () => fakeCurrentUser(operatorA) },
     );
@@ -2076,5 +2076,76 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     await assertFails(getDoc(doc(authedDb(operatorB), `postCloseEntries/${commandId}`)));
     await assertSucceeds(getDocs(collection(holder, 'postCloseEntries')));
     await assertFails(getDocs(collection(authedDb(operatorB), 'postCloseEntries')));
+  });
+
+  // ---- P11c4a: effective closing cash end to end ----
+
+  const mismatchDays = (snapshot: { anomalies: Array<{ kind: string; dayId: string }> }) =>
+    snapshot.anomalies.filter(item => item.kind === 'opening-mismatch').map(item => item.dayId);
+
+  it('P11c4.7: the Q2 example — Monday closes at 1,000, Wednesday opens at 950, a 50 expense entry on Monday removes the mismatch', async () => {
+    const monday = shiftDate(today, -3);
+    const wednesday = shiftDate(today, -1);
+    await closePast(monday, 830, 1000);
+    await seedPastDay(wednesday, { openingCash: 950, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    const before = await repository().readLedger();
+    expect(mismatchDays(before)).toEqual([wednesday]);
+    expect(before.anomalies.find(item => item.kind === 'opening-mismatch')).toMatchObject({ difference: -50, previousPostCloseNet: 0, previousEffectiveCash: 1000 });
+    ok(await recordEntry(monday, { direction: 'expense', amount: 50, reason: '星期一漏記買零錢' }));
+    const after = await repository().readLedger();
+    expect(mismatchDays(after)).toEqual([]);
+    expect(after.closedDays).toEqual([{ dayId: monday, countedCash: 1000, postCloseNet: -50 }]);
+    // The opening default for the next day uses the effective cash too.
+    expect((await repository().findPreviousClosed(wednesday)).previous).toEqual({ dayId: monday, countedCash: 1000, postCloseNet: -50 });
+    // The wrong direction makes the gap larger, not smaller; entries add up.
+    ok(await recordEntry(monday, { direction: 'income', amount: 80, reason: '補記少收的零錢' }));
+    const income = await repository().readLedger();
+    expect(income.anomalies.find(item => item.kind === 'opening-mismatch')).toMatchObject({ difference: -80, previousPostCloseNet: 30, previousEffectiveCash: 1030 });
+  });
+
+  it('P11c4.8: after a reopen and re-close the old entry is history only; the new one counts', async () => {
+    const day = shiftDate(today, -3);
+    await closePast(day, 500, 700);
+    ok(await recordEntry(day, { direction: 'income', amount: 20, reason: '第一版關帳後補記' }));
+    const first = await repository().read(day);
+    expect(first).toMatchObject({ status: 'closed', lastSettlementRevision: 1, effectiveCash: 720 });
+    expect(first?.postCloseEntries.map(entry => [entry.settlementRevision, entry.direction, entry.amount])).toEqual([[1, 'income', 20]]);
+    ok(await repository().reopenDay(await reopenInput('重新點算', day)));
+    expect((await repository().read(day))?.effectiveCash).toBeNull(); // a reopened day has no closing cash
+    ok(await repository().closeDay(await closeInput({ countedCash: 705, note: '重新點算' }, day)));
+    const second = await repository().read(day);
+    expect(second).toMatchObject({ status: 'closed', lastSettlementRevision: 3, effectiveCash: 705 });
+    expect(second?.postCloseEntries.map(entry => entry.settlementRevision)).toEqual([1]);
+    expect((await repository().readLedger()).closedDays).toEqual([{ dayId: day, countedCash: 705, postCloseNet: 0 }]);
+    ok(await recordEntry(day, { direction: 'expense', amount: 10, reason: '第二版關帳後補記' }));
+    expect(await repository().read(day)).toMatchObject({ effectiveCash: 695 });
+    // The old entry is refused against the new version, and the retry of the first command stays idempotent.
+    const stale = await recordEntry(day, { settlement: 1 });
+    expect(stale).toMatchObject({ ok: false, error: { code: 'REVISION_CONFLICT' } });
+  });
+
+  it('P11c4.9: a day with more than one page of entries is read completely; an entry for a missing settlement version fails closed', async () => {
+    const day = shiftDate(today, -3);
+    await closePast(day, 500, 700);
+    await withAdmin(async db => {
+      for (let index = 0; index < 205; index += 1) {
+        const entryId = uuid();
+        await setDoc(doc(db, `postCloseEntries/${entryId}`), {
+          entryId, dayId: day, settlementRevision: 1, direction: index % 5 === 0 ? 'income' : 'expense', amount: 1,
+          reason: '大量補記', createdBy: operatorA.uid, createdAt: serverTimestamp(), commandId: entryId,
+        });
+      }
+    });
+    const view = await repository().read(day);
+    expect(view?.postCloseEntries).toHaveLength(205);
+    expect(view?.effectiveCash).toBe(700 + 41 - 164);
+    const snapshot = await repository().readLedger();
+    expect(snapshot.closedDays).toEqual([{ dayId: day, countedCash: 700, postCloseNet: 41 - 164 }]);
+    const bad = uuid();
+    await withAdmin(async db => setDoc(doc(db, `postCloseEntries/${bad}`), {
+      entryId: bad, dayId: day, settlementRevision: 2, direction: 'income', amount: 1, reason: '指向不存在的版本',
+      createdBy: operatorA.uid, createdAt: serverTimestamp(), commandId: bad,
+    }));
+    await expect(repository().read(day)).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
   });
 });

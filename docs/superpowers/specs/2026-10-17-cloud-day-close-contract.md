@@ -292,7 +292,26 @@ CheerC 的規則（R6／R7、Q2）：已關帳的日子不能靠重開來修，�
 
 ### 15.3 有效關帳現金
 
-- 公式：最新日結版本的 `countedCash` + Σ income − Σ expense，**只計入 `settlementRevision == lastSettlementRevision` 的補記**。
+- 公式：最新日結版本的 `countedCash` + Σ income − Σ expense，**只計入 `settlementRevision == lastSettlementRevision` 的補記**（`src/domain/postCloseEntries.ts`）。
 - 日子重開再重新關帳後，舊補記只當歷史顯示、不再計入（重新點算已經涵蓋它們）。
-- 三處改用有效關帳現金：異常計算（`opening-mismatch`）、開帳預設值（上一個已關帳日的實點）、P11c3 的對齊（回填日要和下一個已開帳日對齊時，被比對的「前一天關帳」不變；但「下一個已開帳日的開帳現金」本來就是那天的 `openingCash`，不受影響。需要有效關帳現金的是用「上一個已關帳日」當基準的地方）。
-- 讀取：`postCloseEntries` 依 `dayId` 查詢（`where dayId == x`、依文件 ID 排序、每頁 200 筆、`startAfter`，不需新的 composite index），任何一頁讀取失敗整個結果 fail closed。
+- 兩處改用有效關帳現金：異常計算（`opening-mismatch` 比較「下一個已開帳日的開帳現金」與前一個已關帳日的**有效**關帳現金，差額 `difference = openingCash − 有效關帳現金`）、開帳預設值（回填日的開帳預設為上一個已關帳日的有效關帳現金）。
+- P11c3 的對齊**不用**有效關帳現金：回填日關帳要等於「下一個已開帳日」的 `openingCash`，那是該日自己的欄位，補記不會改它；補記發生在關帳之後，由異常頁的 `opening-mismatch` 接手（Q2 的例子：星期一 1,000、星期三開帳 950，補記 50 元支出後差額為 0，異常消失）。
+- 讀取（`cloudDayCloseRepository.ts`）：單一日子的 `readCloudDayClose` 依 `dayId` 查詢（`where dayId == x`、依文件 ID 排序、每頁 200 筆、`startAfter`，只靠單欄位索引，不需新的 composite index；Emulator 不檢查索引，正式環境的索引行為沒有在本批驗證）。帳務異常頁掃描整個 `postCloseEntries` 集合一次、依日子分組，不是每個已關帳日各查一次。每頁都比對 head（變動就 `STALE_SNAPSHOT`），任何一頁失敗整個結果 fail closed，總量上限 20,000 筆，超過也 fail closed。
+
+### 15.4 寫入器
+
+`recordPostCloseEntry(input)` 提交 `RecordPostCloseEntry`：交易內 `tx.get` 營業日確認 `closed`、`revision` 與 `lastSettlementRevision` 吻合、日期不早於上線日、補記文件尚不存在；`INVALID_INPUT`（不是已關帳日）、`REVISION_CONFLICT`（版本不符）。回執驗證（`validatePostCloseEntryReceipt`）檢查 head 推進、`cashEffect` 全為 0、營業日前後相同且為 `closed`、`before.postCloseEntry === null`、補記文件各欄位與 payload、操作者、`committedAt` 相符。畫面（輸入表單、列表、標記）是 P11c4b。
+
+### 15.5 P14 備份
+
+- decoder：新 kind 與 payload（`direction`、`amount`、`reason`）、`targets = {dayId}`、`expectedRevisions = {day, settlement}`、`before/after = {head, day, postCloseEntry}`。補記文件路徑 `postCloseEntries/{commandId}`。
+- 驗證（匯出與開啟時）：營業日 before／after 相同且為 `closed`、`lastSettlementRevision == expectedRevisions.settlement`；補記各欄位對 payload／操作者／`committedAt`；金額 1–20,000、方向、原因 1–500 字；營業日不早於上線日。
+- replay：重播到這筆命令時，營業日必須是 `closed`、`lastSettlementRevision` 等於補記的 `settlementRevision`，且補記文件尚不存在。補記挪到關帳之前、重開之後沒重新關帳、同一筆重放，都會被拒。
+- 舊備份（沒有新 kind）照常通過。
+
+### 15.6 驗收與範圍
+
+- 單元：`postCloseEntries.test.ts`（有效關帳現金）、`ledgerAnomalies.test.ts`（有效關帳現金讓異常消失）、`cloudCommandSchema.*`、`CloudOrdersPage.test.tsx`（被拒絕後重讀回填日清單）。
+- Emulator：`cloudDayClose.spec.ts` `P11c4.*`（見 PR 與 evidence 的實際數字）；備份 `cloudBackup.spec.ts` 真實 關帳 → 補記 → 重開 → 重新關帳 → 補記 → 匯出 → 解密 → replay 與偽造被拒。Rules mutant 與餘裕見[預算附錄](../../ops/p05-rules-budget.md#p11c4a--post-close-entry--budget-and-probe-receipt)。
+- 部署（CheerC 本機）：Rules、前端、`firestore.indexes.json` 一起上（indexes 不變；補記讀取只用單欄位索引）。舊前端看不到補記，所以異常頁會把已補平的差額照舊顯示；Rules 與前端要同一次上線。
+- 不做（P11c4b／P12）：補記畫面、列表與標記、日結頁的有效關帳現金顯示；P12 查帳頁（報表要顯示回填與關帳後補記的標記）。
