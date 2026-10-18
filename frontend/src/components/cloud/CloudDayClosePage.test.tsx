@@ -17,6 +17,9 @@ const repository = vi.hoisted(() => ({
   closeDay: vi.fn(),
   reopenDay: vi.fn(),
   backfillOpening: vi.fn(),
+  ensureDay: vi.fn(),
+  startBackfill: vi.fn(),
+  findPreviousClosed: vi.fn(),
   readCommand: vi.fn(),
 }));
 
@@ -113,6 +116,9 @@ describe('CloudDayClosePage', () => {
     repository.closeDay.mockResolvedValue(successful('CloseDay'));
     repository.reopenDay.mockResolvedValue(successful('ReopenDay'));
     repository.backfillOpening.mockResolvedValue(successful('BackfillOpeningCash'));
+    repository.ensureDay.mockResolvedValue(successful('EnsureDay'));
+    repository.startBackfill.mockResolvedValue(successful('StartBackfill'));
+    repository.findPreviousClosed.mockResolvedValue({ previous: null, seq: 20 });
     repository.readCommand.mockResolvedValue(null);
   });
 
@@ -365,7 +371,7 @@ describe('CloudDayClosePage: ledger warnings (contract §11)', () => {
       anomalies: [
         { kind: 'unclosed-past-day', dayId: '2026-10-14', status: 'open', openingCash: 500, activeTransactionCount: 1 },
         { kind: 'unclosed-past-day', dayId: '2026-10-15', status: 'open', openingCash: 600, activeTransactionCount: 2 },
-        { kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 1, previousClosedDayId: '2026-10-13', previousCountedCash: 2, difference: -1, daysApart: 3 },
+        { kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 1, previousClosedDayId: '2026-10-13', previousCountedCash: 2, difference: -1, daysApart: 3, gapDays: [], gapDayCount: 0 },
       ],
     },
   };
@@ -443,5 +449,291 @@ describe('CloudDayClosePage: ledger warnings (contract §11)', () => {
     fireEvent.click(within(form).getByRole('button', { name: '確認關帳' }));
     await screen.findByText(/已確認 2026-10-17 關帳 完成/);
     expect(onLedgerChanged).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe('CloudDayClosePage: backfill (contract §13)', () => {
+  const gap = '2026-10-14';
+  const previousClosed = { dayId: '2026-10-12', countedCash: 870 };
+  const ids = [
+    '00000000-0000-4000-8000-0000000000a1',
+    '00000000-0000-4000-8000-0000000000a2',
+    '00000000-0000-4000-8000-0000000000a3',
+    '00000000-0000-4000-8000-0000000000a4',
+  ];
+  const marker = {
+    dayId: gap, reason: '那天斷線', startedBy: 'uid-a', startedAt: new Date('2026-10-17T01:00:00.000Z'), commandId: ids[2],
+  };
+  const noTotals = { ...dayState().totals, activeTransactionCount: 0 };
+  const gapOverview = (backfill: typeof marker | null = null, withDay = false) => overview({
+    unclosedDays: withDay
+      ? [{
+        dayId: gap, status: 'open', openingCash: backfill ? 870 : null, activeTransactionCount: 0,
+        kind: backfill ? 'needs-close' : 'no-business', backfill,
+      }]
+      : [],
+  });
+  const gapDay = (revision: number, openingCash: number | null) => dayState({
+    dayId: gap, revision, openingCash, expectedCash: openingCash, totals: noTotals,
+  });
+
+  // Receipts must carry the command ID that was sent, or the page rightly refuses them.
+  const echoing = (kind: CommandReceipt['kind']) => async (input: { commandId: string; dayId: string }): Promise<CommandResult> => ({
+    ok: true,
+    receipt: { ...receipt(kind), commandId: input.commandId, targets: { dayId: input.dayId } },
+  });
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    repository.readOverview.mockResolvedValue(overview());
+    repository.read.mockResolvedValue(dayState());
+    repository.closeDay.mockResolvedValue(successful('CloseDay'));
+    repository.reopenDay.mockResolvedValue(successful('ReopenDay'));
+    repository.backfillOpening.mockImplementation(echoing('BackfillOpeningCash'));
+    repository.ensureDay.mockImplementation(echoing('EnsureDay'));
+    repository.startBackfill.mockImplementation(echoing('StartBackfill'));
+    repository.readCommand.mockResolvedValue(null);
+    const queue = [...ids];
+    vi.stubGlobal('crypto', { randomUUID: vi.fn().mockImplementation(() => queue.shift() ?? commandId) });
+    repository.findPreviousClosed.mockResolvedValue({ previous: previousClosed, seq: 20 });
+  });
+
+  function renderAt(dayId: string, extra: { onOpenOrders?: (dayId: string) => void } = {}) {
+    render(
+      <CloudDayClosePage
+        db={{} as Firestore}
+        leaseEpoch={4}
+        identityKey="uid-a:4"
+        initialDayId={dayId}
+        {...extra}
+      />,
+    );
+  }
+
+  async function startForm(label = `${gap} 回填`) {
+    return screen.findByRole('form', { name: label });
+  }
+
+  it('creates the day, confirms the opening cash and marks the backfill, each step with its own command ID', async () => {
+    repository.readOverview
+      .mockResolvedValueOnce(gapOverview())
+      .mockResolvedValueOnce(gapOverview(null, true))
+      .mockResolvedValueOnce(gapOverview(null, true))
+      .mockResolvedValue(gapOverview(marker, true));
+    repository.read
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(gapDay(1, null))
+      .mockResolvedValueOnce(gapDay(2, 870))
+      .mockResolvedValue(gapDay(3, 870));
+    renderAt(gap);
+    const form = await startForm();
+    // The opening cash defaults to the previous closed day's counted cash.
+    const opening = within(form).getByRole('textbox', { name: /開帳現金（元）/ });
+    expect(opening).toHaveValue('870');
+    expect(within(form).getByText(/預設為 2026-10-12 關帳的實點/)).toBeInTheDocument();
+    fireEvent.change(within(form).getByRole('textbox', { name: /回填原因/ }), { target: { value: ' 那天斷線 ' } });
+    fireEvent.click(within(form).getByRole('button', { name: '確認回填這一天' }));
+
+    expect(await screen.findByText(/已標為回填，可以到訂餐頁補登交易/)).toBeInTheDocument();
+    expect(repository.ensureDay).toHaveBeenCalledTimes(1);
+    expect(repository.ensureDay).toHaveBeenCalledWith({ commandId: ids[0], leaseEpoch: 4, dayId: gap });
+    expect(repository.backfillOpening).toHaveBeenCalledTimes(1);
+    expect(repository.backfillOpening).toHaveBeenCalledWith({
+      commandId: ids[1], leaseEpoch: 4, dayId: gap, expectedDayRevision: 1, openingCash: 870, reason: '那天斷線',
+    });
+    expect(repository.startBackfill).toHaveBeenCalledTimes(1);
+    expect(repository.startBackfill).toHaveBeenCalledWith({
+      commandId: ids[2], leaseEpoch: 4, dayId: gap, expectedDayRevision: 2, reason: '那天斷線',
+    });
+    expect(screen.getByTestId('backfill-info')).toHaveTextContent('那天斷線');
+    expect(screen.queryByTestId('backfill-plan-panel')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('backfill-start')).not.toBeInTheDocument();
+  });
+
+  it('requires a reason, a valid opening cash and, when it differs from the last close, a difference reason', async () => {
+    repository.readOverview.mockResolvedValue(gapOverview());
+    repository.read.mockResolvedValue(null);
+    renderAt(gap);
+    const form = await startForm();
+    fireEvent.submit(form);
+    expect(await screen.findByText('回填原因必須為 1 至 500 個字元。')).toBeInTheDocument();
+
+    fireEvent.change(within(form).getByRole('textbox', { name: /回填原因/ }), { target: { value: '那天斷線' } });
+    for (const value of ['', '-5', '10.5', '20001']) {
+      fireEvent.change(within(form).getByRole('textbox', { name: /開帳現金（元）/ }), { target: { value } });
+      fireEvent.submit(form);
+      expect(await screen.findByText(/開帳現金必須明確輸入 0 至 20,000 元的整數/)).toBeInTheDocument();
+    }
+    fireEvent.change(within(form).getByRole('textbox', { name: /開帳現金（元）/ }), { target: { value: '800' } });
+    expect(within(form).getByRole('textbox', { name: /差額原因/ })).toBeInTheDocument();
+    expect(within(form).getByText(/少 NT\$ 70/)).toBeInTheDocument();
+    fireEvent.submit(form);
+    expect(await screen.findByText('開帳現金與上次關帳實點不同，必須填寫 1 至 500 字的差額原因。')).toBeInTheDocument();
+    expect(repository.ensureDay).not.toHaveBeenCalled();
+
+    // Back to the default amount: no difference reason is asked for any more.
+    fireEvent.change(within(form).getByRole('textbox', { name: /開帳現金（元）/ }), { target: { value: '870' } });
+    expect(within(form).queryByRole('textbox', { name: /差額原因/ })).not.toBeInTheDocument();
+  });
+
+  it('sends the difference reason with the opening cash and the backfill reason with the marker', async () => {
+    repository.readOverview
+      .mockResolvedValueOnce(gapOverview())
+      .mockResolvedValueOnce(gapOverview(null, true))
+      .mockResolvedValueOnce(gapOverview(null, true))
+      .mockResolvedValue(gapOverview(marker, true));
+    repository.read
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(gapDay(1, null))
+      .mockResolvedValueOnce(gapDay(2, 800))
+      .mockResolvedValue(gapDay(3, 800));
+    renderAt(gap);
+    const form = await startForm();
+    fireEvent.change(within(form).getByRole('textbox', { name: /回填原因/ }), { target: { value: '那天斷線' } });
+    fireEvent.change(within(form).getByRole('textbox', { name: /開帳現金（元）/ }), { target: { value: '800' } });
+    fireEvent.change(within(form).getByRole('textbox', { name: /差額原因/ }), { target: { value: '抽屜少了 70 元' } });
+    fireEvent.click(within(form).getByRole('button', { name: '確認回填這一天' }));
+    await screen.findByText(/已標為回填/);
+    expect(repository.backfillOpening).toHaveBeenCalledWith(expect.objectContaining({ openingCash: 800, reason: '抽屜少了 70 元' }));
+    expect(repository.startBackfill).toHaveBeenCalledWith(expect.objectContaining({ reason: '那天斷線' }));
+  });
+
+  it('stops at the failed step, says where, and continues from that step without creating the day again', async () => {
+    repository.backfillOpening
+      .mockResolvedValueOnce({ ok: false, error: { code: 'REVISION_CONFLICT', message: 'conflict' } })
+      .mockImplementation(echoing('BackfillOpeningCash'));
+    repository.readOverview
+      .mockResolvedValueOnce(gapOverview())
+      .mockResolvedValueOnce(gapOverview(null, true))
+      .mockResolvedValueOnce(gapOverview(null, true))
+      .mockResolvedValueOnce(gapOverview(null, true))
+      .mockResolvedValue(gapOverview(marker, true));
+    repository.read
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(gapDay(1, null))
+      .mockResolvedValueOnce(gapDay(1, null))
+      .mockResolvedValueOnce(gapDay(2, 870))
+      .mockResolvedValue(gapDay(3, 870));
+    renderAt(gap);
+    const form = await startForm();
+    fireEvent.change(within(form).getByRole('textbox', { name: /回填原因/ }), { target: { value: '那天斷線' } });
+    fireEvent.click(within(form).getByRole('button', { name: '確認回填這一天' }));
+
+    expect(await screen.findByText(/2026-10-14 補開帳未完成.*回填 2026-10-14 停在這一步/)).toBeInTheDocument();
+    expect(repository.ensureDay).toHaveBeenCalledTimes(1);
+    expect(repository.startBackfill).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getAllByRole('button', { name: '重新載入伺服器資料' })[0]);
+    expect(await screen.findByTestId('backfill-plan-panel')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('backfill-continue'));
+
+    expect(await screen.findByText(/已標為回填/)).toBeInTheDocument();
+    expect(repository.ensureDay).toHaveBeenCalledTimes(1);
+    expect(repository.backfillOpening).toHaveBeenCalledTimes(2);
+    // A definite rejection created nothing, so the retry is a new command with the current revision.
+    expect(repository.backfillOpening.mock.calls[1][0]).toMatchObject({ commandId: ids[2], expectedDayRevision: 1, openingCash: 870 });
+    expect(repository.startBackfill).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the command ID of an unknown result, confirms it, and carries on with the next step', async () => {
+    repository.ensureDay.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+    repository.readCommand.mockResolvedValue({ ...receipt('EnsureDay'), commandId: ids[0], targets: { dayId: gap } });
+    repository.readOverview
+      .mockResolvedValueOnce(gapOverview())
+      .mockResolvedValueOnce(gapOverview(null, true))
+      .mockResolvedValueOnce(gapOverview(null, true))
+      .mockResolvedValue(gapOverview(marker, true));
+    repository.read
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(gapDay(1, null))
+      .mockResolvedValueOnce(gapDay(2, 870))
+      .mockResolvedValue(gapDay(3, 870));
+    renderAt(gap);
+    const form = await startForm();
+    fireEvent.change(within(form).getByRole('textbox', { name: /回填原因/ }), { target: { value: '那天斷線' } });
+    fireEvent.click(within(form).getByRole('button', { name: '確認回填這一天' }));
+    expect(await screen.findByText('結果確認中，請勿重複操作。')).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`命令編號 ${ids[0]}`))).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+    expect(await screen.findByText(/已標為回填/)).toBeInTheDocument();
+    expect(repository.readCommand).toHaveBeenCalledWith(ids[0]);
+    expect(repository.ensureDay).toHaveBeenCalledTimes(2);
+    expect(repository.ensureDay.mock.calls[0][0]).toEqual(repository.ensureDay.mock.calls[1][0]);
+    expect(repository.backfillOpening).toHaveBeenCalledTimes(1);
+    expect(repository.startBackfill).toHaveBeenCalledTimes(1);
+  });
+
+  it('cannot start while the previous closed day is unknown, and retries the lookup', async () => {
+    repository.readOverview.mockResolvedValue(gapOverview());
+    repository.read.mockResolvedValue(null);
+    repository.findPreviousClosed
+      .mockRejectedValueOnce({ code: 'OFFLINE', message: 'offline' })
+      .mockResolvedValue({ previous: previousClosed, seq: 20 });
+    renderAt(gap);
+    const form = await startForm();
+    expect(await screen.findByTestId('backfill-previous-error')).toHaveTextContent('無法查詢上一個已關帳日的實點現金');
+    expect(within(form).getByRole('button', { name: '確認回填這一天' })).toBeDisabled();
+    expect(repository.ensureDay).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('backfill-previous-retry'));
+    await waitFor(() => expect(screen.queryByTestId('backfill-previous-error')).not.toBeInTheDocument());
+    expect(repository.findPreviousClosed).toHaveBeenCalledTimes(2);
+    const reloaded = await startForm();
+    expect(within(reloaded).getByRole('textbox', { name: /開帳現金（元）/ })).toHaveValue('870');
+    expect(within(reloaded).getByRole('button', { name: '確認回填這一天' })).toBeEnabled();
+  });
+
+  it('marks an existing open past day as backfilled with one command when its opening cash is already confirmed', async () => {
+    repository.readOverview
+      .mockResolvedValueOnce(overview({
+        unclosedDays: [{ dayId: gap, status: 'open', openingCash: 870, activeTransactionCount: 2, kind: 'needs-close', backfill: null }],
+      }))
+      .mockResolvedValue(overview({
+        unclosedDays: [{ dayId: gap, status: 'open', openingCash: 870, activeTransactionCount: 2, kind: 'needs-close', backfill: marker }],
+      }));
+    repository.read
+      .mockResolvedValueOnce(dayState({ dayId: gap, revision: 4, openingCash: 870, expectedCash: 1040 }))
+      .mockResolvedValue(dayState({ dayId: gap, revision: 4, openingCash: 870, expectedCash: 1040 }));
+    renderAt(gap);
+    const form = await startForm(`${gap} 標為回填`);
+    // No opening cash is asked for, and no previous-day lookup is made.
+    expect(within(form).queryByRole('textbox', { name: /開帳現金（元）/ })).not.toBeInTheDocument();
+    expect(repository.findPreviousClosed).not.toHaveBeenCalled();
+    fireEvent.change(within(form).getByRole('textbox', { name: /回填原因/ }), { target: { value: '那天斷線' } });
+    fireEvent.click(within(form).getByRole('button', { name: '確認標為回填' }));
+    expect(await screen.findByText(/已標為回填/)).toBeInTheDocument();
+    expect(repository.ensureDay).not.toHaveBeenCalled();
+    expect(repository.backfillOpening).not.toHaveBeenCalled();
+    expect(repository.startBackfill).toHaveBeenCalledWith({
+      commandId: ids[0], leaseEpoch: 4, dayId: gap, expectedDayRevision: 4, reason: '那天斷線',
+    });
+  });
+
+  it('shows a backfilling day with its reason and a way to the orders page, and offers no second start', async () => {
+    repository.readOverview.mockResolvedValue(gapOverview(marker, true));
+    repository.read.mockResolvedValue(gapDay(3, 870));
+    const onOpenOrders = vi.fn();
+    renderAt(gap, { onOpenOrders });
+    const info = await screen.findByTestId('backfill-info');
+    expect(info).toHaveTextContent('2026-10-14 正在回填（原因：那天斷線）');
+    expect(screen.queryByTestId('backfill-start')).not.toBeInTheDocument();
+    expect(screen.getByTestId(`cloud-unclosed-backfill-${gap}`)).toHaveTextContent('回填中');
+    fireEvent.click(within(info).getByRole('button', { name: `到訂餐頁補登 ${gap}` }));
+    expect(onOpenOrders).toHaveBeenCalledWith(gap);
+  });
+
+  it.each([
+    ['today', today, dayState({ openingCash: null, expectedCash: null })],
+    ['a closed past day', gap, dayState({ dayId: gap, status: 'closed', lastSettlementRevision: 1, settlements: [version(1)] })],
+    ['a reopened past day that was closed before', gap, dayState({ dayId: gap, status: 'reopened', lastSettlementRevision: 2, settlements: [version(1), version(2)] })],
+    ['a day before go-live', '2026-09-30', null],
+  ])('offers no backfill for %s', async (_label, dayId, state) => {
+    repository.readOverview.mockResolvedValue(overview());
+    repository.read.mockResolvedValue(state);
+    renderAt(dayId);
+    await screen.findByRole('heading', { name: `${dayId} 日結` });
+    expect(screen.queryByTestId('backfill-start')).not.toBeInTheDocument();
   });
 });

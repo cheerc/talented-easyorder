@@ -18,6 +18,12 @@ describe('isBackfilled (contract §12)', () => {
     expect(isBackfilled({ businessDate: '2026-10-10', createdAt: new Date('2026-10-09T17:00:00Z') }, marker)).toBe(false);
   });
 
+  it('flips exactly at Taipei midnight: UTC 15:59:59 is still the day, UTC 16:00:00 is the next day', () => {
+    expect(isBackfilled({ businessDate: '2026-10-10', createdAt: new Date('2026-10-10T15:59:59.999Z') }, marker)).toBe(false);
+    expect(isBackfilled({ businessDate: '2026-10-10', createdAt: new Date('2026-10-10T16:00:00.000Z') }, marker)).toBe(true);
+    expect(isBackfilled({ businessDate: '2026-10-10', createdAt: Timestamp.fromDate(new Date('2026-10-10T16:00:00.000Z')) }, marker)).toBe(true);
+  });
+
   it('is false without a marker or with a marker for another day', () => {
     const later = new Date('2026-10-12T04:00:00Z');
     expect(isBackfilled({ businessDate: '2026-10-10', createdAt: later }, null)).toBe(false);

@@ -23,6 +23,7 @@ import { CASHIER_NAME_SNAPSHOT, CASHIER_STUDENT_ID } from '../domain/cloudComman
 import type { CorrectTransactionPayload } from '../domain/cloudTransactionMutation';
 import { decodeCloudDayRecord, type CloudDayRecord } from './cloudDayVendorRepository';
 import { listCloudStudents, type CloudStudentRecord } from './cloudStudentRepository';
+import { listCloudBackfillingDays, readCloudBackfillDay, type CloudBackfillDay } from './cloudDayCloseRepository';
 import { accessLeasePath, dataHeadPath, dayPath } from './firestorePaths';
 
 type Data = Record<string, unknown>;
@@ -67,6 +68,17 @@ export interface CloudOrderTransactionRecord {
 export interface CloudOrderSnapshot {
   /** Server business date: Taipei date of the server-confirmed lease `updatedAt`, never the browser clock. */
   today: string;
+  /**
+   * The business day this snapshot shows: `today`, or a past day that is being backfilled (contract §12, §13).
+   * `day`, `transactions` and every command built from the snapshot belong to this date.
+   */
+  businessDate: string;
+  /** The marker of `businessDate` when it is a backfilled day; null when it is today. */
+  backfill: CloudBackfillDay | null;
+  /** Days that can take backfilled transactions right now, oldest first (empty when the list could not be read). */
+  backfillDays: CloudBackfillDay[];
+  /** Why `backfillDays` is empty although it could not be read; null when the list was read. */
+  backfillDaysError: string | null;
   goLiveDate: string;
   datasetId: string;
   seq: number;
@@ -426,15 +438,25 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
   }
   const commands = createCloudCommandRepository(db, options);
 
-  async function loadSnapshot(): Promise<CloudOrderSnapshot> {
+  /** `dayId` null or omitted shows today; a past `dayId` must carry a backfill marker or the read is refused. */
+  async function loadSnapshot(request: { dayId?: string | null } = {}): Promise<CloudOrderSnapshot> {
     try {
       const user = requireGoogleUser(options);
       const before = await readHead(db);
       const today = await readLeaseDate(db, user.uid);
-      const daySnapshot = await getDocFromServer(doc(db, dayPath(today)));
-      const day = daySnapshot.exists() ? decodeCloudDayRecord(today, daySnapshot.data()) : null;
+      const businessDate = request.dayId ?? today;
+      let backfill: CloudBackfillDay | null = null;
+      if (businessDate !== today) {
+        if (businessDate > today || businessDate < before.goLiveDate) {
+          throw new CloudOrderRepositoryError('INVALID_INPUT', `回填日期必須介於 ${before.goLiveDate} 與今天之前`);
+        }
+        backfill = await readCloudBackfillDay(db, businessDate);
+        if (!backfill) throw new CloudOrderRepositoryError('INVALID_INPUT', `${businessDate} 不在回填中，不能補登`);
+      }
+      const daySnapshot = await getDocFromServer(doc(db, dayPath(businessDate)));
+      const day = daySnapshot.exists() ? decodeCloudDayRecord(businessDate, daySnapshot.data()) : null;
       const { students } = await listCloudStudents(db, options);
-      const transactions = await readDayTransactions(db, today, before.seq, pageSize);
+      const transactions = await readDayTransactions(db, businessDate, before.seq, pageSize);
       const studentIds = new Set(students.map(student => student.studentId));
       const orphan = transactions.find(tx => tx.type !== 'expense' && !studentIds.has(tx.studentId));
       if (orphan) {
@@ -445,12 +467,27 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
       if (leaseDateAfter !== today) {
         throw new CloudOrderRepositoryError('STALE_SNAPSHOT', '讀取期間伺服器營業日已跨日，請重新載入');
       }
+      // The list only offers shortcuts to other days: an unreadable list must not block today's counter work,
+      // but losing the right to read still ends the page like any other read.
+      let backfillDays: CloudBackfillDay[] = [];
+      let backfillDaysError: string | null = null;
+      try {
+        backfillDays = await listCloudBackfillingDays(db, options);
+      } catch (listError) {
+        const failure = readError(listError);
+        if (['LEASE_LOST', 'UNAUTHORIZED', 'ACCESS_BUSY'].includes(failure.code)) throw failure;
+        backfillDaysError = failure.message;
+      }
       const after = await readHead(db);
       if (before.seq !== after.seq || before.datasetId !== after.datasetId || before.goLiveDate !== after.goLiveDate) {
         throw new CloudOrderRepositoryError('STALE_SNAPSHOT', '讀取期間雲端資料已變更，請重新載入');
       }
       return {
         today,
+        businessDate,
+        backfill,
+        backfillDays,
+        backfillDaysError,
         goLiveDate: before.goLiveDate,
         datasetId: before.datasetId,
         seq: before.seq,

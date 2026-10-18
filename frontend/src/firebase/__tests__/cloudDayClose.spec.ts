@@ -25,7 +25,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import type { CommandResult } from '../../domain/cloudCommands';
 import { fingerprintCommandInput, normalizeEnabledCommandInput } from '../../domain/cloudCommandSchema';
 import { createCloudCommandRepository } from '../cloudCommandRepository';
-import { createCloudDayCloseRepository, isBackfilled } from '../cloudDayCloseRepository';
+import { createCloudDayCloseRepository, isBackfilled, listCloudBackfillingDays } from '../cloudDayCloseRepository';
 
 // One-shot hook that runs a real write right after the next server query, so a head change can be made to
 // land in the middle of a ledger read (P11c2a.3). Every other query passes through untouched.
@@ -876,10 +876,12 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
       {
         kind: 'opening-mismatch', dayId: d3, openingCash: 800, previousClosedDayId: d2,
         previousCountedCash: 870, difference: -70, daysApart: 3,
+        gapDays: [shiftDate(today, -4), shiftDate(today, -3)], gapDayCount: 2,
       },
       {
         kind: 'opening-mismatch', dayId: today, openingCash: 1000, previousClosedDayId: d2,
         previousCountedCash: 870, difference: 130, daysApart: 5,
+        gapDays: [shiftDate(today, -4), shiftDate(today, -3), shiftDate(today, -1)], gapDayCount: 3,
       },
     ]);
     await expect(repository(operatorB).readLedger()).rejects.toMatchObject({ code: 'LEASE_LOST' });
@@ -1184,8 +1186,11 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     ok(await repository().reopenDay(await reopenInput('補登漏掉的繳費', gap)));
     const before = await state(gap);
     expect(before.day).toMatchObject({ status: 'reopened', lastSettlementRevision: 2 });
+    // The writer says why: the day was marked, closed and reopened, which is not the same as "never marked".
     for (const attempt of [backfillOrder(gap), backfillPayment(gap), backfillCash(gap)]) {
-      expect(await attempt).toMatchObject({ result: { ok: false, error: { code: 'INVALID_INPUT' } } });
+      expect(await attempt).toMatchObject({
+        result: { ok: false, error: { code: 'DAY_CLOSED', message: expect.stringContaining('曾經關過帳') } },
+      });
     }
     expect(await state(gap)).toEqual(before);
   });
@@ -1238,6 +1243,46 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     }));
     expect((await read(`days/${missing}`))!).toMatchObject({ status: 'open', openingCash: null, lastSettlementRevision: 0 });
     expect(await read(`backfillDays/${missing}`)).toBeUndefined();
+  });
+
+  it('P11c2b.1: the repository creates a missing past day, confirms its opening cash and marks it, one command each; the day then lists as backfilling', async () => {
+    const gap = shiftDate(today, -3);
+    const doneAlready = shiftDate(today, -2);
+    await withAdmin(async db => updateDoc(doc(db, `students/${studentA}`), { 'openingBalance.asOfDate': shiftDate(today, -30) }));
+    await seedGapDay(doneAlready, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    expect(await repository().read(gap)).toBeNull();
+    const options = { currentUser: () => fakeCurrentUser(operatorA) };
+    expect(await listCloudBackfillingDays(authedDb(operatorA), options)).toEqual([]);
+
+    const ensureId = uuid();
+    ok(await repository().ensureDay({ commandId: ensureId, leaseEpoch: 1, dayId: gap }));
+    const created = await repository().read(gap);
+    expect(created).toMatchObject({ status: 'open', openingCash: null, lastSettlementRevision: 0 });
+    // A repeat of the same command is a replay of the stored receipt, not a second day.
+    ok(await repository().ensureDay({ commandId: ensureId, leaseEpoch: 1, dayId: gap }));
+
+    ok(await repository().backfillOpening({
+      commandId: uuid(), leaseEpoch: 1, dayId: gap, expectedDayRevision: created!.revision, openingCash: 800, reason: BF_REASON,
+    }));
+    const opened = await repository().read(gap);
+    expect(opened).toMatchObject({ openingCash: 800 });
+    expect(await repository().readBackfillDay(gap)).toBeNull();
+
+    ok(await repository().startBackfill({ commandId: uuid(), leaseEpoch: 1, dayId: gap, expectedDayRevision: opened!.revision, reason: BF_REASON }));
+    expect(await repository().readBackfillDay(gap)).toMatchObject({ dayId: gap, reason: BF_REASON, startedBy: operatorA.uid });
+    expect(await repository().startBackfill({
+      commandId: uuid(), leaseEpoch: 1, dayId: gap, expectedDayRevision: opened!.revision, reason: BF_REASON,
+    })).toMatchObject({ ok: false });
+
+    ok(await repository().startBackfill({
+      commandId: uuid(), leaseEpoch: 1, dayId: doneAlready, expectedDayRevision: (await read(`days/${doneAlready}`))!.revision, reason: BF_REASON,
+    }));
+    expect((await listCloudBackfillingDays(authedDb(operatorA), options)).map(day => day.dayId)).toEqual([gap, doneAlready]);
+
+    // Closing a marked day removes it from the list of days that still take transactions after a reopen.
+    ok(await repository().closeDay(await closeInput({ countedCash: 800 }, gap)));
+    ok(await repository().reopenDay(await reopenInput('補登漏掉的繳費', gap)));
+    expect((await listCloudBackfillingDays(authedDb(operatorA), options)).map(day => day.dayId)).toEqual([doneAlready]);
   });
 
   it('P11c2a.13: the reader shows which unclosed days are being backfilled, and marks only the later-created transactions', async () => {

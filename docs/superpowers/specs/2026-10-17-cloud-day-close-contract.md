@@ -166,7 +166,7 @@ CheerC（2026-10-17）：某天整天沒用系統，事後要能補登那天的�
 ### 12.2 寫入器與錯誤碼
 
 - `cloudCommandRepository`：新增 `StartBackfill`；三種交易命令不在客戶端判斷日期，由 Rules 決定，被拒時以讀回的營業日診斷。今天的判斷照舊用租約 `updatedAt` 的台北日期。
-- 錯誤碼：`StartBackfill` 對關過帳的日子（狀態 closed 或 `lastSettlementRevision > 0`）→ `DAY_CLOSED`；三種交易的診斷只在營業日目前為 closed 時回 `DAY_CLOSED`，已標記、關帳後重開（open 但 `lastSettlementRevision > 0`）的日子被 Rules 拒絕時回 `INVALID_INPUT`；今天、未來、上線日前、營業日不存在、已有標記、缺原因或過長 → `INVALID_INPUT`；沒有標記的過去日交易 → `INVALID_INPUT`；版本不符 → `REVISION_CONFLICT`；非持有人 → `LEASE_LOST`。
+- 錯誤碼：`StartBackfill` 對關過帳的日子（狀態 closed 或 `lastSettlementRevision > 0`）→ `DAY_CLOSED`；三種交易被 Rules 拒絕時，營業日目前為 closed → `DAY_CLOSED`；已關過帳又重開（open 但 `lastSettlementRevision > 0`）→ `DAY_CLOSED`，訊息說明「曾經關過帳（現在是重開狀態）」（P11c2b 起，原本回 `INVALID_INPUT`）；過去日沒有標記 → `INVALID_INPUT`，訊息指向日結頁的「標為回填」；今天、未來、上線日前、營業日不存在、已有標記、缺原因或過長 → `INVALID_INPUT`；沒有標記的過去日交易 → `INVALID_INPUT`；版本不符 → `REVISION_CONFLICT`；非持有人 → `LEASE_LOST`。
 - 回填日的開帳現金仍用 `BackfillOpeningCash`（原因本來就必填），Rules 不改；預設帶入上一個已關帳日實點、金額不同時原因必填是畫面（P11c2b）的事。
 - 型別、normalizer、回執解碼（`validateStartBackfillReceipt`：營業日前後相同、標記欄位等於 payload 原因、操作者 uid、`committedAt` 與 `commandId`）同步；交易回執解碼的日期條件改為「台北今天，或從沒關過帳的過去日」（標記是否存在不在回執內，由 Rules 與 P14 replay 證明）。
 
@@ -187,3 +187,33 @@ CheerC（2026-10-17）：某天整天沒用系統，事後要能補登那天的�
 - 單元：`cloudLedgerReader.test.ts`（分頁、分段往回、可注入的頁大小與分段天數、head 變動）、`cloudBackfillReader.test.ts`（`isBackfilled` 台北日界、`decodeBackfillDoc`）。
 - Emulator：`cloudDayClose.spec.ts` `P11c2a.1`–`.3`（分頁掃描超過 400 份、上一個已關帳日超過 400 天仍找得到、讀取中 head 變動回 `STALE_SNAPSHOT`）與 `P11c2a.4`–`.14`（完整回填流程後關帳與重試冪等；沒有標記的過去日交易被拒；寫入器的 7 種拒絕與錯誤碼；標記後關帳再重開仍拒；合法最大 `StartBackfill`；原始 SDK 21 種竄改；Rules 拒絕今天、未來、上線日前、已關帳、關過帳；標記不可改、刪、手動建立；回填日不能退款或作廢；讀取端；三種交易各自的正向案例）；備份 `cloudBackup.spec.ts` 真實 EnsureDay → 補開帳 → 開始回填 → 回填訂餐／繳費／收支 → 關帳 → 匯出 → 解密 → replay，偽造標記、標記前的交易、竄改原因被拒。
 - 不做：回填模式的畫面（P11c2b）、關帳對齊（P11c3）、已關帳日補記（P11c4）、角色權限。
+
+## 13. P11c2b 回填模式畫面
+
+只動畫面與讀取端，**Rules 不改**（沒有新 command kind、沒有新欄位）。CheerC 的方向：異常頁每個斷層日有「回填這一天」；回填要寫原因；進訂餐頁後有顯眼的回填橫幅與「離開回填」；回填中只能補訂餐、繳費與櫃台收支，不能退款、撤回或「取消並退還」。
+
+### 13.1 開始回填（日結頁，三步）
+
+- **入口**：異常頁（§11.3）的「開帳現金與上次關帳不同」列，若兩個日期之間有沒有營業日文件的日子，列出這些日子（最多 31 天，最舊在前，超過顯示總數），每天一顆「回填這一天（YYYY-MM-DD）」；「從沒關過帳的過去未關帳日」列有「標為回填，補登剩下的交易」。兩者都只是導向日結頁並選定那一天（`initialDayId`），不在異常頁送命令。
+- **日結頁回填表單**（只對「早於台北今天、不早於上線日、從沒關過帳、還沒有標記」的日子顯示；已關帳、重開過、今天、上線日前都不顯示）：回填原因必填 1–500 字（trim 後計）；那天還沒有開帳現金時再加開帳現金（0–20,000 的整數）。**預設開帳現金 = 上一個已關帳日的實點現金**；改成別的金額，必須另寫 1–500 字的差額原因（這就是 `BackfillOpeningCash` 的 `reason`）；與上次關帳相同時，`reason` 用回填原因。
+- **三個命令，各有自己的 command ID**：`EnsureDay`（那天沒有營業日文件）→ `BackfillOpeningCash`（還沒有開帳現金）→ `StartBackfill`。下一步由**伺服器現況**推導（沒有日 → 建日；沒有開帳 → 補開帳；沒有標記 → 標記），所以重試永遠不重做已完成的步驟。確認完一步後自動接下一步。
+- **失敗與重試**：任一步失敗，頁面說明「回填 X 停在這一步」，並保留計畫；按「繼續回填」從那一步續跑。明確被拒（例如版本衝突）= 沒有建立任何東西，續跑用新命令與目前版本；**結果不確定**沿用日結頁既有的復原機制：保留原 command ID、先查 receipt、再以相同輸入確認，不換 ID。
+- **查詢上一個已關帳日失敗**：不能開始回填（需要它算預設值與差額），顯示原因與「重新查詢」；開帳表單（日期與供應商頁）同樣加「重新查詢上一個已關帳日」按鈕（#511 審查備註）。
+- 回填中的日子，日結頁顯示「正在回填（原因：…）」與「到訂餐頁補登」，並且不再提供第二次開始；日結未關帳清單的那一天標「回填中」。
+
+### 13.2 訂餐頁的回填檢視
+
+- 日期選單只在有回填中的日子時出現（`listCloudBackfillingDays`：有標記、`status === 'open'`、從沒關過帳——重開過的日子 Rules 已不收交易，不列）；清單讀不到時只顯示一行說明，**今天的作業不受影響**（租約遺失、無權限、忙碌仍照常結束頁面）。App 也可帶 `initialBackfillDayId` 直接開某一天。
+- `loadSnapshot({dayId})`：dayId 為空或等於今天 = 今天；過去日必須介於上線日與今天之前**且有標記**，否則 `INVALID_INPUT`（頁面提供「回到今天」）。快照多了 `businessDate`、`backfill`、`backfillDays`、`backfillDaysError`。
+- 回填檢視：所有列、合計與命令（`dayId`、營業日版本）都屬於那一天；顯眼的橫幅「正在回填 YYYY-MM-DD（原因：…）」與「離開回填」；只開放訂餐、繳費與櫃台收支。**退款**停用並說明；**5 秒撤回**不提供（Rules 的 `Undo` 只限今天），改用更正／作廢；**取消訂餐並退還**不提供，只剩「取消訂餐，錢留在帳戶」。沒有那天的菜單時，只能登記「其他餐點」並提示到日期與供應商頁設定那天的菜單（過去未關帳日的 `SetDayMenu` 直接設定本來就可用，§12.1）。
+- 標籤：`isBackfilled`（有標記，且建立時間的台北日期晚於營業日）的列顯示「回填」；一般列、非回填日完全不變。台北午夜以 UTC 16:00:00 為界（單元測試 `cloudBackfillReader.test.ts`）。
+
+### 13.3 寫入器診斷（#511 審查備註）
+
+標記後關帳再重開的日子，三種交易被 Rules 拒絕時，寫入器回 `DAY_CLOSED` 與明確訊息（見 §12.2）；沒有標記的過去日回 `INVALID_INPUT` 並指向「標為回填」。診斷只在被拒時多讀租約與標記兩份文件，成功路徑不變。
+
+### 13.4 驗收與範圍
+
+- 單元／元件（Vitest）：`CloudDayClosePage.test.tsx`（三步成功、每步失敗與續跑、結果不確定保留 ID、差額原因、查詢失敗重試、標為回填單步、回填中顯示、不該顯示的日子）、`CloudOrdersPage.test.tsx`（橫幅與離開、日期選單、標籤、退款／撤回／取消並退還的停用、清單讀取失敗、回到今天）、`CloudLedgerAnomaliesPage.test.tsx`、`ledgerAnomalies.test.ts`、`CloudDayVendorsPage.test.tsx`（重新查詢）、`cloudBackfillReader.test.ts`（午夜邊界）。
+- Emulator：`cloudDayClose.spec.ts` 異常物件帶 `gapDays`／`gapDayCount`、`P11c2a.7` 改為 `DAY_CLOSED`、新增 `P11c2b.1`（repository 三步與回填中清單）；`cloudOrderRepository.spec.ts` `P11c2b.R1`–`R3`。
+- 不做：關帳對齊（P11c3）、已關帳日補記（P11c4）、角色權限（重開仍人人可用）、P12。

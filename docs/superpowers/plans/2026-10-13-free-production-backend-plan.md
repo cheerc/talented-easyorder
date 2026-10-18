@@ -54,6 +54,7 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 | P11 補開帳 | 已合併 #507 | squash `2792ba2606c89d54818457136aabfbe7fc1ef913`，source head `dffed1c22f3af558723864ae1f7f82d4adf3271a`；獨立審查通過、無必修（review `5557963146`）；CI [39030734055](https://github.com/cheerc/talented-easyorder/actions/runs/39030734055) 兩 job 成功。CheerC 2026-10-17 指示。新增 `BackfillOpeningCash`：過去、未關帳、缺開帳現金的既有營業日可填開帳現金與必填原因補開帳，再照常關帳；不放寬既有開帳與交易 Rules，不能補登交易。日結頁表單、P14 decoder／replay 同步支援。契約 `2026-10-17-cloud-day-close-contract.md` §10。base `71ee1bc`。Emulator 循序全套 2,222/2,222、補開帳 Emulator 27 項、Cloud E2E 21/21。未部署。 |
 | P11c1 帳務異常與警示 | 已合併 #509 | squash `fb2fc11a7f6271ded1495d27af6a1e99300ebb12`，source head `a16afa4a4fd6dbc1327a1b8e60dc8430a96e190a`；獨立審查通過、無必修（review `5558759097`）；CI [39047364483](https://github.com/cheerc/talented-easyorder/actions/runs/39047364483) 兩 job 成功。唯讀異常計算、導覽「帳務異常（n）」、警示、`SetOpeningCash` 選填差額原因（唯一 Rules 變更）。契約 §11。P11c2 第一項必修（400 天掃描上限）已由 P11c2a 處理。未部署。 |
 | P11c2a 解除 400 天上限、回填斷層日（後端） | 已合併 #511 | squash `35ac95bd3f4f98a378fd01803f6c3a6beafae794`，source head `2572f3f82f96fcee2100432318b6bd8c47f98390`（最終 head `f857b10bc10be92976dc7904a5b31d1aeca12f47` 只補 PR 編號）；獨立審查通過、無必修（review `5561303976`）；CI [39093276394](https://github.com/cheerc/talented-easyorder/actions/runs/39093276394)、[39094019150](https://github.com/cheerc/talented-easyorder/actions/runs/39094019150) 兩 job 成功。`StartBackfill`（第 26 種、已啟用 24 種）與不可改的 `backfillDays/{dayId}` 標記；`CreateOrder`／`CreatePayment`／`CreateCashMovement` 可寫入已標記且從沒關過帳的過去日；異常掃描分頁、上一個已關帳日分段查找；P14 replay。契約 §12。未部署。 |
+| P11c2b 回填模式畫面 | PR 開啟，待審查 | 只改前端與讀取端（Rules、command kind 不變）：異常頁「回填這一天」／「標為回填」、日結頁三步精靈（`EnsureDay` → `BackfillOpeningCash` → `StartBackfill`，各有 command ID，失敗可續跑）、訂餐頁回填橫幅與「離開回填」、退款／撤回／取消並退還停用、「回填」標籤；#511 審查備註（重試按鈕、午夜邊界測試、寫入器訊息）。契約 §13。未部署。 |
 | P12–P13、P15–P18 | 尚未開始／未驗 | 不代表任何後續雲端功能已實作或通過。 |
 
 ## 2. 現有檔案與規劃新檔
@@ -335,5 +336,9 @@ CheerC 2026-10-15 的 10 項操作回饋排程見[操作回饋排程計畫](2026
 
 - CheerC 2026-10-17 規劃 P11c2，拆成 P11c2a（本批，後端）與 P11c2b（畫面）。base `f7cfc452971c05303d8cf60963cb6aec3b33c6c6`（#510）；PR、head SHA 與 CI 以 PR body 與 handoff 為準。契約 [§12](../specs/2026-10-17-cloud-day-close-contract.md#12-p11c2a-回填斷層日startbackfill)。
 - 第 1 項（#509 審查備註）：異常掃描不再有 400 天硬上限（每頁 200 筆、`startAfter`、每頁之後比對 head）；開帳表單與寫入器只找上一個已關帳日（每次 31 天往回），異常掃描失敗不擋開帳。第 2 項：`StartBackfill` 與 `backfillDays`；Rules 把交易日期檢查改為 `validTransactionDay`，並移除 `validTransactionPayload` 中與 `validTransactionDoc` 重複的日期檢查（不削弱檢查）。
-- 完整計畫與驗收見 handoff 與 [P11c2a 預算附錄](../../ops/p05-rules-budget.md#p11c2a-gap-day-backfill--budget-and-probe-receipt)。P11c2b 回填模式畫面、P11c3 關帳對齊、P11c4 關帳後補記尚未開始。P11c2b 待辦（#511 審查備註）：開帳表單查上一個已關帳日失敗後要有重試按鈕；`isBackfilled` 補台北午夜邊界測試（UTC 16:00:00 前後一秒）。
+- 完整計畫與驗收見 handoff 與 [P11c2a 預算附錄](../../ops/p05-rules-budget.md#p11c2a-gap-day-backfill--budget-and-probe-receipt)。P11c3 關帳對齊、P11c4 關帳後補記尚未開始；P11c2b 回填模式畫面見下一節（#511 審查備註的重試按鈕與 `isBackfilled` 午夜邊界測試已在 P11c2b 處理）。
 
+## P11c2b 回填模式畫面 checkpoint — 2026-10-18
+
+- 範圍與機制見契約 [§13](../specs/2026-10-17-cloud-day-close-contract.md#13-p11c2b-回填模式畫面)。base `35ac95bd3f4f98a378fd01803f6c3a6beafae794`（#511 合併後 main）；PR、head SHA 與 CI 以 PR body 與 handoff 為準。沒有 Rules 變更、沒有新 command kind，P14 備份不受影響。
+- 完整驗收與數字見 handoff 與 [evidence](../../ops/free-production-evidence.md)。P11c3 關帳對齊、P11c4 關帳後補記、角色權限尚未開始。

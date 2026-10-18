@@ -364,6 +364,7 @@ function anomalyNavLabel(ledger: CloudLedgerView): string {
 function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEpoch: number; identityKey: string }) {
   const [cloudSection, setCloudSection] = useState<CloudSection>('students');
   const [dayCloseFocus, setDayCloseFocus] = useState<string | undefined>(undefined);
+  const [ordersFocus, setOrdersFocus] = useState<string | undefined>(undefined);
   const [navigationLocked, setNavigationLocked] = useState(false);
   const navigationLockRef = useRef<{ identityKey: string; locked: boolean; revoked: boolean } | null>(null);
   const { ledger, reload: reloadLedger } = useCloudLedger(db, `${identityKey}:${leaseEpoch}`);
@@ -387,6 +388,7 @@ function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEp
     if (navigationLockRef.current?.locked) return;
     if (section === 'anomalies') reloadLedger();
     setDayCloseFocus(section === 'day-close' ? dayId : undefined);
+    setOrdersFocus(section === 'orders' ? dayId : undefined);
     setCloudSection(section);
   };
   const openAnomalies = () => selectSection('anomalies');
@@ -413,7 +415,7 @@ function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEp
         </button>
       </nav>
       {cloudSection === 'orders' ? (
-        <CloudOrdersPage {...common} />
+        <CloudOrdersPage {...common} initialBackfillDayId={ordersFocus} />
       ) : cloudSection === 'students' ? (
         <CloudStudentsPage {...common} />
       ) : cloudSection === 'day-vendors' ? (
@@ -425,6 +427,7 @@ function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEp
           onOpenAnomalies={openAnomalies}
           onLedgerChanged={reloadLedger}
           initialDayId={dayCloseFocus}
+          onOpenOrders={dayId => selectSection('orders', dayId)}
         />
       ) : (
         <CloudLedgerAnomaliesPage

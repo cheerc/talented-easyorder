@@ -320,4 +320,55 @@ describeWithEmulator('P08 cloud order repository reads, retries and transactions
     expect(snapshot.day?.totals.bentoCount).toBe(0);
     expect(snapshot.students).toHaveLength(2);
   });
+
+  describe('P11c2b: loading a backfilling day', () => {
+    const emptyTotals = {
+      activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0, mealTotal: 0,
+      retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0,
+    };
+
+    async function seedPast(dayId: string, marked: boolean) {
+      await withAdmin(async db => {
+        await setDoc(doc(db, `days/${dayId}`), {
+          status: 'open', revision: 3, menu: null, openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp(),
+          totals: emptyTotals, lastSettlementRevision: 0, lastCommandId: seedCommandId, updatedAt: serverTimestamp(),
+        });
+        if (marked) {
+          await setDoc(doc(db, `backfillDays/${dayId}`), {
+            dayId, reason: '那天斷線', startedBy: operatorA.uid, startedAt: serverTimestamp(), commandId: seedCommandId,
+          });
+        }
+      });
+    }
+
+    it('P11c2b.R1: a marked past day loads with its marker, and the day list names it; today still loads as before', async () => {
+      const gap = shiftDate(today, -3);
+      await seedPast(gap, true);
+      const snapshot = await repository(operatorA).loadSnapshot({ dayId: gap });
+      expect(snapshot).toMatchObject({ today, businessDate: gap, backfill: { dayId: gap, reason: '那天斷線' }, backfillDaysError: null });
+      expect(snapshot.day).toMatchObject({ dayId: gap, openingCash: 800 });
+      expect(snapshot.transactions).toEqual([]);
+      expect(snapshot.backfillDays.map(day => day.dayId)).toEqual([gap]);
+
+      const current = await repository(operatorA).loadSnapshot({ dayId: null });
+      expect(current).toMatchObject({ businessDate: today, backfill: null });
+      expect(current.backfillDays.map(day => day.dayId)).toEqual([gap]);
+    });
+
+    it.each([
+      ['a past day without a marker', () => shiftDate(today, -3), false],
+      ['a day before go-live', () => shiftDate(today, -31), true],
+      ['a future day', () => shiftDate(today, 2), true],
+    ])('P11c2b.R2: refuses %s', async (_label, day, marked) => {
+      const dayId = day();
+      await seedPast(dayId, marked);
+      await expect(repository(operatorA).loadSnapshot({ dayId })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    });
+
+    it('P11c2b.R3: only the lease holder can load a backfilling day', async () => {
+      const gap = shiftDate(today, -3);
+      await seedPast(gap, true);
+      await expect(repository(operatorB).loadSnapshot({ dayId: gap })).rejects.toMatchObject({ code: 'LEASE_LOST' });
+    });
+  });
 });
