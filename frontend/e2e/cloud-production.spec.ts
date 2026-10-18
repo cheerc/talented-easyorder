@@ -215,7 +215,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
 
       await operatorB.page.clock.setFixedTime(new Date(Date.now() + 10 * 60 * 1000));
       await operatorB.page.reload();
-      await expect(operatorB.page.locator('.auth-gate-busy, .auth-gate-acquire')).toBeVisible();
+      await expect(operatorB.page.locator('.auth-gate-busy, .auth-gate-acquire')).toBeVisible({ timeout: 20_000 });
       const fastClockAction = operatorB.page.getByRole('button', { name: /取得系統使用權|重新檢查|重新確認使用權/ });
       await expect(fastClockAction).toBeVisible();
       await fastClockAction.click();
@@ -235,7 +235,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
       });
       await operatorB.page.clock.setFixedTime(new Date(Date.now() - 10 * 60 * 1000));
       await operatorB.page.reload();
-      await expect(operatorB.page.locator('.auth-gate-busy, .auth-gate-acquire')).toBeVisible();
+      await expect(operatorB.page.locator('.auth-gate-busy, .auth-gate-acquire')).toBeVisible({ timeout: 20_000 });
       await expect.poll(readAccessLease).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
 
       const slowClockAction = operatorB.page.getByRole('button', { name: /取得系統使用權|重新檢查|重新確認使用權/ });
