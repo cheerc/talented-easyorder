@@ -276,7 +276,7 @@ Rules 無法證明兩件事，由寫入器與異常頁補上：
 
 CheerC 的規則（R6／R7、Q2）：已關帳的日子不能靠重開來修，只能補記**有標記、原因必填**的一般櫃台收支（收入、支出、呆帳類）；學生的訂餐與繳費一律不能動。例：星期一關帳 1,000，星期三開帳 950，中間沒有營業；在星期一補記一筆 50 元支出並寫原因，星期一的「有效關帳現金」變成 950，`opening-mismatch` 消失。分兩批：**P11c4a（後端、Rules、P14、Emulator）**寫在本節；P11c4b（畫面）之後補在 §15.8。
 
-> 本節是 P11c4a（後端）的契約。畫面（P11c4b）尚未開始；沒做的項目見 §15.6 與 PR body 的「未完成」。
+> §15.1–15.6 記錄 P11c4a 的後端契約；P11c4b 的 UI 契約記在 §15.8。各批實際驗證與尚未完成項目見 evidence 與對應 PR body。
 
 ### 15.1 機制（Rules）
 
@@ -313,5 +313,15 @@ CheerC 的規則（R6／R7、Q2）：已關帳的日子不能靠重開來修，�
 
 - 單元：`postCloseEntries.test.ts`（有效關帳現金）、`ledgerAnomalies.test.ts`（有效關帳現金讓異常消失）、`cloudCommandSchema.*`、`CloudOrdersPage.test.tsx`（被拒絕後重讀回填日清單）。
 - Emulator：`cloudDayClose.spec.ts` `P11c4.*`（見 PR 與 evidence 的實際數字）；備份 `cloudBackup.spec.ts` 真實 關帳 → 補記 → 重開 → 重新關帳 → 補記 → 匯出 → 解密 → replay 與偽造被拒。Rules mutant 與餘裕見[預算附錄](../../ops/p05-rules-budget.md#p11c4a--post-close-entry--budget-and-probe-receipt)。
+- UI：`CloudDayClosePage.test.tsx`、`CloudLedgerAnomaliesPage.test.tsx`、App ledger routing tests；Q2 真實 Emulator／browser flow 見 P11c4b evidence。
 - 部署（CheerC 本機）：Rules、前端、`firestore.indexes.json` 一起上（indexes 不變；補記讀取只用單欄位索引）。舊前端看不到補記，所以異常頁會把已補平的差額照舊顯示；Rules 與前端要同一次上線。
-- 不做（P11c4b／P12）：補記畫面、列表與標記、日結頁的有效關帳現金顯示；P12 查帳頁（報表要顯示回填與關帳後補記的標記）。
+- 不做（P12）：查帳頁；報表要顯示回填與關帳後補記的標記。
+
+### 15.8 P11c4b UI 契約
+
+- 日結頁只在營業日目前狀態為 `closed` 時提供關帳後補記表單。表單收方向、1–20,000 元整數金額與必填 1–500 字原因；收入／支出只影響有效關帳現金，不更改原 settlement、營業日、學生訂餐、繳費或交易。超過 20,000 元時明示單筆上限並停用送出，不自動拆單。
+- 已關帳日顯示有效關帳現金與補記歷史（方向、金額、原因、操作者、臺北時間、所屬 settlement revision）。只有 `entry.settlementRevision == day.lastSettlementRevision` 的補記標為計入有效現金；重開日仍顯示舊歷史，但不顯示表單，舊版補記標為僅供歷史查閱。重新關帳後，舊版補記仍保留但不再計入新版本現金。
+- `opening-mismatch` 且 `gapDayCount == 0` 時，異常頁可跳到 `previousClosedDayId`，帶入差額快照、方向和絕對金額；`difference > 0` 預填收入，`difference < 0` 預填支出。原因永遠留白，由操作者輸入。`gapDayCount > 0` 時只提供缺日回填，不顯示此補記捷徑。
+- 從異常頁帶入的補記在送出前重新讀取該已關帳日與最新 ledger。只有日結仍為 `closed`、`revision` 與 `lastSettlementRevision` 仍符合畫面版本、最新異常仍是相同差額且指向相同前一關帳日、`gapDayCount == 0`，才可送出。任何資料變動都不送出；畫面改顯示最新日期、差額、有效關帳現金與版本，清空原因並要求操作者明確勾選核對後再送。若異常已消失或不再符合捷徑，清掉差額預填並提示返回異常頁重查。
+- 送前重讀是過期草稿保護，不是跨分頁鎖或全域 exactly-once 保證。不同 command ID 可各自提交；兩個分頁在同一讀取點後各自提交，或人工補記與異常捷徑交錯，仍可能都成功。維持既有隨機 command ID、server expected revisions 與 Rules，不新增 deterministic ID 或後端鎖。未知結果沿原 command ID 和凍結 payload 查回執／重試；失去授權時清除表單資料。
+- 一般修帳走有原因的關帳後補記；若需修正整筆 settlement，仍可使用原有必填原因的重開流程。關帳後補記不能變更學生交易。

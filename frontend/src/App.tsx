@@ -44,6 +44,7 @@ import { CloudDayVendorsPage } from './components/cloud/CloudDayVendorsPage';
 import { CloudDayClosePage } from './components/cloud/CloudDayClosePage';
 import { CloudLedgerAnomaliesPage } from './components/cloud/CloudLedgerAnomaliesPage';
 import { useCloudLedger, type CloudLedgerView } from './hooks/useCloudLedger';
+import type { OpeningMismatchAnomaly } from './domain/ledgerAnomalies';
 import type { Firestore } from 'firebase/firestore';
 
 function AppContent() {
@@ -364,6 +365,7 @@ function anomalyNavLabel(ledger: CloudLedgerView): string {
 function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEpoch: number; identityKey: string }) {
   const [cloudSection, setCloudSection] = useState<CloudSection>('students');
   const [dayCloseFocus, setDayCloseFocus] = useState<string | undefined>(undefined);
+  const [postCloseEntryFocus, setPostCloseEntryFocus] = useState<OpeningMismatchAnomaly | undefined>(undefined);
   const [ordersFocus, setOrdersFocus] = useState<string | undefined>(undefined);
   const [navigationLocked, setNavigationLocked] = useState(false);
   const navigationLockRef = useRef<{ identityKey: string; locked: boolean; revoked: boolean } | null>(null);
@@ -384,10 +386,11 @@ function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEp
     navigationLockRef.current = lock;
     setNavigationLocked(lock.locked);
   }, []);
-  const selectSection = (section: CloudSection, dayId?: string) => {
+  const selectSection = (section: CloudSection, dayId?: string, postCloseEntry?: OpeningMismatchAnomaly) => {
     if (navigationLockRef.current?.locked) return;
     if (section === 'anomalies') reloadLedger();
     setDayCloseFocus(section === 'day-close' ? dayId : undefined);
+    setPostCloseEntryFocus(section === 'day-close' ? postCloseEntry : undefined);
     setOrdersFocus(section === 'orders' ? dayId : undefined);
     setCloudSection(section);
   };
@@ -427,6 +430,7 @@ function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEp
           onOpenAnomalies={openAnomalies}
           onLedgerChanged={reloadLedger}
           initialDayId={dayCloseFocus}
+          initialPostCloseEntry={postCloseEntryFocus}
           onOpenOrders={dayId => selectSection('orders', dayId)}
         />
       ) : (
@@ -434,6 +438,7 @@ function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEp
           ledger={ledger}
           onReload={reloadLedger}
           onOpenDayClose={dayId => selectSection('day-close', dayId)}
+          onOpenPostCloseEntry={anomaly => selectSection('day-close', anomaly.previousClosedDayId, anomaly)}
         />
       )}
     </main>

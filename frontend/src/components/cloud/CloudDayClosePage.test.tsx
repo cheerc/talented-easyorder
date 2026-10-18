@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
+import type { OpeningMismatchAnomaly } from '../../domain/ledgerAnomalies';
+import type { PostCloseEntry } from '../../domain/postCloseEntries';
 import type {
   CloudDayCloseOverview,
   CloudDayCloseState,
@@ -15,6 +17,7 @@ const repository = vi.hoisted(() => ({
   read: vi.fn(),
   readOverview: vi.fn(),
   closeDay: vi.fn(),
+  recordPostCloseEntry: vi.fn(),
   reopenDay: vi.fn(),
   backfillOpening: vi.fn(),
   ensureDay: vi.fn(),
@@ -22,6 +25,7 @@ const repository = vi.hoisted(() => ({
   findPreviousClosed: vi.fn(),
   findNextOpened: vi.fn(),
   readCommand: vi.fn(),
+  readLedger: vi.fn(),
 }));
 
 vi.mock('../../firebase/cloudDayCloseRepository', () => ({
@@ -89,18 +93,47 @@ function receipt(kind: CommandReceipt['kind']): CommandReceipt {
   return { commandId, seq: 21, committedAt: '2026-10-17T12:00:00.000Z', kind, targets: { dayId: today }, result: {} };
 }
 
+function postCloseEntry(overrides: Partial<PostCloseEntry> = {}): PostCloseEntry {
+  return {
+    entryId: '00000000-0000-4000-8000-000000000012',
+    dayId: today,
+    settlementRevision: 1,
+    direction: 'expense',
+    amount: 50,
+    reason: '找零短少，補記支出',
+    createdBy: 'uid-a',
+    createdAt: new Date('2026-10-17T12:30:00.000Z'),
+    commandId: '00000000-0000-4000-8000-000000000012',
+    ...overrides,
+  };
+}
+
+const q2Mismatch: OpeningMismatchAnomaly = {
+  kind: 'opening-mismatch', dayId: '2026-10-15', openingCash: 950, previousClosedDayId: '2026-10-14',
+  previousCountedCash: 1000, previousPostCloseNet: 0, previousEffectiveCash: 1000, difference: -50, daysApart: 1,
+  gapDays: [], gapDayCount: 0,
+};
+
 function successful(kind: CommandReceipt['kind']): CommandResult {
   return { ok: true, receipt: receipt(kind) };
 }
 
-function renderPage(props: { backupBlock?: ReactNode } = {}, onNavigationStateChange = vi.fn()) {
+function renderPage(props: {
+  backupBlock?: ReactNode;
+  initialDayId?: string;
+  initialPostCloseEntry?: OpeningMismatchAnomaly;
+  onLedgerChanged?: () => void;
+} = {}, onNavigationStateChange = vi.fn()) {
   render(
     <CloudDayClosePage
       db={{} as Firestore}
       leaseEpoch={4}
       identityKey="uid-a:4"
+      initialDayId={props.initialDayId}
       onNavigationStateChange={onNavigationStateChange}
       backupBlock={props.backupBlock}
+      initialPostCloseEntry={props.initialPostCloseEntry}
+      onLedgerChanged={props.onLedgerChanged}
     />,
   );
   return onNavigationStateChange;
@@ -117,12 +150,14 @@ describe('CloudDayClosePage', () => {
     repository.readOverview.mockResolvedValue(overview());
     repository.read.mockResolvedValue(dayState());
     repository.closeDay.mockResolvedValue(successful('CloseDay'));
+    repository.recordPostCloseEntry.mockResolvedValue(successful('RecordPostCloseEntry'));
     repository.reopenDay.mockResolvedValue(successful('ReopenDay'));
     repository.backfillOpening.mockResolvedValue(successful('BackfillOpeningCash'));
     repository.ensureDay.mockResolvedValue(successful('EnsureDay'));
     repository.startBackfill.mockResolvedValue(successful('StartBackfill'));
     repository.findPreviousClosed.mockResolvedValue({ previous: null, seq: 20 });
     repository.readCommand.mockResolvedValue(null);
+    repository.readLedger.mockResolvedValue({ today, goLiveDate: '2026-10-01', anomalies: [], closedDays: [], seq: 20 });
   });
 
   it('L05: expected 1,170 and counted 1,160 needs a non-blank reason, then closes with the server numbers', async () => {
@@ -205,6 +240,176 @@ describe('CloudDayClosePage', () => {
     expect(screen.getByTestId('cloud-settlement-1')).toHaveTextContent('找零少收 10 元');
     expect(screen.getByTestId('cloud-settlement-2')).toHaveTextContent('補登漏記的繳費');
     expect(await closeForm()).toBeInTheDocument();
+  });
+
+  it('prefills a closed-day difference entry, requires its reason, then records and reloads the effective cash', async () => {
+    const targetDay = q2Mismatch.previousClosedDayId;
+    const closed = dayState({
+      dayId: targetDay, status: 'closed', revision: 7, lastSettlementRevision: 1,
+      settlements: [version(1, { countedCash: 1000 })], effectiveCash: 1000,
+    });
+    const recorded = postCloseEntry({ dayId: targetDay, settlementRevision: 1, reason: '中間沒有營業，開店點現金少 50 元' });
+    const after = { ...closed, postCloseEntries: [recorded], effectiveCash: 950, seq: 21 };
+    repository.read.mockResolvedValueOnce(closed).mockResolvedValueOnce(closed).mockResolvedValue(after);
+    repository.readOverview.mockResolvedValue(overview({ seq: 21 }));
+    repository.readLedger.mockResolvedValueOnce({ today, goLiveDate: '2026-10-01', anomalies: [q2Mismatch], closedDays: [], seq: 20 });
+    const onLedgerChanged = vi.fn();
+
+    renderPage({ initialDayId: targetDay, initialPostCloseEntry: q2Mismatch, onLedgerChanged });
+
+    expect(await screen.findByRole('heading', { name: `${targetDay} 日結` })).toBeInTheDocument();
+    expect(screen.getByLabelText('有效關帳現金')).toHaveTextContent('NT$ 1,000');
+    const form = await screen.findByRole('form', { name: `${targetDay} 關帳後補記` });
+    expect(within(form).getByLabelText('收支方向')).toHaveValue('expense');
+    expect(within(form).getByLabelText('金額（元）')).toHaveValue('50');
+    expect(within(form).getByLabelText(/原因（必填/)).toHaveValue('');
+    fireEvent.submit(form);
+    expect(await screen.findByText('關帳後補記原因必須為 1 至 500 個字元。')).toBeInTheDocument();
+    expect(repository.recordPostCloseEntry).not.toHaveBeenCalled();
+
+    fireEvent.change(within(form).getByLabelText(/原因（必填/), { target: { value: '中間沒有營業，開店點現金少 50 元' } });
+    fireEvent.click(within(form).getByRole('button', { name: '確認補記' }));
+
+    await screen.findByText(/已確認 2026-10-14 關帳後補記 完成/);
+    expect(repository.read).toHaveBeenLastCalledWith(targetDay);
+    expect(repository.readLedger).toHaveBeenCalledTimes(1);
+    expect(repository.recordPostCloseEntry).toHaveBeenCalledWith({
+      commandId, leaseEpoch: 4, dayId: targetDay, expectedDayRevision: 7, expectedSettlementRevision: 1,
+      direction: 'expense', amount: 50, reason: '中間沒有營業，開店點現金少 50 元',
+    });
+    expect(onLedgerChanged).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText('有效關帳現金')).toHaveTextContent('NT$ 950');
+    const history = screen.getByTestId(`post-close-entry-${recorded.entryId}`);
+    expect(history).toHaveTextContent('支出');
+    expect(history).toHaveTextContent('NT$ 50');
+    expect(history).toHaveTextContent('中間沒有營業，開店點現金少 50 元');
+    expect(history).toHaveTextContent('uid-a');
+    expect(history).toHaveTextContent('已計入有效關帳現金');
+  });
+
+  it('prefills a positive opening difference as income', async () => {
+    const targetDay = q2Mismatch.previousClosedDayId;
+    const positiveMismatch: OpeningMismatchAnomaly = {
+      ...q2Mismatch, openingCash: 1025, previousEffectiveCash: 1000, difference: 25,
+    };
+    repository.read.mockResolvedValue(dayState({
+      dayId: targetDay, status: 'closed', revision: 7, lastSettlementRevision: 1,
+      settlements: [version(1, { countedCash: 1000 })], effectiveCash: 1000,
+    }));
+    renderPage({ initialDayId: targetDay, initialPostCloseEntry: positiveMismatch });
+
+    const form = await screen.findByRole('form', { name: `${targetDay} 關帳後補記` });
+    expect(within(form).getByLabelText('收支方向')).toHaveValue('income');
+    expect(within(form).getByLabelText('金額（元）')).toHaveValue('25');
+    expect(within(form).getByLabelText(/原因（必填/)).toHaveValue('');
+  });
+
+  it('does not split or submit an anomaly amount above the single-entry limit', async () => {
+    const targetDay = q2Mismatch.previousClosedDayId;
+    const oversizedMismatch: OpeningMismatchAnomaly = {
+      ...q2Mismatch, openingCash: 21_001, previousEffectiveCash: 1000, difference: 20_001,
+    };
+    repository.read.mockResolvedValue(dayState({
+      dayId: targetDay, status: 'closed', revision: 7, lastSettlementRevision: 1,
+      settlements: [version(1, { countedCash: 1000 })], effectiveCash: 1000,
+    }));
+    renderPage({ initialDayId: targetDay, initialPostCloseEntry: oversizedMismatch });
+
+    const form = await screen.findByRole('form', { name: `${targetDay} 關帳後補記` });
+    expect(await screen.findByText(/超過單筆補記上限 NT\$ 20,000/)).toBeInTheDocument();
+    expect(within(form).getByLabelText('金額（元）')).toHaveValue('20001');
+    expect(within(form).getByRole('button', { name: '確認補記' })).toBeDisabled();
+    expect(repository.recordPostCloseEntry).not.toHaveBeenCalled();
+  });
+
+  it('does not write a stale anomaly draft and requires confirmation of refreshed numbers and revisions', async () => {
+    const targetDay = q2Mismatch.previousClosedDayId;
+    const originallyShown = dayState({
+      dayId: targetDay, status: 'closed', revision: 7, lastSettlementRevision: 1,
+      settlements: [version(1, { countedCash: 1000 })], effectiveCash: 1000,
+    });
+    const updatedMismatch: OpeningMismatchAnomaly = {
+      ...q2Mismatch, openingCash: 1075, previousClosedDayId: targetDay, previousCountedCash: 1000,
+      previousEffectiveCash: 1000, difference: 75,
+    };
+    const updatedDay = { ...originallyShown, revision: 8, lastSettlementRevision: 2, settlements: [version(1), version(2)] };
+    repository.read.mockResolvedValueOnce(originallyShown).mockResolvedValueOnce(updatedDay).mockResolvedValueOnce(updatedDay);
+    repository.readLedger.mockResolvedValueOnce({ today, goLiveDate: '2026-10-01', anomalies: [updatedMismatch], closedDays: [], seq: 21 })
+      .mockResolvedValueOnce({ today, goLiveDate: '2026-10-01', anomalies: [updatedMismatch], closedDays: [], seq: 21 });
+    renderPage({ initialDayId: targetDay, initialPostCloseEntry: q2Mismatch });
+
+    const form = await screen.findByRole('form', { name: `${targetDay} 關帳後補記` });
+    fireEvent.change(within(form).getByLabelText(/原因（必填/), { target: { value: '核對時使用的原因' } });
+    fireEvent.click(within(form).getByRole('button', { name: '確認補記' }));
+
+    expect(await screen.findByText(/資料已更新，補記沒有送出/)).toBeInTheDocument();
+    expect(within(form).getByLabelText('收支方向')).toHaveValue('income');
+    expect(within(form).getByLabelText('金額（元）')).toHaveValue('75');
+    expect(within(form).getByLabelText(/原因（必填/)).toHaveValue('');
+    expect(within(form).getByLabelText('我已核對更新後的差額與關帳現金')).not.toBeChecked();
+    expect(repository.recordPostCloseEntry).not.toHaveBeenCalled();
+
+    fireEvent.click(within(form).getByLabelText('我已核對更新後的差額與關帳現金'));
+    fireEvent.change(within(form).getByLabelText(/原因（必填/), { target: { value: '更新後確認為多 75 元' } });
+    fireEvent.click(within(form).getByRole('button', { name: '確認補記' }));
+
+    await waitFor(() => expect(repository.recordPostCloseEntry).toHaveBeenCalledWith({
+      commandId, leaseEpoch: 4, dayId: targetDay, expectedDayRevision: 8, expectedSettlementRevision: 2,
+      direction: 'income', amount: 75, reason: '更新後確認為多 75 元',
+    }));
+  });
+
+  it('keeps historical entries on a reopened day without offering a post-close form', async () => {
+    const oldEntry = postCloseEntry({ settlementRevision: 1 });
+    repository.read.mockResolvedValue(dayState({
+      status: 'reopened', revision: 8, lastSettlementRevision: 2,
+      settlements: [version(1), version(2, { status: 'reopened', countedCash: null, difference: null })],
+      postCloseEntries: [oldEntry], effectiveCash: null,
+    }));
+    renderPage();
+    await screen.findByRole('heading', { name: `${today} 日結` });
+    expect(screen.getByTestId(`post-close-entry-${oldEntry.entryId}`)).toHaveTextContent('舊關帳版本，僅供歷史查閱');
+    expect(screen.queryByRole('form', { name: `${today} 關帳後補記` })).not.toBeInTheDocument();
+  });
+
+  it('recovers an unknown post-close result by replaying the same command ID and frozen payload', async () => {
+    const closed = dayState({ status: 'closed', revision: 7, lastSettlementRevision: 1, settlements: [version(1)] });
+    repository.read.mockResolvedValue(closed);
+    repository.readLedger.mockResolvedValueOnce({ today, goLiveDate: '2026-10-01', anomalies: [], closedDays: [], seq: 20 });
+    repository.recordPostCloseEntry
+      .mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } })
+      .mockResolvedValueOnce(successful('RecordPostCloseEntry'));
+    repository.readCommand.mockResolvedValue(receipt('RecordPostCloseEntry'));
+    renderPage();
+
+    const form = await screen.findByRole('form', { name: `${today} 關帳後補記` });
+    fireEvent.change(within(form).getByLabelText('金額（元）'), { target: { value: '30' } });
+    fireEvent.change(within(form).getByLabelText(/原因（必填/), { target: { value: '補記原因' } });
+    fireEvent.click(within(form).getByRole('button', { name: '確認補記' }));
+    expect(await screen.findByRole('button', { name: '查詢原命令結果' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+
+    await screen.findByText(/已確認 2026-10-17 關帳後補記 完成/);
+    expect(repository.readCommand).toHaveBeenCalledWith(commandId);
+    expect(repository.recordPostCloseEntry).toHaveBeenNthCalledWith(1, expect.objectContaining({ commandId, amount: 30, reason: '補記原因' }));
+    expect(repository.recordPostCloseEntry).toHaveBeenNthCalledWith(2, expect.objectContaining({ commandId, amount: 30, reason: '補記原因' }));
+  });
+
+  it('clears post-close form data when authorization is lost', async () => {
+    repository.read.mockResolvedValue(dayState({ status: 'closed', revision: 7, lastSettlementRevision: 1, settlements: [version(1)] }));
+    repository.readLedger.mockResolvedValueOnce({ today, goLiveDate: '2026-10-01', anomalies: [], closedDays: [], seq: 20 });
+    repository.recordPostCloseEntry.mockResolvedValueOnce({ ok: false, error: { code: 'LEASE_LOST', message: 'lease lost' } });
+    const report = renderPage();
+    const form = await screen.findByRole('form', { name: `${today} 關帳後補記` });
+    fireEvent.change(within(form).getByLabelText('金額（元）'), { target: { value: '30' } });
+    fireEvent.change(within(form).getByLabelText(/原因（必填/), { target: { value: '機密草稿' } });
+    fireEvent.click(within(form).getByRole('button', { name: '確認補記' }));
+
+    expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`命令編號 ${commandId}`))).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: `${today} 日結` })).not.toBeInTheDocument();
+    expect(screen.queryByText('機密草稿')).not.toBeInTheDocument();
+    expect(report).toHaveBeenLastCalledWith('uid-a:4', 'revoked');
   });
 
   it('lists unclosed days, marks past days without business, and opens a listed day', async () => {

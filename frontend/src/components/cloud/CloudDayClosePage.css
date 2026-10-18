@@ -398,6 +398,20 @@
   font-weight: 650;
 }
 
+.cloud-day-close__form label.cloud-day-close__confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-weight: 600;
+}
+
+.cloud-day-close__confirmation input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+}
+
 .cloud-day-close__difference {
   margin: 0;
   font-weight: 700;

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type SetStateAction } from 'react';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
-import { effectiveCashOf, openingDifference, type PreviousClosedDay } from '../../domain/ledgerAnomalies';
+import { effectiveCashOf, openingDifference, type OpeningMismatchAnomaly, type PreviousClosedDay } from '../../domain/ledgerAnomalies';
+import type { PostCloseDirection } from '../../domain/postCloseEntries';
 import {
   createCloudDayCloseRepository,
   type BackfillCloudDayOpeningInput,
@@ -11,6 +12,7 @@ import {
   type CloudDayCloseState,
   type CloudUnclosedDay,
   type EnsureCloudDayInput,
+  type RecordCloudPostCloseEntryInput,
   type ReopenCloudDayInput,
   type StartCloudBackfillInput,
 } from '../../firebase/cloudDayCloseRepository';
@@ -33,12 +35,15 @@ export interface CloudDayClosePageProps {
   onLedgerChanged?: () => void;
   /** 第一次載入時要選到的營業日（例如從異常頁帶過來）；沒提供則用伺服器租約日期。 */
   initialDayId?: string;
+  /** 從帳務異常頁帶來的差額快照；只帶方向與金額，原因仍須由操作者輸入。 */
+  initialPostCloseEntry?: OpeningMismatchAnomaly;
   /** 回填中的日子要補登交易時，切到訂餐頁並選到那一天（契約 §13）。 */
   onOpenOrders?: (dayId: string) => void;
 }
 
 type PreparedCommand =
   | ({ kind: 'close-day' } & Omit<CloseCloudDayInput, 'leaseEpoch'>)
+  | ({ kind: 'record-post-close-entry' } & Omit<RecordCloudPostCloseEntryInput, 'leaseEpoch'>)
   | ({ kind: 'reopen-day' } & Omit<ReopenCloudDayInput, 'leaseEpoch'>)
   | ({ kind: 'backfill-opening' } & Omit<BackfillCloudDayOpeningInput, 'leaseEpoch'>)
   | ({ kind: 'ensure-day' } & Omit<EnsureCloudDayInput, 'leaseEpoch'>)
@@ -102,6 +107,14 @@ interface PageState {
   note: string;
   reopenOpen: boolean;
   reopenReason: string;
+  postCloseDirection: PostCloseDirection;
+  postCloseAmountText: string;
+  postCloseReason: string;
+  postCloseReference: OpeningMismatchAnomaly | null;
+  postCloseChecking: boolean;
+  postCloseRequiresConfirmation: boolean;
+  postCloseConfirmed: boolean;
+  postCloseStaleMessage: string;
   backfillText: string;
   backfillReason: string;
   /** The backfill form (contract §13): reason, opening cash (null shows the default) and the difference reason. */
@@ -112,12 +125,16 @@ interface PageState {
   recovery: RecoveryState | null;
 }
 
-type DraftKey = 'countedText' | 'note' | 'reopenOpen' | 'reopenReason' | 'backfillText' | 'backfillReason'
+type DraftKey = 'countedText' | 'note' | 'reopenOpen' | 'reopenReason' | 'postCloseDirection' | 'postCloseAmountText'
+  | 'postCloseReason' | 'postCloseChecking' | 'postCloseRequiresConfirmation' | 'postCloseConfirmed' | 'postCloseStaleMessage'
+  | 'backfillText' | 'backfillReason'
   | 'startReason' | 'startOpeningText' | 'startOpeningReason';
 
 function clearDrafts(): Pick<PageState, DraftKey> {
   return {
-    countedText: '', note: '', reopenOpen: false, reopenReason: '', backfillText: '', backfillReason: '',
+    countedText: '', note: '', reopenOpen: false, reopenReason: '', postCloseDirection: 'income', postCloseAmountText: '',
+    postCloseReason: '', postCloseChecking: false, postCloseRequiresConfirmation: false, postCloseConfirmed: false, postCloseStaleMessage: '',
+    backfillText: '', backfillReason: '',
     startReason: '', startOpeningText: null, startOpeningReason: '',
   };
 }
@@ -133,6 +150,7 @@ function initialPageState(scopeKey: string): PageState {
     notice: '',
     dayIdDraft: '',
     ...clearDrafts(),
+    postCloseReference: null,
     backfillPlan: null,
     recovery: null,
   };
@@ -182,6 +200,24 @@ function isBusinessDate(value: string): boolean {
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
+function sameOpeningMismatch(a: OpeningMismatchAnomaly, b: OpeningMismatchAnomaly): boolean {
+  return a.dayId === b.dayId
+    && a.openingCash === b.openingCash
+    && a.previousClosedDayId === b.previousClosedDayId
+    && a.previousCountedCash === b.previousCountedCash
+    && a.previousPostCloseNet === b.previousPostCloseNet
+    && a.previousEffectiveCash === b.previousEffectiveCash
+    && a.difference === b.difference
+    && a.daysApart === b.daysApart
+    && a.gapDayCount === b.gapDayCount
+    && a.gapDays.length === b.gapDays.length
+    && a.gapDays.every((dayId, index) => dayId === b.gapDays[index]);
+}
+
+function entryDirectionForDifference(difference: number): PostCloseDirection {
+  return difference > 0 ? 'income' : 'expense';
+}
+
 function formatMoney(amount: number): string {
   const sign = amount < 0 ? '−' : '';
   return `${sign}NT$ ${new Intl.NumberFormat('zh-TW').format(Math.abs(amount))}`;
@@ -192,9 +228,9 @@ function formatDifference(amount: number): string {
   return amount > 0 ? `多 ${formatMoney(amount)}` : `少 ${formatMoney(-amount)}`;
 }
 
-function formatServerTime(value: string): string {
-  const timestamp = new Date(value);
-  if (!Number.isFinite(timestamp.getTime())) return value;
+function formatServerTime(value: string | Date): string {
+  const timestamp = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(timestamp.getTime())) return value instanceof Date ? '—' : value;
   return new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', dateStyle: 'medium', timeStyle: 'medium' }).format(timestamp);
 }
 
@@ -207,6 +243,7 @@ const BACKFILL_STEP_LABEL = { 'ensure-day': '建立營業日', 'backfill-opening
 function commandLabel(command: PreparedCommand): string {
   if (command.kind === 'ensure-day' || command.kind === 'start-backfill') return `${command.dayId} ${BACKFILL_STEP_LABEL[command.kind]}`;
   if (command.kind === 'backfill-opening') return `${command.dayId} 補開帳`;
+  if (command.kind === 'record-post-close-entry') return `${command.dayId} 關帳後補記`;
   return command.kind === 'close-day' ? `${command.dayId} 關帳` : `${command.dayId} 重開`;
 }
 
@@ -255,6 +292,7 @@ function DayFigures({ day }: { day: CloudDayCloseState }) {
       <dt>櫃台支出</dt><dd>{formatMoney(t.cashierExpense)}</dd>
       <dt>帳戶退款</dt><dd>{formatMoney(t.accountRefunds)}</dd>
       <dt>應有現金</dt><dd>{day.expectedCash === null ? '需先確認開帳現金' : formatMoney(day.expectedCash)}</dd>
+      {day.status === 'closed' && <><dt>有效關帳現金</dt><dd aria-label="有效關帳現金">{day.effectiveCash === null ? '尚未計算' : formatMoney(day.effectiveCash)}</dd></>}
       <dt>有效交易</dt><dd>{t.activeTransactionCount} 筆</dd>
       <dt>份數</dt><dd>今日餐點 {t.bentoCount} · 其他餐點 {t.otherMealCount}</dd>
       <dt>餐費</dt><dd>{formatMoney(t.mealTotal)}</dd>
@@ -264,9 +302,10 @@ function DayFigures({ day }: { day: CloudDayCloseState }) {
 
 export function CloudDayClosePage({
   db, leaseEpoch, identityKey, onNavigationStateChange, backupBlock, ledger, onOpenAnomalies, onLedgerChanged, initialDayId,
-  onOpenOrders,
+  initialPostCloseEntry, onOpenOrders,
 }: CloudDayClosePageProps) {
   const initialDayIdRef = useRef(initialDayId);
+  const initialPostCloseEntryRef = useRef(initialPostCloseEntry);
   const onLedgerChangedRef = useRef(onLedgerChanged);
   useEffect(() => { onLedgerChangedRef.current = onLedgerChanged; }, [onLedgerChanged]);
   const repository = useMemo(() => createCloudDayCloseRepository(db), [db]);
@@ -278,6 +317,7 @@ export function CloudDayClosePage({
   const commandFlightRef = useRef<symbol | null>(null);
   const revokedScopeRef = useRef<string | null>(null);
   const pendingCommandIdRef = useRef<string | null>(null);
+  const postClosePreflightRef = useRef(false);
 
   if (scopeRef.current !== scopeKey) {
     scopeRef.current = scopeKey;
@@ -324,7 +364,7 @@ export function CloudDayClosePage({
     });
   }, [identityKey, isCurrent, onNavigationStateChange]);
 
-  const loadSnapshot = useCallback(async (targetDayId?: string, confirmedReceipt?: CommandReceipt) => {
+  const loadSnapshot = useCallback(async (targetDayId?: string, confirmedReceipt?: CommandReceipt, initialEntry?: OpeningMismatchAnomaly) => {
     const key = scopeKey;
     const generation = generationRef.current;
     if (revokedScopeRef.current === key) return;
@@ -383,13 +423,23 @@ export function CloudDayClosePage({
         return {
           ...previous,
           ...clearDrafts(),
-          snapshot: { overview, dayId, day, backfill, previous: previousLookup, align: alignLookup },
+        snapshot: { overview, dayId, day, backfill, previous: previousLookup, align: alignLookup },
           dayIdDraft: dayId,
           loading: false,
           loadError: '',
           actionError: '',
           backfillPlan: planDone ? null : planContinues && plan ? { ...plan, auto: true } : plan,
           recovery: confirmsPending ? null : previous.recovery,
+          postCloseReference: confirmedReceipt?.kind === 'RecordPostCloseEntry'
+            ? null
+            : initialEntry ?? (previous.postCloseReference?.previousClosedDayId === dayId ? previous.postCloseReference : null),
+          postCloseDirection: initialEntry
+            ? initialEntry.difference > 0 ? 'income' : 'expense'
+            : previous.postCloseDirection,
+          postCloseAmountText: initialEntry
+            ? String(Math.abs(initialEntry.difference))
+            : previous.postCloseReference?.previousClosedDayId === dayId ? String(Math.abs(previous.postCloseReference.difference)) : '',
+          postCloseReason: '',
           notice: planDone ? `${confirmedText}${dayId} 已標為回填，可以到訂餐頁補登交易。` : confirmedText,
         };
       });
@@ -424,7 +474,9 @@ export function CloudDayClosePage({
     setPageStateRaw(initialPageState(scopeKey));
     const firstDayId = initialDayIdRef.current;
     initialDayIdRef.current = undefined;
-    void loadSnapshot(firstDayId);
+    const firstPostCloseEntry = initialPostCloseEntryRef.current;
+    initialPostCloseEntryRef.current = undefined;
+    void loadSnapshot(firstDayId, undefined, firstPostCloseEntry);
     return () => {
       readRequestRef.current += 1;
       if (generationRef.current === generation) generationRef.current += 1;
@@ -457,6 +509,11 @@ export function CloudDayClosePage({
       return repository.closeDay({
         ...base, expectedCash: command.expectedCash, countedCash: command.countedCash, note: command.note,
         ...(command.alignWithDayId !== undefined ? { alignWithDayId: command.alignWithDayId } : {}),
+      });
+    }
+    if (command.kind === 'record-post-close-entry') {
+      return repository.recordPostCloseEntry({
+        ...base, direction: command.direction, amount: command.amount, reason: command.reason,
       });
     }
     return repository.reopenDay({ ...base, reason: command.reason });
@@ -545,6 +602,7 @@ export function CloudDayClosePage({
       actionError: '',
       notice: '',
       recovery: { commandId: command.commandId, command, phase: 'submitting' },
+      postCloseChecking: false,
     }));
 
     let result: CommandResult;
@@ -605,7 +663,7 @@ export function CloudDayClosePage({
         throw new Error('伺服器回傳的命令編號不符，無法確認結果。');
       }
       // The ID alone is insufficient: replay the frozen input with the same command ID so the
-      // repository verifies the stored command is exactly this close or reopen.
+      // repository verifies that the stored command is exactly the attempted operation.
       let verification: CommandResult;
       try {
         verification = await dispatch(recovery.command);
@@ -768,6 +826,118 @@ export function CloudDayClosePage({
     });
   };
 
+  const submitPostCloseEntry = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (page.recovery || page.postCloseChecking || !snapshot || !day || day.status !== 'closed') return;
+    const amountText = page.postCloseAmountText.trim();
+    const amount = /^\d+$/.test(amountText) ? Number(amountText) : null;
+    if (amount === null || !Number.isSafeInteger(amount) || amount < 1 || amount > 20_000) {
+      updatePage(previous => ({ ...previous, actionError: '關帳後補記金額必須明確輸入 1 至 20,000 元的整數；空白、零、負數與小數均不接受。' }));
+      return;
+    }
+    const reason = page.postCloseReason.trim();
+    if (reason.length < 1 || reason.length > 500) {
+      updatePage(previous => ({ ...previous, actionError: '關帳後補記原因必須為 1 至 500 個字元。' }));
+      return;
+    }
+    if (page.postCloseRequiresConfirmation && !page.postCloseConfirmed) {
+      updatePage(previous => ({ ...previous, actionError: '請先核對更新後的差額與關帳現金，再確認補記。' }));
+      return;
+    }
+
+    const reference = page.postCloseReference;
+    if (reference) {
+      if (postClosePreflightRef.current) return;
+      postClosePreflightRef.current = true;
+      const key = scopeKey;
+      const generation = generationRef.current;
+      updatePage(previous => ({ ...previous, postCloseChecking: true, actionError: '', postCloseStaleMessage: '' }));
+      try {
+        const [freshDay, freshLedger] = await Promise.all([
+          repository.read(snapshot.dayId),
+          repository.readLedger(),
+        ]);
+        if (!isCurrent(key, generation)) return;
+        const latestMismatch = freshLedger.anomalies.find((anomaly): anomaly is OpeningMismatchAnomaly => (
+          anomaly.kind === 'opening-mismatch' && anomaly.dayId === reference.dayId
+        ));
+        const targetDayId = latestMismatch && latestMismatch.gapDayCount === 0
+          ? latestMismatch.previousClosedDayId
+          : snapshot.dayId;
+        const targetDay = targetDayId === snapshot.dayId ? freshDay : await repository.read(targetDayId);
+        if (!isCurrent(key, generation)) return;
+
+        const unchanged = freshDay !== null
+          && freshDay.status === 'closed'
+          && freshDay.revision === day.revision
+          && freshDay.lastSettlementRevision === day.lastSettlementRevision
+          && latestMismatch !== undefined
+          && latestMismatch.gapDayCount === 0
+          && latestMismatch.previousClosedDayId === snapshot.dayId
+          && sameOpeningMismatch(reference, latestMismatch);
+        if (!unchanged) {
+          const refreshedReference = latestMismatch && latestMismatch.gapDayCount === 0 && targetDay?.status === 'closed'
+            ? latestMismatch
+            : null;
+          const refreshedDaySnapshot: DaySnapshot = {
+            ...snapshot,
+            dayId: targetDayId,
+            day: targetDay,
+            backfill: null,
+            previous: null,
+            align: null,
+          };
+          updatePage(previous => ({
+            ...previous,
+            snapshot: refreshedDaySnapshot,
+            dayIdDraft: targetDayId,
+            postCloseDirection: refreshedReference ? entryDirectionForDifference(refreshedReference.difference) : 'income',
+            postCloseAmountText: refreshedReference ? String(Math.abs(refreshedReference.difference)) : '',
+            postCloseReason: '',
+            postCloseReference: refreshedReference,
+            postCloseChecking: false,
+            postCloseRequiresConfirmation: refreshedReference !== null,
+            postCloseConfirmed: false,
+            postCloseStaleMessage: refreshedReference
+              ? '資料已更新，補記沒有送出。請核對更新後的差額與關帳現金，勾選確認後再送出。'
+              : '資料已更新，補記沒有送出。差額異常已消失或目前無法補記，請回帳務異常重新確認。',
+            actionError: '',
+          }));
+          onLedgerChangedRef.current?.();
+          return;
+        }
+      } catch (error) {
+        if (!isCurrent(key, generation)) return;
+        if (isAuthorizationLoss(error)) {
+          revokeAuthorization(key, generation, null, error);
+          return;
+        }
+        updatePage(previous => ({
+          ...previous,
+          postCloseChecking: false,
+          actionError: `送出前無法重新確認關帳版本與差額，補記沒有送出。${errorMessage(error)}請重新載入後再核對。`,
+        }));
+        return;
+      } finally {
+        postClosePreflightRef.current = false;
+      }
+      updatePage(previous => ({ ...previous, postCloseChecking: false }));
+    }
+
+    const commandId = makeCommandId();
+    if (!commandId) return;
+    void runPreparedCommand({
+      kind: 'record-post-close-entry',
+      commandId,
+      dayId: snapshot.dayId,
+      expectedDayRevision: day.revision,
+      expectedSettlementRevision: day.lastSettlementRevision,
+      direction: page.postCloseDirection,
+      amount,
+      reason,
+    });
+  };
+
   const submitBackfill = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (page.recovery || !snapshot || !day || !canBackfill) return;
@@ -863,7 +1033,7 @@ export function CloudDayClosePage({
     return () => clearTimeout(timer);
   }, [autoAdvance, snapshot]);
 
-  const busy = page.recovery !== null;
+  const busy = page.recovery !== null || page.postCloseChecking;
   const needsAttention = snapshot?.overview.unclosedDays.filter(item => item.kind !== 'no-business') ?? [];
   const noBusiness = snapshot?.overview.unclosedDays.filter(item => item.kind === 'no-business') ?? [];
   const currentKind = snapshot && day && day.status !== 'closed' && day.openingCash === null
@@ -1255,8 +1425,118 @@ export function CloudDayClosePage({
                       <div className="cloud-day-close__actions">
                         <button type="submit" className="cloud-day-close__primary" disabled={busy || closeBlocked} data-testid="close-submit">確認關帳</button>
                       </div>
-                      <p className="cloud-day-close__help">關帳後這天不能再新增或更正交易、菜單與開帳現金；要修正必須先填原因重開，再重新關帳。</p>
+                      <p className="cloud-day-close__help">關帳後不能再新增或更正交易、菜單與開帳現金。一般現金差額可在下方留下有原因的關帳後補記；若要更正關帳版本，仍須填原因重開後重新關帳。</p>
                     </form>
+                  </section>
+                )}
+
+                {(day.status === 'closed' || day.status === 'reopened') && (
+                  <section className="cloud-day-close__card" aria-label="關帳後補記與歷史">
+                    <h3>關帳後補記與歷史</h3>
+                    {day.status === 'closed' && <p className="cloud-day-close__help">
+                      補記只記錄關帳後的現金收入或支出，不修改學生訂餐、繳費、交易或原關帳實點。差額超過 20,000 元時需依現場流程處理，不可拆成多筆補記。
+                    </p>}
+                    {page.postCloseReference && (
+                      <p className="cloud-day-close__difference cloud-day-close__difference--nonzero" role="status" data-testid="post-close-anomaly-preview">
+                        由 {page.postCloseReference.dayId} 的開帳差額帶入：開帳現金 {formatMoney(page.postCloseReference.openingCash)}，
+                        {page.postCloseReference.previousClosedDayId} 有效關帳現金 {formatMoney(page.postCloseReference.previousEffectiveCash)}，
+                        差 {formatMoney(Math.abs(page.postCloseReference.difference))}。
+                      </p>
+                    )}
+                    {page.postCloseStaleMessage && <p className="cloud-day-close__warning" role="alert">{page.postCloseStaleMessage}</p>}
+                    {page.postCloseReference && Math.abs(page.postCloseReference.difference) > 20_000 && (
+                      <p className="cloud-day-close__warning" role="alert">此差額超過單筆補記上限 NT$ 20,000，沒有拆單或送出補記功能。</p>
+                    )}
+                    {day.status === 'closed' && <form
+                      className="cloud-day-close__form"
+                      aria-label={`${snapshot.dayId} 關帳後補記`}
+                      onSubmit={submitPostCloseEntry}
+                    >
+                      <label>
+                        收支方向
+                        <select
+                          className="cloud-day-close__input"
+                          value={page.postCloseDirection}
+                          onChange={event => updatePage(previous => ({ ...previous, postCloseDirection: event.target.value as PostCloseDirection, actionError: '' }))}
+                          disabled={busy}
+                        >
+                          <option value="income">收入</option>
+                          <option value="expense">支出</option>
+                        </select>
+                      </label>
+                      <label>
+                        金額（元）
+                        <input
+                          className="cloud-day-close__input cloud-day-close__mono"
+                          inputMode="numeric"
+                          value={page.postCloseAmountText}
+                          onChange={event => updatePage(previous => ({ ...previous, postCloseAmountText: event.target.value.trim(), actionError: '' }))}
+                          disabled={busy}
+                          required
+                        />
+                      </label>
+                      <label>
+                        原因（必填，最多 500 字）
+                        <textarea
+                          className="cloud-day-close__input"
+                          rows={2}
+                          maxLength={500}
+                          value={page.postCloseReason}
+                          onChange={event => updatePage(previous => ({ ...previous, postCloseReason: event.target.value, actionError: '' }))}
+                          disabled={busy}
+                          required
+                        />
+                      </label>
+                      {page.postCloseRequiresConfirmation && (
+                        <label className="cloud-day-close__confirmation">
+                          <input
+                            type="checkbox"
+                            checked={page.postCloseConfirmed}
+                            onChange={event => updatePage(previous => ({ ...previous, postCloseConfirmed: event.target.checked, actionError: '' }))}
+                            disabled={busy}
+                          />
+                          我已核對更新後的差額與關帳現金
+                        </label>
+                      )}
+                      <div className="cloud-day-close__actions">
+                        <button
+                          type="submit"
+                          className="cloud-day-close__primary"
+                          disabled={busy || (page.postCloseRequiresConfirmation && !page.postCloseConfirmed)
+                            || (page.postCloseReference !== null && Math.abs(page.postCloseReference.difference) > 20_000)}
+                        >
+                          {page.postCloseChecking ? '重新核對中…' : '確認補記'}
+                        </button>
+                      </div>
+                    </form>}
+                    <h4>關帳後補記歷史</h4>
+                    {day.postCloseEntries.length === 0 ? (
+                      <p>這個關帳版本還沒有補記。</p>
+                    ) : (
+                      <div className="cloud-day-close__table-wrap">
+                        <table>
+                          <thead>
+                            <tr><th>方向</th><th>金額</th><th>原因</th><th>操作者</th><th>時間（臺北）</th><th>關帳版本</th><th>計算狀態</th></tr>
+                          </thead>
+                          <tbody>
+                            {day.postCloseEntries.map(entry => {
+                              const effective = day.status === 'closed' && entry.settlementRevision === day.lastSettlementRevision;
+                              return (
+                                <tr key={entry.entryId} data-testid={`post-close-entry-${entry.entryId}`}>
+                                  <td>{entry.direction === 'income' ? '收入' : '支出'}</td>
+                                  <td className="cloud-day-close__mono">{formatMoney(entry.amount)}</td>
+                                  <td>{entry.reason}</td>
+                                  <td>{entry.createdBy}</td>
+                                  <td>{formatServerTime(entry.createdAt)}</td>
+                                  <td className="cloud-day-close__mono">{entry.settlementRevision}</td>
+                                  <td>{effective ? '已計入有效關帳現金' : '舊關帳版本，僅供歷史查閱'}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </section>
                 )}
 

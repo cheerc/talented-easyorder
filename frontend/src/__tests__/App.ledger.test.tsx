@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import type { CloudLedgerSnapshot } from '../firebase/cloudDayCloseRepository';
+import type { OpeningMismatchAnomaly } from '../domain/ledgerAnomalies';
 
 const appMocks = vi.hoisted(() => ({
   read: vi.fn(),
@@ -35,13 +36,17 @@ type PageProps = {
   onOpenAnomalies?: () => void;
   onLedgerChanged?: () => void;
   initialDayId?: string;
+  initialPostCloseEntry?: OpeningMismatchAnomaly;
 };
 
 function stubPage(label: string) {
-  return ({ identityKey, onNavigationStateChange, ledger, onOpenAnomalies, onLedgerChanged, initialDayId }: PageProps) => (
+  return ({ identityKey, onNavigationStateChange, ledger, onOpenAnomalies, onLedgerChanged, initialDayId, initialPostCloseEntry }: PageProps) => (
     <section aria-label={label}>
       <span data-testid={`${label}-ledger`}>{ledger?.status ?? 'none'}</span>
       <span data-testid={`${label}-focus`}>{initialDayId ?? ''}</span>
+      <span data-testid={`${label}-post-close-focus`}>
+        {initialPostCloseEntry ? `${initialPostCloseEntry.dayId}:${initialPostCloseEntry.difference}:${initialPostCloseEntry.previousEffectiveCash}` : ''}
+      </span>
       <button type="button" onClick={() => onNavigationStateChange(identityKey, 'recovering')}>{label}：保持待確認命令</button>
       <button type="button" onClick={() => onNavigationStateChange(identityKey, 'resolved')}>{label}：回報已確認</button>
       <button type="button" onClick={() => onOpenAnomalies?.()}>{label}：到異常頁</button>
@@ -129,6 +134,20 @@ describe('cloud navigation: ledger anomalies entry', () => {
     fireEvent.click(screen.getByRole('button', { name: '學生管理' }));
     fireEvent.click(screen.getByRole('button', { name: '日結' }));
     expect(screen.getByTestId('day-close-focus')).toHaveTextContent('');
+  });
+
+  it('routes a gap-free opening difference to its previous closed day with the original cash preview', async () => {
+    appMocks.read.mockResolvedValue(snapshot([mismatch]));
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', { name: '帳務異常（1）' }));
+    fireEvent.click(screen.getByTestId('post-close-shortcut-2026-10-16'));
+    expect(screen.getByTestId('day-close-focus')).toHaveTextContent('2026-10-14');
+    expect(screen.getByTestId('day-close-post-close-focus')).toHaveTextContent('2026-10-16:-70:870');
+
+    fireEvent.click(screen.getByRole('button', { name: '學生管理' }));
+    fireEvent.click(screen.getByRole('button', { name: '日結' }));
+    expect(screen.getByTestId('day-close-focus')).toHaveTextContent('');
+    expect(screen.getByTestId('day-close-post-close-focus')).toHaveTextContent('');
   });
 
   it('respects the navigation lock', async () => {

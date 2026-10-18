@@ -1,4 +1,4 @@
-import type { LedgerAnomaly } from '../../domain/ledgerAnomalies';
+import type { LedgerAnomaly, OpeningMismatchAnomaly } from '../../domain/ledgerAnomalies';
 import type { CloudLedgerView } from '../../hooks/useCloudLedger';
 import './CloudLedgerAnomaliesPage.css';
 
@@ -7,13 +7,19 @@ export interface CloudLedgerAnomaliesPageProps {
   onReload: () => void;
   /** 切到日結頁；帶 dayId 時直接選到那一天。 */
   onOpenDayClose: (dayId?: string) => void;
+  /** 帶入開帳差額預覽；原因由日結頁上的操作者填寫。 */
+  onOpenPostCloseEntry: (anomaly: OpeningMismatchAnomaly) => void;
 }
 
 function formatMoney(value: number): string {
   return `NT$ ${new Intl.NumberFormat('zh-TW').format(value)}`;
 }
 
-function AnomalyItem({ anomaly, onOpenDayClose }: { anomaly: LedgerAnomaly; onOpenDayClose: (dayId?: string) => void }) {
+function AnomalyItem({ anomaly, onOpenDayClose, onOpenPostCloseEntry }: {
+  anomaly: LedgerAnomaly;
+  onOpenDayClose: (dayId?: string) => void;
+  onOpenPostCloseEntry: (anomaly: OpeningMismatchAnomaly) => void;
+}) {
   if (anomaly.kind === 'unclosed-past-day') {
     return (
       <li className="cloud-ledger-anomalies__item" data-kind={anomaly.kind}>
@@ -54,7 +60,7 @@ function AnomalyItem({ anomaly, onOpenDayClose }: { anomaly: LedgerAnomaly; onOp
       </p>
       <p>
         差額可能來自中間沒有記到的日子，或前一個已關帳日的帳。中間完全沒有營業日資料的日子可以在下面回填，
-        補登當天的訂餐、繳費與櫃台收支；在前一個已關帳日補記一筆有標記的收支還沒開放。這一筆只是記錄異常，金額尚未更正。
+        補登當天的訂餐、繳費與櫃台收支。若中間沒有缺少營業日資料，且差額是前一個已關帳日漏記的現金收支，可以在該日新增一筆有原因的關帳後補記；補記不會修改原關帳實點，也不會自動更正其他交易。
       </p>
       {anomaly.gapDayCount > 0 ? (
         <div data-testid={`gap-days-${anomaly.dayId}`}>
@@ -72,13 +78,18 @@ function AnomalyItem({ anomaly, onOpenDayClose }: { anomaly: LedgerAnomaly; onOp
           </ul>
         </div>
       ) : (
-        <p>兩個日期之間每一天都已經有營業日資料，沒有可以回填的空日。</p>
+        <>
+          <p>兩個日期之間每一天都已經有營業日資料，沒有可以回填的空日。</p>
+          <button type="button" onClick={() => onOpenPostCloseEntry(anomaly)} data-testid={`post-close-shortcut-${anomaly.dayId}`}>
+            到前一個已關帳日補記差額（{anomaly.previousClosedDayId}）
+          </button>
+        </>
       )}
     </li>
   );
 }
 
-export function CloudLedgerAnomaliesPage({ ledger, onReload, onOpenDayClose }: CloudLedgerAnomaliesPageProps) {
+export function CloudLedgerAnomaliesPage({ ledger, onReload, onOpenDayClose, onOpenPostCloseEntry }: CloudLedgerAnomaliesPageProps) {
   return (
     <main className="cloud-ledger-anomalies" aria-label="帳務異常">
       <header className="cloud-ledger-anomalies__header">
@@ -106,7 +117,12 @@ export function CloudLedgerAnomaliesPage({ ledger, onReload, onOpenDayClose }: C
           ) : (
             <ul className="cloud-ledger-anomalies__list" aria-label="帳務異常清單">
               {ledger.snapshot.anomalies.map(anomaly => (
-                <AnomalyItem key={`${anomaly.kind}:${anomaly.dayId}`} anomaly={anomaly} onOpenDayClose={onOpenDayClose} />
+                <AnomalyItem
+                  key={`${anomaly.kind}:${anomaly.dayId}`}
+                  anomaly={anomaly}
+                  onOpenDayClose={onOpenDayClose}
+                  onOpenPostCloseEntry={onOpenPostCloseEntry}
+                />
               ))}
             </ul>
           )}

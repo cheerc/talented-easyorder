@@ -221,6 +221,8 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
       await fastClockAction.click();
       await expect(operatorB.page.locator('.operator-strip')).toHaveCount(0);
       await expect(operatorB.page.locator('.auth-gate')).toBeVisible();
+      await expect(fastClockAction).toBeEnabled();
+      await expect(operatorB.page.locator('.auth-gate-busy')).toContainText(`目前由操作員 ${operatorA.uid} 使用中`);
       await expect.poll(readAccessLease).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
 
       // Closing the actual holder tab does not release its server lease.
@@ -1556,6 +1558,131 @@ test.describe('P11c3 Cloud Backfill Align', () => {
       expect(close?.payload).toMatchObject({ countedCash: 970, expectedCash: 970, alignWithDayId: later });
       await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
       await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
+    } finally {
+      await session.close();
+    }
+  });
+});
+
+test.describe('P11c4b Cloud Post-Close UI', () => {
+  test.setTimeout(180000);
+  const zeroTotals = {
+    activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0, mealTotal: 0,
+    retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0,
+  };
+  let previous = '';
+  let next = '';
+  let postCloseEntryId = '';
+  let originalHead = { seq: 0, lastCommandId: null as unknown, goLiveDate: '' };
+
+  async function seedClosedDay(dayId: string, cash: number) {
+    const commandId = '00000000-0000-4000-8000-0000000000b1';
+    await upsertDocument('days', dayId, {
+      status: 'closed', revision: 5, menu: null, openingCash: cash, openedBy: 'e2e-seed', openedAt: new Date(),
+      totals: zeroTotals, lastSettlementRevision: 1, lastCommandId: commandId, updatedAt: new Date(),
+    });
+    await upsertDocument(`days/${dayId}/settlements`, '1', {
+      dayId, revision: 1, status: 'closed', totals: zeroTotals, openingCash: cash, expectedCash: cash, countedCash: cash,
+      difference: 0, note: '', actorUid: 'e2e-seed', actorEmail: 'e2e-seed@example.test', sourceSeq: 1,
+      committedAt: new Date(), previousRevision: 0, lastCommandId: commandId,
+    });
+  }
+
+  test.beforeEach(async () => {
+    await seedAccessLease({ ...VACANT_LEASE, updatedAt: new Date() });
+    const today = taipeiToday();
+    const head = (await readAdminDocument('system', 'dataHead'))!;
+    originalHead = { seq: Number(head.seq), lastCommandId: head.lastCommandId, goLiveDate: String(head.goLiveDate) };
+    const existing = new Set((await listAdminDocuments('days')).map(day => day.id));
+    for (let offset = 5; offset < 120; offset += 1) {
+      const candidatePrevious = shiftDay(today, -offset);
+      const candidateNext = shiftDay(candidatePrevious, 1);
+      if (!existing.has(candidatePrevious) && !existing.has(candidateNext)) {
+        previous = candidatePrevious;
+        next = candidateNext;
+        break;
+      }
+    }
+    if (!previous || !next) throw new Error('Could not find two adjacent unused synthetic business dates for P11c4b.');
+    await upsertDocument('system', 'dataHead', { goLiveDate: shiftDay(previous, -2) });
+    await seedClosedDay(previous, 1000);
+    await seedClosedDay(next, 950);
+  });
+
+  test.afterEach(async () => {
+    if (previous) {
+      for (const entry of await listAdminDocuments('postCloseEntries')) {
+        if (entry.dayId === previous) await removeDocument('postCloseEntries', entry.id);
+      }
+      await removeDocument(`days/${previous}/settlements`, '1');
+      await removeDocument('days', previous);
+    }
+    if (next) await removeDocument('days', next);
+    if (originalHead.goLiveDate) await restoreCommandHead(originalHead);
+    await seedAccessLease({ ...VACANT_LEASE, updatedAt: new Date() });
+  });
+
+  test('Q2: records the gap-free opening difference, then keeps the old entry as history after reopen and re-close', async ({ browser }) => {
+    const session = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
+    try {
+      const page = session.page;
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toBeVisible();
+
+      await page.getByRole('button', { name: /^帳務異常/ }).click();
+      const anomaly = page.getByTestId(`post-close-shortcut-${next}`);
+      await expect(anomaly).toBeVisible();
+      await anomaly.click();
+
+      const main = page.getByRole('main', { name: '雲端日結' });
+      await expect(main.getByRole('heading', { name: `${previous} 日結` })).toBeVisible();
+      const form = main.getByRole('form', { name: `${previous} 關帳後補記` });
+      await expect(form.getByLabel('收支方向')).toHaveValue('expense');
+      await expect(form.getByLabel('金額（元）')).toHaveValue('50');
+      const reason = form.getByLabel(/原因（必填/);
+      await expect(reason).toHaveValue('');
+      await form.getByRole('button', { name: '確認補記' }).click();
+      expect(await reason.evaluate(element => (element as HTMLTextAreaElement).validity.valueMissing)).toBe(true);
+      expect((await listAdminDocuments('postCloseEntries')).filter(item => item.dayId === previous)).toHaveLength(0);
+      await reason.fill('中間沒有營業日缺漏，前日漏記現金支出 50 元');
+      await form.getByRole('button', { name: '確認補記' }).click();
+      await expect(main.getByText(new RegExp(`已確認 ${previous} 關帳後補記 完成`))).toBeVisible();
+
+      const entry = (await listAdminDocuments('postCloseEntries')).find(item => item.dayId === previous);
+      expect(entry).toMatchObject({ dayId: previous, settlementRevision: 1, direction: 'expense', amount: 50 });
+      postCloseEntryId = entry!.id;
+      expect(await readAdminDocument(`days/${previous}/settlements`, '1')).toMatchObject({ countedCash: 1000 });
+      await expect(main.getByLabel('有效關帳現金')).toContainText('NT$ 950');
+
+      await page.getByRole('button', { name: /^帳務異常/ }).click();
+      await expect(page.getByTestId(`post-close-shortcut-${next}`)).toHaveCount(0);
+
+      await page.getByRole('button', { name: '日結' }).click();
+      await main.getByLabel('查看日期').fill(previous);
+      await main.getByRole('button', { name: '載入日期' }).click();
+      await expect(main.getByRole('heading', { name: `${previous} 日結` })).toBeVisible();
+      await main.getByRole('button', { name: '重開這一天' }).click();
+      const reopen = main.getByRole('form', { name: `${previous} 重開` });
+      await reopen.getByLabel(/重開原因/).fill('重新盤點，將補記支出納入本次實點');
+      await reopen.getByRole('button', { name: '確認重開' }).click();
+      await expect(main.getByText(new RegExp(`已確認 ${previous} 重開 完成`))).toBeVisible();
+      const history = main.getByTestId(`post-close-entry-${postCloseEntryId}`);
+      await expect(history).toContainText('舊關帳版本，僅供歷史查閱');
+      await expect(main.getByRole('form', { name: `${previous} 關帳後補記` })).toHaveCount(0);
+
+      const close = main.getByRole('form', { name: `${previous} 關帳` });
+      await close.getByLabel('實點現金（元）').fill('950');
+      await close.getByLabel(/差額原因/).fill('重開後已將舊補記支出反映在本次實點');
+      await close.getByRole('button', { name: '確認關帳' }).click();
+      await expect(main.getByText(new RegExp(`已確認 ${previous} 關帳 完成`))).toBeVisible();
+      await expect(history).toContainText('舊關帳版本，僅供歷史查閱');
+      await expect(main.getByLabel('有效關帳現金')).toContainText('NT$ 950');
+      expect(await readAdminDocument(`days/${previous}/settlements`, '1')).toMatchObject({ countedCash: 1000 });
+      expect(await readAdminDocument(`days/${previous}/settlements`, '3')).toMatchObject({ countedCash: 950, difference: -50 });
+
+      await page.getByRole('button', { name: /^帳務異常/ }).click();
+      await expect(page.getByTestId(`post-close-shortcut-${next}`)).toHaveCount(0);
+      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
     } finally {
       await session.close();
     }
