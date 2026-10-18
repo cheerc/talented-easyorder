@@ -761,6 +761,134 @@ describeWithEmulator('P14 cloud backup', () => {
     expect(replayBackupProjections(legacy.records, legacy.baseState)).toEqual(opened.projectionState);
   });
 
+  it('exports, decrypts and replays a real post-close entry across reopen and re-close (close → entry → reopen → re-close → entry); forged entries are rejected', async () => {
+    await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 0, []));
+    const db = authedDb();
+    const user = { uid: operator.uid, email: operator.email, emailVerified: true, providerData: [{ providerId: 'google.com' }] } as unknown as User;
+    const writer = createCloudCommandRepository(db, { currentUser: () => user });
+    const closing = createCloudDayCloseRepository(db, { currentUser: () => user });
+    const backups = createCloudBackupRepository(db, { currentUid: () => operator.uid });
+    const shifted = new Date(`${taipeiToday()}T00:00:00.000Z`);
+    shifted.setUTCDate(shifted.getUTCDate() - 1);
+    const dayId = shifted.toISOString().slice(0, 10);
+    let next = 1100;
+    const id = () => uuid(++next);
+    const okResult = (result: { ok: boolean }) => expect(result, JSON.stringify(result)).toMatchObject({ ok: true });
+    const day = async () => (await getDoc(doc(db, `days/${dayId}`))).data() as Record<string, number & string>;
+    const close = async (countedCash: number) => {
+      const current = await day();
+      okResult(await closing.closeDay({ commandId: id(), leaseEpoch: 7, dayId, expectedDayRevision: current.revision,
+        expectedSettlementRevision: current.lastSettlementRevision, expectedCash: 600, countedCash, note: countedCash === 600 ? '' : '實點差額' }));
+    };
+    const entry = async (direction: 'income' | 'expense', amount: number, reason: string, commandId = id()) => {
+      const current = await day();
+      okResult(await closing.recordPostCloseEntry({ commandId, leaseEpoch: 7, dayId, expectedDayRevision: current.revision,
+        expectedSettlementRevision: current.lastSettlementRevision, direction, amount, reason }));
+    };
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: 7,
+      targets: { dayId }, expectedRevisions: { day: 0 }, payload: { businessDate: dayId } }));
+    okResult(await closing.backfillOpening({ commandId: id(), leaseEpoch: 7, dayId,
+      expectedDayRevision: (await day()).revision, openingCash: 600, reason: '當天網路中斷' }));
+    await close(590);
+    await entry('expense', 10, '關帳後發現漏記買零錢');
+    const reopenCurrent = await day();
+    okResult(await closing.reopenDay({ commandId: id(), leaseEpoch: 7, dayId, expectedDayRevision: reopenCurrent.revision,
+      expectedSettlementRevision: reopenCurrent.lastSettlementRevision, reason: '重新盤點' }));
+    await close(600);
+    await entry('income', 20, '關帳後發現漏記收款');
+
+    const exported = await backups.exportRange({ fromSeq: 0, generatedAt: '2026-10-18T05:00:00.000Z' });
+    expect(exported.manifest.records.map(record => record.kind)).toEqual([
+      'EnsureDay', 'BackfillOpeningCash', 'CloseDay', 'RecordPostCloseEntry', 'ReopenDay', 'CloseDay', 'RecordPostCloseEntry',
+    ]);
+    const opened = await decryptBackup(await encryptBackup(exported.manifest, 'post-close-round-trip'), 'post-close-round-trip');
+    const replayed = replayBackupProjections(opened.records, opened.baseState);
+    expect(replayed).toEqual(opened.projectionState);
+    const firstEntry = replayed[`postCloseEntries/${opened.records[3]!.commandId}`];
+    const secondEntry = replayed[`postCloseEntries/${opened.records[6]!.commandId}`];
+    expect(firstEntry).toMatchObject({ dayId, settlementRevision: 1, direction: 'expense', amount: 10, reason: '關帳後發現漏記買零錢', createdBy: operator.uid });
+    expect(secondEntry).toMatchObject({ dayId, settlementRevision: 3, direction: 'income', amount: 20 });
+    expect(opened.records[3]).toMatchObject({ reason: '關帳後發現漏記買零錢', payload: { direction: 'expense', amount: 10, reason: '關帳後發現漏記買零錢' } });
+    // The day document is unchanged by an entry: revision and snapshot are identical before and after.
+    expect(opened.records[3]!.before!.day).toEqual(opened.records[3]!.after!.day);
+
+    const forge = (index: number, change: (entry: Record<string, unknown>, record: BackupCommandRecord) => void) => {
+      const copy = structuredClone(opened);
+      change(copy.records[index]!.after!.postCloseEntry as Record<string, unknown>, copy.records[index]!);
+      return copy;
+    };
+    expect(() => validateBackupManifest(forge(3, entry => { entry.amount = 11; }))).toThrow(/seq 4/);
+    expect(() => validateBackupManifest(forge(3, entry => { entry.direction = 'income'; }))).toThrow(/seq 4/);
+    expect(() => validateBackupManifest(forge(3, entry => { entry.reason = '竄改的原因'; }))).toThrow(/seq 4/);
+    expect(() => validateBackupManifest(forge(3, entry => { entry.createdBy = 'someone-else'; }))).toThrow(/seq 4/);
+    expect(() => validateBackupManifest(forge(3, entry => { entry.commandId = uuid(1); }))).toThrow(/seq 4/);
+    expect(() => validateBackupManifest(forge(3, entry => { entry.entryId = uuid(1); }))).toThrow(/seq 4/);
+    expect(() => validateBackupManifest(forge(3, entry => { entry.settlementRevision = 2; }))).toThrow(/seq 4/);
+    expect(() => validateBackupManifest(forge(3, entry => { entry.dayId = '2026-10-02'; }))).toThrow(/seq 4/);
+    expect(() => validateBackupManifest(forge(3, entry => { entry.createdAt = { _type: 'timestamp', seconds: 1, nanoseconds: 0 }; }))).toThrow(/seq 4/);
+    expect(() => validateBackupManifest(forge(3, entry => { entry.extra = true; }))).toThrow(/seq 4/);
+    expect(() => validateBackupManifest(forge(3, (_entry, record) => { record.reason = '另一個原因'; }))).toThrow(/seq 4/);
+    // Rules trim only ASCII whitespace, so a Unicode-space-only reason can reach a raw-SDK write. The backup must never be
+    // stricter than Rules, or one such immutable entry would block every later export.
+    for (const blank of ['\u3000', '\u00a0\u3000']) {
+      const blanked = forge(3, (entry, record) => {
+        entry.reason = blank;
+        record.reason = blank;
+        (record.payload as Record<string, unknown>).reason = blank;
+      });
+      (blanked.projectionState[`postCloseEntries/${opened.records[3]!.commandId}`] as Record<string, unknown>).reason = blank;
+      expect(() => validateBackupManifest(blanked), JSON.stringify(blank)).not.toThrow();
+    }
+    expect(() => validateBackupManifest(forge(3, (_entry, record) => { record.payload = { ...record.payload, amount: 20_001 }; }))).toThrow(/seq 4/);
+    expect(() => validateBackupManifest(forge(3, (_entry, record) => { record.payload = { ...record.payload, direction: 'transfer' }; }))).toThrow(/seq 4/);
+    // A day before the go-live date cannot take an entry.
+    const beforeGoLive = structuredClone(opened);
+    for (const head of [beforeGoLive.records[3]!.before!.head, beforeGoLive.records[3]!.after!.head] as Array<Record<string, unknown>>) head.goLiveDate = '2099-01-01';
+    expect(() => validateBackupManifest(beforeGoLive)).toThrow(/seq 4/);
+    // The day must stay unchanged and must be closed with the revisions the command names.
+    const dayChanged = structuredClone(opened);
+    (dayChanged.records[3]!.after!.day as Record<string, unknown>).openingCash = 1;
+    expect(() => validateBackupManifest(dayChanged)).toThrow(/seq 4/);
+    const dayNotClosed = structuredClone(opened);
+    (dayNotClosed.records[3]!.before!.day as Record<string, unknown>).status = 'open';
+    (dayNotClosed.records[3]!.after!.day as Record<string, unknown>).status = 'open';
+    expect(() => validateBackupManifest(dayNotClosed)).toThrow(/seq 4/);
+    const wrongSettlement = structuredClone(opened);
+    wrongSettlement.records[3]!.expectedRevisions = { ...wrongSettlement.records[3]!.expectedRevisions, settlement: 2 };
+    expect(() => validateBackupManifest(wrongSettlement)).toThrow(/seq 4/);
+    const staleBefore = structuredClone(opened);
+    staleBefore.records[3]!.before!.postCloseEntry = secondEntry;
+    expect(() => validateBackupManifest(staleBefore)).toThrow(/seq 4/);
+    // Replay: an entry before the day closed (reordered ahead of the first close), after the reopen without a
+    // re-close, or applied twice, is refused.
+    const beforeClose = [opened.records[0]!, opened.records[1]!, opened.records[3]!, opened.records[2]!, ...opened.records.slice(4)];
+    expect(() => replayBackupProjections(beforeClose, opened.baseState)).toThrow();
+    const whileReopened = opened.records.filter((_, index) => index !== 5);
+    expect(() => replayBackupProjections(whileReopened, opened.baseState)).toThrow();
+    const twice = [...opened.records.slice(0, 4), opened.records[3]!, ...opened.records.slice(4)];
+    expect(() => replayBackupProjections(twice, opened.baseState)).toThrow();
+    // Replay on its own (a coherent record against a base state): the day must be closed, at the settlement
+    // version the entry names, and the entry must be new.
+    const entryRecord = opened.records[3]!;
+    const dayClosed = entryRecord.before!.day as Record<string, unknown>;
+    const coherent = (day: Record<string, unknown>) => {
+      const record = structuredClone(entryRecord);
+      record.before!.day = structuredClone(day);
+      record.after!.day = structuredClone(day);
+      return record;
+    };
+    const baseWith = (day: Record<string, unknown>) => ({ [`days/${dayId}`]: structuredClone(day) });
+    expect(() => replayBackupProjections([coherent(dayClosed)], baseWith(dayClosed))).not.toThrow();
+    const dayOpen = { ...dayClosed, status: 'open' };
+    expect(() => replayBackupProjections([coherent(dayOpen)], baseWith(dayOpen))).toThrow(/補記/);
+    const dayReclosed = { ...dayClosed, lastSettlementRevision: 3 };
+    expect(() => replayBackupProjections([coherent(dayReclosed)], baseWith(dayReclosed))).toThrow(/補記/);
+    // An older backup without the new kind still validates and replays unchanged.
+    const legacy = structuredClone(opened);
+    legacy.records = legacy.records.slice(0, 3);
+    expect(() => replayBackupProjections(legacy.records, legacy.baseState)).not.toThrow();
+  });
+
   it('exports, decrypts and replays a real SetOpeningCash with a difference reason, and an older one without; forged reasons are rejected', async () => {
     await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 0, []));
     const db = authedDb();

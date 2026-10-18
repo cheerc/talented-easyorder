@@ -1257,7 +1257,8 @@ service cloud.firestore {
         || ((kind == 'CorrectOpening' && validCorrectOpening(commandId, command))
           || (kind in ['CloseDay', 'ReopenDay'] && validDaySettlementCommand(commandId, command))
           || (kind == 'BackfillOpeningCash' && validBackfillOpeningCash(commandId, command))
-          || (kind == 'StartBackfill' && validStartBackfill(commandId, command)));
+          || (kind == 'StartBackfill' && validStartBackfill(commandId, command))
+          || (kind == 'RecordPostCloseEntry' && validRecordPostCloseEntry(commandId, command)));
     }
 
     // BackfillOpeningCash: a past open／reopened day that never confirmed its opening cash (for
@@ -1329,6 +1330,57 @@ service cloud.firestore {
           'dayId': dayId, 'reason': p.reason, 'startedBy': request.auth.uid,
           'startedAt': request.time, 'commandId': commandId
         };
+    }
+
+    // P11c4a RecordPostCloseEntry: a closed day cannot be reopened to fix its books, so a plain cashier income
+    // or expense is added after the close, with a reason, as the immutable document
+    // `postCloseEntries/{commandId}`. Like StartBackfill this writes the head, the command and that one
+    // document only: the day (revision, totals, status), its settlements, transactions and students stay
+    // exactly as they were. `expectedRevisions` binds the day revision and the settlement revision, and
+    // the entry is tied to the settlement version it was recorded against (`settlementRevision`), so a
+    // later reopen and re-close stops counting it (contract §15).
+    function validRecordPostCloseEntry(commandId, command) {
+      let dayId = command.targets.dayId;
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let dayBefore = get(/databases/$(database)/documents/days/$(dayId)).data;
+      let entry = getAfter(/databases/$(database)/documents/postCloseEntries/$(commandId)).data;
+      let p = command.payload;
+      return commandHolder(command.leaseEpoch)
+        && cashCommandEnvelope(commandId, command, head, headAfter)
+        && exactMap(command.targets, ['dayId'])
+        && exactMap(command.expectedRevisions, ['day', 'settlement'])
+        && command.expectedRevisions.day == dayBefore.revision
+        && command.expectedRevisions.settlement == dayBefore.lastSettlementRevision
+        && validCalendarDate(dayId)
+        && dayId >= head.goLiveDate
+        && dayBefore.status == 'closed'
+        && exactMap(p, ['direction', 'amount', 'reason'])
+        && p.direction in ['income', 'expense']
+        && p.amount is int && p.amount >= 1 && p.amount <= 20000
+        && validMutationReason(p.reason)
+        && p.reason.trim().size() >= 1
+        && command.reason == p.reason
+        && command.businessDate == dayId
+        && command.studentId == null
+        && zeroCashEffect(command.cashEffect)
+        && command.before == {'head': head, 'day': dayBefore, 'postCloseEntry': null}
+        && command.after == {'head': headAfter, 'day': dayBefore, 'postCloseEntry': entry}
+        && entry == {
+          'entryId': commandId, 'dayId': dayId, 'settlementRevision': dayBefore.lastSettlementRevision,
+          'direction': p.direction, 'amount': p.amount, 'reason': p.reason,
+          'createdBy': request.auth.uid, 'createdAt': request.time, 'commandId': commandId
+        };
+    }
+
+    function postCloseEntryCommand(commandId, entryId, after) {
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      return entryId == commandId
+        && command.kind == 'RecordPostCloseEntry'
+        && !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && command.after.postCloseEntry == after;
     }
 
     function backfillDayCommand(commandId, dayId, after) {
@@ -2148,6 +2200,13 @@ service cloud.firestore {
       allow update, delete: if false;
       allow create: if request.resource.data.commandId is string
         && backfillDayCommand(request.resource.data.commandId, dayId, request.resource.data);
+    }
+    // P11c4a immutable post-close entries: created once by RecordPostCloseEntry, never changed or deleted.
+    match /postCloseEntries/{entryId} {
+      allow get, list: if currentHolder();
+      allow update, delete: if false;
+      allow create: if request.resource.data.commandId is string
+        && postCloseEntryCommand(request.resource.data.commandId, entryId, request.resource.data);
     }
     match /students/{studentId} {
       // Query authorization cannot filter by student schema; every returned record is

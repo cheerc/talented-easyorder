@@ -986,6 +986,20 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     await waitFor(() => expect(repositoryMock.loadSnapshot).toHaveBeenLastCalledWith({ dayId: null }));
   });
 
+  it('re-reads the list of backfilling days after the server rejects an operation (P11c3 review)', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot());
+    repositoryMock.createPayment.mockResolvedValueOnce(errorResult('REVISION_CONFLICT'));
+    renderComponent('uid-1:1', GAP);
+    await selectStudent('001');
+    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
+    fireEvent.click(screen.getByTestId('submit-order-button'));
+    await waitFor(() => expect(repositoryMock.createPayment).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2));
+    // The reload after a definite rejection passes no known list, so the server is asked again.
+    expect(repositoryMock.loadSnapshot).toHaveBeenNthCalledWith(2, { dayId: GAP });
+  });
+
   it('does not reuse a list that could not be read', async () => {
     repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot({ backfillDays: [], backfillDaysError: '連線中斷' }));
     renderComponent('uid-1:1', GAP);

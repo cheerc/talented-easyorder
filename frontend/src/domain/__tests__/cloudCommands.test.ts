@@ -13,8 +13,8 @@ describe('cloudCommands: 型別常數與 cashEffect 驗證', () => {
     expect(schemaVersion).toBe(1);
   });
 
-  it('涵蓋 spec §6.1 規定的 26 種 command kinds（含 P09b CreateRefund、補開帳、開始回填）', () => {
-    expect(ALL_COMMAND_KINDS).toHaveLength(26);
+  it('涵蓋 spec §6.1 規定的 27 種 command kinds（含 P09b CreateRefund、補開帳、開始回填、關帳後補記）', () => {
+    expect(ALL_COMMAND_KINDS).toHaveLength(27);
     expect(ALL_COMMAND_KINDS).toContain('CreateStudent');
     expect(ALL_COMMAND_KINDS).toContain('ChangeStudentCode');
     expect(ALL_COMMAND_KINDS).toContain('EditStudent');
@@ -38,6 +38,7 @@ describe('cloudCommands: 型別常數與 cashEffect 驗證', () => {
     expect(ALL_COMMAND_KINDS).toContain('ReopenDay');
     expect(ALL_COMMAND_KINDS).toContain('BackfillOpeningCash');
     expect(ALL_COMMAND_KINDS).toContain('StartBackfill');
+    expect(ALL_COMMAND_KINDS).toContain('RecordPostCloseEntry');
     expect(ALL_COMMAND_KINDS).toContain('RecordExport');
     expect(ALL_COMMAND_KINDS).toContain('RecordPrint');
     expect(ALL_COMMAND_KINDS).toContain('RecordBackup');

@@ -642,7 +642,7 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
       anomalies: [
         { kind: 'unclosed-past-day', dayId: '2026-10-12', status: 'open', openingCash: 500, activeTransactionCount: 2 },
         { kind: 'unclosed-past-day', dayId: '2026-10-14', status: 'reopened', openingCash: null, activeTransactionCount: 1 },
-        { kind: 'opening-mismatch', dayId: '2026-10-14', openingCash: 1, previousClosedDayId: '2026-10-13', previousCountedCash: 2, difference: -1, daysApart: 1, gapDays: [], gapDayCount: 0 },
+        { kind: 'opening-mismatch', dayId: '2026-10-14', openingCash: 1, previousClosedDayId: '2026-10-13', previousCountedCash: 2, previousPostCloseNet: 0, previousEffectiveCash: 2, difference: -1, daysApart: 1, gapDays: [], gapDayCount: 0 },
       ],
     }), { onOpenAnomalies });
     const banner = await screen.findByLabelText('過去未關帳警示');

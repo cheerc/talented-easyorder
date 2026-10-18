@@ -781,3 +781,69 @@ Each Rules mutant changes one check and runs `cloudDayClose.spec.ts -t 'P11c3|P1
 | backup replay: do not compare the aligned day's opening cash | killed (`aligned close`: coherent forgery of the aligned day's opening) |
 | backup replay: allow `alignWithDayId` on an unmarked day | killed (`aligned close`) |
 | backup replay: drop `align > dayId` | **equivalent**: `normalizeEnabledCommandInput` rejects it first (the payload schema, §14.5) |
+
+## P11c4a — post-close entry — budget and probe receipt
+
+P11c4a adds the 27th kind `RecordPostCloseEntry` (25 enabled) and the new collection `postCloseEntries/{entryId}` (entry ID = command ID). It writes the data head, the command and one immutable entry; the day document, settlements, transactions and students are not written. Contract: [P11 day close contract §15](../superpowers/specs/2026-10-17-cloud-day-close-contract.md#15-p11c4-關帳後補記recordpostcloseentry).
+
+### Rule layout
+
+- `validRecordPostCloseEntry` is nested in the last operand of `validCommandCreate` next to `StartBackfill` (no new top-level `||`). It binds `expectedRevisions.day` to `dayBefore.revision` and `expectedRevisions.settlement` to `dayBefore.lastSettlementRevision`, requires `dayBefore.status == 'closed'` and `dayId >= goLiveDate`, restricts the payload to `{direction, amount 1–20,000, reason}`, ties the top-level `reason` to `payload.reason`, and pins `before = {head, day, postCloseEntry: null}` and `after = {headAfter, day (unchanged), entry}` with `entry` an exact map (`entryId == commandId`, `settlementRevision == dayBefore.lastSettlementRevision`, `createdBy == auth.uid`, `createdAt == request.time`).
+- `postCloseEntries/{entryId}`: `get`/`list` for the current holder, `update`/`delete` false, `create` only through `postCloseEntryCommand` (the command exists after the commit, did not exist before, has the same ID, kind and commit time, and its `after.postCloseEntry` equals the written entry). The head rule is kind-agnostic, so `headCommand` is untouched. `dayWriteCommand`, `dayCloseCommand` and `StartBackfill` are untouched.
+
+### Write budget
+
+| Command / write path | Command-create Rules calls | Head leaf | Entry leaf | Atomic no-cache total | Max per write |
+|---|---:|---:|---:|---:|---:|
+| `RecordPostCloseEntry` | 6 (`get` lease, `get` operator, `get` head, `getAfter` head, `get` day, `getAfter` entry) | 2 (`getAfter` + `exists` command) | 2 (`getAfter` + `exists` command) | **10 (+1 lease verify) = 11/20** | **6/10** |
+
+Static derivation like the earlier appendices (the Emulator has no access counter). It is the same shape as `StartBackfill`; the maximum payload (`P11c4.3`: amount 20,000, 500-character reason) and a raw batch pass in the Emulator.
+
+### Expression headroom
+
+Same probe as before (`1 == 1 &&` terms at one anchor, bisected against a positive Emulator case; `+lo / +hi`). Main is `e824492`; this PR is measured on its final Rules (`firestore.rules` unchanged since the first Rules commit `d010464`). The probe has a new anchor `postClose` (the `postCloseEntries` create rule). Every anchor was measured on both sides; none dropped to +5 or lower, none is below main — all are equal.
+
+| Rule anchor | Case | Main | This PR |
+|---|---|---:|---:|
+| command create | `P11.9` ordinary max close | +52 / +53 | +52 / +53 |
+| dataHead update | `P11.9` | +95 / +96 | +95 / +96 |
+| day update (`dayCloseCommand`) | `P11.9` | +96 / +97 | +96 / +97 |
+| settlement create | `P11.9` | +96 / +97 | +96 / +97 |
+| day update (`dayWriteCommand`) | `P08.8` CreateOrder | +11 / +12 | +11 / +12 |
+| command create | `P08.8` CreateOrder | +20 / +21 | +20 / +21 |
+| command create | P14 real P10a receipts (capped by `CreateStudent`) | +3 / +4 | +3 / +4 |
+| transaction create | `P11c2a.14` backfilled order | +16 / +17 | +16 / +17 |
+| command create | `P11c3.8` aligned max close | +36 / +37 | +36 / +37 |
+| command create | `P11c3.10` reclose of a reopened marked day | +20 / +21 | +20 / +21 |
+| command create | `P11c4.3` `RecordPostCloseEntry`, 20,000 and a 500-character reason | — | +64 / +65 |
+| dataHead update | `P11c4.3` | — | +95 / +96 |
+| `postCloseEntries` create | `P11c4.3` | — | +96 / +97 |
+
+Review fix (`reason.trim().size() >= 1` on the command rule): the new kind's command anchor moved from +65 / +66 to +64 / +65; every other anchor is unchanged. Rules `trim()` strips only ASCII whitespace, so a Unicode-space-only reason (U+3000, U+00A0) still passes Rules. The schema (`ASCII_BLANK`, which the backup also runs through), the receipt, the entry read and the backup checks accept it on purpose: none of them may be stricter than Rules, or one such immutable entry would block every export (a first fix with a Unicode-aware JavaScript `trim()` in the schema failed the real-backup test this way).
+
+The tightest anchors are unchanged: the transaction rule for a backfilled order (+16), the day rule for `CreateOrder` (+11), `CreateStudent` on the command rule (+3). The new kind has +64 on the command rule.
+
+### Mutants
+
+Each Rules mutant changes one check in `validRecordPostCloseEntry` / `postCloseEntryCommand` / the `postCloseEntries` rule and runs `cloudDayClose.spec.ts -t P11c4` (all `P11c4.*` cases). Backup mutants run the `post-close entry` round-trip in `cloudBackup.spec.ts`.
+
+| Mutant | Result |
+|---|---|
+| remove `dayBefore.status == 'closed'` | killed (`P11c4.5`: open and reopened days) |
+| entry `settlementRevision` no longer bound to `dayBefore.lastSettlementRevision` | killed (`P11c4.4`: entry names another settlement revision) |
+| remove `expectedRevisions.settlement == dayBefore.lastSettlementRevision` | killed (`P11c4.4`: stale expected settlement revision) |
+| `postCloseEntries` `update, delete` allowed for the holder | killed (`P11c4.6`) |
+| top-level `reason` no longer bound to `payload.reason` | killed (`P11c4.4`: a different reason and a `null` reason) |
+| remove the 20,000 upper bound | killed (`P11c4.4`) |
+| remove the `direction` check | killed (`P11c4.4`) |
+| remove the `before == {head, day, postCloseEntry: null}` pin | killed (`P11c4.4`: before-snapshot claims an existing entry) |
+| remove `dayId >= head.goLiveDate` | killed (`P11c4.5`) |
+| `postCloseEntries` create without `postCloseEntryCommand` | killed (`P11c4.6`: hand-made entry) |
+| remove `p.reason.trim().size() >= 1` (added after the independent review: a spaces-only reason passed Rules but made the backup export fail forever) | killed (`P11c4.4`: reason only spaces / only a tab and a newline) |
+| remove `entryId == commandId` in `postCloseEntryCommand` | **survived the first test set** (every case moved or omitted the real entry); a copy of the entry under a second ID would be counted twice by the effective closing cash. Test added in `P11c4.5` (a copy next to the real entry, and the only copy under another ID) → killed |
+| backup replay: drop the "day is closed" check | first run survived (a chain-consistent forgery was not tested); replay-level cases against a base state added (`post-close entry` test: open day, re-closed day) → killed |
+| backup replay: drop `lastSettlementRevision == entry.settlementRevision` | same → killed |
+| backup replay: drop "the entry does not exist yet" | **equivalent**: the projection loop already compares `before.postCloseEntry` (`null`) with the replayed state and rejects a repeat |
+| backup manifest checks, one at a time: amount, settlement revision, day unchanged, day closed, top-level reason, go-live | survive individually, **by design**: `validateEnabledReceiptSemantics` (`validatePostCloseEntryReceipt`) and the replay's before-snapshot comparison reject the same forgeries. With the amount and settlement-revision checks removed from every layer the test fails (killed); the other four were only removed from the manifest and receipt layers, where a remaining shared check still rejects them |
+
+The first column of mutants ran with `EASYORDER_TEST_RULES_PATH` pointing at a mutated copy of `firestore.rules` and `cloudDayClose.spec.ts -t P11c4`; backup mutants edited `cloudBackup.ts` / `cloudCommandSchema.ts` temporarily (restored after each run) and ran `cloudBackup.spec.ts -t 'post-close entry'`.

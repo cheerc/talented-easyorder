@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type SetStateAction } from 'react';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
-import { openingDifference, type PreviousClosedDay } from '../../domain/ledgerAnomalies';
+import { effectiveCashOf, openingDifference, type PreviousClosedDay } from '../../domain/ledgerAnomalies';
 import {
   createCloudDayCloseRepository,
   type BackfillCloudDayOpeningInput,
@@ -795,7 +795,7 @@ export function CloudDayClosePage({
   // The backfill form (contract §13): reason, opening cash where the day has none, and a difference reason.
   const startOpeningNeeded = !!snapshot && (!day || day.openingCash === null);
   const previousClosed = snapshot?.previous?.status === 'ready' ? snapshot.previous.previous : null;
-  const defaultOpeningText = previousClosed ? String(previousClosed.countedCash) : '';
+  const defaultOpeningText = previousClosed ? String(effectiveCashOf(previousClosed)) : '';
   const startOpeningText = (page.startOpeningText ?? defaultOpeningText).trim();
   const startOpeningCash = /^\d+$/.test(startOpeningText) ? Number(startOpeningText) : null;
   const startDifference = startOpeningNeeded && startOpeningCash !== null ? openingDifference(previousClosed, startOpeningCash) : null;
@@ -1073,7 +1073,7 @@ export function CloudDayClosePage({
                   {startOpeningNeeded && (
                     <>
                       <label>
-                        開帳現金（元）{previousClosed ? `，預設為 ${previousClosed.dayId} 關帳的實點` : ''}
+                        開帳現金（元）{previousClosed ? `，預設為 ${previousClosed.dayId} 關帳的${(previousClosed.postCloseNet ?? 0) !== 0 ? '有效現金（含關帳後補記）' : '實點'}` : ''}
                         <input
                           className="cloud-day-close__input cloud-day-close__mono"
                           inputMode="numeric"

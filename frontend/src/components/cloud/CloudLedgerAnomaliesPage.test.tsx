@@ -47,7 +47,7 @@ describe('CloudLedgerAnomaliesPage', () => {
     renderPage(ready([
       {
         kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 800, previousClosedDayId: '2026-10-13',
-        previousCountedCash: 870, difference: -70, daysApart: 3, gapDays: [], gapDayCount: 0,
+        previousCountedCash: 870, previousPostCloseNet: 0, previousEffectiveCash: 870, difference: -70, daysApart: 3, gapDays: [], gapDayCount: 0,
       },
     ]));
     const item = screen.getByRole('listitem');
@@ -63,11 +63,24 @@ describe('CloudLedgerAnomaliesPage', () => {
     expect(within(item).queryByRole('button')).not.toBeInTheDocument();
   });
 
+  it('compares the opening with the effective closing cash and names the post-close net when there are entries', () => {
+    renderPage(ready([
+      {
+        kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 950, previousClosedDayId: '2026-10-13',
+        previousCountedCash: 1000, previousPostCloseNet: -30, previousEffectiveCash: 970, difference: -20, daysApart: 3, gapDays: [], gapDayCount: 0,
+      },
+    ]));
+    const item = screen.getByRole('listitem');
+    expect(item).toHaveTextContent('2026-10-13 的實點現金是 NT$ 1,000');
+    expect(item).toHaveTextContent('關帳後補記淨額 −NT$ 30，有效關帳現金 NT$ 970');
+    expect(item).toHaveTextContent('開帳比有效關帳現金少了 NT$ 20');
+  });
+
   it('lists the gap days of an opening mismatch with a backfill button each', () => {
     const { onOpenDayClose } = renderPage(ready([
       {
         kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 800, previousClosedDayId: '2026-10-13',
-        previousCountedCash: 870, difference: -70, daysApart: 3, gapDays: ['2026-10-14', '2026-10-15'], gapDayCount: 2,
+        previousCountedCash: 870, previousPostCloseNet: 0, previousEffectiveCash: 870, difference: -70, daysApart: 3, gapDays: ['2026-10-14', '2026-10-15'], gapDayCount: 2,
       },
     ]));
     const gap = screen.getByTestId('gap-days-2026-10-16');
@@ -83,7 +96,7 @@ describe('CloudLedgerAnomaliesPage', () => {
     renderPage(ready([
       {
         kind: 'opening-mismatch', dayId: '2026-12-01', openingCash: 800, previousClosedDayId: '2026-10-01',
-        previousCountedCash: 870, difference: -70, daysApart: 61, gapDays: ['2026-10-02', '2026-10-03'], gapDayCount: 59,
+        previousCountedCash: 870, previousPostCloseNet: 0, previousEffectiveCash: 870, difference: -70, daysApart: 61, gapDays: ['2026-10-02', '2026-10-03'], gapDayCount: 59,
       },
     ]));
     expect(screen.getByTestId('gap-days-2026-12-01')).toHaveTextContent('共 59 天，這裡先列出最早的 2 天');
@@ -103,7 +116,7 @@ describe('CloudLedgerAnomaliesPage', () => {
     renderPage(ready([
       {
         kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 900, previousClosedDayId: '2026-10-15',
-        previousCountedCash: 870, difference: 30, daysApart: 1, gapDays: [], gapDayCount: 0,
+        previousCountedCash: 870, previousPostCloseNet: 0, previousEffectiveCash: 870, difference: 30, daysApart: 1, gapDays: [], gapDayCount: 0,
       },
     ]));
     expect(screen.getByRole('listitem')).toHaveTextContent('多了 NT$ 30');

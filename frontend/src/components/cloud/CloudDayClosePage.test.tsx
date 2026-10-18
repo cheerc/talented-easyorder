@@ -59,6 +59,8 @@ function dayState(overrides: Partial<CloudDayCloseState> = {}): CloudDayCloseSta
     lastSettlementRevision: 0,
     expectedCash: 1170,
     settlements: [],
+    postCloseEntries: [],
+    effectiveCash: null,
     seq: 20,
     ...overrides,
   };
@@ -372,7 +374,7 @@ describe('CloudDayClosePage: ledger warnings (contract §11)', () => {
       anomalies: [
         { kind: 'unclosed-past-day', dayId: '2026-10-14', status: 'open', openingCash: 500, activeTransactionCount: 1 },
         { kind: 'unclosed-past-day', dayId: '2026-10-15', status: 'open', openingCash: 600, activeTransactionCount: 2 },
-        { kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 1, previousClosedDayId: '2026-10-13', previousCountedCash: 2, difference: -1, daysApart: 3, gapDays: [], gapDayCount: 0 },
+        { kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 1, previousClosedDayId: '2026-10-13', previousCountedCash: 2, previousPostCloseNet: 0, previousEffectiveCash: 2, difference: -1, daysApart: 3, gapDays: [], gapDayCount: 0 },
       ],
     },
   };
@@ -551,6 +553,16 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     expect(screen.getByTestId('backfill-info')).toHaveTextContent('那天斷線');
     expect(screen.queryByTestId('backfill-plan-panel')).not.toBeInTheDocument();
     expect(screen.queryByTestId('backfill-start')).not.toBeInTheDocument();
+  });
+
+  it('defaults the opening cash to the previous day\'s effective closing cash when it has post-close entries (contract §15)', async () => {
+    repository.findPreviousClosed.mockResolvedValue({ previous: { ...previousClosed, postCloseNet: -50 }, seq: 20 });
+    repository.readOverview.mockResolvedValue(gapOverview());
+    repository.read.mockResolvedValue(null);
+    renderAt(gap);
+    const form = await startForm();
+    expect(within(form).getByRole('textbox', { name: /開帳現金（元）/ })).toHaveValue(String(previousClosed.countedCash - 50));
+    expect(within(form).getByText(/預設為 2026-10-12 關帳的有效現金（含關帳後補記）/)).toBeInTheDocument();
   });
 
   it('requires a reason, a valid opening cash and, when it differs from the last close, a difference reason', async () => {

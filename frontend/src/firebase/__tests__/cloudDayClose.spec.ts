@@ -883,17 +883,17 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     // today's seeded opening is 1,000.
     const snapshot = await repository().readLedger();
     expect(snapshot).toMatchObject({ today, goLiveDate: shiftDate(today, -30) });
-    expect(snapshot.closedDays).toEqual([{ dayId: d1, countedCash: 700 }, { dayId: d2, countedCash: 870 }]);
+    expect(snapshot.closedDays).toEqual([{ dayId: d1, countedCash: 700, postCloseNet: 0 }, { dayId: d2, countedCash: 870, postCloseNet: 0 }]);
     expect(snapshot.anomalies).toEqual([
       { kind: 'unclosed-past-day', dayId: d3, status: 'open', openingCash: 800, activeTransactionCount: 4 },
       {
         kind: 'opening-mismatch', dayId: d3, openingCash: 800, previousClosedDayId: d2,
-        previousCountedCash: 870, difference: -70, daysApart: 3,
+        previousCountedCash: 870, previousPostCloseNet: 0, previousEffectiveCash: 870, difference: -70, daysApart: 3,
         gapDays: [shiftDate(today, -4), shiftDate(today, -3)], gapDayCount: 2,
       },
       {
         kind: 'opening-mismatch', dayId: today, openingCash: 1000, previousClosedDayId: d2,
-        previousCountedCash: 870, difference: 130, daysApart: 5,
+        previousCountedCash: 870, previousPostCloseNet: 0, previousEffectiveCash: 870, difference: 130, daysApart: 5,
         gapDays: [shiftDate(today, -4), shiftDate(today, -3), shiftDate(today, -1)], gapDayCount: 3,
       },
     ]);
@@ -924,9 +924,9 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     ]);
     ok(await repository().closeDay(await closeInput({ countedCash: 900, note: '補記後' }, d2)));
     const snapshot = await repository().readLedger();
-    expect(snapshot.closedDays).toEqual([{ dayId: d1, countedCash: 700 }, { dayId: d2, countedCash: 900 }]);
+    expect(snapshot.closedDays).toEqual([{ dayId: d1, countedCash: 700, postCloseNet: 0 }, { dayId: d2, countedCash: 900, postCloseNet: 0 }]);
     expect(snapshot.anomalies).toEqual([expect.objectContaining({
-      kind: 'opening-mismatch', dayId: today, previousClosedDayId: d2, previousCountedCash: 900, difference: 100, daysApart: 2,
+      kind: 'opening-mismatch', dayId: today, previousClosedDayId: d2, previousCountedCash: 900, previousPostCloseNet: 0, previousEffectiveCash: 900, difference: 100, daysApart: 2,
     })]);
   });
 
@@ -975,7 +975,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     await closePast(farClosed, 500, 700);
     await fillQuietDays(goLive, 1, 449); // every day between the closed day and today has a quiet document
     const lookup = await repository().findPreviousClosed(today);
-    expect(lookup.previous).toEqual({ dayId: farClosed, countedCash: 700 });
+    expect(lookup.previous).toEqual({ dayId: farClosed, countedCash: 700, postCloseNet: 0 });
     const vendor = (await import('../cloudDayVendorRepository')).createCloudDayVendorRepository(
       authedDb(operatorA), { currentUser: () => fakeCurrentUser(operatorA) },
     );
@@ -1833,5 +1833,341 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     expect(await other.setOpeningCash({
       commandId: uuid(), leaseEpoch: 1, dayId: today, expectedRevision: (await read(`days/${today}`))!.revision, openingCash: 1,
     })).toMatchObject({ ok: false, error: { code: 'LEASE_LOST' } });
+  });
+  // ---- P11c4a: post-close entries on a closed day (contract §15) ----
+
+  const PC_REASON = '關帳後發現少收的零錢，補記一筆收入';
+
+  /** A closed past day: opening 1,000, no activity, so it closed at 1,000. */
+  async function seedClosedDay(dayId: string, change: RawMap = {}) {
+    await seedGapDay(dayId, { status: 'closed', lastSettlementRevision: 1, openingCash: 1000, openedBy: operatorA.uid, openedAt: serverTimestamp(), ...change });
+  }
+
+  async function recordEntry(
+    dayId: string,
+    change: { direction?: 'income' | 'expense'; amount?: number; reason?: string; commandId?: string; day?: number; settlement?: number } = {},
+    actor = operatorA,
+  ) {
+    const day = (await read(`days/${dayId}`))!;
+    return writer(actor).commitCommand({
+      commandId: change.commandId ?? uuid(), kind: 'RecordPostCloseEntry', leaseEpoch: 1,
+      targets: { dayId },
+      expectedRevisions: { day: change.day ?? day.revision, settlement: change.settlement ?? day.lastSettlementRevision },
+      payload: { direction: change.direction ?? 'expense', amount: change.amount ?? 50, reason: change.reason ?? PC_REASON },
+    });
+  }
+
+  type RawEntry = Awaited<ReturnType<typeof rawPostClose>>;
+
+  /** A complete raw SDK RecordPostCloseEntry closure, built the same way as the repository. */
+  async function rawPostClose(
+    dayId: string,
+    change: { direction?: 'income' | 'expense'; amount?: number; reason?: string } = {},
+    actor = operatorA,
+  ) {
+    const commandId = uuid();
+    const headBefore = (await read('system/dataHead'))!;
+    const dayBefore = (await read(`days/${dayId}`))!;
+    const payload: RawMap = {
+      direction: change.direction ?? 'expense', amount: change.amount ?? 50, reason: change.reason ?? PC_REASON,
+    };
+    const input = {
+      commandId, kind: 'RecordPostCloseEntry', leaseEpoch: 1, targets: { dayId },
+      expectedRevisions: { day: dayBefore.revision, settlement: dayBefore.lastSettlementRevision }, payload,
+    };
+    let fingerprint = 'f'.repeat(64);
+    try { fingerprint = await fingerprintCommandInput(normalizeEnabledCommandInput(input)); } catch { /* invalid on purpose */ }
+    const now = serverTimestamp();
+    const headAfter: RawMap = { ...headBefore, seq: headBefore.seq + 1, lastCommandId: commandId, updatedAt: now };
+    const entry: RawMap = {
+      entryId: commandId, dayId, settlementRevision: dayBefore.lastSettlementRevision,
+      direction: payload.direction, amount: payload.amount, reason: payload.reason,
+      createdBy: actor.uid, createdAt: now, commandId,
+    };
+    const command: RawMap = {
+      commandId, kind: 'RecordPostCloseEntry', seq: headBefore.seq + 1, leaseEpoch: 1,
+      actor: { uid: actor.uid, email: actor.email }, committedAt: now,
+      businessDate: dayId, studentId: null, targets: input.targets, expectedRevisions: input.expectedRevisions,
+      before: {}, after: {}, reason: payload.reason,
+      cashEffect: { before: 0, after: 0, delta: 0, reasonKind: 'none', refundAmount: 0 },
+      payload, inputFingerprint: fingerprint,
+    };
+    const artifacts = { commandId, dayId, command, headBefore, headAfter, dayBefore, entry };
+    syncPostClose(artifacts);
+    return artifacts;
+  }
+
+  function syncPostClose(a: RawEntry) {
+    a.command.before = { head: a.headBefore, day: a.dayBefore, postCloseEntry: null };
+    a.command.after = { head: a.headAfter, day: a.dayBefore, postCloseEntry: a.entry };
+  }
+
+  type PostCloseBatch = { omitEntry?: boolean; omitHead?: boolean; omitCommand?: boolean; entryPath?: string; copyPath?: string; touchDay?: RawMap };
+
+  function rawPostCloseBatch(db: Firestore, a: RawEntry, options: PostCloseBatch = {}) {
+    const batch = writeBatch(db);
+    if (!options.omitHead) batch.update(doc(db, 'system/dataHead'), a.headAfter);
+    if (!options.omitEntry) batch.set(doc(db, options.entryPath ?? `postCloseEntries/${a.commandId}`), a.entry);
+    // A copy of the entry under another document ID would be counted twice.
+    if (options.copyPath) batch.set(doc(db, options.copyPath), a.entry);
+    if (options.touchDay) batch.update(doc(db, `days/${a.dayId}`), options.touchDay);
+    if (!options.omitCommand) batch.set(doc(db, `commands/${a.commandId}`), a.command);
+    return batch;
+  }
+
+  async function entryCount() {
+    return withAdmin(async db => (await getDocs(collection(db, 'postCloseEntries'))).size);
+  }
+
+  async function expectPostCloseDenied(a: RawEntry, options: PostCloseBatch = {}, actor = operatorA) {
+    const before = await state(a.dayId);
+    const entries = await entryCount();
+    await assertFails(rawPostCloseBatch(authedDb(actor), a, options).commit());
+    expect(await state(a.dayId)).toEqual(before);
+    expect(await entryCount()).toBe(entries);
+  }
+
+  it('P11c4.1: a closed day takes a marked entry without touching the day; a retry returns the same receipt', async () => {
+    const monday = shiftDate(today, -3);
+    await seedClosedDay(monday);
+    const dayBefore = (await read(`days/${monday}`))!;
+    const headBefore = (await read('system/dataHead'))!;
+    const commandId = uuid();
+    const receipt = ok(await recordEntry(monday, { commandId }));
+    expect(receipt).toMatchObject({ commandId });
+    // The day document and its settlements are exactly as before; the head moved one step.
+    expect((await read(`days/${monday}`))!).toEqual(dayBefore);
+    expect((await read('system/dataHead'))!.seq).toBe(headBefore.seq + 1);
+    expect((await read(`postCloseEntries/${commandId}`))!).toMatchObject({
+      entryId: commandId, dayId: monday, settlementRevision: 1, direction: 'expense', amount: 50,
+      reason: PC_REASON, createdBy: operatorA.uid, commandId,
+    });
+    expect((await read(`commands/${commandId}`))!).toMatchObject({
+      kind: 'RecordPostCloseEntry', businessDate: monday, studentId: null, reason: PC_REASON,
+      payload: { direction: 'expense', amount: 50, reason: PC_REASON },
+      cashEffect: { before: 0, after: 0, delta: 0, reasonKind: 'none', refundAmount: 0 },
+    });
+    expect(await repository().readCommand(commandId)).toMatchObject({ commandId, kind: 'RecordPostCloseEntry' });
+    const commandCount = (await state(monday)).commandCount;
+    for (let index = 0; index < 2; index += 1) expect(ok(await recordEntry(monday, { commandId }))).toEqual(receipt);
+    expect((await state(monday)).commandCount).toBe(commandCount);
+    expect(await entryCount()).toBe(1);
+    // The same command ID with another payload is a different request and is refused.
+    expect((await recordEntry(monday, { commandId, amount: 60 })).ok).toBe(false);
+    expect(await entryCount()).toBe(1);
+  });
+
+  it('P11c4.2: the writer refuses an open or reopened day, a stale revision, bad amounts and reasons, a missing day and a non-holder', async () => {
+    const closed = shiftDate(today, -3);
+    const open = shiftDate(today, -4);
+    const reopened = shiftDate(today, -5);
+    const missing = shiftDate(today, -6);
+    await seedClosedDay(closed);
+    await seedGapDay(open, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    await seedGapDay(reopened, { status: 'reopened', lastSettlementRevision: 2, openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    const stale = (await read(`days/${closed}`))!;
+    const outcomes: Array<[string, Promise<CommandResult>, string]> = [
+      ['open day', recordEntry(open, { settlement: 0 }), 'INVALID_INPUT'],
+      ['open day claiming a settlement', recordEntry(open, { settlement: 1 }), 'REVISION_CONFLICT'],
+      ['reopened day', recordEntry(reopened), 'INVALID_INPUT'],
+      ['today', recordEntry(today, { settlement: 0 }), 'INVALID_INPUT'],
+      ['missing day', recordEntry(missing, { day: 1, settlement: 1 }), 'INVALID_INPUT'],
+      ['stale day revision', recordEntry(closed, { day: stale.revision - 1 }), 'REVISION_CONFLICT'],
+      ['stale settlement revision', recordEntry(closed, { settlement: 2 }), 'REVISION_CONFLICT'],
+      ['zero amount', recordEntry(closed, { amount: 0 }), 'INVALID_INPUT'],
+      ['too large amount', recordEntry(closed, { amount: 20_001 }), 'INVALID_INPUT'],
+      ['fractional amount', recordEntry(closed, { amount: 10.5 }), 'INVALID_INPUT'],
+      ['no reason', recordEntry(closed, { reason: '' }), 'INVALID_INPUT'],
+      ['long reason', recordEntry(closed, { reason: 'x'.repeat(501) }), 'INVALID_INPUT'],
+      ['spaces-only reason', recordEntry(closed, { reason: '   ' }), 'INVALID_INPUT'],
+      ['tab-and-newline reason', recordEntry(closed, { reason: '\t\n' }), 'INVALID_INPUT'],
+      ['bad direction', recordEntry(closed, { direction: 'refund' as unknown as 'income' }), 'INVALID_INPUT'],
+      ['not the holder', recordEntry(closed, {}, operatorB), 'LEASE_LOST'],
+    ];
+    const results = await Promise.all(outcomes.map(([, promise]) => promise));
+    outcomes.forEach(([label, , code], index) => {
+      expect(results[index], `${label}: ${JSON.stringify(results[index])}`).toMatchObject({ ok: false, error: { code } });
+    });
+    expect(await entryCount()).toBe(0);
+  });
+
+  it('P11c4.3: the legal maximum entry (20,000, 500-character reason) passes Rules through a raw batch only for the holder', async () => {
+    const monday = shiftDate(today, -3);
+    await seedClosedDay(monday);
+    const options = { direction: 'income' as const, amount: 20_000, reason: '因'.repeat(500) };
+    await expectPostCloseDenied(await rawPostClose(monday, options, operatorB), {}, operatorB);
+    await assertSucceeds(rawPostCloseBatch(authedDb(operatorA), await rawPostClose(monday, options)).commit());
+    expect(await entryCount()).toBe(1);
+  });
+
+  // 只有空白的原因：長度檢查會通過；Rules 擋 ASCII 空白（trim 只處理 ASCII），schema 同樣只擋 ASCII 空白。
+  // schema、備份與讀取都不可比 Rules 嚴格（見 cloudBackup.spec 的 Unicode 空白案例）。
+  const setReason = (a: RawEntry, reason: string): void => {
+    a.command.payload = { ...a.command.payload, reason };
+    a.command.reason = reason;
+    a.entry.reason = reason;
+    syncPostClose(a);
+  };
+
+  it.each<[string, (a: RawEntry) => void, PostCloseBatch?]>([
+    ['the amount is zero', a => { a.command.payload = { ...a.command.payload, amount: 0 }; a.entry.amount = 0; syncPostClose(a); }],
+    ['the amount is above 20,000', a => { a.command.payload = { ...a.command.payload, amount: 20_001 }; a.entry.amount = 20_001; syncPostClose(a); }],
+    ['the amount is fractional', a => { a.command.payload = { ...a.command.payload, amount: 1.5 }; a.entry.amount = 1.5; syncPostClose(a); }],
+    ['the direction is unknown', a => { a.command.payload = { ...a.command.payload, direction: 'refund' }; a.entry.direction = 'refund'; syncPostClose(a); }],
+    ['the reason is empty', a => { a.command.payload = { ...a.command.payload, reason: '' }; a.command.reason = ''; a.entry.reason = ''; syncPostClose(a); }],
+    ['the reason is too long', a => { const reason = 'x'.repeat(501); a.command.payload = { ...a.command.payload, reason }; a.command.reason = reason; a.entry.reason = reason; syncPostClose(a); }],
+    ['the reason is only spaces', a => { setReason(a, '   '); }],
+    ['the reason is only a tab and a newline', a => { setReason(a, '\t\n'); }],
+    ['the reason is only carriage returns and spaces', a => { setReason(a, ' \r\n\t\r'); }],
+    ['the command reason differs from the payload reason', a => { a.command.reason = 'other'; }],
+    ['the command reason is null', a => { a.command.reason = null; }],
+    ['the entry reason differs from the payload', a => { a.entry.reason = 'tampered'; syncPostClose(a); }],
+    ['the entry amount differs from the payload', a => { a.entry.amount = 51; syncPostClose(a); }],
+    ['the entry direction differs from the payload', a => { a.entry.direction = 'income'; syncPostClose(a); }],
+    ['the entry names another settlement revision', a => { a.entry.settlementRevision = 2; syncPostClose(a); }],
+    ['the entry names another day', a => { a.entry.dayId = shiftDate(today, -4); syncPostClose(a); }],
+    ['the entry names another creator', a => { a.entry.createdBy = operatorB.uid; syncPostClose(a); }],
+    ['the entry time is not the commit time', a => { a.entry.createdAt = a.dayBefore.updatedAt; syncPostClose(a); }],
+    ['the entry command ID is another command', a => { a.entry.commandId = uuid(); syncPostClose(a); }],
+    ['the entry ID is another ID', a => { a.entry.entryId = uuid(); syncPostClose(a); }],
+    ['the entry gains an extra field', a => { a.entry.extra = true; syncPostClose(a); }],
+    ['the payload gains an extra key', a => { a.command.payload = { ...a.command.payload, note: '' }; }],
+    ['the day changes inside the command', a => { a.command.after = { ...a.command.after, day: { ...a.dayBefore, revision: a.dayBefore.revision + 1 } }; }],
+    ['the cash effect is not zero', a => { a.command.cashEffect = { before: 0, after: 50, delta: 50, reasonKind: 'payout', refundAmount: 0 }; }],
+    ['the business date is another day', a => { a.command.businessDate = today; }],
+    ['the command names a student', a => { a.command.studentId = studentA; }],
+    ['the expected day revision is stale', a => { a.command.expectedRevisions = { ...a.command.expectedRevisions, day: 1 }; }],
+    ['the expected settlement revision is stale', a => { a.command.expectedRevisions = { ...a.command.expectedRevisions, settlement: 0 }; }],
+    ['the targets gain a key', a => { a.command.targets = { ...a.command.targets, settlementRevision: 1 }; }],
+    ['the before-snapshot claims an existing entry', a => { a.command.before = { ...a.command.before, postCloseEntry: a.entry }; }],
+    ['the command is relabelled as StartBackfill', a => { a.command.kind = 'StartBackfill'; }],
+    ['the command is relabelled as CreateCashMovement', a => { a.command.kind = 'CreateCashMovement'; }],
+    ['the entry is written at another path', () => undefined, { entryPath: 'postCloseEntries/0b0b0b0b-0b0b-4b0b-8b0b-0b0b0b0b0b0b' }],
+    ['the entry is written without the command', () => undefined, { omitCommand: true }],
+    ['the command is written without the entry', () => undefined, { omitEntry: true }],
+    ['the head is not advanced', () => undefined, { omitHead: true }],
+  ])('P11c4.4: a raw RecordPostCloseEntry is denied atomically when %s', async (_label, attack, options) => {
+    const monday = shiftDate(today, -3);
+    await seedClosedDay(monday);
+    const raw = await rawPostClose(monday);
+    attack(raw);
+    await expectPostCloseDenied(raw, options);
+  });
+
+  it('P11c4.5: Rules refuse an entry on an open or reopened day, a day before go-live, and a day touched in the same batch', async () => {
+    const open = shiftDate(today, -4);
+    const reopened = shiftDate(today, -5);
+    const beforeGoLive = shiftDate(today, -31);
+    const closed = shiftDate(today, -3);
+    await seedGapDay(open, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    await seedGapDay(reopened, { status: 'reopened', lastSettlementRevision: 2, openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    await seedClosedDay(beforeGoLive);
+    await seedClosedDay(closed);
+    await expectPostCloseDenied(await rawPostClose(open));
+    await expectPostCloseDenied(await rawPostClose(reopened));
+    await expectPostCloseDenied(await rawPostClose(beforeGoLive));
+    await expectPostCloseDenied(await rawPostClose(today));
+    // Writing the day alongside the entry (status, revision, totals) is refused: only the entry may land.
+    const raw = await rawPostClose(closed);
+    await expectPostCloseDenied(raw, { touchDay: { revision: raw.dayBefore.revision + 1, lastCommandId: raw.commandId, updatedAt: serverTimestamp() } });
+    await expectPostCloseDenied(await rawPostClose(closed), { touchDay: { status: 'open', revision: 7, lastCommandId: 'x', updatedAt: serverTimestamp() } });
+    // The entry lives only at postCloseEntries/{commandId}: a second copy under another ID, or the only copy under
+    // another ID, is refused (a copy would double the entry's effect on the effective closing cash).
+    await expectPostCloseDenied(await rawPostClose(closed), { copyPath: `postCloseEntries/${uuid()}` });
+    await expectPostCloseDenied(await rawPostClose(closed), { entryPath: `postCloseEntries/${uuid()}` });
+  });
+
+  it('P11c4.6: an entry can be neither edited nor deleted nor created by hand, and only the holder reads them', async () => {
+    const monday = shiftDate(today, -3);
+    await seedClosedDay(monday);
+    const commandId = uuid();
+    ok(await recordEntry(monday, { commandId }));
+    const entry = (await read(`postCloseEntries/${commandId}`))!;
+    const holder = authedDb(operatorA);
+    await assertFails(updateDoc(doc(holder, `postCloseEntries/${commandId}`), { amount: 1 }));
+    await assertFails(updateDoc(doc(holder, `postCloseEntries/${commandId}`), { reason: '改掉原因' }));
+    await assertFails(deleteDoc(doc(holder, `postCloseEntries/${commandId}`)));
+    await assertFails(setDoc(doc(holder, `postCloseEntries/${commandId}`), { ...entry, amount: 1 }));
+    const handmade = uuid();
+    await assertFails(setDoc(doc(holder, `postCloseEntries/${handmade}`), { ...entry, entryId: handmade, commandId: handmade }));
+    await assertFails(deleteDoc(doc(authedDb(operatorB), `postCloseEntries/${commandId}`)));
+    expect(await read(`postCloseEntries/${commandId}`)).toEqual(entry);
+    await assertSucceeds(getDoc(doc(holder, `postCloseEntries/${commandId}`)));
+    await assertFails(getDoc(doc(authedDb(operatorB), `postCloseEntries/${commandId}`)));
+    await assertSucceeds(getDocs(collection(holder, 'postCloseEntries')));
+    await assertFails(getDocs(collection(authedDb(operatorB), 'postCloseEntries')));
+  });
+
+  // ---- P11c4a: effective closing cash end to end ----
+
+  const mismatchDays = (snapshot: { anomalies: Array<{ kind: string; dayId: string }> }) =>
+    snapshot.anomalies.filter(item => item.kind === 'opening-mismatch').map(item => item.dayId);
+
+  it('P11c4.7: the Q2 example — Monday closes at 1,000, Wednesday opens at 950, a 50 expense entry on Monday removes the mismatch', async () => {
+    const monday = shiftDate(today, -3);
+    const wednesday = shiftDate(today, -1);
+    await closePast(monday, 830, 1000);
+    await seedPastDay(wednesday, { openingCash: 950, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    // Today also opened at 950 (Wednesday is not closed, so Monday is still the last closed day for both).
+    await withAdmin(async db => updateDoc(doc(db, `days/${today}`), { openingCash: 950 }));
+    const before = await repository().readLedger();
+    expect(mismatchDays(before)).toEqual([wednesday, today]);
+    expect(before.anomalies.find(item => item.kind === 'opening-mismatch')).toMatchObject({ difference: -50, previousPostCloseNet: 0, previousEffectiveCash: 1000 });
+    ok(await recordEntry(monday, { direction: 'expense', amount: 50, reason: '星期一漏記買零錢' }));
+    const after = await repository().readLedger();
+    expect(mismatchDays(after)).toEqual([]);
+    expect(after.closedDays).toEqual([{ dayId: monday, countedCash: 1000, postCloseNet: -50 }]);
+    // The opening default for the next day uses the effective cash too.
+    expect((await repository().findPreviousClosed(wednesday)).previous).toEqual({ dayId: monday, countedCash: 1000, postCloseNet: -50 });
+    // The wrong direction makes the gap larger, not smaller; entries add up.
+    ok(await recordEntry(monday, { direction: 'income', amount: 80, reason: '補記少收的零錢' }));
+    const income = await repository().readLedger();
+    expect(income.anomalies.find(item => item.kind === 'opening-mismatch')).toMatchObject({ difference: -80, previousPostCloseNet: 30, previousEffectiveCash: 1030 });
+  });
+
+  it('P11c4.8: after a reopen and re-close the old entry is history only; the new one counts', async () => {
+    const day = shiftDate(today, -3);
+    await closePast(day, 500, 700);
+    ok(await recordEntry(day, { direction: 'income', amount: 20, reason: '第一版關帳後補記' }));
+    const first = await repository().read(day);
+    expect(first).toMatchObject({ status: 'closed', lastSettlementRevision: 1, effectiveCash: 720 });
+    expect(first?.postCloseEntries.map(entry => [entry.settlementRevision, entry.direction, entry.amount])).toEqual([[1, 'income', 20]]);
+    ok(await repository().reopenDay(await reopenInput('重新點算', day)));
+    expect((await repository().read(day))?.effectiveCash).toBeNull(); // a reopened day has no closing cash
+    ok(await repository().closeDay(await closeInput({ countedCash: 705, note: '重新點算' }, day)));
+    const second = await repository().read(day);
+    expect(second).toMatchObject({ status: 'closed', lastSettlementRevision: 3, effectiveCash: 705 });
+    expect(second?.postCloseEntries.map(entry => entry.settlementRevision)).toEqual([1]);
+    expect((await repository().readLedger()).closedDays).toEqual([{ dayId: day, countedCash: 705, postCloseNet: 0 }]);
+    ok(await recordEntry(day, { direction: 'expense', amount: 10, reason: '第二版關帳後補記' }));
+    expect(await repository().read(day)).toMatchObject({ effectiveCash: 695 });
+    // The old entry is refused against the new version, and the retry of the first command stays idempotent.
+    const stale = await recordEntry(day, { settlement: 1 });
+    expect(stale).toMatchObject({ ok: false, error: { code: 'REVISION_CONFLICT' } });
+  });
+
+  it('P11c4.9: a day with more than one page of entries is read completely; an entry for a missing settlement version fails closed', async () => {
+    const day = shiftDate(today, -3);
+    await closePast(day, 500, 700);
+    await withAdmin(async db => {
+      for (let index = 0; index < 205; index += 1) {
+        const entryId = uuid();
+        await setDoc(doc(db, `postCloseEntries/${entryId}`), {
+          entryId, dayId: day, settlementRevision: 1, direction: index % 5 === 0 ? 'income' : 'expense', amount: 1,
+          reason: '大量補記', createdBy: operatorA.uid, createdAt: serverTimestamp(), commandId: entryId,
+        });
+      }
+    });
+    const view = await repository().read(day);
+    expect(view?.postCloseEntries).toHaveLength(205);
+    expect(view?.effectiveCash).toBe(700 + 41 - 164);
+    const snapshot = await repository().readLedger();
+    expect(snapshot.closedDays).toEqual([{ dayId: day, countedCash: 700, postCloseNet: 41 - 164 }]);
+    const bad = uuid();
+    await withAdmin(async db => setDoc(doc(db, `postCloseEntries/${bad}`), {
+      entryId: bad, dayId: day, settlementRevision: 2, direction: 'income', amount: 1, reason: '指向不存在的版本',
+      createdBy: operatorA.uid, createdAt: serverTimestamp(), commandId: bad,
+    }));
+    await expect(repository().read(day)).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
   });
 });

@@ -8,6 +8,7 @@ import {
   type CloudDayMenuDraft,
   type CloudDayVendorDraft,
 } from './CloudDayVendorForms';
+import type { PreviousClosedDay } from '../../domain/ledgerAnomalies';
 
 function VendorFormHarness({
   mode,
@@ -153,7 +154,7 @@ describe('CloudDayVendorForms', () => {
   });
 
   describe('CloudDayOpeningCashForm: difference from the last close (contract §11)', () => {
-    const previousClosed = { dayId: '2026-10-14', countedCash: 870 };
+    const previousClosed: PreviousClosedDay = { dayId: '2026-10-14', countedCash: 870 };
 
     function renderForm(props: { amountText: string; previousClosed?: typeof previousClosed | null; ledgerNotice?: string }) {
       const onSubmit = vi.fn();
@@ -177,6 +178,11 @@ describe('CloudDayVendorForms', () => {
     it('shows the last closed day and its counted cash', () => {
       renderForm({ amountText: '870', previousClosed });
       expect(screen.getByText(/上一個已關帳日 2026-10-14 的實點現金為 NT\$ 870/)).toBeInTheDocument();
+    });
+
+    it('shows the post-close net and the effective closing cash when there are entries (contract §15)', () => {
+      renderForm({ amountText: '820', previousClosed: { ...previousClosed, postCloseNet: -50 } });
+      expect(screen.getByText(/關帳後補記淨支出 NT\$ 50，有效關帳現金 NT\$ 820/)).toBeInTheDocument();
     });
 
     it('shows a difference warning and a required reason field when the amount differs, and still allows submitting', () => {

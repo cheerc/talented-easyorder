@@ -56,6 +56,7 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 | P11c2a 解除 400 天上限、回填斷層日（後端） | 已合併 #511 | squash `35ac95bd3f4f98a378fd01803f6c3a6beafae794`，source head `2572f3f82f96fcee2100432318b6bd8c47f98390`（最終 head `f857b10bc10be92976dc7904a5b31d1aeca12f47` 只補 PR 編號）；獨立審查通過、無必修（review `5561303976`）；CI [39093276394](https://github.com/cheerc/talented-easyorder/actions/runs/39093276394)、[39094019150](https://github.com/cheerc/talented-easyorder/actions/runs/39094019150) 兩 job 成功。`StartBackfill`（第 26 種、已啟用 24 種）與不可改的 `backfillDays/{dayId}` 標記；`CreateOrder`／`CreatePayment`／`CreateCashMovement` 可寫入已標記且從沒關過帳的過去日；異常掃描分頁、上一個已關帳日分段查找；P14 replay。契約 §12。未部署。 |
 | P11c2b 回填模式畫面 | 已合併 #513 | squash `797b23e5cff43e7fe0692817dc64e90c03b56d74`，source head `750026db45bcfc7b52c6e8c20d8b716c78d76eef`；獨立審查無必修（review `5561472938`）；CI [39097170105](https://github.com/cheerc/talented-easyorder/actions/runs/39097170105) 兩 job 成功（e2e 首次 A05 偶發失敗，重跑通過）。 只改前端與讀取端（Rules、command kind 不變）：異常頁「回填這一天」／「標為回填」、日結頁三步精靈（`EnsureDay` → `BackfillOpeningCash` → `StartBackfill`，各有 command ID，失敗可續跑）、訂餐頁回填橫幅與「離開回填」、退款／撤回／取消並退還停用、「回填」標籤；#511 審查備註（重試按鈕、午夜邊界測試、寫入器訊息）。契約 §13。未部署。 |
 | P11c3 回填日關帳對齊 | 已合併 #515 | squash `a23177fc211354261f84dbe5411d8690a8af41fc`，source head `2edeae2168d6630304a0fbcddde2c86dbae14a29`；獨立審查無必修（review `5561736953`）；CI [39103196075](https://github.com/cheerc/talented-easyorder/actions/runs/39103196075) 兩 job 一次通過。有回填標記的日子關帳必須差額為 0，且 `alignWithDayId` 指向晚於本日、開帳現金等於實點的最近已開帳日（或 `null`）；Rules 只證明形狀與金額，「最近」由寫入器掃描、異常頁當安全網。契約 §14。P11c4、角色權限、P12 未開始。 |
+| P11c4a 關帳後補記（後端） | PR [#517](https://github.com/cheerc/talented-easyorder/pull/517) 審查中 | 新 kind `RecordPostCloseEntry` ＋新集合 `postCloseEntries`：已關帳日可補記有方向、金額、原因的不可修改補記，不動營業日與日結版本；有效關帳現金讓 `opening-mismatch` 與開帳預設值改用補記後的金額；P14 備份接受新 kind。契約 §15。所有 Rules 餘裕錨點與 main 相同。補記畫面（P11c4b）、角色權限、P12 未開始。 |
 | P12–P13、P15–P18 | 尚未開始／未驗 | 不代表任何後續雲端功能已實作或通過。 |
 
 ## 2. 現有檔案與規劃新檔
@@ -259,6 +260,8 @@ npm run test:e2e
 
 **Acceptance/demo：** 所有顯示與匯出沿用欄位、餘額和份數一致；export/print記發起而非保證完成；歷史查詢頁不接全庫即時訂閱。
 
+**P11c 帶來的顯示要求（CheerC 2026-10-17 P11c 決定）：** 報表與查帳頁必須標出「回填」的日子與交易（`backfillDays` 標記、事後補登的交易），以及已關帳日的「關帳後補記」（`postCloseEntries`，含方向、金額、原因、補記時間與操作者），並以有效關帳現金（最新日結實點 + 補記收入 − 補記支出，只計目前日結版本的補記）顯示該日關帳現金；舊版本的補記只當歷史。契約 [§15](../specs/2026-10-17-cloud-day-close-contract.md#15-p11c4-關帳後補記recordpostcloseentry)。
+
 ### P13 — 斷線、重送與正式操作收尾
 
 **Scope/files：** `firebaseApp.ts` memory cache、cloud error處理、`posPersistence.ts`、`storage/crashDraft.ts`呼叫端、App/PWA cache設定、F2紙本補登入口、舊cloud write路徑清理。
@@ -350,3 +353,10 @@ CheerC 2026-10-15 的 10 項操作回饋排程見[操作回饋排程計畫](2026
 - 機制與 Rules 極限見契約 [§14](../specs/2026-10-17-cloud-day-close-contract.md#14-p11c3-回填日關帳對齊)；Rules 餘裕見 [預算附錄](../../ops/p05-rules-budget.md#p11c3--aligned-close-of-a-back-filled-day--budget-and-probe-receipt)。PR、head SHA 與 CI 以 PR body 與 handoff 為準。沒有新 command kind、沒有新 collection；`CloseDay` payload 新增選填 `alignWithDayId`，P14 decoder／replay 已接受，舊備份照常通過。
 - 完整驗收與數字見 handoff 與 [evidence](../../ops/free-production-evidence.md)。P11c4 關帳後補記、角色權限、P12 尚未開始。
 - 合併：#515 squash `a23177fc211354261f84dbe5411d8690a8af41fc`，獨立審查無必修。待辦（不擋合併）：備份 replay 對標記日關帳沒帶 `alignWithDayId` 刻意放寬（契約 §14.4），確認正式環境後可收緊；訂餐頁明確被拒後沿用回填日清單，選單可能暫列已被關帳的日子。CheerC 2026-10-18 指示 P11c 暫停：P11c4 指令已備妥未啟動，P12 等授權。
+
+## P11c4a 關帳後補記（後端）checkpoint — 2026-10-18
+
+- 機制與設計見契約 [§15](../specs/2026-10-17-cloud-day-close-contract.md#15-p11c4-關帳後補記recordpostcloseentry)；Rules 餘裕與 mutant 見 [預算附錄](../../ops/p05-rules-budget.md#p11c4a--post-close-entry--budget-and-probe-receipt)。
+- 完整驗收與數字見 handoff 與 [evidence](../../ops/free-production-evidence.md)。P11c4b（補記畫面）、角色權限、P12 尚未開始。
+- 部署（CheerC 本機）：Rules、前端、`firestore.indexes.json` 一起上（indexes 不變）。
+- 待辦：補記畫面與列表（P11c4b）；P12 報表要標出回填與關帳後補記；P11c3 遺留 (1)（備份 replay 對標記日關帳放寬）仍等 CheerC 確認正式環境後再收緊。
