@@ -183,6 +183,12 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
+/**
+ * 補記原因不能只有空白。只擋 ASCII 空白，與 Rules 的 `trim()` 一致：補記不可修改刪除，
+ * 備份與讀取也走這個 normalizer，比 Rules 嚴格的檢查會讓一筆已寫入的補記永遠卡住匯出。
+ */
+const ASCII_BLANK = /^[ \t\r\n]+$/;
+
 function exactKeys(value: Record<string, unknown>, required: string[], optional: string[] = []): void {
   const keys = Object.keys(value);
   if (keys.some(key => key === '__proto__' || key === 'constructor' || key === 'prototype')) {
@@ -361,8 +367,8 @@ function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayl
     if (typeof value.amount !== 'number' || !Number.isSafeInteger(value.amount) || value.amount < 1 || value.amount > 20_000) {
       throw new InvalidCloudCommandInput('補記金額必須是 1 至 20,000 的整數');
     }
-    if (typeof value.reason !== 'string' || value.reason.length < 1 || value.reason.length > 500) {
-      throw new InvalidCloudCommandInput('reason 必須為 1 至 500 字');
+    if (typeof value.reason !== 'string' || value.reason.length < 1 || value.reason.length > 500 || ASCII_BLANK.test(value.reason)) {
+      throw new InvalidCloudCommandInput('reason 必須為 1 至 500 字，且不能只有空白');
     }
     return { direction: value.direction, amount: value.amount, reason: value.reason } as CommandPayloadByKind['RecordPostCloseEntry'];
   }

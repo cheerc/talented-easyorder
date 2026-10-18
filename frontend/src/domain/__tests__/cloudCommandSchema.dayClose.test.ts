@@ -147,6 +147,38 @@ describe('P11 CloseDay／ReopenDay command schema', () => {
   });
 });
 
+describe('RecordPostCloseEntry (contract §15)', () => {
+  const entry = (payload: Record<string, unknown>) => ({
+    commandId, kind: 'RecordPostCloseEntry', leaseEpoch: 1,
+    targets: { dayId: '2026-10-16' }, expectedRevisions: { day: 3, settlement: 1 }, payload,
+  });
+  const ok = { direction: 'expense', amount: 50, reason: '關帳後發現漏記買零錢' };
+
+  it('accepts a direction, a 1–20,000 amount and a 1–500 character reason', () => {
+    expect(normalizeEnabledCommandInput(entry(ok)).payload).toEqual(ok);
+    expect(() => normalizeEnabledCommandInput(entry({ ...ok, amount: 20_000, reason: 'x'.repeat(500) }))).not.toThrow();
+  });
+
+  it('does not reject a Unicode-space reason: Rules trim only ASCII, so the schema must not be stricter', () => {
+    expect(() => normalizeEnabledCommandInput(entry({ ...ok, reason: '\u3000' }))).not.toThrow();
+  });
+
+  it.each<[string, Record<string, unknown>]>([
+    ['an empty reason', { ...ok, reason: '' }],
+    ['a spaces-only reason', { ...ok, reason: '   ' }],
+    ['a tab-and-newline reason', { ...ok, reason: '\t\n' }],
+    ['a carriage-return reason', { ...ok, reason: ' \r\n' }],
+    ['a 501-character reason', { ...ok, reason: 'x'.repeat(501) }],
+    ['zero amount', { ...ok, amount: 0 }],
+    ['an amount above 20,000', { ...ok, amount: 20_001 }],
+    ['a fractional amount', { ...ok, amount: 1.5 }],
+    ['an unknown direction', { ...ok, direction: 'refund' }],
+    ['an extra payload key', { ...ok, note: '' }],
+  ])('rejects %s', (_label, payload) => {
+    expect(() => normalizeEnabledCommandInput(entry(payload))).toThrow();
+  });
+});
+
 describe('P11c3 CloseDay alignWithDayId', () => {
   const base = { countedCash: 950, note: '', expectedCash: 950 };
 

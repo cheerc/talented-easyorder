@@ -815,11 +815,13 @@ Same probe as before (`1 == 1 &&` terms at one anchor, bisected against a positi
 | transaction create | `P11c2a.14` backfilled order | +16 / +17 | +16 / +17 |
 | command create | `P11c3.8` aligned max close | +36 / +37 | +36 / +37 |
 | command create | `P11c3.10` reclose of a reopened marked day | +20 / +21 | +20 / +21 |
-| command create | `P11c4.3` `RecordPostCloseEntry`, 20,000 and a 500-character reason | — | +65 / +66 |
+| command create | `P11c4.3` `RecordPostCloseEntry`, 20,000 and a 500-character reason | — | +64 / +65 |
 | dataHead update | `P11c4.3` | — | +95 / +96 |
 | `postCloseEntries` create | `P11c4.3` | — | +96 / +97 |
 
-The tightest anchors are unchanged: the transaction rule for a backfilled order (+16), the day rule for `CreateOrder` (+11), `CreateStudent` on the command rule (+3). The new kind has +65 on the command rule.
+Review fix (`reason.trim().size() >= 1` on the command rule): the new kind's command anchor moved from +65 / +66 to +64 / +65; every other anchor is unchanged. Rules `trim()` strips only ASCII whitespace, so a Unicode-space-only reason (U+3000, U+00A0) still passes Rules. The schema (`ASCII_BLANK`, which the backup also runs through), the receipt, the entry read and the backup checks accept it on purpose: none of them may be stricter than Rules, or one such immutable entry would block every export (a first fix with a Unicode-aware JavaScript `trim()` in the schema failed the real-backup test this way).
+
+The tightest anchors are unchanged: the transaction rule for a backfilled order (+16), the day rule for `CreateOrder` (+11), `CreateStudent` on the command rule (+3). The new kind has +64 on the command rule.
 
 ### Mutants
 
@@ -837,6 +839,7 @@ Each Rules mutant changes one check in `validRecordPostCloseEntry` / `postCloseE
 | remove the `before == {head, day, postCloseEntry: null}` pin | killed (`P11c4.4`: before-snapshot claims an existing entry) |
 | remove `dayId >= head.goLiveDate` | killed (`P11c4.5`) |
 | `postCloseEntries` create without `postCloseEntryCommand` | killed (`P11c4.6`: hand-made entry) |
+| remove `p.reason.trim().size() >= 1` (added after the independent review: a spaces-only reason passed Rules but made the backup export fail forever) | killed (`P11c4.4`: reason only spaces / only a tab and a newline) |
 | remove `entryId == commandId` in `postCloseEntryCommand` | **survived the first test set** (every case moved or omitted the real entry); a copy of the entry under a second ID would be counted twice by the effective closing cash. Test added in `P11c4.5` (a copy next to the real entry, and the only copy under another ID) → killed |
 | backup replay: drop the "day is closed" check | first run survived (a chain-consistent forgery was not tested); replay-level cases against a base state added (`post-close entry` test: open day, re-closed day) → killed |
 | backup replay: drop `lastSettlementRevision == entry.settlementRevision` | same → killed |

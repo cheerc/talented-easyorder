@@ -663,7 +663,7 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
         || !['income', 'expense'].includes(String(record.payload.direction)) || entry.direction !== record.payload.direction
         || !Number.isSafeInteger(record.payload.amount) || (record.payload.amount as number) < 1 || (record.payload.amount as number) > 20_000
         || entry.amount !== record.payload.amount
-        || typeof record.payload.reason !== 'string' || !record.payload.reason.trim() || record.payload.reason.length > 500
+        || typeof record.payload.reason !== 'string' || record.payload.reason.length < 1 || record.payload.reason.length > 500
         || entry.reason !== record.payload.reason || record.reason !== record.payload.reason
         || entry.createdBy !== record.actor.uid || !isSerializedTimestamp(entry.createdAt)
         || !sameValue(entry.createdAt, record.committedAt)

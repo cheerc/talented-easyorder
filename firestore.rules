@@ -1359,6 +1359,7 @@ service cloud.firestore {
         && p.direction in ['income', 'expense']
         && p.amount is int && p.amount >= 1 && p.amount <= 20000
         && validMutationReason(p.reason)
+        && p.reason.trim().size() >= 1
         && command.reason == p.reason
         && command.businessDate == dayId
         && command.studentId == null

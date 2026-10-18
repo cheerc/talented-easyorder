@@ -1979,6 +1979,8 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
       ['fractional amount', recordEntry(closed, { amount: 10.5 }), 'INVALID_INPUT'],
       ['no reason', recordEntry(closed, { reason: '' }), 'INVALID_INPUT'],
       ['long reason', recordEntry(closed, { reason: 'x'.repeat(501) }), 'INVALID_INPUT'],
+      ['spaces-only reason', recordEntry(closed, { reason: '   ' }), 'INVALID_INPUT'],
+      ['tab-and-newline reason', recordEntry(closed, { reason: '\t\n' }), 'INVALID_INPUT'],
       ['bad direction', recordEntry(closed, { direction: 'refund' as unknown as 'income' }), 'INVALID_INPUT'],
       ['not the holder', recordEntry(closed, {}, operatorB), 'LEASE_LOST'],
     ];
@@ -1998,6 +2000,15 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     expect(await entryCount()).toBe(1);
   });
 
+  // 只有空白的原因：長度檢查會通過；Rules 擋 ASCII 空白（trim 只處理 ASCII），schema 同樣只擋 ASCII 空白。
+  // schema、備份與讀取都不可比 Rules 嚴格（見 cloudBackup.spec 的 Unicode 空白案例）。
+  const setReason = (a: RawEntry, reason: string): void => {
+    a.command.payload = { ...a.command.payload, reason };
+    a.command.reason = reason;
+    a.entry.reason = reason;
+    syncPostClose(a);
+  };
+
   it.each<[string, (a: RawEntry) => void, PostCloseBatch?]>([
     ['the amount is zero', a => { a.command.payload = { ...a.command.payload, amount: 0 }; a.entry.amount = 0; syncPostClose(a); }],
     ['the amount is above 20,000', a => { a.command.payload = { ...a.command.payload, amount: 20_001 }; a.entry.amount = 20_001; syncPostClose(a); }],
@@ -2005,6 +2016,9 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     ['the direction is unknown', a => { a.command.payload = { ...a.command.payload, direction: 'refund' }; a.entry.direction = 'refund'; syncPostClose(a); }],
     ['the reason is empty', a => { a.command.payload = { ...a.command.payload, reason: '' }; a.command.reason = ''; a.entry.reason = ''; syncPostClose(a); }],
     ['the reason is too long', a => { const reason = 'x'.repeat(501); a.command.payload = { ...a.command.payload, reason }; a.command.reason = reason; a.entry.reason = reason; syncPostClose(a); }],
+    ['the reason is only spaces', a => { setReason(a, '   '); }],
+    ['the reason is only a tab and a newline', a => { setReason(a, '\t\n'); }],
+    ['the reason is only carriage returns and spaces', a => { setReason(a, ' \r\n\t\r'); }],
     ['the command reason differs from the payload reason', a => { a.command.reason = 'other'; }],
     ['the command reason is null', a => { a.command.reason = null; }],
     ['the entry reason differs from the payload', a => { a.entry.reason = 'tampered'; syncPostClose(a); }],

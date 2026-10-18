@@ -828,6 +828,17 @@ describeWithEmulator('P14 cloud backup', () => {
     expect(() => validateBackupManifest(forge(3, entry => { entry.createdAt = { _type: 'timestamp', seconds: 1, nanoseconds: 0 }; }))).toThrow(/seq 4/);
     expect(() => validateBackupManifest(forge(3, entry => { entry.extra = true; }))).toThrow(/seq 4/);
     expect(() => validateBackupManifest(forge(3, (_entry, record) => { record.reason = '另一個原因'; }))).toThrow(/seq 4/);
+    // Rules trim only ASCII whitespace, so a Unicode-space-only reason can reach a raw-SDK write. The backup must never be
+    // stricter than Rules, or one such immutable entry would block every later export.
+    for (const blank of ['\u3000', '\u00a0\u3000']) {
+      const blanked = forge(3, (entry, record) => {
+        entry.reason = blank;
+        record.reason = blank;
+        (record.payload as Record<string, unknown>).reason = blank;
+      });
+      (blanked.projectionState[`postCloseEntries/${opened.records[3]!.commandId}`] as Record<string, unknown>).reason = blank;
+      expect(() => validateBackupManifest(blanked), JSON.stringify(blank)).not.toThrow();
+    }
     expect(() => validateBackupManifest(forge(3, (_entry, record) => { record.payload = { ...record.payload, amount: 20_001 }; }))).toThrow(/seq 4/);
     expect(() => validateBackupManifest(forge(3, (_entry, record) => { record.payload = { ...record.payload, direction: 'transfer' }; }))).toThrow(/seq 4/);
     // A day before the go-live date cannot take an entry.

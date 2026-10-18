@@ -282,7 +282,7 @@ CheerC 的規則（R6／R7、Q2）：已關帳的日子不能靠重開來修，�
 
 - 新 command kind `RecordPostCloseEntry`，一次 commit 寫三份文件：`system/dataHead`、`commands/{id}`、新集合 `postCloseEntries/{entryId}`。**不寫營業日文件、不動日結版本、交易與學生**；營業日形狀（`size() == 10`）與 `revision` 都不變，所以 `P08.8` dayWrite 的餘裕不受影響。
 - 使用條件：營業日 `status == 'closed'`（重開中的日子走一般流程，不能補記）；日期不早於上線日。
-- `payload = {direction: 'income' | 'expense', amount, reason}`：`amount` 為 1–20,000 的整數；`reason` 1–500 字；命令頂層 `reason` 必須等於 `payload.reason`。
+- `payload = {direction: 'income' | 'expense', amount, reason}`：`amount` 為 1–20,000 的整數；`reason` 1–500 字且**不能只有空白**；命令頂層 `reason` 必須等於 `payload.reason`。三層分工（獨立審查 `5f3159b` 發現只有空白的原因會讓備份永久失敗後修正）：Rules 用 `reason.trim().size() >= 1` 擋 ASCII 空白（Rules 的 `trim()` 只處理 ASCII 空白）；schema（`normalizePayload`）同樣只擋 ASCII 空白（P14 備份也會走這個 normalizer，所以不能用 Unicode 感知的 `trim()`）；**回執、補記讀取與 P14 備份驗證都不比 Rules 嚴格**——補記不可修改刪除，任何一層比 Rules 嚴格，一筆只有 Unicode 空白的原因（原始 SDK 仍寫得進去）就會讓匯出或讀取永久失敗。
 - 補記文件欄位 `{entryId, dayId, settlementRevision, direction, amount, reason, createdBy, createdAt, commandId}`，`entryId == commandId`（文件 ID 就是 command ID，重試落在同一份文件）；`settlementRevision` 必須等於營業日目前的 `lastSettlementRevision`。文件不可修改、不可刪除。
 - 命令分支巢狀放在 `validCommandCreate` 最後一個 operand，不加頂層 `||`。`postCloseEntries` 的權限：get／list 限 currentHolder；create 只能經由這個命令（`postCloseEntryCommand`，仿 `backfillDayCommand`）；update／delete 一律 `false`。
 
@@ -305,7 +305,7 @@ CheerC 的規則（R6／R7、Q2）：已關帳的日子不能靠重開來修，�
 ### 15.5 P14 備份
 
 - decoder：新 kind 與 payload（`direction`、`amount`、`reason`）、`targets = {dayId}`、`expectedRevisions = {day, settlement}`、`before/after = {head, day, postCloseEntry}`。補記文件路徑 `postCloseEntries/{commandId}`。
-- 驗證（匯出與開啟時）：營業日 before／after 相同且為 `closed`、`lastSettlementRevision == expectedRevisions.settlement`；補記各欄位對 payload／操作者／`committedAt`；金額 1–20,000、方向、原因 1–500 字；營業日不早於上線日。
+- 驗證（匯出與開啟時）：營業日 before／after 相同且為 `closed`、`lastSettlementRevision == expectedRevisions.settlement`；補記各欄位對 payload／操作者／`committedAt`；金額 1–20,000、方向、原因 1–500 字（不檢查空白，見上）；營業日不早於上線日。
 - replay：重播到這筆命令時，營業日必須是 `closed`、`lastSettlementRevision` 等於補記的 `settlementRevision`，且補記文件尚不存在。補記挪到關帳之前、重開之後沒重新關帳、同一筆重放，都會被拒。
 - 舊備份（沒有新 kind）照常通過。
 
