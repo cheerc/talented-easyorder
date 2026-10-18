@@ -66,11 +66,21 @@ interface Setup {
   settlements?: Record<string, Data | undefined>;
   heads?: Data[];
   leaseUpdatedAt?: Timestamp;
+  fromCache?: boolean;
+  hasPendingWrites?: boolean;
 }
 
-type FakeSnapshot = { id: string; data: () => Data };
+type FakeSnapshot = {
+  id: string;
+  data: () => Data;
+  metadata: { fromCache: boolean; hasPendingWrites: boolean };
+};
 
-function setup({ days = [], entries = [], settlements = {}, heads = [head()], leaseUpdatedAt = ts('2026-10-05T02:00:00.000Z') }: Setup = {}) {
+function setup({
+  days = [], entries = [], settlements = {}, heads = [head()], leaseUpdatedAt = ts('2026-10-05T02:00:00.000Z'),
+  fromCache = false, hasPendingWrites = false,
+}: Setup = {}) {
+  const metadata = { fromCache, hasPendingWrites };
   let headReads = 0;
   firestoreMocks.documentId.mockReturnValue('__name__');
   firestoreMocks.doc.mockImplementation((_db: unknown, path: string) => ({ path }));
@@ -85,7 +95,7 @@ function setup({ days = [], entries = [], settlements = {}, heads = [head()], le
     if (ref.path === 'system/dataHead') value = heads[Math.min(headReads++, heads.length - 1)];
     else if (ref.path === 'system/accessLease') value = { holderUid: uid, epoch: 1, updatedAt: leaseUpdatedAt };
     else value = settlements[ref.path];
-    return { id: ref.path.split('/').at(-1), exists: () => value !== undefined, data: () => value };
+    return { id: ref.path.split('/').at(-1), exists: () => value !== undefined, data: () => value, metadata };
   });
   // A small query evaluator: where on the document ID, ascending order, startAfter and limit.
   firestoreMocks.getDocsFromServer.mockImplementation(async (request: { collectionRef: { path: string }; constraints: Constraint[] }) => {
@@ -101,8 +111,8 @@ function setup({ days = [], entries = [], settlements = {}, heads = [head()], le
     const after = request.constraints.find(item => item.type === 'startAfter') as unknown as { snapshot: FakeSnapshot } | undefined;
     if (after) selected = selected.filter(([id]) => id > after.snapshot.id);
     const bound = request.constraints.find(item => item.type === 'limit')?.count ?? Infinity;
-    const docs: FakeSnapshot[] = selected.slice(0, bound).map(([id, value]) => ({ id, data: () => value }));
-    return { size: docs.length, docs };
+    const docs: FakeSnapshot[] = selected.slice(0, bound).map(([id, value]) => ({ id, data: () => value, metadata }));
+    return { size: docs.length, docs, metadata };
   });
 }
 
@@ -143,6 +153,11 @@ describe('createCloudLedgerReader.read', () => {
     ]]);
     // Only the latest settlement version of a closed day is read.
     expect(settlementReads().map(([ref]) => ref.path)).toEqual(['days/2026-10-01/settlements/2']);
+  });
+
+  it('fails closed when a day snapshot reports cached data', async () => {
+    setup({ days: [['2026-10-01', dayDoc()]], fromCache: true });
+    await expect(reader().read()).rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT' });
   });
 
   it('keeps immutable settlement versions in memory per Firestore instance', async () => {

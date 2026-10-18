@@ -176,9 +176,11 @@ day.totals 固定包含 activeTransactionCount、bentoCount、otherMealCount、m
 
 ### 7.3 每筆交易後餘額與跨日更正
 
-交易排序固定為 `(businessDate ASC, createdAt ASC, transactionId ASC)`，createdAt 用伺服器，不用 client clock／陣列順序。Cloud 不存 `afterBalance`；adapter 從期初與該帳戶**完整有效歷史**算到各筆。完整讀取可分頁，但未讀完時顯示「計算中／未載完」，不可對單頁假算或回傳錯的0。currentBalance 從已驗證 student head 取得；完整重算與 head 不同時停止該帳戶改帳並提示對帳。
+交易排序固定為 `(businessDate ASC, createdAt ASC, transactionId ASC)`；createdAt 使用伺服器 Timestamp 的 seconds／nanoseconds，完全同時才以 transactionId（Firestore 文件 ID）排序，不用 ISO 毫秒、client clock 或本機 locale。Cloud 不存 `afterBalance`；adapter 從期初與該帳戶**完整有效歷史**算到各筆。完整讀取可分頁，但未讀完時顯示「計算中／未載完」，不可對單頁假算或回傳錯的 0。餘額重算只累加 active 列；refund 扣 amount，voided 不影響餘額，cashier 列標為不適用。讀完帳戶前綴後必須與已驗證 student `currentBalance` 一致；缺頁、schema 錯誤、快照版本變更或不一致時不得交付可用報表。P12a 資料層以此規則提供完整快照；正式 UI 尚待 P12c 接用。
 
 更正過去日期可改變之後的重算餘額（包括已結帳日的交易後餘額）；不改之後日期的交易或現金日結。結帳保存的是當時 cash totals、sourceSeq 與實點，不保存「永遠不變的所有學員歷史餘額」。F5 標明「依目前更正後資料重算」及其sourceSeq，與「當時結帳版本」分開；後日 openingCash 是本人輸入，不因更正自動連鎖修改。
+
+P12c 歷史學生交易更正入口只在營業日為 `open` 且 `lastSettlementRevision == 0` 時提供；已關帳或曾關帳後 `reopened` 的學生交易在此 UI 入口唯讀。這是查帳 UI 的操作政策，不是本規格新增或收緊 Rules：後端既有 `reopened` 日期寫入權限維持原契約。L07 驗收使用一個未曾關帳的歷史日更正，確認後日已關帳交易餘額依完整前綴更新，而該日既有 settlement 文件與現金快照不變；不以「重開後可改學生交易」作為 UI 驗收。
 
 ### 7.4 日期生命週期
 
@@ -261,7 +263,7 @@ Hosting 使用 HTTPS、SPA rewrites、CSP／安全header承接 `vercel.json` 的
 | L04 | 重置匿名fixture，餐90收100後取消退款 | 餘額0、active筆數0、有效收現0；稽核保留收100及退100，不二扣現金 |
 | L05 | 開帳1000，L01/L02那組收200，櫃台收入50、支出80 | 應有1170；點1160差−10，空理由不能關帳；填理由可關 |
 | L06 | L05關帳與另一訂單同時送出，後續直接SDK更正 | 序列結果一致；closed日全部寫入拒絕；重開新版本才可更正 |
-| L07 | 同毫秒兩筆、重開歷史日更正、跨已結帳後日 | ID固定排序；後日重算餘額更新；後日原cash結帳快照不改 |
+| L07 | 同毫秒但不同 nanoseconds／ID、未曾關帳歷史日更正、跨已結帳後日 | 完整 Timestamp 排序、完全同時才以 ID 決勝；open 且 `lastSettlementRevision == 0` 才有 UI 更正入口；後日餘額更新、既有 settlement 與現金快照不變；曾關帳後重開的學生交易在查帳 UI 唯讀，Rules 權限不因此變更 |
 | L08 | 送出斷線／回應丟失／重送10次／刷新頁面 | 只一command、一筆交易與一次餘額影響；未確認不能聲稱失敗 |
 | L09 | 不帶command改balance、漏day／student、造audit、batch夾帶額外row、重放舊cmd | 全部拒絕且沒有部分寫入 |
 | L10 | 負數、小數、超界、零元payment、不同帳戶／日期改單 | rules拒絕；負學生餘額本身允許 |

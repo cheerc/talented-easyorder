@@ -263,8 +263,15 @@ function getCurrentUser(): CurrentUser | null {
   }
 }
 
+function assertServerConfirmed(snapshot: { metadata: { fromCache: boolean; hasPendingWrites: boolean } }): void {
+  if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) {
+    throw new CloudStudentRepositoryError('INCOMPLETE_SNAPSHOT', '學生名單含快取或未確認的本機寫入');
+  }
+}
+
 async function readHead(db: Firestore): Promise<ReturnType<typeof decodeHead>> {
   const snapshot = await getDocFromServer(doc(db, dataHeadPath()));
+  assertServerConfirmed(snapshot);
   if (!snapshot.exists()) throw new CloudStudentRepositoryError('UNSUPPORTED_SCHEMA', '雲端 dataHead 尚未初始化');
   return decodeHead(snapshot.data());
 }
@@ -286,6 +293,8 @@ export async function listCloudStudents(db: Firestore, options: CloudStudentRepo
       }
       const constraints = [orderBy(documentId()), ...(cursor ? [startAfter(cursor)] : []), limit(pageLimit)];
       const page = await getDocsFromServer(query(studentsCollection, ...constraints));
+      assertServerConfirmed(page);
+      for (const snapshot of page.docs) assertServerConfirmed(snapshot);
       if (students.length + page.size > MAX_STUDENTS) {
         throw new CloudStudentRepositoryError('INCOMPLETE_SNAPSHOT', '學生名單超過 500 人，未載入不完整名單');
       }
