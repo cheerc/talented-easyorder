@@ -666,6 +666,7 @@ describeWithEmulator('P14 cloud backup', () => {
     };
     const gap = shift(-3);
     const later = shift(-1);
+    const earlier = shift(-5);
     const studentId = uuid(950);
     let next = 950;
     const id = () => uuid(++next);
@@ -675,11 +676,11 @@ describeWithEmulator('P14 cloud backup', () => {
       targets: { studentId }, expectedRevisions: { student: 0 },
       payload: { studentCode: '950', displayName: 'Anonymous align fixture', aliases: [],
         openingBalance: { amount: 100, asOfDate: '2026-10-01', note: '' } } }));
-    // The later day is opened first (850), so the gap day must end at 850: opening 600 + receipts 200 + income 50.
+    // An earlier day opened with the same 850: only "later than the day" keeps a forged alignment away from it.
     okResult(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: 7,
-      targets: { dayId: later }, expectedRevisions: { day: 0 }, payload: { businessDate: later } }));
-    okResult(await closing.backfillOpening({ commandId: id(), leaseEpoch: 7, dayId: later,
-      expectedDayRevision: (await read(`days/${later}`)).revision, openingCash: 850, reason: '隔天照常開店' }));
+      targets: { dayId: earlier }, expectedRevisions: { day: 0 }, payload: { businessDate: earlier } }));
+    okResult(await closing.backfillOpening({ commandId: id(), leaseEpoch: 7, dayId: earlier,
+      expectedDayRevision: (await read(`days/${earlier}`)).revision, openingCash: 850, reason: '更早的一天' }));
     okResult(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: 7,
       targets: { dayId: gap }, expectedRevisions: { day: 0 }, payload: { businessDate: gap } }));
     okResult(await closing.backfillOpening({ commandId: id(), leaseEpoch: 7, dayId: gap,
@@ -693,6 +694,11 @@ describeWithEmulator('P14 cloud backup', () => {
       expectedStudentRevision: r.student, expectedDayRevision: r.day, paidAmount: 200, note: '' }));
     okResult(await orders.createCashMovement({ commandId: id(), transactionId: id(), leaseEpoch: 7, dayId: gap,
       expectedDayRevision: (await read(`days/${gap}`)).revision, direction: 'income', amount: 50, reason: '零錢補充' }));
+    // The gap day must end at 850 (opening 600 + receipts 200 + income 50) because the next day opens with 850.
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: 7,
+      targets: { dayId: later }, expectedRevisions: { day: 0 }, payload: { businessDate: later } }));
+    okResult(await closing.backfillOpening({ commandId: id(), leaseEpoch: 7, dayId: later,
+      expectedDayRevision: (await read(`days/${later}`)).revision, openingCash: 850, reason: '隔天照常開店' }));
     const current = await read(`days/${gap}`);
     const closeInput = { commandId: id(), leaseEpoch: 7, dayId: gap,
       expectedDayRevision: current.revision, expectedSettlementRevision: current.lastSettlementRevision,
@@ -705,15 +711,15 @@ describeWithEmulator('P14 cloud backup', () => {
     const kinds = exported.manifest.records.map(record => record.kind);
     expect(kinds).toEqual([
       'CreateStudent', 'EnsureDay', 'BackfillOpeningCash', 'EnsureDay', 'BackfillOpeningCash', 'StartBackfill',
-      'CreatePayment', 'CreateCashMovement', 'CloseDay',
+      'CreatePayment', 'CreateCashMovement', 'EnsureDay', 'BackfillOpeningCash', 'CloseDay',
     ]);
     const opened = await decryptBackup(await encryptBackup(exported.manifest, 'align-round-trip'), 'align-round-trip');
-    expect(opened.records[8]).toMatchObject({ kind: 'CloseDay', payload: { countedCash: 850, expectedCash: 850, alignWithDayId: later } });
+    expect(opened.records[10]).toMatchObject({ kind: 'CloseDay', payload: { countedCash: 850, expectedCash: 850, alignWithDayId: later } });
     const replayed = replayBackupProjections(opened.records, opened.baseState);
     expect(replayed).toEqual(opened.projectionState);
     expect(replayed[`days/${gap}`]).toMatchObject({ status: 'closed', openingCash: 600 });
 
-    const closeAt = 8;
+    const closeAt = 10;
     const forge = (change: (record: BackupCommandRecord) => void) => {
       const copy = structuredClone(opened);
       change(copy.records[closeAt]!);
@@ -721,9 +727,11 @@ describeWithEmulator('P14 cloud backup', () => {
     };
     const payloadOf = (record: BackupCommandRecord) => record.payload as Record<string, unknown>;
     // Forged alignment day: missing, not later, the day itself, malformed.
-    for (const align of [shift(-2), gap, shift(-5), '2026-10-1', 5]) {
+    for (const align of [shift(-2), gap, earlier, '2026-10-1', 5]) {
       expect(() => validateBackupManifest(forge(record => { payloadOf(record).alignWithDayId = align; })), String(align)).toThrow(/對齊日|alignWithDayId|payload/);
     }
+    // An earlier day with the same opening cash is refused only because it is not later than the closed day.
+    expect(() => validateBackupManifest(forge(record => { payloadOf(record).alignWithDayId = earlier; }))).toThrow(/對齊日/);
     // Forged amount: the counted cash no longer meets the aligned day's opening cash.
     expect(() => validateBackupManifest(forge(record => {
       payloadOf(record).countedCash = 840;
@@ -737,12 +745,12 @@ describeWithEmulator('P14 cloud backup', () => {
     }))).toThrow(/差額|settlement|對齊日/);
     // The aligned day was opened with another amount (a coherent forgery of its own opening record): the close no longer meets it.
     const otherOpening = structuredClone(opened);
-    (otherOpening.records[2]!.payload as Record<string, unknown>).openingCash = 800;
-    (otherOpening.records[2]!.after!.day as Record<string, unknown>).openingCash = 800;
+    (otherOpening.records[9]!.payload as Record<string, unknown>).openingCash = 800;
+    (otherOpening.records[9]!.after!.day as Record<string, unknown>).openingCash = 800;
     expect(() => replayBackupProjections(otherOpening.records, otherOpening.baseState)).toThrow(/對齊日/);
     // At the time of the close the aligned day had no opening cash: replay the close before it was opened.
-    const early = [...opened.records.slice(0, 3), opened.records[8]!, ...opened.records.slice(3, 8)];
-    expect(() => replayBackupProjections(early, opened.baseState)).toThrow(/對齊日|settlement|前序重播/);
+    const early = [...opened.records.slice(0, 8), opened.records[10]!, opened.records[8]!, opened.records[9]!];
+    expect(() => replayBackupProjections(early, opened.baseState)).toThrow(/對齊日/);
     // A null alignment passes the decoder but the later opened day is a replay-time fact only when the key is present:
     // an alignment on a day without a marker is refused.
     const unmarked = opened.records.filter(record => !['StartBackfill', 'CreatePayment', 'CreateCashMovement'].includes(record.kind));
