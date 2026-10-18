@@ -559,6 +559,98 @@ describeWithEmulator('P14 cloud backup', () => {
     expect(() => validateBackupManifest(forgedBefore)).toThrow();
   });
 
+  it('exports, decrypts and replays a real gap-day backfill — marker, backfilled order, payment and cash movement, then close; forgeries are rejected', async () => {
+    await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 0, []));
+    const db = authedDb();
+    const user = { uid: operator.uid, email: operator.email, emailVerified: true, providerData: [{ providerId: 'google.com' }] } as unknown as User;
+    const writer = createCloudCommandRepository(db, { currentUser: () => user });
+    const orders = createCloudOrderRepository(db, { currentUser: () => user });
+    const closing = createCloudDayCloseRepository(db, { currentUser: () => user });
+    const backups = createCloudBackupRepository(db, { currentUid: () => operator.uid });
+    const shifted = new Date(`${taipeiToday()}T00:00:00.000Z`);
+    shifted.setUTCDate(shifted.getUTCDate() - 2);
+    const gap = shifted.toISOString().slice(0, 10);
+    const studentId = uuid(900);
+    let next = 900;
+    const id = () => uuid(++next);
+    const read = async (path: string) => (await getDoc(doc(db, path))).data() as Record<string, number & string>;
+    const okResult = (result: { ok: boolean }) => expect(result, JSON.stringify(result)).toMatchObject({ ok: true });
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: 7,
+      targets: { studentId }, expectedRevisions: { student: 0 },
+      payload: { studentCode: '900', displayName: 'Anonymous gap fixture', aliases: [],
+        openingBalance: { amount: 100, asOfDate: '2026-10-01', note: '' } } }));
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: 7,
+      targets: { dayId: gap }, expectedRevisions: { day: 0 }, payload: { businessDate: gap } }));
+    okResult(await closing.backfillOpening({ commandId: id(), leaseEpoch: 7, dayId: gap,
+      expectedDayRevision: (await read(`days/${gap}`)).revision, openingCash: 600, reason: '整天沒有用系統' }));
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'StartBackfill', leaseEpoch: 7,
+      targets: { dayId: gap }, expectedRevisions: { day: (await read(`days/${gap}`)).revision },
+      payload: { reason: '前天停電，事後補登' } }));
+    const revisions = async () => ({ student: (await read(`students/${studentId}`)).revision, day: (await read(`days/${gap}`)).revision });
+    let r = await revisions();
+    okResult(await orders.createOrder({ commandId: id(), transactionId: id(), leaseEpoch: 7, studentId, dayId: gap,
+      expectedStudentRevision: r.student, expectedDayRevision: r.day, mealKind: 'other', mealPrice: 80, paidAmount: 0,
+      menuRevision: null, otherItemName: '自備便當', note: '' }));
+    r = await revisions();
+    okResult(await orders.createPayment({ commandId: id(), transactionId: id(), leaseEpoch: 7, studentId, dayId: gap,
+      expectedStudentRevision: r.student, expectedDayRevision: r.day, paidAmount: 200, note: '' }));
+    okResult(await orders.createCashMovement({ commandId: id(), transactionId: id(), leaseEpoch: 7, dayId: gap,
+      expectedDayRevision: (await read(`days/${gap}`)).revision, direction: 'income', amount: 50, reason: '零錢補充' }));
+    const current = await read(`days/${gap}`);
+    okResult(await closing.closeDay({ commandId: id(), leaseEpoch: 7, dayId: gap,
+      expectedDayRevision: current.revision, expectedSettlementRevision: current.lastSettlementRevision,
+      expectedCash: 850, countedCash: 850, note: '' }));
+
+    const exported = await backups.exportRange({ fromSeq: 0, generatedAt: '2026-10-18T05:00:00.000Z' });
+    expect(exported.manifest.records.map(record => record.kind)).toEqual([
+      'CreateStudent', 'EnsureDay', 'BackfillOpeningCash', 'StartBackfill', 'CreateOrder', 'CreatePayment', 'CreateCashMovement', 'CloseDay',
+    ]);
+    const opened = await decryptBackup(await encryptBackup(exported.manifest, 'gap-round-trip'), 'gap-round-trip');
+    const replayed = replayBackupProjections(opened.records, opened.baseState);
+    expect(replayed).toEqual(opened.projectionState);
+    expect(replayed[`backfillDays/${gap}`]).toMatchObject({ dayId: gap, reason: '前天停電，事後補登', startedBy: operator.uid });
+    expect(replayed[`days/${gap}`]).toMatchObject({ status: 'closed', openingCash: 600 });
+    expect(opened.records[3]).toMatchObject({ kind: 'StartBackfill', reason: '前天停電，事後補登', payload: { reason: '前天停電，事後補登' }, targets: { dayId: gap } });
+
+    // A forged marker: another starter, another reason, another command, a different start time, an extra field.
+    const forge = (change: (marker: Record<string, unknown>, record: BackupCommandRecord) => void) => {
+      const copy = structuredClone(opened);
+      change(copy.records[3]!.after!.backfill as Record<string, unknown>, copy.records[3]!);
+      return copy;
+    };
+    expect(() => validateBackupManifest(forge(marker => { marker.startedBy = 'someone-else'; }))).toThrow(/seq 4/);
+    expect(() => validateBackupManifest(forge(marker => { marker.reason = '竄改的原因'; }))).toThrow(/seq 4/);
+    expect(() => validateBackupManifest(forge(marker => { marker.commandId = uuid(1); }))).toThrow(/seq 4/);
+    expect(() => validateBackupManifest(forge(marker => { marker.startedAt = { _type: 'timestamp', seconds: 1, nanoseconds: 0 }; }))).toThrow(/seq 4/);
+    expect(() => validateBackupManifest(forge(marker => { marker.extra = true; }))).toThrow(/seq 4/);
+    // The command-level reason and the payload reason must agree.
+    expect(() => validateBackupManifest(forge((_marker, record) => { record.reason = '另一個原因'; }))).toThrow(/seq 4/);
+    expect(() => validateBackupManifest(forge((_marker, record) => { record.payload = { reason: '另一個原因' }; }))).toThrow(/seq 4/);
+    // The day must not change inside StartBackfill, and a marker needs a never-closed day.
+    const dayChanged = structuredClone(opened);
+    (dayChanged.records[3]!.after!.day as Record<string, unknown>).openingCash = 1;
+    expect(() => validateBackupManifest(dayChanged)).toThrow(/seq 4/);
+    const alreadyClosed = structuredClone(opened);
+    (alreadyClosed.records[3]!.before!.day as Record<string, unknown>).lastSettlementRevision = 1;
+    (alreadyClosed.records[3]!.after!.day as Record<string, unknown>).lastSettlementRevision = 1;
+    expect(() => validateBackupManifest(alreadyClosed)).toThrow(/seq 4/);
+
+    // A transaction created after its business day needs an earlier marker: without the StartBackfill record,
+    // or with the transaction moved in front of it, the replay refuses.
+    const withoutMarker = opened.records.filter(record => record.kind !== 'StartBackfill');
+    expect(() => replayBackupProjections(withoutMarker, opened.baseState)).toThrow(/回填標記/);
+    const reordered = [...opened.records.slice(0, 3), opened.records[4]!, opened.records[3]!, ...opened.records.slice(5)];
+    expect(() => replayBackupProjections(reordered, opened.baseState)).toThrow(/回填標記/);
+    // A marker replayed twice is refused.
+    const duplicate = [...opened.records.slice(0, 4), opened.records[3]!, ...opened.records.slice(4)];
+    expect(() => replayBackupProjections(duplicate, opened.baseState)).toThrow(/回填標記/);
+    // A marker for a day that is not before the commit date (today) is refused at validation.
+    const forToday = structuredClone(opened);
+    expect(forToday.records[3]!.targets.dayId).toBe(gap);
+    forToday.records[3]!.committedAt = { _type: 'timestamp', seconds: 1_760_000_000, nanoseconds: 0 };
+    expect(() => validateBackupManifest(forToday)).toThrow(/seq 4/);
+  });
+
   it('exports, decrypts and replays a real SetOpeningCash with a difference reason, and an older one without; forged reasons are rejected', async () => {
     await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 0, []));
     const db = authedDb();

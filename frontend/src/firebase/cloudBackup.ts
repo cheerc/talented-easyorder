@@ -70,7 +70,7 @@ const TARGET_KEYS_BY_KIND: Record<string, string[]> = {
   CorrectTransaction: ['transactionId', 'studentId', 'dayId'], VoidTransaction: ['transactionId', 'studentId', 'dayId'],
   CancelKeepDeposit: ['transactionId', 'studentId', 'dayId'], CancelRefund: ['transactionId', 'studentId', 'dayId'],
   Undo: ['transactionId', 'studentId', 'dayId'], CloseDay: ['dayId', 'settlementRevision'],
-  ReopenDay: ['dayId', 'settlementRevision'], BackfillOpeningCash: ['dayId'], RecordExport: [], RecordPrint: [], RecordBackup: [],
+  ReopenDay: ['dayId', 'settlementRevision'], BackfillOpeningCash: ['dayId'], StartBackfill: ['dayId'], RecordExport: [], RecordPrint: [], RecordBackup: [],
 };
 const REVISION_KEYS_BY_KIND: Record<string, string[]> = {
   EnsureDay: ['day'], CreateStudent: ['student'], ChangeStudentCode: ['student'], EditStudent: ['student'],
@@ -80,7 +80,7 @@ const REVISION_KEYS_BY_KIND: Record<string, string[]> = {
   CreateRefund: ['day', 'student', 'transaction'], CorrectTransaction: ['day', 'transaction'],
   VoidTransaction: ['day', 'transaction'], CancelKeepDeposit: ['day', 'transaction'],
   CancelRefund: ['day', 'transaction'], Undo: ['day', 'transaction'],
-  CloseDay: ['day', 'settlement'], ReopenDay: ['day', 'settlement'], BackfillOpeningCash: ['day'],
+  CloseDay: ['day', 'settlement'], ReopenDay: ['day', 'settlement'], BackfillOpeningCash: ['day'], StartBackfill: ['day'],
   RecordExport: [], RecordPrint: [], RecordBackup: [],
 };
 const PROJECTIONS_BY_KIND: Record<string, string[]> = {
@@ -92,6 +92,8 @@ const PROJECTIONS_BY_KIND: Record<string, string[]> = {
   VoidTransaction: ['day', 'transaction'], CancelKeepDeposit: ['day', 'transaction'],
   CancelRefund: ['day', 'transaction'], Undo: ['day', 'transaction'],
   CloseDay: ['day', 'settlement'], ReopenDay: ['day', 'settlement'], BackfillOpeningCash: ['day'],
+  // The day document stays unchanged; `backfill` is the new immutable marker (contract §12).
+  StartBackfill: ['day', 'backfill'],
   RecordExport: [], RecordPrint: [], RecordBackup: [],
 };
 // P10a transaction mutations always target { transactionId, studentId, dayId }. A counter cash row uses
@@ -100,7 +102,7 @@ const MUTATION_KINDS = new Set<string>(TRANSACTION_MUTATION_KINDS);
 const DECODABLE_COMMAND_KINDS = new Set([
   'EnsureDay', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus', 'SaveVendor',
   'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateOrder', 'CreatePayment', 'CreateCashMovement',
-  'CreateRefund', ...MUTATION_KINDS, 'RecordBackup', 'CorrectOpening', 'CloseDay', 'ReopenDay', 'BackfillOpeningCash',
+  'CreateRefund', ...MUTATION_KINDS, 'RecordBackup', 'CorrectOpening', 'CloseDay', 'ReopenDay', 'BackfillOpeningCash', 'StartBackfill',
 ]);
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -259,6 +261,7 @@ function resourcePath(projection: string, targets: Record<string, unknown>): str
   if (projection === 'student' && typeof targets.studentId === 'string') return `students/${targets.studentId}`;
   if (projection === 'vendor' && typeof targets.vendorId === 'string') return `vendors/${targets.vendorId}`;
   if (projection === 'transaction' && typeof targets.transactionId === 'string') return `transactions/${targets.transactionId}`;
+  if (projection === 'backfill' && typeof targets.dayId === 'string') return `backfillDays/${targets.dayId}`;
   if (projection === 'settlement' && typeof targets.dayId === 'string' && Number.isSafeInteger(targets.settlementRevision)) {
     return `days/${targets.dayId}/settlements/${targets.settlementRevision}`;
   }
@@ -300,11 +303,56 @@ function recalculateDayTotals(projections: Record<string, unknown>): Record<stri
   return result;
 }
 
+function taipeiDateOfSerialized(value: unknown): string {
+  if (!isSerializedTimestamp(value)) throw new BackupValidationError('時間欄位不是序列化 Timestamp');
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date((value as { seconds: number }).seconds * 1000));
+  const part = (type: string) => parts.find(item => item.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+const TRANSACTION_CREATE_KINDS = new Set(['CreateOrder', 'CreatePayment', 'CreateCashMovement']);
+
+/** Contract §12: how a backfill marker and the backfilled transactions are tied to replayed state. */
+function checkBackfillReplay(record: BackupCommandRecord, state: Record<string, unknown>): void {
+  const before = record.before ?? {};
+  const after = record.after ?? {};
+  if (record.kind === 'StartBackfill') {
+    const dayId = String(record.targets.dayId);
+    const dayBefore = before.day as Record<string, unknown>;
+    const marker = after.backfill as Record<string, unknown>;
+    const actor = record.actor as Record<string, unknown>;
+    if (!(dayId < taipeiDateOfSerialized(record.committedAt))
+      || dayBefore.lastSettlementRevision !== 0 || !['open', 'reopened'].includes(String(dayBefore.status))
+      || Object.hasOwn(state, `backfillDays/${dayId}`)
+      || marker.startedBy !== actor.uid || !sameValue(marker.startedAt, record.committedAt)
+      || marker.commandId !== record.commandId || marker.reason !== record.payload.reason) {
+      throw new BackupValidationError(`command seq ${record.seq} 回填標記與重播狀態不符`);
+    }
+    return;
+  }
+  if (TRANSACTION_CREATE_KINDS.has(record.kind) && isPlainRecord(after.transaction)) {
+    const dayId = String(record.targets.dayId);
+    const committed = taipeiDateOfSerialized(record.committedAt);
+    if (dayId > committed) throw new BackupValidationError(`command seq ${record.seq} 交易的營業日晚於提交日期`);
+    if (dayId < committed) {
+      // A transaction created after its business day needs an earlier marker and a day that never closed.
+      const dayBefore = before.day as Record<string, unknown>;
+      if (!Object.hasOwn(state, `backfillDays/${dayId}`) || state[`backfillDays/${dayId}`] === null
+        || dayBefore.lastSettlementRevision !== 0) {
+        throw new BackupValidationError(`command seq ${record.seq} 交易晚於營業日建立，但該日沒有較早的回填標記`);
+      }
+    }
+  }
+}
+
 function replayProjections(records: BackupCommandRecord[], initial: Record<string, unknown>): Record<string, unknown> {
   const state = structuredClone(initial);
   for (const record of records) {
     const before = record.before ?? {};
     const after = record.after ?? {};
+    checkBackfillReplay(record, state);
     if (record.kind === 'CloseDay' || record.kind === 'ReopenDay') {
       // Each version is a new immutable document; the previous one must be exactly the replayed version n−1.
       const revision = Number(record.targets.settlementRevision);
@@ -316,7 +364,7 @@ function replayProjections(records: BackupCommandRecord[], initial: Record<strin
       }
       state[settlementPath] = after.settlement;
     }
-    for (const projection of ['day', 'student', 'vendor', 'transaction', 'settlement']) {
+    for (const projection of ['day', 'student', 'vendor', 'transaction', 'settlement', 'backfill']) {
       if (projection === 'settlement' && (record.kind === 'CloseDay' || record.kind === 'ReopenDay')) continue;
       if (!(projection in before) && !(projection in after)) continue;
       if (!(projection in before) || !(projection in after)) {
@@ -331,7 +379,7 @@ function replayProjections(records: BackupCommandRecord[], initial: Record<strin
       state[key] = after[projection];
     }
     const unknownProjection = [...new Set([...Object.keys(before), ...Object.keys(after)])]
-      .filter(key => key !== 'head' && !['day', 'student', 'vendor', 'transaction', 'settlement', 'previousSettlement'].includes(key));
+      .filter(key => key !== 'head' && !['day', 'student', 'vendor', 'transaction', 'settlement', 'previousSettlement', 'backfill'].includes(key));
     if (unknownProjection.length) throw new BackupValidationError(`command seq ${record.seq} 含未知投影：${unknownProjection.join(', ')}`);
     recalculateDayTotals(state);
   }
@@ -433,7 +481,7 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
     CorrectTransaction: { required: ['mealPrice', 'paidAmount', 'amount', 'note', 'reason'] }, VoidTransaction: { required: ['reason'] },
     CancelKeepDeposit: { required: ['reason'] }, CancelRefund: { required: ['reason'] }, Undo: { required: ['targetCommandId', 'reason'] },
     CloseDay: { required: ['countedCash'], optional: ['note', 'expectedCash'] }, ReopenDay: { required: ['reason'] },
-    BackfillOpeningCash: { required: ['openingCash', 'reason'] },
+    BackfillOpeningCash: { required: ['openingCash', 'reason'] }, StartBackfill: { required: ['reason'] },
     RecordExport: { required: ['exportType', 'sourceSeq'], optional: ['dateRange'] },
     RecordPrint: { required: ['printType', 'businessDate', 'sourceSeq'] },
     RecordBackup: { required: ['backupType', 'sourceSeq', 'fromSeq', 'toSeq', 'sha256'] },
@@ -533,7 +581,7 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
     }
     const projections = requiredProjections!;
     const beforeProjectionKey = (projection: string) => projection === 'settlement' ? 'previousSettlement' : projection;
-    for (const projection of projections) {
+    for (const projection of record.kind === 'StartBackfill' ? [] : projections) {
       const beforeValue = before[beforeProjectionKey(projection)];
       const afterValue = after[projection];
       validateProjectionSnapshot(projection, beforeValue, record, targets!, false);
@@ -542,6 +590,17 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
       if (revisionOf(projection, beforeValue) !== expectedRevision
         || revisionOf(projection, afterValue) !== (expectedRevision as number) + 1) {
         throw new BackupValidationError(`command seq ${seq} ${projection} before/after revision 不連續`);
+      }
+    }
+    if (record.kind === 'StartBackfill') {
+      // The day does not change; only the marker is new (its fields are checked against the payload,
+      // actor and commit time by the receipt semantics below and again during replay).
+      validateProjectionSnapshot('day', before.day, record, targets!, false);
+      if (!sameValue(before.day, after.day) || revisionOf('day', before.day) !== expectedRevisions!.day
+        || before.backfill !== null || !isPlainRecord(after.backfill)
+        || !hasExactlyKeys(after.backfill, ['dayId', 'reason', 'startedBy', 'startedAt', 'commandId'])
+        || after.backfill.dayId !== targets!.dayId || !isSerializedTimestamp(after.backfill.startedAt)) {
+        throw new BackupValidationError(`command seq ${seq} 開始回填的 day／標記 projection 無效`);
       }
     }
     if (record.kind === 'CloseDay' || record.kind === 'ReopenDay') {

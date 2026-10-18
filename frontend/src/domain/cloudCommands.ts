@@ -101,6 +101,7 @@ export type BusinessCommandKind =
   | 'CloseDay'
   | 'ReopenDay'
   | 'BackfillOpeningCash'
+  | 'StartBackfill'
   | 'RecordExport'
   | 'RecordPrint'
   | 'RecordBackup';
@@ -128,6 +129,7 @@ export const ALL_COMMAND_KINDS: readonly BusinessCommandKind[] = [
   'CloseDay',
   'ReopenDay',
   'BackfillOpeningCash',
+  'StartBackfill',
   'RecordExport',
   'RecordPrint',
   'RecordBackup',
@@ -368,6 +370,13 @@ export type BackfillOpeningCashCommand = BaseCommand<
   { dayId: string }
 >;
 
+// 19c. StartBackfill：把過去、從未關帳的營業日標成「回填中」（須填原因），之後可補登訂餐、繳費與櫃台收支
+export type StartBackfillCommand = BaseCommand<
+  'StartBackfill',
+  { reason: string },
+  { dayId: string }
+>;
+
 // 20. RecordExport
 export type RecordExportCommand = BaseCommand<
   'RecordExport',
@@ -427,6 +436,7 @@ export type BusinessCommand =
   | CloseDayCommand
   | ReopenDayCommand
   | BackfillOpeningCashCommand
+  | StartBackfillCommand
   | RecordExportCommand
   | RecordPrintCommand
   | RecordBackupCommand;

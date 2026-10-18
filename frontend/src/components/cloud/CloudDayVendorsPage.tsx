@@ -18,10 +18,15 @@ import {
   type CloudDayMenuDraft,
   type CloudDayVendorDraft,
 } from './CloudDayVendorForms';
-import { openingDifference, previousClosedDay } from '../../domain/ledgerAnomalies';
+import { openingDifference, type PreviousClosedDay } from '../../domain/ledgerAnomalies';
 import type { CloudLedgerView } from '../../hooks/useCloudLedger';
 import { LedgerUnclosedBanner } from './LedgerUnclosedBanner';
 import './CloudDayVendorsPage.css';
+
+type PreviousClosedLookupView =
+  | { status: 'idle' }
+  | { status: 'ready'; dayId: string; previous: PreviousClosedDay | null }
+  | { status: 'error'; dayId: string; message: string };
 
 export interface CloudDayVendorsPageProps {
   db: Firestore;
@@ -287,6 +292,7 @@ export function CloudDayVendorsPage({
   const repository = useMemo(() => createCloudDayVendorRepository(db), [db]);
   const onLedgerChangedRef = useRef(onLedgerChanged);
   useEffect(() => { onLedgerChangedRef.current = onLedgerChanged; }, [onLedgerChanged]);
+  const [previousLookup, setPreviousLookup] = useState<PreviousClosedLookupView>({ status: 'idle' });
   const scopeKey = `${identityKey}:${leaseEpoch}`;
   const [pageState, setPageStateRaw] = useState<PageState>(() => initialPageState(scopeKey));
   const scopeRef = useRef(scopeKey);
@@ -888,12 +894,11 @@ export function CloudDayVendorsPage({
     }
     let reason: string | undefined;
     if (ledger) {
-      if (ledger.status !== 'ready') {
+      if (previousLookup.status !== 'ready' || previousLookup.dayId !== snapshot.dayId) {
         updatePage(previous => ({ ...previous, actionError: '尚未確認上一個已關帳日的實點現金，請稍候或重新整理後再開帳。' }));
         return;
       }
-      const previousClosed = previousClosedDay(ledger.snapshot.closedDays, snapshot.dayId);
-      if (openingDifference(previousClosed, openingCash) !== null) {
+      if (openingDifference(previousLookup.previous, openingCash) !== null) {
         reason = page.openingReasonText.trim();
         if (reason.length < 1 || reason.length > 500) {
           updatePage(previous => ({ ...previous, actionError: '開帳現金與上次關帳實點不同，必須填寫 1 至 500 字的差額原因。' }));
@@ -921,6 +926,25 @@ export function CloudDayVendorsPage({
     && snapshot.selectionDate >= snapshot.goLiveDate
     && snapshot.day !== null
     && snapshot.day.status !== 'closed';
+  // 開帳表單只需要「上一個已關帳日」：依日期分段往回找，不依賴整段帳務異常掃描（契約 §11.2）。
+  const lookupDayId = ledger && canSetOpeningCash && snapshot ? snapshot.dayId : null;
+  const ledgerKey = ledger?.status === 'ready' ? `seq:${ledger.snapshot.seq}` : (ledger?.status ?? 'none');
+  useEffect(() => {
+    if (lookupDayId === null) return undefined;
+    let cancelled = false;
+    repository.findPreviousClosed(lookupDayId).then(
+      result => { if (!cancelled) setPreviousLookup({ status: 'ready', dayId: lookupDayId, previous: result.previous }); },
+      (error: unknown) => {
+        if (cancelled) return;
+        setPreviousLookup({
+          status: 'error', dayId: lookupDayId, message: error instanceof Error ? error.message : '無法讀取上一個已關帳日',
+        });
+      },
+    );
+    return () => { cancelled = true; };
+  }, [repository, lookupDayId, ledgerKey]);
+  const lookupReady = previousLookup.status === 'ready' && previousLookup.dayId === lookupDayId;
+  const lookupError = previousLookup.status === 'error' && previousLookup.dayId === lookupDayId;
   const source = snapshot?.latestEarlierMenu ?? null;
   const canInherit = !!source && source.blocked === null && !!source.sourceVendor
     && source.sourceVendor.status === 'active' && !source.sourceVendor.deleted
@@ -1101,10 +1125,10 @@ export function CloudDayVendorsPage({
                       onSubmit={submitOpeningCash}
                       disabled={busy}
                       {...(ledger ? {
-                        previousClosed: ledger.status === 'ready'
-                          ? previousClosedDay(ledger.snapshot.closedDays, snapshot.dayId) : null,
-                        ledgerNotice: ledger.status === 'loading' ? '正在確認上一個已關帳日的實點現金…'
-                          : ledger.status === 'error' ? `無法確認上一個已關帳日的實點現金（${ledger.message}），暫時不能開帳。` : '',
+                        previousClosed: lookupReady ? previousLookup.previous : null,
+                        ledgerNotice: lookupError
+                          ? `無法確認上一個已關帳日的實點現金（${previousLookup.message}），暫時不能開帳。`
+                          : lookupReady ? '' : '正在確認上一個已關帳日的實點現金…',
                         reasonText: page.openingReasonText,
                         onReasonTextChange: (value: string) => updatePage(previous => ({ ...previous, openingReasonText: value, actionError: '' })),
                       } : {})}

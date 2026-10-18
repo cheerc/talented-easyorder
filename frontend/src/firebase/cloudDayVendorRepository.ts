@@ -21,8 +21,8 @@ import {
   createCloudCommandRepository,
   type CloudCommandRepositoryOptions,
 } from './cloudCommandRepository';
-import { openingDifference, previousClosedDay } from '../domain/ledgerAnomalies';
-import { CloudDayCloseRepositoryError, createCloudLedgerReader } from './cloudDayCloseRepository';
+import { openingDifference, type PreviousClosedDay } from '../domain/ledgerAnomalies';
+import { CloudDayCloseRepositoryError, createCloudLedgerReader, type CloudPreviousClosedLookup } from './cloudDayCloseRepository';
 import { accessLeasePath, dataHeadPath, dayPath } from './firestorePaths';
 
 type Data = Record<string, unknown>;
@@ -180,6 +180,8 @@ export interface CloudDayVendorRepository {
   removeVendor(input: RemoveVendorInput): Promise<CommandResult>;
   setDayMenu(input: SetDayMenuInput): Promise<CommandResult>;
   setOpeningCash(input: SetOpeningCashInput): Promise<CommandResult>;
+  /** The latest closed day dated before `dayId` (contract §11.2); shared with the `setOpeningCash` check. */
+  findPreviousClosed(dayId: string): Promise<CloudPreviousClosedLookup>;
   readCommand(commandId: string): Promise<CommandReceipt | null>;
 }
 
@@ -510,9 +512,9 @@ export function createCloudDayVendorRepository(
   const ledgerReader = createCloudLedgerReader(db, options);
 
   async function setOpeningCash(input: SetOpeningCashInput): Promise<CommandResult> {
-    let previous: ReturnType<typeof previousClosedDay>;
+    let previous: PreviousClosedDay | null;
     try {
-      previous = previousClosedDay((await ledgerReader.read()).closedDays, input.dayId);
+      previous = (await ledgerReader.findPreviousClosed(input.dayId)).previous;
     } catch (error) {
       const code = error instanceof CloudDayCloseRepositoryError ? error.code : 'UNKNOWN_RESULT';
       const mapped: CommandErrorCode = code === 'STALE_SNAPSHOT' ? 'REVISION_CONFLICT'
@@ -580,6 +582,7 @@ export function createCloudDayVendorRepository(
 
   return {
     loadSnapshot,
+    findPreviousClosed: dayId => ledgerReader.findPreviousClosed(dayId),
     ensureDay: input => commandRepository.commitCommand({
       commandId: input.commandId, kind: 'EnsureDay', leaseEpoch: input.leaseEpoch,
       targets: { dayId: input.dayId }, expectedRevisions: { day: 0 },

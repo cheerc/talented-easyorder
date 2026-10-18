@@ -92,6 +92,14 @@ service cloud.firestore {
         && start + duration.value(24, 'h') > request.time + duration.value(8, 'h');
     }
 
+    // P11c2a: the Taipei today, or a past day that StartBackfill marked and that never closed. The marker
+    // (`backfillDays/{dayId}`, immutable) is only created for a day before today, so no date check is
+    // needed here. Today short-circuits, so ordinary writes pay for no extra document access.
+    function validTransactionDay(dayId, day) {
+      return validCurrentTaipeiDate(dayId)
+        || (day.lastSettlementRevision == 0 && exists(/databases/$(database)/documents/backfillDays/$(dayId)));
+    }
+
     function validHead(head) {
       return exactMap(head, ['schemaVersion', 'datasetId', 'seq', 'lastCommandId', 'maintenance', 'goLiveDate', 'updatedAt'])
         && head.schemaVersion == 1
@@ -807,7 +815,7 @@ service cloud.firestore {
         && tx.studentId == command.targets.studentId
         && tx.businessDate == command.targets.dayId
         && tx.businessDate >= head.goLiveDate
-        && validCurrentTaipeiDate(tx.businessDate)
+        && validTransactionDay(tx.businessDate, dayBefore)
         && tx.type == (order ? 'order' : 'payment')
         && tx.mealKind == (order ? command.payload.mealKind : null)
         && tx.mealPrice == (order ? command.payload.mealPrice : 0)
@@ -944,7 +952,7 @@ service cloud.firestore {
         && studentBefore.openingBalance.asOfDate <= command.targets.dayId
         && dayBefore.status in ['open', 'reopened']
         && command.targets.dayId >= head.goLiveDate
-        && validCurrentTaipeiDate(command.targets.dayId)
+        // The day check lives in validTransactionDoc above, which also pins tx.businessDate to targets.dayId.
         && (order || mealPrice == 0);
     }
 
@@ -1070,7 +1078,7 @@ service cloud.firestore {
         && !exists(/databases/$(database)/documents/transactions/$(command.targets.transactionId))
         && dayBefore.status in ['open', 'reopened']
         && dayId >= head.goLiveDate
-        && validCurrentTaipeiDate(dayId)
+        && validTransactionDay(dayId, dayBefore)
         && dayAfter.revision == dayBefore.revision + 1
         && dayAfter.lastCommandId == commandId
         && dayAfter.updatedAt == request.time
@@ -1248,7 +1256,8 @@ service cloud.firestore {
         // fail a malformed command with a retryable error rather than a denial.
         || ((kind == 'CorrectOpening' && validCorrectOpening(commandId, command))
           || (kind in ['CloseDay', 'ReopenDay'] && validDaySettlementCommand(commandId, command))
-          || (kind == 'BackfillOpeningCash' && validBackfillOpeningCash(commandId, command)));
+          || (kind == 'BackfillOpeningCash' && validBackfillOpeningCash(commandId, command))
+          || (kind == 'StartBackfill' && validStartBackfill(commandId, command)));
     }
 
     // BackfillOpeningCash: a past open／reopened day that never confirmed its opening cash (for
@@ -1283,6 +1292,53 @@ service cloud.firestore {
         && command.after == {'head': headAfter, 'day': dayAfter}
         && dayAfter.revision == dayBefore.revision + 1
         && dayAfter.lastCommandId == commandId;
+    }
+
+    // P11c2a StartBackfill: marks a past day that never closed as being backfilled, with a reason, so that
+    // CreateOrder, CreatePayment and CreateCashMovement may land on it (validTransactionDay). Only the
+    // marker `backfillDays/{dayId}` is written; the day document stays exactly as it was. A day that has
+    // ever been closed (`lastSettlementRevision > 0`) can never be marked, and a marked day stops accepting
+    // them once it closes.
+    function validStartBackfill(commandId, command) {
+      let dayId = command.targets.dayId;
+      let head = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let dayBefore = get(/databases/$(database)/documents/days/$(dayId)).data;
+      let marker = getAfter(/databases/$(database)/documents/backfillDays/$(dayId)).data;
+      let p = command.payload;
+      return commandHolder(command.leaseEpoch)
+        && cashCommandEnvelope(commandId, command, head, headAfter)
+        && exactMap(command.targets, ['dayId'])
+        && exactMap(command.expectedRevisions, ['day'])
+        && command.expectedRevisions.day == dayBefore.revision
+        && validCalendarDate(dayId)
+        && timestamp.value(dayId + 'T00:00:00Z') + duration.value(24, 'h') <= request.time + duration.value(8, 'h')
+        && dayId >= head.goLiveDate
+        && dayBefore.status in ['open', 'reopened']
+        && dayBefore.lastSettlementRevision == 0
+        && !exists(/databases/$(database)/documents/backfillDays/$(dayId))
+        && exactMap(p, ['reason'])
+        && validMutationReason(p.reason)
+        && command.reason == p.reason
+        && command.businessDate == dayId
+        && command.studentId == null
+        && zeroCashEffect(command.cashEffect)
+        && command.before == {'head': head, 'day': dayBefore, 'backfill': null}
+        && command.after == {'head': headAfter, 'day': dayBefore, 'backfill': marker}
+        && marker == {
+          'dayId': dayId, 'reason': p.reason, 'startedBy': request.auth.uid,
+          'startedAt': request.time, 'commandId': commandId
+        };
+    }
+
+    function backfillDayCommand(commandId, dayId, after) {
+      let command = getAfter(/databases/$(database)/documents/commands/$(commandId)).data;
+      return command.kind == 'StartBackfill'
+        && !exists(/databases/$(database)/documents/commands/$(commandId))
+        && command.commandId == commandId
+        && command.committedAt == request.time
+        && command.targets.dayId == dayId
+        && command.after.backfill == after;
     }
 
     // The day only gains its first opening cash; totals, menu, status and settlements stay.
@@ -1955,7 +2011,7 @@ service cloud.firestore {
           || (command.kind == 'CreateCashMovement'
             && validCashMovementPayload(command.payload)
             && command.before.day.status in ['open', 'reopened']
-            && validCurrentTaipeiDate(command.targets.dayId)
+            && validTransactionDay(command.targets.dayId, command.before.day)
             && command.targets.dayId >= command.before.head.goLiveDate
             && validCashMovementTransactionDoc(after, commandId, command, command.before.head.seq + 1))
           || (command.kind == 'CreateRefund'
@@ -2074,6 +2130,13 @@ service cloud.firestore {
         && settlementCreateCommand(dayId, revision, request.resource.data);
     }
 
+    // P11c2a immutable backfill marker: created once by StartBackfill, never changed or deleted.
+    match /backfillDays/{dayId} {
+      allow get, list: if currentHolder();
+      allow update, delete: if false;
+      allow create: if request.resource.data.commandId is string
+        && backfillDayCommand(request.resource.data.commandId, dayId, request.resource.data);
+    }
     match /students/{studentId} {
       // Query authorization cannot filter by student schema; every returned record is
       // strict-decoded by the server-only repository before any UI state is published.
