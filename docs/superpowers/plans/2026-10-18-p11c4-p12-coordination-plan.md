@@ -2,6 +2,11 @@
 
 2026-10-18，owner：coordinator。狀態：已授權執行，尚未完成。
 
+## 實際進度（2026-10-18）
+
+- P11c4b PR [#519](https://github.com/cheerc/talented-easyorder/pull/519) 已合併：base `fa214036e18d5e600cdb729a4e3b2732c51ec458`、source head `340726ff4b14343e4542eaa3bd936ede50fbfa0e`、merge SHA `855679804a12cd1bce5dce72fe2da20127e2c85d`。舊 head REWORK review [5563425902](https://github.com/cheerc/talented-easyorder/pull/519#pullrequestreview-5563425902) 與新 head COMMENT delta PASS review [5563479986](https://github.com/cheerc/talented-easyorder/pull/519#pullrequestreview-5563479986) 分開；source CI [39137275659](https://github.com/cheerc/talented-easyorder/actions/runs/39137275659) 兩個 jobs 成功。
+- docs-only P11c4b receipt 正在準備。merge SHA 的 main CI [39138091279](https://github.com/cheerc/talented-easyorder/actions/runs/39138091279) 已 COMPLETED／SUCCESS（build-and-test、e2e 均成功）；沒有重跑。P11c 已完成；P12 已授權，P12a 待 coordinator 發具體 brief，尚未開始實作；P12b／P12c 依前批 receipt 與派工接續。
+
 ## 授權與角色
 
 CheerC 本輪指示：coordinator 負責推進至 P12 完成，撰寫 plan 與 dispatch brief；implementer 依 brief 實作與驗證，不自行寫 plan。每個實作 PR 發布後交獨立 reviewer 審查，有必修就 rework，直到目前 head 的審查及 CI 通過，再由 coordinator 合併。合併後依專案慣例另開 docs-only 收據 PR，也需 review／CI。到 P12 完成為止，不開始 P13。
@@ -106,6 +111,6 @@ Rules 改動每次重測現有預算錨點與新增最大 payload 路徑。任�
 
 ## 派工 brief
 
-原樣納入版本歷史的 brief 索引：[P11c4a 收據](2026-10-18-p11c4a-receipt-dispatch.md)、[P11c4b](2026-10-18-p11c4b-dispatch.md)、[P12a](2026-10-18-p12a-dispatch.md)、[P12b](2026-10-18-p12b-dispatch.md)、[P12c](2026-10-18-p12c-dispatch.md)。各批派工狀態以對應 brief 為準。
+原樣納入版本歷史的 brief 索引：[P11c4a 收據](2026-10-18-p11c4a-receipt-dispatch.md)、[P11c4b](2026-10-18-p11c4b-dispatch.md)、[P11c4b 收據](2026-10-18-p11c4b-receipt-dispatch.md)、[P12a](2026-10-18-p12a-dispatch.md)、[P12b](2026-10-18-p12b-dispatch.md)、[P12c](2026-10-18-p12c-dispatch.md)。各批派工狀態以對應 brief 為準。
 
 每批的具體 brief 由 coordinator 在派工前寫入同目錄 `2026-10-18-<batch>-dispatch.md`，包含 pinned base、allowed paths、明確 deliverables／RED 與 gate；引用本計畫，不把設計責任交 impl。下一批開始前依已合併的實際 exported interface 更新 brief，不能根據猜測派工。
