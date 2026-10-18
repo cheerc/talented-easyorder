@@ -226,10 +226,10 @@ CheerC 的規則（規劃文件 R3）：回填完的日子要關帳時，結果�
 
 ### 14.1 `CloseDay` 對已標記日子的額外條件（Rules）
 
-只加在 `validDaySettlementCommand` 的 CloseDay 分支，沒有新的頂層 `||`；`exists(backfillDays/{dayId})` 只在 CloseDay 時執行。
+檢查分在兩處，沒有新的頂層 `||`：
 
-- **有標記**：`payload` 必須恰為 `{countedCash, note, expectedCash, alignWithDayId}`；`countedCash == expectedCash`（回填日不接受「有差額但寫說明」）；`alignWithDayId` 為 `null`，或一個合法台北日期字串、**晚於本日**、對應的營業日存在、`openingCash` 等於 `countedCash`（`openingCash == null` 時不相等，自然被拒）。
-- **沒有標記**：`payload` 維持原本三個欄位，**不帶** `alignWithDayId`（帶了就是形狀不符）。選「不帶」而不是「必須為 null」，是為了讓一般日子的命令、指紋、備份與舊客戶端完全不變。
+- **指令規則 `validDaySettlementCommand` 的 CloseDay 分支**（只驗形狀與對齊）：`payload` 是原本三個欄位 `{countedCash, note, expectedCash}`，或四個欄位 `{…, alignWithDayId}`。四個欄位時：`countedCash == expectedCash`（不接受「有差額但寫說明」）；`alignWithDayId` 為 `null`，或一個合法台北日期字串、**晚於本日**、對應的營業日存在、`openingCash` 等於 `countedCash`（`openingCash == null` 時不相等，自然被拒）。三個欄位的一般關帳先短路成立，所以一般日子在這條最緊的規則上沒有多付成本。
+- **營業日規則 `dayCloseCommand`**（餘裕大）：CloseDay 帶不帶 `alignWithDayId` 必須與 `exists(backfillDays/{dayId})` 一致 —— **有標記就必須帶、沒標記就不能帶**。選「沒標記不帶」而不是「必須為 null」，是為了讓一般日子的命令、指紋、備份與舊客戶端完全不變。指令、營業日、結算版本在同一個原子 commit，營業日的更新要過這條規則才能成立，所以把標記連動放在這裡等價於放在指令規則，卻不占用指令規則的餘裕。
 - 其餘（`expectedCash` 公式、`countedCash` 範圍、`note` 長度、`before`／`after` 快照）與一般關帳相同。結算版本文件的形狀不變（`difference` 必為 0）。
 
 ### 14.2 Rules 的極限與寫入器的責任
@@ -257,9 +257,16 @@ Rules 無法證明兩件事，由寫入器與異常頁補上：
 - replay：沒有標記的日子帶 `alignWithDayId` → 拒；有 `alignWithDayId` 時結算 `difference == 0` 且 `countedCash == expectedCash`；非 `null` 時對齊日必須晚於本日，且**在提交當時**（重播到這筆命令時的狀態）已有 `openingCash`、金額相等。偽造對齊金額、把關帳挪到對齊日開帳之前、對齊日不存在都會被拒。
 - 舊備份（P11c3 之前、有標記的日子關帳沒有 `alignWithDayId`）與一般關帳照常通過。
 
-### 14.5 驗收、部署與範圍
+### 14.5 #513 審查遺留（一併處理）
 
-- 單元／元件：`cloudCommandSchema.dayClose.test.ts`（欄位、對齊日必須晚於本日、有差額被拒）、`cloudLedgerReader.test.ts`（`findNextOpened`：最近的已開帳日、跳過未開帳、分段往後、head 變動、壞路徑）、`CloudDayClosePage.test.tsx`（對齊顯示與預設、差額停用並引導、`null` 對齊、查詢失敗重試、一般日子不變）。
-- Emulator：`cloudDayClose.spec.ts` `P11c3.1`–`P11c3.8`（對齊關帳與重試冪等、`null` 對齊、寫入器拒絕較遠日與錯的 `null`、標記／差額的寫入器拒絕、補收支後才能關帳、一般日子不變、原始 SDK 拒絕 9 種＋偽造 before＋多餘欄位、合法最大 payload）；備份 `cloudBackup.spec.ts` 真實 EnsureDay → 補開帳 → 標記 → 補登 → 對齊關帳 → 匯出 → 解密 → replay 與偽造對齊被拒。mutant 與 Rules 餘裕見 [預算附錄](../../ops/p05-rules-budget.md#p11c3--aligned-close-of-a-back-filled-day--budget-and-probe-receipt)。
+- **訂餐頁讀取成本**：`loadSnapshot` 每次都跑一次日結 overview（等於每筆櫃台操作多 3–4 次讀取）。改為 `loadSnapshot({dayId, knownBackfillDays})`：櫃台操作成功或明確被拒後的重讀沿用頁面手上的回填日清單（上次讀取成功才沿用），第一次載入、切換日期、離開回填、「重新載入」、回到今天仍重讀。回填標記本身（`readBackfillDay`）每次仍讀，所以被檢視的那一天是否還在回填永遠是新的。
+- **E2E `D09` 清理**：測試期間新增的 `commands` 文件（依 `seq` 大於測試前的 head）一併刪除，`dataHead` 的 `seq`、`lastCommandId`、`goLiveDate` 還原。
+- **診斷訊息**：「沒有標記、關過帳又重開」的過去日，三種交易被拒時回 `DAY_CLOSED`，訊息明說**沒有回填標記**；有標記的重開日維持「曾經關過帳（現在是重開狀態）」。診斷只在被拒時多讀租約與標記。
+- **完整三步 UI E2E**：`D10` 種下已關帳的前一天（870）與已關帳的後一天（970），中間那天沒有營業日文件；由異常頁「回填這一天」→ 日結頁三步（建日、補開帳預設 870、標記）→ 差 100 停用 → 訂餐頁補繳費 60、再 40 → 日結頁以預設 970 對齊關帳，並用 Admin 讀取確認三個命令、結算與 `alignWithDayId`。
+
+### 14.6 驗收、部署與範圍
+
+- 單元／元件：`cloudCommandSchema.dayClose.test.ts`（欄位、對齊日必須晚於本日、有差額被拒）、`cloudLedgerReader.test.ts`（`findNextOpened`：最近的已開帳日、跳過未開帳、分段往後、head 變動、壞路徑）、`CloudDayClosePage.test.tsx`（對齊顯示與預設、差額停用並引導、`null` 對齊、查詢失敗重試、一般日子不變）、`CloudOrdersPage.test.tsx`（清單重用與不重用）。
+- Emulator：`cloudDayClose.spec.ts` `P11c3.1`–`P11c3.10`（對齊關帳與重試冪等、`null` 對齊、寫入器拒絕較遠日與錯的 `null`、標記／差額的寫入器拒絕、補收支後才能關帳、一般日子不變、原始 SDK 拒絕 10 種（差額＋對齊相符、差額＋null、金額不符、對齊自己、對齊更早的日子、對齊不存在、對齊未開帳、非字串、路徑、缺欄位）＋自己對齊自己（無其他差異）＋偽造 before＋多餘欄位＋一般日子帶欄位、合法最大 payload、重開後再關帳、無標記重開日的診斷訊息）；備份 `cloudBackup.spec.ts` 真實 EnsureDay → 補開帳 → 標記 → 補登 → 對齊關帳 → 匯出 → 解密 → replay 與偽造對齊被拒。E2E `D10`。Rules mutant 與餘裕見[預算附錄](../../ops/p05-rules-budget.md#p11c3--aligned-close-of-a-back-filled-day--budget-and-probe-receipt)。
 - 部署（CheerC 本機）：Rules、前端、`firestore.indexes.json` 一起上（indexes 不變）。舊前端對有標記的日子關帳會被新 Rules 拒絕（缺 `alignWithDayId`），所以 Rules 與前端要同一次上線。
-- 不做：已關帳日補記（P11c4）、角色權限（重開仍人人可用）、P12。
+- 不做：已關帳日補記（P11c4）、角色權限（重開仍人人可用）、P12（回填日關帳後查帳頁仍待 P12）。

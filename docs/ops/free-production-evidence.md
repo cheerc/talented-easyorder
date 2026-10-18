@@ -397,3 +397,30 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - 未做：P11c3、P11c4、角色權限、P12。無 production 部署、無正式金鑰。
 - 合併收據：#513 squash `797b23e5cff43e7fe0692817dc64e90c03b56d74`（base `0871f9ba9873cd5f2f2bfc447d569bf9bce65b64`，source head `750026db45bcfc7b52c6e8c20d8b716c78d76eef`）；獨立審查 review `5561472938` 程式碼無必修，唯一必修是 PR body 署名（已補）。審查者在 Emulator 另跑受影響 suite：`cloudDayClose` 132/132、`cloudOrderRepository` 15/15、`cloudCommands` 179/179、`cloudCashMovement` 42/42、`cloudTransactionMutation` 47/47、`cloudRefund` 43/43、`cloudBackup` 22/22、`cloudDayVendorRepository` 10/10；畫面與單元 9 檔 180/180；`firestore.rules` 與 `firestore.indexes.json` 無差異。CI run 39097170105：build-and-test 綠；e2e 第一次失敗在 P04 `A05`（租約與假時鐘，本 PR 沒碰租約或 auth），重跑失敗的 job 一次通過（D09 兩次都通過）。
 - 審查備註與待辦：P11c3 — 訂餐頁每次 `loadSnapshot` 多跑一次日結 overview（每筆操作約多 3–4 次讀取，可快取）、`D09` 清理沒刪 `commands` 也沒還原 `dataHead.seq`、補「營業日文件不存在」三步的 UI E2E、「沒有標記但關過帳又重開」的診斷訊息措辭；P12 — 回填日關帳後雲端畫面看不到那天的交易與「回填」標籤。
+
+## P11c3 回填日關帳對齊 checkpoint — 2026-10-18
+
+- 範圍：有 `backfillDays/{dayId}` 標記的日子，`CloseDay` 必須差額為 0，且 payload 帶 `alignWithDayId`（`null`，或晚於本日、開帳現金等於實點的日子）；一般日子的關帳不變。契約 §14：[P11 contract](../superpowers/specs/2026-10-17-cloud-day-close-contract.md#14-p11c3-回填日關帳對齊)。base `797b23e5cff43e7fe0692817dc64e90c03b56d74` 之後的 main（含 #514）；PR 與 head SHA 以 PR body 與 handoff 為準。沒有新 command kind、沒有新 collection、`firestore.indexes.json` 沒改。
+- Rules 的極限（已寫入契約）：Rules 證明不了「本日與 `alignWithDayId` 之間沒有其他已開帳的日子」，也證明不了傳 `null` 時之後真的沒有已開帳的日子；這兩點由寫入器（`findNextOpened` 分段往後掃、與 head 比對）負責，異常頁 `opening-mismatch` 是安全網。標記與 payload 形狀的連動放在 `dayCloseCommand`（日文件更新與命令同一個 batch 提交，原子成立）。
+- Rules 餘裕（`/mnt/project-files/tools/rules-probe`，main 與本分支同案例；數字為 單一 / 批次）：
+
+| 錨點 | main | 本 PR |
+| --- | --- | --- |
+| `P11.9` CloseDay 指令 | +53 / +54 | +52 / +53（−1） |
+| `P11.9` dayClose | +96 / +97 | +96 / +97 |
+| `P11.9` settlement | +96 / +97 | +96 / +97 |
+| `P11.9` dataHead | +95 / +96 | +95 / +96 |
+| `P08.8` 營業日 | +11 / +12 | +11 / +12 |
+| `P08.8` 指令 | +20 / +21 | +20 / +21 |
+| P14 `CreateStudent` | +3 / +4 | +3 / +4 |
+| `P11c2a.14` 回填訂餐交易 | +16 / +17 | +16 / +17 |
+| `P11c3.8` 對齊關帳最大 payload（指令） | — | +36 / +37 |
+| `P11c3.10` 重開後再關（指令） | — | +20 / +21 |
+
+  沒有既有錨點 ≤ +5，最大退步 −1（未超過停止條件的 3）。
+- demo-easyorder Auth＋Firestore Emulator 循序 `src/firebase/__tests__` 全部 `*.spec.ts`（所有 `EASYORDER_REQUIRE_*`）：14 檔 638/638、0 skipped（P11c2b 為 615）。`cloudDayClose.spec.ts` 154 項（新增 `P11c3.1`–`P11c3.10`，並依新行為更新 `P11c2a.4`／`.7`、`P11c2b.1`），`cloudBackup.spec.ts` 23 項（新增斷層日案例與「對齊關帳」round-trip：EnsureDay → 補開帳 → StartBackfill → 補登 → 對齊關帳 → 匯出、解密、replay；偽造對齊金額被拒）。
+- Rules mutant（拿掉差額為 0、拿掉對齊金額、對齊日不晚於本日、對齊日沒有開帳、標記連動等）與 client mutant 的結果見 [預算附錄](p05-rules-budget.md#p11c3--aligned-close-of-a-back-filled-day--budget-and-probe-receipt)；兩個等價 mutant（replay 的「不晚於」被 schema 先擋、路徑守衛重複）已在附錄說明。
+- 一般 Vitest：171 檔通過／14 檔 skip，1,823 passed／638 skipped（P11c2b 為 1,798／615）。`npm run lint`、`npm run build` exit 0；app tsc 與 main 診斷逐行相同。
+- E2E（本機 Chromium 1194 暫時設定，不取代 CI pinned Chromium，設定已刪未提交）：cloud 23/23、prototype 7/7。`D09` 補齊清理（刪測試期間的 `commands` 並還原 `dataHead.seq`）；新增 `D10`：種下已關帳的前一天、「營業日文件不存在」起點，UI 走完整三步（`EnsureDay` → 補開帳 → 標記）→ 補登 → 對齊關帳。
+- #513 審查遺留：(a) 訂餐頁改為共用已讀到的回填日清單（`knownBackfillDays`），不再每次 `loadSnapshot` 多跑一次 overview；(b) `D09` 清理已補；(c) 「沒有標記、關過帳又重開」診斷訊息明說是沒有回填標記（`DAY_REOPENED_NO_MARKER`）；(d) 三步 UI E2E 即 `D10`。
+- 未做／未驗：P11c4（已關帳日補記）、角色權限（重開仍人人可用）、P12 查帳頁；沒有 production 部署、沒有正式金鑰；pinned Chromium 1223 在此環境沒有，CI 的 E2E 以 CI 結果為準。部署（CheerC 本機）：Rules、前端、`firestore.indexes.json` 一起上。
