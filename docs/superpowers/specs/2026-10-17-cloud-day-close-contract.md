@@ -271,3 +271,28 @@ Rules 無法證明兩件事，由寫入器與異常頁補上：
 - Emulator：`cloudDayClose.spec.ts` `P11c3.1`–`P11c3.10`（對齊關帳與重試冪等、`null` 對齊、寫入器拒絕較遠日與錯的 `null`、標記／差額的寫入器拒絕、補收支後才能關帳、一般日子不變、原始 SDK 拒絕 10 種（差額＋對齊相符、差額＋null、金額不符、對齊自己、對齊更早的日子、對齊不存在、對齊未開帳、非字串、路徑、缺欄位）＋自己對齊自己（無其他差異）＋偽造 before＋多餘欄位＋一般日子帶欄位、合法最大 payload、重開後再關帳、無標記重開日的診斷訊息）；備份 `cloudBackup.spec.ts` 真實 EnsureDay → 補開帳 → 標記 → 補登 → 對齊關帳 → 匯出 → 解密 → replay 與偽造對齊被拒。E2E `D10`。Rules mutant 與餘裕見[預算附錄](../../ops/p05-rules-budget.md#p11c3--aligned-close-of-a-back-filled-day--budget-and-probe-receipt)。
 - 部署（CheerC 本機）：Rules、前端、`firestore.indexes.json` 一起上（indexes 不變）。舊前端對有標記的日子關帳會被新 Rules 拒絕（缺 `alignWithDayId`），所以 Rules 與前端要同一次上線。
 - 不做：已關帳日補記（P11c4）、角色權限（重開仍人人可用）、P12（回填日關帳後查帳頁仍待 P12）。
+
+## 15. P11c4 關帳後補記（`RecordPostCloseEntry`）
+
+CheerC 的規則（R6／R7、Q2）：已關帳的日子不能靠重開來修，只能補記**有標記、原因必填**的一般櫃台收支（收入、支出、呆帳類）；學生的訂餐與繳費一律不能動。例：星期一關帳 1,000，星期三開帳 950，中間沒有營業；在星期一補記一筆 50 元支出並寫原因，星期一的「有效關帳現金」變成 950，`opening-mismatch` 消失。分兩批：**P11c4a（後端、Rules、P14、Emulator）**寫在本節；P11c4b（畫面）之後補在 §15.8。
+
+> 本節是 P11c4a 的設計與狀態。尚未實作的部分在 PR body 的「未完成」逐項列出。
+
+### 15.1 機制（Rules）
+
+- 新 command kind `RecordPostCloseEntry`，一次 commit 寫三份文件：`system/dataHead`、`commands/{id}`、新集合 `postCloseEntries/{entryId}`。**不寫營業日文件、不動日結版本、交易與學生**；營業日形狀（`size() == 10`）與 `revision` 都不變，所以 `P08.8` dayWrite 的餘裕不受影響。
+- 使用條件：營業日 `status == 'closed'`（重開中的日子走一般流程，不能補記）；日期不早於上線日。
+- `payload = {direction: 'income' | 'expense', amount, reason}`：`amount` 為 1–20,000 的整數；`reason` 1–500 字；命令頂層 `reason` 必須等於 `payload.reason`。
+- 補記文件欄位 `{entryId, dayId, settlementRevision, direction, amount, reason, createdBy, createdAt, commandId}`，`entryId == commandId`（文件 ID 就是 command ID，重試落在同一份文件）；`settlementRevision` 必須等於營業日目前的 `lastSettlementRevision`。文件不可修改、不可刪除。
+- 命令分支巢狀放在 `validCommandCreate` 最後一個 operand，不加頂層 `||`。`postCloseEntries` 的權限：get／list 限 currentHolder；create 只能經由這個命令（`postCloseEntryCommand`，仿 `backfillDayCommand`）；update／delete 一律 `false`。
+
+### 15.2 冪等與 `expectedRevisions`
+
+`expectedRevisions = {day, settlement}`：`day` 必須等於營業日目前的 `revision`，`settlement` 必須等於 `lastSettlementRevision`。營業日文件這一批不被寫入，但寫入器的交易會 `tx.get` 它，提交時若這一天被重開（`revision` 與 `lastSettlementRevision` 都會變）交易就失敗重試；Rules 也在提交當下用 `get()` 比對目前的營業日。重試沿用同一個 command ID：已有回執就回傳回執，補記文件落在 `postCloseEntries/{commandId}`，不會重複。
+
+### 15.3 有效關帳現金
+
+- 公式：最新日結版本的 `countedCash` + Σ income − Σ expense，**只計入 `settlementRevision == lastSettlementRevision` 的補記**。
+- 日子重開再重新關帳後，舊補記只當歷史顯示、不再計入（重新點算已經涵蓋它們）。
+- 三處改用有效關帳現金：異常計算（`opening-mismatch`）、開帳預設值（上一個已關帳日的實點）、P11c3 的對齊（回填日要和下一個已開帳日對齊時，被比對的「前一天關帳」不變；但「下一個已開帳日的開帳現金」本來就是那天的 `openingCash`，不受影響。需要有效關帳現金的是用「上一個已關帳日」當基準的地方）。
+- 讀取：`postCloseEntries` 依 `dayId` 查詢（`where dayId == x`、依文件 ID 排序、每頁 200 筆、`startAfter`，不需新的 composite index），任何一頁讀取失敗整個結果 fail closed。
