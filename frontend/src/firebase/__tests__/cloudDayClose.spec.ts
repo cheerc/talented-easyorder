@@ -1902,12 +1902,14 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     a.command.after = { head: a.headAfter, day: a.dayBefore, postCloseEntry: a.entry };
   }
 
-  type PostCloseBatch = { omitEntry?: boolean; omitHead?: boolean; omitCommand?: boolean; entryPath?: string; touchDay?: RawMap };
+  type PostCloseBatch = { omitEntry?: boolean; omitHead?: boolean; omitCommand?: boolean; entryPath?: string; copyPath?: string; touchDay?: RawMap };
 
   function rawPostCloseBatch(db: Firestore, a: RawEntry, options: PostCloseBatch = {}) {
     const batch = writeBatch(db);
     if (!options.omitHead) batch.update(doc(db, 'system/dataHead'), a.headAfter);
     if (!options.omitEntry) batch.set(doc(db, options.entryPath ?? `postCloseEntries/${a.commandId}`), a.entry);
+    // A copy of the entry under another document ID would be counted twice.
+    if (options.copyPath) batch.set(doc(db, options.copyPath), a.entry);
     if (options.touchDay) batch.update(doc(db, `days/${a.dayId}`), options.touchDay);
     if (!options.omitCommand) batch.set(doc(db, `commands/${a.commandId}`), a.command);
     return batch;
@@ -2055,6 +2057,10 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     const raw = await rawPostClose(closed);
     await expectPostCloseDenied(raw, { touchDay: { revision: raw.dayBefore.revision + 1, lastCommandId: raw.commandId, updatedAt: serverTimestamp() } });
     await expectPostCloseDenied(await rawPostClose(closed), { touchDay: { status: 'open', revision: 7, lastCommandId: 'x', updatedAt: serverTimestamp() } });
+    // The entry lives only at postCloseEntries/{commandId}: a second copy under another ID, or the only copy under
+    // another ID, is refused (a copy would double the entry's effect on the effective closing cash).
+    await expectPostCloseDenied(await rawPostClose(closed), { copyPath: `postCloseEntries/${uuid()}` });
+    await expectPostCloseDenied(await rawPostClose(closed), { entryPath: `postCloseEntries/${uuid()}` });
   });
 
   it('P11c4.6: an entry can be neither edited nor deleted nor created by hand, and only the holder reads them', async () => {

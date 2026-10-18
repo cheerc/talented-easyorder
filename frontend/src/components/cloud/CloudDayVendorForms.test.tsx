@@ -8,6 +8,7 @@ import {
   type CloudDayMenuDraft,
   type CloudDayVendorDraft,
 } from './CloudDayVendorForms';
+import type { PreviousClosedDay } from '../../domain/ledgerAnomalies';
 
 function VendorFormHarness({
   mode,
@@ -153,7 +154,7 @@ describe('CloudDayVendorForms', () => {
   });
 
   describe('CloudDayOpeningCashForm: difference from the last close (contract §11)', () => {
-    const previousClosed = { dayId: '2026-10-14', countedCash: 870 };
+    const previousClosed: PreviousClosedDay = { dayId: '2026-10-14', countedCash: 870 };
 
     function renderForm(props: { amountText: string; previousClosed?: typeof previousClosed | null; ledgerNotice?: string }) {
       const onSubmit = vi.fn();

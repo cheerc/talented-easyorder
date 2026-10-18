@@ -778,7 +778,7 @@ describeWithEmulator('P14 cloud backup', () => {
     const close = async (countedCash: number) => {
       const current = await day();
       okResult(await closing.closeDay({ commandId: id(), leaseEpoch: 7, dayId, expectedDayRevision: current.revision,
-        expectedSettlementRevision: current.lastSettlementRevision, expectedCash: 600, countedCash, note: '' }));
+        expectedSettlementRevision: current.lastSettlementRevision, expectedCash: 600, countedCash, note: countedCash === 600 ? '' : '實點差額' }));
     };
     const entry = async (direction: 'income' | 'expense', amount: number, reason: string, commandId = id()) => {
       const current = await day();
@@ -856,6 +856,22 @@ describeWithEmulator('P14 cloud backup', () => {
     expect(() => replayBackupProjections(whileReopened, opened.baseState)).toThrow();
     const twice = [...opened.records.slice(0, 4), opened.records[3]!, ...opened.records.slice(4)];
     expect(() => replayBackupProjections(twice, opened.baseState)).toThrow();
+    // Replay on its own (a coherent record against a base state): the day must be closed, at the settlement
+    // version the entry names, and the entry must be new.
+    const entryRecord = opened.records[3]!;
+    const dayClosed = entryRecord.before!.day as Record<string, unknown>;
+    const coherent = (day: Record<string, unknown>) => {
+      const record = structuredClone(entryRecord);
+      record.before!.day = structuredClone(day);
+      record.after!.day = structuredClone(day);
+      return record;
+    };
+    const baseWith = (day: Record<string, unknown>) => ({ [`days/${dayId}`]: structuredClone(day) });
+    expect(() => replayBackupProjections([coherent(dayClosed)], baseWith(dayClosed))).not.toThrow();
+    const dayOpen = { ...dayClosed, status: 'open' };
+    expect(() => replayBackupProjections([coherent(dayOpen)], baseWith(dayOpen))).toThrow(/補記/);
+    const dayReclosed = { ...dayClosed, lastSettlementRevision: 3 };
+    expect(() => replayBackupProjections([coherent(dayReclosed)], baseWith(dayReclosed))).toThrow(/補記/);
     // An older backup without the new kind still validates and replays unchanged.
     const legacy = structuredClone(opened);
     legacy.records = legacy.records.slice(0, 3);
