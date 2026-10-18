@@ -340,7 +340,7 @@ CheerC 2026-10-15 的 10 項操作回饋排程見[操作回饋排程計畫](2026
 
 - CheerC 2026-10-17 規劃 P11c2，拆成 P11c2a（本批，後端）與 P11c2b（畫面）。base `f7cfc452971c05303d8cf60963cb6aec3b33c6c6`（#510）；PR、head SHA 與 CI 以 PR body 與 handoff 為準。契約 [§12](../specs/2026-10-17-cloud-day-close-contract.md#12-p11c2a-回填斷層日startbackfill)。
 - 第 1 項（#509 審查備註）：異常掃描不再有 400 天硬上限（每頁 200 筆、`startAfter`、每頁之後比對 head）；開帳表單與寫入器只找上一個已關帳日（每次 31 天往回），異常掃描失敗不擋開帳。第 2 項：`StartBackfill` 與 `backfillDays`；Rules 把交易日期檢查改為 `validTransactionDay`，並移除 `validTransactionPayload` 中與 `validTransactionDoc` 重複的日期檢查（不削弱檢查）。
-- 完整計畫與驗收見 handoff 與 [P11c2a 預算附錄](../../ops/p05-rules-budget.md#p11c2a-gap-day-backfill--budget-and-probe-receipt)。P11c3 關帳對齊、P11c4 關帳後補記尚未開始；P11c2b 回填模式畫面見下一節（#511 審查備註的重試按鈕與 `isBackfilled` 午夜邊界測試已在 P11c2b 處理）。
+- 完整計畫與驗收見 handoff 與 [P11c2a 預算附錄](../../ops/p05-rules-budget.md#p11c2a--gap-day-backfill--budget-and-probe-receipt)。P11c3 關帳對齊、P11c4 關帳後補記尚未開始；P11c2b 回填模式畫面見下一節（#511 審查備註的重試按鈕與 `isBackfilled` 午夜邊界測試已在 P11c2b 處理）。
 
 ## P11c2b 回填模式畫面 checkpoint — 2026-10-18
 
@@ -357,6 +357,7 @@ CheerC 2026-10-15 的 10 項操作回饋排程見[操作回饋排程計畫](2026
 ## P11c4a 關帳後補記（後端）checkpoint — 2026-10-18
 
 - 機制與設計見契約 [§15](../specs/2026-10-17-cloud-day-close-contract.md#15-p11c4-關帳後補記recordpostcloseentry)；Rules 餘裕與 mutant 見 [預算附錄](../../ops/p05-rules-budget.md#p11c4a--post-close-entry--budget-and-probe-receipt)。
-- 完整驗收與數字見 handoff 與 [evidence](../../ops/free-production-evidence.md)。P11c4b（補記畫面）、角色權限、P12 尚未開始。
+- PR [#517](https://github.com/cheerc/talented-easyorder/pull/517) 已合併：source head `5a3bd17e96d1709e304763ac9a5c455abd4b6b9b`，squash merge SHA `4c5bb556f0e03c2a25444e193d448de289882194`，base `e8244925721411120f9e654e0c584f2bd32c3baa`。source CI [39113048034](https://github.com/cheerc/talented-easyorder/actions/runs/39113048034) build-and-test／e2e 均成功；exact-head review [5562269999](https://github.com/cheerc/talented-easyorder/pull/517#pullrequestreview-5562269999) 與獨立複審 [5562365832](https://github.com/cheerc/talented-easyorder/pull/517#pullrequestreview-5562365832)（COMMENT review，正文結論 PASS、無必修）。merge SHA 的 main CI [39115705261](https://github.com/cheerc/talented-easyorder/actions/runs/39115705261) attempt 2 最終成功：attempt 1 build-and-test 成功；e2e 的 A05 在 `cloud-production.spec.ts:238` 逾時，Cloud 22 passed／1 failed，`&&` 使 prototype suite 未執行；Coordinator 僅重跑失敗的 e2e job 一次，重跑 Cloud 23/23、prototype 7/7。根因未確認，沒有 source、test 或 timeout 變更。完整驗收與分 revision 數字見 handoff 與 [evidence](../../ops/free-production-evidence.md#p11c4a-關帳後補記-checkpoint--2026-10-18)。
+- P11c4b（補記畫面）與 P12 已由 CheerC 本輪授權，尚未開始，由 coordinator 依[執行計畫](2026-10-18-p11c4-p12-coordination-plan.md)與 briefs 派工；Coordinator plan 與 P11c4b、P12a、P12b、P12c briefs 的 plan review 均 GO；P11c4b brief 已備妥未派工，P12a／P12b／P12c briefs 為草稿且未派工。角色權限尚未開始。
 - 部署（CheerC 本機）：Rules、前端、`firestore.indexes.json` 一起上（indexes 不變）。
 - 待辦：補記畫面與列表（P11c4b）；P12 報表要標出回填與關帳後補記；P11c3 遺留 (1)（備份 replay 對標記日關帳放寬）仍等 CheerC 確認正式環境後再收緊。
