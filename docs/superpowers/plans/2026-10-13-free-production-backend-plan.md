@@ -55,7 +55,7 @@ P00 文件與現況基線 → P01 Rules可行性proof → P02 雲端介面
 | P11c1 帳務異常與警示 | 已合併 #509 | squash `fb2fc11a7f6271ded1495d27af6a1e99300ebb12`，source head `a16afa4a4fd6dbc1327a1b8e60dc8430a96e190a`；獨立審查通過、無必修（review `5558759097`）；CI [39047364483](https://github.com/cheerc/talented-easyorder/actions/runs/39047364483) 兩 job 成功。唯讀異常計算、導覽「帳務異常（n）」、警示、`SetOpeningCash` 選填差額原因（唯一 Rules 變更）。契約 §11。P11c2 第一項必修（400 天掃描上限）已由 P11c2a 處理。未部署。 |
 | P11c2a 解除 400 天上限、回填斷層日（後端） | 已合併 #511 | squash `35ac95bd3f4f98a378fd01803f6c3a6beafae794`，source head `2572f3f82f96fcee2100432318b6bd8c47f98390`（最終 head `f857b10bc10be92976dc7904a5b31d1aeca12f47` 只補 PR 編號）；獨立審查通過、無必修（review `5561303976`）；CI [39093276394](https://github.com/cheerc/talented-easyorder/actions/runs/39093276394)、[39094019150](https://github.com/cheerc/talented-easyorder/actions/runs/39094019150) 兩 job 成功。`StartBackfill`（第 26 種、已啟用 24 種）與不可改的 `backfillDays/{dayId}` 標記；`CreateOrder`／`CreatePayment`／`CreateCashMovement` 可寫入已標記且從沒關過帳的過去日；異常掃描分頁、上一個已關帳日分段查找；P14 replay。契約 §12。未部署。 |
 | P11c2b 回填模式畫面 | 已合併 #513 | squash `797b23e5cff43e7fe0692817dc64e90c03b56d74`，source head `750026db45bcfc7b52c6e8c20d8b716c78d76eef`；獨立審查無必修（review `5561472938`）；CI [39097170105](https://github.com/cheerc/talented-easyorder/actions/runs/39097170105) 兩 job 成功（e2e 首次 A05 偶發失敗，重跑通過）。 只改前端與讀取端（Rules、command kind 不變）：異常頁「回填這一天」／「標為回填」、日結頁三步精靈（`EnsureDay` → `BackfillOpeningCash` → `StartBackfill`，各有 command ID，失敗可續跑）、訂餐頁回填橫幅與「離開回填」、退款／撤回／取消並退還停用、「回填」標籤；#511 審查備註（重試按鈕、午夜邊界測試、寫入器訊息）。契約 §13。未部署。 |
-| P11c3 回填日關帳對齊 | PR 開啟，待審查 | 有回填標記的日子關帳必須差額為 0，且 `alignWithDayId` 指向晚於本日、開帳現金等於實點的最近已開帳日（或 `null`）；Rules 只證明形狀與金額，「最近」由寫入器掃描、異常頁當安全網。契約 §14。PR、head SHA 與 CI 以 PR body 與 handoff 為準。P11c4、角色權限、P12 未開始。 |
+| P11c3 回填日關帳對齊 | 已合併 #515 | squash `a23177fc211354261f84dbe5411d8690a8af41fc`，source head `2edeae2168d6630304a0fbcddde2c86dbae14a29`；獨立審查無必修（review `5561736953`）；CI [39103196075](https://github.com/cheerc/talented-easyorder/actions/runs/39103196075) 兩 job 一次通過。有回填標記的日子關帳必須差額為 0，且 `alignWithDayId` 指向晚於本日、開帳現金等於實點的最近已開帳日（或 `null`）；Rules 只證明形狀與金額，「最近」由寫入器掃描、異常頁當安全網。契約 §14。P11c4、角色權限、P12 未開始。 |
 | P12–P13、P15–P18 | 尚未開始／未驗 | 不代表任何後續雲端功能已實作或通過。 |
 
 ## 2. 現有檔案與規劃新檔
@@ -247,7 +247,7 @@ npm run test:e2e
 
 **Acceptance/demo：** 本人可全日點現金、關帳、回查並重開修正；日結不受F2搜尋或週月範圍影響，不能直接setBusinessDateStatus。過去日子因斷網沒確認開帳現金時，可填原因補開帳再關帳（`BackfillOpeningCash`，CheerC 2026-10-17）；不補登當天交易。
 
-**P11c 帳務斷層與異常處理（CheerC 2026-10-17）：** 分四批。P11c1（已合併 #509）只算出並顯示帳務異常：導覽列「帳務異常（n）」與異常頁、開帳與日結頁的未關帳橫幅、開帳現金與上次關帳實點不同時的差額原因（`SetOpeningCash` 選填 `reason`，唯一的 Rules 變更）。契約見 [P11 契約 §11](../specs/2026-10-17-cloud-day-close-contract.md#11-p11c1-帳務異常與開帳差額原因)。P11c2（回填中間日子）拆成 P11c2a（後端與 400 天修正，契約 [§12](../specs/2026-10-17-cloud-day-close-contract.md#12-p11c2a-回填斷層日startbackfill)）與 P11c2b（回填模式畫面）；P11c3（關帳對齊，契約 [§14](../specs/2026-10-17-cloud-day-close-contract.md#14-p11c3-回填日關帳對齊)，PR 待審查）、P11c4（關帳後補記有標記的收支）之後再做，不在 P11c1。
+**P11c 帳務斷層與異常處理（CheerC 2026-10-17）：** 分四批。P11c1（已合併 #509）只算出並顯示帳務異常：導覽列「帳務異常（n）」與異常頁、開帳與日結頁的未關帳橫幅、開帳現金與上次關帳實點不同時的差額原因（`SetOpeningCash` 選填 `reason`，唯一的 Rules 變更）。契約見 [P11 契約 §11](../specs/2026-10-17-cloud-day-close-contract.md#11-p11c1-帳務異常與開帳差額原因)。P11c2（回填中間日子）拆成 P11c2a（後端與 400 天修正，契約 [§12](../specs/2026-10-17-cloud-day-close-contract.md#12-p11c2a-回填斷層日startbackfill)）與 P11c2b（回填模式畫面）；P11c3（關帳對齊，契約 [§14](../specs/2026-10-17-cloud-day-close-contract.md#14-p11c3-回填日關帳對齊)，已合併 #515）、P11c4（關帳後補記有標記的收支）之後再做，不在 P11c1。
 
 ### P12 — 完整查帳、週月統計、CSV與列印
 
@@ -349,3 +349,4 @@ CheerC 2026-10-15 的 10 項操作回饋排程見[操作回饋排程計畫](2026
 
 - 機制與 Rules 極限見契約 [§14](../specs/2026-10-17-cloud-day-close-contract.md#14-p11c3-回填日關帳對齊)；Rules 餘裕見 [預算附錄](../../ops/p05-rules-budget.md#p11c3--aligned-close-of-a-back-filled-day--budget-and-probe-receipt)。PR、head SHA 與 CI 以 PR body 與 handoff 為準。沒有新 command kind、沒有新 collection；`CloseDay` payload 新增選填 `alignWithDayId`，P14 decoder／replay 已接受，舊備份照常通過。
 - 完整驗收與數字見 handoff 與 [evidence](../../ops/free-production-evidence.md)。P11c4 關帳後補記、角色權限、P12 尚未開始。
+- 合併：#515 squash `a23177fc211354261f84dbe5411d8690a8af41fc`，獨立審查無必修。待辦（不擋合併）：備份 replay 對標記日關帳沒帶 `alignWithDayId` 刻意放寬（契約 §14.4），確認正式環境後可收緊；訂餐頁明確被拒後沿用回填日清單，選單可能暫列已被關帳的日子。CheerC 2026-10-18 指示 P11c 暫停：P11c4 指令已備妥未啟動，P12 等授權。

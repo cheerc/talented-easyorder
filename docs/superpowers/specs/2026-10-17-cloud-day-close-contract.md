@@ -256,6 +256,7 @@ Rules 無法證明兩件事，由寫入器與異常頁補上：
 - decoder：`CloseDay` 的 payload 接受選填 `alignWithDayId`（`null` 或合法日期）。
 - replay：沒有標記的日子帶 `alignWithDayId` → 拒；有 `alignWithDayId` 時結算 `difference == 0` 且 `countedCash == expectedCash`；非 `null` 時對齊日必須晚於本日，且**在提交當時**（重播到這筆命令時的狀態）已有 `openingCash`、金額相等。偽造對齊金額、把關帳挪到對齊日開帳之前、對齊日不存在都會被拒。
 - 舊備份（P11c3 之前、有標記的日子關帳沒有 `alignWithDayId`）與一般關帳照常通過。
+- **刻意放寬**：replay 對「有標記的日子關帳卻沒帶 `alignWithDayId`」放行，是為了相容 P11c3 之前的備份。代價是偽造的備份可以把標記日寫成有差額的關帳並通過 replay，而上線中的 Rules 不允許這種關帳。待確認正式環境從未在 P11c3 之前關過標記日，再收緊為「標記日必帶欄位」（見 handoff 待辦）。
 
 ### 14.5 #513 審查遺留（一併處理）
 
