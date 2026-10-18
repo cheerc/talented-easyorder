@@ -1657,14 +1657,14 @@ describeWithEmulator('P05 production command repository and Rules', () => {
 
   it('P07.1: only the thirteen P05/P06/P06b/P07/P09a/P09b enabled kinds pass runtime validation', async () => {
     await seedBase();
-    expect(ALL_COMMAND_KINDS).toHaveLength(25);
+    expect(ALL_COMMAND_KINDS).toHaveLength(26);
     const enabledKinds = [
       'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
       'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement', 'CreateRefund',
     ];
     const disabledKinds = ALL_COMMAND_KINDS.filter(kind => !enabledKinds.includes(kind));
     expect(enabledKinds).toHaveLength(13);
-    expect(disabledKinds).toHaveLength(12);
+    expect(disabledKinds).toHaveLength(13);
     for (const [index, kind] of disabledKinds.entries()) {
       const commandId = `f0000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
       const disabled = await repository(operatorA).commitCommand({

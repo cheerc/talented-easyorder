@@ -288,8 +288,8 @@ describe('day and vendor command input contract', () => {
       'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement', 'CreateRefund',
     ]);
     const disabled = ALL_COMMAND_KINDS.filter(kind => !enabled.has(kind));
-    expect(ALL_COMMAND_KINDS).toHaveLength(25);
-    expect(disabled).toHaveLength(12);
+    expect(ALL_COMMAND_KINDS).toHaveLength(26);
+    expect(disabled).toHaveLength(13);
     for (const kind of disabled) {
       expect(() => normalizeEnabledCommandInput({
         commandId, kind, leaseEpoch: 1, targets: {}, expectedRevisions: {}, payload: {},

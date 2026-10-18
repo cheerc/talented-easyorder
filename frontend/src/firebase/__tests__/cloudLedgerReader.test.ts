@@ -11,6 +11,7 @@ const firestoreMocks = vi.hoisted(() => ({
   limit: vi.fn(),
   orderBy: vi.fn(),
   query: vi.fn(),
+  startAfter: vi.fn(),
   where: vi.fn(),
 }));
 
@@ -22,7 +23,7 @@ vi.mock('firebase/firestore', async importOriginal => {
 import { createCloudLedgerReader } from '../cloudDayCloseRepository';
 
 const uid = 'synthetic-operator';
-const db = {} as Firestore;
+let db: Firestore;
 const user = {
   uid, email: 'operator@example.test', emailVerified: true, providerData: [{ providerId: 'google.com' }],
 } as unknown as User;
@@ -65,6 +66,8 @@ interface Setup {
   leaseUpdatedAt?: Timestamp;
 }
 
+type FakeSnapshot = { id: string; data: () => Data };
+
 function setup({ days = [], settlements = {}, heads = [head()], leaseUpdatedAt = ts('2026-10-05T02:00:00.000Z') }: Setup = {}) {
   let headReads = 0;
   firestoreMocks.documentId.mockReturnValue('__name__');
@@ -72,6 +75,7 @@ function setup({ days = [], settlements = {}, heads = [head()], leaseUpdatedAt =
   firestoreMocks.collection.mockImplementation((_db: unknown, path: string) => ({ path }));
   firestoreMocks.where.mockImplementation((field: unknown, op: string, value: unknown) => ({ type: 'where', field, op, value }));
   firestoreMocks.orderBy.mockImplementation((field: unknown, direction?: string) => ({ type: 'orderBy', field, direction }));
+  firestoreMocks.startAfter.mockImplementation((snapshot: FakeSnapshot) => ({ type: 'startAfter', snapshot }));
   firestoreMocks.limit.mockImplementation((count: number) => ({ type: 'limit', count }));
   firestoreMocks.query.mockImplementation((collectionRef: { path: string }, ...constraints: Constraint[]) => ({ collectionRef, constraints }));
   firestoreMocks.getDocFromServer.mockImplementation(async (ref: { path: string }) => {
@@ -81,19 +85,33 @@ function setup({ days = [], settlements = {}, heads = [head()], leaseUpdatedAt =
     else value = settlements[ref.path];
     return { id: ref.path.split('/').at(-1), exists: () => value !== undefined, data: () => value };
   });
+  // A small query evaluator: where on the document ID, ascending order, startAfter and limit.
   firestoreMocks.getDocsFromServer.mockImplementation(async (request: { constraints: Constraint[] }) => {
+    let selected = [...days].sort(([left], [right]) => left.localeCompare(right));
+    for (const item of request.constraints) {
+      if (item.type === 'where') {
+        const value = String(item.value);
+        selected = selected.filter(([id]) => (item.op === '>=' ? id >= value : item.op === '<=' ? id <= value : item.op === '<' ? id < value : false));
+      }
+    }
+    const after = request.constraints.find(item => item.type === 'startAfter') as unknown as { snapshot: FakeSnapshot } | undefined;
+    if (after) selected = selected.filter(([id]) => id > after.snapshot.id);
     const bound = request.constraints.find(item => item.type === 'limit')?.count ?? Infinity;
-    const docs = days.slice(0, bound).map(([id, value]) => ({ id, data: () => value }));
+    const docs: FakeSnapshot[] = selected.slice(0, bound).map(([id, value]) => ({ id, data: () => value }));
     return { size: docs.length, docs };
   });
 }
 
-const reader = () => createCloudLedgerReader(db, { currentUser: () => user });
+const reader = (tuning?: { pageSize?: number; segmentDays?: number }) => createCloudLedgerReader(db, { currentUser: () => user }, tuning);
 const settlementReads = () => firestoreMocks.getDocFromServer.mock.calls.filter(([ref]) => String(ref.path).includes('/settlements/'));
+const headReads = () => firestoreMocks.getDocFromServer.mock.calls.filter(([ref]) => ref.path === 'system/dataHead');
+const dayQueries = () => firestoreMocks.query.mock.calls.map(call => (call.slice(1) as Constraint[]));
+const dateAt = (index: number, start = Date.UTC(2026, 0, 1)) => new Date(start + index * 86_400_000).toISOString().slice(0, 10);
 
-describe('createCloudLedgerReader', () => {
+describe('createCloudLedgerReader.read', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    db = {} as Firestore;
   });
 
   it('reads goLiveDate..lease date in ascending document-ID order with no extra index, and reports anomalies', async () => {
@@ -110,39 +128,57 @@ describe('createCloudLedgerReader', () => {
     expect(snapshot.anomalies.map(item => [item.kind, item.dayId])).toEqual([
       ['unclosed-past-day', '2026-10-03'], ['opening-mismatch', '2026-10-03'],
     ]);
-    const constraints = firestoreMocks.query.mock.calls[0].slice(1) as Constraint[];
-    expect(constraints).toEqual([
+    expect(dayQueries()).toEqual([[
       { type: 'where', field: '__name__', op: '>=', value: '2026-10-01' },
       { type: 'where', field: '__name__', op: '<=', value: '2026-10-05' },
       { type: 'orderBy', field: '__name__', direction: undefined },
-      { type: 'limit', count: 401 },
-    ]);
+      { type: 'limit', count: 200 },
+    ]]);
     // Only the latest settlement version of a closed day is read.
     expect(settlementReads().map(([ref]) => ref.path)).toEqual(['days/2026-10-01/settlements/2']);
   });
 
-  it('keeps immutable settlement versions in memory per reader', async () => {
+  it('keeps immutable settlement versions in memory per Firestore instance', async () => {
     setup({
       days: [['2026-10-01', dayDoc({ status: 'closed', openingCash: 100, lastSettlementRevision: 1 })]],
       settlements: { 'days/2026-10-01/settlements/1': settlementDoc('2026-10-01', 1) },
     });
-    const instance = reader();
-    await instance.read();
-    await instance.read();
+    await reader().read();
+    await reader().read();
     expect(settlementReads()).toHaveLength(1);
+    db = {} as Firestore;
     await reader().read();
     expect(settlementReads()).toHaveLength(2);
   });
 
-  it('fails closed with INCOMPLETE_SNAPSHOT above 400 business-day documents but accepts exactly 400', async () => {
-    const make = (count: number): Array<[string, Data]> => Array.from({ length: count }, (_, index) => {
-      const date = new Date(Date.UTC(2026, 0, 1) + index * 86_400_000).toISOString().slice(0, 10);
-      return [date, dayDoc()];
-    });
-    setup({ days: make(400), heads: [head({ goLiveDate: '2026-01-01' })] });
-    expect((await reader().read()).anomalies).toEqual([]);
-    setup({ days: make(401), heads: [head({ goLiveDate: '2026-01-01' })] });
-    await expect(reader().read()).rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT' });
+  it('reads every page with startAfter instead of truncating, and compares the head after each page', async () => {
+    const days: Array<[string, Data]> = Array.from({ length: 450 }, (_, index) => [dateAt(index), dayDoc()]);
+    setup({ days, heads: [head({ goLiveDate: '2026-01-01' })], leaseUpdatedAt: ts('2027-06-01T02:00:00.000Z') });
+    const snapshot = await reader().read();
+    // 450 open days before today: every one is an unclosed past day with a missing opening and no
+    // transactions, so none is reported; the scan still has to see all of them without a cap.
+    expect(snapshot.anomalies).toEqual([]);
+    const queries = dayQueries();
+    expect(queries).toHaveLength(3);
+    expect(queries.map(constraints => constraints.some(item => item.type === 'startAfter'))).toEqual([false, true, true]);
+    expect(queries.map(constraints => constraints.find(item => item.type === 'limit')?.count)).toEqual([200, 200, 200]);
+    // One head read before the scan and one after every page.
+    expect(headReads()).toHaveLength(1 + 3);
+  });
+
+  it('reports an anomaly found beyond the 400th business day', async () => {
+    const days: Array<[string, Data]> = Array.from({ length: 450 }, (_, index) => [dateAt(index), dayDoc()]);
+    days[430] = [dateAt(430), dayDoc({ openingCash: 80, totals: totals(2) })];
+    setup({ days, heads: [head({ goLiveDate: '2026-01-01' })], leaseUpdatedAt: ts('2027-06-01T02:00:00.000Z') });
+    const snapshot = await reader().read();
+    expect(snapshot.anomalies.map(item => [item.kind, item.dayId])).toEqual([['unclosed-past-day', dateAt(430)]]);
+  });
+
+  it('stops when the last page is exactly full and the next page is empty', async () => {
+    const days: Array<[string, Data]> = Array.from({ length: 6 }, (_, index) => [dateAt(index, Date.UTC(2026, 9, 1)), dayDoc()]);
+    setup({ days, leaseUpdatedAt: ts('2026-10-20T02:00:00.000Z') });
+    await reader({ pageSize: 3 }).read();
+    expect(dayQueries()).toHaveLength(3);
   });
 
   it.each([
@@ -151,6 +187,14 @@ describe('createCloudLedgerReader', () => {
   ])('returns STALE_SNAPSHOT when the head %s changes during the read', async (_label, change) => {
     setup({ heads: [head(), head(change)] });
     await expect(reader().read()).rejects.toMatchObject({ code: 'STALE_SNAPSHOT' });
+  });
+
+  it('returns STALE_SNAPSHOT when the head changes between two pages', async () => {
+    const days: Array<[string, Data]> = Array.from({ length: 7 }, (_, index) => [dateAt(index, Date.UTC(2026, 9, 1)), dayDoc()]);
+    // initial head, after page 1 (unchanged), after page 2 (changed).
+    setup({ days, heads: [head(), head(), head({ seq: 12 })], leaseUpdatedAt: ts('2026-10-20T02:00:00.000Z') });
+    await expect(reader({ pageSize: 3 }).read()).rejects.toMatchObject({ code: 'STALE_SNAPSHOT' });
+    expect(dayQueries()).toHaveLength(2);
   });
 
   it('fails closed when a closed day has no latest settlement, or it is not a closing version', async () => {
@@ -172,7 +216,96 @@ describe('createCloudLedgerReader', () => {
   });
 
   it('refuses a head with a malformed day path', async () => {
-    setup({ days: [['not-a-date', dayDoc()]] });
+    setup({ days: [['2026-10-02x', dayDoc()]] });
     await expect(reader().read()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+  });
+});
+
+describe('createCloudLedgerReader.findPreviousClosed', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db = {} as Firestore;
+  });
+
+  const closedDay = () => dayDoc({ status: 'closed', openingCash: 100, lastSettlementRevision: 1, totals: totals(1) });
+  const closedSettlements = (dayId: string, counted: number) => ({ [`days/${dayId}/settlements/1`]: settlementDoc(dayId, 1, { countedCash: counted }) });
+
+  it('finds the latest closed day dated before the asked day inside the first segment and reads only its settlement', async () => {
+    setup({
+      days: [['2026-10-02', closedDay()], ['2026-10-04', dayDoc({ status: 'reopened', lastSettlementRevision: 2 })], ['2026-10-05', closedDay()]],
+      settlements: { ...closedSettlements('2026-10-02', 90), ...closedSettlements('2026-10-05', 130) },
+    });
+    const result = await reader().findPreviousClosed('2026-10-06');
+    expect(result).toEqual({ previous: { dayId: '2026-10-05', countedCash: 130 }, seq: 10 });
+    expect(settlementReads().map(([ref]) => ref.path)).toEqual(['days/2026-10-05/settlements/1']);
+    expect(dayQueries()).toEqual([[
+      { type: 'where', field: '__name__', op: '>=', value: '2026-10-01' },
+      { type: 'where', field: '__name__', op: '<', value: '2026-10-06' },
+      { type: 'orderBy', field: '__name__', direction: undefined },
+      { type: 'limit', count: 31 },
+    ]]);
+  });
+
+  it('does not count the asked day or later days, nor open and reopened days', async () => {
+    setup({
+      days: [['2026-10-02', closedDay()], ['2026-10-03', dayDoc()], ['2026-10-04', closedDay()], ['2026-10-05', dayDoc({ status: 'reopened', lastSettlementRevision: 1 })]],
+      settlements: { ...closedSettlements('2026-10-02', 90), ...closedSettlements('2026-10-04', 70) },
+    });
+    expect((await reader().findPreviousClosed('2026-10-04')).previous).toEqual({ dayId: '2026-10-02', countedCash: 90 });
+  });
+
+  it('walks back segment by segment until it finds a closed day, beyond any fixed day limit', async () => {
+    setup({
+      days: [['2026-01-03', closedDay()]],
+      settlements: closedSettlements('2026-01-03', 55),
+      heads: [head({ goLiveDate: '2026-01-01' })],
+    });
+    const result = await reader({ segmentDays: 5 }).findPreviousClosed('2026-10-20');
+    expect(result.previous).toEqual({ dayId: '2026-01-03', countedCash: 55 });
+    // Every 5-day segment from 2026-10-15 back to the one that holds 2026-01-03 was queried, newest first.
+    const queries = dayQueries();
+    expect(queries.length).toBeGreaterThan(40);
+    expect(queries[0]).toContainEqual({ type: 'where', field: '__name__', op: '>=', value: '2026-10-15' });
+    expect(queries[0]).toContainEqual({ type: 'where', field: '__name__', op: '<', value: '2026-10-20' });
+    expect(queries.at(-1)).toContainEqual({ type: 'where', field: '__name__', op: '>=', value: '2026-01-03' });
+    // One head read before the walk and one after every segment.
+    expect(headReads()).toHaveLength(1 + queries.length);
+  });
+
+  it('returns null after walking back to goLiveDate without finding a closed day', async () => {
+    setup({ days: [['2026-10-02', dayDoc()]] });
+    const result = await reader({ segmentDays: 4 }).findPreviousClosed('2026-10-12');
+    expect(result.previous).toBeNull();
+    expect(dayQueries().at(-1)).toContainEqual({ type: 'where', field: '__name__', op: '>=', value: '2026-10-01' });
+  });
+
+  it('does not query when the asked day is the go-live date or earlier', async () => {
+    setup({ days: [['2026-10-01', closedDay()]] });
+    expect((await reader().findPreviousClosed('2026-10-01')).previous).toBeNull();
+    expect((await reader().findPreviousClosed('2026-09-20')).previous).toBeNull();
+    expect(dayQueries()).toHaveLength(0);
+  });
+
+  it('shares the settlement cache with read() on the same Firestore instance', async () => {
+    setup({ days: [['2026-10-02', closedDay()]], settlements: closedSettlements('2026-10-02', 90) });
+    await reader().read();
+    await reader().findPreviousClosed('2026-10-04');
+    expect(settlementReads()).toHaveLength(1);
+  });
+
+  it.each([
+    ['seq', { seq: 11 }],
+    ['datasetId', { datasetId: 'other-dataset' }],
+  ])('returns STALE_SNAPSHOT when the head %s changes between segments', async (_label, change) => {
+    setup({ days: [['2026-10-02', dayDoc()]], heads: [head(), head(change)] });
+    await expect(reader({ segmentDays: 4 }).findPreviousClosed('2026-10-12')).rejects.toMatchObject({ code: 'STALE_SNAPSHOT' });
+  });
+
+  it('fails closed on a malformed day path, a missing settlement, and a bad date', async () => {
+    setup({ days: [['2026-10-02x', dayDoc()]] });
+    await expect(reader().findPreviousClosed('2026-10-06')).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    setup({ days: [['2026-10-02', closedDay()]], settlements: {} });
+    await expect(reader().findPreviousClosed('2026-10-06')).rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT' });
+    await expect(reader().findPreviousClosed('2026-13-40')).rejects.toMatchObject({ code: 'INVALID_INPUT' });
   });
 });

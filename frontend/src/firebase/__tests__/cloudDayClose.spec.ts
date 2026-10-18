@@ -21,11 +21,28 @@ import {
   writeBatch,
   type Firestore,
 } from 'firebase/firestore';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CommandResult } from '../../domain/cloudCommands';
 import { fingerprintCommandInput, normalizeEnabledCommandInput } from '../../domain/cloudCommandSchema';
 import { createCloudCommandRepository } from '../cloudCommandRepository';
-import { createCloudDayCloseRepository } from '../cloudDayCloseRepository';
+import { createCloudDayCloseRepository, isBackfilled } from '../cloudDayCloseRepository';
+
+// One-shot hook that runs a real write right after the next server query, so a head change can be made to
+// land in the middle of a ledger read (P11c2a.3). Every other query passes through untouched.
+const afterQuery = vi.hoisted(() => ({ run: null as null | (() => Promise<void>) }));
+vi.mock('firebase/firestore', async importOriginal => {
+  const actual = await importOriginal<typeof import('firebase/firestore')>();
+  return {
+    ...actual,
+    getDocsFromServer: (async (...args: Parameters<typeof actual.getDocsFromServer>) => {
+      const result = await actual.getDocsFromServer(...args);
+      const hook = afterQuery.run;
+      afterQuery.run = null;
+      if (hook) await hook();
+      return result;
+    }) as typeof actual.getDocsFromServer,
+  };
+});
 
 declare const process: { env: Record<string, string | undefined>; cwd: () => string };
 
@@ -904,24 +921,506 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     expect((await repository().readLedger()).anomalies).toEqual([]);
   });
 
-  it('P11c1.5: more than 400 business-day documents fail closed; exactly 400 reads', async () => {
-    const goLive = shiftDate(today, -500);
-    const fill = async (count: number) => withAdmin(async db => {
+  // ---- P11c2a: no 400-day ceiling (contract §11.2) ----
+
+  async function fillQuietDays(goLive: string, from: number, to: number) {
+    await withAdmin(async db => {
       await setDoc(doc(db, 'system/dataHead'), {
         schemaVersion: 1, datasetId: 'p11-close-dataset', seq: 0, lastCommandId: null,
         maintenance: false, goLiveDate: goLive, updatedAt: serverTimestamp(),
       });
-      const batch = writeBatch(db);
-      for (let index = 1; index <= count; index += 1) {
-        const dayId = shiftDate(today, -index);
-        batch.set(doc(db, `days/${dayId}`), { ...dayDoc(dayId, null), totals: zeroTotals() });
+      for (let start = from; start <= to; start += 400) {
+        const batch = writeBatch(db);
+        for (let index = start; index <= Math.min(to, start + 399); index += 1) {
+          const dayId = shiftDate(today, -index);
+          batch.set(doc(db, `days/${dayId}`), { ...dayDoc(dayId, null), totals: zeroTotals() });
+        }
+        await batch.commit();
       }
-      await batch.commit();
     });
-    await fill(399); // plus today's document = 400
-    expect((await repository().readLedger()).anomalies).toEqual([]);
-    await fill(400);
-    await expect(repository().readLedger()).rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT' });
+  }
+
+  it('P11c2a.1: the anomaly scan reads every business day in pages, beyond 400, and reports an anomaly found late', async () => {
+    const goLive = shiftDate(today, -500);
+    await fillQuietDays(goLive, 1, 450); // plus today's document: 451 documents, three pages of 200
+    const lateAnomaly = shiftDate(today, -30);
+    await seedPastDay(lateAnomaly, { openingCash: 80, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    const snapshot = await repository().readLedger();
+    expect(snapshot.goLiveDate).toBe(goLive);
+    expect(snapshot.anomalies).toEqual([{ kind: 'unclosed-past-day', dayId: lateAnomaly, status: 'open', openingCash: 80, activeTransactionCount: 4 }]);
+  });
+
+  it('P11c2a.2: the opening form lookup and the SetOpeningCash writer find the previous closed day beyond 400 days back', async () => {
+    const goLive = shiftDate(today, -500);
+    await withAdmin(async db => setDoc(doc(db, 'system/dataHead'), {
+      schemaVersion: 1, datasetId: 'p11-close-dataset', seq: 0, lastCommandId: null,
+      maintenance: false, goLiveDate: goLive, updatedAt: serverTimestamp(),
+    }));
+    const farClosed = shiftDate(today, -450);
+    await closePast(farClosed, 500, 700);
+    await fillQuietDays(goLive, 1, 449); // every day between the closed day and today has a quiet document
+    const lookup = await repository().findPreviousClosed(today);
+    expect(lookup.previous).toEqual({ dayId: farClosed, countedCash: 700 });
+    const vendor = (await import('../cloudDayVendorRepository')).createCloudDayVendorRepository(
+      authedDb(operatorA), { currentUser: () => fakeCurrentUser(operatorA) },
+    );
+    const todayDoc = async () => (await read(`days/${today}`))!;
+    const before = await state();
+    expect(await vendor.setOpeningCash({
+      commandId: uuid(), leaseEpoch: 1, dayId: today, expectedRevision: (await todayDoc()).revision, openingCash: 650,
+    })).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(await state()).toEqual(before);
+    ok(await vendor.setOpeningCash({
+      commandId: uuid(), leaseEpoch: 1, dayId: today, expectedRevision: (await todayDoc()).revision, openingCash: 650, reason: REASON,
+    }));
+    // Nothing closed before the go-live date: no lookup is needed for the first day.
+    expect((await repository().findPreviousClosed(goLive)).previous).toBeNull();
+  });
+
+  it('P11c2a.3: a head change in the middle of a read is STALE_SNAPSHOT, for the full scan and for the previous-closed lookup', async () => {
+    const goLive = shiftDate(today, -100);
+    await fillQuietDays(goLive, 1, 60);
+    const advance = async () => {
+      const day = (await read(`days/${today}`))!;
+      ok(await writer().commitCommand({
+        commandId: uuid(), kind: 'SetOpeningCash', leaseEpoch: 1,
+        targets: { dayId: today }, expectedRevisions: { day: day.revision }, payload: { openingCash: 1000 + (day.revision % 7) },
+      }));
+    };
+    const ledger = repository();
+    afterQuery.run = advance;
+    await expect(ledger.readLedger()).rejects.toMatchObject({ code: 'STALE_SNAPSHOT' });
+    // A read that starts after the write sees a stable head again.
+    expect((await ledger.readLedger()).anomalies).toEqual([]);
+    afterQuery.run = advance;
+    await expect(ledger.findPreviousClosed(today)).rejects.toMatchObject({ code: 'STALE_SNAPSHOT' });
+    expect((await ledger.findPreviousClosed(today)).previous).toBeNull();
+    // The writer maps the same condition to REVISION_CONFLICT instead of sending the command.
+    const vendor = (await import('../cloudDayVendorRepository')).createCloudDayVendorRepository(
+      authedDb(operatorA), { currentUser: () => fakeCurrentUser(operatorA) },
+    );
+    const staleDay = (await read(`days/${today}`))!;
+    afterQuery.run = advance;
+    expect(await vendor.setOpeningCash({
+      commandId: uuid(), leaseEpoch: 1, dayId: today, expectedRevision: staleDay.revision, openingCash: 1,
+    })).toMatchObject({ ok: false, error: { code: 'REVISION_CONFLICT' } });
+  });
+
+  // ---- P11c2a: backfilling a gap day (contract §12) ----
+
+  const BF_REASON = '前天停電沒有用系統，事後補登';
+
+  async function seedGapDay(dayId: string, change: RawMap = {}) {
+    // The student's opening balance dates from go-live, so the gap day is not before it.
+    await withAdmin(async db => updateDoc(doc(db, `students/${studentA}`), { 'openingBalance.asOfDate': shiftDate(today, -30) }));
+    await seedPastDay(dayId, { totals: zeroTotals(), ...change });
+  }
+
+  async function startBackfill(dayId: string, reason: string = BF_REASON, commandId: string = uuid(), actor = operatorA) {
+    const day = (await read(`days/${dayId}`))!;
+    return writer(actor).commitCommand({
+      commandId, kind: 'StartBackfill', leaseEpoch: 1,
+      targets: { dayId }, expectedRevisions: { day: day.revision }, payload: { reason },
+    });
+  }
+
+  async function dayRevisions(dayId: string) {
+    const [student, day] = await Promise.all([read(`students/${studentA}`), read(`days/${dayId}`)]);
+    return { student: student!.revision as number, day: day!.revision as number };
+  }
+
+  async function backfillOrder(dayId: string, commandId: string = uuid()) {
+    const r = await dayRevisions(dayId);
+    const transactionId = uuid();
+    return {
+      transactionId,
+      result: await writer().commitCommand({
+        commandId, kind: 'CreateOrder', leaseEpoch: 1,
+        targets: { transactionId, studentId: studentA, dayId },
+        expectedRevisions: { transaction: 0, student: r.student, day: r.day },
+        payload: { mealPrice: 90, paidAmount: 0, mealKind: 'bento', menuRevision: 1, otherItemName: null, note: '' },
+      }),
+    };
+  }
+
+  async function backfillPayment(dayId: string, paidAmount = 200) {
+    const r = await dayRevisions(dayId);
+    const transactionId = uuid();
+    const commandId = uuid();
+    return {
+      transactionId, commandId,
+      result: await writer().commitCommand({
+        commandId, kind: 'CreatePayment', leaseEpoch: 1,
+        targets: { transactionId, studentId: studentA, dayId },
+        expectedRevisions: { transaction: 0, student: r.student, day: r.day },
+        payload: { paidAmount, note: '' },
+      }),
+    };
+  }
+
+  async function backfillCash(dayId: string, amount = 50) {
+    const r = await dayRevisions(dayId);
+    const transactionId = uuid();
+    return {
+      transactionId,
+      result: await writer().commitCommand({
+        commandId: uuid(), kind: 'CreateCashMovement', leaseEpoch: 1,
+        targets: { transactionId, dayId }, expectedRevisions: { transaction: 0, day: r.day },
+        payload: { mealPrice: 0, paidAmount: amount, reason: '零錢補充' },
+      }),
+    };
+  }
+
+  it('P11c2a.4: a gap day is backfilled end to end — opening cash, marker, order, payment, cash movement, then it closes', async () => {
+    const gap = shiftDate(today, -2);
+    await seedGapDay(gap);
+    ok(await repository().backfillOpening(await backfillInput(800, '當天整天沒有用系統，事後補開帳', gap)));
+    const dayBeforeMarker = (await read(`days/${gap}`))!;
+
+    const commandId = uuid();
+    const receipt = ok(await startBackfill(gap, BF_REASON, commandId));
+    expect(receipt).toMatchObject({ commandId });
+    // The day document is untouched; only the marker, the head and the command are new.
+    expect((await read(`days/${gap}`))!).toEqual(dayBeforeMarker);
+    expect((await read(`backfillDays/${gap}`))!).toMatchObject({
+      dayId: gap, reason: BF_REASON, startedBy: operatorA.uid, commandId,
+    });
+    const stored = (await read(`commands/${commandId}`))!;
+    expect(stored).toMatchObject({
+      kind: 'StartBackfill', businessDate: gap, studentId: null, reason: BF_REASON,
+      targets: { dayId: gap }, payload: { reason: BF_REASON },
+      cashEffect: { before: 0, after: 0, delta: 0, reasonKind: 'none', refundAmount: 0 },
+    });
+    expect(stored.after.backfill).toEqual((await read(`backfillDays/${gap}`))!);
+    expect(stored.startedAt ?? stored.after.backfill.startedAt).toEqual(stored.committedAt);
+    expect(await repository().readCommand(commandId)).toMatchObject({ commandId, kind: 'StartBackfill' });
+
+    // Retries return the same receipt and add nothing; the same ID with another reason is refused.
+    const commandCount = (await state(gap)).commandCount;
+    for (let index = 0; index < 2; index += 1) expect(ok(await startBackfill(gap, BF_REASON, commandId))).toEqual(receipt);
+    expect((await state(gap)).commandCount).toBe(commandCount);
+    expect((await startBackfill(gap, '另一個原因', commandId)).ok).toBe(false);
+
+    const order = await backfillOrder(gap);
+    const payment = await backfillPayment(gap, 200);
+    const cash = await backfillCash(gap, 50);
+    ok(order.result);
+    ok(payment.result);
+    ok(cash.result);
+    for (const id of [order.transactionId, payment.transactionId, cash.transactionId]) {
+      expect((await read(`transactions/${id}`))!).toMatchObject({ businessDate: gap, status: 'active' });
+    }
+    expect((await read(`days/${gap}`))!.totals).toMatchObject({ activeTransactionCount: 3, retainedReceipts: 200, cashierIncome: 50 });
+
+    // 800 + receipts 200 + income 50 = 1,050; the day closes like any other.
+    ok(await repository().closeDay(await closeInput({ countedCash: 1050 }, gap)));
+    expect((await state(gap)).settlements['1']).toMatchObject({ status: 'closed', openingCash: 800, expectedCash: 1050, difference: 0 });
+    // The marker survives the close.
+    expect((await read(`backfillDays/${gap}`))!.commandId).toBe(commandId);
+  });
+
+  it('P11c2a.5: without a marker, an order, a payment and a cash movement on a past day are refused and change nothing', async () => {
+    const gap = shiftDate(today, -2);
+    await seedGapDay(gap, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    const before = await state(gap);
+    for (const attempt of [backfillOrder(gap), backfillPayment(gap), backfillCash(gap)]) {
+      expect(await attempt).toMatchObject({ result: { ok: false, error: { code: 'INVALID_INPUT' } } });
+    }
+    expect(await state(gap)).toEqual(before);
+    expect(await read(`backfillDays/${gap}`)).toBeUndefined();
+  });
+
+  it('P11c2a.6: the writer refuses StartBackfill on today, a future day, before go-live, a closed or ever-closed day, a duplicate, and bad input', async () => {
+    const gap = shiftDate(today, -2);
+    const future = shiftDate(today, 1);
+    const beforeGoLive = shiftDate(today, -31);
+    const closedDay = shiftDate(today, -4);
+    const reopened = shiftDate(today, -5);
+    await seedGapDay(gap);
+    await seedGapDay(future);
+    await seedGapDay(beforeGoLive);
+    await seedGapDay(closedDay, { status: 'closed', lastSettlementRevision: 1 });
+    await seedGapDay(reopened, { status: 'reopened', lastSettlementRevision: 2 });
+    const cases: Array<[string, Promise<CommandResult>, string]> = [
+      ['today', startBackfill(today), 'INVALID_INPUT'],
+      ['future', startBackfill(future), 'INVALID_INPUT'],
+      ['before go-live', startBackfill(beforeGoLive), 'INVALID_INPUT'],
+      ['closed', startBackfill(closedDay), 'DAY_CLOSED'],
+      ['reopened after a close', startBackfill(reopened), 'DAY_CLOSED'],
+      ['no reason', startBackfill(gap, ''), 'INVALID_INPUT'],
+      ['long reason', startBackfill(gap, 'x'.repeat(501)), 'INVALID_INPUT'],
+    ];
+    for (const [label, pending, code] of cases) {
+      expect([label, await pending]).toMatchObject([label, { ok: false, error: { code } }]);
+    }
+    expect((await state()).commandCount).toBe(0);
+    expect(await withAdmin(async db => (await getDocs(collection(db, 'backfillDays'))).size)).toBe(0);
+
+    // A stale day version is a revision conflict.
+    const day = (await read(`days/${gap}`))!;
+    expect(await writer().commitCommand({
+      commandId: uuid(), kind: 'StartBackfill', leaseEpoch: 1,
+      targets: { dayId: gap }, expectedRevisions: { day: day.revision + 1 }, payload: { reason: BF_REASON },
+    })).toMatchObject({ ok: false, error: { code: 'REVISION_CONFLICT' } });
+    // A day that does not exist.
+    expect(await writer().commitCommand({
+      commandId: uuid(), kind: 'StartBackfill', leaseEpoch: 1,
+      targets: { dayId: shiftDate(today, -9) }, expectedRevisions: { day: 1 }, payload: { reason: BF_REASON },
+    })).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+
+    // A second marker for the same day is refused, and a non-holder cannot start one.
+    expect(await startBackfill(gap, BF_REASON, uuid(), operatorB)).toMatchObject({ ok: false, error: { code: 'LEASE_LOST' } });
+    ok(await startBackfill(gap));
+    expect(await startBackfill(gap)).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(await withAdmin(async db => (await getDocs(collection(db, 'backfillDays'))).size)).toBe(1);
+  });
+
+  it('P11c2a.7: a day that closed after the marker accepts no more backfilled transactions, even once reopened', async () => {
+    const gap = shiftDate(today, -2);
+    await seedGapDay(gap, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    ok(await startBackfill(gap));
+    ok((await backfillPayment(gap, 200)).result);
+    ok(await repository().closeDay(await closeInput({ countedCash: 1000 }, gap)));
+    ok(await repository().reopenDay(await reopenInput('補登漏掉的繳費', gap)));
+    const before = await state(gap);
+    expect(before.day).toMatchObject({ status: 'reopened', lastSettlementRevision: 2 });
+    for (const attempt of [backfillOrder(gap), backfillPayment(gap), backfillCash(gap)]) {
+      expect(await attempt).toMatchObject({ result: { ok: false, error: { code: 'INVALID_INPUT' } } });
+    }
+    expect(await state(gap)).toEqual(before);
+  });
+
+  it('P11c2a.12: a backfill day opens no refund, undo or refund cancellation; a menu can still be set; a past day can be created', async () => {
+    const gap = shiftDate(today, -2);
+    await seedGapDay(gap, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    ok(await startBackfill(gap));
+    const payment = await backfillPayment(gap, 200);
+    ok(payment.result);
+    const before = await state(gap);
+
+    const r = await dayRevisions(gap);
+    const refundTransactionId = uuid();
+    expect(await writer().commitCommand({
+      commandId: uuid(), kind: 'CreateRefund', leaseEpoch: 1,
+      targets: { transactionId: refundTransactionId, studentId: studentA, dayId: gap },
+      expectedRevisions: { transaction: 0, student: r.student, day: r.day },
+      payload: { amount: 10, reason: '補退款' },
+    })).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(await writer().commitCommand({
+      commandId: uuid(), kind: 'Undo', leaseEpoch: 1,
+      targets: { transactionId: payment.transactionId, studentId: studentA, dayId: gap },
+      expectedRevisions: { transaction: 1, student: r.student, day: r.day },
+      payload: { targetCommandId: payment.commandId, reason: '補作廢' },
+    })).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(await state(gap)).toEqual(before);
+
+    // The menu of a past day can still be set directly (a bento order needs one) …
+    const noMenu = shiftDate(today, -3);
+    await seedGapDay(noMenu, { menu: null });
+    await withAdmin(async db => setDoc(doc(db, 'vendors/p11-vendor'), {
+      vendorId: 'p11-vendor', name: 'Synthetic Vendor', phone: '', note: '', status: 'active', deleted: false,
+      createdAt: serverTimestamp(), revision: 1, lastCommandId: seedCommandId, updatedAt: serverTimestamp(),
+    }));
+    const headSeq = ((await read('system/dataHead'))!.seq) as number;
+    const menuResult = await writer().commitCommand({
+      commandId: uuid(), kind: 'SetDayMenu', leaseEpoch: 1,
+      targets: { dayId: noMenu }, expectedRevisions: { day: (await read(`days/${noMenu}`))!.revision, headSeq },
+      payload: { selectionDate: today, itemName: 'Synthetic Meal', price: 90, vendorId: 'p11-vendor', vendorNameSnapshot: 'Synthetic Vendor', inheritedFromDate: null },
+    });
+    expect(menuResult).toMatchObject({ ok: true });
+    expect((await read(`days/${noMenu}`))!.menu).toMatchObject({ itemName: 'Synthetic Meal', price: 90 });
+
+    // … and a past day that does not exist yet can be created with EnsureDay, no marker needed.
+    const missing = shiftDate(today, -4);
+    ok(await writer().commitCommand({
+      commandId: uuid(), kind: 'EnsureDay', leaseEpoch: 1,
+      targets: { dayId: missing }, expectedRevisions: { day: 0 }, payload: { businessDate: missing },
+    }));
+    expect((await read(`days/${missing}`))!).toMatchObject({ status: 'open', openingCash: null, lastSettlementRevision: 0 });
+    expect(await read(`backfillDays/${missing}`)).toBeUndefined();
+  });
+
+  it('P11c2a.13: the reader shows which unclosed days are being backfilled, and marks only the later-created transactions', async () => {
+    const gap = shiftDate(today, -2);
+    const plainPast = shiftDate(today, -3);
+    await seedGapDay(gap, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    await seedGapDay(plainPast, { openingCash: 700, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    expect(await repository().readBackfillDay(gap)).toBeNull();
+    expect((await repository().readOverview()).unclosedDays.map(day => [day.dayId, day.backfill])).toEqual([
+      [plainPast, null], [gap, null], [today, null],
+    ]);
+
+    ok(await startBackfill(gap));
+    const order = await backfillOrder(gap);
+    ok(order.result);
+    const marker = await repository().readBackfillDay(gap);
+    expect(marker).toMatchObject({ dayId: gap, reason: BF_REASON, startedBy: operatorA.uid });
+    expect(marker!.startedAt).toBeInstanceOf(Date);
+    const overview = await repository().readOverview();
+    expect(overview.unclosedDays.map(day => [day.dayId, day.backfill?.reason ?? null])).toEqual([
+      [plainPast, null], [gap, BF_REASON], [today, null],
+    ]);
+
+    const raw = (await read(`transactions/${order.transactionId}`))!;
+    expect(isBackfilled({ businessDate: raw.businessDate, createdAt: raw.createdAt.toDate() }, marker)).toBe(true);
+    // An ordinary transaction of today, or one of a day without a marker, is never backfilled.
+    expect(isBackfilled({ businessDate: today, createdAt: raw.createdAt.toDate() }, null)).toBe(false);
+    expect(isBackfilled({ businessDate: raw.businessDate, createdAt: raw.createdAt.toDate() }, null)).toBe(false);
+    await expect(repository().readBackfillDay('not-a-date')).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+  });
+
+  // One positive case per transaction kind, so the Rules headroom probe can measure each path alone.
+  it.each<[string, (dayId: string) => Promise<{ result: CommandResult }>]>([
+    ['order', dayId => backfillOrder(dayId)],
+    ['payment', dayId => backfillPayment(dayId, 200)],
+    ['cash movement', dayId => backfillCash(dayId, 50)],
+  ])('P11c2a.14: a backfilled %s on a marked past day passes the production Rules in one commit', async (_label, create) => {
+    const gap = shiftDate(today, -2);
+    await seedGapDay(gap, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    await withAdmin(async db => setDoc(doc(db, `backfillDays/${gap}`), {
+      dayId: gap, reason: BF_REASON, startedBy: operatorA.uid, startedAt: serverTimestamp(), commandId: uuid(),
+    }));
+    ok((await create(gap)).result);
+    expect((await read(`days/${gap}`))!.totals.activeTransactionCount).toBe(1);
+  });
+
+  type RawStart = Awaited<ReturnType<typeof rawStartBackfill>>;
+
+  /** A complete raw SDK StartBackfill closure, built the same way as the repository. */
+  async function rawStartBackfill(dayId: string, change: { reason?: string } = {}, actor = operatorA) {
+    const commandId = uuid();
+    const headBefore = (await read('system/dataHead'))!;
+    const dayBefore = (await read(`days/${dayId}`))!;
+    const payload: RawMap = { reason: change.reason ?? BF_REASON };
+    const input = {
+      commandId, kind: 'StartBackfill', leaseEpoch: 1, targets: { dayId },
+      expectedRevisions: { day: dayBefore.revision }, payload,
+    };
+    let fingerprint = 'f'.repeat(64);
+    try { fingerprint = await fingerprintCommandInput(normalizeEnabledCommandInput(input)); } catch { /* invalid on purpose */ }
+    const now = serverTimestamp();
+    const headAfter: RawMap = { ...headBefore, seq: headBefore.seq + 1, lastCommandId: commandId, updatedAt: now };
+    const marker: RawMap = { dayId, reason: payload.reason, startedBy: actor.uid, startedAt: now, commandId };
+    const command: RawMap = {
+      commandId, kind: 'StartBackfill', seq: headBefore.seq + 1, leaseEpoch: 1,
+      actor: { uid: actor.uid, email: actor.email }, committedAt: now,
+      businessDate: dayId, studentId: null, targets: input.targets, expectedRevisions: input.expectedRevisions,
+      before: {}, after: {}, reason: payload.reason,
+      cashEffect: { before: 0, after: 0, delta: 0, reasonKind: 'none', refundAmount: 0 },
+      payload, inputFingerprint: fingerprint,
+    };
+    const artifacts = { commandId, dayId, command, headBefore, headAfter, dayBefore, marker };
+    syncStart(artifacts);
+    return artifacts;
+  }
+
+  function syncStart(a: RawStart) {
+    a.command.before = { head: a.headBefore, day: a.dayBefore, backfill: null };
+    a.command.after = { head: a.headAfter, day: a.dayBefore, backfill: a.marker };
+  }
+
+  function rawStartBatch(db: Firestore, a: RawStart, options: { omitMarker?: boolean; omitHead?: boolean } = {}) {
+    const batch = writeBatch(db);
+    if (!options.omitHead) batch.update(doc(db, 'system/dataHead'), a.headAfter);
+    if (!options.omitMarker) batch.set(doc(db, `backfillDays/${a.dayId}`), a.marker);
+    batch.set(doc(db, `commands/${a.commandId}`), a.command);
+    return batch;
+  }
+
+  async function expectStartDenied(a: RawStart, options: { omitMarker?: boolean; omitHead?: boolean } = {}, actor = operatorA) {
+    const before = await state(a.dayId);
+    const markers = await withAdmin(async db => (await getDocs(collection(db, 'backfillDays'))).size);
+    await assertFails(rawStartBatch(authedDb(actor), a, options).commit());
+    expect(await state(a.dayId)).toEqual(before);
+    expect(await withAdmin(async db => (await getDocs(collection(db, 'backfillDays'))).size)).toBe(markers);
+  }
+
+  it('P11c2a.8: the legal maximum StartBackfill works through a raw batch only for the holder', async () => {
+    const gap = shiftDate(today, -2);
+    await seedGapDay(gap);
+    const raw = await rawStartBackfill(gap, { reason: '因'.repeat(500) });
+    await expectStartDenied(await rawStartBackfill(gap, { reason: '因'.repeat(500) }, operatorB), {}, operatorB);
+    await assertSucceeds(rawStartBatch(authedDb(operatorA), raw).commit());
+    expect((await read(`backfillDays/${gap}`))!).toMatchObject({ dayId: gap, startedBy: operatorA.uid });
+  });
+
+  it.each<[string, (a: RawStart) => void, { omitMarker?: boolean; omitHead?: boolean }?]>([
+    ['the payload has no reason', a => { a.command.payload = {}; a.command.reason = null; }],
+    ['the reason is empty', a => { a.command.payload = { reason: '' }; a.command.reason = ''; a.marker.reason = ''; syncStart(a); }],
+    ['the reason is too long', a => { const reason = 'x'.repeat(501); a.command.payload = { reason }; a.command.reason = reason; a.marker.reason = reason; syncStart(a); }],
+    ['the command reason differs from the payload', a => { a.command.reason = 'other'; }],
+    ['the marker reason differs from the payload', a => { a.marker.reason = 'tampered'; syncStart(a); }],
+    ['the payload gains an extra key', a => { a.command.payload = { ...a.command.payload, note: '' }; }],
+    ['the marker names another starter', a => { a.marker.startedBy = operatorB.uid; syncStart(a); }],
+    ['the marker start time is not the commit time', a => { a.marker.startedAt = a.dayBefore.updatedAt; syncStart(a); }],
+    ['the marker command ID is another command', a => { a.marker.commandId = uuid(); syncStart(a); }],
+    ['the marker names another day', a => { a.marker.dayId = shiftDate(today, -3); syncStart(a); }],
+    ['the marker gains an extra field', a => { a.marker.extra = true; syncStart(a); }],
+    ['the day changes inside the command', a => { a.command.after = { ...a.command.after, day: { ...a.dayBefore, openingCash: 5 } }; }],
+    ['the cash effect is not zero', a => { a.command.cashEffect = { before: 0, after: 800, delta: 800, reasonKind: 'collection', refundAmount: 0 }; }],
+    ['the business date is another day', a => { a.command.businessDate = today; }],
+    ['the command names a student', a => { a.command.studentId = studentA; }],
+    ['the expected day revision is stale', a => { a.command.expectedRevisions = { day: 1 }; }],
+    ['the targets gain a key', a => { a.command.targets = { ...a.command.targets, settlementRevision: 1 }; }],
+    ['the before-snapshot claims an existing marker', a => { a.command.before = { ...a.command.before, backfill: a.marker }; }],
+    ['the command is relabelled as BackfillOpeningCash', a => { a.command.kind = 'BackfillOpeningCash'; }],
+    ['the command is relabelled as SetOpeningCash', a => { a.command.kind = 'SetOpeningCash'; }],
+    ['the marker is written without the command', () => undefined, { omitMarker: false }],
+  ])('P11c2a.9: a raw StartBackfill is denied atomically when %s', async (label, attack, options) => {
+    const gap = shiftDate(today, -2);
+    await seedGapDay(gap);
+    const raw = await rawStartBackfill(gap);
+    attack(raw);
+    if (label === 'the marker is written without the command') {
+      // A marker created outside a StartBackfill command (no command document in the batch).
+      const holder = authedDb(operatorA);
+      await assertFails(setDoc(doc(holder, `backfillDays/${gap}`), raw.marker));
+      expect(await read(`backfillDays/${gap}`)).toBeUndefined();
+      return;
+    }
+    await expectStartDenied(raw, options);
+  });
+
+  it('P11c2a.10: Rules refuse StartBackfill on today, a future, a closed, an ever-closed or a pre-go-live day, and on a duplicate', async () => {
+    const gap = shiftDate(today, -2);
+    const future = shiftDate(today, 1);
+    const beforeGoLive = shiftDate(today, -31);
+    const closedDay = shiftDate(today, -4);
+    const reopened = shiftDate(today, -5);
+    await seedGapDay(gap);
+    await seedGapDay(future);
+    await seedGapDay(beforeGoLive);
+    await seedGapDay(closedDay, { status: 'closed', lastSettlementRevision: 1 });
+    await seedGapDay(reopened, { status: 'reopened', lastSettlementRevision: 2 });
+    await expectStartDenied(await rawStartBackfill(today));
+    await expectStartDenied(await rawStartBackfill(future));
+    await expectStartDenied(await rawStartBackfill(beforeGoLive));
+    await expectStartDenied(await rawStartBackfill(closedDay));
+    await expectStartDenied(await rawStartBackfill(reopened));
+    await expectStartDenied(await rawStartBackfill(gap), { omitHead: true });
+    // The marker exists once; a second raw one for the same day is refused.
+    ok(await startBackfill(gap));
+    await expectStartDenied(await rawStartBackfill(gap));
+  });
+
+  it('P11c2a.11: a marker can be neither edited nor deleted nor created by hand, by the holder or anyone else', async () => {
+    const gap = shiftDate(today, -2);
+    await seedGapDay(gap);
+    ok(await startBackfill(gap));
+    const marker = (await read(`backfillDays/${gap}`))!;
+    const holder = authedDb(operatorA);
+    await assertFails(updateDoc(doc(holder, `backfillDays/${gap}`), { reason: '改掉原因' }));
+    await assertFails(updateDoc(doc(holder, `backfillDays/${gap}`), { startedBy: operatorB.uid }));
+    await assertFails(deleteDoc(doc(holder, `backfillDays/${gap}`)));
+    await assertFails(setDoc(doc(holder, `backfillDays/${gap}`), { ...marker, reason: '覆蓋' }));
+    await assertFails(setDoc(doc(holder, `backfillDays/${shiftDate(today, -3)}`), { ...marker, dayId: shiftDate(today, -3) }));
+    await assertFails(deleteDoc(doc(authedDb(operatorB), `backfillDays/${gap}`)));
+    expect(await read(`backfillDays/${gap}`)).toEqual(marker);
+    // Only the lease holder can read markers.
+    await assertSucceeds(getDoc(doc(holder, `backfillDays/${gap}`)));
+    await assertFails(getDoc(doc(authedDb(operatorB), `backfillDays/${gap}`)));
+    await assertSucceeds(getDocs(collection(holder, 'backfillDays')));
+    await assertFails(getDocs(collection(authedDb(operatorB), 'backfillDays')));
   });
 
   it('P11c1.6: SetOpeningCash with a reason succeeds, retries return the same receipt, and the reason is stored on the command only', async () => {

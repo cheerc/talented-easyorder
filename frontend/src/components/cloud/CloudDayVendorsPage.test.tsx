@@ -17,6 +17,7 @@ const repository = vi.hoisted(() => ({
   removeVendor: vi.fn(),
   setDayMenu: vi.fn(),
   setOpeningCash: vi.fn(),
+  findPreviousClosed: vi.fn(),
   readCommand: vi.fn(),
 }));
 
@@ -276,9 +277,11 @@ describe('CloudDayVendorsPage', () => {
     renderPage();
 
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
+    await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
     fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
     expect(repository.setOpeningCash).not.toHaveBeenCalled();
     fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '0' } });
+    await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
     fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
 
     await waitFor(() => expect(repository.setOpeningCash).toHaveBeenCalledWith({
@@ -299,7 +302,8 @@ describe('CloudDayVendorsPage', () => {
     const amount = within(form).getByRole('textbox', { name: /^開帳現金/ });
     for (const invalid of ['-0', '-1', '1.5', '20001']) {
       fireEvent.change(amount, { target: { value: invalid } });
-      fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
+      await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
+    fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
       expect(await screen.findByRole('alert')).toHaveTextContent(/開帳現金/);
     }
     expect(repository.setOpeningCash).not.toHaveBeenCalled();
@@ -378,15 +382,16 @@ describe('CloudDayVendorsPage', () => {
     renderPage({}, reportNavigationState);
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
     fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '80' } });
+    await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
     fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
 
     expect(await screen.findByText('已找到伺服器回執，資料尚待再次讀取。')).toBeInTheDocument();
-    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
+    await waitFor(() => expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'recovering'));
     fireEvent.click(screen.getByRole('button', { name: '重新讀取伺服器資料' }));
     expect(await screen.findByText(/已確認 確認 2026-10-15 開帳現金 完成/)).toBeInTheDocument();
     expect(repository.setOpeningCash).toHaveBeenCalledTimes(1);
     expect(repository.loadSnapshot).toHaveBeenCalledTimes(3);
-    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'resolved');
+    await waitFor(() => expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'resolved'));
   });
 
   it('recovers an unknown opening command with the same UUID and frozen semantic input', async () => {
@@ -402,17 +407,18 @@ describe('CloudDayVendorsPage', () => {
     renderPage({}, reportNavigationState);
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
     fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '90' } });
+    await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
     fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
 
     expect(await screen.findByText('結果確認中，請勿重複操作。')).toBeInTheDocument();
-    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
+    await waitFor(() => expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'recovering'));
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
     expect(await screen.findByText(/已確認 確認 2026-10-15 開帳現金 完成/)).toBeInTheDocument();
     expect(repository.readCommand).toHaveBeenCalledWith(commandId);
     expect(repository.setOpeningCash).toHaveBeenCalledTimes(2);
     expect(repository.setOpeningCash.mock.calls[0][0]).toEqual(repository.setOpeningCash.mock.calls[1][0]);
     expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
-    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'resolved');
+    await waitFor(() => expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'resolved'));
   });
 
   it('keeps navigation locked after same-identity authorization loss without a command ID', async () => {
@@ -421,7 +427,7 @@ describe('CloudDayVendorsPage', () => {
     renderPage({}, reportNavigationState);
 
     expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
-    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'revoked');
+    await waitFor(() => expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'revoked'));
     expect(repository.loadSnapshot).toHaveBeenCalledTimes(1);
   });
 
@@ -520,6 +526,7 @@ describe('CloudDayVendorsPage', () => {
     renderPage();
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
     fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '15' } });
+    await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
     fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
     await screen.findByText('結果確認中，請勿重複操作。');
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
@@ -625,6 +632,7 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
     vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValue(commandId) });
     repository.loadSnapshot.mockResolvedValue(snapshot());
     repository.setOpeningCash.mockResolvedValue(successful(commandId, 'SetOpeningCash', { dayId: today }));
+    repository.findPreviousClosed.mockResolvedValue({ previous: { dayId: '2026-10-13', countedCash: 870 }, seq: 10 });
     repository.readCommand.mockResolvedValue(null);
   });
 
@@ -662,17 +670,20 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
       .mockResolvedValueOnce(snapshot({ day: { ...snapshot().day!, revision: 4, openingCash: 800, openedBy: 'uid-a', openedAt: '2026-10-15T01:00:00.000Z' } }));
     renderWithLedger(readyLedger(), { onLedgerChanged });
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
-    expect(within(form).getByText(/上一個已關帳日 2026-10-13 的實點現金為 NT\$ 870/)).toBeInTheDocument();
+    await waitFor(() => expect(within(form).getByText(/上一個已關帳日 2026-10-13 的實點現金為 NT\$ 870/)).toBeInTheDocument());
     fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '800' } });
     expect(within(form).getByRole('alert')).toHaveTextContent('少了 NT$ 70');
 
+    await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
     fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
     expect(await screen.findByText(/必須填寫 1 至 500 字的差額原因/)).toBeInTheDocument();
     fireEvent.change(within(form).getByRole('textbox', { name: /差額原因/ }), { target: { value: '   ' } });
+    await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
     fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
     expect(repository.setOpeningCash).not.toHaveBeenCalled();
 
     fireEvent.change(within(form).getByRole('textbox', { name: /差額原因/ }), { target: { value: '  前一天少記一筆收入  ' } });
+    await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
     fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
     await waitFor(() => expect(repository.setOpeningCash).toHaveBeenCalledWith({
       commandId, leaseEpoch: 4, dayId: today, expectedRevision: 3, openingCash: 800, reason: '前一天少記一筆收入',
@@ -686,6 +697,7 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
     fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '870' } });
     expect(within(form).queryByRole('textbox', { name: /差額原因/ })).not.toBeInTheDocument();
+    await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
     fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
     await waitFor(() => expect(repository.setOpeningCash).toHaveBeenCalledWith({
       commandId, leaseEpoch: 4, dayId: today, expectedRevision: 3, openingCash: 870,
@@ -693,27 +705,49 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
   });
 
   it('sends a plain opening when there is no closed day', async () => {
+    repository.findPreviousClosed.mockResolvedValue({ previous: null, seq: 10 });
     renderWithLedger(readyLedger({ closedDays: [] }));
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
     fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '5000' } });
     expect(within(form).queryByRole('textbox', { name: /差額原因/ })).not.toBeInTheDocument();
+    await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
     fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
     await waitFor(() => expect(repository.setOpeningCash).toHaveBeenCalledWith(
       expect.not.objectContaining({ reason: expect.anything() }),
     ));
   });
 
-  it('blocks opening while the last close is unknown (loading or failed)', async () => {
-    renderWithLedger({ status: 'loading' });
+  it('asks for the previous closed day of the shown day only, not through the whole anomaly scan', async () => {
+    renderWithLedger({ status: 'error', message: '整段掃描失敗' });
+    const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
+    await waitFor(() => expect(within(form).getByText(/上一個已關帳日 2026-10-13 的實點現金為 NT\$ 870/)).toBeInTheDocument());
+    expect(repository.findPreviousClosed).toHaveBeenCalledWith(today);
+    expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled();
+  });
+
+  it('looks the previous closed day up again after the ledger snapshot changes', async () => {
+    const view = renderWithLedger(readyLedger());
+    await screen.findByRole('form', { name: `${today} 開帳現金` });
+    await waitFor(() => expect(repository.findPreviousClosed).toHaveBeenCalledTimes(1));
+    view.rerender(
+      <CloudDayVendorsPage db={{} as Firestore} leaseEpoch={4} identityKey="uid-a:4" ledger={readyLedger({ seq: 11 })} />,
+    );
+    await waitFor(() => expect(repository.findPreviousClosed).toHaveBeenCalledTimes(2));
+  });
+
+  it('blocks opening while the last close is unknown (the lookup is pending)', async () => {
+    repository.findPreviousClosed.mockReturnValue(new Promise(() => undefined));
+    renderWithLedger(readyLedger());
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
     expect(within(form).getByText('正在確認上一個已關帳日的實點現金…')).toBeInTheDocument();
     expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeDisabled();
   });
 
-  it('blocks opening with the reason when the ledger failed to load', async () => {
-    renderWithLedger({ status: 'error', message: '離線' });
+  it('blocks opening with the reason when the lookup failed', async () => {
+    repository.findPreviousClosed.mockRejectedValue(new Error('離線'));
+    renderWithLedger(readyLedger());
     const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
-    expect(within(form).getByText(/無法確認上一個已關帳日的實點現金（離線），暫時不能開帳/)).toBeInTheDocument();
+    expect(await within(form).findByText(/無法確認上一個已關帳日的實點現金（離線），暫時不能開帳/)).toBeInTheDocument();
     expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeDisabled();
   });
 });

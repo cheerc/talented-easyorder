@@ -115,4 +115,34 @@ describe('P11 CloseDay／ReopenDay command schema', () => {
     expect(() => normalizeEnabledCommandInput(backfillOpening(ok, { expectedRevisions: { day: 0 } }))).toThrow();
     expect(() => normalizeEnabledCommandInput(backfillOpening(ok, { expectedRevisions: { day: 3, settlement: 0 } }))).toThrow();
   });
+
+  describe('StartBackfill (contract §12)', () => {
+    const startBackfill = (overrides: Record<string, unknown> = {}) => ({
+      commandId, kind: 'StartBackfill', leaseEpoch: 1,
+      targets: { dayId: '2026-10-16' }, expectedRevisions: { day: 3 }, payload: { reason: '前天停電' },
+      ...overrides,
+    });
+
+    it('accepts a day target, an existing day version and a 1–500 character reason', () => {
+      expect(normalizeEnabledCommandInput(startBackfill())).toMatchObject({
+        kind: 'StartBackfill', targets: { dayId: '2026-10-16' }, expectedRevisions: { day: 3 }, payload: { reason: '前天停電' },
+      });
+      expect(() => normalizeEnabledCommandInput(startBackfill({ payload: { reason: 'x'.repeat(500) } }))).not.toThrow();
+    });
+
+    it.each<[string, Record<string, unknown>]>([
+      ['no reason', { payload: {} }],
+      ['an empty reason', { payload: { reason: '' } }],
+      ['a 501-character reason', { payload: { reason: 'x'.repeat(501) } }],
+      ['a non-string reason', { payload: { reason: 5 } }],
+      ['an extra payload key', { payload: { reason: '停電', note: '' } }],
+      ['an extra target', { targets: { dayId: '2026-10-16', settlementRevision: 1 } }],
+      ['a bad date', { targets: { dayId: '2026-13-40' } }],
+      ['a missing day version', { expectedRevisions: {} }],
+      ['day version 0', { expectedRevisions: { day: 0 } }],
+      ['an extra expected revision', { expectedRevisions: { day: 3, settlement: 0 } }],
+    ])('rejects %s', (_label, overrides) => {
+      expect(() => normalizeEnabledCommandInput(startBackfill(overrides))).toThrow();
+    });
+  });
 });

@@ -35,7 +35,7 @@ function overview(overrides: Partial<CloudDayCloseOverview> = {}): CloudDayClose
   return {
     selectionDate: today,
     goLiveDate: '2026-10-01',
-    unclosedDays: [{ dayId: today, status: 'open', openingCash: 1000, activeTransactionCount: 4, kind: 'needs-close' }],
+    unclosedDays: [{ dayId: today, status: 'open', openingCash: 1000, activeTransactionCount: 4, kind: 'needs-close', backfill: null }],
     seq: 20,
     ...overrides,
   };
@@ -202,10 +202,10 @@ describe('CloudDayClosePage', () => {
     const past = '2026-10-15';
     repository.readOverview.mockResolvedValue(overview({
       unclosedDays: [
-        { dayId: '2026-10-10', status: 'open', openingCash: null, activeTransactionCount: 0, kind: 'no-business' },
-        { dayId: '2026-10-12', status: 'open', openingCash: null, activeTransactionCount: 3, kind: 'missing-opening' },
-        { dayId: past, status: 'reopened', openingCash: 500, activeTransactionCount: 2, kind: 'needs-close' },
-        { dayId: today, status: 'open', openingCash: null, activeTransactionCount: 0, kind: 'missing-opening' },
+        { dayId: '2026-10-10', status: 'open', openingCash: null, activeTransactionCount: 0, kind: 'no-business', backfill: null },
+        { dayId: '2026-10-12', status: 'open', openingCash: null, activeTransactionCount: 3, kind: 'missing-opening', backfill: null },
+        { dayId: past, status: 'reopened', openingCash: 500, activeTransactionCount: 2, kind: 'needs-close', backfill: null },
+        { dayId: today, status: 'open', openingCash: null, activeTransactionCount: 0, kind: 'missing-opening', backfill: null },
       ],
     }));
     repository.read.mockResolvedValue(dayState({ openingCash: null, expectedCash: null, totals: { ...dayState().totals, activeTransactionCount: 0 } }));
@@ -421,7 +421,7 @@ describe('CloudDayClosePage: ledger warnings (contract §11)', () => {
   it('opens on the day sent from the anomalies page', async () => {
     const day = '2026-10-15';
     repository.readOverview.mockResolvedValue(overview({
-      unclosedDays: [{ dayId: day, status: 'open', openingCash: 600, activeTransactionCount: 2, kind: 'needs-close' }],
+      unclosedDays: [{ dayId: day, status: 'open', openingCash: 600, activeTransactionCount: 2, kind: 'needs-close', backfill: null }],
     }));
     repository.read.mockResolvedValue(dayState({ dayId: day }));
     renderWithLedger(unclosedLedger, { initialDayId: day });

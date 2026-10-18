@@ -374,3 +374,15 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - 無 production 部署、無正式金鑰。
 - **合併**：PR #509 squash `fb2fc11a7f6271ded1495d27af6a1e99300ebb12`（2026-10-17），source head `a16afa4a4fd6dbc1327a1b8e60dc8430a96e190a`，base `8cd8dc35578144f620475fd930eccb2862b85cc4`。獨立審查 review `5558759097` 通過、無必修；審查本機重跑 `cloudDayClose.spec.ts` 全檔 98/98（96 個原有案例，2 個暫時探測案例未提交）、突變複測（拿掉 `command.reason == command.payload.reason` 與改弱 `validMutationReason` 都被殺）、Rules 餘裕複測（`P08.8` +11、`P10.17` +19、`CreateStudent` +3、`P11c1.8` command +62／dayWrite +80，與預算附錄一致）。CI run [39047364483](https://github.com/cheerc/talented-easyorder/actions/runs/39047364483) build-and-test 與 e2e 成功。
 - 不擋合併的備註（已記入 handoff 為 P11c2 待辦）：400 天掃描上限會在營業日文件超過 400 份後擋住開帳，P11c2 第一項改為只找上一個已關帳日；每次開帳約讀三輪營業日、寫入器不共用快取；STALE 只有 mock 測試，P11c2 補 Emulator 案例；純空白原因通過 Rules（契約 §11.4 已寫明）；handoff 完整 head SHA 補在本收據。
+
+## P11c2a 解除 400 天上限、回填斷層日 checkpoint — 2026-10-18
+
+- CheerC 2026-10-17 規劃 P11c2，本批只做 P11c2a（後端）。base `f7cfc452971c05303d8cf60963cb6aec3b33c6c6`（#510 合併後 main）；PR 與 head SHA 以 PR body 與 handoff 為準。契約 §12：[P11 contract](../superpowers/specs/2026-10-17-cloud-day-close-contract.md#12-p11c2a-回填斷層日startbackfill)。
+- 400 天上限：異常掃描改每頁 200 筆、`startAfter`、每頁之後比對 head，讀取次數約等於營業日數；開帳表單與 `SetOpeningCash` 寫入器共用 `findPreviousClosed`（每次 31 天往回找上一個已關帳日）。Emulator `P11c2a.1`–`.3`：451 份營業日分三頁讀完且晚找到的異常照報、400 天前的已關帳日仍找得到、讀取中真實寫入使 head 變動回 `STALE_SNAPSHOT`。
+- 回填：`StartBackfill`（第 26 種、已啟用 24 種）寫 `system/dataHead`、`commands/{id}`、不可改的 `backfillDays/{dayId}`；營業日文件不動。`CreateOrder`／`CreatePayment`／`CreateCashMovement` 在「有標記且 `lastSettlementRevision == 0`」的過去日合法；`CreateRefund`／`Undo`／`CancelRefund` 不開放；交易不加欄位。P14 decoder／replay 接受並驗證標記與回填交易。
+- Rules 餘裕（main `fb2fc11` 與本 PR 同案例）：既有錨點 `P08.8` 營業日 +11→+11、指令 +20→+20、交易建立 +34→+43（移除重複日期檢查）、`P07.8` +19→+19、`P09.8` 指令 +30→+29、`P09b.9` +19→+19、`P10.17` +19→+19、`CreateStudent` +3→+3；新路徑最緊為回填訂餐交易建立 +16（移除重複檢查前 +2）。突變 6/6 殺死。見 [P11c2a 預算附錄](p05-rules-budget.md#p11c2a-gap-day-backfill--budget-and-probe-receipt)。
+- demo-easyorder Auth＋Firestore Emulator 循序 `src/firebase/__tests__` 全部 `*.spec.ts`（所有 `EASYORDER_REQUIRE_*`）：14 檔 609/609、0 skipped。`cloudDayClose.spec.ts` 131 項（`P11c2a.*` 36 項）；`test:cloud-backup` 22/22（新增真實 EnsureDay → 補開帳 → 開始回填 → 回填訂餐／繳費／收支 → 關帳 → 匯出 → 解密 → replay，偽造標記、標記前的交易、竄改原因被拒）。
+- 一般 Vitest（Emulator-only 測試 skip）：171 檔通過／14 檔 skip，1,769 passed／609 skipped。`npm run lint`、`npm run build` exit 0；app tsc 與 main 逐行相同（行號不計）。畫面測試 `CloudDayVendorsPage.test.tsx` 多處改為 `waitFor`，原因是上一個已關帳日改為非同步查找，時序不穩（連跑 10 次穩定）。
+- E2E（本機 Chromium 1194 暫時設定，不取代 CI pinned Chromium，設定未提交）：cloud 21/21、prototype 7/7。**沒有新增 E2E**：E2E 上線日是當天，沒有過去營業日可回填。
+- 未做：P11c2b 回填模式畫面、P11c3、P11c4、角色權限。無 production 部署、無正式金鑰。
+

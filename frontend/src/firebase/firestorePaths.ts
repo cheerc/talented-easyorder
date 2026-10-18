@@ -8,3 +8,4 @@ export const studentCodePath = (code: string) => `studentCodes/${code}`;
 export const vendorPath = (vendorId: string) => `vendors/${vendorId}`;
 export const transactionPath = (transactionId: string) => `transactions/${transactionId}`;
 export const settlementPath = (dayId: string, revision: number) => `days/${dayId}/settlements/${revision}`;
+export const backfillDayPath = (dayId: string) => `backfillDays/${dayId}`;

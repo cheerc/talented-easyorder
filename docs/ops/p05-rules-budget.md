@@ -663,3 +663,60 @@ Each mutant changes one check in `validSetOpeningCash` and runs `cloudDayClose.s
 | reason shape without exact keys `['openingCash','reason']` | killed (1 case: extra key) |
 | plain shape without exact keys `['openingCash']` | killed (3 cases) |
 
+
+## P11c2a — gap-day backfill — budget and probe receipt
+
+P11c2a adds the 26th kind `StartBackfill` (24 enabled) and the new collection `backfillDays/{dayId}`, and lets `CreateOrder`, `CreatePayment` and `CreateCashMovement` land on a marked past day. Contract: [P11 day close contract §12](../superpowers/specs/2026-10-17-cloud-day-close-contract.md#12-p11c2a-回填斷層日startbackfill).
+
+### Rule layout
+
+- `validTransactionDay(dayId, day)` = `validCurrentTaipeiDate(dayId) || (day.lastSettlementRevision == 0 && exists(backfillDays/dayId))`. It replaces `validCurrentTaipeiDate` in four places: `validTransactionDoc` (`tx.businessDate`), `validCreateCashMovement` (command path and transaction path) and the `transactionCommand` CreateCashMovement branch. `day` is the before-snapshot those paths already read, so there is no extra `get`. Today's writes short-circuit on the first operand and pay no extra document access.
+- `validTransactionPayload` used to check the same date a second time (`command.targets.dayId`). `validTransactionDoc`, called from the same function, already pins `tx.businessDate == command.targets.dayId` and checks the day, so that second check was removed as a pure duplicate (no check was weakened). It cost 14 expressions on the backfill path and 9 on the today path.
+- `validStartBackfill` is nested in the last operand of `validCommandCreate` next to `CloseDay` and `BackfillOpeningCash` (no new top-level `||`). `backfillDays/{dayId}`: `get`/`list` for the current holder, `update`/`delete` false, `create` only through `backfillDayCommand`. `dayWriteCommand` is untouched; `CreateRefund`, `Undo`, `CancelRefund` stay today-only.
+- Write budget of `StartBackfill`: command + dataHead + `backfillDays` = 3 writes, reads: head, day, lease/operator like `BackfillOpeningCash` plus one `getAfter`/`exists` on the marker. The backfill order/payment/cash positive cases (`P11c2a.4`, `P11c2a.14`) pass in the Emulator, i.e. stay within the 10 accesses per request and 20 per batch.
+
+### Expression headroom
+
+Same probe as earlier appendices (`1 == 1 &&` terms at one anchor, bisected against a positive Emulator case; `+lo / +hi`). Main is `fb2fc11`; this PR's measurements for the transaction anchors were taken after removing the duplicate date check (before it, the order transaction anchor was +32 on a today order and +2 on a backfill order). The probe has a new anchor `backfill` (the `backfillDays` create rule).
+
+| Rule anchor | Case | Main | This PR |
+|---|---|---:|---:|
+| day update (`dayWriteCommand`) | `P08.8` CreateOrder | +11 / +12 | +11 / +12 |
+| command create | `P08.8` CreateOrder | +20 / +21 | +20 / +21 |
+| transaction create | `P08.8` CreateOrder | +34 / +35 | +43 / +44 |
+| dataHead update | `P08.8` | +95 / +96 | +95 / +96 |
+| command create | `P07.8` SetDayMenu direct | +19 / +20 | +19 / +20 |
+| command create | `P09.8` CreateCashMovement | +30 / +31 | +29 / +30 |
+| transaction create | `P09.8` CreateCashMovement | +95 / +96 | +95 / +96 |
+| command create | `P09b.9` refund, max payload | +19 / +20 | +19 / +20 |
+| transaction create | `P09b.9` refund | +95 / +96 | +95 / +96 |
+| command create | `P10.17` every mutation kind | +19 / +20 | +19 / +20 |
+| command create | P14 real P10a receipts (capped by `CreateStudent`) | +3 / +4 | +3 / +4 |
+| command create | `P11c2a.14` backfilled order | — | +20 / +21 |
+| transaction create | `P11c2a.14` backfilled order | — | +16 / +17 |
+| day update (`dayWriteCommand`) | `P11c2a.14` backfilled order | — | +11 / +12 |
+| dataHead update | `P11c2a.14` backfilled order | — | +95 / +96 |
+| command create | `P11c2a.14` backfilled payment | — | +20 / +21 |
+| transaction create | `P11c2a.14` backfilled payment | — | +57 / +58 |
+| command create | `P11c2a.14` backfilled cash movement | — | +29 / +30 |
+| transaction create | `P11c2a.14` backfilled cash movement | — | +95 / +96 |
+| command create | `P11c2a.8` `StartBackfill`, 500-character reason | — | +69 / +70 |
+| dataHead update | `P11c2a.8` | — | +95 / +96 |
+| `backfillDays` create | `P11c2a.8` | — | +96 / +97 |
+
+No existing anchor dropped by more than 1 (cash command +30 → +29); the tightest are unchanged: day rule for `CreateOrder` +11, command rules for mutations and refunds +19, `CreateStudent` +3. The tightest new path is the backfilled order transaction create at +16.
+
+### Mutants
+
+Each mutant changes one check and runs `cloudDayClose.spec.ts -t P11c2a` (36 cases).
+
+| Mutant | Result |
+|---|---|
+| remove `day.lastSettlementRevision == 0` from `validTransactionDay` | killed (`P11c2a.7`: reopened-after-close day accepts a backfilled transaction) |
+| remove `dayBefore.lastSettlementRevision == 0` from `validStartBackfill` | killed (`P11c2a.10`) |
+| remove `exists(backfillDays/…)` from `validTransactionDay` | killed (`P11c2a.5`: unmarked past day accepts transactions) |
+| `backfillDays` `update, delete` allowed for the holder | killed (`P11c2a.11`) |
+| `validStartBackfill` without the "before Taipei today" check | killed (`P11c2a.10`: marks today) |
+| marker `reason` no longer bound to the payload reason | killed (`P11c2a.9`) |
+
+One check is deliberately not a mutant: `!exists(backfillDays/…)` in `validStartBackfill`. A second marker for the same day is a `create` on an existing document, which Firestore evaluates as an `update` and the `update` rule denies, so removing the check cannot change behaviour.

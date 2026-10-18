@@ -9,16 +9,20 @@ import {
   limit,
   orderBy,
   query,
+  startAfter,
   where,
+  type DocumentData,
   type Firestore,
+  type QueryDocumentSnapshot,
+  type QuerySnapshot,
 } from 'firebase/firestore';
 import type { CommandErrorCode, CommandReceipt, CommandResult } from '../domain/cloudCommands';
-import { InvalidCloudCommandInput, decodeSettlementDoc, settlementExpectedCash } from '../domain/cloudCommandSchema';
+import { InvalidCloudCommandInput, decodeBackfillDoc, decodeSettlementDoc, settlementExpectedCash } from '../domain/cloudCommandSchema';
 import { createCloudCommandRepository, type CloudCommandRepositoryOptions } from './cloudCommandRepository';
 import {
   computeLedgerAnomalies, type LedgerAnomaly, type LedgerAnomalyDay, type PreviousClosedDay,
 } from '../domain/ledgerAnomalies';
-import { accessLeasePath, dataHeadPath, dayPath, settlementPath } from './firestorePaths';
+import { accessLeasePath, backfillDayPath, dataHeadPath, dayPath, settlementPath } from './firestorePaths';
 
 type Data = Record<string, unknown>;
 type CurrentUser = Pick<User, 'uid' | 'email' | 'emailVerified' | 'providerData'>;
@@ -27,8 +31,14 @@ type CurrentUser = Pick<User, 'uid' | 'email' | 'emailVerified' | 'providerData'
 const MAX_SETTLEMENT_VERSIONS = 200;
 /** Unclosed days are closed daily; more than this means the overview cannot be shown completely. */
 const MAX_UNCLOSED_DAYS = 200;
-/** Business-day documents between goLiveDate and today that the anomaly scan reads (contract §11). */
-const MAX_ANOMALY_DAYS = 400;
+/** Business-day documents per page of the anomaly scan (contract §11.2). */
+const LEDGER_PAGE_SIZE = 200;
+/** Fail-closed ceiling for one full scan (about 55 years of daily documents), never a silent truncation. */
+const MAX_SCANNED_DAYS = 20_000;
+/** Calendar days per query when walking back to the previous closed day (contract §11.2). */
+const PREVIOUS_CLOSED_SEGMENT_DAYS = 31;
+/** `in` queries accept at most 30 values; the overview looks up backfill markers in chunks. */
+const MARKER_QUERY_CHUNK = 30;
 
 export type CloudDayCloseReadErrorCode = CommandErrorCode | 'INCOMPLETE_SNAPSHOT' | 'STALE_SNAPSHOT';
 
@@ -98,6 +108,30 @@ export interface CloudUnclosedDay {
   openingCash: number | null;
   activeTransactionCount: number;
   kind: UnclosedDayKind;
+  /** The day is being backfilled (contract §12); null for an ordinary day. */
+  backfill: CloudBackfillDay | null;
+}
+
+/** `backfillDays/{dayId}`: the immutable mark that a past day is being backfilled, with its reason. */
+export interface CloudBackfillDay {
+  dayId: string;
+  reason: string;
+  startedBy: string;
+  startedAt: Date;
+  commandId: string;
+}
+
+/**
+ * A transaction is backfilled when its day carries a backfill marker and the Taipei date it was created on
+ * is later than its business date. Rules guarantee both facts, so no new transaction field exists (contract §12).
+ */
+export function isBackfilled(
+  transaction: { businessDate: string; createdAt: Date | Timestamp },
+  backfill: Pick<CloudBackfillDay, 'dayId'> | null,
+): boolean {
+  if (!backfill || backfill.dayId !== transaction.businessDate) return false;
+  const createdAt = transaction.createdAt instanceof Timestamp ? transaction.createdAt : Timestamp.fromDate(transaction.createdAt);
+  return taipeiDate(createdAt) > transaction.businessDate;
 }
 
 export interface CloudDayCloseOverview {
@@ -244,6 +278,24 @@ function assertAuthenticated(options: CloudCommandRepositoryOptions): CurrentUse
   return user;
 }
 
+function decodeBackfill(dayId: string, value: unknown): CloudBackfillDay {
+  const decoded = decodeBackfillDoc(value, dayId) as {
+    reason: string; startedBy: string; startedAt: Timestamp; commandId: string;
+  };
+  return { dayId, reason: decoded.reason, startedBy: decoded.startedBy, startedAt: decoded.startedAt.toDate(), commandId: decoded.commandId };
+}
+
+/** Server-only read of one day's backfill marker; null when the day is not being backfilled. */
+export async function readCloudBackfillDay(db: Firestore, dayId: string): Promise<CloudBackfillDay | null> {
+  try {
+    if (!validDate(dayId)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', '營業日格式不支援');
+    const snapshot = await getDocFromServer(doc(db, backfillDayPath(dayId)));
+    return snapshot.exists() ? decodeBackfill(dayId, snapshot.data()) : null;
+  } catch (error) {
+    throw readError(error);
+  }
+}
+
 async function readHeadSeq(db: Firestore): Promise<{ seq: number; datasetId: string; goLiveDate: string }> {
   const snapshot = await getDocFromServer(doc(db, dataHeadPath()));
   const value: unknown = snapshot.exists() ? snapshot.data() : null;
@@ -292,6 +344,15 @@ export async function readCloudDayCloseOverview(
     if (page.size > MAX_UNCLOSED_DAYS) {
       throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `未關帳營業日超過 ${MAX_UNCLOSED_DAYS} 天，無法完整列出`);
     }
+    const markers = new Map<string, CloudBackfillDay>();
+    const candidateIds = page.docs.map(snapshot => snapshot.id).filter(id => validDate(id) && id < selectionDate);
+    for (let index = 0; index < candidateIds.length; index += MARKER_QUERY_CHUNK) {
+      const chunk = await getDocsFromServer(query(
+        collection(db, 'backfillDays'),
+        where(documentId(), 'in', candidateIds.slice(index, index + MARKER_QUERY_CHUNK)),
+      ));
+      for (const snapshot of chunk.docs) markers.set(snapshot.id, decodeBackfill(snapshot.id, snapshot.data()));
+    }
     const unclosedDays = page.docs
       .map(snapshot => {
         if (!validDate(snapshot.id)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${snapshot.id} 路徑不支援`);
@@ -303,7 +364,7 @@ export async function readCloudDayCloseOverview(
           openingCash: day.openingCash,
           activeTransactionCount: day.totals.activeTransactionCount,
         };
-        return { ...entry, kind: classifyUnclosedDay(entry, selectionDate) };
+        return { ...entry, kind: classifyUnclosedDay(entry, selectionDate), backfill: markers.get(snapshot.id) ?? null };
       })
       .filter(day => day.dayId <= selectionDate)
       .sort((left, right) => left.dayId.localeCompare(right.dayId));
@@ -381,78 +442,164 @@ export interface CloudLedgerSnapshot {
   seq: number;
 }
 
+export interface CloudPreviousClosedLookup {
+  /** The latest closed day dated before the asked day, or null when none exists back to goLiveDate. */
+  previous: PreviousClosedDay | null;
+  seq: number;
+}
+
+export interface CloudLedgerReaderTuning {
+  /** Documents per scan page (default 200). */
+  pageSize?: number;
+  /** Calendar days per previous-closed-day segment (default 31). */
+  segmentDays?: number;
+}
+
+/** Settlement versions are immutable, so closed days' latest counted cash is kept per Firestore instance. */
+const settlementCaches = new WeakMap<object, Map<string, number>>();
+
+function settlementCacheFor(db: Firestore): Map<string, number> {
+  let cache = settlementCaches.get(db);
+  if (!cache) {
+    cache = new Map();
+    settlementCaches.set(db, cache);
+  }
+  return cache;
+}
+
+function addCalendarDays(dayId: string, days: number): string {
+  return new Date(Date.parse(`${dayId}T00:00:00.000Z`) + days * 86_400_000).toISOString().slice(0, 10);
+}
+
 /**
- * Server-only anomaly scan (contract §11): reads goLiveDate..today business days in ascending document-ID
- * order and the latest settlement of each closed day. Settlement versions are immutable, so a reader keeps
- * them in memory by (datasetId, dayId, revision) to spare Spark reads. More than MAX_ANOMALY_DAYS documents
- * or a head that moves during the read fails closed instead of truncating.
+ * Server-only ledger reads (contract §11.2). `read()` is the full anomaly scan: business-day documents from
+ * goLiveDate to the lease date, in ascending document-ID order, one page at a time with `startAfter`; the
+ * data head is compared after every page, so a change during the scan is `STALE_SNAPSHOT`, and the number of
+ * reads is about the number of business days. `findPreviousClosed(dayId)` is the cheap lookup the opening
+ * form and the `SetOpeningCash` writer share: it walks back from dayId in segments of calendar days and
+ * stops at the first closed day, so it never depends on how long the history is. Settlement versions are
+ * immutable, so the latest counted cash of a closed day is cached per Firestore instance.
  */
-export function createCloudLedgerReader(db: Firestore, options: CloudCommandRepositoryOptions = {}) {
-  const settlementCache = new Map<string, number>();
+export function createCloudLedgerReader(
+  db: Firestore,
+  options: CloudCommandRepositoryOptions = {},
+  tuning: CloudLedgerReaderTuning = {},
+) {
+  const pageSize = tuning.pageSize ?? LEDGER_PAGE_SIZE;
+  const segmentDays = tuning.segmentDays ?? PREVIOUS_CLOSED_SEGMENT_DAYS;
+  const settlementCache = settlementCacheFor(db);
+
+  async function countedCashOf(datasetId: string, dayId: string, day: ReturnType<typeof decodeDay>): Promise<number> {
+    if (day.lastSettlementRevision < 1) {
+      throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `已關帳營業日 ${dayId} 沒有日結版本`);
+    }
+    const key = `${datasetId}/${dayId}/${day.lastSettlementRevision}`;
+    let cached = settlementCache.get(key);
+    if (cached === undefined) {
+      const latest = await getDocFromServer(doc(db, settlementPath(dayId, day.lastSettlementRevision)));
+      if (!latest.exists()) {
+        throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `營業日 ${dayId} 缺少最新日結版本`);
+      }
+      const version = toVersion(dayId, day.lastSettlementRevision, latest.data());
+      if (version.status !== 'closed' || version.countedCash === null) {
+        throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 最新日結版本不是關帳版本`);
+      }
+      cached = version.countedCash;
+      settlementCache.set(key, cached);
+    }
+    return cached;
+  }
+
+  function assertHeadUnchanged(before: { seq: number; datasetId: string }, after: { seq: number; datasetId: string }, what: string) {
+    if (after.seq !== before.seq || after.datasetId !== before.datasetId) {
+      throw new CloudDayCloseRepositoryError('STALE_SNAPSHOT', `讀取期間雲端資料有更新，請重新載入${what}`);
+    }
+  }
+
   async function read(): Promise<CloudLedgerSnapshot> {
     try {
       const user = assertAuthenticated(options);
       const before = await readHeadSeq(db);
       const today = await readLeaseDate(db, user);
-      const page = await getDocsFromServer(query(
-        collection(db, 'days'),
-        where(documentId(), '>=', before.goLiveDate),
-        where(documentId(), '<=', today),
-        orderBy(documentId()),
-        limit(MAX_ANOMALY_DAYS + 1),
-      ));
-      if (page.size > MAX_ANOMALY_DAYS) {
-        throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `營業日超過 ${MAX_ANOMALY_DAYS} 天，無法完整檢查帳務異常`);
-      }
       const days: LedgerAnomalyDay[] = [];
-      for (const snapshot of page.docs) {
-        if (!validDate(snapshot.id)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${snapshot.id} 路徑不支援`);
-        const day = decodeDay(snapshot.id, snapshot.data());
-        let countedCash: number | null = null;
-        if (day.status === 'closed') {
-          if (day.lastSettlementRevision < 1) {
-            throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `已關帳營業日 ${snapshot.id} 沒有日結版本`);
+      let last: QueryDocumentSnapshot | null = null;
+      for (;;) {
+        const page: QuerySnapshot<DocumentData> = await getDocsFromServer(query(
+          collection(db, 'days'),
+          where(documentId(), '>=', before.goLiveDate),
+          where(documentId(), '<=', today),
+          orderBy(documentId()),
+          ...(last ? [startAfter(last)] : []),
+          limit(pageSize),
+        ));
+        for (const snapshot of page.docs) {
+          if (days.length >= MAX_SCANNED_DAYS) {
+            throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `營業日超過 ${MAX_SCANNED_DAYS} 天，無法完整檢查帳務異常`);
           }
-          const key = `${before.datasetId}/${snapshot.id}/${day.lastSettlementRevision}`;
-          let cached = settlementCache.get(key);
-          if (cached === undefined) {
-            const latest = await getDocFromServer(doc(db, settlementPath(snapshot.id, day.lastSettlementRevision)));
-            if (!latest.exists()) {
-              throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `營業日 ${snapshot.id} 缺少最新日結版本`);
-            }
-            const version = toVersion(snapshot.id, day.lastSettlementRevision, latest.data());
-            if (version.status !== 'closed' || version.countedCash === null) {
-              throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${snapshot.id} 最新日結版本不是關帳版本`);
-            }
-            cached = version.countedCash;
-            settlementCache.set(key, cached);
-          }
-          countedCash = cached;
+          if (!validDate(snapshot.id)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${snapshot.id} 路徑不支援`);
+          const day = decodeDay(snapshot.id, snapshot.data());
+          days.push({
+            dayId: snapshot.id,
+            status: day.status,
+            openingCash: day.openingCash,
+            activeTransactionCount: day.totals.activeTransactionCount,
+            countedCash: day.status === 'closed' ? await countedCashOf(before.datasetId, snapshot.id, day) : null,
+          });
         }
-        days.push({
-          dayId: snapshot.id,
-          status: day.status,
-          openingCash: day.openingCash,
-          activeTransactionCount: day.totals.activeTransactionCount,
-          countedCash,
-        });
-      }
-      const after = await readHeadSeq(db);
-      if (after.seq !== before.seq || after.datasetId !== before.datasetId) {
-        throw new CloudDayCloseRepositoryError('STALE_SNAPSHOT', '讀取期間雲端資料有更新，請重新載入帳務異常');
+        assertHeadUnchanged(before, await readHeadSeq(db), '帳務異常');
+        if (page.size < pageSize) break;
+        last = page.docs[page.docs.length - 1] ?? null;
       }
       return {
         today,
         goLiveDate: before.goLiveDate,
         anomalies: computeLedgerAnomalies(days, today),
         closedDays: days.filter(day => day.status === 'closed').map(day => ({ dayId: day.dayId, countedCash: day.countedCash as number })),
-        seq: after.seq,
+        seq: before.seq,
       };
     } catch (error) {
       throw readError(error);
     }
   }
-  return { read };
+
+  async function findPreviousClosed(dayId: string): Promise<CloudPreviousClosedLookup> {
+    try {
+      assertAuthenticated(options);
+      if (!validDate(dayId)) throw new CloudDayCloseRepositoryError('INVALID_INPUT', '營業日日期格式不正確');
+      const before = await readHeadSeq(db);
+      let end = dayId;
+      let previous: PreviousClosedDay | null = null;
+      while (end > before.goLiveDate) {
+        const candidate = addCalendarDays(end, -segmentDays);
+        const start = candidate > before.goLiveDate ? candidate : before.goLiveDate;
+        const page: QuerySnapshot<DocumentData> = await getDocsFromServer(query(
+          collection(db, 'days'),
+          where(documentId(), '>=', start),
+          where(documentId(), '<', end),
+          orderBy(documentId()),
+          limit(segmentDays),
+        ));
+        for (let index = page.docs.length - 1; index >= 0; index -= 1) {
+          const snapshot = page.docs[index];
+          if (!snapshot) continue;
+          if (!validDate(snapshot.id)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${snapshot.id} 路徑不支援`);
+          const day = decodeDay(snapshot.id, snapshot.data());
+          if (day.status === 'closed') {
+            previous = { dayId: snapshot.id, countedCash: await countedCashOf(before.datasetId, snapshot.id, day) };
+            break;
+          }
+        }
+        assertHeadUnchanged(before, await readHeadSeq(db), '上一個已關帳日');
+        if (previous) break;
+        end = start;
+      }
+      return { previous, seq: before.seq };
+    } catch (error) {
+      throw readError(error);
+    }
+  }
+
+  return { read, findPreviousClosed };
 }
 
 export function createCloudDayCloseRepository(db: Firestore, options: CloudCommandRepositoryOptions = {}) {
@@ -460,8 +607,10 @@ export function createCloudDayCloseRepository(db: Firestore, options: CloudComma
   const ledger = createCloudLedgerReader(db, options);
   return {
     readLedger: () => ledger.read(),
+    findPreviousClosed: (dayId: string) => ledger.findPreviousClosed(dayId),
     read: (dayId: string) => readCloudDayClose(db, dayId, options),
     readOverview: () => readCloudDayCloseOverview(db, options),
+    readBackfillDay: (dayId: string) => readCloudBackfillDay(db, dayId),
     closeDay(input: CloseCloudDayInput): Promise<CommandResult> {
       const { commandId, leaseEpoch, dayId, expectedDayRevision, expectedSettlementRevision, countedCash, note, expectedCash } = input;
       return commands.commitCommand({
