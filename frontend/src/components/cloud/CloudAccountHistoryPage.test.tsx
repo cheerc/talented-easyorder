@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CloudAccountHistory, CloudAuditRangeSnapshot, CloudLedgerReport } from '../../domain/cloudLedgerReport';
 
@@ -70,6 +71,13 @@ const audit = {
     actorUid: 'operator-a', actorEmail: 'a@example.test', committedAt: `${date}T04:00:00.000Z`, reason: null,
     before: null, after: { transactionId: transaction.transactionId }, attributedDate: date, dateBasis: 'business-date' }],
 } as unknown as CloudAuditRangeSnapshot;
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
+}
 
 describe('CloudAccountHistoryPage', () => {
   beforeEach(() => {
@@ -152,5 +160,120 @@ describe('CloudAccountHistoryPage', () => {
     await waitFor(() => expect(mocks.mutateTransaction).toHaveBeenCalledTimes(2));
     expect(mocks.mutateTransaction.mock.calls[0][0]).toEqual(mocks.mutateTransaction.mock.calls[1][0]);
     vi.restoreAllMocks();
+  });
+
+  it('clears an open correction draft and account candidates after a read loses the lease', async () => {
+    const navigation = vi.fn();
+    render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4"
+      initialStudentId={studentId} initialRange={range} onNavigationStateChange={navigation} />);
+    await screen.findByTestId('account-history-ready');
+    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'private draft' } });
+    fireEvent.change(screen.getByLabelText('搜尋目前學生帳戶'), { target: { value: '林小明' } });
+
+    mocks.readAccountHistory.mockRejectedValueOnce(Object.assign(new Error('lost lease'), { code: 'LEASE_LOST' }));
+    fireEvent.click(screen.getByRole('button', { name: '查詢完整歷史' }));
+    await screen.findByRole('alert');
+
+    expect(navigation).toHaveBeenLastCalledWith('operator-a:4', 'revoked');
+    expect(screen.queryByRole('form', { name: '歷史交易更正' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '林小明（001）' })).toBeNull();
+    expect(screen.getByLabelText('搜尋目前學生帳戶')).toHaveValue('');
+    expect(screen.queryByText('林小明')).toBeNull();
+  });
+
+  it('does not refill revoked account UI when sibling reads finish later', async () => {
+    const navigation = vi.fn();
+    const view = render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4"
+      initialStudentId={studentId} initialRange={range} onNavigationStateChange={navigation} />);
+    await screen.findByTestId('account-history-ready');
+    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'late private draft' } });
+    fireEvent.change(screen.getByLabelText('搜尋目前學生帳戶'), { target: { value: '小明' } });
+
+    const lateAccount = deferred<CloudAccountHistory>();
+    const lateAudit = deferred<CloudAuditRangeSnapshot>();
+    const lateStudents = deferred<{ datasetId: string; seq: number; goLiveDate: string; students: typeof student[] }>();
+    mocks.readAccountHistory.mockReturnValueOnce(lateAccount.promise);
+    mocks.readReport.mockRejectedValueOnce(Object.assign(new Error('unauthorized'), { code: 'UNAUTHORIZED' }));
+    mocks.readAuditRange.mockReturnValueOnce(lateAudit.promise);
+    mocks.listStudents.mockReturnValueOnce(lateStudents.promise);
+    fireEvent.click(screen.getByRole('button', { name: '查詢完整歷史' }));
+    await screen.findByRole('alert');
+    expect(navigation).toHaveBeenLastCalledWith('operator-a:4', 'revoked');
+
+    await act(async () => {
+      lateAccount.resolve(account);
+      lateAudit.resolve(audit);
+      lateStudents.resolve({ datasetId: 'dataset-a', seq: 11, goLiveDate: '2026-10-01', students: [student] });
+    });
+    expect(screen.queryByRole('form', { name: '歷史交易更正' })).toBeNull();
+    expect(screen.getByLabelText('搜尋目前學生帳戶')).toHaveValue('');
+    expect(screen.queryByRole('button', { name: '林小明（001）' })).toBeNull();
+    expect(screen.queryByText('目前帳戶餘額')).toBeNull();
+    expect(screen.queryByText('late private draft')).toBeNull();
+    view.unmount();
+  });
+
+  it('clears sensitive account UI when bootstrap is unauthorized', async () => {
+    const navigation = vi.fn();
+    const view = render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4"
+      initialStudentId={studentId} initialRange={range} onNavigationStateChange={navigation} />);
+    await screen.findByTestId('account-history-ready');
+    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'bootstrap private draft' } });
+    fireEvent.change(screen.getByLabelText('搜尋目前學生帳戶'), { target: { value: '林小明' } });
+
+    mocks.readSummary.mockRejectedValueOnce(Object.assign(new Error('lease lost'), { code: 'LEASE_LOST' }));
+    view.rerender(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-b:4"
+      initialStudentId={studentId} initialRange={range} onNavigationStateChange={navigation} />);
+    await screen.findByRole('alert');
+
+    expect(navigation).toHaveBeenLastCalledWith('operator-b:4', 'revoked');
+    expect(screen.queryByRole('form', { name: '歷史交易更正' })).toBeNull();
+    expect(screen.getByLabelText('搜尋目前學生帳戶')).toHaveValue('');
+    expect(screen.queryByText('林小明')).toBeNull();
+    expect(screen.queryByText('bootstrap private draft')).toBeNull();
+  });
+
+  it('clears the entire correction form and candidate list when a mutation is denied', async () => {
+    const navigation = vi.fn();
+    mocks.mutateTransaction.mockResolvedValueOnce({ ok: false, error: { code: 'UNAUTHORIZED', message: 'lease lost' } });
+    render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4"
+      initialStudentId={studentId} initialRange={range} onNavigationStateChange={navigation} />);
+    await screen.findByTestId('account-history-ready');
+    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    fireEvent.change(screen.getByLabelText('更正餐費'), { target: { value: '60' } });
+    fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'mutation private draft' } });
+    fireEvent.change(screen.getByLabelText('搜尋目前學生帳戶'), { target: { value: '林小明' } });
+    fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
+
+    await waitFor(() => expect(navigation).toHaveBeenLastCalledWith('operator-a:4', 'revoked'));
+    expect(screen.queryByRole('form', { name: '歷史交易更正' })).toBeNull();
+    expect(screen.getByLabelText('搜尋目前學生帳戶')).toHaveValue('');
+    expect(screen.queryByRole('button', { name: '林小明（001）' })).toBeNull();
+    expect(screen.queryByText('mutation private draft')).toBeNull();
+    expect(screen.queryByText('目前帳戶餘額')).toBeNull();
+  });
+
+  it('keeps only non-renderable recovery identity after recovery is denied', async () => {
+    const navigation = vi.fn();
+    mocks.mutateTransaction.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+    mocks.readCommand.mockRejectedValueOnce(Object.assign(new Error('unauthorized'), { code: 'UNAUTHORIZED' }));
+    render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4"
+      initialStudentId={studentId} initialRange={range} onNavigationStateChange={navigation} />);
+    await screen.findByTestId('account-history-ready');
+    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'recovery private draft' } });
+    fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
+    await screen.findByRole('region', { name: '歷史更正命令恢復' });
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令並以同 ID 復原' }));
+
+    await waitFor(() => expect(navigation).toHaveBeenLastCalledWith('operator-a:4', 'revoked'));
+    expect(screen.queryByRole('region', { name: '歷史更正命令恢復' })).toBeNull();
+    expect(screen.queryByRole('form', { name: '歷史交易更正' })).toBeNull();
+    expect(screen.queryByText('22222222-2222-4222-8222-222222222222')).toBeNull();
+    expect(screen.queryByText('recovery private draft')).toBeNull();
+    expect(screen.getByLabelText('搜尋目前學生帳戶')).toHaveValue('');
   });
 });

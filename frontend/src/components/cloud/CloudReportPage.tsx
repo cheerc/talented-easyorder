@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt } from '../../domain/cloudCommands';
 import {
@@ -25,6 +26,7 @@ import {
   type RecordCloudExportInput,
   type RecordCloudPrintInput,
 } from '../../firebase/cloudReportActionRepository';
+import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerToken } from './useCloudActionOwner';
 import './CloudReportPage.css';
 
 export interface CloudReportPageProps {
@@ -49,12 +51,41 @@ interface Snapshot {
 interface FrozenAction {
   id: string;
   kind: 'export' | 'print';
+  scopeKey: string;
   input: RecordCloudExportInput | RecordCloudPrintInput;
   contents: string;
   filename: string;
   title: string;
   rows: readonly (CloudReportTransaction | CloudMergedTransaction)[];
   phase: 'pending' | 'unknown';
+}
+
+interface RecoveryIdentity {
+  id: string;
+  kind: 'export' | 'print';
+  scopeKey: string;
+  identityKey: string;
+  leaseEpoch: number;
+  input: RecordCloudExportInput | RecordCloudPrintInput;
+  phase: 'unknown';
+}
+
+type RecoverableAction = FrozenAction | RecoveryIdentity;
+const actionRecoveryRegistry = new Map<string, RecoverableAction>();
+
+function isRecoveryIdentity(action: RecoverableAction): action is RecoveryIdentity {
+  return 'identityKey' in action;
+}
+
+function recoveryIdentity(action: FrozenAction, identityKey: string, leaseEpoch: number): RecoveryIdentity {
+  return {
+    id: action.id, kind: action.kind, scopeKey: action.scopeKey, identityKey, leaseEpoch,
+    input: action.input, phase: 'unknown',
+  };
+}
+
+function removeRecoveryAction(action: RecoverableAction): void {
+  if (actionRecoveryRegistry.get(action.scopeKey)?.id === action.id) actionRecoveryRegistry.delete(action.scopeKey);
 }
 
 function messageOf(error: unknown): string {
@@ -100,9 +131,42 @@ function csvFor(type: RecordCloudExportInput['exportType'], snapshot: Snapshot):
   }
 }
 
-function actionResultMatches(receipt: CommandReceipt | null, action: FrozenAction): receipt is CommandReceipt {
+function actionResultMatches(receipt: CommandReceipt | null, action: Pick<RecoverableAction, 'id' | 'kind'>): receipt is CommandReceipt {
   const expected = action.kind === 'export' ? 'RecordExport' : 'RecordPrint';
   return Boolean(receipt && receipt.commandId === action.id && receipt.kind === expected);
+}
+
+function rebuildFrozenAction(action: RecoverableAction, snapshot: Snapshot | null): FrozenAction | null {
+  if (!isRecoveryIdentity(action) || !snapshot) return isRecoveryIdentity(action) ? null : action;
+  const input = action.input;
+  if (input.leaseEpoch !== action.leaseEpoch || snapshot.report.leaseEpoch !== action.leaseEpoch
+    || snapshot.report.sourceSeq !== input.sourceSeq
+    || snapshot.report.range.startDate !== input.range.startDate || snapshot.report.range.endDate !== input.range.endDate
+    || snapshot.report.scope.studentId !== input.scope.studentId) return null;
+
+  if (action.kind === 'export' && 'exportType' in input) {
+    const names: Record<RecordCloudExportInput['exportType'], string> = {
+      'transactions-original': 'transactions-original', 'transactions-merged': 'transactions-merged',
+      settlements: 'settlements', 'post-close-entries': 'post-close-entries', audit: 'audit',
+    };
+    const rows = input.exportType === 'transactions-merged' ? snapshot.report.mergedTransactions : snapshot.report.transactions;
+    return {
+      id: action.id, kind: 'export', scopeKey: action.scopeKey, input,
+      contents: csvFor(input.exportType, snapshot),
+      filename: `cloud-${names[input.exportType]}-${input.range.startDate}_${input.range.endDate}.csv`,
+      title: `P${input.exportType} · ${input.range.startDate}–${input.range.endDate} · H=${input.sourceSeq}`,
+      rows, phase: 'unknown',
+    };
+  }
+  if (action.kind === 'print' && 'printType' in input) {
+    const rows = input.printType === 'ledger-original' ? snapshot.report.transactions : snapshot.report.mergedTransactions;
+    return {
+      id: action.id, kind: 'print', scopeKey: action.scopeKey, input, contents: '', filename: '',
+      title: `雲端帳務 ${input.range.startDate}–${input.range.endDate} · ${input.scope.studentId ?? '全部帳戶'} · H=${input.sourceSeq}`,
+      rows, phase: 'unknown',
+    };
+  }
+  return null;
 }
 
 function performBrowserAction(action: FrozenAction, performed: Set<string>): void {
@@ -129,7 +193,8 @@ export function CloudReportPage({
 }: CloudReportPageProps) {
   const reads = useMemo(() => createCloudReadRepository(db), [db]);
   const actions = useMemo(() => createCloudReportActionRepository(db), [db]);
-  const scopeKey = `${identityKey}:${leaseEpoch}`;
+  const scopeKey = JSON.stringify([identityKey, leaseEpoch]);
+  const actionOwnerRef = useCloudActionOwner(identityKey, leaseEpoch);
   const [leaseToday, setLeaseToday] = useState('');
   const [rangeKind, setRangeKind] = useState<CloudLedgerDateRangeKind>('today');
   const [rangeAnchor, setRangeAnchor] = useState('');
@@ -145,24 +210,86 @@ export function CloudReportPage({
   const [mode, setMode] = useState<'original' | 'merged'>('original');
   const [pageNumber, setPageNumber] = useState(0);
   const [printDate, setPrintDate] = useState('');
-  const [action, setAction] = useState<FrozenAction | null>(null);
+  const [action, setAction] = useState<RecoverableAction | null>(() => actionRecoveryRegistry.get(scopeKey) ?? null);
+  const [authorizedPrint, setAuthorizedPrint] = useState<FrozenAction | null>(null);
   const [actionMessage, setActionMessage] = useState('');
   const [operationBusy, setOperationBusy] = useState(false);
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
+  const [readyScopeKey, setReadyScopeKey] = useState<string | null>(null);
   const requestGeneration = useRef(0);
   const operationRef = useRef(false);
   const performedActions = useRef(new Set<string>());
 
+  const invalidateOwner = useCallback((owner: CloudActionOwnerToken, error: unknown) => {
+    if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
+    const pending = actionRecoveryRegistry.get(owner.scopeKey);
+    if (pending && !isRecoveryIdentity(pending)) {
+      actionRecoveryRegistry.set(owner.scopeKey, recoveryIdentity(pending, owner.identityKey, owner.leaseEpoch));
+    }
+    owner.revoked = true;
+    requestGeneration.current += 1;
+    operationRef.current = false;
+    setSnapshot(null);
+    setQuery(null);
+    setReadyScopeKey(null);
+    setLoading(false);
+    setLoadError(messageOf(error));
+    setInputError('');
+    setSearch('');
+    setScopeStudentId(null);
+    setRangeKind('today');
+    setRangeAnchor('');
+    setCustomStart('');
+    setCustomEnd('');
+    setLeaseToday('');
+    setPageNumber(0);
+    setPrintDate('');
+    setAction(null);
+    setAuthorizedPrint(null);
+    setActionMessage('');
+    setOperationBusy(false);
+    onNavigationStateChange?.(owner.identityKey, 'revoked');
+  }, [actionOwnerRef, onNavigationStateChange]);
+
+  const previousScopeKey = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const previous = previousScopeKey.current;
+    previousScopeKey.current = scopeKey;
+    if (previous === null || previous === scopeKey) return;
+    requestGeneration.current += 1;
+    operationRef.current = false;
+    setSnapshot(null);
+    setQuery(null);
+    setReadyScopeKey(null);
+    setLoading(true);
+    setLoadError('');
+    setInputError('');
+    setSearch('');
+    setScopeStudentId(null);
+    setLeaseToday('');
+    setRangeKind('today');
+    setRangeAnchor('');
+    setCustomStart('');
+    setCustomEnd('');
+    setPageNumber(0);
+    setPrintDate('');
+    setAction(actionRecoveryRegistry.get(scopeKey) ?? null);
+    setAuthorizedPrint(null);
+    setActionMessage('');
+    setOperationBusy(false);
+  }, [scopeKey]);
+
   useEffect(() => {
     let active = true;
     const generation = ++requestGeneration.current;
+    const owner = actionOwnerRef.current;
+    if (!owner || !isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
     onNavigationStateChange?.(identityKey, 'resolved');
     const bootstrapRange: CloudLedgerDateRange = { kind: 'today', startDate: '2000-01-01', endDate: '2000-01-01' };
     void reads.readSummary({ range: bootstrapRange, leaseEpoch }).then(summary => {
-      if (!active || requestGeneration.current !== generation) return;
+      if (!active || requestGeneration.current !== generation || !isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
       setSnapshot(null);
       setLoadError('');
-      setAction(null);
       setActionMessage('');
       setScopeStudentId(null);
       setSearch('');
@@ -175,29 +302,31 @@ export function CloudReportPage({
       };
       setCustomStart(todayRange.startDate);
       setCustomEnd(todayRange.endDate);
+      setReadyScopeKey(scopeKey);
       setLoading(true);
       setQuery({ range: todayRange, studentId: null });
     }).catch(error => {
-      if (!active || requestGeneration.current !== generation) return;
-      setLoadError(messageOf(error));
-      setLoading(false);
-      if (['LEASE_LOST', 'UNAUTHORIZED'].includes(errorCode(error) ?? '')) {
-        setSnapshot(null);
-        onNavigationStateChange?.(identityKey, 'revoked');
+      if (!active || requestGeneration.current !== generation || !isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
+      if (['LEASE_LOST', 'UNAUTHORIZED'].includes(errorCode(error) ?? '')) invalidateOwner(owner, error);
+      else {
+        setLoadError(messageOf(error));
+        setLoading(false);
       }
     });
     return () => { active = false; };
-  }, [bootstrapAttempt, identityKey, leaseEpoch, onNavigationStateChange, reads, scopeKey]);
+  }, [actionOwnerRef, bootstrapAttempt, identityKey, invalidateOwner, leaseEpoch, onNavigationStateChange, reads, scopeKey]);
 
   useEffect(() => {
-    if (!query || !leaseToday) return;
+    if (!query || !leaseToday || readyScopeKey !== scopeKey) return;
     let active = true;
     const generation = ++requestGeneration.current;
+    const owner = actionOwnerRef.current;
+    if (!owner || !isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
     void Promise.all([
       reads.readReport({ range: query.range, studentId: query.studentId, leaseEpoch }),
       reads.readAuditRange({ range: query.range, studentId: query.studentId, leaseEpoch }),
     ]).then(([report, audit]) => {
-      if (!active || requestGeneration.current !== generation) return;
+      if (!active || requestGeneration.current !== generation || !isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
       if (!sameEnvelope(report, audit, query, leaseEpoch)) {
         throw new Error('報表與稽核版本不一致，請重新查詢完整資料。');
       }
@@ -207,16 +336,17 @@ export function CloudReportPage({
       setActionMessage('');
       onNavigationStateChange?.(identityKey, 'resolved');
     }).catch(error => {
-      if (!active || requestGeneration.current !== generation) return;
+      if (!active || requestGeneration.current !== generation || !isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
+      if (['LEASE_LOST', 'UNAUTHORIZED'].includes(errorCode(error) ?? '')) {
+        invalidateOwner(owner, error);
+        return;
+      }
       setSnapshot(null);
       setLoadError(messageOf(error));
       setLoading(false);
-      if (['LEASE_LOST', 'UNAUTHORIZED'].includes(errorCode(error) ?? '')) {
-        onNavigationStateChange?.(identityKey, 'revoked');
-      }
     });
     return () => { active = false; };
-  }, [identityKey, leaseEpoch, leaseToday, onNavigationStateChange, query, reads, scopeKey]);
+  }, [actionOwnerRef, identityKey, invalidateOwner, leaseEpoch, leaseToday, onNavigationStateChange, query, reads, readyScopeKey, scopeKey]);
 
   const candidateIds = useMemo(() => snapshot
     ? searchCloudReportStudentIds(snapshot.report.students, snapshot.report.transactions, search)
@@ -228,11 +358,12 @@ export function CloudReportPage({
   }, [mode, snapshot]);
   const pageCount = Math.max(1, Math.ceil(allRows.length / 100));
   const visibleRows = allRows.slice(pageNumber * 100, (pageNumber + 1) * 100);
-  const controlsLocked = loading || Boolean(action);
+  const visibleAction = action?.scopeKey === scopeKey ? action : null;
+  const controlsLocked = loading || Boolean(visibleAction);
 
   const submitRange = useCallback((event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!leaseToday || action) return;
+    if (!leaseToday || visibleAction) return;
     try {
       const next = rangeKind === 'custom'
         ? validateCloudLedgerRange({ kind: 'custom', startDate: customStart, endDate: customEnd })
@@ -247,72 +378,98 @@ export function CloudReportPage({
     } catch (error) {
       setInputError(messageOf(error));
     }
-  }, [action, customEnd, customStart, leaseToday, rangeAnchor, rangeKind]);
+  }, [customEnd, customStart, leaseToday, rangeAnchor, rangeKind, visibleAction]);
 
   const chooseStudent = useCallback((studentId: string | null) => {
-    if (!query || action) return;
+    if (!query || visibleAction) return;
     setScopeStudentId(studentId);
     setLoading(true);
     setLoadError('');
     setSnapshot(null);
     setPageNumber(0);
     setQuery({ range: query.range, studentId });
-  }, [action, query]);
+  }, [query, visibleAction]);
+
+  const initiateBrowserAction = useCallback((frozen: FrozenAction, owner: CloudActionOwnerToken) => {
+    if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return false;
+    if (frozen.kind === 'print') {
+      flushSync(() => setAuthorizedPrint(frozen));
+      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) {
+        flushSync(() => setAuthorizedPrint(null));
+        return false;
+      }
+    }
+    if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) {
+      if (frozen.kind === 'print') flushSync(() => setAuthorizedPrint(null));
+      return false;
+    }
+    try {
+      performBrowserAction(frozen, performedActions.current);
+    } finally {
+      if (frozen.kind === 'print') flushSync(() => setAuthorizedPrint(null));
+    }
+    return true;
+  }, [actionOwnerRef]);
 
   const recordAction = useCallback(async (frozen: FrozenAction) => {
-    if (operationRef.current) return;
+    const owner = actionOwnerRef.current;
+    if (!isCurrentCloudActionOwner(actionOwnerRef, owner) || owner.scopeKey !== frozen.scopeKey || operationRef.current) return;
     operationRef.current = true;
     setOperationBusy(true);
     setAction(frozen);
+    actionRecoveryRegistry.set(frozen.scopeKey, frozen);
     setActionMessage('正在確認雲端稽核收據…');
-    onNavigationStateChange?.(identityKey, 'recovering');
+    onNavigationStateChange?.(owner.identityKey, 'recovering');
     try {
       const result = frozen.kind === 'export'
         ? await actions.recordExport(frozen.input as RecordCloudExportInput)
         : await actions.recordPrint(frozen.input as RecordCloudPrintInput);
+      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
       if (!result.ok) {
-        if (result.error.code !== 'UNKNOWN_RESULT' && result.error.code !== 'OFFLINE') {
-          setAction(null);
-          setActionMessage(result.error.message);
-          if (result.error.code === 'LEASE_LOST' || result.error.code === 'UNAUTHORIZED') {
-            setSnapshot(null);
-            setSearch('');
-            setScopeStudentId(null);
-          }
-          operationRef.current = false;
-          setOperationBusy(false);
-          onNavigationStateChange?.(identityKey, result.error.code === 'LEASE_LOST' || result.error.code === 'UNAUTHORIZED' ? 'revoked' : 'resolved');
+        if (result.error.code === 'LEASE_LOST' || result.error.code === 'UNAUTHORIZED') {
+          invalidateOwner(owner, result.error);
           return;
         }
-        setAction({ ...frozen, phase: 'unknown' });
+        if (result.error.code !== 'UNKNOWN_RESULT' && result.error.code !== 'OFFLINE') {
+          removeRecoveryAction(frozen);
+          setAction(null);
+          setActionMessage(result.error.message);
+          onNavigationStateChange?.(owner.identityKey, 'resolved');
+          return;
+        }
+        const unknown = { ...frozen, phase: 'unknown' as const };
+        actionRecoveryRegistry.set(unknown.scopeKey, unknown);
+        setAction(unknown);
         setActionMessage('結果尚未確認。保留原命令、範圍與內容；請查詢或用同一命令重試。');
-        operationRef.current = false;
-        setOperationBusy(false);
         return;
       }
       if (!actionResultMatches(result.receipt, frozen)) throw new Error('稽核收據與固定命令不一致。');
-      performBrowserAction(frozen, performedActions.current);
+      if (!initiateBrowserAction(frozen, owner)) return;
+      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
+      removeRecoveryAction(frozen);
       setAction(null);
       setActionMessage(frozen.kind === 'export' ? '已發起匯出。' : '已發起列印。');
-      operationRef.current = false;
-      setOperationBusy(false);
-      onNavigationStateChange?.(identityKey, 'resolved');
+      onNavigationStateChange?.(owner.identityKey, 'resolved');
     } catch (error) {
-      setAction({ ...frozen, phase: 'unknown' });
-      setActionMessage(`結果尚未確認：${messageOf(error)}。請查詢或用同一命令重試。`);
-      operationRef.current = false;
-      setOperationBusy(false);
-      if (['LEASE_LOST', 'UNAUTHORIZED'].includes(errorCode(error) ?? '')) {
-        setSnapshot(null);
-        setSearch('');
-        setScopeStudentId(null);
-        onNavigationStateChange?.(identityKey, 'revoked');
+      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
+      if (['LEASE_LOST', 'UNAUTHORIZED'].includes(errorCode(error) ?? '')) invalidateOwner(owner, error);
+      else {
+        const unknown = { ...frozen, phase: 'unknown' as const };
+        actionRecoveryRegistry.set(unknown.scopeKey, unknown);
+        setAction(unknown);
+        setActionMessage(`結果尚未確認：${messageOf(error)}。請查詢或用同一命令重試。`);
+      }
+    } finally {
+      if (isCurrentCloudActionOwner(actionOwnerRef, owner)) {
+        operationRef.current = false;
+        setOperationBusy(false);
       }
     }
-  }, [actions, identityKey, onNavigationStateChange]);
+  }, [actionOwnerRef, actions, initiateBrowserAction, invalidateOwner, onNavigationStateChange]);
 
   const makeExport = useCallback((type: RecordCloudExportInput['exportType']) => {
-    if (!snapshot || !query || controlsLocked || (type === 'settlements' || type === 'post-close-entries') && query.studentId !== null) return;
+    if (!snapshot || !query || controlsLocked || !actionOwnerRef.current
+      || (type === 'settlements' || type === 'post-close-entries') && query.studentId !== null) return;
     const id = crypto.randomUUID();
     const input: RecordCloudExportInput = {
       commandId: id, leaseEpoch, range: query.range, scope: { studentId: query.studentId },
@@ -323,16 +480,16 @@ export function CloudReportPage({
       settlements: 'settlements', 'post-close-entries': 'post-close-entries', audit: 'audit',
     };
     const frozen: FrozenAction = {
-      id, kind: 'export', input, contents: csvFor(type, snapshot), filename: `cloud-${names[type]}-${query.range.startDate}_${query.range.endDate}.csv`,
+      id, kind: 'export', scopeKey, input, contents: csvFor(type, snapshot), filename: `cloud-${names[type]}-${query.range.startDate}_${query.range.endDate}.csv`,
       title: `P${type} · ${query.range.startDate}–${query.range.endDate} · H=${snapshot.report.sourceSeq}`,
       rows: type === 'transactions-merged' ? snapshot.report.mergedTransactions : snapshot.report.transactions,
       phase: 'pending',
     };
     void recordAction(frozen);
-  }, [controlsLocked, leaseEpoch, query, recordAction, snapshot]);
+  }, [actionOwnerRef, controlsLocked, leaseEpoch, query, recordAction, scopeKey, snapshot]);
 
   const makePrint = useCallback(() => {
-    if (!snapshot || !query || controlsLocked || !/^\d{4}-\d{2}-\d{2}$/.test(printDate)
+    if (!snapshot || !query || controlsLocked || !actionOwnerRef.current || !/^\d{4}-\d{2}-\d{2}$/.test(printDate)
       || printDate < query.range.startDate || printDate > query.range.endDate) return;
     const id = crypto.randomUUID();
     const printType = mode === 'original' ? 'ledger-original' : 'ledger-merged';
@@ -341,50 +498,66 @@ export function CloudReportPage({
       sourceSeq: snapshot.report.sourceSeq, printType, businessDate: printDate,
     };
     const frozen: FrozenAction = {
-      id, kind: 'print', input,
+      id, kind: 'print', scopeKey, input,
       contents: '', filename: '', title: `雲端帳務 ${query.range.startDate}–${query.range.endDate} · ${query.studentId ?? '全部帳戶'} · H=${snapshot.report.sourceSeq}`,
       rows: mode === 'original' ? snapshot.report.transactions : snapshot.report.mergedTransactions,
       phase: 'pending',
     };
     void recordAction(frozen);
-  }, [controlsLocked, leaseEpoch, mode, printDate, query, recordAction, snapshot]);
+  }, [actionOwnerRef, controlsLocked, leaseEpoch, mode, printDate, query, recordAction, scopeKey, snapshot]);
 
   const recoverAction = useCallback(async () => {
-    if (!action || operationRef.current) return;
+    const intent = visibleAction;
+    const owner = actionOwnerRef.current;
+    if (!intent || !isCurrentCloudActionOwner(actionOwnerRef, owner) || intent.scopeKey !== owner.scopeKey
+      || (isRecoveryIdentity(intent) && (intent.identityKey !== owner.identityKey || intent.leaseEpoch !== owner.leaseEpoch))
+      || operationRef.current) return;
     operationRef.current = true;
     setOperationBusy(true);
     setActionMessage('正在伺服器查詢原命令…');
     try {
-      const receipt = await actions.readCommand(action.id);
+      const receipt = await actions.readCommand(intent.id);
+      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
       if (receipt) {
-        if (!actionResultMatches(receipt, action)) throw new Error('命令編號的收據種類不符。');
-        performBrowserAction(action, performedActions.current);
+        if (!actionResultMatches(receipt, intent)) throw new Error('命令編號的收據種類不符。');
+        if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
+        const frozen = rebuildFrozenAction(intent, snapshot);
+        if (!frozen) {
+          setActionMessage('原命令已有收據；請重新讀取相同來源序號、日期與帳戶範圍後，再查詢原命令。');
+          return;
+        }
+        if (!initiateBrowserAction(frozen, owner)) return;
+        if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
+        removeRecoveryAction(intent);
         setAction(null);
-        setActionMessage(action.kind === 'export' ? '已發起匯出。' : '已發起列印。');
-        operationRef.current = false;
-        setOperationBusy(false);
-        onNavigationStateChange?.(identityKey, 'resolved');
+        setActionMessage(frozen.kind === 'export' ? '已發起匯出。' : '已發起列印。');
+        onNavigationStateChange?.(owner.identityKey, 'resolved');
         return;
       }
       setActionMessage('伺服器確認尚無收據，使用同一命令編號與固定內容重試…');
+      const frozen = rebuildFrozenAction(intent, snapshot);
+      if (!frozen) {
+        setActionMessage('尚無收據；請重新讀取相同來源序號、日期與帳戶範圍後，再以同一命令重試。');
+        return;
+      }
       operationRef.current = false;
       setOperationBusy(false);
-      await recordAction({ ...action, phase: 'pending' });
+      await recordAction({ ...frozen, phase: 'pending' });
+      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
     } catch (error) {
-      setActionMessage(`仍無法確認原命令：${messageOf(error)}`);
-      operationRef.current = false;
-      setOperationBusy(false);
-      if (['LEASE_LOST', 'UNAUTHORIZED'].includes(errorCode(error) ?? '')) {
-        setSnapshot(null);
-        setSearch('');
-        setScopeStudentId(null);
-        onNavigationStateChange?.(identityKey, 'revoked');
+      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
+      if (['LEASE_LOST', 'UNAUTHORIZED'].includes(errorCode(error) ?? '')) invalidateOwner(owner, error);
+      else setActionMessage(`仍無法確認原命令：${messageOf(error)}`);
+    } finally {
+      if (isCurrentCloudActionOwner(actionOwnerRef, owner)) {
+        operationRef.current = false;
+        setOperationBusy(false);
       }
     }
-  }, [action, actions, identityKey, onNavigationStateChange, recordAction]);
+  }, [actionOwnerRef, actions, initiateBrowserAction, invalidateOwner, onNavigationStateChange, recordAction, snapshot, visibleAction]);
 
   const selectedStudent = scopeStudentId ? candidateById.get(scopeStudentId) : undefined;
-  const printTitle = action?.kind === 'print' ? action.title : '';
+  const printAction = authorizedPrint?.scopeKey === scopeKey ? authorizedPrint : null;
 
   return (
     <section className="cloud-report" aria-label="雲端報表">
@@ -410,7 +583,7 @@ export function CloudReportPage({
       </form>
       {inputError && <p role="alert">{inputError}</p>}
       {loadError && <div role="alert" className="cloud-report__error"><p>{loadError}</p>
-        <button type="button" disabled={Boolean(action)} onClick={() => {
+        <button type="button" disabled={Boolean(visibleAction)} onClick={() => {
           if (query) { setLoading(true); setSnapshot(null); setLoadError(''); setQuery({ ...query }); }
           else { setLoading(true); setLoadError(''); setBootstrapAttempt(value => value + 1); }
         }}>重新讀取完整資料</button></div>}
@@ -475,14 +648,15 @@ export function CloudReportPage({
               <option value="original">原始交易</option><option value="merged">合併交易</option></select></label>
               <span>輸出使用全部 {allRows.length} 筆完整模型，畫面每頁 100 筆。</span></div>
           </div>
-          <div className="cloud-report__table-wrap"><table><thead><tr><th>營業日</th><th>帳戶與當時姓名</th><th>類型／狀態</th><th>餐點快照</th><th>金額／份數</th><th>完整歷史餘額</th><th>操作者／台北時間</th><th>回填／說明</th></tr></thead>
+          <div className="cloud-report__table-wrap"><table><thead><tr><th>交易識別</th><th>營業日</th><th>帳戶與當時姓名</th><th>類型／狀態</th><th>餐點快照</th><th>金額／份數</th><th>完整歷史餘額</th><th>操作者／台北時間</th><th>回填／說明</th></tr></thead>
             <tbody>{visibleRows.map(row => {
               const merged = 'kind' in row;
               const raw = merged ? row.transactions : [row];
+              const transactionIds = merged ? row.transactionIds : [row.transactionId];
               const balance = row.afterBalance;
               const mealText = merged ? row.otherMealItems.join('、') || row.menuNameSnapshot : row.menuNameSnapshot || row.otherItemName || '—';
               return <tr key={`${merged ? 'merged' : 'raw'}:${row.transactionId}`}>
-                <td>{row.businessDate}</td><td>{row.studentNameSnapshot}（{row.studentId}）</td>
+                <td><small>{transactionIds.join(' · ')}</small></td><td>{row.businessDate}</td><td>{row.studentNameSnapshot}（{row.studentId}）</td>
                 <td>{merged ? row.kind : row.type} · {row.status === 'active' ? '有效' : '已作廢'}</td><td>{mealText}</td>
                 <td>{money(row.amount)} · 餐費 {money(row.mealPrice)} · 收款 {money(row.paidAmount)}{merged && row.orderCount ? ` · ${row.orderCount} 筆訂餐／${row.bentoOrderCount} 份便當` : ''}</td>
                 <td>{row.studentId === '__cashier__' ? '不適用' : balance === undefined ? '未驗證' : money(balance)}</td>
@@ -512,18 +686,26 @@ export function CloudReportPage({
         </section>
       </>}
 
-      {action && <div className="cloud-report__recovery" role="region" aria-label="輸出命令確認">
-        <p>{action.phase === 'unknown' ? '輸出結果待確認' : '輸出命令處理中'}：{action.title} · ID {action.id}</p>
+      {visibleAction && <div className="cloud-report__recovery" role="region" aria-label="輸出命令確認">
+        <p>{isRecoveryIdentity(visibleAction) ? '有一筆先前輸出命令需要在目前帳戶與版本下重新確認。'
+          : `${visibleAction.phase === 'unknown' ? '輸出結果待確認' : '輸出命令處理中'}：${visibleAction.title} · ID ${visibleAction.id}`}</p>
         <button type="button" disabled={operationBusy} onClick={() => void recoverAction()}>查詢原命令並以同 ID 復原</button>
       </div>}
       {actionMessage && <p role="status">{actionMessage}</p>}
 
-      {action?.kind === 'print' && <article className="cloud-report__print" aria-label="本次固定列印內容">
-        <h1>{printTitle}</h1>
-        <p>營業日標示：{(action.input as RecordCloudPrintInput).businessDate} · 完整資料列數：{action.rows.length}</p>
-        <table><thead><tr><th>營業日</th><th>帳戶</th><th>姓名快照</th><th>類型</th><th>金額</th><th>餘額</th><th>來源序號</th></tr></thead>
-          <tbody>{action.rows.map(row => <tr key={row.transactionId}><td>{row.businessDate}</td><td>{row.studentId}</td><td>{row.studentNameSnapshot}</td>
-            <td>{'kind' in row ? row.kind : row.type}</td><td>{money(row.amount)}</td><td>{row.afterBalance === undefined ? '—' : money(row.afterBalance)}</td><td>{row.sourceSeq}</td></tr>)}</tbody>
+      {printAction && <article className="cloud-report__print" aria-label="本次固定列印內容">
+        <h1>{printAction.title}</h1>
+        <p>營業日標示：{(printAction.input as RecordCloudPrintInput).businessDate} · 範圍：{(printAction.input as RecordCloudPrintInput).range.startDate}–{(printAction.input as RecordCloudPrintInput).range.endDate}
+          · 帳戶：{(printAction.input as RecordCloudPrintInput).scope.studentId ?? '全部帳戶'} · 完整資料列數：{printAction.rows.length} · H={printAction.input.sourceSeq}</p>
+        <table><thead><tr><th>交易識別</th><th>營業日</th><th>帳戶</th><th>姓名快照</th><th>類型</th><th>金額</th><th>餘額</th><th>來源序號</th></tr></thead>
+          <tbody>{printAction.rows.map(row => {
+            const transactionIds = 'kind' in row ? row.transactionIds : [row.transactionId];
+            return <tr key={row.transactionId} data-merged-row={'kind' in row ? 'true' : undefined}>
+              <td>{transactionIds.map((id, index) => <span key={id}>{index > 0 ? ' · ' : ''}{id}</span>)}</td>
+              <td>{row.businessDate}</td><td>{row.studentId}</td><td>{row.studentNameSnapshot}</td>
+              <td>{'kind' in row ? row.kind : row.type}</td><td>{money(row.amount)}</td><td>{row.afterBalance === undefined ? '—' : money(row.afterBalance)}</td><td>{row.sourceSeq}</td>
+            </tr>;
+          })}</tbody>
         </table>
       </article>}
     </section>

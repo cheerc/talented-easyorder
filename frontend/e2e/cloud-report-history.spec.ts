@@ -2,8 +2,10 @@
 import { deleteApp, initializeApp } from 'firebase/app';
 import { GoogleAuthProvider, connectAuthEmulator, signInWithCredential, signOut } from 'firebase/auth';
 import { connectFirestoreEmulator, getFirestore } from 'firebase/firestore';
-import { readFile } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { readFile, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { createCloudDayCloseRepository } from '../src/firebase/cloudDayCloseRepository';
 import { createCloudDayVendorRepository } from '../src/firebase/cloudDayVendorRepository';
 import { createCloudOrderRepository } from '../src/firebase/cloudOrderRepository';
@@ -16,6 +18,9 @@ const FIRESTORE_EMULATOR = 'http://127.0.0.1:8080';
 const AUTH_EMULATOR = 'http://127.0.0.1:9099';
 const STUDENT_ID = '8a120c32-4f9a-4d96-8a12-c12000000001';
 const STUDENT_CODE = '901';
+const SECOND_STUDENT_ID = '8a120c32-4f9a-4d96-8a12-c12000000003';
+const SECOND_STUDENT_CODE = '903';
+const SECOND_STUDENT_NAME = 'P12c第二帳戶';
 const NANOS_STUDENT_ID = '8a120c32-4f9a-4d96-8a12-c12000000002';
 const NANOS_STUDENT_CODE = '902';
 const NANOS_STUDENT_NAME = 'P12c排序帳戶';
@@ -23,6 +28,7 @@ const ORIGINAL_NAME = 'P12c舊姓名';
 const CURRENT_NAME = 'P12c新姓名';
 const OLD_ALIAS = 'P12c舊別名';
 const LEASE_VACANT = { holderUid: null, epoch: 0, updatedAt: new Date() };
+const execFileAsync = promisify(execFile);
 
 type AdminDocument = Record<string, unknown> & { id: string };
 type AdminRawDocument = { name?: string; fields?: Record<string, unknown>; updateTime?: string };
@@ -149,6 +155,45 @@ async function assertFixtureDayIsVacant(dayId: string): Promise<void> {
   if (day || settlements.length || backfill) throw new Error(`P12c Emulator fixture date ${dayId} is already in use`);
 }
 
+function parseCsv(source: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let quoted = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (quoted) {
+      if (character === '"' && source[index + 1] === '"') { cell += '"'; index += 1; }
+      else if (character === '"') quoted = false;
+      else cell += character;
+    } else if (character === '"') quoted = true;
+    else if (character === ',') { row.push(cell); cell = ''; }
+    else if (character === '\n') {
+      row.push(cell.replace(/\r$/, ''));
+      if (row.some(value => value.length)) rows.push(row);
+      row = [];
+      cell = '';
+    } else cell += character;
+  }
+  row.push(cell.replace(/\r$/, ''));
+  if (row.some(value => value.length)) rows.push(row);
+  if (quoted) throw new Error('The exported CSV ended inside a quoted field');
+  return rows;
+}
+
+function exportedTransactionIds(rows: string[][]): string[] {
+  const header = rows[0] ?? [];
+  const index = header.indexOf('source_transaction_ids');
+  if (index < 0) throw new Error('The transaction CSV is missing source_transaction_ids');
+  return rows.slice(1).flatMap(row => {
+    const value = row[index];
+    if (!value) throw new Error('A transaction CSV row is missing source transaction identity');
+    const ids: unknown = JSON.parse(value);
+    if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string')) throw new Error('Invalid source_transaction_ids CSV value');
+    return ids;
+  });
+}
+
 test.describe('P12c cloud report and account history acceptance', () => {
   test.setTimeout(240_000);
 
@@ -176,7 +221,8 @@ test.describe('P12c cloud report and account history acceptance', () => {
       const d2 = shiftDate(today, -1);
       const d3 = today;
       for (const dayId of [d1, d2, d3]) await assertFixtureDayIsVacant(dayId);
-      if (await readRawAdminDocument('students', STUDENT_ID) || await readRawAdminDocument('studentCodes', STUDENT_CODE)) {
+      if (await readRawAdminDocument('students', STUDENT_ID) || await readRawAdminDocument('studentCodes', STUDENT_CODE)
+        || await readRawAdminDocument('students', SECOND_STUDENT_ID) || await readRawAdminDocument('studentCodes', SECOND_STUDENT_CODE)) {
         throw new Error('P12c R01/L07 fixture account ID or code is already in use');
       }
       fixtureReserved = true;
@@ -234,11 +280,14 @@ test.describe('P12c cloud report and account history acceptance', () => {
           expectedDayRevision: state.revision, reason: `P12c synthetic backfill ${dayId}` }), `StartBackfill ${dayId}`);
         return closing.read(dayId);
       };
-      const addOrder = async (dayId: string, dayRevision: number, studentRevision: number, mealPrice: number, paidAmount: number, note: string) => {
+      const addOrder = async (
+        dayId: string, dayRevision: number, studentRevision: number, mealPrice: number, paidAmount: number, note: string,
+        studentId = STUDENT_ID,
+      ) => {
         const transactionId = randomUUID();
         transactionIds.push(transactionId);
         ok(await orders.createOrder({
-          commandId: randomUUID(), transactionId, leaseEpoch: lease.epoch, studentId: STUDENT_ID, dayId,
+          commandId: randomUUID(), transactionId, leaseEpoch: lease.epoch, studentId, dayId,
           expectedStudentRevision: studentRevision, expectedDayRevision: dayRevision,
           mealKind: 'other', mealPrice, paidAmount, menuRevision: null, otherItemName: 'P12c合成餐', note,
         }), `CreateOrder ${dayId}`);
@@ -313,6 +362,13 @@ test.describe('P12c cloud report and account history acceptance', () => {
 
       // D3 has 201 current-day meal orders and its own cash settlement.
       const latestClosedCash = (await closing.read(d1)).effectiveCash ?? 1_000;
+      ok(await students.createStudent({
+        commandId: randomUUID(), leaseEpoch: lease.epoch, studentId: SECOND_STUDENT_ID, studentCode: SECOND_STUDENT_CODE,
+        displayName: SECOND_STUDENT_NAME, aliases: ['P12c第二別名'],
+        openingBalance: { amount: 0, asOfDate: d1, note: 'P12c second synthetic account' },
+      }), 'CreateStudent second account');
+      const secondStudent = (await students.list()).students.find(value => value.studentId === SECOND_STUDENT_ID);
+      if (!secondStudent) throw new Error('Created second P12c synthetic account is missing from the repository list');
       const d3State = await ensureAndOpen(d3, latestClosedCash, 'P12c current-day opening confirmation');
       let d3Revision = d3State.revision;
       currentStudent = (await students.list()).students.find(value => value.studentId === STUDENT_ID)!;
@@ -321,12 +377,19 @@ test.describe('P12c cloud report and account history acceptance', () => {
         d3Revision = created.dayRevision;
         currentStudent = { ...currentStudent, revision: created.studentRevision };
       }
+      let secondStudentRevision = secondStudent.revision;
+      for (let index = 0; index < 2; index += 1) {
+        const created = await addOrder(d3, d3Revision, secondStudentRevision, 15, 0, `P12c second account row ${index + 1}`, SECOND_STUDENT_ID);
+        d3Revision = created.dayRevision;
+        secondStudentRevision = created.studentRevision;
+      }
       await closeExpected(d3, false);
 
       const settlementCollection = `days/${d3}/settlements`;
       const originalSettlement = await readRawAdminDocument(settlementCollection, '1');
       if (!originalSettlement) throw new Error('The later-day D3 settlement was not persisted');
-      const totalRowsExpected = 204;
+      const allAccountRowsExpected = 206;
+      const selectedAccountRowsExpected = 204;
 
       // Authenticate a repository-backed command client as the active Google Emulator operator.
       expect(googleIdentity.localId).toBe(lease.holderUid);
@@ -338,66 +401,183 @@ test.describe('P12c cloud report and account history acceptance', () => {
       await page.getByLabel('結束日期').fill(d3);
       await page.getByRole('button', { name: '查詢完整報表' }).click();
       await expect(page.getByTestId('report-ready')).toContainText(`${d1}–${d3}`, { timeout: 30_000 });
-      await expect(page.locator('.cloud-report__pager')).toContainText(`全部 ${totalRowsExpected} 筆`);
+      await expect(page.locator('.cloud-report__pager')).toContainText(`全部 ${allAccountRowsExpected} 筆`);
       await expect(page.getByRole('row').filter({ hasText: 'P12c obsolete revision adjustment' })).toContainText('未計入有效現金');
       await expect(page.getByRole('row').filter({ hasText: 'P12c current revision adjustment' })).toContainText('計入有效現金');
       const daySummaryBeforeScope = await page.getByLabel('全日摘要合計').innerText();
-      await expect(page.locator('.cloud-report__section').first().getByRole('row').filter({ hasText: d3 })).toContainText('201');
+      await expect(page.locator('.cloud-report__section').first().getByRole('row').filter({ hasText: d3 })).toContainText('203');
+
+      await page.getByLabel('搜尋帳戶').fill('P12c第二別名');
+      await page.getByRole('button', { name: `選取 ${SECOND_STUDENT_NAME}（${SECOND_STUDENT_CODE}）` }).click();
+      await expect(page.getByTestId('report-ready')).toContainText(`帳戶 ${SECOND_STUDENT_ID}`, { timeout: 30_000 });
+      await expect(page.locator('.cloud-report__pager')).toContainText('全部 2 筆');
+      expect(await page.getByLabel('全日摘要合計').innerText()).toBe(daySummaryBeforeScope);
+      await page.getByRole('button', { name: '清除帳戶範圍' }).click();
+      await expect(page.getByTestId('report-ready')).toContainText('全部帳戶', { timeout: 30_000 });
+      await expect(page.locator('.cloud-report__pager')).toContainText(`全部 ${allAccountRowsExpected} 筆`);
 
       await page.getByLabel('搜尋帳戶').fill(OLD_ALIAS);
       await page.getByRole('button', { name: `選取 ${CURRENT_NAME}（${STUDENT_CODE}）` }).click();
       await expect(page.getByTestId('report-ready')).toContainText(`帳戶 ${STUDENT_ID}`, { timeout: 30_000 });
       await expect(page.getByText(`目前明細範圍：${CURRENT_NAME}（${STUDENT_CODE}）`)).toBeVisible();
       expect(await page.getByLabel('全日摘要合計').innerText()).toBe(daySummaryBeforeScope);
-      await expect(page.locator('.cloud-report__pager')).toContainText(`全部 ${totalRowsExpected} 筆`);
+      await expect(page.locator('.cloud-report__pager')).toContainText(`全部 ${selectedAccountRowsExpected} 筆`);
       const reportReady = await page.getByTestId('report-ready').innerText();
       const sourceSeq = Number(reportReady.match(/H=(\d+)/)?.[1]);
       expect(Number.isSafeInteger(sourceSeq)).toBe(true);
 
-      const [download] = await Promise.all([
-        page.waitForEvent('download'),
-        page.getByRole('button', { name: '匯出原始交易 CSV' }).click(),
-      ]);
-      const csvPath = testInfo.outputPath('p12c-original-transactions.csv');
-      await download.saveAs(csvPath);
-      const csv = await readFile(csvPath, 'utf8');
-      expect(csv.trimEnd().split(/\r?\n/)).toHaveLength(totalRowsExpected + 1);
-      expect(csv.split(/\r?\n/, 1)[0]).toContain('source_seq');
-      const exportCommand = (await listAdminDocuments('commands')).find(command =>
-        command.kind === 'RecordExport' && (command.payload as Record<string, unknown>)?.exportType === 'transactions-original',
-      );
-      if (!exportCommand) throw new Error('No committed RecordExport command was found after the download');
-      expect(exportCommand.payload).toMatchObject({
-        exportType: 'transactions-original', dateRange: { start: d1, end: d3 },
-        scope: { studentId: STUDENT_ID }, sourceSeq,
-      });
+      const detailRows = page.locator('section[aria-labelledby="cloud-report-detail-heading"] tbody tr');
+      const collectUiIds = async (): Promise<{ ids: string[]; rowCount: number }> => {
+        const ids: string[] = [];
+        let rowCount = 0;
+        const pager = page.locator('.cloud-report__pager');
+        while (true) {
+          const cells = await detailRows.locator('td:first-child').allTextContents();
+          rowCount += cells.length;
+          ids.push(...cells.flatMap(value => value.split(' · ').map(id => id.trim()).filter(Boolean)));
+          const next = pager.getByRole('button', { name: '下一頁' });
+          if (await next.isDisabled()) break;
+          const before = await pager.innerText();
+          await next.click();
+          await expect(pager).not.toHaveText(before);
+        }
+        return { ids, rowCount };
+      };
+      const outputManifest: Record<string, unknown> = {
+        scenario: 'P12c R01/L07 selected account original and merged UI to CSV to Chromium PDF',
+        fixtureAccountCount: 2,
+        allAccountRowsExpected,
+        selectedScope: { studentId: STUDENT_ID, studentCode: STUDENT_CODE, displayName: CURRENT_NAME },
+        range: { startDate: d1, endDate: d3 },
+        sourceSeq,
+        daySummaryBeforeScope,
+        outputs: [],
+      };
+      const generatedOutputs: Array<Record<string, unknown>> = [];
 
-      await page.evaluate(() => {
-        const target = window as Window & { __p12cPrintCapture?: { count: number; rows: number; text: string } | null };
-        target.__p12cPrintCapture = null;
-        window.print = () => {
-          const content = document.querySelector('[aria-label="本次固定列印內容"]');
-          target.__p12cPrintCapture = {
-            count: 1,
-            rows: content?.querySelectorAll('tbody tr').length ?? 0,
-            text: content?.textContent ?? '',
+      for (const mode of ['original', 'merged'] as const) {
+        await page.getByLabel('交易呈現方式').selectOption(mode);
+        const { ids: uiIds, rowCount: uiRowCount } = await collectUiIds();
+        expect(uiIds).toHaveLength(selectedAccountRowsExpected);
+        expect(new Set(uiIds).size).toBe(selectedAccountRowsExpected);
+        const [download] = await Promise.all([
+          page.waitForEvent('download'),
+          page.getByRole('button', { name: mode === 'original' ? '匯出原始交易 CSV' : '匯出合併交易 CSV' }).click(),
+        ]);
+        const csvPath = testInfo.outputPath(`p12c-${mode}-transactions.csv`);
+        await download.saveAs(csvPath);
+        const csv = await readFile(csvPath, 'utf8');
+        const csvRows = parseCsv(csv);
+        expect(csvRows[0]).toContain('source_seq');
+        const csvIds = exportedTransactionIds(csvRows);
+        expect(csvIds).toHaveLength(selectedAccountRowsExpected);
+        expect(csvIds).toEqual(uiIds);
+        const exportCommand = (await listAdminDocuments('commands')).find(command =>
+          command.kind === 'RecordExport'
+          && (command.payload as Record<string, unknown>)?.exportType === `transactions-${mode}`
+          && (command.payload as Record<string, unknown>)?.sourceSeq === sourceSeq,
+        );
+        if (!exportCommand) throw new Error(`No committed ${mode} RecordExport command was found`);
+        expect(exportCommand.payload).toMatchObject({
+          exportType: `transactions-${mode}`, dateRange: { start: d1, end: d3 },
+          scope: { studentId: STUDENT_ID }, sourceSeq,
+        });
+
+        const printType = mode === 'original' ? 'ledger-original' : 'ledger-merged';
+        await page.evaluate(() => {
+          const target = window as Window & {
+            __p12cPrintCapture?: { count: number; rows: number; text: string; ids: string[] } | null;
           };
+          document.querySelector('[data-p12c-print-copy="true"]')?.remove();
+          target.__p12cPrintCapture = null;
+          window.print = () => {
+            const content = document.querySelector('[aria-label="本次固定列印內容"]');
+            const ids = Array.from(content?.querySelectorAll('tbody tr') ?? [], row => row.querySelector('td')?.textContent ?? '')
+              .flatMap(value => value.split(' · ').map(id => id.trim()).filter(Boolean));
+            target.__p12cPrintCapture = {
+              count: 1,
+              rows: content?.querySelectorAll('tbody tr').length ?? 0,
+              text: content?.textContent ?? '',
+              ids,
+            };
+            if (content) {
+              const copy = content.cloneNode(true) as HTMLElement;
+              copy.setAttribute('data-p12c-print-copy', 'true');
+              document.body.append(copy);
+            }
+          };
+        });
+        await page.getByRole('button', { name: '記錄後列印目前完整明細' }).click();
+        await expect(page.getByText('已發起列印。')).toBeVisible({ timeout: 15_000 });
+        const printCapture = await page.evaluate(() => (window as Window & {
+          __p12cPrintCapture?: { count: number; rows: number; text: string; ids: string[] } | null;
+        }).__p12cPrintCapture ?? null);
+        expect(printCapture?.count).toBe(1);
+        expect(printCapture?.rows).toBe(uiRowCount);
+        expect(printCapture?.text).toContain(`完整資料列數：${uiRowCount}`);
+        expect(printCapture?.text).toContain(`H=${sourceSeq}`);
+        expect(printCapture?.text).toContain(`帳戶：${STUDENT_ID}`);
+        expect(printCapture?.ids).toEqual(csvIds);
+
+        const pdfPath = testInfo.outputPath(`p12c-${mode}-ledger.pdf`);
+        await page.emulateMedia({ media: 'print' });
+        await page.pdf({ path: pdfPath, format: 'A4', printBackground: true });
+        await page.emulateMedia({ media: 'screen' });
+        await page.locator('[data-p12c-print-copy="true"]').evaluate(element => element.remove());
+        const { stdout: pdfInfo } = await execFileAsync('pdfinfo', [pdfPath], { encoding: 'utf8' });
+        const pageCount = Number(pdfInfo.match(/^Pages:\s+(\d+)/m)?.[1]);
+        expect(pageCount).toBeGreaterThan(mode === 'original' ? 1 : 0);
+        const { stdout: pdfText } = await execFileAsync('pdftotext', ['-raw', pdfPath, '-'], { encoding: 'utf8' });
+        const textPath = testInfo.outputPath(`p12c-${mode}-ledger.txt`);
+        await writeFile(textPath, pdfText, 'utf8');
+        const normalizedPdfText = pdfText
+          .replace(/交易識別\s+營業日\s+帳戶\s+姓名快照\s+類型\s+金額\s+餘額\s+來源序號/g, '')
+          .replace(/\s+/g, '');
+        expect(normalizedPdfText).toContain(`範圍：${d1}–${d3}`);
+        expect(normalizedPdfText).toContain(`帳戶：${STUDENT_ID}`);
+        expect(normalizedPdfText).toContain(`H=${sourceSeq}`);
+        expect(normalizedPdfText).not.toContain(SECOND_STUDENT_ID);
+        expect(normalizedPdfText).not.toContain(SECOND_STUDENT_NAME);
+        const pdfPositions = csvIds.map(id => normalizedPdfText.indexOf(id));
+        expect(pdfPositions.every(position => position >= 0)).toBe(true);
+        expect(pdfPositions).toEqual([...pdfPositions].sort((left, right) => left - right));
+
+        const committedPrint = (await listAdminDocuments('commands')).find(command =>
+          command.kind === 'RecordPrint'
+          && (command.payload as Record<string, unknown>)?.printType === printType
+          && (command.payload as Record<string, unknown>)?.sourceSeq === sourceSeq,
+        );
+        if (!committedPrint) throw new Error(`No committed ${printType} command was found after browser print`);
+        expect(committedPrint.payload).toMatchObject({
+          printType, businessDate: d1, dateRange: { start: d1, end: d3 },
+          scope: { studentId: STUDENT_ID }, sourceSeq,
+        });
+        const jsonPath = testInfo.outputPath(`p12c-${mode}-ledger-evidence.json`);
+        const evidence = {
+          mode, uiRowCount, sourceTransactionCount: csvIds.length,
+          range: { startDate: d1, endDate: d3 }, scope: { studentId: STUDENT_ID }, sourceSeq,
+          csvPath, csvSha256: createHash('sha256').update(csv).digest('hex'),
+          pdfPath, pdfSha256: createHash('sha256').update(await readFile(pdfPath)).digest('hex'),
+          pdfPages: pageCount, pdfInfo, textPath,
+          exportedTransactionIds: csvIds,
+          firstTransactionId: csvIds[0], lastTransactionId: csvIds.at(-1),
+          recordExportCommand: exportCommand, recordPrintCommand: committedPrint,
         };
-      });
-      await page.getByRole('button', { name: '記錄後列印目前完整明細' }).click();
-      await expect(page.getByText('已發起列印。')).toBeVisible({ timeout: 15_000 });
-      const printCapture = await page.evaluate(() => (window as Window & {
-        __p12cPrintCapture?: { count: number; rows: number; text: string } | null;
-      }).__p12cPrintCapture ?? null);
-      expect(printCapture?.count).toBe(1);
-      expect(printCapture?.rows).toBe(totalRowsExpected);
-      expect(printCapture?.text).toContain(`完整資料列數：${totalRowsExpected}`);
-      const printCommand = (await listAdminDocuments('commands')).find(command => command.kind === 'RecordPrint');
-      if (!printCommand) throw new Error('No committed RecordPrint command was found after the print action');
-      expect(printCommand.payload).toMatchObject({
-        printType: 'ledger-original', businessDate: d1, dateRange: { start: d1, end: d3 },
-        scope: { studentId: STUDENT_ID }, sourceSeq,
-      });
+        await writeFile(jsonPath, `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
+        for (const [name, path, contentType] of [
+          [`${mode}-csv`, csvPath, 'text/csv'],
+          [`${mode}-pdf`, pdfPath, 'application/pdf'],
+          [`${mode}-text`, textPath, 'text/plain'],
+          [`${mode}-evidence`, jsonPath, 'application/json'],
+        ] as const) await testInfo.attach(`p12c-${name}`, { path, contentType });
+        generatedOutputs.push(evidence);
+      }
+
+      expect((generatedOutputs[0].exportedTransactionIds as string[])).toEqual(generatedOutputs[1].exportedTransactionIds);
+      outputManifest.outputs = generatedOutputs;
+      const manifestPath = testInfo.outputPath('p12c-report-output-manifest.json');
+      await writeFile(manifestPath, `${JSON.stringify(outputManifest, null, 2)}\n`, 'utf8');
+      await testInfo.attach('p12c-report-output-manifest', { path: manifestPath, contentType: 'application/json' });
 
       // Ensure that records with the old name and aliases still resolve to this one stable account.
       await page.getByRole('button', { name: `開啟查帳：${CURRENT_NAME}` }).click();
@@ -405,7 +585,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
       await expect(page.getByText(`目前編號 ${STUDENT_CODE}`)).toBeVisible();
       const transactionSection = page.locator('section[aria-labelledby="account-transactions-heading"]');
       const transactionRows = transactionSection.locator('tbody tr');
-      await expect.poll(() => transactionRows.count()).toBe(totalRowsExpected);
+      await expect.poll(() => transactionRows.count()).toBe(selectedAccountRowsExpected);
       const closedDayRow = transactionSection.getByRole('row').filter({ hasText: d1Order.transactionId });
       await expect(closedDayRow).toContainText('有效 · 回填');
       await expect(closedDayRow).toContainText(ORIGINAL_NAME);
@@ -456,6 +636,8 @@ test.describe('P12c cloud report and account history acceptance', () => {
         }
         await deleteIfPresent('students', STUDENT_ID);
         await deleteIfPresent('studentCodes', STUDENT_CODE);
+        await deleteIfPresent('students', SECOND_STUDENT_ID);
+        await deleteIfPresent('studentCodes', SECOND_STUDENT_CODE);
         await restoreRawDocumentFields('system', 'dataHead', originalHeadRaw, ['seq', 'lastCommandId', 'goLiveDate', 'updatedAt']);
       }
       if (signedIn && app) await signOut((await import('firebase/auth')).getAuth(app));

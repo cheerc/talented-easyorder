@@ -29,6 +29,11 @@
 - P12c F2/F5 雲端報表、完整帳戶歷史、歷史更正、原始／合併 CSV 與列印流程已在 pinned base `3d49c8f267d1a15b5b036d899d38fa7bdcd5ab93`、branch `codex/p12c-report-ui` 完成本地實作與驗收。本 PR 的獨立審查、exact-head provider CI 與合併待確認；P12 整體未完成。
 - 報表查詢、null-date 有界索引與可見範圍、回填／日結版次、F5 歷史更正政策及各執行命令見 [P12c evidence](../../ops/free-production-evidence.md#p12c-report-and-account-history-ui-2026-10-19)。不代表正式 index 已部署、production 已操作或本人營運驗收。
 
+## P12c PR #525 rework checkpoint（2026-10-19）
+
+- 原 head `2b89d1ccb4e84b4a8df144790c7370c14fb40e2f` 的獨立 COMMENT review [5568149846](https://github.com/cheerc/talented-easyorder/pull/525#pullrequestreview-5568149846) 要求 R1 完整真實列印、R2 action owner lifecycle、R3 F5 read-denial 清除；實作者依 Coordinator brief 在同一 branch／pinned base 完成 rework。新 PR head 與其 exact-head verification 見 [P12c rework evidence](../../ops/free-production-evidence.md#p12c-pr-525-rework-source-head-2026-10-19) 與 PR body。
+- Local full Vitest、三個 serial Emulator suites、lint/build/root TSC 及 legacy→P12c→prototype E2E 均通過；兩種輸出模式皆保留實際 Chromium PDF 與可比對的 CSV／text／JSON／trace。新 head 的獨立複審、required provider CI、merge 與 P12 receipt 尚未完成。未部署、不進 P13。
+
 ## 授權與角色
 
 CheerC 本輪指示：coordinator 負責推進至 P12 完成，撰寫 plan 與 dispatch brief；implementer 依 brief 實作與驗證，不自行寫 plan。每個實作 PR 發布後交獨立 reviewer 審查，有必修就 rework，直到目前 head 的審查及 CI 通過，再由 coordinator 合併。合併後依專案慣例另開 docs-only 收據 PR，也需 review／CI。到 P12 完成為止，不開始 P13。
@@ -59,7 +64,7 @@ CheerC 本輪指示：coordinator 負責推進至 P12 完成，撰寫 plan 與 d
 | P12a-receipt | PR #522 docs-only 收據已合併；review 5564691313 PASS，source CI 39160851654、main CI 39161053527 成功 | P12a merge |
 | P12b | `RecordExport`／`RecordPrint` 正式稽核命令、Rules／writer／backup 相容，無業務投影；PR #523 已合併，review 5566424126 與 source CI 39191296570 成功；main CI 39194450495 派工時 IN_PROGRESS，之後由 Coordinator 確認 COMPLETED／SUCCESS | P12a-receipt merge |
 | P12b-receipt | docs-only merge receipt PR 已建立，待獨立審查與合併；main CI #39194450495 成功並已解除發布 gate | P12b merge |
-| P12c | cloud F2／F5、原始／合併輸出與列印、變更稽核／日結版次、R01／L07 E2E；本地實作與驗收完成，待獨立審查／exact-head CI／合併 | P12b-receipt merge |
+| P12c | PR #525 原 head 已依 review R1/R2/R3 完成同一 pinned base rework 與本地驗收；待新 head 獨立複審／exact-head CI／合併 | P12b-receipt merge |
 | P12c-receipt | P12 完成收據與總驗收，停止於 P13 前 | P12c merge |
 
 每批只有一個寫入者。從已合併 receipt 的最新 main 開 `codex/` 分支；不得把上一批 branch 直接混進下一批。Coordinator 修改本計畫及 dispatch；impl 只更新實際成果與證據文件，不更改任務設計。若 acceptance 與程式事實衝突，提供最小證據交 coordinator 決策。
@@ -133,6 +138,6 @@ Rules 改動每次重測現有預算錨點與新增最大 payload 路徑。任�
 
 ## 派工 brief
 
-原樣納入版本歷史的 brief 索引：[P11c4a 收據](2026-10-18-p11c4a-receipt-dispatch.md)、[P11c4b](2026-10-18-p11c4b-dispatch.md)、[P11c4b 收據](2026-10-18-p11c4b-receipt-dispatch.md)、[P12a](2026-10-18-p12a-dispatch.md)、[P12a 收據](2026-10-18-p12a-receipt-dispatch.md)、[P12b](2026-10-18-p12b-dispatch.md)、[P12c](2026-10-18-p12c-dispatch.md)。各批派工狀態以對應 brief 為準。
+原樣納入版本歷史的 brief 索引：[P11c4a 收據](2026-10-18-p11c4a-receipt-dispatch.md)、[P11c4b](2026-10-18-p11c4b-dispatch.md)、[P11c4b 收據](2026-10-18-p11c4b-receipt-dispatch.md)、[P12a](2026-10-18-p12a-dispatch.md)、[P12a 收據](2026-10-18-p12a-receipt-dispatch.md)、[P12b](2026-10-18-p12b-dispatch.md)、[P12c](2026-10-18-p12c-dispatch.md)、[P12c rework](2026-10-19-p12c-rework-dispatch.md)。各批派工狀態以對應 brief 為準。
 
 每批的具體 brief 由 coordinator 在派工前寫入同目錄 `2026-10-18-<batch>-dispatch.md`，包含 pinned base、allowed paths、明確 deliverables／RED 與 gate；引用本計畫，不把設計責任交 impl。下一批開始前依已合併的實際 exported interface 更新 brief，不能根據猜測派工。

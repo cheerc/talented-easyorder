@@ -63,6 +63,9 @@ jobs:
         run: npx playwright install chromium --with-deps
         working-directory: frontend
 
+      - name: Install PDF inspection tools
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y poppler-utils
+
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
 
@@ -70,8 +73,8 @@ jobs:
         run: npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test && npx playwright test --config playwright.p12c.config.ts && npx playwright test --config playwright.prototype.config.ts"
         working-directory: frontend
 
-      - name: Upload Playwright Report (on failure)
-        if: failure()
+      - name: Upload Playwright Report
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
@@ -79,8 +82,8 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-      - name: Upload Test Results (on failure)
-        if: failure()
+      - name: Upload Test Results
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: test-results
