@@ -95,7 +95,7 @@ Firestore 時間為伺服器 Timestamp，repository adapter 輸出 UTC ISO `…Z
 | `commands/{commandId}` | immutable：kind、seq、actor、leaseEpoch、committedAt、businessDate（nullable）、studentId（nullable）、固定型別 targets、before/after、reason、cashEffect、inputFingerprint | LedgerAuditEvent 投影＋新增／設定異動稽核＋冪等 receipt |
 | `days/{date}/settlements/{revision}` | immutable：closed/reopened、當時 totals、opening/expected/counted/difference、note、actor、sourceSeq、時間、前版參照 | `DailySettlement`；重開亦新增一版 |
 
-commands 的共用查詢欄位一律存在：studentId在學生／期初／學生交易命令為該ID，櫃台收支為`__cashier__`，其他為null；businessDate在交易／日期命令為目標營業日，CorrectOpening為原asOfDate，名單／供應商／輸出命令為null（匯出區間另存payload）。committedAt永遠是實際提交時間，不能拿目標日期冒充操作發生時間。targets是kind限定的具名欄位，例如transactionId/studentId/dayId/settlementRevision，非任意字串路徑陣列。
+commands 的共用查詢欄位一律存在：studentId 在學生／期初／學生交易命令為該 ID，櫃台收支為 `__cashier__`，RecordExport／RecordPrint 等於 payload scope 的 studentId，其他為 null；businessDate 在交易／日期命令為目標營業日，CorrectOpening 為原 asOfDate，RecordExport 為 null，RecordPrint 為 payload 的日期 anchor，其他名單／供應商命令為 null。committedAt 永遠是實際提交時間，不能拿目標日期冒充操作發生時間。targets 是 kind 限定的具名欄位，例如 transactionId/studentId/dayId/settlementRevision，非任意字串路徑陣列。
 
 `dataHead.maintenance`是控制面覆蓋旗標，只有維護者IAM可以切換，**不屬於業務重播狀態**；operator command必須保持它不變且只能在false時成立。正常command只更新seq/lastCommandId/updatedAt，其餘head metadata固定。備份重播核對業務seq/ID與投影，不要求還原維護旗標、Auth白名單或lease；復原時明確設定maintenance=true，完成對帳後由維護者設false。此安排沿用已讀head，不另增加Rules存取文件。
 
@@ -130,7 +130,8 @@ readCommand(commandId: string): Promise<CommandReceipt | null>
 | CorrectTransaction／VoidTransaction／CancelKeepDeposit／CancelRefund／Undo | transaction＋student（expense 無）＋day | expectedRevision、理由、前後值、對應日未關帳；不改帳戶歸屬studentId／原營業日／建立時間 |
 | CloseDay／ReopenDay | day＋新的 settlement | 舊版不改、版號+1、統計與當下 head 一致、理由／差額 |
 | BackfillOpeningCash | day | 只限早於台北今天、不早於上線日、未關帳且尚無開帳現金的既有營業日；開帳 0–20,000、理由必填 1–500 字；不補登交易（[P11 契約 §10](2026-10-17-cloud-day-close-contract.md#10-補開帳backfillopeningcash)） |
-| RecordExport／RecordPrint／RecordBackup | 無業務投影 | 稽核發起範圍、sourceSeq、格式，不嵌入整份報表 |
+| RecordExport／RecordPrint | 僅更新 dataHead 與 command | 不寫業務投影或報表資料；payload 保存有效 Gregorian 日期的完整 inclusive 範圍（最多31日）、帳戶 scope（UUID 或 null）與固定快照 sourceSeq；settlements／post-close-entries 僅允許 all scope。Print 另保存範圍內的 businessDate anchor。Rules 綁定實際 before／after head；sourceSeq 不得大於提交前 head.seq；同 ID 不同範圍、scope 或 H 拒絕 |
+| RecordBackup | 僅更新 dataHead 與 command | 記錄已驗證的本機備份發起與來源區間，不嵌入整份備份 |
 
 取消已 voided 的交易拒絕（同 command 重送則回原 receipt）。payment 更正仍須>0，改成零使用作廢；order 餐費可零、收款可零；expense 收入 `mealPrice=0,paidAmount>0`，支出相反。CancelKeepDeposit 在原 paidAmount>0 時將有效列改 payment、mealPrice=0；paidAmount=0 則 void，不能建立零元 payment。一般 CorrectTransaction 只准既有 mealPrice/paidAmount/note，不跨帳戶、不任意改 type；取消專用 kind 才准 order→payment。P10a 實作註記：CorrectTransaction 的 payload 固定為 `{ mealPrice, paidAmount, amount, note, reason }`。order／payment／expense 的 `amount` 是衍生值（`paidAmount − mealPrice`，payment 為 `paidAmount`），必須與前兩欄一致；退款列的 `mealPrice`、`paidAmount` 固定為 0，`amount` 才是要更正的欄位。Undo 的 targets 一律含 `studentId`（櫃台收支為 `__cashier__`），學生列的 `expectedRevisions` 另含 `student`。P14 備份的 replay validator 依同一形狀驗證。
 

@@ -390,22 +390,25 @@ export type RecordPostCloseEntryCommand = BaseCommand<
 export type RecordExportCommand = BaseCommand<
   'RecordExport',
   {
-    exportType: string;
-    dateRange?: { start: string; end: string };
+    exportType: 'transactions-original' | 'transactions-merged' | 'settlements' | 'post-close-entries' | 'audit';
+    dateRange: { start: string; end: string };
+    scope: { studentId: string | null };
     sourceSeq: number;
   },
-  Record<string, unknown>
+  Record<string, never>
 >;
 
 // 21. RecordPrint
 export type RecordPrintCommand = BaseCommand<
   'RecordPrint',
   {
-    printType: string;
+    printType: 'ledger-original' | 'ledger-merged';
     businessDate: string;
+    dateRange: { start: string; end: string };
+    scope: { studentId: string | null };
     sourceSeq: number;
   },
-  Record<string, unknown>
+  Record<string, never>
 >;
 
 // 22. RecordBackup

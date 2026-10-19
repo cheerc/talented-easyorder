@@ -17,6 +17,7 @@ import {
 import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from 'firebase/auth';
 import { createCloudCommandRepository } from '../cloudCommandRepository';
+import { createCloudReportActionRepository } from '../cloudReportActionRepository';
 
 type ServerRead = typeof import('firebase/firestore').getDocFromServer;
 type RunTransaction = typeof import('firebase/firestore').runTransaction;
@@ -82,6 +83,10 @@ function dbFor(operator: typeof operatorA) {
 
 function repository(operator: typeof operatorA) {
   return createCloudCommandRepository(dbFor(operator), { currentUser: () => fakeCurrentUser(operator) });
+}
+
+function reportActions(operator: typeof operatorA) {
+  return createCloudReportActionRepository(dbFor(operator), { currentUser: () => fakeCurrentUser(operator) });
 }
 
 async function seedBase() {
@@ -216,6 +221,42 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
       expect(finalHead.data()?.seq).toBe(1);
     },
   );
+
+  it('P12b.5: report action UNKNOWN_RESULT recovers its receipt by ID and rejects changed intent', async () => {
+    await seedBase();
+    const commandId = 'e8888888-8888-4888-8888-888888888888';
+    const input = {
+      commandId, leaseEpoch: 1, exportType: 'transactions-original' as const,
+      range: { kind: 'custom' as const, startDate: today, endDate: today },
+      scope: { studentId: null }, sourceSeq: 0,
+    };
+    firestoreMock.serverRead.mockImplementationOnce(async () => {
+      throw Object.assign(new Error('synthetic post-commit report receipt read outage'), { code: 'unavailable' });
+    });
+
+    const actions = reportActions(operatorA);
+    const first = await actions.recordExport(input);
+    expect(first).toMatchObject({ ok: false, error: { code: 'UNKNOWN_RESULT' } });
+    const committed = await withAdmin(async db => Promise.all([
+      getDoc(doc(db, 'system/dataHead')),
+      getDoc(doc(db, `commands/${commandId}`)),
+    ]));
+    expect(committed[0].data()).toMatchObject({ seq: 1, lastCommandId: commandId });
+    expect(committed[1].data()).toMatchObject({ commandId, kind: 'RecordExport', seq: 1 });
+
+    const retry = await actions.recordExport(input);
+    expect(retry).toMatchObject({ ok: true, receipt: { commandId, kind: 'RecordExport', seq: 1 } });
+    const changedInputs = [
+      { ...input, range: { kind: 'custom' as const, startDate: '2026-10-18', endDate: today } },
+      { ...input, sourceSeq: 1 },
+      { ...input, scope: { studentId } },
+    ];
+    for (const changed of changedInputs) {
+      expect(await actions.recordExport(changed)).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    }
+    const headAfterRetries = await withAdmin(db => getDoc(doc(db, 'system/dataHead')));
+    expect(headAfterRetries.data()).toMatchObject({ seq: 1, lastCommandId: commandId });
+  });
 
   it('P07.22: current-holder server diagnosis classifies all four P07 kinds after a denied write', async () => {
     await seedBase();
