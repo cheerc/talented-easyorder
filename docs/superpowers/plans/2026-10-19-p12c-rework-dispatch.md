@@ -34,7 +34,7 @@ RED→GREEN：開歷史更正、填 private reason/amount、搜尋現名/aliases
 
 ## 交付
 
-修同一PR、中文commit與description，更新 evidence／當前狀態／docs-check，保留原P12c brief與coordinator addenda及本brief。Current PR仍待獨立複審/CI/合併；P12未完成、未部署、不進P13。push後主動報 final full head/base、URL、實測與raw artifact，停止寫入。Coordinator固定新head派Sol獨立重驗R1/R2/R3，另做delta adversarial review；review+requiredCI全綠才merge，mainCI及最終收據未完成前不能報P12完成。
+修同一PR、中文commit與description，更新 evidence／當前狀態／docs-check，保留原P12c brief與coordinator addenda及本brief。Current PR仍待獨立複審/CI/合併；P12未完成、未部署、不進P13。push後主動報 final full head/base、URL、實測與raw artifact，停止寫入。Coordinator固定新head派獨立 reviewer 重驗R1/R2/R3，另做delta adversarial review；review+requiredCI全綠才merge，mainCI及最終收據未完成前不能報P12完成。
 
 ## 本案 workflow authority（Coordinator 明確調整）
 
