@@ -107,7 +107,7 @@ const DECODABLE_COMMAND_KINDS = new Set([
   'EnsureDay', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus', 'SaveVendor',
   'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateOrder', 'CreatePayment', 'CreateCashMovement',
   'CreateRefund', ...MUTATION_KINDS, 'RecordBackup', 'CorrectOpening', 'CloseDay', 'ReopenDay', 'BackfillOpeningCash', 'StartBackfill',
-  'RecordPostCloseEntry',
+  'RecordPostCloseEntry', 'RecordExport', 'RecordPrint',
 ]);
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -522,8 +522,8 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
     CloseDay: { required: ['countedCash'], optional: ['note', 'expectedCash', 'alignWithDayId'] }, ReopenDay: { required: ['reason'] },
     BackfillOpeningCash: { required: ['openingCash', 'reason'] }, StartBackfill: { required: ['reason'] },
     RecordPostCloseEntry: { required: ['direction', 'amount', 'reason'] },
-    RecordExport: { required: ['exportType', 'sourceSeq'], optional: ['dateRange'] },
-    RecordPrint: { required: ['printType', 'businessDate', 'sourceSeq'] },
+    RecordExport: { required: ['exportType', 'dateRange', 'scope', 'sourceSeq'] },
+    RecordPrint: { required: ['printType', 'businessDate', 'dateRange', 'scope', 'sourceSeq'] },
     RecordBackup: { required: ['backupType', 'sourceSeq', 'fromSeq', 'toSeq', 'sha256'] },
   };
   manifest.records.forEach((record, index) => {
@@ -598,7 +598,9 @@ function validateManifest(value: unknown): asserts value is BackupManifest {
       throw new BackupValidationError(`command seq ${seq} payload.alignWithDayId 無效`);
     }
     for (const key of numericPayloadFields[record.kind] ?? []) {
-      if (!Number.isSafeInteger(record.payload[key]) || Math.abs(record.payload[key] as number) > 1_000_000_000) {
+      const maximum = (record.kind === 'RecordExport' || record.kind === 'RecordPrint') && key === 'sourceSeq'
+        ? Number.MAX_SAFE_INTEGER : 1_000_000_000;
+      if (!Number.isSafeInteger(record.payload[key]) || Math.abs(record.payload[key] as number) > maximum) {
         throw new BackupValidationError(`command seq ${seq} payload.${key} 無效`);
       }
     }

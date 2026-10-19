@@ -73,8 +73,19 @@ export interface CommandPayloadByKind {
   BackfillOpeningCash: { openingCash: number; reason: string };
   StartBackfill: { reason: string };
   RecordPostCloseEntry: { direction: 'income' | 'expense'; amount: number; reason: string };
-  RecordExport: { exportType: string; dateRange: { start: string; end: string } | null; sourceSeq: number };
-  RecordPrint: { printType: string; businessDate: string; sourceSeq: number };
+  RecordExport: {
+    exportType: 'transactions-original' | 'transactions-merged' | 'settlements' | 'post-close-entries' | 'audit';
+    dateRange: { start: string; end: string };
+    scope: { studentId: string | null };
+    sourceSeq: number;
+  };
+  RecordPrint: {
+    printType: 'ledger-original' | 'ledger-merged';
+    businessDate: string;
+    dateRange: { start: string; end: string };
+    scope: { studentId: string | null };
+    sourceSeq: number;
+  };
   RecordBackup: { backupType: string; sourceSeq: number; fromSeq: number; toSeq: number; sha256: string };
 }
 
@@ -136,6 +147,8 @@ export type EnabledCommandKind =
   | 'CreateRefund'
   | TransactionMutationKind
   | 'RecordBackup'
+  | 'RecordExport'
+  | 'RecordPrint'
   | 'CorrectOpening'
   | 'CloseDay'
   | 'ReopenDay'
@@ -269,8 +282,57 @@ function validateRevisionMap(value: unknown, keys: string[], createKeys: string[
   return value as Record<string, number>;
 }
 
+function reportDateRangeValue(value: unknown): { start: string; end: string } {
+  if (!isPlainRecord(value)) throw new InvalidCloudCommandInput('dateRange 必須是固定物件');
+  exactKeys(value, ['start', 'end']);
+  dateValue(value.start, 'dateRange.start');
+  dateValue(value.end, 'dateRange.end');
+  const start = value.start;
+  const end = value.end;
+  if (start > end) throw new InvalidCloudCommandInput('dateRange.start 不得晚於 dateRange.end');
+  const inclusiveDays = Math.floor((Date.parse(`${end}T00:00:00.000Z`) - Date.parse(`${start}T00:00:00.000Z`)) / 86_400_000) + 1;
+  if (inclusiveDays > 31) throw new InvalidCloudCommandInput('dateRange 不得超過 31 個日曆日');
+  return { start, end };
+}
+
+function reportScopeValue(value: unknown): { studentId: string | null } {
+  if (!isPlainRecord(value)) throw new InvalidCloudCommandInput('scope 必須是固定物件');
+  exactKeys(value, ['studentId']);
+  if (value.studentId !== null) studentIdValue(value.studentId, 'scope.studentId');
+  return { studentId: value.studentId as string | null };
+}
+
 function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayloadByKind[EnabledCommandKind] {
   if (!isPlainRecord(value)) throw new InvalidCloudCommandInput('payload 必須是固定物件');
+  if (kind === 'RecordExport') {
+    exactKeys(value, ['exportType', 'dateRange', 'scope', 'sourceSeq']);
+    if (!['transactions-original', 'transactions-merged', 'settlements', 'post-close-entries', 'audit'].includes(String(value.exportType))) {
+      throw new InvalidCloudCommandInput('exportType 不支援');
+    }
+    const dateRange = reportDateRangeValue(value.dateRange);
+    const scope = reportScopeValue(value.scope);
+    safeInteger(value.sourceSeq, 'sourceSeq', Number.MAX_SAFE_INTEGER);
+    if ((value.exportType === 'settlements' || value.exportType === 'post-close-entries') && scope.studentId !== null) {
+      throw new InvalidCloudCommandInput(`${String(value.exportType)} 不接受單一帳戶 scope`);
+    }
+    return { exportType: value.exportType as CommandPayloadByKind['RecordExport']['exportType'], dateRange, scope,
+      sourceSeq: value.sourceSeq } as CommandPayloadByKind['RecordExport'];
+  }
+  if (kind === 'RecordPrint') {
+    exactKeys(value, ['printType', 'businessDate', 'dateRange', 'scope', 'sourceSeq']);
+    if (value.printType !== 'ledger-original' && value.printType !== 'ledger-merged') {
+      throw new InvalidCloudCommandInput('printType 不支援');
+    }
+    dateValue(value.businessDate, 'businessDate');
+    const dateRange = reportDateRangeValue(value.dateRange);
+    const scope = reportScopeValue(value.scope);
+    safeInteger(value.sourceSeq, 'sourceSeq', Number.MAX_SAFE_INTEGER);
+    if (value.businessDate < dateRange.start || value.businessDate > dateRange.end) {
+      throw new InvalidCloudCommandInput('businessDate 必須位於 dateRange 範圍內');
+    }
+    return { printType: value.printType, businessDate: value.businessDate, dateRange, scope,
+      sourceSeq: value.sourceSeq } as CommandPayloadByKind['RecordPrint'];
+  }
   if (kind === 'SaveVendor') {
     exactKeys(value, ['vendorId', 'name', 'phone', 'note', 'status']);
     vendorIdValue(value.vendorId, 'vendorId');
@@ -558,6 +620,7 @@ export function normalizeEnabledCommandInput(input: unknown): CanonicalEnabledIn
   if (typeof input.kind !== 'string' || ![
     'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
     'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement', 'CreateRefund', 'RecordBackup',
+    'RecordExport', 'RecordPrint',
     'CorrectOpening', 'CloseDay', 'ReopenDay', 'BackfillOpeningCash', 'StartBackfill', 'RecordPostCloseEntry', ...TRANSACTION_MUTATION_KINDS,
   ].includes(input.kind)) {
     throw new InvalidCloudCommandInput('此命令種類尚未啟用');
@@ -567,14 +630,14 @@ export function normalizeEnabledCommandInput(input: unknown): CanonicalEnabledIn
     throw new InvalidCloudCommandInput('commandId 必須是 UUID');
   }
   safeInteger(input.leaseEpoch, 'leaseEpoch');
-  if (kind === 'RecordBackup') {
+  if (kind === 'RecordBackup' || kind === 'RecordExport' || kind === 'RecordPrint') {
     if (!isPlainRecord(input.targets) || !isPlainRecord(input.expectedRevisions)) {
       throw new InvalidCloudCommandInput('targets 與 expectedRevisions 必須是固定物件');
     }
     exactKeys(input.targets, []);
     exactKeys(input.expectedRevisions, []);
     return { commandId: input.commandId, kind, leaseEpoch: input.leaseEpoch, targets: {}, expectedRevisions: {},
-      payload: normalizePayload(kind, input.payload) as CommandPayloadByKind['RecordBackup'] } as CanonicalEnabledInput;
+      payload: normalizePayload(kind, input.payload) as CommandPayloadByKind[typeof kind] } as CanonicalEnabledInput;
   }
   if (kind === 'EnsureDay') {
     if (!isPlainRecord(input.targets)) throw new InvalidCloudCommandInput('targets 必須是固定物件');
@@ -1618,10 +1681,11 @@ function validateReceiptSnapshots(
     return;
   }
   const backupKind = normalized.kind === 'RecordBackup';
+  const reportActionKind = normalized.kind === 'RecordExport' || normalized.kind === 'RecordPrint';
   const studentKind = normalized.kind === 'CreateStudent' || normalized.kind === 'ChangeStudentCode' || normalized.kind === 'EditStudent' || normalized.kind === 'SetStudentStatus';
   const vendorKind = normalized.kind === 'SaveVendor' || normalized.kind === 'RemoveVendor';
   const dayCommandKind = normalized.kind === 'SetDayMenu' || normalized.kind === 'SetOpeningCash';
-  const snapshotKeys = backupKind ? ['head'] : normalized.kind === 'EnsureDay' || dayCommandKind
+  const snapshotKeys = backupKind || reportActionKind ? ['head'] : normalized.kind === 'EnsureDay' || dayCommandKind
     ? ['head', 'day']
     : vendorKind ? ['head', 'vendor'] : studentKind ? ['head', 'student']
       : normalized.kind === 'CreateCashMovement' ? ['head', 'day', 'transaction']
@@ -1646,6 +1710,19 @@ function validateReceiptSnapshots(
       || after.head === null || cash.before !== 0 || cash.after !== 0 || cash.delta !== 0
       || cash.reasonKind !== 'none' || cash.refundAmount !== 0) {
       throw new InvalidCloudCommandInput('RecordBackup receipt snapshot 不一致');
+    }
+    return;
+  }
+  if (reportActionKind) {
+    const payload = normalized.payload as CommandPayloadByKind['RecordExport' | 'RecordPrint'];
+    const expectedBusinessDate = normalized.kind === 'RecordPrint'
+      ? (normalized.payload as CommandPayloadByKind['RecordPrint']).businessDate : null;
+    if (before.head === null || after.head === null || receipt.businessDate !== expectedBusinessDate
+      || receipt.studentId !== payload.scope.studentId || receipt.reason !== null
+      || payload.sourceSeq > Number(headBefore.seq)
+      || cash.before !== 0 || cash.after !== 0 || cash.delta !== 0
+      || cash.reasonKind !== 'none' || cash.refundAmount !== 0) {
+      throw new InvalidCloudCommandInput(`${normalized.kind} receipt 共用欄位或 head snapshots 不一致`);
     }
     return;
   }
@@ -2005,6 +2082,7 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
   if (![
     'EnsureDay', 'CreateOrder', 'CreatePayment', 'CreateStudent', 'ChangeStudentCode', 'EditStudent', 'SetStudentStatus',
     'SaveVendor', 'RemoveVendor', 'SetDayMenu', 'SetOpeningCash', 'CreateCashMovement', 'CreateRefund', 'RecordBackup',
+    'RecordExport', 'RecordPrint',
     'CorrectOpening', 'CloseDay', 'ReopenDay', 'BackfillOpeningCash', 'StartBackfill', 'RecordPostCloseEntry', ...TRANSACTION_MUTATION_KINDS,
   ].includes(raw.kind)) {
     throw new InvalidCloudCommandInput('此 command kind 尚未啟用');
@@ -2099,6 +2177,14 @@ export function decodeEnabledCommandDoc(raw: unknown): StoredEnabledCommandDoc {
     throw new InvalidCloudCommandInput('日結 receipt 共用欄位不一致');
   } else if (normalized.kind === 'RecordBackup' && (raw.businessDate !== null || raw.studentId !== null)) {
     throw new InvalidCloudCommandInput('RecordBackup receipt 共用欄位不一致');
+  } else if (normalized.kind === 'RecordExport' || normalized.kind === 'RecordPrint') {
+    const payload = normalized.payload as CommandPayloadByKind['RecordExport' | 'RecordPrint'];
+    const expectedBusinessDate = normalized.kind === 'RecordPrint'
+      ? (normalized.payload as CommandPayloadByKind['RecordPrint']).businessDate : null;
+    if (raw.businessDate !== expectedBusinessDate
+      || raw.studentId !== payload.scope.studentId) {
+      throw new InvalidCloudCommandInput(`${normalized.kind} receipt 共用欄位不一致`);
+    }
   }
   validateReceiptSnapshots(raw, normalized);
   return raw as unknown as StoredEnabledCommandDoc;

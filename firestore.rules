@@ -1258,7 +1258,8 @@ service cloud.firestore {
           || (kind in ['CloseDay', 'ReopenDay'] && validDaySettlementCommand(commandId, command))
           || (kind == 'BackfillOpeningCash' && validBackfillOpeningCash(commandId, command))
           || (kind == 'StartBackfill' && validStartBackfill(commandId, command))
-          || (kind == 'RecordPostCloseEntry' && validRecordPostCloseEntry(commandId, command)));
+          || (kind == 'RecordPostCloseEntry' && validRecordPostCloseEntry(commandId, command))
+          || (kind in ['RecordExport', 'RecordPrint'] && validReportAction(commandId, command)));
     }
 
     // BackfillOpeningCash: a past open／reopened day that never confirmed its opening cash (for
@@ -1876,6 +1877,50 @@ service cloud.firestore {
         && headBefore == actualHead
         && committedHead.seq == command.seq && committedHead.lastCommandId == commandId
         && committedHead.updatedAt == request.time;
+    }
+
+    function validReportAction(commandId, command) {
+      let headBefore = get(/databases/$(database)/documents/system/dataHead).data;
+      let headAfter = getAfter(/databases/$(database)/documents/system/dataHead).data;
+      let payload = command.payload;
+      let reportRange = payload.dateRange;
+      let scope = payload.scope;
+      return commandHolder(command.leaseEpoch)
+        && cashCommandEnvelope(commandId, command, headBefore, headAfter)
+        && command.kind in ['RecordExport', 'RecordPrint']
+        && exactMap(command.targets, [])
+        && exactMap(command.expectedRevisions, [])
+        && exactMap(reportRange, ['start', 'end'])
+        && validCalendarDate(reportRange.start)
+        && validCalendarDate(reportRange.end)
+        && reportRange.start <= reportRange.end
+        && timestamp.value(reportRange.end + 'T00:00:00Z')
+          <= timestamp.value(reportRange.start + 'T00:00:00Z') + duration.value(30, 'd')
+        && exactMap(scope, ['studentId'])
+        && (scope.studentId == null || validStudentId(scope.studentId))
+        && command.payload.sourceSeq is int
+        && command.payload.sourceSeq >= 0
+        && command.payload.sourceSeq <= 9007199254740991
+        && command.payload.sourceSeq <= headBefore.seq
+        && ((command.kind == 'RecordExport'
+            && exactMap(payload, ['exportType', 'dateRange', 'scope', 'sourceSeq'])
+            && payload.exportType in ['transactions-original', 'transactions-merged', 'settlements', 'post-close-entries', 'audit']
+            && (payload.exportType in ['settlements', 'post-close-entries'] ? scope.studentId == null : true)
+            && command.businessDate == null)
+          || (command.kind == 'RecordPrint'
+            && exactMap(payload, ['printType', 'businessDate', 'dateRange', 'scope', 'sourceSeq'])
+            && payload.printType in ['ledger-original', 'ledger-merged']
+            && validCalendarDate(payload.businessDate)
+            && payload.businessDate >= reportRange.start
+            && payload.businessDate <= reportRange.end
+            && command.businessDate == payload.businessDate))
+        && command.studentId == scope.studentId
+        && command.reason == null
+        && zeroCashEffect(command.cashEffect)
+        && exactMap(command.before, ['head'])
+        && command.before == {'head': headBefore}
+        && exactMap(command.after, ['head'])
+        && command.after == {'head': headAfter};
     }
 
     // Firestore applies its 1,000-expression ceiling to each document's rule evaluation. An

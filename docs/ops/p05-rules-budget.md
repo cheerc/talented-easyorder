@@ -848,4 +848,46 @@ Each Rules mutant changes one check in `validRecordPostCloseEntry` / `postCloseE
 | backup replay: drop "the entry does not exist yet" | **equivalent**: the projection loop already compares `before.postCloseEntry` (`null`) with the replayed state and rejects a repeat |
 | backup manifest checks, one at a time: amount, settlement revision, day unchanged, day closed, top-level reason, go-live | survive individually, **by design**: `validateEnabledReceiptSemantics` (`validatePostCloseEntryReceipt`) and the replay's before-snapshot comparison reject the same forgeries. With the amount and settlement-revision checks removed from every layer the test fails (killed); the other four were only removed from the manifest and receipt layers, where a remaining shared check still rejects them |
 
+## P12b — report-action head-only writes and Rules probe receipt
+
+P12b enables `RecordExport` and `RecordPrint`. Both write exactly `system/dataHead` and `commands/{commandId}`; they do not write a student, transaction, day, settlement, or post-close-entry projection. The source is the P12b candidate on pinned base `e12afbf506801de56715f970a5c29393846a48d5`.
+
+### Static access-call budget
+
+`validReportAction` is a terminal operand of `validCommandCreate`. Its command create evaluation calls `commandHolder` (operator and lease, two reads) and reads the actual pre- and post-write data head (two reads). `cashCommandEnvelope` validates those actual head maps and command identity without further document reads. The `system/dataHead` leaf uses the unchanged `headCommand` path (`getAfter` plus `exists` on the command, two reads). Thus the write-rule closure is 4 + 2 = 6 calls, with one conservative additional `approvedOperator` dependency for the transaction's read-only lease `VerifyMutation`: **7/20 atomic-request no-cache calls; maximum 4/10 on one write**. Emulator probes below measure expression padding boundaries, not access-call counters.
+
+| Write path | Command-create Rules calls | Head leaf | Atomic request no-cache total | Max per write |
+|---|---:|---:|---:|---:|
+| `RecordExport` / `RecordPrint` | 4 (`get` operator, `get` lease, `get` head, `getAfter` head) | 2 (`getAfter` + `exists` command) | **6 + 1 lease verify = 7/20** | **4/10** |
+
+`validReportAction` also binds command `before` and `after` to the actual head maps, enforces one-step head progression through `cashCommandEnvelope`, empty targets and expected revisions, exact payloads, valid inclusive Gregorian ranges up to 31 days, UUID-or-null scope, `sourceSeq <= pre-write head.seq`, zero cash effect, authenticated actor and server time. Export settlement/post-close scopes must be all-account; Print's business date must be a range anchor. The payload is audit metadata only.
+
+### Fixed 13-pair old-anchor gate
+
+Rules SHA-256: pinned base `1903a04b588b1743c6f5719b7c4e53e7a23f307ea7ca2ae6b75da3b4d35fcae7`; candidate `e6fd1f2dc41f7e8568e95a12186e98165fcee3a274b5fc16ccd09f9b4dcde526`. All 13 coordinator-fixed pairs had matching base and candidate outcomes: `+lo` accepted and `+hi` rejected. Forty endpoint rows were measured in this run; twelve endpoint rows for the three hash-matched tight anchors were reused from the earlier diagnosis. `selected` counts below are kept distinct from filtered-out cases.
+
+| Anchor / fixed case | `+lo` / `+hi` | Selected executions at `+hi` (filtered) | `+hi` classification |
+|---|---:|---:|---|
+| Command create / `cloudDayClose.spec` P11.9 | +52 / +53 | 1 (197) | Log contains explicit runtime-cap diagnostic |
+| `dataHead` / P11.9 | +95 / +96 | 0 (198) | Compile boundary: “Expression is too complex to evaluate safely”; selected case did not execute |
+| `dayCloseCommand` / P11.9 | +96 / +97 | 0 (198) | Compile boundary; selected case did not execute |
+| Settlement create / P11.9 | +96 / +97 | 0 (198) | Compile boundary; selected case did not execute |
+| `dayWriteCommand` / `cloudCommands.spec` P08.8 | +11 / +12 | 1 (179) | Observed selected failure; no cap diagnostic in its log |
+| Command create / P08.8 | +20 / +21 | 1 (179) | Observed selected failure; no cap diagnostic in its log |
+| Command create / real P10a receipts in `cloudBackup.spec` (`CreateStudent`) | +3 / +4 | 1 (23) | Observed selected failure; no cap diagnostic in its log |
+| Transaction create / `cloudDayClose.spec` P11c2a.14 backfilled order | +16 / +17 | 3 (195) | One selected order failed at +17; two other selected cases passed; no cap diagnostic in its log |
+| Command create / P11c3.8 aligned max close | +36 / +37 | 1 (197) | Log contains explicit runtime-cap diagnostic |
+| Command create / P11c3.10 marked re-close | +20 / +21 | 1 (197) | Observed selected failure; no cap diagnostic in its log |
+| Command create / P11c4.3 max post-close entry | +64 / +65 | 1 (197) | Log contains explicit runtime-cap diagnostic |
+| `dataHead` / P11c4.3 | +95 / +96 | 0 (198) | Compile boundary; selected case did not execute |
+| `postCloseEntries` create / P11c4.3 | +96 / +97 | 0 (198) | Compile boundary; selected case did not execute |
+
+For every row, base had the same `+lo` and `+hi` outcome and selected/filtered counts. The compile-boundary rows are not runtime-cap measurements. “Observed selected failure” records the test result only and does not infer its cause. The full endpoint JSON and logs for this run were under `/tmp/p12b-full-rules-anchors-20261019`; the concise interpretation is also recorded in the P12b evidence checkpoint.
+
+### New report-action expression probes and causal negatives
+
+On the same candidate Rules hash, maximum-payload `RecordExport` command-create accepted +50 and rejected +51; `RecordPrint` accepted +44 and rejected +45. Both kinds' `dataHead` accepted +95; +96 was rejected before selection with the compile-too-complex diagnostic, not a runtime-cap result. These are separate from the 13 old-anchor pairs.
+
+The isolated causal matrix verified valid controls and then removed one guard at a time. Original Rules rejected the malformed source sequence, scope binding, actor, committed time, and before/after head bindings while keeping head and command unchanged; each corresponding mutated Rules candidate accepted that malformed command. This shows the raw denials were not caused solely by expression limits. The standalone probe artifacts were kept under `/tmp/p12b-cap-diagnosis-e12afbf-20261019`; repository Emulator tests independently retain the raw attack and atomic-unchanged assertions.
+
 The first column of mutants ran with `EASYORDER_TEST_RULES_PATH` pointing at a mutated copy of `firestore.rules` and `cloudDayClose.spec.ts -t P11c4`; backup mutants edited `cloudBackup.ts` / `cloudCommandSchema.ts` temporarily (restored after each run) and ran `cloudBackup.spec.ts -t 'post-close entry'`.
