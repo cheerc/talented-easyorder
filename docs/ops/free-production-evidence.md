@@ -512,3 +512,14 @@ Repo-wide search also found references in tests, mocks and archived planning doc
 - **App tsc baseline**：Node `v24.22.0`、TypeScript `6.0.3`。分別以 `git archive e12afbf506801de56715f970a5c29393846a48d5 frontend` 建獨立 pinned-base checkout，與 candidate 共用同一 `frontend/node_modules`，兩側執行 `npx --no-install tsc -p tsconfig.app.json --noEmit` 並以 `sed -E 's/^(.+)\([0-9]+,[0-9]+\): error /\1: error /'` 正規化行列號後逐行比對完整輸出。base 與 candidate 都 exit 2、208 diagnostic headers，multiline normalized output 完全相同；這不是 clean app TSC pass，也沒有新增診斷。
 - **未做／未驗**：沒有 production deployment、正式 Rules/indexes 驗證、quota／latency 實測或本人營運驗收；沒有 UI、沒有 P12c 使用流程。本 checkpoint 不表示 P12 整體完成。
 - **docs-check**：arch=N adr=N area=Y — 更新正式 spec、P12b dispatch、Rules budget、execution evidence、handoff、project status、phase coordination plan 與 phase plan；沒有改 architecture／ADR。驗收包括 `git diff --check` 及 changed Markdown local-link／anchor 檢查。
+
+
+<a id="p12b-pr-523-merge-and-receipt-checkpoint-2026-10-19"></a>
+## P12b PR #523 merge and receipt checkpoint — 2026-10-19
+
+- **Merge identity**：PR [#523](https://github.com/cheerc/talented-easyorder/pull/523) pinned base `e12afbf506801de56715f970a5c29393846a48d5`、runtime source `1d2e3f4da70ec744b4250cf281ab5fd53ee518de`、final source `f63cf1180394d1a4ffe3f0770efc4687a6d4752b`，squash merge `759a37cc9d2c503365b07c4f4662f328efd3aa75`。Runtime source、PR final source 與 merge revision 分別記錄，不以其中一者代替另一者。
+- **獨立 review／source CI**：final source `f63cf1180394d1a4ffe3f0770efc4687a6d4752b` 的獨立 COMMENT review [5566424126](https://github.com/cheerc/talented-easyorder/pull/523#pullrequestreview-5566424126) 結論 PASS、無必修；exact final-head CI [39191296570](https://github.com/cheerc/talented-easyorder/actions/runs/39191296570) 的 build-and-test 與 e2e 均 SUCCESS。
+- **Main CI／receipt gate**：main CI [39194450495](https://github.com/cheerc/talented-easyorder/actions/runs/39194450495) 於 Coordinator 派發本 receipt task 時回報 IN_PROGRESS。Implementer 未自行查詢或輪詢；目前不得記為成功，也不得發布 docs-only receipt PR。由 Coordinator 確認該 main run COMPLETED／SUCCESS 後再解除發布 gate。
+- **P12b scope／實作證據**：只交付 `RecordExport`／`RecordPrint` 發起 audit command、typed adapter、Rules 與 backup/replay 支援，不表示使用者已完成存檔、印表機已完成列印或 P12 UI 已交付。Implementer 本地測試、Rules boundary 與 backup round-trip 的細節見前述 [P12b implementation evidence](#p12b-report-actions-2026-10-19)；本 checkpoint 不重複計數。P12c F2/F5 UI、R01/L07 E2E 仍未完成，P12 整體未完成；沒有 production deployment、正式 indexes／Spark quota／latency 驗證或本人營運驗收。
+- **文件收據準備**：receipt branch `codex/p12b-receipt` 由 squash merge `759a37cc9d2c503365b07c4f4662f328efd3aa75` 建立；收據只修改 Markdown，PR 尚未建立，待 Coordinator 確認 main CI 成功後發布。
+- **docs-check**：arch=N adr=N area=Y — 同步 handoff、project status、evidence、phase plan、coordinator progress plan，並保留 Coordinator 的 [P12b receipt dispatch brief](../superpowers/plans/2026-10-19-p12b-receipt-dispatch.md) 原樣；沒有改產品契約或架構。驗收只做 docs diff、link/path/anchor、內容及 `git diff --check`；依 dispatch 未跑 app tests、runtime 或 CI。
