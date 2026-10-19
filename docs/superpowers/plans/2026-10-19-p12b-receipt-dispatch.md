@@ -1,8 +1,8 @@
 # P12b 收據 dispatch brief
 
-Owner：coordinator。狀態：已派工，先準備；main CI pending 時不得發布。Impl 不寫設計、不改程式／Rules／測試。
+Owner：coordinator。狀態（派工時）：已派工，先準備；main CI pending 時不得發布。Impl 不寫設計、不改程式／Rules／測試。
 
-Pinned base：`759a37cc9d2c503365b07c4f4662f328efd3aa75`（P12b squash merge）；收據 branch `codex/p12b-receipt`。功能 PR [#523](https://github.com/cheerc/talented-easyorder/pull/523) final source `f63cf1180394d1a4ffe3f0770efc4687a6d4752b`、runtime source `1d2e3f4da70ec744b4250cf281ab5fd53ee518de`。獨立 COMMENT [5566424126](https://github.com/cheerc/talented-easyorder/pull/523#pullrequestreview-5566424126) PASS，無必修。final-head CI [39191296570](https://github.com/cheerc/talented-easyorder/actions/runs/39191296570) build-and-test／e2e 均 SUCCESS。已合併；main CI [39194450495](https://github.com/cheerc/talented-easyorder/actions/runs/39194450495) 派工時 IN_PROGRESS，須由 coordinator 確認成功後才能發布，不先記綠燈。
+Pinned base：`759a37cc9d2c503365b07c4f4662f328efd3aa75`（P12b squash merge）；收據 branch `codex/p12b-receipt`。功能 PR [#523](https://github.com/cheerc/talented-easyorder/pull/523) final source `f63cf1180394d1a4ffe3f0770efc4687a6d4752b`、runtime source `1d2e3f4da70ec744b4250cf281ab5fd53ee518de`。獨立 COMMENT [5566424126](https://github.com/cheerc/talented-easyorder/pull/523#pullrequestreview-5566424126) PASS，無必修。final-head CI [39191296570](https://github.com/cheerc/talented-easyorder/actions/runs/39191296570) build-and-test／e2e 均 SUCCESS。已合併；main CI [39194450495](https://github.com/cheerc/talented-easyorder/actions/runs/39194450495) 派工時 IN_PROGRESS；Coordinator 後續確認 merge SHA 對應 run 已 COMPLETED／SUCCESS，發布 gate 已解除。docs-only receipt PR 已建立，待獨立審查與合併。
 
 ## 範圍
 
@@ -20,4 +20,4 @@ Pinned base：`759a37cc9d2c503365b07c4f4662f328efd3aa75`（P12b squash merge）�
 
 ## 交付
 
-同步目前摘要表與詳細 checkpoint，保留有日期的歷史結論。只驗 docs diff／links／anchors／內容，未跑 app tests 不勾；中文 commit/PR，含 docs-check 與來源 links，不含模型名／本機絕對路徑／個資秘密。發 PR 後 attach、讀回 provider head／CI，停寫交獨立 COMMENT review；coordinator 在 exact-head review＋required CI 綠後 merge。P12c 由 coordinator 補實際接口與 pinned base 再派工。
+同步目前摘要表與詳細 checkpoint，保留派工時 main CI IN_PROGRESS 的歷史，並記錄 Coordinator 後續確認 SUCCESS 與 gate release。只驗 docs diff／links／anchors／內容，未跑 app tests 不勾；中文 commit/PR，含 docs-check 與來源 links，不含模型名／本機絕對路徑／個資秘密。發 PR 後 attach、讀回 provider head／CI，停寫交獨立 COMMENT review；coordinator 在 exact-head review＋required CI 綠後 merge。P12c 由 coordinator 補實際接口與 pinned base 再派工。
