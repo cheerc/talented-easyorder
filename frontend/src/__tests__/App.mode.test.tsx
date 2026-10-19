@@ -59,6 +59,12 @@ vi.mock('../components/cloud/CloudDayVendorsPage', () => ({
     </section>
   ),
 }));
+vi.mock('../components/cloud/CloudReportPage', () => ({
+  CloudReportPage: () => <section aria-label="mock cloud report page" />,
+}));
+vi.mock('../components/cloud/CloudAccountHistoryPage', () => ({
+  CloudAccountHistoryPage: () => <section aria-label="mock cloud account history page" />,
+}));
 
 import App from '../App';
 import { act } from '@testing-library/react';
@@ -96,6 +102,14 @@ describe('App mode gate', () => {
     expect(studentsTab).toBeEnabled();
     fireEvent.click(dayVendorsTab);
     expect(dayVendorsTab).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('exposes the formal cloud report and account history sections', () => {
+    appMocks.cloudModeValid = true;
+    render(<App />);
+
+    expect(screen.getByRole('button', { name: '雲端報表' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '雲端查帳' })).toBeVisible();
   });
 
   it('keeps a same-scope authorization latch until the lease epoch or UID changes', () => {

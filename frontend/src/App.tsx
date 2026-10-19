@@ -43,6 +43,9 @@ import { CloudStudentsPage } from './components/cloud/CloudStudentsPage';
 import { CloudDayVendorsPage } from './components/cloud/CloudDayVendorsPage';
 import { CloudDayClosePage } from './components/cloud/CloudDayClosePage';
 import { CloudLedgerAnomaliesPage } from './components/cloud/CloudLedgerAnomaliesPage';
+import { CloudReportPage } from './components/cloud/CloudReportPage';
+import { CloudAccountHistoryPage } from './components/cloud/CloudAccountHistoryPage';
+import type { CloudLedgerDateRange } from './domain/cloudLedgerReport';
 import { useCloudLedger, type CloudLedgerView } from './hooks/useCloudLedger';
 import type { OpeningMismatchAnomaly } from './domain/ledgerAnomalies';
 import type { Firestore } from 'firebase/firestore';
@@ -345,7 +348,7 @@ function AppContent() {
   );
 }
 
-type CloudSection = 'orders' | 'students' | 'day-vendors' | 'day-close' | 'anomalies';
+type CloudSection = 'orders' | 'students' | 'day-vendors' | 'day-close' | 'anomalies' | 'reports' | 'account-history';
 
 const CLOUD_SECTION_LABELS: Record<CloudSection, string> = {
   orders: '雲端櫃台點餐',
@@ -353,6 +356,8 @@ const CLOUD_SECTION_LABELS: Record<CloudSection, string> = {
   'day-vendors': '雲端日期與供應商管理',
   'day-close': '雲端日結',
   anomalies: '帳務異常',
+  reports: '雲端報表',
+  'account-history': '雲端查帳',
 };
 
 function anomalyNavLabel(ledger: CloudLedgerView): string {
@@ -367,6 +372,8 @@ function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEp
   const [dayCloseFocus, setDayCloseFocus] = useState<string | undefined>(undefined);
   const [postCloseEntryFocus, setPostCloseEntryFocus] = useState<OpeningMismatchAnomaly | undefined>(undefined);
   const [ordersFocus, setOrdersFocus] = useState<string | undefined>(undefined);
+  const [accountHistoryStudentId, setAccountHistoryStudentId] = useState<string | null>(null);
+  const [accountHistoryRange, setAccountHistoryRange] = useState<CloudLedgerDateRange | null>(null);
   const [navigationLocked, setNavigationLocked] = useState(false);
   const navigationLockRef = useRef<{ identityKey: string; locked: boolean; revoked: boolean } | null>(null);
   const { ledger, reload: reloadLedger } = useCloudLedger(db, `${identityKey}:${leaseEpoch}`);
@@ -416,6 +423,12 @@ function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEp
         <button type="button" aria-pressed={cloudSection === 'anomalies'} disabled={navigationLocked} onClick={openAnomalies}>
           {anomalyNavLabel(ledger)}
         </button>
+        <button type="button" aria-pressed={cloudSection === 'reports'} disabled={navigationLocked} onClick={() => selectSection('reports')}>
+          雲端報表
+        </button>
+        <button type="button" aria-pressed={cloudSection === 'account-history'} disabled={navigationLocked} onClick={() => selectSection('account-history')}>
+          雲端查帳
+        </button>
       </nav>
       {cloudSection === 'orders' ? (
         <CloudOrdersPage {...common} initialBackfillDayId={ordersFocus} />
@@ -432,6 +445,24 @@ function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEp
           initialDayId={dayCloseFocus}
           initialPostCloseEntry={postCloseEntryFocus}
           onOpenOrders={dayId => selectSection('orders', dayId)}
+        />
+      ) : cloudSection === 'reports' ? (
+        <CloudReportPage
+          key={`${identityKey}:${leaseEpoch}`}
+          {...common}
+          onOpenDayClose={dayId => selectSection('day-close', dayId)}
+          onOpenAccountHistory={(studentId, range) => {
+            setAccountHistoryStudentId(studentId);
+            setAccountHistoryRange(range);
+            selectSection('account-history');
+          }}
+        />
+      ) : cloudSection === 'account-history' ? (
+        <CloudAccountHistoryPage
+          key={`${identityKey}:${leaseEpoch}`}
+          {...common}
+          initialStudentId={accountHistoryStudentId}
+          initialRange={accountHistoryRange}
         />
       ) : (
         <CloudLedgerAnomaliesPage

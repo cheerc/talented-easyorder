@@ -11,6 +11,7 @@ import {
   Timestamp,
   deleteDoc,
   doc,
+  getDocFromServer,
   serverTimestamp,
   setDoc,
   type Firestore,
@@ -18,6 +19,7 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createCloudReadRepository } from '../cloudReadRepository';
 import { createCloudOrderRepository } from '../cloudOrderRepository';
+import { createCloudReportActionRepository } from '../cloudReportActionRepository';
 
 declare const process: { env: Record<string, string | undefined>; cwd: () => string };
 
@@ -550,6 +552,235 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
     expect(accountAudit.rows.map(row => row.commandId)).toEqual(dayAudit.rows.map(row => row.commandId));
     expect(dayAudit.rows[0].before).toHaveProperty('head');
     expect(dayAudit.rows[1].after).toHaveProperty('transaction');
+  });
+
+  it('reads a complete range audit at one head and attributes null-date commands by Taipei record date', async () => {
+    const orders = createCloudOrderRepository(authedDb(), { currentUser: fakeCurrentUser });
+    const payment = await orders.createPayment({
+      commandId: uuidFrom(9_100),
+      transactionId: uuidFrom(9_101),
+      leaseEpoch: 7,
+      studentId: studentA,
+      dayId: today,
+      expectedStudentRevision: 1,
+      expectedDayRevision: 1,
+      paidAmount: 1,
+      note: 'Synthetic range audit',
+    });
+    expect(payment.ok).toBe(true);
+
+    const actions = createCloudReportActionRepository(authedDb(), { currentUser: fakeCurrentUser });
+    for (const commandId of [uuidFrom(9_102), uuidFrom(9_103)]) {
+      expect(await actions.recordExport({
+        commandId,
+        leaseEpoch: 7,
+        range: { kind: 'custom', startDate: today, endDate: today },
+        scope: { studentId: null },
+        sourceSeq: 206,
+        exportType: 'audit',
+      })).toMatchObject({ ok: true });
+    }
+
+    const queryTrace: Array<import('../cloudReadRepository').CloudReadPageEvent> = [];
+    const audit = await createCloudReadRepository(authedDb(), {
+      currentUser: fakeCurrentUser,
+      pageSize: 1,
+      afterPageRead: async event => { queryTrace.push(event); },
+    }).readAuditRange({
+      range: { kind: 'custom', startDate: today, endDate: today },
+      studentId: null,
+      leaseEpoch: 7,
+    });
+
+    expect(audit).toMatchObject({
+      datasetId: 'p12a-report-dataset', sourceSeq: 208, leaseEpoch: 7,
+      range: { startDate: today, endDate: today }, scope: { studentId: null }, complete: true,
+    });
+    expect(audit.rows.map(row => [row.kind, row.seq])).toEqual([
+      ['CreatePayment', 206], ['RecordExport', 207], ['RecordExport', 208],
+    ]);
+    expect(audit.rows.slice(1)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        businessDate: null,
+        attributedDate: today,
+        dateBasis: 'committed-at',
+      }),
+    ]));
+
+    const accountAudit = await createCloudReadRepository(authedDb(), { currentUser: fakeCurrentUser })
+      .readAuditRange({
+        range: { kind: 'custom', startDate: today, endDate: today },
+        studentId: studentA,
+        leaseEpoch: 7,
+      });
+    expect(accountAudit.rows.map(row => row.kind)).toEqual(['CreatePayment']);
+  });
+
+  it('uses Taipei midnight as inclusive start and exclusive end for null-date server queries', async () => {
+    const actions = createCloudReportActionRepository(authedDb(), { currentUser: fakeCurrentUser });
+    const commandIds = [uuidFrom(9_200), uuidFrom(9_201), uuidFrom(9_202), uuidFrom(9_203)];
+    for (const commandId of commandIds) {
+      expect(await actions.recordExport({
+        commandId,
+        leaseEpoch: 7,
+        range: { kind: 'custom', startDate: '2026-10-18', endDate: '2026-10-18' },
+        scope: { studentId: null },
+        sourceSeq: 205,
+        exportType: 'audit',
+      })).toMatchObject({ ok: true });
+    }
+    const timestamps = [
+      '2026-10-17T15:59:59.999Z', // Taipei 2026-10-17 23:59:59.999: before range
+      '2026-10-17T16:00:00.000Z', // Taipei 2026-10-18 00:00:00: included
+      '2026-10-18T15:59:59.999Z', // Taipei 2026-10-18 23:59:59.999: included
+      '2026-10-18T16:00:00.000Z', // Taipei 2026-10-19 00:00:00: exclusive end
+    ];
+    const authDb = authedDb();
+    const rawCommands = await Promise.all(commandIds.map(async commandId => {
+      const snapshot = await getDocFromServer(doc(authDb, `commands/${commandId}`));
+      if (!snapshot.exists()) throw new Error(`missing test command ${commandId}`);
+      return { commandId, raw: snapshot.data() };
+    }));
+    await withAdmin(async db => {
+      for (const [index, item] of rawCommands.entries()) {
+        const committedAt = Timestamp.fromDate(new Date(timestamps[index]));
+        const after = item.raw.after as Record<string, unknown>;
+        const afterHead = after.head as Record<string, unknown>;
+        await setDoc(doc(db, `commands/${item.commandId}`), {
+          ...item.raw,
+          committedAt,
+          after: { ...after, head: { ...afterHead, updatedAt: committedAt } },
+        });
+      }
+    });
+
+    const queryTrace: Array<import('../cloudReadRepository').CloudReadPageEvent> = [];
+    const audit = await createCloudReadRepository(authedDb(), {
+      currentUser: fakeCurrentUser,
+      pageSize: 1,
+      afterPageRead: async event => { queryTrace.push(event); },
+    }).readAuditRange({
+      range: { kind: 'custom', startDate: '2026-10-18', endDate: '2026-10-18' },
+      studentId: null,
+      leaseEpoch: 7,
+    });
+    expect(audit.rows.map(row => row.commandId)).toEqual(commandIds.slice(1, 3));
+    expect(audit.rows.map(row => [row.businessDate, row.attributedDate, row.dateBasis])).toEqual([
+      [null, '2026-10-18', 'committed-at'],
+      [null, '2026-10-18', 'committed-at'],
+    ]);
+    const nullDateQueries = queryTrace.filter(event => event.queryScope === 'null-date-audit-range');
+    expect(nullDateQueries.length).toBeGreaterThan(1);
+    expect(nullDateQueries.every(event => event.committedAtRange?.startInclusive === '2026-10-17T16:00:00.000Z'
+      && event.committedAtRange.end === '2026-10-18T16:00:00.000Z'
+      && event.committedAtRange.endInclusive === false)).toBe(true);
+  });
+
+  it('keeps short null-date queries bounded despite large legal activity outside the requested dates', async () => {
+    const actions = createCloudReportActionRepository(authedDb(), { currentUser: fakeCurrentUser });
+    for (let index = 0; index < 101; index += 1) {
+      expect(await actions.recordExport({
+        commandId: uuidFrom(10_000 + index),
+        leaseEpoch: 7,
+        range: { kind: 'custom', startDate: '2020-01-01', endDate: '2020-01-01' },
+        scope: { studentId: null },
+        sourceSeq: 205,
+        exportType: 'audit',
+      })).toMatchObject({ ok: true });
+    }
+    const queryTrace: Array<import('../cloudReadRepository').CloudReadPageEvent> = [];
+    const audit = await createCloudReadRepository(authedDb(), {
+      currentUser: fakeCurrentUser,
+      pageSize: 1,
+      afterPageRead: async event => { queryTrace.push(event); },
+    }).readAuditRange({
+      range: { kind: 'custom', startDate: '2019-12-31', endDate: '2020-01-01' },
+      studentId: null,
+      leaseEpoch: 7,
+    });
+
+    expect(audit.rows).toEqual([]);
+    const commandPages = queryTrace.filter(event => event.collection === 'commands');
+    expect(commandPages).toHaveLength(5); // one empty page for each day query/proof, plus one bounded null-date query
+    const boundedQueries = commandPages.filter(event => event.queryScope === 'null-date-audit-range');
+    expect(boundedQueries).toHaveLength(1);
+    expect(boundedQueries[0].committedAtRange).toEqual({
+      startInclusive: '2019-12-30T16:00:00.000Z',
+      end: '2020-01-01T16:00:00.000Z',
+      endInclusive: false,
+    });
+    expect(commandPages.filter(event => event.queryScope === undefined)).toHaveLength(4);
+  });
+
+  it('documents that null-date rows missing committedAt are outside the bounded query index', async () => {
+    const commandId = uuidFrom(9_300);
+    const actions = createCloudReportActionRepository(authedDb(), { currentUser: fakeCurrentUser });
+    expect(await actions.recordExport({
+      commandId,
+      leaseEpoch: 7,
+      range: { kind: 'custom', startDate: today, endDate: today },
+      scope: { studentId: null },
+      sourceSeq: 205,
+      exportType: 'audit',
+    })).toMatchObject({ ok: true });
+    const snapshot = await getDocFromServer(doc(authedDb(), `commands/${commandId}`));
+    if (!snapshot.exists()) throw new Error(`missing test command ${commandId}`);
+    const malformed = { ...snapshot.data() };
+    delete malformed.committedAt;
+    await withAdmin(db => setDoc(doc(db, `commands/${commandId}`), malformed));
+
+    const queryTrace: Array<import('../cloudReadRepository').CloudReadPageEvent> = [];
+    const snapshotResult = await createCloudReadRepository(authedDb(), {
+      currentUser: fakeCurrentUser,
+      afterPageRead: async event => { queryTrace.push(event); },
+    }).readAuditRange({
+      range: { kind: 'custom', startDate: today, endDate: today },
+      studentId: null,
+      leaseEpoch: 7,
+    });
+    expect(snapshotResult.rows.some(row => row.commandId === commandId)).toBe(false);
+    expect(queryTrace.filter(event => event.queryScope === 'null-date-audit-range')).toEqual([
+      expect.objectContaining({
+        committedAtRange: {
+          startInclusive: `${shiftDate(today, -1)}T16:00:00.000Z`,
+          end: `${today}T16:00:00.000Z`,
+          endInclusive: false,
+        },
+      }),
+    ]);
+  });
+
+  it('rejects a range audit when the fixed data head changes between account audit pages', async () => {
+    const writer = createCloudOrderRepository(authedDb(), { currentUser: fakeCurrentUser });
+    for (let index = 0; index < 2; index += 1) {
+      expect(await writer.createPayment({
+        commandId: uuidFrom(9_400 + index * 2),
+        transactionId: uuidFrom(9_401 + index * 2),
+        leaseEpoch: 7,
+        studentId: studentA,
+        dayId: today,
+        expectedStudentRevision: index + 1,
+        expectedDayRevision: index + 1,
+        paidAmount: 1,
+        note: `Synthetic moving head ${index + 1}`,
+      })).toMatchObject({ ok: true });
+    }
+    let changed = false;
+    const repo = createCloudReadRepository(authedDb(), {
+      currentUser: fakeCurrentUser,
+      pageSize: 1,
+      afterPageRead: async event => {
+        if (event.collection !== 'commands' || event.page !== 1 || changed) return;
+        changed = true;
+        await withAdmin(db => setDoc(doc(db, 'system/dataHead'), head(208)));
+      },
+    });
+    await expect(repo.readAuditRange({
+      range: { kind: 'custom', startDate: today, endDate: today },
+      studentId: studentA,
+      leaseEpoch: 7,
+    })).rejects.toMatchObject({ code: 'STALE_SNAPSHOT' });
+    expect(changed).toBe(true);
   });
 
   it('fails closed when an in-scope audit document is omitted because its sequence field is missing', async () => {

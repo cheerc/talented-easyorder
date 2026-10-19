@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as cloudLedgerReport from '../cloudLedgerReport';
 import {
   buildCloudLedgerGroups,
   buildCloudMergedTransactions,
@@ -59,6 +60,24 @@ describe('createCloudLedgerDateRange', () => {
       .toThrow();
     expect(() => validateCloudLedgerRange({ kind: 'custom', startDate: '2026-01-01', endDate: '2026-02-01' }))
       .toThrow();
+  });
+
+  it('attributes audit dates to businessDate when present and Taipei committedAt only when null', () => {
+    const attribute = Reflect.get(cloudLedgerReport, 'attributeCloudAuditDate') as
+      (row: cloudLedgerReport.CloudAuditRow) => unknown;
+    const dated = {
+      commandId: 'command-day', kind: 'CreateOrder', seq: 1, leaseEpoch: 7,
+      businessDate: '2026-10-18', studentId: null, actorUid: 'operator', actorEmail: 'operator@example.test',
+      committedAt: '2026-10-19T00:00:00.000Z', reason: null, before: null, after: null,
+    } satisfies cloudLedgerReport.CloudAuditRow;
+    const nullDate = { ...dated, commandId: 'command-null', businessDate: null, committedAt: '2026-10-18T16:00:00.000Z' };
+
+    expect(attribute(dated)).toMatchObject({
+      businessDate: '2026-10-18', attributedDate: '2026-10-18', dateBasis: 'business-date',
+    });
+    expect(attribute(nullDate)).toMatchObject({
+      businessDate: null, attributedDate: '2026-10-19', dateBasis: 'committed-at',
+    });
   });
 });
 

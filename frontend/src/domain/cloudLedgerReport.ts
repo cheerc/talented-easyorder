@@ -193,6 +193,15 @@ export interface CloudAuditRow {
   reason: string | null;
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
+  attributedDate?: string;
+  dateBasis?: CloudAuditDateBasis;
+}
+
+export type CloudAuditDateBasis = 'business-date' | 'committed-at';
+
+export interface CloudAuditRangeRow extends CloudAuditRow {
+  attributedDate: string;
+  dateBasis: CloudAuditDateBasis;
 }
 
 export interface CloudAuditSnapshot {
@@ -204,6 +213,18 @@ export interface CloudAuditSnapshot {
   scope: { dayId: string } | { studentId: string };
   complete: true;
   rows: CloudAuditRow[];
+}
+
+export interface CloudAuditRangeSnapshot {
+  datasetId: string;
+  sourceSeq: number;
+  goLiveDate: string;
+  leaseToday: string;
+  leaseEpoch: number;
+  range: CloudLedgerDateRange;
+  scope: { studentId: string | null };
+  complete: true;
+  rows: CloudAuditRangeRow[];
 }
 
 export interface CloudAccountHistory {
@@ -219,6 +240,27 @@ export interface CloudAccountHistory {
   openingBalance: number;
   currentBalance: number;
   transactions: CloudReportTransaction[];
+}
+
+export function attributeCloudAuditDate(row: CloudAuditRow): CloudAuditRangeRow {
+  if (row.businessDate !== null) {
+    if (!isValidCloudGregorianDate(row.businessDate)) {
+      throw new RangeError('稽核命令營業日不是有效 Gregorian 日期');
+    }
+    return { ...row, attributedDate: row.businessDate, dateBasis: 'business-date' };
+  }
+
+  const committedAt = new Date(row.committedAt);
+  if (!Number.isFinite(committedAt.getTime())) throw new RangeError('稽核命令記錄時間不正確');
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(committedAt);
+  const part = (type: string) => parts.find(item => item.type === type)?.value ?? '';
+  return {
+    ...row,
+    attributedDate: `${part('year')}-${part('month')}-${part('day')}`,
+    dateBasis: 'committed-at',
+  };
 }
 
 export function isValidCloudGregorianDate(value: unknown): value is string {
