@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt } from '../../domain/cloudCommands';
 import {
@@ -188,6 +188,12 @@ function performBrowserAction(action: FrozenAction, performed: Set<string>): voi
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+interface ActivePrintLifecycle {
+  commandId: string;
+  owner: CloudActionOwnerToken;
+  handler: () => void;
+}
+
 export function CloudReportPage({
   db, leaseEpoch, identityKey, onNavigationStateChange, onOpenDayClose, onOpenAccountHistory,
 }: CloudReportPageProps) {
@@ -219,9 +225,20 @@ export function CloudReportPage({
   const requestGeneration = useRef(0);
   const operationRef = useRef(false);
   const performedActions = useRef(new Set<string>());
+  const printLifecycleRef = useRef<ActivePrintLifecycle | null>(null);
+
+  const clearPrintLifecycle = useCallback((commandId?: string, owner?: CloudActionOwnerToken) => {
+    const lifecycle = printLifecycleRef.current;
+    if (!lifecycle || commandId && lifecycle.commandId !== commandId || owner && lifecycle.owner !== owner) return;
+    window.removeEventListener('afterprint', lifecycle.handler);
+    printLifecycleRef.current = null;
+  }, []);
+
+  useEffect(() => () => { clearPrintLifecycle(); }, [clearPrintLifecycle, scopeKey]);
 
   const invalidateOwner = useCallback((owner: CloudActionOwnerToken, error: unknown) => {
     if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
+    clearPrintLifecycle(undefined, owner);
     const pending = actionRecoveryRegistry.get(owner.scopeKey);
     if (pending && !isRecoveryIdentity(pending)) {
       actionRecoveryRegistry.set(owner.scopeKey, recoveryIdentity(pending, owner.identityKey, owner.leaseEpoch));
@@ -249,7 +266,7 @@ export function CloudReportPage({
     setActionMessage('');
     setOperationBusy(false);
     onNavigationStateChange?.(owner.identityKey, 'revoked');
-  }, [actionOwnerRef, onNavigationStateChange]);
+  }, [actionOwnerRef, clearPrintLifecycle, onNavigationStateChange]);
 
   const previousScopeKey = useRef<string | null>(null);
   useLayoutEffect(() => {
@@ -359,7 +376,7 @@ export function CloudReportPage({
   const pageCount = Math.max(1, Math.ceil(allRows.length / 100));
   const visibleRows = allRows.slice(pageNumber * 100, (pageNumber + 1) * 100);
   const visibleAction = action?.scopeKey === scopeKey ? action : null;
-  const controlsLocked = loading || Boolean(visibleAction);
+  const controlsLocked = loading || Boolean(visibleAction) || authorizedPrint?.scopeKey === scopeKey;
 
   const submitRange = useCallback((event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -398,18 +415,41 @@ export function CloudReportPage({
         flushSync(() => setAuthorizedPrint(null));
         return false;
       }
+      clearPrintLifecycle();
+      const handler = () => {
+        const lifecycle = printLifecycleRef.current;
+        if (!lifecycle || lifecycle.commandId !== frozen.id || lifecycle.owner !== owner) return;
+        clearPrintLifecycle(frozen.id, owner);
+        if (isCurrentCloudActionOwner(actionOwnerRef, owner)) {
+          setAuthorizedPrint(current => current?.id === frozen.id && current.scopeKey === owner.scopeKey ? null : current);
+        }
+      };
+      printLifecycleRef.current = { commandId: frozen.id, owner, handler };
+      window.addEventListener('afterprint', handler);
     }
     if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) {
-      if (frozen.kind === 'print') flushSync(() => setAuthorizedPrint(null));
+      if (frozen.kind === 'print') {
+        clearPrintLifecycle(frozen.id, owner);
+        flushSync(() => setAuthorizedPrint(null));
+      }
       return false;
     }
     try {
       performBrowserAction(frozen, performedActions.current);
-    } finally {
-      if (frozen.kind === 'print') flushSync(() => setAuthorizedPrint(null));
+    } catch (error) {
+      if (frozen.kind !== 'print') throw error;
+      clearPrintLifecycle(frozen.id, owner);
+      flushSync(() => setAuthorizedPrint(null));
+      if (isCurrentCloudActionOwner(actionOwnerRef, owner)) {
+        removeRecoveryAction(frozen);
+        setAction(null);
+        setActionMessage('稽核已確認；瀏覽器無法啟動列印。請重新查詢後另行發起列印。');
+        onNavigationStateChange?.(owner.identityKey, 'resolved');
+      }
+      return false;
     }
     return true;
-  }, [actionOwnerRef]);
+  }, [actionOwnerRef, clearPrintLifecycle, onNavigationStateChange]);
 
   const recordAction = useCallback(async (frozen: FrozenAction) => {
     const owner = actionOwnerRef.current;
@@ -521,6 +561,13 @@ export function CloudReportPage({
       if (receipt) {
         if (!actionResultMatches(receipt, intent)) throw new Error('命令編號的收據種類不符。');
         if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
+        if (isRecoveryIdentity(intent)) {
+          removeRecoveryAction(intent);
+          setAction(null);
+          setActionMessage('原稽核已確認；原快照未保留，本次未發起輸出。請重新查詢後另行確認輸出。');
+          onNavigationStateChange?.(owner.identityKey, 'resolved');
+          return;
+        }
         const frozen = rebuildFrozenAction(intent, snapshot);
         if (!frozen) {
           setActionMessage('原命令已有收據；請重新讀取相同來源序號、日期與帳戶範圍後，再查詢原命令。');
@@ -535,6 +582,10 @@ export function CloudReportPage({
         return;
       }
       setActionMessage('伺服器確認尚無收據，使用同一命令編號與固定內容重試…');
+      if (isRecoveryIdentity(intent)) {
+        setActionMessage('尚無收據；原快照未保留，不會重送。請再次查詢原命令收據。');
+        return;
+      }
       const frozen = rebuildFrozenAction(intent, snapshot);
       if (!frozen) {
         setActionMessage('尚無收據；請重新讀取相同來源序號、日期與帳戶範圍後，再以同一命令重試。');
@@ -560,6 +611,7 @@ export function CloudReportPage({
   const printAction = authorizedPrint?.scopeKey === scopeKey ? authorizedPrint : null;
 
   return (
+    <>
     <section className="cloud-report" aria-label="雲端報表">
       <header className="cloud-report__header">
         <div><p className="cloud-report__eyebrow">F2 · 完整伺服器快照</p><h2>雲端報表</h2>
@@ -693,7 +745,9 @@ export function CloudReportPage({
       </div>}
       {actionMessage && <p role="status">{actionMessage}</p>}
 
-      {printAction && <article className="cloud-report__print" aria-label="本次固定列印內容">
+    </section>
+    {printAction && createPortal(
+      <article className="cloud-report__print" aria-label="本次固定列印內容">
         <h1>{printAction.title}</h1>
         <p>營業日標示：{(printAction.input as RecordCloudPrintInput).businessDate} · 範圍：{(printAction.input as RecordCloudPrintInput).range.startDate}–{(printAction.input as RecordCloudPrintInput).range.endDate}
           · 帳戶：{(printAction.input as RecordCloudPrintInput).scope.studentId ?? '全部帳戶'} · 完整資料列數：{printAction.rows.length} · H={printAction.input.sourceSeq}</p>
@@ -707,7 +761,9 @@ export function CloudReportPage({
             </tr>;
           })}</tbody>
         </table>
-      </article>}
-    </section>
+      </article>,
+      document.body,
+    )}
+    </>
   );
 }

@@ -444,7 +444,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
         return { ids, rowCount };
       };
       const outputManifest: Record<string, unknown> = {
-        scenario: 'P12c R01/L07 selected account original and merged UI to CSV to Chromium PDF',
+        scenario: 'P12c R01 actual body portal original and merged print output for all-account and selected-account scopes',
         fixtureAccountCount: 2,
         allAccountRowsExpected,
         selectedScope: { studentId: STUDENT_ID, studentCode: STUDENT_CODE, displayName: CURRENT_NAME },
@@ -455,125 +455,181 @@ test.describe('P12c cloud report and account history acceptance', () => {
       };
       const generatedOutputs: Array<Record<string, unknown>> = [];
 
-      for (const mode of ['original', 'merged'] as const) {
-        await page.getByLabel('交易呈現方式').selectOption(mode);
-        const { ids: uiIds, rowCount: uiRowCount } = await collectUiIds();
-        expect(uiIds).toHaveLength(selectedAccountRowsExpected);
-        expect(new Set(uiIds).size).toBe(selectedAccountRowsExpected);
-        const [download] = await Promise.all([
-          page.waitForEvent('download'),
-          page.getByRole('button', { name: mode === 'original' ? '匯出原始交易 CSV' : '匯出合併交易 CSV' }).click(),
-        ]);
-        const csvPath = testInfo.outputPath(`p12c-${mode}-transactions.csv`);
-        await download.saveAs(csvPath);
-        const csv = await readFile(csvPath, 'utf8');
-        const csvRows = parseCsv(csv);
-        expect(csvRows[0]).toContain('source_seq');
-        const csvIds = exportedTransactionIds(csvRows);
-        expect(csvIds).toHaveLength(selectedAccountRowsExpected);
-        expect(csvIds).toEqual(uiIds);
-        const exportCommand = (await listAdminDocuments('commands')).find(command =>
-          command.kind === 'RecordExport'
-          && (command.payload as Record<string, unknown>)?.exportType === `transactions-${mode}`
-          && (command.payload as Record<string, unknown>)?.sourceSeq === sourceSeq,
-        );
-        if (!exportCommand) throw new Error(`No committed ${mode} RecordExport command was found`);
-        expect(exportCommand.payload).toMatchObject({
-          exportType: `transactions-${mode}`, dateRange: { start: d1, end: d3 },
-          scope: { studentId: STUDENT_ID }, sourceSeq,
-        });
+      let currentScopeId: string | null = STUDENT_ID;
+      const printScopes = [
+        { name: 'all', studentId: null as string | null, expectedRows: allAccountRowsExpected },
+        { name: 'selected', studentId: STUDENT_ID, expectedRows: selectedAccountRowsExpected },
+      ];
+      for (const printScope of printScopes) {
+        if (currentScopeId !== printScope.studentId) {
+          if (printScope.studentId === null) {
+            await page.getByRole('button', { name: '清除帳戶範圍' }).click();
+            await expect(page.getByTestId('report-ready')).toContainText('全部帳戶', { timeout: 30_000 });
+          } else {
+            await page.getByLabel('搜尋帳戶').fill(OLD_ALIAS);
+            await page.getByRole('button', { name: `選取 ${CURRENT_NAME}（${STUDENT_CODE}）` }).click();
+            await expect(page.getByTestId('report-ready')).toContainText(`帳戶 ${STUDENT_ID}`, { timeout: 30_000 });
+          }
+          currentScopeId = printScope.studentId;
+        }
+        for (const mode of ['original', 'merged'] as const) {
+          await page.getByLabel('交易呈現方式').selectOption(mode);
+          const { ids: uiIds, rowCount: uiRowCount } = await collectUiIds();
+          expect(uiIds).toHaveLength(printScope.expectedRows);
+          expect(new Set(uiIds).size).toBe(printScope.expectedRows);
+          const reportBeforeExport = await page.getByTestId('report-ready').innerText();
+          const exportSourceSeq = Number(reportBeforeExport.match(/H=(\d+)/)?.[1]);
+          expect(Number.isSafeInteger(exportSourceSeq)).toBe(true);
+          const [download] = await Promise.all([
+            page.waitForEvent('download'),
+            page.getByRole('button', { name: mode === 'original' ? '匯出原始交易 CSV' : '匯出合併交易 CSV' }).click(),
+          ]);
+          const csvPath = testInfo.outputPath(`p12c-${printScope.name}-${mode}-transactions.csv`);
+          await download.saveAs(csvPath);
+          const csv = await readFile(csvPath, 'utf8');
+          const csvRows = parseCsv(csv);
+          expect(csvRows[0]).toContain('source_seq');
+          const csvIds = exportedTransactionIds(csvRows);
+          expect(csvIds).toHaveLength(printScope.expectedRows);
+          expect(csvIds).toEqual(uiIds);
+          const exportCommand = (await listAdminDocuments('commands')).find(command => {
+            const payload = command.payload as Record<string, unknown>;
+            const scope = payload.scope as Record<string, unknown>;
+            return command.kind === 'RecordExport'
+              && payload.exportType === `transactions-${mode}`
+              && scope.studentId === printScope.studentId;
+          });
+          if (!exportCommand) throw new Error(`No committed ${printScope.name} ${mode} RecordExport command was found`);
+          expect(exportCommand.payload).toMatchObject({
+            exportType: `transactions-${mode}`, dateRange: { start: d1, end: d3 },
+            scope: { studentId: printScope.studentId }, sourceSeq: exportSourceSeq,
+          });
 
-        const printType = mode === 'original' ? 'ledger-original' : 'ledger-merged';
-        await page.evaluate(() => {
-          const target = window as Window & {
-            __p12cPrintCapture?: { count: number; rows: number; text: string; ids: string[] } | null;
-          };
-          document.querySelector('[data-p12c-print-copy="true"]')?.remove();
-          target.__p12cPrintCapture = null;
-          window.print = () => {
-            const content = document.querySelector('[aria-label="本次固定列印內容"]');
-            const ids = Array.from(content?.querySelectorAll('tbody tr') ?? [], row => row.querySelector('td')?.textContent ?? '')
-              .flatMap(value => value.split(' · ').map(id => id.trim()).filter(Boolean));
-            target.__p12cPrintCapture = {
-              count: 1,
-              rows: content?.querySelectorAll('tbody tr').length ?? 0,
-              text: content?.textContent ?? '',
-              ids,
+          const printType = mode === 'original' ? 'ledger-original' : 'ledger-merged';
+          const reportBeforePrint = await page.getByTestId('report-ready').innerText();
+          const printSourceSeq = Number(reportBeforePrint.match(/H=(\d+)/)?.[1]);
+          expect(Number.isSafeInteger(printSourceSeq)).toBe(true);
+          await page.emulateMedia({ media: 'print' });
+          await page.evaluate(() => {
+            const target = window as Window & {
+              __p12cPrintCapture?: {
+                count: number; rows: number; text: string; ids: string[];
+                display: string; visibility: string; parentIsBody: boolean; sourceSeq: number | null;
+              } | null;
             };
-            if (content) {
-              const copy = content.cloneNode(true) as HTMLElement;
-              copy.setAttribute('data-p12c-print-copy', 'true');
-              document.body.append(copy);
-            }
+            target.__p12cPrintCapture = null;
+            window.print = () => {
+              const content = document.querySelector('[aria-label="本次固定列印內容"]') as HTMLElement | null;
+              const ids = Array.from(content?.querySelectorAll('tbody tr') ?? [], row => row.querySelector('td')?.textContent ?? '')
+                .flatMap(value => value.split(' · ').map(id => id.trim()).filter(Boolean));
+              const style = content ? getComputedStyle(content) : null;
+              target.__p12cPrintCapture = {
+                count: 1,
+                rows: content?.querySelectorAll('tbody tr').length ?? 0,
+                text: content?.textContent ?? '',
+                ids,
+                display: style?.display ?? 'missing',
+                visibility: style?.visibility ?? 'missing',
+                parentIsBody: content?.parentElement === document.body,
+                sourceSeq: Number(content?.textContent?.match(/H=(\d+)/)?.[1]) || null,
+              };
+            };
+          });
+          await page.getByRole('button', { name: '記錄後列印目前完整明細' }).click();
+          await expect.poll(async () => page.evaluate(() => (window as Window & {
+            __p12cPrintCapture?: { count: number } | null;
+          }).__p12cPrintCapture?.count ?? 0), { timeout: 15_000 }).toBe(1);
+          const printCapture = await page.evaluate(() => (window as Window & {
+            __p12cPrintCapture?: {
+              count: number; rows: number; text: string; ids: string[];
+              display: string; visibility: string; parentIsBody: boolean; sourceSeq: number | null;
+            } | null;
+          }).__p12cPrintCapture ?? null);
+          expect(printCapture?.count).toBe(1);
+          expect(printCapture?.rows).toBe(uiRowCount);
+          expect(printCapture?.text).toContain(`完整資料列數：${uiRowCount}`);
+          expect(printCapture?.text).toContain(`H=${printSourceSeq}`);
+          expect(printCapture?.sourceSeq).toBe(printSourceSeq);
+          expect(printCapture?.text).toContain(`帳戶：${printScope.studentId ?? '全部帳戶'}`);
+          expect(printCapture?.ids).toEqual(csvIds);
+          expect(printCapture?.display).toBe('block');
+          expect(printCapture?.visibility).toBe('visible');
+          expect(printCapture?.parentIsBody).toBe(true);
+          const productSurface = page.locator('body > article.cloud-report__print[aria-label="本次固定列印內容"]');
+          await expect(productSurface).toBeVisible();
+          await expect(productSurface.locator('tbody tr')).toHaveCount(uiRowCount);
+
+          const pdfPath = testInfo.outputPath(`p12c-${printScope.name}-${mode}-ledger.pdf`);
+          await page.pdf({ path: pdfPath, format: 'A4', printBackground: true });
+          const { stdout: pdfInfo } = await execFileAsync('pdfinfo', [pdfPath], { encoding: 'utf8' });
+          const pageCount = Number(pdfInfo.match(/^Pages:\s+(\d+)/m)?.[1]);
+          expect(pageCount).toBeGreaterThan(1);
+          const { stdout: pdfText } = await execFileAsync('pdftotext', ['-raw', pdfPath, '-'], { encoding: 'utf8' });
+          const textPath = testInfo.outputPath(`p12c-${printScope.name}-${mode}-ledger.txt`);
+          await writeFile(textPath, pdfText, 'utf8');
+          const normalizedPdfText = pdfText
+            .replace(/交易識別\s+營業日\s+帳戶\s+姓名快照\s+類型\s+金額\s+餘額\s+來源序號/g, '')
+            .replace(/\s+/g, '');
+          expect(normalizedPdfText).toContain(`範圍：${d1}–${d3}`);
+          expect(normalizedPdfText).toContain(`帳戶：${printScope.studentId ?? '全部帳戶'}`);
+          expect(normalizedPdfText).toContain(`H=${printSourceSeq}`);
+          if (printScope.studentId === null) {
+            expect(normalizedPdfText).toContain(SECOND_STUDENT_ID);
+            expect(normalizedPdfText).toContain(SECOND_STUDENT_NAME);
+          } else {
+            expect(normalizedPdfText).not.toContain(SECOND_STUDENT_ID);
+            expect(normalizedPdfText).not.toContain(SECOND_STUDENT_NAME);
+          }
+          const pdfPositions = csvIds.map(id => normalizedPdfText.indexOf(id));
+          expect(pdfPositions.every(position => position >= 0)).toBe(true);
+          expect(pdfPositions).toEqual([...pdfPositions].sort((left, right) => left - right));
+
+          const committedPrint = (await listAdminDocuments('commands')).find(command => {
+            const payload = command.payload as Record<string, unknown>;
+            const scope = payload.scope as Record<string, unknown>;
+            return command.kind === 'RecordPrint'
+              && payload.printType === printType
+              && scope.studentId === printScope.studentId;
+          });
+          if (!committedPrint) throw new Error(`No committed ${printScope.name} ${printType} command was found after browser print`);
+          expect(committedPrint.payload).toMatchObject({
+            printType, businessDate: d1, dateRange: { start: d1, end: d3 },
+            scope: { studentId: printScope.studentId }, sourceSeq: printSourceSeq,
+          });
+
+          await page.evaluate(() => { window.dispatchEvent(new Event('afterprint')); });
+          await expect(page.locator('[aria-label="本次固定列印內容"]')).toHaveCount(0);
+          await page.emulateMedia({ media: 'screen' });
+          const jsonPath = testInfo.outputPath(`p12c-${printScope.name}-${mode}-ledger-evidence.json`);
+          const evidence = {
+            mode, scope: { studentId: printScope.studentId }, uiRowCount, sourceTransactionCount: csvIds.length,
+            range: { startDate: d1, endDate: d3 }, sourceSeq: printSourceSeq, exportSourceSeq,
+            actualPortal: { directBodyChild: printCapture?.parentIsBody, display: printCapture?.display, visibility: printCapture?.visibility },
+            csvPath, csvSha256: createHash('sha256').update(csv).digest('hex'),
+            pdfPath, pdfSha256: createHash('sha256').update(await readFile(pdfPath)).digest('hex'),
+            pdfPages: pageCount, pdfInfo, textPath,
+            exportedTransactionIds: csvIds,
+            firstTransactionId: csvIds[0], lastTransactionId: csvIds.at(-1),
+            recordExportCommand: exportCommand, recordPrintCommand: committedPrint,
           };
-        });
-        await page.getByRole('button', { name: '記錄後列印目前完整明細' }).click();
-        await expect(page.getByText('已發起列印。')).toBeVisible({ timeout: 15_000 });
-        const printCapture = await page.evaluate(() => (window as Window & {
-          __p12cPrintCapture?: { count: number; rows: number; text: string; ids: string[] } | null;
-        }).__p12cPrintCapture ?? null);
-        expect(printCapture?.count).toBe(1);
-        expect(printCapture?.rows).toBe(uiRowCount);
-        expect(printCapture?.text).toContain(`完整資料列數：${uiRowCount}`);
-        expect(printCapture?.text).toContain(`H=${sourceSeq}`);
-        expect(printCapture?.text).toContain(`帳戶：${STUDENT_ID}`);
-        expect(printCapture?.ids).toEqual(csvIds);
-
-        const pdfPath = testInfo.outputPath(`p12c-${mode}-ledger.pdf`);
-        await page.emulateMedia({ media: 'print' });
-        await page.pdf({ path: pdfPath, format: 'A4', printBackground: true });
-        await page.emulateMedia({ media: 'screen' });
-        await page.locator('[data-p12c-print-copy="true"]').evaluate(element => element.remove());
-        const { stdout: pdfInfo } = await execFileAsync('pdfinfo', [pdfPath], { encoding: 'utf8' });
-        const pageCount = Number(pdfInfo.match(/^Pages:\s+(\d+)/m)?.[1]);
-        expect(pageCount).toBeGreaterThan(mode === 'original' ? 1 : 0);
-        const { stdout: pdfText } = await execFileAsync('pdftotext', ['-raw', pdfPath, '-'], { encoding: 'utf8' });
-        const textPath = testInfo.outputPath(`p12c-${mode}-ledger.txt`);
-        await writeFile(textPath, pdfText, 'utf8');
-        const normalizedPdfText = pdfText
-          .replace(/交易識別\s+營業日\s+帳戶\s+姓名快照\s+類型\s+金額\s+餘額\s+來源序號/g, '')
-          .replace(/\s+/g, '');
-        expect(normalizedPdfText).toContain(`範圍：${d1}–${d3}`);
-        expect(normalizedPdfText).toContain(`帳戶：${STUDENT_ID}`);
-        expect(normalizedPdfText).toContain(`H=${sourceSeq}`);
-        expect(normalizedPdfText).not.toContain(SECOND_STUDENT_ID);
-        expect(normalizedPdfText).not.toContain(SECOND_STUDENT_NAME);
-        const pdfPositions = csvIds.map(id => normalizedPdfText.indexOf(id));
-        expect(pdfPositions.every(position => position >= 0)).toBe(true);
-        expect(pdfPositions).toEqual([...pdfPositions].sort((left, right) => left - right));
-
-        const committedPrint = (await listAdminDocuments('commands')).find(command =>
-          command.kind === 'RecordPrint'
-          && (command.payload as Record<string, unknown>)?.printType === printType
-          && (command.payload as Record<string, unknown>)?.sourceSeq === sourceSeq,
-        );
-        if (!committedPrint) throw new Error(`No committed ${printType} command was found after browser print`);
-        expect(committedPrint.payload).toMatchObject({
-          printType, businessDate: d1, dateRange: { start: d1, end: d3 },
-          scope: { studentId: STUDENT_ID }, sourceSeq,
-        });
-        const jsonPath = testInfo.outputPath(`p12c-${mode}-ledger-evidence.json`);
-        const evidence = {
-          mode, uiRowCount, sourceTransactionCount: csvIds.length,
-          range: { startDate: d1, endDate: d3 }, scope: { studentId: STUDENT_ID }, sourceSeq,
-          csvPath, csvSha256: createHash('sha256').update(csv).digest('hex'),
-          pdfPath, pdfSha256: createHash('sha256').update(await readFile(pdfPath)).digest('hex'),
-          pdfPages: pageCount, pdfInfo, textPath,
-          exportedTransactionIds: csvIds,
-          firstTransactionId: csvIds[0], lastTransactionId: csvIds.at(-1),
-          recordExportCommand: exportCommand, recordPrintCommand: committedPrint,
-        };
-        await writeFile(jsonPath, `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
-        for (const [name, path, contentType] of [
-          [`${mode}-csv`, csvPath, 'text/csv'],
-          [`${mode}-pdf`, pdfPath, 'application/pdf'],
-          [`${mode}-text`, textPath, 'text/plain'],
-          [`${mode}-evidence`, jsonPath, 'application/json'],
-        ] as const) await testInfo.attach(`p12c-${name}`, { path, contentType });
-        generatedOutputs.push(evidence);
+          await writeFile(jsonPath, `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
+          for (const [name, path, contentType] of [
+            [`${printScope.name}-${mode}-csv`, csvPath, 'text/csv'],
+            [`${printScope.name}-${mode}-pdf`, pdfPath, 'application/pdf'],
+            [`${printScope.name}-${mode}-text`, textPath, 'text/plain'],
+            [`${printScope.name}-${mode}-evidence`, jsonPath, 'application/json'],
+          ] as const) await testInfo.attach(`p12c-${name}`, { path, contentType });
+          generatedOutputs.push(evidence);
+        }
       }
 
-      expect((generatedOutputs[0].exportedTransactionIds as string[])).toEqual(generatedOutputs[1].exportedTransactionIds);
+      for (const scopeId of [null, STUDENT_ID]) {
+        const outputIds = generatedOutputs
+          .filter(output => (output.scope as { studentId: string | null }).studentId === scopeId)
+          .map(output => output.exportedTransactionIds as string[]);
+        expect(outputIds).toHaveLength(2);
+        expect(outputIds[0]).toEqual(outputIds[1]);
+      }
       outputManifest.outputs = generatedOutputs;
       const manifestPath = testInfo.outputPath('p12c-report-output-manifest.json');
       await writeFile(manifestPath, `${JSON.stringify(outputManifest, null, 2)}\n`, 'utf8');
@@ -777,6 +833,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
       expect(printedRows).toHaveLength(2);
       expect(printedRows?.[0]).toContain(`$${100 - earlierOrder.mealPrice}`);
       expect(printedRows?.[1]).toContain('$70');
+      await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
 
       await page.getByRole('button', { name: `開啟查帳：${NANOS_STUDENT_NAME}` }).click();
       await expect(page.getByTestId('account-history-ready')).toBeVisible({ timeout: 30_000 });

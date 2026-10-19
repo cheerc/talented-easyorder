@@ -11,6 +11,11 @@ const mocks = vi.hoisted(() => ({
   readCommand: vi.fn(),
 }));
 
+const invokeCapturedEventListener = (listener: EventListenerOrEventListenerObject, event: Event) => {
+  if (typeof listener === 'function') listener.call(window, event);
+  else listener.handleEvent(event);
+};
+
 vi.mock('../../firebase/cloudReadRepository', () => ({
   createCloudReadRepository: () => ({
     readSummary: mocks.readSummary,
@@ -70,12 +75,13 @@ describe('CloudReportPage', () => {
   afterEach(() => vi.restoreAllMocks());
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mocks.readSummary.mockResolvedValue({ leaseToday: '2026-10-19' });
     mocks.readReport.mockResolvedValue(report);
     mocks.readAuditRange.mockResolvedValue(audit);
     mocks.recordExport.mockImplementation(async input => ({ ok: true, receipt: { commandId: input.commandId, seq: 12, kind: 'RecordExport' } }));
-    mocks.recordPrint.mockResolvedValue({ ok: true, receipt: { commandId: 'print-a', seq: 12, kind: 'RecordPrint' } });
+    mocks.recordPrint.mockImplementation(async input => ({ ok: true, receipt: { commandId: input.commandId, seq: 12, kind: 'RecordPrint' } }));
+    mocks.readCommand.mockResolvedValue(null);
   });
 
   it('keeps exports disabled until the complete report and matching audit snapshot are loaded', async () => {
@@ -128,12 +134,15 @@ describe('CloudReportPage', () => {
     vi.restoreAllMocks();
   });
 
-  it('shows the print surface only after the matching receipt and removes it after print starts', async () => {
+  it('shows the print surface after the matching receipt and removes it after native afterprint', async () => {
     const pending = deferred<{ ok: true; receipt: { commandId: string; kind: string; seq: number } }>();
     mocks.recordPrint.mockReturnValueOnce(pending.promise);
+    let printParent: HTMLElement | null = null;
+    let printText = '';
     const print = vi.spyOn(window, 'print').mockImplementation(() => {
-      expect(screen.getByRole('article', { name: '本次固定列印內容' })).toBeInTheDocument();
-      expect(screen.getByText(/transaction-a/)).toBeInTheDocument();
+      const surface = document.querySelector<HTMLElement>('.cloud-report__print');
+      printParent = surface?.parentElement ?? null;
+      printText = surface?.textContent ?? '';
     });
     render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:print-gate" />);
     await screen.findByTestId('report-ready');
@@ -150,7 +159,12 @@ describe('CloudReportPage', () => {
     });
 
     expect(print).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('article', { name: '本次固定列印內容' })).toBeNull();
+    const surface = document.querySelector<HTMLElement>('.cloud-report__print');
+    expect(printParent).toBe(document.body);
+    expect(printText).toContain('transaction-a');
+    expect(surface).not.toBeNull();
+    act(() => { window.dispatchEvent(new Event('afterprint')); });
+    await waitFor(() => expect(document.querySelector('.cloud-report__print')).toBeNull());
   });
 
   it('retries an unknown export with the same command and frozen input', async () => {
@@ -204,6 +218,143 @@ describe('CloudReportPage', () => {
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
     expect(mocks.readCommand).toHaveBeenCalledWith(input.commandId);
     expect(mocks.recordExport).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirms a minimal H11 receipt without output, then allows an explicit new H12 export', async () => {
+    const identityKey = 'operator-a:4:minimal-export-advanced-head';
+    const browserClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:minimal-export-advanced-head');
+    const navigation = vi.fn();
+    mocks.recordExport.mockResolvedValueOnce({ ok: false, error: { code: 'LEASE_LOST', message: 'lease lost' } });
+    const firstView = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={identityKey}
+      onNavigationStateChange={navigation} />);
+    await screen.findByTestId('report-ready');
+    expect(screen.getByTestId('report-ready')).toHaveTextContent('H=11');
+    fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+    await screen.findByRole('alert');
+    const originalInput = mocks.recordExport.mock.calls[0][0];
+    expect(originalInput.sourceSeq).toBe(11);
+    firstView.unmount();
+
+    mocks.readReport.mockResolvedValue({ ...report, sourceSeq: 12 });
+    mocks.readAuditRange.mockResolvedValue({ ...audit, sourceSeq: 12 });
+    render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={identityKey} onNavigationStateChange={navigation} />);
+    await screen.findByTestId('report-ready');
+    await screen.findByRole('region', { name: '輸出命令確認' });
+
+    mocks.readCommand.mockResolvedValueOnce(null);
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令並以同 ID 復原' }));
+    await screen.findByText('尚無收據；原快照未保留，不會重送。請再次查詢原命令收據。');
+    expect(screen.getByRole('region', { name: '輸出命令確認' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查詢原命令並以同 ID 復原' })).toBeEnabled();
+    expect(mocks.readCommand).toHaveBeenLastCalledWith(originalInput.commandId);
+    expect(mocks.recordExport).toHaveBeenCalledTimes(1);
+
+    mocks.readCommand.mockResolvedValueOnce({ commandId: originalInput.commandId, kind: 'RecordExport', seq: 12 });
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令並以同 ID 復原' }));
+    await screen.findByText('原稽核已確認；原快照未保留，本次未發起輸出。請重新查詢後另行確認輸出。');
+    expect(screen.queryByRole('region', { name: '輸出命令確認' })).toBeNull();
+    expect(screen.getByRole('button', { name: '查詢完整報表' })).toBeEnabled();
+    expect(browserClick).not.toHaveBeenCalled();
+    expect(mocks.recordExport).toHaveBeenCalledTimes(1);
+    expect(mocks.readCommand).toHaveBeenNthCalledWith(1, originalInput.commandId);
+    expect(mocks.readCommand).toHaveBeenNthCalledWith(2, originalInput.commandId);
+    expect(navigation).toHaveBeenLastCalledWith(identityKey, 'resolved');
+
+    const readsBeforeRequery = mocks.readReport.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: '查詢完整報表' }));
+    await waitFor(() => expect(mocks.readReport).toHaveBeenCalledTimes(readsBeforeRequery + 1));
+    await screen.findByTestId('report-ready');
+    expect(screen.getByTestId('report-ready')).toHaveTextContent('H=12');
+    fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+    await waitFor(() => expect(browserClick).toHaveBeenCalledTimes(1));
+    const newInput = mocks.recordExport.mock.calls[1][0];
+    expect(newInput.commandId).not.toBe(originalInput.commandId);
+    expect(newInput.sourceSeq).toBe(12);
+    expect(mocks.recordExport).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps an unconfirmed minimal export identity available after receipt reads fail or find no receipt', async () => {
+    const identityKey = 'operator-a:4:minimal-export-unconfirmed';
+    mocks.recordExport.mockResolvedValueOnce({ ok: false, error: { code: 'LEASE_LOST', message: 'lease lost' } });
+    const firstView = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={identityKey} />);
+    await screen.findByTestId('report-ready');
+    fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('lease lost');
+    const input = mocks.recordExport.mock.calls[0][0];
+    expect(input.commandId).toBeTruthy();
+    firstView.unmount();
+
+    render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={identityKey} />);
+    await screen.findByTestId('report-ready');
+    await screen.findByRole('region', { name: '輸出命令確認' });
+    expect(screen.getByText('有一筆先前輸出命令需要在目前帳戶與版本下重新確認。')).toBeInTheDocument();
+    mocks.readCommand.mockRejectedValueOnce(new Error('temporary receipt read failure'));
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令並以同 ID 復原' }));
+    await screen.findByText('仍無法確認原命令：temporary receipt read failure');
+    expect(screen.getByRole('region', { name: '輸出命令確認' })).toBeInTheDocument();
+    expect(screen.getByText('有一筆先前輸出命令需要在目前帳戶與版本下重新確認。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查詢原命令並以同 ID 復原' })).toBeEnabled();
+
+    mocks.readCommand.mockResolvedValueOnce(null);
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令並以同 ID 復原' }));
+    await waitFor(() => expect(mocks.readCommand).toHaveBeenCalledTimes(2));
+    expect(await mocks.readCommand.mock.results[1].value).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('尚無收據；原快照未保留，不會重送。請再次查詢原命令收據。');
+    expect(screen.getByRole('region', { name: '輸出命令確認' })).toBeInTheDocument();
+    expect(mocks.readCommand).toHaveBeenNthCalledWith(1, input.commandId);
+    expect(mocks.readCommand).toHaveBeenNthCalledWith(2, input.commandId);
+    expect(mocks.recordExport).toHaveBeenCalledTimes(1);
+  });
+
+  it('cleans a confirmed print surface when window.print throws synchronously', async () => {
+    const print = vi.spyOn(window, 'print').mockImplementation(() => { throw new Error('print unavailable'); });
+    render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:print-throws" />);
+    await screen.findByTestId('report-ready');
+    fireEvent.click(screen.getByRole('button', { name: '記錄後列印目前完整明細' }));
+    await screen.findByText('稽核已確認；瀏覽器無法啟動列印。請重新查詢後另行發起列印。');
+
+    expect(print).toHaveBeenCalledTimes(1);
+    expect(mocks.recordPrint).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('.cloud-report__print')).toBeNull();
+    expect(screen.queryByRole('region', { name: '輸出命令確認' })).toBeNull();
+    expect(screen.getByRole('button', { name: '記錄後列印目前完整明細' })).toBeEnabled();
+  });
+
+  it('ignores a late afterprint callback from an old owner when a new owner has an active print', async () => {
+    const nativeAddEventListener = window.addEventListener.bind(window);
+    const capturedAfterPrint: { current: EventListenerOrEventListenerObject | null } = { current: null };
+    vi.spyOn(window, 'addEventListener').mockImplementation((type, listener, options) => {
+      if (type === 'afterprint') capturedAfterPrint.current = listener;
+      nativeAddEventListener(type, listener, options);
+    });
+    mocks.recordPrint.mockImplementation(async input => ({
+      ok: true, receipt: { commandId: input.commandId, kind: 'RecordPrint', seq: 12 },
+    }));
+    const print = vi.spyOn(window, 'print').mockImplementation(() => undefined);
+    const view = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:print-old-owner" />);
+    await screen.findByTestId('report-ready');
+    fireEvent.click(screen.getByRole('button', { name: '記錄後列印目前完整明細' }));
+    await screen.findByText('已發起列印。');
+    expect(document.querySelector('.cloud-report__print')).not.toBeNull();
+    const staleAfterPrint = capturedAfterPrint.current;
+
+    view.rerender(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-b:4:print-new-owner" />);
+    await screen.findByTestId('report-ready');
+    await waitFor(() => expect(document.querySelector('.cloud-report__print')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: '記錄後列印目前完整明細' }));
+    await screen.findByText('已發起列印。');
+    const currentSurface = document.querySelector('.cloud-report__print');
+    expect(currentSurface).not.toBeNull();
+    expect(print).toHaveBeenCalledTimes(2);
+
+    act(() => {
+      if (staleAfterPrint) invokeCapturedEventListener(staleAfterPrint, new Event('afterprint'));
+    });
+    expect(document.querySelector('.cloud-report__print')).toBe(currentSurface);
+    expect(screen.getByTestId('report-ready')).toBeVisible();
+    act(() => { window.dispatchEvent(new Event('afterprint')); });
+    await waitFor(() => expect(document.querySelector('.cloud-report__print')).toBeNull());
   });
 
   it('does not combine report and audit snapshots with different source sequence numbers', async () => {

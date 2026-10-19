@@ -276,4 +276,76 @@ describe('CloudAccountHistoryPage', () => {
     expect(screen.queryByText('recovery private draft')).toBeNull();
     expect(screen.getByLabelText('搜尋目前學生帳戶')).toHaveValue('');
   });
+
+  it('resolves a confirmed minimal recovery without a selected account and allows a fresh account query', async () => {
+    mocks.mutateTransaction.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+    const identityKey = 'operator-a:4:minimal-recovery-no-account';
+    const firstView = render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey={identityKey}
+      initialStudentId={studentId} initialRange={range} />);
+    await screen.findByTestId('account-history-ready');
+    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'pending correction' } });
+    fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
+    await screen.findByRole('region', { name: '歷史更正命令恢復' });
+    const input = mocks.mutateTransaction.mock.calls[0][0];
+    firstView.unmount();
+
+    mocks.readAccountHistory.mockImplementation(async request => ({ ...account, range: request.range, scope: { studentId: request.studentId } }));
+    mocks.readReport.mockImplementation(async request => ({ ...report, range: request.range, scope: { studentId: request.studentId } }));
+    mocks.readAuditRange.mockImplementation(async request => ({ ...audit, range: request.range, scope: { studentId: request.studentId } }));
+    const navigation = vi.fn();
+    render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey={identityKey} onNavigationStateChange={navigation} />);
+    await screen.findByText('請搜尋並選取目前學生名單中的帳戶。');
+    mocks.readCommand.mockResolvedValueOnce({ commandId: input.commandId, kind: 'CorrectTransaction', seq: 12 });
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令收據' }));
+    await screen.findByText('原命令收據已確認；依目前完整資料重新讀取帳戶歷史。');
+
+    const search = screen.getByLabelText('搜尋目前學生帳戶');
+    await waitFor(() => expect(search).toBeEnabled());
+    expect(screen.getByLabelText('查帳日期範圍')).toBeEnabled();
+    expect(screen.getByRole('button', { name: '查詢完整歷史' })).toBeEnabled();
+    expect(navigation).toHaveBeenLastCalledWith(identityKey, 'resolved');
+    expect(mocks.readCommand).toHaveBeenCalledWith(input.commandId);
+    expect(mocks.mutateTransaction).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(search, { target: { value: '001' } });
+    fireEvent.click(await screen.findByRole('button', { name: '林小明（001）' }));
+    await screen.findByTestId('account-history-ready');
+    expect(mocks.readAccountHistory).toHaveBeenCalledWith(expect.objectContaining({ studentId, range, leaseEpoch: 4 }));
+    expect(mocks.mutateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an unconfirmed minimal correction identity available for the same receipt lookup', async () => {
+    mocks.mutateTransaction.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+    const identityKey = 'operator-a:4:minimal-recovery-no-receipt';
+    const firstView = render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey={identityKey}
+      initialStudentId={studentId} initialRange={range} />);
+    await screen.findByTestId('account-history-ready');
+    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'pending correction' } });
+    fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
+    await screen.findByRole('region', { name: '歷史更正命令恢復' });
+    const input = mocks.mutateTransaction.mock.calls[0][0];
+    firstView.unmount();
+
+    render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey={identityKey} />);
+    await screen.findByText('請搜尋並選取目前學生名單中的帳戶。');
+    mocks.readCommand.mockRejectedValueOnce(new Error('temporary receipt read failure'));
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令收據' }));
+    await screen.findByText('仍無法確認原命令：temporary receipt read failure');
+    expect(screen.getByRole('button', { name: '查詢原命令收據' })).toBeEnabled();
+    expect(mocks.readCommand).toHaveBeenLastCalledWith(input.commandId);
+
+    mocks.readCommand.mockResolvedValueOnce(null);
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令收據' }));
+    await screen.findByText('伺服器查無原命令收據；原更正內容未保留，請依目前完整資料重新確認。');
+    expect(screen.getByRole('button', { name: '查詢原命令收據' })).toBeEnabled();
+    expect(mocks.readCommand).toHaveBeenNthCalledWith(2, input.commandId);
+
+    mocks.readCommand.mockResolvedValueOnce({ commandId: input.commandId, kind: 'CorrectTransaction', seq: 12 });
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令收據' }));
+    await screen.findByText('原命令收據已確認；依目前完整資料重新讀取帳戶歷史。');
+    expect(mocks.readCommand).toHaveBeenNthCalledWith(3, input.commandId);
+    expect(mocks.mutateTransaction).toHaveBeenCalledTimes(1);
+  });
 });

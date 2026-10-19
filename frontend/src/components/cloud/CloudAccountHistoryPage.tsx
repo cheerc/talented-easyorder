@@ -384,16 +384,24 @@ export function CloudAccountHistoryPage({
         if (receipt && (receipt.commandId !== recoveryIdentity.commandId || receipt.kind !== recoveryIdentity.kind)) {
           throw new Error('原命令收據種類或編號不符。');
         }
-        recoveryIdentityRegistry.delete(owner.scopeKey);
-        setRecoveryAvailable(false);
         if (receipt) {
+          recoveryIdentityRegistry.delete(owner.scopeKey);
+          setRecoveryAvailable(false);
           setNotice('原命令收據已確認；依目前完整資料重新讀取帳戶歷史。');
           setDraft(null);
-          setLoading(true);
           setSnapshot(null);
-          if (range && selectedId) setRefresh(value => value + 1);
+          if (range && selectedId) {
+            setLoading(true);
+            setRefresh(value => value + 1);
+          } else if (readyScopeKey === scopeKey) {
+            setLoading(false);
+          } else {
+            setLoading(true);
+            setBootstrapAttempt(value => value + 1);
+          }
         } else {
           setNotice('伺服器查無原命令收據；原更正內容未保留，請依目前完整資料重新確認。');
+          setLoading(readyScopeKey !== scopeKey);
         }
         onNavigationStateChange?.(owner.identityKey, 'resolved');
         return;
@@ -424,7 +432,7 @@ export function CloudAccountHistoryPage({
         setOperationBusy(false);
       }
     }
-  }, [actionOwnerRef, onNavigationStateChange, orders, range, recoveryAvailable, revokeSensitiveUI, selectedId, setFrozen, visibleFrozen]);
+  }, [actionOwnerRef, onNavigationStateChange, orders, range, readyScopeKey, recoveryAvailable, revokeSensitiveUI, scopeKey, selectedId, setFrozen, visibleFrozen]);
 
   const submitFrozen = useCallback(async (candidate: FrozenMutation) => {
     const owner = actionOwnerRef.current;
