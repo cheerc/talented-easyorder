@@ -1,6 +1,6 @@
 # Project Status — Talented EasyOrder
 
-> **2026-10-19 P12b implementer 狀態：** P12b 匯出／列印發起稽核已派工，實作與驗收進行中；PR 尚未發布。報表 Rules／backup Emulator proof 27/27、0 skipped；13 組既有 Rules anchor/case pairs 均與 pinned base 結果相同。完整驗收、PR head 與限制待記於[執行證據](ops/free-production-evidence.md)。P12a #521 已合併、P12a docs-only 收據 #522 等待獨立複審；P12c 尚未開始，P12 整體未完成。沒有 production deployment、正式 index 驗證或本人營運驗收。
+> **2026-10-19 P12b implementer 狀態：** P12b 匯出／列印發起稽核的實作與本地驗證已完成，runtime source commit `1d2e3f4`；PR [#523](https://github.com/cheerc/talented-easyorder/pull/523) 已發布、尚未合併，獨立審查與 provider CI 待確認。P12a 資料層 PR #521 已合併；docs-only 收據 [#522](https://github.com/cheerc/talented-easyorder/pull/522) 已合併至 `e12afbf506801de56715f970a5c29393846a48d5`，review [5564691313](https://github.com/cheerc/talented-easyorder/pull/522#pullrequestreview-5564691313) PASS、source CI [39160851654](https://github.com/cheerc/talented-easyorder/actions/runs/39160851654) 成功、main CI [39161053527](https://github.com/cheerc/talented-easyorder/actions/runs/39161053527) 成功。報表 Rules／backup Emulator proof 27/27、0 skipped；13 組既有 Rules anchor/case pairs 均與 pinned base 結果相同。完整驗收與限制見[執行證據](ops/free-production-evidence.md)。P12c 尚未開始，P12 整體未完成。沒有 production deployment、正式 index 驗證或本人營運驗收。
 
 > **2026-10-19 P12a merge checkpoint（P12b 派工前狀態）：** P12a 資料層 PR [#521](https://github.com/cheerc/talented-easyorder/pull/521) 已合併為 `c9988b35912f761bb79c08476ac9636c0fcc49aa`；docs-only 收據 PR [#522](https://github.com/cheerc/talented-easyorder/pull/522) 已發布、等待獨立複審。source head `c161f9196d7836e310c45cdfe3312cefed611842` 的獨立複審 [5564603618](https://github.com/cheerc/talented-easyorder/pull/521#pullrequestreview-5564603618) 為 PASS；原 REWORK [5564521278](https://github.com/cheerc/talented-easyorder/pull/521#pullrequestreview-5564521278) 對應前一 head `a81fc31e7fe8fbbc1f6fc830f18ff8f17e7d377f`。source CI [39158763724](https://github.com/cheerc/talented-easyorder/actions/runs/39158763724) 兩個 jobs 成功。main CI [39159574321](https://github.com/cheerc/talented-easyorder/actions/runs/39159574321) 已由 Coordinator 從 provider 確認 COMPLETED／SUCCESS，main 仍為 merge SHA `c9988b35912f761bb79c08476ac9636c0fcc49aa`；派工時為 pending，本輪依 Coordinator 回報，沒有自行輪詢。P12a 只完成資料層，沒有 F2/F5 UI 或匯出／列印使用流程；P12 整體未完成。P12b 當時已授權、待 coordinator 具體派工；P12c 尚未開始。未部署、未驗正式索引或本人營運驗收。測試與 review 各自證據見[執行證據](ops/free-production-evidence.md#p12a-pr-521-merge-and-receipt-checkpoint-2026-10-19)。
 
@@ -13,14 +13,14 @@
 
 > **已合併基線：** P00 #471、P01 #472、P02 #473、P03 #474、P04 #475、P05 #476、P06 #478、P07 #480、P08 #491、P09a #493、P09b #494、P14 #496（收據 #498）、P10a #497、P10b #501、P11a #503、P11b #505、P11 補開帳 #507、P11c1 #509、P11c2a #511、P11c2b #513、P11c3 #515、P11c4a #517（merge `4c5bb556f0e03c2a25444e193d448de289882194`）、P11c4b #519（merge `855679804a12cd1bce5dce72fe2da20127e2c85d`）、U1 #481、U2c #482、U2a #483、整合 PR #488（含 U3/U4/U2b/P06b）；merge SHA 與驗收限制見[現況與證據](ops/free-production-evidence.md)及各 phase receipts。逐 PR 接手流程見[開發交接入口](DEVELOPMENT-HANDOFF.md)。
 
-> **Last inspected:** 2026-10-19，後端交接、進度、計畫與 P12a receipt evidence 已核對至 #521 merge；沒有完成本人營運驗收。
-> 本輪只發布 Markdown 收據與進度更新；沒有改應用程式、沒有執行 app tests。
+> **Last inspected:** 2026-10-19，後端交接、進度、計畫與 P12b runtime source commit `1d2e3f4`、PR #523 及 P12a #522 receipt evidence 已核對；沒有完成本人營運驗收。
+> P12b runtime source 已包含 app 實作與本地驗證；本次只同步 Markdown 狀態，沒有重跑 app tests。
 
 ## 1. 當前方向
 
 PC 晚餐櫃台前端 prototype：鍵盤為主、滑鼠為輔，保留 operator 約七成滿意的 F1。每天一餐（晚餐）；餐費90找零後記90，多留10元則記100。支援1920×1080 PC及MacBook Pro 13吋，按可用視窗重排，不整頁縮小。
 
-前端本人驗收仍依下方清單；正式後端另依 P00–P18 計畫推進，目前 P00–P08 與 P06b 已合併（P08 雲端訂餐 #491，`889c75c`），P09a 繳費與櫃台收支已合併（#493），P09b 退款已合併（#494），P14 每日增量備份已合併（#496），P10a 交易更正、作廢、取消與撤回已合併（#497），P10b 期初更正已合併（#501），P11a 關帳／重開後端已合併（#503），P11b 日結頁已合併（#505），補開帳已合併（#507），P11c1 帳務異常與警示已合併（#509），P11c2a 解除 400 天上限與回填斷層日後端已合併（#511），P11c2b 回填畫面（#513）、P11c3 關帳對齊（#515）、P11c4a 關帳後補記後端（#517）已合併；P11c4b 已由 PR #519 合併、P11c 已完成；P12 已授權，P12a 資料層 PR #521 已合併，main CI 已成功，docs-only 收據 [PR #522](https://github.com/cheerc/talented-easyorder/pull/522) 等待獨立複審；P12b 已派工、實作與驗收進行中；P12c 尚未開始，P12 整體未完成。iPad、真實人臉裝置整合與 Android 另案。
+前端本人驗收仍依下方清單；正式後端另依 P00–P18 計畫推進，目前 P00–P08 與 P06b 已合併（P08 雲端訂餐 #491，`889c75c`），P09a 繳費與櫃台收支已合併（#493），P09b 退款已合併（#494），P14 每日增量備份已合併（#496），P10a 交易更正、作廢、取消與撤回已合併（#497），P10b 期初更正已合併（#501），P11a 關帳／重開後端已合併（#503），P11b 日結頁已合併（#505），補開帳已合併（#507），P11c1 帳務異常與警示已合併（#509），P11c2a 解除 400 天上限與回填斷層日後端已合併（#511），P11c2b 回填畫面（#513）、P11c3 關帳對齊（#515）、P11c4a 關帳後補記後端（#517）已合併；P11c4b 已由 PR #519 合併、P11c 已完成；P12 已授權，P12a 資料層 PR #521 與 docs-only 收據 PR #522 均已合併；P12b runtime 實作與本地驗證完成，PR [#523](https://github.com/cheerc/talented-easyorder/pull/523) 已發布，等待獨立審查與 provider CI 確認；P12c 尚未開始，P12 整體未完成。iPad、真實人臉裝置整合與 Android 另案。
 
 交接入口：[FRONTEND-PROTOTYPE-HANDOFF](FRONTEND-PROTOTYPE-HANDOFF.md)；後端起手：[BACKEND-HANDOFF](BACKEND-HANDOFF.md)（前端完成盤點、雲端現況、待決策事項、Android 銜接）。現行排程：[ROADMAP](superpowers/plans/ROADMAP.md)／[詳細計畫](superpowers/plans/2026-09-29-frontend-prototype-refocus.md)。原 Google Sheets roadmap 已封存，不再作排程來源。
 

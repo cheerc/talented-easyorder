@@ -15,7 +15,7 @@
 
 ## 實際進度（2026-10-19 P12b）
 
-- P12b 匯出／列印發起稽核已依 dispatch brief 派工，在 pinned base `e12afbf506801de56715f970a5c29393846a48d5`、branch `codex/p12b-report-actions` 實作。`RecordExport`／`RecordPrint` 僅推進 head 並新增 command，不寫業務 projection；PR 尚未發布。
+- P12b 匯出／列印發起稽核已依 dispatch brief 在 pinned base `e12afbf506801de56715f970a5c29393846a48d5`、branch `codex/p12b-report-actions` 完成實作與本地驗證，runtime source commit `1d2e3f4`。`RecordExport`／`RecordPrint` 僅推進 head 並新增 command，不寫業務 projection；PR [#523](https://github.com/cheerc/talented-easyorder/pull/523) 已發布、尚未合併，獨立審查與 provider CI 待確認。P12a 收據 PR [#522](https://github.com/cheerc/talented-easyorder/pull/522) 已合併至同一 pinned base，review [5564691313](https://github.com/cheerc/talented-easyorder/pull/522#pullrequestreview-5564691313) PASS、source CI [39160851654](https://github.com/cheerc/talented-easyorder/actions/runs/39160851654) 與 main CI [39161053527](https://github.com/cheerc/talented-easyorder/actions/runs/39161053527) 均成功。
 - `cloudReportActions.spec.ts`、Rules 13-pair gate、backup、受影響 Emulator 序列、全 Vitest、lint/build/typecheck、app TSC baseline comparison 與 E2E 證據見 [P12b evidence](../../ops/free-production-evidence.md#p12b-report-actions-2026-10-19) 及 [Rules budget](../../ops/p05-rules-budget.md)。P12c 尚未開始，P12 整體未完成。
 
 ## 授權與角色
@@ -45,8 +45,8 @@ CheerC 本輪指示：coordinator 負責推進至 P12 完成，撰寫 plan 與 d
 | P11c4b | 日結補記表單／歷史、異常差額入口、未知結果重試與 Q2 E2E | R0-receipt merge |
 | P11c4b-receipt | 文件收據，P11c 完成且 P12 已授權 | P11c4b merge |
 | P12a | 完整歷史讀取、cloud 餘額／彙總／輸出資料模型與索引；PR #521 已合併，僅資料層 | P11c4b-receipt merge |
-| P12a-receipt | 資料層證據與待接 UI／稽核；main CI 綠燈已確認，docs-only PR #522 等獨立複審 | P12a merge |
-| P12b | `RecordExport`／`RecordPrint` 正式稽核命令、Rules／writer／backup 相容，無業務投影；已派工，實作與驗收進行中 | P12a-receipt merge |
+| P12a-receipt | PR #522 docs-only 收據已合併；review 5564691313 PASS，source CI 39160851654、main CI 39161053527 成功 | P12a merge |
+| P12b | `RecordExport`／`RecordPrint` 正式稽核命令、Rules／writer／backup 相容，無業務投影；runtime source 1d2e3f4 實作與本地驗證完成，PR #523 開啟，獨立審查與 provider CI 待確認 | P12a-receipt merge |
 | P12b-receipt | 命令層證據與待接 UI | P12b merge |
 | P12c | cloud F2／F5、原始／合併輸出與列印、變更稽核／日結版次、R01／L07 E2E | P12b-receipt merge |
 | P12c-receipt | P12 完成收據與總驗收，停止於 P13 前 | P12c merge |
