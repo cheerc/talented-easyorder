@@ -177,11 +177,13 @@ day.totals 固定包含 activeTransactionCount、bentoCount、otherMealCount、m
 
 ### 7.3 每筆交易後餘額與跨日更正
 
-交易排序固定為 `(businessDate ASC, createdAt ASC, transactionId ASC)`；createdAt 使用伺服器 Timestamp 的 seconds／nanoseconds，完全同時才以 transactionId（Firestore 文件 ID）排序，不用 ISO 毫秒、client clock 或本機 locale。Cloud 不存 `afterBalance`；adapter 從期初與該帳戶**完整有效歷史**算到各筆。完整讀取可分頁，但未讀完時顯示「計算中／未載完」，不可對單頁假算或回傳錯的 0。餘額重算只累加 active 列；refund 扣 amount，voided 不影響餘額，cashier 列標為不適用。讀完帳戶前綴後必須與已驗證 student `currentBalance` 一致；缺頁、schema 錯誤、快照版本變更或不一致時不得交付可用報表。P12a 資料層以此規則提供完整快照；正式 UI 尚待 P12c 接用。
+交易排序固定為 `(businessDate ASC, createdAt ASC, transactionId ASC)`；createdAt 使用伺服器 Timestamp 的 seconds／nanoseconds，完全同時才以 transactionId（Firestore 文件 ID）排序，不用 ISO 毫秒、client clock 或本機 locale。Cloud 不存 `afterBalance`；adapter 從期初與該帳戶**完整有效歷史**算到各筆。完整讀取可分頁，但未讀完時顯示「計算中／未載完」，不可對單頁假算或回傳錯的 0。餘額重算只累加 active 列；refund 扣 amount，voided 不影響餘額，cashier 列標為不適用。讀完帳戶前綴後必須與已驗證 student `currentBalance` 一致；缺頁、schema 錯誤、快照版本變更或不一致時不得交付可用報表。P12a 資料層與 P12c F2／F5 候選介面均沿用此完整快照規則。
 
 更正過去日期可改變之後的重算餘額（包括已結帳日的交易後餘額）；不改之後日期的交易或現金日結。結帳保存的是當時 cash totals、sourceSeq 與實點，不保存「永遠不變的所有學員歷史餘額」。F5 標明「依目前更正後資料重算」及其sourceSeq，與「當時結帳版本」分開；後日 openingCash 是本人輸入，不因更正自動連鎖修改。
 
-P12c 歷史學生交易更正入口只在營業日為 `open` 且 `lastSettlementRevision == 0` 時提供；已關帳或曾關帳後 `reopened` 的學生交易在此 UI 入口唯讀。這是查帳 UI 的操作政策，不是本規格新增或收緊 Rules：後端既有 `reopened` 日期寫入權限維持原契約。L07 驗收使用一個未曾關帳的歷史日更正，確認後日已關帳交易餘額依完整前綴更新，而該日既有 settlement 文件與現金快照不變；不以「重開後可改學生交易」作為 UI 驗收。
+P12c 歷史學生交易更正入口只對早於 leaseToday、狀態為 `open` 且 `lastSettlementRevision == 0` 的日期提供；今日交易仍走當日流程，F5 今日列唯讀；已關帳或曾關帳後 `reopened` 的學生交易也在此 UI 入口唯讀。這是查帳 UI 的操作政策，不是本規格新增或收緊 Rules：後端既有 `reopened` 日期寫入權限維持原契約。L07 驗收使用一個未曾關帳的歷史日更正，確認後日已關帳交易餘額依完整前綴更新，而該日既有 settlement 文件與現金快照不變；不以「重開後可改學生交易」作為 UI 驗收。
+
+F2／F5 的區間稽核對 `businessDate` 非 null 的命令按營業日歸屬；對 `businessDate == null` 的命令按 `committedAt` 換算 Asia/Taipei 記錄日歸屬。全帳戶 null-date 查詢必須由日期範圍轉成有界 `committedAt` 查詢並按 Timestamp 與 document ID 分頁；不得掃描整個 null-date partition。沒有 `committedAt` 的 null-date 文件不能由此有界索引查出，因此本保證只涵蓋查詢實際返回的 raw rows、固定 snapshot context 及相符範圍，不宣稱偵測全庫所有壞文件。
 
 ### 7.4 日期生命週期
 
@@ -205,7 +207,7 @@ quota exceeded／permission denied／schema mismatch／maintenance 均阻止操�
 - 只監聽 lease、目前日期 day、必要學生 heads 與當日交易；不監聽全歷史／全 commands。歷史 query cursor 分頁，預設每頁100。
 - F2 週從台北週一開始，月為曆月；加總最多31個 day heads。原始明細與 CSV 分頁完整讀取，不能只匯出第一頁。
 - F5 account history 按 studentId＋businessDate＋createdAt＋transactionId 分頁；計算 afterBalance 需讀取期初起至所需日期的前綴。快取繫於 student.revision，變動即失效。
-- indexes 明列：transactions `(businessDate,createdAt,transactionId)`、`(studentId,businessDate,createdAt,transactionId)`；commands `(businessDate,seq)`、`(studentId,seq)` 供稽核，seq 單欄供備份。command 的 before/after、大字串與不查詢快照停用索引，避免索引膨脹；studentId/businessDate 作可為 null 的頂層查詢欄。
+- indexes 明列：transactions `(businessDate,createdAt,transactionId)`、`(studentId,businessDate,createdAt,transactionId)`；commands `(businessDate,seq)`、`(studentId,seq)` 供稽核，`(businessDate,committedAt,__name__)` 限定全帳戶 null-date 記錄日查詢，seq 單欄供備份。command 的 before/after、大字串與不查詢快照停用索引，避免索引膨脹；studentId/businessDate 作可為 null 的頂層查詢欄。
 - 讀取多頁時以 dataHead.seq 前後相同驗證一致；變動則標示資料已更新並重新載入，備份改用 immutable prefix，不依活頁快照。長頁不持有 Firestore transaction。
 
 ## 9. 備份、復原與初次上線資料

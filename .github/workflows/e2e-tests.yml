@@ -67,7 +67,7 @@ jobs:
         run: npm install --global firebase-tools
 
       - name: E2E Tests
-        run: npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test && npx playwright test --config playwright.prototype.config.ts"
+        run: npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test && npx playwright test --config playwright.p12c.config.ts && npx playwright test --config playwright.prototype.config.ts"
         working-directory: frontend
 
       - name: Upload Playwright Report (on failure)

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CLOUD_AUDIT_CSV_COLUMNS,
   CLOUD_SETTLEMENT_CSV_COLUMNS,
   CLOUD_TRANSACTION_CSV_COLUMNS,
   buildCloudAuditCsvRows,
@@ -119,5 +120,21 @@ describe('serializeCloudCsv', () => {
     expect(auditRows[0][11]).toEqual(text('{"value":2}'));
     expect(auditRows[0][2]).toEqual(number(9));
     expect(auditRows[0][12]).toEqual(number(20));
+  });
+
+  it('appends audit date attribution while preserving a null command business date', () => {
+    const row = {
+      commandId: 'command-null', kind: 'RecordExport', seq: 8, leaseEpoch: 7, businessDate: null,
+      studentId: null, actorUid: 'operator', actorEmail: 'operator@example.test',
+      committedAt: '2026-10-18T16:00:00.000Z', reason: null, before: null, after: null,
+      attributedDate: '2026-10-19', dateBasis: 'committed-at' as const,
+    };
+    const csv = buildCloudAuditCsvRows([row], 20)[0];
+
+    expect(CLOUD_AUDIT_CSV_COLUMNS.slice(-3)).toEqual(['source_seq', 'attributed_date', 'date_basis']);
+    expect(csv[CLOUD_AUDIT_CSV_COLUMNS.indexOf('business_date')]).toEqual(text(''));
+    expect(csv[CLOUD_AUDIT_CSV_COLUMNS.indexOf('source_seq')]).toEqual(number(20));
+    expect(csv[CLOUD_AUDIT_CSV_COLUMNS.indexOf('attributed_date')]).toEqual(text('2026-10-19'));
+    expect(csv[CLOUD_AUDIT_CSV_COLUMNS.indexOf('date_basis')]).toEqual(text('committed-at'));
   });
 });

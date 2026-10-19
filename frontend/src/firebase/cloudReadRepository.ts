@@ -26,12 +26,15 @@ import {
 } from '../domain/cloudCommandSchema';
 import {
   CLOUD_REPORT_MAX_DAYS,
+  attributeCloudAuditDate,
   buildCloudMergedTransactions,
   isValidCloudGregorianDate,
   summarizeCloudReportDays,
   validateCloudLedgerRange,
   type CloudAccountHistory,
   type CloudAuditRow,
+  type CloudAuditRangeRow,
+  type CloudAuditRangeSnapshot,
   type CloudAuditSnapshot,
   type CloudLedgerDateRange,
   type CloudLedgerReport,
@@ -56,6 +59,8 @@ const MAX_DAY_TRANSACTIONS = 2_000;
 const MAX_ACCOUNT_TRANSACTIONS = 100_000;
 const MAX_ACCOUNT_ROWS_PER_REPORT = 250_000;
 const MAX_AUDIT_COMMANDS = 100_000;
+const MIN_FIRESTORE_TIMESTAMP = new Timestamp(-62_135_596_800, 0);
+const MAX_FIRESTORE_TIMESTAMP = new Timestamp(253_402_300_799, 999_999_999);
 const MAX_POST_CLOSE_ENTRIES_PER_DAY = 20_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -77,6 +82,8 @@ export class CloudReadRepositoryError extends Error {
 export interface CloudReadPageEvent {
   collection: 'transactions' | 'commands' | 'postCloseEntries';
   page: number;
+  queryScope?: 'null-date-audit-range';
+  committedAtRange?: { startInclusive: string; end: string; endInclusive: boolean };
 }
 
 export interface CloudReadRepositoryOptions {
@@ -329,6 +336,7 @@ async function readPaged(
   maxDocuments: number,
   collectionName: CloudReadPageEvent['collection'],
   afterPageRead?: CloudReadRepositoryOptions['afterPageRead'],
+  pageTrace?: Pick<CloudReadPageEvent, 'queryScope' | 'committedAtRange'>,
 ): Promise<PagedResult> {
   const documents: QueryDocumentSnapshot[] = [];
   let cursor: DocumentSnapshot | null = null;
@@ -345,7 +353,7 @@ async function readPaged(
     if (documents.length > maxDocuments) {
       throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `雲端 ${collectionName} 超過完整讀取上限 ${maxDocuments}`);
     }
-    await afterPageRead?.({ collection: collectionName, page: pageNumber });
+    await afterPageRead?.({ collection: collectionName, page: pageNumber, ...pageTrace });
     await assertContextUnchanged(db, user, context);
     if (page.size < pageLimit) return { documents, count: documents.length };
     cursor = page.docs.at(-1) ?? null;
@@ -370,6 +378,64 @@ function sameDocumentSet(left: readonly QueryDocumentSnapshot[], right: readonly
   if (left.length !== right.length) return false;
   const ids = new Set(left.map(item => item.id));
   return ids.size === left.length && right.every(item => ids.has(item.id));
+}
+
+function taipeiAuditTimestampRange(range: CloudLedgerDateRange): {
+  start: Timestamp;
+  end: Timestamp;
+  inclusiveEnd: boolean;
+} {
+  const taipeiOffsetMs = 8 * 60 * 60 * 1000;
+  const startMs = Date.parse(`${range.startDate}T00:00:00.000Z`) - taipeiOffsetMs;
+  const endMs = Date.parse(`${range.endDate}T00:00:00.000Z`) + 86_400_000 - taipeiOffsetMs;
+  const minMs = MIN_FIRESTORE_TIMESTAMP.toMillis();
+  const maxMs = MAX_FIRESTORE_TIMESTAMP.toMillis();
+  const start = startMs < minMs ? MIN_FIRESTORE_TIMESTAMP : Timestamp.fromMillis(startMs);
+  if (endMs > maxMs) return { start, end: MAX_FIRESTORE_TIMESTAMP, inclusiveEnd: true };
+  return { start, end: Timestamp.fromMillis(endMs), inclusiveEnd: false };
+}
+
+function decodeAuditCommand(snapshot: QueryDocumentSnapshot, headSeq: number): CloudAuditRow {
+  let command: StoredEnabledCommandDoc;
+  try {
+    command = decodeEnabledCommandDoc(snapshot.data());
+  } catch (error) {
+    throw readFailure(error);
+  }
+  if (command.commandId !== snapshot.id || command.seq > headSeq) {
+    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `稽核 command ${snapshot.id} 與固定資料版本不一致`);
+  }
+  return {
+    commandId: command.commandId,
+    kind: command.kind,
+    seq: command.seq,
+    leaseEpoch: command.leaseEpoch,
+    businessDate: command.businessDate,
+    studentId: command.studentId,
+    actorUid: command.actor.uid,
+    actorEmail: command.actor.email,
+    committedAt: command.committedAt.toDate().toISOString(),
+    reason: command.reason,
+    before: command.before,
+    after: command.after,
+  };
+}
+
+function assertUniqueAuditRows(rows: readonly CloudAuditRow[]): void {
+  const ids = new Set<string>();
+  const seqs = new Map<number, string>();
+  for (const row of rows) {
+    const seqOwner = seqs.get(row.seq);
+    if (ids.has(row.commandId) || (seqOwner !== undefined && seqOwner !== row.commandId)) {
+      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '稽核範圍有重複 command ID 或資料序號');
+    }
+    ids.add(row.commandId);
+    seqs.set(row.seq, row.commandId);
+  }
+}
+
+function compareAuditSeq(left: CloudAuditRangeRow, right: CloudAuditRangeRow): number {
+  return left.seq - right.seq || compareAscii(left.commandId, right.commandId);
 }
 
 async function readDayTransactions(
@@ -851,6 +917,146 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
     }
   }
 
+  async function readAuditRange(input: CloudReportInput): Promise<CloudAuditRangeSnapshot> {
+    try {
+      validateEpoch(input.leaseEpoch);
+      if (input.studentId !== null) validateStudentId(input.studentId);
+      const user = requireGoogleUser(options);
+      const context = await readContext(db, user);
+      validateSnapshotScope(context, input.leaseEpoch);
+      const range = validateRange(input.range);
+      const auditRows: CloudAuditRow[] = [];
+
+      if (input.studentId === null) {
+        const dates = rangeDates(range);
+        for (const dayId of dates) {
+          const queryBase = (cursor: DocumentSnapshot | null, pageLimit: number) => query(
+            collection(db, 'commands'),
+            where('businessDate', '==', dayId),
+            orderBy('seq'),
+            orderBy(documentId()),
+            ...(cursor ? [startAfter(cursor)] : []),
+            limit(pageLimit),
+          );
+          const documentIdProofBase = (cursor: DocumentSnapshot | null, pageLimit: number) => query(
+            collection(db, 'commands'),
+            where('businessDate', '==', dayId),
+            orderBy(documentId()),
+            ...(cursor ? [startAfter(cursor)] : []),
+            limit(pageLimit),
+          );
+          const [paged, documentIdProof] = await Promise.all([
+            readPaged(db, queryBase, context, user, pageSize, MAX_AUDIT_COMMANDS, 'commands', options.afterPageRead),
+            readPaged(db, documentIdProofBase, context, user, pageSize, MAX_AUDIT_COMMANDS, 'commands', options.afterPageRead),
+          ]);
+          if (!sameDocumentSet(paged.documents, documentIdProof.documents)) {
+            throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `營業日 ${dayId} 有缺少 seq 等必要排序欄位的稽核命令`);
+          }
+          const dayRows = paged.documents.map(snapshot => {
+            const row = decodeAuditCommand(snapshot, context.head.sourceSeq);
+            if (row.businessDate !== dayId) {
+              throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `稽核 command ${snapshot.id} 與查詢營業日不一致`);
+            }
+            return row;
+          });
+          assertUniqueAuditRows(dayRows);
+          auditRows.push(...dayRows);
+          if (auditRows.length > MAX_AUDIT_COMMANDS) {
+            throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `稽核區間超過完整讀取上限 ${MAX_AUDIT_COMMANDS}`);
+          }
+        }
+
+        const timestamps = taipeiAuditTimestampRange(range);
+        const nullDateQuery = (cursor: DocumentSnapshot | null, pageLimit: number) => query(
+          collection(db, 'commands'),
+          where('businessDate', '==', null),
+          where('committedAt', '>=', timestamps.start),
+          ...(timestamps.inclusiveEnd
+            ? [where('committedAt', '<=', timestamps.end)]
+            : [where('committedAt', '<', timestamps.end)]),
+          orderBy('committedAt'),
+          orderBy(documentId()),
+          ...(cursor ? [startAfter(cursor)] : []),
+          limit(pageLimit),
+        );
+        const committedAtRange = {
+          startInclusive: timestamps.start.toDate().toISOString(),
+          end: timestamps.end.toDate().toISOString(),
+          endInclusive: timestamps.inclusiveEnd,
+        };
+        const paged = await readPaged(
+          db, nullDateQuery, context, user, pageSize, MAX_AUDIT_COMMANDS, 'commands', options.afterPageRead,
+          { queryScope: 'null-date-audit-range', committedAtRange },
+        );
+        const rangeRows = paged.documents.map(snapshot => {
+          const row = decodeAuditCommand(snapshot, context.head.sourceSeq);
+          if (row.businessDate !== null) {
+            throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `稽核 command ${snapshot.id} 的日期 scope 不一致`);
+          }
+          const attributed = attributeCloudAuditDate(row);
+          if (attributed.attributedDate < range.startDate || attributed.attributedDate > range.endDate) {
+            throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `稽核 command ${snapshot.id} 超出伺服器日期查詢界線`);
+          }
+          return row;
+        });
+        auditRows.push(...rangeRows);
+      } else {
+        const queryBase = (cursor: DocumentSnapshot | null, pageLimit: number) => query(
+          collection(db, 'commands'),
+          where('studentId', '==', input.studentId),
+          orderBy('seq'),
+          orderBy(documentId()),
+          ...(cursor ? [startAfter(cursor)] : []),
+          limit(pageLimit),
+        );
+        const documentIdProofBase = (cursor: DocumentSnapshot | null, pageLimit: number) => query(
+          collection(db, 'commands'),
+          where('studentId', '==', input.studentId),
+          orderBy(documentId()),
+          ...(cursor ? [startAfter(cursor)] : []),
+          limit(pageLimit),
+        );
+        const [paged, documentIdProof] = await Promise.all([
+          readPaged(db, queryBase, context, user, pageSize, MAX_AUDIT_COMMANDS, 'commands', options.afterPageRead),
+          readPaged(db, documentIdProofBase, context, user, pageSize, MAX_AUDIT_COMMANDS, 'commands', options.afterPageRead),
+        ]);
+        if (!sameDocumentSet(paged.documents, documentIdProof.documents)) {
+          throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', '帳戶稽核命令缺少 seq 等必要排序欄位');
+        }
+        for (const snapshot of paged.documents) {
+          const row = decodeAuditCommand(snapshot, context.head.sourceSeq);
+          if (row.studentId !== input.studentId) {
+            throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `稽核 command ${snapshot.id} 與查詢帳戶不一致`);
+          }
+          auditRows.push(row);
+        }
+      }
+
+      assertUniqueAuditRows(auditRows);
+      const rows = auditRows
+        .map(attributeCloudAuditDate)
+        .filter(row => row.attributedDate >= range.startDate && row.attributedDate <= range.endDate)
+        .sort(compareAuditSeq);
+      if (rows.length > MAX_AUDIT_COMMANDS) {
+        throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `稽核區間超過完整讀取上限 ${MAX_AUDIT_COMMANDS}`);
+      }
+      await assertContextUnchanged(db, user, context);
+      return {
+        datasetId: context.head.datasetId,
+        sourceSeq: context.head.sourceSeq,
+        goLiveDate: context.head.goLiveDate,
+        leaseToday: context.leaseToday,
+        leaseEpoch: context.leaseEpoch,
+        range,
+        scope: { studentId: input.studentId },
+        complete: true,
+        rows,
+      };
+    } catch (error) {
+      throw readFailure(error);
+    }
+  }
+
   async function readAudit(input: CloudAuditInput): Promise<CloudAuditSnapshot> {
     try {
       validateEpoch(input.leaseEpoch);
@@ -948,5 +1154,5 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
     }
   }
 
-  return { readSummary, readReport, readAccountHistory, readAudit };
+  return { readSummary, readReport, readAccountHistory, readAudit, readAuditRange };
 }

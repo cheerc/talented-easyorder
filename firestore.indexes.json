@@ -29,6 +29,15 @@
       ]
     },
     {
+      "collectionGroup": "commands",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "businessDate", "order": "ASCENDING" },
+        { "fieldPath": "committedAt", "order": "ASCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "postCloseEntries",
       "queryScope": "COLLECTION",
       "fields": [

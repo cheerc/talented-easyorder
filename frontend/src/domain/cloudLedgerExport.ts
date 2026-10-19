@@ -32,7 +32,7 @@ export const CLOUD_POST_CLOSE_CSV_COLUMNS = [
 
 export const CLOUD_AUDIT_CSV_COLUMNS = [
   'command_id', 'kind', 'seq', 'lease_epoch', 'business_date', 'student_id', 'actor_uid',
-  'actor_email', 'committed_at', 'reason', 'before', 'after', 'source_seq',
+  'actor_email', 'committed_at', 'reason', 'before', 'after', 'source_seq', 'attributed_date', 'date_basis',
 ] as const;
 
 const text = (value: string): CloudCsvCell => ({ type: 'text', value });
@@ -148,6 +148,7 @@ export function buildCloudAuditCsvRows(rows: readonly CloudAuditRow[], sourceSeq
     text(row.businessDate ?? ''), text(row.studentId ?? ''), text(row.actorUid), text(row.actorEmail),
     text(row.committedAt), text(row.reason ?? ''), text(row.before === null ? '' : JSON.stringify(row.before)),
     text(row.after === null ? '' : JSON.stringify(row.after)), numeric(sourceSeq),
+    text(row.attributedDate ?? ''), text(row.dateBasis ?? ''),
   ]);
 }
 
