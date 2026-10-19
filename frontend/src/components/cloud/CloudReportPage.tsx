@@ -71,20 +71,34 @@ interface RecoveryIdentity {
 }
 
 type RecoverableAction = FrozenAction | RecoveryIdentity;
-const actionRecoveryRegistry = new Map<string, RecoverableAction>();
+const actionRecoveryRegistry = new Map<string, RecoveryIdentity>();
 
 function isRecoveryIdentity(action: RecoverableAction): action is RecoveryIdentity {
   return 'identityKey' in action;
 }
 
-function recoveryIdentity(action: FrozenAction, identityKey: string, leaseEpoch: number): RecoveryIdentity {
+function recoveryIdentity(
+  action: Pick<FrozenAction, 'id' | 'kind' | 'scopeKey' | 'input'>,
+  owner: Pick<CloudActionOwnerToken, 'identityKey' | 'leaseEpoch'>,
+): RecoveryIdentity {
   return {
-    id: action.id, kind: action.kind, scopeKey: action.scopeKey, identityKey, leaseEpoch,
+    id: action.id, kind: action.kind, scopeKey: action.scopeKey,
+    identityKey: owner.identityKey, leaseEpoch: owner.leaseEpoch,
     input: action.input, phase: 'unknown',
   };
 }
 
-function removeRecoveryAction(action: RecoverableAction): void {
+function storeRecoveryIdentity(
+  action: Pick<FrozenAction, 'id' | 'kind' | 'scopeKey' | 'input'>,
+  owner: Pick<CloudActionOwnerToken, 'identityKey' | 'leaseEpoch'>,
+): void {
+  const identity = recoveryIdentity(action, owner);
+  const current = actionRecoveryRegistry.get(identity.scopeKey);
+  if (current && current.id !== identity.id) return;
+  actionRecoveryRegistry.set(identity.scopeKey, identity);
+}
+
+function removeRecoveryAction(action: Pick<RecoverableAction, 'id' | 'scopeKey'>): void {
   if (actionRecoveryRegistry.get(action.scopeKey)?.id === action.id) actionRecoveryRegistry.delete(action.scopeKey);
 }
 
@@ -239,10 +253,6 @@ export function CloudReportPage({
   const invalidateOwner = useCallback((owner: CloudActionOwnerToken, error: unknown) => {
     if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
     clearPrintLifecycle(undefined, owner);
-    const pending = actionRecoveryRegistry.get(owner.scopeKey);
-    if (pending && !isRecoveryIdentity(pending)) {
-      actionRecoveryRegistry.set(owner.scopeKey, recoveryIdentity(pending, owner.identityKey, owner.leaseEpoch));
-    }
     owner.revoked = true;
     requestGeneration.current += 1;
     operationRef.current = false;
@@ -457,7 +467,7 @@ export function CloudReportPage({
     operationRef.current = true;
     setOperationBusy(true);
     setAction(frozen);
-    actionRecoveryRegistry.set(frozen.scopeKey, frozen);
+    storeRecoveryIdentity(frozen, owner);
     setActionMessage('正在確認雲端稽核收據…');
     onNavigationStateChange?.(owner.identityKey, 'recovering');
     try {
@@ -478,7 +488,7 @@ export function CloudReportPage({
           return;
         }
         const unknown = { ...frozen, phase: 'unknown' as const };
-        actionRecoveryRegistry.set(unknown.scopeKey, unknown);
+        storeRecoveryIdentity(unknown, owner);
         setAction(unknown);
         setActionMessage('結果尚未確認。保留原命令、範圍與內容；請查詢或用同一命令重試。');
         return;
@@ -495,7 +505,7 @@ export function CloudReportPage({
       if (['LEASE_LOST', 'UNAUTHORIZED'].includes(errorCode(error) ?? '')) invalidateOwner(owner, error);
       else {
         const unknown = { ...frozen, phase: 'unknown' as const };
-        actionRecoveryRegistry.set(unknown.scopeKey, unknown);
+        storeRecoveryIdentity(unknown, owner);
         setAction(unknown);
         setActionMessage(`結果尚未確認：${messageOf(error)}。請查詢或用同一命令重試。`);
       }

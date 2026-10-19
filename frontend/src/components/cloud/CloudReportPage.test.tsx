@@ -189,35 +189,206 @@ describe('CloudReportPage', () => {
     expect(screen.getByRole('status')).toHaveTextContent('已發起匯出');
   });
 
-  it('requires explicit matching-owner recovery after an unmounted action', async () => {
-    const pending = deferred<{ ok: true; receipt: { commandId: string; kind: string; seq: number } }>();
-    mocks.recordExport.mockReturnValueOnce(pending.promise);
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
-    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:remount-recovery');
-    const identityKey = 'operator-a:4:remount-recovery';
+  for (const kind of ['export', 'print'] as const) {
+    for (const liveSourceSeq of [11, 12] as const) {
+      it(`confirms a direct-unmount ${kind} receipt without output at live H=${liveSourceSeq}, then allows a fresh action`, async () => {
+        const oldPending = deferred<{ ok: true; receipt: { commandId: string; kind: string; seq: number } }>();
+        const record = kind === 'export' ? mocks.recordExport : mocks.recordPrint;
+        record.mockReturnValueOnce(oldPending.promise);
+        const download = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+        const print = vi.spyOn(window, 'print').mockImplementation(() => undefined);
+        vi.spyOn(URL, 'createObjectURL').mockReturnValue(`blob:cross-mount-${kind}-${liveSourceSeq}`);
+        const identityKey = `operator-a:4:cross-mount-${kind}-${liveSourceSeq}`;
+        const firstView = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={identityKey} />);
+        await screen.findByTestId('report-ready');
+        if (kind === 'print') fireEvent.change(screen.getByLabelText('列印標示日期'), { target: { value: '2026-10-19' } });
+
+        fireEvent.click(screen.getByRole('button', { name: kind === 'export' ? '匯出稽核 CSV' : '記錄後列印目前完整明細' }));
+        const originalInput = record.mock.calls[0][0];
+        expect(originalInput.sourceSeq).toBe(11);
+        firstView.unmount();
+
+        mocks.readReport.mockImplementation(async request => ({
+          ...report, sourceSeq: liveSourceSeq, leaseEpoch: request.leaseEpoch,
+          range: request.range, scope: { studentId: request.studentId },
+        }));
+        mocks.readAuditRange.mockImplementation(async request => ({
+          ...audit, sourceSeq: liveSourceSeq, leaseEpoch: request.leaseEpoch,
+          range: request.range, scope: { studentId: request.studentId },
+        }));
+        const navigation = vi.fn();
+        const remounted = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={identityKey}
+          onNavigationStateChange={navigation} />);
+        await screen.findByTestId('report-ready');
+        expect(screen.getByTestId('report-ready')).toHaveTextContent(`H=${liveSourceSeq}`);
+        await screen.findByRole('region', { name: '輸出命令確認' });
+        expect(download).not.toHaveBeenCalled();
+        expect(print).not.toHaveBeenCalled();
+        expect(record).toHaveBeenCalledTimes(1);
+
+        mocks.readCommand.mockRejectedValueOnce(new Error('receipt read unavailable'));
+        fireEvent.click(screen.getByRole('button', { name: '查詢原命令並以同 ID 復原' }));
+        await screen.findByText('仍無法確認原命令：receipt read unavailable');
+        expect(mocks.readCommand).toHaveBeenLastCalledWith(originalInput.commandId);
+        expect(screen.getByRole('region', { name: '輸出命令確認' })).toBeInTheDocument();
+
+        mocks.readCommand.mockResolvedValueOnce(null);
+        fireEvent.click(screen.getByRole('button', { name: '查詢原命令並以同 ID 復原' }));
+        await screen.findByText('尚無收據；原快照未保留，不會重送。請再次查詢原命令收據。');
+        expect(mocks.readCommand).toHaveBeenLastCalledWith(originalInput.commandId);
+        expect(record).toHaveBeenCalledTimes(1);
+
+        mocks.readCommand.mockResolvedValueOnce({
+          commandId: originalInput.commandId, kind: kind === 'export' ? 'RecordExport' : 'RecordPrint', seq: 12,
+        });
+        fireEvent.click(screen.getByRole('button', { name: '查詢原命令並以同 ID 復原' }));
+        await screen.findByText('原稽核已確認；原快照未保留，本次未發起輸出。請重新查詢後另行確認輸出。');
+        expect(screen.queryByRole('region', { name: '輸出命令確認' })).toBeNull();
+        expect(screen.getByRole('button', { name: '查詢完整報表' })).toBeEnabled();
+        expect(download).not.toHaveBeenCalled();
+        expect(print).not.toHaveBeenCalled();
+        expect(record).toHaveBeenCalledTimes(1);
+        expect(mocks.readCommand).toHaveBeenCalledTimes(3);
+        expect(navigation).toHaveBeenLastCalledWith(identityKey, 'resolved');
+
+        const reportsBeforeRequery = mocks.readReport.mock.calls.length;
+        fireEvent.click(screen.getByRole('button', { name: '查詢完整報表' }));
+        await waitFor(() => expect(mocks.readReport).toHaveBeenCalledTimes(reportsBeforeRequery + 1));
+        await screen.findByTestId('report-ready');
+        expect(screen.getByTestId('report-ready')).toHaveTextContent(`H=${liveSourceSeq}`);
+        if (kind === 'print') fireEvent.change(screen.getByLabelText('列印標示日期'), { target: { value: '2026-10-19' } });
+        fireEvent.click(screen.getByRole('button', { name: kind === 'export' ? '匯出稽核 CSV' : '記錄後列印目前完整明細' }));
+
+        await waitFor(() => expect(record).toHaveBeenCalledTimes(2));
+        if (kind === 'export') await waitFor(() => expect(download).toHaveBeenCalledTimes(1));
+        else {
+          await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+          act(() => { window.dispatchEvent(new Event('afterprint')); });
+        }
+        const newInput = record.mock.calls[1][0];
+        expect(newInput.commandId).not.toBe(originalInput.commandId);
+        expect(newInput.sourceSeq).toBe(liveSourceSeq);
+        expect(record).toHaveBeenCalledTimes(2);
+
+        await act(async () => {
+          oldPending.resolve({
+            ok: true, receipt: { commandId: originalInput.commandId, kind: kind === 'export' ? 'RecordExport' : 'RecordPrint', seq: 12 },
+          });
+          await oldPending.promise;
+        });
+        expect(download).toHaveBeenCalledTimes(kind === 'export' ? 1 : 0);
+        expect(print).toHaveBeenCalledTimes(kind === 'print' ? 1 : 0);
+        remounted.unmount();
+      });
+    }
+  }
+
+  it('keeps a newer recovery identity when a stale old-owner callback settles late', async () => {
+    const oldPending = deferred<{ ok: true; receipt: { commandId: string; kind: string; seq: number } }>();
+    const newPending = deferred<{ ok: true; receipt: { commandId: string; kind: string; seq: number } }>();
+    mocks.recordExport.mockReturnValueOnce(oldPending.promise).mockReturnValueOnce(newPending.promise);
+    const download = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:late-old-owner');
+    const identityKey = 'operator-a:4:late-old-owner-preserves-new-identity';
     const firstView = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={identityKey} />);
+    await screen.findByTestId('report-ready');
+    fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+    const oldInput = mocks.recordExport.mock.calls[0][0];
+    firstView.unmount();
+
+    mocks.readReport.mockResolvedValue({ ...report, sourceSeq: 12 });
+    mocks.readAuditRange.mockResolvedValue({ ...audit, sourceSeq: 12 });
+    const secondView = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={identityKey} />);
+    await screen.findByTestId('report-ready');
+    await screen.findByRole('region', { name: '輸出命令確認' });
+    mocks.readCommand.mockResolvedValueOnce({ commandId: oldInput.commandId, kind: 'RecordExport', seq: 12 });
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令並以同 ID 復原' }));
+    await screen.findByText('原稽核已確認；原快照未保留，本次未發起輸出。請重新查詢後另行確認輸出。');
+    fireEvent.click(screen.getByRole('button', { name: '查詢完整報表' }));
     await screen.findByTestId('report-ready');
 
     fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
-    const input = mocks.recordExport.mock.calls[0][0];
-    firstView.unmount();
-    await act(async () => {
-      pending.resolve({ ok: true, receipt: { commandId: input.commandId, kind: 'RecordExport', seq: 12 } });
-      await pending.promise;
-    });
-    expect(click).not.toHaveBeenCalled();
+    await waitFor(() => expect(mocks.recordExport).toHaveBeenCalledTimes(2));
+    const newInput = mocks.recordExport.mock.calls[1][0];
+    expect(newInput.commandId).not.toBe(oldInput.commandId);
+    expect(newInput.sourceSeq).toBe(12);
 
+    await act(async () => {
+      oldPending.resolve({ ok: true, receipt: { commandId: oldInput.commandId, kind: 'RecordExport', seq: 12 } });
+      await oldPending.promise;
+    });
+    expect(download).not.toHaveBeenCalled();
+    expect(screen.getByRole('region', { name: '輸出命令確認' })).toBeInTheDocument();
+
+    secondView.unmount();
+    await act(async () => {
+      newPending.resolve({ ok: true, receipt: { commandId: newInput.commandId, kind: 'RecordExport', seq: 13 } });
+      await newPending.promise;
+    });
     render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={identityKey} />);
     await screen.findByTestId('report-ready');
     await screen.findByRole('region', { name: '輸出命令確認' });
-    expect(click).not.toHaveBeenCalled();
-    expect(mocks.readCommand).not.toHaveBeenCalled();
-    mocks.readCommand.mockResolvedValueOnce({ commandId: input.commandId, kind: 'RecordExport', seq: 12 });
-
+    expect(mocks.recordExport).toHaveBeenCalledTimes(2);
+    mocks.readCommand.mockResolvedValueOnce({ commandId: newInput.commandId, kind: 'RecordExport', seq: 13 });
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令並以同 ID 復原' }));
-    await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
-    expect(mocks.readCommand).toHaveBeenCalledWith(input.commandId);
-    expect(mocks.recordExport).toHaveBeenCalledTimes(1);
+    await screen.findByText('原稽核已確認；原快照未保留，本次未發起輸出。請重新查詢後另行確認輸出。');
+    expect(download).not.toHaveBeenCalled();
+    expect(mocks.recordExport).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a pending recovery identity scoped to its original identity and lease epoch', async () => {
+    const pending = deferred<{ ok: true; receipt: { commandId: string; kind: string; seq: number } }>();
+    mocks.recordExport.mockReturnValueOnce(pending.promise);
+    const download = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const originalIdentity = 'operator-a:4:scope-bound-recovery';
+    const view = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={originalIdentity} />);
+    await screen.findByTestId('report-ready');
+    fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+    const originalInput = mocks.recordExport.mock.calls[0][0];
+    view.unmount();
+
+    mocks.readReport.mockImplementation(async request => ({
+      ...report, leaseEpoch: request.leaseEpoch, range: request.range, scope: { studentId: request.studentId },
+    }));
+    mocks.readAuditRange.mockImplementation(async request => ({
+      ...audit, leaseEpoch: request.leaseEpoch, range: request.range, scope: { studentId: request.studentId },
+    }));
+    const otherScope = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-b:4:other-scope" />);
+    await screen.findByTestId('report-ready');
+    expect(screen.queryByRole('region', { name: '輸出命令確認' })).toBeNull();
+    otherScope.rerender(<CloudReportPage db={{} as never} leaseEpoch={5} identityKey={originalIdentity} />);
+    await screen.findByTestId('report-ready');
+    expect(screen.queryByRole('region', { name: '輸出命令確認' })).toBeNull();
+    expect(mocks.readCommand).not.toHaveBeenCalled();
+    await act(async () => {
+      pending.resolve({ ok: true, receipt: { commandId: originalInput.commandId, kind: 'RecordExport', seq: 12 } });
+      await pending.promise;
+    });
+    expect(download).not.toHaveBeenCalled();
+    otherScope.unmount();
+
+    render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={originalIdentity} />);
+    await screen.findByTestId('report-ready');
+    await screen.findByRole('region', { name: '輸出命令確認' });
+    expect(mocks.readCommand).not.toHaveBeenCalled();
+  });
+
+  it('keeps the complete print model available for same-mount unknown recovery', async () => {
+    const print = vi.spyOn(window, 'print').mockImplementation(() => undefined);
+    mocks.recordPrint.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'print outcome unknown' } });
+    render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:same-mount-print-recovery" />);
+    await screen.findByTestId('report-ready');
+    fireEvent.change(screen.getByLabelText('列印標示日期'), { target: { value: '2026-10-19' } });
+    fireEvent.click(screen.getByRole('button', { name: '記錄後列印目前完整明細' }));
+    await screen.findByRole('region', { name: '輸出命令確認' });
+    const originalInput = mocks.recordPrint.mock.calls[0][0];
+    mocks.readCommand.mockResolvedValueOnce({ commandId: originalInput.commandId, kind: 'RecordPrint', seq: 12 });
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令並以同 ID 復原' }));
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+    expect(mocks.readCommand).toHaveBeenCalledWith(originalInput.commandId);
+    expect(mocks.recordPrint).toHaveBeenCalledTimes(1);
+    expect(mocks.recordPrint.mock.calls[0][0]).toEqual(originalInput);
+    act(() => { window.dispatchEvent(new Event('afterprint')); });
   });
 
   it('confirms a minimal H11 receipt without output, then allows an explicit new H12 export', async () => {

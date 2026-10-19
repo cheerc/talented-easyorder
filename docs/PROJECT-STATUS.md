@@ -1,6 +1,6 @@
 # Project Status — Talented EasyOrder
 
-> **2026-10-19 P12c second-round rework checkpoint：** P12c PR #525 已依 Coordinator brief 完成 R1/R4/R5 同一 branch `codex/p12c-report-ui` 的本地修正與驗收，R2/R3 regression 保留；當前 head、真實 `document.body` print portal 的多頁 PDF、F5/F2 recovery 與完整測試證據見 [P12c second-round evidence](ops/free-production-evidence.md#p12c-pr-525-second-round-rework-source-head-2026-10-19)。仍待獨立複審與 exact-head provider CI，Coordinator 確認前不合併；P12 整體尚未完成。沒有 production deployment；正式索引行為、quota／latency 與本人營運驗收未驗。
+> **2026-10-19 P12c third-round R6 checkpoint：** PR #525 在同一 branch `codex/p12c-report-ui`、pinned base `3d49c8f267d1a15b5b036d899d38fa7bdcd5ab93` 完成唯一 open R6；模組 registry 現只存 minimal recovery identity，完整輸出模型限當前掛載。R6 regression、完整 Vitest、lint/build/root TSC、pinned-base App TSC 零新增對照與 P12c browser 2/2 證據見 [P12c third-round evidence](ops/free-production-evidence.md#p12c-pr-525-third-round-r6-source-head-checkpoint--2026-10-19)。待新 head 獨立 R6＋delta 複審及 exact-head provider CI，未合併；P12 未完成，沒有 production deployment、正式索引驗證或本人營運驗收。
 
 > **2026-10-19 P12b merge／收據狀態：** P12b 匯出／列印發起稽核已由 PR [#523](https://github.com/cheerc/talented-easyorder/pull/523) squash merge `759a37cc9d2c503365b07c4f4662f328efd3aa75`；runtime source `1d2e3f4da70ec744b4250cf281ab5fd53ee518de`、final source `f63cf1180394d1a4ffe3f0770efc4687a6d4752b`。獨立 COMMENT review [5566424126](https://github.com/cheerc/talented-easyorder/pull/523#pullrequestreview-5566424126) PASS，final-head CI [39191296570](https://github.com/cheerc/talented-easyorder/actions/runs/39191296570) build-and-test／e2e 均成功。Main CI [39194450495](https://github.com/cheerc/talented-easyorder/actions/runs/39194450495) 派工時為 IN_PROGRESS；之後 Coordinator 確認該 run 對 merge SHA `759a37cc9d2c503365b07c4f4662f328efd3aa75` COMPLETED／SUCCESS，build-and-test／e2e 均成功，`watch --exit-status` exit 0，發布 gate 已解除。docs-only receipt PR 已建立，待獨立審查與合併。P12a PR #521 與 docs-only 收據 #522 均已合併；review／CI 明細見[P12a receipt evidence](ops/free-production-evidence.md#p12a-pr-521-merge-and-receipt-checkpoint-2026-10-19)。當時 P12c 尚未開始，P12 整體未完成；未部署、未驗正式 indexes、quota／latency 或本人營運驗收。詳細 P12b 證據見[執行 evidence](ops/free-production-evidence.md#p12b-pr-523-merge-and-receipt-checkpoint-2026-10-19)。
 
@@ -15,8 +15,8 @@
 
 > **已合併基線：** P00 #471、P01 #472、P02 #473、P03 #474、P04 #475、P05 #476、P06 #478、P07 #480、P08 #491、P09a #493、P09b #494、P14 #496（收據 #498）、P10a #497、P10b #501、P11a #503、P11b #505、P11 補開帳 #507、P11c1 #509、P11c2a #511、P11c2b #513、P11c3 #515、P11c4a #517（merge `4c5bb556f0e03c2a25444e193d448de289882194`）、P11c4b #519（merge `855679804a12cd1bce5dce72fe2da20127e2c85d`）、U1 #481、U2c #482、U2a #483、整合 PR #488（含 U3/U4/U2b/P06b）；merge SHA 與驗收限制見[現況與證據](ops/free-production-evidence.md)及各 phase receipts。逐 PR 接手流程見[開發交接入口](DEVELOPMENT-HANDOFF.md)。
 
-> **Last inspected:** 2026-10-19，P12c 第二輪 R1/R4/R5 本地實作與驗收完成，待獨立審查、exact-head provider CI 與合併；沒有完成本人營運驗收。
-> 本次更新 P12c second-round implementation/evidence/status 文件，驗證 app、Emulator 與 legacy→P12c→prototype browser suites；沒有 production 操作。
+> **Last inspected:** 2026-10-19，P12c 第三輪 R6 本地實作與驗收完成，待獨立 R6＋delta 審查、exact-head provider CI 與合併；沒有完成本人營運驗收。
+> 本次更新 P12c third-round implementation/evidence/status 文件，驗證 unit、static/build 與 P12c browser；沒有 production 操作。
 
 ## 1. 當前方向
 

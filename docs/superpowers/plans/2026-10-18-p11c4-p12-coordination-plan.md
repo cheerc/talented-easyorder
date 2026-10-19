@@ -40,6 +40,12 @@
 - Final verification evidence、source-head PDF／text／JSON／CSV／trace、RED/GREEN 與 exact App TSC comparison 見 [P12c second-round evidence](../../ops/free-production-evidence.md#p12c-pr-525-second-round-rework-source-head-2026-10-19)。完整 E2E 最終 legacy 24/24、P12c 2/2、prototype 7/7 通過；首次 L07 因測試 stub 未派發 `afterprint` 逾時，stub 修正後 focused L07 與完整串行 E2E 均通過。
 - 新 head 仍待獨立 reviewer 複審與 exact-head provider CI；PR 尚未合併，P12 與 P12 receipt 未完成。不部署、不進 P13。
 
+## P12c PR #525 third-round R6 checkpoint（2026-10-19）
+
+- Coordinator third-round brief 唯一 open finding R6 已在同 branch／pinned base 修正：registry 型別與每個寫入點均只保留 `RecoveryIdentity`；完整 CSV／rows 模型只留當前 component mount。保留同掛載 unknown retry、R1/R4/R5、R2/R3 與前輪歷史。
+- RED/GREEN、完整 single-worker Vitest、lint/build/root TSC、pinned-base App TSC normalized zero additions、P12c browser 2/2 與四份 portal PDF／JSON／trace 證據見 [P12c third-round evidence](../../ops/free-production-evidence.md#p12c-pr-525-third-round-r6-source-head-checkpoint--2026-10-19)。
+- 新 source head 待同一獨立 reviewer R6＋delta 複審及 exact-head provider CI；PR 尚未合併、P12 與 P12 receipt 未完成。不部署、不進 P13。
+
 ## 授權與角色
 
 CheerC 本輪指示：coordinator 負責推進至 P12 完成，撰寫 plan 與 dispatch brief；implementer 依 brief 實作與驗證，不自行寫 plan。每個實作 PR 發布後交獨立 reviewer 審查，有必修就 rework，直到目前 head 的審查及 CI 通過，再由 coordinator 合併。合併後依專案慣例另開 docs-only 收據 PR，也需 review／CI。到 P12 完成為止，不開始 P13。
@@ -144,6 +150,6 @@ Rules 改動每次重測現有預算錨點與新增最大 payload 路徑。任�
 
 ## 派工 brief
 
-原樣納入版本歷史的 brief 索引：[P11c4a 收據](2026-10-18-p11c4a-receipt-dispatch.md)、[P11c4b](2026-10-18-p11c4b-dispatch.md)、[P11c4b 收據](2026-10-18-p11c4b-receipt-dispatch.md)、[P12a](2026-10-18-p12a-dispatch.md)、[P12a 收據](2026-10-18-p12a-receipt-dispatch.md)、[P12b](2026-10-18-p12b-dispatch.md)、[P12c](2026-10-18-p12c-dispatch.md)、[P12c first-round rework](2026-10-19-p12c-rework-dispatch.md)、[P12c second-round rework](2026-10-19-p12c-rework2-dispatch.md)。各批派工狀態以對應 brief 為準。
+原樣納入版本歷史的 brief 索引：[P11c4a 收據](2026-10-18-p11c4a-receipt-dispatch.md)、[P11c4b](2026-10-18-p11c4b-dispatch.md)、[P11c4b 收據](2026-10-18-p11c4b-receipt-dispatch.md)、[P12a](2026-10-18-p12a-dispatch.md)、[P12a 收據](2026-10-18-p12a-receipt-dispatch.md)、[P12b](2026-10-18-p12b-dispatch.md)、[P12c](2026-10-18-p12c-dispatch.md)、[P12c first-round rework](2026-10-19-p12c-rework-dispatch.md)、[P12c second-round rework](2026-10-19-p12c-rework2-dispatch.md)、[P12c third-round R6](2026-10-19-p12c-r6-dispatch.md)。各批派工狀態以對應 brief 為準。
 
 每批的具體 brief 由 coordinator 在派工前寫入同目錄 `2026-10-18-<batch>-dispatch.md`，包含 pinned base、allowed paths、明確 deliverables／RED 與 gate；引用本計畫，不把設計責任交 impl。下一批開始前依已合併的實際 exported interface 更新 brief，不能根據猜測派工。
