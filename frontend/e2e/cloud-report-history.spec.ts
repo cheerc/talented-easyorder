@@ -181,6 +181,38 @@ function parseCsv(source: string): string[][] {
   return rows;
 }
 
+function hasStudentTransactionsListenTarget(postData: string | null, studentId: string): boolean {
+  if (!postData) return false;
+  for (const [name, value] of new URLSearchParams(postData)) {
+    if (!/^req\d+___data__$/.test(name)) continue;
+    let rpc: { addTarget?: { query?: { structuredQuery?: { from?: Array<{ collectionId?: unknown }>; where?: unknown } } } };
+    try {
+      rpc = JSON.parse(value) as typeof rpc;
+    } catch {
+      continue;
+    }
+    const query = rpc.addTarget?.query?.structuredQuery;
+    if (!query?.from?.some(source => source.collectionId === 'transactions')) continue;
+
+    const hasStudentFilter = (where: unknown): boolean => {
+      if (!where || typeof where !== 'object') return false;
+      const filter = where as Record<string, unknown>;
+      const fieldFilter = filter.fieldFilter;
+      if (fieldFilter && typeof fieldFilter === 'object') {
+        const condition = fieldFilter as Record<string, unknown>;
+        const field = condition.field as Record<string, unknown> | undefined;
+        const expected = condition.value as Record<string, unknown> | undefined;
+        if (field?.fieldPath === 'studentId' && expected?.stringValue === studentId) return true;
+      }
+      const compositeFilter = filter.compositeFilter as { filters?: unknown[] } | undefined;
+      return compositeFilter?.filters?.some(hasStudentFilter) ?? false;
+    };
+
+    if (hasStudentFilter(query.where)) return true;
+  }
+  return false;
+}
+
 function exportedTransactionIds(rows: string[][]): string[] {
   const header = rows[0] ?? [];
   const index = header.indexOf('source_transaction_ids');
@@ -657,17 +689,72 @@ test.describe('P12c cloud report and account history acceptance', () => {
       await expect(currentDayRow.getByRole('button', { name: '更正' })).toHaveCount(0);
       const activeHistoricalRow = transactionSection.getByRole('row').filter({ hasText: d2Active.transactionId });
       const headBeforeCorrection = Number((await page.getByTestId('account-history-ready').innerText()).match(/H=(\d+)/)?.[1]);
-      await activeHistoricalRow.getByRole('button', { name: '更正' }).click();
-      await page.getByLabel('更正收款金額').fill('105');
-      await page.getByLabel('更正理由').fill('P12c L07 historical correction');
-      await page.getByRole('button', { name: '確認送出' }).click();
-      await expect(page.getByText(/更正收據已確認/)).toBeVisible({ timeout: 20_000 });
-      await expect.poll(async () => Number((await page.getByTestId('account-history-ready').innerText()).match(/H=(\d+)/)?.[1]))
-        .toBeGreaterThan(headBeforeCorrection);
-      await expect.poll(async () => {
-        const value = Number((await accountBalanceCell.innerText()).replace(/[^\d-]/g, ''));
-        return value;
-      }).toBe(balanceBefore + 25);
+      expect(Number.isSafeInteger(headBeforeCorrection)).toBe(true);
+      const exactNextHead = headBeforeCorrection + 1;
+      expect(Number.isSafeInteger(exactNextHead)).toBe(true);
+
+      // Hold the post-receipt F5 transaction query at the Emulator route so this acceptance
+      // crosses the historical 5-second poll boundary before the fresh server read is released.
+      const listenRoute = '**/google.firestore.v1.Firestore/Listen/channel**';
+      let releaseReadGate!: () => void;
+      let notifyReadHeld!: () => void;
+      let notifyReadRouteFinished!: () => void;
+      const readGate = new Promise<void>(resolve => { releaseReadGate = resolve; });
+      const readHeld = new Promise<void>(resolve => { notifyReadHeld = resolve; });
+      const readRouteFinished = new Promise<void>(resolve => { notifyReadRouteFinished = resolve; });
+      let readIsHeld = false;
+      let gateIsReleased = false;
+      let routeIsInstalled = false;
+      await page.route(listenRoute, async route => {
+        if (!readIsHeld && hasStudentTransactionsListenTarget(route.request().postData(), STUDENT_ID)) {
+          readIsHeld = true;
+          const freshReadResponse = await route.fetch();
+          notifyReadHeld();
+          try {
+            await readGate;
+            await route.fulfill({ response: freshReadResponse });
+          } finally {
+            notifyReadRouteFinished();
+          }
+          return;
+        }
+        await route.continue();
+      });
+      routeIsInstalled = true;
+      const releaseFreshRead = async () => {
+        if (!gateIsReleased) {
+          gateIsReleased = true;
+          releaseReadGate();
+        }
+        if (readIsHeld) await readRouteFinished;
+        if (routeIsInstalled) {
+          await page.unroute(listenRoute);
+          routeIsInstalled = false;
+        }
+      };
+
+      try {
+        await activeHistoricalRow.getByRole('button', { name: '更正' }).click();
+        await page.getByLabel('更正收款金額').fill('105');
+        await page.getByLabel('更正理由').fill('P12c L07 historical correction');
+        await page.getByRole('button', { name: '確認送出' }).click();
+        await expect(page.getByText(/更正收據已確認/)).toBeVisible({ timeout: 20_000 });
+        await readHeld;
+        const exactHeadReady = expect(page.getByTestId('account-history-ready'))
+          .toContainText(new RegExp(`H=${exactNextHead}$`), { timeout: 30_000 });
+        void exactHeadReady.catch(() => undefined);
+        const holdStartedAt = await page.evaluate(() => performance.now());
+        await page.waitForFunction(startedAt => performance.now() - startedAt > 5_500, holdStartedAt, { timeout: 10_000 });
+        const holdDurationMs = await page.evaluate(startedAt => performance.now() - startedAt, holdStartedAt);
+        expect(holdDurationMs).toBeGreaterThan(5_500);
+        await releaseFreshRead();
+        await exactHeadReady;
+        const balanceAfterExpected = balanceBefore + 25;
+        const expectedBalanceText = `$${new Intl.NumberFormat('zh-TW').format(balanceAfterExpected)}`;
+        await expect(accountBalanceCell).toHaveText(expectedBalanceText, { timeout: 30_000 });
+      } finally {
+        await releaseFreshRead();
+      }
       const laterSettlementAfter = await readRawAdminDocument(settlementCollection, '1');
       expect(JSON.stringify(laterSettlementAfter)).toBe(JSON.stringify(laterSettlementBefore));
       await expect(activeHistoricalRow).toContainText('105');
