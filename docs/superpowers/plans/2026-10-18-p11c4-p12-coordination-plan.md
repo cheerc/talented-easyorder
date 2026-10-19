@@ -46,6 +46,13 @@
 - RED/GREEN、完整 single-worker Vitest、lint/build/root TSC、pinned-base App TSC normalized zero additions、P12c browser 2/2 與四份 portal PDF／JSON／trace 證據見 [P12c third-round evidence](../../ops/free-production-evidence.md#p12c-pr-525-third-round-r6-source-head-checkpoint--2026-10-19)。
 - 新 source head 待同一獨立 reviewer R6＋delta 複審及 exact-head provider CI；PR 尚未合併、P12 與 P12 receipt 未完成。不部署、不進 P13。
 
+
+## P12 merge 與最終 receipt 準備（2026-10-19；後續狀態）
+
+- P12a PR [#521](https://github.com/cheerc/talented-easyorder/pull/521) final source `c161f9196d7836e310c45cdfe3312cefed611842`／merge `c9988b35912f761bb79c08476ac9636c0fcc49aa`；REWORK review [5564521278](https://github.com/cheerc/talented-easyorder/pull/521#pullrequestreview-5564521278) 對應前一 head，final-source PASS [5564603618](https://github.com/cheerc/talented-easyorder/pull/521#pullrequestreview-5564603618) 對應 c161f91；source CI [39158763724](https://github.com/cheerc/talented-easyorder/actions/runs/39158763724) 與 merge main CI [39159574321](https://github.com/cheerc/talented-easyorder/actions/runs/39159574321) 成功。Receipt #522 merge `e12afbf506801de56715f970a5c29393846a48d5`；review 5564691313 PASS、receipt CI 39160851654 docs-only（e2e skipped）、merge main CI 39161053527 SUCCESS。
+- P12b PR [#523](https://github.com/cheerc/talented-easyorder/pull/523) runtime source `1d2e3f4da70ec744b4250cf281ab5fd53ee518de`、final source `f63cf1180394d1a4ffe3f0770efc4687a6d4752b`、merge `759a37cc9d2c503365b07c4f4662f328efd3aa75`；review 5566424126 PASS、source CI 39191296570 與 merge main CI 39194450495 SUCCESS。Receipt #524 final source `95342601357b1170900c80d854bce39a00f4f576`、merge `3d49c8f267d1a15b5b036d899d38fa7bdcd5ab93`；review 5566759726 PASS、receipt CI 39197432049 docs-only（e2e skipped）、merge main CI 39197603576 SUCCESS。
+- P12c PR #525 pinned base `3d49c8f267d1a15b5b036d899d38fa7bdcd5ab93`；REWORK reviews 5568149846／5568788073／5569277570 依各 head 與 R1–R6 disposition 保留。Runtime source `c6c9fe2ba4f44a08368793843d2d3da192b0e02c` review 5569465904 PASS；test/docs final source `07750a9d45bfb3b4442054482fe9b289f6fb4f38` review 5569731354 PASS；exact source CI 39232200728 成功；merge `5742e66e218070167498e5daa7d9c8da7e1f91fc` main CI 39234769046 派工時 IN_PROGRESS。最終 receipt 在此 merge base 上本地準備，待 Coordinator 明確解 gate 才發布；P12 不提前標完成，未部署／未驗 production，不開始 P13。完整驗證數字與限制見 [P12 final evidence](../../ops/free-production-evidence.md#p12-final-merge-and-receipt-preparation-2026-10-19)。
+
 ## 授權與角色
 
 CheerC 本輪指示：coordinator 負責推進至 P12 完成，撰寫 plan 與 dispatch brief；implementer 依 brief 實作與驗證，不自行寫 plan。每個實作 PR 發布後交獨立 reviewer 審查，有必修就 rework，直到目前 head 的審查及 CI 通過，再由 coordinator 合併。合併後依專案慣例另開 docs-only 收據 PR，也需 review／CI。到 P12 完成為止，不開始 P13。
@@ -75,9 +82,9 @@ CheerC 本輪指示：coordinator 負責推進至 P12 完成，撰寫 plan 與 d
 | P12a | 完整歷史讀取、cloud 餘額／彙總／輸出資料模型與索引；PR #521 已合併，僅資料層 | P11c4b-receipt merge |
 | P12a-receipt | PR #522 docs-only 收據已合併；review 5564691313 PASS，source CI 39160851654、main CI 39161053527 成功 | P12a merge |
 | P12b | `RecordExport`／`RecordPrint` 正式稽核命令、Rules／writer／backup 相容，無業務投影；PR #523 已合併，review 5566424126 與 source CI 39191296570 成功；main CI 39194450495 派工時 IN_PROGRESS，之後由 Coordinator 確認 COMPLETED／SUCCESS | P12a-receipt merge |
-| P12b-receipt | docs-only merge receipt PR 已建立，待獨立審查與合併；main CI #39194450495 成功並已解除發布 gate | P12b merge |
-| P12c | PR #525 second-round R1/R4/R5 rework 與本地驗收完成；R2/R3 regression 保留；待新 head 獨立複審／exact-head CI／合併 | P12b-receipt merge |
-| P12c-receipt | P12 完成收據與總驗收，停止於 P13 前 | P12c merge |
+| P12b-receipt | PR #524 已合併為 `3d49c8f267d1a15b5b036d899d38fa7bdcd5ab93`；review 5566759726 PASS，receipt CI 39197432049 docs-only（e2e skipped），merge main CI 39197603576 SUCCESS | P12b merge |
+| P12c | PR #525 已 squash merge `5742e66e218070167498e5daa7d9c8da7e1f91fc`；runtime source `c6c9fe2ba4f44a08368793843d2d3da192b0e02c`、final source `07750a9d45bfb3b4442054482fe9b289f6fb4f38`；reviews 5569465904／5569731354 與 source CI 39232200728 成功；merge main CI 39234769046 派工時 IN_PROGRESS | P12b-receipt merge |
+| P12c-receipt | 最終 Markdown 收據在 pinned merge base `5742e66e218070167498e5daa7d9c8da7e1f91fc` 本地準備；main CI 39234769046 綠燈並由 Coordinator 明確解除 gate 後才發布；最終 receipt review／CI／merge 後才做 closure | P12c merge |
 
 每批只有一個寫入者。從已合併 receipt 的最新 main 開 `codex/` 分支；不得把上一批 branch 直接混進下一批。Coordinator 修改本計畫及 dispatch；impl 只更新實際成果與證據文件，不更改任務設計。若 acceptance 與程式事實衝突，提供最小證據交 coordinator 決策。
 
@@ -150,6 +157,6 @@ Rules 改動每次重測現有預算錨點與新增最大 payload 路徑。任�
 
 ## 派工 brief
 
-原樣納入版本歷史的 brief 索引：[P11c4a 收據](2026-10-18-p11c4a-receipt-dispatch.md)、[P11c4b](2026-10-18-p11c4b-dispatch.md)、[P11c4b 收據](2026-10-18-p11c4b-receipt-dispatch.md)、[P12a](2026-10-18-p12a-dispatch.md)、[P12a 收據](2026-10-18-p12a-receipt-dispatch.md)、[P12b](2026-10-18-p12b-dispatch.md)、[P12c](2026-10-18-p12c-dispatch.md)、[P12c first-round rework](2026-10-19-p12c-rework-dispatch.md)、[P12c second-round rework](2026-10-19-p12c-rework2-dispatch.md)、[P12c third-round R6](2026-10-19-p12c-r6-dispatch.md)。各批派工狀態以對應 brief 為準。
+原樣納入版本歷史的 brief 索引：[P11c4a 收據](2026-10-18-p11c4a-receipt-dispatch.md)、[P11c4b](2026-10-18-p11c4b-dispatch.md)、[P11c4b 收據](2026-10-18-p11c4b-receipt-dispatch.md)、[P12a](2026-10-18-p12a-dispatch.md)、[P12a 收據](2026-10-18-p12a-receipt-dispatch.md)、[P12b](2026-10-18-p12b-dispatch.md)、[P12c](2026-10-18-p12c-dispatch.md)、[P12c first-round rework](2026-10-19-p12c-rework-dispatch.md)、[P12c second-round rework](2026-10-19-p12c-rework2-dispatch.md)、[P12c third-round R6](2026-10-19-p12c-r6-dispatch.md)、[P12b 收據](2026-10-19-p12b-receipt-dispatch.md)、[P12c fourth-round CI readiness](2026-10-19-p12c-ci-readiness-dispatch.md)、[P12 final receipt](2026-10-19-p12-final-receipt-dispatch.md)。各批派工狀態以對應 brief 為準。
 
 每批的具體 brief 由 coordinator 在派工前寫入同目錄 `2026-10-18-<batch>-dispatch.md`，包含 pinned base、allowed paths、明確 deliverables／RED 與 gate；引用本計畫，不把設計責任交 impl。下一批開始前依已合併的實際 exported interface 更新 brief，不能根據猜測派工。
