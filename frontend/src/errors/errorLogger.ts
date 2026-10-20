@@ -177,10 +177,18 @@ function decodeSafeDiagnostic(value: unknown, now: number): SafeDiagnosticEntry 
   return null;
 }
 
-function removeLegacyNonPrototypeLog(): boolean {
-  if (isPrototypeMode || typeof localStorage === 'undefined') return true;
+function getLocalStorageSafely(): Storage | null {
   try {
-    localStorage.removeItem(LEGACY_NON_PROTOTYPE_LOG_KEY);
+    return globalThis.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function removeLegacyNonPrototypeLog(storage = getLocalStorageSafely()): boolean {
+  if (isPrototypeMode || !storage) return true;
+  try {
+    storage.removeItem(LEGACY_NON_PROTOTYPE_LOG_KEY);
     return true;
   } catch {
     return false;
@@ -188,36 +196,42 @@ function removeLegacyNonPrototypeLog(): boolean {
 }
 
 function readSafeEnvelope(now = Date.now()): SafeDiagnosticEnvelope {
-  if (!removeLegacyNonPrototypeLog()) throw new Error('Unsafe legacy diagnostics could not be removed');
-  const raw = localStorage.getItem(SAFE_DIAGNOSTICS_STORAGE_KEY);
-  if (!raw) return { schemaVersion: 1, entries: [] };
-  const discardStoredEnvelope = () => {
-    localStorage.removeItem(SAFE_DIAGNOSTICS_STORAGE_KEY);
-    return { schemaVersion: 1 as const, entries: [] };
-  };
-  let parsed: unknown;
+  const storage = getLocalStorageSafely();
+  if (!storage) throw new Error('Safe diagnostic storage is unavailable');
   try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return discardStoredEnvelope();
-  }
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return discardStoredEnvelope();
-  const envelope = parsed as Record<string, unknown>;
-  if (!exactKeys(envelope, ['schemaVersion', 'entries']) || envelope.schemaVersion !== 1 || !Array.isArray(envelope.entries)) {
-    return discardStoredEnvelope();
-  }
-  const entries = envelope.entries
-    .map(entry => decodeSafeDiagnostic(entry, now))
-    .filter((entry): entry is SafeDiagnosticEntry => entry !== null)
-    .slice(0, MAX_LOG_ENTRIES);
-  if (entries.length !== envelope.entries.length) {
-    // Remove the untrusted bytes first so a failed quota-limited rewrite cannot leave PII behind.
-    localStorage.removeItem(SAFE_DIAGNOSTICS_STORAGE_KEY);
-    if (entries.length > 0) {
-      localStorage.setItem(SAFE_DIAGNOSTICS_STORAGE_KEY, JSON.stringify({ schemaVersion: 1, entries } satisfies SafeDiagnosticEnvelope));
+    if (!removeLegacyNonPrototypeLog(storage)) throw new Error('Legacy diagnostic storage is unavailable');
+    const raw = storage.getItem(SAFE_DIAGNOSTICS_STORAGE_KEY);
+    if (!raw) return { schemaVersion: 1, entries: [] };
+    const discardStoredEnvelope = () => {
+      storage.removeItem(SAFE_DIAGNOSTICS_STORAGE_KEY);
+      return { schemaVersion: 1 as const, entries: [] };
+    };
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return discardStoredEnvelope();
     }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return discardStoredEnvelope();
+    const envelope = parsed as Record<string, unknown>;
+    if (!exactKeys(envelope, ['schemaVersion', 'entries']) || envelope.schemaVersion !== 1 || !Array.isArray(envelope.entries)) {
+      return discardStoredEnvelope();
+    }
+    const entries = envelope.entries
+      .map(entry => decodeSafeDiagnostic(entry, now))
+      .filter((entry): entry is SafeDiagnosticEntry => entry !== null)
+      .slice(0, MAX_LOG_ENTRIES);
+    const canonical = JSON.stringify({ schemaVersion: 1, entries } satisfies SafeDiagnosticEnvelope);
+    if (raw !== canonical) {
+      // Remove the original bytes before any rewrite; a failed write must not restore crafted data.
+      storage.removeItem(SAFE_DIAGNOSTICS_STORAGE_KEY);
+      if (entries.length > 0) storage.setItem(SAFE_DIAGNOSTICS_STORAGE_KEY, canonical);
+    }
+    return { schemaVersion: 1, entries };
+  } catch {
+    // Do not expose storage errors or treat an unreadable envelope as an empty successful read.
+    throw new Error('Safe diagnostic storage is unavailable');
   }
-  return { schemaVersion: 1, entries };
 }
 
 function persistSafeDiagnostic(entry: SafeDiagnosticEntry): SafeDiagnosticEntry {
@@ -240,9 +254,11 @@ export function readSafeDiagnostics(): SafeDiagnosticEntry[] {
 }
 
 export function clearSafeDiagnostics(): boolean {
-  if (isPrototypeMode || typeof localStorage === 'undefined') return false;
+  if (isPrototypeMode) return false;
   try {
-    localStorage.removeItem(SAFE_DIAGNOSTICS_STORAGE_KEY);
+    const storage = getLocalStorageSafely();
+    if (!storage) return false;
+    storage.removeItem(SAFE_DIAGNOSTICS_STORAGE_KEY);
     return true;
   } catch {
     return false;
