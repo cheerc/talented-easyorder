@@ -203,6 +203,8 @@ P13a 實作補充：正式模式初始化時先清除目前 Firebase app／proje
 
 quota exceeded／permission denied／schema mismatch／maintenance 均阻止操作並給中文原因。無限自動重試禁止；單次 SDK retries 以有限次數（預設5）為界，額度錯誤停止，人工重試維持 ID。斷線期間改用紙本記唯一流水號、當下日期與收支，恢復後逐筆核對 receipt 再由 F2 補登並寫紙本號備註；沒有背景自動補送。
 
+**P13b1 安全本機診斷補充：**正式 Cloud 與正式模式缺少 Firebase 設定時，都必須採嚴格 allowlist 格式，不得降級到舊自由文字 log；只有明確 `prototype` 模式保留練習 logger 與 `-prototype` namespace。安全紀錄使用獨立本機 namespace，版本化 envelope 僅允許命令失敗欄位（有效 UUID 或 null、已知命令 kind 或 null、固定 `CommandErrorCode`、本機合法 ISO 時間）及系統錯誤欄位（固定 source、固定 system code、本機時間）；不包含 actor、學生／交易資料、payload、reason、fingerprint、URL、message、context 或 stack。讀取與匯出都重新嚴格 decode，拒絕未知欄位及無效 enum/時間，最多保留 100 筆、24 小時。只清除已知舊非 prototype `easyorder-error-log`，不遷移內容、不掃除其他 origin key；prototype 與無關 sentinel 保留。若無法刪除舊 unsafe key，F3 診斷讀取 fail closed 並顯示固定儲存錯誤。Cloud logout/access-loss 清理保留安全診斷至 TTL，unsafe 舊 log 仍清除。只有目前合法 lease holder 可在 F3 診斷區查看、匯出固定 JSON 或明確清除；匯出標示本機時間與 local-only 儲存，不建立 `RecordExport`、不寫 Firestore、不改 `dataHead`。最終 command 失敗／拒絕每個呼叫只記一次，SDK callback retry 不重複；成功、query 與 navigation 不記。儲存失敗不改變命令結果。`UNKNOWN_RESULT` 或未知錯誤碼必須提示保留原 command ID 查 receipt，不得宣稱確定失敗或要求重新收款。此補充只涵蓋安全診斷與 F3 匯出，不包含 pending-command recovery、`accessEvents` 或紙本補登。
+
 查詢策略：
 
 - 學生名單依 ID 載入（驗證規模500名），server snapshot 後按 `studentCode` 數值升冪排序，並自 `001` 列出至當前最大號的缺號列（停用帳戶算已使用，搜尋時隱藏缺號列）；F5 查帳由記憶體 `studentCode -> studentId` 對映直接查詢，不另讀 `studentCodes` 集合；同 UID 頁面共享訂閱協調為優化，不是安全依賴。
