@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig, mergeConfig, type ConfigEnv, type UserConfig } from 'vite';
-import baseConfig from './vite.config';
+import baseConfig from './vite.config.ts';
 
 const loadBaseConfig = baseConfig as (env: ConfigEnv) => UserConfig | Promise<UserConfig>;
 

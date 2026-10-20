@@ -5,15 +5,34 @@ const FIRESTORE_DATABASE = 'firestore/[DEFAULT]/demo-easyorder/main';
 type P13aProbeWindow = Window & {
   __p13aLegacyFirestoreDb?: IDBDatabase;
   __p13aLateSubscriberNotifications?: number;
+  __p13aObservedDeletes?: string[];
+  __p13aObservedBlockedDeletes?: string[];
 };
 
 test('the live StrictMode subscriber sees blocked cleanup and late subscribers see the pending attempt state', async ({ browser }) => {
   const context = await browser.newContext({ baseURL: 'http://127.0.0.1:4174' });
+  await context.addInitScript(databaseName => {
+    const probeWindow = window as P13aProbeWindow;
+    probeWindow.__p13aObservedDeletes = [];
+    probeWindow.__p13aObservedBlockedDeletes = [];
+    const originalDeleteDatabase = IDBFactory.prototype.deleteDatabase;
+    IDBFactory.prototype.deleteDatabase = function (name: string) {
+      const request = originalDeleteDatabase.call(this, name);
+      if (name === databaseName) {
+        probeWindow.__p13aObservedDeletes?.push(name);
+        request.addEventListener('blocked', () => probeWindow.__p13aObservedBlockedDeletes?.push(name), { once: true });
+      }
+      return request;
+    };
+  }, FIRESTORE_DATABASE);
   const legacyPage = await context.newPage();
   const appPage = await context.newPage();
+  const pageErrors: string[] = [];
+  appPage.on('pageerror', error => pageErrors.push(error.message));
 
   try {
     await legacyPage.goto('/');
+    await expect(legacyPage.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
     await legacyPage.evaluate(databaseName => new Promise<void>((resolve, reject) => {
       const request = indexedDB.open(databaseName, 1);
       request.onupgradeneeded = () => request.result.createObjectStore('legacySyntheticRecords');
@@ -31,6 +50,10 @@ test('the live StrictMode subscriber sees blocked cleanup and late subscribers s
     }), FIRESTORE_DATABASE);
 
     await appPage.goto('/');
+    await expect.poll(() => appPage.evaluate(() => (window as P13aProbeWindow).__p13aObservedDeletes?.length ?? 0), {
+      message: `expected Firestore namespace deletion; page errors: ${pageErrors.join('; ')}`,
+    }).toBeGreaterThan(0);
+    await expect.poll(() => appPage.evaluate(() => (window as P13aProbeWindow).__p13aObservedBlockedDeletes?.length ?? 0)).toBeGreaterThan(0);
     await expect(appPage.getByRole('alert')).toContainText('請關閉其他 EasyOrder 分頁');
     await expect(appPage.getByRole('button', { name: '重新載入' })).toBeVisible();
     await expect(appPage.getByRole('button', { name: '使用 Google 登入' })).toHaveCount(0);

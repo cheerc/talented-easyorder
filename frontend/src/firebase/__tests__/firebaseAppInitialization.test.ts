@@ -84,10 +84,7 @@ describe('ensureFirebaseInitialized storage boundary', () => {
 
   it('uses a memory-only cache and clears the legacy Firestore namespace before returning services', async () => {
     let releaseCleanup!: () => void;
-    mocks.clearIndexedDbPersistence.mockImplementation(() => {
-      indexedDB.deleteDatabase('firestore/[DEFAULT]/demo-easyorder/main');
-      return new Promise<void>(resolve => { releaseCleanup = resolve; });
-    });
+    mocks.clearIndexedDbPersistence.mockImplementation(() => new Promise<void>(resolve => { releaseCleanup = resolve; }));
     const { ensureFirebaseInitialized } = await loadFirebaseAppModule();
 
     let settled = false;
@@ -111,10 +108,7 @@ describe('ensureFirebaseInitialized storage boundary', () => {
 
   it('deduplicates concurrent calls and exposes the same initialized services only after cleanup', async () => {
     let releaseCleanup!: () => void;
-    mocks.clearIndexedDbPersistence.mockImplementation(() => {
-      indexedDB.deleteDatabase('firestore/[DEFAULT]/demo-easyorder/main');
-      return new Promise<void>(resolve => { releaseCleanup = resolve; });
-    });
+    mocks.clearIndexedDbPersistence.mockImplementation(() => new Promise<void>(resolve => { releaseCleanup = resolve; }));
     const { ensureFirebaseInitialized } = await loadFirebaseAppModule();
 
     const first = ensureFirebaseInitialized(env);
@@ -138,7 +132,10 @@ describe('ensureFirebaseInitialized storage boundary', () => {
     });
 
     let releaseCleanup!: () => void;
-    mocks.clearIndexedDbPersistence.mockImplementation(() => new Promise<void>(resolve => { releaseCleanup = resolve; }));
+    mocks.clearIndexedDbPersistence.mockImplementation(() => {
+      indexedDB.deleteDatabase('firestore/[DEFAULT]/demo-easyorder/main');
+      return new Promise<void>(resolve => { releaseCleanup = resolve; });
+    });
     try {
       const { ensureFirebaseInitialized } = await loadFirebaseAppModule();
       const staleController = new AbortController();
@@ -178,7 +175,10 @@ describe('ensureFirebaseInitialized storage boundary', () => {
     });
 
     let releaseCleanup!: () => void;
-    mocks.clearIndexedDbPersistence.mockImplementation(() => new Promise<void>(resolve => { releaseCleanup = resolve; }));
+    mocks.clearIndexedDbPersistence.mockImplementation(() => {
+      indexedDB.deleteDatabase('firestore/[DEFAULT]/demo-easyorder/main');
+      return new Promise<void>(resolve => { releaseCleanup = resolve; });
+    });
     try {
       const { ensureFirebaseInitialized } = await loadFirebaseAppModule();
       const first = ensureFirebaseInitialized(env);

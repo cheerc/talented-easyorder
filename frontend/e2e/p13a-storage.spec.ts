@@ -150,26 +150,27 @@ test.describe('P13a generated service worker and memory-only cloud storage', () 
     await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
     await expect.poll(() => page.evaluate(cacheName => caches.has(cacheName), legacyCacheName)).toBe(false);
 
+    // Prove the shell remains usable from the active precache, rather than
+    // depending on Cache.match() URL normalization for the precache key.
+    await page.context().setOffline(true);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#root')).toBeVisible();
+    await page.context().setOffline(false);
+
     const inventory = await page.evaluate(async ({ unrelatedCacheName, markerUrl }) => {
       const cacheNames = await caches.keys();
       const unrelated = await caches.open(unrelatedCacheName);
       const unrelatedBody = await (await unrelated.match('/unrelated-sentinel.txt'))?.text();
-      const appShellCache = await Promise.all(cacheNames.map(async name => {
-        const cache = await caches.open(name);
-        return { name, hasShell: Boolean(await cache.match('/index.html')) };
-      }));
       const response = await fetch(markerUrl);
       return {
         cacheNames,
         unrelatedBody,
-        appShellCached: appShellCache.some(cache => cache.hasShell),
         fetchedBody: await response.text(),
       };
     }, { unrelatedCacheName, markerUrl });
     expect(inventory.cacheNames).not.toContain(legacyCacheName);
     expect(inventory.cacheNames).toContain(unrelatedCacheName);
     expect(inventory.unrelatedBody).toBe('unrelated-cache-retained');
-    expect(inventory.appShellCached).toBe(true);
     expect(inventory.fetchedBody).not.toContain(marker);
   });
 
