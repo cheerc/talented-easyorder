@@ -275,6 +275,51 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
     expect(envelope.entries[0]).toMatchObject({ commandId, kind: 'CreateOrder', errorCode: 'UNKNOWN_RESULT' });
   });
 
+  it('P13b1 records the canonical command identity after a committed command loses receipt readback', async () => {
+    await seedBase();
+    const observedId = 'a1111111-1111-4111-8111-111111111111';
+    const canonicalId = 'b2222222-2222-4222-8222-222222222222';
+    const transactionId = 'b3333333-3333-4333-8333-333333333333';
+    let commandIdReads = 0;
+    const input = {
+      get commandId() {
+        commandIdReads += 1;
+        return commandIdReads <= 2 ? observedId : canonicalId;
+      },
+      kind: 'CreateOrder' as const,
+      leaseEpoch: 1,
+      targets: { transactionId, studentId, dayId: today },
+      expectedRevisions: { transaction: 0 as const, student: 1, day: 1 },
+      payload: { mealPrice: 100, paidAmount: 110, mealKind: 'bento' as const, menuRevision: 1 },
+    };
+    let receiptReadPath: string | undefined;
+    firestoreMock.serverRead.mockImplementationOnce(async reference => {
+      receiptReadPath = (reference as { path?: string }).path;
+      throw Object.assign(new Error('synthetic post-commit receipt readback loss'), { code: 'unavailable' });
+    });
+
+    const result = await repository(operatorA).commitCommand(input);
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'UNKNOWN_RESULT' } });
+    expect(commandIdReads).toBe(3);
+    expect(receiptReadPath).toBe(`commands/${canonicalId}`);
+    const committed = await withAdmin(async db => Promise.all([
+      getDoc(doc(db, 'system/dataHead')),
+      getDoc(doc(db, `commands/${observedId}`)),
+      getDoc(doc(db, `commands/${canonicalId}`)),
+      getDoc(doc(db, `transactions/${transactionId}`)),
+    ]));
+    expect(committed[0].data()).toMatchObject({ seq: 1, lastCommandId: canonicalId });
+    expect(committed[1].exists()).toBe(false);
+    expect(committed[2].data()).toMatchObject({ commandId: canonicalId, kind: 'CreateOrder', seq: 1 });
+    expect(committed[3].data()).toMatchObject({ transactionId, lastCommandId: canonicalId });
+    const envelope = JSON.parse(localStorage.getItem(SAFE_DIAGNOSTICS_STORAGE_KEY)!);
+    expect(envelope.entries).toHaveLength(1);
+    expect(envelope.entries[0]).toMatchObject({
+      commandId: canonicalId, kind: 'CreateOrder', errorCode: 'UNKNOWN_RESULT',
+    });
+  });
+
   it('P13b1 diagnostic storage failure does not change the command outcome, and reads do not log', async () => {
     const setItem = vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new Error('storage marker'); });
     const commandId = 'f4444444-4444-4444-8444-444444444444';
