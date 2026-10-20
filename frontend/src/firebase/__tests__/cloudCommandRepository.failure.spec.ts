@@ -147,6 +147,7 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
 
   beforeEach(async () => {
     await env.clearFirestore();
+    localStorage.clear();
     firestoreMock.serverRead.mockClear();
     firestoreMock.runTransaction.mockImplementation(firestoreMock.realRunTransaction);
     firestoreMock.runTransaction.mockClear();
@@ -154,6 +155,77 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
 
   afterAll(async () => {
     await env?.cleanup();
+  });
+
+  it('P13b1 logs one safe final diagnostic for a rejected command input', async () => {
+    const commandId = 'f1111111-1111-4111-8111-111111111111';
+    const marker = 'P13B1-COMMAND-PII-王小明-amount-87654321';
+    const result = await repository(operatorA).commitCommand({
+      commandId,
+      kind: 'CreateOrder',
+      leaseEpoch: 1,
+      targets: { studentId: marker, dayId: marker, transactionId: marker },
+      expectedRevisions: { student: 1, day: 1, transaction: 0 },
+      payload: { message: marker, nested: { payload: marker } },
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    const raw = localStorage.getItem('easyorder-diagnostics-cloud');
+    expect(raw).not.toBeNull();
+    const envelope = JSON.parse(raw!);
+    expect(envelope.entries).toHaveLength(1);
+    expect(envelope.entries[0]).toMatchObject({
+      type: 'command-failure', commandId, kind: 'CreateOrder', errorCode: 'INVALID_INPUT',
+      occurredAt: expect.any(String),
+    });
+    expect(raw).not.toContain(marker);
+    expect(Object.keys(envelope.entries[0]).sort()).toEqual(['commandId', 'errorCode', 'kind', 'occurredAt', 'type']);
+  });
+
+  it('P13b1 records one diagnostic after five final SDK transaction attempts', async () => {
+    await seedBase();
+    const commandId = 'f2222222-2222-4222-8222-222222222222';
+    const transactionId = 'f3333333-3333-4333-8333-333333333333';
+    const input = {
+      commandId, kind: 'CreateOrder' as const, leaseEpoch: 1,
+      targets: { transactionId, studentId, dayId: today },
+      expectedRevisions: { transaction: 0 as const, student: 1, day: 1 },
+      payload: { mealPrice: 100, paidAmount: 100, mealKind: 'bento' as const, menuRevision: 1 },
+    };
+    let callbackAttempts = 0;
+    const fakeTransaction = {
+      get: (reference: unknown) => firestoreMock.realServerRead(reference as Parameters<ServerRead>[0]),
+      set: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    };
+    firestoreMock.runTransaction.mockImplementationOnce(async (_db, updateFunction, options) => {
+      expect(options).toEqual({ maxAttempts: 5 });
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        callbackAttempts += 1;
+        await updateFunction(fakeTransaction as never);
+      }
+      throw Object.assign(new Error('synthetic exhausted transaction retries'), { code: 'unavailable' });
+    });
+
+    const result = await repository(operatorA).commitCommand(input);
+    expect(result).toMatchObject({ ok: false, error: { code: 'UNKNOWN_RESULT' } });
+    expect(callbackAttempts).toBe(5);
+    expect(firestoreMock.runTransaction).toHaveBeenCalledTimes(1);
+    const envelope = JSON.parse(localStorage.getItem('easyorder-diagnostics-cloud')!);
+    expect(envelope.entries).toHaveLength(1);
+    expect(envelope.entries[0]).toMatchObject({ commandId, kind: 'CreateOrder', errorCode: 'UNKNOWN_RESULT' });
+  });
+
+  it('P13b1 diagnostic storage failure does not change the command outcome, and reads do not log', async () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage marker'); });
+    const commandId = 'f4444444-4444-4444-8444-444444444444';
+    const result = await repository(operatorA).commitCommand({ commandId, kind: 'CreateOrder' });
+    expect(result).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    const diagnosticWriteCount = setItem.mock.calls.length;
+    expect(diagnosticWriteCount).toBeGreaterThan(0);
+    await expect(repository(operatorA).readCommand('not-a-uuid')).rejects.toThrow('commandId 必須是 UUID');
+    expect(setItem).toHaveBeenCalledTimes(diagnosticWriteCount);
   });
 
   it.each(['unavailable', 'permission-denied'] as const)(
