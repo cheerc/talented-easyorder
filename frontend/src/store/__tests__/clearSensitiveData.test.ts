@@ -41,6 +41,22 @@ describe('clearSensitiveData (#286)', () => {
     deleteSpy.mockRestore();
   });
 
+  it('reports a blocked Cloud crash-draft deletion instead of treating it as cleared', async () => {
+    const databaseName = 'easyorder-crash-draft-cloud';
+    const legacyHandle = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(databaseName, 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('drafts');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+
+    try {
+      await expect(clearSensitiveData()).rejects.toThrow(/關閉其他 EasyOrder 分頁/);
+    } finally {
+      legacyHandle.close();
+    }
+  });
+
   // Error logs are included in Cloud auth cleanup.
   it('clears the error log during Cloud auth cleanup', async () => {
     localStorage.setItem('easyorder-error-log', JSON.stringify([{ id: 'e1', message: 'test error' }]));
