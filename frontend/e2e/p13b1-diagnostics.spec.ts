@@ -23,6 +23,51 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
     await seedAccessLease({ holderUid: null, epoch: 0, updatedAt: new Date() });
   });
 
+  test('a denied localStorage property does not leave the production app blank', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'localStorage', {
+        configurable: true,
+        get() { throw new DOMException('P13B1 denied storage marker', 'SecurityError'); },
+      });
+    });
+    await page.goto('/');
+
+    await expect(page.locator('#root .auth-gate')).toBeVisible();
+    expect(await page.locator('#root').innerText()).not.toBe('');
+  });
+
+  test('F3 reports blocked storage reads and clear failures without exporting or showing success', async ({ googleSession }) => {
+    const { page } = googleSession;
+    await page.getByRole('button', { name: '取得系統使用權' }).click();
+    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await page.evaluate(() => localStorage.setItem('easyorder-diagnostics-cloud', JSON.stringify({
+      schemaVersion: 1,
+      entries: [{
+        type: 'system-error', source: 'auth', systemCode: 'AUTH_ERROR', occurredAt: new Date().toISOString(),
+      }],
+    })));
+    await page.keyboard.press('F3');
+    await expect(page.getByRole('heading', { name: '本機診斷' })).toBeVisible();
+    await expect(page.getByText('系統診斷：AUTH_ERROR')).toBeVisible();
+    await page.evaluate(() => {
+      Object.defineProperty(window, 'localStorage', {
+        configurable: true,
+        get() { throw new DOMException('P13B1 denied storage marker', 'SecurityError'); },
+      });
+    });
+
+    await page.getByRole('button', { name: '重新載入紀錄' }).click();
+    await expect(page.getByRole('alert')).toContainText('無法讀取本機診斷紀錄');
+    const downloads: string[] = [];
+    page.on('download', download => downloads.push(download.suggestedFilename()));
+    await page.getByRole('button', { name: '匯出本機診斷' }).click();
+    await expect(page.getByRole('alert')).toContainText('無法建立診斷下載');
+    await page.getByRole('button', { name: '清除本機診斷' }).click();
+    await expect(page.getByRole('alert')).toContainText('無法清除本機診斷紀錄');
+    expect(await page.getByRole('status').count()).toBe(0);
+    expect(downloads).toEqual([]);
+  });
+
   test('requires the lease, exports the strict allowlist, clears it, and masks controls on lease loss', async ({ googleSession }) => {
     const { page, uid } = googleSession;
     const navButton = page.getByRole('button', { name: /本機診斷.*F3/ });
@@ -107,18 +152,23 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
     const { page } = googleSession;
     await page.getByRole('button', { name: '取得系統使用權' }).click();
     await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
-    await page.evaluate(marker => localStorage.setItem('easyorder-diagnostics-cloud', JSON.stringify({
-      schemaVersion: 1,
-      entries: [{
-        type: 'command-failure', commandId: null, kind: null, errorCode: 'UNKNOWN_RESULT',
-        occurredAt: new Date().toISOString(), payload: marker,
-      }],
-    })), MARKERS[0]);
+    await page.evaluate(marker => {
+      const occurredAt = new Date().toISOString();
+      const raw = `{"schemaVersion":"${marker}","schemaVersion":1,"entries":[{"type":"system-error","source":"${marker}","source":"auth","systemCode":"AUTH_ERROR","occurredAt":"${occurredAt}"}]}`;
+      localStorage.setItem('easyorder-diagnostics-cloud', raw);
+    }, MARKERS[0]);
 
     await page.keyboard.press('F3');
     await expect(page.getByRole('heading', { name: '本機診斷' })).toBeVisible();
-    await expect(page.getByText('目前沒有可匯出的診斷紀錄。')).toBeVisible();
-    expect(await page.evaluate(() => localStorage.getItem('easyorder-diagnostics-cloud'))).toBeNull();
+    await expect(page.getByText('系統診斷：AUTH_ERROR')).toBeVisible();
+    const canonicalStorage = await page.evaluate(() => localStorage.getItem('easyorder-diagnostics-cloud'));
+    expect(canonicalStorage).not.toContain(MARKERS[0]);
+    expect(JSON.parse(canonicalStorage!)).toMatchObject({
+      schemaVersion: 1,
+      entries: [{
+        type: 'system-error', source: 'auth', systemCode: 'AUTH_ERROR', occurredAt: expect.any(String),
+      }],
+    });
     const storage = await page.evaluate(() => Object.keys(localStorage).map(key => localStorage.getItem(key) ?? '').join('\n'));
     expect(storage).not.toContain(MARKERS[0]);
   });

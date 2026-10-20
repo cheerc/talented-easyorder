@@ -185,6 +185,61 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
     expect(Object.keys(envelope.entries[0]).sort()).toEqual(['commandId', 'errorCode', 'kind', 'occurredAt', 'type']);
   });
 
+  it('P13b1 does not read a mutating commandId accessor before normalization', async () => {
+    let reads = 0;
+    const commandId = 'f5555555-5555-4555-8555-555555555555';
+    const input = {
+      get commandId() {
+        reads += 1;
+        if (reads > 2) throw new Error('extra commandId access marker');
+        return commandId;
+      },
+      kind: 'CreateOrder',
+      leaseEpoch: -1,
+      targets: {},
+      expectedRevisions: {},
+      payload: {},
+    };
+
+    const result = await repository(operatorA).commitCommand(input);
+    expect(result).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(reads).toBe(2);
+  });
+
+  it('P13b1 does not read a mutating command kind accessor before normalization', async () => {
+    let reads = 0;
+    const input = {
+      commandId: 'f6666666-6666-4666-8666-666666666666',
+      get kind() {
+        reads += 1;
+        if (reads > 3) throw new Error('extra kind access marker');
+        return 'CreateOrder';
+      },
+      leaseEpoch: -1,
+      targets: {},
+      expectedRevisions: {},
+      payload: {},
+    };
+
+    const result = await repository(operatorA).commitCommand(input);
+    expect(result).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(reads).toBe(3);
+  });
+
+  it('P13b1 contains a throwing prototype proxy trap inside the existing validation result boundary', async () => {
+    let prototypeReads = 0;
+    const input = new Proxy({}, {
+      getPrototypeOf() {
+        prototypeReads += 1;
+        throw new Error('prototype trap marker');
+      },
+    });
+
+    const result = await repository(operatorA).commitCommand(input);
+    expect(result).toMatchObject({ ok: false, error: { code: 'UNSUPPORTED_SCHEMA' } });
+    expect(prototypeReads).toBe(1);
+  });
+
   it('P13b1 records one diagnostic after five transaction callback attempts', async () => {
     await seedBase();
     const commandId = 'f2222222-2222-4222-8222-222222222222';

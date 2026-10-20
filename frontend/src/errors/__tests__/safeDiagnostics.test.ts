@@ -82,7 +82,68 @@ describe('P13b1 non-prototype diagnostic storage', () => {
     }));
 
     expect(readSafeDiagnostics()).toEqual([safeEntry]);
+    expect(localStorage.getItem(SAFE_DIAGNOSTICS_STORAGE_KEY) ?? '').not.toContain(marker);
+  });
+
+  it('canonicalizes duplicate envelope and entry keys before returning a safe decoded entry', () => {
+    const marker = 'P13B1-DUPLICATE-PRIVATE-MARKER';
+    const occurredAt = new Date().toISOString();
+    const raw = `{"schemaVersion":"${marker}","schemaVersion":1,"entries":[{"type":"system-error","source":"${marker}","source":"auth","systemCode":"AUTH_ERROR","occurredAt":"${occurredAt}"}]}`;
+    const safeEntry = {
+      type: 'system-error', source: 'auth', systemCode: 'AUTH_ERROR', occurredAt,
+    };
+    localStorage.setItem(SAFE_DIAGNOSTICS_STORAGE_KEY, raw);
+
+    expect(readSafeDiagnostics()).toEqual([safeEntry]);
+    expect(localStorage.getItem(SAFE_DIAGNOSTICS_STORAGE_KEY)).toBe(JSON.stringify({ schemaVersion: 1, entries: [safeEntry] }));
     expect(localStorage.getItem(SAFE_DIAGNOSTICS_STORAGE_KEY)).not.toContain(marker);
+  });
+
+  it('canonicalizes legal whitespace and escape variants of safe stored records', () => {
+    const occurredAt = new Date().toISOString();
+    const raw = ` { "schemaVersion" : 1 , "entries" : [ { "type" : "system-error" , "source" : "\\u0061uth" , "systemCode" : "AUTH_ERROR" , "occurredAt" : "${occurredAt}" } ] } `;
+    const safeEntry = {
+      type: 'system-error', source: 'auth', systemCode: 'AUTH_ERROR', occurredAt,
+    };
+    localStorage.setItem(SAFE_DIAGNOSTICS_STORAGE_KEY, raw);
+
+    expect(readSafeDiagnostics()).toEqual([safeEntry]);
+    expect(localStorage.getItem(SAFE_DIAGNOSTICS_STORAGE_KEY)).toBe(JSON.stringify({ schemaVersion: 1, entries: [safeEntry] }));
+  });
+
+  it('fails closed when canonicalization cannot remove or rewrite unsafe bytes', () => {
+    const marker = 'P13B1-REWRITE-PRIVATE-MARKER';
+    const occurredAt = new Date().toISOString();
+    const raw = `{"schemaVersion":"${marker}","schemaVersion":1,"entries":[{"type":"system-error","source":"${marker}","source":"auth","systemCode":"AUTH_ERROR","occurredAt":"${occurredAt}"}]}`;
+    localStorage.setItem(SAFE_DIAGNOSTICS_STORAGE_KEY, raw);
+    const removeItem = vi.spyOn(localStorage, 'removeItem').mockImplementation(key => {
+      if (key === SAFE_DIAGNOSTICS_STORAGE_KEY) throw new Error('storage removal denied');
+    });
+
+    expect(() => readSafeDiagnostics()).toThrow();
+    expect(localStorage.getItem(SAFE_DIAGNOSTICS_STORAGE_KEY)).toBe(raw);
+    removeItem.mockRestore();
+
+    const removeItemAgain = vi.spyOn(localStorage, 'removeItem');
+    const setItem = vi.spyOn(localStorage, 'setItem').mockImplementation((key, value) => {
+      if (key === SAFE_DIAGNOSTICS_STORAGE_KEY) throw new DOMException('quota exceeded', 'QuotaExceededError');
+      return Storage.prototype.setItem.call(localStorage, key, value);
+    });
+    expect(() => readSafeDiagnostics()).toThrow();
+    expect(removeItemAgain).toHaveBeenCalledWith(SAFE_DIAGNOSTICS_STORAGE_KEY);
+    expect(localStorage.getItem(SAFE_DIAGNOSTICS_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(SAFE_DIAGNOSTICS_STORAGE_KEY) ?? '').not.toContain(marker);
+    setItem.mockRestore();
+    removeItemAgain.mockRestore();
+  });
+
+  it('reports a fixed storage failure when the read method is denied', () => {
+    const getItem = vi.spyOn(localStorage, 'getItem').mockImplementation(() => {
+      throw new DOMException('P13B1 storage read marker', 'SecurityError');
+    });
+
+    expect(() => readSafeDiagnostics()).toThrow('Safe diagnostic storage is unavailable');
+    getItem.mockRestore();
   });
 
   it('fails closed if the unsafe legacy key cannot be removed', () => {
