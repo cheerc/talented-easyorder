@@ -87,7 +87,9 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     if (!isFirebaseConfigured(import.meta.env as FirebaseEnv)) return;
 
     let cancelled = false;
+    const initializationSignal = new AbortController();
     ensureFirebaseInitialized(undefined, {
+      signal: initializationSignal.signal,
       onFirestoreCleanupBlocked: () => {
         if (!cancelled) setFbError('舊版 Firestore 快取仍被其他分頁使用。請關閉其他 EasyOrder 分頁後再重新載入。');
       },
@@ -100,7 +102,10 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       },
       err => { if (!cancelled) setFbError(err instanceof Error ? err.message : String(err)); },
     );
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      initializationSignal.abort();
+    };
   }, []);
 
   useEffect(() => {

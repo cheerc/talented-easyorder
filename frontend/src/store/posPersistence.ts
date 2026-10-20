@@ -5,7 +5,7 @@ import { validatePersistedState } from '../storage/posStateValidator';
 import { appendErrorLog, clearErrorLog } from '../errors/errorLogger';
 import { INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS } from '../mocks/initialData';
 import { createIndexedDBStorage } from '../storage/indexedDBStorage';
-import { getStorageMode, isCloudMode, namespacedStorageName, type StorageMode } from '../appMode';
+import { getStorageMode, isCloudMode, isPrototypeMode, namespacedStorageName, type StorageMode } from '../appMode';
 
 // TODO: [future] encrypt sensitive fields before IndexedDB persist (#286)
 
@@ -150,6 +150,8 @@ export function createPosPersistenceConfig(
   };
 }
 
+// Only the explicit prototype entry may access durable legacy POS state.
+// Every non-prototype entry (including incomplete production configuration) stays memory-only.
 export const posPersistenceConfig: PersistOptions<PosState> = createPosPersistenceConfig(
-  isCloudMode ? 'cloud' : getStorageMode(),
+  isPrototypeMode ? 'prototype' : 'cloud',
 );

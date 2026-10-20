@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { usePosStore } from '../posStore';
+import { migratePersistedState } from '../../storage/migration';
 
 describe('posStore Accounting Engine', () => {
   beforeEach(() => {
@@ -103,7 +104,7 @@ describe('posStore Compatibility', () => {
     usePosStore.getState().resetData();
   });
 
-  it('normalizes old-shape student {id, name, balance} into StudentAccount', async () => {
+  it('migration normalizes old-shape student {id, name, balance} into StudentAccount', () => {
     const oldShape = {
       state: {
         students: [
@@ -116,17 +117,8 @@ describe('posStore Compatibility', () => {
       },
       version: 0,
     };
-    localStorage.setItem('pos-storage', JSON.stringify(oldShape));
-
-    // Clear IndexedDB so the legacy localStorage migration path is exercised
-    const store = usePosStore as unknown as { persist?: { clearStorage: () => void; rehydrate: () => Promise<void> } };
-    store.persist?.clearStorage();
-
-    // Zustand 5 persist rehydrate is async; await it so migrate() runs
-    if (store.persist?.rehydrate) {
-      await store.persist.rehydrate();
-    }
-    const students = usePosStore.getState().students;
+    const migrated = migratePersistedState(oldShape.state, 0);
+    const students = migrated.students;
     const normalized = students.find(s => s.studentId === '999');
     expect(normalized).toBeDefined();
     expect(normalized!.displayName).toBe('舊生甲');

@@ -4,6 +4,7 @@ vi.unmock('../../store/posPersistence');
 vi.mock('../../appMode', () => ({
   getStorageMode: () => 'cloud',
   isCloudMode: true,
+  isPrototypeMode: false,
   namespacedStorageName: (name: string, mode: string) => mode === 'cloud' ? `${name}-cloud` : name,
 }));
 

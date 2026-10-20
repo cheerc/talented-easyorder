@@ -67,12 +67,68 @@ export interface FirebaseServices {
 
 let cachedServices: FirebaseServices | null = null;
 let initPromise: Promise<FirebaseServices> | null = null;
+interface FirestoreCleanupSubscriber {
+  callback: () => void;
+  signal?: AbortSignal;
+  detach: () => void;
+}
+
+interface FirebaseInitializationAttempt {
+  subscribe: (options: FirebaseInitializationOptions) => void;
+  notifyCleanupBlocked: () => void;
+  dispose: () => void;
+}
+
+let initAttempt: FirebaseInitializationAttempt | null = null;
 let initializedMemoryFirestore: Firestore | null = null;
 let emulatorConnected = false;
 let appCheckInitialized = false;
 
 export interface FirebaseInitializationOptions {
   onFirestoreCleanupBlocked?: () => void;
+  signal?: AbortSignal;
+}
+
+function createInitializationAttempt(): FirebaseInitializationAttempt {
+  let cleanupBlocked = false;
+  const subscribers = new Set<FirestoreCleanupSubscriber>();
+
+  const subscribe = (options: FirebaseInitializationOptions) => {
+    const callback = options.onFirestoreCleanupBlocked;
+    const signal = options.signal;
+    if (!callback || signal?.aborted) return;
+    if (cleanupBlocked) {
+      callback();
+      return;
+    }
+
+    const subscriber: FirestoreCleanupSubscriber = {
+      callback,
+      signal,
+      detach: () => {
+        subscribers.delete(subscriber);
+        signal?.removeEventListener('abort', subscriber.detach);
+      },
+    };
+    subscribers.add(subscriber);
+    signal?.addEventListener('abort', subscriber.detach, { once: true });
+  };
+
+  const notifyCleanupBlocked = () => {
+    if (cleanupBlocked) return;
+    cleanupBlocked = true;
+    for (const subscriber of [...subscribers]) {
+      const shouldNotify = !subscriber.signal?.aborted;
+      subscriber.detach();
+      if (shouldNotify) subscriber.callback();
+    }
+  };
+
+  const dispose = () => {
+    for (const subscriber of [...subscribers]) subscriber.detach();
+  };
+
+  return { subscribe, notifyCleanupBlocked, dispose };
 }
 
 // Ref: #287 — Initialize Firebase App Check with ReCaptchaV3Provider.
@@ -153,7 +209,13 @@ export function ensureFirebaseInitialized(
   const state = getFirebaseConfigState(env);
   if (!state.configured) return Promise.reject(new Error(state.error));
   if (cachedServices) return Promise.resolve(cachedServices);
-  if (initPromise) return initPromise;
+  if (initPromise) {
+    initAttempt?.subscribe(options);
+    return initPromise;
+  }
+
+  const attempt = createInitializationAttempt();
+  attempt.subscribe(options);
 
   const pending = (async () => {
     await ensureFirebaseModulesLoaded();
@@ -166,7 +228,7 @@ export function ensureFirebaseInitialized(
     // known database before any Firestore reads begin, then keep this session
     // on an in-memory cache.
     const { clearIndexedDbPersistence } = getFirestoreMod();
-    await observeBlockedFirestoreCleanup(app, state.config.projectId!, options.onFirestoreCleanupBlocked, () =>
+    await observeBlockedFirestoreCleanup(app, state.config.projectId!, attempt.notifyCleanupBlocked, () =>
       clearIndexedDbPersistence(db),
     );
 
@@ -237,9 +299,18 @@ export function ensureFirebaseInitialized(
   })();
 
   initPromise = pending;
-  void pending.catch(() => {
-    if (initPromise === pending) initPromise = null;
-  });
+  initAttempt = attempt;
+  void pending.then(
+    () => {
+      attempt.dispose();
+      if (initAttempt === attempt) initAttempt = null;
+    },
+    () => {
+      attempt.dispose();
+      if (initPromise === pending) initPromise = null;
+      if (initAttempt === attempt) initAttempt = null;
+    },
+  );
   return pending;
 }
 

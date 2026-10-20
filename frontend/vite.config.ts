@@ -15,6 +15,7 @@ async function createPwaPlugin(): Promise<PluginOption> {
     manifest: false, // use public/manifest.json
     workbox: {
       globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+      importScripts: ['retire-pos-network-cache.js'],
     },
   })
 }

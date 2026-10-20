@@ -116,7 +116,7 @@ describe('完整 App 跨功能整合與真實 Persist 測試', () => {
     expect(screen.getByText('結帳歷史')).toHaveClass('tab-on');
     cleanup();
 
-    const config = createPosPersistenceConfig();
+    const config = createPosPersistenceConfig('prototype');
     expect(config.name).toBe(usePosStore.persist.getOptions().name);
     const saved = (await config.storage!.getItem(config.name)) as {
       state: {
