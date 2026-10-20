@@ -124,6 +124,81 @@ test.describe('P13a generated service worker and memory-only cloud storage', () 
     });
   });
 
+  test('retires the previous runtime cache during service-worker upgrade and preserves unrelated caches', async ({ page }) => {
+    const legacyCacheName = 'pos-network-cache';
+    const unrelatedCacheName = 'p13a-unrelated-cache-sentinel';
+    const markerUrl = `${E2E_BASE_URL}/api/student.js?synthetic=1`;
+    const marker = 'P528-SYNTHETIC-PRIVATE-MARKER';
+
+    // Keep the first document script-free so the candidate worker cannot activate
+    // until after the exact legacy runtime cache has been seeded.
+    await page.route('**/*.js', route => route.abort());
+    await page.goto(E2E_BASE_URL, { waitUntil: 'domcontentloaded' });
+    const seeded = await page.evaluate(async ({ legacyCacheName, unrelatedCacheName, markerUrl, marker }) => {
+      const previous = await caches.open(legacyCacheName);
+      await previous.put(new Request(markerUrl), new Response(marker, { headers: { 'Content-Type': 'application/javascript' } }));
+      const unrelated = await caches.open(unrelatedCacheName);
+      await unrelated.put(new Request('/unrelated-sentinel.txt'), new Response('unrelated-cache-retained'));
+      return await (await previous.match(markerUrl))?.text();
+    }, { legacyCacheName, unrelatedCacheName, markerUrl, marker });
+    expect(seeded).toBe(marker);
+
+    await page.unroute('**/*.js');
+    await page.goto(E2E_BASE_URL);
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.reload();
+    await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
+    await expect.poll(() => page.evaluate(cacheName => caches.has(cacheName), legacyCacheName)).toBe(false);
+
+    const inventory = await page.evaluate(async ({ unrelatedCacheName, markerUrl }) => {
+      const cacheNames = await caches.keys();
+      const unrelated = await caches.open(unrelatedCacheName);
+      const unrelatedBody = await (await unrelated.match('/unrelated-sentinel.txt'))?.text();
+      const appShellCache = await Promise.all(cacheNames.map(async name => {
+        const cache = await caches.open(name);
+        return { name, hasShell: Boolean(await cache.match('/index.html')) };
+      }));
+      const response = await fetch(markerUrl);
+      return {
+        cacheNames,
+        unrelatedBody,
+        appShellCached: appShellCache.some(cache => cache.hasShell),
+        fetchedBody: await response.text(),
+      };
+    }, { unrelatedCacheName, markerUrl });
+    expect(inventory.cacheNames).not.toContain(legacyCacheName);
+    expect(inventory.cacheNames).toContain(unrelatedCacheName);
+    expect(inventory.unrelatedBody).toBe('unrelated-cache-retained');
+    expect(inventory.appShellCached).toBe(true);
+    expect(inventory.fetchedBody).not.toContain(marker);
+  });
+
+  test('keeps the app behind a visible error when legacy runtime-cache retirement fails', async ({ page }) => {
+    await page.addInitScript(() => {
+      const originalHas = CacheStorage.prototype.has;
+      const originalDelete = CacheStorage.prototype.delete;
+      Object.defineProperty(CacheStorage.prototype, 'has', {
+        configurable: true,
+        value(name: string) {
+          if (name === 'pos-network-cache') return Promise.resolve(true);
+          return originalHas.call(this, name);
+        },
+      });
+      Object.defineProperty(CacheStorage.prototype, 'delete', {
+        configurable: true,
+        value(name: string) {
+          if (name === 'pos-network-cache') return Promise.reject(new Error('synthetic cache deletion failure'));
+          return originalDelete.call(this, name);
+        },
+      });
+    });
+
+    await page.goto(E2E_BASE_URL);
+    await expect(page.getByRole('alert')).toContainText('舊版離線快取尚未確認清除');
+    await expect(page.getByRole('button', { name: '重新嘗試' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '使用 Google 登入' })).toHaveCount(0);
+  });
+
   test('blocks app initialization while a legacy Firestore database is open, then clears it after the old page closes', async ({ browser }) => {
     const context = await browser.newContext({ baseURL: E2E_BASE_URL });
     const legacyPage = await context.newPage();

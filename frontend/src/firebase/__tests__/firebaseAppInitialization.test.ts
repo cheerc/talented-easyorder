@@ -84,7 +84,10 @@ describe('ensureFirebaseInitialized storage boundary', () => {
 
   it('uses a memory-only cache and clears the legacy Firestore namespace before returning services', async () => {
     let releaseCleanup!: () => void;
-    mocks.clearIndexedDbPersistence.mockImplementation(() => new Promise<void>(resolve => { releaseCleanup = resolve; }));
+    mocks.clearIndexedDbPersistence.mockImplementation(() => {
+      indexedDB.deleteDatabase('firestore/[DEFAULT]/demo-easyorder/main');
+      return new Promise<void>(resolve => { releaseCleanup = resolve; });
+    });
     const { ensureFirebaseInitialized } = await loadFirebaseAppModule();
 
     let settled = false;
@@ -108,7 +111,10 @@ describe('ensureFirebaseInitialized storage boundary', () => {
 
   it('deduplicates concurrent calls and exposes the same initialized services only after cleanup', async () => {
     let releaseCleanup!: () => void;
-    mocks.clearIndexedDbPersistence.mockImplementation(() => new Promise<void>(resolve => { releaseCleanup = resolve; }));
+    mocks.clearIndexedDbPersistence.mockImplementation(() => {
+      indexedDB.deleteDatabase('firestore/[DEFAULT]/demo-easyorder/main');
+      return new Promise<void>(resolve => { releaseCleanup = resolve; });
+    });
     const { ensureFirebaseInitialized } = await loadFirebaseAppModule();
 
     const first = ensureFirebaseInitialized(env);
@@ -121,6 +127,78 @@ describe('ensureFirebaseInitialized storage boundary', () => {
     releaseCleanup();
     const [firstServices, secondServices] = await Promise.all([first, second]);
     expect(firstServices).toBe(secondServices);
+  });
+
+  it('notifies only live subscribers when a shared Firestore cleanup becomes blocked', async () => {
+    const originalIndexedDb = Object.getOwnPropertyDescriptor(globalThis, 'indexedDB');
+    const request = new EventTarget() as unknown as IDBOpenDBRequest;
+    Object.defineProperty(globalThis, 'indexedDB', {
+      configurable: true,
+      value: { deleteDatabase: vi.fn(() => request) } as unknown as IDBFactory,
+    });
+
+    let releaseCleanup!: () => void;
+    mocks.clearIndexedDbPersistence.mockImplementation(() => new Promise<void>(resolve => { releaseCleanup = resolve; }));
+    try {
+      const { ensureFirebaseInitialized } = await loadFirebaseAppModule();
+      const staleController = new AbortController();
+      const staleSubscriber = vi.fn();
+      const liveSubscriber = vi.fn();
+      const first = ensureFirebaseInitialized(env, {
+        onFirestoreCleanupBlocked: staleSubscriber,
+        signal: staleController.signal,
+      });
+      staleController.abort();
+      const second = ensureFirebaseInitialized(env, { onFirestoreCleanupBlocked: liveSubscriber });
+
+      expect(second).toBe(first);
+      await vi.waitFor(() => expect(mocks.clearIndexedDbPersistence).toHaveBeenCalledOnce());
+      request.dispatchEvent(new Event('blocked'));
+
+      expect(staleSubscriber).not.toHaveBeenCalled();
+      expect(liveSubscriber).toHaveBeenCalledOnce();
+
+      releaseCleanup();
+      await Promise.all([first, second]);
+      const afterSuccess = vi.fn();
+      await ensureFirebaseInitialized(env, { onFirestoreCleanupBlocked: afterSuccess });
+      expect(afterSuccess).not.toHaveBeenCalled();
+    } finally {
+      if (originalIndexedDb) Object.defineProperty(globalThis, 'indexedDB', originalIndexedDb);
+      else delete (globalThis as { indexedDB?: IDBFactory }).indexedDB;
+    }
+  });
+
+  it('replays an already observed blocked state only to a new subscriber in that pending attempt', async () => {
+    const originalIndexedDb = Object.getOwnPropertyDescriptor(globalThis, 'indexedDB');
+    const request = new EventTarget() as unknown as IDBOpenDBRequest;
+    Object.defineProperty(globalThis, 'indexedDB', {
+      configurable: true,
+      value: { deleteDatabase: vi.fn(() => request) } as unknown as IDBFactory,
+    });
+
+    let releaseCleanup!: () => void;
+    mocks.clearIndexedDbPersistence.mockImplementation(() => new Promise<void>(resolve => { releaseCleanup = resolve; }));
+    try {
+      const { ensureFirebaseInitialized } = await loadFirebaseAppModule();
+      const first = ensureFirebaseInitialized(env);
+      await vi.waitFor(() => expect(mocks.clearIndexedDbPersistence).toHaveBeenCalledOnce());
+      request.dispatchEvent(new Event('blocked'));
+
+      const lateSubscriber = vi.fn();
+      const second = ensureFirebaseInitialized(env, { onFirestoreCleanupBlocked: lateSubscriber });
+      expect(second).toBe(first);
+      expect(lateSubscriber).toHaveBeenCalledOnce();
+
+      releaseCleanup();
+      await Promise.all([first, second]);
+      const retrySubscriber = vi.fn();
+      await ensureFirebaseInitialized(env, { onFirestoreCleanupBlocked: retrySubscriber });
+      expect(retrySubscriber).not.toHaveBeenCalled();
+    } finally {
+      if (originalIndexedDb) Object.defineProperty(globalThis, 'indexedDB', originalIndexedDb);
+      else delete (globalThis as { indexedDB?: IDBFactory }).indexedDB;
+    }
   });
 
   it('does not mark a rejected initialization ready and allows a clean explicit retry', async () => {
