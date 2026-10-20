@@ -18,6 +18,7 @@ import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vites
 import type { User } from 'firebase/auth';
 import { createCloudCommandRepository } from '../cloudCommandRepository';
 import { createCloudReportActionRepository } from '../cloudReportActionRepository';
+import { SAFE_DIAGNOSTICS_STORAGE_KEY } from '../../errors/errorLogger';
 
 type ServerRead = typeof import('firebase/firestore').getDocFromServer;
 type RunTransaction = typeof import('firebase/firestore').runTransaction;
@@ -170,7 +171,7 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
     });
 
     expect(result).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
-    const raw = localStorage.getItem('easyorder-diagnostics-cloud');
+    const raw = localStorage.getItem(SAFE_DIAGNOSTICS_STORAGE_KEY);
     expect(raw).not.toBeNull();
     const envelope = JSON.parse(raw!);
     expect(envelope.entries).toHaveLength(1);
@@ -179,10 +180,12 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
       occurredAt: expect.any(String),
     });
     expect(raw).not.toContain(marker);
+    expect(raw).not.toContain('王小明');
+    expect(raw).not.toContain('87654321');
     expect(Object.keys(envelope.entries[0]).sort()).toEqual(['commandId', 'errorCode', 'kind', 'occurredAt', 'type']);
   });
 
-  it('P13b1 records one diagnostic after five final SDK transaction attempts', async () => {
+  it('P13b1 records one diagnostic after five transaction callback attempts', async () => {
     await seedBase();
     const commandId = 'f2222222-2222-4222-8222-222222222222';
     const transactionId = 'f3333333-3333-4333-8333-333333333333';
@@ -212,13 +215,13 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'UNKNOWN_RESULT' } });
     expect(callbackAttempts).toBe(5);
     expect(firestoreMock.runTransaction).toHaveBeenCalledTimes(1);
-    const envelope = JSON.parse(localStorage.getItem('easyorder-diagnostics-cloud')!);
+    const envelope = JSON.parse(localStorage.getItem(SAFE_DIAGNOSTICS_STORAGE_KEY)!);
     expect(envelope.entries).toHaveLength(1);
     expect(envelope.entries[0]).toMatchObject({ commandId, kind: 'CreateOrder', errorCode: 'UNKNOWN_RESULT' });
   });
 
   it('P13b1 diagnostic storage failure does not change the command outcome, and reads do not log', async () => {
-    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage marker'); });
+    const setItem = vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new Error('storage marker'); });
     const commandId = 'f4444444-4444-4444-8444-444444444444';
     const result = await repository(operatorA).commitCommand({ commandId, kind: 'CreateOrder' });
     expect(result).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });

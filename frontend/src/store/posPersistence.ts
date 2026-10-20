@@ -57,7 +57,7 @@ export async function clearSensitiveData(): Promise<void> {
   try {
     // Remove only the Cloud namespace; prototype/local-only data remain intact.
     localStorage.removeItem(namespacedStorageName('pos-storage', 'cloud'));
-    clearErrorLog();
+    if (!clearErrorLog()) cleanupErrors.push('舊版本機錯誤紀錄清除失敗。');
   } catch (error) {
     cleanupErrors.push(error instanceof Error ? error.message : String(error));
   }

@@ -10,6 +10,7 @@ const MARKERS = [
   'P13B1-STACK-/Users/private/project/App.tsx',
   'P13B1-NESTED-PAYLOAD-秘密',
 ];
+const SENSITIVE_FRAGMENTS = ['王小明', '987654321', 'private@example.test', 'https://example.test/path?student=secret', '/Users/private/project/App.tsx', '秘密'];
 
 test.describe('P13b1 Cloud F3 safe diagnostics', () => {
   test.setTimeout(90000);
@@ -64,7 +65,7 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
     expect(downloadPath).not.toBeNull();
     const exportedText = await readFile(downloadPath!, 'utf8');
     const exported = JSON.parse(exportedText);
-    for (const marker of MARKERS) expect(exportedText).not.toContain(marker);
+    for (const marker of [...MARKERS, ...SENSITIVE_FRAGMENTS]) expect(exportedText).not.toContain(marker);
     expect(exported).toMatchObject({ schemaVersion: 1, retentionHours: 24 });
     expect(exported.entries).toHaveLength(1);
     expect(exported.entries[0]).toMatchObject({
@@ -78,7 +79,7 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
       prototype: localStorage.getItem('easyorder-error-log-prototype'),
       sentinel: localStorage.getItem('unrelated-storage-sentinel'),
     }));
-    for (const marker of MARKERS) expect(storage.serialized).not.toContain(marker);
+    for (const marker of [...MARKERS, ...SENSITIVE_FRAGMENTS]) expect(storage.serialized).not.toContain(marker);
     expect(storage.legacy).toBeNull();
     expect(storage.prototype).toBe('prototype-sentinel');
     expect(storage.sentinel).toBe('unrelated-sentinel');
@@ -100,5 +101,25 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
     await expect(page.getByRole('button', { name: '匯出本機診斷' })).toHaveCount(0);
     expect(await page.evaluate(() => localStorage.getItem('easyorder-diagnostics-cloud'))).toContain('UNKNOWN_RESULT');
     expect(uid).toBeTruthy();
+  });
+
+  test('removes a crafted diagnostic envelope when F3 reads it without a new error event', async ({ googleSession }) => {
+    const { page } = googleSession;
+    await page.getByRole('button', { name: '取得系統使用權' }).click();
+    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await page.evaluate(marker => localStorage.setItem('easyorder-diagnostics-cloud', JSON.stringify({
+      schemaVersion: 1,
+      entries: [{
+        type: 'command-failure', commandId: null, kind: null, errorCode: 'UNKNOWN_RESULT',
+        occurredAt: new Date().toISOString(), payload: marker,
+      }],
+    })), MARKERS[0]);
+
+    await page.keyboard.press('F3');
+    await expect(page.getByRole('heading', { name: '本機診斷' })).toBeVisible();
+    await expect(page.getByText('目前沒有可匯出的診斷紀錄。')).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem('easyorder-diagnostics-cloud'))).toBeNull();
+    const storage = await page.evaluate(() => Object.keys(localStorage).map(key => localStorage.getItem(key) ?? '').join('\n'));
+    expect(storage).not.toContain(MARKERS[0]);
   });
 });

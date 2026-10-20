@@ -45,6 +45,7 @@ import { CloudDayClosePage } from './components/cloud/CloudDayClosePage';
 import { CloudLedgerAnomaliesPage } from './components/cloud/CloudLedgerAnomaliesPage';
 import { CloudReportPage } from './components/cloud/CloudReportPage';
 import { CloudAccountHistoryPage } from './components/cloud/CloudAccountHistoryPage';
+import { CloudDiagnosticsPage } from './components/cloud/CloudDiagnosticsPage';
 import type { CloudLedgerDateRange } from './domain/cloudLedgerReport';
 import { useCloudLedger, type CloudLedgerView } from './hooks/useCloudLedger';
 import type { OpeningMismatchAnomaly } from './domain/ledgerAnomalies';
@@ -348,7 +349,7 @@ function AppContent() {
   );
 }
 
-type CloudSection = 'orders' | 'students' | 'day-vendors' | 'day-close' | 'anomalies' | 'reports' | 'account-history';
+type CloudSection = 'orders' | 'students' | 'day-vendors' | 'day-close' | 'anomalies' | 'reports' | 'account-history' | 'diagnostics';
 
 const CLOUD_SECTION_LABELS: Record<CloudSection, string> = {
   orders: '雲端櫃台點餐',
@@ -358,6 +359,7 @@ const CLOUD_SECTION_LABELS: Record<CloudSection, string> = {
   anomalies: '帳務異常',
   reports: '雲端報表',
   'account-history': '雲端查帳',
+  diagnostics: '雲端本機診斷',
 };
 
 function anomalyNavLabel(ledger: CloudLedgerView): string {
@@ -377,19 +379,33 @@ function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEp
   const [navigationLocked, setNavigationLocked] = useState(false);
   const navigationLockRef = useRef<{ identityKey: string; locked: boolean; revoked: boolean } | null>(null);
   const { ledger, reload: reloadLedger } = useCloudLedger(db, `${identityKey}:${leaseEpoch}`);
+
+  useEffect(() => {
+    const onGlobalKey = (event: KeyboardEvent) => {
+      if (event.key !== 'F3') return;
+      event.preventDefault();
+      if (document.querySelector('[role="dialog"][aria-modal="true"]') || navigationLockRef.current?.locked) return;
+      setCloudSection('diagnostics');
+    };
+    window.addEventListener('keydown', onGlobalKey);
+    return () => window.removeEventListener('keydown', onGlobalKey);
+  }, []);
   const reportNavigationState = useCallback((reportedKey: string, state: 'recovering' | 'revoked' | 'resolved') => {
-    let lock = navigationLockRef.current;
-    if (!lock || lock.identityKey !== reportedKey) {
-      lock = { identityKey: reportedKey, locked: false, revoked: false };
-    }
+    const currentLock = navigationLockRef.current;
+    const current = currentLock?.identityKey === reportedKey
+      ? currentLock
+      : { identityKey: reportedKey, locked: false, revoked: false };
+    let locked = current.locked;
+    let revoked = current.revoked;
     if (state === 'revoked') {
-      lock.revoked = true;
-      lock.locked = true;
+      revoked = true;
+      locked = true;
     } else if (state === 'recovering') {
-      lock.locked = true;
-    } else if (!lock.revoked) {
-      lock.locked = false;
+      locked = true;
+    } else if (!revoked) {
+      locked = false;
     }
+    const lock = { identityKey: reportedKey, locked, revoked };
     navigationLockRef.current = lock;
     setNavigationLocked(lock.locked);
   }, []);
@@ -429,6 +445,9 @@ function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEp
         <button type="button" aria-pressed={cloudSection === 'account-history'} disabled={navigationLocked} onClick={() => selectSection('account-history')}>
           雲端查帳
         </button>
+        <button type="button" aria-pressed={cloudSection === 'diagnostics'} disabled={navigationLocked} onClick={() => selectSection('diagnostics')}>
+          本機診斷（F3）
+        </button>
       </nav>
       {cloudSection === 'orders' ? (
         <CloudOrdersPage {...common} initialBackfillDayId={ordersFocus} />
@@ -464,6 +483,8 @@ function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEp
           initialStudentId={accountHistoryStudentId}
           initialRange={accountHistoryRange}
         />
+      ) : cloudSection === 'diagnostics' ? (
+        <CloudDiagnosticsPage key={`${identityKey}:${leaseEpoch}`} identityKey={identityKey} leaseEpoch={leaseEpoch} />
       ) : (
         <CloudLedgerAnomaliesPage
           ledger={ledger}

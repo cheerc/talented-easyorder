@@ -7,7 +7,8 @@ import {
   serverTimestamp,
   type Firestore,
 } from 'firebase/firestore';
-import type { CommandErrorCode, CommandReceipt, CommandResult } from '../domain/cloudCommands';
+import { ALL_COMMAND_KINDS, type CommandErrorCode, type CommandReceipt, type CommandResult } from '../domain/cloudCommands';
+import { appendCommandDiagnostic } from '../errors/errorLogger';
 import {
   CASHIER_NAME_SNAPSHOT,
   CASHIER_STUDENT_ID,
@@ -328,6 +329,19 @@ function resultFromUnknownError(message = '提交回應不確定，請用原 com
   return errorResult('UNKNOWN_RESULT', message);
 }
 
+function diagnosticIdentity(untrustedInput: unknown): { commandId: string | null; kind: string | null } {
+  if (!plainRecord(untrustedInput)) return { commandId: null, kind: null };
+  const candidateId = untrustedInput.commandId;
+  const candidateKind = untrustedInput.kind;
+  return {
+    commandId: typeof candidateId === 'string'
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidateId)
+      ? candidateId : null,
+    kind: typeof candidateKind === 'string' && ALL_COMMAND_KINDS.includes(candidateKind as (typeof ALL_COMMAND_KINDS)[number])
+      ? candidateKind : null,
+  };
+}
+
 /**
  * A diagnosis is a command error code, or one of two finer reasons a transaction on a past day is refused
  * (contract §12.2); `leaseDenialResult` turns them into the code and message the operator sees.
@@ -565,6 +579,28 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
   }
 
   async function commitCommand(untrustedInput: unknown): Promise<CommandResult> {
+    const identity = diagnosticIdentity(untrustedInput);
+    try {
+      const result = await commitCommandInternal(untrustedInput);
+      if (!result.ok) {
+        try {
+          appendCommandDiagnostic({ ...identity, errorCode: result.error.code });
+        } catch {
+          // Local diagnostics are best effort and cannot change a command result.
+        }
+      }
+      return result;
+    } catch (error) {
+      try {
+        appendCommandDiagnostic({ ...identity, errorCode: 'UNKNOWN_RESULT' });
+      } catch {
+        // Local diagnostics are best effort and cannot change a command outcome.
+      }
+      throw error;
+    }
+  }
+
+  async function commitCommandInternal(untrustedInput: unknown): Promise<CommandResult> {
     let input: CanonicalEnabledInput;
     let user: CurrentUser;
     let fingerprint: string;
