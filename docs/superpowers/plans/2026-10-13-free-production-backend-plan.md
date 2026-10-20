@@ -269,7 +269,7 @@ npm run test:e2e
 
 ### P13 — 斷線、重送與正式操作收尾
 
-**進度（2026-10-20）：** 僅 P13a 已授權實作：正式初始化使用 Firestore memory cache，清理已知舊 Firestore persistence 前 fail closed；Cloud logout／失權清理只處理 Cloud namespace，清除失敗會遮罩並顯示下一步；PWA 移除通用 runtime cache。P13a source RED/GREEN commits 為 `722b4f691ae34a15ac58081faa23fc47b8cf1c79`／`93a7ef027ca6648f0356f545b6af85dcdeea8d37`，另有 TSC repair commit `e02160571f447fe3d7844af4107f33d31d00e8de`；local verification 與 PR exact-head CI gate 見 [P13a evidence](../../ops/free-production-evidence.md#p13a-memory-cache-and-local-storage-isolation-2026-10-20)。P13b 未決命令、P13c accessEvents、P13d 紙本補登仍待 Coordinator 個別契約與派工；不宣稱 P13 完成。
+**進度（2026-10-20）：** 僅 P13a 已授權實作：正式初始化使用 Firestore memory cache，清理已知舊 Firestore persistence 前 fail closed；Cloud logout／失權清理只處理 Cloud namespace，清除失敗會遮罩並顯示下一步；PWA 移除通用 runtime cache，P13a Playwright suite 已接入 frontend test:e2e 與 release/nightly E2E workflow。P13a source RED/GREEN commits 為 `722b4f691ae34a15ac58081faa23fc47b8cf1c79`／`93a7ef027ca6648f0356f545b6af85dcdeea8d37`，另有 TSC repair commit `e02160571f447fe3d7844af4107f33d31d00e8de` 與 E2E release-gate wiring commit `3f71b738a84fa6c870ff3bec90b1f871ce0813fc`；local verification 與 PR exact-head CI gate 見 [P13a evidence](../../ops/free-production-evidence.md#p13a-memory-cache-and-local-storage-isolation-2026-10-20)。P13b 未決命令、P13c accessEvents、P13d 紙本補登仍待 Coordinator 個別契約與派工；不宣稱 P13 完成。
 
 **Scope/files：** `firebaseApp.ts` memory cache、cloud error處理、`posPersistence.ts`、`storage/crashDraft.ts`呼叫端、App/PWA cache設定、F2紙本補登入口、舊cloud write路徑清理。
 
