@@ -157,6 +157,11 @@ export type EnabledCommandKind =
   | 'RecordPostCloseEntry';
 export type EnabledCloudCommandInput = Extract<FullCloudCommandInput, { kind: EnabledCommandKind }>;
 
+export interface CommandDiagnosticIdentity {
+  commandId: string | null;
+  kind: BusinessCommandKind | null;
+}
+
 export type StoredCloudCommandDoc = {
   [K in BusinessCommandKind]: {
     commandId: string;
@@ -614,7 +619,30 @@ function normalizePayload(kind: EnabledCommandKind, value: unknown): CommandPayl
   };
 }
 
-export function normalizeEnabledCommandInput(input: unknown): CanonicalEnabledInput {
+function hasValidCommandIdForNormalization(
+  input: Record<string, unknown>,
+  kind: EnabledCommandKind,
+  onDiagnosticIdentity?: (identity: CommandDiagnosticIdentity) => void,
+): input is Record<string, unknown> & { commandId: string } {
+  const firstCommandIdRead = input.commandId;
+  const commandIdForValidation = typeof firstCommandIdRead === 'string' ? input.commandId : firstCommandIdRead;
+  const validCommandId = typeof firstCommandIdRead === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(commandIdForValidation as string);
+  try {
+    onDiagnosticIdentity?.({
+      commandId: validCommandId && typeof commandIdForValidation === 'string' ? commandIdForValidation : null,
+      kind: ALL_COMMAND_KINDS.includes(kind as BusinessCommandKind) ? kind as BusinessCommandKind : null,
+    });
+  } catch {
+    // Diagnostic observation is optional and must not change command normalization.
+  }
+  return validCommandId;
+}
+
+export function normalizeEnabledCommandInput(
+  input: unknown,
+  onDiagnosticIdentity?: (identity: CommandDiagnosticIdentity) => void,
+): CanonicalEnabledInput {
   if (!isPlainRecord(input)) throw new InvalidCloudCommandInput('命令必須是固定物件');
   exactKeys(input, ['commandId', 'kind', 'leaseEpoch', 'targets', 'expectedRevisions', 'payload']);
   if (typeof input.kind !== 'string' || ![
@@ -626,7 +654,7 @@ export function normalizeEnabledCommandInput(input: unknown): CanonicalEnabledIn
     throw new InvalidCloudCommandInput('此命令種類尚未啟用');
   }
   const kind = input.kind as EnabledCommandKind;
-  if (typeof input.commandId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.commandId)) {
+  if (!hasValidCommandIdForNormalization(input, kind, onDiagnosticIdentity)) {
     throw new InvalidCloudCommandInput('commandId 必須是 UUID');
   }
   safeInteger(input.leaseEpoch, 'leaseEpoch');

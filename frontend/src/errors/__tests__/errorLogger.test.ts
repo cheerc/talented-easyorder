@@ -1,5 +1,7 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { appendErrorLog, readErrorLog, clearErrorLog, sanitizeStack } from '../errorLogger';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
+
+vi.stubEnv('MODE', 'prototype');
+const { appendErrorLog, readErrorLog, clearErrorLog, sanitizeStack } = await import('../errorLogger');
 
 beforeEach(() => {
   localStorage.clear();
@@ -211,7 +213,7 @@ describe('errorLogger', () => {
         { id: 'recent-1', createdAt: recent, source: 'react', message: 'recent' },
         { id: 'old-1', createdAt: old, source: 'react', message: 'old' },
       ];
-      localStorage.setItem('easyorder-error-log', JSON.stringify(entries));
+      localStorage.setItem('easyorder-error-log-prototype', JSON.stringify(entries));
 
       // Append a new entry — should trigger TTL rotation
       appendErrorLog({ source: 'react', message: 'new entry' });
@@ -227,7 +229,7 @@ describe('errorLogger', () => {
       const entries = [
         { id: 'fresh-1', createdAt: fresh, source: 'react', message: 'fresh' },
       ];
-      localStorage.setItem('easyorder-error-log', JSON.stringify(entries));
+      localStorage.setItem('easyorder-error-log-prototype', JSON.stringify(entries));
 
       appendErrorLog({ source: 'react', message: 'another' });
 

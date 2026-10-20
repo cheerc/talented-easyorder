@@ -1,6 +1,6 @@
 # Project Status — Talented EasyOrder
 
-> **2026-10-20 P13a #528 r1 rework checkpoint:** P12 final receipt PR #526 merged at ca79d3c7a1eae5660a0ccd44abf654e3d95b4e92; main CI #39253034832 attempt 1 is COMPLETED／SUCCESS. P13a remains on codex/p13a-memory-storage from that pinned base. Following the REWORK on prior head 4073fc257350e582f92184533382ce950efd777f, RED commits cfb0b21f07dd59292e128ec630f96e28bf6f575d, 01bd6fecbd4fe27d70b64d802efe55b36514ad13 and 27289b09607d79abe0681b393e92ca881d359309 remain separate from GREEN 5d2f285509ddffb246aed162a211692dba05435f. Full Vitest, required E2E command, lint, build and root TypeScript pass; App TSC has 208 diagnostics at both pinned base and candidate with normalized outputs identical. Documentation is updated in this candidate; the live PR head and exact-head provider CI still require fresh verification. No merge, deployment, production validation, or P13b–d work is included. See [P13a r1 evidence](ops/free-production-evidence.md#p13a-pr-528-r1-rework-checkpoint-2026-10-20).
+> **2026-10-21 P13b1 r2 rework:** P13a PR #528 merged at `22a6d79c627e991a3bc021a66d288dda57c3596c`; main CI #39424593318 attempt 1 build-and-test／e2e succeeded. PR #529 r1 review rejected old head `4d55ffa372ed07e6239363524c0a58b034d275c6`; r2 review #5588076676 rejected previous head `f6447e1d612d76daccee30fb55b812b2185f3c8a` for R4 only, confirming R1–R3 resolved. R4 was that a changing commandId accessor let a partial observation A disagree with canonical/committed ID B. Coordinator-dispatched RED `4cff0d8e9bf1ecba8c72aa641d8531dd1a8ef190` and GREEN `9ad36346adb2eae6538672bacaa586a3064c4b1d` are separate commits on the existing PR branch; consult [PR #529](https://github.com/cheerc/talented-easyorder/pull/529) for the final head and exact-head CI/review state. P13b recovery, P13c `accessEvents`, P13d paper intake, deployment and production validation remain excluded. Evidence: [P13b1 checkpoint](ops/free-production-evidence.md#p13b1-safe-local-diagnostics-and-f3-export-2026-10-20).
 
 > **歷史 checkpoint（2026-10-19 P12c fourth-round L07 test-only delta，merge 前）：** PR #525 維持 branch `codex/p12c-report-ui`、pinned base `3d49c8f267d1a15b5b036d899d38fa7bdcd5ab93`；只修 E2E 等待競態與更新證據，不改 runtime。直接 locator assertion 等待精確 H=before+1；test-only route 控制 fresh-read 延遲超過 5.5 秒仍能完成，餘額 +25 與後日 settlement 不變斷言保留。P12c browser 2/2、lint 與 root TSC 證據見 [P12c L07 CI readiness evidence](ops/free-production-evidence.md#p12c-pr-525-l07-ci-readiness-checkpoint-2026-10-19)。待此 new head 的獨立 delta review 與 exact-head provider CI；前一 head CI 不適用本 delta。PR 未合併；P12 未完成，沒有 production deployment、正式索引驗證或本人營運驗收。
 
@@ -17,14 +17,14 @@
 
 > **已合併基線：** P00 #471、P01 #472、P02 #473、P03 #474、P04 #475、P05 #476、P06 #478、P07 #480、P08 #491、P09a #493、P09b #494、P14 #496（收據 #498）、P10a #497、P10b #501、P11a #503、P11b #505、P11 補開帳 #507、P11c1 #509、P11c2a #511、P11c2b #513、P11c3 #515、P11c4a #517（merge `4c5bb556f0e03c2a25444e193d448de289882194`）、P11c4b #519（merge `855679804a12cd1bce5dce72fe2da20127e2c85d`）、U1 #481、U2c #482、U2a #483、整合 PR #488（含 U3/U4/U2b/P06b）；merge SHA 與驗收限制見[現況與證據](ops/free-production-evidence.md)及各 phase receipts。逐 PR 接手流程見[開發交接入口](DEVELOPMENT-HANDOFF.md)。
 
-> **Last inspected:** 2026-10-20, P13a r1 rework and local verification are documented; consult the live PR/provider state for the final head and required CI. No production deployment or P13b–d acceptance is implied.
-> 本次更新 P13a r1 rework status 與本機驗證；所有生產環境及營運操作仍未執行。
+> **Last inspected:** 2026-10-21, P13b1 R4 rework is implemented in separate RED/GREEN commits on PR #529; consult live PR/provider state for final exact-head CI and the next independent review. No P13b recovery, P13c–d, production deployment, or operational acceptance is implied.
+> 本次更新 P13b1 R4 canonical-identity rework evidence；生產環境及營運操作仍未執行。
 
 ## 1. 當前方向
 
 PC 晚餐櫃台前端 prototype：鍵盤為主、滑鼠為輔，保留 operator 約七成滿意的 F1。每天一餐（晚餐）；餐費90找零後記90，多留10元則記100。支援1920×1080 PC及MacBook Pro 13吋，按可用視窗重排，不整頁縮小。
 
-前端本人驗收仍依下方清單；正式後端另依 P00–P18 計畫推進。P00–P12、P14 等既有階段均已合併；P12 最終收據 #526 與 main CI #39253034832 attempt 1 已完成，P13a r1 正等待 live PR exact-head CI，P13b–d 尚未派工。P13a 的 source、RED/GREEN 與驗證證據見頂端 checkpoint 及 [P13a r1 evidence](ops/free-production-evidence.md#p13a-pr-528-r1-rework-checkpoint-2026-10-20)。Production deployment、正式 indexes／quota／latency 驗證或本人營運驗收尚未執行。iPad、真實人臉裝置整合與 Android 另案。
+前端本人驗收仍依下方清單；正式後端另依 P00–P18 計畫推進。P00–P12、P14 等既有階段均已合併；P12 最終收據 #526 與 main CI #39253034832 attempt 1 已完成；P13a #528 已 merge，main CI #39424593318 成功。P13b1 僅涵蓋安全本機診斷與 Cloud F3 匯出；PR #529 r1、r2 review 分別對應舊 head，R1–R3 已 resolved，R4 rework 已以 RED/GREEN 分開提交。live exact-head CI 與下一輪 review 依 PR provider 狀態。P13b recovery、P13c–d 尚未交付。進度見頂端 checkpoint 與 [P13b1 evidence](ops/free-production-evidence.md#p13b1-safe-local-diagnostics-and-f3-export-2026-10-20)。Production deployment、正式 indexes／quota／latency 驗證或本人營運驗收尚未執行。iPad、真實人臉裝置整合與 Android 另案。
 
 交接入口：[FRONTEND-PROTOTYPE-HANDOFF](FRONTEND-PROTOTYPE-HANDOFF.md)；後端起手：[BACKEND-HANDOFF](BACKEND-HANDOFF.md)（前端完成盤點、雲端現況、待決策事項、Android 銜接）。現行排程：[ROADMAP](superpowers/plans/ROADMAP.md)／[詳細計畫](superpowers/plans/2026-09-29-frontend-prototype-refocus.md)。原 Google Sheets roadmap 已封存，不再作排程來源。
 

@@ -7,7 +7,8 @@ import {
   serverTimestamp,
   type Firestore,
 } from 'firebase/firestore';
-import type { CommandErrorCode, CommandReceipt, CommandResult } from '../domain/cloudCommands';
+import { type CommandErrorCode, type CommandReceipt, type CommandResult } from '../domain/cloudCommands';
+import { appendCommandDiagnostic } from '../errors/errorLogger';
 import {
   CASHIER_NAME_SNAPSHOT,
   CASHIER_STUDENT_ID,
@@ -20,6 +21,7 @@ import {
   fingerprintCommandInput,
   normalizeEnabledCommandInput,
   sameCommandSemantics,
+  type CommandDiagnosticIdentity,
   type CanonicalEnabledInput,
   type StoredEnabledCommandDoc,
 } from '../domain/cloudCommandSchema';
@@ -565,11 +567,42 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
   }
 
   async function commitCommand(untrustedInput: unknown): Promise<CommandResult> {
+    let identity: CommandDiagnosticIdentity = { commandId: null, kind: null };
+    try {
+      const result = await commitCommandInternal(untrustedInput, observed => { identity = observed; });
+      if (!result.ok) {
+        try {
+          appendCommandDiagnostic({ ...identity, errorCode: result.error.code });
+        } catch {
+          // Local diagnostics are best effort and cannot change a command result.
+        }
+      }
+      return result;
+    } catch (error) {
+      try {
+        appendCommandDiagnostic({ ...identity, errorCode: 'UNKNOWN_RESULT' });
+      } catch {
+        // Local diagnostics are best effort and cannot change a command outcome.
+      }
+      throw error;
+    }
+  }
+
+  async function commitCommandInternal(
+    untrustedInput: unknown,
+    onDiagnosticIdentity: (identity: CommandDiagnosticIdentity) => void,
+  ): Promise<CommandResult> {
     let input: CanonicalEnabledInput;
     let user: CurrentUser;
     let fingerprint: string;
     try {
-      input = normalizeEnabledCommandInput(untrustedInput);
+      input = normalizeEnabledCommandInput(untrustedInput, onDiagnosticIdentity);
+      try {
+        // Successful normalization establishes the identity used by fingerprinting and the receipt path.
+        onDiagnosticIdentity({ commandId: input.commandId, kind: input.kind });
+      } catch {
+        // Diagnostic observation is optional and must not change command normalization.
+      }
       const candidateUser = getCurrentUser(options);
       requireVerifiedGoogle(candidateUser);
       user = candidateUser;

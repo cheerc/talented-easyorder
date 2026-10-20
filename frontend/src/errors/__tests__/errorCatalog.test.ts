@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getUserErrorMessage } from '../errorCatalog';
+import { getCommandDiagnosticNextStep, getUserErrorMessage } from '../errorCatalog';
 
 describe('error catalog', () => {
   it('maps local commit failures to actionable operator copy', () => {
@@ -25,5 +25,18 @@ describe('error catalog', () => {
 
   it('maps unknown error to export-log', () => {
     expect(getUserErrorMessage('UNKNOWN_RUNTIME_ERROR').recoveryAction).toBe('export-log');
+  });
+
+  it('does not claim an unknown command result failed and directs the operator to the original ID', () => {
+    const nextStep = getCommandDiagnosticNextStep('UNKNOWN_RESULT');
+    expect(nextStep).toContain('不要重新收款');
+    expect(nextStep).toContain('原 command ID');
+    expect(nextStep).not.toMatch(/已失敗|確定未入帳/);
+  });
+
+  it('uses the same conservative guidance for a command code unknown to this client', () => {
+    const nextStep = getCommandDiagnosticNextStep('FUTURE_COMMAND_CODE');
+    expect(nextStep).toContain('不要重新收款或建立新命令');
+    expect(nextStep).toContain('原 command ID');
   });
 });
