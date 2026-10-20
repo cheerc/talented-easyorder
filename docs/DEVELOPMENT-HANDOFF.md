@@ -11,7 +11,7 @@
 
 ## 已合併與目前接手點
 
-- **目前接手點：P13a memory-only cache 與 Cloud 本機資料隔離。** P12 最終收據 #526 已合併，main CI #39253034832 attempt 1 為 SUCCESS。P13a branch 為 codex/p13a-memory-storage，base 固定 ca79d3c7a1eae5660a0ccd44abf654e3d95b4e92；RED 722b4f691ae34a15ac58081faa23fc47b8cf1c79、GREEN 93a7ef027ca6648f0356f545b6af85dcdeea8d37，另有維持 App TSC 基線的型別修正 commit。實作和本機 gates 已完成；按派工交付 Ready PR 並監看 exact-head CI 至成功後回報 Dispatcher。P13a 不代表 P13b–d 已派工；不合併、不部署。細節見 [P13a evidence](ops/free-production-evidence.md#p13a-memory-cache-and-local-storage-isolation-2026-10-20)。
+- **目前接手點：P13a PR #528 r1 rework。** P12 最終收據 #526 已合併，main CI #39253034832 attempt 1 為 SUCCESS。P13a branch 為 codex/p13a-memory-storage，base 固定 ca79d3c7a1eae5660a0ccd44abf654e3d95b4e92；prior reviewed head 4073fc257350e582f92184533382ce950efd777f 收到 REWORK。r1 RED commits cfb0b21f07dd59292e128ec630f96e28bf6f575d、01bd6fecbd4fe27d70b64d802efe55b36514ad13、27289b09607d79abe0681b393e92ca881d359309 與 GREEN 5d2f285509ddffb246aed162a211692dba05435f 分離；本機 full Vitest、required E2E、lint、build、root TypeScript 已通過，App TSC 與 pinned base 的 208 diagnostics normalized 比對相同。文件更新在此 candidate；仍須 push 同一 PR、讀取 fresh provider head，並等 exact-head required CI 成功後回報 Dispatcher。P13a 不代表 P13b–d 已派工；不合併、不部署。細節見 [P13a r1 evidence](ops/free-production-evidence.md#p13a-pr-528-r1-rework-checkpoint-2026-10-20)。
 
 - **P12b merge／receipt 歷史**：PR [#523](https://github.com/cheerc/talented-easyorder/pull/523) merge `759a37cc9d2c503365b07c4f4662f328efd3aa75`、receipt [#524](https://github.com/cheerc/talented-easyorder/pull/524) merge `3d49c8f267d1a15b5b036d899d38fa7bdcd5ab93`；source review／CI、兩次 main CI 與 receipt-only CI 各自見 [P12 final evidence](ops/free-production-evidence.md#p12-final-merge-and-receipt-preparation-2026-10-19)。
 
