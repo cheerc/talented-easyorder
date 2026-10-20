@@ -44,7 +44,7 @@ describe('clearSensitiveData (#286)', () => {
   it('reports a blocked Cloud crash-draft deletion instead of treating it as cleared', async () => {
     const deleteSpy = vi.spyOn(window.indexedDB, 'deleteDatabase').mockImplementation(() => {
       const request = { onsuccess: null, onerror: null, onblocked: null, error: null } as unknown as IDBOpenDBRequest;
-      setTimeout(() => request.onblocked?.(new Event('blocked')), 0);
+      setTimeout(() => request.onblocked?.(new Event('blocked') as IDBVersionChangeEvent), 0);
       return request;
     });
 

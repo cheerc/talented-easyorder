@@ -122,7 +122,10 @@ export async function signOutOperator(auth: Auth): Promise<void> {
   }
   await getAuthMod().signOut(auth);
   if (cleanupError) {
-    emitError(cleanupError instanceof Error ? cleanupError : new Error(String(cleanupError)));
+    emitError({
+      source: 'storage',
+      message: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+    });
   }
 }
 

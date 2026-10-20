@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => {
     memoryLocalCache: vi.fn(() => memoryCache),
     persistentLocalCache: vi.fn(() => ({ name: 'persistent-cache' })),
     persistentMultipleTabManager: vi.fn(() => ({ name: 'persistent-tabs' })),
-    clearIndexedDbPersistence: vi.fn(async () => undefined),
+    clearIndexedDbPersistence: vi.fn<() => Promise<void>>(async () => undefined),
     connectFirestoreEmulator: vi.fn(),
   };
 });
