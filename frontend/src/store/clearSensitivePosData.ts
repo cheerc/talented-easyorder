@@ -21,10 +21,16 @@ export function clearSensitivePosMemory(): void {
 export async function clearSensitivePosData(): Promise<void> {
   if (!isCloudMode) return;
   clearSensitivePosMemory();
+  let cleanupError: unknown;
   try {
     await usePosStore.persist.clearStorage();
-  } catch { /* keep the in-memory mask even when persistence cleanup fails */ }
+  } catch (error) {
+    cleanupError = error;
+  }
   try {
     await clearSensitiveData();
-  } catch { /* best-effort disk cleanup */ }
+  } catch (error) {
+    cleanupError ??= error;
+  }
+  if (cleanupError) throw cleanupError;
 }

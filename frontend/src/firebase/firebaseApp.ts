@@ -67,8 +67,13 @@ export interface FirebaseServices {
 
 let cachedServices: FirebaseServices | null = null;
 let initPromise: Promise<FirebaseServices> | null = null;
+let initializedMemoryFirestore: Firestore | null = null;
 let emulatorConnected = false;
 let appCheckInitialized = false;
+
+export interface FirebaseInitializationOptions {
+  onFirestoreCleanupBlocked?: () => void;
+}
 
 // Ref: #287 — Initialize Firebase App Check with ReCaptchaV3Provider.
 // Skips silently when VITE_RECAPTCHA_SITE_KEY is absent (dev without reCAPTCHA).
@@ -95,32 +100,75 @@ async function initializeAppCheckOnce(app: FirebaseApp, env: FirebaseEnv): Promi
   }
 }
 
-function initializeFirestoreOnce(app: FirebaseApp): Firestore {
-  const { initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager } = getFirestoreMod();
-  try {
-    return initializeFirestore(app, {
-      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-    });
-  } catch {
-    return getFirestore(app);
-  }
+function initializeMemoryFirestore(app: FirebaseApp): Firestore {
+  if (initializedMemoryFirestore) return initializedMemoryFirestore;
+  const { initializeFirestore, memoryLocalCache } = getFirestoreMod();
+  // An existing Firestore instance may have persistent settings. Do not adopt it:
+  // its cache policy cannot be proven safe for Cloud mode.
+  const db = initializeFirestore(app, { localCache: memoryLocalCache() });
+  initializedMemoryFirestore = db;
+  return db;
 }
 
-export async function ensureFirebaseInitialized(env: FirebaseEnv = import.meta.env as FirebaseEnv): Promise<FirebaseServices> {
-  if (cachedServices) return cachedServices;
+function observeBlockedFirestoreCleanup<T>(
+  app: FirebaseApp,
+  projectId: string,
+  onBlocked: (() => void) | undefined,
+  operation: () => Promise<T>,
+): Promise<T> {
+  if (!onBlocked || typeof indexedDB === 'undefined') return operation();
+
+  const factory = indexedDB;
+  const databaseName = `firestore/${app.name}/${projectId}/main`;
+  const previousDescriptor = Object.getOwnPropertyDescriptor(factory, 'deleteDatabase');
+  const originalDeleteDatabase = factory.deleteDatabase.bind(factory);
+  try {
+    Object.defineProperty(factory, 'deleteDatabase', {
+      configurable: true,
+      writable: true,
+      value: (name: string) => {
+        const request = originalDeleteDatabase(name);
+        if (name === databaseName) request.addEventListener('blocked', onBlocked, { once: true });
+        return request;
+      },
+    });
+  } catch {
+    return operation();
+  }
+
+  const restore = () => {
+    if (previousDescriptor) {
+      Object.defineProperty(factory, 'deleteDatabase', previousDescriptor);
+    } else {
+      delete (factory as unknown as { deleteDatabase?: unknown }).deleteDatabase;
+    }
+  };
+  return operation().finally(restore);
+}
+
+export function ensureFirebaseInitialized(
+  env: FirebaseEnv = import.meta.env as FirebaseEnv,
+  options: FirebaseInitializationOptions = {},
+): Promise<FirebaseServices> {
+  const state = getFirebaseConfigState(env);
+  if (!state.configured) return Promise.reject(new Error(state.error));
+  if (cachedServices) return Promise.resolve(cachedServices);
   if (initPromise) return initPromise;
 
-  initPromise = (async () => {
-    const state = getFirebaseConfigState(env);
-    if (!state.configured) {
-      throw new Error(state.error);
-    }
-
+  const pending = (async () => {
     await ensureFirebaseModulesLoaded();
 
     const app = getApps().length > 0 ? getApp() : initializeApp(state.config);
     const auth = getAuthMod().getAuth(app);
-    const db = initializeFirestoreOnce(app);
+    const db = initializeMemoryFirestore(app);
+
+    // Firestore persistence can outlive prior releases. Clear only this app's
+    // known database before any Firestore reads begin, then keep this session
+    // on an in-memory cache.
+    const { clearIndexedDbPersistence } = getFirestoreMod();
+    await observeBlockedFirestoreCleanup(app, state.config.projectId!, options.onFirestoreCleanupBlocked, () =>
+      clearIndexedDbPersistence(db),
+    );
 
     if (env.VITE_FIREBASE_USE_EMULATOR === 'true' && !emulatorConnected) {
       const host = env.VITE_FIRESTORE_EMULATOR_HOST ?? '127.0.0.1';
@@ -181,15 +229,18 @@ export async function ensureFirebaseInitialized(env: FirebaseEnv = import.meta.e
       }
     }
 
-    cachedServices = { app, auth, db };
-
     // Ref: #287 — App Check after services are ready, before returning
     await initializeAppCheckOnce(app, env);
 
+    cachedServices = { app, auth, db };
     return cachedServices;
   })();
 
-  return initPromise;
+  initPromise = pending;
+  void pending.catch(() => {
+    if (initPromise === pending) initPromise = null;
+  });
+  return pending;
 }
 
 export const firebaseConfigState = getFirebaseConfigState(import.meta.env as FirebaseEnv);

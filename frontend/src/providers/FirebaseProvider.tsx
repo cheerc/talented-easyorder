@@ -22,6 +22,7 @@ import { emitError } from '../errors/errorBus';
 export interface FirebaseContextValue {
   fb: FirebaseServices | null;
   fbError: string | null;
+  storageCleanupError: string | null;
   access: OperatorAccess;
   lease: ActiveLeaseState;
   acquireLease: () => Promise<LeaseResult>;
@@ -44,6 +45,7 @@ function stateFromResult(result: Extract<LeaseResult, { status: 'acquired' | 'bu
 export function FirebaseProvider({ children }: { children: ReactNode }) {
   const [fb, setFb] = useState<FirebaseServices | null>(null);
   const [fbError, setFbError] = useState<string | null>(null);
+  const [storageCleanupError, setStorageCleanupError] = useState<string | null>(null);
   const [access, setAccess] = useState<OperatorAccess>({ ok: false, reason: 'signed_out' });
   const accessRef = useRef<OperatorAccess>({ ok: false, reason: 'signed_out' });
   const [lease, setLease] = useState<ActiveLeaseState>(defaultLeaseState);
@@ -52,6 +54,22 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   const probedEpochRef = useRef<number | null>(null);
   const leaseGenerationRef = useRef(0);
   const stopHeartbeatRef = useRef<(() => void) | null>(null);
+  const cleanupPromiseRef = useRef<Promise<void> | null>(null);
+
+  const clearSensitiveDataSafely = (): Promise<void> => {
+    if (cleanupPromiseRef.current) return cleanupPromiseRef.current;
+    const cleanup = clearSensitivePosData().then(
+      () => setStorageCleanupError(null),
+      error => {
+        const detail = error instanceof Error ? error.message : String(error);
+        setStorageCleanupError(`雲端本機資料尚未確認清除。${detail} 請關閉其他 EasyOrder 分頁後重新載入。`);
+      },
+    ).finally(() => {
+      if (cleanupPromiseRef.current === cleanup) cleanupPromiseRef.current = null;
+    });
+    cleanupPromiseRef.current = cleanup;
+    return cleanup;
+  };
 
   const publishLease = (next: ActiveLeaseState) => {
     leaseRef.current = next;
@@ -69,8 +87,17 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     if (!isFirebaseConfigured(import.meta.env as FirebaseEnv)) return;
 
     let cancelled = false;
-    ensureFirebaseInitialized().then(
-      services => { if (!cancelled) setFb(services); },
+    ensureFirebaseInitialized(undefined, {
+      onFirestoreCleanupBlocked: () => {
+        if (!cancelled) setFbError('舊版 Firestore 快取仍被其他分頁使用。請關閉其他 EasyOrder 分頁後再重新載入。');
+      },
+    }).then(
+      services => {
+        if (!cancelled) {
+          setFbError(null);
+          setFb(services);
+        }
+      },
       err => { if (!cancelled) setFbError(err instanceof Error ? err.message : String(err)); },
     );
     return () => { cancelled = true; };
@@ -88,7 +115,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
         stopHeartbeat();
         publishLease(defaultLeaseState);
         // `checking`, inactive and signed-out all mask first and clear only Cloud state.
-        void clearSensitivePosData();
+        void clearSensitiveDataSafely();
       }
       setAccess(nextAccess);
     };
@@ -121,7 +148,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
 
       if (previous.isHolder && !confirmed) {
         stopHeartbeat();
-        void clearSensitivePosData();
+        void clearSensitiveDataSafely();
       }
 
       if (!visibilityProbeInFlight && stillOurEpoch && !confirmed && probedEpochRef.current !== observed.epoch) {
@@ -140,7 +167,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
         publishLease({ ...current, isHolder: false, error: message });
       }
       stopHeartbeat();
-      void clearSensitivePosData();
+      void clearSensitiveDataSafely();
     };
 
     const probeHolder = async (epoch: number) => {
@@ -169,7 +196,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
         confirmedEpochRef.current = null;
         publishLease({ ...current, isHolder: false, error: result.status === 'lost' ? result.message : '租約尚未確認' });
         stopHeartbeat();
-        void clearSensitivePosData();
+        void clearSensitiveDataSafely();
       }
     };
 
@@ -182,7 +209,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       probedEpochRef.current = null;
       stopHeartbeat();
       publishLease({ ...defaultLeaseState, error: '分頁恢復後正在向伺服器確認租約' });
-      void clearSensitivePosData();
+      void clearSensitiveDataSafely();
       void (async () => {
         try {
           const observed = await apiGetLeaseStatus(fb.db!, currentUid);
@@ -237,7 +264,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
           isHolder: false,
           error: reason,
         });
-        void clearSensitivePosData();
+        void clearSensitiveDataSafely();
         emitError({ source: 'auth', message: `[lease] 失去租約使用權: ${reason}` });
       },
     );
@@ -264,7 +291,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     if (!observed.isKnown) {
       confirmedEpochRef.current = null;
       publishLease(observed);
-      await clearSensitivePosData();
+      await clearSensitiveDataSafely();
       return { status: 'lost', message: observed.error ?? '無法確認伺服器租約' };
     }
 
@@ -316,7 +343,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       const latest = await apiGetLeaseStatus(fb.db, uid);
       if (!isCurrentAccess()) return { status: 'lost', message: '帳號或租約狀態已變更，請重新確認' };
       publishLease(latest.isKnown ? latest : { ...latest, error: result.message });
-      await clearSensitivePosData();
+      await clearSensitiveDataSafely();
     }
     return result;
   };
@@ -340,13 +367,13 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       const observed = await apiGetLeaseStatus(fb.db, uid);
       if (!isCurrentAccess()) return released;
       publishLease(observed);
-      await clearSensitivePosData();
+      await clearSensitiveDataSafely();
     }
     return released;
   };
 
   return (
-    <FirebaseContext.Provider value={{ fb, fbError, access, lease, acquireLease, releaseLease }}>
+    <FirebaseContext.Provider value={{ fb, fbError, storageCleanupError, access, lease, acquireLease, releaseLease }}>
       {children}
     </FirebaseContext.Provider>
   );

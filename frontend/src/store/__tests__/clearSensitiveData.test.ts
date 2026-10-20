@@ -42,18 +42,16 @@ describe('clearSensitiveData (#286)', () => {
   });
 
   it('reports a blocked Cloud crash-draft deletion instead of treating it as cleared', async () => {
-    const databaseName = 'easyorder-crash-draft-cloud';
-    const legacyHandle = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(databaseName, 1);
-      request.onupgradeneeded = () => request.result.createObjectStore('drafts');
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+    const deleteSpy = vi.spyOn(window.indexedDB, 'deleteDatabase').mockImplementation(() => {
+      const request = { onsuccess: null, onerror: null, onblocked: null, error: null } as unknown as IDBOpenDBRequest;
+      setTimeout(() => request.onblocked?.(new Event('blocked')), 0);
+      return request;
     });
 
     try {
       await expect(clearSensitiveData()).rejects.toThrow(/關閉其他 EasyOrder 分頁/);
     } finally {
-      legacyHandle.close();
+      deleteSpy.mockRestore();
     }
   });
 

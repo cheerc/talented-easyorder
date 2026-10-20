@@ -38,24 +38,31 @@ export async function clearSensitiveData(): Promise<void> {
   // Cloud operator/logout cleanup must never erase the separate prototype/local namespace.
   if (!isCloudMode) return;
 
-  try {
-    // Cloud POS persistence is memory-only today; clear only its cloud crash-draft namespace.
-    if (typeof indexedDB !== 'undefined') {
-      const crashDbName = namespacedStorageName('easyorder-crash-draft', 'cloud');
-      await new Promise<void>(resolve => {
+  const cleanupErrors: string[] = [];
+  // Cloud POS persistence is memory-only today; clear only its cloud crash-draft namespace.
+  if (typeof indexedDB !== 'undefined') {
+    const crashDbName = namespacedStorageName('easyorder-crash-draft', 'cloud');
+    try {
+      await new Promise<void>((resolve, reject) => {
         const request = indexedDB.deleteDatabase(crashDbName);
         request.onsuccess = () => resolve();
-        request.onerror = () => resolve();
-        request.onblocked = () => resolve();
+        request.onerror = () => reject(new Error('雲端暫存資料庫清除失敗。'));
+        request.onblocked = () => reject(new Error('雲端暫存資料庫仍被其他分頁使用。請關閉其他 EasyOrder 分頁後重新載入。'));
       });
+    } catch (error) {
+      cleanupErrors.push(error instanceof Error ? error.message : String(error));
     }
-  } catch { /* best-effort */ }
+  }
 
   try {
     // Remove only the Cloud namespace; prototype/local-only data remain intact.
     localStorage.removeItem(namespacedStorageName('pos-storage', 'cloud'));
     clearErrorLog();
-  } catch { /* best-effort */ }
+  } catch (error) {
+    cleanupErrors.push(error instanceof Error ? error.message : String(error));
+  }
+
+  if (cleanupErrors.length > 0) throw new Error(cleanupErrors.join(' '));
 }
 
 export const defaultState = {

@@ -5,7 +5,6 @@ import { E2E_IDENTITIES } from './helpers/auth';
 import { removeDocument, seedAccessLease, upsertDocument } from './helpers/seed';
 
 const FIRESTORE_DATABASE = 'firestore/[DEFAULT]/demo-easyorder/main';
-const FIRESTORE_EMULATOR = 'http://127.0.0.1:8080';
 const STUDENT_ID = '00000000-0000-4000-8000-000000000013';
 const COMMAND_ID = '00000000-0000-4000-8000-000000000014';
 const TRANSACTION_ID = 'p13a-synthetic-order';
