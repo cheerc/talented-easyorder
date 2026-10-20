@@ -597,6 +597,12 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     let fingerprint: string;
     try {
       input = normalizeEnabledCommandInput(untrustedInput, onDiagnosticIdentity);
+      try {
+        // Successful normalization establishes the identity used by fingerprinting and the receipt path.
+        onDiagnosticIdentity({ commandId: input.commandId, kind: input.kind });
+      } catch {
+        // Diagnostic observation is optional and must not change command normalization.
+      }
       const candidateUser = getCurrentUser(options);
       requireVerifiedGoogle(candidateUser);
       user = candidateUser;
