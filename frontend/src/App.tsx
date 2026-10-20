@@ -477,11 +477,12 @@ function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEp
 }
 
 function CloudAppContent() {
-  const { fb, fbError, access, lease } = useFirebase();
+  const { fb, fbError, storageCleanupError, access, lease } = useFirebase();
   // 與本機模式共用 U1 顯示偏好（easyorder-ui-tweaks）：主題與字級套在 body 上。
   useTweaks();
 
-  if (fbError) return <AppCrashPage />;
+  if (fbError) return <InitializationProblemPage message={fbError} />;
+  if (storageCleanupError) return <InitializationProblemPage message={storageCleanupError} />;
   if (!fb) {
     return <div className="app-loading" aria-label="載入中"><div className="app-loading-spinner" />載入中...</div>;
   }
@@ -496,6 +497,16 @@ function CloudAppContent() {
         />
       </AuthGate>
     </ErrorBoundary>
+  );
+}
+
+function InitializationProblemPage({ message }: { message: string }) {
+  return (
+    <main className="auth-gate" aria-label="本機資料清理狀態">
+      <h1>Talented EasyOrder</h1>
+      <p role="alert">{message}</p>
+      <button type="button" onClick={() => window.location.reload()}>重新載入</button>
+    </main>
   );
 }
 

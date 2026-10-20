@@ -4,6 +4,7 @@ vi.unmock('../../store/posPersistence');
 vi.mock('../../appMode', () => ({
   getStorageMode: () => 'cloud',
   isCloudMode: true,
+  isPrototypeMode: false,
   namespacedStorageName: (name: string, mode: string) => mode === 'cloud' ? `${name}-cloud` : name,
 }));
 
@@ -39,6 +40,20 @@ describe('clearSensitiveData (#286)', () => {
     expect(deleteSpy).toHaveBeenCalledWith('easyorder-crash-draft-cloud');
     expect(deleteSpy).not.toHaveBeenCalledWith('easyorder-pos');
     deleteSpy.mockRestore();
+  });
+
+  it('reports a blocked Cloud crash-draft deletion instead of treating it as cleared', async () => {
+    const deleteSpy = vi.spyOn(window.indexedDB, 'deleteDatabase').mockImplementation(() => {
+      const request = { onsuccess: null, onerror: null, onblocked: null, error: null } as unknown as IDBOpenDBRequest;
+      setTimeout(() => request.onblocked?.(new Event('blocked') as IDBVersionChangeEvent), 0);
+      return request;
+    });
+
+    try {
+      await expect(clearSensitiveData()).rejects.toThrow(/關閉其他 EasyOrder 分頁/);
+    } finally {
+      deleteSpy.mockRestore();
+    }
   });
 
   // Error logs are included in Cloud auth cleanup.

@@ -114,8 +114,19 @@ export async function signInWithGoogle(auth: Auth, db: Firestore): Promise<Opera
 
 // Ref: #286 — Clear sensitive POS data on signOut to protect PII on shared devices.
 export async function signOutOperator(auth: Auth): Promise<void> {
-  await clearSensitivePosData();
-  return getAuthMod().signOut(auth);
+  let cleanupError: unknown;
+  try {
+    await clearSensitivePosData();
+  } catch (error) {
+    cleanupError = error;
+  }
+  await getAuthMod().signOut(auth);
+  if (cleanupError) {
+    emitError({
+      source: 'storage',
+      message: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+    });
+  }
 }
 
 export function subscribeOperatorAccess(

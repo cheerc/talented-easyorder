@@ -73,11 +73,11 @@ describe('clearSensitivePosData', () => {
     expect(mocks.clearSensitiveData).not.toHaveBeenCalled();
   });
 
-  it('keeps memory masked and continues disk cleanup if persist clearing rejects', async () => {
+  it('keeps memory masked, continues disk cleanup, and reports a persist clearing failure', async () => {
     mocks.isCloudMode.mockReturnValue(true);
     mocks.clearStorage.mockRejectedValue(new Error('persist unavailable'));
 
-    await expect(clearSensitivePosData()).resolves.toBeUndefined();
+    await expect(clearSensitivePosData()).rejects.toThrow('persist unavailable');
 
     expect(mocks.setState).toHaveBeenCalledOnce();
     expect(mocks.clearSensitiveData).toHaveBeenCalledOnce();

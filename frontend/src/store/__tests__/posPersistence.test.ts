@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { posPersistenceConfig } from '../posPersistence';
+import { createPosPersistenceConfig, posPersistenceConfig } from '../posPersistence';
 import type { PosState } from '../posTypes';
 import { INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS } from '../../mocks/initialData';
 
@@ -14,7 +14,7 @@ describe('posPersistence — onRehydrateStorage fallback', () => {
     const { appendErrorLog } = await import('../../errors/errorLogger');
     (appendErrorLog as ReturnType<typeof vi.fn>).mockClear();
     // onRehydrateStorage returns the callback
-    rehydrateCallback = posPersistenceConfig.onRehydrateStorage!() as typeof rehydrateCallback;
+    rehydrateCallback = createPosPersistenceConfig('prototype').onRehydrateStorage!() as typeof rehydrateCallback;
   });
 
   it('rehydrateCallback is a function', () => {
@@ -87,6 +87,10 @@ describe('posPersistence — onRehydrateStorage fallback', () => {
 });
 
 describe('posPersistence: storage 邊界與模式隔離', () => {
+  it('App persistence is memory-only outside explicit prototype mode', () => {
+    expect(posPersistenceConfig.name).toBe('pos-storage-cloud');
+  });
+
   it('createMemoryStorage 提供獨立記憶體存取', async () => {
     const { createMemoryStorage } = await import('../posPersistence');
     const storage = createMemoryStorage();

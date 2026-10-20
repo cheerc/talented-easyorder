@@ -197,6 +197,8 @@ ReopenDay 新增版次，舊 closed 版不可改；再關帳再加一版。歷�
 
 正式版採 online-only 寫入，全走 runTransaction。移除正式版 persistentLocalCache、offline writeBatch 與 queued settlement；使用記憶體快取，登出清除訂閱與 store。PWA 僅快取靜態 shell，業務回應不進 service worker cache。localStorage／IndexedDB 不保存正式帳務或完整個資草稿；可保存無個資的 pending commandId＋datasetId＋登入 UID 供結果確認。
 
+P13a 實作補充：正式模式初始化時先清除目前 Firebase app／project 的已知 Firestore IndexedDB（default app 為 `firestore/[DEFAULT]/{projectId}/main`），成功前不啟動業務讀取。若另一個舊分頁仍開啟該 DB，初始化維持 fail closed，顯示關閉其他 EasyOrder 分頁後重新載入的指引；Auth SDK 登入狀態與 prototype namespace 不屬於清除範圍。登出或失權時只清 Cloud POS memory 與已知 Cloud crash-draft/localStorage namespace；若刪除受阻或失敗，先遮罩業務畫面並提示清除未完成，不把它記為成功。
+
 送出前固定 commandId；送出中防連按。10 秒無確定結果顯示「結果確認中，勿重新收款」，以同 ID 查 receipt／重試；不可產生新 ID 盲送。斷線不接受新業務命令；記憶體草稿標示「尚未入帳」，離開頁面即可能消失。連線恢復先查未決命令，再重新載入 server heads。若租約已轉交，原使用者只留待下次合法取得使用權查詢；下一位操作者可用 commandId 查已入帳紀錄，不能假設失敗再收一次。
 
 quota exceeded／permission denied／schema mismatch／maintenance 均阻止操作並給中文原因。無限自動重試禁止；單次 SDK retries 以有限次數（預設5）為界，額度錯誤停止，人工重試維持 ID。斷線期間改用紙本記唯一流水號、當下日期與收支，恢復後逐筆核對 receipt 再由 F2 補登並寫紙本號備註；沒有背景自動補送。

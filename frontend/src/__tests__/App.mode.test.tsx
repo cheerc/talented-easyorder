@@ -4,8 +4,14 @@ import type { ReactNode } from 'react';
 
 const appMocks = vi.hoisted(() => ({
   cloudModeValid: false,
+  crashDraft: {
+    load: vi.fn(async () => null),
+    save: vi.fn(async () => undefined),
+    clear: vi.fn(),
+  },
   firebase: {
-    fbError: null,
+    fbError: null as string | null,
+    storageCleanupError: null as string | null,
     fb: { auth: {}, db: {} },
     access: { ok: true, profile: { uid: 'uid-a', email: 'a@example.test' } },
     lease: { epoch: 4 },
@@ -24,6 +30,12 @@ vi.mock('../providers/FirebaseProvider', () => ({
 }));
 vi.mock('../hooks/useFirebase', () => ({
   useFirebase: () => appMocks.firebase,
+}));
+vi.mock('../storage/crashDraft', () => ({
+  loadCrashDraft: appMocks.crashDraft.load,
+  saveCrashDraft: appMocks.crashDraft.save,
+  clearCrashDraft: appMocks.crashDraft.clear,
+  isCrashDraftAvailable: vi.fn(async () => false),
 }));
 vi.mock('../auth/AuthGate', () => ({
   AuthGate: ({ children }: { children: ReactNode }) => children,
@@ -73,8 +85,11 @@ import { useUiTweaksStore } from '../store/uiTweaksStore';
 describe('App mode gate', () => {
   beforeEach(() => {
     appMocks.cloudModeValid = false;
+    appMocks.firebase.fbError = null;
+    appMocks.firebase.storageCleanupError = null;
     appMocks.firebase.access = { ok: true, profile: { uid: 'uid-a', email: 'a@example.test' } };
     appMocks.firebase.lease = { epoch: 4 };
+    vi.clearAllMocks();
   });
 
   it('fails closed when non-prototype mode has incomplete Firebase configuration', () => {
@@ -83,6 +98,37 @@ describe('App mode gate', () => {
     expect(screen.getByRole('alert').textContent).toContain('missing Firebase configuration');
     expect(screen.queryByRole('tab')).toBeNull();
     expect(document.querySelector('.app')).toBeNull();
+  });
+
+  it('shows actionable Firebase cache cleanup guidance and blocks the cloud app', () => {
+    appMocks.cloudModeValid = true;
+    appMocks.firebase.fbError = '舊版 Firestore 快取仍被其他分頁使用。請關閉其他 EasyOrder 分頁後再重新載入。';
+    render(<App />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent(appMocks.firebase.fbError);
+    expect(screen.getByRole('button', { name: '重新載入' })).toBeVisible();
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.queryByRole('button', { name: '取得系統使用權' })).toBeNull();
+  });
+
+  it('blocks the cloud app when app-scoped local storage cleanup is incomplete', () => {
+    appMocks.cloudModeValid = true;
+    appMocks.firebase.storageCleanupError = '雲端本機資料尚未確認清除。請關閉其他 EasyOrder 分頁後重新載入。';
+    render(<App />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent(appMocks.firebase.storageCleanupError);
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.queryByRole('button', { name: '取得系統使用權' })).toBeNull();
+  });
+
+  it('does not read or write the legacy POS crash draft from the cloud entrypoint', () => {
+    appMocks.cloudModeValid = true;
+    render(<App />);
+
+    expect(screen.getByRole('region', { name: 'mock students page' })).toBeVisible();
+    expect(appMocks.crashDraft.load).not.toHaveBeenCalled();
+    expect(appMocks.crashDraft.save).not.toHaveBeenCalled();
+    expect(appMocks.crashDraft.clear).not.toHaveBeenCalled();
   });
 
   it('blocks section changes while a command is unresolved and unlocks after recovery', () => {

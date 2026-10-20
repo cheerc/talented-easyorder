@@ -5,7 +5,7 @@ import { validatePersistedState } from '../storage/posStateValidator';
 import { appendErrorLog, clearErrorLog } from '../errors/errorLogger';
 import { INITIAL_STUDENTS, INITIAL_TODAY_MENU, INITIAL_TODAY_TX, VENDORS } from '../mocks/initialData';
 import { createIndexedDBStorage } from '../storage/indexedDBStorage';
-import { getStorageMode, isCloudMode, namespacedStorageName, type StorageMode } from '../appMode';
+import { getStorageMode, isCloudMode, isPrototypeMode, namespacedStorageName, type StorageMode } from '../appMode';
 
 // TODO: [future] encrypt sensitive fields before IndexedDB persist (#286)
 
@@ -38,24 +38,31 @@ export async function clearSensitiveData(): Promise<void> {
   // Cloud operator/logout cleanup must never erase the separate prototype/local namespace.
   if (!isCloudMode) return;
 
-  try {
-    // Cloud POS persistence is memory-only today; clear only its cloud crash-draft namespace.
-    if (typeof indexedDB !== 'undefined') {
-      const crashDbName = namespacedStorageName('easyorder-crash-draft', 'cloud');
-      await new Promise<void>(resolve => {
+  const cleanupErrors: string[] = [];
+  // Cloud POS persistence is memory-only today; clear only its cloud crash-draft namespace.
+  if (typeof indexedDB !== 'undefined') {
+    const crashDbName = namespacedStorageName('easyorder-crash-draft', 'cloud');
+    try {
+      await new Promise<void>((resolve, reject) => {
         const request = indexedDB.deleteDatabase(crashDbName);
         request.onsuccess = () => resolve();
-        request.onerror = () => resolve();
-        request.onblocked = () => resolve();
+        request.onerror = () => reject(new Error('雲端暫存資料庫清除失敗。'));
+        request.onblocked = () => reject(new Error('雲端暫存資料庫仍被其他分頁使用。請關閉其他 EasyOrder 分頁後重新載入。'));
       });
+    } catch (error) {
+      cleanupErrors.push(error instanceof Error ? error.message : String(error));
     }
-  } catch { /* best-effort */ }
+  }
 
   try {
     // Remove only the Cloud namespace; prototype/local-only data remain intact.
     localStorage.removeItem(namespacedStorageName('pos-storage', 'cloud'));
     clearErrorLog();
-  } catch { /* best-effort */ }
+  } catch (error) {
+    cleanupErrors.push(error instanceof Error ? error.message : String(error));
+  }
+
+  if (cleanupErrors.length > 0) throw new Error(cleanupErrors.join(' '));
 }
 
 export const defaultState = {
@@ -143,6 +150,8 @@ export function createPosPersistenceConfig(
   };
 }
 
+// Only the explicit prototype entry may access durable legacy POS state.
+// Every non-prototype entry (including incomplete production configuration) stays memory-only.
 export const posPersistenceConfig: PersistOptions<PosState> = createPosPersistenceConfig(
-  isCloudMode ? 'cloud' : getStorageMode(),
+  isPrototypeMode ? 'prototype' : 'cloud',
 );

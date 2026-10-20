@@ -15,20 +15,7 @@ async function createPwaPlugin(): Promise<PluginOption> {
     manifest: false, // use public/manifest.json
     workbox: {
       globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-      runtimeCaching: [
-        {
-          urlPattern: /^https?:\/\/.*(?:identitytoolkit|firestore)\.googleapis\.com\/.*/i,
-          handler: 'NetworkOnly',
-        },
-        {
-          urlPattern: /^https?:\/\/.*\.(?:js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)(\?.*)?$/i,
-          handler: 'NetworkFirst',
-          options: {
-            cacheName: 'pos-network-cache',
-            expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 },
-          },
-        },
-      ],
+      importScripts: ['retire-pos-network-cache.js'],
     },
   })
 }
