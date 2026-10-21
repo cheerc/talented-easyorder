@@ -75,23 +75,35 @@ const menu = {
 };
 
 let env: RulesTestEnvironment;
+let clearP05Firestore: (() => Promise<void>) | undefined;
 
 describe('P05 first Firestore Emulator cleanup', () => {
   it('retries one initial HTTP 500 UNKNOWN cleanup and then continues', async () => {
+    vi.useFakeTimers();
     const clearFirestore = vi.fn<() => Promise<void>>()
       .mockRejectedValueOnce(new Error('{"error":{"code":500,"status":"UNKNOWN"}}'))
       .mockResolvedValueOnce(undefined);
     const onRetry = vi.fn();
     const clear = createInitialFirestoreCleaner(clearFirestore, onRetry);
 
-    await clear();
+    try {
+      const initialReset = clear();
+      await Promise.resolve();
+      expect(clearFirestore).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(249);
+      expect(clearFirestore).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await initialReset;
 
-    expect(clearFirestore).toHaveBeenCalledTimes(2);
-    expect(onRetry).toHaveBeenCalledWith(1, 'http-500-unknown', expect.any(Error));
+      expect(clearFirestore).toHaveBeenCalledTimes(2);
+      expect(onRetry).toHaveBeenCalledWith(1, 'http-500-unknown', expect.any(Error));
 
-    await clear();
-    expect(clearFirestore).toHaveBeenCalledTimes(3);
-    expect(onRetry).toHaveBeenCalledTimes(1);
+      await clear();
+      expect(clearFirestore).toHaveBeenCalledTimes(3);
+      expect(onRetry).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it.each([
@@ -126,7 +138,8 @@ describe('P05 first Firestore Emulator cleanup', () => {
 
     expect(clearFirestore).toHaveBeenCalledTimes(2);
     expect(body).not.toHaveBeenCalled();
-    expect(onRetry).toHaveBeenCalledTimes(2);
+    expect(onRetry).toHaveBeenNthCalledWith(1, 1, 'http-500-unknown', expect.any(Error));
+    expect(onRetry).toHaveBeenNthCalledWith(2, 2, 'http-500-unknown', retryError);
     await expect(clear()).rejects.toBe(retryError);
     expect(clearFirestore).toHaveBeenCalledTimes(2);
   });
@@ -1199,10 +1212,18 @@ describeWithEmulator('P05 production command repository and Rules', () => {
         port: Number(emulatorHost!.split(':')[1] || '8080'),
       },
     });
+    clearP05Firestore = createInitialFirestoreCleaner(
+      () => env.clearFirestore(),
+      (attempt, classification, error) => {
+        const action = attempt === 1 ? 'retrying once' : 'aborting P05 suite';
+        console.error(`[P05 setup] first clearFirestore reset attempt ${attempt}/2 classification=${classification}; ${action}.`, error);
+      },
+    );
   });
 
   beforeEach(async () => {
-    await env.clearFirestore();
+    if (!clearP05Firestore) throw new Error('P05 Firestore cleanup was not initialized.');
+    await clearP05Firestore();
   });
 
   afterAll(async () => {

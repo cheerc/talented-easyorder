@@ -4,6 +4,8 @@ export type ClearFirestoreDiagnostic = (
   error: unknown,
 ) => void;
 
+const INITIAL_CLEAR_RETRY_DELAY_MS = 250;
+
 function isHttp500Unknown(error: unknown): error is Error {
   if (!(error instanceof Error)) return false;
   try {
@@ -33,10 +35,23 @@ export function createInitialFirestoreCleaner(
       await clearFirestore();
       initialResetComplete = true;
     } catch (error) {
-      initialResetFailed = true;
-      initialResetError = error;
-      if (isHttp500Unknown(error)) onDiagnostic(1, 'http-500-unknown', error);
-      throw error;
+      if (!isHttp500Unknown(error)) {
+        initialResetFailed = true;
+        initialResetError = error;
+        throw error;
+      }
+
+      onDiagnostic(1, 'http-500-unknown', error);
+      await new Promise<void>(resolve => setTimeout(resolve, INITIAL_CLEAR_RETRY_DELAY_MS));
+      try {
+        await clearFirestore();
+        initialResetComplete = true;
+      } catch (retryError) {
+        initialResetFailed = true;
+        initialResetError = retryError;
+        onDiagnostic(2, isHttp500Unknown(retryError) ? 'http-500-unknown' : 'non-retriable', retryError);
+        throw retryError;
+      }
     }
   };
 }
