@@ -548,15 +548,31 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     maintenance: boolean;
   }
 
-  async function readRecoveryContext(user: CurrentUser, expectedEpoch: number): Promise<RecoveryContext> {
+  function assertCurrentRecoveryOwner(user: CurrentUser): void {
     const current = getCurrentUser(options);
     requireVerifiedGoogle(current);
-    if (current.uid !== user.uid) throw new RejectCommand('LEASE_LOST', '登入身分已變更，請重新確認使用權');
+    if (current.uid !== user.uid || current.email !== user.email) {
+      throw new RejectCommand('LEASE_LOST', '登入身分已變更，請重新確認使用權');
+    }
+  }
+
+  function isCurrentRecoveryOwner(user: CurrentUser): boolean {
+    try {
+      assertCurrentRecoveryOwner(user);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function readRecoveryContext(user: CurrentUser, expectedEpoch: number): Promise<RecoveryContext> {
+    assertCurrentRecoveryOwner(user);
     const [headSnapshot, leaseSnapshot, operatorSnapshot] = await Promise.all([
       getDocFromServer(doc(db, dataHeadPath())),
       getDocFromServer(doc(db, accessLeasePath())),
       getDocFromServer(doc(db, `operators/${user.uid}`)),
     ]);
+    assertCurrentRecoveryOwner(user);
     if ([headSnapshot, leaseSnapshot, operatorSnapshot].some(snapshot => snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites)) {
       throw new RejectCommand('UNKNOWN_RESULT', '伺服器尚未確認目前資料與使用權');
     }
@@ -570,6 +586,23 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
       throw new RejectCommand('LEASE_LOST', '目前使用權租約已變更，請重新確認');
     }
     return { uid: user.uid, datasetId: String(head.datasetId), leaseEpoch: Number(lease.epoch), maintenance: head.maintenance === true };
+  }
+
+  async function isCurrentRecoveryContext(
+    user: CurrentUser,
+    expectedEpoch: number,
+    expectedDatasetId: string,
+  ): Promise<boolean> {
+    try {
+      if (!isCurrentRecoveryOwner(user)) return false;
+      const context = await readRecoveryContext(user, expectedEpoch);
+      return isCurrentRecoveryOwner(user)
+        && context.uid === user.uid
+        && context.leaseEpoch === expectedEpoch
+        && context.datasetId === expectedDatasetId;
+    } catch {
+      return false;
+    }
   }
 
   async function confirmPendingBatch(records: readonly PendingCommandIdentity[], expectedEpoch: number): Promise<InternalPendingReceiptCheck[]> {
@@ -592,6 +625,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
           continue;
         }
         const stored = await verifiedReceipt(record.commandId);
+        assertCurrentRecoveryOwner(user);
         if (!stored) {
           checks.push({ status: 'not-found' });
           continue;
@@ -620,10 +654,16 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     return (await confirmPendingBatch([record], expectedEpoch))[0];
   }
 
-  async function clearAfterConfirmedReceipt(record: PendingCommandIdentity, expectedEpoch: number): Promise<void> {
+  async function clearAfterConfirmedReceipt(
+    record: PendingCommandIdentity,
+    expectedEpoch: number,
+    owner: CurrentUser,
+  ): Promise<void> {
     try {
       const check = await confirmPendingCommand(record, expectedEpoch);
-      if (check.status === 'matched') await pendingJournal.removeIf(record);
+      if (check.status === 'matched') {
+        await pendingJournal.removeIf(record, () => isCurrentRecoveryContext(owner, expectedEpoch, record.datasetId));
+      }
     } catch {
       // The business result is already committed; a failed local cleanup remains visible for later lookup.
     }
@@ -665,8 +705,10 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
       throw new CloudCommandReadError('INVALID_INPUT', 'commandId 必須是 UUID');
     }
     try {
-      requireVerifiedGoogle(getCurrentUser(options));
+      const user = getCurrentUser(options);
+      requireVerifiedGoogle(user);
       const stored = await verifiedReceipt(commandId);
+      assertCurrentRecoveryOwner(user);
       return stored ? buildReceipt(stored) : null;
     } catch (error) {
       if (error instanceof CloudCommandReadError) throw error;
@@ -1817,8 +1859,11 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         return { existing: null } as const;
       }, { maxAttempts: 5 });
 
+      if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
+
       if (transactionOutcome.existing) {
-        await clearAfterConfirmedReceipt(pendingIdentity, input.leaseEpoch);
+        await clearAfterConfirmedReceipt(pendingIdentity, input.leaseEpoch, user);
+        if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
         return { ok: true, receipt: buildReceipt(transactionOutcome.existing) };
       }
       try {
@@ -1826,7 +1871,12 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         if (confirmed.status !== 'matched') return resultFromUnknownError();
         const stored = confirmed.stored;
         await assertStoredReceiptMatches(stored, input, fingerprint);
-        await pendingJournal.removeIf(pendingIdentity).catch(() => false);
+        if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
+        await pendingJournal.removeIf(
+          pendingIdentity,
+          () => isCurrentRecoveryContext(user, input.leaseEpoch, pendingIdentity.datasetId),
+        ).catch(() => false);
+        if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
         return { ok: true, receipt: confirmed.receipt };
       } catch {
         // A successful transaction followed by an unreadable receipt is ambiguous, never a definite failure.
@@ -1840,14 +1890,19 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
 
       const resultCode = mapTransactionError(error);
       try {
+        if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
         const stored = await verifiedReceipt(input.commandId);
+        if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
         if (stored) {
           await assertStoredReceiptMatches(stored, input, fingerprint);
-          await clearAfterConfirmedReceipt(pendingIdentity, input.leaseEpoch);
+          if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
+          await clearAfterConfirmedReceipt(pendingIdentity, input.leaseEpoch, user);
+          if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
           return { ok: true, receipt: buildReceipt(stored) };
         }
         if (resultCode === 'REVISION_CONFLICT' || resultCode === 'LEASE_LOST' || resultCode === 'QUOTA_EXCEEDED') {
           if (resultCode === 'LEASE_LOST') {
+            if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
             const diagnosed = leaseDenialResult(await readRevisionConflict(db, input));
             if (diagnosed) return diagnosed;
           }

@@ -520,7 +520,6 @@ function CloudAppContent() {
       <AuthGate auth={fb.auth} db={fb.db} access={access}>
         {access.ok && (
           <CloudPendingRecoveryBoundary
-            key={`${access.profile.uid}:${lease.epoch}`}
             db={fb.db}
             uid={access.profile.uid}
             leaseEpoch={lease.epoch}

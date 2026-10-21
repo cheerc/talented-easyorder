@@ -24,6 +24,7 @@ interface PendingRow {
 interface RecoveryState {
   initialReady: boolean;
   shellMounted: boolean;
+  online: boolean;
   busy: boolean;
   error: 'journal' | 'query' | null;
   errorCode: CommandErrorCode | null;
@@ -37,6 +38,7 @@ interface RecoveryState {
 const initialState: RecoveryState = {
   initialReady: false,
   shellMounted: false,
+  online: true,
   busy: true,
   error: null,
   errorCode: null,
@@ -93,18 +95,40 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
   const initialReadyRef = useRef(false);
   const mountedShellRef = useRef(false);
   const pendingRefreshRef = useRef(false);
+  const mountedRef = useRef(false);
+  const onlineRef = useRef(true);
+  const reconnectQueuedRef = useRef(false);
+  const ownerScopeRef = useRef({ db, uid, leaseEpoch });
+
+  const isCurrentGeneration = useCallback((generation: number) => (
+    mountedRef.current && onlineRef.current && generation === generationRef.current
+  ), []);
+
+  const isCurrentRecoveryContext = useCallback(async (generation: number, datasetId: string) => {
+    if (!isCurrentGeneration(generation)) return false;
+    try {
+      const context = await repository.getPendingRecoveryContext(leaseEpoch);
+      return isCurrentGeneration(generation)
+        && context.uid === uid
+        && context.datasetId === datasetId
+        && context.leaseEpoch === leaseEpoch;
+    } catch {
+      return false;
+    }
+  }, [isCurrentGeneration, leaseEpoch, repository, uid]);
 
   const recover = useCallback(async (
-    source: 'initial' | 'same-tab' | 'other-tab' | 'retry',
+    source: 'initial' | 'same-tab' | 'other-tab' | 'retry' | 'reconnect' | 'owner-change',
   ) => {
     const generation = ++generationRef.current;
     const initial = source === 'initial';
-    const external = source === 'other-tab';
+    const external = source === 'other-tab' || source === 'reconnect' || source === 'owner-change';
     let scannedRecords: PendingCommandIdentity[] | null = null;
     const rows: PendingRow[] = [];
     if (external) setManualConfirmation(false);
     setState(previous => ({
       ...previous,
+      online: onlineRef.current,
       busy: true,
       error: null,
       errorCode: null,
@@ -112,13 +136,26 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
       ...(external ? { gateRequired: true, continued: false } : {}),
     }));
     try {
+      if (!onlineRef.current) {
+        setState(previous => ({
+          ...previous,
+          online: false,
+          busy: false,
+          gateRequired: true,
+          continued: false,
+        }));
+        return;
+      }
       await journal.migrateLegacyOrderSlot();
+      if (!isCurrentGeneration(generation)) return;
       const snapshot = await journal.readAll();
+      if (!isCurrentGeneration(generation)) return;
       if (!snapshot.complete || snapshot.total !== snapshot.records.length || snapshot.total > CLOUD_PENDING_JOURNAL_CAPACITY) {
         throw new PendingJournalUnavailableError();
       }
       scannedRecords = snapshot.records;
       const before = await repository.getPendingRecoveryContext(leaseEpoch);
+      if (!isCurrentGeneration(generation)) return;
       if (before.uid !== uid || before.leaseEpoch !== leaseEpoch) {
         const error = new Error('holder changed') as Error & { code: CommandErrorCode };
         error.code = 'LEASE_LOST';
@@ -142,6 +179,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
             pageError = error;
           }
         }
+        if (!isCurrentGeneration(generation)) return;
         let queryIndex = 0;
         for (let index = 0; index < page.length; index += 1) {
           const record = page[index];
@@ -165,10 +203,12 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
             rows.push({ record, status: 'not-found' });
           } else {
             try {
-              const didRemove = await journal.removeIf(record);
+              const didRemove = await journal.removeIf(record, () => isCurrentRecoveryContext(generation, before.datasetId));
+              if (!isCurrentGeneration(generation)) return;
               if (didRemove) removed.add(record.commandId);
               else rows.push({ record, status: 'confirmed', seq: result.receipt.seq, cleanupPending: true });
             } catch {
+              if (!isCurrentGeneration(generation)) return;
               rows.push({ record, status: 'confirmed', seq: result.receipt.seq, cleanupPending: true });
             }
           }
@@ -180,12 +220,14 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
       }
 
       const after = await repository.getPendingRecoveryContext(leaseEpoch);
+      if (!isCurrentGeneration(generation)) return;
       if (before.uid !== after.uid || before.datasetId !== after.datasetId || before.leaseEpoch !== after.leaseEpoch) {
         const error = new Error('recovery context changed') as Error & { code: CommandErrorCode };
         error.code = 'LEASE_LOST';
         throw error;
       }
       const finalSnapshot = await journal.readAll();
+      if (!isCurrentGeneration(generation)) return;
       if (!finalSnapshot.complete || finalSnapshot.total !== finalSnapshot.records.length) throw new PendingJournalUnavailableError();
       if (initial) {
         const expectedRemaining = snapshot.records.filter(record => !removed.has(record.commandId));
@@ -197,7 +239,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
         status: journal.isInFlight(record, leaseEpoch) ? 'in-flight' as const : 'read-error' as const,
       });
       const unresolved = finalRows.some(blocksIndependentWork);
-      if (generation !== generationRef.current) return;
+      if (!isCurrentGeneration(generation)) return;
       initialReadyRef.current = true;
       pendingRefreshRef.current = false;
       const shellMounted = mountedShellRef.current || !unresolved;
@@ -205,6 +247,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
       setManualConfirmation(false);
       setState(previous => ({
         ...previous,
+        online: true,
         initialReady: true,
         shellMounted,
         busy: false,
@@ -217,7 +260,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
         pageIndex: 0,
       }));
     } catch (error) {
-      if (generation !== generationRef.current) return;
+      if (!isCurrentGeneration(generation)) return;
       const journalFailure = error instanceof PendingJournalUnavailableError;
       initialReadyRef.current = !initial;
       const rowsById = new Map(rows.map(row => [row.record.commandId, row]));
@@ -229,6 +272,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
         : null;
       setState(previous => ({
         ...previous,
+        online: true,
         initialReady: !initial || previous.initialReady,
         shellMounted: previous.shellMounted,
         busy: false,
@@ -240,14 +284,77 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
         pageIndex: 0,
       }));
     }
-  }, [journal, leaseEpoch, repository, uid]);
+  }, [isCurrentGeneration, isCurrentRecoveryContext, journal, leaseEpoch, repository, uid]);
+
+  const recoverRef = useRef(recover);
 
   useEffect(() => {
-    initialReadyRef.current = false;
-    mountedShellRef.current = false;
-    void recover('initial');
-    return () => { generationRef.current += 1; };
+    recoverRef.current = recover;
   }, [recover]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    onlineRef.current = typeof navigator === 'undefined' || navigator.onLine;
+    reconnectQueuedRef.current = false;
+    if (!onlineRef.current) {
+      setState(previous => ({ ...previous, online: false, busy: false, gateRequired: true, continued: false }));
+    }
+
+    const handleOffline = () => {
+      onlineRef.current = false;
+      generationRef.current += 1;
+      setManualConfirmation(false);
+      setState(previous => ({
+        ...previous,
+        online: false,
+        busy: false,
+        error: null,
+        errorCode: null,
+        gateRequired: true,
+        continued: false,
+      }));
+    };
+
+    const handleOnline = () => {
+      onlineRef.current = true;
+      generationRef.current += 1;
+      setManualConfirmation(false);
+      setState(previous => ({
+        ...previous,
+        online: true,
+        busy: true,
+        error: null,
+        errorCode: null,
+        gateRequired: true,
+        continued: false,
+      }));
+      if (reconnectQueuedRef.current) return;
+      reconnectQueuedRef.current = true;
+      queueMicrotask(() => {
+        reconnectQueuedRef.current = false;
+        if (!mountedRef.current || !onlineRef.current) return;
+        void recoverRef.current('reconnect');
+      });
+    };
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    void recoverRef.current('initial');
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+      mountedRef.current = false;
+      generationRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    const previous = ownerScopeRef.current;
+    if (previous.db === db && previous.uid === uid && previous.leaseEpoch === leaseEpoch) return;
+    ownerScopeRef.current = { db, uid, leaseEpoch };
+    setManualConfirmation(false);
+    void recover('owner-change');
+  }, [db, leaseEpoch, recover, uid]);
 
   useEffect(() => journal.subscribe((source: PendingJournalChangeSource) => {
     if (!initialReadyRef.current) {
@@ -272,18 +379,35 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
   const hasUnresolved = state.rows.some(row => row.status !== 'confirmed');
   const blockers = state.rows.filter(blocksIndependentWork);
   const canManualContinue = blockers.length > 0 && blockers.every(row => row.status === 'not-found') && !state.busy;
-  const gateLocked = !state.initialReady || state.busy && (state.gateRequired || !state.shellMounted)
+  const gateLocked = !state.online || !state.initialReady || state.busy && (state.gateRequired || !state.shellMounted)
     || state.error !== null || state.gateRequired && !state.continued;
   const pageStart = state.pageIndex * CLOUD_PENDING_JOURNAL_PAGE_SIZE;
   const visibleRows = state.rows.slice(pageStart, pageStart + CLOUD_PENDING_JOURNAL_PAGE_SIZE);
   const pageCount = Math.max(1, Math.ceil(state.rows.length / CLOUD_PENDING_JOURNAL_PAGE_SIZE));
 
   const retryOne = async (record: PendingCommandIdentity) => {
+    const generation = generationRef.current;
+    if (!isCurrentGeneration(generation)) return;
     try {
       const [result] = await repository.confirmPendingPage([record], leaseEpoch);
+      if (!isCurrentGeneration(generation)) return;
       if (result.status === 'matched') {
         try {
-          const removed = await journal.removeIf(record);
+          const removed = await journal.removeIf(record, () => isCurrentRecoveryContext(generation, record.datasetId));
+          if (!isCurrentGeneration(generation)) return;
+          if (!await isCurrentRecoveryContext(generation, record.datasetId)) {
+            setState(previous => ({
+              ...previous,
+              rows: previous.rows.map(row => row.record.commandId === record.commandId
+                ? { record, status: 'confirmed', seq: result.receipt.seq, cleanupPending: true }
+                : row),
+              error: 'query',
+              errorCode: null,
+              gateRequired: true,
+              continued: false,
+            }));
+            return;
+          }
           setState(previous => ({
             ...previous,
             rows: removed
@@ -296,6 +420,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
             continued: false,
           }));
         } catch {
+          if (!isCurrentGeneration(generation)) return;
           setState(previous => ({
             ...previous,
             rows: previous.rows.map(row => row.record.commandId === record.commandId
@@ -314,6 +439,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
         }));
       }
     } catch (error) {
+      if (!isCurrentGeneration(generation)) return;
       setState(previous => ({
         ...previous,
         rows: previous.rows.map(row => row.record.commandId === record.commandId
@@ -328,7 +454,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
   };
 
   const manualContinue = () => {
-    if (!canManualContinue || !manualConfirmation) return;
+    if (!canManualContinue || !manualConfirmation || !onlineRef.current) return;
     mountedShellRef.current = true;
     setState(previous => ({ ...previous, shellMounted: true, continued: true, gateRequired: false }));
   };
@@ -337,6 +463,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
     <>
       <section className={`cloud-pending-recovery${gateLocked ? ' cloud-pending-recovery--blocked' : ''}`} aria-label="待核對命令">
         <h2>待核對命令</h2>
+        {!state.online && <p role="status">目前離線；追蹤編號仍保留，恢復連線後會重新核對。</p>}
         {!state.initialReady && state.busy && <p role="status">正在檢查本機追蹤編號及伺服器回執；完成前不開放新操作。</p>}
         {state.error === 'journal' && (
           <div role="alert">
@@ -350,7 +477,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
               : '目前無法從伺服器安全核對待決命令；結果未確認，請確認連線後重試。'}</p>
           </div>
         )}
-        {state.error && <button type="button" onClick={() => void recover('retry')} disabled={state.busy}>重新檢查</button>}
+        {state.error && <button type="button" onClick={() => void recover('retry')} disabled={state.busy || !state.online}>重新檢查</button>}
         {state.initialReady && state.error === null && state.rows.length === 0 && (
           <p role="status">目前沒有待核對命令。</p>
         )}
@@ -363,7 +490,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
                   <code>{row.record.commandId}</code>
                   <span>{statusText(row)}{row.status === 'confirmed' && row.seq ? `（伺服器序號 ${row.seq}）` : ''}</span>
                   {(row.status === 'not-found' || row.status === 'read-error') && (
-                    <button type="button" onClick={() => void retryOne(row.record)} disabled={state.busy}>再查這筆編號</button>
+                    <button type="button" onClick={() => void retryOne(row.record)} disabled={state.busy || !state.online}>再查這筆編號</button>
                   )}
                 </li>
               ))}
@@ -382,7 +509,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
                   <input type="checkbox" checked={manualConfirmation} onChange={event => setManualConfirmation(event.target.checked)} />
                   我確認本筆結果尚未確定，不得重新收款或重登；只繼續其他獨立作業，待保留編號人工核對。
                 </label>
-                <button type="button" onClick={manualContinue} disabled={!manualConfirmation}>保留編號，移交人工核對並繼續其他作業</button>
+                <button type="button" onClick={manualContinue} disabled={!manualConfirmation || !state.online}>保留編號，移交人工核對並繼續其他作業</button>
               </div>
             )}
             {state.gateRequired && blockers.some(row => row.status === 'different-dataset') && (
