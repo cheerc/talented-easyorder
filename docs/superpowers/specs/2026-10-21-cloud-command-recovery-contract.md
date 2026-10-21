@@ -14,6 +14,8 @@
 
 以 Firebase project／app 與 journal 版本分開命名空間，每個 command 使用獨立 key，不能用單一 read-modify-write 陣列覆蓋其他分頁的新記錄。key 的識別部分與 value 必須一致；同 ID、相同識別可重用，不同識別不能覆蓋。原命令 ID 在送出前固定，復原不產生另一個替代 ID。
 
+條件式 journal 清理須先在 Web Lock 外完成 receipt 與 server owner／dataset／lease 驗證。取得 namespace exclusive lock 後，critical section 只執行同步本機 owner／mount／generation／online predicate、精確比對識別及同步移除；predicate 僅接受同步 literal `true`，thenable 或其他值一律拒絕。若本機有效性在等待 lock 時已被觀察為失效，就保留識別。這個本機 predicate 只保護本機 mutation，不取代 Firestore Rules 或 server lease 驗證；清理取消或失敗也不會改寫已確認的業務結果。
+
 只存 canonical safe JSON；讀取也嚴格驗證原文、schema 與 key/value 連動。錯誤／無法讀取的 journal 不能當成「沒有未決命令」；不把不安全原文輸出到 UI、診斷或匯出。資料隔離為本 app/project 的已知 namespace，不能掃除 Auth、prototype 或其他應用資料。
 
 未決識別不因 TTL、登出、失權或容量輪替被自動丟棄。容量採硬上限與可見錯誤，達上限時禁止建立新的未追蹤命令，而不是淘汰最舊資料。復原查詢須有界分頁；任何截斷、解析失敗或 storage enumeration 失敗都不能當成完整清單。實作時的容量與頁大小須在測試／維護文件具體記錄。
