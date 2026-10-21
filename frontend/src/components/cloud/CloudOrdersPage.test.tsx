@@ -15,6 +15,8 @@ const repositoryMock = vi.hoisted(() => ({
   createRefund: vi.fn(),
   mutateTransaction: vi.fn(),
   readCommand: vi.fn(),
+  getPendingRecoveryContext: vi.fn(),
+  confirmPending: vi.fn(),
 }));
 
 vi.mock('../../firebase/cloudOrderRepository', () => ({
@@ -144,6 +146,16 @@ function errorResult(code: string, message = 'synthetic'): CommandResult {
   return { ok: false, error: { code, message } } as CommandResult;
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 const onNavigationStateChange = vi.fn();
 
 function renderComponent(identityKey = 'uid-1:1', initialBackfillDayId?: string) {
@@ -171,6 +183,8 @@ describe('CloudOrdersPage', () => {
     window.localStorage.clear();
     repositoryMock.loadSnapshot.mockResolvedValue(snapshot());
     repositoryMock.readCommand.mockResolvedValue(null);
+    repositoryMock.getPendingRecoveryContext.mockResolvedValue({ uid: 'uid-1', datasetId: 'ds-1', leaseEpoch: 1, maintenance: false });
+    repositoryMock.confirmPending.mockResolvedValue({ status: 'not-found' });
     repositoryMock.createOrder.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId));
     repositoryMock.createPayment.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 12));
     repositoryMock.createCashMovement.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 13));
@@ -247,6 +261,54 @@ describe('CloudOrdersPage', () => {
     expect(second).toEqual(first);
     expect(await screen.findByText(/已確認 002 李小華 訂餐完成（命令序號 11）/)).toBeVisible();
     expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
+  });
+
+  it('waits ten seconds before receipt lookup and never resends while the first commit is pending', async () => {
+    const original = deferred<CommandResult>();
+    repositoryMock.createOrder.mockReturnValueOnce(original.promise);
+    repositoryMock.confirmPending.mockResolvedValue({ status: 'not-found' });
+    renderComponent();
+    await selectStudent('002');
+    fireEvent.click(screen.getByRole('button', { name: '其他餐點' }));
+    fireEvent.change(screen.getByLabelText(/餐點品名/), { target: { value: '炒麵' } });
+    fireEvent.change(screen.getByLabelText(/餐點單價/), { target: { value: '60' } });
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByTestId('submit-order-button'));
+      fireEvent.click(screen.getByTestId('confirm-duplicate-button'));
+      expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1);
+      const first = repositoryMock.createOrder.mock.calls[0][0];
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(9_999); });
+      expect(screen.queryByText('結果確認中，勿重新收款。')).toBeNull();
+      expect(repositoryMock.confirmPending).not.toHaveBeenCalled();
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      vi.useRealTimers();
+      expect(await screen.findByText('結果確認中，勿重新收款。')).toBeVisible();
+      expect(screen.getByTestId('order-recovery-command-id')).toHaveTextContent(first.commandId);
+      fireEvent.click(screen.getByTestId('order-recovery-query'));
+      await waitFor(() => expect(repositoryMock.confirmPending).toHaveBeenCalledTimes(1));
+      expect(repositoryMock.confirmPending).toHaveBeenCalledWith(
+        { commandId: first.commandId, datasetId: 'ds-1', uid: 'uid-1' }, 1,
+      );
+      expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('order-recovery-panel')).toHaveTextContent('伺服器目前未查到');
+      expect(screen.queryByTestId('order-recovery-retry')).toBeNull();
+
+      await act(async () => { original.resolve(errorResult('UNKNOWN_RESULT')); });
+      await waitFor(() => expect(screen.getByTestId('order-recovery-panel')).toHaveTextContent('結果確認中，勿重新收款'));
+      // A null lookup begun while the original request was pending cannot authorize a retry.
+      expect(screen.queryByTestId('order-recovery-retry')).toBeNull();
+      fireEvent.click(screen.getByTestId('order-recovery-query'));
+      await waitFor(() => expect(screen.getByTestId('order-recovery-retry')).toBeVisible());
+      fireEvent.click(screen.getByTestId('order-recovery-retry'));
+      await waitFor(() => expect(repositoryMock.createOrder).toHaveBeenCalledTimes(2));
+      expect(repositoryMock.createOrder.mock.calls[1][0]).toEqual(first);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('masks and clears all business data when the lease is lost during submit (B2)', async () => {
