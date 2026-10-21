@@ -868,10 +868,6 @@ test.describe('P12c cloud report and account history acceptance', () => {
           releaseReadGate();
         }
         if (readIsHeld) await readRouteFinished;
-        if (routeIsInstalled) {
-          await page.unroute(listenRoute);
-          routeIsInstalled = false;
-        }
       };
 
       try {
@@ -906,12 +902,16 @@ test.describe('P12c cloud report and account history acceptance', () => {
         const balanceAfterExpected = balanceBefore + 25;
         const expectedBalanceText = `$${new Intl.NumberFormat('zh-TW').format(balanceAfterExpected)}`;
         await expect(accountBalanceCell).toHaveText(expectedBalanceText, { timeout: 30_000 });
+        const laterSettlementAfter = await readRawAdminDocument(settlementCollection, '1');
+        expect(JSON.stringify(laterSettlementAfter)).toBe(JSON.stringify(laterSettlementBefore));
+        await expect(activeHistoricalRow).toContainText('105');
       } finally {
         await releaseFreshRead();
+        if (routeIsInstalled) {
+          await page.unroute(listenRoute);
+          routeIsInstalled = false;
+        }
       }
-      const laterSettlementAfter = await readRawAdminDocument(settlementCollection, '1');
-      expect(JSON.stringify(laterSettlementAfter)).toBe(JSON.stringify(laterSettlementBefore));
-      await expect(activeHistoricalRow).toContainText('105');
     } finally {
       captureFirestoreNetwork = false;
       await capturePageState('before-fixture-cleanup');
