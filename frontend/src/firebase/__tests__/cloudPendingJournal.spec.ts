@@ -91,7 +91,7 @@ describe('Cloud pending command journal', () => {
     expect((await journal.readAll()).records).toEqual([]);
   });
 
-  it('rechecks a live owner only after acquiring the exclusive lock before removal', async () => {
+  it('checks a synchronous local owner predicate after acquiring the exclusive lock', async () => {
     const memory = createMemoryCloudPendingJournalTestAdapter();
     let releaseLock!: () => void;
     let markRequested!: () => void;
@@ -122,12 +122,7 @@ describe('Cloud pending command journal', () => {
     const expected = record(11);
     memory.getStorage().setItem(`${journal.namespace}:${expected.commandId}`, rawIdentity(expected));
     let ownerCurrent = true;
-    const removeWithOwnerGuard = journal.removeIf as unknown as (
-      item: PendingCommandIdentity,
-      isCurrent: () => boolean | Promise<boolean>,
-    ) => Promise<boolean>;
-    const pendingRemoval = removeWithOwnerGuard(expected, async () => {
-      await Promise.resolve();
+    const pendingRemoval = journal.removeIf(expected, () => {
       guardRanInCriticalSection = inCriticalSection;
       return ownerCurrent;
     });
@@ -139,6 +134,68 @@ describe('Cloud pending command journal', () => {
     await expect(pendingRemoval).resolves.toBe(false);
     expect(guardRanInCriticalSection).toBe(true);
     expect(await journal.readAll()).toMatchObject({ records: [expected], total: 1, complete: true });
+  });
+
+  it('fails closed on a thenable guard without holding the namespace lock while it is pending', async () => {
+    const adapter = createMemoryCloudPendingJournalTestAdapter();
+    const journal = createCloudPendingJournal(testDb, adapter);
+    const first = record(12);
+    const peer = record(13);
+    await journal.put(first);
+
+    let releaseGuard!: (value: boolean) => void;
+    let signalGuardStarted!: () => void;
+    const guardStarted = new Promise<void>(resolve => { signalGuardStarted = resolve; });
+    const remoteCheck = new Promise<boolean>(resolve => { releaseGuard = resolve; });
+    const removeWithUnsafeGuard = journal.removeIf as unknown as (
+      item: PendingCommandIdentity,
+      isCurrent: () => unknown,
+    ) => Promise<boolean>;
+    const pendingRemoval = removeWithUnsafeGuard(first, () => {
+      signalGuardStarted();
+      return remoteCheck;
+    });
+
+    await guardStarted;
+    const peerWrite = journal.put(peer).then(() => true, () => false);
+    const peerRead = journal.readAll().then(snapshot => snapshot.total === 2, () => false);
+    const completesBeforeRemoteCheck = (promise: Promise<unknown>): Promise<unknown> => Promise.race([
+      promise,
+      new Promise(resolve => setTimeout(() => resolve(false), 100)),
+    ]);
+    const lockObservation = await Promise.all([
+      completesBeforeRemoteCheck(peerWrite),
+      completesBeforeRemoteCheck(peerRead),
+    ]);
+
+    releaseGuard(true);
+    expect(lockObservation).toEqual([true, true]);
+    await expect(pendingRemoval).resolves.toBe(false);
+    expect(await journal.readAll()).toMatchObject({ records: [first, peer], total: 2, complete: true });
+  });
+
+  it('does not yield between the final synchronous owner predicate and exact removal', async () => {
+    const adapter = createMemoryCloudPendingJournalTestAdapter();
+    const journal = createCloudPendingJournal(testDb, adapter);
+    const expected = record(14);
+    await journal.put(expected);
+    const storage = adapter.getStorage();
+    const originalRemoveItem = storage.removeItem.bind(storage);
+    let ownerCurrent = true;
+    let ownerStateAtRemoval: boolean | null = null;
+    storage.removeItem = key => {
+      ownerStateAtRemoval = ownerCurrent;
+      originalRemoveItem(key);
+    };
+
+    await expect(journal.removeIf(expected, () => {
+      queueMicrotask(() => { ownerCurrent = false; });
+      return true;
+    })).resolves.toBe(true);
+
+    expect(ownerCurrent).toBe(false);
+    expect(ownerStateAtRemoval).toBe(true);
+    expect(await journal.readAll()).toMatchObject({ records: [], total: 0, complete: true });
   });
 
   it('migrates only the exact canonical legacy slot and preserves unrelated storage', async () => {

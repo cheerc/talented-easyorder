@@ -446,6 +446,107 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     }
   });
 
+  test('rejects a pending async cleanup guard without blocking peer operations on real Web Locks', async ({ page }) => {
+    const peer = await page.context().newPage();
+    const driverUrl = 'http://127.0.0.1:4174';
+    const driverApp = 'p13b2a-r2-async-guard';
+    const driverProject = 'p13b2a-r2-lock-driver';
+    const prefix = `easyorder-cloud-command-journal:v1:${encodeURIComponent(driverProject)}:${encodeURIComponent(driverApp)}:`;
+    type BrowserIdentity = { commandId: string; datasetId: string; uid: string };
+    type BrowserJournal = {
+      namespace: string;
+      put(record: BrowserIdentity): Promise<void>;
+      readAll(): Promise<{ records: BrowserIdentity[]; total: number; complete: boolean }>;
+      removeIf(record: BrowserIdentity, guard?: () => boolean): Promise<boolean>;
+    };
+
+    const installJournal = async (target: typeof page) => {
+      await target.goto(driverUrl);
+      await target.evaluate(async ({ appName, projectId }) => {
+        const module = await import('/src/firebase/cloudPendingJournal.ts');
+        const app = { name: appName, options: { projectId } };
+        const journal = module.createCloudPendingJournal({ app } as never);
+        (window as unknown as { __p13b2BrowserJournal: BrowserJournal }).__p13b2BrowserJournal = journal;
+      }, { appName: driverApp, projectId: driverProject });
+    };
+
+    try {
+      await Promise.all([installJournal(page), installJournal(peer)]);
+      await page.evaluate(keyPrefix => {
+        for (const key of Object.keys(localStorage)) if (key.startsWith(keyPrefix)) localStorage.removeItem(key);
+      }, prefix);
+      const first = { commandId: 'b4444444-4444-4444-8444-444444444444', datasetId: 'dataset-a', uid: 'operator-a' };
+      const second = { commandId: 'b5555555-5555-4555-8555-555555555555', datasetId: 'dataset-a', uid: 'operator-b' };
+      await page.evaluate(async record => (
+        (window as unknown as { __p13b2BrowserJournal: BrowserJournal }).__p13b2BrowserJournal.put(record)
+      ), first);
+
+      await page.evaluate(async record => {
+        const journal = (window as unknown as { __p13b2BrowserJournal: BrowserJournal }).__p13b2BrowserJournal;
+        let signalGuardStarted!: () => void;
+        let releaseRemoteCheck!: (value: boolean) => void;
+        const guardStarted = new Promise<void>(resolve => { signalGuardStarted = resolve; });
+        const pendingRemoteCheck = new Promise<boolean>(resolve => { releaseRemoteCheck = resolve; });
+        const removal = journal.removeIf(record, (() => {
+          signalGuardStarted();
+          return pendingRemoteCheck;
+        }) as unknown as () => boolean);
+        await guardStarted;
+        (window as unknown as { __p13b2PendingGuard: {
+          releaseRemoteCheck: (value: boolean) => void;
+          removal: Promise<boolean>;
+        } }).__p13b2PendingGuard = { releaseRemoteCheck, removal };
+      }, first);
+
+      const lockName = `${prefix.slice(0, -1)}:exclusive`;
+      const peerObservation = await peer.evaluate(async ({ peerRecord, lockName }) => {
+        const peerJournal = (window as unknown as { __p13b2BrowserJournal: BrowserJournal }).__p13b2BrowserJournal;
+        const peerWrite = peerJournal.put(peerRecord).then(() => true, () => false);
+        const peerRead = peerJournal.readAll().then(snapshot => snapshot.total === 2, () => false);
+        const within = (promise: Promise<boolean>): Promise<boolean> => Promise.race([
+          promise,
+          new Promise<boolean>(resolve => setTimeout(() => resolve(false), 250)),
+        ]);
+        const peerCompletedBeforeRemoteCheck = await Promise.all([within(peerWrite), within(peerRead)]);
+        const locksWhileRemoteCheckPending = await navigator.locks.query();
+        return {
+          peerCompletedBeforeRemoteCheck,
+          heldForNamespace: locksWhileRemoteCheckPending.held.some(lock => lock.name === lockName),
+          peerPendingForNamespace: locksWhileRemoteCheckPending.pending.some(lock => lock.name === lockName),
+        };
+      }, { peerRecord: second, lockName });
+
+      const removalObservation = await page.evaluate(async () => {
+        const state = (window as unknown as { __p13b2PendingGuard: {
+          releaseRemoteCheck: (value: boolean) => void;
+          removal: Promise<boolean>;
+        } }).__p13b2PendingGuard;
+        state.releaseRemoteCheck(true);
+        const removed = await state.removal;
+        const journal = (window as unknown as { __p13b2BrowserJournal: BrowserJournal }).__p13b2BrowserJournal;
+        const snapshot = await journal.readAll();
+        return { removed, total: snapshot.total };
+      });
+
+      expect(peerObservation.peerCompletedBeforeRemoteCheck, JSON.stringify(peerObservation)).toEqual([true, true]);
+      expect(peerObservation.heldForNamespace).toBe(false);
+      expect(peerObservation.peerPendingForNamespace).toBe(false);
+      expect(removalObservation.removed).toBe(false);
+      expect(removalObservation.total).toBe(2);
+    } finally {
+      await page.evaluate(async keyPrefix => {
+        const state = (window as unknown as { __p13b2PendingGuard?: {
+          releaseRemoteCheck: (value: boolean) => void;
+          removal: Promise<boolean>;
+        } }).__p13b2PendingGuard;
+        state?.releaseRemoteCheck(true);
+        await state?.removal.catch(() => false);
+        for (const key of Object.keys(localStorage)) if (key.startsWith(keyPrefix)) localStorage.removeItem(key);
+      }, prefix).catch(() => undefined);
+      await peer.close();
+    }
+  });
+
   test('reconnect rechecks a changed dataset before releasing the manually continued shell', async ({ googleSession }) => {
     const { page, uid } = googleSession;
     const commandId = 'd7777777-7777-4777-8777-777777777777';
