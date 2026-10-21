@@ -588,23 +588,6 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     return { uid: user.uid, datasetId: String(head.datasetId), leaseEpoch: Number(lease.epoch), maintenance: head.maintenance === true };
   }
 
-  async function isCurrentRecoveryContext(
-    user: CurrentUser,
-    expectedEpoch: number,
-    expectedDatasetId: string,
-  ): Promise<boolean> {
-    try {
-      if (!isCurrentRecoveryOwner(user)) return false;
-      const context = await readRecoveryContext(user, expectedEpoch);
-      return isCurrentRecoveryOwner(user)
-        && context.uid === user.uid
-        && context.leaseEpoch === expectedEpoch
-        && context.datasetId === expectedDatasetId;
-    } catch {
-      return false;
-    }
-  }
-
   async function confirmPendingBatch(records: readonly PendingCommandIdentity[], expectedEpoch: number): Promise<InternalPendingReceiptCheck[]> {
     if (records.length < 1 || records.length > CLOUD_PENDING_JOURNAL_PAGE_SIZE) {
       throw new CloudCommandReadError('INVALID_INPUT', '一次最多核對 100 筆待決識別');
@@ -662,7 +645,9 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     try {
       const check = await confirmPendingCommand(record, expectedEpoch);
       if (check.status === 'matched') {
-        await pendingJournal.removeIf(record, () => isCurrentRecoveryContext(owner, expectedEpoch, record.datasetId));
+        // Receipt and server owner/dataset/lease checks completed above, outside the journal lock.
+        // The lock callback must remain a synchronous observation of the live Auth owner.
+        await pendingJournal.removeIf(record, () => isCurrentRecoveryOwner(owner));
       }
     } catch {
       // The business result is already committed; a failed local cleanup remains visible for later lookup.
@@ -1874,7 +1859,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
         await pendingJournal.removeIf(
           pendingIdentity,
-          () => isCurrentRecoveryContext(user, input.leaseEpoch, pendingIdentity.datasetId),
+          () => isCurrentRecoveryOwner(user),
         ).catch(() => false);
         if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
         return { ok: true, receipt: confirmed.receipt };

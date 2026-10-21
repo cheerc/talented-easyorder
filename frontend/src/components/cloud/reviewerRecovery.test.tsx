@@ -68,8 +68,8 @@ beforeEach(() => {
   f.listener = null;
   f.context.mockReset().mockResolvedValue(context);
   f.confirm.mockReset().mockResolvedValue(notFound);
-  f.remove.mockReset().mockImplementation(async (candidate: Record<string, unknown>, isCurrent?: () => boolean | Promise<boolean>) => {
-    if (isCurrent && !(await isCurrent())) return false;
+  f.remove.mockReset().mockImplementation(async (candidate: Record<string, unknown>, isCurrent?: () => boolean) => {
+    if (isCurrent && isCurrent() !== true) return false;
     const index = f.records.findIndex(item => item.commandId === candidate.commandId
       && item.datasetId === candidate.datasetId && item.uid === candidate.uid);
     if (index < 0) return false;
@@ -113,10 +113,10 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
     const lock = deferred<void>();
     const removeStarted = deferred<void>();
     f.confirm.mockResolvedValueOnce(matched);
-    f.remove.mockImplementationOnce(async (candidate: Record<string, unknown>, isCurrent?: () => boolean | Promise<boolean>) => {
+    f.remove.mockImplementationOnce(async (candidate: Record<string, unknown>, isCurrent?: () => boolean) => {
       removeStarted.resolve();
       await lock.promise;
-      if (isCurrent && !(await isCurrent())) return false;
+      if (isCurrent && isCurrent() !== true) return false;
       f.records = f.records.filter(item => item.commandId !== candidate.commandId);
       return true;
     });
@@ -134,26 +134,40 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
     ['holder', { uid: 'operator-b', datasetId: 'dataset-a', leaseEpoch: 1, maintenance: false }],
     ['epoch', { uid: 'operator-a', datasetId: 'dataset-a', leaseEpoch: 2, maintenance: false }],
     ['dataset', { uid: 'operator-a', datasetId: 'dataset-b', leaseEpoch: 1, maintenance: false }],
-  ])('preserves the journal when the %s changes while waiting for the lock', async (_change, changedContext) => {
+  ])('preserves the journal when an observed %s change invalidates cleanup while waiting for the lock', async (change, changedContext) => {
     const lock = deferred<void>();
     const removeStarted = deferred<void>();
-    renderBoundary();
+    const view = renderBoundary();
     await continueManually();
     f.confirm.mockResolvedValueOnce(matched);
-    f.remove.mockImplementationOnce(async (candidate: Record<string, unknown>, isCurrent?: () => boolean | Promise<boolean>) => {
+    f.remove.mockImplementationOnce(async (candidate: Record<string, unknown>, isCurrent?: () => boolean) => {
       removeStarted.resolve();
       await lock.promise;
-      if (isCurrent && !(await isCurrent())) return false;
+      if (isCurrent && isCurrent() !== true) return false;
       f.records = f.records.filter(item => item.commandId !== candidate.commandId);
       return true;
     });
     await act(async () => f.listener?.('other-tab'));
     await removeStarted.promise;
 
+    f.confirm.mockResolvedValue(notFound);
     f.context.mockResolvedValue(changedContext);
+    if (change === 'dataset') {
+      await act(async () => f.listener?.('other-tab'));
+      await waitFor(() => expect(f.context).toHaveBeenCalledTimes(5));
+    } else {
+      const nextUid = change === 'holder' ? 'operator-b' : 'operator-a';
+      const nextEpoch = change === 'epoch' ? 2 : 1;
+      view.rerender(
+        <CloudPendingRecoveryBoundary db={testDb} uid={nextUid} leaseEpoch={nextEpoch}>
+          {() => <div data-testid="business-shell">Current operator work</div>}
+        </CloudPendingRecoveryBoundary>,
+      );
+      await waitFor(() => expect(f.context).toHaveBeenCalledTimes(5));
+    }
     await act(async () => lock.resolve());
 
-    await waitFor(() => expect(f.remove).toHaveBeenCalledWith(record, expect.any(Function)));
+    expect(f.remove).toHaveBeenCalledWith(record, expect.any(Function));
     expect(f.records).toEqual([record]);
     expect(screen.getByTestId('business-shell')).toBeInTheDocument();
     expect(screen.getByTestId('business-shell').parentElement).toHaveAttribute('inert');

@@ -60,7 +60,7 @@ export interface CloudPendingJournal {
   readAll(): Promise<PendingJournalSnapshot>;
   readPage(offset?: number): Promise<PendingJournalPage>;
   put(record: PendingCommandIdentity): Promise<void>;
-  removeIf(record: PendingCommandIdentity, isCurrent?: () => boolean | Promise<boolean>): Promise<boolean>;
+  removeIf(record: PendingCommandIdentity, isCurrent?: () => boolean): Promise<boolean>;
   migrateLegacyOrderSlot(): Promise<'empty' | 'migrated' | 'already-migrated'>;
   subscribe(listener: (source: PendingJournalChangeSource) => void): () => void;
   registerInFlight(record: PendingCommandIdentity, leaseEpoch: number): () => void;
@@ -98,9 +98,9 @@ function identityMatches(left: PendingCommandIdentity, right: PendingCommandIden
   return left.commandId === right.commandId && left.datasetId === right.datasetId && left.uid === right.uid;
 }
 
-async function ownerIsCurrent(isCurrent: () => boolean | Promise<boolean>): Promise<boolean> {
+function ownerIsCurrent(isCurrent: () => boolean): boolean {
   try {
-    return (await isCurrent()) === true;
+    return isCurrent() === true;
   } catch {
     return false;
   }
@@ -276,13 +276,13 @@ export function createCloudPendingJournal(db: Firestore, adapter: PendingJournal
     async removeIf(untrustedRecord, isCurrent = () => true): Promise<boolean> {
       const record = safeIdentity(untrustedRecord);
       const key = keyFor(record.commandId);
-      const removed = await withLock(async storage => {
-        if (!await ownerIsCurrent(isCurrent)) return false;
+      const removed = await withLock(storage => {
+        if (!ownerIsCurrent(isCurrent)) return false;
         const records = scan(storage);
         const existing = records.find(item => item.commandId === record.commandId);
         if (!existing) return false;
         if (!identityMatches(existing, record)) throw new PendingJournalUnavailableError();
-        if (!await ownerIsCurrent(isCurrent)) return false;
+        if (!ownerIsCurrent(isCurrent)) return false;
         storage.removeItem(key);
         if (storage.getItem(key) !== null) throw new PendingJournalUnavailableError();
         if (scan(storage).some(item => item.commandId === record.commandId)) throw new PendingJournalUnavailableError();

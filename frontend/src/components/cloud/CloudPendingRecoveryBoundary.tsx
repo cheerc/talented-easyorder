@@ -22,6 +22,7 @@ interface PendingRow {
 }
 
 interface RecoveryState {
+  scope: { db: Firestore; uid: string; leaseEpoch: number; datasetId: string | null } | null;
   initialReady: boolean;
   shellMounted: boolean;
   online: boolean;
@@ -36,6 +37,7 @@ interface RecoveryState {
 }
 
 const initialState: RecoveryState = {
+  scope: null,
   initialReady: false,
   shellMounted: false,
   online: true,
@@ -89,9 +91,17 @@ export interface CloudPendingRecoveryBoundaryProps {
 export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: CloudPendingRecoveryBoundaryProps) {
   const journal = useMemo(() => cloudPendingJournalForRepository(db), [db]);
   const repository = useMemo(() => createCloudCommandRepository(db), [db]);
+  const generationRef = useRef(0);
+  const renderedScopeRef = useRef({ db, uid, leaseEpoch });
+  const confirmedScopeRef = useRef<RecoveryState['scope']>(null);
+  if (renderedScopeRef.current.db !== db || renderedScopeRef.current.uid !== uid
+    || renderedScopeRef.current.leaseEpoch !== leaseEpoch) {
+    renderedScopeRef.current = { db, uid, leaseEpoch };
+    generationRef.current += 1;
+    confirmedScopeRef.current = null;
+  }
   const [state, setState] = useState<RecoveryState>(initialState);
   const [manualConfirmation, setManualConfirmation] = useState(false);
-  const generationRef = useRef(0);
   const initialReadyRef = useRef(false);
   const mountedShellRef = useRef(false);
   const pendingRefreshRef = useRef(false);
@@ -100,40 +110,40 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
   const reconnectQueuedRef = useRef(false);
   const ownerScopeRef = useRef({ db, uid, leaseEpoch });
 
-  const isCurrentGeneration = useCallback((generation: number) => (
-    mountedRef.current && onlineRef.current && generation === generationRef.current
-  ), []);
+  const isCurrentPropsScope = useCallback(() => (
+    renderedScopeRef.current.db === db
+      && renderedScopeRef.current.uid === uid
+      && renderedScopeRef.current.leaseEpoch === leaseEpoch
+  ), [db, leaseEpoch, uid]);
 
-  const isCurrentRecoveryContext = useCallback(async (generation: number, datasetId: string) => {
-    if (!isCurrentGeneration(generation)) return false;
-    try {
-      const context = await repository.getPendingRecoveryContext(leaseEpoch);
-      return isCurrentGeneration(generation)
-        && context.uid === uid
-        && context.datasetId === datasetId
-        && context.leaseEpoch === leaseEpoch;
-    } catch {
-      return false;
-    }
-  }, [isCurrentGeneration, leaseEpoch, repository, uid]);
+  const isCurrentGeneration = useCallback((generation: number) => (
+    mountedRef.current && onlineRef.current && generation === generationRef.current && isCurrentPropsScope()
+  ), [isCurrentPropsScope]);
 
   const recover = useCallback(async (
     source: 'initial' | 'same-tab' | 'other-tab' | 'retry' | 'reconnect' | 'owner-change',
   ) => {
+    if (!isCurrentPropsScope()) return;
     const generation = ++generationRef.current;
     const initial = source === 'initial';
     const external = source === 'other-tab' || source === 'reconnect' || source === 'owner-change';
     let scannedRecords: PendingCommandIdentity[] | null = null;
+    let confirmedDatasetId: string | null = null;
     const rows: PendingRow[] = [];
     if (external) setManualConfirmation(false);
     setState(previous => ({
       ...previous,
+      scope: initial || source === 'owner-change' ? null : previous.scope,
       online: onlineRef.current,
       busy: true,
       error: null,
       errorCode: null,
       ...(initial ? { initialReady: false, shellMounted: false, gateRequired: true, continued: false } : {}),
-      ...(external ? { gateRequired: true, continued: false } : {}),
+      ...(external ? {
+        gateRequired: true,
+        continued: false,
+        ...(source === 'owner-change' ? { rows: [], total: 0 } : {}),
+      } : {}),
     }));
     try {
       if (!onlineRef.current) {
@@ -161,10 +171,11 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
         error.code = 'LEASE_LOST';
         throw error;
       }
+      confirmedDatasetId = before.datasetId;
 
       const removed = new Set<string>();
       for (let offset = 0; offset < snapshot.records.length; offset += CLOUD_PENDING_JOURNAL_PAGE_SIZE) {
-        if (generation !== generationRef.current) return;
+        if (!isCurrentGeneration(generation)) return;
         const page = snapshot.records.slice(offset, offset + CLOUD_PENDING_JOURNAL_PAGE_SIZE);
         const checks = page.map(record => journal.isInFlight(record, leaseEpoch)
           ? null
@@ -203,7 +214,12 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
             rows.push({ record, status: 'not-found' });
           } else {
             try {
-              const didRemove = await journal.removeIf(record, () => isCurrentRecoveryContext(generation, before.datasetId));
+              const didRemove = await journal.removeIf(record, () => (
+                isCurrentGeneration(generation)
+                  && before.uid === uid
+                  && before.leaseEpoch === leaseEpoch
+                  && before.datasetId === record.datasetId
+              ));
               if (!isCurrentGeneration(generation)) return;
               if (didRemove) removed.add(record.commandId);
               else rows.push({ record, status: 'confirmed', seq: result.receipt.seq, cleanupPending: true });
@@ -240,6 +256,14 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
       });
       const unresolved = finalRows.some(blocksIndependentWork);
       if (!isCurrentGeneration(generation)) return;
+      const nextScope = { db, uid, leaseEpoch, datasetId: before.datasetId };
+      const previousConfirmedScope = confirmedScopeRef.current;
+      const sameConfirmedScope = previousConfirmedScope?.db === db
+        && previousConfirmedScope.uid === uid
+        && previousConfirmedScope.leaseEpoch === leaseEpoch
+        && previousConfirmedScope.datasetId === before.datasetId;
+      if (!sameConfirmedScope) setManualConfirmation(false);
+      confirmedScopeRef.current = nextScope;
       initialReadyRef.current = true;
       pendingRefreshRef.current = false;
       const shellMounted = mountedShellRef.current || !unresolved;
@@ -247,6 +271,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
       setManualConfirmation(false);
       setState(previous => ({
         ...previous,
+        scope: nextScope,
         online: true,
         initialReady: true,
         shellMounted,
@@ -255,8 +280,8 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
         errorCode: null,
         rows: finalRows,
         total: finalSnapshot.total,
-        gateRequired: unresolved && (initial || external || previous.gateRequired),
-        continued: initial || external ? false : previous.continued,
+        gateRequired: unresolved && (initial || external || !sameConfirmedScope || previous.gateRequired),
+        continued: initial || external || !sameConfirmedScope ? false : previous.continued,
         pageIndex: 0,
       }));
     } catch (error) {
@@ -270,8 +295,12 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
           status: journal.isInFlight(record, leaseEpoch) ? 'in-flight' as const : 'read-error' as const,
         })
         : null;
+      const failedScope = { db, uid, leaseEpoch, datasetId: confirmedDatasetId };
+      confirmedScopeRef.current = confirmedDatasetId === null ? null : failedScope;
+      setManualConfirmation(false);
       setState(previous => ({
         ...previous,
+        scope: failedScope,
         online: true,
         initialReady: !initial || previous.initialReady,
         shellMounted: previous.shellMounted,
@@ -284,7 +313,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
         pageIndex: 0,
       }));
     }
-  }, [isCurrentGeneration, isCurrentRecoveryContext, journal, leaseEpoch, repository, uid]);
+  }, [db, isCurrentGeneration, isCurrentPropsScope, journal, leaseEpoch, repository, uid]);
 
   const recoverRef = useRef(recover);
 
@@ -376,38 +405,34 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
     }
   }, [recover, state.initialReady]);
 
-  const hasUnresolved = state.rows.some(row => row.status !== 'confirmed');
-  const blockers = state.rows.filter(blocksIndependentWork);
-  const canManualContinue = blockers.length > 0 && blockers.every(row => row.status === 'not-found') && !state.busy;
-  const gateLocked = !state.online || !state.initialReady || state.busy && (state.gateRequired || !state.shellMounted)
-    || state.error !== null || state.gateRequired && !state.continued;
+  const scope = state.scope;
+  const scopeMatchesOwner = scope !== null && scope.db === db
+    && scope.uid === uid && scope.leaseEpoch === leaseEpoch;
+  const scopeConfirmed = scope !== null && scopeMatchesOwner && scope.datasetId !== null;
+  const scopedRows = scopeMatchesOwner ? state.rows : [];
+  const hasUnresolved = scopedRows.some(row => row.status !== 'confirmed');
+  const blockers = scopedRows.filter(blocksIndependentWork);
+  const canManualContinue = scopeConfirmed
+    && blockers.length > 0 && blockers.every(row => row.status === 'not-found') && !state.busy;
+  const gateLocked = !scopeConfirmed || !state.online || !state.initialReady
+    || state.busy && (state.gateRequired || !state.shellMounted)
+    || scopeMatchesOwner && state.error !== null || state.gateRequired && !state.continued;
   const pageStart = state.pageIndex * CLOUD_PENDING_JOURNAL_PAGE_SIZE;
-  const visibleRows = state.rows.slice(pageStart, pageStart + CLOUD_PENDING_JOURNAL_PAGE_SIZE);
-  const pageCount = Math.max(1, Math.ceil(state.rows.length / CLOUD_PENDING_JOURNAL_PAGE_SIZE));
+  const visibleRows = scopedRows.slice(pageStart, pageStart + CLOUD_PENDING_JOURNAL_PAGE_SIZE);
+  const pageCount = Math.max(1, Math.ceil(scopedRows.length / CLOUD_PENDING_JOURNAL_PAGE_SIZE));
 
   const retryOne = async (record: PendingCommandIdentity) => {
     const generation = generationRef.current;
-    if (!isCurrentGeneration(generation)) return;
+    if (!scopeConfirmed || !isCurrentGeneration(generation)) return;
     try {
       const [result] = await repository.confirmPendingPage([record], leaseEpoch);
       if (!isCurrentGeneration(generation)) return;
       if (result.status === 'matched') {
         try {
-          const removed = await journal.removeIf(record, () => isCurrentRecoveryContext(generation, record.datasetId));
+          const removed = await journal.removeIf(record, () => (
+            isCurrentGeneration(generation) && record.datasetId === state.scope?.datasetId
+          ));
           if (!isCurrentGeneration(generation)) return;
-          if (!await isCurrentRecoveryContext(generation, record.datasetId)) {
-            setState(previous => ({
-              ...previous,
-              rows: previous.rows.map(row => row.record.commandId === record.commandId
-                ? { record, status: 'confirmed', seq: result.receipt.seq, cleanupPending: true }
-                : row),
-              error: 'query',
-              errorCode: null,
-              gateRequired: true,
-              continued: false,
-            }));
-            return;
-          }
           setState(previous => ({
             ...previous,
             rows: removed
@@ -454,7 +479,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
   };
 
   const manualContinue = () => {
-    if (!canManualContinue || !manualConfirmation || !onlineRef.current) return;
+    if (!scopeConfirmed || !canManualContinue || !manualConfirmation || !onlineRef.current) return;
     mountedShellRef.current = true;
     setState(previous => ({ ...previous, shellMounted: true, continued: true, gateRequired: false }));
   };
@@ -464,24 +489,27 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
       <section className={`cloud-pending-recovery${gateLocked ? ' cloud-pending-recovery--blocked' : ''}`} aria-label="待核對命令">
         <h2>待核對命令</h2>
         {!state.online && <p role="status">目前離線；追蹤編號仍保留，恢復連線後會重新核對。</p>}
+        {!scopeMatchesOwner && <p role="status">目前登入身分或使用權已變更，正在重新核對；完成前不開放操作。</p>}
         {!state.initialReady && state.busy && <p role="status">正在檢查本機追蹤編號及伺服器回執；完成前不開放新操作。</p>}
-        {state.error === 'journal' && (
+        {scopeMatchesOwner && state.error === 'journal' && (
           <div role="alert">
             <p>本機待核對日誌無法安全讀取或保存。資料未確認，已停止開放新操作；請聯絡系統維護者。</p>
           </div>
         )}
-        {state.error === 'query' && (
+        {scopeMatchesOwner && state.error === 'query' && (
           <div role="alert">
             <p>{state.errorCode === 'LEASE_LOST' || state.errorCode === 'UNAUTHORIZED'
               ? '登入身分或使用權已變更，待核對結果仍保留。請重新確認使用權後再查。'
               : '目前無法從伺服器安全核對待決命令；結果未確認，請確認連線後重試。'}</p>
           </div>
         )}
-        {state.error && <button type="button" onClick={() => void recover('retry')} disabled={state.busy || !state.online}>重新檢查</button>}
-        {state.initialReady && state.error === null && state.rows.length === 0 && (
+        {scopeMatchesOwner && state.error && (
+          <button type="button" onClick={() => void recover('retry')} disabled={state.busy || !state.online || !scopeConfirmed}>重新檢查</button>
+        )}
+        {scopeConfirmed && state.initialReady && state.error === null && scopedRows.length === 0 && (
           <p role="status">目前沒有待核對命令。</p>
         )}
-        {state.rows.length > 0 && (
+        {scopedRows.length > 0 && (
           <>
             <p>共有 {state.total} 筆最小追蹤編號；每頁最多 {CLOUD_PENDING_JOURNAL_PAGE_SIZE} 筆，最多保留 {CLOUD_PENDING_JOURNAL_CAPACITY} 筆。未決編號不會自動淘汰。</p>
             <ul className="cloud-pending-recovery__list">
@@ -490,7 +518,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
                   <code>{row.record.commandId}</code>
                   <span>{statusText(row)}{row.status === 'confirmed' && row.seq ? `（伺服器序號 ${row.seq}）` : ''}</span>
                   {(row.status === 'not-found' || row.status === 'read-error') && (
-                    <button type="button" onClick={() => void retryOne(row.record)} disabled={state.busy || !state.online}>再查這筆編號</button>
+                    <button type="button" onClick={() => void retryOne(row.record)} disabled={state.busy || !state.online || !scopeConfirmed}>再查這筆編號</button>
                   )}
                 </li>
               ))}
