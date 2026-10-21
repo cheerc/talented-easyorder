@@ -412,6 +412,13 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
   const scopedRows = scopeMatchesOwner ? state.rows : [];
   const hasUnresolved = scopedRows.some(row => row.status !== 'confirmed');
   const blockers = scopedRows.filter(blocksIndependentWork);
+  const canStartRecoveryCheck = mountedRef.current
+    && scopeMatchesOwner
+    && isCurrentPropsScope()
+    && state.error !== null
+    && state.online
+    && onlineRef.current
+    && !state.busy;
   const canManualContinue = scopeConfirmed
     && blockers.length > 0 && blockers.every(row => row.status === 'not-found') && !state.busy;
   const gateLocked = !scopeConfirmed || !state.online || !state.initialReady
@@ -504,7 +511,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
           </div>
         )}
         {scopeMatchesOwner && state.error && (
-          <button type="button" onClick={() => void recover('retry')} disabled={state.busy || !state.online || !scopeConfirmed}>重新檢查</button>
+          <button type="button" onClick={() => void recover('retry')} disabled={!canStartRecoveryCheck}>重新檢查</button>
         )}
         {scopeConfirmed && state.initialReady && state.error === null && scopedRows.length === 0 && (
           <p role="status">目前沒有待核對命令。</p>
