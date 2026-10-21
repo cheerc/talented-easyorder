@@ -163,9 +163,10 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
   beforeEach(async () => {
     await env.clearFirestore();
     localStorage.clear();
-    firestoreMock.serverRead.mockClear();
+    firestoreMock.serverRead.mockReset();
+    firestoreMock.serverRead.mockImplementation(firestoreMock.realServerRead);
+    firestoreMock.runTransaction.mockReset();
     firestoreMock.runTransaction.mockImplementation(firestoreMock.realRunTransaction);
-    firestoreMock.runTransaction.mockClear();
   });
 
   afterAll(async () => {
@@ -740,7 +741,7 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
       expectedRevisions: { transaction: 0, student: 1, day: 1 },
       payload: { mealPrice: 100, paidAmount: 110, mealKind: 'bento', menuRevision: 1 },
     });
-    expect(committed).toMatchObject({ ok: true });
+    expect(committed, JSON.stringify(committed)).toMatchObject({ ok: true });
 
     let currentUser: User | null = fakeCurrentUser(operatorA);
     let dataHeadReads = 0;
