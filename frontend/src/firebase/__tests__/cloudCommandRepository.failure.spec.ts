@@ -331,6 +331,40 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
     expect(setItem).toHaveBeenCalledTimes(diagnosticWriteCount);
   });
 
+  it('P13b2 RED: denied localStorage access prevents the real command transaction', async () => {
+    await seedBase();
+    const commandId = 'f8888888-8888-4888-8888-888888888888';
+    const transactionId = 'f9999999-9999-4999-8999-999999999999';
+    const input = {
+      commandId, kind: 'CreateOrder' as const, leaseEpoch: 1,
+      targets: { transactionId, studentId, dayId: today },
+      expectedRevisions: { transaction: 0 as const, student: 1, day: 1 },
+      payload: { mealPrice: 100, paidAmount: 110, mealKind: 'bento' as const, menuRevision: 1 },
+    };
+    const storageDescriptor = Object.getOwnPropertyDescriptor(window, 'localStorage');
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get() { throw new Error('synthetic localStorage property denial'); },
+    });
+    let result: Awaited<ReturnType<ReturnType<typeof repository>['commitCommand']>>;
+    try {
+      result = await repository(operatorA).commitCommand(input);
+    } finally {
+      if (storageDescriptor) Object.defineProperty(window, 'localStorage', storageDescriptor);
+    }
+
+    expect(result!).toMatchObject({ ok: false, error: { code: 'LOCAL_STORAGE_UNAVAILABLE' } });
+    expect(firestoreMock.runTransaction).not.toHaveBeenCalled();
+    const committed = await withAdmin(async db => Promise.all([
+      getDoc(doc(db, 'system/dataHead')),
+      getDoc(doc(db, `commands/${commandId}`)),
+      getDoc(doc(db, `transactions/${transactionId}`)),
+    ]));
+    expect(committed[0].data()).toMatchObject({ seq: 0 });
+    expect(committed[1].exists()).toBe(false);
+    expect(committed[2].exists()).toBe(false);
+  });
+
   it.each(['unavailable', 'permission-denied'] as const)(
     'P05.28: %s after a real commit is UNKNOWN_RESULT and same-ID retry recovers its receipt',
     async failure => {
