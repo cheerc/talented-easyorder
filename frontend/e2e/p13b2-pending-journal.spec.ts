@@ -628,4 +628,53 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     });
     expect(receiptResponse.status).toBe(404);
   });
+
+  test('rechecks the initial journal failure on the same page without a business effect', async ({ googleSession }) => {
+    const { page } = googleSession;
+    await page.evaluate(() => {
+      const win = window as unknown as Record<string, unknown>;
+      const nativeGetItem = Storage.prototype.getItem;
+      win.__p13b2R5LegacyReads = 0;
+      win.__p13b2R5DocumentToken = `r5-${Date.now()}`;
+      Storage.prototype.getItem = function (key: string) {
+        if (key === 'easyorder-cloud-pending-order') {
+          const nextRead = Number(win.__p13b2R5LegacyReads) + 1;
+          win.__p13b2R5LegacyReads = nextRead;
+          if (nextRead === 1) throw new DOMException('synthetic one-time journal denial', 'SecurityError');
+        }
+        return nativeGetItem.call(this, key);
+      };
+    });
+    const documentToken = await page.evaluate(() => (
+      (window as unknown as Record<string, unknown>).__p13b2R5DocumentToken
+    ));
+
+    const headBefore = await readEmulatorDocument('system', 'dataHead');
+    const commandsBefore = await listEmulatorDocumentIds('commands');
+    const transactionsBefore = await listEmulatorDocumentIds('transactions');
+    await page.getByRole('button', { name: '取得系統使用權' }).click();
+    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await expect(page.getByText('本機待核對日誌無法安全讀取或保存。資料未確認，已停止開放新操作；請聯絡系統維護者。')).toBeVisible();
+
+    const retry = page.getByRole('button', { name: '重新檢查' });
+    await expect(retry).toBeEnabled();
+    await retry.click();
+    await expect(page.locator('.cloud-app')).toBeVisible();
+    await expect(page.getByText('目前沒有待核對命令。')).toBeVisible();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '重新檢查' })).toHaveCount(0);
+
+    const browserState = await page.evaluate(() => {
+      const win = window as unknown as Record<string, unknown>;
+      return {
+        documentToken: win.__p13b2R5DocumentToken,
+        legacyReads: win.__p13b2R5LegacyReads,
+      };
+    });
+    expect(browserState.documentToken).toBe(documentToken);
+    expect(browserState.legacyReads).toBeGreaterThanOrEqual(2);
+    expect(await readEmulatorDocument('system', 'dataHead')).toEqual(headBefore);
+    expect(await listEmulatorDocumentIds('commands')).toEqual(commandsBefore);
+    expect(await listEmulatorDocumentIds('transactions')).toEqual(transactionsBefore);
+  });
 });

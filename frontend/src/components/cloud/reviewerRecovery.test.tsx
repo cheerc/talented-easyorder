@@ -1,8 +1,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PendingJournalUnavailableError } from '../../firebase/cloudPendingJournal';
 import { CloudPendingRecoveryBoundary } from './CloudPendingRecoveryBoundary';
 
 const f = vi.hoisted(() => ({
+  migrate: vi.fn(),
   context: vi.fn(),
   confirm: vi.fn(),
   remove: vi.fn(),
@@ -20,7 +22,7 @@ vi.mock('../../firebase/cloudCommandRepository', () => ({
 vi.mock('../../firebase/cloudPendingJournal', async importOriginal => ({
   ...await importOriginal<typeof import('../../firebase/cloudPendingJournal')>(),
   cloudPendingJournalForRepository: () => ({
-    migrateLegacyOrderSlot: async () => 'empty',
+    migrateLegacyOrderSlot: f.migrate,
     readAll: async () => ({ records: [...f.records], total: f.records.length, complete: true }),
     isInFlight: () => false,
     removeIf: f.remove,
@@ -66,6 +68,7 @@ async function continueManually() {
 beforeEach(() => {
   f.records = [{ ...record }];
   f.listener = null;
+  f.migrate.mockReset().mockResolvedValue('empty');
   f.context.mockReset().mockResolvedValue(context);
   f.confirm.mockReset().mockResolvedValue(notFound);
   f.remove.mockReset().mockImplementation(async (candidate: Record<string, unknown>, isCurrent?: () => boolean) => {
@@ -308,5 +311,100 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
     expect(f.remove).toHaveBeenCalledWith(record, expect.any(Function));
     expect(f.records).toEqual([]);
     expect(screen.getByTestId('business-shell')).toBeInTheDocument();
+  });
+
+  it.each(['journal', 'context'] as const)(
+    'lets the current owner restart a read after a one-time initial %s failure',
+    async failure => {
+      f.records = [];
+      if (failure === 'journal') {
+        f.migrate.mockRejectedValueOnce(new PendingJournalUnavailableError());
+      } else {
+        f.context.mockRejectedValueOnce(new Error('temporary server context failure'));
+      }
+
+      const pageDocument = document;
+      renderBoundary();
+      const retry = await screen.findByRole('button', { name: '重新檢查' });
+      expect(retry).toBeEnabled();
+
+      fireEvent.click(retry);
+
+      await screen.findByText('目前沒有待核對命令。');
+      expect(document).toBe(pageDocument);
+      expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(f.migrate).toHaveBeenCalledTimes(2);
+      expect(f.context.mock.calls.length).toBe(failure === 'journal' ? 2 : 3);
+      expect(f.confirm).not.toHaveBeenCalled();
+      expect(f.remove).not.toHaveBeenCalled();
+      expect(f.records).toEqual([]);
+    },
+  );
+
+  it.each(['journal', 'context'] as const)(
+    'keeps an unknown-scope business gate when the %s failure persists across retry',
+    async failure => {
+      f.records = [];
+      if (failure === 'journal') {
+        f.migrate.mockRejectedValue(new PendingJournalUnavailableError());
+      } else {
+        f.context.mockRejectedValue(new Error('persistent server context failure'));
+      }
+
+      renderBoundary();
+      const retry = await screen.findByRole('button', { name: '重新檢查' });
+      expect(retry).toBeEnabled();
+      fireEvent.click(retry);
+
+      const retryAfterFailure = await screen.findByRole('button', { name: '重新檢查' });
+      expect(retryAfterFailure).toBeEnabled();
+      expect(screen.queryByTestId('business-shell')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '保留編號，移交人工核對並繼續其他作業' })).not.toBeInTheDocument();
+      expect(f.confirm).not.toHaveBeenCalled();
+      expect(f.remove).not.toHaveBeenCalled();
+      expect(f.records).toEqual([]);
+    },
+  );
+
+  it('hides retry while offline and lets the online event start one fresh recovery', async () => {
+    f.records = [];
+    f.migrate.mockRejectedValueOnce(new PendingJournalUnavailableError());
+    renderBoundary();
+    await screen.findByRole('button', { name: '重新檢查' });
+
+    await act(async () => window.dispatchEvent(new Event('offline')));
+    expect(screen.getByText('目前離線；追蹤編號仍保留，恢復連線後會重新核對。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重新檢查' })).not.toBeInTheDocument();
+    expect(f.migrate).toHaveBeenCalledTimes(1);
+    expect(f.records).toEqual([]);
+
+    await act(async () => window.dispatchEvent(new Event('online')));
+    await screen.findByText('目前沒有待核對命令。');
+    expect(f.migrate).toHaveBeenCalledTimes(2);
+    expect(f.confirm).not.toHaveBeenCalled();
+    expect(f.remove).not.toHaveBeenCalled();
+  });
+
+  it('keeps the current recovery gate while a retry is in flight', async () => {
+    f.records = [];
+    f.migrate.mockRejectedValueOnce(new PendingJournalUnavailableError());
+    renderBoundary();
+    const retry = await screen.findByRole('button', { name: '重新檢查' });
+    expect(retry).toBeEnabled();
+
+    const migration = deferred<string>();
+    f.migrate.mockReturnValueOnce(migration.promise);
+    fireEvent.click(retry);
+
+    await screen.findByText('正在檢查本機追蹤編號及伺服器回執；完成前不開放新操作。');
+    expect(screen.queryByRole('button', { name: '重新檢查' })).not.toBeInTheDocument();
+    expect(f.migrate).toHaveBeenCalledTimes(2);
+    expect(f.records).toEqual([]);
+
+    await act(async () => migration.resolve('empty'));
+    await screen.findByText('目前沒有待核對命令。');
+    expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
+    expect(f.migrate).toHaveBeenCalledTimes(2);
   });
 });
