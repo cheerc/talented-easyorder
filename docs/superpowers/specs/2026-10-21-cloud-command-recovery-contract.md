@@ -1,6 +1,6 @@
 # P13b2 未決命令復原契約
 
-狀態：Coordinator 提案，待獨立審查；尚未實作。適用正式模式，補充[正式後端規格 §8](2026-10-13-free-production-backend-spec.md#8-連線快取錯誤與查詢)。只使用既有 typed command、server receipt 與租約；不增加離線補送、業務集合或 Rules 權限。
+狀態：設計已由 PR #530 合併於 `e56c8c32ee1d74c3f63838e15909200adbbe4dfa`；實作分批交付。P13b2a 覆蓋共用 journal、集中 write-ahead、receipt/context 確認與 startup recovery boundary；本輪 Ready source PR／exact-head CI 依 live provider state。P13b2b 的各頁 10 秒提示與 complete same-mount retry 矩陣仍未完成；不得將此批說成整體 P13b2 完成。適用正式模式，補充[正式後端規格 §8](2026-10-13-free-production-backend-spec.md#8-連線快取錯誤與查詢)。只使用既有 typed command、server receipt 與租約；不增加離線補送、業務集合或 Rules 權限。
 
 ## 1. 目標與現況
 
@@ -13,6 +13,8 @@
 每筆持久資料只允許 `{ commandId, datasetId, uid }`，三者必須是有效識別；commandId 為 UUID，datasetId 沿 server head 契約，uid 為當次提交 Google 操作員 UID。不得保存 kind、金額、學生／交易資料、payload、revisions、reason、姓名、email、receipt、CSV、列印 model 或密碼。這是 §8 明確允許的識別例外，不稱完全無識別資料。
 
 以 Firebase project／app 與 journal 版本分開命名空間，每個 command 使用獨立 key，不能用單一 read-modify-write 陣列覆蓋其他分頁的新記錄。key 的識別部分與 value 必須一致；同 ID、相同識別可重用，不同識別不能覆蓋。原命令 ID 在送出前固定，復原不產生另一個替代 ID。
+
+條件式 journal 清理須先在 Web Lock 外完成 receipt 與 server owner／dataset／lease 驗證。取得 namespace exclusive lock 後，critical section 只執行同步本機 owner／mount／generation／online predicate、精確比對識別及同步移除；predicate 僅接受同步 literal `true`，thenable 或其他值一律拒絕。若本機有效性在等待 lock 時已被觀察為失效，就保留識別。這個本機 predicate 只保護本機 mutation，不取代 Firestore Rules 或 server lease 驗證；清理取消或失敗也不會改寫已確認的業務結果。
 
 只存 canonical safe JSON；讀取也嚴格驗證原文、schema 與 key/value 連動。錯誤／無法讀取的 journal 不能當成「沒有未決命令」；不把不安全原文輸出到 UI、診斷或匯出。資料隔離為本 app/project 的已知 namespace，不能掃除 Auth、prototype 或其他應用資料。
 

@@ -79,12 +79,6 @@ type EntryMode = 'bento' | 'other' | 'payment';
 
 type RecoveryPhase = 'submitting' | 'unknown' | 'checking';
 
-interface PendingRecord {
-  uid: string;
-  datasetId: string;
-  commandId: string;
-}
-
 interface OrdersPageState {
   scopeKey: string;
   authorizationRevoked: boolean;
@@ -116,11 +110,7 @@ interface OrdersPageState {
   edit: EditDraft | null;
   undoOffer: UndoOffer | null;
   recovery: { command: PreparedCommand; phase: RecoveryPhase } | null;
-  /** An unresolved command left by an earlier page load (refresh or closed tab). */
-  storedPending: (PendingRecord & { checking: boolean; message: string }) | null;
 }
-
-const PENDING_STORAGE_KEY = 'easyorder-cloud-pending-order';
 
 const freshDraft = () => ({
   search: '',
@@ -156,34 +146,7 @@ function initialState(scopeKey: string): OrdersPageState {
     ...freshDraft(),
     undoOffer: null,
     recovery: null,
-    storedPending: null,
   };
-}
-
-function readPending(): PendingRecord | null {
-  try {
-    const raw = window.localStorage.getItem(PENDING_STORAGE_KEY);
-    if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<PendingRecord>;
-    if (typeof value.uid !== 'string' || typeof value.datasetId !== 'string' || typeof value.commandId !== 'string') return null;
-    return { uid: value.uid, datasetId: value.datasetId, commandId: value.commandId };
-  } catch {
-    return null;
-  }
-}
-
-/** Only commandId, datasetId and UID are kept (spec §8): no names, amounts or other business data. */
-function writePending(record: PendingRecord | null): void {
-  try {
-    if (record) window.localStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify(record));
-    else window.localStorage.removeItem(PENDING_STORAGE_KEY);
-  } catch {
-    // Storage is a convenience for post-refresh lookup; the in-memory recovery panel still holds the command.
-  }
-}
-
-function clearPendingIf(commandId: string): void {
-  if (readPending()?.commandId === commandId) writePending(null);
 }
 
 function errorCode(error: unknown): string {
@@ -300,6 +263,7 @@ function sendCommand(repository: CloudOrderRepository, command: PreparedCommand,
 }
 
 function definiteFailureText(command: PreparedCommand, code: string, message: string): string {
+  if (code === 'LOCAL_STORAGE_UNAVAILABLE') return '尚未送出，無法安全保存確認編號；請重試本機儲存檢查，或改用紙本流程。';
   if (command.kind === 'mutation') {
     const noun = commandNoun(command);
     if (code === 'REVISION_CONFLICT') return `這筆交易、學生或營業日已在別處變更，${noun}沒有生效。已重新讀取最新資料，請確認後再操作。`;
@@ -328,11 +292,6 @@ function newId(): string | null {
   } catch {
     return null;
   }
-}
-
-function uidFromIdentity(identityKey: string): string {
-  const index = identityKey.lastIndexOf(':');
-  return index > 0 ? identityKey.slice(0, index) : identityKey;
 }
 
 function itemLabel(tx: CloudOrderTransactionRecord): string {
@@ -497,44 +456,6 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     });
   }, [identityKey, isCurrent, onNavigationStateChange]);
 
-  const checkStoredPending = useCallback(async (key: string, generation: number, record: PendingRecord) => {
-    updateFor(key, generation, previous => ({
-      ...previous,
-      storedPending: { ...record, checking: true, message: '' },
-    }));
-    try {
-      const receipt = await repository.readCommand(record.commandId);
-      if (!isCurrent(key, generation)) return;
-      if (receipt) {
-        clearPendingIf(record.commandId);
-        updateFor(key, generation, previous => ({
-          ...previous,
-          storedPending: null,
-          notice: `上次未確認的登記已確認入帳（命令序號 ${receipt.seq}），下方資料已包含這筆，勿重複登記。`,
-        }));
-        return;
-      }
-      updateFor(key, generation, previous => ({
-        ...previous,
-        storedPending: {
-          ...record,
-          checking: false,
-          message: '伺服器目前沒有這筆命令。若當時沒有收到現金，可清除提醒後重新登記；若不確定，請稍後再查一次。',
-        },
-      }));
-    } catch (error) {
-      if (!isCurrent(key, generation)) return;
-      if (isAuthorizationLoss(error)) {
-        revoke(key, generation, error, record.commandId);
-        return;
-      }
-      updateFor(key, generation, previous => ({
-        ...previous,
-        storedPending: { ...record, checking: false, message: `目前無法查詢結果：${errorText(error)}` },
-      }));
-    }
-  }, [isCurrent, repository, revoke, updateFor]);
-
   const loadSnapshot = useCallback(async (
     options: { keepDraft?: boolean; notice?: string; actionError?: string; dayId?: string | null; reuseBackfillDays?: boolean } = {},
   ) => {
@@ -571,10 +492,6 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
           ? previous.selectedStudentId
           : null,
       }));
-      const stored = readPending();
-      if (stored && stored.uid === uidFromIdentity(identityKey) && stored.datasetId === snapshot.datasetId) {
-        void checkStoredPending(key, generation, stored);
-      }
     } catch (error) {
       if (!isCurrent(key, generation) || requestId !== loadRequestRef.current) return;
       if (isAuthorizationLoss(error)) {
@@ -589,7 +506,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
         loadError: errorText(error),
       }));
     }
-  }, [checkStoredPending, identityKey, isCurrent, repository, revoke, scopeKey, updateFor]);
+  }, [isCurrent, repository, revoke, scopeKey, updateFor]);
 
   useEffect(() => {
     const generation = ++generationRef.current;
@@ -722,7 +639,6 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const finishResult = async (command: PreparedCommand, result: CommandResult, key: string, generation: number) => {
     if (!isCurrent(key, generation)) return;
     if (result.ok && result.receipt.commandId === command.commandId) {
-      clearPendingIf(command.commandId);
       // Rules refuse Undo outside today, so a backfilled row is corrected or voided instead of offering a 5-second undo.
       const undoOffer: UndoOffer | null = command.kind === 'mutation' || backfillView ? null : {
         commandId: command.commandId,
@@ -749,7 +665,6 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     }
     // A definite rejection: nothing was committed. Re-read the server so the next attempt sees fresh revisions.
     // The list of backfilling days is re-read too: the rejection may be because the day just closed (P11c3 review).
-    clearPendingIf(command.commandId);
     updateFor(key, generation, previous => ({ ...previous, recovery: null }));
     await loadSnapshot({ keepDraft: true, actionError: definiteFailureText(command, result.error.code, result.error.message) });
   };
@@ -834,7 +749,6 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       label: `${selectedStudent.studentCode} ${selectedStudent.displayName}`,
       datasetId: snapshot.datasetId,
     };
-    writePending({ uid: uidFromIdentity(identityKey), datasetId: snapshot.datasetId, commandId });
     void dispatch(command, 'submitting');
   };
 
@@ -868,7 +782,6 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       label: `${selectedStudent.studentCode} ${selectedStudent.displayName}`,
       datasetId: snapshot.datasetId,
     };
-    writePending({ uid: uidFromIdentity(identityKey), datasetId: snapshot.datasetId, commandId });
     void dispatch(command, 'submitting');
   };
 
@@ -903,7 +816,6 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       label: `櫃台${direction === 'income' ? '收入' : '支出'} $${cashAmount}`,
       datasetId: snapshot.datasetId,
     };
-    writePending({ uid: uidFromIdentity(identityKey), datasetId: snapshot.datasetId, commandId });
     void dispatch(command, 'submitting');
   };
 
@@ -954,7 +866,6 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       label: `${selectedStudent.studentCode} ${selectedStudent.displayName}`,
       datasetId: snapshot.datasetId,
     };
-    writePending({ uid: uidFromIdentity(identityKey), datasetId: snapshot.datasetId, commandId });
     void dispatch(command, 'submitting');
   };
 
@@ -987,7 +898,6 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       label,
       datasetId: snapshot.datasetId,
     };
-    writePending({ uid: uidFromIdentity(identityKey), datasetId: snapshot.datasetId, commandId });
     void dispatch(command, 'submitting');
     return true;
   };
@@ -1098,11 +1008,6 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     if (!recovery || recovery.phase !== 'unknown') return;
     // Re-sending the frozen command is idempotent: the repository returns the stored receipt when it exists.
     void dispatch(recovery.command, 'checking');
-  };
-
-  const dismissStoredPending = () => {
-    if (page.storedPending) clearPendingIf(page.storedPending.commandId);
-    setPageStateRaw(previous => ({ ...previous, storedPending: null }));
   };
 
   const undoExpiresAt = page.undoOffer?.expiresAt ?? null;
@@ -1242,28 +1147,6 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
               請等待伺服器確認，勿重新收款。
             </p>
           )}
-        </div>
-      )}
-
-      {page.storedPending && (
-        <div className="cloud-orders__error" role="alert" data-testid="stored-pending-panel">
-          <p><strong>上次有一筆登記的結果尚未確認，勿重新收款。</strong>命令編號 {page.storedPending.commandId}</p>
-          {page.storedPending.message && <p>{page.storedPending.message}</p>}
-          <div className="cloud-orders__actions">
-            <button
-              type="button"
-              disabled={page.storedPending.checking}
-              onClick={() => {
-                const record = page.storedPending;
-                if (record) void checkStoredPending(scopeKey, generationRef.current, record);
-              }}
-            >
-              {page.storedPending.checking ? '查詢中…' : '再查一次'}
-            </button>
-            {!page.storedPending.checking && page.storedPending.message && (
-              <button type="button" onClick={dismissStoredPending}>確認未入帳並清除提醒</button>
-            )}
-          </div>
         </div>
       )}
 

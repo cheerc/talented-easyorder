@@ -34,7 +34,8 @@ export type CommandErrorCode =
   | 'INVALID_INPUT'
   | 'QUOTA_EXCEEDED'
   | 'MAINTENANCE'
-  | 'UNSUPPORTED_SCHEMA';
+  | 'UNSUPPORTED_SCHEMA'
+  | 'LOCAL_STORAGE_UNAVAILABLE';
 
 export const COMMAND_ERROR_CODES: readonly CommandErrorCode[] = [
   'ACCESS_BUSY',
@@ -48,6 +49,7 @@ export const COMMAND_ERROR_CODES: readonly CommandErrorCode[] = [
   'QUOTA_EXCEEDED',
   'MAINTENANCE',
   'UNSUPPORTED_SCHEMA',
+  'LOCAL_STORAGE_UNAVAILABLE',
 ] as const;
 
 export interface CommandActor {

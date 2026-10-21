@@ -1,0 +1,64 @@
+.cloud-pending-recovery {
+  margin: 0 auto 1rem;
+  max-width: 1100px;
+  padding: 1rem;
+  border: 1px solid var(--border, #c8c8c8);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: var(--text, #222);
+}
+
+.cloud-pending-recovery--blocked {
+  border-color: var(--color-danger, #b42318);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-danger, #b42318) 16%, transparent);
+}
+
+.cloud-pending-recovery h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.cloud-pending-recovery p {
+  margin: 0.5rem 0;
+}
+
+.cloud-pending-recovery__list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  padding-left: 1.5rem;
+}
+
+.cloud-pending-recovery__list li {
+  display: grid;
+  gap: 0.35rem;
+  overflow-wrap: anywhere;
+}
+
+.cloud-pending-recovery__pages,
+.cloud-pending-recovery__manual {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.cloud-pending-recovery__manual {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border, #c8c8c8);
+}
+
+.cloud-pending-recovery__manual p,
+.cloud-pending-recovery__manual label {
+  flex-basis: 100%;
+}
+
+.cloud-pending-recovery__manual button {
+  min-height: 2.5rem;
+}
+
+[inert] {
+  pointer-events: none;
+  user-select: none;
+}

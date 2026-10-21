@@ -45,6 +45,7 @@ import { CloudDayClosePage } from './components/cloud/CloudDayClosePage';
 import { CloudLedgerAnomaliesPage } from './components/cloud/CloudLedgerAnomaliesPage';
 import { CloudReportPage } from './components/cloud/CloudReportPage';
 import { CloudAccountHistoryPage } from './components/cloud/CloudAccountHistoryPage';
+import { CloudPendingRecoveryBoundary } from './components/cloud/CloudPendingRecoveryBoundary';
 import { CloudDiagnosticsPage } from './components/cloud/CloudDiagnosticsPage';
 import type { CloudLedgerDateRange } from './domain/cloudLedgerReport';
 import { useCloudLedger, type CloudLedgerView } from './hooks/useCloudLedger';
@@ -369,7 +370,12 @@ function anomalyNavLabel(ledger: CloudLedgerView): string {
 }
 
 // 放在 AuthGate 之內：帳務異常只在已登入並持有使用權之後才從伺服器讀取。
-function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEpoch: number; identityKey: string }) {
+function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingCommands }: {
+  db: Firestore;
+  leaseEpoch: number;
+  identityKey: string;
+  hasUnresolvedPendingCommands: boolean;
+}) {
   const [cloudSection, setCloudSection] = useState<CloudSection>('students');
   const [dayCloseFocus, setDayCloseFocus] = useState<string | undefined>(undefined);
   const [postCloseEntryFocus, setPostCloseEntryFocus] = useState<OpeningMismatchAnomaly | undefined>(undefined);
@@ -464,6 +470,7 @@ function CloudSections({ db, leaseEpoch, identityKey }: { db: Firestore; leaseEp
           initialDayId={dayCloseFocus}
           initialPostCloseEntry={postCloseEntryFocus}
           onOpenOrders={dayId => selectSection('orders', dayId)}
+          hasUnresolvedPendingCommands={hasUnresolvedPendingCommands}
         />
       ) : cloudSection === 'reports' ? (
         <CloudReportPage
@@ -511,11 +518,22 @@ function CloudAppContent() {
   return (
     <ErrorBoundary fallback={<AppCrashPage />} onError={(error) => appendErrorLog({ source: 'react', message: error.message, stack: error.stack })}>
       <AuthGate auth={fb.auth} db={fb.db} access={access}>
-        <CloudSections
-          db={fb.db}
-          leaseEpoch={lease.epoch}
-          identityKey={access.ok ? `${access.profile.uid}:${lease.epoch}` : ''}
-        />
+        {access.ok && (
+          <CloudPendingRecoveryBoundary
+            db={fb.db}
+            uid={access.profile.uid}
+            leaseEpoch={lease.epoch}
+          >
+            {hasUnresolvedPendingCommands => (
+              <CloudSections
+                db={fb.db}
+                leaseEpoch={lease.epoch}
+                identityKey={`${access.profile.uid}:${lease.epoch}`}
+                hasUnresolvedPendingCommands={hasUnresolvedPendingCommands}
+              />
+            )}
+          </CloudPendingRecoveryBoundary>
+        )}
       </AuthGate>
     </ErrorBoundary>
   );

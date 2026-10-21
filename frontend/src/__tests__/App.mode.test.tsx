@@ -40,6 +40,9 @@ vi.mock('../storage/crashDraft', () => ({
 vi.mock('../auth/AuthGate', () => ({
   AuthGate: ({ children }: { children: ReactNode }) => children,
 }));
+vi.mock('../components/cloud/CloudPendingRecoveryBoundary', () => ({
+  CloudPendingRecoveryBoundary: ({ children }: { children: (hasUnresolvedPendingCommands: boolean) => ReactNode }) => children(false),
+}));
 
 vi.mock('../components/cloud/CloudStudentsPage', () => ({
   CloudStudentsPage: ({
@@ -176,7 +179,7 @@ describe('App mode gate', () => {
     view.rerender(<App />);
     fireEvent.click(screen.getByRole('button', { name: '回報已確認' }));
 
-    expect(studentsTab).toBeEnabled();
+    expect(screen.getByRole('button', { name: '學生管理' })).toBeEnabled();
 
     fireEvent.click(screen.getByRole('button', { name: '回報使用權失效' }));
     expect(dayVendorsTab).toBeDisabled();
@@ -184,9 +187,10 @@ describe('App mode gate', () => {
     view.rerender(<App />);
     fireEvent.click(screen.getByRole('button', { name: '回報已確認' }));
 
-    expect(studentsTab).toBeEnabled();
-    fireEvent.click(dayVendorsTab);
-    expect(dayVendorsTab).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '學生管理' })).toBeEnabled();
+    const currentDayVendorsTab = screen.getByRole('button', { name: '日期與供應商' });
+    fireEvent.click(currentDayVendorsTab);
+    expect(currentDayVendorsTab).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('applies the shared U1 display preferences in cloud mode and follows later changes', () => {

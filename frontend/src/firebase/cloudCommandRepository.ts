@@ -8,6 +8,13 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import { type CommandErrorCode, type CommandReceipt, type CommandResult } from '../domain/cloudCommands';
+import {
+  CLOUD_PENDING_JOURNAL_PAGE_SIZE,
+  cloudPendingJournalForRepository,
+  PendingJournalUnavailableError,
+  type CloudPendingJournal,
+  type PendingCommandIdentity,
+} from './cloudPendingJournal';
 import { appendCommandDiagnostic } from '../errors/errorLogger';
 import {
   CASHIER_NAME_SNAPSHOT,
@@ -47,6 +54,8 @@ type CurrentUser = Pick<User, 'uid' | 'email' | 'emailVerified' | 'providerData'
 export interface CloudCommandRepositoryOptions {
   /** Injection seam for emulator tests; production callers use Firebase Auth currentUser. */
   currentUser?: () => CurrentUser | null;
+  /** Explicit journal injection for browser tests; production callers use localStorage and Web Locks. */
+  pendingJournal?: CloudPendingJournal;
 }
 
 class RejectCommand extends Error {
@@ -57,6 +66,16 @@ class RejectCommand extends Error {
     this.code = code;
   }
 }
+
+export type PendingReceiptCheck =
+  | { status: 'matched'; receipt: CommandReceipt }
+  | { status: 'not-found' }
+  | { status: 'different-dataset' };
+
+type InternalPendingReceiptCheck =
+  | { status: 'matched'; receipt: CommandReceipt; stored: StoredEnabledCommandDoc }
+  | { status: 'not-found' }
+  | { status: 'different-dataset' };
 
 export class CloudCommandReadError extends Error {
   readonly code: CommandErrorCode;
@@ -71,6 +90,8 @@ export class CloudCommandReadError extends Error {
 function errorResult(code: CommandErrorCode, message: string): CommandResult {
   return { ok: false, error: { code, message } };
 }
+
+const LOCAL_STORAGE_UNAVAILABLE_MESSAGE = '尚未送出，無法安全保存確認編號；請重試本機儲存檢查，或改用紙本流程。';
 
 function plainRecord(value: unknown): value is Data {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -518,6 +539,121 @@ function leaseDenialResult(code: Diagnosis): CommandResult | null {
 }
 
 export function createCloudCommandRepository(db: Firestore, options: CloudCommandRepositoryOptions = {}) {
+  const pendingJournal = options.pendingJournal ?? cloudPendingJournalForRepository(db);
+
+  interface RecoveryContext {
+    uid: string;
+    datasetId: string;
+    leaseEpoch: number;
+    maintenance: boolean;
+  }
+
+  function assertCurrentRecoveryOwner(user: CurrentUser): void {
+    const current = getCurrentUser(options);
+    requireVerifiedGoogle(current);
+    if (current.uid !== user.uid || current.email !== user.email) {
+      throw new RejectCommand('LEASE_LOST', '登入身分已變更，請重新確認使用權');
+    }
+  }
+
+  function isCurrentRecoveryOwner(user: CurrentUser): boolean {
+    try {
+      assertCurrentRecoveryOwner(user);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function readRecoveryContext(user: CurrentUser, expectedEpoch: number): Promise<RecoveryContext> {
+    assertCurrentRecoveryOwner(user);
+    const [headSnapshot, leaseSnapshot, operatorSnapshot] = await Promise.all([
+      getDocFromServer(doc(db, dataHeadPath())),
+      getDocFromServer(doc(db, accessLeasePath())),
+      getDocFromServer(doc(db, `operators/${user.uid}`)),
+    ]);
+    assertCurrentRecoveryOwner(user);
+    if ([headSnapshot, leaseSnapshot, operatorSnapshot].some(snapshot => snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites)) {
+      throw new RejectCommand('UNKNOWN_RESULT', '伺服器尚未確認目前資料與使用權');
+    }
+    if (!headSnapshot.exists()) throw new RejectCommand('UNSUPPORTED_SCHEMA', 'dataHead 尚未由維護者初始化');
+    if (!leaseSnapshot.exists()) throw new RejectCommand('LEASE_LOST', '使用權租約不存在');
+    if (!operatorSnapshot.exists()) throw new RejectCommand('UNAUTHORIZED', '操作員文件不存在');
+    const head = decodeHead(headSnapshot.data());
+    const lease = decodeLease(leaseSnapshot.data());
+    checkOperator(operatorSnapshot.data(), user);
+    if (lease.holderUid !== user.uid || lease.epoch !== expectedEpoch) {
+      throw new RejectCommand('LEASE_LOST', '目前使用權租約已變更，請重新確認');
+    }
+    return { uid: user.uid, datasetId: String(head.datasetId), leaseEpoch: Number(lease.epoch), maintenance: head.maintenance === true };
+  }
+
+  async function confirmPendingBatch(records: readonly PendingCommandIdentity[], expectedEpoch: number): Promise<InternalPendingReceiptCheck[]> {
+    if (records.length < 1 || records.length > CLOUD_PENDING_JOURNAL_PAGE_SIZE) {
+      throw new CloudCommandReadError('INVALID_INPUT', '一次最多核對 100 筆待決識別');
+    }
+    const candidateUser = getCurrentUser(options);
+    try {
+      requireVerifiedGoogle(candidateUser);
+    } catch {
+      throw new CloudCommandReadError('UNAUTHORIZED', '需要目前已驗證的 Google 操作員身分');
+    }
+    const user = candidateUser;
+    try {
+      const before = await readRecoveryContext(user, expectedEpoch);
+      const checks: InternalPendingReceiptCheck[] = [];
+      for (const record of records) {
+        if (before.datasetId !== record.datasetId) {
+          checks.push({ status: 'different-dataset' });
+          continue;
+        }
+        const stored = await verifiedReceipt(record.commandId);
+        assertCurrentRecoveryOwner(user);
+        if (!stored) {
+          checks.push({ status: 'not-found' });
+          continue;
+        }
+        const beforeDataset = (stored.before as Data | null)?.head && ((stored.before as Data).head as Data).datasetId;
+        const afterDataset = (stored.after as Data | null)?.head && ((stored.after as Data).head as Data).datasetId;
+        if (stored.commandId !== record.commandId || stored.actor.uid !== record.uid
+          || beforeDataset !== record.datasetId || afterDataset !== record.datasetId) {
+          throw new RejectCommand('UNSUPPORTED_SCHEMA', '伺服器 receipt 與待核對識別不一致');
+        }
+        checks.push({ status: 'matched', receipt: buildReceipt(stored), stored });
+      }
+      const after = await readRecoveryContext(user, expectedEpoch);
+      if (before.uid !== after.uid || before.datasetId !== after.datasetId || before.leaseEpoch !== after.leaseEpoch) {
+        throw new RejectCommand('LEASE_LOST', '查詢期間使用權或資料集已變更');
+      }
+      return checks;
+    } catch (error) {
+      if (error instanceof CloudCommandReadError) throw error;
+      if (error instanceof RejectCommand) throw new CloudCommandReadError(error.code, error.message);
+      throw new CloudCommandReadError(mapTransactionError(error), '目前無法安全確認伺服器 receipt');
+    }
+  }
+
+  async function confirmPendingCommand(record: PendingCommandIdentity, expectedEpoch: number): Promise<InternalPendingReceiptCheck> {
+    return (await confirmPendingBatch([record], expectedEpoch))[0];
+  }
+
+  async function clearAfterConfirmedReceipt(
+    record: PendingCommandIdentity,
+    expectedEpoch: number,
+    owner: CurrentUser,
+  ): Promise<void> {
+    try {
+      const check = await confirmPendingCommand(record, expectedEpoch);
+      if (check.status === 'matched') {
+        // Receipt and server owner/dataset/lease checks completed above, outside the journal lock.
+        // The lock callback must remain a synchronous observation of the live Auth owner.
+        await pendingJournal.removeIf(record, () => isCurrentRecoveryOwner(owner));
+      }
+    } catch {
+      // The business result is already committed; a failed local cleanup remains visible for later lookup.
+    }
+  }
+
   async function verifiedReceipt(commandId: string): Promise<StoredEnabledCommandDoc | null> {
     const snapshot = await getDocFromServer(doc(db, commandPath(commandId)));
     if (!snapshot.exists()) return null;
@@ -554,8 +690,10 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
       throw new CloudCommandReadError('INVALID_INPUT', 'commandId 必須是 UUID');
     }
     try {
-      requireVerifiedGoogle(getCurrentUser(options));
+      const user = getCurrentUser(options);
+      requireVerifiedGoogle(user);
       const stored = await verifiedReceipt(commandId);
+      assertCurrentRecoveryOwner(user);
       return stored ? buildReceipt(stored) : null;
     } catch (error) {
       if (error instanceof CloudCommandReadError) throw error;
@@ -566,10 +704,48 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     }
   }
 
+  async function confirmPending(record: PendingCommandIdentity, expectedEpoch: number): Promise<PendingReceiptCheck> {
+    if (!Number.isSafeInteger(expectedEpoch) || expectedEpoch < 1) {
+      throw new CloudCommandReadError('LEASE_LOST', '目前使用權租約世代不正確');
+    }
+    const check = await confirmPendingCommand(record, expectedEpoch);
+    if (check.status === 'matched') return { status: 'matched', receipt: check.receipt };
+    return check;
+  }
+
+  async function confirmPendingPage(records: readonly PendingCommandIdentity[], expectedEpoch: number): Promise<PendingReceiptCheck[]> {
+    if (!Number.isSafeInteger(expectedEpoch) || expectedEpoch < 1) {
+      throw new CloudCommandReadError('LEASE_LOST', '目前使用權租約世代不正確');
+    }
+    return (await confirmPendingBatch(records, expectedEpoch)).map(check => (
+      check.status === 'matched' ? { status: 'matched', receipt: check.receipt } : check
+    ));
+  }
+
+  async function getPendingRecoveryContext(expectedEpoch: number): Promise<RecoveryContext> {
+    const user = getCurrentUser(options);
+    try {
+      requireVerifiedGoogle(user);
+    } catch {
+      throw new CloudCommandReadError('UNAUTHORIZED', '需要目前已驗證的 Google 操作員身分');
+    }
+    try {
+      return await readRecoveryContext(user, expectedEpoch);
+    } catch (error) {
+      if (error instanceof RejectCommand) throw new CloudCommandReadError(error.code, error.message);
+      throw new CloudCommandReadError(mapTransactionError(error), '目前無法確認資料集與使用權');
+    }
+  }
+
   async function commitCommand(untrustedInput: unknown): Promise<CommandResult> {
     let identity: CommandDiagnosticIdentity = { commandId: null, kind: null };
+    const flight = { release: undefined as (() => void) | undefined };
     try {
-      const result = await commitCommandInternal(untrustedInput, observed => { identity = observed; });
+      const result = await commitCommandInternal(
+        untrustedInput,
+        observed => { identity = observed; },
+        release => { flight.release = release; },
+      );
       if (!result.ok) {
         try {
           appendCommandDiagnostic({ ...identity, errorCode: result.error.code });
@@ -585,12 +761,15 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         // Local diagnostics are best effort and cannot change a command outcome.
       }
       throw error;
+    } finally {
+      flight.release?.();
     }
   }
 
   async function commitCommandInternal(
     untrustedInput: unknown,
     onDiagnosticIdentity: (identity: CommandDiagnosticIdentity) => void,
+    onInFlight: (release: () => void) => void,
   ): Promise<CommandResult> {
     let input: CanonicalEnabledInput;
     let user: CurrentUser;
@@ -611,6 +790,31 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
       if (error instanceof RejectCommand) return errorResult(error.code, error.message);
       if (error instanceof Error && error.name === 'InvalidCloudCommandInput') return errorResult('INVALID_INPUT', error.message);
       return errorResult('UNSUPPORTED_SCHEMA', error instanceof Error ? error.message : '無法驗證命令內容');
+    }
+
+    let preflight: RecoveryContext;
+    try {
+      preflight = await readRecoveryContext(user, input.leaseEpoch);
+      if (preflight.maintenance) throw new RejectCommand('MAINTENANCE', '系統正在維護，暫停新命令');
+    } catch (error) {
+      if (error instanceof RejectCommand) return errorResult(error.code, error.message);
+      return errorResult(mapTransactionError(error), '無法從伺服器確認目前操作員、資料集與使用權');
+    }
+
+    const pendingIdentity: PendingCommandIdentity = {
+      commandId: input.commandId,
+      datasetId: preflight.datasetId,
+      uid: user.uid,
+    };
+    const release = pendingJournal.registerInFlight(pendingIdentity, input.leaseEpoch);
+    onInFlight(release);
+    try {
+      await pendingJournal.put(pendingIdentity);
+    } catch (error) {
+      if (error instanceof PendingJournalUnavailableError) {
+        return errorResult('LOCAL_STORAGE_UNAVAILABLE', LOCAL_STORAGE_UNAVAILABLE_MESSAGE);
+      }
+      return errorResult('LOCAL_STORAGE_UNAVAILABLE', LOCAL_STORAGE_UNAVAILABLE_MESSAGE);
     }
 
     const commandRef = doc(db, commandPath(input.commandId));
@@ -645,6 +849,9 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
       : mutation ? doc(db, transactionPath(mutation.targets.transactionId)) : null;
 
     try {
+      const currentUser = getCurrentUser(options);
+      requireVerifiedGoogle(currentUser);
+      if (currentUser.uid !== user.uid) throw new RejectCommand('LEASE_LOST', '登入身分已變更，命令尚未送出');
       const transactionOutcome = await runTransaction(db, async tx => {
         // Complete every read before the first write. These server transaction reads never use cache.
         const commandSnapshot = await tx.get(commandRef);
@@ -658,6 +865,10 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         checkLease(leaseSnapshot.data(), input, user);
         if (!headSnapshot.exists()) throw new RejectCommand('UNSUPPORTED_SCHEMA', 'dataHead 尚未由維護者初始化');
         const headBefore = decodeHead(headSnapshot.data());
+        const transactionUser = getCurrentUser(options);
+        requireVerifiedGoogle(transactionUser);
+        if (transactionUser.uid !== user.uid) throw new RejectCommand('LEASE_LOST', '登入身分已變更，命令尚未送出');
+        if (headBefore.datasetId !== preflight.datasetId) throw new RejectCommand('MAINTENANCE', '資料集已變更，請重新載入並確認待核對清單');
         if (headBefore.maintenance) throw new RejectCommand('MAINTENANCE', '系統正在維護，暫停新命令');
 
         if (commandSnapshot.exists()) {
@@ -1633,14 +1844,25 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         return { existing: null } as const;
       }, { maxAttempts: 5 });
 
+      if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
+
       if (transactionOutcome.existing) {
+        await clearAfterConfirmedReceipt(pendingIdentity, input.leaseEpoch, user);
+        if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
         return { ok: true, receipt: buildReceipt(transactionOutcome.existing) };
       }
       try {
-        const stored = await verifiedReceipt(input.commandId);
-        if (!stored) return resultFromUnknownError();
+        const confirmed = (await confirmPendingBatch([pendingIdentity], input.leaseEpoch))[0];
+        if (confirmed.status !== 'matched') return resultFromUnknownError();
+        const stored = confirmed.stored;
         await assertStoredReceiptMatches(stored, input, fingerprint);
-        return { ok: true, receipt: buildReceipt(stored) };
+        if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
+        await pendingJournal.removeIf(
+          pendingIdentity,
+          () => isCurrentRecoveryOwner(user),
+        ).catch(() => false);
+        if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
+        return { ok: true, receipt: confirmed.receipt };
       } catch {
         // A successful transaction followed by an unreadable receipt is ambiguous, never a definite failure.
         return resultFromUnknownError();
@@ -1653,13 +1875,19 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
 
       const resultCode = mapTransactionError(error);
       try {
+        if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
         const stored = await verifiedReceipt(input.commandId);
+        if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
         if (stored) {
           await assertStoredReceiptMatches(stored, input, fingerprint);
+          if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
+          await clearAfterConfirmedReceipt(pendingIdentity, input.leaseEpoch, user);
+          if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
           return { ok: true, receipt: buildReceipt(stored) };
         }
         if (resultCode === 'REVISION_CONFLICT' || resultCode === 'LEASE_LOST' || resultCode === 'QUOTA_EXCEEDED') {
           if (resultCode === 'LEASE_LOST') {
+            if (!isCurrentRecoveryOwner(user)) return resultFromUnknownError();
             const diagnosed = leaseDenialResult(await readRevisionConflict(db, input));
             if (diagnosed) return diagnosed;
           }
@@ -1678,5 +1906,5 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     }
   }
 
-  return { commitCommand, readCommand };
+  return { commitCommand, readCommand, confirmPending, confirmPendingPage, getPendingRecoveryContext };
 }

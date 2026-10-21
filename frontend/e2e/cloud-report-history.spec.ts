@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import { createCloudDayCloseRepository } from '../src/firebase/cloudDayCloseRepository';
 import { createCloudDayVendorRepository } from '../src/firebase/cloudDayVendorRepository';
 import { createCloudOrderRepository } from '../src/firebase/cloudOrderRepository';
+import { createCloudPendingJournal, createMemoryCloudPendingJournalTestAdapter } from '../src/firebase/cloudPendingJournal';
 import { createCloudStudentRepository } from '../src/firebase/cloudStudentRepository';
 import { expect, test } from './fixtures';
 import { createGoogleEmulatorUser, E2E_IDENTITIES } from './helpers/auth';
@@ -213,6 +214,64 @@ function hasStudentTransactionsListenTarget(postData: string | null, studentId: 
   return false;
 }
 
+function summarizeFirestoreListenBody(postData: string | null): Array<Record<string, unknown>> {
+  if (!postData) return [];
+  const summary: Array<Record<string, unknown>> = [];
+  for (const [name, value] of new URLSearchParams(postData)) {
+    if (!/^req\d+___data__$/.test(name)) continue;
+    try {
+      const rpc = JSON.parse(value) as Record<string, unknown>;
+      const addTarget = rpc.addTarget as Record<string, unknown> | undefined;
+      const removeTarget = rpc.removeTarget as Record<string, unknown> | undefined;
+      if (addTarget) {
+        const query = addTarget.query as Record<string, unknown> | undefined;
+        const structuredQuery = query?.structuredQuery as Record<string, unknown> | undefined;
+        const from = Array.isArray(structuredQuery?.from) ? structuredQuery.from : [];
+        const collections = from.flatMap(source => {
+          if (!source || typeof source !== 'object') return [];
+          const collectionId = (source as Record<string, unknown>).collectionId;
+          return typeof collectionId === 'string' ? [collectionId] : [];
+        });
+        const studentIds = new Set<string>();
+        const visitFilter = (filter: unknown) => {
+          if (!filter || typeof filter !== 'object') return;
+          const record = filter as Record<string, unknown>;
+          const fieldFilter = record.fieldFilter as Record<string, unknown> | undefined;
+          const field = fieldFilter?.field as Record<string, unknown> | undefined;
+          const valueObject = fieldFilter?.value as Record<string, unknown> | undefined;
+          if (field?.fieldPath === 'studentId' && typeof valueObject?.stringValue === 'string') {
+            studentIds.add(valueObject.stringValue);
+          }
+          const composite = record.compositeFilter as Record<string, unknown> | undefined;
+          if (Array.isArray(composite?.filters)) composite.filters.forEach(visitFilter);
+        };
+        visitFilter(structuredQuery?.where);
+        summary.push({
+          operation: 'addTarget',
+          targetId: addTarget.targetId,
+          collections,
+          studentIds: [...studentIds],
+          documentTarget: addTarget.documents ?? null,
+        });
+      } else if (removeTarget) {
+        summary.push({ operation: 'removeTarget', targetId: removeTarget.targetId });
+      }
+    } catch {
+      summary.push({ operation: 'unparsed' });
+    }
+  }
+  return summary;
+}
+
+function summarizeFirestoreListenUrl(url: string): Record<string, string | null> {
+  const parsed = new URL(url);
+  return {
+    rid: parsed.searchParams.get('RID'),
+    aid: parsed.searchParams.get('AID'),
+    type: parsed.searchParams.get('TYPE'),
+  };
+}
+
 function exportedTransactionIds(rows: string[][]): string[] {
   const header = rows[0] ?? [];
   const index = header.indexOf('source_transaction_ids');
@@ -234,6 +293,74 @@ test.describe('P12c cloud report and account history acceptance', () => {
   });
 
   test('R01/L07: full F2 output and F5 open-history correction preserve the later cash settlement', async ({ authedPage: page }, testInfo) => {
+    const runtimeDiagnostics: Array<Record<string, unknown>> = [];
+    const diagnosticStartedAt = Date.now();
+    let captureFirestoreNetwork = false;
+    const recordDiagnostic = (event: string, detail: Record<string, unknown> = {}) => {
+      if (runtimeDiagnostics.length >= 2_000) return;
+      runtimeDiagnostics.push({ event, elapsedMs: Date.now() - diagnosticStartedAt, ...detail });
+    };
+    const isFirestoreListen = (url: string) => url.includes('/google.firestore.v1.Firestore/Listen/channel');
+    page.on('request', request => {
+      if (!captureFirestoreNetwork || !isFirestoreListen(request.url())) return;
+      recordDiagnostic('listen-request', {
+        method: request.method(),
+        ...summarizeFirestoreListenUrl(request.url()),
+        operations: summarizeFirestoreListenBody(request.postData()),
+      });
+    });
+    page.on('response', response => {
+      const request = response.request();
+      if (!captureFirestoreNetwork || !isFirestoreListen(request.url())) return;
+      recordDiagnostic('listen-response', {
+        method: request.method(),
+        ...summarizeFirestoreListenUrl(request.url()),
+        status: response.status(),
+        contentType: response.headers()['content-type'] ?? null,
+      });
+    });
+    page.on('requestfinished', request => {
+      if (!captureFirestoreNetwork || !isFirestoreListen(request.url())) return;
+      recordDiagnostic('listen-request-finished', {
+        method: request.method(), ...summarizeFirestoreListenUrl(request.url()),
+      });
+    });
+    page.on('requestfailed', request => {
+      if (!captureFirestoreNetwork || !isFirestoreListen(request.url())) return;
+      recordDiagnostic('listen-request-failed', {
+        method: request.method(),
+        ...summarizeFirestoreListenUrl(request.url()),
+        failure: request.failure()?.errorText ?? null,
+      });
+    });
+    page.on('pageerror', error => {
+      if (captureFirestoreNetwork) recordDiagnostic('page-error', { message: error.message });
+    });
+    const capturePageState = async (label: string) => {
+      try {
+        const state = await page.evaluate(() => {
+          const account = document.querySelector('main[aria-label="雲端查帳"]');
+          const pending = [...document.querySelectorAll('[role="region"]')]
+            .find(region => region.getAttribute('aria-label') === '待核對命令');
+          const ready = document.querySelector('[data-testid="account-history-ready"]');
+          return {
+            performanceNow: performance.now(),
+            userAgent: navigator.userAgent,
+            url: location.href,
+            accountReadyText: ready?.textContent?.trim() ?? null,
+            accountStatuses: account ? [...account.querySelectorAll('[role="status"]')]
+              .map(element => element.textContent?.trim() ?? '') : [],
+            pendingRecoveryText: pending?.textContent?.trim() ?? null,
+            disabledAccountControls: account ? [...account.querySelectorAll('input, select, button')]
+              .filter(element => element.hasAttribute('disabled'))
+              .map(element => ({ tag: element.tagName, label: element.getAttribute('aria-label'), text: element.textContent?.trim() ?? '' })) : [],
+          };
+        });
+        recordDiagnostic('page-state', { label, state });
+      } catch (error) {
+        recordDiagnostic('page-state-error', { label, message: error instanceof Error ? error.message : String(error) });
+      }
+    };
     const originalHeadRaw = await readRawAdminDocument('system', 'dataHead');
     const originalHead = originalHeadRaw ? decodeAdminFields(originalHeadRaw.fields) : null;
     if (!originalHeadRaw || !originalHead || typeof originalHead.seq !== 'number' || typeof originalHead.goLiveDate !== 'string') {
@@ -277,7 +404,10 @@ test.describe('P12c cloud report and account history acceptance', () => {
       if (lease.holderUid !== auth.currentUser?.uid) throw new Error('The command client and F2 browser do not share the active operator lease');
       const db = getFirestore(app);
       connectFirestoreEmulator(db, '127.0.0.1', 8080);
-      const options = { currentUser: () => auth.currentUser };
+      const options = {
+        currentUser: () => auth.currentUser,
+        pendingJournal: createCloudPendingJournal(db, createMemoryCloudPendingJournalTestAdapter()),
+      };
       const students = createCloudStudentRepository(db, options);
       const days = createCloudDayVendorRepository(db, options);
       const closing = createCloudDayCloseRepository(db, options);
@@ -708,12 +838,23 @@ test.describe('P12c cloud report and account history acceptance', () => {
       await page.route(listenRoute, async route => {
         if (!readIsHeld && hasStudentTransactionsListenTarget(route.request().postData(), STUDENT_ID)) {
           readIsHeld = true;
+          recordDiagnostic('listen-route-held', {
+            ...summarizeFirestoreListenUrl(route.request().url()),
+            operations: summarizeFirestoreListenBody(route.request().postData()),
+          });
           const freshReadResponse = await route.fetch();
+          recordDiagnostic('listen-route-fetch-complete', {
+            status: freshReadResponse.status(),
+            contentType: freshReadResponse.headers()['content-type'] ?? null,
+          });
           notifyReadHeld();
           try {
             await readGate;
+            recordDiagnostic('listen-route-fulfill-start');
             await route.fulfill({ response: freshReadResponse });
+            recordDiagnostic('listen-route-fulfill-complete');
           } finally {
+            recordDiagnostic('listen-route-handler-finished');
             notifyReadRouteFinished();
           }
           return;
@@ -727,19 +868,19 @@ test.describe('P12c cloud report and account history acceptance', () => {
           releaseReadGate();
         }
         if (readIsHeld) await readRouteFinished;
-        if (routeIsInstalled) {
-          await page.unroute(listenRoute);
-          routeIsInstalled = false;
-        }
       };
 
       try {
+        captureFirestoreNetwork = true;
+        await capturePageState('before-correction');
         await activeHistoricalRow.getByRole('button', { name: '更正' }).click();
         await page.getByLabel('更正收款金額').fill('105');
         await page.getByLabel('更正理由').fill('P12c L07 historical correction');
         await page.getByRole('button', { name: '確認送出' }).click();
         await expect(page.getByText(/更正收據已確認/)).toBeVisible({ timeout: 20_000 });
+        await capturePageState('receipt-confirmed');
         await readHeld;
+        await capturePageState('student-transaction-listen-held');
         const exactHeadReady = expect(page.getByTestId('account-history-ready'))
           .toContainText(new RegExp(`H=${exactNextHead}$`), { timeout: 30_000 });
         void exactHeadReady.catch(() => undefined);
@@ -748,17 +889,35 @@ test.describe('P12c cloud report and account history acceptance', () => {
         const holdDurationMs = await page.evaluate(startedAt => performance.now() - startedAt, holdStartedAt);
         expect(holdDurationMs).toBeGreaterThan(5_500);
         await releaseFreshRead();
-        await exactHeadReady;
+        recordDiagnostic('fresh-read-route-released', { holdDurationMs });
+        await capturePageState('after-route-release');
+        try {
+          await exactHeadReady;
+          recordDiagnostic('exact-head-ready', { result: 'passed' });
+        } catch (error) {
+          recordDiagnostic('exact-head-ready', { result: 'failed', message: error instanceof Error ? error.message : String(error) });
+          await capturePageState('exact-head-timeout');
+          throw error;
+        }
         const balanceAfterExpected = balanceBefore + 25;
         const expectedBalanceText = `$${new Intl.NumberFormat('zh-TW').format(balanceAfterExpected)}`;
         await expect(accountBalanceCell).toHaveText(expectedBalanceText, { timeout: 30_000 });
+        const laterSettlementAfter = await readRawAdminDocument(settlementCollection, '1');
+        expect(JSON.stringify(laterSettlementAfter)).toBe(JSON.stringify(laterSettlementBefore));
+        await expect(activeHistoricalRow).toContainText('105');
       } finally {
         await releaseFreshRead();
+        if (routeIsInstalled) {
+          await page.unroute(listenRoute);
+          routeIsInstalled = false;
+        }
       }
-      const laterSettlementAfter = await readRawAdminDocument(settlementCollection, '1');
-      expect(JSON.stringify(laterSettlementAfter)).toBe(JSON.stringify(laterSettlementBefore));
-      await expect(activeHistoricalRow).toContainText('105');
     } finally {
+      captureFirestoreNetwork = false;
+      await capturePageState('before-fixture-cleanup');
+      const diagnosticPath = testInfo.outputPath('p13b2a-p12c-l07-runtime-diagnostics.json');
+      await writeFile(diagnosticPath, `${JSON.stringify({ head: process.env.GITHUB_SHA ?? null, events: runtimeDiagnostics }, null, 2)}\n`, 'utf8');
+      await testInfo.attach('p13b2a-p12c-l07-runtime-diagnostics', { path: diagnosticPath, contentType: 'application/json' });
       if (fixtureReserved) {
         // Test-only Emulator cleanup; the application writes above all used typed command repositories.
         for (const command of await listAdminDocuments('commands')) {
@@ -824,7 +983,10 @@ test.describe('P12c cloud report and account history acceptance', () => {
       }
       const db = getFirestore(app);
       connectFirestoreEmulator(db, '127.0.0.1', 8080);
-      const options = { currentUser: () => auth.currentUser };
+      const options = {
+        currentUser: () => auth.currentUser,
+        pendingJournal: createCloudPendingJournal(db, createMemoryCloudPendingJournalTestAdapter()),
+      };
       const students = createCloudStudentRepository(db, options);
       const closing = createCloudDayCloseRepository(db, options);
       const days = createCloudDayVendorRepository(db, options);

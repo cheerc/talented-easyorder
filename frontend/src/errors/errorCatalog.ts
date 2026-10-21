@@ -87,6 +87,7 @@ const commandDiagnosticNextSteps: Record<CommandErrorCode, string> = {
   QUOTA_EXCEEDED: '暫停操作並聯絡維護者確認額度；保留原 command ID，不要改用新 ID 重送。',
   MAINTENANCE: '系統維護中；等待維護者解除後用原 command ID 確認結果。',
   UNSUPPORTED_SCHEMA: '資料版本不支援；停止操作並聯絡維護者，保留原 command ID。',
+  LOCAL_STORAGE_UNAVAILABLE: '尚未送出，無法安全保存確認編號；重試本機儲存檢查，或改用紙本流程。',
 };
 
 export function getCommandDiagnosticNextStep(code: unknown): string {

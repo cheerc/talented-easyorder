@@ -24,6 +24,9 @@ vi.mock('../providers/FirebaseProvider', () => ({
 }));
 vi.mock('../hooks/useFirebase', () => ({ useFirebase: () => appMocks.firebase }));
 vi.mock('../auth/AuthGate', () => ({ AuthGate: ({ children }: { children: ReactNode }) => children }));
+vi.mock('../components/cloud/CloudPendingRecoveryBoundary', () => ({
+  CloudPendingRecoveryBoundary: ({ children }: { children: (hasUnresolvedPendingCommands: boolean) => ReactNode }) => children(false),
+}));
 vi.mock('../firebase/cloudDayCloseRepository', () => ({
   createCloudLedgerReader: () => ({ read: appMocks.read }),
 }));
