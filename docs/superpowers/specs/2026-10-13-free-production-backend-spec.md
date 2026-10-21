@@ -195,7 +195,7 @@ ReopenDay 新增版次，舊 closed 版不可改；再關帳再加一版。歷�
 
 ## 8. 連線、快取、錯誤與查詢
 
-P13b2 的共用未決命令日誌、結果確認與接手細則見[未決命令復原契約](2026-10-21-cloud-command-recovery-contract.md)；目前為待審設計，尚未實作，不以本文件出現該連結宣稱功能已完成。
+P13b2 的共用未決命令日誌、結果確認與接手細則見[未決命令復原契約](2026-10-21-cloud-command-recovery-contract.md)；設計已由 PR #530 合併。P13b2a 已交付共用 journal、central command write-ahead 與 startup recovery boundary；各操作頁 10 秒提示及 same-mount retry 矩陣留待 P13b2b，因此整體 P13b2 尚未完成。
 
 正式版採 online-only 寫入，全走 runTransaction。移除正式版 persistentLocalCache、offline writeBatch 與 queued settlement；使用記憶體快取，登出清除訂閱與 store。PWA 僅快取靜態 shell，業務回應不進 service worker cache。localStorage／IndexedDB 不保存正式帳務或完整個資草稿；可保存無個資的 pending commandId＋datasetId＋登入 UID 供結果確認。
 

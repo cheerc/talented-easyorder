@@ -1,6 +1,6 @@
 # Project Status — Talented EasyOrder
 
-> **2026-10-21 目前進度：** P13b1 #529 已獨立審查通過並合併，merge main CI 成功；版本與 provider 證據見[正式交接更新](DEVELOPMENT-HANDOFF.md)。接續 [P13b2 未決命令復原契約](superpowers/specs/2026-10-21-cloud-command-recovery-contract.md) 設計審查；尚未實作復原、P13c／d，P13 整體未完成，未部署。
+> **2026-10-21 目前進度：** P13b1 #529 已合併。P13b2 契約已隨 #530 合併至 `e56c8c32ee1d74c3f63838e15909200adbbe4dfa`；本輪 P13b2a 已完成共用未決日誌、集中 write-ahead 與啟動復原 gate，local required suites 通過，Ready PR 與 exact-head provider CI 仍待建立／確認。P13b2b 的各頁 10 秒提示與完整 same-mount retry 矩陣、P13c／d 均未交付；P13 整體未完成，未部署。
 
 > **2026-10-21 P13b1 r2 rework:** P13a PR #528 merged at `22a6d79c627e991a3bc021a66d288dda57c3596c`; main CI #39424593318 attempt 1 build-and-test／e2e succeeded. PR #529 r1 review rejected old head `4d55ffa372ed07e6239363524c0a58b034d275c6`; r2 review #5588076676 rejected previous head `f6447e1d612d76daccee30fb55b812b2185f3c8a` for R4 only, confirming R1–R3 resolved. R4 was that a changing commandId accessor let a partial observation A disagree with canonical/committed ID B. Coordinator-dispatched RED `4cff0d8e9bf1ecba8c72aa641d8531dd1a8ef190` and GREEN `9ad36346adb2eae6538672bacaa586a3064c4b1d` are separate commits on the existing PR branch; consult [PR #529](https://github.com/cheerc/talented-easyorder/pull/529) for the final head and exact-head CI/review state. P13b recovery, P13c `accessEvents`, P13d paper intake, deployment and production validation remain excluded. Evidence: [P13b1 checkpoint](ops/free-production-evidence.md#p13b1-safe-local-diagnostics-and-f3-export-2026-10-20).
 
@@ -19,14 +19,14 @@
 
 > **已合併基線：** P00 #471、P01 #472、P02 #473、P03 #474、P04 #475、P05 #476、P06 #478、P07 #480、P08 #491、P09a #493、P09b #494、P14 #496（收據 #498）、P10a #497、P10b #501、P11a #503、P11b #505、P11 補開帳 #507、P11c1 #509、P11c2a #511、P11c2b #513、P11c3 #515、P11c4a #517（merge `4c5bb556f0e03c2a25444e193d448de289882194`）、P11c4b #519（merge `855679804a12cd1bce5dce72fe2da20127e2c85d`）、U1 #481、U2c #482、U2a #483、整合 PR #488（含 U3/U4/U2b/P06b）；merge SHA 與驗收限制見[現況與證據](ops/free-production-evidence.md)及各 phase receipts。逐 PR 接手流程見[開發交接入口](DEVELOPMENT-HANDOFF.md)。
 
-> **Last inspected:** 2026-10-21, P13b1 R4 rework is implemented in separate RED/GREEN commits on PR #529; consult live PR/provider state for final exact-head CI and the next independent review. No P13b recovery, P13c–d, production deployment, or operational acceptance is implied.
-> 本次更新 P13b1 R4 canonical-identity rework evidence；生產環境及營運操作仍未執行。
+> **Last inspected:** 2026-10-21, P13b2a local candidate implements the P13b2 common journal, write-ahead command path and startup recovery boundary. Local test evidence is in [P13b2a evidence](ops/free-production-evidence.md#p13b2a-shared-pending-journal-and-recovery-boundary-2026-10-21); the Ready PR and exact-head provider CI remain authoritative once published. P13b2b page-level recovery work, P13c–d, production deployment and operational acceptance are not included.
+> 本次更新 P13b2 設計接受狀態與 P13b2a 實作／local evidence；未部署、未合併，P13b2 整體尚未完成。
 
 ## 1. 當前方向
 
 PC 晚餐櫃台前端 prototype：鍵盤為主、滑鼠為輔，保留 operator 約七成滿意的 F1。每天一餐（晚餐）；餐費90找零後記90，多留10元則記100。支援1920×1080 PC及MacBook Pro 13吋，按可用視窗重排，不整頁縮小。
 
-前端本人驗收仍依下方清單；正式後端另依 P00–P18 計畫推進。P00–P12、P14 等既有階段均已合併；P12 最終收據 #526 與 main CI #39253034832 attempt 1 已完成；P13a #528 已 merge，main CI #39424593318 成功。P13b1 僅涵蓋安全本機診斷與 Cloud F3 匯出；PR #529 r1、r2 review 分別對應舊 head，R1–R3 已 resolved，R4 rework 已以 RED/GREEN 分開提交。live exact-head CI 與下一輪 review 依 PR provider 狀態。P13b recovery、P13c–d 尚未交付。進度見頂端 checkpoint 與 [P13b1 evidence](ops/free-production-evidence.md#p13b1-safe-local-diagnostics-and-f3-export-2026-10-20)。Production deployment、正式 indexes／quota／latency 驗證或本人營運驗收尚未執行。iPad、真實人臉裝置整合與 Android 另案。
+前端本人驗收仍依下方清單；正式後端另依 P00–P18 計畫推進。P00–P12、P14 等既有階段均已合併。P13a #528、P13b1 #529 已合併；P13b2 設計由 #530 接受。P13b2a local candidate 已通過 full Vitest、required command／backup Emulator gates、49-case shared E2E、lint、build、root TypeScript；Ready PR 與 exact-head CI 仍依 live provider state。這批交付共用 journal/write-ahead/startup recovery boundary，不包含 P13b2b 的完整各頁 10 秒提示及 same-mount retry 矩陣；P13c–d 尚未交付。進度見頂端 checkpoint 與 [P13b2a evidence](ops/free-production-evidence.md#p13b2a-shared-pending-journal-and-recovery-boundary-2026-10-21)。Production deployment、正式 indexes／quota／latency 驗證或本人營運驗收尚未執行。iPad、真實人臉裝置整合與 Android 另案。
 
 交接入口：[FRONTEND-PROTOTYPE-HANDOFF](FRONTEND-PROTOTYPE-HANDOFF.md)；後端起手：[BACKEND-HANDOFF](BACKEND-HANDOFF.md)（前端完成盤點、雲端現況、待決策事項、Android 銜接）。現行排程：[ROADMAP](superpowers/plans/ROADMAP.md)／[詳細計畫](superpowers/plans/2026-09-29-frontend-prototype-refocus.md)。原 Google Sheets roadmap 已封存，不再作排程來源。
 
