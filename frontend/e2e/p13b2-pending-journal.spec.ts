@@ -30,6 +30,22 @@ async function listEmulatorDocumentIds(collection: string): Promise<string[]> {
   return (body.documents ?? []).map(document => document.name?.split('/').at(-1) ?? '').filter(Boolean);
 }
 
+async function storePendingIdentity(page: import('@playwright/test').Page, uid: string, commandId: string, datasetId = DATASET_ID) {
+  await page.evaluate(({ currentUid, pendingCommandId, pendingDatasetId, namespace }) => {
+    localStorage.setItem(`${namespace}:${pendingCommandId}`, JSON.stringify({
+      commandId: pendingCommandId,
+      datasetId: pendingDatasetId,
+      uid: currentUid,
+    }));
+  }, { currentUid: uid, pendingCommandId: commandId, pendingDatasetId: datasetId, namespace: APP_NAMESPACE });
+}
+
+async function readPendingIdentity(page: import('@playwright/test').Page, commandId: string) {
+  return page.evaluate(({ namespace, pendingCommandId }) =>
+    localStorage.getItem(`${namespace}:${pendingCommandId}`),
+  { namespace: APP_NAMESPACE, pendingCommandId: commandId });
+}
+
 test.describe('P13b2a pending command journal and recovery boundary', () => {
   test.setTimeout(90000);
 
@@ -428,5 +444,87 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     } finally {
       await peer.close();
     }
+  });
+
+  test('reconnect rechecks a changed dataset before releasing the manually continued shell', async ({ googleSession }) => {
+    const { page, uid } = googleSession;
+    const commandId = 'd7777777-7777-4777-8777-777777777777';
+    await storePendingIdentity(page, uid, commandId);
+    await page.getByRole('button', { name: '取得系統使用權' }).click();
+    await expect(page.getByText('伺服器目前未查到；這不代表確定未入帳。保留編號，不要重新收款。')).toBeVisible();
+    await page.getByLabel('我確認本筆結果尚未確定，不得重新收款或重登；只繼續其他獨立作業，待保留編號人工核對。').check();
+    await page.getByRole('button', { name: '保留編號，移交人工核對並繼續其他作業' }).click();
+    await expect(page.locator('.cloud-app')).toBeVisible();
+    const before = await readPendingIdentity(page, commandId);
+    expect(before).toBe(JSON.stringify({ commandId, datasetId: DATASET_ID, uid }));
+
+    try {
+      await page.context().setOffline(true);
+      await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+      await expect(page.locator('.cloud-app').locator('..')).toHaveAttribute('inert', '');
+      await upsertDocument('system', 'dataHead', {
+        schemaVersion: 1,
+        datasetId: 'reconnect-different-dataset',
+        seq: 0,
+        lastCommandId: null,
+        maintenance: false,
+        goLiveDate: taipeiToday(),
+        updatedAt: new Date(),
+      });
+      await page.context().setOffline(false);
+      await page.evaluate(() => window.dispatchEvent(new Event('online')));
+
+      await expect(page.getByText('原資料集與目前不同；已保留編號，需由維護者核對。')).toBeVisible({ timeout: 15000 });
+      await expect(page.locator('.cloud-app')).toHaveCount(1);
+      await expect(page.locator('.cloud-app').locator('..')).toHaveAttribute('inert', '');
+      await expect(page.getByLabel('我確認本筆結果尚未確定，不得重新收款或重登；只繼續其他獨立作業，待保留編號人工核對。')).toHaveCount(0);
+      expect(await readPendingIdentity(page, commandId)).toBe(before);
+
+      const receiptResponse = await fetch(`${FIRESTORE_EMULATOR}/v1/projects/demo-easyorder/databases/(default)/documents/commands/${commandId}`, {
+        headers: { Authorization: 'Bearer owner' },
+      });
+      expect(receiptResponse.status).toBe(404);
+    } finally {
+      await page.context().setOffline(false);
+      await upsertDocument('system', 'dataHead', {
+        schemaVersion: 1,
+        datasetId: DATASET_ID,
+        seq: 0,
+        lastCommandId: null,
+        maintenance: false,
+        goLiveDate: taipeiToday(),
+        updatedAt: new Date(),
+      });
+    }
+  });
+
+  test('same-dataset reconnect requires fresh acknowledgement and retains the original journal identity', async ({ googleSession }) => {
+    const { page, uid } = googleSession;
+    const commandId = 'd8888888-8888-4888-8888-888888888888';
+    await storePendingIdentity(page, uid, commandId);
+    await page.getByRole('button', { name: '取得系統使用權' }).click();
+    await expect(page.getByText('伺服器目前未查到；這不代表確定未入帳。保留編號，不要重新收款。')).toBeVisible();
+    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    const confirmation = page.getByLabel('我確認本筆結果尚未確定，不得重新收款或重登；只繼續其他獨立作業，待保留編號人工核對。');
+    await confirmation.check();
+    await page.getByRole('button', { name: '保留編號，移交人工核對並繼續其他作業' }).click();
+    await expect(page.locator('.cloud-app')).toBeVisible();
+    const before = await readPendingIdentity(page, commandId);
+
+    await page.context().setOffline(true);
+    await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+    await upsertDocument('system', 'accessLease', { holderUid: uid, epoch: 2, updatedAt: new Date() });
+    await page.context().setOffline(false);
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+
+    await expect(page.locator('.cloud-app')).toHaveCount(0);
+    await expect(confirmation).not.toBeChecked();
+    await expect(page.getByRole('button', { name: '保留編號，移交人工核對並繼續其他作業' })).toBeDisabled();
+    expect(await readPendingIdentity(page, commandId)).toBe(before);
+
+    const receiptResponse = await fetch(`${FIRESTORE_EMULATOR}/v1/projects/demo-easyorder/databases/(default)/documents/commands/${commandId}`, {
+      headers: { Authorization: 'Bearer owner' },
+    });
+    expect(receiptResponse.status).toBe(404);
   });
 });

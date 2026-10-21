@@ -91,6 +91,56 @@ describe('Cloud pending command journal', () => {
     expect((await journal.readAll()).records).toEqual([]);
   });
 
+  it('rechecks a live owner only after acquiring the exclusive lock before removal', async () => {
+    const memory = createMemoryCloudPendingJournalTestAdapter();
+    let releaseLock!: () => void;
+    let markRequested!: () => void;
+    let inCriticalSection = false;
+    let guardRanInCriticalSection = false;
+    const lock = new Promise<void>(resolve => { releaseLock = resolve; });
+    const requested = new Promise<void>(resolve => { markRequested = resolve; });
+    const adapter: PendingJournalAdapter = {
+      getStorage: () => memory.getStorage(),
+      getLocks: () => ({
+        async request<T>(
+          _name: string,
+          _options: { mode: 'exclusive' },
+          callback: () => Promise<T>,
+        ): Promise<T> {
+          markRequested();
+          await lock;
+          inCriticalSection = true;
+          try {
+            return await callback();
+          } finally {
+            inCriticalSection = false;
+          }
+        },
+      }),
+    };
+    const journal = createCloudPendingJournal(testDb, adapter);
+    const expected = record(11);
+    memory.getStorage().setItem(`${journal.namespace}:${expected.commandId}`, rawIdentity(expected));
+    let ownerCurrent = true;
+    const removeWithOwnerGuard = journal.removeIf as unknown as (
+      item: PendingCommandIdentity,
+      isCurrent: () => boolean | Promise<boolean>,
+    ) => Promise<boolean>;
+    const pendingRemoval = removeWithOwnerGuard(expected, async () => {
+      await Promise.resolve();
+      guardRanInCriticalSection = inCriticalSection;
+      return ownerCurrent;
+    });
+
+    await requested;
+    ownerCurrent = false;
+    releaseLock();
+
+    await expect(pendingRemoval).resolves.toBe(false);
+    expect(guardRanInCriticalSection).toBe(true);
+    expect(await journal.readAll()).toMatchObject({ records: [expected], total: 1, complete: true });
+  });
+
   it('migrates only the exact canonical legacy slot and preserves unrelated storage', async () => {
     const adapter = createMemoryCloudPendingJournalTestAdapter();
     const journal = createCloudPendingJournal(testDb, adapter);

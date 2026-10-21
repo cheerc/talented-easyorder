@@ -700,4 +700,63 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'LEASE_LOST' } });
   });
+
+  it.each([
+    ['different UID', fakeCurrentUser(operatorB), 'LEASE_LOST'],
+    ['signed out', null, 'UNAUTHORIZED'],
+    ['unverified current user', { ...fakeCurrentUser(operatorA), emailVerified: false }, 'UNAUTHORIZED'],
+  ] as const)('P13b2a recovery context rejects a post-read Auth change: %s', async (_label, nextUser, code) => {
+    await seedBase();
+    firestoreMock.serverRead.mockImplementation(firestoreMock.realServerRead);
+    let currentUser: User | null = fakeCurrentUser(operatorA);
+    let switched = false;
+    firestoreMock.serverRead.mockImplementation(async reference => {
+      const snapshot = await firestoreMock.realServerRead(reference);
+      if ((reference as { path: string }).path === 'system/dataHead') {
+        currentUser = nextUser;
+        switched = true;
+      }
+      return snapshot;
+    });
+
+    const repo = createCloudCommandRepository(dbFor(operatorA), { currentUser: () => currentUser });
+    await expect(repo.getPendingRecoveryContext(1)).rejects.toMatchObject({ code });
+    expect(switched).toBe(true);
+  });
+
+  it.each([
+    ['different UID', fakeCurrentUser(operatorB), 'LEASE_LOST'],
+    ['signed out', null, 'UNAUTHORIZED'],
+    ['unverified current user', { ...fakeCurrentUser(operatorA), emailVerified: false }, 'UNAUTHORIZED'],
+  ] as const)('P13b2a receipt confirmation never returns A matched after Auth changes to %s', async (_label, nextUser, code) => {
+    await seedBase();
+    firestoreMock.serverRead.mockImplementation(firestoreMock.realServerRead);
+    const commandId = 'a9999999-9999-4999-8999-999999999999';
+    const committed = await repository(operatorA).commitCommand({
+      commandId,
+      kind: 'CreateOrder',
+      leaseEpoch: 1,
+      targets: { transactionId: 'review-auth-race', studentId, dayId: today },
+      expectedRevisions: { transaction: 0, student: 1, day: 1 },
+      payload: { mealPrice: 100, paidAmount: 110, mealKind: 'bento', menuRevision: 1 },
+    });
+    expect(committed).toMatchObject({ ok: true });
+
+    let currentUser: User | null = fakeCurrentUser(operatorA);
+    let dataHeadReads = 0;
+    firestoreMock.serverRead.mockImplementation(async reference => {
+      const snapshot = await firestoreMock.realServerRead(reference);
+      if ((reference as { path: string }).path === 'system/dataHead' && ++dataHeadReads === 2) {
+        currentUser = nextUser;
+      }
+      return snapshot;
+    });
+    const repo = createCloudCommandRepository(dbFor(operatorA), { currentUser: () => currentUser });
+    await expect(repo.confirmPending({
+      commandId,
+      datasetId: 'p05-failure-dataset',
+      uid: operatorA.uid,
+    }, 1)).rejects.toMatchObject({ code });
+    expect(dataHeadReads).toBe(2);
+  });
 });
