@@ -195,6 +195,8 @@ ReopenDay 新增版次，舊 closed 版不可改；再關帳再加一版。歷�
 
 ## 8. 連線、快取、錯誤與查詢
 
+P13b2 的共用未決命令日誌、結果確認與接手細則見[未決命令復原契約](2026-10-21-cloud-command-recovery-contract.md)；目前為待審設計，尚未實作，不以本文件出現該連結宣稱功能已完成。
+
 正式版採 online-only 寫入，全走 runTransaction。移除正式版 persistentLocalCache、offline writeBatch 與 queued settlement；使用記憶體快取，登出清除訂閱與 store。PWA 僅快取靜態 shell，業務回應不進 service worker cache。localStorage／IndexedDB 不保存正式帳務或完整個資草稿；可保存無個資的 pending commandId＋datasetId＋登入 UID 供結果確認。
 
 P13a 實作補充：正式模式初始化時先清除目前 Firebase app／project 的已知 Firestore IndexedDB（default app 為 `firestore/[DEFAULT]/{projectId}/main`），成功前不啟動業務讀取。若另一個舊分頁仍開啟該 DB，初始化維持 fail closed，顯示關閉其他 EasyOrder 分頁後重新載入的指引；Auth SDK 登入狀態與 prototype namespace 不屬於清除範圍。登出或失權時只清 Cloud POS memory 與已知 Cloud crash-draft/localStorage namespace；若刪除受阻或失敗，先遮罩業務畫面並提示清除未完成，不把它記為成功。

@@ -1,5 +1,7 @@
 # 正式後端逐 PR 開發交接
 
+> **2026-10-21 接手更新：** P13b1 [#529](https://github.com/cheerc/talented-easyorder/pull/529) 已由 r3 [5588442185](https://github.com/cheerc/talented-easyorder/pull/529#pullrequestreview-5588442185) VERIFIED 後合併為 `41d6852edf7221362b7c5757ee375af332f2867e`；Coordinator 核實 merge [main CI 39460432166](https://github.com/cheerc/talented-easyorder/actions/runs/39460432166) attempt 1 的 build-and-test／e2e 均 SUCCESS。下一步為 [P13b2 復原契約](superpowers/specs/2026-10-21-cloud-command-recovery-contract.md) 的獨立設計審查，尚未實作；下方舊 rework checkpoint 保留為歷史。P13 整體未完成，未部署 production。
+
 此頁是正式後端每次 PR 的續作入口；規格／計畫／執行證據只在下列來源更新，避免多份副本互相漂移。PR body 記錄當次 base、head SHA 與 RED/GREEN／CI 結果，作為該 PR 的版本權威；本文不自行抄錄當次 head SHA，避免檔案內自引用。
 
 ## 權威文件
