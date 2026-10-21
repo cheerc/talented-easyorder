@@ -22,12 +22,13 @@ import {
   writeBatch,
   type Firestore,
 } from 'firebase/firestore';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from 'firebase/auth';
 import { ALL_COMMAND_KINDS } from '../../domain/cloudCommands';
 import { fingerprintCommandInput, normalizeEnabledCommandInput } from '../../domain/cloudCommandSchema';
 import { CloudCommandReadError, createCloudCommandRepository } from '../cloudCommandRepository';
 import { listCloudStudents } from '../cloudStudentRepository';
+import { createInitialFirestoreCleaner } from './helpers/clearInitialFirestore';
 
 declare const process: { env: Record<string, string | undefined>; cwd: () => string };
 
@@ -74,6 +75,93 @@ const menu = {
 };
 
 let env: RulesTestEnvironment;
+
+describe('P05 first Firestore Emulator cleanup', () => {
+  it('retries one initial HTTP 500 UNKNOWN cleanup and then continues', async () => {
+    const clearFirestore = vi.fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error('{"error":{"code":500,"status":"UNKNOWN"}}'))
+      .mockResolvedValueOnce(undefined);
+    const onRetry = vi.fn();
+    const clear = createInitialFirestoreCleaner(clearFirestore, onRetry);
+
+    await clear();
+
+    expect(clearFirestore).toHaveBeenCalledTimes(2);
+    expect(onRetry).toHaveBeenCalledWith(1, 'http-500-unknown', expect.any(Error));
+
+    await clear();
+    expect(clearFirestore).toHaveBeenCalledTimes(3);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['HTTP 503 UNKNOWN', new Error('{"error":{"code":503,"status":"UNKNOWN"}}')],
+    ['HTTP 500 with another status', new Error('{"error":{"code":500,"status":"UNAVAILABLE"}}')],
+    ['malformed body', new Error('not a structured emulator error')],
+    ['network error', new Error('fetch failed')],
+  ])('does not retry a cleanup error other than HTTP 500 UNKNOWN (%s)', async (_label, setupError) => {
+    const clearFirestore = vi.fn<() => Promise<void>>().mockRejectedValueOnce(setupError);
+    const onRetry = vi.fn();
+    const clear = createInitialFirestoreCleaner(clearFirestore, onRetry);
+
+    await expect(clear()).rejects.toBe(setupError);
+
+    expect(clearFirestore).toHaveBeenCalledTimes(1);
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it('fails after one retry if the initial cleanup still returns HTTP 500 UNKNOWN', async () => {
+    const retryError = new Error('{"error":{"code":500,"status":"UNKNOWN"}}');
+    const clearFirestore = vi.fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error('{"error":{"code":500,"status":"UNKNOWN"}}'))
+      .mockRejectedValueOnce(retryError);
+    const onRetry = vi.fn();
+    const clear = createInitialFirestoreCleaner(clearFirestore, onRetry);
+    const body = vi.fn();
+
+    await expect((async () => {
+      await clear();
+      body();
+    })()).rejects.toBe(retryError);
+
+    expect(clearFirestore).toHaveBeenCalledTimes(2);
+    expect(body).not.toHaveBeenCalled();
+    expect(onRetry).toHaveBeenCalledTimes(2);
+    await expect(clear()).rejects.toBe(retryError);
+    expect(clearFirestore).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry an HTTP 500 UNKNOWN on any reset after the first succeeds', async () => {
+    const laterError = new Error('{"error":{"code":500,"status":"UNKNOWN"}}');
+    const clearFirestore = vi.fn<() => Promise<void>>()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(laterError);
+    const onRetry = vi.fn();
+    const clear = createInitialFirestoreCleaner(clearFirestore, onRetry);
+
+    await clear();
+    await expect(clear()).rejects.toBe(laterError);
+
+    expect(clearFirestore).toHaveBeenCalledTimes(2);
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it('does not run the pending test body before the initial cleanup resolves', async () => {
+    let resolveClear!: () => void;
+    const clearFirestore = vi.fn(() => new Promise<void>(resolve => { resolveClear = resolve; }));
+    const clear = createInitialFirestoreCleaner(clearFirestore, vi.fn());
+    const body = vi.fn();
+    const setupAndBody = (async () => {
+      await clear();
+      body();
+    })();
+
+    expect(body).not.toHaveBeenCalled();
+    resolveClear();
+    await setupAndBody;
+    expect(body).toHaveBeenCalledTimes(1);
+  });
+});
 
 async function withAdmin<T>(callback: (db: Firestore) => Promise<T>): Promise<T> {
   let result!: T;
