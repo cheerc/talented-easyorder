@@ -39,6 +39,8 @@ export interface CloudDayClosePageProps {
   initialPostCloseEntry?: OpeningMismatchAnomaly;
   /** 回填中的日子要補登交易時，切到訂餐頁並選到那一天（契約 §13）。 */
   onOpenOrders?: (dayId: string) => void;
+  /** Pending command recovery manual continuation never lifts the §7.4 close restriction. */
+  hasUnresolvedPendingCommands?: boolean;
 }
 
 type PreparedCommand =
@@ -173,6 +175,7 @@ function errorMessage(error: unknown): string {
   if (code === 'STALE_SNAPSHOT') return '載入期間伺服器資料有變動，沒有顯示部分資料。請重新載入。';
   if (code === 'UNSUPPORTED_SCHEMA') return '伺服器資料格式目前無法安全讀取，沒有顯示部分資料。請聯絡系統維護者。';
   if (code === 'UNKNOWN_RESULT') return '伺服器結果目前無法確認，沒有顯示部分資料。請重新確認命令或重新載入。';
+  if (code === 'LOCAL_STORAGE_UNAVAILABLE') return '尚未送出，無法安全保存確認編號；請重試本機儲存檢查，或改用紙本流程。';
   if (code === 'DAY_CLOSED') return '這個營業日已經關帳。';
   if (code === 'REVISION_CONFLICT') return '營業日在你操作期間有新的異動（例如新交易），應有現金可能已改變。';
   if (error && typeof error === 'object' && 'message' in error) {
@@ -302,7 +305,7 @@ function DayFigures({ day }: { day: CloudDayCloseState }) {
 
 export function CloudDayClosePage({
   db, leaseEpoch, identityKey, onNavigationStateChange, backupBlock, ledger, onOpenAnomalies, onLedgerChanged, initialDayId,
-  initialPostCloseEntry, onOpenOrders,
+  initialPostCloseEntry, onOpenOrders, hasUnresolvedPendingCommands = false,
 }: CloudDayClosePageProps) {
   const initialDayIdRef = useRef(initialDayId);
   const initialPostCloseEntryRef = useRef(initialPostCloseEntry);
@@ -760,7 +763,7 @@ export function CloudDayClosePage({
     ? countedCash - day.expectedCash
     : null;
   const canClose = !!snapshot && !!day && day.status !== 'closed' && day.expectedCash !== null && snapshot.dayId <= selectionDate;
-  const closeBlocked = backfillClose && (alignLookup?.status !== 'ready' || alignGap !== 0);
+  const closeBlocked = hasUnresolvedPendingCommands || backfillClose && (alignLookup?.status !== 'ready' || alignGap !== 0);
   // A past day that never confirmed its opening cash (for example the network was down) can get it backfilled.
   const canBackfill = !!snapshot && !!day && day.status !== 'closed' && day.openingCash === null && snapshot.dayId < selectionDate;
   const backfillCash = /^\d+$/.test(page.backfillText) ? Number(page.backfillText) : null;
@@ -768,6 +771,10 @@ export function CloudDayClosePage({
   const submitClose = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (page.recovery || !snapshot || !day || !canClose || day.expectedCash === null) return;
+    if (hasUnresolvedPendingCommands) {
+      updatePage(previous => ({ ...previous, actionError: '尚有待核對命令；依系統關帳規則，先完成結果確認後才能關帳。保留原編號，不要重新收款。' }));
+      return;
+    }
     if (closeBlocked) {
       updatePage(previous => ({ ...previous, actionError: alignLookup?.status !== 'ready'
         ? '還沒查到要對齊的開帳日，請重新載入後再關帳。'
@@ -1425,6 +1432,11 @@ export function CloudDayClosePage({
                       <div className="cloud-day-close__actions">
                         <button type="submit" className="cloud-day-close__primary" disabled={busy || closeBlocked} data-testid="close-submit">確認關帳</button>
                       </div>
+                      {hasUnresolvedPendingCommands && (
+                        <p className="cloud-day-close__alert" role="alert" data-testid="pending-close-block">
+                          尚有待核對命令；依關帳規則，先完成結果確認後才能關帳。保留原編號，不要重新收款。
+                        </p>
+                      )}
                       <p className="cloud-day-close__help">關帳後不能再新增或更正交易、菜單與開帳現金。一般現金差額可在下方留下有原因的關帳後補記；若要更正關帳版本，仍須填原因重開後重新關帳。</p>
                     </form>
                   </section>

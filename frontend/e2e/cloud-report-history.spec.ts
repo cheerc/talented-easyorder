@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import { createCloudDayCloseRepository } from '../src/firebase/cloudDayCloseRepository';
 import { createCloudDayVendorRepository } from '../src/firebase/cloudDayVendorRepository';
 import { createCloudOrderRepository } from '../src/firebase/cloudOrderRepository';
+import { createCloudPendingJournal, createMemoryCloudPendingJournalTestAdapter } from '../src/firebase/cloudPendingJournal';
 import { createCloudStudentRepository } from '../src/firebase/cloudStudentRepository';
 import { expect, test } from './fixtures';
 import { createGoogleEmulatorUser, E2E_IDENTITIES } from './helpers/auth';
@@ -277,7 +278,10 @@ test.describe('P12c cloud report and account history acceptance', () => {
       if (lease.holderUid !== auth.currentUser?.uid) throw new Error('The command client and F2 browser do not share the active operator lease');
       const db = getFirestore(app);
       connectFirestoreEmulator(db, '127.0.0.1', 8080);
-      const options = { currentUser: () => auth.currentUser };
+      const options = {
+        currentUser: () => auth.currentUser,
+        pendingJournal: createCloudPendingJournal(db, createMemoryCloudPendingJournalTestAdapter()),
+      };
       const students = createCloudStudentRepository(db, options);
       const days = createCloudDayVendorRepository(db, options);
       const closing = createCloudDayCloseRepository(db, options);
@@ -824,7 +828,10 @@ test.describe('P12c cloud report and account history acceptance', () => {
       }
       const db = getFirestore(app);
       connectFirestoreEmulator(db, '127.0.0.1', 8080);
-      const options = { currentUser: () => auth.currentUser };
+      const options = {
+        currentUser: () => auth.currentUser,
+        pendingJournal: createCloudPendingJournal(db, createMemoryCloudPendingJournalTestAdapter()),
+      };
       const students = createCloudStudentRepository(db, options);
       const closing = createCloudDayCloseRepository(db, options);
       const days = createCloudDayVendorRepository(db, options);

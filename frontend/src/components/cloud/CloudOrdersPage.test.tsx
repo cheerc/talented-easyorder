@@ -22,7 +22,7 @@ vi.mock('../../firebase/cloudOrderRepository', () => ({
 }));
 
 const TODAY = '2026-10-16';
-const PENDING_KEY = 'easyorder-cloud-pending-order';
+const LEGACY_PENDING_KEY = 'easyorder-cloud-pending-order';
 
 function mockStudent(id: string, code: string, name: string, balance = 100, status: 'active' | 'inactive' = 'active'): CloudStudentRecord {
   return {
@@ -217,7 +217,7 @@ describe('CloudOrdersPage', () => {
     expect(input.transactionId).not.toBe(input.commandId);
     expect(await screen.findByText(/已確認 001 王小明 訂餐完成（命令序號 10）/)).toBeVisible();
     expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2);
-    expect(window.localStorage.getItem(PENDING_KEY)).toBeNull();
+    expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
   });
 
   it('keeps the same commandId and transactionId when the result is unknown and confirms with the same command (B1)', async () => {
@@ -237,9 +237,8 @@ describe('CloudOrdersPage', () => {
     const panel = await screen.findByTestId('order-recovery-panel');
     expect(panel).toHaveTextContent('結果確認中，勿重新收款');
     expect(screen.getByTestId('submit-order-button')).toBeDisabled();
-    const stored = JSON.parse(window.localStorage.getItem(PENDING_KEY) ?? '{}');
     const first = repositoryMock.createOrder.mock.calls[0][0];
-    expect(stored).toEqual({ uid: 'uid-1', datasetId: 'ds-1', commandId: first.commandId });
+    expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
     expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-1:1', 'recovering');
 
     fireEvent.click(screen.getByTestId('order-recovery-retry'));
@@ -247,7 +246,7 @@ describe('CloudOrdersPage', () => {
     const second = repositoryMock.createOrder.mock.calls[1][0];
     expect(second).toEqual(first);
     expect(await screen.findByText(/已確認 002 李小華 訂餐完成（命令序號 11）/)).toBeVisible();
-    expect(window.localStorage.getItem(PENDING_KEY)).toBeNull();
+    expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
   });
 
   it('masks and clears all business data when the lease is lost during submit (B2)', async () => {
@@ -267,7 +266,7 @@ describe('CloudOrdersPage', () => {
     expect(screen.queryByText(/李小華/)).toBeNull();
     expect(screen.getByText(/結果尚未確認，勿重新收款/)).toBeVisible();
     expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-1:1', 'revoked');
-    expect(window.localStorage.getItem(PENDING_KEY)).not.toBeNull();
+    expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
   });
 
   it('masks data when the initial server read is denied (B2)', async () => {
@@ -301,7 +300,7 @@ describe('CloudOrdersPage', () => {
     const [first, second] = repositoryMock.createOrder.mock.calls.map(call => call[0]);
     expect(second).toMatchObject({ expectedDayRevision: 6, menuRevision: 3, mealPrice: 95 });
     expect(second.commandId).not.toBe(first.commandId);
-    expect(window.localStorage.getItem(PENDING_KEY)).toBeNull();
+    expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
   });
 
   it('rejects amounts that parseInt would truncate, such as 1e3 and 1.5', async () => {
@@ -380,24 +379,14 @@ describe('CloudOrdersPage', () => {
     expect(screen.getByTestId('recent-item-002')).toHaveTextContent('其他餐點 1');
   });
 
-  it('checks an unresolved command left by an earlier page load with the same commandId', async () => {
-    window.localStorage.setItem(PENDING_KEY, JSON.stringify({ uid: 'uid-1', datasetId: 'ds-1', commandId: 'cmd-old' }));
-    repositoryMock.readCommand.mockResolvedValue({ commandId: 'cmd-old', seq: 8 });
+  it('leaves legacy pending-slot migration and recovery to the shared boundary', async () => {
+    const legacy = JSON.stringify({ uid: 'uid-1', datasetId: 'ds-1', commandId: '00000000-0000-4000-8000-000000000099' });
+    window.localStorage.setItem(LEGACY_PENDING_KEY, legacy);
     renderComponent();
-    expect(await screen.findByText(/上次未確認的登記已確認入帳（命令序號 8）/)).toBeVisible();
-    expect(repositoryMock.readCommand).toHaveBeenCalledWith('cmd-old');
-    expect(window.localStorage.getItem(PENDING_KEY)).toBeNull();
-  });
-
-  it('keeps warning about an earlier unresolved command the server has not found', async () => {
-    window.localStorage.setItem(PENDING_KEY, JSON.stringify({ uid: 'uid-1', datasetId: 'ds-1', commandId: 'cmd-old' }));
-    renderComponent();
-    const panel = await screen.findByTestId('stored-pending-panel');
-    expect(panel).toHaveTextContent('勿重新收款');
-    expect(await screen.findByText(/伺服器目前沒有這筆命令/)).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: '確認未入帳並清除提醒' }));
-    await waitFor(() => expect(screen.queryByTestId('stored-pending-panel')).toBeNull());
-    expect(window.localStorage.getItem(PENDING_KEY)).toBeNull();
+    await screen.findByTestId('cloud-topbar-counts');
+    expect(repositoryMock.readCommand).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBe(legacy);
+    expect(screen.queryByRole('button', { name: /確認未入帳並清除提醒/ })).toBeNull();
   });
   it('W switches to payment; a payment freezes IDs and revisions and confirms only after the server receipt', async () => {
     renderComponent();
@@ -420,7 +409,7 @@ describe('CloudOrdersPage', () => {
     expect(screen.queryByTestId('confirm-duplicate-button')).toBeNull();
     expect(await screen.findByText(/已確認 001 王小明 繳費 \$200 完成（命令序號 12）/)).toBeVisible();
     expect(repositoryMock.createOrder).not.toHaveBeenCalled();
-    expect(window.localStorage.getItem(PENDING_KEY)).toBeNull();
+    expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
   });
 
   it('rejects a zero, decimal or oversized payment before sending', async () => {
@@ -548,13 +537,13 @@ describe('CloudOrdersPage', () => {
     expect(panel).toHaveTextContent('勿重新收款');
     expect(screen.getByTestId('submit-cash-movement-button')).toBeDisabled();
     const first = repositoryMock.createCashMovement.mock.calls[0][0];
-    expect(JSON.parse(window.localStorage.getItem(PENDING_KEY) ?? '{}')).toEqual({ uid: 'uid-1', datasetId: 'ds-1', commandId: first.commandId });
+    expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
 
     fireEvent.click(screen.getByTestId('order-recovery-retry'));
     await waitFor(() => expect(repositoryMock.createCashMovement).toHaveBeenCalledTimes(2));
     expect(repositoryMock.createCashMovement.mock.calls[1][0]).toEqual(first);
     expect(await screen.findByText(/已確認櫃台支出 \$80入帳（命令序號 16）/)).toBeVisible();
-    expect(window.localStorage.getItem(PENDING_KEY)).toBeNull();
+    expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
   });
 
   it('P09b: refunds from the W panel after confirmation, defaulting to the full balance', async () => {
@@ -585,7 +574,7 @@ describe('CloudOrdersPage', () => {
     });
     expect(await screen.findByText(/已確認 001 王小明 退款 \$60 完成（命令序號 15）/)).toBeVisible();
     expect(repositoryMock.createPayment).not.toHaveBeenCalled();
-    expect(window.localStorage.getItem(PENDING_KEY)).toBeNull();
+    expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
   });
 
   it('P09b: rejects refunds over the balance, zero, decimals or without a reason before sending', async () => {
@@ -865,7 +854,7 @@ describe('CloudOrdersPage', () => {
       fireEvent.click(screen.getByTestId('submit-edit-button'));
       expect(await screen.findByText(/更正沒有生效。已重新讀取最新資料/)).toBeVisible();
       expect(await screen.findByTestId('edit-transaction-modal')).toBeVisible();
-      expect(window.localStorage.getItem(PENDING_KEY)).toBeNull();
+      expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
     });
   });
 });

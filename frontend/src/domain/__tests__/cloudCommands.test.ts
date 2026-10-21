@@ -44,7 +44,7 @@ describe('cloudCommands: 型別常數與 cashEffect 驗證', () => {
     expect(ALL_COMMAND_KINDS).toContain('RecordBackup');
   });
 
-  it('涵蓋 spec §6.1 規定的 11 種錯誤碼', () => {
+  it('涵蓋 spec §6.1 與 P13b2a 規定的 12 種錯誤碼', () => {
     expect(COMMAND_ERROR_CODES).toEqual([
       'ACCESS_BUSY',
       'LEASE_LOST',
@@ -57,6 +57,7 @@ describe('cloudCommands: 型別常數與 cashEffect 驗證', () => {
       'QUOTA_EXCEEDED',
       'MAINTENANCE',
       'UNSUPPORTED_SCHEMA',
+      'LOCAL_STORAGE_UNAVAILABLE',
     ]);
   });
 

@@ -123,6 +123,7 @@ function renderPage(props: {
   initialDayId?: string;
   initialPostCloseEntry?: OpeningMismatchAnomaly;
   onLedgerChanged?: () => void;
+  hasUnresolvedPendingCommands?: boolean;
 } = {}, onNavigationStateChange = vi.fn()) {
   render(
     <CloudDayClosePage
@@ -134,6 +135,7 @@ function renderPage(props: {
       backupBlock={props.backupBlock}
       initialPostCloseEntry={props.initialPostCloseEntry}
       onLedgerChanged={props.onLedgerChanged}
+      hasUnresolvedPendingCommands={props.hasUnresolvedPendingCommands}
     />,
   );
   return onNavigationStateChange;
@@ -192,6 +194,15 @@ describe('CloudDayClosePage', () => {
     expect(within(row).getByText('少 NT$ 10')).toBeInTheDocument();
     expect(within(row).getByText('找零少收 10 元')).toBeInTheDocument();
     expect(screen.getByText(/沒有需要關帳的營業日/)).toBeInTheDocument();
+  });
+
+  it('keeps the §7.4 close restriction after manual pending-command continuation', async () => {
+    renderPage({ hasUnresolvedPendingCommands: true });
+    const form = await closeForm();
+    expect(within(form).getByTestId('close-submit')).toBeDisabled();
+    expect(within(form).getByTestId('pending-close-block')).toHaveTextContent('先完成結果確認後才能關帳');
+    fireEvent.submit(form);
+    expect(repository.closeDay).not.toHaveBeenCalled();
   });
 
   it('closes without a note when the counted cash equals the expected cash', async () => {

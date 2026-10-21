@@ -40,6 +40,7 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
     const { page } = googleSession;
     await page.getByRole('button', { name: '取得系統使用權' }).click();
     await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await expect(page.getByRole('button', { name: '本機診斷（F3）' })).toBeVisible();
     await page.evaluate(() => localStorage.setItem('easyorder-diagnostics-cloud', JSON.stringify({
       schemaVersion: 1,
       entries: [{
@@ -64,7 +65,7 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
     await expect(page.getByRole('alert')).toContainText('無法建立診斷下載');
     await page.getByRole('button', { name: '清除本機診斷' }).click();
     await expect(page.getByRole('alert')).toContainText('無法清除本機診斷紀錄');
-    expect(await page.getByRole('status').count()).toBe(0);
+    expect(await page.getByRole('region', { name: '本機診斷' }).getByRole('status').count()).toBe(0);
     expect(downloads).toEqual([]);
   });
 
@@ -152,6 +153,7 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
     const { page } = googleSession;
     await page.getByRole('button', { name: '取得系統使用權' }).click();
     await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await expect(page.getByRole('button', { name: '本機診斷（F3）' })).toBeVisible();
     await page.evaluate(marker => {
       const occurredAt = new Date().toISOString();
       const raw = `{"schemaVersion":"${marker}","schemaVersion":1,"entries":[{"type":"system-error","source":"${marker}","source":"auth","systemCode":"AUTH_ERROR","occurredAt":"${occurredAt}"}]}`;

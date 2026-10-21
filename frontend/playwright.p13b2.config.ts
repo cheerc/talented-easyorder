@@ -1,0 +1,57 @@
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './e2e',
+  testMatch: ['**/p13b2-pending-journal.spec.ts'],
+  globalSetup: './e2e/global-setup.ts',
+  timeout: 90000,
+  retries: 0,
+  workers: 1,
+  fullyParallel: false,
+  projects: [{ name: 'chromium' }],
+  use: {
+    baseURL: 'http://127.0.0.1:4173',
+    bypassCSP: true,
+    serviceWorkers: 'allow',
+  },
+  webServer: [
+    {
+      command:
+        'VITE_FIREBASE_API_KEY=dummy-api-key ' +
+        'VITE_FIREBASE_AUTH_DOMAIN=dummy-auth-domain ' +
+        'VITE_FIREBASE_PROJECT_ID=demo-easyorder ' +
+        'VITE_FIREBASE_APP_ID=dummy-app-id ' +
+        'VITE_FIREBASE_MESSAGING_SENDER_ID=000000000000 ' +
+        'VITE_FIREBASE_STORAGE_BUCKET=dummy-bucket ' +
+        'VITE_FIREBASE_USE_EMULATOR=true ' +
+        'VITE_ALLOWED_EMAIL_DOMAIN=talented.com.tw ' +
+        'VITE_FIRESTORE_EMULATOR_HOST=127.0.0.1 ' +
+        'VITE_FIRESTORE_EMULATOR_PORT=8080 ' +
+        'VITE_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099 ' +
+        'npm run build && npx vite preview --host 127.0.0.1 --port 4173 --strictPort',
+      port: 4173,
+      timeout: 120000,
+      reuseExistingServer: false,
+      name: 'P13b2a production app',
+    },
+    {
+      command:
+        'VITE_FIREBASE_API_KEY=dummy-api-key ' +
+        'VITE_FIREBASE_AUTH_DOMAIN=dummy-auth-domain ' +
+        'VITE_FIREBASE_PROJECT_ID=demo-easyorder ' +
+        'VITE_FIREBASE_APP_ID=dummy-app-id ' +
+        'VITE_FIREBASE_MESSAGING_SENDER_ID=000000000000 ' +
+        'VITE_FIREBASE_STORAGE_BUCKET=dummy-bucket ' +
+        'VITE_FIREBASE_USE_EMULATOR=true ' +
+        'VITE_ALLOWED_EMAIL_DOMAIN=talented.com.tw ' +
+        'VITE_FIRESTORE_EMULATOR_HOST=127.0.0.1 ' +
+        'VITE_FIRESTORE_EMULATOR_PORT=8080 ' +
+        'VITE_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099 ' +
+        'npm run dev -- --host 127.0.0.1 --port 4174 --strictPort',
+      port: 4174,
+      timeout: 120000,
+      reuseExistingServer: false,
+      name: 'P13b2a browser journal driver',
+    },
+  ],
+});

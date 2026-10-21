@@ -18,6 +18,12 @@ import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vites
 import type { User } from 'firebase/auth';
 import { createCloudCommandRepository } from '../cloudCommandRepository';
 import { createCloudReportActionRepository } from '../cloudReportActionRepository';
+import {
+  CLOUD_PENDING_JOURNAL_CAPACITY,
+  createCloudPendingJournal,
+  type CloudPendingJournal,
+  type PendingJournalAdapter,
+} from '../cloudPendingJournal';
 import { SAFE_DIAGNOSTICS_STORAGE_KEY } from '../../errors/errorLogger';
 
 type ServerRead = typeof import('firebase/firestore').getDocFromServer;
@@ -82,9 +88,17 @@ function dbFor(operator: typeof operatorA) {
   }).firestore() as unknown as Firestore;
 }
 
-function repository(operator: typeof operatorA) {
-  return createCloudCommandRepository(dbFor(operator), { currentUser: () => fakeCurrentUser(operator) });
+function repository(operator: typeof operatorA, pendingJournal?: CloudPendingJournal) {
+  return createCloudCommandRepository(dbFor(operator), {
+    currentUser: () => fakeCurrentUser(operator),
+    ...(pendingJournal ? { pendingJournal } : {}),
+  });
 }
+
+const directStorageWithTestLock: PendingJournalAdapter = {
+  getStorage: () => window.localStorage,
+  getLocks: () => ({ request: async (_name, _options, callback) => callback() }),
+};
 
 function reportActions(operator: typeof operatorA) {
   return createCloudReportActionRepository(dbFor(operator), { currentUser: () => fakeCurrentUser(operator) });
@@ -251,6 +265,8 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
       payload: { mealPrice: 100, paidAmount: 100, mealKind: 'bento' as const, menuRevision: 1 },
     };
     let callbackAttempts = 0;
+    const db = dbFor(operatorA);
+    const pendingJournal = createCloudPendingJournal(db, directStorageWithTestLock);
     const fakeTransaction = {
       get: (reference: unknown) => firestoreMock.realServerRead(reference as Parameters<ServerRead>[0]),
       set: vi.fn(),
@@ -266,10 +282,15 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
       throw Object.assign(new Error('synthetic exhausted transaction retries'), { code: 'unavailable' });
     });
 
-    const result = await repository(operatorA).commitCommand(input);
+    const result = await createCloudCommandRepository(db, {
+      currentUser: () => fakeCurrentUser(operatorA), pendingJournal,
+    }).commitCommand(input);
     expect(result).toMatchObject({ ok: false, error: { code: 'UNKNOWN_RESULT' } });
     expect(callbackAttempts).toBe(5);
     expect(firestoreMock.runTransaction).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(`${pendingJournal.namespace}:${commandId}`)).toBe(JSON.stringify({
+      commandId, datasetId: 'p05-failure-dataset', uid: operatorA.uid,
+    }));
     const envelope = JSON.parse(localStorage.getItem(SAFE_DIAGNOSTICS_STORAGE_KEY)!);
     expect(envelope.entries).toHaveLength(1);
     expect(envelope.entries[0]).toMatchObject({ commandId, kind: 'CreateOrder', errorCode: 'UNKNOWN_RESULT' });
@@ -293,14 +314,25 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
       payload: { mealPrice: 100, paidAmount: 110, mealKind: 'bento' as const, menuRevision: 1 },
     };
     let receiptReadPath: string | undefined;
-    firestoreMock.serverRead.mockImplementationOnce(async reference => {
-      receiptReadPath = (reference as { path?: string }).path;
+    const db = dbFor(operatorA);
+    const pendingJournal = createCloudPendingJournal(db, directStorageWithTestLock);
+    firestoreMock.serverRead.mockImplementation(async reference => {
+      const path = (reference as { path?: string }).path;
+      if (path !== `commands/${canonicalId}`) {
+        return firestoreMock.realServerRead(reference as Parameters<ServerRead>[0]);
+      }
+      receiptReadPath = path;
       throw Object.assign(new Error('synthetic post-commit receipt readback loss'), { code: 'unavailable' });
     });
 
-    const result = await repository(operatorA).commitCommand(input);
+    const result = await createCloudCommandRepository(db, {
+      currentUser: () => fakeCurrentUser(operatorA), pendingJournal,
+    }).commitCommand(input);
 
     expect(result).toMatchObject({ ok: false, error: { code: 'UNKNOWN_RESULT' } });
+    expect(localStorage.getItem(`${pendingJournal.namespace}:${canonicalId}`)).toBe(JSON.stringify({
+      commandId: canonicalId, datasetId: 'p05-failure-dataset', uid: operatorA.uid,
+    }));
     expect(commandIdReads).toBe(3);
     expect(receiptReadPath).toBe(`commands/${canonicalId}`);
     const committed = await withAdmin(async db => Promise.all([
@@ -348,7 +380,8 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
     });
     let result: Awaited<ReturnType<ReturnType<typeof repository>['commitCommand']>>;
     try {
-      result = await repository(operatorA).commitCommand(input);
+      const db = dbFor(operatorA);
+      result = await repository(operatorA, createCloudPendingJournal(db, directStorageWithTestLock)).commitCommand(input);
     } finally {
       if (storageDescriptor) Object.defineProperty(window, 'localStorage', storageDescriptor);
     }
@@ -365,8 +398,71 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
     expect(committed[2].exists()).toBe(false);
   });
 
+  it.each(['write-readback-mismatch', 'web-lock-denied', 'capacity-full'] as const)(
+    'P13b2 fails closed before transaction on %s', async failure => {
+      await seedBase();
+      const commandId = failure === 'write-readback-mismatch'
+        ? 'f1010101-1010-4101-8101-101010101010'
+        : 'f2020202-2020-4202-8202-202020202020';
+      const transactionId = failure === 'write-readback-mismatch'
+        ? 'f3030303-3030-4303-8303-303030303030'
+        : 'f4040404-4040-4404-8404-404040404040';
+      const baseStorage = window.localStorage;
+      const adapter: PendingJournalAdapter = failure === 'write-readback-mismatch'
+        ? {
+          getStorage: () => ({
+            get length() { return baseStorage.length; },
+            key: index => baseStorage.key(index),
+            getItem: key => baseStorage.getItem(key),
+            setItem: () => undefined,
+            removeItem: key => baseStorage.removeItem(key),
+          }),
+          getLocks: () => directStorageWithTestLock.getLocks(),
+        }
+        : failure === 'web-lock-denied' ? {
+          getStorage: () => baseStorage,
+          getLocks: () => ({ request: async () => { throw new DOMException('lock denied', 'NotAllowedError'); } }),
+        } : directStorageWithTestLock;
+      const db = dbFor(operatorA);
+      const pendingJournal = createCloudPendingJournal(db, adapter);
+      if (failure === 'capacity-full') {
+        for (let index = 1; index <= CLOUD_PENDING_JOURNAL_CAPACITY; index += 1) {
+          const saved = {
+            commandId: `f0000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`,
+            datasetId: 'p05-failure-dataset',
+            uid: operatorA.uid,
+          };
+          baseStorage.setItem(`${pendingJournal.namespace}:${saved.commandId}`, JSON.stringify(saved));
+        }
+      }
+      const input = {
+        commandId, kind: 'CreateOrder' as const, leaseEpoch: 1,
+        targets: { transactionId, studentId, dayId: today },
+        expectedRevisions: { transaction: 0 as const, student: 1, day: 1 },
+        payload: { mealPrice: 100, paidAmount: 110, mealKind: 'bento' as const, menuRevision: 1 },
+      };
+      const result = await createCloudCommandRepository(db, {
+        currentUser: () => fakeCurrentUser(operatorA), pendingJournal,
+      }).commitCommand(input);
+
+      expect(result).toMatchObject({ ok: false, error: { code: 'LOCAL_STORAGE_UNAVAILABLE', message: expect.stringContaining('尚未送出') } });
+      expect(firestoreMock.runTransaction).not.toHaveBeenCalled();
+      const committed = await withAdmin(async admin => Promise.all([
+        getDoc(doc(admin, 'system/dataHead')),
+        getDoc(doc(admin, `commands/${commandId}`)),
+        getDoc(doc(admin, `transactions/${transactionId}`)),
+      ]));
+      expect(committed[0].data()).toMatchObject({ seq: 0 });
+      expect(committed[1].exists()).toBe(false);
+      expect(committed[2].exists()).toBe(false);
+      if (failure === 'capacity-full') {
+        expect((await pendingJournal.readAll()).total).toBe(CLOUD_PENDING_JOURNAL_CAPACITY);
+      }
+    },
+  );
+
   it.each(['unavailable', 'permission-denied'] as const)(
-    'P05.28: %s after a real commit is UNKNOWN_RESULT and same-ID retry recovers its receipt',
+    'P05.28/P13b2: %s after a real commit is UNKNOWN_RESULT and recovery confirms the original receipt',
     async failure => {
       await seedBase();
       const transactionId = `p05-failure-${failure}`;
@@ -381,8 +477,14 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
         expectedRevisions: { transaction: 0 as const, student: 1, day: 1 },
         payload: { mealPrice: 100, paidAmount: 110, mealKind: 'bento' as const, menuRevision: 1 },
       };
+      const db = dbFor(operatorA);
+      const pendingJournal = createCloudPendingJournal(db, directStorageWithTestLock);
 
-      firestoreMock.serverRead.mockImplementationOnce(async reference => {
+      firestoreMock.serverRead.mockImplementation(async reference => {
+        const path = (reference as { path?: string }).path;
+        if (path !== `commands/${commandId}`) {
+          return firestoreMock.realServerRead(reference as Parameters<ServerRead>[0]);
+        }
         if (failure === 'unavailable') {
           throw Object.assign(new Error('synthetic post-commit receipt read outage'), { code: 'unavailable' });
         }
@@ -397,9 +499,16 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
         }
       });
 
-      const first = await repository(operatorA).commitCommand(input);
+      const first = await createCloudCommandRepository(db, {
+        currentUser: () => fakeCurrentUser(operatorA), pendingJournal,
+      }).commitCommand(input);
       expect(first).toMatchObject({ ok: false, error: { code: 'UNKNOWN_RESULT' } });
-      expect(firestoreMock.serverRead).toHaveBeenCalledTimes(1);
+      expect(localStorage.getItem(`${pendingJournal.namespace}:${commandId}`)).toBe(JSON.stringify({
+        commandId, datasetId: 'p05-failure-dataset', uid: operatorA.uid,
+      }));
+      expect(firestoreMock.serverRead.mock.calls.filter(([reference]) => (
+        (reference as { path?: string }).path === `commands/${commandId}`
+      ))).toHaveLength(1);
 
       const committed = await withAdmin(async db => {
         const [head, student, day, transaction, receipt, lease] = await Promise.all([
@@ -422,10 +531,22 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
       expect(committed.receipt).toMatchObject({ commandId, seq: 1, kind: 'CreateOrder', leaseEpoch: 1 });
       expect(committed.lease?.epoch).toBe(failure === 'permission-denied' ? 2 : 1);
 
-      const retryInput = { ...input, leaseEpoch: failure === 'permission-denied' ? 2 : 1 };
-      const retryOperator = failure === 'permission-denied' ? operatorB : operatorA;
-      const retry = await repository(retryOperator).commitCommand(retryInput);
-      expect(retry).toMatchObject({ ok: true, receipt: { commandId, seq: 1 } });
+      if (failure === 'permission-denied') {
+        const currentHolder = createCloudCommandRepository(dbFor(operatorB), {
+          currentUser: () => fakeCurrentUser(operatorB), pendingJournal,
+        });
+        const check = await currentHolder.confirmPending({
+          commandId, datasetId: 'p05-failure-dataset', uid: operatorA.uid,
+        }, 2);
+        expect(check).toMatchObject({ status: 'matched', receipt: { commandId, seq: 1 } });
+        await expect(pendingJournal.removeIf({ commandId, datasetId: 'p05-failure-dataset', uid: operatorA.uid })).resolves.toBe(true);
+      } else {
+        firestoreMock.serverRead.mockImplementation(firestoreMock.realServerRead);
+        const retry = await createCloudCommandRepository(db, {
+          currentUser: () => fakeCurrentUser(operatorA), pendingJournal,
+        }).commitCommand(input);
+        expect(retry).toMatchObject({ ok: true, receipt: { commandId, seq: 1 } });
+      }
       const finalHead = await withAdmin(db => getDoc(doc(db, 'system/dataHead')));
       expect(finalHead.data()?.seq).toBe(1);
     },
@@ -439,7 +560,10 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
       range: { kind: 'custom' as const, startDate: today, endDate: today },
       scope: { studentId: null }, sourceSeq: 0,
     };
-    firestoreMock.serverRead.mockImplementationOnce(async () => {
+    firestoreMock.serverRead.mockImplementation(async reference => {
+      if ((reference as { path?: string }).path !== `commands/${commandId}`) {
+        return firestoreMock.realServerRead(reference as Parameters<ServerRead>[0]);
+      }
       throw Object.assign(new Error('synthetic post-commit report receipt read outage'), { code: 'unavailable' });
     });
 

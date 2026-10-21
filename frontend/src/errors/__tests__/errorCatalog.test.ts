@@ -34,6 +34,13 @@ describe('error catalog', () => {
     expect(nextStep).not.toMatch(/已失敗|確定未入帳/);
   });
 
+  it('says a command was not sent when its recovery ID could not be saved', () => {
+    const nextStep = getCommandDiagnosticNextStep('LOCAL_STORAGE_UNAVAILABLE');
+    expect(nextStep).toContain('尚未送出');
+    expect(nextStep).toContain('紙本流程');
+    expect(nextStep).not.toContain('不要重新收款');
+  });
+
   it('uses the same conservative guidance for a command code unknown to this client', () => {
     const nextStep = getCommandDiagnosticNextStep('FUTURE_COMMAND_CODE');
     expect(nextStep).toContain('不要重新收款或建立新命令');
