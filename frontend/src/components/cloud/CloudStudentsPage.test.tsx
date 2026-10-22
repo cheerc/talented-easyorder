@@ -311,6 +311,58 @@ describe('CloudStudentsPage', () => {
     expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'resolved');
   });
 
+  it('keeps receipt recovery locked when the completed list belongs to a different dataset', async () => {
+    const reportNavigationState = vi.fn();
+    let resolveReplacementList!: (value: CloudStudentList) => void;
+    repository.createStudent.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+    repository.confirmPendingIntent.mockResolvedValueOnce({
+      status: 'matched', receipt: receipt('cmd-ui-001', 'CreateStudent', '001'),
+    });
+    repository.cleanupConfirmedIntent.mockResolvedValueOnce(true);
+    repository.list
+      .mockResolvedValueOnce({ ...snapshot(), datasetId: 'dataset-A' })
+      .mockReturnValueOnce(new Promise(resolve => { resolveReplacementList = resolve; }))
+      .mockResolvedValueOnce({
+        ...snapshot([student('replacement-student', { studentCode: '999', displayName: 'B 資料集學生' })]),
+        datasetId: 'dataset-B',
+      });
+    renderPage({}, reportNavigationState);
+    await screen.findByText(/目前伺服器名單是空的/);
+    openCreateForm();
+    fillCreateForm({ id: '001', name: 'A 資料集學生', amount: '0', mode: '沿用既有核對結餘' });
+    fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
+    await screen.findByText('結果確認中，請勿重複建立／修改。');
+
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+    await waitFor(() => expect(repository.list).toHaveBeenCalledTimes(2));
+    await act(async () => resolveReplacementList({
+      ...snapshot([student('replacement-student', { studentCode: '999', displayName: 'B 資料集學生' })]),
+      datasetId: 'dataset-B',
+    }));
+
+    expect(screen.queryByTestId('cloud-student-row-999')).not.toBeInTheDocument();
+    const recoveryHeading = screen.getByText('已找到伺服器回執，名單尚待再次讀取。');
+    const recovery = recoveryHeading.closest('section');
+    if (!recovery) throw new Error('Receipt confirmation panel was not rendered');
+    expect(recovery).toHaveTextContent('命令編號 cmd-ui-001');
+    expect(recovery).toHaveTextContent('伺服器命令序號 1');
+    expect(screen.getByText(/資料集已變更/)).toBeInTheDocument();
+    expect(screen.queryByText('B 資料集學生')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '新增學生' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/已確認 新增 001 完成/)).not.toBeInTheDocument();
+    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
+
+    fireEvent.click(screen.getByRole('button', { name: '重新讀取伺服器名單' }));
+    await waitFor(() => expect(repository.list).toHaveBeenCalledTimes(3));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    const repeatedRecovery = screen.getByText('已找到伺服器回執，名單尚待再次讀取。').closest('section');
+    if (!repeatedRecovery) throw new Error('Receipt confirmation panel was not retained after reload');
+    expect(repeatedRecovery).toHaveTextContent('命令編號 cmd-ui-001');
+    expect(screen.getByText(/資料集已變更/)).toBeInTheDocument();
+    expect(screen.queryByTestId('cloud-student-row-999')).not.toBeInTheDocument();
+    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
+  });
+
   it('checks a same-ID receipt with a read-only semantic query and never replays the commit', async () => {
     repository.createStudent.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
     repository.confirmPendingIntent.mockRejectedValueOnce({ code: 'INVALID_INPUT', message: 'commandId 已用於不同的命令內容' });
@@ -360,6 +412,41 @@ describe('CloudStudentsPage', () => {
       fireEvent.click(screen.getByRole('button', { name: '以相同命令編號重試' }));
       await act(async () => { await Promise.resolve(); await Promise.resolve(); });
       expect(repository.createStudent).toHaveBeenCalledTimes(2);
+      expect(repository.createStudent.mock.calls[0][0]).toEqual(repository.createStudent.mock.calls[1][0]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not let a late null query authorize retry when it started before the original settled', async () => {
+    vi.useFakeTimers();
+    try {
+      let settleOriginal!: (result: CommandResult) => void;
+      let resolveEarlyQuery!: (result: { status: 'not-found' }) => void;
+      repository.createStudent.mockReturnValueOnce(new Promise<CommandResult>(resolve => { settleOriginal = resolve; }));
+      repository.confirmPendingIntent.mockReturnValueOnce(new Promise<{ status: 'not-found' }>(resolve => { resolveEarlyQuery = resolve; }));
+      renderPage();
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      openCreateForm();
+      fillCreateForm({ amount: '0', mode: '沿用既有核對結餘' });
+      fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
+      await act(async () => { vi.advanceTimersByTime(10_000); });
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      expect(repository.confirmPendingIntent).toHaveBeenCalledOnce();
+
+      await act(async () => settleOriginal({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } }));
+      await act(async () => resolveEarlyQuery({ status: 'not-found' }));
+
+      expect(repository.createStudent).toHaveBeenCalledOnce();
+      expect(screen.queryByRole('button', { name: '以相同命令編號重試' })).not.toBeInTheDocument();
+      expect(screen.getByText(/這次查詢開始時原命令仍在送出中；未找到結果不能授權重試/)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(repository.confirmPendingIntent).toHaveBeenCalledTimes(2);
+      expect(screen.getByRole('button', { name: '以相同命令編號重試' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '以相同命令編號重試' }));
+      await waitFor(() => expect(repository.createStudent).toHaveBeenCalledTimes(2));
       expect(repository.createStudent.mock.calls[0][0]).toEqual(repository.createStudent.mock.calls[1][0]);
     } finally {
       vi.useRealTimers();

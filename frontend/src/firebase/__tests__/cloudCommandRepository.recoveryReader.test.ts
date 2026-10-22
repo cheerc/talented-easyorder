@@ -3,6 +3,7 @@ import type { User } from 'firebase/auth';
 import { fingerprintCommandInput, normalizeEnabledCommandInput } from '../../domain/cloudCommandSchema';
 import { describe, expect, it, vi } from 'vitest';
 import { createCloudCommandRepository } from '../cloudCommandRepository';
+import { createCloudPendingJournal, createMemoryCloudPendingJournalTestAdapter } from '../cloudPendingJournal';
 import type {
   CloudRecoveryReader,
   RecoveryDocumentSnapshot,
@@ -163,6 +164,98 @@ describe('Orders recovery reader seam reuses strict command recovery checks', ()
     expect(fullSdk.serverRead).not.toHaveBeenCalled();
     expect(fullSdk.transaction).not.toHaveBeenCalled();
   });
+
+  it('passes the exact captured command identity to journal removal after the caller input mutates', async () => {
+    const input = JSON.parse(JSON.stringify(studentIntent)) as Record<string, unknown>;
+    const stored = await storedStudentReceipt();
+    const recordA = { ...pendingIdentity };
+    const recordB = { ...pendingIdentity, commandId: '00000000-0000-4000-8000-000000000099' };
+    const recoveryReader = reader({ readReceipt: async () => {
+      Object.assign(input, {
+        commandId: recordB.commandId,
+        kind: 'EditStudent',
+        targets: { studentId: '10000000-0000-4000-8000-000000000099' },
+        expectedRevisions: { student: 1 },
+        payload: { displayName: '另一個操作' },
+      });
+      return document(stored);
+    } });
+    const removeIf = vi.fn(async (_record: unknown, canRemove: () => boolean) => canRemove());
+    const commands = createCloudCommandRepository(db, {
+      currentUser: () => userA,
+      pendingJournal: { removeIf } as never,
+    });
+
+    await expect(commands.cleanupConfirmedIntent(input, 2, 'recovery-dataset', userA.uid, recoveryReader, () => true))
+      .resolves.toBe(true);
+
+    expect(removeIf).toHaveBeenCalledWith(recordA, expect.any(Function));
+  });
+
+  it('removes only receipt-confirmed A and retains unrelated journal B when input mutates during the read', async () => {
+    const input = JSON.parse(JSON.stringify(studentIntent)) as Record<string, unknown>;
+    const stored = await storedStudentReceipt();
+    const recordA = { ...pendingIdentity };
+    const recordB = { ...pendingIdentity, commandId: '00000000-0000-4000-8000-000000000099' };
+    const journal = createCloudPendingJournal(db, createMemoryCloudPendingJournalTestAdapter());
+    await journal.put(recordA);
+    await journal.put(recordB);
+    const recoveryReader = reader({ readReceipt: async () => {
+      Object.assign(input, {
+        commandId: recordB.commandId,
+        kind: 'EditStudent',
+        targets: { studentId: '10000000-0000-4000-8000-000000000099' },
+        expectedRevisions: { student: 1 },
+        payload: { displayName: '另一個操作' },
+      });
+      return document(stored);
+    } });
+    const commands = createCloudCommandRepository(db, { currentUser: () => userA, pendingJournal: journal });
+
+    await expect(commands.cleanupConfirmedIntent(input, 2, 'recovery-dataset', userA.uid, recoveryReader, () => true))
+      .resolves.toBe(true);
+
+    await expect(journal.readAll()).resolves.toMatchObject({ records: [recordB], total: 1, complete: true });
+  });
+
+  it.each(['reader error', 'Auth change', 'reader pair change', 'unmount'] as const)(
+    'preserves journal A and B when cleanup loses authority during %s', async failure => {
+      const recordA = { ...pendingIdentity };
+      const recordB = { ...pendingIdentity, commandId: '00000000-0000-4000-8000-000000000099' };
+      const journal = createCloudPendingJournal(db, createMemoryCloudPendingJournalTestAdapter());
+      await journal.put(recordA);
+      await journal.put(recordB);
+      const stored = await storedStudentReceipt();
+      let currentUser: User | null = userA;
+      let pairCurrent = true;
+      let mounted = true;
+      const recoveryReader = reader({
+        assertCurrent: () => {
+          if (failure === 'reader pair change' && !pairCurrent) {
+            throw new CloudRecoveryReaderError('UNSUPPORTED_SCHEMA', 'reader pair changed');
+          }
+        },
+        readReceipt: async () => {
+          if (failure === 'reader error') throw new Error('receipt read failed');
+          if (failure === 'Auth change') currentUser = userB;
+          if (failure === 'reader pair change') pairCurrent = false;
+          if (failure === 'unmount') mounted = false;
+          return document(stored);
+        },
+      });
+      const commands = createCloudCommandRepository(db, {
+        currentUser: () => currentUser,
+        pendingJournal: journal,
+      });
+      const cleanup = commands.cleanupConfirmedIntent(
+        studentIntent, 2, 'recovery-dataset', userA.uid, recoveryReader, () => mounted,
+      );
+
+      if (failure === 'unmount') await expect(cleanup).resolves.toBe(false);
+      else await expect(cleanup).rejects.toHaveProperty('code');
+      await expect(journal.readAll()).resolves.toMatchObject({ records: [recordA, recordB], total: 2, complete: true });
+    },
+  );
 
   it('only reports absence for the expected dataset and stops retry authorization during maintenance', async () => {
     const wrongDataset = reader({ getContext: () => context({ datasetId: 'replacement-dataset' }) });
