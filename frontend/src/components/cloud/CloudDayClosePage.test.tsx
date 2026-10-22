@@ -1765,5 +1765,30 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
       expect(repository.backfillOpening).toHaveBeenCalledTimes(1);
       expect(repository.startBackfill).not.toHaveBeenCalled();
     });
+
+    it('stops automatic progress after the confirmed refresh fails, so a manual reload only reads and the next step needs the explicit continue', async () => {
+      arrangeThreeStepServer();
+      render(pageElement({ initialDayId: gap }));
+      await flush();
+      // The page read that follows the confirmed EnsureDay fails (offline); everything after it succeeds.
+      repository.loadSnapshot.mockRejectedValueOnce({ code: 'OFFLINE', message: 'offline' });
+      await startGapBackfill();
+      expect(await screen.findByText(/已找到命令回執，但伺服器資料尚未重新讀取/)).toBeInTheDocument();
+      expect(repository.ensureDay).toHaveBeenCalledTimes(1);
+      expect(repository.backfillOpening).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getAllByRole('button', { name: '重新讀取伺服器資料' }).at(-1)!);
+      expect(await screen.findByTestId('backfill-continue')).toBeInTheDocument();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      // An explicit reload only reads.
+      expect(repository.backfillOpening).not.toHaveBeenCalled();
+      expect(repository.startBackfill).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByTestId('backfill-continue'));
+      expect(await screen.findByText(/已標為回填，可以到訂餐頁補登交易/)).toBeInTheDocument();
+      expect(repository.ensureDay).toHaveBeenCalledTimes(1);
+      expect(repository.backfillOpening).toHaveBeenCalledTimes(1);
+      expect(repository.startBackfill).toHaveBeenCalledTimes(1);
+    });
   });
 });
