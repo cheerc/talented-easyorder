@@ -141,6 +141,10 @@ dev_prod() {
 
     local env_file="$FRONTEND_DIR/.env.local"
     if [ ! -f "$env_file" ]; then
+        if [ -z "${VITE_FIRESTORE_ENDPOINT:-}" ]; then
+            echo -e "${RED}❌ 建立 production Firebase 設定前，必須明確設定 VITE_FIRESTORE_ENDPOINT${NC}"
+            return 1
+        fi
         echo -e "${YELLOW}⚠️  $env_file 不存在，從 payroll 複製 Firebase config...${NC}"
         cat > "$env_file" << EOF
 VITE_FIREBASE_API_KEY=${VITE_FIREBASE_API_KEY:-<your-firebase-api-key>}
@@ -150,6 +154,7 @@ VITE_FIREBASE_APP_ID=1:704294644197:web:3c2d159fe167478d47e70c
 VITE_FIREBASE_MESSAGING_SENDER_ID=704294644197
 VITE_FIREBASE_STORAGE_BUCKET=${FIREBASE_PROJECT}.firebasestorage.app
 VITE_FIREBASE_USE_EMULATOR=false
+VITE_FIRESTORE_ENDPOINT=${VITE_FIRESTORE_ENDPOINT}
 EOF
         echo -e "${GREEN}✅ 已建立 $env_file${NC}"
     fi

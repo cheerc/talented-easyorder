@@ -3,17 +3,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => {
   const app = { name: '[DEFAULT]', options: { projectId: 'demo-easyorder' } };
   const auth = { name: 'auth' };
-  const db = { name: 'db' };
+  const db = { name: 'db', app, type: 'firestore' };
+  const liteDb = { name: 'lite-db', app, type: 'firestore-lite' };
   const memoryCache = { name: 'memory-cache' };
+  const liteTimestamp = class LiteTimestamp {};
   return {
     app,
     auth,
     db,
+    liteDb,
+    liteTimestamp,
     memoryCache,
     getApps: vi.fn(() => [] as unknown[]),
     getApp: vi.fn(() => app),
     initializeApp: vi.fn(() => app),
     ensureFirebaseModulesLoaded: vi.fn(async () => undefined),
+    ensureFirebaseLiteModulesLoaded: vi.fn(async () => undefined),
     getAuth: vi.fn(() => auth),
     connectAuthEmulator: vi.fn(),
     initializeFirestore: vi.fn(() => db),
@@ -23,6 +28,11 @@ const mocks = vi.hoisted(() => {
     persistentMultipleTabManager: vi.fn(() => ({ name: 'persistent-tabs' })),
     clearIndexedDbPersistence: vi.fn<() => Promise<void>>(async () => undefined),
     connectFirestoreEmulator: vi.fn(),
+    initializeLiteFirestore: vi.fn(() => liteDb),
+    connectLiteFirestoreEmulator: vi.fn(),
+    liteDoc: vi.fn(),
+    liteGetDoc: vi.fn(),
+    registerCloudRecoveryPair: vi.fn(),
   };
 });
 
@@ -34,6 +44,7 @@ vi.mock('firebase/app', () => ({
 
 vi.mock('../firebaseModules', () => ({
   ensureFirebaseModulesLoaded: mocks.ensureFirebaseModulesLoaded,
+  ensureFirebaseLiteModulesLoaded: mocks.ensureFirebaseLiteModulesLoaded,
   getAuthMod: () => ({ getAuth: mocks.getAuth, connectAuthEmulator: mocks.connectAuthEmulator }),
   getFirestoreMod: () => ({
     initializeFirestore: mocks.initializeFirestore,
@@ -44,6 +55,18 @@ vi.mock('../firebaseModules', () => ({
     clearIndexedDbPersistence: mocks.clearIndexedDbPersistence,
     connectFirestoreEmulator: mocks.connectFirestoreEmulator,
   }),
+  getFirestoreLiteMod: () => ({
+    Timestamp: mocks.liteTimestamp,
+    initializeFirestore: mocks.initializeLiteFirestore,
+    connectFirestoreEmulator: mocks.connectLiteFirestoreEmulator,
+    doc: mocks.liteDoc,
+    getDoc: mocks.liteGetDoc,
+  }),
+}));
+
+vi.mock('../cloudRecoveryReader', () => ({
+  DEFAULT_FIRESTORE_DATABASE_ID: '(default)',
+  registerCloudRecoveryPair: mocks.registerCloudRecoveryPair,
 }));
 
 const env = {
@@ -51,6 +74,7 @@ const env = {
   VITE_FIREBASE_API_KEY: 'api-key',
   VITE_FIREBASE_AUTH_DOMAIN: 'demo-easyorder.firebaseapp.com',
   VITE_FIREBASE_PROJECT_ID: 'demo-easyorder',
+  VITE_FIRESTORE_ENDPOINT: 'https://firestore.googleapis.com',
   VITE_FIREBASE_APP_ID: 'app-id',
   VITE_FIREBASE_MESSAGING_SENDER_ID: 'sender-id',
   VITE_FIREBASE_STORAGE_BUCKET: 'demo-easyorder.appspot.com',
@@ -71,6 +95,7 @@ describe('ensureFirebaseInitialized storage boundary', () => {
     mocks.getApp.mockReset().mockReturnValue(mocks.app);
     mocks.initializeApp.mockReset().mockReturnValue(mocks.app);
     mocks.ensureFirebaseModulesLoaded.mockReset().mockResolvedValue(undefined);
+    mocks.ensureFirebaseLiteModulesLoaded.mockReset().mockResolvedValue(undefined);
     mocks.getAuth.mockReset().mockReturnValue(mocks.auth);
     mocks.connectAuthEmulator.mockReset();
     mocks.initializeFirestore.mockReset().mockReturnValue(mocks.db);
@@ -80,6 +105,11 @@ describe('ensureFirebaseInitialized storage boundary', () => {
     mocks.persistentMultipleTabManager.mockReset().mockReturnValue({ name: 'persistent-tabs' });
     mocks.clearIndexedDbPersistence.mockReset().mockResolvedValue(undefined);
     mocks.connectFirestoreEmulator.mockReset();
+    mocks.initializeLiteFirestore.mockReset().mockReturnValue(mocks.liteDb);
+    mocks.connectLiteFirestoreEmulator.mockReset();
+    mocks.liteDoc.mockReset();
+    mocks.liteGetDoc.mockReset();
+    mocks.registerCloudRecoveryPair.mockReset();
   });
 
   it('uses a memory-only cache and clears the legacy Firestore namespace before returning services', async () => {
@@ -95,7 +125,9 @@ describe('ensureFirebaseInitialized storage boundary', () => {
 
     await vi.waitFor(() => expect(mocks.clearIndexedDbPersistence).toHaveBeenCalledOnce());
     expect(settled).toBe(false);
-    expect(mocks.initializeFirestore).toHaveBeenCalledWith(mocks.app, { localCache: mocks.memoryCache });
+    expect(mocks.initializeFirestore).toHaveBeenCalledWith(mocks.app, {
+      localCache: mocks.memoryCache, host: 'firestore.googleapis.com', ssl: true,
+    }, '(default)');
     expect(mocks.memoryLocalCache).toHaveBeenCalledOnce();
     expect(mocks.persistentLocalCache).not.toHaveBeenCalled();
     expect(mocks.persistentMultipleTabManager).not.toHaveBeenCalled();
@@ -104,6 +136,12 @@ describe('ensureFirebaseInitialized storage boundary', () => {
     releaseCleanup();
     await expect(result).resolves.toMatchObject({ app: mocks.app, auth: mocks.auth, db: mocks.db });
     expect(mocks.getFirestore).not.toHaveBeenCalled();
+    expect(mocks.initializeLiteFirestore).toHaveBeenCalledWith(mocks.app, { host: 'firestore.googleapis.com', ssl: true }, '(default)');
+    expect(mocks.ensureFirebaseLiteModulesLoaded).toHaveBeenCalledOnce();
+    expect(mocks.registerCloudRecoveryPair).toHaveBeenCalledWith(expect.objectContaining({
+      app: mocks.app, fullDb: mocks.db, liteDb: mocks.liteDb, fullDatabaseId: '(default)',
+      liteDatabaseId: '(default)', projectId: 'demo-easyorder',
+    }));
   });
 
   it('deduplicates concurrent calls and exposes the same initialized services only after cleanup', async () => {
@@ -121,6 +159,112 @@ describe('ensureFirebaseInitialized storage boundary', () => {
     releaseCleanup();
     const [firstServices, secondServices] = await Promise.all([first, second]);
     expect(firstServices).toBe(secondServices);
+  });
+
+  it('rejects a changed explicit endpoint after initialization and preserves canonical same-origin reuse', async () => {
+    const { ensureFirebaseInitialized } = await loadFirebaseAppModule();
+    const first = await ensureFirebaseInitialized(env);
+
+    await expect(ensureFirebaseInitialized({
+      ...env,
+      VITE_FIRESTORE_ENDPOINT: 'https://firestore-alt.googleapis.com',
+    })).rejects.toThrow('different explicit Firestore endpoint');
+
+    await expect(ensureFirebaseInitialized({
+      ...env,
+      VITE_FIRESTORE_ENDPOINT: 'https://firestore.googleapis.com/',
+    })).resolves.toBe(first);
+    expect(mocks.initializeFirestore).toHaveBeenCalledOnce();
+    expect(mocks.initializeLiteFirestore).toHaveBeenCalledOnce();
+    expect(mocks.registerCloudRecoveryPair).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a changed in-flight endpoint without joining or notifying that caller', async () => {
+    const originalIndexedDb = Object.getOwnPropertyDescriptor(globalThis, 'indexedDB');
+    const request = new EventTarget() as unknown as IDBOpenDBRequest;
+    Object.defineProperty(globalThis, 'indexedDB', {
+      configurable: true,
+      value: { deleteDatabase: vi.fn(() => request) } as unknown as IDBFactory,
+    });
+
+    let releaseCleanup!: () => void;
+    mocks.clearIndexedDbPersistence.mockImplementation(() => {
+      indexedDB.deleteDatabase('firestore/[DEFAULT]/demo-easyorder/main');
+      return new Promise<void>(resolve => { releaseCleanup = resolve; });
+    });
+    try {
+      const { ensureFirebaseInitialized } = await loadFirebaseAppModule();
+      const originalNotification = vi.fn();
+      const sameEndpointNotification = vi.fn();
+      const changedEndpointNotification = vi.fn();
+      const first = ensureFirebaseInitialized(env, { onFirestoreCleanupBlocked: originalNotification });
+      await vi.waitFor(() => expect(mocks.clearIndexedDbPersistence).toHaveBeenCalledOnce());
+
+      const changedEndpoint = ensureFirebaseInitialized({
+        ...env,
+        VITE_FIRESTORE_ENDPOINT: 'https://firestore-alt.googleapis.com',
+      }, { onFirestoreCleanupBlocked: changedEndpointNotification });
+      const changedEndpointResult = expect(changedEndpoint).rejects.toThrow('different explicit Firestore endpoint');
+      const sameEndpoint = ensureFirebaseInitialized({
+        ...env,
+        VITE_FIRESTORE_ENDPOINT: 'https://firestore.googleapis.com/',
+      }, { onFirestoreCleanupBlocked: sameEndpointNotification });
+      const samePromise = sameEndpoint === first;
+
+      request.dispatchEvent(new Event('blocked'));
+      const notificationCounts = {
+        original: originalNotification.mock.calls.length,
+        sameEndpoint: sameEndpointNotification.mock.calls.length,
+        changedEndpoint: changedEndpointNotification.mock.calls.length,
+      };
+
+      releaseCleanup();
+      const [firstResult, sameEndpointResult, changedEndpointAssertion] = await Promise.allSettled([
+        first,
+        sameEndpoint,
+        changedEndpointResult,
+      ]);
+      expect(samePromise).toBe(true);
+      expect(notificationCounts).toEqual({ original: 1, sameEndpoint: 1, changedEndpoint: 0 });
+      expect(firstResult).toMatchObject({ status: 'fulfilled' });
+      expect(sameEndpointResult).toMatchObject({ status: 'fulfilled' });
+      expect(changedEndpointAssertion).toMatchObject({ status: 'fulfilled' });
+      expect((sameEndpointResult as PromiseFulfilledResult<unknown>).value)
+        .toBe((firstResult as PromiseFulfilledResult<unknown>).value);
+    } finally {
+      if (releaseCleanup) releaseCleanup();
+      if (originalIndexedDb) Object.defineProperty(globalThis, 'indexedDB', originalIndexedDb);
+      else delete (globalThis as { indexedDB?: IDBFactory }).indexedDB;
+    }
+  });
+
+  it('registers full and Lite clients against the same explicit Emulator endpoint', async () => {
+    const { ensureFirebaseInitialized } = await loadFirebaseAppModule();
+    const emulatorEnv = {
+      ...env,
+      VITE_FIREBASE_USE_EMULATOR: 'true',
+      VITE_FIRESTORE_EMULATOR_HOST: '127.0.0.1',
+      VITE_FIRESTORE_EMULATOR_PORT: '8080',
+      VITE_FIREBASE_AUTH_EMULATOR_URL: 'http://127.0.0.1:9099',
+    };
+
+    await ensureFirebaseInitialized(emulatorEnv);
+
+    expect(mocks.connectFirestoreEmulator).toHaveBeenCalledWith(mocks.db, '127.0.0.1', 8080);
+    expect(mocks.connectLiteFirestoreEmulator).toHaveBeenCalledWith(mocks.liteDb, '127.0.0.1', 8080);
+    expect(mocks.registerCloudRecoveryPair).toHaveBeenCalledWith(expect.objectContaining({
+      fullDb: mocks.db,
+      liteDb: mocks.liteDb,
+      endpoint: { kind: 'emulator', host: '127.0.0.1', port: 8080, identity: 'http://127.0.0.1:8080' },
+    }));
+  });
+
+  it('refuses production initialization without an explicit Firestore endpoint', async () => {
+    const { ensureFirebaseInitialized } = await loadFirebaseAppModule();
+
+    await expect(ensureFirebaseInitialized({ ...env, VITE_FIRESTORE_ENDPOINT: undefined })).rejects.toThrow('Missing Firebase env var: VITE_FIRESTORE_ENDPOINT');
+    expect(mocks.initializeApp).not.toHaveBeenCalled();
+    expect(mocks.initializeFirestore).not.toHaveBeenCalled();
   });
 
   it('notifies only live subscribers when a shared Firestore cleanup becomes blocked', async () => {

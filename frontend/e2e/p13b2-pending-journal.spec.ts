@@ -5,12 +5,51 @@ const DATASET_ID = 'e2e-empty-p06-dataset';
 const APP_NAMESPACE = 'easyorder-cloud-command-journal:v1:demo-easyorder:%5BDEFAULT%5D';
 const FIRESTORE_EMULATOR = 'http://127.0.0.1:8080';
 
+function deferred<T = void>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(resolvePromise => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+
+interface WriteGate {
+  mode: 'before-server' | 'after-server';
+  intercepted: ReturnType<typeof deferred>;
+  release: ReturnType<typeof deferred>;
+  completed: ReturnType<typeof deferred>;
+  requests: number;
+}
+
 function taipeiToday(): string {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
   }).formatToParts(new Date());
   const value = (type: string) => parts.find(part => part.type === type)?.value ?? '';
   return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+async function seedOrderRecoveryFixture(uid: string, today: string, studentId: string, studentCode: string, seedCommandId: string) {
+  await upsertDocument('students', studentId, {
+    studentId, studentCode, displayName: `P13b2b1 ${studentCode}`, aliases: [], status: 'active',
+    openingBalance: { amount: 0, asOfDate: today, note: '', createdAt: new Date() },
+    currentBalance: 0, createdAt: new Date(), revision: 1, lastCommandId: seedCommandId, updatedAt: new Date(),
+  });
+  await upsertDocument('studentCodes', studentCode, { studentId, lastCommandId: seedCommandId, updatedAt: new Date() });
+  await upsertDocument('days', today, {
+    status: 'open', revision: 1,
+    menu: {
+      businessDate: today, itemName: 'P13b2b1 Test Meal', price: 100, vendorId: 'p13b2b1-test-vendor',
+      vendorNameSnapshot: 'P13b2b1 Test Vendor', updatedAt: new Date(), revision: 1, inheritedFromDate: null,
+    },
+    openingCash: 1000, openedBy: uid, openedAt: new Date(),
+    totals: {
+      activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0, mealTotal: 0,
+      retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0,
+    },
+    lastSettlementRevision: 0, lastCommandId: seedCommandId, updatedAt: new Date(),
+  });
+  await upsertDocument('system', 'dataHead', {
+    datasetId: DATASET_ID, seq: 0, lastCommandId: null, maintenance: false, goLiveDate: today,
+  });
 }
 
 async function readEmulatorDocument(collection: string, id: string) {
@@ -676,5 +715,107 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     expect(await readEmulatorDocument('system', 'dataHead')).toEqual(headBefore);
     expect(await listEmulatorDocumentIds('commands')).toEqual(commandsBefore);
     expect(await listEmulatorDocumentIds('transactions')).toEqual(transactionsBefore);
+  });
+
+  test('confirms a real Emulator order while the committed write response is held past ten seconds', async ({ googleSession }) => {
+    const { page, uid } = googleSession;
+    const today = taipeiToday();
+    const studentId = 'd1000000-0000-4000-8000-000000000031';
+    const studentCode = '931';
+    const seedCommandId = 'd2000000-0000-4000-8000-000000000032';
+    await seedOrderRecoveryFixture(uid, today, studentId, studentCode, seedCommandId);
+
+    const gate: WriteGate = {
+      mode: 'after-server', intercepted: deferred(), release: deferred(), completed: deferred(), requests: 0,
+    };
+    let activeGate: WriteGate | null = null;
+    await page.route('**/documents:commit*', async route => {
+      const current = activeGate;
+      if (!current || route.request().method() !== 'POST') {
+        await route.continue();
+        return;
+      }
+      current.requests += 1;
+      const response = await route.fetch();
+      if (current.mode === 'after-server') {
+        current.intercepted.resolve();
+        await current.release.promise;
+      }
+      await route.fulfill({ response });
+      current.completed.resolve();
+    });
+
+    let commandId: string | null = null;
+    try {
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await expect(page.getByTestId('cloud-orders-page')).toBeVisible();
+      await page.getByLabel('搜尋編號、姓名或別名').fill(studentCode);
+      await page.getByTestId(`search-result-${studentCode}`).click();
+      await page.getByLabel('實收金額（留空為 0 元）').fill('100');
+      activeGate = gate;
+      await page.getByTestId('submit-order-button').click();
+
+      const interceptResult = await Promise.race([
+        gate.intercepted.promise.then(() => 'intercepted' as const),
+        new Promise<'timeout'>(resolve => setTimeout(() => resolve('timeout'), 20000)),
+      ]);
+      if (interceptResult === 'timeout') throw new Error('No Firestore documents:commit request was intercepted');
+      await expect(page.getByText('結果確認中，勿重新收款。')).toBeVisible({ timeout: 15000 });
+      commandId = await page.getByTestId('order-recovery-command-id').textContent();
+      if (!commandId) throw new Error('The pending command ID was not shown');
+      const receipt = await readEmulatorDocument('commands', commandId);
+      expect((receipt.fields?.commandId as { stringValue?: string } | undefined)?.stringValue).toBe(commandId);
+      expect(gate.requests).toBe(1);
+
+      await page.getByTestId('order-recovery-query').click();
+      await expect(page.getByText('伺服器已確認入帳，正在重新載入資料')).toBeVisible({ timeout: 15000 });
+      await expect(page.getByTestId('order-recovery-command-id')).toHaveText(commandId);
+      await expect(page.getByTestId('cloud-orders-loading')).toBeVisible();
+      await expect(page.getByTestId('submit-order-button')).toHaveCount(0);
+      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '學生管理' })).toBeDisabled();
+      await expect(page.getByTestId('undo-bar')).toHaveCount(0);
+      expect(gate.requests).toBe(1);
+      gate.release.resolve();
+      await gate.completed.promise;
+      await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
+      await expect(page.getByTestId('cloud-topbar-bento')).toContainText('1');
+      await expect(page.getByText(new RegExp(`已確認 ${studentCode} P13b2b1 ${studentCode} 訂餐完成`))).toBeVisible();
+      await expect(page.getByTestId('order-recovery-panel')).toHaveCount(0);
+      await expect(page.getByTestId('undo-bar')).toBeVisible();
+      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '學生管理' })).toBeEnabled();
+
+      const transactionId = (((receipt.fields?.targets as { mapValue?: { fields?: Record<string, unknown> } } | undefined)
+        ?.mapValue?.fields?.transactionId as { stringValue?: string } | undefined)?.stringValue);
+      if (!transactionId) throw new Error('The Emulator receipt has no transaction target');
+      expect((await readEmulatorDocument('system', 'dataHead')).fields?.seq).toEqual({ integerValue: '1' });
+      expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
+      expect(await listEmulatorDocumentIds('transactions')).toEqual([transactionId]);
+      await expect.poll(() => readPendingIdentity(page, commandId!)).toBeNull();
+    } finally {
+      gate.release.resolve();
+      if (gate.requests > 0) {
+        await Promise.race([gate.completed.promise, new Promise(resolve => setTimeout(resolve, 5000))]);
+      }
+      await page.unroute('**/documents:commit*');
+      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
+      if (await release.isVisible().catch(() => false)) await release.click();
+      if (commandId) {
+        const receipt = await readEmulatorDocument('commands', commandId).catch(() => null);
+        const transactionId = (((receipt?.fields?.targets as { mapValue?: { fields?: Record<string, unknown> } } | undefined)
+          ?.mapValue?.fields?.transactionId as { stringValue?: string } | undefined)?.stringValue);
+        if (transactionId) await removeDocument('transactions', transactionId);
+        await removeDocument('commands', commandId);
+      }
+      for (const id of await listEmulatorDocumentIds('transactions')) await removeDocument('transactions', id);
+      for (const id of await listEmulatorDocumentIds('commands')) await removeDocument('commands', id);
+      await removeDocument('days', today);
+      await removeDocument('students', studentId);
+      await removeDocument('studentCodes', studentCode);
+      await upsertDocument('system', 'dataHead', {
+        datasetId: DATASET_ID, seq: 0, lastCommandId: null, maintenance: false, goLiveDate: today,
+      });
+    }
   });
 });

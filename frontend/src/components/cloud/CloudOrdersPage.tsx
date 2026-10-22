@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { Firestore } from 'firebase/firestore';
-import type { CommandResult } from '../../domain/cloudCommands';
+import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
+import type { PendingReceiptCheck } from '../../firebase/cloudCommandRepository';
 import { normalizeStudentCode } from '../../domain/student';
 import { expectedCashFromTotals } from '../../domain/cloudLedgerProjection';
 import {
@@ -23,9 +24,11 @@ import {
   type CreateCloudRefundInput,
   type CloudTransactionMutationInput,
 } from '../../firebase/cloudOrderRepository';
+import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
 import type { CloudStudentRecord } from '../../firebase/cloudStudentRepository';
 import { isBackfilled, type CloudBackfillDay } from '../../firebase/cloudDayCloseRepository';
 import { formatTaipeiTime } from '../../utils/dateTime';
+import { cloudPendingJournalForRepository, type PendingCommandIdentity } from '../../firebase/cloudPendingJournal';
 import './CloudOrdersPage.css';
 
 export interface CloudOrdersPageProps {
@@ -77,7 +80,45 @@ const CASHIER_ID = '__cashier__';
 /** F1 entry: today's meal (Q), other meal, or a payment (W). */
 type EntryMode = 'bento' | 'other' | 'payment';
 
-type RecoveryPhase = 'submitting' | 'unknown' | 'checking';
+type RecoveryPhase = 'submitting' | 'unknown' | 'retrying' | 'confirmed';
+type RecoveryQueryStatus = '' | 'not-found-pending' | 'not-found-settled' | 'error';
+
+interface RecoveryView {
+  command: PreparedCommand;
+  phase: RecoveryPhase;
+  elapsed10s: boolean;
+  queryPending: boolean;
+  queryStatus: RecoveryQueryStatus;
+  queryMessage: string;
+  retryAllowed: boolean;
+}
+
+interface OrdersRecoveryOperation {
+  token: number;
+  completionToken: number;
+  command: PreparedCommand;
+  db: Firestore;
+  app: unknown;
+  identityKey: string;
+  uid: string;
+  leaseEpoch: number;
+  datasetId: string;
+  scopeKey: string;
+  generation: number;
+  originalPromisePending: boolean;
+  attemptPromisePending: boolean;
+  receiptQueryPending: boolean;
+  receiptConfirmed: boolean;
+  receipt: CommandReceipt | null;
+  refreshInFlight: boolean;
+  cleanupPending: boolean;
+  backfillView: boolean;
+  receiptQueryVersion: number;
+  retryAuthorizedQueryVersion: number | null;
+  elapsed10s: boolean;
+  completed: boolean;
+  timer: number | null;
+}
 
 interface OrdersPageState {
   scopeKey: string;
@@ -109,7 +150,7 @@ interface OrdersPageState {
   refundConfirmOpen: boolean;
   edit: EditDraft | null;
   undoOffer: UndoOffer | null;
-  recovery: { command: PreparedCommand; phase: RecoveryPhase } | null;
+  recovery: RecoveryView | null;
 }
 
 const freshDraft = () => ({
@@ -174,6 +215,23 @@ function errorText(error: unknown): string {
 
 function isAuthorizationLoss(error: unknown): boolean {
   return ['LEASE_LOST', 'UNAUTHORIZED', 'ACCESS_BUSY'].includes(errorCode(error));
+}
+
+function uidFromIdentityKey(identityKey: string, leaseEpoch: number): string | null {
+  const suffix = `:${leaseEpoch}`;
+  if (!identityKey.endsWith(suffix)) return null;
+  const uid = identityKey.slice(0, -suffix.length);
+  return uid || null;
+}
+
+function freezePreparedCommand(command: PreparedCommand): PreparedCommand {
+  if (command.kind === 'mutation') {
+    return Object.freeze({
+      ...command,
+      input: Object.freeze({ ...command.input, payload: Object.freeze({ ...command.input.payload }) }),
+    }) as PreparedCommand;
+  }
+  return Object.freeze({ ...command }) as PreparedCommand;
 }
 
 const MUTATION_NOUN: Record<TransactionMutationKind, string> = {
@@ -264,6 +322,9 @@ function sendCommand(repository: CloudOrderRepository, command: PreparedCommand,
 
 function definiteFailureText(command: PreparedCommand, code: string, message: string): string {
   if (code === 'LOCAL_STORAGE_UNAVAILABLE') return '尚未送出，無法安全保存確認編號；請重試本機儲存檢查，或改用紙本流程。';
+  if (code === 'MAINTENANCE') return '系統正在維護，這筆沒有入帳。請稍後重新確認結果，再決定後續操作。';
+  if (code === 'QUOTA_EXCEEDED') return '雲端額度不足，這筆沒有入帳。請稍後確認額度恢復後再操作。';
+  if (code === 'UNSUPPORTED_SCHEMA') return '伺服器資料格式不支援，這筆沒有入帳。請保留畫面並聯絡系統維護者。';
   if (command.kind === 'mutation') {
     const noun = commandNoun(command);
     if (code === 'REVISION_CONFLICT') return `這筆交易、學生或營業日已在別處變更，${noun}沒有生效。已重新讀取最新資料，請確認後再操作。`;
@@ -399,17 +460,31 @@ function recentSummary(transactions: CloudOrderTransactionRecord[]): string {
 }
 
 export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationStateChange, initialBackfillDayId }: CloudOrdersPageProps) {
-  const repository = useMemo(() => createCloudOrderRepository(db), [db]);
+  const recoveryReader = useMemo(() => getCloudRecoveryReader(db), [db]);
+  const repository = useMemo(() => createCloudOrderRepository(db, { recoveryReader }), [db, recoveryReader]);
   // Which business day the page reads: null is the server's today. Commands refresh through the same ref.
   const viewDayRef = useRef<string | null>(initialBackfillDayId ?? null);
   const backfillDaysRef = useRef<CloudBackfillDay[] | null>(null);
-  const scopeKey = `${identityKey}:${leaseEpoch}`;
-  const [pageState, setPageStateRaw] = useState<OrdersPageState>(() => initialState(scopeKey));
-  const scopeRef = useRef(scopeKey);
   const generationRef = useRef(0);
   const loadRequestRef = useRef(0);
   const flightRef = useRef(false);
   const revokedRef = useRef(false);
+  const operationRef = useRef<OrdersRecoveryOperation | null>(null);
+  const recoveryTokenRef = useRef(0);
+  const renderedOwnerRef = useRef({ db, app: db.app, identityKey, leaseEpoch, version: 0 });
+  const renderedOwner = renderedOwnerRef.current;
+  if (renderedOwner.db !== db || renderedOwner.app !== db.app
+    || renderedOwner.identityKey !== identityKey || renderedOwner.leaseEpoch !== leaseEpoch) {
+    const activeOperation = operationRef.current;
+    if (activeOperation?.timer !== null && activeOperation?.timer !== undefined) window.clearTimeout(activeOperation.timer);
+    if (activeOperation) activeOperation.completed = true;
+    operationRef.current = null;
+    flightRef.current = false;
+    renderedOwnerRef.current = { db, app: db.app, identityKey, leaseEpoch, version: renderedOwner.version + 1 };
+  }
+  const scopeKey = `${identityKey}:${leaseEpoch}:${renderedOwnerRef.current.version}`;
+  const [pageState, setPageStateRaw] = useState<OrdersPageState>(() => initialState(scopeKey));
+  const scopeRef = useRef(scopeKey);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   if (scopeRef.current !== scopeKey) {
@@ -422,10 +497,29 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   }
 
   const page = pageState.scopeKey === scopeKey ? pageState : initialState(scopeKey);
+  const snapshotRef = useRef(page.snapshot);
+  snapshotRef.current = page.snapshot;
 
   const isCurrent = useCallback((key: string, generation: number) => (
     scopeRef.current === key && generationRef.current === generation
   ), []);
+
+  const isOperationOwnerCurrent = useCallback((operation: OrdersRecoveryOperation) => (
+    scopeRef.current === operation.scopeKey
+      && generationRef.current === operation.generation
+      && renderedOwnerRef.current.db === operation.db
+      && renderedOwnerRef.current.app === operation.app
+      && renderedOwnerRef.current.identityKey === operation.identityKey
+      && renderedOwnerRef.current.leaseEpoch === operation.leaseEpoch
+      && identityKey === operation.identityKey
+      && leaseEpoch === operation.leaseEpoch
+      && (snapshotRef.current === null || snapshotRef.current.datasetId === operation.datasetId)
+      && !revokedRef.current
+  ), [identityKey, leaseEpoch]);
+
+  const isOperationCurrent = useCallback((operation: OrdersRecoveryOperation) => (
+    operationRef.current === operation && !operation.completed && isOperationOwnerCurrent(operation)
+  ), [isOperationOwnerCurrent]);
 
   const updateFor = useCallback((key: string, generation: number, update: (previous: OrdersPageState) => OrdersPageState) => {
     setPageStateRaw(previous => {
@@ -437,6 +531,13 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const revoke = useCallback((key: string, generation: number, error: unknown, pendingCommandId: string | null) => {
     if (!isCurrent(key, generation)) return;
     // Invalidate every in-flight read and command before React commits the masked state.
+    const activeOperation = operationRef.current;
+    if (activeOperation && activeOperation.scopeKey === key) {
+      if (activeOperation.timer !== null) window.clearTimeout(activeOperation.timer);
+      activeOperation.timer = null;
+      activeOperation.completed = true;
+      operationRef.current = null;
+    }
     revokedRef.current = true;
     generationRef.current += 1;
     loadRequestRef.current += 1;
@@ -458,13 +559,14 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
 
   const loadSnapshot = useCallback(async (
     options: { keepDraft?: boolean; notice?: string; actionError?: string; dayId?: string | null; reuseBackfillDays?: boolean } = {},
-  ) => {
+  ): Promise<boolean> => {
     const key = scopeKey;
     const generation = generationRef.current;
-    if (revokedRef.current) return;
+    if (revokedRef.current) return false;
     const requestId = ++loadRequestRef.current;
     if (options.dayId !== undefined) viewDayRef.current = options.dayId;
     const dayId = viewDayRef.current;
+    snapshotRef.current = null;
     updateFor(key, generation, previous => ({
       ...previous,
       snapshot: null,
@@ -481,8 +583,21 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       // After a counter operation the days being backfilled cannot have changed on this page, so the list is reused.
       const known = options.reuseBackfillDays ? backfillDaysRef.current : null;
       const snapshot = await repository.loadSnapshot({ dayId, ...(known ? { knownBackfillDays: known } : {}) });
-      if (!isCurrent(key, generation) || requestId !== loadRequestRef.current) return;
+      if (!isCurrent(key, generation) || requestId !== loadRequestRef.current) return false;
+      const activeOperation = operationRef.current;
+      if (activeOperation?.receiptConfirmed && activeOperation.datasetId !== snapshot.datasetId) {
+        snapshotRef.current = null;
+        updateFor(key, generation, previous => ({
+          ...previous,
+          ...freshDraft(),
+          snapshot: null,
+          loading: false,
+          loadError: '已確認命令所屬的資料集已變更；請重新取得使用權並查證，不要再次送出原操作。',
+        }));
+        return false;
+      }
       backfillDaysRef.current = snapshot.backfillDaysError === null ? snapshot.backfillDays : null;
+      snapshotRef.current = snapshot;
       updateFor(key, generation, previous => ({
         ...previous,
         snapshot,
@@ -492,11 +607,13 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
           ? previous.selectedStudentId
           : null,
       }));
+      return true;
     } catch (error) {
-      if (!isCurrent(key, generation) || requestId !== loadRequestRef.current) return;
+      if (!isCurrent(key, generation) || requestId !== loadRequestRef.current) return false;
+      snapshotRef.current = null;
       if (isAuthorizationLoss(error)) {
         revoke(key, generation, error, null);
-        return;
+        return false;
       }
       updateFor(key, generation, previous => ({
         ...previous,
@@ -505,6 +622,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
         loading: false,
         loadError: errorText(error),
       }));
+      return false;
     }
   }, [isCurrent, repository, revoke, scopeKey, updateFor]);
 
@@ -520,6 +638,14 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     void loadSnapshot();
     return () => {
       loadRequestRef.current += 1;
+      const activeOperation = operationRef.current;
+      if (activeOperation?.scopeKey === scopeKey) {
+        if (activeOperation.timer !== null) window.clearTimeout(activeOperation.timer);
+        activeOperation.timer = null;
+        activeOperation.completed = true;
+        operationRef.current = null;
+        flightRef.current = false;
+      }
       if (generationRef.current === generation) generationRef.current += 1;
     };
     // loadSnapshot is stable per scope; re-run only when the identity/lease scope changes.
@@ -602,7 +728,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const mealPrice = mode === 'payment' ? 0
     : mode === 'bento' ? todayMenu?.price ?? null : parseAmount(page.otherPriceText, null);
   const paidAmount = parseAmount(page.paidAmountText, mode === 'payment' ? null : 0);
-  const busy = page.recovery !== null;
+  const busy = page.recovery !== null || operationRef.current !== null;
   const previewBalance = selectedStudent && mealPrice !== null && paidAmount !== null
     ? selectedStudent.currentBalance + paidAmount - mealPrice
     : null;
@@ -615,6 +741,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const refundPreviewBalance = selectedStudent && refundValid ? selectedStudent.currentBalance - refundAmount! : null;
 
   const selectStudent = (student: CloudStudentRecord) => {
+    if (operationRef.current) return;
     setPageStateRaw(previous => ({
       ...previous,
       selectedStudentId: student.studentId,
@@ -631,75 +758,350 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   };
 
   const cancelSelection = useCallback(() => {
-    if (pageState.recovery) return;
+    if (operationRef.current || pageState.recovery) return;
     setPageStateRaw(previous => ({ ...previous, ...freshDraft(), actionError: '' }));
     searchInputRef.current?.focus();
   }, [pageState.recovery]);
 
-  const finishResult = async (command: PreparedCommand, result: CommandResult, key: string, generation: number) => {
-    if (!isCurrent(key, generation)) return;
-    if (result.ok && result.receipt.commandId === command.commandId) {
-      // Rules refuse Undo outside today, so a backfilled row is corrected or voided instead of offering a 5-second undo.
-      const undoOffer: UndoOffer | null = command.kind === 'mutation' || backfillView ? null : {
-        commandId: command.commandId,
-        transactionId: command.transactionId,
-        label: `${command.label} 的${commandNoun(command)}`,
-        expiresAt: Date.now() + UNDO_WINDOW_MS,
-      };
-      updateFor(key, generation, previous => ({ ...previous, recovery: null, undoOffer }));
-      await loadSnapshot({ notice: successText(command, result.receipt.seq), reuseBackfillDays: true });
+  const updateRecoveryView = (operation: OrdersRecoveryOperation, update: (view: RecoveryView) => RecoveryView) => {
+    if (!isOperationCurrent(operation)) return;
+    updateFor(operation.scopeKey, operation.generation, previous => (
+      previous.recovery?.command.commandId === operation.command.commandId
+        ? { ...previous, recovery: update(previous.recovery) }
+        : previous
+    ));
+  };
+
+  const clearOperationTimer = (operation: OrdersRecoveryOperation) => {
+    if (operation.timer !== null) {
+      window.clearTimeout(operation.timer);
+      operation.timer = null;
+    }
+  };
+
+  const completeSuccess = async (operation: OrdersRecoveryOperation, receipt: CommandReceipt) => {
+    if (!isOperationCurrent(operation) || receipt.commandId !== operation.command.commandId) return;
+    if (operation.receiptConfirmed) return;
+    operation.receiptConfirmed = true;
+    operation.receipt = receipt;
+    operation.receiptQueryPending = false;
+    operation.refreshInFlight = true;
+    operation.completionToken = ++recoveryTokenRef.current;
+    const completionToken = operation.completionToken;
+    clearOperationTimer(operation);
+
+    updateRecoveryView(operation, previous => ({
+      ...previous,
+      phase: 'confirmed',
+      elapsed10s: true,
+      queryPending: false,
+      queryStatus: '',
+      queryMessage: '',
+      retryAllowed: false,
+    }));
+
+    // The server context and receipt have already been verified outside the journal's Web Lock.
+    // Only this short local removal uses the synchronous current-owner predicate.
+    const record: PendingCommandIdentity = {
+      commandId: operation.command.commandId,
+      datasetId: operation.datasetId,
+      uid: operation.uid,
+    };
+    const cleanupJournalIdentity = async (): Promise<boolean> => {
+      try {
+        const journal = cloudPendingJournalForRepository(operation.db);
+        const removed = await journal.removeIf(record, () => (
+          operationRef.current === operation
+            && operation.completionToken === completionToken
+            && isOperationOwnerCurrent(operation)
+            && (typeof navigator === 'undefined' || navigator.onLine)
+        ));
+        if (operationRef.current !== operation || operation.completionToken !== completionToken
+          || !isOperationOwnerCurrent(operation)) return false;
+        if (removed) return false;
+        const remaining = await journal.readAll();
+        if (operationRef.current !== operation || operation.completionToken !== completionToken
+          || !isOperationOwnerCurrent(operation)) return false;
+        return remaining.records.some(item => (
+          item.commandId === record.commandId && item.datasetId === record.datasetId && item.uid === record.uid
+        ));
+      } catch {
+        if (operationRef.current !== operation || operation.completionToken !== completionToken
+          || !isOperationOwnerCurrent(operation)) return false;
+        return true;
+      }
+    };
+
+    const [cleanupPending, headsReady] = await Promise.all([
+      cleanupJournalIdentity(),
+      loadSnapshot({ reuseBackfillDays: true }),
+    ]);
+    if (operationRef.current !== operation || operation.completionToken !== completionToken
+      || !isOperationOwnerCurrent(operation)) return;
+    operation.cleanupPending = cleanupPending;
+    operation.refreshInFlight = false;
+    if (headsReady) finishConfirmedOperation(operation, receipt);
+  };
+
+  const finishConfirmedOperation = (operation: OrdersRecoveryOperation, receipt: CommandReceipt) => {
+    if (!isOperationCurrent(operation) || !operation.receiptConfirmed
+      || receipt.commandId !== operation.command.commandId) return;
+    const command = operation.command;
+    // Rules refuse Undo outside today, so a backfilled row is corrected or voided instead of offering a 5-second undo.
+    const undoOffer: UndoOffer | null = command.kind === 'mutation' || operation.backfillView ? null : {
+      commandId: command.commandId,
+      transactionId: command.transactionId,
+      label: `${command.label} 的${commandNoun(command)}`,
+      expiresAt: Date.now() + UNDO_WINDOW_MS,
+    };
+    operation.completed = true;
+    clearOperationTimer(operation);
+    operationRef.current = null;
+    flightRef.current = false;
+    updateFor(operation.scopeKey, operation.generation, previous => ({
+      ...previous,
+      recovery: null,
+      undoOffer,
+      notice: successText(command, receipt.seq),
+      actionError: operation.cleanupPending
+        ? '伺服器已確認入帳，但本機待核對編號尚未清除；請保留編號並勿重新收款。'
+        : '',
+    }));
+  };
+
+  const retryConfirmedSnapshot = async () => {
+    const operation = operationRef.current;
+    const receipt = operation?.receipt;
+    if (!operation || !receipt || !isOperationCurrent(operation) || operation.refreshInFlight) return;
+    operation.refreshInFlight = true;
+    const headsReady = await loadSnapshot({ reuseBackfillDays: true });
+    if (!isOperationCurrent(operation)) return;
+    operation.refreshInFlight = false;
+    if (headsReady) finishConfirmedOperation(operation, receipt);
+  };
+
+  const invalidateOperation = (operation: OrdersRecoveryOperation, error: unknown) => {
+    if (operation.timer !== null) window.clearTimeout(operation.timer);
+    operation.timer = null;
+    operation.completed = true;
+    if (operationRef.current === operation) operationRef.current = null;
+    flightRef.current = false;
+    revoke(operation.scopeKey, operation.generation, error, operation.command.commandId);
+  };
+
+  const finishAttempt = async (operation: OrdersRecoveryOperation, result: CommandResult, isRetry: boolean) => {
+    operation.attemptPromisePending = false;
+    if (!isRetry) operation.originalPromisePending = false;
+    if (!isOperationCurrent(operation)) return;
+    flightRef.current = operation.originalPromisePending || operation.attemptPromisePending;
+    if (operation.receiptConfirmed) return;
+
+    if (result.ok && result.receipt.commandId === operation.command.commandId) {
+      await completeSuccess(operation, result.receipt);
       return;
     }
     if (!result.ok && isAuthorizationLoss(result.error)) {
-      revoke(key, generation, result.error, command.commandId);
+      invalidateOperation(operation, result.error);
       return;
     }
     if (result.ok || result.error.code === 'UNKNOWN_RESULT' || result.error.code === 'OFFLINE') {
-      updateFor(key, generation, previous => ({
+      updateRecoveryView(operation, previous => ({
         ...previous,
-        confirmDuplicateOpen: false,
-        refundConfirmOpen: false,
-        recovery: { command, phase: 'unknown' },
+        phase: 'unknown',
+        queryPending: false,
+        queryStatus: '',
+        queryMessage: '',
+        retryAllowed: false,
       }));
       return;
     }
-    // A definite rejection: nothing was committed. Re-read the server so the next attempt sees fresh revisions.
-    // The list of backfilling days is re-read too: the rejection may be because the day just closed (P11c3 review).
-    updateFor(key, generation, previous => ({ ...previous, recovery: null }));
-    await loadSnapshot({ keepDraft: true, actionError: definiteFailureText(command, result.error.code, result.error.message) });
+
+    // A definite rejection means no command was committed; reload server revisions before another business action.
+    operation.completed = true;
+    clearOperationTimer(operation);
+    if (operationRef.current === operation) operationRef.current = null;
+    updateFor(operation.scopeKey, operation.generation, previous => ({ ...previous, recovery: null }));
+    await loadSnapshot({
+      keepDraft: true,
+      actionError: definiteFailureText(operation.command, result.error.code, result.error.message),
+    });
   };
 
-  const dispatch = async (command: PreparedCommand, phase: RecoveryPhase) => {
-    const key = scopeKey;
+  const runAttempt = async (operation: OrdersRecoveryOperation, isRetry: boolean) => {
+    if (!isOperationCurrent(operation) || operation.attemptPromisePending) return;
+    operation.attemptPromisePending = true;
+    operation.retryAuthorizedQueryVersion = null;
+    flightRef.current = true;
+    updateRecoveryView(operation, previous => ({
+      ...previous,
+      phase: isRetry ? 'retrying' : 'submitting',
+      queryPending: false,
+      queryStatus: '',
+      queryMessage: '',
+      retryAllowed: false,
+    }));
+    let result: CommandResult;
+    try {
+      result = await sendCommand(repository, operation.command, operation.leaseEpoch);
+    } catch (error) {
+      result = { ok: false, error: { code: isAuthorizationLoss(error) ? 'LEASE_LOST' : 'UNKNOWN_RESULT', message: errorText(error) } };
+    }
+    await finishAttempt(operation, result, isRetry);
+  };
+
+  const dispatch = (untrustedCommand: PreparedCommand) => {
     const generation = generationRef.current;
-    if (flightRef.current || revokedRef.current) return;
-    if (!identityKey || !Number.isSafeInteger(leaseEpoch) || leaseEpoch < 1) {
-      revoke(key, generation, { code: 'LEASE_LOST' }, command.commandId);
+    if (operationRef.current || flightRef.current || revokedRef.current) return;
+    const uid = uidFromIdentityKey(identityKey, leaseEpoch);
+    const currentSnapshot = snapshotRef.current;
+    if (!identityKey || !uid || !Number.isSafeInteger(leaseEpoch) || leaseEpoch < 1
+      || !currentSnapshot || currentSnapshot.datasetId !== untrustedCommand.datasetId) {
+      revoke(scopeKey, generation, { code: 'LEASE_LOST' }, untrustedCommand.commandId);
       return;
     }
+    const command = freezePreparedCommand(untrustedCommand);
+    const operation: OrdersRecoveryOperation = {
+      token: ++recoveryTokenRef.current,
+      completionToken: 0,
+      command,
+      db,
+      app: db.app,
+      identityKey,
+      uid,
+      leaseEpoch,
+      datasetId: currentSnapshot.datasetId,
+      scopeKey,
+      generation,
+      originalPromisePending: true,
+      attemptPromisePending: false,
+      receiptQueryPending: false,
+      receiptConfirmed: false,
+      receipt: null,
+      refreshInFlight: false,
+      cleanupPending: false,
+      backfillView,
+      receiptQueryVersion: 0,
+      retryAuthorizedQueryVersion: null,
+      elapsed10s: false,
+      completed: false,
+      timer: null,
+    };
+    operationRef.current = operation;
     flightRef.current = true;
-    updateFor(key, generation, previous => ({
+    onNavigationStateChange?.(identityKey, 'recovering');
+    updateFor(scopeKey, generation, previous => ({
       ...previous,
       actionError: '',
       notice: '',
       confirmDuplicateOpen: false,
       refundConfirmOpen: false,
       undoOffer: null,
-      recovery: { command, phase },
+      recovery: {
+        command,
+        phase: 'submitting',
+        elapsed10s: false,
+        queryPending: false,
+        queryStatus: '',
+        queryMessage: '',
+        retryAllowed: false,
+      },
     }));
-    let result: CommandResult;
+    operation.timer = window.setTimeout(() => {
+      if (!isOperationCurrent(operation)) return;
+      operation.elapsed10s = true;
+      updateRecoveryView(operation, previous => ({ ...previous, elapsed10s: true }));
+    }, 10_000);
+    void runAttempt(operation, false);
+  };
+
+  const queryRecovery = async () => {
+    const operation = operationRef.current;
+    if (!operation || operation.receiptConfirmed || !isOperationCurrent(operation) || operation.receiptQueryPending
+      || (!operation.elapsed10s && operation.originalPromisePending)) return;
+    operation.receiptQueryPending = true;
+    const queryVersion = ++operation.receiptQueryVersion;
+    const retryEligibleWhenStarted = !operation.attemptPromisePending;
+    operation.retryAuthorizedQueryVersion = null;
+    updateRecoveryView(operation, previous => ({
+      ...previous,
+      queryPending: true,
+      queryStatus: '',
+      queryMessage: '',
+      retryAllowed: false,
+    }));
+    const record: PendingCommandIdentity = {
+      commandId: operation.command.commandId,
+      datasetId: operation.datasetId,
+      uid: operation.uid,
+    };
     try {
-      result = await sendCommand(repository, command, leaseEpoch);
+      const context = await repository.getPendingRecoveryContextWithRecoveryReader(operation.leaseEpoch);
+      if (!isOperationCurrent(operation) || operation.receiptQueryVersion !== queryVersion) return;
+      if (context.uid !== operation.uid || context.leaseEpoch !== operation.leaseEpoch
+        || context.datasetId !== operation.datasetId) {
+        invalidateOperation(operation, { code: 'LEASE_LOST' });
+        return;
+      }
+      const checked: PendingReceiptCheck = await repository.confirmPendingWithRecoveryReader(record, operation.leaseEpoch);
+      if (!isOperationCurrent(operation) || operation.receiptQueryVersion !== queryVersion) return;
+      if (checked.status === 'different-dataset') {
+        invalidateOperation(operation, { code: 'LEASE_LOST' });
+        return;
+      }
+      if (checked.status === 'matched') {
+        if (checked.receipt.commandId !== operation.command.commandId) {
+          operation.receiptQueryPending = false;
+          updateRecoveryView(operation, previous => ({
+            ...previous,
+            queryPending: false,
+            queryStatus: 'error',
+            queryMessage: '伺服器回傳的命令編號不一致；已保留原編號，請勿重新收款。',
+            retryAllowed: false,
+          }));
+          return;
+        }
+        await completeSuccess(operation, checked.receipt);
+        return;
+      }
+      operation.receiptQueryPending = false;
+      const canRetry = retryEligibleWhenStarted && !operation.attemptPromisePending && !context.maintenance;
+      operation.retryAuthorizedQueryVersion = canRetry ? queryVersion : null;
+      updateRecoveryView(operation, previous => ({
+        ...previous,
+        queryPending: false,
+        queryStatus: context.maintenance ? 'error' : canRetry ? 'not-found-settled' : 'not-found-pending',
+        queryMessage: context.maintenance
+          ? '系統正在維護，請稍後重新查詢；保留命令編號，勿重新收款。'
+          : canRetry
+            ? '伺服器目前未查到；這不代表確定未入帳。保留編號後，可明確選擇以原編號重試。'
+            : '伺服器目前未查到；原操作仍待回應或重試仍在進行，請勿再次送出。',
+        retryAllowed: canRetry,
+      }));
     } catch (error) {
-      result = { ok: false, error: { code: isAuthorizationLoss(error) ? 'LEASE_LOST' : 'UNKNOWN_RESULT', message: errorText(error) } };
-    } finally {
-      if (isCurrent(key, generation)) flightRef.current = false;
+      if (!isOperationCurrent(operation) || operation.receiptQueryVersion !== queryVersion) return;
+      if (isAuthorizationLoss(error)) {
+        invalidateOperation(operation, error);
+        return;
+      }
+      operation.receiptQueryPending = false;
+      const code = errorCode(error);
+      const message = code === 'MAINTENANCE'
+        ? '系統正在維護，請稍後重新查詢；保留命令編號，勿重新收款。'
+        : code === 'QUOTA_EXCEEDED'
+          ? '雲端額度不足，目前無法查詢結果；稍後再查詢，勿重新收款。'
+          : '目前無法安全確認伺服器結果；保留原編號，勿重新收款。';
+      updateRecoveryView(operation, previous => ({
+        ...previous,
+        queryPending: false,
+        queryStatus: 'error',
+        queryMessage: message,
+        retryAllowed: false,
+      }));
     }
-    await finishResult(command, result, key, generation);
   };
 
   const submitOrder = () => {
-    if (!snapshot || !day || !selectedStudent || busy || orderingBlocked) return;
+    if (!snapshot || !day || !selectedStudent || busy || operationRef.current || orderingBlocked) return;
     if (selectedStudent.status !== 'active') {
       setPageStateRaw(previous => ({ ...previous, confirmDuplicateOpen: false, actionError: '此帳戶已停用，禁止新增餐點' }));
       return;
@@ -749,11 +1151,11 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       label: `${selectedStudent.studentCode} ${selectedStudent.displayName}`,
       datasetId: snapshot.datasetId,
     };
-    void dispatch(command, 'submitting');
+    dispatch(command);
   };
 
   const submitPayment = () => {
-    if (!snapshot || !day || !selectedStudent || busy || orderingBlocked) return;
+    if (!snapshot || !day || !selectedStudent || busy || operationRef.current || orderingBlocked) return;
     const amount = parseAmount(page.paidAmountText, null);
     if (page.paidAmountText.trim().startsWith('-')) {
       setPageStateRaw(previous => ({ ...previous, actionError: '收款金額不能是負數。要退錢給學生請用「退款」。' }));
@@ -782,12 +1184,12 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       label: `${selectedStudent.studentCode} ${selectedStudent.displayName}`,
       datasetId: snapshot.datasetId,
     };
-    void dispatch(command, 'submitting');
+    dispatch(command);
   };
 
   const submitCashMovement = (event?: FormEvent) => {
     event?.preventDefault();
-    if (!snapshot || !day || busy || orderingBlocked) return;
+    if (!snapshot || !day || busy || operationRef.current || orderingBlocked) return;
     if (cashAmount === null || cashAmount < 1) {
       setPageStateRaw(previous => ({ ...previous, actionError: '櫃台收支金額必須是 1 到 1,000,000 的整數' }));
       return;
@@ -816,13 +1218,13 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       label: `櫃台${direction === 'income' ? '收入' : '支出'} $${cashAmount}`,
       datasetId: snapshot.datasetId,
     };
-    void dispatch(command, 'submitting');
+    dispatch(command);
   };
 
   /** 驗證退款框；通過才打開確認對話框（spec §7.2：退款一律先確認）。 */
   const requestRefund = (event?: FormEvent) => {
     event?.preventDefault();
-    if (!snapshot || !day || !selectedStudent || busy || orderingBlocked || backfillView) return;
+    if (!snapshot || !day || !selectedStudent || busy || operationRef.current || orderingBlocked || backfillView) return;
     if (selectedStudent.currentBalance < 1) {
       setPageStateRaw(previous => ({ ...previous, refundConfirmOpen: false, actionError: '帳戶餘額不是正數，沒有可退的金額' }));
       return;
@@ -844,7 +1246,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   };
 
   const submitRefund = () => {
-    if (!snapshot || !day || !selectedStudent || busy || orderingBlocked || backfillView || !refundValid) return;
+    if (!snapshot || !day || !selectedStudent || busy || operationRef.current || orderingBlocked || backfillView || !refundValid) return;
     const reason = page.refundReason.trim();
     if (!reason || reason.length > 500) return;
     const commandId = newId();
@@ -866,12 +1268,12 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       label: `${selectedStudent.studentCode} ${selectedStudent.displayName}`,
       datasetId: snapshot.datasetId,
     };
-    void dispatch(command, 'submitting');
+    dispatch(command);
   };
 
   /** Freezes one mutation of an existing row with the revisions this screen last read (spec §6.2). */
   const submitMutation = (tx: CloudOrderTransactionRecord, mutation: TransactionMutationPayload, label: string): boolean => {
-    if (!snapshot || !day || busy || orderingBlocked) return false;
+    if (!snapshot || !day || busy || operationRef.current || orderingBlocked) return false;
     const student = tx.studentId === CASHIER_ID ? null : studentsById.get(tx.studentId) ?? null;
     if (tx.studentId !== CASHIER_ID && !student) {
       setPageStateRaw(previous => ({ ...previous, actionError: '找不到這筆交易的帳戶，請重新載入。' }));
@@ -898,7 +1300,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       label,
       datasetId: snapshot.datasetId,
     };
-    void dispatch(command, 'submitting');
+    dispatch(command);
     return true;
   };
 
@@ -914,7 +1316,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
 
   const undoLast = () => {
     const offer = page.undoOffer;
-    if (!offer || !undoTransaction || !undoMutation) return;
+    if (!offer || !undoTransaction || !undoMutation || operationRef.current) return;
     if (Date.now() > offer.expiresAt) {
       setPageStateRaw(previous => ({ ...previous, undoOffer: null }));
       return;
@@ -923,7 +1325,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   };
 
   const openEdit = (tx: CloudOrderTransactionRecord, action: EditAction) => {
-    if (busy || tx.status !== 'active') return;
+    if (busy || operationRef.current || tx.status !== 'active') return;
     setPageStateRaw(previous => ({
       ...previous,
       paymentDetailsOpen: false,
@@ -950,7 +1352,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
 
   const submitEdit = (event?: FormEvent) => {
     event?.preventDefault();
-    if (!page.edit || !editTransaction || !editBuilt || busy) return;
+    if (!page.edit || !editTransaction || !editBuilt || busy || operationRef.current) return;
     if ('error' in editBuilt) {
       setPageStateRaw(previous => ({ ...previous, actionError: editBuilt.error }));
       return;
@@ -971,7 +1373,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   };
 
   const openRefundPanel = () => {
-    if (busy || !selectedStudent || backfillView) return;
+    if (busy || operationRef.current || !selectedStudent || backfillView) return;
     const balance = selectedStudent.currentBalance;
     setPageStateRaw(previous => ({
       ...previous,
@@ -985,13 +1387,13 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   };
 
   const openCashPanel = () => {
-    if (busy) return;
+    if (busy || operationRef.current) return;
     setPageStateRaw(previous => ({ ...previous, ...freshDraft(), cashOpen: true, actionError: '', notice: '' }));
   };
 
   const requestSubmit = (event?: FormEvent) => {
     event?.preventDefault();
-    if (!selectedStudent || busy) return;
+    if (!selectedStudent || busy || operationRef.current) return;
     if (mode === 'payment') {
       submitPayment();
       return;
@@ -1004,10 +1406,14 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   };
 
   const retryRecovery = () => {
-    const recovery = page.recovery;
-    if (!recovery || recovery.phase !== 'unknown') return;
-    // Re-sending the frozen command is idempotent: the repository returns the stored receipt when it exists.
-    void dispatch(recovery.command, 'checking');
+    const operation = operationRef.current;
+    if (!operation || !isOperationCurrent(operation) || operation.originalPromisePending
+      || operation.attemptPromisePending || operation.receiptQueryPending
+      || operation.retryAuthorizedQueryVersion === null
+      || operation.retryAuthorizedQueryVersion !== operation.receiptQueryVersion) return;
+    operation.retryAuthorizedQueryVersion = null;
+    operation.receiptQueryVersion += 1;
+    void runAttempt(operation, true);
   };
 
   const undoExpiresAt = page.undoOffer?.expiresAt ?? null;
@@ -1130,22 +1536,51 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
 
       {page.recovery && (
         <div className="cloud-orders__error" role="alert" data-testid="order-recovery-panel">
-          {page.recovery.phase === 'unknown' ? (
+          {page.recovery.phase === 'confirmed' ? (
+            <>
+              <p><strong>伺服器已確認入帳，正在重新載入資料</strong></p>
+              <p>原命令編號 <strong data-testid="order-recovery-command-id">{page.recovery.command.commandId}</strong> 保持不變。</p>
+              {page.loadError && (
+                <p data-testid="order-recovery-heads-error">
+                  已確認入帳，但重新讀取訂餐資料失敗：{page.loadError}。請重新載入資料；不要再次送出原操作。
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => void retryConfirmedSnapshot()}
+                disabled={page.loading}
+                data-testid="order-recovery-heads-reload"
+              >
+                {page.loading ? '正在重新載入資料…' : '重新載入已確認資料'}
+              </button>
+            </>
+          ) : page.recovery.phase === 'submitting' && !page.recovery.elapsed10s ? (
+            <p>
+              正在送出 {page.recovery.command.label} 的{commandNoun(page.recovery.command)}，
+              請等待伺服器確認，勿重新收款。
+            </p>
+          ) : (
             <>
               <p><strong>結果確認中，勿重新收款。</strong></p>
               <p>
-                {page.recovery.command.label} 的{commandNoun(page.recovery.command)}已送出，但伺服器回應不確定。命令編號 {page.recovery.command.commandId} 保持不變；
-                確認前不會產生新的命令。
+                {page.recovery.command.label} 的{commandNoun(page.recovery.command)}尚未確認。命令編號{' '}
+                <strong data-testid="order-recovery-command-id">{page.recovery.command.commandId}</strong> 保持不變；請先查詢原命令結果。
               </p>
-              <button type="button" onClick={retryRecovery} data-testid="order-recovery-retry">
-                以相同命令編號確認結果
+              {page.recovery.queryMessage && <p data-testid="order-recovery-query-status">{page.recovery.queryMessage}</p>}
+              <button
+                type="button"
+                onClick={() => void queryRecovery()}
+                disabled={page.recovery.queryPending}
+                data-testid="order-recovery-query"
+              >
+                {page.recovery.queryPending ? '正在查詢原命令結果…' : '查詢原命令結果'}
               </button>
+              {page.recovery.retryAllowed && (
+                <button type="button" onClick={retryRecovery} data-testid="order-recovery-retry">
+                  以原編號重試原操作
+                </button>
+              )}
             </>
-          ) : (
-            <p>
-              {page.recovery.phase === 'checking' ? '正在以相同命令編號確認' : '正在送出'} {page.recovery.command.label} 的{commandNoun(page.recovery.command)}，
-              請等待伺服器確認，勿重新收款。
-            </p>
           )}
         </div>
       )}
@@ -1177,7 +1612,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
         <div className="cloud-orders__error" role="alert">{page.actionError}</div>
       )}
 
-      {page.loadError && (
+      {page.loadError && page.recovery?.phase !== 'confirmed' && (
         <div className="cloud-orders__error" role="alert">
           {page.loadError}
           {!page.authorizationRevoked && (

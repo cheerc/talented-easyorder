@@ -23,6 +23,7 @@ Set these environment variables for Production and Preview:
 - `VITE_FIREBASE_MESSAGING_SENDER_ID`
 - `VITE_FIREBASE_STORAGE_BUCKET`
 - `VITE_FIREBASE_USE_EMULATOR=false`
+- `VITE_FIRESTORE_ENDPOINT=https://firestore.googleapis.com` (required explicit HTTPS origin when Emulator mode is disabled)
 
 Build command: `cd frontend && npm run build`
 
