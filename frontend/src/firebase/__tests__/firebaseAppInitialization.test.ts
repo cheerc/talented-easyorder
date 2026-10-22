@@ -161,6 +161,83 @@ describe('ensureFirebaseInitialized storage boundary', () => {
     expect(firstServices).toBe(secondServices);
   });
 
+  it('rejects a changed explicit endpoint after initialization and preserves canonical same-origin reuse', async () => {
+    const { ensureFirebaseInitialized } = await loadFirebaseAppModule();
+    const first = await ensureFirebaseInitialized(env);
+
+    await expect(ensureFirebaseInitialized({
+      ...env,
+      VITE_FIRESTORE_ENDPOINT: 'https://firestore-alt.googleapis.com',
+    })).rejects.toThrow('different explicit Firestore endpoint');
+
+    await expect(ensureFirebaseInitialized({
+      ...env,
+      VITE_FIRESTORE_ENDPOINT: 'https://firestore.googleapis.com/',
+    })).resolves.toBe(first);
+    expect(mocks.initializeFirestore).toHaveBeenCalledOnce();
+    expect(mocks.initializeLiteFirestore).toHaveBeenCalledOnce();
+    expect(mocks.registerCloudRecoveryPair).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a changed in-flight endpoint without joining or notifying that caller', async () => {
+    const originalIndexedDb = Object.getOwnPropertyDescriptor(globalThis, 'indexedDB');
+    const request = new EventTarget() as unknown as IDBOpenDBRequest;
+    Object.defineProperty(globalThis, 'indexedDB', {
+      configurable: true,
+      value: { deleteDatabase: vi.fn(() => request) } as unknown as IDBFactory,
+    });
+
+    let releaseCleanup!: () => void;
+    mocks.clearIndexedDbPersistence.mockImplementation(() => {
+      indexedDB.deleteDatabase('firestore/[DEFAULT]/demo-easyorder/main');
+      return new Promise<void>(resolve => { releaseCleanup = resolve; });
+    });
+    try {
+      const { ensureFirebaseInitialized } = await loadFirebaseAppModule();
+      const originalNotification = vi.fn();
+      const sameEndpointNotification = vi.fn();
+      const changedEndpointNotification = vi.fn();
+      const first = ensureFirebaseInitialized(env, { onFirestoreCleanupBlocked: originalNotification });
+      await vi.waitFor(() => expect(mocks.clearIndexedDbPersistence).toHaveBeenCalledOnce());
+
+      const changedEndpoint = ensureFirebaseInitialized({
+        ...env,
+        VITE_FIRESTORE_ENDPOINT: 'https://firestore-alt.googleapis.com',
+      }, { onFirestoreCleanupBlocked: changedEndpointNotification });
+      const changedEndpointResult = expect(changedEndpoint).rejects.toThrow('different explicit Firestore endpoint');
+      const sameEndpoint = ensureFirebaseInitialized({
+        ...env,
+        VITE_FIRESTORE_ENDPOINT: 'https://firestore.googleapis.com/',
+      }, { onFirestoreCleanupBlocked: sameEndpointNotification });
+      const samePromise = sameEndpoint === first;
+
+      request.dispatchEvent(new Event('blocked'));
+      const notificationCounts = {
+        original: originalNotification.mock.calls.length,
+        sameEndpoint: sameEndpointNotification.mock.calls.length,
+        changedEndpoint: changedEndpointNotification.mock.calls.length,
+      };
+
+      releaseCleanup();
+      const [firstResult, sameEndpointResult, changedEndpointAssertion] = await Promise.allSettled([
+        first,
+        sameEndpoint,
+        changedEndpointResult,
+      ]);
+      expect(samePromise).toBe(true);
+      expect(notificationCounts).toEqual({ original: 1, sameEndpoint: 1, changedEndpoint: 0 });
+      expect(firstResult).toMatchObject({ status: 'fulfilled' });
+      expect(sameEndpointResult).toMatchObject({ status: 'fulfilled' });
+      expect(changedEndpointAssertion).toMatchObject({ status: 'fulfilled' });
+      expect((sameEndpointResult as PromiseFulfilledResult<unknown>).value)
+        .toBe((firstResult as PromiseFulfilledResult<unknown>).value);
+    } finally {
+      if (releaseCleanup) releaseCleanup();
+      if (originalIndexedDb) Object.defineProperty(globalThis, 'indexedDB', originalIndexedDb);
+      else delete (globalThis as { indexedDB?: IDBFactory }).indexedDB;
+    }
+  });
+
   it('registers full and Lite clients against the same explicit Emulator endpoint', async () => {
     const { ensureFirebaseInitialized } = await loadFirebaseAppModule();
     const emulatorEnv = {

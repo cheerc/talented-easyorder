@@ -97,6 +97,65 @@ describe('CloudRecoveryReader pairing and data boundary', () => {
     expect(() => normalizeLiteRecoveryValue(array, LiteTimestamp)).toThrow(expect.objectContaining({ code: 'UNSUPPORTED_SCHEMA' }));
   });
 
+  it('rejects array accessors without executing them', () => {
+    let reads = 0;
+    const source: unknown[] = [];
+    Object.defineProperty(source, '0', {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        reads += 1;
+        return new LiteTimestamp(1_800_000_000, 123_456_789);
+      },
+    });
+
+    let error: unknown;
+    try {
+      normalizeLiteRecoveryValue(source, LiteTimestamp);
+    } catch (caught) {
+      error = caught;
+    }
+    expect(reads).toBe(0);
+    expect(error).toBeInstanceOf(CloudRecoveryReaderError);
+  });
+
+  it('rejects a plain-map accessor without executing it', () => {
+    let reads = 0;
+    const source = {};
+    Object.defineProperty(source, 'value', {
+      enumerable: true,
+      get: () => {
+        reads += 1;
+        return 1;
+      },
+    });
+
+    expect(() => normalizeLiteRecoveryValue(source, LiteTimestamp)).toThrow(CloudRecoveryReaderError);
+    expect(reads).toBe(0);
+  });
+
+  it('accepts dense nested ordinary arrays, including frozen arrays and official Lite timestamps', () => {
+    const timestamp = new LiteTimestamp(1_800_000_000, 123_456_789);
+    const source = Object.freeze([Object.freeze([timestamp])]);
+
+    const normalized = normalizeLiteRecoveryValue(source, LiteTimestamp) as FullTimestamp[][];
+
+    expect(normalized).toHaveLength(1);
+    expect(normalized[0]).toHaveLength(1);
+    expect(normalized[0][0]).toBeInstanceOf(FullTimestamp);
+    expect(normalized[0][0].seconds).toBe(1_800_000_000);
+    expect(normalized[0][0].nanoseconds).toBe(123_456_789);
+  });
+
+  it.each([
+    ['array subclass', new (class SpecialArray extends Array<unknown> {})('value')],
+    ['non-enumerable array index', Object.defineProperty([], '0', { value: 'value', enumerable: false, configurable: true })],
+    ['sparse array', Object.assign(new Array<unknown>(1), {})],
+    ['symbol array property', Object.defineProperty(['value'], Symbol('extra'), { value: 'must not be dropped' })],
+  ])('rejects unsupported array shape: %s', (_label, source) => {
+    expect(() => normalizeLiteRecoveryValue(source, LiteTimestamp)).toThrow(CloudRecoveryReaderError);
+  });
+
   it('registers the exact full/Lite pair and exposes only the four recovery document reads', async () => {
     const registration = pair();
     const reader = registerCloudRecoveryPair(registration);
