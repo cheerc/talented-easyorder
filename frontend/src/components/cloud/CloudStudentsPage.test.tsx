@@ -17,6 +17,7 @@ const repository = vi.hoisted(() => ({
   ensureOpeningDay: vi.fn(),
   correctOpening: vi.fn(),
   readCommand: vi.fn(),
+  confirmPendingIntent: vi.fn(),
 }));
 
 vi.mock('../../firebase/cloudStudentRepository', () => ({
@@ -98,6 +99,7 @@ describe('CloudStudentsPage', () => {
     repository.editStudent.mockResolvedValue(successful('cmd-ui-001', 'EditStudent', '001'));
     repository.setStudentStatus.mockResolvedValue(successful('cmd-ui-001', 'SetStudentStatus', '001'));
     repository.readCommand.mockResolvedValue(null);
+    repository.confirmPendingIntent.mockResolvedValue(null);
     repository.readOpeningDay.mockResolvedValue({ dayId: '2026-01-01', revision: 3, status: 'open' });
     repository.ensureOpeningDay.mockResolvedValue({ ok: true, receipt: { ...receipt('cmd-ui-001', 'EnsureDay', '001'), targets: { dayId: '2026-01-01' } } });
     repository.correctOpening.mockResolvedValue(successful('cmd-ui-001', 'CorrectOpening', '001'));
@@ -288,11 +290,9 @@ describe('CloudStudentsPage', () => {
     expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'resolved');
   });
 
-  it('does not accept a receipt with the same ID until replay verifies the frozen command semantics', async () => {
-    repository.createStudent
-      .mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } })
-      .mockResolvedValueOnce({ ok: false, error: { code: 'INVALID_INPUT', message: 'commandId 已用於不同的命令內容' } });
-    repository.readCommand.mockResolvedValueOnce(receipt('cmd-ui-001', 'CreateStudent', 'OTHER-STUDENT'));
+  it('checks a same-ID receipt with a read-only semantic query and never replays the commit', async () => {
+    repository.createStudent.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+    repository.confirmPendingIntent.mockRejectedValueOnce({ code: 'INVALID_INPUT', message: 'commandId 已用於不同的命令內容' });
     renderPage();
     await screen.findByText(/目前伺服器名單是空的/);
     openCreateForm();
@@ -303,10 +303,46 @@ describe('CloudStudentsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
 
     expect(await screen.findByText(/命令編號已存在，但伺服器內容與原操作不符/)).toBeInTheDocument();
-    expect(repository.createStudent).toHaveBeenCalledTimes(2);
-    expect(repository.createStudent.mock.calls[0][0]).toEqual(repository.createStudent.mock.calls[1][0]);
+    expect(repository.confirmPendingIntent).toHaveBeenCalledTimes(1);
+    expect(repository.createStudent).toHaveBeenCalledTimes(1);
     expect(repository.list).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/已確認 新增/)).not.toBeInTheDocument();
+  });
+
+  it('allows a read-only query at ten seconds but requires a fresh absence after the original settles before retry', async () => {
+    vi.useFakeTimers();
+    try {
+      let settleOriginal!: (result: CommandResult) => void;
+      repository.createStudent.mockReturnValueOnce(new Promise<CommandResult>(resolve => { settleOriginal = resolve; }));
+      renderPage();
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      openCreateForm();
+      fillCreateForm({ amount: '0', mode: '沿用既有核對結餘' });
+      fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
+
+      expect(screen.queryByRole('button', { name: '查詢原命令結果' })).not.toBeInTheDocument();
+      await act(async () => { vi.advanceTimersByTime(9_999); });
+      expect(screen.queryByRole('button', { name: '查詢原命令結果' })).not.toBeInTheDocument();
+      await act(async () => { vi.advanceTimersByTime(1); });
+      expect(screen.getByText(/結果確認中，勿重新收款/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(repository.confirmPendingIntent).toHaveBeenCalledTimes(1);
+      expect(repository.createStudent).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('button', { name: '以相同命令編號重試' })).not.toBeInTheDocument();
+
+      await act(async () => { settleOriginal({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } }); });
+      expect(screen.queryByRole('button', { name: '以相同命令編號重試' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(repository.confirmPendingIntent).toHaveBeenCalledTimes(2);
+      fireEvent.click(screen.getByRole('button', { name: '以相同命令編號重試' }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(repository.createStudent).toHaveBeenCalledTimes(2);
+      expect(repository.createStudent.mock.calls[0][0]).toEqual(repository.createStudent.mock.calls[1][0]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not restore a pending command after a concurrent list read loses authorization', async () => {
