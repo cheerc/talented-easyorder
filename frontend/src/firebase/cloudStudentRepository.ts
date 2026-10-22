@@ -14,11 +14,13 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import type { CommandErrorCode, CommandReceipt, CommandResult } from '../domain/cloudCommands';
+import { normalizeEnabledCommandInput, type CanonicalEnabledInput } from '../domain/cloudCommandSchema';
 import { STUDENT_CODE_REGEX } from '../domain/student';
 import {
   createCloudCommandRepository,
   type CloudCommandRepositoryOptions,
 } from './cloudCommandRepository';
+import type { CloudRecoveryReader } from './cloudRecoveryReader';
 import { dataHeadPath, dayPath } from './firestorePaths';
 
 type Data = Record<string, unknown>;
@@ -66,7 +68,10 @@ export class CloudStudentRepositoryError extends Error {
   }
 }
 
-export type CloudStudentRepositoryOptions = CloudCommandRepositoryOptions;
+export type CloudStudentRepositoryOptions = CloudCommandRepositoryOptions & {
+  /** Explicit recovery-only reader. Ordinary reads and writes stay on the full Firestore SDK. */
+  recoveryReader?: CloudRecoveryReader;
+};
 
 export interface CreateCloudStudentInput {
   commandId: string;
@@ -121,6 +126,90 @@ export interface EnsureCloudOpeningDayInput {
   commandId: string;
   leaseEpoch: number;
   dayId: string;
+}
+
+export type CloudStudentCommandIntent =
+  | { kind: 'create'; input: CreateCloudStudentInput }
+  | { kind: 'edit'; input: EditCloudStudentInput }
+  | { kind: 'change-code'; input: ChangeCloudStudentCodeInput }
+  | { kind: 'status'; input: SetCloudStudentStatusInput }
+  | { kind: 'ensure-day'; input: EnsureCloudOpeningDayInput }
+  | { kind: 'correct-opening'; input: CorrectCloudOpeningInput };
+
+function buildStudentCommand(intent: CloudStudentCommandIntent): CanonicalEnabledInput {
+  switch (intent.kind) {
+    case 'create': {
+      const input = intent.input;
+      return normalizeEnabledCommandInput({
+        commandId: input.commandId,
+        kind: 'CreateStudent',
+        leaseEpoch: input.leaseEpoch,
+        targets: { studentId: input.studentId },
+        expectedRevisions: { student: 0 },
+        payload: {
+          studentCode: input.studentCode,
+          displayName: input.displayName,
+          aliases: input.aliases,
+          openingBalance: input.openingBalance,
+        },
+      });
+    }
+    case 'change-code': {
+      const input = intent.input;
+      return normalizeEnabledCommandInput({
+        commandId: input.commandId,
+        kind: 'ChangeStudentCode',
+        leaseEpoch: input.leaseEpoch,
+        targets: { studentId: input.studentId },
+        expectedRevisions: { student: input.expectedRevision },
+        payload: { studentCode: input.studentCode, reason: input.reason },
+      });
+    }
+    case 'edit': {
+      const { commandId, leaseEpoch, studentId, expectedRevision, ...payload } = intent.input;
+      return normalizeEnabledCommandInput({
+        commandId,
+        kind: 'EditStudent',
+        leaseEpoch,
+        targets: { studentId },
+        expectedRevisions: { student: expectedRevision },
+        payload,
+      });
+    }
+    case 'status': {
+      const { commandId, leaseEpoch, studentId, expectedRevision, ...payload } = intent.input;
+      return normalizeEnabledCommandInput({
+        commandId,
+        kind: 'SetStudentStatus',
+        leaseEpoch,
+        targets: { studentId },
+        expectedRevisions: { student: expectedRevision },
+        payload,
+      });
+    }
+    case 'ensure-day': {
+      const input = intent.input;
+      return normalizeEnabledCommandInput({
+        commandId: input.commandId,
+        kind: 'EnsureDay',
+        leaseEpoch: input.leaseEpoch,
+        targets: { dayId: input.dayId },
+        expectedRevisions: { day: 0 },
+        payload: { businessDate: input.dayId },
+      });
+    }
+    case 'correct-opening': {
+      const { commandId, leaseEpoch, studentId, dayId, expectedStudentRevision, expectedDayRevision, amount, note, reason } = intent.input;
+      return normalizeEnabledCommandInput({
+        commandId,
+        kind: 'CorrectOpening',
+        leaseEpoch,
+        targets: { studentId, dayId },
+        expectedRevisions: { student: expectedStudentRevision, day: expectedDayRevision },
+        payload: { amount, note, reason },
+      });
+    }
+  }
 }
 
 /** 期初日營業日的最小狀態：期初更正只需要 revision 與是否已關帳。 */
@@ -344,82 +433,44 @@ export { CloudStudentRepositoryError as StudentRepositoryReadError };
 
 export function createCloudStudentRepository(db: Firestore, options: CloudStudentRepositoryOptions = {}) {
   const commands = createCloudCommandRepository(db, options);
+  const commitStudentCommand = (intent: CloudStudentCommandIntent): Promise<CommandResult> => (
+    commands.commitCommand(buildStudentCommand(intent))
+  );
+  const confirmPendingIntent = (intent: CloudStudentCommandIntent, expectedDatasetId: string, expectedUid: string) => (
+    commands.confirmPendingIntent(
+      buildStudentCommand(intent),
+      intent.input.leaseEpoch,
+      expectedDatasetId,
+      expectedUid,
+      options.recoveryReader,
+    )
+  );
+  const cleanupConfirmedIntent = (
+    intent: CloudStudentCommandIntent,
+    expectedDatasetId: string,
+    expectedUid: string,
+    isCurrent: () => boolean,
+  ) => commands.cleanupConfirmedIntent(
+    buildStudentCommand(intent),
+    intent.input.leaseEpoch,
+    expectedDatasetId,
+    expectedUid,
+    options.recoveryReader,
+    isCurrent,
+  );
 
   return {
     list: () => listCloudStudents(db, options),
-    createStudent(input: CreateCloudStudentInput): Promise<CommandResult> {
-      return commands.commitCommand({
-        commandId: input.commandId,
-        kind: 'CreateStudent',
-        leaseEpoch: input.leaseEpoch,
-        targets: { studentId: input.studentId },
-        expectedRevisions: { student: 0 },
-        payload: {
-          studentCode: input.studentCode,
-          displayName: input.displayName,
-          aliases: input.aliases,
-          openingBalance: input.openingBalance,
-        },
-      });
-    },
-    changeStudentCode(input: ChangeCloudStudentCodeInput): Promise<CommandResult> {
-      const { commandId, leaseEpoch, studentId, expectedRevision, studentCode, reason } = input;
-      return commands.commitCommand({
-        commandId,
-        kind: 'ChangeStudentCode',
-        leaseEpoch,
-        targets: { studentId },
-        expectedRevisions: { student: expectedRevision },
-        payload: {
-          studentCode,
-          reason,
-        },
-      });
-    },
-    editStudent(input: EditCloudStudentInput): Promise<CommandResult> {
-      const { commandId, leaseEpoch, studentId, expectedRevision, ...payload } = input;
-      return commands.commitCommand({
-        commandId,
-        kind: 'EditStudent',
-        leaseEpoch,
-        targets: { studentId },
-        expectedRevisions: { student: expectedRevision },
-        payload,
-      });
-    },
-    setStudentStatus(input: SetCloudStudentStatusInput): Promise<CommandResult> {
-      const { commandId, leaseEpoch, studentId, expectedRevision, ...payload } = input;
-      return commands.commitCommand({
-        commandId,
-        kind: 'SetStudentStatus',
-        leaseEpoch,
-        targets: { studentId },
-        expectedRevisions: { student: expectedRevision },
-        payload,
-      });
-    },
+    commitStudentCommand,
+    confirmPendingIntent,
+    cleanupConfirmedIntent,
+    createStudent: (input: CreateCloudStudentInput): Promise<CommandResult> => commitStudentCommand({ kind: 'create', input }),
+    changeStudentCode: (input: ChangeCloudStudentCodeInput): Promise<CommandResult> => commitStudentCommand({ kind: 'change-code', input }),
+    editStudent: (input: EditCloudStudentInput): Promise<CommandResult> => commitStudentCommand({ kind: 'edit', input }),
+    setStudentStatus: (input: SetCloudStudentStatusInput): Promise<CommandResult> => commitStudentCommand({ kind: 'status', input }),
     readOpeningDay: (dayId: string) => readCloudOpeningDay(db, dayId, options),
-    ensureOpeningDay(input: EnsureCloudOpeningDayInput): Promise<CommandResult> {
-      return commands.commitCommand({
-        commandId: input.commandId,
-        kind: 'EnsureDay',
-        leaseEpoch: input.leaseEpoch,
-        targets: { dayId: input.dayId },
-        expectedRevisions: { day: 0 },
-        payload: { businessDate: input.dayId },
-      });
-    },
-    correctOpening(input: CorrectCloudOpeningInput): Promise<CommandResult> {
-      const { commandId, leaseEpoch, studentId, dayId, expectedStudentRevision, expectedDayRevision, amount, note, reason } = input;
-      return commands.commitCommand({
-        commandId,
-        kind: 'CorrectOpening',
-        leaseEpoch,
-        targets: { studentId, dayId },
-        expectedRevisions: { student: expectedStudentRevision, day: expectedDayRevision },
-        payload: { amount, note, reason },
-      });
-    },
+    ensureOpeningDay: (input: EnsureCloudOpeningDayInput): Promise<CommandResult> => commitStudentCommand({ kind: 'ensure-day', input }),
+    correctOpening: (input: CorrectCloudOpeningInput): Promise<CommandResult> => commitStudentCommand({ kind: 'correct-opening', input }),
     readCommand(commandId: string): Promise<CommandReceipt | null> {
       return commands.readCommand(commandId);
     },

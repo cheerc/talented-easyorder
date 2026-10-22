@@ -17,10 +17,23 @@ const repository = vi.hoisted(() => ({
   ensureOpeningDay: vi.fn(),
   correctOpening: vi.fn(),
   readCommand: vi.fn(),
+  commitStudentCommand: vi.fn(),
+  confirmPendingIntent: vi.fn(),
+  cleanupConfirmedIntent: vi.fn(),
 }));
+
+const currentAuth = vi.hoisted(() => ({ uid: 'uid-a' }));
 
 vi.mock('../../firebase/cloudStudentRepository', () => ({
   createCloudStudentRepository: () => repository,
+}));
+
+vi.mock('../../firebase/cloudRecoveryReader', () => ({
+  getCloudRecoveryReader: () => ({ assertCurrent: vi.fn() }),
+}));
+
+vi.mock('firebase/auth', () => ({
+  getAuth: () => ({ currentUser: { uid: currentAuth.uid } }),
 }));
 
 function student(studentId: string, overrides: Partial<CloudStudentRecord> = {}): CloudStudentRecord {
@@ -91,6 +104,7 @@ function fillCreateForm(input: { id?: string; name?: string; amount?: string; mo
 describe('CloudStudentsPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    currentAuth.uid = 'uid-a';
     vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValue('cmd-ui-001') });
     repository.list.mockResolvedValue(snapshot());
     repository.createStudent.mockResolvedValue(successful('cmd-ui-001', 'CreateStudent', '001'));
@@ -98,9 +112,18 @@ describe('CloudStudentsPage', () => {
     repository.editStudent.mockResolvedValue(successful('cmd-ui-001', 'EditStudent', '001'));
     repository.setStudentStatus.mockResolvedValue(successful('cmd-ui-001', 'SetStudentStatus', '001'));
     repository.readCommand.mockResolvedValue(null);
+    repository.confirmPendingIntent.mockResolvedValue({ status: 'not-found' });
     repository.readOpeningDay.mockResolvedValue({ dayId: '2026-01-01', revision: 3, status: 'open' });
     repository.ensureOpeningDay.mockResolvedValue({ ok: true, receipt: { ...receipt('cmd-ui-001', 'EnsureDay', '001'), targets: { dayId: '2026-01-01' } } });
     repository.correctOpening.mockResolvedValue(successful('cmd-ui-001', 'CorrectOpening', '001'));
+    repository.commitStudentCommand.mockImplementation(intent => {
+      if (intent.kind === 'create') return repository.createStudent(intent.input);
+      if (intent.kind === 'edit') return repository.editStudent(intent.input);
+      if (intent.kind === 'change-code') return repository.changeStudentCode(intent.input);
+      if (intent.kind === 'status') return repository.setStudentStatus(intent.input);
+      if (intent.kind === 'ensure-day') return repository.ensureOpeningDay(intent.input);
+      return repository.correctOpening(intent.input);
+    });
   });
 
   it('shows the exact student ID string, including leading zeroes, from the complete repository result', async () => {
@@ -233,14 +256,14 @@ describe('CloudStudentsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '以相同命令編號重試' }));
     await waitFor(() => expect(repository.createStudent).toHaveBeenCalledTimes(2));
     expect(repository.createStudent.mock.calls[0][0]).toEqual(repository.createStudent.mock.calls[1][0]);
-    expect(repository.readCommand).toHaveBeenCalledWith('cmd-ui-001');
+    expect(repository.confirmPendingIntent).toHaveBeenCalledTimes(1);
     expect(await screen.findByText(/已確認 新增 001 完成/)).toBeInTheDocument();
     expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'resolved');
   });
 
   it('drops every sensitive field on lease loss while retaining only the command ID', async () => {
     repository.createStudent.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
-    repository.readCommand.mockRejectedValueOnce({ code: 'LEASE_LOST', message: 'lease changed' });
+    repository.confirmPendingIntent.mockRejectedValueOnce({ code: 'LEASE_LOST', message: 'lease changed' });
     renderPage();
     await screen.findByText(/目前伺服器名單是空的/);
     openCreateForm();
@@ -256,7 +279,7 @@ describe('CloudStudentsPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
     expect(await screen.findByText('使用權已變更；敏感操作內容已清除。')).toBeInTheDocument();
-    expect(screen.getByText('命令編號 cmd-ui-001')).toBeInTheDocument();
+    expect(screen.getByText(/命令編號 cmd-ui-001/)).toBeInTheDocument();
     expect(screen.queryByText('查詢原命令結果')).not.toBeInTheDocument();
     const pageText = screen.getByRole('main', { name: '雲端學生名單' }).textContent ?? '';
     for (const sensitiveValue of ['077', '敏感姓名', '敏感別名', '敏感備註']) {
@@ -284,15 +307,65 @@ describe('CloudStudentsPage', () => {
 
     expect(await screen.findByText(/已確認 新增 001 完成/)).toBeInTheDocument();
     expect(repository.list).toHaveBeenCalledTimes(3);
-    expect(repository.readCommand).not.toHaveBeenCalled();
+    expect(repository.confirmPendingIntent).not.toHaveBeenCalled();
     expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'resolved');
   });
 
-  it('does not accept a receipt with the same ID until replay verifies the frozen command semantics', async () => {
-    repository.createStudent
-      .mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } })
-      .mockResolvedValueOnce({ ok: false, error: { code: 'INVALID_INPUT', message: 'commandId 已用於不同的命令內容' } });
-    repository.readCommand.mockResolvedValueOnce(receipt('cmd-ui-001', 'CreateStudent', 'OTHER-STUDENT'));
+  it('keeps receipt recovery locked when the completed list belongs to a different dataset', async () => {
+    const reportNavigationState = vi.fn();
+    let resolveReplacementList!: (value: CloudStudentList) => void;
+    repository.createStudent.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+    repository.confirmPendingIntent.mockResolvedValueOnce({
+      status: 'matched', receipt: receipt('cmd-ui-001', 'CreateStudent', '001'),
+    });
+    repository.cleanupConfirmedIntent.mockResolvedValueOnce(true);
+    repository.list
+      .mockResolvedValueOnce({ ...snapshot(), datasetId: 'dataset-A' })
+      .mockReturnValueOnce(new Promise(resolve => { resolveReplacementList = resolve; }))
+      .mockResolvedValueOnce({
+        ...snapshot([student('replacement-student', { studentCode: '999', displayName: 'B 資料集學生' })]),
+        datasetId: 'dataset-B',
+      });
+    renderPage({}, reportNavigationState);
+    await screen.findByText(/目前伺服器名單是空的/);
+    openCreateForm();
+    fillCreateForm({ id: '001', name: 'A 資料集學生', amount: '0', mode: '沿用既有核對結餘' });
+    fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
+    await screen.findByText('結果確認中，請勿重複建立／修改。');
+
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+    await waitFor(() => expect(repository.list).toHaveBeenCalledTimes(2));
+    await act(async () => resolveReplacementList({
+      ...snapshot([student('replacement-student', { studentCode: '999', displayName: 'B 資料集學生' })]),
+      datasetId: 'dataset-B',
+    }));
+
+    expect(screen.queryByTestId('cloud-student-row-999')).not.toBeInTheDocument();
+    const recoveryHeading = screen.getByText('已找到伺服器回執，名單尚待再次讀取。');
+    const recovery = recoveryHeading.closest('section');
+    if (!recovery) throw new Error('Receipt confirmation panel was not rendered');
+    expect(recovery).toHaveTextContent('命令編號 cmd-ui-001');
+    expect(recovery).toHaveTextContent('伺服器命令序號 1');
+    expect(screen.getByText(/資料集已變更/)).toBeInTheDocument();
+    expect(screen.queryByText('B 資料集學生')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '新增學生' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/已確認 新增 001 完成/)).not.toBeInTheDocument();
+    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
+
+    fireEvent.click(screen.getByRole('button', { name: '重新讀取伺服器名單' }));
+    await waitFor(() => expect(repository.list).toHaveBeenCalledTimes(3));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    const repeatedRecovery = screen.getByText('已找到伺服器回執，名單尚待再次讀取。').closest('section');
+    if (!repeatedRecovery) throw new Error('Receipt confirmation panel was not retained after reload');
+    expect(repeatedRecovery).toHaveTextContent('命令編號 cmd-ui-001');
+    expect(screen.getByText(/資料集已變更/)).toBeInTheDocument();
+    expect(screen.queryByTestId('cloud-student-row-999')).not.toBeInTheDocument();
+    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
+  });
+
+  it('checks a same-ID receipt with a read-only semantic query and never replays the commit', async () => {
+    repository.createStudent.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+    repository.confirmPendingIntent.mockRejectedValueOnce({ code: 'INVALID_INPUT', message: 'commandId 已用於不同的命令內容' });
     renderPage();
     await screen.findByText(/目前伺服器名單是空的/);
     openCreateForm();
@@ -303,20 +376,106 @@ describe('CloudStudentsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
 
     expect(await screen.findByText(/命令編號已存在，但伺服器內容與原操作不符/)).toBeInTheDocument();
-    expect(repository.createStudent).toHaveBeenCalledTimes(2);
-    expect(repository.createStudent.mock.calls[0][0]).toEqual(repository.createStudent.mock.calls[1][0]);
+    expect(repository.confirmPendingIntent).toHaveBeenCalledTimes(1);
+    expect(repository.createStudent).toHaveBeenCalledTimes(1);
     expect(repository.list).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/已確認 新增/)).not.toBeInTheDocument();
   });
 
-  it('does not restore a pending command after a concurrent list read loses authorization', async () => {
+  it('allows a read-only query at ten seconds but requires a fresh absence after the original settles before retry', async () => {
+    vi.useFakeTimers();
+    try {
+      let settleOriginal!: (result: CommandResult) => void;
+      repository.createStudent.mockReturnValueOnce(new Promise<CommandResult>(resolve => { settleOriginal = resolve; }));
+      renderPage();
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      openCreateForm();
+      fillCreateForm({ amount: '0', mode: '沿用既有核對結餘' });
+      fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
+
+      expect(screen.queryByRole('button', { name: '查詢原命令結果' })).not.toBeInTheDocument();
+      await act(async () => { vi.advanceTimersByTime(9_999); });
+      expect(screen.queryByRole('button', { name: '查詢原命令結果' })).not.toBeInTheDocument();
+      await act(async () => { vi.advanceTimersByTime(1); });
+      expect(screen.getByText(/結果確認中，勿重新收款/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(repository.confirmPendingIntent).toHaveBeenCalledTimes(1);
+      expect(repository.createStudent).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('button', { name: '以相同命令編號重試' })).not.toBeInTheDocument();
+
+      await act(async () => { settleOriginal({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } }); });
+      expect(screen.queryByRole('button', { name: '以相同命令編號重試' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(repository.confirmPendingIntent).toHaveBeenCalledTimes(2);
+      fireEvent.click(screen.getByRole('button', { name: '以相同命令編號重試' }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(repository.createStudent).toHaveBeenCalledTimes(2);
+      expect(repository.createStudent.mock.calls[0][0]).toEqual(repository.createStudent.mock.calls[1][0]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not let a late null query authorize retry when it started before the original settled', async () => {
+    vi.useFakeTimers();
+    try {
+      let settleOriginal!: (result: CommandResult) => void;
+      let resolveEarlyQuery!: (result: { status: 'not-found' }) => void;
+      repository.createStudent.mockReturnValueOnce(new Promise<CommandResult>(resolve => { settleOriginal = resolve; }));
+      repository.confirmPendingIntent.mockReturnValueOnce(new Promise<{ status: 'not-found' }>(resolve => { resolveEarlyQuery = resolve; }));
+      renderPage();
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      openCreateForm();
+      fillCreateForm({ amount: '0', mode: '沿用既有核對結餘' });
+      fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
+      await act(async () => { vi.advanceTimersByTime(10_000); });
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      expect(repository.confirmPendingIntent).toHaveBeenCalledOnce();
+
+      await act(async () => settleOriginal({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } }));
+      await act(async () => resolveEarlyQuery({ status: 'not-found' }));
+
+      expect(repository.createStudent).toHaveBeenCalledOnce();
+      expect(screen.queryByRole('button', { name: '以相同命令編號重試' })).not.toBeInTheDocument();
+      expect(screen.getByText(/這次查詢開始時原命令仍在送出中；未找到結果不能授權重試/)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(repository.confirmPendingIntent).toHaveBeenCalledTimes(2);
+      expect(screen.getByRole('button', { name: '以相同命令編號重試' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '以相同命令編號重試' }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(repository.createStudent).toHaveBeenCalledTimes(2);
+      expect(repository.createStudent.mock.calls[0][0]).toEqual(repository.createStudent.mock.calls[1][0]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not authorize a retry when the fenced receipt service read fails', async () => {
+    repository.createStudent.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+    repository.confirmPendingIntent.mockRejectedValueOnce({ code: 'UNKNOWN_RESULT', message: 'reader unavailable' });
+    renderPage();
+    await screen.findByText(/目前伺服器名單是空的/);
+    openCreateForm();
+    fillCreateForm({ amount: '0', mode: '沿用既有核對結餘' });
+    fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
+    await screen.findByText('結果確認中，請勿重複建立／修改。');
+
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+    expect(await screen.findByText(/查詢錯誤不代表命令不存在/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '以相同命令編號重試' })).not.toBeInTheDocument();
+    expect(repository.createStudent).toHaveBeenCalledTimes(1);
+  });
+
+  it('locks manual list reload while the frozen command is unresolved', async () => {
     let resolveCommand!: (result: CommandResult) => void;
     repository.createStudent.mockReturnValueOnce(new Promise<CommandResult>(resolve => {
       resolveCommand = resolve;
     }));
-    repository.list
-      .mockResolvedValueOnce(snapshot())
-      .mockRejectedValueOnce({ code: 'LEASE_LOST', message: 'lease changed' });
+    repository.list.mockResolvedValueOnce(snapshot());
     renderPage();
     await screen.findByText(/目前伺服器名單是空的/);
     openCreateForm();
@@ -329,30 +488,27 @@ describe('CloudStudentsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
 
     await screen.findByText('結果確認中，請勿重複建立／修改。');
+    expect(screen.getByRole('button', { name: '重新載入名單' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '重新載入名單' }));
-    expect(await screen.findByText('使用權已變更；敏感操作內容已清除。')).toBeInTheDocument();
-
-    await act(async () => resolveCommand(successful('cmd-ui-001', 'CreateStudent', '077')));
-
-    expect(screen.getByText('命令編號 cmd-ui-001')).toBeInTheDocument();
-    expect(screen.queryByText(/已找到伺服器回執/)).not.toBeInTheDocument();
-    const pageText = screen.getByRole('main', { name: '雲端學生名單' }).textContent ?? '';
-    for (const sensitiveValue of ['077', '敏感姓名', '敏感別名', '敏感備註']) {
-      expect(pageText).not.toContain(sensitiveValue);
-    }
-    expect(repository.list).toHaveBeenCalledTimes(2);
+    await act(async () => resolveCommand({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } }));
+    expect(screen.getByText(/命令編號 cmd-ui-001/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重新載入名單' })).toBeDisabled();
+    expect(repository.list).toHaveBeenCalledTimes(1);
   });
 
   it('blocks same-identity retries after an initial list authorization denial', async () => {
     const reportNavigationState = vi.fn();
+    const db = {} as Firestore;
     repository.list.mockRejectedValueOnce({ code: 'LEASE_LOST', message: 'lease changed' });
-    const view = renderPage({}, reportNavigationState);
+    const view = render(
+      <CloudStudentsPage db={db} leaseEpoch={4} identityKey="uid-a:4" onNavigationStateChange={reportNavigationState} />,
+    );
 
     expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
     expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'revoked');
     view.rerender(
       <CloudStudentsPage
-        db={{} as Firestore}
+        db={db}
         leaseEpoch={4}
         identityKey="uid-a:4"
         onNavigationStateChange={reportNavigationState}
@@ -366,16 +522,11 @@ describe('CloudStudentsPage', () => {
     expect(screen.getByText(/重新載入整頁會再次向伺服器驗證/)).toBeInTheDocument();
   });
 
-  it('does not restore a delayed list after receipt lookup loses authorization', async () => {
-    let resolveList!: (value: CloudStudentList) => void;
+  it('clears the frozen command after a read-only receipt query loses authorization and locks list reload', async () => {
     let rejectReceiptRead!: (error: unknown) => void;
     repository.createStudent.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
-    repository.list
-      .mockResolvedValueOnce(snapshot())
-      .mockReturnValueOnce(new Promise<CloudStudentList>(resolve => {
-        resolveList = resolve;
-      }));
-    repository.readCommand.mockReturnValueOnce(new Promise<CommandReceipt | null>((_resolve, reject) => {
+    repository.list.mockResolvedValueOnce(snapshot());
+    repository.confirmPendingIntent.mockReturnValueOnce(new Promise((_, reject) => {
       rejectReceiptRead = reject;
     }));
     renderPage();
@@ -385,20 +536,18 @@ describe('CloudStudentsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
     await screen.findByText('結果確認中，請勿重複建立／修改。');
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
-    await waitFor(() => expect(repository.readCommand).toHaveBeenCalledWith('cmd-ui-001'));
-    fireEvent.click(screen.getByRole('button', { name: '重新載入名單' }));
+    await waitFor(() => expect(repository.confirmPendingIntent).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: '重新載入名單' })).toBeDisabled();
 
     await act(async () => rejectReceiptRead({ code: 'UNAUTHORIZED', message: 'token revoked' }));
     expect(await screen.findByText('使用權已變更；敏感操作內容已清除。')).toBeInTheDocument();
-    await act(async () => resolveList(snapshot([student('099', { displayName: '過期敏感名單' })])));
 
     expect(screen.getByText('命令編號 cmd-ui-001')).toBeInTheDocument();
     const pageText = screen.getByRole('main', { name: '雲端學生名單' }).textContent ?? '';
-    for (const sensitiveValue of ['088', '另一敏感姓名', '099', '過期敏感名單']) {
+    for (const sensitiveValue of ['088', '另一敏感姓名']) {
       expect(pageText).not.toContain(sensitiveValue);
     }
-    expect(screen.queryByTestId('cloud-student-row-099')).not.toBeInTheDocument();
-    expect(repository.list).toHaveBeenCalledTimes(2);
+    expect(repository.list).toHaveBeenCalledTimes(1);
   });
 
   it('clears old identity data immediately and ignores an old list promise after identity changes', async () => {
@@ -419,6 +568,63 @@ describe('CloudStudentsPage', () => {
     await act(async () => resolveOld(snapshot([student('OLD-PII', { displayName: '前一位操作員資料' })])));
     expect(screen.queryByText('前一位操作員資料')).not.toBeInTheDocument();
     expect(screen.getByText('目前操作員資料')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['Auth UID', (db: Firestore) => {
+      currentAuth.uid = 'uid-b';
+      return { db, leaseEpoch: 4, identityKey: 'uid-a:4' };
+    }],
+    ['lease epoch', (db: Firestore) => ({ db, leaseEpoch: 5, identityKey: 'uid-a:4' })],
+    ['Firestore instance', () => ({ db: {} as Firestore, leaseEpoch: 4, identityKey: 'uid-a:4' })],
+  ])('invalidates a pending command immediately when the %s scope changes', async (_label, nextScope) => {
+    let resolveCommand!: (result: CommandResult) => void;
+    repository.commitStudentCommand.mockReturnValueOnce(new Promise(resolve => { resolveCommand = resolve; }));
+    const db = {} as Firestore;
+    const view = render(
+      <CloudStudentsPage db={db} leaseEpoch={4} identityKey="uid-a:4" />,
+    );
+    await screen.findByText(/目前伺服器名單是空的/);
+    openCreateForm();
+    fillCreateForm({ id: '097', name: '待清除敏感姓名', amount: '8', mode: '建立新學生' });
+    fireEvent.change(screen.getByLabelText(/別名（逗號、頓號/), { target: { value: '待清除敏感別名' } });
+    fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
+    await screen.findByText('結果確認中，請勿重複建立／修改。');
+
+    view.rerender(<CloudStudentsPage {...nextScope(db)} />);
+
+    const main = screen.getByRole('main', { name: '雲端學生名單' });
+    expect(main.textContent).not.toContain('待清除敏感姓名');
+    expect(main.textContent).not.toContain('待清除敏感別名');
+    expect(main.textContent).not.toContain('097');
+    expect(screen.queryByText(/命令編號 cmd-ui-001/)).not.toBeInTheDocument();
+
+    await act(async () => resolveCommand({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'late response' } }));
+    expect(screen.queryByText(/命令編號 cmd-ui-001/)).not.toBeInTheDocument();
+    expect(screen.getByRole('main', { name: '雲端學生名單' }).textContent).not.toContain('待清除敏感姓名');
+    expect(repository.confirmPendingIntent).not.toHaveBeenCalled();
+  });
+
+  it('does not confirm, clean the journal, or reload after a pending receipt read settles after unmount', async () => {
+    let resolveReceipt!: (result: { status: 'matched'; receipt: CommandReceipt }) => void;
+    repository.createStudent.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+    repository.confirmPendingIntent.mockReturnValueOnce(new Promise(resolve => { resolveReceipt = resolve; }));
+    const view = renderPage();
+    await screen.findByText(/目前伺服器名單是空的/);
+    openCreateForm();
+    fillCreateForm({ id: '096', name: '卸載後不得回填', amount: '0', mode: '沿用既有核對結餘' });
+    fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
+    await screen.findByText(/命令編號 cmd-ui-001/);
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+    await waitFor(() => expect(repository.confirmPendingIntent).toHaveBeenCalledOnce());
+
+    view.unmount();
+
+    await act(async () => resolveReceipt({
+      status: 'matched', receipt: receipt('cmd-ui-001', 'CreateStudent', '096'),
+    }));
+    expect(repository.cleanupConfirmedIntent).not.toHaveBeenCalled();
+    expect(repository.list).toHaveBeenCalledTimes(1);
   });
 
   it('sorts students numerically by studentCode', async () => {
@@ -559,6 +765,7 @@ describe('CloudStudentsPage', () => {
       dayId: '2026-01-01',
     }));
     expect(await screen.findByText(/請再按該學生的「更正期初」繼續/)).toBeInTheDocument();
+    expect(repository.correctOpening).not.toHaveBeenCalled();
 
     repository.readOpeningDay.mockResolvedValueOnce({ dayId: '2026-01-01', revision: 7, status: 'closed' });
     row = await screen.findByTestId('cloud-student-row-001');

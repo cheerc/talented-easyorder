@@ -56,6 +56,90 @@ import {
 type Data = Record<string, unknown>;
 type CurrentUser = Pick<User, 'uid' | 'email' | 'emailVerified' | 'providerData'>;
 
+interface CapturedPendingIntent {
+  canonical: CanonicalEnabledInput | null;
+  verificationError: RejectCommand | null;
+}
+
+function captureCanonicalValue(value: unknown, ancestors: WeakSet<object>): unknown {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new InvalidCloudCommandInput('原命令含非有限數值');
+    return value;
+  }
+  if (typeof value !== 'object') throw new InvalidCloudCommandInput('原命令含不支援的資料值');
+  if (ancestors.has(value)) throw new InvalidCloudCommandInput('原命令資料不可循環參照');
+
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      if (Object.getPrototypeOf(value) !== Array.prototype) {
+        throw new InvalidCloudCommandInput('原命令陣列必須使用固定陣列原型');
+      }
+      const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+      if (!lengthDescriptor || !Object.hasOwn(lengthDescriptor, 'value') || lengthDescriptor.enumerable) {
+        throw new InvalidCloudCommandInput('原命令陣列長度描述子不支援');
+      }
+      const length = lengthDescriptor.value;
+      if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0) {
+        throw new InvalidCloudCommandInput('原命令陣列長度不正確');
+      }
+      const keys = Reflect.ownKeys(value);
+      if (keys.length !== length + 1 || keys.some(key => {
+        if (key === 'length') return false;
+        if (typeof key !== 'string') return true;
+        const index = Number(key);
+        return !Number.isSafeInteger(index) || index < 0 || index >= length || String(index) !== key;
+      })) {
+        throw new InvalidCloudCommandInput('原命令陣列不可稀疏或含額外欄位');
+      }
+
+      const captured: unknown[] = new Array(length);
+      for (let index = 0; index < length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
+          throw new InvalidCloudCommandInput('原命令陣列只能包含可列舉資料欄位');
+        }
+        Object.defineProperty(captured, String(index), {
+          value: captureCanonicalValue(descriptor.value, ancestors),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      }
+      return captured;
+    }
+
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new InvalidCloudCommandInput('原命令物件必須是固定物件');
+    }
+    const captured: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== 'string') throw new InvalidCloudCommandInput('原命令物件不可含 Symbol 欄位');
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
+        throw new InvalidCloudCommandInput('原命令物件只能包含可列舉資料欄位');
+      }
+      Object.defineProperty(captured, key, {
+        value: captureCanonicalValue(descriptor.value, ancestors),
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    }
+    return captured;
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+function captureCanonicalData(value: CanonicalEnabledInput): CanonicalEnabledInput {
+  // The domain normalizer has already validated this schema. Copy its data values
+  // without property reads, accessors, inherited serializers, or mutable aliases.
+  return captureCanonicalValue(value, new WeakSet<object>()) as CanonicalEnabledInput;
+}
+
 export interface CloudCommandRepositoryOptions {
   /** Injection seam for emulator tests; production callers use Firebase Auth currentUser. */
   currentUser?: () => CurrentUser | null;
@@ -73,6 +157,11 @@ class RejectCommand extends Error {
 }
 
 export type PendingReceiptCheck =
+  | { status: 'matched'; receipt: CommandReceipt }
+  | { status: 'not-found' }
+  | { status: 'different-dataset' };
+
+export type PendingIntentCheck =
   | { status: 'matched'; receipt: CommandReceipt }
   | { status: 'not-found' }
   | { status: 'different-dataset' };
@@ -768,6 +857,160 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     return (await confirmPendingBatch(records, expectedEpoch)).map(check => (
       check.status === 'matched' ? { status: 'matched', receipt: check.receipt } : check
     ));
+  }
+
+  /**
+   * Read-only confirmation for a caller that still holds the original typed command.
+   * It proves both receipt identity and the command's complete canonical semantics; it never writes.
+   */
+  function capturePendingIntent(untrustedInput: unknown, expectedEpoch: number): CapturedPendingIntent {
+    try {
+      const normalized = normalizeEnabledCommandInput(untrustedInput);
+      if (normalized.leaseEpoch !== expectedEpoch) {
+        throw new RejectCommand('LEASE_LOST', '凍結命令的使用權世代與目前頁面不符');
+      }
+      // Keep a detached canonical snapshot before any caller can mutate the original
+      // object while recovery reads are in flight.
+      return { canonical: captureCanonicalData(normalized), verificationError: null };
+    } catch (error) {
+      return {
+        canonical: null,
+        verificationError: error instanceof RejectCommand
+          ? error
+          : new RejectCommand('INVALID_INPUT', '原命令內容不符合正式命令格式'),
+      };
+    }
+  }
+
+  async function confirmCapturedPendingIntent(
+    captured: CapturedPendingIntent,
+    expectedEpoch: number,
+    expectedDatasetId: string,
+    expectedUid: string,
+    recoveryReader?: CloudRecoveryReader,
+  ): Promise<PendingIntentCheck> {
+    if (!Number.isSafeInteger(expectedEpoch) || expectedEpoch < 1
+      || typeof expectedDatasetId !== 'string' || expectedDatasetId.length < 1 || expectedDatasetId.length > 256
+      || typeof expectedUid !== 'string' || expectedUid.length < 1 || expectedUid.length > 256) {
+      throw new CloudCommandReadError('INVALID_INPUT', '待確認命令的使用權或資料集識別不正確');
+    }
+    const candidateUser = getCurrentUser(options);
+    try {
+      requireVerifiedGoogle(candidateUser);
+    } catch {
+      throw new CloudCommandReadError('UNAUTHORIZED', '需要目前已驗證的 Google 操作員身分');
+    }
+    const user = candidateUser;
+    if (user.uid !== expectedUid) throw new CloudCommandReadError('LEASE_LOST', '登入身分已變更；原命令不可在新身分下確認或重試');
+    try {
+      const before = await readRecoveryContext(user, expectedEpoch, recoveryReader);
+      const { canonical } = captured;
+      let verificationError = captured.verificationError;
+
+      let result: PendingIntentCheck | null = null;
+      let inputFingerprint: string | null = null;
+      if (canonical) {
+        inputFingerprint = await fingerprintCommandInput(canonical);
+        recoveryReader?.assertCurrent();
+        assertCurrentRecoveryOwner(user);
+        if (before.datasetId !== expectedDatasetId) {
+          result = { status: 'different-dataset' };
+        } else {
+          const stored = await verifiedReceipt(canonical.commandId, recoveryReader);
+          recoveryReader?.assertCurrent();
+          assertCurrentRecoveryOwner(user);
+          if (!stored) {
+            result = { status: 'not-found' };
+          } else {
+            const beforeDataset = (stored.before as Data | null)?.head && ((stored.before as Data).head as Data).datasetId;
+            const afterDataset = (stored.after as Data | null)?.head && ((stored.after as Data).head as Data).datasetId;
+            if (stored.commandId !== canonical.commandId || stored.actor.uid !== user.uid
+              || beforeDataset !== expectedDatasetId || afterDataset !== expectedDatasetId) {
+              verificationError = new RejectCommand('UNSUPPORTED_SCHEMA', '伺服器 receipt 與原命令資料集或操作人不一致');
+            } else {
+              try {
+                await assertStoredReceiptMatches(stored, canonical, inputFingerprint);
+                recoveryReader?.assertCurrent();
+                assertCurrentRecoveryOwner(user);
+                result = { status: 'matched', receipt: buildReceipt(stored) };
+              } catch (error) {
+                recoveryReader?.assertCurrent();
+                assertCurrentRecoveryOwner(user);
+                verificationError = error instanceof RejectCommand
+                  ? error
+                  : new RejectCommand('UNKNOWN_RESULT', '目前無法完成原命令語意比對');
+              }
+            }
+          }
+        }
+      }
+
+      const after = await readRecoveryContext(user, expectedEpoch, recoveryReader);
+      if (before.uid !== after.uid || before.datasetId !== after.datasetId || before.leaseEpoch !== after.leaseEpoch) {
+        throw new RejectCommand('LEASE_LOST', '查詢期間使用權或資料集已變更');
+      }
+      if (verificationError) throw verificationError;
+      if (!result) throw new RejectCommand('UNKNOWN_RESULT', '目前無法安全確認原命令');
+      if (result.status === 'not-found' && (before.maintenance || after.maintenance)) {
+        throw new RejectCommand('MAINTENANCE', '系統維護中，暫停同編號重試；請稍後重新查詢');
+      }
+      return result;
+    } catch (error) {
+      if (error instanceof CloudCommandReadError) throw error;
+      if (error instanceof CloudRecoveryReaderError) throw new CloudCommandReadError(error.code, error.message);
+      if (error instanceof RejectCommand) throw new CloudCommandReadError(error.code, error.message);
+      if (error instanceof InvalidCloudCommandInput) throw new CloudCommandReadError('INVALID_INPUT', '原命令內容不符合正式命令格式');
+      throw new CloudCommandReadError(mapTransactionError(error), '目前無法安全確認原命令');
+    }
+  }
+
+  async function confirmPendingIntent(
+    untrustedInput: unknown,
+    expectedEpoch: number,
+    expectedDatasetId: string,
+    expectedUid: string,
+    recoveryReader?: CloudRecoveryReader,
+  ): Promise<PendingIntentCheck> {
+    const captured = capturePendingIntent(untrustedInput, expectedEpoch);
+    return confirmCapturedPendingIntent(captured, expectedEpoch, expectedDatasetId, expectedUid, recoveryReader);
+  }
+
+  async function cleanupConfirmedIntent(
+    untrustedInput: unknown,
+    expectedEpoch: number,
+    expectedDatasetId: string,
+    expectedUid: string,
+    recoveryReader: CloudRecoveryReader | undefined,
+    isCurrent: () => boolean,
+  ): Promise<boolean> {
+    const captured = capturePendingIntent(untrustedInput, expectedEpoch);
+    const record: PendingCommandIdentity | null = captured.canonical ? {
+      commandId: captured.canonical.commandId,
+      datasetId: expectedDatasetId,
+      uid: expectedUid,
+    } : null;
+    const check = await confirmCapturedPendingIntent(
+      captured,
+      expectedEpoch,
+      expectedDatasetId,
+      expectedUid,
+      recoveryReader,
+    );
+    if (check.status !== 'matched' || !record) return false;
+    const owner = getCurrentUser(options);
+    requireVerifiedGoogle(owner);
+    if (owner.uid !== expectedUid) throw new CloudCommandReadError('LEASE_LOST', '登入身分已變更，不能清除原命令追蹤');
+    // The receipt and both server contexts were verified before entering removeIf.
+    // Its lock callback is intentionally synchronous and contains no network work.
+    return pendingJournal.removeIf(record, () => {
+      try {
+        recoveryReader?.assertCurrent();
+        assertCurrentRecoveryOwner(owner);
+        return isCurrent() === true;
+      } catch {
+        return false;
+      }
+    });
   }
 
   async function getPendingRecoveryContext(expectedEpoch: number, recoveryReader?: CloudRecoveryReader): Promise<RecoveryContext> {
@@ -1956,5 +2199,8 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     }
   }
 
-  return { commitCommand, readCommand, confirmPending, confirmPendingPage, getPendingRecoveryContext };
+  return {
+    commitCommand, readCommand, confirmPending, confirmPendingPage, confirmPendingIntent,
+    cleanupConfirmedIntent, getPendingRecoveryContext,
+  };
 }

@@ -60,6 +60,11 @@ async function readEmulatorDocument(collection: string, id: string) {
   return response.json() as Promise<{ fields?: Record<string, unknown> }>;
 }
 
+function studentTargetFromReceipt(receipt: { fields?: Record<string, unknown> }): string | null {
+  const targets = receipt.fields?.targets as { mapValue?: { fields?: Record<string, unknown> } } | undefined;
+  return (targets?.mapValue?.fields?.studentId as { stringValue?: string } | undefined)?.stringValue ?? null;
+}
+
 async function listEmulatorDocumentIds(collection: string): Promise<string[]> {
   const response = await fetch(`${FIRESTORE_EMULATOR}/v1/projects/demo-easyorder/databases/(default)/documents/${collection}?pageSize=100`, {
     headers: { Authorization: 'Bearer owner' },
@@ -813,6 +818,399 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await removeDocument('days', today);
       await removeDocument('students', studentId);
       await removeDocument('studentCodes', studentCode);
+      await upsertDocument('system', 'dataHead', {
+        datasetId: DATASET_ID, seq: 0, lastCommandId: null, maintenance: false, goLiveDate: today,
+      });
+    }
+  });
+
+  test('confirms Student create through Lite, stays locked, then refreshes after the write response returns', async ({ googleSession }) => {
+    test.setTimeout(120000);
+    const { page, uid } = googleSession;
+    const today = taipeiToday();
+    const seedStudentId = 'd1000000-0000-4000-8000-000000000041';
+    const seedStudentCode = '930';
+    const seedCommandId = 'd2000000-0000-4000-8000-000000000042';
+    const studentCode = '931';
+    await seedOrderRecoveryFixture(uid, today, seedStudentId, seedStudentCode, seedCommandId);
+
+    const writeGate: WriteGate = {
+      mode: 'after-server', intercepted: deferred(), release: deferred(), completed: deferred(), requests: 0,
+    };
+    let activeWriteGate: WriteGate | null = null;
+    let writeResponseReturned = false;
+    await page.route('**/documents:commit*', async route => {
+      const current = activeWriteGate;
+      if (!current || route.request().method() !== 'POST') {
+        await route.continue();
+        return;
+      }
+      current.requests += 1;
+      const response = await route.fetch();
+      current.intercepted.resolve();
+      await current.release.promise;
+      await route.fulfill({ response });
+      writeResponseReturned = true;
+      current.completed.resolve();
+    });
+
+    let commandId: string | null = null;
+    let createdStudentId: string | null = null;
+    try {
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(page.getByRole('heading', { name: '學生名單與期初結餘' })).toBeVisible();
+      await expect(page.getByTestId(`cloud-student-row-${seedStudentCode}`)).toBeVisible();
+
+      await page.getByRole('button', { name: '新增學生' }).click();
+      const form = page.getByRole('form', { name: '新增學生' });
+      await form.getByLabel('學員編號').fill(studentCode);
+      await form.getByRole('textbox', { name: '姓名', exact: true }).fill('P13b2b2a 新學生');
+      await form.getByRole('textbox', { name: /期初結餘（整數/ }).fill('0');
+      await form.getByRole('radio', { name: /沿用既有核對結餘/ }).check();
+      activeWriteGate = writeGate;
+      await form.getByRole('button', { name: '建立學生' }).click();
+
+      const intercepted = await Promise.race([
+        writeGate.intercepted.promise.then(() => true),
+        new Promise<boolean>(resolve => setTimeout(() => resolve(false), 20000)),
+      ]);
+      if (!intercepted) throw new Error('Student create did not reach the Firestore Emulator commit endpoint');
+      await expect(page.getByText('結果確認中，勿重新收款')).toBeVisible({ timeout: 15000 });
+      const headAfterCommit = await readEmulatorDocument('system', 'dataHead');
+      commandId = (headAfterCommit.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null;
+      if (!commandId) throw new Error('The committed Student command ID was not visible in dataHead');
+      const receipt = await readEmulatorDocument('commands', commandId);
+      expect((receipt.fields?.commandId as { stringValue?: string } | undefined)?.stringValue).toBe(commandId);
+      createdStudentId = studentTargetFromReceipt(receipt);
+      expect(createdStudentId).toMatch(/^[0-9a-f-]{36}$/i);
+      expect(writeGate.requests).toBe(1);
+
+      await page.getByRole('button', { name: '查詢原命令結果' }).click();
+      await expect(page.getByText('已找到伺服器回執，名單尚待再次讀取。')).toBeVisible({ timeout: 15000 });
+      await expect(page.getByRole('button', { name: '重新讀取伺服器名單' })).toBeDisabled();
+      await expect(page.getByRole('button', { name: '載入中…' })).toBeDisabled();
+      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      expect(writeResponseReturned).toBe(false);
+      expect(writeGate.requests).toBe(1);
+      expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
+
+      writeGate.release.resolve();
+      await writeGate.completed.promise;
+      await expect(page.getByTestId(`cloud-student-row-${studentCode}`)).toContainText('P13b2b2a 新學生');
+      await expect(page.getByText(new RegExp(`已確認 新增 ${studentCode} 完成`))).toBeVisible();
+      await expect(page.getByRole('alert', { name: '命令結果確認' })).toHaveCount(0);
+      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeEnabled();
+      expect(writeResponseReturned).toBe(true);
+      expect(writeGate.requests).toBe(1);
+      expect((await readEmulatorDocument('system', 'dataHead')).fields?.seq).toEqual({ integerValue: '1' });
+      expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
+      await expect.poll(() => readPendingIdentity(page, commandId!)).toBeNull();
+    } finally {
+      writeGate.release.resolve();
+      if (writeGate.requests > 0) await Promise.race([writeGate.completed.promise, new Promise(resolve => setTimeout(resolve, 5000))]);
+      await page.unroute('**/documents:commit*');
+      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
+      if (await release.isVisible().catch(() => false)) await release.click();
+      commandId ??= (((await readEmulatorDocument('system', 'dataHead').catch(() => null))?.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null);
+      if (commandId) await removeDocument('commands', commandId);
+      if (createdStudentId) await removeDocument('students', createdStudentId);
+      await removeDocument('studentCodes', studentCode);
+      await removeDocument('days', today);
+      await removeDocument('students', seedStudentId);
+      await removeDocument('studentCodes', seedStudentCode);
+      await upsertDocument('system', 'dataHead', {
+        datasetId: DATASET_ID, seq: 0, lastCommandId: null, maintenance: false, goLiveDate: today,
+      });
+    }
+  });
+
+  test('confirms a real Student edit through Lite and ignores the late original response', async ({ googleSession }) => {
+    test.setTimeout(120000);
+    const { page, uid } = googleSession;
+    const today = taipeiToday();
+    const studentId = 'd1000000-0000-4000-8000-000000000061';
+    const studentCode = '932';
+    const seedCommandId = 'd2000000-0000-4000-8000-000000000062';
+    await seedOrderRecoveryFixture(uid, today, studentId, studentCode, seedCommandId);
+
+    const writeGate: WriteGate = {
+      mode: 'after-server', intercepted: deferred(), release: deferred(), completed: deferred(), requests: 0,
+    };
+    let activeWriteGate: WriteGate | null = null;
+    let writeResponseReturned = false;
+    await page.route('**/documents:commit*', async route => {
+      const current = activeWriteGate;
+      if (!current || route.request().method() !== 'POST') {
+        await route.continue();
+        return;
+      }
+      current.requests += 1;
+      const response = await route.fetch();
+      current.intercepted.resolve();
+      await current.release.promise;
+      await route.fulfill({ response });
+      writeResponseReturned = true;
+      current.completed.resolve();
+    });
+
+    let commandId: string | null = null;
+    try {
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      const row = page.getByTestId(`cloud-student-row-${studentCode}`);
+      await expect(row).toBeVisible();
+      await row.getByRole('button', { name: '編輯姓名與別名' }).click();
+      const form = row.getByRole('form', { name: `編輯學生 ${studentCode}` });
+      await form.getByLabel('姓名').fill('P13b2b2a 已更名');
+      await form.getByLabel('別名').fill('恢復核對別名');
+      activeWriteGate = writeGate;
+      await form.getByRole('button', { name: '儲存姓名與別名' }).click();
+
+      const intercepted = await Promise.race([
+        writeGate.intercepted.promise.then(() => true),
+        new Promise<boolean>(resolve => setTimeout(() => resolve(false), 20000)),
+      ]);
+      if (!intercepted) throw new Error('Student edit did not reach the Firestore Emulator commit endpoint');
+      await expect(page.getByText('結果確認中，勿重新收款')).toBeVisible({ timeout: 15000 });
+      commandId = (await readEmulatorDocument('system', 'dataHead')).fields?.lastCommandId
+        ? (((await readEmulatorDocument('system', 'dataHead')).fields?.lastCommandId as { stringValue?: string }).stringValue ?? null)
+        : null;
+      if (!commandId) throw new Error('The committed Student edit command ID was not visible in dataHead');
+      const receipt = await readEmulatorDocument('commands', commandId);
+      expect((receipt.fields?.kind as { stringValue?: string } | undefined)?.stringValue).toBe('EditStudent');
+      expect(studentTargetFromReceipt(receipt)).toBe(studentId);
+
+      await page.getByRole('button', { name: '查詢原命令結果' }).click();
+      await expect(page.getByText('已找到伺服器回執，名單尚待再次讀取。')).toBeVisible({ timeout: 15000 });
+      await expect(page.getByRole('button', { name: '重新讀取伺服器名單' })).toBeDisabled();
+      await expect(page.getByRole('button', { name: '載入中…' })).toBeDisabled();
+      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      expect(writeResponseReturned).toBe(false);
+      expect(writeGate.requests).toBe(1);
+
+      writeGate.release.resolve();
+      await writeGate.completed.promise;
+      await expect(page.getByTestId(`cloud-student-row-${studentCode}`)).toContainText('P13b2b2a 已更名');
+      await expect(page.getByText(new RegExp(`已確認 修改 ${studentCode} 完成`))).toBeVisible();
+      expect(writeResponseReturned).toBe(true);
+      expect(writeGate.requests).toBe(1);
+      expect((await readEmulatorDocument('system', 'dataHead')).fields?.seq).toEqual({ integerValue: '1' });
+      expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
+      await expect.poll(() => readPendingIdentity(page, commandId!)).toBeNull();
+    } finally {
+      writeGate.release.resolve();
+      if (writeGate.requests > 0) await Promise.race([writeGate.completed.promise, new Promise(resolve => setTimeout(resolve, 5000))]);
+      await page.unroute('**/documents:commit*');
+      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
+      if (await release.isVisible().catch(() => false)) await release.click();
+      commandId ??= (((await readEmulatorDocument('system', 'dataHead').catch(() => null))?.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null);
+      if (commandId) await removeDocument('commands', commandId);
+      await removeDocument('days', today);
+      await removeDocument('students', studentId);
+      await removeDocument('studentCodes', studentCode);
+      await upsertDocument('system', 'dataHead', {
+        datasetId: DATASET_ID, seq: 0, lastCommandId: null, maintenance: false, goLiveDate: today,
+      });
+    }
+  });
+
+  test('does not enable retry when a successful Lite read finds no Student receipt while the write is still in flight', async ({ googleSession }) => {
+    test.setTimeout(120000);
+    const { page, uid } = googleSession;
+    const today = taipeiToday();
+    const seedStudentId = 'd1000000-0000-4000-8000-000000000051';
+    const seedStudentCode = '940';
+    const seedCommandId = 'd2000000-0000-4000-8000-000000000052';
+    const studentCode = '941';
+    await seedOrderRecoveryFixture(uid, today, seedStudentId, seedStudentCode, seedCommandId);
+
+    const writeGate: WriteGate = {
+      mode: 'before-server', intercepted: deferred(), release: deferred(), completed: deferred(), requests: 0,
+    };
+    let activeWriteGate: WriteGate | null = null;
+    await page.route('**/documents:commit*', async route => {
+      const current = activeWriteGate;
+      if (!current || route.request().method() !== 'POST') {
+        await route.continue();
+        return;
+      }
+      current.requests += 1;
+      current.intercepted.resolve();
+      await current.release.promise;
+      const response = await route.fetch();
+      await route.fulfill({ response });
+      current.completed.resolve();
+    });
+
+    let commandId: string | null = null;
+    let createdStudentId: string | null = null;
+    try {
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await page.getByRole('button', { name: '新增學生' }).click();
+      const form = page.getByRole('form', { name: '新增學生' });
+      await form.getByLabel('學員編號').fill(studentCode);
+      await form.getByRole('textbox', { name: '姓名', exact: true }).fill('P13b2b2a 尚未送達');
+      await form.getByRole('textbox', { name: /期初結餘（整數/ }).fill('0');
+      await form.getByRole('radio', { name: /沿用既有核對結餘/ }).check();
+      activeWriteGate = writeGate;
+      await form.getByRole('button', { name: '建立學生' }).click();
+      const intercepted = await Promise.race([
+        writeGate.intercepted.promise.then(() => true),
+        new Promise<boolean>(resolve => setTimeout(() => resolve(false), 20000)),
+      ]);
+      if (!intercepted) throw new Error('Student create did not reach the Firestore Emulator commit endpoint');
+      await expect(page.getByText('結果確認中，勿重新收款')).toBeVisible({ timeout: 15000 });
+      const headBeforeRelease = await readEmulatorDocument('system', 'dataHead');
+      commandId = (headBeforeRelease.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null;
+      expect(commandId).toBeNull();
+
+      await page.getByRole('button', { name: '查詢原命令結果' }).click();
+      await expect(page.getByText(/原命令仍在送出中；目前不能重試/)).toBeVisible();
+      await expect(page.getByRole('button', { name: '以相同命令編號重試' })).toHaveCount(0);
+      expect(writeGate.requests).toBe(1);
+      expect(await listEmulatorDocumentIds('commands')).toEqual([]);
+
+      writeGate.release.resolve();
+      await writeGate.completed.promise;
+      await expect(page.getByTestId(`cloud-student-row-${studentCode}`)).toContainText('P13b2b2a 尚未送達');
+      expect(writeGate.requests).toBe(1);
+      const headAfterRelease = await readEmulatorDocument('system', 'dataHead');
+      commandId = (headAfterRelease.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null;
+      if (!commandId) throw new Error('The original Student command did not commit after the route was released');
+      createdStudentId = studentTargetFromReceipt(await readEmulatorDocument('commands', commandId));
+      expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
+      expect((headAfterRelease.fields?.seq as { integerValue?: string } | undefined)?.integerValue).toBe('1');
+    } finally {
+      writeGate.release.resolve();
+      if (writeGate.requests > 0) await Promise.race([writeGate.completed.promise, new Promise(resolve => setTimeout(resolve, 5000))]);
+      await page.unroute('**/documents:commit*');
+      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
+      if (await release.isVisible().catch(() => false)) await release.click();
+      commandId ??= (((await readEmulatorDocument('system', 'dataHead').catch(() => null))?.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null);
+      if (commandId) await removeDocument('commands', commandId);
+      if (createdStudentId) await removeDocument('students', createdStudentId);
+      await removeDocument('studentCodes', studentCode);
+      await removeDocument('days', today);
+      await removeDocument('students', seedStudentId);
+      await removeDocument('studentCodes', seedStudentCode);
+      await upsertDocument('system', 'dataHead', {
+        datasetId: DATASET_ID, seq: 0, lastCommandId: null, maintenance: false, goLiveDate: today,
+      });
+    }
+  });
+
+  test('keeps the confirmed Student operation locked when its fresh list switches datasets', async ({ googleSession }) => {
+    test.setTimeout(120000);
+    const { page, uid } = googleSession;
+    const today = taipeiToday();
+    const seedStudentId = 'd1000000-0000-4000-8000-000000000071';
+    const seedStudentCode = '942';
+    const seedCommandId = 'd2000000-0000-4000-8000-000000000072';
+    const studentCode = '943';
+    await seedOrderRecoveryFixture(uid, today, seedStudentId, seedStudentCode, seedCommandId);
+
+    const writeGate: WriteGate = {
+      mode: 'after-server', intercepted: deferred(), release: deferred(), completed: deferred(), requests: 0,
+    };
+    let activeWriteGate: WriteGate | null = null;
+    let writeResponseReturned = false;
+    await page.route('**/documents:commit*', async route => {
+      const current = activeWriteGate;
+      if (!current || route.request().method() !== 'POST') {
+        await route.continue();
+        return;
+      }
+      current.requests += 1;
+      const response = await route.fetch();
+      current.intercepted.resolve();
+      await current.release.promise;
+      await route.fulfill({ response });
+      writeResponseReturned = true;
+      current.completed.resolve();
+    });
+
+    let commandId: string | null = null;
+    let createdStudentId: string | null = null;
+    try {
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(page.getByRole('heading', { name: '學生名單與期初結餘' })).toBeVisible();
+      await expect(page.getByTestId(`cloud-student-row-${seedStudentCode}`)).toBeVisible();
+
+      await page.getByRole('button', { name: '新增學生' }).click();
+      const form = page.getByRole('form', { name: '新增學生' });
+      await form.getByLabel('學員編號').fill(studentCode);
+      await form.getByRole('textbox', { name: '姓名', exact: true }).fill('P13b2b2a Dataset A 新學生');
+      await form.getByRole('textbox', { name: /期初結餘（整數/ }).fill('0');
+      await form.getByRole('radio', { name: /沿用既有核對結餘/ }).check();
+      activeWriteGate = writeGate;
+      await form.getByRole('button', { name: '建立學生' }).click();
+
+      const intercepted = await Promise.race([
+        writeGate.intercepted.promise.then(() => true),
+        new Promise<boolean>(resolve => setTimeout(() => resolve(false), 20000)),
+      ]);
+      if (!intercepted) throw new Error('Student create did not reach the Firestore Emulator commit endpoint');
+      await expect(page.getByText('結果確認中，勿重新收款')).toBeVisible({ timeout: 15000 });
+      const headAfterCommit = await readEmulatorDocument('system', 'dataHead');
+      commandId = (headAfterCommit.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null;
+      if (!commandId) throw new Error('The committed Student command ID was not visible in dataHead');
+      const receipt = await readEmulatorDocument('commands', commandId);
+      expect((receipt.fields?.commandId as { stringValue?: string } | undefined)?.stringValue).toBe(commandId);
+      createdStudentId = studentTargetFromReceipt(receipt);
+      expect(createdStudentId).toMatch(/^[0-9a-f-]{36}$/i);
+      expect(writeGate.requests).toBe(1);
+
+      await page.getByRole('button', { name: '查詢原命令結果' }).click();
+      await expect(page.getByText('已找到伺服器回執，名單尚待再次讀取。')).toBeVisible({ timeout: 15000 });
+      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      expect(writeResponseReturned).toBe(false);
+      expect(writeGate.requests).toBe(1);
+      expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
+
+      // The receipt and journal cleanup are valid for A. A new head makes the held full-SDK list B.
+      await expect.poll(() => readPendingIdentity(page, commandId!)).toBeNull();
+      await upsertDocument('system', 'dataHead', {
+        datasetId: 'p13b2b2a-replacement-dataset', seq: 1, lastCommandId: commandId, maintenance: false, goLiveDate: today,
+      });
+      writeGate.release.resolve();
+      await writeGate.completed.promise;
+
+      const recovery = page.getByRole('alert', { name: '命令結果確認' });
+      await expect(recovery).toBeVisible();
+      await expect(recovery).toContainText(commandId);
+      await expect(recovery).toContainText('伺服器命令序號 1');
+      await expect(page.getByText(/資料集已變更/)).toBeVisible();
+      await expect(page.getByTestId(`cloud-student-row-${studentCode}`)).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '新增學生' })).toHaveCount(0);
+      await expect(page.getByText(new RegExp(`已確認 新增 ${studentCode} 完成`))).toHaveCount(0);
+      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      expect(writeResponseReturned).toBe(true);
+      expect(writeGate.requests).toBe(1);
+
+      await page.getByRole('button', { name: '重新讀取伺服器名單' }).click();
+      await expect(page.getByText(/資料集已變更/)).toBeVisible();
+      await expect(page.getByRole('alert', { name: '命令結果確認' })).toContainText(commandId);
+      await expect(page.getByTestId(`cloud-student-row-${studentCode}`)).toHaveCount(0);
+      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      expect((await readEmulatorDocument('system', 'dataHead')).fields?.seq).toEqual({ integerValue: '1' });
+      expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
+      expect(await readPendingIdentity(page, commandId)).toBeNull();
+    } finally {
+      writeGate.release.resolve();
+      if (writeGate.requests > 0) await Promise.race([writeGate.completed.promise, new Promise(resolve => setTimeout(resolve, 5000))]);
+      await page.unroute('**/documents:commit*');
+      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
+      if (await release.isVisible().catch(() => false)) await release.click();
+      commandId ??= (((await readEmulatorDocument('system', 'dataHead').catch(() => null))?.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null);
+      if (commandId) await removeDocument('commands', commandId);
+      if (createdStudentId) await removeDocument('students', createdStudentId);
+      await removeDocument('studentCodes', studentCode);
+      await removeDocument('days', today);
+      await removeDocument('students', seedStudentId);
+      await removeDocument('studentCodes', seedStudentCode);
       await upsertDocument('system', 'dataHead', {
         datasetId: DATASET_ID, seq: 0, lastCommandId: null, maintenance: false, goLiveDate: today,
       });
