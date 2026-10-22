@@ -770,11 +770,21 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       expect(gate.requests).toBe(1);
 
       await page.getByTestId('order-recovery-query').click();
-      await expect(page.getByText(new RegExp(`已確認 ${studentCode} P13b2b1 ${studentCode} 訂餐完成`))).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText('伺服器已確認入帳，正在重新載入資料')).toBeVisible({ timeout: 15000 });
+      await expect(page.getByTestId('order-recovery-command-id')).toHaveText(commandId);
+      await expect(page.getByTestId('cloud-orders-loading')).toBeVisible();
+      await expect(page.getByTestId('submit-order-button')).toHaveCount(0);
+      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '學生管理' })).toBeDisabled();
+      await expect(page.getByTestId('undo-bar')).toHaveCount(0);
       expect(gate.requests).toBe(1);
       gate.release.resolve();
       await gate.completed.promise;
+      await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
+      await expect(page.getByTestId('cloud-topbar-bento')).toContainText('1');
+      await expect(page.getByText(new RegExp(`已確認 ${studentCode} P13b2b1 ${studentCode} 訂餐完成`))).toBeVisible();
       await expect(page.getByTestId('order-recovery-panel')).toHaveCount(0);
+      await expect(page.getByTestId('undo-bar')).toBeVisible();
+      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '學生管理' })).toBeEnabled();
 
       const transactionId = (((receipt.fields?.targets as { mapValue?: { fields?: Record<string, unknown> } } | undefined)
         ?.mapValue?.fields?.transactionId as { stringValue?: string } | undefined)?.stringValue);
