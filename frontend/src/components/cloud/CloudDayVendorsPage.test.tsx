@@ -19,10 +19,22 @@ const repository = vi.hoisted(() => ({
   setOpeningCash: vi.fn(),
   findPreviousClosed: vi.fn(),
   readCommand: vi.fn(),
+  confirmPendingIntent: vi.fn(),
+  cleanupConfirmedIntent: vi.fn(),
 }));
+
+const currentAuth = vi.hoisted(() => ({ uid: 'uid-a' }));
 
 vi.mock('../../firebase/cloudDayVendorRepository', () => ({
   createCloudDayVendorRepository: () => repository,
+}));
+
+vi.mock('../../firebase/cloudRecoveryReader', () => ({
+  getCloudRecoveryReader: () => ({ assertCurrent: vi.fn() }),
+}));
+
+vi.mock('firebase/auth', () => ({
+  getAuth: () => ({ currentUser: { uid: currentAuth.uid } }),
 }));
 
 const today = '2026-10-15';
@@ -110,6 +122,7 @@ function renderPage(
 describe('CloudDayVendorsPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    currentAuth.uid = 'uid-a';
     vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValue('00000000-0000-4000-8000-000000000007') });
     repository.loadSnapshot.mockResolvedValue(snapshot());
     repository.ensureDay.mockResolvedValue(successful('00000000-0000-4000-8000-000000000007', 'EnsureDay', { dayId: future }));
@@ -118,6 +131,8 @@ describe('CloudDayVendorsPage', () => {
     repository.setDayMenu.mockResolvedValue(successful('00000000-0000-4000-8000-000000000007', 'SetDayMenu', { dayId: future }));
     repository.setOpeningCash.mockResolvedValue(successful('00000000-0000-4000-8000-000000000007', 'SetOpeningCash', { dayId: today }));
     repository.readCommand.mockResolvedValue(null);
+    repository.confirmPendingIntent.mockResolvedValue({ status: 'not-found' });
+    repository.cleanupConfirmedIntent.mockResolvedValue(true);
   });
 
   it('uses the server-selected date by default and never shows an opening form for a future day', async () => {
@@ -370,6 +385,114 @@ describe('CloudDayVendorsPage', () => {
       expectedRevision: 3,
       reason: '已確認停止合作',
     }));
+  });
+
+  it('keeps a vendor command single-flight and shows the fixed confirmation prompt exactly at ten seconds', async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveSave!: (result: CommandResult) => void;
+      repository.saveVendor.mockReturnValueOnce(new Promise<CommandResult>(resolve => { resolveSave = resolve; }));
+      renderPage();
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      const createButton = screen.getByRole('button', { name: '新增供應商' });
+      fireEvent.click(createButton);
+      const form = screen.getByRole('form', { name: '新增供應商' });
+      fireEvent.change(within(form).getByLabelText('供應商編號'), { target: { value: 'vendor-pending' } });
+      fireEvent.change(within(form).getByLabelText('供應商名稱'), { target: { value: '待確認供應商' } });
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+
+      await act(async () => { await Promise.resolve(); });
+      expect(repository.saveVendor).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('命令送出中，請勿重複操作。')).toBeInTheDocument();
+      await act(async () => { vi.advanceTimersByTime(9_999); });
+      expect(screen.queryByText('結果確認中，勿重新收款')).not.toBeInTheDocument();
+      await act(async () => { vi.advanceTimersByTime(1); });
+      expect(screen.getByText('結果確認中，勿重新收款')).toBeInTheDocument();
+      expect(screen.getByText(/命令編號 00000000-0000-4000-8000-000000000007/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '查詢原命令結果' })).toBeInTheDocument();
+
+      await act(async () => resolveSave({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } }));
+      expect(repository.saveVendor).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses a read-only receipt check and does not authorize retry from a query started before submit settles', async () => {
+    vi.useFakeTimers();
+    try {
+      let settleSave!: (result: CommandResult) => void;
+      let resolveEarlyQuery!: (result: { status: 'not-found' }) => void;
+      repository.saveVendor.mockReturnValueOnce(new Promise<CommandResult>(resolve => { settleSave = resolve; }));
+      repository.confirmPendingIntent.mockReturnValueOnce(new Promise(resolve => { resolveEarlyQuery = resolve; }));
+      renderPage();
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      fireEvent.click(screen.getByRole('button', { name: '新增供應商' }));
+      const form = screen.getByRole('form', { name: '新增供應商' });
+      fireEvent.change(within(form).getByLabelText('供應商編號'), { target: { value: 'vendor-race' } });
+      fireEvent.change(within(form).getByLabelText('供應商名稱'), { target: { value: '競態供應商' } });
+      fireEvent.submit(form);
+      await act(async () => { vi.advanceTimersByTime(10_000); });
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      expect(repository.confirmPendingIntent).toHaveBeenCalledOnce();
+
+      await act(async () => settleSave({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } }));
+      await act(async () => resolveEarlyQuery({ status: 'not-found' }));
+      expect(repository.saveVendor).toHaveBeenCalledOnce();
+      expect(screen.queryByRole('button', { name: '以相同命令編號重試' })).not.toBeInTheDocument();
+      expect(screen.getByText(/這次查詢開始時原命令仍在送出中；未找到結果不能授權重試/)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(repository.confirmPendingIntent).toHaveBeenCalledTimes(2);
+      expect(screen.getByRole('button', { name: '以相同命令編號重試' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '以相同命令編號重試' }));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(repository.saveVendor).toHaveBeenCalledTimes(2);
+      expect(repository.saveVendor.mock.calls[0][0]).toEqual(repository.saveVendor.mock.calls[1][0]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a confirmed vendor command locked when the full refresh returns another dataset or day', async () => {
+    const commandId = '00000000-0000-4000-8000-000000000007';
+    let resolveSave!: (result: CommandResult) => void;
+    repository.saveVendor.mockReturnValueOnce(new Promise<CommandResult>(resolve => { resolveSave = resolve; }));
+    const matched = receipt(commandId, 'SaveVendor', { vendorId: 'vendor-confirmed' });
+    repository.confirmPendingIntent.mockResolvedValueOnce({ status: 'matched', receipt: matched });
+    repository.loadSnapshot
+      .mockResolvedValueOnce(snapshot())
+      .mockResolvedValueOnce(snapshot({ dayId: future, datasetId: 'replacement-dataset', vendors: [vendor('private-vendor')] }))
+      .mockResolvedValueOnce(snapshot({ dayId: future, datasetId: 'replacement-dataset', vendors: [vendor('private-vendor')] }));
+    const reportNavigationState = vi.fn();
+    renderPage({}, reportNavigationState);
+    await screen.findByRole('heading', { name: `${today} 營業日` });
+    fireEvent.click(screen.getByRole('button', { name: '新增供應商' }));
+    const form = screen.getByRole('form', { name: '新增供應商' });
+    fireEvent.change(within(form).getByLabelText('供應商編號'), { target: { value: 'vendor-confirmed' } });
+    fireEvent.change(within(form).getByLabelText('供應商名稱'), { target: { value: '已確認供應商' } });
+    fireEvent.click(within(form).getByRole('button', { name: '建立供應商' }));
+    await screen.findByText('命令送出中，請勿重複操作。');
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+
+    expect(await screen.findByText(/命令回執已確認，但伺服器資料集或營業日已變更/)).toBeInTheDocument();
+    expect(repository.confirmPendingIntent).toHaveBeenCalledTimes(1);
+    expect(repository.saveVendor).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(repository.cleanupConfirmedIntent).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('alert', { name: '命令結果確認' })).toContainElement(screen.getByText(new RegExp(commandId)));
+    expect(screen.queryByText('名稱 private-vendor')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '新增供應商' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/已確認 新增供應商 vendor-confirmed 完成/)).not.toBeInTheDocument();
+    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
+
+    fireEvent.click(screen.getByRole('button', { name: '重新讀取伺服器資料' }));
+    expect(await screen.findByText(/命令回執已確認，但伺服器資料集或營業日已變更/)).toBeInTheDocument();
+    expect(repository.saveVendor).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('名稱 private-vendor')).not.toBeInTheDocument();
+    await act(async () => resolveSave({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'late result' } }));
+    expect(screen.getByRole('alert', { name: '命令結果確認' })).toBeInTheDocument();
   });
 
   it('keeps confirmed receipts and retries only the server read if refresh fails', async () => {
