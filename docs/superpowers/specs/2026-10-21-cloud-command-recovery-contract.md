@@ -1,6 +1,6 @@
 # P13b2 未決命令復原契約
 
-狀態：設計由 PR #530 合併於 `e56c8c32ee1d74c3f63838e15909200adbbe4dfa`，獨立讀取通道契約由 PR #532 合併於 `c5df292c4b5109275baf25fbd1ad75dc5d6b684f`。P13b2a 已交付共用 journal、write-ahead、receipt/context 確認與 startup recovery boundary。P13b2b1 實作分支已完成 Orders 同頁結果查證整合：同一 FirebaseApp 的 Firestore Lite 唯讀 receipt 查詢、receipt-confirmed 與 page-ready 分離、fresh heads 未完成時維持操作鎖；Ready PR 與 exact-head CI 仍待 provider 核對，尚未獨立審查。其他正式頁面的 10 秒／same-mount retry 矩陣仍未完成；不得將此批說成整體 P13b2 完成。適用正式模式，補充[正式後端規格 §8](2026-10-13-free-production-backend-spec.md#8-連線快取錯誤與查詢)。只使用既有 typed command、server receipt 與租約；不增加離線補送、業務集合或 Rules 權限。
+狀態：設計由 PR #530 合併於 `e56c8c32ee1d74c3f63838e15909200adbbe4dfa`，獨立讀取通道契約由 PR #532 合併於 `c5df292c4b5109275baf25fbd1ad75dc5d6b684f`。P13b2a 已交付共用 journal、write-ahead、receipt/context 確認與 startup recovery boundary。P13b2b1 Orders 已由 PR #533 合併；P13b2b2a Students 同頁復原已在 `49f224597dd9267334ff4c6e64bed4d4777f7e1a` 基線完成本機實作，涵蓋六種 typed Student intent、唯讀語意確認、10 秒提示、UID/db/epoch 首個 render scope gate，以及回執確認與完整 server list readiness 分離。該學生候選的 exact-head source CI／獨立 r1 review 以 live provider 為準；本地 evidence 不代表 CI 或審查。其他正式頁面的 10 秒／same-mount retry 矩陣仍未完成；不得將此批說成整體 P13b2 完成。適用正式模式，補充[正式後端規格 §8](2026-10-13-free-production-backend-spec.md#8-連線快取錯誤與查詢)。只使用既有 typed command、server receipt 與租約；不增加離線補送、業務集合或 Rules 權限。
 
 ## 1. 目標與現況
 
