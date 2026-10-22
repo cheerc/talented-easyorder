@@ -664,8 +664,13 @@ export function CloudDayVendorsPage({
         },
       );
       if (!cleared && ownsOperation(operation)) operation.cleanupWarning = '本機命令追蹤尚未清理；伺服器回執仍已確認。';
-    } catch {
-      if (ownsOperation(operation)) operation.cleanupWarning = '本機命令追蹤清理未完成；伺服器回執仍已確認。';
+    } catch (error) {
+      if (!ownsOperation(operation)) return;
+      if (isAuthorizationLoss(error)) {
+        revokeAuthorization(operation.identityKey, operation.generation, operation.command.commandId, error);
+        return;
+      }
+      operation.cleanupWarning = '本機命令追蹤清理未完成；伺服器回執仍已確認。';
     }
     if (ownsOperation(operation)) await loadSnapshot(operation.viewDayId, receipt, operation);
   };

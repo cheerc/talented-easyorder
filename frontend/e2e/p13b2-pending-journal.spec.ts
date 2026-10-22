@@ -1468,6 +1468,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
         await expect(recovery).toContainText(commandId);
         await expect(recovery).not.toContainText('開帳現金');
       }
+      expect(JSON.parse((await readPendingIdentity(page, commandId))!)).toEqual({ commandId, datasetId, uid });
 
       writeGate.release.resolve();
       await waitForWriteGate(writeGate.completed.promise, 'SetOpeningCash response release');
@@ -1480,12 +1481,82 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       expect((await readEmulatorDocument('system', 'dataHead')).fields?.seq).toEqual({ integerValue: '1' });
       expect((await readEmulatorDocument('days', today)).fields?.openingCash).toEqual({ integerValue: '250' });
       expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
-      expect(JSON.parse((await readPendingIdentity(page, commandId))!)).toEqual({ commandId, datasetId, uid });
     } finally {
       writeGate.release.resolve();
       if (writeGate.requests > 0) await Promise.race([writeGate.completed.promise, new Promise(resolve => setTimeout(resolve, 5000))]);
       await page.unroute('**/documents:commit*');
       await page.unroute('**/documents:batchGet*');
+      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
+      if (await release.isVisible().catch(() => false)) await release.click();
+      commandId ??= (((await readEmulatorDocument('system', 'dataHead').catch(() => null))?.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null);
+      if (commandId) {
+        await removeDocument('commands', commandId);
+        await page.evaluate(({ namespace, pendingCommandId }) => localStorage.removeItem(`${namespace}:${pendingCommandId}`), {
+          namespace: APP_NAMESPACE, pendingCommandId: commandId,
+        });
+      }
+      await removeDocument('days', today);
+      await removeDocument('vendors', vendorId);
+      await setDayVendorDataHead(DATASET_ID, today, 0, null);
+      await seedAccessLease({ holderUid: null, epoch: 0, updatedAt: new Date() });
+    }
+  });
+
+  test('keeps the confirmed opening result when real journal removal fails', async ({ googleSession }) => {
+    const { page, uid } = googleSession;
+    const today = taipeiToday();
+    const datasetId = 'p13b2b2b-day-vendor-opening';
+    const { vendorId } = await seedDayVendorRecoveryFixture(today, datasetId);
+    let openingWrites = 0;
+
+    await page.route('**/documents:commit*', async route => {
+      if (route.request().method() === 'POST' && commitWritesDocument(route.request(), 'days', today)) openingWrites += 1;
+      await route.continue();
+    });
+
+    let commandId: string | null = null;
+    try {
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await page.getByRole('button', { name: '日期與供應商' }).click();
+      const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
+      const openingForm = main.getByRole('form', { name: `${today} 開帳現金` });
+      await expect(openingForm).toBeVisible();
+      await expect(openingForm.getByRole('button', { name: '確認開帳金額' })).toBeEnabled({ timeout: 15000 });
+
+      await page.evaluate(namespace => {
+        const win = window as unknown as Record<string, unknown>;
+        const original = Storage.prototype.removeItem;
+        win.__p13b2NativeRemoveItem = original;
+        Storage.prototype.removeItem = function (key: string) {
+          if (key.startsWith(`${namespace}:`)) throw new DOMException('synthetic journal cleanup denial', 'SecurityError');
+          return original.call(this, key);
+        };
+      }, APP_NAMESPACE);
+
+      await openingForm.getByLabel(/開帳現金/).fill('250');
+      await openingForm.getByRole('button', { name: '確認開帳金額' }).click();
+      await expect(page.getByText(new RegExp(`已確認 確認 ${today} 開帳現金 完成`))).toBeVisible();
+      await expect(page.getByText('本機命令追蹤清理未完成；伺服器回執仍已確認。')).toBeVisible();
+      await expect(openingForm.getByText(/伺服器已確認開帳現金 NT\$ 250/)).toBeVisible();
+
+      const head = await readEmulatorDocument('system', 'dataHead');
+      commandId = (head.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null;
+      if (!commandId) throw new Error('The confirmed SetOpeningCash command ID was not visible in dataHead');
+      const receipt = await readEmulatorDocument('commands', commandId);
+      expect((receipt.fields?.kind as { stringValue?: string } | undefined)?.stringValue).toBe('SetOpeningCash');
+      expect((head.fields?.seq as { integerValue?: string } | undefined)?.integerValue).toBe('1');
+      expect((await readEmulatorDocument('days', today)).fields?.openingCash).toEqual({ integerValue: '250' });
+      expect(openingWrites).toBe(1);
+      expect(JSON.parse((await readPendingIdentity(page, commandId))!)).toEqual({ commandId, datasetId, uid });
+    } finally {
+      await page.evaluate(() => {
+        const win = window as unknown as Record<string, unknown>;
+        const original = win.__p13b2NativeRemoveItem as ((key: string) => void) | undefined;
+        if (original) Storage.prototype.removeItem = original;
+        delete win.__p13b2NativeRemoveItem;
+      }).catch(() => undefined);
+      await page.unroute('**/documents:commit*');
       const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
       if (await release.isVisible().catch(() => false)) await release.click();
       commandId ??= (((await readEmulatorDocument('system', 'dataHead').catch(() => null))?.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null);
