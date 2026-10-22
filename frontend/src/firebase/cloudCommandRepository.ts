@@ -61,6 +61,85 @@ interface CapturedPendingIntent {
   verificationError: RejectCommand | null;
 }
 
+function captureCanonicalValue(value: unknown, ancestors: WeakSet<object>): unknown {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new InvalidCloudCommandInput('原命令含非有限數值');
+    return value;
+  }
+  if (typeof value !== 'object') throw new InvalidCloudCommandInput('原命令含不支援的資料值');
+  if (ancestors.has(value)) throw new InvalidCloudCommandInput('原命令資料不可循環參照');
+
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      if (Object.getPrototypeOf(value) !== Array.prototype) {
+        throw new InvalidCloudCommandInput('原命令陣列必須使用固定陣列原型');
+      }
+      const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+      if (!lengthDescriptor || !Object.hasOwn(lengthDescriptor, 'value') || lengthDescriptor.enumerable) {
+        throw new InvalidCloudCommandInput('原命令陣列長度描述子不支援');
+      }
+      const length = lengthDescriptor.value;
+      if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0) {
+        throw new InvalidCloudCommandInput('原命令陣列長度不正確');
+      }
+      const keys = Reflect.ownKeys(value);
+      if (keys.length !== length + 1 || keys.some(key => {
+        if (key === 'length') return false;
+        if (typeof key !== 'string') return true;
+        const index = Number(key);
+        return !Number.isSafeInteger(index) || index < 0 || index >= length || String(index) !== key;
+      })) {
+        throw new InvalidCloudCommandInput('原命令陣列不可稀疏或含額外欄位');
+      }
+
+      const captured: unknown[] = new Array(length);
+      for (let index = 0; index < length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
+          throw new InvalidCloudCommandInput('原命令陣列只能包含可列舉資料欄位');
+        }
+        Object.defineProperty(captured, String(index), {
+          value: captureCanonicalValue(descriptor.value, ancestors),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      }
+      return captured;
+    }
+
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new InvalidCloudCommandInput('原命令物件必須是固定物件');
+    }
+    const captured: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== 'string') throw new InvalidCloudCommandInput('原命令物件不可含 Symbol 欄位');
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
+        throw new InvalidCloudCommandInput('原命令物件只能包含可列舉資料欄位');
+      }
+      Object.defineProperty(captured, key, {
+        value: captureCanonicalValue(descriptor.value, ancestors),
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    }
+    return captured;
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+function captureCanonicalData(value: CanonicalEnabledInput): CanonicalEnabledInput {
+  // The domain normalizer has already validated this schema. Copy its data values
+  // without property reads, accessors, inherited serializers, or mutable aliases.
+  return captureCanonicalValue(value, new WeakSet<object>()) as CanonicalEnabledInput;
+}
+
 export interface CloudCommandRepositoryOptions {
   /** Injection seam for emulator tests; production callers use Firebase Auth currentUser. */
   currentUser?: () => CurrentUser | null;
@@ -792,7 +871,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
       }
       // Keep a detached canonical snapshot before any caller can mutate the original
       // object while recovery reads are in flight.
-      return { canonical: JSON.parse(JSON.stringify(normalized)) as CanonicalEnabledInput, verificationError: null };
+      return { canonical: captureCanonicalData(normalized), verificationError: null };
     } catch (error) {
       return {
         canonical: null,

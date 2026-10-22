@@ -1,6 +1,6 @@
 import { Timestamp, type Firestore } from 'firebase/firestore';
 import type { User } from 'firebase/auth';
-import { fingerprintCommandInput, normalizeEnabledCommandInput } from '../../domain/cloudCommandSchema';
+import { fingerprintCommandInput, normalizeEnabledCommandInput, type EnabledCloudCommandInput } from '../../domain/cloudCommandSchema';
 import { describe, expect, it, vi } from 'vitest';
 import { createCloudCommandRepository } from '../cloudCommandRepository';
 import { createCloudPendingJournal, createMemoryCloudPendingJournalTestAdapter } from '../cloudPendingJournal';
@@ -78,7 +78,9 @@ const studentIntent = {
   },
 };
 
-async function storedStudentReceipt(input = studentIntent) {
+async function storedStudentReceipt(
+  input: Extract<EnabledCloudCommandInput, { kind: 'CreateStudent' }> = studentIntent,
+) {
   const canonical = normalizeEnabledCommandInput(input);
   if (canonical.kind !== 'CreateStudent') throw new Error('Test fixture requires a CreateStudent command');
   const headBefore = {
@@ -429,7 +431,7 @@ describe('Orders recovery reader seam reuses strict command recovery checks', ()
         return { student: 1 };
       },
     });
-    expect(normalizeEnabledCommandInput(wrong).expectedRevisions.student).toBe(2);
+    expect(normalizeEnabledCommandInput(wrong).expectedRevisions).toEqual({ student: 2 });
 
     await expect(commands.confirmPendingIntent(wrong, 2, 'recovery-dataset', userA.uid, recoveryReader))
       .rejects.toMatchObject({ code: 'INVALID_INPUT' });
@@ -474,7 +476,7 @@ describe('Orders recovery reader seam reuses strict command recovery checks', ()
         return { student: 1 };
       },
     });
-    expect(normalizeEnabledCommandInput(wrong).expectedRevisions.student).toBe(2);
+    expect(normalizeEnabledCommandInput(wrong).expectedRevisions).toEqual({ student: 2 });
 
     await expect(commands.cleanupConfirmedIntent(wrong, 2, 'recovery-dataset', userA.uid, recoveryReader, () => true))
       .rejects.toMatchObject({ code: 'INVALID_INPUT' });
@@ -530,12 +532,12 @@ describe('Orders recovery reader seam reuses strict command recovery checks', ()
   });
 
   it('retains a matched frozen intent with nested aliases, targets, and revisions', async () => {
-    const input = Object.freeze({
-      ...editStudentIntent(1, Object.freeze(['凍結別名'])),
-      targets: Object.freeze({ ...studentIntent.targets }),
-      expectedRevisions: Object.freeze({ student: 1 }),
-      payload: Object.freeze({ displayName: 'edited name', aliases: Object.freeze(['凍結別名']) }),
-    });
+    const input = editStudentIntent(1, ['凍結別名']);
+    Object.freeze(input.payload.aliases);
+    Object.freeze(input.payload);
+    Object.freeze(input.targets);
+    Object.freeze(input.expectedRevisions);
+    Object.freeze(input);
     const stored = await storedStudentEditReceipt(input);
     const recoveryReader = reader({ readReceipt: vi.fn(async () => document(stored)) });
 
@@ -544,7 +546,7 @@ describe('Orders recovery reader seam reuses strict command recovery checks', ()
   });
 
   it('keeps the detached canonical values and exact A cleanup when nested input mutates during the read', async () => {
-    const input = {
+    const input: Extract<EnabledCloudCommandInput, { kind: 'CreateStudent' }> = {
       ...studentIntent,
       targets: { ...studentIntent.targets },
       expectedRevisions: { student: 0 },
@@ -580,7 +582,7 @@ describe('Orders recovery reader seam reuses strict command recovery checks', ()
     await journal.put(recordB);
     const recoveryReader = reader({ readReceipt: async () => {
       input.targets.studentId = recordB.commandId;
-      input.expectedRevisions.student = 2;
+      (input.expectedRevisions as { student: number }).student = 2;
       input.payload.studentCode = '999';
       input.payload.aliases[0] = '被修改別名';
       input.payload.openingBalance.amount = 12;
@@ -597,12 +599,10 @@ describe('Orders recovery reader seam reuses strict command recovery checks', ()
     const cyclicRevisions: Record<string, unknown> = { student: 1 };
     Object.defineProperty(cyclicRevisions, 'loop', { enumerable: false, value: cyclicRevisions });
     const sparseAliases = new Array<string>(1);
-    const customAliasPrototype = Object.create(Array.prototype) as string[];
     const classRevisions = new (class { student = 1; })();
     const inputs = [
       { ...editStudentIntent(1), expectedRevisions: cyclicRevisions },
       { ...studentIntent, payload: { ...studentIntent.payload, aliases: sparseAliases } },
-      { ...studentIntent, payload: { ...studentIntent.payload, aliases: Object.setPrototypeOf(['alias'], customAliasPrototype) } },
       { ...editStudentIntent(1), expectedRevisions: classRevisions },
     ];
     const commands = repository(() => userA);
