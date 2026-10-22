@@ -40,6 +40,20 @@ property getter、get/set/remove、讀回不符或容量不足，都使新命令
 
 quota、maintenance、schema 或權限錯誤皆提供中文下一步，停止自動業務重試。失權清除完整記憶體 intent 與畫面，保留最小 journal；重新取得使用權後走 receipt 確認，不以新 epoch 默默重送舊 payload。
 
+### 4.1 未決提交期間的獨立 server 查證通道
+
+完整 Firestore SDK 的 transaction commit 等待回應時，同 client 的 server read 可能排在其共用佇列後面。P13b2b 同頁查證採官方 `firebase/firestore/lite` 的獨立唯讀 adapter，沿用**同一個 FirebaseApp** 的目前 Auth／App Check providers；不用第二個登入、手工取得／持久化 token、Admin／服務帳號、手寫 REST client 或放寬 Rules。這是既有 receipt 查證的讀取通道，不是新的業務 writer、離線補送或另一份資料權威。[官方 Lite](https://firebase.google.com/docs/firestore/solutions/firestore-lite) 的 [`getDoc`](https://firebase.google.com/docs/reference/js/firestore_lite#getdoc) 直接讀 server，離線／權限／服務錯誤必須保留失敗語義，不回退快取或當作不存在。
+
+adapter 必須由已驗證初始化流程以明確 app／project／database／endpoint 配對原 full SDK db，讀取前完成設定；同 app 不代表可猜測原 db 的 database ID 或 Emulator host。不讀 SDK 私有欄位，不以未知 instance 預設連正式端點；無法證明配對時 fail closed。Emulator 使用同一個明確 demo endpoint，正式模式保留原 Auth／App Check 與服務端 Rules 邊界，不使用測試 mock token。adapter 本身只暴露本次復原需要的 head、lease、當前 operator 與指定 command receipt 讀取，不暴露新的業務寫入介面。
+
+兩個 SDK 的 Timestamp constructor 不同。唯讀 adapter 將實際官方 Lite Timestamp 的 seconds／nanoseconds 轉為 full SDK Timestamp 後，再交給原本嚴格 decoder／receipt builder；包含 receipt 巢狀 before／after 值，保留精度與既有 schema 驗證。只允許已識別的官方 Timestamp 類別轉換，不能接受任意 `{seconds,nanoseconds}`、`toDate()` duck type、字串日期、JSON roundtrip，或放寬共用 domain decoder 的 `instanceof`。遇到無法安全表示的值以 schema 錯誤停止，不以移除未知欄位取得假成功；轉換後的 payload／receipt 仍只留在記憶體。
+
+獨立讀取不改變 §5 的讀前／讀後 Auth、holder、epoch、dataset fencing、receipt 身分／schema 檢查，以及 caller 的 mount／generation／online 檢查。失權或配對變更立即使舊結果失效；不得因同 app 共用 Auth 而省略 await 後驗證。只有完整查證成功返回的不存在才是 null；permission、quota、unavailable、schema 等錯誤不能授權重送或刪除 journal。已確認 receipt 的精確日誌清理仍遵守鎖外網路查證、鎖內同步本機 predicate，清理失敗不改變已入帳結果。
+
+receipt 已確認與業務頁 ready 是不同狀態。原提交回應仍未返回時，可顯示「伺服器已確認入帳，正在重新載入資料」及原 command ID；full SDK 的業務 heads 仍可能等待。必須持續遮罩／鎖住依賴新資料的業務控制與導覽，直到 fresh server heads 完成或顯示載入錯誤；不能假裝已同步、使用舊 heads 或再送同筆。原提交 promise 的存活狀態須獨立保留，直到真正 settle，不能因 receipt 查證成功就假裝網路已結束。遲到的原成功／失敗不能重做成功副作用、輸出、解除新 owner 的 gate 或覆蓋已確認結果。
+
+必要證據：真 production App＋合成 Auth／Firestore Emulator，在 server 已提交、原 commit response 仍被扣住的條件下，透過實際 adapter 查到且解碼原 receipt；一個業務 effect、零並行重送，先顯示已確認但未 ready，再釋放原回應並完成 fresh heads。另有同 Auth 失去租約的 permission-denied、合法 holder 缺 receipt、服務失敗、Timestamp 正反控制、await 中換 UID／epoch／dataset 與配對失敗的 fail-closed 證明。App Check 未配置的 Emulator 結果不等於正式 App Check token 行為已驗。測試 Admin REST 只能作獨立 server witness，不能當產品 adapter 的查詢路徑。
+
 ## 5. 重啟與接手的結果確認
 
 合法 holder 的 cloud shell 在啟動／恢復連線時，先完整讀取本 app journal、核對 server dataset，查詢當前 dataset 的待核對 ID，再重讀業務 heads 後開放新的操作。查詢或完整性失敗維持可見 gate；不是恢復 cache 或空資料開放寫入。舊 dataset 的識別保留並標示需要維護核對，不能查新 dataset 的同名 ID 後誤清。
