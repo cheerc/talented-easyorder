@@ -135,14 +135,28 @@ export function normalizeLiteRecoveryValue(
   ancestors.add(value);
   try {
     if (Array.isArray(value)) {
+      if (Object.getPrototypeOf(value) !== Array.prototype) throw unsupportedRecoveryValue();
+      const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+      if (!lengthDescriptor || !('value' in lengthDescriptor) || lengthDescriptor.enumerable
+        || !Number.isSafeInteger(lengthDescriptor.value) || (lengthDescriptor.value as number) < 0) {
+        throw unsupportedRecoveryValue();
+      }
+      const length = lengthDescriptor.value as number;
       const ownKeys = Reflect.ownKeys(value);
-      if (ownKeys.length !== value.length + 1 || ownKeys.some((key, index) => (
-        key !== 'length' && (typeof key !== 'string' || key !== String(index))
-      ))) throw unsupportedRecoveryValue();
+      if (ownKeys.length !== length + 1 || ownKeys.some(key => typeof key !== 'string')) throw unsupportedRecoveryValue();
+      const ownKeySet = new Set(ownKeys as string[]);
+      if (!ownKeySet.has('length')) throw unsupportedRecoveryValue();
+      const indexDescriptors: PropertyDescriptor[] = [];
+      for (let index = 0; index < length; index += 1) {
+        const key = String(index);
+        if (!ownKeySet.has(key)) throw unsupportedRecoveryValue();
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) throw unsupportedRecoveryValue();
+        indexDescriptors.push(descriptor);
+      }
       const output: unknown[] = [];
-      for (let index = 0; index < value.length; index += 1) {
-        if (!Object.prototype.hasOwnProperty.call(value, index)) throw unsupportedRecoveryValue();
-        output.push(normalizeLiteRecoveryValue(value[index], liteTimestamp, ancestors));
+      for (const descriptor of indexDescriptors) {
+        output.push(normalizeLiteRecoveryValue(descriptor.value, liteTimestamp, ancestors));
       }
       return output;
     }

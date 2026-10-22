@@ -79,6 +79,7 @@ export interface FirebaseServices {
 
 let cachedServices: FirebaseServices | null = null;
 let initPromise: Promise<FirebaseServices> | null = null;
+let selectedFirestoreEndpoint: FirestoreEndpoint | null = null;
 interface FirestoreCleanupSubscriber {
   callback: () => void;
   signal?: AbortSignal;
@@ -304,6 +305,12 @@ export function ensureFirebaseInitialized(
     endpoint = readFirestoreEndpoint(env);
   } catch (error) {
     return Promise.reject(error);
+  }
+  if (selectedFirestoreEndpoint !== null && !sameEndpoint(selectedFirestoreEndpoint, endpoint)) {
+    return Promise.reject(new Error('Existing Firebase initialization uses a different explicit Firestore endpoint'));
+  }
+  if (selectedFirestoreEndpoint === null) {
+    selectedFirestoreEndpoint = Object.freeze({ ...endpoint }) as FirestoreEndpoint;
   }
   if (cachedServices) return Promise.resolve(cachedServices);
   if (initPromise) {
