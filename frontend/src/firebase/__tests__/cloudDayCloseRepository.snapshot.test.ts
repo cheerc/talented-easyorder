@@ -86,11 +86,15 @@ function setup({ days = [], settlements = {}, backfill = [], heads = () => head(
     else if (ref.path.startsWith('backfillDays/')) value = backfill.find(([id]) => `backfillDays/${id}` === ref.path)?.[1];
     return { id: ref.path.split('/').at(-1), exists: () => value !== undefined, data: () => value, metadata };
   });
-  firestoreMocks.getDocsFromServer.mockImplementation(async (request: { collectionRef: { path: string }; constraints: Constraint[] }) => {
+  firestoreMocks.getDocsFromServer.mockImplementation(async (raw: { collectionRef?: { path: string }; path?: string; constraints?: Constraint[] }) => {
+    // `getDocsFromServer(collection(...))` passes the collection itself; a `query(...)` wraps it with constraints.
+    const request = { collectionRef: raw.collectionRef ?? { path: String(raw.path) }, constraints: raw.constraints ?? [] };
     const failure = failDayQueries?.(request);
     if (failure) throw failure;
     const path = request.collectionRef.path;
-    let selected: Array<[string, Data]> = path === 'backfillDays' ? [...backfill] : path === 'days' ? [...days] : [];
+    let selected: Array<[string, Data]> = path === 'backfillDays' ? [...backfill] : path === 'days' ? [...days]
+      : path.endsWith('/settlements') ? Object.entries(settlements).filter(([key]) => key.startsWith(`${path}/`)).map(([key, value]) => [key.slice(path.length + 1), value] as [string, Data])
+        : [];
     selected.sort(([left], [right]) => left.localeCompare(right));
     for (const item of request.constraints) {
       if (item.type !== 'where') continue;

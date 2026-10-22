@@ -72,7 +72,7 @@ const repository = vi.hoisted(() => {
         default: throw new Error(`Unexpected DayClose intent: ${intent.kind}`);
       }
     }),
-    confirmPendingIntent: vi.fn(async () => ({ status: 'not-found' })),
+    confirmPendingIntent: vi.fn<() => Promise<Record<string, unknown>>>(async () => ({ status: 'not-found' })),
     cleanupConfirmedIntent: vi.fn(async () => true),
     hasOtherUnresolvedCommands: vi.fn(async () => false),
   };
@@ -1172,6 +1172,8 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
   const unknown: CommandResult = { ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } };
 
   type Element = Parameters<typeof render>[0];
+  // One Firestore instance per test file run: a rerender with a new instance would be a different owner.
+  const stableDb = {} as Firestore;
   const flush = async (turns = 12) => act(async () => { for (let index = 0; index < turns; index += 1) await Promise.resolve(); });
 
   function pageElement(props: {
@@ -1181,7 +1183,7 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
   } = {}): Element {
     return (
       <CloudDayClosePage
-        db={{} as Firestore}
+        db={stableDb}
         leaseEpoch={props.leaseEpoch ?? 4}
         identityKey={props.identityKey ?? 'uid-a:4'}
         backupBlock={<div />}
@@ -1489,9 +1491,10 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
     it('keeps a confirmed result with a warning and refreshes once when only the local journal cleanup fails', async () => {
       const onLedgerChanged = vi.fn();
       repository.cleanupConfirmedIntent.mockRejectedValueOnce({ code: 'LOCAL_STORAGE_UNAVAILABLE', message: 'local journal unavailable' });
-      closedSnapshotRefresh();
       render(pageElement({ onLedgerChanged }));
-      await submitClose(await closeForm());
+      const form = await closeForm();
+      closedSnapshotRefresh();
+      await submitClose(form);
       expect(await screen.findByText(/已確認 2026-10-17 關帳 完成/)).toBeInTheDocument();
       expect(screen.getByText(/本機命令追蹤清理未完成；伺服器回執仍已確認/)).toBeInTheDocument();
       expect(repository.closeDay).toHaveBeenCalledOnce();
@@ -1640,7 +1643,9 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
 
   describe('backfill steps', () => {
     async function startGapBackfill() {
-      const form = await screen.findByRole('form', { name: `${gap} 回填` });
+      // No findBy*: it never advances vitest's fake clock, so wait on promise turns instead.
+      await flush();
+      const form = screen.getByRole('form', { name: `${gap} 回填` });
       fireEvent.change(within(form).getByRole('textbox', { name: /開帳現金（元）/ }), { target: { value: '870' } });
       fireEvent.change(within(form).getByRole('textbox', { name: /回填原因/ }), { target: { value: '那天斷線' } });
       fireEvent.change(within(form).getByRole('textbox', { name: /開帳現金（元）/ }), { target: { value: '870' } });
@@ -1656,21 +1661,24 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
       repository.startBackfill.mockImplementation(echoing('StartBackfill'));
     });
 
-    function arrangeThreeStepServer() {
+    // StrictMode mounts the page's load effect twice, so its initial read is served twice there.
+    function arrangeThreeStepServer(initialLoads = 1) {
+      for (let load = 0; load < initialLoads; load += 1) {
+        repository.readOverview.mockResolvedValueOnce(gapOverview());
+        repository.read.mockResolvedValueOnce(null);
+      }
       repository.readOverview
-        .mockResolvedValueOnce(gapOverview())
         .mockResolvedValueOnce(gapOverview(null, true))
         .mockResolvedValueOnce(gapOverview(null, true))
         .mockResolvedValue(gapOverview(marker, true));
       repository.read
-        .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(gapDay(1, null))
         .mockResolvedValueOnce(gapDay(2, 870))
         .mockResolvedValue(gapDay(3, 870));
     }
 
     it('sends ensure-day, opening backfill and start-backfill intents with their own IDs, each exactly once under StrictMode', async () => {
-      arrangeThreeStepServer();
+      arrangeThreeStepServer(2);
       render(<StrictMode>{pageElement({ initialDayId: gap })}</StrictMode>);
       await startGapBackfill();
       expect(await screen.findByText(/已標為回填，可以到訂餐頁補登交易/)).toBeInTheDocument();
