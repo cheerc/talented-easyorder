@@ -1,3 +1,4 @@
+import type { Page, Request } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { removeDocument, seedAccessLease, upsertDocument } from './helpers/seed';
 
@@ -128,6 +129,122 @@ async function listEmulatorDocumentIds(collection: string): Promise<string[]> {
   if (!response.ok) throw new Error(`Unable to list Emulator ${collection}: ${await response.text()}`);
   const body = await response.json() as { documents?: Array<{ name?: string }> };
   return (body.documents ?? []).map(document => document.name?.split('/').at(-1) ?? '').filter(Boolean);
+}
+
+function shiftBusinessDate(day: string, delta: number): string {
+  const shifted = new Date(`${day}T00:00:00.000Z`);
+  shifted.setUTCDate(shifted.getUTCDate() + delta);
+  return shifted.toISOString().slice(0, 10);
+}
+
+async function setDayCloseDataHead(datasetId: string, goLiveDate: string, seq: number, lastCommandId: string | null) {
+  await upsertDocument('system', 'dataHead', {
+    schemaVersion: 1, datasetId, seq, lastCommandId, maintenance: false, goLiveDate, updatedAt: new Date(),
+  });
+}
+
+const ZERO_TOTALS = {
+  activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0, mealTotal: 0,
+  retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0,
+};
+
+/** An open day with a confirmed opening cash of 1,000 and no activity: the expected cash to close is 1,000. */
+async function seedDayCloseFixture(today: string, uid: string, datasetId: string) {
+  const seedCommandId = 'd4000000-0000-4000-8000-000000000001';
+  await upsertDocument('days', today, {
+    status: 'open', revision: 6,
+    menu: {
+      businessDate: today, itemName: 'P13b2b2c 日結餐盒', price: 90, vendorId: 'p13b2b2c-vendor',
+      vendorNameSnapshot: 'P13b2b2c 供應商', updatedAt: new Date(), revision: 1, inheritedFromDate: null,
+    },
+    openingCash: 1000, openedBy: uid, openedAt: new Date(),
+    totals: ZERO_TOTALS, lastSettlementRevision: 0, lastCommandId: seedCommandId, updatedAt: new Date(),
+  });
+  await setDayCloseDataHead(datasetId, today, 0, null);
+}
+
+/**
+ * Holds the server response of one matching commit: the request reaches the Emulator and takes effect, but the browser
+ * only gets the response after `release`. Other matching and non-matching commits pass straight through.
+ */
+function createHeldCommit(page: Page, matches: (request: Request) => boolean, heldIndex = 1) {
+  const state = {
+    matched: 0, returned: false,
+    intercepted: deferred(), release: deferred(), completed: deferred(),
+  };
+  let armed = false;
+  return {
+    state,
+    arm: () => { armed = true; },
+    install: () => page.route('**/documents:commit*', async route => {
+      if (!armed || route.request().method() !== 'POST' || !matches(route.request())) {
+        await route.continue();
+        return;
+      }
+      state.matched += 1;
+      if (state.matched !== heldIndex) {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch({ timeout: 30000 });
+      state.intercepted.resolve();
+      await state.release.promise;
+      await route.fulfill({ response });
+      state.returned = true;
+      state.completed.resolve();
+    }),
+    settle: async () => {
+      state.release.resolve();
+      if (state.matched > 0) await Promise.race([state.completed.promise, new Promise(resolve => setTimeout(resolve, 5000))]);
+      await page.unroute('**/documents:commit*').catch(() => undefined);
+    },
+  };
+}
+
+async function lastCommandIdFromHead(): Promise<string | null> {
+  const head = await readEmulatorDocument('system', 'dataHead').catch(() => null);
+  return (head?.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null;
+}
+
+async function rawStorageDump(page: Page): Promise<string> {
+  return page.evaluate(() => JSON.stringify({
+    local: Object.fromEntries(Object.keys(localStorage).map(key => [key, localStorage.getItem(key)])),
+    session: Object.fromEntries(Object.keys(sessionStorage).map(key => [key, sessionStorage.getItem(key)])),
+  }));
+}
+
+/** Every journal entry of the app namespace keeps exactly the three minimal fields, nothing about the operation. */
+async function expectMinimalJournal(page: Page, expected: Array<{ commandId: string; datasetId: string; uid: string }>) {
+  const entries = await page.evaluate(namespace => Object.keys(localStorage)
+    .filter(key => key.startsWith(`${namespace}:`))
+    .map(key => JSON.parse(localStorage.getItem(key) ?? 'null') as Record<string, unknown>), APP_NAMESPACE);
+  for (const entry of entries) expect(Object.keys(entry).sort()).toEqual(['commandId', 'datasetId', 'uid']);
+  expect(entries.sort((a, b) => String(a.commandId).localeCompare(String(b.commandId))))
+    .toEqual([...expected].sort((a, b) => a.commandId.localeCompare(b.commandId)));
+}
+
+async function cleanupDayCloseRun(page: Page, options: { commandIds: string[]; days: string[]; settlementDays?: string[]; backfillDays?: string[] }) {
+  const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
+  if (await release.isVisible().catch(() => false)) await release.click();
+  const ids = new Set(options.commandIds);
+  const headId = await lastCommandIdFromHead();
+  if (headId) ids.add(headId);
+  for (const id of await listEmulatorDocumentIds('commands').catch(() => [])) ids.add(id);
+  for (const id of ids) {
+    await removeDocument('commands', id).catch(() => undefined);
+    await page.evaluate(({ namespace, pendingCommandId }) => localStorage.removeItem(`${namespace}:${pendingCommandId}`), {
+      namespace: APP_NAMESPACE, pendingCommandId: id,
+    }).catch(() => undefined);
+  }
+  for (const day of options.settlementDays ?? []) {
+    for (const revision of await listEmulatorDocumentIds(`days/${day}/settlements`).catch(() => [])) {
+      await removeDocument(`days/${day}/settlements`, revision).catch(() => undefined);
+    }
+  }
+  for (const day of options.backfillDays ?? []) await removeDocument('backfillDays', day).catch(() => undefined);
+  for (const day of options.days) await removeDocument('days', day).catch(() => undefined);
+  // The next case starts from a vacant lease at epoch 0.
+  await seedAccessLease({ holderUid: null, epoch: 0, updatedAt: new Date() });
 }
 
 async function storePendingIdentity(page: import('@playwright/test').Page, uid: string, commandId: string, datasetId = DATASET_ID) {
@@ -1752,6 +1869,310 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await removeDocument('days', today);
       await removeDocument('vendors', vendorId);
       await setDayVendorDataHead(DATASET_ID, today, 0, null);
+    }
+  });
+});
+
+test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
+  async function openDayClose(page: Page) {
+    await page.getByRole('button', { name: '取得系統使用權' }).click();
+    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '日結', exact: true }).click();
+  }
+
+  async function submitHeldClose(page: Page, today: string, held: ReturnType<typeof createHeldCommit>) {
+    const form = page.getByRole('form', { name: `${today} 關帳`, exact: true });
+    await expect(form).toBeVisible();
+    await form.getByRole('textbox', { name: '實點現金（元）' }).fill('1000');
+    held.arm();
+    await form.getByRole('button', { name: '確認關帳' }).click();
+    await waitForWriteGate(held.state.intercepted.promise, 'CloseDay commit response gate');
+    await expect(page.getByText('結果確認中，勿重新收款')).toBeVisible({ timeout: 15000 });
+    const commandId = await lastCommandIdFromHead();
+    if (!commandId) throw new Error('The committed CloseDay command ID was not visible in dataHead');
+    return commandId;
+  }
+
+  async function expectOneCloseEffect(today: string, commandId: string) {
+    const receipt = await readEmulatorDocument('commands', commandId);
+    expect((receipt.fields?.kind as { stringValue?: string } | undefined)?.stringValue).toBe('CloseDay');
+    expect((receipt.fields?.targets as { mapValue?: { fields?: Record<string, unknown> } } | undefined)
+      ?.mapValue?.fields?.dayId).toEqual({ stringValue: today });
+    expect((await readEmulatorDocument('system', 'dataHead')).fields?.seq).toEqual({ integerValue: '1' });
+    expect((await readEmulatorDocument('days', today)).fields?.status).toEqual({ stringValue: 'closed' });
+    expect(await listEmulatorDocumentIds(`days/${today}/settlements`)).toEqual(['1']);
+    expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
+  }
+
+  test('confirms a real CloseDay through the registered Lite reader while the response is held past ten seconds', async ({ googleSession }) => {
+    test.setTimeout(120000);
+    const { page, uid } = googleSession;
+    const today = taipeiToday();
+    const datasetId = 'p13b2b2c-day-close';
+    await seedDayCloseFixture(today, uid, datasetId);
+    const held = createHeldCommit(page, request => commitWritesDocument(request, 'days', today));
+    await held.install();
+    let commandId: string | null = null;
+    try {
+      await openDayClose(page);
+      commandId = await submitHeldClose(page, today, held);
+      await expectMinimalJournal(page, [{ commandId, datasetId, uid }]);
+      expect(await rawStorageDump(page)).not.toContain('實點');
+      expect(held.state.matched).toBe(1);
+
+      await page.getByRole('button', { name: '查詢原命令結果' }).click();
+      const recovery = page.getByRole('alert', { name: '命令結果確認' });
+      await expect(recovery).toContainText('已找到伺服器回執，資料尚待再次讀取。');
+      await expect(recovery.getByRole('button', { name: '重新讀取伺服器資料' })).toBeDisabled();
+      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      expect(held.state.returned).toBe(false);
+      expect(held.state.matched).toBe(1);
+      expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
+
+      held.state.release.resolve();
+      await waitForWriteGate(held.state.completed.promise, 'CloseDay response release');
+      await expect(page.getByText(new RegExp(`已確認 ${today} 關帳 完成`))).toBeVisible();
+      await expect(page.getByRole('alert', { name: '命令結果確認' })).toHaveCount(0);
+      await expect.poll(() => readPendingIdentity(page, commandId!)).toBeNull();
+      await expect(page.getByRole('form', { name: `${today} 關帳`, exact: true })).toHaveCount(0);
+      expect(held.state.matched).toBe(1);
+      await expectOneCloseEffect(today, commandId);
+    } finally {
+      await held.settle();
+      await cleanupDayCloseRun(page, { commandIds: commandId ? [commandId] : [], days: [today], settlementDays: [today] });
+      await setDayCloseDataHead(DATASET_ID, today, 0, null);
+    }
+  });
+
+  test('keeps a confirmed CloseDay receipt locked when its fresh full read changes from dataset A to B', async ({ googleSession }) => {
+    test.setTimeout(120000);
+    const { page, uid } = googleSession;
+    const today = taipeiToday();
+    const datasetA = 'p13b2b2c-close-a';
+    const datasetB = 'p13b2b2c-close-b';
+    await seedDayCloseFixture(today, uid, datasetA);
+    const held = createHeldCommit(page, request => commitWritesDocument(request, 'days', today));
+    await held.install();
+    let commandId: string | null = null;
+    try {
+      await openDayClose(page);
+      commandId = await submitHeldClose(page, today, held);
+      await expectMinimalJournal(page, [{ commandId, datasetId: datasetA, uid }]);
+
+      await page.getByRole('button', { name: '查詢原命令結果' }).click();
+      await expect(page.getByRole('alert', { name: '命令結果確認' })).toContainText('已找到伺服器回執，資料尚待再次讀取。');
+      // The legitimately cleaned journal entry is not recreated by what follows.
+      await expect.poll(() => readPendingIdentity(page, commandId!)).toBeNull();
+      await setDayCloseDataHead(datasetB, today, 1, commandId);
+      held.state.release.resolve();
+      await waitForWriteGate(held.state.completed.promise, 'CloseDay response release');
+
+      const recovery = page.getByRole('alert', { name: '命令結果確認' });
+      await expect(recovery).toContainText(commandId);
+      await expect(recovery).toContainText('伺服器命令序號 1');
+      await expect(page.getByText(/伺服器資料集或營業日已變更/).first()).toBeVisible();
+      await expect(page.getByRole('heading', { name: `${today} 日結` })).toHaveCount(0);
+      await expect(page.getByText(new RegExp(`已確認 ${today} 關帳 完成`))).toHaveCount(0);
+      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+
+      await page.getByRole('button', { name: '重新載入伺服器資料' }).first().click();
+      await expect(page.getByText(/伺服器資料集或營業日已變更/).first()).toBeVisible();
+      await expect(page.getByRole('alert', { name: '命令結果確認' })).toContainText(commandId);
+      await expect(page.getByRole('heading', { name: `${today} 日結` })).toHaveCount(0);
+      expect(await readPendingIdentity(page, commandId)).toBeNull();
+      expect(held.state.matched).toBe(1);
+      expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
+    } finally {
+      await held.settle();
+      await cleanupDayCloseRun(page, { commandIds: commandId ? [commandId] : [], days: [today], settlementDays: [today] });
+      await setDayCloseDataHead(DATASET_ID, today, 0, null);
+    }
+  });
+
+  test('revokes a confirmed CloseDay before the held response when cleanup finds a new same-UID epoch', async ({ googleSession }) => {
+    test.setTimeout(120000);
+    const { page, uid } = googleSession;
+    const today = taipeiToday();
+    const datasetId = 'p13b2b2c-close-epoch';
+    await seedDayCloseFixture(today, uid, datasetId);
+    const held = createHeldCommit(page, request => commitWritesDocument(request, 'days', today));
+    await held.install();
+    let leaseReads = 0;
+    let enableLeaseChange = false;
+    const leaseChanged = deferred();
+    await page.route('**/documents:batchGet*', async route => {
+      const body = route.request().postDataJSON() as { documents?: string[] };
+      if (enableLeaseChange && body.documents?.some(name => name.endsWith('/system/accessLease'))) {
+        leaseReads += 1;
+        if (leaseReads === 3) {
+          await seedAccessLease({ holderUid: uid, epoch: 2, updatedAt: new Date() });
+          leaseChanged.resolve();
+        }
+      }
+      await route.continue();
+    });
+    let commandId: string | null = null;
+    try {
+      await openDayClose(page);
+      commandId = await submitHeldClose(page, today, held);
+      await expectMinimalJournal(page, [{ commandId, datasetId, uid }]);
+
+      enableLeaseChange = true;
+      await page.getByRole('button', { name: '查詢原命令結果' }).click();
+      await waitForWriteGate(leaseChanged.promise, 'cleanup context epoch switch');
+      const lost = async () => {
+        const pageHidden = await page.locator('main.cloud-day-close').count() === 0;
+        const revoked = await page.getByText('使用權已變更；操作內容已清除。').isVisible().catch(() => false)
+          || await page.getByText(/授權狀態已失效/).isVisible().catch(() => false);
+        return pageHidden || revoked;
+      };
+      await expect.poll(lost).toBe(true);
+      expect(leaseReads).toBe(3);
+      expect(held.state.returned).toBe(false);
+      expect(held.state.matched).toBe(1);
+      // The accepted journal entry survives; no confirmed notice and no refreshed data were shown.
+      await expect(page.getByText(new RegExp(`已確認 ${today} 關帳 完成`))).toHaveCount(0);
+      expect(JSON.parse((await readPendingIdentity(page, commandId))!)).toEqual({ commandId, datasetId, uid });
+
+      held.state.release.resolve();
+      await waitForWriteGate(held.state.completed.promise, 'CloseDay response release');
+      await expect.poll(lost).toBe(true);
+      await expect(page.getByText(new RegExp(`已確認 ${today} 關帳 完成`))).toHaveCount(0);
+      expect(held.state.matched).toBe(1);
+      await expectOneCloseEffect(today, commandId);
+    } finally {
+      await held.settle();
+      await page.unroute('**/documents:batchGet*').catch(() => undefined);
+      await cleanupDayCloseRun(page, { commandIds: commandId ? [commandId] : [], days: [today], settlementDays: [today] });
+      await setDayCloseDataHead(DATASET_ID, today, 0, null);
+    }
+  });
+
+  test('keeps the confirmed CloseDay result when real journal removal fails', async ({ googleSession }) => {
+    test.setTimeout(120000);
+    const { page, uid } = googleSession;
+    const today = taipeiToday();
+    const datasetId = 'p13b2b2c-close-local-remove';
+    await seedDayCloseFixture(today, uid, datasetId);
+    let closeWrites = 0;
+    await page.route('**/documents:commit*', async route => {
+      if (route.request().method() === 'POST' && commitWritesDocument(route.request(), 'days', today)) closeWrites += 1;
+      await route.continue();
+    });
+    let commandId: string | null = null;
+    try {
+      await openDayClose(page);
+      const form = page.getByRole('form', { name: `${today} 關帳`, exact: true });
+      await expect(form).toBeVisible();
+      await page.evaluate(namespace => {
+        const win = window as unknown as Record<string, unknown>;
+        const original = Storage.prototype.removeItem;
+        win.__p13b2NativeRemoveItem = original;
+        Storage.prototype.removeItem = function (key: string) {
+          if (key.startsWith(`${namespace}:`)) throw new DOMException('synthetic journal cleanup denial', 'SecurityError');
+          return original.call(this, key);
+        };
+      }, APP_NAMESPACE);
+      await form.getByRole('textbox', { name: '實點現金（元）' }).fill('1000');
+      await form.getByRole('button', { name: '確認關帳' }).click();
+      await expect(page.getByText(new RegExp(`已確認 ${today} 關帳 完成`))).toBeVisible();
+      await expect(page.getByText('本機命令追蹤清理未完成；伺服器回執仍已確認。')).toBeVisible();
+      commandId = await lastCommandIdFromHead();
+      if (!commandId) throw new Error('The confirmed CloseDay command ID was not visible in dataHead');
+      expect(closeWrites).toBe(1);
+      await expectOneCloseEffect(today, commandId);
+      expect(JSON.parse((await readPendingIdentity(page, commandId))!)).toEqual({ commandId, datasetId, uid });
+    } finally {
+      await page.evaluate(() => {
+        const win = window as unknown as Record<string, unknown>;
+        const original = win.__p13b2NativeRemoveItem as ((key: string) => void) | undefined;
+        if (original) Storage.prototype.removeItem = original;
+        delete win.__p13b2NativeRemoveItem;
+      }).catch(() => undefined);
+      await page.unroute('**/documents:commit*').catch(() => undefined);
+      await cleanupDayCloseRun(page, { commandIds: commandId ? [commandId] : [], days: [today], settlementDays: [today] });
+      await setDayCloseDataHead(DATASET_ID, today, 0, null);
+    }
+  });
+
+  test('does not start the next backfill step while the first step response is held, then completes each step once', async ({ googleSession }) => {
+    test.setTimeout(180000);
+    const { page, uid } = googleSession;
+    const today = taipeiToday();
+    const gap = shiftBusinessDate(today, -2);
+    const datasetId = 'p13b2b2c-backfill';
+    const sentinelReason = 'P13b2b2c 斷線回填原因';
+    await upsertDocument('days', today, {
+      status: 'open', revision: 1, menu: null,
+      openingCash: null, openedBy: null, openedAt: null,
+      totals: ZERO_TOTALS, lastSettlementRevision: 0, lastCommandId: 'd4000000-0000-4000-8000-000000000002', updatedAt: new Date(),
+    });
+    await setDayCloseDataHead(datasetId, shiftBusinessDate(today, -5), 0, null);
+    const held = createHeldCommit(page, request => commitWritesDocument(request, 'days', gap));
+    await held.install();
+    const commandIds: string[] = [];
+    try {
+      await openDayClose(page);
+      await page.locator('#cloud-day-close-date').fill(gap);
+      await page.getByRole('button', { name: '載入日期' }).click();
+      const form = page.getByRole('form', { name: `${gap} 回填` });
+      await expect(form).toBeVisible();
+      await expect(form.getByRole('button', { name: '確認回填這一天' })).toBeEnabled({ timeout: 15000 });
+      await form.getByRole('textbox', { name: /開帳現金（元）/ }).fill('870');
+      await form.getByRole('textbox', { name: /回填原因/ }).fill(sentinelReason);
+      held.arm();
+      await form.getByRole('button', { name: '確認回填這一天' }).click();
+
+      // Step one (EnsureDay) takes effect on the server, but its response stays held.
+      await waitForWriteGate(held.state.intercepted.promise, 'EnsureDay commit response gate');
+      await expect(page.getByText('結果確認中，勿重新收款')).toBeVisible({ timeout: 15000 });
+      const ensureId = await lastCommandIdFromHead();
+      if (!ensureId) throw new Error('The EnsureDay command ID was not visible in dataHead');
+      commandIds.push(ensureId);
+      expect((await readEmulatorDocument('commands', ensureId)).fields?.kind).toEqual({ stringValue: 'EnsureDay' });
+      expect((await readEmulatorDocument('days', gap)).fields?.openingCash).toEqual({ nullValue: null });
+      await expectMinimalJournal(page, [{ commandId: ensureId, datasetId, uid }]);
+      expect(await rawStorageDump(page)).not.toContain(sentinelReason);
+
+      // A receipt found while the original response is held never starts the next step by itself.
+      await page.getByRole('button', { name: '查詢原命令結果' }).click();
+      await expect(page.getByRole('alert', { name: '命令結果確認' })).toContainText('已找到伺服器回執，資料尚待再次讀取。');
+      expect(held.state.returned).toBe(false);
+      await page.waitForTimeout(1500);
+      expect(held.state.matched).toBe(1);
+      expect(await listEmulatorDocumentIds('commands')).toEqual([ensureId]);
+
+      held.state.release.resolve();
+      await waitForWriteGate(held.state.completed.promise, 'EnsureDay response release');
+      await expect(page.getByTestId('backfill-continue')).toBeVisible();
+      await page.waitForTimeout(1500);
+      expect(held.state.matched).toBe(1);
+      expect(await listEmulatorDocumentIds('commands')).toEqual([ensureId]);
+      expect(await rawStorageDump(page)).not.toContain(sentinelReason);
+
+      // Only the explicit continue starts the opening step; its own returned receipt then advances to the marker once.
+      await page.getByTestId('backfill-continue').click();
+      await expect(page.getByText(/已標為回填，可以到訂餐頁補登交易/)).toBeVisible({ timeout: 30000 });
+      // EnsureDay and BackfillOpeningCash write the day; StartBackfill only writes the marker, counted via the receipts below.
+      expect(held.state.matched).toBe(2);
+
+      const ids = await listEmulatorDocumentIds('commands');
+      commandIds.push(...ids.filter(id => !commandIds.includes(id)));
+      expect(ids).toHaveLength(3);
+      const kinds: string[] = [];
+      for (const id of ids) {
+        kinds.push(((await readEmulatorDocument('commands', id)).fields?.kind as { stringValue: string }).stringValue);
+      }
+      expect(kinds.sort()).toEqual(['BackfillOpeningCash', 'EnsureDay', 'StartBackfill']);
+      expect((await readEmulatorDocument('system', 'dataHead')).fields?.seq).toEqual({ integerValue: '3' });
+      expect((await readEmulatorDocument('days', gap)).fields?.openingCash).toEqual({ integerValue: '870' });
+      expect((await readEmulatorDocument('backfillDays', gap)).fields?.reason).toEqual({ stringValue: sentinelReason });
+      await expectMinimalJournal(page, []);
+      expect(await rawStorageDump(page)).not.toContain(sentinelReason);
+    } finally {
+      await held.settle();
+      await cleanupDayCloseRun(page, { commandIds, days: [gap, today], backfillDays: [gap] });
+      await setDayCloseDataHead(DATASET_ID, today, 0, null);
     }
   });
 });
