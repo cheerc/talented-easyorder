@@ -105,6 +105,37 @@ async function storedStudentReceipt(input = studentIntent) {
   };
 }
 
+function editStudentIntent(expectedRevision = 1, aliases: string[] = ['編輯別名']) {
+  return {
+    ...studentIntent,
+    kind: 'EditStudent' as const,
+    expectedRevisions: { student: expectedRevision },
+    payload: { displayName: 'edited name', aliases },
+  };
+}
+
+async function storedStudentEditReceipt(input = editStudentIntent()) {
+  const seed = await storedStudentReceipt();
+  const canonical = normalizeEnabledCommandInput(input);
+  if (canonical.kind !== 'EditStudent') throw new Error('Test fixture requires an EditStudent command');
+  const beforeStudent = seed.after.student;
+  const afterStudent = {
+    ...beforeStudent,
+    displayName: canonical.payload.displayName ?? beforeStudent.displayName,
+    aliases: canonical.payload.aliases ?? beforeStudent.aliases,
+    revision: 2,
+  };
+  return {
+    ...seed,
+    kind: 'EditStudent',
+    payload: canonical.payload,
+    expectedRevisions: canonical.expectedRevisions,
+    before: { head: seed.before.head, student: beforeStudent },
+    after: { head: seed.after.head, student: afterStudent },
+    inputFingerprint: await fingerprintCommandInput(canonical),
+  };
+}
+
 describe('Orders recovery reader seam reuses strict command recovery checks', () => {
   it('confirms a real absence only after two Lite contexts and never touches full SDK reads', async () => {
     fullSdk.serverRead.mockReset();
@@ -449,5 +480,136 @@ describe('Orders recovery reader seam reuses strict command recovery checks', ()
       .rejects.toMatchObject({ code: 'INVALID_INPUT' });
     expect(hookCalls).toBe(0);
     await expect(journal.readAll()).resolves.toMatchObject({ records: [pendingIdentity, recordB], total: 2, complete: true });
+  });
+
+  it('rejects a nested accessor descriptor without invoking it', async () => {
+    const revisions: Record<string, unknown> = { student: 2 };
+    let hookCalls = 0;
+    Object.defineProperty(revisions, 'toJSON', {
+      enumerable: false,
+      get() {
+        hookCalls += 1;
+        return () => ({ student: 1 });
+      },
+    });
+    const recoveryReader = reader();
+    const input = { ...editStudentIntent(2), expectedRevisions: revisions };
+    const commands = repository(() => userA);
+
+    await expect(commands.confirmPendingIntent(input, 2, 'recovery-dataset', userA.uid, recoveryReader))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect(hookCalls).toBe(0);
+    expect(recoveryReader.readCommandReceipt).not.toHaveBeenCalled();
+  });
+
+  it('does not invoke an inherited serialization hook while confirming normalized canonical data', async () => {
+    const input = editStudentIntent();
+    const stored = await storedStudentEditReceipt(input);
+    const recoveryReader = reader({ readReceipt: vi.fn(async () => document(stored)) });
+    const original = Object.getOwnPropertyDescriptor(Object.prototype, 'toJSON');
+    let hookCalls = 0;
+    Object.defineProperty(Object.prototype, 'toJSON', {
+      configurable: true,
+      value() {
+        hookCalls += 1;
+        return this;
+      },
+    });
+    let outcome: unknown;
+    try {
+      outcome = await repository(() => userA).confirmPendingIntent(input, 2, 'recovery-dataset', userA.uid, recoveryReader);
+    } catch (error) {
+      outcome = error;
+    } finally {
+      if (original) Object.defineProperty(Object.prototype, 'toJSON', original);
+      else Reflect.deleteProperty(Object.prototype, 'toJSON');
+    }
+
+    expect(outcome).toMatchObject({ status: 'matched' });
+    expect(hookCalls).toBe(0);
+  });
+
+  it('retains a matched frozen intent with nested aliases, targets, and revisions', async () => {
+    const input = Object.freeze({
+      ...editStudentIntent(1, Object.freeze(['凍結別名'])),
+      targets: Object.freeze({ ...studentIntent.targets }),
+      expectedRevisions: Object.freeze({ student: 1 }),
+      payload: Object.freeze({ displayName: 'edited name', aliases: Object.freeze(['凍結別名']) }),
+    });
+    const stored = await storedStudentEditReceipt(input);
+    const recoveryReader = reader({ readReceipt: vi.fn(async () => document(stored)) });
+
+    await expect(repository(() => userA).confirmPendingIntent(input, 2, 'recovery-dataset', userA.uid, recoveryReader))
+      .resolves.toMatchObject({ status: 'matched' });
+  });
+
+  it('keeps the detached canonical values and exact A cleanup when nested input mutates during the read', async () => {
+    const input = {
+      ...studentIntent,
+      targets: { ...studentIntent.targets },
+      expectedRevisions: { student: 0 },
+      payload: {
+        ...studentIntent.payload,
+        aliases: ['原始別名'],
+        openingBalance: { ...studentIntent.payload.openingBalance },
+      },
+    };
+    const sourceReceipt = await storedStudentReceipt(input);
+    const stored = {
+      ...sourceReceipt,
+      targets: { ...sourceReceipt.targets },
+      expectedRevisions: { ...sourceReceipt.expectedRevisions },
+      payload: {
+        ...sourceReceipt.payload,
+        aliases: [...sourceReceipt.payload.aliases],
+        openingBalance: { ...sourceReceipt.payload.openingBalance },
+      },
+      after: {
+        ...sourceReceipt.after,
+        head: { ...sourceReceipt.after.head },
+        student: sourceReceipt.after.student && {
+          ...sourceReceipt.after.student,
+          aliases: [...sourceReceipt.after.student.aliases],
+          openingBalance: { ...sourceReceipt.after.student.openingBalance },
+        },
+      },
+    };
+    const recordB = { ...pendingIdentity, commandId: '00000000-0000-4000-8000-000000000099' };
+    const journal = createCloudPendingJournal(db, createMemoryCloudPendingJournalTestAdapter());
+    await journal.put(pendingIdentity);
+    await journal.put(recordB);
+    const recoveryReader = reader({ readReceipt: async () => {
+      input.targets.studentId = recordB.commandId;
+      input.expectedRevisions.student = 2;
+      input.payload.studentCode = '999';
+      input.payload.aliases[0] = '被修改別名';
+      input.payload.openingBalance.amount = 12;
+      return document(stored);
+    } });
+    const commands = createCloudCommandRepository(db, { currentUser: () => userA, pendingJournal: journal });
+
+    await expect(commands.cleanupConfirmedIntent(input, 2, 'recovery-dataset', userA.uid, recoveryReader, () => true))
+      .resolves.toBe(true);
+    await expect(journal.readAll()).resolves.toMatchObject({ records: [recordB], total: 1, complete: true });
+  });
+
+  it('rejects unsupported nested attributes, cycles, sparse aliases, and class instances', async () => {
+    const cyclicRevisions: Record<string, unknown> = { student: 1 };
+    Object.defineProperty(cyclicRevisions, 'loop', { enumerable: false, value: cyclicRevisions });
+    const sparseAliases = new Array<string>(1);
+    const customAliasPrototype = Object.create(Array.prototype) as string[];
+    const classRevisions = new (class { student = 1; })();
+    const inputs = [
+      { ...editStudentIntent(1), expectedRevisions: cyclicRevisions },
+      { ...studentIntent, payload: { ...studentIntent.payload, aliases: sparseAliases } },
+      { ...studentIntent, payload: { ...studentIntent.payload, aliases: Object.setPrototypeOf(['alias'], customAliasPrototype) } },
+      { ...editStudentIntent(1), expectedRevisions: classRevisions },
+    ];
+    const commands = repository(() => userA);
+
+    for (const input of inputs) {
+      await expect(commands.confirmPendingIntent(input, 2, 'recovery-dataset', userA.uid, reader()))
+        .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    }
   });
 });
