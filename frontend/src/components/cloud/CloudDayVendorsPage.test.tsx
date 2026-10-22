@@ -838,7 +838,11 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
   });
   const commandId = '00000000-0000-4000-8000-000000000007';
 
-  function renderWithLedger(ledger: CloudLedgerView, extra: { onOpenAnomalies?: () => void; onLedgerChanged?: () => void } = {}) {
+  function renderWithLedger(ledger: CloudLedgerView, extra: {
+    onOpenAnomalies?: () => void;
+    onLedgerChanged?: () => void;
+    onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
+  } = {}) {
     return render(
       <CloudDayVendorsPage db={{} as Firestore} leaseEpoch={4} identityKey="uid-a:4" ledger={ledger} {...extra} />,
     );
@@ -878,6 +882,64 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
     renderPage();
     await screen.findByRole('form', { name: `${today} 開帳現金` });
     expect(screen.queryByLabelText('過去未關帳警示')).not.toBeInTheDocument();
+  });
+
+  it.each(['LEASE_LOST', 'UNAUTHORIZED'] as const)(
+    'revokes the confirmed opening operation when cleanup observes %s',
+    async code => {
+      const onLedgerChanged = vi.fn();
+      const onNavigationStateChange = vi.fn();
+      repository.loadSnapshot.mockResolvedValueOnce(snapshot({ vendors: [vendor('private-vendor')] }));
+      repository.cleanupConfirmedIntent.mockRejectedValueOnce({ code, message: 'authority changed' });
+      repository.findPreviousClosed.mockResolvedValueOnce({
+        previous: { dayId: '2026-10-13', countedCash: 870 }, seq: 10,
+      });
+
+      renderWithLedger(readyLedger(), { onLedgerChanged, onNavigationStateChange });
+      const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
+      fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '870' } });
+      await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
+      fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
+
+      expect(await screen.findByText('授權狀態已失效。敏感資料與操作草稿已清除；請重新登入並取得有效使用權。')).toBeInTheDocument();
+      const recovery = screen.getByRole('alert', { name: '命令結果確認' });
+      expect(recovery).toHaveTextContent('使用權已變更；敏感操作內容已清除。');
+      expect(recovery).toHaveTextContent(commandId);
+      expect(recovery).not.toHaveTextContent('開帳現金');
+      expect(screen.queryByTestId('cloud-vendor-row-private-vendor')).not.toBeInTheDocument();
+      expect(screen.queryByRole('form', { name: `${today} 開帳現金` })).not.toBeInTheDocument();
+      expect(screen.queryByText(new RegExp(`已確認 確認 ${today} 開帳現金 完成`))).not.toBeInTheDocument();
+      expect(repository.setOpeningCash).toHaveBeenCalledOnce();
+      expect(repository.cleanupConfirmedIntent).toHaveBeenCalledOnce();
+      expect(repository.loadSnapshot).toHaveBeenCalledOnce();
+      expect(onLedgerChanged).not.toHaveBeenCalled();
+      await waitFor(() => expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-a:4', 'revoked'));
+    },
+  );
+
+  it('keeps a confirmed opening result and refreshes once when local journal cleanup fails', async () => {
+    const onLedgerChanged = vi.fn();
+    const onNavigationStateChange = vi.fn();
+    repository.cleanupConfirmedIntent.mockRejectedValueOnce({
+      code: 'LOCAL_STORAGE_UNAVAILABLE', message: 'local journal unavailable',
+    });
+    repository.findPreviousClosed.mockResolvedValueOnce({
+      previous: { dayId: '2026-10-13', countedCash: 870 }, seq: 10,
+    });
+
+    renderWithLedger(readyLedger(), { onLedgerChanged, onNavigationStateChange });
+    const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
+    fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '870' } });
+    await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
+    fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
+
+    expect(await screen.findByText(new RegExp(`已確認 確認 ${today} 開帳現金 完成`))).toBeInTheDocument();
+    expect(screen.getByText(/本機命令追蹤清理未完成；伺服器回執仍已確認/)).toBeInTheDocument();
+    expect(repository.setOpeningCash).toHaveBeenCalledOnce();
+    expect(repository.cleanupConfirmedIntent).toHaveBeenCalledOnce();
+    expect(repository.loadSnapshot).toHaveBeenCalledTimes(2);
+    expect(onLedgerChanged).toHaveBeenCalledOnce();
+    await waitFor(() => expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-a:4', 'resolved'));
   });
 
   it('requires a trimmed reason when the opening differs from the last close and sends it with the command', async () => {

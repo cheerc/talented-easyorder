@@ -1371,6 +1371,136 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     }
   });
 
+  test('revokes a confirmed opening operation before the held response when cleanup finds a new same-UID epoch', async ({ googleSession }) => {
+    test.setTimeout(120000);
+    const { page, uid } = googleSession;
+    const today = taipeiToday();
+    const datasetId = 'p13b2b2b-day-vendor-opening';
+    const { vendorId } = await seedDayVendorRecoveryFixture(today, datasetId);
+    const writeGate: WriteGate = {
+      mode: 'after-server', intercepted: deferred(), release: deferred(), completed: deferred(), requests: 0,
+    };
+    let activeWriteGate: WriteGate | null = null;
+    let writeResponseReturned = false;
+    let recoveryLeaseReads = 0;
+    let enableLeaseChange = false;
+    const leaseChanged = deferred();
+
+    await page.route('**/documents:commit*', async route => {
+      const current = activeWriteGate;
+      if (!current || route.request().method() !== 'POST' || !commitWritesDocument(route.request(), 'days', today)) {
+        await route.continue();
+        return;
+      }
+      current.requests += 1;
+      const response = await route.fetch({ timeout: 30000 });
+      current.intercepted.resolve();
+      await current.release.promise;
+      await route.fulfill({ response });
+      writeResponseReturned = true;
+      current.completed.resolve();
+    });
+
+    await page.route('**/documents:batchGet*', async route => {
+      const body = route.request().postDataJSON() as { documents?: string[] };
+      if (enableLeaseChange && body.documents?.some(name => name.endsWith('/system/accessLease'))) {
+        recoveryLeaseReads += 1;
+        if (recoveryLeaseReads === 3) {
+          await seedAccessLease({ holderUid: uid, epoch: 2, updatedAt: new Date() });
+          leaseChanged.resolve();
+        }
+      }
+      await route.continue();
+    });
+
+    let commandId: string | null = null;
+    try {
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await page.getByRole('button', { name: '日期與供應商' }).click();
+      const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
+      const openingForm = main.getByRole('form', { name: `${today} 開帳現金` });
+      await expect(openingForm).toBeVisible();
+      await expect(openingForm.getByRole('button', { name: '確認開帳金額' })).toBeEnabled({ timeout: 15000 });
+      await openingForm.getByLabel(/開帳現金/).fill('250');
+      activeWriteGate = writeGate;
+      await openingForm.getByRole('button', { name: '確認開帳金額' }).click();
+
+      await waitForWriteGate(writeGate.intercepted.promise, 'SetOpeningCash commit response gate');
+      await expect(page.getByText('結果確認中，勿重新收款')).toBeVisible({ timeout: 15000 });
+      const headAfterCommit = await readEmulatorDocument('system', 'dataHead');
+      commandId = (headAfterCommit.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null;
+      if (!commandId) throw new Error('The committed SetOpeningCash command ID was not visible in dataHead');
+      const receipt = await readEmulatorDocument('commands', commandId);
+      expect((receipt.fields?.commandId as { stringValue?: string } | undefined)?.stringValue).toBe(commandId);
+      expect((receipt.fields?.kind as { stringValue?: string } | undefined)?.stringValue).toBe('SetOpeningCash');
+      expect((receipt.fields?.targets as { mapValue?: { fields?: Record<string, unknown> } } | undefined)
+        ?.mapValue?.fields?.dayId).toEqual({ stringValue: today });
+      expect((headAfterCommit.fields?.seq as { integerValue?: string } | undefined)?.integerValue).toBe('1');
+      expect(writeGate.requests).toBe(1);
+      expect(writeResponseReturned).toBe(false);
+      expect(JSON.parse((await readPendingIdentity(page, commandId))!)).toEqual({ commandId, datasetId, uid });
+
+      enableLeaseChange = true;
+      await page.getByRole('button', { name: '查詢原命令結果' }).click();
+      await waitForWriteGate(leaseChanged.promise, 'cleanup context epoch switch');
+      try {
+        await expect.poll(async () => {
+          const pageHidden = await page.getByRole('main', { name: '雲端日期設定與供應商管理' }).count() === 0;
+          const revoked = await page.getByText('使用權已變更；敏感操作內容已清除。').isVisible().catch(() => false);
+          return pageHidden || revoked;
+        }).toBe(true);
+      } catch (error) {
+        console.log('DayVendor cleanup epoch before response release', JSON.stringify({
+          recoveryLeaseReads,
+          writeResponseReturned,
+          serverLease: await readEmulatorDocument('system', 'accessLease'),
+          body: await page.locator('body').innerText(),
+        }));
+        throw error;
+      }
+
+      expect(recoveryLeaseReads).toBe(3);
+      expect(writeResponseReturned).toBe(false);
+      expect(writeGate.requests).toBe(1);
+      if (await page.getByRole('main', { name: '雲端日期設定與供應商管理' }).count()) {
+        const recovery = page.getByRole('alert', { name: '命令結果確認' });
+        await expect(recovery).toContainText(commandId);
+        await expect(recovery).not.toContainText('開帳現金');
+      }
+
+      writeGate.release.resolve();
+      await waitForWriteGate(writeGate.completed.promise, 'SetOpeningCash response release');
+      await expect.poll(async () => {
+        const pageHidden = await page.getByRole('main', { name: '雲端日期設定與供應商管理' }).count() === 0;
+        const revoked = await page.getByText('使用權已變更；敏感操作內容已清除。').isVisible().catch(() => false);
+        return pageHidden || revoked;
+      }).toBe(true);
+      expect(writeGate.requests).toBe(1);
+      expect((await readEmulatorDocument('system', 'dataHead')).fields?.seq).toEqual({ integerValue: '1' });
+      expect((await readEmulatorDocument('days', today)).fields?.openingCash).toEqual({ integerValue: '250' });
+      expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
+      expect(JSON.parse((await readPendingIdentity(page, commandId))!)).toEqual({ commandId, datasetId, uid });
+    } finally {
+      writeGate.release.resolve();
+      if (writeGate.requests > 0) await Promise.race([writeGate.completed.promise, new Promise(resolve => setTimeout(resolve, 5000))]);
+      await page.unroute('**/documents:commit*');
+      await page.unroute('**/documents:batchGet*');
+      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
+      if (await release.isVisible().catch(() => false)) await release.click();
+      commandId ??= (((await readEmulatorDocument('system', 'dataHead').catch(() => null))?.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null);
+      if (commandId) {
+        await removeDocument('commands', commandId);
+        await page.evaluate(({ namespace, pendingCommandId }) => localStorage.removeItem(`${namespace}:${pendingCommandId}`), {
+          namespace: APP_NAMESPACE, pendingCommandId: commandId,
+        });
+      }
+      await removeDocument('days', today);
+      await removeDocument('vendors', vendorId);
+      await setDayVendorDataHead(DATASET_ID, today, 0, null);
+    }
+  });
+
   test('keeps a confirmed DayMenu receipt locked when its fresh full read changes from dataset A to B', async ({ googleSession }) => {
     test.setTimeout(120000);
     const { page, uid } = googleSession;
