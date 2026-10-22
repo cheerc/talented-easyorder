@@ -23,7 +23,11 @@ import {
   type PendingIntentCheck,
 } from './cloudCommandRepository';
 import type { CloudRecoveryReader } from './cloudRecoveryReader';
-import { normalizeEnabledCommandInput, type CanonicalEnabledInput } from '../domain/cloudCommandSchema';
+import {
+  InvalidCloudCommandInput,
+  normalizeEnabledCommandInput,
+  type CanonicalEnabledInput,
+} from '../domain/cloudCommandSchema';
 import { openingDifference, type PreviousClosedDay } from '../domain/ledgerAnomalies';
 import { CloudDayCloseRepositoryError, createCloudLedgerReader, type CloudPreviousClosedLookup } from './cloudDayCloseRepository';
 import { accessLeasePath, dataHeadPath, dayPath } from './firestorePaths';
@@ -577,6 +581,17 @@ export function createCloudDayVendorRepository(
   const commandRepository = createCloudCommandRepository(db, options);
   const ledgerReader = createCloudLedgerReader(db, options);
 
+  async function commitTypedIntent(intent: CloudDayVendorCommandIntent): Promise<CommandResult> {
+    try {
+      return await commandRepository.commitCommand(buildDayVendorCommand(intent));
+    } catch (error) {
+      if (error instanceof InvalidCloudCommandInput) {
+        return { ok: false, error: { code: 'INVALID_INPUT', message: error.message } };
+      }
+      throw error;
+    }
+  }
+
   async function setOpeningCash(input: SetOpeningCashInput): Promise<CommandResult> {
     let previous: PreviousClosedDay | null;
     try {
@@ -599,14 +614,14 @@ export function createCloudDayVendorRepository(
         error: { code: 'INVALID_INPUT', message: '開帳現金與上次關帳實點不同，必須填寫差額原因（1–500 字）' },
       };
     }
-    return commandRepository.commitCommand(buildDayVendorCommand({
+    return commitTypedIntent({
       kind: 'set-opening-cash', input: { ...input, ...(reason ? { reason } : { reason: undefined }) },
-    }));
+    });
   }
 
   async function commitDayVendorIntent(intent: CloudDayVendorCommandIntent): Promise<CommandResult> {
     if (intent.kind === 'set-opening-cash') return setOpeningCash(intent.input);
-    return commandRepository.commitCommand(buildDayVendorCommand(intent));
+    return commitTypedIntent(intent);
   }
 
   async function loadSnapshot(targetDayId?: string): Promise<CloudDayVendorSnapshot> {
@@ -652,10 +667,10 @@ export function createCloudDayVendorRepository(
   return {
     loadSnapshot,
     findPreviousClosed: dayId => ledgerReader.findPreviousClosed(dayId),
-    ensureDay: input => commandRepository.commitCommand(buildDayVendorCommand({ kind: 'ensure-day', input })),
-    saveVendor: input => commandRepository.commitCommand(buildDayVendorCommand({ kind: 'save-vendor', input })),
-    removeVendor: input => commandRepository.commitCommand(buildDayVendorCommand({ kind: 'remove-vendor', input })),
-    setDayMenu: input => commandRepository.commitCommand(buildDayVendorCommand({ kind: 'set-day-menu', input })),
+    ensureDay: input => commitTypedIntent({ kind: 'ensure-day', input }),
+    saveVendor: input => commitTypedIntent({ kind: 'save-vendor', input }),
+    removeVendor: input => commitTypedIntent({ kind: 'remove-vendor', input }),
+    setDayMenu: input => commitTypedIntent({ kind: 'set-day-menu', input }),
     setOpeningCash,
     commitDayVendorIntent,
     confirmPendingIntent: (intent, expectedDatasetId, expectedUid) => commandRepository.confirmPendingIntent(

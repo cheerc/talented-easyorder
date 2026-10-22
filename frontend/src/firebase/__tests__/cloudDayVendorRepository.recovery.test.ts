@@ -150,6 +150,16 @@ describe('CloudDayVendorRepository recovery intent mapping', () => {
     }));
   });
 
+  it('returns invalid normalized opening input as a command result instead of throwing', async () => {
+    const subject = repository();
+    const result = await subject.setOpeningCash({
+      commandId: '10000000-0000-4000-8000-000000000008', leaseEpoch: 7,
+      dayId: '2026-10-15', expectedRevision: 2, openingCash: 650, reason: 'x'.repeat(501),
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(commands.commitCommand).not.toHaveBeenCalled();
+  });
+
   it('reruns the fresh closed-day preflight for every explicit opening-cash commit retry', async () => {
     const subject = repository();
     const intent: TestIntent = {
