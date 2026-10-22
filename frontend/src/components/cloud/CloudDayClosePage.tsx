@@ -622,7 +622,7 @@ export function CloudDayClosePage({
           planFollowUp = planDone ? null : {
             ...planFollowUp,
             auto: completedOperation.confirmedByResult && completedOperation.attemptSettled
-              && !completedOperation.cleanupWarning && !autoBlockedGenerationsRef.current.has(planFollowUp.generation),
+              && !autoBlockedGenerationsRef.current.has(planFollowUp.generation),
           };
         }
         dropOperation(completedOperation);
