@@ -360,4 +360,94 @@ describe('Orders recovery reader seam reuses strict command recovery checks', ()
 
     await expect(commands.confirmPending(pendingIdentity, 2, recoveryReader)).rejects.toMatchObject({ code: expectedCode });
   });
+
+  it('rejects an expected revision changed only by a nested serialization hook', async () => {
+    const seed = await storedStudentReceipt();
+    const edit = {
+      ...studentIntent,
+      kind: 'EditStudent' as const,
+      expectedRevisions: { student: 1 },
+      payload: { displayName: 'edited name' },
+    };
+    const canonical = normalizeEnabledCommandInput(edit);
+    const beforeStudent = { ...seed.after.student };
+    const afterStudent = { ...beforeStudent, displayName: 'edited name', revision: 2 };
+    const stored = {
+      ...seed,
+      kind: 'EditStudent',
+      payload: canonical.payload,
+      expectedRevisions: canonical.expectedRevisions,
+      before: { head: seed.before.head, student: beforeStudent },
+      after: { head: seed.after.head, student: afterStudent },
+      inputFingerprint: await fingerprintCommandInput(canonical),
+    };
+    const recoveryReader = reader({ readReceipt: vi.fn(async () => document(stored)) });
+    const commands = repository(() => userA);
+
+    await expect(commands.confirmPendingIntent(edit, 2, 'recovery-dataset', userA.uid, recoveryReader))
+      .resolves.toMatchObject({ status: 'matched' });
+    const wrong = { ...edit, expectedRevisions: { student: 2 } };
+    await expect(commands.confirmPendingIntent(wrong, 2, 'recovery-dataset', userA.uid, recoveryReader))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+
+    let hookCalls = 0;
+    Object.defineProperty(wrong.expectedRevisions, 'toJSON', {
+      enumerable: false,
+      value() {
+        hookCalls += 1;
+        return { student: 1 };
+      },
+    });
+    expect(normalizeEnabledCommandInput(wrong).expectedRevisions.student).toBe(2);
+
+    await expect(commands.confirmPendingIntent(wrong, 2, 'recovery-dataset', userA.uid, recoveryReader))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect(hookCalls).toBe(0);
+  });
+
+  it('does not clear a journal identity when a nested serialization hook replaces its revision semantics', async () => {
+    const seed = await storedStudentReceipt();
+    const edit = {
+      ...studentIntent,
+      kind: 'EditStudent' as const,
+      expectedRevisions: { student: 1 },
+      payload: { displayName: 'edited name' },
+    };
+    const canonical = normalizeEnabledCommandInput(edit);
+    const beforeStudent = { ...seed.after.student };
+    const afterStudent = { ...beforeStudent, displayName: 'edited name', revision: 2 };
+    const stored = {
+      ...seed,
+      kind: 'EditStudent',
+      payload: canonical.payload,
+      expectedRevisions: canonical.expectedRevisions,
+      before: { head: seed.before.head, student: beforeStudent },
+      after: { head: seed.after.head, student: afterStudent },
+      inputFingerprint: await fingerprintCommandInput(canonical),
+    };
+    const recoveryReader = reader({ readReceipt: vi.fn(async () => document(stored)) });
+    const journal = createCloudPendingJournal(db, createMemoryCloudPendingJournalTestAdapter());
+    const recordB = { ...pendingIdentity, commandId: '00000000-0000-4000-8000-000000000099' };
+    await journal.put(pendingIdentity);
+    await journal.put(recordB);
+    const commands = createCloudCommandRepository(db, { currentUser: () => userA, pendingJournal: journal });
+
+    const wrong = { ...edit, expectedRevisions: { student: 2 } };
+    await expect(commands.confirmPendingIntent(wrong, 2, 'recovery-dataset', userA.uid, recoveryReader))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    let hookCalls = 0;
+    Object.defineProperty(wrong.expectedRevisions, 'toJSON', {
+      enumerable: false,
+      value() {
+        hookCalls += 1;
+        return { student: 1 };
+      },
+    });
+    expect(normalizeEnabledCommandInput(wrong).expectedRevisions.student).toBe(2);
+
+    await expect(commands.cleanupConfirmedIntent(wrong, 2, 'recovery-dataset', userA.uid, recoveryReader, () => true))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect(hookCalls).toBe(0);
+    await expect(journal.readAll()).resolves.toMatchObject({ records: [pendingIdentity, recordB], total: 2, complete: true });
+  });
 });
