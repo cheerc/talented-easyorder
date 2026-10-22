@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type SetStateAction } from 'react';
+import { getAuth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
 import { normalizeStudentCodeOrThrow } from '../../domain/student';
 import {
   createCloudStudentRepository,
+  type CloudStudentCommandIntent,
   type CloudStudentList,
   type CloudStudentRecord,
 } from '../../firebase/cloudStudentRepository';
+import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
 import './CloudStudentsPage.css';
 
 export interface CloudStudentsPageProps {
@@ -95,11 +98,14 @@ interface RecoveryState {
   commandId: string;
   command?: PreparedCommand;
   phase: RecoveryPhase;
+  timedOut?: boolean;
+  canRetry?: boolean;
   receipt?: CommandReceipt;
 }
 
 interface PageState {
   identityKey: string;
+  scopeVersion: number;
   authorizationRevoked: boolean;
   snapshot: CloudStudentList | null;
   loading: boolean;
@@ -125,6 +131,29 @@ interface PageState {
   recovery: RecoveryState | null;
 }
 
+interface StudentCommandOperation {
+  token: symbol;
+  identityKey: string;
+  generation: number;
+  db: Firestore;
+  app: Firestore['app'];
+  uid: string;
+  leaseEpoch: number;
+  datasetId: string;
+  command: PreparedCommand;
+  intent: CloudStudentCommandIntent;
+  attempt: number;
+  attemptPromise: Promise<CommandResult> | null;
+  attemptSettled: boolean;
+  querySequence: number;
+  checking: boolean;
+  retryAuthorized: boolean;
+  receipt: CommandReceipt | null;
+  listReloadStarted: boolean;
+  completed: boolean;
+  timerId: number | null;
+};
+
 const freshCreateDraft = (): CreateDraft => ({
   studentCode: '',
   displayName: '',
@@ -134,8 +163,66 @@ const freshCreateDraft = (): CreateDraft => ({
   openingMode: '',
 });
 
-const initialPageState = (identityKey: string): PageState => ({
+function freezePreparedCommand(command: PreparedCommand): PreparedCommand {
+  const copy = JSON.parse(JSON.stringify(command)) as PreparedCommand;
+  const freeze = (value: unknown): void => {
+    if (!value || typeof value !== 'object' || Object.isFrozen(value)) return;
+    for (const child of Object.values(value as Record<string, unknown>)) freeze(child);
+    Object.freeze(value);
+  };
+  freeze(copy);
+  return copy;
+}
+
+function intentFor(command: PreparedCommand, leaseEpoch: number): CloudStudentCommandIntent {
+  if (command.kind === 'create') return {
+    kind: 'create',
+    input: {
+      commandId: command.commandId, leaseEpoch, studentId: command.studentId,
+      studentCode: command.studentCode, displayName: command.displayName,
+      aliases: [...command.aliases], openingBalance: { ...command.openingBalance },
+    },
+  };
+  if (command.kind === 'edit') return {
+    kind: 'edit',
+    input: {
+      commandId: command.commandId, leaseEpoch, studentId: command.studentId,
+      expectedRevision: command.expectedRevision,
+      ...(command.displayName !== undefined ? { displayName: command.displayName } : {}),
+      ...(command.aliases !== undefined ? { aliases: [...command.aliases] } : {}),
+    },
+  };
+  if (command.kind === 'code') return {
+    kind: 'change-code',
+    input: {
+      commandId: command.commandId, leaseEpoch, studentId: command.studentId,
+      expectedRevision: command.expectedRevision, studentCode: command.newStudentCode, reason: command.reason,
+    },
+  };
+  if (command.kind === 'status') return {
+    kind: 'status',
+    input: {
+      commandId: command.commandId, leaseEpoch, studentId: command.studentId,
+      expectedRevision: command.expectedRevision, status: command.status, reason: command.reason,
+    },
+  };
+  if (command.kind === 'opening-day') return {
+    kind: 'ensure-day',
+    input: { commandId: command.commandId, leaseEpoch, dayId: command.dayId },
+  };
+  return {
+    kind: 'correct-opening',
+    input: {
+      commandId: command.commandId, leaseEpoch, studentId: command.studentId, dayId: command.dayId,
+      expectedStudentRevision: command.expectedStudentRevision, expectedDayRevision: command.expectedDayRevision,
+      amount: command.amount, note: command.note, reason: command.reason,
+    },
+  };
+}
+
+const initialPageState = (identityKey: string, scopeVersion = 0): PageState => ({
   identityKey,
+  scopeVersion,
   authorizationRevoked: false,
   snapshot: null,
   loading: true,
@@ -328,25 +415,45 @@ function OpeningCorrectionForm({
 }
 
 export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationStateChange }: CloudStudentsPageProps) {
-  const repository = useMemo(() => createCloudStudentRepository(db), [db]);
+  const recoveryReader = useMemo(() => getCloudRecoveryReader(db), [db]);
+  const repository = useMemo(() => createCloudStudentRepository(db, { recoveryReader }), [db, recoveryReader]);
+  let currentUid: string | null = null;
+  try { currentUid = getAuth(db.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
   const [pageState, setPageStateRaw] = useState<PageState>(() => initialPageState(identityKey));
   const identityRef = useRef(identityKey);
   const generationRef = useRef(0);
   const listRequestRef = useRef(0);
-  const commandFlightRef = useRef<symbol | null>(null);
   const revokedIdentityRef = useRef<string | null>(null);
   const pendingCommandIdRef = useRef<string | null>(null);
   const openingDayRequestRef = useRef(0);
+  const operationRef = useRef<StudentCommandOperation | null>(null);
+  const scopeRef = useRef({ db, uid: currentUid, identityKey, leaseEpoch, version: 0 });
 
+  if (scopeRef.current.db !== db || scopeRef.current.uid !== currentUid
+    || scopeRef.current.identityKey !== identityKey || scopeRef.current.leaseEpoch !== leaseEpoch) {
+    const oldOperation = operationRef.current;
+    if (oldOperation?.timerId !== null && oldOperation?.timerId !== undefined) {
+      window.clearTimeout(oldOperation.timerId);
+    }
+    if (oldOperation) oldOperation.completed = true;
+    operationRef.current = null;
+    generationRef.current += 1;
+    listRequestRef.current += 1;
+    openingDayRequestRef.current += 1;
+    revokedIdentityRef.current = null;
+    pendingCommandIdRef.current = null;
+    scopeRef.current = { db, uid: currentUid, identityKey, leaseEpoch, version: scopeRef.current.version + 1 };
+  }
   if (identityRef.current !== identityKey) {
     identityRef.current = identityKey;
-    generationRef.current += 1;
-    commandFlightRef.current = null;
     revokedIdentityRef.current = null;
     pendingCommandIdRef.current = null;
   }
+  const scopeVersion = scopeRef.current.version;
 
-  const page = pageState.identityKey === identityKey ? pageState : initialPageState(identityKey);
+  const page = pageState.identityKey === identityKey && pageState.scopeVersion === scopeVersion
+    ? pageState
+    : initialPageState(identityKey, scopeVersion);
 
   const isCurrent = useCallback((key: string, generation: number) => (
     identityRef.current === key && generationRef.current === generation
@@ -355,7 +462,9 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
   const updateFor = useCallback((key: string, generation: number, update: (previous: PageState) => PageState) => {
     setPageStateRaw(previous => {
       if (!isCurrent(key, generation)) return previous;
-      const current = previous.identityKey === key ? previous : initialPageState(key);
+      const current = previous.identityKey === key && previous.scopeVersion === scopeRef.current.version
+        ? previous
+        : initialPageState(key, scopeRef.current.version);
       return update(current);
     });
   }, [isCurrent]);
@@ -377,7 +486,9 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
     revokedIdentityRef.current = key;
     generationRef.current += 1;
     listRequestRef.current += 1;
-    commandFlightRef.current = null;
+    const operation = operationRef.current;
+    if (operation?.timerId !== null && operation?.timerId !== undefined) window.clearTimeout(operation.timerId);
+    operationRef.current = null;
     const retainedCommandId = commandId ?? pendingCommandIdRef.current;
     pendingCommandIdRef.current = retainedCommandId;
     onNavigationStateChange?.(key, 'revoked');
@@ -402,6 +513,9 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
   const loadSnapshot = useCallback(async (confirmedReceipt?: CommandReceipt) => {
     const key = identityKey;
     const generation = generationRef.current;
+    const operation = operationRef.current;
+    if (operation && !confirmedReceipt) return;
+    if (confirmedReceipt && operation && operation.command.commandId !== confirmedReceipt.commandId) return;
     if (revokedIdentityRef.current === key) return;
     const requestId = ++listRequestRef.current;
     updateFor(key, generation, previous => ({
@@ -416,7 +530,18 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
     try {
       const snapshot = await repository.list();
       if (!isCurrent(key, generation) || requestId !== listRequestRef.current) return;
-      if (confirmedReceipt?.commandId === pendingCommandIdRef.current) pendingCommandIdRef.current = null;
+      const confirmedOperation = operationRef.current;
+      const resolvesOperation = confirmedReceipt
+        && confirmedOperation?.command.commandId === confirmedReceipt.commandId
+        && !confirmedOperation.completed;
+      if (resolvesOperation) {
+        confirmedOperation.completed = true;
+        if (confirmedOperation.timerId !== null) window.clearTimeout(confirmedOperation.timerId);
+        operationRef.current = null;
+        pendingCommandIdRef.current = null;
+      } else if (confirmedReceipt?.commandId === pendingCommandIdRef.current) {
+        pendingCommandIdRef.current = null;
+      }
       updateFor(key, generation, previous => {
         const confirmsPending = confirmedReceipt
           && previous.recovery?.commandId === confirmedReceipt.commandId
@@ -464,13 +589,21 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
 
   useEffect(() => {
     const generation = ++generationRef.current;
-    setPageStateRaw(initialPageState(identityKey));
+    setPageStateRaw(initialPageState(identityKey, scopeVersion));
     void loadSnapshot();
     return () => {
       listRequestRef.current += 1;
-      if (generationRef.current === generation) generationRef.current += 1;
+      if (generationRef.current === generation) {
+        const operation = operationRef.current;
+        if (operation?.generation === generation) {
+          if (operation.timerId !== null) window.clearTimeout(operation.timerId);
+          operation.completed = true;
+          operationRef.current = null;
+        }
+        generationRef.current += 1;
+      }
     };
-  }, [identityKey, repository, loadSnapshot]);
+  }, [identityKey, repository, loadSnapshot, scopeVersion]);
 
   const hasRecovery = page.recovery !== null;
   useEffect(() => {
@@ -480,159 +613,249 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
     );
   }, [hasRecovery, identityKey, onNavigationStateChange, page.authorizationRevoked]);
 
-  // 首次送出與同編號核對都走這裡，確保核對時送出的是凍結的原輸入。
-  const dispatchCommand = (command: PreparedCommand): Promise<CommandResult> => {
-    if (command.kind === 'create') {
-      return repository.createStudent({
-        commandId: command.commandId,
-        leaseEpoch,
-        studentId: command.studentId,
-        studentCode: command.studentCode,
-        displayName: command.displayName,
-        aliases: command.aliases,
-        openingBalance: command.openingBalance,
-      });
-    }
-    if (command.kind === 'edit') {
-      return repository.editStudent({
-        commandId: command.commandId,
-        leaseEpoch,
-        studentId: command.studentId,
-        expectedRevision: command.expectedRevision,
-        ...(command.displayName !== undefined ? { displayName: command.displayName } : {}),
-        ...(command.aliases !== undefined ? { aliases: command.aliases } : {}),
-      });
-    }
-    if (command.kind === 'code') {
-      return repository.changeStudentCode({
-        commandId: command.commandId,
-        leaseEpoch,
-        studentId: command.studentId,
-        expectedRevision: command.expectedRevision,
-        studentCode: command.newStudentCode,
-        reason: command.reason,
-      });
-    }
-    if (command.kind === 'opening-day') {
-      return repository.ensureOpeningDay({ commandId: command.commandId, leaseEpoch, dayId: command.dayId });
-    }
-    if (command.kind === 'opening') {
-      return repository.correctOpening({
-        commandId: command.commandId,
-        leaseEpoch,
-        studentId: command.studentId,
-        dayId: command.dayId,
-        expectedStudentRevision: command.expectedStudentRevision,
-        expectedDayRevision: command.expectedDayRevision,
-        amount: command.amount,
-        note: command.note,
-        reason: command.reason,
-      });
-    }
-    return repository.setStudentStatus({
-      commandId: command.commandId,
-      leaseEpoch,
-      studentId: command.studentId,
-      expectedRevision: command.expectedRevision,
-      status: command.status,
-      reason: command.reason,
-    });
+  const ownsOperation = (operation: StudentCommandOperation) => {
+    let currentUid: string | null = null;
+    try { currentUid = getAuth(operation.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
+    return operationRef.current === operation
+      && !operation.completed
+      && isCurrent(operation.identityKey, operation.generation)
+      && scopeRef.current.db === operation.db
+      && scopeRef.current.db.app === operation.app
+      && scopeRef.current.uid === operation.uid
+      && scopeRef.current.identityKey === operation.identityKey
+      && scopeRef.current.leaseEpoch === operation.leaseEpoch
+      && currentUid === operation.uid;
   };
 
-  const runPreparedCommand = async (command: PreparedCommand) => {
-    const key = identityKey;
-    const generation = generationRef.current;
-    onNavigationStateChange?.(key, 'recovering');
-    if (revokedIdentityRef.current === key) return;
-    if (!key || !Number.isSafeInteger(leaseEpoch) || leaseEpoch < 1) {
-      revokeAuthorization(key, generation, command.commandId, {
-        code: 'LEASE_LOST',
-        message: '目前沒有有效的操作使用權，學生資料已清除。請重新確認使用權。',
-      });
+  const clearOperationTimer = (operation: StudentCommandOperation) => {
+    if (operation.timerId !== null) window.clearTimeout(operation.timerId);
+    operation.timerId = null;
+  };
+
+  const beginAttempt = (operation: StudentCommandOperation) => {
+    clearOperationTimer(operation);
+    operation.attempt += 1;
+    operation.attemptSettled = false;
+    operation.retryAuthorized = false;
+    operation.querySequence += 1;
+    operation.checking = false;
+    operation.receipt = null;
+    operation.listReloadStarted = false;
+    const attemptNumber = operation.attempt;
+    operation.timerId = window.setTimeout(() => {
+      if (!ownsOperation(operation) || operation.attempt !== attemptNumber || operation.attemptSettled || operation.receipt) return;
+      updateFor(operation.identityKey, operation.generation, previous => ({
+        ...previous,
+        actionError: '',
+        recovery: previous.recovery?.commandId === operation.command.commandId
+          ? { ...previous.recovery, phase: 'submitting', timedOut: true, canRetry: false }
+          : previous.recovery,
+      }));
+    }, 10_000);
+  };
+
+  const showUnknownResult = (operation: StudentCommandOperation, message: string) => {
+    if (!ownsOperation(operation) || operation.receipt) return;
+    clearOperationTimer(operation);
+    updateFor(operation.identityKey, operation.generation, previous => ({
+      ...previous,
+      snapshot: null,
+      loading: false,
+      loadError: '',
+      actionError: message,
+      recovery: {
+        commandId: operation.command.commandId,
+        command: operation.command,
+        phase: operation.checking ? 'checking' : 'unknown',
+        timedOut: false,
+        canRetry: false,
+      },
+    }));
+  };
+
+  const settleWithReceipt = async (operation: StudentCommandOperation, receipt: CommandReceipt, clearJournal = false) => {
+    if (!ownsOperation(operation) || operation.receipt) return;
+    if (receipt.commandId !== operation.command.commandId) {
+      showUnknownResult(operation, '伺服器回傳的命令編號不符，尚未確認完成；請重新查詢原命令。');
       return;
     }
-    if (commandFlightRef.current) return;
-    const flightToken = Symbol('cloud-student-command');
-    commandFlightRef.current = flightToken;
-    pendingCommandIdRef.current = command.commandId;
-    const releaseFlight = () => {
-      if (commandFlightRef.current === flightToken) commandFlightRef.current = null;
-    };
+    clearOperationTimer(operation);
+    operation.receipt = receipt;
+    operation.retryAuthorized = false;
+    operation.checking = false;
+    operation.querySequence += 1;
+    operation.listReloadStarted = true;
+    updateFor(operation.identityKey, operation.generation, previous => ({
+      ...previous,
+      actionError: '',
+      recovery: {
+        commandId: operation.command.commandId,
+        command: operation.command,
+        phase: 'receipt',
+        receipt,
+      },
+    }));
+    if (clearJournal) {
+      void repository.cleanupConfirmedIntent(operation.intent, operation.datasetId, operation.uid, () => {
+        let currentUid: string | null = null;
+        try { currentUid = getAuth(operation.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
+        return generationRef.current === operation.generation
+          && identityRef.current === operation.identityKey
+          && scopeRef.current.db === operation.db
+          && scopeRef.current.db.app === operation.app
+          && scopeRef.current.uid === operation.uid
+          && scopeRef.current.identityKey === operation.identityKey
+          && scopeRef.current.leaseEpoch === operation.leaseEpoch
+          && currentUid === operation.uid
+          && typeof navigator !== 'undefined'
+          && navigator.onLine;
+      }).catch(() => {
+        // Local cleanup is best-effort and cannot change the confirmed business result.
+      });
+    }
+    await loadSnapshot(receipt);
+  };
 
-    updateFor(key, generation, previous => ({
+  const runPreparedCommand = async (command: PreparedCommand, retryOperation?: StudentCommandOperation) => {
+    let operation = retryOperation;
+    if (operation) {
+      if (!ownsOperation(operation) || !operation.attemptSettled || !operation.retryAuthorized
+        || operation.receipt || operation.checking) return;
+      operation.retryAuthorized = false;
+      operation.command = freezePreparedCommand(operation.command);
+    } else {
+      if (operationRef.current || page.recovery || !page.snapshot) return;
+      const key = identityKey;
+      const generation = generationRef.current;
+      if (revokedIdentityRef.current === key) return;
+      if (!key || !Number.isSafeInteger(leaseEpoch) || leaseEpoch < 1) {
+        revokeAuthorization(key, generation, command.commandId, {
+          code: 'LEASE_LOST', message: '目前沒有有效的操作使用權，學生資料已清除。請重新確認使用權。',
+        });
+        return;
+      }
+      let uid: string | null = null;
+      try { uid = getAuth(db.app).currentUser?.uid ?? null; } catch { /* no initialized Auth means no safe command scope */ }
+      if (!uid) {
+        revokeAuthorization(key, generation, command.commandId, {
+          code: 'UNAUTHORIZED', message: '目前登入身分尚未確認，學生資料已清除。請重新登入操作員帳號。',
+        });
+        return;
+      }
+      const frozenCommand = freezePreparedCommand(command);
+      operation = {
+        token: Symbol('cloud-student-operation'),
+        identityKey: key,
+        generation,
+        db,
+        app: db.app,
+        uid,
+        leaseEpoch,
+        datasetId: page.snapshot.datasetId,
+        command: frozenCommand,
+        intent: intentFor(frozenCommand, leaseEpoch),
+        attempt: 0,
+        attemptPromise: null,
+        attemptSettled: false,
+        querySequence: 0,
+        checking: false,
+        retryAuthorized: false,
+        receipt: null,
+        listReloadStarted: false,
+        completed: false,
+        timerId: null,
+      };
+      operationRef.current = operation;
+      pendingCommandIdRef.current = frozenCommand.commandId;
+      onNavigationStateChange?.(key, 'recovering');
+    }
+
+    if (!ownsOperation(operation)) return;
+    beginAttempt(operation);
+    updateFor(operation.identityKey, operation.generation, previous => ({
       ...previous,
       snapshot: null,
       loading: false,
       loadError: '',
       actionError: '',
       notice: '',
-      recovery: { commandId: command.commandId, command, phase: 'submitting' },
+      recovery: {
+        commandId: operation!.command.commandId,
+        command: operation!.command,
+        phase: 'submitting',
+        timedOut: false,
+        canRetry: false,
+      },
     }));
 
-    let result: CommandResult;
+    const attemptNumber = operation.attempt;
+    const attemptPromise = repository.commitStudentCommand(operation.intent);
+    operation.attemptPromise = attemptPromise;
     try {
-      result = await dispatchCommand(command);
-    } catch (error) {
-      releaseFlight();
-      if (!isCurrent(key, generation)) return;
-      if (isAuthorizationLoss(error)) {
-        revokeAuthorization(key, generation, command.commandId, error);
-        return;
-      }
-      updateFor(key, generation, previous => ({
-        ...previous,
-        snapshot: null,
-        loadError: '',
-        actionError: '',
-        recovery: { commandId: command.commandId, command, phase: 'unknown' },
-      }));
-      return;
-    }
-
-    if (!isCurrent(key, generation)) {
-      releaseFlight();
-      return;
-    }
-    if (!result.ok) {
-      if (isAuthorizationLoss(result.error)) {
-        releaseFlight();
-        revokeAuthorization(key, generation, command.commandId, result.error);
-        return;
-      }
-      if (result.error.code === 'UNKNOWN_RESULT') {
-        releaseFlight();
-        updateFor(key, generation, previous => ({
+      const result = await attemptPromise;
+      if (!ownsOperation(operation) || operation.attempt !== attemptNumber) return;
+      operation.attemptSettled = true;
+      clearOperationTimer(operation);
+      if (operation.receipt || operation.completed) return;
+      if (!result.ok) {
+        if (isAuthorizationLoss(result.error)) {
+          revokeAuthorization(operation.identityKey, operation.generation, operation.command.commandId, result.error);
+          return;
+        }
+        if (result.error.code === 'UNKNOWN_RESULT' || result.error.code === 'OFFLINE') {
+          showUnknownResult(operation, '操作回應不確定；請唯讀查詢原命令結果，查詢錯誤或找不到結果都不會自動重送。');
+          return;
+        }
+        if (result.error.code === 'LOCAL_STORAGE_UNAVAILABLE') {
+          operation.completed = true;
+          operationRef.current = null;
+          pendingCommandIdRef.current = null;
+          updateFor(operation.identityKey, operation.generation, previous => ({
+            ...previous,
+            actionError: '尚未送出，無法安全保存確認編號；請重試本機儲存檢查，或改用紙本流程。',
+            recovery: null,
+          }));
+          return;
+        }
+        operation.completed = true;
+        operationRef.current = null;
+        pendingCommandIdRef.current = null;
+        updateFor(operation.identityKey, operation.generation, previous => ({
           ...previous,
           snapshot: null,
-          loadError: '',
-          actionError: '',
-          recovery: { commandId: command.commandId, command, phase: 'unknown' },
+          loading: false,
+          loadError: '操作未完成；請重新載入伺服器名單後繼續。',
+          actionError: displayError(result.error),
+          recovery: null,
         }));
         return;
       }
-      releaseFlight();
-      const clearIdentityData = result.error.code === 'OFFLINE';
-      pendingCommandIdRef.current = clearIdentityData ? command.commandId : null;
-      updateFor(key, generation, previous => ({
-        ...previous,
-        ...(clearIdentityData ? clearDrafts() : {}),
-        snapshot: null,
-        loading: false,
-        loadError: '操作未完成；請重新載入伺服器名單後繼續。',
-        actionError: displayError(result.error),
-        recovery: clearIdentityData
-          ? { commandId: command.commandId, phase: 'access-lost' }
-          : null,
-      }));
-      return;
+      await settleWithReceipt(operation, result.receipt);
+    } catch (error) {
+      if (!ownsOperation(operation) || operation.attempt !== attemptNumber) return;
+      operation.attemptSettled = true;
+      clearOperationTimer(operation);
+      if (operation.receipt || operation.completed) return;
+      if (isAuthorizationLoss(error)) {
+        revokeAuthorization(operation.identityKey, operation.generation, operation.command.commandId, error);
+        return;
+      }
+      const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : 'UNKNOWN_RESULT';
+      if (code === 'LOCAL_STORAGE_UNAVAILABLE') {
+        operation.completed = true;
+        operationRef.current = null;
+        pendingCommandIdRef.current = null;
+        updateFor(operation.identityKey, operation.generation, previous => ({
+          ...previous,
+          actionError: '尚未送出，無法安全保存確認編號；請重試本機儲存檢查，或改用紙本流程。',
+          recovery: null,
+        }));
+        return;
+      }
+      showUnknownResult(operation, '操作回應不確定；請唯讀查詢原命令結果，查詢錯誤或找不到結果都不會自動重送。');
+    } finally {
+      if (operation.attemptPromise === attemptPromise) operation.attemptPromise = null;
     }
-
-    updateFor(key, generation, previous => ({
-      ...previous,
-      recovery: { commandId: command.commandId, command, phase: 'receipt', receipt: result.receipt },
-    }));
-    await loadSnapshot(result.receipt);
-    releaseFlight();
   };
 
   const makeCommandId = (): string | null => {
@@ -649,7 +872,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
 
   const submitCreate = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (page.recovery || !page.snapshot) return;
+    if (operationRef.current || page.recovery || !page.snapshot) return;
     const draft = page.createDraft;
     let studentCode: string;
     try {
@@ -707,7 +930,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
   const submitChangeCode = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const student = page.codeStudent;
-    if (!student || page.recovery || !page.snapshot) return;
+    if (operationRef.current || !student || page.recovery || !page.snapshot) return;
     let studentCode: string;
     try {
       studentCode = normalizeStudentCodeOrThrow(page.changeCodeValue);
@@ -757,7 +980,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
 
   const submitEdit = (event: FormEvent<HTMLFormElement>, student: CloudStudentRecord) => {
     event.preventDefault();
-    if (page.recovery || !page.snapshot) return;
+    if (operationRef.current || page.recovery || !page.snapshot) return;
     const displayName = page.editDisplayName.trim();
     if (!displayName || displayName.length > 100) {
       setPageState(previous => ({ ...previous, actionError: '姓名必須為 1 至 100 字。' }));
@@ -794,7 +1017,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
   const submitStatus = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const student = page.statusStudent;
-    if (!student || page.recovery || !page.snapshot) return;
+    if (operationRef.current || !student || page.recovery || !page.snapshot) return;
     const reason = page.statusReason.trim();
     if (!reason || reason.length > 500) {
       setPageState(previous => ({ ...previous, actionError: '請輸入具體的停用或恢復原因（最多 500 字）。' }));
@@ -864,7 +1087,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
 
   const submitOpeningDay = () => {
     const student = page.openingStudent;
-    if (!student || page.recovery || !page.snapshot || page.openingDay.state !== 'missing') return;
+    if (operationRef.current || !student || page.recovery || !page.snapshot || page.openingDay.state !== 'missing') return;
     const commandId = makeCommandId();
     if (!commandId) return;
     void runPreparedCommand({
@@ -879,7 +1102,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
     event.preventDefault();
     const student = page.openingStudent;
     const day = page.openingDay;
-    if (!student || page.recovery || !page.snapshot || day.state !== 'ready') return;
+    if (operationRef.current || !student || page.recovery || !page.snapshot || day.state !== 'ready') return;
     if (day.status === 'closed') {
       setPageState(previous => ({ ...previous, actionError: '期初日已關帳，請先到「日結」頁填寫原因重開該日，再更正期初。' }));
       return;
@@ -920,73 +1143,92 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
 
   const checkPendingCommand = async () => {
     const recovery = page.recovery;
+    const operation = operationRef.current;
     if (revokedIdentityRef.current === identityKey) return;
-    if (!recovery || !recovery.command || recovery.phase === 'submitting' || recovery.phase === 'checking') return;
+    if (!recovery || !recovery.command || !operation || operation.command.commandId !== recovery.commandId
+      || operation.checking || (recovery.phase === 'submitting' && !recovery.timedOut)) return;
     if (recovery.phase === 'receipt') {
       if (recovery.receipt) await loadSnapshot(recovery.receipt);
       return;
     }
-    const key = identityKey;
-    const generation = generationRef.current;
-    updateFor(key, generation, previous => ({ ...previous, actionError: '', recovery: { ...recovery, phase: 'checking' } }));
+    if (recovery.phase === 'access-lost' || recovery.phase === 'checking') return;
+    if (!ownsOperation(operation)) return;
+    operation.checking = true;
+    const querySequence = ++operation.querySequence;
+    updateFor(operation.identityKey, operation.generation, previous => ({
+      ...previous,
+      actionError: '',
+      recovery: { ...recovery, phase: 'checking', canRetry: false },
+    }));
     try {
-      const receipt = await repository.readCommand(recovery.commandId);
-      if (!isCurrent(key, generation)) return;
-      if (!receipt) {
-        updateFor(key, generation, previous => ({
-          ...previous,
-          snapshot: null,
-          loadError: '',
-          actionError: '伺服器目前尚未找到這筆命令。沒有產生新的命令編號；可用相同編號與原資料重試。',
-          recovery: { commandId: recovery.commandId, command: recovery.command, phase: 'unknown' },
-        }));
+      const check = await repository.confirmPendingIntent(operation.intent, operation.datasetId, operation.uid);
+      if (!ownsOperation(operation) || operation.querySequence !== querySequence || operation.receipt) return;
+      if (check.status === 'matched') {
+        await settleWithReceipt(operation, check.receipt, true);
         return;
       }
-      if (receipt.commandId !== recovery.commandId) {
-        throw new Error('伺服器回傳的命令編號不符，無法確認結果。');
-      }
-      // A receipt ID alone is not proof that this is the same business command.
-      // Re-submit the frozen input under the same ID; the repository compares all
-      // semantic fields and returns the stored receipt without another write.
-      const verification = await dispatchCommand(recovery.command);
-      if (!isCurrent(key, generation)) return;
-      if (!verification.ok) {
-        if (isAuthorizationLoss(verification.error)) {
-          revokeAuthorization(key, generation, recovery.commandId, verification.error);
-          return;
-        }
-        updateFor(key, generation, previous => ({
+      if (check.status === 'different-dataset') {
+        operation.retryAuthorized = false;
+        updateFor(operation.identityKey, operation.generation, previous => ({
           ...previous,
           snapshot: null,
           loading: false,
           loadError: '',
-          actionError: verification.error.code === 'UNKNOWN_RESULT'
-            ? '已找到命令回執，但語義比對結果不明；請使用相同命令編號再查詢。'
-            : `命令編號已存在，但伺服器內容與原操作不符，仍未確認完成。${verification.error.message}`,
-          recovery: { commandId: recovery.commandId, command: recovery.command, phase: 'unknown' },
+          actionError: '目前伺服器資料集已變更；原操作尚未確認，請聯絡維護者，不可重試。',
+          recovery: { commandId: operation.command.commandId, command: operation.command, phase: 'unknown', canRetry: false },
         }));
         return;
       }
-      updateFor(key, generation, previous => ({
+      if (operation.attemptSettled) operation.retryAuthorized = true;
+      updateFor(operation.identityKey, operation.generation, previous => ({
         ...previous,
-        recovery: { commandId: recovery.commandId, command: recovery.command, phase: 'receipt', receipt: verification.receipt },
-      }));
-      await loadSnapshot(verification.receipt);
-    } catch (error) {
-      if (!isCurrent(key, generation)) return;
-      if (isAuthorizationLoss(error)) {
-        revokeAuthorization(key, generation, recovery.commandId, error);
-        return;
-      }
-      updateFor(key, generation, previous => ({
-        ...previous,
-        ...clearDrafts(),
         snapshot: null,
         loading: false,
         loadError: '',
-        actionError: `目前無法確認命令結果。${displayError(error)}`,
-        recovery: { commandId: recovery.commandId, command: recovery.command, phase: 'unknown' },
+        actionError: operation.attemptSettled
+          ? '伺服器目前尚未找到這筆命令。沒有產生新的命令編號；確認後可明確選擇同編號重試。'
+          : '查詢尚未找到回執，但原命令仍在送出中；目前不能重試。請等待原命令結束後再查詢。',
+        recovery: {
+          commandId: operation.command.commandId,
+          command: operation.command,
+          phase: operation.attemptSettled ? 'unknown' : 'submitting',
+          timedOut: !operation.attemptSettled,
+          canRetry: operation.retryAuthorized,
+        },
       }));
+    } catch (error) {
+      if (!ownsOperation(operation) || operation.querySequence !== querySequence || operation.receipt) return;
+      if (isAuthorizationLoss(error)) {
+        revokeAuthorization(operation.identityKey, operation.generation, operation.command.commandId, error);
+        return;
+      }
+      operation.retryAuthorized = false;
+      const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+      const guidance = code === 'MAINTENANCE'
+        ? '系統維護中，暫停同編號重試；請稍後重新查詢。'
+        : code === 'QUOTA_EXCEEDED'
+          ? '查詢次數已達限制，尚未確認命令不存在；請稍後重新查詢，不可重試。'
+          : code === 'UNSUPPORTED_SCHEMA'
+            ? '雲端命令格式不支援，尚未確認操作結果；請聯絡維護者，不可重試。'
+            : code === 'INVALID_INPUT'
+              ? '命令編號已存在，但伺服器內容與原操作不符；仍未確認完成，不可重試。'
+            : '目前無法安全確認原命令；查詢錯誤不代表命令不存在，暫不可重試。';
+      updateFor(operation.identityKey, operation.generation, previous => ({
+        ...previous,
+        snapshot: null,
+        loading: false,
+        loadError: '',
+        actionError: guidance,
+        recovery: {
+          commandId: operation.command.commandId,
+          command: operation.command,
+          phase: operation.attemptSettled ? 'unknown' : 'submitting',
+          timedOut: !operation.attemptSettled,
+          canRetry: false,
+        },
+      }));
+    } finally {
+      if (operationRef.current === operation && operation.querySequence === querySequence) operation.checking = false;
     }
   };
 
@@ -1074,7 +1316,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
           type="button"
           className="cloud-students__secondary"
           onClick={() => void loadSnapshot(page.recovery?.phase === 'receipt' ? page.recovery.receipt : undefined)}
-          disabled={page.loading || !identityKey || page.authorizationRevoked}
+          disabled={page.loading || busy || !identityKey || page.authorizationRevoked}
         >
           {page.loading ? '載入中…' : '重新載入名單'}
         </button>
@@ -1097,6 +1339,8 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
               ? '使用權已變更；敏感操作內容已清除。'
             : page.recovery.phase === 'checking'
               ? '正在查詢原命令結果…'
+              : page.recovery.phase === 'submitting' && page.recovery.timedOut
+                ? '結果確認中，勿重新收款'
               : '結果確認中，請勿重複建立／修改。'}</strong>
           {page.recovery.command && <span>{commandLabel(page.recovery.command)} · 命令編號 {page.recovery.commandId}</span>}
           {!page.recovery.command && <span>命令編號 {page.recovery.commandId}</span>}
@@ -1105,13 +1349,21 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
             <span>伺服器命令序號 {page.recovery.receipt.seq}</span>
           )}
           <div className="cloud-students__actions">
-            {page.recovery.command && page.recovery.phase !== 'submitting' && page.recovery.phase !== 'checking' && page.recovery.phase !== 'receipt' && (
+            {page.recovery.command && (page.recovery.phase === 'unknown'
+              || (page.recovery.phase === 'submitting' && page.recovery.timedOut)) && (
               <button type="button" className="cloud-students__primary" onClick={() => void checkPendingCommand()}>
                 查詢原命令結果
               </button>
             )}
-            {page.recovery.phase === 'unknown' && page.recovery.command && page.actionError.includes('尚未找到') && (
-              <button type="button" className="cloud-students__secondary" onClick={() => void runPreparedCommand(page.recovery!.command!)}>
+            {page.recovery.phase === 'unknown' && page.recovery.command && page.recovery.canRetry && (
+              <button
+                type="button"
+                className="cloud-students__secondary"
+                onClick={() => {
+                  const operation = operationRef.current;
+                  if (operation) void runPreparedCommand(operation.command, operation);
+                }}
+              >
                 以相同命令編號重試
               </button>
             )}
