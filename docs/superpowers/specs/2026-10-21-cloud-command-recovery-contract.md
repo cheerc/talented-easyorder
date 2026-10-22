@@ -1,6 +1,6 @@
 # P13b2 未決命令復原契約
 
-狀態：設計由 PR #530 合併於 `e56c8c32ee1d74c3f63838e15909200adbbe4dfa`，獨立讀取通道契約由 PR #532 合併於 `c5df292c4b5109275baf25fbd1ad75dc5d6b684f`。P13b2a 已交付共用 journal、write-ahead、receipt/context 確認與 startup recovery boundary。P13b2b1 Orders 已由 PR #533 合併；PR #534 的第一次 Students candidate 在 r1 review [5610980105](https://github.com/cheerc/talented-easyorder/pull/534#pullrequestreview-5610980105) 被拒。Coordinator 判定三個 P2 findings 成立；針對 cleanup canonical identity、query attempt provenance 與 fresh-list dataset fence 的 rework 已分開提交 RED `cd6a62805ca52664397d2aa9585aad51f0411e76`／GREEN `09edc2f58bd2b13286b2ee7f431a4a54ceac1f18`。Exact-head provider CI 與 r2 review 狀態以 PR #534 live provider 為準；這是本機 rework 證據，不能替代 CI 或審查。其他正式頁面的 10 秒／same-mount retry 矩陣仍未完成；不得將此批說成整體 P13b2 完成。適用正式模式，補充[正式後端規格 §8](2026-10-13-free-production-backend-spec.md#8-連線快取錯誤與查詢)。只使用既有 typed command、server receipt 與租約；不增加離線補送、業務集合或 Rules 權限。
+狀態：設計由 PR #530 合併於 `e56c8c32ee1d74c3f63838e15909200adbbe4dfa`，獨立讀取通道契約由 PR #532 合併於 `c5df292c4b5109275baf25fbd1ad75dc5d6b684f`。P13b2a 已交付共用 journal、write-ahead、receipt/context 確認與 startup recovery boundary。P13b2b1 Orders 已由 PR #533 合併。PR #534 Students r1 review [5610980105](https://github.com/cheerc/talented-easyorder/pull/534#pullrequestreview-5610980105) 後，Coordinator 確認三個 P2 findings；相應 RED `cd6a62805ca52664397d2aa9585aad51f0411e76`／GREEN `09edc2f58bd2b13286b2ee7f431a4a54ceac1f18` 保留。PR #534 r2 review [5611709873](https://github.com/cheerc/talented-easyorder/pull/534#pullrequestreview-5611709873) 確認原 R1/R2/R3 已解，並提出新的 F1：nested `toJSON` 可把驗證過的 expected revision 2 序列化成 1。Coordinator 已接受該 finding；僅 canonical capture helper／tests 的第二輪 RED `be1ad8b`、descriptor controls `af10fba` 與 GREEN `2c28c7b` 在原 PR branch 更新。新的 exact-head provider CI 與 r3 review 尚待 live provider；本機證據不替代這些 gates。其他正式頁面的 10 秒／same-mount retry 矩陣仍未完成；不得將此批說成整體 P13b2 完成。適用正式模式，補充[正式後端規格 §8](2026-10-13-free-production-backend-spec.md#8-連線快取錯誤與查詢)。只使用既有 typed command、server receipt 與租約；不增加離線補送、業務集合或 Rules 權限。
 
 ## 1. 目標與現況
 
@@ -37,6 +37,8 @@ property getter、get/set/remove、讀回不符或容量不足，都使新命令
 真正發起後立即防連按；10 秒仍無確定結果，顯示「結果確認中，勿重新收款」與原 command ID。10 秒是狀態提示，不能當成 abort 已完成、未入帳證明或產生新命令的理由。SDK retries 保持有限，不新增無限自動重送。
 
 原掛載仍持有完整 frozen intent 時，只有明確人工操作才能用原 ID／原 intent 重試；重新送前先查 receipt。尚有原提交 promise in flight 時不另開同 ID 並行提交；可查詢結果，但 null 不能讓舊 promise 被當成已停止。late success／failure 只更新相符的 mount、UID、dataset、epoch 與 generation，不能在舊頁面或失權後下載、列印或顯示個資。
+
+同頁確認與 cleanup 必須在第一次 await 前，先正規化並同步複製 canonical intent。複製只讀 normalized tree 的 own data descriptors，遞迴建立新的普通密集陣列與無 prototype 的資料 map；不能使用 JSON serialization、`toJSON`、getter 或一般巢狀 property reads，也不能保留 caller-owned 巢狀參照。canonical 比對、fingerprint 與精確 journal identity 都使用同一份 detached capture。若 normalized tree 實際含 accessor、隱藏欄位、symbol、非資料值、不支援的 class、稀疏陣列或循環參照，必須在讀 receipt 前以 `INVALID_INPUT` 拒絕且不執行 hook；有效的 frozen command data 仍可確認。這是 recovery capture 的邊界，不改寫全域 domain normalizer 或 command schema。
 
 quota、maintenance、schema 或權限錯誤皆提供中文下一步，停止自動業務重試。失權清除完整記憶體 intent 與畫面，保留最小 journal；重新取得使用權後走 receipt 確認，不以新 epoch 默默重送舊 payload。
 
@@ -86,4 +88,4 @@ P12 匯出／列印與 P14 備份的 minimal recovery 只確認原稽核 receipt
 - 10 秒慢回覆／quota／permission／maintenance／缺 config／offline 狀態不顯示已同步；跨 reload 的 journal 與診斷各守其 allowlist。
 - Export／Print／Backup 稽核 receipt recovery 不下載、列印或推進備份已驗 checkpoint；新輸出必須重新讀取並建立新意圖。
 
-本文件僅定義契約；尚無新增 runtime、Emulator、browser 或 production 驗收結果。
+本文件定義跨批契約；runtime、Emulator、browser、provider CI 與 production 驗收依各交付批次的執行證據分別判定，不能由本規格代替。
