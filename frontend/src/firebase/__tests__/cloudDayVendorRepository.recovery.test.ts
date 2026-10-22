@@ -116,12 +116,15 @@ describe('CloudDayVendorRepository recovery intent mapping', () => {
     expect(commands.commitCommand).not.toHaveBeenCalled();
     expect(ledger.findPreviousClosed).not.toHaveBeenCalled();
 
+    await subject.commitDayVendorIntent(intent);
+    expect(commands.commitCommand).toHaveBeenNthCalledWith(1, canonical(intent));
+
     if (intent.kind === 'ensure-day') await subject.ensureDay(intent.input);
     else if (intent.kind === 'save-vendor') await subject.saveVendor(intent.input);
     else if (intent.kind === 'remove-vendor') await subject.removeVendor(intent.input);
     else if (intent.kind === 'set-day-menu') await subject.setDayMenu(intent.input);
     else await subject.setOpeningCash(intent.input);
-    expect(commands.commitCommand).toHaveBeenCalledWith(canonical(intent));
+    expect(commands.commitCommand).toHaveBeenNthCalledWith(2, canonical(intent));
   });
 
   it('preserves trimmed optional opening reason semantics without repeating writer preflight during confirmation', async () => {
@@ -145,6 +148,31 @@ describe('CloudDayVendorRepository recovery intent mapping', () => {
     expect(commands.commitCommand).toHaveBeenCalledWith(expect.objectContaining({
       kind: 'SetOpeningCash', payload: { openingCash: 1000, reason: '核對紙本後調整' },
     }));
+  });
+
+  it('reruns the fresh closed-day preflight for every explicit opening-cash commit retry', async () => {
+    const subject = repository();
+    const intent: TestIntent = {
+      kind: 'set-opening-cash',
+      input: {
+        commandId: '10000000-0000-4000-8000-000000000007', leaseEpoch: 7,
+        dayId: '2026-10-15', expectedRevision: 2, openingCash: 1000, reason: '核對紙本後調整',
+      },
+    };
+    ledger.findPreviousClosed.mockResolvedValue({ previous: { dayId: '2026-10-13', countedCash: 870 }, seq: 12 });
+
+    await subject.confirmPendingIntent(intent, 'dataset-a', 'uid-a');
+    expect(ledger.findPreviousClosed).not.toHaveBeenCalled();
+
+    await subject.commitDayVendorIntent(intent);
+    await subject.commitDayVendorIntent(intent);
+
+    expect(ledger.findPreviousClosed).toHaveBeenCalledTimes(2);
+    expect(ledger.findPreviousClosed).toHaveBeenNthCalledWith(1, intent.input.dayId);
+    expect(ledger.findPreviousClosed).toHaveBeenNthCalledWith(2, intent.input.dayId);
+    expect(commands.commitCommand).toHaveBeenCalledTimes(2);
+    expect(commands.commitCommand).toHaveBeenNthCalledWith(1, canonical(intent));
+    expect(commands.commitCommand).toHaveBeenNthCalledWith(2, canonical(intent));
   });
 
   it('delegates exact confirmed cleanup to the shared command boundary', async () => {

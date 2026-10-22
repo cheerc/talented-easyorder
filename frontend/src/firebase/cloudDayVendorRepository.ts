@@ -20,7 +20,10 @@ import type { CommandErrorCode, CommandReceipt, CommandResult } from '../domain/
 import {
   createCloudCommandRepository,
   type CloudCommandRepositoryOptions,
+  type PendingIntentCheck,
 } from './cloudCommandRepository';
+import type { CloudRecoveryReader } from './cloudRecoveryReader';
+import { normalizeEnabledCommandInput, type CanonicalEnabledInput } from '../domain/cloudCommandSchema';
 import { openingDifference, type PreviousClosedDay } from '../domain/ledgerAnomalies';
 import { CloudDayCloseRepositoryError, createCloudLedgerReader, type CloudPreviousClosedLookup } from './cloudDayCloseRepository';
 import { accessLeasePath, dataHeadPath, dayPath } from './firestorePaths';
@@ -119,6 +122,8 @@ export class CloudDayVendorRepositoryError extends Error {
 export type CloudDayVendorRepositoryOptions = CloudCommandRepositoryOptions & {
   /** Test seam for bounded paging; production uses 200. */
   pageSize?: number;
+  /** Recovery-only Lite reader; normal writes and full snapshots keep using Firestore SDK. */
+  recoveryReader?: CloudRecoveryReader;
 };
 
 export interface EnsureDayInput {
@@ -173,6 +178,13 @@ export interface SetOpeningCashInput {
   reason?: string;
 }
 
+export type CloudDayVendorCommandIntent =
+  | { kind: 'ensure-day'; input: EnsureDayInput }
+  | { kind: 'save-vendor'; input: SaveVendorInput }
+  | { kind: 'remove-vendor'; input: RemoveVendorInput }
+  | { kind: 'set-day-menu'; input: SetDayMenuInput }
+  | { kind: 'set-opening-cash'; input: SetOpeningCashInput };
+
 export interface CloudDayVendorRepository {
   loadSnapshot(targetDayId?: string): Promise<CloudDayVendorSnapshot>;
   ensureDay(input: EnsureDayInput): Promise<CommandResult>;
@@ -180,6 +192,14 @@ export interface CloudDayVendorRepository {
   removeVendor(input: RemoveVendorInput): Promise<CommandResult>;
   setDayMenu(input: SetDayMenuInput): Promise<CommandResult>;
   setOpeningCash(input: SetOpeningCashInput): Promise<CommandResult>;
+  commitDayVendorIntent(intent: CloudDayVendorCommandIntent): Promise<CommandResult>;
+  confirmPendingIntent(intent: CloudDayVendorCommandIntent, expectedDatasetId: string, expectedUid: string): Promise<PendingIntentCheck>;
+  cleanupConfirmedIntent(
+    intent: CloudDayVendorCommandIntent,
+    expectedDatasetId: string,
+    expectedUid: string,
+    isCurrent: () => boolean,
+  ): Promise<boolean>;
   /** The latest closed day dated before `dayId` (contract §11.2); shared with the `setOpeningCash` check. */
   findPreviousClosed(dayId: string): Promise<CloudPreviousClosedLookup>;
   readCommand(commandId: string): Promise<CommandReceipt | null>;
@@ -234,6 +254,52 @@ function currentUser(options: CloudDayVendorRepositoryOptions): CurrentUser | nu
   } catch {
     return null;
   }
+}
+
+function buildDayVendorCommand(intent: CloudDayVendorCommandIntent): CanonicalEnabledInput {
+  if (intent.kind === 'ensure-day') {
+    const input = intent.input;
+    return normalizeEnabledCommandInput({
+    commandId: input.commandId, kind: 'EnsureDay', leaseEpoch: input.leaseEpoch,
+    targets: { dayId: input.dayId }, expectedRevisions: { day: 0 }, payload: { businessDate: input.dayId },
+    });
+  }
+  if (intent.kind === 'save-vendor') {
+    const input = intent.input;
+    return normalizeEnabledCommandInput({
+    commandId: input.commandId, kind: 'SaveVendor', leaseEpoch: input.leaseEpoch,
+    targets: { vendorId: input.vendorId }, expectedRevisions: { vendor: input.expectedRevision },
+    payload: { vendorId: input.vendorId, name: input.name, phone: input.phone, note: input.note, status: input.status },
+    });
+  }
+  if (intent.kind === 'remove-vendor') {
+    const input = intent.input;
+    return normalizeEnabledCommandInput({
+    commandId: input.commandId, kind: 'RemoveVendor', leaseEpoch: input.leaseEpoch,
+    targets: { vendorId: input.vendorId }, expectedRevisions: { vendor: input.expectedRevision },
+    payload: { reason: input.reason },
+    });
+  }
+  if (intent.kind === 'set-day-menu') {
+    const input = intent.input;
+    return normalizeEnabledCommandInput({
+    commandId: input.commandId, kind: 'SetDayMenu', leaseEpoch: input.leaseEpoch,
+    targets: { dayId: input.dayId },
+    expectedRevisions: { day: input.expectedRevision, headSeq: input.expectedHeadSeq },
+    payload: {
+      selectionDate: input.selectionDate, itemName: input.itemName, price: input.price,
+      vendorId: input.vendorId, vendorNameSnapshot: input.vendorNameSnapshot,
+      inheritedFromDate: input.inheritedFromDate,
+    },
+    });
+  }
+  const input = intent.input;
+  const reason = input.reason?.trim();
+  return normalizeEnabledCommandInput({
+    commandId: input.commandId, kind: 'SetOpeningCash', leaseEpoch: input.leaseEpoch,
+    targets: { dayId: input.dayId }, expectedRevisions: { day: input.expectedRevision },
+    payload: reason ? { openingCash: input.openingCash, reason } : { openingCash: input.openingCash },
+  });
 }
 
 function requireGoogleUser(options: CloudDayVendorRepositoryOptions): CurrentUser {
@@ -533,11 +599,14 @@ export function createCloudDayVendorRepository(
         error: { code: 'INVALID_INPUT', message: '開帳現金與上次關帳實點不同，必須填寫差額原因（1–500 字）' },
       };
     }
-    return commandRepository.commitCommand({
-      commandId: input.commandId, kind: 'SetOpeningCash', leaseEpoch: input.leaseEpoch,
-      targets: { dayId: input.dayId }, expectedRevisions: { day: input.expectedRevision },
-      payload: reason ? { openingCash: input.openingCash, reason } : { openingCash: input.openingCash },
-    });
+    return commandRepository.commitCommand(buildDayVendorCommand({
+      kind: 'set-opening-cash', input: { ...input, ...(reason ? { reason } : { reason: undefined }) },
+    }));
+  }
+
+  async function commitDayVendorIntent(intent: CloudDayVendorCommandIntent): Promise<CommandResult> {
+    if (intent.kind === 'set-opening-cash') return setOpeningCash(intent.input);
+    return commandRepository.commitCommand(buildDayVendorCommand(intent));
   }
 
   async function loadSnapshot(targetDayId?: string): Promise<CloudDayVendorSnapshot> {
@@ -583,34 +652,18 @@ export function createCloudDayVendorRepository(
   return {
     loadSnapshot,
     findPreviousClosed: dayId => ledgerReader.findPreviousClosed(dayId),
-    ensureDay: input => commandRepository.commitCommand({
-      commandId: input.commandId, kind: 'EnsureDay', leaseEpoch: input.leaseEpoch,
-      targets: { dayId: input.dayId }, expectedRevisions: { day: 0 },
-      payload: { businessDate: input.dayId },
-    }),
-    saveVendor: input => commandRepository.commitCommand({
-      commandId: input.commandId, kind: 'SaveVendor', leaseEpoch: input.leaseEpoch,
-      targets: { vendorId: input.vendorId }, expectedRevisions: { vendor: input.expectedRevision },
-      payload: {
-        vendorId: input.vendorId, name: input.name, phone: input.phone, note: input.note, status: input.status,
-      },
-    }),
-    removeVendor: input => commandRepository.commitCommand({
-      commandId: input.commandId, kind: 'RemoveVendor', leaseEpoch: input.leaseEpoch,
-      targets: { vendorId: input.vendorId }, expectedRevisions: { vendor: input.expectedRevision },
-      payload: { reason: input.reason },
-    }),
-    setDayMenu: input => commandRepository.commitCommand({
-      commandId: input.commandId, kind: 'SetDayMenu', leaseEpoch: input.leaseEpoch,
-      targets: { dayId: input.dayId },
-      expectedRevisions: { day: input.expectedRevision, headSeq: input.expectedHeadSeq },
-      payload: {
-        selectionDate: input.selectionDate, itemName: input.itemName, price: input.price,
-        vendorId: input.vendorId, vendorNameSnapshot: input.vendorNameSnapshot,
-        inheritedFromDate: input.inheritedFromDate,
-      },
-    }),
+    ensureDay: input => commandRepository.commitCommand(buildDayVendorCommand({ kind: 'ensure-day', input })),
+    saveVendor: input => commandRepository.commitCommand(buildDayVendorCommand({ kind: 'save-vendor', input })),
+    removeVendor: input => commandRepository.commitCommand(buildDayVendorCommand({ kind: 'remove-vendor', input })),
+    setDayMenu: input => commandRepository.commitCommand(buildDayVendorCommand({ kind: 'set-day-menu', input })),
     setOpeningCash,
+    commitDayVendorIntent,
+    confirmPendingIntent: (intent, expectedDatasetId, expectedUid) => commandRepository.confirmPendingIntent(
+      buildDayVendorCommand(intent), intent.input.leaseEpoch, expectedDatasetId, expectedUid, options.recoveryReader,
+    ),
+    cleanupConfirmedIntent: (intent, expectedDatasetId, expectedUid, isCurrent) => commandRepository.cleanupConfirmedIntent(
+      buildDayVendorCommand(intent), intent.input.leaseEpoch, expectedDatasetId, expectedUid, options.recoveryReader, isCurrent,
+    ),
     readCommand: commandRepository.readCommand,
   };
 }

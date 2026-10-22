@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type SetStateAction } from 'react';
+import { getAuth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
+import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
 import {
   createCloudDayVendorRepository,
+  type CloudDayVendorCommandIntent,
   type CloudDayVendorSnapshot,
   type CloudVendorRecord,
-  type EnsureDayInput,
   type RemoveVendorInput,
   type SaveVendorInput,
   type SetDayMenuInput,
@@ -53,7 +55,33 @@ interface RecoveryState {
   commandId: string;
   command?: PreparedCommand;
   phase: RecoveryPhase;
+  timedOut?: boolean;
+  canRetry?: boolean;
   receipt?: CommandReceipt;
+}
+
+interface DayVendorCommandOperation {
+  token: symbol;
+  identityKey: string;
+  generation: number;
+  db: Firestore;
+  app: Firestore['app'];
+  uid: string;
+  leaseEpoch: number;
+  datasetId: string;
+  viewDayId: string;
+  command: PreparedCommand | null;
+  intent: CloudDayVendorCommandIntent | null;
+  attempt: number;
+  attemptPromise: Promise<CommandResult> | null;
+  attemptSettled: boolean;
+  querySequence: number;
+  checking: boolean;
+  retryAuthorized: boolean;
+  receipt: CommandReceipt | null;
+  completed: boolean;
+  timerId: number | null;
+  cleanupWarning: string;
 }
 
 interface PageState {
@@ -221,6 +249,60 @@ function commandDayId(command: PreparedCommand): string {
   return command.kind === 'save-vendor' || command.kind === 'remove-vendor' ? command.viewDayId : command.dayId;
 }
 
+function freezeValue<T>(input: T): T {
+  const copy = JSON.parse(JSON.stringify(input)) as T;
+  const freeze = (value: unknown): void => {
+    if (!value || typeof value !== 'object' || Object.isFrozen(value)) return;
+    for (const child of Object.values(value as Record<string, unknown>)) freeze(child);
+    Object.freeze(value);
+  };
+  freeze(copy);
+  return copy;
+}
+
+function freezePreparedCommand(command: PreparedCommand): PreparedCommand {
+  return freezeValue(command);
+}
+
+function browserIsOnline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === true;
+}
+
+function intentFor(command: PreparedCommand, leaseEpoch: number): CloudDayVendorCommandIntent {
+  if (command.kind === 'ensure-day') return {
+    kind: 'ensure-day', input: { commandId: command.commandId, leaseEpoch, dayId: command.dayId },
+  };
+  if (command.kind === 'save-vendor') return {
+    kind: 'save-vendor', input: {
+      commandId: command.commandId, leaseEpoch, vendorId: command.vendorId,
+      expectedRevision: command.expectedRevision, name: command.name, phone: command.phone,
+      note: command.note, status: command.status,
+    },
+  };
+  if (command.kind === 'remove-vendor') return {
+    kind: 'remove-vendor', input: {
+      commandId: command.commandId, leaseEpoch, vendorId: command.vendorId,
+      expectedRevision: command.expectedRevision, reason: command.reason,
+    },
+  };
+  if (command.kind === 'set-day-menu') return {
+    kind: 'set-day-menu', input: {
+      commandId: command.commandId, leaseEpoch, dayId: command.dayId,
+      selectionDate: command.selectionDate, expectedRevision: command.expectedRevision,
+      expectedHeadSeq: command.expectedHeadSeq, itemName: command.itemName, price: command.price,
+      vendorId: command.vendorId, vendorNameSnapshot: command.vendorNameSnapshot,
+      inheritedFromDate: command.inheritedFromDate,
+    },
+  };
+  return {
+    kind: 'set-opening-cash', input: {
+      commandId: command.commandId, leaseEpoch, dayId: command.dayId,
+      expectedRevision: command.expectedRevision, openingCash: command.openingCash,
+      ...(command.reason === undefined ? {} : { reason: command.reason }),
+    },
+  };
+}
+
 function blockedInheritanceMessage(blocked: string): string {
   if (blocked === 'vendor-missing') return '最近一筆較早菜單的供應商已不存在，不能自動沿用；請直接確認菜單與使用中的供應商。';
   if (blocked === 'vendor-inactive') return '最近一筆較早菜單的供應商已停用，不能沿用；請先恢復供應商或直接選擇使用中的供應商。';
@@ -228,97 +310,91 @@ function blockedInheritanceMessage(blocked: string): string {
   return '最近一筆較早菜單的供應商名稱已變更，不能沿用舊快照；請直接確認菜單與使用中的供應商。';
 }
 
-function dispatchPreparedCommand(
-  repository: ReturnType<typeof createCloudDayVendorRepository>,
-  command: PreparedCommand,
-  leaseEpoch: number,
-): Promise<CommandResult> {
-  if (command.kind === 'ensure-day') {
-    const input: EnsureDayInput = { commandId: command.commandId, leaseEpoch, dayId: command.dayId };
-    return repository.ensureDay(input);
-  }
-  if (command.kind === 'save-vendor') {
-    const input: SaveVendorInput = {
-      commandId: command.commandId,
-      leaseEpoch,
-      vendorId: command.vendorId,
-      expectedRevision: command.expectedRevision,
-      name: command.name,
-      phone: command.phone,
-      note: command.note,
-      status: command.status,
-    };
-    return repository.saveVendor(input);
-  }
-  if (command.kind === 'remove-vendor') {
-    const input: RemoveVendorInput = {
-      commandId: command.commandId,
-      leaseEpoch,
-      vendorId: command.vendorId,
-      expectedRevision: command.expectedRevision,
-      reason: command.reason,
-    };
-    return repository.removeVendor(input);
-  }
-  if (command.kind === 'set-day-menu') {
-    const input: SetDayMenuInput = {
-      commandId: command.commandId,
-      leaseEpoch,
-      dayId: command.dayId,
-      selectionDate: command.selectionDate,
-      expectedRevision: command.expectedRevision,
-      expectedHeadSeq: command.expectedHeadSeq,
-      itemName: command.itemName,
-      price: command.price,
-      vendorId: command.vendorId,
-      vendorNameSnapshot: command.vendorNameSnapshot,
-      inheritedFromDate: command.inheritedFromDate,
-    };
-    return repository.setDayMenu(input);
-  }
-  const input: SetOpeningCashInput = {
-    commandId: command.commandId,
-    leaseEpoch,
-    dayId: command.dayId,
-    expectedRevision: command.expectedRevision,
-    openingCash: command.openingCash,
-    ...(command.reason === undefined ? {} : { reason: command.reason }),
-  };
-  return repository.setOpeningCash(input);
-}
-
 export function CloudDayVendorsPage({
   db, leaseEpoch, identityKey, onNavigationStateChange, ledger, onOpenAnomalies, onLedgerChanged,
 }: CloudDayVendorsPageProps) {
-  const repository = useMemo(() => createCloudDayVendorRepository(db), [db]);
+  const recoveryReader = useMemo(() => getCloudRecoveryReader(db), [db]);
+  const repository = useMemo(() => createCloudDayVendorRepository(db, { recoveryReader }), [db, recoveryReader]);
   const onLedgerChangedRef = useRef(onLedgerChanged);
   useEffect(() => { onLedgerChangedRef.current = onLedgerChanged; }, [onLedgerChanged]);
+  let currentUid: string | null = null;
+  try { currentUid = getAuth(db.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
   const [previousLookup, setPreviousLookup] = useState<PreviousClosedLookupView>({ status: 'idle' });
   /** Bumped by the retry button so a failed previous-closed-day lookup can run again without reloading the page. */
   const [lookupAttempt, setLookupAttempt] = useState(0);
-  const scopeKey = `${identityKey}:${leaseEpoch}`;
+  const authorizationScopeKey = `${identityKey}:${leaseEpoch}`;
+  const authorizationScopeRef = useRef(authorizationScopeKey);
+  const revokedScopeRef = useRef<string | null>(null);
+  const pendingCommandIdRef = useRef<string | null>(null);
+  if (authorizationScopeRef.current !== authorizationScopeKey) {
+    authorizationScopeRef.current = authorizationScopeKey;
+    revokedScopeRef.current = null;
+    pendingCommandIdRef.current = null;
+  }
+  const bindingRef = useRef({ db, uid: currentUid, identityKey, leaseEpoch, version: 0 });
+  const operationRef = useRef<DayVendorCommandOperation | null>(null);
+  if (bindingRef.current.db !== db || bindingRef.current.uid !== currentUid
+    || bindingRef.current.identityKey !== identityKey || bindingRef.current.leaseEpoch !== leaseEpoch) {
+    const oldOperation = operationRef.current;
+    if (oldOperation?.timerId !== null && oldOperation?.timerId !== undefined) window.clearTimeout(oldOperation.timerId);
+    if (oldOperation) {
+      oldOperation.completed = true;
+      oldOperation.command = null;
+      oldOperation.intent = null;
+      oldOperation.attemptPromise = null;
+    }
+    operationRef.current = null;
+    bindingRef.current = { db, uid: currentUid, identityKey, leaseEpoch, version: bindingRef.current.version + 1 };
+  }
+  const scopeKey = `${identityKey}:${leaseEpoch}:${bindingRef.current.version}`;
   const [pageState, setPageStateRaw] = useState<PageState>(() => initialPageState(scopeKey));
   const scopeRef = useRef(scopeKey);
   const generationRef = useRef(0);
   const listRequestRef = useRef(0);
-  const commandFlightRef = useRef<symbol | null>(null);
-  const revokedScopeRef = useRef<string | null>(null);
-  const pendingCommandIdRef = useRef<string | null>(null);
 
   if (scopeRef.current !== scopeKey) {
     scopeRef.current = scopeKey;
     generationRef.current += 1;
     listRequestRef.current += 1;
-    commandFlightRef.current = null;
-    revokedScopeRef.current = null;
-    pendingCommandIdRef.current = null;
   }
 
-  const page = pageState.scopeKey === scopeKey ? pageState : initialPageState(scopeKey);
+  const currentPage = pageState.scopeKey === scopeKey ? pageState : initialPageState(scopeKey);
+  const page = revokedScopeRef.current === authorizationScopeKey
+    ? {
+      ...currentPage,
+      authorizationRevoked: true,
+      loading: false,
+      loadError: currentPage.loadError || errorMessage({ code: 'LEASE_LOST' }),
+      recovery: currentPage.recovery ?? (pendingCommandIdRef.current
+        ? { commandId: pendingCommandIdRef.current, phase: 'access-lost' as const }
+        : null),
+    }
+    : currentPage;
 
   const isCurrent = useCallback((key: string, generation: number) => (
     scopeRef.current === key && generationRef.current === generation
   ), []);
+
+  const ownsOperation = useCallback((operation: DayVendorCommandOperation): operation is DayVendorCommandOperation & {
+    command: PreparedCommand;
+    intent: CloudDayVendorCommandIntent;
+  } => {
+    let authenticatedUid: string | null = null;
+    try { authenticatedUid = getAuth(operation.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
+    return operationRef.current === operation
+      && !operation.completed
+      && operation.command !== null
+      && operation.intent !== null
+      && isCurrent(operation.identityKey, operation.generation)
+      && bindingRef.current.db === operation.db
+      && bindingRef.current.uid === operation.uid
+      && bindingRef.current.identityKey === identityKey
+      && bindingRef.current.leaseEpoch === operation.leaseEpoch
+      && operation.db === db
+      && operation.db.app === operation.app
+      && operation.uid === authenticatedUid
+      && operation.leaseEpoch === leaseEpoch;
+  }, [db, identityKey, isCurrent, leaseEpoch]);
 
   const updateFor = useCallback((key: string, generation: number, update: (previous: PageState) => PageState) => {
     setPageStateRaw(previous => {
@@ -332,10 +408,18 @@ export function CloudDayVendorsPage({
     if (!isCurrent(key, generation)) return;
 
     // Invalidate all pending reads, writes, and receipt lookups before React commits.
-    revokedScopeRef.current = key;
+    revokedScopeRef.current = authorizationScopeKey;
     generationRef.current += 1;
     listRequestRef.current += 1;
-    commandFlightRef.current = null;
+    const operation = operationRef.current;
+    if (operation?.timerId !== null && operation?.timerId !== undefined) window.clearTimeout(operation.timerId);
+    if (operation) {
+      operation.completed = true;
+      operation.command = null;
+      operation.intent = null;
+      operation.attemptPromise = null;
+    }
+    operationRef.current = null;
     const retainedCommandId = commandId ?? pendingCommandIdRef.current;
     pendingCommandIdRef.current = retainedCommandId;
     onNavigationStateChange?.(identityKey, 'revoked');
@@ -350,33 +434,80 @@ export function CloudDayVendorsPage({
         recovery: retainedCommandId ? { commandId: retainedCommandId, phase: 'access-lost' } : null,
       };
     });
-  }, [identityKey, isCurrent, onNavigationStateChange]);
+  }, [authorizationScopeKey, identityKey, isCurrent, onNavigationStateChange]);
 
-  const loadSnapshot = useCallback(async (targetDayId?: string, confirmedReceipt?: CommandReceipt) => {
+  const loadSnapshot = useCallback(async (
+    targetDayId?: string,
+    confirmedReceipt?: CommandReceipt,
+    confirmedOperation?: DayVendorCommandOperation,
+  ) => {
     const key = scopeKey;
     const generation = generationRef.current;
-    if (revokedScopeRef.current === key) return;
+    if (revokedScopeRef.current === authorizationScopeKey) return;
+    const operation = confirmedOperation ?? operationRef.current;
+    if (operation && !ownsOperation(operation)) return;
+    if (confirmedReceipt && (!operation || operation.command.commandId !== confirmedReceipt.commandId)) return;
+    const requestedDayId = operation?.viewDayId ?? targetDayId;
     const requestId = ++listRequestRef.current;
     updateFor(key, generation, previous => ({
       ...previous,
       snapshot: null,
       loading: true,
       loadError: '',
-      actionError: '',
+      actionError: operation?.receipt ? previous.actionError : '',
       notice: confirmedReceipt ? '已找到伺服器回執，正在重新讀取營業日與供應商資料…' : '',
-      ...(targetDayId ? { dayIdDraft: targetDayId } : {}),
+      ...(requestedDayId ? { dayIdDraft: requestedDayId } : {}),
     }));
 
     try {
-      const snapshot = await repository.loadSnapshot(targetDayId);
+      const snapshot = await repository.loadSnapshot(requestedDayId);
       if (!isCurrent(key, generation) || requestId !== listRequestRef.current) return;
-      if (confirmedReceipt?.commandId === pendingCommandIdRef.current) pendingCommandIdRef.current = null;
-      if (confirmedReceipt?.kind === 'SetOpeningCash') onLedgerChangedRef.current?.();
+      const currentOperation = operationRef.current;
+      const boundOperation = operation ?? currentOperation;
+      const resolvesOperation = confirmedReceipt
+        && boundOperation === currentOperation
+        && boundOperation?.command?.commandId === confirmedReceipt.commandId
+        && boundOperation.receipt?.commandId === confirmedReceipt.commandId
+        && ownsOperation(boundOperation);
+      if (boundOperation && ownsOperation(boundOperation)
+        && (snapshot.datasetId !== boundOperation.datasetId || snapshot.dayId !== boundOperation.viewDayId)) {
+        const confirmed = !!boundOperation.receipt;
+        updateFor(key, generation, previous => ({
+          ...previous,
+          ...clearFormDrafts(),
+          snapshot: null,
+          loading: false,
+          loadError: '',
+          actionError: confirmed
+            ? '命令回執已確認，但伺服器資料集或營業日已變更；已確認狀態仍保留，請勿重送命令。'
+            : '目前伺服器資料集或營業日已變更；原命令仍待確認，不能重試。',
+          recovery: {
+            commandId: boundOperation.command.commandId,
+            command: boundOperation.command,
+            phase: confirmed ? 'receipt' : 'unknown',
+            ...(confirmed && boundOperation.receipt ? { receipt: boundOperation.receipt } : {}),
+            canRetry: false,
+          },
+          notice: '',
+        }));
+        return;
+      }
+      if (confirmedReceipt && !resolvesOperation) return;
+      let acceptedCommand: PreparedCommand | null = null;
+      if (resolvesOperation && boundOperation) {
+        const completedOperation: DayVendorCommandOperation = boundOperation;
+        acceptedCommand = boundOperation.command;
+        completedOperation.completed = true;
+        if (completedOperation.timerId !== null) window.clearTimeout(completedOperation.timerId);
+        completedOperation.command = null;
+        completedOperation.intent = null;
+        completedOperation.attemptPromise = null;
+        operationRef.current = null;
+        if (confirmedReceipt!.commandId === pendingCommandIdRef.current) pendingCommandIdRef.current = null;
+      }
       updateFor(key, generation, previous => {
-        const confirmsPending = confirmedReceipt
-          && previous.recovery?.commandId === confirmedReceipt.commandId
-          && previous.recovery.command !== undefined;
-        const confirmedCommand = confirmsPending ? previous.recovery?.command : null;
+        const confirmsPending = !!resolvesOperation && !!confirmedReceipt;
+        const confirmedCommand = confirmsPending ? acceptedCommand : null;
         return {
           ...previous,
           ...formDraftsFor(snapshot),
@@ -387,19 +518,27 @@ export function CloudDayVendorsPage({
           actionError: '',
           recovery: confirmsPending ? null : previous.recovery,
           notice: confirmsPending
-            ? `已確認 ${confirmedCommand ? commandLabel(confirmedCommand) : '雲端操作'} 完成；伺服器資料已重新讀取（命令序號 ${confirmedReceipt.seq}）。`
+            ? `已確認 ${confirmedCommand ? commandLabel(confirmedCommand) : '雲端操作'} 完成；伺服器資料已重新讀取（命令序號 ${confirmedReceipt.seq}）。${boundOperation?.cleanupWarning ? ' ' + boundOperation.cleanupWarning : ''}`
             : '',
         };
       });
+      if (resolvesOperation && confirmedReceipt?.kind === 'SetOpeningCash') onLedgerChangedRef.current?.();
     } catch (error) {
       if (!isCurrent(key, generation) || requestId !== listRequestRef.current) return;
       if (isAuthorizationLoss(error)) {
-        revokeAuthorization(key, generation, confirmedReceipt?.commandId ?? null, error);
+        revokeAuthorization(key, generation, operation?.command.commandId ?? confirmedReceipt?.commandId ?? null, error);
         return;
       }
       updateFor(key, generation, previous => {
-        const recovery = confirmedReceipt && previous.recovery?.commandId === confirmedReceipt.commandId
-          ? { ...previous.recovery, phase: 'receipt' as const, receipt: confirmedReceipt }
+        const heldOperation = operationRef.current;
+        const recovery = heldOperation && ownsOperation(heldOperation)
+          ? {
+            commandId: heldOperation.command.commandId,
+            command: heldOperation.command,
+            phase: heldOperation.receipt ? 'receipt' as const : 'unknown' as const,
+            ...(heldOperation.receipt ? { receipt: heldOperation.receipt } : {}),
+            canRetry: false,
+          }
           : previous.recovery;
         return {
           ...previous,
@@ -407,25 +546,46 @@ export function CloudDayVendorsPage({
           snapshot: null,
           loading: false,
           loadError: errorMessage(error),
-          actionError: confirmedReceipt
+          actionError: operation?.receipt
             ? '已找到命令回執，但伺服器資料尚未重新讀取；請只重新讀取資料，不要重送命令。'
-            : '',
+            : heldOperation
+              ? '目前無法安全重新讀取原營業日；原命令仍維持鎖定狀態。'
+              : '',
           recovery,
           notice: '',
         };
       });
     }
-  }, [isCurrent, repository, revokeAuthorization, scopeKey, updateFor]);
+  }, [authorizationScopeKey, isCurrent, operationRef, ownsOperation, repository, revokeAuthorization, scopeKey, updateFor]);
 
   useEffect(() => {
     const generation = ++generationRef.current;
-    setPageStateRaw(initialPageState(scopeKey));
-    void loadSnapshot();
+    const latched = revokedScopeRef.current === authorizationScopeKey;
+    const initial = initialPageState(scopeKey);
+    setPageStateRaw(latched ? {
+      ...initial,
+      authorizationRevoked: true,
+      loading: false,
+      loadError: errorMessage({ code: 'LEASE_LOST' }),
+      recovery: pendingCommandIdRef.current
+        ? { commandId: pendingCommandIdRef.current, phase: 'access-lost' }
+        : null,
+    } : initial);
+    if (!latched) void loadSnapshot();
     return () => {
       listRequestRef.current += 1;
+      const operation = operationRef.current;
+      if (operation?.generation === generation) {
+        if (operation.timerId !== null) window.clearTimeout(operation.timerId);
+        operation.completed = true;
+        operation.command = null;
+        operation.intent = null;
+        operation.attemptPromise = null;
+        operationRef.current = null;
+      }
       if (generationRef.current === generation) generationRef.current += 1;
     };
-  }, [loadSnapshot, scopeKey]);
+  }, [authorizationScopeKey, loadSnapshot, scopeKey]);
 
   const hasRecovery = page.recovery !== null;
   useEffect(() => {
@@ -435,214 +595,289 @@ export function CloudDayVendorsPage({
     );
   }, [hasRecovery, identityKey, onNavigationStateChange, page.authorizationRevoked]);
 
-  const finishCommandResult = async (command: PreparedCommand, result: CommandResult, key: string, generation: number) => {
-    if (!isCurrent(key, generation)) return;
-    if (!result.ok) {
-      if (isAuthorizationLoss(result.error)) {
-        revokeAuthorization(key, generation, command.commandId, result.error);
-        return;
-      }
-      if (result.error.code === 'UNKNOWN_RESULT') {
-        updateFor(key, generation, previous => ({
-          ...previous,
-          snapshot: null,
-          loading: false,
-          loadError: '',
-          actionError: '',
-          recovery: { commandId: command.commandId, command, phase: 'unknown' },
-        }));
-        return;
-      }
-      pendingCommandIdRef.current = null;
-      updateFor(key, generation, previous => ({
-        ...previous,
-        ...clearFormDrafts(),
-        snapshot: null,
-        loading: false,
-        loadError: `操作未完成：${errorMessage(result.error)}請重新載入伺服器資料後繼續。`,
-        actionError: command.kind === 'set-day-menu' && ['REVISION_CONFLICT', 'INVALID_INPUT'].includes(result.error.code)
-          ? '本次菜單命令未成功，輸入與來源日期沒有自動改寫。請重新載入並確認最新菜單來源及伺服器使用權日期；若已跨過臺北午夜，請先取得更新的使用權。'
-          : '',
-        recovery: null,
-        notice: '',
-      }));
-      return;
-    }
-
-    if (result.receipt.commandId !== command.commandId) {
-      updateFor(key, generation, previous => ({
-        ...previous,
-        snapshot: null,
-        loading: false,
-        actionError: '',
-        recovery: { commandId: command.commandId, command, phase: 'unknown' },
-        loadError: '伺服器回執命令編號不符；保留原命令編號，尚未確認完成。',
-      }));
-      return;
-    }
-    updateFor(key, generation, previous => ({
-      ...previous,
-      snapshot: null,
-      loading: false,
-      loadError: '',
-      actionError: '',
-      recovery: { commandId: command.commandId, command, phase: 'receipt', receipt: result.receipt },
-    }));
-    await loadSnapshot(commandDayId(command) || undefined, result.receipt);
+  const clearOperationTimer = (operation: DayVendorCommandOperation) => {
+    if (operation.timerId !== null) window.clearTimeout(operation.timerId);
+    operation.timerId = null;
   };
 
-  const runPreparedCommand = async (command: PreparedCommand) => {
-    const key = scopeKey;
-    const generation = generationRef.current;
-    onNavigationStateChange?.(identityKey, 'recovering');
-    if (revokedScopeRef.current === key) return;
-    if (!identityKey || !Number.isSafeInteger(leaseEpoch) || leaseEpoch < 1) {
-      revokeAuthorization(key, generation, command.commandId, {
-        code: 'LEASE_LOST',
-        message: '目前沒有有效的操作使用權，雲端資料已清除。請重新確認使用權。',
-      });
+  const showUnknownResult = (operation: DayVendorCommandOperation, message: string) => {
+    if (!ownsOperation(operation) || operation.receipt) return;
+    const command = operation.command;
+    clearOperationTimer(operation);
+    updateFor(operation.identityKey, operation.generation, previous => ({
+      ...previous, snapshot: null, loading: false, loadError: '', actionError: message,
+      recovery: {
+        commandId: command.commandId, command,
+        phase: operation.checking ? 'checking' : 'unknown', timedOut: false, canRetry: false,
+      },
+    }));
+  };
+
+  const beginAttempt = (operation: DayVendorCommandOperation) => {
+    clearOperationTimer(operation);
+    operation.attempt += 1;
+    operation.attemptPromise = null;
+    operation.attemptSettled = false;
+    operation.retryAuthorized = false;
+    operation.querySequence += 1;
+    operation.checking = false;
+    const attempt = operation.attempt;
+    operation.timerId = window.setTimeout(() => {
+      if (!ownsOperation(operation) || operation.attempt !== attempt || operation.attemptSettled || operation.receipt) return;
+      updateFor(operation.identityKey, operation.generation, previous => ({
+        ...previous,
+        recovery: previous.recovery?.commandId === operation.command.commandId
+          ? { ...previous.recovery, phase: 'submitting', timedOut: true, canRetry: false }
+          : previous.recovery,
+      }));
+    }, 10_000);
+  };
+
+  const settleWithReceipt = async (operation: DayVendorCommandOperation, receipt: CommandReceipt) => {
+    if (!ownsOperation(operation) || operation.receipt) return;
+    const command = operation.command;
+    const intent = operation.intent;
+    if (receipt.commandId !== command.commandId) {
+      showUnknownResult(operation, '伺服器回執命令編號不符；保留原命令編號，尚未確認完成。');
       return;
     }
-    if (commandFlightRef.current) return;
-    const flightToken = Symbol('cloud-day-vendor-command');
-    commandFlightRef.current = flightToken;
-    pendingCommandIdRef.current = command.commandId;
-    const releaseFlight = () => {
-      if (commandFlightRef.current === flightToken) commandFlightRef.current = null;
-    };
-
-    updateFor(key, generation, previous => ({
-      ...previous,
-      snapshot: null,
-      loading: false,
-      loadError: '',
-      actionError: '',
-      notice: '',
-      recovery: { commandId: command.commandId, command, phase: 'submitting' },
+    clearOperationTimer(operation);
+    operation.receipt = receipt;
+    operation.retryAuthorized = false;
+    operation.checking = false;
+    operation.querySequence += 1;
+    updateFor(operation.identityKey, operation.generation, previous => ({
+      ...previous, actionError: '',
+      recovery: { commandId: command.commandId, command, phase: 'receipt', receipt },
     }));
-
-    let result: CommandResult;
     try {
-      result = await dispatchPreparedCommand(repository, command, leaseEpoch);
-    } catch (error) {
-      releaseFlight();
-      if (!isCurrent(key, generation)) return;
-      if (isAuthorizationLoss(error)) {
-        revokeAuthorization(key, generation, command.commandId, error);
+      const cleared = await repository.cleanupConfirmedIntent(
+        intent, operation.datasetId, operation.uid, () => {
+          let uid: string | null = null;
+          try { uid = getAuth(operation.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
+          return operationRef.current === operation && !operation.completed
+            && generationRef.current === operation.generation && scopeRef.current === operation.identityKey
+            && bindingRef.current.db === operation.db && bindingRef.current.uid === operation.uid
+            && bindingRef.current.identityKey === identityKey
+            && bindingRef.current.leaseEpoch === operation.leaseEpoch && uid === operation.uid
+            && typeof navigator !== 'undefined' && navigator.onLine;
+        },
+      );
+      if (!cleared && ownsOperation(operation)) operation.cleanupWarning = '本機命令追蹤尚未清理；伺服器回執仍已確認。';
+    } catch {
+      if (ownsOperation(operation)) operation.cleanupWarning = '本機命令追蹤清理未完成；伺服器回執仍已確認。';
+    }
+    if (ownsOperation(operation)) await loadSnapshot(operation.viewDayId, receipt, operation);
+  };
+
+  const finishCommandResult = async (operation: DayVendorCommandOperation, result: CommandResult, attempt: number) => {
+    if (!ownsOperation(operation) || operation.attempt !== attempt) return;
+    operation.attemptSettled = true;
+    clearOperationTimer(operation);
+    if (operation.receipt || operation.completed) return;
+    if (!result.ok) {
+      if (isAuthorizationLoss(result.error)) {
+        revokeAuthorization(operation.identityKey, operation.generation, operation.command.commandId, result.error);
         return;
       }
-      updateFor(key, generation, previous => ({
-        ...previous,
-        snapshot: null,
-        loading: false,
-        loadError: '',
-        actionError: '',
-        recovery: { commandId: command.commandId, command, phase: 'unknown' },
+      if (result.error.code === 'UNKNOWN_RESULT' || result.error.code === 'OFFLINE') {
+        showUnknownResult(operation, '操作回應不確定；請唯讀查詢原命令結果。查詢錯誤或找不到結果都不會自動重送。');
+        return;
+      }
+      const completedOperation: DayVendorCommandOperation = operation;
+      const failedCommand = completedOperation.command!;
+      completedOperation.completed = true;
+      operationRef.current = null;
+      pendingCommandIdRef.current = null;
+      completedOperation.command = null;
+      completedOperation.intent = null;
+      completedOperation.attemptPromise = null;
+      updateFor(operation.identityKey, operation.generation, previous => ({
+        ...previous, ...clearFormDrafts(), snapshot: null, loading: false,
+        loadError: '操作未完成：' + errorMessage(result.error) + '請重新載入伺服器資料後繼續。',
+        actionError: result.error.code === 'LOCAL_STORAGE_UNAVAILABLE' ? errorMessage(result.error)
+          : failedCommand.kind === 'set-day-menu' && ['REVISION_CONFLICT', 'INVALID_INPUT'].includes(result.error.code)
+            ? '本次菜單命令未成功，輸入與來源日期沒有自動改寫。請重新載入並確認最新菜單來源及伺服器使用權日期；若已跨過臺北午夜，請先取得更新的使用權。'
+            : '',
+        recovery: null, notice: '',
       }));
       return;
     }
+    await settleWithReceipt(operation, result.receipt);
+  };
 
-    if (!isCurrent(key, generation)) {
-      releaseFlight();
+  const runPreparedCommand = async (command: PreparedCommand, retryOperation?: DayVendorCommandOperation) => {
+    let operation = retryOperation;
+    if (!browserIsOnline()) {
+      if (operation) operation.retryAuthorized = false;
+      updateFor(scopeKey, generationRef.current, previous => ({
+        ...previous,
+        actionError: '目前離線，沒有送出或重試命令；請恢復連線後重新查詢原命令。',
+        recovery: previous.recovery ? { ...previous.recovery, canRetry: false } : null,
+      }));
       return;
     }
-    await finishCommandResult(command, result, key, generation);
-    releaseFlight();
+    if (operation) {
+      if (!ownsOperation(operation) || !operation.attemptSettled || !operation.retryAuthorized
+        || operation.receipt || operation.checking) return;
+      operation.retryAuthorized = false;
+    } else {
+      if (operationRef.current || page.recovery || !page.snapshot) return;
+      const key = scopeKey;
+      const generation = generationRef.current;
+      if (revokedScopeRef.current === authorizationScopeKey) return;
+      if (!identityKey || !Number.isSafeInteger(leaseEpoch) || leaseEpoch < 1) {
+        revokeAuthorization(key, generation, command.commandId, {
+          code: 'LEASE_LOST', message: '目前沒有有效的操作使用權，雲端資料已清除。請重新確認使用權。',
+        });
+        return;
+      }
+      let uid: string | null = null;
+      try { uid = getAuth(db.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
+      if (!uid) {
+        revokeAuthorization(key, generation, command.commandId, {
+          code: 'UNAUTHORIZED', message: '目前登入身分尚未確認，雲端資料已清除。請重新登入操作員帳號。',
+        });
+        return;
+      }
+      const frozen = freezePreparedCommand(command);
+      operation = {
+        token: Symbol('cloud-day-vendor-operation'), identityKey: key, generation, db, app: db.app,
+        uid, leaseEpoch, datasetId: page.snapshot.datasetId, viewDayId: page.snapshot.dayId,
+        command: frozen, intent: freezeValue(intentFor(frozen, leaseEpoch)), attempt: 0,
+        attemptPromise: null, attemptSettled: false,
+        querySequence: 0, checking: false, retryAuthorized: false, receipt: null,
+        completed: false, timerId: null, cleanupWarning: '',
+      };
+      operationRef.current = operation;
+      pendingCommandIdRef.current = frozen.commandId;
+      onNavigationStateChange?.(identityKey, 'recovering');
+    }
+    if (!ownsOperation(operation)) return;
+    beginAttempt(operation);
+    updateFor(operation.identityKey, operation.generation, previous => ({
+      ...previous, snapshot: null, loading: false, loadError: '', actionError: '', notice: '',
+      recovery: {
+        commandId: operation!.command.commandId, command: operation!.command,
+        phase: 'submitting', timedOut: false, canRetry: false,
+      },
+    }));
+    const attempt = operation.attempt;
+    const attemptPromise = repository.commitDayVendorIntent(operation.intent);
+    operation.attemptPromise = attemptPromise;
+    try {
+      const result = await attemptPromise;
+      if (!ownsOperation(operation) || operation.attempt !== attempt) return;
+      operation.attemptSettled = true;
+      if (operation.attemptPromise === attemptPromise) operation.attemptPromise = null;
+      await finishCommandResult(operation, result, attempt);
+    } catch (error) {
+      if (!ownsOperation(operation) || operation.attempt !== attempt) return;
+      operation.attemptSettled = true;
+      if (operation.attemptPromise === attemptPromise) operation.attemptPromise = null;
+      clearOperationTimer(operation);
+      if (isAuthorizationLoss(error)) {
+        revokeAuthorization(operation.identityKey, operation.generation, operation.command.commandId, error);
+      } else {
+        showUnknownResult(operation, '操作回應不確定；請唯讀查詢原命令結果。查詢錯誤或找不到結果都不會自動重送。');
+      }
+    } finally {
+      if (operation.attemptPromise === attemptPromise) operation.attemptPromise = null;
+    }
   };
 
   const checkPendingCommand = async () => {
     const recovery = page.recovery;
-    if (revokedScopeRef.current === scopeKey) return;
-    if (!recovery?.command || recovery.phase === 'submitting' || recovery.phase === 'checking') return;
-    if (recovery.phase === 'receipt') {
-      if (recovery.receipt) await loadSnapshot(commandDayId(recovery.command) || undefined, recovery.receipt);
+    const operation = operationRef.current;
+    if (revokedScopeRef.current === authorizationScopeKey || !recovery?.command || !operation
+      || operation.command?.commandId !== recovery.commandId || operation.checking || operation.receipt
+      || (recovery.phase === 'submitting' && !recovery.timedOut) || !ownsOperation(operation)) return;
+    if (!browserIsOnline()) {
+      operation.retryAuthorized = false;
+      updateFor(operation.identityKey, operation.generation, previous => ({
+        ...previous,
+        actionError: '目前離線；查詢錯誤不代表命令不存在，暫不可重試。',
+        recovery: { ...recovery, canRetry: false },
+      }));
       return;
     }
-
-    const key = scopeKey;
-    const generation = generationRef.current;
-    updateFor(key, generation, previous => ({ ...previous, actionError: '', recovery: { ...recovery, phase: 'checking' } }));
+    operation.checking = true;
+    const command = operation.command;
+    const intent = operation.intent;
+    const attemptAtStart = operation.attempt;
+    const attemptPromiseAtStart = operation.attemptPromise;
+    const settledAtStart = operation.attemptSettled && attemptPromiseAtStart === null;
+    operation.retryAuthorized = false;
+    const querySequence = ++operation.querySequence;
+    updateFor(operation.identityKey, operation.generation, previous => ({
+      ...previous, actionError: '', recovery: { ...recovery, phase: 'checking', canRetry: false },
+    }));
     try {
-      const receipt = await repository.readCommand(recovery.commandId);
-      if (!isCurrent(key, generation)) return;
-      if (!receipt) {
-        updateFor(key, generation, previous => ({
-          ...previous,
-          snapshot: null,
-          loadError: '',
-          actionError: '伺服器目前尚未找到這筆命令。沒有產生新的命令編號；可用相同編號與原資料重試。',
-          recovery: { commandId: recovery.commandId, command: recovery.command, phase: 'unknown' },
+      const check = await repository.confirmPendingIntent(intent, operation.datasetId, operation.uid);
+      if (!ownsOperation(operation) || operation.querySequence !== querySequence
+        || operation.attempt !== attemptAtStart || operation.receipt) return;
+      if (check.status === 'matched') {
+        await settleWithReceipt(operation, check.receipt);
+        return;
+      }
+      if (check.status === 'different-dataset') {
+        updateFor(operation.identityKey, operation.generation, previous => ({
+          ...previous, ...clearFormDrafts(), snapshot: null, loading: false, loadError: '',
+          actionError: '目前伺服器資料集已變更；原操作尚未確認，請聯絡維護者，不可重試。',
+          recovery: { commandId: command.commandId, command, phase: 'unknown', canRetry: false },
         }));
         return;
       }
-      if (receipt.commandId !== recovery.commandId) {
-        throw new Error('伺服器回傳的命令編號不符，無法確認結果。');
-      }
-
-      // The ID alone is insufficient: replay the frozen semantic input with the
-      // same command ID so the repository verifies exact command identity.
-      let verification: CommandResult;
-      try {
-        verification = await dispatchPreparedCommand(repository, recovery.command, leaseEpoch);
-      } catch (error) {
-        if (!isCurrent(key, generation)) return;
-        if (isAuthorizationLoss(error)) {
-          revokeAuthorization(key, generation, recovery.commandId, error);
-          return;
-        }
-        updateFor(key, generation, previous => ({
-          ...previous,
-          ...clearFormDrafts(),
-          snapshot: null,
-          loading: false,
-          actionError: `已找到回執，但同命令編號語義核對結果仍不明。${errorMessage(error)}`,
-          recovery: { commandId: recovery.commandId, command: recovery.command, phase: 'unknown' },
-        }));
-        return;
-      }
-      if (!isCurrent(key, generation)) return;
-      if (!verification.ok && isAuthorizationLoss(verification.error)) {
-        revokeAuthorization(key, generation, recovery.commandId, verification.error);
-        return;
-      }
-      if (!verification.ok && verification.error.code !== 'UNKNOWN_RESULT') {
-        updateFor(key, generation, previous => ({
-          ...previous,
-          ...clearFormDrafts(),
-          snapshot: null,
-          loading: false,
-          actionError: `命令編號已存在，但伺服器內容與原操作不符，仍未確認完成。${verification.error.message}`,
-          recovery: { commandId: recovery.commandId, command: recovery.command, phase: 'unknown' },
-        }));
-        return;
-      }
-      if (!verification.ok) {
-        updateFor(key, generation, previous => ({
-          ...previous,
-          snapshot: null,
-          loading: false,
-          actionError: '已找到命令回執，但語義比對結果不明；請使用相同命令編號再查詢。',
-          recovery: { commandId: recovery.commandId, command: recovery.command, phase: 'unknown' },
-        }));
-        return;
-      }
-      await finishCommandResult(recovery.command, verification, key, generation);
-    } catch (error) {
-      if (!isCurrent(key, generation)) return;
-      if (isAuthorizationLoss(error)) {
-        revokeAuthorization(key, generation, recovery.commandId, error);
-        return;
-      }
-      updateFor(key, generation, previous => ({
-        ...previous,
-        ...clearFormDrafts(),
-        snapshot: null,
-        loading: false,
-        loadError: '',
-        actionError: `目前無法確認命令結果。${errorMessage(error)}`,
-        recovery: { commandId: recovery.commandId, command: recovery.command, phase: 'unknown' },
+      const mayRetry = settledAtStart && operation.attemptSettled && operation.attemptPromise === null;
+      operation.retryAuthorized = mayRetry;
+      updateFor(operation.identityKey, operation.generation, previous => ({
+        ...previous, snapshot: null, loading: false, loadError: '',
+        actionError: mayRetry
+          ? '伺服器目前尚未找到這筆命令。沒有產生新的命令編號；確認後可明確選擇同編號重試。'
+          : settledAtStart
+            ? '原命令狀態在查詢期間改變；這次查詢不能授權重試。請重新查詢原命令。'
+            : operation.attemptSettled
+              ? '這次查詢開始時原命令仍在送出中；未找到結果不能授權重試。請在原命令結束後重新查詢。'
+              : '查詢尚未找到回執，但原命令仍在送出中；目前不能重試。請等待原命令結束後再查詢。',
+        recovery: {
+          commandId: command.commandId, command,
+          phase: operation.attemptSettled ? 'unknown' : 'submitting', timedOut: !operation.attemptSettled,
+          canRetry: operation.retryAuthorized,
+        },
       }));
+    } catch (error) {
+      if (!ownsOperation(operation) || operation.querySequence !== querySequence || operation.receipt) return;
+      if (isAuthorizationLoss(error)) {
+        revokeAuthorization(operation.identityKey, operation.generation, operation.command.commandId, error);
+        return;
+      }
+      operation.retryAuthorized = false;
+      const code = errorCode(error);
+      const message = code === 'MAINTENANCE'
+        ? '系統維護中，暫停同編號重試；請稍後重新查詢。'
+        : code === 'QUOTA_EXCEEDED'
+          ? '查詢次數已達限制，尚未確認命令不存在；請稍後重新查詢，不可重試。'
+          : code === 'UNSUPPORTED_SCHEMA'
+            ? '雲端命令格式不支援，尚未確認操作結果；請聯絡維護者，不可重試。'
+            : code === 'INVALID_INPUT'
+              ? '命令編號已存在，但伺服器內容與原操作不符；仍未確認完成，不可重試。'
+              : '目前無法安全確認原命令；查詢錯誤不代表命令不存在，暫不可重試。';
+      updateFor(operation.identityKey, operation.generation, previous => ({
+        ...previous, snapshot: null, loading: false, loadError: '', actionError: message,
+        recovery: {
+          commandId: command.commandId, command,
+          phase: operation.attemptSettled ? 'unknown' : 'submitting',
+          timedOut: !operation.attemptSettled, canRetry: false,
+        },
+      }));
+    } finally {
+      if (operationRef.current === operation && operation.querySequence === querySequence) operation.checking = false;
     }
+  };
+
+  const retryPendingCommand = (operation: DayVendorCommandOperation) => {
+    if (!ownsOperation(operation)) return;
+    void runPreparedCommand(operation.command, operation);
   };
 
   const updatePage = (action: SetStateAction<PageState>) => updateFor(scopeKey, generationRef.current, previous => (
@@ -987,6 +1222,8 @@ export function CloudDayVendorsPage({
               ? '使用權已變更；敏感操作內容已清除。'
               : page.recovery.phase === 'checking'
                 ? '正在查詢原命令結果…'
+                : page.recovery.phase === 'submitting' && page.recovery.timedOut
+                  ? '結果確認中，勿重新收款'
                 : page.recovery.phase === 'submitting'
                   ? '命令送出中，請勿重複操作。'
                   : '結果確認中，請勿重複操作。'}</strong>
@@ -994,13 +1231,14 @@ export function CloudDayVendorsPage({
           {page.recovery.phase === 'access-lost' && <span>只保留命令編號；請先重新確認登入帳號與使用權，再依現場流程核對。</span>}
           {page.recovery.phase === 'receipt' && page.recovery.receipt && <span>伺服器命令序號 {page.recovery.receipt.seq}</span>}
           <div className="cloud-day-vendors__actions">
-            {page.recovery.command && page.recovery.phase !== 'submitting' && page.recovery.phase !== 'checking' && page.recovery.phase !== 'receipt' && (
+            {page.recovery.command && page.recovery.phase !== 'checking' && page.recovery.phase !== 'receipt'
+              && (page.recovery.phase !== 'submitting' || page.recovery.timedOut) && (
               <button type="button" className="cloud-day-vendors__primary" onClick={() => void checkPendingCommand()}>
                 查詢原命令結果
               </button>
             )}
-            {page.recovery.phase === 'unknown' && page.recovery.command && page.actionError.includes('尚未找到') && (
-              <button type="button" className="cloud-day-vendors__secondary" onClick={() => void runPreparedCommand(page.recovery!.command!)}>
+            {page.recovery.canRetry && page.recovery.command && operationRef.current && (
+              <button type="button" className="cloud-day-vendors__secondary" onClick={() => retryPendingCommand(operationRef.current!)}>
                 以相同命令編號重試
               </button>
             )}
