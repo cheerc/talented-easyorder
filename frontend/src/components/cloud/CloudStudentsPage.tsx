@@ -469,6 +469,20 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
     });
   }, [isCurrent]);
 
+  const ownsOperation = useCallback((operation: StudentCommandOperation) => {
+    let authenticatedUid: string | null = null;
+    try { authenticatedUid = getAuth(operation.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
+    return operationRef.current === operation
+      && !operation.completed
+      && isCurrent(operation.identityKey, operation.generation)
+      && scopeRef.current.db === operation.db
+      && scopeRef.current.db.app === operation.app
+      && scopeRef.current.uid === operation.uid
+      && scopeRef.current.identityKey === operation.identityKey
+      && scopeRef.current.leaseEpoch === operation.leaseEpoch
+      && authenticatedUid === operation.uid;
+  }, [isCurrent]);
+
   const setPageState = (action: SetStateAction<PageState>) => updateFor(identityKey, generationRef.current, previous => (
     typeof action === 'function' ? action(previous) : action
   ));
@@ -534,6 +548,29 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
       const resolvesOperation = confirmedReceipt
         && confirmedOperation?.command.commandId === confirmedReceipt.commandId
         && !confirmedOperation.completed;
+      if (resolvesOperation && confirmedOperation) {
+        if (!ownsOperation(confirmedOperation)) return;
+        if (snapshot.datasetId !== confirmedOperation.datasetId) {
+          onNavigationStateChange?.(key, 'recovering');
+          updateFor(key, generation, previous => ({
+            ...previous,
+            ...clearDrafts(),
+            snapshot: null,
+            loading: false,
+            loadError: '',
+            actionError: '命令回執已確認，但伺服器名單屬於不同資料集；資料集已變更。原操作維持已確認狀態，請聯絡系統維護者確認，請勿重試。',
+            recovery: {
+              commandId: confirmedReceipt.commandId,
+              command: confirmedOperation.command,
+              phase: 'receipt',
+              receipt: confirmedReceipt,
+              canRetry: false,
+            },
+            notice: '',
+          }));
+          return;
+        }
+      }
       if (resolvesOperation) {
         confirmedOperation.completed = true;
         if (confirmedOperation.timerId !== null) window.clearTimeout(confirmedOperation.timerId);
@@ -585,7 +622,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
         };
       });
     }
-  }, [identityKey, isCurrent, repository, revokeAuthorization, updateFor]);
+  }, [identityKey, isCurrent, onNavigationStateChange, ownsOperation, repository, revokeAuthorization, updateFor]);
 
   useEffect(() => {
     const generation = ++generationRef.current;
@@ -612,20 +649,6 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
       page.authorizationRevoked ? 'revoked' : hasRecovery ? 'recovering' : 'resolved',
     );
   }, [hasRecovery, identityKey, onNavigationStateChange, page.authorizationRevoked]);
-
-  const ownsOperation = (operation: StudentCommandOperation) => {
-    let currentUid: string | null = null;
-    try { currentUid = getAuth(operation.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
-    return operationRef.current === operation
-      && !operation.completed
-      && isCurrent(operation.identityKey, operation.generation)
-      && scopeRef.current.db === operation.db
-      && scopeRef.current.db.app === operation.app
-      && scopeRef.current.uid === operation.uid
-      && scopeRef.current.identityKey === operation.identityKey
-      && scopeRef.current.leaseEpoch === operation.leaseEpoch
-      && currentUid === operation.uid;
-  };
 
   const clearOperationTimer = (operation: StudentCommandOperation) => {
     if (operation.timerId !== null) window.clearTimeout(operation.timerId);
@@ -1154,6 +1177,9 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
     if (recovery.phase === 'access-lost' || recovery.phase === 'checking') return;
     if (!ownsOperation(operation)) return;
     operation.checking = true;
+    const attemptAtQueryStart = operation.attempt;
+    const attemptWasSettledAtQueryStart = operation.attemptSettled;
+    operation.retryAuthorized = false;
     const querySequence = ++operation.querySequence;
     updateFor(operation.identityKey, operation.generation, previous => ({
       ...previous,
@@ -1162,7 +1188,8 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
     }));
     try {
       const check = await repository.confirmPendingIntent(operation.intent, operation.datasetId, operation.uid);
-      if (!ownsOperation(operation) || operation.querySequence !== querySequence || operation.receipt) return;
+      if (!ownsOperation(operation) || operation.querySequence !== querySequence
+        || operation.attempt !== attemptAtQueryStart || operation.receipt) return;
       if (check.status === 'matched') {
         await settleWithReceipt(operation, check.receipt, true);
         return;
@@ -1179,15 +1206,20 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
         }));
         return;
       }
-      if (operation.attemptSettled) operation.retryAuthorized = true;
+      const mayAuthorizeRetry = attemptWasSettledAtQueryStart && operation.attemptSettled;
+      if (mayAuthorizeRetry) operation.retryAuthorized = true;
       updateFor(operation.identityKey, operation.generation, previous => ({
         ...previous,
         snapshot: null,
         loading: false,
         loadError: '',
-        actionError: operation.attemptSettled
+        actionError: mayAuthorizeRetry
           ? '伺服器目前尚未找到這筆命令。沒有產生新的命令編號；確認後可明確選擇同編號重試。'
-          : '查詢尚未找到回執，但原命令仍在送出中；目前不能重試。請等待原命令結束後再查詢。',
+          : attemptWasSettledAtQueryStart
+            ? '原命令狀態在查詢期間改變；這次查詢不能授權重試。請重新查詢原命令。'
+            : operation.attemptSettled
+              ? '這次查詢開始時原命令仍在送出中；未找到結果不能授權重試。請在原命令結束後重新查詢。'
+              : '查詢尚未找到回執，但原命令仍在送出中；目前不能重試。請等待原命令結束後再查詢。',
         recovery: {
           commandId: operation.command.commandId,
           command: operation.command,

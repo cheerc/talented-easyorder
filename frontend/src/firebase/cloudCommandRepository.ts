@@ -56,6 +56,11 @@ import {
 type Data = Record<string, unknown>;
 type CurrentUser = Pick<User, 'uid' | 'email' | 'emailVerified' | 'providerData'>;
 
+interface CapturedPendingIntent {
+  canonical: CanonicalEnabledInput | null;
+  verificationError: RejectCommand | null;
+}
+
 export interface CloudCommandRepositoryOptions {
   /** Injection seam for emulator tests; production callers use Firebase Auth currentUser. */
   currentUser?: () => CurrentUser | null;
@@ -779,8 +784,27 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
    * Read-only confirmation for a caller that still holds the original typed command.
    * It proves both receipt identity and the command's complete canonical semantics; it never writes.
    */
-  async function confirmPendingIntent(
-    untrustedInput: unknown,
+  function capturePendingIntent(untrustedInput: unknown, expectedEpoch: number): CapturedPendingIntent {
+    try {
+      const normalized = normalizeEnabledCommandInput(untrustedInput);
+      if (normalized.leaseEpoch !== expectedEpoch) {
+        throw new RejectCommand('LEASE_LOST', '凍結命令的使用權世代與目前頁面不符');
+      }
+      // Keep a detached canonical snapshot before any caller can mutate the original
+      // object while recovery reads are in flight.
+      return { canonical: JSON.parse(JSON.stringify(normalized)) as CanonicalEnabledInput, verificationError: null };
+    } catch (error) {
+      return {
+        canonical: null,
+        verificationError: error instanceof RejectCommand
+          ? error
+          : new RejectCommand('INVALID_INPUT', '原命令內容不符合正式命令格式'),
+      };
+    }
+  }
+
+  async function confirmCapturedPendingIntent(
+    captured: CapturedPendingIntent,
     expectedEpoch: number,
     expectedDatasetId: string,
     expectedUid: string,
@@ -801,19 +825,8 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     if (user.uid !== expectedUid) throw new CloudCommandReadError('LEASE_LOST', '登入身分已變更；原命令不可在新身分下確認或重試');
     try {
       const before = await readRecoveryContext(user, expectedEpoch, recoveryReader);
-      let canonical: CanonicalEnabledInput | null = null;
-      let verificationError: RejectCommand | null = null;
-      try {
-        canonical = normalizeEnabledCommandInput(untrustedInput);
-        if (canonical.leaseEpoch !== expectedEpoch) {
-          throw new RejectCommand('LEASE_LOST', '凍結命令的使用權世代與目前頁面不符');
-        }
-      } catch (error) {
-        canonical = null;
-        verificationError = error instanceof RejectCommand
-          ? error
-          : new RejectCommand('INVALID_INPUT', '原命令內容不符合正式命令格式');
-      }
+      const { canonical } = captured;
+      let verificationError = captured.verificationError;
 
       let result: PendingIntentCheck | null = null;
       let inputFingerprint: string | null = null;
@@ -872,6 +885,17 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     }
   }
 
+  async function confirmPendingIntent(
+    untrustedInput: unknown,
+    expectedEpoch: number,
+    expectedDatasetId: string,
+    expectedUid: string,
+    recoveryReader?: CloudRecoveryReader,
+  ): Promise<PendingIntentCheck> {
+    const captured = capturePendingIntent(untrustedInput, expectedEpoch);
+    return confirmCapturedPendingIntent(captured, expectedEpoch, expectedDatasetId, expectedUid, recoveryReader);
+  }
+
   async function cleanupConfirmedIntent(
     untrustedInput: unknown,
     expectedEpoch: number,
@@ -880,23 +904,23 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     recoveryReader: CloudRecoveryReader | undefined,
     isCurrent: () => boolean,
   ): Promise<boolean> {
-    const check = await confirmPendingIntent(
-      untrustedInput,
+    const captured = capturePendingIntent(untrustedInput, expectedEpoch);
+    const record: PendingCommandIdentity | null = captured.canonical ? {
+      commandId: captured.canonical.commandId,
+      datasetId: expectedDatasetId,
+      uid: expectedUid,
+    } : null;
+    const check = await confirmCapturedPendingIntent(
+      captured,
       expectedEpoch,
       expectedDatasetId,
       expectedUid,
       recoveryReader,
     );
-    if (check.status !== 'matched') return false;
+    if (check.status !== 'matched' || !record) return false;
     const owner = getCurrentUser(options);
     requireVerifiedGoogle(owner);
     if (owner.uid !== expectedUid) throw new CloudCommandReadError('LEASE_LOST', '登入身分已變更，不能清除原命令追蹤');
-    const input = normalizeEnabledCommandInput(untrustedInput);
-    const record: PendingCommandIdentity = {
-      commandId: input.commandId,
-      datasetId: expectedDatasetId,
-      uid: expectedUid,
-    };
     // The receipt and both server contexts were verified before entering removeIf.
     // Its lock callback is intentionally synchronous and contains no network work.
     return pendingJournal.removeIf(record, () => {

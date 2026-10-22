@@ -446,7 +446,8 @@ describe('CloudStudentsPage', () => {
       expect(repository.confirmPendingIntent).toHaveBeenCalledTimes(2);
       expect(screen.getByRole('button', { name: '以相同命令編號重試' })).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: '以相同命令編號重試' }));
-      await waitFor(() => expect(repository.createStudent).toHaveBeenCalledTimes(2));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(repository.createStudent).toHaveBeenCalledTimes(2);
       expect(repository.createStudent.mock.calls[0][0]).toEqual(repository.createStudent.mock.calls[1][0]);
     } finally {
       vi.useRealTimers();
