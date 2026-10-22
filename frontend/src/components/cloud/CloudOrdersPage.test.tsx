@@ -128,7 +128,7 @@ function snapshot(overrides: Partial<CloudOrderSnapshot> = {}): CloudOrderSnapsh
   };
 }
 
-function okResult(commandId: string, seq = 10): CommandResult {
+function okResult(commandId: string, seq = 10): Extract<CommandResult, { ok: true }> {
   return {
     ok: true,
     receipt: {
@@ -139,7 +139,7 @@ function okResult(commandId: string, seq = 10): CommandResult {
       targets: { transactionId: 'tx-new', studentId: 's1', dayId: TODAY },
       result: {},
     },
-  } as CommandResult;
+  } as Extract<CommandResult, { ok: true }>;
 }
 
 function errorResult(code: string, message = 'synthetic'): CommandResult {
@@ -175,6 +175,12 @@ async function selectStudent(code: string) {
   fireEvent.change(searchInput, { target: { value: code } });
   fireEvent.click(await screen.findByTestId(`search-result-${code}`));
   await screen.findByTestId('selected-student-card');
+}
+
+async function queryAndAuthorizeRetry() {
+  fireEvent.click(screen.getByTestId('order-recovery-query'));
+  await screen.findByTestId('order-recovery-retry');
+  fireEvent.click(screen.getByTestId('order-recovery-retry'));
 }
 
 describe('CloudOrdersPage', () => {
@@ -255,7 +261,7 @@ describe('CloudOrdersPage', () => {
     expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
     expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-1:1', 'recovering');
 
-    fireEvent.click(screen.getByTestId('order-recovery-retry'));
+    await queryAndAuthorizeRetry();
     await waitFor(() => expect(repositoryMock.createOrder).toHaveBeenCalledTimes(2));
     const second = repositoryMock.createOrder.mock.calls[1][0];
     expect(second).toEqual(first);
@@ -265,8 +271,9 @@ describe('CloudOrdersPage', () => {
 
   it('waits ten seconds before receipt lookup and never resends while the first commit is pending', async () => {
     const original = deferred<CommandResult>();
+    const receiptRead = deferred<{ status: 'not-found' }>();
     repositoryMock.createOrder.mockReturnValueOnce(original.promise);
-    repositoryMock.confirmPending.mockResolvedValue({ status: 'not-found' });
+    repositoryMock.confirmPending.mockReturnValueOnce(receiptRead.promise);
     renderComponent();
     await selectStudent('002');
     fireEvent.click(screen.getByRole('button', { name: '其他餐點' }));
@@ -283,6 +290,7 @@ describe('CloudOrdersPage', () => {
       await act(async () => { await vi.advanceTimersByTimeAsync(9_999); });
       expect(screen.queryByText('結果確認中，勿重新收款。')).toBeNull();
       expect(repositoryMock.confirmPending).not.toHaveBeenCalled();
+      expect(screen.getByTestId('submit-order-button')).toBeDisabled();
 
       await act(async () => { await vi.advanceTimersByTimeAsync(1); });
       vi.useRealTimers();
@@ -290,22 +298,146 @@ describe('CloudOrdersPage', () => {
       expect(screen.getByTestId('order-recovery-command-id')).toHaveTextContent(first.commandId);
       fireEvent.click(screen.getByTestId('order-recovery-query'));
       await waitFor(() => expect(repositoryMock.confirmPending).toHaveBeenCalledTimes(1));
+      expect(screen.getByTestId('order-recovery-query')).toBeDisabled();
+      fireEvent.click(screen.getByTestId('order-recovery-query'));
+      expect(repositoryMock.confirmPending).toHaveBeenCalledTimes(1);
+      expect(repositoryMock.getPendingRecoveryContext).toHaveBeenCalledWith(1);
       expect(repositoryMock.confirmPending).toHaveBeenCalledWith(
         { commandId: first.commandId, datasetId: 'ds-1', uid: 'uid-1' }, 1,
       );
       expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1);
+      await act(async () => { original.resolve(errorResult('UNKNOWN_RESULT')); });
+      await waitFor(() => expect(screen.getByTestId('order-recovery-panel')).toHaveTextContent('結果確認中，勿重新收款'));
+      // The read started while the commit was pending; even a later null result cannot authorize a retry.
+      await act(async () => { receiptRead.resolve({ status: 'not-found' }); await receiptRead.promise; });
       expect(screen.getByTestId('order-recovery-panel')).toHaveTextContent('伺服器目前未查到');
       expect(screen.queryByTestId('order-recovery-retry')).toBeNull();
 
-      await act(async () => { original.resolve(errorResult('UNKNOWN_RESULT')); });
-      await waitFor(() => expect(screen.getByTestId('order-recovery-panel')).toHaveTextContent('結果確認中，勿重新收款'));
-      // A null lookup begun while the original request was pending cannot authorize a retry.
-      expect(screen.queryByTestId('order-recovery-retry')).toBeNull();
       fireEvent.click(screen.getByTestId('order-recovery-query'));
       await waitFor(() => expect(screen.getByTestId('order-recovery-retry')).toBeVisible());
       fireEvent.click(screen.getByTestId('order-recovery-retry'));
       await waitFor(() => expect(repositoryMock.createOrder).toHaveBeenCalledTimes(2));
       expect(repositoryMock.createOrder.mock.calls[1][0]).toEqual(first);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('converges a matched receipt while the original promise is pending and ignores its late success', async () => {
+    const original = deferred<CommandResult>();
+    repositoryMock.createOrder.mockReturnValueOnce(original.promise);
+    repositoryMock.confirmPending.mockImplementation(async (record: { commandId: string }) => ({
+      status: 'matched', receipt: okResult(record.commandId, 31).receipt,
+    }));
+    renderComponent();
+    await selectStudent('002');
+    fireEvent.click(screen.getByRole('button', { name: '其他餐點' }));
+    fireEvent.change(screen.getByLabelText(/餐點品名/), { target: { value: '炒麵' } });
+    fireEvent.change(screen.getByLabelText(/餐點單價/), { target: { value: '60' } });
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByTestId('submit-order-button'));
+      fireEvent.click(screen.getByTestId('confirm-duplicate-button'));
+      const first = repositoryMock.createOrder.mock.calls[0][0];
+      await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+      vi.useRealTimers();
+      fireEvent.click(screen.getByTestId('order-recovery-query'));
+      expect(await screen.findByText(/已確認 002 李小華 訂餐完成（命令序號 31）/)).toBeVisible();
+      expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1);
+      expect(repositoryMock.confirmPending).toHaveBeenCalledWith(
+        { commandId: first.commandId, datasetId: 'ds-1', uid: 'uid-1' }, 1,
+      );
+      await act(async () => { original.resolve(okResult(first.commandId, 31)); });
+      expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2);
+      expect(screen.getAllByText(/已確認 002 李小華 訂餐完成（命令序號 31）/)).toHaveLength(1);
+      expect(screen.queryByTestId('order-recovery-panel')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a failed receipt read non-retryable', async () => {
+    repositoryMock.createOrder.mockResolvedValueOnce(errorResult('UNKNOWN_RESULT'));
+    repositoryMock.confirmPending.mockRejectedValueOnce(Object.assign(new Error('read failed'), { code: 'OFFLINE' }));
+    renderComponent();
+    await selectStudent('002');
+    fireEvent.click(screen.getByRole('button', { name: '其他餐點' }));
+    fireEvent.change(screen.getByLabelText(/餐點品名/), { target: { value: '炒麵' } });
+    fireEvent.change(screen.getByLabelText(/餐點單價/), { target: { value: '60' } });
+    fireEvent.click(screen.getByTestId('submit-order-button'));
+    fireEvent.click(await screen.findByTestId('confirm-duplicate-button'));
+    fireEvent.click(await screen.findByTestId('order-recovery-query'));
+    expect(await screen.findByTestId('order-recovery-query-status')).toHaveTextContent('目前無法安全確認伺服器結果');
+    expect(screen.queryByTestId('order-recovery-retry')).toBeNull();
+    expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('revokes the page when the receipt context belongs to a different dataset', async () => {
+    repositoryMock.createOrder.mockResolvedValueOnce(errorResult('UNKNOWN_RESULT'));
+    repositoryMock.getPendingRecoveryContext.mockResolvedValueOnce({
+      uid: 'uid-1', datasetId: 'ds-other', leaseEpoch: 1, maintenance: false,
+    });
+    renderComponent();
+    await selectStudent('002');
+    fireEvent.click(screen.getByRole('button', { name: '其他餐點' }));
+    fireEvent.change(screen.getByLabelText(/餐點品名/), { target: { value: '炒麵' } });
+    fireEvent.change(screen.getByLabelText(/餐點單價/), { target: { value: '60' } });
+    fireEvent.click(screen.getByTestId('submit-order-button'));
+    fireEvent.click(await screen.findByTestId('confirm-duplicate-button'));
+    await screen.findByTestId('order-recovery-panel');
+    fireEvent.click(await screen.findByTestId('order-recovery-query'));
+
+    expect(await screen.findByText(/目前使用權已變更，訂餐資料已清除/)).toBeVisible();
+    expect(screen.queryByTestId('selected-student-card')).toBeNull();
+    expect(screen.queryByTestId('order-recovery-retry')).toBeNull();
+    expect(repositoryMock.getPendingRecoveryContext).toHaveBeenCalledWith(1);
+    expect(repositoryMock.confirmPending).not.toHaveBeenCalled();
+    expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1);
+    expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-1:1', 'revoked');
+  });
+
+  it('discards the pending operation on Firestore owner change and ignores its late result and timer', async () => {
+    const original = deferred<CommandResult>();
+    const receiptRead = deferred<{ status: 'not-found' }>();
+    repositoryMock.createOrder.mockReturnValueOnce(original.promise);
+    repositoryMock.confirmPending.mockReturnValueOnce(receiptRead.promise);
+    const view = renderComponent();
+    await selectStudent('002');
+    fireEvent.click(screen.getByRole('button', { name: '其他餐點' }));
+    fireEvent.change(screen.getByLabelText(/餐點品名/), { target: { value: '炒麵' } });
+    fireEvent.change(screen.getByLabelText(/餐點單價/), { target: { value: '60' } });
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByTestId('submit-order-button'));
+      fireEvent.click(screen.getByTestId('confirm-duplicate-button'));
+      const first = repositoryMock.createOrder.mock.calls[0][0];
+      await act(async () => { await vi.advanceTimersByTimeAsync(9_999); });
+      expect(screen.queryByTestId('order-recovery-command-id')).toBeNull();
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      fireEvent.click(screen.getByTestId('order-recovery-query'));
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(repositoryMock.confirmPending).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        view.rerender(
+          <CloudOrdersPage
+            db={{} as Firestore}
+            leaseEpoch={1}
+            identityKey="uid-1:1"
+            onNavigationStateChange={onNavigationStateChange}
+          />,
+        );
+        await Promise.resolve();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+        original.resolve(errorResult('UNKNOWN_RESULT'));
+        receiptRead.resolve({ status: 'not-found' });
+      });
+      expect(screen.queryByTestId('order-recovery-command-id')).toBeNull();
+      expect(screen.queryByTestId('order-recovery-panel')).toBeNull();
+      expect(screen.queryByText(first.commandId)).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -495,8 +627,8 @@ describe('CloudOrdersPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
     fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '100' } });
     fireEvent.click(screen.getByTestId('submit-order-button'));
-    expect(await screen.findByTestId('order-recovery-panel')).toHaveTextContent('李小華 的繳費已送出');
-    fireEvent.click(screen.getByTestId('order-recovery-retry'));
+    expect(await screen.findByTestId('order-recovery-panel')).toHaveTextContent('李小華 的繳費尚未確認');
+    await queryAndAuthorizeRetry();
     await waitFor(() => expect(repositoryMock.createPayment).toHaveBeenCalledTimes(2));
     expect(repositoryMock.createPayment.mock.calls[1][0]).toEqual(repositoryMock.createPayment.mock.calls[0][0]);
     expect(await screen.findByText(/繳費 \$100 完成（命令序號 14）/)).toBeVisible();
@@ -595,13 +727,13 @@ describe('CloudOrdersPage', () => {
     fireEvent.click(screen.getByTestId('submit-cash-movement-button'));
 
     const panel = await screen.findByTestId('order-recovery-panel');
-    expect(panel).toHaveTextContent('櫃台支出 $80 的櫃台收支已送出');
+    expect(panel).toHaveTextContent('櫃台支出 $80 的櫃台收支尚未確認');
     expect(panel).toHaveTextContent('勿重新收款');
     expect(screen.getByTestId('submit-cash-movement-button')).toBeDisabled();
     const first = repositoryMock.createCashMovement.mock.calls[0][0];
     expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
 
-    fireEvent.click(screen.getByTestId('order-recovery-retry'));
+    await queryAndAuthorizeRetry();
     await waitFor(() => expect(repositoryMock.createCashMovement).toHaveBeenCalledTimes(2));
     expect(repositoryMock.createCashMovement.mock.calls[1][0]).toEqual(first);
     expect(await screen.findByText(/已確認櫃台支出 \$80入帳（命令序號 16）/)).toBeVisible();
@@ -696,8 +828,8 @@ describe('CloudOrdersPage', () => {
     fireEvent.change(screen.getByLabelText(/退款原因/), { target: { value: '退餘額' } });
     fireEvent.click(screen.getByTestId('submit-refund-button'));
     fireEvent.click(await screen.findByTestId('confirm-refund-button'));
-    expect(await screen.findByTestId('order-recovery-panel')).toHaveTextContent('001 王小明 的退款已送出');
-    fireEvent.click(screen.getByTestId('order-recovery-retry'));
+    expect(await screen.findByTestId('order-recovery-panel')).toHaveTextContent('001 王小明 的退款尚未確認');
+    await queryAndAuthorizeRetry();
     await waitFor(() => expect(repositoryMock.createRefund).toHaveBeenCalledTimes(2));
     expect(repositoryMock.createRefund.mock.calls[1][0]).toEqual(repositoryMock.createRefund.mock.calls[0][0]);
     expect(await screen.findByText(/退款 \$100 完成（命令序號 17）/)).toBeVisible();
@@ -791,6 +923,25 @@ describe('CloudOrdersPage', () => {
       });
       expect(await screen.findByText(/已撤回 001 王小明 的繳費，帳戶餘額與現金已回復（命令序號 20）/)).toBeVisible();
       expect(screen.queryByTestId('undo-bar')).toBeNull();
+    });
+
+    it('keeps Undo as one frozen mutation and retries it only after a null receipt check', async () => {
+      const created = await payOnce();
+      repositoryMock.mutateTransaction
+        .mockResolvedValueOnce(errorResult('UNKNOWN_RESULT'))
+        .mockImplementationOnce(async (input: { commandId: string }) => okResult(input.commandId, 21));
+      fireEvent.click(screen.getByTestId('undo-button'));
+      expect(await screen.findByTestId('order-recovery-panel')).toHaveTextContent('結果確認中，勿重新收款');
+      const first = repositoryMock.mutateTransaction.mock.calls[0][0];
+      expect(first).toMatchObject({
+        kind: 'Undo',
+        payload: { targetCommandId: created.commandId, reason: '送出後立即撤回' },
+      });
+      expect(screen.queryByTestId('order-recovery-retry')).toBeNull();
+      await queryAndAuthorizeRetry();
+      await waitFor(() => expect(repositoryMock.mutateTransaction).toHaveBeenCalledTimes(2));
+      expect(repositoryMock.mutateTransaction.mock.calls[1][0]).toEqual(first);
+      expect(await screen.findByText(/已撤回 001 王小明 的繳費，帳戶餘額與現金已回復（命令序號 21）/)).toBeVisible();
     });
 
     it('hides the undo offer after 5 seconds', async () => {

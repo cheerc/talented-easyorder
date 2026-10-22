@@ -596,6 +596,8 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
     createCashMovement,
     createRefund,
     readCommand: (commandId: string): Promise<CommandReceipt | null> => commands.readCommand(commandId),
+    confirmPending: commands.confirmPending,
+    getPendingRecoveryContext: commands.getPendingRecoveryContext,
   };
 }
 
