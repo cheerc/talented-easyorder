@@ -411,6 +411,8 @@ export function CloudDayClosePage({
   const postClosePreflightRef = useRef(false);
   const backfillPlanRef = useRef<BackfillPlan | null>(null);
   const planGenerationRef = useRef(0);
+  // A plan generation whose confirmed refresh failed never advances by itself again; only an explicit continue may.
+  const autoBlockedGenerationsRef = useRef<Set<number>>(new Set());
   if (authorizationScopeRef.current !== authorizationScopeKey) {
     authorizationScopeRef.current = authorizationScopeKey;
     revokedScopeRef.current = null;
@@ -619,7 +621,8 @@ export function CloudDayClosePage({
           // The next step may start by itself only after the original submission itself returned this receipt.
           planFollowUp = planDone ? null : {
             ...planFollowUp,
-            auto: completedOperation.confirmedByResult && completedOperation.attemptSettled,
+            auto: completedOperation.confirmedByResult && completedOperation.attemptSettled
+              && !completedOperation.cleanupWarning && !autoBlockedGenerationsRef.current.has(planFollowUp.generation),
           };
         }
         dropOperation(completedOperation);
@@ -665,6 +668,12 @@ export function CloudDayClosePage({
         revokeAuthorization(key, generation, operation?.command.commandId ?? confirmedReceipt?.commandId ?? null, error);
         return;
       }
+      // A failed page read stops all automatic progress of the plan; a later manual reload only reads.
+      const failedPlan = backfillPlanRef.current;
+      if (failedPlan) {
+        autoBlockedGenerationsRef.current.add(failedPlan.generation);
+        backfillPlanRef.current = { ...failedPlan, auto: false };
+      }
       const heldOperation = operationRef.current;
       const heldRecovery: RecoveryState | null = heldOperation && ownsOperation(heldOperation)
         ? {
@@ -683,6 +692,7 @@ export function CloudDayClosePage({
           snapshot: null,
           loading: false,
           loadError: errorMessage(error),
+          backfillPlan: previous.backfillPlan ? { ...previous.backfillPlan, auto: false } : null,
           actionError: operation?.receipt
             ? '已找到命令回執，但伺服器資料尚未重新讀取；請只重新讀取資料，不要重送命令。'
             : heldOperation

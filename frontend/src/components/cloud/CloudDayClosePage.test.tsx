@@ -1179,11 +1179,11 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
   function pageElement(props: {
     identityKey?: string; leaseEpoch?: number; hasUnresolved?: boolean; initialDayId?: string;
     onLedgerChanged?: () => void; onNavigationStateChange?: (key: string, state: 'recovering' | 'revoked' | 'resolved') => void;
-    initialPostCloseEntry?: OpeningMismatchAnomaly;
+    initialPostCloseEntry?: OpeningMismatchAnomaly; db?: Firestore;
   } = {}): Element {
     return (
       <CloudDayClosePage
-        db={stableDb}
+        db={props.db ?? stableDb}
         leaseEpoch={props.leaseEpoch ?? 4}
         identityKey={props.identityKey ?? 'uid-a:4'}
         backupBlock={<div />}
@@ -1567,6 +1567,36 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
   });
 
   describe('scope fences', () => {
+    it('masks the first render after the Firestore instance changes and ignores the old operation', async () => {
+      vi.useFakeTimers();
+      try {
+        let resolveClose!: (result: CommandResult) => void;
+        repository.closeDay.mockReturnValueOnce(new Promise<CommandResult>(resolve => { resolveClose = resolve; }));
+        const onLedgerChanged = vi.fn();
+        const view = render(pageElement({ onLedgerChanged }));
+        await flush();
+        await submitClose(screen.getByRole('form', { name: `${today} 關帳` }));
+        await flush(2);
+        expect(screen.getByText('命令送出中，請勿重複操作。')).toBeInTheDocument();
+
+        // Same user, same lease, but a different database instance is a different owner.
+        view.rerender(pageElement({ onLedgerChanged, db: {} as Firestore }));
+        expect(screen.queryByText('命令送出中，請勿重複操作。')).not.toBeInTheDocument();
+        expect(screen.queryByText(new RegExp(commandId))).not.toBeInTheDocument();
+        await flush();
+        await act(async () => resolveClose(successful('CloseDay')));
+        await flush();
+        expect(screen.queryByText(/已確認 2026-10-17 關帳 完成/)).not.toBeInTheDocument();
+        expect(repository.cleanupConfirmedIntent).not.toHaveBeenCalled();
+        expect(repository.confirmPendingIntent).not.toHaveBeenCalled();
+        expect(onLedgerChanged).not.toHaveBeenCalled();
+        expect(repository.closeDay).toHaveBeenCalledOnce();
+        expect(screen.getByRole('form', { name: `${today} 關帳` })).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('masks the first render after a UID, epoch or identity change and ignores the old operation', async () => {
       vi.useFakeTimers();
       try {
@@ -1782,6 +1812,13 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
       await new Promise(resolve => setTimeout(resolve, 50));
       // An explicit reload only reads.
       expect(repository.backfillOpening).not.toHaveBeenCalled();
+      expect(repository.startBackfill).not.toHaveBeenCalled();
+
+      // After a failed refresh this plan never advances by itself: each further step needs its own explicit continue.
+      fireEvent.click(screen.getByTestId('backfill-continue'));
+      await waitFor(() => expect(repository.backfillOpening).toHaveBeenCalledTimes(1));
+      expect(await screen.findByTestId('backfill-continue')).toBeInTheDocument();
+      await new Promise(resolve => setTimeout(resolve, 50));
       expect(repository.startBackfill).not.toHaveBeenCalled();
 
       fireEvent.click(screen.getByTestId('backfill-continue'));
