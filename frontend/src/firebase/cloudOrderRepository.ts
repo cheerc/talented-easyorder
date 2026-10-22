@@ -25,6 +25,8 @@ import { decodeCloudDayRecord, type CloudDayRecord } from './cloudDayVendorRepos
 import { listCloudStudents, type CloudStudentRecord } from './cloudStudentRepository';
 import { listCloudBackfillingDays, readCloudBackfillDay, type CloudBackfillDay } from './cloudDayCloseRepository';
 import { accessLeasePath, dataHeadPath, dayPath } from './firestorePaths';
+import type { CloudRecoveryReader } from './cloudRecoveryReader';
+import type { PendingCommandIdentity } from './cloudPendingJournal';
 
 type Data = Record<string, unknown>;
 type CurrentUser = Pick<User, 'uid' | 'email' | 'emailVerified' | 'providerData'>;
@@ -107,6 +109,8 @@ export class CloudOrderRepositoryError extends Error {
 export type CloudOrderRepositoryOptions = CloudCommandRepositoryOptions & {
   /** Test seam for bounded paging; production uses 200. */
   pageSize?: number;
+  /** Explicit recovery-only reader for the mounted Orders page; commands keep their full SDK path. */
+  recoveryReader?: CloudRecoveryReader;
 };
 
 export interface CreateCloudOrderInput {
@@ -598,6 +602,12 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
     readCommand: (commandId: string): Promise<CommandReceipt | null> => commands.readCommand(commandId),
     confirmPending: commands.confirmPending,
     getPendingRecoveryContext: commands.getPendingRecoveryContext,
+    confirmPendingWithRecoveryReader: (record: PendingCommandIdentity, expectedEpoch: number) => (
+      commands.confirmPending(record, expectedEpoch, options.recoveryReader)
+    ),
+    getPendingRecoveryContextWithRecoveryReader: (expectedEpoch: number) => (
+      commands.getPendingRecoveryContext(expectedEpoch, options.recoveryReader)
+    ),
   };
 }
 

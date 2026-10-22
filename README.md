@@ -52,6 +52,7 @@ See [`frontend/.env.example`](frontend/.env.example) for all required variables.
 |----------|-------------|
 | `VITE_FIREBASE_API_KEY` | Firebase Web API key |
 | `VITE_FIREBASE_PROJECT_ID` | Firebase project ID |
+| `VITE_FIRESTORE_ENDPOINT` | Required HTTPS Firestore endpoint outside Emulator mode |
 | `VITE_ALLOWED_EMAIL_DOMAIN` | Email domain for operator access (e.g. `your-company.com`) |
 
 ## Documentation

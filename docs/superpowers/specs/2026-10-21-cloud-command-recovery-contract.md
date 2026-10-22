@@ -1,6 +1,6 @@
 # P13b2 未決命令復原契約
 
-狀態：設計已由 PR #530 合併於 `e56c8c32ee1d74c3f63838e15909200adbbe4dfa`；實作分批交付。P13b2a 覆蓋共用 journal、集中 write-ahead、receipt/context 確認與 startup recovery boundary；本輪 Ready source PR／exact-head CI 依 live provider state。P13b2b 的各頁 10 秒提示與 complete same-mount retry 矩陣仍未完成；不得將此批說成整體 P13b2 完成。適用正式模式，補充[正式後端規格 §8](2026-10-13-free-production-backend-spec.md#8-連線快取錯誤與查詢)。只使用既有 typed command、server receipt 與租約；不增加離線補送、業務集合或 Rules 權限。
+狀態：設計由 PR #530 合併於 `e56c8c32ee1d74c3f63838e15909200adbbe4dfa`，獨立讀取通道契約由 PR #532 合併於 `c5df292c4b5109275baf25fbd1ad75dc5d6b684f`。P13b2a 已交付共用 journal、write-ahead、receipt/context 確認與 startup recovery boundary。P13b2b1 實作分支已完成 Orders 同頁結果查證整合：同一 FirebaseApp 的 Firestore Lite 唯讀 receipt 查詢、receipt-confirmed 與 page-ready 分離、fresh heads 未完成時維持操作鎖；Ready PR 與 exact-head CI 仍待 provider 核對，尚未獨立審查。其他正式頁面的 10 秒／same-mount retry 矩陣仍未完成；不得將此批說成整體 P13b2 完成。適用正式模式，補充[正式後端規格 §8](2026-10-13-free-production-backend-spec.md#8-連線快取錯誤與查詢)。只使用既有 typed command、server receipt 與租約；不增加離線補送、業務集合或 Rules 權限。
 
 ## 1. 目標與現況
 

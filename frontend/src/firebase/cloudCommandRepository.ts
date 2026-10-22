@@ -47,6 +47,11 @@ import {
 import {
   accessLeasePath, backfillDayPath, commandPath, dataHeadPath, dayPath, postCloseEntryPath, settlementPath, studentCodePath, studentPath, transactionPath, vendorPath,
 } from './firestorePaths';
+import {
+  CloudRecoveryReaderError,
+  type CloudRecoveryReader,
+  type RecoveryDocumentSnapshot,
+} from './cloudRecoveryReader';
 
 type Data = Record<string, unknown>;
 type CurrentUser = Pick<User, 'uid' | 'email' | 'emailVerified' | 'providerData'>;
@@ -565,13 +570,33 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     }
   }
 
-  async function readRecoveryContext(user: CurrentUser, expectedEpoch: number): Promise<RecoveryContext> {
+  async function readRecoveryContext(
+    user: CurrentUser,
+    expectedEpoch: number,
+    recoveryReader?: CloudRecoveryReader,
+  ): Promise<RecoveryContext> {
     assertCurrentRecoveryOwner(user);
-    const [headSnapshot, leaseSnapshot, operatorSnapshot] = await Promise.all([
-      getDocFromServer(doc(db, dataHeadPath())),
-      getDocFromServer(doc(db, accessLeasePath())),
-      getDocFromServer(doc(db, `operators/${user.uid}`)),
-    ]);
+    recoveryReader?.assertCurrent();
+    let headSnapshot: RecoveryDocumentSnapshot;
+    let leaseSnapshot: RecoveryDocumentSnapshot;
+    let operatorSnapshot: RecoveryDocumentSnapshot;
+    try {
+      [headSnapshot, leaseSnapshot, operatorSnapshot] = recoveryReader
+        ? await Promise.all([
+          recoveryReader.readHead(),
+          recoveryReader.readLease(),
+          recoveryReader.readOperator(user.uid),
+        ])
+        : await Promise.all([
+          getDocFromServer(doc(db, dataHeadPath())),
+          getDocFromServer(doc(db, accessLeasePath())),
+          getDocFromServer(doc(db, `operators/${user.uid}`)),
+        ]);
+    } catch (error) {
+      if (error instanceof CloudRecoveryReaderError) throw new RejectCommand(error.code, error.message);
+      throw error;
+    }
+    recoveryReader?.assertCurrent();
     assertCurrentRecoveryOwner(user);
     if ([headSnapshot, leaseSnapshot, operatorSnapshot].some(snapshot => snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites)) {
       throw new RejectCommand('UNKNOWN_RESULT', '伺服器尚未確認目前資料與使用權');
@@ -588,7 +613,11 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     return { uid: user.uid, datasetId: String(head.datasetId), leaseEpoch: Number(lease.epoch), maintenance: head.maintenance === true };
   }
 
-  async function confirmPendingBatch(records: readonly PendingCommandIdentity[], expectedEpoch: number): Promise<InternalPendingReceiptCheck[]> {
+  async function confirmPendingBatch(
+    records: readonly PendingCommandIdentity[],
+    expectedEpoch: number,
+    recoveryReader?: CloudRecoveryReader,
+  ): Promise<InternalPendingReceiptCheck[]> {
     if (records.length < 1 || records.length > CLOUD_PENDING_JOURNAL_PAGE_SIZE) {
       throw new CloudCommandReadError('INVALID_INPUT', '一次最多核對 100 筆待決識別');
     }
@@ -600,14 +629,21 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     }
     const user = candidateUser;
     try {
-      const before = await readRecoveryContext(user, expectedEpoch);
+      const before = await readRecoveryContext(user, expectedEpoch, recoveryReader);
       const checks: InternalPendingReceiptCheck[] = [];
       for (const record of records) {
         if (before.datasetId !== record.datasetId) {
           checks.push({ status: 'different-dataset' });
           continue;
         }
-        const stored = await verifiedReceipt(record.commandId);
+        let stored: StoredEnabledCommandDoc | null;
+        try {
+          stored = await verifiedReceipt(record.commandId, recoveryReader);
+        } catch (error) {
+          if (error instanceof CloudRecoveryReaderError) throw new RejectCommand(error.code, error.message);
+          throw error;
+        }
+        recoveryReader?.assertCurrent();
         assertCurrentRecoveryOwner(user);
         if (!stored) {
           checks.push({ status: 'not-found' });
@@ -621,7 +657,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         }
         checks.push({ status: 'matched', receipt: buildReceipt(stored), stored });
       }
-      const after = await readRecoveryContext(user, expectedEpoch);
+      const after = await readRecoveryContext(user, expectedEpoch, recoveryReader);
       if (before.uid !== after.uid || before.datasetId !== after.datasetId || before.leaseEpoch !== after.leaseEpoch) {
         throw new RejectCommand('LEASE_LOST', '查詢期間使用權或資料集已變更');
       }
@@ -633,8 +669,12 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     }
   }
 
-  async function confirmPendingCommand(record: PendingCommandIdentity, expectedEpoch: number): Promise<InternalPendingReceiptCheck> {
-    return (await confirmPendingBatch([record], expectedEpoch))[0];
+  async function confirmPendingCommand(
+    record: PendingCommandIdentity,
+    expectedEpoch: number,
+    recoveryReader?: CloudRecoveryReader,
+  ): Promise<InternalPendingReceiptCheck> {
+    return (await confirmPendingBatch([record], expectedEpoch, recoveryReader))[0];
   }
 
   async function clearAfterConfirmedReceipt(
@@ -654,8 +694,11 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     }
   }
 
-  async function verifiedReceipt(commandId: string): Promise<StoredEnabledCommandDoc | null> {
-    const snapshot = await getDocFromServer(doc(db, commandPath(commandId)));
+  async function verifiedReceipt(commandId: string, recoveryReader?: CloudRecoveryReader): Promise<StoredEnabledCommandDoc | null> {
+    const snapshot = recoveryReader
+      ? await recoveryReader.readCommandReceipt(commandId)
+      : await getDocFromServer(doc(db, commandPath(commandId)));
+    recoveryReader?.assertCurrent();
     if (!snapshot.exists()) return null;
     let stored: StoredEnabledCommandDoc;
     try {
@@ -672,6 +715,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     try {
       const normalized = normalizeEnabledCommandInput(storedInput(stored));
       const actualFingerprint = await fingerprintCommandInput(normalized);
+      recoveryReader?.assertCurrent();
       if (stored.inputFingerprint !== actualFingerprint) {
         throw new RejectCommand('UNSUPPORTED_SCHEMA', 'receipt semantic input 與 fingerprint 不一致');
       }
@@ -704,11 +748,15 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     }
   }
 
-  async function confirmPending(record: PendingCommandIdentity, expectedEpoch: number): Promise<PendingReceiptCheck> {
+  async function confirmPending(
+    record: PendingCommandIdentity,
+    expectedEpoch: number,
+    recoveryReader?: CloudRecoveryReader,
+  ): Promise<PendingReceiptCheck> {
     if (!Number.isSafeInteger(expectedEpoch) || expectedEpoch < 1) {
       throw new CloudCommandReadError('LEASE_LOST', '目前使用權租約世代不正確');
     }
-    const check = await confirmPendingCommand(record, expectedEpoch);
+    const check = await confirmPendingCommand(record, expectedEpoch, recoveryReader);
     if (check.status === 'matched') return { status: 'matched', receipt: check.receipt };
     return check;
   }
@@ -722,7 +770,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     ));
   }
 
-  async function getPendingRecoveryContext(expectedEpoch: number): Promise<RecoveryContext> {
+  async function getPendingRecoveryContext(expectedEpoch: number, recoveryReader?: CloudRecoveryReader): Promise<RecoveryContext> {
     const user = getCurrentUser(options);
     try {
       requireVerifiedGoogle(user);
@@ -730,9 +778,11 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
       throw new CloudCommandReadError('UNAUTHORIZED', '需要目前已驗證的 Google 操作員身分');
     }
     try {
-      return await readRecoveryContext(user, expectedEpoch);
+      recoveryReader?.assertCurrent();
+      return await readRecoveryContext(user, expectedEpoch, recoveryReader);
     } catch (error) {
       if (error instanceof RejectCommand) throw new CloudCommandReadError(error.code, error.message);
+      if (error instanceof CloudRecoveryReaderError) throw new CloudCommandReadError(error.code, error.message);
       throw new CloudCommandReadError(mapTransactionError(error), '目前無法確認資料集與使用權');
     }
   }

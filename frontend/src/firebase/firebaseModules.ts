@@ -7,6 +7,7 @@
  */
 let _authMod: typeof import('firebase/auth') | null = null;
 let _fsMod: typeof import('firebase/firestore') | null = null;
+let _fsLiteMod: typeof import('firebase/firestore/lite') | null = null;
 
 export async function ensureFirebaseModulesLoaded() {
   if (!_authMod || !_fsMod) {
@@ -25,4 +26,13 @@ export function getAuthMod() {
 export function getFirestoreMod() {
   if (!_fsMod) throw new Error('Firebase Firestore module not loaded');
   return _fsMod;
+}
+
+export async function ensureFirebaseLiteModulesLoaded() {
+  if (!_fsLiteMod) _fsLiteMod = await import('firebase/firestore/lite');
+}
+
+export function getFirestoreLiteMod() {
+  if (!_fsLiteMod) throw new Error('Firebase Firestore Lite module not loaded');
+  return _fsLiteMod;
 }

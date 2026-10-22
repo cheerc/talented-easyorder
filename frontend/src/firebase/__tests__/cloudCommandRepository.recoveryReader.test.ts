@@ -1,0 +1,135 @@
+import { Timestamp, type Firestore } from 'firebase/firestore';
+import type { User } from 'firebase/auth';
+import { describe, expect, it, vi } from 'vitest';
+import { createCloudCommandRepository } from '../cloudCommandRepository';
+import type {
+  CloudRecoveryReader,
+  RecoveryDocumentSnapshot,
+} from '../cloudRecoveryReader';
+import { CloudRecoveryReaderError } from '../cloudRecoveryReader';
+
+const fullSdk = vi.hoisted(() => ({ serverRead: vi.fn() }));
+
+vi.mock('firebase/firestore', async importOriginal => {
+  const actual = await importOriginal<typeof import('firebase/firestore')>();
+  return { ...actual, getDocFromServer: fullSdk.serverRead };
+});
+
+const userA = {
+  uid: 'recovery-owner-a', email: 'owner-a@example.test', emailVerified: true,
+  providerData: [{ providerId: 'google.com' }],
+} as unknown as User;
+const userB = {
+  uid: 'recovery-owner-b', email: 'owner-b@example.test', emailVerified: true,
+  providerData: [{ providerId: 'google.com' }],
+} as unknown as User;
+const db = { app: { name: 'recovery-command-test' } } as unknown as Firestore;
+const stamp = Timestamp.fromMillis(1_800_000_000_123);
+
+function document(data: unknown, exists = true): RecoveryDocumentSnapshot {
+  return { exists: () => exists, data: () => data, metadata: { fromCache: false, hasPendingWrites: false } };
+}
+
+function context(options: { datasetId?: string; epoch?: number; holderUid?: string; email?: string } = {}) {
+  return {
+    head: document({
+      schemaVersion: 1, datasetId: options.datasetId ?? 'recovery-dataset', seq: 4,
+      lastCommandId: null, maintenance: false, goLiveDate: '2026-01-01', updatedAt: stamp,
+    }),
+    lease: document({ holderUid: options.holderUid ?? userA.uid, epoch: options.epoch ?? 2, updatedAt: stamp }),
+    operator: document({ uid: userA.uid, email: options.email ?? userA.email, active: true }),
+  };
+}
+
+function reader(options: {
+  getContext?: (readNumber: number) => ReturnType<typeof context>;
+  readReceipt?: () => Promise<RecoveryDocumentSnapshot>;
+  assertCurrent?: () => void;
+} = {}) {
+  let contextReads = 0;
+  const getContext = options.getContext ?? (() => context());
+  const recoveryReader: CloudRecoveryReader = {
+    assertCurrent: options.assertCurrent ?? vi.fn(),
+    readHead: vi.fn(async () => getContext(++contextReads).head),
+    readLease: vi.fn(async () => contextReads === 0 ? getContext(1).lease : getContext(contextReads).lease),
+    readOperator: vi.fn(async () => contextReads === 0 ? getContext(1).operator : getContext(contextReads).operator),
+    readCommandReceipt: options.readReceipt ?? vi.fn(async () => document(undefined, false)),
+  };
+  return recoveryReader;
+}
+
+function repository(currentUser: () => User | null) {
+  return createCloudCommandRepository(db, { currentUser });
+}
+
+const pendingIdentity = { commandId: '00000000-0000-4000-8000-000000000001', datasetId: 'recovery-dataset', uid: userA.uid };
+
+describe('Orders recovery reader seam reuses strict command recovery checks', () => {
+  it('confirms a real absence only after two Lite contexts and never touches full SDK reads', async () => {
+    fullSdk.serverRead.mockReset();
+    const recoveryReader = reader();
+    const commands = repository(() => userA);
+
+    await expect(commands.confirmPending(pendingIdentity, 2, recoveryReader)).resolves.toEqual({ status: 'not-found' });
+    expect(recoveryReader.readHead).toHaveBeenCalledTimes(2);
+    expect(recoveryReader.readLease).toHaveBeenCalledTimes(2);
+    expect(recoveryReader.readOperator).toHaveBeenCalledTimes(2);
+    expect(recoveryReader.readCommandReceipt).toHaveBeenCalledTimes(1);
+    expect(fullSdk.serverRead).not.toHaveBeenCalled();
+  });
+
+  it('rejects a UID change while recovery context reads are awaiting the reader', async () => {
+    let resolveHead!: (value: RecoveryDocumentSnapshot) => void;
+    const recoveryReader = reader();
+    (recoveryReader.readHead as ReturnType<typeof vi.fn>).mockReturnValueOnce(new Promise(resolve => { resolveHead = resolve; }));
+    let currentUser: User | null = userA;
+    const commands = repository(() => currentUser);
+    const pending = commands.getPendingRecoveryContext(2, recoveryReader);
+
+    await vi.waitFor(() => expect(recoveryReader.readHead).toHaveBeenCalledOnce());
+    currentUser = userB;
+    resolveHead(context().head);
+
+    await expect(pending).rejects.toMatchObject({ code: 'LEASE_LOST' });
+    expect(recoveryReader.readCommandReceipt).not.toHaveBeenCalled();
+  });
+
+  it('rejects dataset and lease epoch changes across before and after contexts', async () => {
+    const datasetReader = reader({ getContext: readNumber => (
+      context(readNumber === 1 ? {} : { datasetId: 'replacement-dataset' })
+    ) });
+    const datasetChanged = repository(() => userA);
+    await expect(datasetChanged.confirmPending(pendingIdentity, 2, datasetReader)).rejects.toMatchObject({ code: 'LEASE_LOST' });
+
+    const epochReader = reader({ getContext: readNumber => (
+      context(readNumber === 1 ? {} : { epoch: 3 })
+    ) });
+    const epochChanged = repository(() => userA);
+    await expect(epochChanged.confirmPending(pendingIdentity, 2, epochReader)).rejects.toMatchObject({ code: 'LEASE_LOST' });
+  });
+
+  it('fails closed if the registered pair generation changes during a Lite read', async () => {
+    let assertions = 0;
+    const recoveryReader = reader({ assertCurrent: () => {
+      assertions += 1;
+      if (assertions === 3) throw new CloudRecoveryReaderError('UNSUPPORTED_SCHEMA', 'pair changed');
+    } });
+    const commands = repository(() => userA);
+
+    await expect(commands.getPendingRecoveryContext(2, recoveryReader)).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    expect(recoveryReader.readHead).toHaveBeenCalledOnce();
+    expect(recoveryReader.readCommandReceipt).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['permission-denied', 'LEASE_LOST'],
+    ['resource-exhausted', 'QUOTA_EXCEEDED'],
+    ['unavailable', 'UNKNOWN_RESULT'],
+  ])('preserves %s instead of treating it as an absent receipt', async (wireCode, expectedCode) => {
+    const failure = Object.assign(new Error(`reader failed: ${wireCode}`), { code: wireCode });
+    const recoveryReader = reader({ readReceipt: async () => { throw failure; } });
+    const commands = repository(() => userA);
+
+    await expect(commands.confirmPending(pendingIdentity, 2, recoveryReader)).rejects.toMatchObject({ code: expectedCode });
+  });
+});

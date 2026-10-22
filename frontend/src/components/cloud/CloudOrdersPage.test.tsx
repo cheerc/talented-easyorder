@@ -17,10 +17,16 @@ const repositoryMock = vi.hoisted(() => ({
   readCommand: vi.fn(),
   getPendingRecoveryContext: vi.fn(),
   confirmPending: vi.fn(),
+  getPendingRecoveryContextWithRecoveryReader: vi.fn(),
+  confirmPendingWithRecoveryReader: vi.fn(),
 }));
 
 vi.mock('../../firebase/cloudOrderRepository', () => ({
   createCloudOrderRepository: () => repositoryMock,
+}));
+
+vi.mock('../../firebase/cloudRecoveryReader', () => ({
+  getCloudRecoveryReader: () => ({ assertCurrent: vi.fn() }),
 }));
 
 const TODAY = '2026-10-16';
@@ -191,6 +197,12 @@ describe('CloudOrdersPage', () => {
     repositoryMock.readCommand.mockResolvedValue(null);
     repositoryMock.getPendingRecoveryContext.mockResolvedValue({ uid: 'uid-1', datasetId: 'ds-1', leaseEpoch: 1, maintenance: false });
     repositoryMock.confirmPending.mockResolvedValue({ status: 'not-found' });
+    repositoryMock.getPendingRecoveryContextWithRecoveryReader.mockImplementation((...args) => (
+      repositoryMock.getPendingRecoveryContext(...args)
+    ));
+    repositoryMock.confirmPendingWithRecoveryReader.mockImplementation((...args) => (
+      repositoryMock.confirmPending(...args)
+    ));
     repositoryMock.createOrder.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId));
     repositoryMock.createPayment.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 12));
     repositoryMock.createCashMovement.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 13));
@@ -325,7 +337,11 @@ describe('CloudOrdersPage', () => {
 
   it('converges a matched receipt while the original promise is pending and ignores its late success', async () => {
     const original = deferred<CommandResult>();
+    const freshHeads = deferred<CloudOrderSnapshot>();
     repositoryMock.createOrder.mockReturnValueOnce(original.promise);
+    repositoryMock.loadSnapshot
+      .mockImplementationOnce(async () => snapshot())
+      .mockImplementationOnce(() => freshHeads.promise);
     repositoryMock.confirmPending.mockImplementation(async (record: { commandId: string }) => ({
       status: 'matched', receipt: okResult(record.commandId, 31).receipt,
     }));
@@ -343,15 +359,72 @@ describe('CloudOrdersPage', () => {
       await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
       vi.useRealTimers();
       fireEvent.click(screen.getByTestId('order-recovery-query'));
-      expect(await screen.findByText(/已確認 002 李小華 訂餐完成（命令序號 31）/)).toBeVisible();
+      expect(await screen.findByText('伺服器已確認入帳，正在重新載入資料')).toBeVisible();
+      expect(screen.getByTestId('order-recovery-command-id')).toHaveTextContent(first.commandId);
+      expect(screen.getByTestId('cloud-orders-loading')).toBeVisible();
+      expect(screen.queryByTestId('submit-order-button')).toBeNull();
+      expect(screen.queryByTestId('undo-bar')).toBeNull();
+      expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-1:1', 'recovering');
       expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1);
       expect(repositoryMock.confirmPending).toHaveBeenCalledWith(
         { commandId: first.commandId, datasetId: 'ds-1', uid: 'uid-1' }, 1,
       );
       await act(async () => { original.resolve(okResult(first.commandId, 31)); });
       expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId('order-recovery-panel')).toBeVisible();
+      expect(screen.queryByText(/已確認 002 李小華 訂餐完成（命令序號 31）/)).toBeNull();
+      await act(async () => { freshHeads.resolve(snapshot({ day: mockDay({ bento: 2 }) })); });
       expect(screen.getAllByText(/已確認 002 李小華 訂餐完成（命令序號 31）/)).toHaveLength(1);
+      expect(screen.getByTestId('cloud-topbar-bento')).toHaveTextContent('2');
       expect(screen.queryByTestId('order-recovery-panel')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the confirmed command and a reload action when fresh heads fail', async () => {
+    const original = deferred<CommandResult>();
+    repositoryMock.createOrder.mockReturnValueOnce(original.promise);
+    let snapshotReads = 0;
+    repositoryMock.loadSnapshot.mockImplementation(async () => {
+      snapshotReads += 1;
+      if (snapshotReads === 2) throw Object.assign(new Error('head read unavailable'), { code: 'unavailable' });
+      return snapshotReads === 3 ? snapshot({ day: mockDay({ bento: 2 }) }) : snapshot();
+    });
+    repositoryMock.confirmPending.mockImplementation(async (record: { commandId: string }) => ({
+      status: 'matched', receipt: okResult(record.commandId, 32).receipt,
+    }));
+    renderComponent();
+    await selectStudent('002');
+    fireEvent.click(screen.getByRole('button', { name: '其他餐點' }));
+    fireEvent.change(screen.getByLabelText(/餐點品名/), { target: { value: '炒麵' } });
+    fireEvent.change(screen.getByLabelText(/餐點單價/), { target: { value: '60' } });
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByTestId('submit-order-button'));
+      fireEvent.click(screen.getByTestId('confirm-duplicate-button'));
+      const commandId = repositoryMock.createOrder.mock.calls[0][0].commandId;
+      await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+      vi.useRealTimers();
+      fireEvent.click(screen.getByTestId('order-recovery-query'));
+
+      expect(await screen.findByTestId('order-recovery-heads-error')).toHaveTextContent('已確認入帳');
+      expect(screen.getByTestId('order-recovery-command-id')).toHaveTextContent(commandId);
+      expect(screen.getByTestId('order-recovery-heads-reload')).toBeEnabled();
+      expect(screen.queryByTestId('submit-order-button')).toBeNull();
+      expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-1:1', 'recovering');
+      expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(screen.getByTestId('order-recovery-heads-reload'));
+      expect(await screen.findByText(/已確認 002 李小華 訂餐完成（命令序號 32）/)).toBeVisible();
+      expect(screen.getByTestId('cloud-topbar-bento')).toHaveTextContent('2');
+      expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(3);
+      expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1);
+
+      await act(async () => { original.resolve(errorResult('UNKNOWN_RESULT')); });
+      expect(screen.getAllByText(/已確認 002 李小華 訂餐完成（命令序號 32）/)).toHaveLength(1);
+      expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(3);
     } finally {
       vi.useRealTimers();
     }

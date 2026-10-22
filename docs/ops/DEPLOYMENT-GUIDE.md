@@ -129,7 +129,10 @@ VITE_FIREBASE_APP_ID=1:704294644197:web:3c2d159fe167478d47e70c
 VITE_FIREBASE_MESSAGING_SENDER_ID=704294644197
 VITE_FIREBASE_STORAGE_BUCKET=<firebase-project-id>.firebasestorage.app
 VITE_FIREBASE_USE_EMULATOR=false
+VITE_FIRESTORE_ENDPOINT=https://firestore.googleapis.com
 ```
+
+`VITE_FIRESTORE_ENDPOINT` must be explicitly set to the intended HTTPS origin when Emulator mode is disabled. This legacy guide remains inactive; its payroll settings are not authorization for production use.
 
 **注意**：這些是 payroll 的 prod Firebase config（web API key 是公開資訊，安全由 Security Rules 保障）。
 

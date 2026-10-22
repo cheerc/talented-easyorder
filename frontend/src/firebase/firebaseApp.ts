@@ -1,7 +1,18 @@
 import { getApp, getApps, initializeApp, type FirebaseApp, type FirebaseOptions } from 'firebase/app';
 import type { Auth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
-import { ensureFirebaseModulesLoaded, getAuthMod, getFirestoreMod } from './firebaseModules';
+import {
+  ensureFirebaseLiteModulesLoaded,
+  ensureFirebaseModulesLoaded,
+  getAuthMod,
+  getFirestoreLiteMod,
+  getFirestoreMod,
+} from './firebaseModules';
+import {
+  DEFAULT_FIRESTORE_DATABASE_ID,
+  registerCloudRecoveryPair,
+  type FirestoreEndpoint,
+} from './cloudRecoveryReader';
 import { isPrototypeModeName } from '../appMode';
 
 export interface FirebaseEnv {
@@ -13,6 +24,7 @@ export interface FirebaseEnv {
   VITE_FIREBASE_MESSAGING_SENDER_ID?: string;
   VITE_FIREBASE_STORAGE_BUCKET?: string;
   VITE_FIREBASE_USE_EMULATOR?: string;
+  VITE_FIRESTORE_ENDPOINT?: string;
   VITE_FIRESTORE_EMULATOR_HOST?: string;
   VITE_FIRESTORE_EMULATOR_PORT?: string;
   VITE_FIREBASE_AUTH_EMULATOR_URL?: string;
@@ -81,7 +93,15 @@ interface FirebaseInitializationAttempt {
 
 let initAttempt: FirebaseInitializationAttempt | null = null;
 let initializedMemoryFirestore: Firestore | null = null;
-let emulatorConnected = false;
+let initializedFirestoreEndpoint: string | null = null;
+let emulatorConnectionIdentity: string | null = null;
+let initializedLiteFirestore: {
+  app: FirebaseApp;
+  endpoint: FirestoreEndpoint;
+  db: import('firebase/firestore/lite').Firestore;
+  sdk: Pick<typeof import('firebase/firestore/lite'), 'Timestamp' | 'doc' | 'getDoc'>;
+  failed: boolean;
+} | null = null;
 let appCheckInitialized = false;
 
 export interface FirebaseInitializationOptions {
@@ -156,14 +176,85 @@ async function initializeAppCheckOnce(app: FirebaseApp, env: FirebaseEnv): Promi
   }
 }
 
-function initializeMemoryFirestore(app: FirebaseApp): Firestore {
-  if (initializedMemoryFirestore) return initializedMemoryFirestore;
+export function readFirestoreEndpoint(env: FirebaseEnv): FirestoreEndpoint {
+  if (env.VITE_FIREBASE_USE_EMULATOR === 'true') {
+    const host = required(env, 'VITE_FIRESTORE_EMULATOR_HOST');
+    const portText = required(env, 'VITE_FIRESTORE_EMULATOR_PORT');
+    const port = Number(portText);
+    if (!/^[a-zA-Z0-9.-]+$/.test(host) || !Number.isInteger(port) || port < 1 || port > 65535
+      || String(port) !== portText) {
+      throw new Error('Firestore Emulator endpoint must have an explicit host and port');
+    }
+    return { kind: 'emulator', host, port, identity: `http://${host}:${port}` };
+  }
+
+  const value = required(env, 'VITE_FIRESTORE_ENDPOINT');
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('VITE_FIRESTORE_ENDPOINT must be an explicit HTTPS origin');
+  }
+  if (url.protocol !== 'https:' || !url.host || url.username || url.password
+    || (url.pathname !== '' && url.pathname !== '/') || url.search || url.hash) {
+    throw new Error('VITE_FIRESTORE_ENDPOINT must be an explicit HTTPS origin');
+  }
+  return { kind: 'production', host: url.host, identity: url.origin };
+}
+
+function initializeMemoryFirestore(app: FirebaseApp, endpoint: FirestoreEndpoint): Firestore {
+  if (initializedMemoryFirestore) {
+    if (initializedMemoryFirestore.app !== app || initializedFirestoreEndpoint !== endpoint.identity) {
+      throw new Error('Existing Firestore instance has a different explicit endpoint pairing');
+    }
+    return initializedMemoryFirestore;
+  }
   const { initializeFirestore, memoryLocalCache } = getFirestoreMod();
   // An existing Firestore instance may have persistent settings. Do not adopt it:
   // its cache policy cannot be proven safe for Cloud mode.
-  const db = initializeFirestore(app, { localCache: memoryLocalCache() });
+  const db = initializeFirestore(app, {
+    localCache: memoryLocalCache(),
+    ...(endpoint.kind === 'production' ? { host: endpoint.host, ssl: true } : {}),
+  }, DEFAULT_FIRESTORE_DATABASE_ID);
   initializedMemoryFirestore = db;
+  initializedFirestoreEndpoint = endpoint.identity;
   return db;
+}
+
+async function initializeRecoveryLiteFirestore(app: FirebaseApp, endpoint: FirestoreEndpoint) {
+  if (initializedLiteFirestore) {
+    const existing = initializedLiteFirestore;
+    if (existing.failed || existing.app !== app || !sameEndpoint(existing.endpoint, endpoint)) {
+      throw new Error('Existing Firestore Lite instance has a different or failed endpoint pairing');
+    }
+    return existing;
+  }
+
+  await ensureFirebaseLiteModulesLoaded();
+  const lite = getFirestoreLiteMod();
+  const liteDb = lite.initializeFirestore(app, endpoint.kind === 'production'
+    ? { host: endpoint.host, ssl: true }
+    : {}, DEFAULT_FIRESTORE_DATABASE_ID);
+  const state = {
+    app,
+    endpoint: Object.freeze({ ...endpoint }) as FirestoreEndpoint,
+    db: liteDb,
+    sdk: Object.freeze({ Timestamp: lite.Timestamp, doc: lite.doc, getDoc: lite.getDoc }),
+    failed: false,
+  };
+  initializedLiteFirestore = state;
+  try {
+    if (endpoint.kind === 'emulator') lite.connectFirestoreEmulator(liteDb, endpoint.host, endpoint.port);
+  } catch (error) {
+    state.failed = true;
+    throw error;
+  }
+  return state;
+}
+
+function sameEndpoint(left: FirestoreEndpoint, right: FirestoreEndpoint): boolean {
+  return left.kind === right.kind && left.identity === right.identity && left.host === right.host
+    && (left.kind !== 'emulator' || (right.kind === 'emulator' && left.port === right.port));
 }
 
 function observeBlockedFirestoreCleanup<T>(
@@ -208,6 +299,12 @@ export function ensureFirebaseInitialized(
 ): Promise<FirebaseServices> {
   const state = getFirebaseConfigState(env);
   if (!state.configured) return Promise.reject(new Error(state.error));
+  let endpoint: FirestoreEndpoint;
+  try {
+    endpoint = readFirestoreEndpoint(env);
+  } catch (error) {
+    return Promise.reject(error);
+  }
   if (cachedServices) return Promise.resolve(cachedServices);
   if (initPromise) {
     initAttempt?.subscribe(options);
@@ -222,7 +319,7 @@ export function ensureFirebaseInitialized(
 
     const app = getApps().length > 0 ? getApp() : initializeApp(state.config);
     const auth = getAuthMod().getAuth(app);
-    const db = initializeMemoryFirestore(app);
+    const db = initializeMemoryFirestore(app, endpoint);
 
     // Firestore persistence can outlive prior releases. Clear only this app's
     // known database before any Firestore reads begin, then keep this session
@@ -232,16 +329,17 @@ export function ensureFirebaseInitialized(
       clearIndexedDbPersistence(db),
     );
 
-    if (env.VITE_FIREBASE_USE_EMULATOR === 'true' && !emulatorConnected) {
-      const host = env.VITE_FIRESTORE_EMULATOR_HOST ?? '127.0.0.1';
-      const port = Number(env.VITE_FIRESTORE_EMULATOR_PORT ?? '8080');
-      getFirestoreMod().connectFirestoreEmulator(db, host, port);
-      getAuthMod().connectAuthEmulator(
-        auth,
-        env.VITE_FIREBASE_AUTH_EMULATOR_URL ?? 'http://127.0.0.1:9099',
-        { disableWarnings: true },
-      );
-      emulatorConnected = true;
+    if (endpoint.kind === 'emulator') {
+      const connectionIdentity = `${endpoint.identity}|${env.VITE_FIREBASE_AUTH_EMULATOR_URL ?? 'http://127.0.0.1:9099'}`;
+      if (emulatorConnectionIdentity !== null && emulatorConnectionIdentity !== connectionIdentity) {
+        throw new Error('Existing Firebase Emulator connection has a different explicit endpoint');
+      }
+      if (emulatorConnectionIdentity === null) {
+        getFirestoreMod().connectFirestoreEmulator(db, endpoint.host, endpoint.port);
+        const authEmulatorUrl = env.VITE_FIREBASE_AUTH_EMULATOR_URL ?? 'http://127.0.0.1:9099';
+        getAuthMod().connectAuthEmulator(auth, authEmulatorUrl, { disableWarnings: true });
+        emulatorConnectionIdentity = connectionIdentity;
+      }
 
       if (typeof window !== 'undefined') {
         const syntheticGoogleSubject = (email: string): string => {
@@ -293,6 +391,18 @@ export function ensureFirebaseInitialized(
 
     // Ref: #287 — App Check after services are ready, before returning
     await initializeAppCheckOnce(app, env);
+
+    const lite = await initializeRecoveryLiteFirestore(app, endpoint);
+    registerCloudRecoveryPair({
+      app,
+      projectId: state.config.projectId!,
+      fullDatabaseId: DEFAULT_FIRESTORE_DATABASE_ID,
+      fullDb: db,
+      liteDatabaseId: DEFAULT_FIRESTORE_DATABASE_ID,
+      liteDb: lite.db,
+      endpoint: lite.endpoint,
+      liteSdk: lite.sdk,
+    });
 
     cachedServices = { app, auth, db };
     return cachedServices;
