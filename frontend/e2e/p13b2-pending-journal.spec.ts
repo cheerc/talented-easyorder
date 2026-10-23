@@ -2176,3 +2176,119 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
     }
   });
 });
+
+test.describe('P13b2b3a journal cleanup post-condition and embedded backup recovery', () => {
+  test.setTimeout(120000);
+
+  async function openDayClose(page: Page) {
+    await page.getByRole('button', { name: '取得系統使用權' }).click();
+    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '日結', exact: true }).click();
+  }
+
+  test('shows no misleading local-tracking warning after a normal CloseDay and leaves an empty journal', async ({ googleSession }) => {
+    const { page, uid } = googleSession;
+    const today = taipeiToday();
+    const datasetId = 'p13b2b3a-normal-close';
+    await seedDayCloseFixture(today, uid, datasetId);
+    let commandId: string | null = null;
+    try {
+      await openDayClose(page);
+      const form = page.getByRole('form', { name: `${today} 關帳`, exact: true });
+      await form.getByRole('textbox', { name: '實點現金（元）' }).fill('1000');
+      await form.getByRole('button', { name: '確認關帳' }).click();
+      await expect(page.getByText(new RegExp(`已確認 ${today} 關帳 完成`))).toBeVisible({ timeout: 15000 });
+      commandId = await lastCommandIdFromHead();
+      await expect(page.getByText('本機命令追蹤尚未清理')).toHaveCount(0);
+      await expect(page.getByText('本機命令追蹤清理未完成')).toHaveCount(0);
+      await expectMinimalJournal(page, []);
+    } finally {
+      await cleanupDayCloseRun(page, { commandIds: commandId ? [commandId] : [], days: [today], settlementDays: [today] });
+      await setDayCloseDataHead(DATASET_ID, today, 0, null);
+    }
+  });
+
+  test('shows no misleading local-tracking warning after a normal DayVendor save and leaves an empty journal', async ({ googleSession }) => {
+    const { page } = googleSession;
+    const today = taipeiToday();
+    const datasetId = 'p13b2b3a-normal-vendor';
+    const { vendorId } = await seedDayVendorRecoveryFixture(today, datasetId);
+    let commandId: string | null = null;
+    try {
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await page.getByRole('button', { name: '日期與供應商' }).click();
+      const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
+      await page.getByRole('button', { name: '新增供應商' }).click();
+      const form = main.getByRole('form', { name: '新增供應商' });
+      await form.getByLabel('供應商編號').fill('p13b2b3a-normal-vendor');
+      await form.getByLabel('供應商名稱').fill('P13b2b3a 正常儲存');
+      await form.getByRole('button', { name: '建立供應商' }).click();
+      await expect(page.getByTestId('cloud-vendor-row-p13b2b3a-normal-vendor')).toContainText('P13b2b3a 正常儲存');
+      commandId = await lastCommandIdFromHead();
+      await expect(page.getByText('本機命令追蹤尚未清理')).toHaveCount(0);
+      await expect(page.getByText('本機命令追蹤清理未完成')).toHaveCount(0);
+      await expectMinimalJournal(page, []);
+    } finally {
+      await cleanupDayCloseRun(page, { commandIds: commandId ? [commandId] : [], days: [today] });
+      await removeDocument('vendors', 'p13b2b3a-normal-vendor').catch(() => undefined);
+      await removeDocument('vendors', vendorId).catch(() => undefined);
+      await setDayVendorDataHead(DATASET_ID, today, 0, null);
+    }
+  });
+
+  test('confirms a RecordBackup through Lite while the response is held past ten seconds, with one effect and no duplicate', async ({ googleSession }, testInfo) => {
+    const { page, uid } = googleSession;
+    const today = taipeiToday();
+    const datasetId = 'p13b2b3a-backup';
+    await seedDayCloseFixture(today, uid, datasetId);
+    const held = createHeldCommit(page, request => commitWritesDocument(request, 'system', 'dataHead'));
+    await held.install();
+    let commandId: string | null = null;
+    try {
+      await openDayClose(page);
+      await page.getByLabel('備份密碼').fill('e2e-fixture-passphrase');
+      await page.getByRole('button', { name: '產生加密備份' }).click();
+      await expect(page.getByText(/固定匯出 head H=0/)).toBeVisible({ timeout: 15000 });
+      const [download] = await Promise.all([
+        page.waitForEvent('download'),
+        page.getByRole('button', { name: '下載備份' }).click(),
+      ]);
+      const saved = testInfo.outputPath('p13b2b3a-backup.eobackup');
+      await download.saveAs(saved);
+
+      held.arm();
+      await page.getByLabel('重新選取剛存下的備份檔').setInputFiles(saved);
+      await waitForWriteGate(held.state.intercepted.promise, 'RecordBackup commit response gate');
+      await expect(page.getByText('結果確認中，勿重新收款')).toBeVisible({ timeout: 15000 });
+      const recovery = page.getByRole('alert', { name: '命令結果確認' });
+      commandId = (await recovery.textContent())?.match(/命令編號 ([0-9a-f-]{36})/i)?.[1] ?? null;
+      if (!commandId) throw new Error('The pending RecordBackup command ID was not shown');
+      await expectMinimalJournal(page, [{ commandId, datasetId, uid }]);
+      expect(await rawStorageDump(page)).not.toContain('e2e-fixture-passphrase');
+      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      await expect(page.getByRole('form', { name: `${today} 關帳`, exact: true }).getByRole('button', { name: '確認關帳' })).toBeDisabled();
+
+      await page.getByRole('button', { name: '查詢原命令結果' }).click();
+      await expect(page.getByText(/已登記 RecordBackup/)).toBeVisible({ timeout: 15000 });
+      expect(held.state.returned).toBe(false);
+      expect(held.state.matched).toBe(1);
+      await expect.poll(() => readPendingIdentity(page, commandId!)).toBeNull();
+      expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
+      expect((await readEmulatorDocument('system', 'dataHead')).fields?.seq).toEqual({ integerValue: '1' });
+
+      held.state.release.resolve();
+      await waitForWriteGate(held.state.completed.promise, 'RecordBackup response release');
+      await expect(page.getByText(/已登記 RecordBackup/)).toBeVisible();
+      await expect(page.getByRole('alert', { name: '命令結果確認' })).toHaveCount(0);
+      expect(held.state.matched).toBe(1);
+      expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
+      expect((await readEmulatorDocument('system', 'dataHead')).fields?.seq).toEqual({ integerValue: '1' });
+      await expectMinimalJournal(page, []);
+    } finally {
+      await held.settle();
+      await cleanupDayCloseRun(page, { commandIds: commandId ? [commandId] : [], days: [today] });
+      await setDayCloseDataHead(DATASET_ID, today, 0, null);
+    }
+  });
+});
