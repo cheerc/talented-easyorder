@@ -352,6 +352,71 @@ describe('BackupScreen verified-local gate', () => {
       expect(screen.getByText(/本機命令追蹤清理未完成/)).toBeVisible();
     });
 
+    it('reports an active operation from the start of file verification, before any command exists', async () => {
+      const verification = deferred<typeof manifest>();
+      mocks.verifyBackupFile.mockReturnValueOnce(verification.promise);
+      const onRecoveryChange = vi.fn();
+      const { reselect } = await reachVerifyStep({ onRecoveryChange });
+      onRecoveryChange.mockClear();
+
+      fireEvent.change(reselect, { target: { files: [backupFile()] } });
+      await flush();
+      expect(mocks.commitRecordBackupIntent).not.toHaveBeenCalled();
+      expect(onRecoveryChange).toHaveBeenLastCalledWith(true);
+
+      verification.resolve(manifest);
+      await flush();
+      expect(mocks.commitRecordBackupIntent).toHaveBeenCalledTimes(1);
+      expect(onRecoveryChange).toHaveBeenLastCalledWith(false);
+    });
+
+    it('releases the reported activity when the verification fails and nothing is sent', async () => {
+      mocks.verifyBackupFile.mockRejectedValueOnce(new Error('密碼或檔案不符'));
+      const onRecoveryChange = vi.fn();
+      const { reselect } = await reachVerifyStep({ onRecoveryChange });
+      fireEvent.change(reselect, { target: { files: [backupFile()] } });
+      await flush();
+      expect(screen.getByText('密碼或檔案不符')).toBeVisible();
+      expect(onRecoveryChange).toHaveBeenLastCalledWith(false);
+      expect(mocks.commitRecordBackupIntent).not.toHaveBeenCalled();
+    });
+
+    it('does not submit when the host locks the screen while the file verification is pending', async () => {
+      const verification = deferred<typeof manifest>();
+      mocks.verifyBackupFile.mockReturnValueOnce(verification.promise);
+      const onRecoveryChange = vi.fn();
+      const { view, reselect } = await reachVerifyStep({ onRecoveryChange });
+      fireEvent.change(reselect, { target: { files: [backupFile()] } });
+      await flush();
+
+      view.rerender(<BackupScreen onRecoveryChange={onRecoveryChange} locked />);
+      await flush();
+      verification.resolve(manifest);
+      await flush();
+
+      expect(mocks.commitRecordBackupIntent).not.toHaveBeenCalled();
+      expect(mocks.confirmPendingIntent).not.toHaveBeenCalled();
+      expect(screen.queryByRole('alert', { name: '命令結果確認' })).toBeNull();
+      expect(onRecoveryChange).toHaveBeenLastCalledWith(false);
+    });
+
+    it('keeps a confirmed receipt when the original submission later throws an authorization loss', async () => {
+      const original = deferred<unknown>();
+      mocks.commitRecordBackupIntent.mockReturnValueOnce(original.promise);
+      const { reselect } = await reachVerifyStep();
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const intent = await submitBackup(reselect);
+      mocks.confirmPendingIntent.mockResolvedValue({ status: 'matched', receipt: receipt(intent.commandId) });
+      await passTenSeconds();
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      await flush();
+      expect(screen.getByText(/已登記 RecordBackup/)).toBeVisible();
+
+      original.reject({ code: 'LEASE_LOST', message: 'late loss' });
+      await flush();
+      expect(screen.getByText(/已登記 RecordBackup/)).toBeVisible();
+    });
+
     it('disables every control while the day-close page holds its own unresolved command', async () => {
       render(<BackupScreen locked />);
       expect(screen.getByLabelText('備份密碼')).toBeDisabled();
