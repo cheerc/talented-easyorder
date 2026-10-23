@@ -80,7 +80,6 @@ export interface PosState
     TransactionActions,
     MenuActions,
     SessionActions,
-    StudentActions,
     PracticeStateSlice,
     PracticeDataActions,
     FaceStateSlice,
@@ -123,12 +122,6 @@ export interface SessionActions {
   closeBusinessDate: (input: CloseBusinessDateInput) => LedgerMutationResult;
   reopenBusinessDate: (input: ReopenBusinessDateInput) => void;
   getBusinessDateStatus: (businessDate: string) => BusinessDateStatus;
-}
-
-/** Student domain actions */
-export interface StudentActions {
-  addStudent: (input: { studentId: string; displayName: string; openingBalance: number; operatorId: string }) => Promise<void>;
-  disableStudent: (input: { studentId: string; operatorId: string }) => Promise<void>;
 }
 
 

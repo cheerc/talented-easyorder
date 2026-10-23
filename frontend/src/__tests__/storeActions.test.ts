@@ -144,11 +144,3 @@ describe('paymentActions — commitPaymentTransaction', () => {
     expect(state.transactions[0].paidAmount).toBe(200);
   });
 });
-
-describe('firebaseActions — basic existence', () => {
-  it('store exposes firebase action functions (addStudent, disableStudent)', () => {
-    const state = usePosStore.getState();
-    expect(typeof state.addStudent).toBe('function');
-    expect(typeof state.disableStudent).toBe('function');
-  });
-});

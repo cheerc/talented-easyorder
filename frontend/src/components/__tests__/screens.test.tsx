@@ -54,7 +54,6 @@ vi.mock('../../store/selectors', () => ({
   useMenuForDate: (date: string) => ({ source: 'own', menu: { ...mockState.todayMenu, businessDate: date } }),
   useMenuActions: () => ({ setTodayMenu: mockState.setTodayMenu, setMenuForDate: vi.fn(), setVendors: mockState.setVendors }),
   useGlobalActions: () => ({ resetData: mockState.resetData }),
-  useStudentActions: () => ({ addStudent: vi.fn(), disableStudent: vi.fn() }),
   usePracticeDataActions: () => ({ startBlankData: vi.fn(), loadSampleData: vi.fn(), addLocalStudent: vi.fn(), setSimulationDate: vi.fn(), updateLocalStudent: vi.fn(), setLocalStudentStatus: vi.fn() }),
   useSimulationDate: () => null,
   useFace: () => ({ faceEvents: [], faceDevices: {} }),

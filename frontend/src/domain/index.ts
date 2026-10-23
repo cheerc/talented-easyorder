@@ -18,9 +18,6 @@ export { CASHIER_SENTINEL, isStudentTransaction, recalculateStudentBalances, cal
 export type { BusinessDateStatus } from './businessDate';
 export { isHistoricalBusinessDate, canWriteBusinessDate } from './businessDate';
 
-// syncStatus.ts
-export type { SyncStatus } from './syncStatus';
-
 // posFlow.ts
 export type { PosMode, PosSelectionSource, PosSourceDevice, PosFlowState, ExpenseDirection } from './posFlow';
 
