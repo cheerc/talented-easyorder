@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal, flushSync } from 'react-dom';
+import { getAuth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
-import type { CommandReceipt } from '../../domain/cloudCommands';
+import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
 import {
   createCloudLedgerDateRange,
   searchCloudReportStudentIds,
@@ -26,6 +27,7 @@ import {
   type RecordCloudExportInput,
   type RecordCloudPrintInput,
 } from '../../firebase/cloudReportActionRepository';
+import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
 import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerToken } from './useCloudActionOwner';
 import './CloudReportPage.css';
 
@@ -52,54 +54,107 @@ interface FrozenAction {
   id: string;
   kind: 'export' | 'print';
   scopeKey: string;
+  /** The dataset the report was read from; the read-only confirmation must see the same one. */
+  datasetId: string;
   input: RecordCloudExportInput | RecordCloudPrintInput;
   contents: string;
   filename: string;
   title: string;
   rows: readonly (CloudReportTransaction | CloudMergedTransaction)[];
-  phase: 'pending' | 'unknown';
 }
 
+/** What survives an unmount: identity only, never the report content or the frozen H. */
 interface RecoveryIdentity {
   id: string;
   kind: 'export' | 'print';
   scopeKey: string;
   identityKey: string;
   leaseEpoch: number;
+  datasetId: string;
+  uid: string;
   input: RecordCloudExportInput | RecordCloudPrintInput;
-  phase: 'unknown';
 }
 
 type RecoverableAction = FrozenAction | RecoveryIdentity;
 const actionRecoveryRegistry = new Map<string, RecoveryIdentity>();
 
-function isRecoveryIdentity(action: RecoverableAction): action is RecoveryIdentity {
-  return 'identityKey' in action;
+type RecoveryPhase = 'submitting' | 'checking' | 'unknown';
+
+interface RecoveryView {
+  commandId: string;
+  phase: RecoveryPhase;
+  /** Ten seconds passed without a definite result; the prompt only, never an abort or an unsent proof. */
+  timedOut: boolean;
+  /** A fresh settled read-only not-found allows an explicit retry with the original ID and frozen input. */
+  canRetry: boolean;
 }
 
-function recoveryIdentity(
-  action: Pick<FrozenAction, 'id' | 'kind' | 'scopeKey' | 'input'>,
-  owner: Pick<CloudActionOwnerToken, 'identityKey' | 'leaseEpoch'>,
-): RecoveryIdentity {
-  return {
-    id: action.id, kind: action.kind, scopeKey: action.scopeKey,
-    identityKey: owner.identityKey, leaseEpoch: owner.leaseEpoch,
-    input: action.input, phase: 'unknown',
-  };
+/**
+ * One RecordExport/RecordPrint operation per mounted owner: the original submission's independent liveness plus the
+ * read-only queries. Nothing of it survives an owner change or an unmount; the registry and journal keep the identity.
+ */
+interface ActionOperation {
+  owner: CloudActionOwnerToken;
+  action: RecoverableAction;
+  datasetId: string;
+  uid: string;
+  attempt: number;
+  attemptPromise: Promise<CommandResult> | null;
+  attemptSettled: boolean;
+  timedOut: boolean;
+  querySequence: number;
+  checking: boolean;
+  retryAuthorized: boolean;
+  receipt: CommandReceipt | null;
+  timerId: number | null;
+  completed: boolean;
+}
+
+const PROMPT_AFTER_MS = 10_000;
+const RECEIPT_MISMATCH = '伺服器回執與固定命令不一致；保留原命令編號，尚未確認完成。';
+const UNKNOWN_RESULT = '操作回應不確定；請唯讀查詢原命令結果。查詢錯誤或找不到結果都不會自動重送。';
+
+function isRecoveryIdentity(action: RecoverableAction): action is RecoveryIdentity {
+  return 'identityKey' in action;
 }
 
 function storeRecoveryIdentity(
   action: Pick<FrozenAction, 'id' | 'kind' | 'scopeKey' | 'input'>,
   owner: Pick<CloudActionOwnerToken, 'identityKey' | 'leaseEpoch'>,
+  datasetId: string,
+  uid: string,
 ): void {
-  const identity = recoveryIdentity(action, owner);
-  const current = actionRecoveryRegistry.get(identity.scopeKey);
-  if (current && current.id !== identity.id) return;
-  actionRecoveryRegistry.set(identity.scopeKey, identity);
+  const current = actionRecoveryRegistry.get(action.scopeKey);
+  if (current && current.id !== action.id) return;
+  actionRecoveryRegistry.set(action.scopeKey, {
+    id: action.id, kind: action.kind, scopeKey: action.scopeKey,
+    identityKey: owner.identityKey, leaseEpoch: owner.leaseEpoch, datasetId, uid, input: action.input,
+  });
 }
 
 function removeRecoveryAction(action: Pick<RecoverableAction, 'id' | 'scopeKey'>): void {
   if (actionRecoveryRegistry.get(action.scopeKey)?.id === action.id) actionRecoveryRegistry.delete(action.scopeKey);
+}
+
+function currentUid(db: Firestore): string | null {
+  try { return getAuth(db.app).currentUser?.uid ?? null; } catch { return null; }
+}
+
+function browserIsOnline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === true;
+}
+
+function isAuthorizationLoss(error: unknown): boolean {
+  return ['LEASE_LOST', 'UNAUTHORIZED', 'ACCESS_BUSY'].includes(errorCode(error) ?? '');
+}
+
+function queryFailureMessage(error: unknown): string {
+  const code = errorCode(error);
+  if (code === 'MAINTENANCE') return '系統維護中，暫停同編號重試；請稍後重新查詢。';
+  if (code === 'QUOTA_EXCEEDED') return '查詢次數已達限制，尚未確認命令不存在；請稍後重新查詢，不可重試。';
+  if (code === 'UNSUPPORTED_SCHEMA') return '雲端命令格式不支援，尚未確認操作結果；請聯絡維護者，不可重試。';
+  if (code === 'INVALID_INPUT') return '命令編號已存在，但伺服器內容與原操作不符；仍未確認完成，不可重試。';
+  return '目前無法安全確認原命令；查詢錯誤不代表命令不存在，暫不可重試。';
 }
 
 function messageOf(error: unknown): string {
@@ -150,39 +205,6 @@ function actionResultMatches(receipt: CommandReceipt | null, action: Pick<Recove
   return Boolean(receipt && receipt.commandId === action.id && receipt.kind === expected);
 }
 
-function rebuildFrozenAction(action: RecoverableAction, snapshot: Snapshot | null): FrozenAction | null {
-  if (!isRecoveryIdentity(action) || !snapshot) return isRecoveryIdentity(action) ? null : action;
-  const input = action.input;
-  if (input.leaseEpoch !== action.leaseEpoch || snapshot.report.leaseEpoch !== action.leaseEpoch
-    || snapshot.report.sourceSeq !== input.sourceSeq
-    || snapshot.report.range.startDate !== input.range.startDate || snapshot.report.range.endDate !== input.range.endDate
-    || snapshot.report.scope.studentId !== input.scope.studentId) return null;
-
-  if (action.kind === 'export' && 'exportType' in input) {
-    const names: Record<RecordCloudExportInput['exportType'], string> = {
-      'transactions-original': 'transactions-original', 'transactions-merged': 'transactions-merged',
-      settlements: 'settlements', 'post-close-entries': 'post-close-entries', audit: 'audit',
-    };
-    const rows = input.exportType === 'transactions-merged' ? snapshot.report.mergedTransactions : snapshot.report.transactions;
-    return {
-      id: action.id, kind: 'export', scopeKey: action.scopeKey, input,
-      contents: csvFor(input.exportType, snapshot),
-      filename: `cloud-${names[input.exportType]}-${input.range.startDate}_${input.range.endDate}.csv`,
-      title: `P${input.exportType} · ${input.range.startDate}–${input.range.endDate} · H=${input.sourceSeq}`,
-      rows, phase: 'unknown',
-    };
-  }
-  if (action.kind === 'print' && 'printType' in input) {
-    const rows = input.printType === 'ledger-original' ? snapshot.report.transactions : snapshot.report.mergedTransactions;
-    return {
-      id: action.id, kind: 'print', scopeKey: action.scopeKey, input, contents: '', filename: '',
-      title: `雲端帳務 ${input.range.startDate}–${input.range.endDate} · ${input.scope.studentId ?? '全部帳戶'} · H=${input.sourceSeq}`,
-      rows, phase: 'unknown',
-    };
-  }
-  return null;
-}
-
 function performBrowserAction(action: FrozenAction, performed: Set<string>): void {
   if (performed.has(action.id)) return;
   performed.add(action.id);
@@ -212,7 +234,8 @@ export function CloudReportPage({
   db, leaseEpoch, identityKey, onNavigationStateChange, onOpenDayClose, onOpenAccountHistory,
 }: CloudReportPageProps) {
   const reads = useMemo(() => createCloudReadRepository(db), [db]);
-  const actions = useMemo(() => createCloudReportActionRepository(db), [db]);
+  const recoveryReader = useMemo(() => getCloudRecoveryReader(db), [db]);
+  const actions = useMemo(() => createCloudReportActionRepository(db, { recoveryReader }), [db, recoveryReader]);
   const scopeKey = JSON.stringify([identityKey, leaseEpoch]);
   const actionOwnerRef = useCloudActionOwner(identityKey, leaseEpoch);
   const [leaseToday, setLeaseToday] = useState('');
@@ -233,11 +256,13 @@ export function CloudReportPage({
   const [action, setAction] = useState<RecoverableAction | null>(() => actionRecoveryRegistry.get(scopeKey) ?? null);
   const [authorizedPrint, setAuthorizedPrint] = useState<FrozenAction | null>(null);
   const [actionMessage, setActionMessage] = useState('');
-  const [operationBusy, setOperationBusy] = useState(false);
+  const [recovery, setRecovery] = useState<RecoveryView | null>(null);
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
   const [readyScopeKey, setReadyScopeKey] = useState<string | null>(null);
   const requestGeneration = useRef(0);
-  const operationRef = useRef(false);
+  const operationRef = useRef<ActionOperation | null>(null);
+  const navigationRef = useRef(onNavigationStateChange);
+  useEffect(() => { navigationRef.current = onNavigationStateChange; });
   const performedActions = useRef(new Set<string>());
   const printLifecycleRef = useRef<ActivePrintLifecycle | null>(null);
 
@@ -248,14 +273,24 @@ export function CloudReportPage({
     printLifecycleRef.current = null;
   }, []);
 
-  useEffect(() => () => { clearPrintLifecycle(); }, [clearPrintLifecycle, scopeKey]);
+  const dropOperation = useCallback(() => {
+    const operation = operationRef.current;
+    if (!operation) return;
+    if (operation.timerId !== null) window.clearTimeout(operation.timerId);
+    operation.timerId = null;
+    operation.completed = true;
+    operation.attemptPromise = null;
+    operationRef.current = null;
+  }, []);
+
+  useEffect(() => () => { clearPrintLifecycle(); dropOperation(); }, [clearPrintLifecycle, dropOperation, scopeKey]);
 
   const invalidateOwner = useCallback((owner: CloudActionOwnerToken, error: unknown) => {
     if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
     clearPrintLifecycle(undefined, owner);
     owner.revoked = true;
     requestGeneration.current += 1;
-    operationRef.current = false;
+    dropOperation();
     setSnapshot(null);
     setQuery(null);
     setReadyScopeKey(null);
@@ -274,9 +309,9 @@ export function CloudReportPage({
     setAction(null);
     setAuthorizedPrint(null);
     setActionMessage('');
-    setOperationBusy(false);
+    setRecovery(null);
     onNavigationStateChange?.(owner.identityKey, 'revoked');
-  }, [actionOwnerRef, clearPrintLifecycle, onNavigationStateChange]);
+  }, [actionOwnerRef, clearPrintLifecycle, dropOperation, onNavigationStateChange]);
 
   const previousScopeKey = useRef<string | null>(null);
   useLayoutEffect(() => {
@@ -284,7 +319,7 @@ export function CloudReportPage({
     previousScopeKey.current = scopeKey;
     if (previous === null || previous === scopeKey) return;
     requestGeneration.current += 1;
-    operationRef.current = false;
+    dropOperation();
     setSnapshot(null);
     setQuery(null);
     setReadyScopeKey(null);
@@ -303,8 +338,8 @@ export function CloudReportPage({
     setAction(actionRecoveryRegistry.get(scopeKey) ?? null);
     setAuthorizedPrint(null);
     setActionMessage('');
-    setOperationBusy(false);
-  }, [scopeKey]);
+    setRecovery(null);
+  }, [dropOperation, scopeKey]);
 
   useEffect(() => {
     let active = true;
@@ -461,63 +496,191 @@ export function CloudReportPage({
     return true;
   }, [actionOwnerRef, clearPrintLifecycle, onNavigationStateChange]);
 
-  const recordAction = useCallback(async (frozen: FrozenAction) => {
-    const owner = actionOwnerRef.current;
-    if (!isCurrentCloudActionOwner(actionOwnerRef, owner) || owner.scopeKey !== frozen.scopeKey || operationRef.current) return;
-    operationRef.current = true;
-    setOperationBusy(true);
-    setAction(frozen);
-    storeRecoveryIdentity(frozen, owner);
-    setActionMessage('正在確認雲端稽核收據…');
-    onNavigationStateChange?.(owner.identityKey, 'recovering');
+  const ownsOperation = (operation: ActionOperation): boolean => (
+    operationRef.current === operation && !operation.completed && isCurrentCloudActionOwner(actionOwnerRef, operation.owner)
+  );
+
+  const clearTimer = (operation: ActionOperation) => {
+    if (operation.timerId !== null) window.clearTimeout(operation.timerId);
+    operation.timerId = null;
+  };
+
+  const notify = (operation: ActionOperation, state: 'recovering' | 'resolved') => {
+    navigationRef.current?.(operation.owner.identityKey, state);
+  };
+
+  /** The original submission is over, one way or another, with the receipt still unconfirmed. */
+  const showUnknown = (operation: ActionOperation, message: string) => {
+    if (!ownsOperation(operation) || operation.receipt) return;
+    clearTimer(operation);
+    operation.retryAuthorized = false;
+    setRecovery({
+      commandId: operation.action.id, phase: operation.checking ? 'checking' : 'unknown', timedOut: false, canRetry: false,
+    });
+    setActionMessage(message);
+  };
+
+  const beginAttempt = (operation: ActionOperation) => {
+    clearTimer(operation);
+    operation.attempt += 1;
+    operation.attemptPromise = null;
+    operation.attemptSettled = false;
+    operation.timedOut = false;
+    operation.retryAuthorized = false;
+    operation.querySequence += 1;
+    operation.checking = false;
+    const attempt = operation.attempt;
+    // The ten-second mark is only a status prompt: no abort, no new ID, no automatic retry.
+    operation.timerId = window.setTimeout(() => {
+      if (!ownsOperation(operation) || operation.attempt !== attempt || operation.attemptSettled || operation.receipt) return;
+      operation.timedOut = true;
+      setRecovery(previous => (previous && previous.commandId === operation.action.id
+        ? { ...previous, phase: 'submitting', timedOut: true, canRetry: false }
+        : previous));
+    }, PROMPT_AFTER_MS);
+  };
+
+  /** The one place a receipt is accepted: clean the journal once, then output the frozen content at most once. */
+  const settleWithReceipt = async (operation: ActionOperation, receipt: CommandReceipt) => {
+    if (!ownsOperation(operation) || operation.receipt) return;
+    const action = operation.action;
+    if (!actionResultMatches(receipt, action)) {
+      showUnknown(operation, RECEIPT_MISMATCH);
+      return;
+    }
+    clearTimer(operation);
+    operation.receipt = receipt;
+    operation.retryAuthorized = false;
+    operation.checking = false;
+    operation.querySequence += 1;
+    setRecovery({ commandId: action.id, phase: 'checking', timedOut: false, canRetry: false });
+    let cleanupWarning = '';
     try {
-      const result = frozen.kind === 'export'
-        ? await actions.recordExport(frozen.input as RecordCloudExportInput)
-        : await actions.recordPrint(frozen.input as RecordCloudPrintInput);
-      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-      if (!result.ok) {
-        if (result.error.code === 'LEASE_LOST' || result.error.code === 'UNAUTHORIZED') {
-          invalidateOwner(owner, result.error);
-          return;
-        }
-        if (result.error.code !== 'UNKNOWN_RESULT' && result.error.code !== 'OFFLINE') {
-          removeRecoveryAction(frozen);
-          setAction(null);
-          setActionMessage(result.error.message);
-          onNavigationStateChange?.(owner.identityKey, 'resolved');
-          return;
-        }
-        const unknown = { ...frozen, phase: 'unknown' as const };
-        storeRecoveryIdentity(unknown, owner);
-        setAction(unknown);
-        setActionMessage('結果尚未確認。保留原命令、範圍與內容；請查詢或用同一命令重試。');
+      const cleaned = await actions.cleanupConfirmedIntent(
+        action.input, operation.datasetId, operation.uid, () => ownsOperation(operation) && browserIsOnline(),
+      );
+      if (!cleaned && ownsOperation(operation)) cleanupWarning = '本機命令追蹤尚未清理；伺服器回執仍已確認。';
+    } catch (error) {
+      if (!ownsOperation(operation)) return;
+      if (isAuthorizationLoss(error)) {
+        invalidateOwner(operation.owner, error);
         return;
       }
-      if (!actionResultMatches(result.receipt, frozen)) throw new Error('稽核收據與固定命令不一致。');
-      if (!initiateBrowserAction(frozen, owner)) return;
-      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-      removeRecoveryAction(frozen);
-      setAction(null);
-      setActionMessage(frozen.kind === 'export' ? '已發起匯出。' : '已發起列印。');
-      onNavigationStateChange?.(owner.identityKey, 'resolved');
-    } catch (error) {
-      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-      if (['LEASE_LOST', 'UNAUTHORIZED'].includes(errorCode(error) ?? '')) invalidateOwner(owner, error);
-      else {
-        const unknown = { ...frozen, phase: 'unknown' as const };
-        storeRecoveryIdentity(unknown, owner);
-        setAction(unknown);
-        setActionMessage(`結果尚未確認：${messageOf(error)}。請查詢或用同一命令重試。`);
-      }
-    } finally {
-      if (isCurrentCloudActionOwner(actionOwnerRef, owner)) {
-        operationRef.current = false;
-        setOperationBusy(false);
-      }
+      cleanupWarning = '本機命令追蹤清理未完成；伺服器回執仍已確認。';
     }
-  }, [actionOwnerRef, actions, initiateBrowserAction, invalidateOwner, onNavigationStateChange]);
+    if (!ownsOperation(operation)) return;
+    const finish = (message: string) => {
+      removeRecoveryAction(action);
+      dropOperation();
+      setAction(null);
+      setRecovery(null);
+      setActionMessage(`${message}${cleanupWarning}`);
+      notify(operation, 'resolved');
+    };
+    if (isRecoveryIdentity(action)) {
+      // After a remount the content is gone: the audit receipt is confirmed, nothing is output.
+      finish('原稽核已確認；原快照未保留，本次未發起輸出。請重新查詢後另行確認輸出。');
+      return;
+    }
+    let started: boolean;
+    try {
+      started = initiateBrowserAction(action, operation.owner);
+    } catch {
+      if (!ownsOperation(operation)) return;
+      finish('稽核已確認；瀏覽器無法啟動匯出。請重新查詢後另行發起匯出。');
+      return;
+    }
+    // The owner was lost during the output step, or the print could not start (its own message is already shown).
+    if (!ownsOperation(operation)) return;
+    if (!started) {
+      removeRecoveryAction(action);
+      dropOperation();
+      setRecovery(null);
+      return;
+    }
+    finish(action.kind === 'export' ? '已發起匯出。' : '已發起列印。');
+  };
 
-  const makeExport = useCallback((type: RecordCloudExportInput['exportType']) => {
+  const finishResult = async (operation: ActionOperation, result: CommandResult) => {
+    if (!ownsOperation(operation) || operation.receipt) return;
+    clearTimer(operation);
+    if (!result.ok) {
+      if (isAuthorizationLoss(result.error)) {
+        invalidateOwner(operation.owner, result.error);
+        return;
+      }
+      if (result.error.code === 'UNKNOWN_RESULT' || result.error.code === 'OFFLINE') {
+        showUnknown(operation, UNKNOWN_RESULT);
+        return;
+      }
+      // A definite refusal: nothing was recorded, so a later action starts a new command.
+      const refused = operation.action;
+      removeRecoveryAction(refused);
+      dropOperation();
+      setAction(null);
+      setRecovery(null);
+      setActionMessage(result.error.message);
+      notify(operation, 'resolved');
+      return;
+    }
+    await settleWithReceipt(operation, result.receipt);
+  };
+
+  const runAttempt = async (operation: ActionOperation) => {
+    const frozen = operation.action;
+    if (!ownsOperation(operation) || isRecoveryIdentity(frozen)) return;
+    beginAttempt(operation);
+    setRecovery({ commandId: frozen.id, phase: 'submitting', timedOut: false, canRetry: false });
+    const attempt = operation.attempt;
+    const attemptPromise = frozen.kind === 'export'
+      ? actions.recordExport(frozen.input as RecordCloudExportInput)
+      : actions.recordPrint(frozen.input as RecordCloudPrintInput);
+    operation.attemptPromise = attemptPromise;
+    try {
+      const result = await attemptPromise;
+      if (!ownsOperation(operation) || operation.attempt !== attempt) return;
+      operation.attemptSettled = true;
+      if (operation.attemptPromise === attemptPromise) operation.attemptPromise = null;
+      await finishResult(operation, result);
+    } catch (error) {
+      if (!ownsOperation(operation) || operation.attempt !== attempt) return;
+      operation.attemptSettled = true;
+      if (operation.attemptPromise === attemptPromise) operation.attemptPromise = null;
+      clearTimer(operation);
+      // A receipt confirmed by the query stands: a late failure of the original submission never undoes it.
+      if (operation.receipt) return;
+      if (isAuthorizationLoss(error)) {
+        invalidateOwner(operation.owner, error);
+        return;
+      }
+      showUnknown(operation, UNKNOWN_RESULT);
+    }
+  };
+
+  const recordAction = (frozen: FrozenAction) => {
+    const owner = actionOwnerRef.current;
+    if (!isCurrentCloudActionOwner(actionOwnerRef, owner) || owner.scopeKey !== frozen.scopeKey || operationRef.current) return;
+    const uid = currentUid(db);
+    if (!uid) {
+      invalidateOwner(owner, {
+        code: 'UNAUTHORIZED', message: '目前登入身分尚未確認，雲端資料已清除。請重新登入操作員帳號。',
+      });
+      return;
+    }
+    const operation: ActionOperation = {
+      owner, action: frozen, datasetId: frozen.datasetId, uid, attempt: 0, attemptPromise: null,
+      attemptSettled: false, timedOut: false, querySequence: 0, checking: false, retryAuthorized: false,
+      receipt: null, timerId: null, completed: false,
+    };
+    operationRef.current = operation;
+    setAction(frozen);
+    storeRecoveryIdentity(frozen, owner, frozen.datasetId, uid);
+    setActionMessage('正在確認雲端稽核收據…');
+    notify(operation, 'recovering');
+    void runAttempt(operation);
+  };
+
+  const makeExport = (type: RecordCloudExportInput['exportType']) => {
     if (!snapshot || !query || controlsLocked || !actionOwnerRef.current
       || (type === 'settlements' || type === 'post-close-entries') && query.studentId !== null) return;
     const id = crypto.randomUUID();
@@ -529,16 +692,15 @@ export function CloudReportPage({
       'transactions-original': 'transactions-original', 'transactions-merged': 'transactions-merged',
       settlements: 'settlements', 'post-close-entries': 'post-close-entries', audit: 'audit',
     };
-    const frozen: FrozenAction = {
-      id, kind: 'export', scopeKey, input, contents: csvFor(type, snapshot), filename: `cloud-${names[type]}-${query.range.startDate}_${query.range.endDate}.csv`,
+    recordAction({
+      id, kind: 'export', scopeKey, datasetId: snapshot.report.datasetId, input,
+      contents: csvFor(type, snapshot), filename: `cloud-${names[type]}-${query.range.startDate}_${query.range.endDate}.csv`,
       title: `P${type} · ${query.range.startDate}–${query.range.endDate} · H=${snapshot.report.sourceSeq}`,
       rows: type === 'transactions-merged' ? snapshot.report.mergedTransactions : snapshot.report.transactions,
-      phase: 'pending',
-    };
-    void recordAction(frozen);
-  }, [actionOwnerRef, controlsLocked, leaseEpoch, query, recordAction, scopeKey, snapshot]);
+    });
+  };
 
-  const makePrint = useCallback(() => {
+  const makePrint = () => {
     if (!snapshot || !query || controlsLocked || !actionOwnerRef.current || !/^\d{4}-\d{2}-\d{2}$/.test(printDate)
       || printDate < query.range.startDate || printDate > query.range.endDate) return;
     const id = crypto.randomUUID();
@@ -547,76 +709,112 @@ export function CloudReportPage({
       commandId: id, leaseEpoch, range: query.range, scope: { studentId: query.studentId },
       sourceSeq: snapshot.report.sourceSeq, printType, businessDate: printDate,
     };
-    const frozen: FrozenAction = {
-      id, kind: 'print', scopeKey, input,
+    recordAction({
+      id, kind: 'print', scopeKey, datasetId: snapshot.report.datasetId, input,
       contents: '', filename: '', title: `雲端帳務 ${query.range.startDate}–${query.range.endDate} · ${query.studentId ?? '全部帳戶'} · H=${snapshot.report.sourceSeq}`,
       rows: mode === 'original' ? snapshot.report.transactions : snapshot.report.mergedTransactions,
-      phase: 'pending',
-    };
-    void recordAction(frozen);
-  }, [actionOwnerRef, controlsLocked, leaseEpoch, mode, printDate, query, recordAction, scopeKey, snapshot]);
+    });
+  };
 
-  const recoverAction = useCallback(async () => {
+  /** After a remount only the identity exists; its operation is created on the first explicit query. */
+  const operationFor = (intent: RecoverableAction): ActionOperation | null => {
+    const existing = operationRef.current;
+    if (existing) return existing.action.id === intent.id ? existing : null;
+    const owner = actionOwnerRef.current;
+    if (!isCurrentCloudActionOwner(actionOwnerRef, owner) || !isRecoveryIdentity(intent)
+      || intent.scopeKey !== owner.scopeKey || intent.identityKey !== owner.identityKey
+      || intent.leaseEpoch !== owner.leaseEpoch) return null;
+    const operation: ActionOperation = {
+      owner, action: intent, datasetId: intent.datasetId, uid: intent.uid, attempt: 0, attemptPromise: null,
+      attemptSettled: true, timedOut: false, querySequence: 0, checking: false, retryAuthorized: false,
+      receipt: null, timerId: null, completed: false,
+    };
+    operationRef.current = operation;
+    return operation;
+  };
+
+  const checkPending = async () => {
     const intent = visibleAction;
     const owner = actionOwnerRef.current;
-    if (!intent || !isCurrentCloudActionOwner(actionOwnerRef, owner) || intent.scopeKey !== owner.scopeKey
-      || (isRecoveryIdentity(intent) && (intent.identityKey !== owner.identityKey || intent.leaseEpoch !== owner.leaseEpoch))
-      || operationRef.current) return;
-    operationRef.current = true;
-    setOperationBusy(true);
-    setActionMessage('正在伺服器查詢原命令…');
-    try {
-      const receipt = await actions.readCommand(intent.id);
-      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-      if (receipt) {
-        if (!actionResultMatches(receipt, intent)) throw new Error('命令編號的收據種類不符。');
-        if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-        if (isRecoveryIdentity(intent)) {
-          removeRecoveryAction(intent);
-          setAction(null);
-          setActionMessage('原稽核已確認；原快照未保留，本次未發起輸出。請重新查詢後另行確認輸出。');
-          onNavigationStateChange?.(owner.identityKey, 'resolved');
-          return;
-        }
-        const frozen = rebuildFrozenAction(intent, snapshot);
-        if (!frozen) {
-          setActionMessage('原命令已有收據；請重新讀取相同來源序號、日期與帳戶範圍後，再查詢原命令。');
-          return;
-        }
-        if (!initiateBrowserAction(frozen, owner)) return;
-        if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-        removeRecoveryAction(intent);
-        setAction(null);
-        setActionMessage(frozen.kind === 'export' ? '已發起匯出。' : '已發起列印。');
-        onNavigationStateChange?.(owner.identityKey, 'resolved');
-        return;
-      }
-      setActionMessage('伺服器確認尚無收據，使用同一命令編號與固定內容重試…');
-      if (isRecoveryIdentity(intent)) {
-        setActionMessage('尚無收據；原快照未保留，不會重送。請再次查詢原命令收據。');
-        return;
-      }
-      const frozen = rebuildFrozenAction(intent, snapshot);
-      if (!frozen) {
-        setActionMessage('尚無收據；請重新讀取相同來源序號、日期與帳戶範圍後，再以同一命令重試。');
-        return;
-      }
-      operationRef.current = false;
-      setOperationBusy(false);
-      await recordAction({ ...frozen, phase: 'pending' });
-      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-    } catch (error) {
-      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-      if (['LEASE_LOST', 'UNAUTHORIZED'].includes(errorCode(error) ?? '')) invalidateOwner(owner, error);
-      else setActionMessage(`仍無法確認原命令：${messageOf(error)}`);
-    } finally {
-      if (isCurrentCloudActionOwner(actionOwnerRef, owner)) {
-        operationRef.current = false;
-        setOperationBusy(false);
-      }
+    if (!intent || !isCurrentCloudActionOwner(actionOwnerRef, owner) || intent.scopeKey !== owner.scopeKey) return;
+    const operation = operationFor(intent);
+    if (!operation || !ownsOperation(operation) || operation.checking || operation.receipt) return;
+    if (!operation.attemptSettled && !operation.timedOut) return;
+    const action = operation.action;
+    const view = (phase: RecoveryPhase, canRetry: boolean): RecoveryView => ({
+      commandId: action.id, phase, timedOut: !operation.attemptSettled, canRetry,
+    });
+    if (!browserIsOnline()) {
+      operation.retryAuthorized = false;
+      setRecovery(view(operation.attemptSettled ? 'unknown' : 'submitting', false));
+      setActionMessage('目前離線；查詢錯誤不代表命令不存在，暫不可重試。');
+      return;
     }
-  }, [actionOwnerRef, actions, initiateBrowserAction, invalidateOwner, onNavigationStateChange, recordAction, snapshot, visibleAction]);
+    operation.checking = true;
+    const attemptAtStart = operation.attempt;
+    const settledAtStart = operation.attemptSettled && operation.attemptPromise === null;
+    operation.retryAuthorized = false;
+    const sequence = ++operation.querySequence;
+    setRecovery(view('checking', false));
+    setActionMessage('正在查詢原命令結果…');
+    const pending = (message: string, canRetry: boolean) => {
+      setRecovery(view(operation.attemptSettled ? 'unknown' : 'submitting', canRetry));
+      setActionMessage(message);
+    };
+    try {
+      const check = await actions.confirmPendingIntent(action.input, operation.datasetId, operation.uid);
+      if (!ownsOperation(operation) || operation.querySequence !== sequence
+        || operation.attempt !== attemptAtStart || operation.receipt) return;
+      if (check.status === 'matched') {
+        await settleWithReceipt(operation, check.receipt);
+        return;
+      }
+      if (check.status === 'different-dataset') {
+        pending('目前伺服器資料集已變更；原稽核登記尚未確認，請聯絡維護者，不可重試。', false);
+        return;
+      }
+      if (isRecoveryIdentity(action)) {
+        pending('尚無收據；原快照未保留，不會重送。請再次查詢原命令收據。', false);
+        return;
+      }
+      // Only a successful fresh not-found that began after the same attempt settled can allow an explicit retry.
+      const mayRetry = settledAtStart && operation.attemptSettled && operation.attemptPromise === null;
+      operation.retryAuthorized = mayRetry;
+      pending(mayRetry
+        ? '伺服器目前尚未找到這筆命令。沒有產生新的命令編號；確認後可明確選擇同編號重試。'
+        : settledAtStart
+          ? '原命令狀態在查詢期間改變；這次查詢不能授權重試。請重新查詢原命令。'
+          : operation.attemptSettled
+            ? '這次查詢開始時原命令仍在送出中；未找到結果不能授權重試。請在原命令結束後重新查詢。'
+            : '查詢尚未找到回執，但原命令仍在送出中；目前不能重試。請等待原命令結束後再查詢。', mayRetry);
+    } catch (error) {
+      if (!ownsOperation(operation) || operation.querySequence !== sequence || operation.receipt) return;
+      if (isAuthorizationLoss(error)) {
+        invalidateOwner(operation.owner, error);
+        return;
+      }
+      operation.retryAuthorized = false;
+      pending(queryFailureMessage(error), false);
+    } finally {
+      if (operationRef.current === operation && operation.querySequence === sequence) operation.checking = false;
+    }
+  };
 
+  const retryPending = () => {
+    const operation = operationRef.current;
+    if (!operation || !ownsOperation(operation) || !operation.attemptSettled || !operation.retryAuthorized
+      || operation.receipt || operation.checking || isRecoveryIdentity(operation.action)) return;
+    if (!browserIsOnline()) {
+      operation.retryAuthorized = false;
+      setRecovery(previous => (previous ? { ...previous, canRetry: false } : previous));
+      setActionMessage('目前離線，沒有重試命令；請恢復連線後重新查詢原命令。');
+      return;
+    }
+    operation.retryAuthorized = false;
+    void runAttempt(operation);
+  };
+
+  const statusNode = actionMessage ? <p role="status">{actionMessage}</p> : null;
   const selectedStudent = scopeStudentId ? candidateById.get(scopeStudentId) : undefined;
   const printAction = authorizedPrint?.scopeKey === scopeKey ? authorizedPrint : null;
 
@@ -749,11 +947,23 @@ export function CloudReportPage({
       </>}
 
       {visibleAction && <div className="cloud-report__recovery" role="region" aria-label="輸出命令確認">
+        <strong>{!recovery ? '結果確認中，請勿重複操作。'
+          : recovery.phase === 'checking' ? '正在查詢原命令結果…'
+            : recovery.phase === 'submitting'
+              ? recovery.timedOut ? '結果確認中，勿重新收款' : '命令送出中，請勿重複操作。'
+              : '結果確認中，請勿重複操作。'}</strong>
         <p>{isRecoveryIdentity(visibleAction) ? '有一筆先前輸出命令需要在目前帳戶與版本下重新確認。'
-          : `${visibleAction.phase === 'unknown' ? '輸出結果待確認' : '輸出命令處理中'}：${visibleAction.title} · ID ${visibleAction.id}`}</p>
-        <button type="button" disabled={operationBusy} onClick={() => void recoverAction()}>查詢原命令並以同 ID 復原</button>
+          : `${visibleAction.title} · ID ${visibleAction.id}`}</p>
+        {isRecoveryIdentity(visibleAction) && <p>命令編號 {visibleAction.id}</p>}
+        <div className="cloud-report__actions">
+          {(!recovery || recovery.phase === 'unknown' || (recovery.phase === 'submitting' && recovery.timedOut)) && (
+            <button type="button" onClick={() => void checkPending()}>查詢原命令結果</button>
+          )}
+          {recovery?.canRetry && <button type="button" onClick={retryPending}>以相同命令編號重試</button>}
+        </div>
+        {statusNode}
       </div>}
-      {actionMessage && <p role="status">{actionMessage}</p>}
+      {!visibleAction && statusNode}
 
     </section>
     {printAction && createPortal(
