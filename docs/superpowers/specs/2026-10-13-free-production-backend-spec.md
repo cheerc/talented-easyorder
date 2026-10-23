@@ -72,7 +72,9 @@ Google sign-in 後要求 `email_verified=true`、provider 為 Google，且 `oper
 - 同一 UID 的兩個分頁／電腦可操作同一份帳，視為同一帳號；Firestore revision 防衝突。任一頁「登出」釋放全帳號使用權，其餘頁必須回登入遮罩並清資料。此處限制的是同時活躍的 Google 身分，沒有把多人共用一個帳號偽稱為可辨識每個真人。
 - Auth token 不會因租約失效而立即撤銷；安全承諾是 **每次伺服器讀寫都檢查當下使用權**。無法收回使用者已看到／下載的資料。
 
-租約 Rules 狀態機（不使用業務 command）：維護工具先建唯一文件，`holderUid=null`、`epoch=0`，client create/delete 一律拒絕。每次 client update 只允許 `holderUid`、`epoch`、`updatedAt`，`updatedAt == request.time`，且呼叫者須為有效白名單；client 寫 `serverTimestamp()`，不得送本機產生的絕對時間。Acquire 只准舊 `holderUid == null` 或 `resource.data.updatedAt + duration.value(5, 'm') <= request.time`，新 `holderUid=auth.uid`、`epoch=舊值+1`。Renew 只准舊 `holderUid == auth.uid` 且 `resource.data.updatedAt + duration.value(5, 'm') > request.time`，`holderUid`／`epoch` 不變。Release 只准舊 `holderUid == auth.uid`，新 `holderUid=null`、`epoch=舊值+1`。Acquire／Renew／Release 的 client transaction 都先讀 server lease 並比對 caller 傳入的 `expectedEpoch`；不一致即在寫入前中止。此為 client 的 stale-view guard，`expectedEpoch` 不存在 lease 文件，也不是 Rules 可觀察條件。Rules 只根據 `resource.data` 的舊 holder／epoch、要求的新 holder／epoch 與 `updatedAt == request.time` 驗證狀態轉移；B 取得後舊 holder 已是 B，A 的 release 因 old-holder 檢查失敗。以上每種轉換都把 `updatedAt` 設為 `request.time`；其他狀態變更全部拒絕。維護復原只建立空租約，不從備份恢復占用狀態。
+租約 Rules 狀態機（不使用業務 command）：維護工具先建唯一文件，`holderUid=null`、`epoch=0`，client create/delete 一律拒絕。每次 client update 只允許 `holderUid`、`epoch`、`updatedAt`，`updatedAt == request.time`，且呼叫者須為有效白名單；client 寫 `serverTimestamp()`，不得送本機產生的絕對時間。Acquire 只准舊 `holderUid == null` 或 `resource.data.updatedAt + duration.value(5, 'm') <= request.time`，新 `holderUid=auth.uid`、`epoch=舊值+1`。Renew 只准舊 `holderUid == auth.uid` 且 `resource.data.updatedAt + duration.value(5, 'm') > request.time`，`holderUid`／`epoch` 不變。Release 只准舊 `holderUid == auth.uid`，新 `holderUid=null`、`epoch=舊值+1`。Acquire／Renew／Release 的 client transaction 都先讀 server lease 並比對 caller 傳入的 `expectedEpoch`；不一致即在寫入前中止。此為 client 的 stale-view guard，`expectedEpoch` 不存在 lease 文件，也不是 Rules 可觀察條件。Rules 根據 `resource.data` 的舊 holder／epoch、要求的新 holder／epoch 與 `updatedAt == request.time` 驗證狀態轉移（P13c1 起 `epoch` 改變另須同交易的 `accessEvents`，見下段）；B 取得後舊 holder 已是 B，A 的 release 因 old-holder 檢查失敗。以上每種轉換都把 `updatedAt` 設為 `request.time`；其他狀態變更全部拒絕。維護復原只建立空租約，不從備份恢復占用狀態。
+
+**P13c1 使用權事件（`accessEvents`）：**每次租約 `epoch` 改變（acquire、takeover、release）都必須在同一個 Firestore transaction／batch 內新建一筆 `accessEvents/{epoch}`，文件編號是十進位的新 `epoch`（不補零）。欄位固定為 `kind: 'acquire'|'takeover'|'release'`、`holderUid: string|null`、`previousHolderUid: string|null`、`actorUid`、`actorEmail`、`at: Timestamp`，不得有其他欄位。`kind` 由租約前後狀態決定：新 `holderUid == null` 為 `release`；舊 `holderUid == null` 為 `acquire`；其餘為 `takeover`（含同一 UID 在自己逾期後重新取得）。`holderUid`／`previousHolderUid` 必須等於租約新／舊 `holderUid`，`actorUid`／`actorEmail` 等於 `request.auth.uid`／`request.auth.token.email`，`at == request.time`。Renew 不改 `epoch`，不得夾帶事件。事件只能 create：update／delete 一律拒絕；get／list 限有效白名單。原子性由 Rules 雙向綁定：租約 update 在 `epoch` 改變時要求 `existsAfter(accessEvents/{新 epoch})`；事件 create 以 `get`／`getAfter` 讀租約並要求 `after.epoch == before.epoch + 1` 且與上列欄位一致，所以兩者不能單獨提交。租約 epoch 單調遞增，**維護復原建立的空租約 `epoch` 必須大於等於現有 `accessEvents` 的最大文件編號**；否則下一次 acquire 要建立的 `accessEvents/{epoch+1}` 已存在，會變成被拒絕的 update（fail closed，不覆蓋歷史，需維護者處理）。事件是使用權稽核紀錄，不是授權來源：業務 Rules 仍只看租約。
 
 Rules：讀 operator 僅可讀本人；有效白名單者可讀不含個資的 lease 占用狀態；每次業務讀取與業務寫入必須同時滿足 `operators/{uid}.active == true`、白名單 email／provider 吻合、`lease.holderUid == request.auth.uid`、`lease.updatedAt + duration.value(5, 'm') > request.time`；所有業務 command 還須 `leaseEpoch == lease.epoch`。寫入可透過新 command 的集中規則與每個投影的強制 counterpart 鏈證明上述條件，不能省略 auth 檢查。App 監聽 lease、停用／token 更新事件，失去使用權立即 unsubscribe、遮罩與清記憶體；被 Rules 拒絕時也做相同處理。UI 可用 server-confirmed `updatedAt` 計算顯示期限，但本機時鐘／倒數僅是提示；業務授權只由每次 Firestore Rules 對伺服器 `request.time` 的檢查決定。
 
@@ -86,6 +88,7 @@ Firestore 時間為伺服器 Timestamp，repository adapter 輸出 UTC ISO `…Z
 |---|---|---|
 | `operators/{uid}` | uid、email、displayName、active；維護者管理 | 取代舊 counter/admin 驗證 |
 | `system/accessLease` | §4 使用權 | AuthGate／登入交接 |
+| `accessEvents/{epoch}` | immutable：kind、holderUid、previousHolderUid、actorUid、actorEmail、at；編號等於租約新 epoch，與租約變更同交易寫入（§4.2） | 使用權稽核紀錄，P13d 稽核頁讀取；不是授權來源 |
 | `system/dataHead` | schemaVersion、datasetId、seq、lastCommandId、maintenance、goLiveDate | 全域 command 序號與復原隔離 |
 | `students/{studentId}` | studentId（UUID）、studentCode（正規化編號）、displayName、aliases、status、openingBalance `{amount,asOfDate,note,createdAt}`、currentBalance、createdAt、revision | `StudentAccount`；face 欄預設 none/0、不接受裝置寫入 |
 | `studentCodes/{studentCode}` | 唯一索引：studentId（UUID）、lastCommandId、updatedAt；保證 studentCode 不重複 | 唯一索引，CreateStudent 建立、ChangeStudentCode 原子換新刪舊 |
@@ -235,6 +238,8 @@ prototype 保留訓練用途。首次切換可下載舊練習快照作本機參�
 一份放公司受控電腦，一份複製到現有加密離線媒體；CheerC 為備份責任人、當班操作者執行。每日提醒未備份，首頁顯示最近已匯出 H，但下載事件不等於異地副本已存在，runbook 需人工確認。每日增量保留90天；每月在本機合併成完整 checkpoint＋完整歷史 command archive，**確認兩份副本且可還原後**才刪被涵蓋的舊增量；歷史 archive 不自動刪除。checkpoint不能丟更正前紀錄。
 
 免費備份不使用雲端排程；瀏覽器關閉不會自行備份。目標 RPO≤1營業日、RTO≤4小時（實測，不是服務SLA）；如需更低RPO，本人可收款高峰後多匯出一次。
+
+`accessEvents` 不屬於 P14 備份鏈：它不是 command，沒有 `seq`，不進 manifest 與重播，也不由備份還原。它是使用權稽核紀錄，復原後租約從空租約重新開始，舊事件留在原專案；在同一專案復原時須遵守 §4.2 的 epoch 下限。
 
 ### 9.3 復原
 
