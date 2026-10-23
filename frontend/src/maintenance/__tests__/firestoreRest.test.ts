@@ -62,7 +62,7 @@ describe('P15b REST value encoding (B15)', () => {
 
 describe('P15b target resolution (R2)', () => {
   it('uses the Emulator as owner for demo- projects and nothing else when FIRESTORE_EMULATOR_HOST is set', () => {
-    const emulatorTarget = () => resolveTarget('demo-easyorder-restore', { FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080' });
+    const target = resolveTarget('demo-easyorder-restore', { FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080' });
     expect(target).toMatchObject({ baseUrl: 'http://127.0.0.1:8080', emulator: true, authorization: 'Bearer owner' });
     expect(() => resolveTarget('easyorder-prod', { FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080', EASYORDER_ACCESS_TOKEN: 't' })).toThrow(TargetError);
   });

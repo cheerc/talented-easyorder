@@ -276,7 +276,8 @@ async function expectRestoredLikeSource(): Promise<void> {
   expect(stableJson({ ...target.head, maintenance: false })).toBe(stableJson(source.head));
 }
 
-describeWithEmulator('P15b init, restore and resume into a second project', () => {
+// Every case starts several child processes, each decrypting the chain (600,000 PBKDF2 rounds a package).
+describeWithEmulator('P15b init, restore and resume into a second project', { timeout: 120_000 }, () => {
   beforeEach(async () => {
     await targetEnv.clearFirestore();
     rmSync(progressFile(sourceHeadSeq()), { force: true });
@@ -319,9 +320,14 @@ describeWithEmulator('P15b init, restore and resume into a second project', () =
   it('B3: re-exporting the restored target gives the same records, projectionState and totals as the source', async () => {
     initTarget();
     expect(runCli(restoreArgs(['--execute'])).status).toBe(0);
-    const exportOf = (project: RulesTestEnvironment) => project.withSecurityRulesDisabled(async context => createCloudBackupRepository(
-      context.firestore() as unknown as Firestore, { currentUid: () => R02_OPERATOR.uid },
-    ).exportRange({ fromSeq: 0, generatedAt: '2026-10-23T06:00:00.000Z' }));
+    const exportOf = async (project: RulesTestEnvironment) => {
+      let exported: Awaited<ReturnType<ReturnType<typeof createCloudBackupRepository>['exportRange']>> | null = null;
+      await project.withSecurityRulesDisabled(async context => {
+        exported = await createCloudBackupRepository(context.firestore() as unknown as Firestore, { currentUid: () => R02_OPERATOR.uid })
+          .exportRange({ fromSeq: 0, generatedAt: '2026-10-23T06:00:00.000Z' });
+      });
+      return exported!;
+    };
     const [source, target] = [await exportOf(env), await exportOf(targetEnv)];
     expect(target.toSeq).toBe(source.toSeq);
     for (const key of ['records', 'projectionState', 'totals'] as const) expect(stableJson(target.manifest[key]), key).toBe(stableJson(source.manifest[key]));

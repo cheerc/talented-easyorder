@@ -1,5 +1,5 @@
 /** The real terminal, file system and clock behind `CliIo`. Nothing here is covered by unit tests; the Emulator spec runs it. */
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, rename, writeFile } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
 import { createInterface } from 'node:readline/promises';
 import type { CliIo } from './cli';
@@ -50,7 +50,12 @@ async function readFirstLine(): Promise<string> {
 export function createNodeIo(): CliIo {
   return {
     async readFile(path) { return new Uint8Array(await readFile(path)); },
-    async writeFile(path, data) { await writeFile(path, data, 'utf8'); },
+    /** Written beside the target and renamed, so a crash never leaves a half-written progress file. */
+    async writeFile(path, data) {
+      const temporary = `${path}.${process.pid}.tmp`;
+      await writeFile(temporary, data, 'utf8');
+      await rename(temporary, path);
+    },
     readPassword: () => (process.stdin.isTTY ? readHiddenLine() : readFirstLine()),
     stdout: text => { process.stdout.write(text); },
     stderr: text => { process.stderr.write(text); },
