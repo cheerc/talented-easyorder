@@ -372,7 +372,7 @@ function PaperTag({ tx }: { tx: CloudOrderTransactionRecord }) {
 
 function itemLabel(tx: CloudOrderTransactionRecord): string {
   if (tx.type === 'payment') return '繳費';
-  if (tx.type === 'refund') return `退款：${tx.note}`;
+  if (tx.type === 'refund') return `退款：${splitPaperNote(tx.note).text}`;
   if (tx.mealKind === 'bento') return `今日餐點：${tx.menuNameSnapshot}`;
   return `其他餐點：${tx.otherItemName ?? ''}`;
 }
