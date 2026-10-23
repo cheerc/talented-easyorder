@@ -107,12 +107,19 @@ service cloud.firestore {
         && start + duration.value(24, 'h') > request.time + duration.value(8, 'h');
     }
 
+    // P13d1: the paper number of a backfilled entry is a fixed prefix of its note (the reason of a cash movement),
+    // `紙本<1-20 英數或 ->：<備註>`; (?s) lets the text after it span lines. `text` is a string whenever the payload
+    // check ran before, and the length cap stays with that check.
+    function validPaperNote(text) {
+      return text.matches('(?s)^紙本[A-Za-z0-9-]{1,20}：.*');
+    }
+
     // P11c2a: the Taipei today, or a past day that StartBackfill marked and that never closed. The marker
     // (`backfillDays/{dayId}`, immutable) is only created for a day before today, so no date check is
     // needed here. Today short-circuits, so ordinary writes pay for no extra document access.
-    function validTransactionDay(dayId, day) {
+    function validTransactionDay(dayId, day, text) {
       return validCurrentTaipeiDate(dayId)
-        || (day.lastSettlementRevision == 0 && exists(/databases/$(database)/documents/backfillDays/$(dayId)));
+        || (validPaperNote(text) && day.lastSettlementRevision == 0 && exists(/databases/$(database)/documents/backfillDays/$(dayId)));
     }
 
     function validHead(head) {
@@ -830,7 +837,7 @@ service cloud.firestore {
         && tx.studentId == command.targets.studentId
         && tx.businessDate == command.targets.dayId
         && tx.businessDate >= head.goLiveDate
-        && validTransactionDay(tx.businessDate, dayBefore)
+        && validTransactionDay(tx.businessDate, dayBefore, tx.note)
         && tx.type == (order ? 'order' : 'payment')
         && tx.mealKind == (order ? command.payload.mealKind : null)
         && tx.mealPrice == (order ? command.payload.mealPrice : 0)
@@ -1093,7 +1100,7 @@ service cloud.firestore {
         && !exists(/databases/$(database)/documents/transactions/$(command.targets.transactionId))
         && dayBefore.status in ['open', 'reopened']
         && dayId >= head.goLiveDate
-        && validTransactionDay(dayId, dayBefore)
+        && validTransactionDay(dayId, dayBefore, command.payload.reason)
         && dayAfter.revision == dayBefore.revision + 1
         && dayAfter.lastCommandId == commandId
         && dayAfter.updatedAt == request.time
@@ -1740,6 +1747,8 @@ service cloud.firestore {
         && after.paidAmount == payload.paidAmount
         && after.amount == payload.amount
         && after.note == payload.note
+        // P13d1: a note that carries a paper number keeps that same number (only the text after it changes).
+        && (!validPaperNote(before.note) || (validPaperNote(after.note) && after.note.split('：')[0] == before.note.split('：')[0]))
         && (before.type == 'refund'
           ? payload.mealPrice == 0 && payload.paidAmount == 0 && payload.amount >= 1 && payload.note.size() >= 1
           : payload.amount == payload.paidAmount - payload.mealPrice
@@ -2135,7 +2144,7 @@ service cloud.firestore {
           || (command.kind == 'CreateCashMovement'
             && validCashMovementPayload(command.payload)
             && command.before.day.status in ['open', 'reopened']
-            && validTransactionDay(command.targets.dayId, command.before.day)
+            && validTransactionDay(command.targets.dayId, command.before.day, command.payload.reason)
             && command.targets.dayId >= command.before.head.goLiveDate
             && validCashMovementTransactionDoc(after, commandId, command, command.before.head.seq + 1))
           || (command.kind == 'CreateRefund'
