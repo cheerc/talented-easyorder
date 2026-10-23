@@ -641,6 +641,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
           await page.getByLabel('交易呈現方式').selectOption(mode);
           const { ids: uiIds, rowCount: uiRowCount } = await collectUiIds();
           expect(uiIds).toHaveLength(printScope.expectedRows);
+          await expect(page.locator('.cloud-report__paper-tag').first()).toContainText('紙本 P12C');
           expect(new Set(uiIds).size).toBe(printScope.expectedRows);
           const reportBeforeExport = await page.getByTestId('report-ready').innerText();
           const exportSourceSeq = Number(reportBeforeExport.match(/H=(\d+)/)?.[1]);
@@ -654,6 +655,9 @@ test.describe('P12c cloud report and account history acceptance', () => {
           const csv = await readFile(csvPath, 'utf8');
           const csvRows = parseCsv(csv);
           expect(csvRows[0]).toContain('source_seq');
+          // P13d2: the paper number is the last CSV column, and the backfilled rows carry it.
+          expect(csvRows[0].at(-1)).toBe('paper_refs');
+          expect(csvRows.slice(1).some(row => row.at(-1) === 'P12C')).toBe(true);
           const csvIds = exportedTransactionIds(csvRows);
           expect(csvIds).toHaveLength(printScope.expectedRows);
           expect(csvIds).toEqual(uiIds);
