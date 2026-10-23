@@ -29,6 +29,7 @@ import {
   type RecordCloudPrintInput,
 } from '../../firebase/cloudReportActionRepository';
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
+import { paperRefsIn, splitPaperNote } from '../../domain/paperRef';
 import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerToken } from './useCloudActionOwner';
 import './CloudReportPage.css';
 
@@ -964,7 +965,9 @@ export function CloudReportPage({
                 <td>{money(row.amount)} · 餐費 {money(row.mealPrice)} · 收款 {money(row.paidAmount)}{merged && row.orderCount ? ` · ${row.orderCount} 筆訂餐／${row.bentoOrderCount} 份便當` : ''}</td>
                 <td>{row.studentId === '__cashier__' ? '不適用' : balance === undefined ? '未驗證' : money(balance)}</td>
                 <td>{raw.map(item => <div key={item.transactionId}>{item.operatorUid} · {taipeiTime(item.createdAt)}</div>)}</td>
-                <td>{row.backfilled ? '回填' : '—'}{raw.some(item => item.status === 'voided') ? ' · 保留作廢列' : ''}{raw.map(item => item.note && <small key={`note:${item.transactionId}`}>{item.note}</small>)}</td>
+                <td>{row.backfilled ? '回填' : '—'}{raw.some(item => item.status === 'voided') ? ' · 保留作廢列' : ''}{paperRefsIn(raw.map(item => item.note)).length > 0 && <span data-testid={`report-paper-refs-${row.transactionId}`}>
+                  {paperRefsIn(raw.map(item => item.note)).map(paperRef => <span key={paperRef} className="cloud-report__paper-tag">紙本 {paperRef}</span>)}</span>}
+                  {raw.map(item => { const { text } = splitPaperNote(item.note); return text && <small key={`note:${item.transactionId}`}>{text}</small>; })}</td>
               </tr>;
             })}</tbody></table></div>
           <div className="cloud-report__pager"><button type="button" disabled={controlsLocked || pageNumber === 0} onClick={() => setPageNumber(value => value - 1)}>上一頁</button>

@@ -10,6 +10,7 @@ import { createCloudReadRepository, type CloudReadRepositoryError } from '../../
 import { createCloudStudentRepository, listCloudStudents, type CloudStudentRecord } from '../../firebase/cloudStudentRepository';
 import { createCloudOrderRepository, type CloudTransactionMutationInput } from '../../firebase/cloudOrderRepository';
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
+import { composePaperRefNote, splitPaperNote } from '../../domain/paperRef';
 import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerToken } from './useCloudActionOwner';
 import './CloudAccountHistoryPage.css';
 
@@ -426,7 +427,8 @@ export function CloudAccountHistoryPage({
     setMealPriceText(String(transaction.mealPrice));
     setPaidAmountText(String(transaction.paidAmount));
     setRefundAmountText(String(transaction.amount));
-    setNote(transaction.note);
+    // A paper number in the stored note stays locked (Rules keep it); the form edits only the text after it.
+    setNote(splitPaperNote(transaction.note).text);
     setReason('');
     setFormError('');
   }, [canMutate, visibleFrozen]);
@@ -750,6 +752,11 @@ export function CloudAccountHistoryPage({
       return;
     }
 
+    const lockedPaperRef = splitPaperNote(draft.transaction.note).paperRef;
+    const composedNote = lockedPaperRef
+      ? composePaperRefNote({ paperRef: lockedPaperRef, text: note, required: true })
+      : { ok: true as const, note: note.trim() };
+    if (!composedNote.ok) { setFormError(composedNote.error); return; }
     let payload: CorrectTransactionPayload;
     if (draft.transaction.type === 'refund') {
       const amount = integerText(refundAmountText, { allowZero: false });
@@ -757,12 +764,12 @@ export function CloudAccountHistoryPage({
         setFormError('退款更正金額必須是正整數且不可增加；說明不可空白。');
         return;
       }
-      const correction: CorrectTransactionPayload = { mealPrice: 0, paidAmount: 0, amount, note: note.trim(), reason: reasonValue };
+      const correction: CorrectTransactionPayload = { mealPrice: 0, paidAmount: 0, amount, note: composedNote.note, reason: reasonValue };
       payload = correction;
     } else if (draft.transaction.type === 'payment') {
       const paidAmount = integerText(paidAmountText, { allowZero: false });
       if (paidAmount === null) { setFormError('收款金額必須是 1 到 1,000,000,000 的整數。'); return; }
-      payload = { mealPrice: 0, paidAmount, amount: paidAmount, note: note.trim(), reason: reasonValue };
+      payload = { mealPrice: 0, paidAmount, amount: paidAmount, note: composedNote.note, reason: reasonValue };
     } else {
       const mealPrice = integerText(mealPriceText);
       const paidAmount = integerText(paidAmountText);
@@ -770,7 +777,7 @@ export function CloudAccountHistoryPage({
         setFormError('餐費與收款必須是 0 到 1,000,000 的整數。');
         return;
       }
-      payload = { mealPrice, paidAmount, amount: paidAmount - mealPrice, note: note.trim(), reason: reasonValue };
+      payload = { mealPrice, paidAmount, amount: paidAmount - mealPrice, note: composedNote.note, reason: reasonValue };
     }
     const input: CloudTransactionMutationInput = {
       ...common, kind: 'CorrectTransaction', payload,
@@ -834,7 +841,8 @@ export function CloudAccountHistoryPage({
                 <td>{transaction.type} · {transaction.transactionId}<details><summary>交易與稽核詳情</summary>
                   <dl><dt>最後修改命令</dt><dd>{transaction.lastCommandId}</dd><dt>建立者</dt><dd>{transaction.operatorUid} · {transaction.operatorEmail}</dd>
                     <dt>當時菜單</dt><dd>{transaction.menuNameSnapshot} · {transaction.vendorNameSnapshot}</dd><dt>回填</dt><dd>{transaction.backfilled ? '是' : '否'}</dd>
-                    <dt>交易備註</dt><dd>{transaction.note || '—'}</dd></dl>
+                    {splitPaperNote(transaction.note).paperRef && <><dt>紙本號</dt><dd data-testid="history-paper-ref">{splitPaperNote(transaction.note).paperRef}</dd></>}
+                    <dt>交易備註</dt><dd>{splitPaperNote(transaction.note).text || '—'}</dd></dl>
                   {snapshot.audit.rows.filter(row => row.studentId === selectedId && (row.commandId === transaction.lastCommandId
                     || JSON.stringify(row.before).includes(transaction.transactionId) || JSON.stringify(row.after).includes(transaction.transactionId)))
                     .map(row => <article key={row.commandId}><strong>{row.kind} · {row.commandId} · seq {row.seq} · {row.dateBasis === 'committed-at' ? '按記錄日期歸屬' : '按營業日歸屬'}</strong>
@@ -887,6 +895,7 @@ export function CloudAccountHistoryPage({
         </>}
         {draft.kind === 'correct' && draft.transaction.type === 'payment' && <label>收款金額<input aria-label="更正收款金額" inputMode="numeric" disabled={Boolean(visibleFrozen)} value={paidAmountText} onChange={event => setPaidAmountText(event.target.value)} /></label>}
         {draft.kind === 'correct' && draft.transaction.type === 'refund' && <label>退款金額<input aria-label="更正退款金額" inputMode="numeric" disabled={Boolean(visibleFrozen)} value={refundAmountText} onChange={event => setRefundAmountText(event.target.value)} /></label>}
+        {draft.kind === 'correct' && splitPaperNote(draft.transaction.note).paperRef && <p data-testid="correction-paper-ref">紙本號 {splitPaperNote(draft.transaction.note).paperRef}（更正時不能修改）</p>}
         {draft.kind === 'correct' && <label>交易備註<input aria-label="交易備註" disabled={Boolean(visibleFrozen)} value={note} onChange={event => setNote(event.target.value)} /></label>}
         <label>更正理由<input aria-label="更正理由" disabled={Boolean(visibleFrozen)} value={reason} onChange={event => setReason(event.target.value)} required /></label>
         <button type="submit" disabled={Boolean(visibleFrozen)}>確認送出</button>

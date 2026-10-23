@@ -27,6 +27,7 @@ import {
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
 import type { CloudStudentRecord } from '../../firebase/cloudStudentRepository';
 import { isBackfilled, type CloudBackfillDay } from '../../firebase/cloudDayCloseRepository';
+import { composePaperRefNote, splitPaperNote } from '../../domain/paperRef';
 import { formatTaipeiTime } from '../../utils/dateTime';
 import { cloudPendingJournalForRepository, type PendingCommandIdentity } from '../../firebase/cloudPendingJournal';
 import './CloudOrdersPage.css';
@@ -71,7 +72,10 @@ interface EditDraft {
   mealPriceText: string;
   paidAmountText: string;
   amountText: string;
+  /** The text after the paper number when the row has one; the whole note otherwise. */
   note: string;
+  /** The paper number of the row (P13d2). It is locked: Rules keep it through every correction. */
+  paperRef: string | null;
   reason: string;
 }
 
@@ -137,12 +141,15 @@ interface OrdersPageState {
   otherPriceText: string;
   paidAmountText: string;
   note: string;
+  /** Paper number of the order or payment being entered (P13d2). */
+  paperRefText: string;
   confirmDuplicateOpen: boolean;
   paymentDetailsOpen: boolean;
   cashOpen: boolean;
   cashDirection: 'expense' | 'income';
   cashAmountText: string;
   cashReason: string;
+  cashPaperRefText: string;
   /** P09b：W 面板內的退款框；確認對話框開著時才送出。 */
   refundOpen: boolean;
   refundAmountText: string;
@@ -161,12 +168,14 @@ const freshDraft = () => ({
   otherPriceText: '',
   paidAmountText: '',
   note: '',
+  paperRefText: '',
   confirmDuplicateOpen: false,
   paymentDetailsOpen: false,
   cashOpen: false,
   cashDirection: 'expense' as const,
   cashAmountText: '',
   cashReason: '',
+  cashPaperRefText: '',
   refundOpen: false,
   refundAmountText: '',
   refundReason: '',
@@ -355,6 +364,12 @@ function newId(): string | null {
   }
 }
 
+/** The paper number of a row as its own tag (P13d2); null when the row has none. */
+function PaperTag({ tx }: { tx: CloudOrderTransactionRecord }) {
+  const { paperRef } = splitPaperNote(tx.note);
+  return paperRef ? <span className="cloud-orders__paper-tag" data-testid={`paper-tag-${tx.transactionId}`}>紙本 {paperRef}</span> : null;
+}
+
 function itemLabel(tx: CloudOrderTransactionRecord): string {
   if (tx.type === 'payment') return '繳費';
   if (tx.type === 'refund') return `退款：${tx.note}`;
@@ -372,6 +387,7 @@ function cashierLabel(tx: CloudOrderTransactionRecord): string {
 }
 
 function editDraftFor(tx: CloudOrderTransactionRecord, action: EditAction): EditDraft {
+  const { paperRef, text } = splitPaperNote(tx.note);
   return {
     transactionId: tx.transactionId,
     action,
@@ -379,7 +395,8 @@ function editDraftFor(tx: CloudOrderTransactionRecord, action: EditAction): Edit
     paidAmountText: String(tx.paidAmount),
     amountText: tx.type === 'refund' ? String(tx.amount)
       : tx.type === 'expense' ? String(tx.paidAmount > 0 ? tx.paidAmount : tx.mealPrice) : '',
-    note: tx.note,
+    note: text,
+    paperRef,
     reason: '',
   };
 }
@@ -390,7 +407,16 @@ function editMutation(tx: CloudOrderTransactionRecord, edit: EditDraft): Transac
   if (edit.action === 'void') return { kind: 'VoidTransaction', payload: { reason } };
   if (edit.action === 'cancel-keep') return { kind: 'CancelKeepDeposit', payload: { reason } };
   if (edit.action === 'cancel-refund') return { kind: 'CancelRefund', payload: { reason } };
-  const note = edit.note.trim();
+  let note = edit.note.trim();
+  if (edit.paperRef) {
+    // The number is locked (Rules keep it); only the text after it was edited. Expense and refund rows keep a reason.
+    if (!note && (tx.type === 'expense' || tx.type === 'refund')) {
+      return { error: tx.type === 'refund' ? '更正後的退款原因不能空白' : '更正後的收支原因不能空白' };
+    }
+    const composed = composePaperRefNote({ paperRef: edit.paperRef, text: note, required: true });
+    if (!composed.ok) return { error: composed.error };
+    note = composed.note;
+  }
   const amountError = { error: '金額必須是 0 到 1,000,000 的整數' };
   if (tx.type === 'order') {
     const mealPrice = parseAmount(edit.mealPriceText, null);
@@ -1128,6 +1154,11 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       setPageStateRaw(previous => ({ ...previous, confirmDuplicateOpen: false, actionError: '實收金額必須是 0 到 1,000,000 的整數' }));
       return;
     }
+    const composed = composePaperRefNote({ paperRef: page.paperRefText, text: page.note, required: backfillView });
+    if (!composed.ok) {
+      setPageStateRaw(previous => ({ ...previous, confirmDuplicateOpen: false, actionError: composed.error }));
+      return;
+    }
     const commandId = newId();
     const transactionId = newId();
     if (!commandId || !transactionId) {
@@ -1147,7 +1178,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       paidAmount,
       menuRevision: mode === 'bento' ? todayMenu!.revision : null,
       otherItemName: mode === 'other' ? otherItemName : null,
-      note: page.note.trim(),
+      note: composed.note,
       label: `${selectedStudent.studentCode} ${selectedStudent.displayName}`,
       datasetId: snapshot.datasetId,
     };
@@ -1165,6 +1196,11 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       setPageStateRaw(previous => ({ ...previous, actionError: '繳費金額必須是 1 到 1,000,000 的整數' }));
       return;
     }
+    const composed = composePaperRefNote({ paperRef: page.paperRefText, text: page.note, required: backfillView });
+    if (!composed.ok) {
+      setPageStateRaw(previous => ({ ...previous, actionError: composed.error }));
+      return;
+    }
     const commandId = newId();
     const transactionId = newId();
     if (!commandId || !transactionId) {
@@ -1180,7 +1216,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       expectedStudentRevision: selectedStudent.revision,
       expectedDayRevision: day.revision,
       paidAmount: amount,
-      note: page.note.trim(),
+      note: composed.note,
       label: `${selectedStudent.studentCode} ${selectedStudent.displayName}`,
       datasetId: snapshot.datasetId,
     };
@@ -1199,6 +1235,11 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       setPageStateRaw(previous => ({ ...previous, actionError: '櫃台收支原因必填，且不能超過 500 字' }));
       return;
     }
+    const composed = composePaperRefNote({ paperRef: page.cashPaperRefText, text: reason, required: backfillView });
+    if (!composed.ok) {
+      setPageStateRaw(previous => ({ ...previous, actionError: composed.error }));
+      return;
+    }
     const commandId = newId();
     const transactionId = newId();
     if (!commandId || !transactionId) {
@@ -1214,7 +1255,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       expectedDayRevision: day.revision,
       direction,
       amount: cashAmount,
-      reason,
+      reason: composed.note,
       label: `櫃台${direction === 'income' ? '收入' : '支出'} $${cashAmount}`,
       datasetId: snapshot.datasetId,
     };
@@ -1399,6 +1440,12 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       return;
     }
     if (selectedOrderCount > 0) {
+      // Say what is wrong with the paper number before asking the operator to confirm anything.
+      const composed = composePaperRefNote({ paperRef: page.paperRefText, text: page.note, required: backfillView });
+      if (!composed.ok) {
+        setPageStateRaw(previous => ({ ...previous, actionError: composed.error }));
+        return;
+      }
       setPageStateRaw(previous => ({ ...previous, confirmDuplicateOpen: true }));
       return;
     }
@@ -1755,6 +1802,21 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                         disabled={busy}
                       />
                     </div>
+                    <div className="cloud-orders__field">
+                      <label htmlFor="cash-paper-ref">{backfillView ? '紙本號（必填）' : '紙本號（選填）'}</label>
+                      <input
+                        id="cash-paper-ref"
+                        type="text"
+                        placeholder="例如：A-0123"
+                        value={page.cashPaperRefText}
+                        onChange={event => {
+                          const value = event.target.value;
+                          setPageStateRaw(previous => ({ ...previous, cashPaperRefText: value }));
+                        }}
+                        maxLength={20}
+                        disabled={busy}
+                      />
+                    </div>
                   </div>
                   {page.cashDirection === 'expense' && (
                     <div className="cloud-orders__actions">
@@ -1890,6 +1952,21 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                           const value = event.target.value;
                           setPageStateRaw(previous => ({ ...previous, paidAmountText: value }));
                         }}
+                        disabled={busy}
+                      />
+                    </div>
+                    <div className="cloud-orders__field">
+                      <label htmlFor="paper-ref">{backfillView ? '紙本號（必填）' : '紙本號（選填）'}</label>
+                      <input
+                        id="paper-ref"
+                        type="text"
+                        placeholder="例如：A-0123"
+                        value={page.paperRefText}
+                        onChange={event => {
+                          const value = event.target.value;
+                          setPageStateRaw(previous => ({ ...previous, paperRefText: value }));
+                        }}
+                        maxLength={20}
                         disabled={busy}
                       />
                     </div>
@@ -2074,7 +2151,8 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                         data-testid={`cash-row-${tx.transactionId}`}
                       >
                         <span>{formatTaipeiTime(tx.createdAt)} {tx.paidAmount > 0 ? '收入' : '支出'} ${tx.paidAmount > 0 ? tx.paidAmount : tx.mealPrice}</span>
-                        <span className="cloud-orders__recent-badge">{tx.status === 'voided' ? '已作廢' : tx.note}</span>
+                        <span className="cloud-orders__recent-badge">{tx.status === 'voided' ? '已作廢' : splitPaperNote(tx.note).text}</span>
+                        <PaperTag tx={tx} />
                         {txBackfilled(tx) && <span className="cloud-orders__backfill-tag" data-testid={`backfill-tag-${tx.transactionId}`}>回填</span>}
                         {tx.status === 'active' && (
                           <span className="cloud-orders__row-actions">
@@ -2255,6 +2333,9 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                       />
                     </div>
                   )}
+                  {page.edit.paperRef && (
+                    <p className="cloud-orders__muted" data-testid="edit-paper-ref">紙本號 {page.edit.paperRef}（更正時不能修改）</p>
+                  )}
                   <div className="cloud-orders__field">
                     <label htmlFor="edit-note">
                       {editTransaction.type === 'refund' ? '退款原因' : editTransaction.type === 'expense' ? '收支原因' : '備註'}
@@ -2346,6 +2427,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                         {itemLabel(tx)}
                         {tx.status === 'voided' && <span className="cloud-orders__student-badge">已作廢</span>}
                         {txBackfilled(tx) && <span className="cloud-orders__backfill-tag" data-testid={`backfill-tag-${tx.transactionId}`}>回填</span>}
+                        <PaperTag tx={tx} />
                       </td>
                       <td>${tx.mealPrice}</td>
                       <td>${tx.paidAmount}</td>
