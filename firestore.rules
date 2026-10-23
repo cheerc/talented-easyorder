@@ -34,6 +34,21 @@ service cloud.firestore {
         && lease.updatedAt + duration.value(5, 'm') > request.time;
     }
 
+    function accessEventCreate(eventId, event) {
+      let before = get(/databases/$(database)/documents/system/accessLease).data;
+      let after = getAfter(/databases/$(database)/documents/system/accessLease).data;
+      return approvedOperator()
+        && exactMap(event, ['kind', 'holderUid', 'previousHolderUid', 'actorUid', 'actorEmail', 'at'])
+        && after.epoch == before.epoch + 1
+        && eventId == string(after.epoch)
+        && event.holderUid == after.holderUid
+        && event.previousHolderUid == before.holderUid
+        && event.actorUid == request.auth.uid
+        && event.actorEmail == request.auth.token.email
+        && event.at == request.time
+        && event.kind == (after.holderUid == null ? 'release' : (before.holderUid == null ? 'acquire' : 'takeover'));
+    }
+
     function exactMap(value, keys) {
       return value is map && value.keys().hasOnly(keys);
     }
@@ -2170,7 +2185,9 @@ service cloud.firestore {
       allow list, create, update, delete: if false;
     }
 
-    // P04 global lease state machine.
+    // P04 global lease state machine. P13c1: every epoch change (acquire, takeover, release) must commit together
+    // with its accessEvents/{new epoch} record; a renew keeps the epoch and has no event. The record must not exist
+    // before the commit: `existsAfter` alone would also be true for a stale record that this commit did not write.
     match /system/accessLease {
       allow get: if approvedOperator();
       allow list, create, delete: if false;
@@ -2188,7 +2205,19 @@ service cloud.firestore {
           || (resource.data.holderUid == request.auth.uid
             && request.resource.data.holderUid == null
             && request.resource.data.epoch == resource.data.epoch + 1)
-        );
+        )
+        && (request.resource.data.epoch == resource.data.epoch
+          || (!exists(/databases/$(database)/documents/accessEvents/$(string(request.resource.data.epoch)))
+            && existsAfter(/databases/$(database)/documents/accessEvents/$(string(request.resource.data.epoch)))));
+    }
+
+    // P13c1 access history: one immutable record per epoch change, bound to the lease transition in the same commit.
+    // `get` is the lease before the commit and `getAfter` the lease after it, so a record can only exist next to
+    // exactly one epoch step; the id is that new epoch, which also makes a replayed or duplicated record impossible.
+    match /accessEvents/{eventId} {
+      allow get, list: if approvedOperator();
+      allow update, delete: if false;
+      allow create: if accessEventCreate(eventId, request.resource.data);
     }
 
     match /system/dataHead {

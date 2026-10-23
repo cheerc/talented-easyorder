@@ -13,8 +13,12 @@ import {
   serverTimestamp,
   type Firestore,
 } from 'firebase/firestore';
+import type { CloudAccessEventKind } from './firestoreSchema';
 
 export const LEASE_DOC_PATH = 'system/accessLease';
+
+/** P13c1: one immutable record per epoch change; the document id is the new epoch. */
+export const ACCESS_EVENTS_COLLECTION = 'accessEvents';
 
 /** 租約有效時長：5 分鐘 */
 export const LEASE_DURATION_MS = 5 * 60 * 1000;
@@ -193,6 +197,20 @@ async function confirmCommittedLease(
 }
 
 /**
+ * The access record of one epoch change, written in the same transaction as the lease update. Rules bind the two
+ * (`existsAfter` on the lease, `get`/`getAfter` on the event), so neither can commit without the other.
+ */
+function accessEventFor(
+  kind: CloudAccessEventKind,
+  holderUid: string | null,
+  previousHolderUid: string | null,
+  actorUid: string,
+  actorEmail: string,
+) {
+  return { kind, holderUid, previousHolderUid, actorUid, actorEmail, at: serverTimestamp() };
+}
+
+/**
  * Acquire always reaches Firestore Rules. Local time is never used to decide whether
  * another holder has expired; Rules compare the old timestamp with request.time.
  */
@@ -200,8 +218,10 @@ export async function acquireLease(
   db: Firestore,
   uid: string,
   expectedEpoch: number,
+  actorEmail: string,
 ): Promise<LeaseResult> {
   if (!uid || !uid.trim()) throw new Error('acquireLease 要求有效 uid');
+  if (!actorEmail || !actorEmail.trim()) throw new Error('acquireLease 要求有效 actorEmail');
   validateEpochArgument(expectedEpoch);
 
   try {
@@ -221,13 +241,19 @@ export async function acquireLease(
         return { status: 'lost' as const, message: '租約 epoch 已達安全上限，拒絕更新' };
       }
 
-      // The Rules decide whether this holder is null/expired using request.time.
+      // The Rules decide whether this holder is null/expired using request.time. The document the transaction read
+      // only tells the record which kind it is; Rules re-derive the kind from the lease before and after.
+      const newEpoch = data.epoch + 1;
       tx.update(leaseRef, {
         holderUid: uid,
-        epoch: data.epoch + 1,
+        epoch: newEpoch,
         updatedAt: serverTimestamp(),
       });
-      return { status: 'pending' as const, epoch: data.epoch + 1 };
+      tx.set(
+        doc(db, ACCESS_EVENTS_COLLECTION, String(newEpoch)),
+        accessEventFor(data.holderUid === null ? 'acquire' : 'takeover', uid, data.holderUid, uid, actorEmail),
+      );
+      return { status: 'pending' as const, epoch: newEpoch };
     });
 
     if (result.status !== 'pending') return result;
@@ -290,8 +316,9 @@ export async function releaseLease(
   db: Firestore,
   uid: string,
   expectedEpoch: number,
+  actorEmail: string,
 ): Promise<boolean> {
-  if (!uid || !uid.trim()) return false;
+  if (!uid || !uid.trim() || !actorEmail || !actorEmail.trim()) return false;
   try {
     validateEpochArgument(expectedEpoch);
     const leaseRef = doc(db, LEASE_DOC_PATH);
@@ -305,12 +332,17 @@ export async function releaseLease(
         return { status: 'not_released' as const };
       }
 
+      const newEpoch = data.epoch + 1;
       tx.update(leaseRef, {
         holderUid: null,
-        epoch: data.epoch + 1,
+        epoch: newEpoch,
         updatedAt: serverTimestamp(),
       });
-      return { status: 'pending' as const, epoch: data.epoch + 1 };
+      tx.set(
+        doc(db, ACCESS_EVENTS_COLLECTION, String(newEpoch)),
+        accessEventFor('release', null, uid, uid, actorEmail),
+      );
+      return { status: 'pending' as const, epoch: newEpoch };
     });
     if (result.status !== 'pending') return false;
 

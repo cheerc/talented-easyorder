@@ -322,7 +322,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    const result = await apiAcquireLease(fb.db, uid, observed.epoch);
+    const result = await apiAcquireLease(fb.db, uid, observed.epoch, startingAccess.profile.email);
     if (!isCurrentAccess()) return { status: 'lost', message: '帳號或租約狀態已變更，請重新確認' };
     if (result.status === 'acquired') {
       confirmedEpochRef.current = result.epoch;
@@ -364,7 +364,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       const current = accessRef.current;
       return leaseGenerationRef.current === generation && current.ok && current.profile.uid === uid;
     };
-    const released = await apiReleaseLease(fb.db, uid, epoch);
+    const released = await apiReleaseLease(fb.db, uid, epoch, startingAccess.profile.email);
     if (!isCurrentAccess()) return released;
     if (released) {
       confirmedEpochRef.current = null;

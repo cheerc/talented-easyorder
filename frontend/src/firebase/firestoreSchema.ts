@@ -75,6 +75,18 @@ export interface CloudAccessLeaseDoc {
   updatedAt: FirestoreTimestamp;
 }
 
+export type CloudAccessEventKind = 'acquire' | 'takeover' | 'release';
+
+/** accessEvents/{epoch}: immutable record of one lease epoch change; the document id is the new epoch. */
+export interface CloudAccessEventDoc {
+  kind: CloudAccessEventKind;
+  holderUid: string | null;
+  previousHolderUid: string | null;
+  actorUid: string;
+  actorEmail: string;
+  at: FirestoreTimestamp;
+}
+
 /** system/dataHead */
 export interface CloudDataHeadDoc {
   schemaVersion: 1;

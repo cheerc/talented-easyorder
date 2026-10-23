@@ -891,3 +891,31 @@ On the same candidate Rules hash, maximum-payload `RecordExport` command-create 
 The isolated causal matrix verified valid controls and then removed one guard at a time. Original Rules rejected the malformed source sequence, scope binding, actor, committed time, and before/after head bindings while keeping head and command unchanged; each corresponding mutated Rules candidate accepted that malformed command. This shows the raw denials were not caused solely by expression limits. The standalone probe artifacts were kept under `/tmp/p12b-cap-diagnosis-e12afbf-20261019`; repository Emulator tests independently retain the raw attack and atomic-unchanged assertions.
 
 The first column of mutants ran with `EASYORDER_TEST_RULES_PATH` pointing at a mutated copy of `firestore.rules` and `cloudDayClose.spec.ts -t P11c4`; backup mutants edited `cloudBackup.ts` / `cloudCommandSchema.ts` temporarily (restored after each run) and ran `cloudBackup.spec.ts -t 'post-close entry'`.
+
+## P13c1 — accessEvents Rules budget
+
+Rules SHA-256: main (#539 base `b879dd2`) `e6fd1f2dc41f7e8568e95a12186e98165fcee3a274b5fc16ccd09f9b4dcde526`; branch (after the r1 rework) `8bc9497cacd7dd6129cb5b3229f43e52fcde6db848f6c9c81d7c86ae6ea190f2`; the first candidate `4aedcbf286d1b003bf2ae71a01a5d7d36dc330fb5f0f52c3d02ac456c743bc2f` had only `existsAfter`. The change touches only `system/accessLease` update (one added `epoch`-changed → `!exists(accessEvents/{epoch}) && existsAfter(accessEvents/{epoch})` clause; `!exists` was added in the r1 rework because `existsAfter` alone is true for a stale event that the commit did not write) and a new `accessEvents/{eventId}` match with `accessEventCreate`. No other rule, function or anchor changed, so the 13 earlier fixed anchors were not re-measured.
+
+### Static access-call budget
+
+| Operation | Rules reads | Notes |
+|---|---:|---|
+| Lease update that changes `epoch` (acquire, takeover, release) | `approvedOperator` operator `get`, `exists(accessEvents/{epoch})`, `existsAfter(accessEvents/{epoch})` | 3 access calls (`resource` is free); the event `set` makes the commit write 2 documents. |
+| Lease renew | `approvedOperator` operator `get` | unchanged from main: the `existsAfter` clause short-circuits when `epoch` is unchanged. |
+| `accessEvents` create | `approvedOperator` operator `get`, `get` lease, `getAfter` lease | 3 access calls. |
+
+Both are far under the 20-access-call limit per request.
+
+### Expression headroom (probe tool `/mnt/project-files/tools/rules-probe`, bisect of `1 == 1 && ` terms at one anchor against a positive Emulator case)
+
+Two anchors were added to `mk.py`: `leaseUpdate` (the `allow update` of `system/accessLease`) and `accessEventCreate` (the `allow create` of `accessEvents`). Each row runs the same positive case on main and on the branch where the case exists on both; `accessEvents` does not exist on main, so the event anchor has branch rows only. The main row uses the unmodified main `activeAccountLease.spec.ts` and `activeAccountLease.ts`, because the new writer legitimately needs the new Rules.
+
+| Anchor / case | main `+lo / +hi` | branch `+lo / +hi` |
+|---|---:|---:|
+| `leaseUpdate` / `A02.5` (release then takeover, both epoch changes) | +94 / +95 | +93 / +94 |
+| `leaseUpdate` / `E04` (writer release with its event) | n/a | +93 / +94 |
+| `accessEventCreate` / `E01` (acquire event) | n/a | +97 / +98 |
+| `accessEventCreate` / `E02` (takeover event) | n/a | +97 / +98 |
+| `accessEventCreate` / `E04` (release event) | n/a | +97 / +98 |
+
+The new clause costs exactly one expression term on the lease update (+94 → +93). The r1 rework (`!exists` added) was re-measured with the same cases: before the rework (`existsAfter` only) `+93 / +94`, after `+93 / +94`; `accessEventCreate` `+97 / +98` before and after. The access count for an epoch-changing lease update went from 2 to 3. At the `+hi` of each branch row the Emulator reports `Error compiling rules: ... Expression is too complex to evaluate safely.` (checked directly at `+94` for `leaseUpdate` and `+98` for `accessEventCreate`; the 35 tests of the spec were all skipped, none executed), so these are compile boundaries, not runtime-cap measurements. They match the existing `dataHead`, `dayCloseCommand` and settlement compile boundaries of about +95 to +97. Neither new rule is near the 1,000-expression runtime cap; they have no `for` or long chain of their own, and the runtime cost of `accessEventCreate` is one function call, three `get`-style reads and about a dozen comparisons.
