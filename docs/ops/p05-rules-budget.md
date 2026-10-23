@@ -894,13 +894,13 @@ The first column of mutants ran with `EASYORDER_TEST_RULES_PATH` pointing at a m
 
 ## P13c1 — accessEvents Rules budget
 
-Rules SHA-256: main (#539 base `b879dd2`) `e6fd1f2dc41f7e8568e95a12186e98165fcee3a274b5fc16ccd09f9b4dcde526`; branch `4aedcbf286d1b003bf2ae71a01a5d7d36dc330fb5f0f52c3d02ac456c743bc2f`. The change touches only `system/accessLease` update (one added `epoch`-changed → `existsAfter(accessEvents/{epoch})` clause) and a new `accessEvents/{eventId}` match with `accessEventCreate`. No other rule, function or anchor changed, so the 13 earlier fixed anchors were not re-measured.
+Rules SHA-256: main (#539 base `b879dd2`) `e6fd1f2dc41f7e8568e95a12186e98165fcee3a274b5fc16ccd09f9b4dcde526`; branch (after the r1 rework) `8bc9497cacd7dd6129cb5b3229f43e52fcde6db848f6c9c81d7c86ae6ea190f2`; the first candidate `4aedcbf286d1b003bf2ae71a01a5d7d36dc330fb5f0f52c3d02ac456c743bc2f` had only `existsAfter`. The change touches only `system/accessLease` update (one added `epoch`-changed → `!exists(accessEvents/{epoch}) && existsAfter(accessEvents/{epoch})` clause; `!exists` was added in the r1 rework because `existsAfter` alone is true for a stale event that the commit did not write) and a new `accessEvents/{eventId}` match with `accessEventCreate`. No other rule, function or anchor changed, so the 13 earlier fixed anchors were not re-measured.
 
 ### Static access-call budget
 
 | Operation | Rules reads | Notes |
 |---|---:|---|
-| Lease update that changes `epoch` (acquire, takeover, release) | `approvedOperator` operator `get`, `existsAfter(accessEvents/{epoch})` | 2 access calls (`resource` is free); the event `set` makes the commit write 2 documents. |
+| Lease update that changes `epoch` (acquire, takeover, release) | `approvedOperator` operator `get`, `exists(accessEvents/{epoch})`, `existsAfter(accessEvents/{epoch})` | 3 access calls (`resource` is free); the event `set` makes the commit write 2 documents. |
 | Lease renew | `approvedOperator` operator `get` | unchanged from main: the `existsAfter` clause short-circuits when `epoch` is unchanged. |
 | `accessEvents` create | `approvedOperator` operator `get`, `get` lease, `getAfter` lease | 3 access calls. |
 
@@ -918,4 +918,4 @@ Two anchors were added to `mk.py`: `leaseUpdate` (the `allow update` of `system/
 | `accessEventCreate` / `E02` (takeover event) | n/a | +97 / +98 |
 | `accessEventCreate` / `E04` (release event) | n/a | +97 / +98 |
 
-The new clause costs exactly one expression term on the lease update (+94 → +93). At the `+hi` of each branch row the Emulator reports `Error compiling rules: ... Expression is too complex to evaluate safely.` (checked directly at `+94` for `leaseUpdate` and `+98` for `accessEventCreate`; the 35 tests of the spec were all skipped, none executed), so these are compile boundaries, not runtime-cap measurements. They match the existing `dataHead`, `dayCloseCommand` and settlement compile boundaries of about +95 to +97. Neither new rule is near the 1,000-expression runtime cap; they have no `for` or long chain of their own, and the runtime cost of `accessEventCreate` is one function call, three `get`-style reads and about a dozen comparisons.
+The new clause costs exactly one expression term on the lease update (+94 → +93). The r1 rework (`!exists` added) was re-measured with the same cases: before the rework (`existsAfter` only) `+93 / +94`, after `+93 / +94`; `accessEventCreate` `+97 / +98` before and after. The access count for an epoch-changing lease update went from 2 to 3. At the `+hi` of each branch row the Emulator reports `Error compiling rules: ... Expression is too complex to evaluate safely.` (checked directly at `+94` for `leaseUpdate` and `+98` for `accessEventCreate`; the 35 tests of the spec were all skipped, none executed), so these are compile boundaries, not runtime-cap measurements. They match the existing `dataHead`, `dayCloseCommand` and settlement compile boundaries of about +95 to +97. Neither new rule is near the 1,000-expression runtime cap; they have no `for` or long chain of their own, and the runtime cost of `accessEventCreate` is one function call, three `get`-style reads and about a dozen comparisons.
