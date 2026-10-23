@@ -149,7 +149,7 @@ describe('CloudAccountHistoryPage', () => {
       render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
       await screen.findByTestId('account-history-ready');
       expect(screen.getByTestId('history-paper-ref')).toHaveTextContent('A-0123');
-      expect(screen.getByText('前天補登')).toBeVisible();
+      expect(screen.getAllByText('前天補登').length).toBeGreaterThan(0);
       expect(screen.queryByText('紙本A-0123：前天補登')).toBeNull();
     });
 

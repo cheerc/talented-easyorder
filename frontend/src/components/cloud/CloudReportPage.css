@@ -98,3 +98,4 @@
   .cloud-report__print th,
   .cloud-report__print td { padding: 3pt; border: 0.5pt solid #9aa3ad; white-space: normal; overflow-wrap: anywhere; }
 }
+.cloud-report__paper-tag { display: inline-block; margin: 0 6px 0 4px; padding: 0 8px; border: 1px solid #1d4ed8; border-radius: 999px; background: #eff6ff; color: #1e3a8a; font-size: 0.85em; font-weight: 600; }

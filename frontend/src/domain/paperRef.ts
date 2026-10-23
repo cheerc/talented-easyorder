@@ -27,3 +27,41 @@ export function parsePaperRefNote(note: string): { paperRef: string; text: strin
   const match = PAPER_NOTE.exec(note);
   return match ? { paperRef: match[1]!, text: match[2]! } : null;
 }
+
+const MISSING_ERROR = '補登日必須填紙本號（1 至 20 字的英數與 -，例如 A-0123）';
+const FORMAT_ERROR = '紙本號只能是 1 至 20 字的英數與 -（例如 A-0123）';
+const TOO_LONG_ERROR = `紙本號加備註不能超過 ${PAPER_NOTE_MAX_LENGTH} 字`;
+
+export type ComposedPaperNote = { ok: true; note: string } | { ok: false; error: string };
+
+/**
+ * The note an entry form sends: the typed paper number in front of the typed remark. `required` is true on a
+ * backfill day (Rules refuse it otherwise); today a blank number leaves the remark as typed. Both inputs are
+ * trimmed. The messages are shown to the operator as they are.
+ */
+export function composePaperRefNote(input: { paperRef: string; text: string; required: boolean }): ComposedPaperNote {
+  const paperRef = input.paperRef.trim();
+  const text = input.text.trim();
+  if (!paperRef) {
+    if (input.required) return { ok: false, error: MISSING_ERROR };
+    return text.length > PAPER_NOTE_MAX_LENGTH ? { ok: false, error: TOO_LONG_ERROR } : { ok: true, note: text };
+  }
+  if (!isPaperRef(paperRef)) return { ok: false, error: FORMAT_ERROR };
+  const note = `紙本${paperRef}：${text}`;
+  return note.length > PAPER_NOTE_MAX_LENGTH ? { ok: false, error: TOO_LONG_ERROR } : { ok: true, note };
+}
+
+/** A stored note split for display and correction: the paper number (null when the note has none) and the text after it. */
+export function splitPaperNote(note: string): { paperRef: string | null; text: string } {
+  return parsePaperRefNote(note) ?? { paperRef: null, text: note };
+}
+
+/** The distinct paper numbers found in these notes, in first-seen order. */
+export function paperRefsIn(notes: readonly string[]): string[] {
+  const found: string[] = [];
+  for (const note of notes) {
+    const paperRef = parsePaperRefNote(note)?.paperRef;
+    if (paperRef && !found.includes(paperRef)) found.push(paperRef);
+  }
+  return found;
+}
