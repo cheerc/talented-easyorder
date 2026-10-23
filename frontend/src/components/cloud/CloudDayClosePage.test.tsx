@@ -94,7 +94,13 @@ vi.mock('firebase/auth', () => ({
 }));
 
 vi.mock('../screens/BackupScreen', () => ({
-  BackupScreen: () => <div data-testid="p14-backup">每日加密備份</div>,
+  BackupScreen: (props: { locked?: boolean; onRecoveryChange?: (active: boolean) => void }) => (
+    <div data-testid="p14-backup" data-locked={String(props.locked === true)}>
+      每日加密備份
+      <button type="button" onClick={() => props.onRecoveryChange?.(true)}>備份開始復原</button>
+      <button type="button" onClick={() => props.onRecoveryChange?.(false)}>備份結束復原</button>
+    </div>
+  ),
 }));
 
 beforeEach(() => {
@@ -586,6 +592,56 @@ describe('CloudDayClosePage', () => {
       expect(await screen.findByRole('heading', { name: `${today} 日結` })).toBeInTheDocument();
     }
     expect(repository.backfillOpening).not.toHaveBeenCalled();
+  });
+
+  describe('embedded backup recovery', () => {
+    it('locks the day-close commands and reports recovering while the embedded backup has an unresolved command', async () => {
+      const report = renderPage();
+      const form = await closeForm();
+      await waitFor(() => expect(report).toHaveBeenLastCalledWith('uid-a:4', 'resolved'));
+      expect(within(form).getByTestId('close-submit')).toBeEnabled();
+
+      fireEvent.click(screen.getByRole('button', { name: '備份開始復原' }));
+      await waitFor(() => expect(report).toHaveBeenLastCalledWith('uid-a:4', 'recovering'));
+      expect(within(form).getByTestId('close-submit')).toBeDisabled();
+      fireEvent.change(within(form).getByRole('textbox', { name: '實點現金（元）' }), { target: { value: '1170' } });
+      fireEvent.submit(form);
+      expect(repository.closeDay).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: '備份結束復原' }));
+      await waitFor(() => expect(report).toHaveBeenLastCalledWith('uid-a:4', 'resolved'));
+      expect(within(form).getByTestId('close-submit')).toBeEnabled();
+    });
+
+    it('keeps navigation recovering when its own command resolves while the backup is still recovering', async () => {
+      repository.closeDay.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+      repository.confirmPendingIntent.mockResolvedValue({ status: 'matched', receipt: receipt('CloseDay') });
+      const report = renderPage();
+      const form = await closeForm();
+      fireEvent.change(within(form).getByRole('textbox', { name: '實點現金（元）' }), { target: { value: '1170' } });
+      fireEvent.click(within(form).getByRole('button', { name: '確認關帳' }));
+      expect(await screen.findByText('結果確認中，請勿重複操作。')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '備份開始復原' }));
+
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      expect(await screen.findByText(/已確認 2026-10-17 關帳 完成/)).toBeInTheDocument();
+      await new Promise(resolve => setTimeout(resolve, 20));
+      expect(report).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
+
+      fireEvent.click(screen.getByRole('button', { name: '備份結束復原' }));
+      await waitFor(() => expect(report).toHaveBeenLastCalledWith('uid-a:4', 'resolved'));
+    });
+
+    it('locks the embedded backup while the day-close page holds its own unresolved command', async () => {
+      repository.closeDay.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+      renderPage();
+      const form = await closeForm();
+      expect(screen.getByTestId('p14-backup')).toHaveAttribute('data-locked', 'false');
+      fireEvent.change(within(form).getByRole('textbox', { name: '實點現金（元）' }), { target: { value: '1170' } });
+      fireEvent.click(within(form).getByRole('button', { name: '確認關帳' }));
+      expect(await screen.findByText('結果確認中，請勿重複操作。')).toBeInTheDocument();
+      expect(screen.getByTestId('p14-backup')).toHaveAttribute('data-locked', 'true');
+    });
   });
 
   it('keeps the command ID after an unknown result and confirms it by a read-only receipt check', async () => {

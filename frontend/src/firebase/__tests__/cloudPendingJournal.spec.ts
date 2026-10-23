@@ -91,6 +91,33 @@ describe('Cloud pending command journal', () => {
     expect((await journal.readAll()).records).toEqual([]);
   });
 
+  it('reports removed, absent or kept for the exact identity without changing removeIf semantics', async () => {
+    const adapter = createMemoryCloudPendingJournalTestAdapter();
+    const journal = createCloudPendingJournal(testDb, adapter);
+    const expected = record(11);
+    const other = record(12);
+    await journal.put(expected);
+    await journal.put(other);
+
+    // A predicate that no longer holds keeps the record: the owner is gone, not the pending identity.
+    await expect(journal.removeIfPresent(expected, () => false)).resolves.toBe('kept');
+    expect((await journal.readAll()).records).toHaveLength(2);
+
+    await expect(journal.removeIfPresent(expected, () => true)).resolves.toBe('removed');
+    // Already gone, for example removed by the commit path itself: nothing is tracked any more.
+    await expect(journal.removeIfPresent(expected, () => true)).resolves.toBe('absent');
+    await expect(journal.removeIfPresent(expected, () => false)).resolves.toBe('kept');
+    expect((await journal.readAll()).records).toEqual([other]);
+
+    // A different identity holding the same command ID still fails closed, never 'absent'.
+    await expect(journal.removeIfPresent({ ...other, datasetId: 'other-dataset' })).rejects.toBeInstanceOf(PendingJournalUnavailableError);
+    expect((await journal.readAll()).records).toEqual([other]);
+
+    // removeIf keeps its boolean contract: only an actual removal is true.
+    await expect(journal.removeIf(expected)).resolves.toBe(false);
+    await expect(journal.removeIf(other)).resolves.toBe(true);
+  });
+
   it('checks a synchronous local owner predicate after acquiring the exclusive lock', async () => {
     const memory = createMemoryCloudPendingJournalTestAdapter();
     let releaseLock!: () => void;

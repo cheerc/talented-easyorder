@@ -225,6 +225,38 @@ describe('Orders recovery reader seam reuses strict command recovery checks', ()
     expect(removeIf).toHaveBeenCalledWith(recordA, expect.any(Function));
   });
 
+  it('treats a confirmed receipt whose identity is already absent from the journal as cleaned', async () => {
+    const stored = await storedStudentReceipt();
+    const recordA = { ...pendingIdentity };
+    const recordB = { ...pendingIdentity, commandId: '00000000-0000-4000-8000-000000000099' };
+    const journal = createCloudPendingJournal(db, createMemoryCloudPendingJournalTestAdapter());
+    await journal.put(recordA);
+    await journal.put(recordB);
+    // The commit path already removed A before the page asked for cleanup.
+    await journal.removeIf(recordA);
+    const recoveryReader = reader({ readReceipt: async () => document(stored) });
+    const commands = createCloudCommandRepository(db, { currentUser: () => userA, pendingJournal: journal });
+
+    await expect(commands.cleanupConfirmedIntent(studentIntent, 2, 'recovery-dataset', userA.uid, recoveryReader, () => true))
+      .resolves.toBe(true);
+
+    await expect(journal.readAll()).resolves.toMatchObject({ records: [recordB], total: 1, complete: true });
+  });
+
+  it('reports a kept identity as not cleaned when the owner predicate no longer holds', async () => {
+    const stored = await storedStudentReceipt();
+    const recordA = { ...pendingIdentity };
+    const journal = createCloudPendingJournal(db, createMemoryCloudPendingJournalTestAdapter());
+    await journal.put(recordA);
+    const recoveryReader = reader({ readReceipt: async () => document(stored) });
+    const commands = createCloudCommandRepository(db, { currentUser: () => userA, pendingJournal: journal });
+
+    await expect(commands.cleanupConfirmedIntent(studentIntent, 2, 'recovery-dataset', userA.uid, recoveryReader, () => false))
+      .resolves.toBe(false);
+
+    await expect(journal.readAll()).resolves.toMatchObject({ records: [recordA], total: 1, complete: true });
+  });
+
   it('removes only receipt-confirmed A and retains unrelated journal B when input mutates during the read', async () => {
     const input = JSON.parse(JSON.stringify(studentIntent)) as Record<string, unknown>;
     const stored = await storedStudentReceipt();
