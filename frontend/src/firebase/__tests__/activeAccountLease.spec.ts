@@ -665,5 +665,30 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
       expect(lease.data()?.epoch).toBe(0);
       expect((await readEvents())[0]?.data.marker).toBe('earlier history');
     });
+
+    it('E17: a stale event at the next epoch cannot stand in for a missing one on a raw lease-only change', async () => {
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+
+      // The event already exists before the commit, so `existsAfter` alone would be true without this commit writing anything.
+      await seedInitialLease(null, 0);
+      await seedEvent('1', { kind: 'acquire', marker: 'earlier history' });
+      await assertFails(transition(dbA, { holderUid: operatorA.uid, epoch: 1 }));
+
+      await seedInitialLease(operatorA.uid, 4, new Date());
+      await seedEvent('5', { kind: 'release', marker: 'earlier history' });
+      await assertFails(transition(dbA, { holderUid: null, epoch: 5 }));
+
+      // Writing a fresh well-formed event over the stale one is an update of an existing document, which is denied too.
+      await assertFails(transition(dbA, { holderUid: null, epoch: 5 }, {
+        id: '5', data: validEvent({ kind: 'release', holderUid: null, previousHolderUid: operatorA.uid }),
+      }));
+
+      const lease = await getDoc(doc(dbA, 'system/accessLease'));
+      expect(lease.data()?.holderUid).toBe(operatorA.uid);
+      expect(lease.data()?.epoch).toBe(4);
+      const events = await readEvents();
+      expect(events.map(row => row.id)).toEqual(['1', '5']);
+      expect(events.map(row => row.data.marker)).toEqual(['earlier history', 'earlier history']);
+    });
   });
 });
