@@ -22,6 +22,7 @@ import {
   acquireLease,
   getLeaseStatus,
   releaseLease,
+  renewLease,
   subscribeLease,
   startLeaseHeartbeat,
 } from '../activeAccountLease';
@@ -123,7 +124,7 @@ describe('activeAccountLease: unavailable Firestore fails closed', () => {
   });
 
   it('does not fabricate a successful acquire from a non-Firestore object', async () => {
-    const result = await acquireLease({} as Firestore, 'operator-a', 0);
+    const result = await acquireLease({} as Firestore, 'operator-a', 0, 'operator-a@example.com');
 
     expect(result.status).toBe('lost');
     expect(mocks.runTransaction).not.toHaveBeenCalled();
@@ -139,7 +140,7 @@ describe('activeAccountLease: unavailable Firestore fails closed', () => {
 
   it('does not fabricate successful release or a holder subscription update', async () => {
     const onUpdate = vi.fn();
-    const released = await releaseLease({} as Firestore, 'operator-a', 0);
+    const released = await releaseLease({} as Firestore, 'operator-a', 0, 'operator-a@example.com');
     const unsubscribe = subscribeLease({} as Firestore, 'operator-a', onUpdate);
 
     expect(released).toBe(false);
@@ -295,5 +296,88 @@ describe('activeAccountLease: unavailable Firestore fails closed', () => {
     expect(lostB).not.toHaveBeenCalled();
 
     vi.useRealTimers();
+  });
+});
+
+describe('activeAccountLease: accessEvents are written inside the lease transition transaction', () => {
+  const actorEmail = 'operator-a@example.com';
+  const timestamp = Object.assign(new Timestamp(), { toDate: () => new Date(1_700_000_000_000) });
+
+  function leaseAfter(holderUid: string | null, epoch: number) {
+    return { holderUid, epoch, updatedAt: timestamp };
+  }
+
+  /** Runs the transaction callback against a fake transaction that records what it writes. */
+  function runWith(lease: { holderUid: string | null; epoch: number; updatedAt: unknown }, committed: ReturnType<typeof leaseAfter>) {
+    const tx = {
+      get: vi.fn(async () => ({ exists: () => true, data: () => lease })),
+      update: vi.fn(),
+      set: vi.fn(),
+    };
+    mocks.doc.mockImplementation(((_db: unknown, ...segments: string[]) => ({ path: segments.join('/') })) as never);
+    mocks.serverTimestamp.mockReturnValue('SERVER_TIME');
+    mocks.runTransaction.mockImplementation(async (_db: unknown, callback: (value: typeof tx) => Promise<unknown>) => callback(tx));
+    mocks.getDocFromServer.mockResolvedValue({ exists: () => true, data: () => committed });
+    return tx;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getDocFromServer.mockReset();
+    mocks.onSnapshot.mockReset();
+    mocks.runTransaction.mockReset();
+    mocks.serverTimestamp.mockReset();
+  });
+
+  it('acquiring an empty lease sets accessEvents/{new epoch} in the same transaction', async () => {
+    const tx = runWith(leaseAfter(null, 0), leaseAfter('operator-a', 1));
+    await acquireLease({} as Firestore, 'operator-a', 0, actorEmail);
+
+    expect(tx.update).toHaveBeenCalledTimes(1);
+    expect(tx.update).toHaveBeenCalledWith({ path: 'system/accessLease' }, { holderUid: 'operator-a', epoch: 1, updatedAt: 'SERVER_TIME' });
+    expect(tx.set).toHaveBeenCalledTimes(1);
+    expect(tx.set).toHaveBeenCalledWith({ path: 'accessEvents/1' }, {
+      kind: 'acquire', holderUid: 'operator-a', previousHolderUid: null,
+      actorUid: 'operator-a', actorEmail, at: 'SERVER_TIME',
+    });
+  });
+
+  it('acquiring a lease another holder still has in the document is a takeover naming that holder', async () => {
+    const tx = runWith(leaseAfter('operator-b', 6), leaseAfter('operator-a', 7));
+    await acquireLease({} as Firestore, 'operator-a', 6, actorEmail);
+
+    expect(tx.set).toHaveBeenCalledWith({ path: 'accessEvents/7' }, {
+      kind: 'takeover', holderUid: 'operator-a', previousHolderUid: 'operator-b',
+      actorUid: 'operator-a', actorEmail, at: 'SERVER_TIME',
+    });
+  });
+
+  it('releasing sets a release event with a null holder at the new epoch', async () => {
+    const tx = runWith(leaseAfter('operator-a', 3), leaseAfter(null, 4));
+    await releaseLease({} as Firestore, 'operator-a', 3, actorEmail);
+
+    expect(tx.update).toHaveBeenCalledWith({ path: 'system/accessLease' }, { holderUid: null, epoch: 4, updatedAt: 'SERVER_TIME' });
+    expect(tx.set).toHaveBeenCalledTimes(1);
+    expect(tx.set).toHaveBeenCalledWith({ path: 'accessEvents/4' }, {
+      kind: 'release', holderUid: null, previousHolderUid: 'operator-a',
+      actorUid: 'operator-a', actorEmail, at: 'SERVER_TIME',
+    });
+  });
+
+  it('renewing never sets an event', async () => {
+    const tx = runWith(leaseAfter('operator-a', 3), leaseAfter('operator-a', 3));
+    await renewLease({} as Firestore, 'operator-a', 3);
+
+    expect(tx.update).toHaveBeenCalledTimes(1);
+    expect(tx.set).not.toHaveBeenCalled();
+  });
+
+  it('writes no event when the transaction aborts before any lease change', async () => {
+    const tx = runWith(leaseAfter('operator-a', 9), leaseAfter('operator-a', 9));
+    await acquireLease({} as Firestore, 'operator-a', 8, actorEmail);
+    await releaseLease({} as Firestore, 'operator-b', 9, actorEmail);
+
+    expect(tx.update).not.toHaveBeenCalled();
+    expect(tx.set).not.toHaveBeenCalled();
   });
 });

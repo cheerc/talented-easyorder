@@ -1,16 +1,20 @@
 import {
   assertFails,
+  assertSucceeds,
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
 import {
+  collection,
   doc,
   getDoc,
+  getDocs,
   serverTimestamp,
   setDoc,
   updateDoc,
   deleteDoc,
+  writeBatch,
   type Firestore,
 } from 'firebase/firestore';
 import {
@@ -121,7 +125,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     await seedInitialLease(null, 0);
     const dbA = authedDb(operatorA.uid, operatorA.email);
 
-    const result = await acquireLease(dbA as unknown as Firestore, operatorA.uid, 0);
+    const result = await acquireLease(dbA as unknown as Firestore, operatorA.uid, 0, operatorA.email);
     expect(result.status).toBe('acquired');
     if (result.status === 'acquired') {
       expect(result.holderUid).toBe(operatorA.uid);
@@ -138,7 +142,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     const dbB = authedDb(operatorB.uid, operatorB.email);
 
     // Client transaction 檢查發現 busy
-    const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1);
+    const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1, operatorB.email);
     expect(result.status).toBe('busy');
 
     // 直接以 Rules 攻擊覆寫也必須被 Rules 拒絕
@@ -196,7 +200,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     const dbB = authedDb(operatorB.uid, operatorB.email);
 
     // A release
-    const released = await releaseLease(dbA as unknown as Firestore, operatorA.uid, 1);
+    const released = await releaseLease(dbA as unknown as Firestore, operatorA.uid, 1, operatorA.email);
     expect(released).toBe(true);
 
     const leaseAfterRelease = await getDoc(doc(dbA, 'system/accessLease'));
@@ -204,7 +208,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     expect(leaseAfterRelease.data()?.epoch).toBe(2);
 
     // B acquire
-    const resultB = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 2);
+    const resultB = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 2, operatorB.email);
     expect(resultB.status).toBe('acquired');
     if (resultB.status === 'acquired') {
       expect(resultB.holderUid).toBe(operatorB.uid);
@@ -217,7 +221,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     await seedInitialLease(operatorA.uid, 1, expiredAt);
 
     const dbB = authedDb(operatorB.uid, operatorB.email);
-    const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1);
+    const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1, operatorB.email);
     expect(result.status).toBe('acquired');
     if (result.status === 'acquired') {
       expect(result.holderUid).toBe(operatorB.uid);
@@ -230,7 +234,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     await seedInitialLease(operatorA.uid, 1, new Date(expiresAt.getTime() - LEASE_DURATION_MS));
     const dbB = authedDb(operatorB.uid, operatorB.email);
 
-    const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1);
+    const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1, operatorB.email);
     expect(result.status).toBe('busy');
     if (result.status === 'busy') expect(result.currentHolderUid).toBe(operatorA.uid);
 
@@ -245,8 +249,8 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     const dbB = authedDb(operatorB.uid, operatorB.email);
 
     const results = await Promise.all([
-      acquireLease(dbA as unknown as Firestore, operatorA.uid, 0),
-      acquireLease(dbB as unknown as Firestore, operatorB.uid, 0),
+      acquireLease(dbA as unknown as Firestore, operatorA.uid, 0, operatorA.email),
+      acquireLease(dbB as unknown as Firestore, operatorB.uid, 0, operatorB.email),
     ]);
     const winners = results.filter(result => result.status === 'acquired');
     const losers = results.filter(result => result.status !== 'acquired');
@@ -279,7 +283,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
 
     const [renewResult, releaseResult] = await Promise.all([
       renewLease(dbA as unknown as Firestore, operatorA.uid, 1),
-      releaseLease(dbA as unknown as Firestore, operatorA.uid, 1),
+      releaseLease(dbA as unknown as Firestore, operatorA.uid, 1, operatorA.email),
     ]);
 
     expect(['acquired', 'stale_epoch', 'lost']).toContain(renewResult.status);
@@ -298,7 +302,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     const renewResult = await renewLease(dbA as unknown as Firestore, operatorA.uid, 1);
     expect(renewResult.status).toBe('stale_epoch');
 
-    const releaseResult = await releaseLease(dbA as unknown as Firestore, operatorA.uid, 1);
+    const releaseResult = await releaseLease(dbA as unknown as Firestore, operatorA.uid, 1, operatorA.email);
     expect(releaseResult).toBe(false);
   });
 
@@ -306,7 +310,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     await seedInitialLease(null, 0);
     const dbInactive = authedDb(inactiveOperator.uid, inactiveOperator.email);
 
-    const result = await acquireLease(dbInactive as unknown as Firestore, inactiveOperator.uid, 0);
+    const result = await acquireLease(dbInactive as unknown as Firestore, inactiveOperator.uid, 0, inactiveOperator.email);
     expect(result.status).toBe('lost');
   });
 
@@ -314,7 +318,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     await seedInitialLease(operatorA.uid, 2, new Date());
     const dbA = authedDb(operatorA.uid, operatorA.email);
 
-    const result = await acquireLease(dbA as unknown as Firestore, operatorA.uid, 1);
+    const result = await acquireLease(dbA as unknown as Firestore, operatorA.uid, 1, operatorA.email);
     expect(result).toEqual({ status: 'stale_epoch', expectedEpoch: 1, actualEpoch: 2 });
 
     const leaseDoc = await getDoc(doc(dbA, 'system/accessLease'));
@@ -329,7 +333,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     const fakeClock = vi.spyOn(Date, 'now').mockReturnValue(realNow - 10 * 60 * 1000);
 
     try {
-      const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1);
+      const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1, operatorB.email);
       expect(result.status).toBe('acquired');
     } finally {
       fakeClock.mockRestore();
@@ -343,7 +347,7 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     const fakeClock = vi.spyOn(Date, 'now').mockReturnValue(realNow + 10 * 60 * 1000);
 
     try {
-      const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1);
+      const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1, operatorB.email);
       expect(result.status).toBe('busy');
       if (result.status === 'busy') expect(result.currentHolderUid).toBe(operatorA.uid);
     } finally {
@@ -418,5 +422,247 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
         extraField: 'not-allowed',
       }),
     );
+  });
+  describe('P13c1: accessEvents are written atomically with every epoch change', () => {
+    type EventRow = { id: string; data: Record<string, unknown> };
+
+    async function readEvents(): Promise<EventRow[]> {
+      let rows: EventRow[] = [];
+      await env.withSecurityRulesDisabled(async context => {
+        const snapshot = await getDocs(collection(context.firestore(), 'accessEvents'));
+        rows = snapshot.docs.map(row => ({ id: row.id, data: row.data() }));
+      });
+      return rows.sort((a, b) => Number(a.id) - Number(b.id));
+    }
+
+    async function seedEvent(id: string, data: Record<string, unknown> = { kind: 'acquire' }) {
+      await env.withSecurityRulesDisabled(async context => {
+        await setDoc(doc(context.firestore(), `accessEvents/${id}`), data);
+      });
+    }
+
+    function validEvent(overrides: Record<string, unknown> = {}) {
+      return {
+        kind: 'acquire',
+        holderUid: operatorA.uid,
+        previousHolderUid: null,
+        actorUid: operatorA.uid,
+        actorEmail: operatorA.email,
+        at: serverTimestamp(),
+        ...overrides,
+      };
+    }
+
+    /** One batch = one atomic commit, so the Rules see the lease change and the event as a single transition. */
+    function transition(
+      db: Firestore,
+      lease: { holderUid: string | null; epoch: number },
+      event?: { id: string; data: Record<string, unknown> },
+      extraLease: Record<string, unknown> = {},
+    ) {
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'system/accessLease'), { ...lease, updatedAt: serverTimestamp(), ...extraLease });
+      if (event) batch.set(doc(db, `accessEvents/${event.id}`), event.data);
+      return batch.commit();
+    }
+
+    it('E01: acquiring an empty lease writes exactly one acquire event whose id is the new epoch', async () => {
+      await seedInitialLease(null, 0);
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+
+      const result = await acquireLease(dbA as unknown as Firestore, operatorA.uid, 0, operatorA.email);
+      expect(result.status).toBe('acquired');
+
+      const events = await readEvents();
+      expect(events.map(row => row.id)).toEqual(['1']);
+      expect(events[0]?.data).toMatchObject({
+        kind: 'acquire', holderUid: operatorA.uid, previousHolderUid: null,
+        actorUid: operatorA.uid, actorEmail: operatorA.email,
+      });
+      expect(Object.keys(events[0]?.data ?? {}).sort()).toEqual(
+        ['actorEmail', 'actorUid', 'at', 'holderUid', 'kind', 'previousHolderUid'],
+      );
+      const lease = await getDoc(doc(dbA, 'system/accessLease'));
+      expect((events[0]?.data.at as { toMillis: () => number }).toMillis())
+        .toBe((lease.data()?.updatedAt as { toMillis: () => number }).toMillis());
+    });
+
+    it('E02: taking over an expired lease writes a takeover event naming the previous holder', async () => {
+      await seedInitialLease(operatorA.uid, 4, new Date(Date.now() - LEASE_DURATION_MS - 90_000));
+      const dbB = authedDb(operatorB.uid, operatorB.email);
+
+      const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 4, operatorB.email);
+      expect(result.status).toBe('acquired');
+
+      const events = await readEvents();
+      expect(events.map(row => row.id)).toEqual(['5']);
+      expect(events[0]?.data).toMatchObject({
+        kind: 'takeover', holderUid: operatorB.uid, previousHolderUid: operatorA.uid,
+        actorUid: operatorB.uid, actorEmail: operatorB.email,
+      });
+    });
+
+    it('E03: the same operator re-acquiring after their own lease expired is also a takeover', async () => {
+      await seedInitialLease(operatorA.uid, 2, new Date(Date.now() - LEASE_DURATION_MS - 90_000));
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+
+      const result = await acquireLease(dbA as unknown as Firestore, operatorA.uid, 2, operatorA.email);
+      expect(result.status).toBe('acquired');
+      const events = await readEvents();
+      expect(events[0]?.data).toMatchObject({ kind: 'takeover', holderUid: operatorA.uid, previousHolderUid: operatorA.uid });
+    });
+
+    it('E04: releasing writes a release event with a null holder', async () => {
+      await seedInitialLease(operatorA.uid, 1, new Date());
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+
+      expect(await releaseLease(dbA as unknown as Firestore, operatorA.uid, 1, operatorA.email)).toBe(true);
+
+      const events = await readEvents();
+      expect(events.map(row => row.id)).toEqual(['2']);
+      expect(events[0]?.data).toMatchObject({
+        kind: 'release', holderUid: null, previousHolderUid: operatorA.uid,
+        actorUid: operatorA.uid, actorEmail: operatorA.email,
+      });
+    });
+
+    it('E05: renewing ten times never writes an event', async () => {
+      await seedInitialLease(operatorA.uid, 1, new Date());
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+
+      for (let index = 0; index < 10; index += 1) {
+        const result = await renewLease(dbA as unknown as Firestore, operatorA.uid, 1);
+        expect(result.status).toBe('acquired');
+      }
+      expect(await readEvents()).toEqual([]);
+    });
+
+    it('E06: a full acquire, takeover and release history keeps one event per epoch', async () => {
+      await seedInitialLease(null, 0);
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+      const dbB = authedDb(operatorB.uid, operatorB.email);
+
+      expect((await acquireLease(dbA as unknown as Firestore, operatorA.uid, 0, operatorA.email)).status).toBe('acquired');
+      expect(await releaseLease(dbA as unknown as Firestore, operatorA.uid, 1, operatorA.email)).toBe(true);
+      expect((await acquireLease(dbB as unknown as Firestore, operatorB.uid, 2, operatorB.email)).status).toBe('acquired');
+
+      const events = await readEvents();
+      expect(events.map(row => [row.id, row.data.kind])).toEqual([['1', 'acquire'], ['2', 'release'], ['3', 'acquire']]);
+    });
+
+    it('E07: positive control, a hand-written lease change plus a well-formed event commits', async () => {
+      await seedInitialLease(null, 0);
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+      await assertSucceeds(transition(dbA, { holderUid: operatorA.uid, epoch: 1 }, { id: '1', data: validEvent() }));
+    });
+
+    it('E08: an epoch change without its event is rejected for acquire and for release', async () => {
+      await seedInitialLease(null, 0);
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+      await assertFails(transition(dbA, { holderUid: operatorA.uid, epoch: 1 }));
+
+      await seedInitialLease(operatorA.uid, 1, new Date());
+      await assertFails(transition(dbA, { holderUid: null, epoch: 2 }));
+    });
+
+    it('E09: an event on its own, with no lease transition, is rejected', async () => {
+      await seedInitialLease(operatorA.uid, 1, new Date());
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+      await assertFails(setDoc(doc(dbA, 'accessEvents/2'), validEvent({ kind: 'release', holderUid: null, previousHolderUid: operatorA.uid })));
+      await assertFails(setDoc(doc(dbA, 'accessEvents/1'), validEvent()));
+    });
+
+    it('E10: the event id must be the new epoch', async () => {
+      await seedInitialLease(null, 0);
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+      for (const id of ['0', '2', '01', 'x']) {
+        await assertFails(transition(dbA, { holderUid: operatorA.uid, epoch: 1 }, { id, data: validEvent() }));
+      }
+    });
+
+    it('E11: the kind must follow from the lease before and after', async () => {
+      await seedInitialLease(null, 0);
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+      for (const kind of ['takeover', 'release', 'renew', 'other']) {
+        await assertFails(transition(dbA, { holderUid: operatorA.uid, epoch: 1 }, { id: '1', data: validEvent({ kind }) }));
+      }
+
+      await seedInitialLease(operatorA.uid, 1, new Date(Date.now() - LEASE_DURATION_MS - 90_000));
+      const dbB = authedDb(operatorB.uid, operatorB.email);
+      const takeover = (kind: string) => validEvent({
+        kind, holderUid: operatorB.uid, previousHolderUid: operatorA.uid, actorUid: operatorB.uid, actorEmail: operatorB.email,
+      });
+      await assertFails(transition(dbB, { holderUid: operatorB.uid, epoch: 2 }, { id: '2', data: takeover('acquire') }));
+      await assertSucceeds(transition(dbB, { holderUid: operatorB.uid, epoch: 2 }, { id: '2', data: takeover('takeover') }));
+    });
+
+    it('E12: forged actor, holder, previous holder, time or extra fields are rejected', async () => {
+      await seedInitialLease(null, 0);
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+      const forged: Array<Record<string, unknown>> = [
+        { actorUid: operatorB.uid },
+        { actorEmail: operatorB.email },
+        { holderUid: operatorB.uid },
+        { previousHolderUid: operatorB.uid },
+        { at: new Date() },
+        { extra: 'not-allowed' },
+      ];
+      for (const overrides of forged) {
+        await assertFails(transition(dbA, { holderUid: operatorA.uid, epoch: 1 }, { id: '1', data: validEvent(overrides) }));
+      }
+      await assertFails(transition(dbA, { holderUid: operatorA.uid, epoch: 1 }, {
+        id: '1', data: (({ at: _at, ...rest }) => rest)(validEvent()),
+      }));
+    });
+
+    it('E13: a renew cannot carry an event', async () => {
+      await seedInitialLease(operatorA.uid, 1, new Date());
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+      for (const id of ['1', '2']) {
+        await assertFails(transition(dbA, { holderUid: operatorA.uid, epoch: 1 }, { id, data: validEvent({ previousHolderUid: operatorA.uid }) }));
+      }
+      expect(await readEvents()).toEqual([]);
+    });
+
+    it('E14: an existing event can neither be updated nor deleted', async () => {
+      await seedInitialLease(null, 0);
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+      expect((await acquireLease(dbA as unknown as Firestore, operatorA.uid, 0, operatorA.email)).status).toBe('acquired');
+
+      await assertFails(updateDoc(doc(dbA, 'accessEvents/1'), { actorEmail: operatorB.email }));
+      await assertFails(setDoc(doc(dbA, 'accessEvents/1'), validEvent()));
+      await assertFails(deleteDoc(doc(dbA, 'accessEvents/1')));
+      expect((await readEvents())[0]?.data.actorEmail).toBe(operatorA.email);
+    });
+
+    it('E15: only approved operators can read events', async () => {
+      await seedInitialLease(null, 0);
+      await seedEvent('1', validEvent({ at: new Date() }));
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+      const dbInactive = authedDb(inactiveOperator.uid, inactiveOperator.email);
+      const dbPassword = authedDb(operatorA.uid, operatorA.email, { signInProvider: 'password' });
+      const unauthenticated = env.unauthenticatedContext().firestore();
+
+      await assertSucceeds(getDoc(doc(dbA, 'accessEvents/1')));
+      await assertSucceeds(getDocs(collection(dbA, 'accessEvents')));
+      for (const db of [dbInactive, dbPassword, unauthenticated]) {
+        await assertFails(getDoc(doc(db, 'accessEvents/1')));
+        await assertFails(getDocs(collection(db, 'accessEvents')));
+      }
+    });
+
+    it('E16: a leftover event at the next epoch blocks the acquire and is never overwritten (fail closed)', async () => {
+      await seedInitialLease(null, 0);
+      await seedEvent('1', { kind: 'acquire', marker: 'earlier history' });
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+
+      const result = await acquireLease(dbA as unknown as Firestore, operatorA.uid, 0, operatorA.email);
+      expect(result.status).not.toBe('acquired');
+
+      const lease = await getDoc(doc(dbA, 'system/accessLease'));
+      expect(lease.data()?.holderUid).toBeNull();
+      expect(lease.data()?.epoch).toBe(0);
+      expect((await readEvents())[0]?.data.marker).toBe('earlier history');
+    });
   });
 });
