@@ -31,6 +31,8 @@ import {
   isValidCloudGregorianDate,
   summarizeCloudReportDays,
   validateCloudLedgerRange,
+  type CloudAccessEventRow,
+  type CloudAccessEventsSnapshot,
   type CloudAccountHistory,
   type CloudAuditRow,
   type CloudAuditRangeRow,
@@ -49,7 +51,7 @@ import { isBackfilled, readCloudBackfillDay, readCloudDayClose } from './cloudDa
 import { decodeCloudOrderTransaction, reconcileDayTotals } from './cloudOrderRepository';
 import { listCloudStudents, type CloudStudentRecord } from './cloudStudentRepository';
 import { decodeCloudDayRecord, type CloudDayRecord } from './cloudDayVendorRepository';
-import { accessLeasePath, dataHeadPath, dayPath } from './firestorePaths';
+import { accessEventPath, accessLeasePath, dataHeadPath, dayPath } from './firestorePaths';
 
 type Data = Record<string, unknown>;
 type CurrentUser = Pick<User, 'uid' | 'email' | 'emailVerified' | 'providerData'>;
@@ -62,6 +64,7 @@ const MAX_AUDIT_COMMANDS = 100_000;
 const MIN_FIRESTORE_TIMESTAMP = new Timestamp(-62_135_596_800, 0);
 const MAX_FIRESTORE_TIMESTAMP = new Timestamp(253_402_300_799, 999_999_999);
 const MAX_POST_CLOSE_ENTRIES_PER_DAY = 20_000;
+const MAX_ACCESS_EVENTS = 20_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type CloudReadErrorCode = CommandErrorCode
@@ -80,7 +83,7 @@ export class CloudReadRepositoryError extends Error {
 }
 
 export interface CloudReadPageEvent {
-  collection: 'transactions' | 'commands' | 'postCloseEntries';
+  collection: 'transactions' | 'commands' | 'postCloseEntries' | 'accessEvents';
   page: number;
   queryScope?: 'null-date-audit-range';
   committedAtRange?: { startInclusive: string; end: string; endInclusive: boolean };
@@ -89,6 +92,8 @@ export interface CloudReadPageEvent {
 export interface CloudReadRepositoryOptions {
   /** Test seam for bounded cursor paging; production reads 100 documents per page. */
   pageSize?: number;
+  /** Test seam for the bounded access-event read; production fails closed above 20,000 events. */
+  maxAccessEvents?: number;
   /** Emulator-only orchestration seam for proving that page reads fail on a moving head. */
   afterPageRead?: (event: CloudReadPageEvent) => Promise<void>;
   /** Injection seam for Emulator tests; production callers use Firebase Auth currentUser. */
@@ -393,6 +398,47 @@ function taipeiAuditTimestampRange(range: CloudLedgerDateRange): {
   const start = startMs < minMs ? MIN_FIRESTORE_TIMESTAMP : Timestamp.fromMillis(startMs);
   if (endMs > maxMs) return { start, end: MAX_FIRESTORE_TIMESTAMP, inclusiveEnd: true };
   return { start, end: Timestamp.fromMillis(endMs), inclusiveEnd: false };
+}
+
+interface DecodedAccessEvent {
+  epoch: number;
+  kind: CloudAccessEventRow['kind'];
+  holderUid: string | null;
+  previousHolderUid: string | null;
+  actorUid: string;
+  actorEmail: string;
+  at: Timestamp;
+}
+
+function decodeAccessEvent(snapshot: { id: string; data: () => unknown }): DecodedAccessEvent {
+  const value = snapshot.data();
+  const uid = (candidate: unknown): candidate is string => typeof candidate === 'string' && candidate.length > 0;
+  const nullableUid = (candidate: unknown): candidate is string | null => candidate === null || uid(candidate);
+  const epoch = /^[1-9][0-9]*$/.test(snapshot.id) ? Number(snapshot.id) : 0;
+  if (!Number.isSafeInteger(epoch) || epoch < 1
+    || !exactKeys(value, ['kind', 'holderUid', 'previousHolderUid', 'actorUid', 'actorEmail', 'at'])
+    || (value.kind !== 'acquire' && value.kind !== 'takeover' && value.kind !== 'release')
+    || !nullableUid(value.holderUid) || !nullableUid(value.previousHolderUid)
+    || !uid(value.actorUid) || !uid(value.actorEmail) || !(value.at instanceof Timestamp)) {
+    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `使用權交接紀錄 ${snapshot.id} 格式不支援`);
+  }
+  const kindMatches = value.kind === 'release'
+    ? value.holderUid === null && value.previousHolderUid !== null
+    : value.kind === 'acquire'
+      ? value.holderUid !== null && value.previousHolderUid === null
+      : value.holderUid !== null && value.previousHolderUid !== null;
+  if (!kindMatches) {
+    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `使用權交接紀錄 ${snapshot.id} 的種類與前後持有人不一致`);
+  }
+  return {
+    epoch,
+    kind: value.kind,
+    holderUid: value.holderUid,
+    previousHolderUid: value.previousHolderUid,
+    actorUid: value.actorUid,
+    actorEmail: value.actorEmail,
+    at: value.at,
+  };
 }
 
 function decodeAuditCommand(snapshot: QueryDocumentSnapshot, headSeq: number): CloudAuditRow {
@@ -1154,5 +1200,87 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
     }
   }
 
-  return { readSummary, readReport, readAccountHistory, readAudit, readAuditRange };
+  async function readAccessEvents(input: CloudSummaryInput): Promise<CloudAccessEventsSnapshot> {
+    try {
+      validateEpoch(input.leaseEpoch);
+      const user = requireGoogleUser(options);
+      const context = await readContext(db, user);
+      validateSnapshotScope(context, input.leaseEpoch);
+      const range = validateRange(input.range);
+      const timestamps = taipeiAuditTimestampRange(range);
+      const maxEvents = options.maxAccessEvents ?? MAX_ACCESS_EVENTS;
+      const queryBase = (cursor: DocumentSnapshot | null, pageLimit: number) => query(
+        collection(db, 'accessEvents'),
+        where('at', '>=', timestamps.start),
+        ...(timestamps.inclusiveEnd ? [where('at', '<=', timestamps.end)] : [where('at', '<', timestamps.end)]),
+        orderBy('at'),
+        orderBy(documentId()),
+        ...(cursor ? [startAfter(cursor)] : []),
+        limit(pageLimit),
+      );
+      const paged = await readPaged(
+        db, queryBase, context, user, pageSize, maxEvents, 'accessEvents', options.afterPageRead,
+      );
+      const events = paged.documents
+        .map(decodeAccessEvent)
+        .sort((left, right) => left.epoch - right.epoch);
+      if (events.some(event => event.epoch > context.leaseEpoch)) {
+        throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '使用權交接紀錄超過目前租約世代');
+      }
+
+      const known = new Map(events.map(event => [event.epoch, event]));
+      const predecessorOf = async (epoch: number): Promise<DecodedAccessEvent | null> => {
+        if (epoch < 2) return null;
+        const inRange = known.get(epoch - 1);
+        if (inRange) return inRange;
+        const snapshot = await getDocFromServer(doc(db, accessEventPath(epoch - 1)));
+        assertServerConfirmed(snapshot, 'accessEvents');
+        if (!snapshot.exists()) return null;
+        const decoded = decodeAccessEvent(snapshot);
+        known.set(decoded.epoch, decoded);
+        return decoded;
+      };
+
+      const rows: CloudAccessEventRow[] = [];
+      for (const event of events) {
+        let previousHolderState: CloudAccessEventRow['previousHolderState'] = 'none';
+        let previousHolderEmail: string | null = null;
+        if (event.previousHolderUid !== null) {
+          const predecessor = await predecessorOf(event.epoch);
+          // The previous holder's own event names them as actor; anything else is not proof of their email.
+          if (predecessor && predecessor.holderUid === event.previousHolderUid
+            && predecessor.actorUid === event.previousHolderUid) {
+            previousHolderState = 'known';
+            previousHolderEmail = predecessor.actorEmail;
+          } else {
+            previousHolderState = 'unrecorded';
+          }
+        }
+        rows.push({
+          epoch: event.epoch,
+          kind: event.kind,
+          at: event.at.toDate().toISOString(),
+          actorEmail: event.actorEmail,
+          previousHolderState,
+          previousHolderEmail,
+        });
+      }
+
+      await assertContextUnchanged(db, user, context);
+      return {
+        datasetId: context.head.datasetId,
+        sourceSeq: context.head.sourceSeq,
+        goLiveDate: context.head.goLiveDate,
+        leaseToday: context.leaseToday,
+        leaseEpoch: context.leaseEpoch,
+        range,
+        complete: true,
+        rows,
+      };
+    } catch (error) {
+      throw readFailure(error);
+    }
+  }
+
+  return { readSummary, readReport, readAccountHistory, readAudit, readAuditRange, readAccessEvents };
 }

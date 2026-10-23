@@ -398,6 +398,26 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
       await expect(page.locator('.app')).toHaveCount(0);
     }
   });
+
+  // P13c2: the acquire above writes a real accessEvents document through the Rules; the F2 report lists it
+  // read-only, with emails and without UIDs.
+  test('A11: the report page lists the real acquire event with the operator email and no previous holder', async ({ googleSession }) => {
+    test.setTimeout(90000);
+    const { page, uid, email } = googleSession;
+    await page.getByRole('button', { name: '取得系統使用權' }).click();
+    await expect(page.locator('.operator-strip')).toBeVisible();
+    await expect.poll(readAccessLease).toMatchObject({ holderUid: uid, epoch: 1 });
+
+    await page.getByRole('button', { name: '雲端報表' }).click();
+    await expect(page.getByTestId('report-ready')).toBeVisible({ timeout: 30000 });
+    const handover = page.getByRole('region', { name: '使用權交接' });
+    await expect(handover).toBeVisible();
+    const row = handover.getByRole('row').filter({ hasText: '取得使用權' });
+    await expect(row).toHaveCount(1);
+    await expect(row.getByRole('cell').nth(2)).toHaveText(email);
+    await expect(row.getByRole('cell').nth(3)).toHaveText('無');
+    await expect(handover).not.toContainText(uid);
+  });
 });
 
 test.describe('P06 Cloud Students', () => {
