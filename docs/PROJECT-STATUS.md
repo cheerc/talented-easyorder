@@ -1,5 +1,7 @@
 # Project Status — Talented EasyOrder
 
+> **2026-10-23 目前進度（P13d2）：** #543 P13d1 已合併為 `f8ff80093863a53ce67026d07cabc7cfcc6b4f90`。新候選 P13d2：訂餐頁訂餐／收款／零用金表單的「紙本號」欄位（補登日必填、今天選填，具體錯誤訊息）、更正鎖定號碼、F2 報表與 F5 詳情顯示號碼、交易 CSV 最後一欄 `paper_refs`。全量 Vitest 2232 通過、0 失敗；lint／build 乾淨；tsc 診斷 210 與 main 相同；Chromium 預設 26/26、P12c 3/3、P13b2 28/29（唯一失敗是本機已知、main 上也失敗的跨分頁 journal 案例，CI 通過）。未改 Rules／indexes／備份。部署與營運驗收未完成。詳見 [evidence](ops/free-production-evidence.md#p13d2-paper-number-fields-locked-correction-reportcsvf5-display-2026-10-23)。
+
 > **2026-10-23 目前進度（P13d1）：** #542 P13c2 已合併為 `29c537072e2a811b0f8fb3483b59d045103a4678`。新候選 P13d1：補登日（有回填標記且未關帳的過去日）每筆 `CreateOrder`／`CreatePayment` 的 `note`、`CreateCashMovement` 的 `reason` 必須以 `紙本<編號>：` 開頭，今天選填；更正不得丟掉或改掉既有編號。依計畫的自動門檻改採備案 B（不新增欄位；欄位方案最薄錨點 +16→+9，前綴方案 +14）。Emulator 全部通過（cloudDayClose 205/205、其餘 33 檔 796、備份 24/24）、全量 Vitest 0 失敗、tsc 診斷 210 與 main 相同。備份 replay 無法區分新舊資料，只由 Rules 強制。P13d2（UI 欄位與報表顯示）、部署及營運驗收皆未完成。詳見 [evidence](ops/free-production-evidence.md#p13d1-paper-number-on-every-backfilled-entry-note-prefix-2026-10-23)。
 
 > **2026-10-23 目前進度（P13c2）：** #541 P13d3 已合併為 `ea31d76e8bb51874fe086f2b035da1e534b215f3`。新候選 P13c2：F2 雲端報表頁（全部帳戶範圍）新增唯讀「使用權交接」表（`readAccessEvents`，台北日界、分頁有界、fail closed；email 不顯示 UID；無 CSV）。Emulator 34/34、頁面 61/61、全量 Vitest 0 失敗；Chromium 預設 26/26、P12c 3/3；tsc 診斷 210 與 main 相同；未改 Rules／indexes。P13d1／d2、部署及營運驗收皆未完成。詳見 [evidence](ops/free-production-evidence.md#p13c2-access-handover-table-on-the-f2-report-page-2026-10-23)。
