@@ -1,5 +1,7 @@
 # Project Status — Talented EasyOrder
 
+> **2026-10-23 目前進度（P15a）：** #545 P15n 已合併為 `63043d68fe031e8e34978ed820ff324a062d88e7`。新候選 P15a：`node scripts/easyorder-data-maintenance.mjs validate --manifest <chain.json> [--to-seq H] [--report out.json]` 離線驗證 P14 加密備份鏈並輸出匿名對帳（密碼只從 stdin）；其餘子命令（init／restore／resume／verify／finalize）明確「尚未提供」。Emulator 以 production writer 產生的 R02 情境（三包增量、含回填日、更正、作廢、關帳／重開、RecordBackup）驗證 13/13；單元 10/10；全量 Vitest 0 失敗；P14 備份 24/24 未受影響；lint／build 乾淨；`tsc -b` 診斷 209（main 210）。未改 Rules／備份格式。P15b–d、獨立 Spark 空專案演練（CheerC 本機）、部署及營運驗收皆未完成。詳見 [evidence](ops/free-production-evidence.md#p15a-restore-cli-skeleton-and-offline-validate-2026-10-23)。
+
 > **2026-10-23 目前進度（P15n）：** #544 P13d2 已合併為 `5a074bf39bcba8b6aaaa0804e3587bed3c8b5725`。新候選 P15n（#544 兩個 nit）：訂餐頁退款列標籤不再重複紙本號；F5 備註文字測試斷言收緊為精確。全量 Vitest 2233 通過、0 失敗；lint／build 乾淨；`tsc -b` 診斷 210 與 main 相同；未改 Rules／備份。P15a–d、部署及營運驗收皆未開始或未完成。詳見 [evidence](ops/free-production-evidence.md#p15n-544-nits-refund-label-paper-number-and-exact-f5-remark-assertion-2026-10-23)。
 
 > **2026-10-23 目前進度（P13d2）：** #543 P13d1 已合併為 `f8ff80093863a53ce67026d07cabc7cfcc6b4f90`。新候選 P13d2：訂餐頁訂餐／收款／零用金表單的「紙本號」欄位（補登日必填、今天選填，具體錯誤訊息）、更正鎖定號碼、F2 報表與 F5 詳情顯示號碼、交易 CSV 最後一欄 `paper_refs`。全量 Vitest 2232 通過、0 失敗；lint／build 乾淨；tsc 診斷 210 與 main 相同；Chromium 預設 26/26、P12c 3/3、P13b2 28/29（唯一失敗是本機已知、main 上也失敗的跨分頁 journal 案例，CI 通過）。未改 Rules／indexes／備份。部署與營運驗收未完成。詳見 [evidence](ops/free-production-evidence.md#p13d2-paper-number-fields-locked-correction-reportcsvf5-display-2026-10-23)。
