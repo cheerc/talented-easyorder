@@ -1,5 +1,5 @@
 export type { TransactionType, LedgerSyncStatus } from './types';
-import type { TransactionType as LocalTxType } from './types';
+import type { LedgerSyncStatus, TransactionType, TransactionType as LocalTxType } from './types';
 
 export interface LedgerTransaction {
   transactionId: string;
