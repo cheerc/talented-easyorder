@@ -185,7 +185,7 @@ React 19、Vite 8、TypeScript 6、Zustand 5（persist 到 IndexedDB，失敗時
   | 機制 | 位置 | 現況 |
   |---|---|---|
   | 同步佇列邊界 | `domain/ledgerSyncBoundary.ts` | append 佇列、`idempotencyKey = tx:{id}:v{revision}`；有匯出，但沒有非測試的呼叫端 |
-  | 同步狀態 | `firebase/syncStatus.ts`、`LedgerTransaction.syncStatus`／`revision` | 練習模式沒有實際同步 |
+  | 同步狀態 | `firebase/syncStatus.ts`（已於 P13d3 刪除）、`LedgerTransaction.syncStatus`／`revision` | 練習模式沒有實際同步 |
   | 當機草稿 | `storage/crashDraft.ts` | F1 草稿復原 |
   | 儲存健康檢查 | `storage/storageHealth.ts` | `useTransactionCommit` 依它決定送出前要不要存當機草稿 |
   | 錯誤紀錄 | `errors/errorLogger.ts` | 存在 localStorage；以規則式遮蔽常見個資格式（「姓名：」「餘額：」、09 開頭電話等），屬 best-effort，不保證遮掉所有個資 |

@@ -6,7 +6,7 @@
 
 Student Account Management 定義學員主檔、帳戶餘額、搜尋、匯入驗證流程，以及 Phase 2 人臉辨識 enrollment 所需的學員端資料邊界。
 
-已實作完整的學員領域層（`domain/student.ts`）：`StudentAccount` 型別含 studentId、displayName、status、currentBalance、aliases、className、groupName、faceProfileId、faceEnrollmentStatus。搜尋支援學號/姓名/別名（`searchActiveStudents`）。匯入驗證（`validateStudentImportRows`）檢查重複 studentId、空白姓名、非數字餘額。Firebase 整合層（`firebase/studentRepository.ts`）處理 CRUD。
+已實作完整的學員領域層（`domain/student.ts`）：`StudentAccount` 型別含 studentId、displayName、status、currentBalance、aliases、className、groupName、faceProfileId、faceEnrollmentStatus。搜尋支援學號/姓名/別名（`searchActiveStudents`）。匯入驗證（`validateStudentImportRows`）檢查重複 studentId、空白姓名、非數字餘額。Firebase 整合層（`firebase/studentRepository.ts`（已於 P13d3 刪除）；雲端路徑改走 `cloudStudentRepository` 與不可變命令）處理 CRUD。
 
 核心原則：學員基本資料可以修正，但歷史交易保留當下快照（`StudentSnapshot`）；餘額只能透過可稽核交易改變，不能被一般表單直接覆寫。
 
@@ -131,7 +131,7 @@ export interface StudentImportResult {
 
 - Roster import rows from manual upload/paste or Firebase migration.
 - Balance-changing events from `pc-pos-order-flow-spec` and `order-ledger-cash-close-spec`.
-- Sync status updates from Firebase (`firebase/studentRepository.ts`).
+- Sync status updates from Firebase (`firebase/studentRepository.ts`, deleted in P13d3).
 - [PLANNED] Face enrollment link/unlink events from `ipad-face-auth-handoff-spec`.
 
 ### 輸出

@@ -854,4 +854,169 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
       leaseEpoch: 7,
     })).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
   });
+
+  describe('readAccessEvents (P13c2)', () => {
+    // Events are numbered by lease epoch, so the lease must be at least as new as the newest event.
+    const leaseEpoch = 30;
+    const emailA = 'p13c2-a@example.test';
+    const emailB = 'p13c2-b@example.test';
+
+    beforeEach(async () => {
+      await withAdmin(db => setDoc(doc(db, 'system/accessLease'), {
+        holderUid: operator.uid, epoch: leaseEpoch, updatedAt: serverTimestamp(),
+      }));
+    });
+
+    function taipeiInstant(date: string, time: string): Timestamp {
+      return Timestamp.fromDate(new Date(`${date}T${time}+08:00`));
+    }
+
+    function accessEvent(
+      kind: string,
+      holderUid: string | null,
+      previousHolderUid: string | null,
+      actorUid: string,
+      actorEmail: string,
+      at: Timestamp,
+    ) {
+      return { kind, holderUid, previousHolderUid, actorUid, actorEmail, at };
+    }
+
+    async function seedEvents() {
+      const yesterday = shiftDate(today, -1);
+      const tomorrow = shiftDate(today, 1);
+      await withAdmin(async db => {
+        await setDoc(doc(db, 'accessEvents/9'), accessEvent('acquire', 'p13c2-a', null, 'p13c2-a', emailA, taipeiInstant(yesterday, '23:59:59.999')));
+        await setDoc(doc(db, 'accessEvents/10'), accessEvent('takeover', 'p13c2-b', 'p13c2-a', 'p13c2-b', emailB, taipeiInstant(today, '00:00:00.000')));
+        await setDoc(doc(db, 'accessEvents/11'), accessEvent('takeover', operator.uid, 'p13c2-b', operator.uid, operator.email, taipeiInstant(today, '09:00:00.000')));
+        await setDoc(doc(db, 'accessEvents/12'), accessEvent('release', null, operator.uid, operator.uid, operator.email, taipeiInstant(today, '18:00:00.000')));
+        await setDoc(doc(db, 'accessEvents/13'), accessEvent('acquire', 'p13c2-a', null, 'p13c2-a', emailA, taipeiInstant(tomorrow, '00:00:00.000')));
+      });
+    }
+
+    const todayRange = () => ({ kind: 'custom' as const, startDate: today, endDate: today });
+
+    it('reads only events inside the Taipei half-open range, ordered by numeric epoch, with previous holders as emails', async () => {
+      await seedEvents();
+      const snapshot = await repository().readAccessEvents({ range: todayRange(), leaseEpoch });
+
+      expect(snapshot).toMatchObject({
+        datasetId: 'p12a-report-dataset', sourceSeq: 205, leaseEpoch, complete: true,
+        range: { startDate: today, endDate: today },
+      });
+      expect(snapshot.rows).toEqual([
+        { epoch: 10, kind: 'takeover', at: taipeiInstant(today, '00:00:00.000').toDate().toISOString(), actorEmail: emailB, previousHolderState: 'known', previousHolderEmail: emailA },
+        { epoch: 11, kind: 'takeover', at: taipeiInstant(today, '09:00:00.000').toDate().toISOString(), actorEmail: operator.email, previousHolderState: 'known', previousHolderEmail: emailB },
+        { epoch: 12, kind: 'release', at: taipeiInstant(today, '18:00:00.000').toDate().toISOString(), actorEmail: operator.email, previousHolderState: 'known', previousHolderEmail: operator.email },
+      ]);
+      expect(JSON.stringify(snapshot)).not.toContain('p13c2-a"');
+      expect(JSON.stringify(snapshot)).not.toContain(operator.uid);
+    });
+
+    it('marks no previous holder as none and an unresolvable one as unrecorded', async () => {
+      await withAdmin(async db => {
+        await setDoc(doc(db, 'accessEvents/20'), accessEvent('acquire', 'p13c2-a', null, 'p13c2-a', emailA, taipeiInstant(today, '08:00:00.000')));
+        // No accessEvents/21 holder record matches: epoch 22 names a previous holder whose event is not on record.
+        await setDoc(doc(db, 'accessEvents/22'), accessEvent('takeover', 'p13c2-b', 'p13c2-ghost', 'p13c2-b', emailB, taipeiInstant(today, '10:00:00.000')));
+        // Epoch 24's predecessor exists but records a different holder.
+        await setDoc(doc(db, 'accessEvents/23'), accessEvent('acquire', 'p13c2-a', null, 'p13c2-a', emailA, taipeiInstant(today, '11:00:00.000')));
+        await setDoc(doc(db, 'accessEvents/24'), accessEvent('takeover', 'p13c2-b', 'p13c2-b', 'p13c2-b', emailB, taipeiInstant(today, '12:00:00.000')));
+      });
+      const snapshot = await repository().readAccessEvents({ range: todayRange(), leaseEpoch });
+
+      expect(snapshot.rows.map(row => [row.epoch, row.previousHolderState, row.previousHolderEmail])).toEqual([
+        [20, 'none', null],
+        [22, 'unrecorded', null],
+        [23, 'none', null],
+        [24, 'unrecorded', null],
+      ]);
+    });
+
+    it('pages with the repository page size and reports each page as accessEvents', async () => {
+      await seedEvents();
+      const trace: Array<{ collection: string; page: number }> = [];
+      const snapshot = await createCloudReadRepository(authedDb(), {
+        currentUser: fakeCurrentUser,
+        pageSize: 1,
+        afterPageRead: async event => { trace.push(event); },
+      }).readAccessEvents({ range: todayRange(), leaseEpoch });
+
+      expect(snapshot.rows.map(row => row.epoch)).toEqual([10, 11, 12]);
+      expect(trace.filter(event => event.collection === 'accessEvents').map(event => event.page)).toEqual([1, 2, 3, 4]);
+    });
+
+    it('fails closed instead of returning a truncated list when the bounded read is exceeded', async () => {
+      await seedEvents();
+      await expect(createCloudReadRepository(authedDb(), {
+        currentUser: fakeCurrentUser,
+        pageSize: 1,
+        maxAccessEvents: 2,
+      }).readAccessEvents({ range: todayRange(), leaseEpoch })).rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT' });
+    });
+
+    it('rejects when the lease changes holder between pages', async () => {
+      await seedEvents();
+      let changed = false;
+      const repo = createCloudReadRepository(authedDb(), {
+        currentUser: fakeCurrentUser,
+        pageSize: 1,
+        afterPageRead: async event => {
+          if (event.collection !== 'accessEvents' || event.page !== 1 || changed) return;
+          changed = true;
+          await withAdmin(db => setDoc(doc(db, 'system/accessLease'), {
+            holderUid: 'p12a-report-other', epoch: leaseEpoch + 1, updatedAt: serverTimestamp(),
+          }));
+        },
+      });
+      await expect(repo.readAccessEvents({ range: todayRange(), leaseEpoch })).rejects.toMatchObject({ code: 'LEASE_LOST' });
+      expect(changed).toBe(true);
+    });
+
+    it('rejects when the data head moves between pages', async () => {
+      await seedEvents();
+      let changed = false;
+      const repo = createCloudReadRepository(authedDb(), {
+        currentUser: fakeCurrentUser,
+        pageSize: 1,
+        afterPageRead: async event => {
+          if (event.collection !== 'accessEvents' || event.page !== 1 || changed) return;
+          changed = true;
+          await withAdmin(db => setDoc(doc(db, 'system/dataHead'), head(206)));
+        },
+      });
+      await expect(repo.readAccessEvents({ range: todayRange(), leaseEpoch })).rejects.toMatchObject({ code: 'STALE_SNAPSHOT' });
+    });
+
+    it('rejects a caller whose lease epoch no longer matches or whose lease belongs to someone else', async () => {
+      await seedEvents();
+      await expect(repository().readAccessEvents({ range: todayRange(), leaseEpoch: leaseEpoch - 1 }))
+        .rejects.toMatchObject({ code: 'LEASE_LOST' });
+      await withAdmin(db => setDoc(doc(db, 'system/accessLease'), {
+        holderUid: 'p12a-report-other', epoch: leaseEpoch, updatedAt: serverTimestamp(),
+      }));
+      await expect(repository().readAccessEvents({ range: todayRange(), leaseEpoch }))
+        .rejects.toMatchObject({ code: 'LEASE_LOST' });
+    });
+
+    it('rejects an in-range event document with an unsupported shape', async () => {
+      await withAdmin(db => setDoc(doc(db, 'accessEvents/30'), {
+        ...accessEvent('acquire', 'p13c2-a', null, 'p13c2-a', emailA, taipeiInstant(today, '08:00:00.000')),
+        kind: 'unknown-kind',
+      }));
+      await expect(repository().readAccessEvents({ range: todayRange(), leaseEpoch }))
+        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    });
+
+    it('rejects an event numbered after the current lease epoch', async () => {
+      await withAdmin(db => setDoc(doc(db, `accessEvents/${leaseEpoch + 1}`),
+        accessEvent('acquire', 'p13c2-a', null, 'p13c2-a', emailA, taipeiInstant(today, '08:00:00.000'))));
+      await expect(repository().readAccessEvents({ range: todayRange(), leaseEpoch }))
+        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    });
+
+    it('returns an empty complete list when no handover happened in the range', async () => {
+      const snapshot = await repository().readAccessEvents({ range: todayRange(), leaseEpoch });
+      expect(snapshot).toMatchObject({ complete: true, rows: [] });
+    });
+  });
 });

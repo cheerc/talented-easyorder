@@ -227,6 +227,29 @@ export interface CloudAuditRangeSnapshot {
   rows: CloudAuditRangeRow[];
 }
 
+/** One lease epoch change as shown to the operator: emails only, never UIDs. */
+export interface CloudAccessEventRow {
+  epoch: number;
+  kind: 'acquire' | 'takeover' | 'release';
+  /** ISO instant of the server-written `at`. */
+  at: string;
+  actorEmail: string;
+  /** 'none': nobody held the lease; 'known': email resolved from the previous epoch's event; 'unrecorded': holder existed but its event is not on record. */
+  previousHolderState: 'none' | 'known' | 'unrecorded';
+  previousHolderEmail: string | null;
+}
+
+export interface CloudAccessEventsSnapshot {
+  datasetId: string;
+  sourceSeq: number;
+  goLiveDate: string;
+  leaseToday: string;
+  leaseEpoch: number;
+  range: CloudLedgerDateRange;
+  complete: true;
+  rows: CloudAccessEventRow[];
+}
+
 export interface CloudAccountHistory {
   datasetId: string;
   sourceSeq: number;

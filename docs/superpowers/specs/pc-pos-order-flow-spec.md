@@ -241,7 +241,7 @@ export interface PosTransactionIntent {
 - Active `StudentAccount` search results from `student-account-management-spec` (`domain/student.ts`, `domain/posSearch.ts`).
 - Active `TodayMenu` and menu/vendor snapshots from `menu-vendor-management-spec` (`domain/menu.ts`).
 - Existing same-day ledger rows from `order-ledger-cash-close-spec` (`domain/ledger.ts`) for duplicate/cancel detection.
-- Sync status from Firebase (`firebase/ledgerRepository.ts`).
+- Sync status from Firebase (`firebase/ledgerRepository.ts`, deleted in P13d3; the cloud path uses the immutable-command receipts instead).
 - iPad handoff events from `ipad-face-auth-handoff-spec` (`domain/ipadHandoff.ts`).
 
 ### 輸出

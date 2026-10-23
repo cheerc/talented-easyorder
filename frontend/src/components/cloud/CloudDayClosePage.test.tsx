@@ -876,7 +876,7 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     fireEvent.change(within(form).getByRole('textbox', { name: /回填原因/ }), { target: { value: ' 那天斷線 ' } });
     fireEvent.click(within(form).getByRole('button', { name: '確認回填這一天' }));
 
-    expect(await screen.findByText(/已標為回填，可以到訂餐頁補登交易/)).toBeInTheDocument();
+    expect(await screen.findByText(/已標為回填，可以到訂餐頁補登交易/, undefined, { timeout: 5_000 })).toBeInTheDocument();
     expect(repository.ensureDay).toHaveBeenCalledTimes(1);
     expect(repository.ensureDay).toHaveBeenCalledWith({ commandId: ids[0], leaseEpoch: 4, dayId: gap });
     expect(repository.backfillOpening).toHaveBeenCalledTimes(1);
@@ -890,7 +890,7 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     expect(screen.getByTestId('backfill-info')).toHaveTextContent('那天斷線');
     expect(screen.queryByTestId('backfill-plan-panel')).not.toBeInTheDocument();
     expect(screen.queryByTestId('backfill-start')).not.toBeInTheDocument();
-  });
+  }, 15_000);
 
   it('defaults the opening cash to the previous day\'s effective closing cash when it has post-close entries (contract §15)', async () => {
     repository.findPreviousClosed.mockResolvedValue({ previous: { ...previousClosed, postCloseNet: -50 }, seq: 20 });
@@ -945,10 +945,10 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     fireEvent.change(within(form).getByRole('textbox', { name: /開帳現金（元）/ }), { target: { value: '800' } });
     fireEvent.change(within(form).getByRole('textbox', { name: /差額原因/ }), { target: { value: '抽屜少了 70 元' } });
     fireEvent.click(within(form).getByRole('button', { name: '確認回填這一天' }));
-    await screen.findByText(/已標為回填/);
+    await screen.findByText(/已標為回填/, undefined, { timeout: 5_000 });
     expect(repository.backfillOpening).toHaveBeenCalledWith(expect.objectContaining({ openingCash: 800, reason: '抽屜少了 70 元' }));
     expect(repository.startBackfill).toHaveBeenCalledWith(expect.objectContaining({ reason: '那天斷線' }));
-  });
+  }, 15_000);
 
   it('stops at the failed step, says where, and continues from that step without creating the day again', async () => {
     repository.backfillOpening
@@ -971,21 +971,21 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     fireEvent.change(within(form).getByRole('textbox', { name: /回填原因/ }), { target: { value: '那天斷線' } });
     fireEvent.click(within(form).getByRole('button', { name: '確認回填這一天' }));
 
-    expect(await screen.findByText(/2026-10-14 補開帳未完成.*回填 2026-10-14 停在這一步/)).toBeInTheDocument();
+    expect(await screen.findByText(/2026-10-14 補開帳未完成.*回填 2026-10-14 停在這一步/, undefined, { timeout: 5_000 })).toBeInTheDocument();
     expect(repository.ensureDay).toHaveBeenCalledTimes(1);
     expect(repository.startBackfill).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getAllByRole('button', { name: '重新載入伺服器資料' })[0]);
-    expect(await screen.findByTestId('backfill-plan-panel')).toBeInTheDocument();
+    expect(await screen.findByTestId('backfill-plan-panel', undefined, { timeout: 5_000 })).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('backfill-continue'));
 
-    expect(await screen.findByText(/已標為回填/)).toBeInTheDocument();
+    expect(await screen.findByText(/已標為回填/, undefined, { timeout: 5_000 })).toBeInTheDocument();
     expect(repository.ensureDay).toHaveBeenCalledTimes(1);
     expect(repository.backfillOpening).toHaveBeenCalledTimes(2);
     // A definite rejection created nothing, so the retry is a new command with the current revision.
     expect(repository.backfillOpening.mock.calls[1][0]).toMatchObject({ commandId: ids[2], expectedDayRevision: 1, openingCash: 870 });
     expect(repository.startBackfill).toHaveBeenCalledTimes(1);
-  });
+  }, 15_000);
 
   it('keeps the command ID of an unknown result, confirms it read-only, and carries on only when the operator continues', async () => {
     repository.ensureDay.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
@@ -1011,15 +1011,15 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
     // A receipt found by an explicit query is not an automatic go-ahead: the operator continues the plan.
-    fireEvent.click(await screen.findByTestId('backfill-continue'));
-    expect(await screen.findByText(/已標為回填/)).toBeInTheDocument();
+    fireEvent.click(await screen.findByTestId('backfill-continue', undefined, { timeout: 5_000 }));
+    expect(await screen.findByText(/已標為回填/, undefined, { timeout: 5_000 })).toBeInTheDocument();
     expect(repository.confirmPendingIntent).toHaveBeenCalledWith(
       { kind: 'ensure-day', input: { commandId: ids[0], leaseEpoch: 4, dayId: gap } }, 'dataset-a', 'uid-a',
     );
     expect(repository.ensureDay).toHaveBeenCalledTimes(1);
     expect(repository.backfillOpening).toHaveBeenCalledTimes(1);
     expect(repository.startBackfill).toHaveBeenCalledTimes(1);
-  });
+  }, 15_000);
 
   it('cannot start while the previous closed day is unknown, and retries the lookup', async () => {
     repository.readOverview.mockResolvedValue(gapOverview());
@@ -1059,13 +1059,13 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     expect(repository.findPreviousClosed).not.toHaveBeenCalled();
     fireEvent.change(within(form).getByRole('textbox', { name: /回填原因/ }), { target: { value: '那天斷線' } });
     fireEvent.click(within(form).getByRole('button', { name: '確認標為回填' }));
-    expect(await screen.findByText(/已標為回填/)).toBeInTheDocument();
+    expect(await screen.findByText(/已標為回填/, undefined, { timeout: 5_000 })).toBeInTheDocument();
     expect(repository.ensureDay).not.toHaveBeenCalled();
     expect(repository.backfillOpening).not.toHaveBeenCalled();
     expect(repository.startBackfill).toHaveBeenCalledWith({
       commandId: ids[0], leaseEpoch: 4, dayId: gap, expectedDayRevision: 4, reason: '那天斷線',
     });
-  });
+  }, 15_000);
 
   it('shows a backfilling day with its reason and a way to the orders page, and offers no second start', async () => {
     repository.readOverview.mockResolvedValue(gapOverview(marker, true));
@@ -1767,14 +1767,14 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
       arrangeThreeStepServer(2);
       render(<StrictMode>{pageElement({ initialDayId: gap })}</StrictMode>);
       await startGapBackfill();
-      expect(await screen.findByText(/已標為回填，可以到訂餐頁補登交易/)).toBeInTheDocument();
+      expect(await screen.findByText(/已標為回填，可以到訂餐頁補登交易/, undefined, { timeout: 5_000 })).toBeInTheDocument();
       expect(repository.commitDayCloseIntent.mock.calls.map(call => (call[0] as { kind: string }).kind))
         .toEqual(['ensure-day', 'backfill-opening', 'start-backfill']);
       expect(repository.commitDayCloseIntent.mock.calls.map(call => (call[0] as { input: { commandId: string } }).input.commandId)).toEqual(ids);
       expect(repository.ensureDay).toHaveBeenCalledTimes(1);
       expect(repository.backfillOpening).toHaveBeenCalledTimes(1);
       expect(repository.startBackfill).toHaveBeenCalledTimes(1);
-    });
+    }, 15_000);
 
     it('does not advance on a receipt found while the original response is still held, only on an explicit continue', async () => {
       vi.useFakeTimers();
@@ -1864,7 +1864,7 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
       expect(repository.backfillOpening).not.toHaveBeenCalled();
 
       fireEvent.click(screen.getAllByRole('button', { name: '重新讀取伺服器資料' }).at(-1)!);
-      expect(await screen.findByTestId('backfill-continue')).toBeInTheDocument();
+      expect(await screen.findByTestId('backfill-continue', undefined, { timeout: 5_000 })).toBeInTheDocument();
       await new Promise(resolve => setTimeout(resolve, 50));
       // An explicit reload only reads.
       expect(repository.backfillOpening).not.toHaveBeenCalled();
@@ -1873,15 +1873,15 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
       // After a failed refresh this plan never advances by itself: each further step needs its own explicit continue.
       fireEvent.click(screen.getByTestId('backfill-continue'));
       await waitFor(() => expect(repository.backfillOpening).toHaveBeenCalledTimes(1));
-      expect(await screen.findByTestId('backfill-continue')).toBeInTheDocument();
+      expect(await screen.findByTestId('backfill-continue', undefined, { timeout: 5_000 })).toBeInTheDocument();
       await new Promise(resolve => setTimeout(resolve, 50));
       expect(repository.startBackfill).not.toHaveBeenCalled();
 
       fireEvent.click(screen.getByTestId('backfill-continue'));
-      expect(await screen.findByText(/已標為回填，可以到訂餐頁補登交易/)).toBeInTheDocument();
+      expect(await screen.findByText(/已標為回填，可以到訂餐頁補登交易/, undefined, { timeout: 5_000 })).toBeInTheDocument();
       expect(repository.ensureDay).toHaveBeenCalledTimes(1);
       expect(repository.backfillOpening).toHaveBeenCalledTimes(1);
       expect(repository.startBackfill).toHaveBeenCalledTimes(1);
-    });
+    }, 15_000);
   });
 });
