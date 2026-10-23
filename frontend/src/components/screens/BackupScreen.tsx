@@ -91,6 +91,8 @@ export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange,
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [recovery, setRecovery] = useState<RecoveryView | null>(null);
+  // The saved file is being read back; no command exists yet, but the host must already treat the backup as in flight.
+  const [verifying, setVerifying] = useState(false);
   const [cleanupNote, setCleanupNote] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const flowRef = useRef(0);
@@ -114,6 +116,9 @@ export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange,
   useEffect(() => { latestRef.current = { db, uid, isHolder: lease.isHolder, epoch: lease.epoch }; });
   const onRecoveryChangeRef = useRef(onRecoveryChange);
   useEffect(() => { onRecoveryChangeRef.current = onRecoveryChange; });
+  // Awaited continuations read the live lock, never the value captured when the handler started.
+  const lockedRef = useRef(locked);
+  useEffect(() => { lockedRef.current = locked; });
 
   const clearTimer = (operation: BackupOperation) => {
     if (operation.timerId !== null) window.clearTimeout(operation.timerId);
@@ -137,7 +142,7 @@ export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange,
     dropOperation();
     setStage('idle'); setHeadSeq(null); setPackageBytes(null); setPackageSha(null);
     setManifest(null); setPreviousManifest(null); setPreviousPackageSha(null); setPassword(''); setError(''); setBusy(false);
-    setRecovery(null); setCleanupNote('');
+    setRecovery(null); setCleanupNote(''); setVerifying(false);
   }, [dropOperation]);
 
   // Losing the lease or access drops the whole screen, the frozen intent included. The journal keeps the identity.
@@ -147,7 +152,8 @@ export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange,
   }, [access.ok, lease.isHolder, lease.epoch, resetAll, dropOperation]);
 
   const recoveryActive = recovery !== null;
-  useEffect(() => { onRecoveryChangeRef.current?.(recoveryActive); }, [recoveryActive]);
+  const hostLockNeeded = recoveryActive || verifying;
+  useEffect(() => { onRecoveryChangeRef.current?.(hostLockNeeded); }, [hostLockNeeded]);
   useEffect(() => () => { onRecoveryChangeRef.current?.(false); }, []);
 
   const ownsOperation = (operation: BackupOperation): operation is BackupOperation & { intent: Readonly<RecordBackupIntent> } => {
@@ -252,6 +258,8 @@ export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange,
       operation.attemptSettled = true;
       if (operation.attemptPromise === attemptPromise) operation.attemptPromise = null;
       clearTimer(operation);
+      // A receipt confirmed by the query stands: a late failure of the original submission never undoes it.
+      if (operation.receipt) return;
       if (isAuthorizationLoss(cause)) { revoke(); return; }
       showUnknown(operation, '操作回應不確定；請唯讀查詢原命令結果。查詢錯誤或找不到結果都不會自動重送。');
     }
@@ -369,13 +377,16 @@ export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange,
     // A second selection never resends: an unconfirmed command is resolved only by its own query or explicit retry.
     if (operationRef.current) return;
     const id = ++flowRef.current;
-    setBusy(true); setError('');
+    setBusy(true); setError(''); setVerifying(true);
+    // Synchronously, so the host's own commands are locked before this handler yields.
+    onRecoveryChangeRef.current?.(true);
     try {
       const readback = await verifyBackupFile(file, password, packageSha);
       if (readback.datasetId !== manifest.datasetId || readback.fromSeq !== manifest.fromSeq || readback.toSeq !== manifest.toSeq) {
         throw new Error('重新選取的備份範圍或 dataset 不一致');
       }
       if (id !== flowRef.current || !lease.isHolder) return;
+      if (lockedRef.current) throw new Error('日結命令確認中，沒有登記備份；請先完成日結結果確認，再重新選取檔案。');
       if (!commandRepository) throw new Error('無法建立唯讀查證通道，沒有登記備份；請重新載入頁面。');
       let commandId: string;
       try { commandId = crypto.randomUUID(); } catch { throw new Error('瀏覽器無法建立安全的命令編號，沒有登記備份。請重新載入安全連線後再試。'); }
@@ -394,12 +405,12 @@ export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange,
       };
       operationRef.current = operation;
       if (fileRef.current) fileRef.current.value = '';
-      setBusy(false);
+      setBusy(false); setVerifying(false);
       await runAttempt(operation);
     } catch (cause) { if (id === flowRef.current) setError(cause instanceof Error ? cause.message : '本機備份驗證失敗'); }
     finally {
       if (id === flowRef.current) {
-        setBusy(false);
+        setBusy(false); setVerifying(false);
         if (fileRef.current) fileRef.current.value = '';
       }
     }
