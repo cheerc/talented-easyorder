@@ -575,8 +575,9 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
     });
   }
 
-  function mutateTransaction(input: CloudTransactionMutationInput): Promise<CommandResult> {
-    return commands.commitCommand({
+  /** The one canonical command of a mutation: the writer, the read-only check and the cleanup all derive it from here. */
+  function toMutationCommand(input: CloudTransactionMutationInput) {
+    return {
       commandId: input.commandId,
       kind: input.kind,
       leaseEpoch: input.leaseEpoch,
@@ -589,12 +590,30 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
           day: input.expectedDayRevision,
         },
       payload: input.payload,
-    });
+    };
+  }
+
+  function mutateTransaction(input: CloudTransactionMutationInput): Promise<CommandResult> {
+    return commands.commitCommand(toMutationCommand(input));
+  }
+
+  function confirmPendingIntent(input: CloudTransactionMutationInput, datasetId: string, uid: string) {
+    return commands.confirmPendingIntent(toMutationCommand(input), input.leaseEpoch, datasetId, uid, options.recoveryReader);
+  }
+
+  function cleanupConfirmedIntent(
+    input: CloudTransactionMutationInput, datasetId: string, uid: string, isCurrent: () => boolean,
+  ) {
+    return commands.cleanupConfirmedIntent(
+      toMutationCommand(input), input.leaseEpoch, datasetId, uid, options.recoveryReader, isCurrent,
+    );
   }
 
   return {
     loadSnapshot,
     mutateTransaction,
+    confirmPendingIntent,
+    cleanupConfirmedIntent,
     createOrder,
     createPayment,
     createCashMovement,

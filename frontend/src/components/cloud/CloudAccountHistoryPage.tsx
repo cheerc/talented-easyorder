@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
+import { getAuth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
-import type { CommandReceipt } from '../../domain/cloudCommands';
+import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
 import type { CloudLedgerDateRange, CloudReportTransaction } from '../../domain/cloudLedgerReport';
 import type { CorrectTransactionPayload } from '../../domain/cloudTransactionMutation';
 import { createCloudLedgerDateRange, validateCloudLedgerRange } from '../../domain/cloudLedgerReport';
 import { createCloudReadRepository, type CloudReadRepositoryError } from '../../firebase/cloudReadRepository';
 import { createCloudStudentRepository, listCloudStudents, type CloudStudentRecord } from '../../firebase/cloudStudentRepository';
 import { createCloudOrderRepository, type CloudTransactionMutationInput } from '../../firebase/cloudOrderRepository';
+import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
 import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerToken } from './useCloudActionOwner';
 import './CloudAccountHistoryPage.css';
 
@@ -27,22 +29,98 @@ interface HistorySnapshot {
   audit: Awaited<ReturnType<ReturnType<typeof createCloudReadRepository>['readAuditRange']>>;
 }
 
+
+/** The frozen correction: its command ID, payload and revisions never change once it is first sent. */
 interface FrozenMutation {
+  id: string;
   scopeKey: string;
-  identityKey: string;
+  datasetId: string;
   input: CloudTransactionMutationInput;
-  phase: 'pending' | 'unknown';
-  transaction: CloudReportTransaction;
 }
 
-interface RecoveryIdentity {
-  commandId: string;
-  kind: CloudTransactionMutationInput['kind'];
+/** What survives an unmount: the frozen command and who it belongs to, never the draft form or the account content. */
+interface RecoveryIdentity extends FrozenMutation {
   identityKey: string;
   leaseEpoch: number;
+  uid: string;
 }
 
-const recoveryIdentityRegistry = new Map<string, RecoveryIdentity>();
+type RecoverableMutation = FrozenMutation | RecoveryIdentity;
+const mutationRecoveryRegistry = new Map<string, RecoveryIdentity>();
+
+type RecoveryPhase = 'submitting' | 'checking' | 'unknown';
+
+interface RecoveryView {
+  commandId: string;
+  phase: RecoveryPhase;
+  /** Ten seconds passed without a definite result; the prompt only, never an abort or an unsent proof. */
+  timedOut: boolean;
+  /** A fresh settled read-only not-found allows an explicit retry with the original ID and frozen input. */
+  canRetry: boolean;
+}
+
+/**
+ * One correction operation per mounted owner: the original submission's independent liveness plus the read-only
+ * queries. Nothing of it survives an owner change or an unmount; the registry and the journal keep the identity.
+ */
+interface MutationOperation {
+  owner: CloudActionOwnerToken;
+  action: RecoverableMutation;
+  datasetId: string;
+  uid: string;
+  attempt: number;
+  attemptPromise: Promise<CommandResult> | null;
+  attemptSettled: boolean;
+  timedOut: boolean;
+  querySequence: number;
+  checking: boolean;
+  retryAuthorized: boolean;
+  receipt: CommandReceipt | null;
+  timerId: number | null;
+  completed: boolean;
+}
+
+const PROMPT_AFTER_MS = 10_000;
+const RECEIPT_MISMATCH = '伺服器回執與固定更正命令不一致；保留原命令編號，尚未確認完成。';
+const UNKNOWN_RESULT = '更正結果待確認；保留原命令編號、payload 與 revisions。請唯讀查詢原命令結果；查詢錯誤或找不到結果都不會自動重送。';
+
+function isRecoveryIdentity(action: RecoverableMutation): action is RecoveryIdentity {
+  return 'identityKey' in action;
+}
+
+function storeRecoveryIdentity(
+  action: FrozenMutation, owner: Pick<CloudActionOwnerToken, 'identityKey' | 'leaseEpoch'>, uid: string,
+): void {
+  mutationRecoveryRegistry.set(action.scopeKey, {
+    ...action, identityKey: owner.identityKey, leaseEpoch: owner.leaseEpoch, uid,
+  });
+}
+
+function removeRecoveryAction(action: Pick<RecoverableMutation, 'id' | 'scopeKey'>): void {
+  if (mutationRecoveryRegistry.get(action.scopeKey)?.id === action.id) mutationRecoveryRegistry.delete(action.scopeKey);
+}
+
+function currentUid(db: Firestore): string | null {
+  try { return getAuth(db.app).currentUser?.uid ?? null; } catch { return null; }
+}
+
+function browserIsOnline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === true;
+}
+
+function isAuthorizationLoss(error: unknown): boolean {
+  return ['LEASE_LOST', 'UNAUTHORIZED', 'ACCESS_BUSY'].includes(errorCode(error) ?? '');
+}
+
+function queryFailureMessage(error: unknown): string {
+  const code = errorCode(error);
+  if (code === 'MAINTENANCE') return '系統維護中，暫停同編號重試；請稍後重新查詢。';
+  if (code === 'QUOTA_EXCEEDED') return '查詢次數已達限制，尚未確認命令不存在；請稍後重新查詢，不可重試。';
+  if (code === 'UNSUPPORTED_SCHEMA') return '雲端命令格式不支援，尚未確認操作結果；請聯絡維護者，不可重試。';
+  if (code === 'INVALID_INPUT') return '命令編號已存在，但伺服器內容與原操作不符；仍未確認完成，不可重試。';
+  return '目前無法安全確認原命令；查詢錯誤不代表命令不存在，暫不可重試。';
+}
+
 
 function errorCode(error: unknown): string | null {
   return error && typeof error === 'object' && 'code' in error ? String((error as CloudReadRepositoryError).code) : null;
@@ -87,16 +165,16 @@ function matchingEnvelope(snapshot: HistorySnapshot, studentId: string, range: C
     && snapshot.students.goLiveDate === snapshot.account.goLiveDate;
 }
 
-function receiptMatches(receipt: CommandReceipt | null, frozen: FrozenMutation): receipt is CommandReceipt {
-  return Boolean(receipt && receipt.commandId === frozen.input.commandId && receipt.kind === frozen.input.kind);
-}
+
+
 
 export function CloudAccountHistoryPage({
   db, leaseEpoch, identityKey, initialStudentId = null, initialRange = null, onNavigationStateChange,
 }: CloudAccountHistoryPageProps) {
   const reads = useMemo(() => createCloudReadRepository(db), [db]);
   const studentsRepository = useMemo(() => createCloudStudentRepository(db), [db]);
-  const orders = useMemo(() => createCloudOrderRepository(db), [db]);
+  const recoveryReader = useMemo(() => getCloudRecoveryReader(db), [db]);
+  const orders = useMemo(() => createCloudOrderRepository(db, { recoveryReader }), [db, recoveryReader]);
   const scopeKey = JSON.stringify([identityKey, leaseEpoch]);
   const actionOwnerRef = useCloudActionOwner(identityKey, leaseEpoch);
   const [leaseToday, setLeaseToday] = useState('');
@@ -110,10 +188,12 @@ export function CloudAccountHistoryPage({
   const [range, setRange] = useState<CloudLedgerDateRange | null>(null);
   const [snapshot, setSnapshot] = useState<HistorySnapshot | null>(null);
   const [readyScopeKey, setReadyScopeKey] = useState<string | null>(null);
-  const [recoveryAvailable, setRecoveryAvailable] = useState(() => recoveryIdentityRegistry.has(scopeKey));
+  const [action, setAction] = useState<RecoverableMutation | null>(() => mutationRecoveryRegistry.get(scopeKey) ?? null);
+  const [recovery, setRecovery] = useState<RecoveryView | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [notice, setNotice] = useState('');
+  const [cleanupWarning, setCleanupWarning] = useState('');
   const [formError, setFormError] = useState('');
   const [draft, setDraft] = useState<{ transaction: CloudReportTransaction; kind: 'correct' | 'void' } | null>(null);
   const [mealPriceText, setMealPriceText] = useState('');
@@ -121,42 +201,37 @@ export function CloudAccountHistoryPage({
   const [refundAmountText, setRefundAmountText] = useState('');
   const [note, setNote] = useState('');
   const [reason, setReason] = useState('');
-  const [frozen, setFrozenState] = useState<FrozenMutation | null>(null);
-  const [operationBusy, setOperationBusy] = useState(false);
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
   const [refresh, setRefresh] = useState(0);
   const generationRef = useRef(0);
-  const operationRef = useRef(false);
-  const submitFrozenRef = useRef<(candidate: FrozenMutation) => Promise<void>>(async () => undefined);
-  const frozenRef = useRef<FrozenMutation | null>(null);
-  const setFrozen = useCallback((next: FrozenMutation | null) => {
-    const previous = frozenRef.current;
-    if (previous) {
-      const recorded = recoveryIdentityRegistry.get(previous.scopeKey);
-      if (recorded?.commandId === previous.input.commandId) recoveryIdentityRegistry.delete(previous.scopeKey);
-    }
-    frozenRef.current = next;
-    setFrozenState(next);
-    if (next) recoveryIdentityRegistry.set(next.scopeKey, {
-      commandId: next.input.commandId, kind: next.input.kind,
-      identityKey: next.identityKey, leaseEpoch: next.input.leaseEpoch,
-    });
+  const operationRef = useRef<MutationOperation | null>(null);
+  const navigationRef = useRef(onNavigationStateChange);
+  const latestRef = useRef({ range, selectedId, readyScopeKey, scopeKey });
+  useEffect(() => {
+    navigationRef.current = onNavigationStateChange;
+    latestRef.current = { range, selectedId, readyScopeKey, scopeKey };
+  });
+
+  const dropOperation = useCallback(() => {
+    const operation = operationRef.current;
+    if (!operation) return;
+    if (operation.timerId !== null) window.clearTimeout(operation.timerId);
+    operation.timerId = null;
+    operation.completed = true;
+    operation.attemptPromise = null;
+    operationRef.current = null;
   }, []);
+
+  useEffect(() => () => dropOperation(), [dropOperation, scopeKey]);
 
   const revokeSensitiveUI = useCallback((owner: CloudActionOwnerToken, error: unknown) => {
     if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
     owner.revoked = true;
     generationRef.current += 1;
-    operationRef.current = false;
-    const pending = frozenRef.current;
-    if (pending) {
-      recoveryIdentityRegistry.set(pending.scopeKey, {
-        commandId: pending.input.commandId, kind: pending.input.kind,
-        identityKey: pending.identityKey, leaseEpoch: pending.input.leaseEpoch,
-      });
-    }
-    frozenRef.current = null;
-    setFrozenState(null);
+    // The registry keeps the identity (and the journal its own entry); only the memory of the operation goes.
+    dropOperation();
+    setAction(null);
+    setRecovery(null);
     setSnapshot(null);
     setStudents([]);
     setSelectedId(null);
@@ -170,6 +245,7 @@ export function CloudAccountHistoryPage({
     setLoading(false);
     setLoadError(errorText(error));
     setNotice('');
+    setCleanupWarning('');
     setFormError('');
     setDraft(null);
     setMealPriceText('');
@@ -178,10 +254,8 @@ export function CloudAccountHistoryPage({
     setNote('');
     setReason('');
     setReadyScopeKey(null);
-    setRecoveryAvailable(false);
-    setOperationBusy(false);
-    onNavigationStateChange?.(owner.identityKey, 'revoked');
-  }, [actionOwnerRef, onNavigationStateChange]);
+    navigationRef.current?.(owner.identityKey, 'revoked');
+  }, [actionOwnerRef, dropOperation]);
 
   const previousScopeKey = useRef<string | null>(null);
   useLayoutEffect(() => {
@@ -189,20 +263,11 @@ export function CloudAccountHistoryPage({
     previousScopeKey.current = scopeKey;
     if (previous === null || previous === scopeKey) return;
     generationRef.current += 1;
-    operationRef.current = false;
-    if (frozenRef.current) {
-      recoveryIdentityRegistry.set(frozenRef.current.scopeKey, {
-        commandId: frozenRef.current.input.commandId,
-        kind: frozenRef.current.input.kind,
-        identityKey: frozenRef.current.identityKey,
-        leaseEpoch: frozenRef.current.input.leaseEpoch,
-      });
-    }
-    frozenRef.current = null;
-    setFrozenState(null);
+    dropOperation();
+    setAction(mutationRecoveryRegistry.get(scopeKey) ?? null);
+    setRecovery(null);
     setSnapshot(null);
     setReadyScopeKey(null);
-    setRecoveryAvailable(recoveryIdentityRegistry.has(scopeKey));
     setStudents([]);
     setSelectedId(null);
     setSearch('');
@@ -215,6 +280,7 @@ export function CloudAccountHistoryPage({
     setLoading(true);
     setLoadError('');
     setNotice('');
+    setCleanupWarning('');
     setFormError('');
     setDraft(null);
     setMealPriceText('');
@@ -222,8 +288,8 @@ export function CloudAccountHistoryPage({
     setRefundAmountText('');
     setNote('');
     setReason('');
-    setOperationBusy(false);
-  }, [identityKey, scopeKey]);
+  }, [dropOperation, identityKey, scopeKey]);
+
 
   useEffect(() => {
     let active = true;
@@ -315,8 +381,9 @@ export function CloudAccountHistoryPage({
   }, [search, students]);
   const currentStudent = snapshot?.students.students.find(student => student.studentId === selectedId) ?? null;
   const rangeDayByDate = useMemo(() => new Map(snapshot?.report.days.map(day => [day.businessDate, day]) ?? []), [snapshot]);
-  const visibleFrozen = frozen?.scopeKey === scopeKey ? frozen : null;
-  const visibleRecoveryIdentity = recoveryAvailable ? recoveryIdentityRegistry.get(scopeKey) ?? null : null;
+  const visibleAction = action?.scopeKey === scopeKey ? action : null;
+  /** A frozen correction from this mount is in progress: every read and write control waits for its result. */
+  const visibleFrozen = visibleAction && !isRecoveryIdentity(visibleAction) ? visibleAction : null;
 
   const loadAgain = useCallback(() => {
     if (visibleFrozen) return;
@@ -364,152 +431,301 @@ export function CloudAccountHistoryPage({
     setFormError('');
   }, [canMutate, visibleFrozen]);
 
-  const recoverCommand = useCallback(async () => {
-    const candidate = visibleFrozen;
-    const owner = actionOwnerRef.current;
-    if (!isCurrentCloudActionOwner(actionOwnerRef, owner) || operationRef.current) return;
-    const recoveryIdentity = !candidate && recoveryAvailable
-      ? recoveryIdentityRegistry.get(owner.scopeKey) ?? null : null;
-    if (!candidate && (!recoveryIdentity || recoveryIdentity.identityKey !== owner.identityKey
-      || recoveryIdentity.leaseEpoch !== owner.leaseEpoch)) return;
-    if (candidate && candidate.scopeKey !== owner.scopeKey) return;
-    operationRef.current = true;
-    setOperationBusy(true);
-    setNotice('正在伺服器查詢原更正命令…');
-    onNavigationStateChange?.(owner.identityKey, 'recovering');
+  const ownsOperation = (operation: MutationOperation): boolean => (
+    operationRef.current === operation && !operation.completed && isCurrentCloudActionOwner(actionOwnerRef, operation.owner)
+  );
+
+  const clearTimer = (operation: MutationOperation) => {
+    if (operation.timerId !== null) window.clearTimeout(operation.timerId);
+    operation.timerId = null;
+  };
+
+  const notify = (operation: MutationOperation, state: 'recovering' | 'resolved') => {
+    navigationRef.current?.(operation.owner.identityKey, state);
+  };
+
+  /** The original submission is over, one way or another, with the receipt still unconfirmed. */
+  const showUnknown = (operation: MutationOperation, message: string) => {
+    if (!ownsOperation(operation) || operation.receipt) return;
+    clearTimer(operation);
+    operation.retryAuthorized = false;
+    setRecovery({
+      commandId: operation.action.id, phase: operation.checking ? 'checking' : 'unknown', timedOut: false, canRetry: false,
+    });
+    setNotice(message);
+  };
+
+  const beginAttempt = (operation: MutationOperation) => {
+    clearTimer(operation);
+    operation.attempt += 1;
+    operation.attemptPromise = null;
+    operation.attemptSettled = false;
+    operation.timedOut = false;
+    operation.retryAuthorized = false;
+    operation.querySequence += 1;
+    operation.checking = false;
+    const attempt = operation.attempt;
+    // The ten-second mark is only a status prompt: no abort, no new ID, no automatic retry.
+    operation.timerId = window.setTimeout(() => {
+      if (!ownsOperation(operation) || operation.attempt !== attempt || operation.attemptSettled || operation.receipt) return;
+      operation.timedOut = true;
+      setRecovery(previous => (previous && previous.commandId === operation.action.id
+        ? { ...previous, phase: 'submitting', timedOut: true, canRetry: false }
+        : previous));
+    }, PROMPT_AFTER_MS);
+  };
+
+  /** The one place a receipt is accepted: clean the journal once, then reload the full history from the server. */
+  const settleWithReceipt = async (operation: MutationOperation, receipt: CommandReceipt) => {
+    if (!ownsOperation(operation) || operation.receipt) return;
+    const frozen = operation.action;
+    if (receipt.commandId !== frozen.input.commandId || receipt.kind !== frozen.input.kind) {
+      showUnknown(operation, RECEIPT_MISMATCH);
+      return;
+    }
+    clearTimer(operation);
+    operation.receipt = receipt;
+    operation.retryAuthorized = false;
+    operation.checking = false;
+    operation.querySequence += 1;
+    setRecovery({ commandId: frozen.id, phase: 'checking', timedOut: false, canRetry: false });
+    let warning = '';
     try {
-      const receipt = await orders.readCommand(candidate?.input.commandId ?? recoveryIdentity!.commandId);
-      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-      if (recoveryIdentity) {
-        if (receipt && (receipt.commandId !== recoveryIdentity.commandId || receipt.kind !== recoveryIdentity.kind)) {
-          throw new Error('原命令收據種類或編號不符。');
-        }
-        if (receipt) {
-          recoveryIdentityRegistry.delete(owner.scopeKey);
-          setRecoveryAvailable(false);
-          setNotice('原命令收據已確認；依目前完整資料重新讀取帳戶歷史。');
-          setDraft(null);
-          setSnapshot(null);
-          if (range && selectedId) {
-            setLoading(true);
-            setRefresh(value => value + 1);
-          } else if (readyScopeKey === scopeKey) {
-            setLoading(false);
-          } else {
-            setLoading(true);
-            setBootstrapAttempt(value => value + 1);
-          }
-        } else {
-          setNotice('伺服器查無原命令收據；原更正內容未保留，請依目前完整資料重新確認。');
-          setLoading(readyScopeKey !== scopeKey);
-        }
-        onNavigationStateChange?.(owner.identityKey, 'resolved');
+      const cleaned = await orders.cleanupConfirmedIntent(
+        frozen.input, operation.datasetId, operation.uid, () => ownsOperation(operation) && browserIsOnline(),
+      );
+      if (!cleaned && ownsOperation(operation)) warning = '本機命令追蹤尚未清理；伺服器回執仍已確認。';
+    } catch (error) {
+      if (!ownsOperation(operation)) return;
+      if (isAuthorizationLoss(error)) {
+        revokeSensitiveUI(operation.owner, error);
         return;
       }
-      if (receipt) {
-        if (!receiptMatches(receipt, candidate!)) throw new Error('原命令收據種類或編號不符。');
-        setFrozen(null);
-        setNotice('原命令已確認；重新讀取完整帳戶歷史。');
-        onNavigationStateChange?.(owner.identityKey, 'resolved');
+      warning = '本機命令追蹤清理未完成；伺服器回執仍已確認。';
+    }
+    if (!ownsOperation(operation)) return;
+    removeRecoveryAction(frozen);
+    dropOperation();
+    setAction(null);
+    setRecovery(null);
+    setDraft(null);
+    setCleanupWarning(warning);
+    setNotice(isRecoveryIdentity(frozen)
+      ? '原命令收據已確認；依目前完整資料重新讀取帳戶歷史。'
+      : '更正收據已確認；正在依新來源序號重讀完整歷史。');
+    setSnapshot(null);
+    setLoadError('');
+    const latest = latestRef.current;
+    if (latest.range && latest.selectedId) {
+      // A confirmed receipt is not a ready page: navigation stays recovering until the fresh heads load or fail.
+      notify(operation, 'recovering');
+      setLoading(true);
+      setRefresh(value => value + 1);
+    } else if (latest.readyScopeKey === latest.scopeKey) {
+      setLoading(false);
+      notify(operation, 'resolved');
+    } else {
+      setLoading(true);
+      setBootstrapAttempt(value => value + 1);
+    }
+  };
+
+  const finishResult = async (operation: MutationOperation, result: CommandResult) => {
+    if (!ownsOperation(operation) || operation.receipt) return;
+    clearTimer(operation);
+    if (!result.ok) {
+      if (isAuthorizationLoss(result.error)) {
+        revokeSensitiveUI(operation.owner, result.error);
+        return;
+      }
+      if (result.error.code === 'UNKNOWN_RESULT' || result.error.code === 'OFFLINE') {
+        showUnknown(operation, UNKNOWN_RESULT);
+        return;
+      }
+      // A definite refusal: nothing was recorded, so a later correction starts a new command.
+      removeRecoveryAction(operation.action);
+      dropOperation();
+      setAction(null);
+      setRecovery(null);
+      if (result.error.code === 'REVISION_CONFLICT') {
         setDraft(null);
+        setNotice('資料版本已變更。已重新載入完整歷史；請檢視新資料後重新開啟更正並確認，不會自動重送舊內容。');
         setLoading(true);
         setSnapshot(null);
+        setLoadError('');
         setRefresh(value => value + 1);
-        return;
-      }
-      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-      operationRef.current = false;
-      setOperationBusy(false);
-      await submitFrozenRef.current(candidate!);
-      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-    } catch (error) {
-      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-      if (['LEASE_LOST', 'UNAUTHORIZED'].includes(errorCode(error) ?? '')) revokeSensitiveUI(owner, error);
-      else setNotice(`仍無法確認原命令：${errorText(error)}`);
-    } finally {
-      if (isCurrentCloudActionOwner(actionOwnerRef, owner)) {
-        operationRef.current = false;
-        setOperationBusy(false);
-      }
-    }
-  }, [actionOwnerRef, onNavigationStateChange, orders, range, readyScopeKey, recoveryAvailable, revokeSensitiveUI, scopeKey, selectedId, setFrozen, visibleFrozen]);
-
-  const submitFrozen = useCallback(async (candidate: FrozenMutation) => {
-    const owner = actionOwnerRef.current;
-    if (!isCurrentCloudActionOwner(actionOwnerRef, owner) || owner.scopeKey !== candidate.scopeKey
-      || candidate.identityKey !== owner.identityKey || candidate.input.leaseEpoch !== owner.leaseEpoch
-      || operationRef.current) return;
-    operationRef.current = true;
-    setOperationBusy(true);
-    setFrozen({ ...candidate, phase: 'pending' });
-    setNotice('正在送出固定版本的歷史更正…');
-    onNavigationStateChange?.(owner.identityKey, 'recovering');
-    try {
-      const result = await orders.mutateTransaction(candidate.input);
-      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-      if (!result.ok) {
-        if (result.error.code === 'LEASE_LOST' || result.error.code === 'UNAUTHORIZED') {
-          revokeSensitiveUI(owner, result.error);
-          return;
-        }
-        if (result.error.code === 'UNKNOWN_RESULT' || result.error.code === 'OFFLINE') {
-          setFrozen({ ...candidate, phase: 'unknown' });
-          setNotice('更正結果待確認；保留原命令編號、payload 與 revisions。');
-          return;
-        }
-        setFrozen(null);
-        if (result.error.code === 'REVISION_CONFLICT') {
-          setDraft(null);
-          setNotice('資料版本已變更。已重新載入完整歷史；請檢視新資料後重新開啟更正並確認，不會自動重送舊內容。');
+      } else {
+        setNotice(result.error.message);
+        if (result.error.code === 'DAY_CLOSED') {
           setLoading(true);
           setSnapshot(null);
           setLoadError('');
+          setDraft(null);
           setRefresh(value => value + 1);
-          onNavigationStateChange?.(owner.identityKey, 'resolved');
-        } else {
-          setNotice(result.error.message);
-          if (result.error.code === 'DAY_CLOSED') {
-            setLoading(true);
-            setSnapshot(null);
-            setLoadError('');
-            setDraft(null);
-            setRefresh(value => value + 1);
-          }
-          onNavigationStateChange?.(owner.identityKey, 'resolved');
         }
+      }
+      notify(operation, 'resolved');
+      return;
+    }
+    await settleWithReceipt(operation, result.receipt);
+  };
+
+  const runAttempt = async (operation: MutationOperation) => {
+    const frozen = operation.action;
+    if (!ownsOperation(operation) || isRecoveryIdentity(frozen)) return;
+    beginAttempt(operation);
+    setRecovery({ commandId: frozen.id, phase: 'submitting', timedOut: false, canRetry: false });
+    const attempt = operation.attempt;
+    const attemptPromise = orders.mutateTransaction(frozen.input);
+    operation.attemptPromise = attemptPromise;
+    try {
+      const result = await attemptPromise;
+      if (!ownsOperation(operation) || operation.attempt !== attempt) return;
+      operation.attemptSettled = true;
+      if (operation.attemptPromise === attemptPromise) operation.attemptPromise = null;
+      await finishResult(operation, result);
+    } catch (error) {
+      if (!ownsOperation(operation) || operation.attempt !== attempt) return;
+      operation.attemptSettled = true;
+      if (operation.attemptPromise === attemptPromise) operation.attemptPromise = null;
+      clearTimer(operation);
+      // A receipt confirmed by the query stands: a late failure of the original submission never undoes it.
+      if (operation.receipt) return;
+      if (isAuthorizationLoss(error)) {
+        revokeSensitiveUI(operation.owner, error);
         return;
       }
-      if (result.receipt.commandId !== candidate.input.commandId || result.receipt.kind !== candidate.input.kind) {
-        throw new Error('伺服器收據與固定更正命令不一致。');
-      }
-      setFrozen(null);
-      setDraft(null);
-      setNotice('更正收據已確認；正在依新來源序號重讀完整歷史。');
-      onNavigationStateChange?.(owner.identityKey, 'resolved');
-      setLoading(true);
-      setSnapshot(null);
-      setLoadError('');
-      setRefresh(value => value + 1);
-    } catch (error) {
-      if (!isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-      if (['LEASE_LOST', 'UNAUTHORIZED'].includes(errorCode(error) ?? '')) revokeSensitiveUI(owner, error);
-      else {
-        setFrozen({ ...candidate, phase: 'unknown' });
-        setNotice(`更正結果待確認：${errorText(error)}。請查詢原命令。`);
-      }
-    } finally {
-      if (isCurrentCloudActionOwner(actionOwnerRef, owner)) {
-        operationRef.current = false;
-        setOperationBusy(false);
-      }
+      showUnknown(operation, UNKNOWN_RESULT);
     }
-  }, [actionOwnerRef, onNavigationStateChange, orders, revokeSensitiveUI, setFrozen]);
+  };
 
-  useEffect(() => { submitFrozenRef.current = submitFrozen; }, [submitFrozen]);
+  const startMutation = (frozen: FrozenMutation) => {
+    const owner = actionOwnerRef.current;
+    if (!isCurrentCloudActionOwner(actionOwnerRef, owner) || owner.scopeKey !== frozen.scopeKey || operationRef.current) return;
+    const uid = currentUid(db);
+    if (!uid) {
+      revokeSensitiveUI(owner, {
+        code: 'UNAUTHORIZED', message: '目前登入身分尚未確認，雲端資料已清除。請重新登入操作員帳號。',
+      });
+      return;
+    }
+    const operation: MutationOperation = {
+      owner, action: frozen, datasetId: frozen.datasetId, uid, attempt: 0, attemptPromise: null,
+      attemptSettled: false, timedOut: false, querySequence: 0, checking: false, retryAuthorized: false,
+      receipt: null, timerId: null, completed: false,
+    };
+    operationRef.current = operation;
+    setAction(frozen);
+    setCleanupWarning('');
+    storeRecoveryIdentity(frozen, owner, uid);
+    setNotice('正在送出固定版本的歷史更正…');
+    notify(operation, 'recovering');
+    void runAttempt(operation);
+  };
 
-  const submitMutation = useCallback((event: FormEvent<HTMLFormElement>) => {
+  /** After a remount only the identity exists; its operation is created on the first explicit query. */
+  const operationFor = (intent: RecoverableMutation): MutationOperation | null => {
+    const existing = operationRef.current;
+    if (existing) return existing.action.id === intent.id ? existing : null;
+    const owner = actionOwnerRef.current;
+    if (!isCurrentCloudActionOwner(actionOwnerRef, owner) || !isRecoveryIdentity(intent)
+      || intent.scopeKey !== owner.scopeKey || intent.identityKey !== owner.identityKey
+      || intent.leaseEpoch !== owner.leaseEpoch) return null;
+    const operation: MutationOperation = {
+      owner, action: intent, datasetId: intent.datasetId, uid: intent.uid, attempt: 0, attemptPromise: null,
+      attemptSettled: true, timedOut: false, querySequence: 0, checking: false, retryAuthorized: false,
+      receipt: null, timerId: null, completed: false,
+    };
+    operationRef.current = operation;
+    return operation;
+  };
+
+  const checkPending = async () => {
+    const intent = visibleAction;
+    const owner = actionOwnerRef.current;
+    if (!intent || !isCurrentCloudActionOwner(actionOwnerRef, owner) || intent.scopeKey !== owner.scopeKey) return;
+    const operation = operationFor(intent);
+    if (!operation || !ownsOperation(operation) || operation.checking || operation.receipt) return;
+    if (!operation.attemptSettled && !operation.timedOut) return;
+    const frozen = operation.action;
+    const view = (phase: RecoveryPhase, canRetry: boolean): RecoveryView => ({
+      commandId: frozen.id, phase, timedOut: !operation.attemptSettled, canRetry,
+    });
+    if (!browserIsOnline()) {
+      operation.retryAuthorized = false;
+      setRecovery(view(operation.attemptSettled ? 'unknown' : 'submitting', false));
+      setNotice('目前離線；查詢錯誤不代表命令不存在，暫不可重試。');
+      return;
+    }
+    operation.checking = true;
+    const attemptAtStart = operation.attempt;
+    const settledAtStart = operation.attemptSettled && operation.attemptPromise === null;
+    operation.retryAuthorized = false;
+    const sequence = ++operation.querySequence;
+    setRecovery(view('checking', false));
+    setNotice('正在查詢原命令結果…');
+    const pending = (message: string, canRetry: boolean) => {
+      setRecovery(view(operation.attemptSettled ? 'unknown' : 'submitting', canRetry));
+      setNotice(message);
+    };
+    try {
+      const check = await orders.confirmPendingIntent(frozen.input, operation.datasetId, operation.uid);
+      if (!ownsOperation(operation) || operation.querySequence !== sequence
+        || operation.attempt !== attemptAtStart || operation.receipt) return;
+      if (check.status === 'matched') {
+        await settleWithReceipt(operation, check.receipt);
+        return;
+      }
+      if (check.status === 'different-dataset') {
+        pending('目前伺服器資料集已變更；原更正命令尚未確認，請聯絡維護者，不可重試。', false);
+        return;
+      }
+      if (isRecoveryIdentity(frozen)) {
+        pending('伺服器查無原命令收據；原更正內容未保留，請依目前完整資料重新確認。', false);
+        notify(operation, 'resolved');
+        return;
+      }
+      // Only a successful fresh not-found that began after the same attempt settled can allow an explicit retry.
+      const mayRetry = settledAtStart && operation.attemptSettled && operation.attemptPromise === null;
+      operation.retryAuthorized = mayRetry;
+      pending(mayRetry
+        ? '伺服器目前尚未找到這筆命令。沒有產生新的命令編號；確認後可明確選擇同編號重試。'
+        : settledAtStart
+          ? '原命令狀態在查詢期間改變；這次查詢不能授權重試。請重新查詢原命令。'
+          : operation.attemptSettled
+            ? '這次查詢開始時原命令仍在送出中；未找到結果不能授權重試。請在原命令結束後重新查詢。'
+            : '查詢尚未找到回執，但原命令仍在送出中；目前不能重試。請等待原命令結束後再查詢。', mayRetry);
+    } catch (error) {
+      if (!ownsOperation(operation) || operation.querySequence !== sequence || operation.receipt) return;
+      if (isAuthorizationLoss(error)) {
+        revokeSensitiveUI(operation.owner, error);
+        return;
+      }
+      operation.retryAuthorized = false;
+      pending(queryFailureMessage(error), false);
+    } finally {
+      if (operationRef.current === operation && operation.querySequence === sequence) operation.checking = false;
+    }
+  };
+
+  const retryPending = () => {
+    const operation = operationRef.current;
+    if (!operation || !ownsOperation(operation) || !operation.attemptSettled || !operation.retryAuthorized
+      || operation.receipt || operation.checking || isRecoveryIdentity(operation.action)) return;
+    if (!browserIsOnline()) {
+      operation.retryAuthorized = false;
+      setRecovery(previous => (previous ? { ...previous, canRetry: false } : previous));
+      setNotice('目前離線，沒有重試命令；請恢復連線後重新查詢原命令。');
+      return;
+    }
+    operation.retryAuthorized = false;
+    void runAttempt(operation);
+  };
+
+
+  const submitMutation = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!draft || !snapshot || !currentStudent || !range || visibleFrozen) return;
+    if (!draft || !snapshot || !currentStudent || !range || visibleFrozen || operationRef.current) return;
     const day = rangeDayByDate.get(draft.transaction.businessDate);
     if (!day || day.status !== 'open' || day.lastSettlementRevision !== 0 || day.revision === null
       || draft.transaction.status !== 'active') {
@@ -530,7 +746,7 @@ export function CloudAccountHistoryPage({
         ...common, kind: 'VoidTransaction', payload: { reason: reasonValue },
       };
       setFormError('');
-      void submitFrozen({ scopeKey, identityKey, input, phase: 'pending', transaction: draft.transaction });
+      startMutation({ id: input.commandId, scopeKey, datasetId: snapshot.account.datasetId, input });
       return;
     }
 
@@ -560,10 +776,11 @@ export function CloudAccountHistoryPage({
       ...common, kind: 'CorrectTransaction', payload,
     };
     setFormError('');
-    void submitFrozen({ scopeKey, identityKey, input, phase: 'pending', transaction: draft.transaction });
-  }, [currentStudent, draft, identityKey, leaseEpoch, mealPriceText, note, range, rangeDayByDate, reason,
-    refundAmountText, scopeKey, selectedId, snapshot, submitFrozen, visibleFrozen, paidAmountText]);
+    startMutation({ id: input.commandId, scopeKey, datasetId: snapshot.account.datasetId, input });
+  };
 
+
+  const statusNode = notice ? <p role="status">{notice}</p> : null;
   const retryButtonDisabled = loading || Boolean(visibleFrozen);
 
   return (
@@ -665,25 +882,37 @@ export function CloudAccountHistoryPage({
         <h3>{draft.kind === 'void' ? '作廢歷史交易' : '更正歷史交易'} · {draft.transaction.transactionId}</h3>
         <p>固定交易版本 {draft.transaction.revision}、學生版本 {currentStudent?.revision ?? '—'}、日期版本 {rangeDayByDate.get(draft.transaction.businessDate)?.revision ?? '—'}。此頁只允許仍未曾關帳的營業日。</p>
         {draft.kind === 'correct' && draft.transaction.type === 'order' && <>
-          <label>餐費<input aria-label="更正餐費" inputMode="numeric" disabled={Boolean(visibleFrozen) || operationBusy} value={mealPriceText} onChange={event => setMealPriceText(event.target.value)} /></label>
-          <label>收款<input aria-label="更正收款" inputMode="numeric" disabled={Boolean(visibleFrozen) || operationBusy} value={paidAmountText} onChange={event => setPaidAmountText(event.target.value)} /></label>
+          <label>餐費<input aria-label="更正餐費" inputMode="numeric" disabled={Boolean(visibleFrozen)} value={mealPriceText} onChange={event => setMealPriceText(event.target.value)} /></label>
+          <label>收款<input aria-label="更正收款" inputMode="numeric" disabled={Boolean(visibleFrozen)} value={paidAmountText} onChange={event => setPaidAmountText(event.target.value)} /></label>
         </>}
-        {draft.kind === 'correct' && draft.transaction.type === 'payment' && <label>收款金額<input aria-label="更正收款金額" inputMode="numeric" disabled={Boolean(visibleFrozen) || operationBusy} value={paidAmountText} onChange={event => setPaidAmountText(event.target.value)} /></label>}
-        {draft.kind === 'correct' && draft.transaction.type === 'refund' && <label>退款金額<input aria-label="更正退款金額" inputMode="numeric" disabled={Boolean(visibleFrozen) || operationBusy} value={refundAmountText} onChange={event => setRefundAmountText(event.target.value)} /></label>}
-        {draft.kind === 'correct' && <label>交易備註<input aria-label="交易備註" disabled={Boolean(visibleFrozen) || operationBusy} value={note} onChange={event => setNote(event.target.value)} /></label>}
-        <label>更正理由<input aria-label="更正理由" disabled={Boolean(visibleFrozen) || operationBusy} value={reason} onChange={event => setReason(event.target.value)} required /></label>
-        <button type="submit" disabled={Boolean(visibleFrozen) || operationBusy}>確認送出</button>
-        <button type="button" disabled={Boolean(visibleFrozen) || operationBusy} onClick={() => { setDraft(null); setFormError(''); }}>取消</button>
+        {draft.kind === 'correct' && draft.transaction.type === 'payment' && <label>收款金額<input aria-label="更正收款金額" inputMode="numeric" disabled={Boolean(visibleFrozen)} value={paidAmountText} onChange={event => setPaidAmountText(event.target.value)} /></label>}
+        {draft.kind === 'correct' && draft.transaction.type === 'refund' && <label>退款金額<input aria-label="更正退款金額" inputMode="numeric" disabled={Boolean(visibleFrozen)} value={refundAmountText} onChange={event => setRefundAmountText(event.target.value)} /></label>}
+        {draft.kind === 'correct' && <label>交易備註<input aria-label="交易備註" disabled={Boolean(visibleFrozen)} value={note} onChange={event => setNote(event.target.value)} /></label>}
+        <label>更正理由<input aria-label="更正理由" disabled={Boolean(visibleFrozen)} value={reason} onChange={event => setReason(event.target.value)} required /></label>
+        <button type="submit" disabled={Boolean(visibleFrozen)}>確認送出</button>
+        <button type="button" disabled={Boolean(visibleFrozen)} onClick={() => { setDraft(null); setFormError(''); }}>取消</button>
       </form>}
-      {visibleFrozen && <section className="cloud-account-history__recovery" aria-label="歷史更正命令恢復">
-        <p>{visibleFrozen.phase === 'unknown' ? '更正結果待確認' : '更正命令處理中'}：ID {visibleFrozen.input.commandId} · 交易 {visibleFrozen.transaction.transactionId}</p>
-        <button type="button" disabled={operationBusy} onClick={() => void recoverCommand()}>查詢原命令並以同 ID 復原</button>
+      {visibleAction && <section className="cloud-account-history__recovery" aria-label={isRecoveryIdentity(visibleAction) ? '待確認歷史更正命令' : '歷史更正命令恢復'}>
+        <strong>{!recovery ? '結果確認中，請勿重複操作。'
+          : recovery.phase === 'checking' ? '正在查詢原命令結果…'
+            : recovery.phase === 'submitting'
+              ? recovery.timedOut ? '結果確認中，勿重新收款' : '命令送出中，請勿重複操作。'
+              : '結果確認中，請勿重複操作。'}</strong>
+        {isRecoveryIdentity(visibleAction)
+          ? <p>有一筆歷史更正命令待確認。查詢原收據後，依目前完整資料繼續；不會自動重送。</p>
+          : <p>更正命令 ID {visibleAction.id} · 交易 {visibleAction.input.transactionId}</p>}
+        {isRecoveryIdentity(visibleAction) && <p>命令編號 {visibleAction.id}</p>}
+        <div>
+          {isRecoveryIdentity(visibleAction)
+            ? <button type="button" disabled={recovery?.phase === 'checking'} onClick={() => void checkPending()}>查詢原命令收據</button>
+            : (!recovery || recovery.phase === 'unknown' || (recovery.phase === 'submitting' && recovery.timedOut))
+              && <button type="button" onClick={() => void checkPending()}>查詢原命令結果</button>}
+          {recovery?.canRetry && <button type="button" onClick={retryPending}>以相同命令編號重試</button>}
+        </div>
+        {statusNode}
       </section>}
-      {visibleRecoveryIdentity && !visibleFrozen && <section className="cloud-account-history__recovery" aria-label="待確認歷史更正命令">
-        <p>有一筆歷史更正命令待確認。查詢原收據後，依目前完整資料繼續；不會自動重送。</p>
-        <button type="button" disabled={operationBusy} onClick={() => void recoverCommand()}>查詢原命令收據</button>
-      </section>}
-      {notice && <p role="status">{notice}</p>}
+      {!visibleAction && statusNode}
+      {cleanupWarning && <p role="status">{cleanupWarning}</p>}
     </section>
   );
 }

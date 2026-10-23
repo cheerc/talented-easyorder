@@ -1,16 +1,20 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { act } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CloudAccountHistory, CloudAuditRangeSnapshot, CloudLedgerReport } from '../../domain/cloudLedgerReport';
 
+const currentAuth = vi.hoisted(() => ({ uid: 'uid-a' as string | null }));
+
 const mocks = vi.hoisted(() => ({
+  repositoryOptions: vi.fn(),
   readSummary: vi.fn(),
   readAccountHistory: vi.fn(),
   readReport: vi.fn(),
   readAuditRange: vi.fn(),
   listStudents: vi.fn(),
   mutateTransaction: vi.fn(),
-  readCommand: vi.fn(),
+  confirmPendingIntent: vi.fn(),
+  cleanupConfirmedIntent: vi.fn(),
 }));
 
 vi.mock('../../firebase/cloudReadRepository', () => ({
@@ -26,7 +30,20 @@ vi.mock('../../firebase/cloudStudentRepository', () => ({
   listCloudStudents: mocks.listStudents,
 }));
 vi.mock('../../firebase/cloudOrderRepository', () => ({
-  createCloudOrderRepository: () => ({ mutateTransaction: mocks.mutateTransaction, readCommand: mocks.readCommand }),
+  createCloudOrderRepository: (_db: unknown, options: unknown) => {
+    mocks.repositoryOptions(options);
+    return {
+      mutateTransaction: mocks.mutateTransaction,
+      confirmPendingIntent: mocks.confirmPendingIntent,
+      cleanupConfirmedIntent: mocks.cleanupConfirmedIntent,
+    };
+  },
+}));
+vi.mock('../../firebase/cloudRecoveryReader', () => ({
+  getCloudRecoveryReader: () => ({ assertCurrent: vi.fn() }),
+}));
+vi.mock('firebase/auth', () => ({
+  getAuth: () => ({ currentUser: currentAuth.uid ? { uid: currentAuth.uid } : null }),
 }));
 
 import { CloudAccountHistoryPage } from './CloudAccountHistoryPage';
@@ -81,14 +98,16 @@ function deferred<T>() {
 
 describe('CloudAccountHistoryPage', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    currentAuth.uid = 'uid-a';
     mocks.readSummary.mockResolvedValue({ leaseToday: '2026-10-19' });
     mocks.listStudents.mockResolvedValue({ datasetId: 'dataset-a', seq: 11, goLiveDate: '2026-10-01', students: [student] });
     mocks.readAccountHistory.mockResolvedValue(account);
     mocks.readReport.mockResolvedValue(report);
     mocks.readAuditRange.mockResolvedValue(audit);
     mocks.mutateTransaction.mockResolvedValue({ ok: true, receipt: { commandId: 'mutation-a', seq: 12, kind: 'CorrectTransaction' } });
-    mocks.readCommand.mockResolvedValue(null);
+    mocks.confirmPendingIntent.mockResolvedValue({ status: 'not-found' });
+    mocks.cleanupConfirmedIntent.mockResolvedValue(true);
   });
 
   it('shows no balance until account history, day records, audit, and current student head agree', async () => {
@@ -144,7 +163,7 @@ describe('CloudAccountHistoryPage', () => {
     expect(mocks.mutateTransaction).not.toHaveBeenCalled();
   });
 
-  it('recovers an unknown correction by retrying the frozen command id and revisions', async () => {
+  it('queries an unknown correction read-only and resends the frozen command only after an explicit retry click', async () => {
     mocks.mutateTransaction
       .mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } })
       .mockResolvedValueOnce({ ok: true, receipt: { commandId: '00000000-0000-4000-8000-000000000003', seq: 12, kind: 'CorrectTransaction' } });
@@ -155,10 +174,19 @@ describe('CloudAccountHistoryPage', () => {
     fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: '固定重試' } });
     fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
     await screen.findByRole('region', { name: '歷史更正命令恢復' });
-    fireEvent.click(screen.getByRole('button', { name: '查詢原命令並以同 ID 復原' }));
+    expect(screen.queryByRole('button', { name: '以相同命令編號重試' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
 
+    await screen.findByText(/伺服器目前尚未找到這筆命令/);
+    expect(mocks.confirmPendingIntent).toHaveBeenCalledWith(
+      expect.objectContaining({ commandId: '00000000-0000-4000-8000-000000000003' }), 'dataset-a', 'uid-a',
+    );
+    expect(mocks.mutateTransaction).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: '以相同命令編號重試' }));
     await waitFor(() => expect(mocks.mutateTransaction).toHaveBeenCalledTimes(2));
     expect(mocks.mutateTransaction.mock.calls[0][0]).toEqual(mocks.mutateTransaction.mock.calls[1][0]);
+    await waitFor(() => expect(mocks.cleanupConfirmedIntent).toHaveBeenCalledTimes(1));
     vi.restoreAllMocks();
   });
 
@@ -259,7 +287,7 @@ describe('CloudAccountHistoryPage', () => {
   it('keeps only non-renderable recovery identity after recovery is denied', async () => {
     const navigation = vi.fn();
     mocks.mutateTransaction.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
-    mocks.readCommand.mockRejectedValueOnce(Object.assign(new Error('unauthorized'), { code: 'UNAUTHORIZED' }));
+    mocks.confirmPendingIntent.mockRejectedValueOnce(Object.assign(new Error('unauthorized'), { code: 'UNAUTHORIZED' }));
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4"
       initialStudentId={studentId} initialRange={range} onNavigationStateChange={navigation} />);
     await screen.findByTestId('account-history-ready');
@@ -267,7 +295,7 @@ describe('CloudAccountHistoryPage', () => {
     fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'recovery private draft' } });
     fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
     await screen.findByRole('region', { name: '歷史更正命令恢復' });
-    fireEvent.click(screen.getByRole('button', { name: '查詢原命令並以同 ID 復原' }));
+    fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
 
     await waitFor(() => expect(navigation).toHaveBeenLastCalledWith('operator-a:4', 'revoked'));
     expect(screen.queryByRole('region', { name: '歷史更正命令恢復' })).toBeNull();
@@ -296,7 +324,7 @@ describe('CloudAccountHistoryPage', () => {
     const navigation = vi.fn();
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey={identityKey} onNavigationStateChange={navigation} />);
     await screen.findByText('請搜尋並選取目前學生名單中的帳戶。');
-    mocks.readCommand.mockResolvedValueOnce({ commandId: input.commandId, kind: 'CorrectTransaction', seq: 12 });
+    mocks.confirmPendingIntent.mockResolvedValueOnce({ status: 'matched', receipt: { commandId: input.commandId, kind: 'CorrectTransaction', seq: 12 } });
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令收據' }));
     await screen.findByText('原命令收據已確認；依目前完整資料重新讀取帳戶歷史。');
 
@@ -305,7 +333,11 @@ describe('CloudAccountHistoryPage', () => {
     expect(screen.getByLabelText('查帳日期範圍')).toBeEnabled();
     expect(screen.getByRole('button', { name: '查詢完整歷史' })).toBeEnabled();
     expect(navigation).toHaveBeenLastCalledWith(identityKey, 'resolved');
-    expect(mocks.readCommand).toHaveBeenCalledWith(input.commandId);
+    expect(mocks.cleanupConfirmedIntent).toHaveBeenCalledTimes(1);
+    expect(mocks.cleanupConfirmedIntent).toHaveBeenCalledWith(
+      expect.objectContaining({ commandId: input.commandId }), 'dataset-a', 'uid-a', expect.any(Function),
+    );
+    expect(mocks.confirmPendingIntent).toHaveBeenCalledWith(expect.objectContaining({ commandId: input.commandId }), 'dataset-a', 'uid-a');
     expect(mocks.mutateTransaction).toHaveBeenCalledTimes(1);
 
     fireEvent.change(search, { target: { value: '001' } });
@@ -330,22 +362,211 @@ describe('CloudAccountHistoryPage', () => {
 
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey={identityKey} />);
     await screen.findByText('請搜尋並選取目前學生名單中的帳戶。');
-    mocks.readCommand.mockRejectedValueOnce(new Error('temporary receipt read failure'));
+    mocks.confirmPendingIntent.mockRejectedValueOnce(new Error('temporary receipt read failure'));
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令收據' }));
-    await screen.findByText('仍無法確認原命令：temporary receipt read failure');
+    await screen.findByText('目前無法安全確認原命令；查詢錯誤不代表命令不存在，暫不可重試。');
     expect(screen.getByRole('button', { name: '查詢原命令收據' })).toBeEnabled();
-    expect(mocks.readCommand).toHaveBeenLastCalledWith(input.commandId);
+    expect(mocks.confirmPendingIntent).toHaveBeenLastCalledWith(expect.objectContaining({ commandId: input.commandId }), 'dataset-a', 'uid-a');
 
-    mocks.readCommand.mockResolvedValueOnce(null);
+    mocks.confirmPendingIntent.mockResolvedValueOnce({ status: 'not-found' });
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令收據' }));
     await screen.findByText('伺服器查無原命令收據；原更正內容未保留，請依目前完整資料重新確認。');
     expect(screen.getByRole('button', { name: '查詢原命令收據' })).toBeEnabled();
-    expect(mocks.readCommand).toHaveBeenNthCalledWith(2, input.commandId);
+    expect(mocks.confirmPendingIntent).toHaveBeenNthCalledWith(2, expect.objectContaining({ commandId: input.commandId }), 'dataset-a', 'uid-a');
 
-    mocks.readCommand.mockResolvedValueOnce({ commandId: input.commandId, kind: 'CorrectTransaction', seq: 12 });
+    mocks.confirmPendingIntent.mockResolvedValueOnce({ status: 'matched', receipt: { commandId: input.commandId, kind: 'CorrectTransaction', seq: 12 } });
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令收據' }));
     await screen.findByText('原命令收據已確認；依目前完整資料重新讀取帳戶歷史。');
-    expect(mocks.readCommand).toHaveBeenNthCalledWith(3, input.commandId);
+    expect(mocks.confirmPendingIntent).toHaveBeenNthCalledWith(3, expect.objectContaining({ commandId: input.commandId }), 'dataset-a', 'uid-a');
     expect(mocks.mutateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  describe('same-page command recovery (P13b2b3c)', () => {
+    type Outcome = { ok: boolean; receipt?: { commandId: string; kind: string; seq: number }; error?: { code: string; message: string } };
+    const flush = () => act(async () => { for (let index = 0; index < 20; index += 1) await Promise.resolve(); });
+    const advancePrompt = () => act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    const receiptFor = (commandId: string) => ({ commandId, kind: 'CorrectTransaction', seq: 12 });
+
+    afterEach(() => { vi.useRealTimers(); });
+
+    async function startPending(onNavigationStateChange?: (identityKey: string, state: string) => void) {
+      const original = deferred<Outcome>();
+      mocks.mutateTransaction.mockReturnValueOnce(original.promise);
+      render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:pending"
+        initialStudentId={studentId} initialRange={range} onNavigationStateChange={onNavigationStateChange} />);
+      await screen.findByTestId('account-history-ready');
+      fireEvent.click(screen.getByRole('button', { name: '更正' }));
+      fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: '同頁復原' } });
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
+      await flush();
+      const input = mocks.mutateTransaction.mock.calls[0][0];
+      return { original, input };
+    }
+
+    it('creates the order repository with the registered Lite recovery reader', async () => {
+      render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:reader-option"
+        initialStudentId={studentId} initialRange={range} />);
+      await screen.findByTestId('account-history-ready');
+      expect(mocks.repositoryOptions).toHaveBeenCalledWith(expect.objectContaining({
+        recoveryReader: expect.objectContaining({ assertCurrent: expect.any(Function) }),
+      }));
+    });
+
+    it('clears the screen and sends nothing when the authenticated uid is unavailable', async () => {
+      const navigation = vi.fn();
+      render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:no-uid"
+        initialStudentId={studentId} initialRange={range} onNavigationStateChange={navigation} />);
+      await screen.findByTestId('account-history-ready');
+      fireEvent.click(screen.getByRole('button', { name: '更正' }));
+      fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'no uid' } });
+      currentAuth.uid = null;
+      fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
+      await waitFor(() => expect(navigation).toHaveBeenLastCalledWith('operator-a:4:no-uid', 'revoked'));
+      expect(mocks.mutateTransaction).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('account-history-ready')).toBeNull();
+    });
+
+    it('shows the ten-second prompt with the original ID and lets a read-only query run while the original is in flight', async () => {
+      const { original, input } = await startPending();
+      expect(screen.queryByRole('button', { name: '查詢原命令結果' })).toBeNull();
+      expect(screen.getByRole('region', { name: '歷史更正命令恢復' })).toHaveTextContent('命令送出中，請勿重複操作。');
+
+      await advancePrompt();
+      const region = screen.getByRole('region', { name: '歷史更正命令恢復' });
+      expect(region).toHaveTextContent('結果確認中，勿重新收款');
+      expect(region).toHaveTextContent(input.commandId);
+
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      await flush();
+      expect(mocks.confirmPendingIntent).toHaveBeenCalledTimes(1);
+      expect(mocks.confirmPendingIntent).toHaveBeenCalledWith(
+        expect.objectContaining({ commandId: input.commandId }), 'dataset-a', 'uid-a',
+      );
+      expect(screen.getByRole('region', { name: '歷史更正命令恢復' })).toHaveTextContent('原命令仍在送出中');
+      expect(screen.queryByRole('button', { name: '以相同命令編號重試' })).toBeNull();
+      expect(mocks.mutateTransaction).toHaveBeenCalledTimes(1);
+
+      // Nothing was confirmed early: the original, once it lands, completes the correction and reloads once.
+      const readsBefore = mocks.readAccountHistory.mock.calls.length;
+      await act(async () => { original.resolve({ ok: true, receipt: receiptFor(input.commandId) }); });
+      await flush();
+      expect(mocks.readAccountHistory).toHaveBeenCalledTimes(readsBefore + 1);
+      expect(mocks.cleanupConfirmedIntent).toHaveBeenCalledTimes(1);
+      expect(mocks.mutateTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('a query-confirmed receipt cleans the journal once, keeps the page locked until the fresh read, and ignores the late original', async () => {
+      const navigation = vi.fn();
+      const { original, input } = await startPending(navigation);
+      await advancePrompt();
+      const reload = deferred<CloudAccountHistory>();
+      mocks.readAccountHistory.mockReturnValueOnce(reload.promise);
+      mocks.confirmPendingIntent.mockResolvedValueOnce({ status: 'matched', receipt: receiptFor(input.commandId) });
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      await flush();
+
+      expect(mocks.cleanupConfirmedIntent).toHaveBeenCalledTimes(1);
+      expect(mocks.cleanupConfirmedIntent).toHaveBeenCalledWith(
+        expect.objectContaining({ commandId: input.commandId }), 'dataset-a', 'uid-a', expect.any(Function),
+      );
+      expect(screen.queryByRole('region', { name: '歷史更正命令恢復' })).toBeNull();
+      expect(screen.getByLabelText('搜尋目前學生帳戶')).toBeDisabled();
+      expect(screen.queryByRole('button', { name: '更正' })).toBeNull();
+      expect(navigation).toHaveBeenLastCalledWith('operator-a:4:pending', 'recovering');
+
+      await act(async () => { reload.resolve({ ...account, sourceSeq: 11 }); });
+      await flush();
+      expect(navigation).toHaveBeenLastCalledWith('operator-a:4:pending', 'resolved');
+      expect(screen.getByLabelText('搜尋目前學生帳戶')).toBeEnabled();
+
+      const readsAfterConfirm = mocks.readAccountHistory.mock.calls.length;
+      await act(async () => { original.resolve({ ok: true, receipt: receiptFor(input.commandId) }); });
+      await flush();
+      expect(mocks.readAccountHistory).toHaveBeenCalledTimes(readsAfterConfirm);
+      expect(mocks.cleanupConfirmedIntent).toHaveBeenCalledTimes(1);
+      expect(mocks.mutateTransaction).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('region', { name: '歷史更正命令恢復' })).toBeNull();
+    });
+
+    it('a late failure of the original submission never overrides a query-confirmed receipt', async () => {
+      const { original, input } = await startPending();
+      await advancePrompt();
+      mocks.confirmPendingIntent.mockResolvedValueOnce({ status: 'matched', receipt: receiptFor(input.commandId) });
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      await flush();
+      await act(async () => { original.resolve({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'late unknown' } }); });
+      await flush();
+      expect(screen.queryByRole('region', { name: '歷史更正命令恢復' })).toBeNull();
+      expect(screen.queryByText(/更正結果待確認|late unknown/)).toBeNull();
+      expect(mocks.mutateTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not authorize a retry when the original settled while the query was running', async () => {
+      const { original } = await startPending();
+      await advancePrompt();
+      const query = deferred<{ status: 'not-found' }>();
+      mocks.confirmPendingIntent.mockReturnValueOnce(query.promise);
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      await flush();
+      await act(async () => { original.resolve({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } }); });
+      await flush();
+      await act(async () => { query.resolve({ status: 'not-found' }); });
+      await flush();
+      expect(screen.queryByRole('button', { name: '以相同命令編號重試' })).toBeNull();
+      expect(screen.getByRole('region', { name: '歷史更正命令恢復' })).toHaveTextContent('不能授權重試');
+      expect(mocks.mutateTransaction).toHaveBeenCalledTimes(1);
+
+      mocks.confirmPendingIntent.mockResolvedValueOnce({ status: 'not-found' });
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      await flush();
+      expect(screen.getByRole('button', { name: '以相同命令編號重試' })).toBeEnabled();
+    });
+
+    it('never unlocks a retry after a different dataset, a failed read or maintenance', async () => {
+      mocks.mutateTransaction.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+      render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:no-unlock"
+        initialStudentId={studentId} initialRange={range} />);
+      await screen.findByTestId('account-history-ready');
+      fireEvent.click(screen.getByRole('button', { name: '更正' }));
+      fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'no unlock' } });
+      fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
+      await screen.findByRole('region', { name: '歷史更正命令恢復' });
+
+      mocks.confirmPendingIntent.mockResolvedValueOnce({ status: 'different-dataset' });
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      await screen.findByText(/資料集已變更/);
+      expect(screen.queryByRole('button', { name: '以相同命令編號重試' })).toBeNull();
+
+      mocks.confirmPendingIntent.mockRejectedValueOnce(Object.assign(new Error('maintenance'), { code: 'MAINTENANCE' }));
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      await screen.findByText(/系統維護中/);
+      expect(screen.queryByRole('button', { name: '以相同命令編號重試' })).toBeNull();
+
+      mocks.confirmPendingIntent.mockRejectedValueOnce(new Error('read failed'));
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      await screen.findByText(/目前無法安全確認原命令/);
+      expect(screen.queryByRole('button', { name: '以相同命令編號重試' })).toBeNull();
+      expect(mocks.mutateTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('still reloads and reports the leftover when the local journal cleanup fails after a confirmed receipt', async () => {
+      mocks.mutateTransaction.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+      render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:cleanup-failure"
+        initialStudentId={studentId} initialRange={range} />);
+      await screen.findByTestId('account-history-ready');
+      fireEvent.click(screen.getByRole('button', { name: '更正' }));
+      fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'cleanup failure' } });
+      fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
+      await screen.findByRole('region', { name: '歷史更正命令恢復' });
+      const input = mocks.mutateTransaction.mock.calls[0][0];
+      const readsBefore = mocks.readAccountHistory.mock.calls.length;
+      mocks.confirmPendingIntent.mockResolvedValueOnce({ status: 'matched', receipt: receiptFor(input.commandId) });
+      mocks.cleanupConfirmedIntent.mockRejectedValueOnce(new Error('journal busy'));
+      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
+      await screen.findByText(/本機命令追蹤清理未完成/);
+      await waitFor(() => expect(mocks.readAccountHistory).toHaveBeenCalledTimes(readsBefore + 1));
+      expect(screen.queryByRole('region', { name: '歷史更正命令恢復' })).toBeNull();
+    });
   });
 });

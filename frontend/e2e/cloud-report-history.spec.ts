@@ -947,6 +947,192 @@ test.describe('P12c cloud report and account history acceptance', () => {
     }
   });
 
+  test('P13b2b3c F5: a held CorrectTransaction is confirmed through Lite, reloads once and is never resent', async ({ authedPage: page }) => {
+    const originalHeadRaw = await readRawAdminDocument('system', 'dataHead');
+    const originalHead = originalHeadRaw ? decodeAdminFields(originalHeadRaw.fields) : null;
+    if (!originalHeadRaw || !originalHead || typeof originalHead.seq !== 'number' || typeof originalHead.goLiveDate !== 'string') {
+      throw new Error('The demo-easyorder Emulator dataHead is not initialized');
+    }
+    const originalEntries = new Set((await listAdminDocuments('postCloseEntries')).map(document => document.id));
+    const today = taipeiToday();
+    const d2 = shiftDate(today, -1);
+    const transactionIds: string[] = [];
+    const dayIds = [d2, today];
+    let app: ReturnType<typeof initializeApp> | null = null;
+    let signedIn = false;
+    let fixtureReserved = false;
+    const held = {
+      matched: 0, returned: false, armed: false,
+      intercepted: Promise.withResolvers<void>(), release: Promise.withResolvers<void>(), completed: Promise.withResolvers<void>(),
+    };
+    const holdRoute = '**/documents:commit*';
+    const writesDataHead = (request: import('@playwright/test').Request) => {
+      try {
+        const body = request.postDataJSON() as { writes?: Array<{ update?: { name?: string } }> };
+        return body.writes?.some(write => (write.update?.name ?? '').endsWith('/documents/system/dataHead')) ?? false;
+      } catch { return false; }
+    };
+    const journalIds = () => page.evaluate(() => Object.keys(localStorage)
+      .filter(key => key.startsWith('easyorder-cloud-command-journal:v1:demo-easyorder:'))
+      .map(key => (JSON.parse(localStorage.getItem(key) ?? 'null') as { commandId?: string } | null)?.commandId ?? ''));
+
+    try {
+      for (const dayId of dayIds) await assertFixtureDayIsVacant(dayId);
+      if (await readRawAdminDocument('students', STUDENT_ID) || await readRawAdminDocument('studentCodes', STUDENT_CODE)) {
+        throw new Error('P13b2b3c F5 fixture account ID or code is already in use');
+      }
+      fixtureReserved = true;
+      await upsertDocument('system', 'dataHead', { goLiveDate: d2 });
+
+      app = initializeApp({
+        apiKey: 'dummy-api-key', authDomain: 'dummy-auth-domain', projectId: PROJECT,
+        appId: 'dummy-app-id', messagingSenderId: '000000000000', storageBucket: 'dummy-bucket',
+      }, `p13b2b3c-f5-${randomUUID()}`);
+      const { getAuth } = await import('firebase/auth');
+      const auth = getAuth(app);
+      connectAuthEmulator(auth, AUTH_EMULATOR, { disableWarnings: true });
+      const googleIdentity = await createGoogleEmulatorUser(E2E_IDENTITIES.operatorA.email);
+      await signInWithCredential(auth, GoogleAuthProvider.credential(googleIdentity.idToken));
+      signedIn = true;
+      const lease = await readAccessLease();
+      if (lease.holderUid !== auth.currentUser?.uid) throw new Error('The command client and F5 browser do not share the active operator lease');
+      const db = getFirestore(app);
+      connectFirestoreEmulator(db, '127.0.0.1', 8080);
+      const options = {
+        currentUser: () => auth.currentUser,
+        pendingJournal: createCloudPendingJournal(db, createMemoryCloudPendingJournalTestAdapter()),
+      };
+      const students = createCloudStudentRepository(db, options);
+      const days = createCloudDayVendorRepository(db, options);
+      const closing = createCloudDayCloseRepository(db, options);
+      const orders = createCloudOrderRepository(db, options);
+
+      ok(await students.createStudent({
+        commandId: randomUUID(), leaseEpoch: lease.epoch, studentId: STUDENT_ID, studentCode: STUDENT_CODE,
+        displayName: CURRENT_NAME, aliases: [], openingBalance: { amount: 1_000, asOfDate: d2, note: 'P13b2b3c synthetic opening' },
+      }), 'CreateStudent');
+      ok(await closing.ensureDay({ commandId: randomUUID(), leaseEpoch: lease.epoch, dayId: d2 }), 'EnsureDay D2');
+      let d2State = await closing.read(d2);
+      ok(await closing.backfillOpening({
+        commandId: randomUUID(), leaseEpoch: lease.epoch, dayId: d2, expectedDayRevision: d2State.revision,
+        openingCash: 1_000, reason: 'P13b2b3c synthetic opening D2',
+      }), 'BackfillOpeningCash D2');
+      d2State = await closing.read(d2);
+      ok(await closing.startBackfill({
+        commandId: randomUUID(), leaseEpoch: lease.epoch, dayId: d2, expectedDayRevision: d2State.revision,
+        reason: 'P13b2b3c synthetic backfill D2',
+      }), 'StartBackfill D2');
+      d2State = await closing.read(d2);
+      ok(await closing.ensureDay({ commandId: randomUUID(), leaseEpoch: lease.epoch, dayId: today }), 'EnsureDay today');
+      const todayState = await closing.read(today);
+      ok(await days.setOpeningCash({
+        commandId: randomUUID(), leaseEpoch: lease.epoch, dayId: today, expectedRevision: todayState.revision,
+        openingCash: 1_000, reason: 'P13b2b3c current-day opening confirmation',
+      }), 'SetOpeningCash today');
+      const student = (await students.list()).students.find(value => value.studentId === STUDENT_ID);
+      if (!student) throw new Error('Created P13b2b3c synthetic account is missing from the repository list');
+      const transactionId = randomUUID();
+      transactionIds.push(transactionId);
+      ok(await orders.createPayment({
+        commandId: randomUUID(), transactionId, leaseEpoch: lease.epoch, studentId: STUDENT_ID, dayId: d2,
+        expectedStudentRevision: student.revision, expectedDayRevision: d2State.revision, paidAmount: 80,
+        note: 'P13b2b3c eligible historical payment',
+      }), 'CreatePayment D2');
+
+      await page.route(holdRoute, async route => {
+        if (!held.armed || route.request().method() !== 'POST' || !writesDataHead(route.request())) {
+          await route.continue();
+          return;
+        }
+        held.matched += 1;
+        if (held.matched !== 1) {
+          await route.continue();
+          return;
+        }
+        const response = await route.fetch({ timeout: 30_000 });
+        held.intercepted.resolve();
+        await held.release.promise;
+        await route.fulfill({ response });
+        held.returned = true;
+        held.completed.resolve();
+      });
+
+      await page.getByRole('button', { name: '雲端報表' }).click();
+      await expect(page.getByTestId('report-ready')).toBeVisible({ timeout: 30_000 });
+      await page.getByLabel('日期範圍').selectOption('custom');
+      await page.getByLabel('開始日期').fill(d2);
+      await page.getByLabel('結束日期').fill(today);
+      await page.getByRole('button', { name: '查詢完整報表' }).click();
+      await expect(page.getByTestId('report-ready')).toContainText(`${d2}–${today}`, { timeout: 30_000 });
+      await page.getByLabel('搜尋帳戶').fill(STUDENT_CODE);
+      await page.getByRole('button', { name: `選取 ${CURRENT_NAME}（${STUDENT_CODE}）` }).click();
+      await page.getByRole('button', { name: `開啟查帳：${CURRENT_NAME}` }).click();
+      await expect(page.getByTestId('account-history-ready')).toBeVisible({ timeout: 30_000 });
+      const readyHead = async () => Number((await page.getByTestId('account-history-ready').innerText()).match(/H=(\d+)/)?.[1]);
+      const headBefore = await readyHead();
+
+      const row = page.locator('section[aria-labelledby="account-transactions-heading"]').getByRole('row').filter({ hasText: transactionId });
+      await row.getByRole('button', { name: '更正' }).click();
+      await page.getByLabel('更正收款金額').fill('105');
+      await page.getByLabel('更正理由').fill('P13b2b3c held correction');
+      held.armed = true;
+      await page.getByRole('button', { name: '確認送出' }).click();
+      await Promise.race([
+        held.intercepted.promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('CorrectTransaction commit was never intercepted')), 30_000)),
+      ]);
+      await expect(page.getByText('結果確認中，勿重新收款')).toBeVisible({ timeout: 15_000 });
+      const recovery = page.getByRole('region', { name: '歷史更正命令恢復' });
+      const correctionId = (await recovery.textContent())?.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)?.[1];
+      if (!correctionId) throw new Error('The pending correction command ID was not shown');
+      expect(await journalIds()).toEqual([correctionId]);
+
+      await page.getByRole('button', { name: '查詢原命令結果' }).click();
+      // A confirmed receipt is not a ready page: the controls stay locked until the fresh full read lands.
+      await expect(page.getByText(/更正收據已確認/)).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole('region', { name: '歷史更正命令恢復' })).toHaveCount(0);
+      await expect.poll(journalIds).toEqual([]);
+      await expect(page.getByTestId('account-history-ready')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '更正' })).toHaveCount(0);
+      expect(held.returned).toBe(false);
+      expect(held.matched).toBe(1);
+      expect((await readRawAdminDocument('commands', correctionId))?.fields).toBeTruthy();
+      expect(decodeAdminFields((await readRawAdminDocument('system', 'dataHead'))?.fields).seq).toBe(headBefore + 1);
+
+      held.release.resolve();
+      await Promise.race([held.completed.promise, new Promise(resolve => setTimeout(resolve, 10_000))]);
+      await expect(page.getByTestId('account-history-ready')).toContainText(new RegExp(`H=${headBefore + 1}$`), { timeout: 30_000 });
+      await page.waitForTimeout(500);
+      expect(held.matched).toBe(1);
+      expect(await readyHead()).toBe(headBefore + 1);
+      expect(await journalIds()).toEqual([]);
+      expect(decodeAdminFields((await readRawAdminDocument('system', 'dataHead'))?.fields).seq).toBe(headBefore + 1);
+    } finally {
+      held.release.resolve();
+      await page.unroute(holdRoute).catch(() => undefined);
+      if (fixtureReserved) {
+        for (const command of await listAdminDocuments('commands')) {
+          if (typeof command.seq === 'number' && command.seq > Number(originalHead.seq)) {
+            await deleteAdminDocument('commands', command.id);
+          }
+        }
+        for (const transactionId of transactionIds) await deleteAdminDocument('transactions', transactionId);
+        for (const dayId of dayIds) {
+          await deleteAdminDocument('backfillDays', dayId);
+          await deleteAdminDocument('days', dayId);
+        }
+        for (const entry of await listAdminDocuments('postCloseEntries')) {
+          if (!originalEntries.has(entry.id)) await deleteAdminDocument('postCloseEntries', entry.id);
+        }
+        await deleteIfPresent('students', STUDENT_ID);
+        await deleteIfPresent('studentCodes', STUDENT_CODE);
+        await restoreRawDocumentFields('system', 'dataHead', originalHeadRaw, ['seq', 'lastCommandId', 'goLiveDate', 'updatedAt']);
+      }
+      if (signedIn && app) await signOut((await import('firebase/auth')).getAuth(app));
+      if (app) await deleteApp(app);
+    }
+  });
+
   test('L07 read-only tie fixture: F2/F5, CSV, and print preserve nanosecond transaction order and prefix balances', async ({ authedPage: page }, testInfo) => {
     const originalHeadRaw = await readRawAdminDocument('system', 'dataHead');
     const originalHead = originalHeadRaw ? decodeAdminFields(originalHeadRaw.fields) : null;
