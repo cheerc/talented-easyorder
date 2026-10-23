@@ -1088,16 +1088,20 @@ test.describe('P12c cloud report and account history acceptance', () => {
       expect(await journalIds()).toEqual([correctionId]);
 
       await page.getByRole('button', { name: '查詢原命令結果' }).click();
-      await expect(page.getByTestId('account-history-ready')).toContainText(new RegExp(`H=${headBefore + 1}$`), { timeout: 30_000 });
+      // A confirmed receipt is not a ready page: the controls stay locked until the fresh full read lands.
+      await expect(page.getByText(/更正收據已確認/)).toBeVisible({ timeout: 30_000 });
       await expect(page.getByRole('region', { name: '歷史更正命令恢復' })).toHaveCount(0);
       await expect.poll(journalIds).toEqual([]);
+      await expect(page.getByTestId('account-history-ready')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '更正' })).toHaveCount(0);
       expect(held.returned).toBe(false);
       expect(held.matched).toBe(1);
-      expect(await readyHead()).toBe(headBefore + 1);
       expect((await readRawAdminDocument('commands', correctionId))?.fields).toBeTruthy();
+      expect(decodeAdminFields((await readRawAdminDocument('system', 'dataHead'))?.fields).seq).toBe(headBefore + 1);
 
       held.release.resolve();
       await Promise.race([held.completed.promise, new Promise(resolve => setTimeout(resolve, 10_000))]);
+      await expect(page.getByTestId('account-history-ready')).toContainText(new RegExp(`H=${headBefore + 1}$`), { timeout: 30_000 });
       await page.waitForTimeout(500);
       expect(held.matched).toBe(1);
       expect(await readyHead()).toBe(headBefore + 1);
