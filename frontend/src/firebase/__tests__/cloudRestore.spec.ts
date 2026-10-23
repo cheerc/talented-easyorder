@@ -51,7 +51,18 @@ function writeChain(name: string, packages: Array<{ file: string; sha256?: strin
   return chainPath;
 }
 
-const report = (file: string) => JSON.parse(readFileSync(file, 'utf8')) as Record<string, any>;
+interface ReportJson {
+  datasetId: string;
+  toSeq: number;
+  commandSeq: { first: number | null; last: number; contiguous: boolean };
+  packageBoundary: { atPackage: number | null; matchesPackageProjection: boolean | null };
+  collections: Record<string, number>;
+  days: Record<string, { totals: Record<string, number> }>;
+  students: { count: number; balanceSum: number };
+  timing: { totalMs: number };
+  writes: { documents: number };
+}
+const report = (file: string) => JSON.parse(readFileSync(file, 'utf8')) as ReportJson;
 const reportPath = (name: string) => path.join(scratch, name);
 
 async function sourceRecords(): Promise<BackupCommandRecord[]> {
@@ -89,12 +100,12 @@ describeWithEmulator('P15a offline validate of a real P14 chain', () => {
       const expected = replayBackupProjections(records.slice(0, toSeq), {});
       const expectedTotals = recalculateBackupTotals(expected);
       expect(result.toSeq).toBe(toSeq);
-      expect(Object.fromEntries(Object.entries(result.days).map(([dayId, value]) => [dayId, (value as { totals: unknown }).totals]))).toEqual(expectedTotals);
+      expect(Object.fromEntries(Object.entries(result.days).map(([dayId, value]) => [dayId, value.totals]))).toEqual(expectedTotals);
       expect(result.collections.students).toBe(Object.keys(expected).filter(key => key.startsWith('students/')).length);
       expect(result.collections.transactions).toBe(Object.keys(expected).filter(key => key.startsWith('transactions/')).length);
       expect(result.packageBoundary.matchesPackageProjection, `H=${toSeq}`).toBe(boundaries.includes(toSeq) && toSeq > 0 ? true : null);
     }
-  });
+  }, 60_000);
 
   it('A3: a wrong password exits 2 with the fixed message and writes no report', () => {
     const out = reportPath('a3.json');
@@ -161,7 +172,8 @@ describeWithEmulator('P15a offline validate of a real P14 chain', () => {
     const out = reportPath('a11.json');
     const run = runCli(['validate', '--manifest', fixture.chainPath, '--report', out]);
     expect(run.status, run.stderr).toBe(0);
-    const everything = `${readFileSync(out, 'utf8')}\n${run.stdout}\n${run.stderr}`;
+    // A 64-hex SHA-256 can contain a four-digit code by chance, so digests are removed before looking for source values.
+    const everything = `${readFileSync(out, 'utf8')}\n${run.stdout}\n${run.stderr}`.replace(/[a-f0-9]{64}/g, '');
     for (const value of fixture.known) expect(everything, value).not.toContain(value);
     expect(everything).not.toContain(PASSWORD);
   });

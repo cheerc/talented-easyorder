@@ -4,8 +4,8 @@ import { main, type CliIo } from '../cli';
 
 const PASSWORD = 'p15-unit-password';
 
-function harness(files: Record<string, Uint8Array | string> = {}, password = PASSWORD) {
-  const store = new Map<string, Uint8Array | string>(Object.entries(files));
+function harness(files: Record<string, Uint8Array<ArrayBuffer> | string> = {}, password = PASSWORD) {
+  const store = new Map<string, Uint8Array<ArrayBuffer> | string>(Object.entries(files));
   const out: string[] = [];
   const err: string[] = [];
   const written = new Map<string, string>();
