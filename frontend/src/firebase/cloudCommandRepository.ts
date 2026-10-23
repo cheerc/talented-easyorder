@@ -1000,9 +1000,11 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     const owner = getCurrentUser(options);
     requireVerifiedGoogle(owner);
     if (owner.uid !== expectedUid) throw new CloudCommandReadError('LEASE_LOST', '登入身分已變更，不能清除原命令追蹤');
-    // The receipt and both server contexts were verified before entering removeIf.
+    // The receipt and both server contexts were verified before entering removeIfPresent.
     // Its lock callback is intentionally synchronous and contains no network work.
-    return pendingJournal.removeIf(record, () => {
+    // `true` is a post-condition, not a claim about who removed the entry: the confirmed identity is no longer
+    // tracked (removed now, or already removed by the commit path). Only a kept entry is `false`.
+    const outcome = await pendingJournal.removeIfPresent(record, () => {
       try {
         recoveryReader?.assertCurrent();
         assertCurrentRecoveryOwner(owner);
@@ -1011,6 +1013,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         return false;
       }
     });
+    return outcome !== 'kept';
   }
 
   async function getPendingRecoveryContext(expectedEpoch: number, recoveryReader?: CloudRecoveryReader): Promise<RecoveryContext> {

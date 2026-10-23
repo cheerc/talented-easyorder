@@ -55,12 +55,19 @@ export interface PendingJournalAdapter {
   getLocks(): PendingJournalLocks;
 }
 
+export type PendingJournalRemoval = 'removed' | 'absent' | 'kept';
+
 export interface CloudPendingJournal {
   readonly namespace: string;
   readAll(): Promise<PendingJournalSnapshot>;
   readPage(offset?: number): Promise<PendingJournalPage>;
   put(record: PendingCommandIdentity): Promise<void>;
   removeIf(record: PendingCommandIdentity, isCurrent?: () => boolean): Promise<boolean>;
+  /**
+   * Same exact-identity removal under the same lock, but says why nothing was removed: `absent` means the
+   * identity is no longer tracked (nothing to clean), `kept` means the owner predicate no longer holds.
+   */
+  removeIfPresent(record: PendingCommandIdentity, isCurrent?: () => boolean): Promise<PendingJournalRemoval>;
   migrateLegacyOrderSlot(): Promise<'empty' | 'migrated' | 'already-migrated'>;
   subscribe(listener: (source: PendingJournalChangeSource) => void): () => void;
   registerInFlight(record: PendingCommandIdentity, leaseEpoch: number): () => void;
@@ -244,6 +251,25 @@ export function createCloudPendingJournal(db: Firestore, adapter: PendingJournal
     }
   }
 
+  async function removeIfPresent(untrustedRecord: PendingCommandIdentity, isCurrent: () => boolean = () => true): Promise<PendingJournalRemoval> {
+    const record = safeIdentity(untrustedRecord);
+    const key = keyFor(record.commandId);
+    const outcome = await withLock((storage): PendingJournalRemoval => {
+      if (!ownerIsCurrent(isCurrent)) return 'kept';
+      const records = scan(storage);
+      const existing = records.find(item => item.commandId === record.commandId);
+      if (!existing) return 'absent';
+      if (!identityMatches(existing, record)) throw new PendingJournalUnavailableError();
+      if (!ownerIsCurrent(isCurrent)) return 'kept';
+      storage.removeItem(key);
+      if (storage.getItem(key) !== null) throw new PendingJournalUnavailableError();
+      if (scan(storage).some(item => item.commandId === record.commandId)) throw new PendingJournalUnavailableError();
+      return 'removed';
+    });
+    if (outcome === 'removed') notifySameTab();
+    return outcome;
+  }
+
   return {
     namespace,
     async readAll(): Promise<PendingJournalSnapshot> {
@@ -273,23 +299,9 @@ export function createCloudPendingJournal(db: Firestore, adapter: PendingJournal
       });
       notifySameTab();
     },
+    removeIfPresent,
     async removeIf(untrustedRecord, isCurrent = () => true): Promise<boolean> {
-      const record = safeIdentity(untrustedRecord);
-      const key = keyFor(record.commandId);
-      const removed = await withLock(storage => {
-        if (!ownerIsCurrent(isCurrent)) return false;
-        const records = scan(storage);
-        const existing = records.find(item => item.commandId === record.commandId);
-        if (!existing) return false;
-        if (!identityMatches(existing, record)) throw new PendingJournalUnavailableError();
-        if (!ownerIsCurrent(isCurrent)) return false;
-        storage.removeItem(key);
-        if (storage.getItem(key) !== null) throw new PendingJournalUnavailableError();
-        if (scan(storage).some(item => item.commandId === record.commandId)) throw new PendingJournalUnavailableError();
-        return true;
-      });
-      if (removed) notifySameTab();
-      return removed;
+      return (await removeIfPresent(untrustedRecord, isCurrent)) === 'removed';
     },
     async migrateLegacyOrderSlot(): Promise<'empty' | 'migrated' | 'already-migrated'> {
       const outcome = await withLock(storage => {

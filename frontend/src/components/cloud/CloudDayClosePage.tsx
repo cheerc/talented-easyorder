@@ -418,6 +418,13 @@ export function CloudDayClosePage({
     revokedScopeRef.current = null;
     pendingCommandIdRef.current = null;
   }
+  // The embedded backup keeps its own unconfirmed RecordBackup; this page starts no command meanwhile (single flight).
+  const backupRecoveringRef = useRef(false);
+  const [backupRecovering, setBackupRecovering] = useState(false);
+  const onBackupRecoveryChange = useCallback((active: boolean) => {
+    backupRecoveringRef.current = active;
+    setBackupRecovering(active);
+  }, []);
   const bindingRef = useRef({ db, uid: currentUid, identityKey, leaseEpoch, version: 0 });
   const operationRef = useRef<DayCloseCommandOperation | null>(null);
   if (bindingRef.current.db !== db || bindingRef.current.uid !== currentUid
@@ -733,12 +740,13 @@ export function CloudDayClosePage({
   }, [authorizationScopeKey, loadSnapshot, scopeKey]);
 
   const hasRecovery = page.recovery !== null;
+  // The only reporter of the navigation state: its own recovery and the backup's are merged, so neither can unlock the other.
   useEffect(() => {
     onNavigationStateChange?.(
       identityKey,
-      page.authorizationRevoked ? 'revoked' : hasRecovery ? 'recovering' : 'resolved',
+      page.authorizationRevoked ? 'revoked' : hasRecovery || backupRecovering ? 'recovering' : 'resolved',
     );
-  }, [hasRecovery, identityKey, onNavigationStateChange, page.authorizationRevoked]);
+  }, [backupRecovering, hasRecovery, identityKey, onNavigationStateChange, page.authorizationRevoked]);
 
   const clearOperationTimer = (operation: DayCloseCommandOperation) => {
     if (operation.timerId !== null) window.clearTimeout(operation.timerId);
@@ -907,7 +915,7 @@ export function CloudDayClosePage({
       }
     } else {
       const latest = latestPageRef.current;
-      if (operationRef.current || latest.recovery || !latest.snapshot) return;
+      if (operationRef.current || latest.recovery || !latest.snapshot || backupRecoveringRef.current) return;
       const loadedSnapshot = latest.snapshot;
       const key = scopeKey;
       const generation = generationRef.current;
@@ -1492,7 +1500,7 @@ export function CloudDayClosePage({
     return () => { cancelled = true; };
   }, [autoAdvance, autoGeneration, snapshot]);
 
-  const busy = page.recovery !== null || page.postCloseChecking;
+  const busy = page.recovery !== null || page.postCloseChecking || backupRecovering;
   const needsAttention = snapshot?.overview.unclosedDays.filter(item => item.kind !== 'no-business') ?? [];
   const noBusiness = snapshot?.overview.unclosedDays.filter(item => item.kind === 'no-business') ?? [];
   const currentKind = snapshot && day && day.status !== 'closed' && day.openingCash === null
@@ -2089,7 +2097,7 @@ export function CloudDayClosePage({
         <section className="cloud-day-close__backup" aria-label="關帳後備份">
           <h2>關帳後備份</h2>
           <p className="cloud-day-close__help">每天最後一次關帳後，在這裡下載加密增量備份，並重新選取檔案完成驗證。</p>
-          {backupBlock ?? <BackupScreen />}
+          {backupBlock ?? <BackupScreen onRecoveryChange={onBackupRecoveryChange} locked={hasRecovery} />}
         </section>
       )}
     </main>

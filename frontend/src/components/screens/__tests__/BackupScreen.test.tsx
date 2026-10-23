@@ -210,7 +210,7 @@ describe('BackupScreen verified-local gate', () => {
       await flush();
       expect(mocks.commitRecordBackupIntent).toHaveBeenCalledTimes(2);
       expect(mocks.commitRecordBackupIntent.mock.calls[1]?.[0]).toEqual(intent);
-      expect(await screen.findByText(/已登記 RecordBackup/)).toBeVisible();
+      expect(screen.getByText(/已登記 RecordBackup/)).toBeVisible();
       expect(mocks.cleanupConfirmedIntent).toHaveBeenCalledTimes(1);
     });
 
@@ -300,7 +300,8 @@ describe('BackupScreen verified-local gate', () => {
       expect(screen.getByText('結果確認中，勿重新收款')).toBeVisible();
 
       mocks.current.value = mocks.firebase(4);
-      view.rerender(<BackupScreen onRecoveryChange={onRecoveryChange} />);
+      // A new callback identity re-renders the memoised screen, like the context change does in the app.
+      view.rerender(<BackupScreen onRecoveryChange={active => onRecoveryChange(active)} />);
       await flush();
       expect(screen.queryByRole('alert', { name: '命令結果確認' })).toBeNull();
       expect(screen.queryByLabelText('重新選取剛存下的備份檔')).toBeNull();

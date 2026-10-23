@@ -177,17 +177,17 @@ describe('Orders recovery reader seam reuses strict command recovery checks', ()
     fullSdk.transaction.mockReset();
     const stored = await storedStudentReceipt();
     const recoveryReader = reader({ readReceipt: vi.fn(async () => document(stored)) });
-    const removeIf = vi.fn(async (_record: unknown, canRemove: () => boolean) => canRemove());
+    const removeIfPresent = vi.fn(async (_record: unknown, canRemove: () => boolean) => (canRemove() ? 'removed' : 'kept'));
     const commands = createCloudCommandRepository(db, {
       currentUser: () => userA,
-      pendingJournal: { removeIf } as never,
+      pendingJournal: { removeIfPresent } as never,
     });
     const isCurrent = vi.fn(() => true);
 
     await expect(commands.cleanupConfirmedIntent(studentIntent, 2, 'recovery-dataset', userA.uid, recoveryReader, isCurrent))
       .resolves.toBe(true);
-    expect(removeIf).toHaveBeenCalledOnce();
-    expect(removeIf).toHaveBeenCalledWith({
+    expect(removeIfPresent).toHaveBeenCalledOnce();
+    expect(removeIfPresent).toHaveBeenCalledWith({
       commandId: studentIntent.commandId,
       datasetId: 'recovery-dataset',
       uid: userA.uid,
@@ -213,16 +213,16 @@ describe('Orders recovery reader seam reuses strict command recovery checks', ()
       });
       return document(stored);
     } });
-    const removeIf = vi.fn(async (_record: unknown, canRemove: () => boolean) => canRemove());
+    const removeIfPresent = vi.fn(async (_record: unknown, canRemove: () => boolean) => (canRemove() ? 'removed' : 'kept'));
     const commands = createCloudCommandRepository(db, {
       currentUser: () => userA,
-      pendingJournal: { removeIf } as never,
+      pendingJournal: { removeIfPresent } as never,
     });
 
     await expect(commands.cleanupConfirmedIntent(input, 2, 'recovery-dataset', userA.uid, recoveryReader, () => true))
       .resolves.toBe(true);
 
-    expect(removeIf).toHaveBeenCalledWith(recordA, expect.any(Function));
+    expect(removeIfPresent).toHaveBeenCalledWith(recordA, expect.any(Function));
   });
 
   it('treats a confirmed receipt whose identity is already absent from the journal as cleaned', async () => {
