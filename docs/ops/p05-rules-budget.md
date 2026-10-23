@@ -919,3 +919,25 @@ Two anchors were added to `mk.py`: `leaseUpdate` (the `allow update` of `system/
 | `accessEventCreate` / `E04` (release event) | n/a | +97 / +98 |
 
 The new clause costs exactly one expression term on the lease update (+94 → +93). The r1 rework (`!exists` added) was re-measured with the same cases: before the rework (`existsAfter` only) `+93 / +94`, after `+93 / +94`; `accessEventCreate` `+97 / +98` before and after. The access count for an epoch-changing lease update went from 2 to 3. At the `+hi` of each branch row the Emulator reports `Error compiling rules: ... Expression is too complex to evaluate safely.` (checked directly at `+94` for `leaseUpdate` and `+98` for `accessEventCreate`; the 35 tests of the spec were all skipped, none executed), so these are compile boundaries, not runtime-cap measurements. They match the existing `dataHead`, `dayCloseCommand` and settlement compile boundaries of about +95 to +97. Neither new rule is near the 1,000-expression runtime cap; they have no `for` or long chain of their own, and the runtime cost of `accessEventCreate` is one function call, three `get`-style reads and about a dozen comparisons.
+
+## P13d1 — paper number prefix on backfilled entries
+
+Rules SHA-256: main (#542 base `29c5370`) `8bc9497cacd7dd6129cb5b3229f43e52fcde6db848f6c9c81d7c86ae6ea190f2`; branch `98b143a3531f78cace7a4df0146b017089b4d4fe6582928a6cbabe5711a96455`. Changes: `validTransactionDay(dayId, day, text)` gets `validPaperNote(text)` (`text.matches('(?s)^紙本[A-Za-z0-9-]{1,20}：.*')`) in front of the backfill branch (today still short-circuits first); the three callers pass `tx.note`, `command.payload.reason` (cash command create) and `command.payload.reason` (`transactionCommand` cash branch); `validCorrectedTransaction` adds one clause that keeps an existing paper number. Probe tool `/mnt/project-files/tools/rules-probe`, same cases on both sides; `txUpdate` (the `allow update` of `transactions/{id}`) was added to a private copy of `mk.py` for the correction rows.
+
+### Decision record: field (A) versus prefix (B)
+
+The plan (Q1 = A) allowed an optional `paperRef` payload/transaction field, with an automatic fallback to the note prefix if the thinnest anchor fell below +5 or dropped by more than 3. Prototype A (payload key, 25th transaction key, tolerant decoders) measured the backfilled `CreateOrder` transaction-create anchor at `+9 / +10` against `+16 / +17` on main, a drop of 7, so B was adopted. A was not shipped. Its transaction-create anchor for payments and cash movements was not measured.
+
+| Anchor / case | main `+lo / +hi` | A `+lo / +hi` | B (shipped) `+lo / +hi` |
+|---|---:|---:|---:|
+| `tx` / `P11c2a.14` backfilled order (transaction create) | +16 / +17 | +9 / +10 | **+14 / +15** |
+| `cmd` / `P11c2a.14` backfilled order (command create) | +20 / +21 | +20 / +21 | +20 / +21 |
+| `tx` / `P11c2a.14` backfilled payment | +57 / +58 | not measured | +55 / +56 |
+| `cmd` / `P11c2a.14` backfilled payment | +20 / +21 | not measured | +20 / +21 |
+| `tx` / `P11c2a.14` backfilled cash movement | +95 / +96 | not measured | +95 / +96 |
+| `cmd` / `P11c2a.14` backfilled cash movement | +29 / +30 | not measured | +27 / +28 |
+| `txUpdate` / `P10.11` (corrections) | +96 / +97 | n/a | +96 / +97 |
+| `txUpdate` / `P10.17` (legal maximum payloads) | +96 / +97 | n/a | +96 / +97 |
+| `txUpdate` / `P13d1.4` (backfilled corrections and void) | n/a | n/a | +96 / +97 |
+
+The thinnest anchor stays at +14 (floor +5, allowed drop 3; actual drop 2). The `txUpdate` and `tx`-cash rows at +95 to +97 are the usual compile boundary, not runtime-cap measurements (`Expression is too complex to evaluate safely` before any test runs); the correction clause did not move them. The B rows come from the shipped `cloudDayClose.spec.ts` (its backfill helpers now carry the prefix) with the shipped Rules; the A and main rows come from the earlier prototype run with the then-current spec. No new document access: the prefix check is string-only, so access-call counts are unchanged.

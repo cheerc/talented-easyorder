@@ -1044,7 +1044,12 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     return { student: student!.revision as number, day: day!.revision as number };
   }
 
-  async function backfillOrder(dayId: string, commandId: string = uuid()) {
+  // P13d1: an entry on a marked past day carries its paper number as a fixed prefix of the note (the reason of a cash movement).
+  const PAPER_ORDER_NOTE = '紙本A-0001：';
+  const PAPER_PAYMENT_NOTE = '紙本A-0002：';
+  const PAPER_CASH_REASON = '紙本A-0003：零錢補充';
+
+  async function backfillOrder(dayId: string, commandId: string = uuid(), note: string = PAPER_ORDER_NOTE) {
     const r = await dayRevisions(dayId);
     const transactionId = uuid();
     return {
@@ -1053,12 +1058,12 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
         commandId, kind: 'CreateOrder', leaseEpoch: 1,
         targets: { transactionId, studentId: studentA, dayId },
         expectedRevisions: { transaction: 0, student: r.student, day: r.day },
-        payload: { mealPrice: 90, paidAmount: 0, mealKind: 'bento', menuRevision: 1, otherItemName: null, note: '' },
+        payload: { mealPrice: 90, paidAmount: 0, mealKind: 'bento', menuRevision: 1, otherItemName: null, note },
       }),
     };
   }
 
-  async function backfillPayment(dayId: string, paidAmount = 200) {
+  async function backfillPayment(dayId: string, paidAmount = 200, note: string = PAPER_PAYMENT_NOTE) {
     const r = await dayRevisions(dayId);
     const transactionId = uuid();
     const commandId = uuid();
@@ -1068,12 +1073,12 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
         commandId, kind: 'CreatePayment', leaseEpoch: 1,
         targets: { transactionId, studentId: studentA, dayId },
         expectedRevisions: { transaction: 0, student: r.student, day: r.day },
-        payload: { paidAmount, note: '' },
+        payload: { paidAmount, note },
       }),
     };
   }
 
-  async function backfillCash(dayId: string, amount = 50) {
+  async function backfillCash(dayId: string, amount = 50, reason: string = PAPER_CASH_REASON) {
     const r = await dayRevisions(dayId);
     const transactionId = uuid();
     return {
@@ -1081,7 +1086,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
       result: await writer().commitCommand({
         commandId: uuid(), kind: 'CreateCashMovement', leaseEpoch: 1,
         targets: { transactionId, dayId }, expectedRevisions: { transaction: 0, day: r.day },
-        payload: { mealPrice: 0, paidAmount: amount, reason: '零錢補充' },
+        payload: { mealPrice: 0, paidAmount: amount, reason },
       }),
     };
   }
@@ -1342,6 +1347,136 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     }));
     ok((await create(gap)).result);
     expect((await read(`days/${gap}`))!.totals.activeTransactionCount).toBe(1);
+  });
+
+  // ---- P13d1: the paper number of every backfilled entry (fixed note prefix, spec §7) ----
+
+  async function markedGap() {
+    const gap = shiftDate(today, -2);
+    await seedGapDay(gap, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    await withAdmin(async db => setDoc(doc(db, `backfillDays/${gap}`), {
+      dayId: gap, reason: BF_REASON, startedBy: operatorA.uid, startedAt: serverTimestamp(), commandId: uuid(),
+    }));
+    return gap;
+  }
+
+  const MISSING_REFS = ['', '前天停電補登', '備註 紙本A-0001：', '紙本：沒有編號'];
+  const MALFORMED_REFS = [
+    '紙本A 1：空白', '紙本A_1：底線', '紙本A1:半形冒號', ' 紙本A1：前面有空白', '紙本' + 'a'.repeat(21) + '：太長', '紙本甲乙：中文編號', '紙本A1',
+  ];
+
+  it.each<[string, (dayId: string, text: string) => Promise<{ result: CommandResult }>]>([
+    ['order', (dayId, text) => backfillOrder(dayId, uuid(), text)],
+    ['payment', (dayId, text) => backfillPayment(dayId, 200, text)],
+    ['cash movement', (dayId, text) => backfillCash(dayId, 50, text)],
+  ])('P13d1.1: a backfilled %s without a well-formed paper number is refused and changes nothing', async (_label, create) => {
+    const gap = await markedGap();
+    const before = await state(gap);
+    for (const text of [...MISSING_REFS, ...MALFORMED_REFS]) {
+      const attempt = await create(gap, text);
+      expect(attempt.result, JSON.stringify(text)).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    }
+    expect(await state(gap)).toEqual(before);
+  });
+
+  it('P13d1.2: a well-formed number is stored in the row note (the reason of a cash movement), 20 characters and a multi-line remark included', async () => {
+    const gap = await markedGap();
+    const longRef = '紙本' + 'Z'.repeat(20) + '：';
+    const order = await backfillOrder(gap, uuid(), '紙本A-0123：前天斷線補登');
+    const payment = await backfillPayment(gap, 200, longRef);
+    const cash = await backfillCash(gap, 50, '紙本B-9：第一行\n第二行');
+    for (const created of [order, payment, cash]) ok(created.result);
+    expect((await read(`transactions/${order.transactionId}`))!.note).toBe('紙本A-0123：前天斷線補登');
+    expect((await read(`transactions/${payment.transactionId}`))!.note).toBe(longRef);
+    expect((await read(`transactions/${cash.transactionId}`))!.note).toBe('紙本B-9：第一行\n第二行');
+  });
+
+  it('P13d1.3: today needs no paper number, and accepts one', async () => {
+    const create = async (kind: 'CreatePayment' | 'CreateCashMovement', payload: RawMap) => {
+      const transactionId = uuid();
+      const r = await revisions();
+      return {
+        transactionId,
+        result: await writer().commitCommand({
+          commandId: uuid(), kind, leaseEpoch: 1,
+          targets: kind === 'CreatePayment' ? { transactionId, studentId: studentA, dayId: today } : { transactionId, dayId: today },
+          expectedRevisions: kind === 'CreatePayment' ? { transaction: 0, student: r.student, day: r.day } : { transaction: 0, day: r.day },
+          payload,
+        } as never),
+      };
+    };
+    const plain = await create('CreatePayment', { paidAmount: 100, note: '' });
+    const prefixed = await create('CreatePayment', { paidAmount: 100, note: '紙本A-0007：斷線期間' });
+    const cashPlain = await create('CreateCashMovement', { mealPrice: 0, paidAmount: 50, reason: '零錢補充' });
+    const cashPrefixed = await create('CreateCashMovement', { mealPrice: 0, paidAmount: 50, reason: '紙本A-0008：零錢補充' });
+    for (const created of [plain, prefixed, cashPlain, cashPrefixed]) ok(created.result);
+    expect((await read(`transactions/${plain.transactionId}`))!.note).toBe('');
+    expect((await read(`transactions/${prefixed.transactionId}`))!.note).toBe('紙本A-0007：斷線期間');
+    expect((await read(`transactions/${cashPlain.transactionId}`))!.note).toBe('零錢補充');
+    expect((await read(`transactions/${cashPrefixed.transactionId}`))!.note).toBe('紙本A-0008：零錢補充');
+  });
+
+  it('P13d1.4: a correction keeps the paper number — the text after it changes, the number itself cannot be dropped or replaced', async () => {
+    const gap = await markedGap();
+    const payment = await backfillPayment(gap, 200, '紙本A-0002：原本備註');
+    const cash = await backfillCash(gap, 50, '紙本A-0003：零錢補充');
+    ok(payment.result);
+    ok(cash.result);
+    const correct = async (transactionId: string, studentId: string, payload: RawMap) => {
+      const tx = (await read(`transactions/${transactionId}`))!;
+      const r = await dayRevisions(gap);
+      return writer().commitCommand({
+        commandId: uuid(), kind: 'CorrectTransaction', leaseEpoch: 1,
+        targets: { transactionId, studentId, dayId: gap },
+        expectedRevisions: studentId === '__cashier__' ? { transaction: tx.revision, day: r.day } : { transaction: tx.revision, student: r.student, day: r.day },
+        payload: { reason: '補登更正', ...payload },
+      } as never);
+    };
+    const paymentPayload = (note: string) => ({ mealPrice: 0, paidAmount: 150, amount: 150, note });
+    const cashPayload = (note: string) => ({ mealPrice: 0, paidAmount: 60, amount: 60, note });
+    const before = await state(gap);
+    for (const note of ['原本備註', '', '紙本A-0009：原本備註', '紙本A-0002', '紙本A 2：原本備註']) {
+      expect(await correct(payment.transactionId, studentA, paymentPayload(note)), JSON.stringify(note)).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    }
+    for (const note of ['零錢補充', '紙本A-0010：零錢補充']) {
+      expect(await correct(cash.transactionId, '__cashier__', cashPayload(note)), JSON.stringify(note)).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    }
+    expect(await state(gap)).toEqual(before);
+
+    ok(await correct(payment.transactionId, studentA, paymentPayload('紙本A-0002：金額更正為 150')));
+    ok(await correct(cash.transactionId, '__cashier__', cashPayload('紙本A-0003：零錢補充，金額更正')));
+    expect((await read(`transactions/${payment.transactionId}`))!).toMatchObject({ note: '紙本A-0002：金額更正為 150', paidAmount: 150, revision: 2 });
+    expect((await read(`transactions/${cash.transactionId}`))!).toMatchObject({ note: '紙本A-0003：零錢補充，金額更正', revision: 2 });
+
+    // A void only flips the status; the paper number stays on the row.
+    const tx = (await read(`transactions/${payment.transactionId}`))!;
+    const r = await dayRevisions(gap);
+    ok(await writer().commitCommand({
+      commandId: uuid(), kind: 'VoidTransaction', leaseEpoch: 1,
+      targets: { transactionId: payment.transactionId, studentId: studentA, dayId: gap },
+      expectedRevisions: { transaction: tx.revision, student: r.student, day: r.day }, payload: { reason: '紙本作廢' },
+    }));
+    expect((await read(`transactions/${payment.transactionId}`))!).toMatchObject({ status: 'voided', note: '紙本A-0002：金額更正為 150' });
+  });
+
+  it('P13d1.5: a row without a paper number is corrected as freely as before; once a number is on the row it stays', async () => {
+    const created = await createPayment(100);
+    ok(created.result);
+    const correct = async (note: string) => {
+      const current = (await read(`transactions/${created.transactionId}`))!;
+      const r = await revisions();
+      return writer().commitCommand({
+        commandId: uuid(), kind: 'CorrectTransaction', leaseEpoch: 1,
+        targets: { transactionId: created.transactionId, studentId: studentA, dayId: today },
+        expectedRevisions: { transaction: current.revision, student: r.student, day: r.day },
+        payload: { mealPrice: 0, paidAmount: 100, amount: 100, note, reason: '備註更正' },
+      });
+    };
+    ok(await correct('改過的備註'));
+    ok(await correct('紙本A-0011：事後補上號碼'));
+    expect(await correct('')).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    ok(await correct('紙本A-0011：只改後面的字'));
+    expect((await read(`transactions/${created.transactionId}`))!).toMatchObject({ note: '紙本A-0011：只改後面的字', revision: 4 });
   });
 
   type RawStart = Awaited<ReturnType<typeof rawStartBackfill>>;

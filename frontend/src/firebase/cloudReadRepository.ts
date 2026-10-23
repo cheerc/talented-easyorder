@@ -1224,6 +1224,8 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
       const events = paged.documents
         .map(decodeAccessEvent)
         .sort((left, right) => left.epoch - right.epoch);
+      // A lease that moved on is a stale read, not a malformed event: settle that before judging the epochs.
+      await assertContextUnchanged(db, user, context);
       if (events.some(event => event.epoch > context.leaseEpoch)) {
         throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '使用權交接紀錄超過目前租約世代');
       }

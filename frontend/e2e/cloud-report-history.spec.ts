@@ -138,6 +138,9 @@ function shiftDate(day: string, offset: number): string {
   return value.toISOString().slice(0, 10);
 }
 
+// P13d1: entries on a marked past day carry a paper number as the note prefix.
+const PAPER_PREFIX = '紙本P12C：';
+
 function ok<T extends { ok: boolean; receipt?: unknown; error?: { code: string; message: string } }>(result: T, operation: string): NonNullable<T['receipt']> {
   if (!result.ok || !result.receipt) throw new Error(`${operation} failed: ${result.error?.code ?? 'NO_RECEIPT'} ${result.error?.message ?? ''}`);
   return result.receipt;
@@ -451,7 +454,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
         ok(await orders.createOrder({
           commandId: randomUUID(), transactionId, leaseEpoch: lease.epoch, studentId, dayId,
           expectedStudentRevision: studentRevision, expectedDayRevision: dayRevision,
-          mealKind: 'other', mealPrice, paidAmount, menuRevision: null, otherItemName: 'P12c合成餐', note,
+          mealKind: 'other', mealPrice, paidAmount, menuRevision: null, otherItemName: 'P12c合成餐', note: `${PAPER_PREFIX}${note}`,
         }), `CreateOrder ${dayId}`);
         return { transactionId, dayRevision: dayRevision + 1, studentRevision: studentRevision + 1 };
       };
@@ -460,7 +463,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
         transactionIds.push(transactionId);
         ok(await orders.createPayment({
           commandId: randomUUID(), transactionId, leaseEpoch: lease.epoch, studentId: STUDENT_ID, dayId,
-          expectedStudentRevision: studentRevision, expectedDayRevision: dayRevision, paidAmount, note,
+          expectedStudentRevision: studentRevision, expectedDayRevision: dayRevision, paidAmount, note: `${PAPER_PREFIX}${note}`,
         }), `CreatePayment ${dayId}`);
         return { transactionId, dayRevision: dayRevision + 1, studentRevision: studentRevision + 1 };
       };
@@ -1036,7 +1039,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
       ok(await orders.createPayment({
         commandId: randomUUID(), transactionId, leaseEpoch: lease.epoch, studentId: STUDENT_ID, dayId: d2,
         expectedStudentRevision: student.revision, expectedDayRevision: d2State.revision, paidAmount: 80,
-        note: 'P13b2b3c eligible historical payment',
+        note: `${PAPER_PREFIX}P13b2b3c eligible historical payment`,
       }), 'CreatePayment D2');
 
       await page.route(holdRoute, async route => {

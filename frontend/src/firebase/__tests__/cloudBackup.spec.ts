@@ -590,12 +590,12 @@ describeWithEmulator('P14 cloud backup', () => {
     let r = await revisions();
     okResult(await orders.createOrder({ commandId: id(), transactionId: id(), leaseEpoch: 7, studentId, dayId: gap,
       expectedStudentRevision: r.student, expectedDayRevision: r.day, mealKind: 'other', mealPrice: 80, paidAmount: 0,
-      menuRevision: null, otherItemName: '自備便當', note: '' }));
+      menuRevision: null, otherItemName: '自備便當', note: '紙本A-0001：' }));
     r = await revisions();
     okResult(await orders.createPayment({ commandId: id(), transactionId: id(), leaseEpoch: 7, studentId, dayId: gap,
-      expectedStudentRevision: r.student, expectedDayRevision: r.day, paidAmount: 200, note: '' }));
+      expectedStudentRevision: r.student, expectedDayRevision: r.day, paidAmount: 200, note: '紙本A-0002：' }));
     okResult(await orders.createCashMovement({ commandId: id(), transactionId: id(), leaseEpoch: 7, dayId: gap,
-      expectedDayRevision: (await read(`days/${gap}`)).revision, direction: 'income', amount: 50, reason: '零錢補充' }));
+      expectedDayRevision: (await read(`days/${gap}`)).revision, direction: 'income', amount: 50, reason: '紙本A-0003：零錢補充' }));
     const current = await read(`days/${gap}`);
     okResult(await closing.closeDay({ commandId: id(), leaseEpoch: 7, dayId: gap,
       expectedDayRevision: current.revision, expectedSettlementRevision: current.lastSettlementRevision,
@@ -611,6 +611,13 @@ describeWithEmulator('P14 cloud backup', () => {
     expect(replayed[`backfillDays/${gap}`]).toMatchObject({ dayId: gap, reason: '前天停電，事後補登', startedBy: operator.uid });
     expect(replayed[`days/${gap}`]).toMatchObject({ status: 'closed', openingCash: 600 });
     expect(opened.records[3]).toMatchObject({ kind: 'StartBackfill', reason: '前天停電，事後補登', payload: { reason: '前天停電，事後補登' }, targets: { dayId: gap } });
+
+    // The paper number is only a note prefix, so a backup taken before the rule (past-day entries without it) replays as before.
+    const withoutPaperNumbers = JSON.parse(JSON.stringify(opened).replaceAll(/紙本A-000[123]：/g, '')) as typeof opened;
+    expect(withoutPaperNumbers.records[6]).toMatchObject({ kind: 'CreateCashMovement', reason: '零錢補充', payload: { reason: '零錢補充' } });
+    expect(() => validateBackupManifest(withoutPaperNumbers)).not.toThrow();
+    expect(replayBackupProjections(withoutPaperNumbers.records, withoutPaperNumbers.baseState)).toEqual(withoutPaperNumbers.projectionState);
+    expect(replayed[`transactions/${(opened.records[6]!.targets as Record<string, string>).transactionId}`]).toMatchObject({ note: '紙本A-0003：零錢補充' });
 
     // A forged marker: another starter, another reason, another command, a different start time, an extra field.
     const forge = (change: (marker: Record<string, unknown>, record: BackupCommandRecord) => void) => {
@@ -691,9 +698,9 @@ describeWithEmulator('P14 cloud backup', () => {
     const revisions = async () => ({ student: (await read(`students/${studentId}`)).revision, day: (await read(`days/${gap}`)).revision });
     const r = await revisions();
     okResult(await orders.createPayment({ commandId: id(), transactionId: id(), leaseEpoch: 7, studentId, dayId: gap,
-      expectedStudentRevision: r.student, expectedDayRevision: r.day, paidAmount: 200, note: '' }));
+      expectedStudentRevision: r.student, expectedDayRevision: r.day, paidAmount: 200, note: '紙本A-0002：' }));
     okResult(await orders.createCashMovement({ commandId: id(), transactionId: id(), leaseEpoch: 7, dayId: gap,
-      expectedDayRevision: (await read(`days/${gap}`)).revision, direction: 'income', amount: 50, reason: '零錢補充' }));
+      expectedDayRevision: (await read(`days/${gap}`)).revision, direction: 'income', amount: 50, reason: '紙本A-0003：零錢補充' }));
     // The gap day must end at 850 (opening 600 + receipts 200 + income 50) because the next day opens with 850.
     okResult(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: 7,
       targets: { dayId: later }, expectedRevisions: { day: 0 }, payload: { businessDate: later } }));

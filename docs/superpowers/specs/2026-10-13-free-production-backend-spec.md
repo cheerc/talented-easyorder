@@ -128,8 +128,8 @@ readCommand(commandId: string): Promise<CommandReceipt | null>
 | CorrectOpening | student＋期初日 day | 原日期不改、理由必填、該日須可寫；餘額加期初差額；不增加收現 |
 | SaveVendor／RemoveVendor | vendor | revision、防整陣列覆寫、移除須先停用 |
 | EnsureDay／SetDayMenu／SetOpeningCash | day | 合法台北日期、未關帳；opening 明確確認且非負，沿用既有 20,000 上限 |
-| CreateOrder／CreatePayment | transaction＋student＋day | 非負整數、payment>0、order 帳戶 active、三方 delta 一致 |
-| CreateCashMovement | transaction＋day | expense、cashier sentinel、收入或支出恰一方向>0、理由 |
+| CreateOrder／CreatePayment | transaction＋student＋day | 非負整數、payment>0、order 帳戶 active、三方 delta 一致；補登日 `note` 須以紙本號前綴開頭（見 §7.4） |
+| CreateCashMovement | transaction＋day | expense、cashier sentinel、收入或支出恰一方向>0、理由；補登日 `reason` 須以紙本號前綴開頭（見 §7.4） |
 | CorrectTransaction／VoidTransaction／CancelKeepDeposit／CancelRefund／Undo | transaction＋student（expense 無）＋day | expectedRevision、理由、前後值、對應日未關帳；不改帳戶歸屬studentId／原營業日／建立時間 |
 | CloseDay／ReopenDay | day＋新的 settlement | 舊版不改、版號+1、統計與當下 head 一致、理由／差額 |
 | BackfillOpeningCash | day | 只限早於台北今天、不早於上線日、未關帳且尚無開帳現金的既有營業日；開帳 0–20,000、理由必填 1–500 字；不補登交易（[P11 契約 §10](2026-10-17-cloud-day-close-contract.md#10-補開帳backfillopeningcash)） |
@@ -191,6 +191,8 @@ F2／F5 的區間稽核對 `businessDate` 非 null 的命令按營業日歸屬�
 ### 7.4 日期生命週期
 
 日期合法性由 Rules 核對 YYYY-MM-DD、年／月／日與 Timestamp 起迄（Asia/Taipei UTC+8）；不得只驗 regex。goLiveDate 之前不能建立業務交易；未來日期可預排菜單，不可收款、訂餐或關帳。F1 用台北今天，不准 prototype 模擬日介入正式版；F2 可對已建立、明確選取／重開的歷史日修正與紙本補登，標記補登理由。
+
+每筆紙本補登必須留下紙本號（P13d1）：補登日（有 `backfillDays` 標記且從未關帳的過去日）的 `CreateOrder`／`CreatePayment` 的 `note`、`CreateCashMovement` 的 `reason`（寫進交易 `note`）必須以固定前綴 `紙本<編號>：` 開頭，編號為 1 至 20 字元的英數與 `-`，冒號為全形「：」，其後備註可空白、可跨行，總長仍受 500 字上限。今天的交易不要求前綴，也可以填。不新增欄位，因此命令 payload、交易文件、P14 備份格式都不變。`CorrectTransaction` 更正一筆 `note` 已帶紙本號的交易時，必須保留同一個紙本號（只能改其後的文字）；`VoidTransaction` 與其他變動不碰 `note`。Rules 是唯一強制點：備份 replay 沒有「這筆是舊資料還是新資料」的判別依據，只驗證與原本相同的一致性，不要求補登交易帶前綴，因此 P13d1 之前建立的補登交易（沒有前綴）仍可 export／replay。UI 的紙本號欄位與顯示由 P13d2 提供，前綴格式與解析在 `frontend/src/domain/paperRef.ts`。
 
 open → closed → reopened → closed。關帳需 openingCash 明確確認、countedCash 非負整數，差異非零必填原因。規則從 day totals 算 expected，不能接受 client 自填總額。關帳UI另要求本頁沒有unresolved command；此條件不是Rules可觀察的伺服器不變量，遺失回應須先查receipt。伺服器只依已提交head/day狀態判斷。結帳與 day 鎖同次 commit；新交易與關帳競賽只能得到「交易先入帳後再結」或「結帳先完成、交易拒絕」。關帳後該日的交易、菜單、開帳金額與期初更正均禁止，唯一合法日期變更是帶理由的 ReopenDay。
 
