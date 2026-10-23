@@ -58,7 +58,7 @@
 - **R4 不進備份鏈**：`accessEvents` 不是 command，不進 P14 manifest；P14 export/replay 不必擴充。spec §9 註明它屬「營運稽核史」，P15 是否另外匯出由 P15 決定。P13c1 仍要跑 `npm run test:cloud-backup` 作迴歸（lease Rules 改了，備份測試會 acquire）。
 - **R5 顯示位置**：P13c2 在雲端報表頁（F2）的稽核區新增唯讀「使用權交接」表，依所選日期區間的 `at` 範圍查詢、分頁有界、顯示 email 不顯示 UID（操作回饋計畫 §3 第 1 點）。不做 CSV 匯出，不建 `RecordExport`。如果 coordinator 認為不必顯示，P13c2 可整批取消，不影響 P13c1 的驗收。
 - **R6 舊雲端模組**：P13d3 刪除沒有 production import 的舊雲端模組，並把 `firebaseActions` 從 store 拔掉（prototype 的 store 不需要這兩個 throw stub；若有 prototype 呼叫點，改由 prototype 本機 action 處理或移除按鈕，實作者以 grep 決定並在 PR 列出）。另加 E2E 守門測試。這是結構清理加守門測試：守門測試可能一開始就是綠的，PR 要如實寫「guard，非 RED」；刪除本身靠既有測試維持綠。
-- **待決 Q1（需要 CheerC 決定，影響 P13d1／P13d2）**：每筆補登的「紙本號」要放在哪裡、格式為何。
+- **Q1 已定案（CheerC 2026-10-23 選 A）**：每筆補登的紙本號採新增選填欄位 `paperRef`；量測若觸發下列門檻，自動改用備案 B 並在 PR 記錄數字。
   - **建議 A：新增選填 payload 欄位 `paperRef`**，套用在 `CreateOrder`、`CreatePayment`、`CreateCashMovement`，寫入交易文件同名欄位；格式 1–20 字元，限英數與 `-`（例如 `A-0123`）。Rules：回填路徑（過去日）必填，今天選填（同日斷線恢復也可以填）。報表、CSV、F5 稽核都能直接顯示。代價：三個 kind 的 exactMap 各多一個分支，Rules expression 增加，回填 `CreateOrder` 交易 create 目前是最薄錨點（+16，P11c3 量測），必須量測；P14 備份 decoder 的 optional 欄位清單要擴充並跑 `test:cloud-backup`。
   - 備案 B：不加欄位，Rules 在回填路徑要求 `note`（現金收支是 `reason`）以固定前綴開頭，例如 `紙本A-0123：`。expression 較少，但顯示要靠解析文字。
   - Planner 的建議是 A；若量測後最薄錨點會低於 +5，或下降超過 3，自動改用 B（沿用 P11c2 當時的同一條門檻），並在 PR 記錄量測數字。
@@ -118,9 +118,9 @@ npm run lint && npm run build && npx tsc -b   # app TSC 與 base 比對（目前
 
 **驗證**：`npm run test:cloud-reports`、`npx vitest run src/components/cloud/CloudReportPage.test.tsx`、全量 `npx vitest run`、P12c E2E config、lint／build／tsc。
 
-### P13d1：每筆補登紙本號（後端；依 Q1 的決定）
+### P13d1：每筆補登紙本號（後端；Q1 已定案 A）
 
-以下以建議 A 描述；若採 B，只把「新欄位」換成「`note`／`reason` 前綴」，測試案例相同。
+以下以 A 描述；若量測觸發門檻改採 B，只把「新欄位」換成「`note`／`reason` 前綴」，測試案例相同。
 
 **檔案**：`frontend/src/domain/cloudCommandSchema.ts`（三個 kind 的 payload 加選填 `paperRef`，正規化與格式檢查）、`frontend/src/firebase/cloudCommandRepository.ts`（交易文件寫入 `paperRef`）、`firestore.rules`（`validTransactionPayload`／`validCashMovementPayload` 與交易文件 exactMap；回填路徑必填）、`frontend/src/firebase/cloudBackup.ts`（`payloadFieldsByKind` 三個 kind 的 optional 加 `paperRef`；replay 驗證回填交易帶 `paperRef`；舊備份沒有欄位照常通過）、`docs/ops/p05-rules-budget.md` 附錄、spec §6.1 command 表與 §7 line 190 附近。
 
