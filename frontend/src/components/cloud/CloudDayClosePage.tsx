@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type SetStateAction } from 'react';
+import { getAuth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
-import { effectiveCashOf, openingDifference, type OpeningMismatchAnomaly, type PreviousClosedDay } from '../../domain/ledgerAnomalies';
+import { effectiveCashOf, openingDifference, type OpeningMismatchAnomaly } from '../../domain/ledgerAnomalies';
 import type { PostCloseDirection } from '../../domain/postCloseEntries';
+import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
 import {
   createCloudDayCloseRepository,
   type BackfillCloudDayOpeningInput,
   type CloseCloudDayInput,
-  type CloudBackfillDay,
-  type CloudDayCloseOverview,
+  type CloudDayCloseCommandIntent,
+  type CloudDayCloseSnapshot,
   type CloudDayCloseState,
   type CloudUnclosedDay,
   type EnsureCloudDayInput,
@@ -57,44 +59,68 @@ interface RecoveryState {
   commandId: string;
   command?: PreparedCommand;
   phase: RecoveryPhase;
+  /** Ten seconds passed without a definite result; the prompt only, never an abort or an unsent proof. */
+  timedOut?: boolean;
+  /** A fresh settled read-only null allows an explicit retry with the original ID and frozen input. */
+  canRetry?: boolean;
   receipt?: CommandReceipt;
 }
 
-/** The previous closed day's counted cash, the default opening cash of a backfilled day (contract §13). */
-type PreviousLookup = { status: 'ready'; previous: PreviousClosedDay | null } | { status: 'error'; message: string };
-
-/** The nearest opened day after a back-filled day, the day its close must align with (contract §14). */
-type AlignLookup =
-  | { status: 'ready'; next: { dayId: string; openingCash: number } | null }
-  | { status: 'error'; message: string };
-
-interface DaySnapshot {
-  overview: CloudDayCloseOverview;
+/**
+ * One operation per mounted owner: the frozen command, its canonical typed intent, and the independent liveness of
+ * the original submission promise. Nothing else survives an owner change or an unmount.
+ */
+interface DayCloseCommandOperation {
+  token: symbol;
+  identityKey: string;
+  generation: number;
+  db: Firestore;
+  app: Firestore['app'];
+  uid: string;
+  leaseEpoch: number;
+  datasetId: string;
+  /** The command's own business day; the refreshed page must show exactly this dataset and day. */
   dayId: string;
-  /** null when the day document does not exist. */
-  day: CloudDayCloseState | null;
-  /** The backfill marker of an open day; null for an ordinary day. */
-  backfill: CloudBackfillDay | null;
-  /** Only looked up while the backfill form may ask for an opening cash. */
-  previous: PreviousLookup | null;
-  /** Only looked up for a back-filled day that is still open and has its opening cash. */
-  align: AlignLookup | null;
+  command: PreparedCommand | null;
+  intent: CloudDayCloseCommandIntent | null;
+  attempt: number;
+  attemptPromise: Promise<CommandResult> | null;
+  attemptSettled: boolean;
+  querySequence: number;
+  checking: boolean;
+  retryAuthorized: boolean;
+  receipt: CommandReceipt | null;
+  /** The original submission itself returned the receipt; a receipt found by a query never auto-advances a plan. */
+  confirmedByResult: boolean;
+  /** The backfill plan generation this step belongs to; null for a stand-alone command. */
+  planGeneration: number | null;
+  completed: boolean;
+  timerId: number | null;
+  cleanupWarning: string;
 }
 
 /**
- * What the operator asked to backfill (contract §13). Which steps are still needed is derived from the server
- * state after every confirmed step, so a retry never creates a day or a marker twice.
+ * What the operator asked to backfill (contract §13), bound to the mounted owner, the dataset and the day. Which
+ * steps are still needed is derived from the server state after every confirmed step, so a retry never creates a
+ * day or a marker twice. `generation` identifies one explicitly initiated plan.
  */
 interface BackfillPlan {
+  generation: number;
+  datasetId: string;
+  uid: string;
   dayId: string;
   reason: string;
   /** null when the day already has its opening cash. */
   openingCash: number | null;
   /** The reason sent with BackfillOpeningCash: the difference reason, or the backfill reason when none is needed. */
   openingReason: string;
-  /** The next step may start by itself once the page has re-read the server. */
+  /** The next step may start by itself once the page has re-read the server; consumed by exactly one continuation. */
   auto: boolean;
 }
+
+type DaySnapshot = CloudDayCloseSnapshot;
+
+const CLOSE_BLOCKED_MESSAGE = '尚有待核對命令；依系統關帳規則，先完成結果確認後才能關帳。保留原編號，不要重新收款。';
 
 interface PageState {
   scopeKey: string;
@@ -284,6 +310,68 @@ function nextBackfillStep(
   return { kind: 'start-backfill', commandId, dayId, expectedDayRevision: day.revision, reason: plan.reason };
 }
 
+function freezeValue<T>(input: T): T {
+  const copy = JSON.parse(JSON.stringify(input)) as T;
+  const freeze = (value: unknown): void => {
+    if (!value || typeof value !== 'object' || Object.isFrozen(value)) return;
+    for (const child of Object.values(value as Record<string, unknown>)) freeze(child);
+    Object.freeze(value);
+  };
+  freeze(copy);
+  return copy;
+}
+
+function browserIsOnline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === true;
+}
+
+/** The repository's guard rejection means nothing was written; matched by name so the page needs no class import. */
+function isGuardRejected(error: unknown): boolean {
+  return error instanceof Error && error.name === 'CloudDayCloseGuardRejected';
+}
+
+/** The canonical typed intent of a prepared command: the same mapping the writer and the read-only checks use. */
+function intentFor(command: PreparedCommand, leaseEpoch: number): CloudDayCloseCommandIntent {
+  if (command.kind === 'ensure-day') {
+    return { kind: 'ensure-day', input: { commandId: command.commandId, leaseEpoch, dayId: command.dayId } };
+  }
+  if (command.kind === 'start-backfill') {
+    return {
+      kind: 'start-backfill',
+      input: {
+        commandId: command.commandId, leaseEpoch, dayId: command.dayId,
+        expectedDayRevision: command.expectedDayRevision, reason: command.reason,
+      },
+    };
+  }
+  if (command.kind === 'backfill-opening') {
+    return {
+      kind: 'backfill-opening',
+      input: {
+        commandId: command.commandId, leaseEpoch, dayId: command.dayId, expectedDayRevision: command.expectedDayRevision,
+        openingCash: command.openingCash, reason: command.reason,
+      },
+    };
+  }
+  const base = {
+    commandId: command.commandId, leaseEpoch, dayId: command.dayId,
+    expectedDayRevision: command.expectedDayRevision, expectedSettlementRevision: command.expectedSettlementRevision,
+  };
+  if (command.kind === 'close-day') {
+    return {
+      kind: 'close-day',
+      input: {
+        ...base, expectedCash: command.expectedCash, countedCash: command.countedCash, note: command.note,
+        ...(command.alignWithDayId !== undefined ? { alignWithDayId: command.alignWithDayId } : {}),
+      },
+    };
+  }
+  if (command.kind === 'record-post-close-entry') {
+    return { kind: 'record-post-close-entry', input: { ...base, direction: command.direction, amount: command.amount, reason: command.reason } };
+  }
+  return { kind: 'reopen-day', input: { ...base, reason: command.reason } };
+}
+
 /** The day's own cash numbers; the close and reopen forms only send what the server already shows. */
 function DayFigures({ day }: { day: CloudDayCloseState }) {
   const t = day.totals;
@@ -307,35 +395,104 @@ export function CloudDayClosePage({
   db, leaseEpoch, identityKey, onNavigationStateChange, backupBlock, ledger, onOpenAnomalies, onLedgerChanged, initialDayId,
   initialPostCloseEntry, onOpenOrders, hasUnresolvedPendingCommands = false,
 }: CloudDayClosePageProps) {
-  const initialDayIdRef = useRef(initialDayId);
-  const initialPostCloseEntryRef = useRef(initialPostCloseEntry);
   const onLedgerChangedRef = useRef(onLedgerChanged);
   useEffect(() => { onLedgerChangedRef.current = onLedgerChanged; }, [onLedgerChanged]);
-  const repository = useMemo(() => createCloudDayCloseRepository(db), [db]);
-  const scopeKey = `${identityKey}:${leaseEpoch}`;
+  // The shared §7.4 flag is read at the moment of submission, never from a stale closure.
+  const hasUnresolvedRef = useRef(hasUnresolvedPendingCommands);
+  useEffect(() => { hasUnresolvedRef.current = hasUnresolvedPendingCommands; }, [hasUnresolvedPendingCommands]);
+  const recoveryReader = useMemo(() => getCloudRecoveryReader(db), [db]);
+  const repository = useMemo(() => createCloudDayCloseRepository(db, { recoveryReader }), [db, recoveryReader]);
+  let currentUid: string | null = null;
+  try { currentUid = getAuth(db.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
+  const authorizationScopeKey = `${identityKey}:${leaseEpoch}`;
+  const authorizationScopeRef = useRef(authorizationScopeKey);
+  const revokedScopeRef = useRef<string | null>(null);
+  const pendingCommandIdRef = useRef<string | null>(null);
+  const postClosePreflightRef = useRef(false);
+  const backfillPlanRef = useRef<BackfillPlan | null>(null);
+  const planGenerationRef = useRef(0);
+  // A plan generation whose confirmed refresh failed never advances by itself again; only an explicit continue may.
+  const autoBlockedGenerationsRef = useRef<Set<number>>(new Set());
+  if (authorizationScopeRef.current !== authorizationScopeKey) {
+    authorizationScopeRef.current = authorizationScopeKey;
+    revokedScopeRef.current = null;
+    pendingCommandIdRef.current = null;
+  }
+  const bindingRef = useRef({ db, uid: currentUid, identityKey, leaseEpoch, version: 0 });
+  const operationRef = useRef<DayCloseCommandOperation | null>(null);
+  if (bindingRef.current.db !== db || bindingRef.current.uid !== currentUid
+    || bindingRef.current.identityKey !== identityKey || bindingRef.current.leaseEpoch !== leaseEpoch) {
+    const oldOperation = operationRef.current;
+    if (oldOperation?.timerId !== null && oldOperation?.timerId !== undefined) window.clearTimeout(oldOperation.timerId);
+    if (oldOperation) {
+      oldOperation.completed = true;
+      oldOperation.command = null;
+      oldOperation.intent = null;
+      oldOperation.attemptPromise = null;
+    }
+    operationRef.current = null;
+    backfillPlanRef.current = null;
+    postClosePreflightRef.current = false;
+    bindingRef.current = { db, uid: currentUid, identityKey, leaseEpoch, version: bindingRef.current.version + 1 };
+  }
+  const scopeKey = `${identityKey}:${leaseEpoch}:${bindingRef.current.version}`;
+  // Only the first owner's first load starts at the requested day; a replayed effect for that same owner keeps it.
+  const firstLoadRef = useRef<{ scopeKey: string; dayId: string | undefined; entry: OpeningMismatchAnomaly | undefined } | null>({
+    scopeKey, dayId: initialDayId, entry: initialPostCloseEntry,
+  });
   const [pageState, setPageStateRaw] = useState<PageState>(() => initialPageState(scopeKey));
   const scopeRef = useRef(scopeKey);
   const generationRef = useRef(0);
   const readRequestRef = useRef(0);
-  const commandFlightRef = useRef<symbol | null>(null);
-  const revokedScopeRef = useRef<string | null>(null);
-  const pendingCommandIdRef = useRef<string | null>(null);
-  const postClosePreflightRef = useRef(false);
 
   if (scopeRef.current !== scopeKey) {
     scopeRef.current = scopeKey;
     generationRef.current += 1;
     readRequestRef.current += 1;
-    commandFlightRef.current = null;
-    revokedScopeRef.current = null;
-    pendingCommandIdRef.current = null;
   }
 
-  const page = pageState.scopeKey === scopeKey ? pageState : initialPageState(scopeKey);
+  // The first committed render of a new owner shows nothing of the previous one.
+  const currentPage = pageState.scopeKey === scopeKey ? pageState : initialPageState(scopeKey);
+  const page = revokedScopeRef.current === authorizationScopeKey
+    ? {
+      ...currentPage,
+      authorizationRevoked: true,
+      loading: false,
+      loadError: currentPage.loadError || errorMessage({ code: 'LEASE_LOST' }),
+      recovery: currentPage.recovery ?? (pendingCommandIdRef.current
+        ? { commandId: pendingCommandIdRef.current, phase: 'access-lost' as const }
+        : null),
+    }
+    : currentPage;
+
+  // Event handlers and awaited continuations read the latest committed page, never a stale render closure.
+  const latestPageRef = useRef(page);
+  useEffect(() => { latestPageRef.current = page; });
 
   const isCurrent = useCallback((key: string, generation: number) => (
     scopeRef.current === key && generationRef.current === generation
   ), []);
+
+  const ownsOperation = useCallback((operation: DayCloseCommandOperation): operation is DayCloseCommandOperation & {
+    command: PreparedCommand;
+    intent: CloudDayCloseCommandIntent;
+  } => {
+    let authenticatedUid: string | null = null;
+    try { authenticatedUid = getAuth(operation.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
+    return operationRef.current === operation
+      && !operation.completed
+      && operation.command !== null
+      && operation.intent !== null
+      && isCurrent(operation.identityKey, operation.generation)
+      && bindingRef.current.db === operation.db
+      && bindingRef.current.uid === operation.uid
+      && bindingRef.current.identityKey === identityKey
+      && bindingRef.current.leaseEpoch === operation.leaseEpoch
+      && operation.db === db
+      && operation.db.app === operation.app
+      && operation.uid === authenticatedUid
+      && operation.leaseEpoch === leaseEpoch;
+  }, [db, identityKey, isCurrent, leaseEpoch]);
 
   const updateFor = useCallback((key: string, generation: number, update: (previous: PageState) => PageState) => {
     setPageStateRaw(previous => {
@@ -345,16 +502,38 @@ export function CloudDayClosePage({
     });
   }, [isCurrent]);
 
+  const dropOperation = (operation: DayCloseCommandOperation) => {
+    if (operation.timerId !== null) window.clearTimeout(operation.timerId);
+    operation.timerId = null;
+    operation.completed = true;
+    operation.command = null;
+    operation.intent = null;
+    operation.attemptPromise = null;
+    if (operationRef.current === operation) operationRef.current = null;
+  };
+
   const revokeAuthorization = useCallback((key: string, generation: number, commandId: string | null, error: unknown) => {
     if (!isCurrent(key, generation)) return;
+
     // Invalidate all pending reads, writes, and receipt lookups before React commits.
-    revokedScopeRef.current = key;
+    revokedScopeRef.current = authorizationScopeKey;
     generationRef.current += 1;
     readRequestRef.current += 1;
-    commandFlightRef.current = null;
+    const operation = operationRef.current;
+    if (operation?.timerId !== null && operation?.timerId !== undefined) window.clearTimeout(operation.timerId);
+    if (operation) {
+      operation.completed = true;
+      operation.command = null;
+      operation.intent = null;
+      operation.attemptPromise = null;
+    }
+    operationRef.current = null;
+    backfillPlanRef.current = null;
+    postClosePreflightRef.current = false;
     const retainedCommandId = commandId ?? pendingCommandIdRef.current;
     pendingCommandIdRef.current = retainedCommandId;
     onNavigationStateChange?.(identityKey, 'revoked');
+
     setPageStateRaw(previous => {
       if (previous.scopeKey !== key) return previous;
       return {
@@ -365,73 +544,108 @@ export function CloudDayClosePage({
         recovery: retainedCommandId ? { commandId: retainedCommandId, phase: 'access-lost' } : null,
       };
     });
-  }, [identityKey, isCurrent, onNavigationStateChange]);
+  }, [authorizationScopeKey, identityKey, isCurrent, onNavigationStateChange]);
 
-  const loadSnapshot = useCallback(async (targetDayId?: string, confirmedReceipt?: CommandReceipt, initialEntry?: OpeningMismatchAnomaly) => {
+  const loadSnapshot = useCallback(async (
+    targetDayId?: string,
+    confirmedReceipt?: CommandReceipt,
+    confirmedOperation?: DayCloseCommandOperation,
+    initialEntry?: OpeningMismatchAnomaly,
+  ) => {
     const key = scopeKey;
     const generation = generationRef.current;
-    if (revokedScopeRef.current === key) return;
+    if (revokedScopeRef.current === authorizationScopeKey) return;
+    const operation = confirmedOperation ?? operationRef.current;
+    if (operation && !ownsOperation(operation)) return;
+    if (confirmedReceipt && (!operation || operation.command.commandId !== confirmedReceipt.commandId)) return;
+    const requestedDayId = operation?.dayId ?? targetDayId;
     const requestId = ++readRequestRef.current;
     updateFor(key, generation, previous => ({
       ...previous,
       snapshot: null,
       loading: true,
       loadError: '',
-      actionError: '',
+      actionError: operation?.receipt ? previous.actionError : '',
       notice: confirmedReceipt ? '已找到伺服器回執，正在重新讀取日結資料…' : '',
-      ...(targetDayId ? { dayIdDraft: targetDayId } : {}),
+      ...(requestedDayId ? { dayIdDraft: requestedDayId } : {}),
     }));
 
     try {
-      const overview = await repository.readOverview();
-      const dayId = targetDayId ?? overview.selectionDate;
-      const day = await repository.read(dayId);
-      const backfill = overview.unclosedDays.find(item => item.dayId === dayId)?.backfill ?? null;
-      // The backfill form defaults the opening cash to the previous closed day's counted cash; a failed lookup only
-      // disables that form (with a retry), it never hides the day itself.
-      let previousLookup: PreviousLookup | null = null;
-      if (dayId < overview.selectionDate && dayId >= overview.goLiveDate && !backfill
-        && (!day || (day.status === 'open' && day.lastSettlementRevision === 0 && day.openingCash === null))) {
-        try {
-          previousLookup = { status: 'ready', previous: (await repository.findPreviousClosed(dayId)).previous };
-        } catch (lookupError) {
-          if (isAuthorizationLoss(lookupError)) throw lookupError;
-          previousLookup = { status: 'error', message: errorMessage(lookupError) };
-        }
-      }
-      let alignLookup: AlignLookup | null = null;
-      if (backfill && day && day.status !== 'closed' && day.openingCash !== null) {
-        try {
-          alignLookup = { status: 'ready', next: (await repository.findNextOpened(dayId)).next };
-        } catch (lookupError) {
-          if (isAuthorizationLoss(lookupError)) throw lookupError;
-          alignLookup = { status: 'error', message: errorMessage(lookupError) };
-        }
-      }
+      const snapshot = await repository.loadSnapshot(requestedDayId);
       if (!isCurrent(key, generation) || requestId !== readRequestRef.current) return;
-      if (confirmedReceipt?.commandId === pendingCommandIdRef.current) pendingCommandIdRef.current = null;
-      if (confirmedReceipt) onLedgerChangedRef.current?.();
+      const currentOperation = operationRef.current;
+      const boundOperation = operation ?? currentOperation;
+      const resolvesOperation = confirmedReceipt
+        && boundOperation === currentOperation
+        && boundOperation?.command?.commandId === confirmedReceipt.commandId
+        && boundOperation.receipt?.commandId === confirmedReceipt.commandId
+        && ownsOperation(boundOperation);
+      if (boundOperation && ownsOperation(boundOperation)
+        && (snapshot.datasetId !== boundOperation.datasetId || snapshot.dayId !== boundOperation.dayId)) {
+        // Never expose another dataset's or another day's data, and never unlock the original operation.
+        const confirmed = !!boundOperation.receipt;
+        backfillPlanRef.current = null;
+        updateFor(key, generation, previous => ({
+          ...previous,
+          ...clearDrafts(),
+          snapshot: null,
+          loading: false,
+          loadError: '',
+          actionError: confirmed
+            ? '命令回執已確認，但伺服器資料集或營業日已變更；已確認狀態仍保留，請勿重送命令。'
+            : '目前伺服器資料集或營業日已變更；原命令仍待確認，不能重試。',
+          backfillPlan: null,
+          recovery: {
+            commandId: boundOperation.command.commandId,
+            command: boundOperation.command,
+            phase: confirmed ? 'receipt' : 'unknown',
+            ...(confirmed && boundOperation.receipt ? { receipt: boundOperation.receipt } : {}),
+            canRetry: false,
+          },
+          notice: '',
+        }));
+        return;
+      }
+      if (confirmedReceipt && !resolvesOperation) return;
+      let acceptedCommand: PreparedCommand | null = null;
+      let planFollowUp: BackfillPlan | null = backfillPlanRef.current;
+      if (planFollowUp && snapshot.datasetId !== planFollowUp.datasetId) planFollowUp = null;
+      let planDone = false;
+      if (resolvesOperation && boundOperation) {
+        const completedOperation: DayCloseCommandOperation = boundOperation;
+        acceptedCommand = boundOperation.command;
+        const stepOfPlan = planFollowUp !== null && completedOperation.planGeneration === planFollowUp.generation
+          && planFollowUp.dayId === snapshot.dayId;
+        if (stepOfPlan && planFollowUp) {
+          planDone = snapshot.backfill !== null;
+          // The next step may start by itself only after the original submission itself returned this receipt.
+          planFollowUp = planDone ? null : {
+            ...planFollowUp,
+            auto: completedOperation.confirmedByResult && completedOperation.attemptSettled
+              && !autoBlockedGenerationsRef.current.has(planFollowUp.generation),
+          };
+        }
+        dropOperation(completedOperation);
+        if (confirmedReceipt!.commandId === pendingCommandIdRef.current) pendingCommandIdRef.current = null;
+      }
+      backfillPlanRef.current = planFollowUp;
+      const nextPlan = planFollowUp;
       updateFor(key, generation, previous => {
-        const confirmsPending = confirmedReceipt
-          && previous.recovery?.commandId === confirmedReceipt.commandId
-          && previous.recovery.command !== undefined;
-        const confirmedCommand = confirmsPending ? previous.recovery?.command : null;
-        // A confirmed step either finishes the plan (the marker exists) or lets the next step start by itself.
-        const plan = previous.backfillPlan;
-        const planDone = !!plan && !!confirmsPending && plan.dayId === dayId && backfill !== null;
-        const planContinues = !!plan && !!confirmsPending && plan.dayId === dayId && !planDone;
+        const confirmsPending = !!resolvesOperation && !!confirmedReceipt;
+        const confirmedCommand = confirmsPending ? acceptedCommand : null;
         const confirmedText = confirmsPending
-          ? `已確認 ${confirmedCommand ? commandLabel(confirmedCommand) : '雲端操作'} 完成；伺服器資料已重新讀取（命令序號 ${confirmedReceipt.seq}）。`
+          ? `已確認 ${confirmedCommand ? commandLabel(confirmedCommand) : '雲端操作'} 完成；伺服器資料已重新讀取（命令序號 ${confirmedReceipt.seq}）。${boundOperation?.cleanupWarning ? ' ' + boundOperation.cleanupWarning : ''}`
           : '';
+        const dayId = snapshot.dayId;
         return {
           ...previous,
           ...clearDrafts(),
-        snapshot: { overview, dayId, day, backfill, previous: previousLookup, align: alignLookup },
+          snapshot,
           dayIdDraft: dayId,
           loading: false,
           loadError: '',
           actionError: '',
-          backfillPlan: planDone ? null : planContinues && plan ? { ...plan, auto: true } : plan,
+          backfillPlan: nextPlan,
           recovery: confirmsPending ? null : previous.recovery,
           postCloseReference: confirmedReceipt?.kind === 'RecordPostCloseEntry'
             ? null
@@ -446,45 +660,77 @@ export function CloudDayClosePage({
           notice: planDone ? `${confirmedText}${dayId} 已標為回填，可以到訂餐頁補登交易。` : confirmedText,
         };
       });
+      // Once, after the accepted same-owner, same-dataset, same-day snapshot.
+      if (resolvesOperation && confirmedReceipt) onLedgerChangedRef.current?.();
     } catch (error) {
       if (!isCurrent(key, generation) || requestId !== readRequestRef.current) return;
       if (isAuthorizationLoss(error)) {
-        revokeAuthorization(key, generation, confirmedReceipt?.commandId ?? null, error);
+        revokeAuthorization(key, generation, operation?.command.commandId ?? confirmedReceipt?.commandId ?? null, error);
         return;
       }
+      // A failed page read stops all automatic progress of the plan; a later manual reload only reads.
+      const failedPlan = backfillPlanRef.current;
+      if (failedPlan) {
+        autoBlockedGenerationsRef.current.add(failedPlan.generation);
+        backfillPlanRef.current = { ...failedPlan, auto: false };
+      }
+      const heldOperation = operationRef.current;
+      const heldRecovery: RecoveryState | null = heldOperation && ownsOperation(heldOperation)
+        ? {
+          commandId: heldOperation.command.commandId,
+          command: heldOperation.command,
+          phase: heldOperation.receipt ? 'receipt' as const : 'unknown' as const,
+          ...(heldOperation.receipt ? { receipt: heldOperation.receipt } : {}),
+          canRetry: false,
+        }
+        : null;
       updateFor(key, generation, previous => {
-        const recovery = confirmedReceipt && previous.recovery?.commandId === confirmedReceipt.commandId
-          ? { ...previous.recovery, phase: 'receipt' as const, receipt: confirmedReceipt }
-          : previous.recovery;
+        const recovery = heldRecovery ?? previous.recovery;
         return {
           ...previous,
           ...clearDrafts(),
           snapshot: null,
           loading: false,
           loadError: errorMessage(error),
-          actionError: confirmedReceipt
+          backfillPlan: previous.backfillPlan ? { ...previous.backfillPlan, auto: false } : null,
+          actionError: operation?.receipt
             ? '已找到命令回執，但伺服器資料尚未重新讀取；請只重新讀取資料，不要重送命令。'
-            : '',
+            : heldOperation
+              ? '目前無法安全重新讀取原日結資料；原命令仍維持鎖定狀態。'
+              : '',
           recovery,
           notice: '',
         };
       });
     }
-  }, [isCurrent, repository, revokeAuthorization, scopeKey, updateFor]);
+  }, [authorizationScopeKey, isCurrent, ownsOperation, repository, revokeAuthorization, scopeKey, updateFor]);
 
   useEffect(() => {
     const generation = ++generationRef.current;
-    setPageStateRaw(initialPageState(scopeKey));
-    const firstDayId = initialDayIdRef.current;
-    initialDayIdRef.current = undefined;
-    const firstPostCloseEntry = initialPostCloseEntryRef.current;
-    initialPostCloseEntryRef.current = undefined;
-    void loadSnapshot(firstDayId, undefined, firstPostCloseEntry);
+    const latched = revokedScopeRef.current === authorizationScopeKey;
+    const initial = initialPageState(scopeKey);
+    setPageStateRaw(latched ? {
+      ...initial,
+      authorizationRevoked: true,
+      loading: false,
+      loadError: errorMessage({ code: 'LEASE_LOST' }),
+      recovery: pendingCommandIdRef.current
+        ? { commandId: pendingCommandIdRef.current, phase: 'access-lost' }
+        : null,
+    } : initial);
+    const first = firstLoadRef.current?.scopeKey === scopeKey ? firstLoadRef.current : null;
+    if (first === null) firstLoadRef.current = null;
+    if (!latched) void loadSnapshot(first?.dayId, undefined, undefined, first?.entry);
     return () => {
       readRequestRef.current += 1;
+      const operation = operationRef.current;
+      if (operation?.generation === generation) dropOperation(operation);
+      // The plan, its pending continuation and the preflight lock die with the mounted owner.
+      backfillPlanRef.current = null;
+      postClosePreflightRef.current = false;
       if (generationRef.current === generation) generationRef.current += 1;
     };
-  }, [loadSnapshot, scopeKey]);
+  }, [authorizationScopeKey, loadSnapshot, scopeKey]);
 
   const hasRecovery = page.recovery !== null;
   useEffect(() => {
@@ -494,231 +740,377 @@ export function CloudDayClosePage({
     );
   }, [hasRecovery, identityKey, onNavigationStateChange, page.authorizationRevoked]);
 
-  const dispatch = (command: PreparedCommand): Promise<CommandResult> => {
-    if (command.kind === 'ensure-day') {
-      return repository.ensureDay({ commandId: command.commandId, leaseEpoch, dayId: command.dayId });
-    }
-    if (command.kind === 'start-backfill') {
-      const { commandId, dayId, expectedDayRevision, reason } = command;
-      return repository.startBackfill({ commandId, leaseEpoch, dayId, expectedDayRevision, reason });
-    }
-    if (command.kind === 'backfill-opening') {
-      const { commandId, dayId, expectedDayRevision, openingCash, reason } = command;
-      return repository.backfillOpening({ commandId, leaseEpoch, dayId, expectedDayRevision, openingCash, reason });
-    }
-    const { commandId, dayId, expectedDayRevision, expectedSettlementRevision } = command;
-    const base = { commandId, leaseEpoch, dayId, expectedDayRevision, expectedSettlementRevision };
-    if (command.kind === 'close-day') {
-      return repository.closeDay({
-        ...base, expectedCash: command.expectedCash, countedCash: command.countedCash, note: command.note,
-        ...(command.alignWithDayId !== undefined ? { alignWithDayId: command.alignWithDayId } : {}),
-      });
-    }
-    if (command.kind === 'record-post-close-entry') {
-      return repository.recordPostCloseEntry({
-        ...base, direction: command.direction, amount: command.amount, reason: command.reason,
-      });
-    }
-    return repository.reopenDay({ ...base, reason: command.reason });
+  const clearOperationTimer = (operation: DayCloseCommandOperation) => {
+    if (operation.timerId !== null) window.clearTimeout(operation.timerId);
+    operation.timerId = null;
   };
 
-  const finishCommandResult = async (command: PreparedCommand, result: CommandResult, key: string, generation: number) => {
-    if (!isCurrent(key, generation)) return;
+  const showUnknownResult = (operation: DayCloseCommandOperation, message: string) => {
+    if (!ownsOperation(operation) || operation.receipt) return;
+    const command = operation.command;
+    clearOperationTimer(operation);
+    updateFor(operation.identityKey, operation.generation, previous => ({
+      ...previous, snapshot: null, loading: false, loadError: '', actionError: message,
+      recovery: {
+        commandId: command.commandId, command,
+        phase: operation.checking ? 'checking' : 'unknown', timedOut: false, canRetry: false,
+      },
+    }));
+  };
+
+  const beginAttempt = (operation: DayCloseCommandOperation) => {
+    clearOperationTimer(operation);
+    operation.attempt += 1;
+    operation.attemptPromise = null;
+    operation.attemptSettled = false;
+    operation.retryAuthorized = false;
+    operation.querySequence += 1;
+    operation.checking = false;
+    const attempt = operation.attempt;
+    const promptCommandId = operation.command?.commandId ?? '';
+    // The ten-second mark is only a status prompt: no abort, no new ID, no automatic retry.
+    operation.timerId = window.setTimeout(() => {
+      if (!ownsOperation(operation) || operation.attempt !== attempt || operation.attemptSettled || operation.receipt) return;
+      updateFor(operation.identityKey, operation.generation, previous => ({
+        ...previous,
+        recovery: previous.recovery !== null && previous.recovery.commandId === promptCommandId
+          ? { ...previous.recovery, phase: 'submitting' as const, timedOut: true, canRetry: false }
+          : previous.recovery,
+      }));
+    }, 10_000);
+  };
+
+  const settleWithReceipt = async (operation: DayCloseCommandOperation, receipt: CommandReceipt) => {
+    if (!ownsOperation(operation) || operation.receipt) return;
+    const command = operation.command;
+    const intent = operation.intent;
+    if (receipt.commandId !== command.commandId) {
+      showUnknownResult(operation, '伺服器回執命令編號不符；保留原命令編號，尚未確認完成。');
+      return;
+    }
+    clearOperationTimer(operation);
+    operation.receipt = receipt;
+    operation.retryAuthorized = false;
+    operation.checking = false;
+    operation.querySequence += 1;
+    updateFor(operation.identityKey, operation.generation, previous => ({
+      ...previous, actionError: '',
+      recovery: { commandId: command.commandId, command, phase: 'receipt', receipt },
+    }));
+    try {
+      const cleared = await repository.cleanupConfirmedIntent(
+        intent, operation.datasetId, operation.uid, () => {
+          let uid: string | null = null;
+          try { uid = getAuth(operation.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
+          return operationRef.current === operation && !operation.completed
+            && generationRef.current === operation.generation && scopeRef.current === operation.identityKey
+            && bindingRef.current.db === operation.db && bindingRef.current.uid === operation.uid
+            && bindingRef.current.identityKey === identityKey
+            && bindingRef.current.leaseEpoch === operation.leaseEpoch && uid === operation.uid
+            && typeof navigator !== 'undefined' && navigator.onLine;
+        },
+      );
+      if (!cleared && ownsOperation(operation)) operation.cleanupWarning = '本機命令追蹤尚未清理；伺服器回執仍已確認。';
+    } catch (error) {
+      if (!ownsOperation(operation)) return;
+      if (isAuthorizationLoss(error)) {
+        // Observed authority loss ends this operation before any snapshot or callback, even if the parent lags.
+        revokeAuthorization(operation.identityKey, operation.generation, operation.command.commandId, error);
+        return;
+      }
+      operation.cleanupWarning = '本機命令追蹤清理未完成；伺服器回執仍已確認。';
+    }
+    if (ownsOperation(operation)) await loadSnapshot(operation.dayId, receipt, operation);
+  };
+
+  const finishCommandResult = async (operation: DayCloseCommandOperation, result: CommandResult, attempt: number) => {
+    if (!ownsOperation(operation) || operation.attempt !== attempt) return;
+    operation.attemptSettled = true;
+    clearOperationTimer(operation);
+    if (operation.receipt || operation.completed) return;
     if (!result.ok) {
       if (isAuthorizationLoss(result.error)) {
-        revokeAuthorization(key, generation, command.commandId, result.error);
+        revokeAuthorization(operation.identityKey, operation.generation, operation.command.commandId, result.error);
         return;
       }
-      if (result.error.code === 'UNKNOWN_RESULT') {
-        updateFor(key, generation, previous => ({
-          ...previous,
-          snapshot: null,
-          loading: false,
-          loadError: '',
-          actionError: '',
-          recovery: { commandId: command.commandId, command, phase: 'unknown' },
-        }));
+      if (result.error.code === 'UNKNOWN_RESULT' || result.error.code === 'OFFLINE') {
+        showUnknownResult(operation, '操作回應不確定；請唯讀查詢原命令結果。查詢錯誤或找不到結果都不會自動重送。');
         return;
       }
+      const failedCommand = operation.command;
+      const failedPlanGeneration = operation.planGeneration;
+      dropOperation(operation);
       pendingCommandIdRef.current = null;
-      updateFor(key, generation, previous => ({
+      // A definite refusal stops all automatic progress; the plan stays for an explicit continue.
+      const stoppedPlan = backfillPlanRef.current && failedPlanGeneration === backfillPlanRef.current.generation
+        ? { ...backfillPlanRef.current, auto: false }
+        : backfillPlanRef.current;
+      backfillPlanRef.current = stoppedPlan;
+      updateFor(operation.identityKey, operation.generation, previous => ({
         ...previous,
         ...clearDrafts(),
         snapshot: null,
         loading: false,
-        loadError: `${commandLabel(command)}未完成：${errorMessage(result.error)}請重新載入伺服器資料後再確認。${
-          previous.backfillPlan ? `回填 ${previous.backfillPlan.dayId} 停在這一步；已完成的步驟不會重做，重新載入後可以按「繼續回填」從這一步接著做。` : ''}`,
-        actionError: '',
-        backfillPlan: previous.backfillPlan ? { ...previous.backfillPlan, auto: false } : null,
+        loadError: `${commandLabel(failedCommand)}未完成：${errorMessage(result.error)}請重新載入伺服器資料後再確認。${
+          stoppedPlan && failedPlanGeneration === stoppedPlan.generation
+            ? `回填 ${stoppedPlan.dayId} 停在這一步；已完成的步驟不會重做，重新載入後可以按「繼續回填」從這一步接著做。`
+            : ''}`,
+        actionError: result.error.code === 'LOCAL_STORAGE_UNAVAILABLE' ? errorMessage(result.error) : '',
+        backfillPlan: stoppedPlan,
         recovery: null,
         notice: '',
       }));
       return;
     }
-    if (result.receipt.commandId !== command.commandId) {
-      updateFor(key, generation, previous => ({
-        ...previous,
-        snapshot: null,
-        loading: false,
-        actionError: '',
-        recovery: { commandId: command.commandId, command, phase: 'unknown' },
-        loadError: '伺服器回執命令編號不符；保留原命令編號，尚未確認完成。',
-      }));
-      return;
-    }
-    updateFor(key, generation, previous => ({
-      ...previous,
-      snapshot: null,
-      loading: false,
-      loadError: '',
-      actionError: '',
-      recovery: { commandId: command.commandId, command, phase: 'receipt', receipt: result.receipt },
-    }));
-    await loadSnapshot(command.dayId, result.receipt);
+    operation.confirmedByResult = true;
+    await settleWithReceipt(operation, result.receipt);
   };
 
-  const runPreparedCommand = async (command: PreparedCommand) => {
-    const key = scopeKey;
-    const generation = generationRef.current;
-    onNavigationStateChange?.(identityKey, 'recovering');
-    if (revokedScopeRef.current === key) return;
-    if (!identityKey || !Number.isSafeInteger(leaseEpoch) || leaseEpoch < 1) {
-      revokeAuthorization(key, generation, command.commandId, {
-        code: 'LEASE_LOST',
-        message: '目前沒有有效的操作使用權，雲端資料已清除。請重新確認使用權。',
-      });
-      return;
-    }
-    if (commandFlightRef.current) return;
-    const flightToken = Symbol('cloud-day-close-command');
-    commandFlightRef.current = flightToken;
-    pendingCommandIdRef.current = command.commandId;
-    const releaseFlight = () => {
-      if (commandFlightRef.current === flightToken) commandFlightRef.current = null;
-    };
-
-    updateFor(key, generation, previous => ({
-      ...previous,
-      snapshot: null,
-      loading: false,
-      loadError: '',
-      actionError: '',
-      notice: '',
-      recovery: { commandId: command.commandId, command, phase: 'submitting' },
-      postCloseChecking: false,
-    }));
-
-    let result: CommandResult;
-    try {
-      result = await dispatch(command);
-    } catch (error) {
-      releaseFlight();
-      if (!isCurrent(key, generation)) return;
-      if (isAuthorizationLoss(error)) {
-        revokeAuthorization(key, generation, command.commandId, error);
-        return;
-      }
-      updateFor(key, generation, previous => ({
+  const runPreparedCommand = async (
+    command: PreparedCommand,
+    retryOperation?: DayCloseCommandOperation,
+    planGeneration: number | null = null,
+  ) => {
+    let operation = retryOperation;
+    if (!browserIsOnline()) {
+      if (operation) operation.retryAuthorized = false;
+      updateFor(scopeKey, generationRef.current, previous => ({
         ...previous,
-        snapshot: null,
-        loading: false,
-        loadError: '',
-        actionError: '',
-        recovery: { commandId: command.commandId, command, phase: 'unknown' },
+        actionError: '目前離線，沒有送出或重試命令；請恢復連線後重新查詢原命令。',
+        recovery: previous.recovery ? { ...previous.recovery, canRetry: false } : null,
       }));
       return;
     }
-
-    if (!isCurrent(key, generation)) {
-      releaseFlight();
-      return;
+    if (operation) {
+      if (!ownsOperation(operation) || !operation.attemptSettled || !operation.retryAuthorized
+        || operation.receipt || operation.checking) return;
+      operation.retryAuthorized = false;
+      if (command.kind === 'close-day') {
+        // A same-ID retry resolves its own original operation; any other pending identity still blocks closing.
+        operation.checking = true;
+        const retrying = operation;
+        updateFor(retrying.identityKey, retrying.generation, previous => ({
+          ...previous, actionError: '',
+          recovery: previous.recovery ? { ...previous.recovery, phase: 'checking', canRetry: false } : previous.recovery,
+        }));
+        // Unreadable or incomplete journal state counts as another unresolved identity.
+        const others = await repository.hasOtherUnresolvedCommands(command.commandId).catch(() => true);
+        if (!ownsOperation(retrying)) return;
+        retrying.checking = false;
+        if (others) {
+          updateFor(retrying.identityKey, retrying.generation, previous => ({
+            ...previous, actionError: '尚有其他待核對命令；依系統關帳規則，先完成它們的結果確認後才能重試關帳。保留原編號，不要重新收款。',
+            recovery: { commandId: command.commandId, command, phase: 'unknown', canRetry: false },
+          }));
+          return;
+        }
+      }
+    } else {
+      const latest = latestPageRef.current;
+      if (operationRef.current || latest.recovery || !latest.snapshot) return;
+      const loadedSnapshot = latest.snapshot;
+      const key = scopeKey;
+      const generation = generationRef.current;
+      if (revokedScopeRef.current === authorizationScopeKey) return;
+      if (!identityKey || !Number.isSafeInteger(leaseEpoch) || leaseEpoch < 1) {
+        revokeAuthorization(key, generation, command.commandId, {
+          code: 'LEASE_LOST', message: '目前沒有有效的操作使用權，雲端資料已清除。請重新確認使用權。',
+        });
+        return;
+      }
+      if (command.kind === 'close-day' && hasUnresolvedRef.current) {
+        // No path (button, form submit, keyboard, workflow) can bypass the shared §7.4 restriction.
+        updateFor(key, generation, previous => ({ ...previous, actionError: CLOSE_BLOCKED_MESSAGE }));
+        return;
+      }
+      let uid: string | null = null;
+      try { uid = getAuth(db.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
+      if (!uid) {
+        revokeAuthorization(key, generation, command.commandId, {
+          code: 'UNAUTHORIZED', message: '目前登入身分尚未確認，雲端資料已清除。請重新登入操作員帳號。',
+        });
+        return;
+      }
+      const frozen = freezeValue(command);
+      operation = {
+        token: Symbol('cloud-day-close-operation'), identityKey: key, generation, db, app: db.app,
+        uid, leaseEpoch, datasetId: loadedSnapshot.datasetId, dayId: frozen.dayId,
+        command: frozen, intent: freezeValue(intentFor(frozen, leaseEpoch)), attempt: 0,
+        attemptPromise: null, attemptSettled: false,
+        querySequence: 0, checking: false, retryAuthorized: false, receipt: null,
+        confirmedByResult: false, planGeneration, completed: false, timerId: null, cleanupWarning: '',
+      };
+      operationRef.current = operation;
+      pendingCommandIdRef.current = frozen.commandId;
+      onNavigationStateChange?.(identityKey, 'recovering');
     }
-    await finishCommandResult(command, result, key, generation);
-    releaseFlight();
+    if (!ownsOperation(operation)) return;
+    beginAttempt(operation);
+    const submittedCommand = operation.command;
+    updateFor(operation.identityKey, operation.generation, previous => ({
+      ...previous, snapshot: null, loading: false, loadError: '', actionError: '', notice: '',
+      recovery: {
+        commandId: submittedCommand.commandId, command: submittedCommand,
+        phase: 'submitting', timedOut: false, canRetry: false,
+      },
+      postCloseChecking: false,
+    }));
+    const attempt = operation.attempt;
+    const active = operation;
+    const isRetry = attempt > 1;
+    const guard = async (): Promise<boolean> => {
+      if (!ownsOperation(active) || active.attempt !== attempt) return false;
+      if (active.command.kind !== 'close-day') return true;
+      if (!isRetry) return !hasUnresolvedRef.current;
+      const others = await repository.hasOtherUnresolvedCommands(active.command.commandId);
+      return !others && ownsOperation(active) && active.attempt === attempt;
+    };
+    const attemptPromise = repository.commitDayCloseIntent(operation.intent, guard);
+    operation.attemptPromise = attemptPromise;
+    try {
+      const result = await attemptPromise;
+      if (!ownsOperation(operation) || operation.attempt !== attempt) return;
+      operation.attemptSettled = true;
+      if (operation.attemptPromise === attemptPromise) operation.attemptPromise = null;
+      await finishCommandResult(operation, result, attempt);
+    } catch (error) {
+      if (!ownsOperation(operation) || operation.attempt !== attempt) return;
+      operation.attemptSettled = true;
+      if (operation.attemptPromise === attemptPromise) operation.attemptPromise = null;
+      clearOperationTimer(operation);
+      if (isAuthorizationLoss(error)) {
+        revokeAuthorization(operation.identityKey, operation.generation, operation.command.commandId, error);
+      } else if (isGuardRejected(error)) {
+        // Rejected before any journal write or transaction: a first attempt never reached the server.
+        if (!isRetry) {
+          const refusedCommand = operation.command;
+          const refusedPlanGeneration = operation.planGeneration;
+          dropOperation(operation);
+          pendingCommandIdRef.current = null;
+          const stoppedPlan = backfillPlanRef.current && refusedPlanGeneration === backfillPlanRef.current.generation
+            ? { ...backfillPlanRef.current, auto: false }
+            : backfillPlanRef.current;
+          backfillPlanRef.current = stoppedPlan;
+          updateFor(operation.identityKey, operation.generation, previous => ({
+            ...previous, ...clearDrafts(), snapshot: null, loading: false, loadError: '',
+            actionError: refusedCommand.kind === 'close-day'
+              ? CLOSE_BLOCKED_MESSAGE
+              : `${commandLabel(refusedCommand)}沒有送出：送出前的條件已改變。請重新載入伺服器資料後再確認。`,
+            backfillPlan: stoppedPlan, recovery: null, notice: '',
+          }));
+        } else {
+          const heldCommand = operation.command;
+          updateFor(operation.identityKey, operation.generation, previous => ({
+            ...previous, snapshot: null, loading: false, loadError: '',
+            actionError: '尚有其他待核對命令，或送出前的條件已改變；這次沒有送出。請重新查詢原命令結果，不要重新收款。',
+            recovery: { commandId: heldCommand.commandId, command: heldCommand, phase: 'unknown', canRetry: false },
+          }));
+        }
+      } else {
+        showUnknownResult(operation, '操作回應不確定；請唯讀查詢原命令結果。查詢錯誤或找不到結果都不會自動重送。');
+      }
+    } finally {
+      if (operation.attemptPromise === attemptPromise) operation.attemptPromise = null;
+    }
   };
 
   const checkPendingCommand = async () => {
     const recovery = page.recovery;
-    if (revokedScopeRef.current === scopeKey) return;
-    if (!recovery?.command || recovery.phase === 'submitting' || recovery.phase === 'checking') return;
-    if (recovery.phase === 'receipt') {
-      if (recovery.receipt) await loadSnapshot(recovery.command.dayId, recovery.receipt);
+    const operation = operationRef.current;
+    if (revokedScopeRef.current === authorizationScopeKey || !recovery?.command || !operation
+      || operation.command?.commandId !== recovery.commandId || operation.checking || operation.receipt
+      || (recovery.phase === 'submitting' && !recovery.timedOut) || !ownsOperation(operation)) return;
+    if (!browserIsOnline()) {
+      operation.retryAuthorized = false;
+      updateFor(operation.identityKey, operation.generation, previous => ({
+        ...previous,
+        actionError: '目前離線；查詢錯誤不代表命令不存在，暫不可重試。',
+        recovery: { ...recovery, canRetry: false },
+      }));
       return;
     }
-
-    const key = scopeKey;
-    const generation = generationRef.current;
-    updateFor(key, generation, previous => ({ ...previous, actionError: '', recovery: { ...recovery, phase: 'checking' } }));
+    operation.checking = true;
+    const command = operation.command;
+    const intent = operation.intent;
+    const attemptAtStart = operation.attempt;
+    const attemptPromiseAtStart = operation.attemptPromise;
+    const settledAtStart = operation.attemptSettled && attemptPromiseAtStart === null;
+    operation.retryAuthorized = false;
+    const querySequence = ++operation.querySequence;
+    updateFor(operation.identityKey, operation.generation, previous => ({
+      ...previous, actionError: '', recovery: { ...recovery, phase: 'checking', canRetry: false },
+    }));
     try {
-      const receipt = await repository.readCommand(recovery.commandId);
-      if (!isCurrent(key, generation)) return;
-      if (!receipt) {
-        updateFor(key, generation, previous => ({
-          ...previous,
-          snapshot: null,
-          loadError: '',
-          actionError: '伺服器目前尚未找到這筆命令。沒有產生新的命令編號；可用相同編號與原資料重試。',
-          recovery: { commandId: recovery.commandId, command: recovery.command, phase: 'unknown' },
+      const check = await repository.confirmPendingIntent(intent, operation.datasetId, operation.uid);
+      if (!ownsOperation(operation) || operation.querySequence !== querySequence
+        || operation.attempt !== attemptAtStart || operation.receipt) return;
+      if (check.status === 'matched') {
+        await settleWithReceipt(operation, check.receipt);
+        return;
+      }
+      if (check.status === 'different-dataset') {
+        updateFor(operation.identityKey, operation.generation, previous => ({
+          ...previous, ...clearDrafts(), snapshot: null, loading: false, loadError: '',
+          actionError: '目前伺服器資料集已變更；原操作尚未確認，請聯絡維護者，不可重試。',
+          recovery: { commandId: command.commandId, command, phase: 'unknown', canRetry: false },
         }));
         return;
       }
-      if (receipt.commandId !== recovery.commandId) {
-        throw new Error('伺服器回傳的命令編號不符，無法確認結果。');
-      }
-      // The ID alone is insufficient: replay the frozen input with the same command ID so the
-      // repository verifies that the stored command is exactly the attempted operation.
-      let verification: CommandResult;
-      try {
-        verification = await dispatch(recovery.command);
-      } catch (error) {
-        if (!isCurrent(key, generation)) return;
-        if (isAuthorizationLoss(error)) {
-          revokeAuthorization(key, generation, recovery.commandId, error);
-          return;
-        }
-        updateFor(key, generation, previous => ({
-          ...previous,
-          snapshot: null,
-          loading: false,
-          actionError: `已找到回執，但同命令編號語義核對結果仍不明。${errorMessage(error)}`,
-          recovery: { commandId: recovery.commandId, command: recovery.command, phase: 'unknown' },
-        }));
-        return;
-      }
-      if (!isCurrent(key, generation)) return;
-      if (!verification.ok && isAuthorizationLoss(verification.error)) {
-        revokeAuthorization(key, generation, recovery.commandId, verification.error);
-        return;
-      }
-      if (!verification.ok) {
-        updateFor(key, generation, previous => ({
-          ...previous,
-          snapshot: null,
-          loading: false,
-          actionError: verification.error.code === 'UNKNOWN_RESULT'
-            ? '已找到命令回執，但語義比對結果不明；請使用相同命令編號再查詢。'
-            : `命令編號已存在，但伺服器內容與原操作不符，仍未確認完成。${verification.error.message}`,
-          recovery: { commandId: recovery.commandId, command: recovery.command, phase: 'unknown' },
-        }));
-        return;
-      }
-      await finishCommandResult(recovery.command, verification, key, generation);
-    } catch (error) {
-      if (!isCurrent(key, generation)) return;
-      if (isAuthorizationLoss(error)) {
-        revokeAuthorization(key, generation, recovery.commandId, error);
-        return;
-      }
-      updateFor(key, generation, previous => ({
-        ...previous,
-        snapshot: null,
-        loading: false,
-        loadError: '',
-        actionError: `目前無法確認命令結果。${errorMessage(error)}`,
-        recovery: { commandId: recovery.commandId, command: recovery.command, phase: 'unknown' },
+      // Only a successful fresh null that began after the same attempt settled can allow an explicit retry.
+      const mayRetry = settledAtStart && operation.attemptSettled && operation.attemptPromise === null;
+      operation.retryAuthorized = mayRetry;
+      const settledNow = operation.attemptSettled;
+      updateFor(operation.identityKey, operation.generation, previous => ({
+        ...previous, snapshot: null, loading: false, loadError: '',
+        actionError: mayRetry
+          ? '伺服器目前尚未找到這筆命令。沒有產生新的命令編號；確認後可明確選擇同編號重試。'
+          : settledAtStart
+            ? '原命令狀態在查詢期間改變；這次查詢不能授權重試。請重新查詢原命令。'
+            : settledNow
+              ? '這次查詢開始時原命令仍在送出中；未找到結果不能授權重試。請在原命令結束後重新查詢。'
+              : '查詢尚未找到回執，但原命令仍在送出中；目前不能重試。請等待原命令結束後再查詢。',
+        recovery: {
+          commandId: command.commandId, command,
+          phase: settledNow ? 'unknown' : 'submitting', timedOut: !settledNow,
+          canRetry: mayRetry,
+        },
       }));
+    } catch (error) {
+      if (!ownsOperation(operation) || operation.querySequence !== querySequence || operation.receipt) return;
+      if (isAuthorizationLoss(error)) {
+        revokeAuthorization(operation.identityKey, operation.generation, operation.command.commandId, error);
+        return;
+      }
+      operation.retryAuthorized = false;
+      const settledNow = operation.attemptSettled;
+      const code = errorCode(error);
+      const message = code === 'MAINTENANCE'
+        ? '系統維護中，暫停同編號重試；請稍後重新查詢。'
+        : code === 'QUOTA_EXCEEDED'
+          ? '查詢次數已達限制，尚未確認命令不存在；請稍後重新查詢，不可重試。'
+          : code === 'UNSUPPORTED_SCHEMA'
+            ? '雲端命令格式不支援，尚未確認操作結果；請聯絡維護者，不可重試。'
+            : code === 'INVALID_INPUT'
+              ? '命令編號已存在，但伺服器內容與原操作不符；仍未確認完成，不可重試。'
+              : '目前無法安全確認原命令；查詢錯誤不代表命令不存在，暫不可重試。';
+      updateFor(operation.identityKey, operation.generation, previous => ({
+        ...previous, snapshot: null, loading: false, loadError: '', actionError: message,
+        recovery: {
+          commandId: command.commandId, command,
+          phase: settledNow ? 'unknown' : 'submitting',
+          timedOut: !settledNow, canRetry: false,
+        },
+      }));
+    } finally {
+      if (operationRef.current === operation && operation.querySequence === querySequence) operation.checking = false;
     }
   };
+
+  const retryPendingCommand = (operation: DayCloseCommandOperation) => {
+    if (!ownsOperation(operation)) return;
+    void runPreparedCommand(operation.command, operation, operation.planGeneration);
+  };
+
 
   const updatePage = (action: SetStateAction<PageState>) => updateFor(scopeKey, generationRef.current, previous => (
     typeof action === 'function' ? action(previous) : action
@@ -737,7 +1129,7 @@ export function CloudDayClosePage({
   const submitDateSelection = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const snapshot = page.snapshot;
-    if (page.recovery || !snapshot) return;
+    if (page.recovery || operationRef.current || !snapshot) return;
     if (!isBusinessDate(page.dayIdDraft) || page.dayIdDraft < snapshot.overview.goLiveDate) {
       updatePage(previous => ({ ...previous, actionError: `日期必須是 ${snapshot.overview.goLiveDate} 或之後的有效日期。` }));
       return;
@@ -770,9 +1162,9 @@ export function CloudDayClosePage({
 
   const submitClose = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (page.recovery || !snapshot || !day || !canClose || day.expectedCash === null) return;
-    if (hasUnresolvedPendingCommands) {
-      updatePage(previous => ({ ...previous, actionError: '尚有待核對命令；依系統關帳規則，先完成結果確認後才能關帳。保留原編號，不要重新收款。' }));
+    if (page.recovery || operationRef.current || !snapshot || !day || !canClose || day.expectedCash === null) return;
+    if (hasUnresolvedPendingCommands || hasUnresolvedRef.current) {
+      updatePage(previous => ({ ...previous, actionError: CLOSE_BLOCKED_MESSAGE }));
       return;
     }
     if (closeBlocked) {
@@ -815,7 +1207,7 @@ export function CloudDayClosePage({
 
   const submitReopen = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (page.recovery || !snapshot || !day || day.status !== 'closed') return;
+    if (page.recovery || operationRef.current || !snapshot || !day || day.status !== 'closed') return;
     const reason = page.reopenReason.trim();
     if (reason.length < 1 || reason.length > 500) {
       updatePage(previous => ({ ...previous, actionError: '重開原因必須為 1 至 500 個字元。' }));
@@ -835,7 +1227,8 @@ export function CloudDayClosePage({
 
   const submitPostCloseEntry = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (page.recovery || page.postCloseChecking || !snapshot || !day || day.status !== 'closed') return;
+    if (page.recovery || operationRef.current || page.postCloseChecking || postClosePreflightRef.current
+      || !snapshot || !day || day.status !== 'closed') return;
     const amountText = page.postCloseAmountText.trim();
     const amount = /^\d+$/.test(amountText) ? Number(amountText) : null;
     if (amount === null || !Number.isSafeInteger(amount) || amount < 1 || amount > 20_000) {
@@ -858,13 +1251,22 @@ export function CloudDayClosePage({
       postClosePreflightRef.current = true;
       const key = scopeKey;
       const generation = generationRef.current;
+      const readId = readRequestRef.current;
+      const preflightUid = bindingRef.current.uid;
+      // After every await: same owner, same signed-in user, and no other page read replaced the one we validated.
+      const stillCurrent = () => {
+        let uid: string | null = null;
+        try { uid = getAuth(db.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
+        return isCurrent(key, generation) && readRequestRef.current === readId && uid !== null && uid === preflightUid
+          && operationRef.current === null;
+      };
       updatePage(previous => ({ ...previous, postCloseChecking: true, actionError: '', postCloseStaleMessage: '' }));
       try {
         const [freshDay, freshLedger] = await Promise.all([
           repository.read(snapshot.dayId),
           repository.readLedger(),
         ]);
-        if (!isCurrent(key, generation)) return;
+        if (!stillCurrent()) return;
         const latestMismatch = freshLedger.anomalies.find((anomaly): anomaly is OpeningMismatchAnomaly => (
           anomaly.kind === 'opening-mismatch' && anomaly.dayId === reference.dayId
         ));
@@ -872,7 +1274,7 @@ export function CloudDayClosePage({
           ? latestMismatch.previousClosedDayId
           : snapshot.dayId;
         const targetDay = targetDayId === snapshot.dayId ? freshDay : await repository.read(targetDayId);
-        if (!isCurrent(key, generation)) return;
+        if (!stillCurrent()) return;
 
         const unchanged = freshDay !== null
           && freshDay.status === 'closed'
@@ -919,6 +1321,10 @@ export function CloudDayClosePage({
           revokeAuthorization(key, generation, null, error);
           return;
         }
+        if (!stillCurrent()) {
+          updatePage(previous => ({ ...previous, postCloseChecking: false }));
+          return;
+        }
         updatePage(previous => ({
           ...previous,
           postCloseChecking: false,
@@ -927,6 +1333,10 @@ export function CloudDayClosePage({
         return;
       } finally {
         postClosePreflightRef.current = false;
+      }
+      if (!stillCurrent()) {
+        updatePage(previous => ({ ...previous, postCloseChecking: false }));
+        return;
       }
       updatePage(previous => ({ ...previous, postCloseChecking: false }));
     }
@@ -947,7 +1357,7 @@ export function CloudDayClosePage({
 
   const submitBackfill = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (page.recovery || !snapshot || !day || !canBackfill) return;
+    if (page.recovery || operationRef.current || !snapshot || !day || !canBackfill) return;
     if (backfillCash === null || !Number.isSafeInteger(backfillCash) || backfillCash > 20_000) {
       updatePage(previous => ({ ...previous, actionError: '開帳現金必須明確輸入 0 至 20,000 元的整數；空白、負數與小數均不接受。' }));
       return;
@@ -979,23 +1389,50 @@ export function CloudDayClosePage({
   const canStartBackfill = !!snapshot && !snapshot.backfill && snapshot.dayId < selectionDate
     && snapshot.dayId >= snapshot.overview.goLiveDate && (!day || (day.status === 'open' && day.lastSettlementRevision === 0));
 
+
+  const abandonBackfill = () => {
+    backfillPlanRef.current = null;
+    updatePage(previous => ({ ...previous, backfillPlan: null, actionError: '' }));
+  };
+
+  /**
+   * Run the next needed step of an explicitly initiated plan. Which step is needed comes only from the freshly
+   * loaded server state of the same dataset and day; every step gets its own command ID exactly once.
+   */
   const runBackfillStep = (plan: BackfillPlan, loaded: DaySnapshot) => {
+    if (operationRef.current || latestPageRef.current.recovery) return;
+    let uid: string | null = null;
+    try { uid = getAuth(db.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
+    if (loaded.datasetId !== plan.datasetId || loaded.dayId !== plan.dayId || uid === null || uid !== plan.uid
+      || bindingRef.current.uid !== plan.uid) {
+      backfillPlanRef.current = null;
+      updatePage(previous => ({
+        ...previous, backfillPlan: null,
+        actionError: '伺服器資料集、營業日或登入身分已改變，回填計畫已取消；沒有送出任何步驟。請重新載入後再開始。',
+      }));
+      return;
+    }
     const step = nextBackfillStep(plan, loaded, clientCommandId);
     if (step === null) {
+      backfillPlanRef.current = null;
       updatePage(previous => ({ ...previous, backfillPlan: null }));
       return;
     }
     if ('blocked' in step) {
+      backfillPlanRef.current = null;
       updatePage(previous => ({ ...previous, backfillPlan: null, actionError: step.blocked }));
       return;
     }
-    updatePage(previous => ({ ...previous, backfillPlan: { ...plan, auto: false } }));
-    void runPreparedCommand(step);
+    // The continuation token is consumed here: a rerender, an effect replay or a second click cannot start another step.
+    const consumed: BackfillPlan = { ...plan, auto: false };
+    backfillPlanRef.current = consumed;
+    updatePage(previous => ({ ...previous, backfillPlan: consumed }));
+    void runPreparedCommand(step, undefined, consumed.generation);
   };
 
   const submitStartBackfill = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (page.recovery || !snapshot || !canStartBackfill) return;
+    if (page.recovery || operationRef.current || !snapshot || !canStartBackfill) return;
     const reason = page.startReason.trim();
     if (reason.length < 1 || reason.length > 500) {
       updatePage(previous => ({ ...previous, actionError: '回填原因必須為 1 至 500 個字元。' }));
@@ -1021,24 +1458,39 @@ export function CloudDayClosePage({
         }
       }
     }
-    runBackfillStep({ dayId: snapshot.dayId, reason, openingCash, openingReason, auto: false }, snapshot);
+    const uid = bindingRef.current.uid;
+    if (!uid) return;
+    runBackfillStep({
+      generation: ++planGenerationRef.current, datasetId: snapshot.datasetId, uid, dayId: snapshot.dayId,
+      reason, openingCash, openingReason, auto: false,
+    }, snapshot);
   };
 
   const continueBackfill = () => {
-    if (page.recovery || !snapshot || !page.backfillPlan || page.backfillPlan.dayId !== snapshot.dayId) return;
-    runBackfillStep(page.backfillPlan, snapshot);
+    const plan = backfillPlanRef.current;
+    if (page.recovery || operationRef.current || !snapshot || !plan || plan.dayId !== snapshot.dayId) return;
+    runBackfillStep(plan, snapshot);
   };
 
   const advanceBackfillRef = useRef(continueBackfill);
   useEffect(() => { advanceBackfillRef.current = continueBackfill; });
-  const autoAdvance = page.backfillPlan?.auto === true && !!snapshot && !page.loading && page.recovery === null
-    && snapshot.dayId === page.backfillPlan.dayId;
+  const autoPlan = page.backfillPlan;
+  const autoGeneration = autoPlan?.generation ?? null;
+  const autoAdvance = autoPlan?.auto === true && !!snapshot && !page.loading && page.recovery === null
+    && snapshot.dayId === autoPlan.dayId && snapshot.datasetId === autoPlan.datasetId;
   useEffect(() => {
     if (!autoAdvance) return undefined;
-    // After the confirmed step's command flight has been released.
-    const timer = setTimeout(() => advanceBackfillRef.current(), 0);
-    return () => clearTimeout(timer);
-  }, [autoAdvance, snapshot]);
+    // The confirmed step's command flight is already released when this effect runs. Replays of the effect (StrictMode,
+    // rerenders) cancel the earlier continuation, and the plan's own token is consumed by the step it starts.
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      const plan = backfillPlanRef.current;
+      if (!plan || !plan.auto || plan.generation !== autoGeneration || operationRef.current) return;
+      advanceBackfillRef.current();
+    });
+    return () => { cancelled = true; };
+  }, [autoAdvance, autoGeneration, snapshot]);
 
   const busy = page.recovery !== null || page.postCloseChecking;
   const needsAttention = snapshot?.overview.unclosedDays.filter(item => item.kind !== 'no-business') ?? [];
@@ -1084,23 +1536,27 @@ export function CloudDayClosePage({
               : page.recovery.phase === 'checking'
                 ? '正在查詢原命令結果…'
                 : page.recovery.phase === 'submitting'
-                  ? '命令送出中，請勿重複操作。'
+                  ? page.recovery.timedOut ? '結果確認中，勿重新收款' : '命令送出中，請勿重複操作。'
                   : '結果確認中，請勿重複操作。'}</strong>
           <span>{page.recovery.command ? `${commandLabel(page.recovery.command)} · 命令編號 ${page.recovery.commandId}` : `命令編號 ${page.recovery.commandId}`}</span>
           {page.recovery.phase === 'access-lost' && <span>只保留命令編號；請先重新確認登入帳號與使用權，再依現場流程核對。</span>}
           {page.recovery.phase === 'receipt' && page.recovery.receipt && <span>伺服器命令序號 {page.recovery.receipt.seq}</span>}
           <div className="cloud-day-close__actions">
-            {page.recovery.command && page.recovery.phase !== 'submitting' && page.recovery.phase !== 'checking' && page.recovery.phase !== 'receipt' && (
+            {page.recovery.command && (page.recovery.phase === 'unknown' || (page.recovery.phase === 'submitting' && page.recovery.timedOut)) && (
               <button type="button" className="cloud-day-close__primary" onClick={() => void checkPendingCommand()}>
                 查詢原命令結果
               </button>
             )}
-            {page.recovery.phase === 'unknown' && page.recovery.command && page.actionError.includes('尚未找到') && (
-              <button type="button" className="cloud-day-close__secondary" onClick={() => void runPreparedCommand(page.recovery!.command!)}>
+            {page.recovery.canRetry && page.recovery.command && (
+              <button
+                type="button"
+                className="cloud-day-close__secondary"
+                onClick={() => { const operation = operationRef.current; if (operation) retryPendingCommand(operation); }}
+              >
                 以相同命令編號重試
               </button>
             )}
-            {page.recovery.phase === 'receipt' && (
+            {page.recovery.phase === 'receipt' && page.recovery.command && (
               <button
                 type="button"
                 className="cloud-day-close__secondary"
@@ -1218,7 +1674,7 @@ export function CloudDayClosePage({
                   <button
                     type="button"
                     className="cloud-day-close__secondary"
-                    onClick={() => updatePage(previous => ({ ...previous, backfillPlan: null, actionError: '' }))}
+                    onClick={abandonBackfill}
                     disabled={busy}
                   >
                     放棄回填

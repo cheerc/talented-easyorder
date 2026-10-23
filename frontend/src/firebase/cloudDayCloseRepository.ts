@@ -18,9 +18,14 @@ import {
 } from 'firebase/firestore';
 import type { CommandErrorCode, CommandReceipt, CommandResult } from '../domain/cloudCommands';
 import {
-  InvalidCloudCommandInput, decodeBackfillDoc, decodePostCloseEntryDoc, decodeSettlementDoc, settlementExpectedCash,
+  InvalidCloudCommandInput, decodeBackfillDoc, decodePostCloseEntryDoc, decodeSettlementDoc, normalizeEnabledCommandInput,
+  settlementExpectedCash, type CanonicalEnabledInput,
 } from '../domain/cloudCommandSchema';
-import { createCloudCommandRepository, type CloudCommandRepositoryOptions } from './cloudCommandRepository';
+import {
+  CloudCommandReadError, createCloudCommandRepository, type CloudCommandRepositoryOptions, type PendingIntentCheck,
+} from './cloudCommandRepository';
+import { cloudPendingJournalForRepository } from './cloudPendingJournal';
+import type { CloudRecoveryReader } from './cloudRecoveryReader';
 import {
   computeLedgerAnomalies, type LedgerAnomaly, type LedgerAnomalyDay, type PreviousClosedDay,
 } from '../domain/ledgerAnomalies';
@@ -54,6 +59,17 @@ export class CloudDayCloseRepositoryError extends Error {
     super(message);
     this.code = code;
     this.name = 'CloudDayCloseRepositoryError';
+  }
+}
+
+/**
+ * Thrown by `commitDayCloseIntent` when the caller's guard no longer holds just before the commit. Nothing was
+ * written: no journal record, no transaction. The caller decides whether its operation is still pending.
+ */
+export class CloudDayCloseGuardRejected extends Error {
+  constructor() {
+    super('命令送出前的條件已改變，這次沒有送出');
+    this.name = 'CloudDayCloseGuardRejected';
   }
 }
 
@@ -221,6 +237,46 @@ export interface BackfillCloudDayOpeningInput {
   expectedDayRevision: number;
   openingCash: number;
   reason: string;
+}
+
+export type CloudDayCloseRepositoryOptions = CloudCommandRepositoryOptions & {
+  /** Recovery-only Lite reader; normal writes and full snapshots keep using Firestore SDK. */
+  recoveryReader?: CloudRecoveryReader;
+};
+
+/** The six command variants the close page sends; each pairs a kind with the typed input the writer takes. */
+export type CloudDayCloseCommandIntent =
+  | { kind: 'close-day'; input: CloseCloudDayInput }
+  | { kind: 'record-post-close-entry'; input: RecordCloudPostCloseEntryInput }
+  | { kind: 'reopen-day'; input: ReopenCloudDayInput }
+  | { kind: 'backfill-opening'; input: BackfillCloudDayOpeningInput }
+  | { kind: 'ensure-day'; input: EnsureCloudDayInput }
+  | { kind: 'start-backfill'; input: StartCloudBackfillInput };
+
+/** Checked right before a commit; `false` means the caller's ownership or business precondition no longer holds. */
+export type CloudDayCloseCommitGuard = () => boolean | Promise<boolean>;
+
+export type CloudDayClosePreviousLookupView =
+  | { status: 'ready'; previous: PreviousClosedDay | null }
+  | { status: 'error'; message: string };
+
+export type CloudDayCloseAlignLookupView =
+  | { status: 'ready'; next: { dayId: string; openingCash: number } | null }
+  | { status: 'error'; message: string };
+
+/** One page read: every part comes from one dataset and one data head seq. */
+export interface CloudDayCloseSnapshot {
+  datasetId: string;
+  overview: CloudDayCloseOverview;
+  dayId: string;
+  /** null when the day document does not exist. */
+  day: CloudDayCloseState | null;
+  /** The backfill marker of an open day; null for an ordinary day. */
+  backfill: CloudBackfillDay | null;
+  /** Only looked up while the backfill form may ask for an opening cash. */
+  previous: CloudDayClosePreviousLookupView | null;
+  /** Only looked up for a back-filled day that is still open and has its opening cash. */
+  align: CloudDayCloseAlignLookupView | null;
 }
 
 function plainRecord(value: unknown): value is Data {
@@ -801,101 +857,223 @@ function refused(code: CommandErrorCode, message: string): CommandResult {
   return { ok: false, error: { code, message } };
 }
 
-export function createCloudDayCloseRepository(db: Firestore, options: CloudCommandRepositoryOptions = {}) {
+/**
+ * The single mapping from a typed intent to the canonical command. The writer and the read-only expected-intent
+ * checks both use it, so a receipt proof compares exactly what a write would have sent.
+ */
+function buildDayCloseCommand(intent: CloudDayCloseCommandIntent): CanonicalEnabledInput {
+  if (intent.kind === 'ensure-day') {
+    const { commandId, leaseEpoch, dayId } = intent.input;
+    return normalizeEnabledCommandInput({
+      commandId, kind: 'EnsureDay', leaseEpoch, targets: { dayId }, expectedRevisions: { day: 0 }, payload: { businessDate: dayId },
+    });
+  }
+  if (intent.kind === 'start-backfill') {
+    const { commandId, leaseEpoch, dayId, expectedDayRevision, reason } = intent.input;
+    return normalizeEnabledCommandInput({
+      commandId, kind: 'StartBackfill', leaseEpoch, targets: { dayId }, expectedRevisions: { day: expectedDayRevision }, payload: { reason },
+    });
+  }
+  if (intent.kind === 'backfill-opening') {
+    const { commandId, leaseEpoch, dayId, expectedDayRevision, openingCash, reason } = intent.input;
+    return normalizeEnabledCommandInput({
+      commandId, kind: 'BackfillOpeningCash', leaseEpoch, targets: { dayId }, expectedRevisions: { day: expectedDayRevision },
+      payload: { openingCash, reason },
+    });
+  }
+  if (intent.kind === 'record-post-close-entry') {
+    const { commandId, leaseEpoch, dayId, expectedDayRevision, expectedSettlementRevision, direction, amount, reason } = intent.input;
+    return normalizeEnabledCommandInput({
+      commandId, kind: 'RecordPostCloseEntry', leaseEpoch, targets: { dayId },
+      expectedRevisions: { day: expectedDayRevision, settlement: expectedSettlementRevision },
+      payload: { direction, amount, reason },
+    });
+  }
+  if (intent.kind === 'reopen-day') {
+    const { commandId, leaseEpoch, dayId, expectedDayRevision, expectedSettlementRevision, reason } = intent.input;
+    return normalizeEnabledCommandInput({
+      commandId, kind: 'ReopenDay', leaseEpoch, targets: { dayId, settlementRevision: expectedSettlementRevision + 1 },
+      expectedRevisions: { day: expectedDayRevision, settlement: expectedSettlementRevision },
+      payload: { reason },
+    });
+  }
+  const { commandId, leaseEpoch, dayId, expectedDayRevision, expectedSettlementRevision, countedCash, note, expectedCash, alignWithDayId } = intent.input;
+  return normalizeEnabledCommandInput({
+    commandId, kind: 'CloseDay', leaseEpoch, targets: { dayId, settlementRevision: expectedSettlementRevision + 1 },
+    expectedRevisions: { day: expectedDayRevision, settlement: expectedSettlementRevision },
+    payload: alignWithDayId === undefined ? { countedCash, note, expectedCash } : { countedCash, note, expectedCash, alignWithDayId },
+  });
+}
+
+function expectedIntentCommand(intent: CloudDayCloseCommandIntent): CanonicalEnabledInput {
+  try {
+    return buildDayCloseCommand(intent);
+  } catch (error) {
+    if (error instanceof InvalidCloudCommandInput) throw new CloudCommandReadError('INVALID_INPUT', '原命令內容不符合正式命令格式');
+    throw error;
+  }
+}
+
+export function createCloudDayCloseRepository(db: Firestore, options: CloudDayCloseRepositoryOptions = {}) {
   const commands = createCloudCommandRepository(db, options);
   const ledger = createCloudLedgerReader(db, options);
+
+  async function runGuard(guard: CloudDayCloseCommitGuard | undefined): Promise<void> {
+    if (guard && (await guard()) !== true) throw new CloudDayCloseGuardRejected();
+  }
+
+  async function commitCanonical(intent: CloudDayCloseCommandIntent, guard: CloudDayCloseCommitGuard | undefined): Promise<CommandResult> {
+    let command: CanonicalEnabledInput;
+    try {
+      command = buildDayCloseCommand(intent);
+    } catch (error) {
+      if (error instanceof InvalidCloudCommandInput) return refused('INVALID_INPUT', error.message);
+      throw error;
+    }
+    await runGuard(guard);
+    return commands.commitCommand(command);
+  }
+
+  function signedInUid(): string | null {
+    try {
+      return assertAuthenticated(options).uid;
+    } catch {
+      return null;
+    }
+  }
+
+  async function closeDay(input: CloseCloudDayInput, guard?: CloudDayCloseCommitGuard): Promise<CommandResult> {
+    const intent: CloudDayCloseCommandIntent = { kind: 'close-day', input };
+    const { commandId, dayId, alignWithDayId } = input;
+    if (alignWithDayId !== undefined) {
+      const startedAs = signedInUid();
+      // Rules cannot prove that no nearer opened day exists, so the writer does (contract §14.2). A command
+      // with this ID that already committed is answered from its receipt by `commitCommand`, so a retry
+      // after an unknown result keeps working even if the scan now differs.
+      const receipt = await commands.readCommand(commandId).catch(() => null);
+      if (!receipt) {
+        let lookup: CloudNextOpenedLookup;
+        try {
+          lookup = await ledger.findNextOpened(dayId);
+        } catch (error) {
+          const stale = error instanceof CloudDayCloseRepositoryError && error.code === 'STALE_SNAPSHOT';
+          return refused(stale ? 'REVISION_CONFLICT' : 'INVALID_INPUT', error instanceof Error ? error.message : '讀取下一個已開帳日失敗');
+        }
+        const nearest = lookup.next?.dayId ?? null;
+        if (nearest !== alignWithDayId) {
+          return refused('REVISION_CONFLICT', nearest
+            ? `最近的已開帳日是 ${nearest}，不是 ${alignWithDayId ?? '（無）'}；請重新載入日結頁後再關帳`
+            : `${dayId} 之後沒有已開帳的日子，不能對齊 ${alignWithDayId}；請重新載入日結頁後再關帳`);
+        }
+      }
+      // The preflight awaited: the intent keeps the identity that started it, never a newly signed-in user.
+      if (startedAs === null || signedInUid() !== startedAs) throw new CloudDayCloseGuardRejected();
+    }
+    return commitCanonical(intent, guard);
+  }
+
+  async function commitDayCloseIntent(intent: CloudDayCloseCommandIntent, guard?: CloudDayCloseCommitGuard): Promise<CommandResult> {
+    if (intent.kind === 'close-day') return closeDay(intent.input, guard);
+    return commitCanonical(intent, guard);
+  }
+
+  /** One page read under one head fence (dataset and seq stable across the whole composition). */
+  async function loadSnapshot(targetDayId?: string): Promise<CloudDayCloseSnapshot> {
+    try {
+      const user = assertAuthenticated(options);
+      const before = await readHeadSeq(db);
+      const overview = await readCloudDayCloseOverview(db, options);
+      const dayId = targetDayId ?? overview.selectionDate;
+      if (!validDate(dayId)) throw new CloudDayCloseRepositoryError('INVALID_INPUT', '營業日日期格式不正確');
+      const day = await readCloudDayClose(db, dayId, options);
+      const backfill = overview.unclosedDays.find(item => item.dayId === dayId)?.backfill ?? null;
+      const seqs = [overview.seq, ...(day ? [day.seq] : [])];
+
+      // Optional lookups only disable the form that needs them; the head moving or an authority error never does.
+      const optional = async <T extends { seq: number }>(lookup: () => Promise<T>): Promise<T | { error: string }> => {
+        try {
+          const found = await lookup();
+          seqs.push(found.seq);
+          return found;
+        } catch (error) {
+          const failure = readError(error);
+          if (['LEASE_LOST', 'UNAUTHORIZED', 'ACCESS_BUSY', 'STALE_SNAPSHOT'].includes(failure.code)) throw failure;
+          return { error: failure.message };
+        }
+      };
+      let previous: CloudDayClosePreviousLookupView | null = null;
+      if (dayId < overview.selectionDate && dayId >= overview.goLiveDate && !backfill
+        && (!day || (day.status === 'open' && day.lastSettlementRevision === 0 && day.openingCash === null))) {
+        const found = await optional(() => ledger.findPreviousClosed(dayId));
+        previous = 'error' in found ? { status: 'error', message: found.error } : { status: 'ready', previous: found.previous };
+      }
+      let align: CloudDayCloseAlignLookupView | null = null;
+      if (backfill && day && day.status !== 'closed' && day.openingCash !== null) {
+        const found = await optional(() => ledger.findNextOpened(dayId));
+        align = 'error' in found ? { status: 'error', message: found.error } : { status: 'ready', next: found.next };
+      }
+
+      const after = await readHeadSeq(db);
+      if (after.datasetId !== before.datasetId || after.seq !== before.seq || seqs.some(seq => seq !== before.seq)) {
+        throw new CloudDayCloseRepositoryError('STALE_SNAPSHOT', '讀取期間雲端資料有更新，請重新載入日結');
+      }
+      // The reads awaited: a different signed-in user must never receive this operator's page.
+      if (assertAuthenticated(options).uid !== user.uid) {
+        throw new CloudDayCloseRepositoryError('LEASE_LOST', '登入身分在讀取期間已變更');
+      }
+      return { datasetId: before.datasetId, overview, dayId, day, backfill, previous, align };
+    } catch (error) {
+      throw readError(error);
+    }
+  }
+
+  /**
+   * True when the pending-command journal holds anything but `ownCommandId`, or cannot be read completely.
+   * A same-ID close retry resolves its own original operation; any other pending identity still blocks closing,
+   * and nothing is ever cleared or ignored here.
+   */
+  async function hasOtherUnresolvedCommands(ownCommandId: string): Promise<boolean> {
+    try {
+      const journal = options.pendingJournal ?? cloudPendingJournalForRepository(db);
+      const snapshot = await journal.readAll();
+      if (!snapshot.complete || snapshot.total !== snapshot.records.length) return true;
+      return snapshot.records.some(record => record.commandId !== ownCommandId);
+    } catch {
+      return true;
+    }
+  }
+
   return {
+    loadSnapshot,
     readLedger: () => ledger.read(),
     findPreviousClosed: (dayId: string) => ledger.findPreviousClosed(dayId),
     findNextOpened: (dayId: string) => ledger.findNextOpened(dayId),
     read: (dayId: string) => readCloudDayClose(db, dayId, options),
     readOverview: () => readCloudDayCloseOverview(db, options),
     readBackfillDay: (dayId: string) => readCloudBackfillDay(db, dayId),
-    ensureDay(input: EnsureCloudDayInput): Promise<CommandResult> {
-      return commands.commitCommand({
-        commandId: input.commandId,
-        kind: 'EnsureDay',
-        leaseEpoch: input.leaseEpoch,
-        targets: { dayId: input.dayId },
-        expectedRevisions: { day: 0 },
-        payload: { businessDate: input.dayId },
-      });
+    commitDayCloseIntent,
+    async confirmPendingIntent(intent: CloudDayCloseCommandIntent, expectedDatasetId: string, expectedUid: string): Promise<PendingIntentCheck> {
+      return commands.confirmPendingIntent(
+        expectedIntentCommand(intent), intent.input.leaseEpoch, expectedDatasetId, expectedUid, options.recoveryReader,
+      );
     },
-    startBackfill(input: StartCloudBackfillInput): Promise<CommandResult> {
-      return commands.commitCommand({
-        commandId: input.commandId,
-        kind: 'StartBackfill',
-        leaseEpoch: input.leaseEpoch,
-        targets: { dayId: input.dayId },
-        expectedRevisions: { day: input.expectedDayRevision },
-        payload: { reason: input.reason },
-      });
+    async cleanupConfirmedIntent(
+      intent: CloudDayCloseCommandIntent,
+      expectedDatasetId: string,
+      expectedUid: string,
+      isCurrent: () => boolean,
+    ): Promise<boolean> {
+      return commands.cleanupConfirmedIntent(
+        expectedIntentCommand(intent), intent.input.leaseEpoch, expectedDatasetId, expectedUid, options.recoveryReader, isCurrent,
+      );
     },
-    async closeDay(input: CloseCloudDayInput): Promise<CommandResult> {
-      const { commandId, leaseEpoch, dayId, expectedDayRevision, expectedSettlementRevision, countedCash, note, expectedCash, alignWithDayId } = input;
-      if (alignWithDayId !== undefined) {
-        // Rules cannot prove that no nearer opened day exists, so the writer does (contract §14.2). A command
-        // with this ID that already committed is answered from its receipt by `commitCommand`, so a retry
-        // after an unknown result keeps working even if the scan now differs.
-        const receipt = await commands.readCommand(commandId).catch(() => null);
-        if (!receipt) {
-          let lookup: CloudNextOpenedLookup;
-          try {
-            lookup = await ledger.findNextOpened(dayId);
-          } catch (error) {
-            const stale = error instanceof CloudDayCloseRepositoryError && error.code === 'STALE_SNAPSHOT';
-            return refused(stale ? 'REVISION_CONFLICT' : 'INVALID_INPUT', error instanceof Error ? error.message : '讀取下一個已開帳日失敗');
-          }
-          const nearest = lookup.next?.dayId ?? null;
-          if (nearest !== alignWithDayId) {
-            return refused('REVISION_CONFLICT', nearest
-              ? `最近的已開帳日是 ${nearest}，不是 ${alignWithDayId ?? '（無）'}；請重新載入日結頁後再關帳`
-              : `${dayId} 之後沒有已開帳的日子，不能對齊 ${alignWithDayId}；請重新載入日結頁後再關帳`);
-          }
-        }
-      }
-      return commands.commitCommand({
-        commandId,
-        kind: 'CloseDay',
-        leaseEpoch,
-        targets: { dayId, settlementRevision: expectedSettlementRevision + 1 },
-        expectedRevisions: { day: expectedDayRevision, settlement: expectedSettlementRevision },
-        payload: alignWithDayId === undefined ? { countedCash, note, expectedCash } : { countedCash, note, expectedCash, alignWithDayId },
-      });
-    },
-    recordPostCloseEntry(input: RecordCloudPostCloseEntryInput): Promise<CommandResult> {
-      const { commandId, leaseEpoch, dayId, expectedDayRevision, expectedSettlementRevision, direction, amount, reason } = input;
-      return commands.commitCommand({
-        commandId,
-        kind: 'RecordPostCloseEntry',
-        leaseEpoch,
-        targets: { dayId },
-        expectedRevisions: { day: expectedDayRevision, settlement: expectedSettlementRevision },
-        payload: { direction, amount, reason },
-      });
-    },
-    reopenDay(input: ReopenCloudDayInput): Promise<CommandResult> {
-      const { commandId, leaseEpoch, dayId, expectedDayRevision, expectedSettlementRevision, reason } = input;
-      return commands.commitCommand({
-        commandId,
-        kind: 'ReopenDay',
-        leaseEpoch,
-        targets: { dayId, settlementRevision: expectedSettlementRevision + 1 },
-        expectedRevisions: { day: expectedDayRevision, settlement: expectedSettlementRevision },
-        payload: { reason },
-      });
-    },
-    backfillOpening(input: BackfillCloudDayOpeningInput): Promise<CommandResult> {
-      const { commandId, leaseEpoch, dayId, expectedDayRevision, openingCash, reason } = input;
-      return commands.commitCommand({
-        commandId,
-        kind: 'BackfillOpeningCash',
-        leaseEpoch,
-        targets: { dayId },
-        expectedRevisions: { day: expectedDayRevision },
-        payload: { openingCash, reason },
-      });
-    },
+    hasOtherUnresolvedCommands,
+    ensureDay: (input: EnsureCloudDayInput) => commitCanonical({ kind: 'ensure-day', input }, undefined),
+    startBackfill: (input: StartCloudBackfillInput) => commitCanonical({ kind: 'start-backfill', input }, undefined),
+    closeDay: (input: CloseCloudDayInput) => closeDay(input),
+    recordPostCloseEntry: (input: RecordCloudPostCloseEntryInput) => commitCanonical({ kind: 'record-post-close-entry', input }, undefined),
+    reopenDay: (input: ReopenCloudDayInput) => commitCanonical({ kind: 'reopen-day', input }, undefined),
+    backfillOpening: (input: BackfillCloudDayOpeningInput) => commitCanonical({ kind: 'backfill-opening', input }, undefined),
     readCommand(commandId: string): Promise<CommandReceipt | null> {
       return commands.readCommand(commandId);
     },
