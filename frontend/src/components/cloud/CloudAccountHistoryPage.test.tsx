@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CloudAccountHistory, CloudAuditRangeSnapshot, CloudLedgerReport } from '../../domain/cloudLedgerReport';
@@ -149,7 +149,10 @@ describe('CloudAccountHistoryPage', () => {
       render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
       await screen.findByTestId('account-history-ready');
       expect(screen.getByTestId('history-paper-ref')).toHaveTextContent('A-0123');
-      expect(screen.getAllByText('前天補登').length).toBeGreaterThan(0);
+      // The remark text appears once, in the same details list as the number (交易備註 beside 紙本號), never with the prefix.
+      const details = screen.getByTestId('history-paper-ref').closest('dl') as HTMLElement;
+      expect(within(details).getByText('交易備註').nextElementSibling).toHaveTextContent(/^前天補登$/);
+      expect(screen.getAllByText('前天補登')).toHaveLength(1);
       expect(screen.queryByText('紙本A-0123：前天補登')).toBeNull();
     });
 
