@@ -1,6 +1,7 @@
 /** The real terminal, file system and clock behind `CliIo`. Nothing here is covered by unit tests; the Emulator spec runs it. */
 import { readFile, writeFile } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
+import { createInterface } from 'node:readline/promises';
 import type { CliIo } from './cli';
 
 const PROMPT = '備份密碼（輸入不會顯示）：';
@@ -54,5 +55,16 @@ export function createNodeIo(): CliIo {
     stdout: text => { process.stdout.write(text); },
     stderr: text => { process.stderr.write(text); },
     now: () => performance.now(),
+    clock: () => new Date(),
+    env: process.env,
+    async fetch(url, init) {
+      const response = await fetch(url, init);
+      return { ok: response.ok, status: response.status, text: () => response.text() };
+    },
+    isTty: () => Boolean(process.stdin.isTTY),
+    async readLine(prompt) {
+      const lines = createInterface({ input: process.stdin, output: process.stderr });
+      try { return await lines.question(prompt); } finally { lines.close(); }
+    },
   };
 }

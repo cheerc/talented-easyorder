@@ -1,10 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { createBackupManifest, encryptBackup, sha256Hex } from '../../firebase/cloudBackup';
 import { main, type CliIo } from '../cli';
+import type { FetchLike } from '../firestoreRest';
 
 const PASSWORD = 'p15-unit-password';
 
-function harness(files: Record<string, Uint8Array<ArrayBuffer> | string> = {}, password = PASSWORD) {
+interface HarnessOptions {
+  password?: string;
+  env?: Record<string, string>;
+  tty?: boolean;
+  lines?: string[];
+  fetchImpl?: FetchLike;
+}
+
+function harness(files: Record<string, Uint8Array<ArrayBuffer> | string> = {}, options: HarnessOptions = {}) {
+  const password = options.password ?? PASSWORD;
+  const lines = [...(options.lines ?? [])];
+  const fetchCalls: Array<{ url: string; method: string; body: string | undefined }> = [];
   const store = new Map<string, Uint8Array<ArrayBuffer> | string>(Object.entries(files));
   const out: string[] = [];
   const err: string[] = [];
@@ -21,8 +33,17 @@ function harness(files: Record<string, Uint8Array<ArrayBuffer> | string> = {}, p
     stdout: text => { out.push(text); },
     stderr: text => { err.push(text); },
     now: () => 0,
+    clock: () => new Date('2026-10-23T08:00:00.000Z'),
+    env: options.env ?? {},
+    isTty: () => options.tty ?? false,
+    async readLine() { return lines.shift() ?? ''; },
+    fetch: async (url, init) => {
+      fetchCalls.push({ url, method: init.method, body: init.body });
+      if (!options.fetchImpl) throw new Error('unexpected fetch in a test that must not touch the network');
+      return options.fetchImpl(url, init);
+    },
   };
-  return { io, out, err, written, passwordReads: () => passwordReads, text: () => out.join('') + err.join('') };
+  return { io, out, err, written, fetchCalls, passwordReads: () => passwordReads, text: () => out.join('') + err.join('') };
 }
 
 async function emptyPackage(datasetId: string, previousSha: string | null) {
@@ -69,11 +90,119 @@ describe('P15a CLI usage and exit codes', () => {
   });
 
   it('says plainly that the later subcommands are not provided yet, and exits 64 (never a fake success)', async () => {
-    for (const name of ['init', 'restore', 'resume', 'verify', 'finalize']) {
+    for (const name of ['verify', 'finalize']) {
       const h = harness();
       expect(await main([name, '--project', 'demo-easyorder-restore'], h.io), name).toBe(64);
       expect(h.err.join('')).toContain('尚未提供');
     }
+  });
+});
+
+const EMULATOR = { FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080' };
+const REAL_ENV = { EASYORDER_ACCESS_TOKEN: 'secret-test-token' };
+
+describe('P15b argument handling and the wrong-target guard (B8)', () => {
+  it('B8: a non-demo project with the Emulator host, and a demo- project without it, exit 64 with zero network calls and no password read', async () => {
+    const cases: Array<[string, HarnessOptions, string[]]> = [
+      ['emulator + real project', { env: EMULATOR }, ['restore', '--project', 'easyorder-prod', '--manifest', '/c/chain.json', '--execute']],
+      ['no emulator + demo project', { env: REAL_ENV }, ['restore', '--project', 'demo-x-restore', '--manifest', '/c/chain.json', '--execute']],
+      ['no emulator + no token', { env: {} }, ['restore', '--project', 'easyorder-drill', '--manifest', '/c/chain.json', '--dry-run']],
+      ['resume wrong target', { env: EMULATOR }, ['resume', '--project', 'easyorder-prod', '--manifest', '/c/chain.json', '--execute']],
+      ['init wrong target', { env: EMULATOR }, ['init', '--project', 'easyorder-prod', '--dataset', 'anonymous-x', '--go-live-date', '2026-10-01', '--execute']],
+      ['init demo without emulator', { env: REAL_ENV }, ['init', '--project', 'demo-x-restore', '--dataset', 'anonymous-x', '--go-live-date', '2026-10-01']],
+    ];
+    for (const [label, options, argv] of cases) {
+      const h = harness({}, options);
+      expect(await main(argv, h.io), label).toBe(64);
+      expect(h.fetchCalls, label).toHaveLength(0);
+      expect(h.passwordReads(), label).toBe(0);
+      expect(h.text(), label).not.toContain('secret-test-token');
+    }
+  });
+
+  it('refuses --execute against a non-Emulator project when stdin is not a terminal, before any network call', async () => {
+    const h = harness({}, { env: REAL_ENV, tty: false });
+    expect(await main(['restore', '--project', 'easyorder-drill', '--manifest', '/c/chain.json', '--execute'], h.io)).toBe(64);
+    expect(h.err.join('')).toContain('終端機');
+    expect(h.fetchCalls).toHaveLength(0);
+  });
+
+  it('exits 64 for --dry-run together with --execute, resume without --execute, and malformed --max-writes / --batch-size', async () => {
+    const base = ['--project', 'demo-easyorder-restore', '--manifest', '/c/chain.json'];
+    const cases: Array<[string, string[]]> = [
+      ['both modes', ['restore', ...base, '--dry-run', '--execute']],
+      ['resume dry', ['resume', ...base]],
+      ['resume dry-run flag', ['resume', ...base, '--dry-run']],
+      ['max-writes 0', ['restore', ...base, '--execute', '--max-writes', '0']],
+      ['max-writes text', ['restore', ...base, '--execute', '--max-writes', 'many']],
+      ['batch-size 101', ['restore', ...base, '--execute', '--batch-size', '101']],
+      ['batch-size 0', ['restore', ...base, '--execute', '--batch-size', '0']],
+      ['no project', ['restore', '--manifest', '/c/chain.json']],
+      ['no manifest', ['restore', '--project', 'demo-easyorder-restore']],
+      ['password flag', ['restore', ...base, '--password', 'x']],
+      ['execute with a value', ['restore', ...base, '--execute=yes']],
+      ['init without dataset', ['init', '--project', 'demo-easyorder-restore', '--go-live-date', '2026-10-01']],
+      ['init without go-live-date', ['init', '--project', 'demo-easyorder-restore', '--dataset', 'anonymous-x']],
+      ['init bad date', ['init', '--project', 'demo-easyorder-restore', '--dataset', 'anonymous-x', '--go-live-date', '2026-02-30']],
+      ['init bad dataset', ['init', '--project', 'demo-easyorder-restore', '--dataset', 'has space', '--go-live-date', '2026-10-01']],
+    ];
+    for (const [label, argv] of cases) {
+      const h = harness({}, { env: EMULATOR });
+      expect(await main(argv, h.io), label).toBe(64);
+      expect(h.fetchCalls, label).toHaveLength(0);
+    }
+  });
+
+  it('lists init, restore and resume with their flags in --help', async () => {
+    const h = harness();
+    expect(await main(['--help'], h.io)).toBe(0);
+    for (const word of ['--execute', '--dry-run', '--max-writes', '--go-live-date', '75']) expect(h.text()).toContain(word);
+  });
+});
+
+describe('P15b confirmation for a real (non-Emulator) project', () => {
+  const root = 'projects/easyorder-drill/databases/(default)/documents';
+  const answer: FetchLike = async (url, init) => {
+    const body = (status: number, value: unknown) => ({ ok: status === 200, status, text: async () => JSON.stringify(value) });
+    if (url.endsWith(':commit')) return body(200, {});
+    if (url.endsWith(':batchGet')) {
+      return body(200, [{ found: { name: `${root}/system/dataHead`, fields: {
+        schemaVersion: { integerValue: '1' }, datasetId: { stringValue: 'anonymous-unit-a' }, seq: { integerValue: '0' }, lastCommandId: { nullValue: null },
+        maintenance: { booleanValue: true }, goLiveDate: { stringValue: '2026-10-01' }, updatedAt: { timestampValue: '2026-10-23T00:00:00.000000000Z' },
+      } } }]);
+    }
+    if (url.endsWith(':runQuery')) return body(200, [{ readTime: 't' }]);
+    expect(init.method).toBe('GET');
+    return body(200, {});
+  };
+
+  async function files() {
+    const one = await emptyPackage('anonymous-unit-a', null);
+    return { '/c/chain.json': chainJson('anonymous-unit-a', [{ file: 'one.bak' }]), '/c/one.bak': one.bytes };
+  }
+
+  it('does not write when the typed confirmation is not exactly RESTORE <project> <dataset> <H>', async () => {
+    for (const typed of ['', 'restore easyorder-drill anonymous-unit-a 0', 'RESTORE easyorder-drill anonymous-unit-a 1', 'RESTORE easyorder-drill anonymous-unit-a 0 ']) {
+      const h = harness(await files(), { env: REAL_ENV, tty: true, lines: [typed], fetchImpl: answer });
+      expect(await main(['restore', '--project', 'easyorder-drill', '--manifest', '/c/chain.json', '--execute'], h.io), typed).toBe(64);
+      expect(h.fetchCalls.filter(call => call.method === 'POST' && call.url.endsWith(':commit')), typed).toHaveLength(0);
+      expect(h.written.size, typed).toBe(0);
+    }
+  });
+
+  it('proceeds with the exact confirmation and sends the token only as a header', async () => {
+    const h = harness(await files(), { env: REAL_ENV, tty: true, lines: ['RESTORE easyorder-drill anonymous-unit-a 0'], fetchImpl: answer });
+    expect(await main(['restore', '--project', 'easyorder-drill', '--manifest', '/c/chain.json', '--execute'], h.io)).toBe(0);
+    expect(h.fetchCalls.every(call => call.url.startsWith('https://firestore.googleapis.com/'))).toBe(true);
+    expect(h.fetchCalls.every(call => !(call.body ?? '').includes('secret-test-token'))).toBe(true);
+    expect(h.text()).not.toContain('secret-test-token');
+  });
+
+  it('a dry run needs no confirmation and no terminal, and writes no file and sends no commit', async () => {
+    const h = harness(await files(), { env: REAL_ENV, tty: false, fetchImpl: answer });
+    expect(await main(['restore', '--project', 'easyorder-drill', '--manifest', '/c/chain.json'], h.io)).toBe(0);
+    expect(h.fetchCalls.some(call => call.url.endsWith(':commit'))).toBe(false);
+    expect(h.written.size).toBe(0);
   });
 });
 
@@ -93,7 +222,7 @@ describe('P15a validate with the in-memory chain (empty packages)', () => {
 
   it('fails closed with exit 2 on a wrong password, writing no report', async () => {
     const one = await emptyPackage('anonymous-unit-a', null);
-    const h = harness({ '/c/chain.json': chainJson('anonymous-unit-a', [{ file: 'one.bak' }]), '/c/one.bak': one.bytes }, 'wrong-password');
+    const h = harness({ '/c/chain.json': chainJson('anonymous-unit-a', [{ file: 'one.bak' }]), '/c/one.bak': one.bytes }, { password: 'wrong-password' });
     expect(await main(['validate', '--manifest', '/c/chain.json', '--report', '/out/r.json'], h.io)).toBe(2);
     expect(h.err.join('')).toContain('密碼錯誤或備份內容已損毀');
     expect(h.written.size).toBe(0);

@@ -5,6 +5,7 @@
 import { BackupValidationError } from '../firebase/cloudBackup';
 import { RestoreChainError, loadChain, parseChainFile, replayTo } from './restoreChain';
 import { buildValidateReport, formatValidateSummary } from './restoreReport';
+import type { FetchLike } from './firestoreRest';
 
 export interface CliIo {
   readFile(path: string): Promise<Uint8Array<ArrayBuffer>>;
@@ -13,7 +14,16 @@ export interface CliIo {
   readPassword(): Promise<string>;
   stdout(text: string): void;
   stderr(text: string): void;
+  /** A monotonic millisecond clock, for timings. */
   now(): number;
+  /** The wall clock, for the timestamps written to a target. */
+  clock(): Date;
+  /** Environment variables: the Emulator host and the short-lived access token live here, never in an argument. */
+  env: Record<string, string | undefined>;
+  fetch: FetchLike;
+  isTty(): boolean;
+  /** One typed line from the terminal (the confirmation of a real restore). */
+  readLine(prompt: string): Promise<string>;
 }
 
 export const EXIT_OK = 0;
