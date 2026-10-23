@@ -2292,3 +2292,109 @@ test.describe('P13b2b3a journal cleanup post-condition and embedded backup recov
     }
   });
 });
+
+test.describe('P13b2b3b report export and print same-page recovery', () => {
+  test.setTimeout(120000);
+
+  async function openReport(page: Page) {
+    await page.getByRole('button', { name: '取得系統使用權' }).click();
+    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '雲端報表' }).click();
+    await expect(page.getByTestId('report-ready')).toBeVisible({ timeout: 30000 });
+  }
+
+  async function holdUntilPrompt(page: Page, held: ReturnType<typeof createHeldCommit>) {
+    await waitForWriteGate(held.state.intercepted.promise, 'RecordExport/RecordPrint commit response gate');
+    await expect(page.getByText('結果確認中，勿重新收款')).toBeVisible({ timeout: 15000 });
+    const region = page.getByRole('region', { name: '輸出命令確認' });
+    const commandId = (await region.textContent())?.match(/ID ([0-9a-f-]{36})/i)?.[1] ?? null;
+    if (!commandId) throw new Error('The pending report command ID was not shown');
+    return commandId;
+  }
+
+  test('confirms a held RecordExport through Lite, downloads exactly once and cleans the journal', async ({ googleSession }) => {
+    const { page, uid } = googleSession;
+    const today = taipeiToday();
+    const datasetId = 'p13b2b3b-export';
+    await seedDayCloseFixture(today, uid, datasetId);
+    const held = createHeldCommit(page, request => commitWritesDocument(request, 'system', 'dataHead'));
+    await held.install();
+    const downloads: string[] = [];
+    page.on('download', download => { downloads.push(download.suggestedFilename()); });
+    let commandId: string | null = null;
+    try {
+      await openReport(page);
+      held.arm();
+      await page.getByRole('button', { name: '匯出稽核 CSV' }).click();
+      commandId = await holdUntilPrompt(page, held);
+      await expectMinimalJournal(page, [{ commandId, datasetId, uid }]);
+      expect(downloads).toHaveLength(0);
+
+      await page.getByRole('button', { name: '查詢原命令結果' }).click();
+      await expect.poll(() => downloads.length, { timeout: 15000 }).toBe(1);
+      await expect(page.getByRole('status').filter({ hasText: '已發起匯出' })).toBeVisible();
+      await expect(page.getByRole('region', { name: '輸出命令確認' })).toHaveCount(0);
+      await expect.poll(() => readPendingIdentity(page, commandId!)).toBeNull();
+      expect(held.state.returned).toBe(false);
+      expect(held.state.matched).toBe(1);
+      expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
+      expect((await readEmulatorDocument('system', 'dataHead')).fields?.seq).toEqual({ integerValue: '1' });
+
+      held.state.release.resolve();
+      await waitForWriteGate(held.state.completed.promise, 'RecordExport response release');
+      await page.waitForTimeout(500);
+      expect(downloads).toHaveLength(1);
+      expect(held.state.matched).toBe(1);
+      expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
+      await expectMinimalJournal(page, []);
+    } finally {
+      await held.settle();
+      await cleanupDayCloseRun(page, { commandIds: commandId ? [commandId] : [], days: [today] });
+      await setDayCloseDataHead(DATASET_ID, today, 0, null);
+    }
+  });
+
+  test('confirms a held RecordPrint through Lite, prints exactly once and cleans the journal', async ({ googleSession }) => {
+    const { page, uid } = googleSession;
+    const today = taipeiToday();
+    const datasetId = 'p13b2b3b-print';
+    await seedDayCloseFixture(today, uid, datasetId);
+    const held = createHeldCommit(page, request => commitWritesDocument(request, 'system', 'dataHead'));
+    await held.install();
+    const printCount = () => page.evaluate(() => (window as Window & { __p13b2b3bPrints?: number }).__p13b2b3bPrints ?? 0);
+    let commandId: string | null = null;
+    try {
+      await openReport(page);
+      await page.evaluate(() => {
+        (window as Window & { __p13b2b3bPrints?: number }).__p13b2b3bPrints = 0;
+        window.print = () => { (window as Window & { __p13b2b3bPrints?: number }).__p13b2b3bPrints! += 1; };
+      });
+      held.arm();
+      await page.getByRole('button', { name: '記錄後列印目前完整明細' }).click();
+      commandId = await holdUntilPrompt(page, held);
+      await expectMinimalJournal(page, [{ commandId, datasetId, uid }]);
+      expect(await printCount()).toBe(0);
+
+      await page.getByRole('button', { name: '查詢原命令結果' }).click();
+      await expect.poll(printCount, { timeout: 15000 }).toBe(1);
+      await expect(page.getByRole('status').filter({ hasText: '已發起列印' })).toBeVisible();
+      await expect(page.getByRole('region', { name: '輸出命令確認' })).toHaveCount(0);
+      await expect.poll(() => readPendingIdentity(page, commandId!)).toBeNull();
+      expect(held.state.returned).toBe(false);
+      expect(held.state.matched).toBe(1);
+      expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
+
+      held.state.release.resolve();
+      await waitForWriteGate(held.state.completed.promise, 'RecordPrint response release');
+      await page.waitForTimeout(500);
+      expect(await printCount()).toBe(1);
+      expect(held.state.matched).toBe(1);
+      expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
+      await expectMinimalJournal(page, []);
+    } finally {
+      await held.settle();
+      await cleanupDayCloseRun(page, { commandIds: commandId ? [commandId] : [], days: [today] });
+      await setDayCloseDataHead(DATASET_ID, today, 0, null);
+    }
+  });
+});
