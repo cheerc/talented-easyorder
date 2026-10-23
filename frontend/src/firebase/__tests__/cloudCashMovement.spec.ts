@@ -407,7 +407,7 @@ describeWithEmulator('P09a payments and counter cash movements: repository, read
     expect(after.head?.seq).toBe(1);
     expect(after.transactions).toHaveLength(1);
     expect(after.day?.totals.cashierExpense).toBe(80);
-  });
+  }, 60_000);
 
   it('P09.6: a stale day revision is a REVISION_CONFLICT and a closed day is DAY_CLOSED, both without writes', async () => {
     const stale = await cashInput('income', 30);

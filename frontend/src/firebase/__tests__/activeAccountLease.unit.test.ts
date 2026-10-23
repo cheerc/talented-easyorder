@@ -301,7 +301,7 @@ describe('activeAccountLease: unavailable Firestore fails closed', () => {
 
 describe('activeAccountLease: accessEvents are written inside the lease transition transaction', () => {
   const actorEmail = 'operator-a@example.com';
-  const timestamp = Object.assign(new Timestamp(), { toDate: () => new Date(1_700_000_000_000) });
+  const timestamp = Object.assign(new Timestamp(1, 0), { toDate: () => new Date(1_700_000_000_000) });
 
   function leaseAfter(holderUid: string | null, epoch: number) {
     return { holderUid, epoch, updatedAt: timestamp };

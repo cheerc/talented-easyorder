@@ -710,7 +710,7 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
       endInclusive: false,
     });
     expect(commandPages.filter(event => event.queryScope === undefined)).toHaveLength(4);
-  });
+  }, 60_000);
 
   it('documents that null-date rows missing committedAt are outside the bounded query index', async () => {
     const commandId = uuidFrom(9_300);

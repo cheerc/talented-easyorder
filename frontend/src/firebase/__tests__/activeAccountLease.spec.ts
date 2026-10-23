@@ -455,14 +455,15 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
 
     /** One batch = one atomic commit, so the Rules see the lease change and the event as a single transition. */
     function transition(
-      db: Firestore,
+      db: ReturnType<typeof authedDb>,
       lease: { holderUid: string | null; epoch: number },
       event?: { id: string; data: Record<string, unknown> },
       extraLease: Record<string, unknown> = {},
     ) {
-      const batch = writeBatch(db);
-      batch.update(doc(db, 'system/accessLease'), { ...lease, updatedAt: serverTimestamp(), ...extraLease });
-      if (event) batch.set(doc(db, `accessEvents/${event.id}`), event.data);
+      const modular = db as unknown as Firestore;
+      const batch = writeBatch(modular);
+      batch.update(doc(modular, 'system/accessLease'), { ...lease, updatedAt: serverTimestamp(), ...extraLease });
+      if (event) batch.set(doc(modular, `accessEvents/${event.id}`), event.data);
       return batch.commit();
     }
 
@@ -610,9 +611,9 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
       for (const overrides of forged) {
         await assertFails(transition(dbA, { holderUid: operatorA.uid, epoch: 1 }, { id: '1', data: validEvent(overrides) }));
       }
-      await assertFails(transition(dbA, { holderUid: operatorA.uid, epoch: 1 }, {
-        id: '1', data: (({ at: _at, ...rest }) => rest)(validEvent()),
-      }));
+      const withoutAt: Record<string, unknown> = { ...validEvent() };
+      delete withoutAt.at;
+      await assertFails(transition(dbA, { holderUid: operatorA.uid, epoch: 1 }, { id: '1', data: withoutAt }));
     });
 
     it('E13: a renew cannot carry an event', async () => {

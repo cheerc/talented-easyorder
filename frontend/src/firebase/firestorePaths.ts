@@ -1,5 +1,6 @@
 export const operatorPath = (uid: string) => `operators/${uid}`;
 export const accessLeasePath = () => 'system/accessLease';
+export const accessEventPath = (epoch: number) => `accessEvents/${epoch}`;
 export const dataHeadPath = () => 'system/dataHead';
 export const dayPath = (dayId: string) => `days/${dayId}`;
 export const commandPath = (commandId: string) => `commands/${commandId}`;

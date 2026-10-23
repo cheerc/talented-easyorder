@@ -70,9 +70,28 @@ async function patchDoc(collection: string, docId: string, data: Record<string, 
   if (!res.ok) throw new Error(`Failed to update ${collection}/${docId}: ${await res.text()}`);
 }
 
+/**
+ * Demo Emulator only. A lease reseed rewinds `epoch` outside the transaction path, so event documents
+ * numbered above the new epoch would turn the next acquire (which creates `accessEvents/{epoch + 1}`) into
+ * an update that the Rules deny. Remove them whenever the seed lowers or resets the epoch.
+ */
+async function purgeAccessEventsAbove(epoch: number): Promise<void> {
+  const base = `${FIRESTORE_EMULATOR}/v1/projects/${PROJECT}/databases/(default)/documents/accessEvents`;
+  const res = await fetch(`${base}?pageSize=300`, { headers: { Authorization: 'Bearer owner' } });
+  if (!res.ok) throw new Error(`Failed to list accessEvents: ${await res.text()}`);
+  const body = await res.json() as { documents?: Array<{ name: string }> };
+  for (const document of body.documents ?? []) {
+    const id = document.name.split('/').pop() ?? '';
+    if (Number(id) > epoch) await removeDocument('accessEvents', id);
+  }
+}
+
 /** Demo Emulator only: create or update the given fields of one document through the Admin REST route. */
 export async function upsertDocument(collection: string, docId: string, data: Record<string, unknown>): Promise<void> {
   await patchDoc(collection, docId, data);
+  if (collection === 'system' && docId === 'accessLease' && typeof data.epoch === 'number') {
+    await purgeAccessEventsAbove(data.epoch);
+  }
 }
 
 /** Demo Emulator only: remove one document through the Admin REST route (missing documents are fine). */
@@ -120,6 +139,7 @@ export async function seedInitialLease(): Promise<void> {
 /** Admin REST seed for deliberate server-time/epoch scenarios in the Emulator only. */
 export async function seedAccessLease(lease: EmulatorAccessLease): Promise<void> {
   await patchDoc('system', 'accessLease', { ...lease });
+  await purgeAccessEventsAbove(lease.epoch);
 }
 
 function decodeFirestoreValue(value: unknown): unknown {
