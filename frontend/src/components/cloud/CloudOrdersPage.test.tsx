@@ -1420,6 +1420,22 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
       expect(within(await screen.findByTestId('detail-row-tx-paper')).getByTestId('paper-tag-tx-paper')).toHaveTextContent('紙本 B-9');
     });
 
+    it('P15n: a refund whose note carries a number shows the number once, in the tag; the item label is the text only', async () => {
+      const refund = {
+        ...gapTx('tx-refund', '2026-10-16T05:30:00.000Z'), type: 'refund' as const, mealKind: null, mealPrice: 0, paidAmount: 0,
+        amount: 60, note: '紙本A-0123：退回餘額',
+      };
+      repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot({ transactions: [refund] }));
+      renderComponent('uid-1:1', GAP);
+      await selectStudent('001');
+      fireEvent.click(screen.getByTestId('open-payment-details-button'));
+      const row = await screen.findByTestId('detail-row-tx-refund');
+      expect(within(row).getByTestId('paper-tag-tx-refund')).toHaveTextContent('紙本 A-0123');
+      expect(row.textContent?.match(/A-0123/g)).toHaveLength(1);
+      expect(row).toHaveTextContent('退款：退回餘額');
+      expect(row).not.toHaveTextContent('紙本A-0123：');
+    });
+
     it('locks the number when a row that carries one is corrected — only the text after it is editable', async () => {
       repositoryMock.mutateTransaction.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 20));
       const cash = {
