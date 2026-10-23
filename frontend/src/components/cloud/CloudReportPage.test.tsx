@@ -1,6 +1,6 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CloudLedgerReport, CloudAuditRangeSnapshot } from '../../domain/cloudLedgerReport';
+import type { CloudAccessEventsSnapshot, CloudLedgerReport, CloudAuditRangeSnapshot } from '../../domain/cloudLedgerReport';
 
 const currentAuth = vi.hoisted(() => ({ uid: 'uid-a' as string | null }));
 
@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   readSummary: vi.fn(),
   readReport: vi.fn(),
   readAuditRange: vi.fn(),
+  readAccessEvents: vi.fn(),
   recordExport: vi.fn(),
   recordPrint: vi.fn(),
   confirmPendingIntent: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock('../../firebase/cloudReadRepository', () => ({
     readSummary: mocks.readSummary,
     readReport: mocks.readReport,
     readAuditRange: mocks.readAuditRange,
+    readAccessEvents: mocks.readAccessEvents,
   }),
 }));
 vi.mock('../../firebase/cloudReportActionRepository', () => ({
@@ -77,6 +79,18 @@ const audit = {
     committedAt: '2026-10-19T04:00:00.000Z', reason: null, before: null, after: null,
     attributedDate: '2026-10-19', dateBasis: 'business-date' }],
 } as unknown as CloudAuditRangeSnapshot;
+const accessEvents: CloudAccessEventsSnapshot = {
+  datasetId: 'dataset-a', sourceSeq: 11, goLiveDate: '2026-10-01', leaseToday: '2026-10-19', leaseEpoch: 4,
+  range, complete: true,
+  rows: [
+    { epoch: 3, kind: 'acquire', at: '2026-10-19T01:00:00.000Z', actorEmail: 'first@example.test',
+      previousHolderState: 'none', previousHolderEmail: null },
+    { epoch: 4, kind: 'takeover', at: '2026-10-19T04:00:00.000Z', actorEmail: 'second@example.test',
+      previousHolderState: 'known', previousHolderEmail: 'first@example.test' },
+    { epoch: 5, kind: 'release', at: '2026-10-19T09:30:00.000Z', actorEmail: 'second@example.test',
+      previousHolderState: 'unrecorded', previousHolderEmail: null },
+  ],
+};
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -94,6 +108,9 @@ describe('CloudReportPage', () => {
     mocks.readSummary.mockResolvedValue({ leaseToday: '2026-10-19' });
     mocks.readReport.mockResolvedValue(report);
     mocks.readAuditRange.mockResolvedValue(audit);
+    mocks.readAccessEvents.mockImplementation(async input => ({
+      ...accessEvents, leaseEpoch: input.leaseEpoch, range: input.range,
+    }));
     mocks.recordExport.mockImplementation(async input => ({ ok: true, receipt: { commandId: input.commandId, seq: 12, kind: 'RecordExport' } }));
     mocks.recordPrint.mockImplementation(async input => ({ ok: true, receipt: { commandId: input.commandId, seq: 12, kind: 'RecordPrint' } }));
     mocks.confirmPendingIntent.mockResolvedValue({ status: 'not-found' });
@@ -559,6 +576,86 @@ describe('CloudReportPage', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('報表與稽核版本不一致');
     expect(screen.queryByRole('button', { name: '匯出稽核 CSV' })).toBeNull();
+  });
+
+  describe('access handover table (P13c2)', () => {
+    const handoverRegion = () => screen.getByRole('region', { name: '使用權交接' });
+
+    it('shows time, Chinese kind, operator email and the previous holder email only after the report and audit agree', async () => {
+      let finishReport!: (value: CloudLedgerReport) => void;
+      mocks.readReport.mockReturnValueOnce(new Promise(resolve => { finishReport = resolve; }));
+      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:handover" />);
+
+      expect(screen.queryByRole('region', { name: '使用權交接' })).toBeNull();
+      await act(async () => { finishReport(report); });
+      await screen.findByTestId('report-ready');
+
+      expect(mocks.readAccessEvents).toHaveBeenCalledWith({ range, leaseEpoch: 4 });
+      const rows = within(handoverRegion()).getAllByRole('row').slice(1).map(row =>
+        within(row).getAllByRole('cell').map(cell => cell.textContent));
+      expect(rows).toEqual([
+        [expect.stringContaining('09:00'), '取得使用權', 'first@example.test', '無'],
+        [expect.stringContaining('12:00'), '接手使用權', 'second@example.test', 'first@example.test'],
+        [expect.stringContaining('17:30'), '釋放使用權', 'second@example.test', '（無紀錄）'],
+      ]);
+      expect(handoverRegion().textContent).not.toMatch(/uid-|operator-a/);
+      expect(within(handoverRegion()).queryByRole('button')).toBeNull();
+    });
+
+    it('does not show the table when the report and audit snapshots disagree', async () => {
+      mocks.readAuditRange.mockResolvedValueOnce({ ...audit, sourceSeq: 12 });
+      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:handover-mismatch" />);
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('報表與稽核版本不一致');
+      expect(screen.queryByRole('region', { name: '使用權交接' })).toBeNull();
+    });
+
+    it('hides a table whose snapshot envelope differs from the report and says so, without blocking the report', async () => {
+      mocks.readAccessEvents.mockResolvedValueOnce({ ...accessEvents, sourceSeq: 12 });
+      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:handover-envelope" />);
+      await screen.findByTestId('report-ready');
+
+      expect(handoverRegion()).toHaveTextContent('使用權交接資料版本與報表不一致');
+      expect(within(handoverRegion()).queryByRole('table')).toBeNull();
+      expect(screen.getByRole('button', { name: '匯出稽核 CSV' })).toBeEnabled();
+    });
+
+    it('reports an incomplete handover read without hiding the report or its exports', async () => {
+      mocks.readAccessEvents.mockRejectedValueOnce(Object.assign(new Error('雲端 accessEvents 超過完整讀取上限'), { code: 'INCOMPLETE_SNAPSHOT' }));
+      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:handover-incomplete" />);
+      await screen.findByTestId('report-ready');
+
+      expect(handoverRegion()).toHaveTextContent('使用權交接無法完整讀取：雲端 accessEvents 超過完整讀取上限');
+      expect(within(handoverRegion()).queryByRole('table')).toBeNull();
+      expect(screen.getByRole('button', { name: '匯出稽核 CSV' })).toBeEnabled();
+    });
+
+    it('treats a lost lease while reading handovers like any other lost lease', async () => {
+      mocks.readAccessEvents.mockRejectedValueOnce(Object.assign(new Error('租約已被取代'), { code: 'LEASE_LOST' }));
+      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:handover-lease" />);
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('租約已被取代');
+      expect(screen.queryByTestId('report-ready')).toBeNull();
+      expect(screen.queryByRole('region', { name: '使用權交接' })).toBeNull();
+    });
+
+    it('says plainly when the range has no handover and skips the table for a single-account scope', async () => {
+      mocks.readAccessEvents.mockImplementation(async input => ({
+        ...accessEvents, leaseEpoch: input.leaseEpoch, range: input.range, rows: [],
+      }));
+      mocks.readReport.mockImplementation(async input => ({ ...report, scope: { studentId: input.studentId } }));
+      mocks.readAuditRange.mockImplementation(async input => ({ ...audit, scope: { studentId: input.studentId } }));
+      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:handover-empty" />);
+      await screen.findByTestId('report-ready');
+      expect(handoverRegion()).toHaveTextContent('此區間沒有使用權交接紀錄');
+
+      fireEvent.change(screen.getByLabelText('搜尋帳戶'), { target: { value: '001' } });
+      fireEvent.click(screen.getByRole('button', { name: '選取 林小明（001）' }));
+      await waitFor(() => expect(mocks.readReport).toHaveBeenCalledWith(expect.objectContaining({ studentId: 'student-a' })));
+      await screen.findByText(/帳戶 student-a/);
+      expect(screen.queryByRole('region', { name: '使用權交接' })).toBeNull();
+      expect(mocks.readAccessEvents).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('routes a date to day close and the selected account plus range to account history', async () => {
