@@ -2186,7 +2186,8 @@ service cloud.firestore {
     }
 
     // P04 global lease state machine. P13c1: every epoch change (acquire, takeover, release) must commit together
-    // with its accessEvents/{new epoch} record; a renew keeps the epoch and has no event.
+    // with its accessEvents/{new epoch} record; a renew keeps the epoch and has no event. The record must not exist
+    // before the commit: `existsAfter` alone would also be true for a stale record that this commit did not write.
     match /system/accessLease {
       allow get: if approvedOperator();
       allow list, create, delete: if false;
@@ -2206,7 +2207,8 @@ service cloud.firestore {
             && request.resource.data.epoch == resource.data.epoch + 1)
         )
         && (request.resource.data.epoch == resource.data.epoch
-          || existsAfter(/databases/$(database)/documents/accessEvents/$(string(request.resource.data.epoch))));
+          || (!exists(/databases/$(database)/documents/accessEvents/$(string(request.resource.data.epoch)))
+            && existsAfter(/databases/$(database)/documents/accessEvents/$(string(request.resource.data.epoch)))));
     }
 
     // P13c1 access history: one immutable record per epoch change, bound to the lease transition in the same commit.
