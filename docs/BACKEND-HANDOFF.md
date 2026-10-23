@@ -155,6 +155,8 @@ React 19、Vite 8、TypeScript 6、Zustand 5（persist 到 IndexedDB，失敗時
 | 交易寫入（含 `runTransaction`） | `ledgerRepository.ts` | 有程式、有單元測試，**沒有任何地方呼叫** |
 | 結帳寫入 | `settlementRepository.ts` | 同上，沒接 |
 | 即時訂閱 | `realtimeSubscriptions.ts`（含重試） | 同上，沒接 |
+
+> **2026-10-23 更新（P13d3）：** 上表「帳戶寫入」「交易寫入」「結帳寫入」「即時訂閱」四列的舊模組（`studentRepository.ts`、`store/posActions/firebaseActions.ts`、`ledgerRepository.ts`、`settlementRepository.ts`、`realtimeSubscriptions.ts`）與 `firebase/syncStatus.ts`、`domain/syncStatus.ts` 已確認沒有 production 呼叫者並刪除，store 不再有 `addStudent`／`disableStudent`。本表其餘內容維持 2026-10-13 的歷史盤點。
 | Firestore 規則 | `firestore.rules`（154 行）、`firestore.indexes.json` | 只有 `operators`、`students`、`transactions`、`daily_settlements`（含 `close_attempts`、`cash_adjustments`） |
 | 規則測試 | `frontend/src/firebase/__tests__/firestoreRules.spec.ts` | CI 在 Firestore emulator 上跑 |
 | e2e | `npm run test:e2e`（Auth＋Firestore emulator） | CI 有跑 |

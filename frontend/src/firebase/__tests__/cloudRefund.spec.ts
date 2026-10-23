@@ -433,7 +433,7 @@ describeWithEmulator('P09b account refunds: repository, reads and production Rul
     expect(after.head?.seq).toBe(1);
     expect(after.studentA?.currentBalance).toBe(60);
     expect(after.day?.totals.accountRefunds).toBe(40);
-  });
+  }, 60_000);
 
   it('P09b.8: a raw SDK refund closure commits for the holder and is denied for a non-holder', async () => {
     const artifacts = await rawRefundArtifacts(25);

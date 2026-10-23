@@ -6,7 +6,6 @@ import { defaultState, posPersistenceConfig } from './posPersistence';
 import { createTransactionActions } from './posActions/transactionActions';
 import { createSessionActions } from './posActions/sessionActions';
 import { createMenuActions } from './posActions/menuActions';
-import { createFirebaseActions } from './posActions/firebaseActions';
 import { createPracticeDataActions } from './posActions/practiceDataActions';
 import { createFaceActions } from './posActions/faceActions';
 import {
@@ -28,7 +27,6 @@ export const usePosStore = create<PosState>()(
       ...createMenuActions(set),
       ...createSessionActions(set, get),
       ...createTransactionActions(set, get),
-      ...createFirebaseActions(),
       ...createPracticeDataActions(set),
       ...createFaceActions(set, get),
     }),

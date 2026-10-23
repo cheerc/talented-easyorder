@@ -366,6 +366,38 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     await expect(page.getByRole('button', { name: /訂餐|繳費|送出訂單/ })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '釋放使用權並登出' })).toBeVisible();
   });
+
+  // P13d3 guard (not a RED test: it passes before and after the legacy-module cleanup). The practice-data tools
+  // (reset, sample data, snapshot restore, simulated date, face-tablet simulator) belong to the local/prototype
+  // shell only; no cloud tab may expose them. The strings come from PracticeDataPanel, AdminScreen and
+  // FaceTabletSimulator.
+  test('A10: no cloud tab exposes reset, sample-data, restore or simulation controls', async ({ googleSession }) => {
+    test.setTimeout(90000);
+    const { page } = googleSession;
+    await page.getByRole('button', { name: '取得系統使用權' }).click();
+    await expect(page.locator('.operator-strip')).toBeVisible();
+
+    const forbidden = /重置系統數據|危險區域|載入範例資料|載入驗收範例|還原練習資料|還原快照|從空白開始|只清除練習交易|匯出快照|練習資料|練習營業日|模擬日期|模擬刷臉平板|模擬平板/;
+    const nav = page.getByRole('navigation', { name: '雲端資料管理' });
+    const tabs = nav.getByRole('button');
+    await expect(tabs).toHaveCount(8);
+
+    // Index-based: the anomaly tab's label changes from「帳務異常（…）」to a count once the ledger view loads.
+    for (let index = 0; index < 8; index += 1) {
+      const tab = tabs.nth(index);
+      const label = `tab ${index + 1}`;
+      await expect(tab).toBeEnabled({ timeout: 20000 });
+      await tab.click();
+      await expect(tab).toHaveAttribute('aria-pressed', 'true');
+      const main = page.locator('main.cloud-app');
+      // The section heading proves the page rendered before the absence checks run (h1 is the shell title).
+      await expect.poll(() => main.getByRole('heading').count(), { message: `${label} did not render a section heading` }).toBeGreaterThan(1);
+      await expect(main, `${label}`).not.toContainText(forbidden);
+      await expect(page.getByRole('button', { name: forbidden }), `${label}`).toHaveCount(0);
+      await expect(page.getByLabel(forbidden), `${label}`).toHaveCount(0);
+      await expect(page.locator('.app')).toHaveCount(0);
+    }
+  });
 });
 
 test.describe('P06 Cloud Students', () => {

@@ -78,11 +78,6 @@ const menuActionsSelector = (s: ReturnType<typeof usePosStore.getState>) => ({
   setVendors: s.setVendors,
 });
 
-const studentActionsSelector = (s: ReturnType<typeof usePosStore.getState>) => ({
-  addStudent: s.addStudent,
-  disableStudent: s.disableStudent,
-});
-
 const globalActionsSelector = (s: ReturnType<typeof usePosStore.getState>) => ({
   resetData: s.resetData,
 });
@@ -111,11 +106,6 @@ export function useSessionActions() {
 /** Menu actions. Stable references. */
 export function useMenuActions() {
   return usePosStore(useShallow(menuActionsSelector));
-}
-
-/** Student actions. Stable references. */
-export function useStudentActions() {
-  return usePosStore(useShallow(studentActionsSelector));
 }
 
 /** Global actions. */
