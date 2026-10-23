@@ -192,7 +192,7 @@ export interface DailySettlement {
 - Transaction rows and draft intents from `pc-pos-order-flow-spec` (`domain/posTransaction.ts`).
 - Student ids and name snapshots from `student-account-management-spec` (`domain/student.ts`).
 - Menu/vendor snapshots from `menu-vendor-management-spec` (`domain/menu.ts`).
-- Sync status from Firebase (`firebase/ledgerRepository.ts`).
+- Sync status from Firebase (`firebase/ledgerRepository.ts`, deleted in P13d3; the cloud path uses the immutable-command receipts instead).
 
 ### 輸出
 
@@ -207,7 +207,7 @@ export interface DailySettlement {
 - Depends on `pc-pos-order-flow-spec` for committed transaction inputs.
 - Depends on `student-account-management-spec` for stable student identity and balance updates.
 - Depends on `menu-vendor-management-spec` for menu/vendor snapshots.
-- Feeds Firebase (`firebase/ledgerRepository.ts`, `firebase/settlementRepository.ts`) with transactions and settlements.
+- Feeds Firebase (`firebase/ledgerRepository.ts`, `firebase/settlementRepository.ts`; both deleted in P13d3, the cloud path writes through the command repositories) with transactions and settlements.
 
 ## 不在本模組範圍
 
