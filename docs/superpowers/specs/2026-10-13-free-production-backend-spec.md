@@ -216,6 +216,7 @@ quota exceeded／permission denied／schema mismatch／maintenance 均阻止操�
 
 - 學生名單依 ID 載入（驗證規模500名），server snapshot 後按 `studentCode` 數值升冪排序，並自 `001` 列出至當前最大號的缺號列（停用帳戶算已使用，搜尋時隱藏缺號列）；F5 查帳由記憶體 `studentCode -> studentId` 對映直接查詢，不另讀 `studentCodes` 集合；同 UID 頁面共享訂閱協調為優化，不是安全依賴。
 - 只監聽 lease、目前日期 day、必要學生 heads 與當日交易；不監聽全歷史／全 commands。歷史 query cursor 分頁，預設每頁100。
+- 每個 list 查詢都必須帶 `limit`，且不得超過 500：Rules 的每個 `allow list` 以 `listWithinLimit()`（`request.query.limit != null && request.query.limit <= 500`）拒絕沒帶 limit 或超過 500 的查詢（P16c）。完整讀取靠 cursor 分頁，頁大小上限 200；一次讀完的集合（日結版本 200 個、未關帳日 200 天）以 `limit(上限 + 1)` 探測並在超出時 fail closed，`documentId in` 分塊以 `limit(分塊大小)`，不得改成無 limit 讀取。單一文件 `get` 與文件 listener 不受影響。
 - F2 週從台北週一開始，月為曆月；加總最多31個 day heads。原始明細與 CSV 分頁完整讀取，不能只匯出第一頁。
 - F5 account history 按 studentId＋businessDate＋createdAt＋transactionId 分頁；計算 afterBalance 需讀取期初起至所需日期的前綴。快取繫於 student.revision，變動即失效。
 - indexes 明列：transactions `(businessDate,createdAt,transactionId)`、`(studentId,businessDate,createdAt,transactionId)`；commands `(businessDate,seq)`、`(studentId,seq)` 供稽核，`(businessDate,committedAt,__name__)` 限定全帳戶 null-date 記錄日查詢，seq 單欄供備份。command 的 before/after、大字串與不查詢快照停用索引，避免索引膨脹；studentId/businessDate 作可為 null 的頂層查詢欄。

@@ -961,3 +961,21 @@ So the thinnest student-update anchor on main was +4 with only two aliases (a st
 Access calls: unchanged. `students` update still reads the command with `getAfter` and `!exists` as before; no `get`/`exists`/`getAfter` was added or removed.
 
 Verification that nothing is loosened (`cloudRulesMatrix.spec.ts`, Emulator): captured `CreateStudent`, `EditStudent` and `CreateOrder` batches are replayed with eleven aliases, an alias of 101 characters, an empty alias, a non-text alias and an empty tenth alias (and, for `CreateOrder`, with a different valid alias list), with the command receipt (`after.student`, and the payload where it has aliases) changed to agree so that only the alias check can refuse the batch; all are refused. With the alias check removed from `validStudentUpdate` the `EditStudent` case fails, and with it removed from `validStudent` the `CreateStudent` case fails (temporary copies of the Rules, not in the repo).
+
+## P16c — every list query needs a limit of at most 500
+
+Rules SHA-256: main (#552 merge `64065a7`) `488fca520bbea11ef129c4a371da831a342c2bdd27c8b1afba4ca655eaed3f6a`; branch `8fde3358406d591a662700fc8dcaf135c55cff8524c07536091a9a3096579243`. The only Rules change is in the `allow list` rules (Ruling R7): a new function `listWithinLimit()` (`request.query.limit != null && request.query.limit <= 500`) and every list that is not `if false` is `allow list: if listWithinLimit() && <the same reader check as before>` (`allow get, list` pairs became two lines, `allow get` unchanged). Ten collections are listable: `accessEvents` (approved operators), `commands`, `days`, `days/{dayId}/settlements`, `backfillDays`, `postCloseEntries`, `students`, `studentCodes`, `transactions`, `vendors` (lease holder). No write rule, no command semantics and no reader class changed.
+
+Probe tool `/mnt/project-files/tools/rules-probe` with one new anchor, `listCommands` (the `allow list` of `commands`; `mk.py` accepts a list of alternatives so that the same anchor name matches the rule before and after P16c). Same cases on both sides:
+
+| Anchor / case | main `+lo / +hi` | branch `+lo / +hi` |
+|---|---:|---:|
+| `cmd` / `P11c2a.14` (command create) | +20 / +21 | +20 / +21 |
+| `tx` / `P11c2a.14` (transaction create) | +14 / +15 | +14 / +15 |
+| `head` / `P11c2a.14` (dataHead update) | +95 / +96 | +95 / +96 |
+| `leaseUpdate` / `A02.5` (release then takeover) | +93 / +94 | +93 / +94 |
+| `listCommands` / `cloudBackup.spec` RecordBackup export (lists `commands` with limit 100) | +97 / +98 | +96 / +97 |
+
+The four write anchors are identical on both sides. The list rule itself cost one term (`+97` → `+96`). As in earlier appendices the `+hi` of these rows is the point where the Emulator stops compiling the rule (`Expression is too complex to evaluate safely`), not a runtime cap; a list rule has no `for` and evaluates one `get` of the operator, one `get` of the lease and about ten comparisons, so it is nowhere near the 1,000-expression runtime cap. Access calls: unchanged for writes; a list reads `operators/{uid}` and `system/accessLease` as before.
+
+Not measured by the probe: the matrix collection cases cannot be filtered with `-t` (they use state from earlier tests), so the matrix was run whole, on the branch Rules and on main's Rules (red).
