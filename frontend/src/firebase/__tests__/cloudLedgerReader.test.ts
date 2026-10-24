@@ -172,10 +172,11 @@ describe('createCloudLedgerReader.read', () => {
         heads: [head({ goLiveDate: goLive })],
       });
       const snapshot = await reader().read();
-      expect(snapshot.closedDays.map(day => day.dayId)).toEqual(recent);
-      expect(settlementReads()).toHaveLength(recent.length);
+      // the closed day just before the window comes with it (the lookup below), 2026-04-10 here
+      expect(snapshot.closedDays.map(day => day.dayId)).toEqual([old[old.length - 1], ...recent]);
+      expect(settlementReads()).toHaveLength(recent.length + 1);
       const queries = dayQueries();
-      expect(queries).toHaveLength(2);
+      expect(queries.length).toBeGreaterThanOrEqual(2);
       expect(queries[0]).toEqual([
         { type: 'where', field: '__name__', op: '>=', value: '2026-08-04' },
         { type: 'where', field: '__name__', op: '<=', value: today },
@@ -193,12 +194,24 @@ describe('createCloudLedgerReader.read', () => {
         ['2026-01-05', dayDoc()],                                                                         // an empty day nobody opened: not an anomaly
         closedOf('2026-10-04'),
       ];
-      setup({ days, settlements: settlementsOf(['2026-10-04']), heads: [head({ goLiveDate: goLive })] });
+      setup({ days, settlements: settlementsOf(['2026-01-02', '2026-10-04']), heads: [head({ goLiveDate: goLive })] });
       const snapshot = await reader().read();
+      // 2026-01-03 opens with 120 after a close of 100: its previous closed day is outside the window and is still compared
       expect(snapshot.anomalies.map(item => [item.kind, item.dayId])).toEqual([
-        ['unclosed-past-day', '2026-01-03'], ['unclosed-past-day', '2026-01-04'],
+        ['unclosed-past-day', '2026-01-03'], ['opening-mismatch', '2026-01-03'], ['unclosed-past-day', '2026-01-04'],
       ]);
-      expect(settlementReads().map(([ref]) => ref.path)).toEqual(['days/2026-10-04/settlements/1']);
+      expect(settlementReads().map(([ref]) => ref.path).sort()).toEqual(['days/2026-01-02/settlements/1', 'days/2026-10-04/settlements/1']);
+    });
+
+    it('keeps the opening-mismatch row of the first day of the window by looking up the closed day before it', async () => {
+      // closed on 2026-06-01 with 100 counted; the window starts on 2026-08-04 and its first day opens with 130
+      setup({
+        days: [closedOf('2026-06-01'), ['2026-08-04', dayDoc({ status: 'closed', openingCash: 130, lastSettlementRevision: 1, totals: totals(1) })]],
+        settlements: settlementsOf(['2026-06-01', '2026-08-04']),
+        heads: [head({ goLiveDate: goLive })],
+      });
+      const snapshot = await reader().read();
+      expect(snapshot.anomalies).toMatchObject([{ kind: 'opening-mismatch', dayId: '2026-08-04', previousClosedDayId: '2026-06-01', difference: 30 }]);
     });
 
     it('does not read a day twice when an open day is inside the window, and skips the second query when the window reaches the go-live date', async () => {

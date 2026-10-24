@@ -157,6 +157,21 @@
       "collection": "days",
       "where": [
         "__name__ >=",
+        "__name__ <"
+      ],
+      "orderBy": [
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.ledgerLookup",
+        "load.ledgerScan",
+        "load.ledgerScanCold"
+      ]
+    },
+    {
+      "collection": "days",
+      "where": [
+        "__name__ >=",
         "__name__ <="
       ],
       "orderBy": [
@@ -187,7 +202,7 @@
       "operations": [
         "command.CloseDay",
         "load.dayCloseState",
-        "load.reportClosedDay"
+        "load.rangeClosedDay"
       ]
     },
     {
@@ -200,7 +215,8 @@
       ],
       "operations": [
         "load.dayCloseState",
-        "load.reportClosedDay"
+        "load.ledgerLookup",
+        "load.rangeClosedDay"
       ]
     },
     {
@@ -213,7 +229,7 @@
         "__name__ asc"
       ],
       "operations": [
-        "load.reportClosedDay"
+        "load.rangeClosedDay"
       ]
     },
     {
@@ -235,8 +251,8 @@
       ],
       "operations": [
         "load.orders",
+        "load.rangeClosedDay",
         "load.report",
-        "load.reportClosedDay",
         "load.reportStudent",
         "load.students"
       ]
@@ -265,8 +281,8 @@
         "__name__ asc"
       ],
       "operations": [
-        "load.report",
-        "load.reportClosedDay"
+        "load.rangeClosedDay",
+        "load.report"
       ]
     },
     {

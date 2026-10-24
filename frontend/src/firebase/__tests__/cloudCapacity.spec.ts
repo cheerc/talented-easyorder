@@ -325,6 +325,10 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
     // that transaction): its slope is the account's own cost plus that of a transaction of the range, which the gate takes into account.
     // The pool of accounts it draws from is created with the base, so that the roster does not grow in it. A load declares the dimensions it depends on;
     // `loadFit` rejects a load that changes with one it does not declare, so the declarations cannot be incomplete.
+    // The go-live date is a few months back, not 2025: the scan looks for the closed day before its window by walking back one
+    // 31-day segment at a time to the go-live date (P16f2 S3), and a shop that closes its days finds one within a segment or two. A
+    // go-live date 660 days back would price a walk through 21 empty segments into every scan.
+    const goLiveDate = shiftDay(today, -124);
     const closedDay = (index: number) => shiftDay(today, -3 - index);
     const openPastDay = (index: number) => shiftDay(today, -60 - index);
     // studentS owns the history that spans other days (the `studentTransaction` dimension); studentT places today's orders (the
@@ -355,7 +359,7 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       createdStudents.push(studentId);
       await create('CreateStudent', () => writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: epoch,
         targets: { studentId }, expectedRevisions: { student: 0 },
-        payload: { studentCode: String(840_000 + studentsMade), displayName: `P16d student ${studentsMade}`, aliases: [], openingBalance: { amount: 0, asOfDate: '2025-01-01', note: '' } } }));
+        payload: { studentCode: String(840_000 + studentsMade), displayName: `P16d student ${studentsMade}`, aliases: [], openingBalance: { amount: 0, asOfDate: goLiveDate, note: '' } } }));
       studentsMade += 1;
     };
     const addVendor = async () => {
@@ -555,7 +559,7 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       // A fresh dataset: the head's go-live date goes back far enough for the fixture's days; today is open with its opening cash.
       await seedEmptySource(env, 'anonymous-p16d-loads');
       epoch = R02_LEASE_EPOCH;
-      await admin(async db => { await setDoc(doc(db, 'system/dataHead'), { goLiveDate: '2025-01-01' }, { merge: true }); });
+      await admin(async db => { await setDoc(doc(db, 'system/dataHead'), { goLiveDate }, { merge: true }); });
       buildRepositories(STEP);
       await setBase();
       await create('EnsureDay today', () => writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: epoch,
@@ -645,7 +649,7 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
     // The closed-day part of a report (P16f2): a report reads, for each closed day of its range, the day, its settlement versions, the
     // post-close entries and the back-fill marker. The summary no longer does (S13), so this is measured on its own: a report of the
     // newest closed day (three versions) less a report of a day with no document, over the same transactions after the range start.
-    it('load.reportClosedDay: what a closed day adds to a report', async () => {
+    it('load.rangeClosedDay: what a closed day adds to a report', async () => {
       await setBase();
       const emptyDay = shiftDay(today, -30);
       const reportOf = (dayId: string) => createCloudReadRepository(app, current).readReport({ range: { kind: 'custom', startDate: dayId, endDate: dayId }, studentId: null, leaseEpoch: epoch });
@@ -656,10 +660,24 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       const withDay = summarize(closed.report);
       const without = summarize(empty.report);
       expect(withDay.reads).toBeGreaterThan(without.reads);
-      fixedOperation('load.reportClosedDay', {
+      fixedOperation('load.rangeClosedDay', {
         ...withDay, reads: withDay.reads - without.reads,
         authDocuments: Math.max(0, withDay.authDocuments - without.authDocuments), authQueries: Math.max(0, withDay.authQueries - without.authQueries),
       });
+    }, 120_000);
+
+    // The lookup of the closed day before the scan window (P16f2 S3): one segment of up to 31 day documents, the latest closed day's
+    // settlement and its post-close entries. The fixture's scans find no closed day before their window, so this is measured on its own
+    // and priced once for each scan, and a full segment is what a shop that closes every day has before the window: the days the
+    // fixture lacks to fill the segment count as one read each.
+    it('load.ledgerLookup: the closed day before the scan window', async () => {
+      await setBase();
+      const { report } = await meter.measure(() => createCloudLedgerReader(app, current).findPreviousClosed(today), app);
+      localStorage.clear();
+      const measured = summarize(report);
+      const segmentDocuments = measured.queries.filter(query => query.collection === 'days').reduce((sum, query) => sum + query.documents, 0);
+      expect(segmentDocuments).toBeGreaterThan(0);
+      fixedOperation('load.ledgerLookup', { ...measured, reads: measured.reads + Math.max(0, 31 - segmentDocuments) });
     }, 120_000);
   });
 

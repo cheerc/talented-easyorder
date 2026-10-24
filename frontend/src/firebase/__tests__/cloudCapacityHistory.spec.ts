@@ -122,14 +122,15 @@ describeWithEmulator('P16e history scale: the table against the full size', () =
       menuRevision: null, otherItemName: 'x', note }), 'CreateOrder');
   };
   /** One run of a load at production page sizes: client reads and authorization calls. */
-  const measure = async (name: string, units: Record<string, number>, run: () => Promise<unknown>, only = true) => {
+  const measure = async (name: string, units: Record<string, number>, run: () => Promise<unknown>, only = true, alsoPriced: string[] = []) => {
     meter.start(only ? app : undefined);
     await run();
     const report = meter.stop();
     localStorage.clear();
     const auth = readAuthorizationCalls(report.reads);
     const measured = { reads: report.billedReads, authorization: auth.documents + auth.queries };
-    const model = priced(name, units);
+    const parts = [priced(name, units), ...alsoPriced.map(other => priced(other, {}))];
+    const model = { reads: parts.reduce((sum, part) => sum + part.reads, 0), authorization: parts.reduce((sum, part) => sum + part.authorization, 0) };
     const byKey: Record<string, number> = {};
     for (const event of report.reads) byKey[`${event.form} ${event.key}`] = (byKey[`${event.form} ${event.key}`] ?? 0) + event.billed;
     results.push({ load: name, units, measured, model, byKey });
@@ -188,10 +189,10 @@ describeWithEmulator('P16e history scale: the table against the full size', () =
     // the first scan of a page that has just started (a Firestore instance of its own: nothing cached), then the same page again
     // P16f2 S3: the scan reads the last 62 days and the days still open, so of the 730 closed days it counts the 62 of the window
     const scanned = Math.min(closedDays, LEDGER_WINDOW_DAYS);
-    await measure('load.ledgerScanCold', { closedDay: scanned, openDay: unclosed }, () => createCloudLedgerReader(dbFor(OP), current).read(), false);
+    await measure('load.ledgerScanCold', { closedDay: scanned, openDay: unclosed }, () => createCloudLedgerReader(dbFor(OP), current).read(), false, ['load.ledgerLookup']);
     const warm = createCloudLedgerReader(app, current);
     await warm.read();
-    await measure('load.ledgerScan', { closedDay: scanned, openDay: unclosed }, () => warm.read());
+    await measure('load.ledgerScan', { closedDay: scanned, openDay: unclosed }, () => warm.read(), true, ['load.ledgerLookup']);
     // none of this fixture's days has a menu, so the vendors page scans every closed day here (the worst case the table covers; with
     // a menu in the first 32-day window the gate counts 32)
     await measure('load.dayVendors', { vendor: 1, closedDay: closedDays, openDay: unclosed }, () => createCloudDayVendorRepository(app, current).loadSnapshot());

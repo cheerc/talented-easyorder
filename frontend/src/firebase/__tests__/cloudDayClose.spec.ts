@@ -957,14 +957,25 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     });
   }
 
-  it('P11c2a.1: the anomaly scan reads every business day in pages, beyond 400, and reports an anomaly found late', async () => {
+  it('P11c2a.1: the anomaly scan reads the recent window in pages plus the unclosed days before it, and reports anomalies found in both', async () => {
     const goLive = shiftDate(today, -500);
-    await fillQuietDays(goLive, 1, 450); // plus today's document: 451 documents, three pages of 200
+    await fillQuietDays(goLive, 1, 150); // plus today's document: 62 days of the window and 88 older unclosed days (under the 200 cap)
     const lateAnomaly = shiftDate(today, -30);
+    const oldAnomaly = shiftDate(today, -120);
     await seedPastDay(lateAnomaly, { openingCash: 80, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    await seedPastDay(oldAnomaly, { openingCash: 70, openedBy: operatorA.uid, openedAt: serverTimestamp() });
     const snapshot = await repository().readLedger();
     expect(snapshot.goLiveDate).toBe(goLive);
-    expect(snapshot.anomalies).toEqual([{ kind: 'unclosed-past-day', dayId: lateAnomaly, status: 'open', openingCash: 80, activeTransactionCount: 4 }]);
+    expect(snapshot.anomalies).toHaveLength(2);
+    expect(snapshot.anomalies).toEqual(expect.arrayContaining([
+      { kind: 'unclosed-past-day', dayId: lateAnomaly, status: 'open', openingCash: 80, activeTransactionCount: 4 },
+      { kind: 'unclosed-past-day', dayId: oldAnomaly, status: 'open', openingCash: 70, activeTransactionCount: 4 },
+    ]));
+  });
+
+  it('P11c2a.1b: more than 200 unclosed days before the window is INCOMPLETE_SNAPSHOT instead of a silent partial list', async () => {
+    await fillQuietDays(shiftDate(today, -500), 1, 300); // 238 unclosed days before the 62-day window
+    await expect(repository().readLedger()).rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT' });
   });
 
   it('P11c2a.2: the opening form lookup and the SetOpeningCash writer find the previous closed day beyond 400 days back', async () => {

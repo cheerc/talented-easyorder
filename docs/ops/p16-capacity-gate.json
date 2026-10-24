@@ -25,8 +25,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 33877,
-      "deduped": 31517,
+      "conservative": 36138,
+      "deduped": 33778,
       "limit": 25000,
       "verdict": "FAIL",
       "passedBy": null
@@ -63,6 +63,11 @@
         "reads": 3248
       },
       {
+        "operation": "load.rangeClosedDay",
+        "perDay": 59.8,
+        "reads": 2452
+      },
+      {
         "operation": "load.orders",
         "perDay": 6,
         "reads": 2048
@@ -86,11 +91,6 @@
         "operation": "load.auditRange",
         "perDay": 2,
         "reads": 997
-      },
-      {
-        "operation": "load.backupExport",
-        "perDay": 1,
-        "reads": 812
       }
     ],
     "storage": {
@@ -127,8 +127,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 22232,
-      "deduped": 21060,
+      "conservative": 23508,
+      "deduped": 22336,
       "limit": 25000,
       "verdict": "PASS",
       "passedBy": "conservative"
@@ -175,6 +175,11 @@
         "reads": 1500
       },
       {
+        "operation": "load.rangeClosedDay",
+        "perDay": 35.8,
+        "reads": 1468
+      },
+      {
         "operation": "load.students",
         "perDay": 6,
         "reads": 1272
@@ -188,11 +193,6 @@
         "operation": "load.auditRange",
         "perDay": 2,
         "reads": 783
-      },
-      {
-        "operation": "load.dayVendors",
-        "perDay": 7,
-        "reads": 626
       }
     ],
     "storage": {
@@ -229,8 +229,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 20230,
-      "deduped": 19057,
+      "conservative": 21506,
+      "deduped": 20333,
       "limit": 25000,
       "verdict": "PASS",
       "passedBy": "conservative"
@@ -272,6 +272,11 @@
         "reads": 1500
       },
       {
+        "operation": "load.rangeClosedDay",
+        "perDay": 35.8,
+        "reads": 1468
+      },
+      {
         "operation": "lease.listenerSnapshot",
         "perDay": 600,
         "reads": 1200
@@ -290,11 +295,6 @@
         "operation": "load.dayVendors",
         "perDay": 7,
         "reads": 626
-      },
-      {
-        "operation": "load.ledgerScanCold",
-        "perDay": 2,
-        "reads": 587
       }
     ],
     "storage": {
@@ -331,8 +331,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 39969,
-      "deduped": 37609,
+      "conservative": 42229,
+      "deduped": 39869,
       "limit": 25000,
       "verdict": "FAIL",
       "passedBy": null
@@ -379,6 +379,11 @@
         "reads": 3090
       },
       {
+        "operation": "load.rangeClosedDay",
+        "perDay": 59.8,
+        "reads": 2452
+      },
+      {
         "operation": "load.auditRange",
         "perDay": 2,
         "reads": 1639
@@ -392,11 +397,6 @@
         "operation": "lease.listenerSnapshot",
         "perDay": 600,
         "reads": 1200
-      },
-      {
-        "operation": "load.backupExport",
-        "perDay": 1,
-        "reads": 812
       }
     ],
     "storage": {
@@ -433,8 +433,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 38593,
-      "deduped": 36581,
+      "conservative": 40854,
+      "deduped": 38842,
       "limit": 25000,
       "verdict": "FAIL",
       "passedBy": null
@@ -466,6 +466,11 @@
         "reads": 3667
       },
       {
+        "operation": "load.rangeClosedDay",
+        "perDay": 59.8,
+        "reads": 2452
+      },
+      {
         "operation": "load.orders",
         "perDay": 6,
         "reads": 2048
@@ -494,11 +499,6 @@
         "operation": "load.backupExport",
         "perDay": 1,
         "reads": 812
-      },
-      {
-        "operation": "load.auditDay",
-        "perDay": 3,
-        "reads": 730
       }
     ]
   },
@@ -522,15 +522,15 @@
   "whatIf": [
     {
       "label": "the design ceiling as measured",
-      "reads": 33877
+      "reads": 36138
     },
     {
       "label": "the orders page reloads fully after every command, as before P16f2 S4",
-      "reads": 96073
+      "reads": 98334
     },
     {
       "label": "the history loads read each transaction or command once instead of twice (needs CheerC: the second read is an integrity check)",
-      "reads": 31037
+      "reads": 33298
     }
   ],
   "floor": {

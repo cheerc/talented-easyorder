@@ -38,6 +38,12 @@ export const THRESHOLDS = {
 export const LEDGER_WINDOW_DAYS = 62;
 
 /**
+ * The ranges of an account query, by the page's range choice: it opens on today (the default), the week and the month (31 days) are the
+ * other choices. ASSUMPTION: 60 % of the queries are of today, 30 % of a week and 10 % of a month; P18 replaces it with CheerC's use.
+ */
+export const ACCOUNT_RANGE_MIX: Array<[days: number, share: number]> = [[1, 0.6], [7, 0.3], [31, 0.1]];
+
+/**
  * The first window of days the vendors page reads to find the latest earlier menu (`INITIAL_SOURCE_WINDOW_DAYS` in
  * cloudDayVendorRepository.ts; `capacityGate.test.ts` checks they agree). Every business day gets a menu, so the latest one is
  * found in it; the fixture's closed days have none, which is why the fitted cost grows with them, one read each, up to this window
@@ -134,9 +140,10 @@ function commandLines(a: Assumptions): WorkloadLine[] {
  *   and the roster, no account history (P16f1), and for each closed day of its range the day, its versions and entries;
  * - audits: 3 of a day and 2 of a student (newest page of 100) on demand;
  * - account queries (10 at the ceiling of 200 commands, 5 on a typical day): the account history (with the days of the range, S11)
- *   and the student's range audit, which read the student's transactions and commands from the range start to today: the range is
- *   the 31 days at most that the page allows, so a month of that student's traffic; the account page is opened twice a day (a
- *   summary of one day and the roster, S11);
+ *   and the student's range audit, which read the student's transactions and commands from the range start to today (priced for the
+ *   31 days at most that the page allows, a month of that student's traffic, whichever range was asked for); the days of the range
+ *   are read like a report's, so each closed day is `load.rangeClosedDay`, by the range mix of `ACCOUNT_RANGE_MIX`; the account
+ *   page is opened twice a day (a summary of one day and the roster, S11);
  * - the incremental backup export of the day's commands, once.
  */
 function loadLines(a: Assumptions): WorkloadLine[] {
@@ -180,6 +187,8 @@ function loadLines(a: Assumptions): WorkloadLine[] {
   // the first scan of a page that has just started reads every closed day's settlement of the window; the later ones only what changed
   load('load.ledgerScanCold', a.pages, { closedDay: scannedClosedDays, openDay: a.unclosedDays });
   load('load.ledgerScan', 3, { closedDay: scannedClosedDays, openDay: a.unclosedDays });
+  // every scan also looks up the closed day before its window (a segment of day documents, measured as one operation)
+  load('load.ledgerLookup', a.pages + 3);
   load('load.dayVendors', 4 + 3, { vendor: a.vendors, closedDay: menuScanDays, openDay: a.unclosedDays });
   load('load.dayCloseOverview', 3, { openDay: a.unclosedDays });
   load('load.dayCloseState', 3, { settlementVersion: 2 });
@@ -190,7 +199,8 @@ function loadLines(a: Assumptions): WorkloadLine[] {
   const reportQueries: Array<[number, number]> = [[1, 6], [7, 1], [30, 0.2]];
   for (const [days, perDay] of reportQueries) load('load.report', perDay, reportUnits(days));
   // the closed days of the ranges that a report reads (today's is open): their versions, post-close entries and back-fill markers
-  load('load.reportClosedDay', reportQueries.reduce((sum, [days, perDay]) => sum + perDay * (days - 1), 0));
+  // (a day without a document costs less and is counted as closed: conservative)
+  const reportClosedDays = reportQueries.reduce((sum, [days, perDay]) => sum + perDay * (days - 1), 0);
   load('load.accessEvents', reportQueries.reduce((sum, [, perDay]) => sum + perDay, 0), { accessEvent: accessEventsPerDay * 7 });
   // CSV and print: the report on the screen is reused, the audit of the range (today's) is read when asked for
   load('load.auditRange', 2, { student: a.roster, vendor: a.vendors, dayTransaction: shape.transactions, dayCommand: shape.otherCommands });
@@ -200,6 +210,10 @@ function loadLines(a: Assumptions): WorkloadLine[] {
   const accountPageOpens = 2;
   load('load.summary', accountPageOpens, { closedDay: 1, settlementVersion: 0 });
   load('load.students', accountPageOpens, { student: a.roster });
+  // the account history reads the days of its range like a report does (S11), so the range the page was asked for decides how many
+  // closed days it adds: the page opens on today, and the other choices are the week and the month
+  const accountClosedDays = ACCOUNT_RANGE_MIX.reduce((sum, [days, share]) => sum + accountQueries * share * (days - 1), 0);
+  load('load.rangeClosedDay', reportClosedDays + accountClosedDays);
   load('load.accountHistory', accountQueries, {
     student: a.roster, dayTransaction: shape.transactions, studentTransaction: studentTransactions, studentRangeTransaction: studentRangeTransactions,
   });

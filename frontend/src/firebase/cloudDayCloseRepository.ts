@@ -796,6 +796,15 @@ export function createCloudLedgerReader(
           if (snapshot.id < windowStart && snapshot.id >= before.goLiveDate) await addDay(snapshot);
         }
         assertHeadUnchanged(before, await readHeadSeq(db), '帳務異常');
+        // the closed day just before the window, so that the first opened day of the window is still compared with it (one lookup)
+        const lookup = await findPreviousClosed(windowStart);
+        assertHeadUnchanged(before, { seq: lookup.seq, datasetId: before.datasetId }, '帳務異常');
+        if (lookup.previous && !days.some(day => day.dayId === lookup.previous!.dayId)) {
+          days.unshift({
+            dayId: lookup.previous.dayId, status: 'closed', openingCash: null, activeTransactionCount: 0,
+            countedCash: lookup.previous.countedCash, postCloseNet: lookup.previous.postCloseNet ?? 0,
+          });
+        }
       }
       return {
         today,

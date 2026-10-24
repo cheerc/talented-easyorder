@@ -80,6 +80,15 @@ describe('P16e capacity gate: the accounts a report reads', () => {
     expect(audit.units).toEqual({ studentTransaction: 31 });
     expect(workloadOf(TYPICAL).find(line => line.operation === 'load.accountHistory')!.perDay).toBe(5);
   });
+
+  it('prices the closed days of an account query by the range mix: 30 % a week and 10 % a month (today has none)', () => {
+    const closed = (assumptions: typeof DESIGN) => workloadOf(assumptions).find(line => line.operation === 'load.rangeClosedDay')!.perDay;
+    // the reports: 1 × 6 days (the week) + 0.2 × 29 days (the month)
+    const reports = 6 + 0.2 * 29;
+    // 10 queries × (0.3 × 6 + 0.1 × 30) = 48 closed days at the ceiling; 24 on a typical day
+    expect(closed(DESIGN)).toBeCloseTo(reports + 48, 9);
+    expect(closed(TYPICAL)).toBeCloseTo(reports + 24, 9);
+  });
 });
 
 describe('P16f2 S9: the usage the workload states', () => {
