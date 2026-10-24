@@ -147,6 +147,8 @@ export interface FirestoreRest {
   groupHasDocuments(collectionId: string): Promise<boolean>;
   /** Every document of a collection path such as `students` or `days/2026-10-01/settlements`, across pages. */
   listDocuments(collection: string): Promise<RestDocument[]>;
+  /** Every document of every collection with this ID, at any depth (a collection group), across pages. */
+  listGroupDocuments(collectionId: string): Promise<RestDocument[]>;
   /** Only the document IDs of a collection, across pages. */
   listDocumentIds(collection: string): Promise<string[]>;
   /** One document with its update time (for a conditional write), or null when it does not exist. */
@@ -217,6 +219,9 @@ export function createFirestoreRest(target: RestTarget, fetchImpl: FetchLike): F
         pageToken = answer.nextPageToken ?? '';
       } while (pageToken);
       return found;
+    },
+    async listGroupDocuments() {
+      throw new RestError('尚未提供', 0);
     },
     async listDocumentIds(collection) {
       const ids: string[] = [];

@@ -750,6 +750,16 @@ describeWithEmulator('P15c verify and finalize on a restored project', { timeout
     expect(await targetDoc('system/accessLease')).toMatchObject({ holderUid: null, epoch: R02_LEASE_EPOCH });
   });
 
+  it('C12: verify counts a settlements document whose day document does not exist (an orphan) as extra and exits 2', async () => {
+    restoreTarget();
+    await onTarget(async db => { await setDoc(doc(db, 'days/2099-01-01/settlements/1'), { note: 'orphan' }); });
+    const out = reportPath('c12.json');
+    expect(runCli(verifyArgs(out)).status).toBe(2);
+    const verified = verifyReport(out);
+    expect(verified.ok).toBe(false);
+    expect(verified.collections.settlements).toMatchObject({ extra: 1, missing: 0, different: 0 });
+  });
+
   it('C10: finalize a second time exits 2 (maintenance is already cleared) and changes nothing', async () => {
     restoreTarget();
     expect(runCli(finalizeArgs(['--execute'])).status).toBe(0);
