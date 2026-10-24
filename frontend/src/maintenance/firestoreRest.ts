@@ -147,11 +147,15 @@ export interface FirestoreRest {
   groupHasDocuments(collectionId: string): Promise<boolean>;
   /** Every document of a collection path such as `students` or `days/2026-10-01/settlements`, across pages. */
   listDocuments(collection: string): Promise<RestDocument[]>;
+  /** Every document of every collection with this ID, at any depth (a collection group), across pages. */
+  listGroupDocuments(collectionId: string): Promise<RestDocument[]>;
   /** Only the document IDs of a collection, across pages. */
   listDocumentIds(collection: string): Promise<string[]>;
   /** One document with its update time (for a conditional write), or null when it does not exist. */
   getWithUpdateTime(path: string): Promise<{ data: Record<string, unknown>; updateTime: string } | null>;
 }
+
+const GROUP_PAGE_SIZE = 300;
 
 interface ListAnswer { documents?: Array<{ name: string; fields?: Record<string, RestValue> }>; nextPageToken?: string }
 
@@ -217,6 +221,25 @@ export function createFirestoreRest(target: RestTarget, fetchImpl: FetchLike): F
         pageToken = answer.nextPageToken ?? '';
       } while (pageToken);
       return found;
+    },
+    async listGroupDocuments(collectionId) {
+      // runQuery has no page token: order by name and continue after the last name until a short page.
+      const found: RestDocument[] = [];
+      let after: string | null = null;
+      for (;;) {
+        const answer = await call('POST', `${api}:runQuery`, {
+          structuredQuery: {
+            from: [{ collectionId, allDescendants: true }],
+            orderBy: [{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }],
+            limit: GROUP_PAGE_SIZE,
+            ...(after === null ? {} : { startAt: { values: [{ referenceValue: after }], before: false } }),
+          },
+        }) as Array<{ document?: { name: string; fields?: Record<string, RestValue> } }>;
+        const page = answer.flatMap(entry => (entry.document ? [entry.document] : []));
+        for (const item of page) found.push({ path: item.name.slice(root.length + 1), data: decodeFields(item.fields ?? {}) });
+        if (page.length < GROUP_PAGE_SIZE) return found;
+        after = page[page.length - 1]!.name;
+      }
     },
     async listDocumentIds(collection) {
       const ids: string[] = [];

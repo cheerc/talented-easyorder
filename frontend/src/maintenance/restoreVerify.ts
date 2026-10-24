@@ -15,11 +15,12 @@ import { RESTORE_REPORT_FORMAT } from './restoreReport';
 const CATEGORIES = ['commands', 'days', 'settlements', 'students', 'vendors', 'transactions', 'backfillDays', 'postCloseEntries', 'studentCodes'] as const;
 type Category = typeof CATEGORIES[number];
 
-/** The top-level collections that are listed; settlements are listed per day. */
+/** The top-level collections that are listed; settlements are listed as a collection group, so orphans are found too. */
 const TOP_LEVEL = ['commands', 'days', 'students', 'studentCodes', 'transactions', 'vendors', 'backfillDays', 'postCloseEntries'] as const;
 
 function categoryOf(path: string): Category | null {
-  if (/^days\/[^/]+\/settlements\/[^/]+$/.test(path)) return 'settlements';
+  // Any `*/*/settlements/*` counts, so a document under a day that has no document of its own is still seen (and is extra).
+  if (/^[^/]+\/[^/]+\/settlements\/[^/]+$/.test(path)) return 'settlements';
   const [top, id, rest] = path.split('/');
   if (id !== undefined && rest === undefined && (TOP_LEVEL as readonly string[]).includes(top!)) return top as Category;
   return null;
@@ -71,10 +72,7 @@ export async function verifyTarget(
   for (const name of TOP_LEVEL) {
     for (const item of await rest.listDocuments(name)) actual.set(item.path, item.data);
   }
-  for (const path of [...actual.keys()]) {
-    if (!/^days\/[^/]+$/.test(path)) continue;
-    for (const item of await rest.listDocuments(`${path}/settlements`)) actual.set(item.path, item.data);
-  }
+  for (const item of await rest.listGroupDocuments('settlements')) actual.set(item.path, item.data);
   const head = await readTargetHead(rest);
   const reads = actual.size + 1;
   const readMs = clock() - startedAt;
@@ -140,7 +138,7 @@ export async function verifyTarget(
 
   const versions = new Map<string, number[]>();
   for (const path of actual.keys()) {
-    const match = /^days\/([^/]+)\/settlements\/([^/]+)$/.exec(path);
+    const match = /^([^/]+\/[^/]+)\/settlements\/([^/]+)$/.exec(path);
     if (match) versions.set(match[1]!, [...(versions.get(match[1]!) ?? []), Number(match[2])]);
   }
   const settlementsContiguous = [...versions.values()].every(numbers =>

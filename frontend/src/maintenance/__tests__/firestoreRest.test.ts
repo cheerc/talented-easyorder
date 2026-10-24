@@ -181,6 +181,24 @@ describe('P15b REST client (fake fetch)', () => {
     expect(calls[0]!.url).toContain('mask.fieldPaths=__name__');
   });
 
+  it('P15d: lists every document of a collection group at any depth, continuing after the last name until a short page', async () => {
+    const full = Array.from({ length: 300 }, (_, index) => ({ document: { name: `${root}/days/d${String(index).padStart(3, '0')}/settlements/1`, fields: { n: { integerValue: String(index) } } } }));
+    const answers: unknown[] = [
+      full,
+      [{ document: { name: `${root}/days/z/settlements/1`, fields: {} } }, { readTime: '2026-10-24T00:00:00Z' }],
+    ];
+    const { calls, fetchImpl } = recorder(() => reply(200, answers.shift()));
+    const listed = await createFirestoreRest(emulatorTarget(), fetchImpl).listGroupDocuments('settlements');
+    expect(listed).toHaveLength(301);
+    expect(listed[0]).toEqual({ path: 'days/d000/settlements/1', data: { n: 0 } });
+    expect(listed[300]).toEqual({ path: 'days/z/settlements/1', data: {} });
+    expect(calls).toHaveLength(2);
+    const first = (calls[0]!.body as { structuredQuery: Record<string, unknown> }).structuredQuery;
+    expect(first).toMatchObject({ from: [{ collectionId: 'settlements', allDescendants: true }], orderBy: [{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }], limit: 300 });
+    const second = (calls[1]!.body as { structuredQuery: { startAt: unknown } }).structuredQuery;
+    expect(second.startAt).toEqual({ values: [{ referenceValue: `${root}/days/d299/settlements/1` }], before: false });
+  });
+
   it('P15c: reads one document with its update time, or null when it is missing', async () => {
     const answers: unknown[] = [
       [{ found: { name: `${root}/system/dataHead`, fields: { seq: { integerValue: '3' } }, updateTime: '2026-10-24T00:00:00.123456Z' } }],

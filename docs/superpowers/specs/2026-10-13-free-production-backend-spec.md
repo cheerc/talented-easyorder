@@ -248,6 +248,8 @@ prototype 保留訓練用途。首次切換可下載舊練習快照作本機參�
 
 禁止在正常 F3 提供任意覆蓋正式資料。P15 提供本機 Node 維護 CLI，維護者用 ADC／短期憑證，先在 emulator 還原及重算驗證；prod script 預設 dry-run，需要顯式目標專案、datasetId 與人工輸入確認，不內嵌 service account key。
 
+P15 的 CLI 是 `node scripts/easyorder-data-maintenance.mjs <子命令>`，沒有新增 npm 依賴（Node ≥ 22.18 原生載入 TypeScript），子命令依序為 `validate`（離線驗包、解密、重播並輸出匿名對帳）、`init`（在全新專案建立 `maintenance=true`、seq 0 的 `system/dataHead`）、`restore`／`resume`（分批、可續跑載入）、`verify`（唯讀逐文件讀回對帳）、`finalize`（重建 operators 與空租約，最後才解除維護）。目標由環境決定：有 `FIRESTORE_EMULATOR_HOST` 時只寫 Emulator 且專案必須以 `demo-` 開頭；沒有時經 Firestore REST v1 寫入 Google Firestore，憑證是環境變數 `EASYORDER_ACCESS_TOKEN`（`gcloud auth print-access-token` 的短期 token，專案不得以 `demo-` 開頭），`init`／`restore`／`resume`／`finalize` 的 `--execute` 必須在終端機輸入確認字串。前置條件：目標已 `init` 為維護中且沒有任何業務文件，否則 fail closed（同專案清空後原地復原 CLI 不支援）。每批以 `exists=false` 提交，批次內容與順序由備份鏈決定（命令、投影文件、`studentCodes`，`dataHead` 的 seq／`lastCommandId` 最後單獨一批），所以同一份文件不會被寫兩次；`--max-writes`（預設每日 18,000）在批界停下並以結束碼 75 離開。`finalize` 的空租約 epoch 為「既有租約、`accessEvents` 最大編號、命令鏈最大 `leaseEpoch`」三者的最大值（§4.2 的下限），operators 與租約先寫、`maintenance=false` 最後以 `updateTime` 前置條件寫入。逐步指令、預期輸出與演練記錄見 [還原 runbook](../../ops/firebase-restore-runbook.md)；獨立 Spark 空專案演練在 CheerC 回報匿名結果前仍是 UNVERIFIED。
+
 復原流程：保留現況備份 → 維護模式停止業務 → 空的隔離 Spark recovery project（或已核對清空的停機原專案）→ 驗包／解密／重播到指定H → 分批可續跑載入 → 比對所有帳戶餘額、每日 totals、結帳版次、command連續性及文件數 → 重新建立 operators與空租約 → 重新登入 smoke test → 切換前端配置／網域。Auth UID可因新專案不同，重新核准白名單；歷史actor UID/email快照保留來源，不改成新UID。
 
 復原需估算寫入數與當日20,000寫額度，超出就分日還原或先在本機查帳／紙本營運；不得為達RTO偷偷升級Blaze。未能於演練容量達4小時，runbook 必須記實際 RTO，P18 不宣稱達到目標。正常使用者無復原 IAM 權，不因等權操作員而可繞过 Rules。
