@@ -10,14 +10,15 @@ import {
 } from '@firebase/rules-unit-testing';
 import type { User } from 'firebase/auth';
 import {
-  Timestamp,
   collection,
   doc,
   getDoc,
   getDocs,
+  limit,
   query,
   serverTimestamp,
   setDoc,
+  Timestamp,
   updateDoc,
   where,
   type Firestore,
@@ -193,7 +194,7 @@ describeWithEmulator('P08 cloud order repository reads, retries and transactions
   it('P08.R1: only the current lease holder can list transactions; non-holders, strangers, expired leases and writes are denied', async () => {
     const result = await repository(operatorA).createOrder(await orderInput(studentA));
     expect(result.ok).toBe(true);
-    const todayQuery = (db: Firestore) => getDocs(query(collection(db, 'transactions'), where('businessDate', '==', today)));
+    const todayQuery = (db: Firestore) => getDocs(query(collection(db, 'transactions'), where('businessDate', '==', today), limit(500)));
 
     await assertSucceeds(todayQuery(authedDb(operatorA)));
     await assertFails(todayQuery(authedDb(operatorB)));

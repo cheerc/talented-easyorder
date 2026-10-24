@@ -102,7 +102,7 @@ const ctx: Record<string, string> = { operator: OP.uid, today, gap, alpha, vendo
 interface KindResult { step: string; writes: string[]; attempts: Partial<Record<MutationId, number>>; commandBytes: number }
 const results = new Map<BusinessCommandKind, KindResult>();
 const maxCommandBytes = new Map<string, number>();
-const collectionResults = new Map<string, { reads: number; lists: number; bareWrites: number }>();
+const collectionResults = new Map<string, { reads: number; lists: number; limitChecks: number; bareWrites: number }>();
 
 function utf8Bytes(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value, (_key, item) => (item instanceof Timestamp ? item.toMillis() : item))).length;
@@ -680,7 +680,7 @@ describeWithEmulator('P16b Rules matrix on the real firestore.rules', () => {
     const probe = async (entry: CollectionMatrixEntry) => {
       const docPath = await resolve(entry.doc);
       const listPath = await resolve(entry.listPath);
-      const tally = { reads: 0, lists: 0, bareWrites: 0 };
+      const tally = { reads: 0, lists: 0, limitChecks: 0, bareWrites: 0 };
       await restoreBase();
       for (const who of identities) {
         const getAttempt = getDoc(doc(who.db(), docPath));
@@ -689,6 +689,13 @@ describeWithEmulator('P16b Rules matrix on the real firestore.rules', () => {
         const listAttempt = getDocs(query(collection(who.db(), listPath), limit(5)));
         if (entry.listable && mayRead(entry.readers, who)) await assertSucceeds(listAttempt); else await assertDenied(listAttempt, `${entry.match} list as ${who.name}`);
         tally.lists += 1;
+        if (entry.listable && mayRead(entry.readers, who)) {
+          // P16c (R7): the identity that may list must still bring a limit of at most 500.
+          await assertDenied(getDocs(collection(who.db(), listPath)), `${entry.match} list without a limit as ${who.name}`);
+          await assertDenied(getDocs(query(collection(who.db(), listPath), limit(501))), `${entry.match} list with limit 501 as ${who.name}`);
+          await assertSucceeds(getDocs(query(collection(who.db(), listPath), limit(500))));
+          tally.limitChecks += 3;
+        }
       }
       if (entry.readers === 'holder') {
         // The holder's own reads stop when the lease is not renewed.

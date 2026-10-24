@@ -7,13 +7,15 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
+  limit,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
-  deleteDoc,
   writeBatch,
   type Firestore,
 } from 'firebase/firestore';
@@ -645,10 +647,10 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
       const unauthenticated = env.unauthenticatedContext().firestore();
 
       await assertSucceeds(getDoc(doc(dbA, 'accessEvents/1')));
-      await assertSucceeds(getDocs(collection(dbA, 'accessEvents')));
+      await assertSucceeds(getDocs(query(collection(dbA, 'accessEvents'), limit(500))));
       for (const db of [dbInactive, dbPassword, unauthenticated]) {
         await assertFails(getDoc(doc(db, 'accessEvents/1')));
-        await assertFails(getDocs(collection(db, 'accessEvents')));
+        await assertFails(getDocs(query(collection(db, 'accessEvents'), limit(500))));
       }
     });
 

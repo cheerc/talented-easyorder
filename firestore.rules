@@ -15,6 +15,12 @@ service cloud.firestore {
         && operator.active == true;
     }
 
+    // P16c: a list query must say how many documents it wants, and at most 500 (the largest bounded read in the
+    // repositories is a 200-document page; the full-snapshot scans stop at 500 documents on their own).
+    function listWithinLimit() {
+      return request.query.limit != null && request.query.limit <= 500;
+    }
+
     function currentHolder() {
       let lease = get(/databases/$(database)/documents/system/accessLease).data;
       return approvedOperator()
@@ -2237,7 +2243,8 @@ service cloud.firestore {
     // `get` is the lease before the commit and `getAfter` the lease after it, so a record can only exist next to
     // exactly one epoch step; the id is that new epoch, which also makes a replayed or duplicated record impossible.
     match /accessEvents/{eventId} {
-      allow get, list: if approvedOperator();
+      allow get: if approvedOperator();
+      allow list: if listWithinLimit() && approvedOperator();
       allow update, delete: if false;
       allow create: if accessEventCreate(eventId, request.resource.data);
     }
@@ -2252,7 +2259,7 @@ service cloud.firestore {
 
     match /commands/{commandId} {
       allow get: if currentHolder();
-      allow list: if currentHolder();
+      allow list: if listWithinLimit() && currentHolder();
       allow update, delete: if false;
       allow create: if commandId == request.resource.data.commandId
         && validCommandCreate(commandId, request.resource.data);
@@ -2260,7 +2267,7 @@ service cloud.firestore {
 
     match /days/{dayId} {
       allow get: if currentHolder();
-      allow list: if currentHolder();
+      allow list: if listWithinLimit() && currentHolder();
       allow delete: if false;
       allow create: if request.resource.data.lastCommandId is string
         && ensureDayCommand(request.resource.data.lastCommandId, dayId, request.resource.data)
@@ -2284,7 +2291,8 @@ service cloud.firestore {
 
     // P11 immutable settlement versions: created once by CloseDay／ReopenDay, never changed or deleted.
     match /days/{dayId}/settlements/{revision} {
-      allow get, list: if currentHolder();
+      allow get: if currentHolder();
+      allow list: if listWithinLimit() && currentHolder();
       allow update, delete: if false;
       allow create: if request.resource.data.lastCommandId is string
         && settlementCreateCommand(dayId, revision, request.resource.data);
@@ -2292,14 +2300,16 @@ service cloud.firestore {
 
     // P11c2a immutable backfill marker: created once by StartBackfill, never changed or deleted.
     match /backfillDays/{dayId} {
-      allow get, list: if currentHolder();
+      allow get: if currentHolder();
+      allow list: if listWithinLimit() && currentHolder();
       allow update, delete: if false;
       allow create: if request.resource.data.commandId is string
         && backfillDayCommand(request.resource.data.commandId, dayId, request.resource.data);
     }
     // P11c4a immutable post-close entries: created once by RecordPostCloseEntry, never changed or deleted.
     match /postCloseEntries/{entryId} {
-      allow get, list: if currentHolder();
+      allow get: if currentHolder();
+      allow list: if listWithinLimit() && currentHolder();
       allow update, delete: if false;
       allow create: if request.resource.data.commandId is string
         && postCloseEntryCommand(request.resource.data.commandId, entryId, request.resource.data);
@@ -2307,7 +2317,8 @@ service cloud.firestore {
     match /students/{studentId} {
       // Query authorization cannot filter by student schema; every returned record is
       // strict-decoded by the server-only repository before any UI state is published.
-      allow get, list: if currentHolder();
+      allow get: if currentHolder();
+      allow list: if listWithinLimit() && currentHolder();
       allow create: if request.resource.data.lastCommandId is string
         && studentCreateCommand(request.resource.data.lastCommandId, studentId, request.resource.data)
         && validStudent(request.resource.data, studentId);
@@ -2325,7 +2336,8 @@ service cloud.firestore {
     }
 
     match /studentCodes/{code} {
-      allow get, list: if currentHolder();
+      allow get: if currentHolder();
+      allow list: if listWithinLimit() && currentHolder();
       allow create: if request.resource.data.lastCommandId is string
         && validStudentCode(code)
         && studentCodeCreateCommand(request.resource.data.lastCommandId, code, request.resource.data);
@@ -2334,7 +2346,8 @@ service cloud.firestore {
     }
 
     match /transactions/{transactionId} {
-      allow get, list: if currentHolder();
+      allow get: if currentHolder();
+      allow list: if listWithinLimit() && currentHolder();
       allow delete: if false;
       // P10a: an existing row changes only through a mutation command; nothing is ever deleted.
       allow update: if request.resource.data.lastCommandId is string
@@ -2345,7 +2358,8 @@ service cloud.firestore {
     }
 
     match /vendors/{vendorId} {
-      allow get, list: if currentHolder();
+      allow get: if currentHolder();
+      allow list: if listWithinLimit() && currentHolder();
       allow create: if request.resource.data.lastCommandId is string
         && vendorCreateCommand(request.resource.data.lastCommandId, vendorId, request.resource.data)
         && validVendor(request.resource.data, vendorId)

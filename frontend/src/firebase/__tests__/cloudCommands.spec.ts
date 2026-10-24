@@ -8,7 +8,6 @@ import {
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import {
-  Timestamp,
   collection,
   deleteDoc,
   disableNetwork,
@@ -16,8 +15,11 @@ import {
   enableNetwork,
   getDoc,
   getDocs,
+  limit,
+  query,
   serverTimestamp,
   setDoc,
+  Timestamp,
   updateDoc,
   writeBatch,
   type Firestore,
@@ -2735,12 +2737,12 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     const db = authedDb(operatorA);
     expect((await getDoc(doc(db, `students/${sid001}`))).exists()).toBe(false);
     expect((await getDoc(doc(db, 'studentCodes/001'))).exists()).toBe(false);
-    expect((await getDocs(collection(db, 'students'))).size).toBe(0);
+    expect((await getDocs(query(collection(db, 'students'), limit(500)))).size).toBe(0);
     expect((await repository(operatorA).commitCommand(studentInput('f8111111-1111-4111-8111-111111111111', sid001, 0, today, 'Synthetic Student', [], '001'))).ok).toBe(true);
-    expect((await getDocs(collection(db, 'students'))).docs.map(snapshot => snapshot.id)).toEqual([sid001]);
+    expect((await getDocs(query(collection(db, 'students'), limit(500)))).docs.map(snapshot => snapshot.id)).toEqual([sid001]);
     expect((await getDoc(doc(db, 'studentCodes/001'))).exists()).toBe(true);
     await expect(repository(operatorB).readCommand('f8111111-1111-4111-8111-111111111111')).rejects.toMatchObject({ code: 'LEASE_LOST' });
-    await expect(getDocs(collection(authedDb(operatorB), 'students'))).rejects.toThrow();
+    await expect(getDocs(query(collection(authedDb(operatorB), 'students'), limit(500)))).rejects.toThrow();
   });
 
   it('P06.12: raw SetStudentStatus accepts a nonempty reason and projects only the requested status', async () => {

@@ -15,6 +15,8 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -607,8 +609,8 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     await assertFails(setDoc(doc(db, `days/${today}/settlements/2`), { ...before.settlements['1'], revision: 2, previousRevision: 1 }));
     expect(await state()).toEqual(before);
     // The settlement history is readable only by the current holder.
-    await assertSucceeds(getDocs(collection(db, `days/${today}/settlements`)));
-    await assertFails(getDocs(collection(authedDb(operatorB), `days/${today}/settlements`)));
+    await assertSucceeds(getDocs(query(collection(db, `days/${today}/settlements`), limit(500))));
+    await assertFails(getDocs(query(collection(authedDb(operatorB), `days/${today}/settlements`), limit(500))));
   });
 
   it('P11.13 (P11b): the overview lists unclosed days up to the lease date and marks past days without business', async () => {
@@ -1614,8 +1616,8 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     // Only the lease holder can read markers.
     await assertSucceeds(getDoc(doc(holder, `backfillDays/${gap}`)));
     await assertFails(getDoc(doc(authedDb(operatorB), `backfillDays/${gap}`)));
-    await assertSucceeds(getDocs(collection(holder, 'backfillDays')));
-    await assertFails(getDocs(collection(authedDb(operatorB), 'backfillDays')));
+    await assertSucceeds(getDocs(query(collection(holder, 'backfillDays'), limit(500))));
+    await assertFails(getDocs(query(collection(authedDb(operatorB), 'backfillDays'), limit(500))));
   });
 
   // ---- P11c3: a back-filled day closes aligned with the next opened day (contract §14) ----
@@ -2229,8 +2231,8 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     expect(await read(`postCloseEntries/${commandId}`)).toEqual(entry);
     await assertSucceeds(getDoc(doc(holder, `postCloseEntries/${commandId}`)));
     await assertFails(getDoc(doc(authedDb(operatorB), `postCloseEntries/${commandId}`)));
-    await assertSucceeds(getDocs(collection(holder, 'postCloseEntries')));
-    await assertFails(getDocs(collection(authedDb(operatorB), 'postCloseEntries')));
+    await assertSucceeds(getDocs(query(collection(holder, 'postCloseEntries'), limit(500))));
+    await assertFails(getDocs(query(collection(authedDb(operatorB), 'postCloseEntries'), limit(500))));
   });
 
   // ---- P11c4a: effective closing cash end to end ----
