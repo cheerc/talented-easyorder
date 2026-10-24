@@ -47,4 +47,18 @@ describe('P16b Rules matrix coverage (R6)', () => {
       expect(['holder', 'approved', 'self', 'none'], entry.match).toContain(entry.readers);
     }
   });
+
+  it('lets no allow statement list a collection without the limit check, except the ones that deny every list (P16c)', () => {
+    const rules = readFileSync(path.resolve(process.cwd(), '../firestore.rules'), 'utf8') as string;
+    const statements = [...rules.matchAll(/allow ([a-z, ]+):\s*if ([^;]+);/g)]
+      .map(found => ({ operations: found[1]!.split(',').map(item => item.trim()), condition: found[2]!.trim() }))
+      .filter(statement => statement.operations.includes('list') || statement.operations.includes('read'));
+    expect(statements.length).toBeGreaterThan(0);
+    for (const statement of statements) {
+      if (statement.condition === 'false') continue;
+      expect(statement.operations, `allow ${statement.operations.join(', ')} must not share its condition with get`).not.toContain('get');
+      expect(statement.operations, statement.condition).not.toContain('read');
+      expect(statement.condition, `allow ${statement.operations.join(', ')}: if ${statement.condition}`).toContain('listWithinLimit()');
+    }
+  });
 });
