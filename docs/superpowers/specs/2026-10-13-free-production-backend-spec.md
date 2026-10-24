@@ -219,7 +219,7 @@ quota exceeded／permission denied／schema mismatch／maintenance 均阻止操�
 - 每個 list 查詢都必須帶 `limit`，且不得超過 500：Rules 的每個 `allow list` 以 `listWithinLimit()`（`request.query.limit != null && request.query.limit <= 500`）拒絕沒帶 limit 或超過 500 的查詢（P16c）。完整讀取靠 cursor 分頁，頁大小上限 200；一次讀完的集合（日結版本 200 個、未關帳日 200 天）以 `limit(上限 + 1)` 探測並在超出時 fail closed，`documentId in` 分塊以 `limit(分塊大小)`，不得改成無 limit 讀取。單一文件 `get` 與文件 listener 不受影響。
 - F2 週從台北週一開始，月為曆月；加總最多31個 day heads。原始明細與 CSV 分頁完整讀取，不能只匯出第一頁。
 - F5 account history 按 studentId＋businessDate＋createdAt＋transactionId 分頁；計算 afterBalance 需讀取期初起至所需日期的前綴。快取繫於 student.revision，變動即失效。
-- indexes 明列：transactions `(businessDate,createdAt,transactionId)`、`(studentId,businessDate,createdAt,transactionId)`；commands `(businessDate,seq)`、`(studentId,seq)` 供稽核，`(businessDate,committedAt,__name__)` 限定全帳戶 null-date 記錄日查詢，seq 單欄供備份。command 的 before/after、大字串與不查詢快照停用索引，避免索引膨脹；studentId/businessDate 作可為 null 的頂層查詢欄。
+- indexes 明列：transactions `(businessDate,createdAt,transactionId)`、`(studentId,businessDate,createdAt,transactionId)`；commands `(businessDate,seq)`、`(studentId,seq)` 供稽核，`(businessDate,committedAt,__name__)` 限定全帳戶 null-date 記錄日查詢，seq 單欄供備份。command 的 before/after、大字串與不查詢快照停用索引，避免索引膨脹；studentId/businessDate 作可為 null 的頂層查詢欄。P16e 起：commands 與 transactions 沒有任何查詢用到的欄位一律停用索引，composite index 只留 6 個被實際查詢形狀用到的（`indexCoverage.test.ts` 強制）。
 - 讀取多頁時以 dataHead.seq 前後相同驗證一致；變動則標示資料已更新並重新載入，備份改用 immutable prefix，不依活頁快照。長頁不持有 Firestore transaction。
 
 ## 9. 備份、復原與初次上線資料

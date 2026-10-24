@@ -54,34 +54,40 @@
         { "fieldPath": "createdAt", "order": "ASCENDING" },
         { "fieldPath": "__name__", "order": "ASCENDING" }
       ]
-    },
-    {
-      "collectionGroup": "transactions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "businessDate", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "transactions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "studentId", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "cash_adjustments",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "businessDate", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "ASCENDING" }
-      ]
     }
   ],
   "fieldOverrides": [
     { "collectionGroup": "commands", "fieldPath": "before", "indexes": [] },
-    { "collectionGroup": "commands", "fieldPath": "after", "indexes": [] }
+    { "collectionGroup": "commands", "fieldPath": "after", "indexes": [] },
+    { "collectionGroup": "commands", "fieldPath": "actor", "indexes": [] },
+    { "collectionGroup": "commands", "fieldPath": "cashEffect", "indexes": [] },
+    { "collectionGroup": "commands", "fieldPath": "commandId", "indexes": [] },
+    { "collectionGroup": "commands", "fieldPath": "expectedRevisions", "indexes": [] },
+    { "collectionGroup": "commands", "fieldPath": "inputFingerprint", "indexes": [] },
+    { "collectionGroup": "commands", "fieldPath": "kind", "indexes": [] },
+    { "collectionGroup": "commands", "fieldPath": "leaseEpoch", "indexes": [] },
+    { "collectionGroup": "commands", "fieldPath": "payload", "indexes": [] },
+    { "collectionGroup": "commands", "fieldPath": "reason", "indexes": [] },
+    { "collectionGroup": "commands", "fieldPath": "targets", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "amount", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "createdSeq", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "lastCommandId", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "mealKind", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "mealPrice", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "menuNameSnapshot", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "menuPriceSnapshot", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "note", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "operatorEmail", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "operatorUid", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "otherItemName", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "paidAmount", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "revision", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "sourceDevice", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "studentNameSnapshot", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "transactionId", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "type", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "updatedAt", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "vendorIdSnapshot", "indexes": [] },
+    { "collectionGroup": "transactions", "fieldPath": "vendorNameSnapshot", "indexes": [] }
   ]
 }

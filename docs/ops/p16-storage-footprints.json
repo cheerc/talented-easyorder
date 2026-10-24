@@ -6,7 +6,7 @@
         {
           "collection": "commands",
           "documentBytes": 1796,
-          "indexBytes": 7537
+          "indexBytes": 1679
         },
         {
           "collection": "studentCodes",
@@ -23,7 +23,7 @@
         {
           "collection": "commands",
           "documentBytes": 2132,
-          "indexBytes": 6291
+          "indexBytes": 1679
         },
         {
           "collection": "studentCodes",
@@ -35,21 +35,21 @@
         {
           "collection": "commands",
           "documentBytes": 2122,
-          "indexBytes": 6393
+          "indexBytes": 1679
         }
       ],
       "SetStudentStatus": [
         {
           "collection": "commands",
           "documentBytes": 2132,
-          "indexBytes": 6259
+          "indexBytes": 1679
         }
       ],
       "SaveVendor": [
         {
           "collection": "commands",
           "documentBytes": 1580,
-          "indexBytes": 6935
+          "indexBytes": 1571
         },
         {
           "collection": "vendors",
@@ -61,14 +61,14 @@
         {
           "collection": "commands",
           "documentBytes": 1776,
-          "indexBytes": 5875
+          "indexBytes": 1571
         }
       ],
       "EnsureDay": [
         {
           "collection": "commands",
           "documentBytes": 1673,
-          "indexBytes": 5833
+          "indexBytes": 1611
         },
         {
           "collection": "days",
@@ -80,7 +80,7 @@
         {
           "collection": "commands",
           "documentBytes": 2189,
-          "indexBytes": 6189
+          "indexBytes": 1611
         }
       ],
       "StartBackfill": [
@@ -92,17 +92,17 @@
         {
           "collection": "commands",
           "documentBytes": 2410,
-          "indexBytes": 5925
+          "indexBytes": 1611
         }
       ],
       "CloseDay": [
         {
           "collection": "commands",
           "documentBytes": 2849,
-          "indexBytes": 7201
+          "indexBytes": 1611
         },
         {
-          "collection": "days",
+          "collection": "days/*/settlements",
           "documentBytes": 615,
           "indexBytes": 6168
         }
@@ -111,7 +111,7 @@
         {
           "collection": "commands",
           "documentBytes": 2573,
-          "indexBytes": 6749
+          "indexBytes": 1611
         },
         {
           "collection": "postCloseEntries",
@@ -123,114 +123,114 @@
         {
           "collection": "commands",
           "documentBytes": 2461,
-          "indexBytes": 7563
+          "indexBytes": 1611
         }
       ],
       "SetOpeningCash": [
         {
           "collection": "commands",
           "documentBytes": 2596,
-          "indexBytes": 6127
+          "indexBytes": 1611
         }
       ],
       "CorrectOpening": [
         {
           "collection": "commands",
           "documentBytes": 3518,
-          "indexBytes": 7111
+          "indexBytes": 1719
         }
       ],
       "CreateOrder": [
         {
           "collection": "commands",
           "documentBytes": 4291,
-          "indexBytes": 8539
+          "indexBytes": 1719
         },
         {
           "collection": "transactions",
           "documentBytes": 676,
-          "indexBytes": 7451
+          "indexBytes": 1649
         }
       ],
       "CorrectTransaction": [
         {
           "collection": "commands",
           "documentBytes": 4898,
-          "indexBytes": 8299
+          "indexBytes": 1719
         }
       ],
       "CancelKeepDeposit": [
         {
           "collection": "commands",
           "documentBytes": 4824,
-          "indexBytes": 7237
+          "indexBytes": 1719
         }
       ],
       "CancelRefund": [
         {
           "collection": "commands",
           "documentBytes": 4858,
-          "indexBytes": 7275
+          "indexBytes": 1719
         }
       ],
       "CreatePayment": [
         {
           "collection": "commands",
           "documentBytes": 4204,
-          "indexBytes": 7451
+          "indexBytes": 1719
         },
         {
           "collection": "transactions",
           "documentBytes": 661,
-          "indexBytes": 7421
+          "indexBytes": 1649
         }
       ],
       "Undo": [
         {
           "collection": "commands",
           "documentBytes": 4863,
-          "indexBytes": 7581
+          "indexBytes": 1719
         }
       ],
       "CreateCashMovement": [
         {
           "collection": "commands",
           "documentBytes": 3354,
-          "indexBytes": 7112
+          "indexBytes": 1644
         },
         {
           "collection": "transactions",
           "documentBytes": 642,
-          "indexBytes": 7333
+          "indexBytes": 1574
         }
       ],
       "CreateRefund": [
         {
           "collection": "commands",
           "documentBytes": 4235,
-          "indexBytes": 7489
+          "indexBytes": 1719
         },
         {
           "collection": "transactions",
           "documentBytes": 673,
-          "indexBytes": 7445
+          "indexBytes": 1649
         }
       ],
       "VoidTransaction": [
         {
           "collection": "commands",
           "documentBytes": 4839,
-          "indexBytes": 7249
+          "indexBytes": 1719
         }
       ],
       "ReopenDay": [
         {
           "collection": "commands",
           "documentBytes": 3866,
-          "indexBytes": 6469
+          "indexBytes": 1611
         },
         {
-          "collection": "days",
+          "collection": "days/*/settlements",
           "documentBytes": 624,
           "indexBytes": 6186
         }
@@ -239,21 +239,21 @@
         {
           "collection": "commands",
           "documentBytes": 1355,
-          "indexBytes": 6385
+          "indexBytes": 1571
         }
       ],
       "RecordPrint": [
         {
           "collection": "commands",
           "documentBytes": 1381,
-          "indexBytes": 6693
+          "indexBytes": 1611
         }
       ],
       "RecordBackup": [
         {
           "collection": "commands",
           "documentBytes": 1332,
-          "indexBytes": 6447
+          "indexBytes": 1571
         }
       ]
     },
@@ -284,7 +284,7 @@
         {
           "collection": "commands",
           "documentBytes": 7752,
-          "indexBytes": 17611
+          "indexBytes": 1679
         },
         {
           "collection": "studentCodes",
@@ -301,7 +301,7 @@
         {
           "collection": "commands",
           "documentBytes": 8088,
-          "indexBytes": 6291
+          "indexBytes": 1679
         },
         {
           "collection": "studentCodes",
@@ -313,21 +313,21 @@
         {
           "collection": "commands",
           "documentBytes": 11058,
-          "indexBytes": 16467
+          "indexBytes": 1679
         }
       ],
       "SetStudentStatus": [
         {
           "collection": "commands",
           "documentBytes": 8088,
-          "indexBytes": 6259
+          "indexBytes": 1679
         }
       ],
       "SaveVendor": [
         {
           "collection": "commands",
           "documentBytes": 1576,
-          "indexBytes": 6935
+          "indexBytes": 1571
         },
         {
           "collection": "vendors",
@@ -339,14 +339,14 @@
         {
           "collection": "commands",
           "documentBytes": 1772,
-          "indexBytes": 5875
+          "indexBytes": 1571
         }
       ],
       "EnsureDay": [
         {
           "collection": "commands",
           "documentBytes": 1669,
-          "indexBytes": 5833
+          "indexBytes": 1611
         },
         {
           "collection": "days",
@@ -358,7 +358,7 @@
         {
           "collection": "commands",
           "documentBytes": 2185,
-          "indexBytes": 6189
+          "indexBytes": 1611
         }
       ],
       "StartBackfill": [
@@ -370,17 +370,17 @@
         {
           "collection": "commands",
           "documentBytes": 2406,
-          "indexBytes": 5925
+          "indexBytes": 1611
         }
       ],
       "CloseDay": [
         {
           "collection": "commands",
           "documentBytes": 2845,
-          "indexBytes": 7201
+          "indexBytes": 1611
         },
         {
-          "collection": "days",
+          "collection": "days/*/settlements",
           "documentBytes": 615,
           "indexBytes": 6168
         }
@@ -389,7 +389,7 @@
         {
           "collection": "commands",
           "documentBytes": 2569,
-          "indexBytes": 6749
+          "indexBytes": 1611
         },
         {
           "collection": "postCloseEntries",
@@ -401,114 +401,114 @@
         {
           "collection": "commands",
           "documentBytes": 2457,
-          "indexBytes": 7563
+          "indexBytes": 1611
         }
       ],
       "SetOpeningCash": [
         {
           "collection": "commands",
           "documentBytes": 2592,
-          "indexBytes": 6127
+          "indexBytes": 1611
         }
       ],
       "CorrectOpening": [
         {
           "collection": "commands",
           "documentBytes": 3514,
-          "indexBytes": 7111
+          "indexBytes": 1719
         }
       ],
       "CreateOrder": [
         {
           "collection": "commands",
           "documentBytes": 10247,
-          "indexBytes": 8539
+          "indexBytes": 1719
         },
         {
           "collection": "transactions",
           "documentBytes": 676,
-          "indexBytes": 7451
+          "indexBytes": 1649
         }
       ],
       "CorrectTransaction": [
         {
           "collection": "commands",
           "documentBytes": 10854,
-          "indexBytes": 8299
+          "indexBytes": 1719
         }
       ],
       "CancelKeepDeposit": [
         {
           "collection": "commands",
           "documentBytes": 10780,
-          "indexBytes": 7237
+          "indexBytes": 1719
         }
       ],
       "CancelRefund": [
         {
           "collection": "commands",
           "documentBytes": 10814,
-          "indexBytes": 7275
+          "indexBytes": 1719
         }
       ],
       "CreatePayment": [
         {
           "collection": "commands",
           "documentBytes": 10160,
-          "indexBytes": 7451
+          "indexBytes": 1719
         },
         {
           "collection": "transactions",
           "documentBytes": 661,
-          "indexBytes": 7421
+          "indexBytes": 1649
         }
       ],
       "Undo": [
         {
           "collection": "commands",
           "documentBytes": 10819,
-          "indexBytes": 7581
+          "indexBytes": 1719
         }
       ],
       "CreateCashMovement": [
         {
           "collection": "commands",
           "documentBytes": 3350,
-          "indexBytes": 7112
+          "indexBytes": 1644
         },
         {
           "collection": "transactions",
           "documentBytes": 642,
-          "indexBytes": 7333
+          "indexBytes": 1574
         }
       ],
       "CreateRefund": [
         {
           "collection": "commands",
           "documentBytes": 10191,
-          "indexBytes": 7489
+          "indexBytes": 1719
         },
         {
           "collection": "transactions",
           "documentBytes": 673,
-          "indexBytes": 7445
+          "indexBytes": 1649
         }
       ],
       "VoidTransaction": [
         {
           "collection": "commands",
           "documentBytes": 10795,
-          "indexBytes": 7249
+          "indexBytes": 1719
         }
       ],
       "ReopenDay": [
         {
           "collection": "commands",
           "documentBytes": 3862,
-          "indexBytes": 6469
+          "indexBytes": 1611
         },
         {
-          "collection": "days",
+          "collection": "days/*/settlements",
           "documentBytes": 624,
           "indexBytes": 6186
         }
@@ -517,21 +517,21 @@
         {
           "collection": "commands",
           "documentBytes": 1351,
-          "indexBytes": 6385
+          "indexBytes": 1571
         }
       ],
       "RecordPrint": [
         {
           "collection": "commands",
           "documentBytes": 1377,
-          "indexBytes": 6693
+          "indexBytes": 1611
         }
       ],
       "RecordBackup": [
         {
           "collection": "commands",
           "documentBytes": 1328,
-          "indexBytes": 6447
+          "indexBytes": 1571
         }
       ]
     },
@@ -591,6 +591,18 @@
       "targets"
     ],
     "days": [
+      "lastCommandId",
+      "lastSettlementRevision",
+      "menu",
+      "openedAt",
+      "openedBy",
+      "openingCash",
+      "revision",
+      "status",
+      "totals",
+      "updatedAt"
+    ],
+    "days/*/settlements": [
       "actorEmail",
       "actorUid",
       "committedAt",
@@ -599,18 +611,13 @@
       "difference",
       "expectedCash",
       "lastCommandId",
-      "lastSettlementRevision",
-      "menu",
       "note",
-      "openedAt",
-      "openedBy",
       "openingCash",
       "previousRevision",
       "revision",
       "sourceSeq",
       "status",
-      "totals",
-      "updatedAt"
+      "totals"
     ],
     "postCloseEntries": [
       "amount",
