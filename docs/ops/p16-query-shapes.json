@@ -118,7 +118,21 @@
         "__name__ asc"
       ],
       "operations": [
+        "load.auditRangeStudent",
         "load.auditStudent"
+      ]
+    },
+    {
+      "collection": "commands",
+      "where": [
+        "studentId =="
+      ],
+      "orderBy": [
+        "seq asc",
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.auditRangeStudent"
       ]
     },
     {
@@ -259,6 +273,7 @@
         "load.accountHistory",
         "load.orders",
         "load.report",
+        "load.reportStudent",
         "load.students"
       ]
     },
@@ -272,7 +287,8 @@
       ],
       "operations": [
         "load.accountHistory",
-        "load.report"
+        "load.report",
+        "load.reportStudent"
       ]
     },
     {
@@ -287,7 +303,8 @@
       "operations": [
         "load.accountHistory",
         "load.orders",
-        "load.report"
+        "load.report",
+        "load.reportStudent"
       ]
     },
     {
@@ -300,7 +317,8 @@
       ],
       "operations": [
         "load.accountHistory",
-        "load.report"
+        "load.report",
+        "load.reportStudent"
       ]
     },
     {
@@ -315,7 +333,8 @@
       ],
       "operations": [
         "load.accountHistory",
-        "load.report"
+        "load.report",
+        "load.reportStudent"
       ]
     },
     {

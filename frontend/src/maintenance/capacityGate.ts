@@ -36,6 +36,8 @@ export interface Assumptions {
   pages: number;
   /** Students on the roster (the app reads it whole, 500 at most). */
   roster: number;
+  /** Students with a transaction on a day (the accounts that a report of that day reads the history of); half the commands at most. */
+  activePerDay: number;
   vendors: number;
   /** Closed business days in the history (two years). */
   closedDays: number;
@@ -49,12 +51,12 @@ export interface Assumptions {
 
 /** The design ceiling: 200 commands a day on a roster of 200, two years of history. */
 export const DESIGN: Assumptions = {
-  label: 'design ceiling', commands: 200, openHours: 10, pages: 2, roster: 200, vendors: 20, closedDays: 730, unclosedDays: 3, leaseEvents: 4, days: 730,
+  label: 'design ceiling', commands: 200, openHours: 10, pages: 2, roster: 200, activePerDay: 100, vendors: 20, closedDays: 730, unclosedDays: 3, leaseEvents: 4, days: 730,
 };
 /** The typical day: 100 commands. */
-export const TYPICAL: Assumptions = { ...DESIGN, label: 'typical day', commands: 100 };
+export const TYPICAL: Assumptions = { ...DESIGN, label: 'typical day', commands: 100, activePerDay: 50 };
 /** A small shop: 100 commands a day on a roster of 100 (one reading of "under 100 people a day"). */
-export const SMALL_SHOP: Assumptions = { ...DESIGN, label: 'small shop (100 commands, roster of 100)', commands: 100, roster: 100 };
+export const SMALL_SHOP: Assumptions = { ...DESIGN, label: 'small shop (100 commands, roster of 100)', commands: 100, roster: 100, activePerDay: 50 };
 /** The roster at its code limit (500): the same ceiling of commands, the largest roster the app reads. */
 export const FULL_ROSTER: Assumptions = { ...DESIGN, label: 'design ceiling, roster of 500', roster: 500 };
 
@@ -106,9 +108,13 @@ function commandLines(a: Assumptions): WorkloadLine[] {
  * - day pages: the vendors page is opened 4 times and reloads after each of its 3 commands, the day-close page 3 times, the
  *   students page 4 times;
  * - reports (R10): 10 a day, 6 of today, 3 of a week and 1 of a month, each a report, a range audit and (without a student) the
- *   access events, after a summary at the page start; 5 CSV or print runs repeat the report and the range audit of today;
- * - account queries (R10: 50 a day at 500 commands, here in proportion to the commands: 20 at 200): the account history, the student's
- *   report and range audit and the roster, after a summary and the roster at the page start;
+ *   access events, after a summary at the page start; 5 CSV or print runs repeat the report and the range audit of today. A report
+ *   reads the transactions of the range and, for every account that has one in it, that account's whole history (twice): the
+ *   accounts of a range are the students with a transaction in it (`activePerDay` a day, the whole roster at most), each with the
+ *   history of an average student of the roster (the transactions of the days divided by the roster);
+ * - account queries (R10: 50 a day at 500 commands, here in proportion to the commands: 20 at 200): the account history, the report
+ *   of the student (the range and that one history), the student's range audit (every command of the student) and the roster,
+ *   after a summary and the roster at the page start;
  * - audits: 3 of a day, 2 of a student, whose commands of the whole history are read;
  * - the incremental backup export of the day's commands, once.
  */
@@ -120,8 +126,25 @@ function loadLines(a: Assumptions): WorkloadLine[] {
   };
   const txPerStudentDay = shape.transactions / a.roster;
   const commandsPerStudentDay = a.commands / a.roster;
+  // the history of one student: its transactions (at most MAX_ACCOUNT_TRANSACTIONS) and its commands
   const studentTransactions = Math.round(Math.min(100_000, txPerStudentDay * a.days));
   const studentCommands = Math.round(commandsPerStudentDay * a.days);
+  /**
+   * The units of a report over `days` days: the accounts `A` of the range read their histories; `load.report` is fitted with the
+   * `rangeAccount` step (an account with one transaction in the range, so the range read of that transaction is part of it), the
+   * `dayTransaction` step (a transaction of an account that is already in the range: the range read and one more transaction of
+   * that account's history) and the history beyond the range (`studentTransaction`).
+   */
+  const reportUnits = (days: number) => {
+    const rangeTransactions = shape.transactions * days;
+    const accounts = Math.min(a.roster, a.activePerDay * days, rangeTransactions);
+    return {
+      student: a.roster,
+      rangeAccount: accounts,
+      dayTransaction: rangeTransactions - accounts,
+      studentTransaction: Math.max(0, accounts * studentTransactions - rangeTransactions),
+    };
+  };
   const accessEventsPerDay = a.leaseEvents;
 
   load('load.orders', shape.pageCommands + 6, { student: a.roster, dayTransaction: shape.transactionsOnPage, openDay: a.unclosedDays });
@@ -137,18 +160,19 @@ function loadLines(a: Assumptions): WorkloadLine[] {
   load('load.summary', 2, { closedDay: 31, settlementVersion: 40 });
   for (const [days, perDay] of [[1, 6], [7, 3], [30, 1]] as Array<[number, number]>) {
     const transactions = shape.transactions * days;
-    load('load.report', perDay, { student: a.roster, dayTransaction: transactions });
+    load('load.report', perDay, reportUnits(days));
     load('load.auditRange', perDay, { student: a.roster, vendor: a.vendors, dayTransaction: transactions, dayCommand: shape.otherCommands * days });
   }
   load('load.accessEvents', 6 + 3, { accessEvent: accessEventsPerDay * 7 });
-  load('load.report', 5, { student: a.roster, dayTransaction: shape.transactions });
+  load('load.report', 5, reportUnits(1));
   load('load.auditRange', 5, { student: a.roster, vendor: a.vendors, dayTransaction: shape.transactions, dayCommand: shape.otherCommands });
 
   // account queries: R10 has 50 a day for 500 commands, so 20 at the ceiling of 200 and 10 on a typical day
   const accountQueries = (a.commands / 500) * 50;
   load('load.summary', accountQueries / 5, { closedDay: 1, settlementVersion: 1 });
   load('load.accountHistory', accountQueries, { student: a.roster, dayTransaction: shape.transactions, studentTransaction: studentTransactions });
-  load('load.report', accountQueries, { student: a.roster, dayTransaction: txPerStudentDay });
+  load('load.reportStudent', accountQueries, { student: a.roster, dayTransaction: shape.transactions, studentTransaction: studentTransactions });
+  load('load.auditRangeStudent', accountQueries, { studentTransaction: studentCommands });
   load('load.auditStudent', accountQueries, { studentTransaction: studentCommands });
   load('load.students', accountQueries, { student: a.roster });
 
@@ -336,15 +360,20 @@ export function evaluateGate(table: CostTable, footprints: StorageFootprints): G
     line.operation === 'load.orders' ? { ...line, perDay: 6 } : line
   );
   const reads = (lines: WorkloadLine[], from: CostTable = table) => round(dailyUsage(from, lines).reads.conservative);
-  // the five loads that read every document twice (the document, then its id again to prove the set is complete)
-  const singleRead = scaleDimensions(table, ['load.report', 'load.accountHistory', 'load.auditDay', 'load.auditStudent', 'load.auditRange'],
-    ['dayTransaction', 'studentTransaction', 'dayCommand'], 0.5);
+  // the loads that read every document twice (the document, then its id again to prove the set is complete)
+  const singleRead = scaleDimensions(table, ['load.report', 'load.reportStudent', 'load.accountHistory', 'load.auditDay', 'load.auditStudent', 'load.auditRangeStudent', 'load.auditRange'],
+    ['dayTransaction', 'rangeAccount', 'studentTransaction', 'dayCommand'], 0.5);
+  // the report without the histories of its accounts (a balance kept on each transaction would let it read the range only): the
+  // account, the history beyond the range and the history part of a transaction of the range (half of its 4.08) are gone
+  const noHistories = scaleDimensions(scaleDimensions(table, ['load.report'], ['rangeAccount', 'studentTransaction'], 0), ['load.report'], ['dayTransaction'], 0.5);
   const whatIf: WhatIf[] = [
     { label: 'the design ceiling as measured', reads: round(designReads) },
     { label: 'orders reload after a command skips the roster (the roster is kept until a student changes)', reads: reads(designLines.map(withoutRoster)) },
     { label: 'orders page does not reload after a command (it keeps what it has; opens only)', reads: reads(designLines.map(withoutReload)) },
-    { label: 'the five history loads read each transaction or command once instead of twice (needs CheerC: the second read is an integrity check)', reads: reads(designLines, singleRead) },
-    { label: 'all three together', reads: reads(designLines.map(withoutReload), singleRead) },
+    { label: 'the history loads read each transaction or command once instead of twice (needs CheerC: the second read is an integrity check)', reads: reads(designLines, singleRead) },
+    { label: 'the report does not read the history of its accounts (e.g. a balance kept on every transaction; needs a spec change and CheerC)', reads: reads(designLines, noHistories) },
+    { label: 'all four together', reads: reads(designLines.map(withoutReload), scaleDimensions(noHistories, ['load.reportStudent', 'load.accountHistory', 'load.auditDay', 'load.auditStudent', 'load.auditRangeStudent', 'load.auditRange', 'load.report'],
+      ['dayTransaction', 'rangeAccount', 'studentTransaction', 'dayCommand'], 0.5)) },
   ];
 
   const floorLines = workloadOf(SMALL_SHOP).filter(line => line.operation.startsWith('command.') || line.operation.startsWith('lease.') || line.operation.startsWith('listener.') || line.operation === 'load.orders')

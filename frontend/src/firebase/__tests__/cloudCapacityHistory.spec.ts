@@ -208,9 +208,15 @@ describeWithEmulator('P16e history scale: the table against the full size', () =
     const onToday = { kind: 'today' as const, startDate: today, endDate: today };
     const students = await countOf('students');
     await measure('load.orders', { student: students, dayTransaction: TRANSACTIONS, openDay: 1 }, () => orders.loadSnapshot());
-    await measure('load.report', { student: students, dayTransaction: TRANSACTIONS }, () => reads.readReport({ range: onToday, studentId: null, leaseEpoch: epoch }));
     // the commands dated today that are no orders: the day's opening and its opening cash
     const commandsToday = await admin(async db => (await getDocs(query(collection(db, 'commands'), where('businessDate', '==', today)))).size);
     await measure('load.auditDay', { dayTransaction: TRANSACTIONS, dayCommand: commandsToday - TRANSACTIONS }, () => reads.readAudit({ dayId: today, leaseEpoch: epoch }));
+    // the report reads the whole history of every account of the range: studentT (the day's orders) and, with one order of today,
+    // studentS (its TRANSACTIONS orders of the history day are outside the range), so two accounts and the history beyond the range
+    await order(studentS, today, '');
+    const inRange = TRANSACTIONS + 1;
+    await measure('load.report', { student: students, rangeAccount: 2, dayTransaction: inRange - 2, studentTransaction: TRANSACTIONS }, () => reads.readReport({ range: onToday, studentId: null, leaseEpoch: epoch }));
+    await measure('load.reportStudent', { student: students, dayTransaction: inRange, studentTransaction: TRANSACTIONS + 1 }, () => reads.readReport({ range: onToday, studentId: studentS, leaseEpoch: epoch }));
+    await measure('load.auditRangeStudent', { studentTransaction: TRANSACTIONS + 1 }, () => reads.readAuditRange({ range: onToday, studentId: studentS, leaseEpoch: epoch }));
   }, 6 * 60 * 60_000);
 });

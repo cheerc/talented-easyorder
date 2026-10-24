@@ -43,6 +43,37 @@ describe('P16e capacity gate: the day', () => {
   });
 });
 
+describe('P16e capacity gate: the accounts a report reads', () => {
+  const reports = (assumptions: typeof DESIGN) => workloadOf(assumptions).filter(line => line.operation === 'load.report');
+
+  it('reads the whole history of every account that has a transaction in the range (a day, a week, a month)', () => {
+    // 185 transactions a day over a roster of 200: an average student has 0.925 × 730 = 675 in two years; 100 students order on a day
+    const [today, week, month] = reports(DESIGN);
+    expect(today!.perDay).toBe(6);
+    expect(today!.units).toEqual({ student: 200, rangeAccount: 100, dayTransaction: 85, studentTransaction: 100 * 675 - 185 });
+    // a week and a month reach the whole roster; the histories hold everything, less the transactions of the range itself
+    expect(week!.units).toEqual({ student: 200, rangeAccount: 200, dayTransaction: 1295 - 200, studentTransaction: 200 * 675 - 1295 });
+    expect(month!.units).toEqual({ student: 200, rangeAccount: 200, dayTransaction: 5550 - 200, studentTransaction: 200 * 675 - 5550 });
+  });
+
+  it('never has more accounts than students or than transactions in the range', () => {
+    const small = { ...DESIGN, commands: 20, roster: 5, activePerDay: 10 };
+    const today = reports(small)[0]!.units!;
+    // 13 page commands, 12.4 transactions at most: 10 active, 5 on the roster
+    expect(today.rangeAccount).toBe(5);
+    expect(today.rangeAccount! + today.dayTransaction!).toBeCloseTo(dayShape(small).transactions, 9);
+  });
+
+  it('prices the report of one student by the range and that one history, and its range audit by the student commands', () => {
+    const lines = workloadOf(DESIGN);
+    const one = lines.find(line => line.operation === 'load.reportStudent')!;
+    expect(one.perDay).toBe(20);
+    expect(one.units).toEqual({ student: 200, dayTransaction: 185, studentTransaction: 675 });
+    // 200 commands over 200 students: 730 commands in two years
+    expect(lines.find(line => line.operation === 'load.auditRangeStudent')!.units).toEqual({ studentTransaction: 730 });
+  });
+});
+
 describe('P16e capacity gate: storage', () => {
   // a two-document profile: a command of 1,000 + 500 bytes and a transaction of 100 + 400, one lease event of 200 + 100
   const profile: StorageProfile = {
