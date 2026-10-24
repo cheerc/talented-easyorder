@@ -8,7 +8,6 @@ import {
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ALL_COMMAND_KINDS, type BusinessCommandKind } from '../../domain/cloudCommands';
 import { UNDO_REASON } from '../../domain/cloudTransactionMutation';
-import { encryptBackup, sha256Hex } from '../cloudBackup';
 import { createCloudBackupRepository } from '../cloudBackupRepository';
 import { createCloudBackupCommandRepository } from '../cloudBackupCommandRepository';
 import { createCloudCommandRepository } from '../cloudCommandRepository';
@@ -17,8 +16,9 @@ import { createCloudOrderRepository, type CloudTransactionMutationInput } from '
 import { createCloudReportActionRepository } from '../cloudReportActionRepository';
 import { captureBatch, replayBatch, type BatchSdk, type CapturedWrite } from './helpers/batchCapture';
 import {
-  R02_LEASE_EPOCH, R02_OPERATOR, operatorUser, seedEmptySource, shiftDay, taipeiToday, uuid,
-} from './helpers/r02Scenario';
+  aliasSet, alpha, buildKindSteps, decoyStudent, gap, today, vendorA, type KindScenarioDeps,
+} from './helpers/kindScenario';
+import { R02_LEASE_EPOCH, R02_OPERATOR, operatorUser, seedEmptySource, uuid } from './helpers/r02Scenario';
 import { COLLECTION_MATRIX, KIND_MATRIX, MUTATIONS, type CollectionMatrixEntry, type MutationId, type Readers } from './rulesMatrix';
 
 /**
@@ -87,16 +87,7 @@ const setLease = (patch: Record<string, unknown>) => admin(db => setDoc(doc(db, 
   holderUid: OP.uid, epoch: EPOCH, updatedAt: Timestamp.now(), ...patch,
 }));
 
-// --- the scenario: every id and value the matrix steps share
-const today = taipeiToday();
-const gap = shiftDay(today, -2);
-const alpha = uuid(900_001);
-const beta = uuid(900_002);
-const decoyStudent = uuid(900_010);
-const vendorA = uuid(900_003);
-const vendorB = uuid(900_004);
-/** Ten aliases of 100 characters: the most a student may carry, so that every student-touching step runs at the Rules' worst case. */
-const aliasSet = (char: string) => Array.from({ length: 10 }, (_item, index) => `${index}${char.repeat(99)}`);
+// --- the scenario: every id and value the matrix steps share (helpers/kindScenario.ts)
 const ctx: Record<string, string> = { operator: OP.uid, today, gap, alpha, vendor: vendorA, code: '731903' };
 
 interface KindResult { step: string; writes: string[]; attempts: Partial<Record<MutationId, number>>; commandBytes: number }
@@ -280,150 +271,19 @@ describeWithEmulator('P16b Rules matrix on the real firestore.rules', () => {
     await runMatrixStep(kind, run, setup);
   }, 180_000);
 
-  const plainOrder = async (studentId: string, dayId: string, mealPrice: number, paidAmount: number) => {
-    const rev = await revisions(studentId, dayId); const commandId = id(); const transactionId = id();
-    ok(await orders.createOrder({ commandId, transactionId, leaseEpoch: EPOCH, studentId, dayId,
-      expectedStudentRevision: rev.student, expectedDayRevision: rev.day, mealKind: 'other', mealPrice, paidAmount,
-      menuRevision: null, otherItemName: '自備便當', note: '' }), 'plain CreateOrder');
-    return { commandId, transactionId };
+  const deps: KindScenarioDeps = {
+    get writer() { return writer; },
+    get orders() { return orders; },
+    get closing() { return closing; },
+    get backups() { return backups; },
+    get backupReceipts() { return backupReceipts; },
+    get reports() { return reports; },
+    epoch: EPOCH,
+    backupPassword: 'p16b-matrix-password',
+    read, id, ok, headSeq, revisions,
   };
-  const mutation = async (transactionId: string, spec: Pick<CloudTransactionMutationInput, 'kind' | 'payload'>) => {
-    const tx = await read(`transactions/${transactionId}`);
-    return orders.mutateTransaction({ commandId: id(), leaseEpoch: EPOCH, transactionId, studentId: tx.studentId, dayId: today,
-      expectedTransactionRevision: tx.revision, expectedStudentRevision: (await read(`students/${alpha}`)).revision,
-      expectedDayRevision: (await read(`days/${today}`)).revision, ...spec } as CloudTransactionMutationInput);
-  };
-
-  // S01–S04: the student commands
-  step('CreateStudent', async () => writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: EPOCH,
-    targets: { studentId: alpha }, expectedRevisions: { student: 0 },
-    payload: { studentCode: '731901', displayName: 'P16b Alpha', aliases: aliasSet('甲'), openingBalance: { amount: 100, asOfDate: '2026-10-01', note: '' } } }));
-  step('ChangeStudentCode', async () => writer.commitCommand({ commandId: id(), kind: 'ChangeStudentCode', leaseEpoch: EPOCH,
-    targets: { studentId: alpha }, expectedRevisions: { student: (await read(`students/${alpha}`)).revision },
-    payload: { studentCode: '731903', reason: 'P16b code change' } }));
-  step('EditStudent', async () => writer.commitCommand({ commandId: id(), kind: 'EditStudent', leaseEpoch: EPOCH,
-    targets: { studentId: alpha }, expectedRevisions: { student: (await read(`students/${alpha}`)).revision },
-    payload: { displayName: 'P16b Alpha Edited', aliases: aliasSet('乙') } }));
-  step('SetStudentStatus', async () => writer.commitCommand({ commandId: id(), kind: 'SetStudentStatus', leaseEpoch: EPOCH,
-    targets: { studentId: alpha }, expectedRevisions: { student: (await read(`students/${alpha}`)).revision },
-    payload: { status: 'inactive', reason: 'P16b pause' } }));
-
-  // S05–S06: vendors (the second one is inactivated first, because only an inactive vendor can be removed)
-  step('SaveVendor', async () => writer.commitCommand({ commandId: id(), kind: 'SaveVendor', leaseEpoch: EPOCH,
-    targets: { vendorId: vendorA }, expectedRevisions: { vendor: 0 },
-    payload: { vendorId: vendorA, name: 'P16b Vendor', phone: '', note: '', status: 'active' } }));
-  step('RemoveVendor', async () => writer.commitCommand({ commandId: id(), kind: 'RemoveVendor', leaseEpoch: EPOCH,
-    targets: { vendorId: vendorB }, expectedRevisions: { vendor: (await read(`vendors/${vendorB}`)).revision },
-    payload: { reason: 'P16b remove' } }), async () => {
-    ok(await writer.commitCommand({ commandId: id(), kind: 'SetStudentStatus', leaseEpoch: EPOCH,
-      targets: { studentId: alpha }, expectedRevisions: { student: (await read(`students/${alpha}`)).revision },
-      payload: { status: 'active', reason: 'P16b resume' } }), 'student active again');
-    ok(await writer.commitCommand({ commandId: id(), kind: 'SaveVendor', leaseEpoch: EPOCH,
-      targets: { vendorId: vendorB }, expectedRevisions: { vendor: 0 },
-      payload: { vendorId: vendorB, name: 'P16b Removed Vendor', phone: '', note: '', status: 'active' } }), 'vendor B');
-    ok(await writer.commitCommand({ commandId: id(), kind: 'SaveVendor', leaseEpoch: EPOCH,
-      targets: { vendorId: vendorB }, expectedRevisions: { vendor: (await read(`vendors/${vendorB}`)).revision },
-      payload: { vendorId: vendorB, name: 'P16b Removed Vendor', phone: '', note: '', status: 'inactive' } }), 'vendor B inactive');
-  });
-
-  // S07–S11: a back-filled gap day, closed, then a post-close entry
-  step('EnsureDay', async () => writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: EPOCH,
-    targets: { dayId: gap }, expectedRevisions: { day: 0 }, payload: { businessDate: gap } }));
-  step('BackfillOpeningCash', async () => closing.backfillOpening({ commandId: id(), leaseEpoch: EPOCH, dayId: gap,
-    expectedDayRevision: (await read(`days/${gap}`)).revision, openingCash: 600, reason: 'P16b no system that day' }));
-  step('StartBackfill', async () => writer.commitCommand({ commandId: id(), kind: 'StartBackfill', leaseEpoch: EPOCH,
-    targets: { dayId: gap }, expectedRevisions: { day: (await read(`days/${gap}`)).revision }, payload: { reason: 'P16b power cut, entered later' } }));
-  step('CloseDay', async () => {
-    const day = await read(`days/${gap}`);
-    const expected = (await closing.read(gap))!.expectedCash!;
-    return closing.closeDay({ commandId: id(), leaseEpoch: EPOCH, dayId: gap, expectedDayRevision: day.revision,
-      expectedSettlementRevision: day.lastSettlementRevision, expectedCash: expected, countedCash: expected, note: '', alignWithDayId: null });
-  });
-  step('RecordPostCloseEntry', async () => {
-    const day = await read(`days/${gap}`);
-    return closing.recordPostCloseEntry({ commandId: id(), leaseEpoch: EPOCH, dayId: gap, expectedDayRevision: day.revision,
-      expectedSettlementRevision: day.lastSettlementRevision, direction: 'income', amount: 5, reason: 'P16b found after closing' });
-  });
-
-  // S12–S13: today's menu and opening cash (today is created plainly: EnsureDay already has its matrix step)
-  step('SetDayMenu', async () => writer.commitCommand({ commandId: id(), kind: 'SetDayMenu', leaseEpoch: EPOCH, targets: { dayId: today },
-    expectedRevisions: { day: (await read(`days/${today}`)).revision, headSeq: await headSeq() },
-    payload: { selectionDate: today, itemName: 'P16b Menu', price: 80, vendorId: vendorA, vendorNameSnapshot: 'P16b Vendor', inheritedFromDate: null } }),
-  async () => {
-    ok(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: EPOCH,
-      targets: { dayId: today }, expectedRevisions: { day: 0 }, payload: { businessDate: today } }), 'EnsureDay today');
-  });
-  step('SetOpeningCash', async () => writer.commitCommand({ commandId: id(), kind: 'SetOpeningCash', leaseEpoch: EPOCH,
-    targets: { dayId: today }, expectedRevisions: { day: (await read(`days/${today}`)).revision },
-    payload: { openingCash: 1000, reason: 'P16b float' } }));
-
-  // S14: a student whose opening balance is dated today
-  step('CorrectOpening', async () => {
-    const rev = await revisions(beta, today);
-    return writer.commitCommand({ commandId: id(), kind: 'CorrectOpening', leaseEpoch: EPOCH,
-      targets: { studentId: beta, dayId: today }, expectedRevisions: { student: rev.student, day: rev.day },
-      payload: { amount: 80, note: 'P16b checked', reason: 'P16b typo' } });
-  }, async () => {
-    ok(await writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: EPOCH,
-      targets: { studentId: beta }, expectedRevisions: { student: 0 },
-      payload: { studentCode: '731902', displayName: 'P16b Beta', aliases: [], openingBalance: { amount: 100, asOfDate: today, note: '' } } }), 'beta');
-  });
-
-  // S15–S24: orders, payments, cash, refunds and the five changes of a transaction row
-  let corrected = '';
-  step('CreateOrder', async () => {
-    const rev = await revisions(alpha, today); const transactionId = id(); corrected = transactionId;
-    return orders.createOrder({ commandId: id(), transactionId, leaseEpoch: EPOCH, studentId: alpha, dayId: today,
-      expectedStudentRevision: rev.student, expectedDayRevision: rev.day, mealKind: 'other', mealPrice: 80, paidAmount: 100,
-      menuRevision: null, otherItemName: '自備便當', note: '' });
-  });
-  step('CorrectTransaction', async () => mutation(corrected, { kind: 'CorrectTransaction',
-    payload: { mealPrice: 70, paidAmount: 100, amount: 30, note: '', reason: 'P16b price typo' } }));
-  let keptOrder = '';
-  step('CancelKeepDeposit', async () => mutation(keptOrder, { kind: 'CancelKeepDeposit', payload: { reason: 'P16b not eating' } }),
-    async () => { keptOrder = (await plainOrder(alpha, today, 80, 100)).transactionId; });
-  let refundedOrder = '';
-  step('CancelRefund', async () => mutation(refundedOrder, { kind: 'CancelRefund', payload: { reason: 'P16b not eating, cash back' } }),
-    async () => { refundedOrder = (await plainOrder(alpha, today, 80, 100)).transactionId; });
-  let paymentCommand = ''; let paymentTransaction = '';
-  step('CreatePayment', async () => {
-    const rev = await revisions(alpha, today); paymentCommand = id(); paymentTransaction = id();
-    return orders.createPayment({ commandId: paymentCommand, transactionId: paymentTransaction, leaseEpoch: EPOCH, studentId: alpha, dayId: today,
-      expectedStudentRevision: rev.student, expectedDayRevision: rev.day, paidAmount: 30, note: '' });
-  });
-  step('Undo', async () => mutation(paymentTransaction, { kind: 'Undo', payload: { targetCommandId: paymentCommand, reason: UNDO_REASON } }));
-  step('CreateCashMovement', async () => orders.createCashMovement({ commandId: id(), transactionId: id(), leaseEpoch: EPOCH, dayId: today,
-    expectedDayRevision: (await read(`days/${today}`)).revision, direction: 'income', amount: 50, reason: 'P16b float top-up' }));
-  let refundTransaction = '';
-  step('CreateRefund', async () => {
-    const rev = await revisions(alpha, today); refundTransaction = id();
-    return orders.createRefund({ commandId: id(), transactionId: refundTransaction, leaseEpoch: EPOCH, studentId: alpha, dayId: today,
-      expectedStudentRevision: rev.student, expectedDayRevision: rev.day, amount: 20, reason: 'P16b overpaid' });
-  });
-  step('VoidTransaction', async () => mutation(refundTransaction, { kind: 'VoidTransaction', payload: { reason: 'P16b refund typo' } }));
-
-  // S25–S27: reopening needs a closed day; then the three records of what the operator did
-  step('ReopenDay', async () => {
-    const closed = await read(`days/${today}`);
-    return closing.reopenDay({ commandId: id(), leaseEpoch: EPOCH, dayId: today, expectedDayRevision: closed.revision,
-      expectedSettlementRevision: closed.lastSettlementRevision, reason: 'P16b wrong collection' });
-  }, async () => {
-    const day = await read(`days/${today}`);
-    const expected = (await closing.read(today))!.expectedCash!;
-    ok(await closing.closeDay({ commandId: id(), leaseEpoch: EPOCH, dayId: today, expectedDayRevision: day.revision,
-      expectedSettlementRevision: day.lastSettlementRevision, expectedCash: expected, countedCash: expected - 10, note: 'P16b short' }), 'close today');
-  });
-  step('RecordExport', async () => reports.recordExport({ commandId: id(), leaseEpoch: EPOCH,
-    range: { kind: 'custom', startDate: today, endDate: today }, scope: { studentId: null }, sourceSeq: await headSeq(), exportType: 'transactions-original' }));
-  step('RecordPrint', async () => reports.recordPrint({ commandId: id(), leaseEpoch: EPOCH,
-    range: { kind: 'custom', startDate: today, endDate: today }, scope: { studentId: null }, sourceSeq: await headSeq(),
-    printType: 'ledger-original', businessDate: today }));
-  step('RecordBackup', async () => {
-    const exported = await backups.exportRange({ fromSeq: 0, generatedAt: '2026-10-23T03:00:00.000Z' });
-    const sha256 = await sha256Hex(await encryptBackup(exported.manifest, 'p16b-matrix-password'));
-    return backupReceipts.commitRecordBackupIntent({ commandId: id(), leaseEpoch: EPOCH,
-      payload: { backupType: 'command-incremental', sourceSeq: exported.toSeq, fromSeq: 0, toSeq: exported.toSeq, sha256 } });
-  });
+  // S01–S27: the steps are shared with the capacity spec (helpers/kindScenario.ts).
+  for (const scenarioStep of buildKindSteps(deps)) step(scenarioStep.kind, scenarioStep.run, scenarioStep.setup);
 
   // The longest text every free-text field accepts (schema limits: names, aliases and phone 100, notes and reasons 500),
   // written for real through the production writers. Rules must accept them and the command document stays small.
