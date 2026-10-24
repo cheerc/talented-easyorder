@@ -99,3 +99,17 @@ describe('P16d load fit: a load must depend on the dimensions it declares and on
     expect(() => fitLoad({ ...paged, phases: [{ dimension: 'a', stateIndexes: [2, 2] }], dimensions: ['a'] })).toThrow(/did not grow/);
   });
 });
+
+describe('P16d load fit: a query inside a load that the page-size seam does not reach', () => {
+  it('adds the pages of that query as a fixed page and a part per unit of its dimension, at the page size of that query', () => {
+    // the load also reads a roster of `a` in pages of 200 that the seam does not change: 2 authorization calls per page, and an
+    // empty page read at an exact multiple of the page size. 500 units of `a` are 3 pages, so one more page is 2 / 200 per unit.
+    const fit = fitLoad({ ...paged, unseamed: [{ dimension: 'a', pageSize: 200, authorization: 2, reads: 1 }] });
+    expect(fit.readAuthorization.fixed).toBe(1 + 2);
+    expect(fit.readAuthorization.perUnit).toEqual({ a: 2.01 });
+    expect(fit.reads.fixed).toBe(3 + 4 + 1);
+    // a dimension the load does not declare is rejected
+    expect(() => fitLoad({ ...paged, unseamed: [{ dimension: 'z', pageSize: 200, authorization: 2, reads: 1 }] })).toThrow(/does not declare z/);
+  });
+});
+

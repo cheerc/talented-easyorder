@@ -317,11 +317,16 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
 
   // ---- C. loads that grow with history: the fixture grows one dimension at a time ----
   describe('loads', () => {
-    // The fixture grows eight dimensions, each in its own phase (`phases` below). A load declares the dimensions it depends on;
+    // The fixture grows nine dimensions, each in its own phase (`phases` below). A load declares the dimensions it depends on;
     // `loadFit` rejects a load that changes with one it does not declare, so the declarations cannot be incomplete.
     const closedDay = (index: number) => shiftDay(today, -3 - index);
     const openPastDay = (index: number) => shiftDay(today, -60 - index);
+    // studentS owns the history that spans other days (the `studentTransaction` dimension); studentT places today's orders (the
+    // `dayTransaction` dimension), so that neither collection is counted for the other
     const studentS = uuid(950_000);
+    const studentT = uuid(950_101);
+    // a back-filled day that stays open: studentS's orders of other days go there
+    const historyDay = shiftDay(today, -40);
     // the day with its own settlement versions is the newest closed day, so that the summary range always contains it
     const versionDay = shiftDay(today, -2);
     const onToday = { kind: 'today' as const, startDate: today, endDate: today };
@@ -329,6 +334,7 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
     let vendorsMade = 0;
     let closedMade = 0;
     let openPastMade = 0;
+    let historyMade = 0;
 
     const create = async (label: string, run: () => Promise<{ ok: boolean }>) => ok(await run(), label);
 
@@ -347,25 +353,36 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
         payload: { vendorId, name: `P16d vendor ${vendorsMade}`, phone: '', note: '', status: 'active' } }));
       vendorsMade += 1;
     };
-    const addOrder = async () => {
-      const rev = await revisions(studentS, today);
-      await create('CreateOrder', () => orders.createOrder({ commandId: id(), transactionId: id(), leaseEpoch: epoch, studentId: studentS, dayId: today,
+    const placeOrder = async (studentId: string, dayId: string, note: string) => {
+      const rev = await revisions(studentId, dayId);
+      await create('CreateOrder', () => orders.createOrder({ commandId: id(), transactionId: id(), leaseEpoch: epoch, studentId, dayId,
         expectedStudentRevision: rev.student, expectedDayRevision: rev.day, mealKind: 'other', mealPrice: 80, paidAmount: 100,
-        menuRevision: null, otherItemName: 'x', note: '' }));
+        menuRevision: null, otherItemName: 'x', note }));
+    };
+    /** An order of today by studentT. */
+    const addOrder = () => placeOrder(studentT, today, '');
+    /** An order of studentS on the back-filled history day (the Rules want the paper number as the prefix of its note). */
+    const addStudentOrder = async () => {
+      await placeOrder(studentS, historyDay, `紙本P16D-${historyMade}：x`);
+      historyMade += 1;
     };
     /** A command dated today that is no transaction. */
     const addDayCommand = async () => {
       await create('RecordPrint', async () => reports.recordPrint({ commandId: id(), leaseEpoch: epoch, range: { kind: 'custom', startDate: today, endDate: today },
         scope: { studentId: null }, sourceSeq: await headSeq(), printType: 'ledger-original', businessDate: today }));
     };
-    /** A back-filled day, opened, started and closed; its close is aligned with the nearest later opened day. */
-    const backfillDay = async (dayId: string, alignWithDayId: string) => {
+    /** A back-filled day, opened and started. */
+    const openBackfill = async (dayId: string) => {
       await create('EnsureDay', () => writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: epoch,
         targets: { dayId }, expectedRevisions: { day: 0 }, payload: { businessDate: dayId } }));
       await create('BackfillOpeningCash', async () => closing.backfillOpening({ commandId: id(), leaseEpoch: epoch, dayId,
         expectedDayRevision: (await read(`days/${dayId}`)).revision, openingCash: 1000, reason: 'P16d fixture' }));
       await create('StartBackfill', async () => writer.commitCommand({ commandId: id(), kind: 'StartBackfill', leaseEpoch: epoch,
         targets: { dayId }, expectedRevisions: { day: (await read(`days/${dayId}`)).revision }, payload: { reason: 'P16d fixture' } }));
+    };
+    /** A back-filled day, opened, started and closed; its close is aligned with the nearest later opened day. */
+    const backfillDay = async (dayId: string, alignWithDayId: string) => {
+      await openBackfill(dayId);
       await closeBackfilled(dayId, alignWithDayId);
     };
     const closeBackfilled = (dayId: string, alignWithDayId: string) => create('CloseDay', async () => {
@@ -404,6 +421,7 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       { dimension: 'student', unitsPerStep: 1, add: addStudent },
       { dimension: 'vendor', unitsPerStep: 1, add: addVendor },
       { dimension: 'dayTransaction', unitsPerStep: 1, add: addOrder },
+      { dimension: 'studentTransaction', unitsPerStep: 1, add: addStudentOrder },
       { dimension: 'dayCommand', unitsPerStep: 1, add: addDayCommand },
       { dimension: 'closedDay', unitsPerStep: 1, add: addClosedDay },
       { dimension: 'openDay', unitsPerStep: 1, add: addOpenDay },
@@ -420,6 +438,8 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       paged: boolean;
       /** The page size the repository uses in production. */
       production: number;
+      /** Whether the load reads the roster of students (pages of its own size, which the seam does not change). */
+      roster?: boolean;
       make: (pageSize: number) => () => Promise<unknown>;
     }
     const productionPages = () => ({
@@ -436,13 +456,14 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       const range = (days: number) => ({ kind: 'custom' as const, startDate: closedDay(days - 1), endDate: versionDay });
       return [
         { name: 'load.students', dimensions: ['student'], paged: false, production: production.students, make: () => () => listCloudStudents(app, current) },
-        { name: 'load.orders', dimensions: ['student', 'dayTransaction', 'openDay'], paged: true, production: production.orders, make: pageSize => () => createCloudOrderRepository(app, { ...current, pageSize }).loadSnapshot() },
+        { name: 'load.orders', dimensions: ['student', 'dayTransaction', 'openDay'], roster: true, paged: true, production: production.orders, make: pageSize => () => createCloudOrderRepository(app, { ...current, pageSize }).loadSnapshot() },
         { name: 'load.dayVendors', dimensions: ['vendor', 'closedDay', 'openDay'], paged: true, production: production.vendors, make: pageSize => () => createCloudDayVendorRepository(app, { ...current, pageSize }).loadSnapshot() },
         { name: 'load.summary', dimensions: ['closedDay', 'settlementVersion'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readSummary({ range: range(closedMade), leaseEpoch: epoch }) },
-        { name: 'load.report', dimensions: ['student', 'dayTransaction'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readReport({ range: onToday, studentId: null, leaseEpoch: epoch }) },
-        { name: 'load.accountHistory', dimensions: ['student', 'dayTransaction'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAccountHistory({ range: onToday, studentId: studentS, leaseEpoch: epoch }) },
+        { name: 'load.report', dimensions: ['student', 'dayTransaction'], roster: true, paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readReport({ range: onToday, studentId: null, leaseEpoch: epoch }) },
+        // the account history reads the transactions of the range (today's, of every student) and the whole history of the student
+        { name: 'load.accountHistory', dimensions: ['student', 'dayTransaction', 'studentTransaction'], roster: true, paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAccountHistory({ range: onToday, studentId: studentS, leaseEpoch: epoch }) },
         { name: 'load.auditDay', dimensions: ['dayTransaction', 'dayCommand'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAudit({ dayId: today, leaseEpoch: epoch }) },
-        { name: 'load.auditStudent', dimensions: ['dayTransaction'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAudit({ studentId: studentS, leaseEpoch: epoch }) },
+        { name: 'load.auditStudent', dimensions: ['studentTransaction'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAudit({ studentId: studentS, leaseEpoch: epoch }) },
         // the range audit (CSV and print) reads the commands of the range and the commands that carry no business date
         { name: 'load.auditRange', dimensions: ['student', 'vendor', 'dayTransaction', 'dayCommand'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAuditRange({ range: onToday, studentId: null, leaseEpoch: epoch }) },
         { name: 'load.accessEvents', dimensions: ['accessEvent'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAccessEvents({ range: onToday, leaseEpoch: epoch }) },
@@ -466,6 +487,7 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       const dayTransaction = await adminCount('transactions', ['businessDate', '==', today]);
       return {
         student: await adminCount('students'), vendor: await adminCount('vendors'), dayTransaction,
+        studentTransaction: await adminCount('transactions', ['studentId', '==', studentS]),
         // commands dated today that are not the orders' own (each order is one transaction and one command)
         dayCommand: commandsToday - dayTransaction,
         closedDay: closedMade, openDay: openPastMade,
@@ -504,9 +526,12 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
         targets: { dayId: today }, expectedRevisions: { day: 0 }, payload: { businessDate: today } }));
       await create('SetOpeningCash', async () => writer.commitCommand({ commandId: id(), kind: 'SetOpeningCash', leaseEpoch: epoch,
         targets: { dayId: today }, expectedRevisions: { day: (await read(`days/${today}`)).revision }, payload: { openingCash: 1000, reason: 'P16d fixture' } }));
-      // The base every phase starts from: the student the orders are for, one closed day (the summary needs a range), and a
-      // day with its first settlement version.
+      // The base every phase starts from: the two students (studentS has the history, studentT the orders of today), the open
+      // back-filled day for studentS's history, one closed day (the summary needs a range), and a day with its first settlement
+      // version.
       await addStudent();
+      await addStudent();
+      await openBackfill(historyDay);
       await backfillDay(versionDay, today);
       await addClosedDay();
     }, 180_000);
@@ -550,9 +575,13 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
         const own: FitPhase[] = spec.dimensions.length === 1 && spec.dimensions[0] === 'command'
           ? [{ dimension: 'command', stateIndexes: states.map((_state, index) => index) }]
           : phaseRanges;
+        // the roster is read in pages of its own size: one page per production page of students, measured as the pages of the
+        // students load (its one query: the authorization calls it costs)
+        const rosterPage = recorded[recorded.length - 1]!.loads.get('load.students')!.small;
         const fit = fitLoad({
           name: spec.name, states, phases: own, dimensions: spec.dimensions,
           pages: spec.paged ? { small: STEP, large: 2 * STEP, production: spec.production } : { production: spec.production },
+          ...(spec.roster ? { unseamed: [{ dimension: 'student', pageSize: productionPages().students, authorization: rosterPage.authQueries, reads: 1 }] } : {}),
         });
         operations.set(spec.name, {
           units: fit.units, reads: fit.reads, readAuthorization: fit.readAuthorization, readAuthorizationDeduped: fit.readAuthorization,

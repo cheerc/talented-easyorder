@@ -49,6 +49,12 @@ export interface FitInput {
   dimensions: string[];
   /** `small` and `large` are the two measured page sizes (both, or neither for a load without a seam). */
   pages: { small?: number; large?: number; production: number };
+  /**
+   * Queries of the load that the page-size seam does not reach (the roster of students is read in pages of its own size), so the
+   * measured runs hold one page of them: each costs `authorization` calls and `reads` empty-page reads (the probe page at an exact
+   * multiple of the size) per page, and a unit of its dimension is a page more every `pageSize` units.
+   */
+  unseamed?: Array<{ dimension: string; pageSize: number; authorization: number; reads: number }>;
 }
 
 export interface FitResult {
@@ -179,9 +185,16 @@ export function fitLoad(input: FitInput): FitResult {
       if ((reads.perUnit[dimension] ?? 0) !== 0 || (authPerUnit[dimension] ?? 0) !== 0) authPerUnit[dimension] = (authPerUnit[dimension] ?? 0) + onePage / input.pages.production;
     }
   }
+  let readsFixed = reads.fixed;
+  for (const query of input.unseamed ?? []) {
+    if (!input.dimensions.includes(query.dimension)) throw new Error(`${input.name}: the load does not declare ${query.dimension}, which its unseamed query pages over`);
+    authFixed += query.authorization;
+    authPerUnit[query.dimension] = (authPerUnit[query.dimension] ?? 0) + query.authorization / query.pageSize;
+    readsFixed += query.reads;
+  }
   return {
     units: [...input.dimensions],
-    reads: { fixed: round(reads.fixed), perUnit: compact(reads.perUnit) },
+    reads: { fixed: round(readsFixed), perUnit: compact(reads.perUnit) },
     readAuthorization: { fixed: round(authFixed), perUnit: compact(authPerUnit) },
     detail: {
       pageSizes: paged ? [input.pages.small, input.pages.large] : null, productionPageSize: input.pages.production,
