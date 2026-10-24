@@ -148,7 +148,10 @@ service cloud.firestore {
         && totals.accountRefunds is int && totals.accountRefunds >= 0 && totals.accountRefunds <= 1000000000;
     }
 
-    function validStudent(student, studentId) {
+    // The student document without the content of its aliases: ten aliases cost about a hundred expressions each time they are
+    // checked, and a student update checks the document twice, which ran CreateOrder and CreatePayment out of the 1000-expression
+    // budget from the third alias on. validStudent (create, and any update that changes aliases) still checks every alias.
+    function validStudentCore(student, studentId) {
       return exactMap(student, [
           'studentId', 'studentCode', 'displayName', 'aliases', 'status', 'openingBalance', 'currentBalance',
           'createdAt', 'revision', 'lastCommandId', 'updatedAt'
@@ -157,7 +160,7 @@ service cloud.firestore {
         && validStudentId(studentId)
         && validStudentCode(student.studentCode)
         && validDisplayName(student.displayName)
-        && student.aliases is list && validAliases(student.aliases)
+        && student.aliases is list
         && student.status in ['active', 'inactive']
         && exactMap(student.openingBalance, ['amount', 'asOfDate', 'note', 'createdAt'])
         && student.openingBalance.amount is int
@@ -172,6 +175,16 @@ service cloud.firestore {
         && student.revision is int && student.revision >= 1
         && student.lastCommandId is string
         && student.updatedAt is timestamp;
+    }
+
+    function validStudent(student, studentId) {
+      return validStudentCore(student, studentId) && validAliases(student.aliases);
+    }
+
+    // An update that leaves the aliases as they are does not check them again; one that changes them checks all of them.
+    function validStudentUpdate(student, before, studentId) {
+      return validStudentCore(student, studentId)
+        && (student.aliases == before.aliases || validAliases(student.aliases));
     }
 
     function validMenu(menu, dayId) {
@@ -896,7 +909,7 @@ service cloud.firestore {
 
     function validStudentAdvance(commandId, command, studentBefore, studentAfter, mealPrice) {
       return command.after.student == studentAfter
-        && validStudent(studentAfter, command.targets.studentId)
+        && validStudentCore(studentAfter, command.targets.studentId)
         && (command.kind == 'CreatePayment' || studentBefore.status == 'active')
         && studentBefore.openingBalance.asOfDate <= command.targets.dayId
         && studentAfter.diff(studentBefore).affectedKeys().hasOnly(['currentBalance', 'revision', 'lastCommandId', 'updatedAt'])
@@ -2306,7 +2319,7 @@ service cloud.firestore {
           'currentBalance', 'displayName', 'aliases', 'status', 'studentCode', 'openingBalance',
           'revision', 'lastCommandId', 'updatedAt'
         ])
-        && validStudent(request.resource.data, studentId)
+        && validStudentUpdate(request.resource.data, resource.data, studentId)
         && request.resource.data.revision == resource.data.revision + 1
         && request.resource.data.updatedAt == request.time;
     }

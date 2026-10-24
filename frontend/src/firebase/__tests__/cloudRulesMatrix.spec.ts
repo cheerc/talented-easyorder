@@ -531,12 +531,15 @@ describeWithEmulator('P16b Rules matrix on the real firestore.rules', () => {
   // P16x regression: the number of aliases, not their length, used to push CreateOrder, CreatePayment and the transaction
   // changes over the Rules' expression budget. Each case builds its own student (and today's day if it is missing), so that
   // it can also be run alone as the probe case of docs/ops/p05-rules-budget.md.
-  const chargeStudent = async (studentId: string, studentCode: string, aliases: string[], everyKind: boolean) => {
+  const ensureToday = async () => {
     await restoreBase();
     if (!(await adminExists(`days/${today}`))) {
       ok(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: EPOCH,
         targets: { dayId: today }, expectedRevisions: { day: 0 }, payload: { businessDate: today } }), 'EnsureDay today');
     }
+  };
+  const chargeStudent = async (studentId: string, studentCode: string, aliases: string[], everyKind: boolean) => {
+    await ensureToday();
     ok(await writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: EPOCH, targets: { studentId },
       expectedRevisions: { student: 0 }, payload: { studentCode, displayName: 'P16x student', aliases,
         openingBalance: { amount: 0, asOfDate: '2026-10-01', note: '' } } }), 'student');
@@ -567,11 +570,69 @@ describeWithEmulator('P16b Rules matrix on the real firestore.rules', () => {
       expectedStudentRevision: refundRev.student, expectedDayRevision: refundRev.day, amount: 20, reason: 'P16x overpaid' }), 'CreateRefund');
     await change(refundId, { kind: 'VoidTransaction', payload: { reason: 'P16x void' } });
   };
+  it('a student with two short aliases can be charged and can pay', async () => {
+    await chargeStudent(uuid(900_029), '731924', ['a', 'b'], false);
+  }, 120_000);
   it('a student with three short aliases can be charged and can pay', async () => {
     await chargeStudent(uuid(900_030), '731925', ['a', 'b', 'c'], false);
   }, 120_000);
   it('a student with ten 100-character aliases can be charged, can pay and can have every kind of change', async () => {
     await chargeStudent(uuid(900_031), '731926', aliasSet('丙'), true);
+  }, 180_000);
+
+  // P16x must not loosen anything: an alias list is still checked in full wherever it is written or changed.
+  it('aliases that are not valid are still refused whenever the aliases are written or changed', async () => {
+    await ensureToday();
+    const badLists: Array<{ label: string; aliases: unknown[] }> = [
+      { label: 'eleven aliases', aliases: Array.from({ length: 11 }, (_item, index) => `a${index}`) },
+      { label: 'an alias of 101 characters', aliases: ['x'.repeat(101)] },
+      { label: 'an empty alias', aliases: ['ok', ''] },
+      { label: 'an alias that is not text', aliases: ['ok', 7] },
+      { label: 'the tenth alias empty', aliases: [...Array.from({ length: 9 }, (_item, index) => `a${index}`), ''] },
+    ];
+    // The command receipt carries the student as it will be (and, for CreateStudent and EditStudent, the aliases in its payload),
+    // so they are changed too: the batch then agrees with itself and only the alias check can refuse it.
+    const withAliases = (writes: CapturedWrite[], path: string, aliases: unknown[]) => writes.map(write => {
+      if (write.path === path) return { ...write, data: { ...write.data, aliases } };
+      if (write.path.startsWith('commands/')) {
+        const data = write.data as { after: { student: DocumentData }; payload: DocumentData };
+        return { ...write, data: { ...data, after: { ...data.after, student: { ...data.after.student, aliases } },
+          ...('aliases' in data.payload ? { payload: { ...data.payload, aliases } } : {}) } };
+      }
+      return write;
+    });
+    const checkAll = async (what: string, writes: CapturedWrite[], path: string, lists: Array<{ label: string; aliases: unknown[] }>) => {
+      for (const list of lists) {
+        await assertDenied(replayBatch(sdk, dbFor(OP), withAliases(writes, path, list.aliases)), `${what} with ${list.label}`);
+      }
+    };
+
+    // CreateStudent and EditStudent write aliases.
+    const created = uuid(900_040);
+    const createWrites = await captureBatch(async () => writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: EPOCH,
+      targets: { studentId: created }, expectedRevisions: { student: 0 }, payload: { studentCode: '731927', displayName: 'P16x', aliases: ['ok'],
+        openingBalance: { amount: 0, asOfDate: '2026-10-01', note: '' } } }));
+    localStorage.clear();
+    await checkAll('CreateStudent', createWrites, `students/${created}`, badLists);
+    await replayBatch(sdk, dbFor(OP), createWrites);
+
+    const editWrites = await captureBatch(async () => writer.commitCommand({ commandId: id(), kind: 'EditStudent', leaseEpoch: EPOCH,
+      targets: { studentId: created }, expectedRevisions: { student: (await read(`students/${created}`)).revision },
+      payload: { aliases: ['fine', 'also fine'] } }));
+    localStorage.clear();
+    await checkAll('EditStudent', editWrites, `students/${created}`, badLists);
+    await replayBatch(sdk, dbFor(OP), editWrites);
+    expect((await read(`students/${created}`)).aliases).toEqual(['fine', 'also fine']);
+
+    // A command that does not edit aliases cannot change them either, valid or not.
+    const rev = await revisions(created, today);
+    const orderWrites = await captureBatch(async () => orders.createOrder({ commandId: id(), transactionId: id(), leaseEpoch: EPOCH,
+      studentId: created, dayId: today, expectedStudentRevision: rev.student, expectedDayRevision: rev.day, mealKind: 'other',
+      mealPrice: 80, paidAmount: 100, menuRevision: null, otherItemName: 'x', note: '' }));
+    localStorage.clear();
+    await checkAll('CreateOrder', orderWrites, `students/${created}`, [...badLists, { label: 'a different valid alias list', aliases: ['swapped'] }]);
+    await replayBatch(sdk, dbFor(OP), orderWrites);
+    expect((await read(`students/${created}`)).aliases).toEqual(['fine', 'also fine']);
   }, 180_000);
 
   describe('collections', () => {
