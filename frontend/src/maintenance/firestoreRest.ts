@@ -155,6 +155,8 @@ export interface FirestoreRest {
   getWithUpdateTime(path: string): Promise<{ data: Record<string, unknown>; updateTime: string } | null>;
 }
 
+const GROUP_PAGE_SIZE = 300;
+
 interface ListAnswer { documents?: Array<{ name: string; fields?: Record<string, RestValue> }>; nextPageToken?: string }
 
 export function createFirestoreRest(target: RestTarget, fetchImpl: FetchLike): FirestoreRest {
@@ -220,8 +222,24 @@ export function createFirestoreRest(target: RestTarget, fetchImpl: FetchLike): F
       } while (pageToken);
       return found;
     },
-    async listGroupDocuments() {
-      throw new RestError('尚未提供', 0);
+    async listGroupDocuments(collectionId) {
+      // runQuery has no page token: order by name and continue after the last name until a short page.
+      const found: RestDocument[] = [];
+      let after: string | null = null;
+      for (;;) {
+        const answer = await call('POST', `${api}:runQuery`, {
+          structuredQuery: {
+            from: [{ collectionId, allDescendants: true }],
+            orderBy: [{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }],
+            limit: GROUP_PAGE_SIZE,
+            ...(after === null ? {} : { startAt: { values: [{ referenceValue: after }], before: false } }),
+          },
+        }) as Array<{ document?: { name: string; fields?: Record<string, RestValue> } }>;
+        const page = answer.flatMap(entry => (entry.document ? [entry.document] : []));
+        for (const item of page) found.push({ path: item.name.slice(root.length + 1), data: decodeFields(item.fields ?? {}) });
+        if (page.length < GROUP_PAGE_SIZE) return found;
+        after = page[page.length - 1]!.name;
+      }
     },
     async listDocumentIds(collection) {
       const ids: string[] = [];
