@@ -50,6 +50,9 @@ const reportPath = process.env.EASYORDER_P16_REPORT;
 /** Where to write the table this run measured (to regenerate the checked-in file); unset in CI. */
 const writeCostsPath = process.env.EASYORDER_P16_WRITE_COSTS;
 const costsFile = `${process.cwd()}/../docs/ops/p16-capacity-costs.json`;
+/** Where to write the query shapes this run recorded; unset in CI. */
+const writeShapesPath = process.env.EASYORDER_P16_WRITE_SHAPES;
+const shapesFile = `${process.cwd()}/../docs/ops/p16-query-shapes.json`;
 
 const OP = R02_OPERATOR;
 const OTHER = { uid: 'p16d-other-operator', email: 'p16d-other@example.test', active: true };
@@ -622,5 +625,27 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
     }
     const checkedIn = JSON.parse(readFileSync(costsFile, 'utf8') as string) as CostTable;
     expect(table).toEqual(checkedIn);
+  });
+
+  it('records the shape of every query the operations run, and equals the checked-in shapes (what `indexCoverage.test.ts` checks the indexes against)', () => {
+    // one entry per distinct (collection, filters, order); the operations that run it; no document counts or cursors, which vary
+    const byShape = new Map<string, { collection: string; where: string[]; orderBy: string[]; operations: Set<string> }>();
+    for (const [operation, queries] of queryShapes) {
+      for (const query of queries) {
+        const key = JSON.stringify([query.collection, query.where, query.orderBy]);
+        const entry = byShape.get(key) ?? { collection: query.collection, where: query.where, orderBy: query.orderBy, operations: new Set<string>() };
+        entry.operations.add(operation);
+        byShape.set(key, entry);
+      }
+    }
+    const shapes = {
+      schemaVersion: 1,
+      shapes: [...byShape.values()]
+        .map(entry => ({ collection: entry.collection, where: entry.where, orderBy: entry.orderBy, operations: [...entry.operations].sort() }))
+        .sort((a, b) => JSON.stringify([a.collection, a.where, a.orderBy]).localeCompare(JSON.stringify([b.collection, b.where, b.orderBy]))),
+    };
+    expect(shapes.shapes.length).toBeGreaterThan(0);
+    if (writeShapesPath) writeFileSync(writeShapesPath, `${JSON.stringify(shapes, null, 2)}\n`);
+    expect(shapes).toEqual(JSON.parse(readFileSync(shapesFile, 'utf8') as string));
   });
 });

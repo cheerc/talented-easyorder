@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  documentBytes, dailyUsage, indexEntryBytes, projectStorage, worstCaseWorkload, documentNameBytes, readAuthorizationCalls,
+  documentBytes, documentFootprint, dailyUsage, indexEntryBytes, projectStorage, worstCaseWorkload, documentNameBytes, readAuthorizationCalls,
   type CostTable, type IndexConfig, type WorkloadLine,
 } from '../capacityModel';
 
@@ -143,6 +143,11 @@ describe('P16d capacity model: storage', () => {
     expect(projection.indexBytes).toBe(first1 + second1 + third1);
     expect(projection.totalBytes).toBe(76 + 86 + 121 + first1 + second1 + third1);
     expect(projection.byCollection.items).toEqual({ documents: 2, documentBytes: 76 + 86, indexBytes: first1 + second1 });
+  });
+
+  it('gives the footprint of one document: the document and its index entries', () => {
+    expect(documentFootprint(first, indexes)).toEqual({ documentBytes: 76, indexBytes: 164 + 84 + 146 });
+    expect(documentFootprint(second, indexes)).toEqual({ documentBytes: 86, indexBytes: 166 + 164 + 160 + 85 + 146 });
   });
 
   it('extrapolates the per-day bytes over days, with the average and the P95 of the sampled documents', () => {

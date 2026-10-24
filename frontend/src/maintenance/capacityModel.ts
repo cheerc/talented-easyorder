@@ -367,6 +367,11 @@ function indexBytesOf(document: SampleDocument, config: IndexConfig): number {
   return total;
 }
 
+/** What one document costs in storage: the document itself and its index entries (single-field, composite and `__name__`). */
+export function documentFootprint(document: SampleDocument, config: IndexConfig): { documentBytes: number; indexBytes: number } {
+  return { documentBytes: documentBytes(document.path, document.data), indexBytes: indexBytesOf(document, config) };
+}
+
 export function projectStorage(documents: SampleDocument[], config: IndexConfig): StorageProjection {
   const byCollection: StorageProjection['byCollection'] = {};
   const perDocument: Record<string, number[]> = {};

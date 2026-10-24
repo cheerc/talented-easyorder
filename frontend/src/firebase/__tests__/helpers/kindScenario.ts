@@ -34,6 +34,8 @@ export interface KindScenarioDeps {
   reports: ReturnType<typeof createCloudReportActionRepository>;
   epoch: number;
   backupPassword: string;
+  /** The aliases of the student the steps create (default: the Rules' worst case; storage sizing passes a realistic set). */
+  aliases?: (char: string) => string[];
   /** A document's data as the administrator sees it (security rules off). */
   read(path: string): Promise<Record<string, number & string>>;
   /** A fresh command or transaction id. */
@@ -74,13 +76,13 @@ export function buildKindSteps(D: KindScenarioDeps): KindStep[] {
   // S01–S04: the student commands
   add('CreateStudent', async () => D.writer.commitCommand({ commandId: D.id(), kind: 'CreateStudent', leaseEpoch: D.epoch,
     targets: { studentId: alpha }, expectedRevisions: { student: 0 },
-    payload: { studentCode: '731901', displayName: 'P16b Alpha', aliases: aliasSet('甲'), openingBalance: { amount: 100, asOfDate: '2026-10-01', note: '' } } }));
+    payload: { studentCode: '731901', displayName: 'P16b Alpha', aliases: (D.aliases ?? aliasSet)('甲'), openingBalance: { amount: 100, asOfDate: '2026-10-01', note: '' } } }));
   add('ChangeStudentCode', async () => D.writer.commitCommand({ commandId: D.id(), kind: 'ChangeStudentCode', leaseEpoch: D.epoch,
     targets: { studentId: alpha }, expectedRevisions: { student: (await D.read(`students/${alpha}`)).revision },
     payload: { studentCode: '731903', reason: 'P16b code change' } }));
   add('EditStudent', async () => D.writer.commitCommand({ commandId: D.id(), kind: 'EditStudent', leaseEpoch: D.epoch,
     targets: { studentId: alpha }, expectedRevisions: { student: (await D.read(`students/${alpha}`)).revision },
-    payload: { displayName: 'P16b Alpha Edited', aliases: aliasSet('乙') } }));
+    payload: { displayName: 'P16b Alpha Edited', aliases: (D.aliases ?? aliasSet)('乙') } }));
   add('SetStudentStatus', async () => D.writer.commitCommand({ commandId: D.id(), kind: 'SetStudentStatus', leaseEpoch: D.epoch,
     targets: { studentId: alpha }, expectedRevisions: { student: (await D.read(`students/${alpha}`)).revision },
     payload: { status: 'inactive', reason: 'P16b pause' } }));
