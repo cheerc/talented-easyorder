@@ -61,19 +61,6 @@
         "businessDate =="
       ],
       "orderBy": [
-        "__name__ asc"
-      ],
-      "operations": [
-        "load.auditDay",
-        "load.auditRange"
-      ]
-    },
-    {
-      "collection": "commands",
-      "where": [
-        "businessDate =="
-      ],
-      "orderBy": [
         "seq asc",
         "__name__ asc"
       ],
@@ -99,40 +86,15 @@
       "collection": "commands",
       "where": [
         "studentId ==",
-        "seq <="
+        "seq <"
       ],
       "orderBy": [
-        "seq asc",
-        "__name__ asc"
-      ],
-      "operations": [
-        "load.auditStudent"
-      ]
-    },
-    {
-      "collection": "commands",
-      "where": [
-        "studentId =="
-      ],
-      "orderBy": [
-        "__name__ asc"
+        "seq desc",
+        "__name__ desc"
       ],
       "operations": [
         "load.auditRangeStudent",
         "load.auditStudent"
-      ]
-    },
-    {
-      "collection": "commands",
-      "where": [
-        "studentId =="
-      ],
-      "orderBy": [
-        "seq asc",
-        "__name__ asc"
-      ],
-      "operations": [
-        "load.auditRangeStudent"
       ]
     },
     {
@@ -270,7 +232,6 @@
         "__name__ asc"
       ],
       "operations": [
-        "load.accountHistory",
         "load.orders",
         "load.report",
         "load.reportStudent",
@@ -283,48 +244,32 @@
         "businessDate =="
       ],
       "orderBy": [
-        "__name__ asc"
-      ],
-      "operations": [
-        "load.accountHistory",
-        "load.report",
-        "load.reportStudent"
-      ]
-    },
-    {
-      "collection": "transactions",
-      "where": [
-        "businessDate =="
-      ],
-      "orderBy": [
         "createdAt asc",
         "__name__ asc"
       ],
       "operations": [
-        "load.accountHistory",
-        "load.orders",
-        "load.report",
-        "load.reportStudent"
+        "load.orders"
       ]
     },
     {
       "collection": "transactions",
       "where": [
-        "studentId =="
+        "businessDate >="
       ],
       "orderBy": [
+        "businessDate asc",
+        "createdAt asc",
         "__name__ asc"
       ],
       "operations": [
-        "load.accountHistory",
-        "load.report",
-        "load.reportStudent"
+        "load.report"
       ]
     },
     {
       "collection": "transactions",
       "where": [
-        "studentId =="
+        "studentId ==",
+        "businessDate >="
       ],
       "orderBy": [
         "businessDate asc",
@@ -333,7 +278,6 @@
       ],
       "operations": [
         "load.accountHistory",
-        "load.report",
         "load.reportStudent"
       ]
     },

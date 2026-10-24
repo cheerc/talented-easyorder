@@ -198,8 +198,10 @@ describeWithEmulator('P16e history scale: the table against the full size', () =
     for (let index = 0; index < TRANSACTIONS; index += 1) await order(studentS, historyDay, `紙本P16E-${index}：x`);
     const reads = createCloudReadRepository(app, current);
     const onToday = { kind: 'today' as const, startDate: today, endDate: today };
-    await measure('load.accountHistory', { student: await countOf('students'), dayTransaction: 0, studentTransaction: TRANSACTIONS }, () => reads.readAccountHistory({ range: onToday, studentId: studentS, leaseEpoch: epoch }));
-    await measure('load.auditStudent', { studentTransaction: TRANSACTIONS }, () => reads.readAudit({ studentId: studentS, leaseEpoch: epoch }));
+    // P16f1: the history of one account reads that student's transactions of the range (none yet: the TRANSACTIONS orders are on another
+    // day) and the audit of a student reads the newest page of 100 commands, whatever the length of the history
+    await measure('load.accountHistory', { student: await countOf('students'), dayTransaction: 0, studentTransaction: 0 }, () => reads.readAccountHistory({ range: onToday, studentId: studentS, leaseEpoch: epoch }));
+    await measure('load.auditStudent', { studentTransaction: Math.min(TRANSACTIONS, 100) }, () => reads.readAudit({ studentId: studentS, leaseEpoch: epoch }));
   }, 6 * 60 * 60_000);
 
   it(`builds a day with ${TRANSACTIONS} transactions, and measures the loads of the day`, async () => {
@@ -211,12 +213,14 @@ describeWithEmulator('P16e history scale: the table against the full size', () =
     // the commands dated today that are no orders: the day's opening and its opening cash
     const commandsToday = await admin(async db => (await getDocs(query(collection(db, 'commands'), where('businessDate', '==', today)))).size);
     await measure('load.auditDay', { dayTransaction: TRANSACTIONS, dayCommand: commandsToday - TRANSACTIONS }, () => reads.readAudit({ dayId: today, leaseEpoch: epoch }));
-    // the report reads the whole history of every account of the range: studentT (the day's orders) and, with one order of today,
-    // studentS (its TRANSACTIONS orders of the history day are outside the range), so two accounts and the history beyond the range
+    // P16f1: the report reads the transactions of the range and, for the accounts of the range, nothing before it (the balances are worked
+    // back from currentBalance): studentT (the day's orders) and, with one order of today, studentS (its TRANSACTIONS orders of the history
+    // day are outside the range) are two accounts; the report of one student reads that student's transactions of the range only
     await order(studentS, today, '');
     const inRange = TRANSACTIONS + 1;
-    await measure('load.report', { student: students, rangeAccount: 2, dayTransaction: inRange - 2, studentTransaction: TRANSACTIONS }, () => reads.readReport({ range: onToday, studentId: null, leaseEpoch: epoch }));
-    await measure('load.reportStudent', { student: students, dayTransaction: inRange, studentTransaction: TRANSACTIONS + 1 }, () => reads.readReport({ range: onToday, studentId: studentS, leaseEpoch: epoch }));
+    await measure('load.report', { student: students, rangeAccount: 2, dayTransaction: inRange - 2, studentTransaction: 0 }, () => reads.readReport({ range: onToday, studentId: null, leaseEpoch: epoch }));
+    await measure('load.reportStudent', { student: students, dayTransaction: 0, studentTransaction: 0 }, () => reads.readReport({ range: onToday, studentId: studentS, leaseEpoch: epoch }));
+    // every command of the student was committed today in this fixture, so the newest-first read stops only at the first one: all of them
     await measure('load.auditRangeStudent', { studentTransaction: TRANSACTIONS + 1 }, () => reads.readAuditRange({ range: onToday, studentId: studentS, leaseEpoch: epoch }));
   }, 6 * 60 * 60_000);
 });

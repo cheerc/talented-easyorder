@@ -487,7 +487,9 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
         // the account history reads the transactions of the range (today's, of every student) and the whole history of the student
         { name: 'load.accountHistory', dimensions: ['student', 'dayTransaction', 'studentTransaction'], roster: true, paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAccountHistory({ range: onToday, studentId: studentS, leaseEpoch: epoch }) },
         { name: 'load.auditDay', dimensions: ['dayTransaction', 'dayCommand'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAudit({ dayId: today, leaseEpoch: epoch }) },
-        { name: 'load.auditStudent', dimensions: ['studentTransaction'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAudit({ studentId: studentS, leaseEpoch: epoch }) },
+        // P16f1: the audit of a student is the newest page of at most 100 commands, so it is run at the production page size only (at 6 or 12
+        // it would be one small page whatever the history, and the slope would be a fraction of the real cost); the gate gives it at most 100 units
+        { name: 'load.auditStudent', dimensions: ['studentTransaction'], paged: false, production: production.read, make: () => () => createCloudReadRepository(app, current).readAudit({ studentId: studentS, leaseEpoch: epoch }) },
         // the range audit (CSV and print) reads the commands of the range and the commands that carry no business date
         { name: 'load.auditRange', dimensions: ['student', 'vendor', 'dayTransaction', 'dayCommand'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAuditRange({ range: onToday, studentId: null, leaseEpoch: epoch }) },
         // the range audit of one student reads every command of that student (the history), whatever the range

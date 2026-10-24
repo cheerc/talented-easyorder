@@ -1982,27 +1982,19 @@
         "studentTransaction"
       ],
       "reads": {
-        "fixed": 24.333333,
-        "perUnit": {
-          "student": 1,
-          "dayTransaction": 2.04,
-          "studentTransaction": 2.04
-        }
+        "fixed": 10,
+        "perUnit": {}
       },
       "readAuthorization": {
-        "fixed": 56.333333,
+        "fixed": 17,
         "perUnit": {
-          "student": 0.01,
-          "dayTransaction": 0.1,
-          "studentTransaction": 0.1
+          "student": 0.01
         }
       },
       "readAuthorizationDeduped": {
-        "fixed": 56.333333,
+        "fixed": 17,
         "perUnit": {
-          "student": 0.01,
-          "dayTransaction": 0.1,
-          "studentTransaction": 0.1
+          "student": 0.01
         }
       },
       "writes": 0,
@@ -2013,15 +2005,8 @@
           12
         ],
         "productionPageSize": 100,
-        "readsPerDocument": {
-          "student": 1,
-          "dayTransaction": 2,
-          "studentTransaction": 2
-        },
-        "readsPerPage": {
-          "dayTransaction": 4,
-          "studentTransaction": 4
-        },
+        "readsPerDocument": {},
+        "readsPerPage": {},
         "states": [
           {
             "dims": {
@@ -2038,14 +2023,14 @@
               "command": 34
             },
             "small": {
-              "reads": 40,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 40,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2063,14 +2048,14 @@
               "command": 40
             },
             "small": {
-              "reads": 46,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 46,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2088,14 +2073,14 @@
               "command": 46
             },
             "small": {
-              "reads": 52,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 52,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2113,14 +2098,14 @@
               "command": 52
             },
             "small": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2138,14 +2123,14 @@
               "command": 58
             },
             "small": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2163,14 +2148,14 @@
               "command": 64
             },
             "small": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2188,14 +2173,14 @@
               "command": 70
             },
             "small": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2213,14 +2198,14 @@
               "command": 76
             },
             "small": {
-              "reads": 74,
-              "authorization": 46,
-              "authQueries": 14
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 70,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2238,14 +2223,14 @@
               "command": 82
             },
             "small": {
-              "reads": 90,
-              "authorization": 56,
-              "authQueries": 18
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 86,
-              "authorization": 46,
-              "authQueries": 14
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2263,14 +2248,14 @@
               "command": 88
             },
             "small": {
-              "reads": 106,
-              "authorization": 66,
-              "authQueries": 22
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 98,
-              "authorization": 46,
-              "authQueries": 14
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2288,14 +2273,14 @@
               "command": 94
             },
             "small": {
-              "reads": 122,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 114,
-              "authorization": 56,
-              "authQueries": 18
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2313,14 +2298,14 @@
               "command": 100
             },
             "small": {
-              "reads": 138,
-              "authorization": 86,
-              "authQueries": 30
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 126,
-              "authorization": 56,
-              "authQueries": 18
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2338,14 +2323,14 @@
               "command": 106
             },
             "small": {
-              "reads": 154,
-              "authorization": 96,
-              "authQueries": 34
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 142,
-              "authorization": 66,
-              "authQueries": 22
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2363,14 +2348,14 @@
               "command": 112
             },
             "small": {
-              "reads": 170,
-              "authorization": 106,
-              "authQueries": 38
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 154,
-              "authorization": 66,
-              "authQueries": 22
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2388,14 +2373,14 @@
               "command": 118
             },
             "small": {
-              "reads": 186,
-              "authorization": 116,
-              "authQueries": 42
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 170,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2413,14 +2398,14 @@
               "command": 124
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2438,14 +2423,14 @@
               "command": 130
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2463,14 +2448,14 @@
               "command": 136
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2488,14 +2473,14 @@
               "command": 142
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2513,14 +2498,14 @@
               "command": 166
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2538,14 +2523,14 @@
               "command": 190
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2563,14 +2548,14 @@
               "command": 214
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2588,14 +2573,14 @@
               "command": 220
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2613,14 +2598,14 @@
               "command": 226
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2638,14 +2623,14 @@
               "command": 232
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2663,14 +2648,14 @@
               "command": 238
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2688,14 +2673,14 @@
               "command": 244
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2713,14 +2698,14 @@
               "command": 250
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2738,14 +2723,14 @@
               "command": 250
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2763,14 +2748,14 @@
               "command": 250
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           },
           {
@@ -2788,24 +2773,23 @@
               "command": 250
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 9,
+              "authorization": 15,
+              "authQueries": 2
             }
           }
         ],
         "lastRunReadsByKey": {
-          "doc system/dataHead": 26,
-          "doc system/accessLease": 24,
-          "query students": 38,
-          "doc days/*": 1,
-          "doc backfillDays/*": 1,
-          "query transactions": 112
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc students/*": 1,
+          "query transactions": 1,
+          "doc backfillDays/*": 1
         }
       }
     },
@@ -2815,24 +2799,24 @@
         "dayCommand"
       ],
       "reads": {
-        "fixed": 15,
+        "fixed": 9.5,
         "perUnit": {
-          "dayTransaction": 2.04,
-          "dayCommand": 2.04
+          "dayTransaction": 1.02,
+          "dayCommand": 1.02
         }
       },
       "readAuthorization": {
-        "fixed": 33.5,
+        "fixed": 19.75,
         "perUnit": {
-          "dayTransaction": 0.1,
-          "dayCommand": 0.1
+          "dayTransaction": 0.05,
+          "dayCommand": 0.05
         }
       },
       "readAuthorizationDeduped": {
-        "fixed": 33.5,
+        "fixed": 19.75,
         "perUnit": {
-          "dayTransaction": 0.1,
-          "dayCommand": 0.1
+          "dayTransaction": 0.05,
+          "dayCommand": 0.05
         }
       },
       "writes": 0,
@@ -2844,12 +2828,12 @@
         ],
         "productionPageSize": 100,
         "readsPerDocument": {
-          "dayTransaction": 2,
-          "dayCommand": 2
+          "dayTransaction": 1,
+          "dayCommand": 1
         },
         "readsPerPage": {
-          "dayTransaction": 4,
-          "dayCommand": 4
+          "dayTransaction": 2,
+          "dayCommand": 2
         },
         "states": [
           {
@@ -2867,14 +2851,14 @@
               "command": 34
             },
             "small": {
-              "reads": 14,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 9,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 14,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 9,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -2892,14 +2876,14 @@
               "command": 40
             },
             "small": {
-              "reads": 14,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 9,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 14,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 9,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -2917,14 +2901,14 @@
               "command": 46
             },
             "small": {
-              "reads": 14,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 9,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 14,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 9,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -2942,14 +2926,14 @@
               "command": 52
             },
             "small": {
-              "reads": 14,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 9,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 14,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 9,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -2967,14 +2951,14 @@
               "command": 58
             },
             "small": {
-              "reads": 14,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 9,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 14,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 9,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -2992,14 +2976,14 @@
               "command": 64
             },
             "small": {
-              "reads": 14,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 9,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 14,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 9,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -3017,14 +3001,14 @@
               "command": 70
             },
             "small": {
-              "reads": 14,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 9,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 14,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 9,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -3042,14 +3026,14 @@
               "command": 76
             },
             "small": {
-              "reads": 30,
-              "authorization": 26,
-              "authQueries": 8
-            },
-            "large": {
-              "reads": 26,
+              "reads": 17,
               "authorization": 16,
               "authQueries": 4
+            },
+            "large": {
+              "reads": 15,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -3067,14 +3051,14 @@
               "command": 82
             },
             "small": {
-              "reads": 46,
-              "authorization": 36,
-              "authQueries": 12
+              "reads": 25,
+              "authorization": 21,
+              "authQueries": 6
             },
             "large": {
-              "reads": 42,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 23,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -3092,14 +3076,14 @@
               "command": 88
             },
             "small": {
-              "reads": 62,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 54,
+              "reads": 33,
               "authorization": 26,
               "authQueries": 8
+            },
+            "large": {
+              "reads": 29,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -3117,14 +3101,14 @@
               "command": 94
             },
             "small": {
-              "reads": 78,
-              "authorization": 56,
-              "authQueries": 20
+              "reads": 41,
+              "authorization": 31,
+              "authQueries": 10
             },
             "large": {
-              "reads": 70,
-              "authorization": 36,
-              "authQueries": 12
+              "reads": 37,
+              "authorization": 21,
+              "authQueries": 6
             }
           },
           {
@@ -3142,14 +3126,14 @@
               "command": 100
             },
             "small": {
-              "reads": 94,
-              "authorization": 66,
-              "authQueries": 24
-            },
-            "large": {
-              "reads": 82,
+              "reads": 49,
               "authorization": 36,
               "authQueries": 12
+            },
+            "large": {
+              "reads": 43,
+              "authorization": 21,
+              "authQueries": 6
             }
           },
           {
@@ -3167,14 +3151,14 @@
               "command": 106
             },
             "small": {
-              "reads": 110,
-              "authorization": 76,
-              "authQueries": 28
+              "reads": 57,
+              "authorization": 41,
+              "authQueries": 14
             },
             "large": {
-              "reads": 98,
-              "authorization": 46,
-              "authQueries": 16
+              "reads": 51,
+              "authorization": 26,
+              "authQueries": 8
             }
           },
           {
@@ -3192,14 +3176,14 @@
               "command": 112
             },
             "small": {
-              "reads": 110,
-              "authorization": 76,
-              "authQueries": 28
+              "reads": 57,
+              "authorization": 41,
+              "authQueries": 14
             },
             "large": {
-              "reads": 98,
-              "authorization": 46,
-              "authQueries": 16
+              "reads": 51,
+              "authorization": 26,
+              "authQueries": 8
             }
           },
           {
@@ -3217,14 +3201,14 @@
               "command": 118
             },
             "small": {
-              "reads": 110,
-              "authorization": 76,
-              "authQueries": 28
+              "reads": 57,
+              "authorization": 41,
+              "authQueries": 14
             },
             "large": {
-              "reads": 98,
-              "authorization": 46,
-              "authQueries": 16
+              "reads": 51,
+              "authorization": 26,
+              "authQueries": 8
             }
           },
           {
@@ -3242,14 +3226,14 @@
               "command": 124
             },
             "small": {
-              "reads": 110,
-              "authorization": 76,
-              "authQueries": 28
+              "reads": 57,
+              "authorization": 41,
+              "authQueries": 14
             },
             "large": {
-              "reads": 98,
-              "authorization": 46,
-              "authQueries": 16
+              "reads": 51,
+              "authorization": 26,
+              "authQueries": 8
             }
           },
           {
@@ -3267,14 +3251,14 @@
               "command": 130
             },
             "small": {
-              "reads": 126,
-              "authorization": 86,
-              "authQueries": 32
-            },
-            "large": {
-              "reads": 110,
+              "reads": 65,
               "authorization": 46,
               "authQueries": 16
+            },
+            "large": {
+              "reads": 57,
+              "authorization": 26,
+              "authQueries": 8
             }
           },
           {
@@ -3292,14 +3276,14 @@
               "command": 136
             },
             "small": {
-              "reads": 142,
-              "authorization": 96,
-              "authQueries": 36
+              "reads": 73,
+              "authorization": 51,
+              "authQueries": 18
             },
             "large": {
-              "reads": 126,
-              "authorization": 56,
-              "authQueries": 20
+              "reads": 65,
+              "authorization": 31,
+              "authQueries": 10
             }
           },
           {
@@ -3317,14 +3301,14 @@
               "command": 142
             },
             "small": {
-              "reads": 158,
-              "authorization": 106,
-              "authQueries": 40
-            },
-            "large": {
-              "reads": 138,
+              "reads": 81,
               "authorization": 56,
               "authQueries": 20
+            },
+            "large": {
+              "reads": 71,
+              "authorization": 31,
+              "authQueries": 10
             }
           },
           {
@@ -3342,14 +3326,14 @@
               "command": 166
             },
             "small": {
-              "reads": 158,
-              "authorization": 106,
-              "authQueries": 40
-            },
-            "large": {
-              "reads": 138,
+              "reads": 81,
               "authorization": 56,
               "authQueries": 20
+            },
+            "large": {
+              "reads": 71,
+              "authorization": 31,
+              "authQueries": 10
             }
           },
           {
@@ -3367,14 +3351,14 @@
               "command": 190
             },
             "small": {
-              "reads": 158,
-              "authorization": 106,
-              "authQueries": 40
-            },
-            "large": {
-              "reads": 138,
+              "reads": 81,
               "authorization": 56,
               "authQueries": 20
+            },
+            "large": {
+              "reads": 71,
+              "authorization": 31,
+              "authQueries": 10
             }
           },
           {
@@ -3392,14 +3376,14 @@
               "command": 214
             },
             "small": {
-              "reads": 158,
-              "authorization": 106,
-              "authQueries": 40
-            },
-            "large": {
-              "reads": 138,
+              "reads": 81,
               "authorization": 56,
               "authQueries": 20
+            },
+            "large": {
+              "reads": 71,
+              "authorization": 31,
+              "authQueries": 10
             }
           },
           {
@@ -3417,14 +3401,14 @@
               "command": 220
             },
             "small": {
-              "reads": 158,
-              "authorization": 106,
-              "authQueries": 40
-            },
-            "large": {
-              "reads": 138,
+              "reads": 81,
               "authorization": 56,
               "authQueries": 20
+            },
+            "large": {
+              "reads": 71,
+              "authorization": 31,
+              "authQueries": 10
             }
           },
           {
@@ -3442,14 +3426,14 @@
               "command": 226
             },
             "small": {
-              "reads": 158,
-              "authorization": 106,
-              "authQueries": 40
-            },
-            "large": {
-              "reads": 138,
+              "reads": 81,
               "authorization": 56,
               "authQueries": 20
+            },
+            "large": {
+              "reads": 71,
+              "authorization": 31,
+              "authQueries": 10
             }
           },
           {
@@ -3467,14 +3451,14 @@
               "command": 232
             },
             "small": {
-              "reads": 158,
-              "authorization": 106,
-              "authQueries": 40
-            },
-            "large": {
-              "reads": 138,
+              "reads": 81,
               "authorization": 56,
               "authQueries": 20
+            },
+            "large": {
+              "reads": 71,
+              "authorization": 31,
+              "authQueries": 10
             }
           },
           {
@@ -3492,14 +3476,14 @@
               "command": 238
             },
             "small": {
-              "reads": 158,
-              "authorization": 106,
-              "authQueries": 40
-            },
-            "large": {
-              "reads": 138,
+              "reads": 81,
               "authorization": 56,
               "authQueries": 20
+            },
+            "large": {
+              "reads": 71,
+              "authorization": 31,
+              "authQueries": 10
             }
           },
           {
@@ -3517,14 +3501,14 @@
               "command": 244
             },
             "small": {
-              "reads": 158,
-              "authorization": 106,
-              "authQueries": 40
-            },
-            "large": {
-              "reads": 138,
+              "reads": 81,
               "authorization": 56,
               "authQueries": 20
+            },
+            "large": {
+              "reads": 71,
+              "authorization": 31,
+              "authQueries": 10
             }
           },
           {
@@ -3542,14 +3526,14 @@
               "command": 250
             },
             "small": {
-              "reads": 158,
-              "authorization": 106,
-              "authQueries": 40
-            },
-            "large": {
-              "reads": 138,
+              "reads": 81,
               "authorization": 56,
               "authQueries": 20
+            },
+            "large": {
+              "reads": 71,
+              "authorization": 31,
+              "authQueries": 10
             }
           },
           {
@@ -3567,14 +3551,14 @@
               "command": 250
             },
             "small": {
-              "reads": 158,
-              "authorization": 106,
-              "authQueries": 40
-            },
-            "large": {
-              "reads": 138,
+              "reads": 81,
               "authorization": 56,
               "authQueries": 20
+            },
+            "large": {
+              "reads": 71,
+              "authorization": 31,
+              "authQueries": 10
             }
           },
           {
@@ -3592,14 +3576,14 @@
               "command": 250
             },
             "small": {
-              "reads": 158,
-              "authorization": 106,
-              "authQueries": 40
-            },
-            "large": {
-              "reads": 138,
+              "reads": 81,
               "authorization": 56,
               "authQueries": 20
+            },
+            "large": {
+              "reads": 71,
+              "authorization": 31,
+              "authQueries": 10
             }
           },
           {
@@ -3617,21 +3601,21 @@
               "command": 250
             },
             "small": {
-              "reads": 158,
-              "authorization": 106,
-              "authQueries": 40
-            },
-            "large": {
-              "reads": 138,
+              "reads": 81,
               "authorization": 56,
               "authQueries": 20
+            },
+            "large": {
+              "reads": 71,
+              "authorization": 31,
+              "authQueries": 10
             }
           }
         ],
         "lastRunReadsByKey": {
-          "doc system/dataHead": 22,
-          "doc system/accessLease": 22,
-          "query commands": 114
+          "doc system/dataHead": 12,
+          "doc system/accessLease": 12,
+          "query commands": 57
         }
       }
     },
@@ -3643,30 +3627,30 @@
         "dayCommand"
       ],
       "reads": {
-        "fixed": 20.666667,
+        "fixed": 15.166667,
         "perUnit": {
           "student": 1.02,
           "vendor": 1.02,
-          "dayTransaction": 2.04,
-          "dayCommand": 2.04
+          "dayTransaction": 1.02,
+          "dayCommand": 1.02
         }
       },
       "readAuthorization": {
-        "fixed": 47.666667,
+        "fixed": 33.916667,
         "perUnit": {
           "student": 0.05,
           "vendor": 0.05,
-          "dayTransaction": 0.1,
-          "dayCommand": 0.1
+          "dayTransaction": 0.05,
+          "dayCommand": 0.05
         }
       },
       "readAuthorizationDeduped": {
-        "fixed": 47.666667,
+        "fixed": 33.916667,
         "perUnit": {
           "student": 0.05,
           "vendor": 0.05,
-          "dayTransaction": 0.1,
-          "dayCommand": 0.1
+          "dayTransaction": 0.05,
+          "dayCommand": 0.05
         }
       },
       "writes": 0,
@@ -3680,14 +3664,14 @@
         "readsPerDocument": {
           "student": 1,
           "vendor": 1,
-          "dayTransaction": 2,
-          "dayCommand": 2
+          "dayTransaction": 1,
+          "dayCommand": 1
         },
         "readsPerPage": {
           "student": 2,
           "vendor": 2,
-          "dayTransaction": 4,
-          "dayCommand": 4
+          "dayTransaction": 2,
+          "dayCommand": 2
         },
         "states": [
           {
@@ -3705,14 +3689,14 @@
               "command": 34
             },
             "small": {
-              "reads": 42,
-              "authorization": 36,
-              "authQueries": 12
+              "reads": 37,
+              "authorization": 31,
+              "authQueries": 10
             },
             "large": {
-              "reads": 38,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 33,
+              "authorization": 21,
+              "authQueries": 6
             }
           },
           {
@@ -3730,14 +3714,14 @@
               "command": 40
             },
             "small": {
-              "reads": 50,
-              "authorization": 41,
-              "authQueries": 14
+              "reads": 45,
+              "authorization": 36,
+              "authQueries": 12
             },
             "large": {
-              "reads": 46,
-              "authorization": 31,
-              "authQueries": 10
+              "reads": 41,
+              "authorization": 26,
+              "authQueries": 8
             }
           },
           {
@@ -3755,14 +3739,14 @@
               "command": 46
             },
             "small": {
-              "reads": 58,
-              "authorization": 46,
-              "authQueries": 16
+              "reads": 53,
+              "authorization": 41,
+              "authQueries": 14
             },
             "large": {
-              "reads": 52,
-              "authorization": 31,
-              "authQueries": 10
+              "reads": 47,
+              "authorization": 26,
+              "authQueries": 8
             }
           },
           {
@@ -3780,14 +3764,14 @@
               "command": 52
             },
             "small": {
-              "reads": 66,
-              "authorization": 51,
-              "authQueries": 18
+              "reads": 61,
+              "authorization": 46,
+              "authQueries": 16
             },
             "large": {
-              "reads": 60,
-              "authorization": 36,
-              "authQueries": 12
+              "reads": 55,
+              "authorization": 31,
+              "authQueries": 10
             }
           },
           {
@@ -3805,14 +3789,14 @@
               "command": 58
             },
             "small": {
-              "reads": 74,
-              "authorization": 56,
-              "authQueries": 20
+              "reads": 69,
+              "authorization": 51,
+              "authQueries": 18
             },
             "large": {
-              "reads": 66,
-              "authorization": 36,
-              "authQueries": 12
+              "reads": 61,
+              "authorization": 31,
+              "authQueries": 10
             }
           },
           {
@@ -3830,14 +3814,14 @@
               "command": 64
             },
             "small": {
-              "reads": 82,
-              "authorization": 61,
-              "authQueries": 22
+              "reads": 77,
+              "authorization": 56,
+              "authQueries": 20
             },
             "large": {
-              "reads": 74,
-              "authorization": 41,
-              "authQueries": 14
+              "reads": 69,
+              "authorization": 36,
+              "authQueries": 12
             }
           },
           {
@@ -3855,14 +3839,14 @@
               "command": 70
             },
             "small": {
-              "reads": 90,
-              "authorization": 66,
-              "authQueries": 24
+              "reads": 85,
+              "authorization": 61,
+              "authQueries": 22
             },
             "large": {
-              "reads": 80,
-              "authorization": 41,
-              "authQueries": 14
+              "reads": 75,
+              "authorization": 36,
+              "authQueries": 12
             }
           },
           {
@@ -3880,14 +3864,14 @@
               "command": 76
             },
             "small": {
-              "reads": 106,
-              "authorization": 76,
-              "authQueries": 28
+              "reads": 93,
+              "authorization": 66,
+              "authQueries": 24
             },
             "large": {
-              "reads": 92,
-              "authorization": 41,
-              "authQueries": 14
+              "reads": 81,
+              "authorization": 36,
+              "authQueries": 12
             }
           },
           {
@@ -3905,14 +3889,14 @@
               "command": 82
             },
             "small": {
-              "reads": 122,
-              "authorization": 86,
-              "authQueries": 32
+              "reads": 101,
+              "authorization": 71,
+              "authQueries": 26
             },
             "large": {
-              "reads": 108,
-              "authorization": 51,
-              "authQueries": 18
+              "reads": 89,
+              "authorization": 41,
+              "authQueries": 14
             }
           },
           {
@@ -3930,14 +3914,14 @@
               "command": 88
             },
             "small": {
-              "reads": 138,
-              "authorization": 96,
-              "authQueries": 36
+              "reads": 109,
+              "authorization": 76,
+              "authQueries": 28
             },
             "large": {
-              "reads": 120,
-              "authorization": 51,
-              "authQueries": 18
+              "reads": 95,
+              "authorization": 41,
+              "authQueries": 14
             }
           },
           {
@@ -3955,14 +3939,14 @@
               "command": 94
             },
             "small": {
-              "reads": 154,
-              "authorization": 106,
-              "authQueries": 40
+              "reads": 117,
+              "authorization": 81,
+              "authQueries": 30
             },
             "large": {
-              "reads": 136,
-              "authorization": 61,
-              "authQueries": 22
+              "reads": 103,
+              "authorization": 46,
+              "authQueries": 16
             }
           },
           {
@@ -3980,14 +3964,14 @@
               "command": 100
             },
             "small": {
-              "reads": 170,
-              "authorization": 116,
-              "authQueries": 44
+              "reads": 125,
+              "authorization": 86,
+              "authQueries": 32
             },
             "large": {
-              "reads": 148,
-              "authorization": 61,
-              "authQueries": 22
+              "reads": 109,
+              "authorization": 46,
+              "authQueries": 16
             }
           },
           {
@@ -4005,14 +3989,14 @@
               "command": 106
             },
             "small": {
-              "reads": 186,
-              "authorization": 126,
-              "authQueries": 48
+              "reads": 133,
+              "authorization": 91,
+              "authQueries": 34
             },
             "large": {
-              "reads": 164,
-              "authorization": 71,
-              "authQueries": 26
+              "reads": 117,
+              "authorization": 51,
+              "authQueries": 18
             }
           },
           {
@@ -4030,14 +4014,14 @@
               "command": 112
             },
             "small": {
-              "reads": 186,
-              "authorization": 126,
-              "authQueries": 48
+              "reads": 133,
+              "authorization": 91,
+              "authQueries": 34
             },
             "large": {
-              "reads": 164,
-              "authorization": 71,
-              "authQueries": 26
+              "reads": 117,
+              "authorization": 51,
+              "authQueries": 18
             }
           },
           {
@@ -4055,14 +4039,14 @@
               "command": 118
             },
             "small": {
-              "reads": 186,
-              "authorization": 126,
-              "authQueries": 48
+              "reads": 133,
+              "authorization": 91,
+              "authQueries": 34
             },
             "large": {
-              "reads": 164,
-              "authorization": 71,
-              "authQueries": 26
+              "reads": 117,
+              "authorization": 51,
+              "authQueries": 18
             }
           },
           {
@@ -4080,14 +4064,14 @@
               "command": 124
             },
             "small": {
-              "reads": 186,
-              "authorization": 126,
-              "authQueries": 48
+              "reads": 133,
+              "authorization": 91,
+              "authQueries": 34
             },
             "large": {
-              "reads": 164,
-              "authorization": 71,
-              "authQueries": 26
+              "reads": 117,
+              "authorization": 51,
+              "authQueries": 18
             }
           },
           {
@@ -4105,14 +4089,14 @@
               "command": 130
             },
             "small": {
-              "reads": 202,
-              "authorization": 136,
-              "authQueries": 52
+              "reads": 141,
+              "authorization": 96,
+              "authQueries": 36
             },
             "large": {
-              "reads": 176,
-              "authorization": 71,
-              "authQueries": 26
+              "reads": 123,
+              "authorization": 51,
+              "authQueries": 18
             }
           },
           {
@@ -4130,14 +4114,14 @@
               "command": 136
             },
             "small": {
-              "reads": 218,
-              "authorization": 146,
-              "authQueries": 56
+              "reads": 149,
+              "authorization": 101,
+              "authQueries": 38
             },
             "large": {
-              "reads": 192,
-              "authorization": 81,
-              "authQueries": 30
+              "reads": 131,
+              "authorization": 56,
+              "authQueries": 20
             }
           },
           {
@@ -4155,14 +4139,14 @@
               "command": 142
             },
             "small": {
-              "reads": 234,
-              "authorization": 156,
-              "authQueries": 60
+              "reads": 157,
+              "authorization": 106,
+              "authQueries": 40
             },
             "large": {
-              "reads": 204,
-              "authorization": 81,
-              "authQueries": 30
+              "reads": 137,
+              "authorization": 56,
+              "authQueries": 20
             }
           },
           {
@@ -4180,14 +4164,14 @@
               "command": 166
             },
             "small": {
-              "reads": 234,
-              "authorization": 156,
-              "authQueries": 60
+              "reads": 157,
+              "authorization": 106,
+              "authQueries": 40
             },
             "large": {
-              "reads": 204,
-              "authorization": 81,
-              "authQueries": 30
+              "reads": 137,
+              "authorization": 56,
+              "authQueries": 20
             }
           },
           {
@@ -4205,14 +4189,14 @@
               "command": 190
             },
             "small": {
-              "reads": 234,
-              "authorization": 156,
-              "authQueries": 60
+              "reads": 157,
+              "authorization": 106,
+              "authQueries": 40
             },
             "large": {
-              "reads": 204,
-              "authorization": 81,
-              "authQueries": 30
+              "reads": 137,
+              "authorization": 56,
+              "authQueries": 20
             }
           },
           {
@@ -4230,14 +4214,14 @@
               "command": 214
             },
             "small": {
-              "reads": 234,
-              "authorization": 156,
-              "authQueries": 60
+              "reads": 157,
+              "authorization": 106,
+              "authQueries": 40
             },
             "large": {
-              "reads": 204,
-              "authorization": 81,
-              "authQueries": 30
+              "reads": 137,
+              "authorization": 56,
+              "authQueries": 20
             }
           },
           {
@@ -4255,14 +4239,14 @@
               "command": 220
             },
             "small": {
-              "reads": 234,
-              "authorization": 156,
-              "authQueries": 60
+              "reads": 157,
+              "authorization": 106,
+              "authQueries": 40
             },
             "large": {
-              "reads": 204,
-              "authorization": 81,
-              "authQueries": 30
+              "reads": 137,
+              "authorization": 56,
+              "authQueries": 20
             }
           },
           {
@@ -4280,14 +4264,14 @@
               "command": 226
             },
             "small": {
-              "reads": 234,
-              "authorization": 156,
-              "authQueries": 60
+              "reads": 157,
+              "authorization": 106,
+              "authQueries": 40
             },
             "large": {
-              "reads": 204,
-              "authorization": 81,
-              "authQueries": 30
+              "reads": 137,
+              "authorization": 56,
+              "authQueries": 20
             }
           },
           {
@@ -4305,14 +4289,14 @@
               "command": 232
             },
             "small": {
-              "reads": 234,
-              "authorization": 156,
-              "authQueries": 60
+              "reads": 157,
+              "authorization": 106,
+              "authQueries": 40
             },
             "large": {
-              "reads": 204,
-              "authorization": 81,
-              "authQueries": 30
+              "reads": 137,
+              "authorization": 56,
+              "authQueries": 20
             }
           },
           {
@@ -4330,14 +4314,14 @@
               "command": 238
             },
             "small": {
-              "reads": 234,
-              "authorization": 156,
-              "authQueries": 60
+              "reads": 157,
+              "authorization": 106,
+              "authQueries": 40
             },
             "large": {
-              "reads": 204,
-              "authorization": 81,
-              "authQueries": 30
+              "reads": 137,
+              "authorization": 56,
+              "authQueries": 20
             }
           },
           {
@@ -4355,14 +4339,14 @@
               "command": 244
             },
             "small": {
-              "reads": 234,
-              "authorization": 156,
-              "authQueries": 60
+              "reads": 157,
+              "authorization": 106,
+              "authQueries": 40
             },
             "large": {
-              "reads": 204,
-              "authorization": 81,
-              "authQueries": 30
+              "reads": 137,
+              "authorization": 56,
+              "authQueries": 20
             }
           },
           {
@@ -4380,14 +4364,14 @@
               "command": 250
             },
             "small": {
-              "reads": 234,
-              "authorization": 156,
-              "authQueries": 60
+              "reads": 157,
+              "authorization": 106,
+              "authQueries": 40
             },
             "large": {
-              "reads": 204,
-              "authorization": 81,
-              "authQueries": 30
+              "reads": 137,
+              "authorization": 56,
+              "authQueries": 20
             }
           },
           {
@@ -4405,14 +4389,14 @@
               "command": 250
             },
             "small": {
-              "reads": 234,
-              "authorization": 156,
-              "authQueries": 60
+              "reads": 157,
+              "authorization": 106,
+              "authQueries": 40
             },
             "large": {
-              "reads": 204,
-              "authorization": 81,
-              "authQueries": 30
+              "reads": 137,
+              "authorization": 56,
+              "authQueries": 20
             }
           },
           {
@@ -4430,14 +4414,14 @@
               "command": 250
             },
             "small": {
-              "reads": 234,
-              "authorization": 156,
-              "authQueries": 60
+              "reads": 157,
+              "authorization": 106,
+              "authQueries": 40
             },
             "large": {
-              "reads": 204,
-              "authorization": 81,
-              "authQueries": 30
+              "reads": 137,
+              "authorization": 56,
+              "authQueries": 20
             }
           },
           {
@@ -4455,21 +4439,21 @@
               "command": 250
             },
             "small": {
-              "reads": 234,
-              "authorization": 156,
-              "authQueries": 60
+              "reads": 157,
+              "authorization": 106,
+              "authQueries": 40
             },
             "large": {
-              "reads": 204,
-              "authorization": 81,
-              "authQueries": 30
+              "reads": 137,
+              "authorization": 56,
+              "authQueries": 20
             }
           }
         ],
         "lastRunReadsByKey": {
-          "doc system/dataHead": 32,
-          "doc system/accessLease": 32,
-          "query commands": 170
+          "doc system/dataHead": 22,
+          "doc system/accessLease": 22,
+          "query commands": 113
         }
       }
     },
@@ -4478,21 +4462,21 @@
         "studentTransaction"
       ],
       "reads": {
-        "fixed": 13.666667,
+        "fixed": 9.75,
         "perUnit": {
-          "studentTransaction": 2.04
+          "studentTransaction": 1.03
         }
       },
       "readAuthorization": {
-        "fixed": 25.166667,
+        "fixed": 15.583333,
         "perUnit": {
-          "studentTransaction": 0.1
+          "studentTransaction": 0.05
         }
       },
       "readAuthorizationDeduped": {
-        "fixed": 25.166667,
+        "fixed": 15.583333,
         "perUnit": {
-          "studentTransaction": 0.1
+          "studentTransaction": 0.05
         }
       },
       "writes": 0,
@@ -4504,10 +4488,10 @@
         ],
         "productionPageSize": 100,
         "readsPerDocument": {
-          "studentTransaction": 2
+          "studentTransaction": 1
         },
         "readsPerPage": {
-          "studentTransaction": 4
+          "studentTransaction": 3
         },
         "states": [
           {
@@ -4525,14 +4509,14 @@
               "command": 34
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -4550,14 +4534,14 @@
               "command": 40
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -4575,14 +4559,14 @@
               "command": 46
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -4600,14 +4584,14 @@
               "command": 52
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -4625,14 +4609,14 @@
               "command": 58
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -4650,14 +4634,14 @@
               "command": 64
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -4675,14 +4659,14 @@
               "command": 70
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -4700,14 +4684,14 @@
               "command": 76
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -4725,14 +4709,14 @@
               "command": 82
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -4750,14 +4734,14 @@
               "command": 88
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -4775,14 +4759,14 @@
               "command": 94
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -4800,14 +4784,14 @@
               "command": 100
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -4825,14 +4809,14 @@
               "command": 106
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             },
             "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -4850,14 +4834,14 @@
               "command": 112
             },
             "small": {
-              "reads": 28,
-              "authorization": 26,
-              "authQueries": 8
-            },
-            "large": {
-              "reads": 24,
+              "reads": 17,
               "authorization": 16,
               "authQueries": 4
+            },
+            "large": {
+              "reads": 14,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -4875,14 +4859,14 @@
               "command": 118
             },
             "small": {
-              "reads": 44,
-              "authorization": 36,
-              "authQueries": 12
+              "reads": 26,
+              "authorization": 21,
+              "authQueries": 6
             },
             "large": {
-              "reads": 40,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 23,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -4900,14 +4884,14 @@
               "command": 124
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
+              "reads": 35,
               "authorization": 26,
               "authQueries": 8
+            },
+            "large": {
+              "reads": 29,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -4925,14 +4909,14 @@
               "command": 130
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
+              "reads": 35,
               "authorization": 26,
               "authQueries": 8
+            },
+            "large": {
+              "reads": 29,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -4950,14 +4934,14 @@
               "command": 136
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
+              "reads": 35,
               "authorization": 26,
               "authQueries": 8
+            },
+            "large": {
+              "reads": 29,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -4975,14 +4959,14 @@
               "command": 142
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
+              "reads": 35,
               "authorization": 26,
               "authQueries": 8
+            },
+            "large": {
+              "reads": 29,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -5000,14 +4984,14 @@
               "command": 166
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
+              "reads": 35,
               "authorization": 26,
               "authQueries": 8
+            },
+            "large": {
+              "reads": 29,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -5025,14 +5009,14 @@
               "command": 190
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
+              "reads": 35,
               "authorization": 26,
               "authQueries": 8
+            },
+            "large": {
+              "reads": 29,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -5050,14 +5034,14 @@
               "command": 214
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
+              "reads": 35,
               "authorization": 26,
               "authQueries": 8
+            },
+            "large": {
+              "reads": 29,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -5075,14 +5059,14 @@
               "command": 220
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
+              "reads": 35,
               "authorization": 26,
               "authQueries": 8
+            },
+            "large": {
+              "reads": 29,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -5100,14 +5084,14 @@
               "command": 226
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
+              "reads": 35,
               "authorization": 26,
               "authQueries": 8
+            },
+            "large": {
+              "reads": 29,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -5125,14 +5109,14 @@
               "command": 232
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
+              "reads": 35,
               "authorization": 26,
               "authQueries": 8
+            },
+            "large": {
+              "reads": 29,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -5150,14 +5134,14 @@
               "command": 238
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
+              "reads": 35,
               "authorization": 26,
               "authQueries": 8
+            },
+            "large": {
+              "reads": 29,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -5175,14 +5159,14 @@
               "command": 244
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
+              "reads": 35,
               "authorization": 26,
               "authQueries": 8
+            },
+            "large": {
+              "reads": 29,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -5200,14 +5184,14 @@
               "command": 250
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
+              "reads": 35,
               "authorization": 26,
               "authQueries": 8
+            },
+            "large": {
+              "reads": 29,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -5225,14 +5209,14 @@
               "command": 250
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
+              "reads": 35,
               "authorization": 26,
               "authQueries": 8
+            },
+            "large": {
+              "reads": 29,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -5250,14 +5234,14 @@
               "command": 250
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
+              "reads": 35,
               "authorization": 26,
               "authQueries": 8
+            },
+            "large": {
+              "reads": 29,
+              "authorization": 16,
+              "authQueries": 4
             }
           },
           {
@@ -5275,21 +5259,21 @@
               "command": 250
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
+              "reads": 35,
               "authorization": 26,
               "authQueries": 8
+            },
+            "large": {
+              "reads": 29,
+              "authorization": 16,
+              "authQueries": 4
             }
           }
         ],
         "lastRunReadsByKey": {
-          "doc system/dataHead": 10,
-          "doc system/accessLease": 10,
-          "query commands": 40
+          "doc system/dataHead": 6,
+          "doc system/accessLease": 6,
+          "query commands": 23
         }
       }
     },
@@ -5298,37 +5282,32 @@
         "studentTransaction"
       ],
       "reads": {
-        "fixed": 13.666667,
+        "fixed": 7,
         "perUnit": {
-          "studentTransaction": 2.04
+          "studentTransaction": 1
         }
       },
       "readAuthorization": {
-        "fixed": 25.166667,
+        "fixed": 13,
         "perUnit": {
-          "studentTransaction": 0.1
+          "studentTransaction": 0.02
         }
       },
       "readAuthorizationDeduped": {
-        "fixed": 25.166667,
+        "fixed": 13,
         "perUnit": {
-          "studentTransaction": 0.1
+          "studentTransaction": 0.02
         }
       },
       "writes": 0,
       "deletes": 0,
       "detail": {
-        "pageSizes": [
-          6,
-          12
-        ],
+        "pageSizes": null,
         "productionPageSize": 100,
         "readsPerDocument": {
-          "studentTransaction": 2
+          "studentTransaction": 1
         },
-        "readsPerPage": {
-          "studentTransaction": 4
-        },
+        "readsPerPage": {},
         "states": [
           {
             "dims": {
@@ -5345,14 +5324,9 @@
               "command": 34
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
-            },
-            "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5370,14 +5344,9 @@
               "command": 40
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
-            },
-            "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5395,14 +5364,9 @@
               "command": 46
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
-            },
-            "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5420,14 +5384,9 @@
               "command": 52
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
-            },
-            "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5445,14 +5404,9 @@
               "command": 58
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
-            },
-            "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5470,14 +5424,9 @@
               "command": 64
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
-            },
-            "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5495,14 +5444,9 @@
               "command": 70
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
-            },
-            "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5520,14 +5464,9 @@
               "command": 76
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
-            },
-            "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5545,14 +5484,9 @@
               "command": 82
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
-            },
-            "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5570,14 +5504,9 @@
               "command": 88
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
-            },
-            "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5595,14 +5524,9 @@
               "command": 94
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
-            },
-            "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5620,14 +5544,9 @@
               "command": 100
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
-            },
-            "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5645,14 +5564,9 @@
               "command": 106
             },
             "small": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
-            },
-            "large": {
-              "reads": 12,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 8,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5670,14 +5584,9 @@
               "command": 112
             },
             "small": {
-              "reads": 28,
-              "authorization": 26,
-              "authQueries": 8
-            },
-            "large": {
-              "reads": 24,
-              "authorization": 16,
-              "authQueries": 4
+              "reads": 14,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5695,14 +5604,9 @@
               "command": 118
             },
             "small": {
-              "reads": 44,
-              "authorization": 36,
-              "authQueries": 12
-            },
-            "large": {
-              "reads": 40,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 20,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5720,14 +5624,9 @@
               "command": 124
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 26,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5745,14 +5644,9 @@
               "command": 130
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 26,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5770,14 +5664,9 @@
               "command": 136
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 26,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5795,14 +5684,9 @@
               "command": 142
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 26,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5820,14 +5704,9 @@
               "command": 166
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 26,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5845,14 +5724,9 @@
               "command": 190
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 26,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5870,14 +5744,9 @@
               "command": 214
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 26,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5895,14 +5764,9 @@
               "command": 220
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 26,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5920,14 +5784,9 @@
               "command": 226
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 26,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5945,14 +5804,9 @@
               "command": 232
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 26,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5970,14 +5824,9 @@
               "command": 238
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 26,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -5995,14 +5844,9 @@
               "command": 244
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 26,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -6020,14 +5864,9 @@
               "command": 250
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 26,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -6045,14 +5884,9 @@
               "command": 250
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 26,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -6070,14 +5904,9 @@
               "command": 250
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 26,
+              "authorization": 11,
+              "authQueries": 2
             }
           },
           {
@@ -6095,21 +5924,16 @@
               "command": 250
             },
             "small": {
-              "reads": 60,
-              "authorization": 46,
-              "authQueries": 16
-            },
-            "large": {
-              "reads": 52,
-              "authorization": 26,
-              "authQueries": 8
+              "reads": 26,
+              "authorization": 11,
+              "authQueries": 2
             }
           }
         ],
         "lastRunReadsByKey": {
-          "doc system/dataHead": 10,
-          "doc system/accessLease": 10,
-          "query commands": 40
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "query commands": 20
         }
       }
     },
@@ -11576,30 +11400,27 @@
         "studentTransaction"
       ],
       "reads": {
-        "fixed": 36,
+        "fixed": 14.833333,
         "perUnit": {
           "student": 1,
-          "dayTransaction": 4.08,
-          "rangeAccount": 8.04,
-          "studentTransaction": 2.04
+          "dayTransaction": 1.02,
+          "rangeAccount": 1.02
         }
       },
       "readAuthorization": {
-        "fixed": 85.5,
+        "fixed": 32.583333,
         "perUnit": {
           "student": 0.01,
-          "dayTransaction": 0.2,
-          "rangeAccount": 10.1,
-          "studentTransaction": 0.1
+          "dayTransaction": 0.05,
+          "rangeAccount": 0.05
         }
       },
       "readAuthorizationDeduped": {
-        "fixed": 85.5,
+        "fixed": 32.583333,
         "perUnit": {
           "student": 0.01,
-          "dayTransaction": 0.2,
-          "rangeAccount": 10.1,
-          "studentTransaction": 0.1
+          "dayTransaction": 0.05,
+          "rangeAccount": 0.05
         }
       },
       "writes": 0,
@@ -11612,14 +11433,12 @@
         "productionPageSize": 100,
         "readsPerDocument": {
           "student": 1,
-          "dayTransaction": 4,
-          "rangeAccount": 8,
-          "studentTransaction": 2
+          "dayTransaction": 1,
+          "rangeAccount": 1
         },
         "readsPerPage": {
-          "dayTransaction": 8,
-          "rangeAccount": 4,
-          "studentTransaction": 4
+          "dayTransaction": 2,
+          "rangeAccount": 2
         },
         "states": [
           {
@@ -11637,14 +11456,14 @@
               "command": 34
             },
             "small": {
-              "reads": 40,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 31,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 40,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 31,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -11662,14 +11481,14 @@
               "command": 40
             },
             "small": {
-              "reads": 46,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 37,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 46,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 37,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -11687,14 +11506,14 @@
               "command": 46
             },
             "small": {
-              "reads": 52,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 43,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 52,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 43,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -11712,14 +11531,14 @@
               "command": 52
             },
             "small": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -11737,14 +11556,14 @@
               "command": 58
             },
             "small": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -11762,14 +11581,14 @@
               "command": 64
             },
             "small": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -11787,14 +11606,14 @@
               "command": 70
             },
             "small": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -11812,14 +11631,14 @@
               "command": 76
             },
             "small": {
-              "reads": 96,
-              "authorization": 66,
-              "authQueries": 22
+              "reads": 57,
+              "authorization": 26,
+              "authQueries": 6
             },
             "large": {
-              "reads": 86,
-              "authorization": 46,
-              "authQueries": 14
+              "reads": 55,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -11837,14 +11656,14 @@
               "command": 82
             },
             "small": {
-              "reads": 128,
-              "authorization": 86,
-              "authQueries": 30
+              "reads": 65,
+              "authorization": 31,
+              "authQueries": 8
             },
             "large": {
-              "reads": 120,
-              "authorization": 66,
-              "authQueries": 22
+              "reads": 63,
+              "authorization": 26,
+              "authQueries": 6
             }
           },
           {
@@ -11862,14 +11681,14 @@
               "command": 88
             },
             "small": {
-              "reads": 160,
-              "authorization": 106,
-              "authQueries": 38
+              "reads": 73,
+              "authorization": 36,
+              "authQueries": 10
             },
             "large": {
-              "reads": 142,
-              "authorization": 66,
-              "authQueries": 22
+              "reads": 69,
+              "authorization": 26,
+              "authQueries": 6
             }
           },
           {
@@ -11887,14 +11706,14 @@
               "command": 94
             },
             "small": {
-              "reads": 212,
-              "authorization": 176,
-              "authQueries": 66
+              "reads": 81,
+              "authorization": 41,
+              "authQueries": 12
             },
             "large": {
-              "reads": 194,
-              "authorization": 136,
-              "authQueries": 50
+              "reads": 77,
+              "authorization": 31,
+              "authQueries": 8
             }
           },
           {
@@ -11912,14 +11731,14 @@
               "command": 100
             },
             "small": {
-              "reads": 264,
-              "authorization": 246,
-              "authQueries": 94
+              "reads": 89,
+              "authorization": 46,
+              "authQueries": 14
             },
             "large": {
-              "reads": 242,
-              "authorization": 196,
-              "authQueries": 74
+              "reads": 83,
+              "authorization": 31,
+              "authQueries": 8
             }
           },
           {
@@ -11937,14 +11756,14 @@
               "command": 106
             },
             "small": {
-              "reads": 316,
-              "authorization": 316,
-              "authQueries": 122
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 294,
-              "authorization": 266,
-              "authQueries": 102
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -11962,14 +11781,14 @@
               "command": 112
             },
             "small": {
-              "reads": 332,
-              "authorization": 326,
-              "authQueries": 126
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 306,
-              "authorization": 266,
-              "authQueries": 102
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -11987,14 +11806,14 @@
               "command": 118
             },
             "small": {
-              "reads": 348,
-              "authorization": 336,
-              "authQueries": 130
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 322,
-              "authorization": 276,
-              "authQueries": 106
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -12012,14 +11831,14 @@
               "command": 124
             },
             "small": {
-              "reads": 364,
-              "authorization": 346,
-              "authQueries": 134
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 334,
-              "authorization": 276,
-              "authQueries": 106
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -12037,14 +11856,14 @@
               "command": 130
             },
             "small": {
-              "reads": 364,
-              "authorization": 346,
-              "authQueries": 134
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 334,
-              "authorization": 276,
-              "authQueries": 106
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -12062,14 +11881,14 @@
               "command": 136
             },
             "small": {
-              "reads": 364,
-              "authorization": 346,
-              "authQueries": 134
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 334,
-              "authorization": 276,
-              "authQueries": 106
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -12087,14 +11906,14 @@
               "command": 142
             },
             "small": {
-              "reads": 364,
-              "authorization": 346,
-              "authQueries": 134
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 334,
-              "authorization": 276,
-              "authQueries": 106
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -12112,14 +11931,14 @@
               "command": 166
             },
             "small": {
-              "reads": 364,
-              "authorization": 346,
-              "authQueries": 134
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 334,
-              "authorization": 276,
-              "authQueries": 106
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -12137,14 +11956,14 @@
               "command": 190
             },
             "small": {
-              "reads": 364,
-              "authorization": 346,
-              "authQueries": 134
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 334,
-              "authorization": 276,
-              "authQueries": 106
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -12162,14 +11981,14 @@
               "command": 214
             },
             "small": {
-              "reads": 364,
-              "authorization": 346,
-              "authQueries": 134
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 334,
-              "authorization": 276,
-              "authQueries": 106
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -12187,14 +12006,14 @@
               "command": 220
             },
             "small": {
-              "reads": 364,
-              "authorization": 346,
-              "authQueries": 134
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 334,
-              "authorization": 276,
-              "authQueries": 106
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -12212,14 +12031,14 @@
               "command": 226
             },
             "small": {
-              "reads": 364,
-              "authorization": 346,
-              "authQueries": 134
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 334,
-              "authorization": 276,
-              "authQueries": 106
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -12237,14 +12056,14 @@
               "command": 232
             },
             "small": {
-              "reads": 364,
-              "authorization": 346,
-              "authQueries": 134
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 334,
-              "authorization": 276,
-              "authQueries": 106
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -12262,14 +12081,14 @@
               "command": 238
             },
             "small": {
-              "reads": 364,
-              "authorization": 346,
-              "authQueries": 134
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 334,
-              "authorization": 276,
-              "authQueries": 106
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -12287,14 +12106,14 @@
               "command": 244
             },
             "small": {
-              "reads": 364,
-              "authorization": 346,
-              "authQueries": 134
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 334,
-              "authorization": 276,
-              "authQueries": 106
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -12312,14 +12131,14 @@
               "command": 250
             },
             "small": {
-              "reads": 364,
-              "authorization": 346,
-              "authQueries": 134
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 334,
-              "authorization": 276,
-              "authQueries": 106
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -12337,14 +12156,14 @@
               "command": 250
             },
             "small": {
-              "reads": 364,
-              "authorization": 346,
-              "authQueries": 134
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 334,
-              "authorization": 276,
-              "authQueries": 106
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -12362,14 +12181,14 @@
               "command": 250
             },
             "small": {
-              "reads": 364,
-              "authorization": 346,
-              "authQueries": 134
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 334,
-              "authorization": 276,
-              "authQueries": 106
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           },
           {
@@ -12387,23 +12206,23 @@
               "command": 250
             },
             "small": {
-              "reads": 364,
-              "authorization": 346,
-              "authQueries": 134
+              "reads": 97,
+              "authorization": 51,
+              "authQueries": 16
             },
             "large": {
-              "reads": 334,
-              "authorization": 276,
-              "authQueries": 106
+              "reads": 91,
+              "authorization": 36,
+              "authQueries": 10
             }
           }
         ],
         "lastRunReadsByKey": {
-          "doc system/dataHead": 70,
-          "doc system/accessLease": 68,
+          "doc system/dataHead": 11,
+          "doc system/accessLease": 9,
           "doc days/*": 1,
           "doc backfillDays/*": 1,
-          "query transactions": 186,
+          "query transactions": 37,
           "query students": 38
         }
       }
@@ -12415,27 +12234,21 @@
         "studentTransaction"
       ],
       "reads": {
-        "fixed": 24.333333,
+        "fixed": 12,
         "perUnit": {
-          "student": 1,
-          "dayTransaction": 2.04,
-          "studentTransaction": 2.04
+          "student": 1
         }
       },
       "readAuthorization": {
-        "fixed": 56.333333,
+        "fixed": 23,
         "perUnit": {
-          "student": 0.01,
-          "dayTransaction": 0.1,
-          "studentTransaction": 0.1
+          "student": 0.01
         }
       },
       "readAuthorizationDeduped": {
-        "fixed": 56.333333,
+        "fixed": 23,
         "perUnit": {
-          "student": 0.01,
-          "dayTransaction": 0.1,
-          "studentTransaction": 0.1
+          "student": 0.01
         }
       },
       "writes": 0,
@@ -12447,14 +12260,9 @@
         ],
         "productionPageSize": 100,
         "readsPerDocument": {
-          "student": 1,
-          "dayTransaction": 2,
-          "studentTransaction": 2
+          "student": 1
         },
-        "readsPerPage": {
-          "dayTransaction": 4,
-          "studentTransaction": 4
-        },
+        "readsPerPage": {},
         "states": [
           {
             "dims": {
@@ -12471,14 +12279,14 @@
               "command": 34
             },
             "small": {
-              "reads": 40,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 31,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 40,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 31,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12496,14 +12304,14 @@
               "command": 40
             },
             "small": {
-              "reads": 46,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 37,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 46,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 37,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12521,14 +12329,14 @@
               "command": 46
             },
             "small": {
-              "reads": 52,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 43,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 52,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 43,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12546,14 +12354,14 @@
               "command": 52
             },
             "small": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12571,14 +12379,14 @@
               "command": 58
             },
             "small": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12596,14 +12404,14 @@
               "command": 64
             },
             "small": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12621,14 +12429,14 @@
               "command": 70
             },
             "small": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 58,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12646,14 +12454,14 @@
               "command": 76
             },
             "small": {
-              "reads": 74,
-              "authorization": 46,
-              "authQueries": 14
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 70,
-              "authorization": 36,
-              "authQueries": 10
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12671,14 +12479,14 @@
               "command": 82
             },
             "small": {
-              "reads": 90,
-              "authorization": 56,
-              "authQueries": 18
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 86,
-              "authorization": 46,
-              "authQueries": 14
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12696,14 +12504,14 @@
               "command": 88
             },
             "small": {
-              "reads": 106,
-              "authorization": 66,
-              "authQueries": 22
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 98,
-              "authorization": 46,
-              "authQueries": 14
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12721,14 +12529,14 @@
               "command": 94
             },
             "small": {
-              "reads": 122,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 114,
-              "authorization": 56,
-              "authQueries": 18
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12746,14 +12554,14 @@
               "command": 100
             },
             "small": {
-              "reads": 138,
-              "authorization": 86,
-              "authQueries": 30
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 126,
-              "authorization": 56,
-              "authQueries": 18
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12771,14 +12579,14 @@
               "command": 106
             },
             "small": {
-              "reads": 154,
-              "authorization": 96,
-              "authQueries": 34
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 142,
-              "authorization": 66,
-              "authQueries": 22
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12796,14 +12604,14 @@
               "command": 112
             },
             "small": {
-              "reads": 170,
-              "authorization": 106,
-              "authQueries": 38
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 154,
-              "authorization": 66,
-              "authQueries": 22
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12821,14 +12629,14 @@
               "command": 118
             },
             "small": {
-              "reads": 186,
-              "authorization": 116,
-              "authQueries": 42
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 170,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12846,14 +12654,14 @@
               "command": 124
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12871,14 +12679,14 @@
               "command": 130
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12896,14 +12704,14 @@
               "command": 136
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12921,14 +12729,14 @@
               "command": 142
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12946,14 +12754,14 @@
               "command": 166
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12971,14 +12779,14 @@
               "command": 190
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -12996,14 +12804,14 @@
               "command": 214
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -13021,14 +12829,14 @@
               "command": 220
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -13046,14 +12854,14 @@
               "command": 226
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -13071,14 +12879,14 @@
               "command": 232
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -13096,14 +12904,14 @@
               "command": 238
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -13121,14 +12929,14 @@
               "command": 244
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -13146,14 +12954,14 @@
               "command": 250
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -13171,14 +12979,14 @@
               "command": 250
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -13196,14 +13004,14 @@
               "command": 250
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           },
           {
@@ -13221,23 +13029,23 @@
               "command": 250
             },
             "small": {
-              "reads": 202,
-              "authorization": 126,
-              "authQueries": 46
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             },
             "large": {
-              "reads": 182,
-              "authorization": 76,
-              "authQueries": 26
+              "reads": 49,
+              "authorization": 21,
+              "authQueries": 4
             }
           }
         ],
         "lastRunReadsByKey": {
-          "doc system/dataHead": 26,
-          "doc system/accessLease": 24,
+          "doc system/dataHead": 5,
+          "doc system/accessLease": 3,
           "doc days/*": 1,
           "doc backfillDays/*": 1,
-          "query transactions": 112,
+          "query transactions": 1,
           "query students": 38
         }
       }

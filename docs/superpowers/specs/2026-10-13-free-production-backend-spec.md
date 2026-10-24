@@ -180,7 +180,7 @@ day.totals 固定包含 activeTransactionCount、bentoCount、otherMealCount、m
 
 ### 7.3 每筆交易後餘額與跨日更正
 
-交易排序固定為 `(businessDate ASC, createdAt ASC, transactionId ASC)`；createdAt 使用伺服器 Timestamp 的 seconds／nanoseconds，完全同時才以 transactionId（Firestore 文件 ID）排序，不用 ISO 毫秒、client clock 或本機 locale。Cloud 不存 `afterBalance`；adapter 從期初與該帳戶**完整有效歷史**算到各筆。完整讀取可分頁，但未讀完時顯示「計算中／未載完」，不可對單頁假算或回傳錯的 0。餘額重算只累加 active 列；refund 扣 amount，voided 不影響餘額，cashier 列標為不適用。讀完帳戶前綴後必須與已驗證 student `currentBalance` 一致；缺頁、schema 錯誤、快照版本變更或不一致時不得交付可用報表。P12a 資料層與 P12c F2／F5 候選介面均沿用此完整快照規則。
+交易排序固定為 `(businessDate ASC, createdAt ASC, transactionId ASC)`；createdAt 使用伺服器 Timestamp 的 seconds／nanoseconds，完全同時才以 transactionId（Firestore 文件 ID）排序，不用 ISO 毫秒、client clock 或本機 locale。Cloud 不存 `afterBalance`；adapter 從已驗證 student 的 `currentBalance` **往回推**：讀區間內該帳戶的有效交易（依上述順序），某筆之後的餘額＝`currentBalance` 減去排在它之後的有效交易的影響（refund 為 −amount，其餘為 +amount）。完整讀取可分頁，但未讀完時顯示「計算中／未載完」，不可對單頁假算或回傳錯的 0。voided 不影響餘額，cashier 列標為不適用。缺頁、schema 錯誤、快照版本變更時不得交付可用報表（P16f1：報表與帳戶歷史不再讀區間以前的歷史，也不再逐一帳戶比對「期初＋完整前綴＝currentBalance」；完整對帳由 P14 備份重播與 P15 `verify` 負責，日合計仍在全體報表中與 day projection 比對）。P12a 資料層與 P12c F2／F5 候選介面均沿用此完整快照規則。
 
 更正過去日期可改變之後的重算餘額（包括已結帳日的交易後餘額）；不改之後日期的交易或現金日結。結帳保存的是當時 cash totals、sourceSeq 與實點，不保存「永遠不變的所有學員歷史餘額」。F5 標明「依目前更正後資料重算」及其sourceSeq，與「當時結帳版本」分開；後日 openingCash 是本人輸入，不因更正自動連鎖修改。
 
@@ -218,7 +218,7 @@ quota exceeded／permission denied／schema mismatch／maintenance 均阻止操�
 - 只監聽 lease、目前日期 day、必要學生 heads 與當日交易；不監聽全歷史／全 commands。歷史 query cursor 分頁，預設每頁100。
 - 每個 list 查詢都必須帶 `limit`，且不得超過 500：Rules 的每個 `allow list` 以 `listWithinLimit()`（`request.query.limit != null && request.query.limit <= 500`）拒絕沒帶 limit 或超過 500 的查詢（P16c）。完整讀取靠 cursor 分頁，頁大小上限 200；一次讀完的集合（日結版本 200 個、未關帳日 200 天）以 `limit(上限 + 1)` 探測並在超出時 fail closed，`documentId in` 分塊以 `limit(分塊大小)`，不得改成無 limit 讀取。單一文件 `get` 與文件 listener 不受影響。
 - F2 週從台北週一開始，月為曆月；加總最多31個 day heads。原始明細與 CSV 分頁完整讀取，不能只匯出第一頁。
-- F5 account history 按 studentId＋businessDate＋createdAt＋transactionId 分頁；計算 afterBalance 需讀取期初起至所需日期的前綴。快取繫於 student.revision，變動即失效。
+- F5 account history 按 studentId＋businessDate＋createdAt＋transactionId 分頁；afterBalance 由 student `currentBalance` 往回推，只讀所需日期起至今的該學生交易（P16f1）。學生稽核（`readAudit({studentId})`）讀該學生最新 100 筆 command，更早的以 `beforeSeq` 分頁（index：`commands` studentId＋seq 遞減）；學生區間稽核由新到舊讀到區間起點以前為止。快取繫於 student.revision，變動即失效。
 - indexes 明列：transactions `(businessDate,createdAt,transactionId)`、`(studentId,businessDate,createdAt,transactionId)`；commands `(businessDate,seq)`、`(studentId,seq)` 供稽核，`(businessDate,committedAt,__name__)` 限定全帳戶 null-date 記錄日查詢，seq 單欄供備份。command 的 before/after、大字串與不查詢快照停用索引，避免索引膨脹；studentId/businessDate 作可為 null 的頂層查詢欄。P16e 起：commands 與 transactions 沒有任何查詢用到的欄位一律停用索引，composite index 只留 6 個被實際查詢形狀用到的（`indexCoverage.test.ts` 強制）。
 - 讀取多頁時以 dataHead.seq 前後相同驗證一致；變動則標示資料已更新並重新載入，備份改用 immutable prefix，不依活頁快照。長頁不持有 Firestore transaction。
 
