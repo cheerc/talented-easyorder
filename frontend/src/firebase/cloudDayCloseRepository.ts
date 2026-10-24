@@ -516,9 +516,11 @@ export async function readCloudDayCloseOverview(
     const markers = new Map<string, CloudBackfillDay>();
     const candidateIds = page.docs.map(snapshot => snapshot.id).filter(id => validDate(id) && id < selectionDate);
     for (let index = 0; index < candidateIds.length; index += MARKER_QUERY_CHUNK) {
+      const ids = candidateIds.slice(index, index + MARKER_QUERY_CHUNK);
       const chunk = await getDocsFromServer(query(
         collection(db, 'backfillDays'),
-        where(documentId(), 'in', candidateIds.slice(index, index + MARKER_QUERY_CHUNK)),
+        where(documentId(), 'in', ids),
+        limit(ids.length),
       ));
       for (const snapshot of chunk.docs) markers.set(snapshot.id, decodeBackfill(snapshot.id, snapshot.data()));
     }
@@ -579,7 +581,8 @@ export async function readCloudDayClose(
     assertServerConfirmed(daySnapshot, `營業日 ${dayId}`);
     if (!daySnapshot.exists()) return null;
     const day = decodeDay(dayId, daySnapshot.data());
-    const page = await getDocsFromServer(collection(db, dayPath(dayId), 'settlements'));
+    // One document more than the most versions a day can have: a longer list fails the count check below instead of loading.
+    const page = await getDocsFromServer(query(collection(db, dayPath(dayId), 'settlements'), limit(MAX_SETTLEMENT_VERSIONS + 1)));
     assertServerConfirmed(page, `營業日 ${dayId} 日結版本`);
     for (const snapshot of page.docs) assertServerConfirmed(snapshot, `營業日 ${dayId} 日結版本`);
     if (page.size !== day.lastSettlementRevision) {

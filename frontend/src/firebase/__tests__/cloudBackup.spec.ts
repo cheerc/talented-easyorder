@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import type { User } from 'firebase/auth';
-import { Timestamp, collection, doc, getDoc, getDocs, serverTimestamp, setDoc, writeBatch, type Firestore } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, Timestamp, writeBatch, type Firestore } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createBackupManifest, decryptBackup, encryptBackup, recalculateBackupTotals, replayBackupProjections, sha256Hex, validateBackupManifest, type BackupCommandRecord } from '../cloudBackup';
 import { createCloudBackupRepository } from '../cloudBackupRepository';
@@ -200,7 +200,7 @@ describeWithEmulator('P14 cloud backup', () => {
     const result = await createCloudCommandRepository(authedDb(), { currentUser: () => user }).commitCommand(input);
     expect(result.ok).toBe(true);
     const db = authedDb();
-    const commands = await getDocs(collection(db, 'commands'));
+    const commands = await getDocs(query(collection(db, 'commands'), limit(500)));
     expect(commands.docs.map(snapshot => snapshot.id)).toEqual([uuid(90)]);
     const head = await getDoc(doc(db, 'system/dataHead'));
     expect(head.data()?.seq).toBe(1);
