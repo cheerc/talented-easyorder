@@ -26,13 +26,16 @@
 
 export interface Linear {
   fixed: number;
-  /** Added once per unit (documents, days, ...); the operation's `unit` says what a unit is. */
-  perUnit: number;
+  /**
+   * Added once per unit of each growing dimension (students, transactions of the day, unclosed days, ...), by the dimension's
+   * name; the operation's `units` lists the names. A dimension that is missing here costs nothing.
+   */
+  perUnit: Record<string, number>;
 }
 
 export interface OperationCost {
-  /** What `units` counts for a linear operation (omit for a fixed one). */
-  unit?: string;
+  /** The independently growing dimensions of a linear operation (omit for a fixed one); the workload gives each a count. */
+  units?: string[];
   /** Billed client reads: documents returned (a query at least 1), `tx.get`, `getDoc`, listener documents. */
   reads: Linear;
   /** Rules access calls that authorize those reads, every call counted (no cache). */
@@ -67,8 +70,8 @@ export interface WorkloadLine {
   /** `command.<Kind>` or `load.<name>` or any other key of `CostTable.operations`. */
   operation: string;
   perDay: number;
-  /** Units of a linear operation (required when the operation has a `unit`). */
-  units?: number;
+  /** The count of every dimension of a linear operation (exactly the names in the operation's `units`). */
+  units?: Record<string, number>;
 }
 
 export interface UsageLine {
@@ -89,17 +92,28 @@ export interface DailyUsage {
 
 const COMMAND_PREFIX = 'command.';
 
-function linear(amount: Linear, units: number): number {
-  return amount.fixed + amount.perUnit * units;
+function linear(amount: Linear, units: Record<string, number>): number {
+  return amount.fixed + Object.entries(amount.perUnit).reduce((sum, [name, perUnit]) => sum + perUnit * (units[name] ?? 0), 0);
+}
+
+/** The dimensions of a line must be exactly those of the operation: a missing one would silently count as 0 units. */
+function dimensionsOf(operation: string, cost: OperationCost, line: WorkloadLine): Record<string, number> {
+  const names = cost.units ?? [];
+  if (names.length > 0 && line.units === undefined) throw new Error(`capacity model: ${operation} needs units (${names.join(', ')})`);
+  const given = line.units ?? {};
+  for (const name of names) {
+    if (!(name in given)) throw new Error(`capacity model: ${operation} needs units.${name}`);
+  }
+  for (const name of Object.keys(given)) {
+    if (!names.includes(name)) throw new Error(`capacity model: ${operation} has no dimension ${name}`);
+  }
+  return given;
 }
 
 function perExecution(table: CostTable, line: WorkloadLine): { reads: number; readsDeduped: number; writes: number; deletes: number } {
   const cost = table.operations[line.operation];
   if (!cost) throw new Error(`capacity model: the cost table has no operation ${line.operation}`);
-  if (cost.unit !== undefined && line.units === undefined) {
-    throw new Error(`capacity model: ${line.operation} needs units (${cost.unit})`);
-  }
-  const units = line.units ?? 0;
+  const units = dimensionsOf(line.operation, cost, line);
   let reads = linear(cost.reads, units) + linear(cost.readAuthorization, units);
   let readsDeduped = linear(cost.reads, units) + linear(cost.readAuthorizationDeduped, units);
   let commit = cost.rulesCommit;
