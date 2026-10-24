@@ -310,7 +310,7 @@ async function runRestore(command: 'restore' | 'resume', args: RestoreArgs, io: 
     io.stderr(`已達 --max-writes ${args.maxWrites}，在批界停下：剩餘 ${result.remainingWrites} 筆寫入。明天用 resume 繼續（同一個 --manifest、--to-seq 與 --batch-size）。\n`);
     return EXIT_PAUSED;
   }
-  io.stdout('還原完成，目標仍在維護模式；下一步是 verify 與 finalize（P15c 提供）。\n');
+  io.stdout('還原完成，目標仍在維護模式；下一步是 verify 與 finalize。\n');
   return EXIT_OK;
 }
 

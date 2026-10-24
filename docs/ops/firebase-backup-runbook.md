@@ -1,6 +1,6 @@
 # EasyOrder Firebase Backup Runbook
 
-> **P14 scope (2026-10-16):** F3 `今日設定` now creates an encrypted, incremental command backup and records `RecordBackup` only after the saved file is selected again and verified locally. This records the browser's local verification; it does not prove a second copy exists. Use only the school-approved storage locations and follow the daily and archive steps below. P15 restore tooling, production Firebase deployment, and an operational restore drill remain unverified.
+> **P14 scope (2026-10-16):** F3 `今日設定` now creates an encrypted, incremental command backup and records `RecordBackup` only after the saved file is selected again and verified locally. This records the browser's local verification; it does not prove a second copy exists. Use only the school-approved storage locations and follow the daily and archive steps below. The P15 restore CLI and its Emulator drill now exist (see the restore runbook); production Firebase deployment and a real-project restore drill remain unverified.
 
 ## Daily encrypted command backup
 
@@ -23,4 +23,4 @@ At least monthly, the director/admin should copy the complete retained increment
 - Director/admin owns archive custody and restore approval.
 - Developer/support may assist only after director/admin approval.
 
-P14 provides no normal F3 restore or overwrite action. Do not import a package into a live database, manually edit Firestore, or delete production data as a recovery procedure. A restore CLI, tested replay into an isolated project, production deployment, and restore drill require P15 and separate review. An encrypted package is not evidence that a restore has been tested.
+F3 provides no restore or overwrite action. Do not import a package into a live database, manually edit Firestore, or delete production data as a recovery procedure. Restoring from the encrypted chain uses the local maintenance CLI into a new, isolated project only; follow [firebase-restore-runbook.md](firebase-restore-runbook.md). An encrypted package is not evidence that a restore has been tested: the Emulator drill has run, but the independent Spark empty-project drill is still UNVERIFIED until the director/admin runs it and reports the anonymous numbers.
