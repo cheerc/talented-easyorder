@@ -8090,6 +8090,731 @@
         }
       }
     },
+    "load.ledgerScanCold": {
+      "units": [
+        "closedDay",
+        "openDay"
+      ],
+      "reads": {
+        "fixed": 10.916667,
+        "perUnit": {
+          "closedDay": 2.005,
+          "openDay": 1.005
+        }
+      },
+      "readAuthorization": {
+        "fixed": 20.666667,
+        "perUnit": {
+          "closedDay": 2.02,
+          "openDay": 0.02
+        }
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 20.666667,
+        "perUnit": {
+          "closedDay": 2.02,
+          "openDay": 0.02
+        }
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "pageSizes": [
+          6,
+          12
+        ],
+        "productionPageSize": 200,
+        "readsPerDocument": {
+          "closedDay": 2,
+          "openDay": 1
+        },
+        "readsPerPage": {
+          "closedDay": 1,
+          "openDay": 1
+        },
+        "states": [
+          {
+            "dims": {
+              "student": 2,
+              "vendor": 0,
+              "dayTransaction": 0,
+              "studentTransaction": 0,
+              "dayCommand": 2,
+              "closedDay": 1,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 15
+            },
+            "small": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            },
+            "large": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            }
+          },
+          {
+            "dims": {
+              "student": 8,
+              "vendor": 0,
+              "dayTransaction": 0,
+              "studentTransaction": 0,
+              "dayCommand": 2,
+              "closedDay": 1,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 21
+            },
+            "small": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            },
+            "large": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            }
+          },
+          {
+            "dims": {
+              "student": 14,
+              "vendor": 0,
+              "dayTransaction": 0,
+              "studentTransaction": 0,
+              "dayCommand": 2,
+              "closedDay": 1,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 27
+            },
+            "small": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            },
+            "large": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 0,
+              "dayTransaction": 0,
+              "studentTransaction": 0,
+              "dayCommand": 2,
+              "closedDay": 1,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 33
+            },
+            "small": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            },
+            "large": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 6,
+              "dayTransaction": 0,
+              "studentTransaction": 0,
+              "dayCommand": 2,
+              "closedDay": 1,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 39
+            },
+            "small": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            },
+            "large": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 12,
+              "dayTransaction": 0,
+              "studentTransaction": 0,
+              "dayCommand": 2,
+              "closedDay": 1,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 45
+            },
+            "small": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            },
+            "large": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 0,
+              "studentTransaction": 0,
+              "dayCommand": 2,
+              "closedDay": 1,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 51
+            },
+            "small": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            },
+            "large": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 6,
+              "studentTransaction": 0,
+              "dayCommand": 2,
+              "closedDay": 1,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 57
+            },
+            "small": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            },
+            "large": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 12,
+              "studentTransaction": 0,
+              "dayCommand": 2,
+              "closedDay": 1,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 63
+            },
+            "small": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            },
+            "large": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 0,
+              "dayCommand": 2,
+              "closedDay": 1,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 69
+            },
+            "small": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            },
+            "large": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 6,
+              "dayCommand": 2,
+              "closedDay": 1,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 75
+            },
+            "small": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            },
+            "large": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 12,
+              "dayCommand": 2,
+              "closedDay": 1,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 81
+            },
+            "small": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            },
+            "large": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 18,
+              "dayCommand": 2,
+              "closedDay": 1,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 87
+            },
+            "small": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            },
+            "large": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 18,
+              "dayCommand": 8,
+              "closedDay": 1,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 93
+            },
+            "small": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            },
+            "large": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 18,
+              "dayCommand": 14,
+              "closedDay": 1,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 99
+            },
+            "small": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            },
+            "large": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 18,
+              "dayCommand": 20,
+              "closedDay": 1,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 105
+            },
+            "small": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            },
+            "large": {
+              "reads": 11,
+              "authorization": 15,
+              "authQueries": 4
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 18,
+              "dayCommand": 20,
+              "closedDay": 7,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 129
+            },
+            "small": {
+              "reads": 24,
+              "authorization": 31,
+              "authQueries": 6
+            },
+            "large": {
+              "reads": 23,
+              "authorization": 27,
+              "authQueries": 4
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 18,
+              "dayCommand": 20,
+              "closedDay": 13,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 153
+            },
+            "small": {
+              "reads": 37,
+              "authorization": 47,
+              "authQueries": 8
+            },
+            "large": {
+              "reads": 36,
+              "authorization": 43,
+              "authQueries": 6
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 18,
+              "dayCommand": 20,
+              "closedDay": 19,
+              "openDay": 0,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 177
+            },
+            "small": {
+              "reads": 50,
+              "authorization": 63,
+              "authQueries": 10
+            },
+            "large": {
+              "reads": 48,
+              "authorization": 55,
+              "authQueries": 6
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 18,
+              "dayCommand": 20,
+              "closedDay": 19,
+              "openDay": 6,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 183
+            },
+            "small": {
+              "reads": 57,
+              "authorization": 67,
+              "authQueries": 12
+            },
+            "large": {
+              "reads": 55,
+              "authorization": 59,
+              "authQueries": 8
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 18,
+              "dayCommand": 20,
+              "closedDay": 19,
+              "openDay": 12,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 189
+            },
+            "small": {
+              "reads": 64,
+              "authorization": 71,
+              "authQueries": 14
+            },
+            "large": {
+              "reads": 61,
+              "authorization": 59,
+              "authQueries": 8
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 18,
+              "dayCommand": 20,
+              "closedDay": 19,
+              "openDay": 18,
+              "settlementVersion": 1,
+              "accessEvent": 0,
+              "command": 195
+            },
+            "small": {
+              "reads": 71,
+              "authorization": 75,
+              "authQueries": 16
+            },
+            "large": {
+              "reads": 68,
+              "authorization": 63,
+              "authQueries": 10
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 18,
+              "dayCommand": 20,
+              "closedDay": 19,
+              "openDay": 18,
+              "settlementVersion": 7,
+              "accessEvent": 0,
+              "command": 201
+            },
+            "small": {
+              "reads": 71,
+              "authorization": 75,
+              "authQueries": 16
+            },
+            "large": {
+              "reads": 68,
+              "authorization": 63,
+              "authQueries": 10
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 18,
+              "dayCommand": 20,
+              "closedDay": 19,
+              "openDay": 18,
+              "settlementVersion": 13,
+              "accessEvent": 0,
+              "command": 207
+            },
+            "small": {
+              "reads": 71,
+              "authorization": 75,
+              "authQueries": 16
+            },
+            "large": {
+              "reads": 68,
+              "authorization": 63,
+              "authQueries": 10
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 18,
+              "dayCommand": 20,
+              "closedDay": 19,
+              "openDay": 18,
+              "settlementVersion": 19,
+              "accessEvent": 0,
+              "command": 213
+            },
+            "small": {
+              "reads": 71,
+              "authorization": 75,
+              "authQueries": 16
+            },
+            "large": {
+              "reads": 68,
+              "authorization": 63,
+              "authQueries": 10
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 18,
+              "dayCommand": 20,
+              "closedDay": 19,
+              "openDay": 18,
+              "settlementVersion": 19,
+              "accessEvent": 6,
+              "command": 213
+            },
+            "small": {
+              "reads": 71,
+              "authorization": 75,
+              "authQueries": 16
+            },
+            "large": {
+              "reads": 68,
+              "authorization": 63,
+              "authQueries": 10
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 18,
+              "dayCommand": 20,
+              "closedDay": 19,
+              "openDay": 18,
+              "settlementVersion": 19,
+              "accessEvent": 12,
+              "command": 213
+            },
+            "small": {
+              "reads": 71,
+              "authorization": 75,
+              "authQueries": 16
+            },
+            "large": {
+              "reads": 68,
+              "authorization": 63,
+              "authQueries": 10
+            }
+          },
+          {
+            "dims": {
+              "student": 20,
+              "vendor": 18,
+              "dayTransaction": 18,
+              "studentTransaction": 18,
+              "dayCommand": 20,
+              "closedDay": 19,
+              "openDay": 18,
+              "settlementVersion": 19,
+              "accessEvent": 18,
+              "command": 213
+            },
+            "small": {
+              "reads": 71,
+              "authorization": 75,
+              "authQueries": 16
+            },
+            "large": {
+              "reads": 68,
+              "authorization": 63,
+              "authQueries": 10
+            }
+          }
+        ],
+        "lastRunReadsByKey": {
+          "doc system/dataHead": 9,
+          "doc system/accessLease": 1,
+          "query postCloseEntries": 1,
+          "query days": 40,
+          "doc days/*/settlements/*": 20
+        }
+      }
+    },
     "load.orders": {
       "units": [
         "student",

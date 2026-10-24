@@ -102,7 +102,7 @@ function commandLines(a: Assumptions): WorkloadLine[] {
 /**
  * Page loads a day. ASSUMPTIONS (opens per day are a guess of how a shop uses the app; the reloads after commands are not):
  * - orders page: a reload after every command of the page (read from the code) plus 6 opens;
- * - ledger scan: when each page starts, after opening or closing a day (2) and when the anomalies page is opened (1);
+ * - ledger scan: when each page starts (cold: nothing is cached yet), after opening or closing a day (2) and when the anomalies page is opened (1);
  * - day pages: the vendors page is opened 4 times and reloads after each of its 3 commands, the day-close page 3 times, the
  *   students page 4 times;
  * - reports (R10): 10 a day, 6 of today, 3 of a week and 1 of a month, each a report, a range audit and (without a student) the
@@ -125,7 +125,9 @@ function loadLines(a: Assumptions): WorkloadLine[] {
   const accessEventsPerDay = a.leaseEvents;
 
   load('load.orders', shape.pageCommands + 6, { student: a.roster, dayTransaction: shape.transactionsOnPage, openDay: a.unclosedDays });
-  load('load.ledgerScan', a.pages + 3, { closedDay: a.closedDays, openDay: a.unclosedDays });
+  // the first scan of a page that has just started reads every closed day's settlement; the later ones only what changed
+  load('load.ledgerScanCold', a.pages, { closedDay: a.closedDays, openDay: a.unclosedDays });
+  load('load.ledgerScan', 3, { closedDay: a.closedDays, openDay: a.unclosedDays });
   load('load.dayVendors', 4 + 3, { vendor: a.vendors, closedDay: a.closedDays, openDay: a.unclosedDays });
   load('load.dayCloseOverview', 3, { openDay: a.unclosedDays });
   load('load.dayCloseState', 3, { settlementVersion: 2 });

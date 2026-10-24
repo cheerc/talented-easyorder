@@ -187,7 +187,8 @@
         "__name__ asc"
       ],
       "operations": [
-        "load.ledgerScan"
+        "load.ledgerScan",
+        "load.ledgerScanCold"
       ]
     },
     {
@@ -244,7 +245,8 @@
         "__name__ asc"
       ],
       "operations": [
-        "load.ledgerScan"
+        "load.ledgerScan",
+        "load.ledgerScanCold"
       ]
     },
     {

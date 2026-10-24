@@ -443,6 +443,8 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       production: number;
       /** Whether the load reads the roster of students (pages of its own size, which the seam does not change). */
       roster?: boolean;
+      /** The load runs on a Firestore instance of its own (a page that has just started, with nothing cached), which the meter then counts instead of `app`. */
+      fresh?: boolean;
       make: (pageSize: number) => () => Promise<unknown>;
     }
     const productionPages = () => ({
@@ -473,6 +475,9 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
         { name: 'load.dayCloseOverview', dimensions: ['openDay'], paged: false, production: production.ledger, make: () => () => closing.readOverview() },
         { name: 'load.dayCloseState', dimensions: ['settlementVersion'], paged: false, production: production.ledger, make: () => () => closing.read(versionDay) },
         { name: 'load.ledgerScan', dimensions: ['closedDay', 'openDay'], paged: true, production: production.ledger, make: pageSize => () => createCloudLedgerReader(app, current, { pageSize }).read() },
+        // the first scan of a page that has just started: the reader keeps the counted cash of each closed day in memory (per Firestore
+        // instance), so the first scan reads every closed day's latest settlement and the next ones only the days that changed
+        { name: 'load.ledgerScanCold', dimensions: ['closedDay', 'openDay'], paged: true, fresh: true, production: production.ledger, make: pageSize => () => createCloudLedgerReader(dbFor(OP), current, { pageSize }).read() },
         // the incremental backup export reads every command once: its dimension is the number of commands, which every phase grows
         { name: 'load.backupExport', dimensions: ['command'], paged: true, production: production.backup, make: pageSize => () => createCloudBackupRepository(app, { currentUid: () => OP.uid, pageSize }).exportRange({ fromSeq: 0, generatedAt: '2026-10-23T03:00:00.000Z' }) },
       ];
@@ -498,8 +503,8 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
         command: await headSeq(),
       };
     };
-    const measureOne = async (run: () => Promise<unknown>) => {
-      const { report } = await meter.measure(run, app);
+    const measureOne = async (run: () => Promise<unknown>, fresh = false) => {
+      const { report } = await meter.measure(run, fresh ? undefined : app);
       localStorage.clear();
       const measured = summarize(report);
       const sample: FitSample = { reads: measured.reads, authorization: measured.authDocuments + measured.authQueries, authQueries: measured.authQueries };
@@ -510,8 +515,8 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       const dims = await countDimensions();
       const loads: Recorded['loads'] = new Map();
       for (const spec of loadSpecs()) {
-        const small = await measureOne(spec.make(STEP));
-        const large = spec.paged ? await measureOne(spec.make(2 * STEP)) : undefined;
+        const small = await measureOne(spec.make(STEP), spec.fresh);
+        const large = spec.paged ? await measureOne(spec.make(2 * STEP), spec.fresh) : undefined;
         loads.set(spec.name, { small: small.sample, ...(large ? { large: large.sample } : {}), reads: small.measured.readsByKey });
         queryShapes.set(spec.name, small.measured.queries);
       }

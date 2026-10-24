@@ -23,8 +23,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 273076,
-      "deduped": 270716,
+      "conservative": 277427,
+      "deduped": 275067,
       "limit": 25000,
       "verdict": "FAIL"
     },
@@ -70,6 +70,11 @@
         "reads": 6786
       },
       {
+        "operation": "load.ledgerScanCold",
+        "perDay": 2,
+        "reads": 5946
+      },
+      {
         "operation": "load.dayVendors",
         "perDay": 7,
         "reads": 5561
@@ -78,11 +83,6 @@
         "operation": "load.students",
         "perDay": 24,
         "reads": 5088
-      },
-      {
-        "operation": "load.ledgerScan",
-        "perDay": 5,
-        "reads": 3987
       },
       {
         "operation": "command.CreatePayment",
@@ -123,8 +123,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 127087,
-      "deduped": 125914,
+      "conservative": 131438,
+      "deduped": 130265,
       "limit": 25000,
       "verdict": "FAIL"
     },
@@ -165,14 +165,14 @@
         "reads": 9853
       },
       {
+        "operation": "load.ledgerScanCold",
+        "perDay": 2,
+        "reads": 5946
+      },
+      {
         "operation": "load.dayVendors",
         "perDay": 7,
         "reads": 5561
-      },
-      {
-        "operation": "load.ledgerScan",
-        "perDay": 5,
-        "reads": 3987
       },
       {
         "operation": "command.CreateOrder",
@@ -223,8 +223,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 126903,
-      "deduped": 125730,
+      "conservative": 131253,
+      "deduped": 130081,
       "limit": 25000,
       "verdict": "FAIL"
     },
@@ -265,14 +265,14 @@
         "reads": 16237
       },
       {
+        "operation": "load.ledgerScanCold",
+        "perDay": 2,
+        "reads": 5946
+      },
+      {
         "operation": "load.dayVendors",
         "perDay": 7,
         "reads": 5561
-      },
-      {
-        "operation": "load.ledgerScan",
-        "perDay": 5,
-        "reads": 3987
       },
       {
         "operation": "command.CreateOrder",
@@ -323,8 +323,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 324123,
-      "deduped": 321763,
+      "conservative": 328474,
+      "deduped": 326114,
       "limit": 25000,
       "verdict": "FAIL"
     },
@@ -375,14 +375,14 @@
         "reads": 6786
       },
       {
+        "operation": "load.ledgerScanCold",
+        "perDay": 2,
+        "reads": 5946
+      },
+      {
         "operation": "load.dayVendors",
         "perDay": 7,
         "reads": 5561
-      },
-      {
-        "operation": "load.ledgerScan",
-        "perDay": 5,
-        "reads": 3987
       },
       {
         "operation": "command.CreatePayment",
@@ -423,8 +423,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 277792,
-      "deduped": 275780,
+      "conservative": 282143,
+      "deduped": 280131,
       "limit": 25000,
       "verdict": "FAIL"
     },
@@ -470,6 +470,11 @@
         "reads": 16200
       },
       {
+        "operation": "load.ledgerScanCold",
+        "perDay": 2,
+        "reads": 5946
+      },
+      {
         "operation": "load.dayVendors",
         "perDay": 7,
         "reads": 5561
@@ -478,11 +483,6 @@
         "operation": "load.students",
         "perDay": 24,
         "reads": 5088
-      },
-      {
-        "operation": "load.ledgerScan",
-        "perDay": 5,
-        "reads": 3987
       },
       {
         "operation": "lease.renew",
@@ -511,23 +511,23 @@
   "whatIf": [
     {
       "label": "the design ceiling as measured",
-      "reads": 273076
+      "reads": 277427
     },
     {
       "label": "orders reload after a command skips the roster (the roster is kept until a student changes)",
-      "reads": 232878
+      "reads": 237229
     },
     {
       "label": "orders page does not reload after a command (it keeps what it has; opens only)",
-      "reads": 206988
+      "reads": 211339
     },
     {
       "label": "the five history loads read each transaction or command once instead of twice (needs CheerC: the second read is an integrity check)",
-      "reads": 198993
+      "reads": 203344
     },
     {
       "label": "all three together",
-      "reads": 132905
+      "reads": 137256
     }
   ],
   "floor": {
