@@ -155,4 +155,60 @@ describe('P15b REST client (fake fetch)', () => {
     expect(calls[0]!.url).toContain('/students?pageSize=1');
     expect(calls[2]!.body).toEqual({ structuredQuery: { from: [{ collectionId: 'settlements', allDescendants: true }], limit: 1 } });
   });
+
+  const root = 'projects/demo-easyorder-restore/databases/(default)/documents';
+
+  it('P15c: lists a whole collection across pages and decodes every document with its relative path', async () => {
+    const pages = [
+      { documents: [{ name: `${root}/students/a`, fields: { n: { integerValue: '1' } } }], nextPageToken: 'next-page' },
+      { documents: [{ name: `${root}/students/b`, fields: {} }] },
+    ];
+    const { calls, fetchImpl } = recorder(() => reply(200, pages.shift()));
+    const listed = await createFirestoreRest(emulatorTarget(), fetchImpl).listDocuments('students');
+    expect(listed).toEqual([{ path: 'students/a', data: { n: 1 } }, { path: 'students/b', data: {} }]);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.method).toBe('GET');
+    expect(calls[0]!.url).toContain('/documents/students?pageSize=300');
+    expect(calls[1]!.url).toContain('pageToken=next-page');
+  });
+
+  it('P15c: lists only the document IDs of a collection (a name-only mask) and returns an empty list for an empty collection', async () => {
+    const answers: unknown[] = [{ documents: [{ name: `${root}/accessEvents/7` }, { name: `${root}/accessEvents/12` }] }, {}];
+    const { calls, fetchImpl } = recorder(() => reply(200, answers.shift()));
+    const rest = createFirestoreRest(emulatorTarget(), fetchImpl);
+    expect(await rest.listDocumentIds('accessEvents')).toEqual(['7', '12']);
+    expect(await rest.listDocumentIds('accessEvents')).toEqual([]);
+    expect(calls[0]!.url).toContain('mask.fieldPaths=__name__');
+  });
+
+  it('P15c: reads one document with its update time, or null when it is missing', async () => {
+    const answers: unknown[] = [
+      [{ found: { name: `${root}/system/dataHead`, fields: { seq: { integerValue: '3' } }, updateTime: '2026-10-24T00:00:00.123456Z' } }],
+      [{ missing: `${root}/system/dataHead` }],
+    ];
+    const { fetchImpl } = recorder(() => reply(200, answers.shift()));
+    const rest = createFirestoreRest(emulatorTarget(), fetchImpl);
+    expect(await rest.getWithUpdateTime('system/dataHead')).toEqual({ data: { seq: 3 }, updateTime: '2026-10-24T00:00:00.123456Z' });
+    expect(await rest.getWithUpdateTime('system/dataHead')).toBeNull();
+  });
+
+  it('P15c: an update with an updateTime precondition sends currentDocument.updateTime instead of exists', async () => {
+    const { calls, fetchImpl } = recorder(() => reply(200, {}));
+    await createFirestoreRest(emulatorTarget(), fetchImpl).commit([
+      { kind: 'update', path: 'system/dataHead', data: { maintenance: false }, fields: ['maintenance'], updateTime: '2026-10-24T00:00:00.123456Z' },
+    ]);
+    expect(calls[0]!.body).toEqual({ writes: [{
+      update: { name: `${root}/system/dataHead`, fields: { maintenance: { booleanValue: false } } },
+      updateMask: { fieldPaths: ['maintenance'] }, currentDocument: { updateTime: '2026-10-24T00:00:00.123456Z' },
+    }] });
+  });
+
+  it('P15c: a failed updateTime precondition (HTTP 400/409/412) is an error, never a silent success', async () => {
+    for (const status of [400, 409, 412]) {
+      const { fetchImpl } = recorder(() => reply(status, { error: { status: status === 409 ? 'ABORTED' : 'FAILED_PRECONDITION' } }));
+      await expect(createFirestoreRest(emulatorTarget(), fetchImpl).commit([
+        { kind: 'update', path: 'system/dataHead', data: { maintenance: false }, fields: ['maintenance'], updateTime: 't' },
+      ])).rejects.toBeInstanceOf(RestError);
+    }
+  });
 });

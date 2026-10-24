@@ -132,8 +132,8 @@ export type FetchLike = (url: string, init: { method: string; headers: Record<st
 
 export type RestWrite =
   | { kind: 'create'; path: string; data: Record<string, unknown> }
-  /** Updates only the listed fields of an existing document. */
-  | { kind: 'update'; path: string; data: Record<string, unknown>; fields: string[] };
+  /** Updates only the listed fields of an existing document; `updateTime` makes it conditional on the document not having changed since it was read. */
+  | { kind: 'update'; path: string; data: Record<string, unknown>; fields: string[]; updateTime?: string };
 
 export interface RestDocument { path: string; data: Record<string, unknown> }
 
@@ -145,6 +145,12 @@ export interface FirestoreRest {
   collectionHasDocuments(collection: string): Promise<boolean>;
   /** True when at least one document exists in any collection with this ID, at any depth. */
   groupHasDocuments(collectionId: string): Promise<boolean>;
+  /** Every document of a collection path such as `students` or `days/2026-10-01/settlements`, across pages. */
+  listDocuments(collection: string): Promise<RestDocument[]>;
+  /** Only the document IDs of a collection, across pages. */
+  listDocumentIds(collection: string): Promise<string[]>;
+  /** One document with its update time (for a conditional write), or null when it does not exist. */
+  getWithUpdateTime(path: string): Promise<{ data: Record<string, unknown>; updateTime: string } | null>;
 }
 
 export function createFirestoreRest(target: RestTarget, fetchImpl: FetchLike): FirestoreRest {
@@ -199,6 +205,9 @@ export function createFirestoreRest(target: RestTarget, fetchImpl: FetchLike): F
       const answer = await call('GET', `${api}/${collection}?pageSize=1`) as { documents?: unknown[] };
       return (answer.documents?.length ?? 0) > 0;
     },
+    async listDocuments() { throw new Error('P15c 尚未實作'); },
+    async listDocumentIds() { throw new Error('P15c 尚未實作'); },
+    async getWithUpdateTime() { throw new Error('P15c 尚未實作'); },
     async groupHasDocuments(collectionId) {
       const answer = await call('POST', `${api}:runQuery`, {
         structuredQuery: { from: [{ collectionId, allDescendants: true }], limit: 1 },

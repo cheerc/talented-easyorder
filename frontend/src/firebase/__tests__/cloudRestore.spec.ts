@@ -8,12 +8,15 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { Timestamp, collection, collectionGroup, doc, getDocs, setDoc, updateDoc, type Firestore } from 'firebase/firestore';
+import { Timestamp, collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc, type Firestore } from 'firebase/firestore';
 import { decryptBackup, recalculateBackupTotals, replayBackupProjections, stableJson, type BackupCommandRecord } from '../cloudBackup';
 import { createCloudBackupRepository } from '../cloudBackupRepository';
+import { acquireLease } from '../activeAccountLease';
 import { createCloudCommandRepository } from '../cloudCommandRepository';
+import { createCloudDayCloseRepository } from '../cloudDayCloseRepository';
+import { createCloudOrderRepository } from '../cloudOrderRepository';
 import {
-  R02_LEASE_EPOCH, R02_OPERATOR, generateOtherDatasetPackage, generateR02Fixture, operatorDb, operatorUser, taipeiToday,
+  R02_LEASE_EPOCH, R02_OPERATOR, generateOtherDatasetPackage, generateR02Fixture, operatorDb, operatorUser, taipeiToday, uuid,
   type R02Fixture, type R02Package,
 } from './helpers/r02Scenario';
 
@@ -520,4 +523,216 @@ describeWithEmulator('P15b init, restore and resume into a second project', { ti
     expect([init.status, first.status, second.status]).toEqual([0, 75, 0]);
     expectAnonymous(outputs.join('\n'));
   }, 180_000);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// P15c: verify and finalize.
+
+interface VerifyJson {
+  ok: boolean;
+  datasetId: string;
+  toSeq: number;
+  collections: Record<string, { expected: number; actual: number; missing: number; extra: number; different: number }>;
+  commandSeq: { contiguous: boolean; gaps: number };
+  dataHead: { seqMatches: boolean; lastCommandMatches: boolean; maintenance: boolean };
+  totals: { matches: boolean };
+  balances: { checked: number; mismatches: number };
+  settlements: { contiguous: boolean };
+  reads: number;
+}
+const verifyReport = (file: string) => JSON.parse(readFileSync(file, 'utf8')) as VerifyJson;
+const verifyArgs = (out: string, extra: string[] = []) => ['verify', '--project', TARGET_PROJECT, '--manifest', fixture.chainPath, '--report', out, ...extra];
+const operatorsFile = () => {
+  const file = path.join(scratch, 'operators.json');
+  writeFileSync(file, JSON.stringify([{ uid: R02_OPERATOR.uid, email: R02_OPERATOR.email }]));
+  return file;
+};
+const finalizeArgs = (extra: string[] = []) =>
+  ['finalize', '--project', TARGET_PROJECT, '--manifest', fixture.chainPath, '--operators', operatorsFile(), ...extra];
+
+function restoreTarget(): void {
+  initTarget();
+  const run = runCli(restoreArgs(['--execute']));
+  expect(run.status, run.stderr).toBe(0);
+}
+
+async function targetDoc(docPath: string): Promise<Record<string, unknown> | null> {
+  let data: Record<string, unknown> | null = null;
+  await targetEnv.withSecurityRulesDisabled(async context => {
+    const snap = await getDoc(doc(context.firestore() as unknown as Firestore, docPath));
+    data = snap.exists() ? plain(snap.data()) as Record<string, unknown> : null;
+  });
+  return data;
+}
+
+async function onTarget(action: (db: Firestore) => Promise<void>): Promise<void> {
+  await targetEnv.withSecurityRulesDisabled(async context => { await action(context.firestore() as unknown as Firestore); });
+}
+
+describeWithEmulator('P15c verify and finalize on a restored project', { timeout: 120_000 }, () => {
+  beforeEach(async () => {
+    await targetEnv.clearFirestore();
+    rmSync(progressFile(sourceHeadSeq()), { force: true });
+  });
+
+  it('C1: verify of a restored target exits 0 and reports the same counts as the offline validate, with every difference zero', () => {
+    restoreTarget();
+    const validateOut = reportPath('c1-validate.json');
+    expect(runCli(['validate', '--manifest', fixture.chainPath, '--report', validateOut]).status).toBe(0);
+    const out = reportPath('c1-verify.json');
+    const run = runCli(verifyArgs(out));
+    expect(run.status, run.stderr).toBe(0);
+    const verified = verifyReport(out);
+    expect(verified.ok).toBe(true);
+    expect(verified.toSeq).toBe(sourceHeadSeq());
+    const expected = report(validateOut).collections;
+    for (const [name, count] of Object.entries(expected)) {
+      expect(verified.collections[name], name).toEqual({ expected: count, actual: count, missing: 0, extra: 0, different: 0 });
+    }
+    expect(verified).toMatchObject({
+      commandSeq: { contiguous: true, gaps: 0 }, dataHead: { seqMatches: true, lastCommandMatches: true, maintenance: true },
+      totals: { matches: true }, balances: { mismatches: 0 }, settlements: { contiguous: true },
+    });
+    expect(verified.balances.checked).toBe(fixture.source.studentCount);
+    expect(verified.reads).toBeGreaterThan(sourceHeadSeq());
+    expectAnonymous(`${readFileSync(out, 'utf8')}\n${run.stdout}\n${run.stderr}`);
+  });
+
+  it('C2: verify finds an extra transaction document, exits 2 and still writes the report', async () => {
+    restoreTarget();
+    await onTarget(async db => { await setDoc(doc(db, 'transactions/stray'), { note: 'extra' }); });
+    const out = reportPath('c2.json');
+    expect(runCli(verifyArgs(out)).status).toBe(2);
+    const verified = verifyReport(out);
+    expect(verified.ok).toBe(false);
+    expect(verified.collections.transactions).toMatchObject({ extra: 1, missing: 0, different: 0 });
+  });
+
+  it('C3: verify finds a changed student balance as one different document and one balance mismatch', async () => {
+    restoreTarget();
+    await onTarget(async db => {
+      const ref = doc(db, `students/${uuid(900_001)}`);
+      await updateDoc(ref, { currentBalance: ((await getDoc(ref)).data() as { currentBalance: number }).currentBalance + 5 });
+    });
+    const out = reportPath('c3.json');
+    expect(runCli(verifyArgs(out)).status).toBe(2);
+    const verified = verifyReport(out);
+    expect(verified.collections.students).toMatchObject({ different: 1, missing: 0, extra: 0 });
+    expect(verified.balances.mismatches).toBe(1);
+  });
+
+  it('C4: verify finds a deleted command as a missing document and a gap in the command sequence', async () => {
+    restoreTarget();
+    await onTarget(async db => {
+      const victim = (await getDocs(collection(db, 'commands'))).docs.find(item => item.data().seq === 5)!;
+      await deleteDoc(victim.ref);
+    });
+    const out = reportPath('c4.json');
+    expect(runCli(verifyArgs(out)).status).toBe(2);
+    const verified = verifyReport(out);
+    expect(verified.collections.commands).toMatchObject({ missing: 1, extra: 0, different: 0 });
+    expect(verified.commandSeq).toMatchObject({ contiguous: false, gaps: 1 });
+  });
+
+  it('C5: finalize refuses an unfinished restore and a target that fails verify, and then writes no operator, no lease and keeps maintenance', async () => {
+    initTarget();
+    expect(runCli(restoreArgs(['--execute'], ['--batch-size', '10', '--max-writes', '20'])).status).toBe(75);
+    const unfinished = runCli(finalizeArgs(['--execute', '--batch-size', '10']));
+    expect(unfinished.status).toBe(2);
+    expect(await targetDoc(`operators/${R02_OPERATOR.uid}`)).toBeNull();
+    expect(await targetDoc('system/accessLease')).toBeNull();
+    expect((await targetDoc('system/dataHead'))!.maintenance).toBe(true);
+
+    expect(runCli(resumeArgs(['--batch-size', '10'])).status).toBe(0);
+    await onTarget(async db => { await setDoc(doc(db, 'transactions/stray'), { note: 'extra' }); });
+    const failing = runCli(finalizeArgs(['--execute', '--batch-size', '10']));
+    expect(failing.status).toBe(2);
+    expect(await targetDoc(`operators/${R02_OPERATOR.uid}`)).toBeNull();
+    expect(await targetDoc('system/accessLease')).toBeNull();
+    expect((await targetDoc('system/dataHead'))!.maintenance).toBe(true);
+  });
+
+  it('C6: finalize creates the operators and an empty lease at the highest command epoch, then clears maintenance; verify still passes', async () => {
+    restoreTarget();
+    const dry = runCli(finalizeArgs());
+    expect(dry.status, dry.stderr).toBe(0);
+    expect(dry.stdout).toContain('試算');
+    expect(await targetDoc('system/accessLease')).toBeNull();
+    expect((await targetDoc('system/dataHead'))!.maintenance).toBe(true);
+
+    const run = runCli(finalizeArgs(['--execute']));
+    expect(run.status, run.stderr).toBe(0);
+    expect(await targetDoc(`operators/${R02_OPERATOR.uid}`)).toMatchObject({ uid: R02_OPERATOR.uid, email: R02_OPERATOR.email, active: true });
+    expect(await targetDoc('system/accessLease')).toMatchObject({ holderUid: null, epoch: R02_LEASE_EPOCH });
+    expect((await targetDoc('system/dataHead'))!).toMatchObject({ maintenance: false, seq: sourceHeadSeq() });
+    const out = reportPath('c6.json');
+    expect(runCli(verifyArgs(out)).status).toBe(0);
+    expect(verifyReport(out).dataHead.maintenance).toBe(false);
+    expectAnonymous(`${run.stdout}\n${run.stderr}`);
+  });
+
+  it('C7: the lease epoch is never below an existing accessEvents number, and the operator can then acquire with the production code', async () => {
+    initTarget();
+    await onTarget(async db => {
+      await setDoc(doc(db, 'accessEvents/12'), {
+        kind: 'acquire', holderUid: 'someone', previousHolderUid: null, actorUid: 'someone', actorEmail: 'old@example.test', at: Timestamp.now(),
+      });
+    });
+    expect(runCli(restoreArgs(['--execute'])).status).toBe(0);
+    expect(runCli(finalizeArgs(['--execute'])).status).toBe(0);
+    expect(await targetDoc('system/accessLease')).toMatchObject({ holderUid: null, epoch: 12 });
+    const result = await acquireLease(operatorDb(targetEnv), R02_OPERATOR.uid, 12, R02_OPERATOR.email);
+    expect(result).toMatchObject({ status: 'acquired', epoch: 13 });
+    expect(await targetDoc('accessEvents/13')).toMatchObject({ kind: 'acquire', holderUid: R02_OPERATOR.uid, previousHolderUid: null });
+  });
+
+  it('C8 and C9: after finalize the operator can sign in, work with the production writers, and the backup chain continues from the source', async () => {
+    restoreTarget();
+    expect(runCli(finalizeArgs(['--execute'])).status).toBe(0);
+    const acquired = await acquireLease(operatorDb(targetEnv), R02_OPERATOR.uid, R02_LEASE_EPOCH, R02_OPERATOR.email);
+    expect(acquired).toMatchObject({ status: 'acquired', epoch: R02_LEASE_EPOCH + 1 });
+    const epoch = R02_LEASE_EPOCH + 1;
+
+    const db = operatorDb(targetEnv);
+    const user = operatorUser();
+    const closing = createCloudDayCloseRepository(db, { currentUser: () => user });
+    const orders = createCloudOrderRepository(db, { currentUser: () => user });
+    const today = fixture.source.today;
+    const alpha = uuid(900_001);
+    const read = async (docPath: string) => (await getDoc(doc(db, docPath))).data() as Record<string, number & string>;
+    const balanceBefore = (await read(`students/${alpha}`)).currentBalance as number;
+
+    const day = await read(`days/${today}`);
+    const reopened = await closing.reopenDay({ commandId: uuid(990_501), leaseEpoch: epoch, dayId: today, expectedDayRevision: day.revision,
+      expectedSettlementRevision: day.lastSettlementRevision, reason: '復原後重新開帳' });
+    expect(reopened.ok, JSON.stringify(reopened)).toBe(true);
+    const payment = await orders.createPayment({ commandId: uuid(990_502), transactionId: uuid(990_503), leaseEpoch: epoch, studentId: alpha, dayId: today,
+      expectedStudentRevision: (await read(`students/${alpha}`)).revision, expectedDayRevision: (await read(`days/${today}`)).revision,
+      paidAmount: 40, note: '' });
+    expect(payment.ok, JSON.stringify(payment)).toBe(true);
+    expect((await read('system/dataHead')).seq).toBe(sourceHeadSeq() + 2);
+    expect((await read(`students/${alpha}`)).currentBalance).toBe(balanceBefore + 40);
+
+    const lastPackage = fixture.packages[fixture.packages.length - 1]!;
+    const previousManifest = await decryptBackup(readFileSync(path.join(fixture.dir, lastPackage.file)), PASSWORD);
+    let exported: Awaited<ReturnType<ReturnType<typeof createCloudBackupRepository>['exportRange']>> | null = null;
+    await onTarget(async plainDb => {
+      exported = await createCloudBackupRepository(plainDb, { currentUid: () => R02_OPERATOR.uid }).exportRange({
+        fromSeq: sourceHeadSeq(), previousManifest, previousPackageSha256: lastPackage.sha256, generatedAt: '2026-10-24T01:00:00.000Z',
+      });
+    });
+    expect(exported!.toSeq).toBe(sourceHeadSeq() + 2);
+    expect(exported!.manifest.records.map(record => record.seq)).toEqual([sourceHeadSeq() + 1, sourceHeadSeq() + 2]);
+    expect(exported!.manifest.previousPackageSha256).toBe(lastPackage.sha256);
+  });
+
+  it('C10: finalize a second time exits 2 (maintenance is already cleared) and changes nothing', async () => {
+    restoreTarget();
+    expect(runCli(finalizeArgs(['--execute'])).status).toBe(0);
+    const before = [await targetDoc('system/accessLease'), await targetDoc(`operators/${R02_OPERATOR.uid}`), await targetDoc('system/dataHead')];
+    const again = runCli(finalizeArgs(['--execute']));
+    expect(again.status).toBe(2);
+    expect(again.stderr).toContain('維護');
+    expect([await targetDoc('system/accessLease'), await targetDoc(`operators/${R02_OPERATOR.uid}`), await targetDoc('system/dataHead')]).toEqual(before);
+  });
 });
