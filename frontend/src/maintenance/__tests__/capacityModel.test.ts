@@ -14,11 +14,11 @@ const table: CostTable = {
   schemaVersion: 1,
   operations: {
     // 6 client reads, 2 Rules read-authorization calls (1 deduped), 3 writes
-    'command.Small': { reads: { fixed: 6, perUnit: 0 }, readAuthorization: { fixed: 2, perUnit: 0 }, readAuthorizationDeduped: { fixed: 1, perUnit: 0 }, writes: 3, deletes: 0 },
+    'command.Small': { reads: { fixed: 6, perUnit: {} }, readAuthorization: { fixed: 2, perUnit: {} }, readAuthorizationDeduped: { fixed: 1, perUnit: {} }, writes: 3, deletes: 0 },
     // heavier command: 9 reads, 5 authorization (2 deduped), 4 writes
-    'command.Big': { reads: { fixed: 9, perUnit: 0 }, readAuthorization: { fixed: 5, perUnit: 0 }, readAuthorizationDeduped: { fixed: 2, perUnit: 0 }, writes: 4, deletes: 0 },
-    // a list that reads 1 + 2 per unit, authorised once per query (2 calls + 2 per extra page of 10 units)
-    'load.List': { unit: 'item', reads: { fixed: 1, perUnit: 2 }, readAuthorization: { fixed: 2, perUnit: 0.2 }, readAuthorizationDeduped: { fixed: 2, perUnit: 0.2 }, writes: 0, deletes: 0 },
+    'command.Big': { reads: { fixed: 9, perUnit: {} }, readAuthorization: { fixed: 5, perUnit: {} }, readAuthorizationDeduped: { fixed: 2, perUnit: {} }, writes: 4, deletes: 0 },
+    // a list that grows with two independent dimensions: 1 + 2 per item + 3 per group reads, authorised 2 + 0.2 per item
+    'load.List': { units: ['item', 'group'], reads: { fixed: 1, perUnit: { item: 2, group: 3 } }, readAuthorization: { fixed: 2, perUnit: { item: 0.2 } }, readAuthorizationDeduped: { fixed: 2, perUnit: { item: 0.2 } }, writes: 0, deletes: 0 },
   },
   rules: {
     Small: { commitAccessCalls: 11, commitDistinctDocuments: 5, source: 'fixture' },
@@ -30,19 +30,19 @@ describe('P16d capacity model: daily usage', () => {
   const workload: WorkloadLine[] = [
     { operation: 'command.Small', perDay: 10 },
     { operation: 'command.Big', perDay: 2 },
-    { operation: 'load.List', perDay: 3, units: 50 },
+    { operation: 'load.List', perDay: 3, units: { item: 50, group: 4 } },
   ];
 
   it('adds client reads, read authorization and the Rules commit closure of every command, once per execution', () => {
     const usage = dailyUsage(table, workload);
-    // Small: 10 × (6 + 2 + 11) = 190; Big: 2 × (9 + 5 + 19) = 66; List: 3 × (1 + 2×50 + 2 + 0.2×50) = 3 × 113 = 339
-    expect(usage.reads.conservative).toBe(190 + 66 + 339);
-    // deduped: Small 10 × (6 + 1 + 5) = 120; Big 2 × (9 + 2 + 7) = 36; List 3 × (101 + 12) = 339
-    expect(usage.reads.deduped).toBe(120 + 36 + 339);
+    // Small: 10 × (6 + 2 + 11) = 190; Big: 2 × (9 + 5 + 19) = 66; List: 3 × (1 + 2×50 + 3×4 + 2 + 0.2×50) = 3 × 125 = 375
+    expect(usage.reads.conservative).toBe(190 + 66 + 375);
+    // deduped: Small 10 × (6 + 1 + 5) = 120; Big 2 × (9 + 2 + 7) = 36; List 3 × (113 + 12) = 375
+    expect(usage.reads.deduped).toBe(120 + 36 + 375);
     expect(usage.writes).toBe(10 * 3 + 2 * 4);
     expect(usage.deletes).toBe(0);
     expect(usage.lines.map(line => [line.operation, line.reads])).toEqual([
-      ['command.Small', 190], ['command.Big', 66], ['load.List', 339],
+      ['command.Small', 190], ['command.Big', 66], ['load.List', 375],
     ]);
   });
 
@@ -51,16 +51,19 @@ describe('P16d capacity model: daily usage', () => {
     const withoutRules: CostTable = { ...table, rules: {} };
     expect(() => dailyUsage(withoutRules, [{ operation: 'command.Small', perDay: 1 }])).toThrow(/Small/);
     expect(() => dailyUsage(table, [{ operation: 'load.List', perDay: 1 }])).toThrow(/units/);
+    // every dimension of the operation must be given: a missing one would be counted as 0 units
+    expect(() => dailyUsage(table, [{ operation: 'load.List', perDay: 1, units: { item: 50 } }])).toThrow(/group/);
+    expect(() => dailyUsage(table, [{ operation: 'load.List', perDay: 1, units: { item: 50, group: 4, stray: 1 } }])).toThrow(/stray/);
   });
 
   it('worst case: every business command is the kind that costs the most reads, the other lines stay', () => {
     const worst = worstCaseWorkload(table, workload, ['command.Small', 'command.Big']);
     expect(worst).toEqual([
       { operation: 'command.Big', perDay: 12 },
-      { operation: 'load.List', perDay: 3, units: 50 },
+      { operation: 'load.List', perDay: 3, units: { item: 50, group: 4 } },
     ]);
     // Big costs 9 + 5 + 19 = 33 against Small 6 + 2 + 11 = 19
-    expect(dailyUsage(table, worst).reads.conservative).toBe(12 * 33 + 339);
+    expect(dailyUsage(table, worst).reads.conservative).toBe(12 * 33 + 375);
   });
 });
 
@@ -69,7 +72,7 @@ describe('P16d capacity model: operations with their own Rules commit cost, and 
     const leaseTable: CostTable = {
       schemaVersion: 1,
       operations: {
-        'lease.acquire': { reads: { fixed: 2, perUnit: 0 }, readAuthorization: { fixed: 2, perUnit: 0 }, readAuthorizationDeduped: { fixed: 2, perUnit: 0 }, writes: 2, deletes: 0,
+        'lease.acquire': { reads: { fixed: 2, perUnit: {} }, readAuthorization: { fixed: 2, perUnit: {} }, readAuthorizationDeduped: { fixed: 2, perUnit: {} }, writes: 2, deletes: 0,
           rulesCommit: { commitAccessCalls: 6, commitDistinctDocuments: 3, source: 'fixture' } },
       },
       rules: {},
