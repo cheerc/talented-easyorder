@@ -95,6 +95,8 @@ const beta = uuid(900_002);
 const decoyStudent = uuid(900_010);
 const vendorA = uuid(900_003);
 const vendorB = uuid(900_004);
+/** Ten aliases of 100 characters: the most a student may carry, so that every student-touching step runs at the Rules' worst case. */
+const aliasSet = (char: string) => Array.from({ length: 10 }, (_item, index) => `${index}${char.repeat(99)}`);
 const ctx: Record<string, string> = { operator: OP.uid, today, gap, alpha, vendor: vendorA, code: '731903' };
 
 interface KindResult { step: string; writes: string[]; attempts: Partial<Record<MutationId, number>>; commandBytes: number }
@@ -104,6 +106,24 @@ const collectionResults = new Map<string, { reads: number; lists: number; bareWr
 
 function utf8Bytes(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value, (_key, item) => (item instanceof Timestamp ? item.toMillis() : item))).length;
+}
+
+/**
+ * The Emulator lists every rule it evaluated in a refusal, and several of them (the siblings of the one that matters) run
+ * out of the 1000-expression budget even when a check is what said no, so the message cannot be used to tell the two apart.
+ * What shows that a refusal is a check and not the budget is the positive control: the unchanged batch, on the same data,
+ * is accepted. This helper only requires a permission denial and counts the messages that mention the budget, for the report.
+ */
+const BUDGET_TEXT = /maximum of \d+ expressions|too complex to evaluate/i;
+const refusalsMentioningBudget = new Map<string, number>();
+async function assertDenied(attempt: Promise<unknown>, label: string): Promise<void> {
+  const failure = await attempt.then(() => null, (error: unknown) => error ?? new Error('rejected without a reason'));
+  if (failure === null) throw new Error(`${label}: expected the Rules to refuse, but the batch was accepted`);
+  await assertFails(Promise.reject(failure));
+  if (BUDGET_TEXT.test(failure instanceof Error ? failure.message : String(failure))) {
+    const group = label.split(' ')[0]!;
+    refusalsMentioningBudget.set(group, (refusalsMentioningBudget.get(group) ?? 0) + 1);
+  }
 }
 
 interface Attempt { mutation: MutationId; label: string; send: () => Promise<void>; arrange?: () => Promise<void> }
@@ -193,11 +213,7 @@ async function runMatrixStep(kind: BusinessCommandKind, run: () => Promise<unkno
   for (const attempt of attemptsFor(writes, commandId, decoys)) {
     await restoreBase();
     if (attempt.arrange) await attempt.arrange();
-    try {
-      await assertFails(attempt.send());
-    } catch (error) {
-      throw new Error(`${kind} ${attempt.mutation} (${attempt.label}) was not refused: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
-    }
+    await assertDenied(attempt.send(), `${kind} ${attempt.mutation} (${attempt.label})`);
     attempts[attempt.mutation] = (attempts[attempt.mutation] ?? 0) + 1;
   }
   await restoreBase();
@@ -213,11 +229,7 @@ async function runMatrixStep(kind: BusinessCommandKind, run: () => Promise<unkno
   expect(stored?.kind).toBe(kind);
 
   // M10: the same accepted batch once more.
-  try {
-    await assertFails(replayBatch(sdk, dbFor(OP), writes));
-  } catch (error) {
-    throw new Error(`${kind} M10 (replay) was not refused: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
-  }
+  await assertDenied(replayBatch(sdk, dbFor(OP), writes), `${kind} M10 (replay)`);
   attempts.M10 = 1;
   expect(await adminData('system/dataHead'), `${kind}: the replay changed the head`).toEqual(headAfter);
 
@@ -285,13 +297,13 @@ describeWithEmulator('P16b Rules matrix on the real firestore.rules', () => {
   // S01–S04: the student commands
   step('CreateStudent', async () => writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: EPOCH,
     targets: { studentId: alpha }, expectedRevisions: { student: 0 },
-    payload: { studentCode: '731901', displayName: 'P16b Alpha', aliases: ['alpha-p16b'], openingBalance: { amount: 100, asOfDate: '2026-10-01', note: '' } } }));
+    payload: { studentCode: '731901', displayName: 'P16b Alpha', aliases: aliasSet('甲'), openingBalance: { amount: 100, asOfDate: '2026-10-01', note: '' } } }));
   step('ChangeStudentCode', async () => writer.commitCommand({ commandId: id(), kind: 'ChangeStudentCode', leaseEpoch: EPOCH,
     targets: { studentId: alpha }, expectedRevisions: { student: (await read(`students/${alpha}`)).revision },
     payload: { studentCode: '731903', reason: 'P16b code change' } }));
   step('EditStudent', async () => writer.commitCommand({ commandId: id(), kind: 'EditStudent', leaseEpoch: EPOCH,
     targets: { studentId: alpha }, expectedRevisions: { student: (await read(`students/${alpha}`)).revision },
-    payload: { displayName: 'P16b Alpha Edited', aliases: ['alpha-p16b', 'edited'] } }));
+    payload: { displayName: 'P16b Alpha Edited', aliases: aliasSet('乙') } }));
   step('SetStudentStatus', async () => writer.commitCommand({ commandId: id(), kind: 'SetStudentStatus', leaseEpoch: EPOCH,
     targets: { studentId: alpha }, expectedRevisions: { student: (await read(`students/${alpha}`)).revision },
     payload: { status: 'inactive', reason: 'P16b pause' } }));
@@ -424,10 +436,7 @@ describeWithEmulator('P16b Rules matrix on the real firestore.rules', () => {
       maxCommandBytes.set(label, Math.max(maxCommandBytes.get(label) ?? 0, utf8Bytes(await adminData(`commands/${commandId}`))));
     };
     const big = uuid(900_020); const bigVendor = uuid(900_021); const bigVendorGone = uuid(900_022);
-    // The student that gets charged keeps two aliases: from three on, CreateOrder and CreatePayment run over the Rules'
-    // 1000-expression budget (P16b finding, docs/ops/free-production-evidence.md). Ten aliases are written for a student that never orders.
-    const aliases = (char: string, count: number) => Array.from({ length: count }, (_item, index) => `${index}${text(char, 99)}`);
-    const bigAliases = uuid(900_023);
+    const aliases = (char: string) => aliasSet(char);
     const bigRevision = async () => (await read(`students/${big}`)).revision;
     const dayRevision = async () => (await read(`days/${today}`)).revision;
     const bigOrder = async (): Promise<string> => {
@@ -446,16 +455,10 @@ describeWithEmulator('P16b Rules matrix on the real firestore.rules', () => {
 
     await commit('CreateStudent', commandId => writer.commitCommand({ commandId, kind: 'CreateStudent', leaseEpoch: EPOCH,
       targets: { studentId: big }, expectedRevisions: { student: 0 },
-      payload: { studentCode: '731920', displayName: text('名', 100), aliases: aliases('甲', 2), openingBalance: { amount: 0, asOfDate: today, note: text('備', 500) } } }));
+      payload: { studentCode: '731920', displayName: text('名', 100), aliases: aliases('甲'), openingBalance: { amount: 0, asOfDate: today, note: text('備', 500) } } }));
     await commit('EditStudent', async commandId => writer.commitCommand({ commandId, kind: 'EditStudent', leaseEpoch: EPOCH,
       targets: { studentId: big }, expectedRevisions: { student: await bigRevision() },
-      payload: { displayName: text('姓', 100), aliases: aliases('乙', 2) } }));
-    await commit('CreateStudent', commandId => writer.commitCommand({ commandId, kind: 'CreateStudent', leaseEpoch: EPOCH,
-      targets: { studentId: bigAliases }, expectedRevisions: { student: 0 },
-      payload: { studentCode: '731922', displayName: text('名', 100), aliases: aliases('甲', 10), openingBalance: { amount: 0, asOfDate: today, note: '' } } }));
-    await commit('EditStudent', async commandId => writer.commitCommand({ commandId, kind: 'EditStudent', leaseEpoch: EPOCH,
-      targets: { studentId: bigAliases }, expectedRevisions: { student: (await read(`students/${bigAliases}`)).revision },
-      payload: { displayName: text('姓', 100), aliases: aliases('乙', 10) } }));
+      payload: { displayName: text('姓', 100), aliases: aliases('乙') } }));
     await commit('ChangeStudentCode', async commandId => writer.commitCommand({ commandId, kind: 'ChangeStudentCode', leaseEpoch: EPOCH,
       targets: { studentId: big }, expectedRevisions: { student: await bigRevision() },
       payload: { studentCode: '731921', reason: text('改', 500) } }));
@@ -525,6 +528,113 @@ describeWithEmulator('P16b Rules matrix on the real firestore.rules', () => {
     expect(maxCommandBytes.size).toBeGreaterThanOrEqual(20);
   }, 300_000);
 
+  // P16x regression: the number of aliases, not their length, used to push CreateOrder, CreatePayment and the transaction
+  // changes over the Rules' expression budget. Each case builds its own student (and today's day if it is missing), so that
+  // it can also be run alone as the probe case of docs/ops/p05-rules-budget.md.
+  const ensureToday = async () => {
+    await restoreBase();
+    if (!(await adminExists(`days/${today}`))) {
+      ok(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: EPOCH,
+        targets: { dayId: today }, expectedRevisions: { day: 0 }, payload: { businessDate: today } }), 'EnsureDay today');
+    }
+  };
+  const chargeStudent = async (studentId: string, studentCode: string, aliases: string[], everyKind: boolean) => {
+    await ensureToday();
+    ok(await writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: EPOCH, targets: { studentId },
+      expectedRevisions: { student: 0 }, payload: { studentCode, displayName: 'P16x student', aliases,
+        openingBalance: { amount: 0, asOfDate: '2026-10-01', note: '' } } }), 'student');
+    const order = async (): Promise<string> => {
+      const rev = await revisions(studentId, today); const transactionId = id();
+      ok(await orders.createOrder({ commandId: id(), transactionId, leaseEpoch: EPOCH, studentId, dayId: today,
+        expectedStudentRevision: rev.student, expectedDayRevision: rev.day, mealKind: 'other', mealPrice: 80, paidAmount: 100,
+        menuRevision: null, otherItemName: 'x', note: '' }), 'CreateOrder');
+      return transactionId;
+    };
+    const change = async (transactionId: string, spec: Pick<CloudTransactionMutationInput, 'kind' | 'payload'>) => {
+      const tx = await read(`transactions/${transactionId}`);
+      ok(await orders.mutateTransaction({ commandId: id(), leaseEpoch: EPOCH, transactionId, studentId, dayId: today,
+        expectedTransactionRevision: tx.revision, expectedStudentRevision: (await read(`students/${studentId}`)).revision,
+        expectedDayRevision: (await read(`days/${today}`)).revision, ...spec } as CloudTransactionMutationInput), spec.kind);
+    };
+    const first = await order();
+    const payRev = await revisions(studentId, today); const paymentCommand = id(); const paymentTransaction = id();
+    ok(await orders.createPayment({ commandId: paymentCommand, transactionId: paymentTransaction, leaseEpoch: EPOCH, studentId, dayId: today,
+      expectedStudentRevision: payRev.student, expectedDayRevision: payRev.day, paidAmount: 30, note: '' }), 'CreatePayment');
+    if (!everyKind) return;
+    await change(first, { kind: 'CorrectTransaction', payload: { mealPrice: 70, paidAmount: 100, amount: 30, note: '', reason: 'P16x correct' } });
+    await change(await order(), { kind: 'CancelKeepDeposit', payload: { reason: 'P16x keep' } });
+    await change(await order(), { kind: 'CancelRefund', payload: { reason: 'P16x refund' } });
+    await change(paymentTransaction, { kind: 'Undo', payload: { targetCommandId: paymentCommand, reason: UNDO_REASON } });
+    const refundRev = await revisions(studentId, today); const refundId = id();
+    ok(await orders.createRefund({ commandId: id(), transactionId: refundId, leaseEpoch: EPOCH, studentId, dayId: today,
+      expectedStudentRevision: refundRev.student, expectedDayRevision: refundRev.day, amount: 20, reason: 'P16x overpaid' }), 'CreateRefund');
+    await change(refundId, { kind: 'VoidTransaction', payload: { reason: 'P16x void' } });
+  };
+  it('a student with two short aliases can be charged and can pay', async () => {
+    await chargeStudent(uuid(900_029), '731924', ['a', 'b'], false);
+  }, 120_000);
+  it('a student with three short aliases can be charged and can pay', async () => {
+    await chargeStudent(uuid(900_030), '731925', ['a', 'b', 'c'], false);
+  }, 120_000);
+  it('a student with ten 100-character aliases can be charged, can pay and can have every kind of change', async () => {
+    await chargeStudent(uuid(900_031), '731926', aliasSet('丙'), true);
+  }, 180_000);
+
+  // P16x must not loosen anything: an alias list is still checked in full wherever it is written or changed.
+  it('aliases that are not valid are still refused whenever the aliases are written or changed', async () => {
+    await ensureToday();
+    const badLists: Array<{ label: string; aliases: unknown[] }> = [
+      { label: 'eleven aliases', aliases: Array.from({ length: 11 }, (_item, index) => `a${index}`) },
+      { label: 'an alias of 101 characters', aliases: ['x'.repeat(101)] },
+      { label: 'an empty alias', aliases: ['ok', ''] },
+      { label: 'an alias that is not text', aliases: ['ok', 7] },
+      { label: 'the tenth alias empty', aliases: [...Array.from({ length: 9 }, (_item, index) => `a${index}`), ''] },
+    ];
+    // The command receipt carries the student as it will be (and, for CreateStudent and EditStudent, the aliases in its payload),
+    // so they are changed too: the batch then agrees with itself and only the alias check can refuse it.
+    const withAliases = (writes: CapturedWrite[], path: string, aliases: unknown[]) => writes.map(write => {
+      if (write.path === path) return { ...write, data: { ...write.data, aliases } };
+      if (write.path.startsWith('commands/')) {
+        const data = write.data as { after: { student: DocumentData }; payload: DocumentData };
+        return { ...write, data: { ...data, after: { ...data.after, student: { ...data.after.student, aliases } },
+          ...('aliases' in data.payload ? { payload: { ...data.payload, aliases } } : {}) } };
+      }
+      return write;
+    });
+    const checkAll = async (what: string, writes: CapturedWrite[], path: string, lists: Array<{ label: string; aliases: unknown[] }>) => {
+      for (const list of lists) {
+        await assertDenied(replayBatch(sdk, dbFor(OP), withAliases(writes, path, list.aliases)), `${what} with ${list.label}`);
+      }
+    };
+
+    // CreateStudent and EditStudent write aliases.
+    const created = uuid(900_040);
+    const createWrites = await captureBatch(async () => writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: EPOCH,
+      targets: { studentId: created }, expectedRevisions: { student: 0 }, payload: { studentCode: '731927', displayName: 'P16x', aliases: ['ok'],
+        openingBalance: { amount: 0, asOfDate: '2026-10-01', note: '' } } }));
+    localStorage.clear();
+    await checkAll('CreateStudent', createWrites, `students/${created}`, badLists);
+    await replayBatch(sdk, dbFor(OP), createWrites);
+
+    const editWrites = await captureBatch(async () => writer.commitCommand({ commandId: id(), kind: 'EditStudent', leaseEpoch: EPOCH,
+      targets: { studentId: created }, expectedRevisions: { student: (await read(`students/${created}`)).revision },
+      payload: { aliases: ['fine', 'also fine'] } }));
+    localStorage.clear();
+    await checkAll('EditStudent', editWrites, `students/${created}`, badLists);
+    await replayBatch(sdk, dbFor(OP), editWrites);
+    expect((await read(`students/${created}`)).aliases).toEqual(['fine', 'also fine']);
+
+    // A command that does not edit aliases cannot change them either, valid or not.
+    const rev = await revisions(created, today);
+    const orderWrites = await captureBatch(async () => orders.createOrder({ commandId: id(), transactionId: id(), leaseEpoch: EPOCH,
+      studentId: created, dayId: today, expectedStudentRevision: rev.student, expectedDayRevision: rev.day, mealKind: 'other',
+      mealPrice: 80, paidAmount: 100, menuRevision: null, otherItemName: 'x', note: '' }));
+    localStorage.clear();
+    await checkAll('CreateOrder', orderWrites, `students/${created}`, [...badLists, { label: 'a different valid alias list', aliases: ['swapped'] }]);
+    await replayBatch(sdk, dbFor(OP), orderWrites);
+    expect((await read(`students/${created}`)).aliases).toEqual(['fine', 'also fine']);
+  }, 180_000);
+
   describe('collections', () => {
     const resolve = async (template: string): Promise<string> => {
       const names: Record<string, string> = { ...ctx };
@@ -574,29 +684,29 @@ describeWithEmulator('P16b Rules matrix on the real firestore.rules', () => {
       await restoreBase();
       for (const who of identities) {
         const getAttempt = getDoc(doc(who.db(), docPath));
-        if (mayRead(entry.readers, who)) await assertSucceeds(getAttempt); else await assertFails(getAttempt);
+        if (mayRead(entry.readers, who)) await assertSucceeds(getAttempt); else await assertDenied(getAttempt, `${entry.match} get as ${who.name}`);
         tally.reads += 1;
         const listAttempt = getDocs(query(collection(who.db(), listPath), limit(5)));
-        if (entry.listable && mayRead(entry.readers, who)) await assertSucceeds(listAttempt); else await assertFails(listAttempt);
+        if (entry.listable && mayRead(entry.readers, who)) await assertSucceeds(listAttempt); else await assertDenied(listAttempt, `${entry.match} list as ${who.name}`);
         tally.lists += 1;
       }
       if (entry.readers === 'holder') {
         // The holder's own reads stop when the lease is not renewed.
         await setLease({ updatedAt: Timestamp.fromMillis(Date.now() - 10 * 60_000) });
-        await assertFails(getDoc(doc(dbFor(OP), docPath)));
-        if (entry.listable) await assertFails(getDocs(query(collection(dbFor(OP), listPath), limit(5))));
+        await assertDenied(getDoc(doc(dbFor(OP), docPath)), `${entry.match} get with an expired lease`);
+        if (entry.listable) await assertDenied(getDocs(query(collection(dbFor(OP), listPath), limit(5))), `${entry.match} list with an expired lease`);
         tally.reads += 1;
         await restoreBase();
       }
       for (const bare of entry.bareWrites) {
         const before = await adminData(docPath);
         const holderDb = dbFor(OP);
-        if (bare === 'update') await assertFails(updateDoc(doc(holderDb, docPath), { updatedAt: serverTimestamp() }));
-        else if (bare === 'delete') await assertFails(deleteDoc(doc(holderDb, docPath)));
+        if (bare === 'update') await assertDenied(updateDoc(doc(holderDb, docPath), { updatedAt: serverTimestamp() }), `${entry.match} bare update`);
+        else if (bare === 'delete') await assertDenied(deleteDoc(doc(holderDb, docPath)), `${entry.match} bare delete`);
         else {
           // A create needs a missing document: take the real one away, try to put the same content back, restore it.
           await admin(db => deleteDoc(doc(db, docPath)));
-          try { await assertFails(setDoc(doc(holderDb, docPath), before!)); } finally {
+          try { await assertDenied(setDoc(doc(holderDb, docPath), before!), `${entry.match} bare create`); } finally {
             await admin(db => setDoc(doc(db, docPath), before!));
           }
         }
@@ -630,6 +740,7 @@ describeWithEmulator('P16b Rules matrix on the real firestore.rules', () => {
         kinds: Object.fromEntries([...results.entries()]),
         collections: Object.fromEntries([...collectionResults.entries()]),
         maxTextCommandBytes: Object.fromEntries([...maxCommandBytes.entries()]),
+        refusalsMentioningBudget: Object.fromEntries([...refusalsMentioningBudget.entries()]),
         totals: {
           kinds: results.size,
           refusedBatches: [...results.values()].reduce((sum, item) => sum + Object.values(item.attempts).reduce((a, b) => a + (b ?? 0), 0), 0),
