@@ -400,13 +400,15 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
     expect(report.summary).toMatchObject({ activeTransactionCount: 3, bentoCount: 1, mealTotal: 5, orderUnpaid: null });
   });
 
-  it('fails closed if any represented account prefix does not reconcile', async () => {
+  it('works back from the current balance (P16f1): the balances of the range follow currentBalance, whatever the opening balance says', async () => {
+    // the opening balance and the history before the range are no longer read; the full reconciliation is the job of the backup replay (P14) and of `verify` (P15)
     await withAdmin(async db => {
       await setDoc(doc(db, `students/${studentB}`), student(studentB, '002', -50, -56));
     });
-    await expect(repository().readReport({
+    const report = await repository().readReport({
       range: { kind: 'custom', startDate: today, endDate: today }, studentId: null, leaseEpoch: 7,
-    })).rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
+    });
+    expect(report.transactions.find(row => row.transactionId === uuidFrom(800))?.afterBalance).toBe(-56);
   });
 
   it('fails closed when transactions exist without their day projection', async () => {
@@ -418,16 +420,17 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
     })).rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
   });
 
-  it('fails closed from single-account history when the visible day projection is missing', async () => {
+  it('does not read the day projection for one account (P16f1): the history and the scoped report need only the transactions of that student', async () => {
     const range = { kind: 'custom' as const, startDate: today, endDate: today };
     await withAdmin(async db => {
       await deleteDoc(doc(db, `days/${today}`));
     });
 
-    await expect(repository().readAccountHistory({ studentId: studentA, range, leaseEpoch: 7 }))
-      .rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
-    await expect(repository().readReport({ studentId: studentA, range, leaseEpoch: 7 }))
-      .rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
+    // the all-scope report still proves the day against its projection (see 'fails closed when transactions exist without their day projection')
+    const history = await repository().readAccountHistory({ studentId: studentA, range, leaseEpoch: 7 });
+    expect(history.transactions).toHaveLength(199);
+    const report = await repository().readReport({ studentId: studentA, range, leaseEpoch: 7 });
+    expect(report.transactions.every(row => row.studentId === studentA)).toBe(true);
   });
 
   it('returns an empty history for a fully queried day with no day document, transactions, or marker', async () => {
@@ -442,20 +445,18 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
     expect(report).toMatchObject({ complete: true, scope: { studentId: studentA }, transactions: [] });
   });
 
-  it('fails closed from single-account history when day totals omit all transactions', async () => {
+  it('still proves the day totals for the all-scope report when they omit all transactions', async () => {
     const range = { kind: 'custom' as const, startDate: today, endDate: today };
     await withAdmin(async db => {
       await setDoc(doc(db, `days/${today}`), day({}));
     });
 
-    await expect(repository().readAccountHistory({ studentId: studentA, range, leaseEpoch: 7 }))
-      .rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
-    await expect(repository().readReport({ studentId: studentA, range, leaseEpoch: 7 }))
+    await expect(repository().readReport({ studentId: null, range, leaseEpoch: 7 }))
       .rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
   });
 
   it.each(['closed', 'reopened'] as const)(
-    'rejects a %s day with no settlement revision from summary and account history', async status => {
+    'rejects a %s day with no settlement revision from summary and the all-scope report', async status => {
       const range = { kind: 'custom' as const, startDate: prior, endDate: prior };
       await withAdmin(async db => {
         await setDoc(doc(db, `days/${prior}`), {
@@ -468,7 +469,7 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
 
       await expect(repository().readSummary({ range, leaseEpoch: 7 }))
         .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
-      await expect(repository().readAccountHistory({ studentId: studentA, range, leaseEpoch: 7 }))
+      await expect(repository().readReport({ studentId: null, range, leaseEpoch: 7 }))
         .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
     },
   );
@@ -549,7 +550,12 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
     expect(dayAudit.rows.map(row => [row.kind, row.seq, row.reason])).toEqual([
       ['CreatePayment', 206, null], ['CreatePayment', 207, null],
     ]);
-    expect(accountAudit.rows.map(row => row.commandId)).toEqual(dayAudit.rows.map(row => row.commandId));
+    // a student's audit is the newest page (here one command) with the cursor of the older ones (P16f1)
+    expect(accountAudit.rows.map(row => row.seq)).toEqual([207]);
+    expect(accountAudit).toMatchObject({ hasMore: true });
+    const older = await auditor.readAudit({ studentId: studentA, leaseEpoch: 7, beforeSeq: accountAudit.rows[0].seq });
+    expect(older.rows.map(row => row.seq)).toEqual([206]);
+    expect(older.hasMore).toBe(false);
     expect(dayAudit.rows[0].before).toHaveProperty('head');
     expect(dayAudit.rows[1].after).toHaveProperty('transaction');
   });
@@ -701,7 +707,7 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
 
     expect(audit.rows).toEqual([]);
     const commandPages = queryTrace.filter(event => event.collection === 'commands');
-    expect(commandPages).toHaveLength(5); // one empty page for each day query/proof, plus one bounded null-date query
+    expect(commandPages).toHaveLength(3); // one empty page for each of the two days (no proof query since P16f1), plus one bounded null-date query
     const boundedQueries = commandPages.filter(event => event.queryScope === 'null-date-audit-range');
     expect(boundedQueries).toHaveLength(1);
     expect(boundedQueries[0].committedAtRange).toEqual({
@@ -709,7 +715,7 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
       end: '2020-01-01T16:00:00.000Z',
       endInclusive: false,
     });
-    expect(commandPages.filter(event => event.queryScope === undefined)).toHaveLength(4);
+    expect(commandPages.filter(event => event.queryScope === undefined)).toHaveLength(2);
   }, 60_000);
 
   it('documents that null-date rows missing committedAt are outside the bounded query index', async () => {
@@ -783,7 +789,7 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
     expect(changed).toBe(true);
   });
 
-  it('fails closed when an in-scope audit document is omitted because its sequence field is missing', async () => {
+  it('documents that a command without a sequence field is outside the seq-ordered query (P16f1 dropped the document-id proof)', async () => {
     await withAdmin(async db => {
       const commandId = uuidFrom(900);
       await setDoc(doc(db, `commands/${commandId}`), {
@@ -791,8 +797,8 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
       });
     });
 
-    await expect(repository().readAudit({ dayId: today, leaseEpoch: 7 }))
-      .rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT' });
+    const audit = await repository().readAudit({ dayId: today, leaseEpoch: 7 });
+    expect(audit.rows.map(row => row.commandId)).not.toContain(uuidFrom(900));
   });
 
   it('fails closed on a lease holder change or maintenance mode', async () => {
@@ -840,10 +846,10 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
     expect(bumped).toBe(true);
   });
 
-  it('rejects an invalid Gregorian business date found in the complete account prefix', async () => {
+  it('rejects an invalid Gregorian business date found in the transactions read for the range', async () => {
     const invalidId = uuidFrom(900);
     await withAdmin(async db => {
-      await setDoc(doc(db, `transactions/${invalidId}`), tx(invalidId, studentA, '2026-02-30', 204, 'payment', {
+      await setDoc(doc(db, `transactions/${invalidId}`), tx(invalidId, studentA, '2026-11-31', 204, 'payment', {
         amount: 1, paidAmount: 1,
       }));
       await setDoc(doc(db, 'system/dataHead'), head(205));

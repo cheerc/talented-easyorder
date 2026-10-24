@@ -173,11 +173,13 @@ function loadLines(a: Assumptions): WorkloadLine[] {
   load('load.accountHistory', accountQueries, { student: a.roster, dayTransaction: shape.transactions, studentTransaction: studentTransactions });
   load('load.reportStudent', accountQueries, { student: a.roster, dayTransaction: shape.transactions, studentTransaction: studentTransactions });
   load('load.auditRangeStudent', accountQueries, { studentTransaction: studentCommands });
-  load('load.auditStudent', accountQueries, { studentTransaction: studentCommands });
+  // P16f1: the audit of a student is its newest page of at most 100 commands
+  const auditPage = Math.min(studentCommands, 100);
+  load('load.auditStudent', accountQueries, { studentTransaction: auditPage });
   load('load.students', accountQueries, { student: a.roster });
 
   load('load.auditDay', 3, { dayTransaction: shape.transactions, dayCommand: shape.otherCommands });
-  load('load.auditStudent', 2, { studentTransaction: studentCommands });
+  load('load.auditStudent', 2, { studentTransaction: auditPage });
   load('load.backupExport', 1, { command: a.commands });
   return lines;
 }

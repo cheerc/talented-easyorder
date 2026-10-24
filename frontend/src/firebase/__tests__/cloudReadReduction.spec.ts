@@ -1,7 +1,7 @@
 // @ts-expect-error Node-only file access loads the real Rules.
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, doc, getDoc, getDocs, query, setDoc, where, type Firestore } from 'firebase/firestore';
+import { Timestamp, collection, doc, getDoc, getDocs, query, setDoc, where, writeBatch, type Firestore } from 'firebase/firestore';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createCloudCommandRepository } from '../cloudCommandRepository';
 import { createCloudDayCloseRepository } from '../cloudDayCloseRepository';
@@ -147,6 +147,28 @@ describeWithEmulator('P16f1 read reduction: one student with a long history outs
     ok(await writer.commitCommand({ commandId: id(), kind: 'StartBackfill', leaseEpoch: epoch, targets: { dayId: historyDay },
       expectedRevisions: { day: (await read(`days/${historyDay}`)).revision }, payload: { reason: 'P16f1 fixture' } }), 'StartBackfill');
     for (let index = 0; index < HISTORY; index += 1) await order(studentL, historyDay, `紙本RR-${index}：x`);
+    // The history is old: every command so far was committed 40 days ago (the Rules stamp the real time, which is today for all of
+    // them), in the order of their sequence numbers, as it is in a shop that has run for a while.
+    const historySeq = (await read('system/dataHead')).seq;
+    await admin(async db => {
+      const old = await getDocs(query(collection(db, 'commands'), where('seq', '<=', historySeq)));
+      const base = Date.now() - 40 * 86_400_000;
+      // a command document carries its commit time in the snapshots of what it changed too (the decoder checks they agree)
+      const moved = (value: unknown, from: Timestamp, to: Timestamp): unknown => {
+        if (value instanceof Timestamp) return value.isEqual(from) ? to : value;
+        if (Array.isArray(value)) return value.map(item => moved(item, from, to));
+        if (value !== null && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, moved(item, from, to)]));
+        return value;
+      };
+      for (let start = 0; start < old.docs.length; start += 400) {
+        const batch = writeBatch(db);
+        for (const item of old.docs.slice(start, start + 400)) {
+          const data = item.data();
+          batch.set(item.ref, moved(data, data.committedAt, Timestamp.fromMillis(base + data.seq * 1000)) as Record<string, unknown>);
+        }
+        await batch.commit();
+      }
+    });
 
     // today: studentL has two orders, a payment and a refund that is voided; the others have a few orders each
     await order(studentL, today, '');
@@ -163,10 +185,9 @@ describeWithEmulator('P16f1 read reduction: one student with a long history outs
 
     const count = (path: string, field: string, value: string) => admin(async db => (await getDocs(query(collection(db, path), where(field, '==', value)))).size);
     studentLToday = (await admin(async db => (await getDocs(query(collection(db, 'transactions'), where('studentId', '==', studentL), where('businessDate', '==', today)))).size));
-    // the commands of studentL that the audit of today attributes to today: those dated today, and the undated one (CreateStudent)
-    // that was committed today
-    studentLCommandsToday = await admin(async db => (await getDocs(query(collection(db, 'commands'), where('studentId', '==', studentL)))).docs
-      .filter(item => item.data().businessDate === today || item.data().businessDate === null).length);
+    // the commands of studentL that the audit of today attributes to today: those dated today (its CreateStudent is old now)
+    studentLCommandsToday = await admin(async db => (await getDocs(query(collection(db, 'commands'),
+      where('studentId', '==', studentL), where('businessDate', '==', today)))).size);
     allToday = await count('transactions', 'businessDate', today);
     expect(studentLToday).toBe(4);
     expect(allToday).toBe(4 + OTHERS * OTHER_ORDERS);

@@ -278,7 +278,7 @@ function decodeHead(value: unknown): { seq: number; datasetId: string; goLiveDat
   return { seq: value.seq, datasetId: value.datasetId, goLiveDate: value.goLiveDate, maintenance: value.maintenance };
 }
 
-function decodeStudent(id: string, value: unknown): CloudStudentRecord {
+export function decodeCloudStudentRecord(id: string, value: unknown): CloudStudentRecord {
   const keys = ['studentId', 'studentCode', 'displayName', 'aliases', 'status', 'openingBalance', 'currentBalance', 'createdAt', 'revision', 'lastCommandId', 'updatedAt'];
   if (!validStudentId(id)
     || !exactKeys(value, keys)
@@ -387,7 +387,7 @@ export async function listCloudStudents(db: Firestore, options: CloudStudentRepo
       if (students.length + page.size > MAX_STUDENTS) {
         throw new CloudStudentRepositoryError('INCOMPLETE_SNAPSHOT', '學生名單超過 500 人，未載入不完整名單');
       }
-      for (const snapshot of page.docs) students.push(decodeStudent(snapshot.id, snapshot.data()));
+      for (const snapshot of page.docs) students.push(decodeCloudStudentRecord(snapshot.id, snapshot.data()));
       hasMore = page.size === pageLimit;
       cursor = page.docs.at(-1);
       if (students.length > MAX_STUDENTS) {

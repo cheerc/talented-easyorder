@@ -49,17 +49,17 @@ import {
 } from '../domain/cloudLedgerReport';
 import { isBackfilled, readCloudBackfillDay, readCloudDayClose } from './cloudDayCloseRepository';
 import { decodeCloudOrderTransaction, reconcileDayTotals } from './cloudOrderRepository';
-import { listCloudStudents, type CloudStudentRecord } from './cloudStudentRepository';
+import { decodeCloudStudentRecord, listCloudStudents, type CloudStudentRecord } from './cloudStudentRepository';
 import { decodeCloudDayRecord, type CloudDayRecord } from './cloudDayVendorRepository';
-import { accessEventPath, accessLeasePath, dataHeadPath, dayPath } from './firestorePaths';
+import { accessEventPath, accessLeasePath, dataHeadPath, dayPath, studentPath } from './firestorePaths';
 
 type Data = Record<string, unknown>;
 type CurrentUser = Pick<User, 'uid' | 'email' | 'emailVerified' | 'providerData'>;
 
 const PAGE_SIZE = 100;
 const MAX_DAY_TRANSACTIONS = 2_000;
-const MAX_ACCOUNT_TRANSACTIONS = 100_000;
-const MAX_ACCOUNT_ROWS_PER_REPORT = 250_000;
+/** Transactions one report or account history reads, from the start of its range to today (fails closed above it). */
+const MAX_RANGE_TRANSACTIONS = 250_000;
 const MAX_AUDIT_COMMANDS = 100_000;
 const MIN_FIRESTORE_TIMESTAMP = new Timestamp(-62_135_596_800, 0);
 const MAX_FIRESTORE_TIMESTAMP = new Timestamp(253_402_300_799, 999_999_999);
@@ -115,7 +115,8 @@ export interface CloudAccountHistoryInput extends CloudSummaryInput {
 
 export type CloudAuditInput =
   | { dayId: string; leaseEpoch: number }
-  | { studentId: string; leaseEpoch: number };
+  /** A student's audit is paged from the newest: `beforeSeq` (the oldest seq already shown) asks for the page before it. */
+  | { studentId: string; leaseEpoch: number; beforeSeq?: number };
 
 interface Head {
   datasetId: string;
@@ -379,12 +380,6 @@ function decodeTransactionSnapshot(snapshot: QueryDocumentSnapshot, headSeq: num
   }
 }
 
-function sameDocumentSet(left: readonly QueryDocumentSnapshot[], right: readonly QueryDocumentSnapshot[]): boolean {
-  if (left.length !== right.length) return false;
-  const ids = new Set(left.map(item => item.id));
-  return ids.size === left.length && right.every(item => ids.has(item.id));
-}
-
 function taipeiAuditTimestampRange(range: CloudLedgerDateRange): {
   start: Timestamp;
   end: Timestamp;
@@ -482,52 +477,6 @@ function assertUniqueAuditRows(rows: readonly CloudAuditRow[]): void {
 
 function compareAuditSeq(left: CloudAuditRangeRow, right: CloudAuditRangeRow): number {
   return left.seq - right.seq || compareAscii(left.commandId, right.commandId);
-}
-
-async function readDayTransactions(
-  db: Firestore,
-  dayId: string,
-  context: ReadContext,
-  user: CurrentUser,
-  pageSize: number,
-  afterPageRead?: CloudReadRepositoryOptions['afterPageRead'],
-): Promise<ReturnType<typeof decodeCloudOrderTransaction>[]> {
-  const primary = await readPaged(
-    db,
-    (cursor, pageLimit) => query(
-      collection(db, 'transactions'),
-      where('businessDate', '==', dayId),
-      orderBy('createdAt'),
-      orderBy(documentId()),
-      ...(cursor ? [startAfter(cursor)] : []),
-      limit(pageLimit),
-    ),
-    context, user, pageSize, MAX_DAY_TRANSACTIONS, 'transactions', afterPageRead,
-  );
-  const documentIdProof = await readPaged(
-    db,
-    (cursor, pageLimit) => query(
-      collection(db, 'transactions'),
-      where('businessDate', '==', dayId),
-      orderBy(documentId()),
-      ...(cursor ? [startAfter(cursor)] : []),
-      limit(pageLimit),
-    ),
-    context, user, pageSize, MAX_DAY_TRANSACTIONS, 'transactions', afterPageRead,
-  );
-  if (!sameDocumentSet(primary.documents, documentIdProof.documents)) {
-    throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `營業日 ${dayId} 有缺少排序欄位的交易，無法證明明細完整`);
-  }
-  const decoded = primary.documents.map(snapshot => {
-    const record = decodeTransactionSnapshot(snapshot, context.head.sourceSeq);
-    if (record.businessDate !== dayId) {
-      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `交易 ${snapshot.id} 營業日與查詢日期不一致`);
-    }
-    return record;
-  });
-  for (const snapshot of documentIdProof.documents) decodeTransactionSnapshot(snapshot, context.head.sourceSeq);
-  assertOrdered(primary.documents);
-  return decoded;
 }
 
 function dayTotals(day: CloudDayRecord | null): CloudReportDayTotals | null {
@@ -709,119 +658,152 @@ async function loadRange(
   return { days, dayRecords, backfills };
 }
 
-async function readTransactionsForRange(
+type TransactionRecord = ReturnType<typeof decodeCloudOrderTransaction>;
+
+/**
+ * Every transaction from `startDate` to today, everyone's or one student's, in the report order (business date, creation time,
+ * id). The range of a report is the first part of it; the rest (the days after the range) is what the balances are worked back
+ * through. A report of today reads today's transactions and nothing more.
+ */
+async function readTransactionsSince(
   db: Firestore,
-  range: LoadedRange,
-  dates: readonly string[],
+  startDate: string,
+  studentId: string | null,
   context: ReadContext,
   user: CurrentUser,
   pageSize: number,
   afterPageRead?: CloudReadRepositoryOptions['afterPageRead'],
-): Promise<CloudReportTransaction[]> {
-  const transactions: CloudReportTransaction[] = [];
-  for (const dayId of dates) {
-    const records = await readDayTransactions(db, dayId, context, user, pageSize, afterPageRead);
-    if (records.some(record => record.businessDate < context.head.goLiveDate)) {
-      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `系統啟用日前存在交易 ${dayId}`);
-    }
-    reconcileDayTotals(range.dayRecords.get(dayId) ?? null, records);
-    const marker = range.backfills.get(dayId) ?? null;
-    for (const record of records) {
-      transactions.push(toReportTransaction(record, isBackfilled({ businessDate: dayId, createdAt: Timestamp.fromDate(new Date(record.createdAt)) }, marker), context.head.sourceSeq));
-    }
-  }
-  return transactions;
-}
-
-interface AccountPrefix {
-  currentBalance: number;
-  transactions: CloudReportTransaction[];
-  transactionCount: number;
-}
-
-async function readAccountPrefix(
-  db: Firestore,
-  student: CloudStudentRecord,
-  range: CloudLedgerDateRange,
-  backfills: ReadonlyMap<string, { dayId: string } | null>,
-  context: ReadContext,
-  user: CurrentUser,
-  pageSize: number,
-  afterPageRead: CloudReadRepositoryOptions['afterPageRead'],
-): Promise<AccountPrefix> {
-  const studentId = student.studentId;
-  const ordered = await readPaged(
+): Promise<TransactionRecord[]> {
+  const paged = await readPaged(
     db,
     (cursor, pageLimit) => query(
       collection(db, 'transactions'),
-      where('studentId', '==', studentId),
+      ...(studentId === null ? [] : [where('studentId', '==', studentId)]),
+      where('businessDate', '>=', startDate),
       orderBy('businessDate'),
       orderBy('createdAt'),
       orderBy(documentId()),
       ...(cursor ? [startAfter(cursor)] : []),
       limit(pageLimit),
     ),
-    context, user, pageSize, MAX_ACCOUNT_TRANSACTIONS, 'transactions', afterPageRead,
+    context, user, pageSize, MAX_RANGE_TRANSACTIONS, 'transactions', afterPageRead,
   );
-  const allDocuments = await readPaged(
-    db,
-    (cursor, pageLimit) => query(
-      collection(db, 'transactions'),
-      where('studentId', '==', studentId),
-      orderBy(documentId()),
-      ...(cursor ? [startAfter(cursor)] : []),
-      limit(pageLimit),
-    ),
-    context, user, pageSize, MAX_ACCOUNT_TRANSACTIONS, 'transactions', afterPageRead,
-  );
-  if (!sameDocumentSet(ordered.documents, allDocuments.documents)) {
-    throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `帳戶 ${studentId} 有缺少排序欄位的歷史交易`);
-  }
-  for (const snapshot of allDocuments.documents) decodeTransactionSnapshot(snapshot, context.head.sourceSeq);
-  assertOrdered(ordered.documents);
-
-  if (!isValidCloudGregorianDate(student.openingBalance.asOfDate)) {
-    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `學生 ${studentId} 期初日期不支援`);
-  }
-  let balance = student.openingBalance.amount;
-  const visible: CloudReportTransaction[] = [];
-  for (const snapshot of ordered.documents) {
-    const record = decodeTransactionSnapshot(snapshot, context.head.sourceSeq);
-    if (record.studentId !== studentId || record.type === 'expense' || record.businessDate < context.head.goLiveDate
-      || record.businessDate < student.openingBalance.asOfDate
-      || record.businessDate > context.leaseToday) {
-      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `帳戶 ${studentId} 的歷史前綴日期或帳戶資料不一致`);
-    }
-    if (record.status === 'active') {
-      balance += record.type === 'refund' ? -record.amount : record.amount;
-      if (!Number.isSafeInteger(balance) || balance < -1_000_000_000 || balance > 1_000_000_000) {
-        throw new CloudReadRepositoryError('RECONCILIATION_FAILED', `帳戶 ${studentId} 歷史餘額超出安全範圍`);
-      }
-    }
-    if (record.businessDate >= range.startDate && record.businessDate <= range.endDate) {
-      const marker = backfills.get(record.businessDate) ?? null;
-      const visibleTransaction = toReportTransaction(
-        record,
-        isBackfilled({ businessDate: record.businessDate, createdAt: Timestamp.fromDate(new Date(record.createdAt)) }, marker),
-        context.head.sourceSeq,
-      );
-      visibleTransaction.afterBalance = balance;
-      visibleTransaction.balanceApplicability = 'verified';
-      visible.push(visibleTransaction);
-    }
-  }
-  if (balance !== student.currentBalance) {
-    throw new CloudReadRepositoryError('RECONCILIATION_FAILED', `帳戶 ${studentId} 完整歷史與學生 currentBalance 不一致`);
-  }
-  return { currentBalance: balance, transactions: visible, transactionCount: ordered.count };
+  assertOrdered(paged.documents);
+  return paged.documents.map(snapshot => decodeTransactionSnapshot(snapshot, context.head.sourceSeq));
 }
 
-function checkedAccountHistoryCount(current: number, next: number): number {
-  const count = current + next;
-  if (!Number.isSafeInteger(count) || count > MAX_ACCOUNT_ROWS_PER_REPORT) {
-    throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `報表帳戶歷史合計超過完整讀取上限 ${MAX_ACCOUNT_ROWS_PER_REPORT}`);
+function transactionEffect(record: TransactionRecord): number {
+  return record.status === 'active' ? (record.type === 'refund' ? -record.amount : record.amount) : 0;
+}
+
+/**
+ * The balance after each transaction of one account, worked back from the student's `currentBalance` (which the Rules check with
+ * every command) through the account's transactions from the range start to today, `records` in report order. The whole history
+ * is not read: the balance before the first of them is not needed, so it is not reconciled against the opening here (the backup
+ * replay and the restore `verify` do that).
+ */
+function balancesBackFromCurrent(
+  student: CloudStudentRecord,
+  records: readonly TransactionRecord[],
+  context: ReadContext,
+): Map<string, number> {
+  if (!isValidCloudGregorianDate(student.openingBalance.asOfDate)) {
+    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `學生 ${student.studentId} 期初日期不支援`);
   }
-  return count;
+  const balances = new Map<string, number>();
+  let balance = student.currentBalance;
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const record = records[index]!;
+    if (record.studentId !== student.studentId || record.type === 'expense' || record.businessDate < context.head.goLiveDate
+      || record.businessDate < student.openingBalance.asOfDate || record.businessDate > context.leaseToday) {
+      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `帳戶 ${student.studentId} 的歷史交易日期或帳戶資料不一致`);
+    }
+    balances.set(record.transactionId, balance);
+    balance -= transactionEffect(record);
+    if (!Number.isSafeInteger(balance) || balance < -1_000_000_000 || balance > 1_000_000_000) {
+      throw new CloudReadRepositoryError('RECONCILIATION_FAILED', `帳戶 ${student.studentId} 歷史餘額超出安全範圍`);
+    }
+  }
+  return balances;
+}
+
+async function readStudent(db: Firestore, studentId: string): Promise<CloudStudentRecord | null> {
+  const snapshot = await getDocFromServer(doc(db, studentPath(studentId)));
+  assertServerConfirmed(snapshot, '學生文件');
+  if (!snapshot.exists()) return null;
+  try {
+    return decodeCloudStudentRecord(snapshot.id, snapshot.data());
+  } catch (error) {
+    throw readFailure(error);
+  }
+}
+
+function withBalance(
+  record: TransactionRecord,
+  backfills: ReadonlyMap<string, { dayId: string } | null>,
+  balances: ReadonlyMap<string, number>,
+  sourceSeq: number,
+): CloudReportTransaction {
+  const marker = backfills.get(record.businessDate) ?? null;
+  const row = toReportTransaction(
+    record,
+    isBackfilled({ businessDate: record.businessDate, createdAt: Timestamp.fromDate(new Date(record.createdAt)) }, marker),
+    sourceSeq,
+  );
+  if (record.studentId === '__cashier__') return { ...row, balanceApplicability: 'not-applicable' };
+  const balance = balances.get(record.transactionId);
+  if (balance === undefined) {
+    throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `交易 ${record.transactionId} 沒有可驗證的帳戶餘額`);
+  }
+  return { ...row, afterBalance: balance, balanceApplicability: 'verified' };
+}
+
+/**
+ * The commands of one student, newest first, until a page ends before `olderThan` (a command that is dated before the range was
+ * committed before it ended, and sequence numbers grow with the commit time, so nothing older can belong to the range) or the
+ * history ends. `olderThan` null reads one page only.
+ */
+async function readStudentCommandsNewestFirst(
+  db: Firestore,
+  studentId: string,
+  context: ReadContext,
+  user: CurrentUser,
+  pageSize: number,
+  options: { before: number | null; olderThan: Timestamp | null; afterPageRead?: CloudReadRepositoryOptions['afterPageRead'] },
+): Promise<{ documents: QueryDocumentSnapshot[]; hasMore: boolean }> {
+  const documents: QueryDocumentSnapshot[] = [];
+  const bound = Math.min(options.before ?? Number.MAX_SAFE_INTEGER, context.head.sourceSeq + 1);
+  let cursor: DocumentSnapshot | null = null;
+  let pageNumber = 0;
+  for (;;) {
+    const pageLimit = pageSize + 1;
+    const page: QuerySnapshot = await getDocsFromServer(query(
+      collection(db, 'commands'),
+      where('studentId', '==', studentId),
+      where('seq', '<', bound),
+      orderBy('seq', 'desc'),
+      orderBy(documentId(), 'desc'),
+      ...(cursor ? [startAfter(cursor)] : []),
+      limit(pageLimit),
+    ));
+    assertServerConfirmed(page, 'commands');
+    for (const snapshot of page.docs) assertServerConfirmed(snapshot, 'commands');
+    pageNumber += 1;
+    await options.afterPageRead?.({ collection: 'commands', page: pageNumber });
+    await assertContextUnchanged(db, user, context);
+    // one document more than a page tells whether there is an older one; it is not part of this page
+    const hasMore = page.size > pageSize;
+    const taken = hasMore ? page.docs.slice(0, pageSize) : page.docs;
+    documents.push(...taken);
+    if (documents.length > MAX_AUDIT_COMMANDS) {
+      throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `稽核區間超過完整讀取上限 ${MAX_AUDIT_COMMANDS}`);
+    }
+    if (!hasMore || options.olderThan === null) return { documents, hasMore };
+    const oldest = taken.at(-1)?.data().committedAt;
+    if (oldest instanceof Timestamp && oldest.toMillis() < options.olderThan.toMillis()) return { documents, hasMore: true };
+    cursor = taken.at(-1) ?? null;
+    if (!cursor) return { documents, hasMore };
+  }
 }
 
 function emptyReport(context: ReadContext, range: CloudLedgerDateRange, scope: { studentId: string | null }, loaded: LoadedRange,
@@ -879,44 +861,41 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
       const range = validateRange(input.range);
       const dates = rangeDates(range);
       const loaded = await loadRange(db, dates, context, user, pageSize, options.afterPageRead);
-      const allTransactions = await readTransactionsForRange(db, loaded, dates, context, user, pageSize, options.afterPageRead);
+      // the transactions from the start of the range to today (of everyone, or of the one student)
+      const since = await readTransactionsSince(db, range.startDate, input.studentId, context, user, pageSize, options.afterPageRead);
+      const inRange = since.filter(record => record.businessDate <= range.endDate);
+      if (inRange.some(record => record.businessDate < context.head.goLiveDate)) {
+        throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '系統啟用日前存在交易');
+      }
+      if (input.studentId === null) {
+        // the full days of the range reconcile with their projections; a report of one student does not read the others' transactions
+        for (const dayId of dates) {
+          const records = inRange.filter(record => record.businessDate === dayId);
+          if (records.length > MAX_DAY_TRANSACTIONS) {
+            throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `雲端 transactions 超過完整讀取上限 ${MAX_DAY_TRANSACTIONS}`);
+          }
+          reconcileDayTotals(loaded.dayRecords.get(dayId) ?? null, records);
+        }
+      }
       const listed = await listCloudStudents(db, { currentUser: () => user });
       if (listed.datasetId !== context.head.datasetId || listed.seq !== context.head.sourceSeq
         || listed.goLiveDate !== context.head.goLiveDate) {
         throw new CloudReadRepositoryError('STALE_SNAPSHOT', '學生名單與報表資料版本不一致');
       }
       const studentById = new Map(listed.students.map(student => [student.studentId, student]));
-      for (const transaction of allTransactions) {
-        if (transaction.studentId !== '__cashier__' && !studentById.has(transaction.studentId)) {
-          throw new CloudReadRepositoryError('RECONCILIATION_FAILED', `交易 ${transaction.transactionId} 指向不存在的學生`);
+      for (const record of since) {
+        if (record.studentId !== '__cashier__' && !studentById.has(record.studentId)) {
+          throw new CloudReadRepositoryError('RECONCILIATION_FAILED', `交易 ${record.transactionId} 指向不存在的學生`);
         }
       }
-      let transactions = input.studentId === null
-        ? allTransactions
-        : allTransactions.filter(transaction => transaction.studentId === input.studentId);
-      const accountIds = [...new Set(transactions.filter(transaction => transaction.studentId !== '__cashier__')
-        .map(transaction => transaction.studentId))].sort(compareAscii);
-      let readRows = 0;
-      const balancesByTransaction = new Map<string, CloudReportTransaction>();
+      const balances = new Map<string, number>();
+      const accountIds = [...new Set(inRange.filter(record => record.studentId !== '__cashier__').map(record => record.studentId))].sort(compareAscii);
       for (const studentId of accountIds) {
-        const student = studentById.get(studentId);
-        if (!student) throw new CloudReadRepositoryError('RECONCILIATION_FAILED', `找不到帳戶 ${studentId}`);
-        const prefix = await readAccountPrefix(
-          db, student, range, loaded.backfills, context, user, pageSize, options.afterPageRead,
-        );
-        readRows = checkedAccountHistoryCount(readRows, prefix.transactionCount);
-        for (const transaction of prefix.transactions) balancesByTransaction.set(transaction.transactionId, transaction);
+        const student = studentById.get(studentId)!;
+        const account = balancesBackFromCurrent(student, since.filter(record => record.studentId === studentId), context);
+        for (const [transactionId, balance] of account) balances.set(transactionId, balance);
       }
-      transactions = transactions.map(transaction => {
-        if (transaction.studentId === '__cashier__') {
-          return { ...transaction, balanceApplicability: 'not-applicable' };
-        }
-        const balanced = balancesByTransaction.get(transaction.transactionId);
-        if (!balanced || balanced.afterBalance === undefined) {
-          throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `交易 ${transaction.transactionId} 沒有可驗證的帳戶餘額`);
-        }
-        return balanced;
-      });
+      const transactions = inRange.map(record => withBalance(record, loaded.backfills, balances, context.head.sourceSeq));
       await assertContextUnchanged(db, user, context);
       return emptyReport(context, range, { studentId: input.studentId }, loaded,
         listed.students.map(toReportStudent), transactions);
@@ -933,16 +912,23 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
       const context = await readContext(db, user);
       validateSnapshotScope(context, input.leaseEpoch);
       const range = validateRange(input.range);
-      const listed = await listCloudStudents(db, { currentUser: () => user });
-      if (listed.datasetId !== context.head.datasetId || listed.seq !== context.head.sourceSeq) {
-        throw new CloudReadRepositoryError('STALE_SNAPSHOT', '學生名單與帳戶歷史資料版本不一致');
-      }
-      const student = listed.students.find(candidate => candidate.studentId === input.studentId);
+      rangeDates(range);
+      // the one student's document, not the roster
+      const student = await readStudent(db, input.studentId);
       if (!student) throw new CloudReadRepositoryError('INVALID_INPUT', '查無此學生帳戶');
-      const dates = rangeDates(range);
-      const loaded = await loadRange(db, dates, context, user, pageSize, options.afterPageRead);
-      await readTransactionsForRange(db, loaded, dates, context, user, pageSize, options.afterPageRead);
-      const prefix = await readAccountPrefix(db, student, range, loaded.backfills, context, user, pageSize, options.afterPageRead);
+      const since = await readTransactionsSince(db, range.startDate, input.studentId, context, user, pageSize, options.afterPageRead);
+      const inRange = since.filter(record => record.businessDate <= range.endDate);
+      if (inRange.some(record => record.businessDate < context.head.goLiveDate)) {
+        throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '系統啟用日前存在交易');
+      }
+      // the back-fill marker of each day on which the student has a transaction in the range
+      const backfills = new Map<string, { dayId: string } | null>();
+      for (const dayId of [...new Set(inRange.map(record => record.businessDate))]) {
+        const marker = await readCloudBackfillDay(db, dayId);
+        backfills.set(dayId, marker ? { dayId: marker.dayId } : null);
+      }
+      const balances = balancesBackFromCurrent(student, since, context);
+      const transactions = inRange.map(record => withBalance(record, backfills, balances, context.head.sourceSeq));
       await assertContextUnchanged(db, user, context);
       return {
         datasetId: context.head.datasetId,
@@ -955,8 +941,8 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
         complete: true,
         student: toReportStudent(student),
         openingBalance: student.openingBalance.amount,
-        currentBalance: prefix.currentBalance,
-        transactions: prefix.transactions,
+        currentBalance: student.currentBalance,
+        transactions,
       };
     } catch (error) {
       throw readFailure(error);
@@ -984,20 +970,7 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
             ...(cursor ? [startAfter(cursor)] : []),
             limit(pageLimit),
           );
-          const documentIdProofBase = (cursor: DocumentSnapshot | null, pageLimit: number) => query(
-            collection(db, 'commands'),
-            where('businessDate', '==', dayId),
-            orderBy(documentId()),
-            ...(cursor ? [startAfter(cursor)] : []),
-            limit(pageLimit),
-          );
-          const [paged, documentIdProof] = await Promise.all([
-            readPaged(db, queryBase, context, user, pageSize, MAX_AUDIT_COMMANDS, 'commands', options.afterPageRead),
-            readPaged(db, documentIdProofBase, context, user, pageSize, MAX_AUDIT_COMMANDS, 'commands', options.afterPageRead),
-          ]);
-          if (!sameDocumentSet(paged.documents, documentIdProof.documents)) {
-            throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `營業日 ${dayId} 有缺少 seq 等必要排序欄位的稽核命令`);
-          }
+          const paged = await readPaged(db, queryBase, context, user, pageSize, MAX_AUDIT_COMMANDS, 'commands', options.afterPageRead);
           const dayRows = paged.documents.map(snapshot => {
             const row = decodeAuditCommand(snapshot, context.head.sourceSeq);
             if (row.businessDate !== dayId) {
@@ -1047,29 +1020,11 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
         });
         auditRows.push(...rangeRows);
       } else {
-        const queryBase = (cursor: DocumentSnapshot | null, pageLimit: number) => query(
-          collection(db, 'commands'),
-          where('studentId', '==', input.studentId),
-          orderBy('seq'),
-          orderBy(documentId()),
-          ...(cursor ? [startAfter(cursor)] : []),
-          limit(pageLimit),
-        );
-        const documentIdProofBase = (cursor: DocumentSnapshot | null, pageLimit: number) => query(
-          collection(db, 'commands'),
-          where('studentId', '==', input.studentId),
-          orderBy(documentId()),
-          ...(cursor ? [startAfter(cursor)] : []),
-          limit(pageLimit),
-        );
-        const [paged, documentIdProof] = await Promise.all([
-          readPaged(db, queryBase, context, user, pageSize, MAX_AUDIT_COMMANDS, 'commands', options.afterPageRead),
-          readPaged(db, documentIdProofBase, context, user, pageSize, MAX_AUDIT_COMMANDS, 'commands', options.afterPageRead),
-        ]);
-        if (!sameDocumentSet(paged.documents, documentIdProof.documents)) {
-          throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', '帳戶稽核命令缺少 seq 等必要排序欄位');
-        }
-        for (const snapshot of paged.documents) {
+        // the student's commands from the newest back to the start of the range, not the whole history
+        const { documents } = await readStudentCommandsNewestFirst(db, input.studentId, context, user, pageSize, {
+          before: null, olderThan: taipeiAuditTimestampRange(range).start, afterPageRead: options.afterPageRead,
+        });
+        for (const snapshot of documents) {
           const row = decodeAuditCommand(snapshot, context.head.sourceSeq);
           if (row.studentId !== input.studentId) {
             throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `稽核 command ${snapshot.id} 與查詢帳戶不一致`);
@@ -1109,54 +1064,41 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
       const isDay = 'dayId' in input;
       if (isDay) {
         if (!isValidCloudGregorianDate(input.dayId)) throw new CloudReadRepositoryError('INVALID_INPUT', '稽核日期格式不正確');
-      } else validateStudentId(input.studentId);
+      } else {
+        validateStudentId(input.studentId);
+        if (input.beforeSeq !== undefined && !integer(input.beforeSeq, 1)) {
+          throw new CloudReadRepositoryError('INVALID_INPUT', '稽核分頁起點不正確');
+        }
+      }
       const user = requireGoogleUser(options);
       const context = await readContext(db, user);
       validateSnapshotScope(context, input.leaseEpoch);
-      const queryBase = isDay
-        ? (cursor: DocumentSnapshot | null, pageLimit: number) => query(
-          collection(db, 'commands'),
-          where('businessDate', '==', input.dayId),
-          where('seq', '<=', context.head.sourceSeq),
-          orderBy('seq'),
-          orderBy(documentId()),
-          ...(cursor ? [startAfter(cursor)] : []),
-          limit(pageLimit),
-        )
-        : (cursor: DocumentSnapshot | null, pageLimit: number) => query(
-          collection(db, 'commands'),
-          where('studentId', '==', input.studentId),
-          where('seq', '<=', context.head.sourceSeq),
-          orderBy('seq'),
-          orderBy(documentId()),
-          ...(cursor ? [startAfter(cursor)] : []),
-          limit(pageLimit),
-        );
-      const documentIdProofBase = isDay
-        ? (cursor: DocumentSnapshot | null, pageLimit: number) => query(
-          collection(db, 'commands'),
-          where('businessDate', '==', input.dayId),
-          orderBy(documentId()),
-          ...(cursor ? [startAfter(cursor)] : []),
-          limit(pageLimit),
-        )
-        : (cursor: DocumentSnapshot | null, pageLimit: number) => query(
-          collection(db, 'commands'),
-          where('studentId', '==', input.studentId),
-          orderBy(documentId()),
-          ...(cursor ? [startAfter(cursor)] : []),
-          limit(pageLimit),
-        );
-      const [paged, documentIdProof] = await Promise.all([
-        readPaged(db, queryBase, context, user, pageSize, MAX_AUDIT_COMMANDS, 'commands', options.afterPageRead),
-        readPaged(db, documentIdProofBase, context, user, pageSize, MAX_AUDIT_COMMANDS, 'commands', options.afterPageRead),
-      ]);
-      if (!sameDocumentSet(paged.documents, documentIdProof.documents)) {
-        throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', '稽核命令缺少 seq 等必要排序欄位，無法證明範圍完整');
+      let documents: QueryDocumentSnapshot[];
+      let hasMore = false;
+      if (isDay) {
+        documents = (await readPaged(
+          db,
+          (cursor, pageLimit) => query(
+            collection(db, 'commands'),
+            where('businessDate', '==', input.dayId),
+            where('seq', '<=', context.head.sourceSeq),
+            orderBy('seq'),
+            orderBy(documentId()),
+            ...(cursor ? [startAfter(cursor)] : []),
+            limit(pageLimit),
+          ),
+          context, user, pageSize, MAX_AUDIT_COMMANDS, 'commands', options.afterPageRead,
+        )).documents;
+      } else {
+        // the newest page of the student's commands; the older ones follow with `beforeSeq` set to the oldest seq shown
+        ({ documents, hasMore } = await readStudentCommandsNewestFirst(db, input.studentId, context, user, pageSize, {
+          before: input.beforeSeq ?? null, olderThan: null, afterPageRead: options.afterPageRead,
+        }));
+        documents = [...documents].reverse();
       }
       const rows: CloudAuditRow[] = [];
       let previousSeq = 0;
-      for (const snapshot of paged.documents) {
+      for (const snapshot of documents) {
         let command: StoredEnabledCommandDoc;
         try {
           command = decodeEnabledCommandDoc(snapshot.data());
@@ -1193,6 +1135,7 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
         leaseEpoch: context.leaseEpoch,
         scope: isDay ? { dayId: input.dayId } : { studentId: input.studentId },
         complete: true,
+        hasMore,
         rows,
       };
     } catch (error) {

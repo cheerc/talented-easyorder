@@ -212,6 +212,8 @@ export interface CloudAuditSnapshot {
   leaseEpoch: number;
   scope: { dayId: string } | { studentId: string };
   complete: true;
+  /** A student's audit is one page from the newest; true when older commands remain (`beforeSeq` of the oldest row reads them). */
+  hasMore: boolean;
   rows: CloudAuditRow[];
 }
 

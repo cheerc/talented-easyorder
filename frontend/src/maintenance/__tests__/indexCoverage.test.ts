@@ -26,35 +26,41 @@ const shapes = json<{ shapes: Shape[] }>('docs/ops/p16-query-shapes.json').shape
 const footprints = json<{ fields: Record<string, string[]> }>('docs/ops/p16-storage-footprints.json');
 
 const fieldOf = (text: string) => text.split(' ')[0]!;
+const directionOf = (text: string) => (text.split(' ')[1] === 'desc' ? 'desc' : 'asc');
 const NAME = '__name__';
 
-interface Required { equality: string[]; tail: string[] }
+interface Required { equality: string[]; tail: Array<{ name: string; direction: 'asc' | 'desc' }> }
 
 /**
- * The composite index a shape needs, or null: the equality fields (any order), then the range field or the fields it orders by;
- * the document name is implicit. A shape with no equality filter and at most one ordered field is served by the single-field indexes.
+ * The composite index a shape needs, or null: the equality fields (any order), then the range field or the fields it orders by,
+ * each in the direction the query orders it; the document name is implicit. A shape with no equality filter and at most one
+ * ordered field is served by the single-field indexes.
  */
 function requiredComposite(shape: Shape): Required | null {
   const equality = [...new Set(shape.where.filter(item => item.endsWith(' ==')).map(fieldOf).filter(name => name !== NAME))];
   const ranges = shape.where.filter(item => !item.endsWith(' ==')).map(fieldOf).filter(name => name !== NAME);
-  const ordered = shape.orderBy.map(fieldOf).filter(name => name !== NAME);
-  const tail = [...new Set(ordered.length > 0 ? ordered : ranges)].filter(name => !equality.includes(name));
+  const ordered = shape.orderBy.filter(item => fieldOf(item) !== NAME).map(item => ({ name: fieldOf(item), direction: directionOf(item) }));
+  const wanted = ordered.length > 0 ? ordered : [...new Set(ranges)].map(name => ({ name, direction: 'asc' as const }));
+  const tail = wanted.filter((item, index) => wanted.findIndex(other => other.name === item.name) === index && !equality.includes(item.name));
   if (tail.length === 0) return null;
   if (equality.length === 0 && tail.length <= 1) return null;
   return { equality, tail };
 }
 
 /** A composite covers a requirement when its first fields are the equality fields (any order) and the rest is the same sequence. */
-function covers(fields: string[], required: Required): boolean {
+function covers(fields: IndexField[], required: Required): boolean {
   if (fields.length !== required.equality.length + required.tail.length) return false;
   const head = fields.slice(0, required.equality.length);
-  return head.every(name => required.equality.includes(name)) && fields.slice(required.equality.length).join(',') === required.tail.join(',');
+  const rest = fields.slice(required.equality.length);
+  return head.every(item => required.equality.includes(item.name))
+    && rest.map(item => `${item.name} ${item.direction}`).join(',') === required.tail.map(item => `${item.name} ${item.direction}`).join(',');
 }
 
+interface IndexField { name: string; direction: 'asc' | 'desc' }
 const composites = indexes.indexes.map(index => ({
   collection: index.collectionGroup,
-  fields: index.fields.filter(field => field.fieldPath !== NAME).map(field => field.fieldPath),
-  descending: index.fields.some(field => field.order === 'DESCENDING'),
+  fields: index.fields.filter(field => field.fieldPath !== NAME)
+    .map((field): IndexField => ({ name: field.fieldPath, direction: field.order === 'DESCENDING' ? 'desc' : 'asc' })),
 }));
 
 describe('P16e index coverage', () => {
@@ -63,7 +69,7 @@ describe('P16e index coverage', () => {
     for (const shape of shapes) {
       const required = requiredComposite(shape);
       if (!required) continue;
-      const found = composites.some(index => index.collection === shape.collection.replace(/^.*\//, '') && !index.descending && covers(index.fields, required));
+      const found = composites.some(index => index.collection === shape.collection.replace(/^.*\//, '') && covers(index.fields, required));
       if (!found) missing.push(`${shape.collection}: ${JSON.stringify(required)} (run by ${shape.operations.join(', ')})`);
     }
     expect(missing).toEqual([]);
@@ -72,9 +78,9 @@ describe('P16e index coverage', () => {
   it('has no composite index that no recorded query needs', () => {
     const unused = composites.filter(index => !shapes.some(shape => {
       const required = requiredComposite(shape);
-      return required !== null && shape.collection.replace(/^.*\//, '') === index.collection && !index.descending && covers(index.fields, required);
+      return required !== null && shape.collection.replace(/^.*\//, '') === index.collection && covers(index.fields, required);
     }));
-    expect(unused.map(index => `${index.collection}: ${index.fields.join(', ')}${index.descending ? ' (descending)' : ''}`)).toEqual([]);
+    expect(unused.map(index => `${index.collection}: ${index.fields.map(field => `${field.name} ${field.direction}`).join(', ')}`)).toEqual([]);
   });
 
   it('records shapes for the queries the production repositories run (a recorded set that is missing an operation is not a coverage proof)', () => {
