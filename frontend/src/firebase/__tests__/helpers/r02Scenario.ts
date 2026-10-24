@@ -41,7 +41,8 @@ export interface R02Fixture {
 }
 
 export const R02_OPERATOR = { uid: 'p15-restore-operator', email: 'p15-restore@example.test', active: true };
-const LEASE_EPOCH = 7;
+export const R02_LEASE_EPOCH = 7;
+const LEASE_EPOCH = R02_LEASE_EPOCH;
 
 export function taipeiToday(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date());
@@ -57,7 +58,7 @@ export function uuid(index: number): string {
   return `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
 }
 
-function operatorUser(): User {
+export function operatorUser(): User {
   return {
     uid: R02_OPERATOR.uid, email: R02_OPERATOR.email, emailVerified: true, providerData: [{ providerId: 'google.com' }],
   } as unknown as User;
@@ -112,7 +113,7 @@ export async function generateR02Fixture(options: { env: RulesTestEnvironment; d
   const beta = uuid(900_002);
   const vendorId = uuid(900_003);
   const known = [
-    'R02 Synthetic Alpha', 'R02 Synthetic Beta', 'alpha-r02', '9101', '9102', '9103', 'R02 Vendor', R02_OPERATOR.uid,
+    'R02 Synthetic Alpha', 'R02 Synthetic Beta', 'alpha-r02', '731901', '731902', '731903', 'R02 Vendor', R02_OPERATOR.uid,
     R02_OPERATOR.email, '紙本R02-0001', '紙本R02-0002', '紙本R02-0003', '零錢補充', '補充零用金', '溢繳退還',
     '整天沒有用系統', '前天停電', '關帳後發現漏記', '餐費記錯',
   ];
@@ -129,11 +130,11 @@ export async function generateR02Fixture(options: { env: RulesTestEnvironment; d
   // --- students, a code change and a vendor, before any day exists
   ok(await writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: LEASE_EPOCH,
     targets: { studentId: alpha }, expectedRevisions: { student: 0 },
-    payload: { studentCode: '9101', displayName: 'R02 Synthetic Alpha', aliases: ['alpha-r02'],
+    payload: { studentCode: '731901', displayName: 'R02 Synthetic Alpha', aliases: ['alpha-r02'],
       openingBalance: { amount: 100, asOfDate: '2026-10-01', note: '' } } }), 'CreateStudent alpha');
   ok(await writer.commitCommand({ commandId: id(), kind: 'ChangeStudentCode', leaseEpoch: LEASE_EPOCH,
     targets: { studentId: alpha }, expectedRevisions: { student: (await read(`students/${alpha}`)).revision },
-    payload: { studentCode: '9103', reason: 'R02 code change' } }), 'ChangeStudentCode');
+    payload: { studentCode: '731903', reason: 'R02 code change' } }), 'ChangeStudentCode');
   ok(await writer.commitCommand({ commandId: id(), kind: 'SaveVendor', leaseEpoch: LEASE_EPOCH,
     targets: { vendorId }, expectedRevisions: { vendor: 0 },
     payload: { vendorId, name: 'R02 Vendor', phone: '', note: '', status: 'active' } }), 'SaveVendor');
@@ -171,7 +172,7 @@ export async function generateR02Fixture(options: { env: RulesTestEnvironment; d
     payload: { openingCash: 1000, reason: '補充零用金' } }), 'SetOpeningCash');
   ok(await writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: LEASE_EPOCH,
     targets: { studentId: beta }, expectedRevisions: { student: 0 },
-    payload: { studentCode: '9102', displayName: 'R02 Synthetic Beta', aliases: [],
+    payload: { studentCode: '731902', displayName: 'R02 Synthetic Beta', aliases: [],
       openingBalance: { amount: 100, asOfDate: today, note: '' } } }), 'CreateStudent beta');
 
   const createOrder = async (mealPrice: number, paidAmount: number) => {
