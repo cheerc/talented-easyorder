@@ -196,7 +196,7 @@ async function runMatrixStep(kind: BusinessCommandKind, run: () => Promise<unkno
     try {
       await assertFails(attempt.send());
     } catch (error) {
-      throw new Error(`${kind} ${attempt.mutation} (${attempt.label}) was not refused: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`${kind} ${attempt.mutation} (${attempt.label}) was not refused: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
     attempts[attempt.mutation] = (attempts[attempt.mutation] ?? 0) + 1;
   }
@@ -216,7 +216,7 @@ async function runMatrixStep(kind: BusinessCommandKind, run: () => Promise<unkno
   try {
     await assertFails(replayBatch(sdk, dbFor(OP), writes));
   } catch (error) {
-    throw new Error(`${kind} M10 (replay) was not refused: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`${kind} M10 (replay) was not refused: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   }
   attempts.M10 = 1;
   expect(await adminData('system/dataHead'), `${kind}: the replay changed the head`).toEqual(headAfter);
