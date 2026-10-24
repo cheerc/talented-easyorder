@@ -1,0 +1,555 @@
+{
+  "schemaVersion": 1,
+  "thresholds": {
+    "reads": 25000,
+    "writes": 10000,
+    "deletes": 0,
+    "storagePassBytes": 536870912,
+    "storageFailBytes": 912680550,
+    "commandBytes": 65536
+  },
+  "design": {
+    "label": "design ceiling",
+    "assumptions": {
+      "label": "design ceiling",
+      "commands": 200,
+      "openHours": 10,
+      "pages": 2,
+      "roster": 200,
+      "activePerDay": 100,
+      "vendors": 20,
+      "closedDays": 730,
+      "unclosedDays": 3,
+      "leaseEvents": 4,
+      "days": 730
+    },
+    "reads": {
+      "conservative": 3092501,
+      "deduped": 3090141,
+      "limit": 25000,
+      "verdict": "FAIL"
+    },
+    "writes": {
+      "count": 1584,
+      "limit": 10000,
+      "verdict": "PASS"
+    },
+    "deletes": {
+      "count": 0,
+      "limit": 0,
+      "verdict": "PASS"
+    },
+    "topReads": [
+      {
+        "operation": "load.report",
+        "perDay": 15,
+        "reads": 2800282
+      },
+      {
+        "operation": "load.orders",
+        "perDay": 199,
+        "reads": 67910
+      },
+      {
+        "operation": "load.accountHistory",
+        "perDay": 20,
+        "reads": 42461
+      },
+      {
+        "operation": "load.reportStudent",
+        "perDay": 20,
+        "reads": 42461
+      },
+      {
+        "operation": "load.auditStudent",
+        "perDay": 22,
+        "reads": 35223
+      },
+      {
+        "operation": "load.auditRangeStudent",
+        "perDay": 20,
+        "reads": 32021
+      },
+      {
+        "operation": "load.auditRange",
+        "perDay": 15,
+        "reads": 31092
+      },
+      {
+        "operation": "command.CreateOrder",
+        "perDay": 117,
+        "reads": 6786
+      },
+      {
+        "operation": "load.ledgerScanCold",
+        "perDay": 2,
+        "reads": 5946
+      },
+      {
+        "operation": "load.dayVendors",
+        "perDay": 7,
+        "reads": 5561
+      }
+    ],
+    "storage": {
+      "profile": "typical",
+      "projection": {
+        "perDayBytes": 1621862,
+        "fixedBytes": 1959620,
+        "totalBytes": 1185918880,
+        "daysToFail": 561,
+        "byCollection": {
+          "commands": 858604830,
+          "days": 3030230,
+          "days/*/settlements": 4951590,
+          "transactions": 312732730,
+          "accessEvents": 4639880
+        }
+      },
+      "verdict": "FAIL"
+    }
+  },
+  "typical": {
+    "label": "typical day",
+    "assumptions": {
+      "label": "typical day",
+      "commands": 100,
+      "openHours": 10,
+      "pages": 2,
+      "roster": 200,
+      "activePerDay": 50,
+      "vendors": 20,
+      "closedDays": 730,
+      "unclosedDays": 3,
+      "leaseEvents": 4,
+      "days": 730
+    },
+    "reads": {
+      "conservative": 1094529,
+      "deduped": 1093357,
+      "limit": 25000,
+      "verdict": "FAIL"
+    },
+    "writes": {
+      "count": 1088,
+      "limit": 10000,
+      "verdict": "PASS"
+    },
+    "deletes": {
+      "count": 0,
+      "limit": 0,
+      "verdict": "PASS"
+    },
+    "topReads": [
+      {
+        "operation": "load.report",
+        "perDay": 15,
+        "reads": 974316
+      },
+      {
+        "operation": "load.orders",
+        "perDay": 99,
+        "reads": 28992
+      },
+      {
+        "operation": "load.auditRange",
+        "perDay": 15,
+        "reads": 17824
+      },
+      {
+        "operation": "load.accountHistory",
+        "perDay": 10,
+        "reads": 11689
+      },
+      {
+        "operation": "load.reportStudent",
+        "perDay": 10,
+        "reads": 11689
+      },
+      {
+        "operation": "load.auditStudent",
+        "perDay": 12,
+        "reads": 9839
+      },
+      {
+        "operation": "load.auditRangeStudent",
+        "perDay": 10,
+        "reads": 8199
+      },
+      {
+        "operation": "load.ledgerScanCold",
+        "perDay": 2,
+        "reads": 5946
+      },
+      {
+        "operation": "load.dayVendors",
+        "perDay": 7,
+        "reads": 5561
+      },
+      {
+        "operation": "command.CreateOrder",
+        "perDay": 56.38,
+        "reads": 3270
+      }
+    ],
+    "storage": {
+      "profile": "typical",
+      "projection": {
+        "perDayBytes": 803350,
+        "fixedBytes": 1959620,
+        "totalBytes": 588405181,
+        "daysToFail": 1133,
+        "byCollection": {
+          "commands": 423128814,
+          "days": 3030230,
+          "days/*/settlements": 4951590,
+          "transactions": 150695046,
+          "accessEvents": 4639880
+        }
+      },
+      "verdict": "WARN"
+    }
+  },
+  "smallShop": {
+    "label": "small shop (100 commands, roster of 100)",
+    "assumptions": {
+      "label": "small shop (100 commands, roster of 100)",
+      "commands": 100,
+      "openHours": 10,
+      "pages": 2,
+      "roster": 100,
+      "activePerDay": 50,
+      "vendors": 20,
+      "closedDays": 730,
+      "unclosedDays": 3,
+      "leaseEvents": 4,
+      "days": 730
+    },
+    "reads": {
+      "conservative": 1488127,
+      "deduped": 1486955,
+      "limit": 25000,
+      "verdict": "FAIL"
+    },
+    "writes": {
+      "count": 1088,
+      "limit": 10000,
+      "verdict": "PASS"
+    },
+    "deletes": {
+      "count": 0,
+      "limit": 0,
+      "verdict": "PASS"
+    },
+    "topReads": [
+      {
+        "operation": "load.report",
+        "perDay": 15,
+        "reads": 1351815
+      },
+      {
+        "operation": "load.auditStudent",
+        "perDay": 12,
+        "reads": 19212
+      },
+      {
+        "operation": "load.orders",
+        "perDay": 99,
+        "reads": 18993
+      },
+      {
+        "operation": "load.accountHistory",
+        "perDay": 10,
+        "reads": 17656
+      },
+      {
+        "operation": "load.reportStudent",
+        "perDay": 10,
+        "reads": 17656
+      },
+      {
+        "operation": "load.auditRange",
+        "perDay": 15,
+        "reads": 16219
+      },
+      {
+        "operation": "load.auditRangeStudent",
+        "perDay": 10,
+        "reads": 16010
+      },
+      {
+        "operation": "load.ledgerScanCold",
+        "perDay": 2,
+        "reads": 5946
+      },
+      {
+        "operation": "load.dayVendors",
+        "perDay": 7,
+        "reads": 5561
+      },
+      {
+        "operation": "command.CreateOrder",
+        "perDay": 56.38,
+        "reads": 3270
+      }
+    ],
+    "storage": {
+      "profile": "typical",
+      "projection": {
+        "perDayBytes": 803350,
+        "fixedBytes": 1042320,
+        "totalBytes": 587487881,
+        "daysToFail": 1134,
+        "byCollection": {
+          "commands": 423128814,
+          "days": 3030230,
+          "days/*/settlements": 4951590,
+          "transactions": 150695046,
+          "accessEvents": 4639880
+        }
+      },
+      "verdict": "WARN"
+    }
+  },
+  "fullRoster": {
+    "label": "design ceiling, roster of 500",
+    "assumptions": {
+      "label": "design ceiling, roster of 500",
+      "commands": 200,
+      "openHours": 10,
+      "pages": 2,
+      "roster": 500,
+      "activePerDay": 100,
+      "vendors": 20,
+      "closedDays": 730,
+      "unclosedDays": 3,
+      "leaseEvents": 4,
+      "days": 730
+    },
+    "reads": {
+      "conservative": 2170776,
+      "deduped": 2168416,
+      "limit": 25000,
+      "verdict": "FAIL"
+    },
+    "writes": {
+      "count": 1584,
+      "limit": 10000,
+      "verdict": "PASS"
+    },
+    "deletes": {
+      "count": 0,
+      "limit": 0,
+      "verdict": "PASS"
+    },
+    "topReads": [
+      {
+        "operation": "load.report",
+        "perDay": 15,
+        "reads": 1868089
+      },
+      {
+        "operation": "load.orders",
+        "perDay": 199,
+        "reads": 128207
+      },
+      {
+        "operation": "load.auditRange",
+        "perDay": 15,
+        "reads": 35907
+      },
+      {
+        "operation": "load.accountHistory",
+        "perDay": 20,
+        "reads": 31187
+      },
+      {
+        "operation": "load.reportStudent",
+        "perDay": 20,
+        "reads": 31187
+      },
+      {
+        "operation": "load.auditStudent",
+        "perDay": 22,
+        "reads": 14602
+      },
+      {
+        "operation": "load.auditRangeStudent",
+        "perDay": 20,
+        "reads": 13274
+      },
+      {
+        "operation": "load.students",
+        "perDay": 24,
+        "reads": 12360
+      },
+      {
+        "operation": "command.CreateOrder",
+        "perDay": 117,
+        "reads": 6786
+      },
+      {
+        "operation": "load.ledgerScanCold",
+        "perDay": 2,
+        "reads": 5946
+      }
+    ],
+    "storage": {
+      "profile": "typical",
+      "projection": {
+        "perDayBytes": 1621862,
+        "fixedBytes": 4711520,
+        "totalBytes": 1188670780,
+        "daysToFail": 559,
+        "byCollection": {
+          "commands": 858604830,
+          "days": 3030230,
+          "days/*/settlements": 4951590,
+          "transactions": 312732730,
+          "accessEvents": 4639880
+        }
+      },
+      "verdict": "FAIL"
+    }
+  },
+  "worstCase": {
+    "label": "design ceiling, every command the costliest kind",
+    "assumptions": {
+      "label": "design ceiling",
+      "commands": 200,
+      "openHours": 10,
+      "pages": 2,
+      "roster": 200,
+      "activePerDay": 100,
+      "vendors": 20,
+      "closedDays": 730,
+      "unclosedDays": 3,
+      "leaseEvents": 4,
+      "days": 730
+    },
+    "reads": {
+      "conservative": 3097217,
+      "deduped": 3095205,
+      "limit": 25000,
+      "verdict": "FAIL"
+    },
+    "writes": {
+      "count": 1408,
+      "limit": 10000,
+      "verdict": "PASS"
+    },
+    "deletes": {
+      "count": 0,
+      "limit": 0,
+      "verdict": "PASS"
+    },
+    "topReads": [
+      {
+        "operation": "load.report",
+        "perDay": 15,
+        "reads": 2800282
+      },
+      {
+        "operation": "load.orders",
+        "perDay": 199,
+        "reads": 67910
+      },
+      {
+        "operation": "load.accountHistory",
+        "perDay": 20,
+        "reads": 42461
+      },
+      {
+        "operation": "load.reportStudent",
+        "perDay": 20,
+        "reads": 42461
+      },
+      {
+        "operation": "load.auditStudent",
+        "perDay": 22,
+        "reads": 35223
+      },
+      {
+        "operation": "load.auditRangeStudent",
+        "perDay": 20,
+        "reads": 32021
+      },
+      {
+        "operation": "load.auditRange",
+        "perDay": 15,
+        "reads": 31092
+      },
+      {
+        "operation": "command.CloseDay",
+        "perDay": 200,
+        "reads": 16200
+      },
+      {
+        "operation": "load.ledgerScanCold",
+        "perDay": 2,
+        "reads": 5946
+      },
+      {
+        "operation": "load.dayVendors",
+        "perDay": 7,
+        "reads": 5561
+      }
+    ]
+  },
+  "storageWorstProfile": {
+    "profile": "worst",
+    "projection": {
+      "perDayBytes": 2723662,
+      "fixedBytes": 5747140,
+      "totalBytes": 1994020400,
+      "daysToFail": 332,
+      "byCollection": {
+        "commands": 1662918830,
+        "days": 3030230,
+        "days/*/settlements": 4951590,
+        "transactions": 312732730,
+        "accessEvents": 4639880
+      }
+    },
+    "verdict": "FAIL"
+  },
+  "whatIf": [
+    {
+      "label": "the design ceiling as measured",
+      "reads": 3092501
+    },
+    {
+      "label": "orders reload after a command skips the roster (the roster is kept until a student changes)",
+      "reads": 3052303
+    },
+    {
+      "label": "orders page does not reload after a command (it keeps what it has; opens only)",
+      "reads": 3026638
+    },
+    {
+      "label": "the history loads read each transaction or command once instead of twice (needs CheerC: the second read is an integrity check)",
+      "reads": 1611262
+    },
+    {
+      "label": "the report does not read the history of its accounts (e.g. a balance kept on every transaction; needs a spec change and CheerC)",
+      "reads": 317551
+    },
+    {
+      "label": "all four together",
+      "reads": 157924
+    }
+  ],
+  "floor": {
+    "label": "small shop floor: commands, one orders reload per command, the lease",
+    "reads": 29005,
+    "limit": 25000,
+    "verdict": "FAIL"
+  },
+  "commandBytes": {
+    "maxBytes": 11058,
+    "kind": "EditStudent",
+    "limit": 65536,
+    "verdict": "PASS"
+  },
+  "verdict": "FAIL"
+}

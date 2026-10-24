@@ -1,0 +1,690 @@
+{
+  "schemaVersion": 1,
+  "typical": {
+    "kinds": {
+      "CreateStudent": [
+        {
+          "collection": "commands",
+          "documentBytes": 1796,
+          "indexBytes": 1679
+        },
+        {
+          "collection": "studentCodes",
+          "documentBytes": 184,
+          "indexBytes": 904
+        },
+        {
+          "collection": "students",
+          "documentBytes": 448,
+          "indexBytes": 4162
+        }
+      ],
+      "ChangeStudentCode": [
+        {
+          "collection": "commands",
+          "documentBytes": 2132,
+          "indexBytes": 1679
+        },
+        {
+          "collection": "studentCodes",
+          "documentBytes": 184,
+          "indexBytes": 904
+        }
+      ],
+      "EditStudent": [
+        {
+          "collection": "commands",
+          "documentBytes": 2122,
+          "indexBytes": 1679
+        }
+      ],
+      "SetStudentStatus": [
+        {
+          "collection": "commands",
+          "documentBytes": 2132,
+          "indexBytes": 1679
+        }
+      ],
+      "SaveVendor": [
+        {
+          "collection": "commands",
+          "documentBytes": 1580,
+          "indexBytes": 1571
+        },
+        {
+          "collection": "vendors",
+          "documentBytes": 296,
+          "indexBytes": 2804
+        }
+      ],
+      "RemoveVendor": [
+        {
+          "collection": "commands",
+          "documentBytes": 1776,
+          "indexBytes": 1571
+        }
+      ],
+      "EnsureDay": [
+        {
+          "collection": "commands",
+          "documentBytes": 1673,
+          "indexBytes": 1611
+        },
+        {
+          "collection": "days",
+          "documentBytes": 455,
+          "indexBytes": 3696
+        }
+      ],
+      "BackfillOpeningCash": [
+        {
+          "collection": "commands",
+          "documentBytes": 2189,
+          "indexBytes": 1611
+        }
+      ],
+      "StartBackfill": [
+        {
+          "collection": "backfillDays",
+          "documentBytes": 222,
+          "indexBytes": 1356
+        },
+        {
+          "collection": "commands",
+          "documentBytes": 2410,
+          "indexBytes": 1611
+        }
+      ],
+      "CloseDay": [
+        {
+          "collection": "commands",
+          "documentBytes": 2849,
+          "indexBytes": 1611
+        },
+        {
+          "collection": "days/*/settlements",
+          "documentBytes": 615,
+          "indexBytes": 6168
+        }
+      ],
+      "RecordPostCloseEntry": [
+        {
+          "collection": "commands",
+          "documentBytes": 2573,
+          "indexBytes": 1611
+        },
+        {
+          "collection": "postCloseEntries",
+          "documentBytes": 351,
+          "indexBytes": 2995
+        }
+      ],
+      "SetDayMenu": [
+        {
+          "collection": "commands",
+          "documentBytes": 2461,
+          "indexBytes": 1611
+        }
+      ],
+      "SetOpeningCash": [
+        {
+          "collection": "commands",
+          "documentBytes": 2596,
+          "indexBytes": 1611
+        }
+      ],
+      "CorrectOpening": [
+        {
+          "collection": "commands",
+          "documentBytes": 3518,
+          "indexBytes": 1719
+        }
+      ],
+      "CreateOrder": [
+        {
+          "collection": "commands",
+          "documentBytes": 4291,
+          "indexBytes": 1719
+        },
+        {
+          "collection": "transactions",
+          "documentBytes": 676,
+          "indexBytes": 1649
+        }
+      ],
+      "CorrectTransaction": [
+        {
+          "collection": "commands",
+          "documentBytes": 4898,
+          "indexBytes": 1719
+        }
+      ],
+      "CancelKeepDeposit": [
+        {
+          "collection": "commands",
+          "documentBytes": 4824,
+          "indexBytes": 1719
+        }
+      ],
+      "CancelRefund": [
+        {
+          "collection": "commands",
+          "documentBytes": 4858,
+          "indexBytes": 1719
+        }
+      ],
+      "CreatePayment": [
+        {
+          "collection": "commands",
+          "documentBytes": 4204,
+          "indexBytes": 1719
+        },
+        {
+          "collection": "transactions",
+          "documentBytes": 661,
+          "indexBytes": 1649
+        }
+      ],
+      "Undo": [
+        {
+          "collection": "commands",
+          "documentBytes": 4863,
+          "indexBytes": 1719
+        }
+      ],
+      "CreateCashMovement": [
+        {
+          "collection": "commands",
+          "documentBytes": 3354,
+          "indexBytes": 1644
+        },
+        {
+          "collection": "transactions",
+          "documentBytes": 642,
+          "indexBytes": 1574
+        }
+      ],
+      "CreateRefund": [
+        {
+          "collection": "commands",
+          "documentBytes": 4235,
+          "indexBytes": 1719
+        },
+        {
+          "collection": "transactions",
+          "documentBytes": 673,
+          "indexBytes": 1649
+        }
+      ],
+      "VoidTransaction": [
+        {
+          "collection": "commands",
+          "documentBytes": 4839,
+          "indexBytes": 1719
+        }
+      ],
+      "ReopenDay": [
+        {
+          "collection": "commands",
+          "documentBytes": 3866,
+          "indexBytes": 1611
+        },
+        {
+          "collection": "days/*/settlements",
+          "documentBytes": 624,
+          "indexBytes": 6186
+        }
+      ],
+      "RecordExport": [
+        {
+          "collection": "commands",
+          "documentBytes": 1355,
+          "indexBytes": 1571
+        }
+      ],
+      "RecordPrint": [
+        {
+          "collection": "commands",
+          "documentBytes": 1381,
+          "indexBytes": 1611
+        }
+      ],
+      "RecordBackup": [
+        {
+          "collection": "commands",
+          "documentBytes": 1332,
+          "indexBytes": 1571
+        }
+      ]
+    },
+    "leaseEvents": {
+      "acquire": [
+        {
+          "collection": "accessEvents",
+          "documentBytes": 203,
+          "indexBytes": 1386
+        }
+      ],
+      "release": [
+        {
+          "collection": "accessEvents",
+          "documentBytes": 203,
+          "indexBytes": 1386
+        }
+      ]
+    },
+    "maxCommand": {
+      "kind": "CorrectTransaction",
+      "documentBytes": 4898
+    }
+  },
+  "worst": {
+    "kinds": {
+      "CreateStudent": [
+        {
+          "collection": "commands",
+          "documentBytes": 7752,
+          "indexBytes": 1679
+        },
+        {
+          "collection": "studentCodes",
+          "documentBytes": 184,
+          "indexBytes": 904
+        },
+        {
+          "collection": "students",
+          "documentBytes": 3428,
+          "indexBytes": 14164
+        }
+      ],
+      "ChangeStudentCode": [
+        {
+          "collection": "commands",
+          "documentBytes": 8088,
+          "indexBytes": 1679
+        },
+        {
+          "collection": "studentCodes",
+          "documentBytes": 184,
+          "indexBytes": 904
+        }
+      ],
+      "EditStudent": [
+        {
+          "collection": "commands",
+          "documentBytes": 11058,
+          "indexBytes": 1679
+        }
+      ],
+      "SetStudentStatus": [
+        {
+          "collection": "commands",
+          "documentBytes": 8088,
+          "indexBytes": 1679
+        }
+      ],
+      "SaveVendor": [
+        {
+          "collection": "commands",
+          "documentBytes": 1576,
+          "indexBytes": 1571
+        },
+        {
+          "collection": "vendors",
+          "documentBytes": 296,
+          "indexBytes": 2804
+        }
+      ],
+      "RemoveVendor": [
+        {
+          "collection": "commands",
+          "documentBytes": 1772,
+          "indexBytes": 1571
+        }
+      ],
+      "EnsureDay": [
+        {
+          "collection": "commands",
+          "documentBytes": 1669,
+          "indexBytes": 1611
+        },
+        {
+          "collection": "days",
+          "documentBytes": 455,
+          "indexBytes": 3696
+        }
+      ],
+      "BackfillOpeningCash": [
+        {
+          "collection": "commands",
+          "documentBytes": 2185,
+          "indexBytes": 1611
+        }
+      ],
+      "StartBackfill": [
+        {
+          "collection": "backfillDays",
+          "documentBytes": 222,
+          "indexBytes": 1356
+        },
+        {
+          "collection": "commands",
+          "documentBytes": 2406,
+          "indexBytes": 1611
+        }
+      ],
+      "CloseDay": [
+        {
+          "collection": "commands",
+          "documentBytes": 2845,
+          "indexBytes": 1611
+        },
+        {
+          "collection": "days/*/settlements",
+          "documentBytes": 615,
+          "indexBytes": 6168
+        }
+      ],
+      "RecordPostCloseEntry": [
+        {
+          "collection": "commands",
+          "documentBytes": 2569,
+          "indexBytes": 1611
+        },
+        {
+          "collection": "postCloseEntries",
+          "documentBytes": 351,
+          "indexBytes": 2995
+        }
+      ],
+      "SetDayMenu": [
+        {
+          "collection": "commands",
+          "documentBytes": 2457,
+          "indexBytes": 1611
+        }
+      ],
+      "SetOpeningCash": [
+        {
+          "collection": "commands",
+          "documentBytes": 2592,
+          "indexBytes": 1611
+        }
+      ],
+      "CorrectOpening": [
+        {
+          "collection": "commands",
+          "documentBytes": 3514,
+          "indexBytes": 1719
+        }
+      ],
+      "CreateOrder": [
+        {
+          "collection": "commands",
+          "documentBytes": 10247,
+          "indexBytes": 1719
+        },
+        {
+          "collection": "transactions",
+          "documentBytes": 676,
+          "indexBytes": 1649
+        }
+      ],
+      "CorrectTransaction": [
+        {
+          "collection": "commands",
+          "documentBytes": 10854,
+          "indexBytes": 1719
+        }
+      ],
+      "CancelKeepDeposit": [
+        {
+          "collection": "commands",
+          "documentBytes": 10780,
+          "indexBytes": 1719
+        }
+      ],
+      "CancelRefund": [
+        {
+          "collection": "commands",
+          "documentBytes": 10814,
+          "indexBytes": 1719
+        }
+      ],
+      "CreatePayment": [
+        {
+          "collection": "commands",
+          "documentBytes": 10160,
+          "indexBytes": 1719
+        },
+        {
+          "collection": "transactions",
+          "documentBytes": 661,
+          "indexBytes": 1649
+        }
+      ],
+      "Undo": [
+        {
+          "collection": "commands",
+          "documentBytes": 10819,
+          "indexBytes": 1719
+        }
+      ],
+      "CreateCashMovement": [
+        {
+          "collection": "commands",
+          "documentBytes": 3350,
+          "indexBytes": 1644
+        },
+        {
+          "collection": "transactions",
+          "documentBytes": 642,
+          "indexBytes": 1574
+        }
+      ],
+      "CreateRefund": [
+        {
+          "collection": "commands",
+          "documentBytes": 10191,
+          "indexBytes": 1719
+        },
+        {
+          "collection": "transactions",
+          "documentBytes": 673,
+          "indexBytes": 1649
+        }
+      ],
+      "VoidTransaction": [
+        {
+          "collection": "commands",
+          "documentBytes": 10795,
+          "indexBytes": 1719
+        }
+      ],
+      "ReopenDay": [
+        {
+          "collection": "commands",
+          "documentBytes": 3862,
+          "indexBytes": 1611
+        },
+        {
+          "collection": "days/*/settlements",
+          "documentBytes": 624,
+          "indexBytes": 6186
+        }
+      ],
+      "RecordExport": [
+        {
+          "collection": "commands",
+          "documentBytes": 1351,
+          "indexBytes": 1571
+        }
+      ],
+      "RecordPrint": [
+        {
+          "collection": "commands",
+          "documentBytes": 1377,
+          "indexBytes": 1611
+        }
+      ],
+      "RecordBackup": [
+        {
+          "collection": "commands",
+          "documentBytes": 1328,
+          "indexBytes": 1571
+        }
+      ]
+    },
+    "leaseEvents": {
+      "acquire": [
+        {
+          "collection": "accessEvents",
+          "documentBytes": 203,
+          "indexBytes": 1386
+        }
+      ],
+      "release": [
+        {
+          "collection": "accessEvents",
+          "documentBytes": 203,
+          "indexBytes": 1386
+        }
+      ]
+    },
+    "maxCommand": {
+      "kind": "EditStudent",
+      "documentBytes": 11058
+    }
+  },
+  "fields": {
+    "accessEvents": [
+      "actorEmail",
+      "actorUid",
+      "at",
+      "holderUid",
+      "kind",
+      "previousHolderUid"
+    ],
+    "backfillDays": [
+      "commandId",
+      "dayId",
+      "reason",
+      "startedAt",
+      "startedBy"
+    ],
+    "commands": [
+      "actor",
+      "after",
+      "before",
+      "businessDate",
+      "cashEffect",
+      "commandId",
+      "committedAt",
+      "expectedRevisions",
+      "inputFingerprint",
+      "kind",
+      "leaseEpoch",
+      "payload",
+      "reason",
+      "seq",
+      "studentId",
+      "targets"
+    ],
+    "days": [
+      "lastCommandId",
+      "lastSettlementRevision",
+      "menu",
+      "openedAt",
+      "openedBy",
+      "openingCash",
+      "revision",
+      "status",
+      "totals",
+      "updatedAt"
+    ],
+    "days/*/settlements": [
+      "actorEmail",
+      "actorUid",
+      "committedAt",
+      "countedCash",
+      "dayId",
+      "difference",
+      "expectedCash",
+      "lastCommandId",
+      "note",
+      "openingCash",
+      "previousRevision",
+      "revision",
+      "sourceSeq",
+      "status",
+      "totals"
+    ],
+    "postCloseEntries": [
+      "amount",
+      "commandId",
+      "createdAt",
+      "createdBy",
+      "dayId",
+      "direction",
+      "entryId",
+      "reason",
+      "settlementRevision"
+    ],
+    "studentCodes": [
+      "lastCommandId",
+      "studentId",
+      "updatedAt"
+    ],
+    "students": [
+      "aliases",
+      "createdAt",
+      "currentBalance",
+      "displayName",
+      "lastCommandId",
+      "openingBalance",
+      "revision",
+      "status",
+      "studentCode",
+      "studentId",
+      "updatedAt"
+    ],
+    "transactions": [
+      "amount",
+      "businessDate",
+      "createdAt",
+      "createdSeq",
+      "lastCommandId",
+      "mealKind",
+      "mealPrice",
+      "menuNameSnapshot",
+      "menuPriceSnapshot",
+      "note",
+      "operatorEmail",
+      "operatorUid",
+      "otherItemName",
+      "paidAmount",
+      "revision",
+      "sourceDevice",
+      "status",
+      "studentId",
+      "studentNameSnapshot",
+      "transactionId",
+      "type",
+      "updatedAt",
+      "vendorIdSnapshot",
+      "vendorNameSnapshot"
+    ],
+    "vendors": [
+      "createdAt",
+      "deleted",
+      "lastCommandId",
+      "name",
+      "note",
+      "phone",
+      "revision",
+      "status",
+      "updatedAt",
+      "vendorId"
+    ]
+  }
+}

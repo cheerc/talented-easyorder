@@ -1,0 +1,351 @@
+{
+  "schemaVersion": 1,
+  "shapes": [
+    {
+      "collection": "accessEvents",
+      "where": [
+        "at >=",
+        "at <"
+      ],
+      "orderBy": [
+        "at asc",
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.accessEvents"
+      ]
+    },
+    {
+      "collection": "backfillDays",
+      "where": [
+        "__name__ in[19]"
+      ],
+      "orderBy": [],
+      "operations": [
+        "load.dayCloseOverview",
+        "load.orders"
+      ]
+    },
+    {
+      "collection": "commands",
+      "where": [
+        "businessDate ==",
+        "committedAt >=",
+        "committedAt <"
+      ],
+      "orderBy": [
+        "committedAt asc",
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.auditRange"
+      ]
+    },
+    {
+      "collection": "commands",
+      "where": [
+        "businessDate ==",
+        "seq <="
+      ],
+      "orderBy": [
+        "seq asc",
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.auditDay"
+      ]
+    },
+    {
+      "collection": "commands",
+      "where": [
+        "businessDate =="
+      ],
+      "orderBy": [
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.auditDay",
+        "load.auditRange"
+      ]
+    },
+    {
+      "collection": "commands",
+      "where": [
+        "businessDate =="
+      ],
+      "orderBy": [
+        "seq asc",
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.auditRange"
+      ]
+    },
+    {
+      "collection": "commands",
+      "where": [
+        "seq >",
+        "seq <="
+      ],
+      "orderBy": [
+        "seq asc",
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.backupExport"
+      ]
+    },
+    {
+      "collection": "commands",
+      "where": [
+        "studentId ==",
+        "seq <="
+      ],
+      "orderBy": [
+        "seq asc",
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.auditStudent"
+      ]
+    },
+    {
+      "collection": "commands",
+      "where": [
+        "studentId =="
+      ],
+      "orderBy": [
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.auditRangeStudent",
+        "load.auditStudent"
+      ]
+    },
+    {
+      "collection": "commands",
+      "where": [
+        "studentId =="
+      ],
+      "orderBy": [
+        "seq asc",
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.auditRangeStudent"
+      ]
+    },
+    {
+      "collection": "days",
+      "where": [
+        "__name__ <",
+        "__name__ <=",
+        "__name__ <",
+        "__name__ >="
+      ],
+      "orderBy": [
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.dayVendors"
+      ]
+    },
+    {
+      "collection": "days",
+      "where": [
+        "__name__ <",
+        "__name__ <=",
+        "__name__ <"
+      ],
+      "orderBy": [
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.dayVendors"
+      ]
+    },
+    {
+      "collection": "days",
+      "where": [
+        "__name__ <",
+        "__name__ <=",
+        "__name__ >="
+      ],
+      "orderBy": [
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.dayVendors"
+      ]
+    },
+    {
+      "collection": "days",
+      "where": [
+        "__name__ >",
+        "__name__ <="
+      ],
+      "orderBy": [
+        "__name__ asc"
+      ],
+      "operations": [
+        "command.CloseDay"
+      ]
+    },
+    {
+      "collection": "days",
+      "where": [
+        "__name__ >=",
+        "__name__ <="
+      ],
+      "orderBy": [
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.ledgerScan",
+        "load.ledgerScanCold"
+      ]
+    },
+    {
+      "collection": "days",
+      "where": [
+        "status in[2]"
+      ],
+      "orderBy": [],
+      "operations": [
+        "load.dayCloseOverview",
+        "load.orders"
+      ]
+    },
+    {
+      "collection": "days/*/settlements",
+      "where": [],
+      "orderBy": [],
+      "operations": [
+        "command.CloseDay",
+        "load.dayCloseState",
+        "load.summary"
+      ]
+    },
+    {
+      "collection": "postCloseEntries",
+      "where": [
+        "dayId =="
+      ],
+      "orderBy": [
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.dayCloseState",
+        "load.summary"
+      ]
+    },
+    {
+      "collection": "postCloseEntries",
+      "where": [
+        "dayId =="
+      ],
+      "orderBy": [
+        "createdAt asc",
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.summary"
+      ]
+    },
+    {
+      "collection": "postCloseEntries",
+      "where": [],
+      "orderBy": [
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.ledgerScan",
+        "load.ledgerScanCold"
+      ]
+    },
+    {
+      "collection": "students",
+      "where": [],
+      "orderBy": [
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.accountHistory",
+        "load.orders",
+        "load.report",
+        "load.reportStudent",
+        "load.students"
+      ]
+    },
+    {
+      "collection": "transactions",
+      "where": [
+        "businessDate =="
+      ],
+      "orderBy": [
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.accountHistory",
+        "load.report",
+        "load.reportStudent"
+      ]
+    },
+    {
+      "collection": "transactions",
+      "where": [
+        "businessDate =="
+      ],
+      "orderBy": [
+        "createdAt asc",
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.accountHistory",
+        "load.orders",
+        "load.report",
+        "load.reportStudent"
+      ]
+    },
+    {
+      "collection": "transactions",
+      "where": [
+        "studentId =="
+      ],
+      "orderBy": [
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.accountHistory",
+        "load.report",
+        "load.reportStudent"
+      ]
+    },
+    {
+      "collection": "transactions",
+      "where": [
+        "studentId =="
+      ],
+      "orderBy": [
+        "businessDate asc",
+        "createdAt asc",
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.accountHistory",
+        "load.report",
+        "load.reportStudent"
+      ]
+    },
+    {
+      "collection": "vendors",
+      "where": [],
+      "orderBy": [
+        "__name__ asc"
+      ],
+      "operations": [
+        "load.dayVendors"
+      ]
+    }
+  ]
+}
