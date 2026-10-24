@@ -206,13 +206,13 @@ describeWithEmulator('P15a offline validate of a real P14 chain', () => {
     }
   });
 
-  it('the launcher lists its subcommands, and later subcommands are not provided yet', () => {
+  it('the launcher lists every subcommand and refuses an unknown one with exit 64', () => {
     const help = runCli(['--help'], null);
     expect(help.status).toBe(0);
     for (const name of ['validate', 'init', 'restore', 'resume', 'verify', 'finalize']) expect(help.stdout).toContain(name);
-    const later = runCli(['verify', '--project', 'demo-easyorder-restore'], null);
-    expect(later.status).toBe(64);
-    expect(later.stderr).toContain('尚未提供');
+    expect(help.stdout).not.toContain('尚未提供');
+    const unknown = runCli(['frobnicate'], null);
+    expect(unknown.status).toBe(64);
   });
 });
 
@@ -724,6 +724,30 @@ describeWithEmulator('P15c verify and finalize on a restored project', { timeout
     expect(exported!.toSeq).toBe(sourceHeadSeq() + 2);
     expect(exported!.manifest.records.map(record => record.seq)).toEqual([sourceHeadSeq() + 1, sourceHeadSeq() + 2]);
     expect(exported!.manifest.previousPackageSha256).toBe(lastPackage.sha256);
+  });
+
+  it('C11: finalize resumes after a crash between its writes (operator and lease exist, maintenance still on), and refuses a held or mismatched lease', async () => {
+    restoreTarget();
+    await onTarget(async db => {
+      await setDoc(doc(db, 'operators', R02_OPERATOR.uid), { ...R02_OPERATOR, displayName: R02_OPERATOR.email, createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
+      await setDoc(doc(db, 'system/accessLease'), { holderUid: 'someone-else', epoch: R02_LEASE_EPOCH, updatedAt: Timestamp.now() });
+    });
+    expect(runCli(finalizeArgs(['--execute'])).status).toBe(2);
+    expect((await targetDoc('system/dataHead'))!.maintenance).toBe(true);
+    await onTarget(async db => {
+      await setDoc(doc(db, 'system/accessLease'), { holderUid: null, epoch: R02_LEASE_EPOCH, updatedAt: Timestamp.now() });
+      await setDoc(doc(db, 'accessEvents/12'), {
+        kind: 'acquire', holderUid: 'x', previousHolderUid: null, actorUid: 'x', actorEmail: 'x@example.test', at: Timestamp.now(),
+      });
+    });
+    // An existing lease below an existing event number would make the next acquire fail, so it is refused rather than reused.
+    expect(runCli(finalizeArgs(['--execute'])).status).toBe(2);
+    await onTarget(async db => { await deleteDoc(doc(db, 'accessEvents/12')); });
+    await onTarget(async db => { await setDoc(doc(db, 'system/accessLease'), { holderUid: null, epoch: R02_LEASE_EPOCH, updatedAt: Timestamp.now() }); });
+    const run = runCli(finalizeArgs(['--execute']));
+    expect(run.status, run.stderr).toBe(0);
+    expect((await targetDoc('system/dataHead'))!.maintenance).toBe(false);
+    expect(await targetDoc('system/accessLease')).toMatchObject({ holderUid: null, epoch: R02_LEASE_EPOCH });
   });
 
   it('C10: finalize a second time exits 2 (maintenance is already cleared) and changes nothing', async () => {

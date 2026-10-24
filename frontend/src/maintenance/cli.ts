@@ -7,8 +7,10 @@ import path from 'node:path';
 import { BackupValidationError } from '../firebase/cloudBackup';
 import { RestError, TargetError, createFirestoreRest, resolveTarget, type FetchLike, type FirestoreRest } from './firestoreRest';
 import {
-  RestoreExecError, assertNoBusinessDocuments, checkFreshTarget, executeRestore, progressFileName, readTargetHead,
+  RestoreExecError, assertNoBusinessDocuments, checkFreshTarget, executeRestore, parseProgress, progressFileName, readTargetHead,
 } from './restoreExecutor';
+import { OperatorsFileError, applyFinalize, parseOperators, planFinalize } from './restoreFinalize';
+import { formatVerifySummary, verifyTarget } from './restoreVerify';
 import { MAX_BATCH_DOCUMENTS, RestorePlanError, buildRestorePlan, type RestorePlan } from './restorePlan';
 import { RestoreChainError, loadChain, parseChainFile, replayTo } from './restoreChain';
 import { DEFAULT_MAX_WRITES_PER_DAY, buildValidateReport, formatValidateSummary } from './restoreReport';
@@ -39,7 +41,6 @@ export const EXIT_USAGE = 64;
 export const EXIT_PAUSED = 75;
 
 const SUBCOMMANDS = ['validate', 'init', 'restore', 'resume', 'verify', 'finalize'] as const;
-const LATER_PHASE: Record<string, string> = { verify: 'P15c', finalize: 'P15c' };
 
 const USAGE = `用法：node scripts/easyorder-data-maintenance.mjs <子命令> [選項]
 
@@ -60,8 +61,14 @@ const USAGE = `用法：node scripts/easyorder-data-maintenance.mjs <子命令> 
               --batch-size <N>         單批文件數 1–${MAX_BATCH_DOCUMENTS}（預設 ${MAX_BATCH_DOCUMENTS}）；續跑時必須與原來相同
   resume    續跑中斷的還原（同一個 --manifest、--to-seq 與批次大小；必須帶 --execute）
               --project <id> --manifest <chain.json> [--to-seq <H>] --execute [--max-writes <N>] [--batch-size <N>]
-  verify    逐文件對帳還原結果（尚未提供）
-  finalize  重建 operators 與空租約並解除維護（尚未提供）
+  verify    逐文件讀回對帳還原結果（唯讀；還原前後都可執行）
+              --project <id> --manifest <chain.json> [--to-seq <H>] [--report <out.json>]
+              有任何缺少、多出、內容不同、seq 缺號、合計或餘額重算不符就以結束碼 2 離開（報告仍會寫出）
+  finalize  還原完成且 verify 通過後，重建 operators 與空租約，最後才解除維護（預設只試算）
+              --project <id> --manifest <chain.json> [--to-seq <H>] --operators <operators.json>
+              [--batch-size <N>]  必須與 restore 時相同
+              --execute                真的寫入（沒給 --execute 或給 --dry-run 都只試算）
+              operators.json 是 [{ "uid": "...", "email": "..." }]，至少一位，只放在本機
 
 目標由環境決定：有 FIRESTORE_EMULATOR_HOST 時只寫 Emulator 且 --project 必須以 demo- 開頭；
 沒有時寫 Google Firestore，需要環境變數 EASYORDER_ACCESS_TOKEN（短期 access token），
@@ -143,6 +150,36 @@ function parseRestoreArgs(command: 'restore' | 'resume', args: string[]): Restor
   return {
     project, manifest, toSeq: parseToSeq(values.get('--to-seq')), execute,
     maxWrites: positiveInteger(values.get('--max-writes'), '--max-writes', DEFAULT_MAX_WRITES_PER_DAY),
+    batchSize: positiveInteger(values.get('--batch-size'), '--batch-size', MAX_BATCH_DOCUMENTS, MAX_BATCH_DOCUMENTS),
+  };
+}
+
+interface VerifyArgs { project: string; manifest: string; toSeq: number | null; report: string | null }
+
+function parseVerifyArgs(args: string[]): VerifyArgs {
+  const values = parseFlags(args, { values: ['--project', '--manifest', '--to-seq', '--report'], booleans: [] });
+  const project = values.get('--project');
+  if (!project) throw new UsageError('缺少 --project <專案 ID>');
+  const manifest = values.get('--manifest');
+  if (!manifest) throw new UsageError('缺少 --manifest <還原鏈檔>');
+  return { project, manifest, toSeq: parseToSeq(values.get('--to-seq')), report: values.get('--report') ?? null };
+}
+
+interface FinalizeArgs { project: string; manifest: string; toSeq: number | null; operators: string; batchSize: number; execute: boolean }
+
+function parseFinalizeArgs(args: string[]): FinalizeArgs {
+  const values = parseFlags(args, {
+    values: ['--project', '--manifest', '--to-seq', '--operators', '--batch-size'], booleans: ['--dry-run', '--execute'],
+  });
+  const project = values.get('--project');
+  if (!project) throw new UsageError('缺少 --project <專案 ID>');
+  const manifest = values.get('--manifest');
+  if (!manifest) throw new UsageError('缺少 --manifest <還原鏈檔>');
+  const operators = values.get('--operators');
+  if (!operators) throw new UsageError('缺少 --operators <operators.json>');
+  if (values.has('--dry-run') && values.has('--execute')) throw new UsageError('--dry-run 與 --execute 不能同時使用');
+  return {
+    project, manifest, operators, toSeq: parseToSeq(values.get('--to-seq')), execute: values.has('--execute'),
     batchSize: positiveInteger(values.get('--batch-size'), '--batch-size', MAX_BATCH_DOCUMENTS, MAX_BATCH_DOCUMENTS),
   };
 }
@@ -277,6 +314,66 @@ async function runRestore(command: 'restore' | 'resume', args: RestoreArgs, io: 
   return EXIT_OK;
 }
 
+/** Reads the chain (asking the password once), replays to H and builds the plan the target is compared with. */
+async function loadPlan(manifest: string, toSeq: number | null, batchSize: number, io: CliIo) {
+  const chainFile = parseChainFile(new TextDecoder().decode(await readChainFile(manifest, io)));
+  const chain = await loadChain(manifest, chainFile, () => io.readPassword(), io);
+  const replayed = replayTo(chain, toSeq ?? chain.lastSeq, io);
+  return { chain, plan: await buildRestorePlan(chain, replayed, { batchSize }) };
+}
+
+async function runVerify(args: VerifyArgs, io: CliIo): Promise<number> {
+  const target = resolveTarget(args.project, io.env);
+  const rest = createFirestoreRest(target, io.fetch);
+  const { chain, plan } = await loadPlan(args.manifest, args.toSeq, MAX_BATCH_DOCUMENTS, io);
+  const report = await verifyTarget(rest, chain, plan, () => io.now());
+  if (args.report) await io.writeFile(args.report, `${JSON.stringify(report, null, 2)}\n`);
+  io.stdout(formatVerifySummary(report));
+  if (!report.ok) { io.stderr('對帳失敗：目標與備份鏈不一致（細節見報告的各項計數）。\n'); return EXIT_CHECK_FAILED; }
+  return EXIT_OK;
+}
+
+async function runFinalize(args: FinalizeArgs, io: CliIo): Promise<number> {
+  let operatorsText: string;
+  try { operatorsText = new TextDecoder().decode(await io.readFile(args.operators)); }
+  catch { throw new UsageError(`讀不到操作員檔 ${args.operators}`); }
+  const operators = parseOperators(operatorsText);
+  const target = resolveTarget(args.project, io.env);
+  requireTerminalForRealTarget(args.execute, target.emulator, io);
+  const rest = createFirestoreRest(target, io.fetch);
+  const { chain, plan } = await loadPlan(args.manifest, args.toSeq, args.batchSize, io);
+
+  const head = await readTargetHead(rest);
+  if (!head) throw new RestoreExecError('目標沒有 system/dataHead；請先 init 與 restore');
+  if (head.maintenance !== true) throw new RestoreExecError('目標已經解除維護（maintenance=false），finalize 不重做；要對帳請用 verify');
+  const progressPath = path.join(path.dirname(args.manifest), progressFileName(args.project, plan.datasetId, plan.toSeq));
+  let progressText: string;
+  try { progressText = new TextDecoder().decode(await io.readFile(progressPath)); }
+  catch { throw new RestoreExecError(`找不到進度檔 ${progressPath}；restore 尚未完成，finalize 不會動目標`); }
+  const progress = parseProgress(progressText, {
+    digest: plan.digest, project: args.project, datasetId: plan.datasetId, toSeq: plan.toSeq, totalBatches: plan.batches.length,
+  });
+  if (progress.completedBatches !== progress.totalBatches) {
+    throw new RestoreExecError(`restore 尚未完成（已完成 ${progress.completedBatches}/${progress.totalBatches} 批）；請先用 resume 完成，finalize 不會動目標`);
+  }
+
+  const report = await verifyTarget(rest, chain, plan, () => io.now());
+  io.stdout(formatVerifySummary(report));
+  if (!report.ok) throw new RestoreExecError('verify 未通過；沒有寫入 operators 或租約，維護模式維持');
+
+  const now = io.clock();
+  const finalize = await planFinalize(rest, chain, plan, operators, timestampMarker(now));
+  const summary = `操作員：新建 ${finalize.operatorsToCreate}、已存在 ${finalize.operatorsExisting}；空租約 epoch ${finalize.leaseEpoch}${finalize.leaseExists ? '（已存在）' : ''}；最後解除維護`;
+  if (!args.execute) {
+    io.stdout(`試算（不寫入）：verify 通過。${summary}。加上 --execute 才會寫入。\n`);
+    return EXIT_OK;
+  }
+  if (!target.emulator) await confirm(io, `FINALIZE ${args.project} ${plan.datasetId} ${plan.toSeq}`);
+  await applyFinalize(rest, finalize);
+  io.stdout(`finalize 完成：${summary}。接下來由操作員登入取得使用權。\n`);
+  return EXIT_OK;
+}
+
 export async function main(argv: string[], io: CliIo): Promise<number> {
   const [command, ...rest] = argv;
   if (command === undefined) { io.stderr(USAGE); return EXIT_USAGE; }
@@ -285,17 +382,14 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     io.stderr(`不認得的子命令：${command}\n\n${USAGE}`);
     return EXIT_USAGE;
   }
-  const later = LATER_PHASE[command];
-  if (later) {
-    io.stderr(`子命令 ${command} 尚未提供（${later} 才會實作）；目前可用 validate、init、restore、resume。\n`);
-    return EXIT_USAGE;
-  }
   try {
+    if (command === 'verify') return await runVerify(parseVerifyArgs(rest), io);
+    if (command === 'finalize') return await runFinalize(parseFinalizeArgs(rest), io);
     if (command === 'init') return await runInit(parseInitArgs(rest), io);
     if (command === 'restore' || command === 'resume') return await runRestore(command, parseRestoreArgs(command, rest), io);
     return await runValidate(parseValidateArgs(rest), io);
   } catch (error) {
-    if (error instanceof UsageError) { io.stderr(`用法錯誤：${error.message}\n`); return EXIT_USAGE; }
+    if (error instanceof UsageError || error instanceof OperatorsFileError) { io.stderr(`用法錯誤：${error.message}\n`); return EXIT_USAGE; }
     if (error instanceof TargetError) { io.stderr(`目標不合法：${error.message}\n`); return EXIT_USAGE; }
     if (error instanceof RestoreChainError || error instanceof BackupValidationError) {
       io.stderr(`驗證失敗：${error.message}\n`);

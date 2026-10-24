@@ -153,6 +153,8 @@ export interface FirestoreRest {
   getWithUpdateTime(path: string): Promise<{ data: Record<string, unknown>; updateTime: string } | null>;
 }
 
+interface ListAnswer { documents?: Array<{ name: string; fields?: Record<string, RestValue> }>; nextPageToken?: string }
+
 export function createFirestoreRest(target: RestTarget, fetchImpl: FetchLike): FirestoreRest {
   const root = `projects/${target.project}/databases/(default)/documents`;
   const api = `${target.baseUrl}/v1/${root}`;
@@ -171,7 +173,7 @@ export function createFirestoreRest(target: RestTarget, fetchImpl: FetchLike): F
     if (!response.ok) {
       let status = '';
       try { status = String((JSON.parse(text) as { error?: { status?: string } }).error?.status ?? ''); } catch { /* not JSON */ }
-      if (response.status === 409 || status === 'ALREADY_EXISTS') throw new AlreadyExistsError('目標已經有這份文件（exists=false 前置條件不成立）');
+      if (status === 'ALREADY_EXISTS' || (response.status === 409 && status !== 'ABORTED')) throw new AlreadyExistsError('目標已經有這份文件（exists=false 前置條件不成立）');
       throw new RestError(`目標回應 HTTP ${response.status}${status ? ` ${status}` : ''}`, response.status);
     }
     try { return text ? JSON.parse(text) : {}; } catch { throw new RestError('目標回傳的內容不是有效的 JSON', response.status); }
@@ -186,7 +188,8 @@ export function createFirestoreRest(target: RestTarget, fetchImpl: FetchLike): F
           ? { update: { name: `${root}/${write.path}`, ...encodeFields(write.data) }, currentDocument: { exists: false } }
           : {
             update: { name: `${root}/${write.path}`, ...encodeFields(write.data) },
-            updateMask: { fieldPaths: write.fields }, currentDocument: { exists: true },
+            updateMask: { fieldPaths: write.fields },
+            currentDocument: write.updateTime === undefined ? { exists: true } : { updateTime: write.updateTime },
           }),
       });
     },
@@ -205,9 +208,38 @@ export function createFirestoreRest(target: RestTarget, fetchImpl: FetchLike): F
       const answer = await call('GET', `${api}/${collection}?pageSize=1`) as { documents?: unknown[] };
       return (answer.documents?.length ?? 0) > 0;
     },
-    async listDocuments() { throw new Error('P15c 尚未實作'); },
-    async listDocumentIds() { throw new Error('P15c 尚未實作'); },
-    async getWithUpdateTime() { throw new Error('P15c 尚未實作'); },
+    async listDocuments(collection) {
+      const found: RestDocument[] = [];
+      let pageToken = '';
+      do {
+        const answer = await call('GET', `${api}/${collection}?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`) as ListAnswer;
+        for (const item of answer.documents ?? []) found.push({ path: item.name.slice(root.length + 1), data: decodeFields(item.fields ?? {}) });
+        pageToken = answer.nextPageToken ?? '';
+      } while (pageToken);
+      return found;
+    },
+    async listDocumentIds(collection) {
+      const ids: string[] = [];
+      let pageToken = '';
+      do {
+        const answer = await call('GET', `${api}/${collection}?pageSize=300&mask.fieldPaths=__name__${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`) as ListAnswer;
+        for (const item of answer.documents ?? []) ids.push(item.name.slice(root.length + 1 + collection.length + 1));
+        pageToken = answer.nextPageToken ?? '';
+      } while (pageToken);
+      return ids;
+    },
+    async getWithUpdateTime(path) {
+      const answer = await call('POST', `${api}:batchGet`, { documents: [`${root}/${path}`] }) as Array<{
+        found?: { fields?: Record<string, RestValue>; updateTime?: string }; missing?: string;
+      }>;
+      const entry = answer[0];
+      if (entry?.found) {
+        if (!entry.found.updateTime) throw new RestError('目標沒有回傳文件的 updateTime', 200);
+        return { data: decodeFields(entry.found.fields ?? {}), updateTime: entry.found.updateTime };
+      }
+      if (entry?.missing) return null;
+      throw new RestError('目標的 batchGet 回應缺少文件', 200);
+    },
     async groupHasDocuments(collectionId) {
       const answer = await call('POST', `${api}:runQuery`, {
         structuredQuery: { from: [{ collectionId, allDescendants: true }], limit: 1 },

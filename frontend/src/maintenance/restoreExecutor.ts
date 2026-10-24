@@ -103,7 +103,8 @@ async function batchState(rest: FirestoreRest, batch: RestWrite[]): Promise<Batc
   throw new RestoreExecError('目標只有這一批的部分文件；一批是原子提交，不應該發生，停止以免寫壞');
 }
 
-function parseProgress(text: string, expected: { digest: string; project: string; datasetId: string; toSeq: number; totalBatches: number }): ProgressFile {
+/** Fail-closed reading of a progress file: it must belong to this project, dataset, H and plan digest. */
+export function parseProgress(text: string, expected: { digest: string; project: string; datasetId: string; toSeq: number; totalBatches: number }): ProgressFile {
   let value: unknown;
   try { value = JSON.parse(text); } catch { throw new RestoreExecError('進度檔不是有效的 JSON'); }
   if (!isRecord(value) || value.format !== PROGRESS_FORMAT || value.version !== 1) throw new RestoreExecError('進度檔格式不正確');
