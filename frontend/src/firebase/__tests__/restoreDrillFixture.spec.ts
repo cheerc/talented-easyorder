@@ -3,7 +3,9 @@
  * follow the Emulator drill of docs/ops/firebase-restore-runbook.md. It is a tool, not a gate: it does nothing unless
  * EASYORDER_P15_FIXTURE_DIR names the output directory. Synthetic data only; the password is the fixed text below.
  */
+// @ts-expect-error Node-only path access is used to locate the Rules file and the output directory.
 import path from 'node:path';
+// @ts-expect-error Node-only file access is used to load the real Firestore Rules.
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import { describe, expect, it } from 'vitest';
