@@ -941,3 +941,23 @@ The plan (Q1 = A) allowed an optional `paperRef` payload/transaction field, with
 | `txUpdate` / `P13d1.4` (backfilled corrections and void) | n/a | n/a | +96 / +97 |
 
 The thinnest anchor stays at +14 (floor +5, allowed drop 3; actual drop 2). The `txUpdate` and `tx`-cash rows at +95 to +97 are the usual compile boundary, not runtime-cap measurements (`Expression is too complex to evaluate safely` before any test runs); the correction clause did not move them. The B rows come from the shipped `cloudDayClose.spec.ts` (its backfill helpers now carry the prefix) with the shipped Rules; the A and main rows come from the earlier prototype run with the then-current spec. No new document access: the prefix check is string-only, so access-call counts are unchanged.
+
+## P16x — alias validation only when the aliases change
+
+Rules SHA-256: main (#551 base `a22c85d`) `98b143a3531f78cace7a4df0146b017089b4d4fe6582928a6cbabe5711a96455`; branch `488fca520bbea11ef129c4a371da831a342c2bdd27c8b1afba4ca655eaed3f6a`. Problem found by P16b: with three or more aliases `CreateOrder` and `CreatePayment` were refused by the Rules (`Unable to evaluate the expression as the maximum of 1000 expressions to evaluate has been reached`), because `validStudent` (and so `validAliases`, about ten expressions per alias slot) ran twice in the student update (`validStudentAdvance` inside `studentWriteCommand`, then the `allow update` itself). Changes: `validStudent` is split into `validStudentCore` (everything but the content of the aliases; `aliases is list` stays) and `validStudent` = core && `validAliases` (still used by the student create); a new `validStudentUpdate(student, before, studentId)` = core && (`student.aliases == before.aliases || validAliases(student.aliases)`) is used by the `allow update` of `students/{id}`; `validStudentAdvance` uses `validStudentCore` because its `affectedKeys().hasOnly(['currentBalance','revision','lastCommandId','updatedAt'])` already keeps the aliases as they were. Nothing is loosened: a create validates every alias, and any update that changes the aliases (EditStudent, or any other command that tries to) still validates every alias; the alias cap of ten is unchanged.
+
+Probe tool `/mnt/project-files/tools/rules-probe` with one new anchor, `studentUpdate` (the `allow update` of `students/{id}`: `allow update: if request.resource.data.lastCommandId is string && studentWriteCommand(`). Same cases on both sides; the self-contained cases of `cloudRulesMatrix.spec.ts` (`-t` patterns below) create their own student and day.
+
+| Anchor / case | main `+lo / +hi` | branch `+lo / +hi` |
+|---|---:|---:|
+| `studentUpdate` / two short aliases: CreateOrder, CreatePayment | +4 / +5 | **+52 / +53** |
+| `studentUpdate` / three short aliases: CreateOrder, CreatePayment | refused (base fails) | +52 / +53 |
+| `studentUpdate` / ten 100-character aliases: CreateOrder, CreatePayment, CorrectTransaction, CancelKeepDeposit, CancelRefund, Undo, CreateRefund, VoidTransaction | refused (base fails) | +52 / +53 |
+| `cmd` / two short aliases (command create) | +13 / +14 | +13 / +14 |
+| `cmd` / ten 100-character aliases, same eight kinds | refused (base fails) | +13 / +14 |
+
+So the thinnest student-update anchor on main was +4 with only two aliases (a student with three aliases was already over the budget) and is +52 on the branch whatever the number of aliases; the command-create anchor is unchanged (+13 is the same on both sides and does not depend on the aliases). The `+hi` of each row is where the Emulator stops compiling or evaluating the rule (`Expression is too complex to evaluate safely` / the 1000-expression cap), as in the rows above; it is not a runtime-cap measurement.
+
+Access calls: unchanged. `students` update still reads the command with `getAfter` and `!exists` as before; no `get`/`exists`/`getAfter` was added or removed.
+
+Verification that nothing is loosened (`cloudRulesMatrix.spec.ts`, Emulator): captured `CreateStudent`, `EditStudent` and `CreateOrder` batches are replayed with eleven aliases, an alias of 101 characters, an empty alias, a non-text alias and an empty tenth alias (and, for `CreateOrder`, with a different valid alias list), with the command receipt (`after.student`, and the payload where it has aliases) changed to agree so that only the alias check can refuse the batch; all are refused. With the alias check removed from `validStudentUpdate` the `EditStudent` case fails, and with it removed from `validStudent` the `CreateStudent` case fails (temporary copies of the Rules, not in the repo).
