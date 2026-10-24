@@ -195,12 +195,12 @@ export function buildKindSteps(D: KindScenarioDeps): KindStep[] {
   add('RecordPrint', async () => D.reports.recordPrint({ commandId: D.id(), leaseEpoch: D.epoch,
     range: { kind: 'custom', startDate: today, endDate: today }, scope: { studentId: null }, sourceSeq: await D.headSeq(),
     printType: 'ledger-original', businessDate: today }));
-  add('RecordBackup', async () => {
+  // The export is a plain read plus an encryption, so it is the step's setup; the metered or captured call is the receipt alone.
+  let backup: { toSeq: number; sha256: string } | null = null;
+  add('RecordBackup', async () => D.backupReceipts.commitRecordBackupIntent({ commandId: D.id(), leaseEpoch: D.epoch,
+    payload: { backupType: 'command-incremental', sourceSeq: backup!.toSeq, fromSeq: 0, toSeq: backup!.toSeq, sha256: backup!.sha256 } }), async () => {
     const exported = await D.backups.exportRange({ fromSeq: 0, generatedAt: '2026-10-23T03:00:00.000Z' });
-    const sha256 = await sha256Hex(await encryptBackup(exported.manifest, D.backupPassword));
-    return D.backupReceipts.commitRecordBackupIntent({ commandId: D.id(), leaseEpoch: D.epoch,
-      payload: { backupType: 'command-incremental', sourceSeq: exported.toSeq, fromSeq: 0, toSeq: exported.toSeq, sha256 } });
+    backup = { toSeq: exported.toSeq, sha256: await sha256Hex(await encryptBackup(exported.manifest, D.backupPassword)) };
   });
-
   return steps;
 }

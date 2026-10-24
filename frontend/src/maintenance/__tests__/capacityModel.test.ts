@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  documentBytes, dailyUsage, indexEntryBytes, projectStorage, worstCaseWorkload, documentNameBytes,
+  documentBytes, dailyUsage, indexEntryBytes, projectStorage, worstCaseWorkload, documentNameBytes, readAuthorizationCalls,
   type CostTable, type IndexConfig, type WorkloadLine,
 } from '../capacityModel';
 
@@ -61,6 +61,36 @@ describe('P16d capacity model: daily usage', () => {
     ]);
     // Big costs 9 + 5 + 19 = 33 against Small 6 + 2 + 11 = 19
     expect(dailyUsage(table, worst).reads.conservative).toBe(12 * 33 + 339);
+  });
+});
+
+describe('P16d capacity model: operations with their own Rules commit cost, and read authorization', () => {
+  it('uses the operation\'s own Rules commit cost when it has one (a lease change is not a command kind)', () => {
+    const leaseTable: CostTable = {
+      schemaVersion: 1,
+      operations: {
+        'lease.acquire': { reads: { fixed: 2, perUnit: 0 }, readAuthorization: { fixed: 2, perUnit: 0 }, readAuthorizationDeduped: { fixed: 2, perUnit: 0 }, writes: 2, deletes: 0,
+          rulesCommit: { commitAccessCalls: 6, commitDistinctDocuments: 3, source: 'fixture' } },
+      },
+      rules: {},
+    };
+    const usage = dailyUsage(leaseTable, [{ operation: 'lease.acquire', perDay: 4 }]);
+    expect(usage.reads.conservative).toBe(4 * (2 + 2 + 6));
+    expect(usage.reads.deduped).toBe(4 * (2 + 2 + 3));
+    expect(usage.writes).toBe(8);
+  });
+
+  it('counts the Rules calls that authorize a read: none for the own operator document, 1 for the lease and the access events, 2 otherwise, once per request', () => {
+    expect(readAuthorizationCalls([
+      { form: 'tx-doc', key: 'commands/*' },        // currentHolder: operator + lease = 2
+      { form: 'tx-doc', key: 'system/dataHead' },   // 2
+      { form: 'tx-doc', key: 'operators/*' },       // signedGoogle only = 0
+      { form: 'tx-doc', key: 'system/accessLease' }, // approvedOperator = 1
+      { form: 'doc', key: 'days/*' },               // 2
+      { form: 'listener-doc', key: 'system/accessLease' }, // 1
+      { form: 'query', key: 'transactions' },       // one request, 2 however many documents it returns
+      { form: 'query', key: 'accessEvents' },       // 1
+    ])).toEqual({ documents: 2 + 2 + 0 + 1 + 2 + 1, queries: 2 + 1 });
   });
 });
 

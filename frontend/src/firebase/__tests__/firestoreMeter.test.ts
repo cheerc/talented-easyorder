@@ -28,9 +28,15 @@ interface FakeApi {
   getDocsFromServer(target: unknown): Promise<{ size: number }>;
   getDocFromServer(reference: unknown): Promise<unknown>;
   runTransaction(db: unknown, update: (tx: FakeTx) => Promise<unknown>): Promise<unknown>;
+  onSnapshot(reference: unknown, next: (snapshot: unknown) => void): () => void;
 }
 
-function fakeModule(options: { rowsPerQuery?: number; attemptsBeforeCommit?: number; failCommit?: boolean } = {}) {
+interface FakeSnapshot { data: object | null; fromCache?: boolean }
+const snapshotOf = ({ data, fromCache = false }: FakeSnapshot) => ({
+  exists: () => data !== null, data: () => data, metadata: { fromCache, hasPendingWrites: false },
+});
+
+function fakeModule(options: { rowsPerQuery?: number; attemptsBeforeCommit?: number; failCommit?: boolean; snapshots?: FakeSnapshot[] } = {}) {
   const rows = options.rowsPerQuery ?? 0;
   const calls: string[] = [];
   const mod = {
@@ -46,6 +52,7 @@ function fakeModule(options: { rowsPerQuery?: number; attemptsBeforeCommit?: num
     getDocsFromServer: async () => ({ size: rows, docs: Array.from({ length: rows }) }),
     getDoc: async () => ({ exists: () => false }),
     getDocFromServer: async () => ({ exists: () => false }),
+    onSnapshot: (_ref: unknown, next: (snapshot: unknown) => void) => { for (const item of options.snapshots ?? []) next(snapshotOf(item)); return () => undefined; },
     runTransaction: async (_db: unknown, update: (tx: FakeTx) => Promise<unknown>) => {
       const attempts = options.attemptsBeforeCommit ?? 1;
       let result: unknown;
@@ -120,6 +127,58 @@ describe('P16d meter: reads', () => {
     await mod.getDocs(mod.query(mod.collection(null, 'students')));
     meter.start();
     expect(meter.stop().billedReads).toBe(0);
+  });
+});
+
+describe('P16d meter: one Firestore instance', () => {
+  it('counts only the calls on the instance it was started for', async () => {
+    const { mod } = fakeModule({ rowsPerQuery: 2 });
+    const app = { name: 'app' };
+    const admin = { name: 'admin' };
+    meter.start(app);
+    const ownDoc = { ...mod.doc(app, 'students/a'), firestore: app };
+    const otherDoc = { ...mod.doc(admin, 'students/b'), firestore: admin };
+    await mod.getDocFromServer(ownDoc);
+    await mod.getDocFromServer(otherDoc);
+    await mod.runTransaction(app, async tx => { await tx.get({ path: 'system/dataHead' }); tx.update({ path: 'system/dataHead' }, { seq: 1 }); });
+    await mod.runTransaction(admin, async tx => { await tx.get({ path: 'commands/c' }); tx.set({ path: 'commands/c' }, {}); });
+    const report = meter.stop();
+    expect(report.reads.map(event => event.key)).toEqual(['students/*', 'system/dataHead']);
+    expect(report.billedWrites).toBe(1);
+  });
+});
+
+describe('P16d meter: the compat Firestore of rules-unit-testing', () => {
+  it('matches the modular instance that its references point at (`_delegate`)', async () => {
+    const { mod } = fakeModule();
+    const modular = { name: 'modular' };
+    const compat = { _delegate: modular };
+    meter.start(compat);
+    await mod.getDocFromServer({ ...mod.doc(modular, 'students/a'), firestore: modular });
+    await mod.runTransaction(modular, async tx => { await tx.get({ path: 'system/dataHead' }); });
+    expect(meter.stop().reads.map(event => event.key)).toEqual(['students/*', 'system/dataHead']);
+  });
+});
+
+describe('P16d meter: document listeners', () => {
+  const listen = (snapshots: FakeSnapshot[]) => {
+    const { mod } = fakeModule({ snapshots });
+    meter.start();
+    mod.onSnapshot({ ...mod.doc(null, 'system/accessLease'), firestore: null }, () => undefined);
+    return meter.stop();
+  };
+
+  it('counts the attach as 1 read even when the first snapshot comes from the SDK cache', () => {
+    expect(listen([{ data: { epoch: 1 }, fromCache: true }]).billedReads).toBe(1);
+  });
+
+  it('counts a later snapshot only when the server data changed', () => {
+    const report = listen([{ data: { epoch: 1 } }, { data: { epoch: 1 } }, { data: { epoch: 2 } }, { data: { epoch: 3 }, fromCache: true }]);
+    expect(report.reads.map(event => `${event.form} ${event.key}`)).toEqual(['listener-doc system/accessLease', 'listener-doc system/accessLease']);
+  });
+
+  it('does not count the server snapshot that confirms the cached one it follows', () => {
+    expect(listen([{ data: { epoch: 1 }, fromCache: true }, { data: { epoch: 1 } }]).billedReads).toBe(1);
   });
 });
 

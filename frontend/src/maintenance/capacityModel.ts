@@ -42,6 +42,10 @@ export interface OperationCost {
   /** Successful document writes and deletes. */
   writes: number;
   deletes: number;
+  /** Rules access calls of this operation's commit (a lease change); command operations use `CostTable.rules[kind]` instead. */
+  rulesCommit?: RulesKindCost;
+  /** What the figures are made of (reads and writes by normalized document key), for the reader of the table; the model ignores it. */
+  detail?: Record<string, unknown>;
 }
 
 export interface RulesKindCost {
@@ -98,12 +102,15 @@ function perExecution(table: CostTable, line: WorkloadLine): { reads: number; re
   const units = line.units ?? 0;
   let reads = linear(cost.reads, units) + linear(cost.readAuthorization, units);
   let readsDeduped = linear(cost.reads, units) + linear(cost.readAuthorizationDeduped, units);
-  if (line.operation.startsWith(COMMAND_PREFIX)) {
+  let commit = cost.rulesCommit;
+  if (!commit && line.operation.startsWith(COMMAND_PREFIX)) {
     const kind = line.operation.slice(COMMAND_PREFIX.length);
-    const rules = table.rules[kind];
-    if (!rules) throw new Error(`capacity model: the cost table has no Rules cost for command kind ${kind}`);
-    reads += rules.commitAccessCalls;
-    readsDeduped += rules.commitDistinctDocuments;
+    commit = table.rules[kind];
+    if (!commit) throw new Error(`capacity model: the cost table has no Rules cost for command kind ${kind}`);
+  }
+  if (commit) {
+    reads += commit.commitAccessCalls;
+    readsDeduped += commit.commitDistinctDocuments;
   }
   return { reads, readsDeduped, writes: cost.writes, deletes: cost.deletes };
 }
@@ -145,6 +152,38 @@ export function worstCaseWorkload(table: CostTable, workload: WorkloadLine[], bu
   const rest = workload.filter(line => !isBusiness(line));
   if (first < 0) return rest;
   return [...workload.slice(0, first).filter(line => !isBusiness(line)), { operation: worst.operation, perDay: total }, ...workload.slice(first).filter(line => !isBusiness(line))];
+}
+
+// ---- Rules read authorization ----------------------------------------------------------------------------------------------
+
+export interface ReadEventLike {
+  form: 'doc' | 'tx-doc' | 'query' | 'listener-doc';
+  /** Normalized document key (`students/*`, `system/dataHead`) or, for a query, its collection. */
+  key: string;
+}
+
+/**
+ * Rules access calls that authorize one read request (a `get` or one query), no cache: `operators/{uid}` is readable by its own
+ * user without any lookup (0), the lease document needs `approvedOperator` (1 `get` of the operator document), `accessEvents`
+ * needs `approvedOperator` (1) and everything else needs `currentHolder` (the operator document and the lease: 2).
+ * Each `tx.get`, `getDoc` and query is its own request; so is every counted listener snapshot (a conservative reading).
+ */
+export function readAuthorizationCost(key: string): number {
+  if (key.startsWith('operators/')) return 0;
+  if (key === 'system/accessLease') return 1;
+  if (key === 'accessEvents' || key.startsWith('accessEvents/')) return 1;
+  return 2;
+}
+
+/** The authorization calls of a list of reads, split into document reads (get, tx.get, listener) and queries. */
+export function readAuthorizationCalls(events: ReadEventLike[]): { documents: number; queries: number } {
+  let documents = 0;
+  let queries = 0;
+  for (const event of events) {
+    const cost = readAuthorizationCost(event.key);
+    if (event.form === 'query') queries += cost; else documents += cost;
+  }
+  return { documents, queries };
 }
 
 // ---- storage ---------------------------------------------------------------------------------------------------------

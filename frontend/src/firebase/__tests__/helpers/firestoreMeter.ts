@@ -7,8 +7,9 @@ import type { DocumentData, Transaction } from 'firebase/firestore';
  * Metering rules (the same text is in `docs/ops/free-production-evidence.md`):
  * - `getDoc*` is 1 read, also when the document does not exist; a query (`getDocs*`) is max(1, documents returned).
  * - every `tx.get` is 1 read; a transaction that is retried counts the `tx.get` calls of every attempt.
- * - `onSnapshot` on a document is 1 read per server snapshot (the first one and every change); a repeated snapshot with the
- *   same data, such as a metadata-only change, is not counted again.
+ * - `onSnapshot` on a document is 1 read when it attaches (the server sends the document even when the SDK already had it
+ *   cached, so a first snapshot that is flagged `fromCache` still counts) and 1 per later server snapshot with new data; a
+ *   repeated snapshot with the same data, such as a metadata-only change, is not counted again.
  * - only writes of a transaction that committed count (the writes of the last attempt); an aborted or refused transaction
  *   still counts the reads it did, and no write.
  * - Rules access calls are not measured here (the Emulator has no counter): `capacityModel` adds them from the p05 ledger.
@@ -57,12 +58,15 @@ export function normalizePath(path: string): string {
   return path.split('/').map((segment, index) => (index % 2 === 1 ? '*' : segment)).join('/');
 }
 
-let recording: { reads: ReadEvent[]; writes: WriteEvent[] } | null = null;
+let recording: { reads: ReadEvent[]; writes: WriteEvent[]; only: object | undefined } | null = null;
 
 export const meter = {
-  /** Starts recording; anything read or written before this call is not counted. */
-  start(): void {
-    recording = { reads: [], writes: [] };
+  /**
+   * Starts recording; anything read or written before this call is not counted. With `only`, just the calls on that Firestore
+   * instance are counted, so that a test's own reads through another instance (an administrator's, say) do not count.
+   */
+  start(only?: object): void {
+    recording = { reads: [], writes: [], only };
   },
   /** Stops recording and returns what happened since `start`. */
   stop(): MeterReport {
@@ -78,8 +82,8 @@ export const meter = {
     };
   },
   /** Runs `run` under a fresh recording and returns its result with the report; the recording ends even when `run` throws. */
-  async measure<T>(run: () => Promise<T>): Promise<{ result: T; report: MeterReport }> {
-    meter.start();
+  async measure<T>(run: () => Promise<T>, only?: object): Promise<{ result: T; report: MeterReport }> {
+    meter.start(only);
     let result: T;
     try {
       result = await run();
@@ -91,9 +95,22 @@ export const meter = {
   },
 };
 
-function noteRead(event: ReadEvent): void {
-  recording?.reads.push(event);
+/** The compat Firestore of rules-unit-testing wraps the modular instance that the references point at (`_delegate`). */
+function canonical(owner: unknown): unknown {
+  return (owner as { _delegate?: unknown } | null)?._delegate ?? owner;
 }
+
+/** True while recording and the call belongs to the Firestore instance that is being counted. */
+function counting(owner: unknown): boolean {
+  if (!recording) return false;
+  return recording.only === undefined || canonical(recording.only) === canonical(owner);
+}
+
+function noteRead(owner: unknown, event: ReadEvent): void {
+  if (counting(owner)) recording!.reads.push(event);
+}
+
+const ownerOf = (reference: unknown): unknown => (reference as { firestore?: unknown } | null)?.firestore;
 
 // ---- query shapes ------------------------------------------------------------------------------------------------------
 
@@ -181,7 +198,7 @@ function wrapReads<T extends Record<string, unknown>>(actual: T): Record<string,
   for (const name of ['getDoc', 'getDocFromServer']) {
     wrap(name, original => async (reference, ...rest) => {
       const snapshot = await original(reference, ...rest);
-      noteRead({ form: 'doc', key: normalizePath((reference as { path: string }).path), documents: 1, billed: 1 });
+      noteRead(ownerOf(reference), { form: 'doc', key: normalizePath((reference as { path: string }).path), documents: 1, billed: 1 });
       return snapshot;
     });
   }
@@ -189,7 +206,7 @@ function wrapReads<T extends Record<string, unknown>>(actual: T): Record<string,
     wrap(name, original => async (target, ...rest) => {
       const snapshot = await original(target, ...rest) as { size: number };
       const shape = shapeOf(target);
-      noteRead({
+      noteRead(ownerOf(target), {
         form: 'query', key: shape?.collection ?? 'unknown-query', documents: snapshot.size, billed: Math.max(1, snapshot.size),
         ...(shape ? { shape } : {}),
       });
@@ -203,13 +220,13 @@ function wrapReads<T extends Record<string, unknown>>(actual: T): Record<string,
     const key = normalizePath(reference.path ?? '');
     let last: string | null | undefined;
     const countable = (snapshot: { metadata?: { fromCache?: boolean }; exists?: () => boolean; data?: () => unknown }) => {
-      if (snapshot.metadata?.fromCache) return;
+      if (last !== undefined && snapshot.metadata?.fromCache) return;
       const fingerprint = snapshot.exists?.() ? JSON.stringify(snapshot.data?.(), (_key, value) => (
         value && typeof value === 'object' && typeof (value as { toMillis?: unknown }).toMillis === 'function' ? (value as { toMillis(): number }).toMillis() : value
       )) : null;
       if (last !== undefined && fingerprint === last) return;
       last = fingerprint;
-      noteRead({ form: 'listener-doc', key, documents: 1, billed: 1 });
+      noteRead(ownerOf(target), { form: 'listener-doc', key, documents: 1, billed: 1 });
     };
     const args = [...rest];
     const callbackIndex = args.findIndex(item => typeof item === 'function' || (typeof item === 'object' && item !== null && 'next' in item));
@@ -229,7 +246,7 @@ function wrapReads<T extends Record<string, unknown>>(actual: T): Record<string,
       const metered = {
         get: async (reference: { path: string }) => {
           const snapshot = await tx.get(reference as never);
-          noteRead({ form: 'tx-doc', key: normalizePath(reference.path), documents: 1, billed: 1 });
+          noteRead(db, { form: 'tx-doc', key: normalizePath(reference.path), documents: 1, billed: 1 });
           return snapshot;
         },
         set: (reference: { path: string }, data: DocumentData, setOptions?: unknown) => {
@@ -251,7 +268,7 @@ function wrapReads<T extends Record<string, unknown>>(actual: T): Record<string,
       return (update as AnyFn)(metered);
     }, options) as Promise<unknown>;
     return run.then(result => {
-      recording?.writes.push(...attempt);
+      if (counting(db)) recording!.writes.push(...attempt);
       return result;
     });
   });
