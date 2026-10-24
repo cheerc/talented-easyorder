@@ -1,5 +1,2307 @@
 {
   "schemaVersion": 1,
-  "operations": {},
-  "rules": {}
+  "operations": {
+    "command.BackfillOpeningCash": {
+      "reads": {
+        "fixed": 15,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 18,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 18,
+        "perUnit": 0
+      },
+      "writes": 3,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update days/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.CancelKeepDeposit": {
+      "reads": {
+        "fixed": 17,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "writes": 5,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "tx-doc students/*": 1,
+          "tx-doc transactions/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update students/*": 1,
+          "update days/*": 1,
+          "update transactions/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.CancelRefund": {
+      "reads": {
+        "fixed": 17,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "writes": 5,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "tx-doc students/*": 1,
+          "tx-doc transactions/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update students/*": 1,
+          "update days/*": 1,
+          "update transactions/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.ChangeStudentCode": {
+      "reads": {
+        "fixed": 17,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "writes": 4,
+      "deletes": 1,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc students/*": 1,
+          "tx-doc studentCodes/*": 2,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update students/*": 1,
+          "set studentCodes/*": 1,
+          "delete studentCodes/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.CloseDay": {
+      "reads": {
+        "fixed": 26,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 39,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 39,
+        "perUnit": 0
+      },
+      "writes": 4,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 7,
+          "doc days/*": 1,
+          "query days/*/settlements": 1,
+          "doc commands/*": 2,
+          "doc system/accessLease": 4,
+          "query days": 1,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "tx-doc backfillDays/*": 1,
+          "tx-doc days/*/settlements/*": 1
+        },
+        "writes": {
+          "update days/*": 1,
+          "set days/*/settlements/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.CorrectOpening": {
+      "reads": {
+        "fixed": 16,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 20,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 20,
+        "perUnit": 0
+      },
+      "writes": 4,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "tx-doc students/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update students/*": 1,
+          "update days/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.CorrectTransaction": {
+      "reads": {
+        "fixed": 17,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "writes": 5,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "tx-doc students/*": 1,
+          "tx-doc transactions/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update students/*": 1,
+          "update days/*": 1,
+          "update transactions/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.CreateCashMovement": {
+      "reads": {
+        "fixed": 16,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 20,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 20,
+        "perUnit": 0
+      },
+      "writes": 4,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "tx-doc transactions/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update days/*": 1,
+          "set transactions/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.CreateOrder": {
+      "reads": {
+        "fixed": 17,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "writes": 5,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "tx-doc students/*": 1,
+          "tx-doc transactions/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update students/*": 1,
+          "update days/*": 1,
+          "set transactions/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.CreatePayment": {
+      "reads": {
+        "fixed": 17,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "writes": 5,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "tx-doc students/*": 1,
+          "tx-doc transactions/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update students/*": 1,
+          "update days/*": 1,
+          "set transactions/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.CreateRefund": {
+      "reads": {
+        "fixed": 17,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "writes": 5,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "tx-doc students/*": 1,
+          "tx-doc transactions/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update students/*": 1,
+          "update days/*": 1,
+          "set transactions/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.CreateStudent": {
+      "reads": {
+        "fixed": 16,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 20,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 20,
+        "perUnit": 0
+      },
+      "writes": 4,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc students/*": 1,
+          "tx-doc studentCodes/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "set students/*": 1,
+          "set studentCodes/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.EditStudent": {
+      "reads": {
+        "fixed": 15,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 18,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 18,
+        "perUnit": 0
+      },
+      "writes": 3,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc students/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update students/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.EnsureDay": {
+      "reads": {
+        "fixed": 15,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 18,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 18,
+        "perUnit": 0
+      },
+      "writes": 3,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "set days/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.RecordBackup": {
+      "reads": {
+        "fixed": 14,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 16,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 16,
+        "perUnit": 0
+      },
+      "writes": 2,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.RecordExport": {
+      "reads": {
+        "fixed": 14,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 16,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 16,
+        "perUnit": 0
+      },
+      "writes": 2,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.RecordPostCloseEntry": {
+      "reads": {
+        "fixed": 16,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 20,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 20,
+        "perUnit": 0
+      },
+      "writes": 3,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "tx-doc postCloseEntries/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "set postCloseEntries/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.RecordPrint": {
+      "reads": {
+        "fixed": 14,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 16,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 16,
+        "perUnit": 0
+      },
+      "writes": 2,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.RemoveVendor": {
+      "reads": {
+        "fixed": 15,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 18,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 18,
+        "perUnit": 0
+      },
+      "writes": 3,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc vendors/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update vendors/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.ReopenDay": {
+      "reads": {
+        "fixed": 17,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "writes": 4,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "tx-doc days/*/settlements/*": 2,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update days/*": 1,
+          "set days/*/settlements/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.SaveVendor": {
+      "reads": {
+        "fixed": 15,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 18,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 18,
+        "perUnit": 0
+      },
+      "writes": 3,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc vendors/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "set vendors/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.SetDayMenu": {
+      "reads": {
+        "fixed": 16,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 20,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 20,
+        "perUnit": 0
+      },
+      "writes": 3,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "tx-doc vendors/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update days/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.SetOpeningCash": {
+      "reads": {
+        "fixed": 15,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 18,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 18,
+        "perUnit": 0
+      },
+      "writes": 3,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update days/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.SetStudentStatus": {
+      "reads": {
+        "fixed": 15,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 18,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 18,
+        "perUnit": 0
+      },
+      "writes": 3,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc students/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update students/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.StartBackfill": {
+      "reads": {
+        "fixed": 16,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 20,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 20,
+        "perUnit": 0
+      },
+      "writes": 3,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "tx-doc backfillDays/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "set backfillDays/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.Undo": {
+      "reads": {
+        "fixed": 17,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "writes": 5,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "tx-doc students/*": 1,
+          "tx-doc transactions/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update students/*": 1,
+          "update days/*": 1,
+          "update transactions/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "command.VoidTransaction": {
+      "reads": {
+        "fixed": 17,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 22,
+        "perUnit": 0
+      },
+      "writes": 5,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 3,
+          "doc system/accessLease": 3,
+          "doc operators/*": 3,
+          "tx-doc commands/*": 1,
+          "tx-doc system/dataHead": 1,
+          "tx-doc operators/*": 1,
+          "tx-doc system/accessLease": 1,
+          "tx-doc days/*": 1,
+          "tx-doc students/*": 1,
+          "tx-doc transactions/*": 1,
+          "doc commands/*": 1
+        },
+        "writes": {
+          "update students/*": 1,
+          "update days/*": 1,
+          "update transactions/*": 1,
+          "update system/dataHead": 1,
+          "set commands/*": 1
+        }
+      }
+    },
+    "lease.acquire": {
+      "reads": {
+        "fixed": 2,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 2,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 2,
+        "perUnit": 0
+      },
+      "writes": 2,
+      "deletes": 0,
+      "rulesCommit": {
+        "commitAccessCalls": 6,
+        "commitDistinctDocuments": 3,
+        "source": "p05 P13c1: lease update 3 + accessEvents create 3"
+      },
+      "detail": {
+        "reads": {
+          "tx-doc system/accessLease": 1,
+          "doc system/accessLease": 1
+        },
+        "writes": {
+          "update system/accessLease": 1,
+          "set accessEvents/*": 1
+        }
+      }
+    },
+    "lease.listenerSnapshot": {
+      "reads": {
+        "fixed": 1,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 1,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 1,
+        "perUnit": 0
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "listener-doc system/accessLease": 1
+        },
+        "writes": {}
+      }
+    },
+    "lease.release": {
+      "reads": {
+        "fixed": 2,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 2,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 2,
+        "perUnit": 0
+      },
+      "writes": 2,
+      "deletes": 0,
+      "rulesCommit": {
+        "commitAccessCalls": 6,
+        "commitDistinctDocuments": 3,
+        "source": "p05 P13c1: lease update 3 + accessEvents create 3"
+      },
+      "detail": {
+        "reads": {
+          "tx-doc system/accessLease": 1,
+          "doc system/accessLease": 1
+        },
+        "writes": {
+          "update system/accessLease": 1,
+          "set accessEvents/*": 1
+        }
+      }
+    },
+    "lease.renew": {
+      "reads": {
+        "fixed": 2,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 2,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 2,
+        "perUnit": 0
+      },
+      "writes": 1,
+      "deletes": 0,
+      "rulesCommit": {
+        "commitAccessCalls": 1,
+        "commitDistinctDocuments": 1,
+        "source": "p05 P13c1: renew reads the operator once"
+      },
+      "detail": {
+        "reads": {
+          "tx-doc system/accessLease": 1,
+          "doc system/accessLease": 1
+        },
+        "writes": {
+          "update system/accessLease": 1
+        }
+      }
+    },
+    "lease.status": {
+      "reads": {
+        "fixed": 1,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 1,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 1,
+        "perUnit": 0
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/accessLease": 1
+        },
+        "writes": {}
+      }
+    },
+    "lease.takeover": {
+      "reads": {
+        "fixed": 2,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 2,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 2,
+        "perUnit": 0
+      },
+      "writes": 2,
+      "deletes": 0,
+      "rulesCommit": {
+        "commitAccessCalls": 6,
+        "commitDistinctDocuments": 3,
+        "source": "p05 P13c1: lease update 3 + accessEvents create 3"
+      },
+      "detail": {
+        "reads": {
+          "tx-doc system/accessLease": 1,
+          "doc system/accessLease": 1
+        },
+        "writes": {
+          "update system/accessLease": 1,
+          "set accessEvents/*": 1
+        }
+      }
+    },
+    "listener.operatorDocument": {
+      "reads": {
+        "fixed": 1,
+        "perUnit": 0
+      },
+      "readAuthorization": {
+        "fixed": 0,
+        "perUnit": 0
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 0,
+        "perUnit": 0
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "listener-doc operators/*": 1
+        },
+        "writes": {}
+      }
+    },
+    "load.accessEvents": {
+      "unit": "accessEvent",
+      "reads": {
+        "fixed": 12,
+        "perUnit": 1.02
+      },
+      "readAuthorization": {
+        "fixed": 18,
+        "perUnit": 0.04
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 18,
+        "perUnit": 0.04
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "pageSizes": [
+          6,
+          12
+        ],
+        "productionPageSize": 100,
+        "small": [
+          {
+            "units": 6,
+            "reads": 18,
+            "authorization": 18,
+            "authQueries": 2,
+            "readsByKey": {
+              "doc system/dataHead": 5,
+              "doc system/accessLease": 5,
+              "query accessEvents": 7,
+              "doc accessEvents/*": 1
+            }
+          },
+          {
+            "units": 12,
+            "reads": 26,
+            "authorization": 22,
+            "authQueries": 3,
+            "readsByKey": {
+              "doc system/dataHead": 6,
+              "doc system/accessLease": 6,
+              "query accessEvents": 13,
+              "doc accessEvents/*": 1
+            }
+          },
+          {
+            "units": 18,
+            "reads": 34,
+            "authorization": 26,
+            "authQueries": 4,
+            "readsByKey": {
+              "doc system/dataHead": 7,
+              "doc system/accessLease": 7,
+              "query accessEvents": 19,
+              "doc accessEvents/*": 1
+            }
+          }
+        ],
+        "large": [
+          {
+            "units": 6,
+            "reads": 15,
+            "authorization": 14,
+            "authQueries": 1
+          },
+          {
+            "units": 12,
+            "reads": 24,
+            "authorization": 18,
+            "authQueries": 2
+          },
+          {
+            "units": 18,
+            "reads": 29,
+            "authorization": 18,
+            "authQueries": 2
+          }
+        ]
+      }
+    },
+    "load.accountHistory": {
+      "unit": "studentTransaction",
+      "reads": {
+        "fixed": 28,
+        "perUnit": 5.08
+      },
+      "readAuthorization": {
+        "fixed": 56,
+        "perUnit": 0.2
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 56,
+        "perUnit": 0.2
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "pageSizes": [
+          6,
+          12
+        ],
+        "productionPageSize": 100,
+        "small": [
+          {
+            "units": 6,
+            "reads": 58,
+            "authorization": 56,
+            "authQueries": 18,
+            "readsByKey": {
+              "doc system/dataHead": 12,
+              "doc system/accessLease": 10,
+              "query students": 6,
+              "doc days/*": 1,
+              "doc backfillDays/*": 1,
+              "query transactions": 28
+            }
+          },
+          {
+            "units": 12,
+            "reads": 96,
+            "authorization": 76,
+            "authQueries": 26,
+            "readsByKey": {
+              "doc system/dataHead": 16,
+              "doc system/accessLease": 14,
+              "query students": 12,
+              "doc days/*": 1,
+              "doc backfillDays/*": 1,
+              "query transactions": 52
+            }
+          },
+          {
+            "units": 18,
+            "reads": 134,
+            "authorization": 96,
+            "authQueries": 34,
+            "readsByKey": {
+              "doc system/dataHead": 20,
+              "doc system/accessLease": 18,
+              "query students": 18,
+              "doc days/*": 1,
+              "doc backfillDays/*": 1,
+              "query transactions": 76
+            }
+          }
+        ],
+        "large": [
+          {
+            "units": 6,
+            "reads": 46,
+            "authorization": 36,
+            "authQueries": 10
+          },
+          {
+            "units": 12,
+            "reads": 88,
+            "authorization": 56,
+            "authQueries": 18
+          },
+          {
+            "units": 18,
+            "reads": 114,
+            "authorization": 56,
+            "authQueries": 18
+          }
+        ]
+      }
+    },
+    "load.auditDay": {
+      "unit": "dayCommand",
+      "reads": {
+        "fixed": 11.333333,
+        "perUnit": 2.04
+      },
+      "readAuthorization": {
+        "fixed": 24.333333,
+        "perUnit": 0.1
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 24.333333,
+        "perUnit": 0.1
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "pageSizes": [
+          6,
+          12
+        ],
+        "productionPageSize": 100,
+        "small": [
+          {
+            "units": 8,
+            "reads": 28,
+            "authorization": 26,
+            "authQueries": 8,
+            "readsByKey": {
+              "doc system/dataHead": 6,
+              "doc system/accessLease": 6,
+              "query commands": 16
+            }
+          },
+          {
+            "units": 14,
+            "reads": 44,
+            "authorization": 36,
+            "authQueries": 12,
+            "readsByKey": {
+              "doc system/dataHead": 8,
+              "doc system/accessLease": 8,
+              "query commands": 28
+            }
+          },
+          {
+            "units": 20,
+            "reads": 60,
+            "authorization": 46,
+            "authQueries": 16,
+            "readsByKey": {
+              "doc system/dataHead": 10,
+              "doc system/accessLease": 10,
+              "query commands": 40
+            }
+          }
+        ],
+        "large": [
+          {
+            "units": 8,
+            "reads": 24,
+            "authorization": 16,
+            "authQueries": 4
+          },
+          {
+            "units": 14,
+            "reads": 40,
+            "authorization": 26,
+            "authQueries": 8
+          },
+          {
+            "units": 20,
+            "reads": 52,
+            "authorization": 26,
+            "authQueries": 8
+          }
+        ]
+      }
+    },
+    "load.auditStudent": {
+      "unit": "studentCommand",
+      "reads": {
+        "fixed": 11.666667,
+        "perUnit": 2.04
+      },
+      "readAuthorization": {
+        "fixed": 25.166667,
+        "perUnit": 0.1
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 25.166667,
+        "perUnit": 0.1
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "pageSizes": [
+          6,
+          12
+        ],
+        "productionPageSize": 100,
+        "small": [
+          {
+            "units": 7,
+            "reads": 26,
+            "authorization": 26,
+            "authQueries": 8,
+            "readsByKey": {
+              "doc system/dataHead": 6,
+              "doc system/accessLease": 6,
+              "query commands": 14
+            }
+          },
+          {
+            "units": 13,
+            "reads": 42,
+            "authorization": 36,
+            "authQueries": 12,
+            "readsByKey": {
+              "doc system/dataHead": 8,
+              "doc system/accessLease": 8,
+              "query commands": 26
+            }
+          },
+          {
+            "units": 19,
+            "reads": 58,
+            "authorization": 46,
+            "authQueries": 16,
+            "readsByKey": {
+              "doc system/dataHead": 10,
+              "doc system/accessLease": 10,
+              "query commands": 38
+            }
+          }
+        ],
+        "large": [
+          {
+            "units": 7,
+            "reads": 22,
+            "authorization": 16,
+            "authQueries": 4
+          },
+          {
+            "units": 13,
+            "reads": 38,
+            "authorization": 26,
+            "authQueries": 8
+          },
+          {
+            "units": 19,
+            "reads": 50,
+            "authorization": 26,
+            "authQueries": 8
+          }
+        ]
+      }
+    },
+    "load.backupExport": {
+      "unit": "command",
+      "reads": {
+        "fixed": 2.54,
+        "perUnit": 1.99
+      },
+      "readAuthorization": {
+        "fixed": 6.64,
+        "perUnit": 2.0192
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 6.64,
+        "perUnit": 2.0192
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "pageSizes": [
+          6,
+          12
+        ],
+        "productionPageSize": 100,
+        "small": [
+          {
+            "units": 54,
+            "reads": 110,
+            "authorization": 130,
+            "authQueries": 20,
+            "readsByKey": {
+              "doc system/dataHead": 1,
+              "query commands": 55,
+              "doc commands/*": 54
+            }
+          },
+          {
+            "units": 104,
+            "reads": 209,
+            "authorization": 246,
+            "authQueries": 36,
+            "readsByKey": {
+              "doc system/dataHead": 1,
+              "query commands": 104,
+              "doc commands/*": 104
+            }
+          },
+          {
+            "units": 154,
+            "reads": 309,
+            "authorization": 362,
+            "authQueries": 52,
+            "readsByKey": {
+              "doc system/dataHead": 1,
+              "query commands": 154,
+              "doc commands/*": 154
+            }
+          }
+        ],
+        "large": [
+          {
+            "units": 54,
+            "reads": 109,
+            "authorization": 120,
+            "authQueries": 10
+          },
+          {
+            "units": 104,
+            "reads": 209,
+            "authorization": 228,
+            "authQueries": 18
+          },
+          {
+            "units": 154,
+            "reads": 309,
+            "authorization": 336,
+            "authQueries": 26
+          }
+        ]
+      }
+    },
+    "load.dayCloseOverview": {
+      "unit": "unclosedDay",
+      "reads": {
+        "fixed": 5,
+        "perUnit": 1
+      },
+      "readAuthorization": {
+        "fixed": 13,
+        "perUnit": 0.02
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 13,
+        "perUnit": 0.02
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "points": [
+          {
+            "units": 6,
+            "reads": 11,
+            "authorization": 9,
+            "authQueries": 4,
+            "readsByKey": {
+              "doc system/dataHead": 2,
+              "doc system/accessLease": 1,
+              "query days": 7,
+              "query backfillDays": 1
+            }
+          },
+          {
+            "units": 12,
+            "reads": 17,
+            "authorization": 9,
+            "authQueries": 4,
+            "readsByKey": {
+              "doc system/dataHead": 2,
+              "doc system/accessLease": 1,
+              "query days": 13,
+              "query backfillDays": 1
+            }
+          },
+          {
+            "units": 18,
+            "reads": 23,
+            "authorization": 9,
+            "authQueries": 4,
+            "readsByKey": {
+              "doc system/dataHead": 2,
+              "doc system/accessLease": 1,
+              "query days": 19,
+              "query backfillDays": 1
+            }
+          }
+        ],
+        "productionPageSize": 200
+      }
+    },
+    "load.dayCloseState": {
+      "unit": "settlementVersion",
+      "reads": {
+        "fixed": 4,
+        "perUnit": 1
+      },
+      "readAuthorization": {
+        "fixed": 14,
+        "perUnit": 0.02
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 14,
+        "perUnit": 0.02
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "points": [
+          {
+            "units": 1,
+            "reads": 5,
+            "authorization": 10,
+            "authQueries": 4,
+            "readsByKey": {
+              "doc system/dataHead": 2,
+              "doc days/*": 1,
+              "query days/*/settlements": 1,
+              "query postCloseEntries": 1
+            }
+          },
+          {
+            "units": 3,
+            "reads": 7,
+            "authorization": 10,
+            "authQueries": 4,
+            "readsByKey": {
+              "doc system/dataHead": 2,
+              "doc days/*": 1,
+              "query days/*/settlements": 3,
+              "query postCloseEntries": 1
+            }
+          },
+          {
+            "units": 5,
+            "reads": 9,
+            "authorization": 10,
+            "authQueries": 4,
+            "readsByKey": {
+              "doc system/dataHead": 2,
+              "doc days/*": 1,
+              "query days/*/settlements": 5,
+              "query postCloseEntries": 1
+            }
+          }
+        ],
+        "productionPageSize": 200
+      }
+    },
+    "load.dayVendors": {
+      "unit": "vendor",
+      "reads": {
+        "fixed": 14,
+        "perUnit": 3
+      },
+      "readAuthorization": {
+        "fixed": 32,
+        "perUnit": 0.03
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 32,
+        "perUnit": 0.03
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "pageSizes": [
+          6,
+          12
+        ],
+        "productionPageSize": 200,
+        "small": [
+          {
+            "units": 6,
+            "reads": 32,
+            "authorization": 32,
+            "authQueries": 24,
+            "readsByKey": {
+              "doc system/dataHead": 2,
+              "doc system/accessLease": 2,
+              "doc days/*": 1,
+              "query vendors": 7,
+              "query days": 20
+            }
+          },
+          {
+            "units": 12,
+            "reads": 50,
+            "authorization": 38,
+            "authQueries": 30,
+            "readsByKey": {
+              "doc system/dataHead": 2,
+              "doc system/accessLease": 2,
+              "doc days/*": 1,
+              "query vendors": 13,
+              "query days": 32
+            }
+          },
+          {
+            "units": 18,
+            "reads": 68,
+            "authorization": 44,
+            "authQueries": 36,
+            "readsByKey": {
+              "doc system/dataHead": 2,
+              "doc system/accessLease": 2,
+              "doc days/*": 1,
+              "query vendors": 19,
+              "query days": 44
+            }
+          }
+        ],
+        "large": [
+          {
+            "units": 6,
+            "reads": 29,
+            "authorization": 26,
+            "authQueries": 18
+          },
+          {
+            "units": 12,
+            "reads": 50,
+            "authorization": 32,
+            "authQueries": 24
+          },
+          {
+            "units": 18,
+            "reads": 65,
+            "authorization": 32,
+            "authQueries": 24
+          }
+        ]
+      }
+    },
+    "load.ledgerScan": {
+      "unit": "day",
+      "reads": {
+        "fixed": 12.666667,
+        "perUnit": 1.005
+      },
+      "readAuthorization": {
+        "fixed": 27.666667,
+        "perUnit": 0.02
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 27.666667,
+        "perUnit": 0.02
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "pageSizes": [
+          6,
+          12
+        ],
+        "productionPageSize": 200,
+        "small": [
+          {
+            "units": 14,
+            "reads": 28,
+            "authorization": 33,
+            "authQueries": 8,
+            "readsByKey": {
+              "doc system/dataHead": 5,
+              "doc system/accessLease": 1,
+              "query postCloseEntries": 1,
+              "query days": 14,
+              "doc days/*/settlements/*": 7
+            }
+          },
+          {
+            "units": 26,
+            "reads": 42,
+            "authorization": 41,
+            "authQueries": 12,
+            "readsByKey": {
+              "doc system/dataHead": 7,
+              "doc system/accessLease": 1,
+              "query postCloseEntries": 1,
+              "query days": 26,
+              "doc days/*/settlements/*": 7
+            }
+          },
+          {
+            "units": 38,
+            "reads": 56,
+            "authorization": 49,
+            "authQueries": 16,
+            "readsByKey": {
+              "doc system/dataHead": 9,
+              "doc system/accessLease": 1,
+              "query postCloseEntries": 1,
+              "query days": 38,
+              "doc days/*/settlements/*": 7
+            }
+          }
+        ],
+        "large": [
+          {
+            "units": 14,
+            "reads": 20,
+            "authorization": 15,
+            "authQueries": 6
+          },
+          {
+            "units": 26,
+            "reads": 33,
+            "authorization": 19,
+            "authQueries": 8
+          },
+          {
+            "units": 38,
+            "reads": 46,
+            "authorization": 23,
+            "authQueries": 10
+          }
+        ]
+      }
+    },
+    "load.orders": {
+      "unit": "dayTransaction",
+      "reads": {
+        "fixed": 13,
+        "perUnit": 3
+      },
+      "readAuthorization": {
+        "fixed": 27,
+        "perUnit": 0.01
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 27,
+        "perUnit": 0.01
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "pageSizes": [
+          6,
+          12
+        ],
+        "productionPageSize": 200,
+        "small": [
+          {
+            "units": 6,
+            "reads": 31,
+            "authorization": 27,
+            "authQueries": 10,
+            "readsByKey": {
+              "doc system/dataHead": 6,
+              "doc system/accessLease": 3,
+              "doc days/*": 1,
+              "query students": 6,
+              "query transactions": 7,
+              "query days": 7,
+              "query backfillDays": 1
+            }
+          },
+          {
+            "units": 12,
+            "reads": 49,
+            "authorization": 29,
+            "authQueries": 12,
+            "readsByKey": {
+              "doc system/dataHead": 6,
+              "doc system/accessLease": 3,
+              "doc days/*": 1,
+              "query students": 12,
+              "query transactions": 13,
+              "query days": 13,
+              "query backfillDays": 1
+            }
+          },
+          {
+            "units": 18,
+            "reads": 67,
+            "authorization": 31,
+            "authQueries": 14,
+            "readsByKey": {
+              "doc system/dataHead": 6,
+              "doc system/accessLease": 3,
+              "doc days/*": 1,
+              "query students": 18,
+              "query transactions": 19,
+              "query days": 19,
+              "query backfillDays": 1
+            }
+          }
+        ],
+        "large": [
+          {
+            "units": 6,
+            "reads": 30,
+            "authorization": 25,
+            "authQueries": 8
+          },
+          {
+            "units": 12,
+            "reads": 49,
+            "authorization": 27,
+            "authQueries": 10
+          },
+          {
+            "units": 18,
+            "reads": 66,
+            "authorization": 27,
+            "authQueries": 10
+          }
+        ]
+      }
+    },
+    "load.report": {
+      "unit": "dayTransaction",
+      "reads": {
+        "fixed": 28,
+        "perUnit": 5.08
+      },
+      "readAuthorization": {
+        "fixed": 56,
+        "perUnit": 0.2
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 56,
+        "perUnit": 0.2
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "pageSizes": [
+          6,
+          12
+        ],
+        "productionPageSize": 100,
+        "small": [
+          {
+            "units": 6,
+            "reads": 58,
+            "authorization": 56,
+            "authQueries": 18,
+            "readsByKey": {
+              "doc system/dataHead": 12,
+              "doc system/accessLease": 10,
+              "doc days/*": 1,
+              "doc backfillDays/*": 1,
+              "query transactions": 28,
+              "query students": 6
+            }
+          },
+          {
+            "units": 12,
+            "reads": 96,
+            "authorization": 76,
+            "authQueries": 26,
+            "readsByKey": {
+              "doc system/dataHead": 16,
+              "doc system/accessLease": 14,
+              "doc days/*": 1,
+              "doc backfillDays/*": 1,
+              "query transactions": 52,
+              "query students": 12
+            }
+          },
+          {
+            "units": 18,
+            "reads": 134,
+            "authorization": 96,
+            "authQueries": 34,
+            "readsByKey": {
+              "doc system/dataHead": 20,
+              "doc system/accessLease": 18,
+              "doc days/*": 1,
+              "doc backfillDays/*": 1,
+              "query transactions": 76,
+              "query students": 18
+            }
+          }
+        ],
+        "large": [
+          {
+            "units": 6,
+            "reads": 46,
+            "authorization": 36,
+            "authQueries": 10
+          },
+          {
+            "units": 12,
+            "reads": 88,
+            "authorization": 56,
+            "authQueries": 18
+          },
+          {
+            "units": 18,
+            "reads": 114,
+            "authorization": 56,
+            "authQueries": 18
+          }
+        ]
+      }
+    },
+    "load.students": {
+      "unit": "student",
+      "reads": {
+        "fixed": 2,
+        "perUnit": 1
+      },
+      "readAuthorization": {
+        "fixed": 8,
+        "perUnit": 0.01
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 8,
+        "perUnit": 0.01
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "points": [
+          {
+            "units": 6,
+            "reads": 8,
+            "authorization": 6,
+            "authQueries": 2,
+            "readsByKey": {
+              "doc system/dataHead": 2,
+              "query students": 6
+            }
+          },
+          {
+            "units": 12,
+            "reads": 14,
+            "authorization": 6,
+            "authQueries": 2,
+            "readsByKey": {
+              "doc system/dataHead": 2,
+              "query students": 12
+            }
+          },
+          {
+            "units": 18,
+            "reads": 20,
+            "authorization": 6,
+            "authQueries": 2,
+            "readsByKey": {
+              "doc system/dataHead": 2,
+              "query students": 18
+            }
+          }
+        ],
+        "productionPageSize": 200
+      }
+    },
+    "load.summary": {
+      "unit": "closedDay",
+      "reads": {
+        "fixed": 4,
+        "perUnit": 10
+      },
+      "readAuthorization": {
+        "fixed": 6,
+        "perUnit": 19
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 6,
+        "perUnit": 19
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "pageSizes": [
+          6,
+          12
+        ],
+        "productionPageSize": 100,
+        "small": [
+          {
+            "units": 6,
+            "reads": 64,
+            "authorization": 120,
+            "authQueries": 36,
+            "readsByKey": {
+              "doc system/dataHead": 20,
+              "doc system/accessLease": 8,
+              "doc days/*": 12,
+              "doc backfillDays/*": 6,
+              "query days/*/settlements": 6,
+              "query postCloseEntries": 12
+            }
+          },
+          {
+            "units": 12,
+            "reads": 124,
+            "authorization": 234,
+            "authQueries": 72,
+            "readsByKey": {
+              "doc system/dataHead": 38,
+              "doc system/accessLease": 14,
+              "doc days/*": 24,
+              "doc backfillDays/*": 12,
+              "query days/*/settlements": 12,
+              "query postCloseEntries": 24
+            }
+          },
+          {
+            "units": 18,
+            "reads": 184,
+            "authorization": 348,
+            "authQueries": 108,
+            "readsByKey": {
+              "doc system/dataHead": 56,
+              "doc system/accessLease": 20,
+              "doc days/*": 36,
+              "doc backfillDays/*": 18,
+              "query days/*/settlements": 18,
+              "query postCloseEntries": 36
+            }
+          }
+        ],
+        "large": [
+          {
+            "units": 6,
+            "reads": 64,
+            "authorization": 120,
+            "authQueries": 36
+          },
+          {
+            "units": 12,
+            "reads": 124,
+            "authorization": 234,
+            "authQueries": 72
+          },
+          {
+            "units": 18,
+            "reads": 184,
+            "authorization": 348,
+            "authQueries": 108
+          }
+        ]
+      }
+    }
+  },
+  "rules": {
+    "CreateStudent": {
+      "commitAccessCalls": 15,
+      "commitDistinctDocuments": 6,
+      "source": "p05 P06b 15/20"
+    },
+    "ChangeStudentCode": {
+      "commitAccessCalls": 20,
+      "commitDistinctDocuments": 6,
+      "source": "p05 P06b 20/20"
+    },
+    "EditStudent": {
+      "commitAccessCalls": 11,
+      "commitDistinctDocuments": 5,
+      "source": "p05 P06b 11/20"
+    },
+    "SetStudentStatus": {
+      "commitAccessCalls": 11,
+      "commitDistinctDocuments": 5,
+      "source": "p05 P06b 11/20"
+    },
+    "CorrectOpening": {
+      "commitAccessCalls": 15,
+      "commitDistinctDocuments": 6,
+      "source": "p05 P10b 15/20"
+    },
+    "SaveVendor": {
+      "commitAccessCalls": 11,
+      "commitDistinctDocuments": 5,
+      "source": "p05 P07 11/20"
+    },
+    "RemoveVendor": {
+      "commitAccessCalls": 11,
+      "commitDistinctDocuments": 5,
+      "source": "p05 P07 11/20"
+    },
+    "EnsureDay": {
+      "commitAccessCalls": 11,
+      "commitDistinctDocuments": 5,
+      "source": "p05 EnsureDay 11/20"
+    },
+    "SetDayMenu": {
+      "commitAccessCalls": 17,
+      "commitDistinctDocuments": 5,
+      "source": "p05 P07 inherited menu 17/20 (direct vendor 14/20)"
+    },
+    "SetOpeningCash": {
+      "commitAccessCalls": 11,
+      "commitDistinctDocuments": 5,
+      "source": "p05 P07 11/20"
+    },
+    "CreateOrder": {
+      "commitAccessCalls": 19,
+      "commitDistinctDocuments": 7,
+      "source": "p05 P05 19/20"
+    },
+    "CreatePayment": {
+      "commitAccessCalls": 19,
+      "commitDistinctDocuments": 7,
+      "source": "p05 P05 19/20"
+    },
+    "CreateCashMovement": {
+      "commitAccessCalls": 15,
+      "commitDistinctDocuments": 6,
+      "source": "p05 P09a 15/20"
+    },
+    "CreateRefund": {
+      "commitAccessCalls": 19,
+      "commitDistinctDocuments": 7,
+      "source": "p05 P09b 19/20"
+    },
+    "CorrectTransaction": {
+      "commitAccessCalls": 19,
+      "commitDistinctDocuments": 7,
+      "source": "p05 P10a student row 19/20 (counter-cash row 15/20)"
+    },
+    "VoidTransaction": {
+      "commitAccessCalls": 19,
+      "commitDistinctDocuments": 7,
+      "source": "p05 P10a student row 19/20 (counter-cash row 15/20)"
+    },
+    "CancelKeepDeposit": {
+      "commitAccessCalls": 19,
+      "commitDistinctDocuments": 7,
+      "source": "p05 P10a student row 19/20"
+    },
+    "CancelRefund": {
+      "commitAccessCalls": 19,
+      "commitDistinctDocuments": 7,
+      "source": "p05 P10a student row 19/20"
+    },
+    "Undo": {
+      "commitAccessCalls": 19,
+      "commitDistinctDocuments": 7,
+      "source": "p05 P10a student row 19/20 (counter-cash row 15/20)"
+    },
+    "CloseDay": {
+      "commitAccessCalls": 16,
+      "commitDistinctDocuments": 6,
+      "source": "p05 P11c3 marked day with dated alignment 16/20 (ordinary day 15/20)"
+    },
+    "ReopenDay": {
+      "commitAccessCalls": 16,
+      "commitDistinctDocuments": 6,
+      "source": "p05 P11c3 same shape as CloseDay, 16/20 as the upper bound"
+    },
+    "BackfillOpeningCash": {
+      "commitAccessCalls": 10,
+      "commitDistinctDocuments": 5,
+      "source": "p05 P11b 10/20"
+    },
+    "StartBackfill": {
+      "commitAccessCalls": 20,
+      "commitDistinctDocuments": 5,
+      "source": "platform cap 20/20: p05 has no per-kind figure"
+    },
+    "RecordPostCloseEntry": {
+      "commitAccessCalls": 11,
+      "commitDistinctDocuments": 5,
+      "source": "p05 P11c4a 11/20"
+    },
+    "RecordExport": {
+      "commitAccessCalls": 7,
+      "commitDistinctDocuments": 4,
+      "source": "p05 P12b 7/20"
+    },
+    "RecordPrint": {
+      "commitAccessCalls": 7,
+      "commitDistinctDocuments": 4,
+      "source": "p05 P12b 7/20"
+    },
+    "RecordBackup": {
+      "commitAccessCalls": 20,
+      "commitDistinctDocuments": 4,
+      "source": "platform cap 20/20: p05 has no per-kind figure"
+    }
+  }
 }
