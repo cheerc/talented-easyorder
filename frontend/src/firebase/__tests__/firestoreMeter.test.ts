@@ -6,7 +6,29 @@ import { meter, normalizePath, wrapFirestoreMeterModule } from './helpers/firest
  * the production repositories make, and must not change what the wrapped functions return.
  */
 interface FakeRef { path: string; type?: string }
+interface FakeTx {
+  get(ref: FakeRef): Promise<unknown>;
+  set(ref: FakeRef, data: object): unknown;
+  update(ref: FakeRef, data: object): unknown;
+  delete(ref: FakeRef): unknown;
+}
 const fieldPath = (name: string) => ({ _internalPath: { canonicalString: () => name } });
+
+/** The calls the tests make; the fake itself ignores its arguments. */
+interface FakeApi {
+  collection(db: unknown, path: string): FakeRef;
+  doc(db: unknown, path: string): FakeRef;
+  documentId(): unknown;
+  where(field: unknown, op: string, value: unknown): unknown;
+  orderBy(field: unknown, direction?: string): unknown;
+  limit(count: number): unknown;
+  startAfter(...values: unknown[]): unknown;
+  query(base: unknown, ...constraints: unknown[]): unknown;
+  getDocs(target: unknown): Promise<{ size: number }>;
+  getDocsFromServer(target: unknown): Promise<{ size: number }>;
+  getDocFromServer(reference: unknown): Promise<unknown>;
+  runTransaction(db: unknown, update: (tx: FakeTx) => Promise<unknown>): Promise<unknown>;
+}
 
 function fakeModule(options: { rowsPerQuery?: number; attemptsBeforeCommit?: number; failCommit?: boolean } = {}) {
   const rows = options.rowsPerQuery ?? 0;
@@ -24,12 +46,12 @@ function fakeModule(options: { rowsPerQuery?: number; attemptsBeforeCommit?: num
     getDocsFromServer: async () => ({ size: rows, docs: Array.from({ length: rows }) }),
     getDoc: async () => ({ exists: () => false }),
     getDocFromServer: async () => ({ exists: () => false }),
-    runTransaction: async (_db: unknown, update: (tx: unknown) => Promise<unknown>) => {
+    runTransaction: async (_db: unknown, update: (tx: FakeTx) => Promise<unknown>) => {
       const attempts = options.attemptsBeforeCommit ?? 1;
       let result: unknown;
       for (let attempt = 1; attempt <= attempts; attempt += 1) {
         calls.push(`attempt ${attempt}`);
-        const tx = {
+        const tx: FakeTx = {
           get: async () => ({ exists: () => true }),
           set: () => tx,
           update: () => tx,
@@ -41,7 +63,7 @@ function fakeModule(options: { rowsPerQuery?: number; attemptsBeforeCommit?: num
       return result;
     },
   };
-  return { mod: wrapFirestoreMeterModule(mod as unknown as Record<string, unknown>) as unknown as typeof mod, calls };
+  return { mod: wrapFirestoreMeterModule(mod as unknown as Record<string, unknown>) as unknown as FakeApi, calls };
 }
 
 describe('P16d meter: paths', () => {
@@ -104,7 +126,7 @@ describe('P16d meter: reads', () => {
 describe('P16d meter: transactions', () => {
   it('counts every tx.get and only the writes of a transaction that committed', async () => {
     const { mod } = fakeModule();
-    const { report } = await meter.measure(() => mod.runTransaction(null, async (tx: any) => {
+    const { report } = await meter.measure(() => mod.runTransaction(null, async (tx: FakeTx) => {
       await tx.get({ path: 'commands/c1' });
       await tx.get({ path: 'system/dataHead' });
       tx.set({ path: 'commands/c1' }, { kind: 'x' });
@@ -119,7 +141,7 @@ describe('P16d meter: transactions', () => {
 
   it('counts the reads of every attempt of a retried transaction but the writes of the last attempt only', async () => {
     const { mod, calls } = fakeModule({ attemptsBeforeCommit: 3 });
-    const { report } = await meter.measure(() => mod.runTransaction(null, async (tx: any) => {
+    const { report } = await meter.measure(() => mod.runTransaction(null, async (tx: FakeTx) => {
       await tx.get({ path: 'system/dataHead' });
       tx.update({ path: 'system/dataHead' }, { seq: 1 });
     }));
@@ -131,7 +153,7 @@ describe('P16d meter: transactions', () => {
   it('counts the reads but no write of a transaction that was refused, and lets the error through', async () => {
     const { mod } = fakeModule({ failCommit: true });
     meter.start();
-    await expect(mod.runTransaction(null, async (tx: any) => {
+    await expect(mod.runTransaction(null, async (tx: FakeTx) => {
       await tx.get({ path: 'system/dataHead' });
       tx.update({ path: 'system/dataHead' }, { seq: 1 });
     })).rejects.toThrow('refused');
