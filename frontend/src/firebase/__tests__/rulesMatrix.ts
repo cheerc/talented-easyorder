@@ -29,21 +29,75 @@ export interface KindMatrixEntry {
   notApplicable: Partial<Record<MutationId, string>>;
 }
 
-export const KIND_MATRIX: Partial<Record<BusinessCommandKind, KindMatrixEntry>> = {};
+/** The scenario step of every kind, in the order `cloudRulesMatrix.spec.ts` runs them. All ten classes apply to all kinds: no cell is skipped. */
+export const KIND_MATRIX: Partial<Record<BusinessCommandKind, KindMatrixEntry>> = {
+  CreateStudent: { step: 'S01 CreateStudent', notApplicable: {} },
+  ChangeStudentCode: { step: 'S02 ChangeStudentCode', notApplicable: {} },
+  EditStudent: { step: 'S03 EditStudent', notApplicable: {} },
+  SetStudentStatus: { step: 'S04 SetStudentStatus', notApplicable: {} },
+  SaveVendor: { step: 'S05 SaveVendor', notApplicable: {} },
+  RemoveVendor: { step: 'S06 RemoveVendor', notApplicable: {} },
+  EnsureDay: { step: 'S07 EnsureDay', notApplicable: {} },
+  BackfillOpeningCash: { step: 'S08 BackfillOpeningCash', notApplicable: {} },
+  StartBackfill: { step: 'S09 StartBackfill', notApplicable: {} },
+  CloseDay: { step: 'S10 CloseDay', notApplicable: {} },
+  RecordPostCloseEntry: { step: 'S11 RecordPostCloseEntry', notApplicable: {} },
+  SetDayMenu: { step: 'S12 SetDayMenu', notApplicable: {} },
+  SetOpeningCash: { step: 'S13 SetOpeningCash', notApplicable: {} },
+  CorrectOpening: { step: 'S14 CorrectOpening', notApplicable: {} },
+  CreateOrder: { step: 'S15 CreateOrder', notApplicable: {} },
+  CorrectTransaction: { step: 'S16 CorrectTransaction', notApplicable: {} },
+  CancelKeepDeposit: { step: 'S17 CancelKeepDeposit', notApplicable: {} },
+  CancelRefund: { step: 'S18 CancelRefund', notApplicable: {} },
+  CreatePayment: { step: 'S19 CreatePayment', notApplicable: {} },
+  Undo: { step: 'S20 Undo', notApplicable: {} },
+  CreateCashMovement: { step: 'S21 CreateCashMovement', notApplicable: {} },
+  CreateRefund: { step: 'S22 CreateRefund', notApplicable: {} },
+  VoidTransaction: { step: 'S23 VoidTransaction', notApplicable: {} },
+  ReopenDay: { step: 'S24 ReopenDay', notApplicable: {} },
+  RecordExport: { step: 'S25 RecordExport', notApplicable: {} },
+  RecordPrint: { step: 'S26 RecordPrint', notApplicable: {} },
+  RecordBackup: { step: 'S27 RecordBackup', notApplicable: {} },
+};
 
 export type Readers = 'holder' | 'approved' | 'self' | 'none';
 
 export interface CollectionMatrixEntry {
   /** The `match` pattern exactly as written in `firestore.rules`, below `/databases/{database}/documents`. */
   match: string;
-  /** A document of this collection that exists when the collection matrix runs. */
+  /**
+   * A document of this match that exists when the collection matrix runs. The spec resolves the placeholders
+   * `{operator}`, `{event}`, `{today}`, `{gap}`, `{alpha}`, `{vendor}`, `{code}`, `{command}`, `{transaction}`, `{entry}`, `{settlement}` from the scenario.
+   */
   doc: string;
-  /** The collection to list; null when the Rules never allow a list. */
-  collection: string | null;
+  /** The collection that is listed to probe `list`. */
+  listPath: string;
+  /** Whether the Rules let `readers` list that collection (a list under limit 5 is probed under every identity). */
+  listable: boolean;
   /** Who may read: the lease holder only, any approved operator, the signed-in user for their own document, or nobody. */
   readers: Readers;
-  /** Writes that the lease holder must be refused when they come without a command. */
+  /** Writes that the lease holder must be refused when they come without a command (a bare create re-sends the document that exists). */
   bareWrites: Array<'create' | 'update' | 'delete'>;
 }
 
-export const COLLECTION_MATRIX: CollectionMatrixEntry[] = [];
+const ALL_BARE: Array<'create' | 'update' | 'delete'> = ['create', 'update', 'delete'];
+
+export const COLLECTION_MATRIX: CollectionMatrixEntry[] = [
+  { match: '/operators/{uid}', doc: 'operators/{operator}', listPath: 'operators', listable: false, readers: 'self', bareWrites: ALL_BARE },
+  // The holder renews the lease with a bare update on purpose, so only create and delete are refused here.
+  { match: '/system/accessLease', doc: 'system/accessLease', listPath: 'system', listable: false, readers: 'approved', bareWrites: ['create', 'delete'] },
+  { match: '/accessEvents/{eventId}', doc: 'accessEvents/{event}', listPath: 'accessEvents', listable: true, readers: 'approved', bareWrites: ALL_BARE },
+  { match: '/system/dataHead', doc: 'system/dataHead', listPath: 'system', listable: false, readers: 'holder', bareWrites: ALL_BARE },
+  { match: '/commands/{commandId}', doc: 'commands/{command}', listPath: 'commands', listable: true, readers: 'holder', bareWrites: ALL_BARE },
+  { match: '/days/{dayId}', doc: 'days/{today}', listPath: 'days', listable: true, readers: 'holder', bareWrites: ALL_BARE },
+  { match: '/days/{dayId}/settlements/{revision}', doc: 'days/{gap}/settlements/{settlement}', listPath: 'days/{gap}/settlements', listable: true, readers: 'holder', bareWrites: ALL_BARE },
+  { match: '/backfillDays/{dayId}', doc: 'backfillDays/{gap}', listPath: 'backfillDays', listable: true, readers: 'holder', bareWrites: ALL_BARE },
+  { match: '/postCloseEntries/{entryId}', doc: 'postCloseEntries/{entry}', listPath: 'postCloseEntries', listable: true, readers: 'holder', bareWrites: ALL_BARE },
+  { match: '/students/{studentId}', doc: 'students/{alpha}', listPath: 'students', listable: true, readers: 'holder', bareWrites: ALL_BARE },
+  { match: '/studentCodes/{code}', doc: 'studentCodes/{code}', listPath: 'studentCodes', listable: true, readers: 'holder', bareWrites: ALL_BARE },
+  { match: '/transactions/{transactionId}', doc: 'transactions/{transaction}', listPath: 'transactions', listable: true, readers: 'holder', bareWrites: ALL_BARE },
+  { match: '/vendors/{vendorId}', doc: 'vendors/{vendor}', listPath: 'vendors', listable: true, readers: 'holder', bareWrites: ALL_BARE },
+  // The old cash-adjustment style collections and everything the Rules do not name are closed to everyone.
+  { match: '/daily_settlements/{document=**}', doc: 'daily_settlements/legacy', listPath: 'daily_settlements', listable: false, readers: 'none', bareWrites: ALL_BARE },
+  { match: '/{document=**}', doc: 'p16b-unnamed/doc', listPath: 'p16b-unnamed', listable: false, readers: 'none', bareWrites: ALL_BARE },
+];
