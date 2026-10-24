@@ -99,6 +99,14 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+
+/** P16f2 S10: the range audit is read when the export is asked for, so the command is recorded a moment after the click. */
+async function clickAuditExport() {
+  const calls = mocks.recordExport.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+  await waitFor(() => expect(mocks.recordExport.mock.calls.length).toBeGreaterThan(calls));
+}
+
 describe('CloudReportPage', () => {
   afterEach(() => vi.restoreAllMocks());
 
@@ -135,7 +143,7 @@ describe('CloudReportPage', () => {
     render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:audit-export" />);
     await screen.findByText('來源序號 H=11');
 
-    fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+    await clickAuditExport();
     await waitFor(() => expect(anchorClick).toHaveBeenCalledTimes(1));
     expect(mocks.recordExport).toHaveBeenCalledWith(expect.objectContaining({
       exportType: 'audit', sourceSeq: 11, leaseEpoch: 4, range, scope: { studentId: null },
@@ -155,7 +163,7 @@ describe('CloudReportPage', () => {
     const view = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:late-export" />);
     await screen.findByTestId('report-ready');
 
-    fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+    await clickAuditExport();
     const input = mocks.recordExport.mock.calls[0][0];
     view.unmount();
     await act(async () => {
@@ -209,7 +217,7 @@ describe('CloudReportPage', () => {
     render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:unknown-retry" />);
     await screen.findByTestId('report-ready');
 
-    fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+    await clickAuditExport();
     await screen.findByRole('region', { name: '輸出命令確認' });
     const firstInput = mocks.recordExport.mock.calls[0][0];
     expect(screen.queryByRole('button', { name: '以相同命令編號重試' })).toBeNull();
@@ -244,6 +252,7 @@ describe('CloudReportPage', () => {
         if (kind === 'print') fireEvent.change(screen.getByLabelText('列印標示日期'), { target: { value: '2026-10-19' } });
 
         fireEvent.click(screen.getByRole('button', { name: kind === 'export' ? '匯出稽核 CSV' : '記錄後列印目前完整明細' }));
+        await waitFor(() => expect(record).toHaveBeenCalledTimes(1));
         const originalInput = record.mock.calls[0][0];
         expect(originalInput.sourceSeq).toBe(11);
         firstView.unmount();
@@ -334,7 +343,7 @@ describe('CloudReportPage', () => {
     const identityKey = 'operator-a:4:late-old-owner-preserves-new-identity';
     const firstView = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={identityKey} />);
     await screen.findByTestId('report-ready');
-    fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+    await clickAuditExport();
     const oldInput = mocks.recordExport.mock.calls[0][0];
     firstView.unmount();
 
@@ -349,7 +358,7 @@ describe('CloudReportPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '查詢完整報表' }));
     await screen.findByTestId('report-ready');
 
-    fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+    await clickAuditExport();
     await waitFor(() => expect(mocks.recordExport).toHaveBeenCalledTimes(2));
     const newInput = mocks.recordExport.mock.calls[1][0];
     expect(newInput.commandId).not.toBe(oldInput.commandId);
@@ -385,7 +394,7 @@ describe('CloudReportPage', () => {
     const originalIdentity = 'operator-a:4:scope-bound-recovery';
     const view = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={originalIdentity} />);
     await screen.findByTestId('report-ready');
-    fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+    await clickAuditExport();
     const originalInput = mocks.recordExport.mock.calls[0][0];
     view.unmount();
 
@@ -443,7 +452,7 @@ describe('CloudReportPage', () => {
       onNavigationStateChange={navigation} />);
     await screen.findByTestId('report-ready');
     expect(screen.getByTestId('report-ready')).toHaveTextContent('H=11');
-    fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+    await clickAuditExport();
     await screen.findByRole('alert');
     const originalInput = mocks.recordExport.mock.calls[0][0];
     expect(originalInput.sourceSeq).toBe(11);
@@ -479,7 +488,7 @@ describe('CloudReportPage', () => {
     await waitFor(() => expect(mocks.readReport).toHaveBeenCalledTimes(readsBeforeRequery + 1));
     await screen.findByTestId('report-ready');
     expect(screen.getByTestId('report-ready')).toHaveTextContent('H=12');
-    fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+    await clickAuditExport();
     await waitFor(() => expect(browserClick).toHaveBeenCalledTimes(1));
     const newInput = mocks.recordExport.mock.calls[1][0];
     expect(newInput.commandId).not.toBe(originalInput.commandId);
@@ -492,7 +501,7 @@ describe('CloudReportPage', () => {
     mocks.recordExport.mockResolvedValueOnce({ ok: false, error: { code: 'LEASE_LOST', message: 'lease lost' } });
     const firstView = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={identityKey} />);
     await screen.findByTestId('report-ready');
-    fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+    await clickAuditExport();
     expect(await screen.findByRole('alert')).toHaveTextContent('lease lost');
     const input = mocks.recordExport.mock.calls[0][0];
     expect(input.commandId).toBeTruthy();
@@ -570,12 +579,42 @@ describe('CloudReportPage', () => {
     await waitFor(() => expect(document.querySelector('.cloud-report__print')).toBeNull());
   });
 
-  it('does not combine report and audit snapshots with different source sequence numbers', async () => {
+  it('does not combine a report and an audit with different source sequence numbers: nothing is recorded or downloaded', async () => {
     mocks.readAuditRange.mockResolvedValueOnce({ ...audit, sourceSeq: 12 });
     render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:mismatch" />);
+    await screen.findByTestId('report-ready');
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('報表與稽核版本不一致');
-    expect(screen.queryByRole('button', { name: '匯出稽核 CSV' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+    expect(await screen.findByText('報表與稽核版本不一致，請重新查詢完整資料。')).toBeVisible();
+    expect(mocks.recordExport).not.toHaveBeenCalled();
+    expect(screen.getByTestId('report-ready')).toBeVisible();
+    expect(screen.getByRole('button', { name: '匯出稽核 CSV' })).toBeEnabled();
+  });
+
+  it('reads the range audit only when the audit export is asked for (P16f2 S10), not with the report', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:lazy');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:lazy-audit" />);
+    await screen.findByTestId('report-ready');
+    expect(mocks.readReport).toHaveBeenCalledTimes(1);
+    expect(mocks.readAuditRange).not.toHaveBeenCalled();
+
+    await clickAuditExport();
+    expect(mocks.readAuditRange).toHaveBeenCalledTimes(1);
+    expect(mocks.readAuditRange).toHaveBeenCalledWith({ range, studentId: null, leaseEpoch: 4 });
+    expect(mocks.readReport).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a failed audit read as a message and leaves the report and the other exports usable', async () => {
+    mocks.readAuditRange.mockRejectedValueOnce(Object.assign(new Error('audit unavailable'), { code: 'OFFLINE' }));
+    render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:audit-failure" />);
+    await screen.findByTestId('report-ready');
+
+    fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+    expect(await screen.findByText(/audit unavailable/)).toBeVisible();
+    expect(mocks.recordExport).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '匯出原始交易 CSV' })).toBeEnabled();
   });
 
   describe('paper numbers (P13d2)', () => {
@@ -623,7 +662,7 @@ describe('CloudReportPage', () => {
   describe('access handover table (P13c2)', () => {
     const handoverRegion = () => screen.getByRole('region', { name: '使用權交接' });
 
-    it('shows time, Chinese kind, operator email and the previous holder email only after the report and audit agree', async () => {
+    it('shows time, Chinese kind, operator email and the previous holder email when the report and the handover read agree', async () => {
       let finishReport!: (value: CloudLedgerReport) => void;
       mocks.readReport.mockReturnValueOnce(new Promise(resolve => { finishReport = resolve; }));
       render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:handover" />);
@@ -642,14 +681,6 @@ describe('CloudReportPage', () => {
       ]);
       expect(handoverRegion().textContent).not.toMatch(/uid-|operator-a/);
       expect(within(handoverRegion()).queryByRole('button')).toBeNull();
-    });
-
-    it('does not show the table when the report and audit snapshots disagree', async () => {
-      mocks.readAuditRange.mockResolvedValueOnce({ ...audit, sourceSeq: 12 });
-      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:handover-mismatch" />);
-
-      expect(await screen.findByRole('alert')).toHaveTextContent('報表與稽核版本不一致');
-      expect(screen.queryByRole('region', { name: '使用權交接' })).toBeNull();
     });
 
     it('hides a table whose snapshot envelope differs from the report and says so, without blocking the report', async () => {
@@ -747,7 +778,9 @@ describe('CloudReportPage', () => {
             const trigger = kind === 'export'
               ? screen.getByRole('button', { name: '匯出稽核 CSV' })
               : screen.getByRole('button', { name: '記錄後列印目前完整明細' });
+            const recorded = record.mock.calls.length;
             fireEvent.click(trigger);
+            await waitFor(() => expect(record.mock.calls.length).toBeGreaterThan(recorded));
             const input = record.mock.calls.at(-1)![0];
 
             if (phase === 'recovery') {
@@ -983,7 +1016,7 @@ describe('CloudReportPage', () => {
       mocks.recordExport.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
       render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:no-unlock" />);
       await screen.findByTestId('report-ready');
-      fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+      await clickAuditExport();
       await screen.findByRole('region', { name: '輸出命令確認' });
 
       mocks.confirmPendingIntent.mockResolvedValueOnce({ status: 'different-dataset' });
@@ -1009,7 +1042,7 @@ describe('CloudReportPage', () => {
       vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:cleanup-failure');
       render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:cleanup-failure" />);
       await screen.findByTestId('report-ready');
-      fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+      await clickAuditExport();
       await screen.findByRole('region', { name: '輸出命令確認' });
       const input = mocks.recordExport.mock.calls[0][0];
       mocks.confirmPendingIntent.mockResolvedValueOnce({

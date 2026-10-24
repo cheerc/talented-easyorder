@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { Timestamp, collection, doc, getDoc, getDocs, query, setDoc, where, type Firestore } from 'firebase/firestore';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { LEDGER_WINDOW_DAYS } from '../../maintenance/capacityGate';
 import { readAuthorizationCalls, type CostTable, type Linear } from '../../maintenance/capacityModel';
 import { createCloudCommandRepository } from '../cloudCommandRepository';
 import { createCloudDayCloseRepository, createCloudLedgerReader } from '../cloudDayCloseRepository';
@@ -121,14 +122,15 @@ describeWithEmulator('P16e history scale: the table against the full size', () =
       menuRevision: null, otherItemName: 'x', note }), 'CreateOrder');
   };
   /** One run of a load at production page sizes: client reads and authorization calls. */
-  const measure = async (name: string, units: Record<string, number>, run: () => Promise<unknown>, only = true) => {
+  const measure = async (name: string, units: Record<string, number>, run: () => Promise<unknown>, only = true, alsoPriced: string[] = []) => {
     meter.start(only ? app : undefined);
     await run();
     const report = meter.stop();
     localStorage.clear();
     const auth = readAuthorizationCalls(report.reads);
     const measured = { reads: report.billedReads, authorization: auth.documents + auth.queries };
-    const model = priced(name, units);
+    const parts = [priced(name, units), ...alsoPriced.map(other => priced(other, {}))];
+    const model = { reads: parts.reduce((sum, part) => sum + part.reads, 0), authorization: parts.reduce((sum, part) => sum + part.authorization, 0) };
     const byKey: Record<string, number> = {};
     for (const event of report.reads) byKey[`${event.form} ${event.key}`] = (byKey[`${event.form} ${event.key}`] ?? 0) + event.billed;
     results.push({ load: name, units, measured, model, byKey });
@@ -185,10 +187,14 @@ describeWithEmulator('P16e history scale: the table against the full size', () =
     const unclosed = 1;
     const closedDays = DAYS;
     // the first scan of a page that has just started (a Firestore instance of its own: nothing cached), then the same page again
-    await measure('load.ledgerScanCold', { closedDay: closedDays, openDay: unclosed }, () => createCloudLedgerReader(dbFor(OP), current).read(), false);
+    // P16f2 S3: the scan reads the last 62 days and the days still open, so of the 730 closed days it counts the 62 of the window
+    const scanned = Math.min(closedDays, LEDGER_WINDOW_DAYS);
+    await measure('load.ledgerScanCold', { closedDay: scanned, openDay: unclosed }, () => createCloudLedgerReader(dbFor(OP), current).read(), false, ['load.ledgerLookup']);
     const warm = createCloudLedgerReader(app, current);
     await warm.read();
-    await measure('load.ledgerScan', { closedDay: closedDays, openDay: unclosed }, () => warm.read());
+    await measure('load.ledgerScan', { closedDay: scanned, openDay: unclosed }, () => warm.read(), true, ['load.ledgerLookup']);
+    // none of this fixture's days has a menu, so the vendors page scans every closed day here (the worst case the table covers; with
+    // a menu in the first 32-day window the gate counts 32)
     await measure('load.dayVendors', { vendor: 1, closedDay: closedDays, openDay: unclosed }, () => createCloudDayVendorRepository(app, current).loadSnapshot());
     await measure('load.orders', { student: students, dayTransaction: 0, openDay: unclosed }, () => orders.loadSnapshot());
     await measure('load.dayCloseOverview', { openDay: unclosed }, () => closing.readOverview());
@@ -200,7 +206,7 @@ describeWithEmulator('P16e history scale: the table against the full size', () =
     const onToday = { kind: 'today' as const, startDate: today, endDate: today };
     // P16f1: the history of one account reads that student's transactions of the range (none yet: the TRANSACTIONS orders are on another
     // day) and the audit of a student reads the newest page of 100 commands, whatever the length of the history
-    await measure('load.accountHistory', { student: await countOf('students'), dayTransaction: 0, studentTransaction: 0 }, () => reads.readAccountHistory({ range: onToday, studentId: studentS, leaseEpoch: epoch }));
+    await measure('load.accountHistory', { student: await countOf('students'), dayTransaction: 0, studentTransaction: 0, studentRangeTransaction: 0 }, () => reads.readAccountHistory({ range: onToday, studentId: studentS, leaseEpoch: epoch }));
     await measure('load.auditStudent', { studentTransaction: Math.min(TRANSACTIONS, 100) }, () => reads.readAudit({ studentId: studentS, leaseEpoch: epoch }));
   }, 6 * 60 * 60_000);
 
@@ -219,7 +225,7 @@ describeWithEmulator('P16e history scale: the table against the full size', () =
     await order(studentS, today, '');
     const inRange = TRANSACTIONS + 1;
     await measure('load.report', { student: students, rangeAccount: 2, dayTransaction: inRange - 2, studentTransaction: 0 }, () => reads.readReport({ range: onToday, studentId: null, leaseEpoch: epoch }));
-    await measure('load.reportStudent', { student: students, dayTransaction: 0, studentTransaction: 0 }, () => reads.readReport({ range: onToday, studentId: studentS, leaseEpoch: epoch }));
+    await measure('load.reportStudent', { student: students, dayTransaction: 0, studentTransaction: 0, studentRangeTransaction: 0 }, () => reads.readReport({ range: onToday, studentId: studentS, leaseEpoch: epoch }));
     // every command of the student was committed today in this fixture, so the newest-first read stops only at the first one: all of them
     await measure('load.auditRangeStudent', { studentTransaction: TRANSACTIONS + 1 }, () => reads.readAuditRange({ range: onToday, studentId: studentS, leaseEpoch: epoch }));
   }, 6 * 60 * 60_000);

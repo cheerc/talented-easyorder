@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CloudAccountHistory, CloudAuditRangeSnapshot, CloudLedgerReport } from '../../domain/cloudLedgerReport';
+import type { CloudAccountHistory, CloudAuditRangeSnapshot, CloudReportDay } from '../../domain/cloudLedgerReport';
 
 const currentAuth = vi.hoisted(() => ({ uid: 'uid-a' as string | null }));
 
@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   repositoryOptions: vi.fn(),
   readSummary: vi.fn(),
   readAccountHistory: vi.fn(),
-  readReport: vi.fn(),
   readAuditRange: vi.fn(),
   listStudents: vi.fn(),
   mutateTransaction: vi.fn(),
@@ -21,7 +20,6 @@ vi.mock('../../firebase/cloudReadRepository', () => ({
   createCloudReadRepository: () => ({
     readSummary: mocks.readSummary,
     readAccountHistory: mocks.readAccountHistory,
-    readReport: mocks.readReport,
     readAuditRange: mocks.readAuditRange,
   }),
 }));
@@ -64,23 +62,16 @@ const transaction = {
   lastCommandId: 'create-command', updatedAt: `${date}T04:00:00.000Z`, backfilled: true, sourceSeq: 11,
   afterBalance: 965, balanceApplicability: 'verified',
 };
+const days = [{ businessDate: date, exists: true, status: 'open', revision: 3, openingCash: 100,
+  totals: { activeTransactionCount: 1, bentoCount: 1, otherMealCount: 0, mealTotal: 55,
+    retainedReceipts: 20, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0 },
+  lastSettlementRevision: 0, backfillReason: '歷史回填', settlements: [], postCloseEntries: [], effectiveCash: null }] as unknown as CloudReportDay[];
 const account = {
   datasetId: 'dataset-a', sourceSeq: 11, goLiveDate: '2026-10-01', leaseToday: '2026-10-19', leaseEpoch: 4,
   range, scope: { studentId }, complete: true, student: { studentId, studentCode: '001', displayName: '林小明', aliases: ['小明'] },
-  openingBalance: 1_000, currentBalance: 965, transactions: [transaction],
+  studentStatus: 'active', studentRevision: 8,
+  openingBalance: 1_000, currentBalance: 965, days, settlements: [], postCloseEntries: [], transactions: [transaction],
 } as unknown as CloudAccountHistory;
-const report = {
-  datasetId: 'dataset-a', sourceSeq: 11, goLiveDate: '2026-10-01', leaseToday: '2026-10-19', leaseEpoch: 4,
-  range, scope: { studentId }, complete: true,
-  summary: { activeTransactionCount: 1, orderCount: 1, bentoCount: 1, otherMealCount: 0, mealTotal: 55,
-    orderUnpaid: null, totalIncome: 20, totalExpense: 0, totalRefund: 0, netCash: 20 },
-  students: [{ studentId, studentCode: '001', displayName: '林小明', aliases: ['小明'] }],
-  days: [{ businessDate: date, exists: true, status: 'open', revision: 3, openingCash: 100,
-    totals: { activeTransactionCount: 1, bentoCount: 1, otherMealCount: 0, mealTotal: 55,
-      retainedReceipts: 20, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0 },
-    lastSettlementRevision: 0, backfillReason: '歷史回填', settlements: [], postCloseEntries: [], effectiveCash: null }],
-  transactions: [transaction], mergedTransactions: [], settlements: [], postCloseEntries: [],
-} as unknown as CloudLedgerReport;
 const audit = {
   datasetId: 'dataset-a', sourceSeq: 11, goLiveDate: '2026-10-01', leaseToday: '2026-10-19', leaseEpoch: 4,
   range, scope: { studentId }, complete: true,
@@ -103,14 +94,13 @@ describe('CloudAccountHistoryPage', () => {
     mocks.readSummary.mockResolvedValue({ leaseToday: '2026-10-19' });
     mocks.listStudents.mockResolvedValue({ datasetId: 'dataset-a', seq: 11, goLiveDate: '2026-10-01', students: [student] });
     mocks.readAccountHistory.mockResolvedValue(account);
-    mocks.readReport.mockResolvedValue(report);
     mocks.readAuditRange.mockResolvedValue(audit);
     mocks.mutateTransaction.mockResolvedValue({ ok: true, receipt: { commandId: 'mutation-a', seq: 12, kind: 'CorrectTransaction' } });
     mocks.confirmPendingIntent.mockResolvedValue({ status: 'not-found' });
     mocks.cleanupConfirmedIntent.mockResolvedValue(true);
   });
 
-  it('shows no balance until account history, day records, audit, and current student head agree', async () => {
+  it('shows no balance until account history and audit agree', async () => {
     mocks.readAuditRange.mockResolvedValueOnce({ ...audit, sourceSeq: 12 });
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
 
@@ -137,11 +127,22 @@ describe('CloudAccountHistoryPage', () => {
     }));
   });
 
+  it('reads the account, its range days and the audit only: no second report and no roster per query (P16f2 S11)', async () => {
+    render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
+    await screen.findByTestId('account-history-ready');
+    expect(mocks.listStudents).toHaveBeenCalledTimes(1);
+    expect(mocks.readAccountHistory).toHaveBeenCalledTimes(1);
+    expect(mocks.readAuditRange).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: '查詢完整歷史' }));
+    await waitFor(() => expect(mocks.readAccountHistory).toHaveBeenCalledTimes(2));
+    await screen.findByTestId('account-history-ready');
+    expect(mocks.listStudents).toHaveBeenCalledTimes(1);
+  });
+
   describe('paper numbers (P13d2)', () => {
     const numbered = { ...transaction, note: '紙本A-0123：前天補登' };
     const useNumbered = () => {
       mocks.readAccountHistory.mockResolvedValue({ ...account, transactions: [numbered] });
-      mocks.readReport.mockResolvedValue({ ...report, transactions: [numbered] });
     };
 
     it('shows the number apart from the remark text in the transaction details', async () => {
@@ -184,7 +185,7 @@ describe('CloudAccountHistoryPage', () => {
   });
 
   it('keeps closed historical transactions read-only and directs cash differences to day close', async () => {
-    mocks.readReport.mockResolvedValueOnce({ ...report, days: [{ ...report.days[0], status: 'reopened', lastSettlementRevision: 2 }] });
+    mocks.readAccountHistory.mockResolvedValueOnce({ ...account, days: [{ ...days[0], status: 'reopened', lastSettlementRevision: 2 }] });
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
     await screen.findByTestId('account-history-ready');
 
@@ -197,8 +198,8 @@ describe('CloudAccountHistoryPage', () => {
     const today = '2026-10-19';
     const todayRange = { kind: 'custom' as const, startDate: today, endDate: today };
     const todayTransaction = { ...transaction, businessDate: today, createdAt: `${today}T04:00:00.000Z` };
-    mocks.readAccountHistory.mockResolvedValue({ ...account, range: todayRange, transactions: [todayTransaction] });
-    mocks.readReport.mockResolvedValue({ ...report, range: todayRange, days: [{ ...report.days[0], businessDate: today, status: 'open', lastSettlementRevision: 0 }], transactions: [todayTransaction] });
+    mocks.readAccountHistory.mockResolvedValue({ ...account, range: todayRange, transactions: [todayTransaction],
+      days: [{ ...days[0], businessDate: today, status: 'open', lastSettlementRevision: 0 }] });
     mocks.readAuditRange.mockResolvedValue({ ...audit, range: todayRange, rows: [{ ...audit.rows[0], businessDate: today, attributedDate: today, committedAt: `${today}T04:00:00.000Z` }] });
 
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={todayRange} />);
@@ -265,21 +266,15 @@ describe('CloudAccountHistoryPage', () => {
     fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'late private draft' } });
     fireEvent.change(screen.getByLabelText('搜尋目前學生帳戶'), { target: { value: '小明' } });
 
-    const lateAccount = deferred<CloudAccountHistory>();
     const lateAudit = deferred<CloudAuditRangeSnapshot>();
-    const lateStudents = deferred<{ datasetId: string; seq: number; goLiveDate: string; students: typeof student[] }>();
-    mocks.readAccountHistory.mockReturnValueOnce(lateAccount.promise);
-    mocks.readReport.mockRejectedValueOnce(Object.assign(new Error('unauthorized'), { code: 'UNAUTHORIZED' }));
+    mocks.readAccountHistory.mockRejectedValueOnce(Object.assign(new Error('unauthorized'), { code: 'UNAUTHORIZED' }));
     mocks.readAuditRange.mockReturnValueOnce(lateAudit.promise);
-    mocks.listStudents.mockReturnValueOnce(lateStudents.promise);
     fireEvent.click(screen.getByRole('button', { name: '查詢完整歷史' }));
     await screen.findByRole('alert');
     expect(navigation).toHaveBeenLastCalledWith('operator-a:4', 'revoked');
 
     await act(async () => {
-      lateAccount.resolve(account);
       lateAudit.resolve(audit);
-      lateStudents.resolve({ datasetId: 'dataset-a', seq: 11, goLiveDate: '2026-10-01', students: [student] });
     });
     expect(screen.queryByRole('form', { name: '歷史交易更正' })).toBeNull();
     expect(screen.getByLabelText('搜尋目前學生帳戶')).toHaveValue('');
@@ -365,7 +360,6 @@ describe('CloudAccountHistoryPage', () => {
     firstView.unmount();
 
     mocks.readAccountHistory.mockImplementation(async request => ({ ...account, range: request.range, scope: { studentId: request.studentId } }));
-    mocks.readReport.mockImplementation(async request => ({ ...report, range: request.range, scope: { studentId: request.studentId } }));
     mocks.readAuditRange.mockImplementation(async request => ({ ...audit, range: request.range, scope: { studentId: request.studentId } }));
     const navigation = vi.fn();
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey={identityKey} onNavigationStateChange={navigation} />);

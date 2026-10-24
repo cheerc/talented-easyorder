@@ -9,6 +9,7 @@ import { CloudOrdersPage } from './CloudOrdersPage';
 
 const repositoryMock = vi.hoisted(() => ({
   loadSnapshot: vi.fn(),
+  refreshSnapshot: vi.fn(),
   createOrder: vi.fn(),
   createPayment: vi.fn(),
   createCashMovement: vi.fn(),
@@ -194,6 +195,8 @@ describe('CloudOrdersPage', () => {
     vi.clearAllMocks();
     window.localStorage.clear();
     repositoryMock.loadSnapshot.mockResolvedValue(snapshot());
+    // by default a refresh from the receipt is not possible, so the page reloads the whole snapshot
+    repositoryMock.refreshSnapshot.mockResolvedValue(null);
     repositoryMock.readCommand.mockResolvedValue(null);
     repositoryMock.getPendingRecoveryContext.mockResolvedValue({ uid: 'uid-1', datasetId: 'ds-1', leaseEpoch: 1, maintenance: false });
     repositoryMock.confirmPending.mockResolvedValue({ status: 'not-found' });
@@ -250,6 +253,51 @@ describe('CloudOrdersPage', () => {
     expect(await screen.findByText(/已確認 001 王小明 訂餐完成（命令序號 10）/)).toBeVisible();
     expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2);
     expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
+  });
+
+  describe('P16f2 S4: after its own command the page refreshes from the receipt', () => {
+    const submitBentoOrder = async () => {
+      renderComponent();
+      await selectStudent('001');
+      fireEvent.change(screen.getByLabelText(/實收金額/), { target: { value: '90' } });
+      fireEvent.click(screen.getByTestId('submit-order-button'));
+      fireEvent.click(await screen.findByTestId('confirm-duplicate-button'));
+    };
+
+    it('applies the refreshed snapshot without reloading the roster and the day, and keeps the undo offer', async () => {
+      const refreshed = snapshot({ seq: 10, day: mockDay({ bento: 2 }) });
+      repositoryMock.refreshSnapshot.mockResolvedValue(refreshed);
+      await submitBentoOrder();
+
+      expect(await screen.findByText(/已確認 001 王小明 訂餐完成（命令序號 10）/)).toBeVisible();
+      expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(1);
+      expect(repositoryMock.refreshSnapshot).toHaveBeenCalledTimes(1);
+      const [previous, receipt] = repositoryMock.refreshSnapshot.mock.calls[0];
+      expect(previous.seq).toBe(9);
+      expect(receipt).toMatchObject({ seq: 10, targets: { transactionId: 'tx-new', studentId: 's1', dayId: TODAY } });
+      expect(screen.getByTestId('cloud-topbar-bento')).toHaveTextContent('2');
+      expect(screen.getByTestId('undo-bar')).toBeVisible();
+      expect(screen.queryByTestId('order-recovery-panel')).toBeNull();
+    });
+
+    it('reloads the whole snapshot when the repository cannot refresh (the sequence is not the next one)', async () => {
+      repositoryMock.refreshSnapshot.mockResolvedValue(null);
+      repositoryMock.loadSnapshot.mockResolvedValueOnce(snapshot()).mockResolvedValueOnce(snapshot({ seq: 11, day: mockDay({ bento: 3 }) }));
+      await submitBentoOrder();
+
+      expect(await screen.findByText(/已確認 001 王小明 訂餐完成（命令序號 10）/)).toBeVisible();
+      expect(repositoryMock.refreshSnapshot).toHaveBeenCalledTimes(1);
+      expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId('cloud-topbar-bento')).toHaveTextContent('3');
+    });
+
+    it('reloads the whole snapshot when the refresh fails', async () => {
+      repositoryMock.refreshSnapshot.mockRejectedValue(Object.assign(new Error('unavailable'), { code: 'OFFLINE' }));
+      await submitBentoOrder();
+
+      expect(await screen.findByText(/已確認 001 王小明 訂餐完成（命令序號 10）/)).toBeVisible();
+      expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('keeps the same commandId and transactionId when the result is unknown and confirms with the same command (B1)', async () => {

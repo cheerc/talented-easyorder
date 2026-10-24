@@ -652,6 +652,54 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     }
   }, [isCurrent, repository, revoke, scopeKey, updateFor]);
 
+  /**
+   * P16f2 S4: after a command of this page the snapshot is refreshed from the documents the receipt names (the student, the day
+   * and the transaction) when it is the next sequence number; otherwise, or when that read fails, the whole snapshot is reloaded.
+   * The screen is held in the same loading state as a reload meanwhile, so no business action starts on a stale snapshot.
+   */
+  const refreshAfterCommand = useCallback(async (receipt: CommandReceipt): Promise<boolean> => {
+    const previous = snapshotRef.current;
+    if (!previous || revokedRef.current) return loadSnapshot({ reuseBackfillDays: true });
+    const key = scopeKey;
+    const generation = generationRef.current;
+    const requestId = ++loadRequestRef.current;
+    snapshotRef.current = null;
+    updateFor(key, generation, state => ({
+      ...state,
+      snapshot: null,
+      loading: true,
+      loadError: '',
+      ...freshDraft(),
+      confirmDuplicateOpen: false,
+      paymentDetailsOpen: false,
+      notice: '',
+      actionError: '',
+    }));
+    let refreshed: CloudOrderSnapshot | null;
+    try {
+      refreshed = await repository.refreshSnapshot(previous, receipt);
+    } catch {
+      refreshed = null;
+    }
+    if (!isCurrent(key, generation) || requestId !== loadRequestRef.current) return false;
+    const activeOperation = operationRef.current;
+    if (!refreshed || (activeOperation?.receiptConfirmed && activeOperation.datasetId !== refreshed.datasetId)) {
+      return loadSnapshot({ reuseBackfillDays: true });
+    }
+    const snapshot = refreshed;
+    snapshotRef.current = snapshot;
+    updateFor(key, generation, state => ({
+      ...state,
+      snapshot,
+      loading: false,
+      loadError: '',
+      selectedStudentId: snapshot.students.some(student => student.studentId === state.selectedStudentId)
+        ? state.selectedStudentId
+        : null,
+    }));
+    return true;
+  }, [isCurrent, loadSnapshot, repository, scopeKey, updateFor]);
+
   useEffect(() => {
     const generation = ++generationRef.current;
     revokedRef.current = false;
@@ -860,7 +908,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
 
     const [cleanupPending, headsReady] = await Promise.all([
       cleanupJournalIdentity(),
-      loadSnapshot({ reuseBackfillDays: true }),
+      refreshAfterCommand(receipt),
     ]);
     if (operationRef.current !== operation || operation.completionToken !== completionToken
       || !isOperationOwnerCurrent(operation)) return;
@@ -900,7 +948,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     const receipt = operation?.receipt;
     if (!operation || !receipt || !isOperationCurrent(operation) || operation.refreshInFlight) return;
     operation.refreshInFlight = true;
-    const headsReady = await loadSnapshot({ reuseBackfillDays: true });
+    const headsReady = await refreshAfterCommand(receipt);
     if (!isOperationCurrent(operation)) return;
     operation.refreshInFlight = false;
     if (headsReady) finishConfirmedOperation(operation, receipt);

@@ -12,12 +12,20 @@ import {
  * ceiling is 200 business commands a day (100 typical); the earlier 500-command envelope is not used. Everything below that is not
  * a measured cost is an ASSUMPTION about how the app is used, stated where it is made; P18 replaces them with CheerC's real
  * numbers. What is measured and read from the code: the cost of each operation (`p16-capacity-costs.json`) and that every
- * command of the orders page ends with a full reload of that page's snapshot (`CloudOrdersPage.completeSuccess`).
+ * command of the orders page ends with a refresh from its receipt (`CloudOrdersPage.refreshAfterCommand`, P16f2 S4: the student, the
+ * day and the transaction it changed; a full reload only when the receipt does not follow the page's snapshot).
+ *
+ * Read verdict (plan P16f §7, Gate 1 r2): the typical day (100 commands) passes below 25,000 reads counted the conservative way (every
+ * authorization lookup billed); the design ceiling (200) passes the same way, or, when the conservative count is under 27,500 (less
+ * than 10 % over), when the deduped count (the official billing, a document read once per request) is under 25,000. The result
+ * says which method passed. Over that is FAIL.
  */
 
 export const THRESHOLDS = {
   /** Spark gives 50,000 reads and 20,000 writes a day; the gate keeps 50 % of headroom (spec §10). */
   reads: 25_000,
+  /** At the design ceiling the deduped count decides when the conservative one is under this (10 % over `reads`); see the header. */
+  readsConservativeBand: 27_500,
   writes: 10_000,
   deletes: 0,
   /** The storage limit is 1 GiB: pass below 512 MiB, "needs a retention spec before 85 %" up to 0.85 GiB, fail from there. */
@@ -26,11 +34,28 @@ export const THRESHOLDS = {
   commandBytes: 64 * 1024,
 } as const;
 
+/** The days of the anomaly scan's window (`LEDGER_WINDOW_DAYS` in cloudDayCloseRepository.ts; `capacityGate.test.ts` checks they agree). */
+export const LEDGER_WINDOW_DAYS = 62;
+
+/**
+ * The ranges of an account query, by the page's range choice: it opens on today (the default), the week and the month (31 days) are the
+ * other choices. ASSUMPTION: 60 % of the queries are of today, 30 % of a week and 10 % of a month; P18 replaces it with CheerC's use.
+ */
+export const ACCOUNT_RANGE_MIX: Array<[days: number, share: number]> = [[1, 0.6], [7, 0.3], [31, 0.1]];
+
+/**
+ * The first window of days the vendors page reads to find the latest earlier menu (`INITIAL_SOURCE_WINDOW_DAYS` in
+ * cloudDayVendorRepository.ts; `capacityGate.test.ts` checks they agree). Every business day gets a menu, so the latest one is
+ * found in it; the fixture's closed days have none, which is why the fitted cost grows with them, one read each, up to this window
+ * and no further (an older menu would be a gap of more than a month without one).
+ */
+export const MENU_SCAN_WINDOW_DAYS = 32;
+
 export interface Assumptions {
   label: string;
   /** Business commands a day (the design ceiling, or the typical day). */
   commands: number;
-  /** Hours a day the operator holds the lease (the heartbeat renews it every 60 seconds). */
+  /** Hours a day the operator holds the lease (the heartbeat renews it every 120 seconds, P16f2 S7). */
   openHours: number;
   /** Pages open on the same UID (each has a lease listener and reads the ledger when it starts). */
   pages: number;
@@ -102,20 +127,23 @@ function commandLines(a: Assumptions): WorkloadLine[] {
 }
 
 /**
- * Page loads a day. ASSUMPTIONS (opens per day are a guess of how a shop uses the app; the reloads after commands are not):
- * - orders page: a reload after every command of the page (read from the code) plus 6 opens;
- * - ledger scan: when each page starts (cold: nothing is cached yet), after opening or closing a day (2) and when the anomalies page is opened (1);
- * - day pages: the vendors page is opened 4 times and reloads after each of its 3 commands, the day-close page 3 times, the
- *   students page 4 times;
- * - reports (R10): 10 a day, 6 of today, 3 of a week and 1 of a month, each a report, a range audit and (without a student) the
- *   access events, after a summary at the page start; 5 CSV or print runs repeat the report and the range audit of today. A report
- *   reads the transactions of the range and, for every account that has one in it, that account's whole history (twice): the
- *   accounts of a range are the students with a transaction in it (`activePerDay` a day, the whole roster at most), each with the
- *   history of an average student of the roster (the transactions of the days divided by the roster);
- * - account queries (R10: 50 a day at 500 commands, here in proportion to the commands: 20 at 200): the account history, the report
- *   of the student (the range and that one history), the student's range audit (every command of the student) and the roster,
- *   after a summary and the roster at the page start;
- * - audits: 3 of a day, 2 of a student, whose commands of the whole history are read;
+ * Page loads a day (P16f2 S9: the usage the plan states, replacing the guesses of #555). ASSUMPTIONS (opens per day are a guess of
+ * how a shop uses the app; what each page reads is measured):
+ * - orders page: 6 opens, and after every command of the page a refresh from the command's receipt (`load.ordersRefresh`, S4);
+ * - ledger scan (S3: the last 62 days and the days still open): when each page starts (cold: nothing is cached yet), after opening or
+ *   closing a day (2) and when the anomalies page is opened (1); a closed day of the window is at most 62;
+ * - day pages: the vendors page is opened 4 times and reloads after each of its 3 commands (it reads the first 32-day window for the
+ *   latest menu, not the history), the day-close page 3 times, the students page 4 times;
+ * - reports: 6 of today, 1 of a week, one of a month every 5 days (0.2 a day), after a summary at the page start (2 opens, S13: day
+ *   heads only); the range audit is read on demand (S10): a CSV or print takes the report on the screen (S12: no re-read) and
+ *   reads the audit of the range, 2 a day. Each access-events read goes with a report. A report reads the transactions of the range
+ *   and the roster, no account history (P16f1), and for each closed day of its range the day, its versions and entries;
+ * - audits: 3 of a day and 2 of a student (newest page of 100) on demand;
+ * - account queries (10 at the ceiling of 200 commands, 5 on a typical day): the account history (with the days of the range, S11)
+ *   and the student's range audit, which read the student's transactions and commands from the range start to today (priced for the
+ *   31 days at most that the page allows, a month of that student's traffic, whichever range was asked for); the days of the range
+ *   are read like a report's, so each closed day is `load.rangeClosedDay`, by the range mix of `ACCOUNT_RANGE_MIX`; the account
+ *   page is opened twice a day (a summary of one day and the roster, S11);
  * - the incremental backup export of the day's commands, once.
  */
 function loadLines(a: Assumptions): WorkloadLine[] {
@@ -129,11 +157,18 @@ function loadLines(a: Assumptions): WorkloadLine[] {
   // the history of one student: its transactions (at most MAX_ACCOUNT_TRANSACTIONS) and its commands
   const studentTransactions = Math.round(Math.min(100_000, txPerStudentDay * a.days));
   const studentCommands = Math.round(commandsPerStudentDay * a.days);
+  // what one student has from the start of an account query's range (31 days at most) to today
+  const RANGE_DAYS = 31;
+  const studentRangeTransactions = Math.round(txPerStudentDay * RANGE_DAYS);
+  const studentRangeCommands = Math.round(commandsPerStudentDay * RANGE_DAYS);
+  // the closed days that the anomaly scan reads: the window of 62 days at most (cloudDayCloseRepository LEDGER_WINDOW_DAYS)
+  const scannedClosedDays = Math.min(a.closedDays, LEDGER_WINDOW_DAYS);
+  // the days that the vendors page reads to find the latest menu: the first window, because every business day has one
+  const menuScanDays = Math.min(a.closedDays, MENU_SCAN_WINDOW_DAYS);
   /**
-   * The units of a report over `days` days: the accounts `A` of the range read their histories; `load.report` is fitted with the
-   * `rangeAccount` step (an account with one transaction in the range, so the range read of that transaction is part of it), the
-   * `dayTransaction` step (a transaction of an account that is already in the range: the range read and one more transaction of
-   * that account's history) and the history beyond the range (`studentTransaction`).
+   * The units of a report over `days` days. The report reads the transactions of the range and the roster; the accounts of the
+   * range and their histories are still units of the fitted `load.report` (the cost of a few reads of the range per account,
+   * and `studentTransaction`, the history beyond the range, which the report no longer reads: its fitted cost is 0).
    */
   const reportUnits = (days: number) => {
     const rangeTransactions = shape.transactions * days;
@@ -147,46 +182,53 @@ function loadLines(a: Assumptions): WorkloadLine[] {
   };
   const accessEventsPerDay = a.leaseEvents;
 
-  load('load.orders', shape.pageCommands + 6, { student: a.roster, dayTransaction: shape.transactionsOnPage, openDay: a.unclosedDays });
-  // the first scan of a page that has just started reads every closed day's settlement; the later ones only what changed
-  load('load.ledgerScanCold', a.pages, { closedDay: a.closedDays, openDay: a.unclosedDays });
-  load('load.ledgerScan', 3, { closedDay: a.closedDays, openDay: a.unclosedDays });
-  load('load.dayVendors', 4 + 3, { vendor: a.vendors, closedDay: a.closedDays, openDay: a.unclosedDays });
+  load('load.orders', 6, { student: a.roster, dayTransaction: shape.transactionsOnPage, openDay: a.unclosedDays });
+  load('load.ordersRefresh', shape.pageCommands);
+  // the first scan of a page that has just started reads every closed day's settlement of the window; the later ones only what changed
+  load('load.ledgerScanCold', a.pages, { closedDay: scannedClosedDays, openDay: a.unclosedDays });
+  load('load.ledgerScan', 3, { closedDay: scannedClosedDays, openDay: a.unclosedDays });
+  // every scan also looks up the closed day before its window (a segment of day documents, measured as one operation)
+  load('load.ledgerLookup', a.pages + 3);
+  load('load.dayVendors', 4 + 3, { vendor: a.vendors, closedDay: menuScanDays, openDay: a.unclosedDays });
   load('load.dayCloseOverview', 3, { openDay: a.unclosedDays });
   load('load.dayCloseState', 3, { settlementVersion: 2 });
   load('load.students', 4, { student: a.roster });
 
-  // reports: the summary at the page start, then one query per range
-  load('load.summary', 2, { closedDay: 31, settlementVersion: 40 });
-  for (const [days, perDay] of [[1, 6], [7, 3], [30, 1]] as Array<[number, number]>) {
-    const transactions = shape.transactions * days;
-    load('load.report', perDay, reportUnits(days));
-    load('load.auditRange', perDay, { student: a.roster, vendor: a.vendors, dayTransaction: transactions, dayCommand: shape.otherCommands * days });
-  }
-  load('load.accessEvents', 6 + 3, { accessEvent: accessEventsPerDay * 7 });
-  load('load.report', 5, reportUnits(1));
-  load('load.auditRange', 5, { student: a.roster, vendor: a.vendors, dayTransaction: shape.transactions, dayCommand: shape.otherCommands });
+  // reports: the summary at the page start (a month of day heads), then one query per range
+  load('load.summary', 2, { closedDay: 31, settlementVersion: 0 });
+  const reportQueries: Array<[number, number]> = [[1, 6], [7, 1], [30, 0.2]];
+  for (const [days, perDay] of reportQueries) load('load.report', perDay, reportUnits(days));
+  // the closed days of the ranges that a report reads (today's is open): their versions, post-close entries and back-fill markers
+  // (a day without a document costs less and is counted as closed: conservative)
+  const reportClosedDays = reportQueries.reduce((sum, [days, perDay]) => sum + perDay * (days - 1), 0);
+  load('load.accessEvents', reportQueries.reduce((sum, [, perDay]) => sum + perDay, 0), { accessEvent: accessEventsPerDay * 7 });
+  // CSV and print: the report on the screen is reused, the audit of the range (today's) is read when asked for
+  load('load.auditRange', 2, { student: a.roster, vendor: a.vendors, dayTransaction: shape.transactions, dayCommand: shape.otherCommands });
 
-  // account queries: R10 has 50 a day for 500 commands, so 20 at the ceiling of 200 and 10 on a typical day
-  const accountQueries = (a.commands / 500) * 50;
-  load('load.summary', accountQueries / 5, { closedDay: 1, settlementVersion: 1 });
-  load('load.accountHistory', accountQueries, { student: a.roster, dayTransaction: shape.transactions, studentTransaction: studentTransactions });
-  load('load.reportStudent', accountQueries, { student: a.roster, dayTransaction: shape.transactions, studentTransaction: studentTransactions });
-  load('load.auditRangeStudent', accountQueries, { studentTransaction: studentCommands });
-  // P16f1: the audit of a student is its newest page of at most 100 commands
-  const auditPage = Math.min(studentCommands, 100);
-  load('load.auditStudent', accountQueries, { studentTransaction: auditPage });
-  load('load.students', accountQueries, { student: a.roster });
+  // account queries: 10 at the ceiling of 200 commands and 5 on a typical day
+  const accountQueries = a.commands / 20;
+  const accountPageOpens = 2;
+  load('load.summary', accountPageOpens, { closedDay: 1, settlementVersion: 0 });
+  load('load.students', accountPageOpens, { student: a.roster });
+  // the account history reads the days of its range like a report does (S11), so the range the page was asked for decides how many
+  // closed days it adds: the page opens on today, and the other choices are the week and the month
+  const accountClosedDays = ACCOUNT_RANGE_MIX.reduce((sum, [days, share]) => sum + accountQueries * share * (days - 1), 0);
+  load('load.rangeClosedDay', reportClosedDays + accountClosedDays);
+  load('load.accountHistory', accountQueries, {
+    student: a.roster, dayTransaction: shape.transactions, studentTransaction: studentTransactions, studentRangeTransaction: studentRangeTransactions,
+  });
+  load('load.auditRangeStudent', accountQueries, { studentTransaction: studentRangeCommands });
 
   load('load.auditDay', 3, { dayTransaction: shape.transactions, dayCommand: shape.otherCommands });
-  load('load.auditStudent', 2, { studentTransaction: auditPage });
+  // the audit of a student is its newest page of at most 100 commands
+  load('load.auditStudent', 2, { studentTransaction: Math.min(studentCommands, 100) });
   load('load.backupExport', 1, { command: a.commands });
   return lines;
 }
 
 /** The lease: a renewal every minute for the hours the operator holds it, a listener snapshot of each renewal on every page. */
 function leaseLines(a: Assumptions): WorkloadLine[] {
-  const renewals = a.openHours * 60;
+  const renewals = a.openHours * 30;
   return [
     { operation: 'lease.acquire', perDay: a.leaseEvents / 2 },
     { operation: 'lease.release', perDay: a.leaseEvents / 2 },
@@ -263,7 +305,8 @@ export type Verdict = 'PASS' | 'WARN' | 'FAIL';
 export interface ScenarioResult {
   label: string;
   assumptions: Assumptions;
-  reads: { conservative: number; deduped: number; limit: number; verdict: Verdict };
+  /** `passedBy` is the count that decided a PASS (the conservative one, or at the design ceiling the deduped one), null for a FAIL. */
+  reads: { conservative: number; deduped: number; limit: number; verdict: Verdict; passedBy: 'conservative' | 'deduped' | null };
   writes: { count: number; limit: number; verdict: Verdict };
   deletes: { count: number; limit: number; verdict: Verdict };
   /** The lines that read the most (conservative), largest first. */
@@ -273,8 +316,18 @@ export interface ScenarioResult {
 
 const round = (value: number) => Math.round(value);
 
-function describeUsage(label: string, assumptions: Assumptions, usage: DailyUsage): Omit<ScenarioResult, 'storage'> {
-  const readVerdict: Verdict = usage.reads.conservative < THRESHOLDS.reads ? 'PASS' : 'FAIL';
+/**
+ * The read verdict: the conservative count under the limit passes; when `dedupedMayDecide` (the design ceiling), a conservative count
+ * under the band (10 % over) passes if the deduped count is under the limit.
+ */
+export function readVerdictOf(conservative: number, deduped: number, dedupedMayDecide: boolean): { verdict: Verdict; passedBy: 'conservative' | 'deduped' | null } {
+  if (conservative < THRESHOLDS.reads) return { verdict: 'PASS', passedBy: 'conservative' };
+  if (dedupedMayDecide && conservative < THRESHOLDS.readsConservativeBand && deduped < THRESHOLDS.reads) return { verdict: 'PASS', passedBy: 'deduped' };
+  return { verdict: 'FAIL', passedBy: null };
+}
+
+function describeUsage(label: string, assumptions: Assumptions, usage: DailyUsage, dedupedMayDecide: boolean): Omit<ScenarioResult, 'storage'> {
+  const decided = readVerdictOf(usage.reads.conservative, usage.reads.deduped, dedupedMayDecide);
   const merged = new Map<string, { perDay: number; reads: number }>();
   for (const line of usage.lines) {
     const found = merged.get(line.operation) ?? { perDay: 0, reads: 0 };
@@ -282,7 +335,7 @@ function describeUsage(label: string, assumptions: Assumptions, usage: DailyUsag
   }
   return {
     label, assumptions,
-    reads: { conservative: round(usage.reads.conservative), deduped: round(usage.reads.deduped), limit: THRESHOLDS.reads, verdict: readVerdict },
+    reads: { conservative: round(usage.reads.conservative), deduped: round(usage.reads.deduped), limit: THRESHOLDS.reads, ...decided },
     writes: { count: round(usage.writes), limit: THRESHOLDS.writes, verdict: usage.writes < THRESHOLDS.writes ? 'PASS' : 'FAIL' },
     deletes: { count: round(usage.deletes), limit: THRESHOLDS.deletes, verdict: usage.deletes <= THRESHOLDS.deletes ? 'PASS' : 'FAIL' },
     topReads: [...merged.entries()].map(([operation, line]) => ({ operation, perDay: Math.round(line.perDay * 100) / 100, reads: round(line.reads) }))
@@ -296,7 +349,7 @@ export function storageVerdict(bytes: number): Verdict {
 }
 
 function scenario(table: CostTable, a: Assumptions, footprints: StorageFootprints, profile: 'typical' | 'worst'): ScenarioResult {
-  const result = describeUsage(a.label, a, dailyUsage(table, workloadOf(a)));
+  const result = describeUsage(a.label, a, dailyUsage(table, workloadOf(a)), a.commands >= DESIGN.commands);
   const projection = projectStorage(footprints[profile], a);
   return { ...result, storage: { profile, projection, verdict: storageVerdict(projection.totalBytes) } };
 }
@@ -350,38 +403,31 @@ export function evaluateGate(table: CostTable, footprints: StorageFootprints): G
   const smallShop = scenario(table, SMALL_SHOP, footprints, 'typical');
   const fullRoster = scenario(table, FULL_ROSTER, footprints, 'typical');
   const worstCase = describeUsage('design ceiling, every command the costliest kind', DESIGN,
-    dailyUsage(table, worstCaseWorkload(table, workloadOf(DESIGN), businessOperations())));
+    dailyUsage(table, worstCaseWorkload(table, workloadOf(DESIGN), businessOperations())), true);
   const storageWorstProfile = scenario(table, DESIGN, footprints, 'worst').storage!;
 
   const designLines = workloadOf(DESIGN);
   const designReads = dailyUsage(table, designLines).reads.conservative;
-  const withoutRoster = (line: WorkloadLine): WorkloadLine => (
-    line.operation === 'load.orders' ? { ...line, units: { ...line.units!, student: 0 } } : line
-  );
-  const withoutReload = (line: WorkloadLine): WorkloadLine => (
-    line.operation === 'load.orders' ? { ...line, perDay: 6 } : line
-  );
   const reads = (lines: WorkloadLine[], from: CostTable = table) => round(dailyUsage(from, lines).reads.conservative);
+  // the orders page as it was before S4: a full reload (the roster, every transaction of the day) after each command
+  const fullReload = (line: WorkloadLine): WorkloadLine => {
+    if (line.operation !== 'load.ordersRefresh') return line;
+    const open = designLines.find(item => item.operation === 'load.orders')!;
+    return { operation: 'load.orders', perDay: line.perDay, units: open.units! };
+  };
   // the loads that read every document twice (the document, then its id again to prove the set is complete)
-  const singleRead = scaleDimensions(table, ['load.report', 'load.reportStudent', 'load.accountHistory', 'load.auditDay', 'load.auditStudent', 'load.auditRangeStudent', 'load.auditRange'],
-    ['dayTransaction', 'rangeAccount', 'studentTransaction', 'dayCommand'], 0.5);
-  // the report without the histories of its accounts (a balance kept on each transaction would let it read the range only): the
-  // account, the history beyond the range and the history part of a transaction of the range (half of its 4.08) are gone
-  const noHistories = scaleDimensions(scaleDimensions(table, ['load.report'], ['rangeAccount', 'studentTransaction'], 0), ['load.report'], ['dayTransaction'], 0.5);
+  const singleRead = scaleDimensions(table, ['load.report', 'load.accountHistory', 'load.auditDay', 'load.auditStudent', 'load.auditRangeStudent', 'load.auditRange'],
+    ['dayTransaction', 'rangeAccount', 'studentTransaction', 'studentRangeTransaction', 'dayCommand'], 0.5);
   const whatIf: WhatIf[] = [
     { label: 'the design ceiling as measured', reads: round(designReads) },
-    { label: 'orders reload after a command skips the roster (the roster is kept until a student changes)', reads: reads(designLines.map(withoutRoster)) },
-    { label: 'orders page does not reload after a command (it keeps what it has; opens only)', reads: reads(designLines.map(withoutReload)) },
+    { label: 'the orders page reloads fully after every command, as before P16f2 S4', reads: reads(designLines.map(fullReload)) },
     { label: 'the history loads read each transaction or command once instead of twice (needs CheerC: the second read is an integrity check)', reads: reads(designLines, singleRead) },
-    { label: 'the report does not read the history of its accounts (e.g. a balance kept on every transaction; needs a spec change and CheerC)', reads: reads(designLines, noHistories) },
-    { label: 'all four together', reads: reads(designLines.map(withoutReload), scaleDimensions(noHistories, ['load.reportStudent', 'load.accountHistory', 'load.auditDay', 'load.auditStudent', 'load.auditRangeStudent', 'load.auditRange', 'load.report'],
-      ['dayTransaction', 'rangeAccount', 'studentTransaction', 'dayCommand'], 0.5)) },
   ];
 
-  const floorLines = workloadOf(SMALL_SHOP).filter(line => line.operation.startsWith('command.') || line.operation.startsWith('lease.') || line.operation.startsWith('listener.') || line.operation === 'load.orders')
-    .map(line => (line.operation === 'load.orders' ? { ...line, perDay: dayShape(SMALL_SHOP).pageCommands } : line));
+  const floorLines = workloadOf(SMALL_SHOP).filter(line => line.operation.startsWith('command.') || line.operation.startsWith('lease.') || line.operation.startsWith('listener.')
+    || line.operation === 'load.orders' || line.operation === 'load.ordersRefresh');
   const floorReads = reads(floorLines);
-  const floor = { label: 'small shop floor: commands, one orders reload per command, the lease', reads: floorReads, limit: THRESHOLDS.reads, verdict: (floorReads < THRESHOLDS.reads ? 'PASS' : 'FAIL') as Verdict };
+  const floor = { label: 'small shop floor: commands, one orders refresh per command, the lease', reads: floorReads, limit: THRESHOLDS.reads, verdict: (floorReads < THRESHOLDS.reads ? 'PASS' : 'FAIL') as Verdict };
 
   const profiles = [footprints.typical, footprints.worst];
   const maxCommand = profiles.map(profile => profile.maxCommand).reduce((best, item) => (item.documentBytes > best.documentBytes ? item : best));
@@ -392,7 +438,7 @@ export function evaluateGate(table: CostTable, footprints: StorageFootprints): G
 
   const verdicts: Verdict[] = [
     design.reads.verdict, design.writes.verdict, design.deletes.verdict, design.storage!.verdict, commandBytes.verdict,
-    worstCase.reads.verdict, worstCase.writes.verdict,
+    typical.reads.verdict, worstCase.reads.verdict, worstCase.writes.verdict,
   ];
   const verdict: Verdict = verdicts.includes('FAIL') ? 'FAIL' : verdicts.includes('WARN') ? 'WARN' : 'PASS';
   return { schemaVersion: 1, thresholds: THRESHOLDS, design, typical, smallShop, fullRoster, worstCase, storageWorstProfile, whatIf, floor, commandBytes, verdict };

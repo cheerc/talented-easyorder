@@ -324,7 +324,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
 
       const beforeLeaderHeartbeat = await readAccessLease();
       expect(beforeLeaderHeartbeat).toMatchObject({ holderUid: sessionA.uid, epoch: 1 });
-      await pageA.clock.runFor(60_001);
+      await pageA.clock.runFor(120_001);
       await expect.poll(async () => (await readAccessLease()).updatedAt.getTime()).toBeGreaterThan(
         beforeLeaderHeartbeat.updatedAt.getTime(),
       );
@@ -342,7 +342,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
       const beforeFollowerHeartbeat = await readAccessLease();
       expect(beforeFollowerHeartbeat).toMatchObject({ holderUid: sessionA.uid, epoch: 1 });
 
-      await pageB.clock.runFor(60_001);
+      await pageB.clock.runFor(120_001);
       await expect.poll(async () => (await readAccessLease()).updatedAt.getTime()).toBeGreaterThan(
         beforeFollowerHeartbeat.updatedAt.getTime(),
       );

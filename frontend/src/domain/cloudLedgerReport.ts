@@ -262,8 +262,14 @@ export interface CloudAccountHistory {
   scope: { studentId: string };
   complete: true;
   student: CloudReportStudent;
+  studentStatus: 'active' | 'inactive';
+  studentRevision: number;
   openingBalance: number;
   currentBalance: number;
+  /** The days of the range, with their settlements and post-close entries (the page reads no second report). */
+  days: CloudReportDay[];
+  settlements: CloudReportSettlement[];
+  postCloseEntries: CloudReportPostCloseEntry[];
   transactions: CloudReportTransaction[];
 }
 

@@ -85,7 +85,7 @@ describe('P16e index coverage', () => {
 
   it('records shapes for the queries the production repositories run (a recorded set that is missing an operation is not a coverage proof)', () => {
     const operations = new Set(shapes.flatMap(shape => shape.operations));
-    for (const name of ['load.orders', 'load.report', 'load.accountHistory', 'load.auditDay', 'load.auditStudent', 'load.auditRange', 'load.accessEvents', 'load.summary', 'load.backupExport', 'load.ledgerScan', 'load.dayVendors', 'load.students']) {
+    for (const name of ['load.orders', 'load.report', 'load.accountHistory', 'load.auditDay', 'load.auditStudent', 'load.auditRange', 'load.accessEvents', 'load.rangeClosedDay', 'load.backupExport', 'load.ledgerScan', 'load.ledgerLookup', 'load.dayVendors', 'load.students']) {
       expect(operations.has(name), name).toBe(true);
     }
   });

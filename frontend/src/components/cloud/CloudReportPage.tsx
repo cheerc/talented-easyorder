@@ -54,7 +54,6 @@ type AccessEventsView =
 
 interface Snapshot {
   report: CloudLedgerReport;
-  audit: CloudAuditRangeSnapshot;
   /** null when the scope is a single account: lease handovers are not account facts. */
   accessEvents: AccessEventsView | null;
 }
@@ -220,13 +219,13 @@ function previousHolderText(row: CloudAccessEventsSnapshot['rows'][number]): str
   return row.previousHolderEmail ?? '（無紀錄）';
 }
 
-function csvFor(type: RecordCloudExportInput['exportType'], snapshot: Snapshot): string {
+function csvFor(type: RecordCloudExportInput['exportType'], snapshot: Snapshot, audit: CloudAuditRangeSnapshot | null): string {
   switch (type) {
     case 'transactions-original': return buildCloudTransactionCsv(snapshot.report.transactions);
     case 'transactions-merged': return buildCloudMergedTransactionCsv(snapshot.report.mergedTransactions);
     case 'settlements': return buildCloudSettlementCsv(snapshot.report.settlements, snapshot.report.days);
     case 'post-close-entries': return buildCloudPostCloseCsv(snapshot.report.postCloseEntries, snapshot.report.sourceSeq);
-    case 'audit': return buildCloudAuditCsv(snapshot.audit.rows, snapshot.audit.sourceSeq);
+    case 'audit': return buildCloudAuditCsv(audit?.rows ?? [], audit?.sourceSeq ?? snapshot.report.sourceSeq);
   }
 }
 
@@ -286,6 +285,7 @@ export function CloudReportPage({
   const [action, setAction] = useState<RecoverableAction | null>(() => actionRecoveryRegistry.get(scopeKey) ?? null);
   const [authorizedPrint, setAuthorizedPrint] = useState<FrozenAction | null>(null);
   const [actionMessage, setActionMessage] = useState('');
+  const [auditBusy, setAuditBusy] = useState(false);
   const [recovery, setRecovery] = useState<RecoveryView | null>(null);
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
   const [readyScopeKey, setReadyScopeKey] = useState<string | null>(null);
@@ -425,18 +425,14 @@ export function CloudReportPage({
       : Promise.resolve(null);
     void Promise.all([
       reads.readReport({ range: query.range, studentId: query.studentId, leaseEpoch }),
-      reads.readAuditRange({ range: query.range, studentId: query.studentId, leaseEpoch }),
       accessEventsRead,
-    ]).then(([report, audit, events]) => {
+    ]).then(([report, events]) => {
       if (!active || requestGeneration.current !== generation || !isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-      if (!sameEnvelope(report, audit, query, leaseEpoch)) {
-        throw new Error('報表與稽核版本不一致，請重新查詢完整資料。');
-      }
       const accessEvents: AccessEventsView | null = events?.status === 'ready'
         && !sameAccessEventsEnvelope(events.snapshot, report, query, leaseEpoch)
         ? { status: 'unavailable', message: '使用權交接資料版本與報表不一致，未顯示；請重新查詢。' }
         : events;
-      setSnapshot({ report, audit, accessEvents });
+      setSnapshot({ report, accessEvents });
       setLoading(false);
       setPrintDate(query.range.startDate);
       setActionMessage('');
@@ -465,7 +461,7 @@ export function CloudReportPage({
   const pageCount = Math.max(1, Math.ceil(allRows.length / 100));
   const visibleRows = allRows.slice(pageNumber * 100, (pageNumber + 1) * 100);
   const visibleAction = action?.scopeKey === scopeKey ? action : null;
-  const controlsLocked = loading || Boolean(visibleAction) || authorizedPrint?.scopeKey === scopeKey;
+  const controlsLocked = loading || auditBusy || Boolean(visibleAction) || authorizedPrint?.scopeKey === scopeKey;
 
   const submitRange = useCallback((event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -724,7 +720,7 @@ export function CloudReportPage({
     void runAttempt(operation);
   };
 
-  const makeExport = (type: RecordCloudExportInput['exportType']) => {
+  const makeExport = (type: RecordCloudExportInput['exportType'], audit: CloudAuditRangeSnapshot | null = null) => {
     if (!snapshot || !query || controlsLocked || !actionOwnerRef.current
       || (type === 'settlements' || type === 'post-close-entries') && query.studentId !== null) return;
     const id = crypto.randomUUID();
@@ -738,10 +734,36 @@ export function CloudReportPage({
     };
     recordAction({
       id, kind: 'export', scopeKey, datasetId: snapshot.report.datasetId, input,
-      contents: csvFor(type, snapshot), filename: `cloud-${names[type]}-${query.range.startDate}_${query.range.endDate}.csv`,
+      contents: csvFor(type, snapshot, audit), filename: `cloud-${names[type]}-${query.range.startDate}_${query.range.endDate}.csv`,
       title: `P${type} · ${query.range.startDate}–${query.range.endDate} · H=${snapshot.report.sourceSeq}`,
       rows: type === 'transactions-merged' ? snapshot.report.mergedTransactions : snapshot.report.transactions,
     });
+  };
+
+  /** P16f2 S10: the range audit is read when it is asked for (the CSV), not with every report; it must agree with the report on screen. */
+  const exportAudit = async () => {
+    if (!snapshot || !query || controlsLocked || !actionOwnerRef.current) return;
+    const owner = actionOwnerRef.current;
+    const generation = requestGeneration.current;
+    const request = query;
+    setAuditBusy(true);
+    setActionMessage('正在讀取完整稽核資料…');
+    try {
+      const audit = await reads.readAuditRange({ range: request.range, studentId: request.studentId, leaseEpoch });
+      if (requestGeneration.current !== generation || !isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
+      if (!sameEnvelope(snapshot.report, audit, request, leaseEpoch)) {
+        setActionMessage('報表與稽核版本不一致，請重新查詢完整資料。');
+        return;
+      }
+      setActionMessage('');
+      makeExport('audit', audit);
+    } catch (error) {
+      if (requestGeneration.current !== generation || !isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
+      if (['LEASE_LOST', 'UNAUTHORIZED'].includes(errorCode(error) ?? '')) invalidateOwner(owner, error);
+      else setActionMessage(messageOf(error));
+    } finally {
+      setAuditBusy(false);
+    }
   };
 
   const makePrint = () => {
@@ -983,7 +1005,7 @@ export function CloudReportPage({
             <button type="button" disabled={controlsLocked} onClick={() => makeExport('transactions-merged')}>匯出合併交易 CSV</button>
             <button type="button" disabled={controlsLocked || query.studentId !== null} onClick={() => makeExport('settlements')}>匯出日結 CSV</button>
             <button type="button" disabled={controlsLocked || query.studentId !== null} onClick={() => makeExport('post-close-entries')}>匯出關帳後補記 CSV</button>
-            <button type="button" aria-label="匯出稽核 CSV" disabled={controlsLocked} onClick={() => makeExport('audit')}>匯出稽核 CSV</button>
+            <button type="button" aria-label="匯出稽核 CSV" disabled={controlsLocked} onClick={() => void exportAudit()}>匯出稽核 CSV</button>
           </div>
           <label>列印標示日期<select aria-label="列印標示日期" value={printDate} disabled={controlsLocked} onChange={event => setPrintDate(event.target.value)}>
             {snapshot.report.days.map(day => <option key={day.businessDate} value={day.businessDate}>{day.businessDate}</option>)}

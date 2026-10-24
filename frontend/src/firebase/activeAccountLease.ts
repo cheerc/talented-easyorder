@@ -23,8 +23,8 @@ export const ACCESS_EVENTS_COLLECTION = 'accessEvents';
 /** 租約有效時長：5 分鐘 */
 export const LEASE_DURATION_MS = 5 * 60 * 1000;
 
-/** 租約心跳續約頻率：60 秒 */
-export const LEASE_HEARTBEAT_INTERVAL_MS = 60 * 1000;
+/** 租約心跳續約頻率：120 秒（租約 5 分鐘，容許錯過一次心跳；P16f2 S7） */
+export const LEASE_HEARTBEAT_INTERVAL_MS = 120 * 1000;
 
 /** 重新檢查限流門檻：15 秒 */
 export const LEASE_RECHECK_THROTTLE_MS = 15 * 1000;

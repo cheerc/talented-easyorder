@@ -103,6 +103,8 @@ function setup({
     for (const item of request.constraints) {
       if (item.type === 'where' && item.op === '==') {
         selected = selected.filter(([, data]) => data[String(item.field)] === item.value);
+      } else if (item.type === 'where' && item.op === 'in') {
+        selected = selected.filter(([, data]) => (item.value as unknown[]).includes(data[String(item.field)]));
       } else if (item.type === 'where') {
         const value = String(item.value);
         selected = selected.filter(([id]) => (item.op === '>=' ? id >= value : item.op === '<=' ? id <= value : item.op === '<' ? id < value : item.op === '>' ? id > value : false));
@@ -116,7 +118,7 @@ function setup({
   });
 }
 
-const reader = (tuning?: { pageSize?: number; segmentDays?: number }) => createCloudLedgerReader(db, { currentUser: () => user }, tuning);
+const reader = (tuning?: { pageSize?: number; segmentDays?: number; windowDays?: number }) => createCloudLedgerReader(db, { currentUser: () => user }, tuning);
 const settlementReads = () => firestoreMocks.getDocFromServer.mock.calls.filter(([ref]) => String(ref.path).includes('/settlements/'));
 const headReads = () => firestoreMocks.getDocFromServer.mock.calls.filter(([ref]) => ref.path === 'system/dataHead');
 const dayQueries = () => firestoreMocks.query.mock.calls
@@ -155,6 +157,83 @@ describe('createCloudLedgerReader.read', () => {
     expect(settlementReads().map(([ref]) => ref.path)).toEqual(['days/2026-10-01/settlements/2']);
   });
 
+  describe('P16f2 S3: the scan covers the last 62 days and every open or reopened day', () => {
+    const today = '2026-10-05';
+    const closedOf = (dayId: string) => [dayId, dayDoc({ status: 'closed', openingCash: 100, lastSettlementRevision: 1, totals: totals(1) })] as [string, Data];
+    const settlementsOf = (ids: string[]) => Object.fromEntries(ids.map(id => [`days/${id}/settlements/1`, settlementDoc(id, 1)]));
+    const goLive = '2026-01-01';
+
+    it('reads the days of the last 62 days only (and their settlements), with one query for the days that are still open', async () => {
+      const old = Array.from({ length: 100 }, (_, index) => dateAt(index, Date.UTC(2026, 0, 1)));      // 2026-01-01 .. 2026-04-10, long closed
+      const recent = ['2026-08-10', '2026-08-11', '2026-10-04'];                                          // 2026-08-04 is the window start
+      setup({
+        days: [...old, ...recent].map(closedOf),
+        settlements: settlementsOf([...old, ...recent]),
+        heads: [head({ goLiveDate: goLive })],
+      });
+      const snapshot = await reader().read();
+      // the closed day just before the window comes with it (the lookup below), 2026-04-10 here
+      expect(snapshot.closedDays.map(day => day.dayId)).toEqual([old[old.length - 1], ...recent]);
+      expect(settlementReads()).toHaveLength(recent.length + 1);
+      const queries = dayQueries();
+      expect(queries.length).toBeGreaterThanOrEqual(2);
+      expect(queries[0]).toEqual([
+        { type: 'where', field: '__name__', op: '>=', value: '2026-08-04' },
+        { type: 'where', field: '__name__', op: '<=', value: today },
+        { type: 'orderBy', field: '__name__', direction: undefined },
+        { type: 'limit', count: 200 },
+      ]);
+      expect(queries[1]!.find(item => item.type === 'where')).toMatchObject({ field: 'status', op: 'in', value: ['open', 'reopened'] });
+    });
+
+    it('still reports an open past day and a reopened day older than the window', async () => {
+      const days: Array<[string, Data]> = [
+        closedOf('2026-01-02'),
+        ['2026-01-03', dayDoc({ openingCash: 120, totals: totals(2) })],                                  // never closed, has activity
+        ['2026-01-04', dayDoc({ status: 'reopened', openingCash: 100, lastSettlementRevision: 1, totals: totals(1) })],
+        ['2026-01-05', dayDoc()],                                                                         // an empty day nobody opened: not an anomaly
+        closedOf('2026-10-04'),
+      ];
+      setup({ days, settlements: settlementsOf(['2026-01-02', '2026-10-04']), heads: [head({ goLiveDate: goLive })] });
+      const snapshot = await reader().read();
+      // 2026-01-03 opens with 120 after a close of 100: its previous closed day is outside the window and is still compared
+      expect(snapshot.anomalies.map(item => [item.kind, item.dayId])).toEqual([
+        ['unclosed-past-day', '2026-01-03'], ['opening-mismatch', '2026-01-03'], ['unclosed-past-day', '2026-01-04'],
+      ]);
+      expect(settlementReads().map(([ref]) => ref.path).sort()).toEqual(['days/2026-01-02/settlements/1', 'days/2026-10-04/settlements/1']);
+    });
+
+    it('keeps the opening-mismatch row of the first day of the window by looking up the closed day before it', async () => {
+      // closed on 2026-06-01 with 100 counted; the window starts on 2026-08-04 and its first day opens with 130
+      setup({
+        days: [closedOf('2026-06-01'), ['2026-08-04', dayDoc({ status: 'closed', openingCash: 130, lastSettlementRevision: 1, totals: totals(1) })]],
+        settlements: settlementsOf(['2026-06-01', '2026-08-04']),
+        heads: [head({ goLiveDate: goLive })],
+      });
+      const snapshot = await reader().read();
+      expect(snapshot.anomalies).toMatchObject([{ kind: 'opening-mismatch', dayId: '2026-08-04', previousClosedDayId: '2026-06-01', difference: 30 }]);
+    });
+
+    it('does not read a day twice when an open day is inside the window, and skips the second query when the window reaches the go-live date', async () => {
+      setup({ days: [['2026-10-03', dayDoc({ openingCash: 100, totals: totals(1) })]], heads: [head({ goLiveDate: goLive })] });
+      expect((await reader().read()).anomalies.map(item => item.dayId)).toEqual(['2026-10-03']);
+      vi.clearAllMocks();
+      setup({ days: [['2026-10-03', dayDoc({ openingCash: 100, totals: totals(1) })]] });
+      await reader().read();
+      expect(dayQueries()).toHaveLength(1);
+    });
+
+    it('fails closed when more than 200 days outside the window are open, and when the head moves during the open-day query', async () => {
+      const open = Array.from({ length: 201 }, (_, index) => [dateAt(index, Date.UTC(2025, 0, 1)), dayDoc()] as [string, Data]);
+      setup({ days: open, heads: [head({ goLiveDate: '2025-01-01' })] });
+      await expect(reader().read()).rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT' });
+      vi.clearAllMocks();
+      // initial head, after the entries page, after the day page (unchanged), after the open-day query (changed)
+      setup({ days: [['2026-01-03', dayDoc()]], heads: [head({ goLiveDate: goLive }), head({ goLiveDate: goLive }), head({ goLiveDate: goLive }), head({ goLiveDate: goLive, seq: 12 })] });
+      await expect(reader().read()).rejects.toMatchObject({ code: 'STALE_SNAPSHOT' });
+    });
+  });
+
   it('fails closed when a day snapshot reports cached data', async () => {
     setup({ days: [['2026-10-01', dayDoc()]], fromCache: true });
     await expect(reader().read()).rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT' });
@@ -176,7 +255,7 @@ describe('createCloudLedgerReader.read', () => {
   it('reads every page with startAfter instead of truncating, and compares the head after each page', async () => {
     const days: Array<[string, Data]> = Array.from({ length: 450 }, (_, index) => [dateAt(index), dayDoc()]);
     setup({ days, heads: [head({ goLiveDate: '2026-01-01' })], leaseUpdatedAt: ts('2027-06-01T02:00:00.000Z') });
-    const snapshot = await reader().read();
+    const snapshot = await reader({ windowDays: 1_000 }).read();
     // 450 open days before today: every one is an unclosed past day with a missing opening and no
     // transactions, so none is reported; the scan still has to see all of them without a cap.
     expect(snapshot.anomalies).toEqual([]);
@@ -192,7 +271,7 @@ describe('createCloudLedgerReader.read', () => {
     const days: Array<[string, Data]> = Array.from({ length: 450 }, (_, index) => [dateAt(index), dayDoc()]);
     days[430] = [dateAt(430), dayDoc({ openingCash: 80, totals: totals(2) })];
     setup({ days, heads: [head({ goLiveDate: '2026-01-01' })], leaseUpdatedAt: ts('2027-06-01T02:00:00.000Z') });
-    const snapshot = await reader().read();
+    const snapshot = await reader({ windowDays: 1_000 }).read();
     expect(snapshot.anomalies.map(item => [item.kind, item.dayId])).toEqual([['unclosed-past-day', dateAt(430)]]);
   });
 
