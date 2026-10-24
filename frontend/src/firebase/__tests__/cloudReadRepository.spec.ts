@@ -357,7 +357,8 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
     });
     expect(summary.days).toHaveLength(3);
     expect(summary.days.map(day => day.exists)).toEqual([true, false, true]);
-    expect(summary.days[0]).toMatchObject({ status: 'closed', effectiveCash: 135 });
+    // a summary reads the day heads only (P16f2 S13): the effective cash needs the post-close entries and is left to the report
+    expect(summary.days[0]).toMatchObject({ status: 'closed', effectiveCash: null, postCloseEntries: [] });
     expect(summary.summary).toMatchObject({
       activeTransactionCount: 203, orderCount: 198, bentoCount: 198, mealTotal: 990,
       orderUnpaid: null, totalIncome: 617, totalExpense: 2, totalRefund: 4, netCash: 611,
@@ -373,6 +374,9 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
       leaseEpoch: 7,
     });
     expect(history).toMatchObject({ complete: true, currentBalance: 630, openingBalance: 1_000, sourceSeq: 205 });
+    // the history carries the range days and the student's status and revision, so the page reads no second report (P16f2 S11)
+    expect(history.days.map(day => day.businessDate)).toEqual([today]);
+    expect(history).toMatchObject({ studentStatus: 'active', studentRevision: expect.any(Number), settlements: [], postCloseEntries: [] });
     expect(history.transactions).toHaveLength(199);
     expect(history.transactions.every(row => row.studentId === studentA)).toBe(true);
     expect(history.transactions.every(row => row.afterBalance !== undefined && row.balanceApplicability === 'verified')).toBe(true);
@@ -512,6 +516,14 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
 
     const summary = await repository().readSummary({ range, leaseEpoch: 7 });
     expect(summary.days[0]).toMatchObject({
+      exists: true,
+      status: 'closed',
+      lastSettlementRevision: 1,
+      effectiveCash: null,
+      settlements: [{ revision: 1, countedCash: 0, difference: 0 }],
+    });
+    const report = await repository().readReport({ range, studentId: null, leaseEpoch: 7 });
+    expect(report.days[0]).toMatchObject({
       exists: true,
       status: 'closed',
       lastSettlementRevision: 1,
@@ -847,18 +859,19 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
   });
 
   it('rejects an invalid Gregorian business date found in the transactions read for the range', async () => {
+    // a past date inside the range read, so that the Gregorian check (not a future date or the go-live check) is what refuses it
     const invalidId = uuidFrom(900);
     await withAdmin(async db => {
-      await setDoc(doc(db, `transactions/${invalidId}`), tx(invalidId, studentA, '2026-11-31', 204, 'payment', {
+      await setDoc(doc(db, `transactions/${invalidId}`), tx(invalidId, studentA, '2025-02-30', 204, 'payment', {
         amount: 1, paidAmount: 1,
       }));
       await setDoc(doc(db, 'system/dataHead'), head(205));
     });
     await expect(repository().readAccountHistory({
       studentId: studentA,
-      range: { kind: 'custom', startDate: today, endDate: today },
+      range: { kind: 'custom', startDate: '2025-02-28', endDate: '2025-03-02' },
       leaseEpoch: 7,
-    })).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    })).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: expect.stringContaining('有效 Gregorian 營業日') });
   });
 
   describe('readAccessEvents (P13c2)', () => {

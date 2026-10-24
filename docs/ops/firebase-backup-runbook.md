@@ -17,6 +17,18 @@ The package contains immutable commands, including voided orders and audit comma
 
 At least monthly, the director/admin should copy the complete retained increment chain to the approved archive locations, verify that each file opens with its passphrase, and record the first/last sequence covered. The current F3 flow exports increments; it does not merge them into a compact checkpoint or prune the chain. Keep the full chain and its separate passphrase until a reviewed checkpoint/restore procedure replaces it. Retain the monthly archive according to school policy; the application does not enforce retention or archive deletion.
 
+## Daily Firebase usage and storage watch (P16f2 S8)
+
+The system does not archive or thin out accounting history (spec §10 forbids deleting it to make room), so the owner watches the numbers instead. Open the Firebase console → Usage once a day (or at least weekly while traffic is low):
+
+| What | Notice (70 %) | Operating alert (85 %) | What to do |
+|---|---|---|---|
+| Firestore reads a day (limit 50,000) | 35,000 | 42,500 | Stop opening reports of a month and CSV/print runs for the day, finish the day's orders, take the backup. Tell the developer: the capacity gate (`docs/ops/p16-capacity-gate.json`) models 100 commands a day at about 21,700 reads and 200 at about 33,400 (the way it counts, which bills every Rules lookup), so a day far above that means a loop or a page left open; at 200 commands a day the 35,000 notice is within reach, which is why the gate is FAIL at that size. |
+| Firestore writes a day (limit 20,000) | 14,000 | 17,000 | The gate models 200 commands at about 1,600 writes; a much higher number is not normal use. |
+| Stored data (limit 1 GiB) | 0.70 GiB (717 MiB) | 0.85 GiB (870 MiB) | At the notice: tell the developer and CheerC. Before 0.85 GiB a retention spec (what may be exported and then removed, with CheerC's approval) must exist; nothing is deleted automatically and no accounting document is deleted by hand. |
+
+Storage forecast (P16f2 S8: no archive is built now): at 100 commands a day the two-year projection is 561 MiB (about 1,133 days to 0.85 GiB); at the 200-command design ceiling it is 1,131 MiB, which reaches 0.85 GiB after about a year and a half. If real traffic is nearer 200 a day than 100, schedule the retention spec at the 70 % notice, not later. Record the console figures of each check (date, reads, writes, stored MiB) in the operator's own log, not in this repository.
+
 ## Restore ownership and limits
 
 - Counter operator owns daily package creation, local re-selection, and the second-copy confirmation.

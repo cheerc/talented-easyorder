@@ -373,6 +373,8 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
     };
     /** An order of today by studentT. */
     const addOrder = () => placeOrder(studentT, today, '');
+    /** An order of today by studentS: a transaction of that student in the range of a report, an account history or an audit of today. */
+    const addStudentTodayOrder = () => placeOrder(studentS, today, '');
     /** An order of today by an account that had none: a new account in the range of the report. */
     const addRangeAccount = async () => {
       await placeOrder(createdStudents[2 + rangeMade]!, today, '');
@@ -440,6 +442,7 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       { dimension: 'dayTransaction', unitsPerStep: 1, add: addOrder },
       { dimension: 'rangeAccount', unitsPerStep: 1, add: addRangeAccount },
       { dimension: 'studentTransaction', unitsPerStep: 1, add: addStudentOrder },
+      { dimension: 'studentRangeTransaction', unitsPerStep: 1, add: addStudentTodayOrder },
       { dimension: 'dayCommand', unitsPerStep: 1, add: addDayCommand },
       { dimension: 'closedDay', unitsPerStep: 1, add: addClosedDay },
       { dimension: 'openDay', unitsPerStep: 1, add: addOpenDay },
@@ -482,10 +485,10 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
         // the report reads the transactions of the range (every student's) and, for every account that has one in the range, that
         // account's whole history (`readAccountPrefix`, twice): the accounts of the range and their histories are dimensions of their own
         { name: 'load.report', dimensions: ['student', 'dayTransaction', 'rangeAccount', 'studentTransaction'], roster: true, paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readReport({ range: onToday, studentId: null, leaseEpoch: epoch }) },
-        // the report of one student: the transactions of the range (every student's) and the whole history of that one account
-        { name: 'load.reportStudent', dimensions: ['student', 'dayTransaction', 'studentTransaction'], roster: true, paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readReport({ range: onToday, studentId: studentS, leaseEpoch: epoch }) },
-        // the account history reads the transactions of the range (today's, of every student) and the whole history of the student
-        { name: 'load.accountHistory', dimensions: ['student', 'dayTransaction', 'studentTransaction'], roster: true, paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAccountHistory({ range: onToday, studentId: studentS, leaseEpoch: epoch }) },
+        // the report of one student (P16f1, P16f2): that student's transactions from the range start to today (`studentRangeTransaction`), whichever day
+        { name: 'load.reportStudent', dimensions: ['student', 'dayTransaction', 'studentTransaction', 'studentRangeTransaction'], roster: true, paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readReport({ range: onToday, studentId: studentS, leaseEpoch: epoch }) },
+        // the account history (P16f2 S11: with the days of the range, so the page reads no second report): the student's transactions from the range start
+        { name: 'load.accountHistory', dimensions: ['student', 'dayTransaction', 'studentTransaction', 'studentRangeTransaction'], roster: true, paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAccountHistory({ range: onToday, studentId: studentS, leaseEpoch: epoch }) },
         { name: 'load.auditDay', dimensions: ['dayTransaction', 'dayCommand'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAudit({ dayId: today, leaseEpoch: epoch }) },
         // P16f1: the audit of a student is the newest page of at most 100 commands, so it is run at the production page size only (at 6 or 12
         // it would be one small page whatever the history, and the slope would be a fraction of the real cost); the gate gives it at most 100 units
@@ -519,6 +522,8 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       return {
         student: await adminCount('students'), vendor: await adminCount('vendors'), dayTransaction, rangeAccount: rangeMade,
         studentTransaction: await adminCount('transactions', ['studentId', '==', studentS]),
+        // the transactions of studentS dated today (the range of the loads below): what a report or history of one student reads from the range start
+        studentRangeTransaction: await adminCount('transactions', ['studentId', '==', studentS], ['businessDate', '==', today]),
         // commands dated today that are not the orders' own (each order is one transaction and one command)
         dayCommand: commandsToday - dayTransaction,
         closedDay: closedMade, openDay: openPastMade,
@@ -609,9 +614,11 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
         // counts every transaction of today), so it has no phase of that dimension: its slope is that of the `dayTransaction` phase,
         // and the states of the `rangeAccount` phase still count for its intercept, which is the largest over every measured state
         // (the backup export grows with the commands of every phase, so its one series is every state)
+        // the same goes for the `studentRangeTransaction` phase (an order of today by studentS: also a transaction of today and of the student's history)
+        const confounded = ['rangeAccount', 'studentRangeTransaction'];
         const own: FitPhase[] = spec.dimensions.length === 1 && spec.dimensions[0] === 'command'
           ? [{ dimension: 'command', stateIndexes: states.map((_state, index) => index) }]
-          : spec.dimensions.includes('rangeAccount') ? phaseRanges : phaseRanges.filter(phase => phase.dimension !== 'rangeAccount');
+          : phaseRanges.filter(phase => !confounded.includes(phase.dimension) || spec.dimensions.includes(phase.dimension));
         // the roster is read in pages of its own size: one page per production page of students, measured as the pages of the
         // students load (its one query: the authorization calls it costs)
         const rosterPage = recorded[recorded.length - 1]!.loads.get('load.students')!.small;
@@ -635,6 +642,46 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
         });
       }
     }, 60_000);
+    // The closed-day part of a report (P16f2): a report reads, for each closed day of its range, the day, its settlement versions, the
+    // post-close entries and the back-fill marker. The summary no longer does (S13), so this is measured on its own: a report of the
+    // newest closed day (three versions) less a report of a day with no document, over the same transactions after the range start.
+    it('load.reportClosedDay: what a closed day adds to a report', async () => {
+      await setBase();
+      const emptyDay = shiftDay(today, -30);
+      const reportOf = (dayId: string) => createCloudReadRepository(app, current).readReport({ range: { kind: 'custom', startDate: dayId, endDate: dayId }, studentId: null, leaseEpoch: epoch });
+      const closed = await meter.measure(() => reportOf(versionDay), app);
+      localStorage.clear();
+      const empty = await meter.measure(() => reportOf(emptyDay), app);
+      localStorage.clear();
+      const withDay = summarize(closed.report);
+      const without = summarize(empty.report);
+      expect(withDay.reads).toBeGreaterThan(without.reads);
+      fixedOperation('load.reportClosedDay', {
+        ...withDay, reads: withDay.reads - without.reads,
+        authDocuments: Math.max(0, withDay.authDocuments - without.authDocuments), authQueries: Math.max(0, withDay.authQueries - without.authQueries),
+      });
+    }, 120_000);
+  });
+
+  // ---- C2. the orders page after one of its own commands (P16f2 S4) ----
+  describe('orders refresh', () => {
+    it('refreshSnapshot after a CreateOrder: a fixed cost, whatever the size of the day or the roster', async () => {
+      // measured on the fully grown fixture of the loads above (at the production page size): the cost must not depend on it
+      const page = createCloudOrderRepository(app, current);
+      const studentId = uuid(950_101);
+      await setBase();
+      const before = await page.loadSnapshot();
+      const rev = await revisions(studentId, today);
+      const result = await page.createOrder({ commandId: id(), transactionId: id(), leaseEpoch: epoch, studentId, dayId: today,
+        expectedStudentRevision: rev.student, expectedDayRevision: rev.day, mealKind: 'other', mealPrice: 80, paidAmount: 100,
+        menuRevision: null, otherItemName: 'x', note: '' });
+      if (!result.ok) throw new Error(`P16f2 scenario: CreateOrder failed ${JSON.stringify(result)}`);
+      const { result: refreshed, report } = await meter.measure(() => page.refreshSnapshot(before, result.receipt), app);
+      localStorage.clear();
+      expect(refreshed).not.toBeNull();
+      expect(refreshed).toEqual(await page.loadSnapshot());
+      fixedOperation('load.ordersRefresh', summarize(report));
+    }, 120_000);
   });
 
   // ---- D. the table ----

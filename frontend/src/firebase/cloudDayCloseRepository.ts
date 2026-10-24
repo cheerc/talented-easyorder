@@ -45,6 +45,8 @@ const LEDGER_PAGE_SIZE = 200;
 const MAX_SCANNED_DAYS = 20_000;
 /** Calendar days per query when walking back to the previous closed day (contract §11.2). */
 const PREVIOUS_CLOSED_SEGMENT_DAYS = 31;
+/** P16f2 S3: the anomaly scan reads the last 62 days and every open or reopened day; an older closed day only changes by being reopened. */
+const LEDGER_WINDOW_DAYS = 62;
 /** Fail-closed ceiling for all post-close entries one scan reads (contract §15.3); entries are rare manual fixes. */
 const MAX_POST_CLOSE_ENTRIES = 20_000;
 /** `in` queries accept at most 30 values; the overview looks up backfill markers in chunks. */
@@ -563,6 +565,17 @@ export async function listCloudBackfillingDays(
     .map(day => day.backfill as CloudBackfillDay);
 }
 
+/** One settlement version of a day (the latest, for a summary), or null when it does not exist; no other document is read. */
+export async function readCloudSettlementVersion(
+  db: Firestore,
+  dayId: string,
+  revision: number,
+): Promise<CloudSettlementVersion | null> {
+  const snapshot = await getDocFromServer(doc(db, settlementPath(dayId, revision)));
+  assertServerConfirmed(snapshot, `日結版本 ${dayId}#${revision}`);
+  return snapshot.exists() ? toVersion(dayId, revision, snapshot.data()) : null;
+}
+
 /**
  * Server-only read of one day's close state and its complete settlement history. The versions must be
  * exactly 1..lastSettlementRevision, and the head must not move during the read; otherwise fail closed.
@@ -658,6 +671,8 @@ export interface CloudLedgerReaderTuning {
   pageSize?: number;
   /** Calendar days per previous-closed-day segment (default 31). */
   segmentDays?: number;
+  /** Calendar days back from today that the anomaly scan covers besides the days that are still open (default 62). */
+  windowDays?: number;
 }
 
 /** Settlement versions are immutable, so closed days' latest counted cash is kept per Firestore instance. */
@@ -692,6 +707,7 @@ export function createCloudLedgerReader(
 ) {
   const pageSize = tuning.pageSize ?? LEDGER_PAGE_SIZE;
   const segmentDays = tuning.segmentDays ?? PREVIOUS_CLOSED_SEGMENT_DAYS;
+  const windowDays = tuning.windowDays ?? LEDGER_WINDOW_DAYS;
   const settlementCache = settlementCacheFor(db);
 
   async function countedCashOf(datasetId: string, dayId: string, day: ReturnType<typeof decodeDay>): Promise<number> {
@@ -732,34 +748,54 @@ export function createCloudLedgerReader(
       for (const entry of await readPostCloseEntries(db, null, pageSize, async () => assertHeadUnchanged(before, await readHeadSeq(db), '帳務異常'))) {
         entriesByDay.set(entry.dayId, [...entriesByDay.get(entry.dayId) ?? [], entry]);
       }
+      const addDay = async (snapshot: QueryDocumentSnapshot) => {
+        if (days.length >= MAX_SCANNED_DAYS) {
+          throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `營業日超過 ${MAX_SCANNED_DAYS} 天，無法完整檢查帳務異常`);
+        }
+        if (!validDate(snapshot.id)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${snapshot.id} 路徑不支援`);
+        const day = decodeDay(snapshot.id, snapshot.data());
+        days.push({
+          dayId: snapshot.id,
+          status: day.status,
+          openingCash: day.openingCash,
+          activeTransactionCount: day.totals.activeTransactionCount,
+          countedCash: day.status === 'closed' ? await countedCashOf(before.datasetId, snapshot.id, day) : null,
+          postCloseNet: day.status === 'closed' ? postCloseNet(entriesByDay.get(snapshot.id) ?? [], day.lastSettlementRevision) : 0,
+        });
+      };
+      // The last `windowDays` days (all of the history when it is shorter) in document-ID order, then the open or reopened days before them.
+      const candidateStart = addCalendarDays(today, -windowDays);
+      const windowStart = candidateStart > before.goLiveDate ? candidateStart : before.goLiveDate;
       let last: QueryDocumentSnapshot | null = null;
       for (;;) {
         const page: QuerySnapshot<DocumentData> = await getDocsFromServer(query(
           collection(db, 'days'),
-          where(documentId(), '>=', before.goLiveDate),
+          where(documentId(), '>=', windowStart),
           where(documentId(), '<=', today),
           orderBy(documentId()),
           ...(last ? [startAfter(last)] : []),
           limit(pageSize),
         ));
-        for (const snapshot of page.docs) {
-          if (days.length >= MAX_SCANNED_DAYS) {
-            throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `營業日超過 ${MAX_SCANNED_DAYS} 天，無法完整檢查帳務異常`);
-          }
-          if (!validDate(snapshot.id)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${snapshot.id} 路徑不支援`);
-          const day = decodeDay(snapshot.id, snapshot.data());
-          days.push({
-            dayId: snapshot.id,
-            status: day.status,
-            openingCash: day.openingCash,
-            activeTransactionCount: day.totals.activeTransactionCount,
-            countedCash: day.status === 'closed' ? await countedCashOf(before.datasetId, snapshot.id, day) : null,
-            postCloseNet: day.status === 'closed' ? postCloseNet(entriesByDay.get(snapshot.id) ?? [], day.lastSettlementRevision) : 0,
-          });
-        }
+        for (const snapshot of page.docs) await addDay(snapshot);
         assertHeadUnchanged(before, await readHeadSeq(db), '帳務異常');
         if (page.size < pageSize) break;
         last = page.docs[page.docs.length - 1] ?? null;
+      }
+      if (windowStart > before.goLiveDate) {
+        const open = await getDocsFromServer(query(
+          collection(db, 'days'),
+          where('status', 'in', ['open', 'reopened']),
+          limit(MAX_UNCLOSED_DAYS + 1),
+        ));
+        assertServerConfirmed(open, '營業日');
+        if (open.size > MAX_UNCLOSED_DAYS) {
+          throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `未關帳營業日超過 ${MAX_UNCLOSED_DAYS} 天，無法完整列出`);
+        }
+        for (const snapshot of open.docs) {
+          assertServerConfirmed(snapshot, '營業日');
+          if (snapshot.id < windowStart && snapshot.id >= before.goLiveDate) await addDay(snapshot);
+        }
+        assertHeadUnchanged(before, await readHeadSeq(db), '帳務異常');
       }
       return {
         today,

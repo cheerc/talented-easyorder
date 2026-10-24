@@ -7,7 +7,7 @@ import type { CloudLedgerDateRange, CloudReportTransaction } from '../../domain/
 import type { CorrectTransactionPayload } from '../../domain/cloudTransactionMutation';
 import { createCloudLedgerDateRange, validateCloudLedgerRange } from '../../domain/cloudLedgerReport';
 import { createCloudReadRepository, type CloudReadRepositoryError } from '../../firebase/cloudReadRepository';
-import { createCloudStudentRepository, listCloudStudents, type CloudStudentRecord } from '../../firebase/cloudStudentRepository';
+import { createCloudStudentRepository, type CloudStudentRecord } from '../../firebase/cloudStudentRepository';
 import { createCloudOrderRepository, type CloudTransactionMutationInput } from '../../firebase/cloudOrderRepository';
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
 import { composePaperRefNote, splitPaperNote } from '../../domain/paperRef';
@@ -25,8 +25,6 @@ export interface CloudAccountHistoryPageProps {
 
 interface HistorySnapshot {
   account: Awaited<ReturnType<ReturnType<typeof createCloudReadRepository>['readAccountHistory']>>;
-  report: Awaited<ReturnType<ReturnType<typeof createCloudReadRepository>['readReport']>>;
-  students: Awaited<ReturnType<typeof listCloudStudents>>;
   audit: Awaited<ReturnType<ReturnType<typeof createCloudReadRepository>['readAuditRange']>>;
 }
 
@@ -150,20 +148,15 @@ function formatTaipeiTime(value: string): string {
 }
 
 function matchingEnvelope(snapshot: HistorySnapshot, studentId: string, range: CloudLedgerDateRange, leaseEpoch: number): boolean {
-  return snapshot.account.complete === true && snapshot.report.complete === true && snapshot.audit.complete === true
-    && snapshot.account.datasetId === snapshot.report.datasetId && snapshot.account.datasetId === snapshot.audit.datasetId
-    && snapshot.account.sourceSeq === snapshot.report.sourceSeq && snapshot.account.sourceSeq === snapshot.audit.sourceSeq
-    && snapshot.account.sourceSeq === snapshot.students.seq
-    && snapshot.account.leaseEpoch === snapshot.report.leaseEpoch && snapshot.account.leaseEpoch === snapshot.audit.leaseEpoch
+  return snapshot.account.complete === true && snapshot.audit.complete === true
+    && snapshot.account.datasetId === snapshot.audit.datasetId
+    && snapshot.account.sourceSeq === snapshot.audit.sourceSeq
+    && snapshot.account.leaseEpoch === snapshot.audit.leaseEpoch
     && snapshot.account.leaseEpoch === leaseEpoch
-    && snapshot.account.leaseToday === snapshot.report.leaseToday && snapshot.account.leaseToday === snapshot.audit.leaseToday
+    && snapshot.account.leaseToday === snapshot.audit.leaseToday
     && snapshot.account.range.startDate === range.startDate && snapshot.account.range.endDate === range.endDate
-    && snapshot.report.range.startDate === range.startDate && snapshot.report.range.endDate === range.endDate
     && snapshot.audit.range.startDate === range.startDate && snapshot.audit.range.endDate === range.endDate
-    && snapshot.account.scope.studentId === studentId && snapshot.report.scope.studentId === studentId
-    && snapshot.audit.scope.studentId === studentId
-    && snapshot.students.datasetId === snapshot.account.datasetId
-    && snapshot.students.goLiveDate === snapshot.account.goLiveDate;
+    && snapshot.account.scope.studentId === studentId && snapshot.audit.scope.studentId === studentId;
 }
 
 
@@ -346,16 +339,13 @@ export function CloudAccountHistoryPage({
     const queryInput = { range, studentId: selectedId, leaseEpoch };
     void Promise.all([
       reads.readAccountHistory(queryInput),
-      reads.readReport(queryInput),
       reads.readAuditRange(queryInput),
-      studentsRepository.list(),
-    ]).then(([account, report, audit, currentStudents]) => {
+    ]).then(([account, audit]) => {
       if (!active || generationRef.current !== generation || !isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
-      const complete = { account, report, audit, students: currentStudents };
+      const complete = { account, audit };
       if (!matchingEnvelope(complete, selectedId, range, leaseEpoch)) {
         throw new Error('查帳、日結、稽核與學生版本不一致；未顯示部分資料。');
       }
-      setStudents(currentStudents.students);
       setSnapshot(complete);
       setLoading(false);
       setNotice('');
@@ -372,7 +362,7 @@ export function CloudAccountHistoryPage({
     });
     return () => { active = false; };
   }, [actionOwnerRef, identityKey, leaseEpoch, leaseToday, onNavigationStateChange, range, reads, readyScopeKey,
-    refresh, revokeSensitiveUI, scopeKey, selectedId, studentsRepository]);
+    refresh, revokeSensitiveUI, scopeKey, selectedId]);
 
   const candidateStudents = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
@@ -380,8 +370,10 @@ export function CloudAccountHistoryPage({
     return students.filter(student => [student.studentCode, student.displayName, ...student.aliases]
       .some(value => value.toLocaleLowerCase().includes(needle)));
   }, [search, students]);
-  const currentStudent = snapshot?.students.students.find(student => student.studentId === selectedId) ?? null;
-  const rangeDayByDate = useMemo(() => new Map(snapshot?.report.days.map(day => [day.businessDate, day]) ?? []), [snapshot]);
+  const currentStudent = snapshot ? {
+    ...snapshot.account.student, status: snapshot.account.studentStatus, revision: snapshot.account.studentRevision,
+  } : null;
+  const rangeDayByDate = useMemo(() => new Map(snapshot?.account.days.map(day => [day.businessDate, day]) ?? []), [snapshot]);
   const visibleAction = action?.scopeKey === scopeKey ? action : null;
   /** A frozen correction from this mount is in progress: every read and write control waits for its result. */
   const visibleFrozen = visibleAction && !isRecoveryIdentity(visibleAction) ? visibleAction : null;
@@ -863,13 +855,13 @@ export function CloudAccountHistoryPage({
         </section>
 
         <section aria-labelledby="account-settlements-heading"><h3 id="account-settlements-heading">日結版本（全日現金，不代表此帳戶餘額）</h3>
-          {snapshot.report.settlements.map(settlement => <article key={`${settlement.businessDate}:${settlement.revision}`}>
+          {snapshot.account.settlements.map(settlement => <article key={`${settlement.businessDate}:${settlement.revision}`}>
             <strong>{settlement.businessDate} · 第 {settlement.revision} 版 · {settlement.status}</strong>
             <p>應有現金 {formatMoney(settlement.expectedCash)} · 實點 {settlement.countedCash === null ? '—' : formatMoney(settlement.countedCash)} · {settlement.actorUid} · {formatTaipeiTime(settlement.committedAt)}</p>
             <p>{settlement.note || '無備註'}</p>
           </article>)}
-          {snapshot.report.settlements.length === 0 && <p>此範圍沒有日結版本。</p>}
-          {snapshot.report.postCloseEntries.map(entry => <article key={entry.entryId}>
+          {snapshot.account.settlements.length === 0 && <p>此範圍沒有日結版本。</p>}
+          {snapshot.account.postCloseEntries.map(entry => <article key={entry.entryId}>
             <strong>{entry.businessDate} · 日結第 {entry.settlementRevision} 版後補記 · {entry.direction === 'income' ? '收入' : '支出'} {formatMoney(entry.amount)}</strong>
             <p>{entry.reason} · {entry.createdBy} · {formatTaipeiTime(entry.createdAt)} · {entry.countedInEffectiveCash ? '計入有效現金' : '未計入有效現金'}</p>
           </article>)}

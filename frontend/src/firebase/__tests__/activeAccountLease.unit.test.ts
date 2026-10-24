@@ -25,6 +25,8 @@ import {
   renewLease,
   subscribeLease,
   startLeaseHeartbeat,
+  LEASE_DURATION_MS,
+  LEASE_HEARTBEAT_INTERVAL_MS,
 } from '../activeAccountLease';
 
 type LeaseSnapshotCallback = (snapshot: {
@@ -108,6 +110,13 @@ class TestLockManager {
     return this.queue.length;
   }
 }
+
+describe('activeAccountLease: heartbeat interval (P16f2 S7)', () => {
+  it('renews every two minutes, so a single failed renewal still leaves the five-minute lease with time to spare', () => {
+    expect(LEASE_HEARTBEAT_INTERVAL_MS).toBe(120_000);
+    expect(LEASE_DURATION_MS - 2 * LEASE_HEARTBEAT_INTERVAL_MS).toBeGreaterThan(0);
+  });
+});
 
 describe('activeAccountLease: unavailable Firestore fails closed', () => {
   beforeEach(() => {
@@ -246,7 +255,7 @@ describe('activeAccountLease: unavailable Firestore fails closed', () => {
     await vi.waitFor(() => expect(locks.heldCount).toBe(1));
     expect(locks.pendingCount).toBe(1);
 
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(120_000);
     expect(mocks.runTransaction).toHaveBeenCalledOnce();
     expect(lostA).not.toHaveBeenCalled();
     expect(lostB).not.toHaveBeenCalled();
@@ -254,7 +263,7 @@ describe('activeAccountLease: unavailable Firestore fails closed', () => {
     stopA();
     await vi.waitFor(() => expect(locks.pendingCount).toBe(0));
     expect(locks.heldCount).toBe(1);
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(120_000);
     expect(mocks.runTransaction).toHaveBeenCalledTimes(2);
     expect(lostA).not.toHaveBeenCalled();
     expect(lostB).not.toHaveBeenCalled();
@@ -284,7 +293,7 @@ describe('activeAccountLease: unavailable Firestore fails closed', () => {
     const stopB = startLeaseHeartbeat(db, 'operator-a', () => 1, lostB);
     await vi.waitFor(() => expect(locks.pendingCount).toBe(1));
 
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(120_000);
     await vi.waitFor(() => expect(mocks.runTransaction).toHaveBeenCalledOnce());
     stopB();
     expect(locks.pendingCount).toBe(0);

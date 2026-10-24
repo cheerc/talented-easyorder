@@ -47,7 +47,7 @@ import {
   type CloudReportStudent,
   type CloudReportTransaction,
 } from '../domain/cloudLedgerReport';
-import { isBackfilled, readCloudBackfillDay, readCloudDayClose } from './cloudDayCloseRepository';
+import { isBackfilled, readCloudBackfillDay, readCloudDayClose, readCloudSettlementVersion } from './cloudDayCloseRepository';
 import { decodeCloudOrderTransaction, reconcileDayTotals } from './cloudOrderRepository';
 import { decodeCloudStudentRecord, listCloudStudents, type CloudStudentRecord } from './cloudStudentRepository';
 import { decodeCloudDayRecord, type CloudDayRecord } from './cloudDayVendorRepository';
@@ -658,6 +658,64 @@ async function loadRange(
   return { days, dayRecords, backfills };
 }
 
+/**
+ * P16f2 S13: the day heads of a range for a summary: the day document and, for a day that has been closed, its latest settlement
+ * (two reads a day at most, instead of every settlement version, the post-close entries and the back-fill marker). A summary day
+ * therefore carries that one settlement, no post-close entries, no back-fill reason and no effective cash (`null`: it needs the
+ * entries); the report of the range reads the whole.
+ */
+async function loadRangeHeads(
+  db: Firestore,
+  dates: readonly string[],
+  context: ReadContext,
+): Promise<CloudReportDay[]> {
+  const days: CloudReportDay[] = [];
+  for (const dayId of dates) {
+    const snapshot = await getDocFromServer(doc(db, dayPath(dayId)));
+    assertServerConfirmed(snapshot, `營業日 ${dayId}`);
+    let day: CloudDayRecord | null = null;
+    if (snapshot.exists()) {
+      try {
+        day = decodeCloudDayRecord(dayId, snapshot.data());
+      } catch (error) {
+        throw readFailure(error);
+      }
+    }
+    if (day && dayId < context.head.goLiveDate) {
+      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `系統啟用日前存在營業日投影 ${dayId}`);
+    }
+    if (day && (day.status === 'closed' || day.status === 'reopened') !== (day.lastSettlementRevision > 0)) {
+      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 狀態與日結版號不一致`);
+    }
+    const latest = day && day.lastSettlementRevision > 0
+      ? await readCloudSettlementVersion(db, dayId, day.lastSettlementRevision).catch(error => { throw readFailure(error); })
+      : null;
+    if (day && day.lastSettlementRevision > 0) {
+      if (latest === null) throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 缺少版號所指的日結版本`);
+      if (latest.sourceSeq > context.head.sourceSeq) {
+        throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 日結來源序號超過資料版本`);
+      }
+      if (day.status === 'closed' && (latest.status !== 'closed' || latest.countedCash === null)) {
+        throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `已關帳日 ${dayId} 的最新日結版本不是關帳版本`);
+      }
+    }
+    days.push({
+      businessDate: dayId,
+      exists: day !== null,
+      status: day?.status ?? null,
+      revision: day?.revision ?? null,
+      openingCash: day?.openingCash ?? null,
+      totals: dayTotals(day),
+      lastSettlementRevision: day?.lastSettlementRevision ?? 0,
+      backfillReason: null,
+      settlements: latest ? [toReportSettlement(dayId, latest)] : [],
+      postCloseEntries: [],
+      effectiveCash: null,
+    });
+  }
+  return days;
+}
+
 type TransactionRecord = ReturnType<typeof decodeCloudOrderTransaction>;
 
 /**
@@ -843,9 +901,9 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
       validateSnapshotScope(context, input.leaseEpoch);
       const range = validateRange(input.range);
       const dates = rangeDates(range);
-      const loaded = await loadRange(db, dates, context, user, pageSize, options.afterPageRead);
+      const days = await loadRangeHeads(db, dates, context);
       await assertContextUnchanged(db, user, context);
-      return emptyReport(context, range, { studentId: null }, loaded, [], []);
+      return emptyReport(context, range, { studentId: null }, { days, dayRecords: new Map(), backfills: new Map() }, [], []);
     } catch (error) {
       throw readFailure(error);
     }
@@ -921,12 +979,10 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
       if (inRange.some(record => record.businessDate < context.head.goLiveDate)) {
         throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '系統啟用日前存在交易');
       }
-      // the back-fill marker of each day on which the student has a transaction in the range
-      const backfills = new Map<string, { dayId: string } | null>();
-      for (const dayId of [...new Set(inRange.map(record => record.businessDate))]) {
-        const marker = await readCloudBackfillDay(db, dayId);
-        backfills.set(dayId, marker ? { dayId: marker.dayId } : null);
-      }
+      // the days of the range (projection, settlements, post-close entries, back-fill marker): the page needs them to decide what a
+      // correction may touch, so the history carries them instead of the page reading a second report
+      const loaded = await loadRange(db, rangeDates(range), context, user, pageSize, options.afterPageRead);
+      const backfills = loaded.backfills;
       const balances = balancesBackFromCurrent(student, since, context);
       const transactions = inRange.map(record => withBalance(record, backfills, balances, context.head.sourceSeq));
       await assertContextUnchanged(db, user, context);
@@ -940,8 +996,13 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
         scope: { studentId: input.studentId },
         complete: true,
         student: toReportStudent(student),
+        studentStatus: student.status,
+        studentRevision: student.revision,
         openingBalance: student.openingBalance.amount,
         currentBalance: student.currentBalance,
+        days: loaded.days,
+        settlements: loaded.days.flatMap(day => day.settlements),
+        postCloseEntries: loaded.days.flatMap(day => day.postCloseEntries),
         transactions,
       };
     } catch (error) {

@@ -65,7 +65,7 @@ Google sign-in 後要求 `email_verified=true`、provider 為 Google，且 `oper
 `system/accessLease`：`holderUid: string|null`、`epoch: integer`、`updatedAt: Timestamp`。不儲存 `expiresAt`；有效期限由 Rules 以 `updatedAt + duration.value(5, 'm')` 推導。Acquire、Renew、Release 都以 Firestore `serverTimestamp()` 寫入 `updatedAt`，Rules 驗證其解析值等於 `request.time`。空租約初始化的 `updatedAt` 不授予任何使用權；第一次 client 狀態轉換必須使用伺服器時間。
 
 - `holderUid == null` 或 `updatedAt + duration.value(5, 'm') <= request.time` 才能取得；`epoch` 必須加一，UID 必須為本人。有效界線是嚴格大於：到達 `updatedAt + 5 分鐘` 時已逾期。
-- 持有帳號每 60 秒續約；背景頁可能停 timer，逾期即失去權限。更新只能延長本人仍有效租約，不能修改 epoch。多頁協調只選一頁續約；即使協調失效，Rules 仍是權威。UI 只用 server-confirmed `updatedAt` 顯示估計期限；本機時鐘與 timer 不授予、延長或證明使用權。
+- 持有帳號每 120 秒續約（租約 5 分鐘，容許錯過一次心跳；P16f2 S7，原為 60 秒）；背景頁可能停 timer，逾期即失去權限。更新只能延長本人仍有效租約，不能修改 epoch。多頁協調只選一頁續約；即使協調失效，Rules 仍是權威。UI 只用 server-confirmed `updatedAt` 顯示估計期限；本機時鐘與 timer 不授予、延長或證明使用權。
 - B 帳號登入 Firebase 成功不等於獲得系統使用權；A 仍使用時 B 只顯示「目前有人使用，請對方登出或等待逾時」，不載入名單與帳務，不自動搶占。重新檢查須限流（至少 15 秒）。
 - A 登出先處理送出中的結果確認，再用目前 server snapshot 的 epoch 作 `expectedEpoch` 釋放租約（`holderUid=null`、`epoch+1`、`updatedAt=serverTimestamp()`），最後 Firebase signOut／清快取。client transaction 若目前文件 epoch 與 `expectedEpoch` 不同就中止；這是防舊畫面操作的 client 前置檢查，不是 Rules 可見的欄位。Rules 仍以文件原持有人及合法狀態轉移為權威。釋放失敗仍可本機登出，至多等租約到期，不宣稱已完成交接。
 - 關閉視窗／斷電不依賴 unload 釋放；最長等待 5 分鐘。逾期後 B 取得新 epoch，A 舊頁面的寫入全部拒絕。
@@ -219,6 +219,7 @@ quota exceeded／permission denied／schema mismatch／maintenance 均阻止操�
 - 每個 list 查詢都必須帶 `limit`，且不得超過 500：Rules 的每個 `allow list` 以 `listWithinLimit()`（`request.query.limit != null && request.query.limit <= 500`）拒絕沒帶 limit 或超過 500 的查詢（P16c）。完整讀取靠 cursor 分頁，頁大小上限 200；一次讀完的集合（日結版本 200 個、未關帳日 200 天）以 `limit(上限 + 1)` 探測並在超出時 fail closed，`documentId in` 分塊以 `limit(分塊大小)`，不得改成無 limit 讀取。單一文件 `get` 與文件 listener 不受影響。
 - F2 週從台北週一開始，月為曆月；加總最多31個 day heads。原始明細與 CSV 分頁完整讀取，不能只匯出第一頁。
 - F5 account history 按 studentId＋businessDate＋createdAt＋transactionId 分頁；afterBalance 由 student `currentBalance` 往回推，只讀所需日期起至今的該學生交易（P16f1）。學生稽核（`readAudit({studentId})`）讀該學生最新 100 筆 command，更早的以 `beforeSeq` 分頁（index：`commands` studentId＋seq 遞減）；學生區間稽核由新到舊讀到區間起點以前為止。快取繫於 student.revision，變動即失效。
+- P16f2 讀取契約：帳戶歷史一次回傳區間內的日資料、日結與關帳後補記（帳戶頁不另讀報表）；報表頁摘要（`readSummary`）每天只讀日文件與最新日結版本（有效現金留給報表）；報表頁的區間稽核按「匯出稽核」才讀，CSV／列印沿用畫面上 `sourceSeq` 相同的報表資料；帳務異常掃描讀最近 62 天加所有未關帳日；訂餐頁命令後依收據補讀學生、營業日與交易（收據 `seq` 必須接在快照 `seq` 之後，否則整頁重載）。這些都保留 head 圍欄與對帳檢查。
 - indexes 明列：transactions `(businessDate,createdAt,transactionId)`、`(studentId,businessDate,createdAt,transactionId)`；commands `(businessDate,seq)`、`(studentId,seq)` 供稽核，`(businessDate,committedAt,__name__)` 限定全帳戶 null-date 記錄日查詢，seq 單欄供備份。command 的 before/after、大字串與不查詢快照停用索引，避免索引膨脹；studentId/businessDate 作可為 null 的頂層查詢欄。P16e 起：commands 與 transactions 沒有任何查詢用到的欄位一律停用索引，composite index 只留 6 個被實際查詢形狀用到的（`indexCoverage.test.ts` 強制）。
 - 讀取多頁時以 dataHead.seq 前後相同驗證一致；變動則標示資料已更新並重新載入，備份改用 immutable prefix，不依活頁快照。長頁不持有 Firestore transaction。
 

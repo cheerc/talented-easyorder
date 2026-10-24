@@ -22,9 +22,9 @@ import {
 import { CASHIER_NAME_SNAPSHOT, CASHIER_STUDENT_ID } from '../domain/cloudCommandSchema';
 import type { CorrectTransactionPayload } from '../domain/cloudTransactionMutation';
 import { decodeCloudDayRecord, type CloudDayRecord } from './cloudDayVendorRepository';
-import { listCloudStudents, type CloudStudentRecord } from './cloudStudentRepository';
+import { decodeCloudStudentRecord, listCloudStudents, type CloudStudentRecord } from './cloudStudentRepository';
 import { listCloudBackfillingDays, readCloudBackfillDay, type CloudBackfillDay } from './cloudDayCloseRepository';
-import { accessLeasePath, dataHeadPath, dayPath } from './firestorePaths';
+import { accessLeasePath, dataHeadPath, dayPath, studentPath, transactionPath } from './firestorePaths';
 import type { CloudRecoveryReader } from './cloudRecoveryReader';
 import type { PendingCommandIdentity } from './cloudPendingJournal';
 
@@ -508,6 +508,63 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
     }
   }
 
+  /**
+   * P16f2 S4: the snapshot after one of this page's own commands, from the documents that the command changed. Only when the
+   * receipt is the very next sequence number after the snapshot, on the day the snapshot shows, and the head is still at that
+   * number before and after the reads, nothing else can have changed, so the student, the day and the transaction named by the
+   * receipt are read and put in place (7 reads, instead of the roster and the whole day). Everything the full load checks is
+   * checked on the result (the day totals against the transactions, every transaction against a student). Otherwise it returns
+   * null and the caller reloads the whole snapshot; read failures are thrown as `loadSnapshot` does.
+   */
+  async function refreshSnapshot(
+    previous: CloudOrderSnapshot,
+    receipt: Pick<CommandReceipt, 'seq' | 'targets'>,
+  ): Promise<CloudOrderSnapshot | null> {
+    try {
+      const targets = receipt.targets;
+      const transactionId = targets.transactionId;
+      const studentId = targets.studentId;
+      if (receipt.seq !== previous.seq + 1 || targets.dayId !== previous.businessDate
+        || !validDocumentId(transactionId) || (studentId !== undefined && !validDocumentId(studentId))) {
+        return null;
+      }
+      const user = requireGoogleUser(options);
+      const unchanged = (head: { seq: number; datasetId: string; goLiveDate: string }) => head.seq === receipt.seq
+        && head.datasetId === previous.datasetId && head.goLiveDate === previous.goLiveDate;
+      const before = await readHead(db);
+      if (!unchanged(before)) return null;
+      if (await readLeaseDate(db, user.uid) !== previous.today) return null;
+      const daySnapshot = await getDocFromServer(doc(db, dayPath(previous.businessDate)));
+      if (!daySnapshot.exists()) return null;
+      const day = decodeCloudDayRecord(previous.businessDate, daySnapshot.data());
+      const transactionSnapshot = await getDocFromServer(doc(db, transactionPath(transactionId)));
+      if (!transactionSnapshot.exists()) return null;
+      const transaction = decodeCloudOrderTransaction(transactionId, transactionSnapshot.data(), previous.businessDate, before.seq);
+      let students = previous.students;
+      if (studentId !== undefined && studentId !== CASHIER_STUDENT_ID) {
+        const studentSnapshot = await getDocFromServer(doc(db, studentPath(studentId)));
+        if (!studentSnapshot.exists() || !students.some(item => item.studentId === studentId)) return null;
+        const student = decodeCloudStudentRecord(studentId, studentSnapshot.data());
+        students = students.map(item => (item.studentId === studentId ? student : item));
+      }
+      // a corrected or voided transaction keeps its place (its creation time never changes); a new one was created after all others
+      const transactions = previous.transactions.some(item => item.transactionId === transactionId)
+        ? previous.transactions.map(item => (item.transactionId === transactionId ? transaction : item))
+        : [...previous.transactions, transaction];
+      const studentIds = new Set(students.map(item => item.studentId));
+      const orphan = transactions.find(item => item.type !== 'expense' && !studentIds.has(item.studentId));
+      if (orphan) {
+        throw new CloudOrderRepositoryError('RECONCILIATION_FAILED', `交易 ${orphan.transactionId} 指向不存在的學生；請聯絡系統維護者`);
+      }
+      reconcileDayTotals(day, transactions);
+      if (await readLeaseDate(db, user.uid) !== previous.today) return null;
+      if (!unchanged(await readHead(db))) return null;
+      return { ...previous, seq: before.seq, day, students, transactions };
+    } catch (error) {
+      throw readError(error);
+    }
+  }
+
   function createOrder(input: CreateCloudOrderInput): Promise<CommandResult> {
     return commands.commitCommand({
       commandId: input.commandId,
@@ -611,6 +668,7 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
 
   return {
     loadSnapshot,
+    refreshSnapshot,
     mutateTransaction,
     confirmPendingIntent,
     cleanupConfirmedIntent,

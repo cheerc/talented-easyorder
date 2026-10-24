@@ -277,4 +277,54 @@ describeWithEmulator('P16f1 read reduction: one student with a long history outs
     expect(collected).toHaveLength(total);
     expect(new Set(collected.map(row => row.commandId)).size).toBe(total);
   }, 180_000);
+
+  /** Every balance a read shows for studentL equals the oracle's, on the report of everyone, the report of the student and the account history. */
+  const expectOracleBalances = async (range: { kind: 'custom'; startDate: string; endDate: string }) => {
+    const expected = await oracle(studentL);
+    const everyone = await reads.readReport({ range, studentId: null, leaseEpoch: epoch });
+    const one = await reads.readReport({ range, studentId: studentL, leaseEpoch: epoch });
+    const history = await reads.readAccountHistory({ range, studentId: studentL, leaseEpoch: epoch });
+    const mine = everyone.transactions.filter(item => item.studentId === studentL);
+    expect(mine.length).toBeGreaterThan(0);
+    for (const rows of [mine, one.transactions, history.transactions]) {
+      expect(rows.map(row => row.transactionId)).toEqual(mine.map(row => row.transactionId));
+      for (const row of rows) expect(row.afterBalance, `balance after ${row.transactionId}`).toBe(expected.get(row.transactionId));
+    }
+    expect(history.currentBalance).toBe((await read(`students/${studentL}`)).currentBalance);
+  };
+
+  it('a CorrectTransaction changes the amount, and every balance after it still equals the oracle\'s', async () => {
+    const [first] = (await admin(async db => (await getDocs(query(collection(db, 'transactions'),
+      where('studentId', '==', studentL), where('businessDate', '==', today), where('type', '==', 'order')))).docs.map(item => item.id))).sort();
+    const before = (await read(`transactions/${first}`)).amount as number;
+    await mutate(first!, studentL, { kind: 'CorrectTransaction', payload: { mealPrice: 130, paidAmount: 100, amount: -30, note: '', reason: 'P16f2 oracle correction' } });
+    expect((await read(`transactions/${first}`)).amount).not.toBe(before);
+    await expectOracleBalances({ kind: 'custom', startDate: today, endDate: today });
+  }, 180_000);
+
+  it('L07: a day closed and reopened before today can be corrected, and the balances across it equal the oracle\'s', async () => {
+    const dayC = shiftDay(today, -20);
+    ok(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: epoch, targets: { dayId: dayC },
+      expectedRevisions: { day: 0 }, payload: { businessDate: dayC } }), 'EnsureDay closed day');
+    ok(await closing.backfillOpening({ commandId: id(), leaseEpoch: epoch, dayId: dayC,
+      // two orders of 100 end the day on 1000, the opening of today, which the close of a back-filled day has to meet
+      expectedDayRevision: (await read(`days/${dayC}`)).revision, openingCash: 800, reason: 'P16f2 fixture' }), 'BackfillOpeningCash');
+    ok(await writer.commitCommand({ commandId: id(), kind: 'StartBackfill', leaseEpoch: epoch, targets: { dayId: dayC },
+      expectedRevisions: { day: (await read(`days/${dayC}`)).revision }, payload: { reason: 'P16f2 fixture' } }), 'StartBackfill');
+    const transactionId = await order(studentL, dayC, '紙本RR-C：x');
+    await order(studentL, dayC, '紙本RR-D：x');
+    const dayRevision = async () => (await read(`days/${dayC}`));
+    const expectedCash = (await closing.read(dayC))!.expectedCash!;
+    ok(await closing.closeDay({ commandId: id(), leaseEpoch: epoch, dayId: dayC, expectedDayRevision: (await dayRevision()).revision,
+      expectedSettlementRevision: (await dayRevision()).lastSettlementRevision, expectedCash, countedCash: expectedCash, note: '', alignWithDayId: today }), 'CloseDay');
+    ok(await closing.reopenDay({ commandId: id(), leaseEpoch: epoch, dayId: dayC, expectedDayRevision: (await dayRevision()).revision,
+      expectedSettlementRevision: (await dayRevision()).lastSettlementRevision, reason: 'P16f2 reopen to correct' }), 'ReopenDay');
+    const tx = await read(`transactions/${transactionId}`);
+    ok(await orders.mutateTransaction({ commandId: id(), leaseEpoch: epoch, transactionId, studentId: studentL, dayId: dayC,
+      expectedTransactionRevision: tx.revision, expectedStudentRevision: (await read(`students/${studentL}`)).revision,
+      expectedDayRevision: (await dayRevision()).revision, kind: 'CorrectTransaction',
+      payload: { mealPrice: 95, paidAmount: 100, amount: 5, note: tx.note, reason: 'P16f2 L07 correction' } } as CloudTransactionMutationInput), 'CorrectTransaction on a reopened day');
+    // a range that starts on the reopened day: the history day before it (40 days ago) is outside, and still part of the balance
+    await expectOracleBalances({ kind: 'custom', startDate: dayC, endDate: today });
+  }, 240_000);
 });
