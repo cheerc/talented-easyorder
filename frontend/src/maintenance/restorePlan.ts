@@ -29,6 +29,8 @@ export interface RestorePlan {
   counts: { commands: number; projections: number; studentCodes: number; head: number };
   digest: string;
   expectedHead: ExpectedHead;
+  /** Day totals of the replay, for verify to compare with what it recomputes from the target. */
+  expectedTotals: Record<string, Record<string, number>>;
 }
 
 const byPath = (left: [string, unknown], right: [string, unknown]) => (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0);
@@ -140,6 +142,6 @@ export async function buildRestorePlan(chain: LoadedChain, replayed: Replayed, o
     datasetId: chain.datasetId, toSeq: replayed.toSeq, batchSize, batches,
     documentCount: commands.length + projections.length + studentCodes.length + head,
     counts: { commands: commands.length, projections: projections.length, studentCodes: studentCodes.length, head },
-    digest, expectedHead,
+    digest, expectedHead, expectedTotals: replayed.totals,
   };
 }

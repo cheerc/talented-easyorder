@@ -89,11 +89,54 @@ describe('P15a CLI usage and exit codes', () => {
     }
   });
 
-  it('says plainly that the later subcommands are not provided yet, and exits 64 (never a fake success)', async () => {
-    for (const name of ['verify', 'finalize']) {
-      const h = harness();
-      expect(await main([name, '--project', 'demo-easyorder-restore'], h.io), name).toBe(64);
-      expect(h.err.join('')).toContain('尚未提供');
+});
+
+describe('P15c verify and finalize arguments and the wrong-target guard', () => {
+  const base = ['--project', 'demo-easyorder-restore', '--manifest', '/c/chain.json'];
+
+  it('verify and finalize are listed in --help with their flags and are no longer "not provided"', async () => {
+    const h = harness();
+    expect(await main(['--help'], h.io)).toBe(0);
+    for (const word of ['--operators', '--report']) expect(h.text()).toContain(word);
+    expect(h.text()).not.toContain('尚未提供');
+  });
+
+  it('exits 64 with zero network calls and no password read for a wrong target, a missing flag or a bad flag', async () => {
+    const cases: Array<[string, HarnessOptions, string[]]> = [
+      ['verify wrong target', { env: EMULATOR }, ['verify', '--project', 'easyorder-prod', '--manifest', '/c/chain.json']],
+      ['finalize wrong target', { env: EMULATOR }, ['finalize', '--project', 'easyorder-prod', '--manifest', '/c/chain.json', '--operators', '/c/ops.json', '--execute']],
+      ['verify no project', { env: EMULATOR }, ['verify', '--manifest', '/c/chain.json']],
+      ['verify no manifest', { env: EMULATOR }, ['verify', '--project', 'demo-easyorder-restore']],
+      ['finalize no operators', { env: EMULATOR }, ['finalize', ...base, '--execute']],
+      ['finalize password flag', { env: EMULATOR }, ['finalize', ...base, '--operators', '/c/ops.json', '--password', 'x']],
+      ['verify unknown flag', { env: EMULATOR }, ['verify', ...base, '--bogus']],
+      ['verify bad to-seq', { env: EMULATOR }, ['verify', ...base, '--to-seq', 'x']],
+      ['finalize real project without a terminal', { env: REAL_ENV, tty: false }, ['finalize', '--project', 'easyorder-drill', '--manifest', '/c/chain.json', '--operators', '/c/ops.json', '--execute']],
+    ];
+    for (const [label, options, argv] of cases) {
+      const h = harness({}, options);
+      expect(await main(argv, h.io), label).toBe(64);
+      expect(h.fetchCalls, label).toHaveLength(0);
+      expect(h.passwordReads(), label).toBe(0);
+    }
+  });
+
+  it('exits 64, before any network call, when the operators file is missing, not JSON, empty or malformed', async () => {
+    const one = await emptyPackage('anonymous-unit-a', null);
+    const chain = { '/c/chain.json': chainJson('anonymous-unit-a', [{ file: 'one.bak' }]), '/c/one.bak': one.bytes };
+    const cases: Array<[string, Record<string, string>]> = [
+      ['missing', {}],
+      ['not json', { '/c/ops.json': 'nope' }],
+      ['empty list', { '/c/ops.json': '[]' }],
+      ['not a list', { '/c/ops.json': '{"uid":"u","email":"a@example.test"}' }],
+      ['no email', { '/c/ops.json': '[{"uid":"u"}]' }],
+      ['duplicate uid', { '/c/ops.json': '[{"uid":"u","email":"a@example.test"},{"uid":"u","email":"b@example.test"}]' }],
+      ['extra field', { '/c/ops.json': '[{"uid":"u","email":"a@example.test","role":"admin"}]' }],
+    ];
+    for (const [label, extra] of cases) {
+      const h = harness({ ...chain, ...extra }, { env: EMULATOR });
+      expect(await main(['finalize', ...base, '--operators', '/c/ops.json', '--execute'], h.io), label).toBe(64);
+      expect(h.fetchCalls, label).toHaveLength(0);
     }
   });
 });

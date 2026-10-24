@@ -132,8 +132,8 @@ export type FetchLike = (url: string, init: { method: string; headers: Record<st
 
 export type RestWrite =
   | { kind: 'create'; path: string; data: Record<string, unknown> }
-  /** Updates only the listed fields of an existing document. */
-  | { kind: 'update'; path: string; data: Record<string, unknown>; fields: string[] };
+  /** Updates only the listed fields of an existing document; `updateTime` makes it conditional on the document not having changed since it was read. */
+  | { kind: 'update'; path: string; data: Record<string, unknown>; fields: string[]; updateTime?: string };
 
 export interface RestDocument { path: string; data: Record<string, unknown> }
 
@@ -145,7 +145,15 @@ export interface FirestoreRest {
   collectionHasDocuments(collection: string): Promise<boolean>;
   /** True when at least one document exists in any collection with this ID, at any depth. */
   groupHasDocuments(collectionId: string): Promise<boolean>;
+  /** Every document of a collection path such as `students` or `days/2026-10-01/settlements`, across pages. */
+  listDocuments(collection: string): Promise<RestDocument[]>;
+  /** Only the document IDs of a collection, across pages. */
+  listDocumentIds(collection: string): Promise<string[]>;
+  /** One document with its update time (for a conditional write), or null when it does not exist. */
+  getWithUpdateTime(path: string): Promise<{ data: Record<string, unknown>; updateTime: string } | null>;
 }
+
+interface ListAnswer { documents?: Array<{ name: string; fields?: Record<string, RestValue> }>; nextPageToken?: string }
 
 export function createFirestoreRest(target: RestTarget, fetchImpl: FetchLike): FirestoreRest {
   const root = `projects/${target.project}/databases/(default)/documents`;
@@ -165,7 +173,7 @@ export function createFirestoreRest(target: RestTarget, fetchImpl: FetchLike): F
     if (!response.ok) {
       let status = '';
       try { status = String((JSON.parse(text) as { error?: { status?: string } }).error?.status ?? ''); } catch { /* not JSON */ }
-      if (response.status === 409 || status === 'ALREADY_EXISTS') throw new AlreadyExistsError('目標已經有這份文件（exists=false 前置條件不成立）');
+      if (status === 'ALREADY_EXISTS' || (response.status === 409 && status !== 'ABORTED')) throw new AlreadyExistsError('目標已經有這份文件（exists=false 前置條件不成立）');
       throw new RestError(`目標回應 HTTP ${response.status}${status ? ` ${status}` : ''}`, response.status);
     }
     try { return text ? JSON.parse(text) : {}; } catch { throw new RestError('目標回傳的內容不是有效的 JSON', response.status); }
@@ -180,7 +188,8 @@ export function createFirestoreRest(target: RestTarget, fetchImpl: FetchLike): F
           ? { update: { name: `${root}/${write.path}`, ...encodeFields(write.data) }, currentDocument: { exists: false } }
           : {
             update: { name: `${root}/${write.path}`, ...encodeFields(write.data) },
-            updateMask: { fieldPaths: write.fields }, currentDocument: { exists: true },
+            updateMask: { fieldPaths: write.fields },
+            currentDocument: write.updateTime === undefined ? { exists: true } : { updateTime: write.updateTime },
           }),
       });
     },
@@ -198,6 +207,38 @@ export function createFirestoreRest(target: RestTarget, fetchImpl: FetchLike): F
     async collectionHasDocuments(collection) {
       const answer = await call('GET', `${api}/${collection}?pageSize=1`) as { documents?: unknown[] };
       return (answer.documents?.length ?? 0) > 0;
+    },
+    async listDocuments(collection) {
+      const found: RestDocument[] = [];
+      let pageToken = '';
+      do {
+        const answer = await call('GET', `${api}/${collection}?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`) as ListAnswer;
+        for (const item of answer.documents ?? []) found.push({ path: item.name.slice(root.length + 1), data: decodeFields(item.fields ?? {}) });
+        pageToken = answer.nextPageToken ?? '';
+      } while (pageToken);
+      return found;
+    },
+    async listDocumentIds(collection) {
+      const ids: string[] = [];
+      let pageToken = '';
+      do {
+        const answer = await call('GET', `${api}/${collection}?pageSize=300&mask.fieldPaths=__name__${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`) as ListAnswer;
+        for (const item of answer.documents ?? []) ids.push(item.name.slice(root.length + 1 + collection.length + 1));
+        pageToken = answer.nextPageToken ?? '';
+      } while (pageToken);
+      return ids;
+    },
+    async getWithUpdateTime(path) {
+      const answer = await call('POST', `${api}:batchGet`, { documents: [`${root}/${path}`] }) as Array<{
+        found?: { fields?: Record<string, RestValue>; updateTime?: string }; missing?: string;
+      }>;
+      const entry = answer[0];
+      if (entry?.found) {
+        if (!entry.found.updateTime) throw new RestError('目標沒有回傳文件的 updateTime', 200);
+        return { data: decodeFields(entry.found.fields ?? {}), updateTime: entry.found.updateTime };
+      }
+      if (entry?.missing) return null;
+      throw new RestError('目標的 batchGet 回應缺少文件', 200);
     },
     async groupHasDocuments(collectionId) {
       const answer = await call('POST', `${api}:runQuery`, {
