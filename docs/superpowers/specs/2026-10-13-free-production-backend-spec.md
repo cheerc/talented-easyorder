@@ -257,9 +257,9 @@ P15 的 CLI 是 `node scripts/easyorder-data-maintenance.mjs <子命令>`，沒�
 
 ## 10. 容量、維運與正式安全
 
-未提供真實量，採驗證包絡：500帳戶、20供應商、10獲准帳號、同時1個UID／最多2個活躍頁面；500筆業務command／日、尖峰1筆／秒持續60秒；兩年歷史（約250,000 commands）用生成匿名資料做讀取／儲存估算，不用真個資測試。這是設計測試值，不冒充目前人數或承諾無限免費。
+未提供真實量，採驗證包絡：500帳戶、20供應商、10獲准帳號、同時1個UID／最多2個活躍頁面；業務command設計上限200筆／日（典型100筆；CheerC 2026-10-24 提供實際量：每日100人以內、未來難超過200人，取代較早的500筆驗證包絡）、尖峰1筆／秒持續60秒；兩年歷史（約250,000 commands）用生成匿名資料做讀取／儲存估算，不用真個資測試。這是設計測試值，不冒充目前人數或承諾無限免費。
 
-P16 須計入 client document/index-entry reads、Rules dependent reads（拒絕也可能計費）、transaction重試、續約、listener reconnect、CSV與增量備份。以500筆×最多18 Rules calls 的保守上界，再加repository讀取、查詢／監聽與lease，目標日讀取<25,000、寫入<10,000，保留50%餘裕；實測若超出，先減監聽／輪詢／讀取，不裁掉稽核或安全驗證。單command（含before/after）上限64KiB；容量模型使用實際平均、P95及索引大小，不假設每筆固定1KB。
+P16 須計入 client document/index-entry reads、Rules dependent reads（拒絕也可能計費）、transaction重試、續約、listener reconnect、CSV與增量備份。以200筆×最多18 Rules calls 的保守上界，再加repository讀取、查詢／監聽與lease，目標日讀取<25,000、寫入<10,000，保留50%餘裕；實測若超出，先減監聽／輪詢／讀取，不裁掉稽核或安全驗證。單command（含before/after）上限64KiB；容量模型使用實際平均、P95及索引大小，不假設每筆固定1KB。
 
 每日人工查看 Firebase Usage；70%配額／儲存提示、85%進入營運警戒（減少全量查詢／匯出，先備份）；Spark自身是零費用硬界線，UI估計不是帳單或保證。兩年外推如將達1GiB，必須在達85%前另立保留／封存spec；本輪禁止自動刪會計歷史換容量。新讀取可耗完額度，無卡代表不扣款，不代表能防所有資源耗盡。
 
