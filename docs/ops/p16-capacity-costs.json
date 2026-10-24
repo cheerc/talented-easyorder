@@ -1403,6 +1403,85 @@
         ]
       }
     },
+    "load.auditRange": {
+      "unit": "rangeCommand",
+      "reads": {
+        "fixed": 14.555556,
+        "perUnit": 1.36
+      },
+      "readAuthorization": {
+        "fixed": 26.555556,
+        "perUnit": 0.066667
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 26.555556,
+        "perUnit": 0.066667
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "pageSizes": [
+          6,
+          12
+        ],
+        "productionPageSize": 100,
+        "small": [
+          {
+            "units": 20,
+            "reads": 47,
+            "authorization": 41,
+            "authQueries": 14,
+            "readsByKey": {
+              "doc system/dataHead": 9,
+              "doc system/accessLease": 9,
+              "query commands": 29
+            }
+          },
+          {
+            "units": 38,
+            "reads": 79,
+            "authorization": 61,
+            "authQueries": 22,
+            "readsByKey": {
+              "doc system/dataHead": 13,
+              "doc system/accessLease": 13,
+              "query commands": 53
+            }
+          },
+          {
+            "units": 56,
+            "reads": 111,
+            "authorization": 81,
+            "authQueries": 30,
+            "readsByKey": {
+              "doc system/dataHead": 17,
+              "doc system/accessLease": 17,
+              "query commands": 77
+            }
+          }
+        ],
+        "large": [
+          {
+            "units": 20,
+            "reads": 41,
+            "authorization": 26,
+            "authQueries": 8
+          },
+          {
+            "units": 38,
+            "reads": 71,
+            "authorization": 41,
+            "authQueries": 14
+          },
+          {
+            "units": 56,
+            "reads": 97,
+            "authorization": 46,
+            "authQueries": 16
+          }
+        ]
+      }
+    },
     "load.auditStudent": {
       "unit": "studentCommand",
       "reads": {

@@ -74,7 +74,7 @@ async function admin<T>(run: (db: Firestore) => Promise<T>): Promise<T> {
   return result;
 }
 const adminData = (path: string) => admin(async db => (await getDoc(doc(db, path))).data());
-const adminCount = (path: string, ...constraints: Array<[string, '==', string]>) => admin(async db => (
+const adminCount = (path: string, ...constraints: Array<[string, '==', string | null]>) => admin(async db => (
   await getDocs(query(collection(db, path), ...constraints.map(([field, op, value]) => where(field, op, value))))).size);
 const setBase = (patch: Record<string, unknown> = {}) => admin(async db => {
   await setDoc(doc(db, `operators/${OP.uid}`), { ...OP });
@@ -530,6 +530,9 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
         await sample('load.accountHistory', ordersMade, pageSize => () => readerAt(pageSize).readAccountHistory({ range: onToday, studentId: studentS, leaseEpoch: epoch }));
         await sample('load.auditDay', todayCommands, pageSize => () => readerAt(pageSize).readAudit({ dayId: today, leaseEpoch: epoch }));
         await sample('load.auditStudent', studentCommands, pageSize => () => readerAt(pageSize).readAudit({ studentId: studentS, leaseEpoch: epoch }));
+        // the range audit (CSV and print) reads the commands of the range and the commands that carry no business date
+        const undatedCommands = await adminCount('commands', ['businessDate', '==', null]);
+        await sample('load.auditRange', todayCommands + undatedCommands, pageSize => () => readerAt(pageSize).readAuditRange({ range: onToday, studentId: null, leaseEpoch: epoch }));
         await sample('load.accessEvents', await adminCount('accessEvents'), pageSize => () => readerAt(pageSize).readAccessEvents({ range: onToday, leaseEpoch: epoch }));
         await sampleUnpaged('load.dayCloseOverview', openPastMade, () => closing.readOverview());
         await sampleUnpaged('load.dayCloseState', 2 * versionsClosed - 1, () => closing.read(versionDay));
@@ -556,6 +559,7 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       loadOperation('load.accountHistory', 'studentTransaction', get('load.accountHistory'), production.read);
       loadOperation('load.auditDay', 'dayCommand', get('load.auditDay'), production.read);
       loadOperation('load.auditStudent', 'studentCommand', get('load.auditStudent'), production.read);
+      loadOperation('load.auditRange', 'rangeCommand', get('load.auditRange'), production.read);
       loadOperation('load.accessEvents', 'accessEvent', get('load.accessEvents'), production.read);
       unpagedLoad('load.dayCloseOverview', 'unclosedDay', get('load.dayCloseOverview').small, production.ledger);
       unpagedLoad('load.dayCloseState', 'settlementVersion', get('load.dayCloseState').small, production.ledger);
