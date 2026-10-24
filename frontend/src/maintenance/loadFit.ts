@@ -10,7 +10,7 @@ import type { Linear } from './capacityModel';
  * A cost has a part per document (`b`) and a part per page (`c`: the head and lease fence reads and the Rules authorization of
  * every page request, which depend on the page size, not on the documents). A paged load is measured at two page sizes, so
  * the slope of a dimension at page size P is `b + c / P` and the two can be told apart; the production slope is
- * `b + c / production page size`. Each series (one dimension in its own phase) is checked to be a line, the intercept is
+ * `b + c / production page size`. Each series (one dimension in its own phase) is checked not to grow faster than a line, the intercept is
  * the largest one over every measured state (so the model is never below a measurement), and one extra page of every
  * paged dimension is added to the fixed part. A load that also grows with a dimension it does not declare is rejected: the
  * loss would otherwise go unnoticed.
@@ -37,7 +37,7 @@ export interface FitState {
 export interface FitPhase {
   /** The dimension that grew in this phase; every other dimension stayed constant. */
   dimension: string;
-  /** Indexes into `states`, in order: the state before the phase, then the state after each step. */
+  /** Indexes into `states`, in order, of the states that give the slope: the state after each step of the phase. */
   stateIndexes: number[];
 }
 
@@ -62,7 +62,17 @@ export interface FitResult {
 type Pick = (sample: FitSample) => number;
 
 const round = (value: number) => Math.round(value * 1e6) / 1e6;
-const slackOf = (last: number) => Math.max(1, 0.02 * Math.abs(last));
+/**
+ * What a run may differ by for reasons that are not a dimension of the fixture: a scan that follows a settlement command also
+ * reads that settlement (at most two documents, so 2 reads and 4 authorization calls).
+ */
+const RUN_NOISE = 4;
+
+/**
+ * How far below its line a point may be: the run noise, 2 % of the cost, and for a paged load one page more, because the cost
+ * per page arrives in steps (a new page starts when a dimension passes a multiple of the page size) while the line is straight.
+ */
+const slackOf = (last: number, slope: number, pageSize: number | undefined) => Math.max(RUN_NOISE, 0.02 * Math.abs(last), pageSize === undefined ? 0 : Math.abs(slope) * pageSize);
 
 interface Slope {
   small: number;
@@ -81,11 +91,14 @@ function slopeOf(input: FitInput, phase: FitPhase, pick: Pick, size: 'small' | '
   const last = points[points.length - 1]!;
   if (!(last.x > first.x)) throw new Error(`${input.name}: dimension ${phase.dimension} did not grow in its phase`);
   const slope = (last.y - first.y) / (last.x - first.x);
-  const slack = slackOf(last.y);
+  const slack = slackOf(last.y, slope, input.pages[size]);
   for (const point of points) {
     const line = first.y + slope * (point!.x - first.x);
-    if (Math.abs(line - point!.y) > slack) {
-      throw new Error(`${input.name}: dimension ${phase.dimension} is not a line (${size} page size: ${point!.y} reads at ${point!.x} units, the line says ${round(line)})`);
+    // A point below the line means a cost that grows faster than a line (it would be underestimated further out); a point above
+    // it is a step (a new query or page that starts with the first unit), which a line through the ends only overestimates,
+    // and the intercept below is raised to cover every measured state.
+    if (line - point!.y > slack) {
+      throw new Error(`${input.name}: dimension ${phase.dimension} is not a line (${size} page size: ${point!.y} at ${point!.x} units, the line says ${round(line)}: the cost grows faster than a line)`);
     }
   }
   return slope;
@@ -109,7 +122,7 @@ function fitSeries(input: FitInput, pick: Pick): { fixed: number; perUnit: Recor
     if (!input.dimensions.includes(phase.dimension)) {
       for (const size of paged ? (['small', 'large'] as const) : (['small'] as const)) {
         const change = changeOf(input, phase, pick, size);
-        if (Math.abs(change) > 1) offenders.push(`dimension ${phase.dimension} (${size}: ${round(change)} over its phase)`);
+        if (Math.abs(change) > RUN_NOISE) offenders.push(`dimension ${phase.dimension} (${size}: ${round(change)} over its phase)`);
       }
       continue;
     }
@@ -162,7 +175,9 @@ export function fitLoad(input: FitInput): FitResult {
     // no page-size seam: one more page of query authorization, spread over the production page size
     const onePage = input.states[input.states.length - 1]!.small.authQueries;
     authFixed += onePage;
-    for (const dimension of Object.keys(authPerUnit)) authPerUnit[dimension] = (authPerUnit[dimension] ?? 0) + onePage / input.pages.production;
+    for (const dimension of Object.keys(authPerUnit)) {
+      if ((reads.perUnit[dimension] ?? 0) !== 0 || (authPerUnit[dimension] ?? 0) !== 0) authPerUnit[dimension] = (authPerUnit[dimension] ?? 0) + onePage / input.pages.production;
+    }
   }
   return {
     units: [...input.dimensions],

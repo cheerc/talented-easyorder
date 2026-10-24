@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { meter, normalizePath, wrapFirestoreMeterModule } from './helpers/firestoreMeter';
+import { meter, normalizePath, wrapFirestoreLiteMeterModule, wrapFirestoreMeterModule } from './helpers/firestoreMeter';
 
 /**
  * P16d meter, with a fake SDK (no Emulator): the wrapper must count what the metering rules of the helper say, on the calls
@@ -36,9 +36,10 @@ const snapshotOf = ({ data, fromCache = false }: FakeSnapshot) => ({
   exists: () => data !== null, data: () => data, metadata: { fromCache, hasPendingWrites: false },
 });
 
-function fakeModule(options: { rowsPerQuery?: number; attemptsBeforeCommit?: number; failCommit?: boolean; snapshots?: FakeSnapshot[] } = {}) {
+function fakeModule(options: { rowsPerQuery?: number; attemptsBeforeCommit?: number; failCommit?: boolean; snapshots?: FakeSnapshot[]; refuseReads?: boolean } = {}) {
   const rows = options.rowsPerQuery ?? 0;
   const calls: string[] = [];
+  const refused = (): undefined => { if (options.refuseReads) throw new Error('permission-denied'); return undefined; };
   const mod = {
     collection: (_db: unknown, path: string): FakeRef => ({ path, type: 'collection' }),
     doc: (_db: unknown, path: string): FakeRef => ({ path, type: 'document' }),
@@ -48,10 +49,10 @@ function fakeModule(options: { rowsPerQuery?: number; attemptsBeforeCommit?: num
     limit: (count: number) => ({ count }),
     startAfter: (...values: unknown[]) => ({ values }),
     query: (base: unknown, ...constraints: unknown[]) => ({ base, constraints }),
-    getDocs: async () => ({ size: rows, docs: Array.from({ length: rows }) }),
-    getDocsFromServer: async () => ({ size: rows, docs: Array.from({ length: rows }) }),
-    getDoc: async () => ({ exists: () => false }),
-    getDocFromServer: async () => ({ exists: () => false }),
+    getDocs: async () => refused() ?? ({ size: rows, docs: Array.from({ length: rows }) }),
+    getDocsFromServer: async () => refused() ?? ({ size: rows, docs: Array.from({ length: rows }) }),
+    getDoc: async () => refused() ?? ({ exists: () => false }),
+    getDocFromServer: async () => refused() ?? ({ exists: () => false }),
     onSnapshot: (_ref: unknown, next: (snapshot: unknown) => void) => { for (const item of options.snapshots ?? []) next(snapshotOf(item)); return () => undefined; },
     runTransaction: async (_db: unknown, update: (tx: FakeTx) => Promise<unknown>) => {
       const attempts = options.attemptsBeforeCommit ?? 1;
@@ -59,7 +60,7 @@ function fakeModule(options: { rowsPerQuery?: number; attemptsBeforeCommit?: num
       for (let attempt = 1; attempt <= attempts; attempt += 1) {
         calls.push(`attempt ${attempt}`);
         const tx: FakeTx = {
-          get: async () => ({ exists: () => true }),
+          get: async () => refused() ?? ({ exists: () => true }),
           set: () => tx,
           update: () => tx,
           delete: () => tx,
@@ -70,7 +71,11 @@ function fakeModule(options: { rowsPerQuery?: number; attemptsBeforeCommit?: num
       return result;
     },
   };
-  return { mod: wrapFirestoreMeterModule(mod as unknown as Record<string, unknown>) as unknown as FakeApi, calls };
+  return {
+    mod: wrapFirestoreMeterModule(mod as unknown as Record<string, unknown>) as unknown as FakeApi,
+    lite: wrapFirestoreLiteMeterModule(mod as unknown as Record<string, unknown>) as unknown as FakeApi,
+    calls,
+  };
 }
 
 describe('P16d meter: paths', () => {
@@ -145,6 +150,29 @@ describe('P16d meter: one Firestore instance', () => {
     const report = meter.stop();
     expect(report.reads.map(event => event.key)).toEqual(['students/*', 'system/dataHead']);
     expect(report.billedWrites).toBe(1);
+  });
+});
+
+describe('P16d meter: refused reads and the lite module', () => {
+  it('counts a read that the Rules refuse as 1 read and lets the error through (a document, a query and a tx.get)', async () => {
+    const { mod } = fakeModule({ refuseReads: true });
+    meter.start();
+    await expect(mod.getDocFromServer({ ...mod.doc(null, 'students/a'), firestore: null })).rejects.toThrow('permission-denied');
+    await expect(mod.getDocs(mod.query(mod.collection(null, 'students'), mod.limit(5)))).rejects.toThrow('permission-denied');
+    await expect(mod.runTransaction(null, async tx => { await tx.get({ path: 'system/dataHead' }); })).rejects.toThrow('permission-denied');
+    const report = meter.stop();
+    expect(report.reads.map(event => `${event.form} ${event.key}`)).toEqual(['doc students/*', 'query students', 'tx-doc system/dataHead']);
+    expect(report.billedReads).toBe(3);
+  });
+
+  it('meters the lite module like the full one (document reads and queries)', async () => {
+    const { lite } = fakeModule({ rowsPerQuery: 4 });
+    meter.start();
+    await lite.getDocFromServer({ ...lite.doc(null, 'system/dataHead'), firestore: null });
+    await lite.getDocs(lite.query(lite.collection(null, 'students'), lite.where('status', '==', 'active'), lite.limit(10)));
+    const report = meter.stop();
+    expect(report.reads.map(event => [event.form, event.key, event.billed])).toEqual([['doc', 'system/dataHead', 1], ['query', 'students', 4]]);
+    expect(report.reads[1]?.shape).toMatchObject({ collection: 'students', where: ['status =='], limit: 10 });
   });
 });
 

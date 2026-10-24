@@ -5,7 +5,8 @@ import type { DocumentData, Transaction } from 'firebase/firestore';
  * at the SDK boundary, so the production repositories run unchanged and every document they ask Firestore for is counted.
  *
  * Metering rules (the same text is in `docs/ops/free-production-evidence.md`):
- * - `getDoc*` is 1 read, also when the document does not exist; a query (`getDocs*`) is max(1, documents returned).
+ * - `getDoc*` is 1 read, also when the document does not exist; a query (`getDocs*`) is max(1, documents returned); a request
+ *   that the Rules refuse (the call rejects) is 1 read.
  * - every `tx.get` is 1 read; a transaction that is retried counts the `tx.get` calls of every attempt.
  * - `onSnapshot` on a document is 1 read when it attaches (the server sends the document even when the SDK already had it
  *   cached, so a first snapshot that is flagged `fromCache` still counts) and 1 per later server snapshot with new data; a
@@ -197,19 +198,20 @@ function wrapReads<T extends Record<string, unknown>>(actual: T): Record<string,
   };
   for (const name of ['getDoc', 'getDocFromServer']) {
     wrap(name, original => async (reference, ...rest) => {
-      const snapshot = await original(reference, ...rest);
-      noteRead(ownerOf(reference), { form: 'doc', key: normalizePath((reference as { path: string }).path), documents: 1, billed: 1 });
+      const read = { form: 'doc' as const, key: normalizePath((reference as { path: string }).path), documents: 1, billed: 1 };
+      // a request that the Rules refuse is billed as one read too
+      const snapshot = await (original(reference, ...rest) as Promise<unknown>).catch((error: unknown) => { noteRead(ownerOf(reference), read); throw error; });
+      noteRead(ownerOf(reference), read);
       return snapshot;
     });
   }
   for (const name of ['getDocs', 'getDocsFromServer']) {
     wrap(name, original => async (target, ...rest) => {
-      const snapshot = await original(target, ...rest) as { size: number };
       const shape = shapeOf(target);
-      noteRead(ownerOf(target), {
-        form: 'query', key: shape?.collection ?? 'unknown-query', documents: snapshot.size, billed: Math.max(1, snapshot.size),
-        ...(shape ? { shape } : {}),
-      });
+      const refused = { form: 'query' as const, key: shape?.collection ?? 'unknown-query', documents: 0, billed: 1, ...(shape ? { shape } : {}) };
+      // a query that the Rules refuse is billed as one read too
+      const snapshot = await (original(target, ...rest) as Promise<{ size: number }>).catch((error: unknown) => { noteRead(ownerOf(target), refused); throw error; });
+      noteRead(ownerOf(target), { ...refused, documents: snapshot.size, billed: Math.max(1, snapshot.size) });
       return snapshot;
     });
   }
@@ -245,8 +247,10 @@ function wrapReads<T extends Record<string, unknown>>(actual: T): Record<string,
       attempt = [];
       const metered = {
         get: async (reference: { path: string }) => {
-          const snapshot = await tx.get(reference as never);
-          noteRead(db, { form: 'tx-doc', key: normalizePath(reference.path), documents: 1, billed: 1 });
+          const read = { form: 'tx-doc' as const, key: normalizePath(reference.path), documents: 1, billed: 1 };
+          // a read that the Rules refuse is billed as one read too
+          const snapshot = await tx.get(reference as never).catch((error: unknown) => { noteRead(db, read); throw error; });
+          noteRead(db, read);
           return snapshot;
         },
         set: (reference: { path: string }, data: DocumentData, setOptions?: unknown) => {

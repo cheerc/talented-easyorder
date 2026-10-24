@@ -69,9 +69,30 @@ describe('P16d load fit: a load must depend on the dimensions it declares and on
     expect(fitLoad({ ...paged, states: all, phases: phasesWithC, dimensions: ['a', 'b', 'c'] }).reads.perUnit.c).toBe(3);
   });
 
-  it('rejects a series that is not a line, because a line would not describe the load', () => {
-    const bent = [sample(2, 2), { ...sample(4, 2), small: { reads: 99, authorization: authorization(4), authQueries: 2 } }, sample(6, 2)];
+  it('rejects a series that grows faster than a line, because a line would underestimate it further out', () => {
+    // 13 at 2 units, 8 at 4 units, 25 at 6 units: the middle state is 11 below the line through the ends (19), more than a page (6)
+    const bent = [sample(2, 2), { ...sample(4, 2), small: { reads: 8, authorization: authorization(4), authQueries: 2 } }, sample(6, 2)];
     expect(() => fitLoad({ ...paged, states: bent, phases: [{ dimension: 'a', stateIndexes: [0, 1, 2] }], dimensions: ['a'] })).toThrow(/not a line/);
+  });
+
+  it('accepts a step that starts with the first unit (a new query), which a line only overestimates, and covers it with the intercept', () => {
+    // authorization 5, 7, 7 at 2, 4, 6 units of `a`: +2 once, then flat; the line through the ends has slope 0.5 and says 6 at 4 units
+    const step: FitState[] = [5, 7, 7].map((auth, index) => ({ dims: { a: 2 + 2 * index, b: 2 }, small: { reads: 10, authorization: auth, authQueries: 2 }, large: { reads: 10, authorization: auth, authQueries: 2 } }));
+    const fit = fitLoad({ ...paged, states: step, phases: [{ dimension: 'a', stateIndexes: [0, 1, 2] }], dimensions: ['a'] });
+    // at 4 units: fixed + 0.5 × 4 ≥ 7, and at the other states too
+    for (const state of step) expect(fit.readAuthorization.fixed + (fit.readAuthorization.perUnit.a ?? 0) * state.dims.a!).toBeGreaterThanOrEqual(state.small.authorization);
+  });
+
+  it('accepts the step in which a new page starts, which a straight line cannot follow', () => {
+    // at page size 4 the third state starts a second page: reads 3 + a + 2b + 4·ceil(a/4) → 11, 11, 17 for a = 2, 4, 6 (b = 2);
+    // the line through the ends says 14 for a = 4, 3 reads away: within one page of `a` (slope 1.5 × page size 4 = 6)
+    const ceilReads = (a: number, page: number) => 3 + a + 2 * 2 + 4 * Math.ceil(a / page);
+    const stepped: FitState[] = [2, 4, 6].map(a => ({
+      dims: { a, b: 2 },
+      small: { reads: ceilReads(a, 2), authorization: authorization(a), authQueries: 2 },
+      large: { reads: ceilReads(a, 4), authorization: authorization(a), authQueries: 2 },
+    }));
+    expect(() => fitLoad({ ...paged, states: stepped, phases: [{ dimension: 'a', stateIndexes: [0, 1, 2] }], dimensions: ['a'] })).not.toThrow();
   });
 
   it('rejects a phase in which the dimension did not grow', () => {

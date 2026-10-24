@@ -2,6 +2,10 @@
  * P16d capacity model: a pure function of a checked-in cost table (measured by `cloudCapacity.spec.ts`), a workload table and
  * sampled documents. It never talks to Firestore, which is why it lives in `maintenance/` (not part of the app bundle).
  *
+ * Workload assumption (CheerC, 2026-10-24): the real traffic is under 100 people a day and hard to push past 200, so the design
+ * ceiling of the daily workload is 200 business commands a day (100 typical), not the 500 of the earlier validation envelope.
+ * The model itself has no ceiling: the workload table that is passed in carries it.
+ *
  * Daily usage (plan R8, R10)
  * - Client reads are what the SDK bills: a document read (also when it does not exist) is 1, a query is max(1, documents),
  *   every `tx.get` of every attempt is 1. Writes are only the successful ones.

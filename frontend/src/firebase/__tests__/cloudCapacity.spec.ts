@@ -6,9 +6,8 @@ import {
 } from 'firebase/firestore';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ALL_COMMAND_KINDS, type BusinessCommandKind } from '../../domain/cloudCommands';
-import {
-  readAuthorizationCalls, type CostTable, type Linear, type OperationCost, type RulesKindCost,
-} from '../../maintenance/capacityModel';
+import { readAuthorizationCalls, type CostTable, type OperationCost, type RulesKindCost } from '../../maintenance/capacityModel';
+import { fitLoad, type FitPhase, type FitSample, type FitState } from '../../maintenance/loadFit';
 import { acquireLease, getLeaseStatus, releaseLease, renewLease, subscribeLease } from '../activeAccountLease';
 import { createCloudBackupCommandRepository } from '../cloudBackupCommandRepository';
 import { createCloudBackupRepository } from '../cloudBackupRepository';
@@ -26,10 +25,10 @@ import { R02_LEASE_EPOCH, R02_OPERATOR, operatorUser, seedEmptySource, shiftDay,
 /**
  * P16d: what every operation costs in Firestore reads and writes, measured at the SDK boundary on the real Rules and the real
  * production repositories (plan R8, R14). The 27 command kinds run the same steps as the P16b matrix; the lease operations run
- * the production lease functions; the loads that grow with history run on a fixture that grows in three equal stages, and
- * each load's reads and Rules read authorization are fitted to a line in the number of units it scales with (the middle stage
- * must lie on the line exactly). The result is compared with the checked-in `docs/ops/p16-capacity-costs.json`: a change of cost
- * has to change the table in the same PR.
+ * the production lease functions. The loads that grow with history run on a fixture that grows one dimension at a time
+ * (students, vendors, orders of the day, ..., each in its own phase while the others stay constant), so that a load's cost is
+ * attributed to the collection that causes it (`maintenance/loadFit.ts`). The result is compared with the checked-in
+ * `docs/ops/p16-capacity-costs.json`: a change of cost has to change the table in the same PR.
  */
 vi.mock('firebase/firestore', async importOriginal => {
   const { wrapFirestoreMeterModule } = await import('./helpers/firestoreMeter');
@@ -54,8 +53,9 @@ const costsFile = `${process.cwd()}/../docs/ops/p16-capacity-costs.json`;
 
 const OP = R02_OPERATOR;
 const OTHER = { uid: 'p16d-other-operator', email: 'p16d-other@example.test', active: true };
+/** Units a dimension grows by in one step of its phase; every phase has three steps. */
 const STEP = 6;
-const STAGES = 3;
+const STEPS_PER_PHASE = 3;
 
 let env: RulesTestEnvironment;
 let app: Firestore;
@@ -113,10 +113,10 @@ const queryShapes = new Map<string, Measured['queries']>();
 function fixedOperation(name: string, measured: Measured, extra: Partial<OperationCost> = {}): void {
   const auth = measured.authDocuments + measured.authQueries;
   operations.set(name, {
-    reads: { fixed: measured.reads, perUnit: 0 },
-    readAuthorization: { fixed: auth, perUnit: 0 },
+    reads: { fixed: measured.reads, perUnit: {} },
+    readAuthorization: { fixed: auth, perUnit: {} },
     // A read request is authorized on its own (its two or fewer distinct documents), so nothing is shared between requests.
-    readAuthorizationDeduped: { fixed: auth, perUnit: 0 },
+    readAuthorizationDeduped: { fixed: auth, perUnit: {} },
     writes: measured.writes, deletes: measured.deletes,
     ...extra,
     detail: { reads: measured.readsByKey, writes: measured.writesByKey },
@@ -177,70 +177,6 @@ function pageSizeOf(file: string, name: string): number {
   const found = new RegExp(`const ${name} = (\\d+);`).exec(text);
   if (!found) throw new Error(`P16d: ${file} has no constant ${name}`);
   return Number(found[1]);
-}
-
-interface Point { units: number; reads: number; authorization: number; authQueries: number; readsByKey?: Record<string, number> }
-
-/**
- * A load's cost is reads = fixed + units × b + pages × c: b per document, c per page (the head and lease fence reads and the
- * Rules authorization of every page request, which depend on the page size, not on the documents). The fixture is measured at
- * two page sizes, so b and c are told apart: the slope of a stage series at page size P is s_P = b + c / P. Each series
- * is a line through its first and last stage whose intercept is raised until no stage is above it (an upper bound), and a
- * stage more than 2 % (at least 1 read) below the line fails the fit, because then the load is not linear in its units.
- * The production slope is b + c / (production page size), and one page is added to the intercept.
- */
-function lineThrough(name: string, points: Point[], pick: (point: Point) => number): { slope: number; intercept: number } {
-  expect(points.length, `${name}: stages`).toBe(STAGES);
-  const [first, middle, last] = points as [Point, Point, Point];
-  expect(last.units, `${name}: the fixture has to grow`).toBeGreaterThan(first.units);
-  const slope = (pick(last) - pick(first)) / (last.units - first.units);
-  const intercept = Math.max(...points.map(point => pick(point) - slope * point.units));
-  const slack = Math.max(1, 0.02 * pick(last));
-  expect(intercept + slope * middle.units - pick(middle), `${name}: the middle stage is far below the line (units ${first.units}, ${middle.units}, ${last.units})`).toBeLessThanOrEqual(slack);
-  expect(slope, `${name}: the cost does not shrink as the fixture grows`).toBeGreaterThanOrEqual(0);
-  return { slope, intercept };
-}
-
-function split(name: string, small: Point[], large: Point[], pick: (point: Point) => number, productionPage: number): Linear {
-  const one = lineThrough(`${name} @${STEP}`, small, pick);
-  const two = lineThrough(`${name} @${2 * STEP}`, large, pick);
-  // s_P = b + c / P at P = STEP and 2 × STEP: c = (s1 - s2) / (1/STEP - 1/(2 × STEP)) = 2 × STEP × (s1 - s2)
-  const perPage = Math.max(0, 2 * STEP * (one.slope - two.slope));
-  const perUnit = Math.max(0, one.slope - perPage / STEP);
-  return {
-    fixed: round(Math.max(one.intercept, two.intercept) + perPage),
-    perUnit: round(perUnit + perPage / productionPage),
-  };
-}
-const round = (value: number) => Math.round(value * 1e6) / 1e6;
-
-type Series = { small: Point[]; large: Point[] };
-
-function loadOperation(name: string, unit: string, series: Series, productionPage: number, writes = 0): void {
-  const reads = split(name, series.small, series.large, point => point.reads, productionPage);
-  const readAuthorization = split(`${name} authorization`, series.small, series.large, point => point.authorization, productionPage);
-  operations.set(name, {
-    unit, reads, readAuthorization, readAuthorizationDeduped: readAuthorization, writes, deletes: 0,
-    detail: {
-      pageSizes: [STEP, 2 * STEP], productionPageSize: productionPage,
-      small: series.small.map(point => ({ ...point })), large: series.large.map(point => ({ units: point.units, reads: point.reads, authorization: point.authorization, authQueries: point.authQueries })),
-    },
-  });
-}
-
-// A load with no page-size seam (the student list, the day-close reads, which use the production page size of the ledger reader):
-// reads and authorization are per document as measured, and one more page of query authorization is added to the fixed part and
-// spread over the production page size.
-function unpagedLoad(name: string, unit: string, points: Point[], productionPage: number): void {
-  const reads = lineThrough(name, points, point => point.reads);
-  const authorization = lineThrough(`${name} authorization`, points, point => point.authorization);
-  const onePage = (points[STAGES - 1] as Point).authQueries;
-  const auth = { fixed: round(authorization.intercept + onePage), perUnit: round(authorization.slope + onePage / productionPage) };
-  operations.set(name, {
-    unit, reads: { fixed: round(reads.intercept), perUnit: round(reads.slope) },
-    readAuthorization: auth, readAuthorizationDeduped: auth, writes: 0, deletes: 0,
-    detail: { points: points.map(point => ({ ...point })), productionPageSize: productionPage },
-  });
 }
 
 // ---- the specification -----------------------------------------------------------------------------------------------------
@@ -379,126 +315,182 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
     });
   });
 
-  // ---- C. loads that grow with history: three stages, fitted to a line ----
+  // ---- C. loads that grow with history: the fixture grows one dimension at a time ----
   describe('loads', () => {
-    const closedDay = (index: number) => shiftDay(today, -2 - index);
+    // The fixture grows eight dimensions, each in its own phase (`phases` below). A load declares the dimensions it depends on;
+    // `loadFit` rejects a load that changes with one it does not declare, so the declarations cannot be incomplete.
+    const closedDay = (index: number) => shiftDay(today, -3 - index);
     const openPastDay = (index: number) => shiftDay(today, -60 - index);
     const studentS = uuid(950_000);
-    const versionDay = shiftDay(today, -300);
+    // the day with its own settlement versions is the newest closed day, so that the summary range always contains it
+    const versionDay = shiftDay(today, -2);
+    const onToday = { kind: 'today' as const, startDate: today, endDate: today };
     let studentsMade = 0;
+    let vendorsMade = 0;
     let closedMade = 0;
     let openPastMade = 0;
-    let ordersMade = 0;
-    let vendorsMade = 0;
-    let versionsClosed = 0;
-
-    const stageSamples = new Map<string, { small: Point[]; large: Point[] }>();
-    const measurePoint = async (units: number, run: () => Promise<unknown>) => {
-      const { report } = await meter.measure(run, app);
-      localStorage.clear();
-      const measured = summarize(report);
-      const point: Point = {
-        units, reads: measured.reads, authorization: measured.authDocuments + measured.authQueries,
-        authQueries: measured.authQueries, readsByKey: measured.readsByKey,
-      };
-      return { point, measured };
-    };
-    // A load with a page-size seam runs at STEP and at 2 × STEP; one without runs once (the `large` series stays empty).
-    const sample = async (name: string, units: number, make: (pageSize: number) => () => Promise<unknown>) => {
-      const series = stageSamples.get(name) ?? { small: [], large: [] };
-      const small = await measurePoint(units, make(STEP));
-      series.small.push(small.point);
-      series.large.push((await measurePoint(units, make(2 * STEP))).point);
-      stageSamples.set(name, series);
-      if (series.small.length === STAGES) queryShapes.set(name, small.measured.queries);
-    };
-    const sampleUnpaged = async (name: string, units: number, run: () => Promise<unknown>) => {
-      const series = stageSamples.get(name) ?? { small: [], large: [] };
-      const { point, measured } = await measurePoint(units, run);
-      series.small.push(point);
-      stageSamples.set(name, series);
-      if (series.small.length === STAGES) queryShapes.set(name, measured.queries);
-    };
 
     const create = async (label: string, run: () => Promise<{ ok: boolean }>) => ok(await run(), label);
 
-    const growFixture = async () => {
-      await setBase();
-      for (let index = 0; index < STEP; index += 1) {
-        const studentId = studentsMade === 0 ? studentS : uuid(950_100 + studentsMade);
-        const code = String(840_000 + studentsMade);
-        await create('CreateStudent', () => writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: epoch,
-          targets: { studentId }, expectedRevisions: { student: 0 },
-          payload: { studentCode: code, displayName: `P16d student ${studentsMade}`, aliases: [], openingBalance: { amount: 0, asOfDate: '2025-01-01', note: '' } } }));
-        studentsMade += 1;
-      }
-      for (let index = 0; index < STEP; index += 1) {
-        const vendorId = uuid(950_500 + vendorsMade);
-        await create('SaveVendor', () => writer.commitCommand({ commandId: id(), kind: 'SaveVendor', leaseEpoch: epoch,
-          targets: { vendorId }, expectedRevisions: { vendor: 0 },
-          payload: { vendorId, name: `P16d vendor ${vendorsMade}`, phone: '', note: '', status: 'active' } }));
-        vendorsMade += 1;
-      }
-      for (let index = 0; index < STEP; index += 1) {
-        const rev = await revisions(studentS, today);
-        await create('CreateOrder', () => orders.createOrder({ commandId: id(), transactionId: id(), leaseEpoch: epoch, studentId: studentS, dayId: today,
-          expectedStudentRevision: rev.student, expectedDayRevision: rev.day, mealKind: 'other', mealPrice: 80, paidAmount: 100,
-          menuRevision: null, otherItemName: 'x', note: '' }));
-        ordersMade += 1;
-      }
-      for (let index = 0; index < STEP; index += 1) {
-        const dayId = closedDay(closedMade);
-        await create('EnsureDay', () => writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: epoch,
-          targets: { dayId }, expectedRevisions: { day: 0 }, payload: { businessDate: dayId } }));
-        await create('BackfillOpeningCash', async () => closing.backfillOpening({ commandId: id(), leaseEpoch: epoch, dayId,
-          expectedDayRevision: (await read(`days/${dayId}`)).revision, openingCash: 1000, reason: 'P16d fixture' }));
-        await create('StartBackfill', async () => writer.commitCommand({ commandId: id(), kind: 'StartBackfill', leaseEpoch: epoch,
-          targets: { dayId }, expectedRevisions: { day: (await read(`days/${dayId}`)).revision }, payload: { reason: 'P16d fixture' } }));
-        await create('CloseDay', async () => {
-          const day = await read(`days/${dayId}`);
-          const expected = (await closing.read(dayId))!.expectedCash!;
-          return closing.closeDay({ commandId: id(), leaseEpoch: epoch, dayId, expectedDayRevision: day.revision,
-            expectedSettlementRevision: day.lastSettlementRevision, expectedCash: expected, countedCash: expected, note: '',
-            alignWithDayId: dayId === closedDay(0) ? today : closedDay(closedMade - 1) });
-        });
-        closedMade += 1;
-      }
-      for (let index = 0; index < STEP; index += 1) {
-        const dayId = openPastDay(openPastMade);
-        await create('EnsureDay', () => writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: epoch,
-          targets: { dayId }, expectedRevisions: { day: 0 }, payload: { businessDate: dayId } }));
-        openPastMade += 1;
-      }
-      // One more settlement version per stage on a day of its own: stage 1 closes it (version 1), later stages reopen and close again.
-      if (versionsClosed === 0) {
-        await create('EnsureDay', () => writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: epoch,
-          targets: { dayId: versionDay }, expectedRevisions: { day: 0 }, payload: { businessDate: versionDay } }));
-        await create('BackfillOpeningCash', async () => closing.backfillOpening({ commandId: id(), leaseEpoch: epoch, dayId: versionDay,
-          expectedDayRevision: (await read(`days/${versionDay}`)).revision, openingCash: 1000, reason: 'P16d fixture' }));
-        await create('StartBackfill', async () => writer.commitCommand({ commandId: id(), kind: 'StartBackfill', leaseEpoch: epoch,
-          targets: { dayId: versionDay }, expectedRevisions: { day: (await read(`days/${versionDay}`)).revision }, payload: { reason: 'P16d fixture' } }));
-      } else {
-        await create('ReopenDay', async () => {
-          const day = await read(`days/${versionDay}`);
-          return closing.reopenDay({ commandId: id(), leaseEpoch: epoch, dayId: versionDay, expectedDayRevision: day.revision,
-            expectedSettlementRevision: day.lastSettlementRevision, reason: 'P16d fixture' });
-        });
-      }
-      await create('CloseDay', async () => {
+    // ---- growing the fixture, one dimension ----
+    const addStudent = async () => {
+      const studentId = studentsMade === 0 ? studentS : uuid(950_100 + studentsMade);
+      await create('CreateStudent', () => writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: epoch,
+        targets: { studentId }, expectedRevisions: { student: 0 },
+        payload: { studentCode: String(840_000 + studentsMade), displayName: `P16d student ${studentsMade}`, aliases: [], openingBalance: { amount: 0, asOfDate: '2025-01-01', note: '' } } }));
+      studentsMade += 1;
+    };
+    const addVendor = async () => {
+      const vendorId = uuid(950_500 + vendorsMade);
+      await create('SaveVendor', () => writer.commitCommand({ commandId: id(), kind: 'SaveVendor', leaseEpoch: epoch,
+        targets: { vendorId }, expectedRevisions: { vendor: 0 },
+        payload: { vendorId, name: `P16d vendor ${vendorsMade}`, phone: '', note: '', status: 'active' } }));
+      vendorsMade += 1;
+    };
+    const addOrder = async () => {
+      const rev = await revisions(studentS, today);
+      await create('CreateOrder', () => orders.createOrder({ commandId: id(), transactionId: id(), leaseEpoch: epoch, studentId: studentS, dayId: today,
+        expectedStudentRevision: rev.student, expectedDayRevision: rev.day, mealKind: 'other', mealPrice: 80, paidAmount: 100,
+        menuRevision: null, otherItemName: 'x', note: '' }));
+    };
+    /** A command dated today that is no transaction. */
+    const addDayCommand = async () => {
+      await create('RecordPrint', async () => reports.recordPrint({ commandId: id(), leaseEpoch: epoch, range: { kind: 'custom', startDate: today, endDate: today },
+        scope: { studentId: null }, sourceSeq: await headSeq(), printType: 'ledger-original', businessDate: today }));
+    };
+    /** A back-filled day, opened, started and closed; its close is aligned with the nearest later opened day. */
+    const backfillDay = async (dayId: string, alignWithDayId: string) => {
+      await create('EnsureDay', () => writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: epoch,
+        targets: { dayId }, expectedRevisions: { day: 0 }, payload: { businessDate: dayId } }));
+      await create('BackfillOpeningCash', async () => closing.backfillOpening({ commandId: id(), leaseEpoch: epoch, dayId,
+        expectedDayRevision: (await read(`days/${dayId}`)).revision, openingCash: 1000, reason: 'P16d fixture' }));
+      await create('StartBackfill', async () => writer.commitCommand({ commandId: id(), kind: 'StartBackfill', leaseEpoch: epoch,
+        targets: { dayId }, expectedRevisions: { day: (await read(`days/${dayId}`)).revision }, payload: { reason: 'P16d fixture' } }));
+      await closeBackfilled(dayId, alignWithDayId);
+    };
+    const closeBackfilled = (dayId: string, alignWithDayId: string) => create('CloseDay', async () => {
+      const day = await read(`days/${dayId}`);
+      const expected = (await closing.read(dayId))!.expectedCash!;
+      return closing.closeDay({ commandId: id(), leaseEpoch: epoch, dayId, expectedDayRevision: day.revision,
+        expectedSettlementRevision: day.lastSettlementRevision, expectedCash: expected, countedCash: expected, note: '', alignWithDayId });
+    });
+    const addClosedDay = async () => {
+      await backfillDay(closedDay(closedMade), closedMade === 0 ? versionDay : closedDay(closedMade - 1));
+      closedMade += 1;
+    };
+    const addOpenDay = async () => {
+      await create('EnsureDay', () => writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: epoch,
+        targets: { dayId: openPastDay(openPastMade) }, expectedRevisions: { day: 0 }, payload: { businessDate: openPastDay(openPastMade) } }));
+      openPastMade += 1;
+    };
+    /** Two settlement versions: a reopen and a close of the day that has its own versions. */
+    const addVersions = async () => {
+      await create('ReopenDay', async () => {
         const day = await read(`days/${versionDay}`);
-        const expected = (await closing.read(versionDay))!.expectedCash!;
-        return closing.closeDay({ commandId: id(), leaseEpoch: epoch, dayId: versionDay, expectedDayRevision: day.revision,
-          expectedSettlementRevision: day.lastSettlementRevision, expectedCash: expected, countedCash: expected, note: '',
-          alignWithDayId: closedDay(closedMade - 1) });
+        return closing.reopenDay({ commandId: id(), leaseEpoch: epoch, dayId: versionDay, expectedDayRevision: day.revision,
+          expectedSettlementRevision: day.lastSettlementRevision, reason: 'P16d fixture' });
       });
-      versionsClosed += 1;
-      // Access events: a release and an acquire add two (the lease ends the stage held, at a higher epoch).
-      for (let cycle = 0; cycle < STEP / 2; cycle += 1) {
-        expect(await releaseLease(app, OP.uid, epoch, OP.email)).toBe(true);
-        epoch = (await read('system/accessLease')).epoch as number;
-        expect((await acquireLease(app, OP.uid, epoch, OP.email)).status).toBe('acquired');
-        epoch = (await read('system/accessLease')).epoch as number;
+      await closeBackfilled(versionDay, today);
+    };
+    /** Two access events: a release and an acquire (the lease ends held, at a higher epoch). */
+    const addAccessEvents = async () => {
+      expect(await releaseLease(app, OP.uid, epoch, OP.email)).toBe(true);
+      epoch = (await read('system/accessLease')).epoch as number;
+      expect((await acquireLease(app, OP.uid, epoch, OP.email)).status).toBe('acquired');
+      epoch = (await read('system/accessLease')).epoch as number;
+    };
+
+    const phases: Array<{ dimension: string; unitsPerStep: number; add: () => Promise<void> }> = [
+      { dimension: 'student', unitsPerStep: 1, add: addStudent },
+      { dimension: 'vendor', unitsPerStep: 1, add: addVendor },
+      { dimension: 'dayTransaction', unitsPerStep: 1, add: addOrder },
+      { dimension: 'dayCommand', unitsPerStep: 1, add: addDayCommand },
+      { dimension: 'closedDay', unitsPerStep: 1, add: addClosedDay },
+      { dimension: 'openDay', unitsPerStep: 1, add: addOpenDay },
+      { dimension: 'settlementVersion', unitsPerStep: 2, add: addVersions },
+      { dimension: 'accessEvent', unitsPerStep: 2, add: addAccessEvents },
+    ];
+
+    // ---- the loads ----
+    interface LoadSpec {
+      name: string;
+      /** The dimensions the load depends on. */
+      dimensions: string[];
+      /** Whether the repository has a page-size seam (it is then run at two page sizes). */
+      paged: boolean;
+      /** The page size the repository uses in production. */
+      production: number;
+      make: (pageSize: number) => () => Promise<unknown>;
+    }
+    const productionPages = () => ({
+      orders: pageSizeOf('cloudOrderRepository.ts', 'PAGE_SIZE'),
+      vendors: pageSizeOf('cloudDayVendorRepository.ts', 'PAGE_SIZE'),
+      read: pageSizeOf('cloudReadRepository.ts', 'PAGE_SIZE'),
+      backup: pageSizeOf('cloudBackupRepository.ts', 'PAGE_SIZE'),
+      ledger: pageSizeOf('cloudDayCloseRepository.ts', 'LEDGER_PAGE_SIZE'),
+      students: pageSizeOf('cloudStudentRepository.ts', 'STUDENT_PAGE_SIZE'),
+    });
+    const loadSpecs = (): LoadSpec[] => {
+      const production = productionPages();
+      const readerAt = (pageSize: number) => createCloudReadRepository(app, { ...current, pageSize });
+      const range = (days: number) => ({ kind: 'custom' as const, startDate: closedDay(days - 1), endDate: versionDay });
+      return [
+        { name: 'load.students', dimensions: ['student'], paged: false, production: production.students, make: () => () => listCloudStudents(app, current) },
+        { name: 'load.orders', dimensions: ['student', 'dayTransaction', 'openDay'], paged: true, production: production.orders, make: pageSize => () => createCloudOrderRepository(app, { ...current, pageSize }).loadSnapshot() },
+        { name: 'load.dayVendors', dimensions: ['vendor', 'closedDay', 'openDay'], paged: true, production: production.vendors, make: pageSize => () => createCloudDayVendorRepository(app, { ...current, pageSize }).loadSnapshot() },
+        { name: 'load.summary', dimensions: ['closedDay', 'settlementVersion'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readSummary({ range: range(closedMade), leaseEpoch: epoch }) },
+        { name: 'load.report', dimensions: ['student', 'dayTransaction'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readReport({ range: onToday, studentId: null, leaseEpoch: epoch }) },
+        { name: 'load.accountHistory', dimensions: ['student', 'dayTransaction'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAccountHistory({ range: onToday, studentId: studentS, leaseEpoch: epoch }) },
+        { name: 'load.auditDay', dimensions: ['dayTransaction', 'dayCommand'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAudit({ dayId: today, leaseEpoch: epoch }) },
+        { name: 'load.auditStudent', dimensions: ['dayTransaction'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAudit({ studentId: studentS, leaseEpoch: epoch }) },
+        // the range audit (CSV and print) reads the commands of the range and the commands that carry no business date
+        { name: 'load.auditRange', dimensions: ['student', 'vendor', 'dayTransaction', 'dayCommand'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAuditRange({ range: onToday, studentId: null, leaseEpoch: epoch }) },
+        { name: 'load.accessEvents', dimensions: ['accessEvent'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readAccessEvents({ range: onToday, leaseEpoch: epoch }) },
+        { name: 'load.dayCloseOverview', dimensions: ['openDay'], paged: false, production: production.ledger, make: () => () => closing.readOverview() },
+        { name: 'load.dayCloseState', dimensions: ['settlementVersion'], paged: false, production: production.ledger, make: () => () => closing.read(versionDay) },
+        { name: 'load.ledgerScan', dimensions: ['closedDay', 'openDay'], paged: true, production: production.ledger, make: pageSize => () => createCloudLedgerReader(app, current, { pageSize }).read() },
+        // the incremental backup export reads every command once: its dimension is the number of commands, which every phase grows
+        { name: 'load.backupExport', dimensions: ['command'], paged: true, production: production.backup, make: pageSize => () => createCloudBackupRepository(app, { currentUid: () => OP.uid, pageSize }).exportRange({ fromSeq: 0, generatedAt: '2026-10-23T03:00:00.000Z' }) },
+      ];
+    };
+
+    interface Recorded {
+      dims: Record<string, number>;
+      loads: Map<string, { small: FitSample; large?: FitSample; reads: Record<string, number> }>;
+    }
+    const recorded: Recorded[] = [];
+    const phaseRanges: FitPhase[] = [];
+
+    const countDimensions = async (): Promise<Record<string, number>> => {
+      const commandsToday = await adminCount('commands', ['businessDate', '==', today]);
+      const dayTransaction = await adminCount('transactions', ['businessDate', '==', today]);
+      return {
+        student: await adminCount('students'), vendor: await adminCount('vendors'), dayTransaction,
+        // commands dated today that are not the orders' own (each order is one transaction and one command)
+        dayCommand: commandsToday - dayTransaction,
+        closedDay: closedMade, openDay: openPastMade,
+        settlementVersion: await adminCount(`days/${versionDay}/settlements`), accessEvent: await adminCount('accessEvents'),
+        command: await headSeq(),
+      };
+    };
+    const measureOne = async (run: () => Promise<unknown>) => {
+      const { report } = await meter.measure(run, app);
+      localStorage.clear();
+      const measured = summarize(report);
+      const sample: FitSample = { reads: measured.reads, authorization: measured.authDocuments + measured.authQueries, authQueries: measured.authQueries };
+      return { sample, measured };
+    };
+    /** Measures every load (at two page sizes where it has a seam) at the current state of the fixture. */
+    const measureState = async () => {
+      const dims = await countDimensions();
+      const loads: Recorded['loads'] = new Map();
+      for (const spec of loadSpecs()) {
+        const small = await measureOne(spec.make(STEP));
+        const large = spec.paged ? await measureOne(spec.make(2 * STEP)) : undefined;
+        loads.set(spec.name, { small: small.sample, ...(large ? { large: large.sample } : {}), reads: small.measured.readsByKey });
+        queryShapes.set(spec.name, small.measured.queries);
       }
+      recorded.push({ dims, loads });
     };
 
     beforeAll(async () => {
@@ -507,64 +499,75 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       epoch = R02_LEASE_EPOCH;
       await admin(async db => { await setDoc(doc(db, 'system/dataHead'), { goLiveDate: '2025-01-01' }, { merge: true }); });
       buildRepositories(STEP);
+      await setBase();
       await create('EnsureDay today', () => writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: epoch,
         targets: { dayId: today }, expectedRevisions: { day: 0 }, payload: { businessDate: today } }));
       await create('SetOpeningCash', async () => writer.commitCommand({ commandId: id(), kind: 'SetOpeningCash', leaseEpoch: epoch,
         targets: { dayId: today }, expectedRevisions: { day: (await read(`days/${today}`)).revision }, payload: { openingCash: 1000, reason: 'P16d fixture' } }));
+      // The base every phase starts from: the student the orders are for, one closed day (the summary needs a range), and a
+      // day with its first settlement version.
+      await addStudent();
+      await backfillDay(versionDay, today);
+      await addClosedDay();
     }, 180_000);
 
-    for (let stage = 1; stage <= STAGES; stage += 1) {
-      it(`stage ${stage}: grow the fixture by ${STEP} of each, then measure every load`, async () => {
-        await growFixture();
-        const readerAt = (pageSize: number) => createCloudReadRepository(app, { ...current, pageSize });
-        const range = (days: number) => ({ kind: 'custom' as const, startDate: closedDay(days - 1), endDate: closedDay(0) });
-        const onToday = { kind: 'today' as const, startDate: today, endDate: today };
-        const todayCommands = await adminCount('commands', ['businessDate', '==', today]);
-        const studentCommands = await adminCount('commands', ['studentId', '==', studentS]);
+    it('measures every load on the base fixture', async () => {
+      await measureState();
+    }, 300_000);
 
-        await sampleUnpaged('load.students', studentsMade, () => listCloudStudents(app, current));
-        await sample('load.orders', ordersMade, pageSize => () => createCloudOrderRepository(app, { ...current, pageSize }).loadSnapshot());
-        await sample('load.dayVendors', vendorsMade, pageSize => () => createCloudDayVendorRepository(app, { ...current, pageSize }).loadSnapshot());
-        await sample('load.summary', closedMade, pageSize => () => readerAt(pageSize).readSummary({ range: range(closedMade), leaseEpoch: epoch }));
-        await sample('load.report', ordersMade, pageSize => () => readerAt(pageSize).readReport({ range: onToday, studentId: null, leaseEpoch: epoch }));
-        await sample('load.accountHistory', ordersMade, pageSize => () => readerAt(pageSize).readAccountHistory({ range: onToday, studentId: studentS, leaseEpoch: epoch }));
-        await sample('load.auditDay', todayCommands, pageSize => () => readerAt(pageSize).readAudit({ dayId: today, leaseEpoch: epoch }));
-        await sample('load.auditStudent', studentCommands, pageSize => () => readerAt(pageSize).readAudit({ studentId: studentS, leaseEpoch: epoch }));
-        // the range audit (CSV and print) reads the commands of the range and the commands that carry no business date
-        const undatedCommands = await adminCount('commands', ['businessDate', '==', null]);
-        await sample('load.auditRange', todayCommands + undatedCommands, pageSize => () => readerAt(pageSize).readAuditRange({ range: onToday, studentId: null, leaseEpoch: epoch }));
-        await sample('load.accessEvents', await adminCount('accessEvents'), pageSize => () => readerAt(pageSize).readAccessEvents({ range: onToday, leaseEpoch: epoch }));
-        await sampleUnpaged('load.dayCloseOverview', openPastMade, () => closing.readOverview());
-        await sampleUnpaged('load.dayCloseState', 2 * versionsClosed - 1, () => closing.read(versionDay));
-        await sample('load.ledgerScan', await adminCount('days'), pageSize => () => createCloudLedgerReader(app, current, { pageSize }).read());
-        await sample('load.backupExport', await headSeq(), pageSize => () => createCloudBackupRepository(app, { currentUid: () => OP.uid, pageSize }).exportRange({ fromSeq: 0, generatedAt: '2026-10-23T03:00:00.000Z' }));
-      }, 600_000);
-    }
+    phases.forEach((phase, phaseIndex) => {
+      it(`phase ${phaseIndex + 1}: grows ${phase.dimension} by ${STEP} three times and measures every load after each step`, async () => {
+        // Only the states after the phase's own steps give its slope: the state before it is the end of the previous phase and
+        // still carries that phase's last command (a scan that follows a settlement also reads that settlement), while after
+        // every step of this phase the last command is the same kind, so such a cost cancels out of the slope. Every state
+        // still counts for the intercept.
+        const stateIndexes: number[] = [];
+        for (let step = 0; step < STEPS_PER_PHASE; step += 1) {
+          await setBase();
+          for (let unit = 0; unit < STEP; unit += phase.unitsPerStep) await phase.add();
+          await measureState();
+          stateIndexes.push(recorded.length - 1);
+        }
+        phaseRanges.push({ dimension: phase.dimension, stateIndexes });
+      }, 900_000);
+    });
 
-    it('fits every load to a line in its units', () => {
-      const production = {
-        orders: pageSizeOf('cloudOrderRepository.ts', 'PAGE_SIZE'),
-        vendors: pageSizeOf('cloudDayVendorRepository.ts', 'PAGE_SIZE'),
-        read: pageSizeOf('cloudReadRepository.ts', 'PAGE_SIZE'),
-        backup: pageSizeOf('cloudBackupRepository.ts', 'PAGE_SIZE'),
-        ledger: pageSizeOf('cloudDayCloseRepository.ts', 'LEDGER_PAGE_SIZE'),
-        students: pageSizeOf('cloudStudentRepository.ts', 'STUDENT_PAGE_SIZE'),
-      };
-      const get = (name: string) => stageSamples.get(name)!;
-      unpagedLoad('load.students', 'student', get('load.students').small, production.students);
-      loadOperation('load.orders', 'dayTransaction', get('load.orders'), production.orders);
-      loadOperation('load.dayVendors', 'vendor', get('load.dayVendors'), production.vendors);
-      loadOperation('load.summary', 'closedDay', get('load.summary'), production.read);
-      loadOperation('load.report', 'dayTransaction', get('load.report'), production.read);
-      loadOperation('load.accountHistory', 'studentTransaction', get('load.accountHistory'), production.read);
-      loadOperation('load.auditDay', 'dayCommand', get('load.auditDay'), production.read);
-      loadOperation('load.auditStudent', 'studentCommand', get('load.auditStudent'), production.read);
-      loadOperation('load.auditRange', 'rangeCommand', get('load.auditRange'), production.read);
-      loadOperation('load.accessEvents', 'accessEvent', get('load.accessEvents'), production.read);
-      unpagedLoad('load.dayCloseOverview', 'unclosedDay', get('load.dayCloseOverview').small, production.ledger);
-      unpagedLoad('load.dayCloseState', 'settlementVersion', get('load.dayCloseState').small, production.ledger);
-      loadOperation('load.ledgerScan', 'day', get('load.ledgerScan'), production.ledger);
-      loadOperation('load.backupExport', 'command', get('load.backupExport'), production.backup);
+    it('fits every load: reads and authorization per unit of each dimension that it grows with', () => {
+      expect(phaseRanges.length).toBe(phases.length);
+      if (reportPath) {
+        // the raw measurements, written before the fit so that a rejected fit can be looked at
+        writeFileSync(`${reportPath}.states.json`, JSON.stringify({
+          phases: phaseRanges,
+          states: recorded.map(entry => ({ dims: entry.dims, loads: Object.fromEntries([...entry.loads.entries()].map(([name, load]) => [name, { small: load.small, large: load.large, reads: load.reads }])) })),
+        }, null, 2));
+      }
+      for (const spec of loadSpecs()) {
+        const states: FitState[] = recorded.map(entry => {
+          const measured = entry.loads.get(spec.name)!;
+          return { dims: entry.dims, small: measured.small, ...(measured.large ? { large: measured.large } : {}) };
+        });
+        // the backup export grows with the commands of every phase, so its one series is every state
+        const own: FitPhase[] = spec.dimensions.length === 1 && spec.dimensions[0] === 'command'
+          ? [{ dimension: 'command', stateIndexes: states.map((_state, index) => index) }]
+          : phaseRanges;
+        const fit = fitLoad({
+          name: spec.name, states, phases: own, dimensions: spec.dimensions,
+          pages: spec.paged ? { small: STEP, large: 2 * STEP, production: spec.production } : { production: spec.production },
+        });
+        operations.set(spec.name, {
+          units: fit.units, reads: fit.reads, readAuthorization: fit.readAuthorization, readAuthorizationDeduped: fit.readAuthorization,
+          writes: 0, deletes: 0,
+          detail: {
+            ...fit.detail,
+            // the raw measurements the fit is made of: units of every dimension and the runs at the page sizes
+            states: recorded.map(entry => {
+              const measured = entry.loads.get(spec.name)!;
+              return { dims: entry.dims, small: measured.small, ...(measured.large ? { large: measured.large } : {}) };
+            }),
+            lastRunReadsByKey: recorded[recorded.length - 1]!.loads.get(spec.name)!.reads,
+          },
+        });
+      }
     }, 60_000);
   });
 
