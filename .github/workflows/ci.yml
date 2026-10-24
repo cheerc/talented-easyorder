@@ -105,7 +105,7 @@ jobs:
           set -e
           if [ "$emulator_test_status" -ne 0 ]; then exit "$emulator_test_status"; fi
           exit "$count_check_status"
-      - name: P15 restore CLI proof: validate, init, restore, resume (demo-only Firestore Emulators)
+      - name: P15 restore CLI proof, validate init restore resume (demo-only Firestore Emulators)
         if: steps.check-docs.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_RESTORE: 'true'
