@@ -528,22 +528,51 @@ describeWithEmulator('P16b Rules matrix on the real firestore.rules', () => {
     expect(maxCommandBytes.size).toBeGreaterThanOrEqual(20);
   }, 300_000);
 
-  // P16x regression: the number of aliases, not their length, used to push CreateOrder and CreatePayment over the Rules'
-  // expression budget, so a student with three short aliases could not be charged.
-  it('a student with three short aliases can be charged and can pay', async () => {
+  // P16x regression: the number of aliases, not their length, used to push CreateOrder, CreatePayment and the transaction
+  // changes over the Rules' expression budget. Each case builds its own student (and today's day if it is missing), so that
+  // it can also be run alone as the probe case of docs/ops/p05-rules-budget.md.
+  const chargeStudent = async (studentId: string, studentCode: string, aliases: string[], everyKind: boolean) => {
     await restoreBase();
-    const tri = uuid(900_030);
-    ok(await writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: EPOCH, targets: { studentId: tri },
-      expectedRevisions: { student: 0 }, payload: { studentCode: '731925', displayName: 'P16x Tri', aliases: ['a', 'b', 'c'],
-        openingBalance: { amount: 0, asOfDate: '2026-10-01', note: '' } } }), 'tri student');
-    const orderRev = await revisions(tri, today);
-    ok(await orders.createOrder({ commandId: id(), transactionId: id(), leaseEpoch: EPOCH, studentId: tri, dayId: today,
-      expectedStudentRevision: orderRev.student, expectedDayRevision: orderRev.day, mealKind: 'other', mealPrice: 80, paidAmount: 100,
-      menuRevision: null, otherItemName: 'x', note: '' }), 'order for three aliases');
-    const payRev = await revisions(tri, today);
-    ok(await orders.createPayment({ commandId: id(), transactionId: id(), leaseEpoch: EPOCH, studentId: tri, dayId: today,
-      expectedStudentRevision: payRev.student, expectedDayRevision: payRev.day, paidAmount: 30, note: '' }), 'payment for three aliases');
+    if (!(await adminExists(`days/${today}`))) {
+      ok(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: EPOCH,
+        targets: { dayId: today }, expectedRevisions: { day: 0 }, payload: { businessDate: today } }), 'EnsureDay today');
+    }
+    ok(await writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: EPOCH, targets: { studentId },
+      expectedRevisions: { student: 0 }, payload: { studentCode, displayName: 'P16x student', aliases,
+        openingBalance: { amount: 0, asOfDate: '2026-10-01', note: '' } } }), 'student');
+    const order = async (): Promise<string> => {
+      const rev = await revisions(studentId, today); const transactionId = id();
+      ok(await orders.createOrder({ commandId: id(), transactionId, leaseEpoch: EPOCH, studentId, dayId: today,
+        expectedStudentRevision: rev.student, expectedDayRevision: rev.day, mealKind: 'other', mealPrice: 80, paidAmount: 100,
+        menuRevision: null, otherItemName: 'x', note: '' }), 'CreateOrder');
+      return transactionId;
+    };
+    const change = async (transactionId: string, spec: Pick<CloudTransactionMutationInput, 'kind' | 'payload'>) => {
+      const tx = await read(`transactions/${transactionId}`);
+      ok(await orders.mutateTransaction({ commandId: id(), leaseEpoch: EPOCH, transactionId, studentId, dayId: today,
+        expectedTransactionRevision: tx.revision, expectedStudentRevision: (await read(`students/${studentId}`)).revision,
+        expectedDayRevision: (await read(`days/${today}`)).revision, ...spec } as CloudTransactionMutationInput), spec.kind);
+    };
+    const first = await order();
+    const payRev = await revisions(studentId, today); const paymentCommand = id(); const paymentTransaction = id();
+    ok(await orders.createPayment({ commandId: paymentCommand, transactionId: paymentTransaction, leaseEpoch: EPOCH, studentId, dayId: today,
+      expectedStudentRevision: payRev.student, expectedDayRevision: payRev.day, paidAmount: 30, note: '' }), 'CreatePayment');
+    if (!everyKind) return;
+    await change(first, { kind: 'CorrectTransaction', payload: { mealPrice: 70, paidAmount: 100, amount: 30, note: '', reason: 'P16x correct' } });
+    await change(await order(), { kind: 'CancelKeepDeposit', payload: { reason: 'P16x keep' } });
+    await change(await order(), { kind: 'CancelRefund', payload: { reason: 'P16x refund' } });
+    await change(paymentTransaction, { kind: 'Undo', payload: { targetCommandId: paymentCommand, reason: UNDO_REASON } });
+    const refundRev = await revisions(studentId, today); const refundId = id();
+    ok(await orders.createRefund({ commandId: id(), transactionId: refundId, leaseEpoch: EPOCH, studentId, dayId: today,
+      expectedStudentRevision: refundRev.student, expectedDayRevision: refundRev.day, amount: 20, reason: 'P16x overpaid' }), 'CreateRefund');
+    await change(refundId, { kind: 'VoidTransaction', payload: { reason: 'P16x void' } });
+  };
+  it('a student with three short aliases can be charged and can pay', async () => {
+    await chargeStudent(uuid(900_030), '731925', ['a', 'b', 'c'], false);
   }, 120_000);
+  it('a student with ten 100-character aliases can be charged, can pay and can have every kind of change', async () => {
+    await chargeStudent(uuid(900_031), '731926', aliasSet('丙'), true);
+  }, 180_000);
 
   describe('collections', () => {
     const resolve = async (template: string): Promise<string> => {
