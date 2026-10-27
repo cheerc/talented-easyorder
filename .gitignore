@@ -34,3 +34,6 @@ ui-debug.log
 # Build artifacts
 .vercel
 .firebase
+
+# Private local release inputs and generated bundles
+.easyorder/

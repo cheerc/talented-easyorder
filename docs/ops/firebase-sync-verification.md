@@ -1,19 +1,7 @@
-# Firebase Sync Verification Matrix
+# EasyOrder 雲端驗證入口
 
-> **2026-10-13 適用範圍：** 本文保留既有設計／實作參考；新正式後端以[零費用 spec](../superpowers/specs/2026-10-13-free-production-backend-spec.md)及[階段計畫](../superpowers/plans/2026-10-13-free-production-backend-plan.md)為準，尚未實作。不得依舊文將 EasyOrder 部署到 payroll 計費專案；正式部署、備份與安全操作須等計畫中對應階段更新並驗證。
+- P17 本人實際部署的 HTTPS／Auth／index／CSP／交接／回退逐項表，統一見 [部署指南 S01–S10](DEPLOYMENT-GUIDE.md)。
+- 帳務與 P18 三日驗收以 [後端 spec §11](../superpowers/specs/2026-10-13-free-production-backend-spec.md#11-固定驗收案例) 的 A/L/D/R 案例為準。
+- 本機 unit、Emulator、E2E 與正式未驗事項分別記在 [ops evidence](free-production-evidence.md)。Emulator 不驗證真正 composite index、Google OAuth、Spark 計費狀態或網路延遲。
 
-| Scenario | Expected Result |
-|---|---|
-| Google sign-in with `cheerc@talented.com.tw` and active operator doc | App opens POS. |
-| Google sign-in with non-talented email | App blocks before reading Firestore data. |
-| Active operator creates online order | Transaction doc created once, student balance updates once, sync badge returns green. |
-| Same transaction ID retried | Existing transaction doc is treated as duplicate, no second balance update occurs. |
-| Two online devices update same student | Firestore transaction retries or one client receives revision conflict; no partial write. |
-| Offline payment while app is already loaded | Transaction appears locally as pending and sync badge is red/yellow until ack. |
-| Offline closeout | Close attempt is saved, parent summary is promoted after reconnect if no competing attempt exists. |
-| Two close attempts for same business date disagree | Closeout conflict UI blocks final close until operator resolves. |
-| Student disabled after historical transaction | Historical transaction still displays student snapshot. |
-| Direct student balance update without matching transaction | Firestore emulator rules reject the write. |
-| Non-whitelisted or wrong-domain login | App signs the user out and displays the authorization failure. |
-| Vercel production response | Includes CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, and Permissions-Policy headers. |
-| Vercel production env missing Firebase key | Build or runtime config fails fast with explicit missing env var message. |
+舊 Vercel、網域授權、離線排隊入帳與重連自動關帳矩陣已移除；現行 Cloud command online-only，未知結果保留原 command ID，依 receipt／fresh-head 流程處理。

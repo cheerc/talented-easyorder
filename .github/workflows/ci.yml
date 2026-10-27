@@ -80,6 +80,9 @@ jobs:
           java-version: '21'
       - run: npm ci
         if: steps.check-docs.outputs.docs_only != 'true'
+      - name: P17 release target, Hosting config and integrity guards (offline)
+        if: steps.check-docs.outputs.docs_only != 'true'
+        run: node --test ../scripts/__tests__/release.test.mjs
       - run: npx tsc --noEmit
         if: steps.check-docs.outputs.docs_only != 'true'
       - run: npm run lint
@@ -105,15 +108,16 @@ jobs:
           set -e
           if [ "$emulator_test_status" -ne 0 ]; then exit "$emulator_test_status"; fi
           exit "$count_check_status"
-      - name: P15 restore CLI proof, validate init restore resume (demo-only Firestore Emulators)
+      - name: P15 restore and P17 empty activation CLI proof (demo-only Firestore Emulators)
         if: steps.check-docs.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_RESTORE: 'true'
+          EASYORDER_REQUIRE_EMPTY_ACTIVATION: 'true'
         run: |
           node ../scripts/easyorder-data-maintenance.mjs --help > /dev/null
           rm -f /tmp/p15-cloud-restore-proof.json
           set +e
-          npx firebase emulators:exec --project demo-easyorder --only firestore "EASYORDER_REQUIRE_CLOUD_RESTORE=true npx vitest run src/firebase/__tests__/cloudRestore.spec.ts --maxWorkers=1 --reporter=default --reporter=json --outputFile=/tmp/p15-cloud-restore-proof.json"
+          npx firebase emulators:exec --project demo-easyorder --only firestore "EASYORDER_REQUIRE_CLOUD_RESTORE=true EASYORDER_REQUIRE_EMPTY_ACTIVATION=true npx vitest run src/firebase/__tests__/cloudRestore.spec.ts src/firebase/__tests__/cloudEmptyActivation.spec.ts src/maintenance/__tests__/activateEmpty.emulator.spec.ts --maxWorkers=1 --reporter=default --reporter=json --outputFile=/tmp/p15-cloud-restore-proof.json"
           emulator_test_status=$?
           if [ -f /tmp/p15-cloud-restore-proof.json ]; then
             node -e 'const r = require("/tmp/p15-cloud-restore-proof.json"); const counts = [r.numTotalTests, r.numPassedTests, r.numFailedTests, r.numPendingTests]; console.log(`P15 cloud restore proof: total=${counts[0]}, passed=${counts[1]}, failed=${counts[2]}, skipped=${counts[3]}`); if (!counts.every(Number.isInteger) || counts[0] < 1 || counts[1] !== counts[0] || counts[2] !== 0 || counts[3] !== 0) process.exit(1);'
@@ -565,6 +569,12 @@ jobs:
 
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
+
+      - name: P17 demo Hosting release and browser smoke (CSP enforced)
+        run: |
+          node ../scripts/easyorder-release.mjs prepare --project demo-easyorder --web-config ../docs/ops/firebase-web-config.demo.json --out /tmp/easyorder-p17-ci-release --emulator
+          node ../scripts/p17-auth-navigation-smoke.mjs /tmp/easyorder-p17-ci-release/public
+          ./node_modules/.bin/firebase emulators:exec --project demo-easyorder --config /tmp/easyorder-p17-ci-release/firebase.json --only auth,firestore,hosting "node ../scripts/p17-hosting-smoke.mjs --release /tmp/easyorder-p17-ci-release"
 
       - name: E2E Tests
         run: npm run test:e2e

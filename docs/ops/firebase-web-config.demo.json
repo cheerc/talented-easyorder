@@ -1,0 +1,8 @@
+{
+  "apiKey": "synthetic-api-key",
+  "authDomain": "demo-easyorder.firebaseapp.com",
+  "projectId": "demo-easyorder",
+  "appId": "1:000000000000:web:synthetic",
+  "messagingSenderId": "000000000000",
+  "storageBucket": "demo-easyorder.firebasestorage.app"
+}
