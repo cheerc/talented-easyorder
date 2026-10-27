@@ -1,6 +1,6 @@
 # Project Status — Talented EasyOrder
 
-> **2026-10-27 P17：** 獨立測試專案已部署並完成基本登入、學生合成寫入／讀回；使用者另回報本機開發與網站資料同步。完整 P17 操作驗收、獨立 Spark 還原演練及 P17 變更審查／CI 未完成；P18 維持 pending。實際證據與限制見 [P17 live evidence](ops/free-production-evidence.md#p17-user-authorized-live-verification-2026-10-27)。以下舊進度為歷史紀錄。
+> **2026-10-27 P17：** 獨立測試專案已部署並完成基本登入、學生合成寫入／讀回；使用者另回報本機開發與網站資料同步。P17 部署工具 PR 已合併且 main CI 重跑通過；獨立 Spark 還原、對帳、重新登入與合成繳費已完成，但完整用量及正式 RTO 尚未確認。其他 P17 操作驗收與自訂網域登入仍未完成；P18 維持 pending。實際證據與限制見 [P17 live evidence](ops/free-production-evidence.md#p17-user-authorized-live-verification-2026-10-27)。以下舊進度為歷史紀錄。
 
 > **2026-10-25 P17 工程準備：** #557 已合併；本機部署準備候選尚未提交或部署。release／Hosting／空白啟用／登入錯誤恢復與 demo 驗證見 [P17 evidence](ops/free-production-evidence.md#p17-local-deployment-preparation-2026-10-25)。正式資源由本人依 [部署指南](ops/DEPLOYMENT-GUIDE.md) 接手，實際 Spark/no billing、Auth、DNS、index READY、正式 smoke 仍 UNVERIFIED；P18 三日營運未簽收。P16 日常 100 筆讀取 PASS 與容量／儲存限制保持原裁定。
 

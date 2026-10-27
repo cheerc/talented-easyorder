@@ -1,6 +1,6 @@
 # EasyOrder 備份還原 Runbook
 
-> **狀態（2026-10-24，P15d）：** 還原 CLI（`validate`、`init`、`restore`、`resume`、`verify`、`finalize`）已在 Emulator 以合成資料走通，第 3 節的每條指令都在乾淨 clone 上逐字跑過（證據見 [free-production-evidence.md](free-production-evidence.md#p15d-restore-runbook-and-emulator-drill-2026-10-24)）。**獨立 Spark 空專案演練尚未做（UNVERIFIED，待 CheerC 在自己的電腦執行）**；沒有任何正式專案做過還原，也沒有實測 RTO。備份檔本身不是「還原已被測試」的證據。
+> **狀態（2026-10-27）：** 獨立 Spark 空庫已以合成備份完成還原、對帳、登入與合成繳費；完整用量與正式 RTO 尚未驗證。步驟與限制見 [P17 live evidence](free-production-evidence.md#p17-user-authorized-live-verification-2026-10-27)。備份檔本身不是「還原已被測試」的證據。
 
 本文件是 [備份 runbook](firebase-backup-runbook.md) 的還原篇。契約來源是 [後端 spec §9.3](../superpowers/specs/2026-10-13-free-production-backend-spec.md)，CLI 的設計裁決在 [P15 計畫](../superpowers/plans/2026-10-13-free-production-backend-plan.md) 的 P15 段。
 
@@ -93,9 +93,9 @@ PW | node scripts/easyorder-data-maintenance.mjs resume  $P --manifest $CH --exe
 
 **3.4 收尾：** 停掉 Emulator（Ctrl-C），刪除 `/tmp/easyorder-drill/`。合成鏈不含真實資料，但仍不要提交到 repo。
 
-## 4. 獨立 Spark 空專案演練（CheerC 本機；thread 不執行）
+## 4. 獨立 Spark 空專案演練（經使用者授權，在本機執行）
 
-目的：在**真實 Firestore** 上實測一次，補上 Emulator 無法證明的部分（真實 token 路徑、終端機確認、額度、RTO）。**演練前，P15 的「獨立 Spark 空庫恢復」驗收不算完成；回報前一律標 UNVERIFIED。**
+目的：在**真實 Firestore** 上實測一次，補上 Emulator 無法證明的部分（真實 token 路徑、終端機確認、額度、RTO）。各項是否完成依實際證據分別標記，不以部分演練證明完整驗收。
 
 1. 在 Firebase console 建一個**新的**專案（例如 `easyorder-restore-drill-<日期>`）：確認是 Spark、沒有綁計費，**不是** payroll，也不是未來的正式 EasyOrder 專案。
 2. 建立 Firestore（Native 模式）。在 repo root 部署 Rules 與 indexes，**先確認 CLI 目標是 drill 專案**：
