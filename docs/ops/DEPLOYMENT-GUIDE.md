@@ -143,7 +143,7 @@ init 建 schema 1、seq 0、維護中的 head。activate-empty 只接受空白�
 
 預設站 smoke 通過後，本人在 DNS 管理服務核對 easyorder.talented.com.tw；占用則選空閒 order.talented.com.tw，皆占用另選，不覆寫既有服務。Hosting Add custom domain 依 Console DNS 記錄驗證，留 ownership TXT，等 TLS Ready 再切。
 
-先加 Auth authorized domain，再於 Google OAuth web client 加 https://新主機/__/auth/handler。只改本機 Web config authDomain，重建新 release 並依相同順序部署，其餘 config 不變。CSP self 支援同源 iframe，未照搬 payroll 網域。實際 Chrome／Safari／工作機登入須本人 S08 驗證。
+先加 Auth authorized domain，再於 Google OAuth web client 加 https://新主機/__/auth/handler。只改本機 Web config authDomain，重建新 release 並依相同順序部署，其餘 config 不變。release 的 HTTP 與 HTML CSP 只額外允許該設定的 authDomain 作為 iframe 來源，以支援由預設 Hosting 網址使用自訂驗證網域；不放行任意網域。實際 Chrome／Safari／工作機登入須本人 S08 驗證。
 
 ## 8. 回退、quota 與 P18
 

@@ -48,13 +48,13 @@ async function prepare(args) {
   const config = await json(path.join(root, 'firebase.json'));
   config.hosting.public = 'public';
   config.hosting.site = project;
-  let demoCsp;
+  const header = config.hosting.headers.find(item => item.source === '**').headers.find(item => item.key === 'Content-Security-Policy');
+  let releaseCsp = header.value.replace("frame-src 'self'", `frame-src 'self' https://${web.authDomain}`);
   if (emulator) {
-    const header = config.hosting.headers.find(item => item.source === '**').headers.find(item => item.key === 'Content-Security-Policy');
-    demoCsp = header.value.replace("connect-src 'self'", "connect-src 'self' http://127.0.0.1:8080 http://127.0.0.1:9099")
+    releaseCsp = releaseCsp.replace("connect-src 'self'", "connect-src 'self' http://127.0.0.1:8080 http://127.0.0.1:9099")
       .replace("frame-src 'self'", "frame-src 'self' http://127.0.0.1:9099").replace('; upgrade-insecure-requests', '');
-    header.value = demoCsp;
   }
+  header.value = releaseCsp;
   await save(path.join(out, 'firebase.json'), config);
   await copyFile(path.join(root, 'firestore.rules'), path.join(out, 'firestore.rules'));
   await copyFile(path.join(root, 'firestore.indexes.json'), path.join(out, 'firestore.indexes.json'));
@@ -69,8 +69,8 @@ async function prepare(args) {
   const require = createRequire(path.join(frontend, 'package.json'));
   const { build } = await import(pathToFileURL(require.resolve('vite')).href);
   await build({ root: frontend, configFile: path.join(frontend, 'vite.config.ts'), mode: 'production', envDir: false,
-    plugins: demoCsp ? [{ name: 'p17-demo-csp', transformIndexHtml: { order: 'post', handler: html => html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/,
-      `<meta http-equiv="Content-Security-Policy" content="${demoCsp.replace("; frame-ancestors 'none'", '')}" />`) } }] : [],
+    plugins: [{ name: 'p17-release-csp', transformIndexHtml: { order: 'post', handler: html => html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/,
+      `<meta http-equiv="Content-Security-Policy" content="${releaseCsp.replace("; frame-ancestors 'none'", '')}" />`) } }],
     define: Object.fromEntries(Object.entries(env).map(([key, value]) => [`import.meta.env.${key}`, JSON.stringify(value)])),
     build: { outDir: path.join(out, 'public'), sourcemap: false, emptyOutDir: true } });
   const manifest = { format: 'easyorder-release', version: 1, project, region, authDomain: web.authDomain, emulator,

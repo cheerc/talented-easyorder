@@ -575,6 +575,9 @@ jobs:
           node ../scripts/easyorder-release.mjs prepare --project demo-easyorder --web-config ../docs/ops/firebase-web-config.demo.json --out /tmp/easyorder-p17-ci-release --emulator
           node ../scripts/p17-auth-navigation-smoke.mjs /tmp/easyorder-p17-ci-release/public
           ./node_modules/.bin/firebase emulators:exec --project demo-easyorder --config /tmp/easyorder-p17-ci-release/firebase.json --only auth,firestore,hosting "node ../scripts/p17-hosting-smoke.mjs --release /tmp/easyorder-p17-ci-release"
+          node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync("../docs/ops/firebase-web-config.demo.json"));c.authDomain="auth.example.test";fs.writeFileSync("/tmp/easyorder-p17-custom-auth.json",JSON.stringify(c));'
+          node ../scripts/easyorder-release.mjs prepare --project demo-easyorder --web-config /tmp/easyorder-p17-custom-auth.json --out /tmp/easyorder-p17-custom-auth-release --emulator
+          node ../scripts/p17-auth-domain-csp-smoke.mjs /tmp/easyorder-p17-custom-auth-release
 
       - name: E2E Tests
         run: npm run test:e2e
