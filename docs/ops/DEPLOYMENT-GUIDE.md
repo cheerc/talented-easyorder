@@ -1,217 +1,167 @@
-# 舊版 EasyOrder 部署指南（已停用；不適用於新正式後端）
+# EasyOrder P17：獨立 Spark 本機部署
 
-> **2026-10-13 適用範圍：** 本文保留既有設計／實作參考；新正式後端以[零費用 spec](../superpowers/specs/2026-10-13-free-production-backend-spec.md)及[階段計畫](../superpowers/plans/2026-10-13-free-production-backend-plan.md)為準，尚未實作。不得依舊文將 EasyOrder 部署到 payroll 計費專案；正式部署、備份與安全操作須等計畫中對應階段更新並驗證。
-> **舊流程停用：** 下方 payroll 共用 Firebase project、合併 rules、複製 payroll Firebase config 的命令僅作歷史盤點，不能當作 EasyOrder 新正式環境的操作指示。新正式環境及部署只能按 P17 新流程，由使用者在本機執行；P00 盤點見[現況與證據](free-production-evidence.md)。本次沒有執行本文命令或操作 payroll 資源。
+新正式後端的部署入口。版本與 gate 見[交接](../DEVELOPMENT-HANDOFF.md)及[phase plan](../superpowers/plans/2026-10-13-free-production-backend-plan.md)。獨立測試專案的實際部署與部分 smoke 已執行，逐項結果以 [P17 live evidence](free-production-evidence.md#p17-user-authorized-live-verification-2026-10-27) 為準；未列證據者仍未驗證。不貼憑證或真名單到聊天／PR。
 
-> 適用情境：第一次部署到 production（全新空資料庫），使用 talented-payroll 的 Firebase project。
+## 分工與順序
 
-## 前置條件
+| Agent 先完成 | 本人才能處理 |
+|---|---|
+| release 工具、固定 project、Rules/index/前端雜湊配對、Hosting SPA／安全標頭／快取 | 自己的 Google 帳號、獨立 Spark project、no billing、Firestore region |
+| Web config 範本、CLI、空白啟用工具與 demo 演練 | Google provider、OAuth／authorized domains、公開設定的本機輸入、CLI 登入 |
+| 本機 build／lint／unit、Emulator CLI、Hosting CSP smoke | 正式 deploy、index READY、Google 登入與正式 smoke 匿名回報 |
+| 部署／回退／quota／備份指引、匿名結果表 | DNS 與空閒子網域、核准 UID/email、備份密碼／第二副本、真實期初、本人簽收 |
 
-- [ ] 前端功能已手動測試完成（`./workflow.sh d3` 本地 + prod Firebase）
-- [ ] 所有 unit tests 通過（`./workflow.sh t6`）
-- [ ] Firebase CLI 已安裝且登入 `cheerc@gmail.com`
-- [ ] Vercel CLI 已安裝且已連結 project
-- [ ] gcloud CLI 已登入 `cheerc@talented.com.tw`
+順序：工程準備 → **本人建立帳號資源** → 部署預設 HTTPS domain → 合成 smoke → 自訂 domain → 獨立空 Spark 復原演練 → P18 三日真實試營運。P17 smoke 使用獨立驗證 Spark project；正式營運另用全新空庫，避免合成交易留在營運備份鏈。不得刪除合成 command 來假裝空庫。
 
----
+## 0. 2026-10-25 官方資料重查
 
-## ⚠️ 共用資源警告
+- [Firebase pricing](https://firebase.google.com/pricing)：Spark 不需 payment method。本案用 Google Auth、Firestore Standard、傳統靜態 Hosting，**不是 App Hosting**。Firestore 免費 1 GiB，每日 reads 50,000／writes 20,000／deletes 20,000。
+- [Hosting quota](https://firebase.google.com/docs/hosting/usage-quotas-pricing)：10 GB 儲存、每月 10 GB 傳輸。Spark 傳輸耗盡可能在寬限後停站至下月；儲存耗盡不能新增 release。清舊 release 時保留目前與前一相容版。
+- [Firestore locations](https://firebase.google.com/docs/firestore/locations)：首選 asia-east1（Taiwan），建立 (default) 前由本人確認 Console 可選。建立後不藉部署換 region。
+- [Hosting config](https://firebase.google.com/docs/hosting/full-config)：SPA rewrites、headers、cache 依 repo；reserved /__/auth/ 由 Firebase 服務。
+- [Google sign-in](https://firebase.google.com/docs/auth/web/google-signin)、[same-origin authDomain](https://firebase.google.com/docs/auth/web/redirect-best-practices)：先用 project.firebaseapp.com，自訂 domain 時補 authorized domain 和 OAuth redirect。app 使用 popup；被擋會提示允許 popup 後明確點擊重試，不自動轉址或背景重試。
+- [Custom domain](https://firebase.google.com/docs/hosting/custom-domain)：依該 project Console 的 DNS 值驗證，等憑證 Ready 再切換，不複製範例 IP。
 
-EasyOrder 與 talented-payroll **共用同一個 Firebase project**：`<firebase-project-id>`
+以上不代表讀取了本人 project 的方案／計費／IAM。quota 與 P16 容量限制見[備份 runbook](firebase-backup-runbook.md)；budget alert 不是硬上限，不藉 Blaze／試用金解決超額。
 
-| 資源 | 共用狀態 | 部署注意事項 |
-|------|----------|--------------|
-| Firestore Rules | ⚠️ 同一份檔案 | **必須合併兩邊 rules 再部署，否則互蓋** |
-| Firestore Database | 同一個 DB | Collections 不同，不衝突 |
-| Firestore Indexes | 同一個 project | Additive，不會刪除既有 index |
-| Firebase Auth | 同一套 | Auth pattern 不同（payroll: `roles`，easyorder: `operators`） |
-| Firebase Functions | 只有 payroll 有 | EasyOrder 不部署 Functions |
-| Hosting | 不同 | Payroll: Firebase Hosting / EasyOrder: Vercel |
+## 1. 本人的第一個接手：建立空白 Firebase project
 
----
+開 [Firebase Console](https://console.firebase.google.com/)，用有管理權的核准 Google 帳號：
 
-## 部署步驟（按順序執行）
+1. 建全新獨立 EasyOrder project，選 Spark，不連 billing，不用 payroll project；記下可用的 project ID，不可為 demo- 開頭。
+2. Firestore 選 **Standard edition／Native mode** 的 (default) database、asia-east1、production／locked mode，不選 test mode。
+3. 建 Web app，使用傳統 **Hosting**。不啟用 App Hosting、Functions、Storage bucket、Extensions、Analytics 或計費產品。Web config 的 storageBucket 是公開識別字；app 不呼叫 Storage，保留提供的字串，不為這個欄位啟用 Storage／Blaze。
+4. Authentication → Sign-in method 開 Google provider，選支援 email。先保留預設 project.firebaseapp.com authorized domain。
+5. 本機私有記錄 project、region、Spark／no linked billing、Google provider enabled。只需回報「獨立驗證專案已建、Spark/no billing、asia-east1、Google provider 已開」，不傳 UID、email、key 或截圖。
 
-### Step 1：合併並部署 Firestore Rules
+尚未部署前保持資料庫鎖定。這是下一個本人 gate；後面可等協作時逐步執行。
 
-**為什麼要合併**：Firebase project 只有一份 rules file。直接部署 easyorder 的 rules 會覆蓋 payroll 的 rules，反之亦然。
+## 2. 本機工具與設定
 
-```bash
-cd ~/talented-easyorder
-./workflow.sh p2
-```
+需要 Node 24、鎖定 dependencies、Firebase CLI（隨 frontend 安裝）及 [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)：
 
-workflow.sh 會自動：
-1. 讀取 `~/talented-payroll/firestore.rules`（payroll 的 rules）
-2. 讀取 `./firestore.rules`（easyorder 的 rules）
-3. 用 Python 合併成一份（payroll rules + easyorder rules 並存）
-4. 部署合併後的 rules 到 `<firebase-project-id>`
-5. 部署完後還原本地 `firestore.rules`（不修改 git tracked 版本）
+~~~bash
+cd /path/to/talented-easyorder/frontend
+npm ci
+./node_modules/.bin/firebase login
+gcloud auth login
+~~~
 
-**驗證**：
-```bash
-firebase firestore:rules --project <firebase-project-id>
-# 或在 Firebase Console > Firestore > Rules 確認兩邊 rules 都在
-```
+Firebase CLI 與 gcloud 分別登入，兩者須有目標 project 權限。部署建議使用 --account 指定 Firebase CLI 帳號：release 在獨立目錄，該目錄的預設帳號可能不同於 repo。以下均在 repo root，尖括號先替換成本機實值：
 
-**⚠️ 後續注意**：
-- 之後 payroll 的 `workflow.sh p3`（部署 rules）也需要加入同樣的 merge 邏輯，否則會蓋掉 easyorder 的 rules
-- 目前 payroll 的 workflow.sh **尚未修改**，在修改之前**不要從 payroll 側部署 rules**
+~~~bash
+mkdir -p "$HOME/.easyorder-private"
+chmod 700 "$HOME/.easyorder-private"
+cp docs/ops/firebase-web-config.example.json "$HOME/.easyorder-private/web-config.json"
+chmod 600 "$HOME/.easyorder-private/web-config.json"
+~~~
 
----
+只在本機填 JSON 六個公開 Web config 欄位。authDomain 先用自己 project 的 firebaseapp.com，projectId 須與 --project 一致。工具拒絕 Admin JSON／私鑰等額外欄位。release build **不讀 frontend .env、不繼承 VITE 設定**。舊 deploy.sh p1-p5、Vercel／payroll 合併入口已移除。
 
-### Step 2：部署 Firestore Indexes
+## 3. 建立並核對 release
 
-```bash
-cd ~/talented-easyorder
-./workflow.sh p3
-```
+先完成適用檢查，記 exact revision／CI；未提交工作目錄會標 sourceDirty=true，不能稱 upstream CI 已驗本地版本。
 
-部署 `firestore.indexes.json` 中定義的 3 個 composite indexes：
-- `transactions`: businessDate + createdAt
-- `transactions`: studentId + createdAt
-- `cash_adjustments`: businessDate + createdAt
+~~~bash
+./deploy.sh prepare --project <easyorder-project-id> \
+  --web-config "$HOME/.easyorder-private/web-config.json" \
+  --region asia-east1 --out "$HOME/.easyorder-private/releases/release-01"
+./deploy.sh check --release "$HOME/.easyorder-private/releases/release-01"
+~~~
 
-Index 是 additive 的，不會影響 payroll 既有的 indexes。
+輸出 public/、firebase.json、Rules、indexes、release.json（source SHA、dirty、tracked diff 摘要、每檔 SHA-256），不含管理憑證、真名單或 .env。已有目錄不覆寫；半成品不能部署，換新目錄重建。完整性檢查防意外改動／混版，不是簽章或獨立 approval。
 
-**注意**：Index 建立需要幾分鐘時間，Firebase Console 會顯示 "Building"。
+## 4. indexes → READY → rules → hosting
 
----
+本人核對 gcloud／Firebase CLI 帳號與 project 歸屬。每步再次指定 project，輸入 DEPLOY project step，工具先查 billingEnabled=false、Firestore Native mode／region；無法確認即停，不自動啟用 billing／API 或改 alias。
 
-### Step 3：建立初始資料（operators collection）
+~~~bash
+unset FIRESTORE_EMULATOR_HOST FIREBASE_AUTH_EMULATOR_HOST
+./deploy.sh deploy --project <easyorder-project-id> --release "$HOME/.easyorder-private/releases/release-01" --step indexes --account <Firebase-CLI-email>
+~~~
 
-EasyOrder 使用 `operators` collection 控制誰可以登入操作。**全新資料庫不會有這個 collection**，所以第一個 operator 需要手動建立。
+到 Firestore → Indexes 確認 **6 個 composite indexes 均 READY／Enabled**，single-field exemptions 與 firestore.indexes.json 一致。CLI 成功不代表 building 完成，Emulator 也不驗 composite index。舊 index 刪除提示不盲目 --force，先核對是全新 EasyOrder project。
 
-**方式 A：Firebase Console 手動建立**
+~~~bash
+./deploy.sh deploy --project <easyorder-project-id> --release "$HOME/.easyorder-private/releases/release-01" --step rules --account <Firebase-CLI-email>
+./deploy.sh deploy --project <easyorder-project-id> --release "$HOME/.easyorder-private/releases/release-01" --step hosting --account <Firebase-CLI-email>
+~~~
 
-到 Firebase Console > Firestore > 新增 collection `operators`，新增 document：
+同 release 私有 deploy-receipt.json 記成功步驟，缺先前步驟拒絕往後。每步本人仍核對 index READY。先開 https://project.firebaseapp.com，app 與 authDomain 同源。未初始化不能進帳務，不手填財務文件繞過 gate。
 
-```
-Document ID: <使用者的 Firebase Auth UID>
-Fields:
-  uid: string = "<同上的 UID>"
-  email: string = "xxx@talented.com.tw"
-  displayName: string = "管理員名稱"
-  role: string = "admin"
-  active: boolean = true
-  createdAt: timestamp = <now>
-  updatedAt: timestamp = <now>
-```
+## 5. 首登與空白啟用
 
-**方式 B：用 Firebase Admin SDK script**（未來可寫一個 seed script）
+本人預設站 Google 首登應顯示「尚未取得使用權」與 UID，Firebase Auth Users 也可查 UID。不給全網域使用權。在本機私有 operators.json 填核准名單：
 
-**如何取得 UID**：
-1. 到 Firebase Console > Authentication > Users
-2. 用目標 Google 帳號登入一次 app（會自動建立 Auth user）
-3. 複製該 user 的 UID
+~~~json
+[{"uid":"<實際 Auth UID>","email":"<Auth 顯示的完整小寫 email>","displayName":"<本機顯示名稱>"}]
+~~~
 
-**⚠️ 重要**：Security Rules 要求 `email` 必須符合 `*@talented.com.tw` pattern，且 `active == true`。沒有這個 document 的使用者無法操作任何 Firestore 資料。
+只在本人終端取短期 token，不下載 service account key、不印 token。cloud IAM 只給核准維護者，日常 POS 操作者不給 IAM：
 
----
+~~~bash
+export EASYORDER_ACCESS_TOKEN="$(gcloud auth print-access-token)"
+node scripts/easyorder-data-maintenance.mjs init --project <easyorder-project-id> \
+  --dataset <new-dataset-id> --go-live-date <YYYY-MM-DD> \
+  --out "$HOME/.easyorder-private/bootstrap.json"
+# 核對試算後加 --execute，終端輸入 INIT project dataset。
+node scripts/easyorder-data-maintenance.mjs init --project <easyorder-project-id> \
+  --dataset <new-dataset-id> --go-live-date <YYYY-MM-DD> \
+  --out "$HOME/.easyorder-private/bootstrap.json" --execute
+node scripts/easyorder-data-maintenance.mjs activate-empty --project <easyorder-project-id> \
+  --dataset <new-dataset-id> --operators "$HOME/.easyorder-private/operators.json"
+# 核對後啟用，終端輸入 ACTIVATE project dataset。
+node scripts/easyorder-data-maintenance.mjs activate-empty --project <easyorder-project-id> \
+  --dataset <new-dataset-id> --operators "$HOME/.easyorder-private/operators.json" --execute
+unset EASYORDER_ACCESS_TOKEN
+~~~
 
-### Step 4：部署 Frontend（Vercel）
+init 建 schema 1、seq 0、維護中的 head。activate-empty 只接受空白業務庫、唯一 dataHead，沒有既存 operators／lease／accessEvents；同一原子提交建立白名單、空 lease（epoch 0）及條件式 maintenance=false，不建學生、餘額、現金或 command。啟用後不可再跑；提交回應不明先唯讀核對，不清庫或覆寫。需要備份鏈的 finalize 不用於初次啟用。
 
-```bash
-cd ~/talented-easyorder
-./workflow.sh p1
-```
+重新登入取得使用權。合成資料也從 UI command 建立，不在 Console 填財務文件。
 
-**首次部署前需要**：
-1. 確認 Vercel 已連結此 repo（如果沒有：`vercel link`）
-2. 確認 `.env.local` 存在且內容正確（`./workflow.sh d3` 會自動建立）
-3. Vercel 環境變數設定（在 Vercel Dashboard > Project Settings > Environment Variables）：
+## 6. P17 smoke（獨立驗證 Spark，合成資料）
 
-```
-VITE_FIREBASE_API_KEY=<your-firebase-api-key>
-VITE_FIREBASE_AUTH_DOMAIN=<firebase-project-id>.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=<firebase-project-id>
-VITE_FIREBASE_APP_ID=1:704294644197:web:3c2d159fe167478d47e70c
-VITE_FIREBASE_MESSAGING_SENDER_ID=704294644197
-VITE_FIREBASE_STORAGE_BUCKET=<firebase-project-id>.firebasestorage.app
-VITE_FIREBASE_USE_EMULATOR=false
-VITE_FIRESTORE_ENDPOINT=https://firestore.googleapis.com
-```
+下表為原始驗收清單，最新實際結果與尚未驗證的項目見 [P17 live evidence](free-production-evidence.md#p17-user-authorized-live-verification-2026-10-27)。
 
-`VITE_FIRESTORE_ENDPOINT` must be explicitly set to the intended HTTPS origin when Emulator mode is disabled. This legacy guide remains inactive; its payroll settings are not authorization for production use.
+| 編號 | 通過條件 | 匿名結果 |
+|---|---|---|
+| S01 | Spark／billing disabled、獨立 project、asia-east1、Standard Native (default) | UNVERIFIED |
+| S02 | index 6 個 READY／exemptions、Rules/index/Hosting release hash 配對 | UNVERIFIED |
+| S03 | HTTPS 首頁／深連結／重載／PWA 更新；index/sw 不長快取、hash assets 長快取、無 CSP error | UNVERIFIED |
+| S04 | 核准 Google 可登入、未知／停用帳號看不到帳務；popup 阻擋有允許並重試指引 | UNVERIFIED |
+| S05 | 兩核准 UID 互斥與交接；登出／重載雲端資料保留、本機業務快取清理 | UNVERIFIED |
+| S06 | 學生／期初、菜單／開帳、訂餐、繳費、更正／取消、關帳、帳戶歷史、學生稽核、F2 首次開頁無 requires-an-index | UNVERIFIED |
+| S07 | CSV／列印、加密備份重新選檔驗證／第二副本；斷線未知結果保留原 ID、不重複入帳 | UNVERIFIED |
+| S08 | 自訂 domain TLS、authorized domain、authDomain、OAuth redirect、Google 登入與 popup recovery | UNVERIFIED |
+| S09 | 相容 Hosting rollback 後登入／讀取正常；資料不倒退，不刪 command／關帳版次 | UNVERIFIED |
+| S10 | P15 獨立空 Spark 復原：verify／finalize、文件量／時間／quota、重新登入 | UNVERIFIED |
 
-**注意**：這些是 payroll 的 prod Firebase config（web API key 是公開資訊，安全由 Security Rules 保障）。
+回報例：S01 PASS、S02 PASS（6 ready）；S04 FAIL auth/unauthorized-domain。不要附 token、真名單、餘額、截圖或完整 Console log。P18 正式延遲以送單 20 次、首頁冷載 5 次取 P95，記設備／網路，不能用 Emulator 時間代替。完整三日 A/L/D/R 驗收以 spec §11 為準。
 
----
+## 7. 自訂 domain
 
-### Step 5：驗證部署
+預設站 smoke 通過後，本人在 DNS 管理服務核對 easyorder.talented.com.tw；占用則選空閒 order.talented.com.tw，皆占用另選，不覆寫既有服務。Hosting Add custom domain 依 Console DNS 記錄驗證，留 ownership TXT，等 TLS Ready 再切。
 
-1. **打開 Vercel 部署的 URL**
-2. **Google 登入**：用 `@talented.com.tw` 帳號
-3. **確認 operator 權限**：登入後應該看到 POS 主畫面（不是 "無權限" 錯誤）
-4. **基本功能測試**：
-   - 建立一個學生
-   - 執行一筆交易（order）
-   - 確認 balance 更新
-   - 開啟 daily cash session
-   - 結帳（drawer settlement）
+先加 Auth authorized domain，再於 Google OAuth web client 加 https://新主機/__/auth/handler。只改本機 Web config authDomain，重建新 release 並依相同順序部署，其餘 config 不變。CSP self 支援同源 iframe，未照搬 payroll 網域。實際 Chrome／Safari／工作機登入須本人 S08 驗證。
 
----
+## 8. 回退、quota 與 P18
 
-## 快速部署（一鍵全套，跳過 Step 3）
+- 留 manifest、產物、私有 receipt，來源 revision／dirty 不混淆。首次部署無上一版新後端可回退；失敗保持停寫／維護，不能改回舊 prototype／payroll。
+- 後續前端 rollback：本人在 Hosting release history 選 schema 1 且與現有 Rules/index 相容的已驗 release，重驗登入／讀取。不回滾帳務，不刪 command 取消交易；Rules/index 另核對相容性，不盲目一起回退。
+- 確認 service worker 更新，關舊分頁重開。不以重建 dataset、清真 command 或載 prototype 快照修帳。
+- 每日 Usage／儲存門檻、100 筆日常容量裁定與重評觸發見[備份 runbook](firebase-backup-runbook.md)。超額先停寫／備份／紙本，不升級 billing、不刪歷史換容量。
+- P17 通過後，全新空正式營運 project 依同流程建置；P18 本人核對真實資料再從 UI 輸入。三日對帳、還原／第二副本、鍵盤／IME／視窗與本人簽收完成前，不稱正式可用。
 
-如果 operators collection 已建立，可以用：
+## Agent 可重跑的 demo 驗證
 
-```bash
-cd ~/talented-easyorder
-./workflow.sh p4    # = p1 + p2 + p3
-```
+~~~bash
+node --test scripts/__tests__/release.test.mjs
+./deploy.sh prepare --project demo-easyorder --web-config docs/ops/firebase-web-config.demo.json \
+  --out /tmp/easyorder-p17-demo-release --emulator
+./frontend/node_modules/.bin/firebase emulators:exec --project demo-easyorder \
+  --config /tmp/easyorder-p17-demo-release/firebase.json --only auth,firestore,hosting \
+  "node scripts/p17-hosting-smoke.mjs --release /tmp/easyorder-p17-demo-release"
+~~~
 
-或含測試的完整流程：
-
-```bash
-./workflow.sh p5    # = tests + p1 + p2 + p3
-```
-
----
-
-## Rollback 計畫
-
-| 問題 | 解法 |
-|------|------|
-| Rules 部署後 payroll 壞了 | 從 payroll 側重新部署：`cd ~/talented-payroll && firebase deploy --only firestore:rules --project <firebase-project-id>`（注意：這會蓋掉 easyorder rules） |
-| Vercel 部署有問題 | Vercel Dashboard > Deployments > 選擇上一個正常版本 > Promote to Production |
-| Index 有問題 | Firebase Console > Firestore > Indexes > 手動刪除有問題的 index |
-
----
-
-## 待辦：payroll workflow.sh 修改
-
-在 easyorder 正式部署 rules 之後，payroll 的 workflow.sh 也需要修改：
-
-**影響範圍**：
-- `deploy_prod_rules()` (p3)：加入 merge easyorder rules 的邏輯
-- `deploy_prod_full()` (p5)：同上
-
-**不需修改**：
-- `deploy_dev_rules()` (d4)：DEV project (`talented-payroll-dev`) 不共用
-
-**修改方式**：加入與 easyorder workflow.sh 相同的 `merge_firestore_rules()` 函數，但方向相反（以 payroll 為主，合併 easyorder）。
-
----
-
-## 附錄：Firebase Project 資訊
-
-| 項目 | 值 |
-|------|-----|
-| Project ID | `<firebase-project-id>` |
-| Firebase Console | https://console.firebase.google.com/project/<firebase-project-id> |
-| Auth domain | `<firebase-project-id>.firebaseapp.com` |
-| Firestore location | (查看 Console > Project Settings) |
-| Firebase user | `cheerc@gmail.com` |
-| gcloud user | `cheerc@talented.com.tw` |
-
-## 附錄：EasyOrder Firestore Collections
-
-| Collection | 用途 | 與 Payroll 衝突？ |
-|-----------|------|-------------------|
-| `operators` | 操作員權限控制 | ❌ Payroll 用 `roles` |
-| `students` | 學生名冊 + balance | ❌ Payroll 用 `staff_records` 等 |
-| `transactions` | 交易紀錄 | ❌ Payroll 無此 collection |
-| `daily_settlements` | 日結算 | ❌ Payroll 無此 collection |
-| `daily_settlements/{date}/close_attempts` | 結帳嘗試 | ❌ |
-| `daily_settlements/{date}/cash_adjustments` | 現金調整 | ❌ |
+demo release 只在生成產物 CSP 允許本機 Emulator origin；正式 repo CSP 不允許 Emulator。demo release 禁止正式 deploy。Hosting smoke 不 bypass CSP，只證明本機 SPA／headers／cache／signed-out app，不證明正式 OAuth、index、quota 或計費。

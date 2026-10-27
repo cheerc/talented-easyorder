@@ -1,0 +1,8 @@
+{
+  "apiKey": "<Firebase-Web-API-key>",
+  "authDomain": "<easyorder-project-id>.firebaseapp.com",
+  "projectId": "<easyorder-project-id>",
+  "appId": "<Firebase-Web-app-id>",
+  "messagingSenderId": "<sender-id>",
+  "storageBucket": "<easyorder-project-id>.firebasestorage.app"
+}

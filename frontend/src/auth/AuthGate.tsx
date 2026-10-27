@@ -45,6 +45,24 @@ export function AuthGate({
   const [throttleMessage, setThrottleMessage] = useState<string>('');
   const [busyError, setBusyError] = useState<string>('');
   const [isAcquiring, setIsAcquiring] = useState<boolean>(false);
+  const [signInError, setSignInError] = useState('');
+  const [signingIn, setSigningIn] = useState(false);
+
+  const signIn = async () => {
+    if (signingIn) return;
+    setSignInError('');
+    setSigningIn(true);
+    try {
+      await signInWithGoogle(auth, db);
+    } catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error ? error.code : null;
+      setSignInError(code === 'auth/popup-blocked'
+        ? '登入視窗被瀏覽器阻擋。請允許此網站的彈出視窗，再按「使用 Google 登入」。'
+        : code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request'
+          ? '登入尚未完成；準備好後可再按「使用 Google 登入」。'
+          : 'Google 登入未完成，請確認網路與網站的登入設定後重試。');
+    } finally { setSigningIn(false); }
+  };
 
   // 1. 白名單未通過處理
   if (!access.ok) {
@@ -61,9 +79,10 @@ export function AuthGate({
         {access.reason === 'signed_out' && (
           <>
             <p>請使用 Google 帳號登入系統。</p>
-            <button type="button" onClick={() => void signInWithGoogle(auth, db)}>
-              使用 Google 登入
+            <button type="button" disabled={signingIn} onClick={() => void signIn()}>
+              {signingIn ? '正在開啟登入視窗…' : '使用 Google 登入'}
             </button>
+            {signInError && <p role="alert">{signInError}</p>}
           </>
         )}
 

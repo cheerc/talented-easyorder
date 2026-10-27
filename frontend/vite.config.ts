@@ -16,6 +16,8 @@ async function createPwaPlugin(): Promise<PluginOption> {
     workbox: {
       globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
       importScripts: ['retire-pos-network-cache.js'],
+      // Firebase's same-origin OAuth endpoints must reach Hosting, not the SPA shell.
+      navigateFallbackDenylist: [/^\/__\/auth\//],
     },
   })
 }

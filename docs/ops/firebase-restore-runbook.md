@@ -4,6 +4,8 @@
 
 本文件是 [備份 runbook](firebase-backup-runbook.md) 的還原篇。契約來源是 [後端 spec §9.3](../superpowers/specs/2026-10-13-free-production-backend-spec.md)，CLI 的設計裁決在 [P15 計畫](../superpowers/plans/2026-10-13-free-production-backend-plan.md) 的 P15 段。
 
+首次安裝且沒有備份鏈的空白啟用，改用 [P17 部署指南](DEPLOYMENT-GUIDE.md) 的 init／activate-empty；本篇只處理既有備份鏈復原。
+
 ## 1. 何時用、誰核准
 
 - 核准：director/admin。開發者或支援人員只能在 director/admin 核准後協助。

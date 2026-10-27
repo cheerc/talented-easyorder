@@ -27,33 +27,11 @@ npm run dev:prototype   # http://localhost:5174
 
 練習模式不初始化 Firebase（即使有 `.env` 也一樣），不需登入，資料存在獨立的瀏覽器儲存區（`*-prototype`），不影響一般模式。畫面右上與分頁標題標示「本機練習」。
 
-## Fork & Setup
+## Firebase 與正式部署
 
-1. Fork this repo
-2. `cd frontend && cp .env.example .env`
-3. Edit `.env` with your Firebase project values
-4. `npm install && npm run dev`
+依 [P17 本機部署指南](docs/ops/DEPLOYMENT-GUIDE.md) 建立獨立 Spark project，使用 Google provider、精確 UID/email 白名單及傳統 Firebase Hosting。deploy.sh 提供 release 準備、完整性檢查及明示 project 的部署入口；正式資源、設定與 smoke 由本人在本機操作。
 
-### Firebase Setup
-
-- Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
-- Enable Authentication (Email/Password or Google)
-- Enable Cloud Firestore
-- Copy your Web app config to `.env`
-- Deploy Firestore rules: `firebase deploy --only firestore:rules`
-- Update `firestore.rules` to allow your email domain (replace `talented.com.tw`)
-- (Optional) Set up App Check for production
-
-### Environment Variables
-
-See [`frontend/.env.example`](frontend/.env.example) for all required variables. Key ones:
-
-| Variable | Description |
-|----------|-------------|
-| `VITE_FIREBASE_API_KEY` | Firebase Web API key |
-| `VITE_FIREBASE_PROJECT_ID` | Firebase project ID |
-| `VITE_FIRESTORE_ENDPOINT` | Required HTTPS Firestore endpoint outside Emulator mode |
-| `VITE_ALLOWED_EMAIL_DOMAIN` | Email domain for operator access (e.g. `your-company.com`) |
+[公開 Web config 範本](docs/ops/firebase-web-config.example.json)只在本機私有副本填實值；release build 不讀 .env。一般開發範本仍見 [frontend/.env.example](frontend/.env.example)。不以 email 網域取代白名單、不啟用 Email/Password provider，不沿用 Vercel／payroll 部署。
 
 ## Documentation
 - Repository guidance: [Root instructions](CLAUDE.md), [Frontend instructions](frontend/CLAUDE.md), [contributor guide](CONTRIBUTING.md)

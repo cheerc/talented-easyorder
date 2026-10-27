@@ -1,5 +1,9 @@
 # Project Status — Talented EasyOrder
 
+> **2026-10-27 P17：** 獨立測試專案已部署並完成基本登入、學生合成寫入／讀回；使用者另回報本機開發與網站資料同步。完整 P17 操作驗收、獨立 Spark 還原演練及 P17 變更審查／CI 未完成；P18 維持 pending。實際證據與限制見 [P17 live evidence](ops/free-production-evidence.md#p17-user-authorized-live-verification-2026-10-27)。以下舊進度為歷史紀錄。
+
+> **2026-10-25 P17 工程準備：** #557 已合併；本機部署準備候選尚未提交或部署。release／Hosting／空白啟用／登入錯誤恢復與 demo 驗證見 [P17 evidence](ops/free-production-evidence.md#p17-local-deployment-preparation-2026-10-25)。正式資源由本人依 [部署指南](ops/DEPLOYMENT-GUIDE.md) 接手，實際 Spark/no billing、Auth、DNS、index READY、正式 smoke 仍 UNVERIFIED；P18 三日營運未簽收。P16 日常 100 筆讀取 PASS 與容量／儲存限制保持原裁定。
+
 > **2026-10-24 目前進度（P16f2）：** #556 P16f1 已合併為 `e61a1ec172aafe6b1d9293e655e00c5c09e7841e`。P16f2 不改 Rules：訂餐頁送單後只補讀改到的文件，帳務異常掃描只看最近 62 天加未關帳日，租約心跳改 120 秒，報表頁稽核按需讀、CSV／列印不重讀，帳戶頁不再重複讀報表與名單，摘要只讀日文件與最新日結。容量 gate（coordinator 裁定：平常日每天 100 筆是通過準則，每天 200 筆是記載的容量上限）：平常日每日讀取約 23,500 次，通過（上限 25,000）；每天 200 筆約 36,100 次，超過上限，記為容量上限，沒有再加機制。儲存照舊（設計上限 FAIL、平常 WARN），已在備份 runbook 寫下用量監看門檻（70% 通知、85% 前要有保留 spec）。這不代表可正式上線，也還沒有部署。
 
 > **2026-10-24 目前進度（P16f1）：** #555 P16e 已合併為 `9b0af915bf7b2ba71ad67c6bea3c2b02104416a0`。P16f1 只改報表與稽核的讀取方式（沒有改 Rules）：報表、帳戶歷史、單一學生報表只讀要看的日期區間，餘額改由學生目前餘額往回推，不再每份報表都把每個帳戶的整段歷史讀兩遍；學生稽核改成先看最新 100 筆再往前翻。以長歷史學生測得：今日報表 745→39 次讀取、帳戶歷史 689→12。容量 gate 仍是 FAIL：設計上限每日讀取約 309 萬降到約 16.6 萬、典型約 109 萬降到約 8.9 萬，目標是 2.5 萬；其餘主要是訂單頁每個命令後整份重載（約 6.8 萬），留給 P16f2。取捨：不再每次報表比對「期初＋完整歷史＝目前餘額」，完整對帳靠備份重播與 `verify`。這不是可上線的結論。詳見 [evidence](ops/free-production-evidence.md#p16f1-read-path-subtraction-cloudreadrepository-2026-10-24)。

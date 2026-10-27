@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AuthGate } from '../AuthGate';
 import type { OperatorAccess } from '../../firebase/authService';
 import type { ActiveLeaseState } from '../../firebase/activeAccountLease';
+import { signInWithGoogle } from '../../firebase/authService';
 
 vi.mock('../../firebase/authService', () => ({
   signInWithGoogle: vi.fn(),
@@ -12,6 +13,20 @@ vi.mock('../../firebase/authService', () => ({
 describe('AuthGate: 授權閘門與白名單畫面', () => {
   const mockAuth = {} as Parameters<typeof AuthGate>[0]['auth'];
   const mockDb = {} as Parameters<typeof AuthGate>[0]['db'];
+
+  it('P17: popup blocked gives a visible recovery instruction, and retries only after another click', async () => {
+    vi.mocked(signInWithGoogle).mockRejectedValueOnce({ code: 'auth/popup-blocked', message: 'private-provider-details' })
+      .mockResolvedValueOnce({ ok: false, reason: 'not_whitelisted' });
+    render(<AuthGate auth={mockAuth} db={mockDb} access={{ ok: false, reason: 'signed_out' }}><span>business</span></AuthGate>);
+    const count = vi.mocked(signInWithGoogle).mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: '使用 Google 登入' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('允許此網站的彈出視窗');
+    await waitFor(() => expect(screen.getByRole('button', { name: '使用 Google 登入' })).toBeEnabled());
+    expect(screen.getByRole('alert')).not.toHaveTextContent('private-provider-details');
+    expect(vi.mocked(signInWithGoogle).mock.calls.length).toBe(count + 1);
+    fireEvent.click(screen.getByRole('button', { name: '使用 Google 登入' }));
+    await waitFor(() => expect(vi.mocked(signInWithGoogle).mock.calls.length).toBe(count + 2));
+  });
 
   it('signed_out 時顯示 Google 登入按鈕且不渲染業務內容', () => {
     const access: OperatorAccess = { ok: false, reason: 'signed_out' };

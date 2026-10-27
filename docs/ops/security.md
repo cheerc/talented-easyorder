@@ -1,15 +1,8 @@
-# Security Notes
+# EasyOrder 安全操作入口
 
-> **2026-10-13 適用範圍：** 本文保留既有設計／實作參考；新正式後端以[零費用 spec](../superpowers/specs/2026-10-13-free-production-backend-spec.md)及[階段計畫](../superpowers/plans/2026-10-13-free-production-backend-plan.md)為準，尚未實作。不得依舊文將 EasyOrder 部署到 payroll 計費專案；正式部署、備份與安全操作須等計畫中對應階段更新並驗證。
+正式後端的安全契約以[spec §4–§9](../superpowers/specs/2026-10-13-free-production-backend-spec.md)為準：Google verified identity、精確白名單、單一活躍 UID、online-only command、Rules 原子驗證、加密備份與失權清理。登入畫面不是後端授權的替代品。
 
-## Error Logging
-
-### localStorage Design Decision
-
-`appendErrorLog()` 使用同步 `localStorage.setItem()` 寫入，而非 async IndexedDB。
-
-**理由**：`appendErrorLog` 在 `ErrorBoundary.componentDidCatch` 與 global error listeners（`window.onerror`、`unhandledrejection`）中被同步呼叫。React error boundary 的 `componentDidCatch` 不支援 async 操作——若改為 async IndexedDB 寫入，React render 與 error logging 之間會產生 race condition，可能導致 error 遺失或 partial state 寫入。
-
-**已知 tradeoff**：`localStorage` 對瀏覽器 devtools 使用者可見。目前所有寫入的 entry 已通過 `sanitizeMessage()` / `sanitizeContext()` 去識別化，PII 不會洩漏到 localStorage。
-
-**未來方向**：可評估 IndexedDB + Web Crypto 加密方案，在保留同步寫入安全性的同時增加儲存層的加密保護。
+- 正式 Firebase／OAuth／DNS、公開 Web config 的本機配置及部署步驟見 [P17 部署指南](DEPLOYMENT-GUIDE.md)；管理憑證／名單不交給 agent、不進 repo。
+- Cloud 診斷採 spec §8 的 strict allowlist；不以 prototype 的自由文字 sanitize logger 推定 Cloud 無個資。錯誤訊息不回顯 provider 原始內容；部署支援只回報匿名 case ID／固定錯誤碼。
+- [備份](firebase-backup-runbook.md)與[復原](firebase-restore-runbook.md)分別有本機驗證、第二副本及隔離目標要求；檔案已下載不等於備份／復原已驗。
+- 本機／Emulator 工程結果與正式 smoke 狀態見 [ops evidence](free-production-evidence.md)，尚未做的正式 gate 保持 UNVERIFIED。

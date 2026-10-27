@@ -14,6 +14,7 @@ import { formatVerifySummary, verifyTarget } from './restoreVerify';
 import { MAX_BATCH_DOCUMENTS, RestorePlanError, buildRestorePlan, type RestorePlan } from './restorePlan';
 import { RestoreChainError, loadChain, parseChainFile, replayTo } from './restoreChain';
 import { DEFAULT_MAX_WRITES_PER_DAY, buildValidateReport, formatValidateSummary } from './restoreReport';
+import { planEmptyActivation } from './activateEmpty';
 
 export interface CliIo {
   readFile(path: string): Promise<Uint8Array<ArrayBuffer>>;
@@ -40,11 +41,13 @@ export const EXIT_CHECK_FAILED = 2;
 export const EXIT_USAGE = 64;
 export const EXIT_PAUSED = 75;
 
-const SUBCOMMANDS = ['validate', 'init', 'restore', 'resume', 'verify', 'finalize'] as const;
+const SUBCOMMANDS = ['validate', 'init', 'activate-empty', 'restore', 'resume', 'verify', 'finalize'] as const;
 
 const USAGE = `用法：node scripts/easyorder-data-maintenance.mjs <子命令> [選項]
 
 子命令：
+  activate-empty  初次空白啟用：只建白名單與空租約，最後解除維護（預設只試算）
+              --project <id> --dataset <id> --operators <本機 JSON> [--dry-run | --execute]
   validate  離線驗證備份鏈並輸出匿名對帳（不連線、不寫入）
               --manifest <chain.json>  還原鏈檔（必填）
               --to-seq <H>             重播到第 H 筆命令（預設最後一包的 toSeq）
@@ -374,6 +377,30 @@ async function runFinalize(args: FinalizeArgs, io: CliIo): Promise<number> {
   return EXIT_OK;
 }
 
+async function runActivateEmpty(args: string[], io: CliIo): Promise<number> {
+  const options = parseFlags(args, { values: ['--project', '--dataset', '--operators'], booleans: ['--dry-run', '--execute'] });
+  const project = options.get('--project');
+  const dataset = options.get('--dataset');
+  const file = options.get('--operators');
+  if (!project || !dataset || !file) throw new UsageError('activate-empty 需要 --project、--dataset、--operators');
+  if (/payroll/i.test(project)) throw new UsageError('不可使用 payroll project');
+  if (options.has('--dry-run') && options.has('--execute')) throw new UsageError('--dry-run 與 --execute 不能同時使用');
+  const target = resolveTarget(project, io.env);
+  const execute = options.has('--execute');
+  requireTerminalForRealTarget(execute, target.emulator, io);
+  let text: string;
+  try { text = new TextDecoder().decode(await io.readFile(file)); } catch { throw new UsageError('讀不到本機操作員 JSON'); }
+  const operators = parseOperators(text);
+  const rest = createFirestoreRest(target, io.fetch);
+  const plan = await planEmptyActivation(rest, operators, timestampMarker(io.clock()));
+  if (plan.datasetId !== dataset) throw new RestoreExecError('目標 dataset 與 --dataset 不同，未寫入');
+  if (!execute) { io.stdout(`試算（不寫入）：空白啟用會建立 ${operators.length} 位操作員、空租約 epoch 0，最後解除維護；不建立財務資料。\n`); return EXIT_OK; }
+  if (!target.emulator) await confirm(io, `ACTIVATE ${project} ${dataset}`);
+  await rest.commit(plan.writes);
+  io.stdout(`空白啟用完成：${operators.length} 位操作員、空租約 epoch 0、maintenance=false；不含財務初值。若提交結果不明，先唯讀核對三種文件，勿重建或清庫。\n`);
+  return EXIT_OK;
+}
+
 export async function main(argv: string[], io: CliIo): Promise<number> {
   const [command, ...rest] = argv;
   if (command === undefined) { io.stderr(USAGE); return EXIT_USAGE; }
@@ -383,6 +410,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     return EXIT_USAGE;
   }
   try {
+    if (command === 'activate-empty') return await runActivateEmpty(rest, io);
     if (command === 'verify') return await runVerify(parseVerifyArgs(rest), io);
     if (command === 'finalize') return await runFinalize(parseFinalizeArgs(rest), io);
     if (command === 'init') return await runInit(parseInitArgs(rest), io);
