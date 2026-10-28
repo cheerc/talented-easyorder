@@ -101,6 +101,20 @@ async function refundInApp(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('完整 App 跨功能整合與真實 Persist 測試', () => {
+  it('在已選帳戶按 R 開啟其他餐點並聚焦品項，文字欄保留輸入', async () => {
+    render(<App />);
+    const user = userEvent.setup();
+    const search = await screen.findByLabelText('輸入學員編號或姓名');
+    await user.type(search, '0090{Enter}');
+    await screen.findByText('整合乙');
+    await user.keyboard('r');
+    const item = await screen.findByLabelText('品項或原因');
+    expect(item).toHaveFocus();
+    await user.type(item, 'r');
+    expect(item).toHaveValue('r');
+    expect(usePosStore.getState().transactions).toHaveLength(0);
+  });
+
   it('完整 App F3 停用改號後退款、精確 F5 與離開後 target 清除、真實 storage 新 reader 重載', async () => {
     const user = await renameInApp();
     await refundInApp(user);
