@@ -177,6 +177,12 @@ function AppContent() {
     enabled: tab === 'pos' && !hasFlash && !isExpenseFlow,
     changeMode, cancelOrder: openCancelConfirm, isStudentSelected, handleConfirm, cancelFlow, enterExpenseMode, setFocusZone,
     isDialogOpen,
+    openOtherMeal: state.kind === 'student_selected' ? () => {
+      changeMode('order');
+      setPriceOverride(value => value ?? todayMenu.price);
+      setFocusZone('other-item');
+      document.querySelector<HTMLInputElement>('[data-other-meal-item]')?.focus();
+    } : undefined,
   });
 
   const { tweaks } = useTweaks();

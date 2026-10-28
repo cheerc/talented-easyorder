@@ -18,7 +18,7 @@ export function useFocusSync(
   useEffect(() => {
     // Synchronize focusZone with state mode when student selection state changes
     // Skip if focusZone is 'view-status' — RecentStrip click intentionally set it
-    if (state.kind === 'student_selected' && focusZone !== 'view-status') {
+    if (state.kind === 'student_selected' && focusZone !== 'view-status' && focusZone !== 'other-item') {
       setFocusZone('mode-' + state.mode);
     }
 
@@ -29,6 +29,7 @@ export function useFocusSync(
 
     // M1：回到搜尋（完成、取消、切回櫃台）時清空搜尋並把游標放進搜尋框，姓名可以直接打，不用先點。
     if (state.kind === 'idle' && tab === 'pos') {
+      if (focusZone === 'other-item') setFocusZone('mode-order');
       setSearchText('');
       setSearchFocusKey(k => k + 1);
     }
