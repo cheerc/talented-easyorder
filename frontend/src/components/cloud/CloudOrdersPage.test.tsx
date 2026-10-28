@@ -263,6 +263,30 @@ describe('CloudOrdersPage', () => {
     expect(screen.queryByTestId('selected-student-card')).toBeNull();
   });
 
+
+  it('does not steal keys from editable content, a prevented event, or active composition', async () => {
+    renderComponent();
+    const search = await screen.findByLabelText('搜尋編號、姓名或別名');
+    const editable = document.createElement('div');
+    editable.setAttribute('contenteditable', 'true');
+    document.body.appendChild(editable);
+    editable.focus();
+    fireEvent.keyDown(editable, { key: '1' });
+    expect(search).toHaveValue('');
+    editable.remove();
+
+    const prevent = (event: KeyboardEvent) => event.preventDefault();
+    document.body.addEventListener('keydown', prevent, { once: true });
+    fireEvent.keyDown(document.body, { key: '1' });
+    expect(search).toHaveValue('');
+    fireEvent.compositionStart(search);
+    fireEvent.keyDown(document.body, { key: '1' });
+    expect(search).toHaveValue('');
+    fireEvent.compositionEnd(search);
+    fireEvent.keyDown(document.body, { key: '1' });
+    expect(search).toHaveValue('1');
+  });
+
   it('renders the two-row meal counters from the reconciled server day (U2a contract)', async () => {
     renderComponent();
     const bentoRow = await screen.findByTestId('cloud-topbar-bento');
