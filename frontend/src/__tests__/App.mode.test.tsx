@@ -210,3 +210,18 @@ describe('App mode gate', () => {
     act(() => useUiTweaksStore.getState().resetToDefault());
   });
 });
+
+describe('cloud navigation contract', () => {
+  it('uses physical Alt+3 from an input to open the default settings subpage', () => {
+    appMocks.cloudModeValid = true;
+    render(<App />);
+    const input = document.createElement('input');
+    document.body.append(input);
+    input.focus();
+    const event = new KeyboardEvent('keydown', { key: '£', code: 'Digit3', altKey: true, bubbles: true, cancelable: true });
+    act(() => { input.dispatchEvent(event); });
+    expect(event.defaultPrevented).toBe(true);
+    expect(screen.getByRole('region', { name: 'mock day vendors page' })).toBeVisible();
+    input.remove();
+  });
+});
