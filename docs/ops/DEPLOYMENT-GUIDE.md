@@ -126,24 +126,26 @@ init 建 schema 1、seq 0、維護中的 head。activate-empty 只接受空白�
 
 | 編號 | 通過條件 | 匿名結果 |
 |---|---|---|
-| S01 | Spark／billing disabled、獨立 project、asia-east1、Standard Native (default) | UNVERIFIED |
-| S02 | index 6 個 READY／exemptions、Rules/index/Hosting release hash 配對 | UNVERIFIED |
-| S03 | HTTPS 首頁／深連結／重載／PWA 更新；index/sw 不長快取、hash assets 長快取、無 CSP error | UNVERIFIED |
-| S04 | 核准 Google 可登入、未知／停用帳號看不到帳務；popup 阻擋有允許並重試指引 | UNVERIFIED |
-| S05 | 兩核准 UID 互斥與交接；登出／重載雲端資料保留、本機業務快取清理 | UNVERIFIED |
-| S06 | 學生／期初、菜單／開帳、訂餐、繳費、更正／取消、關帳、帳戶歷史、學生稽核、F2 首次開頁無 requires-an-index | UNVERIFIED |
-| S07 | CSV／列印、加密備份重新選檔驗證／第二副本；斷線未知結果保留原 ID、不重複入帳 | UNVERIFIED |
-| S08 | 自訂 domain TLS、authorized domain、authDomain、OAuth redirect、Google 登入與 popup recovery | UNVERIFIED |
-| S09 | 相容 Hosting rollback 後登入／讀取正常；資料不倒退，不刪 command／關帳版次 | UNVERIFIED |
-| S10 | P15 獨立空 Spark 復原：verify／finalize、文件量／時間／quota、重新登入 | UNVERIFIED |
+| S01 | Spark／billing disabled、獨立 project、asia-east1、Standard Native (default) | 已查證；見 live evidence |
+| S02 | index 6 個 READY／exemptions、Rules/index/Hosting release hash 配對 | 索引與部署已有證據；逐版配對見 live evidence |
+| S03 | HTTPS 首頁／深連結／重載／PWA 更新；index/sw 不長快取、hash assets 長快取、無 CSP error | 部分已驗；各條件與版本見 live evidence |
+| S04 | 核准 Google 可登入、未知／停用帳號看不到帳務；popup 阻擋有允許並重試指引 | 登入及拒絕帳號已驗；popup 錯誤恢復有工程測試，現場未強制觸發，見收尾證據 |
+| S05 | 兩核准 UID 互斥與交接；登出／重載雲端資料保留、本機業務快取清理 | 互斥、交接與資料讀回已驗；其餘條件見 live evidence |
+| S06 | 學生／期初、菜單／開帳、訂餐、繳費、更正／取消、關帳、帳戶歷史、學生稽核、F2 首次開頁無 requires-an-index | 基本合成操作已驗；未列證據的情境仍待驗 |
+| S07 | CSV／列印、加密備份重新選檔驗證／第二副本；斷線未知結果保留原 ID、不重複入帳 | CSV、列印及本機備份重新選檔已驗；未知結果有 Emulator E2E 證據，現場補測依本人決定留後續。獨立媒體副本延期，本機第二資料夾不算獨立媒體 |
+| S08 | 自訂 domain TLS、authorized domain、authDomain、OAuth redirect、Google 登入與 popup recovery | 自訂網域 Chrome 登入已驗；Safari 依本人決定跳過，popup 現場強制阻擋未驗 |
+| S09 | 相容 Hosting rollback 後登入／讀取正常；資料不倒退，不刪 command／關帳版次 | 已在獨立演練專案切回相容舊版再恢復新版；重載保有登入並讀回資料，dataHead 不變，見收尾證據 |
+| S10 | P15 獨立空 Spark 復原：verify／finalize、文件量／時間／quota、重新登入 | 基本獨立復原、對帳與重新登入已驗；完整 RTO 依使用者決定延期，用量為專案整體近似值 |
+
+本次結案範圍及延期項目統一見 [P17 收尾證據](free-production-evidence.md#p17-closeout-boundary-and-compatibility-drill-2026-10-28)。
 
 回報例：S01 PASS、S02 PASS（6 ready）；S04 FAIL auth/unauthorized-domain。不要附 token、真名單、餘額、截圖或完整 Console log。P18 正式延遲以送單 20 次、首頁冷載 5 次取 P95，記設備／網路，不能用 Emulator 時間代替。完整三日 A/L/D/R 驗收以 spec §11 為準。
 
 ## 7. 自訂 domain
 
-預設站 smoke 通過後，本人在 DNS 管理服務核對 easyorder.talented.com.tw；占用則選空閒 order.talented.com.tw，皆占用另選，不覆寫既有服務。Hosting Add custom domain 依 Console DNS 記錄驗證，留 ownership TXT，等 TLS Ready 再切。
+已使用本人指定的 `eo.talented.com.tw`；DNS、Hosting、TLS 與 Chrome 登入的實際證據見 [自訂網域紀錄](free-production-evidence.md#p17-custom-domain-follow-up-2026-10-27)。其他新網域須先核對占用狀態，不覆寫既有服務；依 Hosting Console 的 DNS 記錄驗證並保留 ownership TXT，等 TLS Ready 再切。
 
-先加 Auth authorized domain，再於 Google OAuth web client 加 https://新主機/__/auth/handler。只改本機 Web config authDomain，重建新 release 並依相同順序部署，其餘 config 不變。release 的 HTTP 與 HTML CSP 只額外允許該設定的 authDomain 作為 iframe 來源，以支援由預設 Hosting 網址使用自訂驗證網域；不放行任意網域。實際 Chrome／Safari／工作機登入須本人 S08 驗證。
+先加 Auth authorized domain，再於 Google OAuth web client 加 https://新主機/__/auth/handler。只改本機 Web config authDomain，重建新 release 並依相同順序部署，其餘 config 不變。release 的 HTTP 與 HTML CSP 只額外允許該設定的 authDomain 作為 iframe 來源，以支援由預設 Hosting 網址使用自訂驗證網域；不放行任意網域。已記錄 Chrome 登入；本人決定跳過 Safari 補測，popup 現場強制阻擋未驗，工程錯誤指引測試通過。
 
 ## 8. 回退、quota 與 P18
 
