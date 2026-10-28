@@ -1587,6 +1587,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       }
       if (!pageState.selectedStudentId && !pageState.cashOpen && !editable && tag !== 'button' && /^[0-9]$/.test(event.key)) {
         event.preventDefault();
+        setHighlight(0);
         setPageStateRaw(previous => ({ ...previous, search: previous.search + event.key }));
         searchInputRef.current?.focus();
         return;
