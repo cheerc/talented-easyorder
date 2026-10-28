@@ -212,6 +212,30 @@ describe('App mode gate', () => {
 });
 
 describe('cloud navigation contract', () => {
+  it('intercepts browser F5 while recovery locks navigation and preserves native modifiers', () => {
+    appMocks.cloudModeValid = true;
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '保持待確認命令' }));
+    const locked = new KeyboardEvent('keydown', { key: 'F5', bubbles: true, cancelable: true });
+    act(() => window.dispatchEvent(locked));
+    expect(locked.defaultPrevented).toBe(true);
+    expect(screen.getByRole('region', { name: 'mock students page' })).toBeVisible();
+    const browser = new KeyboardEvent('keydown', { key: 'F5', ctrlKey: true, bubbles: true, cancelable: true });
+    act(() => window.dispatchEvent(browser));
+    expect(browser.defaultPrevented).toBe(false);
+  });
+
+  it('remembers the selected settings page after navigating away', () => {
+    appMocks.cloudModeValid = true;
+    render(<App />);
+    fireEvent.keyDown(window, { key: 'F3' });
+    expect(screen.getByRole('region', { name: 'mock day vendors page' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '學生' }));
+    fireEvent.keyDown(window, { key: 'F5' });
+    fireEvent.keyDown(window, { key: 'F3' });
+    expect(screen.getByRole('region', { name: 'mock students page' })).toBeVisible();
+  });
+
   it('uses physical Alt+3 from an input to open the default settings subpage', () => {
     appMocks.cloudModeValid = true;
     render(<App />);
