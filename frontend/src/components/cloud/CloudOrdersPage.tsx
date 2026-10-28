@@ -1571,7 +1571,8 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       }
       const target = event.target instanceof HTMLElement ? event.target : null;
       const tag = target?.tagName.toLowerCase();
-      const editable = target?.isContentEditable || tag === 'textarea' || tag === 'select' || tag === 'input';
+      const editable = target?.isContentEditable || Boolean(target?.closest('[contenteditable]:not([contenteditable="false"])'))
+        || tag === 'textarea' || tag === 'select' || tag === 'input';
       const numeric = target?.hasAttribute('data-numeric-input');
       if (event.key === 'Escape') {
         event.preventDefault();
