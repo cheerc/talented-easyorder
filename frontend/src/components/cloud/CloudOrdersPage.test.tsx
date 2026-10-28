@@ -212,6 +212,108 @@ describe('CloudOrdersPage', () => {
     repositoryMock.createRefund.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 15));
   });
 
+  it('selects only a visible highlighted search result and focuses the amount without submitting', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(snapshot({ students: Array.from({ length: 12 }, (_, i) => mockStudent(`s${i}`, `${100 + i}`, `測試${i}`)), transactions: [] }));
+    renderComponent();
+    const search = await screen.findByLabelText('搜尋編號、姓名或別名');
+    fireEvent.change(search, { target: { value: '測試' } });
+    expect(screen.getAllByRole('option')).toHaveLength(10);
+    expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'true');
+    for (let i = 0; i < 15; i++) fireEvent.keyDown(search, { key: 'ArrowDown' });
+    expect(screen.getAllByRole('option')[9]).toHaveAttribute('aria-selected', 'true');
+    fireEvent.change(search, { target: { value: '測試1' } });
+    expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(await screen.findByTestId('selected-student-card')).toHaveTextContent('測試1');
+    expect(screen.getByLabelText(/實收金額/)).toHaveFocus();
+    expect(repositoryMock.createOrder).not.toHaveBeenCalled();
+  });
+
+  it('starts a fresh idle-digit search at the first result after clearing an earlier highlight', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(snapshot({
+      students: Array.from({ length: 3 }, (_, i) => mockStudent(`s${i}`, `${101 + i}`, `測試${i}`)),
+      transactions: [],
+    }));
+    renderComponent();
+    const search = await screen.findByLabelText('搜尋編號、姓名或別名');
+    fireEvent.change(search, { target: { value: '測試' } });
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
+    expect(screen.getAllByRole('option')[2]).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(search, { key: 'Escape' });
+    fireEvent.keyDown(document.body, { key: '1' });
+    expect(search).toHaveValue('1');
+    expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(await screen.findByTestId('selected-student-card')).toHaveTextContent('101');
+    expect(repositoryMock.createOrder).not.toHaveBeenCalled();
+    expect(repositoryMock.createPayment).not.toHaveBeenCalled();
+  });
+
+  it('supports numeric-field shortcuts while protecting text, modifiers and composition', async () => {
+    renderComponent();
+    await selectStudent('001');
+    const amount = screen.getByLabelText(/實收金額/);
+    amount.focus();
+    fireEvent.keyDown(amount, { key: 'w' });
+    expect(screen.getByLabelText(/繳費金額（必填）/)).toHaveFocus();
+    fireEvent.keyDown(amount, { key: 'q' });
+    expect(screen.getByRole('button', { name: '今日餐點（Q）' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.keyDown(amount, { key: 'e' });
+    expect(screen.getByRole('dialog', { name: /付款明細/ })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: /付款明細/ })).toBeNull();
+    fireEvent.keyDown(amount, { key: 'r', isComposing: true });
+    expect(screen.queryByLabelText('餐點品名（必填）')).toBeNull();
+    fireEvent.keyDown(amount, { key: 'r', ctrlKey: true });
+    expect(screen.queryByLabelText('餐點品名（必填）')).toBeNull();
+    fireEvent.keyDown(amount, { key: 'r' });
+    const item = screen.getByLabelText('餐點品名（必填）');
+    expect(item).toHaveFocus();
+    fireEvent.keyDown(item, { key: 'w' });
+    expect(screen.getByLabelText('餐點品名（必填）')).toBeInTheDocument();
+  });
+
+  it('captures idle digits but does not capture modifiers, editable content or repeated Enter', async () => {
+    renderComponent();
+    const search = await screen.findByLabelText('搜尋編號、姓名或別名');
+    document.body.focus();
+    fireEvent.keyDown(document.body, { key: '1', ctrlKey: true });
+    expect(search).toHaveValue('');
+    fireEvent.keyDown(document.body, { key: '1' });
+    expect(search).toHaveFocus();
+    expect(search).toHaveValue('1');
+    fireEvent.change(search, { target: { value: '001' } });
+    fireEvent.keyDown(search, { key: 'Enter', repeat: true });
+    expect(screen.queryByTestId('selected-student-card')).toBeNull();
+    fireEvent.keyDown(search, { key: 'Enter', isComposing: true });
+    expect(screen.queryByTestId('selected-student-card')).toBeNull();
+  });
+
+
+  it('does not steal keys from editable content, a prevented event, or active composition', async () => {
+    renderComponent();
+    const search = await screen.findByLabelText('搜尋編號、姓名或別名');
+    const editable = document.createElement('div');
+    editable.setAttribute('contenteditable', 'true');
+    document.body.appendChild(editable);
+    editable.focus();
+    fireEvent.keyDown(editable, { key: '1' });
+    expect(search).toHaveValue('');
+    editable.remove();
+
+    const prevent = (event: KeyboardEvent) => event.preventDefault();
+    document.body.addEventListener('keydown', prevent, { once: true });
+    fireEvent.keyDown(document.body, { key: '1' });
+    expect(search).toHaveValue('');
+    fireEvent.compositionStart(search);
+    fireEvent.keyDown(document.body, { key: '1' });
+    expect(search).toHaveValue('');
+    fireEvent.compositionEnd(search);
+    fireEvent.keyDown(document.body, { key: '1' });
+    expect(search).toHaveValue('1');
+  });
+
   it('renders the two-row meal counters from the reconciled server day (U2a contract)', async () => {
     renderComponent();
     const bentoRow = await screen.findByTestId('cloud-topbar-bento');

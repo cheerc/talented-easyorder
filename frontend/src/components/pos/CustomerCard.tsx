@@ -79,6 +79,10 @@ export const CustomerCard = React.memo(function CustomerCard({
   };
   const effectiveMealPrice = mode === 'order' ? (priceOverride ?? todayMenu.price) : 0;
   const payInputRef = useRef<HTMLInputElement>(null);
+  const otherItemRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (focusZone === 'other-item' && priceOverride !== null && mode === 'order') otherItemRef.current?.focus();
+  }, [focusZone, mode, priceOverride]);
   useEffect(() => {
     if (focusZone?.startsWith('mode-')) {
       payInputRef.current?.focus();
@@ -174,7 +178,7 @@ export const CustomerCard = React.memo(function CustomerCard({
                   className="ghost-btn"
                   onClick={() => setPriceOverride(priceOverride ?? todayMenu.price)}
                 >
-                  訂購其他餐點
+                  訂購其他餐點<span aria-hidden="true">（R）</span>
                 </button>
                 {priceOverride !== null && (
                   <div className="price-override-fields">
@@ -182,6 +186,8 @@ export const CustomerCard = React.memo(function CustomerCard({
                       <span>品項</span>
                       <input
                         className="adm-input"
+                        ref={otherItemRef}
+                        data-other-meal-item
                         aria-label="品項或原因"
                         value={priceOverrideLabel}
                         onChange={e => setPriceOverrideLabel(e.target.value)}
@@ -236,6 +242,7 @@ export const CustomerCard = React.memo(function CustomerCard({
                 <span className="pay-input-prefix">$</span>
                 <NumericInput
                   ref={payInputRef}
+                  allowOtherMealShortcut
                   className="pay-input-main"
                   aria-label="付款金額"
                   value={payAmount}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { Firestore } from 'firebase/firestore';
+import { Kbd } from '../ui/Kbd';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
 import type { PendingReceiptCheck } from '../../firebase/cloudCommandRepository';
 import { normalizeStudentCode } from '../../domain/student';
@@ -512,6 +513,12 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const [pageState, setPageStateRaw] = useState<OrdersPageState>(() => initialState(scopeKey));
   const scopeRef = useRef(scopeKey);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const amountInputRef = useRef<HTMLInputElement>(null);
+  const otherItemRef = useRef<HTMLInputElement>(null);
+  const composingRef = useRef(false);
+  const focusSearchRef = useRef(false);
+  const focusOtherRef = useRef(false);
+  const [highlight, setHighlight] = useState(0);
 
   if (scopeRef.current !== scopeKey) {
     scopeRef.current = scopeKey;
@@ -769,12 +776,29 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     if (!q || !snapshot) return [];
     const norm = normalizeStudentCode(q);
     const normCode = norm.ok ? norm.code : '';
-    return snapshot.students.filter(student =>
+    const matches = snapshot.students.filter(student =>
       (normCode && student.studentCode === normCode)
       || student.studentCode.includes(q)
       || student.displayName.toLowerCase().includes(q)
       || student.aliases.some(alias => alias.toLowerCase().includes(q)));
+    return matches.sort((a, b) => Number(b.studentCode === normCode) - Number(a.studentCode === normCode));
   }, [page.search, snapshot]);
+  const visibleStudents = filteredStudents.slice(0, 10);
+  const activeIndex = Math.min(highlight, Math.max(visibleStudents.length - 1, 0));
+
+  useEffect(() => {
+    if (page.selectedStudentId) amountInputRef.current?.focus();
+    else if (focusSearchRef.current) { focusSearchRef.current = false; searchInputRef.current?.focus(); }
+  }, [page.selectedStudentId, page.snapshot]);
+  useEffect(() => {
+    if (page.mode === 'other' && focusOtherRef.current) {
+      focusOtherRef.current = false;
+      otherItemRef.current?.focus();
+    }
+  }, [page.mode]);
+  useEffect(() => {
+    document.getElementById(`cloud-search-option-${activeIndex}`)?.scrollIntoView?.({ block: 'nearest' });
+  }, [activeIndex, page.search]);
 
   const recentAccounts = useMemo(() => {
     const seen = new Set<string>();
@@ -833,8 +857,9 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
 
   const cancelSelection = useCallback(() => {
     if (operationRef.current || pageState.recovery) return;
+    focusSearchRef.current = true;
     setPageStateRaw(previous => ({ ...previous, ...freshDraft(), actionError: '' }));
-    searchInputRef.current?.focus();
+    if (searchInputRef.current) { searchInputRef.current.focus(); focusSearchRef.current = false; }
   }, [pageState.recovery]);
 
   const updateRecoveryView = (operation: OrdersRecoveryOperation, update: (view: RecoveryView) => RecoveryView) => {
@@ -1522,41 +1547,85 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   }, [undoExpiresAt]);
 
   useEffect(() => {
+    const compositionStart = () => { composingRef.current = true; };
+    const compositionEnd = () => { composingRef.current = false; };
+    const guardEnter = (event: KeyboardEvent) => {
+      if (event.key === 'Enter' && (event.repeat || event.isComposing || composingRef.current || event.keyCode === 229
+        || (event.target instanceof HTMLElement && event.target.id === 'other-item-name'))) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (pageState.recovery) return;
+      if (event.defaultPrevented || event.repeat || event.isComposing || composingRef.current || event.keyCode === 229
+        || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || pageState.authorizationRevoked
+        || pageState.recovery || operationRef.current || !pageState.snapshot) return;
       if (pageState.confirmDuplicateOpen || pageState.paymentDetailsOpen || pageState.refundConfirmOpen || pageState.edit) {
         if (event.key === 'Escape') {
+          event.preventDefault();
           setPageStateRaw(previous => ({
             ...previous, confirmDuplicateOpen: false, paymentDetailsOpen: false, refundConfirmOpen: false, edit: null,
           }));
         }
         return;
       }
-      const tag = document.activeElement?.tagName.toLowerCase();
-      const typing = tag === 'input' || tag === 'textarea' || tag === 'select';
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const tag = target?.tagName.toLowerCase();
+      const editable = target?.isContentEditable || Boolean(target?.closest('[contenteditable]:not([contenteditable="false"])'))
+        || tag === 'textarea' || tag === 'select' || tag === 'input';
+      const numeric = target?.hasAttribute('data-numeric-input');
       if (event.key === 'Escape') {
         event.preventDefault();
-        cancelSelection();
+        if (pageState.selectedStudentId && pageState.mode === 'other') {
+          setPageStateRaw(previous => ({ ...previous, mode: 'bento', otherItemName: '', otherPriceText: '' }));
+          amountInputRef.current?.focus();
+        } else cancelSelection();
         return;
       }
-      if (typing) return;
-      if (event.key === 'q' || event.key === 'Q') {
+      if (event.key === 'F1' && !pageState.selectedStudentId && !pageState.cashOpen) {
+        event.preventDefault(); searchInputRef.current?.focus(); return;
+      }
+      if (!pageState.selectedStudentId && !pageState.cashOpen && !editable && tag !== 'button' && /^[0-9]$/.test(event.key)) {
+        event.preventDefault();
+        setHighlight(0);
+        setPageStateRaw(previous => ({ ...previous, search: previous.search + event.key }));
+        searchInputRef.current?.focus();
+        return;
+      }
+      if (event.key === 'Enter' && pageState.notice && !pageState.selectedStudentId && !editable && tag !== 'button') {
+        event.preventDefault(); searchInputRef.current?.focus(); return;
+      }
+      if ((editable && !numeric) || tag === 'button' || tag === 'a') return;
+      const key = event.key.toLowerCase();
+      if (key === 'q' && pageState.selectedStudentId) {
         event.preventDefault();
         setPageStateRaw(previous => ({ ...previous, mode: 'bento' }));
-      } else if ((event.key === 'w' || event.key === 'W') && pageState.selectedStudentId) {
+      } else if (key === 'w' && pageState.selectedStudentId) {
         event.preventDefault();
         setPageStateRaw(previous => ({ ...previous, mode: 'payment' }));
-      } else if ((event.key === 'e' || event.key === 'E') && pageState.selectedStudentId) {
+      } else if (key === 'r' && pageState.selectedStudentId && selectedStudent?.status === 'active') {
+        event.preventDefault();
+        if (pageState.mode === 'other') otherItemRef.current?.focus();
+        else { focusOtherRef.current = true; setPageStateRaw(previous => ({ ...previous, mode: 'other' })); }
+      } else if (key === 'e' && pageState.selectedStudentId) {
         event.preventDefault();
         setPageStateRaw(previous => ({ ...previous, paymentDetailsOpen: true }));
-      } else if ((event.key === 'a' || event.key === 'A') && !pageState.selectedStudentId) {
+      } else if (key === 'a' && !pageState.selectedStudentId && !editable) {
         event.preventDefault();
         setPageStateRaw(previous => ({ ...previous, ...freshDraft(), cashOpen: true, actionError: '', notice: '' }));
       }
     };
+    window.addEventListener('compositionstart', compositionStart);
+    window.addEventListener('compositionend', compositionEnd);
+    window.addEventListener('keydown', guardEnter, true);
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cancelSelection, pageState.confirmDuplicateOpen, pageState.edit, pageState.paymentDetailsOpen, pageState.refundConfirmOpen, pageState.recovery, pageState.selectedStudentId]);
+    return () => {
+      window.removeEventListener('compositionstart', compositionStart);
+      window.removeEventListener('compositionend', compositionEnd);
+      window.removeEventListener('keydown', guardEnter, true);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [cancelSelection, pageState, selectedStudent]);
 
   const bentoCount = day?.totals.bentoCount ?? 0;
   const otherMealCount = day?.totals.otherMealCount ?? 0;
@@ -1738,22 +1807,39 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                     value={page.search}
                     onChange={event => {
                       const value = event.target.value;
+                      setHighlight(0);
                       setPageStateRaw(previous => ({ ...previous, search: value }));
                     }}
                     aria-label="搜尋編號、姓名或別名"
                     autoComplete="off"
+                    role="combobox"
+                    aria-expanded={visibleStudents.length > 0}
+                    aria-controls="cloud-search-results"
+                    aria-activedescendant={visibleStudents.length ? `cloud-search-option-${activeIndex}` : undefined}
+                    onKeyDown={event => {
+                      if (event.defaultPrevented || event.repeat || event.nativeEvent.isComposing || composingRef.current
+                        || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+                      if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && visibleStudents.length) {
+                        event.preventDefault();
+                        setHighlight(index => Math.max(0, Math.min(visibleStudents.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1))));
+                      } else if (event.key === 'Enter' && visibleStudents.length) {
+                        event.preventDefault(); event.stopPropagation(); selectStudent(visibleStudents[activeIndex]);
+                      }
+                    }}
                     disabled={busy}
                   />
                   {filteredStudents.length > 0 && (
-                    <ul className="cloud-orders__search-dropdown" role="listbox">
-                      {filteredStudents.slice(0, 10).map(student => (
+                    <ul id="cloud-search-results" className="cloud-orders__search-dropdown" role="listbox">
+                      {visibleStudents.map((student, index) => (
                         <li
                           key={student.studentId}
+                          id={`cloud-search-option-${index}`}
+                          data-highlighted={index === activeIndex}
                           className={`cloud-orders__search-item ${student.status === 'inactive' ? 'cloud-orders__search-item--inactive' : ''}`}
                           onClick={() => selectStudent(student)}
                           data-testid={`search-result-${student.studentCode}`}
                           role="option"
-                          aria-selected="false"
+                          aria-selected={index === activeIndex}
                         >
                           <span>
                             <strong>{student.studentCode}</strong> {student.displayName}
@@ -1763,6 +1849,12 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                         </li>
                       ))}
                     </ul>
+                  )}
+                  {visibleStudents.length > 0 && (
+                    <p className="cloud-orders__muted">↑↓ 選擇 · Enter 確認 · Esc 清除</p>
+                  )}
+                  {page.search.trim() && visibleStudents.length === 0 && (
+                    <p className="cloud-orders__muted" role="status">沒有符合的帳戶</p>
                   )}
                   {!page.cashOpen && (
                     <div className="cloud-orders__actions">
@@ -1925,7 +2017,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                       onClick={() => setPageStateRaw(previous => ({ ...previous, mode: 'other' }))}
                       disabled={busy || selectedStudent.status === 'inactive'}
                     >
-                      其他餐點
+                      其他餐點 <span aria-hidden="true"><Kbd>R</Kbd></span>
                     </button>
                     <button
                       type="button"
@@ -1955,6 +2047,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                         <label htmlFor="other-item-name">餐點品名（必填）</label>
                         <input
                           id="other-item-name"
+                          ref={otherItemRef}
                           type="text"
                           placeholder="例如：炒麵、水餃"
                           value={page.otherItemName}
@@ -1970,6 +2063,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                         <label htmlFor="other-item-price">餐點單價（必填）</label>
                         <input
                           id="other-item-price"
+                          data-numeric-input
                           type="text"
                           inputMode="numeric"
                           placeholder="0"
@@ -1992,6 +2086,8 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                       <label htmlFor="paid-amount">{mode === 'payment' ? '繳費金額（必填）' : '實收金額（留空為 0 元）'}</label>
                       <input
                         id="paid-amount"
+                        ref={amountInputRef}
+                        data-numeric-input
                         type="text"
                         inputMode="numeric"
                         placeholder="0"
@@ -2255,6 +2351,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
               <button
                 type="button"
                 className="cloud-orders__btn-secondary"
+                autoFocus
                 onClick={() => setPageStateRaw(previous => ({ ...previous, confirmDuplicateOpen: false }))}
               >
                 取消

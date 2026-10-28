@@ -9,6 +9,7 @@ interface UseKeyboardShortcutsArgs {
   handleConfirm: () => void;
   cancelFlow: () => void;
   enterExpenseMode?: () => void;
+  openOtherMeal?: () => void;
   setFocusZone?: (zone: string) => void;
   isDialogOpen?: boolean;
 }
@@ -16,7 +17,7 @@ interface UseKeyboardShortcutsArgs {
 // Ref: #292 — Use refs for callback dependencies so the keydown listener
 // is registered once on mount (when enabled) instead of re-registered on
 // every state change. Only `enabled` and `isDialogOpen` control registration.
-export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStudentSelected, handleConfirm, cancelFlow, enterExpenseMode, setFocusZone, isDialogOpen }: UseKeyboardShortcutsArgs) {
+export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStudentSelected, handleConfirm, cancelFlow, enterExpenseMode, openOtherMeal, setFocusZone, isDialogOpen }: UseKeyboardShortcutsArgs) {
   const changeModeRef = useRef(changeMode);
   const cancelOrderRef = useRef(cancelOrder);
   const isStudentSelectedRef = useRef(isStudentSelected);
@@ -24,6 +25,7 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
   const cancelFlowRef = useRef(cancelFlow);
   const enterExpenseModeRef = useRef(enterExpenseMode);
   const setFocusZoneRef = useRef(setFocusZone);
+  const openOtherMealRef = useRef(openOtherMeal);
 
   useEffect(() => { changeModeRef.current = changeMode; });
   useEffect(() => { cancelOrderRef.current = cancelOrder; });
@@ -32,6 +34,7 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
   useEffect(() => { cancelFlowRef.current = cancelFlow; });
   useEffect(() => { enterExpenseModeRef.current = enterExpenseMode; });
   useEffect(() => { setFocusZoneRef.current = setFocusZone; });
+  useEffect(() => { openOtherMealRef.current = openOtherMeal; });
 
   useEffect(() => {
     if (!enabled || isDialogOpen) return;
@@ -122,7 +125,14 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
         return;
       }
 
-      // R — no-op everywhere (was cancel order, now E handles cancel)
+      // R 開啟其他餐點；一般文字輸入、組字和原生控制優先。
+      if (key === 'r' && isStudentSelectedRef.current && openOtherMealRef.current) {
+        if (e.defaultPrevented || e.repeat || e.isComposing || e.keyCode === 229 || e.shiftKey
+          || target.isContentEditable || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON'
+          || (tag === 'INPUT' && !target.hasAttribute('data-numeric-input'))) return;
+        e.preventDefault();
+        openOtherMealRef.current();
+      }
     };
 
     window.addEventListener('keydown', onKey);
