@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AuthGate } from '../AuthGate';
 import type { OperatorAccess } from '../../firebase/authService';
 import type { ActiveLeaseState } from '../../firebase/activeAccountLease';
@@ -13,6 +13,46 @@ vi.mock('../../firebase/authService', () => ({
 describe('AuthGate: 授權閘門與白名單畫面', () => {
   const mockAuth = {} as Parameters<typeof AuthGate>[0]['auth'];
   const mockDb = {} as Parameters<typeof AuthGate>[0]['db'];
+
+  it('P17: a long pending login offers guidance without retrying or failing it', async () => {
+    vi.useFakeTimers();
+    try {
+      let reject!: (reason: unknown) => void;
+      vi.mocked(signInWithGoogle).mockReset().mockImplementationOnce(() => new Promise((_, r) => { reject = r; }));
+      render(<AuthGate auth={mockAuth} db={mockDb} access={{ ok: false, reason: 'signed_out' }}><span>business</span></AuthGate>);
+      fireEvent.click(screen.getByRole('button', { name: '使用 Google 登入' }));
+      expect(screen.getByRole('button', { name: '正在等待 Google 登入…' })).toBeDisabled();
+      act(() => vi.advanceTimersByTime(14999));
+      expect(screen.queryByRole('status')).toBeNull();
+      act(() => vi.advanceTimersByTime(1));
+      expect(screen.getByRole('status')).toHaveTextContent('Google 登入仍在進行');
+      expect(screen.getByRole('status')).toHaveTextContent('登入視窗');
+      fireEvent.click(screen.getByRole('button', { name: '正在等待 Google 登入…' }));
+      expect(signInWithGoogle).toHaveBeenCalledTimes(1);
+      await act(async () => reject({ code: 'auth/popup-blocked' }));
+      expect(screen.queryByRole('status')).toBeNull();
+      expect(screen.getByRole('alert')).toHaveTextContent('允許此網站的彈出視窗');
+      expect(screen.getByRole('button', { name: '使用 Google 登入' })).toBeEnabled();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('P17: settled or unmounted logins do not leave a delayed hint', async () => {
+    vi.useFakeTimers();
+    try {
+      let resolve!: (access: OperatorAccess) => void;
+      vi.mocked(signInWithGoogle).mockReset().mockImplementationOnce(() => new Promise(r => { resolve = r; }));
+      const view = render(<AuthGate auth={mockAuth} db={mockDb} access={{ ok: false, reason: 'signed_out' }}><span>business</span></AuthGate>);
+      fireEvent.click(screen.getByRole('button', { name: '使用 Google 登入' }));
+      await act(async () => resolve({ ok: false, reason: 'not_whitelisted' }));
+      act(() => vi.advanceTimersByTime(15000));
+      expect(screen.queryByRole('status')).toBeNull();
+      vi.mocked(signInWithGoogle).mockImplementationOnce(() => new Promise(() => {}));
+      fireEvent.click(screen.getByRole('button', { name: '使用 Google 登入' }));
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+      view.unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
 
   it('P17: popup blocked gives a visible recovery instruction, and retries only after another click', async () => {
     vi.mocked(signInWithGoogle).mockRejectedValueOnce({ code: 'auth/popup-blocked', message: 'private-provider-details' })

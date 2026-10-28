@@ -1,6 +1,6 @@
 # 正式後端逐 PR 開發交接
 
-> **2026-10-27 P17 續作：** 使用者授權協助獨立測試專案部署與合成測試，基本登入及學生寫入／讀回已驗證；使用者回報本機與網站同步。剩餘 smoke、自訂網域與獨立 Spark 還原演練見 [live evidence](ops/free-production-evidence.md#p17-user-authorized-live-verification-2026-10-27) 及 [部署指南](ops/DEPLOYMENT-GUIDE.md)。先完成 P17，再另行測試與修正；P18 真實資料及營運驗收維持 pending。下方較早 checkpoint 為歷史。
+> **2026-10-28 P17 工程收尾：** 部署、基本合成操作、安全、獨立基本復原與相容前端回退已有證據，可進入手動合成資料試用及修正；最終交付仍須本批 PR 的獨立 review／合併 CI。本人同意獨立媒體副本、完整 RTO 與現場未知結果斷線測試留待後續，Safari 補測跳過；popup 錯誤指引有工程測試，未做現場強制阻擋。P18 真實資料與營運簽收維持 pending。驗證與限制統一見 [P17 收尾證據](ops/free-production-evidence.md#p17-closeout-boundary-and-compatibility-drill-2026-10-28)。下方較早 checkpoint 為歷史。
 
 > **2026-10-25 P17 本機部署準備：** #557 已合併為 main 的 5929f1b3835e498750f696139b6ae21f740095d8。本人本輪已授權進入 P17 並先完成 agent 能處理的準備；這取代下方 P16f2 的「不可自行推進 P17」接手限制。工程候選在本機分支 codex/p17-deployment-preparation，尚未 commit／PR／部署。已替換舊 payroll／Vercel 部署入口、補 Hosting 設定、明示 project 的凍結 release 與完整性檢查、空白啟用 CLI、popup 阻擋恢復提示；驗證與未執行項見 [P17 evidence](ops/free-production-evidence.md#p17-local-deployment-preparation-2026-10-25)。下一接手為本人建立獨立 Spark 驗證 project／Google Auth、在本機輸入公開 Web config 並部署；逐步操作見 [部署指南](ops/DEPLOYMENT-GUIDE.md)。正式 project／billing／DNS／Auth／index READY／smoke／空 Spark 還原均 UNVERIFIED；P18 真實資料與三日本人簽收未開始。下方舊 checkpoint 為歷史，不代表新授權。
 

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { Auth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import { signInWithGoogle, signOutOperator, type OperatorAccess } from '../firebase/authService';
@@ -47,10 +47,18 @@ export function AuthGate({
   const [isAcquiring, setIsAcquiring] = useState<boolean>(false);
   const [signInError, setSignInError] = useState('');
   const [signingIn, setSigningIn] = useState(false);
+  const [showSignInWait, setShowSignInWait] = useState(false);
+
+  useEffect(() => {
+    if (!signingIn) return;
+    const timer = window.setTimeout(() => setShowSignInWait(true), 15000);
+    return () => window.clearTimeout(timer);
+  }, [signingIn]);
 
   const signIn = async () => {
     if (signingIn) return;
     setSignInError('');
+    setShowSignInWait(false);
     setSigningIn(true);
     try {
       await signInWithGoogle(auth, db);
@@ -61,7 +69,7 @@ export function AuthGate({
         : code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request'
           ? '登入尚未完成；準備好後可再按「使用 Google 登入」。'
           : 'Google 登入未完成，請確認網路與網站的登入設定後重試。');
-    } finally { setSigningIn(false); }
+    } finally { setSigningIn(false); setShowSignInWait(false); }
   };
 
   // 1. 白名單未通過處理
@@ -80,8 +88,11 @@ export function AuthGate({
           <>
             <p>請使用 Google 帳號登入系統。</p>
             <button type="button" disabled={signingIn} onClick={() => void signIn()}>
-              {signingIn ? '正在開啟登入視窗…' : '使用 Google 登入'}
+              {signingIn ? '正在等待 Google 登入…' : '使用 Google 登入'}
             </button>
+            {signingIn && showSignInWait && (
+              <p role="status">Google 登入仍在進行。請檢查 Google 登入視窗並完成帳號選擇；若視窗已關閉，可重新載入頁面後再試。</p>
+            )}
             {signInError && <p role="alert">{signInError}</p>}
           </>
         )}
