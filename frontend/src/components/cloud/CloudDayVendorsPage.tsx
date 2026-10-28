@@ -31,6 +31,7 @@ type PreviousClosedLookupView =
   | { status: 'error'; dayId: string; message: string };
 
 export interface CloudDayVendorsPageProps {
+  view?: 'combined' | 'day' | 'vendors';
   db: Firestore;
   leaseEpoch: number;
   identityKey: string;
@@ -311,7 +312,7 @@ function blockedInheritanceMessage(blocked: string): string {
 }
 
 export function CloudDayVendorsPage({
-  db, leaseEpoch, identityKey, onNavigationStateChange, ledger, onOpenAnomalies, onLedgerChanged,
+  db, leaseEpoch, identityKey, onNavigationStateChange, ledger, onOpenAnomalies, onLedgerChanged, view = 'combined',
 }: CloudDayVendorsPageProps) {
   const recoveryReader = useMemo(() => getCloudRecoveryReader(db), [db]);
   const repository = useMemo(() => createCloudDayVendorRepository(db, { recoveryReader }), [db, recoveryReader]);
@@ -1197,7 +1198,7 @@ export function CloudDayVendorsPage({
       <header className="cloud-day-vendors__header">
         <div>
           <p className="cloud-day-vendors__eyebrow">雲端資料 · 線上操作</p>
-          <h1>營業日、菜單與供應商</h1>
+          <h1>{view === 'vendors' ? '供應商' : view === 'day' ? '菜單與開帳' : '營業日、菜單與供應商'}</h1>
           <p className="cloud-day-vendors__intro">日期與供應商資料只從伺服器完整載入。未確認開帳與零元開帳分開顯示；菜單與供應商變更不改寫既有歷史快照。</p>
         </div>
         <button
@@ -1265,7 +1266,7 @@ export function CloudDayVendorsPage({
 
       {snapshot && !page.loading && (
         <>
-          <section className="cloud-day-vendors__date-panel" aria-label="營業日選擇">
+          {view !== 'vendors' && <><section className="cloud-day-vendors__date-panel" aria-label="營業日選擇">
             <form className="cloud-day-vendors__date-form" onSubmit={submitDateSelection}>
               <label htmlFor="cloud-day-vendors-date">查看或設定日期</label>
               <input
@@ -1398,7 +1399,8 @@ export function CloudDayVendorsPage({
             )}
           </section>
 
-          <section className="cloud-day-vendors__vendor-section" aria-label="供應商管理">
+          </>}
+          {view !== 'day' && <section className="cloud-day-vendors__vendor-section" aria-label="供應商管理">
             <div className="cloud-day-vendors__section-heading">
               <div>
                 <h2>供應商</h2>
@@ -1470,7 +1472,7 @@ export function CloudDayVendorsPage({
               </div>
             )}
             <p className="cloud-day-vendors__footnote">建立、編輯、停用、恢復與移除都是逐筆伺服器命令。停用或移除供應商不會改寫營業日菜單及既有交易中的名稱快照。</p>
-          </section>
+          </section>}
         </>
       )}
 

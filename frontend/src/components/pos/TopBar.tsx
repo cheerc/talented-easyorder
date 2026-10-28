@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from "react";
+import React from "react";
+import { AppShell } from "../AppShell";
 import type { StorageMode } from "../../appMode";
 import { useFace, useSimulationDate } from "../../store/selectors";
 import { faceDeviceLabel } from "../../domain/faceOrder";
@@ -31,22 +32,8 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing,
   const faceDeviceList = Object.values(faceDevices).sort((a, b) => a.deviceId.localeCompare(b.deviceId));
   const menuName = (todayMenuName ?? todayMenu?.itemName ?? '').trim();
   const todayMealLabel = menuName ? `今日餐點（${menuName}）` : '今日餐點（未設定）';
-  const tabs = [
-    { id: 'pos', label: '櫃台', hint: 'F1' },
-    { id: 'report', label: '今日帳', hint: 'F2' },
-    { id: 'admin', label: '今日設定', hint: 'F3' },
-    { id: 'vendors', label: '供應商', hint: 'F4' },
-    { id: 'history', label: '歷史', hint: 'F5' },
-  ];
-  // 窄視窗時分頁列會自己橫向捲動；切頁（含 F1–F5）後把目前分頁捲進畫面。
-  const tabsRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const on = tabsRef.current?.querySelector<HTMLElement>('.tab-on');
-    on?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-  }, [tab]);
   return (
-    <header className="topbar">
-      <div className="brand">
+    <AppShell active={tab} select={setTab} brand={<div className="brand">
         <div className="brand-mark" aria-hidden="true">●</div>
         <div className="brand-text">
           <div className="brand-name">訂餐櫃台</div>
@@ -80,19 +67,7 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing,
           </div>
         </div>
       </div>
-      <nav className="tabs" ref={tabsRef}>
-        {tabs.map(t => (
-          <button
-            key={t.id}
-            className={'tab ' + (tab === t.id ? 'tab-on' : '')}
-            onClick={() => setTab(t.id)}
-          >
-            <span>{t.label}</span>
-            <span className="tab-key">{t.hint}</span>
-          </button>
-        ))}
-      </nav>
-      <div className="status">
+      } status={<div className="status">
         {storageMode === 'cloud' ? (
           <div className={'sync ' + (online ? 'sync-on' : 'sync-off')}>
             <span className={'dot ' + (syncing ? 'dot-pulse' : '') + (!online ? ' dot-red' : '')}></span>
@@ -158,7 +133,6 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing,
             <span style={{ fontSize: '16px' }}>📊</span>
           </button>
         )}
-      </div>
-    </header>
+      </div>} />
   );
 });

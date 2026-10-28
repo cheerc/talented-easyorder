@@ -74,6 +74,7 @@ vi.mock('../components/cloud/CloudDayVendorsPage', () => ({
     </section>
   ),
 }));
+vi.mock('../components/cloud/CloudDayClosePage', () => ({ CloudDayClosePage: () => <section aria-label="mock day close page" /> }));
 vi.mock('../components/cloud/CloudReportPage', () => ({
   CloudReportPage: () => <section aria-label="mock cloud report page" />,
 }));
@@ -138,48 +139,51 @@ describe('App mode gate', () => {
     appMocks.cloudModeValid = true;
     render(<App />);
 
-    const studentsTab = screen.getByRole('button', { name: '學生管理' });
-    const dayVendorsTab = screen.getByRole('button', { name: '日期與供應商' });
+    const studentsTab = screen.getByRole('button', { name: '學生' });
+    const dayVendorsTab = screen.getByRole('button', { name: '菜單與開帳' });
     fireEvent.click(screen.getByRole('button', { name: '保持待確認命令' }));
 
     expect(studentsTab).toBeDisabled();
     expect(dayVendorsTab).toBeDisabled();
     fireEvent.click(dayVendorsTab);
-    expect(studentsTab).toHaveAttribute('aria-pressed', 'true');
+    expect(studentsTab).toHaveAttribute('aria-current', 'page');
 
     fireEvent.click(screen.getByRole('button', { name: '回報已確認' }));
     expect(studentsTab).toBeEnabled();
     fireEvent.click(dayVendorsTab);
-    expect(dayVendorsTab).toHaveAttribute('aria-pressed', 'true');
+    expect(dayVendorsTab).toHaveAttribute('aria-current', 'page');
   });
 
   it('exposes the formal cloud report and account history sections', () => {
     appMocks.cloudModeValid = true;
     render(<App />);
 
-    expect(screen.getByRole('button', { name: '雲端報表' })).toBeVisible();
-    expect(screen.getByRole('button', { name: '雲端查帳' })).toBeVisible();
+    fireEvent.keyDown(window, { key: 'F2' });
+    fireEvent.click(screen.getByRole('button', { name: '本週／本月' }));
+    expect(screen.getByRole('region', { name: 'mock cloud report page' })).toBeVisible();
+    fireEvent.keyDown(window, { key: 'F5' });
+    expect(screen.getByRole('region', { name: 'mock cloud account history page' })).toBeVisible();
   });
 
   it('keeps a same-scope authorization latch until the lease epoch or UID changes', () => {
     appMocks.cloudModeValid = true;
     const view = render(<App />);
-    const studentsTab = screen.getByRole('button', { name: '學生管理' });
-    const dayVendorsTab = screen.getByRole('button', { name: '日期與供應商' });
+    const studentsTab = screen.getByRole('button', { name: '學生' });
+    const dayVendorsTab = screen.getByRole('button', { name: '菜單與開帳' });
 
     fireEvent.click(screen.getByRole('button', { name: '回報使用權失效' }));
     expect(dayVendorsTab).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '回報已確認' }));
     expect(dayVendorsTab).toBeDisabled();
     fireEvent.click(dayVendorsTab);
-    expect(studentsTab).toHaveAttribute('aria-pressed', 'true');
+    expect(studentsTab).toHaveAttribute('aria-current', 'page');
 
     appMocks.firebase.access = { ok: true, profile: { uid: 'uid-a', email: 'a@example.test' } };
     appMocks.firebase.lease = { epoch: 5 };
     view.rerender(<App />);
     fireEvent.click(screen.getByRole('button', { name: '回報已確認' }));
 
-    expect(screen.getByRole('button', { name: '學生管理' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '學生' })).toBeEnabled();
 
     fireEvent.click(screen.getByRole('button', { name: '回報使用權失效' }));
     expect(dayVendorsTab).toBeDisabled();
@@ -187,10 +191,10 @@ describe('App mode gate', () => {
     view.rerender(<App />);
     fireEvent.click(screen.getByRole('button', { name: '回報已確認' }));
 
-    expect(screen.getByRole('button', { name: '學生管理' })).toBeEnabled();
-    const currentDayVendorsTab = screen.getByRole('button', { name: '日期與供應商' });
+    expect(screen.getByRole('button', { name: '學生' })).toBeEnabled();
+    const currentDayVendorsTab = screen.getByRole('button', { name: '菜單與開帳' });
     fireEvent.click(currentDayVendorsTab);
-    expect(currentDayVendorsTab).toHaveAttribute('aria-pressed', 'true');
+    expect(currentDayVendorsTab).toHaveAttribute('aria-current', 'page');
   });
 
   it('applies the shared U1 display preferences in cloud mode and follows later changes', () => {

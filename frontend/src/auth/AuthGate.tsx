@@ -8,8 +8,10 @@ import {
   type LeaseResult,
 } from '../firebase/activeAccountLease';
 import { useFirebase } from '../providers/FirebaseProvider';
+import { OperatorContext } from './OperatorContext';
 
 export interface AuthGateProps {
+  showOperatorStrip?: boolean;
   auth: Auth;
   db: Firestore;
   access: OperatorAccess;
@@ -27,6 +29,7 @@ export function AuthGate({
   onAcquireLease: propAcquire,
   onReleaseLease: propRelease,
   children,
+  showOperatorStrip = true,
 }: AuthGateProps) {
   // 嘗試從 FirebaseProvider 取得 context，若不在 Provider 內則使用 props
   let contextValue: ReturnType<typeof useFirebase> | null;
@@ -307,8 +310,8 @@ export function AuthGate({
   };
 
   return (
-    <>
-      <div className="operator-strip">
+    <OperatorContext.Provider value={{ name: access.profile.displayName, epoch: activeLease.epoch, signOut: () => void handleSignOutWithRelease() }}>
+      {showOperatorStrip && <div className="operator-strip">
         <span>{access.profile.displayName}</span>
         {activeLease?.epoch !== undefined && (
           <span className="mono" style={{ fontSize: '11px', color: 'var(--text-dim, #888)', marginLeft: '8px' }}>
@@ -318,8 +321,8 @@ export function AuthGate({
         <button type="button" onClick={() => void handleSignOutWithRelease()}>
           釋放使用權並登出
         </button>
-      </div>
+      </div>}
       {children}
-    </>
+    </OperatorContext.Provider>
   );
 }
