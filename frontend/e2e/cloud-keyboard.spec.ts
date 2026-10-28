@@ -73,6 +73,7 @@ test('multiple candidates move only through visible options and reset on a new q
     await upsertDocument('studentCodes', code, { studentId, lastCommandId: seedId, updatedAt: new Date() });
   }
   const acquire = page.getByRole('button', { name: '取得系統使用權' });
+  await expect(acquire.or(page.locator('.operator-strip'))).toBeVisible();
   if (await acquire.isVisible()) await acquire.click();
   await page.getByRole('button', { name: '櫃台點餐' }).click();
   const search = page.getByRole('combobox', { name: '搜尋編號、姓名或別名' });
@@ -82,6 +83,18 @@ test('multiple candidates move only through visible options and reset on a new q
   await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('ArrowDown');
   await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('ArrowDown');
+  await expect(options.nth(2)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Escape');
+  await page.locator('body').click({ position: { x: 2, y: 500 } });
+  await page.keyboard.type('2');
+  await expect(options).toHaveCount(3);
+  await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
+  const firstCode = (await options.nth(0).locator('strong').textContent())!;
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('selected-student-card')).toContainText(firstCode);
+  expect(await documents('commands')).toHaveLength(beforeCommands.length);
+  await page.keyboard.press('Escape');
   await search.fill('相似測試0');
   await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('Enter');

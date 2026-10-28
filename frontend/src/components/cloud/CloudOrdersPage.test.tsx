@@ -229,6 +229,27 @@ describe('CloudOrdersPage', () => {
     expect(repositoryMock.createOrder).not.toHaveBeenCalled();
   });
 
+  it('starts a fresh idle-digit search at the first result after clearing an earlier highlight', async () => {
+    repositoryMock.loadSnapshot.mockResolvedValue(snapshot({
+      students: Array.from({ length: 3 }, (_, i) => mockStudent(`s${i}`, `${101 + i}`, `測試${i}`)),
+      transactions: [],
+    }));
+    renderComponent();
+    const search = await screen.findByLabelText('搜尋編號、姓名或別名');
+    fireEvent.change(search, { target: { value: '測試' } });
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
+    expect(screen.getAllByRole('option')[2]).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(search, { key: 'Escape' });
+    fireEvent.keyDown(document.body, { key: '1' });
+    expect(search).toHaveValue('1');
+    expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(await screen.findByTestId('selected-student-card')).toHaveTextContent('101');
+    expect(repositoryMock.createOrder).not.toHaveBeenCalled();
+    expect(repositoryMock.createPayment).not.toHaveBeenCalled();
+  });
+
   it('supports numeric-field shortcuts while protecting text, modifiers and composition', async () => {
     renderComponent();
     await selectStudent('001');
