@@ -236,6 +236,12 @@ describe('CloudOrdersPage', () => {
     amount.focus();
     fireEvent.keyDown(amount, { key: 'w' });
     expect(screen.getByLabelText(/繳費金額（必填）/)).toHaveFocus();
+    fireEvent.keyDown(amount, { key: 'q' });
+    expect(screen.getByRole('button', { name: '今日餐點（Q）' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.keyDown(amount, { key: 'e' });
+    expect(screen.getByRole('dialog', { name: /付款明細/ })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: /付款明細/ })).toBeNull();
     fireEvent.keyDown(amount, { key: 'r', isComposing: true });
     expect(screen.queryByLabelText('餐點品名（必填）')).toBeNull();
     fireEvent.keyDown(amount, { key: 'r', ctrlKey: true });
