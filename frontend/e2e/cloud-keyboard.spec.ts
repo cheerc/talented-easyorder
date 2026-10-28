@@ -60,6 +60,7 @@ test('101 keyboard payment produces one confirmed effect and returns to search',
 test('multiple candidates move only through visible options and reset on a new query', async ({ googleSession }) => {
   const { page } = googleSession;
   const date = today();
+  const beforeCommands = await documents('commands');
   const seedId = 'd2000000-0000-4000-8000-000000000102';
   for (let i = 0; i < 3; i++) {
     const code = String(201 + i);
@@ -85,6 +86,6 @@ test('multiple candidates move only through visible options and reset on a new q
   await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('selected-student-card')).toContainText('相似測試0');
-  expect(await documents('commands')).toHaveLength(1);
+  expect(await documents('commands')).toHaveLength(beforeCommands.length);
   await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
 });
