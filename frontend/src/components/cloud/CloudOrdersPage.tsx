@@ -1850,7 +1850,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                     </ul>
                   )}
                   {visibleStudents.length > 0 && (
-                    <p className="cloud-orders__muted">↑↓ 選擇　Enter 確認　Esc 清除</p>
+                    <p className="cloud-orders__muted">↑↓ 選擇 · Enter 確認 · Esc 清除</p>
                   )}
                   {page.search.trim() && visibleStudents.length === 0 && (
                     <p className="cloud-orders__muted" role="status">沒有符合的帳戶</p>
