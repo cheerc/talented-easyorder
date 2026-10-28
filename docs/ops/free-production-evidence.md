@@ -1199,3 +1199,10 @@ The table is complete for the seven command-sending pages; it was written from t
 - 使用者回報自訂網域登入成功，但原 Firebase 網址無法登入。原網址的登入頁實際建立指向自訂 authDomain 的跨域 iframe；原 release 的 HTTP 與 HTML CSP 都未允許該來源。合成 release 的真實 Chromium 回歸在修正前觀察到兩層 CSP 阻擋，修正後指定驗證網域可載入，無關網域仍被擋；不以合成測試宣稱真實 OAuth 通過。
 - [#561](https://github.com/cheerc/talented-easyorder/pull/561) 修正 release 建置：依經驗證的 Web config 將指定 authDomain 加入兩層 `frame-src`，並將回歸納入 CI。獨立 review PASS；[PR CI 40511557667](https://github.com/cheerc/talented-easyorder/actions/runs/40511557667) build-and-test 與 e2e success。合併 `87cca884f1b0c56b9af42117b20112ceec313f80` 的 tree 與受審 head 相同；[main CI 40514978824](https://github.com/cheerc/talented-easyorder/actions/runs/40514978824) attempt 1 兩個 job success。
 - 由乾淨合併版本重建並核對 26 檔 release，依序部署 indexes、Rules、Hosting；索引再次確認 6/6 READY。Chrome 在 PWA 更新後，原 Firebase 網址已載入新 CSP，Google 登入成功；重新確認使用權後讀回合成學生，隨後釋放使用權並登出。使用者亦回報自訂網域登入成功；其他瀏覽器與剩餘 P17 smoke 未因此通過。
+
+### P17 synthetic operations and handover 2026-10-28
+
+- 在獨立還原演練專案，使用者指定第二個 Google 測試帳號並完成 OAuth。尚未加入白名單時，UI 顯示無法存取業務資料；管理者核對該專案 Auth 身分後，以存在性前置條件建立操作員。第二位取得租約 epoch 10 並讀到兩位合成學生，公司帳號同時登入顯示「目前有人使用中」；第二位釋放後，公司帳號取得 epoch 12 並讀回資料。交接過程短暫顯示租約已變更，隨後進入；原因未確認。另暫時停用第二位後 UI 顯示「帳號已停用」，測試後以 updateTime 前置條件恢復並讀回 active=true。公司帳號已釋放租約。
+- 僅在上述演練資料庫執行：建立 2026-10-28、沿用合成菜單並以 1,370 開帳；合成訂餐、更正餐費、取消後餘額回復，再繳費 100，最後以應有／實點 1,470 關帳。伺服器確認 command seq 41–48，無待核對命令。帳戶歷史列出訂餐、更正、取消及繳費的稽核；F2 首次載入成功。原始交易 CSV 下載後核對含作廢訂餐與有效繳費；列印預覽產生一頁 PDF，核對含相同合成資料。這些現場結果不等同所有 S06／S07 情境已通過。
+- 建立 H=48 的加密完整備份、下載並重新選檔，UI 顯示本機副本已驗證且 RecordBackup 已登記；未驗證第二份獨立媒體副本。演練帳務異常顯示備份鏈中 2026-10-27 開帳與 2026-10-25 有效關帳現金相差 148，且中間缺 2026-10-26；保留合成資料未修改。Google 回呼與瀏覽器控制曾長時間等待，原因未確認。
+- 尚待執行或確認：相容 Hosting rollback、備份第二副本、斷線未知結果、其他設備／瀏覽器與 popup 阻擋恢復、完整 P17 項目及正式 RTO。P18 仍 pending，測試庫不可當作空白營運庫。
