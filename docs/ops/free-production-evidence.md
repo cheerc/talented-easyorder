@@ -1193,3 +1193,9 @@ The table is complete for the seven command-sending pages; it was written from t
 - Chrome 首次重載仍使用舊 authDomain；關閉登入視窗並再次重載後，實際 Google 登入導向自訂網域回呼。公司帳號完成登入後，既有租約須重新確認；確認成功取得使用權並讀回合成學生，隨後釋放使用權並登出。這證明該次 Chrome 同網域登入及資料讀取，並未驗證其他瀏覽器、popup 阻擋恢復或雙帳號交接。
 - 獨立還原專案 Firestore 控制台最近 24 小時用量，資料涵蓋至 21:00（台北），包含 20:15 左右的演練後合成操作：讀取 709、寫入 94、刪除 1。這是專案整體指標，包含控制台使用、可能與帳單及配額不同，不是單獨還原作業的精確用量；正式 RTO 仍未取得。
 - P17 的完整業務 smoke、雙操作員／拒絕帳號、備份與第二副本、相容版本 rollback 等仍待驗證；P18 真實資料驗收保持 pending。測試 project 含合成 command，不是可直接使用的空白正式營運庫。
+
+### P17 default-domain login repair 2026-10-27
+
+- 使用者回報自訂網域登入成功，但原 Firebase 網址無法登入。原網址的登入頁實際建立指向自訂 authDomain 的跨域 iframe；原 release 的 HTTP 與 HTML CSP 都未允許該來源。合成 release 的真實 Chromium 回歸在修正前觀察到兩層 CSP 阻擋，修正後指定驗證網域可載入，無關網域仍被擋；不以合成測試宣稱真實 OAuth 通過。
+- [#561](https://github.com/cheerc/talented-easyorder/pull/561) 修正 release 建置：依經驗證的 Web config 將指定 authDomain 加入兩層 `frame-src`，並將回歸納入 CI。獨立 review PASS；[PR CI 40511557667](https://github.com/cheerc/talented-easyorder/actions/runs/40511557667) build-and-test 與 e2e success。合併 `87cca884f1b0c56b9af42117b20112ceec313f80` 的 tree 與受審 head 相同；[main CI 40514978824](https://github.com/cheerc/talented-easyorder/actions/runs/40514978824) attempt 1 兩個 job success。
+- 由乾淨合併版本重建並核對 26 檔 release，依序部署 indexes、Rules、Hosting；索引再次確認 6/6 READY。Chrome 在 PWA 更新後，原 Firebase 網址已載入新 CSP，Google 登入成功；重新確認使用權後讀回合成學生，隨後釋放使用權並登出。使用者亦回報自訂網域登入成功；其他瀏覽器與剩餘 P17 smoke 未因此通過。
