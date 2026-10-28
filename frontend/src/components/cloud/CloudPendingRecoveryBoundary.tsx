@@ -513,9 +513,6 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
         {scopeMatchesOwner && state.error && (
           <button type="button" onClick={() => void recover('retry')} disabled={!canStartRecoveryCheck}>重新檢查</button>
         )}
-        {scopeConfirmed && state.initialReady && state.error === null && scopedRows.length === 0 && (
-          <p role="status">目前沒有待核對命令。</p>
-        )}
         {scopedRows.length > 0 && (
           <>
             <p>共有 {state.total} 筆最小追蹤編號；每頁最多 {CLOUD_PENDING_JOURNAL_PAGE_SIZE} 筆，最多保留 {CLOUD_PENDING_JOURNAL_CAPACITY} 筆。未決編號不會自動淘汰。</p>

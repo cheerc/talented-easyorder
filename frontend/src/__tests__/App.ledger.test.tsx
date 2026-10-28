@@ -80,46 +80,52 @@ describe('cloud navigation: ledger anomalies entry', () => {
     vi.clearAllMocks();
   });
 
-  it('shows loading, failure and zero counts on the navigation entry', async () => {
+  it('keeps account checks available while hiding a zero-count status', async () => {
     let resolve!: (value: CloudLedgerSnapshot) => void;
     appMocks.read.mockReturnValue(new Promise<CloudLedgerSnapshot>(r => { resolve = r; }));
     render(<App />);
-    expect(screen.getByRole('button', { name: '帳務異常（…）' })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('操作員'));
+    expect(screen.getByRole('button', { name: '帳務檢查' })).toBeInTheDocument();
     resolve(snapshot([]));
-    expect(await screen.findByRole('button', { name: '帳務異常（0）' })).toBeInTheDocument();
+    await waitFor(() => expect(appMocks.read).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('button', { name: /⚠ 異常/ })).not.toBeInTheDocument();
   });
 
-  it('shows ? when the read fails and recovers on reload from the anomalies page', async () => {
+  it('allows an account check after a read error and shows later anomalies', async () => {
     appMocks.read.mockRejectedValueOnce(new Error('離線'));
     appMocks.read.mockResolvedValueOnce(snapshot([unclosed('2026-10-15'), mismatch]));
     render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: '帳務異常（?）' }));
-    expect(await screen.findByRole('button', { name: '帳務異常（2）' })).toBeInTheDocument();
+    await waitFor(() => expect(appMocks.read).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByText('操作員'));
+    fireEvent.click(screen.getByRole('button', { name: '帳務檢查' }));
+    expect(await screen.findByRole('button', { name: '⚠ 異常 2' })).toBeInTheDocument();
     expect(await screen.findByRole('list', { name: '帳務異常清單' })).toBeInTheDocument();
     expect(appMocks.read).toHaveBeenCalledTimes(2);
   });
 
-  it('reads once on entry, not on every page switch, and re-reads when the anomalies page is opened', async () => {
+  it('reads once on entry, not on every page switch, and re-reads on account checks', async () => {
     appMocks.read.mockResolvedValue(snapshot([]));
     render(<App />);
-    await screen.findByRole('button', { name: '帳務異常（0）' });
-    fireEvent.click(screen.getByRole('button', { name: '日期與供應商' }));
-    fireEvent.click(screen.getByRole('button', { name: '日結' }));
-    fireEvent.click(screen.getByRole('button', { name: '學生管理' }));
+    await waitFor(() => expect(appMocks.read).toHaveBeenCalledTimes(1));
+    fireEvent.keyDown(window, { key: 'F3' });
+    fireEvent.keyDown(window, { key: 'F2' });
+    fireEvent.keyDown(window, { key: 'F3' });
+    fireEvent.click(screen.getByRole('button', { name: '學生' }));
     expect(appMocks.read).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole('button', { name: /^帳務異常/ }));
+    fireEvent.click(screen.getByText('操作員'));
+    fireEvent.click(screen.getByRole('button', { name: '帳務檢查' }));
     await waitFor(() => expect(appMocks.read).toHaveBeenCalledTimes(2));
   });
 
   it('passes the ledger to the open and close pages and re-reads after a successful command', async () => {
     appMocks.read.mockResolvedValue(snapshot([unclosed('2026-10-15')]));
     render(<App />);
-    await screen.findByRole('button', { name: '帳務異常（1）' });
-    fireEvent.click(screen.getByRole('button', { name: '日期與供應商' }));
+    await screen.findByRole('button', { name: '⚠ 異常 1' });
+    fireEvent.keyDown(window, { key: 'F3' });
     expect(screen.getByTestId('day-vendors-ledger')).toHaveTextContent('ready');
     fireEvent.click(screen.getByRole('button', { name: 'day-vendors：命令成功' }));
     await waitFor(() => expect(appMocks.read).toHaveBeenCalledTimes(2));
-    fireEvent.click(screen.getByRole('button', { name: '日結' }));
+    fireEvent.keyDown(window, { key: 'F2' });
     expect(screen.getByTestId('day-close-ledger')).toHaveTextContent('ready');
     fireEvent.click(screen.getByRole('button', { name: 'day-close：命令成功' }));
     await waitFor(() => expect(appMocks.read).toHaveBeenCalledTimes(3));
@@ -128,27 +134,29 @@ describe('cloud navigation: ledger anomalies entry', () => {
   it('opens the anomalies page from a page banner and sends the day to the close page', async () => {
     appMocks.read.mockResolvedValue(snapshot([unclosed('2026-10-15')]));
     render(<App />);
-    await screen.findByRole('button', { name: '帳務異常（1）' });
-    fireEvent.click(screen.getByRole('button', { name: '日結' }));
+    await screen.findByRole('button', { name: '⚠ 異常 1' });
+    fireEvent.keyDown(window, { key: 'F2' });
     fireEvent.click(screen.getByRole('button', { name: 'day-close：到異常頁' }));
     fireEvent.click(await screen.findByRole('button', { name: '到日結頁處理 2026-10-15' }));
     expect(screen.getByTestId('day-close-focus')).toHaveTextContent('2026-10-15');
     // Using the plain navigation button again does not keep the focus date.
-    fireEvent.click(screen.getByRole('button', { name: '學生管理' }));
-    fireEvent.click(screen.getByRole('button', { name: '日結' }));
+    fireEvent.keyDown(window, { key: 'F3' });
+    fireEvent.click(screen.getByRole('button', { name: '學生' }));
+    fireEvent.keyDown(window, { key: 'F2' });
     expect(screen.getByTestId('day-close-focus')).toHaveTextContent('');
   });
 
   it('routes a gap-free opening difference to its previous closed day with the original cash preview', async () => {
     appMocks.read.mockResolvedValue(snapshot([mismatch]));
     render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: '帳務異常（1）' }));
+    fireEvent.click(await screen.findByRole('button', { name: '⚠ 異常 1' }));
     fireEvent.click(screen.getByTestId('post-close-shortcut-2026-10-16'));
     expect(screen.getByTestId('day-close-focus')).toHaveTextContent('2026-10-14');
     expect(screen.getByTestId('day-close-post-close-focus')).toHaveTextContent('2026-10-16:-70:870');
 
-    fireEvent.click(screen.getByRole('button', { name: '學生管理' }));
-    fireEvent.click(screen.getByRole('button', { name: '日結' }));
+    fireEvent.keyDown(window, { key: 'F3' });
+    fireEvent.click(screen.getByRole('button', { name: '學生' }));
+    fireEvent.keyDown(window, { key: 'F2' });
     expect(screen.getByTestId('day-close-focus')).toHaveTextContent('');
     expect(screen.getByTestId('day-close-post-close-focus')).toHaveTextContent('');
   });
@@ -156,12 +164,13 @@ describe('cloud navigation: ledger anomalies entry', () => {
   it('respects the navigation lock', async () => {
     appMocks.read.mockResolvedValue(snapshot([]));
     render(<App />);
-    await screen.findByRole('button', { name: '帳務異常（0）' });
+    await waitFor(() => expect(appMocks.read).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByText('操作員'));
     fireEvent.click(screen.getByRole('button', { name: 'students：保持待確認命令' }));
-    expect(screen.getByRole('button', { name: '帳務異常（0）' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: '帳務異常（0）' }));
+    expect(screen.getByRole('button', { name: '帳務檢查' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '帳務檢查' }));
     expect(appMocks.read).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: 'students：回報已確認' }));
-    expect(screen.getByRole('button', { name: '帳務異常（0）' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '帳務檢查' })).toBeEnabled();
   });
 });
