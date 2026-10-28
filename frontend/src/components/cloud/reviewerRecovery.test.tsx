@@ -290,6 +290,16 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
     expect(f.records).toEqual([record]);
   });
 
+  it('does not present an empty journal as healthy after going offline', async () => {
+    f.records = [];
+    renderBoundary();
+    await screen.findByTestId('business-shell');
+    await act(async () => window.dispatchEvent(new Event('offline')));
+    expect(screen.getByText(/目前離線/)).toBeVisible();
+    expect(screen.queryByText('目前沒有待核對命令。')).not.toBeInTheDocument();
+    expect(screen.getByTestId('business-shell').parentElement).toHaveAttribute('inert');
+  });
+
   it('preserves the journal and gates immediately while offline', async () => {
     renderBoundary();
     await continueManually();
