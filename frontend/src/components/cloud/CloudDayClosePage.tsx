@@ -2025,7 +2025,7 @@ export function CloudDayClosePage({
                       <p>這個關帳版本還沒有補記。</p>
                     ) : (
                       <div className="cloud-day-close__table-wrap">
-                        <table>
+                        <table className="dt">
                           <thead>
                             <tr><th>方向</th><th>金額</th><th>原因</th><th>操作者</th><th>時間（臺北）</th><th>關帳版本</th><th>計算狀態</th></tr>
                           </thead>
@@ -2088,7 +2088,7 @@ export function CloudDayClosePage({
                     <p>這天還沒有日結版本。</p>
                   ) : (
                     <div className="cloud-day-close__table-wrap">
-                      <table>
+                      <table className="dt">
                         <thead>
                           <tr><th>版本</th><th>狀態</th><th>應有</th><th>實點</th><th>差額</th><th>說明／原因</th><th>操作者</th><th>時間（臺北）</th></tr>
                         </thead>

@@ -1440,7 +1440,7 @@ export function CloudDayVendorsPage({
               <div className="cloud-day-vendors__empty" role="status">目前伺服器沒有可管理的供應商，請新增一筆供應商資料。</div>
             ) : (
               <div className="cloud-day-vendors__table-wrap">
-                <table>
+                <table className="dt">
                   <thead><tr><th>編號</th><th>名稱</th><th>電話</th><th>備註</th><th>狀態</th><th>操作</th></tr></thead>
                   <tbody>
                     {snapshot.vendors.map(vendor => (

@@ -1511,7 +1511,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
               </div>
             ) : (
               <div className="cloud-students__table-wrap">
-                <table>
+                <table className="dt">
                   <thead>
                     <tr><th>編號</th><th>姓名與別名</th><th>狀態</th><th className="dt-num">目前結餘</th><th>期初資料</th><th>操作</th></tr>
                   </thead>

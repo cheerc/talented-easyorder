@@ -941,7 +941,7 @@ export function CloudReportPage({
             <div><dt>帳戶退款</dt><dd>{money(snapshot.report.summary.totalRefund)}</dd></div>
             <div><dt>區間淨現金流</dt><dd>{money(snapshot.report.summary.netCash)}</dd></div>
           </dl>
-          <div className="cloud-report__table-wrap"><table><thead><tr><th>營業日</th><th>狀態</th><th>份數</th><th>餐費</th><th>收款留存</th><th>櫃台收入／支出</th><th>帳戶退款</th><th>日結現金</th><th>日結操作</th></tr></thead>
+          <div className="cloud-report__table-wrap"><table className="dt"><thead><tr><th>營業日</th><th>狀態</th><th>份數</th><th>餐費</th><th>收款留存</th><th>櫃台收入／支出</th><th>帳戶退款</th><th>日結現金</th><th>日結操作</th></tr></thead>
             <tbody>{snapshot.report.days.map(day => <tr key={day.businessDate}>
               <td>{day.businessDate}</td><td>{day.status ?? '未建立'}</td><td>{day.totals ? `${day.totals.bentoCount} + ${day.totals.otherMealCount}` : '—'}</td>
               <td>{day.totals ? money(day.totals.mealTotal) : '—'}</td><td>{day.totals ? money(day.totals.retainedReceipts) : '—'}</td>
@@ -982,7 +982,7 @@ export function CloudReportPage({
               <option value="original">原始交易</option><option value="merged">合併交易</option></select></label>
               <span>輸出使用全部 {allRows.length} 筆完整模型，畫面每頁 100 筆。</span></div>
           </div>
-          <div className="cloud-report__table-wrap"><table><thead><tr><th>交易識別</th><th>營業日</th><th>帳戶與當時姓名</th><th>類型／狀態</th><th>餐點快照</th><th>金額／份數</th><th>完整歷史餘額</th><th>操作者／台北時間</th><th>回填／說明</th></tr></thead>
+          <div className="cloud-report__table-wrap"><table className="dt"><thead><tr><th>交易識別</th><th>營業日</th><th>帳戶與當時姓名</th><th>類型／狀態</th><th>餐點快照</th><th>金額／份數</th><th>完整歷史餘額</th><th>操作者／台北時間</th><th>回填／說明</th></tr></thead>
             <tbody>{visibleRows.map(row => {
               const merged = 'kind' in row;
               const raw = merged ? row.transactions : [row];
@@ -1029,7 +1029,7 @@ export function CloudReportPage({
               ? <p>此區間沒有使用權交接紀錄。</p>
               : <>
                 <p>唯讀記錄：誰在何時取得、接手或釋放編輯使用權；僅顯示 email，不提供匯出。</p>
-                <div className="cloud-report__table-wrap"><table><thead><tr><th>時間（台北）</th><th>種類</th><th>操作人</th><th>前一位持有人</th></tr></thead>
+                <div className="cloud-report__table-wrap"><table className="dt"><thead><tr><th>時間（台北）</th><th>種類</th><th>操作人</th><th>前一位持有人</th></tr></thead>
                   <tbody>{snapshot.accessEvents.snapshot.rows.map(row => <tr key={row.epoch}>
                     <td>{taipeiTime(row.at)}</td><td>{ACCESS_EVENT_KIND_TEXT[row.kind]}</td><td>{row.actorEmail}</td><td>{previousHolderText(row)}</td>
                   </tr>)}</tbody></table></div>

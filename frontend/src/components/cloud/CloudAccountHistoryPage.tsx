@@ -828,7 +828,7 @@ export function CloudAccountHistoryPage({
         <p><strong>依目前更正後資料重算</strong> · 各筆餘額來自完整前綴驗證；本日結版本另列，不視為交易當時餘額。</p>
 
         <section aria-labelledby="account-transactions-heading"><h3 id="account-transactions-heading">區間交易與更正入口</h3>
-          <div className="cloud-account-history__table-wrap"><table><thead><tr><th>營業日／時間</th><th>交易</th><th>當時姓名</th><th>金額</th><th>重算後餘額</th><th>狀態／回填</th><th>日狀態</th><th>操作</th></tr></thead><tbody>
+          <div className="cloud-account-history__table-wrap"><table className="dt"><thead><tr><th>營業日／時間</th><th>交易</th><th>當時姓名</th><th>金額</th><th>重算後餘額</th><th>狀態／回填</th><th>日狀態</th><th>操作</th></tr></thead><tbody>
             {snapshot.account.transactions.map(transaction => {
               const day = rangeDayByDate.get(transaction.businessDate);
               const eligible = canMutate(transaction);
@@ -873,7 +873,7 @@ export function CloudAccountHistoryPage({
 
         <section aria-labelledby="account-audit-heading"><h3 id="account-audit-heading">帳戶範圍稽核</h3>
           <p>沒有營業日的操作依台北記錄日期列入；本次稽核只涵蓋此帳戶與選定區間。</p>
-          <div className="cloud-account-history__table-wrap"><table><thead><tr><th>seq／命令</th><th>有效日期與依據</th><th>操作人／時間</th><th>理由</th><th>before / after</th></tr></thead><tbody>
+          <div className="cloud-account-history__table-wrap"><table className="dt"><thead><tr><th>seq／命令</th><th>有效日期與依據</th><th>操作人／時間</th><th>理由</th><th>before / after</th></tr></thead><tbody>
             {snapshot.audit.rows.map(row => <tr key={row.commandId}><td>{row.seq} · {row.kind}<small>{row.commandId}</small></td>
               <td>{row.attributedDate} · {row.dateBasis === 'business-date' ? '營業日' : '記錄日（台北）'}<small>原營業日：{row.businessDate ?? '無'}</small></td>
               <td>{row.actorUid} · {row.actorEmail}<small>{formatTaipeiTime(row.committedAt)}</small></td><td>{row.reason ?? '—'}</td>
