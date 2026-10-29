@@ -227,6 +227,27 @@ describe('CloudOrdersPage', () => {
       expect(counts).toContainElement(screen.getByTestId('cloud-topbar-other'));
     });
 
+    it('places idle search and counter cash on one row, separate from the meal card', async () => {
+      renderComponent();
+      const search = await screen.findByLabelText('搜尋編號、姓名或別名');
+      const row = search.closest('.cloud-orders__idle-row');
+      expect(row).not.toBeNull();
+      expect(row).toContainElement(screen.getByTestId('open-cash-movement-button'));
+      expect(row).not.toContainElement(screen.getByTestId('cloud-topbar-counts'));
+      expect(screen.getByTestId('cloud-topbar-counts').closest('.cloud-orders__meal-card')).not.toBeNull();
+    });
+
+    it('keeps the mode selector outside the single account and checkout card', async () => {
+      renderComponent();
+      await selectStudent('001');
+      const account = screen.getByTestId('selected-student-card').closest('.cloud-orders__account-card');
+      expect(account).not.toBeNull();
+      expect(account).toContainElement(screen.getByRole('form', { name: '訂餐' }));
+      expect(account).not.toContainElement(screen.getByRole('group', { name: '結帳模式' }));
+      expect(screen.getByRole('form', { name: '訂餐' }).querySelector('.cloud-orders__entry'))
+        .toContainElement(screen.getByTestId('submit-order-button'));
+    });
+
     it('shows the Q → W → E → R mode order with keycaps instead of bracketed shortcut text', async () => {
       renderComponent();
       await selectStudent('001');
