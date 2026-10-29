@@ -12,7 +12,7 @@ export function AppShell({ brand, active, select, status, disabled = false }: {
   return <header className="topbar app-shell">
     {brand}
     <nav className="tabs" aria-label="主要導覽" ref={tabsRef}>
-      {NAVIGATION.map(tab => <button type="button" key={tab.id} className={'tab ' + (active === tab.id ? 'tab-on' : '')} aria-current={active === tab.id ? 'page' : undefined} disabled={disabled} onClick={() => select(tab.id)}><span>{tab.label}</span><kbd className="tab-key">{tab.hint}</kbd></button>)}
+      {NAVIGATION.map(tab => <button type="button" key={tab.id} className={'tab ' + (active === tab.id ? 'tab-on' : '')} aria-current={active === tab.id ? 'page' : undefined} disabled={disabled} onClick={() => select(tab.id)}><span>{tab.label}</span><kbd className="tab-key" aria-hidden="true">{tab.hint}</kbd></button>)}
     </nav>
     {status}
   </header>;
