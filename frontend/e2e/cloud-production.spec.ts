@@ -447,16 +447,45 @@ test.describe('P06 Cloud Students', () => {
 
       const createStudent = async (input: { id: string; name: string; aliases: string; amount: string; mode: '沿用既有核對結餘' | '建立新學生' }) => {
         const page = first.page;
-        await page.getByRole('button', { name: '新增學生' }).click();
-        const form = page.getByRole('form', { name: '新增學生' });
-        await form.getByLabel('學員編號').fill(input.id);
+        const addStudent = page.getByRole('button', { name: '新增學生' });
+        const table = page.locator('.cloud-students__table-wrap');
+        const tableBefore = input.id === '002' ? await table.boundingBox() : null;
+        await addStudent.click();
+        const dialog = page.getByRole('dialog', { name: '新增學生' });
+        await expect(dialog).toBeVisible();
+        const form = dialog.getByRole('form', { name: '新增學生' });
+        if (input.id === '002') {
+          const tableDuringDialog = await table.boundingBox();
+          expect(tableBefore).not.toBeNull();
+          expect(tableDuringDialog?.y).toBe(tableBefore!.y);
+          expect(tableDuringDialog?.height).toBe(tableBefore!.height);
+          await expect(page.locator('nav[aria-label="今日設定"]')).toHaveAttribute('inert', '');
+          await expect(form.getByLabel('學員編號')).toBeFocused();
+          await form.getByLabel('學員編號').fill(input.id);
+          await page.keyboard.press('F5');
+          await expect(dialog).toBeVisible();
+          await expect(form.getByLabel('學員編號')).toHaveValue(input.id);
+          await expect(page.locator('nav[aria-label="今日設定"] button[aria-current="page"]')).toHaveText('學生');
+          await page.keyboard.press('Escape');
+          const discardConfirmation = dialog.getByRole('group', { name: '新增學生草稿離開確認' });
+          await expect(discardConfirmation).toBeVisible();
+          await discardConfirmation.getByRole('button', { name: '取消離開' }).click();
+          await expect(form.getByLabel('學員編號')).toHaveValue(input.id);
+        }
+        if (input.id !== '002') await form.getByLabel('學員編號').fill(input.id);
         await form.getByRole('textbox', { name: '姓名', exact: true }).fill(input.name);
         await form.getByRole('textbox', { name: /別名（逗號、頓號/ }).fill(input.aliases);
         await form.getByRole('textbox', { name: /期初結餘（整數/ }).fill(input.amount);
         await form.getByRole('radio', { name: new RegExp(input.mode) }).check();
         await form.getByRole('button', { name: '建立學生' }).click();
-        await expect(page.getByTestId(`cloud-student-row-${input.id}`)).toBeVisible();
+        const row = page.getByTestId(`cloud-student-row-${input.id}`);
+        await expect(row).toBeVisible();
         await expect(page.getByText(new RegExp(`已確認 新增 ${input.id} 完成`))).toBeVisible();
+        await expect(addStudent).toBeFocused();
+        if (input.id === '002') {
+          expect(row).toContainText('−NT$ 25');
+          await expect(row.getByText('欠款')).toHaveClass(/badge-warn/);
+        }
       };
 
       await createStudent({ id: '001', name: 'P06 同名學生', aliases: '一號', amount: '0', mode: '沿用既有核對結餘' });

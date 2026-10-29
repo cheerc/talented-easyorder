@@ -79,7 +79,8 @@ describe('P13b1 Cloud F3 diagnostics actions', () => {
 
     mocks.clearResult = true;
     fireEvent.click(screen.getByRole('button', { name: '清除本機診斷' }));
-    expect(screen.getByText('目前沒有可匯出的診斷紀錄。')).toBeInTheDocument();
+    const emptyTitle = screen.getByText('目前沒有可匯出的診斷紀錄。');
+    expect(emptyTitle.closest('.empty-title')).not.toBeNull();
     expect(screen.getByRole('status')).toHaveTextContent('本機診斷紀錄已清除。');
   });
 });

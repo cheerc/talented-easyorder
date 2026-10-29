@@ -115,6 +115,54 @@ describe('CloudAccountHistoryPage', () => {
     expect(screen.queryByRole('button', { name: '更正' })).toBeNull();
   });
 
+  it('marks negative account balances as debt without warning-coloring a negative transaction amount', async () => {
+    const negativeTransaction = { ...transaction, amount: -35, afterBalance: -40 };
+    mocks.listStudents.mockResolvedValue({
+      datasetId: 'dataset-a', seq: 11, goLiveDate: '2026-10-01',
+      students: [{ ...student, openingBalance: { ...student.openingBalance, amount: -20 }, currentBalance: -40 }],
+    });
+    mocks.readAccountHistory.mockResolvedValue({
+      ...account,
+      openingBalance: -20,
+      currentBalance: -40,
+      transactions: [negativeTransaction],
+      days: [{ ...days[0], status: 'reopened' }],
+    });
+    render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
+
+    await screen.findByTestId('account-history-ready');
+    const balance = screen.getByText('目前帳戶餘額').nextElementSibling as HTMLElement;
+    expect(balance).toHaveTextContent('−$40');
+    expect(within(balance).getByText('欠款')).toHaveClass('badge-ui', 'badge-warn');
+    const opening = screen.getByText('期初餘額').nextElementSibling as HTMLElement;
+    expect(opening).toHaveTextContent('−$20');
+    expect(within(opening).getByText('欠款')).toHaveClass('badge-ui', 'badge-warn');
+    expect(screen.getByText('使用中')).toHaveClass('badge-ui', 'badge-ok');
+
+    const row = screen.getByText(transaction.transactionId).closest('tr') as HTMLTableRowElement;
+    const cells = within(row).getAllByRole('cell');
+    expect(within(cells[3]).getByText('−$35')).toBeInTheDocument();
+    expect(cells[3].querySelector('.badge-warn')).toBeNull();
+    expect(within(cells[4]).getByText('欠款')).toHaveClass('badge-ui', 'badge-warn');
+    expect(within(cells[5]).getByText('有效')).toHaveClass('badge-ui', 'badge-ok');
+    expect(within(cells[6]).getByText('已重開')).toHaveClass('badge-ui', 'badge-warn');
+  });
+
+  it('uses EmptyState for an unselected account and empty transaction, settlement, and audit ranges', async () => {
+    const unselected = render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" />);
+    const chooseAccount = await screen.findByText('請搜尋並選取目前學生名單中的帳戶。');
+    expect(chooseAccount.closest('.empty-title')).not.toBeNull();
+    unselected.unmount();
+
+    mocks.readAccountHistory.mockResolvedValue({ ...account, transactions: [], settlements: [] });
+    mocks.readAuditRange.mockResolvedValue({ ...audit, rows: [] });
+    render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:empty" initialStudentId={studentId} initialRange={range} />);
+    await screen.findByTestId('account-history-ready');
+    expect(screen.getByText('此範圍沒有帳戶交易；完整前綴餘額仍已驗證。').closest('.empty-title')).not.toBeNull();
+    expect(screen.getByText('此範圍沒有日結版本。').closest('.empty-title')).not.toBeNull();
+    expect(screen.getByText('此範圍沒有帳戶稽核紀錄。').closest('.empty-title')).not.toBeNull();
+  });
+
   it('submits a history correction using the exact transaction, student, and open-day revisions', async () => {
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
     await screen.findByTestId('account-history-ready');

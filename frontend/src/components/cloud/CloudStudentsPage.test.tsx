@@ -141,6 +141,67 @@ describe('CloudStudentsPage', () => {
     expect(repository.list).toHaveBeenCalledTimes(1);
   });
 
+  it('renders the manual create form in a focus-managed modal and confirms dirty-draft dismissal', async () => {
+    renderPage();
+    await screen.findByText(/目前伺服器名單是空的/);
+    const trigger = screen.getByRole('button', { name: '新增學生' });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const dialog = screen.getByRole('dialog', { name: '新增學生' });
+    const form = within(dialog).getByRole('form', { name: '新增學生' });
+    const studentCode = within(form).getByLabelText('學員編號');
+    expect(dialog).toContainElement(form);
+    expect(document.activeElement).toBe(studentCode);
+    fireEvent.change(studentCode, { target: { value: '987' } });
+
+    fireEvent.keyDown(window, { key: 'Escape', cancelable: true });
+    const confirmation = within(dialog).getByRole('group', { name: '新增學生草稿離開確認' });
+    expect(confirmation).toHaveTextContent('尚未送出的草稿會被捨棄');
+    fireEvent.click(within(confirmation).getByRole('button', { name: '取消離開' }));
+    expect(within(dialog).getByRole('form', { name: '新增學生' }).getByLabelText('學員編號')).toHaveValue('987');
+
+    fireEvent.keyDown(window, { key: 'Escape', cancelable: true });
+    fireEvent.click(within(dialog).getByRole('button', { name: '捨棄草稿' }));
+    expect(screen.queryByRole('dialog', { name: '新增學生' })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('uses EmptyState for empty and unmatched student lists', async () => {
+    renderPage();
+    const emptyTitle = await screen.findByText('目前伺服器名單是空的，請手動新增學生。');
+    expect(emptyTitle.closest('.empty-title')).not.toBeNull();
+
+    fireEvent.change(screen.getByLabelText('搜尋編號、姓名或別名'), { target: { value: '不存在' } });
+    const noMatches = screen.getByText('找不到符合「不存在」的學生。');
+    expect(noMatches.closest('.empty-title')).not.toBeNull();
+  });
+
+  it('marks negative account balances as debts but leaves positive and zero balances normal', async () => {
+    repository.list.mockResolvedValue(snapshot([
+      student('uuid-201', { studentCode: '201', currentBalance: -40, openingBalance: { amount: -20, asOfDate: '2026-01-01', note: '', createdAt: '2026-01-01T00:00:00.000Z' } }),
+      student('uuid-202', { studentCode: '202', currentBalance: 15 }),
+      student('uuid-203', { studentCode: '203', currentBalance: 0, status: 'inactive' }),
+    ]));
+    renderPage();
+
+    const debtRow = await screen.findByTestId('cloud-student-row-201');
+    expect(debtRow).toHaveTextContent('−NT$ 40');
+    expect(within(debtRow).getByText('欠款')).toHaveClass('badge-ui', 'badge-warn');
+    fireEvent.click(within(debtRow).getByText('查看期初資料'));
+    expect(debtRow).toHaveTextContent('−NT$ 20');
+    expect(within(debtRow).getAllByText('欠款')).toHaveLength(2);
+
+    const positiveRow = screen.getByTestId('cloud-student-row-202');
+    expect(positiveRow).toHaveTextContent('NT$ 15');
+    expect(within(positiveRow).queryByText('欠款')).toBeNull();
+    expect(within(positiveRow).getByText('使用中')).toHaveClass('badge-ui', 'badge-ok');
+    const zeroRow = screen.getByTestId('cloud-student-row-203');
+    expect(zeroRow).toHaveTextContent('NT$ 0');
+    expect(within(zeroRow).queryByText('欠款')).toBeNull();
+    expect(within(zeroRow).getByText('已停用')).toHaveClass('badge-ui', 'badge-neutral');
+  });
+
   it('requires an explicit opening amount and opening mode before creating', async () => {
     renderPage();
     await screen.findByText(/目前伺服器名單是空的/);
