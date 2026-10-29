@@ -12,3 +12,18 @@ export function navigationKey(event: KeyboardEvent): number | null {
   if (event.altKey && /^Digit[1-5]$/.test(event.code)) return Number(event.code.slice(5)) - 1;
   return null;
 }
+
+let compositionActive = false;
+let compositionTracked = false;
+
+function ensureCompositionTracking() {
+  if (compositionTracked || typeof window === 'undefined') return;
+  compositionTracked = true;
+  window.addEventListener('compositionstart', () => { compositionActive = true; });
+  window.addEventListener('compositionend', () => { compositionActive = false; });
+}
+
+export function isCompositionKey(event: KeyboardEvent): boolean {
+  ensureCompositionTracking();
+  return compositionActive || event.isComposing || event.keyCode === 229;
+}

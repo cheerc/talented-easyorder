@@ -36,7 +36,7 @@ import { isMenuReady } from './domain/menu';
 import { AuthGate } from './auth/AuthGate';
 import { useOperator } from './auth/OperatorContext';
 import { AppShell } from './components/AppShell';
-import { navigationKey } from './components/navigationKeys';
+import { navigationKey, isCompositionKey } from './components/navigationKeys';
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
 import { SYSTEM_OPERATOR_ID } from './domain/operatorId';
 import { findStudentEarliestDate } from './domain/transactionLookup';
@@ -475,6 +475,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
       const key = navigationKey(event);
       if (key === null) return;
       event.preventDefault();
+      if (isCompositionKey(event) || event.repeat) return;
       if (navigationLockRef.current?.locked || leaveTarget || document.querySelector('.cloud-app')?.closest('[inert]') || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       selectPrimary(['pos', 'report', 'admin', 'vendors', 'history'][key]);
     };

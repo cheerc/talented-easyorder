@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { PosMode } from '../domain/posFlow';
-import { NAVIGATION, navigationKey } from '../components/navigationKeys';
+import { NAVIGATION, navigationKey, isCompositionKey } from '../components/navigationKeys';
 
 interface UseAppNavigationShortcutsArgs {
   tab: string;
@@ -30,6 +30,7 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
       const nav = navigationKey(e);
       if (nav !== null) {
         e.preventDefault();
+        if (isCompositionKey(e) || e.repeat) return;
         if (isDialogOpen || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
         if (nav === 0) { setSearchText(''); setSearchFocusKey(k => k + 1); }
         setTab(NAVIGATION[nav].id);
@@ -37,6 +38,7 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
       }
       if (e.key === 'F6' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
         e.preventDefault();
+        if (isCompositionKey(e) || e.repeat) return;
         if (!isDialogOpen && !document.querySelector('[role="dialog"][aria-modal="true"]')) setShowDashboard(v => !v);
         return;
       }
