@@ -261,6 +261,19 @@ describe('CloudOrdersPage', () => {
       expect(screen.getByTestId('selected-student-card')).toHaveTextContent('目前餘額：$100');
     });
 
+    it('marks a negative current balance in the checkout breakdown', async () => {
+      repositoryMock.loadSnapshot.mockResolvedValue(snapshot({
+        students: [mockStudent('s1', '001', '測試甲', -50)],
+        transactions: [],
+      }));
+      renderComponent();
+      await selectStudent('001');
+      const current = within(screen.getByTestId('order-preview')).getByText('目前餘額').parentElement!;
+      expect(current).toHaveTextContent('−$50');
+      expect(current).toHaveTextContent('欠款');
+      expect(current.querySelector('.cloud-orders__debt')).not.toBeNull();
+    });
+
     it('marks a negative projected balance with a minus sign, the word 欠款 and the warn class', async () => {
       renderComponent();
       await selectStudent('002');
