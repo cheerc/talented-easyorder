@@ -10,7 +10,6 @@ import {
   type CloudStudentRecord,
 } from '../../firebase/cloudStudentRepository';
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
-import { Modal } from '../ui/Modal';
 import './CloudStudentsPage.css';
 
 export interface CloudStudentsPageProps {
@@ -1459,7 +1458,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
             <span className="cloud-students__count">{visibleStudentCount} / {page.snapshot.students.length} 位</span>
           </section>
 
-          <Modal open={page.createOpen} title="新增學生" onClose={() => setPageState(previous => ({ ...previous, createOpen: false, createDraft: freshCreateDraft(), actionError: '' }))}>
+          {page.createOpen && (
             <form className="cloud-students__form" aria-label="新增學生" onSubmit={submitCreate}>
               <h2>手動新增學生</h2>
               <p>編號會以正規化形式儲存（例如 001、099、1000）；請自行核對實際結餘。金額沒有預設值，輸入 0 才代表零元。</p>
@@ -1502,7 +1501,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
                 <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, createOpen: false, createDraft: freshCreateDraft(), actionError: '' }))} disabled={busy}>取消</button>
               </div>
             </form>
-          </Modal>
+          )}
 
           <section className="cloud-students__list" aria-label="學生名單">
             {displayRows.length === 0 ? (
