@@ -95,7 +95,7 @@ vi.mock('../components/cloud/CloudDayVendorsPage', () => ({
     </section>
   ); },
 }));
-vi.mock('../components/cloud/CloudDayClosePage', () => ({ CloudDayClosePage: () => <section aria-label="mock day close page" /> }));
+vi.mock('../components/cloud/CloudDayClosePage', () => ({ CloudDayClosePage: () => <section aria-label="mock day close page"><form className="cloud-day-close__date-form"><label>查詢日期<input /></label></form></section> }));
 vi.mock('../components/cloud/CloudReportPage', () => ({
   CloudReportPage: () => <section aria-label="mock cloud report page" />,
 }));
@@ -237,6 +237,16 @@ describe('App mode gate', () => {
 });
 
 describe('cloud navigation contract', () => {
+  it('does not treat the day-close date filter as an unsubmitted draft', () => {
+    appMocks.cloudModeValid = true;
+    render(<App />);
+    fireEvent.keyDown(window, { key: 'F2' });
+    fireEvent.change(screen.getByLabelText('查詢日期'), { target: { value: '2026-10-26' } });
+    fireEvent.keyDown(window, { key: 'F1' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'mock orders page' })).toBeVisible();
+  });
+
   it('does not show a previous backfill date while a newly mounted cashier is loading', () => {
     appMocks.cloudModeValid = true;
     render(<App />);
