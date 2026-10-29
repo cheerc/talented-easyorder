@@ -5,6 +5,7 @@ import { useState, type ReactNode } from 'react';
 const appMocks = vi.hoisted(() => ({
   cloudModeValid: false,
   recoveryGate: false,
+  studentCallback: null as null | ((key: string, state: 'recovering' | 'revoked' | 'resolved') => void),
   crashDraft: {
     load: vi.fn(async () => null),
     save: vi.fn(async () => undefined),
@@ -63,7 +64,9 @@ vi.mock('../components/cloud/CloudStudentsPage', () => ({
     onDraftCleared?: () => void;
     identityKey: string;
     onNavigationStateChange: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
-  }) => (
+  }) => {
+    appMocks.studentCallback = onNavigationStateChange;
+    return (
     <section aria-label="mock students page">
       <form><label>測試草稿<input /></label></form>
       <button type="button" onClick={onDraftCleared}>確認草稿已清除</button>
@@ -71,7 +74,7 @@ vi.mock('../components/cloud/CloudStudentsPage', () => ({
       <button type="button" onClick={() => onNavigationStateChange(identityKey, 'revoked')}>回報使用權失效</button>
       <button type="button" onClick={() => onNavigationStateChange(identityKey, 'resolved')}>回報已確認</button>
     </section>
-  ),
+  ); },
 }));
 vi.mock('../components/cloud/CloudDayVendorsPage', () => ({
   CloudDayVendorsPage: ({
@@ -265,6 +268,16 @@ describe('cloud navigation contract', () => {
     fireEvent.keyDown(window, { key: 'F4' });
     expect(screen.getByLabelText('日期選擇')).toBe(input);
     expect(input.value).toBe('2026-10-20');
+  });
+
+  it('ignores a late callback from the page that was unmounted', () => {
+    appMocks.cloudModeValid = true;
+    render(<App />);
+    const stale = appMocks.studentCallback!;
+    fireEvent.keyDown(window, { key: 'F3' });
+    fireEvent.click(screen.getByRole('button', { name: '保持待確認命令' }));
+    act(() => stale('uid-a:4', 'resolved'));
+    expect(screen.getByRole('button', { name: '歷史' })).toBeDisabled();
   });
 
   it('keeps a mounted page in place while the recovery boundary is inert', () => {
