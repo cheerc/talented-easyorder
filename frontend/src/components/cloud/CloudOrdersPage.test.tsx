@@ -5,7 +5,7 @@ import type { CloudStudentRecord } from '../../firebase/cloudStudentRepository';
 import type { CloudDayRecord } from '../../firebase/cloudDayVendorRepository';
 import type { CloudOrderSnapshot, CloudOrderTransactionRecord } from '../../firebase/cloudOrderRepository';
 import type { CommandResult } from '../../domain/cloudCommands';
-import { CloudOrdersPage } from './CloudOrdersPage';
+import { CloudOrdersPage, type CloudOrdersPageProps } from './CloudOrdersPage';
 
 const repositoryMock = vi.hoisted(() => ({
   loadSnapshot: vi.fn(),
@@ -165,7 +165,11 @@ function deferred<T>() {
 
 const onNavigationStateChange = vi.fn();
 
-function renderComponent(identityKey = 'uid-1:1', initialBackfillDayId?: string) {
+function renderComponent(
+  identityKey = 'uid-1:1',
+  initialBackfillDayId?: string,
+  props: Partial<CloudOrdersPageProps> = {},
+) {
   return render(
     <CloudOrdersPage
       db={{} as Firestore}
@@ -173,6 +177,7 @@ function renderComponent(identityKey = 'uid-1:1', initialBackfillDayId?: string)
       identityKey={identityKey}
       onNavigationStateChange={onNavigationStateChange}
       initialBackfillDayId={initialBackfillDayId}
+      {...props}
     />,
   );
 }
@@ -258,7 +263,7 @@ describe('CloudOrdersPage', () => {
     fireEvent.keyDown(amount, { key: 'w' });
     expect(screen.getByLabelText(/繳費金額（必填）/)).toHaveFocus();
     fireEvent.keyDown(amount, { key: 'q' });
-    expect(screen.getByRole('button', { name: '今日餐點（Q）' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '今日餐點' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.keyDown(amount, { key: 'e' });
     expect(screen.getByRole('dialog', { name: /付款明細/ })).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' });
@@ -736,9 +741,9 @@ describe('CloudOrdersPage', () => {
     renderComponent();
     await selectStudent('003');
     expect(screen.getByRole('alert')).toHaveTextContent('此帳戶已停用，禁止新增餐點');
-    expect(screen.getByRole('button', { name: '今日餐點（Q）' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '今日餐點' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '其他餐點' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '繳費（W）' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '繳費' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '30' } });
     fireEvent.click(screen.getByTestId('submit-order-button'));
     await waitFor(() => expect(repositoryMock.createPayment).toHaveBeenCalledWith(expect.objectContaining({
@@ -809,7 +814,7 @@ describe('CloudOrdersPage', () => {
     renderComponent();
     await selectStudent('001');
     fireEvent.keyDown(window, { key: 'w' });
-    expect(screen.getByRole('button', { name: '繳費（W）' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '繳費' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '200' } });
     fireEvent.change(screen.getByLabelText(/備註/), { target: { value: '預存' } });
     expect(screen.getByText(/預估結餘：/)).toHaveTextContent('$300');
@@ -832,7 +837,7 @@ describe('CloudOrdersPage', () => {
   it('rejects a zero, decimal or oversized payment before sending', async () => {
     renderComponent();
     await selectStudent('001');
-    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.click(screen.getByRole('button', { name: '繳費' }));
     for (const value of ['0', '1.5', '1e3', '1000001']) {
       fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value } });
       fireEvent.click(screen.getByTestId('submit-order-button'));
@@ -847,7 +852,7 @@ describe('CloudOrdersPage', () => {
       .mockImplementationOnce(async (input: { commandId: string }) => okResult(input.commandId, 14));
     renderComponent();
     await selectStudent('002');
-    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.click(screen.getByRole('button', { name: '繳費' }));
     fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '100' } });
     fireEvent.click(screen.getByTestId('submit-order-button'));
     expect(await screen.findByTestId('order-recovery-panel')).toHaveTextContent('李小華 的繳費尚未確認');
@@ -997,7 +1002,7 @@ describe('CloudOrdersPage', () => {
   it('P09b: rejects refunds over the balance, zero, decimals or without a reason before sending', async () => {
     renderComponent();
     await selectStudent('002');
-    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.click(screen.getByRole('button', { name: '繳費' }));
     fireEvent.click(screen.getByTestId('open-refund-button'));
     fireEvent.change(screen.getByLabelText(/退款原因/), { target: { value: '退餘額' } });
     for (const value of ['51', '0', '1.5', '-10', '1e2']) {
@@ -1033,7 +1038,7 @@ describe('CloudOrdersPage', () => {
 
     expect(await screen.findByText(/已確認 003 張小停 退款 \$30 完成/)).toBeVisible();
     await selectStudent('001');
-    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.click(screen.getByRole('button', { name: '繳費' }));
     fireEvent.click(screen.getByTestId('open-refund-button'));
     expect(screen.getByTestId('refund-no-balance')).toBeVisible();
     expect(screen.getByLabelText(/退款金額/)).toHaveValue('');
@@ -1046,7 +1051,7 @@ describe('CloudOrdersPage', () => {
       .mockImplementationOnce(async (input: { commandId: string }) => okResult(input.commandId, 17));
     renderComponent();
     await selectStudent('001');
-    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.click(screen.getByRole('button', { name: '繳費' }));
     fireEvent.click(screen.getByTestId('open-refund-button'));
     fireEvent.change(screen.getByLabelText(/退款原因/), { target: { value: '退餘額' } });
     fireEvent.click(screen.getByTestId('submit-refund-button'));
@@ -1061,7 +1066,7 @@ describe('CloudOrdersPage', () => {
   it('P09b: a negative payment points to refund instead of being sent', async () => {
     renderComponent();
     await selectStudent('001');
-    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.click(screen.getByRole('button', { name: '繳費' }));
     fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '-50' } });
     fireEvent.click(screen.getByTestId('submit-order-button'));
     expect(await screen.findByText('收款金額不能是負數。要退錢給學生請用「退款」。')).toBeVisible();
@@ -1120,7 +1125,7 @@ describe('CloudOrdersPage', () => {
       });
       renderComponent();
       await selectStudent('001');
-      fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+      fireEvent.click(screen.getByRole('button', { name: '繳費' }));
       fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '200' } });
       fireEvent.click(screen.getByTestId('submit-order-button'));
       await screen.findByText(/繳費 \$200 完成/);
@@ -1386,7 +1391,7 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot());
     renderComponent('uid-1:1', GAP);
     await selectStudent('001');
-    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.click(screen.getByRole('button', { name: '繳費' }));
     expect(screen.getByTestId('open-refund-button')).toBeDisabled();
     expect(screen.getByTestId('backfill-refund-note')).toHaveTextContent('回填中不能退款');
     fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
@@ -1403,7 +1408,7 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot());
     renderComponent('uid-1:1', GAP);
     await selectStudent('001');
-    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.click(screen.getByRole('button', { name: '繳費' }));
     fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
     fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: 'A-0130' } });
     fireEvent.click(screen.getByTestId('submit-order-button'));
@@ -1421,7 +1426,7 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     repositoryMock.createPayment.mockResolvedValueOnce(errorResult('REVISION_CONFLICT'));
     renderComponent('uid-1:1', GAP);
     await selectStudent('001');
-    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.click(screen.getByRole('button', { name: '繳費' }));
     fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
     fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: 'A-0130' } });
     fireEvent.click(screen.getByTestId('submit-order-button'));
@@ -1435,7 +1440,7 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot({ backfillDays: [], backfillDaysError: '連線中斷' }));
     renderComponent('uid-1:1', GAP);
     await selectStudent('001');
-    fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+    fireEvent.click(screen.getByRole('button', { name: '繳費' }));
     fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
     fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: 'A-0130' } });
     fireEvent.click(screen.getByTestId('submit-order-button'));
@@ -1517,7 +1522,7 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
       fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: 'A 0123' } });
       fireEvent.click(screen.getByTestId('submit-order-button'));
       expect(await screen.findByText('紙本號只能是 1 至 20 字的英數與 -（例如 A-0123）')).toBeVisible();
-      fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+      fireEvent.click(screen.getByRole('button', { name: '繳費' }));
       fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
       fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: 'a'.repeat(21) } });
       fireEvent.click(screen.getByTestId('submit-order-button'));
@@ -1635,7 +1640,7 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
       renderComponent();
       await selectStudent('002');
       expect(screen.getByLabelText('紙本號（選填）')).toBeVisible();
-      fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+      fireEvent.click(screen.getByRole('button', { name: '繳費' }));
       fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
       fireEvent.change(screen.getByLabelText('備註（選填）'), { target: { value: '現金' } });
       if (paperRef) fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: paperRef } });
@@ -1657,12 +1662,67 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
       repositoryMock.loadSnapshot.mockResolvedValue(snapshot());
       renderComponent();
       await selectStudent('002');
-      fireEvent.click(screen.getByRole('button', { name: '繳費（W）' }));
+      fireEvent.click(screen.getByRole('button', { name: '繳費' }));
       fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
       fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: '紙本1：' } });
       fireEvent.click(screen.getByTestId('submit-order-button'));
       expect(await screen.findByText('紙本號只能是 1 至 20 字的英數與 -（例如 A-0123）')).toBeVisible();
       expect(repositoryMock.createPayment).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('P3 視覺收斂：版面與字面契約', () => {
+    it('keeps the food counts in the page header when no meal card is shown yet', async () => {
+      renderComponent();
+      const header = await screen.findByTestId('cloud-topbar-counts');
+      const pageHeader = header.closest('header');
+      expect(pageHeader).not.toBeNull();
+      expect(pageHeader).toContainElement(screen.getByTestId('cloud-topbar-bento'));
+      expect(pageHeader).toContainElement(screen.getByTestId('cloud-topbar-other'));
+    });
+
+    it('shows the Q → W → E → R mode order with keycaps instead of bracketed shortcut text', async () => {
+      renderComponent();
+      await selectStudent('001');
+      const order = ['今日餐點', '繳費', '付款明細', '其他餐點'].map(name => screen.getByRole('button', { name }));
+      for (let index = 1; index < order.length; index += 1) {
+        expect(order[index - 1].compareDocumentPosition(order[index]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      }
+      expect(screen.queryByRole('button', { name: '今日餐點（Q）' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '繳費' })).toBeNull();
+      expect(document.body.textContent).not.toContain('（Q）');
+      expect(document.body.textContent).not.toContain('（W）');
+    });
+
+    it('shows the missing-menu reason as readable text next to a settings link, not inside an error box', async () => {
+      repositoryMock.loadSnapshot.mockResolvedValue(snapshot({ day: mockDay({ menu: false }), transactions: [] }));
+      const onOpenSettings = vi.fn();
+      renderComponent('uid-1:1', undefined, { onOpenSettings });
+      await selectStudent('002');
+      const reason = screen.getByTestId('orders-menu-unavailable');
+      expect(reason).toHaveTextContent('今日尚未設定菜單');
+      expect(reason.closest('[role="alert"]')).toBeNull();
+      expect(reason.closest('.cloud-orders__error')).toBeNull();
+      fireEvent.click(within(reason).getByRole('button', { name: '到今日設定' }));
+      expect(onOpenSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the balance label in the selected card so existing operators and tests still read it', async () => {
+      renderComponent();
+      await selectStudent('001');
+      expect(screen.getByTestId('selected-student-card')).toHaveTextContent('目前餘額：$100');
+    });
+
+    it('marks a negative projected balance with a minus sign, the word 欠款 and the warn class', async () => {
+      renderComponent();
+      await selectStudent('002');
+      const preview = screen.getByTestId('order-preview');
+      expect(preview).toHaveTextContent('−$40');
+      expect(preview).toHaveTextContent('欠款');
+      expect(within(preview).getByText(/欠款/).className).toContain('cloud-orders__debt');
+      fireEvent.change(screen.getByLabelText(/實收金額/), { target: { value: '50' } });
+      expect(preview).toHaveTextContent('$10');
+      expect(preview).not.toHaveTextContent('欠款');
     });
   });
 });
