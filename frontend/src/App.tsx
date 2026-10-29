@@ -458,7 +458,8 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
     return () => window.removeEventListener('keydown', onKey);
   });
   const openAnomalies = () => selectSection('anomalies');
-  const common = { db, leaseEpoch, identityKey, onNavigationStateChange: reportNavigationState };
+  const onDraftCleared = useCallback(() => { dirtyRef.current = false; }, []);
+  const common = { db, leaseEpoch, identityKey, onNavigationStateChange: reportNavigationState, onDraftCleared };
 
   return (
     <main className="cloud-app" aria-label={CLOUD_SECTION_LABELS[cloudSection]} onChangeCapture={event => {

@@ -28,6 +28,7 @@ export interface CloudDayClosePageProps {
   leaseEpoch: number;
   identityKey: string;
   onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
+  onDraftCleared?: () => void;
   /** Tests replace the P14 backup block; the page mounts the real one by default. */
   backupBlock?: ReactNode;
   /** 帳務異常快照（契約 §11）；沒提供時不顯示橫幅。 */
@@ -392,7 +393,7 @@ function DayFigures({ day }: { day: CloudDayCloseState }) {
 }
 
 export function CloudDayClosePage({
-  db, leaseEpoch, identityKey, onNavigationStateChange, backupBlock, ledger, onOpenAnomalies, onLedgerChanged, initialDayId,
+  db, leaseEpoch, identityKey, onNavigationStateChange, backupBlock, ledger, onOpenAnomalies, onLedgerChanged, onDraftCleared, initialDayId,
   initialPostCloseEntry, onOpenOrders, hasUnresolvedPendingCommands = false,
 }: CloudDayClosePageProps) {
   const onLedgerChangedRef = useRef(onLedgerChanged);
@@ -668,7 +669,7 @@ export function CloudDayClosePage({
         };
       });
       // Once, after the accepted same-owner, same-dataset, same-day snapshot.
-      if (resolvesOperation && confirmedReceipt) onLedgerChangedRef.current?.();
+      if (resolvesOperation && confirmedReceipt) { onDraftCleared?.(); onLedgerChangedRef.current?.(); }
     } catch (error) {
       if (!isCurrent(key, generation) || requestId !== readRequestRef.current) return;
       if (isAuthorizationLoss(error)) {
@@ -710,7 +711,7 @@ export function CloudDayClosePage({
         };
       });
     }
-  }, [authorizationScopeKey, isCurrent, ownsOperation, repository, revokeAuthorization, scopeKey, updateFor]);
+  }, [authorizationScopeKey, isCurrent, onDraftCleared, ownsOperation, repository, revokeAuthorization, scopeKey, updateFor]);
 
   useEffect(() => {
     const generation = ++generationRef.current;

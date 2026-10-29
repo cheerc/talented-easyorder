@@ -36,6 +36,7 @@ export interface CloudDayVendorsPageProps {
   leaseEpoch: number;
   identityKey: string;
   onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
+  onDraftCleared?: () => void;
   /** 帳務異常快照（契約 §11）；沒提供時不顯示橫幅，也不要求開帳差額原因。 */
   ledger?: CloudLedgerView;
   onOpenAnomalies?: () => void;
@@ -312,7 +313,7 @@ function blockedInheritanceMessage(blocked: string): string {
 }
 
 export function CloudDayVendorsPage({
-  db, leaseEpoch, identityKey, onNavigationStateChange, ledger, onOpenAnomalies, onLedgerChanged, view = 'combined',
+  db, leaseEpoch, identityKey, onNavigationStateChange, ledger, onOpenAnomalies, onLedgerChanged, onDraftCleared, view = 'combined',
 }: CloudDayVendorsPageProps) {
   const recoveryReader = useMemo(() => getCloudRecoveryReader(db), [db]);
   const repository = useMemo(() => createCloudDayVendorRepository(db, { recoveryReader }), [db, recoveryReader]);
@@ -523,6 +524,7 @@ export function CloudDayVendorsPage({
             : '',
         };
       });
+      if (resolvesOperation && confirmedReceipt) onDraftCleared?.();
       if (resolvesOperation && confirmedReceipt?.kind === 'SetOpeningCash') onLedgerChangedRef.current?.();
     } catch (error) {
       if (!isCurrent(key, generation) || requestId !== listRequestRef.current) return;
@@ -557,7 +559,7 @@ export function CloudDayVendorsPage({
         };
       });
     }
-  }, [authorizationScopeKey, isCurrent, operationRef, ownsOperation, repository, revokeAuthorization, scopeKey, updateFor]);
+  }, [authorizationScopeKey, isCurrent, onDraftCleared, operationRef, ownsOperation, repository, revokeAuthorization, scopeKey, updateFor]);
 
   useEffect(() => {
     const generation = ++generationRef.current;

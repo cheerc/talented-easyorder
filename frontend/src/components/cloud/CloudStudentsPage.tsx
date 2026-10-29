@@ -17,6 +17,7 @@ export interface CloudStudentsPageProps {
   leaseEpoch: number;
   identityKey: string;
   onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
+  onDraftCleared?: () => void;
 }
 
 type OpeningMode = '' | 'existing-balance' | 'new-student';
@@ -414,7 +415,7 @@ function OpeningCorrectionForm({
   );
 }
 
-export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationStateChange }: CloudStudentsPageProps) {
+export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationStateChange, onDraftCleared }: CloudStudentsPageProps) {
   const recoveryReader = useMemo(() => getCloudRecoveryReader(db), [db]);
   const repository = useMemo(() => createCloudStudentRepository(db, { recoveryReader }), [db, recoveryReader]);
   let currentUid: string | null = null;
@@ -579,6 +580,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
       } else if (confirmedReceipt?.commandId === pendingCommandIdRef.current) {
         pendingCommandIdRef.current = null;
       }
+      if (resolvesOperation && confirmedReceipt) onDraftCleared?.();
       updateFor(key, generation, previous => {
         const confirmsPending = confirmedReceipt
           && previous.recovery?.commandId === confirmedReceipt.commandId
@@ -622,7 +624,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
         };
       });
     }
-  }, [identityKey, isCurrent, onNavigationStateChange, ownsOperation, repository, revokeAuthorization, updateFor]);
+  }, [identityKey, isCurrent, onDraftCleared, onNavigationStateChange, ownsOperation, repository, revokeAuthorization, updateFor]);
 
   useEffect(() => {
     const generation = ++generationRef.current;
