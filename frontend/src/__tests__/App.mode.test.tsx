@@ -6,6 +6,7 @@ const appMocks = vi.hoisted(() => ({
   cloudModeValid: false,
   recoveryGate: false,
   studentCallback: null as null | ((key: string, state: 'recovering' | 'revoked' | 'resolved') => void),
+  dayCallback: null as null | ((key: string, state: 'recovering' | 'revoked' | 'resolved') => void),
   crashDraft: {
     load: vi.fn(async () => null),
     save: vi.fn(async () => undefined),
@@ -83,14 +84,16 @@ vi.mock('../components/cloud/CloudDayVendorsPage', () => ({
   }: {
     identityKey: string;
     onNavigationStateChange: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
-  }) => (
+  }) => {
+    appMocks.dayCallback = onNavigationStateChange;
+    return (
     <section aria-label="mock day vendors page">
       <input aria-label="日期選擇" defaultValue="2026-10-28" />
       <button type="button" onClick={() => onNavigationStateChange(identityKey, 'recovering')}>保持待確認命令</button>
       <button type="button" onClick={() => onNavigationStateChange(identityKey, 'revoked')}>回報使用權失效</button>
       <button type="button" onClick={() => onNavigationStateChange(identityKey, 'resolved')}>回報已確認</button>
     </section>
-  ),
+  ); },
 }));
 vi.mock('../components/cloud/CloudDayClosePage', () => ({ CloudDayClosePage: () => <section aria-label="mock day close page" /> }));
 vi.mock('../components/cloud/CloudReportPage', () => ({
@@ -264,9 +267,11 @@ describe('cloud navigation contract', () => {
     render(<App />);
     fireEvent.keyDown(window, { key: 'F3' });
     const input = screen.getByLabelText('日期選擇') as HTMLInputElement;
+    const callback = appMocks.dayCallback;
     input.value = '2026-10-20';
     fireEvent.keyDown(window, { key: 'F4' });
     expect(screen.getByLabelText('日期選擇')).toBe(input);
+    expect(appMocks.dayCallback).toBe(callback);
     expect(input.value).toBe('2026-10-20');
   });
 
