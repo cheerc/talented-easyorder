@@ -265,6 +265,10 @@
   border-radius: 10px;
 }
 
+.cloud-students__table-wrap:has(details[open]) {
+  overflow: visible;
+}
+
 .cloud-students table {
   width: 100%;
   border-collapse: collapse;
@@ -421,15 +425,18 @@
 }
 
 .cloud-students__more-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
   display: grid;
   gap: 6px;
   min-width: 140px;
-  margin-top: 6px;
   padding: 8px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--r);
   box-shadow: var(--shadow);
+  z-index: 2;
 }
 
 .cloud-students__more-menu button {
