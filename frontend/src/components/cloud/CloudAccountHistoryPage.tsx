@@ -784,10 +784,14 @@ export function CloudAccountHistoryPage({
 
   return (
     <section className="cloud-account-history" aria-label="雲端查帳">
-      <header className="cloud-account-history__header"><div><p className="cloud-account-history__eyebrow">F5 · 帳戶完整歷史前綴</p>
-        <h2>雲端查帳與歷史更正</h2><p>使用目前學生名單映射帳戶 ID；餘額依目前更正後資料重算，不代表當時現金快照。</p></div>
+      <header className="cloud-account-history__header"><div><p className="cloud-account-history__eyebrow" hidden>F5 · 帳戶完整歷史前綴</p>
+        <h2>雲端查帳與歷史更正</h2></div>
         {snapshot && <strong>來源序號 H={snapshot.account.sourceSeq}</strong>}
       </header>
+      <details className="cloud-account-history__intro">
+        <summary>資料來源與餘額說明</summary>
+        <p>使用目前學生名單映射帳戶 ID；餘額依目前更正後資料重算，不代表當時現金快照。</p>
+      </details>
 
       <div className="cloud-account-history__controls">
         <label>搜尋目前帳戶<input aria-label="搜尋目前學生帳戶" value={search} disabled={retryButtonDisabled}
