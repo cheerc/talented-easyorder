@@ -1,8 +1,13 @@
+// @ts-expect-error app tsconfig 只含 vite/client；本契約測試在 Vitest（Node）執行才需要檔案讀取
 import { readFileSync } from 'node:fs';
+// @ts-expect-error 同上，Node 的 path 模組不在 app tsconfig 的型別來源內
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const CLOUD_DIR = resolve(__dirname, '../');
+declare const process: { cwd(): string };
+
+const CLOUD_DIR = resolve(process.cwd(), 'src/components/cloud');
+const TOKENS = resolve(process.cwd(), 'src/styles/tokens.css');
 
 const PAGE_CSS = [
   'CloudDayClosePage.css',
@@ -29,7 +34,7 @@ function hexCount(css: string): number {
 }
 
 function tokenNames(): Set<string> {
-  const tokens = readFileSync(resolve(CLOUD_DIR, '../../styles/tokens.css'), 'utf8');
+  const tokens = readFileSync(TOKENS, 'utf8');
   return new Set([...tokens.matchAll(/(--[a-z0-9-]+)\s*:/gi)].map(match => match[1]));
 }
 
