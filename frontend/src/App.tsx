@@ -430,7 +430,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
     setCloudSection(section);
   };
   const selectSection = (section: CloudSection, dayId?: string, postCloseEntry?: OpeningMismatchAnomaly) => {
-    if (navigationLockRef.current?.locked || leaveTarget || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+    if (navigationLockRef.current?.locked || leaveTarget || document.querySelector('.cloud-app')?.closest('[inert]') || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
     if (section === cloudSection && !dayId && !postCloseEntry) {
       if (section === 'orders') document.querySelector<HTMLInputElement>('#cloud-student-search')?.focus();
       return;
@@ -451,7 +451,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
       const key = navigationKey(event);
       if (key === null) return;
       event.preventDefault();
-      if (navigationLockRef.current?.locked || leaveTarget || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      if (navigationLockRef.current?.locked || leaveTarget || document.querySelector('.cloud-app')?.closest('[inert]') || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       selectPrimary(['pos', 'report', 'admin', 'vendors', 'history'][key]);
     };
     window.addEventListener('keydown', onKey);
