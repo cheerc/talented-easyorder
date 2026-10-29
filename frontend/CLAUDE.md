@@ -16,6 +16,8 @@ npm run test:cloud-backup   # demo-easyorder Firestore Emulator 備份驗證
 npm run test:e2e            # demo-easyorder Auth/Firestore Emulator + cloud、prototype E2E
 ```
 
+CI 的 `build-and-test` 與穩定的 `e2e` 彙總檢查各自依獨立變更分類執行；`e2e` 僅在九個 Playwright 設定及 Hosting smoke 分組全部成功時通過。文件專用變更明確跳過分組；分類失敗、分組失敗／取消或缺少分組都不能當作通過。每組使用獨立 `demo-easyorder` Emulator；`npm run test:e2e` 仍是原本本機完整入口。
+
 Cloud Rules／command 證明需在 `demo-easyorder` Emulator 中實際執行；Vitest skip 不是 Emulator pass。App project TypeScript baseline、required gates 及 docs-only CI 分類以 [workflow](../.github/workflows/ci.yml) 和 [正式後端 handoff](../docs/DEVELOPMENT-HANDOFF.md) 為準；bare `tsc` 或 Vite build 不能取代 App project baseline。只改文件時做 diff、連結與路徑核對即可，不能宣稱跑過 app suites。
 
 ## Mode 與程式導航
