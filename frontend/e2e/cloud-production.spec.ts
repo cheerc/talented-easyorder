@@ -1435,7 +1435,7 @@ test.describe('P11c2b Cloud Backfill', () => {
       await expect(page.locator('.operator-strip')).toBeVisible();
 
       // 1. 異常頁：過去沒關帳的日子有「標為回填」
-      await page.getByRole('button', { name: /^帳務異常/ }).click();
+      await page.getByRole('button', { name: /^⚠ 異常/ }).click();
       await page.getByTestId(`anomaly-mark-backfill-${gap}`).click();
 
       // 2. 日結頁：回填原因必填，標記成功後可以到訂餐頁
@@ -1566,7 +1566,7 @@ test.describe('P11c3 Cloud Backfill Align', () => {
       expect(await readAdminDocument('days', gap)).toBeNull();
 
       // 1. 異常頁：開帳 970 與上次關帳 870 不符，中間的空日有「回填這一天」
-      await page.getByRole('button', { name: /^帳務異常/ }).click();
+      await page.getByRole('button', { name: /^⚠ 異常/ }).click();
       await page.getByTestId(`backfill-gap-${gap}`).click();
 
       // 2. 日結頁三步：建日 → 補開帳（預設 870）→ 標記，一次表單送出
@@ -1699,7 +1699,7 @@ test.describe('P11c4b Cloud Post-Close UI', () => {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
       await expect(page.locator('.operator-strip')).toBeVisible();
 
-      await page.getByRole('button', { name: /^帳務異常/ }).click();
+      await page.getByRole('button', { name: /^⚠ 異常/ }).click();
       const anomaly = page.getByTestId(`post-close-shortcut-${next}`);
       await expect(anomaly).toBeVisible();
       await anomaly.click();
@@ -1724,7 +1724,7 @@ test.describe('P11c4b Cloud Post-Close UI', () => {
       expect(await readAdminDocument(`days/${previous}/settlements`, '1')).toMatchObject({ countedCash: 1000 });
       await expect(main.getByLabel('有效關帳現金')).toContainText('NT$ 950');
 
-      await page.getByRole('button', { name: /^帳務異常/ }).click();
+      await page.getByRole('button', { name: /^⚠ 異常/ }).click();
       await expect(page.getByTestId(`post-close-shortcut-${next}`)).toHaveCount(0);
 
       await page.getByRole('button', { name: '今日帳', exact: true }).click();
@@ -1750,7 +1750,7 @@ test.describe('P11c4b Cloud Post-Close UI', () => {
       expect(await readAdminDocument(`days/${previous}/settlements`, '1')).toMatchObject({ countedCash: 1000 });
       expect(await readAdminDocument(`days/${previous}/settlements`, '3')).toMatchObject({ countedCash: 950, difference: -50 });
 
-      await page.getByRole('button', { name: /^帳務異常/ }).click();
+      await page.getByRole('button', { name: /^⚠ 異常/ }).click();
       await expect(page.getByTestId(`post-close-shortcut-${next}`)).toHaveCount(0);
       await release(page);
     } finally {
