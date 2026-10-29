@@ -14,16 +14,12 @@ export function navigationKey(event: KeyboardEvent): number | null {
 }
 
 let compositionActive = false;
-let compositionTracked = false;
 
-function ensureCompositionTracking() {
-  if (compositionTracked || typeof window === 'undefined') return;
-  compositionTracked = true;
+if (typeof window !== 'undefined') {
   window.addEventListener('compositionstart', () => { compositionActive = true; });
   window.addEventListener('compositionend', () => { compositionActive = false; });
 }
 
 export function isCompositionKey(event: KeyboardEvent): boolean {
-  ensureCompositionTracking();
   return compositionActive || event.isComposing || event.keyCode === 229;
 }
