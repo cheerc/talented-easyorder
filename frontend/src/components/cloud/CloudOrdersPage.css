@@ -1,4 +1,6 @@
 .cloud-orders {
+  /* 既有白色櫃台卡片須在深色主題下保留深色文字；完整配色收斂留待 P3。 */
+  color: #15181c;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
