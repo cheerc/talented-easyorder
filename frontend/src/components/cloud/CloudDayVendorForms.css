@@ -3,27 +3,27 @@
   gap: 14px;
   margin: 16px 0;
   padding: 20px;
-  background: var(--surface-subtle, #f7f9fb);
-  border: 1px solid var(--line, #dce1e7);
-  border-radius: 10px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
 }
 
 .cloud-day-form h3 {
   margin: 0;
-  color: var(--ink, #20252b);
+  color: var(--ink);
   font-size: 18px;
 }
 
 .cloud-day-form__help,
 .cloud-day-form__empty {
   margin: 0;
-  color: var(--ink-2, #536170);
+  color: var(--ink-2);
   font-size: 13px;
   line-height: 1.55;
 }
 
 .cloud-day-form__empty {
-  color: #78351f;
+  color: var(--warn);
 }
 
 .cloud-day-form__grid {
@@ -36,7 +36,7 @@
   display: grid;
   min-width: 0;
   gap: 6px;
-  color: var(--ink, #20252b);
+  color: var(--ink);
   font-size: 13px;
   font-weight: 650;
 }
@@ -47,10 +47,10 @@
   min-width: 0;
   min-height: 40px;
   padding: 9px 10px;
-  color: var(--ink, #20252b);
-  background: var(--panel, #fff);
-  border: 1px solid var(--line, #cbd3dc);
-  border-radius: 7px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
   font: inherit;
 }
 
@@ -64,7 +64,7 @@
 
 .cloud-day-form__input:focus-visible,
 .cloud-day-form button:focus-visible {
-  outline: 3px solid rgba(23, 107, 135, .3);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -83,13 +83,17 @@
 .cloud-day-form__primary {
   min-height: 38px;
   padding: 8px 14px;
-  color: #fff;
-  background: var(--accent, #176b87);
+  color: var(--panel);
+  background: var(--ink);
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--r);
   cursor: pointer;
   font: inherit;
   font-weight: 650;
+}
+
+.cloud-day-form__primary:hover:not(:disabled) {
+  background: var(--accent);
 }
 
 @media (max-width: 680px) {
