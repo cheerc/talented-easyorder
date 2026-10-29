@@ -1,40 +1,29 @@
 import React from 'react';
 import './Button.css';
 
-interface ButtonProps {
+type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
+type ButtonSize = 'sm' | 'md' | 'lg';
+
+interface ButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'className'> {
   children: React.ReactNode;
-  onClick?: () => void;
-  disabled?: boolean;
-  variant?: 'primary' | 'danger' | 'ghost';
-  size?: 'sm' | 'md' | 'lg';
+  variant?: ButtonVariant;
+  size?: ButtonSize;
   className?: string;
-  type?: 'button' | 'submit';
-  autoFocus?: boolean;
 }
 
-export const Button = React.memo(function Button({
-  children,
-  onClick,
-  disabled = false,
-  variant = 'primary',
-  size = 'md',
-  className = '',
-  type = 'button',
-  autoFocus = false,
-}: ButtonProps) {
+const ButtonImpl = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { children, variant = 'primary', size = 'md', className = '', type = 'button', ...rest },
+  ref,
+) {
   const cls = ['btn-ui', `btn-${variant}`, size !== 'md' ? `btn-${size}` : '', className]
     .filter(Boolean)
     .join(' ');
 
   return (
-    <button
-      type={type}
-      className={cls}
-      onClick={onClick}
-      disabled={disabled}
-      autoFocus={autoFocus}
-    >
+    <button {...rest} ref={ref} type={type} className={cls}>
       {children}
     </button>
   );
 });
+
+export const Button = React.memo(ButtonImpl);
