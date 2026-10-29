@@ -49,11 +49,15 @@ vi.mock('../components/cloud/CloudStudentsPage', () => ({
   CloudStudentsPage: ({
     identityKey,
     onNavigationStateChange,
+    onDraftCleared,
   }: {
+    onDraftCleared?: () => void;
     identityKey: string;
     onNavigationStateChange: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
   }) => (
     <section aria-label="mock students page">
+      <form><label>測試草稿<input /></label></form>
+      <button type="button" onClick={onDraftCleared}>確認草稿已清除</button>
       <button type="button" onClick={() => onNavigationStateChange(identityKey, 'recovering')}>保持待確認命令</button>
       <button type="button" onClick={() => onNavigationStateChange(identityKey, 'revoked')}>回報使用權失效</button>
       <button type="button" onClick={() => onNavigationStateChange(identityKey, 'resolved')}>回報已確認</button>
@@ -218,6 +222,20 @@ describe('App mode gate', () => {
 });
 
 describe('cloud navigation contract', () => {
+  it('only clears the leave warning when the page confirms its draft was cleared', () => {
+    appMocks.cloudModeValid = true;
+    render(<App />);
+    fireEvent.change(screen.getByLabelText('測試草稿'), { target: { value: '987' } });
+    fireEvent.click(screen.getByRole('button', { name: '回報已確認' }));
+    fireEvent.keyDown(window, { key: 'F3' });
+    expect(screen.getByRole('dialog')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '取消離開' }));
+    fireEvent.click(screen.getByRole('button', { name: '確認草稿已清除' }));
+    fireEvent.keyDown(window, { key: 'F3' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'mock day vendors page' })).toBeVisible();
+  });
+
   it('keeps the day/vendor page instance when switching its presentation without a draft', () => {
     appMocks.cloudModeValid = true;
     render(<App />);
