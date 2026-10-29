@@ -153,7 +153,7 @@ describe('CloudReportPage', () => {
     const details = screen.getByRole('region', { name: '完整交易明細' });
     const cells = within(within(details).getAllByRole('row')[1]).getAllByRole('cell');
     expect(within(cells[3]).getByText('有效')).toHaveClass('badge-ui', 'badge-ok');
-    expect(within(cells[5]).getByText('−$35')).toBeInTheDocument();
+    expect(cells[5]).toHaveTextContent('−$35');
     expect(cells[5].querySelector('.badge-warn')).toBeNull();
     expect(within(cells[6]).getByText('欠款')).toHaveClass('badge-ui', 'badge-warn');
     expect(within(cells[6]).getByText('−$40')).toBeInTheDocument();

@@ -444,6 +444,7 @@ test.describe('P06 Cloud Students', () => {
       await expect(first.page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
       await expect(first.page.getByRole('heading', { name: '學生名單與期初結餘' })).toBeVisible();
       await expect(first.page.getByText('目前伺服器名單是空的，請手動新增學生。')).toBeVisible();
+      await first.page.setViewportSize({ width: 1366, height: 768 });
 
       const createStudent = async (input: { id: string; name: string; aliases: string; amount: string; mode: '沿用既有核對結餘' | '建立新學生' }) => {
         const page = first.page;
@@ -484,7 +485,7 @@ test.describe('P06 Cloud Students', () => {
         await expect(addStudent).toBeFocused();
         if (input.id === '002') {
           expect(row).toContainText('−NT$ 25');
-          await expect(row.getByText('欠款')).toHaveClass(/badge-warn/);
+          await expect(row.locator('.cloud-students__balance').getByText('欠款')).toHaveClass(/badge-warn/);
         }
       };
 
@@ -502,7 +503,10 @@ test.describe('P06 Cloud Students', () => {
       await duplicateForm.getByRole('button', { name: '建立學生' }).click();
       await expect(first.page.getByRole('alert')).toContainText('學員編號 001 已存在');
       expect(await readAdminDocument('system', 'dataHead')).toMatchObject({ seq: 3 });
-      await first.page.getByRole('button', { name: '取消' }).click();
+      await duplicateForm.getByRole('button', { name: '取消' }).click();
+      const discardConfirmation = first.page.getByRole('dialog', { name: '新增學生' }).getByRole('group', { name: '新增學生草稿離開確認' });
+      await expect(discardConfirmation).toBeVisible();
+      await discardConfirmation.getByRole('button', { name: '捨棄草稿' }).click();
 
       const row002 = first.page.getByTestId('cloud-student-row-002');
       await row002.getByRole('button', { name: '編輯姓名與別名' }).click();
@@ -597,9 +601,13 @@ test.describe('P06 Cloud Students', () => {
 
         // 點擊缺號列預填新增
         await gap004.click();
-        const createForm = page.getByRole('form', { name: '新增學生' });
+        const createDialog = page.getByRole('dialog', { name: '新增學生' });
+        const createForm = createDialog.getByRole('form', { name: '新增學生' });
         await expect(createForm.getByLabel('學員編號')).toHaveValue('004');
         await createForm.getByRole('button', { name: '取消' }).click();
+        const gapDiscardConfirmation = createDialog.getByRole('group', { name: '新增學生草稿離開確認' });
+        await expect(gapDiscardConfirmation).toBeVisible();
+        await gapDiscardConfirmation.getByRole('button', { name: '捨棄草稿' }).click();
 
         // 搜尋時隱藏缺號列
         await page.getByLabel('搜尋編號、姓名或別名').fill('修改學生');

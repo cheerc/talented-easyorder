@@ -175,7 +175,11 @@ describe('CloudAccountHistoryPage', () => {
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
     await screen.findByTestId('account-history-ready');
     expect(screen.getByText('依目前更正後資料重算')).toBeVisible();
-    expect(screen.getByText('有效 · 回填')).toBeVisible();
+    const transactionSection = screen.getByRole('heading', { name: '區間交易與更正入口' }).closest('section') as HTMLElement;
+    const transactionRow = within(transactionSection).getAllByRole('row')[1];
+    const statusCell = within(transactionRow).getAllByRole('cell')[5];
+    expect(within(statusCell).getByText('有效')).toHaveClass('badge-ui', 'badge-ok');
+    expect(within(statusCell).getByText('回填')).toHaveClass('badge-ui', 'badge-warn');
     openTransactionMenu();
       fireEvent.click(screen.getByRole('button', { name: '更正' }));
     fireEvent.change(screen.getByLabelText('更正餐費'), { target: { value: '60' } });

@@ -155,11 +155,11 @@ describe('CloudStudentsPage', () => {
     expect(document.activeElement).toBe(studentCode);
     fireEvent.change(studentCode, { target: { value: '987' } });
 
-    fireEvent.keyDown(window, { key: 'Escape', cancelable: true });
+    fireEvent.click(within(form).getByRole('button', { name: '取消' }));
     const confirmation = within(dialog).getByRole('group', { name: '新增學生草稿離開確認' });
     expect(confirmation).toHaveTextContent('尚未送出的草稿會被捨棄');
     fireEvent.click(within(confirmation).getByRole('button', { name: '取消離開' }));
-    expect(within(dialog).getByRole('form', { name: '新增學生' }).getByLabelText('學員編號')).toHaveValue('987');
+    expect(within(dialog).getByLabelText('學員編號')).toHaveValue('987');
 
     fireEvent.keyDown(window, { key: 'Escape', cancelable: true });
     fireEvent.click(within(dialog).getByRole('button', { name: '捨棄草稿' }));
@@ -187,7 +187,7 @@ describe('CloudStudentsPage', () => {
 
     const debtRow = await screen.findByTestId('cloud-student-row-201');
     expect(debtRow).toHaveTextContent('−NT$ 40');
-    expect(within(debtRow).getByText('欠款')).toHaveClass('badge-ui', 'badge-warn');
+    expect(debtRow.querySelector('.cloud-students__balance .cloud-account-balance__debt')).toHaveClass('badge-ui', 'badge-warn');
     fireEvent.click(within(debtRow).getByText('查看期初資料'));
     expect(debtRow).toHaveTextContent('−NT$ 20');
     expect(within(debtRow).getAllByText('欠款')).toHaveLength(2);
