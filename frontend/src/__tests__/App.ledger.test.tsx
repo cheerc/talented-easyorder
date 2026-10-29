@@ -80,6 +80,12 @@ describe('cloud navigation: ledger anomalies entry', () => {
     vi.clearAllMocks();
   });
 
+  it('shows the confirmed business date in the shell', async () => {
+    appMocks.read.mockResolvedValue(snapshot([]));
+    render(<App />);
+    expect(await screen.findByText('2026-10-17')).toBeVisible();
+  });
+
   it('keeps account checks available while hiding a zero-count status', async () => {
     let resolve!: (value: CloudLedgerSnapshot) => void;
     appMocks.read.mockReturnValue(new Promise<CloudLedgerSnapshot>(r => { resolve = r; }));
