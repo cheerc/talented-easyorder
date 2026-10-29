@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 
 const appMocks = vi.hoisted(() => ({
   cloudModeValid: false,
+  recoveryGate: false,
   crashDraft: {
     load: vi.fn(async () => null),
     save: vi.fn(async () => undefined),
@@ -41,7 +42,7 @@ vi.mock('../auth/AuthGate', () => ({
   AuthGate: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock('../components/cloud/CloudPendingRecoveryBoundary', () => ({
-  CloudPendingRecoveryBoundary: ({ children }: { children: (hasUnresolvedPendingCommands: boolean) => ReactNode }) => children(false),
+  CloudPendingRecoveryBoundary: ({ children }: { children: (hasUnresolvedPendingCommands: boolean) => ReactNode }) => <div inert={appMocks.recoveryGate}>{children(false)}</div>,
 }));
 
 vi.mock('../components/cloud/CloudStudentsPage', () => ({
@@ -226,6 +227,18 @@ describe('cloud navigation contract', () => {
     fireEvent.keyDown(window, { key: 'F4' });
     expect(screen.getByLabelText('日期選擇')).toBe(input);
     expect(input.value).toBe('2026-10-20');
+  });
+
+  it('keeps a mounted page in place while the recovery boundary is inert', () => {
+    appMocks.cloudModeValid = true;
+    appMocks.recoveryGate = true;
+    const view = render(<App />);
+    const event = new KeyboardEvent('keydown', { key: 'F3', bubbles: true, cancelable: true });
+    act(() => window.dispatchEvent(event));
+    expect(event.defaultPrevented).toBe(true);
+    appMocks.recoveryGate = false;
+    view.rerender(<App />);
+    expect(screen.getByRole('region', { name: 'mock students page' })).toBeVisible();
   });
 
   it('intercepts browser F5 while recovery locks navigation and preserves native modifiers', () => {
