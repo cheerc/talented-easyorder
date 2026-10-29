@@ -888,7 +888,7 @@ export function CloudReportPage({
     <>
     <section className="cloud-report" aria-label="雲端報表">
       <header className="cloud-report__header">
-        <div><p className="cloud-report__eyebrow">F2 · 完整伺服器快照</p><h2>雲端報表</h2>
+        <div><p className="cloud-report__eyebrow" hidden>F2 · 完整伺服器快照</p><h2>雲端報表</h2>
           <p>日期範圍由伺服器台北日期 {leaseToday || '讀取中'} 推導；僅在報表與稽核資料版本一致時顯示。</p></div>
         {snapshot && <strong>來源序號 H={snapshot.report.sourceSeq}</strong>}
       </header>
@@ -916,7 +916,15 @@ export function CloudReportPage({
 
       {loading && <p role="status">正在由伺服器讀取完整交易前綴與稽核資料；目前不提供餘額或輸出。</p>}
       {!loading && snapshot && query && <>
-        <p className="cloud-report__snapshot" data-testid="report-ready">完整資料已確認：dataset {snapshot.report.datasetId} · {query.range.startDate}–{query.range.endDate} · {query.studentId ? `帳戶 ${query.studentId}` : '全部帳戶'} · 來源序號 H={snapshot.report.sourceSeq}</p>
+        <p className="cloud-report__snapshot" data-testid="report-ready">資料已確認：{query.range.startDate}–{query.range.endDate} · {query.studentId ? `帳戶 ${query.studentId}` : '全部帳戶'} · 來源序號 H={snapshot.report.sourceSeq}</p>
+        <details className="cloud-report__details">
+          <summary>資料詳情</summary>
+          <dl>
+            <dt>dataset</dt><dd>{snapshot.report.datasetId}</dd>
+            <dt>查詢區間</dt><dd>{query.range.startDate} 至 {query.range.endDate}</dd>
+            <dt>版本核對</dt><dd>報表與稽核來源序號須一致才可匯出</dd>
+          </dl>
+        </details>
 
         <section aria-labelledby="cloud-report-summary-heading" className="cloud-report__section">
           <div className="cloud-report__section-heading"><h3 id="cloud-report-summary-heading">區間日摘要</h3><button type="button" disabled={controlsLocked || !onOpenDayClose}
