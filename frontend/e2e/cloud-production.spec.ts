@@ -895,7 +895,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       await page.getByLabel('搜尋編號、姓名或別名').fill('006');
       await page.getByTestId('search-result-006').click();
       await expect(page.getByTestId('selected-student-card')).toContainText('陳小美');
-      await page.getByRole('button', { name: '繳費（W）' }).click();
+      await page.getByRole('button', { name: '繳費' }).click();
       await page.getByLabel('繳費金額（必填）').fill('200');
       await page.getByTestId('submit-order-button').click();
       await expect(page.getByText(/已確認 006 陳小美 繳費 \$200 完成/)).toBeVisible();
@@ -1016,7 +1016,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       await page.getByLabel('搜尋編號、姓名或別名').fill('007');
       await page.getByTestId('search-result-007').click();
       await expect(page.getByTestId('selected-student-card')).toContainText('林退款');
-      await page.getByRole('button', { name: '繳費（W）' }).click();
+      await page.getByRole('button', { name: '繳費' }).click();
       await page.getByTestId('open-refund-button').click();
       const refundForm = page.getByRole('form', { name: '退款' });
       await expect(refundForm.getByLabel('退款金額（必填）')).toHaveValue('150');
@@ -1112,7 +1112,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       // 3. 繳費 $200 後 5 秒內撤回：餘額與現金回復
       await page.getByLabel('搜尋編號、姓名或別名').fill('008');
       await page.getByTestId('search-result-008').click();
-      await page.getByRole('button', { name: '繳費（W）' }).click();
+      await page.getByRole('button', { name: '繳費' }).click();
       await page.getByLabel(/繳費金額/).fill('200');
       await page.getByTestId('submit-order-button').click();
       await expect(page.getByText(/已確認 008 林更正 繳費 \$200 完成/)).toBeVisible();
@@ -1474,7 +1474,7 @@ test.describe('P11c2b Cloud Backfill', () => {
       await expect(orders.getByTestId('backfill-tag-recent-901')).toContainText('回填');
       await orders.getByLabel('搜尋編號、姓名或別名').fill('901');
       await orders.getByTestId('search-result-901').click();
-      await orders.getByRole('button', { name: '繳費（W）' }).click();
+      await orders.getByRole('button', { name: '繳費' }).click();
       await expect(orders.getByTestId('open-refund-button')).toBeDisabled();
       await expect(orders.getByTestId('backfill-refund-note')).toBeVisible();
 
@@ -1602,7 +1602,7 @@ test.describe('P11c3 Cloud Backfill Align', () => {
         await expect(orders.getByTestId('backfill-banner')).toContainText(`正在回填 ${gap}`);
         await orders.getByLabel('搜尋編號、姓名或別名').fill('902');
         await orders.getByTestId('search-result-902').click();
-        await orders.getByRole('button', { name: '繳費（W）' }).click();
+        await orders.getByRole('button', { name: '繳費' }).click();
         await orders.getByLabel(/繳費金額/).fill(amount);
         // P13d2: the paper number of each backfilled payment, typed in its own field.
         await orders.getByLabel(/紙本號/).fill(`A-02${amount}`);

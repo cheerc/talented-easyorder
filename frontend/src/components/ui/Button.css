@@ -31,6 +31,30 @@
   border-color: var(--accent);
 }
 
+.btn-secondary {
+  background: var(--surface-sunken);
+  border-color: var(--line);
+  color: var(--ink);
+}
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--ink-3);
+}
+
+.btn-outline {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--ink-2);
+}
+.btn-outline:hover:not(:disabled) {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+
+.btn-ui:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .btn-danger {
   background: var(--warn);
   color: #fff;

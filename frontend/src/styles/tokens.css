@@ -13,6 +13,17 @@
   --warn: oklch(58% 0.18 32);
   --warn-soft: oklch(96% 0.04 32);
   --pos: oklch(58% 0.14 230);
+  /* 輸入欄／次要區底、細線分區等非卡片表面 */
+  --surface-sunken: #f1f1ee;
+  /* 焦點環顏色；樣式處用 2px 外框＋2px offset */
+  --focus-ring: var(--accent);
+  /* --danger 與 --warn 是兩個獨立語意：danger＝錯誤說明，warn＝需注意（如欠款） */
+  --danger: #b3261e;
+  --danger-soft: #fdeceb;
+  --success: oklch(52% 0.14 152);
+  --success-soft: oklch(96% 0.04 152);
+  /* 13px 提示字；--ink-3 在淺色底只有 2.6:1，對比不足，故獨立一階 */
+  --ink-hint: #63696f;
   --shadow: 0 1px 0 rgba(0, 0, 0, .02), 0 8px 24px -16px rgba(0, 0, 0, .08);
   --r: 10px;
   --r-lg: 16px;
@@ -33,6 +44,13 @@
   --warn: oklch(70% 0.20 32);
   --warn-soft: oklch(28% 0.06 32);
   --shadow: 0 1px 0 rgba(255, 255, 255, .02), 0 8px 24px -16px rgba(0, 0, 0, .4);
+  --surface-sunken: #12151a;
+  --focus-ring: var(--accent);
+  --danger: #ff9b92;
+  --danger-soft: #2a1614;
+  --success: oklch(78% 0.14 152);
+  --success-soft: oklch(28% 0.06 152);
+  --ink-hint: #9aa3af;
 }
 
 [data-theme="warm"] {
@@ -48,4 +66,11 @@
   --accent-soft: oklch(94% 0.04 60);
   --warn: oklch(56% 0.18 28);
   --warn-soft: oklch(94% 0.05 28);
+  --surface-sunken: #f2ebdd;
+  --focus-ring: var(--accent);
+  --danger: #b3261e;
+  --danger-soft: #fdeceb;
+  --success: oklch(46% 0.12 152);
+  --success-soft: oklch(94% 0.04 152);
+  --ink-hint: #6f6353;
 }

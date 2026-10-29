@@ -48,9 +48,9 @@ vi.mock('../components/cloud/CloudPendingRecoveryBoundary', () => ({
 }));
 
 vi.mock('../components/cloud/CloudOrdersPage', () => ({
-  CloudOrdersPage: function Orders({ onViewDayChange }: { onViewDayChange?: (date: string, backfill: boolean) => void }) {
+  CloudOrdersPage: function Orders({ onViewDayChange, onOpenSettings }: { onViewDayChange?: (date: string, backfill: boolean) => void; onOpenSettings?: () => void }) {
     const [selected, setSelected] = useState(false);
-    return <section aria-label="mock orders page"><button onClick={() => onViewDayChange?.('2026-10-01', true)}>測試補登日</button>{selected
+    return <section aria-label="mock orders page"><button onClick={() => onViewDayChange?.('2026-10-01', true)}>測試補登日</button><button onClick={() => onOpenSettings?.()}>到今日設定</button>{selected
       ? <form aria-label="訂餐"><input aria-label="金額" /></form>
       : <><input id="cloud-student-search" aria-label="搜尋" /><button onClick={() => setSelected(true)}>選擇學生</button></>}
     </section>;
@@ -184,6 +184,17 @@ describe('App mode gate', () => {
     expect(screen.getByRole('region', { name: 'mock cloud report page' })).toBeVisible();
     fireEvent.keyDown(window, { key: 'F5' });
     expect(screen.getByRole('region', { name: 'mock cloud account history page' })).toBeVisible();
+  });
+
+  it('opens today settings from the counter page without leaving the cloud shell', () => {
+    appMocks.cloudModeValid = true;
+    render(<App />);
+
+    fireEvent.keyDown(window, { key: 'F1' });
+    expect(screen.getByRole('region', { name: 'mock orders page' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '到今日設定' }));
+    expect(screen.getByRole('region', { name: 'mock day vendors page' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '菜單與開帳' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('keeps a same-scope authorization latch until the lease epoch or UID changes', () => {

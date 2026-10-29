@@ -1,132 +1,234 @@
+/* 櫃台頁（P3）：只用語意 token，不寫 hex；卡片只有一層。 */
+
 .cloud-orders {
-  /* 既有白色櫃台卡片須在深色主題下保留深色文字；完整配色收斂留待 P3。 */
-  color: #15181c;
+  color: var(--ink);
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 16px;
   width: 100%;
-  max-width: 1400px;
+  max-width: 1600px;
   margin: 0 auto;
 }
 
+/* ============ 頁首 ============ */
+
 .cloud-orders__header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  align-items: center;
-  background: var(--bg-card, #ffffff);
-  border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: 8px;
-  padding: 1rem 1.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  align-items: baseline;
+  gap: 8px 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cloud-orders__header-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
 }
 
 .cloud-orders__header-info h2 {
-  margin: 0 0 0.25rem 0;
-  font-size: 1.25rem;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.cloud-orders__date-label {
+  font-size: 13px;
+  color: var(--ink-hint);
+  font-variant-numeric: tabular-nums;
+}
+
+.cloud-orders__day-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
 }
 
 .cloud-orders__topbar-counts {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  text-align: right;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin-bottom: 16px;
 }
 
 .cloud-orders__topbar-row {
   display: flex;
-  justify-content: flex-end;
-  gap: 1rem;
-  font-size: 1rem;
-  font-weight: 500;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
 }
 
 .cloud-orders__topbar-label {
-  color: var(--text-muted, #64748b);
-  max-width: 250px;
+  color: var(--ink-hint);
+  max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .cloud-orders__topbar-number {
-  min-width: 2.5rem;
-  font-family: monospace;
-  font-weight: 700;
-  color: var(--text-main, #0f172a);
+  font-size: 18px;
+  font-weight: 600;
+  min-width: 1.5em;
+  text-align: right;
 }
+
+/* ============ 版面 ============ */
 
 .cloud-orders__content {
   display: grid;
-  grid-template-columns: minmax(0, 1.8fr) minmax(320px, 1fr);
-  gap: 1.5rem;
-}
-
-@media (max-width: 900px) {
-  .cloud-orders__content {
-    grid-template-columns: 1fr;
-  }
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+  gap: 16px;
+  align-items: start;
 }
 
 .cloud-orders__main-panel,
 .cloud-orders__side-panel {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 16px;
+  min-width: 0;
 }
 
+@media (max-width: 1279px) {
+  .cloud-orders__content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ============ 卡片 ============ */
+
 .cloud-orders__card {
-  background: var(--bg-card, #ffffff);
-  border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: 8px;
-  padding: 1.25rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.cloud-orders__card > h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* ============ 搜尋 ============ */
+
+.cloud-orders__idle-row {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+}
+
+.cloud-orders__idle-row .cloud-orders__search-group {
+  flex: 1;
+  min-width: 0;
+}
+
+.cloud-orders__idle-row .cloud-orders__actions .btn-ui {
+  min-height: 64px;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .cloud-orders__idle-row {
+    flex-wrap: wrap;
+  }
+
+  .cloud-orders__idle-row .cloud-orders__search-group {
+    flex-basis: 100%;
+  }
 }
 
 .cloud-orders__search-group {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 12px;
+}
+
+.cloud-orders__search-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}
+
+.cloud-orders__search-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.cloud-orders__search-field:focus-within {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 4px var(--line-2);
+}
+
+.cloud-orders__search-prefix {
+  font-size: 24px;
+  color: var(--ink-3);
 }
 
 .cloud-orders__search-input {
-  width: 100%;
-  font-size: 1.125rem;
-  padding: 0.75rem 1rem;
-  border: 2px solid var(--border-color, #cbd5e1);
-  border-radius: 6px;
-  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  padding: 16px 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 28px;
+  font-weight: 500;
+  outline: none;
 }
 
-.cloud-orders__search-input:focus {
-  border-color: var(--primary, #2563eb);
-  outline: none;
+.cloud-orders__search-input::placeholder {
+  color: var(--ink-3);
+  font-weight: 400;
+  font-size: 16px;
+}
+
+.cloud-orders__search-enter {
+  color: var(--ink-hint);
 }
 
 .cloud-orders__search-dropdown {
   position: absolute;
-  top: 100%;
+  top: calc(100% - 8px);
   left: 0;
   right: 0;
   z-index: 20;
-  background: #ffffff;
-  border: 1px solid var(--border-color, #cbd5e1);
-  border-radius: 6px;
-  margin-top: 4px;
-  max-height: 260px;
-  overflow-y: auto;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  list-style: none;
+  margin: 0;
   padding: 0;
+  list-style: none;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
 }
 
 .cloud-orders__search-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.75rem 1rem;
+  gap: 16px;
+  padding: 12px 16px;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--line-2);
   cursor: pointer;
-  border-bottom: 1px solid #f1f5f9;
 }
 
 .cloud-orders__search-item:last-child {
@@ -135,255 +237,327 @@
 
 .cloud-orders__search-item:hover,
 .cloud-orders__search-item[data-highlighted="true"] {
-  background-color: #f8fafc;
+  background: var(--line-2);
+  border-left-color: var(--accent);
 }
 
 .cloud-orders__search-item--inactive {
   opacity: 0.6;
 }
 
-.cloud-orders__student-badge {
-  display: inline-block;
-  padding: 0.125rem 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  border-radius: 9999px;
-  background: #ef4444;
-  color: #ffffff;
-  margin-left: 0.5rem;
+.cloud-orders__search-item-name {
+  font-size: 16px;
 }
+
+.cloud-orders__search-item-balance {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cloud-orders__menu-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px;
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink-2);
+}
+
+.cloud-orders__menu-summary strong,
+.cloud-orders__menu-summary > .mono {
+  color: var(--ink);
+  font-size: 28px;
+  font-weight: 600;
+}
+
+/* ============ 已選學員 ============ */
 
 .cloud-orders__selected-student {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
   align-items: center;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  padding: 0.875rem 1rem;
+  gap: 12px 24px;
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--line);
 }
 
 .cloud-orders__selected-info {
   display: flex;
-  align-items: center;
-  gap: 1rem;
-  font-size: 1.125rem;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
 }
+
+.cloud-orders__selected-code {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.cloud-orders__selected-name {
+  font-size: 32px;
+  font-weight: 500;
+}
+
+.cloud-orders__selected-balance {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: auto;
+  text-align: right;
+}
+
+.cloud-orders__money {
+  font-size: 28px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============ 模式切換（segmented） ============ */
 
 .cloud-orders__mode-selector {
   display: flex;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 16px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
 }
 
 .cloud-orders__mode-btn {
-  flex: 1;
-  padding: 0.75rem 1rem;
-  font-size: 1rem;
-  font-weight: 600;
-  border: 2px solid #cbd5e1;
-  background: #f8fafc;
-  border-radius: 6px;
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.cloud-orders__mode-btn:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--line-2);
 }
 
 .cloud-orders__mode-btn[aria-pressed="true"] {
-  border-color: #2563eb;
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--ink);
+  box-shadow: var(--shadow);
 }
 
-.cloud-orders__form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.cloud-orders__field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-}
-
-.cloud-orders__field label {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #475569;
-}
-
-.cloud-orders__field input {
-  padding: 0.625rem 0.75rem;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  font-size: 1rem;
-}
-
-.cloud-orders__preview-bar {
-  display: flex;
-  justify-content: space-around;
-  background: #f1f5f9;
-  border-radius: 6px;
-  padding: 0.75rem;
-  margin-bottom: 1rem;
-  font-size: 0.95rem;
-}
-
-.cloud-orders__actions {
-  display: flex;
-  gap: 0.75rem;
-}
-
-.cloud-orders__btn-primary {
-  flex: 2;
-  padding: 0.75rem 1.5rem;
-  background: #2563eb;
-  color: #ffffff;
-  border: none;
-  border-radius: 6px;
-  font-size: 1.125rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.cloud-orders__btn-primary:hover:not(:disabled) {
-  background: #1d4ed8;
-}
-
-.cloud-orders__btn-primary:disabled {
-  opacity: 0.5;
+.cloud-orders__mode-btn:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-.cloud-orders__btn-secondary {
-  flex: 1;
-  padding: 0.75rem 1rem;
-  background: #f8fafc;
-  color: #334155;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
+/* ============ 結帳明細 + 輸入 ============ */
+
+.cloud-orders__bento-info {
+  margin: 0 0 16px;
+  font-size: 16px;
+  color: var(--ink-2);
 }
 
-.cloud-orders__btn-secondary:hover:not(:disabled) {
-  background: #f1f5f9;
+.cloud-orders__bento-info p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px;
+  margin: 0;
 }
 
-.cloud-orders__recent-list {
-  list-style: none;
-  padding: 0;
+.cloud-orders__bento-price {
+  font-size: 20px;
+  color: var(--ink);
+}
+
+.cloud-orders__menu-unavailable {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-2);
+}
+
+.cloud-orders__checkout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .cloud-orders__checkout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.cloud-orders__breakdown {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
 }
 
-.cloud-orders__recent-item {
+.cloud-orders__breakdown-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 0.75rem 1rem;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  cursor: pointer;
+  align-items: baseline;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-2);
 }
 
-.cloud-orders__recent-item:hover {
-  background: #f1f5f9;
-  border-color: #cbd5e1;
+.cloud-orders__breakdown-row dt {
+  font-size: 15px;
+  color: var(--ink-hint);
 }
 
-.cloud-orders__recent-badge {
-  font-size: 0.85rem;
-  color: #475569;
-  background: #e2e8f0;
-  padding: 0.2rem 0.6rem;
-  border-radius: 4px;
-}
-
-.cloud-orders__modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-
-.cloud-orders__modal {
-  background: #ffffff;
-  border-radius: 8px;
-  padding: 1.5rem;
-  width: 90%;
-  max-width: 560px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-}
-
-.cloud-orders__table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 1rem 0;
-}
-
-.cloud-orders__table th,
-.cloud-orders__table td {
-  padding: 0.625rem 0.75rem;
-  text-align: left;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.cloud-orders__table th {
-  background: #f8fafc;
-  color: #475569;
-  font-weight: 600;
-}
-
-.cloud-orders__notice {
-  background: #ecfdf5;
-  color: #065f46;
-  border: 1px solid #a7f3d0;
-  border-radius: 6px;
-  padding: 0.75rem 1rem;
-}
-
-.cloud-orders__error {
-  background: #fef2f2;
-  color: #991b1b;
-  border: 1px solid #fecaca;
-  border-radius: 6px;
-  padding: 0.75rem 1rem;
-}
-
-.cloud-orders__debt {
-  color: #dc2626;
-}
-
-.cloud-orders__muted {
-  color: #64748b;
-}
-
-.cloud-orders__cash-list {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.35rem 1rem;
-  margin: 0 0 0.75rem;
-}
-
-.cloud-orders__cash-list dt {
-  color: #475569;
-}
-
-.cloud-orders__cash-list dd {
+.cloud-orders__breakdown-row dd {
   margin: 0;
+  font-size: 20px;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-/* P10a：撤回列、作廢列與列上的修改按鈕 */
+.cloud-orders__breakdown-row--total {
+  border-bottom: none;
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+  padding-top: 12px;
+}
+
+.cloud-orders__breakdown-row--total dt {
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.cloud-orders__breakdown-row--total dd {
+  font-size: 32px;
+  font-weight: 600;
+}
+
+.cloud-orders__entry {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ============ 欄位 ============ */
+
+.cloud-orders__field,
+.cloud-orders__form-grid .cloud-orders__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cloud-orders__field-label,
+.cloud-orders__field label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}
+
+.cloud-orders__field input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cloud-orders__field input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.cloud-orders__form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px 16px;
+  margin-bottom: 16px;
+}
+
+/* ============ 按鈕列 ============ */
+
+.cloud-orders__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.cloud-orders__actions--submit {
+  margin-top: 16px;
+}
+
+.cloud-orders__actions--submit .btn-ui[type="submit"] {
+  flex: 2 1 240px;
+  min-height: 52px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.cloud-orders__actions--submit .btn-ghost {
+  flex: 1 1 140px;
+}
+
+/* ============ 提示與狀態 ============ */
+
+.cloud-orders__hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-hint);
+}
+
+.cloud-orders__muted {
+  color: var(--ink-hint);
+  font-size: 15px;
+}
+
+.cloud-orders__notice {
+  background: var(--success-soft);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 12px 16px;
+  font-size: 15px;
+}
+
+.cloud-orders__error {
+  background: var(--danger-soft);
+  color: var(--ink);
+  border: 1px solid var(--danger);
+  border-radius: var(--r);
+  padding: 12px 16px;
+  font-size: 15px;
+}
+
+.cloud-orders__debt {
+  color: var(--warn);
+}
+
 .cloud-orders__undo-bar {
   display: flex;
   align-items: center;
@@ -392,8 +566,72 @@
   flex-wrap: wrap;
 }
 
+/* ============ 今日現金 / 最近帳戶 ============ */
+
+.cloud-orders__side-toggle {
+  display: none;
+}
+
+.cloud-orders__cash-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.cloud-orders__cash-list dt {
+  color: var(--ink-hint);
+}
+
+.cloud-orders__cash-list dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cloud-orders__recent-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cloud-orders__recent-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--line-2);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cloud-orders__recent-item:last-child {
+  border-bottom: none;
+}
+
+li.cloud-orders__recent-item {
+  cursor: pointer;
+}
+
+li.cloud-orders__recent-item:hover {
+  background: var(--line-2);
+}
+
+.cloud-orders__recent-badge {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--ink-2);
+  background: var(--line-2);
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+
 .cloud-orders__row--voided {
-  color: var(--color-text-muted, #6b7280);
+  color: var(--ink-hint);
   text-decoration: line-through;
 }
 
@@ -404,48 +642,212 @@
 
 .cloud-orders__row-actions {
   display: inline-flex;
-  gap: 6px;
+  gap: 4px;
 }
 
-.cloud-orders__day-switch {
-  display: inline-flex;
+.cloud-orders__row-actions button {
+  min-height: 36px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cloud-orders__row-actions button:hover:not(:disabled) {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+
+@media (max-width: 1279px) {
+  .cloud-orders__side-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 16px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    color: var(--ink-2);
+    font-family: inherit;
+    font-size: 15px;
+    cursor: pointer;
+  }
+
+  .cloud-orders__side-panel[data-side-open="false"] .cloud-orders__side-body {
+    display: none;
+  }
+}
+
+.cloud-orders__side-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ============ 對話框 ============ */
+
+.cloud-orders__modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in oklab, var(--ink) 45%, transparent);
+  display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-left: 1rem;
+  justify-content: center;
+  padding: 24px;
+  z-index: 100;
+}
+
+.cloud-orders__modal {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 24px;
+  width: 100%;
+  max-width: 560px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow);
+  font-size: 15px;
+}
+
+.cloud-orders__modal h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.cloud-orders__modal .cloud-orders__actions {
+  margin-top: 16px;
+}
+
+/* ============ 表格 ============ */
+
+.cloud-orders__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 15px;
+}
+
+.cloud-orders__table th,
+.cloud-orders__table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.cloud-orders__table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-sunken);
+  color: var(--ink-hint);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cloud-orders__table tbody tr {
+  height: 44px;
+}
+
+.cloud-orders__table tbody tr:hover {
+  background: var(--line-2);
+}
+
+/* 金額欄（餐費／收款／退款）右對齊並用等寬數字 */
+.cloud-orders__table th:nth-child(3),
+.cloud-orders__table th:nth-child(4),
+.cloud-orders__table th:nth-child(5),
+.cloud-orders__table td:nth-child(3),
+.cloud-orders__table td:nth-child(4),
+.cloud-orders__table td:nth-child(5) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ============ 標籤 ============ */
+
+.cloud-orders__student-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 10px;
+  border-radius: 999px;
+  background: var(--danger-soft);
+  color: var(--ink);
+  border: 1px solid var(--danger);
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .cloud-orders__backfill-banner {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem;
-  margin: 0.75rem 0;
-  padding: 0.75rem 1rem;
-  border: 2px solid #b45309;
-  border-radius: 8px;
-  background: #fef3c7;
-  color: #451a03;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--warn);
+  border-radius: var(--r);
+  background: var(--warn-soft);
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.cloud-orders__backfill-tag,
+.cloud-orders__paper-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .cloud-orders__backfill-tag {
-  display: inline-block;
-  margin-left: 0.5rem;
-  padding: 0 0.5rem;
-  border-radius: 999px;
-  background: #b45309;
-  color: #fff;
-  font-size: 0.8em;
-  font-weight: 600;
+  background: var(--warn);
+  color: var(--panel);
 }
 
 .cloud-orders__paper-tag {
-  display: inline-block;
-  margin-left: 0.5rem;
-  padding: 0 0.5rem;
-  border: 1px solid #1d4ed8;
-  border-radius: 999px;
-  background: #eff6ff;
-  color: #1e3a8a;
-  font-size: 0.8em;
-  font-weight: 600;
+  border: 1px solid var(--line);
+  background: var(--surface-sunken);
+  color: var(--ink-2);
+}
+
+/* ============ 預覽列（退款、修改、付款明細） ============ */
+
+.cloud-orders__preview-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin: 12px 0;
+  padding: 12px 16px;
+  background: var(--surface-sunken);
+  border-radius: var(--r);
+  font-size: 15px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============ 焦點 ============ */
+
+.cloud-orders button:focus-visible,
+.cloud-orders select:focus-visible,
+.cloud-orders summary:focus-visible,
+.cloud-orders [role="option"]:focus-visible,
+.cloud-orders .cloud-orders__search-input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cloud-orders * {
+    transition: none;
+  }
 }
