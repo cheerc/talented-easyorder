@@ -8,7 +8,7 @@
  * 3. 改號退款後，撤回按鈕在真實倒數 5 秒後消失，退款及餘額保留。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within, waitFor, cleanup } from '@testing-library/react';
+import { act, render, screen, within, waitFor, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createStore } from 'zustand/vanilla';
 import { persist } from 'zustand/middleware';
@@ -101,6 +101,16 @@ async function refundInApp(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('完整 App 跨功能整合與真實 Persist 測試', () => {
+  it('以實體 Option 數字鍵從輸入欄切換設定且不輸入符號', async () => {
+    render(<App />);
+    const search = await screen.findByLabelText('輸入學員編號或姓名');
+    search.focus();
+    const event = new KeyboardEvent('keydown', { key: '£', code: 'Digit3', altKey: true, bubbles: true, cancelable: true });
+    act(() => { search.dispatchEvent(event); });
+    expect(event.defaultPrevented).toBe(true);
+    expect(await screen.findByRole('button', { name: '編輯 005' })).toBeVisible();
+  });
+
   it('保留櫃台草稿直到確認捨棄，並在取消離開後繼續編輯', async () => {
     render(<App />);
     const user = userEvent.setup();
