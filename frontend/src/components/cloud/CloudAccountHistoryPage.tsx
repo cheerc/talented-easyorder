@@ -849,9 +849,15 @@ export function CloudAccountHistoryPage({
                 <td>{transaction.afterBalance === undefined || transaction.balanceApplicability !== 'verified' ? '未驗證' : formatMoney(transaction.afterBalance)}</td>
                 <td>{transaction.status === 'voided' ? '已作廢（保留原列）' : '有效'}{transaction.backfilled ? ' · 回填' : ''}</td>
                 <td>{day?.status ?? '無日文件'}{day?.lastSettlementRevision ? ` · 曾關帳第 ${day.lastSettlementRevision} 版` : ''}</td>
-                <td>{eligible ? <><button type="button" disabled={Boolean(visibleFrozen)} onClick={() => openDraft(transaction, 'correct')}>更正</button>
-                  <button type="button" disabled={Boolean(visibleFrozen)} onClick={() => openDraft(transaction, 'void')}>作廢</button></>
-                  : <span>{day?.status === 'closed' || day?.lastSettlementRevision ? '唯讀；現金差額請到日結補記' : '唯讀'}</span>}</td>
+                <td>{eligible ? (
+                  <details className="cloud-account-history__more">
+                    <summary aria-label={`${transaction.transactionId} 的其他操作`}>⋯</summary>
+                    <div className="cloud-account-history__more-menu">
+                      <button type="button" disabled={Boolean(visibleFrozen)} onClick={() => openDraft(transaction, 'correct')}>更正</button>
+                      <button type="button" disabled={Boolean(visibleFrozen)} onClick={() => openDraft(transaction, 'void')}>作廢</button>
+                    </div>
+                  </details>
+                ) : <span>{day?.status === 'closed' || day?.lastSettlementRevision ? '唯讀；現金差額請到日結補記' : '唯讀'}</span>}</td>
               </tr>;
             })}
           </tbody></table></div>

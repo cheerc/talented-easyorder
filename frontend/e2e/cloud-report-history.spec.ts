@@ -881,6 +881,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
       try {
         captureFirestoreNetwork = true;
         await capturePageState('before-correction');
+        await activeHistoricalRow.locator('details.cloud-account-history__more > summary').click();
         await activeHistoricalRow.getByRole('button', { name: '更正' }).click();
         await page.getByLabel('更正收款金額').fill('105');
         await page.getByLabel('更正理由').fill('P12c L07 historical correction');
@@ -1080,6 +1081,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
       const headBefore = await readyHead();
 
       const row = page.locator('section[aria-labelledby="account-transactions-heading"]').getByRole('row').filter({ hasText: transactionId });
+      await row.locator('details.cloud-account-history__more > summary').click();
       await row.getByRole('button', { name: '更正' }).click();
       await page.getByLabel('更正收款金額').fill('105');
       await page.getByLabel('更正理由').fill('P13b2b3c held correction');

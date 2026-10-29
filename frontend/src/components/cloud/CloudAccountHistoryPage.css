@@ -50,3 +50,50 @@
   .cloud-account-history { width: calc(100% - 16px); padding: 16px; }
   .cloud-account-history__header { flex-direction: column; }
 }
+
+.cloud-account-history__more {
+  position: relative;
+}
+
+.cloud-account-history__more > summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--panel);
+  color: var(--ink-2);
+  cursor: pointer;
+  list-style: none;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.cloud-account-history__more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.cloud-account-history__more > summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.cloud-account-history__more-menu {
+  display: grid;
+  gap: 6px;
+  min-width: 120px;
+  margin-top: 6px;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+}
+
+.cloud-account-history__more-menu button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
