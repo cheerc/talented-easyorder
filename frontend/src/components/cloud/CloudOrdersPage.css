@@ -120,6 +120,32 @@
 
 /* ============ 搜尋 ============ */
 
+.cloud-orders__idle-row {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+}
+
+.cloud-orders__idle-row .cloud-orders__search-group {
+  flex: 1;
+  min-width: 0;
+}
+
+.cloud-orders__idle-row .cloud-orders__actions .btn-ui {
+  min-height: 64px;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .cloud-orders__idle-row {
+    flex-wrap: wrap;
+  }
+
+  .cloud-orders__idle-row .cloud-orders__search-group {
+    flex-basis: 100%;
+  }
+}
+
 .cloud-orders__search-group {
   position: relative;
   display: flex;
@@ -239,8 +265,11 @@
   color: var(--ink-2);
 }
 
-.cloud-orders__menu-summary strong {
+.cloud-orders__menu-summary strong,
+.cloud-orders__menu-summary > .mono {
   color: var(--ink);
+  font-size: 28px;
+  font-weight: 600;
 }
 
 /* ============ 已選學員 ============ */
@@ -250,6 +279,9 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 12px 24px;
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--line);
 }
 
 .cloud-orders__selected-info {
@@ -265,7 +297,7 @@
 }
 
 .cloud-orders__selected-name {
-  font-size: 24px;
+  font-size: 32px;
   font-weight: 500;
 }
 

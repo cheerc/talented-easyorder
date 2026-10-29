@@ -1789,91 +1789,74 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
             {orderingBlocked && (
               <div className="cloud-orders__error" role="alert" data-testid="ordering-blocked">{orderingBlocked}</div>
             )}
-            <div className="cloud-orders__card cloud-orders__search-card">
-              <div className="cloud-orders__topbar-counts" data-testid="cloud-topbar-counts">
-                <div className="cloud-orders__topbar-row" data-testid="cloud-topbar-bento">
-                  <span className="cloud-orders__topbar-label" title={todayMenu ? todayMenu.itemName : '未設定'}>
-                    {backfillView ? '當日餐點' : '今日餐點'}（{todayMenu ? todayMenu.itemName : '未設定'}）
-                  </span>
-                  <span className="cloud-orders__topbar-number mono">{bentoCount}</span>
-                </div>
-                <div className="cloud-orders__topbar-row" data-testid="cloud-topbar-other">
-                  <span className="cloud-orders__topbar-label">其他餐點</span>
-                  <span className="cloud-orders__topbar-number mono">{otherMealCount}</span>
-                </div>
-              </div>
-              {!selectedStudent ? (
-                <div className="cloud-orders__search-group">
-                  <label className="cloud-orders__search-label" htmlFor="cloud-student-search">搜尋學員</label>
-                  <div className="cloud-orders__search-field">
-                    <span className="cloud-orders__search-prefix mono" aria-hidden="true">#</span>
-                    <input
-                      id="cloud-student-search"
-                      ref={searchInputRef}
-                      className="cloud-orders__search-input mono"
-                      type="text"
-                      placeholder="輸入編號、姓名或別名..."
-                      value={page.search}
-                      onChange={event => {
-                        const value = event.target.value;
-                        setHighlight(0);
-                        setPageStateRaw(previous => ({ ...previous, search: value }));
-                      }}
-                      aria-label="搜尋編號、姓名或別名"
-                      autoComplete="off"
-                      role="combobox"
-                      aria-expanded={visibleStudents.length > 0}
-                      aria-controls="cloud-search-results"
-                      aria-activedescendant={visibleStudents.length ? `cloud-search-option-${activeIndex}` : undefined}
-                      onKeyDown={event => {
-                        if (event.defaultPrevented || event.repeat || event.nativeEvent.isComposing || composingRef.current
-                          || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
-                        if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && visibleStudents.length) {
-                          event.preventDefault();
-                          setHighlight(index => Math.max(0, Math.min(visibleStudents.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1))));
-                        } else if (event.key === 'Enter' && visibleStudents.length) {
-                          event.preventDefault(); event.stopPropagation(); selectStudent(visibleStudents[activeIndex]);
-                        }
-                      }}
-                      disabled={busy}
-                    />
-                    <span className="cloud-orders__search-enter" aria-hidden="true"><Kbd>Enter</Kbd></span>
+            {!selectedStudent && (
+              <>
+                <div className="cloud-orders__idle-row">
+                  <div className="cloud-orders__search-group">
+                    <label className="cloud-orders__search-label" htmlFor="cloud-student-search">搜尋學員</label>
+                    <div className="cloud-orders__search-field">
+                      <span className="cloud-orders__search-prefix mono" aria-hidden="true">#</span>
+                      <input
+                        id="cloud-student-search"
+                        ref={searchInputRef}
+                        className="cloud-orders__search-input mono"
+                        type="text"
+                        placeholder="輸入編號、姓名或別名..."
+                        value={page.search}
+                        onChange={event => {
+                          const value = event.target.value;
+                          setHighlight(0);
+                          setPageStateRaw(previous => ({ ...previous, search: value }));
+                        }}
+                        aria-label="搜尋編號、姓名或別名"
+                        autoComplete="off"
+                        role="combobox"
+                        aria-expanded={visibleStudents.length > 0}
+                        aria-controls="cloud-search-results"
+                        aria-activedescendant={visibleStudents.length ? `cloud-search-option-${activeIndex}` : undefined}
+                        onKeyDown={event => {
+                          if (event.defaultPrevented || event.repeat || event.nativeEvent.isComposing || composingRef.current
+                            || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+                          if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && visibleStudents.length) {
+                            event.preventDefault();
+                            setHighlight(index => Math.max(0, Math.min(visibleStudents.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1))));
+                          } else if (event.key === 'Enter' && visibleStudents.length) {
+                            event.preventDefault(); event.stopPropagation(); selectStudent(visibleStudents[activeIndex]);
+                          }
+                        }}
+                        disabled={busy}
+                      />
+                      <span className="cloud-orders__search-enter" aria-hidden="true"><Kbd>Enter</Kbd></span>
+                    </div>
+                    {filteredStudents.length > 0 && (
+                      <ul id="cloud-search-results" className="cloud-orders__search-dropdown" role="listbox">
+                        {visibleStudents.map((student, index) => (
+                          <li
+                            key={student.studentId}
+                            id={`cloud-search-option-${index}`}
+                            data-highlighted={index === activeIndex}
+                            className={`cloud-orders__search-item ${student.status === 'inactive' ? 'cloud-orders__search-item--inactive' : ''}`}
+                            onClick={() => selectStudent(student)}
+                            data-testid={`search-result-${student.studentCode}`}
+                            role="option"
+                            aria-selected={index === activeIndex}
+                          >
+                            <span className="cloud-orders__search-item-name">
+                              <strong className="mono">{student.studentCode}</strong> {student.displayName}
+                              {student.status === 'inactive' && <span className="cloud-orders__student-badge">已停用</span>}
+                            </span>
+                            <span className="cloud-orders__search-item-balance mono">結餘 ${student.currentBalance}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {visibleStudents.length > 0 && (
+                      <p className="cloud-orders__hint">↑↓ 選擇 · Enter 確認 · Esc 清除</p>
+                    )}
+                    {page.search.trim() && visibleStudents.length === 0 && (
+                      <p className="cloud-orders__hint" role="status">沒有符合的帳戶</p>
+                    )}
                   </div>
-                  {filteredStudents.length > 0 && (
-                    <ul id="cloud-search-results" className="cloud-orders__search-dropdown" role="listbox">
-                      {visibleStudents.map((student, index) => (
-                        <li
-                          key={student.studentId}
-                          id={`cloud-search-option-${index}`}
-                          data-highlighted={index === activeIndex}
-                          className={`cloud-orders__search-item ${student.status === 'inactive' ? 'cloud-orders__search-item--inactive' : ''}`}
-                          onClick={() => selectStudent(student)}
-                          data-testid={`search-result-${student.studentCode}`}
-                          role="option"
-                          aria-selected={index === activeIndex}
-                        >
-                          <span className="cloud-orders__search-item-name">
-                            <strong className="mono">{student.studentCode}</strong> {student.displayName}
-                            {student.status === 'inactive' && <span className="cloud-orders__student-badge">已停用</span>}
-                          </span>
-                          <span className="cloud-orders__search-item-balance mono">結餘 ${student.currentBalance}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {visibleStudents.length > 0 && (
-                    <p className="cloud-orders__hint">↑↓ 選擇 · Enter 確認 · Esc 清除</p>
-                  )}
-                  {page.search.trim() && visibleStudents.length === 0 && (
-                    <p className="cloud-orders__hint" role="status">沒有符合的帳戶</p>
-                  )}
-                  {todayMenu && (
-                    <p className="cloud-orders__menu-summary">
-                      {backfillView ? '當日餐點' : '今日餐點'}：<strong>{todayMenu.itemName}</strong>
-                      <span className="mono">${todayMenu.price}</span>
-                      <span className="cloud-orders__hint">已訂 <span className="mono">{bentoCount}</span> 份</span>
-                    </p>
-                  )}
                   {!page.cashOpen && (
                     <div className="cloud-orders__actions">
                       <Button
@@ -1887,29 +1870,29 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="cloud-orders__selected-student" data-testid="selected-student-card">
-                  <div className="cloud-orders__selected-info">
-                    <span className="cloud-orders__selected-code mono">{selectedStudent.studentCode}</span>
-                    <span className="cloud-orders__selected-name">{selectedStudent.displayName}</span>
-                    {selectedStudent.status === 'inactive' && <span className="cloud-orders__student-badge">已停用</span>}
-                  </div>
-                  <div className="cloud-orders__selected-balance">
-                    <span className="cloud-orders__field-label">目前餘額：</span>
-                    <span className={`cloud-orders__money mono${selectedStudent.currentBalance < 0 ? ' cloud-orders__debt' : ''}`}>
-                      {selectedStudent.currentBalance < 0
-                        ? `−$${Math.abs(selectedStudent.currentBalance)}`
-                        : `$${selectedStudent.currentBalance}`}
-                      {selectedStudent.currentBalance < 0 && <span className="cloud-orders__debt"> 欠款</span>}
-                    </span>
-                  </div>
-                    <Button variant="ghost" size="sm" onClick={cancelSelection} disabled={busy}>
-                      更換學員
-                    </Button>
+                <div className="cloud-orders__card cloud-orders__meal-card">
+                  <div className="cloud-orders__topbar-counts" data-testid="cloud-topbar-counts">
+                <div className="cloud-orders__topbar-row" data-testid="cloud-topbar-bento">
+                  <span className="cloud-orders__topbar-label" title={todayMenu ? todayMenu.itemName : '未設定'}>
+                    {backfillView ? '當日餐點' : '今日餐點'}（{todayMenu ? todayMenu.itemName : '未設定'}）
+                  </span>
+                  <span className="cloud-orders__topbar-number mono">{bentoCount}</span>
                 </div>
-              )}
-            </div>
-
+                <div className="cloud-orders__topbar-row" data-testid="cloud-topbar-other">
+                  <span className="cloud-orders__topbar-label">其他餐點</span>
+                  <span className="cloud-orders__topbar-number mono">{otherMealCount}</span>
+                </div>
+              </div>
+                  {todayMenu && (
+                    <p className="cloud-orders__menu-summary">
+                      {backfillView ? '當日餐點' : '今日餐點'}：<strong>{todayMenu.itemName}</strong>
+                      <span className="mono">${todayMenu.price}</span>
+                      <span className="cloud-orders__hint">已訂 <span className="mono">{bentoCount}</span> 份</span>
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
             {!selectedStudent && page.cashOpen && (
               <div className="cloud-orders__card" data-testid="cash-movement-card">
                 <form onSubmit={submitCashMovement} aria-label="櫃台收支">
@@ -2018,239 +2001,271 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
             )}
 
             {selectedStudent && (
-              <div className="cloud-orders__card">
-                {selectedStudent.status === 'inactive' && (
-                  <div className="cloud-orders__error" role="alert">此帳戶已停用，禁止新增餐點；仍可繳費或退款。</div>
-                )}
-                <form onSubmit={requestSubmit} aria-label={mode === 'payment' ? '繳費' : '訂餐'}>
-                  <div className="cloud-orders__mode-selector" role="group" aria-label="結帳模式">
-                    <button
-                      type="button"
-                      className="cloud-orders__mode-btn"
-                      aria-pressed={mode === 'bento'}
-                      onClick={() => setPageStateRaw(previous => ({ ...previous, mode: 'bento' }))}
-                      disabled={busy || selectedStudent.status === 'inactive'}
-                    >
-                      今日餐點 <span aria-hidden="true"><Kbd>Q</Kbd></span>
-                    </button>
-                    <button
-                      type="button"
-                      className="cloud-orders__mode-btn"
-                      aria-pressed={mode === 'payment'}
-                      onClick={() => setPageStateRaw(previous => ({ ...previous, mode: 'payment' }))}
-                      disabled={busy}
-                    >
-                      繳費 <span aria-hidden="true"><Kbd>W</Kbd></span>
-                    </button>
-                    <button
-                      type="button"
-                      className="cloud-orders__mode-btn"
-                      aria-pressed={page.paymentDetailsOpen}
-                      onClick={() => setPageStateRaw(previous => ({ ...previous, paymentDetailsOpen: true }))}
-                      disabled={busy}
-                      data-testid="open-payment-details-button"
-                    >
-                      付款明細 <span aria-hidden="true"><Kbd>E</Kbd></span>
-                    </button>
-                    <button
-                      type="button"
-                      className="cloud-orders__mode-btn"
-                      aria-pressed={mode === 'other'}
-                      onClick={() => setPageStateRaw(previous => ({ ...previous, mode: 'other' }))}
-                      disabled={busy || selectedStudent.status === 'inactive'}
-                    >
-                      其他餐點 <span aria-hidden="true"><Kbd>R</Kbd></span>
-                    </button>
-                  </div>
-
-                  {mode === 'bento' && (
-                    <div className="cloud-orders__bento-info">
-                      {todayMenu ? (
-                        <p>
-                          品名：<strong>{todayMenu.itemName}</strong>
-                          <span className="cloud-orders__bento-price mono">單價：${todayMenu.price}</span>
-                        </p>
-                      ) : backfillView ? (
-                        <p className="cloud-orders__menu-unavailable" data-testid="orders-menu-unavailable">
-                          <span>{backfill?.dayId} 尚未設定菜單，無法訂購當日餐點；可先設定這一天的菜單，或只登記其他餐點。</span>
-                          <Button variant="ghost" size="sm" onClick={onOpenSettings} disabled={!onOpenSettings}>
-                            到今日設定 <span aria-hidden="true"><Kbd>F3</Kbd></span>
-                          </Button>
-                        </p>
-                      ) : (
-                        <p className="cloud-orders__menu-unavailable" data-testid="orders-menu-unavailable">
-                          <span>今日尚未設定菜單，無法訂購今日餐點；其他餐點仍可登記。</span>
-                          <Button variant="ghost" size="sm" onClick={onOpenSettings} disabled={!onOpenSettings}>
-                            到今日設定 <span aria-hidden="true"><Kbd>F3</Kbd></span>
-                          </Button>
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  {mode === 'other' && (
-                    <div className="cloud-orders__form-grid">
-                      <div className="cloud-orders__field">
-                        <label htmlFor="other-item-name">餐點品名（必填）</label>
-                        <input
-                          id="other-item-name"
-                          ref={otherItemRef}
-                          type="text"
-                          placeholder="例如：炒麵、水餃"
-                          value={page.otherItemName}
-                          onChange={event => {
-                            const value = event.target.value;
-                            setPageStateRaw(previous => ({ ...previous, otherItemName: value }));
-                          }}
-                          maxLength={100}
-                          disabled={busy}
-                        />
-                      </div>
-                      <div className="cloud-orders__field">
-                        <label htmlFor="other-item-price">餐點單價（必填）</label>
-                        <input
-                          id="other-item-price"
-                          data-numeric-input
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="0"
-                          value={page.otherPriceText}
-                          onChange={event => {
-                            const value = event.target.value;
-                            setPageStateRaw(previous => ({ ...previous, otherPriceText: value }));
-                          }}
-                          disabled={busy}
-                        />
-                      </div>
-                    </div>
-                  )}
-                  {mode === 'payment' && (
-                    <p className="cloud-orders__muted">繳費只記實際留存的現金，不計找零；金額會加進帳戶餘額。要退錢給學生請用「退款」。</p>
-                  )}
-
-                  <div className="cloud-orders__checkout">
-                    <dl className="cloud-orders__breakdown" data-testid="order-preview" aria-label="結帳明細">
-                      <div className="cloud-orders__breakdown-row">
-                        <dt>目前餘額</dt>
-                        <dd className={`mono${selectedStudent.currentBalance < 0 ? ' cloud-orders__debt' : ''}`}>
-                          {selectedStudent.currentBalance < 0
-                            ? `−$${Math.abs(selectedStudent.currentBalance)} 欠款`
-                            : `$${selectedStudent.currentBalance}`}
-                        </dd>
-                      </div>
-                      {mode !== 'payment' && (
-                        <div className="cloud-orders__breakdown-row">
-                          <dt>{mode === 'bento' ? '今日餐點' : '其他餐點'}</dt>
-                          <dd className="mono">{mealPrice === null ? '—' : `−$${mealPrice}`}</dd>
-                        </div>
-                      )}
-                      <div className="cloud-orders__breakdown-row">
-                        <dt>{mode === 'payment' ? '本次繳費' : '本次實收'}</dt>
-                        <dd className="mono">
-                          {paidAmount === null || (mode === 'payment' && paidAmount < 1)
-                            ? '金額格式不正確'
-                            : paidAmount === 0 ? '+$0' : `+$${paidAmount}`}
-                        </dd>
-                      </div>
-                      <div className="cloud-orders__breakdown-row cloud-orders__breakdown-row--total">
-                        <dt>預計結餘</dt>
-                        <dd className={`mono${previewBalance !== null && previewBalance < 0 ? ' cloud-orders__debt' : ''}`}>
-                          {previewBalance === null ? '—'
-                            : previewBalance < 0 ? `−$${Math.abs(previewBalance)}` : `$${previewBalance}`}
-                          {previewBalance !== null && previewBalance < 0 && (
-                            <span className="cloud-orders__debt">（欠款 ${Math.abs(previewBalance)}）</span>
-                          )}
-                        </dd>
-                      </div>
-                    </dl>
-
-                    <div className="cloud-orders__entry">
-                      <div className="cloud-orders__field">
-                        <label htmlFor="paid-amount">{mode === 'payment' ? '繳費金額（必填）' : '實收金額（留空為 0 元）'}</label>
-                        <input
-                          id="paid-amount"
-                          ref={amountInputRef}
-                          data-numeric-input
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="0"
-                          className="mono"
-                          value={page.paidAmountText}
-                          onChange={event => {
-                            const value = event.target.value;
-                            setPageStateRaw(previous => ({ ...previous, paidAmountText: value }));
-                          }}
-                          disabled={busy}
-                        />
-                      </div>
-                      <div className="cloud-orders__field">
-                        <label htmlFor="paper-ref">{backfillView ? '紙本號（必填）' : '紙本號（選填）'}</label>
-                        <input
-                          id="paper-ref"
-                          type="text"
-                          placeholder="例如：A-0123"
-                          value={page.paperRefText}
-                          onChange={event => {
-                            const value = event.target.value;
-                            setPageStateRaw(previous => ({ ...previous, paperRefText: value }));
-                          }}
-                          maxLength={20}
-                          disabled={busy}
-                        />
-                      </div>
-                      <div className="cloud-orders__field">
-                        <label htmlFor="order-note">備註（選填）</label>
-                        <input
-                          id="order-note"
-                          type="text"
-                          placeholder="選填備註..."
-                          value={page.note}
-                          onChange={event => {
-                            const value = event.target.value;
-                            setPageStateRaw(previous => ({ ...previous, note: value }));
-                          }}
-                          maxLength={500}
-                          disabled={busy}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="cloud-orders__actions cloud-orders__actions--submit">
-                    <Button
-                      type="submit"
-                      disabled={
-                        busy
-                        || Boolean(orderingBlocked)
-                        || (mode === 'bento' && !todayMenu)
-                        || (mode === 'other' && (!page.otherItemName.trim() || !page.otherPriceText.trim()))
-                        || (mode === 'payment' && !page.paidAmountText.trim())
-                      }
-                      data-testid="submit-order-button"
-                    >
-                      {busy ? '等待伺服器確認…' : <>確認登記 <span aria-hidden="true"><Kbd>Enter</Kbd></span></>}
-                    </Button>
-                    {mode === 'payment' && !page.refundOpen && (
-                      <Button
-                        variant="ghost"
-                        onClick={openRefundPanel}
-                        disabled={busy || Boolean(orderingBlocked) || backfillView}
-                        title={backfillView ? '回填中不能退款：退款會動到現場現金，只能在今天做' : undefined}
-                        data-testid="open-refund-button"
-                      >
-                        退款
-                      </Button>
-                    )}
-                    {mode === 'payment' && backfillView && (
-                      <span className="cloud-orders__hint" data-testid="backfill-refund-note">
-                        回填中不能退款：退款會動到現場現金，只能在今天做。
+              <>
+                <div className="cloud-orders__mode-selector" role="group" aria-label="結帳模式">
+                  <button
+                    type="button"
+                    className="cloud-orders__mode-btn"
+                    aria-pressed={mode === 'bento'}
+                    onClick={() => setPageStateRaw(previous => ({ ...previous, mode: 'bento' }))}
+                    disabled={busy || selectedStudent.status === 'inactive'}
+                  >
+                    今日餐點 <span aria-hidden="true"><Kbd>Q</Kbd></span>
+                  </button>
+                  <button
+                    type="button"
+                    className="cloud-orders__mode-btn"
+                    aria-pressed={mode === 'payment'}
+                    onClick={() => setPageStateRaw(previous => ({ ...previous, mode: 'payment' }))}
+                    disabled={busy}
+                  >
+                    繳費 <span aria-hidden="true"><Kbd>W</Kbd></span>
+                  </button>
+                  <button
+                    type="button"
+                    className="cloud-orders__mode-btn"
+                    aria-pressed={page.paymentDetailsOpen}
+                    onClick={() => setPageStateRaw(previous => ({ ...previous, paymentDetailsOpen: true }))}
+                    disabled={busy}
+                    data-testid="open-payment-details-button"
+                  >
+                    付款明細 <span aria-hidden="true"><Kbd>E</Kbd></span>
+                  </button>
+                  <button
+                    type="button"
+                    className="cloud-orders__mode-btn"
+                    aria-pressed={mode === 'other'}
+                    onClick={() => setPageStateRaw(previous => ({ ...previous, mode: 'other' }))}
+                    disabled={busy || selectedStudent.status === 'inactive'}
+                  >
+                    其他餐點 <span aria-hidden="true"><Kbd>R</Kbd></span>
+                  </button>
+                </div>
+                <div className="cloud-orders__card cloud-orders__account-card">
+                  <div className="cloud-orders__topbar-counts" data-testid="cloud-topbar-counts">
+                    <div className="cloud-orders__topbar-row" data-testid="cloud-topbar-bento">
+                      <span className="cloud-orders__topbar-label" title={todayMenu ? todayMenu.itemName : '未設定'}>
+                        {backfillView ? '當日餐點' : '今日餐點'}（{todayMenu ? todayMenu.itemName : '未設定'}）
                       </span>
-                    )}
-                    <Button variant="ghost" onClick={cancelSelection} disabled={busy}>
-                      取消 <span aria-hidden="true"><Kbd>Esc</Kbd></span>
-                    </Button>
+                      <span className="cloud-orders__topbar-number mono">{bentoCount}</span>
+                    </div>
+                    <div className="cloud-orders__topbar-row" data-testid="cloud-topbar-other">
+                      <span className="cloud-orders__topbar-label">其他餐點</span>
+                      <span className="cloud-orders__topbar-number mono">{otherMealCount}</span>
+                    </div>
                   </div>
-                </form>
-              </div>
+                  <div className="cloud-orders__selected-student" data-testid="selected-student-card">
+                    <div className="cloud-orders__selected-info">
+                      <span className="cloud-orders__selected-code mono">{selectedStudent.studentCode}</span>
+                      <span className="cloud-orders__selected-name">{selectedStudent.displayName}</span>
+                      {selectedStudent.status === 'inactive' && <span className="cloud-orders__student-badge">已停用</span>}
+                    </div>
+                    <div className="cloud-orders__selected-balance">
+                      <span className="cloud-orders__field-label">目前餘額：</span>
+                      <span className={`cloud-orders__money mono${selectedStudent.currentBalance < 0 ? ' cloud-orders__debt' : ''}`}>
+                        {selectedStudent.currentBalance < 0
+                          ? `−$${Math.abs(selectedStudent.currentBalance)}`
+                          : `$${selectedStudent.currentBalance}`}
+                        {selectedStudent.currentBalance < 0 && <span className="cloud-orders__debt"> 欠款</span>}
+                      </span>
+                    </div>
+                      <Button variant="ghost" size="sm" onClick={cancelSelection} disabled={busy}>
+                        更換學員
+                      </Button>
+                  </div>
+                  {selectedStudent.status === 'inactive' && (
+                    <div className="cloud-orders__error" role="alert">此帳戶已停用，禁止新增餐點；仍可繳費或退款。</div>
+                  )}
+                  <form onSubmit={requestSubmit} aria-label={mode === 'payment' ? '繳費' : '訂餐'}>
+
+                    {mode === 'bento' && (
+                      <div className="cloud-orders__bento-info">
+                        {todayMenu ? (
+                          <p>
+                            品名：<strong>{todayMenu.itemName}</strong>
+                            <span className="cloud-orders__bento-price mono">單價：${todayMenu.price}</span>
+                          </p>
+                        ) : backfillView ? (
+                          <p className="cloud-orders__menu-unavailable" data-testid="orders-menu-unavailable">
+                            <span>{backfill?.dayId} 尚未設定菜單，無法訂購當日餐點；可先設定這一天的菜單，或只登記其他餐點。</span>
+                            <Button variant="ghost" size="sm" onClick={onOpenSettings} disabled={!onOpenSettings}>
+                              到今日設定 <span aria-hidden="true"><Kbd>F3</Kbd></span>
+                            </Button>
+                          </p>
+                        ) : (
+                          <p className="cloud-orders__menu-unavailable" data-testid="orders-menu-unavailable">
+                            <span>今日尚未設定菜單，無法訂購今日餐點；其他餐點仍可登記。</span>
+                            <Button variant="ghost" size="sm" onClick={onOpenSettings} disabled={!onOpenSettings}>
+                              到今日設定 <span aria-hidden="true"><Kbd>F3</Kbd></span>
+                            </Button>
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {mode === 'other' && (
+                      <div className="cloud-orders__form-grid">
+                        <div className="cloud-orders__field">
+                          <label htmlFor="other-item-name">餐點品名（必填）</label>
+                          <input
+                            id="other-item-name"
+                            ref={otherItemRef}
+                            type="text"
+                            placeholder="例如：炒麵、水餃"
+                            value={page.otherItemName}
+                            onChange={event => {
+                              const value = event.target.value;
+                              setPageStateRaw(previous => ({ ...previous, otherItemName: value }));
+                            }}
+                            maxLength={100}
+                            disabled={busy}
+                          />
+                        </div>
+                        <div className="cloud-orders__field">
+                          <label htmlFor="other-item-price">餐點單價（必填）</label>
+                          <input
+                            id="other-item-price"
+                            data-numeric-input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="0"
+                            value={page.otherPriceText}
+                            onChange={event => {
+                              const value = event.target.value;
+                              setPageStateRaw(previous => ({ ...previous, otherPriceText: value }));
+                            }}
+                            disabled={busy}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {mode === 'payment' && (
+                      <p className="cloud-orders__muted">繳費只記實際留存的現金，不計找零；金額會加進帳戶餘額。要退錢給學生請用「退款」。</p>
+                    )}
+
+                    <div className="cloud-orders__checkout">
+                      <dl className="cloud-orders__breakdown" data-testid="order-preview" aria-label="結帳明細">
+                        <div className="cloud-orders__breakdown-row">
+                          <dt>目前餘額</dt>
+                          <dd className={`mono${selectedStudent.currentBalance < 0 ? ' cloud-orders__debt' : ''}`}>
+                            {selectedStudent.currentBalance < 0
+                              ? `−$${Math.abs(selectedStudent.currentBalance)} 欠款`
+                              : `$${selectedStudent.currentBalance}`}
+                          </dd>
+                        </div>
+                        {mode !== 'payment' && (
+                          <div className="cloud-orders__breakdown-row">
+                            <dt>{mode === 'bento' ? '今日餐點' : '其他餐點'}</dt>
+                            <dd className="mono">{mealPrice === null ? '—' : `−$${mealPrice}`}</dd>
+                          </div>
+                        )}
+                        <div className="cloud-orders__breakdown-row">
+                          <dt>{mode === 'payment' ? '本次繳費' : '本次實收'}</dt>
+                          <dd className="mono">
+                            {paidAmount === null || (mode === 'payment' && paidAmount < 1)
+                              ? '金額格式不正確'
+                              : paidAmount === 0 ? '+$0' : `+$${paidAmount}`}
+                          </dd>
+                        </div>
+                        <div className="cloud-orders__breakdown-row cloud-orders__breakdown-row--total">
+                          <dt>預計結餘</dt>
+                          <dd className={`mono${previewBalance !== null && previewBalance < 0 ? ' cloud-orders__debt' : ''}`}>
+                            {previewBalance === null ? '—'
+                              : previewBalance < 0 ? `−$${Math.abs(previewBalance)}` : `$${previewBalance}`}
+                            {previewBalance !== null && previewBalance < 0 && (
+                              <span className="cloud-orders__debt">（欠款 ${Math.abs(previewBalance)}）</span>
+                            )}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      <div className="cloud-orders__entry">
+                        <div className="cloud-orders__field">
+                          <label htmlFor="paid-amount">{mode === 'payment' ? '繳費金額（必填）' : '實收金額（留空為 0 元）'}</label>
+                          <input
+                            id="paid-amount"
+                            ref={amountInputRef}
+                            data-numeric-input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="0"
+                            className="mono"
+                            value={page.paidAmountText}
+                            onChange={event => {
+                              const value = event.target.value;
+                              setPageStateRaw(previous => ({ ...previous, paidAmountText: value }));
+                            }}
+                            disabled={busy}
+                          />
+                        </div>
+                        <div className="cloud-orders__field">
+                          <label htmlFor="paper-ref">{backfillView ? '紙本號（必填）' : '紙本號（選填）'}</label>
+                          <input
+                            id="paper-ref"
+                            type="text"
+                            placeholder="例如：A-0123"
+                            value={page.paperRefText}
+                            onChange={event => {
+                              const value = event.target.value;
+                              setPageStateRaw(previous => ({ ...previous, paperRefText: value }));
+                            }}
+                            maxLength={20}
+                            disabled={busy}
+                          />
+                        </div>
+                        <div className="cloud-orders__field">
+                          <label htmlFor="order-note">備註（選填）</label>
+                          <input
+                            id="order-note"
+                            type="text"
+                            placeholder="選填備註..."
+                            value={page.note}
+                            onChange={event => {
+                              const value = event.target.value;
+                              setPageStateRaw(previous => ({ ...previous, note: value }));
+                            }}
+                            maxLength={500}
+                            disabled={busy}
+                          />
+                        </div>
+                        <div className="cloud-orders__actions cloud-orders__actions--submit">
+                          <Button
+                            type="submit"
+                            disabled={
+                              busy
+                              || Boolean(orderingBlocked)
+                              || (mode === 'bento' && !todayMenu)
+                              || (mode === 'other' && (!page.otherItemName.trim() || !page.otherPriceText.trim()))
+                              || (mode === 'payment' && !page.paidAmountText.trim())
+                            }
+                            data-testid="submit-order-button"
+                          >
+                            {busy ? '等待伺服器確認…' : <>確認登記 <span aria-hidden="true"><Kbd>Enter</Kbd></span></>}
+                          </Button>
+                          {mode === 'payment' && !page.refundOpen && (
+                            <Button
+                              variant="ghost"
+                              onClick={openRefundPanel}
+                              disabled={busy || Boolean(orderingBlocked) || backfillView}
+                              title={backfillView ? '回填中不能退款：退款會動到現場現金，只能在今天做' : undefined}
+                              data-testid="open-refund-button"
+                            >
+                              退款
+                            </Button>
+                          )}
+                          {mode === 'payment' && backfillView && (
+                            <span className="cloud-orders__hint" data-testid="backfill-refund-note">
+                              回填中不能退款：退款會動到現場現金，只能在今天做。
+                            </span>
+                          )}
+                          <Button variant="ghost" onClick={cancelSelection} disabled={busy}>
+                            取消 <span aria-hidden="true"><Kbd>Esc</Kbd></span>
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </>
             )}
 
             {selectedStudent && mode === 'payment' && page.refundOpen && (
