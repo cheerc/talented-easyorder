@@ -2,15 +2,15 @@
   margin: 0 auto 1rem;
   max-width: 1100px;
   padding: 1rem;
-  border: 1px solid var(--border, #c8c8c8);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--surface, #fff);
-  color: var(--text, #222);
+  background: var(--panel);
+  color: var(--ink);
 }
 
 .cloud-pending-recovery--blocked {
-  border-color: var(--color-danger, #b42318);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-danger, #b42318) 16%, transparent);
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 16%, transparent);
 }
 
 .cloud-pending-recovery h2 {
@@ -46,7 +46,7 @@
 
 .cloud-pending-recovery__manual {
   padding-top: 0.75rem;
-  border-top: 1px solid var(--border, #c8c8c8);
+  border-top: 1px solid var(--line);
 }
 
 .cloud-pending-recovery__manual p,
