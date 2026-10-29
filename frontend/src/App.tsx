@@ -113,14 +113,18 @@ function AppContent() {
   }, [systemDate, cancelFlow]);
 
   const [tab, setTab] = useState('pos');
+  const [prototypeLeaveTab, setPrototypeLeaveTab] = useState<string | null>(null);
   const [historyLookupTarget, setHistoryLookupTarget] = useState<HistoryLookupTarget | null>(null);
 
   const handleSelectTab = useCallback((nextTab: string) => {
-    if (nextTab !== 'history') {
-      setHistoryLookupTarget(null);
+    if (state.kind === 'committing' || state.kind === 'error') return;
+    if (tab === 'pos' && nextTab !== 'pos' && (state.kind === 'student_selected' || state.kind.startsWith('expense_'))) {
+      setPrototypeLeaveTab(nextTab);
+      return;
     }
+    if (nextTab !== 'history') setHistoryLookupTarget(null);
     setTab(nextTab);
-  }, []);
+  }, [state.kind, tab]);
   const [reportStudentFilter, setReportStudentFilter] = useState('');
   const [focusZone, setFocusZone] = useState('mode-order');
   const [showDashboard, setShowDashboard] = useState(false);
@@ -175,7 +179,7 @@ function AppContent() {
   const isExpenseFlow = state.kind === 'expense_input' || state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note';
 
   // M1 K08：重複訂餐確認也是對話框，開著時背景的 Enter／方向鍵／Q W 都不處理，交給對話框。
-  const isDialogOpen = cancelDialogOpen || noOrderDialogOpen || state.kind === 'duplicate_warning' || refundDialogOpen;
+  const isDialogOpen = cancelDialogOpen || noOrderDialogOpen || state.kind === 'duplicate_warning' || refundDialogOpen || prototypeLeaveTab !== null || state.kind === 'committing' || state.kind === 'error';
 
   useKeyboardShortcuts({
     enabled: tab === 'pos' && !hasFlash && !isExpenseFlow,
@@ -303,7 +307,7 @@ function AppContent() {
   // bypassing AuthGate. fb will remain null with no fbError.
   const mainContent = (
     <MainLayout
-      tab={tab} setTab={handleSelectTab} online={online} syncing={syncing} lastSync={lastSync}
+      tab={tab} setTab={handleSelectTab} navigationLocked={state.kind === 'committing' || state.kind === 'error'} online={online} syncing={syncing} lastSync={lastSync}
       todayCount={todayCount} todayOtherCount={todayOtherCount} todayMenu={todayMenu} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate}
       queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount}
       onDashboard={() => setShowDashboard(true)}
@@ -322,6 +326,15 @@ function AppContent() {
       onNoOrderDialogClose={() => setNoOrderDialogOpen(false)}
       showDashboard={showDashboard} onCloseDashboard={() => setShowDashboard(false)}
     >
+      <ConfirmDialog open={prototypeLeaveTab !== null} title="離開並捨棄草稿？" message="尚未送出的草稿會被捨棄。" defaultAction="cancel" confirmLabel="捨棄草稿" cancelLabel="取消離開" onCancel={() => setPrototypeLeaveTab(null)} onConfirm={() => {
+        if (prototypeLeaveTab && state.kind !== 'committing' && state.kind !== 'error') {
+          // Expense cancellation steps backwards; four cancel events reach idle from every draft step.
+          for (let index = 0; index < 4; index += 1) cancelFlow();
+          if (prototypeLeaveTab !== 'history') setHistoryLookupTarget(null);
+          setTab(prototypeLeaveTab);
+        }
+        setPrototypeLeaveTab(null);
+      }} />
       <AppRouter
         tab={tab}
         viewDate={viewDate}

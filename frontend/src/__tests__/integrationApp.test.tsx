@@ -112,7 +112,7 @@ describe('完整 App 跨功能整合與真實 Persist 測試', () => {
     expect(screen.getByText('整合乙')).toBeVisible();
     await user.keyboard('{F3}');
     await user.click(screen.getByRole('button', { name: '捨棄草稿' }));
-    expect(await screen.findByRole('button', { name: '新增學生' })).toBeVisible();
+    expect(await screen.findByRole('button', { name: '編輯 005' })).toBeVisible();
     expect(usePosStore.getState().transactions).toHaveLength(0);
   });
 

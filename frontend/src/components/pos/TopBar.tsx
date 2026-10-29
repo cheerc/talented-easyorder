@@ -7,6 +7,7 @@ import { formatTaipeiDateTime } from "../../utils/dateTime";
 
 interface TopBarProps {
   tab: string;
+  navigationLocked?: boolean;
   setTab: (tab: string) => void;
   online: boolean;
   syncing: boolean;
@@ -26,14 +27,14 @@ interface TopBarProps {
   todayMenu?: { itemName: string } | null;
   todayMenuName?: string;
 }
-export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing, lastSync, todayCount, todayOtherCount = 0, viewDate, setViewDate, queuedCount = 0, failedSyncCount = 0, conflictSyncCount = 0, onDashboard, storageMode = 'cloud', todayMenu, todayMenuName }: TopBarProps) {
+export const TopBar = React.memo(function TopBar({ tab, setTab, navigationLocked, online, syncing, lastSync, todayCount, todayOtherCount = 0, viewDate, setViewDate, queuedCount = 0, failedSyncCount = 0, conflictSyncCount = 0, onDashboard, storageMode = 'cloud', todayMenu, todayMenuName }: TopBarProps) {
   const simulationDate = useSimulationDate();
   const { faceDevices } = useFace();
   const faceDeviceList = Object.values(faceDevices).sort((a, b) => a.deviceId.localeCompare(b.deviceId));
   const menuName = (todayMenuName ?? todayMenu?.itemName ?? '').trim();
   const todayMealLabel = menuName ? `今日餐點（${menuName}）` : '今日餐點（未設定）';
   return (
-    <AppShell active={tab} select={setTab} brand={<div className="brand">
+    <AppShell active={tab} select={setTab} disabled={navigationLocked} brand={<div className="brand">
         <div className="brand-mark" aria-hidden="true">●</div>
         <div className="brand-text">
           <div className="brand-name">訂餐櫃台</div>
@@ -129,7 +130,7 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, online, syncing,
           )}
         </div>
         {onDashboard && (
-          <button className="db-trigger" onClick={onDashboard} title="今日營運概覽 (F6)">
+          <button className="db-trigger" disabled={navigationLocked} onClick={onDashboard} title="今日營運概覽 (F6)">
             <span style={{ fontSize: '16px' }}>📊</span>
           </button>
         )}
