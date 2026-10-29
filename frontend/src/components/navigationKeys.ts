@@ -12,4 +12,3 @@ export function navigationKey(event: KeyboardEvent): number | null {
   if (event.altKey && /^Digit[1-5]$/.test(event.code)) return Number(event.code.slice(5)) - 1;
   return null;
 }
-
