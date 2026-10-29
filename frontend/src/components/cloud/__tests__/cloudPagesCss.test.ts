@@ -19,6 +19,12 @@ const PAGE_CSS = [
   'LedgerUnclosedBanner.css',
   'CloudPendingRecoveryBoundary.css',
   'CloudLedgerAnomaliesPage.css',
+  'CloudDiagnosticsPage.css',
+];
+
+const MENU_CSS = [
+  { file: 'CloudStudentsPage.css', menu: '.cloud-students__more-menu', wrap: '.cloud-students__table-wrap' },
+  { file: 'CloudAccountHistoryPage.css', menu: '.cloud-account-history__more-menu', wrap: '.cloud-account-history__table-wrap' },
 ];
 
 function readCss(name: string): string {
@@ -36,6 +42,12 @@ function hexCount(css: string): number {
 function tokenNames(): Set<string> {
   const tokens = readFileSync(TOKENS, 'utf8');
   return new Set([...tokens.matchAll(/(--[a-z0-9-]+)\s*:/gi)].map(match => match[1]));
+}
+
+function ruleBody(css: string, selector: string): string {
+  const start = css.indexOf(`${selector} {`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  return css.slice(start, css.indexOf('}', start) + 1);
 }
 
 const RETIRED_TOKENS = ['--surface-subtle', '--border', '--surface', '--text', '--color-danger', '--ok'];
@@ -61,5 +73,15 @@ describe('P4 其他頁 CSS 契約', () => {
       .map(match => match[1])
       .filter(token => !defined.has(token) && !local.has(token));
     expect([...new Set(missing)]).toEqual([]);
+  });
+});
+
+describe('P4 列尾選單不撐開表格列', () => {
+  it.each(MENU_CSS)('$file 的「⋯」選單是絕對定位浮層', ({ file, menu }) => {
+    expect(ruleBody(readCss(file), menu)).toContain('position: absolute');
+  });
+
+  it.each(MENU_CSS)('$file 在選單展開時不裁切浮層', ({ file, wrap }) => {
+    expect(ruleBody(readCss(file), `${wrap}:has(details[open])`)).toContain('overflow: visible');
   });
 });
