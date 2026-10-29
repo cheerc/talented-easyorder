@@ -97,10 +97,10 @@ vi.mock('../components/cloud/CloudDayVendorsPage', () => ({
 }));
 vi.mock('../components/cloud/CloudDayClosePage', () => ({ CloudDayClosePage: () => <section aria-label="mock day close page"><form className="cloud-day-close__date-form"><label>查詢日期<input /></label></form></section> }));
 vi.mock('../components/cloud/CloudReportPage', () => ({
-  CloudReportPage: () => <section aria-label="mock cloud report page" />,
+  CloudReportPage: () => <section aria-label="mock cloud report page"><form className="cloud-report__controls"><label>報表日期<input /></label></form></section>,
 }));
 vi.mock('../components/cloud/CloudAccountHistoryPage', () => ({
-  CloudAccountHistoryPage: () => <section aria-label="mock cloud account history page" />,
+  CloudAccountHistoryPage: () => <section aria-label="mock cloud account history page"><form className="cloud-account-history__date-form"><label>查帳日期<input /></label></form><form className="cloud-account-history__mutation"><label>更正理由<input /></label></form></section>,
 }));
 
 import App from '../App';
@@ -245,6 +245,23 @@ describe('cloud navigation contract', () => {
     fireEvent.keyDown(window, { key: 'F1' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'mock orders page' })).toBeVisible();
+  });
+
+  it('allows navigation after report and history filters but protects a history correction draft', () => {
+    appMocks.cloudModeValid = true;
+    render(<App />);
+    fireEvent.keyDown(window, { key: 'F2' });
+    fireEvent.click(screen.getByRole('button', { name: '本週／本月' }));
+    fireEvent.change(screen.getByLabelText('報表日期'), { target: { value: '2026-10-26' } });
+    fireEvent.keyDown(window, { key: 'F5' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('查帳日期'), { target: { value: '2026-10-26' } });
+    fireEvent.keyDown(window, { key: 'F1' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'F5' });
+    fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: '更正' } });
+    fireEvent.keyDown(window, { key: 'F1' });
+    expect(screen.getByRole('dialog', { name: '離開並捨棄草稿？' })).toBeVisible();
   });
 
   it('does not show a previous backfill date while a newly mounted cashier is loading', () => {
