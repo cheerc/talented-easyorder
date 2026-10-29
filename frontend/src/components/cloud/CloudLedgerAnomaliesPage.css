@@ -77,12 +77,18 @@
   list-style: none;
 }
 
-.cloud-ledger-anomalies__item,
-.cloud-ledger-anomalies__card {
+.cloud-ledger-anomalies__item {
   padding: 16px 18px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-left: 3px solid var(--warn);
+  border-radius: var(--r);
+}
+
+.cloud-ledger-anomalies__card {
+  padding: 8px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
   border-radius: var(--r);
 }
 
