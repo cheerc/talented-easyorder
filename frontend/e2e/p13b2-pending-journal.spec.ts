@@ -287,7 +287,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     }, { currentUid: uid, pendingCommandId: commandId });
 
     await page.getByRole('button', { name: '取得系統使用權' }).click();
-    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await expect.poll(async () => (await readEmulatorDocument('system', 'accessLease')).fields?.epoch).toEqual({ integerValue: '1' });
     await expect(page.getByRole('heading', { name: '待核對命令' })).toBeVisible();
     await expect(page.getByText(commandId)).toBeVisible();
     await expect(page.getByText('伺服器目前未查到；這不代表確定未入帳。保留編號，不要重新收款。')).toBeVisible();
@@ -332,7 +332,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     }, { namespace: APP_NAMESPACE, currentUid: uid, commandIds: ids });
 
     await page.getByRole('button', { name: '取得系統使用權' }).click();
-    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await expect.poll(async () => (await readEmulatorDocument('system', 'accessLease')).fields?.epoch).toEqual({ integerValue: '1' });
     await expect(page.getByText('共有 101 筆最小追蹤編號；每頁最多 100 筆，最多保留 1000 筆。未決編號不會自動淘汰。')).toBeVisible();
     await expect(page.getByText(ids[0])).toBeVisible();
     await expect(page.getByText(ids[99])).toBeVisible();
@@ -468,8 +468,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
 
       // Both AuthGate instances become legal holders of the same UID/epoch and concurrently migrate one legacy slot.
       await page.getByRole('button', { name: '取得系統使用權' }).click();
-      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
-      await expect(peer.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect.poll(async () => (await readEmulatorDocument('system', 'accessLease')).fields?.epoch).toEqual({ integerValue: '1' });
       await expect(page.getByText(migratedCommandId)).toBeVisible();
       await expect(peer.getByText(migratedCommandId)).toBeVisible();
       const migratedStorage = await page.evaluate(({ namespace, pendingCommandId }) => ({
@@ -823,7 +822,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     await storePendingIdentity(page, uid, commandId);
     await page.getByRole('button', { name: '取得系統使用權' }).click();
     await expect(page.getByText('伺服器目前未查到；這不代表確定未入帳。保留編號，不要重新收款。')).toBeVisible();
-    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await expect.poll(async () => (await readEmulatorDocument('system', 'accessLease')).fields?.epoch).toEqual({ integerValue: '1' });
     const confirmation = page.getByLabel('我確認本筆結果尚未確定，不得重新收款或重登；只繼續其他獨立作業，待保留編號人工核對。');
     await confirmation.check();
     await page.getByRole('button', { name: '保留編號，移交人工核對並繼續其他作業' }).click();
@@ -871,7 +870,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     const commandsBefore = await listEmulatorDocumentIds('commands');
     const transactionsBefore = await listEmulatorDocumentIds('transactions');
     await page.getByRole('button', { name: '取得系統使用權' }).click();
-    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await expect.poll(async () => (await readEmulatorDocument('system', 'accessLease')).fields?.epoch).toEqual({ integerValue: '1' });
     await expect(page.getByText('本機待核對日誌無法安全讀取或保存。資料未確認，已停止開放新操作；請聯絡系統維護者。')).toBeVisible();
 
     const retry = page.getByRole('button', { name: '重新檢查' });
@@ -1071,7 +1070,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
         return event.defaultPrevented;
       });
       expect(f5Prevented).toBe(true);
-      await expect(recovery).toContainText('已找到伺服器回執');
+      await expect(page.getByText('已找到伺服器回執，名單尚待再次讀取。')).toBeVisible();
       expect(writeResponseReturned).toBe(false);
       expect(writeGate.requests).toBe(1);
       expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);

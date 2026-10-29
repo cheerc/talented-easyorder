@@ -798,7 +798,7 @@ export function CloudAccountHistoryPage({
           }}>
           {student.displayName}（{student.studentCode}）
         </button>)}</div>}
-        <form onSubmit={submitRange}>
+        <form className="cloud-account-history__date-form" onSubmit={submitRange}>
           <label>日期範圍<select aria-label="查帳日期範圍" value={rangeKind} disabled={retryButtonDisabled}
             onChange={event => setRangeKind(event.target.value as CloudLedgerDateRange['kind'])}>
             <option value="today">今天</option><option value="week">本週</option><option value="month">本月</option><option value="custom">自訂</option>

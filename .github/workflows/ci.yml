@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   change-scope:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       docs_only: ${{ steps.check-docs.outputs.docs_only }}
     steps:
@@ -61,7 +61,7 @@ jobs:
   build-and-test:
     needs: change-scope
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
@@ -544,7 +544,7 @@ jobs:
   e2e-shards:
     needs: change-scope
     if: needs.change-scope.result == 'success' && needs.change-scope.outputs.docs_only == 'false'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -628,7 +628,7 @@ jobs:
   e2e:
     needs: [change-scope, e2e-shards]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: Require all browser suites or an explicit docs-only bypass

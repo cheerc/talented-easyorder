@@ -488,7 +488,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
   return (
     <main className="cloud-app" aria-label={CLOUD_SECTION_LABELS[cloudSection]} onChangeCapture={event => {
       const element = event.target as HTMLElement;
-      if (element.closest('form') && !element.closest('.cloud-day-vendors__date-form, .cloud-day-close__date-form')) dirtyRef.current = true;
+      if (element.closest('form') && !element.closest('.cloud-day-vendors__date-form, .cloud-day-close__date-form, .cloud-report__controls, .cloud-account-history__date-form')) dirtyRef.current = true;
     }}>
       <AppShell active={cloudSection === 'orders' ? 'pos' : cloudSection === 'day-close' || cloudSection === 'reports' ? 'report' : cloudSection === 'students' || cloudSection === 'day-vendors' || cloudSection === 'diagnostics' ? 'admin' : cloudSection === 'vendors' ? 'vendors' : cloudSection === 'account-history' ? 'history' : ''}
         select={selectPrimary} disabled={navigationLocked}
