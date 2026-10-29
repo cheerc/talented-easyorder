@@ -3,11 +3,11 @@
   min-height: calc(100vh - 82px);
   margin: 24px auto 48px;
   padding: 28px;
-  color: var(--ink, #20252b);
-  background: var(--panel, #fff);
-  border: 1px solid var(--line, #dce1e7);
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: 14px;
-  box-shadow: 0 12px 36px rgba(20, 33, 48, .07);
+  box-shadow: var(--shadow);
 }
 
 .cloud-day-close button,
@@ -35,7 +35,7 @@
 .cloud-day-close__header {
   gap: 24px;
   padding-bottom: 20px;
-  border-bottom: 1px solid var(--line, #dce1e7);
+  border-bottom: 1px solid var(--line);
 }
 
 .cloud-day-close__header h1 {
@@ -46,7 +46,7 @@
 
 .cloud-day-close__eyebrow {
   margin: 0;
-  color: var(--ink-3, #627182);
+  color: var(--ink-hint);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: .08em;
@@ -55,7 +55,7 @@
 .cloud-day-close__intro {
   max-width: 760px;
   margin: 0;
-  color: var(--ink-2, #536170);
+  color: var(--ink-2);
   line-height: 1.6;
 }
 
@@ -72,20 +72,20 @@
 }
 
 .cloud-day-close__primary {
-  color: #fff;
-  background: var(--accent, #176b87);
+  color: var(--panel);
+  background: var(--ink);
 }
 
 .cloud-day-close__secondary {
-  color: var(--ink, #20252b);
-  background: var(--panel, #fff);
-  border-color: var(--line, #dce1e7);
+  color: var(--ink);
+  background: var(--panel);
+  border-color: var(--line);
 }
 
 .cloud-day-close__danger {
-  color: #78351f;
-  background: #fff1e9;
-  border-color: #f4c6b1;
+  color: var(--ink);
+  background: var(--danger-soft);
+  border-color: var(--danger);
 }
 
 .cloud-day-close button:disabled {
@@ -97,7 +97,7 @@
 .cloud-day-close input:focus-visible,
 .cloud-day-close textarea:focus-visible,
 .cloud-day-close select:focus-visible {
-  outline: 3px solid rgba(23, 107, 135, .3);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -117,23 +117,23 @@
 .cloud-day-close__alert,
 .cloud-day-close__recovery,
 .cloud-day-close__warning {
-  color: #78351f;
-  background: #fff1e9;
-  border: 1px solid #f4c6b1;
+  color: var(--ink);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
 }
 
 .cloud-day-close__notice {
-  color: #15513b;
-  background: #e9f6ef;
-  border: 1px solid #b9e2ca;
+  color: var(--ink);
+  background: var(--success-soft);
+  border: 1px solid var(--success);
 }
 
 .cloud-day-close__loading,
 .cloud-day-close__empty,
 .cloud-day-close__unavailable {
-  color: var(--ink-2, #536170);
-  background: var(--surface-subtle, #f5f7f9);
-  border: 1px solid var(--line, #dce1e7);
+  color: var(--ink-2);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
 }
 
 .cloud-day-close__recovery {
@@ -142,17 +142,127 @@
   overflow-wrap: anywhere;
 }
 
+.cloud-day-close__layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  align-items: start;
+  gap: 20px;
+  margin-top: 22px;
+}
+
+.cloud-day-close__layout > .cloud-day-close__date-panel {
+  margin-top: 0;
+  max-height: calc(100vh - 180px);
+  overflow: auto;
+}
+
+.cloud-day-close__selected-column {
+  min-width: 0;
+  display: grid;
+  gap: 0;
+}
+
+@media (max-width: 1024px) {
+  .cloud-day-close__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cloud-day-close__layout > .cloud-day-close__date-panel {
+    max-height: none;
+  }
+}
+
+.cloud-day-close__intro {
+  margin: 12px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.cloud-day-close__intro summary {
+  color: var(--accent-ink);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.cloud-day-close__intro summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.cloud-day-close__intro p {
+  margin: 8px 0 0;
+}
+
+.cloud-day-close__figures-wrap {
+  display: grid;
+  gap: 14px;
+}
+
+.cloud-day-close__figures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cloud-day-close__figure {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--panel);
+}
+
+.cloud-day-close__figure-label {
+  color: var(--ink-hint);
+  font-size: 12px;
+}
+
+.cloud-day-close__figure-value {
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+}
+
+.cloud-day-close__figure--warn .cloud-day-close__figure-value {
+  color: var(--warn);
+}
+
+.cloud-day-close__figure-details {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.cloud-day-close__figure-details summary {
+  color: var(--accent-ink);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.cloud-day-close__figure-details summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .cloud-day-close__figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .cloud-day-close__date-panel,
 .cloud-day-close__day-section,
 .cloud-day-close__vendor-section {
   margin-top: 22px;
   padding: 20px;
-  border: 1px solid var(--line, #dce1e7);
+  border: 1px solid var(--line);
   border-radius: 10px;
 }
 
 .cloud-day-close__date-panel {
-  background: var(--surface-subtle, #f7f9fb);
+  background: var(--surface-sunken);
 }
 
 .cloud-day-close__date-form {
@@ -169,9 +279,9 @@
   width: 100%;
   min-width: 0;
   padding: 9px 10px;
-  color: var(--ink, #20252b);
-  background: var(--panel, #fff);
-  border: 1px solid var(--line, #cbd3dc);
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: 7px;
 }
 
@@ -185,7 +295,7 @@
   flex-wrap: wrap;
   gap: 8px 18px;
   margin-top: 12px;
-  color: var(--ink-3, #627182);
+  color: var(--ink-hint);
   font-size: 12px;
 }
 
@@ -193,7 +303,7 @@
 .cloud-day-close__date-panel > p,
 .cloud-day-close__section-heading p,
 .cloud-day-close__footnote {
-  color: var(--ink-3, #627182);
+  color: var(--ink-hint);
   font-size: 13px;
   line-height: 1.55;
 }
@@ -215,7 +325,7 @@
 .cloud-day-close__card {
   margin-top: 18px;
   padding: 18px;
-  border: 1px solid var(--line, #dce1e7);
+  border: 1px solid var(--line);
   border-radius: 9px;
 }
 
@@ -232,7 +342,7 @@
 }
 
 .cloud-day-close__summary dt {
-  color: var(--ink-3, #627182);
+  color: var(--ink-hint);
   font-size: 13px;
 }
 
@@ -244,14 +354,14 @@
 .cloud-day-close__inherit-card {
   margin: 12px 0;
   padding: 14px;
-  background: var(--surface-subtle, #f7f9fb);
-  border: 1px solid var(--line, #dce1e7);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
   border-radius: 8px;
 }
 
 .cloud-day-close__inherit-card p {
   margin: 0 0 8px;
-  color: var(--ink-2, #536170);
+  color: var(--ink-2);
   font-size: 13px;
   line-height: 1.55;
 }
@@ -275,7 +385,7 @@
 
 .cloud-day-close__table-wrap {
   overflow-x: auto;
-  border: 1px solid var(--line, #dce1e7);
+  border: 1px solid var(--line);
   border-radius: 8px;
 }
 
@@ -288,14 +398,14 @@
 .cloud-day-close th,
 .cloud-day-close td {
   padding: 11px 12px;
-  border-bottom: 1px solid var(--line, #e5e9ee);
+  border-bottom: 1px solid var(--line-2);
   text-align: left;
   vertical-align: top;
 }
 
 .cloud-day-close th {
-  color: var(--ink-3, #627182);
-  background: var(--surface-subtle, #f7f9fb);
+  color: var(--ink-hint);
+  background: var(--surface-sunken);
   font-size: 12px;
   font-weight: 700;
 }
@@ -317,13 +427,13 @@
 }
 
 .cloud-day-close__status--active {
-  color: #15513b;
-  background: #e9f6ef;
+  color: var(--ink);
+  background: var(--success-soft);
 }
 
 .cloud-day-close__status--inactive {
-  color: #78351f;
-  background: #fff1e9;
+  color: var(--ink);
+  background: var(--danger-soft);
 }
 
 .cloud-day-close__remove-form {
@@ -334,7 +444,7 @@
 
 .cloud-day-close__remove-form p {
   margin: 0;
-  color: var(--ink-3, #627182);
+  color: var(--ink-hint);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -418,22 +528,22 @@
 }
 
 .cloud-day-close__difference--zero {
-  color: var(--ok, #1d7a4a);
+  color: var(--success);
 }
 
 .cloud-day-close__difference--nonzero {
-  color: var(--warn, #9a5b00);
+  color: var(--warn);
 }
 
 .cloud-day-close__status--open,
 .cloud-day-close__status--reopened {
-  color: #7a4b00;
-  background: #fff4dc;
+  color: var(--warn);
+  background: var(--warn-soft);
 }
 
 .cloud-day-close__status--closed {
-  color: #1d5e3a;
-  background: #e5f4ea;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
 }
 
 .cloud-day-close__list {
@@ -454,5 +564,5 @@
 .cloud-day-close__backup {
   margin-top: 28px;
   padding-top: 20px;
-  border-top: 1px solid var(--line, #dce1e7);
+  border-top: 1px solid var(--line);
 }
