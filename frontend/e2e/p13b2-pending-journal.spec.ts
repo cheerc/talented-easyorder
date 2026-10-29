@@ -1065,6 +1065,13 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await expect(page.getByRole('button', { name: '重新讀取伺服器名單' })).toBeDisabled();
       await expect(page.getByRole('button', { name: '載入中…' })).toBeDisabled();
       await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
+      const f5Prevented = await page.evaluate(() => {
+        const event = new KeyboardEvent('keydown', { key: 'F5', bubbles: true, cancelable: true });
+        window.dispatchEvent(event);
+        return event.defaultPrevented;
+      });
+      expect(f5Prevented).toBe(true);
+      await expect(recovery).toContainText('已找到伺服器回執');
       expect(writeResponseReturned).toBe(false);
       expect(writeGate.requests).toBe(1);
       expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
