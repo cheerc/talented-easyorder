@@ -243,7 +243,7 @@
 .face-device-off .dot { background: var(--warn); }
 
 /* 共用外殼；狀態和資料均由各模式提供。 */
-.app-shell .tab-on, .app-shell .tab-on:hover { background: var(--ink); color: var(--panel); }
+.app-shell .tab-on, .app-shell .tab-on:hover { background: #29251f; color: #fff; }
 .cloud-app .app-shell { min-height: 68px; padding-block: 8px; gap: 16px; grid-template-columns: 190px minmax(0, 1fr) auto; }
 .cloud-subnav { display: flex; gap: 6px; padding: 12px 24px; border-bottom: 1px solid var(--line); }
 .cloud-subnav button { padding: 7px 12px; border: 0; border-radius: 6px; color: var(--ink-2); background: transparent; cursor: pointer; }
