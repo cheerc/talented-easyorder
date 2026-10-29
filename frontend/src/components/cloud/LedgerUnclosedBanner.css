@@ -5,18 +5,14 @@
   gap: 8px 12px;
   margin: 0 0 12px;
   padding: 10px 14px;
-  border: 1px solid #d97706;
-  border-radius: 8px;
-  background: #fffbeb;
-  color: #78350f;
+  border: 1px solid var(--warn);
+  border-radius: var(--r);
+  background: var(--warn-soft);
+  color: var(--ink);
   font-size: 14px;
 }
 
 .cloud-ledger-banner button {
-  padding: 4px 12px;
-  border: 1px solid #b45309;
-  border-radius: 6px;
-  background: #fff;
-  color: #78350f;
-  cursor: pointer;
+  border-color: var(--warn);
+  color: var(--ink);
 }
