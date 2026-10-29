@@ -1,3 +1,4 @@
+import { settings, report, releaseOwner } from './helpers/navigation';
 import type { Page, Request } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { removeDocument, seedAccessLease, upsertDocument } from './helpers/seed';
@@ -224,8 +225,8 @@ async function expectMinimalJournal(page: Page, expected: Array<{ commandId: str
 }
 
 async function cleanupDayCloseRun(page: Page, options: { commandIds: string[]; days: string[]; settlementDays?: string[]; backfillDays?: string[] }) {
-  const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
-  if (await release.isVisible().catch(() => false)) await release.click();
+  const release = page.locator('.operator-strip button').filter({ hasText: '釋放使用權並登出' });
+  if (await release.count() && await release.isEnabled().catch(() => false)) await releaseOwner(release);
   const ids = new Set(options.commandIds);
   const headId = await lastCommandIdFromHead();
   if (headId) ids.add(headId);
@@ -290,7 +291,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     await expect(page.getByRole('heading', { name: '待核對命令' })).toBeVisible();
     await expect(page.getByText(commandId)).toBeVisible();
     await expect(page.getByText('伺服器目前未查到；這不代表確定未入帳。保留編號，不要重新收款。')).toBeVisible();
-    await expect(page.getByRole('button', { name: '櫃台點餐' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '櫃台' })).toHaveCount(0);
 
     const stored = await page.evaluate(({ namespace, pendingCommandId }) => {
       const prefix = `${namespace}:`;
@@ -310,7 +311,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
 
     await page.getByLabel('我確認本筆結果尚未確定，不得重新收款或重登；只繼續其他獨立作業，待保留編號人工核對。').check();
     await page.getByRole('button', { name: '保留編號，移交人工核對並繼續其他作業' }).click();
-    await expect(page.getByRole('button', { name: '櫃台點餐' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '櫃台' })).toBeVisible();
     await expect(page.getByText(commandId)).toBeVisible();
     expect(await page.evaluate(key => localStorage.getItem(key), `${APP_NAMESPACE}:${commandId}`)).toBe(stored.raw);
   });
@@ -375,7 +376,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
       await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
-      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await page.getByRole('button', { name: '櫃台' }).click();
       await expect(page.getByTestId('cloud-orders-page')).toBeVisible();
       await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
 
@@ -419,7 +420,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await page.reload();
       await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
       await expect(page.locator('.cloud-app')).toBeVisible();
-      await expect(page.getByText('目前沒有待核對命令。')).toBeVisible();
+      await expect(page.getByRole('region', { name: '待核對命令' })).toHaveCount(0);
       await expect.poll(() => page.evaluate(({ namespace: journalNamespace, id }) => (
         localStorage.getItem(`${journalNamespace}:${id}`)
       ), { namespace: APP_NAMESPACE, id: commandId! })).toBeNull();
@@ -430,8 +431,8 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
       expect(await listEmulatorDocumentIds('transactions')).toEqual([transactionId]);
     } finally {
-      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
-      if (await release.isVisible().catch(() => false)) await release.click();
+      const release = page.locator('.operator-strip button').filter({ hasText: '釋放使用權並登出' });
+      if (await release.count() && await release.isEnabled().catch(() => false)) await releaseOwner(release);
       if (commandId) {
         const receipt = await readEmulatorDocument('commands', commandId).catch(() => null);
         const transactionId = (((receipt?.fields?.targets as { mapValue?: { fields?: Record<string, unknown> } } | undefined)
@@ -877,7 +878,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     await expect(retry).toBeEnabled();
     await retry.click();
     await expect(page.locator('.cloud-app')).toBeVisible();
-    await expect(page.getByText('目前沒有待核對命令。')).toBeVisible();
+    await expect(page.getByRole('region', { name: '待核對命令' })).toHaveCount(0);
     await expect(page.getByRole('alert')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '重新檢查' })).toHaveCount(0);
 
@@ -927,7 +928,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
       await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
-      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await page.getByRole('button', { name: '櫃台' }).click();
       await expect(page.getByTestId('cloud-orders-page')).toBeVisible();
       await page.getByLabel('搜尋編號、姓名或別名').fill(studentCode);
       await page.getByTestId(`search-result-${studentCode}`).click();
@@ -952,7 +953,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await expect(page.getByTestId('order-recovery-command-id')).toHaveText(commandId);
       await expect(page.getByTestId('cloud-orders-loading')).toBeVisible();
       await expect(page.getByTestId('submit-order-button')).toHaveCount(0);
-      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '學生管理' })).toBeDisabled();
+      await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '今日設定' })).toBeDisabled();
       await expect(page.getByTestId('undo-bar')).toHaveCount(0);
       expect(gate.requests).toBe(1);
       gate.release.resolve();
@@ -962,7 +963,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await expect(page.getByText(new RegExp(`已確認 ${studentCode} P13b2b1 ${studentCode} 訂餐完成`))).toBeVisible();
       await expect(page.getByTestId('order-recovery-panel')).toHaveCount(0);
       await expect(page.getByTestId('undo-bar')).toBeVisible();
-      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '學生管理' })).toBeEnabled();
+      await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '今日設定' })).toBeEnabled();
 
       const transactionId = (((receipt.fields?.targets as { mapValue?: { fields?: Record<string, unknown> } } | undefined)
         ?.mapValue?.fields?.transactionId as { stringValue?: string } | undefined)?.stringValue);
@@ -977,8 +978,8 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
         await Promise.race([gate.completed.promise, new Promise(resolve => setTimeout(resolve, 5000))]);
       }
       await page.unroute('**/documents:commit*');
-      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
-      if (await release.isVisible().catch(() => false)) await release.click();
+      const release = page.locator('.operator-strip button').filter({ hasText: '釋放使用權並登出' });
+      if (await release.count() && await release.isEnabled().catch(() => false)) await releaseOwner(release);
       if (commandId) {
         const receipt = await readEmulatorDocument('commands', commandId).catch(() => null);
         const transactionId = (((receipt?.fields?.targets as { mapValue?: { fields?: Record<string, unknown> } } | undefined)
@@ -1063,7 +1064,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await expect(page.getByText('已找到伺服器回執，名單尚待再次讀取。')).toBeVisible({ timeout: 15000 });
       await expect(page.getByRole('button', { name: '重新讀取伺服器名單' })).toBeDisabled();
       await expect(page.getByRole('button', { name: '載入中…' })).toBeDisabled();
-      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
       expect(writeResponseReturned).toBe(false);
       expect(writeGate.requests).toBe(1);
       expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
@@ -1073,7 +1074,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await expect(page.getByTestId(`cloud-student-row-${studentCode}`)).toContainText('P13b2b2a 新學生');
       await expect(page.getByText(new RegExp(`已確認 新增 ${studentCode} 完成`))).toBeVisible();
       await expect(page.getByRole('alert', { name: '命令結果確認' })).toHaveCount(0);
-      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeEnabled();
+      await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeEnabled();
       expect(writeResponseReturned).toBe(true);
       expect(writeGate.requests).toBe(1);
       expect((await readEmulatorDocument('system', 'dataHead')).fields?.seq).toEqual({ integerValue: '1' });
@@ -1083,8 +1084,8 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       writeGate.release.resolve();
       if (writeGate.requests > 0) await Promise.race([writeGate.completed.promise, new Promise(resolve => setTimeout(resolve, 5000))]);
       await page.unroute('**/documents:commit*');
-      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
-      if (await release.isVisible().catch(() => false)) await release.click();
+      const release = page.locator('.operator-strip button').filter({ hasText: '釋放使用權並登出' });
+      if (await release.count() && await release.isEnabled().catch(() => false)) await releaseOwner(release);
       commandId ??= (((await readEmulatorDocument('system', 'dataHead').catch(() => null))?.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null);
       if (commandId) await removeDocument('commands', commandId);
       if (createdStudentId) await removeDocument('students', createdStudentId);
@@ -1158,7 +1159,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await expect(page.getByText('已找到伺服器回執，名單尚待再次讀取。')).toBeVisible({ timeout: 15000 });
       await expect(page.getByRole('button', { name: '重新讀取伺服器名單' })).toBeDisabled();
       await expect(page.getByRole('button', { name: '載入中…' })).toBeDisabled();
-      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
       expect(writeResponseReturned).toBe(false);
       expect(writeGate.requests).toBe(1);
 
@@ -1175,8 +1176,8 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       writeGate.release.resolve();
       if (writeGate.requests > 0) await Promise.race([writeGate.completed.promise, new Promise(resolve => setTimeout(resolve, 5000))]);
       await page.unroute('**/documents:commit*');
-      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
-      if (await release.isVisible().catch(() => false)) await release.click();
+      const release = page.locator('.operator-strip button').filter({ hasText: '釋放使用權並登出' });
+      if (await release.count() && await release.isEnabled().catch(() => false)) await releaseOwner(release);
       commandId ??= (((await readEmulatorDocument('system', 'dataHead').catch(() => null))?.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null);
       if (commandId) await removeDocument('commands', commandId);
       await removeDocument('days', today);
@@ -1259,8 +1260,8 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       writeGate.release.resolve();
       if (writeGate.requests > 0) await Promise.race([writeGate.completed.promise, new Promise(resolve => setTimeout(resolve, 5000))]);
       await page.unroute('**/documents:commit*');
-      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
-      if (await release.isVisible().catch(() => false)) await release.click();
+      const release = page.locator('.operator-strip button').filter({ hasText: '釋放使用權並登出' });
+      if (await release.count() && await release.isEnabled().catch(() => false)) await releaseOwner(release);
       commandId ??= (((await readEmulatorDocument('system', 'dataHead').catch(() => null))?.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null);
       if (commandId) await removeDocument('commands', commandId);
       if (createdStudentId) await removeDocument('students', createdStudentId);
@@ -1338,7 +1339,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
 
       await page.getByRole('button', { name: '查詢原命令結果' }).click();
       await expect(page.getByText('已找到伺服器回執，名單尚待再次讀取。')).toBeVisible({ timeout: 15000 });
-      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
       expect(writeResponseReturned).toBe(false);
       expect(writeGate.requests).toBe(1);
       expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
@@ -1359,7 +1360,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await expect(page.getByTestId(`cloud-student-row-${studentCode}`)).toHaveCount(0);
       await expect(page.getByRole('button', { name: '新增學生' })).toHaveCount(0);
       await expect(page.getByText(new RegExp(`已確認 新增 ${studentCode} 完成`))).toHaveCount(0);
-      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
       expect(writeResponseReturned).toBe(true);
       expect(writeGate.requests).toBe(1);
 
@@ -1367,7 +1368,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await expect(page.getByText(/資料集已變更/)).toBeVisible();
       await expect(page.getByRole('alert', { name: '命令結果確認' })).toContainText(commandId);
       await expect(page.getByTestId(`cloud-student-row-${studentCode}`)).toHaveCount(0);
-      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
       expect((await readEmulatorDocument('system', 'dataHead')).fields?.seq).toEqual({ integerValue: '1' });
       expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
       expect(await readPendingIdentity(page, commandId)).toBeNull();
@@ -1375,8 +1376,8 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       writeGate.release.resolve();
       if (writeGate.requests > 0) await Promise.race([writeGate.completed.promise, new Promise(resolve => setTimeout(resolve, 5000))]);
       await page.unroute('**/documents:commit*');
-      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
-      if (await release.isVisible().catch(() => false)) await release.click();
+      const release = page.locator('.operator-strip button').filter({ hasText: '釋放使用權並登出' });
+      if (await release.count() && await release.isEnabled().catch(() => false)) await releaseOwner(release);
       commandId ??= (((await readEmulatorDocument('system', 'dataHead').catch(() => null))?.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null);
       if (commandId) await removeDocument('commands', commandId);
       if (createdStudentId) await removeDocument('students', createdStudentId);
@@ -1420,7 +1421,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
       await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
-      await page.getByRole('button', { name: '日期與供應商' }).click();
+      await settings(page, '菜單與開帳');
       const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
       const openingForm = main.getByRole('form', { name: `${today} 開帳現金` });
       await expect(openingForm).toBeVisible();
@@ -1450,7 +1451,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       const recovery = page.getByRole('alert', { name: '命令結果確認' });
       await expect(recovery).toContainText('已找到伺服器回執，資料尚待再次讀取。');
       await expect(recovery.getByRole('button', { name: '重新讀取伺服器資料' })).toBeDisabled();
-      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
       expect(writeResponseReturned).toBe(false);
       expect(writeGate.requests).toBe(1);
       expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
@@ -1473,8 +1474,8 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       writeGate.release.resolve();
       if (writeGate.requests > 0) await Promise.race([writeGate.completed.promise, new Promise(resolve => setTimeout(resolve, 5000))]);
       await page.unroute('**/documents:commit*');
-      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
-      if (await release.isVisible().catch(() => false)) await release.click();
+      const release = page.locator('.operator-strip button').filter({ hasText: '釋放使用權並登出' });
+      if (await release.count() && await release.isEnabled().catch(() => false)) await releaseOwner(release);
       commandId ??= (((await readEmulatorDocument('system', 'dataHead').catch(() => null))?.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null);
       if (commandId) {
         await removeDocument('commands', commandId);
@@ -1534,7 +1535,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
       await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
-      await page.getByRole('button', { name: '日期與供應商' }).click();
+      await settings(page, '菜單與開帳');
       const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
       const openingForm = main.getByRole('form', { name: `${today} 開帳現金` });
       await expect(openingForm).toBeVisible();
@@ -1603,8 +1604,8 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       if (writeGate.requests > 0) await Promise.race([writeGate.completed.promise, new Promise(resolve => setTimeout(resolve, 5000))]);
       await page.unroute('**/documents:commit*');
       await page.unroute('**/documents:batchGet*');
-      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
-      if (await release.isVisible().catch(() => false)) await release.click();
+      const release = page.locator('.operator-strip button').filter({ hasText: '釋放使用權並登出' });
+      if (await release.count() && await release.isEnabled().catch(() => false)) await releaseOwner(release);
       commandId ??= (((await readEmulatorDocument('system', 'dataHead').catch(() => null))?.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null);
       if (commandId) {
         await removeDocument('commands', commandId);
@@ -1635,7 +1636,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
       await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
-      await page.getByRole('button', { name: '日期與供應商' }).click();
+      await settings(page, '菜單與開帳');
       const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
       const openingForm = main.getByRole('form', { name: `${today} 開帳現金` });
       await expect(openingForm).toBeVisible();
@@ -1674,8 +1675,8 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
         delete win.__p13b2NativeRemoveItem;
       }).catch(() => undefined);
       await page.unroute('**/documents:commit*');
-      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
-      if (await release.isVisible().catch(() => false)) await release.click();
+      const release = page.locator('.operator-strip button').filter({ hasText: '釋放使用權並登出' });
+      if (await release.count() && await release.isEnabled().catch(() => false)) await releaseOwner(release);
       commandId ??= (((await readEmulatorDocument('system', 'dataHead').catch(() => null))?.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null);
       if (commandId) {
         await removeDocument('commands', commandId);
@@ -1720,7 +1721,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
       await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
-      await page.getByRole('button', { name: '日期與供應商' }).click();
+      await settings(page, '菜單與開帳');
       const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
       const menuForm = main.getByRole('form', { name: `${today} 菜單` });
       await expect(menuForm).toBeVisible();
@@ -1752,7 +1753,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await expect(recovery).toContainText('伺服器命令序號 1');
       await expect(page.locator('.cloud-day-vendors__alert')).toContainText(/伺服器資料集或營業日已變更/);
       await expect(page.getByRole('heading', { name: `${today} 營業日` })).toHaveCount(0);
-      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
       await expect(page.getByText(new RegExp(`已確認 設定 ${today} 菜單 完成`))).toHaveCount(0);
       expect(writeResponseReturned).toBe(true);
       expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
@@ -1762,7 +1763,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await expect(page.getByText(/伺服器資料集或營業日已變更/)).toBeVisible();
       await expect(page.getByRole('alert', { name: '命令結果確認' })).toContainText(commandId);
       await expect(page.getByRole('heading', { name: `${today} 營業日` })).toHaveCount(0);
-      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
       expect(await readPendingIdentity(page, commandId)).toBeNull();
 
       expect(writeResponseReturned).toBe(true);
@@ -1773,8 +1774,8 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       writeGate.release.resolve();
       if (writeGate.requests > 0) await Promise.race([writeGate.completed.promise, new Promise(resolve => setTimeout(resolve, 5000))]);
       await page.unroute('**/documents:commit*');
-      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
-      if (await release.isVisible().catch(() => false)) await release.click();
+      const release = page.locator('.operator-strip button').filter({ hasText: '釋放使用權並登出' });
+      if (await release.count() && await release.isEnabled().catch(() => false)) await releaseOwner(release);
       commandId ??= (((await readEmulatorDocument('system', 'dataHead').catch(() => null))?.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null);
       if (commandId) {
         await removeDocument('commands', commandId);
@@ -1817,7 +1818,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
       await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
-      await page.getByRole('button', { name: '日期與供應商' }).click();
+      await page.keyboard.press('F4');
       const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
       await page.getByRole('button', { name: '新增供應商' }).click();
       const form = main.getByRole('form', { name: '新增供應商' });
@@ -1856,8 +1857,8 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       writeGate.release.resolve();
       if (writeGate.requests > 0) await Promise.race([writeGate.completed.promise, new Promise(resolve => setTimeout(resolve, 5000))]);
       await page.unroute('**/documents:commit*');
-      const release = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
-      if (await release.isVisible().catch(() => false)) await release.click();
+      const release = page.locator('.operator-strip button').filter({ hasText: '釋放使用權並登出' });
+      if (await release.count() && await release.isEnabled().catch(() => false)) await releaseOwner(release);
       commandId ??= (((await readEmulatorDocument('system', 'dataHead').catch(() => null))?.fields?.lastCommandId as { stringValue?: string } | undefined)?.stringValue ?? null);
       if (commandId) {
         await removeDocument('commands', commandId);
@@ -1877,7 +1878,7 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
   async function openDayClose(page: Page) {
     await page.getByRole('button', { name: '取得系統使用權' }).click();
     await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
-    await page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '日結', exact: true }).click();
+    await page.getByRole('button', { name: '今日帳', exact: true }).click();
   }
 
   async function submitHeldClose(page: Page, today: string, held: ReturnType<typeof createHeldCommit>) {
@@ -1924,7 +1925,7 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
       const recovery = page.getByRole('alert', { name: '命令結果確認' });
       await expect(recovery).toContainText('已找到伺服器回執，資料尚待再次讀取。');
       await expect(recovery.getByRole('button', { name: '重新讀取伺服器資料' })).toBeDisabled();
-      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
       expect(held.state.returned).toBe(false);
       expect(held.state.matched).toBe(1);
       expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);
@@ -1973,7 +1974,7 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
       await expect(page.getByText(/伺服器資料集或營業日已變更/).first()).toBeVisible();
       await expect(page.getByRole('heading', { name: `${today} 日結` })).toHaveCount(0);
       await expect(page.getByText(new RegExp(`已確認 ${today} 關帳 完成`))).toHaveCount(0);
-      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
 
       await page.getByRole('button', { name: '重新載入伺服器資料' }).first().click();
       await expect(page.getByText(/伺服器資料集或營業日已變更/).first()).toBeVisible();
@@ -2183,7 +2184,7 @@ test.describe('P13b2b3a journal cleanup post-condition and embedded backup recov
   async function openDayClose(page: Page) {
     await page.getByRole('button', { name: '取得系統使用權' }).click();
     await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
-    await page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '日結', exact: true }).click();
+    await page.getByRole('button', { name: '今日帳', exact: true }).click();
   }
 
   test('shows no misleading local-tracking warning after a normal CloseDay and leaves an empty journal', async ({ googleSession }) => {
@@ -2217,7 +2218,7 @@ test.describe('P13b2b3a journal cleanup post-condition and embedded backup recov
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
       await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
-      await page.getByRole('button', { name: '日期與供應商' }).click();
+      await page.keyboard.press('F4');
       const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
       await page.getByRole('button', { name: '新增供應商' }).click();
       const form = main.getByRole('form', { name: '新增供應商' });
@@ -2266,7 +2267,7 @@ test.describe('P13b2b3a journal cleanup post-condition and embedded backup recov
       if (!commandId) throw new Error('The pending RecordBackup command ID was not shown');
       await expectMinimalJournal(page, [{ commandId, datasetId, uid }]);
       expect(await rawStorageDump(page)).not.toContain('e2e-fixture-passphrase');
-      await expect(page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '櫃台點餐' })).toBeDisabled();
+      await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
       await expect(page.getByRole('form', { name: `${today} 關帳`, exact: true }).getByRole('button', { name: '確認關帳' })).toBeDisabled();
 
       await page.getByRole('button', { name: '查詢原命令結果' }).click();
@@ -2299,7 +2300,7 @@ test.describe('P13b2b3b report export and print same-page recovery', () => {
   async function openReport(page: Page) {
     await page.getByRole('button', { name: '取得系統使用權' }).click();
     await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
-    await page.getByRole('navigation', { name: '雲端資料管理' }).getByRole('button', { name: '雲端報表' }).click();
+    await report(page);
     await expect(page.getByTestId('report-ready')).toBeVisible({ timeout: 30000 });
   }
 

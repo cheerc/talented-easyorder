@@ -1,3 +1,4 @@
+import { settings } from './helpers/navigation';
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './fixtures';
 import { seedAccessLease } from './helpers/seed';
@@ -40,14 +41,13 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
     const { page } = googleSession;
     await page.getByRole('button', { name: '取得系統使用權' }).click();
     await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
-    await expect(page.getByRole('button', { name: '本機診斷（F3）' })).toBeVisible();
     await page.evaluate(() => localStorage.setItem('easyorder-diagnostics-cloud', JSON.stringify({
       schemaVersion: 1,
       entries: [{
         type: 'system-error', source: 'auth', systemCode: 'AUTH_ERROR', occurredAt: new Date().toISOString(),
       }],
     })));
-    await page.keyboard.press('F3');
+    await settings(page, '本機診斷');
     await expect(page.getByRole('heading', { name: '本機診斷' })).toBeVisible();
     await expect(page.getByText('系統診斷：AUTH_ERROR')).toBeVisible();
     await page.evaluate(() => {
@@ -71,7 +71,7 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
 
   test('requires the lease, exports the strict allowlist, clears it, and masks controls on lease loss', async ({ googleSession }) => {
     const { page, uid } = googleSession;
-    const navButton = page.getByRole('button', { name: /本機診斷.*F3/ });
+    const navButton = page.getByRole('button', { name: '本機診斷', exact: true });
     await expect(navButton).toHaveCount(0);
 
     await page.evaluate(markers => {
@@ -99,7 +99,7 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
     await page.getByRole('button', { name: '取得系統使用權' }).click();
     await expect(page.locator('.operator-strip')).toContainText(`租約 Epoch: 1`);
     await expect(navButton).toBeVisible();
-    await page.keyboard.press('F3');
+    await settings(page, '本機診斷');
     await expect(page.getByRole('heading', { name: '本機診斷' })).toBeVisible();
     await expect(page.getByText(/只保存在這台電腦.*24 小時/)).toBeVisible();
 
@@ -153,14 +153,13 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
     const { page } = googleSession;
     await page.getByRole('button', { name: '取得系統使用權' }).click();
     await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
-    await expect(page.getByRole('button', { name: '本機診斷（F3）' })).toBeVisible();
     await page.evaluate(marker => {
       const occurredAt = new Date().toISOString();
       const raw = `{"schemaVersion":"${marker}","schemaVersion":1,"entries":[{"type":"system-error","source":"${marker}","source":"auth","systemCode":"AUTH_ERROR","occurredAt":"${occurredAt}"}]}`;
       localStorage.setItem('easyorder-diagnostics-cloud', raw);
     }, MARKERS[0]);
 
-    await page.keyboard.press('F3');
+    await settings(page, '本機診斷');
     await expect(page.getByRole('heading', { name: '本機診斷' })).toBeVisible();
     await expect(page.getByText('系統診斷：AUTH_ERROR')).toBeVisible();
     const canonicalStorage = await page.evaluate(() => localStorage.getItem('easyorder-diagnostics-cloud'));

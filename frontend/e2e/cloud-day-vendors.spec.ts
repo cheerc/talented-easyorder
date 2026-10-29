@@ -1,3 +1,4 @@
+import { settings } from './helpers/navigation';
 // P07 date, vendor, menu, and opening-cash workflow against the isolated Emulator.
 
 import { test, expect } from './fixtures';
@@ -136,10 +137,10 @@ test.describe('P07 Cloud day vendors', () => {
 
   test('operator creates today, an active vendor, a menu, and an explicitly confirmed zero opening', async ({ authedPage }) => {
     const page = authedPage;
-    await page.getByRole('button', { name: '日期與供應商' }).click();
+    await settings(page, '菜單與開帳');
 
     const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
-    await expect(main.getByRole('heading', { name: '營業日、菜單與供應商' })).toBeVisible();
+    await expect(main.getByRole('heading', { name: '菜單與開帳' })).toBeVisible();
     const dateField = main.getByLabel('查看或設定日期');
     const businessDate = await dateField.inputValue();
     expect(businessDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -148,6 +149,7 @@ test.describe('P07 Cloud day vendors', () => {
     const menuForm = main.getByRole('form', { name: `${businessDate} 菜單` });
     await expect(menuForm).toBeVisible();
 
+    await page.keyboard.press('F4');
     await page.getByRole('button', { name: '新增供應商' }).click();
     const vendorForm = main.getByRole('form', { name: '新增供應商' });
     await vendorForm.getByLabel('供應商編號').fill('p07-ui-vendor-e2e');
@@ -155,6 +157,7 @@ test.describe('P07 Cloud day vendors', () => {
     await vendorForm.getByRole('button', { name: '建立供應商' }).click();
     const vendorRow = page.getByTestId('cloud-vendor-row-p07-ui-vendor-e2e');
     await expect(vendorRow).toContainText('P07 測試供應商');
+    await settings(page, '菜單與開帳');
 
     await menuForm.getByLabel('菜單名稱').fill('P07 測試餐盒');
     await menuForm.getByLabel('價格（新臺幣整數）').fill('135');
@@ -180,7 +183,7 @@ test.describe('P07 Cloud day vendors', () => {
     const operatorUid = (await readAccessLease()).holderUid;
     expect(operatorUid).toBeTruthy();
 
-    await page.getByRole('button', { name: '日期與供應商' }).click();
+    await settings(page, '菜單與開帳');
     const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
     await expect(main.getByLabel('查看或設定日期')).toHaveValue(today);
 
@@ -191,12 +194,14 @@ test.describe('P07 Cloud day vendors', () => {
     await page.getByRole('button', { name: '建立空白營業日' }).click();
     await expect(main.getByRole('form', { name: `${previousDate} 菜單` })).toBeVisible();
 
+    await page.keyboard.press('F4');
     await page.getByRole('button', { name: '新增供應商' }).click();
     const oldVendorForm = main.getByRole('form', { name: '新增供應商' });
     await oldVendorForm.getByLabel('供應商編號').fill(oldVendorId);
     await oldVendorForm.getByLabel('供應商名稱').fill('昨日供應商快照');
     await oldVendorForm.getByRole('button', { name: '建立供應商' }).click();
     await expect(page.getByTestId(`cloud-vendor-row-${oldVendorId}`)).toContainText('昨日供應商快照');
+    await settings(page, '菜單與開帳');
 
     const previousMenuForm = main.getByRole('form', { name: `${previousDate} 菜單` });
     await previousMenuForm.getByLabel('菜單名稱').fill('昨日菜單快照');
@@ -267,6 +272,7 @@ test.describe('P07 Cloud day vendors', () => {
       inheritedFromDate: null,
     });
 
+    await page.keyboard.press('F4');
     const oldVendorRow = page.getByTestId(`cloud-vendor-row-${oldVendorId}`);
     await oldVendorRow.getByRole('button', { name: '編輯／停用／恢復' }).click();
     const editVendorForm = main.getByRole('form', { name: `編輯供應商 ${oldVendorId}` });
@@ -279,6 +285,7 @@ test.describe('P07 Cloud day vendors', () => {
     await removeForm.getByLabel(/移除原因/).fill('已確認結束合作');
     await removeForm.getByRole('button', { name: '確認移除' }).click();
     await expect(page.getByTestId(`cloud-vendor-row-${oldVendorId}`)).toHaveCount(0);
+    await settings(page, '菜單與開帳');
 
     await dateField.fill(futureDate);
     await main.getByRole('button', { name: '載入日期' }).click();
@@ -289,12 +296,14 @@ test.describe('P07 Cloud day vendors', () => {
     await expect(main.getByText(/此日期可預排菜單，但不能預先開帳/)).toBeVisible();
     await expect(main.getByRole('form', { name: `${futureDate} 開帳現金` })).toHaveCount(0);
 
+    await page.keyboard.press('F4');
     await page.getByRole('button', { name: '新增供應商' }).click();
     const futureVendorForm = main.getByRole('form', { name: '新增供應商' });
     await futureVendorForm.getByLabel('供應商編號').fill(newVendorId);
     await futureVendorForm.getByLabel('供應商名稱').fill('未來供應商');
     await futureVendorForm.getByRole('button', { name: '建立供應商' }).click();
     await expect(page.getByTestId(`cloud-vendor-row-${newVendorId}`)).toContainText('未來供應商');
+    await settings(page, '菜單與開帳');
     await futureMenuForm.getByLabel('菜單名稱').fill('未來直接菜單');
     await futureMenuForm.getByLabel('價格（新臺幣整數）').fill('210');
     await futureMenuForm.getByLabel('供應商').selectOption(newVendorId);

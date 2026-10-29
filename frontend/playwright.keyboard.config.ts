@@ -3,7 +3,7 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './e2e',
   // Cloud suite: authenticated access/lease and signed-out gate behavior only.
-  testMatch: ['**/cloud-keyboard.spec.ts'],
+  testMatch: ['**/cloud-keyboard.spec.ts', '**/cloud-shell.spec.ts'],
   globalSetup: './e2e/global-setup.ts',
   timeout: 30000,
   retries: 0,
