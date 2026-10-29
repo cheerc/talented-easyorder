@@ -68,6 +68,7 @@ vi.mock('../components/cloud/CloudDayVendorsPage', () => ({
     onNavigationStateChange: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
   }) => (
     <section aria-label="mock day vendors page">
+      <input aria-label="日期選擇" defaultValue="2026-10-28" />
       <button type="button" onClick={() => onNavigationStateChange(identityKey, 'recovering')}>保持待確認命令</button>
       <button type="button" onClick={() => onNavigationStateChange(identityKey, 'revoked')}>回報使用權失效</button>
       <button type="button" onClick={() => onNavigationStateChange(identityKey, 'resolved')}>回報已確認</button>
@@ -216,6 +217,17 @@ describe('App mode gate', () => {
 });
 
 describe('cloud navigation contract', () => {
+  it('keeps the day/vendor page instance when switching its presentation without a draft', () => {
+    appMocks.cloudModeValid = true;
+    render(<App />);
+    fireEvent.keyDown(window, { key: 'F3' });
+    const input = screen.getByLabelText('日期選擇') as HTMLInputElement;
+    input.value = '2026-10-20';
+    fireEvent.keyDown(window, { key: 'F4' });
+    expect(screen.getByLabelText('日期選擇')).toBe(input);
+    expect(input.value).toBe('2026-10-20');
+  });
+
   it('intercepts browser F5 while recovery locks navigation and preserves native modifiers', () => {
     appMocks.cloudModeValid = true;
     render(<App />);
