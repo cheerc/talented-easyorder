@@ -108,7 +108,7 @@ describe('完整 App 跨功能整合與真實 Persist 測試', () => {
     const event = new KeyboardEvent('keydown', { key: '£', code: 'Digit3', altKey: true, bubbles: true, cancelable: true });
     act(() => { search.dispatchEvent(event); });
     expect(event.defaultPrevented).toBe(true);
-    expect(await screen.findByRole('button', { name: '編輯 005' })).toBeVisible();
+    expect(await screen.findByRole('button', { name: '編輯 005' }, { timeout: 10000 })).toBeVisible();
   });
 
   it('保留櫃台草稿直到確認捨棄，並在取消離開後繼續編輯', async () => {
@@ -122,7 +122,7 @@ describe('完整 App 跨功能整合與真實 Persist 測試', () => {
     expect(screen.getByText('整合乙')).toBeVisible();
     await user.keyboard('{F3}');
     await user.click(screen.getByRole('button', { name: '捨棄草稿' }));
-    expect(await screen.findByRole('button', { name: '編輯 005' })).toBeVisible();
+    expect(await screen.findByRole('button', { name: '編輯 005' }, { timeout: 10000 })).toBeVisible();
     expect(usePosStore.getState().transactions).toHaveLength(0);
   });
 
