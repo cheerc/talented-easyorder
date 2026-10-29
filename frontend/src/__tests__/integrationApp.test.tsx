@@ -101,6 +101,21 @@ async function refundInApp(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('完整 App 跨功能整合與真實 Persist 測試', () => {
+  it('保留櫃台草稿直到確認捨棄，並在取消離開後繼續編輯', async () => {
+    render(<App />);
+    const user = userEvent.setup();
+    const search = await screen.findByLabelText('輸入學員編號或姓名');
+    await user.type(search, '0090{Enter}');
+    await user.keyboard('{F3}');
+    expect(await screen.findByRole('dialog', { name: '離開並捨棄草稿？' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '取消離開' }));
+    expect(screen.getByText('整合乙')).toBeVisible();
+    await user.keyboard('{F3}');
+    await user.click(screen.getByRole('button', { name: '捨棄草稿' }));
+    expect(await screen.findByRole('button', { name: '新增學生' })).toBeVisible();
+    expect(usePosStore.getState().transactions).toHaveLength(0);
+  });
+
   it('在已選帳戶按 R 開啟其他餐點並聚焦品項，文字欄保留輸入', async () => {
     render(<App />);
     const user = userEvent.setup();
