@@ -1,6 +1,7 @@
 /* POS prototype — 極簡專業 */
 /* Ref: #324 — Split from 2164-line monolithic file into component-scoped CSS */
 @import './styles/tokens.css';
+@import './styles/data-table.css';
 @import './styles/topbar.css';
 @import './styles/pos.css';
 @import './styles/report.css';
