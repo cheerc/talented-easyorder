@@ -385,6 +385,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
   const [settingsTab, setSettingsTab] = useState<CloudSection>('day-vendors');
   const [accountTab, setAccountTab] = useState<CloudSection>('day-close');
   const [dayVendorGeneration, setDayVendorGeneration] = useState(0);
+  const [ordersGeneration, setOrdersGeneration] = useState(0);
   const [leaveTarget, setLeaveTarget] = useState<{ section: CloudSection; dayId?: string; postCloseEntry?: OpeningMismatchAnomaly } | null>(null);
   const dirtyRef = useRef(false);
   const operator = useOperator();
@@ -431,11 +432,12 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
   };
   const selectSection = (section: CloudSection, dayId?: string, postCloseEntry?: OpeningMismatchAnomaly) => {
     if (navigationLockRef.current?.locked || leaveTarget || document.querySelector('.cloud-app')?.closest('[inert]') || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+    const selectedOrder = cloudSection === 'orders' && !!document.querySelector('form[aria-label="訂餐"], form[aria-label="繳費"], form[aria-label="櫃台收支"]');
     if (section === cloudSection && !dayId && !postCloseEntry) {
-      if (section === 'orders') document.querySelector<HTMLInputElement>('#cloud-student-search')?.focus();
+      if (section === 'orders' && (dirtyRef.current || selectedOrder)) setLeaveTarget({ section });
+      else if (section === 'orders') document.querySelector<HTMLInputElement>('#cloud-student-search')?.focus();
       return;
     }
-    const selectedOrder = cloudSection === 'orders' && !!document.querySelector('form[aria-label="訂餐"], form[aria-label="繳費"], form[aria-label="櫃台收支"]');
     if (dirtyRef.current || selectedOrder) { setLeaveTarget({ section, dayId, postCloseEntry }); return; }
     applySection(section, dayId, postCloseEntry);
   };
@@ -479,9 +481,9 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
           </div></details></div>} />
       {(cloudSection === 'day-close' || cloudSection === 'reports') && <nav className="cloud-subnav" aria-label="今日帳"><button disabled={navigationLocked} aria-current={cloudSection === 'day-close' ? 'page' : undefined} onClick={() => selectSection('day-close')}>今日</button><button disabled={navigationLocked} aria-current={cloudSection === 'reports' ? 'page' : undefined} onClick={() => selectSection('reports')}>本週／本月</button></nav>}
       {(cloudSection === 'students' || cloudSection === 'day-vendors' || cloudSection === 'diagnostics') && <nav className="cloud-subnav" aria-label="今日設定"><button disabled={navigationLocked} aria-current={cloudSection === 'students' ? 'page' : undefined} onClick={() => selectSection('students')}>學生</button><button disabled={navigationLocked} aria-current={cloudSection === 'day-vendors' ? 'page' : undefined} onClick={() => selectSection('day-vendors')}>菜單與開帳</button><button disabled={navigationLocked} aria-current={cloudSection === 'diagnostics' ? 'page' : undefined} onClick={() => selectSection('diagnostics')}>本機診斷</button></nav>}
-      <ConfirmDialog open={leaveTarget !== null} title="離開並捨棄草稿？" message="尚未送出的草稿會被捨棄。" defaultAction="cancel" confirmLabel="捨棄草稿" cancelLabel="取消離開" onCancel={() => setLeaveTarget(null)} onConfirm={() => { if (leaveTarget && !navigationLockRef.current?.locked) { setDayVendorGeneration(value => value + 1); applySection(leaveTarget.section, leaveTarget.dayId, leaveTarget.postCloseEntry); } setLeaveTarget(null); }} />
+      <ConfirmDialog open={leaveTarget !== null} title="離開並捨棄草稿？" message="尚未送出的草稿會被捨棄。" defaultAction="cancel" confirmLabel="捨棄草稿" cancelLabel="取消離開" onCancel={() => setLeaveTarget(null)} onConfirm={() => { if (leaveTarget && !navigationLockRef.current?.locked) { setDayVendorGeneration(value => value + 1); if (leaveTarget.section === 'orders' && cloudSection === 'orders') setOrdersGeneration(value => value + 1); applySection(leaveTarget.section, leaveTarget.dayId, leaveTarget.postCloseEntry); } setLeaveTarget(null); }} />
       {cloudSection === 'orders' ? (
-        <CloudOrdersPage {...common} initialBackfillDayId={ordersFocus} onViewDayChange={onViewDayChange} />
+        <CloudOrdersPage key={ordersGeneration} {...common} initialBackfillDayId={ordersFocus} onViewDayChange={onViewDayChange} />
       ) : cloudSection === 'students' ? (
         <CloudStudentsPage {...common} />
       ) : cloudSection === 'day-vendors' || cloudSection === 'vendors' ? (

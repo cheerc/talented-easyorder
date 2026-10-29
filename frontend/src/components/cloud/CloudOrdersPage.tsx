@@ -40,6 +40,7 @@ export interface CloudOrdersPageProps {
   onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
   /** 第一次載入時要顯示的回填營業日（例如從日結頁或異常頁帶過來）；沒提供則顯示伺服器今天。 */
   initialBackfillDayId?: string;
+  onDraftCleared?: () => void;
   onViewDayChange?: (date: string, backfill: boolean) => void;
 }
 
@@ -487,7 +488,7 @@ function recentSummary(transactions: CloudOrderTransactionRecord[]): string {
   return '僅繳費';
 }
 
-export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationStateChange, initialBackfillDayId, onViewDayChange }: CloudOrdersPageProps) {
+export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationStateChange, initialBackfillDayId, onViewDayChange, onDraftCleared }: CloudOrdersPageProps) {
   const recoveryReader = useMemo(() => getCloudRecoveryReader(db), [db]);
   const repository = useMemo(() => createCloudOrderRepository(db, { recoveryReader }), [db, recoveryReader]);
   // Which business day the page reads: null is the server's today. Commands refresh through the same ref.
@@ -860,9 +861,10 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const cancelSelection = useCallback(() => {
     if (operationRef.current || pageState.recovery) return;
     focusSearchRef.current = true;
+    onDraftCleared?.();
     setPageStateRaw(previous => ({ ...previous, ...freshDraft(), actionError: '' }));
     if (searchInputRef.current) { searchInputRef.current.focus(); focusSearchRef.current = false; }
-  }, [pageState.recovery]);
+  }, [onDraftCleared, pageState.recovery]);
 
   const updateRecoveryView = (operation: OrdersRecoveryOperation, update: (view: RecoveryView) => RecoveryView) => {
     if (!isOperationCurrent(operation)) return;
@@ -956,6 +958,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       expiresAt: Date.now() + UNDO_WINDOW_MS,
     };
     operation.completed = true;
+    onDraftCleared?.();
     clearOperationTimer(operation);
     operationRef.current = null;
     flightRef.current = false;
