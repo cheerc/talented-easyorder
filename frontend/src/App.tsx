@@ -395,6 +395,11 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
   hasUnresolvedPendingCommands: boolean;
 }) {
   const [cloudSection, setCloudSection] = useState<CloudSection>('students');
+  const pageSourceRef = useRef({ section: cloudSection, generation: 0 });
+  if (pageSourceRef.current.section !== cloudSection) {
+    pageSourceRef.current = { section: cloudSection, generation: pageSourceRef.current.generation + 1 };
+  }
+  const pageGeneration = pageSourceRef.current.generation;
   const [settingsTab, setSettingsTab] = useState<CloudSection>('day-vendors');
   const [accountTab, setAccountTab] = useState<CloudSection>('day-close');
   const [dayVendorGeneration, setDayVendorGeneration] = useState(0);
@@ -415,6 +420,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
   const { ledger, reload: reloadLedger } = useCloudLedger(db, `${identityKey}:${leaseEpoch}`);
 
   const reportNavigationState = useCallback((reportedKey: string, state: 'recovering' | 'revoked' | 'resolved') => {
+    if (reportedKey !== identityKey || pageSourceRef.current.generation !== pageGeneration) return;
     const currentLock = navigationLockRef.current;
     const current = currentLock?.identityKey === reportedKey
       ? currentLock
@@ -432,7 +438,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
     const lock = { identityKey: reportedKey, locked, revoked };
     navigationLockRef.current = lock;
     setNavigationLocked(lock.locked);
-  }, []);
+  }, [identityKey, pageGeneration]);
   const applySection = (section: CloudSection, dayId?: string, postCloseEntry?: OpeningMismatchAnomaly) => {
     dirtyRef.current = false;
     if (section === 'anomalies') reloadLedger();
@@ -473,7 +479,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
     return () => window.removeEventListener('keydown', onKey);
   });
   const openAnomalies = () => selectSection('anomalies');
-  const onDraftCleared = useCallback(() => { dirtyRef.current = false; }, []);
+  const onDraftCleared = useCallback(() => { if (pageSourceRef.current.generation === pageGeneration) dirtyRef.current = false; }, [pageGeneration]);
   const common = { db, leaseEpoch, identityKey, onNavigationStateChange: reportNavigationState, onDraftCleared };
 
   return (
