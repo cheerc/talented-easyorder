@@ -443,6 +443,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
       setPageGeneration(pageGenerationRef.current);
     }
     dirtyRef.current = false;
+    if (section === 'orders') setViewDay(null);
     if (section === 'anomalies') reloadLedger();
     if (section === 'students' || section === 'day-vendors' || section === 'diagnostics') setSettingsTab(section);
     if (section === 'day-close' || section === 'reports') setAccountTab(section);
@@ -491,7 +492,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
     }}>
       <AppShell active={cloudSection === 'orders' ? 'pos' : cloudSection === 'day-close' || cloudSection === 'reports' ? 'report' : cloudSection === 'students' || cloudSection === 'day-vendors' || cloudSection === 'diagnostics' ? 'admin' : cloudSection === 'vendors' ? 'vendors' : cloudSection === 'account-history' ? 'history' : ''}
         select={selectPrimary} disabled={navigationLocked}
-        brand={<div className="brand"><div className="brand-mark">●</div><div><div className="brand-name">訂餐櫃台</div><div className="brand-sub">{cloudSection === 'orders' && viewDay?.backfill ? <span className="backfill-badge">補登 {viewDay.date}</span> : cloudSection === 'orders' && viewDay ? viewDay.date : ledger.status === 'ready' ? ledger.snapshot.today : '營業日未確認'}</div></div></div>}
+        brand={<div className="brand"><div className="brand-mark">●</div><div><div className="brand-name">訂餐櫃台</div><div className="brand-sub">{cloudSection === 'orders' && viewDay?.backfill ? <span className="backfill-badge">補登 {viewDay.date}</span> : cloudSection === 'orders' ? viewDay?.date ?? '營業日未確認' : ledger.status === 'ready' ? ledger.snapshot.today : '營業日未確認'}</div></div></div>}
         status={<div className="status">{ledger.status === 'ready' && ledger.snapshot.anomalies.length > 0 && <button disabled={navigationLocked} onClick={openAnomalies}>⚠ 異常 {ledger.snapshot.anomalies.length}</button>}
           <details className="operator-menu operator-strip" onClick={event => { if ((event.target as HTMLElement).closest('button')) { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); } }} onKeyDown={event => { if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); } }}><summary>{operator?.name ?? '操作員'}</summary><div className="operator-menu__panel">
             <small>租約 Epoch: {leaseEpoch}</small>
