@@ -10,6 +10,7 @@ import {
   type CloudStudentRecord,
 } from '../../firebase/cloudStudentRepository';
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
+import { Modal } from '../ui/Modal';
 import './CloudStudentsPage.css';
 
 export interface CloudStudentsPageProps {
@@ -1344,17 +1345,36 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
         <div>
           <p className="cloud-students__eyebrow">雲端資料 · 線上操作</p>
           <h1>學生名單與期初結餘</h1>
-          <p className="cloud-students__intro">名單由伺服器完整載入。期初結餘在新增學生時建立；之後只能以「更正期初」修改金額與備註，期初日不變，並須填寫原因。</p>
         </div>
-        <button
-          type="button"
-          className="cloud-students__secondary"
-          onClick={() => void loadSnapshot(page.recovery?.phase === 'receipt' ? page.recovery.receipt : undefined)}
-          disabled={page.loading || busy || !identityKey || page.authorizationRevoked}
-        >
-          {page.loading ? '載入中…' : '重新載入名單'}
-        </button>
+        <div className="cloud-students__header-actions">
+          <button
+            type="button"
+            className="cloud-students__secondary"
+            onClick={() => void loadSnapshot(page.recovery?.phase === 'receipt' ? page.recovery.receipt : undefined)}
+            disabled={page.loading || busy || !identityKey || page.authorizationRevoked}
+          >
+            {page.loading ? '載入中…' : '重新載入名單'}
+          </button>
+          <button
+            type="button"
+            className="cloud-students__primary"
+            onClick={() => setPageState(previous => ({
+              ...previous,
+              createOpen: !previous.createOpen,
+              actionError: '',
+              createDraft: previous.createOpen ? freshCreateDraft() : previous.createDraft,
+            }))}
+            disabled={busy}
+            hidden={!page.snapshot || page.loading}
+          >
+            {page.createOpen ? '收起新增表單' : '新增學生'}
+          </button>
+        </div>
       </header>
+      <details className="cloud-students__intro-details">
+        <summary>期初結餘與名單規則</summary>
+        <p className="cloud-students__intro">名單由伺服器完整載入。期初結餘在新增學生時建立；之後只能以「更正期初」修改金額與備註，期初日不變，並須填寫原因。</p>
+      </details>
 
       {page.loadError && <div className="cloud-students__alert" role="alert">{page.loadError}</div>}
       {page.actionError && <div className="cloud-students__alert" role="alert">{page.actionError}</div>}
@@ -1437,22 +1457,9 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
               disabled={busy}
             />
             <span className="cloud-students__count">{visibleStudentCount} / {page.snapshot.students.length} 位</span>
-            <button
-              type="button"
-              className="cloud-students__primary"
-              onClick={() => setPageState(previous => ({
-                ...previous,
-                createOpen: !previous.createOpen,
-                actionError: '',
-                createDraft: previous.createOpen ? freshCreateDraft() : previous.createDraft,
-              }))}
-              disabled={busy}
-            >
-              {page.createOpen ? '收起新增表單' : '新增學生'}
-            </button>
           </section>
 
-          {page.createOpen && (
+          <Modal open={page.createOpen} title="新增學生" onClose={() => setPageState(previous => ({ ...previous, createOpen: false, createDraft: freshCreateDraft(), actionError: '' }))}>
             <form className="cloud-students__form" aria-label="新增學生" onSubmit={submitCreate}>
               <h2>手動新增學生</h2>
               <p>編號會以正規化形式儲存（例如 001、099、1000）；請自行核對實際結餘。金額沒有預設值，輸入 0 才代表零元。</p>
@@ -1495,7 +1502,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
                 <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, createOpen: false, createDraft: freshCreateDraft(), actionError: '' }))} disabled={busy}>取消</button>
               </div>
             </form>
-          )}
+          </Modal>
 
           <section className="cloud-students__list" aria-label="學生名單">
             {displayRows.length === 0 ? (
@@ -1506,7 +1513,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
               <div className="cloud-students__table-wrap">
                 <table>
                   <thead>
-                    <tr><th>編號</th><th>姓名與別名</th><th>狀態</th><th>目前結餘</th><th>期初資料</th><th>操作</th></tr>
+                    <tr><th>編號</th><th>姓名與別名</th><th>狀態</th><th className="dt-num">目前結餘</th><th>期初資料</th><th>操作</th></tr>
                   </thead>
                   <tbody>
                     {displayRows.map(row => {
@@ -1522,11 +1529,10 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
                               actionError: '',
                               createDraft: { ...freshCreateDraft(), studentCode: row.prefillCode },
                             }))}
-                            style={{ cursor: 'pointer', background: 'rgba(0, 0, 0, 0.03)' }}
                           >
-                            <td colSpan={6} style={{ textAlign: 'center', padding: '10px' }}>
-                              <strong>{row.count === 1 ? `${row.startCode} 尚無人使用` : `${row.startCode}–${row.endCode} 尚無人使用（${row.count} 個號碼）`}</strong>
-                              <span style={{ marginLeft: '8px', fontSize: '0.85em', opacity: 0.8 }}>（點擊填入新增表單）</span>
+                            <td colSpan={6}>
+                              {row.count === 1 ? `${row.startCode} 尚無人使用` : `${row.startCode}–${row.endCode} 尚無人使用（${row.count} 個號碼）`}
+                              <span className="cloud-students__gap-hint">（點擊填入新增表單）</span>
                             </td>
                           </tr>
                         );
@@ -1553,7 +1559,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
                             )}
                           </td>
                           <td><span className={`cloud-students__status cloud-students__status--${student.status}`}>{student.status === 'active' ? '使用中' : '已停用'}</span></td>
-                          <td className="cloud-students__balance">{formatBalance(student.currentBalance)}</td>
+                          <td className="cloud-students__balance dt-num">{formatBalance(student.currentBalance)}</td>
                           <td>
                             <details className="cloud-students__opening-details">
                               <summary>查看期初資料</summary>
@@ -1603,11 +1609,16 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
                             ) : (
                               <div className="cloud-students__row-actions">
                                 <button type="button" className="cloud-students__secondary" onClick={() => beginEdit(student)} disabled={busy}>編輯姓名與別名</button>
-                                <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, codeStudent: student, changeCodeValue: '', changeCodeReason: '', actionError: '' }))} disabled={busy}>改編號</button>
-                                <button type="button" className="cloud-students__secondary" onClick={() => void beginOpening(student)} disabled={busy}>更正期初</button>
-                                <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, statusStudent: student, statusReason: '', actionError: '' }))} disabled={busy}>
-                                  {student.status === 'active' ? '停用' : '恢復'}
-                                </button>
+                                <details className="cloud-students__more">
+                                  <summary aria-label={`${student.displayName} 的其他操作`}>⋯</summary>
+                                  <div className="cloud-students__more-menu">
+                                    <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, codeStudent: student, changeCodeValue: '', changeCodeReason: '', actionError: '' }))} disabled={busy}>改編號</button>
+                                    <button type="button" className="cloud-students__secondary" onClick={() => void beginOpening(student)} disabled={busy}>更正期初</button>
+                                    <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, statusStudent: student, statusReason: '', actionError: '' }))} disabled={busy}>
+                                      {student.status === 'active' ? '停用' : '恢復'}
+                                    </button>
+                                  </div>
+                                </details>
                               </div>
                             )}
                           </td>

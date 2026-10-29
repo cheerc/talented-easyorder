@@ -484,12 +484,14 @@ test.describe('P06 Cloud Students', () => {
       await expect(first.page.getByText(/已確認 修改 002 完成/)).toBeVisible();
       await expect(row002).toContainText('P06 已修改學生');
 
+      await row002.locator('details.cloud-students__more > summary').click();
       await row002.getByRole('button', { name: '停用' }).click();
       const deactivateForm = row002.getByRole('form', { name: '停用學生 002' });
       await deactivateForm.getByLabel('原因（必填）').fill('操作員確認資料後暫時停用此學生');
       await deactivateForm.getByRole('button', { name: '確認停用' }).click();
       await expect(row002).toContainText('已停用');
 
+      await row002.locator('details.cloud-students__more > summary').click();
       await row002.getByRole('button', { name: '恢復' }).click();
       const restoreForm = row002.getByRole('form', { name: '恢復學生 002' });
       await restoreForm.getByLabel('原因（必填）').fill('已完成確認，恢復學生使用狀態');
@@ -544,6 +546,7 @@ test.describe('P06 Cloud Students', () => {
         // --- P06b: 改號 -> 重載 / 缺號列預填 / 搜尋隱藏缺號 / 搶號衝突 / 停用改號 ---
         const page = second.page;
         const row002 = page.getByTestId('cloud-student-row-002');
+        await row002.locator('details.cloud-students__more > summary').click();
         await row002.getByRole('button', { name: '改編號' }).click();
         const codeForm002 = row002.getByRole('form', { name: '改編號 002' });
         await codeForm002.getByLabel('新編號').fill('015');
@@ -579,6 +582,7 @@ test.describe('P06 Cloud Students', () => {
 
         // 搶號衝突 UI 提示：015 嘗試改為已佔用的 001
         const row015 = page.getByTestId('cloud-student-row-015');
+        await row015.locator('details.cloud-students__more > summary').click();
         await row015.getByRole('button', { name: '改編號' }).click();
         const codeForm015 = row015.getByRole('form', { name: '改編號 015' });
         await codeForm015.getByLabel('新編號').fill('001');
@@ -589,12 +593,14 @@ test.describe('P06 Cloud Students', () => {
 
         // 停用學生改號釋出號碼：停用 001，並將其編號改為 099
         const row001 = page.getByTestId('cloud-student-row-001');
+        await row001.locator('details.cloud-students__more > summary').click();
         await row001.getByRole('button', { name: '停用' }).click();
         const statusForm001 = row001.getByRole('form', { name: '停用學生 001' });
         await statusForm001.getByLabel('原因（必填）').fill('停用讓號');
         await statusForm001.getByRole('button', { name: '確認停用' }).click();
         await expect(row001).toContainText('已停用');
 
+        await row001.locator('details.cloud-students__more > summary').click();
         await row001.getByRole('button', { name: '改編號' }).click();
         const codeForm001 = row001.getByRole('form', { name: '改編號 001' });
         await codeForm001.getByLabel('新編號').fill('099');
@@ -1221,6 +1227,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       expect(openingDate).toBe(today);
 
       // 2. 期初日沒有營業日時先建立（不影響現金），再回來更正
+      await row.locator('details.cloud-students__more > summary').click();
       await row.getByRole('button', { name: '更正期初' }).click();
       const ensureDay = row.getByRole('button', { name: `先建立營業日 ${openingDate}` });
       const openingForm = row.getByRole('form', { name: '更正期初 009' });
@@ -1228,6 +1235,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       if (await ensureDay.isVisible()) {
         await ensureDay.click();
         await expect(page.getByText(/請再按該學生的「更正期初」繼續/)).toBeVisible();
+        await row.locator('details.cloud-students__more > summary').click();
         await row.getByRole('button', { name: '更正期初' }).click();
       }
       await expect(openingForm).toBeVisible();

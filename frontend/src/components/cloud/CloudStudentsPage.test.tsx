@@ -101,6 +101,12 @@ function fillCreateForm(input: { id?: string; name?: string; amount?: string; mo
   }
 }
 
+function openRowMenu(row: HTMLElement) {
+  const summary = row.querySelector('details.cloud-students__more > summary');
+  if (!summary) throw new Error('row menu summary is missing');
+  fireEvent.click(summary);
+}
+
 describe('CloudStudentsPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -216,6 +222,7 @@ describe('CloudStudentsPage', () => {
       .mockResolvedValueOnce(snapshot([student('001', { status: 'inactive', revision: 6 })]));
     renderPage();
     const row = await screen.findByTestId('cloud-student-row-001');
+    openRowMenu(row);
     fireEvent.click(within(row).getByRole('button', { name: '停用' }));
     fireEvent.click(within(row).getByRole('button', { name: '確認停用' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('請輸入具體的停用或恢復原因');
@@ -689,6 +696,7 @@ describe('CloudStudentsPage', () => {
 
     await screen.findByTestId('cloud-student-row-002');
     const row = screen.getByTestId('cloud-student-row-002');
+    openRowMenu(row);
     fireEvent.click(within(row).getByRole('button', { name: '改編號' }));
 
     const codeForm = within(row).getByRole('form', { name: '改編號 002' });
@@ -718,6 +726,7 @@ describe('CloudStudentsPage', () => {
       .mockResolvedValueOnce(snapshot([{ ...original, revision: 5, currentBalance: 230, openingBalance: { ...original.openingBalance, amount: 80, note: '核對後' } }]));
     renderPage();
     const row = await screen.findByTestId('cloud-student-row-001');
+    openRowMenu(row);
     fireEvent.click(within(row).getByRole('button', { name: '更正期初' }));
     const form = await within(row).findByRole('form', { name: '更正期初 001' });
     expect(repository.readOpeningDay).toHaveBeenCalledWith('2026-01-01');
@@ -757,6 +766,7 @@ describe('CloudStudentsPage', () => {
     repository.readOpeningDay.mockResolvedValueOnce(null);
     renderPage();
     let row = await screen.findByTestId('cloud-student-row-001');
+    openRowMenu(row);
     fireEvent.click(within(row).getByRole('button', { name: '更正期初' }));
     fireEvent.click(await within(row).findByRole('button', { name: '先建立營業日 2026-01-01' }));
     await waitFor(() => expect(repository.ensureOpeningDay).toHaveBeenCalledWith({
@@ -769,6 +779,7 @@ describe('CloudStudentsPage', () => {
 
     repository.readOpeningDay.mockResolvedValueOnce({ dayId: '2026-01-01', revision: 7, status: 'closed' });
     row = await screen.findByTestId('cloud-student-row-001');
+    openRowMenu(row);
     fireEvent.click(within(row).getByRole('button', { name: '更正期初' }));
     expect(await within(row).findByText(/已關帳。請先到「日結」頁填寫原因重開該日/)).toBeInTheDocument();
     expect(within(row).queryByRole('button', { name: '確認更正期初' })).not.toBeInTheDocument();
