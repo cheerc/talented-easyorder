@@ -290,6 +290,16 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
     expect(f.records).toEqual([record]);
   });
 
+  it('does not present an empty journal as healthy after going offline', async () => {
+    f.records = [];
+    renderBoundary();
+    await screen.findByTestId('business-shell');
+    await act(async () => window.dispatchEvent(new Event('offline')));
+    expect(screen.getByText(/目前離線/)).toBeVisible();
+    expect(screen.queryByText('目前沒有待核對命令。')).not.toBeInTheDocument();
+    expect(screen.getByTestId('business-shell').parentElement).toHaveAttribute('inert');
+  });
+
   it('preserves the journal and gates immediately while offline', async () => {
     renderBoundary();
     await continueManually();
@@ -306,7 +316,7 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
     f.confirm.mockResolvedValueOnce(matched);
     renderBoundary();
 
-    await screen.findByText('目前沒有待核對命令。');
+    await waitFor(() => { expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert'); expect(screen.queryByRole('region', { name: '待核對命令' })).not.toBeInTheDocument(); });
 
     expect(f.remove).toHaveBeenCalledWith(record, expect.any(Function));
     expect(f.records).toEqual([]);
@@ -330,7 +340,7 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
 
       fireEvent.click(retry);
 
-      await screen.findByText('目前沒有待核對命令。');
+      await waitFor(() => { expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert'); expect(screen.queryByRole('region', { name: '待核對命令' })).not.toBeInTheDocument(); });
       expect(document).toBe(pageDocument);
       expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -380,7 +390,7 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
     expect(f.records).toEqual([]);
 
     await act(async () => window.dispatchEvent(new Event('online')));
-    await screen.findByText('目前沒有待核對命令。');
+    await waitFor(() => { expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert'); expect(screen.queryByRole('region', { name: '待核對命令' })).not.toBeInTheDocument(); });
     expect(f.migrate).toHaveBeenCalledTimes(2);
     expect(f.confirm).not.toHaveBeenCalled();
     expect(f.remove).not.toHaveBeenCalled();
@@ -403,7 +413,7 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
     expect(f.records).toEqual([]);
 
     await act(async () => migration.resolve('empty'));
-    await screen.findByText('目前沒有待核對命令。');
+    await waitFor(() => { expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert'); expect(screen.queryByRole('region', { name: '待核對命令' })).not.toBeInTheDocument(); });
     expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
     expect(f.migrate).toHaveBeenCalledTimes(2);
   });

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { PosMode } from '../domain/posFlow';
+import { NAVIGATION, navigationKey, isCompositionKey } from '../components/navigationKeys';
 
 interface UseAppNavigationShortcutsArgs {
   tab: string;
@@ -25,26 +26,23 @@ export function useAppNavigationShortcuts(args: UseAppNavigationShortcutsArgs) {
 
   // Global keyboard shortcuts: F-keys + digit key auto-focus
   useEffect(() => {
-    if (isDialogOpen) return;
     const onGlobalKey = (e: KeyboardEvent) => {
-      // M1 K09：任何對話框（修改交易、取消訂餐等）開著時，F 鍵不能繞過它切頁，否則對話框直接消失、編輯中的內容遺失。
-      if (/^F[1-6]$/.test(e.key) && document.querySelector('[role="dialog"][aria-modal="true"]')) {
+      const nav = navigationKey(e);
+      if (nav !== null) {
         e.preventDefault();
+        if (isCompositionKey(e) || e.repeat) return;
+        if (isDialogOpen || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+        if (nav === 0) { setSearchText(''); setSearchFocusKey(k => k + 1); }
+        setTab(NAVIGATION[nav].id);
         return;
       }
-      if (e.key === 'F1') {
+      if (e.key === 'F6' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
         e.preventDefault();
-        setSearchText('');
-        // M1：F1 回櫃台後游標直接在搜尋框。
-        setSearchFocusKey(k => k + 1);
-        setTab('pos');
+        if (isCompositionKey(e) || e.repeat) return;
+        if (!isDialogOpen && !document.querySelector('[role="dialog"][aria-modal="true"]')) setShowDashboard(v => !v);
         return;
       }
-      if (e.key === 'F2') { e.preventDefault(); setTab('report'); return; }
-      if (e.key === 'F3') { e.preventDefault(); setTab('admin'); return; }
-      if (e.key === 'F4') { e.preventDefault(); setTab('vendors'); return; }
-      if (e.key === 'F5') { e.preventDefault(); setTab('history'); return; }
-      if (e.key === 'F6') { e.preventDefault(); setShowDashboard((v: boolean) => !v); return; }
+      if (isDialogOpen || e.ctrlKey || e.metaKey || e.altKey) return;
 
       if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') {
         return;

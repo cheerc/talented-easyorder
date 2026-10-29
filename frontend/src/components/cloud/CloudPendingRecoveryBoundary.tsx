@@ -493,7 +493,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
 
   return (
     <>
-      <section className={`cloud-pending-recovery${gateLocked ? ' cloud-pending-recovery--blocked' : ''}`} aria-label="待核對命令">
+      {!(scopeConfirmed && state.initialReady && state.online && !state.busy && state.error === null && scopedRows.length === 0) && <section className={`cloud-pending-recovery${gateLocked ? ' cloud-pending-recovery--blocked' : ''}`} aria-label="待核對命令">
         <h2>待核對命令</h2>
         {!state.online && <p role="status">目前離線；追蹤編號仍保留，恢復連線後會重新核對。</p>}
         {!scopeMatchesOwner && <p role="status">目前登入身分或使用權已變更，正在重新核對；完成前不開放操作。</p>}
@@ -512,9 +512,6 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
         )}
         {scopeMatchesOwner && state.error && (
           <button type="button" onClick={() => void recover('retry')} disabled={!canStartRecoveryCheck}>重新檢查</button>
-        )}
-        {scopeConfirmed && state.initialReady && state.error === null && scopedRows.length === 0 && (
-          <p role="status">目前沒有待核對命令。</p>
         )}
         {scopedRows.length > 0 && (
           <>
@@ -555,7 +552,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
             )}
           </>
         )}
-      </section>
+      </section>}
       {state.shellMounted && (
         <div inert={gateLocked} aria-hidden={gateLocked || undefined}>
           {children(hasUnresolved)}

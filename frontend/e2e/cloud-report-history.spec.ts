@@ -1,3 +1,4 @@
+import { report } from './helpers/navigation';
 // P12c R01/L07 acceptance through the production cloud pages and typed command repositories.
 import { deleteApp, initializeApp } from 'firebase/app';
 import { GoogleAuthProvider, connectAuthEmulator, signInWithCredential, signOut } from 'firebase/auth';
@@ -559,7 +560,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
       // Authenticate a repository-backed command client as the active Google Emulator operator.
       expect(googleIdentity.localId).toBe(lease.holderUid);
 
-      await page.getByRole('button', { name: '雲端報表' }).click();
+      await report(page);
       await expect(page.getByTestId('report-ready')).toBeVisible({ timeout: 30_000 });
       await page.getByLabel('日期範圍').selectOption('custom');
       await page.getByLabel('開始日期').fill(d1);
@@ -1064,7 +1065,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
         held.completed.resolve();
       });
 
-      await page.getByRole('button', { name: '雲端報表' }).click();
+      await report(page);
       await expect(page.getByTestId('report-ready')).toBeVisible({ timeout: 30_000 });
       await page.getByLabel('日期範圍').selectOption('custom');
       await page.getByLabel('開始日期').fill(d2);
@@ -1239,7 +1240,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
       expect(nanos(rawTimestamp(laterRaw))).toBe(1_009_000);
       expect(earlierId.localeCompare(laterId)).toBeGreaterThan(0);
 
-      await page.getByRole('button', { name: '雲端報表' }).click();
+      await report(page);
       await expect(page.getByTestId('report-ready')).toBeVisible({ timeout: 30_000 });
       await expect(page.locator('.cloud-report__pager')).toContainText('全部 2 筆');
       await page.getByLabel('搜尋帳戶').fill(NANOS_STUDENT_NAME);

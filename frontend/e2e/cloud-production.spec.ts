@@ -1,3 +1,4 @@
+import { settings, report, release, releaseOwner, accountCheck } from './helpers/navigation';
 // P04 Cloud Authentication & Access Lease acceptance against Auth + Firestore Emulators.
 
 import { test, expect, E2E_BASE_URL, openGoogleSession, signInGoogle } from './fixtures';
@@ -161,7 +162,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
       await expect(operatorB.page.getByText(/檢查過於頻繁/)).toBeVisible();
       await expect.poll(readAccessLease).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
 
-      await operatorA.page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await release(operatorA.page);
       await expect.poll(readAccessLease).toMatchObject({ holderUid: null, epoch: 2 });
       await expect(operatorB.page.getByRole('button', { name: '取得系統使用權' })).toBeVisible();
       await expect.poll(readAccessLease).toMatchObject({ holderUid: null, epoch: 2 });
@@ -191,7 +192,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
       expect(sessionB.uid).toBe(sessionA.uid);
       await expect(pageB.locator('.operator-strip')).toBeVisible();
 
-      await pageA.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await release(pageA);
       await expect.poll(readAccessLease).toMatchObject({ holderUid: null, epoch: 2 });
       await expect(pageB.locator('.operator-strip')).toHaveCount(0);
       await expect(pageB.locator('.auth-gate')).toBeVisible();
@@ -364,6 +365,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     await expect(page.locator('.app')).toHaveCount(0);
     await expect(page.getByRole('tab')).toHaveCount(0);
     await expect(page.getByRole('button', { name: /訂餐|繳費|送出訂單/ })).toHaveCount(0);
+    await page.locator('.operator-menu summary').click();
     await expect(page.getByRole('button', { name: '釋放使用權並登出' })).toBeVisible();
   });
 
@@ -378,20 +380,20 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     await expect(page.locator('.operator-strip')).toBeVisible();
 
     const forbidden = /重置系統數據|危險區域|載入範例資料|載入驗收範例|還原練習資料|還原快照|從空白開始|只清除練習交易|匯出快照|練習資料|練習營業日|模擬日期|模擬刷臉平板|模擬平板/;
-    const nav = page.getByRole('navigation', { name: '雲端資料管理' });
+    const nav = page.getByRole('navigation', { name: '主要導覽' });
     const tabs = nav.getByRole('button');
-    await expect(tabs).toHaveCount(8);
+    await expect(tabs).toHaveCount(5);
 
     // Index-based: the anomaly tab's label changes from「帳務異常（…）」to a count once the ledger view loads.
-    for (let index = 0; index < 8; index += 1) {
+    for (let index = 0; index < 5; index += 1) {
       const tab = tabs.nth(index);
       const label = `tab ${index + 1}`;
       await expect(tab).toBeEnabled({ timeout: 20000 });
       await tab.click();
-      await expect(tab).toHaveAttribute('aria-pressed', 'true');
+      await expect(tab).toHaveAttribute('aria-current', 'page');
       const main = page.locator('main.cloud-app');
       // The section heading proves the page rendered before the absence checks run (h1 is the shell title).
-      await expect.poll(() => main.getByRole('heading').count(), { message: `${label} did not render a section heading` }).toBeGreaterThan(1);
+      await expect.poll(() => main.getByRole('heading').count(), { message: `${label} did not render a section heading` }).toBeGreaterThan(0);
       await expect(main, `${label}`).not.toContainText(forbidden);
       await expect(page.getByRole('button', { name: forbidden }), `${label}`).toHaveCount(0);
       await expect(page.getByLabel(forbidden), `${label}`).toHaveCount(0);
@@ -408,7 +410,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     await expect(page.locator('.operator-strip')).toBeVisible();
     await expect.poll(readAccessLease).toMatchObject({ holderUid: uid, epoch: 1 });
 
-    await page.getByRole('button', { name: '雲端報表' }).click();
+    await report(page);
     await expect(page.getByTestId('report-ready')).toBeVisible({ timeout: 30000 });
     const handover = page.getByRole('region', { name: '使用權交接' });
     await expect(handover).toBeVisible();
@@ -524,7 +526,7 @@ test.describe('P06 Cloud Students', () => {
       ].sort());
       expect(commands.filter(command => String(command.kind).includes('Student')).every(command => command.businessDate === null)).toBe(true);
 
-      await first.page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await release(first.page);
       await expect(first.page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
 
       const second = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
@@ -619,14 +621,14 @@ test.describe('P06 Cloud Students', () => {
         expect(finalCodes.map(c => c.id).sort()).toEqual(['001', '003', '015', '099']);
         expect(finalCodes.find(c => c.id === '002')).toBeUndefined();
 
-        await second.page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+        await release(second.page);
       } finally {
         await second.close();
       }
     } finally {
       if (!first.page.isClosed()) {
-        const release = first.page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
-        if (await release.isVisible().catch(() => false)) await release.click();
+        const release = first.page.locator('.operator-strip button').filter({ hasText: '釋放使用權並登出' });
+        if (await release.count() && await release.isEnabled().catch(() => false)) await releaseOwner(release);
       }
       await first.close();
     }
@@ -653,9 +655,9 @@ test.describe('P08 Cloud Orders', () => {
 
       // 1. 先至「日期與供應商」設定今日菜單
       const today = taipeiToday();
-      await page.getByRole('button', { name: '日期與供應商' }).click();
+      await settings(page, '菜單與開帳');
       const mainVendors = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
-      await expect(mainVendors.getByRole('heading', { name: '營業日、菜單與供應商' })).toBeVisible();
+      await expect(mainVendors.getByRole('heading', { name: '菜單與開帳' })).toBeVisible();
       const dateField = mainVendors.getByLabel('查看或設定日期');
       if ((await dateField.inputValue()) !== today) {
         await dateField.fill(today);
@@ -671,12 +673,14 @@ test.describe('P08 Cloud Orders', () => {
       await expect(menuForm).toBeVisible();
 
       // 新增供應商
+      await page.keyboard.press('F4');
       await page.getByRole('button', { name: '新增供應商' }).click();
       const vendorForm = mainVendors.getByRole('form', { name: '新增供應商' });
       await vendorForm.getByLabel('供應商編號').fill('p08-vendor-1');
       await vendorForm.getByLabel('供應商名稱').fill('阿榮排骨');
       await vendorForm.getByRole('button', { name: '建立供應商' }).click();
       await expect(page.getByTestId('cloud-vendor-row-p08-vendor-1')).toContainText('阿榮排骨');
+      await settings(page, '菜單與開帳');
 
       // 設定今日菜單
       await menuForm.getByLabel('菜單名稱').fill('排骨便當');
@@ -692,7 +696,7 @@ test.describe('P08 Cloud Orders', () => {
       await expect(mainVendors.getByText(/已確認 確認 .* 開帳現金 完成/)).toBeVisible();
 
       // 2. 切換至「學生管理」建立學生 004 與 005
-      await page.getByRole('button', { name: '學生管理' }).click();
+      await settings(page, '學生');
       await expect(page.getByRole('heading', { name: '學生名單與期初結餘' })).toBeVisible();
 
       // 建立學生 004
@@ -716,7 +720,7 @@ test.describe('P08 Cloud Orders', () => {
       await expect(page.getByTestId('cloud-student-row-005')).toContainText('李小華');
 
       // 3. 切換至「櫃台點餐」
-      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await page.getByRole('button', { name: '櫃台' }).click();
       await expect(page.getByTestId('cloud-orders-page')).toBeVisible();
       await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
 
@@ -800,7 +804,7 @@ test.describe('P08 Cloud Orders', () => {
       // 8. 瀏覽器重新整理（Reload）驗證遠端 Firestore 資料持久化
       await page.reload();
       await expect(page.locator('.operator-strip')).toBeVisible();
-      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await page.getByRole('button', { name: '櫃台' }).click();
       await expect(page.getByTestId('cloud-orders-page')).toBeVisible();
       await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
 
@@ -818,7 +822,7 @@ test.describe('P08 Cloud Orders', () => {
       expect(transactions.filter(t => (t as Record<string, unknown>).mealKind === 'bento')).toHaveLength(2);
       expect(transactions.filter(t => (t as Record<string, unknown>).mealKind === 'other')).toHaveLength(1);
 
-      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await release(page);
       await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
     } finally {
       await session.close();
@@ -846,7 +850,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
 
       // 1. 今日營業日存在且開帳現金確認為 1,000（前面的案例可能已建立營業日）
       const today = taipeiToday();
-      await page.getByRole('button', { name: '日期與供應商' }).click();
+      await settings(page, '菜單與開帳');
       const mainVendors = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
       const dateField = mainVendors.getByLabel('查看或設定日期');
       if ((await dateField.inputValue()) !== today) {
@@ -864,7 +868,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       await expect(openingForm.getByText(/伺服器已確認開帳現金 NT\$ 1,000/)).toBeVisible();
 
       // 2. 建立學生 006（期初 0）
-      await page.getByRole('button', { name: '學生管理' }).click();
+      await settings(page, '學生');
       await page.getByRole('button', { name: '新增學生' }).click();
       const studentForm = page.getByRole('form', { name: '新增學生' });
       await studentForm.getByLabel('學員編號').fill('006');
@@ -874,7 +878,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       await studentForm.getByRole('button', { name: '建立學生' }).click();
       await expect(page.getByTestId('cloud-student-row-006')).toContainText('陳小美');
 
-      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await page.getByRole('button', { name: '櫃台' }).click();
       await expect(page.getByTestId('cloud-orders-page')).toBeVisible();
       await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
 
@@ -924,7 +928,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       // 6. 重新整理後仍從伺服器讀回同樣的現金口徑
       await page.reload();
       await expect(page.locator('.operator-strip')).toBeVisible();
-      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await page.getByRole('button', { name: '櫃台' }).click();
       await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
       await expect(page.getByTestId('cloud-expected-cash')).toHaveText(`$${expectedCash}`);
       await expect(page.getByTestId('cash-movement-list')).toContainText('付餐費給廠商');
@@ -952,7 +956,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       const student = await readAdminDocument('students', String(payment?.studentId));
       expect(student).toMatchObject({ currentBalance: 200 });
 
-      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await release(page);
       await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
     } finally {
       await session.close();
@@ -968,7 +972,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
 
       // 1. 今日營業日存在且開帳現金確認為 1,000
       const today = taipeiToday();
-      await page.getByRole('button', { name: '日期與供應商' }).click();
+      await settings(page, '菜單與開帳');
       const mainVendors = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
       const dateField = mainVendors.getByLabel('查看或設定日期');
       if ((await dateField.inputValue()) !== today) {
@@ -986,7 +990,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       await expect(openingForm.getByText(/伺服器已確認開帳現金 NT\$ 1,000/)).toBeVisible();
 
       // 2. 建立學生 007（期初 150）
-      await page.getByRole('button', { name: '學生管理' }).click();
+      await settings(page, '學生');
       await page.getByRole('button', { name: '新增學生' }).click();
       const studentForm = page.getByRole('form', { name: '新增學生' });
       await studentForm.getByLabel('學員編號').fill('007');
@@ -996,7 +1000,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       await studentForm.getByRole('button', { name: '建立學生' }).click();
       await expect(page.getByTestId('cloud-student-row-007')).toContainText('林退款');
 
-      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await page.getByRole('button', { name: '櫃台' }).click();
       await expect(page.getByTestId('cloud-orders-page')).toBeVisible();
       await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
 
@@ -1031,7 +1035,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       // 4. 重新整理後仍從伺服器讀回同樣的現金口徑
       await page.reload();
       await expect(page.locator('.operator-strip')).toBeVisible();
-      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await page.getByRole('button', { name: '櫃台' }).click();
       await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
       await expect(page.getByTestId('cloud-expected-cash')).toHaveText(`$${expectedCash}`);
 
@@ -1051,7 +1055,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       const student = await readAdminDocument('students', String(added[0].studentId));
       expect(student).toMatchObject({ currentBalance: 50 });
 
-      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await release(page);
       await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
     } finally {
       await session.close();
@@ -1067,7 +1071,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
 
       // 1. 今日營業日存在且開帳現金確認為 1,000
       const today = taipeiToday();
-      await page.getByRole('button', { name: '日期與供應商' }).click();
+      await settings(page, '菜單與開帳');
       const mainVendors = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
       const dateField = mainVendors.getByLabel('查看或設定日期');
       if ((await dateField.inputValue()) !== today) {
@@ -1085,7 +1089,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       await expect(openingForm.getByText(/伺服器已確認開帳現金 NT\$ 1,000/)).toBeVisible();
 
       // 2. 建立學生 008（期初 0）
-      await page.getByRole('button', { name: '學生管理' }).click();
+      await settings(page, '學生');
       await page.getByRole('button', { name: '新增學生' }).click();
       const studentForm = page.getByRole('form', { name: '新增學生' });
       await studentForm.getByLabel('學員編號').fill('008');
@@ -1095,7 +1099,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       await studentForm.getByRole('button', { name: '建立學生' }).click();
       await expect(page.getByTestId('cloud-student-row-008')).toContainText('林更正');
 
-      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await page.getByRole('button', { name: '櫃台' }).click();
       await expect(page.getByTestId('cloud-orders-page')).toBeVisible();
       await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
       const before = await readAdminDocument('days', today);
@@ -1158,7 +1162,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       // 6. 重新整理後從伺服器讀回：兩筆都保留、都已作廢，命令留著前後值與理由
       await page.reload();
       await expect(page.locator('.operator-strip')).toBeVisible();
-      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await page.getByRole('button', { name: '櫃台' }).click();
       await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
       await expect(page.getByTestId('cloud-expected-cash')).toHaveText(`$${beforeExpected}`);
       await page.getByLabel('搜尋編號、姓名或別名').fill('008');
@@ -1186,7 +1190,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       });
 
       await page.keyboard.press('Escape');
-      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await release(page);
       await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
     } finally {
       await session.close();
@@ -1255,7 +1259,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       });
       expect((command.before as Record<string, Record<string, Record<string, number>>>).student.openingBalance.amount).toBe(100);
 
-      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await release(page);
       await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
     } finally {
       await session.close();
@@ -1268,7 +1272,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       await expect(row).toContainText('NT$ 70');
       await row.getByText('查看期初資料').click();
       await expect(row).toContainText('核對紙本後更正');
-      await second.page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await release(second.page);
     } finally {
       await second.close();
     }
@@ -1296,7 +1300,7 @@ test.describe('P11 Cloud Day Close', () => {
 
       // 1. 今日營業日存在且已確認開帳現金（前面的案例可能已建立）
       if ((await readAdminDocument('days', today))?.openingCash == null) {
-        await page.getByRole('button', { name: '日期與供應商' }).click();
+        await settings(page, '菜單與開帳');
         const mainVendors = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
         await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
         const createDayBtn = page.getByRole('button', { name: '建立空白營業日' });
@@ -1312,7 +1316,7 @@ test.describe('P11 Cloud Day Close', () => {
       const money = (amount: number) => `${amount < 0 ? '−' : ''}NT$ ${Math.abs(amount).toLocaleString('en-US')}`;
 
       // 2. 日結頁：應有現金由伺服器統計算出；實點少 10 元，沒填原因不能關帳
-      await page.getByRole('button', { name: '日結' }).click();
+      await page.getByRole('button', { name: '今日帳', exact: true }).click();
       const main = page.getByRole('main', { name: '雲端日結' });
       await expect(main.getByRole('heading', { name: `${today} 日結` })).toBeVisible();
       await expect(main.getByLabel('營業日現金統計')).toContainText(money(expected));
@@ -1330,11 +1334,11 @@ test.describe('P11 Cloud Day Close', () => {
       expect(await readAdminDocument('days', today)).toMatchObject({ status: 'closed', lastSettlementRevision: 1, totals: before.totals });
 
       // 3. 關帳後櫃台不能再入帳
-      await page.getByRole('button', { name: '櫃台點餐' }).click();
+      await page.getByRole('button', { name: '櫃台' }).click();
       await expect(page.getByText('今日已關帳，不能訂餐、繳費或新增櫃台收支')).toBeVisible();
 
       // 4. 重開需要原因；再以相同金額關帳，不需說明，成為第 3 版
-      await page.getByRole('button', { name: '日結' }).click();
+      await page.getByRole('button', { name: '今日帳', exact: true }).click();
       await main.getByRole('button', { name: '重開這一天' }).click();
       const reopenForm = main.getByRole('form', { name: `${today} 重開` });
       await reopenForm.getByRole('button', { name: '確認重開' }).click();
@@ -1357,7 +1361,7 @@ test.describe('P11 Cloud Day Close', () => {
       ]);
       await expect(main.getByRole('region', { name: '關帳後備份' })).toContainText('每日加密備份');
 
-      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await release(page);
       await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
     } finally {
       await session.close();
@@ -1366,13 +1370,13 @@ test.describe('P11 Cloud Day Close', () => {
     const second = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
     try {
       await second.page.getByRole('button', { name: '取得系統使用權' }).click();
-      await second.page.getByRole('button', { name: '日結' }).click();
+      await second.page.getByRole('button', { name: '今日帳', exact: true }).click();
       const main = second.page.getByRole('main', { name: '雲端日結' });
       await expect(main.getByRole('heading', { name: `${today} 日結` })).toBeVisible();
       await expect(main.getByText('已關帳', { exact: true })).toBeVisible();
       await expect(main.getByTestId('cloud-settlement-1')).toContainText('找零少收 10 元');
       await expect(main.getByTestId('cloud-settlement-3')).toBeVisible();
-      await second.page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await release(second.page);
     } finally {
       await second.close();
     }
@@ -1431,7 +1435,7 @@ test.describe('P11c2b Cloud Backfill', () => {
       await expect(page.locator('.operator-strip')).toBeVisible();
 
       // 1. 異常頁：過去沒關帳的日子有「標為回填」
-      await page.getByRole('button', { name: /^帳務異常/ }).click();
+      await accountCheck(page);
       await page.getByTestId(`anomaly-mark-backfill-${gap}`).click();
 
       // 2. 日結頁：回填原因必填，標記成功後可以到訂餐頁
@@ -1487,7 +1491,7 @@ test.describe('P11c2b Cloud Backfill', () => {
       await expect(orders.getByTestId('backfill-banner')).toHaveCount(0);
       await expect(orders.getByText(`營業日：${taipeiToday()}`)).toBeVisible();
 
-      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await release(page);
       await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
     } finally {
       await session.close();
@@ -1562,7 +1566,7 @@ test.describe('P11c3 Cloud Backfill Align', () => {
       expect(await readAdminDocument('days', gap)).toBeNull();
 
       // 1. 異常頁：開帳 970 與上次關帳 870 不符，中間的空日有「回填這一天」
-      await page.getByRole('button', { name: /^帳務異常/ }).click();
+      await accountCheck(page);
       await page.getByTestId(`backfill-gap-${gap}`).click();
 
       // 2. 日結頁三步：建日 → 補開帳（預設 870）→ 標記，一次表單送出
@@ -1588,7 +1592,7 @@ test.describe('P11c3 Cloud Backfill Align', () => {
       // 4. 訂餐頁補登 60 元繳費：仍差 40，再補 40：剛好對上
       for (const amount of ['60', '40']) {
         if (amount === '40') {
-          await page.getByRole('button', { name: '日結' }).click();
+          await page.getByRole('button', { name: '今日帳', exact: true }).click();
           await main.getByLabel('查看日期').fill(gap);
           await main.getByRole('button', { name: '載入日期' }).click();
           await expect(main.getByTestId('backfill-align-gap')).toContainText('差 NT$ 40，不能關帳');
@@ -1608,7 +1612,7 @@ test.describe('P11c3 Cloud Backfill Align', () => {
       }
 
       // 5. 回到日結頁：差額 0，用預設的 970 關帳
-      await page.getByRole('button', { name: '日結' }).click();
+      await page.getByRole('button', { name: '今日帳', exact: true }).click();
       await main.getByLabel('查看日期').fill(gap);
       await main.getByRole('button', { name: '載入日期' }).click();
       await expect(main.getByTestId('backfill-align-target')).toContainText('NT$ 970');
@@ -1622,7 +1626,7 @@ test.describe('P11c3 Cloud Backfill Align', () => {
       });
       const close = (await listAdminDocuments('commands')).find(item => item.businessDate === gap && item.kind === 'CloseDay');
       expect(close?.payload).toMatchObject({ countedCash: 970, expectedCash: 970, alignWithDayId: later });
-      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await release(page);
       await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
     } finally {
       await session.close();
@@ -1695,7 +1699,7 @@ test.describe('P11c4b Cloud Post-Close UI', () => {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
       await expect(page.locator('.operator-strip')).toBeVisible();
 
-      await page.getByRole('button', { name: /^帳務異常/ }).click();
+      await accountCheck(page);
       const anomaly = page.getByTestId(`post-close-shortcut-${next}`);
       await expect(anomaly).toBeVisible();
       await anomaly.click();
@@ -1720,10 +1724,10 @@ test.describe('P11c4b Cloud Post-Close UI', () => {
       expect(await readAdminDocument(`days/${previous}/settlements`, '1')).toMatchObject({ countedCash: 1000 });
       await expect(main.getByLabel('有效關帳現金')).toContainText('NT$ 950');
 
-      await page.getByRole('button', { name: /^帳務異常/ }).click();
+      await accountCheck(page);
       await expect(page.getByTestId(`post-close-shortcut-${next}`)).toHaveCount(0);
 
-      await page.getByRole('button', { name: '日結' }).click();
+      await page.getByRole('button', { name: '今日帳', exact: true }).click();
       await main.getByLabel('查看日期').fill(previous);
       await main.getByRole('button', { name: '載入日期' }).click();
       await expect(main.getByRole('heading', { name: `${previous} 日結` })).toBeVisible();
@@ -1746,9 +1750,9 @@ test.describe('P11c4b Cloud Post-Close UI', () => {
       expect(await readAdminDocument(`days/${previous}/settlements`, '1')).toMatchObject({ countedCash: 1000 });
       expect(await readAdminDocument(`days/${previous}/settlements`, '3')).toMatchObject({ countedCash: 950, difference: -50 });
 
-      await page.getByRole('button', { name: /^帳務異常/ }).click();
+      await accountCheck(page);
       await expect(page.getByTestId(`post-close-shortcut-${next}`)).toHaveCount(0);
-      await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await release(page);
     } finally {
       await session.close();
     }

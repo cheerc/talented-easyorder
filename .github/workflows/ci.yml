@@ -13,20 +13,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
+  change-scope:
+    runs-on: ubuntu-24.04
     outputs:
       docs_only: ${{ steps.check-docs.outputs.docs_only }}
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
       - name: Check for docs-only changes
         id: check-docs
+        env:
+          BASE_REF: ${{ github.base_ref }}
         working-directory: ${{ github.workspace }}
         run: |
           if [ "${{ github.event_name }}" != "pull_request" ]; then
@@ -35,9 +33,9 @@ jobs:
             exit 0
           fi
 
-          git fetch origin ${{ github.base_ref }}
+          git fetch origin "$BASE_REF"
 
-          CHANGES=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" || git diff --name-only "FETCH_HEAD...HEAD")
+          CHANGES=$(git diff --name-only "origin/$BASE_REF...HEAD" || git diff --name-only "FETCH_HEAD...HEAD")
 
           if [ -z "$CHANGES" ]; then
             echo "No changed files detected, running full CI"
@@ -59,38 +57,57 @@ jobs:
             echo "docs_only=false" >> "$GITHUB_OUTPUT"
           fi
 
+
+  build-and-test:
+    needs: change-scope
+    if: always()
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Require a valid change-scope result
+        if: needs.change-scope.result != 'success' || (needs.change-scope.outputs.docs_only != 'true' && needs.change-scope.outputs.docs_only != 'false')
+        run: exit 1
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
       - name: Docs-only skip notice
-        if: steps.check-docs.outputs.docs_only == 'true'
+        if: needs.change-scope.outputs.docs_only == 'true'
         working-directory: ${{ github.workspace }}
         run: |
           echo "### 📄 Docs-only PR detected" >> "$GITHUB_STEP_SUMMARY"
           echo "Skipping build, lint, and test steps. Required check satisfied." >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/setup-node@v6
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Setup Java (for Firestore Emulator)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
       - run: npm ci
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
       - name: P17 release target, Hosting config and integrity guards (offline)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         run: node --test ../scripts/__tests__/release.test.mjs
+      - name: Verify E2E shard coverage and aggregate gate
+        if: needs.change-scope.outputs.docs_only != 'true'
+        run: node --test ../scripts/__tests__/e2e-ci.test.mjs
       - run: npx tsc --noEmit
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
       - run: npm run lint
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
       - run: npx vitest run
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
       - name: P14 incremental backup and RecordBackup proof (demo-only Firestore Emulator)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_BACKUP: 'true'
         run: |
@@ -109,7 +126,7 @@ jobs:
           if [ "$emulator_test_status" -ne 0 ]; then exit "$emulator_test_status"; fi
           exit "$count_check_status"
       - name: P15 restore and P17 empty activation CLI proof (demo-only Firestore Emulators)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_RESTORE: 'true'
           EASYORDER_REQUIRE_EMPTY_ACTIVATION: 'true'
@@ -130,7 +147,7 @@ jobs:
           if [ "$emulator_test_status" -ne 0 ]; then exit "$emulator_test_status"; fi
           exit "$count_check_status"
       - name: P16b Rules allow/deny matrix for all 27 command kinds (demo-only Firestore Emulator)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_RULES_MATRIX: 'true'
         run: |
@@ -149,7 +166,7 @@ jobs:
           if [ "$emulator_test_status" -ne 0 ]; then exit "$emulator_test_status"; fi
           exit "$count_check_status"
       - name: P16d/P16e/P16f capacity cost table, storage footprints, peak/contention and read reduction on the real Rules (demo-only Firestore Emulator)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_CAPACITY: 'true'
         run: |
@@ -168,9 +185,9 @@ jobs:
           if [ "$emulator_test_status" -ne 0 ]; then exit "$emulator_test_status"; fi
           exit "$count_check_status"
       - run: npx firebase emulators:exec --project demo-easyorder --only firestore "npx vitest run src/firebase/__tests__/firestoreRules.spec.ts"
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
       - name: P01 cloud Rules proof (demo-only Firestore Emulator)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_RULES_PROOF: 'true'
         run: |
@@ -190,7 +207,7 @@ jobs:
           exit "$count_check_status"
 
       - name: P05 cloud command Rules proof (demo-only Firestore Emulator)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_COMMANDS: 'true'
         run: |
@@ -223,7 +240,7 @@ jobs:
           exit "$count_check_status"
 
       - name: Upload P05 cloud command Emulator diagnostics
-        if: always() && steps.check-docs.outputs.docs_only != 'true'
+        if: always() && needs.change-scope.outputs.docs_only != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: p05-cloud-command-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
@@ -232,7 +249,7 @@ jobs:
           retention-days: 7
 
       - name: P06 student command and complete-list proof (demo-only Firestore Emulator)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_COMMANDS: 'true'
           EASYORDER_REQUIRE_CLOUD_STUDENTS: 'true'
@@ -253,7 +270,7 @@ jobs:
           exit "$count_check_status"
 
       - name: P07 server-only day/vendor read proof (demo-only Firestore Emulator)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_DAY_VENDORS: 'true'
         run: |
@@ -280,7 +297,7 @@ jobs:
           exit "$count_check_status"
 
       - name: P08 cloud order reads, retries and transactions list proof (demo-only Firestore Emulator)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_ORDERS: 'true'
         run: |
@@ -307,7 +324,7 @@ jobs:
           exit "$count_check_status"
 
       - name: P09a cloud payments and counter cash movement proof (demo-only Firestore Emulator)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_CASH: 'true'
         run: |
@@ -334,7 +351,7 @@ jobs:
           exit "$count_check_status"
 
       - name: P09b account refund proof (demo-only Firestore Emulator)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_REFUND: 'true'
         run: |
@@ -360,7 +377,7 @@ jobs:
           if [ "$emulator_test_status" -ne 0 ]; then exit "$emulator_test_status"; fi
           exit "$count_check_status"
       - name: P10a transaction mutation proof (demo-only Firestore Emulator)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_MUTATIONS: 'true'
         run: |
@@ -386,7 +403,7 @@ jobs:
           if [ "$emulator_test_status" -ne 0 ]; then exit "$emulator_test_status"; fi
           exit "$count_check_status"
       - name: P10b opening correction proof (demo-only Firestore Emulator)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_OPENING: 'true'
         run: |
@@ -413,7 +430,7 @@ jobs:
           exit "$count_check_status"
 
       - name: P11 day close proof (demo-only Firestore Emulator)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_DAY_CLOSE: 'true'
         run: |
@@ -440,7 +457,7 @@ jobs:
           exit "$count_check_status"
 
       - name: P12a complete cloud report proof (demo-only Firestore Emulator)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_REPORTS: 'true'
         run: |
@@ -467,7 +484,7 @@ jobs:
           exit "$count_check_status"
 
       - name: P12b raw report action Rules and backup proof (demo-only Firestore Emulator)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_CLOUD_REPORT_ACTIONS: 'true'
         run: |
@@ -494,7 +511,7 @@ jobs:
           exit "$count_check_status"
 
       - name: P04 active lease Rules proof (demo-only Firestore Emulator)
-        if: steps.check-docs.outputs.docs_only != 'true'
+        if: needs.change-scope.outputs.docs_only != 'true'
         env:
           EASYORDER_REQUIRE_ACTIVE_ACCOUNT_LEASE_PROOF: 'true'
         run: |
@@ -524,11 +541,25 @@ jobs:
             --jq '"| Metric | Value |\n|--------|-------|\n| ➕ Additions | \(.additions) |\n| ➖ Deletions | \(.deletions) |\n| 📁 Changed Files | \(.changedFiles) |"' \
             >> "$GITHUB_STEP_SUMMARY"
 
-  e2e:
-    needs: build-and-test
-    if: needs.build-and-test.outputs.docs_only != 'true'
-    runs-on: ubuntu-latest
+  e2e-shards:
+    needs: change-scope
+    if: needs.change-scope.result == 'success' && needs.change-scope.outputs.docs_only == 'false'
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - config: hosting
+          - config: playwright.config.ts
+          - config: playwright.p12c.config.ts
+          - config: playwright.prototype.config.ts
+          - config: playwright.p13a.config.ts
+          - config: playwright.p13a-dev.config.ts
+          - config: playwright.p13a-no-config.config.ts
+          - config: playwright.p13b1.config.ts
+          - config: playwright.p13b2.config.ts
+          - config: playwright.keyboard.config.ts
     defaults:
       run:
         working-directory: frontend
@@ -545,32 +576,24 @@ jobs:
       VITE_FIREBASE_AUTH_EMULATOR_URL: "http://127.0.0.1:9099"
     steps:
       - uses: actions/checkout@v5
-
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
       - name: Setup Java (for Firebase emulators)
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
-
       - name: Install Dependencies
         run: npm ci
-
       - name: Install Playwright Browsers
         run: npx playwright install chromium --with-deps
-
       - name: Install PDF inspection tools
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y poppler-utils
-
-      - name: Install Firebase CLI
-        run: npm install --global firebase-tools
-
       - name: P17 demo Hosting release and browser smoke (CSP enforced)
+        if: matrix.config == 'hosting'
         run: |
           node ../scripts/easyorder-release.mjs prepare --project demo-easyorder --web-config ../docs/ops/firebase-web-config.demo.json --out /tmp/easyorder-p17-ci-release --emulator
           node ../scripts/p17-auth-navigation-smoke.mjs /tmp/easyorder-p17-ci-release/public
@@ -579,23 +602,40 @@ jobs:
           node ../scripts/easyorder-release.mjs prepare --project demo-easyorder --web-config /tmp/easyorder-p17-custom-auth.json --out /tmp/easyorder-p17-custom-auth-release --emulator
           node ../scripts/p17-auth-domain-csp-smoke.mjs /tmp/easyorder-p17-custom-auth-release
 
-      - name: E2E Tests
-        run: npm run test:e2e
 
+      - name: Run isolated browser suite
+        if: matrix.config != 'hosting'
+        env:
+          PLAYWRIGHT_CONFIG: ${{ matrix.config }}
+        run: npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx playwright test --config $PLAYWRIGHT_CONFIG"
       - name: Upload Playwright Report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.config }}
           path: frontend/playwright-report/
           retention-days: 7
           if-no-files-found: ignore
-
       - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: test-results
+          name: test-results-${{ matrix.config }}
           path: frontend/test-results/
           retention-days: 7
           if-no-files-found: ignore
+
+  e2e:
+    needs: [change-scope, e2e-shards]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Require all browser suites or an explicit docs-only bypass
+        env:
+          SCOPE_RESULT: ${{ needs.change-scope.result }}
+          DOCS_ONLY: ${{ needs.change-scope.outputs.docs_only }}
+          SHARDS_RESULT: ${{ needs.e2e-shards.result }}
+        run: |
+          node --test scripts/__tests__/e2e-ci.test.mjs
+          node scripts/e2e-ci-gate.mjs "$SCOPE_RESULT" "$DOCS_ONLY" "$SHARDS_RESULT"

@@ -8,8 +8,10 @@ import {
   type LeaseResult,
 } from '../firebase/activeAccountLease';
 import { useFirebase } from '../providers/FirebaseProvider';
+import { OperatorContext } from './OperatorContext';
 
 export interface AuthGateProps {
+  showOperatorStrip?: boolean;
   auth: Auth;
   db: Firestore;
   access: OperatorAccess;
@@ -27,6 +29,7 @@ export function AuthGate({
   onAcquireLease: propAcquire,
   onReleaseLease: propRelease,
   children,
+  showOperatorStrip = true,
 }: AuthGateProps) {
   // 嘗試從 FirebaseProvider 取得 context，若不在 Provider 內則使用 props
   let contextValue: ReturnType<typeof useFirebase> | null;
@@ -87,7 +90,7 @@ export function AuthGate({
         {access.reason === 'signed_out' && (
           <>
             <p>請使用 Google 帳號登入系統。</p>
-            <button type="button" disabled={signingIn} onClick={() => void signIn()}>
+            <button type="button" className="auth-gate-primary" disabled={signingIn} onClick={() => void signIn()}>
               {signingIn ? '正在等待 Google 登入…' : '使用 Google 登入'}
             </button>
             {signingIn && showSignInWait && (
@@ -285,7 +288,7 @@ export function AuthGate({
             <p>租約目前看起來閒置或可能已逾期。送出申請後，伺服器會依權威時間確認能否取得使用權。</p>
             {busyError && <div style={{ color: 'var(--color-danger, #d32f2f)', margin: '8px 0' }}>{busyError}</div>}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-              <button type="button" onClick={() => void attemptAcquire()} disabled={isAcquiring}>
+              <button type="button" className="auth-gate-primary" onClick={() => void attemptAcquire()} disabled={isAcquiring}>
                 {isAcquiring ? '取得中...' : '取得系統使用權'}
               </button>
               <button type="button" onClick={() => void signOutOperator(auth)}>
@@ -307,8 +310,8 @@ export function AuthGate({
   };
 
   return (
-    <>
-      <div className="operator-strip">
+    <OperatorContext.Provider value={{ name: access.profile.displayName, epoch: activeLease.epoch, signOut: () => void handleSignOutWithRelease() }}>
+      {showOperatorStrip && <div className="operator-strip">
         <span>{access.profile.displayName}</span>
         {activeLease?.epoch !== undefined && (
           <span className="mono" style={{ fontSize: '11px', color: 'var(--text-dim, #888)', marginLeft: '8px' }}>
@@ -318,8 +321,8 @@ export function AuthGate({
         <button type="button" onClick={() => void handleSignOutWithRelease()}>
           釋放使用權並登出
         </button>
-      </div>
+      </div>}
       {children}
-    </>
+    </OperatorContext.Provider>
   );
 }

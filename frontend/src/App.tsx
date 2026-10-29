@@ -34,6 +34,10 @@ import { useFirebase } from './hooks/useFirebase';
 import { isPrototypeMode, validateAppModeConfig } from './appMode';
 import { isMenuReady } from './domain/menu';
 import { AuthGate } from './auth/AuthGate';
+import { useOperator } from './auth/OperatorContext';
+import { AppShell } from './components/AppShell';
+import { navigationKey, isCompositionKey } from './components/navigationKeys';
+import { ConfirmDialog } from './components/ui/ConfirmDialog';
 import { SYSTEM_OPERATOR_ID } from './domain/operatorId';
 import { findStudentEarliestDate } from './domain/transactionLookup';
 import type { HistoryLookupTarget } from './components/screens/HistoryScreen';
@@ -48,7 +52,7 @@ import { CloudAccountHistoryPage } from './components/cloud/CloudAccountHistoryP
 import { CloudPendingRecoveryBoundary } from './components/cloud/CloudPendingRecoveryBoundary';
 import { CloudDiagnosticsPage } from './components/cloud/CloudDiagnosticsPage';
 import type { CloudLedgerDateRange } from './domain/cloudLedgerReport';
-import { useCloudLedger, type CloudLedgerView } from './hooks/useCloudLedger';
+import { useCloudLedger } from './hooks/useCloudLedger';
 import type { OpeningMismatchAnomaly } from './domain/ledgerAnomalies';
 import type { Firestore } from 'firebase/firestore';
 
@@ -109,14 +113,18 @@ function AppContent() {
   }, [systemDate, cancelFlow]);
 
   const [tab, setTab] = useState('pos');
+  const [prototypeLeaveTab, setPrototypeLeaveTab] = useState<string | null>(null);
   const [historyLookupTarget, setHistoryLookupTarget] = useState<HistoryLookupTarget | null>(null);
 
   const handleSelectTab = useCallback((nextTab: string) => {
-    if (nextTab !== 'history') {
-      setHistoryLookupTarget(null);
+    if (state.kind === 'committing' || state.kind === 'error') return;
+    if (tab === 'pos' && nextTab !== 'pos' && (state.kind === 'student_selected' || state.kind.startsWith('expense_'))) {
+      setPrototypeLeaveTab(nextTab);
+      return;
     }
+    if (nextTab !== 'history') setHistoryLookupTarget(null);
     setTab(nextTab);
-  }, []);
+  }, [state.kind, tab]);
   const [reportStudentFilter, setReportStudentFilter] = useState('');
   const [focusZone, setFocusZone] = useState('mode-order');
   const [showDashboard, setShowDashboard] = useState(false);
@@ -171,7 +179,7 @@ function AppContent() {
   const isExpenseFlow = state.kind === 'expense_input' || state.kind === 'expense_direction' || state.kind === 'expense_reason' || state.kind === 'expense_other_note';
 
   // M1 K08：重複訂餐確認也是對話框，開著時背景的 Enter／方向鍵／Q W 都不處理，交給對話框。
-  const isDialogOpen = cancelDialogOpen || noOrderDialogOpen || state.kind === 'duplicate_warning' || refundDialogOpen;
+  const isDialogOpen = cancelDialogOpen || noOrderDialogOpen || state.kind === 'duplicate_warning' || refundDialogOpen || prototypeLeaveTab !== null || state.kind === 'committing' || state.kind === 'error';
 
   useKeyboardShortcuts({
     enabled: tab === 'pos' && !hasFlash && !isExpenseFlow,
@@ -299,7 +307,7 @@ function AppContent() {
   // bypassing AuthGate. fb will remain null with no fbError.
   const mainContent = (
     <MainLayout
-      tab={tab} setTab={handleSelectTab} online={online} syncing={syncing} lastSync={lastSync}
+      tab={tab} setTab={handleSelectTab} navigationLocked={state.kind === 'committing' || state.kind === 'error'} online={online} syncing={syncing} lastSync={lastSync}
       todayCount={todayCount} todayOtherCount={todayOtherCount} todayMenu={todayMenu} viewDate={viewDate} setViewDate={setViewDate} systemDate={systemDate}
       queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount}
       onDashboard={() => setShowDashboard(true)}
@@ -318,6 +326,15 @@ function AppContent() {
       onNoOrderDialogClose={() => setNoOrderDialogOpen(false)}
       showDashboard={showDashboard} onCloseDashboard={() => setShowDashboard(false)}
     >
+      <ConfirmDialog open={prototypeLeaveTab !== null} title="離開並捨棄草稿？" message="尚未送出的草稿會被捨棄。" defaultAction="cancel" confirmLabel="捨棄草稿" cancelLabel="取消離開" onCancel={() => setPrototypeLeaveTab(null)} onConfirm={() => {
+        if (prototypeLeaveTab && state.kind !== 'committing' && state.kind !== 'error') {
+          // Expense cancellation steps backwards; four cancel events reach idle from every draft step.
+          for (let index = 0; index < 4; index += 1) cancelFlow();
+          if (prototypeLeaveTab !== 'history') setHistoryLookupTarget(null);
+          setTab(prototypeLeaveTab);
+        }
+        setPrototypeLeaveTab(null);
+      }} />
       <AppRouter
         tab={tab}
         viewDate={viewDate}
@@ -356,24 +373,19 @@ function AppContent() {
   );
 }
 
-type CloudSection = 'orders' | 'students' | 'day-vendors' | 'day-close' | 'anomalies' | 'reports' | 'account-history' | 'diagnostics';
+type CloudSection = 'orders' | 'students' | 'day-vendors' | 'vendors' | 'day-close' | 'anomalies' | 'reports' | 'account-history' | 'diagnostics';
 
 const CLOUD_SECTION_LABELS: Record<CloudSection, string> = {
   orders: '雲端櫃台點餐',
   students: '雲端學生管理',
-  'day-vendors': '雲端日期與供應商管理',
+  'day-vendors': '菜單與開帳',
+  vendors: '供應商',
   'day-close': '雲端日結',
   anomalies: '帳務異常',
   reports: '雲端報表',
   'account-history': '雲端查帳',
   diagnostics: '雲端本機診斷',
 };
-
-function anomalyNavLabel(ledger: CloudLedgerView): string {
-  if (ledger.status === 'loading') return '帳務異常（…）';
-  if (ledger.status === 'error') return '帳務異常（?）';
-  return `帳務異常（${ledger.snapshot.anomalies.length}）`;
-}
 
 // 放在 AuthGate 之內：帳務異常只在已登入並持有使用權之後才從伺服器讀取。
 function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingCommands }: {
@@ -383,26 +395,29 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
   hasUnresolvedPendingCommands: boolean;
 }) {
   const [cloudSection, setCloudSection] = useState<CloudSection>('students');
+  const pageGenerationRef = useRef(0);
+  const [pageGeneration, setPageGeneration] = useState(0);
+  const [settingsTab, setSettingsTab] = useState<CloudSection>('day-vendors');
+  const [accountTab, setAccountTab] = useState<CloudSection>('day-close');
+  const [dayVendorGeneration, setDayVendorGeneration] = useState(0);
+  const [ordersGeneration, setOrdersGeneration] = useState(0);
+  const [leaveTarget, setLeaveTarget] = useState<{ section: CloudSection; dayId?: string; postCloseEntry?: OpeningMismatchAnomaly } | null>(null);
+  const dirtyRef = useRef(false);
+  const operator = useOperator();
+  const { tweaks, setTweak } = useTweaks();
   const [dayCloseFocus, setDayCloseFocus] = useState<string | undefined>(undefined);
   const [postCloseEntryFocus, setPostCloseEntryFocus] = useState<OpeningMismatchAnomaly | undefined>(undefined);
   const [ordersFocus, setOrdersFocus] = useState<string | undefined>(undefined);
+  const [viewDay, setViewDay] = useState<{ date: string; backfill: boolean } | null>(null);
+  const onViewDayChange = useCallback((date: string, backfill: boolean) => setViewDay({ date, backfill }), []);
   const [accountHistoryStudentId, setAccountHistoryStudentId] = useState<string | null>(null);
   const [accountHistoryRange, setAccountHistoryRange] = useState<CloudLedgerDateRange | null>(null);
   const [navigationLocked, setNavigationLocked] = useState(false);
   const navigationLockRef = useRef<{ identityKey: string; locked: boolean; revoked: boolean } | null>(null);
   const { ledger, reload: reloadLedger } = useCloudLedger(db, `${identityKey}:${leaseEpoch}`);
 
-  useEffect(() => {
-    const onGlobalKey = (event: KeyboardEvent) => {
-      if (event.key !== 'F3') return;
-      event.preventDefault();
-      if (document.querySelector('[role="dialog"][aria-modal="true"]') || navigationLockRef.current?.locked) return;
-      setCloudSection('diagnostics');
-    };
-    window.addEventListener('keydown', onGlobalKey);
-    return () => window.removeEventListener('keydown', onGlobalKey);
-  }, []);
   const reportNavigationState = useCallback((reportedKey: string, state: 'recovering' | 'revoked' | 'resolved') => {
+    if (reportedKey !== identityKey || pageGenerationRef.current !== pageGeneration) return;
     const currentLock = navigationLockRef.current;
     const current = currentLock?.identityKey === reportedKey
       ? currentLock
@@ -420,53 +435,82 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
     const lock = { identityKey: reportedKey, locked, revoked };
     navigationLockRef.current = lock;
     setNavigationLocked(lock.locked);
-  }, []);
-  const selectSection = (section: CloudSection, dayId?: string, postCloseEntry?: OpeningMismatchAnomaly) => {
-    if (navigationLockRef.current?.locked) return;
+  }, [identityKey, pageGeneration]);
+  const applySection = (section: CloudSection, dayId?: string, postCloseEntry?: OpeningMismatchAnomaly, reset = false) => {
+    const dayVendorViews = ['day-vendors', 'vendors'];
+    if (reset || !dayVendorViews.includes(section) || !dayVendorViews.includes(cloudSection)) {
+      pageGenerationRef.current += 1;
+      setPageGeneration(pageGenerationRef.current);
+    }
+    dirtyRef.current = false;
+    if (section === 'orders') setViewDay(null);
     if (section === 'anomalies') reloadLedger();
+    if (section === 'students' || section === 'day-vendors' || section === 'diagnostics') setSettingsTab(section);
+    if (section === 'day-close' || section === 'reports') setAccountTab(section);
     setDayCloseFocus(section === 'day-close' ? dayId : undefined);
     setPostCloseEntryFocus(section === 'day-close' ? postCloseEntry : undefined);
     setOrdersFocus(section === 'orders' ? dayId : undefined);
     setCloudSection(section);
   };
+  const selectSection = (section: CloudSection, dayId?: string, postCloseEntry?: OpeningMismatchAnomaly) => {
+    if (navigationLockRef.current?.locked || leaveTarget || document.querySelector('.cloud-app')?.closest('[inert]') || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+    const selectedOrder = cloudSection === 'orders' && !!document.querySelector('form[aria-label="訂餐"], form[aria-label="繳費"], form[aria-label="櫃台收支"]');
+    if (section === cloudSection && !dayId && !postCloseEntry) {
+      if (section === 'orders' && (dirtyRef.current || selectedOrder)) setLeaveTarget({ section });
+      else if (section === 'orders') document.querySelector<HTMLInputElement>('#cloud-student-search')?.focus();
+      return;
+    }
+    if (dirtyRef.current || selectedOrder) { setLeaveTarget({ section, dayId, postCloseEntry }); return; }
+    applySection(section, dayId, postCloseEntry);
+  };
+  const selectPrimary = (id: string) => {
+    if (id === 'pos') selectSection('orders');
+    if (id === 'report') selectSection(accountTab);
+    if (id === 'admin') selectSection(settingsTab);
+    if (id === 'vendors') selectSection('vendors');
+    if (id === 'history') selectSection('account-history');
+  };
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const key = navigationKey(event);
+      if (key === null) return;
+      event.preventDefault();
+      if (isCompositionKey(event) || event.repeat) return;
+      if (navigationLockRef.current?.locked || leaveTarget || document.querySelector('.cloud-app')?.closest('[inert]') || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      selectPrimary(['pos', 'report', 'admin', 'vendors', 'history'][key]);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
   const openAnomalies = () => selectSection('anomalies');
-  const common = { db, leaseEpoch, identityKey, onNavigationStateChange: reportNavigationState };
+  const onDraftCleared = useCallback(() => { if (pageGenerationRef.current === pageGeneration) dirtyRef.current = false; }, [pageGeneration]);
+  const common = { db, leaseEpoch, identityKey, onNavigationStateChange: reportNavigationState, onDraftCleared };
 
   return (
-    <main className="cloud-app" aria-label={CLOUD_SECTION_LABELS[cloudSection]}>
-      <h1>Talented EasyOrder</h1>
-      <nav className="cloud-app__nav" aria-label="雲端資料管理">
-        <button type="button" aria-pressed={cloudSection === 'orders'} disabled={navigationLocked} onClick={() => selectSection('orders')}>
-          櫃台點餐
-        </button>
-        <button type="button" aria-pressed={cloudSection === 'students'} disabled={navigationLocked} onClick={() => selectSection('students')}>
-          學生管理
-        </button>
-        <button type="button" aria-pressed={cloudSection === 'day-vendors'} disabled={navigationLocked} onClick={() => selectSection('day-vendors')}>
-          日期與供應商
-        </button>
-        <button type="button" aria-pressed={cloudSection === 'day-close'} disabled={navigationLocked} onClick={() => selectSection('day-close')}>
-          日結
-        </button>
-        <button type="button" aria-pressed={cloudSection === 'anomalies'} disabled={navigationLocked} onClick={openAnomalies}>
-          {anomalyNavLabel(ledger)}
-        </button>
-        <button type="button" aria-pressed={cloudSection === 'reports'} disabled={navigationLocked} onClick={() => selectSection('reports')}>
-          雲端報表
-        </button>
-        <button type="button" aria-pressed={cloudSection === 'account-history'} disabled={navigationLocked} onClick={() => selectSection('account-history')}>
-          雲端查帳
-        </button>
-        <button type="button" aria-pressed={cloudSection === 'diagnostics'} disabled={navigationLocked} onClick={() => selectSection('diagnostics')}>
-          本機診斷（F3）
-        </button>
-      </nav>
+    <main className="cloud-app" aria-label={CLOUD_SECTION_LABELS[cloudSection]} onChangeCapture={event => {
+      const element = event.target as HTMLElement;
+      if (element.closest('form') && !element.closest('.cloud-day-vendors__date-form, .cloud-day-close__date-form, .cloud-report__controls, .cloud-account-history__date-form')) dirtyRef.current = true;
+    }}>
+      <AppShell active={cloudSection === 'orders' ? 'pos' : cloudSection === 'day-close' || cloudSection === 'reports' ? 'report' : cloudSection === 'students' || cloudSection === 'day-vendors' || cloudSection === 'diagnostics' ? 'admin' : cloudSection === 'vendors' ? 'vendors' : cloudSection === 'account-history' ? 'history' : ''}
+        select={selectPrimary} disabled={navigationLocked}
+        brand={<div className="brand"><div className="brand-mark">●</div><div><div className="brand-name">訂餐櫃台</div><div className="brand-sub">{cloudSection === 'orders' && viewDay?.backfill ? <span className="backfill-badge">補登 {viewDay.date}</span> : cloudSection === 'orders' ? viewDay?.date ?? '營業日未確認' : ledger.status === 'ready' ? ledger.snapshot.today : '營業日未確認'}</div></div></div>}
+        status={<div className="status">{ledger.status === 'ready' && ledger.snapshot.anomalies.length > 0 && <button disabled={navigationLocked} onClick={openAnomalies}>⚠ 異常 {ledger.snapshot.anomalies.length}</button>}
+          <details className="operator-menu operator-strip" onClick={event => { if ((event.target as HTMLElement).closest('button')) { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); } }} onKeyDown={event => { if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); } }}><summary>{operator?.name ?? '操作員'}</summary><div className="operator-menu__panel">
+            <small>租約 Epoch: {leaseEpoch}</small>
+            <button type="button" disabled={navigationLocked} onClick={openAnomalies}>帳務檢查</button>
+            <label>主題 <select value={tweaks.theme} onChange={event => setTweak('theme', event.target.value)}><option value="warm">暖色</option><option value="light">淺色</option><option value="dark">深色</option></select></label>
+            <p>F1–F5 或 Alt／Option + 1–5 切換頁面</p>
+            <button type="button" disabled={navigationLocked} onClick={() => operator?.signOut()}>釋放使用權並登出</button>
+          </div></details></div>} />
+      {(cloudSection === 'day-close' || cloudSection === 'reports') && <nav className="cloud-subnav" aria-label="今日帳"><button disabled={navigationLocked} aria-current={cloudSection === 'day-close' ? 'page' : undefined} onClick={() => selectSection('day-close')}>今日</button><button disabled={navigationLocked} aria-current={cloudSection === 'reports' ? 'page' : undefined} onClick={() => selectSection('reports')}>本週／本月</button></nav>}
+      {(cloudSection === 'students' || cloudSection === 'day-vendors' || cloudSection === 'diagnostics') && <nav className="cloud-subnav" aria-label="今日設定"><button disabled={navigationLocked} aria-current={cloudSection === 'students' ? 'page' : undefined} onClick={() => selectSection('students')}>學生</button><button disabled={navigationLocked} aria-current={cloudSection === 'day-vendors' ? 'page' : undefined} onClick={() => selectSection('day-vendors')}>菜單與開帳</button><button disabled={navigationLocked} aria-current={cloudSection === 'diagnostics' ? 'page' : undefined} onClick={() => selectSection('diagnostics')}>本機診斷</button></nav>}
+      <ConfirmDialog open={leaveTarget !== null} title="離開並捨棄草稿？" message="尚未送出的草稿會被捨棄。" defaultAction="cancel" confirmLabel="捨棄草稿" cancelLabel="取消離開" onCancel={() => setLeaveTarget(null)} onConfirm={() => { if (leaveTarget && !navigationLockRef.current?.locked) { setDayVendorGeneration(value => value + 1); if (leaveTarget.section === 'orders' && cloudSection === 'orders') setOrdersGeneration(value => value + 1); applySection(leaveTarget.section, leaveTarget.dayId, leaveTarget.postCloseEntry, true); } setLeaveTarget(null); }} />
       {cloudSection === 'orders' ? (
-        <CloudOrdersPage {...common} initialBackfillDayId={ordersFocus} />
+        <CloudOrdersPage key={ordersGeneration} {...common} initialBackfillDayId={ordersFocus} onViewDayChange={onViewDayChange} />
       ) : cloudSection === 'students' ? (
         <CloudStudentsPage {...common} />
-      ) : cloudSection === 'day-vendors' ? (
-        <CloudDayVendorsPage {...common} ledger={ledger} onOpenAnomalies={openAnomalies} onLedgerChanged={reloadLedger} />
+      ) : cloudSection === 'day-vendors' || cloudSection === 'vendors' ? (
+        <CloudDayVendorsPage key={dayVendorGeneration} view={cloudSection === 'vendors' ? 'vendors' : 'day'} {...common} ledger={ledger} onOpenAnomalies={openAnomalies} onLedgerChanged={reloadLedger} />
       ) : cloudSection === 'day-close' ? (
         <CloudDayClosePage
           {...common}
@@ -510,6 +554,18 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
   );
 }
 
+function CloudBrowserKeyGuard() {
+  useEffect(() => {
+    const intercept = (event: KeyboardEvent) => {
+      if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && /^F[1-6]$/.test(event.key)) event.preventDefault();
+      if (navigationKey(event) !== null) event.preventDefault();
+    };
+    window.addEventListener('keydown', intercept, true);
+    return () => window.removeEventListener('keydown', intercept, true);
+  }, []);
+  return null;
+}
+
 function CloudAppContent() {
   const { fb, fbError, storageCleanupError, access, lease } = useFirebase();
   // 與本機模式共用 U1 顯示偏好（easyorder-ui-tweaks）：主題與字級套在 body 上。
@@ -523,7 +579,8 @@ function CloudAppContent() {
 
   return (
     <ErrorBoundary fallback={<AppCrashPage />} onError={(error) => appendErrorLog({ source: 'react', message: error.message, stack: error.stack })}>
-      <AuthGate auth={fb.auth} db={fb.db} access={access}>
+      <AuthGate auth={fb.auth} db={fb.db} access={access} showOperatorStrip={false}>
+        <CloudBrowserKeyGuard />
         {access.ok && (
           <CloudPendingRecoveryBoundary
             db={fb.db}
@@ -532,6 +589,7 @@ function CloudAppContent() {
           >
             {hasUnresolvedPendingCommands => (
               <CloudSections
+                key={`${access.profile.uid}:${lease.epoch}`}
                 db={fb.db}
                 leaseEpoch={lease.epoch}
                 identityKey={`${access.profile.uid}:${lease.epoch}`}

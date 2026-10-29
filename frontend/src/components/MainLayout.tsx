@@ -22,6 +22,7 @@ export interface FlashData {
 
 interface MainLayoutProps {
   tab: string;
+  navigationLocked?: boolean;
   setTab: (tab: string) => void;
   online: boolean;
   syncing: boolean;
@@ -56,7 +57,7 @@ interface MainLayoutProps {
 
 export const MainLayout = React.memo(function MainLayout(props: MainLayoutProps) {
   const {
-    tab, setTab, online, syncing, lastSync, todayCount, todayOtherCount = 0, todayMenu, todayMenuName, viewDate, setViewDate, systemDate,
+    tab, setTab, navigationLocked, online, syncing, lastSync, todayCount, todayOtherCount = 0, todayMenu, todayMenuName, viewDate, setViewDate, systemDate,
     queuedCount, failedSyncCount, conflictSyncCount, onDashboard, storageMode,
     flashData, onDismissFlash, onUndo, undoCountdown,
     cancelDialogOpen, picked, orderTx, onCancelDialogConfirm, onCancelDialogCancel,
@@ -66,7 +67,7 @@ export const MainLayout = React.memo(function MainLayout(props: MainLayoutProps)
 
   return (
     <div className="app">
-      <TopBar tab={tab} setTab={setTab} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} todayOtherCount={todayOtherCount} todayMenu={todayMenu} todayMenuName={todayMenuName} viewDate={viewDate} setViewDate={setViewDate} queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount} onDashboard={onDashboard} storageMode={storageMode} />
+      <TopBar tab={tab} setTab={setTab} navigationLocked={navigationLocked} online={online} syncing={syncing} lastSync={lastSync} todayCount={todayCount} todayOtherCount={todayOtherCount} todayMenu={todayMenu} todayMenuName={todayMenuName} viewDate={viewDate} setViewDate={setViewDate} queuedCount={queuedCount} failedSyncCount={failedSyncCount} conflictSyncCount={conflictSyncCount} onDashboard={onDashboard} storageMode={storageMode} />
       {children}
       <ConfirmBanner flash={flashData} onDismiss={onDismissFlash} onUndo={onUndo} undoCountdown={undoCountdown} />
       <CancelOrderDialog

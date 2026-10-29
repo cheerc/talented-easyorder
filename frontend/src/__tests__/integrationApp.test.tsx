@@ -8,7 +8,7 @@
  * 3. 改號退款後，撤回按鈕在真實倒數 5 秒後消失，退款及餘額保留。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within, waitFor, cleanup } from '@testing-library/react';
+import { act, render, screen, within, waitFor, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createStore } from 'zustand/vanilla';
 import { persist } from 'zustand/middleware';
@@ -101,6 +101,55 @@ async function refundInApp(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('完整 App 跨功能整合與真實 Persist 測試', () => {
+  it('以實體 Option 數字鍵從輸入欄切換設定且不輸入符號', async () => {
+    render(<App />);
+    const search = await screen.findByLabelText('輸入學員編號或姓名');
+    search.focus();
+    const event = new KeyboardEvent('keydown', { key: '£', code: 'Digit3', altKey: true, bubbles: true, cancelable: true });
+    act(() => { search.dispatchEvent(event); });
+    expect(event.defaultPrevented).toBe(true);
+    expect(await screen.findByRole('button', { name: '編輯 005' }, { timeout: 10000 })).toBeVisible();
+  });
+
+  it('在輸入法組字中或長按重複時不以實體 Option 數字鍵切換設定', async () => {
+    render(<App />);
+    const search = await screen.findByLabelText('輸入學員編號或姓名');
+    search.focus();
+    const key = () => new KeyboardEvent('keydown', { key: '£', code: 'Digit3', altKey: true, bubbles: true, cancelable: true });
+    const composing = new KeyboardEvent('keydown', { key: '£', code: 'Digit3', altKey: true, isComposing: true, bubbles: true, cancelable: true });
+    act(() => { search.dispatchEvent(composing); });
+    expect(composing.defaultPrevented).toBe(true);
+    act(() => { window.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true })); });
+    act(() => { window.dispatchEvent(key()); });
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: '£', code: 'Digit4', altKey: true, repeat: true, bubbles: true, cancelable: true })); });
+    act(() => { window.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true })); });
+    expect(screen.queryByRole('button', { name: '編輯 005' })).toBeNull();
+    expect(search).toHaveFocus();
+
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: '£', code: 'Digit5', altKey: true, repeat: true, bubbles: true, cancelable: true })); });
+    expect(screen.queryByRole('button', { name: '編輯 005' })).toBeNull();
+
+    const fresh = key();
+    act(() => { search.dispatchEvent(fresh); });
+    expect(fresh.defaultPrevented).toBe(true);
+    expect(await screen.findByRole('button', { name: '編輯 005' }, { timeout: 10000 })).toBeVisible();
+  });
+
+  it('保留櫃台草稿直到確認捨棄，並在取消離開後繼續編輯', async () => {
+    render(<App />);
+    const user = userEvent.setup();
+    const search = await screen.findByLabelText('輸入學員編號或姓名');
+    await user.type(search, '0090{Enter}');
+    await user.keyboard('{F3}');
+    expect(await screen.findByRole('dialog', { name: '離開並捨棄草稿？' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '取消離開' }));
+    expect(screen.getByText('整合乙')).toBeVisible();
+    await user.keyboard('{F3}');
+    await user.click(screen.getByRole('button', { name: '捨棄草稿' }));
+    expect(await screen.findByRole('button', { name: '編輯 005' }, { timeout: 10000 })).toBeVisible();
+    expect(usePosStore.getState().transactions).toHaveLength(0);
+  });
+
   it('在已選帳戶按 R 開啟其他餐點並聚焦品項，文字欄保留輸入', async () => {
     render(<App />);
     const user = userEvent.setup();

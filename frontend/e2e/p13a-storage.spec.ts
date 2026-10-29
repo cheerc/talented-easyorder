@@ -1,3 +1,4 @@
+import { release } from './helpers/navigation';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { test, expect, E2E_BASE_URL, signInGoogle } from './fixtures';
@@ -337,7 +338,7 @@ test.describe('P13a generated service worker and memory-only cloud storage', () 
       await pageA.getByRole('button', { name: '取得系統使用權' }).click();
       await expect(pageA.locator('.operator-strip')).toContainText('租約 Epoch: 1');
       await expect(pageA.getByTestId(`cloud-student-row-${STUDENT_CODE}`)).toContainText(STUDENT_MARKER);
-      await pageA.getByRole('button', { name: '櫃台點餐' }).click();
+      await pageA.getByRole('button', { name: '櫃台' }).click();
       await expect(pageA.getByTestId('cloud-orders-page')).toBeVisible();
       await expect(pageA.getByTestId(`recent-item-${STUDENT_CODE}`)).toContainText(STUDENT_MARKER);
       await expect(pageA.getByTestId(`recent-item-${STUDENT_CODE}`)).toContainText('今日餐點 1');
@@ -350,7 +351,7 @@ test.describe('P13a generated service worker and memory-only cloud storage', () 
       await pageA.reload();
       await expect(pageA.locator('.operator-strip')).toBeVisible();
       await expect(pageA.getByTestId(`cloud-student-row-${STUDENT_CODE}`)).toContainText(STUDENT_MARKER);
-      await pageA.getByRole('button', { name: '櫃台點餐' }).click();
+      await pageA.getByRole('button', { name: '櫃台' }).click();
       await expect(pageA.getByTestId(`recent-item-${STUDENT_CODE}`)).toContainText('今日餐點 1');
 
       await contextA.setOffline(true);
@@ -365,7 +366,7 @@ test.describe('P13a generated service worker and memory-only cloud storage', () 
       await pageA.reload();
       await expect(pageA.locator('.operator-strip')).toBeVisible();
       await expect(pageA.getByTestId(`cloud-student-row-${STUDENT_CODE}`)).toContainText(STUDENT_MARKER);
-      await pageA.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+      await release(pageA);
       await expect(pageA.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();
       await expect(pageA.locator('body')).not.toContainText(STUDENT_MARKER);
 
@@ -375,7 +376,7 @@ test.describe('P13a generated service worker and memory-only cloud storage', () 
       await pageB.getByRole('button', { name: '取得系統使用權' }).click();
       await expect(pageB.locator('.operator-strip')).toContainText('租約 Epoch: 3');
       await expect(pageB.getByTestId(`cloud-student-row-${STUDENT_CODE}`)).toContainText(STUDENT_MARKER);
-      await pageB.getByRole('button', { name: '櫃台點餐' }).click();
+      await pageB.getByRole('button', { name: '櫃台' }).click();
       await expect(pageB.getByTestId(`recent-item-${STUDENT_CODE}`)).toContainText('今日餐點 1');
       const nextHolderInventory = await readStorageInventory(pageB);
       expect(nextHolderInventory.firestoreDatabaseNames).toEqual([]);

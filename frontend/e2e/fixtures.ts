@@ -1,3 +1,4 @@
+import { releaseOwner } from './helpers/navigation';
 // Shared Playwright fixtures. Every signed-in session is a synthetic Google Auth Emulator user.
 
 import { test as base, type Browser, type Page } from '@playwright/test';
@@ -89,9 +90,9 @@ export const test = base.extend<{ googleSession: GoogleSession; authedPage: Page
     // eslint-disable-next-line react-hooks/rules-of-hooks
     await use(page);
     if (!page.isClosed()) {
-      const releaseButton = page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' });
-      if (await releaseButton.isVisible().catch(() => false)) {
-        await releaseButton.click();
+      const releaseButton = page.locator('.operator-strip button').filter({ hasText: '釋放使用權並登出' });
+      if (await releaseButton.count() && await releaseButton.isEnabled().catch(() => false)) {
+        await releaseOwner(releaseButton);
         await waitForVacantLease();
       }
     }

@@ -1,3 +1,4 @@
+import { release } from './helpers/navigation';
 import { test, expect } from './fixtures';
 import { upsertDocument, PROJECT } from './helpers/seed';
 
@@ -29,7 +30,7 @@ test('101 keyboard payment produces one confirmed effect and returns to search',
     lastSettlementRevision: 0, lastCommandId: seedId, updatedAt: new Date(),
   });
   await page.getByRole('button', { name: '取得系統使用權' }).click();
-  await page.getByRole('button', { name: '櫃台點餐' }).click();
+  await page.getByRole('button', { name: '櫃台' }).click();
   await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
   await page.locator('body').click({ position: { x: 2, y: 500 } });
   await page.keyboard.type('101');
@@ -54,7 +55,7 @@ test('101 keyboard payment produces one confirmed effect and returns to search',
   await page.keyboard.press('Enter');
   await expect(search).toBeFocused();
   expect(await documents('commands')).toHaveLength(1);
-  await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+  await release(page);
 });
 
 test('multiple candidates move only through visible options and reset on a new query', async ({ googleSession }) => {
@@ -75,10 +76,10 @@ test('multiple candidates move only through visible options and reset on a new q
   const acquire = page.getByRole('button', { name: '取得系統使用權' });
   await expect(acquire.or(page.locator('.operator-strip'))).toBeVisible();
   if (await acquire.isVisible()) await acquire.click();
-  await page.getByRole('button', { name: '櫃台點餐' }).click();
+  await page.getByRole('button', { name: '櫃台' }).click();
   const search = page.getByRole('combobox', { name: '搜尋編號、姓名或別名' });
   await search.fill('相似測試');
-  const options = page.getByRole('option');
+  const options = page.getByRole('listbox').getByRole('option');
   await expect(options).toHaveCount(3);
   await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('ArrowDown');
@@ -100,5 +101,5 @@ test('multiple candidates move only through visible options and reset on a new q
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('selected-student-card')).toContainText('相似測試0');
   expect(await documents('commands')).toHaveLength(beforeCommands.length);
-  await page.locator('.operator-strip').getByRole('button', { name: '釋放使用權並登出' }).click();
+  await release(page);
 });
