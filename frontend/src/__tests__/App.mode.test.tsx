@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
 const appMocks = vi.hoisted(() => ({
   cloudModeValid: false,
@@ -45,6 +45,15 @@ vi.mock('../components/cloud/CloudPendingRecoveryBoundary', () => ({
   CloudPendingRecoveryBoundary: ({ children }: { children: (hasUnresolvedPendingCommands: boolean) => ReactNode }) => <div inert={appMocks.recoveryGate}>{children(false)}</div>,
 }));
 
+vi.mock('../components/cloud/CloudOrdersPage', () => ({
+  CloudOrdersPage: function Orders() {
+    const [selected, setSelected] = useState(false);
+    return <section aria-label="mock orders page">{selected
+      ? <form aria-label="訂餐"><input aria-label="金額" /></form>
+      : <><input id="cloud-student-search" aria-label="搜尋" /><button onClick={() => setSelected(true)}>選擇學生</button></>}
+    </section>;
+  },
+}));
 vi.mock('../components/cloud/CloudStudentsPage', () => ({
   CloudStudentsPage: ({
     identityKey,
@@ -222,6 +231,17 @@ describe('App mode gate', () => {
 });
 
 describe('cloud navigation contract', () => {
+  it('asks before discarding an active cashier draft when F1 returns to search', () => {
+    appMocks.cloudModeValid = true;
+    render(<App />);
+    fireEvent.keyDown(window, { key: 'F1' });
+    fireEvent.click(screen.getByRole('button', { name: '選擇學生' }));
+    fireEvent.keyDown(window, { key: 'F1' });
+    expect(screen.getByRole('dialog')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '捨棄草稿' }));
+    expect(screen.getByLabelText('搜尋')).toBeVisible();
+  });
+
   it('only clears the leave warning when the page confirms its draft was cleared', () => {
     appMocks.cloudModeValid = true;
     render(<App />);
