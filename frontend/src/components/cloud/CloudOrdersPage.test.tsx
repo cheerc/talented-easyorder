@@ -217,6 +217,63 @@ describe('CloudOrdersPage', () => {
     repositoryMock.createRefund.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 15));
   });
 
+  describe('P3 視覺收斂：版面與字面契約', () => {
+    it('keeps the food counts in the counter card rather than a separate header', async () => {
+      renderComponent();
+      const counts = await screen.findByTestId('cloud-topbar-counts');
+      expect(counts.closest('.cloud-orders__card')).not.toBeNull();
+      expect(counts.closest('header')).toBeNull();
+      expect(counts).toContainElement(screen.getByTestId('cloud-topbar-bento'));
+      expect(counts).toContainElement(screen.getByTestId('cloud-topbar-other'));
+    });
+
+    it('shows the Q → W → E → R mode order with keycaps instead of bracketed shortcut text', async () => {
+      renderComponent();
+      await selectStudent('001');
+      const order = ['今日餐點', '繳費', '付款明細', '其他餐點'].map(name => screen.getByRole('button', { name }));
+      for (let index = 1; index < order.length; index += 1) {
+        expect(order[index - 1].compareDocumentPosition(order[index]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      }
+      expect(screen.queryByRole('button', { name: '今日餐點（Q）' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '繳費（W）' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '今日餐點 Q' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '繳費 W' })).toBeNull();
+      expect(document.body.textContent).not.toContain('（Q）');
+      expect(document.body.textContent).not.toContain('（W）');
+    });
+
+    it('shows the missing-menu reason as readable text next to a settings link, not inside an error box', async () => {
+      repositoryMock.loadSnapshot.mockResolvedValue(snapshot({ day: mockDay({ menu: false }), transactions: [] }));
+      const onOpenSettings = vi.fn();
+      renderComponent('uid-1:1', undefined, { onOpenSettings });
+      await selectStudent('002');
+      const reason = screen.getByTestId('orders-menu-unavailable');
+      expect(reason).toHaveTextContent('今日尚未設定菜單');
+      expect(reason.closest('[role="alert"]')).toBeNull();
+      expect(reason.closest('.cloud-orders__error')).toBeNull();
+      fireEvent.click(within(reason).getByRole('button', { name: '到今日設定' }));
+      expect(onOpenSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the balance label in the selected card so existing operators and tests still read it', async () => {
+      renderComponent();
+      await selectStudent('001');
+      expect(screen.getByTestId('selected-student-card')).toHaveTextContent('目前餘額：$100');
+    });
+
+    it('marks a negative projected balance with a minus sign, the word 欠款 and the warn class', async () => {
+      renderComponent();
+      await selectStudent('002');
+      const preview = screen.getByTestId('order-preview');
+      expect(preview).toHaveTextContent('−$40');
+      expect(preview).toHaveTextContent('欠款');
+      expect(within(preview).getByText(/欠款/).className).toContain('cloud-orders__debt');
+      fireEvent.change(screen.getByLabelText(/實收金額/), { target: { value: '50' } });
+      expect(preview).toHaveTextContent('$10');
+      expect(preview).not.toHaveTextContent('欠款');
+    });
+  });
+
   it('selects only a visible highlighted search result and focuses the amount without submitting', async () => {
     repositoryMock.loadSnapshot.mockResolvedValue(snapshot({ students: Array.from({ length: 12 }, (_, i) => mockStudent(`s${i}`, `${100 + i}`, `測試${i}`)), transactions: [] }));
     renderComponent();
@@ -817,7 +874,7 @@ describe('CloudOrdersPage', () => {
     expect(screen.getByRole('button', { name: '繳費' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '200' } });
     fireEvent.change(screen.getByLabelText(/備註/), { target: { value: '預存' } });
-    expect(screen.getByText(/預估結餘：/)).toHaveTextContent('$300');
+    expect(screen.getByTestId('order-preview')).toHaveTextContent('預計結餘$300');
     fireEvent.click(screen.getByTestId('submit-order-button'));
 
     await waitFor(() => expect(repositoryMock.createPayment).toHaveBeenCalledTimes(1));
@@ -1671,58 +1728,4 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     });
   });
 
-  describe('P3 視覺收斂：版面與字面契約', () => {
-    it('keeps the food counts in the page header when no meal card is shown yet', async () => {
-      renderComponent();
-      const header = await screen.findByTestId('cloud-topbar-counts');
-      const pageHeader = header.closest('header');
-      expect(pageHeader).not.toBeNull();
-      expect(pageHeader).toContainElement(screen.getByTestId('cloud-topbar-bento'));
-      expect(pageHeader).toContainElement(screen.getByTestId('cloud-topbar-other'));
-    });
-
-    it('shows the Q → W → E → R mode order with keycaps instead of bracketed shortcut text', async () => {
-      renderComponent();
-      await selectStudent('001');
-      const order = ['今日餐點', '繳費', '付款明細', '其他餐點'].map(name => screen.getByRole('button', { name }));
-      for (let index = 1; index < order.length; index += 1) {
-        expect(order[index - 1].compareDocumentPosition(order[index]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-      }
-      expect(screen.queryByRole('button', { name: '今日餐點（Q）' })).toBeNull();
-      expect(screen.queryByRole('button', { name: '繳費' })).toBeNull();
-      expect(document.body.textContent).not.toContain('（Q）');
-      expect(document.body.textContent).not.toContain('（W）');
-    });
-
-    it('shows the missing-menu reason as readable text next to a settings link, not inside an error box', async () => {
-      repositoryMock.loadSnapshot.mockResolvedValue(snapshot({ day: mockDay({ menu: false }), transactions: [] }));
-      const onOpenSettings = vi.fn();
-      renderComponent('uid-1:1', undefined, { onOpenSettings });
-      await selectStudent('002');
-      const reason = screen.getByTestId('orders-menu-unavailable');
-      expect(reason).toHaveTextContent('今日尚未設定菜單');
-      expect(reason.closest('[role="alert"]')).toBeNull();
-      expect(reason.closest('.cloud-orders__error')).toBeNull();
-      fireEvent.click(within(reason).getByRole('button', { name: '到今日設定' }));
-      expect(onOpenSettings).toHaveBeenCalledTimes(1);
-    });
-
-    it('keeps the balance label in the selected card so existing operators and tests still read it', async () => {
-      renderComponent();
-      await selectStudent('001');
-      expect(screen.getByTestId('selected-student-card')).toHaveTextContent('目前餘額：$100');
-    });
-
-    it('marks a negative projected balance with a minus sign, the word 欠款 and the warn class', async () => {
-      renderComponent();
-      await selectStudent('002');
-      const preview = screen.getByTestId('order-preview');
-      expect(preview).toHaveTextContent('−$40');
-      expect(preview).toHaveTextContent('欠款');
-      expect(within(preview).getByText(/欠款/).className).toContain('cloud-orders__debt');
-      fireEvent.change(screen.getByLabelText(/實收金額/), { target: { value: '50' } });
-      expect(preview).toHaveTextContent('$10');
-      expect(preview).not.toHaveTextContent('欠款');
-    });
-  });
 });

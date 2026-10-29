@@ -190,6 +190,8 @@ describe('App mode gate', () => {
     appMocks.cloudModeValid = true;
     render(<App />);
 
+    fireEvent.keyDown(window, { key: 'F1' });
+    expect(screen.getByRole('region', { name: 'mock orders page' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: '到今日設定' }));
     expect(screen.getByRole('region', { name: 'mock day vendors page' })).toBeVisible();
     expect(screen.getByRole('button', { name: '菜單與開帳' })).toHaveAttribute('aria-current', 'page');

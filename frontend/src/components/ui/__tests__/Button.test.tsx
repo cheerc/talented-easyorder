@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { createRef } from 'react';
 import userEvent from '@testing-library/user-event';
 import { Button } from '../Button';
 
@@ -55,5 +56,30 @@ describe('Button', () => {
     // jsdom resolves computed styles from CSS, but vitest css pipeline may strip them.
     // Verify the className contains btn-ui (the class that sets min-height: 44px).
     expect(btn.className).toContain('btn-ui');
+  });
+
+  it('passes native attributes through so callers can keep ids, test ids and aria state', () => {
+    render(
+      <Button type="submit" data-testid="submit-x" aria-describedby="hint-x" title="送出">
+        送出
+      </Button>,
+    );
+    const btn = screen.getByTestId('submit-x');
+    expect(btn).toHaveAttribute('type', 'submit');
+    expect(btn).toHaveAttribute('title', '送出');
+    expect(btn).toHaveAttribute('aria-describedby', 'hint-x');
+  });
+
+  it('forwards a ref to the native button element', () => {
+    const ref = createRef<HTMLButtonElement>();
+    render(<Button ref={ref}>焦點</Button>);
+    expect(ref.current).toBe(screen.getByRole('button'));
+  });
+
+  it('applies secondary and outline variants', () => {
+    const view = render(<Button variant="secondary">次要</Button>);
+    expect(screen.getByRole('button').className).toContain('btn-secondary');
+    view.rerender(<Button variant="outline">框線</Button>);
+    expect(screen.getByRole('button').className).toContain('btn-outline');
   });
 });
