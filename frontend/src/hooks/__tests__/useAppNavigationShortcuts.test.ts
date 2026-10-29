@@ -218,3 +218,60 @@ describe('useAppNavigationShortcuts — Arrow navigation', () => {
   });
 });
 
+describe('useAppNavigationShortcuts — input method and repeat guards', () => {
+  it('ignores a navigation key while the event is composing but still suppresses the browser default', () => {
+    const setTab = vi.fn();
+    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, setTab }));
+
+    const event = new KeyboardEvent('keydown', { key: 'F2', isComposing: true, bubbles: true, cancelable: true });
+    act(() => { window.dispatchEvent(event); });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(setTab).not.toHaveBeenCalled();
+  });
+
+  it('ignores navigation keys between compositionstart and compositionend', () => {
+    const setTab = vi.fn();
+    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, setTab }));
+
+    act(() => { window.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true })); });
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F3', bubbles: true, cancelable: true })); });
+    expect(setTab).not.toHaveBeenCalled();
+    act(() => { window.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true })); });
+
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F3', bubbles: true, cancelable: true })); });
+    expect(setTab).toHaveBeenCalledWith('admin');
+  });
+
+  it('ignores the legacy keyCode 229 used by IMEs', () => {
+    const setTab = vi.fn();
+    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, setTab }));
+
+    const event = new KeyboardEvent('keydown', { key: 'F4', bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'keyCode', { value: 229 });
+    act(() => { window.dispatchEvent(event); });
+
+    expect(setTab).not.toHaveBeenCalled();
+  });
+
+  it('ignores repeated navigation keys', () => {
+    const setTab = vi.fn();
+    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, setTab }));
+
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F5', repeat: true, bubbles: true, cancelable: true })); });
+
+    expect(setTab).not.toHaveBeenCalled();
+  });
+
+  it('ignores physical Option+Digit navigation while composing', () => {
+    const setTab = vi.fn();
+    renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, setTab }));
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '£', code: 'Digit3', altKey: true, isComposing: true, bubbles: true, cancelable: true }));
+    });
+
+    expect(setTab).not.toHaveBeenCalled();
+  });
+});
+

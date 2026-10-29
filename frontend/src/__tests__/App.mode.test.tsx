@@ -237,6 +237,42 @@ describe('App mode gate', () => {
 });
 
 describe('cloud navigation contract', () => {
+  it('ignores IME composition and repeated navigation keys at the cloud shell', () => {
+    appMocks.cloudModeValid = true;
+    render(<App />);
+    expect(screen.getByRole('region', { name: 'mock students page' })).toBeVisible();
+
+    const composing = new KeyboardEvent('keydown', { key: 'F2', isComposing: true, bubbles: true, cancelable: true });
+    act(() => { window.dispatchEvent(composing); });
+    expect(screen.getByRole('region', { name: 'mock students page' })).toBeVisible();
+    expect(screen.queryByRole('region', { name: 'mock cloud report page' })).toBeNull();
+
+    act(() => { window.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true })); });
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F3', bubbles: true, cancelable: true })); });
+    expect(screen.getByRole('region', { name: 'mock students page' })).toBeVisible();
+    act(() => { window.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true })); });
+
+    const legacy229 = new KeyboardEvent('keydown', { key: 'F4', bubbles: true, cancelable: true });
+    Object.defineProperty(legacy229, 'keyCode', { value: 229 });
+    act(() => { window.dispatchEvent(legacy229); });
+    expect(screen.getByRole('region', { name: 'mock students page' })).toBeVisible();
+
+    const repeated = new KeyboardEvent('keydown', { key: 'F5', repeat: true, bubbles: true, cancelable: true });
+    act(() => { window.dispatchEvent(repeated); });
+    expect(screen.getByRole('region', { name: 'mock students page' })).toBeVisible();
+    expect(screen.queryByRole('region', { name: 'mock cloud account history page' })).toBeNull();
+
+    const altComposing = new KeyboardEvent('keydown', { key: '£', code: 'Digit3', altKey: true, isComposing: true, bubbles: true, cancelable: true });
+    act(() => { window.dispatchEvent(altComposing); });
+    expect(screen.getByRole('region', { name: 'mock students page' })).toBeVisible();
+
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F3', bubbles: true, cancelable: true })); });
+    expect(screen.getByRole('region', { name: 'mock day vendors page' })).toBeVisible();
+
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true, cancelable: true })); });
+    expect(screen.getByRole('region', { name: 'mock day close page' })).toBeVisible();
+  });
+
   it('does not treat the day-close date filter as an unsubmitted draft', () => {
     appMocks.cloudModeValid = true;
     render(<App />);

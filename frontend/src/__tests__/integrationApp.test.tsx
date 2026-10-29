@@ -111,6 +111,30 @@ describe('完整 App 跨功能整合與真實 Persist 測試', () => {
     expect(await screen.findByRole('button', { name: '編輯 005' }, { timeout: 10000 })).toBeVisible();
   });
 
+  it('在輸入法組字中或長按重複時不以實體 Option 數字鍵切換設定', async () => {
+    render(<App />);
+    const search = await screen.findByLabelText('輸入學員編號或姓名');
+    search.focus();
+    const key = () => new KeyboardEvent('keydown', { key: '£', code: 'Digit3', altKey: true, bubbles: true, cancelable: true });
+    const composing = new KeyboardEvent('keydown', { key: '£', code: 'Digit3', altKey: true, isComposing: true, bubbles: true, cancelable: true });
+    act(() => { search.dispatchEvent(composing); });
+    expect(composing.defaultPrevented).toBe(true);
+    act(() => { window.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true })); });
+    act(() => { window.dispatchEvent(key()); });
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: '£', code: 'Digit4', altKey: true, repeat: true, bubbles: true, cancelable: true })); });
+    act(() => { window.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true })); });
+    expect(screen.queryByRole('button', { name: '編輯 005' })).toBeNull();
+    expect(search).toHaveFocus();
+
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: '£', code: 'Digit5', altKey: true, repeat: true, bubbles: true, cancelable: true })); });
+    expect(screen.queryByRole('button', { name: '編輯 005' })).toBeNull();
+
+    const fresh = key();
+    act(() => { search.dispatchEvent(fresh); });
+    expect(fresh.defaultPrevented).toBe(true);
+    expect(await screen.findByRole('button', { name: '編輯 005' }, { timeout: 10000 })).toBeVisible();
+  });
+
   it('保留櫃台草稿直到確認捨棄，並在取消離開後繼續編輯', async () => {
     render(<App />);
     const user = userEvent.setup();
