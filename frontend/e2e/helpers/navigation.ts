@@ -19,3 +19,9 @@ export async function releaseOwner(button: import('@playwright/test').Locator) {
   if (!await menu.evaluate(element => (element as HTMLDetailsElement).open)) await menu.locator('summary').click();
   await button.click();
 }
+
+export async function accountCheck(page: Page) {
+  const menu = page.locator('.operator-menu');
+  if (!await menu.evaluate(element => (element as HTMLDetailsElement).open)) await menu.locator('summary').click();
+  await menu.getByRole('button', { name: '帳務檢查', exact: true }).click();
+}
