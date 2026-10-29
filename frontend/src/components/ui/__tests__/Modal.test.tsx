@@ -91,6 +91,7 @@ describe('Modal', () => {
   });
 
   it('makes background controls inert while open and restores their previous state on close', () => {
+    const previousOverflow = document.body.style.overflow;
     const { container, rerender } = render(
       <main>
         <button data-testid="background-control">背景操作</button>
@@ -100,6 +101,7 @@ describe('Modal', () => {
     const background = container.querySelector<HTMLButtonElement>('[data-testid="background-control"]');
     expect(background).not.toBeNull();
     expect(background!.inert).toBe(true);
+    expect(document.body.style.overflow).toBe('hidden');
 
     rerender(
       <main>
@@ -108,6 +110,7 @@ describe('Modal', () => {
       </main>,
     );
     expect(background!.inert).toBe(false);
+    expect(document.body.style.overflow).toBe(previousOverflow);
   });
 });
 

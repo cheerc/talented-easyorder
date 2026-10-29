@@ -237,7 +237,7 @@ describe('CloudDayClosePage', () => {
   it('L05: expected 1,170 and counted 1,160 needs a non-blank reason, then closes with the server numbers', async () => {
     renderPage();
     expect(await screen.findByRole('heading', { name: `${today} 日結` })).toBeInTheDocument();
-    expect(screen.getByText('開啟中')).toHaveClass('badge-ui', 'badge-ok');
+    expect(screen.getByText('開啟中')).toHaveClass('badge-ui', 'badge-warn');
     expect(repository.read).toHaveBeenCalledWith(today);
     const figures = screen.getByLabelText('營業日現金統計');
     expect(within(figures).getByText('NT$ 1,170')).toBeInTheDocument();
@@ -315,7 +315,7 @@ describe('CloudDayClosePage', () => {
   it('reopens a closed day only with a non-blank reason and keeps the old versions visible', async () => {
     repository.read.mockResolvedValue(dayState({ status: 'closed', revision: 7, lastSettlementRevision: 1, settlements: [version(1)] }));
     renderPage();
-    expect(await screen.findByText('已關帳')).toHaveClass('badge-ui', 'badge-neutral');
+    expect(await screen.findByText('已關帳')).toHaveClass('badge-ui', 'badge-ok');
     expect(screen.queryByRole('form', { name: `${today} 關帳` })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '重開這一天' }));
     const form = screen.getByRole('form', { name: `${today} 重開` });
