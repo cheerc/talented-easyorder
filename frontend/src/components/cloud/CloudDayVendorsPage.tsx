@@ -1201,7 +1201,6 @@ export function CloudDayVendorsPage({
         <div>
           <p className="cloud-day-vendors__eyebrow">雲端資料 · 線上操作</p>
           <h1>{view === 'vendors' ? '供應商' : view === 'day' ? '菜單與開帳' : '營業日、菜單與供應商'}</h1>
-          <p className="cloud-day-vendors__intro">日期與供應商資料只從伺服器完整載入。未確認開帳與零元開帳分開顯示；菜單與供應商變更不改寫既有歷史快照。</p>
         </div>
         <button
           type="button"
@@ -1212,6 +1211,10 @@ export function CloudDayVendorsPage({
           {page.loading ? '載入中…' : '重新載入伺服器資料'}
         </button>
       </header>
+      <details className="cloud-day-vendors__intro">
+        <summary>資料載入與快照原則</summary>
+        <p>日期與供應商資料只從伺服器完整載入。未確認開帳與零元開帳分開顯示；菜單與供應商變更不改寫既有歷史快照。</p>
+      </details>
 
       {page.loadError && <div className="cloud-day-vendors__alert" role="alert">{page.loadError}</div>}
       {page.actionError && <div className="cloud-day-vendors__alert" role="alert">{page.actionError}</div>}
@@ -1269,6 +1272,9 @@ export function CloudDayVendorsPage({
       {snapshot && !page.loading && (
         <>
           {view !== 'vendors' && <><section className="cloud-day-vendors__date-panel" aria-label="營業日選擇">
+            <div className="cloud-day-vendors__section-heading">
+              <h2>營業日</h2>
+            </div>
             <form className="cloud-day-vendors__date-form" onSubmit={submitDateSelection}>
               <label htmlFor="cloud-day-vendors-date">查看或設定日期</label>
               <input
@@ -1285,12 +1291,12 @@ export function CloudDayVendorsPage({
                 載入日期
               </button>
             </form>
+            <p className="cloud-day-vendors__help">使用權日期來自伺服器租約時間，瀏覽器時鐘不會決定營業日或改寫命令日期。若跨過臺北午夜，請先取得伺服器更新的使用權，再重新載入。</p>
             <div className="cloud-day-vendors__date-meta">
               <span>系統啟用日：{snapshot.goLiveDate}</span>
               <span>伺服器使用權日期：{snapshot.selectionDate}</span>
               <span>資料序號：{snapshot.seq}</span>
             </div>
-            <p className="cloud-day-vendors__help">使用權日期來自伺服器租約時間，瀏覽器時鐘不會決定營業日或改寫命令日期。若跨過臺北午夜，請先取得伺服器更新的使用權，再重新載入。</p>
           </section>
 
           <section className="cloud-day-vendors__day-section" aria-label="指定營業日">
@@ -1441,7 +1447,7 @@ export function CloudDayVendorsPage({
                       <tr key={vendor.vendorId} data-testid={`cloud-vendor-row-${vendor.vendorId}`}>
                         <td className="cloud-day-vendors__mono">{vendor.vendorId}</td>
                         <td>{vendor.name}</td>
-                        <td>{vendor.phone || '—'}</td>
+                        <td className="cloud-day-vendors__phone">{vendor.phone || '—'}</td>
                         <td>{vendor.note || '—'}</td>
                         <td><span className={`cloud-day-vendors__status cloud-day-vendors__status--${vendor.status}`}>{vendor.status === 'active' ? '使用中' : '已停用'}</span></td>
                         <td>
