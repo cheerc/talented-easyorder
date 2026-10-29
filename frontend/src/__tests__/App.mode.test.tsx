@@ -48,9 +48,9 @@ vi.mock('../components/cloud/CloudPendingRecoveryBoundary', () => ({
 }));
 
 vi.mock('../components/cloud/CloudOrdersPage', () => ({
-  CloudOrdersPage: function Orders() {
+  CloudOrdersPage: function Orders({ onViewDayChange }: { onViewDayChange?: (date: string, backfill: boolean) => void }) {
     const [selected, setSelected] = useState(false);
-    return <section aria-label="mock orders page">{selected
+    return <section aria-label="mock orders page"><button onClick={() => onViewDayChange?.('2026-10-01', true)}>測試補登日</button>{selected
       ? <form aria-label="訂餐"><input aria-label="金額" /></form>
       : <><input id="cloud-student-search" aria-label="搜尋" /><button onClick={() => setSelected(true)}>選擇學生</button></>}
     </section>;
@@ -237,6 +237,18 @@ describe('App mode gate', () => {
 });
 
 describe('cloud navigation contract', () => {
+  it('does not show a previous backfill date while a newly mounted cashier is loading', () => {
+    appMocks.cloudModeValid = true;
+    render(<App />);
+    fireEvent.keyDown(window, { key: 'F1' });
+    fireEvent.click(screen.getByRole('button', { name: '測試補登日' }));
+    expect(screen.getByText('補登 2026-10-01')).toBeVisible();
+    fireEvent.keyDown(window, { key: 'F3' });
+    fireEvent.keyDown(window, { key: 'F1' });
+    expect(screen.queryByText('補登 2026-10-01')).not.toBeInTheDocument();
+    expect(screen.getByText('營業日未確認')).toBeVisible();
+  });
+
   it('asks before discarding an active cashier draft when F1 returns to search', () => {
     appMocks.cloudModeValid = true;
     render(<App />);
