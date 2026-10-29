@@ -127,6 +127,11 @@ describe('CloudAccountHistoryPage', () => {
       currentBalance: -40,
       transactions: [negativeTransaction],
       days: [{ ...days[0], status: 'reopened' }],
+      settlements: [{
+        businessDate: date, revision: 1, status: 'reopened', totals: days[0].totals!, openingCash: 100,
+        expectedCash: 100, countedCash: null, difference: null, note: '', actorUid: 'operator-a',
+        actorEmail: 'a@example.test', sourceSeq: 11, committedAt: `${date}T04:00:00.000Z`, lastCommandId: 'settlement-a',
+      }],
     });
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
 
@@ -139,13 +144,16 @@ describe('CloudAccountHistoryPage', () => {
     expect(within(opening).getByText('欠款')).toHaveClass('badge-ui', 'badge-warn');
     expect(screen.getByText('使用中')).toHaveClass('badge-ui', 'badge-ok');
 
-    const row = screen.getByText(transaction.transactionId).closest('tr') as HTMLTableRowElement;
+    const transactionSection = screen.getByRole('heading', { name: '區間交易與更正入口' }).closest('section') as HTMLElement;
+    const row = within(transactionSection).getAllByRole('row')[1];
     const cells = within(row).getAllByRole('cell');
-    expect(within(cells[3]).getByText('−$35')).toBeInTheDocument();
+    expect(cells[3]).toHaveTextContent('−$35');
     expect(cells[3].querySelector('.badge-warn')).toBeNull();
     expect(within(cells[4]).getByText('欠款')).toHaveClass('badge-ui', 'badge-warn');
     expect(within(cells[5]).getByText('有效')).toHaveClass('badge-ui', 'badge-ok');
     expect(within(cells[6]).getByText('已重開')).toHaveClass('badge-ui', 'badge-warn');
+    const settlementSection = screen.getByRole('heading', { name: /日結版本/ }).closest('section') as HTMLElement;
+    expect(within(settlementSection).getByText('已重開')).toHaveClass('badge-ui', 'badge-warn');
   });
 
   it('uses EmptyState for an unselected account and empty transaction, settlement, and audit ranges', async () => {
