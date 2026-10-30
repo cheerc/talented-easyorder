@@ -500,7 +500,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
             <small>租約 Epoch: {leaseEpoch}</small>
             <button type="button" disabled={navigationLocked} onClick={openAnomalies}>帳務檢查</button>
             <label>主題 <select value={tweaks.theme} onChange={event => setTweak('theme', event.target.value)}><option value="warm">暖色</option><option value="light">淺色</option><option value="dark">深色</option></select></label>
-            <p>F1–F5 或 Alt／Option + 1–5 切換頁面</p>
+            <p className="operator-menu__help">F1–F5 或 Alt／Option + 1–5 切換頁面；F5 已改為切換頁面，重新整理請按 Ctrl+R／Cmd+R。</p>
             <button type="button" disabled={navigationLocked} onClick={() => operator?.signOut()}>釋放使用權並登出</button>
           </div></details></div>} />
       {(cloudSection === 'day-close' || cloudSection === 'reports') && <nav className="cloud-subnav" aria-label="今日帳"><button disabled={navigationLocked} aria-current={cloudSection === 'day-close' ? 'page' : undefined} onClick={() => selectSection('day-close')}>今日</button><button disabled={navigationLocked} aria-current={cloudSection === 'reports' ? 'page' : undefined} onClick={() => selectSection('reports')}>本週／本月</button></nav>}
