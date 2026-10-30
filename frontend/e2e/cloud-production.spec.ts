@@ -1365,7 +1365,9 @@ test.describe('P11 Cloud Day Close', () => {
       const main = page.getByRole('main', { name: '雲端日結' });
       await expect(main.getByRole('heading', { name: `${today} 日結` })).toBeVisible();
       await expect(main.getByLabel('營業日現金統計')).toContainText(money(expected));
-      await expect(main.getByTestId(`cloud-unclosed-${today}`)).toContainText('今天，尚未關帳');
+      const todayUnclosed = main.getByTestId(`cloud-unclosed-${today}`);
+      await expect(todayUnclosed).toContainText('今天');
+      await expect(todayUnclosed.getByText('尚未關帳')).toHaveClass(/badge-ui.*badge-warn/);
       const closeForm = main.getByRole('form', { name: `${today} 關帳` });
       await closeForm.getByRole('textbox', { name: '實點現金（元）' }).fill(String(expected - 10));
       await expect(closeForm).toContainText(`應有 ${money(expected)}，實點 ${money(expected - 10)}，少 NT$ 10`);

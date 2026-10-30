@@ -817,8 +817,8 @@ test.describe('P12c cloud report and account history acceptance', () => {
       await expect(closedDayRow).toContainText(ORIGINAL_NAME);
 
       const accountBalanceCell = page.locator('.cloud-account-history__balance div').filter({ hasText: '目前帳戶餘額' }).locator('dd');
-      const balanceBeforeText = await accountBalanceCell.innerText();
-      const balanceBefore = Number(balanceBeforeText.replace(/[^\d-]/g, ''));
+      const balanceBeforeAmountText = await accountBalanceCell.locator('.cloud-account-balance__amount').innerText();
+      const balanceBefore = Number(balanceBeforeAmountText.replace(/[^\d]/g, '')) * (balanceBeforeAmountText.includes('−') ? -1 : 1);
       const laterSettlementBefore = await readRawAdminDocument(settlementCollection, '1');
       expect(JSON.stringify(laterSettlementBefore)).toBe(JSON.stringify(originalSettlement));
 
@@ -909,8 +909,10 @@ test.describe('P12c cloud report and account history acceptance', () => {
           throw error;
         }
         const balanceAfterExpected = balanceBefore + 25;
-        const expectedBalanceText = `$${new Intl.NumberFormat('zh-TW').format(balanceAfterExpected)}`;
-        await expect(accountBalanceCell).toHaveText(expectedBalanceText, { timeout: 30_000 });
+        expect(balanceAfterExpected).toBeLessThan(0);
+        const expectedBalanceText = `−$${new Intl.NumberFormat('zh-TW').format(Math.abs(balanceAfterExpected))}`;
+        await expect(accountBalanceCell.locator('.cloud-account-balance__amount')).toHaveText(expectedBalanceText, { timeout: 30_000 });
+        await expect(accountBalanceCell.getByText('欠款')).toHaveClass(/badge-ui.*badge-warn/);
         const laterSettlementAfter = await readRawAdminDocument(settlementCollection, '1');
         expect(JSON.stringify(laterSettlementAfter)).toBe(JSON.stringify(laterSettlementBefore));
         await expect(activeHistoricalRow).toContainText('105');
