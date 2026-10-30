@@ -166,7 +166,7 @@ describe('CloudAccountHistoryPage', () => {
     mocks.readAuditRange.mockResolvedValue({ ...audit, rows: [] });
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:empty" initialStudentId={studentId} initialRange={range} />);
     await screen.findByTestId('account-history-ready');
-    expect(screen.getByText('此範圍沒有帳戶交易；完整前綴餘額仍已驗證。').closest('.empty-title')).not.toBeNull();
+    expect(screen.getByText('此範圍沒有帳戶交易；歷史餘額已驗證。').closest('.empty-title')).not.toBeNull();
     expect(screen.getByText('此範圍沒有日結版本。').closest('.empty-title')).not.toBeNull();
     expect(screen.getByText('此範圍沒有帳戶稽核紀錄。').closest('.empty-title')).not.toBeNull();
   });

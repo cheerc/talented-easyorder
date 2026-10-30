@@ -70,7 +70,7 @@ describe('P5 UI 文字：雲端前綴、F 鍵誤導與工程用語', () => {
     const offenders: string[] = [];
     for (const file of cloudTsx) {
       for (const { line, text } of uiLines(file)) {
-        if (/(資料載入與快照原則|完整交易前綴|完整歷史前綴)/.test(text)) offenders.push(where(file, line));
+        if (/(前綴|快照原則)/.test(text)) offenders.push(where(file, line));
       }
     }
     expect(offenders).toEqual([]);
