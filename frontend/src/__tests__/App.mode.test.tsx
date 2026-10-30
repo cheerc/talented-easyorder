@@ -186,6 +186,17 @@ describe('App mode gate', () => {
     expect(screen.getByRole('region', { name: 'mock cloud account history page' })).toBeVisible();
   });
 
+  it('操作員選單的快捷鍵說明列出 F1–F5、Alt／Option+1–5，並告知 F5 被攔截後以 Ctrl／Cmd+R 重新整理', () => {
+    appMocks.cloudModeValid = true;
+    render(<App />);
+
+    const help = document.querySelector('.operator-menu__panel .operator-menu__help');
+    expect(help).not.toBeNull();
+    expect(help?.textContent).toContain('F1–F5');
+    expect(help?.textContent).toContain('Alt／Option + 1–5');
+    expect(help?.textContent).toContain('Ctrl+R／Cmd+R');
+  });
+
   it('opens today settings from the counter page without leaving the cloud shell', () => {
     appMocks.cloudModeValid = true;
     render(<App />);
