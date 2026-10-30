@@ -11,6 +11,7 @@ import { TransactionStatusView } from './TransactionStatusView';
 import { RefundDialog } from './RefundDialog';
 import { fmt } from './utils';
 import type { LedgerMutationResult } from '../../domain/ledgerAudit';
+import { TriangleAlert } from 'lucide-react';
 
 interface CustomerCardProps {
   student: StudentAccount;
@@ -121,7 +122,7 @@ export const CustomerCard = React.memo(function CustomerCard({
           </div>
           {orderedTodayCount > 0 && (
             <div className="bal-debt warn-soft-chip">
-              ⚠ 今天已訂 <b>{orderedTodayCount}</b> 份餐點
+              <TriangleAlert size={16} aria-hidden="true" /> 今天已訂 <b>{orderedTodayCount}</b> 份餐點
             </div>
           )}
 

@@ -9,6 +9,8 @@
 
 .num-input-wrap:focus-within {
   border-color: var(--ink);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .field-err .num-input-wrap {

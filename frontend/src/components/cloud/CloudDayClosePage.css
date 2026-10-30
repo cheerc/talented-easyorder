@@ -44,13 +44,6 @@
   letter-spacing: -.025em;
 }
 
-.cloud-day-close__eyebrow {
-  margin: 0;
-  color: var(--ink-hint);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: .08em;
-}
 
 .cloud-day-close__intro {
   max-width: 760px;

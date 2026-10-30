@@ -6,13 +6,17 @@
   font-size: 15px;
   font-family: inherit;
   color: var(--ink);
-  outline: 0;
   transition: border-color 0.15s;
   width: 100%;
 }
 
 .field-input:focus {
   border-color: var(--ink);
+}
+
+.field-input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .field-input:disabled {

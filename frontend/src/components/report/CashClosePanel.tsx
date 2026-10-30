@@ -6,6 +6,7 @@ import { Button } from '../ui/Button';
 import type { LedgerTotals } from '../../domain/ledgerReport';
 import type { LedgerMutationResult } from '../../domain/ledgerAudit';
 import { OPENING_CASH_MISSING_MESSAGE, CASH_DIFFERENCE_NOTE_MESSAGE } from '../../domain/cashClose';
+import { TriangleAlert } from 'lucide-react';
 
 interface CashClosePanelProps {
   /** M3：這一天全部交易的合計（不受 F2 的區間與搜尋影響）。 */
@@ -150,7 +151,7 @@ export function CashClosePanel({
         <div role="alert" style={{ color: 'var(--c-warn)', marginTop: '8px', fontSize: '13px' }}>沒有關帳：{closeError}</div>
       )}
       {hasFailedConflict && (
-        <div className="dim" style={{ color: 'var(--c-warn)', marginTop: '8px', fontSize: '12px' }}>⚠ 有同步失敗或衝突記錄，無法關帳</div>
+        <div className="dim" style={{ color: 'var(--c-warn)', marginTop: '8px', fontSize: '12px' }}><TriangleAlert size={14} aria-hidden="true" /> 有同步失敗或衝突記錄，無法關帳</div>
       )}
 
       <Modal open={showConfirm} title="確認關帳" onClose={() => setShowConfirm(false)}>
@@ -165,7 +166,7 @@ export function CashClosePanel({
             <span className={'mono ' + (difference === 0 ? '' : difference > 0 ? 'pos' : 'warn')}>{difference === 0 ? '✓ 平' : `${difference > 0 ? '+' : '−'}$${fmt(Math.abs(difference))}`}</span>
           </div>
           {note && <div style={{ display: 'flex', justifyContent: 'space-between' }}><label>備註</label><span>{note}</span></div>}
-          {hasQueuedRows && <div style={{ display: 'flex', justifyContent: 'space-between' }}><label>⚠</label><span style={{fontSize:'12px',color:'var(--c-warn)'}}>仍有未同步資料，已確認接受</span></div>}
+          {hasQueuedRows && <div style={{ display: 'flex', justifyContent: 'space-between' }}><label><TriangleAlert size={14} aria-label="警告" /></label><span style={{fontSize:'12px',color:'var(--c-warn)'}}>仍有未同步資料，已確認接受</span></div>}
         </div>
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
           <Button variant="ghost" onClick={() => setShowConfirm(false)}>取消</Button>

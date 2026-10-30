@@ -38,13 +38,6 @@
   letter-spacing: -.025em;
 }
 
-.cloud-students__eyebrow {
-  margin: 0;
-  color: var(--ink-hint);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: .08em;
-}
 
 .cloud-students__header-actions {
   display: flex;

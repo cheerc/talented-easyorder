@@ -1443,7 +1443,6 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
     <main className="cloud-students" aria-label="雲端學生名單">
       <header className="cloud-students__header">
         <div>
-          <p className="cloud-students__eyebrow">雲端資料 · 線上操作</p>
           <h1>學生名單與期初結餘</h1>
         </div>
         <div className="cloud-students__header-actions">

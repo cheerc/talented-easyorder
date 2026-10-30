@@ -1209,7 +1209,6 @@ export function CloudDayVendorsPage({
     <main className="cloud-day-vendors" aria-label="雲端日期設定與供應商管理">
       <header className="cloud-day-vendors__header">
         <div>
-          <p className="cloud-day-vendors__eyebrow">雲端資料 · 線上操作</p>
           <h1>{view === 'vendors' ? '供應商' : view === 'day' ? '菜單與開帳' : '營業日、菜單與供應商'}</h1>
         </div>
         <button
@@ -1222,7 +1221,7 @@ export function CloudDayVendorsPage({
         </button>
       </header>
       <details className="cloud-day-vendors__intro">
-        <summary>資料載入與快照原則</summary>
+        <summary>資料與歷史說明</summary>
         <p>日期與供應商資料只從伺服器完整載入。未確認開帳與零元開帳分開顯示；菜單與供應商變更不改寫既有歷史快照。</p>
       </details>
 

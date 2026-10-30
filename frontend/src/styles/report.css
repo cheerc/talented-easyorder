@@ -183,12 +183,16 @@
   font-family: inherit;
   font-size: 13px;
   color: var(--ink);
-  outline: 0;
   width: 100%;
 }
 
 .rpt-edit-input:focus {
   border-color: var(--ink);
+}
+
+.rpt-edit-input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .rpt-edit-input.r {

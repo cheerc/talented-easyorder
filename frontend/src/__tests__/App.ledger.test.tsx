@@ -94,7 +94,7 @@ describe('cloud navigation: ledger anomalies entry', () => {
     expect(screen.getByRole('button', { name: '帳務檢查' })).toBeInTheDocument();
     resolve(snapshot([]));
     await waitFor(() => expect(appMocks.read).toHaveBeenCalledTimes(1));
-    expect(screen.queryByRole('button', { name: /⚠ 異常/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^異常 \d+/ })).not.toBeInTheDocument();
   });
 
   it('allows an account check after a read error and shows later anomalies', async () => {
@@ -104,7 +104,7 @@ describe('cloud navigation: ledger anomalies entry', () => {
     await waitFor(() => expect(appMocks.read).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByText('操作員'));
     fireEvent.click(screen.getByRole('button', { name: '帳務檢查' }));
-    expect(await screen.findByRole('button', { name: '⚠ 異常 2' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '異常 2' })).toBeInTheDocument();
     expect(await screen.findByRole('list', { name: '帳務異常清單' })).toBeInTheDocument();
     expect(appMocks.read).toHaveBeenCalledTimes(2);
   });
@@ -126,7 +126,7 @@ describe('cloud navigation: ledger anomalies entry', () => {
   it('passes the ledger to the open and close pages and re-reads after a successful command', async () => {
     appMocks.read.mockResolvedValue(snapshot([unclosed('2026-10-15')]));
     render(<App />);
-    await screen.findByRole('button', { name: '⚠ 異常 1' });
+    await screen.findByRole('button', { name: '異常 1' });
     fireEvent.keyDown(window, { key: 'F3' });
     expect(screen.getByTestId('day-vendors-ledger')).toHaveTextContent('ready');
     fireEvent.click(screen.getByRole('button', { name: 'day-vendors：命令成功' }));
@@ -140,7 +140,7 @@ describe('cloud navigation: ledger anomalies entry', () => {
   it('opens the anomalies page from a page banner and sends the day to the close page', async () => {
     appMocks.read.mockResolvedValue(snapshot([unclosed('2026-10-15')]));
     render(<App />);
-    await screen.findByRole('button', { name: '⚠ 異常 1' });
+    await screen.findByRole('button', { name: '異常 1' });
     fireEvent.keyDown(window, { key: 'F2' });
     fireEvent.click(screen.getByRole('button', { name: 'day-close：到異常頁' }));
     fireEvent.click(await screen.findByRole('button', { name: '到日結頁處理 2026-10-15' }));
@@ -155,7 +155,7 @@ describe('cloud navigation: ledger anomalies entry', () => {
   it('routes a gap-free opening difference to its previous closed day with the original cash preview', async () => {
     appMocks.read.mockResolvedValue(snapshot([mismatch]));
     render(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: '⚠ 異常 1' }));
+    fireEvent.click(await screen.findByRole('button', { name: '異常 1' }));
     fireEvent.click(screen.getByTestId('post-close-shortcut-2026-10-16'));
     expect(screen.getByTestId('day-close-focus')).toHaveTextContent('2026-10-14');
     expect(screen.getByTestId('day-close-post-close-focus')).toHaveTextContent('2026-10-16:-70:870');
