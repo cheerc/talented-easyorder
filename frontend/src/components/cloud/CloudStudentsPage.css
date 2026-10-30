@@ -138,11 +138,36 @@
 }
 
 .cloud-students__loading,
-.cloud-students__empty,
 .cloud-students__unavailable {
   color: var(--ink-2);
   background: var(--surface-sunken);
   border: 1px solid var(--line);
+}
+
+.cloud-students__empty-state {
+  margin-top: 18px;
+}
+
+.cloud-students__empty.empty-ui {
+  display: block;
+  margin: 0;
+  padding: 14px 16px;
+  color: var(--ink-2);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  text-align: left;
+}
+
+.cloud-students__empty .empty-icon {
+  display: none;
+}
+
+.cloud-students__empty .empty-title {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .cloud-students__recovery {
@@ -189,6 +214,41 @@
   background: var(--surface-sunken);
   border: 1px solid var(--line);
   border-radius: 10px;
+}
+
+.cloud-students__form--dialog {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.cloud-students__create-modal.modal-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, calc(100vw - 32px));
+  max-width: 760px;
+  max-height: calc(100vh - 32px);
+  overflow: hidden;
+}
+
+.cloud-students__create-modal .modal-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 28px 24px;
+}
+
+.cloud-students__discard-confirmation {
+  display: grid;
+  gap: 16px;
+}
+
+.cloud-students__discard-confirmation p {
+  margin: 0;
+  color: var(--ink-2);
+  line-height: 1.6;
 }
 
 .cloud-students__form h2 {
@@ -304,6 +364,11 @@
   cursor: pointer;
 }
 
+.cloud-students__gap-row:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
 .cloud-students__gap-row > td {
   color: var(--ink-hint);
   font-size: 13px;
@@ -335,22 +400,7 @@
 }
 
 .cloud-students__status {
-  display: inline-block;
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
   white-space: nowrap;
-}
-
-.cloud-students__status--active {
-  color: var(--accent-ink);
-  background: var(--accent-soft);
-}
-
-.cloud-students__status--inactive {
-  color: var(--ink-2);
-  background: var(--line-2);
 }
 
 .cloud-students__balance {
@@ -494,6 +544,15 @@
   .cloud-students__header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .cloud-students__create-modal.modal-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+  }
+
+  .cloud-students__create-modal .modal-body {
+    padding: 16px;
   }
 
   .cloud-students__form-grid {

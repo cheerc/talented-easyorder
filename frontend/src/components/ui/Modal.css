@@ -60,6 +60,11 @@
   color: var(--ink);
 }
 
+.modal-close:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .modal-body {
   padding: 24px 28px 28px;
 }

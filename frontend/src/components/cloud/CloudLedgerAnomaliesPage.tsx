@@ -2,6 +2,7 @@ import type { LedgerAnomaly, OpeningMismatchAnomaly } from '../../domain/ledgerA
 import type { CloudLedgerView } from '../../hooks/useCloudLedger';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
+import { StatusBadge } from '../ui/StatusBadge';
 import './CloudLedgerAnomaliesPage.css';
 
 export interface CloudLedgerAnomaliesPageProps {
@@ -26,6 +27,9 @@ function AnomalyItem({ anomaly, onOpenDayClose, onOpenPostCloseEntry }: {
     return (
       <li className="cloud-ledger-anomalies__item" data-kind={anomaly.kind}>
         <h3>{anomaly.dayId} 尚未關帳</h3>
+        <StatusBadge variant="warn" className="cloud-ledger-anomalies__status">
+          {anomaly.status === 'reopened' ? '重開後未關帳' : '尚未關帳'}
+        </StatusBadge>
         <p>
           這一天{anomaly.status === 'reopened' ? '重開後' : ''}還沒有關帳，
           {anomaly.openingCash === null ? '也還沒有確認開帳現金' : `開帳現金 ${formatMoney(anomaly.openingCash)}`}，
@@ -51,6 +55,7 @@ function AnomalyItem({ anomaly, onOpenDayClose, onOpenPostCloseEntry }: {
   return (
     <li className="cloud-ledger-anomalies__item" data-kind={anomaly.kind}>
       <h3>{anomaly.dayId} 開帳現金與上次關帳不符</h3>
+      <StatusBadge variant="warn" className="cloud-ledger-anomalies__status">差額異常</StatusBadge>
       <p>
         {anomaly.dayId} 的開帳現金是 {formatMoney(anomaly.openingCash)}，上一個已關帳日 {anomaly.previousClosedDayId} 的實點現金是
         {' '}{formatMoney(anomaly.previousCountedCash)}
@@ -119,7 +124,7 @@ export function CloudLedgerAnomaliesPage({ ledger, onReload, onOpenDayClose, onO
           </p>
           {ledger.snapshot.anomalies.length === 0 ? (
             <div className="cloud-ledger-anomalies__card">
-              <EmptyState title="目前沒有帳務異常。" />
+              <EmptyState title="沒有帳務異常" className="cloud-ledger-anomalies__empty" />
             </div>
           ) : (
             <ul className="cloud-ledger-anomalies__list" aria-label="帳務異常清單">

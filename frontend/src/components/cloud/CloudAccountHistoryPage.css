@@ -32,6 +32,19 @@
 .cloud-account-history__balance div { padding: 10px; border: 1px solid var(--line); border-radius: 7px; }
 .cloud-account-history__balance dt { color: var(--ink-3); font-size: 12px; }
 .cloud-account-history__balance dd { margin: 5px 0 0; font-weight: 700; }
+.cloud-account-history__status { white-space: nowrap; }
+.cloud-account-history__empty-state { margin: 12px 0; }
+.cloud-account-history__empty.empty-ui {
+  display: block;
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  text-align: left;
+}
+.cloud-account-history__empty .empty-icon { display: none; }
+.cloud-account-history__empty .empty-title { margin: 0; font-size: 13px; font-weight: 500; }
 .cloud-account-history section { margin: 24px 0; padding-top: 18px; border-top: 1px solid var(--line); }
 .cloud-account-history__table-wrap { overflow: auto; max-width: 100%; }
 .cloud-account-history__table-wrap:has(details[open]) { overflow: visible; }

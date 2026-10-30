@@ -11,6 +11,9 @@ import { createCloudStudentRepository, type CloudStudentRecord } from '../../fir
 import { createCloudOrderRepository, type CloudTransactionMutationInput } from '../../firebase/cloudOrderRepository';
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
 import { composePaperRefNote, splitPaperNote } from '../../domain/paperRef';
+import { EmptyState } from '../ui/EmptyState';
+import { StatusBadge } from '../ui/StatusBadge';
+import { CloudAccountBalance } from './CloudAccountBalance';
 import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerToken } from './useCloudActionOwner';
 import './CloudAccountHistoryPage.css';
 
@@ -136,7 +139,16 @@ function integerText(value: string, { allowZero = true }: { allowZero?: boolean 
 }
 
 function formatMoney(value: number): string {
-  return `$${new Intl.NumberFormat('zh-TW').format(value)}`;
+  const sign = value < 0 ? '−' : '';
+  return `${sign}$${new Intl.NumberFormat('zh-TW').format(Math.abs(value))}`;
+}
+
+function dayStatusLabel(status: 'open' | 'closed' | 'reopened' | null | undefined): string {
+  return status === 'closed' ? '已關帳' : status === 'reopened' ? '已重開' : status === 'open' ? '開帳中' : '無日文件';
+}
+
+function dayStatusVariant(status: 'open' | 'closed' | 'reopened' | null | undefined): 'warn' | 'ok' | 'neutral' {
+  return status === 'closed' ? 'ok' : status === 'open' || status === 'reopened' ? 'warn' : 'neutral';
 }
 
 function formatTaipeiTime(value: string): string {
@@ -796,7 +808,12 @@ export function CloudAccountHistoryPage({
       <div className="cloud-account-history__controls">
         <label>搜尋目前帳戶<input aria-label="搜尋目前學生帳戶" value={search} disabled={retryButtonDisabled}
           onChange={event => setSearch(event.target.value)} placeholder="目前編號、姓名或別名" /></label>
-        {search.trim() && <div aria-label="目前帳戶候選">{candidateStudents.map(student => <button type="button" key={student.studentId}
+        {search.trim() && candidateStudents.length === 0 && (
+          <div className="cloud-account-history__empty-state" role="status">
+            <EmptyState className="cloud-account-history__empty" title={`沒有符合「${search.trim()}」的目前帳戶。`} />
+          </div>
+        )}
+        {search.trim() && candidateStudents.length > 0 && <div aria-label="目前帳戶候選">{candidateStudents.map(student => <button type="button" key={student.studentId}
           disabled={retryButtonDisabled} onClick={() => {
             setSelectedId(student.studentId); setSnapshot(null); setLoading(true); setLoadError('');
           }}>
@@ -816,13 +833,17 @@ export function CloudAccountHistoryPage({
       {formError && <p role="alert">{formError}</p>}
       {loadError && <div role="alert"><p>{loadError}</p><button type="button" disabled={retryButtonDisabled} onClick={loadAgain}>重新讀取</button></div>}
       {loading && <p role="status">正在伺服器完整讀取帳戶歷史前綴、日結與稽核資料；尚未完整前不顯示逐筆餘額或更正入口。</p>}
-      {!loading && !selectedId && !loadError && <p>請搜尋並選取目前學生名單中的帳戶。</p>}
+      {!loading && !selectedId && !loadError && (
+        <div className="cloud-account-history__empty-state" role="status">
+          <EmptyState className="cloud-account-history__empty" title="請搜尋並選取目前學生名單中的帳戶。" />
+        </div>
+      )}
       {!loading && snapshot && currentStudent && range && <>
         <p className="cloud-account-history__snapshot" data-testid="account-history-ready">dataset {snapshot.account.datasetId} · {range.startDate}–{range.endDate} · {currentStudent.displayName}（目前編號 {currentStudent.studentCode}） · 來源序號 H={snapshot.account.sourceSeq}</p>
         <dl className="cloud-account-history__balance">
-          <div><dt>期初餘額</dt><dd>{formatMoney(snapshot.account.openingBalance)}</dd></div>
-          <div><dt>目前帳戶餘額</dt><dd>{formatMoney(snapshot.account.currentBalance)}</dd></div>
-          <div><dt>帳戶狀態</dt><dd>{currentStudent.status}</dd></div>
+          <div><dt>期初餘額</dt><dd><CloudAccountBalance amount={snapshot.account.openingBalance} currency="$" /></dd></div>
+          <div><dt>目前帳戶餘額</dt><dd><CloudAccountBalance amount={snapshot.account.currentBalance} currency="$" /></dd></div>
+          <div><dt>帳戶狀態</dt><dd><StatusBadge variant={currentStudent.status === 'active' ? 'ok' : 'neutral'} className="cloud-account-history__status">{currentStudent.status === 'active' ? '使用中' : '已停用'}</StatusBadge></dd></div>
           <div><dt>學生版本</dt><dd>{currentStudent.revision}</dd></div>
         </dl>
         <p><strong>依目前更正後資料重算</strong> · 各筆餘額來自完整前綴驗證；本日結版本另列，不視為交易當時餘額。</p>
@@ -846,9 +867,9 @@ export function CloudAccountHistoryPage({
                       <pre>before: {JSON.stringify(row.before, null, 2)}{'\n'}after: {JSON.stringify(row.after, null, 2)}</pre></article>)}
                 </details></td>
                 <td>{transaction.studentNameSnapshot}</td><td>{formatMoney(transaction.amount)} · 餐費 {formatMoney(transaction.mealPrice)} · 收款 {formatMoney(transaction.paidAmount)}</td>
-                <td>{transaction.afterBalance === undefined || transaction.balanceApplicability !== 'verified' ? '未驗證' : formatMoney(transaction.afterBalance)}</td>
-                <td>{transaction.status === 'voided' ? '已作廢（保留原列）' : '有效'}{transaction.backfilled ? ' · 回填' : ''}</td>
-                <td>{day?.status ?? '無日文件'}{day?.lastSettlementRevision ? ` · 曾關帳第 ${day.lastSettlementRevision} 版` : ''}</td>
+                <td>{transaction.afterBalance === undefined || transaction.balanceApplicability !== 'verified' ? '未驗證' : <CloudAccountBalance amount={transaction.afterBalance} currency="$" />}</td>
+                <td><StatusBadge variant={transaction.status === 'active' ? 'ok' : 'neutral'} className="cloud-account-history__status">{transaction.status === 'voided' ? '已作廢（保留原列）' : '有效'}</StatusBadge>{transaction.backfilled && <> · <StatusBadge variant="warn" className="cloud-account-history__status">回填</StatusBadge></>}</td>
+                <td><StatusBadge variant={dayStatusVariant(day?.status)} className="cloud-account-history__status">{dayStatusLabel(day?.status)}</StatusBadge>{day?.lastSettlementRevision ? ` · 曾關帳第 ${day.lastSettlementRevision} 版` : ''}</td>
                 <td>{eligible ? (
                   <details className="cloud-account-history__more">
                     <summary aria-label={`${transaction.transactionId} 的其他操作`}>⋯</summary>
@@ -861,16 +882,24 @@ export function CloudAccountHistoryPage({
               </tr>;
             })}
           </tbody></table></div>
-          {snapshot.account.transactions.length === 0 && <p>此範圍沒有帳戶交易；完整前綴餘額仍已驗證。</p>}
+          {snapshot.account.transactions.length === 0 && (
+            <div className="cloud-account-history__empty-state" role="status">
+              <EmptyState className="cloud-account-history__empty" title="此範圍沒有帳戶交易；完整前綴餘額仍已驗證。" />
+            </div>
+          )}
         </section>
 
         <section aria-labelledby="account-settlements-heading"><h3 id="account-settlements-heading">日結版本（全日現金，不代表此帳戶餘額）</h3>
           {snapshot.account.settlements.map(settlement => <article key={`${settlement.businessDate}:${settlement.revision}`}>
-            <strong>{settlement.businessDate} · 第 {settlement.revision} 版 · {settlement.status}</strong>
+            <strong>{settlement.businessDate} · 第 {settlement.revision} 版 · <StatusBadge variant={settlement.status === 'closed' ? 'ok' : 'warn'} className="cloud-account-history__status">{settlement.status === 'closed' ? '已關帳' : '已重開'}</StatusBadge></strong>
             <p>應有現金 {formatMoney(settlement.expectedCash)} · 實點 {settlement.countedCash === null ? '—' : formatMoney(settlement.countedCash)} · {settlement.actorUid} · {formatTaipeiTime(settlement.committedAt)}</p>
             <p>{settlement.note || '無備註'}</p>
           </article>)}
-          {snapshot.account.settlements.length === 0 && <p>此範圍沒有日結版本。</p>}
+          {snapshot.account.settlements.length === 0 && (
+            <div className="cloud-account-history__empty-state" role="status">
+              <EmptyState className="cloud-account-history__empty" title="此範圍沒有日結版本。" />
+            </div>
+          )}
           {snapshot.account.postCloseEntries.map(entry => <article key={entry.entryId}>
             <strong>{entry.businessDate} · 日結第 {entry.settlementRevision} 版後補記 · {entry.direction === 'income' ? '收入' : '支出'} {formatMoney(entry.amount)}</strong>
             <p>{entry.reason} · {entry.createdBy} · {formatTaipeiTime(entry.createdAt)} · {entry.countedInEffectiveCash ? '計入有效現金' : '未計入有效現金'}</p>
@@ -885,6 +914,11 @@ export function CloudAccountHistoryPage({
               <td>{row.actorUid} · {row.actorEmail}<small>{formatTaipeiTime(row.committedAt)}</small></td><td>{row.reason ?? '—'}</td>
               <td><details><summary>查看</summary><pre>before: {JSON.stringify(row.before, null, 2)}{'\n'}after: {JSON.stringify(row.after, null, 2)}</pre></details></td></tr>)}
           </tbody></table></div>
+          {snapshot.audit.rows.length === 0 && (
+            <div className="cloud-account-history__empty-state" role="status">
+              <EmptyState className="cloud-account-history__empty" title="此範圍沒有帳戶稽核紀錄。" />
+            </div>
+          )}
         </section>
       </>}
 

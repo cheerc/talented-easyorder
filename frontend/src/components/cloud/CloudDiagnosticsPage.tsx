@@ -8,6 +8,7 @@ import {
 import { useFirebase } from '../../hooks/useFirebase';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
+import { EmptyState } from '../ui/EmptyState';
 import './CloudDiagnosticsPage.css';
 import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerToken } from './useCloudActionOwner';
 
@@ -151,7 +152,7 @@ function CloudDiagnosticsControls({ identityKey, leaseEpoch }: CloudDiagnosticsP
   return <>
       {error && <p role="alert">{error}</p>}
       {status && <p role="status">{status}</p>}
-      {entries.length === 0 ? <p>目前沒有可匯出的診斷紀錄。</p> : (
+      {entries.length === 0 ? <EmptyState title="目前沒有可匯出的診斷紀錄。" className="cloud-diagnostics__empty" /> : (
         <ol aria-label="診斷紀錄">
           {entries.map((entry, index) => entry.type === 'command-failure' ? (
             <li key={`${entry.occurredAt}-${index}`}>

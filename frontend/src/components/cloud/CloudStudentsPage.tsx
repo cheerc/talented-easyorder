@@ -10,6 +10,11 @@ import {
   type CloudStudentRecord,
 } from '../../firebase/cloudStudentRepository';
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
+import { EmptyState } from '../ui/EmptyState';
+import { Modal } from '../ui/Modal';
+import { StatusBadge } from '../ui/StatusBadge';
+import { CloudAccountBalance } from './CloudAccountBalance';
+import { formatAccountBalance } from './accountBalance';
 import './CloudStudentsPage.css';
 
 export interface CloudStudentsPageProps {
@@ -325,7 +330,7 @@ function isAuthorizationLoss(error: unknown): boolean {
 }
 
 function formatBalance(amount: number): string {
-  return `NT$ ${new Intl.NumberFormat('zh-TW').format(amount)}`;
+  return formatAccountBalance(amount);
 }
 
 function parseOpeningAmount(text: string): number | null {
@@ -340,7 +345,7 @@ function commandLabel(command: PreparedCommand): string {
   if (command.kind === 'edit') return `修改 ${command.studentCode}`;
   if (command.kind === 'code') return `改編號 ${command.studentCode} → ${command.newStudentCode}`;
   if (command.kind === 'opening-day') return `建立期初日營業日 ${command.dayId}（${command.studentCode} 期初更正前置）`;
-  if (command.kind === 'opening') return `更正 ${command.studentCode} 期初為 ${formatBalance(command.amount)}`;
+  if (command.kind === 'opening') return `更正 ${command.studentCode} 期初為 ${formatBalance(command.amount)}${command.amount < 0 ? '（欠款）' : ''}`;
   return command.status === 'inactive' ? `停用 ${command.studentCode}` : `恢復 ${command.studentCode}`;
 }
 
@@ -402,9 +407,9 @@ function OpeningCorrectionForm({
       <label>更正原因（必填）<textarea className="cloud-students__input" rows={2} maxLength={500} value={reason} onChange={event => onReasonChange(event.target.value)} disabled={busy} /></label>
       <dl className="cloud-students__opening-preview" aria-label="期初更正預覽">
         <dt>期初</dt>
-        <dd>{formatBalance(student.openingBalance.amount)} → {amount === null ? '（金額未完成）' : formatBalance(amount)}</dd>
+        <dd><CloudAccountBalance amount={student.openingBalance.amount} /> → {amount === null ? '（金額未完成）' : <CloudAccountBalance amount={amount} />}</dd>
         <dt>目前結餘</dt>
-        <dd>{formatBalance(student.currentBalance)} → {nextBalance === null ? '（金額未完成）' : formatBalance(nextBalance)}</dd>
+        <dd><CloudAccountBalance amount={student.currentBalance} /> → {nextBalance === null ? '（金額未完成）' : <CloudAccountBalance amount={nextBalance} />}</dd>
       </dl>
       <small>只調整這位學生的期初與目前結餘，不影響今日現金，也不改期初日。</small>
       <div className="cloud-students__actions">
@@ -421,6 +426,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
   let currentUid: string | null = null;
   try { currentUid = getAuth(db.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
   const [pageState, setPageStateRaw] = useState<PageState>(() => initialPageState(identityKey));
+  const [createDiscardPending, setCreateDiscardPending] = useState(false);
   const identityRef = useRef(identityKey);
   const generationRef = useRef(0);
   const listRequestRef = useRef(0);
@@ -455,6 +461,9 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
   const page = pageState.identityKey === identityKey && pageState.scopeVersion === scopeVersion
     ? pageState
     : initialPageState(identityKey, scopeVersion);
+
+  useEffect(() => { setCreateDiscardPending(false); }, [identityKey, scopeVersion]);
+  useEffect(() => { if (!page.createOpen) setCreateDiscardPending(false); }, [page.createOpen]);
 
   const isCurrent = useCallback((key: string, generation: number) => (
     identityRef.current === key && generationRef.current === generation
@@ -1337,6 +1346,98 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
   }, [sortedStudents, page.search]);
 
   const visibleStudentCount = displayRows.filter(r => r.type === 'student').length;
+  const recovery = page.recovery;
+
+  const openCreate = (studentCode?: string) => {
+    setCreateDiscardPending(false);
+    setPageState(previous => ({
+      ...previous,
+      createOpen: true,
+      actionError: '',
+      ...(studentCode === undefined ? {} : { createDraft: { ...freshCreateDraft(), studentCode } }),
+    }));
+  };
+
+  const closeCreate = () => {
+    setCreateDiscardPending(false);
+    setPageState(previous => ({
+      ...previous,
+      createOpen: false,
+      createDraft: freshCreateDraft(),
+      actionError: '',
+    }));
+    if (!page.editingId && !page.statusStudent && !page.codeStudent && !page.openingStudent) onDraftCleared?.();
+  };
+
+  const requestCreateClose = () => {
+    if (busy || recovery) return;
+    if (createDiscardPending) {
+      setCreateDiscardPending(false);
+      return;
+    }
+    if (Object.values(page.createDraft).some(value => value !== '')) {
+      setCreateDiscardPending(true);
+      return;
+    }
+    closeCreate();
+  };
+
+  const recoveryPanel = recovery && (
+    <section className="cloud-students__recovery" aria-label="命令結果確認" role="alert">
+      <strong>{recovery.phase === 'receipt'
+        ? '已找到伺服器回執，名單尚待再次讀取。'
+        : recovery.phase === 'access-lost'
+          ? '使用權已變更；敏感操作內容已清除。'
+        : recovery.phase === 'checking'
+          ? '正在查詢原命令結果…'
+          : recovery.phase === 'submitting' && recovery.timedOut
+            ? '結果確認中，勿重新收款'
+          : '結果確認中，請勿重複建立／修改。'}</strong>
+      {recovery.command && <span>{commandLabel(recovery.command)} · 命令編號 {recovery.commandId}</span>}
+      {!recovery.command && <span>命令編號 {recovery.commandId}</span>}
+      {recovery.phase === 'access-lost' && <span>只保留命令編號供稍後同編號核對；請先重新確認登入帳號與使用權。</span>}
+      {recovery.phase === 'receipt' && recovery.receipt && (
+        <span>伺服器命令序號 {recovery.receipt.seq}</span>
+      )}
+      <div className="cloud-students__actions">
+        {recovery.command && (recovery.phase === 'unknown'
+          || (recovery.phase === 'submitting' && recovery.timedOut)) && (
+          <button type="button" className="cloud-students__primary" onClick={() => void checkPendingCommand()}>
+            查詢原命令結果
+          </button>
+        )}
+        {recovery.phase === 'unknown' && recovery.command && recovery.canRetry && (
+          <button
+            type="button"
+            className="cloud-students__secondary"
+            onClick={() => {
+              const operation = operationRef.current;
+              if (operation) void runPreparedCommand(operation.command, operation);
+            }}
+          >
+            以相同命令編號重試
+          </button>
+        )}
+        {recovery.phase === 'receipt' && (
+          <button type="button" className="cloud-students__secondary" onClick={() => void loadSnapshot(recovery.receipt)} disabled={page.loading}>
+            重新讀取伺服器名單
+          </button>
+        )}
+        {recovery.phase === 'access-lost' && page.snapshot && (
+          <button
+            type="button"
+            className="cloud-students__secondary"
+            onClick={() => {
+              pendingCommandIdRef.current = null;
+              setPageState(previous => ({ ...previous, recovery: null, actionError: '', notice: '請依保留的命令編號完成人工核對後，再繼續操作。' }));
+            }}
+          >
+            我已記下命令編號並完成人工核對，清除追蹤
+          </button>
+        )}
+      </div>
+    </section>
+  );
 
   return (
     <main className="cloud-students" aria-label="雲端學生名單">
@@ -1357,16 +1458,11 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
           <button
             type="button"
             className="cloud-students__primary"
-            onClick={() => setPageState(previous => ({
-              ...previous,
-              createOpen: !previous.createOpen,
-              actionError: '',
-              createDraft: previous.createOpen ? freshCreateDraft() : previous.createDraft,
-            }))}
+            onClick={() => openCreate()}
             disabled={busy}
             hidden={!page.snapshot || page.loading}
           >
-            {page.createOpen ? '收起新增表單' : '新增學生'}
+            新增學生
           </button>
         </div>
       </header>
@@ -1376,7 +1472,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
       </details>
 
       {page.loadError && <div className="cloud-students__alert" role="alert">{page.loadError}</div>}
-      {page.actionError && <div className="cloud-students__alert" role="alert">{page.actionError}</div>}
+      {page.actionError && !page.createOpen && <div className="cloud-students__alert" role="alert">{page.actionError}</div>}
       {page.authorizationRevoked && (
         <div className="cloud-students__notice" role="status">
           授權狀態已失效。請重新登入並取得有效使用權；若登入狀態尚未更新，重新載入整頁會再次向伺服器驗證。
@@ -1384,62 +1480,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
       )}
       {page.notice && <div className="cloud-students__notice" role="status">{page.notice}</div>}
 
-      {page.recovery && (
-        <section className="cloud-students__recovery" aria-label="命令結果確認" role="alert">
-          <strong>{page.recovery.phase === 'receipt'
-            ? '已找到伺服器回執，名單尚待再次讀取。'
-            : page.recovery.phase === 'access-lost'
-              ? '使用權已變更；敏感操作內容已清除。'
-            : page.recovery.phase === 'checking'
-              ? '正在查詢原命令結果…'
-              : page.recovery.phase === 'submitting' && page.recovery.timedOut
-                ? '結果確認中，勿重新收款'
-              : '結果確認中，請勿重複建立／修改。'}</strong>
-          {page.recovery.command && <span>{commandLabel(page.recovery.command)} · 命令編號 {page.recovery.commandId}</span>}
-          {!page.recovery.command && <span>命令編號 {page.recovery.commandId}</span>}
-          {page.recovery.phase === 'access-lost' && <span>只保留命令編號供稍後同編號核對；請先重新確認登入帳號與使用權。</span>}
-          {page.recovery.phase === 'receipt' && page.recovery.receipt && (
-            <span>伺服器命令序號 {page.recovery.receipt.seq}</span>
-          )}
-          <div className="cloud-students__actions">
-            {page.recovery.command && (page.recovery.phase === 'unknown'
-              || (page.recovery.phase === 'submitting' && page.recovery.timedOut)) && (
-              <button type="button" className="cloud-students__primary" onClick={() => void checkPendingCommand()}>
-                查詢原命令結果
-              </button>
-            )}
-            {page.recovery.phase === 'unknown' && page.recovery.command && page.recovery.canRetry && (
-              <button
-                type="button"
-                className="cloud-students__secondary"
-                onClick={() => {
-                  const operation = operationRef.current;
-                  if (operation) void runPreparedCommand(operation.command, operation);
-                }}
-              >
-                以相同命令編號重試
-              </button>
-            )}
-            {page.recovery.phase === 'receipt' && (
-              <button type="button" className="cloud-students__secondary" onClick={() => void loadSnapshot(page.recovery?.receipt)} disabled={page.loading}>
-                重新讀取伺服器名單
-              </button>
-            )}
-            {page.recovery.phase === 'access-lost' && page.snapshot && (
-              <button
-                type="button"
-                className="cloud-students__secondary"
-                onClick={() => {
-                  pendingCommandIdRef.current = null;
-                  setPageState(previous => ({ ...previous, recovery: null, actionError: '', notice: '請依保留的命令編號完成人工核對後，再繼續操作。' }));
-                }}
-              >
-                我已記下命令編號並完成人工核對，清除追蹤
-              </button>
-            )}
-          </div>
-        </section>
-      )}
+      {!page.createOpen && recoveryPanel}
 
       {page.loading && <div className="cloud-students__loading" role="status">正在從伺服器載入完整學生名單…</div>}
 
@@ -1458,55 +1499,13 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
             <span className="cloud-students__count">{visibleStudentCount} / {page.snapshot.students.length} 位</span>
           </section>
 
-          {page.createOpen && (
-            <form className="cloud-students__form" aria-label="新增學生" onSubmit={submitCreate}>
-              <h2>手動新增學生</h2>
-              <p>編號會以正規化形式儲存（例如 001、099、1000）；請自行核對實際結餘。金額沒有預設值，輸入 0 才代表零元。</p>
-              <div className="cloud-students__form-grid">
-                <label>
-                  學員編號
-                  <input className="cloud-students__input cloud-students__mono" value={page.createDraft.studentCode} maxLength={6} placeholder="001 至 999999" onChange={event => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, studentCode: event.target.value } }))} disabled={busy} />
-                </label>
-                <label>
-                  姓名
-                  <input className="cloud-students__input" value={page.createDraft.displayName} maxLength={100} onChange={event => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, displayName: event.target.value } }))} disabled={busy} />
-                </label>
-                <label className="cloud-students__field-wide">
-                  別名（逗號、頓號或換行分隔；最多 10 個）
-                  <textarea className="cloud-students__input" value={page.createDraft.aliasesText} rows={2} onChange={event => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, aliasesText: event.target.value } }))} disabled={busy} />
-                </label>
-                <label>
-                  期初結餘（整數新臺幣，可為正、0 或負數）
-                  <input className="cloud-students__input cloud-students__mono" type="text" inputMode="numeric" value={page.createDraft.amountText} onChange={event => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, amountText: event.target.value } }))} disabled={busy} />
-                </label>
-                <label>
-                  期初備註（選填，最多 500 字）
-                  <input className="cloud-students__input" value={page.createDraft.note} maxLength={500} onChange={event => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, note: event.target.value } }))} disabled={busy} />
-                </label>
-                <fieldset className="cloud-students__field-wide cloud-students__opening-choice">
-                  <legend>期初基準（請明確選擇）</legend>
-                  <label>
-                    <input type="radio" name="opening-mode" value="existing-balance" checked={page.createDraft.openingMode === 'existing-balance'} onChange={() => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, openingMode: 'existing-balance' } }))} disabled={busy} />
-                    沿用既有核對結餘，期初日為 {page.snapshot.goLiveDate}
-                  </label>
-                  <label>
-                    <input type="radio" name="opening-mode" value="new-student" checked={page.createDraft.openingMode === 'new-student'} onChange={() => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, openingMode: 'new-student' } }))} disabled={busy} />
-                    建立新學生，期初日預填臺北今天 {clientTaipeiDate()}（伺服器會再次核對日期）
-                  </label>
-                  <small>瀏覽器日期只用於顯示與預填；伺服器日期檢查才是最後依據。日期不符時請先確認連線與系統時間，不會自動改寫未確認的命令。</small>
-                </fieldset>
-              </div>
-              <div className="cloud-students__actions">
-                <button type="submit" className="cloud-students__primary" disabled={busy}>建立學生</button>
-                <button type="button" className="cloud-students__secondary" onClick={() => setPageState(previous => ({ ...previous, createOpen: false, createDraft: freshCreateDraft(), actionError: '' }))} disabled={busy}>取消</button>
-              </div>
-            </form>
-          )}
-
           <section className="cloud-students__list" aria-label="學生名單">
             {displayRows.length === 0 ? (
-              <div className="cloud-students__empty" role="status">
-                {page.search.trim() ? `找不到符合「${page.search.trim()}」的學生。` : '目前伺服器名單是空的，請手動新增學生。'}
+              <div className="cloud-students__empty-state" role="status">
+                <EmptyState
+                  className="cloud-students__empty"
+                  title={page.search.trim() ? `找不到符合「${page.search.trim()}」的學生。` : '目前伺服器名單是空的，請手動新增學生。'}
+                />
               </div>
             ) : (
               <div className="cloud-students__table-wrap">
@@ -1522,12 +1521,14 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
                             key={`gap-${row.startCode}-${row.endCode}`}
                             className="cloud-students__gap-row"
                             data-testid={`cloud-student-gap-${row.startCode}`}
-                            onClick={() => setPageState(previous => ({
-                              ...previous,
-                              createOpen: true,
-                              actionError: '',
-                              createDraft: { ...freshCreateDraft(), studentCode: row.prefillCode },
-                            }))}
+                            tabIndex={0}
+                            onClick={() => openCreate(row.prefillCode)}
+                            onKeyDown={event => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                openCreate(row.prefillCode);
+                              }
+                            }}
                           >
                             <td colSpan={6}>
                               {row.count === 1 ? `${row.startCode} 尚無人使用` : `${row.startCode}–${row.endCode} 尚無人使用（${row.count} 個號碼）`}
@@ -1557,13 +1558,17 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
                               </>
                             )}
                           </td>
-                          <td><span className={`cloud-students__status cloud-students__status--${student.status}`}>{student.status === 'active' ? '使用中' : '已停用'}</span></td>
-                          <td className="cloud-students__balance dt-num">{formatBalance(student.currentBalance)}</td>
+                          <td>
+                            <StatusBadge variant={student.status === 'active' ? 'ok' : 'neutral'} className={`cloud-students__status cloud-students__status--${student.status}`}>
+                              {student.status === 'active' ? '使用中' : '已停用'}
+                            </StatusBadge>
+                          </td>
+                          <td className="cloud-students__balance dt-num"><CloudAccountBalance amount={student.currentBalance} /></td>
                           <td>
                             <details className="cloud-students__opening-details">
                               <summary>查看期初資料</summary>
                               <dl>
-                                <dt>期初結餘</dt><dd>{formatBalance(student.openingBalance.amount)}</dd>
+                                <dt>期初結餘</dt><dd><CloudAccountBalance amount={student.openingBalance.amount} /></dd>
                                 <dt>期初日期</dt><dd>{student.openingBalance.asOfDate}</dd>
                                 <dt>期初備註</dt><dd>{student.openingBalance.note || '（無）'}</dd>
                               </dl>
@@ -1633,11 +1638,76 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
         </>
       )}
 
-      {!page.snapshot && !page.loading && !page.recovery && (
+      {!page.snapshot && !page.loading && !page.recovery && !page.createOpen && (
         <section className="cloud-students__unavailable" aria-label="學生名單未載入">
           <p>名單尚未從伺服器完整載入，沒有顯示空白名單或本機資料。</p>
           <button type="button" className="cloud-students__primary" onClick={() => void loadSnapshot()} disabled={!identityKey}>重新載入伺服器名單</button>
         </section>
+      )}
+
+      {page.createOpen && (
+        <Modal open title="新增學生" className="cloud-students__create-modal" onClose={requestCreateClose}>
+          {page.actionError && <div className="cloud-students__alert" role="alert">{page.actionError}</div>}
+          {page.loadError && <div className="cloud-students__alert" role="alert">{page.loadError}</div>}
+          {recovery ? recoveryPanel : createDiscardPending ? (
+            <div className="cloud-students__discard-confirmation" role="group" aria-label="新增學生草稿離開確認">
+              <p>尚未送出的草稿會被捨棄。</p>
+              <div className="cloud-students__actions">
+                <button type="button" className="cloud-students__secondary" autoFocus onClick={() => setCreateDiscardPending(false)}>
+                  取消離開
+                </button>
+                <button type="button" className="cloud-students__primary" onClick={closeCreate}>
+                  捨棄草稿
+                </button>
+              </div>
+            </div>
+          ) : page.snapshot && !page.loading ? (
+            <form className="cloud-students__form cloud-students__form--dialog" aria-label="新增學生" onSubmit={submitCreate}>
+              <h2>手動新增學生</h2>
+              <p>編號會以正規化形式儲存（例如 001、099、1000）；請自行核對實際結餘。金額沒有預設值，輸入 0 才代表零元。</p>
+              <div className="cloud-students__form-grid">
+                <label>
+                  學員編號
+                  <input className="cloud-students__input cloud-students__mono" value={page.createDraft.studentCode} maxLength={6} placeholder="001 至 999999" onChange={event => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, studentCode: event.target.value } }))} disabled={busy} />
+                </label>
+                <label>
+                  姓名
+                  <input className="cloud-students__input" value={page.createDraft.displayName} maxLength={100} onChange={event => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, displayName: event.target.value } }))} disabled={busy} />
+                </label>
+                <label className="cloud-students__field-wide">
+                  別名（逗號、頓號或換行分隔；最多 10 個）
+                  <textarea className="cloud-students__input" value={page.createDraft.aliasesText} rows={2} onChange={event => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, aliasesText: event.target.value } }))} disabled={busy} />
+                </label>
+                <label>
+                  期初結餘（整數新臺幣，可為正、0 或負數）
+                  <input className="cloud-students__input cloud-students__mono" type="text" inputMode="numeric" value={page.createDraft.amountText} onChange={event => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, amountText: event.target.value } }))} disabled={busy} />
+                </label>
+                <label>
+                  期初備註（選填，最多 500 字）
+                  <input className="cloud-students__input" value={page.createDraft.note} maxLength={500} onChange={event => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, note: event.target.value } }))} disabled={busy} />
+                </label>
+                <fieldset className="cloud-students__field-wide cloud-students__opening-choice">
+                  <legend>期初基準（請明確選擇）</legend>
+                  <label>
+                    <input type="radio" name="opening-mode" value="existing-balance" checked={page.createDraft.openingMode === 'existing-balance'} onChange={() => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, openingMode: 'existing-balance' } }))} disabled={busy} />
+                    沿用既有核對結餘，期初日為 {page.snapshot.goLiveDate}
+                  </label>
+                  <label>
+                    <input type="radio" name="opening-mode" value="new-student" checked={page.createDraft.openingMode === 'new-student'} onChange={() => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, openingMode: 'new-student' } }))} disabled={busy} />
+                    建立新學生，期初日預填臺北今天 {clientTaipeiDate()}（伺服器會再次核對日期）
+                  </label>
+                  <small>瀏覽器日期只用於顯示與預填；伺服器日期檢查才是最後依據。日期不符時請先確認連線與系統時間，不會自動改寫未確認的命令。</small>
+                </fieldset>
+              </div>
+              <div className="cloud-students__actions">
+                <button type="submit" className="cloud-students__primary" disabled={busy}>建立學生</button>
+                <button type="button" className="cloud-students__secondary" onClick={requestCreateClose} disabled={busy}>取消</button>
+              </div>
+            </form>
+          ) : (
+            <div role="status" className="cloud-students__loading">學生名單尚未完整載入，新增學生資料尚未送出。</div>
+          )}
+        </Modal>
       )}
     </main>
   );

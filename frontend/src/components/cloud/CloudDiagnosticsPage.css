@@ -27,6 +27,15 @@
   padding-left: 20px;
 }
 
+.cloud-diagnostics__empty.empty-ui {
+  display: block;
+  padding: 12px 0;
+  text-align: left;
+}
+
+.cloud-diagnostics__empty .empty-icon { display: none; }
+.cloud-diagnostics__empty .empty-title { color: var(--ink-2); font-size: 13px; font-weight: 500; }
+
 .cloud-diagnostics__card li p {
   margin: 2px 0;
   font-size: 13px;

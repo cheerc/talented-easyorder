@@ -92,6 +92,19 @@
   border-radius: var(--r);
 }
 
+.cloud-ledger-anomalies__status {
+  white-space: nowrap;
+}
+
+.cloud-ledger-anomalies__empty.empty-ui {
+  display: block;
+  padding: 10px;
+  text-align: left;
+}
+
+.cloud-ledger-anomalies__empty .empty-icon { display: none; }
+.cloud-ledger-anomalies__empty .empty-title { color: var(--ink-2); font-size: 13px; font-weight: 500; }
+
 .cloud-ledger-anomalies__item h3 {
   margin: 0 0 6px;
   font-size: 16px;

@@ -129,12 +129,29 @@
 }
 
 .cloud-day-close__loading,
-.cloud-day-close__empty,
 .cloud-day-close__unavailable {
   color: var(--ink-2);
   background: var(--surface-sunken);
   border: 1px solid var(--line);
 }
+
+.cloud-day-close__empty-state {
+  margin-top: 18px;
+}
+
+.cloud-day-close__empty.empty-ui {
+  display: block;
+  margin: 0;
+  padding: 12px;
+  color: var(--ink-2);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  text-align: left;
+}
+
+.cloud-day-close__empty .empty-icon { display: none; }
+.cloud-day-close__empty .empty-title { margin: 0; color: var(--ink-2); font-size: 13px; font-weight: 500; }
 
 .cloud-day-close__recovery {
   display: grid;
@@ -419,21 +436,7 @@
 }
 
 .cloud-day-close__status {
-  display: inline-block;
-  padding: 3px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.cloud-day-close__status--active {
-  color: var(--ink);
-  background: var(--success-soft);
-}
-
-.cloud-day-close__status--inactive {
-  color: var(--ink);
-  background: var(--danger-soft);
+  white-space: nowrap;
 }
 
 .cloud-day-close__remove-form {
@@ -533,17 +536,6 @@
 
 .cloud-day-close__difference--nonzero {
   color: var(--warn);
-}
-
-.cloud-day-close__status--open,
-.cloud-day-close__status--reopened {
-  color: var(--warn);
-  background: var(--warn-soft);
-}
-
-.cloud-day-close__status--closed {
-  color: var(--accent-ink);
-  background: var(--accent-soft);
 }
 
 .cloud-day-close__list {
