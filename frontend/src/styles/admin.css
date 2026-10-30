@@ -106,7 +106,14 @@
 
 .adm-stu-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
+}
+
+/* 按鈕文字不拆成直排；放不下時整顆按鈕換到下一行。 */
+.adm-stu-actions button {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* 清單窄的時候：第一行編號、姓名、餘額；人臉欄獨佔第二行（可換行）；編輯／停用在第三行靠右。文字不會被按鈕蓋住。 */
