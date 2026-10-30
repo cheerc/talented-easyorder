@@ -30,6 +30,9 @@ import {
 } from '../../firebase/cloudReportActionRepository';
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
 import { paperRefsIn, splitPaperNote } from '../../domain/paperRef';
+import { EmptyState } from '../ui/EmptyState';
+import { StatusBadge } from '../ui/StatusBadge';
+import { CloudAccountBalance } from './CloudAccountBalance';
 import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerToken } from './useCloudActionOwner';
 import './CloudReportPage.css';
 
@@ -175,7 +178,24 @@ function errorCode(error: unknown): string | null {
 }
 
 function money(value: number): string {
-  return `$${new Intl.NumberFormat('zh-TW').format(value)}`;
+  const sign = value < 0 ? '−' : '';
+  return `${sign}$${new Intl.NumberFormat('zh-TW').format(Math.abs(value))}`;
+}
+
+function reportDayStatusLabel(status: CloudLedgerReport['days'][number]['status']): string {
+  return status === 'closed' ? '已關帳' : status === 'reopened' ? '已重開' : status === 'open' ? '開帳中' : '未建立';
+}
+
+function reportDayStatusVariant(status: CloudLedgerReport['days'][number]['status']): 'ok' | 'warn' | 'neutral' {
+  return status === 'closed' ? 'ok' : status === 'open' || status === 'reopened' ? 'warn' : 'neutral';
+}
+
+function transactionStatusLabel(status: 'active' | 'voided'): string {
+  return status === 'active' ? '有效' : '已作廢';
+}
+
+function transactionStatusVariant(status: 'active' | 'voided'): 'ok' | 'neutral' {
+  return status === 'active' ? 'ok' : 'neutral';
 }
 
 function taipeiTime(value: string): string {
@@ -888,7 +908,7 @@ export function CloudReportPage({
     <>
     <section className="cloud-report" aria-label="雲端報表">
       <header className="cloud-report__header">
-        <div><p className="cloud-report__eyebrow">F2 · 完整伺服器快照</p><h2>雲端報表</h2>
+        <div><p className="cloud-report__eyebrow" hidden>F2 · 完整伺服器快照</p><h2>雲端報表</h2>
           <p>日期範圍由伺服器台北日期 {leaseToday || '讀取中'} 推導；僅在報表與稽核資料版本一致時顯示。</p></div>
         {snapshot && <strong>來源序號 H={snapshot.report.sourceSeq}</strong>}
       </header>
@@ -916,7 +936,15 @@ export function CloudReportPage({
 
       {loading && <p role="status">正在由伺服器讀取完整交易前綴與稽核資料；目前不提供餘額或輸出。</p>}
       {!loading && snapshot && query && <>
-        <p className="cloud-report__snapshot" data-testid="report-ready">完整資料已確認：dataset {snapshot.report.datasetId} · {query.range.startDate}–{query.range.endDate} · {query.studentId ? `帳戶 ${query.studentId}` : '全部帳戶'} · 來源序號 H={snapshot.report.sourceSeq}</p>
+        <p className="cloud-report__snapshot" data-testid="report-ready">資料已確認：{query.range.startDate}–{query.range.endDate} · {query.studentId ? `帳戶 ${query.studentId}` : '全部帳戶'} · 來源序號 H={snapshot.report.sourceSeq}</p>
+        <details className="cloud-report__details">
+          <summary>資料詳情</summary>
+          <dl>
+            <dt>dataset</dt><dd>{snapshot.report.datasetId}</dd>
+            <dt>查詢區間</dt><dd>{query.range.startDate} 至 {query.range.endDate}</dd>
+            <dt>版本核對</dt><dd>報表與稽核來源序號須一致才可匯出</dd>
+          </dl>
+        </details>
 
         <section aria-labelledby="cloud-report-summary-heading" className="cloud-report__section">
           <div className="cloud-report__section-heading"><h3 id="cloud-report-summary-heading">區間日摘要</h3><button type="button" disabled={controlsLocked || !onOpenDayClose}
@@ -933,9 +961,11 @@ export function CloudReportPage({
             <div><dt>帳戶退款</dt><dd>{money(snapshot.report.summary.totalRefund)}</dd></div>
             <div><dt>區間淨現金流</dt><dd>{money(snapshot.report.summary.netCash)}</dd></div>
           </dl>
-          <div className="cloud-report__table-wrap"><table><thead><tr><th>營業日</th><th>狀態</th><th>份數</th><th>餐費</th><th>收款留存</th><th>櫃台收入／支出</th><th>帳戶退款</th><th>日結現金</th><th>日結操作</th></tr></thead>
-            <tbody>{snapshot.report.days.map(day => <tr key={day.businessDate}>
-              <td>{day.businessDate}</td><td>{day.status ?? '未建立'}</td><td>{day.totals ? `${day.totals.bentoCount} + ${day.totals.otherMealCount}` : '—'}</td>
+          <div className="cloud-report__table-wrap"><table className="dt"><thead><tr><th>營業日</th><th>狀態</th><th>份數</th><th>餐費</th><th>收款留存</th><th>櫃台收入／支出</th><th>帳戶退款</th><th>日結現金</th><th>日結操作</th></tr></thead>
+            <tbody>{snapshot.report.days.length === 0 ? (
+              <tr><td colSpan={9}><EmptyState className="cloud-report__empty" title="此區間沒有營業日資料。" /></td></tr>
+            ) : snapshot.report.days.map(day => <tr key={day.businessDate}>
+              <td>{day.businessDate}</td><td><StatusBadge variant={reportDayStatusVariant(day.status)} className="cloud-report__status">{reportDayStatusLabel(day.status)}</StatusBadge></td><td>{day.totals ? `${day.totals.bentoCount} + ${day.totals.otherMealCount}` : '—'}</td>
               <td>{day.totals ? money(day.totals.mealTotal) : '—'}</td><td>{day.totals ? money(day.totals.retainedReceipts) : '—'}</td>
               <td>{day.totals ? `${money(day.totals.cashierIncome)} / ${money(day.totals.cashierExpense)}` : '—'}</td>
               <td>{day.totals ? money(day.totals.accountRefunds) : '—'}</td>
@@ -955,7 +985,7 @@ export function CloudReportPage({
           <label>搜尋帳戶<input aria-label="搜尋帳戶" value={search} disabled={controlsLocked} onChange={event => setSearch(event.target.value)} placeholder="編號、現名、別名或範圍內交易快照名" /></label>
           {!scopeStudentId && search.trim() && <div aria-label="候選帳戶">
             {candidateIds.length > 1 && <p>找到多個候選；選取一位後才會改變輸出範圍，目前仍是全部帳戶。</p>}
-            {candidateIds.length === 0 ? <p>沒有符合的帳戶。未選取時輸出範圍仍是全部帳戶。</p> : candidateIds.map(studentId => {
+            {candidateIds.length === 0 ? <EmptyState className="cloud-report__empty" title="沒有符合的帳戶。未選取時輸出範圍仍是全部帳戶。" /> : candidateIds.map(studentId => {
               const student = candidateById.get(studentId);
               if (!student) return null;
               return <button type="button" key={studentId} aria-label={`選取 ${student.displayName}（${student.studentCode}）`} disabled={controlsLocked}
@@ -974,8 +1004,10 @@ export function CloudReportPage({
               <option value="original">原始交易</option><option value="merged">合併交易</option></select></label>
               <span>輸出使用全部 {allRows.length} 筆完整模型，畫面每頁 100 筆。</span></div>
           </div>
-          <div className="cloud-report__table-wrap"><table><thead><tr><th>交易識別</th><th>營業日</th><th>帳戶與當時姓名</th><th>類型／狀態</th><th>餐點快照</th><th>金額／份數</th><th>完整歷史餘額</th><th>操作者／台北時間</th><th>回填／說明</th></tr></thead>
-            <tbody>{visibleRows.map(row => {
+          <div className="cloud-report__table-wrap"><table className="dt"><thead><tr><th>交易識別</th><th>營業日</th><th>帳戶與當時姓名</th><th>類型／狀態</th><th>餐點快照</th><th>金額／份數</th><th>完整歷史餘額</th><th>操作者／台北時間</th><th>回填／說明</th></tr></thead>
+            <tbody>{visibleRows.length === 0 ? (
+              <tr><td colSpan={9}><EmptyState className="cloud-report__empty" title="此範圍沒有帳戶交易。" /></td></tr>
+            ) : visibleRows.map(row => {
               const merged = 'kind' in row;
               const raw = merged ? row.transactions : [row];
               const transactionIds = merged ? row.transactionIds : [row.transactionId];
@@ -983,9 +1015,9 @@ export function CloudReportPage({
               const mealText = merged ? row.otherMealItems.join('、') || row.menuNameSnapshot : row.menuNameSnapshot || row.otherItemName || '—';
               return <tr key={`${merged ? 'merged' : 'raw'}:${row.transactionId}`}>
                 <td><small>{transactionIds.join(' · ')}</small></td><td>{row.businessDate}</td><td>{row.studentNameSnapshot}（{row.studentId}）</td>
-                <td>{merged ? row.kind : row.type} · {row.status === 'active' ? '有效' : '已作廢'}</td><td>{mealText}</td>
+                <td>{merged ? row.kind : row.type} · <StatusBadge variant={transactionStatusVariant(row.status)} className="cloud-report__status">{transactionStatusLabel(row.status)}</StatusBadge></td><td>{mealText}</td>
                 <td>{money(row.amount)} · 餐費 {money(row.mealPrice)} · 收款 {money(row.paidAmount)}{merged && row.orderCount ? ` · ${row.orderCount} 筆訂餐／${row.bentoOrderCount} 份便當` : ''}</td>
-                <td>{row.studentId === '__cashier__' ? '不適用' : balance === undefined ? '未驗證' : money(balance)}</td>
+                <td>{row.studentId === '__cashier__' ? '不適用' : balance === undefined ? '未驗證' : <CloudAccountBalance amount={balance} currency="$" />}</td>
                 <td>{raw.map(item => <div key={item.transactionId}>{item.operatorUid} · {taipeiTime(item.createdAt)}</div>)}</td>
                 <td>{row.backfilled ? '回填' : '—'}{raw.some(item => item.status === 'voided') ? ' · 保留作廢列' : ''}{paperRefsIn(raw.map(item => item.note)).length > 0 && <span data-testid={`report-paper-refs-${row.transactionId}`}>
                   {paperRefsIn(raw.map(item => item.note)).map(paperRef => <span key={paperRef} className="cloud-report__paper-tag">紙本 {paperRef}</span>)}</span>}
@@ -1018,10 +1050,10 @@ export function CloudReportPage({
           {snapshot.accessEvents.status === 'unavailable'
             ? <p>{snapshot.accessEvents.message}</p>
             : !snapshot.accessEvents.snapshot.rows.length
-              ? <p>此區間沒有使用權交接紀錄。</p>
+              ? <EmptyState className="cloud-report__empty" title="此區間沒有使用權交接紀錄。" />
               : <>
                 <p>唯讀記錄：誰在何時取得、接手或釋放編輯使用權；僅顯示 email，不提供匯出。</p>
-                <div className="cloud-report__table-wrap"><table><thead><tr><th>時間（台北）</th><th>種類</th><th>操作人</th><th>前一位持有人</th></tr></thead>
+                <div className="cloud-report__table-wrap"><table className="dt"><thead><tr><th>時間（台北）</th><th>種類</th><th>操作人</th><th>前一位持有人</th></tr></thead>
                   <tbody>{snapshot.accessEvents.snapshot.rows.map(row => <tr key={row.epoch}>
                     <td>{taipeiTime(row.at)}</td><td>{ACCESS_EVENT_KIND_TEXT[row.kind]}</td><td>{row.actorEmail}</td><td>{previousHolderText(row)}</td>
                   </tr>)}</tbody></table></div>

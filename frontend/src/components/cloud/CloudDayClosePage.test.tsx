@@ -237,6 +237,7 @@ describe('CloudDayClosePage', () => {
   it('L05: expected 1,170 and counted 1,160 needs a non-blank reason, then closes with the server numbers', async () => {
     renderPage();
     expect(await screen.findByRole('heading', { name: `${today} 日結` })).toBeInTheDocument();
+    expect(screen.getByText('開啟中')).toHaveClass('badge-ui', 'badge-warn');
     expect(repository.read).toHaveBeenCalledWith(today);
     const figures = screen.getByLabelText('營業日現金統計');
     expect(within(figures).getByText('NT$ 1,170')).toBeInTheDocument();
@@ -266,6 +267,19 @@ describe('CloudDayClosePage', () => {
     expect(within(row).getByText('少 NT$ 10')).toBeInTheDocument();
     expect(within(row).getByText('找零少收 10 元')).toBeInTheDocument();
     expect(screen.getByText(/沒有需要關帳的營業日/)).toBeInTheDocument();
+  });
+
+  it('uses EmptyState for a day with no pending closes or settlement versions', async () => {
+    repository.readOverview.mockResolvedValue(overview({ unclosedDays: [] }));
+    repository.read.mockResolvedValue(dayState({ status: 'closed', revision: 7, lastSettlementRevision: 1, settlements: [] }));
+    renderPage();
+
+    const noUnclosed = await screen.findByText(`到伺服器使用權日期 ${today} 為止，沒有需要關帳的營業日。`);
+    expect(noUnclosed.closest('.empty-title')).not.toBeNull();
+    const noSettlements = screen.getByText('這天還沒有日結版本。');
+    expect(noSettlements.closest('.empty-title')).not.toBeNull();
+    const noPostCloseEntries = screen.getByText('這個關帳版本還沒有補記。');
+    expect(noPostCloseEntries.closest('.empty-title')).not.toBeNull();
   });
 
   it('keeps the §7.4 close restriction after manual pending-command continuation', async () => {
@@ -301,7 +315,8 @@ describe('CloudDayClosePage', () => {
   it('reopens a closed day only with a non-blank reason and keeps the old versions visible', async () => {
     repository.read.mockResolvedValue(dayState({ status: 'closed', revision: 7, lastSettlementRevision: 1, settlements: [version(1)] }));
     renderPage();
-    expect(await screen.findByText('已關帳')).toBeInTheDocument();
+    expect(await screen.findByText('已關帳')).toHaveClass('badge-ui', 'badge-ok');
+    expect(within(screen.getByTestId('cloud-settlement-1')).getByText('關帳')).toHaveClass('badge-ui', 'badge-ok');
     expect(screen.queryByRole('form', { name: `${today} 關帳` })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '重開這一天' }));
     const form = screen.getByRole('form', { name: `${today} 重開` });
@@ -317,6 +332,8 @@ describe('CloudDayClosePage', () => {
     fireEvent.change(within(form).getByRole('textbox', { name: /重開原因/ }), { target: { value: '補登漏記的繳費' } });
     fireEvent.click(within(form).getByRole('button', { name: '確認重開' }));
     expect(await screen.findByText(/已確認 2026-10-17 重開 完成/)).toBeInTheDocument();
+    expect(await screen.findByText('已重開')).toHaveClass('badge-ui', 'badge-warn');
+    expect(within(screen.getByTestId('cloud-settlement-2')).getByText('重開')).toHaveClass('badge-ui', 'badge-warn');
     expect(repository.reopenDay).toHaveBeenCalledWith({
       commandId, leaseEpoch: 4, dayId: today, expectedDayRevision: 7, expectedSettlementRevision: 1, reason: '補登漏記的繳費',
     });
@@ -512,7 +529,9 @@ describe('CloudDayClosePage', () => {
     expect(screen.getByTestId('cloud-no-business-2026-10-10')).toHaveTextContent('2026-10-10');
     expect(screen.queryByTestId('cloud-unclosed-2026-10-10')).not.toBeInTheDocument();
     expect(screen.getByTestId('cloud-unclosed-2026-10-12')).toHaveTextContent('缺開帳現金，需補開帳後關帳');
-    expect(screen.getByTestId(`cloud-unclosed-${past}`)).toHaveTextContent('尚未關帳（已重開）');
+    const reopened = screen.getByTestId(`cloud-unclosed-${past}`);
+    expect(reopened).toHaveTextContent('需關帳');
+    expect(within(reopened).getByText('已重開')).toHaveClass('badge-ui', 'badge-warn');
     expect(screen.getByTestId(`cloud-unclosed-${today}`)).toHaveTextContent('尚未確認開帳現金');
     expect(screen.getByText(/尚未確認開帳現金，不能關帳/)).toBeInTheDocument();
     expect(screen.queryByRole('form', { name: `${today} 關帳` })).not.toBeInTheDocument();
@@ -1076,6 +1095,7 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     expect(info).toHaveTextContent('2026-10-14 正在回填（原因：那天斷線）');
     expect(screen.queryByTestId('backfill-start')).not.toBeInTheDocument();
     expect(screen.getByTestId(`cloud-unclosed-backfill-${gap}`)).toHaveTextContent('回填中');
+    expect(within(screen.getByTestId(`cloud-unclosed-backfill-${gap}`)).getByText('回填中')).toHaveClass('badge-ui', 'badge-warn');
     fireEvent.click(within(info).getByRole('button', { name: `到訂餐頁補登 ${gap}` }));
     expect(onOpenOrders).toHaveBeenCalledWith(gap);
   });

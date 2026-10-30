@@ -22,6 +22,8 @@ import {
 } from './CloudDayVendorForms';
 import { openingDifference, type PreviousClosedDay } from '../../domain/ledgerAnomalies';
 import type { CloudLedgerView } from '../../hooks/useCloudLedger';
+import { EmptyState } from '../ui/EmptyState';
+import { StatusBadge } from '../ui/StatusBadge';
 import { LedgerUnclosedBanner } from './LedgerUnclosedBanner';
 import './CloudDayVendorsPage.css';
 
@@ -310,6 +312,14 @@ function blockedInheritanceMessage(blocked: string): string {
   if (blocked === 'vendor-inactive') return '最近一筆較早菜單的供應商已停用，不能沿用；請先恢復供應商或直接選擇使用中的供應商。';
   if (blocked === 'vendor-deleted') return '最近一筆較早菜單的供應商已移除，不能沿用；請直接確認菜單與使用中的供應商。';
   return '最近一筆較早菜單的供應商名稱已變更，不能沿用舊快照；請直接確認菜單與使用中的供應商。';
+}
+
+function dayStatusLabel(status: 'open' | 'closed' | 'reopened'): string {
+  return status === 'closed' ? '已關帳' : status === 'reopened' ? '已重開' : '開啟中';
+}
+
+function dayStatusVariant(status: 'open' | 'closed' | 'reopened'): 'ok' | 'neutral' | 'warn' {
+  return status === 'closed' ? 'neutral' : status === 'reopened' ? 'warn' : 'ok';
 }
 
 export function CloudDayVendorsPage({
@@ -1201,7 +1211,6 @@ export function CloudDayVendorsPage({
         <div>
           <p className="cloud-day-vendors__eyebrow">雲端資料 · 線上操作</p>
           <h1>{view === 'vendors' ? '供應商' : view === 'day' ? '菜單與開帳' : '營業日、菜單與供應商'}</h1>
-          <p className="cloud-day-vendors__intro">日期與供應商資料只從伺服器完整載入。未確認開帳與零元開帳分開顯示；菜單與供應商變更不改寫既有歷史快照。</p>
         </div>
         <button
           type="button"
@@ -1212,6 +1221,10 @@ export function CloudDayVendorsPage({
           {page.loading ? '載入中…' : '重新載入伺服器資料'}
         </button>
       </header>
+      <details className="cloud-day-vendors__intro">
+        <summary>資料載入與快照原則</summary>
+        <p>日期與供應商資料只從伺服器完整載入。未確認開帳與零元開帳分開顯示；菜單與供應商變更不改寫既有歷史快照。</p>
+      </details>
 
       {page.loadError && <div className="cloud-day-vendors__alert" role="alert">{page.loadError}</div>}
       {page.actionError && <div className="cloud-day-vendors__alert" role="alert">{page.actionError}</div>}
@@ -1269,6 +1282,9 @@ export function CloudDayVendorsPage({
       {snapshot && !page.loading && (
         <>
           {view !== 'vendors' && <><section className="cloud-day-vendors__date-panel" aria-label="營業日選擇">
+            <div className="cloud-day-vendors__section-heading">
+              <h2>營業日</h2>
+            </div>
             <form className="cloud-day-vendors__date-form" onSubmit={submitDateSelection}>
               <label htmlFor="cloud-day-vendors-date">查看或設定日期</label>
               <input
@@ -1285,19 +1301,19 @@ export function CloudDayVendorsPage({
                 載入日期
               </button>
             </form>
+            <p className="cloud-day-vendors__help">使用權日期來自伺服器租約時間，瀏覽器時鐘不會決定營業日或改寫命令日期。若跨過臺北午夜，請先取得伺服器更新的使用權，再重新載入。</p>
             <div className="cloud-day-vendors__date-meta">
               <span>系統啟用日：{snapshot.goLiveDate}</span>
               <span>伺服器使用權日期：{snapshot.selectionDate}</span>
               <span>資料序號：{snapshot.seq}</span>
             </div>
-            <p className="cloud-day-vendors__help">使用權日期來自伺服器租約時間，瀏覽器時鐘不會決定營業日或改寫命令日期。若跨過臺北午夜，請先取得伺服器更新的使用權，再重新載入。</p>
           </section>
 
           <section className="cloud-day-vendors__day-section" aria-label="指定營業日">
             <div className="cloud-day-vendors__section-heading">
               <div>
                 <h2>{snapshot.dayId} 營業日</h2>
-                <p>{snapshot.day ? `狀態：${snapshot.day.status === 'closed' ? '已關帳' : snapshot.day.status === 'reopened' ? '已重開' : '開啟中'} · revision ${snapshot.day.revision}` : '伺服器尚無此日期文件；建立日期只建立空白營業日，不會建立菜單或開帳金額。'}</p>
+                <p>{snapshot.day ? <>狀態：<StatusBadge variant={dayStatusVariant(snapshot.day.status)} className={`cloud-day-vendors__day-status cloud-day-vendors__day-status--${snapshot.day.status}`}>{dayStatusLabel(snapshot.day.status)}</StatusBadge> · revision {snapshot.day.revision}</> : '伺服器尚無此日期文件；建立日期只建立空白營業日，不會建立菜單或開帳金額。'}</p>
               </div>
               {!snapshot.day && (
                 <button type="button" className="cloud-day-vendors__primary" onClick={submitEnsureDay} disabled={busy || snapshot.dayId < snapshot.goLiveDate}>
@@ -1320,7 +1336,7 @@ export function CloudDayVendorsPage({
                           <dt>供應商快照</dt><dd>{snapshot.day.menu.vendorNameSnapshot}</dd>
                           {snapshot.day.menu.inheritedFromDate && <><dt>當時沿用來源</dt><dd>{snapshot.day.menu.inheritedFromDate}</dd></>}
                         </dl>
-                      ) : <p>此日期尚未設定菜單。</p>}
+                      ) : <EmptyState className="cloud-day-vendors__no-menu" title="此日期尚未設定菜單。" />}
                     </div>
                   </div>
 
@@ -1431,19 +1447,21 @@ export function CloudDayVendorsPage({
             )}
 
             {snapshot.vendors.length === 0 ? (
-              <div className="cloud-day-vendors__empty" role="status">目前伺服器沒有可管理的供應商，請新增一筆供應商資料。</div>
+              <div className="cloud-day-vendors__empty-state" role="status">
+                <EmptyState className="cloud-day-vendors__empty" title="目前伺服器沒有可管理的供應商，請新增一筆供應商資料。" />
+              </div>
             ) : (
               <div className="cloud-day-vendors__table-wrap">
-                <table>
+                <table className="dt">
                   <thead><tr><th>編號</th><th>名稱</th><th>電話</th><th>備註</th><th>狀態</th><th>操作</th></tr></thead>
                   <tbody>
                     {snapshot.vendors.map(vendor => (
                       <tr key={vendor.vendorId} data-testid={`cloud-vendor-row-${vendor.vendorId}`}>
                         <td className="cloud-day-vendors__mono">{vendor.vendorId}</td>
                         <td>{vendor.name}</td>
-                        <td>{vendor.phone || '—'}</td>
+                        <td className="cloud-day-vendors__phone">{vendor.phone || '—'}</td>
                         <td>{vendor.note || '—'}</td>
-                        <td><span className={`cloud-day-vendors__status cloud-day-vendors__status--${vendor.status}`}>{vendor.status === 'active' ? '使用中' : '已停用'}</span></td>
+                        <td><StatusBadge variant={vendor.status === 'active' ? 'ok' : 'neutral'} className={`cloud-day-vendors__status cloud-day-vendors__status--${vendor.status}`}>{vendor.status === 'active' ? '使用中' : '已停用'}</StatusBadge></td>
                         <td>
                           <div className="cloud-day-vendors__row-actions">
                             {page.removingVendorId === vendor.vendorId ? (

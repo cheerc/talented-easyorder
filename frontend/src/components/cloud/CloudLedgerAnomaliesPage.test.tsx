@@ -18,9 +18,10 @@ function renderPage(ledger: CloudLedgerView) {
 }
 
 describe('CloudLedgerAnomaliesPage', () => {
-  it('says there are no anomalies', () => {
+  it('says there are no anomalies using the shared empty state', () => {
     renderPage(ready([]));
-    expect(screen.getByText('目前沒有帳務異常。')).toBeInTheDocument();
+    const emptyTitle = screen.getByText('沒有帳務異常');
+    expect(emptyTitle.closest('.empty-title')).not.toBeNull();
     expect(screen.getByText(/檢查範圍：2026-10-01 至 2026-10-17，共 0 筆異常/)).toBeInTheDocument();
     expect(screen.queryByRole('list', { name: '帳務異常清單' })).not.toBeInTheDocument();
   });
@@ -31,6 +32,7 @@ describe('CloudLedgerAnomaliesPage', () => {
     ]));
     const item = within(screen.getByRole('list', { name: '帳務異常清單' })).getByRole('listitem');
     expect(item).toHaveTextContent('2026-10-15 尚未關帳');
+    expect(within(item).getByText('重開後未關帳')).toHaveClass('badge-ui', 'badge-warn');
     expect(item).toHaveTextContent('重開後還沒有關帳');
     expect(item).toHaveTextContent('還沒有確認開帳現金');
     expect(item).toHaveTextContent('3 筆有效交易');
@@ -53,6 +55,7 @@ describe('CloudLedgerAnomaliesPage', () => {
     const { onOpenPostCloseEntry } = renderPage(ready([mismatch]));
     const item = screen.getByRole('listitem');
     expect(item).toHaveTextContent('2026-10-16 開帳現金與上次關帳不符');
+    expect(within(item).getByText('差額異常')).toHaveClass('badge-ui', 'badge-warn');
     expect(item).toHaveTextContent('開帳現金是 NT$ 800');
     expect(item).toHaveTextContent('2026-10-13 的實點現金是 NT$ 870');
     expect(item).toHaveTextContent('少了 NT$ 70');

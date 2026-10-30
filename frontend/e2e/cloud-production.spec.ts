@@ -444,19 +444,49 @@ test.describe('P06 Cloud Students', () => {
       await expect(first.page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
       await expect(first.page.getByRole('heading', { name: '學生名單與期初結餘' })).toBeVisible();
       await expect(first.page.getByText('目前伺服器名單是空的，請手動新增學生。')).toBeVisible();
+      await first.page.setViewportSize({ width: 1366, height: 768 });
 
       const createStudent = async (input: { id: string; name: string; aliases: string; amount: string; mode: '沿用既有核對結餘' | '建立新學生' }) => {
         const page = first.page;
-        await page.getByRole('button', { name: '新增學生' }).click();
-        const form = page.getByRole('form', { name: '新增學生' });
-        await form.getByLabel('學員編號').fill(input.id);
+        const addStudent = page.getByRole('button', { name: '新增學生' });
+        const table = page.locator('.cloud-students__table-wrap');
+        const tableBefore = input.id === '002' ? await table.boundingBox() : null;
+        await addStudent.click();
+        const dialog = page.getByRole('dialog', { name: '新增學生' });
+        await expect(dialog).toBeVisible();
+        const form = dialog.getByRole('form', { name: '新增學生' });
+        if (input.id === '002') {
+          const tableDuringDialog = await table.boundingBox();
+          expect(tableBefore).not.toBeNull();
+          expect(tableDuringDialog?.y).toBe(tableBefore!.y);
+          expect(tableDuringDialog?.height).toBe(tableBefore!.height);
+          await expect(page.locator('nav[aria-label="今日設定"]')).toHaveAttribute('inert', '');
+          await expect(form.getByLabel('學員編號')).toBeFocused();
+          await form.getByLabel('學員編號').fill(input.id);
+          await page.keyboard.press('F5');
+          await expect(dialog).toBeVisible();
+          await expect(form.getByLabel('學員編號')).toHaveValue(input.id);
+          await expect(page.locator('nav[aria-label="今日設定"] button[aria-current="page"]')).toHaveText('學生');
+          await page.keyboard.press('Escape');
+          const discardConfirmation = dialog.getByRole('group', { name: '新增學生草稿離開確認' });
+          await expect(discardConfirmation).toBeVisible();
+          await discardConfirmation.getByRole('button', { name: '取消離開' }).click();
+          await expect(form.getByLabel('學員編號')).toHaveValue(input.id);
+        }
+        if (input.id !== '002') await form.getByLabel('學員編號').fill(input.id);
         await form.getByRole('textbox', { name: '姓名', exact: true }).fill(input.name);
         await form.getByRole('textbox', { name: /別名（逗號、頓號/ }).fill(input.aliases);
         await form.getByRole('textbox', { name: /期初結餘（整數/ }).fill(input.amount);
         await form.getByRole('radio', { name: new RegExp(input.mode) }).check();
         await form.getByRole('button', { name: '建立學生' }).click();
-        await expect(page.getByTestId(`cloud-student-row-${input.id}`)).toBeVisible();
+        const row = page.getByTestId(`cloud-student-row-${input.id}`);
+        await expect(row).toBeVisible();
         await expect(page.getByText(new RegExp(`已確認 新增 ${input.id} 完成`))).toBeVisible();
+        await expect(addStudent).toBeFocused();
+        if (input.id === '002') {
+          expect(row).toContainText('−NT$ 25');
+          await expect(row.locator('.cloud-students__balance').getByText('欠款')).toHaveClass(/badge-warn/);
+        }
       };
 
       await createStudent({ id: '001', name: 'P06 同名學生', aliases: '一號', amount: '0', mode: '沿用既有核對結餘' });
@@ -473,7 +503,10 @@ test.describe('P06 Cloud Students', () => {
       await duplicateForm.getByRole('button', { name: '建立學生' }).click();
       await expect(first.page.getByRole('alert')).toContainText('學員編號 001 已存在');
       expect(await readAdminDocument('system', 'dataHead')).toMatchObject({ seq: 3 });
-      await first.page.getByRole('button', { name: '取消' }).click();
+      await duplicateForm.getByRole('button', { name: '取消' }).click();
+      const discardConfirmation = first.page.getByRole('dialog', { name: '新增學生' }).getByRole('group', { name: '新增學生草稿離開確認' });
+      await expect(discardConfirmation).toBeVisible();
+      await discardConfirmation.getByRole('button', { name: '捨棄草稿' }).click();
 
       const row002 = first.page.getByTestId('cloud-student-row-002');
       await row002.getByRole('button', { name: '編輯姓名與別名' }).click();
@@ -484,12 +517,14 @@ test.describe('P06 Cloud Students', () => {
       await expect(first.page.getByText(/已確認 修改 002 完成/)).toBeVisible();
       await expect(row002).toContainText('P06 已修改學生');
 
+      await row002.locator('details.cloud-students__more > summary').click();
       await row002.getByRole('button', { name: '停用' }).click();
       const deactivateForm = row002.getByRole('form', { name: '停用學生 002' });
       await deactivateForm.getByLabel('原因（必填）').fill('操作員確認資料後暫時停用此學生');
       await deactivateForm.getByRole('button', { name: '確認停用' }).click();
       await expect(row002).toContainText('已停用');
 
+      await row002.locator('details.cloud-students__more > summary').click();
       await row002.getByRole('button', { name: '恢復' }).click();
       const restoreForm = row002.getByRole('form', { name: '恢復學生 002' });
       await restoreForm.getByLabel('原因（必填）').fill('已完成確認，恢復學生使用狀態');
@@ -544,6 +579,7 @@ test.describe('P06 Cloud Students', () => {
         // --- P06b: 改號 -> 重載 / 缺號列預填 / 搜尋隱藏缺號 / 搶號衝突 / 停用改號 ---
         const page = second.page;
         const row002 = page.getByTestId('cloud-student-row-002');
+        await row002.locator('details.cloud-students__more > summary').click();
         await row002.getByRole('button', { name: '改編號' }).click();
         const codeForm002 = row002.getByRole('form', { name: '改編號 002' });
         await codeForm002.getByLabel('新編號').fill('015');
@@ -565,9 +601,13 @@ test.describe('P06 Cloud Students', () => {
 
         // 點擊缺號列預填新增
         await gap004.click();
-        const createForm = page.getByRole('form', { name: '新增學生' });
+        const createDialog = page.getByRole('dialog', { name: '新增學生' });
+        const createForm = createDialog.getByRole('form', { name: '新增學生' });
         await expect(createForm.getByLabel('學員編號')).toHaveValue('004');
         await createForm.getByRole('button', { name: '取消' }).click();
+        const gapDiscardConfirmation = createDialog.getByRole('group', { name: '新增學生草稿離開確認' });
+        await expect(gapDiscardConfirmation).toBeVisible();
+        await gapDiscardConfirmation.getByRole('button', { name: '捨棄草稿' }).click();
 
         // 搜尋時隱藏缺號列
         await page.getByLabel('搜尋編號、姓名或別名').fill('修改學生');
@@ -579,6 +619,7 @@ test.describe('P06 Cloud Students', () => {
 
         // 搶號衝突 UI 提示：015 嘗試改為已佔用的 001
         const row015 = page.getByTestId('cloud-student-row-015');
+        await row015.locator('details.cloud-students__more > summary').click();
         await row015.getByRole('button', { name: '改編號' }).click();
         const codeForm015 = row015.getByRole('form', { name: '改編號 015' });
         await codeForm015.getByLabel('新編號').fill('001');
@@ -589,12 +630,14 @@ test.describe('P06 Cloud Students', () => {
 
         // 停用學生改號釋出號碼：停用 001，並將其編號改為 099
         const row001 = page.getByTestId('cloud-student-row-001');
+        await row001.locator('details.cloud-students__more > summary').click();
         await row001.getByRole('button', { name: '停用' }).click();
         const statusForm001 = row001.getByRole('form', { name: '停用學生 001' });
         await statusForm001.getByLabel('原因（必填）').fill('停用讓號');
         await statusForm001.getByRole('button', { name: '確認停用' }).click();
         await expect(row001).toContainText('已停用');
 
+        await row001.locator('details.cloud-students__more > summary').click();
         await row001.getByRole('button', { name: '改編號' }).click();
         const codeForm001 = row001.getByRole('form', { name: '改編號 001' });
         await codeForm001.getByLabel('新編號').fill('099');
@@ -1221,6 +1264,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       expect(openingDate).toBe(today);
 
       // 2. 期初日沒有營業日時先建立（不影響現金），再回來更正
+      await row.locator('details.cloud-students__more > summary').click();
       await row.getByRole('button', { name: '更正期初' }).click();
       const ensureDay = row.getByRole('button', { name: `先建立營業日 ${openingDate}` });
       const openingForm = row.getByRole('form', { name: '更正期初 009' });
@@ -1228,6 +1272,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       if (await ensureDay.isVisible()) {
         await ensureDay.click();
         await expect(page.getByText(/請再按該學生的「更正期初」繼續/)).toBeVisible();
+        await row.locator('details.cloud-students__more > summary').click();
         await row.getByRole('button', { name: '更正期初' }).click();
       }
       await expect(openingForm).toBeVisible();
@@ -1320,7 +1365,9 @@ test.describe('P11 Cloud Day Close', () => {
       const main = page.getByRole('main', { name: '雲端日結' });
       await expect(main.getByRole('heading', { name: `${today} 日結` })).toBeVisible();
       await expect(main.getByLabel('營業日現金統計')).toContainText(money(expected));
-      await expect(main.getByTestId(`cloud-unclosed-${today}`)).toContainText('今天，尚未關帳');
+      const todayUnclosed = main.getByTestId(`cloud-unclosed-${today}`);
+      await expect(todayUnclosed).toContainText('今天');
+      await expect(todayUnclosed.getByText('尚未關帳')).toHaveClass(/badge-ui.*badge-warn/);
       const closeForm = main.getByRole('form', { name: `${today} 關帳` });
       await closeForm.getByRole('textbox', { name: '實點現金（元）' }).fill(String(expected - 10));
       await expect(closeForm).toContainText(`應有 ${money(expected)}，實點 ${money(expected - 10)}，少 NT$ 10`);

@@ -1,0 +1,53 @@
+.cloud-diagnostics {
+  width: min(1320px, calc(100% - 32px));
+  margin: 24px auto 48px;
+}
+
+.cloud-diagnostics__card {
+  margin-top: 16px;
+}
+
+@media (max-width: 720px) {
+  .cloud-diagnostics { width: calc(100% - 16px); margin: 8px auto 24px; }
+}
+
+.cloud-diagnostics__card h2 {
+  margin: 0 0 8px;
+}
+
+.cloud-diagnostics__card p {
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+
+.cloud-diagnostics__card ol {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  padding-left: 20px;
+}
+
+.cloud-diagnostics__empty.empty-ui {
+  display: block;
+  padding: 12px 0;
+  text-align: left;
+}
+
+.cloud-diagnostics__empty .empty-icon { display: none; }
+.cloud-diagnostics__empty .empty-title { color: var(--ink-2); font-size: 13px; font-weight: 500; }
+
+.cloud-diagnostics__card li p {
+  margin: 2px 0;
+  font-size: 13px;
+}
+
+.cloud-diagnostics__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.cloud-diagnostics__actions .btn-ui {
+  white-space: nowrap;
+}

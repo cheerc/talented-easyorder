@@ -89,5 +89,28 @@ describe('Modal', () => {
       outside.remove();
     }
   });
+
+  it('makes background controls inert while open and restores their previous state on close', () => {
+    const previousOverflow = document.body.style.overflow;
+    const { container, rerender } = render(
+      <main>
+        <button data-testid="background-control">背景操作</button>
+        <Modal open title="新增學生" onClose={() => {}}><input aria-label="學員編號" /></Modal>
+      </main>,
+    );
+    const background = container.querySelector<HTMLButtonElement>('[data-testid="background-control"]');
+    expect(background).not.toBeNull();
+    expect(background!.inert).toBe(true);
+    expect(document.body.style.overflow).toBe('hidden');
+
+    rerender(
+      <main>
+        <button data-testid="background-control">背景操作</button>
+        <Modal open={false} title="新增學生" onClose={() => {}}><input aria-label="學員編號" /></Modal>
+      </main>,
+    );
+    expect(background!.inert).toBe(false);
+    expect(document.body.style.overflow).toBe(previousOverflow);
+  });
 });
 

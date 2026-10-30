@@ -19,6 +19,8 @@ import {
   type StartCloudBackfillInput,
 } from '../../firebase/cloudDayCloseRepository';
 import type { CloudLedgerView } from '../../hooks/useCloudLedger';
+import { EmptyState } from '../ui/EmptyState';
+import { StatusBadge } from '../ui/StatusBadge';
 import { BackupScreen } from '../screens/BackupScreen';
 import { LedgerUnclosedBanner } from './LedgerUnclosedBanner';
 import './CloudDayClosePage.css';
@@ -268,6 +270,10 @@ function statusLabel(status: CloudDayCloseState['status']): string {
   return status === 'closed' ? '已關帳' : status === 'reopened' ? '已重開' : '開啟中';
 }
 
+function statusVariant(status: CloudDayCloseState['status']): 'ok' | 'warn' {
+  return status === 'closed' ? 'ok' : 'warn';
+}
+
 const BACKFILL_STEP_LABEL = { 'ensure-day': '建立營業日', 'backfill-opening': '補開帳', 'start-backfill': '標為回填' } as const;
 
 function commandLabel(command: PreparedCommand): string {
@@ -278,12 +284,19 @@ function commandLabel(command: PreparedCommand): string {
 }
 
 function unclosedLabel(day: CloudUnclosedDay, selectionDate: string): string {
-  if (day.backfill) return '回填中，補登完成後關帳';
+  if (day.backfill) return '補登完成後關帳';
   if (day.kind === 'no-business') return '沒有開帳也沒有交易';
   if (day.kind === 'missing-opening') {
     return day.dayId === selectionDate ? '尚未確認開帳現金' : '缺開帳現金，需補開帳後關帳';
   }
-  return day.dayId === selectionDate ? '今天，尚未關帳' : '尚未關帳';
+  return day.dayId === selectionDate ? '今天' : '需關帳';
+}
+
+function unclosedStatusLabel(day: CloudUnclosedDay): string {
+  if (day.backfill) return '回填中';
+  if (day.status === 'reopened') return '已重開';
+  if (day.kind === 'missing-opening') return '待確認開帳';
+  return '尚未關帳';
 }
 
 /**
@@ -374,21 +387,47 @@ function intentFor(command: PreparedCommand, leaseEpoch: number): CloudDayCloseC
 }
 
 /** The day's own cash numbers; the close and reopen forms only send what the server already shows. */
-function DayFigures({ day }: { day: CloudDayCloseState }) {
+function DayFigures({ day, unclosedCount }: { day: CloudDayCloseState; unclosedCount: number }) {
   const t = day.totals;
+  const lastSettlement = day.settlements[day.settlements.length - 1];
+  const countedCash = day.status === 'closed' ? day.effectiveCash : (lastSettlement?.countedCash ?? null);
+  const difference = countedCash === null || day.expectedCash === null ? null : countedCash - day.expectedCash;
   return (
-    <dl className="cloud-day-close__summary" aria-label="營業日現金統計">
-      <dt>開帳現金</dt><dd>{day.openingCash === null ? '尚未確認' : formatMoney(day.openingCash)}</dd>
-      <dt>收款留存</dt><dd>{formatMoney(t.retainedReceipts)}</dd>
-      <dt>櫃台收入</dt><dd>{formatMoney(t.cashierIncome)}</dd>
-      <dt>櫃台支出</dt><dd>{formatMoney(t.cashierExpense)}</dd>
-      <dt>帳戶退款</dt><dd>{formatMoney(t.accountRefunds)}</dd>
-      <dt>應有現金</dt><dd>{day.expectedCash === null ? '需先確認開帳現金' : formatMoney(day.expectedCash)}</dd>
-      {day.status === 'closed' && <><dt>有效關帳現金</dt><dd aria-label="有效關帳現金">{day.effectiveCash === null ? '尚未計算' : formatMoney(day.effectiveCash)}</dd></>}
-      <dt>有效交易</dt><dd>{t.activeTransactionCount} 筆</dd>
-      <dt>份數</dt><dd>今日餐點 {t.bentoCount} · 其他餐點 {t.otherMealCount}</dd>
-      <dt>餐費</dt><dd>{formatMoney(t.mealTotal)}</dd>
-    </dl>
+    <div className="cloud-day-close__figures-wrap">
+      <div className="cloud-day-close__figures">
+        <div className="cloud-day-close__figure">
+          <span className="cloud-day-close__figure-label">應有現金</span>
+          <span className="cloud-day-close__figure-value">{day.expectedCash === null ? '需先確認開帳' : formatMoney(day.expectedCash)}</span>
+        </div>
+        <div className="cloud-day-close__figure">
+          <span className="cloud-day-close__figure-label">實點現金</span>
+          <span className="cloud-day-close__figure-value">{countedCash === null ? '尚未關帳' : formatMoney(countedCash)}</span>
+        </div>
+        <div className={`cloud-day-close__figure${difference !== null && difference !== 0 ? ' cloud-day-close__figure--warn' : ''}`}>
+          <span className="cloud-day-close__figure-label">差額</span>
+          <span className="cloud-day-close__figure-value">{difference === null ? '—' : `${difference > 0 ? '+' : ''}${formatMoney(difference)}`}</span>
+        </div>
+        <div className="cloud-day-close__figure">
+          <span className="cloud-day-close__figure-label">未結營業日數</span>
+          <span className="cloud-day-close__figure-value">{unclosedCount} 天</span>
+        </div>
+      </div>
+      <details className="cloud-day-close__figure-details">
+        <summary>其他現金統計</summary>
+        <dl className="cloud-day-close__summary" aria-label="營業日現金統計">
+          <dt>開帳現金</dt><dd>{day.openingCash === null ? '尚未確認' : formatMoney(day.openingCash)}</dd>
+          <dt>收款留存</dt><dd>{formatMoney(t.retainedReceipts)}</dd>
+          <dt>櫃台收入</dt><dd>{formatMoney(t.cashierIncome)}</dd>
+          <dt>櫃台支出</dt><dd>{formatMoney(t.cashierExpense)}</dd>
+          <dt>帳戶退款</dt><dd>{formatMoney(t.accountRefunds)}</dd>
+          <dt>應有現金</dt><dd>{day.expectedCash === null ? '需先確認開帳現金' : formatMoney(day.expectedCash)}</dd>
+          {day.status === 'closed' && <><dt>有效關帳現金</dt><dd aria-label="有效關帳現金">{day.effectiveCash === null ? '尚未計算' : formatMoney(day.effectiveCash)}</dd></>}
+          <dt>有效交易</dt><dd>{t.activeTransactionCount} 筆</dd>
+          <dt>份數</dt><dd>今日餐點 {t.bentoCount} · 其他餐點 {t.otherMealCount}</dd>
+          <dt>餐費</dt><dd>{formatMoney(t.mealTotal)}</dd>
+        </dl>
+      </details>
+    </div>
   );
 }
 
@@ -1514,7 +1553,6 @@ export function CloudDayClosePage({
         <div>
           <p className="cloud-day-close__eyebrow">雲端資料 · 線上操作</p>
           <h1>日結、關帳與重開</h1>
-          <p className="cloud-day-close__intro">應有現金由伺服器依營業日統計計算：開帳現金＋收款留存＋櫃台收入－櫃台支出－帳戶退款。每次關帳或重開都新增一個不能修改的日結版本。</p>
         </div>
         <button
           type="button"
@@ -1525,6 +1563,10 @@ export function CloudDayClosePage({
           {page.loading ? '載入中…' : '重新載入伺服器資料'}
         </button>
       </header>
+      <details className="cloud-day-close__intro">
+        <summary>應有現金與關帳版本</summary>
+        <p className="cloud-day-close__intro">應有現金由伺服器依營業日統計計算：開帳現金＋收款留存＋櫃台收入－櫃台支出－帳戶退款。每次關帳或重開都新增一個不能修改的日結版本。</p>
+      </details>
 
       <LedgerUnclosedBanner ledger={ledger} onOpenAnomalies={onOpenAnomalies} />
       {page.loadError && <div className="cloud-day-close__alert" role="alert">{page.loadError}</div>}
@@ -1583,17 +1625,26 @@ export function CloudDayClosePage({
 
       {snapshot && !page.loading && (
         <>
+          <div className="cloud-day-close__layout">
           <section className="cloud-day-close__date-panel" aria-label="未關帳營業日">
             <h2>未關帳營業日</h2>
             {needsAttention.length === 0 ? (
-              <p>到伺服器使用權日期 {selectionDate} 為止，沒有需要關帳的營業日。</p>
+              <div className="cloud-day-close__empty-state" role="status">
+                <EmptyState className="cloud-day-close__empty" title={`到伺服器使用權日期 ${selectionDate} 為止，沒有需要關帳的營業日。`} />
+              </div>
             ) : (
               <ul className="cloud-day-close__list">
                 {needsAttention.map(item => (
                   <li key={item.dayId} data-testid={`cloud-unclosed-${item.dayId}`}>
                     <span className="cloud-day-close__mono">{item.dayId}</span>
-                    <span>{unclosedLabel(item, selectionDate)}{item.status === 'reopened' ? '（已重開）' : ''} · {item.activeTransactionCount} 筆交易</span>
-                    {item.backfill && <span className="cloud-day-close__status cloud-day-close__status--open" data-testid={`cloud-unclosed-backfill-${item.dayId}`}>回填中</span>}
+                    {item.backfill ? (
+                      <span data-testid={`cloud-unclosed-backfill-${item.dayId}`}>
+                        <StatusBadge variant="warn" className="cloud-day-close__status cloud-day-close__status--open">{unclosedStatusLabel(item)}</StatusBadge>
+                      </span>
+                    ) : (
+                      <StatusBadge variant="warn" className={`cloud-day-close__status cloud-day-close__status--${item.status}`}>{unclosedStatusLabel(item)}</StatusBadge>
+                    )}
+                    <span>{unclosedLabel(item, selectionDate)} · {item.activeTransactionCount} 筆交易</span>
                     <button type="button" className="cloud-day-close__secondary" onClick={() => void loadSnapshot(item.dayId)} disabled={busy || item.dayId === snapshot.dayId}>
                       查看
                     </button>
@@ -1621,6 +1672,7 @@ export function CloudDayClosePage({
             )}
           </section>
 
+          <div className="cloud-day-close__selected-column">
           <section className="cloud-day-close__date-panel" aria-label="日期選擇">
             <form className="cloud-day-close__date-form" onSubmit={submitDateSelection}>
               <label htmlFor="cloud-day-close-date">查看日期</label>
@@ -1650,7 +1702,7 @@ export function CloudDayClosePage({
                 <h2>{snapshot.dayId} 日結</h2>
                 {day ? (
                   <p>
-                    <span className={`cloud-day-close__status cloud-day-close__status--${day.status}`}>{statusLabel(day.status)}</span>
+                    <StatusBadge variant={statusVariant(day.status)} className={`cloud-day-close__status cloud-day-close__status--${day.status}`}>{statusLabel(day.status)}</StatusBadge>
                     {' '}· 日結版本 {day.lastSettlementRevision}
                   </p>
                 ) : <p>{canStartBackfill ? '伺服器沒有這個日期的營業日。如果那天其實有營業，可以在下方回填。' : '伺服器沒有這個日期的營業日，不需關帳。'}</p>}
@@ -1777,7 +1829,7 @@ export function CloudDayClosePage({
             {day && (
               <>
                 <section className="cloud-day-close__card" aria-label="現金統計">
-                  <DayFigures day={day} />
+                  <DayFigures day={day} unclosedCount={needsAttention.length} />
                 </section>
 
                 {snapshot.dayId > selectionDate && day.status !== 'closed' && (
@@ -1991,10 +2043,10 @@ export function CloudDayClosePage({
                     </form>}
                     <h4>關帳後補記歷史</h4>
                     {day.postCloseEntries.length === 0 ? (
-                      <p>這個關帳版本還沒有補記。</p>
+                      <EmptyState className="cloud-day-close__empty" title="這個關帳版本還沒有補記。" />
                     ) : (
                       <div className="cloud-day-close__table-wrap">
-                        <table>
+                        <table className="dt">
                           <thead>
                             <tr><th>方向</th><th>金額</th><th>原因</th><th>操作者</th><th>時間（臺北）</th><th>關帳版本</th><th>計算狀態</th></tr>
                           </thead>
@@ -2054,10 +2106,10 @@ export function CloudDayClosePage({
                 <section className="cloud-day-close__card" aria-label="日結版本">
                   <h3>日結版本</h3>
                   {day.settlements.length === 0 ? (
-                    <p>這天還沒有日結版本。</p>
+                    <EmptyState className="cloud-day-close__empty" title="這天還沒有日結版本。" />
                   ) : (
                     <div className="cloud-day-close__table-wrap">
-                      <table>
+                      <table className="dt">
                         <thead>
                           <tr><th>版本</th><th>狀態</th><th>應有</th><th>實點</th><th>差額</th><th>說明／原因</th><th>操作者</th><th>時間（臺北）</th></tr>
                         </thead>
@@ -2065,7 +2117,7 @@ export function CloudDayClosePage({
                           {[...day.settlements].reverse().map(version => (
                             <tr key={version.revision} data-testid={`cloud-settlement-${version.revision}`}>
                               <td className="cloud-day-close__mono">{version.revision}</td>
-                              <td>{version.status === 'closed' ? '關帳' : '重開'}</td>
+                              <td><StatusBadge variant={version.status === 'closed' ? 'ok' : 'warn'} className={`cloud-day-close__status cloud-day-close__status--${version.status}`}>{version.status === 'closed' ? '關帳' : '重開'}</StatusBadge></td>
                               <td className="cloud-day-close__mono">{formatMoney(version.expectedCash)}</td>
                               <td className="cloud-day-close__mono">{version.countedCash === null ? '—' : formatMoney(version.countedCash)}</td>
                               <td className="cloud-day-close__mono">{version.difference === null ? '—' : formatDifference(version.difference)}</td>
@@ -2082,6 +2134,8 @@ export function CloudDayClosePage({
               </>
             )}
           </section>
+          </div>
+          </div>
         </>
       )}
 

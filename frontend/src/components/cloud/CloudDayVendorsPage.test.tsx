@@ -164,6 +164,30 @@ describe('CloudDayVendorsPage', () => {
     expect(screen.getByText(/此日期可預排菜單，但不能預先開帳/)).toBeInTheDocument();
   });
 
+  it('uses StatusBadge for day and vendor states', async () => {
+    repository.loadSnapshot.mockResolvedValue(snapshot({
+      day: { ...snapshot().day!, status: 'reopened' },
+      vendors: [vendor('active-vendor'), vendor('inactive-vendor', { status: 'inactive' })],
+    }));
+    renderPage();
+
+    const daySection = await screen.findByRole('region', { name: '指定營業日' });
+    expect(within(daySection).getByText('已重開')).toHaveClass('badge-ui', 'badge-warn');
+    const vendorSection = screen.getByRole('region', { name: '供應商管理' });
+    const activeRow = screen.getByTestId('cloud-vendor-row-active-vendor');
+    const inactiveRow = screen.getByTestId('cloud-vendor-row-inactive-vendor');
+    expect(within(activeRow).getByText('使用中')).toHaveClass('badge-ui', 'badge-ok');
+    expect(within(inactiveRow).getByText('已停用')).toHaveClass('badge-ui', 'badge-neutral');
+    expect(vendorSection).toContainElement(activeRow);
+  });
+
+  it('uses EmptyState when the server returns an empty vendor list', async () => {
+    repository.loadSnapshot.mockResolvedValue(snapshot({ vendors: [] }));
+    renderPage();
+    const empty = await screen.findByText('目前伺服器沒有可管理的供應商，請新增一筆供應商資料。');
+    expect(empty.closest('.empty-title')).not.toBeNull();
+  });
+
   it('creates a future day as an empty server record before configuring it', async () => {
     const missingDay = snapshot({ dayId: future, selectionDate: today, day: null });
     const createdDay = snapshot({ dayId: future, selectionDate: today, day: { ...snapshot().day!, dayId: future } });

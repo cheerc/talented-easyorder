@@ -6,6 +6,10 @@ import {
   type SafeDiagnosticEntry,
 } from '../../errors/errorLogger';
 import { useFirebase } from '../../hooks/useFirebase';
+import { Button } from '../ui/Button';
+import { Card } from '../ui/Card';
+import { EmptyState } from '../ui/EmptyState';
+import './CloudDiagnosticsPage.css';
 import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerToken } from './useCloudActionOwner';
 
 interface CloudDiagnosticsPageProps {
@@ -18,13 +22,13 @@ export function CloudDiagnosticsPage({ identityKey, leaseEpoch }: CloudDiagnosti
   const hasLease = access.ok && lease.isKnown && lease.isHolder
     && lease.holderUid === access.profile.uid && lease.epoch === leaseEpoch;
   return <section className="cloud-diagnostics" aria-label="本機診斷">
-    <div className="card" style={{ padding: '20px', marginTop: '16px' }}>
+    <Card className="cloud-diagnostics__card">
       <h2>本機診斷</h2>
       <p>診斷只保存在這台電腦，時間取自本機時鐘並以 ISO 格式保存；最多 100 筆，保留 24 小時。匯出檔只含固定診斷欄位。</p>
       {hasLease
         ? <CloudDiagnosticsControls identityKey={identityKey} leaseEpoch={leaseEpoch} />
         : <p>需要有效的操作租約才能查看本機診斷。</p>}
-    </div>
+    </Card>
   </section>;
 }
 
@@ -148,7 +152,7 @@ function CloudDiagnosticsControls({ identityKey, leaseEpoch }: CloudDiagnosticsP
   return <>
       {error && <p role="alert">{error}</p>}
       {status && <p role="status">{status}</p>}
-      {entries.length === 0 ? <p>目前沒有可匯出的診斷紀錄。</p> : (
+      {entries.length === 0 ? <EmptyState title="目前沒有可匯出的診斷紀錄。" className="cloud-diagnostics__empty" /> : (
         <ol aria-label="診斷紀錄">
           {entries.map((entry, index) => entry.type === 'command-failure' ? (
             <li key={`${entry.occurredAt}-${index}`}>
@@ -168,14 +172,14 @@ function CloudDiagnosticsControls({ identityKey, leaseEpoch }: CloudDiagnosticsP
           ))}
         </ol>
       )}
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '16px' }}>
-        <button type="button" onClick={refresh}>重新載入紀錄</button>
-        <button type="button" className="btn-confirm" onClick={exportDiagnostics} disabled={entries.length === 0}>
+      <div className="cloud-diagnostics__actions">
+        <Button type="button" variant="secondary" onClick={refresh}>重新載入紀錄</Button>
+        <Button type="button" variant="primary" onClick={exportDiagnostics} disabled={entries.length === 0}>
           匯出本機診斷
-        </button>
-        <button type="button" onClick={clearDiagnostics} disabled={entries.length === 0}>
+        </Button>
+        <Button type="button" variant="secondary" onClick={clearDiagnostics} disabled={entries.length === 0}>
           清除本機診斷
-        </button>
+        </Button>
       </div>
   </>;
 }

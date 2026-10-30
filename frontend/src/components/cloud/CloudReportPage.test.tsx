@@ -136,6 +136,46 @@ describe('CloudReportPage', () => {
     expect(screen.getByRole('button', { name: '匯出稽核 CSV' })).toBeEnabled();
   });
 
+  it('uses badges for day and transaction states, and marks only a negative after-balance as debt', async () => {
+    const negativeTransaction = { ...report.transactions[0], amount: -35, afterBalance: -40 };
+    mocks.readReport.mockResolvedValue({
+      ...report,
+      days: [{ ...report.days[0], status: 'reopened' }],
+      transactions: [negativeTransaction],
+    } as unknown as CloudLedgerReport);
+    render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:debt" />);
+    await screen.findByTestId('report-ready');
+
+    const summary = screen.getByRole('region', { name: '區間日摘要' });
+    const dayCells = within(within(summary).getAllByRole('row')[1]).getAllByRole('cell');
+    expect(within(dayCells[1]).getByText('已重開')).toHaveClass('badge-ui', 'badge-warn');
+
+    const details = screen.getByRole('region', { name: '完整交易明細' });
+    const cells = within(within(details).getAllByRole('row')[1]).getAllByRole('cell');
+    expect(within(cells[3]).getByText('有效')).toHaveClass('badge-ui', 'badge-ok');
+    expect(cells[5]).toHaveTextContent('−$35');
+    expect(cells[5].querySelector('.badge-warn')).toBeNull();
+    expect(within(cells[6]).getByText('欠款')).toHaveClass('badge-ui', 'badge-warn');
+    expect(within(cells[6]).getByText('−$40')).toBeInTheDocument();
+  });
+
+  it('uses EmptyState for an empty report, no matching accounts, and no access events', async () => {
+    mocks.readReport.mockResolvedValue({ ...report, days: [], transactions: [], mergedTransactions: [] } as unknown as CloudLedgerReport);
+    mocks.readAccessEvents.mockResolvedValue({ ...accessEvents, rows: [] });
+    render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:empty" />);
+    await screen.findByTestId('report-ready');
+
+    const summary = screen.getByRole('region', { name: '區間日摘要' });
+    expect(within(summary).getByText('此區間沒有營業日資料。').closest('.empty-title')).not.toBeNull();
+    const details = screen.getByRole('region', { name: '完整交易明細' });
+    expect(within(details).getByText('此範圍沒有帳戶交易。').closest('.empty-title')).not.toBeNull();
+    const handover = screen.getByRole('region', { name: '使用權交接' });
+    expect(within(handover).getByText('此區間沒有使用權交接紀錄。').closest('.empty-title')).not.toBeNull();
+
+    fireEvent.change(screen.getByLabelText('搜尋帳戶'), { target: { value: '不存在' } });
+    expect(screen.getByText('沒有符合的帳戶。未選取時輸出範圍仍是全部帳戶。').closest('.empty-title')).not.toBeNull();
+  });
+
   it('records the frozen H/range/scope before downloading the full audit CSV', async () => {
     const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
     const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);

@@ -87,6 +87,12 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+function openTransactionMenu() {
+  const summary = document.querySelector('details.cloud-account-history__more > summary');
+  if (!summary) throw new Error('transaction menu summary is missing');
+  fireEvent.click(summary);
+}
+
 describe('CloudAccountHistoryPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -109,12 +115,73 @@ describe('CloudAccountHistoryPage', () => {
     expect(screen.queryByRole('button', { name: '更正' })).toBeNull();
   });
 
+  it('marks negative account balances as debt without warning-coloring a negative transaction amount', async () => {
+    const negativeTransaction = { ...transaction, amount: -35, afterBalance: -40 };
+    mocks.listStudents.mockResolvedValue({
+      datasetId: 'dataset-a', seq: 11, goLiveDate: '2026-10-01',
+      students: [{ ...student, openingBalance: { ...student.openingBalance, amount: -20 }, currentBalance: -40 }],
+    });
+    mocks.readAccountHistory.mockResolvedValue({
+      ...account,
+      openingBalance: -20,
+      currentBalance: -40,
+      transactions: [negativeTransaction],
+      days: [{ ...days[0], status: 'reopened' }],
+      settlements: [{
+        businessDate: date, revision: 1, status: 'reopened', totals: days[0].totals!, openingCash: 100,
+        expectedCash: 100, countedCash: null, difference: null, note: '', actorUid: 'operator-a',
+        actorEmail: 'a@example.test', sourceSeq: 11, committedAt: `${date}T04:00:00.000Z`, lastCommandId: 'settlement-a',
+      }],
+    });
+    render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
+
+    await screen.findByTestId('account-history-ready');
+    const balance = screen.getByText('目前帳戶餘額').nextElementSibling as HTMLElement;
+    expect(balance).toHaveTextContent('−$40');
+    expect(within(balance).getByText('欠款')).toHaveClass('badge-ui', 'badge-warn');
+    const opening = screen.getByText('期初餘額').nextElementSibling as HTMLElement;
+    expect(opening).toHaveTextContent('−$20');
+    expect(within(opening).getByText('欠款')).toHaveClass('badge-ui', 'badge-warn');
+    expect(screen.getByText('使用中')).toHaveClass('badge-ui', 'badge-ok');
+
+    const transactionSection = screen.getByRole('heading', { name: '區間交易與更正入口' }).closest('section') as HTMLElement;
+    const row = within(transactionSection).getAllByRole('row')[1];
+    const cells = within(row).getAllByRole('cell');
+    expect(cells[3]).toHaveTextContent('−$35');
+    expect(cells[3].querySelector('.badge-warn')).toBeNull();
+    expect(within(cells[4]).getByText('欠款')).toHaveClass('badge-ui', 'badge-warn');
+    expect(within(cells[5]).getByText('有效')).toHaveClass('badge-ui', 'badge-ok');
+    expect(within(cells[6]).getByText('已重開')).toHaveClass('badge-ui', 'badge-warn');
+    const settlementSection = screen.getByRole('heading', { name: /日結版本/ }).closest('section') as HTMLElement;
+    expect(within(settlementSection).getByText('已重開')).toHaveClass('badge-ui', 'badge-warn');
+  });
+
+  it('uses EmptyState for an unselected account and empty transaction, settlement, and audit ranges', async () => {
+    const unselected = render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" />);
+    const chooseAccount = await screen.findByText('請搜尋並選取目前學生名單中的帳戶。');
+    expect(chooseAccount.closest('.empty-title')).not.toBeNull();
+    unselected.unmount();
+
+    mocks.readAccountHistory.mockResolvedValue({ ...account, transactions: [], settlements: [] });
+    mocks.readAuditRange.mockResolvedValue({ ...audit, rows: [] });
+    render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:empty" initialStudentId={studentId} initialRange={range} />);
+    await screen.findByTestId('account-history-ready');
+    expect(screen.getByText('此範圍沒有帳戶交易；完整前綴餘額仍已驗證。').closest('.empty-title')).not.toBeNull();
+    expect(screen.getByText('此範圍沒有日結版本。').closest('.empty-title')).not.toBeNull();
+    expect(screen.getByText('此範圍沒有帳戶稽核紀錄。').closest('.empty-title')).not.toBeNull();
+  });
+
   it('submits a history correction using the exact transaction, student, and open-day revisions', async () => {
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
     await screen.findByTestId('account-history-ready');
     expect(screen.getByText('依目前更正後資料重算')).toBeVisible();
-    expect(screen.getByText('有效 · 回填')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    const transactionSection = screen.getByRole('heading', { name: '區間交易與更正入口' }).closest('section') as HTMLElement;
+    const transactionRow = within(transactionSection).getAllByRole('row')[1];
+    const statusCell = within(transactionRow).getAllByRole('cell')[5];
+    expect(within(statusCell).getByText('有效')).toHaveClass('badge-ui', 'badge-ok');
+    expect(within(statusCell).getByText('回填')).toHaveClass('badge-ui', 'badge-warn');
+    openTransactionMenu();
+      fireEvent.click(screen.getByRole('button', { name: '更正' }));
     fireEvent.change(screen.getByLabelText('更正餐費'), { target: { value: '60' } });
     fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: '餐費輸入錯誤' } });
     fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
@@ -161,6 +228,7 @@ describe('CloudAccountHistoryPage', () => {
       useNumbered();
       render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
       await screen.findByTestId('account-history-ready');
+      openTransactionMenu();
       fireEvent.click(screen.getByRole('button', { name: '更正' }));
       expect(screen.getByTestId('correction-paper-ref')).toHaveTextContent('紙本號 A-0123（更正時不能修改）');
       expect(screen.getByLabelText('交易備註')).toHaveValue('前天補登');
@@ -179,6 +247,7 @@ describe('CloudAccountHistoryPage', () => {
       render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
       await screen.findByTestId('account-history-ready');
       expect(screen.queryByTestId('history-paper-ref')).toBeNull();
+      openTransactionMenu();
       fireEvent.click(screen.getByRole('button', { name: '更正' }));
       expect(screen.queryByTestId('correction-paper-ref')).toBeNull();
     });
@@ -217,7 +286,8 @@ describe('CloudAccountHistoryPage', () => {
     vi.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-4000-8000-000000000003');
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
     await screen.findByTestId('account-history-ready');
-    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    openTransactionMenu();
+      fireEvent.click(screen.getByRole('button', { name: '更正' }));
     fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: '固定重試' } });
     fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
     await screen.findByRole('region', { name: '歷史更正命令恢復' });
@@ -242,7 +312,8 @@ describe('CloudAccountHistoryPage', () => {
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4"
       initialStudentId={studentId} initialRange={range} onNavigationStateChange={navigation} />);
     await screen.findByTestId('account-history-ready');
-    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    openTransactionMenu();
+      fireEvent.click(screen.getByRole('button', { name: '更正' }));
     fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'private draft' } });
     fireEvent.change(screen.getByLabelText('搜尋目前學生帳戶'), { target: { value: '林小明' } });
 
@@ -262,7 +333,8 @@ describe('CloudAccountHistoryPage', () => {
     const view = render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4"
       initialStudentId={studentId} initialRange={range} onNavigationStateChange={navigation} />);
     await screen.findByTestId('account-history-ready');
-    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    openTransactionMenu();
+      fireEvent.click(screen.getByRole('button', { name: '更正' }));
     fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'late private draft' } });
     fireEvent.change(screen.getByLabelText('搜尋目前學生帳戶'), { target: { value: '小明' } });
 
@@ -289,7 +361,8 @@ describe('CloudAccountHistoryPage', () => {
     const view = render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4"
       initialStudentId={studentId} initialRange={range} onNavigationStateChange={navigation} />);
     await screen.findByTestId('account-history-ready');
-    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    openTransactionMenu();
+      fireEvent.click(screen.getByRole('button', { name: '更正' }));
     fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'bootstrap private draft' } });
     fireEvent.change(screen.getByLabelText('搜尋目前學生帳戶'), { target: { value: '林小明' } });
 
@@ -311,7 +384,8 @@ describe('CloudAccountHistoryPage', () => {
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4"
       initialStudentId={studentId} initialRange={range} onNavigationStateChange={navigation} />);
     await screen.findByTestId('account-history-ready');
-    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    openTransactionMenu();
+      fireEvent.click(screen.getByRole('button', { name: '更正' }));
     fireEvent.change(screen.getByLabelText('更正餐費'), { target: { value: '60' } });
     fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'mutation private draft' } });
     fireEvent.change(screen.getByLabelText('搜尋目前學生帳戶'), { target: { value: '林小明' } });
@@ -332,7 +406,8 @@ describe('CloudAccountHistoryPage', () => {
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4"
       initialStudentId={studentId} initialRange={range} onNavigationStateChange={navigation} />);
     await screen.findByTestId('account-history-ready');
-    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    openTransactionMenu();
+      fireEvent.click(screen.getByRole('button', { name: '更正' }));
     fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'recovery private draft' } });
     fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
     await screen.findByRole('region', { name: '歷史更正命令恢復' });
@@ -352,7 +427,8 @@ describe('CloudAccountHistoryPage', () => {
     const firstView = render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey={identityKey}
       initialStudentId={studentId} initialRange={range} />);
     await screen.findByTestId('account-history-ready');
-    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    openTransactionMenu();
+      fireEvent.click(screen.getByRole('button', { name: '更正' }));
     fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'pending correction' } });
     fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
     await screen.findByRole('region', { name: '歷史更正命令恢復' });
@@ -393,7 +469,8 @@ describe('CloudAccountHistoryPage', () => {
     const firstView = render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey={identityKey}
       initialStudentId={studentId} initialRange={range} />);
     await screen.findByTestId('account-history-ready');
-    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    openTransactionMenu();
+      fireEvent.click(screen.getByRole('button', { name: '更正' }));
     fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'pending correction' } });
     fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
     await screen.findByRole('region', { name: '歷史更正命令恢復' });
@@ -435,6 +512,7 @@ describe('CloudAccountHistoryPage', () => {
       render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:pending"
         initialStudentId={studentId} initialRange={range} onNavigationStateChange={onNavigationStateChange} />);
       await screen.findByTestId('account-history-ready');
+      openTransactionMenu();
       fireEvent.click(screen.getByRole('button', { name: '更正' }));
       fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: '同頁復原' } });
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -458,6 +536,7 @@ describe('CloudAccountHistoryPage', () => {
       render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:no-uid"
         initialStudentId={studentId} initialRange={range} onNavigationStateChange={navigation} />);
       await screen.findByTestId('account-history-ready');
+      openTransactionMenu();
       fireEvent.click(screen.getByRole('button', { name: '更正' }));
       fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'no uid' } });
       currentAuth.uid = null;
@@ -568,6 +647,7 @@ describe('CloudAccountHistoryPage', () => {
       render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:no-unlock"
         initialStudentId={studentId} initialRange={range} />);
       await screen.findByTestId('account-history-ready');
+      openTransactionMenu();
       fireEvent.click(screen.getByRole('button', { name: '更正' }));
       fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'no unlock' } });
       fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
@@ -595,6 +675,7 @@ describe('CloudAccountHistoryPage', () => {
       render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:cleanup-failure"
         initialStudentId={studentId} initialRange={range} />);
       await screen.findByTestId('account-history-ready');
+      openTransactionMenu();
       fireEvent.click(screen.getByRole('button', { name: '更正' }));
       fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: 'cleanup failure' } });
       fireEvent.click(screen.getByRole('button', { name: '確認送出' }));

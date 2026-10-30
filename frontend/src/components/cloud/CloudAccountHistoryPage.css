@@ -2,47 +2,115 @@
   width: min(1320px, calc(100% - 32px));
   margin: 24px auto 48px;
   padding: 28px;
-  color: var(--ink, #20252b);
-  background: var(--panel, #fff);
-  border: 1px solid var(--line, #dce1e7);
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: 14px;
   box-shadow: 0 12px 36px rgba(20, 33, 48, .07);
 }
 .cloud-account-history button,
 .cloud-account-history input,
 .cloud-account-history select { font: inherit; }
-.cloud-account-history button { min-height: 36px; padding: 6px 12px; border: 1px solid var(--line, #dce1e7); border-radius: 7px; background: var(--panel, #fff); color: inherit; cursor: pointer; }
+.cloud-account-history button { min-height: 36px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: inherit; cursor: pointer; }
 .cloud-account-history button:disabled { cursor: not-allowed; opacity: .5; }
 .cloud-account-history label { display: inline-grid; gap: 5px; margin: 4px 12px 4px 0; font-weight: 650; }
 .cloud-account-history input,
-.cloud-account-history select { min-height: 36px; padding: 5px 8px; border: 1px solid var(--line, #cbd3db); border-radius: 6px; background: var(--panel, #fff); color: inherit; }
-.cloud-account-history__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--line, #dce1e7); }
+.cloud-account-history select { min-height: 36px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: inherit; }
+.cloud-account-history__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
 .cloud-account-history__header h2 { margin: 2px 0 8px; font-size: clamp(22px, 3vw, 30px); }
-.cloud-account-history__header p { max-width: 760px; color: var(--ink-2, #536170); line-height: 1.55; }
-.cloud-account-history__eyebrow { margin: 0; color: var(--ink-3, #627182); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+.cloud-account-history__header p { max-width: 760px; color: var(--ink-2); line-height: 1.55; }
+.cloud-account-history__eyebrow { display: none; }
+.cloud-account-history__intro { color: var(--ink-2); font-size: 13px; line-height: 1.6; }
+.cloud-account-history__intro summary { color: var(--accent-ink); cursor: pointer; font-weight: 600; }
+.cloud-account-history__intro summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.cloud-account-history__intro p { margin: 8px 0 12px; }
 .cloud-account-history__controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 18px 0; }
 .cloud-account-history__controls form { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
 .cloud-account-history__controls button { margin: 3px; }
-.cloud-account-history__snapshot { padding: 10px 12px; background: #eef7f6; border-left: 4px solid #238078; font-weight: 650; }
+.cloud-account-history__snapshot { padding: 10px 12px; background: var(--accent-soft); border-left: 4px solid var(--accent); font-weight: 650; }
 .cloud-account-history__balance { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 16px 0; }
-.cloud-account-history__balance div { padding: 10px; border: 1px solid var(--line, #dce1e7); border-radius: 7px; }
-.cloud-account-history__balance dt { color: var(--ink-3, #627182); font-size: 12px; }
+.cloud-account-history__balance div { padding: 10px; border: 1px solid var(--line); border-radius: 7px; }
+.cloud-account-history__balance dt { color: var(--ink-3); font-size: 12px; }
 .cloud-account-history__balance dd { margin: 5px 0 0; font-weight: 700; }
-.cloud-account-history section { margin: 24px 0; padding-top: 18px; border-top: 1px solid var(--line, #dce1e7); }
+.cloud-account-history__status { white-space: nowrap; }
+.cloud-account-history__empty-state { margin: 12px 0; }
+.cloud-account-history__empty.empty-ui {
+  display: block;
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  text-align: left;
+}
+.cloud-account-history__empty .empty-icon { display: none; }
+.cloud-account-history__empty .empty-title { margin: 0; font-size: 13px; font-weight: 500; }
+.cloud-account-history section { margin: 24px 0; padding-top: 18px; border-top: 1px solid var(--line); }
 .cloud-account-history__table-wrap { overflow: auto; max-width: 100%; }
+.cloud-account-history__table-wrap:has(details[open]) { overflow: visible; }
 .cloud-account-history table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .cloud-account-history th,
-.cloud-account-history td { padding: 8px 10px; border-bottom: 1px solid var(--line, #e2e6ea); text-align: left; vertical-align: top; white-space: nowrap; }
+.cloud-account-history td { padding: 8px 10px; border-bottom: 1px solid var(--line-2); text-align: left; vertical-align: top; white-space: nowrap; }
 .cloud-account-history td small { display: block; white-space: normal; }
 .cloud-account-history details { white-space: normal; }
-.cloud-account-history details summary { cursor: pointer; color: var(--accent, #176b87); }
-.cloud-account-history pre { max-width: 640px; max-height: 360px; overflow: auto; padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere; background: #f5f7f9; }
+.cloud-account-history details summary { cursor: pointer; color: var(--accent-ink); }
+.cloud-account-history pre { max-width: 640px; max-height: 360px; overflow: auto; padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-sunken); }
 .cloud-account-history__mutation,
-.cloud-account-history__recovery { margin-top: 20px; padding: 16px; border: 1px solid var(--line, #dce1e7); border-radius: 8px; background: #f8fafb; }
+.cloud-account-history__recovery { margin-top: 20px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-sunken); }
 .cloud-account-history__mutation { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
 .cloud-account-history__mutation h3,
 .cloud-account-history__mutation p { flex-basis: 100%; }
 @media (max-width: 720px) {
   .cloud-account-history { width: calc(100% - 16px); padding: 16px; }
   .cloud-account-history__header { flex-direction: column; }
+}
+
+.cloud-account-history__more {
+  position: relative;
+}
+
+.cloud-account-history__more > summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--panel);
+  color: var(--ink-2);
+  cursor: pointer;
+  list-style: none;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.cloud-account-history__more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.cloud-account-history__more > summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.cloud-account-history__more-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  gap: 6px;
+  min-width: 120px;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  z-index: 2;
+}
+
+.cloud-account-history__more-menu button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
 }

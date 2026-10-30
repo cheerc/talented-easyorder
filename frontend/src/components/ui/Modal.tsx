@@ -11,6 +11,28 @@ interface ModalProps {
 
 const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+function makeBackgroundInert(dialog: HTMLElement): () => void {
+  const previous = new Map<HTMLElement, boolean>();
+  const previousBodyOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+  let branch = dialog;
+  while (branch.parentElement) {
+    const parent = branch.parentElement;
+    for (const sibling of Array.from(parent.children)) {
+      if (sibling === branch || !(sibling instanceof HTMLElement)) continue;
+      previous.set(sibling, sibling.inert === true);
+      sibling.inert = true;
+    }
+    branch = parent;
+  }
+  return () => {
+    for (const [element, wasInert] of previous) {
+      if (element.isConnected) element.inert = wasInert;
+    }
+    document.body.style.overflow = previousBodyOverflow;
+  };
+}
+
 export const Modal = React.memo(function Modal({
   open,
   title,
@@ -28,12 +50,14 @@ export const Modal = React.memo(function Modal({
     if (!open) return;
     const previous = document.activeElement as HTMLElement | null;
     const panel = panelRef.current;
+    const restoreBackground = panel ? makeBackgroundInert(panel) : () => {};
     if (panel && !panel.contains(document.activeElement)) {
       const body = panel.querySelector<HTMLElement>('.modal-body');
       const target = body?.querySelector<HTMLElement>(FOCUSABLE) ?? panel;
       target.focus();
     }
     return () => {
+      restoreBackground();
       if (previous && previous.isConnected && previous !== document.body) previous.focus();
     };
   }, [open]);
@@ -95,7 +119,7 @@ export const Modal = React.memo(function Modal({
       >
         <div className="modal-header">
           <h2 className="modal-title">{title}</h2>
-          <button className="modal-close" onClick={onClose} aria-label="關閉">
+          <button type="button" className="modal-close" onClick={onClose} aria-label="關閉">
             ✕
           </button>
         </div>

@@ -3,11 +3,11 @@
   min-height: calc(100vh - 82px);
   margin: 24px auto 48px;
   padding: 28px;
-  color: var(--ink, #20252b);
-  background: var(--panel, #fff);
-  border: 1px solid var(--line, #dce1e7);
-  border-radius: 14px;
-  box-shadow: 0 12px 36px rgba(20, 33, 48, .07);
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
 }
 
 .cloud-day-vendors button,
@@ -35,28 +35,43 @@
 .cloud-day-vendors__header {
   gap: 24px;
   padding-bottom: 20px;
-  border-bottom: 1px solid var(--line, #dce1e7);
+  border-bottom: 1px solid var(--line);
 }
 
 .cloud-day-vendors__header h1 {
-  margin: 2px 0 8px;
+  margin: 2px 0 0;
   font-size: clamp(22px, 3vw, 30px);
   letter-spacing: -.025em;
 }
 
 .cloud-day-vendors__eyebrow {
   margin: 0;
-  color: var(--ink-3, #627182);
+  color: var(--ink-hint);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: .08em;
 }
 
 .cloud-day-vendors__intro {
-  max-width: 760px;
-  margin: 0;
-  color: var(--ink-2, #536170);
+  margin: 12px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
   line-height: 1.6;
+}
+
+.cloud-day-vendors__intro summary {
+  color: var(--accent-ink);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.cloud-day-vendors__intro summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.cloud-day-vendors__intro p {
+  margin: 8px 0 0;
 }
 
 .cloud-day-vendors__primary,
@@ -65,27 +80,31 @@
   min-height: 38px;
   padding: 8px 14px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--r);
   cursor: pointer;
   font-weight: 650;
   white-space: nowrap;
 }
 
 .cloud-day-vendors__primary {
-  color: #fff;
-  background: var(--accent, #176b87);
+  color: var(--panel);
+  background: var(--ink);
+}
+
+.cloud-day-vendors__primary:hover:not(:disabled) {
+  background: var(--accent);
 }
 
 .cloud-day-vendors__secondary {
-  color: var(--ink, #20252b);
-  background: var(--panel, #fff);
-  border-color: var(--line, #dce1e7);
+  color: var(--ink);
+  background: var(--panel);
+  border-color: var(--line);
 }
 
 .cloud-day-vendors__danger {
-  color: #78351f;
-  background: #fff1e9;
-  border-color: #f4c6b1;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: var(--danger);
 }
 
 .cloud-day-vendors button:disabled {
@@ -97,7 +116,7 @@
 .cloud-day-vendors input:focus-visible,
 .cloud-day-vendors textarea:focus-visible,
 .cloud-day-vendors select:focus-visible {
-  outline: 3px solid rgba(23, 107, 135, .3);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -110,30 +129,64 @@
 .cloud-day-vendors__unavailable {
   margin-top: 18px;
   padding: 14px 16px;
-  border-radius: 9px;
+  border-radius: var(--r);
   line-height: 1.55;
 }
 
 .cloud-day-vendors__alert,
 .cloud-day-vendors__recovery,
 .cloud-day-vendors__warning {
-  color: #78351f;
-  background: #fff1e9;
-  border: 1px solid #f4c6b1;
+  color: var(--ink);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
 }
 
 .cloud-day-vendors__notice {
-  color: #15513b;
-  background: #e9f6ef;
-  border: 1px solid #b9e2ca;
+  color: var(--ink);
+  background: var(--success-soft);
+  border: 1px solid var(--success);
 }
 
 .cloud-day-vendors__loading,
-.cloud-day-vendors__empty,
 .cloud-day-vendors__unavailable {
-  color: var(--ink-2, #536170);
-  background: var(--surface-subtle, #f5f7f9);
-  border: 1px solid var(--line, #dce1e7);
+  color: var(--ink-2);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+}
+
+.cloud-day-vendors__empty-state {
+  margin-top: 18px;
+}
+
+.cloud-day-vendors__empty.empty-ui {
+  display: block;
+  margin: 0;
+  padding: 14px 16px;
+  color: var(--ink-2);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  text-align: left;
+}
+
+.cloud-day-vendors__empty .empty-icon,
+.cloud-day-vendors__no-menu .empty-icon {
+  display: none;
+}
+
+.cloud-day-vendors__empty .empty-title,
+.cloud-day-vendors__no-menu .empty-title {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.cloud-day-vendors__no-menu.empty-ui {
+  display: block;
+  margin: 8px 0 0;
+  padding: 8px 0;
+  text-align: left;
 }
 
 .cloud-day-vendors__recovery {
@@ -147,12 +200,26 @@
 .cloud-day-vendors__vendor-section {
   margin-top: 22px;
   padding: 20px;
-  border: 1px solid var(--line, #dce1e7);
-  border-radius: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
 }
 
 .cloud-day-vendors__date-panel {
-  background: var(--surface-subtle, #f7f9fb);
+  background: var(--surface-sunken);
+}
+
+.cloud-day-vendors__date-panel .cloud-day-vendors__section-heading,
+.cloud-day-vendors__day-section > .cloud-day-vendors__section-heading,
+.cloud-day-vendors__vendor-section > .cloud-day-vendors__section-heading {
+  margin-bottom: 12px;
+}
+
+.cloud-day-vendors__date-panel h2,
+.cloud-day-vendors__day-section > .cloud-day-vendors__section-heading h2,
+.cloud-day-vendors__vendor-section > .cloud-day-vendors__section-heading h2 {
+  margin: 0;
+  font-size: 21px;
+  letter-spacing: -.015em;
 }
 
 .cloud-day-vendors__date-form {
@@ -169,10 +236,10 @@
   width: 100%;
   min-width: 0;
   padding: 9px 10px;
-  color: var(--ink, #20252b);
-  background: var(--panel, #fff);
-  border: 1px solid var(--line, #cbd3dc);
-  border-radius: 7px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
 }
 
 .cloud-day-vendors__date-form .cloud-day-vendors__input {
@@ -185,7 +252,7 @@
   flex-wrap: wrap;
   gap: 8px 18px;
   margin-top: 12px;
-  color: var(--ink-3, #627182);
+  color: var(--ink-hint);
   font-size: 12px;
 }
 
@@ -193,7 +260,7 @@
 .cloud-day-vendors__date-panel > p,
 .cloud-day-vendors__section-heading p,
 .cloud-day-vendors__footnote {
-  color: var(--ink-3, #627182);
+  color: var(--ink-hint);
   font-size: 13px;
   line-height: 1.55;
 }
@@ -202,21 +269,16 @@
   margin: 12px 0 0;
 }
 
-.cloud-day-vendors__day-section > .cloud-day-vendors__section-heading h2,
-.cloud-day-vendors__vendor-section > .cloud-day-vendors__section-heading h2 {
-  margin: 0 0 4px;
-  font-size: 21px;
-}
-
 .cloud-day-vendors__section-heading p {
   margin: 0;
 }
 
+/* 攤平「卡中卡」：內層沿用同一張卡，只以分隔線與間距分區 */
 .cloud-day-vendors__card {
-  margin-top: 18px;
-  padding: 18px;
-  border: 1px solid var(--line, #dce1e7);
-  border-radius: 9px;
+  margin-top: 16px;
+  padding: 18px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line-2);
 }
 
 .cloud-day-vendors__card h3 {
@@ -232,7 +294,7 @@
 }
 
 .cloud-day-vendors__summary dt {
-  color: var(--ink-3, #627182);
+  color: var(--ink-hint);
   font-size: 13px;
 }
 
@@ -244,14 +306,14 @@
 .cloud-day-vendors__inherit-card {
   margin: 12px 0;
   padding: 14px;
-  background: var(--surface-subtle, #f7f9fb);
-  border: 1px solid var(--line, #dce1e7);
-  border-radius: 8px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
 }
 
 .cloud-day-vendors__inherit-card p {
   margin: 0 0 8px;
-  color: var(--ink-2, #536170);
+  color: var(--ink-2);
   font-size: 13px;
   line-height: 1.55;
 }
@@ -265,65 +327,65 @@
   margin-top: 12px;
 }
 
-.cloud-day-vendors__vendor-section > .cloud-day-vendors__section-heading {
-  margin-bottom: 12px;
-}
-
 .cloud-day-vendors__form-wrap {
   margin-bottom: 16px;
 }
 
 .cloud-day-vendors__table-wrap {
   overflow-x: auto;
-  border: 1px solid var(--line, #dce1e7);
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
 }
 
 .cloud-day-vendors table {
   width: 100%;
   min-width: 720px;
   border-collapse: collapse;
+  font-size: 13px;
 }
 
 .cloud-day-vendors th,
 .cloud-day-vendors td {
   padding: 11px 12px;
-  border-bottom: 1px solid var(--line, #e5e9ee);
+  border-bottom: 1px solid var(--line-2);
   text-align: left;
   vertical-align: top;
 }
 
 .cloud-day-vendors th {
-  color: var(--ink-3, #627182);
-  background: var(--surface-subtle, #f7f9fb);
+  position: sticky;
+  top: 0;
+  background: var(--surface-sunken);
+  color: var(--ink-hint);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cloud-day-vendors td small {
+  display: block;
+  color: var(--ink-hint);
+}
+
+.cloud-day-vendors__phone {
+  white-space: nowrap;
 }
 
 .cloud-day-vendors tbody tr:last-child td {
   border-bottom: 0;
 }
 
+.cloud-day-vendors tbody tr:hover {
+  background: var(--line-2);
+}
+
 .cloud-day-vendors__mono {
   font-variant-numeric: tabular-nums;
 }
 
-.cloud-day-vendors__status {
-  display: inline-block;
-  padding: 3px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.cloud-day-vendors__status--active {
-  color: #15513b;
-  background: #e9f6ef;
-}
-
-.cloud-day-vendors__status--inactive {
-  color: #78351f;
-  background: #fff1e9;
+.cloud-day-vendors__status,
+.cloud-day-vendors__day-status {
+  white-space: nowrap;
 }
 
 .cloud-day-vendors__remove-form {
@@ -334,7 +396,7 @@
 
 .cloud-day-vendors__remove-form p {
   margin: 0;
-  color: var(--ink-3, #627182);
+  color: var(--ink-hint);
   font-size: 12px;
   line-height: 1.5;
 }

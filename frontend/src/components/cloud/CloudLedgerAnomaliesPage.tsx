@@ -1,5 +1,8 @@
 import type { LedgerAnomaly, OpeningMismatchAnomaly } from '../../domain/ledgerAnomalies';
 import type { CloudLedgerView } from '../../hooks/useCloudLedger';
+import { Button } from '../ui/Button';
+import { EmptyState } from '../ui/EmptyState';
+import { StatusBadge } from '../ui/StatusBadge';
 import './CloudLedgerAnomaliesPage.css';
 
 export interface CloudLedgerAnomaliesPageProps {
@@ -24,6 +27,9 @@ function AnomalyItem({ anomaly, onOpenDayClose, onOpenPostCloseEntry }: {
     return (
       <li className="cloud-ledger-anomalies__item" data-kind={anomaly.kind}>
         <h3>{anomaly.dayId} 尚未關帳</h3>
+        <StatusBadge variant="warn" className="cloud-ledger-anomalies__status">
+          {anomaly.status === 'reopened' ? '重開後未關帳' : '尚未關帳'}
+        </StatusBadge>
         <p>
           這一天{anomaly.status === 'reopened' ? '重開後' : ''}還沒有關帳，
           {anomaly.openingCash === null ? '也還沒有確認開帳現金' : `開帳現金 ${formatMoney(anomaly.openingCash)}`}，
@@ -35,11 +41,11 @@ function AnomalyItem({ anomaly, onOpenDayClose, onOpenPostCloseEntry }: {
           {anomaly.status === 'open' && '如果是斷線等原因漏記了交易，也可以先標為回填，再補登剩下的交易。'}
         </p>
         <div className="cloud-ledger-anomalies__actions">
-          <button type="button" onClick={() => onOpenDayClose(anomaly.dayId)}>到日結頁處理 {anomaly.dayId}</button>
+          <Button type="button" variant="secondary" onClick={() => onOpenDayClose(anomaly.dayId)}>到日結頁處理 {anomaly.dayId}</Button>
           {anomaly.status === 'open' && (
-            <button type="button" onClick={() => onOpenDayClose(anomaly.dayId)} data-testid={`anomaly-mark-backfill-${anomaly.dayId}`}>
+            <Button type="button" variant="ghost" onClick={() => onOpenDayClose(anomaly.dayId)} data-testid={`anomaly-mark-backfill-${anomaly.dayId}`}>
               標為回填，補登剩下的交易（{anomaly.dayId}）
-            </button>
+            </Button>
           )}
         </div>
       </li>
@@ -49,6 +55,7 @@ function AnomalyItem({ anomaly, onOpenDayClose, onOpenPostCloseEntry }: {
   return (
     <li className="cloud-ledger-anomalies__item" data-kind={anomaly.kind}>
       <h3>{anomaly.dayId} 開帳現金與上次關帳不符</h3>
+      <StatusBadge variant="warn" className="cloud-ledger-anomalies__status">差額異常</StatusBadge>
       <p>
         {anomaly.dayId} 的開帳現金是 {formatMoney(anomaly.openingCash)}，上一個已關帳日 {anomaly.previousClosedDayId} 的實點現金是
         {' '}{formatMoney(anomaly.previousCountedCash)}
@@ -72,7 +79,7 @@ function AnomalyItem({ anomaly, onOpenDayClose, onOpenPostCloseEntry }: {
             {anomaly.gapDays.map(gapDay => (
               <li key={gapDay}>
                 <span>{gapDay}</span>
-                <button type="button" onClick={() => onOpenDayClose(gapDay)} data-testid={`backfill-gap-${gapDay}`}>回填這一天（{gapDay}）</button>
+                <Button type="button" variant="secondary" onClick={() => onOpenDayClose(gapDay)} data-testid={`backfill-gap-${gapDay}`}>回填這一天（{gapDay}）</Button>
               </li>
             ))}
           </ul>
@@ -80,9 +87,9 @@ function AnomalyItem({ anomaly, onOpenDayClose, onOpenPostCloseEntry }: {
       ) : (
         <>
           <p>兩個日期之間每一天都已經有營業日資料，沒有可以回填的空日。</p>
-          <button type="button" onClick={() => onOpenPostCloseEntry(anomaly)} data-testid={`post-close-shortcut-${anomaly.dayId}`}>
+          <Button type="button" variant="secondary" onClick={() => onOpenPostCloseEntry(anomaly)} data-testid={`post-close-shortcut-${anomaly.dayId}`}>
             到前一個已關帳日補記差額（{anomaly.previousClosedDayId}）
-          </button>
+          </Button>
         </>
       )}
     </li>
@@ -93,27 +100,32 @@ export function CloudLedgerAnomaliesPage({ ledger, onReload, onOpenDayClose, onO
   return (
     <main className="cloud-ledger-anomalies" aria-label="帳務異常">
       <header className="cloud-ledger-anomalies__header">
-        <div>
+        <div className="cloud-ledger-anomalies__title">
           <p className="cloud-ledger-anomalies__eyebrow">雲端資料 · 線上操作</p>
           <h1>帳務異常</h1>
-          <p>
-            這裡列出伺服器上的帳務異常：過去沒有關帳的日子，以及開帳現金和上一個已關帳日實點不同的日子。
-            異常不會擋住當天作業，但請儘速處理，避免帳務核對越來越困難。
-          </p>
         </div>
-        <button type="button" onClick={onReload} disabled={ledger.status === 'loading'}>
+        <Button type="button" variant="secondary" onClick={onReload} disabled={ledger.status === 'loading'}>
           {ledger.status === 'loading' ? '讀取中…' : '重新讀取'}
-        </button>
+        </Button>
       </header>
+      <details className="cloud-ledger-anomalies__intro">
+        <summary>異常判定與處理原則</summary>
+        <p>
+          這裡列出伺服器上的帳務異常：過去沒有關帳的日子，以及開帳現金和上一個已關帳日實點不同的日子。
+          異常不會擋住當天作業，但請儘速處理，避免帳務核對越來越困難。
+        </p>
+      </details>
       {ledger.status === 'loading' && <p role="status">正在從伺服器檢查帳務異常…</p>}
       {ledger.status === 'error' && <div className="cloud-ledger-anomalies__alert" role="alert">無法檢查帳務異常：{ledger.message}</div>}
       {ledger.status === 'ready' && (
         <>
-          <p role="status">
+          <p role="status" className="cloud-ledger-anomalies__range">
             檢查範圍：{ledger.snapshot.goLiveDate} 至 {ledger.snapshot.today}，共 {ledger.snapshot.anomalies.length} 筆異常。
           </p>
           {ledger.snapshot.anomalies.length === 0 ? (
-            <p className="cloud-ledger-anomalies__empty">目前沒有帳務異常。</p>
+            <div className="cloud-ledger-anomalies__card">
+              <EmptyState title="沒有帳務異常" className="cloud-ledger-anomalies__empty" />
+            </div>
           ) : (
             <ul className="cloud-ledger-anomalies__list" aria-label="帳務異常清單">
               {ledger.snapshot.anomalies.map(anomaly => (
