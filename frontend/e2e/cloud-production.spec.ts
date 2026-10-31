@@ -187,10 +187,26 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
       await pageA.getByRole('button', { name: '取得系統使用權' }).click();
       await expect(pageA.locator('.operator-strip')).toBeVisible();
       await expect.poll(readAccessLease).toMatchObject({ holderUid: sessionA.uid, epoch: 1 });
+      // B's sign-in refreshes A's ID token through the shared Auth persistence, and A masks while it re-checks
+      // access. That can land after B is ready; if it lands while the test opens A's operator menu, the shell
+      // remounts with the menu closed and the release click waits forever (#569). Count A's masks from here on.
+      await pageA.evaluate(() => {
+        const state = window as unknown as { __a04Masks: number };
+        state.__a04Masks = 0;
+        let masked = false;
+        new MutationObserver(() => {
+          const nowMasked = document.querySelector('.operator-strip') === null;
+          if (nowMasked && !masked) state.__a04Masks += 1;
+          masked = nowMasked;
+        }).observe(document.body, { childList: true, subtree: true });
+      });
 
       const sessionB = await signInGoogle(pageB, E2E_IDENTITIES.operatorA.email);
       expect(sessionB.uid).toBe(sessionA.uid);
       await expect(pageB.locator('.operator-strip')).toBeVisible();
+      // A finishes its own re-check of the same holder before anything clicks on it.
+      await expect.poll(() => pageA.evaluate(() => (window as unknown as { __a04Masks: number }).__a04Masks)).toBe(1);
+      await expect(pageA.locator('.operator-strip')).toBeVisible();
 
       await release(pageA);
       await expect.poll(readAccessLease).toMatchObject({ holderUid: null, epoch: 2 });
