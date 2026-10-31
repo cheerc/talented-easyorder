@@ -55,6 +55,26 @@ test('cloud shell routes, physical Alt keys, draft guard and themes', async ({ g
     await page.locator('.operator-menu summary').click();
     await expect(page.locator('body')).toHaveAttribute('data-theme', theme);
     if (process.env.EASYORDER_EVIDENCE_DIR) await page.screenshot({ path: `${process.env.EASYORDER_EVIDENCE_DIR}/shell-${width}-${theme}.png` });
+    if (width === 1024) {
+      // P6：≤1180px 雲端外殼也是兩列——品牌與狀態同一列，五個主分頁獨佔第二列且都在視窗內。
+      const shell = await page.locator('header.app-shell').evaluate(node => {
+        const box = (selector: string) => node.querySelector(selector)!.getBoundingClientRect();
+        const brand = box('.brand'); const status = box('.status'); const tabs = box('.tabs');
+        const tabBoxes = Array.from(node.querySelectorAll('.tabs .tab')).map(tab => tab.getBoundingClientRect());
+        return {
+          brandTop: brand.top, statusTop: status.top, tabsTop: tabs.top, brandBottom: brand.bottom,
+          tabLeft: Math.min(...tabBoxes.map(rect => rect.left)), tabRight: Math.max(...tabBoxes.map(rect => rect.right)),
+          columns: getComputedStyle(node).gridTemplateColumns.split(' ').length,
+          overflow: document.documentElement.scrollWidth - window.innerWidth,
+        };
+      });
+      expect(Math.abs(shell.brandTop - shell.statusTop)).toBeLessThan(shell.brandBottom - shell.brandTop);
+      expect(shell.columns, '≤1180px 外殼應為兩欄 grid（雲端基準三欄規則不得蓋掉）').toBe(2);
+      expect(shell.tabsTop).toBeGreaterThanOrEqual(shell.brandBottom);
+      expect(shell.tabLeft).toBeGreaterThanOrEqual(0);
+      expect(shell.tabRight).toBeLessThanOrEqual(width);
+      expect(shell.overflow).toBeLessThanOrEqual(0);
+    }
   }
   await release(page);
 });
