@@ -49,6 +49,9 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   const [access, setAccess] = useState<OperatorAccess>({ ok: false, reason: 'signed_out' });
   const accessRef = useRef<OperatorAccess>({ ok: false, reason: 'signed_out' });
   const [lease, setLease] = useState<ActiveLeaseState>(defaultLeaseState);
+  // Bumped whenever access stops being ok. `checking` followed by the same operator can land in one render (another
+  // same-UID tab signing in refreshes this tab's ID token), so the UID alone would not restart the lease check (#569).
+  const [accessResetCount, setAccessResetCount] = useState(0);
   const leaseRef = useRef<ActiveLeaseState>(defaultLeaseState);
   const confirmedEpochRef = useRef<number | null>(null);
   const probedEpochRef = useRef<number | null>(null);
@@ -119,6 +122,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
         probedEpochRef.current = null;
         stopHeartbeat();
         publishLease(defaultLeaseState);
+        setAccessResetCount(count => count + 1);
         // `checking`, inactive and signed-out all mask first and clear only Cloud state.
         void clearSensitiveDataSafely();
       }
@@ -249,7 +253,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       stopHeartbeat();
     };
-  }, [fb?.db, currentUid]);
+  }, [fb?.db, currentUid, accessResetCount]);
 
   useEffect(() => {
     if (!fb?.db || !currentUid || !lease.isKnown || !lease.isHolder) return;
