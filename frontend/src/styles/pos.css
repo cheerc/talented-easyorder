@@ -590,6 +590,11 @@ input::-webkit-inner-spin-button {
   font-size: 15px;
 }
 
+.vendor-phone,
+.vendor-phone a {
+  white-space: nowrap;
+}
+
 .vendor-phone a {
   color: var(--accent-ink);
   text-decoration: none;

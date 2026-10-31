@@ -7,6 +7,7 @@ export default defineConfig({
     '**/deposit-flow.spec.ts',
     '**/expense-flow.spec.ts',
     '**/order-flow.spec.ts',
+    '**/prototype-layout.spec.ts',
     '**/settlement-flow.spec.ts',
   ],
   testIgnore: ['**/auth.spec.ts', '**/cloud-production.spec.ts', '**/smoke.spec.ts'],

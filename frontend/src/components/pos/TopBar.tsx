@@ -49,7 +49,7 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, navigationLocked
             />
             <button
               className="db-trigger"
-              title="前一天"
+              title="前一天" aria-label="前一天"
               style={{ width: '22px', height: '22px', fontSize: '10px', borderRadius: '4px' }}
               onClick={() => {
                 const d = new Date(viewDate);
@@ -59,7 +59,7 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, navigationLocked
             ><ChevronLeft size={14} aria-hidden="true" /></button>
             <button
               className="db-trigger"
-              title="後一天"
+              title="後一天" aria-label="後一天"
               style={{ width: '22px', height: '22px', fontSize: '10px', borderRadius: '4px' }}
               onClick={() => {
                 const d = new Date(viewDate);
@@ -132,7 +132,7 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, navigationLocked
           )}
         </div>
         {onDashboard && (
-          <button className="db-trigger" disabled={navigationLocked} onClick={onDashboard} title="今日營運概覽 (F6)">
+          <button className="db-trigger" disabled={navigationLocked} onClick={onDashboard} title="今日營運概覽 (F6)" aria-label="今日營運概覽">
             <ChartColumn size={18} aria-hidden="true" />
           </button>
         )}
