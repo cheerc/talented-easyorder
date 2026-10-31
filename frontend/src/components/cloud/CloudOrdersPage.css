@@ -5,9 +5,9 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  width: 100%;
-  max-width: 1600px;
-  margin: 0 auto;
+  /* Same side gutter as the other cloud pages (#581 D2). */
+  width: min(1600px, calc(100% - 32px));
+  margin: 20px auto 32px;
 }
 
 /* ============ 頁首 ============ */
