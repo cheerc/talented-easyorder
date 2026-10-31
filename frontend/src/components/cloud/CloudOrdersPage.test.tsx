@@ -976,6 +976,24 @@ describe('CloudOrdersPage', () => {
     expect(repositoryMock.createPayment).not.toHaveBeenCalled();
   });
 
+  it('A works as soon as the loaded page is on screen, before later effects run (#574)', async () => {
+    let pressed = false;
+    // Press A from the mutation callback of the commit that shows the loaded page, i.e. before React's passive effects flush.
+    const observer = new MutationObserver(() => {
+      if (pressed || !screen.queryByTestId('cloud-cash-summary')) return;
+      pressed = true;
+      fireEvent.keyDown(window, { key: 'a' });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    try {
+      renderComponent();
+      await waitFor(() => expect(pressed).toBe(true));
+    } finally {
+      observer.disconnect();
+    }
+    expect(await screen.findByTestId('cash-movement-card')).toHaveTextContent('不影響任何學生餘額');
+  });
+
   it('requires a counter cash reason and a positive whole amount', async () => {
     renderComponent();
     fireEvent.click(await screen.findByTestId('open-cash-movement-button'));
