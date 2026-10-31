@@ -43,12 +43,21 @@ export const Modal = React.memo(function Modal({
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; });
+  // Record the opener during the render that opens the dialog: a child's autoFocus runs in the
+  // commit, before this component's effects, so reading activeElement in the effect would get the
+  // dialog's own button and cancel could not restore focus (#581 D3).
+  const openerRef = useRef<HTMLElement | null>(null);
+  const wasOpenRef = useRef(false);
+  if (open && !wasOpenRef.current && typeof document !== 'undefined') {
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }
+  wasOpenRef.current = open;
 
   // M1 K09：開啟時把焦點移進對話框（子元件已用 autoFocus 指定的就不動），關閉時還給原本的元素，
   // 避免 Tab／Enter 落在對話框後面的按鈕上。
   useEffect(() => {
     if (!open) return;
-    const previous = document.activeElement as HTMLElement | null;
+    const previous = openerRef.current;
     const panel = panelRef.current;
     const restoreBackground = panel ? makeBackgroundInert(panel) : () => {};
     if (panel && !panel.contains(document.activeElement)) {

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import React from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ConfirmDialog } from '../ConfirmDialog';
@@ -171,5 +172,36 @@ describe('ConfirmDialog', () => {
         window.removeEventListener('keydown', background);
       }
     });
+  });
+});
+
+describe('ConfirmDialog focus restore (#581 D3)', () => {
+  function Harness() {
+    const [open, setOpen] = React.useState(false);
+    return (
+      <>
+        <input aria-label="金額" onKeyDown={event => { if (event.key === 'F2') setOpen(true); }} />
+        <ConfirmDialog
+          open={open}
+          title="離開並捨棄草稿？"
+          message="尚未送出的草稿會被捨棄。"
+          defaultAction="cancel"
+          cancelLabel="取消離開"
+          onCancel={() => setOpen(false)}
+          onConfirm={() => setOpen(false)}
+        />
+      </>
+    );
+  }
+
+  it('returns focus to the opener when cancel had the initial autoFocus', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const amount = screen.getByLabelText('金額');
+    amount.focus();
+    await user.keyboard('{F2}');
+    expect(screen.getByRole('button', { name: '取消離開' })).toHaveFocus();
+    await user.click(screen.getByRole('button', { name: '取消離開' }));
+    expect(amount).toHaveFocus();
   });
 });

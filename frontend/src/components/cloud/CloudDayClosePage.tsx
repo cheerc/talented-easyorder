@@ -1840,7 +1840,7 @@ export function CloudDayClosePage({
                 {currentKind === 'missing-opening' && snapshot.dayId <= selectionDate && (
                   <p className="cloud-day-close__warning">
                     {snapshot.dayId === selectionDate
-                      ? '尚未確認開帳現金，不能關帳。請先到「日期與供應商」確認開帳現金。'
+                      ? '尚未確認開帳現金，不能關帳。請先到「今日設定 › 菜單與開帳」確認開帳現金。'
                       : '這天有交易但沒有開帳現金，要先補開帳才能關帳。'}
                   </p>
                 )}
