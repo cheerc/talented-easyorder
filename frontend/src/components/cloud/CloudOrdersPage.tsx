@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { Firestore } from 'firebase/firestore';
 import { Kbd } from '../ui/Kbd';
 import { Button } from '../ui/Button';
@@ -1556,7 +1556,9 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     return () => window.clearTimeout(timer);
   }, [undoExpiresAt]);
 
-  useEffect(() => {
+  // A layout effect, so the window listeners see the state of the commit already on screen; a passive effect left a key pressed
+  // right after a render (e.g. A as soon as the snapshot appears) to the previous listener and its stale state (#574).
+  useLayoutEffect(() => {
     const compositionStart = () => { composingRef.current = true; };
     const compositionEnd = () => { composingRef.current = false; };
     const guardEnter = (event: KeyboardEvent) => {
