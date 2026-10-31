@@ -62,3 +62,16 @@ for (const width of WIDTHS) {
     });
   });
 }
+
+test.describe('prototype 純圖示按鈕', () => {
+  test('各分頁的純圖示按鈕都有 aria-label（v3 §3.2）', async ({ prototypePage: page }) => {
+    for (const key of ['F1', 'F2', 'F3', 'F4', 'F5']) {
+      await page.keyboard.press(key);
+      await page.waitForTimeout(300);
+      const unnamed = await page.evaluate(() => Array.from(document.querySelectorAll('button'))
+        .filter(button => !(button.textContent ?? '').replace(/[\s​]/g, '') && !button.getAttribute('aria-label') && !button.getAttribute('aria-labelledby'))
+        .map(button => button.className || button.outerHTML.slice(0, 80)));
+      expect(unnamed, `${key} 有沒有名稱的純圖示按鈕`).toEqual([]);
+    }
+  });
+});
