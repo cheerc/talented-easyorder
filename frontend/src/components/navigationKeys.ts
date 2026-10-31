@@ -13,13 +13,22 @@ export function navigationKey(event: KeyboardEvent): number | null {
   return null;
 }
 
-let compositionActive = false;
+// Set by compositionstart and cleared by compositionend. A browser is not required to send compositionend (#568), so the state
+// is also cleared when the composing element loses focus or the window does, and ignored once that element left the page.
+let compositionTarget: EventTarget | null = null;
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('compositionstart', () => { compositionActive = true; });
-  window.addEventListener('compositionend', () => { compositionActive = false; });
+  const clear = () => { compositionTarget = null; };
+  window.addEventListener('compositionstart', event => { compositionTarget = event.target ?? window; });
+  window.addEventListener('compositionend', clear);
+  window.addEventListener('focusout', clear);
+  window.addEventListener('blur', clear);
+}
+
+function compositionActive(): boolean {
+  return compositionTarget !== null && (!(compositionTarget instanceof Node) || compositionTarget.isConnected);
 }
 
 export function isCompositionKey(event: KeyboardEvent): boolean {
-  return compositionActive || event.isComposing || event.keyCode === 229;
+  return compositionActive() || event.isComposing || event.keyCode === 229;
 }
