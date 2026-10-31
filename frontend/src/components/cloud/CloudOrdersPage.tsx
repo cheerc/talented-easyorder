@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { Firestore } from 'firebase/firestore';
 import { Kbd } from '../ui/Kbd';
+import { isCompositionKey } from '../navigationKeys';
 import { Button } from '../ui/Button';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
 import type { PendingReceiptCheck } from '../../firebase/cloudCommandRepository';
@@ -520,7 +521,6 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const searchInputRef = useRef<HTMLInputElement>(null);
   const amountInputRef = useRef<HTMLInputElement>(null);
   const otherItemRef = useRef<HTMLInputElement>(null);
-  const composingRef = useRef(false);
   const focusSearchRef = useRef(false);
   const focusOtherRef = useRef(false);
   const [highlight, setHighlight] = useState(0);
@@ -1559,17 +1559,15 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   // A layout effect, so the window listeners see the state of the commit already on screen; a passive effect left a key pressed
   // right after a render (e.g. A as soon as the snapshot appears) to the previous listener and its stale state (#574).
   useLayoutEffect(() => {
-    const compositionStart = () => { composingRef.current = true; };
-    const compositionEnd = () => { composingRef.current = false; };
     const guardEnter = (event: KeyboardEvent) => {
-      if (event.key === 'Enter' && (event.repeat || event.isComposing || composingRef.current || event.keyCode === 229
+      if (event.key === 'Enter' && (event.repeat || isCompositionKey(event)
         || (event.target instanceof HTMLElement && event.target.id === 'other-item-name'))) {
         event.preventDefault();
         event.stopPropagation();
       }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.repeat || event.isComposing || composingRef.current || event.keyCode === 229
+      if (event.defaultPrevented || event.repeat || isCompositionKey(event)
         || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || pageState.authorizationRevoked
         || pageState.recovery || operationRef.current || !pageState.snapshot) return;
       if (pageState.confirmDuplicateOpen || pageState.paymentDetailsOpen || pageState.refundConfirmOpen || pageState.edit) {
@@ -1627,13 +1625,9 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
         setPageStateRaw(previous => ({ ...previous, ...freshDraft(), cashOpen: true, actionError: '', notice: '' }));
       }
     };
-    window.addEventListener('compositionstart', compositionStart);
-    window.addEventListener('compositionend', compositionEnd);
     window.addEventListener('keydown', guardEnter, true);
     window.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.removeEventListener('compositionstart', compositionStart);
-      window.removeEventListener('compositionend', compositionEnd);
       window.removeEventListener('keydown', guardEnter, true);
       window.removeEventListener('keydown', handleKeyDown);
     };
@@ -1817,7 +1811,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                         aria-controls="cloud-search-results"
                         aria-activedescendant={visibleStudents.length ? `cloud-search-option-${activeIndex}` : undefined}
                         onKeyDown={event => {
-                          if (event.defaultPrevented || event.repeat || event.nativeEvent.isComposing || composingRef.current
+                          if (event.defaultPrevented || event.repeat || isCompositionKey(event.nativeEvent)
                             || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
                           if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && visibleStudents.length) {
                             event.preventDefault();
