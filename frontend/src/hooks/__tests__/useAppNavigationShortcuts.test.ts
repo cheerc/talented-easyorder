@@ -243,6 +243,73 @@ describe('useAppNavigationShortcuts — input method and repeat guards', () => {
     expect(setTab).toHaveBeenCalledWith('admin');
   });
 
+  // #568：漏送 compositionend 時，組字狀態不能永久卡住讓 F 鍵全部失效。
+  describe('composition left without compositionend (#568)', () => {
+    function startCompositionIn(input: HTMLInputElement) {
+      input.focus();
+      act(() => { input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true })); });
+    }
+
+    function pressF3() {
+      act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F3', bubbles: true, cancelable: true })); });
+    }
+
+    it('navigates again after the composing input loses focus', () => {
+      const setTab = vi.fn();
+      const input = document.body.appendChild(document.createElement('input'));
+      try {
+        renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, setTab }));
+        startCompositionIn(input);
+        pressF3();
+        expect(setTab).not.toHaveBeenCalled();
+        act(() => { input.blur(); });
+        pressF3();
+        expect(setTab).toHaveBeenCalledWith('admin');
+      } finally {
+        input.remove();
+      }
+    });
+
+    it('navigates again after the window loses focus', () => {
+      const setTab = vi.fn();
+      const input = document.body.appendChild(document.createElement('input'));
+      try {
+        renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, setTab }));
+        startCompositionIn(input);
+        act(() => { window.dispatchEvent(new FocusEvent('blur')); });
+        pressF3();
+        expect(setTab).toHaveBeenCalledWith('admin');
+      } finally {
+        input.remove();
+      }
+    });
+
+    it('navigates again after the composing input is removed from the page', () => {
+      const setTab = vi.fn();
+      const input = document.body.appendChild(document.createElement('input'));
+      renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, setTab }));
+      startCompositionIn(input);
+      // jsdom, like Chromium, sends no focusout when a focused element is removed.
+      input.remove();
+      pressF3();
+      expect(setTab).toHaveBeenCalledWith('admin');
+    });
+
+    it('still ignores navigation keys while the composing input keeps focus', () => {
+      const setTab = vi.fn();
+      const input = document.body.appendChild(document.createElement('input'));
+      try {
+        renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, setTab }));
+        startCompositionIn(input);
+        pressF3();
+        expect(setTab).not.toHaveBeenCalled();
+      } finally {
+        act(() => { input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true })); });
+        input.remove();
+      }
+    });
+  });
+
   it('ignores the legacy keyCode 229 used by IMEs', () => {
     const setTab = vi.fn();
     renderHook(() => useAppNavigationShortcuts({ ...DEFAULT_PROPS, setTab }));
