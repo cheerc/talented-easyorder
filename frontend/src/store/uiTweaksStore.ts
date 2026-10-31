@@ -85,6 +85,9 @@ export function savePersistedUiTweaks(tweaks: UiTweaksPersisted): void {
 export function applyBodyAttributes(tweaks: { theme: UiTheme; scale: UiScale }): void {
   if (typeof document === 'undefined' || !document.body) return;
   document.body.setAttribute('data-theme', tweaks.theme);
+  // <html> paints the canvas past body's 100% height; without the theme there
+  // it falls back to the light :root background when a long page scrolls.
+  document.documentElement.setAttribute('data-theme', tweaks.theme);
   document.body.setAttribute('data-scale', tweaks.scale);
   document.body.setAttribute('data-fs', tweaks.scale === 'large' ? 'lg' : 'md');
 }

@@ -436,6 +436,39 @@ describe('CloudOrdersPage', () => {
     expect(search).toHaveValue('1');
   });
 
+  // #581 D3：鍵盤流程中焦點不能掉到 body。
+  it.each(['q', 'w'])('moves focus from the 其他餐點 price field to the amount field on %s (#581)', async key => {
+    renderComponent();
+    await selectStudent('001');
+    fireEvent.click(screen.getByRole('button', { name: '其他餐點' }));
+    const price = screen.getByLabelText(/餐點單價/);
+    price.focus();
+    fireEvent.keyDown(price, { key });
+    expect(screen.queryByLabelText(/餐點單價/)).toBeNull();
+    expect(screen.getByLabelText(key === 'q' ? /實收金額/ : /繳費金額/)).toHaveFocus();
+  });
+
+  it('returns focus to the amount field after cancelling the duplicate-order confirm (#581)', async () => {
+    renderComponent();
+    await selectStudent('002');
+    fireEvent.click(screen.getByTestId('submit-order-button'));
+    const dialog = await screen.findByRole('dialog', { name: '確認加訂餐點' });
+    const cancel = within(dialog).getByRole('button', { name: '取消' });
+    expect(cancel).toHaveFocus();
+    fireEvent.click(cancel);
+    expect(screen.queryByTestId('confirm-duplicate-button')).toBeNull();
+    expect(screen.getByLabelText(/實收金額/)).toHaveFocus();
+  });
+
+  it('shows a negative balance in the search list the same way as the account card (#581)', async () => {
+    const base = snapshot();
+    repositoryMock.loadSnapshot.mockResolvedValue(snapshot({ students: [...base.students, mockStudent('s4', '004', '趙欠款', -50)] }));
+    renderComponent();
+    fireEvent.change(await screen.findByLabelText('搜尋編號、姓名或別名'), { target: { value: '004' } });
+    expect(await screen.findByTestId('search-result-004')).toHaveTextContent('−$50 欠款');
+    expect(screen.getByTestId('search-result-004')).not.toHaveTextContent('結餘 $-50');
+  });
+
   it('renders the two-row meal counters from the reconciled server day (U2a contract)', async () => {
     renderComponent();
     const bentoRow = await screen.findByTestId('cloud-topbar-bento');
@@ -871,8 +904,16 @@ describe('CloudOrdersPage', () => {
 
   it('blocks ordering when today has no business day', async () => {
     repositoryMock.loadSnapshot.mockResolvedValue(snapshot({ day: null, transactions: [] }));
-    renderComponent();
-    expect(await screen.findByTestId('ordering-blocked')).toHaveTextContent('營業日尚未建立');
+    const onOpenSettings = vi.fn();
+    renderComponent('uid-1:1', undefined, { onOpenSettings });
+    const blocked = await screen.findByTestId('ordering-blocked');
+    expect(blocked).toHaveTextContent('營業日尚未建立');
+    // #581 D5：用現在的頁名，並提供到今日設定的入口，不再是紅色錯誤框。
+    expect(blocked).toHaveTextContent('今日設定 › 菜單與開帳');
+    expect(blocked).not.toHaveTextContent('日期與供應商');
+    expect(blocked).not.toHaveClass('cloud-orders__error');
+    fireEvent.click(within(blocked).getByRole('button', { name: /到今日設定/ }));
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
   it('supports ordering an other meal when no menu is configured', async () => {

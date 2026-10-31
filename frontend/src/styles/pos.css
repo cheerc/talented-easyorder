@@ -711,6 +711,47 @@ input::-webkit-inner-spin-button {
   line-height: 1.6;
 }
 
+/* Backup card form controls (#581 D4): label above field, themed inputs. Styling only. */
+.bk-flow label {
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+  text-align: left;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.bk-flow input[type="password"],
+.bk-flow input[type="file"] {
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-sunken);
+  color: var(--ink);
+  font: inherit;
+}
+
+.bk-flow input::file-selector-button {
+  margin-right: 10px;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.bk-flow input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.bk-flow .rest-btns {
+  margin-top: 16px;
+}
+
 .admin-grid-2 {
   grid-template-columns: 1fr 1fr;
 }

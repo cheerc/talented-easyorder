@@ -523,6 +523,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const otherItemRef = useRef<HTMLInputElement>(null);
   const focusSearchRef = useRef(false);
   const focusOtherRef = useRef(false);
+  const focusAmountRef = useRef(false);
   const [highlight, setHighlight] = useState(0);
   // 窄寬時右欄收合成可展開區塊；寬螢幕由 CSS 直接顯示，不受此狀態影響。
   const [sideOpen, setSideOpen] = useState(false);
@@ -798,10 +799,25 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     if (page.selectedStudentId) amountInputRef.current?.focus();
     else if (focusSearchRef.current) { focusSearchRef.current = false; searchInputRef.current?.focus(); }
   }, [page.selectedStudentId, page.snapshot]);
-  useEffect(() => {
+  // Closing a page dialog unmounts the focused dialog button; hand focus back to the amount field
+  // (or search) instead of leaving it on <body> (#581 D3).
+  const pageDialogOpen = page.confirmDuplicateOpen || page.refundConfirmOpen || page.paymentDetailsOpen || page.edit !== null;
+  const pageDialogWasOpenRef = useRef(pageDialogOpen);
+  useLayoutEffect(() => {
+    const wasOpen = pageDialogWasOpenRef.current;
+    pageDialogWasOpenRef.current = pageDialogOpen;
+    if (!wasOpen || pageDialogOpen) return;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    (page.selectedStudentId ? amountInputRef.current : searchInputRef.current)?.focus();
+  }, [pageDialogOpen, page.selectedStudentId]);
+  // Layout effect so the next keystroke after Q/W/R already lands in the new field (#581 D3).
+  useLayoutEffect(() => {
     if (page.mode === 'other' && focusOtherRef.current) {
       focusOtherRef.current = false;
       otherItemRef.current?.focus();
+    } else if (page.mode !== 'other' && focusAmountRef.current) {
+      focusAmountRef.current = false;
+      amountInputRef.current?.focus();
     }
   }, [page.mode]);
   useEffect(() => {
@@ -822,9 +838,10 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     return items;
   }, [activeTransactions, studentsById]);
 
+  const dayMissing = Boolean(snapshot) && !day && businessDate >= (snapshot?.goLiveDate ?? '');
   const orderingBlocked = !snapshot ? '雲端資料尚未載入'
     : businessDate < snapshot.goLiveDate ? `伺服器營業日 ${businessDate} 早於系統啟用日期 ${snapshot.goLiveDate}，不能訂餐`
-      : !day ? `${dayWord}（${businessDate}）營業日尚未建立，請先到「日期與供應商」建立營業日`
+      : !day ? `${dayWord}（${businessDate}）營業日尚未建立，請先到「今日設定 › 菜單與開帳」建立營業日`
         : day.status === 'closed' ? `${dayWord}已關帳，不能訂餐、繳費或新增櫃台收支`
           : backfillView && day.lastSettlementRevision > 0 ? `${businessDate} 已經關過帳，不能再用回填補登；請回到今天作業`
             : '';
@@ -1220,7 +1237,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       setPageStateRaw(previous => ({
         ...previous,
         confirmDuplicateOpen: false,
-        actionError: backfillView ? '這一天尚未設定菜單，無法訂購當日餐點；請到「日期與供應商」選這一天設定菜單，或登記其他餐點' : '今日尚未設定菜單，無法訂購今日餐點',
+        actionError: backfillView ? '這一天尚未設定菜單，無法訂購當日餐點；請到「今日設定 › 菜單與開帳」選這一天設定菜單，或登記其他餐點' : '今日尚未設定菜單，無法訂購今日餐點',
       }));
       return;
     }
@@ -1607,12 +1624,11 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       }
       if ((editable && !numeric) || tag === 'button' || tag === 'a') return;
       const key = event.key.toLowerCase();
-      if (key === 'q' && pageState.selectedStudentId) {
+      if ((key === 'q' || key === 'w') && pageState.selectedStudentId) {
         event.preventDefault();
-        setPageStateRaw(previous => ({ ...previous, mode: 'bento' }));
-      } else if (key === 'w' && pageState.selectedStudentId) {
-        event.preventDefault();
-        setPageStateRaw(previous => ({ ...previous, mode: 'payment' }));
+        // Leaving 其他餐點 unmounts the focused price field; move focus to the amount field instead.
+        if (pageState.mode === 'other') focusAmountRef.current = true;
+        setPageStateRaw(previous => ({ ...previous, mode: key === 'q' ? 'bento' : 'payment' }));
       } else if (key === 'r' && pageState.selectedStudentId && selectedStudent?.status === 'active') {
         event.preventDefault();
         if (pageState.mode === 'other') otherItemRef.current?.focus();
@@ -1782,9 +1798,17 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       {snapshot && !page.authorizationRevoked && (
         <div className="cloud-orders__content">
           <div className="cloud-orders__main-panel">
-            {orderingBlocked && (
+            {orderingBlocked && (dayMissing ? (
+              // A day not opened yet is a setup step, not an error: same neutral note as a missing menu (#581 D5).
+              <p className="cloud-orders__menu-unavailable" role="status" data-testid="ordering-blocked">
+                <span>{orderingBlocked}</span>
+                <Button variant="ghost" size="sm" onClick={onOpenSettings} disabled={!onOpenSettings}>
+                  到今日設定 <span aria-hidden="true"><Kbd>F3</Kbd></span>
+                </Button>
+              </p>
+            ) : (
               <div className="cloud-orders__error" role="alert" data-testid="ordering-blocked">{orderingBlocked}</div>
-            )}
+            ))}
             {!selectedStudent && (
               <>
                 <div className="cloud-orders__idle-row">
@@ -1841,7 +1865,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                               <strong className="mono">{student.studentCode}</strong> {student.displayName}
                               {student.status === 'inactive' && <span className="cloud-orders__student-badge">已停用</span>}
                             </span>
-                            <span className="cloud-orders__search-item-balance mono">結餘 ${student.currentBalance}</span>
+                            <span className="cloud-orders__search-item-balance mono">{student.currentBalance < 0 ? `−$${Math.abs(student.currentBalance)} 欠款` : `結餘 $${student.currentBalance}`}</span>
                           </li>
                         ))}
                       </ul>

@@ -173,6 +173,13 @@ describe('uiTweaksStore', () => {
       expect(document.body.getAttribute('data-scale')).toBe('large');
       expect(document.body.getAttribute('data-fs')).toBe('lg');
     });
+
+    it('mirrors data-theme onto <html> so the canvas below the first screen uses the theme background', () => {
+      applyBodyAttributes({ theme: 'dark', scale: 'normal' });
+      expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+      applyBodyAttributes({ theme: 'warm', scale: 'normal' });
+      expect(document.documentElement.getAttribute('data-theme')).toBe('warm');
+    });
   });
 
   describe('store actions & state updates', () => {
