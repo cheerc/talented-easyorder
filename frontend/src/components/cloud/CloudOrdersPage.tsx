@@ -1644,7 +1644,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     <div className="cloud-orders" data-testid="cloud-orders-page">
       <header className="cloud-orders__header">
         <div className="cloud-orders__header-info">
-          <h2>雲端櫃台點餐</h2>
+          <h2>櫃台點餐</h2>
           <span className="cloud-orders__date-label">營業日：{businessDate || '—'}</span>
           {snapshot && (snapshot.backfillDays.length > 0 || backfillView) && (
             <label className="cloud-orders__day-switch">

@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { Clock } from 'lucide-react';
 
 interface MidnightBannerProps {
   viewDate: string;
@@ -14,7 +15,7 @@ export const MidnightBanner = React.memo(function MidnightBanner({ viewDate, sys
   if (isMidnight) {
     return (
       <div className="midnight-banner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', background: 'var(--warn-soft)', border: '1px solid var(--warn)', borderRadius: 'var(--r)', marginBottom: '12px' }}>
-        <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--warn)' }}>⏰ 即將跨日，請確認日期設定</span>
+        <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--warn)' }}><Clock size={16} aria-hidden="true" style={{ verticalAlign: '-3px' }} /> 即將跨日，請確認日期設定</span>
         <button className="ghost-btn" style={{ fontSize: '12px' }} onClick={onSwitchToToday}>切換至今日</button>
       </div>
     );

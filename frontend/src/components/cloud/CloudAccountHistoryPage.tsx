@@ -796,8 +796,8 @@ export function CloudAccountHistoryPage({
 
   return (
     <section className="cloud-account-history" aria-label="雲端查帳">
-      <header className="cloud-account-history__header"><div><p className="cloud-account-history__eyebrow" hidden>F5 · 帳戶完整歷史前綴</p>
-        <h2>雲端查帳與歷史更正</h2></div>
+      <header className="cloud-account-history__header"><div>
+        <h2>查帳與歷史更正</h2></div>
         {snapshot && <strong>來源序號 H={snapshot.account.sourceSeq}</strong>}
       </header>
       <details className="cloud-account-history__intro">
@@ -832,7 +832,7 @@ export function CloudAccountHistoryPage({
       </div>
       {formError && <p role="alert">{formError}</p>}
       {loadError && <div role="alert"><p>{loadError}</p><button type="button" disabled={retryButtonDisabled} onClick={loadAgain}>重新讀取</button></div>}
-      {loading && <p role="status">正在伺服器完整讀取帳戶歷史前綴、日結與稽核資料；尚未完整前不顯示逐筆餘額或更正入口。</p>}
+      {loading && <p role="status">正在由伺服器讀取帳戶完整歷史、日結與稽核資料；讀取完成前不顯示逐筆餘額或更正入口。</p>}
       {!loading && !selectedId && !loadError && (
         <div className="cloud-account-history__empty-state" role="status">
           <EmptyState className="cloud-account-history__empty" title="請搜尋並選取目前學生名單中的帳戶。" />
@@ -846,7 +846,7 @@ export function CloudAccountHistoryPage({
           <div><dt>帳戶狀態</dt><dd><StatusBadge variant={currentStudent.status === 'active' ? 'ok' : 'neutral'} className="cloud-account-history__status">{currentStudent.status === 'active' ? '使用中' : '已停用'}</StatusBadge></dd></div>
           <div><dt>學生版本</dt><dd>{currentStudent.revision}</dd></div>
         </dl>
-        <p><strong>依目前更正後資料重算</strong> · 各筆餘額來自完整前綴驗證；本日結版本另列，不視為交易當時餘額。</p>
+        <p><strong>依目前更正後資料重算</strong> · 各筆餘額已由完整歷史驗證；本日結版本另列，不視為交易當時餘額。</p>
 
         <section aria-labelledby="account-transactions-heading"><h3 id="account-transactions-heading">區間交易與更正入口</h3>
           <div className="cloud-account-history__table-wrap"><table className="dt"><thead><tr><th>營業日／時間</th><th>交易</th><th>當時姓名</th><th>金額</th><th>重算後餘額</th><th>狀態／回填</th><th>日狀態</th><th>操作</th></tr></thead><tbody>
@@ -884,7 +884,7 @@ export function CloudAccountHistoryPage({
           </tbody></table></div>
           {snapshot.account.transactions.length === 0 && (
             <div className="cloud-account-history__empty-state" role="status">
-              <EmptyState className="cloud-account-history__empty" title="此範圍沒有帳戶交易；完整前綴餘額仍已驗證。" />
+              <EmptyState className="cloud-account-history__empty" title="此範圍沒有帳戶交易；歷史餘額已驗證。" />
             </div>
           )}
         </section>

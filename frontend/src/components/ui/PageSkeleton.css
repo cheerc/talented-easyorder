@@ -1,0 +1,33 @@
+.page-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 360px;
+  padding: 24px;
+}
+
+.page-skeleton__block {
+  background: var(--surface-sunken);
+  border-radius: var(--r-lg);
+  animation: page-skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+.page-skeleton__block--title {
+  height: 32px;
+  width: 240px;
+  max-width: 60%;
+}
+
+.page-skeleton__block--body {
+  height: 120px;
+}
+
+@keyframes page-skeleton-pulse {
+  50% { opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-skeleton__block {
+    animation: none;
+  }
+}

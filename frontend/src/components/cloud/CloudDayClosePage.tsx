@@ -1551,7 +1551,6 @@ export function CloudDayClosePage({
     <main className="cloud-day-close" aria-label="雲端日結">
       <header className="cloud-day-close__header">
         <div>
-          <p className="cloud-day-close__eyebrow">雲端資料 · 線上操作</p>
           <h1>日結、關帳與重開</h1>
         </div>
         <button

@@ -260,3 +260,16 @@
 .auth-gate button { padding: 9px 14px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
 @media (max-width: 1050px) { .cloud-app .app-shell { grid-template-columns: 150px minmax(0, 1fr) auto; gap: 8px; padding-inline: 12px; } .cloud-app .tab { padding-inline: 8px; } }
 .backfill-badge { display: inline-block; padding: 2px 6px; border-radius: 4px; background: var(--warn-soft, #fff0c2); color: #704500; font-weight: 700; }
+
+.topbar-date {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.topbar-date:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

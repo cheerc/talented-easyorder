@@ -11,6 +11,7 @@ const HistoryScreen = React.lazy(() => import('./screens/HistoryScreen').then(m 
 import type { HistoryLookupTarget } from './screens/HistoryScreen';
 import type { StudentAccount } from '../domain/student';
 import type { LedgerMutationResult } from '../domain/ledgerAudit';
+import { PageSkeleton } from './ui/PageSkeleton';
 
 type PosColumnProps = ComponentProps<typeof PosColumn>;
 
@@ -53,7 +54,7 @@ export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
 
       {tab === 'report' && (
         <ErrorBoundary fallback={<SectionError name="報表" />}>
-        <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
+        <Suspense fallback={<PageSkeleton />}>
         <ReportScreen
           viewDate={viewDate}
           studentFilter={reportStudentFilter}
@@ -64,7 +65,7 @@ export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
       )}
       {tab === 'admin' && (
         <ErrorBoundary fallback={<SectionError name="今日設定" />}>
-        <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
+        <Suspense fallback={<PageSkeleton />}>
         <AdminScreen
           viewDate={viewDate}
           onViewStudentHistory={onViewStudentHistory}
@@ -76,14 +77,14 @@ export const AppRouter = React.memo(function AppRouter(props: AppRouterProps) {
       )}
       {tab === 'vendors' && (
         <ErrorBoundary fallback={<SectionError name="供應商" />}>
-        <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
+        <Suspense fallback={<PageSkeleton />}>
         <VendorsScreen viewDate={viewDate} />
         </Suspense>
         </ErrorBoundary>
       )}
       {tab === 'history' && (
         <ErrorBoundary fallback={<SectionError name="歷史紀錄" />}>
-        <Suspense fallback={<div className="p-4 text-secondary">載入中...</div>}>
+        <Suspense fallback={<PageSkeleton />}>
         <HistoryScreen
           viewDate={viewDate}
           lookupTarget={historyLookupTarget}

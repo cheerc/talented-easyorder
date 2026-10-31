@@ -101,7 +101,6 @@ export function CloudLedgerAnomaliesPage({ ledger, onReload, onOpenDayClose, onO
     <main className="cloud-ledger-anomalies" aria-label="帳務異常">
       <header className="cloud-ledger-anomalies__header">
         <div className="cloud-ledger-anomalies__title">
-          <p className="cloud-ledger-anomalies__eyebrow">雲端資料 · 線上操作</p>
           <h1>帳務異常</h1>
         </div>
         <Button type="button" variant="secondary" onClick={onReload} disabled={ledger.status === 'loading'}>

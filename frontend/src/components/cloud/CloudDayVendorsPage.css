@@ -44,13 +44,6 @@
   letter-spacing: -.025em;
 }
 
-.cloud-day-vendors__eyebrow {
-  margin: 0;
-  color: var(--ink-hint);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: .08em;
-}
 
 .cloud-day-vendors__intro {
   margin: 12px 0 0;

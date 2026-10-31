@@ -4,6 +4,7 @@ import type { MergedTransaction } from '../../domain/ledger';
 import type { ReportTransactionView } from '../../domain/transactionViews';
 import { CASHIER_SENTINEL } from '../../store/posStore';
 import { formatTaipeiTime } from '../../utils/dateTime';
+import { Lock } from 'lucide-react';
 
 export interface DetailRowProps {
   tx: ReportTransactionView;
@@ -56,9 +57,9 @@ export const DetailRow = React.memo(function DetailRow({ tx: t, locked, displayM
         <span className="dim italic rpt-detail-note">{t.note}</span>
         <div className="rpt-row-actions">
         {locked ? (
-          <span className="dim" style={{fontSize:'11px'}}>🔒 已關帳</span>
+          <span className="dim" style={{fontSize:'11px'}}><Lock size={12} aria-hidden="true" /> 已關帳</span>
         ) : displayMode === 'merged' && t.studentId !== CASHIER_SENTINEL ? (
-          <span className="dim" style={{fontSize:'11px'}}>🔒 請切換至原始模式進行編輯或刪除</span>
+          <span className="dim" style={{fontSize:'11px'}}><Lock size={12} aria-hidden="true" /> 請切換至原始模式進行編輯或刪除</span>
         ) : (
           <>
             {t.studentId !== CASHIER_SENTINEL && (

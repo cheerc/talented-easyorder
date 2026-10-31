@@ -4,6 +4,7 @@ import type { StorageMode } from "../../appMode";
 import { useFace, useSimulationDate } from "../../store/selectors";
 import { faceDeviceLabel } from "../../domain/faceOrder";
 import { formatTaipeiDateTime } from "../../utils/dateTime";
+import { ChartColumn, ChevronLeft, ChevronRight, TriangleAlert } from 'lucide-react';
 
 interface TopBarProps {
   tab: string;
@@ -40,10 +41,11 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, navigationLocked
           <div className="brand-name">訂餐櫃台</div>
           <div className="brand-sub" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <input
+              className="topbar-date"
               type="date"
               value={viewDate}
               onChange={e => setViewDate(e.target.value)}
-              style={{ background: 'transparent', border: 'none', color: 'inherit', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}
+              style={{ background: 'transparent', border: 'none', color: 'inherit', fontFamily: 'inherit', cursor: 'pointer' }}
             />
             <button
               className="db-trigger"
@@ -54,7 +56,7 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, navigationLocked
                 d.setDate(d.getDate() - 1);
                 setViewDate(d.toISOString().split('T')[0]);
               }}
-            >◀</button>
+            ><ChevronLeft size={14} aria-hidden="true" /></button>
             <button
               className="db-trigger"
               title="後一天"
@@ -64,7 +66,7 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, navigationLocked
                 d.setDate(d.getDate() + 1);
                 setViewDate(d.toISOString().split('T')[0]);
               }}
-            >▶</button>
+            ><ChevronRight size={14} aria-hidden="true" /></button>
           </div>
         </div>
       </div>
@@ -73,7 +75,7 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, navigationLocked
           <div className={'sync ' + (online ? 'sync-on' : 'sync-off')}>
             <span className={'dot ' + (syncing ? 'dot-pulse' : '') + (!online ? ' dot-red' : '')}></span>
             <div className="sync-txt">
-              <div className="sync-label">{online ? '雲端已同步' : '⚠ 離線中'}</div>
+              <div className="sync-label">{online ? '雲端已同步' : <><TriangleAlert size={14} aria-hidden="true" /> 離線中</>}</div>
               <div className="sync-meta">{syncing ? '推送中…' : online ? `上次 ${lastSync}` : '等待連線恢復…'}</div>
             </div>
           </div>
@@ -89,7 +91,7 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, navigationLocked
         )}
         {(failedSyncCount > 0 || conflictSyncCount > 0) && (
           <div className="sync sync-err" style={{ marginLeft: '8px', padding: '2px 8px', borderRadius: 'var(--r)', background: 'var(--red-soft)', border: '1px solid var(--red)', fontSize: '12px', color: 'var(--red)' }}>
-            <span>⚠ 同步異常</span>
+            <span><TriangleAlert size={14} aria-hidden="true" /> 同步異常</span>
             <span style={{ marginLeft: '4px' }}>
               {failedSyncCount > 0 && `${failedSyncCount} 筆失敗`}
               {failedSyncCount > 0 && conflictSyncCount > 0 && '、'}
@@ -131,7 +133,7 @@ export const TopBar = React.memo(function TopBar({ tab, setTab, navigationLocked
         </div>
         {onDashboard && (
           <button className="db-trigger" disabled={navigationLocked} onClick={onDashboard} title="今日營運概覽 (F6)">
-            <span style={{ fontSize: '16px' }}>📊</span>
+            <ChartColumn size={18} aria-hidden="true" />
           </button>
         )}
       </div>} />

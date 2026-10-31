@@ -6,6 +6,7 @@ import {
 import { useMenu, useMenuActions, useMenuForDate } from '../../store/selectors';
 import { getTaiwanISOString } from '../../utils/dateTime';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { Phone } from 'lucide-react';
 
 const COLUMNS = '1.4fr 1.2fr 2fr 200px';
 const EMPTY_DRAFT: VendorDraft = { name: '', phone: '', note: '' };
@@ -153,7 +154,7 @@ export const VendorsScreen = React.memo(function VendorsScreen({ viewDate }: Ven
               <div className="vendor-phone mono">
                 {v.phone ? (
                   <a href={`tel:${v.phone}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '12px' }}>📞</span> {v.phone}
+                    <Phone size={12} aria-hidden="true" /> {v.phone}
                   </a>
                 ) : <span className="dim">-</span>}
               </div>

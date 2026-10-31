@@ -19,7 +19,6 @@
 .cloud-account-history__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
 .cloud-account-history__header h2 { margin: 2px 0 8px; font-size: clamp(22px, 3vw, 30px); }
 .cloud-account-history__header p { max-width: 760px; color: var(--ink-2); line-height: 1.55; }
-.cloud-account-history__eyebrow { display: none; }
 .cloud-account-history__intro { color: var(--ink-2); font-size: 13px; line-height: 1.6; }
 .cloud-account-history__intro summary { color: var(--accent-ink); cursor: pointer; font-weight: 600; }
 .cloud-account-history__intro summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }

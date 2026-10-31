@@ -908,7 +908,7 @@ export function CloudReportPage({
     <>
     <section className="cloud-report" aria-label="雲端報表">
       <header className="cloud-report__header">
-        <div><p className="cloud-report__eyebrow" hidden>F2 · 完整伺服器快照</p><h2>雲端報表</h2>
+        <div><h2>報表</h2>
           <p>日期範圍由伺服器台北日期 {leaseToday || '讀取中'} 推導；僅在報表與稽核資料版本一致時顯示。</p></div>
         {snapshot && <strong>來源序號 H={snapshot.report.sourceSeq}</strong>}
       </header>
@@ -934,7 +934,7 @@ export function CloudReportPage({
           else { setLoading(true); setLoadError(''); setBootstrapAttempt(value => value + 1); }
         }}>重新讀取完整資料</button></div>}
 
-      {loading && <p role="status">正在由伺服器讀取完整交易前綴與稽核資料；目前不提供餘額或輸出。</p>}
+      {loading && <p role="status">正在由伺服器讀取完整交易與稽核資料；目前不提供餘額或輸出。</p>}
       {!loading && snapshot && query && <>
         <p className="cloud-report__snapshot" data-testid="report-ready">資料已確認：{query.range.startDate}–{query.range.endDate} · {query.studentId ? `帳戶 ${query.studentId}` : '全部帳戶'} · 來源序號 H={snapshot.report.sourceSeq}</p>
         <details className="cloud-report__details">

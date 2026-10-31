@@ -1,4 +1,5 @@
 import React from "react";
+import { TriangleAlert } from 'lucide-react';
 
 interface DuplicateWarningBannerProps {
   orderedTodayCount: number;
@@ -8,7 +9,7 @@ interface DuplicateWarningBannerProps {
 export const DuplicateWarningBanner = React.memo(function DuplicateWarningBanner({ orderedTodayCount, onConfirm, onCancel }: DuplicateWarningBannerProps) {
   return (
     <div className="dup-warn">
-      <div className="dup-warn-icon">⚠</div>
+      <div className="dup-warn-icon"><TriangleAlert size={28} aria-hidden="true" /></div>
       <div className="dup-warn-body">
         <div className="dup-warn-h">今天已訂 {orderedTodayCount} 份餐點</div>
         <div className="dup-warn-sub">

@@ -168,3 +168,8 @@ body[data-fs="lg"] {
 .recent-mini-btn:hover { background: var(--surface-hover, #e5e7eb); }
 .recent-mini-del { color: var(--danger, #ef4444); }
 .recent-mini-del:hover { background: rgba(239, 68, 68, 0.1); }
+/* 焦點基線：零權重，只補沒有自己焦點樣式的控制項；各元件的專屬樣式優先。 */
+:where(button, a[href], input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

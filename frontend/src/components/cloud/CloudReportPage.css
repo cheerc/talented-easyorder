@@ -23,7 +23,6 @@
 .cloud-report__header h2 { margin: 2px 0 8px; font-size: clamp(22px, 3vw, 30px); letter-spacing: -.025em; }
 .cloud-report__header p,
 .cloud-report__section > p { line-height: 1.55; color: var(--ink-2); }
-.cloud-report__eyebrow { display: none; }
 .cloud-report__controls { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin: 18px 0; }
 .cloud-report__controls label { display: grid; gap: 5px; }
 .cloud-report__controls button { color: var(--panel); background: var(--ink); border-color: var(--ink); }

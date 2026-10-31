@@ -18,3 +18,13 @@ describe('EmptyState', () => {
     expect(screen.getByRole('button', { name: '新增' })).toBeDefined();
   });
 });
+
+describe('EmptyState 圖示', () => {
+  it('以 SVG 圖示呈現且對輔助技術隱藏，不用 emoji', () => {
+    const { container } = render(<EmptyState title="沒有資料" />);
+    const icon = container.querySelector('.empty-icon');
+    expect(icon?.querySelector('svg')).not.toBeNull();
+    expect(icon).toHaveAttribute('aria-hidden', 'true');
+    expect(container.textContent).not.toContain('📭');
+  });
+});

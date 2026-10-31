@@ -49,12 +49,16 @@
   border-radius: 8px;
   font-size: 15px;
   font-family: inherit;
-  outline: 0;
   color: var(--ink);
 }
 
 .adm-input:focus {
   border-color: var(--ink);
+}
+
+.adm-input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .adm-foot {

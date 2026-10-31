@@ -4,6 +4,7 @@ import { isOtherMealOrder } from '../../domain/ledger';
 import { formatTaipeiTime } from '../../utils/dateTime';
 import { isFaceTransaction } from '../../domain/faceOrder';
 import { fmt } from './utils';
+import { Pencil } from 'lucide-react';
 
 interface TransactionStatusViewProps {
   transactions: LedgerTransaction[];
@@ -108,7 +109,7 @@ export const TransactionStatusView = React.memo(function TransactionStatusView({
                     className="recent-mini-btn"
                     onClick={() => onEditClick(tx)}
                     aria-label="編輯"
-                  >✏️</button>
+                  ><Pencil size={14} aria-hidden="true" /></button>
                 )}
                 {!locked && onDeleteClick && (
                   <button

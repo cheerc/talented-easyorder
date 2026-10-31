@@ -26,13 +26,6 @@
   letter-spacing: -.025em;
 }
 
-.cloud-ledger-anomalies__eyebrow {
-  margin: 0;
-  color: var(--ink-hint);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: .08em;
-}
 
 .cloud-ledger-anomalies__intro {
   color: var(--ink-2);
