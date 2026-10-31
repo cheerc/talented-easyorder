@@ -260,6 +260,56 @@ describe('#331 — FirebaseProvider lifecycle tests', () => {
     expect(mockClearSensitivePosData).toHaveBeenCalledOnce();
   });
 
+  it('re-confirms the same holder after an access re-check that returns the same UID within one batch (#569)', async () => {
+    const mockServices = {
+      app: {} as Record<string, unknown>,
+      auth: { currentUser: null } as Record<string, unknown>,
+      db: {} as Record<string, unknown>,
+    };
+    mockEnsure.mockResolvedValue(mockServices as unknown as ReturnType<typeof ensureFirebaseInitialized> extends Promise<infer T> ? T : never);
+
+    let accessCallback: ((access: OperatorAccess) => void) | null = null;
+    mockSubscribe.mockImplementation((_auth, _db, callback) => {
+      accessCallback = callback;
+      return vi.fn();
+    });
+
+    let leaseCallback: ((state: ActiveLeaseState) => void) | null = null;
+    leaseMocks.subscribeLease.mockImplementation((_db, _uid, callback) => {
+      leaseCallback = callback;
+      return vi.fn();
+    });
+    leaseMocks.renewLease.mockResolvedValue({
+      status: 'acquired', holderUid: 'op-1', epoch: 1, updatedAt: new Date(),
+    });
+    const operator: OperatorAccess = {
+      ok: true,
+      profile: { uid: 'op-1', email: 'op-1@example.com', displayName: 'Operator 1' },
+    };
+    const serverLease: ActiveLeaseState = {
+      holderUid: 'op-1', epoch: 1, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false,
+    };
+
+    const { result } = renderHook(() => useFirebase(), { wrapper });
+    await waitFor(() => expect(accessCallback).not.toBeNull());
+    await act(async () => { accessCallback!(operator); });
+    await waitFor(() => expect(leaseCallback).not.toBeNull());
+    await act(async () => { leaseCallback!(serverLease); });
+    await waitFor(() => expect(result.current.lease.isHolder).toBe(true));
+
+    // Another same-UID tab signing in refreshes the ID token here: access goes through `checking` and back to the same
+    // operator before React renders, so the UID never looks different. The lease must not stay masked as unknown.
+    const firstLeaseCallback = leaseCallback;
+    await act(async () => {
+      accessCallback!({ ok: false, reason: 'checking' });
+      accessCallback!(operator);
+    });
+    await waitFor(() => expect(leaseCallback).not.toBe(firstLeaseCallback));
+    await act(async () => { leaseCallback!(serverLease); });
+    await waitFor(() => expect(result.current.lease).toMatchObject({ holderUid: 'op-1', epoch: 1, isKnown: true, isHolder: true }));
+    expect(leaseMocks.renewLease).toHaveBeenCalledTimes(2);
+  });
+
   it('throws when useFirebase is used outside FirebaseProvider', () => {
     // Suppress console.error from React
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
