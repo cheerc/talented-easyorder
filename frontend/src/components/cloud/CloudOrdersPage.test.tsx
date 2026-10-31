@@ -410,6 +410,32 @@ describe('CloudOrdersPage', () => {
     expect(search).toHaveValue('1');
   });
 
+  // #578：漏送 compositionend 時，櫃台頁快捷鍵不能永久當成組字中。
+  it('takes idle digits again after the composing field loses focus without compositionend (#578)', async () => {
+    renderComponent();
+    const search = await screen.findByLabelText('搜尋編號、姓名或別名');
+    search.focus();
+    fireEvent.compositionStart(search);
+    fireEvent.keyDown(document.body, { key: '1' });
+    expect(search).toHaveValue('');
+    act(() => { search.blur(); });
+    fireEvent.keyDown(document.body, { key: '1' });
+    expect(search).toHaveValue('1');
+  });
+
+  it('takes idle digits again after the composing field leaves the page without compositionend (#578)', async () => {
+    renderComponent();
+    const search = await screen.findByLabelText('搜尋編號、姓名或別名');
+    const field = document.body.appendChild(document.createElement('input'));
+    fireEvent.compositionStart(field);
+    fireEvent.keyDown(document.body, { key: '1' });
+    expect(search).toHaveValue('');
+    // jsdom, like Chromium, sends no focusout when the element is removed.
+    field.remove();
+    fireEvent.keyDown(document.body, { key: '1' });
+    expect(search).toHaveValue('1');
+  });
+
   it('renders the two-row meal counters from the reconciled server day (U2a contract)', async () => {
     renderComponent();
     const bentoRow = await screen.findByTestId('cloud-topbar-bento');
