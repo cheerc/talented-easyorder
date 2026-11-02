@@ -1433,14 +1433,21 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
         await expect(openingForm.getByText(/伺服器已確認開帳現金 NT\$ 1,000/)).toBeVisible();
       }
 
+      const expectedCash = async (page: typeof pageA) => Number(((await page.getByTestId('cloud-expected-cash').innerText()).match(/-?\d+/) ?? ['NaN'])[0]);
+
+      // Page B (same Google account) signs in. That makes page A re-check its lease once (it remounts), so A is settled on the
+      // counter page first and only then starts to be watched.
+      const sessionB = await signInGoogle(pageB, E2E_IDENTITIES.operatorA.email);
+      expect(sessionB.uid).toBe(sessionA.uid);
+      await expect(pageB.locator('.operator-strip')).toBeVisible();
+      await expect(pageA.locator('.operator-strip')).toBeVisible();
       await pageA.getByRole('button', { name: '櫃台' }).click();
       await expect(pageA.getByTestId('cloud-orders-page')).toBeVisible();
       await expect(pageA.getByTestId('cloud-orders-loading')).toHaveCount(0);
-      const expectedCash = async (page: typeof pageA) => Number(((await page.getByTestId('cloud-expected-cash').innerText()).match(/-?\d+/) ?? ['NaN'])[0]);
       const cashBefore = await expectedCash(pageA);
       expect(Number.isFinite(cashBefore)).toBe(true);
 
-      // Page A is idle. Count every time a lease mask or the loading screen is mounted on it from now on.
+      // Page A is idle and settled. Count every time a lease mask or the loading screen is mounted on it from now on.
       await pageA.evaluate(() => {
         const w = window as unknown as { __flashes: number };
         w.__flashes = 0;
@@ -1455,10 +1462,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
         }).observe(document.body, { childList: true, subtree: true });
       });
 
-      // Page B (same Google account) records a counter income of $50.
-      const sessionB = await signInGoogle(pageB, E2E_IDENTITIES.operatorA.email);
-      expect(sessionB.uid).toBe(sessionA.uid);
-      await expect(pageB.locator('.operator-strip')).toBeVisible();
+      // Page B records a counter income of $50.
       await pageB.getByRole('button', { name: '櫃台' }).click();
       await expect(pageB.getByTestId('cloud-orders-page')).toBeVisible();
       await expect(pageB.getByTestId('cloud-orders-loading')).toHaveCount(0);

@@ -51,6 +51,14 @@ export const ACCOUNT_RANGE_MIX: Array<[days: number, share: number]> = [[1, 0.6]
  */
 export const MENU_SCAN_WINDOW_DAYS = 32;
 
+/**
+ * #587: the share of the orders-page commands that were made on another page of the same account while this one was an idle counter
+ * page (and so followed the data head with `load.ordersExternalRefresh`). ASSUMPTION: 30 %, with `Assumptions.pages` (2) pages open;
+ * a second ordering path (the face-order tablet) writing through its own account would be counted by the data head listener too.
+ * P18 replaces it with CheerC's real use.
+ */
+export const EXTERNAL_COMMAND_SHARE = 0.3;
+
 export interface Assumptions {
   label: string;
   /** Business commands a day (the design ceiling, or the typical day). */
@@ -129,7 +137,10 @@ function commandLines(a: Assumptions): WorkloadLine[] {
 /**
  * Page loads a day (P16f2 S9: the usage the plan states, replacing the guesses of #555). ASSUMPTIONS (opens per day are a guess of
  * how a shop uses the app; what each page reads is measured):
- * - orders page: 6 opens, and after every command of the page a refresh from the command's receipt (`load.ordersRefresh`, S4);
+ * - orders page: 6 opens, and after every command of the page a refresh from the command's receipt (`load.ordersRefresh`, S4); and
+ *   (#587) an idle counter page that follows a command of another page of the account from the data head
+ *   (`load.ordersExternalRefresh`, `EXTERNAL_COMMAND_SHARE` of the commands), on top of the data head listener's snapshot per command
+ *   on every page (`listener.dataHeadSnapshot`);
  * - ledger scan (S3: the last 62 days and the days still open): when each page starts (cold: nothing is cached yet), after opening or
  *   closing a day (2) and when the anomalies page is opened (1); a closed day of the window is at most 62;
  * - day pages: the vendors page is opened 4 times and reloads after each of its 3 commands (it reads the first 32-day window for the
@@ -184,6 +195,8 @@ function loadLines(a: Assumptions): WorkloadLine[] {
 
   load('load.orders', 6, { student: a.roster, dayTransaction: shape.transactionsOnPage, openDay: a.unclosedDays });
   load('load.ordersRefresh', shape.pageCommands);
+  // #587: an idle counter page that follows the data head after a command made elsewhere reads the command and the changed documents
+  load('load.ordersExternalRefresh', shape.pageCommands * EXTERNAL_COMMAND_SHARE);
   // the first scan of a page that has just started reads every closed day's settlement of the window; the later ones only what changed
   load('load.ledgerScanCold', a.pages, { closedDay: scannedClosedDays, openDay: a.unclosedDays });
   load('load.ledgerScan', 3, { closedDay: scannedClosedDays, openDay: a.unclosedDays });
@@ -234,6 +247,8 @@ function leaseLines(a: Assumptions): WorkloadLine[] {
     { operation: 'lease.release', perDay: a.leaseEvents / 2 },
     { operation: 'lease.renew', perDay: renewals },
     { operation: 'lease.listenerSnapshot', perDay: renewals * a.pages },
+    // #587: the data head listener of every page that holds the lease: its first snapshot, then one per command of the day
+    { operation: 'listener.dataHeadSnapshot', perDay: (a.commands + 1) * a.pages },
     { operation: 'lease.status', perDay: 2 * a.pages },
     { operation: 'listener.operatorDocument', perDay: a.pages },
   ];

@@ -17,6 +17,7 @@ import {
   type ActiveLeaseState,
   type LeaseResult,
 } from '../firebase/activeAccountLease';
+import { subscribeDataHead, type DataHeadSignal } from '../firebase/dataHeadWatch';
 import { clearSensitivePosData } from '../store/clearSensitivePosData';
 import { emitError } from '../errors/errorBus';
 
@@ -26,6 +27,8 @@ export interface FirebaseContextValue {
   storageCleanupError: string | null;
   access: OperatorAccess;
   lease: ActiveLeaseState;
+  /** #587: latest server-confirmed `system/dataHead`, watched only while this tab is a confirmed holder; otherwise null. */
+  dataHead: DataHeadSignal | null;
   acquireLease: () => Promise<LeaseResult>;
   releaseLease: () => Promise<boolean>;
 }
@@ -51,6 +54,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   const accessRef = useRef<OperatorAccess>({ ok: false, reason: 'signed_out' });
   const [lease, setLease] = useState<ActiveLeaseState>(defaultLeaseState);
   const leaseRef = useRef<ActiveLeaseState>(defaultLeaseState);
+  const [watchedHead, setWatchedHead] = useState<DataHeadSignal | null>(null);
   const confirmedEpochRef = useRef<number | null>(null);
   const probedEpochRef = useRef<number | null>(null);
   const leaseGenerationRef = useRef(0);
@@ -375,6 +379,19 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     };
   }, [fb?.db, currentUid, lease.isKnown, lease.isHolder, lease.epoch]);
 
+  // #587: the data head is watched only while this tab is a confirmed holder; losing that ends the watch at once.
+  const isConfirmedHolder = lease.isKnown && lease.isHolder;
+  // Only a confirmed holder exposes the value; whatever an earlier watch left is dropped by its cleanup.
+  const dataHead = isConfirmedHolder ? watchedHead : null;
+  useEffect(() => {
+    if (!fb?.db || !currentUid || !isConfirmedHolder) return;
+    const unsubscribe = subscribeDataHead(fb.db, setWatchedHead);
+    return () => {
+      unsubscribe();
+      setWatchedHead(null);
+    };
+  }, [fb?.db, currentUid, isConfirmedHolder, lease.epoch]);
+
   const acquireLease = async (): Promise<LeaseResult> => {
     const startingAccess = accessRef.current;
     if (!fb?.db || !startingAccess.ok) {
@@ -473,7 +490,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <FirebaseContext.Provider value={{ fb, fbError, storageCleanupError, access, lease, acquireLease, releaseLease }}>
+    <FirebaseContext.Provider value={{ fb, fbError, storageCleanupError, access, lease, dataHead, acquireLease, releaseLease }}>
       {children}
     </FirebaseContext.Provider>
   );

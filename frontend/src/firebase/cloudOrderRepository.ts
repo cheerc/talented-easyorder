@@ -24,7 +24,7 @@ import type { CorrectTransactionPayload } from '../domain/cloudTransactionMutati
 import { decodeCloudDayRecord, type CloudDayRecord } from './cloudDayVendorRepository';
 import { decodeCloudStudentRecord, listCloudStudents, type CloudStudentRecord } from './cloudStudentRepository';
 import { listCloudBackfillingDays, readCloudBackfillDay, type CloudBackfillDay } from './cloudDayCloseRepository';
-import { accessLeasePath, dataHeadPath, dayPath, studentPath, transactionPath } from './firestorePaths';
+import { accessLeasePath, commandPath, dataHeadPath, dayPath, studentPath, transactionPath } from './firestorePaths';
 import type { CloudRecoveryReader } from './cloudRecoveryReader';
 import type { PendingCommandIdentity } from './cloudPendingJournal';
 
@@ -565,6 +565,35 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
     }
   }
 
+  /**
+   * #587: the snapshot after one command made elsewhere (another device of the same account), found through the data head the
+   * page is watching. Only when the head is exactly one sequence number ahead of the snapshot, in the same dataset, and names
+   * the command at that sequence is the command's receipt read (one document) and its targets handed to `refreshSnapshot`, which
+   * does every check a refresh after the page's own command does (head before and after, lease day, day totals against the
+   * transactions). Anything else (several commands behind, another dataset, a command without a transaction target such as a new
+   * student) returns null and the caller reloads the whole snapshot. Read failures are thrown as `refreshSnapshot` does.
+   */
+  async function refreshFromHead(
+    previous: CloudOrderSnapshot,
+    head: { seq: number; lastCommandId: string | null; datasetId: string },
+  ): Promise<CloudOrderSnapshot | null> {
+    if (head.datasetId !== previous.datasetId || head.seq !== previous.seq + 1
+      || typeof head.lastCommandId !== 'string' || !UUID.test(head.lastCommandId)) {
+      return null;
+    }
+    let command;
+    try {
+      command = await getDocFromServer(doc(db, commandPath(head.lastCommandId)));
+    } catch (error) {
+      throw readError(error);
+    }
+    if (!command.exists()) return null;
+    const data = command.data() as Record<string, unknown>;
+    const targets = data.targets;
+    if (data.seq !== head.seq || typeof targets !== 'object' || targets === null || Array.isArray(targets)) return null;
+    return refreshSnapshot(previous, { seq: head.seq, targets: targets as Record<string, unknown> });
+  }
+
   function createOrder(input: CreateCloudOrderInput): Promise<CommandResult> {
     return commands.commitCommand({
       commandId: input.commandId,
@@ -669,6 +698,7 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
   return {
     loadSnapshot,
     refreshSnapshot,
+    refreshFromHead,
     mutateTransaction,
     confirmPendingIntent,
     cleanupConfirmedIntent,

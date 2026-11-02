@@ -43,6 +43,14 @@ describe('P16e capacity gate: the day', () => {
     expect(load.units).toEqual({ student: 200, dayTransaction: 92.5, openDay: 3 });
     expect(lines.find(line => line.operation === 'load.ordersRefresh')!.perDay).toBe(193);
   });
+
+  it('#587: follows 30 % of the commands from the data head on an idle counter page, and listens to the head on every page', () => {
+    const lines = workloadOf(DESIGN);
+    expect(lines.find(line => line.operation === 'load.ordersExternalRefresh')!.perDay).toBeCloseTo(193 * 0.3, 9);
+    // the first snapshot of each of the 2 pages, then one per command of the day
+    expect(lines.find(line => line.operation === 'listener.dataHeadSnapshot')!.perDay).toBe((200 + 1) * 2);
+    expect(workloadOf(TYPICAL).find(line => line.operation === 'listener.dataHeadSnapshot')!.perDay).toBe((100 + 1) * 2);
+  });
 });
 
 describe('P16e capacity gate: the accounts a report reads', () => {
