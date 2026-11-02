@@ -25,8 +25,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 36138,
-      "deduped": 33778,
+      "conservative": 38042,
+      "deduped": 35682,
       "limit": 25000,
       "verdict": "FAIL",
       "passedBy": null
@@ -88,9 +88,9 @@
         "reads": 1200
       },
       {
-        "operation": "load.auditRange",
-        "perDay": 2,
-        "reads": 997
+        "operation": "load.ordersExternalRefresh",
+        "perDay": 57.9,
+        "reads": 1100
       }
     ],
     "storage": {
@@ -127,8 +127,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 23508,
-      "deduped": 22336,
+      "conservative": 24442,
+      "deduped": 23270,
       "limit": 25000,
       "verdict": "PASS",
       "passedBy": "conservative"
@@ -229,8 +229,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 21506,
-      "deduped": 20333,
+      "conservative": 22440,
+      "deduped": 21268,
       "limit": 25000,
       "verdict": "PASS",
       "passedBy": "conservative"
@@ -331,8 +331,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 42229,
-      "deduped": 39869,
+      "conservative": 44134,
+      "deduped": 41774,
       "limit": 25000,
       "verdict": "FAIL",
       "passedBy": null
@@ -433,8 +433,8 @@
       "days": 730
     },
     "reads": {
-      "conservative": 40854,
-      "deduped": 38842,
+      "conservative": 42758,
+      "deduped": 40746,
       "limit": 25000,
       "verdict": "FAIL",
       "passedBy": null
@@ -491,14 +491,14 @@
         "reads": 1200
       },
       {
+        "operation": "load.ordersExternalRefresh",
+        "perDay": 57.9,
+        "reads": 1100
+      },
+      {
         "operation": "load.auditRange",
         "perDay": 2,
         "reads": 997
-      },
-      {
-        "operation": "load.backupExport",
-        "perDay": 1,
-        "reads": 812
       }
     ]
   },
@@ -522,20 +522,20 @@
   "whatIf": [
     {
       "label": "the design ceiling as measured",
-      "reads": 36138
+      "reads": 38042
     },
     {
       "label": "the orders page reloads fully after every command, as before P16f2 S4",
-      "reads": 98334
+      "reads": 100238
     },
     {
       "label": "the history loads read each transaction or command once instead of twice (needs CheerC: the second read is an integrity check)",
-      "reads": 33298
+      "reads": 35202
     }
   ],
   "floor": {
     "label": "small shop floor: commands, one orders refresh per command, the lease",
-    "reads": 11381,
+    "reads": 11785,
     "limit": 25000,
     "verdict": "PASS"
   },

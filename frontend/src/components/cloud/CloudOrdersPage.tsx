@@ -30,6 +30,8 @@ import {
   type CloudTransactionMutationInput,
 } from '../../firebase/cloudOrderRepository';
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
+import type { DataHeadSignal } from '../../firebase/dataHeadWatch';
+import { useDataHead } from '../../providers/FirebaseProvider';
 import type { CloudStudentRecord } from '../../firebase/cloudStudentRepository';
 import { isBackfilled, type CloudBackfillDay } from '../../firebase/cloudDayCloseRepository';
 import { composePaperRefNote, splitPaperNote } from '../../domain/paperRef';
@@ -503,6 +505,8 @@ function recentSummary(transactions: CloudOrderTransactionRecord[]): string {
 
 export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationStateChange, initialBackfillDayId, onViewDayChange, onDraftCleared, onOpenSettings }: CloudOrdersPageProps) {
   const recoveryReader = useMemo(() => getCloudRecoveryReader(db), [db]);
+  // #587: the server data head, watched by the provider while this tab is a confirmed holder (null elsewhere, e.g. in tests).
+  const dataHead = useDataHead();
   const repository = useMemo(() => createCloudOrderRepository(db, { recoveryReader }), [db, recoveryReader]);
   // Which business day the page reads: null is the server's today. Commands refresh through the same ref.
   const viewDayRef = useRef<string | null>(initialBackfillDayId ?? null);
@@ -733,6 +737,57 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     }));
     return true;
   }, [isCurrent, loadSnapshot, repository, scopeKey, updateFor]);
+
+  /**
+   * #587: another device of the same account wrote, so the head is ahead of this page. Unlike `refreshAfterCommand` nothing is
+   * cleared first and the page stays usable meanwhile: the snapshot is replaced when the new one arrives. A command started in
+   * that moment is refused by its revision and head checks and goes through the usual re-read, so nothing is booked twice. When
+   * the head cannot be followed incrementally the whole snapshot is reloaded, the old content kept in place (locked) until then.
+   */
+  const refreshFromExternalHead = useCallback(async (head: DataHeadSignal): Promise<void> => {
+    const previous = snapshotRef.current;
+    if (!previous || revokedRef.current) return;
+    const key = scopeKey;
+    const generation = generationRef.current;
+    const requestId = ++loadRequestRef.current;
+    let refreshed: CloudOrderSnapshot | null;
+    try {
+      refreshed = await repository.refreshFromHead(previous, head);
+    } catch {
+      refreshed = null;
+    }
+    if (!isCurrent(key, generation) || requestId !== loadRequestRef.current) return;
+    if (refreshed) {
+      const snapshot = refreshed;
+      snapshotRef.current = snapshot;
+      updateFor(key, generation, state => ({
+        ...state,
+        snapshot,
+        selectedStudentId: snapshot.students.some(student => student.studentId === state.selectedStudentId)
+          ? state.selectedStudentId
+          : null,
+      }));
+      return;
+    }
+    updateFor(key, generation, state => ({ ...state, refreshingSnapshot: previous }));
+    await loadSnapshot({ reuseBackfillDays: true, keepDraft: true, keepRefreshing: true });
+  }, [isCurrent, loadSnapshot, repository, scopeKey, updateFor]);
+
+  // Idle: no draft, dialog, command or recovery on the page, so a background refresh cannot disturb the operator.
+  const idleForExternalRefresh = page.snapshot !== null && !page.loading && !page.authorizationRevoked
+    && page.recovery === null && page.selectedStudentId === null && !page.cashOpen && !page.confirmDuplicateOpen
+    && !page.paymentDetailsOpen && !page.refundConfirmOpen && page.edit === null;
+  const externalRefreshSeqRef = useRef<number | null>(null);
+  useEffect(() => {
+    const current = page.snapshot;
+    if (!dataHead || !current || !idleForExternalRefresh || revokedRef.current || operationRef.current !== null) return;
+    if (dataHead.seq <= current.seq || externalRefreshSeqRef.current === dataHead.seq) return;
+    const seq = dataHead.seq;
+    externalRefreshSeqRef.current = seq;
+    void refreshFromExternalHead(dataHead).finally(() => {
+      if (externalRefreshSeqRef.current === seq) externalRefreshSeqRef.current = null;
+    });
+  }, [dataHead, idleForExternalRefresh, page.snapshot, page.notice, page.undoOffer, refreshFromExternalHead]);
 
   useEffect(() => {
     const generation = ++generationRef.current;

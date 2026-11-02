@@ -1132,6 +1132,28 @@
         }
       }
     },
+    "listener.dataHeadSnapshot": {
+      "reads": {
+        "fixed": 1,
+        "perUnit": {}
+      },
+      "readAuthorization": {
+        "fixed": 1,
+        "perUnit": {}
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 1,
+        "perUnit": {}
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "listener-doc commands/*": 1
+        },
+        "writes": {}
+      }
+    },
     "listener.operatorDocument": {
       "reads": {
         "fixed": 1,
@@ -12790,6 +12812,32 @@
           "query days": 20,
           "query backfillDays": 1
         }
+      }
+    },
+    "load.ordersExternalRefresh": {
+      "reads": {
+        "fixed": 7,
+        "perUnit": {}
+      },
+      "readAuthorization": {
+        "fixed": 12,
+        "perUnit": {}
+      },
+      "readAuthorizationDeduped": {
+        "fixed": 12,
+        "perUnit": {}
+      },
+      "writes": 0,
+      "deletes": 0,
+      "detail": {
+        "reads": {
+          "doc system/dataHead": 2,
+          "doc system/accessLease": 2,
+          "doc days/*": 1,
+          "doc transactions/*": 1,
+          "doc students/*": 1
+        },
+        "writes": {}
       }
     },
     "load.ordersRefresh": {

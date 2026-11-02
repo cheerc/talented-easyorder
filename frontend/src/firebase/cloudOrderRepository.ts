@@ -565,6 +565,22 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
     }
   }
 
+  /**
+   * #587: the snapshot after one command made elsewhere (another device of the same account), found through the newest command
+   * receipt the page is watching. Only when the receipt is exactly one sequence number ahead of the snapshot and in the same
+   * dataset are its targets handed to `refreshSnapshot`, which does every check a refresh after the page's own command does (head
+   * read from the server before and after, lease day, day totals against the transactions). Anything else (several commands behind,
+   * another dataset, a command without a transaction target such as a new student) returns null and the caller reloads the whole
+   * snapshot. Read failures are thrown as `refreshSnapshot` does.
+   */
+  async function refreshFromHead(
+    previous: CloudOrderSnapshot,
+    head: { seq: number; datasetId: string; targets: Record<string, unknown> },
+  ): Promise<CloudOrderSnapshot | null> {
+    if (head.datasetId !== previous.datasetId || head.seq !== previous.seq + 1) return null;
+    return refreshSnapshot(previous, { seq: head.seq, targets: head.targets });
+  }
+
   function createOrder(input: CreateCloudOrderInput): Promise<CommandResult> {
     return commands.commitCommand({
       commandId: input.commandId,
@@ -669,6 +685,7 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
   return {
     loadSnapshot,
     refreshSnapshot,
+    refreshFromHead,
     mutateTransaction,
     confirmPendingIntent,
     cleanupConfirmedIntent,

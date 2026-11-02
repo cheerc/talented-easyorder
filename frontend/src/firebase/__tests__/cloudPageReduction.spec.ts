@@ -1,7 +1,7 @@
 // @ts-expect-error Node-only file access loads the real Rules.
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { Timestamp, doc, getDoc, setDoc, type Firestore } from 'firebase/firestore';
+import { Timestamp, collection, doc, getDoc, getDocs, limit, orderBy, query, setDoc, type Firestore } from 'firebase/firestore';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
 import { createCloudCommandRepository } from '../cloudCommandRepository';
@@ -179,6 +179,63 @@ describeWithEmulator('P16f2 page reduction: the orders page after a command, and
     const placed = await createOrder();
     const elsewhere = { ...placed.receipt, targets: { ...placed.receipt.targets, dayId: shiftDay(today, -1) } };
     expect(await orders.refreshSnapshot(before, elsewhere)).toBeNull();
+  });
+
+  /** #587: the signal the page gets from its listener on the newest command receipt (what `subscribeDataHead` reports). */
+  const headSignal = async () => {
+    const newest = (await getDocs(query(collection(app, 'commands'), orderBy('seq', 'desc'), limit(1)))).docs[0]!.data();
+    const afterHead = (newest.after as { head: { datasetId: string } }).head;
+    return {
+      seq: newest.seq as number,
+      lastCommandId: newest.commandId as string,
+      datasetId: afterHead.datasetId,
+      targets: newest.targets as Record<string, unknown>,
+    };
+  };
+
+  it('#587 follows a head that is one command ahead (a command of another device) and equals a full reload', async () => {
+    await touchLease();
+    const before = await orders.loadSnapshot();
+    const placed = await createOrder();
+    const head = await headSignal();
+    expect(head).toMatchObject({ seq: placed.receipt.seq, lastCommandId: placed.receipt.commandId });
+    const { result: followed, report } = await meter.measure(() => orders.refreshFromHead(before, head), app);
+    localStorage.clear();
+    const full = await orders.loadSnapshot();
+    expect(followed).not.toBeNull();
+    expect(followed).toEqual(full);
+    // the receipt came with the listener, so these are exactly the reads of a refresh from a receipt
+    expect(report.billedReads, 'reads of following the head').toBeLessThanOrEqual(REFRESH_READS);
+  });
+
+  it('#587 gives up (null, the page reloads) when the head is more than one command ahead', async () => {
+    await touchLease();
+    const before = await orders.loadSnapshot();
+    await createOrder();
+    await createOrder();
+    expect(await orders.refreshFromHead(before, await headSignal())).toBeNull();
+  });
+
+  it('#587 gives up when the head is of another dataset, or its targets are another day, and follows when they match', async () => {
+    await touchLease();
+    const before = await orders.loadSnapshot();
+    const placed = await createOrder();
+    const head = await headSignal();
+    expect(await orders.refreshFromHead(before, { ...head, datasetId: `${head.datasetId}-other` })).toBeNull();
+    expect(await orders.refreshFromHead(before, { ...head, targets: { ...head.targets, dayId: shiftDay(today, -1) } })).toBeNull();
+    expect(await orders.refreshFromHead(before, { ...head, targets: {} })).toBeNull();
+    expect(await orders.refreshFromHead(before, head)).not.toBeNull();
+    expect(placed.receipt.seq).toBe(head.seq);
+  });
+
+  it('#587 gives up when the one command ahead is not a transaction (a new student): the page reloads', async () => {
+    await touchLease();
+    const before = await orders.loadSnapshot();
+    const studentId = uuid(990_500 + (nextId % 1000));
+    ok(await writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: epoch, targets: { studentId },
+      expectedRevisions: { student: 0 }, payload: { studentCode: String(880_000 + (nextId % 1000)), displayName: 'P587 student', aliases: [],
+        openingBalance: { amount: 100, asOfDate: '2025-01-01', note: '' } } }), 'CreateStudent');
+    expect(await orders.refreshFromHead(before, await headSignal())).toBeNull();
   });
 
   it('reads the summary of a week for the days and their latest settlement only', async () => {

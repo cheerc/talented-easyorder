@@ -45,9 +45,16 @@ vi.mock('../../firebase/activeAccountLease', () => ({
     isExpired: false,
   },
 }));
+const headMocks = vi.hoisted(() => ({
+  subscribeDataHead: vi.fn((...args: [unknown, (head: unknown) => void]) => {
+    void args;
+    return vi.fn();
+  }),
+}));
+vi.mock('../../firebase/dataHeadWatch', () => ({ subscribeDataHead: headMocks.subscribeDataHead }));
 vi.mock('../../store/clearSensitivePosData', () => ({ clearSensitivePosData: vi.fn().mockResolvedValue(undefined) }));
 
-import { FirebaseProvider, useFirebase } from '../FirebaseProvider';
+import { FirebaseProvider, useDataHead, useFirebase } from '../FirebaseProvider';
 import { ensureFirebaseInitialized, isFirebaseConfigured } from '../../firebase/firebaseApp';
 import { subscribeOperatorAccess } from '../../firebase/authService';
 import { clearSensitivePosData } from '../../store/clearSensitivePosData';
@@ -653,5 +660,110 @@ describe('#586 P2 — an own, untouched, expired lease is re-acquired without ma
     expect(leaseMocks.acquireLease).not.toHaveBeenCalled();
     expect(mockClearSensitivePosData).toHaveBeenCalledTimes(1);
     expect(stopHeartbeat).toHaveBeenCalled();
+  });
+});
+
+describe('#587 — dataHead is watched only while this tab is a confirmed holder', () => {
+  const services = {
+    app: {} as Record<string, unknown>,
+    auth: { currentUser: null } as Record<string, unknown>,
+    db: {} as Record<string, unknown>,
+  };
+
+  async function signedInTab(tabWrapper: typeof wrapper = wrapper) {
+    mockEnsure.mockResolvedValue(services as unknown as ReturnType<typeof ensureFirebaseInitialized> extends Promise<infer T> ? T : never);
+    let accessCallback: ((access: OperatorAccess) => void) | null = null;
+    mockSubscribe.mockImplementation((_auth, _db, callback) => { accessCallback = callback; return vi.fn(); });
+    let leaseCallback: ((state: ActiveLeaseState) => void) | null = null;
+    leaseMocks.subscribeLease.mockImplementation((_db, _uid, callback) => { leaseCallback = callback; return vi.fn(); });
+    leaseMocks.renewLease.mockResolvedValue({ status: 'acquired', holderUid: 'op-1', epoch: 1, updatedAt: new Date() });
+    const hook = renderHook(() => ({ ...useFirebase(), dataHead: useDataHead() }), { wrapper: tabWrapper });
+    await waitFor(() => expect(accessCallback).not.toBeNull());
+    await act(async () => {
+      accessCallback!({ ok: true, profile: { uid: 'op-1', email: 'op-1@example.com', displayName: 'Operator 1' } });
+    });
+    await waitFor(() => expect(leaseCallback).not.toBeNull());
+    return { hook, leaseCallback: () => leaseCallback!, accessCallback: () => accessCallback! };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsConfigured.mockReturnValue(true);
+    leaseMocks.acquireLease.mockReset();
+    leaseMocks.getLeaseStatus.mockReset().mockResolvedValue({
+      holderUid: null, epoch: 0, updatedAt: null, isKnown: false, isHolder: false, isExpired: false,
+    });
+    leaseMocks.releaseLease.mockReset().mockResolvedValue(false);
+    leaseMocks.renewLease.mockReset();
+    leaseMocks.subscribeLease.mockReset().mockReturnValue(vi.fn());
+    leaseMocks.startLeaseHeartbeat.mockReset().mockReturnValue(vi.fn());
+    headMocks.subscribeDataHead.mockReset().mockReturnValue(vi.fn());
+  });
+
+  it('H1: no watch before the lease is confirmed; dataHead is null', async () => {
+    const { hook, leaseCallback } = await signedInTab();
+    leaseMocks.renewLease.mockImplementation(() => new Promise(() => {}));
+    await act(async () => {
+      leaseCallback()({ holderUid: 'op-1', epoch: 1, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+    });
+    expect(hook.result.current.lease.isHolder).toBe(false);
+    expect(headMocks.subscribeDataHead).not.toHaveBeenCalled();
+    expect(hook.result.current.dataHead).toBeNull();
+  });
+
+  it('H2: once confirmed it watches system/dataHead exactly once and exposes the latest server-confirmed value', async () => {
+    const { hook, leaseCallback } = await signedInTab();
+    await act(async () => {
+      leaseCallback()({ holderUid: 'op-1', epoch: 1, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+    });
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(true));
+    await waitFor(() => expect(headMocks.subscribeDataHead).toHaveBeenCalledTimes(1));
+    expect(headMocks.subscribeDataHead.mock.calls[0]![0]).toBe(services.db);
+
+    const onUpdate = headMocks.subscribeDataHead.mock.calls[0]![1];
+    await act(async () => { onUpdate({ seq: 12, lastCommandId: 'cmd-12', datasetId: 'ds-1', targets: {} }); });
+    expect(hook.result.current.dataHead).toEqual({ seq: 12, lastCommandId: 'cmd-12', datasetId: 'ds-1', targets: {} });
+    await act(async () => { onUpdate(null); });
+    expect(hook.result.current.dataHead).toBeNull();
+  });
+
+  it('H3: losing the confirmed lease stops the watch at once and clears the value', async () => {
+    const unsubscribeHead = vi.fn();
+    headMocks.subscribeDataHead.mockReturnValue(unsubscribeHead);
+    const { hook, leaseCallback } = await signedInTab();
+    await act(async () => {
+      leaseCallback()({ holderUid: 'op-1', epoch: 1, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+    });
+    await waitFor(() => expect(headMocks.subscribeDataHead).toHaveBeenCalledTimes(1));
+    await act(async () => { headMocks.subscribeDataHead.mock.calls[0]![1]({ seq: 3, lastCommandId: 'c', datasetId: 'ds-1', targets: {} }); });
+    expect(hook.result.current.dataHead).not.toBeNull();
+
+    await act(async () => {
+      leaseCallback()({ holderUid: 'op-2', epoch: 2, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+    });
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(false));
+    expect(unsubscribeHead).toHaveBeenCalled();
+    expect(hook.result.current.dataHead).toBeNull();
+  });
+
+  it('H4: a head change re-renders only the pages that follow it, not the other consumers of the Firebase context', async () => {
+    let contextRenders = 0;
+    function ContextConsumer() {
+      useFirebase();
+      contextRenders += 1;
+      return null;
+    }
+    const withConsumer = ({ children }: { children: ReactNode }) => React.createElement(FirebaseProvider, null, React.createElement(ContextConsumer), children);
+    const { hook, leaseCallback } = await signedInTab(withConsumer);
+    await act(async () => {
+      leaseCallback()({ holderUid: 'op-1', epoch: 1, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+    });
+    await waitFor(() => expect(headMocks.subscribeDataHead).toHaveBeenCalledTimes(1));
+    await act(async () => {});
+    const before = contextRenders;
+    await act(async () => { headMocks.subscribeDataHead.mock.calls[0]![1]({ seq: 5, lastCommandId: 'cmd-5', datasetId: 'ds-1', targets: {} }); });
+    await act(async () => { headMocks.subscribeDataHead.mock.calls[0]![1]({ seq: 6, lastCommandId: 'cmd-6', datasetId: 'ds-1', targets: {} }); });
+    expect(hook.result.current.dataHead).toEqual({ seq: 6, lastCommandId: 'cmd-6', datasetId: 'ds-1', targets: {} });
+    expect(contextRenders).toBe(before);
   });
 });

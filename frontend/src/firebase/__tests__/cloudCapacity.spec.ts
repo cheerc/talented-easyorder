@@ -2,13 +2,14 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import {
-  Timestamp, collection, doc, getDoc, getDocs, onSnapshot, query, setDoc, where, type Firestore,
+  Timestamp, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, setDoc, where, type Firestore,
 } from 'firebase/firestore';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ALL_COMMAND_KINDS, type BusinessCommandKind } from '../../domain/cloudCommands';
 import { readAuthorizationCalls, type CostTable, type OperationCost, type RulesKindCost } from '../../maintenance/capacityModel';
 import { fitLoad, type FitPhase, type FitSample, type FitState } from '../../maintenance/loadFit';
 import { acquireLease, getLeaseStatus, releaseLease, renewLease, subscribeLease } from '../activeAccountLease';
+import { subscribeDataHead } from '../dataHeadWatch';
 import { createCloudBackupCommandRepository } from '../cloudBackupCommandRepository';
 import { createCloudBackupRepository } from '../cloudBackupRepository';
 import { createCloudCommandRepository } from '../cloudCommandRepository';
@@ -292,6 +293,28 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       expect(listenerReads).toBe(2);
       const initialAndChange = summarize({ ...stop.report, reads: stop.report.reads.filter(event => event.form === 'listener-doc'), writes: [], billedReads: listenerReads, billedWrites: 0, billedDeletes: 0 });
       fixedOperation('lease.listenerSnapshot', { ...initialAndChange, reads: 1, authDocuments: 1, authQueries: 0, readsByKey: { 'listener-doc system/accessLease': 1 } });
+
+      // the data head listener (#587), on every page that holds the lease: a query on the newest command receipt. The first snapshot
+      // carries the newest receipt, then one more per command of anyone (each new receipt is one document added to the result)
+      await admin(async db => { await setDoc(doc(db, 'commands/p587-listener-a'), { seq: 9_000_001 }); });
+      const heads: unknown[] = [];
+      const watch = await meter.measure(async () => {
+        const unsubscribe = subscribeDataHead(app, head => heads.push(head));
+        const waitFor = async (count: number) => { for (let i = 0; i < 200 && heads.length < count; i += 1) await new Promise(resolve => setTimeout(resolve, 25)); };
+        await waitFor(1);
+        const first = heads.length;
+        await admin(async db => { await setDoc(doc(db, 'commands/p587-listener-b'), { seq: 9_000_002 }); });
+        await waitFor(first + 1);
+        unsubscribe();
+        return { first, afterChange: heads.length };
+      }, app);
+      await admin(async db => { await deleteDoc(doc(db, 'commands/p587-listener-a')); await deleteDoc(doc(db, 'commands/p587-listener-b')); });
+      expect(watch.result.first).toBeGreaterThanOrEqual(1);
+      expect(watch.result.afterChange).toBeGreaterThan(watch.result.first);
+      const headListenerReads = watch.report.reads.filter(event => event.form === 'listener-doc').length;
+      expect(headListenerReads).toBe(2);
+      const headInitialAndChange = summarize({ ...watch.report, reads: watch.report.reads.filter(event => event.form === 'listener-doc'), writes: [], billedReads: headListenerReads, billedWrites: 0, billedDeletes: 0 });
+      fixedOperation('listener.dataHeadSnapshot', { ...headInitialAndChange, reads: 1, authDocuments: 1, authQueries: 0, readsByKey: { 'listener-doc commands/*': 1 } });
 
       // release, then a takeover of a lease that another operator let expire
       ({ report } = await meter.measure(() => releaseLease(app, OP.uid, epoch, OP.email), app));
@@ -699,6 +722,24 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       expect(refreshed).not.toBeNull();
       expect(refreshed).toEqual(await page.loadSnapshot());
       fixedOperation('load.ordersRefresh', summarize(report));
+    }, 120_000);
+
+    it('refreshFromHead after an order made elsewhere: the same reads as a refresh from a receipt (the listener already delivered the receipt)', async () => {
+      const page = createCloudOrderRepository(app, current);
+      const studentId = uuid(950_102);
+      await setBase();
+      const before = await page.loadSnapshot();
+      const rev = await revisions(studentId, today);
+      const result = await page.createOrder({ commandId: id(), transactionId: id(), leaseEpoch: epoch, studentId, dayId: today,
+        expectedStudentRevision: rev.student, expectedDayRevision: rev.day, mealKind: 'other', mealPrice: 80, paidAmount: 100,
+        menuRevision: null, otherItemName: 'x', note: '' });
+      if (!result.ok) throw new Error(`#587 scenario: CreateOrder failed ${JSON.stringify(result)}`);
+      const head = { seq: result.receipt.seq, lastCommandId: result.receipt.commandId, datasetId: before.datasetId, targets: result.receipt.targets };
+      const { result: followed, report } = await meter.measure(() => page.refreshFromHead(before, head), app);
+      localStorage.clear();
+      expect(followed).not.toBeNull();
+      expect(followed).toEqual(await page.loadSnapshot());
+      fixedOperation('load.ordersExternalRefresh', summarize(report));
     }, 120_000);
   });
 

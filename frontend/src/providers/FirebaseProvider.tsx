@@ -17,6 +17,7 @@ import {
   type ActiveLeaseState,
   type LeaseResult,
 } from '../firebase/activeAccountLease';
+import { subscribeDataHead, type DataHeadSignal } from '../firebase/dataHeadWatch';
 import { clearSensitivePosData } from '../store/clearSensitivePosData';
 import { emitError } from '../errors/errorBus';
 
@@ -375,6 +376,8 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     };
   }, [fb?.db, currentUid, lease.isKnown, lease.isHolder, lease.epoch]);
 
+  const isConfirmedHolder = lease.isKnown && lease.isHolder;
+
   const acquireLease = async (): Promise<LeaseResult> => {
     const startingAccess = accessRef.current;
     if (!fb?.db || !startingAccess.ok) {
@@ -474,9 +477,43 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
 
   return (
     <FirebaseContext.Provider value={{ fb, fbError, storageCleanupError, access, lease, acquireLease, releaseLease }}>
-      {children}
+      <DataHeadProvider db={fb?.db ?? null} uid={currentUid} confirmedHolder={isConfirmedHolder} epoch={lease.epoch}>
+        {children}
+      </DataHeadProvider>
     </FirebaseContext.Provider>
   );
+}
+
+const DataHeadContext = createContext<DataHeadSignal | null>(null);
+
+/**
+ * #587: the latest server-confirmed `system/dataHead`, watched only while this tab is a confirmed holder (otherwise null; the
+ * watch stops the moment the lease is lost). It lives in its own context and component on purpose: every command of anyone changes
+ * the head, and that must re-render only the pages that follow it, not every consumer of the Firebase context.
+ */
+function DataHeadProvider({ db, uid, confirmedHolder, epoch, children }: {
+  db: FirebaseServices['db'] | null;
+  uid: string | null;
+  confirmedHolder: boolean;
+  epoch: number;
+  children: ReactNode;
+}) {
+  const [watchedHead, setWatchedHead] = useState<DataHeadSignal | null>(null);
+  useEffect(() => {
+    if (!db || !uid || !confirmedHolder) return;
+    const unsubscribe = subscribeDataHead(db, setWatchedHead);
+    return () => {
+      unsubscribe();
+      setWatchedHead(null);
+    };
+  }, [db, uid, confirmedHolder, epoch]);
+  // Only a confirmed holder exposes the value; whatever an earlier watch left is dropped by its cleanup.
+  return <DataHeadContext.Provider value={confirmedHolder ? watchedHead : null}>{children}</DataHeadContext.Provider>;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function useDataHead(): DataHeadSignal | null {
+  return useContext(DataHeadContext);
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

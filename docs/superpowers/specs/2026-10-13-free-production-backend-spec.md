@@ -215,7 +215,7 @@ quota exceeded／permission denied／schema mismatch／maintenance 均阻止操�
 查詢策略：
 
 - 學生名單依 ID 載入（驗證規模500名），server snapshot 後按 `studentCode` 數值升冪排序，並自 `001` 列出至當前最大號的缺號列（停用帳戶算已使用，搜尋時隱藏缺號列）；F5 查帳由記憶體 `studentCode -> studentId` 對映直接查詢，不另讀 `studentCodes` 集合；同 UID 頁面共享訂閱協調為優化，不是安全依賴。
-- 只監聽 lease、目前日期 day、必要學生 heads 與當日交易；不監聽全歷史／全 commands。歷史 query cursor 分頁，預設每頁100。
+- 只監聽 lease、目前日期 day、必要學生 heads 與當日交易；不監聽全歷史／全 commands。歷史 query cursor 分頁，預設每頁100。另有一個只在「已確認持有」分頁存在的最新 command 回執監聽（#587，`commands` 依 `seq` 倒序取 1；刻意不監聽 `system/dataHead`，因為 SDK 對同一文件共用 watch target，會讓 repository 以 `getDocFromServer` 讀 head 的前後圍欄讀到稍舊的值）：每個 command 都新增一份回執，頁面只拿 `seq`／`targets`／`after.head.datasetId` 當「別台裝置寫入了」的提示，不授予權限；失去持有立即取消，監聽錯誤只回報空值（遮罩仍由租約流程負責）。櫃台頁在閒置（無草稿、對話框、進行中命令或復原）時，若回執 `seq` 恰好比快照多 1 個且同資料集，只讀該 command 改動的文件做增量補讀（與自己命令後的 `refreshSnapshot` 同一套檢查），否則整頁重讀；補讀期間不清畫面。
 - 每個 list 查詢都必須帶 `limit`，且不得超過 500：Rules 的每個 `allow list` 以 `listWithinLimit()`（`request.query.limit != null && request.query.limit <= 500`）拒絕沒帶 limit 或超過 500 的查詢（P16c）。完整讀取靠 cursor 分頁，頁大小上限 200；一次讀完的集合（日結版本 200 個、未關帳日 200 天）以 `limit(上限 + 1)` 探測並在超出時 fail closed，`documentId in` 分塊以 `limit(分塊大小)`，不得改成無 limit 讀取。單一文件 `get` 與文件 listener 不受影響。
 - F2 週從台北週一開始，月為曆月；加總最多31個 day heads。原始明細與 CSV 分頁完整讀取，不能只匯出第一頁。
 - F5 account history 按 studentId＋businessDate＋createdAt＋transactionId 分頁；afterBalance 由 student `currentBalance` 往回推，只讀所需日期起至今的該學生交易（P16f1）。學生稽核（`readAudit({studentId})`）讀該學生最新 100 筆 command，更早的以 `beforeSeq` 分頁（index：`commands` studentId＋seq 遞減）；學生區間稽核由新到舊讀到區間起點以前為止。快取繫於 student.revision，變動即失效。
