@@ -5,7 +5,7 @@
   transform: translateX(-50%);
   z-index: 90;
   pointer-events: none;
-  width: min(560px, calc(100vw - 32px));
+  width: min(760px, calc(100vw - 32px));
   display: flex;
   justify-content: center;
 }
@@ -26,10 +26,12 @@
 }
 
 .toast__text {
-  min-width: 0;
+  flex: none;
 }
 
 .toast .btn-ui {
+  flex: none;
+  background: transparent;
   color: var(--bg);
   border-color: color-mix(in oklab, var(--bg) 40%, transparent);
 }
