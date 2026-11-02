@@ -167,6 +167,10 @@ describe('BackupScreen verified-local gate', () => {
       const intent = await submitBackup(reselect);
 
       expect(screen.queryByText('結果確認中，勿重新收款')).toBeNull();
+      // Before ten seconds the button's own busy state is the only sign (#585): no recovery panel, no sending text.
+      expect(screen.queryByRole('alert', { name: '命令結果確認' })).toBeNull();
+      expect(screen.queryByText(/命令送出中/)).toBeNull();
+      expect(onRecoveryChange).toHaveBeenLastCalledWith(true);
       await passTenSeconds();
 
       const recovery = screen.getByRole('alert', { name: '命令結果確認' });

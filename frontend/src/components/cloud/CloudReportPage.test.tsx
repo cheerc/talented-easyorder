@@ -928,7 +928,10 @@ describe('CloudReportPage', () => {
       it(`${kind}: shows the ten-second prompt with the original ID and lets a read-only query run while the original is in flight`, async () => {
         const { original, record, download, print, input } = await startPending(kind, `operator-a:4:${kind}-inflight-query`);
         expect(screen.queryByRole('button', { name: '查詢原命令結果' })).toBeNull();
-        expect(screen.getByRole('region', { name: '輸出命令確認' })).toHaveTextContent('命令送出中，請勿重複操作。');
+        // Before ten seconds only the progress bar says "sending" (#585): no recovery region, no sending text.
+        expect(screen.queryByRole('region', { name: '輸出命令確認' })).toBeNull();
+        expect(screen.queryByText(/命令送出中/)).toBeNull();
+        expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
 
         await advancePrompt();
         const region = screen.getByRole('region', { name: '輸出命令確認' });
