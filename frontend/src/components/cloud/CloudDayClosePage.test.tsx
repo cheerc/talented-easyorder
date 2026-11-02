@@ -404,6 +404,24 @@ describe('CloudDayClosePage', () => {
     expect(within(form).getByLabelText(/原因（必填/)).toHaveValue('');
   });
 
+  it('keeps the closed-day summary counted cash and difference on the settlement count after a post-close entry', async () => {
+    const targetDay = q2Mismatch.previousClosedDayId;
+    const recorded = postCloseEntry({ dayId: targetDay, settlementRevision: 1, reason: '中間沒有營業，開店點現金少 50 元' });
+    repository.read.mockResolvedValue(dayState({
+      dayId: targetDay, status: 'closed', revision: 8, lastSettlementRevision: 1,
+      settlements: [version(1, { countedCash: 1160, difference: -10 })],
+      postCloseEntries: [recorded], effectiveCash: 1110,
+    }));
+    renderPage({ initialDayId: targetDay });
+
+    expect(await screen.findByRole('heading', { name: `${targetDay} 日結` })).toBeInTheDocument();
+    const figure = (label: string) => screen.getByText(label, { selector: '.cloud-day-close__figure-label' })
+      .closest('.cloud-day-close__figure') as HTMLElement;
+    expect(figure('實點現金')).toHaveTextContent('NT$ 1,160');
+    expect(figure('差額')).toHaveTextContent('−NT$ 10');
+    expect(screen.getByLabelText('有效關帳現金')).toHaveTextContent('NT$ 1,110');
+  });
+
   it('does not split or submit an anomaly amount above the single-entry limit', async () => {
     const targetDay = q2Mismatch.previousClosedDayId;
     const oversizedMismatch: OpeningMismatchAnomaly = {
