@@ -22,8 +22,10 @@ import {
 } from './CloudDayVendorForms';
 import { openingDifference, type PreviousClosedDay } from '../../domain/ledgerAnomalies';
 import type { CloudLedgerView } from '../../hooks/useCloudLedger';
+import { CommandProgress } from '../ui/CommandProgress';
 import { EmptyState } from '../ui/EmptyState';
 import { StatusBadge } from '../ui/StatusBadge';
+import { Toast } from '../ui/Toast';
 import { LedgerUnclosedBanner } from './LedgerUnclosedBanner';
 import './CloudDayVendorsPage.css';
 
@@ -62,6 +64,8 @@ interface RecoveryState {
   timedOut?: boolean;
   canRetry?: boolean;
   receipt?: CommandReceipt;
+  /** The receipt came back inside ten seconds from the original submission: its re-read is shown quietly (#585). */
+  quiet?: boolean;
 }
 
 interface DayVendorCommandOperation {
@@ -92,10 +96,18 @@ interface PageState {
   scopeKey: string;
   authorizationRevoked: boolean;
   snapshot: CloudDayVendorSnapshot | null;
+  /**
+   * The server-confirmed snapshot from before the command in flight and the one re-read that follows its receipt (#585). Display
+   * only: the old content stays in place, locked with `inert`, instead of vanishing behind a text panel. Never used to build a
+   * command, and shown only while the command is quiet, with no revoked authorization and no read error.
+   */
+  refreshingSnapshot: CloudDayVendorSnapshot | null;
   loading: boolean;
   loadError: string;
   actionError: string;
   notice: string;
+  /** The short success sentence of a confirmed command (#585), shown as a bottom toast. */
+  toast: string;
   dayIdDraft: string;
   createVendorOpen: boolean;
   vendorDraft: CloudDayVendorDraft;
@@ -149,10 +161,12 @@ function initialPageState(scopeKey: string): PageState {
     scopeKey,
     authorizationRevoked: false,
     snapshot: null,
+    refreshingSnapshot: null,
     loading: true,
     loadError: '',
     actionError: '',
     notice: '',
+    toast: '',
     dayIdDraft: '',
     createVendorOpen: false,
     vendorDraft: freshVendorDraft(),
@@ -464,10 +478,13 @@ export function CloudDayVendorsPage({
     updateFor(key, generation, previous => ({
       ...previous,
       snapshot: null,
+      // After a receipt the confirmed content stays on screen (locked) during the one re-read instead of a loading screen.
+      refreshingSnapshot: confirmedReceipt ? previous.snapshot ?? previous.refreshingSnapshot : null,
       loading: true,
       loadError: '',
       actionError: operation?.receipt ? previous.actionError : '',
-      notice: confirmedReceipt ? '已找到伺服器回執，正在重新讀取營業日與供應商資料…' : '',
+      notice: '',
+      toast: '',
       ...(requestedDayId ? { dayIdDraft: requestedDayId } : {}),
     }));
 
@@ -488,6 +505,7 @@ export function CloudDayVendorsPage({
           ...previous,
           ...clearFormDrafts(),
           snapshot: null,
+          refreshingSnapshot: null,
           loading: false,
           loadError: '',
           actionError: confirmed
@@ -524,14 +542,15 @@ export function CloudDayVendorsPage({
           ...previous,
           ...formDraftsFor(snapshot),
           snapshot,
+          refreshingSnapshot: null,
           dayIdDraft: snapshot.dayId,
           loading: false,
           loadError: '',
-          actionError: '',
+          // A local cleanup problem is not part of the short toast: it stays visible until the next action.
+          actionError: confirmsPending && boundOperation?.cleanupWarning ? boundOperation.cleanupWarning : '',
           recovery: confirmsPending ? null : previous.recovery,
-          notice: confirmsPending
-            ? `已確認 ${confirmedCommand ? commandLabel(confirmedCommand) : '雲端操作'} 完成；伺服器資料已重新讀取（命令序號 ${confirmedReceipt.seq}）。${boundOperation?.cleanupWarning ? ' ' + boundOperation.cleanupWarning : ''}`
-            : '',
+          notice: '',
+          toast: confirmsPending ? `已確認 ${confirmedCommand ? commandLabel(confirmedCommand) : '雲端操作'} 完成` : '',
         };
       });
       if (resolvesOperation && confirmedReceipt) onDraftCleared?.();
@@ -557,6 +576,7 @@ export function CloudDayVendorsPage({
           ...previous,
           ...clearFormDrafts(),
           snapshot: null,
+          refreshingSnapshot: null,
           loading: false,
           loadError: errorMessage(error),
           actionError: operation?.receipt
@@ -661,7 +681,10 @@ export function CloudDayVendorsPage({
     operation.querySequence += 1;
     updateFor(operation.identityKey, operation.generation, previous => ({
       ...previous, actionError: '',
-      recovery: { commandId: command.commandId, command, phase: 'receipt', receipt },
+      recovery: {
+        commandId: command.commandId, command, phase: 'receipt', receipt,
+        quiet: previous.recovery?.phase === 'submitting' && previous.recovery.timedOut !== true,
+      },
     }));
     try {
       const cleared = await repository.cleanupConfirmedIntent(
@@ -774,7 +797,9 @@ export function CloudDayVendorsPage({
     if (!ownsOperation(operation)) return;
     beginAttempt(operation);
     updateFor(operation.identityKey, operation.generation, previous => ({
-      ...previous, snapshot: null, loading: false, loadError: '', actionError: '', notice: '',
+      // The confirmed content stays on screen, locked, while the command is in flight (#585); it is display only.
+      ...previous, snapshot: null, refreshingSnapshot: previous.snapshot ?? previous.refreshingSnapshot,
+      loading: false, loadError: '', actionError: '', notice: '', toast: '',
       recovery: {
         commandId: operation!.command.commandId, command: operation!.command,
         phase: 'submitting', timedOut: false, canRetry: false,
@@ -1173,8 +1198,24 @@ export function CloudDayVendorsPage({
     void runPreparedCommand({ kind: 'set-opening-cash', commandId, ...input });
   };
 
-  const busy = page.recovery !== null;
-  const snapshot = page.snapshot;
+  // Quiet feedback (#585): a command in flight (before ten seconds) and the re-read after its receipt are shown only by the
+  // progress bar and the locked page. The recovery panel appears for everything that needs the operator (ten seconds and later,
+  // a read that failed, an access change).
+  const recovery = page.recovery;
+  const quietSubmitting = recovery?.phase === 'submitting' && !recovery.timedOut;
+  const quietReceipt = recovery?.phase === 'receipt' && recovery.quiet === true && !page.loadError
+    && (page.loading || page.snapshot !== null || page.refreshingSnapshot !== null);
+  const showRecoveryPanel = recovery !== null && !quietSubmitting && !quietReceipt;
+  const progressActive = page.loading || quietSubmitting || quietReceipt
+    || recovery?.phase === 'checking' || (recovery?.phase === 'submitting' && recovery.timedOut === true);
+  // Display only (#585): the confirmed content from before the command stays on screen, locked (`inert`), while the command is in
+  // flight or its receipt is re-read. Never kept once the authorization is revoked or the read failed; no command is built from it.
+  const snapshot = page.snapshot
+    ?? (!page.authorizationRevoked && !page.loadError && (quietSubmitting || quietReceipt)
+      ? page.refreshingSnapshot
+      : null);
+  const showingStale = page.snapshot === null && snapshot !== null;
+  const busy = page.recovery !== null || showingStale;
   const activeVendors = snapshot?.vendors.filter(vendor => vendor.status === 'active' && !vendor.deleted) ?? [];
   const canMutateDay = snapshot?.day !== null && snapshot?.day !== undefined && snapshot.day.status !== 'closed';
   const canSetOpeningCash = !!snapshot
@@ -1206,7 +1247,8 @@ export function CloudDayVendorsPage({
     && source.sourceVendor.status === 'active' && !source.sourceVendor.deleted
     && source.sourceVendor.name === source.menu.vendorNameSnapshot;
   return (
-    <main className="cloud-day-vendors" aria-label="雲端日期設定與供應商管理">
+    <main className="cloud-day-vendors" aria-label="雲端日期設定與供應商管理" aria-busy={busy || page.loading}>
+      <CommandProgress active={progressActive} />
       <header className="cloud-day-vendors__header">
         <div>
           <h1>{view === 'vendors' ? '供應商' : view === 'day' ? '菜單與開帳' : '營業日、菜單與供應商'}</h1>
@@ -1233,8 +1275,9 @@ export function CloudDayVendorsPage({
         </div>
       )}
       {page.notice && <div className="cloud-day-vendors__notice" role="status">{page.notice}</div>}
+      <Toast message={page.toast} />
 
-      {page.recovery && (
+      {showRecoveryPanel && page.recovery && (
         <section className="cloud-day-vendors__recovery" aria-label="命令結果確認" role="alert">
           <strong>{page.recovery.phase === 'receipt'
             ? '已找到伺服器回執，資料尚待再次讀取。'
@@ -1276,10 +1319,10 @@ export function CloudDayVendorsPage({
         </section>
       )}
 
-      {page.loading && <div className="cloud-day-vendors__loading" role="status">正在從伺服器載入完整營業日與供應商資料…</div>}
+      {page.loading && !showingStale && <div className="cloud-day-vendors__loading" role="status">正在從伺服器載入完整營業日與供應商資料…</div>}
 
-      {snapshot && !page.loading && (
-        <>
+      {snapshot && (!page.loading || showingStale) && (
+        <div className="cloud-day-vendors__content" data-testid="cloud-day-vendors-content" inert={showingStale || undefined}>
           {view !== 'vendors' && <><section className="cloud-day-vendors__date-panel" aria-label="營業日選擇">
             <div className="cloud-day-vendors__section-heading">
               <h2>營業日</h2>
@@ -1492,7 +1535,7 @@ export function CloudDayVendorsPage({
             )}
             <p className="cloud-day-vendors__footnote">建立、編輯、停用、恢復與移除都是逐筆伺服器命令。停用或移除供應商不會改寫營業日菜單及既有交易中的名稱快照。</p>
           </section>}
-        </>
+        </div>
       )}
 
       {!snapshot && !page.loading && !page.recovery && (
