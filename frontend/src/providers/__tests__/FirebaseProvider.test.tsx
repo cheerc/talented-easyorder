@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import React from 'react';
@@ -287,5 +287,144 @@ describe('#362 — FirebaseProvider skips init when not configured', () => {
     expect(result.current.fbError).toBeNull();
     expect(result.current.access).toEqual({ ok: false, reason: 'signed_out' });
     expect(mockEnsure).not.toHaveBeenCalled();
+  });
+});
+
+describe('#586 — tab return keeps a confirmed holder mounted', () => {
+  const services = {
+    app: {} as Record<string, unknown>,
+    auth: { currentUser: null } as Record<string, unknown>,
+    db: {} as Record<string, unknown>,
+  };
+  let nowMs = 0;
+
+  function setVisibility(state: 'visible' | 'hidden') {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+  }
+
+  /** Signs in as op-1, observes a same-UID lease at epoch 1 and lets the first renew confirm it. */
+  async function confirmedHolder() {
+    mockEnsure.mockResolvedValue(services as unknown as ReturnType<typeof ensureFirebaseInitialized> extends Promise<infer T> ? T : never);
+    let accessCallback: ((access: OperatorAccess) => void) | null = null;
+    mockSubscribe.mockImplementation((_auth, _db, callback) => { accessCallback = callback; return vi.fn(); });
+    let leaseCallback: ((state: ActiveLeaseState) => void) | null = null;
+    leaseMocks.subscribeLease.mockImplementation((_db, _uid, callback) => { leaseCallback = callback; return vi.fn(); });
+    const stopHeartbeat = vi.fn();
+    leaseMocks.startLeaseHeartbeat.mockReturnValue(stopHeartbeat);
+    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'acquired', holderUid: 'op-1', epoch: 1, updatedAt: new Date() });
+
+    const history: ActiveLeaseState[] = [];
+    const hook = renderHook(() => {
+      const value = useFirebase();
+      history.push(value.lease);
+      return value;
+    }, { wrapper });
+    await waitFor(() => expect(accessCallback).not.toBeNull());
+    await act(async () => {
+      accessCallback!({ ok: true, profile: { uid: 'op-1', email: 'op-1@example.com', displayName: 'Operator 1' } });
+    });
+    await waitFor(() => expect(leaseCallback).not.toBeNull());
+    await act(async () => {
+      leaseCallback!({ holderUid: 'op-1', epoch: 1, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+    });
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(true));
+    history.length = 0;
+    mockClearSensitivePosData.mockClear();
+    return { hook, history, stopHeartbeat, leaseCallback: () => leaseCallback! };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsConfigured.mockReturnValue(true);
+    leaseMocks.acquireLease.mockReset();
+    leaseMocks.getLeaseStatus.mockReset().mockResolvedValue({
+      holderUid: null, epoch: 0, updatedAt: null, isKnown: false, isHolder: false, isExpired: false,
+    });
+    leaseMocks.releaseLease.mockReset().mockResolvedValue(false);
+    leaseMocks.renewLease.mockReset();
+    leaseMocks.subscribeLease.mockReset().mockReturnValue(vi.fn());
+    leaseMocks.startLeaseHeartbeat.mockReset().mockReturnValue(vi.fn());
+    nowMs = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => nowMs);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    Reflect.deleteProperty(document, 'visibilityState');
+  });
+
+  it('V1: returning after under a minute does nothing: no renew, no status read, no clear, no unmount', async () => {
+    const { hook, history, stopHeartbeat } = await confirmedHolder();
+    setVisibility('hidden');
+    nowMs = 5_000;
+    setVisibility('visible');
+    await act(async () => {});
+
+    expect(leaseMocks.renewLease).toHaveBeenCalledTimes(1);
+    expect(leaseMocks.getLeaseStatus).not.toHaveBeenCalled();
+    expect(mockClearSensitivePosData).not.toHaveBeenCalled();
+    expect(stopHeartbeat).not.toHaveBeenCalled();
+    expect(history.some(state => !state.isHolder || !state.isKnown)).toBe(false);
+    expect(hook.result.current.lease).toMatchObject({ holderUid: 'op-1', epoch: 1, isKnown: true, isHolder: true });
+  });
+
+  it('V2: returning after a minute renews once in the background without masking or clearing', async () => {
+    const { hook, history, stopHeartbeat } = await confirmedHolder();
+    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'acquired', holderUid: 'op-1', epoch: 1, updatedAt: new Date() });
+    setVisibility('hidden');
+    nowMs = 61_000;
+    setVisibility('visible');
+    await act(async () => {});
+
+    expect(leaseMocks.renewLease).toHaveBeenCalledTimes(2);
+    expect(leaseMocks.renewLease).toHaveBeenLastCalledWith(services.db, 'op-1', 1);
+    expect(leaseMocks.getLeaseStatus).not.toHaveBeenCalled();
+    expect(history.some(state => !state.isHolder || !state.isKnown)).toBe(false);
+    expect(mockClearSensitivePosData).not.toHaveBeenCalled();
+    expect(stopHeartbeat).not.toHaveBeenCalled();
+    expect(leaseMocks.startLeaseHeartbeat).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.lease).toMatchObject({ holderUid: 'op-1', epoch: 1, isKnown: true, isHolder: true });
+  });
+
+  it('V3: a background renew the server does not confirm masks and clears (fail closed)', async () => {
+    const { hook, stopHeartbeat } = await confirmedHolder();
+    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'lost', message: '伺服器未確認續約；請重新檢查使用權' });
+    setVisibility('hidden');
+    nowMs = 61_000;
+    setVisibility('visible');
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(false));
+
+    expect(mockClearSensitivePosData).toHaveBeenCalledTimes(1);
+    expect(stopHeartbeat).toHaveBeenCalled();
+  });
+
+  it('V4: a background renew that finds another holder shows that holder and clears', async () => {
+    const { hook } = await confirmedHolder();
+    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'stale_epoch', message: 'epoch changed' });
+    leaseMocks.getLeaseStatus.mockResolvedValueOnce({
+      holderUid: 'op-2', epoch: 2, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false,
+    });
+    setVisibility('hidden');
+    nowMs = 61_000;
+    setVisibility('visible');
+    await waitFor(() => expect(hook.result.current.lease).toMatchObject({ holderUid: 'op-2', epoch: 2, isHolder: false }));
+
+    expect(mockClearSensitivePosData).toHaveBeenCalledTimes(1);
+  });
+
+  it('V5: a tab that is not a confirmed holder still re-reads the lease when it returns', async () => {
+    const { hook, leaseCallback } = await confirmedHolder();
+    // Server-confirmed loss leaves the tab masked and unconfirmed.
+    await act(async () => {
+      leaseCallback()({ holderUid: 'op-2', epoch: 2, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+    });
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(false));
+    leaseMocks.getLeaseStatus.mockClear();
+
+    setVisibility('hidden');
+    nowMs = 5_000;
+    setVisibility('visible');
+    await waitFor(() => expect(leaseMocks.getLeaseStatus).toHaveBeenCalled());
   });
 });
