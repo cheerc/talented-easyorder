@@ -982,8 +982,7 @@ describe('CloudReportPage', () => {
         expect(screen.getByRole('status')).toHaveTextContent(kind === 'export' ? '已發起匯出' : '已發起列印');
         expect(screen.queryByRole('region', { name: '輸出命令確認' })).toBeNull();
         expect(navigation).toHaveBeenLastCalledWith(`operator-a:4:${kind}-query-first`, 'resolved');
-        if (kind === 'print') act(() => { window.dispatchEvent(new Event('afterprint')); });
-
+  
         await act(async () => { original.resolve({ ok: true, receipt: { commandId: input.commandId, kind: receiptKind, seq: 12 } }); });
         await flush();
         expect(kind === 'export' ? download : print).toHaveBeenCalledTimes(1);
@@ -1107,6 +1106,8 @@ describe('CloudReportPage', () => {
 });
 
 describe('CloudReportPage: #587 P2 data updated elsewhere', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   const head = (seq: number) => ({ seq, lastCommandId: `cmd-${seq}`, datasetId: 'dataset-a', targets: {} });
 
   beforeEach(() => {
@@ -1119,6 +1120,8 @@ describe('CloudReportPage: #587 P2 data updated elsewhere', () => {
     mocks.readAccessEvents.mockImplementation(async input => ({
       ...accessEvents, leaseEpoch: input.leaseEpoch, range: input.range,
     }));
+    mocks.recordExport.mockImplementation(async input => ({ ok: true, receipt: { commandId: input.commandId, seq: 12, kind: 'RecordExport' } }));
+    mocks.recordPrint.mockImplementation(async input => ({ ok: true, receipt: { commandId: input.commandId, seq: 12, kind: 'RecordPrint' } }));
     mocks.confirmPendingIntent.mockResolvedValue({ status: 'not-found' });
     mocks.cleanupConfirmedIntent.mockResolvedValue(true);
   });
@@ -1140,6 +1143,36 @@ describe('CloudReportPage: #587 P2 data updated elsewhere', () => {
     expect(mocks.readReport.mock.calls[1][0].range).toEqual(range);
     expect(screen.queryByTestId('data-updated-notice')).toBeNull();
   });
+
+  for (const kind of ['export', 'print'] as const) {
+    it(`does not take the page's own ${kind} receipt for another device, but still shows a later write of another device`, async () => {
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+      vi.spyOn(window, 'print').mockImplementation(() => undefined);
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue(`blob:own-${kind}`);
+      headMock.current = head(11);
+      const view = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={`operator-a:4:own-${kind}`} />);
+      await screen.findByTestId('report-ready');
+      if (kind === 'print') fireEvent.change(screen.getByLabelText('列印標示日期'), { target: { value: '2026-10-19' } });
+      const record = kind === 'export' ? mocks.recordExport : mocks.recordPrint;
+      fireEvent.click(screen.getByRole('button', { name: kind === 'export' ? '匯出稽核 CSV' : '記錄後列印目前完整明細' }));
+      await waitFor(() => expect(record).toHaveBeenCalledTimes(1));
+      await screen.findByText(kind === 'export' ? /已發起匯出/ : /已發起列印/);
+
+      // a print surface keeps the page locked until the browser reports afterprint
+      if (kind === 'print') act(() => { window.dispatchEvent(new Event('afterprint')); });
+
+      // the receipt of this very command (seq 12) moves the head, and the page does not read again after it
+      headMock.current = head(12);
+      view.rerender(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={`operator-a:4:own-${kind}`} />);
+      expect(screen.queryByTestId('data-updated-notice')).toBeNull();
+
+      // another device writing after it still shows the notice
+      if (kind === 'print') act(() => { window.dispatchEvent(new Event('afterprint')); });
+      headMock.current = head(13);
+      view.rerender(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={`operator-a:4:own-${kind}`} />);
+      expect(screen.getByTestId('data-updated-notice')).toBeInTheDocument();
+    });
+  }
 
   it('shows nothing when the report is at the head, or there is no head', async () => {
     headMock.current = head(11);
