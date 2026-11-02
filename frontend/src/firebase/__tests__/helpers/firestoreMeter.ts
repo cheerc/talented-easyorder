@@ -218,10 +218,24 @@ function wrapReads<T extends Record<string, unknown>>(actual: T): Record<string,
   wrap('onSnapshot', original => (target, ...rest) => {
     // A document listener: count a server snapshot when its data differs from the one counted before.
     const reference = target as { path?: string; type?: string };
-    if (reference.type !== 'document') return original(target, ...rest);
+    if (reference.type !== 'document' && reference.type !== 'query') return original(target, ...rest);
     const key = normalizePath(reference.path ?? '');
     let last: string | null | undefined;
+    // A query listener is billed one read per document that is new or changed in a server snapshot (the first snapshot: every document).
+    const seen = new Map<string, string>();
+    const countQuery = (snapshot: { metadata?: { fromCache?: boolean }; docs?: Array<{ id: string; data: () => unknown }> }) => {
+      if (snapshot.metadata?.fromCache) return;
+      for (const item of snapshot.docs ?? []) {
+        const fingerprint = JSON.stringify(item.data(), (_key, value) => (
+          value && typeof value === 'object' && typeof (value as { toMillis?: unknown }).toMillis === 'function' ? (value as { toMillis(): number }).toMillis() : value
+        ));
+        if (seen.get(item.id) === fingerprint) continue;
+        seen.set(item.id, fingerprint);
+        noteRead(ownerOf(target), { form: 'listener-doc', key: `${shapeOf(target)?.collection ?? 'unknown-query'}/*`, documents: 1, billed: 1 });
+      }
+    };
     const countable = (snapshot: { metadata?: { fromCache?: boolean }; exists?: () => boolean; data?: () => unknown }) => {
+      if (reference.type === 'query') { countQuery(snapshot as never); return; }
       if (last !== undefined && snapshot.metadata?.fromCache) return;
       const fingerprint = snapshot.exists?.() ? JSON.stringify(snapshot.data?.(), (_key, value) => (
         value && typeof value === 'object' && typeof (value as { toMillis?: unknown }).toMillis === 'function' ? (value as { toMillis(): number }).toMillis() : value

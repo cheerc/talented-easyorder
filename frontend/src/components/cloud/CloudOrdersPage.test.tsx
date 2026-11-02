@@ -27,9 +27,11 @@ vi.mock('../../firebase/cloudOrderRepository', () => ({
   createCloudOrderRepository: () => repositoryMock,
 }));
 
-const headMock = vi.hoisted(() => ({ current: null as { seq: number; lastCommandId: string | null; datasetId: string } | null }));
+const headMock = vi.hoisted(() => ({
+  current: null as { seq: number; lastCommandId: string; datasetId: string; targets: Record<string, unknown> } | null,
+}));
 vi.mock('../../providers/FirebaseProvider', () => ({
-  useFirebaseOptional: () => (headMock.current ? { dataHead: headMock.current } : null),
+  useDataHead: () => headMock.current,
 }));
 
 vi.mock('../../firebase/cloudRecoveryReader', () => ({
@@ -2007,7 +2009,9 @@ describe('CloudOrdersPage: #587 idle counter page follows the server data head',
     ));
     repositoryMock.createOrder.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId));
   });
-  const head = (seq: number, lastCommandId: string | null = `cmd-${seq}`) => ({ seq, lastCommandId, datasetId: 'ds-1' });
+  const head = (seq: number, lastCommandId = `cmd-${seq}`) => ({
+    seq, lastCommandId, datasetId: 'ds-1', targets: { transactionId: `tx-${seq}`, studentId: 's1', dayId: '2026-11-02' },
+  });
   const setHead = (view: ReturnType<typeof renderComponent>, value: ReturnType<typeof head> | null) => {
     headMock.current = value;
     act(() => { view.rerender(pageElement()); });

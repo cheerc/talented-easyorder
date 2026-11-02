@@ -54,7 +54,7 @@ const headMocks = vi.hoisted(() => ({
 vi.mock('../../firebase/dataHeadWatch', () => ({ subscribeDataHead: headMocks.subscribeDataHead }));
 vi.mock('../../store/clearSensitivePosData', () => ({ clearSensitivePosData: vi.fn().mockResolvedValue(undefined) }));
 
-import { FirebaseProvider, useFirebase } from '../FirebaseProvider';
+import { FirebaseProvider, useDataHead, useFirebase } from '../FirebaseProvider';
 import { ensureFirebaseInitialized, isFirebaseConfigured } from '../../firebase/firebaseApp';
 import { subscribeOperatorAccess } from '../../firebase/authService';
 import { clearSensitivePosData } from '../../store/clearSensitivePosData';
@@ -670,14 +670,14 @@ describe('#587 — dataHead is watched only while this tab is a confirmed holder
     db: {} as Record<string, unknown>,
   };
 
-  async function signedInTab() {
+  async function signedInTab(tabWrapper: typeof wrapper = wrapper) {
     mockEnsure.mockResolvedValue(services as unknown as ReturnType<typeof ensureFirebaseInitialized> extends Promise<infer T> ? T : never);
     let accessCallback: ((access: OperatorAccess) => void) | null = null;
     mockSubscribe.mockImplementation((_auth, _db, callback) => { accessCallback = callback; return vi.fn(); });
     let leaseCallback: ((state: ActiveLeaseState) => void) | null = null;
     leaseMocks.subscribeLease.mockImplementation((_db, _uid, callback) => { leaseCallback = callback; return vi.fn(); });
     leaseMocks.renewLease.mockResolvedValue({ status: 'acquired', holderUid: 'op-1', epoch: 1, updatedAt: new Date() });
-    const hook = renderHook(() => useFirebase(), { wrapper });
+    const hook = renderHook(() => ({ ...useFirebase(), dataHead: useDataHead() }), { wrapper: tabWrapper });
     await waitFor(() => expect(accessCallback).not.toBeNull());
     await act(async () => {
       accessCallback!({ ok: true, profile: { uid: 'op-1', email: 'op-1@example.com', displayName: 'Operator 1' } });
@@ -721,8 +721,8 @@ describe('#587 — dataHead is watched only while this tab is a confirmed holder
     expect(headMocks.subscribeDataHead.mock.calls[0]![0]).toBe(services.db);
 
     const onUpdate = headMocks.subscribeDataHead.mock.calls[0]![1];
-    await act(async () => { onUpdate({ seq: 12, lastCommandId: 'cmd-12', datasetId: 'ds-1' }); });
-    expect(hook.result.current.dataHead).toEqual({ seq: 12, lastCommandId: 'cmd-12', datasetId: 'ds-1' });
+    await act(async () => { onUpdate({ seq: 12, lastCommandId: 'cmd-12', datasetId: 'ds-1', targets: {} }); });
+    expect(hook.result.current.dataHead).toEqual({ seq: 12, lastCommandId: 'cmd-12', datasetId: 'ds-1', targets: {} });
     await act(async () => { onUpdate(null); });
     expect(hook.result.current.dataHead).toBeNull();
   });
@@ -735,7 +735,7 @@ describe('#587 — dataHead is watched only while this tab is a confirmed holder
       leaseCallback()({ holderUid: 'op-1', epoch: 1, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
     });
     await waitFor(() => expect(headMocks.subscribeDataHead).toHaveBeenCalledTimes(1));
-    await act(async () => { headMocks.subscribeDataHead.mock.calls[0]![1]({ seq: 3, lastCommandId: 'c', datasetId: 'ds-1' }); });
+    await act(async () => { headMocks.subscribeDataHead.mock.calls[0]![1]({ seq: 3, lastCommandId: 'c', datasetId: 'ds-1', targets: {} }); });
     expect(hook.result.current.dataHead).not.toBeNull();
 
     await act(async () => {
@@ -744,5 +744,26 @@ describe('#587 — dataHead is watched only while this tab is a confirmed holder
     await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(false));
     expect(unsubscribeHead).toHaveBeenCalled();
     expect(hook.result.current.dataHead).toBeNull();
+  });
+
+  it('H4: a head change re-renders only the pages that follow it, not the other consumers of the Firebase context', async () => {
+    let contextRenders = 0;
+    function ContextConsumer() {
+      useFirebase();
+      contextRenders += 1;
+      return null;
+    }
+    const withConsumer = ({ children }: { children: ReactNode }) => React.createElement(FirebaseProvider, null, React.createElement(ContextConsumer), children);
+    const { hook, leaseCallback } = await signedInTab(withConsumer);
+    await act(async () => {
+      leaseCallback()({ holderUid: 'op-1', epoch: 1, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+    });
+    await waitFor(() => expect(headMocks.subscribeDataHead).toHaveBeenCalledTimes(1));
+    await act(async () => {});
+    const before = contextRenders;
+    await act(async () => { headMocks.subscribeDataHead.mock.calls[0]![1]({ seq: 5, lastCommandId: 'cmd-5', datasetId: 'ds-1', targets: {} }); });
+    await act(async () => { headMocks.subscribeDataHead.mock.calls[0]![1]({ seq: 6, lastCommandId: 'cmd-6', datasetId: 'ds-1', targets: {} }); });
+    expect(hook.result.current.dataHead).toEqual({ seq: 6, lastCommandId: 'cmd-6', datasetId: 'ds-1', targets: {} });
+    expect(contextRenders).toBe(before);
   });
 });

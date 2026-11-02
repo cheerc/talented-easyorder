@@ -1149,7 +1149,7 @@
       "deletes": 0,
       "detail": {
         "reads": {
-          "listener-doc system/dataHead": 1
+          "listener-doc commands/*": 1
         },
         "writes": {}
       }
@@ -12816,22 +12816,21 @@
     },
     "load.ordersExternalRefresh": {
       "reads": {
-        "fixed": 8,
+        "fixed": 7,
         "perUnit": {}
       },
       "readAuthorization": {
-        "fixed": 14,
+        "fixed": 12,
         "perUnit": {}
       },
       "readAuthorizationDeduped": {
-        "fixed": 14,
+        "fixed": 12,
         "perUnit": {}
       },
       "writes": 0,
       "deletes": 0,
       "detail": {
         "reads": {
-          "doc commands/*": 1,
           "doc system/dataHead": 2,
           "doc system/accessLease": 2,
           "doc days/*": 1,

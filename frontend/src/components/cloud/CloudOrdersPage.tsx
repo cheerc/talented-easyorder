@@ -31,7 +31,7 @@ import {
 } from '../../firebase/cloudOrderRepository';
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
 import type { DataHeadSignal } from '../../firebase/dataHeadWatch';
-import { useFirebaseOptional } from '../../providers/FirebaseProvider';
+import { useDataHead } from '../../providers/FirebaseProvider';
 import type { CloudStudentRecord } from '../../firebase/cloudStudentRepository';
 import { isBackfilled, type CloudBackfillDay } from '../../firebase/cloudDayCloseRepository';
 import { composePaperRefNote, splitPaperNote } from '../../domain/paperRef';
@@ -506,7 +506,7 @@ function recentSummary(transactions: CloudOrderTransactionRecord[]): string {
 export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationStateChange, initialBackfillDayId, onViewDayChange, onDraftCleared, onOpenSettings }: CloudOrdersPageProps) {
   const recoveryReader = useMemo(() => getCloudRecoveryReader(db), [db]);
   // #587: the server data head, watched by the provider while this tab is a confirmed holder (null elsewhere, e.g. in tests).
-  const dataHead = useFirebaseOptional()?.dataHead ?? null;
+  const dataHead = useDataHead();
   const repository = useMemo(() => createCloudOrderRepository(db, { recoveryReader }), [db, recoveryReader]);
   // Which business day the page reads: null is the server's today. Commands refresh through the same ref.
   const viewDayRef = useRef<string | null>(initialBackfillDayId ?? null);

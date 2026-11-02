@@ -1,7 +1,7 @@
 // @ts-expect-error Node-only file access loads the real Rules.
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { Timestamp, doc, getDoc, setDoc, type Firestore } from 'firebase/firestore';
+import { Timestamp, collection, doc, getDoc, getDocs, limit, orderBy, query, setDoc, type Firestore } from 'firebase/firestore';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
 import { createCloudCommandRepository } from '../cloudCommandRepository';
@@ -181,10 +181,16 @@ describeWithEmulator('P16f2 page reduction: the orders page after a command, and
     expect(await orders.refreshSnapshot(before, elsewhere)).toBeNull();
   });
 
-  /** #587: the signal the page gets from its listener on system/dataHead. */
+  /** #587: the signal the page gets from its listener on the newest command receipt (what `subscribeDataHead` reports). */
   const headSignal = async () => {
-    const head = await read('system/dataHead');
-    return { seq: head.seq, lastCommandId: head.lastCommandId as string | null, datasetId: head.datasetId };
+    const newest = (await getDocs(query(collection(app, 'commands'), orderBy('seq', 'desc'), limit(1)))).docs[0]!.data();
+    const afterHead = (newest.after as { head: { datasetId: string } }).head;
+    return {
+      seq: newest.seq as number,
+      lastCommandId: newest.commandId as string,
+      datasetId: afterHead.datasetId,
+      targets: newest.targets as Record<string, unknown>,
+    };
   };
 
   it('#587 follows a head that is one command ahead (a command of another device) and equals a full reload', async () => {
@@ -198,29 +204,26 @@ describeWithEmulator('P16f2 page reduction: the orders page after a command, and
     const full = await orders.loadSnapshot();
     expect(followed).not.toBeNull();
     expect(followed).toEqual(full);
-    // the command document, then the same reads as a refresh from a receipt
-    expect(report.billedReads, 'reads of following the head').toBeLessThanOrEqual(REFRESH_READS + 1);
+    // the receipt came with the listener, so these are exactly the reads of a refresh from a receipt
+    expect(report.billedReads, 'reads of following the head').toBeLessThanOrEqual(REFRESH_READS);
   });
 
-  it('#587 gives up (null, the page reloads) when the head is more than one command ahead, or names no command', async () => {
+  it('#587 gives up (null, the page reloads) when the head is more than one command ahead', async () => {
     await touchLease();
     const before = await orders.loadSnapshot();
     await createOrder();
     await createOrder();
     expect(await orders.refreshFromHead(before, await headSignal())).toBeNull();
-    expect(await orders.refreshFromHead(before, { ...(await headSignal()), lastCommandId: null })).toBeNull();
   });
 
-  it('#587 gives up when the head is of another dataset, or its command is not the one at that sequence', async () => {
+  it('#587 gives up when the head is of another dataset, or its targets are another day, and follows when they match', async () => {
     await touchLease();
-    const older = await createOrder();
     const before = await orders.loadSnapshot();
     const placed = await createOrder();
     const head = await headSignal();
     expect(await orders.refreshFromHead(before, { ...head, datasetId: `${head.datasetId}-other` })).toBeNull();
-    // the sequence is the next one but the command id named is an earlier command: its seq does not match
-    expect(await orders.refreshFromHead(before, { ...head, lastCommandId: older.receipt.commandId })).toBeNull();
-    expect(await orders.refreshFromHead(before, { ...head, lastCommandId: uuid(990_999) })).toBeNull();
+    expect(await orders.refreshFromHead(before, { ...head, targets: { ...head.targets, dayId: shiftDay(today, -1) } })).toBeNull();
+    expect(await orders.refreshFromHead(before, { ...head, targets: {} })).toBeNull();
     expect(await orders.refreshFromHead(before, head)).not.toBeNull();
     expect(placed.receipt.seq).toBe(head.seq);
   });

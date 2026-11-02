@@ -2,12 +2,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Firestore } from 'firebase/firestore';
 
 const mocks = vi.hoisted(() => ({
-  doc: vi.fn((_db: unknown, path: string) => ({ path })),
+  collection: vi.fn((_db: unknown, path: string) => ({ collection: path })),
+  orderBy: vi.fn((field: string, direction: string) => ({ orderBy: [field, direction] })),
+  limit: vi.fn((count: number) => ({ limit: count })),
+  query: vi.fn((source: unknown, ...constraints: unknown[]) => ({ source, constraints })),
   onSnapshot: vi.fn(),
 }));
 
 vi.mock('firebase/firestore', () => ({
-  doc: mocks.doc,
+  collection: mocks.collection,
+  orderBy: mocks.orderBy,
+  limit: mocks.limit,
+  query: mocks.query,
   onSnapshot: mocks.onSnapshot,
 }));
 
@@ -15,15 +21,24 @@ import { subscribeDataHead, type DataHeadSignal } from '../dataHeadWatch';
 
 type Snapshot = {
   metadata: { fromCache: boolean; hasPendingWrites: boolean };
-  exists: () => boolean;
-  data: () => unknown;
+  docs: Array<{ data: () => unknown }>;
 };
 
-function serverSnapshot(data: unknown, overrides: Partial<Snapshot['metadata']> = {}, exists = true): Snapshot {
+function receipt(seq: number, overrides: Record<string, unknown> = {}) {
+  return {
+    commandId: `cmd-${seq}`,
+    kind: 'CreateOrder',
+    seq,
+    targets: { transactionId: `tx-${seq}`, studentId: 's1', dayId: '2026-11-02' },
+    after: { head: { datasetId: 'ds-1', seq, lastCommandId: `cmd-${seq}` } },
+    ...overrides,
+  };
+}
+
+function serverSnapshot(data: unknown[], overrides: Partial<Snapshot['metadata']> = {}): Snapshot {
   return {
     metadata: { fromCache: false, hasPendingWrites: false, ...overrides },
-    exists: () => exists,
-    data: () => data,
+    docs: data.map(item => ({ data: () => item })),
   };
 }
 
@@ -42,40 +57,58 @@ describe('#587 subscribeDataHead', () => {
     });
   });
 
-  it('watches only system/dataHead and includes metadata changes so cache and pending writes can be skipped', () => {
+  it('watches the single newest command receipt, never system/dataHead (the repositories read the head as a fence from the server)', () => {
     subscribeDataHead({} as Firestore, onUpdate);
-    expect(mocks.doc).toHaveBeenCalledWith({}, 'system/dataHead');
-    expect(mocks.onSnapshot).toHaveBeenCalledWith({ path: 'system/dataHead' }, { includeMetadataChanges: true }, expect.any(Function), expect.any(Function));
+    expect(mocks.collection).toHaveBeenCalledWith({}, 'commands');
+    expect(mocks.query).toHaveBeenCalledWith({ collection: 'commands' }, { orderBy: ['seq', 'desc'] }, { limit: 1 });
+    expect(mocks.onSnapshot).toHaveBeenCalledWith(
+      { source: { collection: 'commands' }, constraints: [{ orderBy: ['seq', 'desc'] }, { limit: 1 }] },
+      { includeMetadataChanges: true },
+      expect.any(Function),
+      expect.any(Function),
+    );
   });
 
   it('does not report cache-only or pending-write observations', () => {
     subscribeDataHead({} as Firestore, onUpdate);
-    emit(serverSnapshot({ seq: 4, lastCommandId: null, datasetId: 'ds-1' }, { fromCache: true }));
-    emit(serverSnapshot({ seq: 4, lastCommandId: null, datasetId: 'ds-1' }, { hasPendingWrites: true }));
+    emit(serverSnapshot([receipt(4)], { fromCache: true }));
+    emit(serverSnapshot([receipt(4)], { hasPendingWrites: true }));
     expect(onUpdate).not.toHaveBeenCalled();
   });
 
-  it('reports the sequence, last command id and dataset of a server-confirmed head', () => {
+  it('reports the sequence, command id, dataset and targets of the newest server-confirmed receipt', () => {
     subscribeDataHead({} as Firestore, onUpdate);
-    emit(serverSnapshot({ seq: 7, lastCommandId: 'cmd-7', datasetId: 'ds-1', maintenance: false, goLiveDate: '2026-10-01' }));
-    emit(serverSnapshot({ seq: 0, lastCommandId: null, datasetId: 'ds-1' }));
-    expect(onUpdate).toHaveBeenNthCalledWith(1, { seq: 7, lastCommandId: 'cmd-7', datasetId: 'ds-1' });
-    expect(onUpdate).toHaveBeenNthCalledWith(2, { seq: 0, lastCommandId: null, datasetId: 'ds-1' });
+    emit(serverSnapshot([receipt(7)]));
+    expect(onUpdate).toHaveBeenCalledWith({
+      seq: 7,
+      lastCommandId: 'cmd-7',
+      datasetId: 'ds-1',
+      targets: { transactionId: 'tx-7', studentId: 's1', dayId: '2026-11-02' },
+    });
+  });
+
+  it('reports null while no command exists yet', () => {
+    subscribeDataHead({} as Firestore, onUpdate);
+    emit(serverSnapshot([]));
+    expect(onUpdate).toHaveBeenCalledWith(null);
   });
 
   it.each([
-    ['a missing document', undefined, false],
-    ['a negative seq', { seq: -1, lastCommandId: null, datasetId: 'ds-1' }, true],
-    ['a fractional seq', { seq: 1.5, lastCommandId: null, datasetId: 'ds-1' }, true],
-    ['a non-numeric seq', { seq: '3', lastCommandId: null, datasetId: 'ds-1' }, true],
-    ['an unsafe integer seq', { seq: Number.MAX_SAFE_INTEGER + 1, lastCommandId: null, datasetId: 'ds-1' }, true],
-    ['a numeric lastCommandId', { seq: 3, lastCommandId: 5, datasetId: 'ds-1' }, true],
-    ['an empty datasetId', { seq: 3, lastCommandId: null, datasetId: '' }, true],
-    ['a missing datasetId', { seq: 3, lastCommandId: null }, true],
-    ['a non-object body', 'head', true],
-  ])('reports null for %s', (_label, data, exists) => {
+    ['a seq of zero', receipt(0)],
+    ['a fractional seq', receipt(1.5)],
+    ['a non-numeric seq', receipt(3, { seq: '3' })],
+    ['an unsafe integer seq', receipt(Number.MAX_SAFE_INTEGER + 1)],
+    ['a missing command id', receipt(3, { commandId: undefined })],
+    ['an empty command id', receipt(3, { commandId: '' })],
+    ['targets that are not an object', receipt(3, { targets: 'x' })],
+    ['targets that are an array', receipt(3, { targets: [] })],
+    ['a missing after head', receipt(3, { after: {} })],
+    ['an empty datasetId', receipt(3, { after: { head: { datasetId: '', seq: 3 } } })],
+    ['an after head seq that differs from the receipt seq', receipt(3, { after: { head: { datasetId: 'ds-1', seq: 4 } } })],
+    ['a non-object body', 'receipt'],
+  ])('reports null for %s', (_label, data) => {
     subscribeDataHead({} as Firestore, onUpdate);
-    emit(serverSnapshot(data, {}, exists));
+    emit(serverSnapshot([data]));
     expect(onUpdate).toHaveBeenCalledWith(null);
   });
 

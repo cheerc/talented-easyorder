@@ -27,8 +27,6 @@ export interface FirebaseContextValue {
   storageCleanupError: string | null;
   access: OperatorAccess;
   lease: ActiveLeaseState;
-  /** #587: latest server-confirmed `system/dataHead`, watched only while this tab is a confirmed holder; otherwise null. */
-  dataHead: DataHeadSignal | null;
   acquireLease: () => Promise<LeaseResult>;
   releaseLease: () => Promise<boolean>;
 }
@@ -54,7 +52,6 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   const accessRef = useRef<OperatorAccess>({ ok: false, reason: 'signed_out' });
   const [lease, setLease] = useState<ActiveLeaseState>(defaultLeaseState);
   const leaseRef = useRef<ActiveLeaseState>(defaultLeaseState);
-  const [watchedHead, setWatchedHead] = useState<DataHeadSignal | null>(null);
   const confirmedEpochRef = useRef<number | null>(null);
   const probedEpochRef = useRef<number | null>(null);
   const leaseGenerationRef = useRef(0);
@@ -379,18 +376,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     };
   }, [fb?.db, currentUid, lease.isKnown, lease.isHolder, lease.epoch]);
 
-  // #587: the data head is watched only while this tab is a confirmed holder; losing that ends the watch at once.
   const isConfirmedHolder = lease.isKnown && lease.isHolder;
-  // Only a confirmed holder exposes the value; whatever an earlier watch left is dropped by its cleanup.
-  const dataHead = isConfirmedHolder ? watchedHead : null;
-  useEffect(() => {
-    if (!fb?.db || !currentUid || !isConfirmedHolder) return;
-    const unsubscribe = subscribeDataHead(fb.db, setWatchedHead);
-    return () => {
-      unsubscribe();
-      setWatchedHead(null);
-    };
-  }, [fb?.db, currentUid, isConfirmedHolder, lease.epoch]);
 
   const acquireLease = async (): Promise<LeaseResult> => {
     const startingAccess = accessRef.current;
@@ -490,10 +476,44 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <FirebaseContext.Provider value={{ fb, fbError, storageCleanupError, access, lease, dataHead, acquireLease, releaseLease }}>
-      {children}
+    <FirebaseContext.Provider value={{ fb, fbError, storageCleanupError, access, lease, acquireLease, releaseLease }}>
+      <DataHeadProvider db={fb?.db ?? null} uid={currentUid} confirmedHolder={isConfirmedHolder} epoch={lease.epoch}>
+        {children}
+      </DataHeadProvider>
     </FirebaseContext.Provider>
   );
+}
+
+const DataHeadContext = createContext<DataHeadSignal | null>(null);
+
+/**
+ * #587: the latest server-confirmed `system/dataHead`, watched only while this tab is a confirmed holder (otherwise null; the
+ * watch stops the moment the lease is lost). It lives in its own context and component on purpose: every command of anyone changes
+ * the head, and that must re-render only the pages that follow it, not every consumer of the Firebase context.
+ */
+function DataHeadProvider({ db, uid, confirmedHolder, epoch, children }: {
+  db: FirebaseServices['db'] | null;
+  uid: string | null;
+  confirmedHolder: boolean;
+  epoch: number;
+  children: ReactNode;
+}) {
+  const [watchedHead, setWatchedHead] = useState<DataHeadSignal | null>(null);
+  useEffect(() => {
+    if (!db || !uid || !confirmedHolder) return;
+    const unsubscribe = subscribeDataHead(db, setWatchedHead);
+    return () => {
+      unsubscribe();
+      setWatchedHead(null);
+    };
+  }, [db, uid, confirmedHolder, epoch]);
+  // Only a confirmed holder exposes the value; whatever an earlier watch left is dropped by its cleanup.
+  return <DataHeadContext.Provider value={confirmedHolder ? watchedHead : null}>{children}</DataHeadContext.Provider>;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function useDataHead(): DataHeadSignal | null {
+  return useContext(DataHeadContext);
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
