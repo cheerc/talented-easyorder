@@ -9,6 +9,7 @@ const f = vi.hoisted(() => ({
   confirm: vi.fn(),
   remove: vi.fn(),
   records: [] as Array<Record<string, unknown>>,
+  inFlight: new Set<string>(),
   listener: null as null | ((source: 'same-tab' | 'other-tab' | 'storage-cleared') => void),
 }));
 
@@ -24,7 +25,7 @@ vi.mock('../../firebase/cloudPendingJournal', async importOriginal => ({
   cloudPendingJournalForRepository: () => ({
     migrateLegacyOrderSlot: f.migrate,
     readAll: async () => ({ records: [...f.records], total: f.records.length, complete: true }),
-    isInFlight: () => false,
+    isInFlight: (candidate: { commandId: string }) => f.inFlight.has(candidate.commandId),
     removeIf: f.remove,
     subscribe: (listener: typeof f.listener) => {
       f.listener = listener;
@@ -67,6 +68,7 @@ async function continueManually() {
 
 beforeEach(() => {
   f.records = [{ ...record }];
+  f.inFlight = new Set();
   f.listener = null;
   f.migrate.mockReset().mockResolvedValue('empty');
   f.context.mockReset().mockResolvedValue(context);
@@ -416,5 +418,82 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
     await waitFor(() => { expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert'); expect(screen.queryByRole('region', { name: '待核對命令' })).not.toBeInTheDocument(); });
     expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
     expect(f.migrate).toHaveBeenCalledTimes(2);
+  });
+});
+
+// #585 P1b: a command sent from this very tab (a journal row in flight) must not push the page down with the recovery section
+// while the system is healthy; any other state keeps the section exactly as before.
+describe('CloudPendingRecoveryBoundary quiet same-tab in-flight rows', () => {
+  const region = () => screen.queryByRole('region', { name: '待核對命令' });
+
+  async function mountEmptyShell() {
+    f.records = [];
+    renderBoundary();
+    const shell = await screen.findByTestId('business-shell');
+    await waitFor(() => expect(region()).toBeNull());
+    return shell;
+  }
+
+  async function sendFromThisTab() {
+    f.records = [{ ...record }];
+    f.inFlight.add(record.commandId);
+    const calls = f.context.mock.calls.length;
+    await act(async () => { f.listener?.('same-tab'); });
+    await waitFor(() => expect(f.context.mock.calls.length).toBe(calls + 2));
+    await act(async () => {});
+  }
+
+  it('S1 does not render the section for a healthy same-tab in-flight row and leaves the shell unlocked', async () => {
+    const shell = await mountEmptyShell();
+    await sendFromThisTab();
+    expect(region()).toBeNull();
+    expect(shell.parentElement).not.toHaveAttribute('inert');
+    expect(f.confirm).not.toHaveBeenCalled();
+  });
+
+  it('S2 shows the section again once the same-tab row has been in flight for ten seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      await mountEmptyShell();
+      await sendFromThisTab();
+      expect(region()).toBeNull();
+      await act(async () => { vi.advanceTimersByTime(9_000); });
+      expect(region()).toBeNull();
+      await act(async () => { vi.advanceTimersByTime(1_500); });
+      expect(region()).not.toBeNull();
+      expect(screen.getByText('同分頁的提交仍在執行；保留編號，勿另送。')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('S3 keeps the section when a confirmed row still has a local cleanup to do', async () => {
+    await mountEmptyShell();
+    f.records = [{ ...record }];
+    f.confirm.mockResolvedValueOnce(matched);
+    f.remove.mockResolvedValueOnce(false);
+    const calls = f.context.mock.calls.length;
+    await act(async () => { f.listener?.('same-tab'); });
+    await waitFor(() => expect(f.context.mock.calls.length).toBe(calls + 2));
+    expect(await screen.findByText(/已確認原命令入帳；本機追蹤編號尚未清除，之後會再核對。/)).toBeInTheDocument();
+    expect(region()).not.toBeNull();
+  });
+
+  it('S4 keeps the section when the recovery check fails while a row is in flight', async () => {
+    const shell = await mountEmptyShell();
+    f.records = [{ ...record }];
+    f.inFlight.add(record.commandId);
+    f.context.mockRejectedValueOnce(Object.assign(new Error('unavailable'), { code: 'UNAVAILABLE' }));
+    await act(async () => { f.listener?.('same-tab'); });
+    expect(await screen.findByText('目前無法從伺服器安全核對待決命令；結果未確認，請確認連線後重試。')).toBeInTheDocument();
+    expect(region()).not.toBeNull();
+    expect(shell.parentElement).toHaveAttribute('inert');
+  });
+
+  it('keeps the section for an in-flight row found by the startup check', async () => {
+    f.inFlight.add(record.commandId);
+    renderBoundary();
+    expect(await screen.findByText('同分頁的提交仍在執行；保留編號，勿另送。')).toBeInTheDocument();
+    expect(region()).not.toBeNull();
   });
 });
