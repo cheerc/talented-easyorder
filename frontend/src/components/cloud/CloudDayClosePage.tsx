@@ -390,7 +390,8 @@ function intentFor(command: PreparedCommand, leaseEpoch: number): CloudDayCloseC
 function DayFigures({ day, unclosedCount }: { day: CloudDayCloseState; unclosedCount: number }) {
   const t = day.totals;
   const lastSettlement = day.settlements[day.settlements.length - 1];
-  const countedCash = day.status === 'closed' ? day.effectiveCash : (lastSettlement?.countedCash ?? null);
+  // The settlement's own count; effectiveCash (count + post-close entries) stays under 其他現金統計.
+  const countedCash = lastSettlement?.countedCash ?? null;
   const difference = countedCash === null || day.expectedCash === null ? null : countedCash - day.expectedCash;
   return (
     <div className="cloud-day-close__figures-wrap">
