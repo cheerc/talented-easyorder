@@ -948,9 +948,11 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       expect(gate.requests).toBe(1);
 
       await page.getByTestId('order-recovery-query').click();
-      await expect(page.getByText('伺服器已確認入帳，正在重新載入資料')).toBeVisible({ timeout: 15000 });
-      await expect(page.getByTestId('order-recovery-command-id')).toHaveText(commandId);
-      await expect(page.getByTestId('cloud-orders-loading')).toBeVisible();
+      // Once the server confirmed the command the page re-reads quietly (#585): no confirmed-phase panel, no loading banner;
+      // the previous content stays in place and only the progress bar shows the wait.
+      await expect(page.getByTestId('command-progress')).toHaveAttribute('data-active', 'true', { timeout: 15000 });
+      await expect(page.getByTestId('order-recovery-panel')).toHaveCount(0);
+      await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
       await expect(page.getByTestId('submit-order-button')).toHaveCount(0);
       await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '今日設定' })).toBeDisabled();
       await expect(page.getByTestId('undo-bar')).toHaveCount(0);

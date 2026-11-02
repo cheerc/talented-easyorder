@@ -189,6 +189,12 @@ async function selectStudent(code: string) {
   await screen.findByTestId('selected-student-card');
 }
 
+// The success message is a bottom toast (#585): one sentence, no command sequence number.
+const toastText = () => screen.getByTestId('toast').querySelector('.toast__text')?.textContent ?? null;
+async function expectToast(text: string) {
+  await waitFor(() => expect(toastText()).toBe(text));
+}
+
 async function queryAndAuthorizeRetry() {
   fireEvent.click(screen.getByTestId('order-recovery-query'));
   await screen.findByTestId('order-recovery-retry');
@@ -507,7 +513,7 @@ describe('CloudOrdersPage', () => {
     expect(input.commandId).toMatch(/^[0-9a-f-]{36}$/);
     expect(input.transactionId).toMatch(/^[0-9a-f-]{36}$/);
     expect(input.transactionId).not.toBe(input.commandId);
-    expect(await screen.findByText(/已確認 001 王小明 訂餐完成（命令序號 10）/)).toBeVisible();
+    await expectToast('已確認 001 王小明 訂餐完成');
     expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2);
     expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
   });
@@ -526,7 +532,7 @@ describe('CloudOrdersPage', () => {
       repositoryMock.refreshSnapshot.mockResolvedValue(refreshed);
       await submitBentoOrder();
 
-      expect(await screen.findByText(/已確認 001 王小明 訂餐完成（命令序號 10）/)).toBeVisible();
+      await expectToast('已確認 001 王小明 訂餐完成');
       expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(1);
       expect(repositoryMock.refreshSnapshot).toHaveBeenCalledTimes(1);
       const [previous, receipt] = repositoryMock.refreshSnapshot.mock.calls[0];
@@ -542,7 +548,7 @@ describe('CloudOrdersPage', () => {
       repositoryMock.loadSnapshot.mockResolvedValueOnce(snapshot()).mockResolvedValueOnce(snapshot({ seq: 11, day: mockDay({ bento: 3 }) }));
       await submitBentoOrder();
 
-      expect(await screen.findByText(/已確認 001 王小明 訂餐完成（命令序號 10）/)).toBeVisible();
+      await expectToast('已確認 001 王小明 訂餐完成');
       expect(repositoryMock.refreshSnapshot).toHaveBeenCalledTimes(1);
       expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2);
       expect(screen.getByTestId('cloud-topbar-bento')).toHaveTextContent('3');
@@ -552,8 +558,109 @@ describe('CloudOrdersPage', () => {
       repositoryMock.refreshSnapshot.mockRejectedValue(Object.assign(new Error('unavailable'), { code: 'OFFLINE' }));
       await submitBentoOrder();
 
-      expect(await screen.findByText(/已確認 001 王小明 訂餐完成（命令序號 10）/)).toBeVisible();
+      await expectToast('已確認 001 王小明 訂餐完成');
       expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // #585: a command is answered quietly: no text panel while sending, the page keeps its content while it re-reads after the
+  // receipt, and the success sentence is a short toast without the command sequence number.
+  describe('#585 quiet command feedback', () => {
+    const submitBento = async () => {
+      renderComponent();
+      await selectStudent('001');
+      fireEvent.change(screen.getByLabelText(/實收金額/), { target: { value: '90' } });
+      fireEvent.click(screen.getByTestId('submit-order-button'));
+      fireEvent.click(await screen.findByTestId('confirm-duplicate-button'));
+    };
+
+    it('shows no text panel while sending: only the disabled button and the progress bar', async () => {
+      const pending = deferred<CommandResult>();
+      repositoryMock.createOrder.mockReturnValueOnce(pending.promise);
+      await submitBento();
+      await waitFor(() => expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1));
+
+      expect(screen.queryByTestId('order-recovery-panel')).toBeNull();
+      expect(screen.queryByText(/命令送出中|正在送出/)).toBeNull();
+      expect(screen.getByTestId('submit-order-button')).toBeDisabled();
+      expect(screen.getByTestId('submit-order-button')).toHaveTextContent('等待伺服器確認…');
+      expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
+
+      await act(async () => { pending.resolve(okResult(repositoryMock.createOrder.mock.calls[0][0].commandId)); });
+      await expectToast('已確認 001 王小明 訂餐完成');
+      expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'false');
+    });
+
+    it('keeps the previous content in place, locked, while it re-reads after the receipt', async () => {
+      const refresh = deferred<CloudOrderSnapshot | null>();
+      repositoryMock.refreshSnapshot.mockReturnValue(refresh.promise);
+      await submitBento();
+      await waitFor(() => expect(repositoryMock.refreshSnapshot).toHaveBeenCalledTimes(1));
+
+      expect(screen.queryByTestId('cloud-orders-loading')).toBeNull();
+      expect(screen.queryByTestId('order-recovery-panel')).toBeNull();
+      expect(screen.queryByTestId('toast')).toBeNull();
+      expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
+      expect(document.getElementById('cloud-student-search')).not.toBeNull();
+      expect(document.querySelector('.cloud-orders__content')).toHaveAttribute('inert');
+      // the kept content is read-only: the global shortcuts do nothing on it
+      fireEvent.keyDown(document.body, { key: '1' });
+      expect(document.getElementById('cloud-student-search')).toHaveValue('');
+
+      await act(async () => { refresh.resolve(snapshot({ seq: 10, day: mockDay({ bento: 2 }) })); });
+      await expectToast('已確認 001 王小明 訂餐完成');
+      expect(screen.getByTestId('cloud-topbar-bento')).toHaveTextContent('2');
+      expect(document.querySelector('.cloud-orders__content')).not.toHaveAttribute('inert');
+      expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'false');
+      expect(screen.queryByText(/命令序號|伺服器資料已重新讀取/)).toBeNull();
+    });
+
+    it('does not keep the previous content when the lease is lost during the re-read (fail closed)', async () => {
+      const refresh = deferred<CloudOrderSnapshot | null>();
+      repositoryMock.refreshSnapshot.mockReturnValue(refresh.promise);
+      repositoryMock.loadSnapshot
+        .mockResolvedValueOnce(snapshot())
+        .mockRejectedValueOnce(Object.assign(new Error('denied'), { code: 'LEASE_LOST' }));
+      await submitBento();
+      await waitFor(() => expect(repositoryMock.refreshSnapshot).toHaveBeenCalledTimes(1));
+      expect(document.getElementById('cloud-student-search')).not.toBeNull();
+
+      await act(async () => { refresh.resolve(null); });
+      expect(await screen.findByText(/目前使用權已變更，訂餐資料已清除/)).toBeVisible();
+      expect(document.getElementById('cloud-student-search')).toBeNull();
+      expect(document.querySelector('.cloud-orders__content')).toBeNull();
+      expect(screen.queryByTestId('toast')).toBeNull();
+    });
+
+    it('does not keep the previous content when the re-read fails', async () => {
+      const refresh = deferred<CloudOrderSnapshot | null>();
+      repositoryMock.refreshSnapshot.mockReturnValue(refresh.promise);
+      repositoryMock.loadSnapshot
+        .mockResolvedValueOnce(snapshot())
+        .mockRejectedValueOnce(Object.assign(new Error('unavailable'), { code: 'OFFLINE' }));
+      await submitBento();
+      await waitFor(() => expect(repositoryMock.refreshSnapshot).toHaveBeenCalledTimes(1));
+
+      await act(async () => { refresh.resolve(null); });
+      expect(await screen.findByTestId('order-recovery-heads-error')).toBeVisible();
+      expect(document.getElementById('cloud-student-search')).toBeNull();
+      expect(document.querySelector('.cloud-orders__content')).toBeNull();
+    });
+
+    it('hides the success toast by itself once the undo window is over', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      try {
+        await submitBento();
+        await expectToast('已確認 001 王小明 訂餐完成');
+        expect(within(screen.getByTestId('toast')).getByTestId('undo-button')).toBeVisible();
+        await act(async () => {}); // flush the toast's own timer effect before moving the clock
+        await act(async () => { vi.advanceTimersByTime(4_000); });
+        expect(screen.getByTestId('toast')).toBeVisible();
+        await act(async () => { vi.advanceTimersByTime(1_100); });
+        expect(screen.queryByTestId('toast')).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
@@ -582,7 +689,7 @@ describe('CloudOrdersPage', () => {
     await waitFor(() => expect(repositoryMock.createOrder).toHaveBeenCalledTimes(2));
     const second = repositoryMock.createOrder.mock.calls[1][0];
     expect(second).toEqual(first);
-    expect(await screen.findByText(/已確認 002 李小華 訂餐完成（命令序號 11）/)).toBeVisible();
+    await expectToast('已確認 002 李小華 訂餐完成');
     expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
   });
 
@@ -606,6 +713,9 @@ describe('CloudOrdersPage', () => {
 
       await act(async () => { await vi.advanceTimersByTimeAsync(9_999); });
       expect(screen.queryByText('結果確認中，勿重新收款。')).toBeNull();
+      // Before ten seconds nothing but the disabled button and the progress bar says "sending" (#585).
+      expect(screen.queryByTestId('order-recovery-panel')).toBeNull();
+      expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
       expect(repositoryMock.confirmPending).not.toHaveBeenCalled();
       expect(screen.getByTestId('submit-order-button')).toBeDisabled();
 
@@ -664,9 +774,14 @@ describe('CloudOrdersPage', () => {
       await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
       vi.useRealTimers();
       fireEvent.click(screen.getByTestId('order-recovery-query'));
-      expect(await screen.findByText('伺服器已確認入帳，正在重新載入資料')).toBeVisible();
-      expect(screen.getByTestId('order-recovery-command-id')).toHaveTextContent(first.commandId);
-      expect(screen.getByTestId('cloud-orders-loading')).toBeVisible();
+      // Once the server confirmed the command the page re-reads quietly: the confirmed-phase panel and the loading banner stay
+      // away, the previous content stays in place (locked) and only the progress bar shows the wait.
+      await waitFor(() => expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2));
+      expect(screen.queryByTestId('order-recovery-panel')).toBeNull();
+      expect(screen.queryByTestId('cloud-orders-loading')).toBeNull();
+      expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
+      expect(document.getElementById('cloud-student-search')).not.toBeNull();
+      expect(document.querySelector('.cloud-orders__content')).toHaveAttribute('inert');
       expect(screen.queryByTestId('submit-order-button')).toBeNull();
       expect(screen.queryByTestId('undo-bar')).toBeNull();
       expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-1:1', 'recovering');
@@ -676,10 +791,11 @@ describe('CloudOrdersPage', () => {
       );
       await act(async () => { original.resolve(okResult(first.commandId, 31)); });
       expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2);
-      expect(screen.getByTestId('order-recovery-panel')).toBeVisible();
-      expect(screen.queryByText(/已確認 002 李小華 訂餐完成（命令序號 31）/)).toBeNull();
+      expect(screen.queryByTestId('order-recovery-panel')).toBeNull();
+      expect(screen.queryByTestId('toast')).toBeNull();
       await act(async () => { freshHeads.resolve(snapshot({ day: mockDay({ bento: 2 }) })); });
-      expect(screen.getAllByText(/已確認 002 李小華 訂餐完成（命令序號 31）/)).toHaveLength(1);
+      expect(screen.getAllByTestId('toast')).toHaveLength(1);
+      await expectToast('已確認 002 李小華 訂餐完成');
       expect(screen.getByTestId('cloud-topbar-bento')).toHaveTextContent('2');
       expect(screen.queryByTestId('order-recovery-panel')).toBeNull();
     } finally {
@@ -722,13 +838,14 @@ describe('CloudOrdersPage', () => {
       expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1);
 
       fireEvent.click(screen.getByTestId('order-recovery-heads-reload'));
-      expect(await screen.findByText(/已確認 002 李小華 訂餐完成（命令序號 32）/)).toBeVisible();
+      await expectToast('已確認 002 李小華 訂餐完成');
       expect(screen.getByTestId('cloud-topbar-bento')).toHaveTextContent('2');
       expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(3);
       expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1);
 
       await act(async () => { original.resolve(errorResult('UNKNOWN_RESULT')); });
-      expect(screen.getAllByText(/已確認 002 李小華 訂餐完成（命令序號 32）/)).toHaveLength(1);
+      expect(screen.getAllByTestId('toast')).toHaveLength(1);
+      await expectToast('已確認 002 李小華 訂餐完成');
       expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(3);
     } finally {
       vi.useRealTimers();
@@ -987,7 +1104,7 @@ describe('CloudOrdersPage', () => {
       expectedStudentRevision: 3, expectedDayRevision: 5, paidAmount: 200, note: '預存',
     });
     expect(screen.queryByTestId('confirm-duplicate-button')).toBeNull();
-    expect(await screen.findByText(/已確認 001 王小明 繳費 \$200 完成（命令序號 12）/)).toBeVisible();
+    await expectToast('已確認 001 王小明 繳費 $200 完成');
     expect(repositoryMock.createOrder).not.toHaveBeenCalled();
     expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
   });
@@ -1017,7 +1134,7 @@ describe('CloudOrdersPage', () => {
     await queryAndAuthorizeRetry();
     await waitFor(() => expect(repositoryMock.createPayment).toHaveBeenCalledTimes(2));
     expect(repositoryMock.createPayment.mock.calls[1][0]).toEqual(repositoryMock.createPayment.mock.calls[0][0]);
-    expect(await screen.findByText(/繳費 \$100 完成（命令序號 14）/)).toBeVisible();
+    await expectToast('已確認 002 李小華 繳費 $100 完成');
   });
 
   it('A opens counter cash; an expense with a reason is sent as a cash movement, never a student row', async () => {
@@ -1038,7 +1155,7 @@ describe('CloudOrdersPage', () => {
       transactionId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       leaseEpoch: 1, dayId: TODAY, expectedDayRevision: 5, direction: 'expense', amount: 80, reason: '付餐費給廠商',
     });
-    expect(await screen.findByText(/已確認櫃台支出 \$80入帳（命令序號 13）/)).toBeVisible();
+    await expectToast('已確認櫃台支出 $80入帳');
     expect(repositoryMock.createOrder).not.toHaveBeenCalled();
     expect(repositoryMock.createPayment).not.toHaveBeenCalled();
   });
@@ -1140,7 +1257,7 @@ describe('CloudOrdersPage', () => {
     await queryAndAuthorizeRetry();
     await waitFor(() => expect(repositoryMock.createCashMovement).toHaveBeenCalledTimes(2));
     expect(repositoryMock.createCashMovement.mock.calls[1][0]).toEqual(first);
-    expect(await screen.findByText(/已確認櫃台支出 \$80入帳（命令序號 16）/)).toBeVisible();
+    await expectToast('已確認櫃台支出 $80入帳');
     expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
   });
 
@@ -1170,7 +1287,7 @@ describe('CloudOrdersPage', () => {
       leaseEpoch: 1, studentId: 's1', dayId: TODAY,
       expectedStudentRevision: 3, expectedDayRevision: 5, amount: 60, reason: '學期結束',
     });
-    expect(await screen.findByText(/已確認 001 王小明 退款 \$60 完成（命令序號 15）/)).toBeVisible();
+    await expectToast('已確認 001 王小明 退款 $60 完成');
     expect(repositoryMock.createPayment).not.toHaveBeenCalled();
     expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
   });
@@ -1236,7 +1353,7 @@ describe('CloudOrdersPage', () => {
     await queryAndAuthorizeRetry();
     await waitFor(() => expect(repositoryMock.createRefund).toHaveBeenCalledTimes(2));
     expect(repositoryMock.createRefund.mock.calls[1][0]).toEqual(repositoryMock.createRefund.mock.calls[0][0]);
-    expect(await screen.findByText(/退款 \$100 完成（命令序號 17）/)).toBeVisible();
+    await expectToast('已確認 001 王小明 退款 $100 完成');
   });
 
   it('P09b: a negative payment points to refund instead of being sent', async () => {
@@ -1311,7 +1428,9 @@ describe('CloudOrdersPage', () => {
     it('offers a 5-second undo after a create, shows its cash impact and sends Undo for that command', async () => {
       const created = await payOnce();
       const bar = await screen.findByTestId('undo-bar');
-      expect(bar).toHaveTextContent('5 秒內可撤回 001 王小明 的繳費：現金 −$200，餘額回到 $100');
+      expect(within(screen.getByTestId('toast')).getByTestId('undo-bar')).toBe(bar);
+      expect(bar).toHaveTextContent('送錯了？可撤回 001 王小明 的繳費：現金 −$200，餘額回到 $100');
+      expect(bar).not.toHaveTextContent('5 秒內');
       fireEvent.click(screen.getByTestId('undo-button'));
       await waitFor(() => expect(repositoryMock.mutateTransaction).toHaveBeenCalledTimes(1));
       expect(repositoryMock.mutateTransaction.mock.calls[0][0]).toMatchObject({
@@ -1325,7 +1444,7 @@ describe('CloudOrdersPage', () => {
         expectedDayRevision: 6,
         leaseEpoch: 1,
       });
-      expect(await screen.findByText(/已撤回 001 王小明 的繳費，帳戶餘額與現金已回復（命令序號 20）/)).toBeVisible();
+      await expectToast('已撤回 001 王小明 的繳費，帳戶餘額與現金已回復');
       expect(screen.queryByTestId('undo-bar')).toBeNull();
     });
 
@@ -1345,7 +1464,7 @@ describe('CloudOrdersPage', () => {
       await queryAndAuthorizeRetry();
       await waitFor(() => expect(repositoryMock.mutateTransaction).toHaveBeenCalledTimes(2));
       expect(repositoryMock.mutateTransaction.mock.calls[1][0]).toEqual(first);
-      expect(await screen.findByText(/已撤回 001 王小明 的繳費，帳戶餘額與現金已回復（命令序號 21）/)).toBeVisible();
+      await expectToast('已撤回 001 王小明 的繳費，帳戶餘額與現金已回復');
     });
 
     it('hides the undo offer after 5 seconds', async () => {
@@ -1355,8 +1474,10 @@ describe('CloudOrdersPage', () => {
         await screen.findByTestId('undo-bar');
         await act(async () => { vi.advanceTimersByTime(4_000); });
         expect(screen.getByTestId('undo-bar')).toBeVisible();
+        expect(screen.getByTestId('toast')).toBeVisible();
         await act(async () => { vi.advanceTimersByTime(1_100); });
         expect(screen.queryByTestId('undo-bar')).toBeNull();
+        expect(screen.queryByTestId('toast')).toBeNull();
       } finally {
         vi.useRealTimers();
       }

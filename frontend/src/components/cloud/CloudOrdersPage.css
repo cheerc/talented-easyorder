@@ -558,12 +558,11 @@
   color: var(--warn);
 }
 
+/* 撤回列放在底部 Toast 裡（#585）。 */
 .cloud-orders__undo-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
 }
 
 /* ============ 今日現金 / 最近帳戶 ============ */
