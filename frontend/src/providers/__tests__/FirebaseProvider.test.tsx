@@ -14,7 +14,10 @@ const leaseMocks = vi.hoisted(() => ({
     void args;
     return vi.fn();
   }),
-  startLeaseHeartbeat: vi.fn(() => vi.fn()),
+  startLeaseHeartbeat: vi.fn((...args: [unknown, string, () => number, (reason: string) => void]) => {
+    void args;
+    return vi.fn();
+  }),
 }));
 
 // Mock Firebase modules before importing

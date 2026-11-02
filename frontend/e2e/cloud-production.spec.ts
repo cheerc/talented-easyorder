@@ -428,7 +428,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     await expect(handover).not.toContainText(uid);
   });
 
-  test('A12: a confirmed holder tab returning from the background stays mounted and re-proves silently after a minute', async ({ browser }) => {
+  test('A12: a confirmed holder tab returning from the background stays mounted, re-proves silently and re-acquires its own expired lease', async ({ browser }) => {
     test.setTimeout(120000);
     const context = await browser.newContext({ baseURL: E2E_BASE_URL });
     const page = await context.newPage();
@@ -483,15 +483,19 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
       await expect(page.locator('.operator-menu')).toHaveAttribute('open', '');
       await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
 
-      // Lease expired while the tab was away: the silent renew is refused, so the tab masks (fail closed).
+      // Lease expired while the tab was away and nobody touched it (#586 P2): the silent renew is refused, the server shows the
+      // same own lease at the same epoch, so the tab re-acquires it once. No mask ever mounts; the epoch change itself re-keys the
+      // cloud sections (data is bound to the lease epoch), so the open operator menu closes and the page reloads its data.
       await seedAccessLease({ holderUid: session.uid, epoch: 1, updatedAt: new Date(Date.now() - 6 * 60 * 1000) });
       await page.waitForTimeout(1_000);
       await setVisibility('hidden');
       await page.clock.runFor(61_000);
       await setVisibility('visible');
-      await expect(page.locator('.auth-gate')).toBeVisible();
-      await expect(page.locator('.auth-gate')).toContainText('正在確認此分頁的使用權');
-      await expect(page.locator('.operator-strip')).toHaveCount(0);
+      await expect.poll(readAccessLease).toMatchObject({ holderUid: session.uid, epoch: 2 });
+      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 2');
+      expect(await maskCount()).toBe(0);
+      await expect(page.locator('.auth-gate')).toHaveCount(0);
+      await expect(page.locator('.cloud-app')).toBeVisible();
     } finally {
       await context.close();
     }
