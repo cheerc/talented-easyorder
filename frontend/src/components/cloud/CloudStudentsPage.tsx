@@ -10,9 +10,11 @@ import {
   type CloudStudentRecord,
 } from '../../firebase/cloudStudentRepository';
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
+import { CommandProgress } from '../ui/CommandProgress';
 import { EmptyState } from '../ui/EmptyState';
 import { Modal } from '../ui/Modal';
 import { StatusBadge } from '../ui/StatusBadge';
+import { Toast } from '../ui/Toast';
 import { CloudAccountBalance } from './CloudAccountBalance';
 import { formatAccountBalance } from './accountBalance';
 import './CloudStudentsPage.css';
@@ -107,6 +109,8 @@ interface RecoveryState {
   timedOut?: boolean;
   canRetry?: boolean;
   receipt?: CommandReceipt;
+  /** The receipt came back inside ten seconds from the original submission: its re-read is shown quietly (#585). */
+  quiet?: boolean;
 }
 
 interface PageState {
@@ -114,10 +118,18 @@ interface PageState {
   scopeVersion: number;
   authorizationRevoked: boolean;
   snapshot: CloudStudentList | null;
+  /**
+   * The server-confirmed list from before the command in flight and the one re-read that follows its receipt (#585). Display
+   * only: the old list stays in place, locked with `inert`, instead of vanishing behind a text panel. Never used to build a
+   * command, and shown only while the command is quiet, with no revoked authorization and no read error.
+   */
+  refreshingSnapshot: CloudStudentList | null;
   loading: boolean;
   loadError: string;
   actionError: string;
   notice: string;
+  /** The short success sentence of a confirmed command (#585), shown as a bottom toast. */
+  toast: string;
   search: string;
   createOpen: boolean;
   createDraft: CreateDraft;
@@ -231,10 +243,12 @@ const initialPageState = (identityKey: string, scopeVersion = 0): PageState => (
   scopeVersion,
   authorizationRevoked: false,
   snapshot: null,
+  refreshingSnapshot: null,
   loading: true,
   loadError: '',
   actionError: '',
   notice: '',
+  toast: '',
   search: '',
   createOpen: false,
   createDraft: freshCreateDraft(),
@@ -545,10 +559,13 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
     updateFor(key, generation, previous => ({
       ...previous,
       snapshot: null,
+      // After a receipt the confirmed list stays on screen (locked) during the one re-read instead of a loading screen.
+      refreshingSnapshot: confirmedReceipt ? previous.snapshot ?? previous.refreshingSnapshot : null,
       loading: true,
       loadError: '',
       actionError: '',
-      notice: confirmedReceipt ? '已找到伺服器回執，正在重新載入完整學生名單…' : '',
+      notice: '',
+      toast: '',
     }));
 
     try {
@@ -566,6 +583,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
             ...previous,
             ...clearDrafts(),
             snapshot: null,
+            refreshingSnapshot: null,
             loading: false,
             loadError: '',
             actionError: '命令回執已確認，但伺服器名單屬於不同資料集；資料集已變更。原操作維持已確認狀態，請聯絡系統維護者確認，請勿重試。',
@@ -599,14 +617,15 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
           ...previous,
           ...(confirmsPending ? clearDrafts() : {}),
           snapshot,
+          refreshingSnapshot: null,
           loading: false,
           loadError: '',
           actionError: '',
           recovery: confirmsPending ? null : previous.recovery,
-          notice: confirmsPending
-            ? `已確認 ${confirmedCommand ? commandLabel(confirmedCommand) : '學生操作'} 完成；伺服器名單已重新載入（命令序號 ${confirmedReceipt.seq}）。${
-              confirmedCommand?.kind === 'opening-day' ? '請再按該學生的「更正期初」繼續。' : ''}`
-            : previous.notice,
+          toast: confirmsPending
+            ? `已確認 ${confirmedCommand ? commandLabel(confirmedCommand) : '學生操作'} 完成${
+              confirmedCommand?.kind === 'opening-day' ? '。請再按該學生的「更正期初」繼續' : ''}`
+            : previous.toast,
         };
       });
     } catch (error) {
@@ -617,12 +636,13 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
       }
       updateFor(key, generation, previous => {
         const recovery = confirmedReceipt && previous.recovery?.commandId === confirmedReceipt.commandId
-          ? { ...previous.recovery, phase: 'receipt' as const, receipt: confirmedReceipt }
+          ? { ...previous.recovery, phase: 'receipt' as const, receipt: confirmedReceipt, quiet: false }
           : previous.recovery;
         return {
           ...previous,
           ...clearDrafts(),
           snapshot: null,
+          refreshingSnapshot: null,
           loading: false,
           loadError: displayError(error),
           actionError: confirmedReceipt
@@ -727,6 +747,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
         command: operation.command,
         phase: 'receipt',
         receipt,
+        quiet: previous.recovery?.phase === 'submitting' && previous.recovery.timedOut !== true,
       },
     }));
     if (clearJournal) {
@@ -808,11 +829,14 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
     beginAttempt(operation);
     updateFor(operation.identityKey, operation.generation, previous => ({
       ...previous,
+      // The confirmed list stays on screen, locked, while the command is in flight (#585); it is display only.
       snapshot: null,
+      refreshingSnapshot: previous.snapshot ?? previous.refreshingSnapshot,
       loading: false,
       loadError: '',
       actionError: '',
       notice: '',
+      toast: '',
       recovery: {
         commandId: operation!.command.commandId,
         command: operation!.command,
@@ -1275,17 +1299,34 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
     }
   };
 
-  const busy = page.recovery !== null;
+  // Quiet feedback (#585): a command in flight (before ten seconds) and the re-read after its receipt are shown only by the
+  // progress bar and the locked page. The recovery panel appears for everything that needs the operator (ten seconds and later,
+  // an unknown result, a read that failed, an access change).
+  const recovery = page.recovery;
+  const quietSubmitting = recovery?.phase === 'submitting' && !recovery.timedOut;
+  const quietReceipt = recovery?.phase === 'receipt' && recovery.quiet === true && !page.loadError
+    && (page.loading || page.snapshot !== null || page.refreshingSnapshot !== null);
+  const showRecoveryPanel = recovery !== null && !quietSubmitting && !quietReceipt;
+  const progressActive = page.loading || quietSubmitting || quietReceipt
+    || recovery?.phase === 'checking' || (recovery?.phase === 'submitting' && recovery.timedOut === true);
+  // Display only (#585): the confirmed list from before the command stays on screen, locked (`inert`), while the command is in
+  // flight or its receipt is re-read. Never kept once the authorization is revoked or the read failed; no command is built from it.
+  const snapshot = page.snapshot
+    ?? (!page.authorizationRevoked && !page.loadError && (quietSubmitting || quietReceipt)
+      ? page.refreshingSnapshot
+      : null);
+  const showingStale = page.snapshot === null && snapshot !== null;
+  const busy = page.recovery !== null || showingStale;
 
   const sortedStudents = useMemo(() => {
-    if (!page.snapshot) return [];
-    return [...page.snapshot.students].sort((a, b) => {
+    if (!snapshot) return [];
+    return [...snapshot.students].sort((a, b) => {
       const na = parseInt(a.studentCode, 10);
       const nb = parseInt(b.studentCode, 10);
       if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
       return a.studentCode.localeCompare(b.studentCode);
     });
-  }, [page.snapshot]);
+  }, [snapshot]);
 
   type DisplayRow =
     | { type: 'student'; student: CloudStudentRecord }
@@ -1346,7 +1387,6 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
   }, [sortedStudents, page.search]);
 
   const visibleStudentCount = displayRows.filter(r => r.type === 'student').length;
-  const recovery = page.recovery;
 
   const openCreate = (studentCode?: string) => {
     setCreateDiscardPending(false);
@@ -1382,7 +1422,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
     closeCreate();
   };
 
-  const recoveryPanel = recovery && (
+  const recoveryPanel = showRecoveryPanel && recovery && (
     <section className="cloud-students__recovery" aria-label="命令結果確認" role="alert">
       <strong>{recovery.phase === 'receipt'
         ? '已找到伺服器回執，名單尚待再次讀取。'
@@ -1423,7 +1463,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
             重新讀取伺服器名單
           </button>
         )}
-        {recovery.phase === 'access-lost' && page.snapshot && (
+        {recovery.phase === 'access-lost' && snapshot && (
           <button
             type="button"
             className="cloud-students__secondary"
@@ -1440,7 +1480,8 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
   );
 
   return (
-    <main className="cloud-students" aria-label="雲端學生名單">
+    <main className="cloud-students" aria-label="雲端學生名單" aria-busy={busy || page.loading}>
+      <CommandProgress active={progressActive} />
       <header className="cloud-students__header">
         <div>
           <h1>學生名單與期初結餘</h1>
@@ -1459,7 +1500,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
             className="cloud-students__primary"
             onClick={() => openCreate()}
             disabled={busy}
-            hidden={!page.snapshot || page.loading}
+            hidden={!snapshot || (page.loading && !showingStale)}
           >
             新增學生
           </button>
@@ -1478,13 +1519,14 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
         </div>
       )}
       {page.notice && <div className="cloud-students__notice" role="status">{page.notice}</div>}
+      <Toast message={page.toast} durationMs={/更正期初/.test(page.toast) ? 8000 : 4000} />
 
       {!page.createOpen && recoveryPanel}
 
-      {page.loading && <div className="cloud-students__loading" role="status">正在從伺服器載入完整學生名單…</div>}
+      {page.loading && !showingStale && <div className="cloud-students__loading" role="status">正在從伺服器載入完整學生名單…</div>}
 
-      {page.snapshot && !page.loading && (
-        <>
+      {snapshot && (!page.loading || showingStale) && (
+        <div className="cloud-students__content" data-testid="cloud-students-content" inert={showingStale || undefined}>
           <section className="cloud-students__toolbar" aria-label="學生名單工具">
             <label className="cloud-students__search-label" htmlFor="cloud-student-search">搜尋編號、姓名或別名</label>
             <input
@@ -1495,7 +1537,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
               placeholder="輸入編號、姓名或別名"
               disabled={busy}
             />
-            <span className="cloud-students__count">{visibleStudentCount} / {page.snapshot.students.length} 位</span>
+            <span className="cloud-students__count">{visibleStudentCount} / {snapshot.students.length} 位</span>
           </section>
 
           <section className="cloud-students__list" aria-label="學生名單">
@@ -1634,7 +1676,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
             )}
           </section>
           <p className="cloud-students__footnote">學生資料由雲端伺服器提供。編號、姓名及期初資料不會儲存在本機離線草稿。</p>
-        </>
+        </div>
       )}
 
       {!page.snapshot && !page.loading && !page.recovery && !page.createOpen && (
@@ -1660,7 +1702,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
                 </button>
               </div>
             </div>
-          ) : page.snapshot && !page.loading ? (
+          ) : snapshot && (!page.loading || showingStale) ? (
             <form className="cloud-students__form cloud-students__form--dialog" aria-label="新增學生" onSubmit={submitCreate}>
               <h2>手動新增學生</h2>
               <p>編號會以正規化形式儲存（例如 001、099、1000）；請自行核對實際結餘。金額沒有預設值，輸入 0 才代表零元。</p>
@@ -1689,7 +1731,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
                   <legend>期初基準（請明確選擇）</legend>
                   <label>
                     <input type="radio" name="opening-mode" value="existing-balance" checked={page.createDraft.openingMode === 'existing-balance'} onChange={() => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, openingMode: 'existing-balance' } }))} disabled={busy} />
-                    沿用既有核對結餘，期初日為 {page.snapshot.goLiveDate}
+                    沿用既有核對結餘，期初日為 {snapshot.goLiveDate}
                   </label>
                   <label>
                     <input type="radio" name="opening-mode" value="new-student" checked={page.createDraft.openingMode === 'new-student'} onChange={() => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, openingMode: 'new-student' } }))} disabled={busy} />

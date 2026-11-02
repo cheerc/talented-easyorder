@@ -555,7 +555,8 @@ describe('CloudStudentsPage', () => {
     fireEvent.change(screen.getByLabelText('期初備註（選填，最多 500 字）'), { target: { value: '敏感備註' } });
     fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
 
-    await screen.findByText('結果確認中，請勿重複建立／修改。');
+    // Before ten seconds only the progress bar says "sending" (#585): no recovery panel.
+    await waitFor(() => expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true'));
     expect(screen.getByRole('button', { name: '重新載入名單' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '重新載入名單' }));
     await act(async () => resolveCommand({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } }));
@@ -657,7 +658,8 @@ describe('CloudStudentsPage', () => {
     fillCreateForm({ id: '097', name: '待清除敏感姓名', amount: '8', mode: '建立新學生' });
     fireEvent.change(screen.getByLabelText(/別名（逗號、頓號/), { target: { value: '待清除敏感別名' } });
     fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
-    await screen.findByText('結果確認中，請勿重複建立／修改。');
+    // Before ten seconds only the progress bar says "sending" (#585): no recovery panel.
+    await waitFor(() => expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true'));
 
     view.rerender(<CloudStudentsPage {...nextScope(db)} />);
 
