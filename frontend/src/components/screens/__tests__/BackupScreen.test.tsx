@@ -65,8 +65,8 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function receipt(commandId: string) {
-  return { commandId, seq: 1, committedAt: '2026-10-16T03:00:00.000Z', kind: 'RecordBackup' as const, targets: {}, result: {} };
+function receipt(commandId: string, seq = 1) {
+  return { commandId, seq, committedAt: '2026-10-16T03:00:00.000Z', kind: 'RecordBackup' as const, targets: {}, result: {} };
 }
 
 const unknownResult = { ok: false as const, error: { code: 'UNKNOWN_RESULT', message: 'UNKNOWN_RESULT' } };
@@ -133,6 +133,40 @@ describe('BackupScreen verified-local gate', () => {
       leaseEpoch: 3, payload: { backupType: 'command-incremental', fromSeq: 0, toSeq: 1, sourceSeq: 1, sha256: sha },
     });
     expect(await screen.findByText(/已登記 RecordBackup/)).toBeVisible();
+  });
+
+  it('#596 reports the confirmed receipt seq once through onRecorded, and nothing for a refused or unknown command', async () => {
+    mocks.commitRecordBackupIntent.mockImplementation(async (intent: { commandId: string }) => (
+      { ok: true, receipt: receipt(intent.commandId, 7) }
+    ));
+    const onRecorded = vi.fn();
+    const { reselect } = await reachVerifyStep({ onRecorded });
+    expect(onRecorded).not.toHaveBeenCalled();
+    await submitBackup(reselect);
+    expect(await screen.findByText(/已登記 RecordBackup/)).toBeVisible();
+    expect(onRecorded).toHaveBeenCalledTimes(1);
+    expect(onRecorded).toHaveBeenCalledWith(7);
+  });
+
+  it('#596 does not report a seq when the RecordBackup result stays unknown or is refused', async () => {
+    const onRecorded = vi.fn();
+    mocks.commitRecordBackupIntent.mockResolvedValueOnce(unknownResult);
+    const { reselect } = await reachVerifyStep({ onRecorded });
+    await submitBackup(reselect);
+    expect(screen.getByRole('alert', { name: '命令結果確認' })).toBeVisible();
+    expect(onRecorded).not.toHaveBeenCalled();
+  });
+
+  it('#596 reports the seq of a receipt that the read-only query confirmed later', async () => {
+    mocks.commitRecordBackupIntent.mockResolvedValueOnce(unknownResult);
+    const onRecorded = vi.fn();
+    const { reselect } = await reachVerifyStep({ onRecorded });
+    const intent = await submitBackup(reselect);
+    mocks.confirmPendingIntent.mockResolvedValue({ status: 'matched', receipt: receipt(intent.commandId, 9) });
+    fireEvent.click(await screen.findByRole('button', { name: '查詢原命令結果' }));
+    await flush();
+    expect(onRecorded).toHaveBeenCalledTimes(1);
+    expect(onRecorded).toHaveBeenCalledWith(9);
   });
 
   it('does not commit after the screen unmounts while file verification is pending', async () => {

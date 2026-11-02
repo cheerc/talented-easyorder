@@ -1174,6 +1174,22 @@ describe('CloudReportPage: #587 P2 data updated elsewhere', () => {
     });
   }
 
+  it('#596 still shows the notice when another device wrote before the page\'s own receipt', async () => {
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:own-gap');
+    mocks.recordExport.mockImplementation(async input => ({ ok: true, receipt: { commandId: input.commandId, seq: 13, kind: 'RecordExport' } }));
+    headMock.current = head(11);
+    const view = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:own-gap" />);
+    await screen.findByTestId('report-ready');
+    fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
+    await waitFor(() => expect(mocks.recordExport).toHaveBeenCalledTimes(1));
+    await screen.findByText(/已發起匯出/);
+    // seq 12 was written by another device; the own receipt is seq 13, so the report never saw 12
+    headMock.current = head(13);
+    view.rerender(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:own-gap" />);
+    expect(screen.getByTestId('data-updated-notice')).toBeInTheDocument();
+  });
+
   it('shows nothing when the report is at the head, or there is no head', async () => {
     headMock.current = head(11);
     render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:at-head" />);
