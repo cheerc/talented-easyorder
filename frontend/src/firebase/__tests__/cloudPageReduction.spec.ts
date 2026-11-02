@@ -181,6 +181,60 @@ describeWithEmulator('P16f2 page reduction: the orders page after a command, and
     expect(await orders.refreshSnapshot(before, elsewhere)).toBeNull();
   });
 
+  /** #587: the signal the page gets from its listener on system/dataHead. */
+  const headSignal = async () => {
+    const head = await read('system/dataHead');
+    return { seq: head.seq, lastCommandId: head.lastCommandId as string | null, datasetId: head.datasetId };
+  };
+
+  it('#587 follows a head that is one command ahead (a command of another device) and equals a full reload', async () => {
+    await touchLease();
+    const before = await orders.loadSnapshot();
+    const placed = await createOrder();
+    const head = await headSignal();
+    expect(head).toMatchObject({ seq: placed.receipt.seq, lastCommandId: placed.receipt.commandId });
+    const { result: followed, report } = await meter.measure(() => orders.refreshFromHead(before, head), app);
+    localStorage.clear();
+    const full = await orders.loadSnapshot();
+    expect(followed).not.toBeNull();
+    expect(followed).toEqual(full);
+    // the command document, then the same reads as a refresh from a receipt
+    expect(report.billedReads, 'reads of following the head').toBeLessThanOrEqual(REFRESH_READS + 1);
+  });
+
+  it('#587 gives up (null, the page reloads) when the head is more than one command ahead, or names no command', async () => {
+    await touchLease();
+    const before = await orders.loadSnapshot();
+    await createOrder();
+    await createOrder();
+    expect(await orders.refreshFromHead(before, await headSignal())).toBeNull();
+    expect(await orders.refreshFromHead(before, { ...(await headSignal()), lastCommandId: null })).toBeNull();
+  });
+
+  it('#587 gives up when the head is of another dataset, or its command is not the one at that sequence', async () => {
+    await touchLease();
+    const older = await createOrder();
+    const before = await orders.loadSnapshot();
+    const placed = await createOrder();
+    const head = await headSignal();
+    expect(await orders.refreshFromHead(before, { ...head, datasetId: `${head.datasetId}-other` })).toBeNull();
+    // the sequence is the next one but the command id named is an earlier command: its seq does not match
+    expect(await orders.refreshFromHead(before, { ...head, lastCommandId: older.receipt.commandId })).toBeNull();
+    expect(await orders.refreshFromHead(before, { ...head, lastCommandId: uuid(990_999) })).toBeNull();
+    expect(await orders.refreshFromHead(before, head)).not.toBeNull();
+    expect(placed.receipt.seq).toBe(head.seq);
+  });
+
+  it('#587 gives up when the one command ahead is not a transaction (a new student): the page reloads', async () => {
+    await touchLease();
+    const before = await orders.loadSnapshot();
+    const studentId = uuid(990_500 + (nextId % 1000));
+    ok(await writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: epoch, targets: { studentId },
+      expectedRevisions: { student: 0 }, payload: { studentCode: String(880_000 + (nextId % 1000)), displayName: 'P587 student', aliases: [],
+        openingBalance: { amount: 100, asOfDate: '2025-01-01', note: '' } } }), 'CreateStudent');
+    expect(await orders.refreshFromHead(before, await headSignal())).toBeNull();
+  });
+
   it('reads the summary of a week for the days and their latest settlement only', async () => {
     const days = Array.from({ length: 7 }, (_item, index) => shiftDay(today, -(index + 1)));
     // three of them are back-filled and closed, each with a reopened-and-closed history

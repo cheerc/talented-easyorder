@@ -1402,6 +1402,83 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       await second.close();
     }
   });
+
+  test('A13: an idle counter page shows a counter entry made on another same-UID page, without a loading screen', async ({ browser }) => {
+    test.setTimeout(120000);
+    const context = await browser.newContext({ baseURL: E2E_BASE_URL });
+    const pageA = await context.newPage();
+    const pageB = await context.newPage();
+    try {
+      const sessionA = await signInGoogle(pageA, E2E_IDENTITIES.operatorA.email);
+      await pageA.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(pageA.locator('.operator-strip')).toBeVisible();
+
+      // The business day must be open with an opening cash (earlier cases may have done this already).
+      const today = taipeiToday();
+      const day = await readAdminDocument('days', today);
+      if (!day || typeof day.openingCash !== 'number') {
+        await settings(pageA, '菜單與開帳');
+        const mainVendors = pageA.getByRole('main', { name: '雲端日期設定與供應商管理' });
+        const dateField = mainVendors.getByLabel('查看或設定日期');
+        if ((await dateField.inputValue()) !== today) {
+          await dateField.fill(today);
+          await mainVendors.getByRole('button', { name: '載入日期' }).click();
+        }
+        await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
+        const createDayBtn = pageA.getByRole('button', { name: '建立空白營業日' });
+        if (await createDayBtn.isVisible().catch(() => false)) await createDayBtn.click();
+        const openingForm = mainVendors.getByRole('form', { name: `${today} 開帳現金` });
+        await openingForm.getByLabel(/開帳現金/).fill('1000');
+        await openingForm.getByRole('button', { name: /開帳金額/ }).click();
+        await expect(openingForm.getByText(/伺服器已確認開帳現金 NT\$ 1,000/)).toBeVisible();
+      }
+
+      await pageA.getByRole('button', { name: '櫃台' }).click();
+      await expect(pageA.getByTestId('cloud-orders-page')).toBeVisible();
+      await expect(pageA.getByTestId('cloud-orders-loading')).toHaveCount(0);
+      const expectedCash = async (page: typeof pageA) => Number(((await page.getByTestId('cloud-expected-cash').innerText()).match(/-?\d+/) ?? ['NaN'])[0]);
+      const cashBefore = await expectedCash(pageA);
+      expect(Number.isFinite(cashBefore)).toBe(true);
+
+      // Page A is idle. Count every time a lease mask or the loading screen is mounted on it from now on.
+      await pageA.evaluate(() => {
+        const w = window as unknown as { __flashes: number };
+        w.__flashes = 0;
+        new MutationObserver(records => {
+          for (const record of records) {
+            record.addedNodes.forEach(node => {
+              if (!(node instanceof Element)) return;
+              const hit = (selector: string) => node.matches(selector) || node.querySelector(selector) !== null;
+              if (hit('.auth-gate') || hit('[data-testid="cloud-orders-loading"]')) w.__flashes += 1;
+            });
+          }
+        }).observe(document.body, { childList: true, subtree: true });
+      });
+
+      // Page B (same Google account) records a counter income of $50.
+      const sessionB = await signInGoogle(pageB, E2E_IDENTITIES.operatorA.email);
+      expect(sessionB.uid).toBe(sessionA.uid);
+      await expect(pageB.locator('.operator-strip')).toBeVisible();
+      await pageB.getByRole('button', { name: '櫃台' }).click();
+      await expect(pageB.getByTestId('cloud-orders-page')).toBeVisible();
+      await expect(pageB.getByTestId('cloud-orders-loading')).toHaveCount(0);
+      await expect.poll(() => expectedCash(pageB)).toBe(cashBefore);
+      await pageB.getByTestId('open-cash-movement-button').click();
+      const cashForm = pageB.getByRole('form', { name: '櫃台收支' });
+      await cashForm.getByRole('button', { name: '收入' }).click();
+      await cashForm.getByLabel('金額（必填）').fill('50');
+      await cashForm.getByLabel('原因（必填）').fill('另一頁的零錢補充');
+      await pageB.getByTestId('submit-cash-movement-button').click();
+      await expect(pageB.getByText(/已確認櫃台收入 \$50入帳/)).toBeVisible();
+
+      // Page A follows within seconds, without reload, without a mask and without the loading screen.
+      await expect(pageA.getByTestId('cloud-expected-cash')).toHaveText(`$${cashBefore + 50}`, { timeout: 10_000 });
+      await expect(pageA.getByTestId('cash-movement-list')).toContainText('另一頁的零錢補充');
+      expect(await pageA.evaluate(() => (window as unknown as { __flashes: number }).__flashes)).toBe(0);
+    } finally {
+      await context.close();
+    }
+  });
 });
 
 test.describe('P11 Cloud Day Close', () => {

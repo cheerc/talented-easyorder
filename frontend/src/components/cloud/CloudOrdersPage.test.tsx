@@ -10,6 +10,7 @@ import { CloudOrdersPage, type CloudOrdersPageProps } from './CloudOrdersPage';
 const repositoryMock = vi.hoisted(() => ({
   loadSnapshot: vi.fn(),
   refreshSnapshot: vi.fn(),
+  refreshFromHead: vi.fn(),
   createOrder: vi.fn(),
   createPayment: vi.fn(),
   createCashMovement: vi.fn(),
@@ -24,6 +25,11 @@ const repositoryMock = vi.hoisted(() => ({
 
 vi.mock('../../firebase/cloudOrderRepository', () => ({
   createCloudOrderRepository: () => repositoryMock,
+}));
+
+const headMock = vi.hoisted(() => ({ current: null as { seq: number; lastCommandId: string | null; datasetId: string } | null }));
+vi.mock('../../providers/FirebaseProvider', () => ({
+  useFirebaseOptional: () => (headMock.current ? { dataHead: headMock.current } : null),
 }));
 
 vi.mock('../../firebase/cloudRecoveryReader', () => ({
@@ -165,21 +171,31 @@ function deferred<T>() {
 
 const onNavigationStateChange = vi.fn();
 
-function renderComponent(
+function pageElement(
   identityKey = 'uid-1:1',
   initialBackfillDayId?: string,
   props: Partial<CloudOrdersPageProps> = {},
 ) {
-  return render(
+  return (
     <CloudOrdersPage
-      db={{} as Firestore}
+      db={dbStub}
       leaseEpoch={1}
       identityKey={identityKey}
       onNavigationStateChange={onNavigationStateChange}
       initialBackfillDayId={initialBackfillDayId}
       {...props}
-    />,
+    />
   );
+}
+
+const dbStub = {} as Firestore;
+
+function renderComponent(
+  identityKey = 'uid-1:1',
+  initialBackfillDayId?: string,
+  props: Partial<CloudOrdersPageProps> = {},
+) {
+  return render(pageElement(identityKey, initialBackfillDayId, props));
 }
 
 async function selectStudent(code: string) {
@@ -205,6 +221,8 @@ describe('CloudOrdersPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    headMock.current = null;
+    repositoryMock.refreshFromHead.mockReset().mockResolvedValue(null);
     repositoryMock.loadSnapshot.mockResolvedValue(snapshot());
     // by default a refresh from the receipt is not possible, so the page reloads the whole snapshot
     repositoryMock.refreshSnapshot.mockResolvedValue(null);
@@ -1965,6 +1983,137 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
       fireEvent.click(screen.getByTestId('submit-order-button'));
       expect(await screen.findByText('紙本號只能是 1 至 20 字的英數與 -（例如 A-0123）')).toBeVisible();
       expect(repositoryMock.createPayment).not.toHaveBeenCalled();
+    });
+  });
+
+  // #587: another device of the same account wrote; an idle counter page shows it without being asked and without a loading screen.
+  describe('#587 idle counter page follows the server data head', () => {
+    const head = (seq: number, lastCommandId: string | null = `cmd-${seq}`) => ({ seq, lastCommandId, datasetId: 'ds-1' });
+    const setHead = (view: ReturnType<typeof renderComponent>, value: ReturnType<typeof head> | null) => {
+      headMock.current = value;
+      act(() => { view.rerender(pageElement()); });
+    };
+
+    it('E1: idle and the head moved on by one → refreshes in place from the head, no loading screen, new data shown', async () => {
+      const refreshed = snapshot({ seq: 10, day: mockDay({ bento: 2 }) });
+      const pending = deferred<CloudOrderSnapshot | null>();
+      repositoryMock.refreshFromHead.mockReturnValue(pending.promise);
+      const view = renderComponent();
+      await screen.findByLabelText('搜尋編號、姓名或別名');
+      expect(screen.getByTestId('cloud-topbar-bento')).toHaveTextContent('1');
+
+      setHead(view, head(10));
+      await waitFor(() => expect(repositoryMock.refreshFromHead).toHaveBeenCalledTimes(1));
+      const [previous, signal] = repositoryMock.refreshFromHead.mock.calls[0];
+      expect(previous.seq).toBe(9);
+      expect(signal).toEqual(head(10));
+      // while it reads the old content stays, interactive: no skeleton, no lock
+      expect(screen.queryByTestId('cloud-orders-loading')).toBeNull();
+      expect(document.querySelector('.cloud-orders__content')).not.toHaveAttribute('inert');
+
+      await act(async () => { pending.resolve(refreshed); });
+      await waitFor(() => expect(screen.getByTestId('cloud-topbar-bento')).toHaveTextContent('2'));
+      expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('cloud-orders-loading')).toBeNull();
+    });
+
+    it('E2: a student is selected (typing) → no refresh; after Esc cancels the selection it refreshes once', async () => {
+      repositoryMock.refreshFromHead.mockResolvedValue(snapshot({ seq: 10, day: mockDay({ bento: 2 }) }));
+      const view = renderComponent();
+      await selectStudent('001');
+
+      setHead(view, head(10));
+      await act(async () => {});
+      expect(repositoryMock.refreshFromHead).not.toHaveBeenCalled();
+      expect(screen.getByTestId('selected-student-card')).toBeVisible();
+
+      fireEvent.keyDown(window, { key: 'Escape' });
+      await waitFor(() => expect(repositoryMock.refreshFromHead).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(screen.getByTestId('cloud-topbar-bento')).toHaveTextContent('2'));
+    });
+
+    it('E3: the head cannot be applied incrementally → the whole snapshot is reloaded, still without a loading screen', async () => {
+      repositoryMock.refreshFromHead.mockResolvedValue(null);
+      const reload = deferred<CloudOrderSnapshot>();
+      repositoryMock.loadSnapshot.mockResolvedValueOnce(snapshot()).mockReturnValueOnce(reload.promise);
+      const view = renderComponent();
+      await screen.findByLabelText('搜尋編號、姓名或別名');
+
+      setHead(view, head(12));
+      await waitFor(() => expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2));
+      expect(repositoryMock.loadSnapshot.mock.calls[1][0]).toBeUndefined();
+      expect(screen.queryByTestId('cloud-orders-loading')).toBeNull();
+      expect(document.getElementById('cloud-student-search')).not.toBeNull();
+
+      await act(async () => { reload.resolve(snapshot({ seq: 12, day: mockDay({ bento: 3 }) })); });
+      await waitFor(() => expect(screen.getByTestId('cloud-topbar-bento')).toHaveTextContent('3'));
+      expect(document.querySelector('.cloud-orders__content')).not.toHaveAttribute('inert');
+    });
+
+    it('E4: during this page’s own command a moving head triggers nothing; only the command’s own refresh runs', async () => {
+      const pending = deferred<CommandResult>();
+      repositoryMock.createOrder.mockReturnValueOnce(pending.promise);
+      repositoryMock.refreshSnapshot.mockResolvedValue(snapshot({ seq: 10, day: mockDay({ bento: 2 }) }));
+      const view = renderComponent();
+      await selectStudent('001');
+      fireEvent.change(screen.getByLabelText(/實收金額/), { target: { value: '90' } });
+      fireEvent.click(screen.getByTestId('submit-order-button'));
+      fireEvent.click(await screen.findByTestId('confirm-duplicate-button'));
+      await waitFor(() => expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1));
+
+      setHead(view, head(10));
+      await act(async () => {});
+      expect(repositoryMock.refreshFromHead).not.toHaveBeenCalled();
+
+      await act(async () => { pending.resolve(okResult(repositoryMock.createOrder.mock.calls[0][0].commandId)); });
+      await expectToast('已確認 001 王小明 訂餐完成');
+      expect(repositoryMock.refreshSnapshot).toHaveBeenCalledTimes(1);
+      // the page is now at the head's sequence: nothing left to follow
+      await act(async () => {});
+      expect(repositoryMock.refreshFromHead).not.toHaveBeenCalled();
+    });
+
+    it('E5: text typed in the search box survives a background refresh on both paths', async () => {
+      repositoryMock.refreshFromHead.mockResolvedValueOnce(snapshot({ seq: 10 })).mockResolvedValueOnce(null);
+      repositoryMock.loadSnapshot.mockResolvedValueOnce(snapshot()).mockResolvedValueOnce(snapshot({ seq: 11 }));
+      const view = renderComponent();
+      const search = await screen.findByLabelText('搜尋編號、姓名或別名');
+      fireEvent.change(search, { target: { value: '00' } });
+
+      setHead(view, head(10));
+      await waitFor(() => expect(repositoryMock.refreshFromHead).toHaveBeenCalledTimes(1));
+      await act(async () => {});
+      expect(screen.getByLabelText('搜尋編號、姓名或別名')).toHaveValue('00');
+
+      setHead(view, head(11));
+      await waitFor(() => expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2));
+      await act(async () => {});
+      expect(screen.getByLabelText('搜尋編號、姓名或別名')).toHaveValue('00');
+    });
+
+    it('E6: a head at or below the page sequence, or no head at all, triggers nothing', async () => {
+      const view = renderComponent();
+      await screen.findByLabelText('搜尋編號、姓名或別名');
+      setHead(view, head(9));
+      setHead(view, head(3));
+      setHead(view, null);
+      await act(async () => {});
+      expect(repositoryMock.refreshFromHead).not.toHaveBeenCalled();
+      expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(1);
+    });
+
+    it('E7: the same head sequence is followed once even if the page re-renders while the read is running', async () => {
+      const pending = deferred<CloudOrderSnapshot | null>();
+      repositoryMock.refreshFromHead.mockReturnValue(pending.promise);
+      const view = renderComponent();
+      await screen.findByLabelText('搜尋編號、姓名或別名');
+      setHead(view, head(10));
+      await waitFor(() => expect(repositoryMock.refreshFromHead).toHaveBeenCalledTimes(1));
+      setHead(view, head(10));
+      fireEvent.change(screen.getByLabelText('搜尋編號、姓名或別名'), { target: { value: '0' } });
+      await act(async () => {});
+      expect(repositoryMock.refreshFromHead).toHaveBeenCalledTimes(1);
+      await act(async () => { pending.resolve(snapshot({ seq: 10 })); });
     });
   });
 
