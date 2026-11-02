@@ -427,6 +427,75 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     await expect(row.getByRole('cell').nth(3)).toHaveText('無');
     await expect(handover).not.toContainText(uid);
   });
+
+  test('A12: a confirmed holder tab returning from the background stays mounted and re-proves silently after a minute', async ({ browser }) => {
+    test.setTimeout(120000);
+    const context = await browser.newContext({ baseURL: E2E_BASE_URL });
+    const page = await context.newPage();
+    try {
+      // Freeze only the browser clock. Firestore Emulator server time remains authoritative.
+      await page.clock.install({ time: new Date() });
+      const session = await signInGoogle(page, E2E_IDENTITIES.operatorA.email);
+      await page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(page.locator('.operator-strip')).toBeVisible();
+      await expect.poll(readAccessLease).toMatchObject({ holderUid: session.uid, epoch: 1 });
+      const firstUpdate = (await readAccessLease()).updatedAt.getTime();
+
+      // Count every time the lease mask is mounted, and drive the page's visibility from the test.
+      await page.evaluate(() => {
+        const w = window as unknown as { __maskCount: number; __setVisibility: (state: string) => void };
+        w.__maskCount = 0;
+        new MutationObserver(records => {
+          for (const record of records) {
+            record.addedNodes.forEach(node => {
+              if (node instanceof Element && (node.matches('.auth-gate') || node.querySelector('.auth-gate'))) w.__maskCount += 1;
+            });
+          }
+        }).observe(document.body, { childList: true, subtree: true });
+        w.__setVisibility = (state: string) => {
+          Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+          document.dispatchEvent(new Event('visibilitychange'));
+        };
+      });
+      const maskCount = () => page.evaluate(() => (window as unknown as { __maskCount: number }).__maskCount);
+      const setVisibility = (state: 'hidden' | 'visible') => page.evaluate(value => (
+        (window as unknown as { __setVisibility: (state: string) => void }).__setVisibility(value)
+      ), state);
+      // A re-mount closes a <details>: an open operator menu is visible proof that nothing was re-mounted.
+      await page.locator('.operator-menu summary').click();
+      await expect(page.locator('.operator-menu')).toHaveAttribute('open', '');
+
+      // Short absence: nothing happens, no lease write.
+      await setVisibility('hidden');
+      await page.clock.runFor(5_000);
+      await setVisibility('visible');
+      await page.waitForTimeout(1_000);
+      expect(await maskCount()).toBe(0);
+      await expect(page.locator('.operator-menu')).toHaveAttribute('open', '');
+      expect((await readAccessLease()).updatedAt.getTime()).toBe(firstUpdate);
+
+      // Long absence: one silent renew, still no mask and no re-mount.
+      await setVisibility('hidden');
+      await page.clock.runFor(61_000);
+      await setVisibility('visible');
+      await expect.poll(async () => (await readAccessLease()).updatedAt.getTime()).toBeGreaterThan(firstUpdate);
+      expect(await maskCount()).toBe(0);
+      await expect(page.locator('.operator-menu')).toHaveAttribute('open', '');
+      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+
+      // Lease expired while the tab was away: the silent renew is refused, so the tab masks (fail closed).
+      await seedAccessLease({ holderUid: session.uid, epoch: 1, updatedAt: new Date(Date.now() - 6 * 60 * 1000) });
+      await page.waitForTimeout(1_000);
+      await setVisibility('hidden');
+      await page.clock.runFor(61_000);
+      await setVisibility('visible');
+      await expect(page.locator('.auth-gate')).toBeVisible();
+      await expect(page.locator('.auth-gate')).toContainText('正在確認此分頁的使用權');
+      await expect(page.locator('.operator-strip')).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  });
 });
 
 test.describe('P06 Cloud Students', () => {

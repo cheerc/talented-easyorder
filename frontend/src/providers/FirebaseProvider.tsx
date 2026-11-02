@@ -13,6 +13,7 @@ import {
   subscribeLease,
   startLeaseHeartbeat,
   defaultLeaseState,
+  TAB_RETURN_RECHECK_AFTER_MS,
   type ActiveLeaseState,
   type LeaseResult,
 } from '../firebase/activeAccountLease';
@@ -139,6 +140,8 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     probedEpochRef.current = null;
     const isCurrentGeneration = () => !cancelled && leaseGenerationRef.current === generation;
     let visibilityProbeInFlight = false;
+    // Monotonic clock: only decides whether to ask the server again, never grants or extends access (#586).
+    let hiddenAt: number | null = document.visibilityState === 'hidden' ? performance.now() : null;
 
     const setObservedLease = (observed: ActiveLeaseState) => {
       if (!isCurrentGeneration()) return;
@@ -207,7 +210,32 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
 
     const unsubscribeLease = subscribeLease(fb.db, currentUid, setObservedLease);
     const onVisibilityChange = () => {
-      if (document.visibilityState !== 'visible' || visibilityProbeInFlight) return;
+      if (document.visibilityState === 'hidden') {
+        hiddenAt ??= performance.now();
+        return;
+      }
+      if (document.visibilityState !== 'visible') return;
+      // No hidden event seen before this visible one counts as an unknown (long) absence.
+      const hiddenFor = hiddenAt === null ? Number.POSITIVE_INFINITY : performance.now() - hiddenAt;
+      hiddenAt = null;
+      if (visibilityProbeInFlight) return;
+
+      const current = leaseRef.current;
+      const confirmedHolder = current.isKnown && current.isHolder
+        && current.holderUid === currentUid && confirmedEpochRef.current === current.epoch;
+      if (confirmedHolder) {
+        // #586: a confirmed holder stays mounted; Rules still check every read and write. A short absence does nothing, a
+        // long one re-proves the lease once in the background. A refusal goes through probeHolder's fail-closed branches.
+        if (hiddenFor < TAB_RETURN_RECHECK_AFTER_MS) return;
+        visibilityProbeInFlight = true;
+        const epoch = current.epoch;
+        probedEpochRef.current = epoch;
+        void probeHolder(epoch)
+          .catch(() => markUnknownAfterProbeFailure(epoch, '無法確認伺服器租約'))
+          .finally(() => { visibilityProbeInFlight = false; });
+        return;
+      }
+
       visibilityProbeInFlight = true;
 
       confirmedEpochRef.current = null;

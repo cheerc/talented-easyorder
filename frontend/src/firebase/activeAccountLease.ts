@@ -29,6 +29,9 @@ export const LEASE_HEARTBEAT_INTERVAL_MS = 120 * 1000;
 /** 重新檢查限流門檻：15 秒 */
 export const LEASE_RECHECK_THROTTLE_MS = 15 * 1000;
 
+/** 已確認持有的分頁隱藏超過此時間，恢復可見時在背景續約證明一次（#586）。本機時間只決定是否詢問伺服器。 */
+export const TAB_RETURN_RECHECK_AFTER_MS = 60 * 1000;
+
 const LEASE_HEARTBEAT_LOCK_NAME = 'easyorder:system-access-lease-heartbeat';
 
 export interface AccessLeaseDoc {

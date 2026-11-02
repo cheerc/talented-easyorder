@@ -65,7 +65,7 @@ Google sign-in 後要求 `email_verified=true`、provider 為 Google，且 `oper
 `system/accessLease`：`holderUid: string|null`、`epoch: integer`、`updatedAt: Timestamp`。不儲存 `expiresAt`；有效期限由 Rules 以 `updatedAt + duration.value(5, 'm')` 推導。Acquire、Renew、Release 都以 Firestore `serverTimestamp()` 寫入 `updatedAt`，Rules 驗證其解析值等於 `request.time`。空租約初始化的 `updatedAt` 不授予任何使用權；第一次 client 狀態轉換必須使用伺服器時間。
 
 - `holderUid == null` 或 `updatedAt + duration.value(5, 'm') <= request.time` 才能取得；`epoch` 必須加一，UID 必須為本人。有效界線是嚴格大於：到達 `updatedAt + 5 分鐘` 時已逾期。
-- 持有帳號每 120 秒續約（租約 5 分鐘，容許錯過一次心跳；P16f2 S7，原為 60 秒）；背景頁可能停 timer，逾期即失去權限。更新只能延長本人仍有效租約，不能修改 epoch。多頁協調只選一頁續約；即使協調失效，Rules 仍是權威。UI 只用 server-confirmed `updatedAt` 顯示估計期限；本機時鐘與 timer 不授予、延長或證明使用權。
+- 持有帳號每 120 秒續約（租約 5 分鐘，容許錯過一次心跳；P16f2 S7，原為 60 秒）；背景頁可能停 timer，逾期即失去權限。更新只能延長本人仍有效租約，不能修改 epoch。多頁協調只選一頁續約；即使協調失效，Rules 仍是權威。UI 只用 server-confirmed `updatedAt` 顯示估計期限；本機時鐘與 timer 不授予、延長或證明使用權。分頁恢復可見時，已確認持有的分頁不遮罩、不清資料：隱藏未滿 60 秒不動作，60 秒以上在背景以 Renew 重新證明一次，失敗（持有人／epoch 改變、Rules 拒絕、無法連線證明）才遮罩並清記憶體；未確認的分頁維持重新讀租約再證明（#586）。
 - B 帳號登入 Firebase 成功不等於獲得系統使用權；A 仍使用時 B 只顯示「目前有人使用，請對方登出或等待逾時」，不載入名單與帳務，不自動搶占。重新檢查須限流（至少 15 秒）。
 - A 登出先處理送出中的結果確認，再用目前 server snapshot 的 epoch 作 `expectedEpoch` 釋放租約（`holderUid=null`、`epoch+1`、`updatedAt=serverTimestamp()`），最後 Firebase signOut／清快取。client transaction 若目前文件 epoch 與 `expectedEpoch` 不同就中止；這是防舊畫面操作的 client 前置檢查，不是 Rules 可見的欄位。Rules 仍以文件原持有人及合法狀態轉移為權威。釋放失敗仍可本機登出，至多等租約到期，不宣稱已完成交接。
 - 關閉視窗／斷電不依賴 unload 釋放；最長等待 5 分鐘。逾期後 B 取得新 epoch，A 舊頁面的寫入全部拒絕。

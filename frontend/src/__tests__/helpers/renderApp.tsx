@@ -26,6 +26,7 @@ vi.mock('../../firebase/activeAccountLease', () => {
     updatedAt: new Date('2026-10-14T00:00:00.000Z'),
   };
   return {
+    TAB_RETURN_RECHECK_AFTER_MS: 60_000,
     defaultLeaseState: {
       holderUid: null,
       epoch: 0,
