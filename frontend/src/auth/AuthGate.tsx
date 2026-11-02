@@ -230,7 +230,8 @@ export function AuthGate({
 
   const hasCurrentLease = activeLease.isHolder && activeLease.holderUid === access.profile.uid;
 
-  // 2. Lease observations never auto-acquire. Only an explicit operator action writes.
+  // 2. Lease observations never auto-acquire. Only an explicit operator action writes, with one exception handled in
+  // FirebaseProvider: a tab that was a confirmed holder re-acquires its own untouched expired lease once (#586 P2).
   if (!hasCurrentLease) {
     const isSameUidUnconfirmed = activeLease.holderUid === access.profile.uid;
     const isOccupied = activeLease.holderUid !== null && !activeLease.isExpired && !isSameUidUnconfirmed;

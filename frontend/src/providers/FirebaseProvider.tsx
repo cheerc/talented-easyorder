@@ -55,6 +55,8 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   const probedEpochRef = useRef<number | null>(null);
   const leaseGenerationRef = useRef(0);
   const stopHeartbeatRef = useRef<(() => void) | null>(null);
+  // Set by the lease effect; the heartbeat effect's onLost uses it (#586 P2).
+  const reacquireOwnExpiredLeaseRef = useRef<((lostEpoch: number) => Promise<boolean>) | null>(null);
   const cleanupPromiseRef = useRef<Promise<void> | null>(null);
 
   const clearSensitiveDataSafely = (): Promise<void> => {
@@ -140,11 +142,15 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     probedEpochRef.current = null;
     const isCurrentGeneration = () => !cancelled && leaseGenerationRef.current === generation;
     let visibilityProbeInFlight = false;
+    // While an own-lease re-acquire is in flight, its own committed epoch+1 snapshot is not a loss (#586 P2).
+    let reacquiringFromEpoch: number | null = null;
     // Monotonic clock: only decides whether to ask the server again, never grants or extends access (#586).
     let hiddenAt: number | null = document.visibilityState === 'hidden' ? performance.now() : null;
 
     const setObservedLease = (observed: ActiveLeaseState) => {
       if (!isCurrentGeneration()) return;
+      if (reacquiringFromEpoch !== null && observed.isKnown && observed.holderUid === currentUid
+        && observed.epoch === reacquiringFromEpoch + 1) return;
       const previous = leaseRef.current;
       const stillOurEpoch = observed.isKnown && observed.holderUid === currentUid;
       if (!stillOurEpoch || confirmedEpochRef.current !== observed.epoch) {
@@ -178,7 +184,53 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       void clearSensitiveDataSafely();
     };
 
-    const probeHolder = async (epoch: number) => {
+    /**
+     * #586 P2: a confirmed holder lost its lease. Only when the server shows the same lease it held (own uid, same epoch, so
+     * nobody touched it) is that expiry, and re-acquiring is what the operator would click anyway. One attempt per loss.
+     * Returns true when it handled the loss (re-acquired, or published what the server shows); false means the caller masks.
+     */
+    const reacquireOwnExpiredLease = async (lostEpoch: number): Promise<boolean> => {
+      const startingAccess = accessRef.current;
+      if (!startingAccess.ok) return false;
+      if (reacquiringFromEpoch !== null) return true; // the attempt already in flight owns this loss
+      reacquiringFromEpoch = lostEpoch;
+      try {
+        const observed = await apiGetLeaseStatus(fb.db!, currentUid);
+        if (!isCurrentGeneration()) return true;
+        if (!observed.isKnown) return false;
+        if (observed.holderUid !== currentUid || observed.epoch !== lostEpoch) {
+          reacquiringFromEpoch = null;
+          confirmedEpochRef.current = null;
+          setObservedLease(observed);
+          return true;
+        }
+        const result = await apiAcquireLease(fb.db!, currentUid, lostEpoch, startingAccess.profile.email);
+        if (!isCurrentGeneration()) return true;
+        if (result.status === 'acquired' && result.holderUid === currentUid) {
+          confirmedEpochRef.current = result.epoch;
+          probedEpochRef.current = result.epoch;
+          publishLease(stateFromResult(result, currentUid));
+          return true;
+        }
+        if (result.status === 'stale_epoch') {
+          const latest = await apiGetLeaseStatus(fb.db!, currentUid);
+          if (!isCurrentGeneration()) return true;
+          if (!latest.isKnown) return false;
+          reacquiringFromEpoch = null;
+          confirmedEpochRef.current = null;
+          setObservedLease(latest);
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
+      } finally {
+        reacquiringFromEpoch = null;
+      }
+    };
+    reacquireOwnExpiredLeaseRef.current = reacquireOwnExpiredLease;
+
+    const probeHolder = async (epoch: number, options: { reacquire?: boolean } = {}) => {
       const result = await apiRenewLease(fb.db!, currentUid, epoch);
       if (!isCurrentGeneration()) return;
 
@@ -196,11 +248,15 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const current = leaseRef.current;
       const offline = result.status === 'lost' && /無法連線|回讀失敗|無法從伺服器/i.test(result.message);
       if (offline) {
         markUnknownAfterProbeFailure(epoch, result.message);
-      } else if (current.isKnown && current.holderUid === currentUid && current.epoch === epoch) {
+        return;
+      }
+      if (options.reacquire && await reacquireOwnExpiredLease(epoch)) return;
+      if (!isCurrentGeneration()) return;
+      const current = leaseRef.current;
+      if (current.isKnown && current.holderUid === currentUid && current.epoch === epoch) {
         confirmedEpochRef.current = null;
         publishLease({ ...current, isHolder: false, error: result.status === 'lost' ? result.message : '租約尚未確認' });
         stopHeartbeat();
@@ -230,7 +286,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
         visibilityProbeInFlight = true;
         const epoch = current.epoch;
         probedEpochRef.current = epoch;
-        void probeHolder(epoch)
+        void probeHolder(epoch, { reacquire: true })
           .catch(() => markUnknownAfterProbeFailure(epoch, '無法確認伺服器租約'))
           .finally(() => { visibilityProbeInFlight = false; });
         return;
@@ -276,6 +332,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       unsubscribeLease();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       stopHeartbeat();
+      if (reacquireOwnExpiredLeaseRef.current === reacquireOwnExpiredLease) reacquireOwnExpiredLeaseRef.current = null;
     };
   }, [fb?.db, currentUid]);
 
@@ -289,16 +346,26 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       () => leaseRef.current.epoch,
       reason => {
         if (leaseGenerationRef.current !== generation || leaseRef.current.epoch !== epoch) return;
-        confirmedEpochRef.current = null;
-        stopHeartbeatRef.current?.();
-        publishLease({
-          ...leaseRef.current,
-          isKnown: false,
-          isHolder: false,
-          error: reason,
-        });
-        void clearSensitiveDataSafely();
-        emitError({ source: 'auth', message: `[lease] 失去租約使用權: ${reason}` });
+        const maskLostLease = () => {
+          if (leaseGenerationRef.current !== generation || leaseRef.current.epoch !== epoch) return;
+          confirmedEpochRef.current = null;
+          stopHeartbeatRef.current?.();
+          publishLease({
+            ...leaseRef.current,
+            isKnown: false,
+            isHolder: false,
+            error: reason,
+          });
+          void clearSensitiveDataSafely();
+          emitError({ source: 'auth', message: `[lease] 失去租約使用權: ${reason}` });
+        };
+        // #586 P2: an own, untouched, expired lease is re-acquired once without masking; anything else masks as before.
+        const reacquire = reacquireOwnExpiredLeaseRef.current;
+        if (!reacquire) {
+          maskLostLease();
+          return;
+        }
+        void reacquire(epoch).then(handled => { if (!handled) maskLostLease(); }, maskLostLease);
       },
     );
     stopHeartbeatRef.current = stop;

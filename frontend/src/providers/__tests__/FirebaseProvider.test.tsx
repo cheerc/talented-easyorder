@@ -14,7 +14,10 @@ const leaseMocks = vi.hoisted(() => ({
     void args;
     return vi.fn();
   }),
-  startLeaseHeartbeat: vi.fn(() => vi.fn()),
+  startLeaseHeartbeat: vi.fn((...args: [unknown, string, () => number, (reason: string) => void]) => {
+    void args;
+    return vi.fn();
+  }),
 }));
 
 // Mock Firebase modules before importing
@@ -312,7 +315,11 @@ describe('#586 — tab return keeps a confirmed holder mounted', () => {
     let leaseCallback: ((state: ActiveLeaseState) => void) | null = null;
     leaseMocks.subscribeLease.mockImplementation((_db, _uid, callback) => { leaseCallback = callback; return vi.fn(); });
     const stopHeartbeat = vi.fn();
-    leaseMocks.startLeaseHeartbeat.mockReturnValue(stopHeartbeat);
+    const heartbeatLostCallbacks: Array<(reason: string) => void> = [];
+    leaseMocks.startLeaseHeartbeat.mockImplementation((_db, _uid, _getEpoch, onLost) => {
+      heartbeatLostCallbacks.push(onLost);
+      return stopHeartbeat;
+    });
     leaseMocks.renewLease.mockResolvedValueOnce({ status: 'acquired', holderUid: 'op-1', epoch: 1, updatedAt: new Date() });
 
     const history: ActiveLeaseState[] = [];
@@ -332,7 +339,13 @@ describe('#586 — tab return keeps a confirmed holder mounted', () => {
     await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(true));
     history.length = 0;
     mockClearSensitivePosData.mockClear();
-    return { hook, history, stopHeartbeat, leaseCallback: () => leaseCallback! };
+    return {
+      hook,
+      history,
+      stopHeartbeat,
+      leaseCallback: () => leaseCallback!,
+      heartbeatLost: (reason: string) => heartbeatLostCallbacks[heartbeatLostCallbacks.length - 1]!(reason),
+    };
   }
 
   beforeEach(() => {
@@ -346,6 +359,7 @@ describe('#586 — tab return keeps a confirmed holder mounted', () => {
     leaseMocks.renewLease.mockReset();
     leaseMocks.subscribeLease.mockReset().mockReturnValue(vi.fn());
     leaseMocks.startLeaseHeartbeat.mockReset().mockReturnValue(vi.fn());
+    leaseMocks.acquireLease.mockReset();
     nowMs = 0;
     vi.spyOn(performance, 'now').mockImplementation(() => nowMs);
   });
@@ -427,5 +441,217 @@ describe('#586 — tab return keeps a confirmed holder mounted', () => {
     nowMs = 5_000;
     setVisibility('visible');
     await waitFor(() => expect(leaseMocks.getLeaseStatus).toHaveBeenCalled());
+  });
+});
+
+describe('#586 P2 — an own, untouched, expired lease is re-acquired without masking', () => {
+  const services = {
+    app: {} as Record<string, unknown>,
+    auth: { currentUser: null } as Record<string, unknown>,
+    db: {} as Record<string, unknown>,
+  };
+  let nowMs = 0;
+  const expiredOwn = (epoch: number) => ({
+    holderUid: 'op-1', epoch, updatedAt: new Date(0), isKnown: true, isHolder: false, isExpired: true,
+  });
+  const unknownState = {
+    holderUid: null, epoch: 0, updatedAt: null, isKnown: false, isHolder: false, isExpired: false, error: '無法從伺服器讀取租約',
+  };
+
+  function setVisibility(state: 'visible' | 'hidden') {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+  }
+
+  async function confirmedHolder() {
+    mockEnsure.mockResolvedValue(services as unknown as ReturnType<typeof ensureFirebaseInitialized> extends Promise<infer T> ? T : never);
+    let accessCallback: ((access: OperatorAccess) => void) | null = null;
+    mockSubscribe.mockImplementation((_auth, _db, callback) => { accessCallback = callback; return vi.fn(); });
+    let leaseCallback: ((state: ActiveLeaseState) => void) | null = null;
+    leaseMocks.subscribeLease.mockImplementation((_db, _uid, callback) => { leaseCallback = callback; return vi.fn(); });
+    const stopHeartbeat = vi.fn();
+    const heartbeatLostCallbacks: Array<(reason: string) => void> = [];
+    leaseMocks.startLeaseHeartbeat.mockImplementation((_db, _uid, _getEpoch, onLost) => {
+      heartbeatLostCallbacks.push(onLost);
+      return stopHeartbeat;
+    });
+    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'acquired', holderUid: 'op-1', epoch: 1, updatedAt: new Date() });
+
+    const history: ActiveLeaseState[] = [];
+    const hook = renderHook(() => {
+      const value = useFirebase();
+      history.push(value.lease);
+      return value;
+    }, { wrapper });
+    await waitFor(() => expect(accessCallback).not.toBeNull());
+    await act(async () => {
+      accessCallback!({ ok: true, profile: { uid: 'op-1', email: 'op-1@example.com', displayName: 'Operator 1' } });
+    });
+    await waitFor(() => expect(leaseCallback).not.toBeNull());
+    await act(async () => {
+      leaseCallback!({ holderUid: 'op-1', epoch: 1, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+    });
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(true));
+    history.length = 0;
+    mockClearSensitivePosData.mockClear();
+    return {
+      hook,
+      history,
+      stopHeartbeat,
+      leaseCallback: () => leaseCallback!,
+      heartbeatLost: (reason: string) => heartbeatLostCallbacks[heartbeatLostCallbacks.length - 1]!(reason),
+    };
+  }
+
+  /** Background return after a minute whose renew Rules refuse (the lease expired while the tab slept). */
+  function returnAfterLongAbsence() {
+    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'lost', message: '伺服器未確認續約；請重新檢查使用權' });
+    setVisibility('hidden');
+    nowMs = 61_000;
+    setVisibility('visible');
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsConfigured.mockReturnValue(true);
+    leaseMocks.acquireLease.mockReset();
+    leaseMocks.getLeaseStatus.mockReset().mockResolvedValue(unknownState);
+    leaseMocks.releaseLease.mockReset().mockResolvedValue(false);
+    leaseMocks.renewLease.mockReset();
+    leaseMocks.subscribeLease.mockReset().mockReturnValue(vi.fn());
+    leaseMocks.startLeaseHeartbeat.mockReset().mockReturnValue(vi.fn());
+    nowMs = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => nowMs);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    Reflect.deleteProperty(document, 'visibilityState');
+  });
+
+  it('W1: background renew refused, server shows our own untouched lease → one acquire, never masked, data kept', async () => {
+    const { hook, history, leaseCallback } = await confirmedHolder();
+    leaseMocks.getLeaseStatus.mockResolvedValueOnce(expiredOwn(1));
+    leaseMocks.acquireLease.mockImplementationOnce(async () => {
+      // The listener reports the committed lease before the acquire promise resolves.
+      leaseCallback()({ holderUid: 'op-1', epoch: 2, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+      return { status: 'acquired', holderUid: 'op-1', epoch: 2, updatedAt: new Date() };
+    });
+    returnAfterLongAbsence();
+    await waitFor(() => expect(hook.result.current.lease).toMatchObject({ holderUid: 'op-1', epoch: 2, isHolder: true }));
+
+    expect(leaseMocks.acquireLease).toHaveBeenCalledTimes(1);
+    expect(leaseMocks.acquireLease).toHaveBeenCalledWith(services.db, 'op-1', 1, 'op-1@example.com');
+    expect(history.some(state => !state.isHolder || !state.isKnown)).toBe(false);
+    expect(mockClearSensitivePosData).not.toHaveBeenCalled();
+    expect(leaseMocks.startLeaseHeartbeat).toHaveBeenCalledTimes(2);
+  });
+
+  it('W2: server shows another holder → no acquire; shows that holder, masks and clears', async () => {
+    const { hook } = await confirmedHolder();
+    leaseMocks.getLeaseStatus.mockResolvedValueOnce({
+      holderUid: 'op-2', epoch: 2, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false,
+    });
+    returnAfterLongAbsence();
+    await waitFor(() => expect(hook.result.current.lease).toMatchObject({ holderUid: 'op-2', epoch: 2, isHolder: false }));
+
+    expect(leaseMocks.acquireLease).not.toHaveBeenCalled();
+    expect(mockClearSensitivePosData).toHaveBeenCalledTimes(1);
+  });
+
+  it('W3: lease released (no holder) → no acquire; masks and clears', async () => {
+    const { hook } = await confirmedHolder();
+    leaseMocks.getLeaseStatus.mockResolvedValueOnce({
+      holderUid: null, epoch: 2, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false,
+    });
+    returnAfterLongAbsence();
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(false));
+
+    expect(leaseMocks.acquireLease).not.toHaveBeenCalled();
+    expect(mockClearSensitivePosData).toHaveBeenCalledTimes(1);
+  });
+
+  it('W4: lease epoch moved on (touched since) → no acquire; masks and clears', async () => {
+    const { hook } = await confirmedHolder();
+    leaseMocks.getLeaseStatus.mockResolvedValueOnce(expiredOwn(2));
+    // The follow-up proof for the new epoch is refused too, so the tab stays masked.
+    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'lost', message: '伺服器未確認續約；請重新檢查使用權' });
+    returnAfterLongAbsence();
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(false));
+
+    expect(leaseMocks.acquireLease).not.toHaveBeenCalled();
+    expect(mockClearSensitivePosData).toHaveBeenCalledTimes(1);
+  });
+
+  it('W5: acquire refused (busy) → exactly one attempt, then masks and clears', async () => {
+    const { hook } = await confirmedHolder();
+    leaseMocks.getLeaseStatus.mockResolvedValueOnce(expiredOwn(1));
+    leaseMocks.acquireLease.mockResolvedValueOnce({
+      status: 'busy', currentHolderUid: 'op-1', epoch: 1, updatedAt: new Date(), message: '使用權仍有效',
+    });
+    returnAfterLongAbsence();
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(false));
+
+    expect(leaseMocks.acquireLease).toHaveBeenCalledTimes(1);
+    expect(mockClearSensitivePosData).toHaveBeenCalledTimes(1);
+    expect(leaseMocks.startLeaseHeartbeat).toHaveBeenCalledTimes(1);
+  });
+
+  it('W6: server cannot be read (offline) → no acquire; masks and clears', async () => {
+    const { hook } = await confirmedHolder();
+    returnAfterLongAbsence();
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(false));
+
+    expect(leaseMocks.acquireLease).not.toHaveBeenCalled();
+    expect(mockClearSensitivePosData).toHaveBeenCalledTimes(1);
+  });
+
+  it('W7: heartbeat loses an own untouched expired lease → one acquire, stays mounted', async () => {
+    const { hook, history, heartbeatLost } = await confirmedHolder();
+    leaseMocks.getLeaseStatus.mockResolvedValueOnce(expiredOwn(1));
+    leaseMocks.acquireLease.mockResolvedValueOnce({ status: 'acquired', holderUid: 'op-1', epoch: 2, updatedAt: new Date() });
+    await act(async () => { heartbeatLost('租約續約失敗：伺服器未確認續約；請重新檢查使用權'); });
+    await waitFor(() => expect(hook.result.current.lease).toMatchObject({ holderUid: 'op-1', epoch: 2, isHolder: true }));
+
+    expect(leaseMocks.acquireLease).toHaveBeenCalledTimes(1);
+    expect(history.some(state => !state.isHolder || !state.isKnown)).toBe(false);
+    expect(mockClearSensitivePosData).not.toHaveBeenCalled();
+    expect(leaseMocks.startLeaseHeartbeat).toHaveBeenCalledTimes(2);
+  });
+
+  it('W7b: heartbeat loss with another holder or an unreadable server masks and clears', async () => {
+    const { hook, heartbeatLost } = await confirmedHolder();
+    await act(async () => { heartbeatLost('租約續約失敗：伺服器未確認續約；請重新檢查使用權'); });
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(false));
+
+    expect(leaseMocks.acquireLease).not.toHaveBeenCalled();
+    expect(hook.result.current.lease.isKnown).toBe(false);
+    expect(mockClearSensitivePosData).toHaveBeenCalledTimes(1);
+  });
+
+  it('V6a: a confirmed holder whose background probe goes offline masks and clears', async () => {
+    const { hook, stopHeartbeat } = await confirmedHolder();
+    leaseMocks.renewLease.mockResolvedValueOnce({ status: 'lost', message: '無法連線到伺服器，請稍後再試' });
+    setVisibility('hidden');
+    nowMs = 61_000;
+    setVisibility('visible');
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(false));
+
+    expect(leaseMocks.acquireLease).not.toHaveBeenCalled();
+    expect(mockClearSensitivePosData).toHaveBeenCalledTimes(1);
+    expect(stopHeartbeat).toHaveBeenCalled();
+  });
+
+  it('V6b: a confirmed holder whose background probe throws masks and clears', async () => {
+    const { hook, stopHeartbeat } = await confirmedHolder();
+    leaseMocks.renewLease.mockRejectedValueOnce(new Error('network down'));
+    setVisibility('hidden');
+    nowMs = 61_000;
+    setVisibility('visible');
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(false));
+
+    expect(leaseMocks.acquireLease).not.toHaveBeenCalled();
+    expect(mockClearSensitivePosData).toHaveBeenCalledTimes(1);
+    expect(stopHeartbeat).toHaveBeenCalled();
   });
 });
