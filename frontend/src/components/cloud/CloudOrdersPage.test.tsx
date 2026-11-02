@@ -653,6 +653,7 @@ describe('CloudOrdersPage', () => {
         await submitBento();
         await expectToast('已確認 001 王小明 訂餐完成');
         expect(within(screen.getByTestId('toast')).getByTestId('undo-button')).toBeVisible();
+        await act(async () => {}); // flush the toast's own timer effect before moving the clock
         await act(async () => { vi.advanceTimersByTime(4_000); });
         expect(screen.getByTestId('toast')).toBeVisible();
         await act(async () => { vi.advanceTimersByTime(1_100); });
