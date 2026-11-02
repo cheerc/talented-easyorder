@@ -35,6 +35,7 @@ import { EmptyState } from '../ui/EmptyState';
 import { StatusBadge } from '../ui/StatusBadge';
 import { CloudAccountBalance } from './CloudAccountBalance';
 import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerToken } from './useCloudActionOwner';
+import { DataUpdatedNotice } from './DataUpdatedNotice';
 import './CloudReportPage.css';
 
 export interface CloudReportPageProps {
@@ -295,6 +296,8 @@ export function CloudReportPage({
   const [customEnd, setCustomEnd] = useState('');
   const [query, setQuery] = useState<QueryRequest | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  /** #587 P2: the highest sequence of a receipt of this page's own export or print; its write is not "another device". */
+  const [ownReceiptSeq, setOwnReceiptSeq] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [inputError, setInputError] = useState('');
@@ -503,6 +506,16 @@ export function CloudReportPage({
     }
   }, [customEnd, customStart, leaseToday, rangeAnchor, rangeKind, visibleAction]);
 
+  /** #587 P2: read the same range and scope again (another device has written since). */
+  const reloadReport = useCallback(() => {
+    if (!query || visibleAction) return;
+    setLoading(true);
+    setLoadError('');
+    setSnapshot(null);
+    setPageNumber(0);
+    setQuery({ ...query });
+  }, [query, visibleAction]);
+
   const chooseStudent = useCallback((studentId: string | null) => {
     if (!query || visibleAction) return;
     setScopeStudentId(studentId);
@@ -611,6 +624,7 @@ export function CloudReportPage({
     }
     clearTimer(operation);
     operation.receipt = receipt;
+    setOwnReceiptSeq(previous => Math.max(previous, receipt.seq));
     operation.retryAuthorized = false;
     operation.checking = false;
     operation.querySequence += 1;
@@ -920,6 +934,7 @@ export function CloudReportPage({
           <p>日期範圍由伺服器台北日期 {leaseToday || '讀取中'} 推導；僅在報表與稽核資料版本一致時顯示。</p></div>
         {snapshot && <strong>來源序號 H={snapshot.report.sourceSeq}</strong>}
       </header>
+      <DataUpdatedNotice pageSeq={snapshot ? Math.max(snapshot.report.sourceSeq, ownReceiptSeq) : null} hidden={controlsLocked} onReload={reloadReport} />
 
       <form className="cloud-report__controls" onSubmit={submitRange}>
         <label>日期範圍

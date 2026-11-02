@@ -1,0 +1,30 @@
+/* #587 P2: a one-line hint under a page title when another device has written since this page last read. */
+.data-updated-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  color: var(--ink);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  line-height: 1.5;
+}
+
+.data-updated-notice__button {
+  min-height: 34px;
+  padding: 6px 14px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  cursor: pointer;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.data-updated-notice__button:hover {
+  border-color: var(--ink-2);
+}

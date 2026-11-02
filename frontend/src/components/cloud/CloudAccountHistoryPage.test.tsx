@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CloudAccountHistory, CloudAuditRangeSnapshot, CloudReportDay } from '../../domain/cloudLedgerReport';
 
 const currentAuth = vi.hoisted(() => ({ uid: 'uid-a' as string | null }));
+const headMock = vi.hoisted(() => ({ current: null as { seq: number; lastCommandId: string; datasetId: string; targets: Record<string, unknown> } | null }));
+
+vi.mock('../../providers/FirebaseProvider', () => ({ useDataHead: () => headMock.current }));
 
 const mocks = vi.hoisted(() => ({
   repositoryOptions: vi.fn(),
@@ -692,5 +695,42 @@ describe('CloudAccountHistoryPage', () => {
       await waitFor(() => expect(mocks.readAccountHistory).toHaveBeenCalledTimes(readsBefore + 1));
       expect(screen.queryByRole('region', { name: '歷史更正命令恢復' })).toBeNull();
     });
+  });
+});
+
+describe('CloudAccountHistoryPage: #587 P2 data updated elsewhere', () => {
+  const head = (seq: number) => ({ seq, lastCommandId: `cmd-${seq}`, datasetId: 'dataset-a', targets: {} });
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    currentAuth.uid = 'uid-a';
+    headMock.current = null;
+    mocks.readSummary.mockResolvedValue({ leaseToday: '2026-10-19' });
+    mocks.listStudents.mockResolvedValue({ datasetId: 'dataset-a', seq: 11, goLiveDate: '2026-10-01', students: [student] });
+    mocks.readAccountHistory.mockResolvedValue(account);
+    mocks.readAuditRange.mockResolvedValue(audit);
+    mocks.confirmPendingIntent.mockResolvedValue({ status: 'not-found' });
+    mocks.cleanupConfirmedIntent.mockResolvedValue(true);
+  });
+
+  it('shows the notice when the data head is ahead of the account history, and its button reads it again', async () => {
+    headMock.current = head(12);
+    render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:p587-notice" initialStudentId={studentId} initialRange={range} />);
+    const notice = await screen.findByTestId('data-updated-notice');
+    expect(notice).toHaveTextContent('其他裝置已更新資料。');
+    expect(mocks.readAccountHistory).toHaveBeenCalledTimes(1);
+    mocks.readAccountHistory.mockResolvedValue({ ...account, sourceSeq: 12 } as unknown as CloudAccountHistory);
+    mocks.readAuditRange.mockResolvedValue({ ...audit, sourceSeq: 12 } as unknown as CloudAuditRangeSnapshot);
+    fireEvent.click(within(notice).getByRole('button', { name: '重新載入' }));
+    await waitFor(() => expect(mocks.readAccountHistory).toHaveBeenCalledTimes(2));
+    await screen.findByText('來源序號 H=12');
+    expect(screen.queryByTestId('data-updated-notice')).toBeNull();
+  });
+
+  it('shows nothing when the history is at the head, or there is no head', async () => {
+    headMock.current = head(11);
+    render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:p587-at-head" initialStudentId={studentId} initialRange={range} />);
+    await screen.findByTestId('account-history-ready');
+    expect(screen.queryByTestId('data-updated-notice')).toBeNull();
   });
 });

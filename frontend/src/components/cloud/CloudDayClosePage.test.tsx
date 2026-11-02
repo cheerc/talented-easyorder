@@ -80,6 +80,9 @@ const repository = vi.hoisted(() => {
 });
 
 const currentAuth = vi.hoisted(() => ({ uid: 'uid-a' }));
+const headMock = vi.hoisted(() => ({ current: null as { seq: number; lastCommandId: string; datasetId: string; targets: Record<string, unknown> } | null }));
+
+vi.mock('../../providers/FirebaseProvider', () => ({ useDataHead: () => headMock.current }));
 
 vi.mock('../../firebase/cloudDayCloseRepository', () => ({
   createCloudDayCloseRepository: () => repository,
@@ -1996,5 +1999,40 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
       expect(repository.backfillOpening).toHaveBeenCalledTimes(1);
       expect(repository.startBackfill).toHaveBeenCalledTimes(1);
     }, 15_000);
+  });
+});
+
+describe('CloudDayClosePage: #587 P2 data updated elsewhere', () => {
+  const head = (seq: number) => ({ seq, lastCommandId: `cmd-${seq}`, datasetId: 'dataset-a', targets: {} });
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    headMock.current = null;
+    vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValue(commandId) });
+    repository.readOverview.mockResolvedValue(overview());
+    repository.read.mockResolvedValue(dayState());
+    repository.findPreviousClosed.mockResolvedValue({ previous: null, seq: 20 });
+    repository.readCommand.mockResolvedValue(null);
+    repository.readLedger.mockResolvedValue({ today, goLiveDate: '2026-10-01', anomalies: [], closedDays: [], seq: 20 });
+  });
+
+  it('shows the notice when the data head is ahead of the overview, and its button reloads the page data', async () => {
+    headMock.current = head(23);
+    renderPage();
+    const notice = await screen.findByTestId('data-updated-notice');
+    expect(notice).toHaveTextContent('其他裝置已更新資料。');
+    const reads = repository.readOverview.mock.calls.length;
+    repository.readOverview.mockResolvedValue(overview({ seq: 23 }));
+    repository.read.mockResolvedValue(dayState({ seq: 23 }));
+    fireEvent.click(within(notice).getByRole('button', { name: '重新載入' }));
+    await waitFor(() => expect(repository.readOverview.mock.calls.length).toBeGreaterThan(reads));
+    await waitFor(() => expect(screen.queryByTestId('data-updated-notice')).toBeNull());
+  });
+
+  it('shows nothing when the page is at the head, or there is no head', async () => {
+    headMock.current = head(20);
+    renderPage();
+    await screen.findByRole('heading', { name: `${today} 日結` });
+    expect(screen.queryByTestId('data-updated-notice')).toBeNull();
   });
 });

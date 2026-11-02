@@ -25,6 +25,7 @@ import { StatusBadge } from '../ui/StatusBadge';
 import { Toast } from '../ui/Toast';
 import { BackupScreen } from '../screens/BackupScreen';
 import { LedgerUnclosedBanner } from './LedgerUnclosedBanner';
+import { DataUpdatedNotice } from './DataUpdatedNotice';
 import './CloudDayClosePage.css';
 
 export interface CloudDayClosePageProps {
@@ -1602,6 +1603,11 @@ export function CloudDayClosePage({
           {page.loading ? '載入中…' : '重新載入伺服器資料'}
         </button>
       </header>
+      <DataUpdatedNotice
+        pageSeq={snapshot?.overview.seq ?? null}
+        hidden={progressActive || busy}
+        onReload={() => void loadSnapshot((snapshot?.dayId ?? page.dayIdDraft) || undefined, page.recovery?.phase === 'receipt' ? page.recovery.receipt : undefined)}
+      />
       <details className="cloud-day-close__intro">
         <summary>應有現金與關帳版本</summary>
         <p className="cloud-day-close__intro">應有現金由伺服器依營業日統計計算：開帳現金＋收款留存＋櫃台收入－櫃台支出－帳戶退款。每次關帳或重開都新增一個不能修改的日結版本。</p>

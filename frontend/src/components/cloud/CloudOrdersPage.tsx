@@ -532,6 +532,9 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const [pageState, setPageStateRaw] = useState<OrdersPageState>(() => initialState(scopeKey));
   const scopeRef = useRef(scopeKey);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  // #587: whether the page is still idle for a background full reload (see `refreshFromExternalHead`)
+  const idleRef = useRef(false);
+  const restoreSearchFocusRef = useRef<{ start: number | null; end: number | null } | null>(null);
   const amountInputRef = useRef<HTMLInputElement>(null);
   const otherItemRef = useRef<HTMLInputElement>(null);
   const focusSearchRef = useRef(false);
@@ -769,6 +772,15 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       }));
       return;
     }
+    // The page was idle when this started but the operator may have started since (a student selected, a dialog opened): look again
+    // now and wait (the effect below retries when the page is idle again) instead of reloading under them.
+    if (!idleRef.current || operationRef.current !== null) return;
+    // The reload locks the page (inert) for a moment, which takes the focus out of the search box: remember it and put it back, with
+    // the caret, when the lock is lifted (see the layout effect below).
+    const search = searchInputRef.current;
+    restoreSearchFocusRef.current = search !== null && document.activeElement === search
+      ? { start: search.selectionStart, end: search.selectionEnd }
+      : null;
     updateFor(key, generation, state => ({ ...state, refreshingSnapshot: previous }));
     await loadSnapshot({ reuseBackfillDays: true, keepDraft: true, keepRefreshing: true });
   }, [isCurrent, loadSnapshot, repository, scopeKey, updateFor]);
@@ -777,6 +789,16 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const idleForExternalRefresh = page.snapshot !== null && !page.loading && !page.authorizationRevoked
     && page.recovery === null && page.selectedStudentId === null && !page.cashOpen && !page.confirmDuplicateOpen
     && !page.paymentDetailsOpen && !page.refundConfirmOpen && page.edit === null;
+  useLayoutEffect(() => { idleRef.current = idleForExternalRefresh; }, [idleForExternalRefresh]);
+  useLayoutEffect(() => {
+    const wanted = restoreSearchFocusRef.current;
+    if (!wanted || page.refreshingSnapshot !== null) return;
+    restoreSearchFocusRef.current = null;
+    const search = searchInputRef.current;
+    if (!search || (document.activeElement !== document.body && document.activeElement !== null)) return;
+    search.focus();
+    if (wanted.start !== null && wanted.end !== null) search.setSelectionRange(wanted.start, wanted.end);
+  }, [page.refreshingSnapshot]);
   const externalRefreshSeqRef = useRef<number | null>(null);
   useEffect(() => {
     const current = page.snapshot;

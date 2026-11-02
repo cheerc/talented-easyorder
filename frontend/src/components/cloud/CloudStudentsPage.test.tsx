@@ -23,6 +23,9 @@ const repository = vi.hoisted(() => ({
 }));
 
 const currentAuth = vi.hoisted(() => ({ uid: 'uid-a' }));
+const headMock = vi.hoisted(() => ({ current: null as { seq: number; lastCommandId: string; datasetId: string; targets: Record<string, unknown> } | null }));
+
+vi.mock('../../providers/FirebaseProvider', () => ({ useDataHead: () => headMock.current }));
 
 vi.mock('../../firebase/cloudStudentRepository', () => ({
   createCloudStudentRepository: () => repository,
@@ -111,6 +114,7 @@ describe('CloudStudentsPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     currentAuth.uid = 'uid-a';
+    headMock.current = null;
     vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValue('cmd-ui-001') });
     repository.list.mockResolvedValue(snapshot());
     repository.createStudent.mockResolvedValue(successful('cmd-ui-001', 'CreateStudent', '001'));
@@ -940,6 +944,52 @@ describe('CloudStudentsPage', () => {
 
       expect(await screen.findByText('已找到伺服器回執，名單尚待再次讀取。')).toBeInTheDocument();
       expect(screen.queryByTestId('cloud-students-content')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('#587 P2 data updated elsewhere', () => {
+    const head = (seq: number) => ({ seq, lastCommandId: `cmd-${seq}`, datasetId: 'demo-dataset', targets: {} });
+
+    it('shows the notice when the data head is ahead of the list, and its button reloads the list', async () => {
+      repository.list
+        .mockResolvedValueOnce({ ...snapshot([student('001')]), seq: 4 })
+        .mockResolvedValueOnce({ ...snapshot([student('001'), student('002')]), seq: 5 });
+      headMock.current = head(5);
+      renderPage();
+      await screen.findByTestId('cloud-student-row-001');
+      const notice = await screen.findByTestId('data-updated-notice');
+      expect(notice).toHaveTextContent('其他裝置已更新資料。');
+      fireEvent.click(within(notice).getByRole('button', { name: '重新載入' }));
+      expect(await screen.findByTestId('cloud-student-row-002')).toBeInTheDocument();
+      expect(repository.list).toHaveBeenCalledTimes(2);
+    });
+
+    it('shows nothing when the list is at the head, or there is no head', async () => {
+      repository.list.mockResolvedValue({ ...snapshot([student('001')]), seq: 5 });
+      headMock.current = head(5);
+      const view = renderPage();
+      await screen.findByTestId('cloud-student-row-001');
+      expect(screen.queryByTestId('data-updated-notice')).toBeNull();
+      headMock.current = null;
+      view.unmount();
+      renderPage();
+      await screen.findByTestId('cloud-student-row-001');
+      expect(screen.queryByTestId('data-updated-notice')).toBeNull();
+    });
+
+    it('does not take the page’s own command for another device (hidden while a command is being confirmed)', async () => {
+      repository.list.mockResolvedValue({ ...snapshot(), seq: 4 });
+      repository.createStudent.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+      headMock.current = head(4);
+      const view = renderPage();
+      await screen.findByText(/目前伺服器名單是空的/);
+      openCreateForm();
+      fillCreateForm({ amount: '0', mode: '沿用既有核對結餘' });
+      fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
+      expect(await screen.findByText('結果確認中，請勿重複建立／修改。')).toBeInTheDocument();
+      headMock.current = head(5);
+      view.rerender(<CloudStudentsPage db={{} as Firestore} leaseEpoch={4} identityKey="uid-a:4" />);
+      expect(screen.queryByTestId('data-updated-notice')).toBeNull();
     });
   });
 });
