@@ -555,7 +555,8 @@ describe('CloudStudentsPage', () => {
     fireEvent.change(screen.getByLabelText('期初備註（選填，最多 500 字）'), { target: { value: '敏感備註' } });
     fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
 
-    await screen.findByText('結果確認中，請勿重複建立／修改。');
+    // Before ten seconds only the progress bar says "sending" (#585): no recovery panel.
+    await waitFor(() => expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true'));
     expect(screen.getByRole('button', { name: '重新載入名單' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '重新載入名單' }));
     await act(async () => resolveCommand({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } }));
@@ -657,7 +658,8 @@ describe('CloudStudentsPage', () => {
     fillCreateForm({ id: '097', name: '待清除敏感姓名', amount: '8', mode: '建立新學生' });
     fireEvent.change(screen.getByLabelText(/別名（逗號、頓號/), { target: { value: '待清除敏感別名' } });
     fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
-    await screen.findByText('結果確認中，請勿重複建立／修改。');
+    // Before ten seconds only the progress bar says "sending" (#585): no recovery panel.
+    await waitFor(() => expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true'));
 
     view.rerender(<CloudStudentsPage {...nextScope(db)} />);
 
@@ -845,5 +847,99 @@ describe('CloudStudentsPage', () => {
     expect(await within(row).findByText(/已關帳。請先到「日結」頁填寫原因重開該日/)).toBeInTheDocument();
     expect(within(row).queryByRole('button', { name: '確認更正期初' })).not.toBeInTheDocument();
     expect(repository.correctOpening).not.toHaveBeenCalled();
+  });
+
+  // #585 P2: a command is answered quietly: no text panel while sending, the page keeps its content while it re-reads after the
+  // receipt, and the success sentence is a short toast (no sequence number).
+  describe('#585 quiet command feedback', () => {
+    const existing = () => student('002', { displayName: '既有學生' });
+    const toastText = () => screen.getByTestId('toast').querySelector('.toast__text')?.textContent ?? null;
+
+    it('shows no text panel while a command is being sent: only the progress bar, over the locked page', async () => {
+      let resolveCreate!: (result: CommandResult) => void;
+      repository.createStudent.mockReturnValueOnce(new Promise<CommandResult>(resolve => { resolveCreate = resolve; }));
+      repository.list
+        .mockResolvedValueOnce(snapshot([existing()]))
+        .mockResolvedValueOnce(snapshot([existing(), student('001', { displayName: '新學生' })]));
+      renderPage();
+      await screen.findByText('既有學生');
+      openCreateForm();
+      fillCreateForm({ amount: '0', mode: '沿用既有核對結餘' });
+      fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
+      await waitFor(() => expect(repository.createStudent).toHaveBeenCalledTimes(1));
+
+      expect(screen.queryByRole('alert', { name: '命令結果確認' })).not.toBeInTheDocument();
+      expect(screen.queryByText(/結果確認中/)).not.toBeInTheDocument();
+      expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
+      expect(screen.getByText('既有學生')).toBeInTheDocument();
+      expect(screen.getByTestId('cloud-students-content')).toHaveAttribute('inert');
+
+      await act(async () => resolveCreate(successful('cmd-ui-001', 'CreateStudent', '001')));
+      await waitFor(() => expect(toastText()).toBe('已確認 新增 001 完成'));
+      expect(screen.getByTestId('cloud-students-content')).not.toHaveAttribute('inert');
+    });
+
+    it('keeps the previous list in place, locked, while it re-reads after the receipt', async () => {
+      let finishRead!: () => void;
+      repository.list
+        .mockResolvedValueOnce(snapshot([existing()]))
+        .mockImplementationOnce(() => new Promise(resolve => {
+          finishRead = () => resolve(snapshot([existing(), student('001', { displayName: '新學生' })]));
+        }));
+      renderPage();
+      await screen.findByText('既有學生');
+      openCreateForm();
+      fillCreateForm({ amount: '0', mode: '沿用既有核對結餘' });
+      fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
+      await waitFor(() => expect(repository.list).toHaveBeenCalledTimes(2));
+
+      expect(screen.queryByText('正在從伺服器載入完整學生名單…')).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert', { name: '命令結果確認' })).not.toBeInTheDocument();
+      expect(screen.getByText('既有學生')).toBeInTheDocument();
+      expect(screen.getByTestId('cloud-students-content')).toHaveAttribute('inert');
+      expect(screen.queryByTestId('toast')).not.toBeInTheDocument();
+      expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
+
+      await act(async () => finishRead());
+      await waitFor(() => expect(toastText()).toBe('已確認 新增 001 完成'));
+      expect(screen.getByText('新學生')).toBeInTheDocument();
+      expect(screen.getByTestId('cloud-students-content')).not.toHaveAttribute('inert');
+      expect(screen.queryByText(/命令序號|名單已重新載入/)).not.toBeInTheDocument();
+    });
+
+    it('does not keep the previous list when the lease is lost during the re-read (fail closed)', async () => {
+      let failRead!: () => void;
+      repository.list
+        .mockResolvedValueOnce(snapshot([existing()]))
+        .mockImplementationOnce(() => new Promise((_, reject) => {
+          failRead = () => reject({ code: 'LEASE_LOST', message: 'lease changed' });
+        }));
+      renderPage();
+      await screen.findByText('既有學生');
+      openCreateForm();
+      fillCreateForm({ amount: '0', mode: '沿用既有核對結餘' });
+      fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
+      await waitFor(() => expect(repository.list).toHaveBeenCalledTimes(2));
+      expect(screen.getByText('既有學生')).toBeInTheDocument();
+
+      await act(async () => failRead());
+      expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
+      expect(screen.queryByText('既有學生')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('cloud-students-content')).not.toBeInTheDocument();
+    });
+
+    it('brings the recovery panel back when the re-read after a quick receipt fails', async () => {
+      repository.list
+        .mockResolvedValueOnce(snapshot([existing()]))
+        .mockRejectedValueOnce({ code: 'OFFLINE', message: 'offline' });
+      renderPage();
+      await screen.findByText('既有學生');
+      openCreateForm();
+      fillCreateForm({ amount: '0', mode: '沿用既有核對結餘' });
+      fireEvent.click(screen.getByRole('button', { name: '建立學生' }));
+
+      expect(await screen.findByText('已找到伺服器回執，名單尚待再次讀取。')).toBeInTheDocument();
+      expect(screen.queryByTestId('cloud-students-content')).not.toBeInTheDocument();
+    });
   });
 });

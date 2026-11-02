@@ -1386,7 +1386,9 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
         fireEvent.submit(form);
         await flush(2);
         expect(repository.closeDay).toHaveBeenCalledTimes(1);
-        expect(screen.getByText('命令送出中，請勿重複操作。')).toBeInTheDocument();
+        // Before ten seconds only the progress bar says "sending" (#585): no recovery panel.
+        expect(screen.queryByRole('alert', { name: '命令結果確認' })).not.toBeInTheDocument();
+        expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
         await act(async () => { vi.advanceTimersByTime(9_999); });
         expect(screen.queryByText('結果確認中，勿重新收款')).not.toBeInTheDocument();
         await act(async () => { vi.advanceTimersByTime(1); });
@@ -1597,6 +1599,79 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
     });
   });
 
+  // #585 P2: a command is answered quietly: no text panel while sending, the page keeps its content while it re-reads after the
+  // receipt, and the success sentence is a short toast (no sequence number); a local cleanup warning stays visible.
+  describe('#585 quiet command feedback', () => {
+    const toastText = () => screen.getByTestId('toast').querySelector('.toast__text')?.textContent ?? null;
+
+    it('shows no text panel while a close is being sent: only the progress bar', async () => {
+      let resolveClose!: (result: CommandResult) => void;
+      repository.closeDay.mockReturnValueOnce(new Promise<CommandResult>(resolve => { resolveClose = resolve; }));
+      render(pageElement());
+      await submitClose(await closeForm());
+      await waitFor(() => expect(repository.closeDay).toHaveBeenCalledTimes(1));
+      expect(screen.queryByRole('alert', { name: '命令結果確認' })).not.toBeInTheDocument();
+      expect(screen.queryByText(/命令送出中/)).not.toBeInTheDocument();
+      expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
+      closedSnapshotRefresh();
+      await act(async () => resolveClose(successful('CloseDay')));
+      await waitFor(() => expect(toastText()).toBe('已確認 2026-10-17 關帳 完成'));
+    });
+
+    it('keeps the previous content in place, locked, while it re-reads after the receipt', async () => {
+      render(pageElement());
+      const form = await closeForm();
+      let finishRead!: () => void;
+      repository.read.mockImplementationOnce(() => new Promise(resolve => {
+        finishRead = () => resolve(dayState({ status: 'closed', revision: 7, lastSettlementRevision: 1, settlements: [version(1)], seq: 21 }));
+      }));
+      repository.readOverview.mockResolvedValue(overview({ unclosedDays: [], seq: 21 }));
+      await submitClose(form);
+      await waitFor(() => expect(repository.loadSnapshot).toHaveBeenCalledTimes(2));
+
+      expect(screen.queryByText('正在從伺服器載入日結資料…')).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert', { name: '命令結果確認' })).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: `${today} 日結` })).toBeInTheDocument();
+      expect(screen.getByTestId('cloud-day-close-content')).toHaveAttribute('inert');
+      expect(screen.queryByTestId('toast')).not.toBeInTheDocument();
+      expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
+
+      await act(async () => finishRead());
+      await waitFor(() => expect(toastText()).toBe('已確認 2026-10-17 關帳 完成'));
+      expect(screen.getByTestId('cloud-day-close-content')).not.toHaveAttribute('inert');
+      expect(screen.queryByText(/命令序號|伺服器資料已重新讀取/)).not.toBeInTheDocument();
+    });
+
+    it('does not keep the previous content when the lease is lost during the re-read (fail closed)', async () => {
+      render(pageElement());
+      const form = await closeForm();
+      let failRead!: () => void;
+      repository.read.mockImplementationOnce(() => new Promise((_, reject) => {
+        failRead = () => reject(Object.assign(new Error('lease lost'), { code: 'LEASE_LOST' }));
+      }));
+      repository.readOverview.mockResolvedValue(overview({ unclosedDays: [], seq: 21 }));
+      await submitClose(form);
+      await waitFor(() => expect(repository.loadSnapshot).toHaveBeenCalledTimes(2));
+      expect(screen.getByRole('heading', { name: `${today} 日結` })).toBeInTheDocument();
+
+      await act(async () => failRead());
+      expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: `${today} 日結` })).not.toBeInTheDocument();
+      expect(screen.queryByTestId('cloud-day-close-content')).not.toBeInTheDocument();
+    });
+
+    it('shows a local cleanup warning as a lasting alert, not inside the toast', async () => {
+      repository.cleanupConfirmedIntent.mockRejectedValueOnce({ code: 'LOCAL_STORAGE_UNAVAILABLE', message: 'local journal unavailable' });
+      render(pageElement());
+      const form = await closeForm();
+      closedSnapshotRefresh();
+      await submitClose(form);
+      await waitFor(() => expect(toastText()).toBe('已確認 2026-10-17 關帳 完成'));
+      expect(screen.getAllByRole('alert').some(node => /本機命令追蹤清理未完成；伺服器回執仍已確認/.test(node.textContent ?? ''))).toBe(true);
+      expect(screen.getByTestId('toast')).not.toHaveTextContent('本機命令追蹤');
+    });
+  });
+
   describe('§7.4 close restriction', () => {
     it('refuses a new close when the shared unresolved state turns true before submit or while preflight awaits', async () => {
       const view = render(pageElement());
@@ -1671,11 +1746,11 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
         await flush();
         await submitClose(screen.getByRole('form', { name: `${today} 關帳` }));
         await flush(2);
-        expect(screen.getByText('命令送出中，請勿重複操作。')).toBeInTheDocument();
+        expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
 
         // Same user, same lease, but a different database instance is a different owner.
         view.rerender(pageElement({ onLedgerChanged, db: {} as Firestore }));
-        expect(screen.queryByText('命令送出中，請勿重複操作。')).not.toBeInTheDocument();
+        expect(screen.queryByRole('alert', { name: '命令結果確認' })).not.toBeInTheDocument();
         expect(screen.queryByText(new RegExp(commandId))).not.toBeInTheDocument();
         await flush();
         await act(async () => resolveClose(successful('CloseDay')));
@@ -1701,12 +1776,12 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
         await flush();
         await submitClose(screen.getByRole('form', { name: `${today} 關帳` }));
         await flush(2);
-        expect(screen.getByText('命令送出中，請勿重複操作。')).toBeInTheDocument();
+        expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
 
         currentAuth.uid = 'uid-b';
         view.rerender(pageElement({ identityKey: 'uid-b:5', leaseEpoch: 5, onLedgerChanged }));
         // Before any effect or promise runs, the committed render shows nothing of the old scope.
-        expect(screen.queryByText('命令送出中，請勿重複操作。')).not.toBeInTheDocument();
+        expect(screen.queryByRole('alert', { name: '命令結果確認' })).not.toBeInTheDocument();
         expect(screen.queryByText(new RegExp(commandId))).not.toBeInTheDocument();
         await flush();
         await act(async () => resolveClose(successful('CloseDay')));
