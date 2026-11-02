@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../providers/FirebaseProvider', () => ({ useFirebaseOptional: () => mocks.firebase }));
+vi.mock('../../providers/FirebaseProvider', () => ({ useFirebaseOptional: () => mocks.firebase, useDataHead: () => null }));
 vi.mock('../../firebase/cloudRecoveryReader', () => ({ getCloudRecoveryReader: () => ({ assertCurrent: vi.fn() }) }));
 vi.mock('firebase/auth', () => ({ getAuth: () => ({ currentUser: { uid: 'uid-a' } }) }));
 vi.mock('../../firebase/cloudDayCloseRepository', () => ({

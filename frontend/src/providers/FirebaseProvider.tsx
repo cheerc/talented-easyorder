@@ -487,9 +487,10 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
 const DataHeadContext = createContext<DataHeadSignal | null>(null);
 
 /**
- * #587: the latest server-confirmed `system/dataHead`, watched only while this tab is a confirmed holder (otherwise null; the
- * watch stops the moment the lease is lost). It lives in its own context and component on purpose: every command of anyone changes
- * the head, and that must re-render only the pages that follow it, not every consumer of the Firebase context.
+ * #587: the newest server-confirmed command receipt (`seq`, command id, dataset, `targets`; see `subscribeDataHead`, which listens on the
+ * `commands` collection, not on `system/dataHead`), watched only while this tab is a confirmed holder (otherwise null; the
+ * watch stops the moment the lease is lost). It lives in its own context and component on purpose: every command of anyone adds a receipt,
+ * and that must re-render only the pages that follow it, not every consumer of the Firebase context.
  */
 function DataHeadProvider({ db, uid, confirmedHolder, epoch, children }: {
   db: FirebaseServices['db'] | null;

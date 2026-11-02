@@ -2115,6 +2115,61 @@ describe('CloudOrdersPage: #587 idle counter page follows the server data head',
     expect(screen.getByLabelText('搜尋編號、姓名或別名')).toHaveValue('00');
   });
 
+  it('E8: the search box has focus when the whole snapshot is reloaded → focus and caret are back in it once the page is unlocked', async () => {
+    repositoryMock.refreshFromHead.mockResolvedValue(null);
+    const reload = deferred<CloudOrderSnapshot>();
+    repositoryMock.loadSnapshot.mockResolvedValueOnce(snapshot()).mockReturnValueOnce(reload.promise);
+    const view = renderComponent();
+    const search = await screen.findByLabelText('搜尋編號、姓名或別名') as HTMLInputElement;
+    fireEvent.change(search, { target: { value: '0012' } });
+    act(() => { search.focus(); search.setSelectionRange(2, 3); });
+    expect(search).toHaveFocus();
+
+    setHead(view, head(12));
+    await waitFor(() => expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2));
+    // while the old content is locked (inert) the browser drops the focus
+    await waitFor(() => expect(document.querySelector('.cloud-orders__content')).toHaveAttribute('inert'));
+    act(() => { (document.activeElement as HTMLElement | null)?.blur(); });
+    await act(async () => { reload.resolve(snapshot({ seq: 12, day: mockDay({ bento: 3 }) })); });
+    await waitFor(() => expect(screen.getByTestId('cloud-topbar-bento')).toHaveTextContent('3'));
+    const after = screen.getByLabelText('搜尋編號、姓名或別名') as HTMLInputElement;
+    expect(after).toHaveFocus();
+    expect(after).toHaveValue('0012');
+    expect([after.selectionStart, after.selectionEnd]).toEqual([2, 3]);
+    expect(document.querySelector('.cloud-orders__content')).not.toHaveAttribute('inert');
+  });
+
+  it('E8b: the focus was somewhere else (not the search box) → the reload does not move it', async () => {
+    repositoryMock.refreshFromHead.mockResolvedValue(null);
+    repositoryMock.loadSnapshot.mockResolvedValueOnce(snapshot()).mockResolvedValueOnce(snapshot({ seq: 12 }));
+    const view = renderComponent();
+    await screen.findByLabelText('搜尋編號、姓名或別名');
+    act(() => { (document.activeElement as HTMLElement | null)?.blur(); });
+    setHead(view, head(12));
+    await waitFor(() => expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2));
+    await act(async () => {});
+    expect(screen.getByLabelText('搜尋編號、姓名或別名')).not.toHaveFocus();
+  });
+
+  it('E9: the page stops being idle while the incremental read runs (a student gets selected) → no full reload; it follows after Esc', async () => {
+    const pending = deferred<CloudOrderSnapshot | null>();
+    repositoryMock.refreshFromHead.mockReturnValueOnce(pending.promise).mockResolvedValue(null);
+    repositoryMock.loadSnapshot.mockResolvedValueOnce(snapshot()).mockResolvedValueOnce(snapshot({ seq: 12 }));
+    const view = renderComponent();
+    await screen.findByLabelText('搜尋編號、姓名或別名');
+    setHead(view, head(12));
+    await waitFor(() => expect(repositoryMock.refreshFromHead).toHaveBeenCalledTimes(1));
+
+    await selectStudent('001');
+    await act(async () => { pending.resolve(null); });
+    await act(async () => {});
+    expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('selected-student-card')).toBeVisible();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2));
+  });
+
   it('E6: a head at or below the page sequence, or no head at all, triggers nothing', async () => {
     const view = renderComponent();
     await screen.findByLabelText('搜尋編號、姓名或別名');

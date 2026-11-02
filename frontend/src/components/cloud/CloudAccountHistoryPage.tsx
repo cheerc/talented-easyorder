@@ -16,6 +16,7 @@ import { EmptyState } from '../ui/EmptyState';
 import { StatusBadge } from '../ui/StatusBadge';
 import { CloudAccountBalance } from './CloudAccountBalance';
 import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerToken } from './useCloudActionOwner';
+import { DataUpdatedNotice } from './DataUpdatedNotice';
 import './CloudAccountHistoryPage.css';
 
 export interface CloudAccountHistoryPageProps {
@@ -808,6 +809,7 @@ export function CloudAccountHistoryPage({
         <h2>查帳與歷史更正</h2></div>
         {snapshot && <strong>來源序號 H={snapshot.account.sourceSeq}</strong>}
       </header>
+      <DataUpdatedNotice pageSeq={snapshot?.account.sourceSeq ?? null} hidden={loading || Boolean(visibleAction)} onReload={loadAgain} />
       <details className="cloud-account-history__intro">
         <summary>資料來源與餘額說明</summary>
         <p>使用目前學生名單映射帳戶 ID；餘額依目前更正後資料重算，不代表當時現金快照。</p>

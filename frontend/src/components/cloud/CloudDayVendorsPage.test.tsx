@@ -37,6 +37,9 @@ const repository = vi.hoisted(() => {
 });
 
 const currentAuth = vi.hoisted(() => ({ uid: 'uid-a' }));
+const headMock = vi.hoisted(() => ({ current: null as { seq: number; lastCommandId: string; datasetId: string; targets: Record<string, unknown> } | null }));
+
+vi.mock('../../providers/FirebaseProvider', () => ({ useDataHead: () => headMock.current }));
 
 vi.mock('../../firebase/cloudDayVendorRepository', () => ({
   createCloudDayVendorRepository: () => repository,
@@ -1166,5 +1169,45 @@ describe('CloudDayVendorsPage: #585 quiet command feedback', () => {
     await waitFor(() => expect(toastText()).toBe('已確認 確認 2026-10-15 開帳現金 完成'));
     expect(screen.getAllByRole('alert').some(node => /本機命令追蹤清理未完成；伺服器回執仍已確認/.test(node.textContent ?? ''))).toBe(true);
     expect(screen.getByTestId('toast')).not.toHaveTextContent('本機命令追蹤');
+  });
+});
+
+describe('CloudDayVendorsPage: #587 P2 data updated elsewhere', () => {
+  const head = (seq: number) => ({ seq, lastCommandId: `cmd-${seq}`, datasetId: 'demo-p07', targets: {} });
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    currentAuth.uid = 'uid-a';
+    headMock.current = null;
+    vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValue('00000000-0000-4000-8000-000000000007') });
+    repository.loadSnapshot.mockResolvedValue(snapshot());
+    repository.readCommand.mockResolvedValue(null);
+    repository.confirmPendingIntent.mockResolvedValue({ status: 'not-found' });
+    repository.cleanupConfirmedIntent.mockResolvedValue(true);
+  });
+
+  it('shows the notice when the data head is ahead of the snapshot, and its button reloads', async () => {
+    repository.loadSnapshot
+      .mockResolvedValueOnce(snapshot({ seq: 10 }))
+      .mockResolvedValueOnce(snapshot({ seq: 12 }));
+    headMock.current = head(12);
+    renderPage();
+    const notice = await screen.findByTestId('data-updated-notice');
+    expect(notice).toHaveTextContent('其他裝置已更新資料。');
+    fireEvent.click(within(notice).getByRole('button', { name: '重新載入' }));
+    await waitFor(() => expect(repository.loadSnapshot).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByTestId('data-updated-notice')).toBeNull());
+  });
+
+  it('shows nothing when the snapshot is at the head, or there is no head', async () => {
+    headMock.current = head(10);
+    const view = renderPage();
+    await screen.findByRole('heading', { name: `${today} 營業日` });
+    expect(screen.queryByTestId('data-updated-notice')).toBeNull();
+    view.unmount();
+    headMock.current = null;
+    renderPage();
+    await screen.findByRole('heading', { name: `${today} 營業日` });
+    expect(screen.queryByTestId('data-updated-notice')).toBeNull();
   });
 });

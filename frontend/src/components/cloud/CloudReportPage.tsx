@@ -35,6 +35,7 @@ import { EmptyState } from '../ui/EmptyState';
 import { StatusBadge } from '../ui/StatusBadge';
 import { CloudAccountBalance } from './CloudAccountBalance';
 import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerToken } from './useCloudActionOwner';
+import { DataUpdatedNotice } from './DataUpdatedNotice';
 import './CloudReportPage.css';
 
 export interface CloudReportPageProps {
@@ -503,6 +504,16 @@ export function CloudReportPage({
     }
   }, [customEnd, customStart, leaseToday, rangeAnchor, rangeKind, visibleAction]);
 
+  /** #587 P2: read the same range and scope again (another device has written since). */
+  const reloadReport = useCallback(() => {
+    if (!query || visibleAction) return;
+    setLoading(true);
+    setLoadError('');
+    setSnapshot(null);
+    setPageNumber(0);
+    setQuery({ ...query });
+  }, [query, visibleAction]);
+
   const chooseStudent = useCallback((studentId: string | null) => {
     if (!query || visibleAction) return;
     setScopeStudentId(studentId);
@@ -920,6 +931,7 @@ export function CloudReportPage({
           <p>日期範圍由伺服器台北日期 {leaseToday || '讀取中'} 推導；僅在報表與稽核資料版本一致時顯示。</p></div>
         {snapshot && <strong>來源序號 H={snapshot.report.sourceSeq}</strong>}
       </header>
+      <DataUpdatedNotice pageSeq={snapshot?.report.sourceSeq ?? null} hidden={controlsLocked} onReload={reloadReport} />
 
       <form className="cloud-report__controls" onSubmit={submitRange}>
         <label>日期範圍

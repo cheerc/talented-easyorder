@@ -16,6 +16,7 @@ import { Modal } from '../ui/Modal';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Toast } from '../ui/Toast';
 import { CloudAccountBalance } from './CloudAccountBalance';
+import { DataUpdatedNotice } from './DataUpdatedNotice';
 import { formatAccountBalance } from './accountBalance';
 import './CloudStudentsPage.css';
 
@@ -1506,6 +1507,11 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
           </button>
         </div>
       </header>
+      <DataUpdatedNotice
+        pageSeq={snapshot?.seq ?? null}
+        hidden={progressActive || busy}
+        onReload={() => void loadSnapshot(page.recovery?.phase === 'receipt' ? page.recovery.receipt : undefined)}
+      />
       <details className="cloud-students__intro-details">
         <summary>期初結餘與名單規則</summary>
         <p className="cloud-students__intro">名單由伺服器完整載入。期初結餘在新增學生時建立；之後只能以「更正期初」修改金額與備註，期初日不變，並須填寫原因。</p>

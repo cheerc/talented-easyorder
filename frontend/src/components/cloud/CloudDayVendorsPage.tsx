@@ -26,6 +26,7 @@ import { CommandProgress } from '../ui/CommandProgress';
 import { EmptyState } from '../ui/EmptyState';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Toast } from '../ui/Toast';
+import { DataUpdatedNotice } from './DataUpdatedNotice';
 import { LedgerUnclosedBanner } from './LedgerUnclosedBanner';
 import './CloudDayVendorsPage.css';
 
@@ -1262,6 +1263,11 @@ export function CloudDayVendorsPage({
           {page.loading ? '載入中…' : '重新載入伺服器資料'}
         </button>
       </header>
+      <DataUpdatedNotice
+        pageSeq={snapshot?.seq ?? null}
+        hidden={progressActive || busy}
+        onReload={() => void loadSnapshot((snapshot?.dayId ?? page.dayIdDraft) || undefined, page.recovery?.phase === 'receipt' ? page.recovery.receipt : undefined)}
+      />
       <details className="cloud-day-vendors__intro">
         <summary>資料與歷史說明</summary>
         <p>日期與供應商資料只從伺服器完整載入。未確認開帳與零元開帳分開顯示；菜單與供應商變更不改寫既有歷史快照。</p>

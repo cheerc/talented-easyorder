@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CloudAccessEventsSnapshot, CloudLedgerReport, CloudAuditRangeSnapshot } from '../../domain/cloudLedgerReport';
 
 const currentAuth = vi.hoisted(() => ({ uid: 'uid-a' as string | null }));
+const headMock = vi.hoisted(() => ({ current: null as { seq: number; lastCommandId: string; datasetId: string; targets: Record<string, unknown> } | null }));
+
+vi.mock('../../providers/FirebaseProvider', () => ({ useDataHead: () => headMock.current }));
 
 const mocks = vi.hoisted(() => ({
   repositoryOptions: vi.fn(),
@@ -1100,5 +1103,48 @@ describe('CloudReportPage', () => {
       expect(download).toHaveBeenCalledTimes(1);
       expect(screen.queryByRole('region', { name: '輸出命令確認' })).toBeNull();
     });
+  });
+});
+
+describe('CloudReportPage: #587 P2 data updated elsewhere', () => {
+  const head = (seq: number) => ({ seq, lastCommandId: `cmd-${seq}`, datasetId: 'dataset-a', targets: {} });
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    currentAuth.uid = 'uid-a';
+    headMock.current = null;
+    mocks.readSummary.mockResolvedValue({ leaseToday: '2026-10-19' });
+    mocks.readReport.mockResolvedValue(report);
+    mocks.readAuditRange.mockResolvedValue(audit);
+    mocks.readAccessEvents.mockImplementation(async input => ({
+      ...accessEvents, leaseEpoch: input.leaseEpoch, range: input.range,
+    }));
+    mocks.confirmPendingIntent.mockResolvedValue({ status: 'not-found' });
+    mocks.cleanupConfirmedIntent.mockResolvedValue(true);
+  });
+
+  it('shows the notice when the data head is ahead of the report, and its button reads the same range again', async () => {
+    headMock.current = head(12);
+    render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:notice" />);
+    const notice = await screen.findByTestId('data-updated-notice');
+    expect(notice).toHaveTextContent('其他裝置已更新資料。');
+    expect(mocks.readReport).toHaveBeenCalledTimes(1);
+    mocks.readReport.mockResolvedValue({ ...report, sourceSeq: 12 } as unknown as CloudLedgerReport);
+    mocks.readAuditRange.mockResolvedValue({ ...audit, sourceSeq: 12 } as unknown as CloudAuditRangeSnapshot);
+    mocks.readAccessEvents.mockImplementation(async input => ({
+      ...accessEvents, sourceSeq: 12, leaseEpoch: input.leaseEpoch, range: input.range,
+    }));
+    fireEvent.click(within(notice).getByRole('button', { name: '重新載入' }));
+    await screen.findByText('來源序號 H=12');
+    expect(mocks.readReport).toHaveBeenCalledTimes(2);
+    expect(mocks.readReport.mock.calls[1][0].range).toEqual(range);
+    expect(screen.queryByTestId('data-updated-notice')).toBeNull();
+  });
+
+  it('shows nothing when the report is at the head, or there is no head', async () => {
+    headMock.current = head(11);
+    render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:at-head" />);
+    await screen.findByTestId('report-ready');
+    expect(screen.queryByTestId('data-updated-notice')).toBeNull();
   });
 });
