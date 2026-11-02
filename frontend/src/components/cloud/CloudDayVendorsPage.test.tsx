@@ -441,7 +441,9 @@ describe('CloudDayVendorsPage', () => {
 
       await act(async () => { await Promise.resolve(); });
       expect(repository.saveVendor).toHaveBeenCalledTimes(1);
-      expect(screen.getByText('命令送出中，請勿重複操作。')).toBeInTheDocument();
+      // Before ten seconds only the progress bar says "sending" (#585): no recovery panel.
+      expect(screen.queryByRole('alert', { name: '命令結果確認' })).not.toBeInTheDocument();
+      expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
       await act(async () => { vi.advanceTimersByTime(9_999); });
       expect(screen.queryByText('結果確認中，勿重新收款')).not.toBeInTheDocument();
       await act(async () => { vi.advanceTimersByTime(1); });
@@ -533,7 +535,7 @@ describe('CloudDayVendorsPage', () => {
     fireEvent.change(within(form).getByLabelText('供應商編號'), { target: { value: 'vendor-confirmed' } });
     fireEvent.change(within(form).getByLabelText('供應商名稱'), { target: { value: '已確認供應商' } });
     fireEvent.click(within(form).getByRole('button', { name: '建立供應商' }));
-    expect(screen.getByText('命令送出中，請勿重複操作。')).toBeInTheDocument();
+    expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
     await act(async () => { vi.advanceTimersByTime(10_000); });
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
 
@@ -686,7 +688,7 @@ describe('CloudDayVendorsPage', () => {
     fireEvent.change(within(createForm).getByLabelText('供應商編號'), { target: { value: 'vendor-pii-id' } });
     fireEvent.change(within(createForm).getByLabelText('供應商名稱'), { target: { value: '敏感供應商名稱' } });
     fireEvent.click(within(createForm).getByRole('button', { name: '建立供應商' }));
-    expect(await screen.findByText('命令送出中，請勿重複操作。')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true'));
 
     await act(async () => {
       resolveSave({ ok: false, error: { code: 'LEASE_LOST', message: 'lease changed' } });
@@ -741,7 +743,7 @@ describe('CloudDayVendorsPage', () => {
     fireEvent.change(within(createForm).getByLabelText('供應商編號'), { target: { value: 'pending-private-id' } });
     fireEvent.change(within(createForm).getByLabelText('供應商名稱'), { target: { value: '待回填供應商' } });
     fireEvent.click(within(createForm).getByRole('button', { name: '建立供應商' }));
-    await screen.findByText('命令送出中，請勿重複操作。');
+    await waitFor(() => expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true'));
 
     fireEvent.click(screen.getByRole('button', { name: '重新載入伺服器資料' }));
     await screen.findByText(/正在從伺服器載入完整營業日/);
@@ -1068,5 +1070,101 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
     expect(repository.findPreviousClosed).toHaveBeenCalledTimes(2);
     expect(screen.queryByTestId('opening-lookup-retry')).not.toBeInTheDocument();
     expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled();
+  });
+});
+
+// #585 P2: a command is answered quietly: no text panel while sending, the page keeps its content while it re-reads after the
+// receipt, and the success sentence is a short toast (no sequence number); a local cleanup warning stays visible.
+describe('CloudDayVendorsPage: #585 quiet command feedback', () => {
+  const commandId = '00000000-0000-4000-8000-000000000007';
+  const toastText = () => screen.getByTestId('toast').querySelector('.toast__text')?.textContent ?? null;
+  const openedSnapshot = () => snapshot({
+    day: { ...snapshot().day!, revision: 4, openingCash: 80, openedBy: 'uid-a', openedAt: '2026-10-15T01:00:00.000Z' },
+  });
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    currentAuth.uid = 'uid-a';
+    vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValue(commandId) });
+    repository.loadSnapshot.mockResolvedValue(snapshot());
+    repository.setOpeningCash.mockResolvedValue(successful(commandId, 'SetOpeningCash', { dayId: today }));
+    repository.readCommand.mockResolvedValue(null);
+    repository.confirmPendingIntent.mockResolvedValue({ status: 'not-found' });
+    repository.cleanupConfirmedIntent.mockResolvedValue(true);
+  });
+
+  async function submitOpening() {
+    const form = await screen.findByRole('form', { name: `${today} 開帳現金` });
+    fireEvent.change(within(form).getByRole('textbox', { name: /^開帳現金/ }), { target: { value: '80' } });
+    await waitFor(() => expect(within(form).getByRole('button', { name: '確認開帳金額' })).toBeEnabled());
+    fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
+  }
+
+  it('shows no text panel while a command is being sent: only the progress bar', async () => {
+    let resolveSave!: (result: CommandResult) => void;
+    repository.setOpeningCash.mockReturnValueOnce(new Promise<CommandResult>(resolve => { resolveSave = resolve; }));
+    renderPage();
+    await submitOpening();
+    await waitFor(() => expect(repository.setOpeningCash).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('alert', { name: '命令結果確認' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/命令送出中/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
+    // The confirmed content stays on screen, locked, while the command is in flight.
+    expect(screen.getByRole('heading', { name: `${today} 營業日` })).toBeInTheDocument();
+    expect(screen.getByTestId('cloud-day-vendors-content')).toHaveAttribute('inert');
+    repository.loadSnapshot.mockResolvedValueOnce(openedSnapshot());
+    await act(async () => resolveSave(successful(commandId, 'SetOpeningCash', { dayId: today })));
+    await waitFor(() => expect(toastText()).toBe('已確認 確認 2026-10-15 開帳現金 完成'));
+    expect(screen.getByTestId('cloud-day-vendors-content')).not.toHaveAttribute('inert');
+  });
+
+  it('keeps the previous content in place, locked, while it re-reads after the receipt', async () => {
+    let finishRead!: () => void;
+    repository.loadSnapshot
+      .mockResolvedValueOnce(snapshot())
+      .mockImplementationOnce(() => new Promise(resolve => { finishRead = () => resolve(openedSnapshot()); }));
+    renderPage();
+    await submitOpening();
+    await waitFor(() => expect(repository.loadSnapshot).toHaveBeenCalledTimes(2));
+
+    expect(screen.queryByText(/正在從伺服器載入完整營業日/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert', { name: '命令結果確認' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: `${today} 營業日` })).toBeInTheDocument();
+    expect(screen.getByTestId('cloud-day-vendors-content')).toHaveAttribute('inert');
+    expect(screen.queryByTestId('toast')).not.toBeInTheDocument();
+    expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
+
+    await act(async () => finishRead());
+    await waitFor(() => expect(toastText()).toBe('已確認 確認 2026-10-15 開帳現金 完成'));
+    expect(screen.getByTestId('cloud-day-vendors-content')).not.toHaveAttribute('inert');
+    expect(screen.queryByText(/命令序號|伺服器資料已重新讀取/)).not.toBeInTheDocument();
+  });
+
+  it('does not keep the previous content when the lease is lost during the re-read (fail closed)', async () => {
+    let failRead!: () => void;
+    repository.loadSnapshot
+      .mockResolvedValueOnce(snapshot())
+      .mockImplementationOnce(() => new Promise((_, reject) => {
+        failRead = () => reject({ code: 'LEASE_LOST', message: 'lease changed' });
+      }));
+    renderPage();
+    await submitOpening();
+    await waitFor(() => expect(repository.loadSnapshot).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('heading', { name: `${today} 營業日` })).toBeInTheDocument();
+
+    await act(async () => failRead());
+    expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: `${today} 營業日` })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('cloud-day-vendors-content')).not.toBeInTheDocument();
+  });
+
+  it('shows a local cleanup warning as a lasting alert, not inside the toast', async () => {
+    repository.cleanupConfirmedIntent.mockRejectedValueOnce({ code: 'LOCAL_STORAGE_UNAVAILABLE', message: 'local journal unavailable' });
+    repository.loadSnapshot.mockResolvedValueOnce(snapshot()).mockResolvedValueOnce(openedSnapshot());
+    renderPage();
+    await submitOpening();
+    await waitFor(() => expect(toastText()).toBe('已確認 確認 2026-10-15 開帳現金 完成'));
+    expect(screen.getAllByRole('alert').some(node => /本機命令追蹤清理未完成；伺服器回執仍已確認/.test(node.textContent ?? ''))).toBe(true);
+    expect(screen.getByTestId('toast')).not.toHaveTextContent('本機命令追蹤');
   });
 });
