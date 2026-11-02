@@ -30,6 +30,7 @@ import {
 } from '../../firebase/cloudReportActionRepository';
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
 import { paperRefsIn, splitPaperNote } from '../../domain/paperRef';
+import { CommandProgress } from '../ui/CommandProgress';
 import { EmptyState } from '../ui/EmptyState';
 import { StatusBadge } from '../ui/StatusBadge';
 import { CloudAccountBalance } from './CloudAccountBalance';
@@ -904,9 +905,16 @@ export function CloudReportPage({
   const selectedStudent = scopeStudentId ? candidateById.get(scopeStudentId) : undefined;
   const printAction = authorizedPrint?.scopeKey === scopeKey ? authorizedPrint : null;
 
+  // Quiet feedback (#585): before ten seconds a command in flight is shown only by the locked controls and the progress bar;
+  // the recovery region appears at ten seconds, for an unknown result, or for a pending command found at startup.
+  const quietSubmitting = Boolean(visibleAction) && recovery?.phase === 'submitting' && !recovery.timedOut;
+  const showRecovery = Boolean(visibleAction) && !quietSubmitting;
+  const progressActive = Boolean(visibleAction) && (recovery?.phase === 'submitting' || recovery?.phase === 'checking');
+
   return (
     <>
     <section className="cloud-report" aria-label="雲端報表">
+      <CommandProgress active={progressActive} />
       <header className="cloud-report__header">
         <div><h2>報表</h2>
           <p>日期範圍由伺服器台北日期 {leaseToday || '讀取中'} 推導；僅在報表與稽核資料版本一致時顯示。</p></div>
@@ -1061,11 +1069,11 @@ export function CloudReportPage({
         </section>}
       </>}
 
-      {visibleAction && <div className="cloud-report__recovery" role="region" aria-label="輸出命令確認">
+      {showRecovery && visibleAction && <div className="cloud-report__recovery" role="region" aria-label="輸出命令確認">
         <strong>{!recovery ? '結果確認中，請勿重複操作。'
           : recovery.phase === 'checking' ? '正在查詢原命令結果…'
             : recovery.phase === 'submitting'
-              ? recovery.timedOut ? '結果確認中，勿重新收款' : '命令送出中，請勿重複操作。'
+              ? '結果確認中，勿重新收款'
               : '結果確認中，請勿重複操作。'}</strong>
         <p>{isRecoveryIdentity(visibleAction) ? '有一筆先前輸出命令需要在目前帳戶與版本下重新確認。'
           : `${visibleAction.title} · ID ${visibleAction.id}`}</p>
@@ -1078,7 +1086,7 @@ export function CloudReportPage({
         </div>
         {statusNode}
       </div>}
-      {!visibleAction && statusNode}
+      {!showRecovery && statusNode}
 
     </section>
     {printAction && createPortal(

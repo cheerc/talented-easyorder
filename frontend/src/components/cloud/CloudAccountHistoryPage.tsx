@@ -11,6 +11,7 @@ import { createCloudStudentRepository, type CloudStudentRecord } from '../../fir
 import { createCloudOrderRepository, type CloudTransactionMutationInput } from '../../firebase/cloudOrderRepository';
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
 import { composePaperRefNote, splitPaperNote } from '../../domain/paperRef';
+import { CommandProgress } from '../ui/CommandProgress';
 import { EmptyState } from '../ui/EmptyState';
 import { StatusBadge } from '../ui/StatusBadge';
 import { CloudAccountBalance } from './CloudAccountBalance';
@@ -624,7 +625,7 @@ export function CloudAccountHistoryPage({
     setAction(frozen);
     setCleanupWarning('');
     storeRecoveryIdentity(frozen, owner, uid);
-    setNotice('正在送出固定版本的歷史更正…');
+    setNotice('');
     notify(operation, 'recovering');
     void runAttempt(operation);
   };
@@ -794,8 +795,15 @@ export function CloudAccountHistoryPage({
   const statusNode = notice ? <p role="status">{notice}</p> : null;
   const retryButtonDisabled = loading || Boolean(visibleFrozen);
 
+  // Quiet feedback (#585): before ten seconds a command in flight is shown only by the locked form and the progress bar;
+  // the recovery region appears at ten seconds, for an unknown result, or for a pending command found at startup.
+  const quietSubmitting = Boolean(visibleAction) && recovery?.phase === 'submitting' && !recovery.timedOut;
+  const showRecovery = Boolean(visibleAction) && !quietSubmitting;
+  const progressActive = Boolean(visibleAction) && (recovery?.phase === 'submitting' || recovery?.phase === 'checking');
+
   return (
     <section className="cloud-account-history" aria-label="雲端查帳">
+      <CommandProgress active={progressActive} />
       <header className="cloud-account-history__header"><div>
         <h2>查帳與歷史更正</h2></div>
         {snapshot && <strong>來源序號 H={snapshot.account.sourceSeq}</strong>}
@@ -937,11 +945,11 @@ export function CloudAccountHistoryPage({
         <button type="submit" disabled={Boolean(visibleFrozen)}>確認送出</button>
         <button type="button" disabled={Boolean(visibleFrozen)} onClick={() => { setDraft(null); setFormError(''); }}>取消</button>
       </form>}
-      {visibleAction && <section className="cloud-account-history__recovery" aria-label={isRecoveryIdentity(visibleAction) ? '待確認歷史更正命令' : '歷史更正命令恢復'}>
+      {showRecovery && visibleAction && <section className="cloud-account-history__recovery" aria-label={isRecoveryIdentity(visibleAction) ? '待確認歷史更正命令' : '歷史更正命令恢復'}>
         <strong>{!recovery ? '結果確認中，請勿重複操作。'
           : recovery.phase === 'checking' ? '正在查詢原命令結果…'
             : recovery.phase === 'submitting'
-              ? recovery.timedOut ? '結果確認中，勿重新收款' : '命令送出中，請勿重複操作。'
+              ? '結果確認中，勿重新收款'
               : '結果確認中，請勿重複操作。'}</strong>
         {isRecoveryIdentity(visibleAction)
           ? <p>有一筆歷史更正命令待確認。查詢原收據後，依目前完整資料繼續；不會自動重送。</p>
@@ -956,7 +964,7 @@ export function CloudAccountHistoryPage({
         </div>
         {statusNode}
       </section>}
-      {!visibleAction && statusNode}
+      {!showRecovery && statusNode}
       {cleanupWarning && <p role="status">{cleanupWarning}</p>}
     </section>
   );

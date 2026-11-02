@@ -409,7 +409,10 @@ describe('CloudReportPage', () => {
       await oldPending.promise;
     });
     expect(download).not.toHaveBeenCalled();
-    expect(screen.getByRole('region', { name: '輸出命令確認' })).toBeInTheDocument();
+    // The newer command is still in flight (quiet before ten seconds, #585): the progress bar and the locked controls prove it
+    // was kept, and the late old-owner result neither cleared it nor produced a download.
+    expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
+    expect(screen.getByRole('button', { name: '匯出稽核 CSV' })).toBeDisabled();
 
     secondView.unmount();
     await act(async () => {
