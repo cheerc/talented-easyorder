@@ -647,7 +647,7 @@ describe('CloudOrdersPage', () => {
       expect(document.querySelector('.cloud-orders__content')).toBeNull();
     });
 
-    it('hides the success toast by itself after the undo window, and by its close button', async () => {
+    it('hides the success toast by itself once the undo window is over', async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'Date'] });
       try {
         await submitBento();

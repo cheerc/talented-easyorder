@@ -1,0 +1,41 @@
+.command-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 95;
+  pointer-events: none;
+  opacity: 0;
+  overflow: hidden;
+}
+
+.command-progress[data-active="true"] {
+  background-image: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation:
+    command-progress-show 0s linear 0.25s forwards,
+    command-progress-slide 1.1s ease-in-out 0.25s infinite;
+}
+
+@keyframes command-progress-show {
+  to { opacity: 1; }
+}
+
+@keyframes command-progress-slide {
+  from { background-position: -40% 0; }
+  to { background-position: 140% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .command-progress[data-active="true"] {
+    background-image: none;
+    background-color: var(--accent);
+    animation: command-progress-show-dim 0s linear 0.25s forwards;
+  }
+
+  @keyframes command-progress-show-dim {
+    to { opacity: 0.6; }
+  }
+}

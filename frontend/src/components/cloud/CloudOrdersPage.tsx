@@ -3,6 +3,8 @@ import type { Firestore } from 'firebase/firestore';
 import { Kbd } from '../ui/Kbd';
 import { isCompositionKey } from '../navigationKeys';
 import { Button } from '../ui/Button';
+import { Toast } from '../ui/Toast';
+import { CommandProgress } from '../ui/CommandProgress';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
 import type { PendingReceiptCheck } from '../../firebase/cloudCommandRepository';
 import { normalizeStudentCode } from '../../domain/student';
@@ -135,6 +137,12 @@ interface OrdersPageState {
   scopeKey: string;
   authorizationRevoked: boolean;
   snapshot: CloudOrderSnapshot | null;
+  /**
+   * The server-confirmed snapshot from before the one re-read that follows a command receipt (#585). Display only: while that
+   * re-read runs the old content stays in place, locked with `inert`, instead of flashing a loading screen. Every command is
+   * still built from `snapshot` / `snapshotRef`, never from this field.
+   */
+  refreshingSnapshot: CloudOrderSnapshot | null;
   loading: boolean;
   loadError: string;
   actionError: string;
@@ -195,6 +203,7 @@ function initialState(scopeKey: string): OrdersPageState {
     scopeKey,
     authorizationRevoked: false,
     snapshot: null,
+    refreshingSnapshot: null,
     loading: true,
     loadError: '',
     actionError: '',
@@ -266,15 +275,15 @@ function commandNoun(command: PreparedCommand): string {
   return '櫃台收支';
 }
 
-function successText(command: PreparedCommand, seq: number): string {
+function successText(command: PreparedCommand): string {
   if (command.kind === 'mutation') {
-    if (command.input.kind === 'Undo') return `已撤回 ${command.label}，帳戶餘額與現金已回復（命令序號 ${seq}）`;
-    return `已確認 ${command.label} 的${commandNoun(command)}完成（命令序號 ${seq}）`;
+    if (command.input.kind === 'Undo') return `已撤回 ${command.label}，帳戶餘額與現金已回復`;
+    return `已確認 ${command.label} 的${commandNoun(command)}完成`;
   }
-  if (command.kind === 'order') return `已確認 ${command.label} 訂餐完成（命令序號 ${seq}）`;
-  if (command.kind === 'payment') return `已確認 ${command.label} 繳費 $${command.paidAmount} 完成（命令序號 ${seq}）`;
-  if (command.kind === 'refund') return `已確認 ${command.label} 退款 $${command.amount} 完成（命令序號 ${seq}）`;
-  return `已確認${command.label}入帳（命令序號 ${seq}）`;
+  if (command.kind === 'order') return `已確認 ${command.label} 訂餐完成`;
+  if (command.kind === 'payment') return `已確認 ${command.label} 繳費 $${command.paidAmount} 完成`;
+  if (command.kind === 'refund') return `已確認 ${command.label} 退款 $${command.amount} 完成`;
+  return `已確認${command.label}入帳`;
 }
 
 function sendCommand(repository: CloudOrderRepository, command: PreparedCommand, leaseEpoch: number) {
@@ -599,7 +608,11 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   }, [identityKey, isCurrent, onNavigationStateChange]);
 
   const loadSnapshot = useCallback(async (
-    options: { keepDraft?: boolean; notice?: string; actionError?: string; dayId?: string | null; reuseBackfillDays?: boolean } = {},
+    options: {
+      keepDraft?: boolean; notice?: string; actionError?: string; dayId?: string | null; reuseBackfillDays?: boolean;
+      /** Keep showing the snapshot held for display (set by the re-read that follows a command receipt). */
+      keepRefreshing?: boolean;
+    } = {},
   ): Promise<boolean> => {
     const key = scopeKey;
     const generation = generationRef.current;
@@ -611,6 +624,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     updateFor(key, generation, previous => ({
       ...previous,
       snapshot: null,
+      refreshingSnapshot: options.keepRefreshing ? previous.refreshingSnapshot : null,
       loading: true,
       loadError: '',
       viewDayId: dayId,
@@ -632,6 +646,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
           ...previous,
           ...freshDraft(),
           snapshot: null,
+          refreshingSnapshot: null,
           loading: false,
           loadError: '已確認命令所屬的資料集已變更；請重新取得使用權並查證，不要再次送出原操作。',
         }));
@@ -642,6 +657,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       updateFor(key, generation, previous => ({
         ...previous,
         snapshot,
+        refreshingSnapshot: null,
         loading: false,
         loadError: '',
         selectedStudentId: snapshot.students.some(student => student.studentId === previous.selectedStudentId)
@@ -660,6 +676,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
         ...previous,
         ...freshDraft(),
         snapshot: null,
+        refreshingSnapshot: null,
         loading: false,
         loadError: errorText(error),
       }));
@@ -682,6 +699,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     updateFor(key, generation, state => ({
       ...state,
       snapshot: null,
+      refreshingSnapshot: previous,
       loading: true,
       loadError: '',
       ...freshDraft(),
@@ -699,13 +717,14 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     if (!isCurrent(key, generation) || requestId !== loadRequestRef.current) return false;
     const activeOperation = operationRef.current;
     if (!refreshed || (activeOperation?.receiptConfirmed && activeOperation.datasetId !== refreshed.datasetId)) {
-      return loadSnapshot({ reuseBackfillDays: true });
+      return loadSnapshot({ reuseBackfillDays: true, keepRefreshing: true });
     }
     const snapshot = refreshed;
     snapshotRef.current = snapshot;
     updateFor(key, generation, state => ({
       ...state,
       snapshot,
+      refreshingSnapshot: null,
       loading: false,
       loadError: '',
       selectedStudentId: snapshot.students.some(student => student.studentId === state.selectedStudentId)
@@ -747,7 +766,12 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     onNavigationStateChange?.(identityKey, page.authorizationRevoked ? 'revoked' : hasRecovery ? 'recovering' : 'resolved');
   }, [hasRecovery, identityKey, onNavigationStateChange, page.authorizationRevoked]);
 
-  const snapshot = page.snapshot;
+  // What is drawn: the confirmed snapshot, or, during the one re-read after a command receipt, the previous confirmed one (locked,
+  // see `showingStale`). Never kept once the authorization is revoked or the read failed. Commands below only act on a confirmed
+  // snapshot: `showingStale` blocks them here, and `dispatch` reads `snapshotRef`.
+  const snapshot = page.snapshot
+    ?? (page.loading && !page.authorizationRevoked && !page.loadError ? page.refreshingSnapshot : null);
+  const showingStale = page.snapshot === null && snapshot !== null;
   const today = snapshot?.today ?? '';
   // The day every row, total and command on the page belongs to: today, or a backfill day (contract §13).
   const businessDate = snapshot?.businessDate ?? today;
@@ -988,7 +1012,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       ...previous,
       recovery: null,
       undoOffer,
-      notice: successText(command, receipt.seq),
+      notice: successText(command),
       actionError: operation.cleanupPending
         ? '伺服器已確認入帳，但本機待核對編號尚未清除；請保留編號並勿重新收款。'
         : '',
@@ -1227,7 +1251,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   };
 
   const submitOrder = () => {
-    if (!snapshot || !day || !selectedStudent || busy || operationRef.current || orderingBlocked) return;
+    if (!snapshot || showingStale || !day || !selectedStudent || busy || operationRef.current || orderingBlocked) return;
     if (selectedStudent.status !== 'active') {
       setPageStateRaw(previous => ({ ...previous, confirmDuplicateOpen: false, actionError: '此帳戶已停用，禁止新增餐點' }));
       return;
@@ -1286,7 +1310,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   };
 
   const submitPayment = () => {
-    if (!snapshot || !day || !selectedStudent || busy || operationRef.current || orderingBlocked) return;
+    if (!snapshot || showingStale || !day || !selectedStudent || busy || operationRef.current || orderingBlocked) return;
     const amount = parseAmount(page.paidAmountText, null);
     if (page.paidAmountText.trim().startsWith('-')) {
       setPageStateRaw(previous => ({ ...previous, actionError: '收款金額不能是負數。要退錢給學生請用「退款」。' }));
@@ -1325,7 +1349,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
 
   const submitCashMovement = (event?: FormEvent) => {
     event?.preventDefault();
-    if (!snapshot || !day || busy || operationRef.current || orderingBlocked) return;
+    if (!snapshot || showingStale || !day || busy || operationRef.current || orderingBlocked) return;
     if (cashAmount === null || cashAmount < 1) {
       setPageStateRaw(previous => ({ ...previous, actionError: '櫃台收支金額必須是 1 到 1,000,000 的整數' }));
       return;
@@ -1365,7 +1389,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   /** 驗證退款框；通過才打開確認對話框（spec §7.2：退款一律先確認）。 */
   const requestRefund = (event?: FormEvent) => {
     event?.preventDefault();
-    if (!snapshot || !day || !selectedStudent || busy || operationRef.current || orderingBlocked || backfillView) return;
+    if (!snapshot || showingStale || !day || !selectedStudent || busy || operationRef.current || orderingBlocked || backfillView) return;
     if (selectedStudent.currentBalance < 1) {
       setPageStateRaw(previous => ({ ...previous, refundConfirmOpen: false, actionError: '帳戶餘額不是正數，沒有可退的金額' }));
       return;
@@ -1387,7 +1411,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   };
 
   const submitRefund = () => {
-    if (!snapshot || !day || !selectedStudent || busy || operationRef.current || orderingBlocked || backfillView || !refundValid) return;
+    if (!snapshot || showingStale || !day || !selectedStudent || busy || operationRef.current || orderingBlocked || backfillView || !refundValid) return;
     const reason = page.refundReason.trim();
     if (!reason || reason.length > 500) return;
     const commandId = newId();
@@ -1414,7 +1438,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
 
   /** Freezes one mutation of an existing row with the revisions this screen last read (spec §6.2). */
   const submitMutation = (tx: CloudOrderTransactionRecord, mutation: TransactionMutationPayload, label: string): boolean => {
-    if (!snapshot || !day || busy || operationRef.current || orderingBlocked) return false;
+    if (!snapshot || showingStale || !day || busy || operationRef.current || orderingBlocked) return false;
     const student = tx.studentId === CASHIER_ID ? null : studentsById.get(tx.studentId) ?? null;
     if (tx.studentId !== CASHIER_ID && !student) {
       setPageStateRaw(previous => ({ ...previous, actionError: '找不到這筆交易的帳戶，請重新載入。' }));
@@ -1653,7 +1677,11 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
   const otherMealCount = day?.totals.otherMealCount ?? 0;
 
   return (
-    <div className="cloud-orders" data-testid="cloud-orders-page">
+    <div className="cloud-orders" data-testid="cloud-orders-page" aria-busy={busy || page.loading}>
+      <CommandProgress
+        active={page.loading || page.recovery?.phase === 'submitting' || page.recovery?.phase === 'retrying'
+          || page.recovery?.phase === 'confirmed' || Boolean(page.recovery?.queryPending)}
+      />
       <header className="cloud-orders__header">
         <div className="cloud-orders__header-info">
           <h2>櫃台點餐</h2>
@@ -1682,7 +1710,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
         </div>
       </header>
 
-      {page.loading && (
+      {page.loading && !snapshot && (
         <div className="cloud-orders__notice" data-testid="cloud-orders-loading" role="status">
           正在從伺服器讀取訂餐資料…
         </div>
@@ -1705,7 +1733,11 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
         </div>
       )}
 
-      {page.recovery && (
+      {/* No text before ten seconds: the disabled button and the progress bar already say "sending". Once the server confirmed
+          the command the page re-reads quietly; only a failed re-read (loadError) brings this panel back. */}
+      {page.recovery
+        && !(page.recovery.phase === 'submitting' && !page.recovery.elapsed10s)
+        && !(page.recovery.phase === 'confirmed' && !page.loadError) && (
         <div className="cloud-orders__error" role="alert" data-testid="order-recovery-panel">
           {page.recovery.phase === 'confirmed' ? (
             <>
@@ -1725,11 +1757,6 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                 {page.loading ? '正在重新載入資料…' : '重新載入已確認資料'}
               </button>
             </>
-          ) : page.recovery.phase === 'submitting' && !page.recovery.elapsed10s ? (
-            <p>
-              正在送出 {page.recovery.command.label} 的{commandNoun(page.recovery.command)}，
-              請等待伺服器確認，勿重新收款。
-            </p>
           ) : (
             <>
               <p><strong>結果確認中，勿重新收款。</strong></p>
@@ -1756,28 +1783,28 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
         </div>
       )}
 
-      {page.notice && (
-        <div className="cloud-orders__notice" role="status" aria-live="polite">{page.notice}</div>
-      )}
-
-      {page.undoOffer && !busy && (
-        <div className="cloud-orders__notice cloud-orders__undo-bar" data-testid="undo-bar">
-          <span>
-            送錯了？5 秒內可撤回 {page.undoOffer.label}
-            {undoPreview && !('error' in undoPreview) && `：現金 ${signedMoney(undoPreview.cashDelta)}`}
-            {undoPreview && !('error' in undoPreview) && undoPreview.balanceAfter !== null && `，餘額回到 $${undoPreview.balanceAfter}`}
+      <Toast
+        message={page.notice}
+        durationMs={page.undoOffer ? UNDO_WINDOW_MS : 4000}
+        action={page.undoOffer && !busy ? (
+          <span className="cloud-orders__undo-bar" data-testid="undo-bar">
+            <span>
+              送錯了？可撤回 {page.undoOffer.label}
+              {undoPreview && !('error' in undoPreview) && `：現金 ${signedMoney(undoPreview.cashDelta)}`}
+              {undoPreview && !('error' in undoPreview) && undoPreview.balanceAfter !== null && `，餘額回到 $${undoPreview.balanceAfter}`}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={undoLast}
+              disabled={!undoTransaction || page.loading || Boolean(orderingBlocked) || (undoPreview !== null && 'error' in undoPreview)}
+              data-testid="undo-button"
+            >
+              撤回
+            </Button>
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={undoLast}
-            disabled={!undoTransaction || page.loading || Boolean(orderingBlocked) || (undoPreview !== null && 'error' in undoPreview)}
-            data-testid="undo-button"
-          >
-            撤回
-          </Button>
-        </div>
-      )}
+        ) : undefined}
+      />
 
       {page.actionError && (
         <div className="cloud-orders__error" role="alert">{page.actionError}</div>
@@ -1796,7 +1823,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       )}
 
       {snapshot && !page.authorizationRevoked && (
-        <div className="cloud-orders__content">
+        <div className="cloud-orders__content" inert={showingStale || undefined}>
           <div className="cloud-orders__main-panel">
             {orderingBlocked && (dayMissing ? (
               // A day not opened yet is a setup step, not an error: same neutral note as a missing menu (#581 D5).
