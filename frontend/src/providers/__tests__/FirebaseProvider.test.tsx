@@ -32,6 +32,7 @@ vi.mock('../../firebase/activeAccountLease', () => ({
   renewLease: leaseMocks.renewLease,
   subscribeLease: leaseMocks.subscribeLease,
   startLeaseHeartbeat: leaseMocks.startLeaseHeartbeat,
+  TAB_RETURN_RECHECK_AFTER_MS: 60_000,
   defaultLeaseState: {
     holderUid: null,
     epoch: 0,
