@@ -19,8 +19,10 @@ import {
   type StartCloudBackfillInput,
 } from '../../firebase/cloudDayCloseRepository';
 import type { CloudLedgerView } from '../../hooks/useCloudLedger';
+import { CommandProgress } from '../ui/CommandProgress';
 import { EmptyState } from '../ui/EmptyState';
 import { StatusBadge } from '../ui/StatusBadge';
+import { Toast } from '../ui/Toast';
 import { BackupScreen } from '../screens/BackupScreen';
 import { LedgerUnclosedBanner } from './LedgerUnclosedBanner';
 import './CloudDayClosePage.css';
@@ -67,6 +69,8 @@ interface RecoveryState {
   /** A fresh settled read-only null allows an explicit retry with the original ID and frozen input. */
   canRetry?: boolean;
   receipt?: CommandReceipt;
+  /** The receipt came back inside ten seconds from the original submission: its re-read is shown quietly (#585). */
+  quiet?: boolean;
 }
 
 /**
@@ -129,6 +133,12 @@ interface PageState {
   scopeKey: string;
   authorizationRevoked: boolean;
   snapshot: DaySnapshot | null;
+  /**
+   * The server-confirmed snapshot from before the one re-read that follows a command receipt (#585). Display only: while that
+   * re-read runs the old content stays in place, locked with `inert`, instead of flashing a loading screen. Never used to build
+   * a command, and shown only while `loading` with no revoked authorization and no read error.
+   */
+  refreshingSnapshot: DaySnapshot | null;
   loading: boolean;
   loadError: string;
   actionError: string;
@@ -175,6 +185,7 @@ function initialPageState(scopeKey: string): PageState {
     scopeKey,
     authorizationRevoked: false,
     snapshot: null,
+    refreshingSnapshot: null,
     loading: true,
     loadError: '',
     actionError: '',
@@ -611,10 +622,12 @@ export function CloudDayClosePage({
     updateFor(key, generation, previous => ({
       ...previous,
       snapshot: null,
+      // After a receipt the confirmed content stays on screen (locked) during the one re-read instead of a loading screen.
+      refreshingSnapshot: confirmedReceipt ? previous.snapshot ?? previous.refreshingSnapshot : null,
       loading: true,
       loadError: '',
       actionError: operation?.receipt ? previous.actionError : '',
-      notice: confirmedReceipt ? '已找到伺服器回執，正在重新讀取日結資料…' : '',
+      notice: '',
       ...(requestedDayId ? { dayIdDraft: requestedDayId } : {}),
     }));
 
@@ -637,6 +650,7 @@ export function CloudDayClosePage({
           ...previous,
           ...clearDrafts(),
           snapshot: null,
+          refreshingSnapshot: null,
           loading: false,
           loadError: '',
           actionError: confirmed
@@ -682,17 +696,19 @@ export function CloudDayClosePage({
         const confirmsPending = !!resolvesOperation && !!confirmedReceipt;
         const confirmedCommand = confirmsPending ? acceptedCommand : null;
         const confirmedText = confirmsPending
-          ? `已確認 ${confirmedCommand ? commandLabel(confirmedCommand) : '雲端操作'} 完成；伺服器資料已重新讀取（命令序號 ${confirmedReceipt.seq}）。${boundOperation?.cleanupWarning ? ' ' + boundOperation.cleanupWarning : ''}`
+          ? `已確認 ${confirmedCommand ? commandLabel(confirmedCommand) : '雲端操作'} 完成`
           : '';
         const dayId = snapshot.dayId;
         return {
           ...previous,
           ...clearDrafts(),
           snapshot,
+          refreshingSnapshot: null,
           dayIdDraft: dayId,
           loading: false,
           loadError: '',
-          actionError: '',
+          // A local cleanup problem is not part of the short toast: it stays visible until the next action.
+          actionError: confirmsPending && boundOperation?.cleanupWarning ? boundOperation.cleanupWarning : '',
           backfillPlan: nextPlan,
           recovery: confirmsPending ? null : previous.recovery,
           postCloseReference: confirmedReceipt?.kind === 'RecordPostCloseEntry'
@@ -705,7 +721,7 @@ export function CloudDayClosePage({
             ? String(Math.abs(initialEntry.difference))
             : previous.postCloseReference?.previousClosedDayId === dayId ? String(Math.abs(previous.postCloseReference.difference)) : '',
           postCloseReason: '',
-          notice: planDone ? `${confirmedText}${dayId} 已標為回填，可以到訂餐頁補登交易。` : confirmedText,
+          notice: planDone ? `${confirmedText}。${dayId} 已標為回填，可以到訂餐頁補登交易。` : confirmedText,
         };
       });
       // Once, after the accepted same-owner, same-dataset, same-day snapshot.
@@ -738,6 +754,7 @@ export function CloudDayClosePage({
           ...previous,
           ...clearDrafts(),
           snapshot: null,
+          refreshingSnapshot: null,
           loading: false,
           loadError: errorMessage(error),
           backfillPlan: previous.backfillPlan ? { ...previous.backfillPlan, auto: false } : null,
@@ -844,7 +861,10 @@ export function CloudDayClosePage({
     operation.querySequence += 1;
     updateFor(operation.identityKey, operation.generation, previous => ({
       ...previous, actionError: '',
-      recovery: { commandId: command.commandId, command, phase: 'receipt', receipt },
+      recovery: {
+        commandId: command.commandId, command, phase: 'receipt', receipt,
+        quiet: previous.recovery?.phase === 'submitting' && previous.recovery.timedOut !== true,
+      },
     }));
     try {
       const cleared = await repository.cleanupConfirmedIntent(
@@ -997,7 +1017,9 @@ export function CloudDayClosePage({
     beginAttempt(operation);
     const submittedCommand = operation.command;
     updateFor(operation.identityKey, operation.generation, previous => ({
-      ...previous, snapshot: null, loading: false, loadError: '', actionError: '', notice: '',
+      // The confirmed content stays on screen, locked, while the command is in flight (#585); it is display only.
+      ...previous, snapshot: null, refreshingSnapshot: previous.snapshot ?? previous.refreshingSnapshot,
+      loading: false, loadError: '', actionError: '', notice: '',
       recovery: {
         commandId: submittedCommand.commandId, command: submittedCommand,
         phase: 'submitting', timedOut: false, canRetry: false,
@@ -1178,7 +1200,7 @@ export function CloudDayClosePage({
   const submitDateSelection = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const snapshot = page.snapshot;
-    if (page.recovery || operationRef.current || !snapshot) return;
+    if (page.recovery || operationRef.current || !snapshot || showingStale) return;
     if (!isBusinessDate(page.dayIdDraft) || page.dayIdDraft < snapshot.overview.goLiveDate) {
       updatePage(previous => ({ ...previous, actionError: `日期必須是 ${snapshot.overview.goLiveDate} 或之後的有效日期。` }));
       return;
@@ -1187,7 +1209,23 @@ export function CloudDayClosePage({
     void loadSnapshot(page.dayIdDraft);
   };
 
-  const snapshot = page.snapshot;
+  // Quiet feedback (#585): a command in flight (before ten seconds) and the re-read after its receipt are shown only by the
+  // progress bar and the locked page. The recovery panel appears for everything that needs the operator (ten seconds and later,
+  // a read that failed, an access change).
+  const recovery = page.recovery;
+  const quietSubmitting = recovery?.phase === 'submitting' && !recovery.timedOut;
+  const quietReceipt = recovery?.phase === 'receipt' && recovery.quiet === true && !page.loadError
+    && (page.loading || page.snapshot !== null || page.refreshingSnapshot !== null);
+  const showRecoveryPanel = recovery !== null && !quietSubmitting && !quietReceipt;
+  const progressActive = page.loading || quietSubmitting || quietReceipt
+    || recovery?.phase === 'checking' || (recovery?.phase === 'submitting' && recovery.timedOut === true);
+  // Display only (#585): the confirmed content from before the command stays on screen, locked (`inert`), while the command is in
+  // flight or its receipt is re-read. Never kept once the authorization is revoked or the read failed; no command is built from it.
+  const snapshot = page.snapshot
+    ?? (!page.authorizationRevoked && !page.loadError && (quietSubmitting || quietReceipt)
+      ? page.refreshingSnapshot
+      : null);
+  const showingStale = page.snapshot === null && snapshot !== null;
   const day = snapshot?.day ?? null;
   const selectionDate = snapshot?.overview.selectionDate ?? '';
   // Contract §14: a back-filled day closes with no difference, aligned to the next opened day's opening cash.
@@ -1211,7 +1249,7 @@ export function CloudDayClosePage({
 
   const submitClose = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (page.recovery || operationRef.current || !snapshot || !day || !canClose || day.expectedCash === null) return;
+    if (page.recovery || operationRef.current || !snapshot || showingStale || !day || !canClose || day.expectedCash === null) return;
     if (hasUnresolvedPendingCommands || hasUnresolvedRef.current) {
       updatePage(previous => ({ ...previous, actionError: CLOSE_BLOCKED_MESSAGE }));
       return;
@@ -1256,7 +1294,7 @@ export function CloudDayClosePage({
 
   const submitReopen = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (page.recovery || operationRef.current || !snapshot || !day || day.status !== 'closed') return;
+    if (page.recovery || operationRef.current || !snapshot || showingStale || !day || day.status !== 'closed') return;
     const reason = page.reopenReason.trim();
     if (reason.length < 1 || reason.length > 500) {
       updatePage(previous => ({ ...previous, actionError: '重開原因必須為 1 至 500 個字元。' }));
@@ -1406,7 +1444,7 @@ export function CloudDayClosePage({
 
   const submitBackfill = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (page.recovery || operationRef.current || !snapshot || !day || !canBackfill) return;
+    if (page.recovery || operationRef.current || !snapshot || showingStale || !day || !canBackfill) return;
     if (backfillCash === null || !Number.isSafeInteger(backfillCash) || backfillCash > 20_000) {
       updatePage(previous => ({ ...previous, actionError: '開帳現金必須明確輸入 0 至 20,000 元的整數；空白、負數與小數均不接受。' }));
       return;
@@ -1481,7 +1519,7 @@ export function CloudDayClosePage({
 
   const submitStartBackfill = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (page.recovery || operationRef.current || !snapshot || !canStartBackfill) return;
+    if (page.recovery || operationRef.current || !snapshot || showingStale || !canStartBackfill) return;
     const reason = page.startReason.trim();
     if (reason.length < 1 || reason.length > 500) {
       updatePage(previous => ({ ...previous, actionError: '回填原因必須為 1 至 500 個字元。' }));
@@ -1517,7 +1555,7 @@ export function CloudDayClosePage({
 
   const continueBackfill = () => {
     const plan = backfillPlanRef.current;
-    if (page.recovery || operationRef.current || !snapshot || !plan || plan.dayId !== snapshot.dayId) return;
+    if (page.recovery || operationRef.current || !snapshot || showingStale || !plan || plan.dayId !== snapshot.dayId) return;
     runBackfillStep(plan, snapshot);
   };
 
@@ -1541,7 +1579,7 @@ export function CloudDayClosePage({
     return () => { cancelled = true; };
   }, [autoAdvance, autoGeneration, snapshot]);
 
-  const busy = page.recovery !== null || page.postCloseChecking || backupRecovering;
+  const busy = page.recovery !== null || page.postCloseChecking || backupRecovering || showingStale;
   const needsAttention = snapshot?.overview.unclosedDays.filter(item => item.kind !== 'no-business') ?? [];
   const noBusiness = snapshot?.overview.unclosedDays.filter(item => item.kind === 'no-business') ?? [];
   const currentKind = snapshot && day && day.status !== 'closed' && day.openingCash === null
@@ -1549,7 +1587,8 @@ export function CloudDayClosePage({
     : null;
 
   return (
-    <main className="cloud-day-close" aria-label="雲端日結">
+    <main className="cloud-day-close" aria-label="雲端日結" aria-busy={busy || page.loading}>
+      <CommandProgress active={progressActive} />
       <header className="cloud-day-close__header">
         <div>
           <h1>日結、關帳與重開</h1>
@@ -1576,9 +1615,9 @@ export function CloudDayClosePage({
           授權狀態已失效。日結資料與操作草稿已清除；請重新登入並取得有效使用權。
         </div>
       )}
-      {page.notice && <div className="cloud-day-close__notice" role="status">{page.notice}</div>}
+      <Toast message={page.notice} durationMs={/已標為回填/.test(page.notice) ? 8000 : 4000} />
 
-      {page.recovery && (
+      {showRecoveryPanel && page.recovery && (
         <section className="cloud-day-close__recovery" aria-label="命令結果確認" role="alert">
           <strong>{page.recovery.phase === 'receipt'
             ? '已找到伺服器回執，資料尚待再次讀取。'
@@ -1621,10 +1660,10 @@ export function CloudDayClosePage({
         </section>
       )}
 
-      {page.loading && <div className="cloud-day-close__loading" role="status">正在從伺服器載入日結資料…</div>}
+      {page.loading && !showingStale && <div className="cloud-day-close__loading" role="status">正在從伺服器載入日結資料…</div>}
 
-      {snapshot && !page.loading && (
-        <>
+      {snapshot && (!page.loading || showingStale) && (
+        <div className="cloud-day-close__content" data-testid="cloud-day-close-content" inert={showingStale || undefined}>
           <div className="cloud-day-close__layout">
           <section className="cloud-day-close__date-panel" aria-label="未關帳營業日">
             <h2>未關帳營業日</h2>
@@ -2136,7 +2175,7 @@ export function CloudDayClosePage({
           </section>
           </div>
           </div>
-        </>
+        </div>
       )}
 
       {!snapshot && !page.loading && !page.recovery && (
