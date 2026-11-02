@@ -12,6 +12,9 @@ import {
 import { createCloudCommandRepository, type PendingReceiptCheck } from '../../firebase/cloudCommandRepository';
 import './CloudPendingRecoveryBoundary.css';
 
+/** A same-tab command in flight stays quiet this long before its row is shown (matches the 10 s result-check prompt, #585). */
+const QUIET_IN_FLIGHT_MS = 10_000;
+
 type RowStatus = 'in-flight' | 'not-found' | 'read-error' | 'different-dataset' | 'confirmed';
 
 interface PendingRow {
@@ -424,6 +427,24 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
   const gateLocked = !scopeConfirmed || !state.online || !state.initialReady
     || state.busy && (state.gateRequired || !state.shellMounted)
     || scopeMatchesOwner && state.error !== null || state.gateRequired && !state.continued;
+  // Display only (#585 R9): while every row is a same-tab command in flight (or confirmed with nothing left to clean up) and the
+  // system is healthy, the section would only repeat what the page already shows and push the page down. It comes back after
+  // QUIET_IN_FLIGHT_MS, and any other state (check, offline, owner change, error, not-found, read-error, other dataset, cleanup
+  // pending, locked gate) shows it exactly as before. The gate itself (`gateLocked`, `gateRequired`, `hasUnresolved`) is untouched.
+  const hasInFlight = scopedRows.some(row => row.status === 'in-flight');
+  const [inFlightOverdue, setInFlightOverdue] = useState(false);
+  useEffect(() => {
+    if (!hasInFlight) {
+      setInFlightOverdue(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setInFlightOverdue(true), QUIET_IN_FLIGHT_MS);
+    return () => window.clearTimeout(timer);
+  }, [hasInFlight]);
+  const onlyQuietRows = scopedRows.every(row => row.status === 'in-flight'
+    || (row.status === 'confirmed' && !row.cleanupPending));
+  const quietSameTab = scopeConfirmed && state.initialReady && state.online && state.error === null
+    && state.shellMounted && !gateLocked && onlyQuietRows && !inFlightOverdue;
   const pageStart = state.pageIndex * CLOUD_PENDING_JOURNAL_PAGE_SIZE;
   const visibleRows = scopedRows.slice(pageStart, pageStart + CLOUD_PENDING_JOURNAL_PAGE_SIZE);
   const pageCount = Math.max(1, Math.ceil(scopedRows.length / CLOUD_PENDING_JOURNAL_PAGE_SIZE));
@@ -493,7 +514,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
 
   return (
     <>
-      {!(scopeConfirmed && state.initialReady && state.online && !state.busy && state.error === null && scopedRows.length === 0) && <section className={`cloud-pending-recovery${gateLocked ? ' cloud-pending-recovery--blocked' : ''}`} aria-label="待核對命令">
+      {!quietSameTab && !(scopeConfirmed && state.initialReady && state.online && !state.busy && state.error === null && scopedRows.length === 0) && <section className={`cloud-pending-recovery${gateLocked ? ' cloud-pending-recovery--blocked' : ''}`} aria-label="待核對命令">
         <h2>待核對命令</h2>
         {!state.online && <p role="status">目前離線；追蹤編號仍保留，恢復連線後會重新核對。</p>}
         {!scopeMatchesOwner && <p role="status">目前登入身分或使用權已變更，正在重新核對；完成前不開放操作。</p>}
