@@ -409,7 +409,10 @@ describe('CloudReportPage', () => {
       await oldPending.promise;
     });
     expect(download).not.toHaveBeenCalled();
-    expect(screen.getByRole('region', { name: '輸出命令確認' })).toBeInTheDocument();
+    // The newer command is still in flight (quiet before ten seconds, #585): the progress bar and the locked controls prove it
+    // was kept, and the late old-owner result neither cleared it nor produced a download.
+    expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
+    expect(screen.getByRole('button', { name: '匯出稽核 CSV' })).toBeDisabled();
 
     secondView.unmount();
     await act(async () => {
@@ -928,7 +931,10 @@ describe('CloudReportPage', () => {
       it(`${kind}: shows the ten-second prompt with the original ID and lets a read-only query run while the original is in flight`, async () => {
         const { original, record, download, print, input } = await startPending(kind, `operator-a:4:${kind}-inflight-query`);
         expect(screen.queryByRole('button', { name: '查詢原命令結果' })).toBeNull();
-        expect(screen.getByRole('region', { name: '輸出命令確認' })).toHaveTextContent('命令送出中，請勿重複操作。');
+        // Before ten seconds only the progress bar says "sending" (#585): no recovery region, no sending text.
+        expect(screen.queryByRole('region', { name: '輸出命令確認' })).toBeNull();
+        expect(screen.queryByText(/命令送出中/)).toBeNull();
+        expect(screen.getByTestId('command-progress')).toHaveAttribute('data-active', 'true');
 
         await advancePrompt();
         const region = screen.getByRole('region', { name: '輸出命令確認' });

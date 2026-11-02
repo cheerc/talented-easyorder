@@ -40,6 +40,8 @@ property getter、get/set/remove、讀回不符或容量不足，都使新命令
 
 訂餐、日結、日期與供應商、學生名單四頁同此規則：命令在途與收據後那一次重新讀取期間，保留送出前已由伺服器確認的內容、以 `inert` 鎖定（僅顯示用，不用來組命令）；授權失效或讀取失敗時立即清除、不保留。只有「原提交 10 秒內即回收據」的重新讀取才保持安靜；10 秒後、經查詢取得收據、讀取失敗、資料集或營業日變更、使用權變更，一律顯示結果確認面板。本機清理未完成的警告維持常駐提示，不放進短暫通知（#585 P2）。
 
+報表（輸出命令）、查帳歷史更正、備份頁同樣在原提交 10 秒內不顯示結果確認區塊（報表與查帳頁只加頁頂進度條，備份頁沿用按鈕的「處理中…」）；10 秒、結果不明或啟動時發現待確認命令一律顯示（#585 P3）。
+
 原掛載仍持有完整 frozen intent 時，只有明確人工操作才能用原 ID／原 intent 重試；重新送前先查 receipt。尚有原提交 promise in flight 時不另開同 ID 並行提交；可查詢結果，但 null 不能讓舊 promise 被當成已停止。late success／failure 只更新相符的 mount、UID、dataset、epoch 與 generation，不能在舊頁面或失權後下載、列印或顯示個資。
 
 同頁確認與 cleanup 必須在第一次 await 前，先正規化並同步複製 canonical intent。複製只讀 normalized tree 的 own data descriptors，遞迴建立新的普通密集陣列與無 prototype 的資料 map；不能使用 JSON serialization、`toJSON`、getter 或一般巢狀 property reads，也不能保留 caller-owned 巢狀參照。canonical 比對、fingerprint 與精確 journal identity 都使用同一份 detached capture。若 normalized tree 實際含 accessor、隱藏欄位、symbol、非資料值、不支援的 class、稀疏陣列或循環參照，必須在讀 receipt 前以 `INVALID_INPUT` 拒絕且不執行 hook；有效的 frozen command data 仍可確認。這是 recovery capture 的邊界，不改寫全域 domain normalizer 或 command schema。

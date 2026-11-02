@@ -442,12 +442,12 @@ export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange,
         <input ref={fileRef} type="file" accept=".eobackup,application/json" disabled={controlsDisabled || stage === 'verifiedLocal'}
           onChange={event => void verifySelected(event.target.files?.[0])} />
       </label>}
-      {recovery && (
+      {recovery && !(recovery.phase === 'submitting' && !recovery.timedOut) && (
         <div className="bk-recovery" role="alert" aria-label="命令結果確認">
           <strong>{recovery.phase === 'checking'
             ? '正在查詢原命令結果…'
             : recovery.phase === 'submitting'
-              ? recovery.timedOut ? '結果確認中，勿重新收款' : '命令送出中，請勿重複操作。'
+              ? '結果確認中，勿重新收款'
               : '結果確認中，請勿重複操作。'}</strong>
           <span>備份登記 · 命令編號 {recovery.commandId}</span>
           {recovery.message && <span>{recovery.message}</span>}
