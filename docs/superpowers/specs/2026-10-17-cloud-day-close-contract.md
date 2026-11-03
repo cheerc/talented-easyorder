@@ -158,23 +158,23 @@ CheerC（2026-10-17）：某天整天沒用系統，事後要能補登那天的�
   - `targets {dayId}`、`expectedRevisions {day}`（= 目前版本，≥ 1）、`payload {reason}`（1–500 字，命令 `reason` 等於 `payload.reason`）、`businessDate == dayId`、`studentId == null`、現金影響為 0、`before`／`after` 為 `{head, day, backfill}`。
   - 一次 commit 寫 3 份文件：`system/dataHead`、`commands/{commandId}`、新集合 `backfillDays/{dayId}` = `{dayId, reason, startedBy, startedAt, commandId}`。營業日文件**不動**（它是固定形狀，不加欄位）；命令的 `before.day` 與 `after.day` 相同。
 - **標記不可改也不可刪**：`backfillDays/{dayId}` 的 `get`／`list` 只給目前持有人，`create` 只能經由 `StartBackfill` 命令（`backfillDayCommand` 綁住命令的 kind、commandId、`committedAt == request.time`、`targets.dayId`，並要求命令的 `after.backfill` 等於這份文件），`update`／`delete` 一律 false。
-- **放寬「只限今天」，只開三種**：`CreateOrder`、`CreatePayment`、`CreateCashMovement`。這些路徑上的日期檢查由 `validCurrentTaipeiDate(d)` 改為 `validTransactionDay(d, day)` = `validCurrentTaipeiDate(d) || (day.lastSettlementRevision == 0 && exists(backfillDays/d))`（今天的交易先短路，不多一次文件存取；`day` 沿用該路徑已讀的營業日快照，沒有額外的 `get`）。涉及：交易文件 `validTransactionDoc`（`businessDate`）、`validTransactionPayload`（`targets.dayId`）、`validCreateCashMovement`（命令與交易兩處）。`dayWriteCommand` 不動。
+- **放寬「只限今天」，只開三種**：`CreateOrder`、`CreatePayment`、`CreateCashMovement`。這些路徑上的日期檢查由 `validCurrentTaipeiDate(d)` 改為 `validTransactionDay(d, day)` = `validCurrentTaipeiDate(d) || exists(backfillDays/d)`（另需紙本號前綴；#601 起不再要求 `lastSettlementRevision == 0`，closed 由每個呼叫路徑另外要求的 `status in ['open','reopened']` 拒絕；今天的交易先短路，不多一次文件存取；`day` 沿用該路徑已讀的營業日快照，沒有額外的 `get`）。涉及：交易文件 `validTransactionDoc`（`businessDate`）、`validTransactionPayload`（`targets.dayId`）、`validCreateCashMovement`（命令與交易兩處）。`dayWriteCommand` 不動。
 - **不開放**：`CreateRefund`（會動現場現金）、`Undo`、`CancelRefund`（維持只限今天）。作廢、更正等 mutation 本來就允許過去未關帳的日子，維持原狀。`SetDayMenu` 直接設定本來就能設過去未關帳日的菜單（只有 `selectionDate` 要是今天），不需要放寬；繼承路徑不放寬。
 - **標記判定（交易不加欄位）**：交易文件的形狀不變。一筆交易是「回填的」，當且僅當該日有 `backfillDays/{dayId}`，而且交易 `createdAt`（伺服器時間）換成台北日期後晚於 `businessDate`。兩個條件都由 Rules 保證，無法偽造。讀取端提供 `readBackfillDay(dayId)`（回 `CloudBackfillDay | null`）與 `isBackfilled(tx, backfill)`；日結 overview 的每個未關帳日帶 `backfill`（原因、開始者、時間），P11c2b 的畫面與 P12 報表用。原因記在日的層級，櫃台收支本身另有自己的 reason。
-- **關帳之後**：標記之後該日一旦關過帳（`lastSettlementRevision > 0`），即使重開，三種交易也被拒；要改只能走 mutation 或之後的 P11c4。
+- **關帳之後**：標記日關帳（狀態 closed）時三種交易被拒；**重開後可以繼續補登**（#601，CheerC 2026-11-03 產品裁決「可以繼續補登」，決策卡 `cmsg_01NL2RLuU7UMaNjFmadMsJ3uGT9ntaYTF5eVPPNDN4J5b1`）。再次關帳照樣要差額 0 並帶 `alignWithDayId`（§14.1，每一次關帳都檢查）。沒有標記、關過帳又重開的日子仍不能補登（`StartBackfill` 仍只標記從沒關過帳的日子）。此點取代 2026-10-17 原文「即使重開，三種交易也被拒」。
 
 ### 12.2 寫入器與錯誤碼
 
 - `cloudCommandRepository`：新增 `StartBackfill`；三種交易命令不在客戶端判斷日期，由 Rules 決定，被拒時以讀回的營業日診斷。今天的判斷照舊用租約 `updatedAt` 的台北日期。
-- 錯誤碼：`StartBackfill` 對關過帳的日子（狀態 closed 或 `lastSettlementRevision > 0`）→ `DAY_CLOSED`；三種交易被 Rules 拒絕時，營業日目前為 closed → `DAY_CLOSED`；已關過帳又重開（open 但 `lastSettlementRevision > 0`）→ `DAY_CLOSED`，訊息說明「曾經關過帳（現在是重開狀態）」（P11c2b 起，原本回 `INVALID_INPUT`）；過去日沒有標記 → `INVALID_INPUT`，訊息指向日結頁的「標為回填」；今天、未來、上線日前、營業日不存在、已有標記、缺原因或過長 → `INVALID_INPUT`；沒有標記的過去日交易 → `INVALID_INPUT`；版本不符 → `REVISION_CONFLICT`；非持有人 → `LEASE_LOST`。
+- 錯誤碼：`StartBackfill` 對關過帳的日子（狀態 closed 或 `lastSettlementRevision > 0`）→ `DAY_CLOSED`；三種交易被 Rules 拒絕時，營業日目前為 closed → `DAY_CLOSED`；有標記、關過帳又重開的日子不再因此被拒（#601）：被 Rules 拒絕時寫入器回 `INVALID_INPUT`（其他原因，例如缺紙本號），原本的「曾經關過帳（現在是重開狀態）」診斷已移除；沒有標記、關過帳又重開 → `DAY_CLOSED`，訊息說明「沒有回填標記」（§13.3）；過去日沒有標記 → `INVALID_INPUT`，訊息指向日結頁的「標為回填」；今天、未來、上線日前、營業日不存在、已有標記、缺原因或過長 → `INVALID_INPUT`；沒有標記的過去日交易 → `INVALID_INPUT`；版本不符 → `REVISION_CONFLICT`；非持有人 → `LEASE_LOST`。
 - 回填日的開帳現金仍用 `BackfillOpeningCash`（原因本來就必填），Rules 不改；預設帶入上一個已關帳日實點、金額不同時原因必填是畫面（P11c2b）的事。
-- 型別、normalizer、回執解碼（`validateStartBackfillReceipt`：營業日前後相同、標記欄位等於 payload 原因、操作者 uid、`committedAt` 與 `commandId`）同步；交易回執解碼的日期條件改為「台北今天，或從沒關過帳的過去日」（標記是否存在不在回執內，由 Rules 與 P14 replay 證明）。
+- 型別、normalizer、回執解碼（`validateStartBackfillReceipt`：營業日前後相同、標記欄位等於 payload 原因、操作者 uid、`committedAt` 與 `commandId`）同步；交易回執解碼的日期條件改為「台北今天，或過去日」，並拒絕 `status === 'closed'`（標記是否存在不在回執內，由 Rules 與 P14 replay 證明；#601 前要求從沒關過帳）。
 
 ### 12.3 P14 備份
 
 - decoder／replay 接受 `StartBackfill`（targets `dayId`、revision `day`、投影 `day`＋`backfill`；`backfillDays` 以實際路徑 `backfillDays/{dayId}` 存進 projectionState）。
 - replay 驗證：標記日期早於提交時的台北日期、`lastSettlementRevision == 0`、狀態 open／reopened、之前沒有同日標記、`startedBy` 與 `startedAt` 等於命令的操作者與 `committedAt`、原因等於 payload。
-- 回填交易 replay：`CreateOrder`／`CreatePayment`／`CreateCashMovement` 若提交時的台北日期晚於 `businessDate`，該日必須已有較早重播出的標記且營業日從沒關過帳；營業日晚於提交日期也被拒。因此偽造標記、標記前的回填交易、竄改原因都會被拒。舊備份（沒有回填）照常通過。
+- 回填交易 replay：`CreateOrder`／`CreatePayment`／`CreateCashMovement` 若提交時的台北日期晚於 `businessDate`，該日必須已有較早重播出的標記，且營業日當時不是 closed（#601 前要求從沒關過帳；重開後的補登照樣通過）；營業日晚於提交日期也被拒。因此偽造標記、標記前的回填交易、竄改原因都會被拒。舊備份（沒有回填）照常通過。
 
 ### 12.4 文件存取與部署
 
@@ -185,7 +185,7 @@ CheerC（2026-10-17）：某天整天沒用系統，事後要能補登那天的�
 ### 12.5 驗收與範圍
 
 - 單元：`cloudLedgerReader.test.ts`（分頁、分段往回、可注入的頁大小與分段天數、head 變動）、`cloudBackfillReader.test.ts`（`isBackfilled` 台北日界、`decodeBackfillDoc`）。
-- Emulator：`cloudDayClose.spec.ts` `P11c2a.1`–`.3`（分頁掃描超過 400 份、上一個已關帳日超過 400 天仍找得到、讀取中 head 變動回 `STALE_SNAPSHOT`）與 `P11c2a.4`–`.14`（完整回填流程後關帳與重試冪等；沒有標記的過去日交易被拒；寫入器的 7 種拒絕與錯誤碼；標記後關帳再重開仍拒；合法最大 `StartBackfill`；原始 SDK 21 種竄改；Rules 拒絕今天、未來、上線日前、已關帳、關過帳；標記不可改、刪、手動建立；回填日不能退款或作廢；讀取端；三種交易各自的正向案例）；備份 `cloudBackup.spec.ts` 真實 EnsureDay → 補開帳 → 開始回填 → 回填訂餐／繳費／收支 → 關帳 → 匯出 → 解密 → replay，偽造標記、標記前的交易、竄改原因被拒。
+- Emulator：`cloudDayClose.spec.ts` `P11c2a.1`–`.3`（分頁掃描超過 400 份、上一個已關帳日超過 400 天仍找得到、讀取中 head 變動回 `STALE_SNAPSHOT`）與 `P11c2a.4`–`.14`（完整回填流程後關帳與重試冪等；沒有標記的過去日交易被拒；寫入器的 7 種拒絕與錯誤碼；標記後關帳再重開可以再補登、未重開仍拒（#601 改寫 `P11c2a.7`，新增 `.7b`、`.7c`）；合法最大 `StartBackfill`；原始 SDK 21 種竄改；Rules 拒絕今天、未來、上線日前、已關帳、關過帳；標記不可改、刪、手動建立；回填日不能退款或作廢；讀取端；三種交易各自的正向案例）；備份 `cloudBackup.spec.ts` 真實 EnsureDay → 補開帳 → 開始回填 → 回填訂餐／繳費／收支 → 關帳 → 匯出 → 解密 → replay，偽造標記、標記前的交易、竄改原因被拒。
 - 不做：回填模式的畫面（P11c2b）、關帳對齊（P11c3）、已關帳日補記（P11c4）、角色權限。
 
 ## 13. P11c2b 回填模式畫面
@@ -203,14 +203,14 @@ CheerC（2026-10-17）：某天整天沒用系統，事後要能補登那天的�
 
 ### 13.2 訂餐頁的回填檢視
 
-- 日期選單只在有回填中的日子時出現（`listCloudBackfillingDays`：有標記、`status === 'open'`、從沒關過帳——重開過的日子 Rules 已不收交易，不列）；清單讀不到時只顯示一行說明，**今天的作業不受影響**（租約遺失、無權限、忙碌仍照常結束頁面）。App 也可帶 `initialBackfillDayId` 直接開某一天。
+- 日期選單只在有回填中的日子時出現（`listCloudBackfillingDays`：有標記、`status === 'open'`、從沒關過帳。#601 Phase 1 起 Rules 已接受重開後的標記日補登，清單與日結頁按鈕改列重開日留待 #601 Phase 2）；清單讀不到時只顯示一行說明，**今天的作業不受影響**（租約遺失、無權限、忙碌仍照常結束頁面）。App 也可帶 `initialBackfillDayId` 直接開某一天。
 - `loadSnapshot({dayId})`：dayId 為空或等於今天 = 今天；過去日必須介於上線日與今天之前**且有標記**，否則 `INVALID_INPUT`（頁面提供「回到今天」）。快照多了 `businessDate`、`backfill`、`backfillDays`、`backfillDaysError`。
 - 回填檢視：所有列、合計與命令（`dayId`、營業日版本）都屬於那一天；顯眼的橫幅「正在回填 YYYY-MM-DD（原因：…）」與「離開回填」；只開放訂餐、繳費與櫃台收支。**退款**停用並說明；**5 秒撤回**不提供（Rules 的 `Undo` 只限今天），改用更正／作廢；**取消訂餐並退還**不提供，只剩「取消訂餐，錢留在帳戶」。沒有那天的菜單時，只能登記「其他餐點」並提示到日期與供應商頁設定那天的菜單（過去未關帳日的 `SetDayMenu` 直接設定本來就可用，§12.1）。
 - 標籤：`isBackfilled`（有標記，且建立時間的台北日期晚於營業日）的列顯示「回填」；一般列、非回填日完全不變。台北午夜以 UTC 16:00:00 為界（單元測試 `cloudBackfillReader.test.ts`）。
 
 ### 13.3 寫入器診斷（#511 審查備註）
 
-標記後關帳再重開的日子，三種交易被 Rules 拒絕時，寫入器回 `DAY_CLOSED` 與明確訊息（見 §12.2）；沒有標記的過去日回 `INVALID_INPUT` 並指向「標為回填」。P11c3 起，「沒有標記、關過帳又重開」的日子也回 `DAY_CLOSED`，訊息明說原因是**沒有回填標記**（與「有標記、關過帳又重開」的訊息分開）。診斷只在被拒時多讀租約與標記兩份文件，成功路徑不變。
+#601 起，標記後關帳再重開的日子可以補登，被 Rules 拒絕時不再回「曾經關過帳」的診斷（見 §12.2）；沒有標記的過去日回 `INVALID_INPUT` 並指向「標為回填」。P11c3 起，「沒有標記、關過帳又重開」的日子也回 `DAY_CLOSED`，訊息明說原因是**沒有回填標記**。診斷只在被拒時多讀租約與標記兩份文件，成功路徑不變。
 
 ### 13.4 驗收與範圍
 
@@ -222,7 +222,7 @@ CheerC（2026-10-17）：某天整天沒用系統，事後要能補登那天的�
 
 CheerC 的規則（規劃文件 R3）：回填完的日子要關帳時，結果必須和**下一個有開帳的日子**的開帳現金一致，對不上就不能關帳，並提示回頭補齊那天的帳（補登交易或收支，含呆帳）。例：星期一關帳 1,000，星期二斷線事後回填，星期三開帳 950；星期二的開帳預設 1,000，回填完關帳時實點必須是 950，應有現金也必須算出 950，差的 50 元要補登星期二的交易或收支補平，否則擋下。
 
-只適用於有 `backfillDays/{dayId}` 標記的日子；一般日子的關帳**完全不變**。`ReopenDay` 不變（回填日重開後不能再補登，§12.1）。
+只適用於有 `backfillDays/{dayId}` 標記的日子；一般日子的關帳**完全不變**。`ReopenDay` 不變；回填日重開後可以繼續補登，再次關帳仍要符合本節條件（#601，CheerC 2026-11-03 產品裁決「可以繼續補登」，決策卡 `cmsg_01NL2RLuU7UMaNjFmadMsJ3uGT9ntaYTF5eVPPNDN4J5b1`）。
 
 ### 14.1 `CloseDay` 對已標記日子的額外條件（Rules）
 
@@ -262,7 +262,7 @@ Rules 無法證明兩件事，由寫入器與異常頁補上：
 
 - **訂餐頁讀取成本**：`loadSnapshot` 每次都跑一次日結 overview（等於每筆櫃台操作多 3–4 次讀取）。改為 `loadSnapshot({dayId, knownBackfillDays})`：櫃台操作成功或明確被拒後的重讀沿用頁面手上的回填日清單（上次讀取成功才沿用），第一次載入、切換日期、離開回填、「重新載入」、回到今天仍重讀。回填標記本身（`readBackfillDay`）每次仍讀，所以被檢視的那一天是否還在回填永遠是新的。
 - **E2E `D09` 清理**：測試期間新增的 `commands` 文件（依 `seq` 大於測試前的 head）一併刪除，`dataHead` 的 `seq`、`lastCommandId`、`goLiveDate` 還原。
-- **診斷訊息**：「沒有標記、關過帳又重開」的過去日，三種交易被拒時回 `DAY_CLOSED`，訊息明說**沒有回填標記**；有標記的重開日維持「曾經關過帳（現在是重開狀態）」。診斷只在被拒時多讀租約與標記。
+- **診斷訊息**：「沒有標記、關過帳又重開」的過去日，三種交易被拒時回 `DAY_CLOSED`，訊息明說**沒有回填標記**；有標記的重開日原本回「曾經關過帳（現在是重開狀態）」，#601 起可以補登，此診斷已移除。診斷只在被拒時多讀租約與標記。
 - **完整三步 UI E2E**：`D10` 種下已關帳的前一天（870）與已關帳的後一天（970），中間那天沒有營業日文件；由異常頁「回填這一天」→ 日結頁三步（建日、補開帳預設 870、標記）→ 差 100 停用 → 訂餐頁補繳費 60、再 40 → 日結頁以預設 970 對齊關帳，並用 Admin 讀取確認三個命令、結算與 `alignWithDayId`。
 
 ### 14.6 驗收、部署與範圍
