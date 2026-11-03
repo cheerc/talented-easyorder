@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { validateWebConfig, releaseFiles, checkRelease, deploymentArgs, digest, validateProviderState } from './lib/release.mjs';
+import { validateWebConfig, releaseFiles, checkRelease, deploymentArgs, ciDeploymentArgs, digest, validateProviderState, validateCiDeployment, compositeIndexStatus } from './lib/release.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const frontend = path.join(root, 'frontend');
@@ -14,7 +14,8 @@ const usage = `EasyOrder P17 本機 release 工具（Node 24）
   ./deploy.sh prepare --project <id> --web-config <本機 JSON> --out <新目錄> [--region asia-east1] [--emulator]
   ./deploy.sh check --release <目錄>
   ./deploy.sh deploy --project <id> --release <目錄> --step indexes|rules|hosting [--account <Firebase CLI email>]
-正式部署由本人操作。先 indexes 並確認 READY，再 rules，最後 hosting；詳見 docs/ops/DEPLOYMENT-GUIDE.md。
+  ./deploy.sh deploy-ci --project <id> --release <目錄> [--index-timeout-minutes 30]   （只限 GitHub Actions 核准後的 deploy workflow）
+正式部署由本人操作：本機互動終端，或本人在 GitHub 核准的 deploy workflow。先 indexes 並確認 READY，再 rules，最後 hosting；詳見 docs/ops/DEPLOYMENT-GUIDE.md。
 舊 d1-d3/p1-p5 已移除；練習用 frontend/npm run dev:prototype，Emulator 明示 demo-easyorder。
 `;
 
@@ -83,6 +84,49 @@ async function prepare(args) {
   process.stdout.write(`release 已建立並核對：${out}\nproject=${project}, region=${region}, emulator=${emulator}, source=${manifest.sourceSha}, dirty=${manifest.sourceDirty}\n`);
 }
 
+function providerPreflight(manifest, project, account, out) {
+  const billing = JSON.parse(execFileSync('gcloud', ['billing', 'projects', 'describe', project, '--format=json'], { encoding: 'utf8' }));
+  const database = JSON.parse(execFileSync(firebase, ['firestore:databases:get', '(default)', '--project', project, '--json', ...(account ? ['--account', account] : [])], { cwd: out, encoding: 'utf8' }));
+  if (database.status !== 'success') throw new Error('無法讀取 Firestore metadata');
+  validateProviderState(manifest, billing, database.result);
+}
+
+async function waitForIndexes(out, project, timeoutMinutes) {
+  const config = await json(path.join(out, 'firestore.indexes.json'));
+  const deadline = Date.now() + timeoutMinutes * 60_000;
+  for (;;) {
+    const listed = JSON.parse(execFileSync('gcloud', ['firestore', 'indexes', 'composite', 'list', '--project', project, '--database', '(default)', '--format=json'], { encoding: 'utf8' }));
+    const status = compositeIndexStatus(config, listed);
+    if (status.ready) { process.stdout.write(`composite indexes 全部 READY（${(config.indexes ?? []).length} 個）\n`); return; }
+    if (Date.now() >= deadline) throw new Error(`index 未在 ${timeoutMinutes} 分鐘內 READY；不部署 rules／hosting。缺少：${status.missing.join('; ') || '無'}；未完成：${status.notReady.join('; ') || '無'}`);
+    process.stdout.write(`等待 index READY：缺少 ${status.missing.length}、未完成 ${status.notReady.length}\n`);
+    await new Promise(resolve => { setTimeout(resolve, 30_000); });
+  }
+}
+
+async function deployCi(args) {
+  const options = flags(args, ['--project', '--release', '--index-timeout-minutes']);
+  const out = path.resolve(required(options, '--release'));
+  const project = required(options, '--project');
+  const manifest = await checkRelease(out);
+  validateCiDeployment(process.env, manifest, project);
+  const timeoutMinutes = Number(options['--index-timeout-minutes'] ?? 30);
+  if (!Number.isInteger(timeoutMinutes) || timeoutMinutes < 1 || timeoutMinutes > 120) throw new Error('--index-timeout-minutes 必須是 1–120 的整數');
+  providerPreflight(manifest, project, undefined, out);
+  const receipt = { project, releaseDigest: digest(await readFile(path.join(out, 'release.json'))), sourceSha: manifest.sourceSha,
+    runId: process.env.GITHUB_RUN_ID ?? null, actor: process.env.GITHUB_ACTOR ?? null, steps: [] };
+  for (const step of ['indexes', 'rules', 'hosting']) {
+    await checkRelease(out);
+    process.stdout.write(`部署 ${project} ${step}，source=${manifest.sourceSha}\n`);
+    const result = spawnSync(firebase, ciDeploymentArgs(manifest, project, step), { cwd: out, stdio: 'inherit' });
+    if (result.error || result.status !== 0) throw new Error(`Firebase deploy ${step} 失敗（exit ${result.status}）；後續步驟未執行`);
+    receipt.steps.push({ step, at: new Date().toISOString() });
+    await save(path.join(out, 'deploy-receipt.json'), receipt);
+    if (step === 'indexes') await waitForIndexes(out, project, timeoutMinutes);
+  }
+  process.stdout.write('indexes、rules、hosting 已部署；正式 smoke 仍由本人驗證。\n');
+}
+
 async function deploy(args) {
   const options = flags(args, ['--project', '--release', '--step', '--account']);
   const out = path.resolve(required(options, '--release'));
@@ -98,10 +142,7 @@ async function deploy(args) {
     const phrase = `DEPLOY ${project} ${step}`;
     if (await rl.question(`目標 ${project}／${manifest.region}，source=${manifest.sourceSha}，dirty=${manifest.sourceDirty}\n請先核對 Console Spark、專案歸屬及 index READY；輸入 ${phrase}：`) !== phrase) throw new Error('確認不符，未部署');
   } finally { rl.close(); }
-  const billing = JSON.parse(execFileSync('gcloud', ['billing', 'projects', 'describe', project, '--format=json'], { encoding: 'utf8' }));
-  const database = JSON.parse(execFileSync(firebase, ['firestore:databases:get', '(default)', '--project', project, '--json', ...(account ? ['--account', account] : [])], { cwd: out, encoding: 'utf8' }));
-  if (database.status !== 'success') throw new Error('無法讀取 Firestore metadata');
-  validateProviderState(manifest, billing, database.result);
+  providerPreflight(manifest, project, account, out);
   let receipt = { project, releaseDigest: digest(await readFile(path.join(out, 'release.json'))), steps: [] };
   try { receipt = await json(path.join(out, 'deploy-receipt.json')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   if (receipt.project !== project || receipt.releaseDigest !== digest(await readFile(path.join(out, 'release.json')))) throw new Error('部署紀錄與 release 不符');
@@ -124,5 +165,6 @@ try {
     const manifest = await checkRelease(path.resolve(required(options, '--release')));
     process.stdout.write(`release 完整性通過：${manifest.project}，${Object.keys(manifest.files).length} 個檔案，emulator=${manifest.emulator}\n`);
   } else if (command === 'deploy') await deploy(args);
+  else if (command === 'deploy-ci') await deployCi(args);
   else throw new Error(`舊部署選項已停用或未知命令：${command}\n${usage}`);
 } catch (error) { process.stderr.write(`${error.message}\n`); process.exitCode = 1; }
