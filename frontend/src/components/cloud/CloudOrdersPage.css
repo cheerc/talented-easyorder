@@ -797,8 +797,7 @@ li.cloud-orders__recent-item:hover {
   font-size: 15px;
 }
 
-.cloud-orders__backfill-tag,
-.cloud-orders__paper-tag {
+.cloud-orders__backfill-tag {
   display: inline-block;
   margin-left: 8px;
   padding: 0 10px;
@@ -811,12 +810,6 @@ li.cloud-orders__recent-item:hover {
 .cloud-orders__backfill-tag {
   background: var(--warn);
   color: var(--panel);
-}
-
-.cloud-orders__paper-tag {
-  border: 1px solid var(--line);
-  background: var(--surface-sunken);
-  color: var(--ink-2);
 }
 
 /* ============ 預覽列（退款、修改、付款明細） ============ */

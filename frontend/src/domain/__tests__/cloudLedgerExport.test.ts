@@ -73,7 +73,7 @@ describe('serializeCloudCsv', () => {
       'void_reason', 'deposit_amount', 'unpaid_amount', 'bento_count', 'other_meal_items',
     ]);
     expect(CLOUD_TRANSACTION_CSV_COLUMNS.slice(24)).toEqual([
-      'status', 'backfilled', 'source_seq', 'source_transaction_ids', 'balance_applicability', 'paper_refs',
+      'status', 'backfilled', 'source_seq', 'source_transaction_ids', 'balance_applicability',
     ]);
     expect(row[CLOUD_TRANSACTION_CSV_COLUMNS.indexOf('after_balance')]).toEqual(number(-8));
     expect(buildCloudTransactionCsv([transaction])).toContain('"001"');
@@ -83,7 +83,7 @@ describe('serializeCloudCsv', () => {
     expect(buildCloudMergedTransactionCsv(merged)).toContain('[""tx-1""]');
   });
 
-  it('P13d2: appends the paper numbers of a row (all constituents of a merged row) as the last transaction column', () => {
+  it('#600: a former paper-number prefix stays in the note column as written; there is no paper_refs column', () => {
     const base: CloudReportTransaction = {
       transactionId: 'tx-order', studentId: '11111111-1111-4111-8111-111111111111', businessDate: '2026-10-18',
       type: 'order', mealKind: 'bento', mealPrice: 10, paidAmount: 0, amount: -10, studentNameSnapshot: '001',
@@ -92,20 +92,11 @@ describe('serializeCloudCsv', () => {
       revision: 1, lastCommandId: '00000000-0000-4000-8000-000000000001', updatedAt: '2026-10-18T04:00:00.000Z',
       backfilled: true, sourceSeq: 9, afterBalance: -10,
     };
-    const payment: CloudReportTransaction = {
-      ...base, transactionId: 'tx-payment', type: 'payment', mealKind: null, mealPrice: 0, paidAmount: 10, amount: 10,
-      note: '紙本B-0002：', createdSeq: 3, sourceSeq: 10, afterBalance: 0,
-    };
-    const plain: CloudReportTransaction = { ...base, transactionId: 'tx-plain', note: '一般備註', backfilled: false };
-    const last = CLOUD_TRANSACTION_CSV_COLUMNS.indexOf('paper_refs');
-    expect(last).toBe(CLOUD_TRANSACTION_CSV_COLUMNS.length - 1);
-    expect(buildCloudTransactionCsvRows([base, payment, plain]).map(row => row[last]))
-      .toEqual([text('A-0001'), text('B-0002'), text('')]);
-    const merged = buildCloudMergedTransactions([base, payment]);
-    expect(merged).toHaveLength(1);
-    expect(buildCloudTransactionCsvRows(merged)[0]![last]).toEqual(text('A-0001;B-0002'));
-    // The free-text note column keeps the stored note, prefix included.
-    expect(buildCloudTransactionCsvRows([base])[0]![CLOUD_TRANSACTION_CSV_COLUMNS.indexOf('note')]).toEqual(text('紙本A-0001：前天補登'));
+    expect(CLOUD_TRANSACTION_CSV_COLUMNS).not.toContain('paper_refs');
+    expect(CLOUD_TRANSACTION_CSV_COLUMNS.at(-1)).toBe('balance_applicability');
+    const row = buildCloudTransactionCsvRows([base])[0]!;
+    expect(row).toHaveLength(CLOUD_TRANSACTION_CSV_COLUMNS.length);
+    expect(row[CLOUD_TRANSACTION_CSV_COLUMNS.indexOf('note')]).toEqual(text('紙本A-0001：前天補登'));
   });
 
   it('exports effective cash separately from counted cash and keeps post-close rows distinct', () => {

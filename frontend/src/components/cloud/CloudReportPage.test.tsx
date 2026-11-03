@@ -663,14 +663,15 @@ describe('CloudReportPage', () => {
     expect(screen.getByRole('button', { name: '匯出原始交易 CSV' })).toBeEnabled();
   });
 
-  describe('paper numbers (P13d2)', () => {
+  // #600 (CheerC 2026-11-03): the P13d2 paper number is removed; a former `紙本X：` prefix is ordinary note text.
+  describe('former paper-number notes (#600)', () => {
     const base = report.transactions[0]!;
     const backfilledOrder = { ...base, transactionId: 'transaction-order', backfilled: true, note: '紙本A-0001：前天補登' };
     const backfilledPayment = {
       ...base, transactionId: 'transaction-payment', type: 'payment' as const, mealKind: null, mealPrice: 0, paidAmount: 55,
       amount: 55, createdSeq: 11, sourceSeq: 11, backfilled: true, note: '紙本B-0002：', afterBalance: 1_020,
     };
-    const withPaperRefs = async () => {
+    const withFormerPrefixes = async () => {
       const { buildCloudMergedTransactions } = await import('../../domain/cloudLedgerReport');
       const transactions = [backfilledOrder, backfilledPayment];
       mocks.readReport.mockResolvedValue({
@@ -678,30 +679,15 @@ describe('CloudReportPage', () => {
       });
     };
 
-    it('shows each row\'s paper number as its own tag, with the remark text beside it', async () => {
-      await withPaperRefs();
-      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:paper-original" />);
-      expect(await screen.findByTestId('report-paper-refs-transaction-order')).toHaveTextContent('紙本 A-0001');
-      expect(screen.getByTestId('report-paper-refs-transaction-payment')).toHaveTextContent('紙本 B-0002');
-      const row = screen.getByTestId('report-paper-refs-transaction-order').closest('tr')!;
-      expect(row).toHaveTextContent('前天補登');
-      expect(row).not.toHaveTextContent('紙本A-0001：');
-    });
-
-    it('lists every constituent number on a merged row', async () => {
-      await withPaperRefs();
-      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:paper-merged" />);
-      await screen.findByTestId('report-paper-refs-transaction-order');
-      fireEvent.change(screen.getByLabelText('交易呈現方式'), { target: { value: 'merged' } });
-      const tag = await screen.findByTestId('report-paper-refs-transaction-order');
-      expect(tag).toHaveTextContent('紙本 A-0001');
-      expect(tag).toHaveTextContent('紙本 B-0002');
-    });
-
-    it('shows no tag for a row without a number', async () => {
-      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:paper-none" />);
-      await screen.findByText('來源序號 H=11');
-      expect(screen.queryByTestId('report-paper-refs-transaction-a')).toBeNull();
+    it('shows each row\'s whole note as written, with no number tag; 回填 stays', async () => {
+      await withFormerPrefixes();
+      const { container } = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:paper-original" />);
+      const note = await screen.findByText('紙本A-0001：前天補登');
+      const row = note.closest('tr')!;
+      expect(row).toHaveTextContent('回填');
+      expect(screen.getByText('紙本B-0002：')).toBeVisible();
+      expect(screen.queryByTestId('report-paper-refs-transaction-order')).toBeNull();
+      expect(container.querySelector('.cloud-report__paper-tag')).toBeNull();
     });
   });
 

@@ -1,5 +1,4 @@
 import { SETTLEMENT_CSV_COLUMNS, TRANSACTION_CSV_COLUMNS } from './ledgerExport';
-import { paperRefsIn } from './paperRef';
 import type {
   CloudAuditRow,
   CloudMergedTransaction,
@@ -18,7 +17,6 @@ export const CLOUD_TRANSACTION_CSV_COLUMNS = [
   'source_seq',
   'source_transaction_ids',
   'balance_applicability',
-  'paper_refs',
 ] as const;
 
 export const CLOUD_SETTLEMENT_CSV_COLUMNS = [
@@ -108,7 +106,6 @@ export function buildCloudTransactionCsvRows(
     numeric(transaction.sourceSeq),
     text(JSON.stringify(transactionIds)),
     text(transaction.balanceApplicability ?? (transaction.studentId === '__cashier__' ? 'not-applicable' : 'unavailable')),
-    text(paperRefsIn(merged ? transaction.transactions.map(item => item.note) : [transaction.note]).join(';')),
     ];
   });
 }

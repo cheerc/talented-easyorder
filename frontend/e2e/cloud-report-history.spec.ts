@@ -139,7 +139,8 @@ function shiftDate(day: string, offset: number): string {
   return value.toISOString().slice(0, 10);
 }
 
-// P13d1: entries on a marked past day carry a paper number as the note prefix.
+// Synthetic existing data written under P13d1 (paper number as a note prefix). #600 removed the rule; the prefix stays
+// valid note text, so these fixtures also prove old notes still display and export as written.
 const PAPER_PREFIX = '紙本P12C：';
 
 function ok<T extends { ok: boolean; receipt?: unknown; error?: { code: string; message: string } }>(result: T, operation: string): NonNullable<T['receipt']> {
@@ -642,7 +643,8 @@ test.describe('P12c cloud report and account history acceptance', () => {
           await page.getByLabel('交易呈現方式').selectOption(mode);
           const { ids: uiIds, rowCount: uiRowCount } = await collectUiIds();
           expect(uiIds).toHaveLength(printScope.expectedRows);
-          await expect(page.locator('.cloud-report__paper-tag').first()).toContainText('紙本 P12C');
+          // #600: no paper number tag; the note is shown as written.
+          await expect(page.locator('.cloud-report__paper-tag')).toHaveCount(0);
           expect(new Set(uiIds).size).toBe(printScope.expectedRows);
           const reportBeforeExport = await page.getByTestId('report-ready').innerText();
           const exportSourceSeq = Number(reportBeforeExport.match(/H=(\d+)/)?.[1]);
@@ -656,9 +658,11 @@ test.describe('P12c cloud report and account history acceptance', () => {
           const csv = await readFile(csvPath, 'utf8');
           const csvRows = parseCsv(csv);
           expect(csvRows[0]).toContain('source_seq');
-          // P13d2: the paper number is the last CSV column, and the backfilled rows carry it.
-          expect(csvRows[0].at(-1)).toBe('paper_refs');
-          expect(csvRows.slice(1).some(row => row.at(-1) === 'P12C')).toBe(true);
+          // #600: no paper_refs column; a former prefix stays in the note column as written.
+          expect(csvRows[0]).not.toContain('paper_refs');
+          expect(csvRows[0].at(-1)).toBe('balance_applicability');
+          const noteColumn = csvRows[0].indexOf('note');
+          expect(csvRows.slice(1).some(row => row[noteColumn]?.startsWith(PAPER_PREFIX))).toBe(true);
           const csvIds = exportedTransactionIds(csvRows);
           expect(csvIds).toHaveLength(printScope.expectedRows);
           expect(csvIds).toEqual(uiIds);

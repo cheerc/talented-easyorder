@@ -209,32 +209,29 @@ describe('CloudAccountHistoryPage', () => {
     expect(mocks.listStudents).toHaveBeenCalledTimes(1);
   });
 
-  describe('paper numbers (P13d2)', () => {
+  // #600 (CheerC 2026-11-03): the P13d2 paper number is removed; a former `紙本X：` prefix is ordinary note text.
+  describe('former paper-number notes (#600)', () => {
     const numbered = { ...transaction, note: '紙本A-0123：前天補登' };
     const useNumbered = () => {
       mocks.readAccountHistory.mockResolvedValue({ ...account, transactions: [numbered] });
     };
 
-    it('shows the number apart from the remark text in the transaction details', async () => {
+    it('shows the whole note, prefix included, as the remark in the transaction details', async () => {
       useNumbered();
       render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
       await screen.findByTestId('account-history-ready');
-      expect(screen.getByTestId('history-paper-ref')).toHaveTextContent('A-0123');
-      // The remark text appears once, in the same details list as the number (交易備註 beside 紙本號), never with the prefix.
-      const details = screen.getByTestId('history-paper-ref').closest('dl') as HTMLElement;
-      expect(within(details).getByText('交易備註').nextElementSibling).toHaveTextContent(/^前天補登$/);
-      expect(screen.getAllByText('前天補登')).toHaveLength(1);
-      expect(screen.queryByText('紙本A-0123：前天補登')).toBeNull();
+      expect(screen.queryByTestId('history-paper-ref')).toBeNull();
+      expect(screen.getByText('交易備註').nextElementSibling).toHaveTextContent(/^紙本A-0123：前天補登$/);
     });
 
-    it('keeps the number locked in a correction: the form edits only the text, and the sent note keeps the prefix', async () => {
+    it('corrects from the whole note: the former prefix can be removed and the new note is sent as typed', async () => {
       useNumbered();
       render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
       await screen.findByTestId('account-history-ready');
       openTransactionMenu();
       fireEvent.click(screen.getByRole('button', { name: '更正' }));
-      expect(screen.getByTestId('correction-paper-ref')).toHaveTextContent('紙本號 A-0123（更正時不能修改）');
-      expect(screen.getByLabelText('交易備註')).toHaveValue('前天補登');
+      expect(screen.queryByTestId('correction-paper-ref')).toBeNull();
+      expect(screen.getByLabelText('交易備註')).toHaveValue('紙本A-0123：前天補登');
       fireEvent.change(screen.getByLabelText('交易備註'), { target: { value: '前天補登（更正金額）' } });
       fireEvent.change(screen.getByLabelText('更正餐費'), { target: { value: '60' } });
       fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: '餐費輸入錯誤' } });
@@ -242,17 +239,8 @@ describe('CloudAccountHistoryPage', () => {
       await waitFor(() => expect(mocks.mutateTransaction).toHaveBeenCalledTimes(1));
       expect(mocks.mutateTransaction).toHaveBeenCalledWith(expect.objectContaining({
         kind: 'CorrectTransaction',
-        payload: { mealPrice: 60, paidAmount: 20, amount: -40, note: '紙本A-0123：前天補登（更正金額）', reason: '餐費輸入錯誤' },
+        payload: { mealPrice: 60, paidAmount: 20, amount: -40, note: '前天補登（更正金額）', reason: '餐費輸入錯誤' },
       }));
-    });
-
-    it('shows no locked number for a transaction without one', async () => {
-      render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
-      await screen.findByTestId('account-history-ready');
-      expect(screen.queryByTestId('history-paper-ref')).toBeNull();
-      openTransactionMenu();
-      fireEvent.click(screen.getByRole('button', { name: '更正' }));
-      expect(screen.queryByTestId('correction-paper-ref')).toBeNull();
     });
   });
 
