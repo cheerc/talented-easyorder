@@ -280,7 +280,7 @@ npm run test:e2e
 
 **RED/GREEN：** L08/R03/R04：commit送達但回覆丟失、tab crash重查commandId、被B取得lease後A恢復、quota fail、缺config、logout/cache清理；檢查storage沒有正式帳務／個資，不把失敗顯示已同步。
 
-**Acceptance/demo：** 網路失敗不丟確定已入帳資料也不重複；中文錯誤帶下一步；歷史補登要理由與紙本號，未重開不得補；cloud看不到reset/restoreDataset/seed/模擬平板。
+**Acceptance/demo：** 網路失敗不丟確定已入帳資料也不重複；中文錯誤帶下一步；歷史補登要理由（紙本號要求依 #600 拆除），未重開不得補；cloud看不到reset/restoreDataset/seed/模擬平板。
 
 ### P14 — 每日增量備份與完整性檢查
 
