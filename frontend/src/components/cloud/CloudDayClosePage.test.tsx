@@ -1,4 +1,4 @@
-import { StrictMode, type ReactNode } from 'react';
+import { StrictMode, useState, type ReactNode } from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Firestore } from 'firebase/firestore';
@@ -292,6 +292,42 @@ describe('CloudDayClosePage', () => {
     expect(within(form).getByTestId('pending-close-block')).toHaveTextContent('先完成結果確認後才能關帳');
     fireEvent.submit(form);
     expect(repository.closeDay).not.toHaveBeenCalled();
+  });
+
+  it('closes when clicked right after the §7.4 block clears, before passive effects run (#611)', async () => {
+    // The flag changes outside act() (as a pending-command query resolving would), and the click comes from a
+    // MutationObserver: right after React commits the enabled button, before that commit's passive effects flush.
+    let setUnresolved: (value: boolean) => void = () => undefined;
+    const db = {} as Firestore;
+    function Harness() {
+      const [unresolved, set] = useState(true);
+      setUnresolved = set;
+      return <CloudDayClosePage db={db} leaseEpoch={4} identityKey="uid-a:4" hasUnresolvedPendingCommands={unresolved} />;
+    }
+    render(<Harness />);
+    const form = await closeForm();
+    const counted = within(form).getByRole('textbox', { name: '實點現金（元）' });
+    await waitFor(() => expect(counted).toBeEnabled());
+    fireEvent.change(counted, { target: { value: '1170' } });
+    expect(counted).toHaveValue('1170');
+    expect(within(form).getByTestId('close-submit')).toBeDisabled();
+    let clicked = false;
+    const observer = new MutationObserver(() => {
+      if (clicked) return;
+      const submit = document.querySelector<HTMLButtonElement>('[data-testid="close-submit"]');
+      if (!submit || submit.disabled) return;
+      clicked = true;
+      fireEvent.click(submit);
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
+    try {
+      await new Promise<void>(resolve => setTimeout(() => { setUnresolved(false); resolve(); }, 0));
+      await waitFor(() => expect(clicked).toBe(true));
+      await waitFor(() => expect(repository.closeDay).toHaveBeenCalledTimes(1), { timeout: 3_000 });
+      expect(screen.queryByText('尚有待核對命令；依系統關帳規則，先完成結果確認後才能關帳。保留原編號，不要重新收款。')).not.toBeInTheDocument();
+    } finally {
+      observer.disconnect();
+    }
   });
 
   it('closes without a note when the counted cash equals the expected cash', async () => {
