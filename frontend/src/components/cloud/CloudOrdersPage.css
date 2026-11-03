@@ -172,8 +172,8 @@
 }
 
 .cloud-orders__search-field:focus-within {
-  border-color: var(--ink);
-  box-shadow: 0 0 0 4px var(--line-2);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .cloud-orders__search-prefix {
@@ -839,8 +839,7 @@ li.cloud-orders__recent-item:hover {
 .cloud-orders button:focus-visible,
 .cloud-orders select:focus-visible,
 .cloud-orders summary:focus-visible,
-.cloud-orders [role="option"]:focus-visible,
-.cloud-orders .cloud-orders__search-input:focus-visible {
+.cloud-orders [role="option"]:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
