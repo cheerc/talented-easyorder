@@ -192,7 +192,7 @@ F2／F5 的區間稽核對 `businessDate` 非 null 的命令按營業日歸屬�
 
 日期合法性由 Rules 核對 YYYY-MM-DD、年／月／日與 Timestamp 起迄（Asia/Taipei UTC+8）；不得只驗 regex。goLiveDate 之前不能建立業務交易；未來日期可預排菜單，不可收款、訂餐或關帳。F1 用台北今天，不准 prototype 模擬日介入正式版；F2 可對已建立、明確選取／重開的歷史日修正與紙本補登，標記補登理由。
 
-補登日的備註與今天相同，沒有格式要求；P13d1／P13d2 的紙本號前綴已依 #600（CheerC 2026-11-03）拆除，既有帶前綴的備註當一般文字保留（不改寫、不遷移，照樣可 export／replay）。Rules 於 #600 Phase 1 拆除；訂餐頁、F2、F5 的紙本號欄位與交易 CSV 的 `paper_refs` 欄於 Phase 2 移除。
+補登日的備註與今天相同，沒有格式要求；P13d1／P13d2 的紙本號前綴已依 #600（CheerC 2026-11-03）拆除，既有帶前綴的備註當一般文字保留（不改寫、不遷移，照樣可 export／replay）。Rules 於 #600 Phase 1（#612）拆除；訂餐頁、F2、F5 的紙本號欄位、標籤、更正鎖號與交易 CSV 的 `paper_refs` 欄於 Phase 2 移除，備註原文送出與顯示，更正以完整備註為初值。
 
 open → closed → reopened → closed。關帳需 openingCash 明確確認、countedCash 非負整數，差異非零必填原因。規則從 day totals 算 expected，不能接受 client 自填總額。關帳UI另要求本頁沒有unresolved command；此條件不是Rules可觀察的伺服器不變量，遺失回應須先查receipt。伺服器只依已提交head/day狀態判斷。結帳與 day 鎖同次 commit；新交易與關帳競賽只能得到「交易先入帳後再結」或「結帳先完成、交易拒絕」。關帳後該日的交易、菜單、開帳金額與期初更正均禁止，唯一合法日期變更是帶理由的 ReopenDay。
 
