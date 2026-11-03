@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Firestore } from 'firebase/firestore';
 import { useFirebaseOptional } from '../../providers/FirebaseProvider';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
@@ -115,14 +115,14 @@ export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange,
   // Awaited continuations read the latest committed owner, never a stale render closure.
   const uid = access.ok ? access.profile.uid : null;
   const latestRef = useRef({ db, uid, isHolder: lease.isHolder, epoch: lease.epoch });
-  useEffect(() => { latestRef.current = { db, uid, isHolder: lease.isHolder, epoch: lease.epoch }; });
+  useLayoutEffect(() => { latestRef.current = { db, uid, isHolder: lease.isHolder, epoch: lease.epoch }; });
   const onRecoveryChangeRef = useRef(onRecoveryChange);
-  useEffect(() => { onRecoveryChangeRef.current = onRecoveryChange; });
+  useLayoutEffect(() => { onRecoveryChangeRef.current = onRecoveryChange; });
   const onRecordedRef = useRef(onRecorded);
-  useEffect(() => { onRecordedRef.current = onRecorded; });
+  useLayoutEffect(() => { onRecordedRef.current = onRecorded; });
   // Awaited continuations read the live lock, never the value captured when the handler started.
   const lockedRef = useRef(locked);
-  useEffect(() => { lockedRef.current = locked; });
+  useLayoutEffect(() => { lockedRef.current = locked; });
 
   const clearTimer = (operation: BackupOperation) => {
     if (operation.timerId !== null) window.clearTimeout(operation.timerId);

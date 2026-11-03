@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type SetStateAction } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type SetStateAction } from 'react';
 import { getAuth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
@@ -343,7 +343,7 @@ export function CloudDayVendorsPage({
   const recoveryReader = useMemo(() => getCloudRecoveryReader(db), [db]);
   const repository = useMemo(() => createCloudDayVendorRepository(db, { recoveryReader }), [db, recoveryReader]);
   const onLedgerChangedRef = useRef(onLedgerChanged);
-  useEffect(() => { onLedgerChangedRef.current = onLedgerChanged; }, [onLedgerChanged]);
+  useLayoutEffect(() => { onLedgerChangedRef.current = onLedgerChanged; }, [onLedgerChanged]);
   let currentUid: string | null = null;
   try { currentUid = getAuth(db.app).currentUser?.uid ?? null; } catch { /* fail closed */ }
   const [previousLookup, setPreviousLookup] = useState<PreviousClosedLookupView>({ status: 'idle' });

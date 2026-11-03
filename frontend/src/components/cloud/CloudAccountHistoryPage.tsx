@@ -214,7 +214,7 @@ export function CloudAccountHistoryPage({
   const operationRef = useRef<MutationOperation | null>(null);
   const navigationRef = useRef(onNavigationStateChange);
   const latestRef = useRef({ range, selectedId, readyScopeKey, scopeKey });
-  useEffect(() => {
+  useLayoutEffect(() => {
     navigationRef.current = onNavigationStateChange;
     latestRef.current = { range, selectedId, readyScopeKey, scopeKey };
   });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandErrorCode } from '../../domain/cloudCommands';
 import {
@@ -320,7 +320,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
 
   const recoverRef = useRef(recover);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     recoverRef.current = recover;
   }, [recover]);
 
