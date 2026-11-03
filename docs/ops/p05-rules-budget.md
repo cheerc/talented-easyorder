@@ -1014,3 +1014,41 @@ Same probe (`1 == 1 && ` terms at one anchor, bisected against a positive Emulat
 | `tx` | `P11c2a.7c` | denied | +15 / +16 |
 
 Every anchor is equal or one better (`tx` +14 → +15, the removed comparison). The tightest backfill anchors are unchanged: day update +11, transaction create +15, command create +20.
+
+## #600 Phase 1 — paper number removed
+
+Product decision: CheerC, 2026-11-03 (#600: the P13d1／P13d2 paper number is over-engineering, remove it). Contract: backend spec §7.4, [P11 day close contract §12.1](../superpowers/specs/2026-10-17-cloud-day-close-contract.md).
+
+Rules SHA-256: main (`5df019e`) `c1e30e2c1e67deb3ccbd39ee6c67796fde53985bd866d33736e044d3eeef28f0`; branch `13aa906145a0986a4483b66708ec0b69c7e58aaa77e99aba44d31a8d790b0b27`.
+
+### Rule layout
+
+- `validPaperNote(text)` (one regex) is deleted.
+- `validTransactionDay(dayId, day, text)` → `validTransactionDay(dayId, day)` = `validCurrentTaipeiDate(dayId) || exists(backfillDays/dayId)`. The `text` argument is dropped at its three callers: `validTransactionDoc` (`tx.note`), `validCreateCashMovement` and the CreateCashMovement branch of `transactionCommand` (`command.payload.reason`). `day` stays (#601).
+- A closed day is still refused by every caller's own status check: `validTransactionPayload` `dayBefore.status in ['open', 'reopened']` (the only caller of `validTransactionDoc`), `validCreateCashMovement` (status check right before its `validTransactionDay`), and the `transactionCommand` CreateCashMovement branch (`command.before.day.status`).
+- `validCorrectedTransaction` loses the clause that kept an existing paper number (`validPaperNote` twice and two `split` comparisons); its other conditions are unchanged.
+- Access calls: unchanged. No `get`/`exists`/`getAfter` added or removed.
+
+### Expression headroom
+
+Same probe as the #601 appendix (`1 == 1 && ` terms at the start of one `allow` condition, bisected against a positive Emulator case; `+lo / +hi`). Main Rules from `git show 5df019e:firestore.rules`. The P11c2a cases (prefixed notes, still valid) use the branch `cloudDayClose.spec.ts` on both sides; the correction rows use main's `P13d1.4` on main and its rewrite `#600.4` on the branch; `#600.7` is refused on main (new behavior).
+
+| Anchor | Case | main | branch |
+|---|---|---:|---:|
+| `tx` (transaction create) | `P11c2a.4` gap day end to end | +15 / +16 | +17 / +18 |
+| `cmd` (command create) | `P11c2a.4` | +20 / +21 | +20 / +21 |
+| `head` (dataHead update) | `P11c2a.4` | +95 / +96 | +95 / +96 |
+| `dayWrite` (day update) | `P11c2a.4` | +11 / +12 | +11 / +12 |
+| `tx` | `P11c2a.14` backfilled order, payment, cash movement | +15 / +16 | +17 / +18 |
+| `cmd` | `P11c2a.14` | +20 / +21 | +20 / +21 |
+| `head` | `P11c2a.14` | +95 / +96 | +95 / +96 |
+| `dayWrite` | `P11c2a.14` | +11 / +12 | +11 / +12 |
+| `tx` | `P11c2a.7c` raw backfilled CreateOrder, reopened marked day | +15 / +16 | +17 / +18 |
+| `cmd` | `P11c2a.7c` | +20 / +21 | +20 / +21 |
+| `head` | `P11c2a.7c` | +95 / +96 | +95 / +96 |
+| `dayWrite` | `P11c2a.7c` | +11 / +12 | +11 / +12 |
+| `tx` / `cmd` / `head` / `dayWrite` | `#600.7` raw CreateOrder, ordinary note, marked day | denied | +17 / +20 / +95 / +11 |
+| `txUpdate` (transaction update) | `P13d1.4` (main) → `#600.4` (branch), backfilled corrections and void | +96 / +97 | +96 / +97 |
+| `txUpdate` | `P10.11` corrections (`cloudTransactionMutation.spec.ts`) | +96 / +97 | +96 / +97 |
+
+Every anchor is equal or better: the transaction create gains two terms (+15 → +17, the removed regex call). The tightest anchors are unchanged: day update +11, command create +20. `txUpdate` +96 / +97 is the usual compile boundary on both sides (see P13d1), so the removed correction clause does not show there.
