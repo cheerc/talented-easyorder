@@ -4,7 +4,7 @@
 <!-- 改了什麼；列出主要檔案或行為 -->
 
 ## 原因
-<!-- 對應 issue（Closes #N）、spec 章節、plan phase 或使用者授權 -->
+<!-- 對應 issue（Closes #N）、spec 章節與驗收案例、plan phase 或使用者授權 -->
 
 ## 做法與範圍
 <!-- 實作方式；明列沒改的部分（Rules、command kind、備份／replay 格式、讀取量）與偏離 plan 之處 -->
@@ -19,6 +19,10 @@
 - 已執行：
 - 未執行／交給 CI：
 - skipped 或失敗：
+- CI run：
+
+## 三分鐘 demo
+<!-- 使用者可照著操作、確認效果的步驟；docs-only 寫 N/A -->
 
 ## 部署與實機驗收
 - 部署：未部署（部署與正式 smoke 由使用者本機操作）

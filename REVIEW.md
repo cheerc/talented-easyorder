@@ -61,4 +61,4 @@ review 結果先寫一行結論（有無 🔴 Important），再逐條列 findin
 
 ## TDD 證據
 
-handoff 要求帳務、command、Rules 行為變更的 PR 記錄 RED（先失敗的測試）與 GREEN（實作）commit。若這類 PR 的 commit 與描述都看不出 RED／GREEN 證據，以 🔴 指出。純文件、spec、行為不變的重構不適用。
+handoff 要求 PR body 記錄 RED（先失敗的測試）與 GREEN（實作）證據。帳務、command、Rules、lease、備份／復原的行為變更若 commit 與描述都看不出 RED／GREEN 證據，以 🔴 指出；其他行為變更缺少時為 🟡。純文件、spec、行為不變的重構寫 N/A 即可。
