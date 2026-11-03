@@ -120,12 +120,14 @@ service cloud.firestore {
       return text.matches('(?s)^紙本[A-Za-z0-9-]{1,20}：.*');
     }
 
-    // P11c2a: the Taipei today, or a past day that StartBackfill marked and that never closed. The marker
-    // (`backfillDays/{dayId}`, immutable) is only created for a day before today, so no date check is
-    // needed here. Today short-circuits, so ordinary writes pay for no extra document access.
+    // P11c2a: the Taipei today, or a past day that StartBackfill marked. The marker (`backfillDays/{dayId}`,
+    // immutable) is only created for a day before today, so no date check is needed here. A marked day
+    // accepts entries again once reopened; a closed day never does — every caller also requires
+    // `status in ['open', 'reopened']` (#601, CheerC 2026-11-03). `day` stays in the signature for the callers.
+    // Today short-circuits, so ordinary writes pay for no extra document access.
     function validTransactionDay(dayId, day, text) {
       return validCurrentTaipeiDate(dayId)
-        || (validPaperNote(text) && day.lastSettlementRevision == 0 && exists(/databases/$(database)/documents/backfillDays/$(dayId)));
+        || (validPaperNote(text) && exists(/databases/$(database)/documents/backfillDays/$(dayId)));
     }
 
     function validHead(head) {
@@ -1340,8 +1342,8 @@ service cloud.firestore {
     // P11c2a StartBackfill: marks a past day that never closed as being backfilled, with a reason, so that
     // CreateOrder, CreatePayment and CreateCashMovement may land on it (validTransactionDay). Only the
     // marker `backfillDays/{dayId}` is written; the day document stays exactly as it was. A day that has
-    // ever been closed (`lastSettlementRevision > 0`) can never be marked, and a marked day stops accepting
-    // them once it closes.
+    // ever been closed (`lastSettlementRevision > 0`) can never be marked; a marked day accepts them again
+    // once reopened, and a closed day never does (#601).
     function validStartBackfill(commandId, command) {
       let dayId = command.targets.dayId;
       let head = get(/databases/$(database)/documents/system/dataHead).data;

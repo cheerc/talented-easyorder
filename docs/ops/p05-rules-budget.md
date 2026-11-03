@@ -979,3 +979,38 @@ Probe tool `/mnt/project-files/tools/rules-probe` with one new anchor, `listComm
 The four write anchors are identical on both sides. The list rule itself cost one term (`+97` → `+96`). As in earlier appendices the `+hi` of these rows is the point where the Emulator stops compiling the rule (`Expression is too complex to evaluate safely`), not a runtime cap; a list rule has no `for` and evaluates one `get` of the operator, one `get` of the lease and about ten comparisons, so it is nowhere near the 1,000-expression runtime cap. Access calls: unchanged for writes; a list reads `operators/{uid}` and `system/accessLease` as before.
 
 Not measured by the probe: the matrix collection cases cannot be filtered with `-t` (they use state from earlier tests), so the matrix was run whole, on the branch Rules and on main's Rules (red).
+
+## #601 Phase 1 — a reopened marked day takes backfills again
+
+Product decision: CheerC, 2026-11-03 (#601, 「可以繼續補登」). Contract: [P11 day close contract §12.1](../superpowers/specs/2026-10-17-cloud-day-close-contract.md).
+
+Rules SHA-256: main (`a7fc6d8`, unchanged up to `ad867ad`) `8fde3358406d591a662700fc8dcaf135c55cff8524c07536091a9a3096579243`; branch `c1e30e2c1e67deb3ccbd39ee6c67796fde53985bd866d33736e044d3eeef28f0`.
+
+### Rule layout
+
+- `validTransactionDay(dayId, day, text)` loses `day.lastSettlementRevision == 0`; it is now `validCurrentTaipeiDate(dayId) || (validPaperNote(text) && exists(backfillDays/dayId))`. The `day` parameter stays (three callers unchanged).
+- A closed day is still refused, because every caller also requires `status in ['open', 'reopened']`: `validTransactionPayload` (the `dayBefore.status` check; it is the only caller of `validTransactionDoc`, which holds the day check for orders and payments), `validCreateCashMovement` (status check right before its `validTransactionDay`), and the CreateCashMovement branch of `transactionCommand` (same).
+- Access calls: unchanged. No `get`/`exists`/`getAfter` added or removed; one comparison fewer.
+
+### Expression headroom
+
+Same probe (`1 == 1 && ` terms at one anchor, bisected against a positive Emulator case; `+lo / +hi`), same test file and cases on both sides; main Rules from `git show a7fc6d8:firestore.rules`.
+
+| Anchor | Case | main | branch |
+|---|---|---:|---:|
+| `cmd` (command create) | `P11.17` backfill opening | +70 / +71 | +70 / +71 |
+| `head` (dataHead update) | `P11.17` | +95 / +96 | +95 / +96 |
+| `dayWrite` (day update) | `P11.17` | +93 / +94 | +93 / +94 |
+| `cmd` | `P11c2a.4` gap day end to end | +20 / +21 | +20 / +21 |
+| `head` | `P11c2a.4` | +95 / +96 | +95 / +96 |
+| `dayWrite` | `P11c2a.4` | +11 / +12 | +11 / +12 |
+| `tx` (transaction create) | `P11c2a.4` | +14 / +15 | +15 / +16 |
+| `cmd` | `P11c2a.14` backfilled order, payment, cash movement | +20 / +21 | +20 / +21 |
+| `tx` | `P11c2a.14` | +14 / +15 | +15 / +16 |
+| `head` | `P11c2a.14` | +95 / +96 | +95 / +96 |
+| `cmd` | `P11c2a.7c` raw backfilled CreateOrder on a reopened marked day | denied (new behavior) | +20 / +21 |
+| `head` | `P11c2a.7c` | denied | +95 / +96 |
+| `dayWrite` | `P11c2a.7c` | denied | +11 / +12 |
+| `tx` | `P11c2a.7c` | denied | +15 / +16 |
+
+Every anchor is equal or one better (`tx` +14 → +15, the removed comparison). The tightest backfill anchors are unchanged: day update +11, transaction create +15, command create +20.
