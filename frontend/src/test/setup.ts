@@ -4,6 +4,17 @@ import {
   createMemoryCloudPendingJournalTestAdapter,
   installCloudPendingJournalTestAdapter,
 } from '../firebase/cloudPendingJournal';
+import { guardTaipeiMidnight } from './taipeiMidnightGuard';
+
+// Before the test file is imported, so its "today" is computed on the Taipei day its Emulator commands run on (#614).
+// stderr, because console output of a setup file is not shown. Typed locally: the App project has no Node types.
+const nodeProcess = (globalThis as {
+  process?: { env: Record<string, string | undefined>; stderr: { write: (text: string) => unknown } };
+}).process;
+await guardTaipeiMidnight({
+  env: nodeProcess?.env ?? {}, now: Date.now, sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
+  log: message => { nodeProcess?.stderr.write(`${message}\n`); },
+});
 
 const cloudPendingJournalTestAdapter = createMemoryCloudPendingJournalTestAdapter();
 installCloudPendingJournalTestAdapter(cloudPendingJournalTestAdapter);
