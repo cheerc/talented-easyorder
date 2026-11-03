@@ -73,3 +73,46 @@ export function validateProviderState(manifest, billing, database) {
     throw new Error('Firestore 必須是此 project 的 Standard Native、free-tier (default)，且 region 與 release 相同');
   }
 }
+
+export function ciDeploymentArgs(manifest, project, step) {
+  return [...deploymentArgs(manifest, project, step), '--non-interactive'];
+}
+
+// GitHub Actions 部署：取代本機 TTY 確認的是 GitHub Environment 核准；環境變數 EASYORDER_DEPLOY_PROJECT
+// 只在核准後的 environment job 內存在，且必須與 release 及 --project 三者一致。
+export function validateCiDeployment(env, manifest, project) {
+  validateProject(project, false);
+  if (env.GITHUB_ACTIONS !== 'true' || env.GITHUB_EVENT_NAME !== 'workflow_dispatch') throw new Error('deploy-ci 只能在 GitHub Actions 的手動 workflow_dispatch 執行');
+  if (env.GITHUB_REF !== 'refs/heads/main') throw new Error('deploy-ci 只能從 main 部署');
+  if (env.EASYORDER_DEPLOY_PROJECT !== project) throw new Error('GitHub Environment 的 EASYORDER_DEPLOY_PROJECT 與 --project 不一致');
+  if (env.FIRESTORE_EMULATOR_HOST || env.FIREBASE_AUTH_EMULATOR_HOST) throw new Error('正式部署前須移除 Emulator 環境變數');
+  if (manifest.emulator !== false || manifest.project !== project) throw new Error('禁止部署 Emulator release 或不同 project');
+  if (!/^[0-9a-f]{40}$/.test(manifest.sourceSha ?? '') || manifest.sourceSha !== env.GITHUB_SHA) throw new Error('release 來源 SHA 與這次 workflow 的 commit 不一致');
+  if (manifest.sourceDirty !== false) throw new Error('release 來源工作目錄有未提交變更');
+}
+
+const indexFields = fields => {
+  const list = fields.map(field => `${field.fieldPath}:${field.order ?? field.arrayConfig ?? field.vectorConfig ?? ''}`);
+  while (list.length && list.at(-1).startsWith('__name__:')) list.pop();
+  return list.join(',');
+};
+const indexKey = (group, scope, fields) => `${group}|${scope ?? 'COLLECTION'}|${indexFields(fields)}`;
+
+// 比對 firestore.indexes.json 的 composite indexes 與 `gcloud firestore indexes composite list --format=json`。
+// 遠端多出的 index 不影響（部署不帶 --force，不刪除）；本機設定的每個 index 都必須存在且 READY。
+export function compositeIndexStatus(config, listed) {
+  if (!Array.isArray(listed)) throw new Error('index 清單格式不合法');
+  const remote = new Map();
+  for (const index of listed) {
+    const group = /\/collectionGroups\/([^/]+)\/indexes\//.exec(index.name ?? '')?.[1];
+    if (group && Array.isArray(index.fields)) remote.set(indexKey(group, index.queryScope, index.fields), index.state);
+  }
+  const missing = [];
+  const notReady = [];
+  for (const index of config.indexes ?? []) {
+    const key = indexKey(index.collectionGroup, index.queryScope, index.fields);
+    if (!remote.has(key)) missing.push(key);
+    else if (remote.get(key) !== 'READY') notReady.push(`${key}=${remote.get(key)}`);
+  }
+  return { ready: missing.length === 0 && notReady.length === 0, missing, notReady };
+}
