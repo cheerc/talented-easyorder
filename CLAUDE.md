@@ -7,7 +7,7 @@
 
 ## 安全與操作邊界
 
-- agent 測試只用 `demo-easyorder` Emulator 與合成資料。Production credentials、資源、bootstrap 及正式 smoke test 由使用者在自己的電腦操作；deploy 由使用者在本機，或由使用者親自觸發並核准 GitHub `Deploy to Firebase` workflow。agent 不觸發該 workflow、不核准 deployment、不接收或寫入正式 secret。
+- agent 測試只用 `demo-easyorder` Emulator 與合成資料。Production credentials、資源、bootstrap 及正式 smoke test 由使用者在自己的電腦操作；deploy 由使用者在本機，或由使用者親自觸發並核准 GitHub `Deploy to Firebase` workflow。agent 只能在使用者於當次對話明確要求部署時，以 `gh workflow run` 觸發 target `firebase-test`；不觸發 `firebase-production`、一律不核准 deployment（Review deployments 由使用者本人按），不接收或寫入正式 secret。
 - 不碰 payroll、billing／Blaze、Android。文件中舊的 Firebase setup／deploy 命令不代表可用於正式環境或已獲授權。
 - 不提交真實姓名、餘額、紙本／Excel、瀏覽器截圖或其他個資。`CLAUDE.md` 是工作指引，不是 Rules、CI、permission 或 security control 的替代品。
 

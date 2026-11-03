@@ -157,7 +157,7 @@ init 建 schema 1、seq 0、維護中的 head。activate-empty 只接受空白�
 
 ## 9. GitHub Actions 部署（本人觸發並核准）
 
-本機第 3、4 節之外的另一個入口（信任範圍：部署 job 有 OIDC 權限，job 內執行的依賴與 build 程式理論上也能要 token；workflow 以 `--ignore-scripts` 安裝依賴，但 build 本身的風險與本機部署相同）：`.github/workflows/deploy.yml` 從 main 建 release，依序部署 indexes → 等 composite index 全部 READY → rules → hosting。取代本機 `DEPLOY project step` 確認的是 GitHub Environment 的核准；仍先檢查 billing 未啟用、Firestore 為同 region 的 Standard Native free-tier。repo 不存任何金鑰，Google 端只信任本 repo 指定 Environment 的 OIDC token。agent 不觸發、不核准此 workflow。
+本機第 3、4 節之外的另一個入口（信任範圍：部署 job 有 OIDC 權限，job 內執行的依賴與 build 程式理論上也能要 token；workflow 以 `--ignore-scripts` 安裝依賴，但 build 本身的風險與本機部署相同）：`.github/workflows/deploy.yml` 從 main 建 release，依序部署 indexes → 等 composite index 全部 READY → rules → hosting。取代本機 `DEPLOY project step` 確認的是 GitHub Environment 的核准；仍先檢查 billing 未啟用、Firestore 為同 region 的 Standard Native free-tier。repo 不存任何金鑰，Google 端只信任本 repo 指定 Environment 的 OIDC token。agent 只能在本人於當次對話明確要求部署時觸發 `firebase-test`（`gh workflow run deploy.yml --ref main -f target=firebase-test`），不觸發 `firebase-production`；Review deployments 一律由本人核准，agent 不呼叫 pending_deployments API，也不以本人的 token 代為核准。
 
 測試與正式 project 各做一次以下設定（`<ENV>` 分別是 `firebase-test`、`firebase-production`）。Google Cloud 設定都在 Spark 免費範圍內，不需要 billing。
 
@@ -218,8 +218,8 @@ repo Settings → Environments → New environment，名稱 `<ENV>`：
 ### 9.3 部署、核對與停用
 
 1. 確認要部署的 commit 已在 main，且該 commit 的 Frontend CI（push）成功；workflow 會再檢查一次，沒有就停。
-2. Actions → **Deploy to Firebase** → Run workflow，branch 選 `main`，target 選 `<ENV>`。
-3. 等 run 顯示 Waiting，按 **Review deployments** 核對 commit 後 Approve。
+2. Actions → **Deploy to Firebase** → Run workflow，branch 選 `main`，target 選 `<ENV>`。`firebase-test` 也可由本人要求 agent 以上述 `gh workflow run` 觸發；`firebase-production` 只由本人觸發。
+3. 等 run 顯示 Waiting，本人按 **Review deployments** 核對 commit 後 Approve（不論由誰觸發）。
 4. 完成後在 evidence 記 run URL 與 commit（run log 會印出各步結果）；workflow 不上傳 release／receipt artifact，因為公開 repo 的 artifact 任何登入使用者都能下載。照第 6 節做 smoke 並匿名回報。CI 部署成功不等於 smoke 通過。
 
 任一步失敗會停在該步，後面的步驟不執行；修正後重跑整個 workflow（從新 release 重部署，不跳步）。index 30 分鐘內未 READY 會停在 rules 之前。回退依第 8 節，在 Hosting release history 由本人操作。
