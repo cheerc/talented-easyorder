@@ -1130,7 +1130,7 @@ function validateCashMovementReceipt(
   const dayBefore = validateReceiptDay(before.day, dayId, 'receipt.before.day');
   const dayAfter = validateReceiptDay(after.day, dayId, 'receipt.after.day');
   const transactionAfter = validateReceiptTransaction(after.transaction, 'receipt.after.transaction');
-  if (dayId < String(headBefore.goLiveDate) || !transactionDayAllowed(dayId, committedAt, dayBefore) || dayBefore.status === 'closed') {
+  if (dayId < String(headBefore.goLiveDate) || !transactionDayAllowed(dayId, committedAt) || dayBefore.status === 'closed') {
     throw new InvalidCloudCommandInput('櫃台收支 receipt 日期或營業日狀態不一致');
   }
   const totalsBefore = dayBefore.totals as Record<string, unknown>;
@@ -1519,12 +1519,13 @@ function validateDaySettlementReceipt(
 
 /** 補開帳 receipt：過去、未開帳的營業日只補上第一次開帳現金與開帳人／時間。 */
 /**
- * CreateOrder／CreatePayment／CreateCashMovement 的營業日：committedAt 的台北今天，或「從沒關過帳的過去日」
- * （契約 §12：回填）。回填標記是否存在不在 receipt 內，Rules 與 P14 replay 另行證明。
+ * CreateOrder／CreatePayment／CreateCashMovement 的營業日：committedAt 的台北今天，或過去日（契約 §12：回填）。
+ * 過去日是否有回填標記不在 receipt 內，由 Rules 與 P14 replay 證明；關帳狀態由呼叫端的 `status === 'closed'` 拒絕。
+ * 有標記的日子關帳後重開可以繼續補登（#601，CheerC 2026-11-03）。
  */
-function transactionDayAllowed(dayId: string, committedAt: Timestamp, dayBefore: Record<string, unknown>): boolean {
+function transactionDayAllowed(dayId: string, committedAt: Timestamp): boolean {
   const today = taipeiCalendarDate(committedAt);
-  return dayId === today || (dayId < today && dayBefore.lastSettlementRevision === 0);
+  return dayId <= today;
 }
 
 function validateBackfillOpeningReceipt(
@@ -2000,7 +2001,7 @@ function validateReceiptSnapshots(
     throw new InvalidCloudCommandInput('CreateOrder receipt 缺少今日餐點菜單 snapshot');
   }
   if (normalized.targets.dayId < String(headBefore.goLiveDate)
-    || !transactionDayAllowed(normalized.targets.dayId, committedAt, dayBefore)
+    || !transactionDayAllowed(normalized.targets.dayId, committedAt)
     || dayBefore.status === 'closed'
     || (order && studentBefore.status !== 'active')
     || normalized.targets.dayId < String((studentBefore.openingBalance as Record<string, unknown>).asOfDate)

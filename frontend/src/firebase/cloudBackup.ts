@@ -376,11 +376,12 @@ function checkBackfillReplay(record: BackupCommandRecord, state: Record<string, 
     const committed = taipeiDateOfSerialized(record.committedAt);
     if (dayId > committed) throw new BackupValidationError(`command seq ${record.seq} 交易的營業日晚於提交日期`);
     if (dayId < committed) {
-      // A transaction created after its business day needs an earlier marker and a day that never closed.
+      // A transaction created after its business day needs an earlier marker and a day that is not closed;
+      // a marked day takes them again once reopened (#601). Replay is no wider than Rules.
       const dayBefore = before.day as Record<string, unknown>;
       if (!Object.hasOwn(state, `backfillDays/${dayId}`) || state[`backfillDays/${dayId}`] === null
-        || dayBefore.lastSettlementRevision !== 0) {
-        throw new BackupValidationError(`command seq ${record.seq} 交易晚於營業日建立，但該日沒有較早的回填標記`);
+        || dayBefore.status === 'closed') {
+        throw new BackupValidationError(`command seq ${record.seq} 交易晚於營業日建立，但該日沒有較早的回填標記，或該日是關帳狀態`);
       }
     }
   }

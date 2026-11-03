@@ -449,7 +449,7 @@ function resultFromUnknownError(message = '提交回應不確定，請用原 com
  * A diagnosis is a command error code, or one of two finer reasons a transaction on a past day is refused
  * (contract §12.2); `leaseDenialResult` turns them into the code and message the operator sees.
  */
-type Diagnosis = CommandErrorCode | 'DAY_REOPENED_AFTER_CLOSE' | 'DAY_REOPENED_NO_MARKER' | 'DAY_NOT_BACKFILLING' | null;
+type Diagnosis = CommandErrorCode | 'DAY_REOPENED_NO_MARKER' | 'DAY_NOT_BACKFILLING' | null;
 
 /**
  * Revisions matched but Rules still refused an order, payment or cash movement: say why when the day is not today.
@@ -463,7 +463,8 @@ async function diagnoseTransactionDay(db: Firestore, dayId: string, dayValue: Da
   if (dayValue.status === 'closed') return 'DAY_CLOSED';
   if (dayId > today) return 'INVALID_INPUT';
   const marker = await getDocFromServer(doc(db, backfillDayPath(dayId)));
-  if (Number(dayValue.lastSettlementRevision) > 0) return marker.exists() ? 'DAY_REOPENED_AFTER_CLOSE' : 'DAY_REOPENED_NO_MARKER';
+  // A marked day that closed and reopened takes backfills again (#601), so a refusal there has another cause.
+  if (Number(dayValue.lastSettlementRevision) > 0 && !marker.exists()) return 'DAY_REOPENED_NO_MARKER';
   return marker.exists() ? 'INVALID_INPUT' : 'DAY_NOT_BACKFILLING';
 }
 
@@ -608,9 +609,6 @@ async function readRevisionConflict(db: Firestore, input: CanonicalEnabledInput)
 
 function leaseDenialResult(code: Diagnosis): CommandResult | null {
   if (code === null) return null;
-  if (code === 'DAY_REOPENED_AFTER_CLOSE') {
-    return errorResult('DAY_CLOSED', '這個營業日曾經關過帳（現在是重開狀態），不能再用回填補登訂餐、繳費或櫃台收支；要修正這一天的帳請用更正或作廢');
-  }
   if (code === 'DAY_REOPENED_NO_MARKER') {
     return errorResult('DAY_CLOSED', '這個營業日關過帳後重開，而且沒有回填標記，所以不能補登訂餐、繳費或櫃台收支；要修正這一天的帳請用更正或作廢');
   }
