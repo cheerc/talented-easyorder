@@ -1,6 +1,6 @@
 # EasyOrder P17：獨立 Spark 本機部署
 
-新正式後端的部署入口。版本與 gate 見[交接](../DEVELOPMENT-HANDOFF.md)及[phase plan](../superpowers/plans/2026-10-13-free-production-backend-plan.md)。獨立測試專案的實際部署與部分 smoke 已執行，逐項結果以 [P17 live evidence](free-production-evidence.md#p17-user-authorized-live-verification-2026-10-27) 為準；未列證據者仍未驗證。不貼憑證或真名單到聊天／PR。
+新正式後端的部署入口：本機第 3–4 節，或第 9 節由本人觸發並核准的 GitHub Actions。版本與 gate 見[交接](../DEVELOPMENT-HANDOFF.md)及[phase plan](../superpowers/plans/2026-10-13-free-production-backend-plan.md)。獨立測試專案的實際部署與部分 smoke 已執行，逐項結果以 [P17 live evidence](free-production-evidence.md#p17-user-authorized-live-verification-2026-10-27) 為準；未列證據者仍未驗證。不貼憑證或真名單到聊天／PR。
 
 ## 分工與順序
 
@@ -154,6 +154,77 @@ init 建 schema 1、seq 0、維護中的 head。activate-empty 只接受空白�
 - 確認 service worker 更新，關舊分頁重開。不以重建 dataset、清真 command 或載 prototype 快照修帳。
 - 每日 Usage／儲存門檻、100 筆日常容量裁定與重評觸發見[備份 runbook](firebase-backup-runbook.md)。超額先停寫／備份／紙本，不升級 billing、不刪歷史換容量。
 - P17 通過後，全新空正式營運 project 依同流程建置；P18 本人核對真實資料再從 UI 輸入。三日對帳、還原／第二副本、鍵盤／IME／視窗與本人簽收完成前，不稱正式可用。
+
+## 9. GitHub Actions 部署（本人觸發並核准）
+
+本機第 3、4 節之外的另一個入口：`.github/workflows/deploy.yml` 從 main 建 release，依序部署 indexes → 等 composite index 全部 READY → rules → hosting。取代本機 `DEPLOY project step` 確認的是 GitHub Environment 的核准；仍先檢查 billing 未啟用、Firestore 為同 region 的 Standard Native free-tier。repo 不存任何金鑰，Google 端只信任本 repo 指定 Environment 的 OIDC token。agent 不觸發、不核准此 workflow。
+
+測試與正式 project 各做一次以下設定（`<ENV>` 分別是 `firebase-test`、`firebase-production`）。Google Cloud 設定都在 Spark 免費範圍內，不需要 billing。
+
+### 9.1 Google Cloud：Workload Identity Federation 與部署用 service account
+
+先在本機取得 repo 的數字 ID（綁 ID 而不是名稱，避免 repo 改名或被他人取用同名）：
+
+~~~bash
+gh api repos/cheerc/talented-easyorder --jq .id
+~~~
+
+在 repo root 外的終端執行，尖括號換成實值；`<PROJECT_NUMBER>` 用 `gcloud projects describe <PROJECT_ID> --format='value(projectNumber)'` 查。
+
+~~~bash
+gcloud services enable iamcredentials.googleapis.com sts.googleapis.com cloudbilling.googleapis.com --project <PROJECT_ID>
+
+gcloud iam workload-identity-pools create github --project <PROJECT_ID> --location global --display-name "GitHub Actions"
+
+gcloud iam workload-identity-pools providers create-oidc talented-easyorder --project <PROJECT_ID> --location global \
+  --workload-identity-pool github --issuer-uri https://token.actions.githubusercontent.com \
+  --attribute-mapping "google.subject=assertion.sub,attribute.repository_id=assertion.repository_id,attribute.ref=assertion.ref,attribute.environment=assertion.environment" \
+  --attribute-condition "assertion.repository_id == '<REPO_ID>' && assertion.ref == 'refs/heads/main' && assertion.environment == '<ENV>'"
+
+gcloud iam service-accounts create github-deploy --project <PROJECT_ID> --display-name "EasyOrder GitHub deploy"
+~~~
+
+只給部署需要的角色。不要給 Viewer、Editor、Owner 或 Firebase Admin：這些角色能讀 Firestore 帳務資料。
+
+~~~bash
+SA=github-deploy@<PROJECT_ID>.iam.gserviceaccount.com
+for role in roles/firebasehosting.admin roles/firebaserules.admin roles/datastore.indexAdmin roles/browser roles/serviceusage.serviceUsageConsumer; do
+  gcloud projects add-iam-policy-binding <PROJECT_ID> --member "serviceAccount:${SA}" --role "${role}" --condition None
+done
+
+gcloud iam service-accounts add-iam-policy-binding "${SA}" --project <PROJECT_ID> --role roles/iam.workloadIdentityUser \
+  --member "principal://iam.googleapis.com/projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github/subject/repo:cheerc/talented-easyorder:environment:<ENV>"
+~~~
+
+第一次執行若某一步回報缺少權限，錯誤訊息會列出權限名稱；只補該權限所屬的最小角色，並記在 evidence。
+
+### 9.2 GitHub：Environment
+
+repo Settings → Environments → New environment，名稱 `<ENV>`：
+
+- **Required reviewers**：自己。單人開發不要勾 Prevent self-review，否則無法核准自己觸發的部署。
+- 不勾 **Allow administrators to bypass configured protection rules**。
+- **Deployment branches and tags**：Selected branches and tags，只加 `main`。
+- **Environment variables**（不是 secrets，這些值都不是機密）：
+
+| 名稱 | 值 |
+|---|---|
+| `EASYORDER_DEPLOY_PROJECT` | Firebase project ID |
+| `EASYORDER_REGION` | Firestore region，例如 `asia-east1` |
+| `EASYORDER_WEB_CONFIG` | 第 2 節六個公開 Web config 欄位的單行 JSON |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github/providers/talented-easyorder` |
+| `GCP_SERVICE_ACCOUNT` | `github-deploy@<PROJECT_ID>.iam.gserviceaccount.com` |
+
+### 9.3 部署、核對與停用
+
+1. 確認要部署的 commit 已在 main，且該 commit 的 Frontend CI（push）成功；workflow 會再檢查一次，沒有就停。
+2. Actions → **Deploy to Firebase** → Run workflow，branch 選 `main`，target 選 `<ENV>`。
+3. 等 run 顯示 Waiting，按 **Review deployments** 核對 commit 後 Approve。
+4. 完成後下載 artifact 裡的 `release.json` 與 `deploy-receipt.json` 留存；照第 6 節做 smoke 並匿名回報。CI 部署成功不等於 smoke 通過。
+
+任一步失敗會停在該步，後面的步驟不執行；修正後重跑整個 workflow（從新 release 重部署，不跳步）。index 30 分鐘內未 READY 會停在 rules 之前。回退依第 8 節，在 Hosting release history 由本人操作。
+
+停用：刪除 Environment，或刪除 service account 上的 `roles/iam.workloadIdentityUser` binding，或停用 identity pool；三者任一都會讓 workflow 拿不到 Google 授權。
 
 ## Agent 可重跑的 demo 驗證
 
