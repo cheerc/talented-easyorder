@@ -1157,6 +1157,41 @@ describe('CloudOrdersPage', () => {
     await expectToast('已確認 002 李小華 繳費 $100 完成');
   });
 
+  it('second Esc on an empty search leaves the box so A opens counter cash (#598)', async () => {
+    renderComponent();
+    await screen.findByTestId('cloud-cash-summary');
+    const search = screen.getByLabelText('搜尋編號、姓名或別名');
+    search.focus();
+    fireEvent.change(search, { target: { value: '00' } });
+    fireEvent.keyDown(search, { key: 'Escape' });
+    expect(search).toHaveValue('');
+    expect(search).toHaveFocus();
+
+    fireEvent.keyDown(search, { key: 'Escape' });
+    expect(search).not.toHaveFocus();
+    expect(document.activeElement).toBe(document.body);
+
+    fireEvent.keyDown(document.body, { key: '1' });
+    expect(search).toHaveValue('1');
+    expect(search).toHaveFocus();
+    fireEvent.keyDown(search, { key: 'Escape' });
+    fireEvent.keyDown(search, { key: 'Escape' });
+    expect(search).not.toHaveFocus();
+
+    fireEvent.keyDown(document.body, { key: 'a' });
+    expect(await screen.findByTestId('cash-movement-card')).toBeVisible();
+  });
+
+  it('Esc with a student selected still returns to a cleared, focused search (#598 regression)', async () => {
+    renderComponent();
+    await selectStudent('001');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('selected-student-card')).toBeNull();
+    const search = screen.getByLabelText('搜尋編號、姓名或別名');
+    expect(search).toHaveValue('');
+    expect(search).toHaveFocus();
+  });
+
   it('A opens counter cash; an expense with a reason is sent as a cash movement, never a student row', async () => {
     renderComponent();
     await screen.findByTestId('cloud-cash-summary');
