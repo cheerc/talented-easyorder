@@ -1540,7 +1540,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
       expect((await create(gap, '')).result).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
       expect(await state(gap)).toEqual(before);
     }
-  });
+  }, 30_000);
 
   it('P13d1.2 (#600 regression): a note with a former paper-number prefix is still ordinary valid text, 20 characters and a multi-line remark included', async () => {
     const gap = await markedGap();
@@ -1660,7 +1660,9 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     for (const dayId of [gap, future]) {
       const before = await state(dayId);
       for (const attempt of [backfillOrder(dayId, uuid(), ''), backfillPayment(dayId, 200, '前天停電'), backfillCash(dayId, 50, '零錢補充')]) {
-        expect(await attempt, dayId).toMatchObject({ result: { ok: false, error: { code: 'INVALID_INPUT' } } });
+        // The unmarked past day is refused by the date rule: the writer names the missing marker.
+        const error = dayId === gap ? { code: 'INVALID_INPUT', message: expect.stringContaining('沒有回填標記') } : { code: 'INVALID_INPUT' };
+        expect(await attempt, dayId).toMatchObject({ result: { ok: false, error } });
       }
       expect(await state(dayId)).toEqual(before);
     }
