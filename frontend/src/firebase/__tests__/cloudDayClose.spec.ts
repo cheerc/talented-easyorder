@@ -1418,7 +1418,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     expect(await read(`backfillDays/${missing}`)).toBeUndefined();
   });
 
-  it('P11c2b.1: the repository creates a missing past day, confirms its opening cash and marks it, one command each; the day then lists as backfilling', async () => {
+  it('P11c2b.1: the repository creates a missing past day, confirms its opening cash and marks it, one command each; the day then lists as backfilling, also after a reopen', async () => {
     const gap = shiftDate(today, -3);
     const doneAlready = shiftDate(today, -2);
     await withAdmin(async db => updateDoc(doc(db, `students/${studentA}`), { 'openingBalance.asOfDate': shiftDate(today, -30) }));
@@ -1452,10 +1452,11 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     }));
     expect((await listCloudBackfillingDays(authedDb(operatorA), options)).map(day => day.dayId)).toEqual([gap, doneAlready]);
 
-    // Closing a marked day removes it from the list of days that still take transactions after a reopen.
+    // A closed marked day leaves the list; once reopened it takes transactions again, so it is listed again (#601).
     ok(await repository().closeDay(await closeInput({ countedCash: 800, align: 'auto' }, gap)));
-    ok(await repository().reopenDay(await reopenInput('補登漏掉的繳費', gap)));
     expect((await listCloudBackfillingDays(authedDb(operatorA), options)).map(day => day.dayId)).toEqual([doneAlready]);
+    ok(await repository().reopenDay(await reopenInput('補登漏掉的繳費', gap)));
+    expect((await listCloudBackfillingDays(authedDb(operatorA), options)).map(day => day.dayId)).toEqual([gap, doneAlready]);
   });
 
   it('P11c2a.13: the reader shows which unclosed days are being backfilled, and marks only the later-created transactions', async () => {

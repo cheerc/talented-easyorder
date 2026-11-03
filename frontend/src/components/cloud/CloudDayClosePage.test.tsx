@@ -1121,6 +1121,35 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     expect(onOpenOrders).toHaveBeenCalledWith(gap);
   });
 
+  it('shows a reopened backfilling day as 回填中（已重開） and still offers the way to the orders page (#601)', async () => {
+    repository.readOverview.mockResolvedValue(overview({
+      unclosedDays: [{ dayId: gap, status: 'reopened', openingCash: 870, activeTransactionCount: 2, kind: 'needs-close', backfill: marker }],
+    }));
+    repository.read.mockResolvedValue(dayState({
+      dayId: gap, status: 'reopened', revision: 7, openingCash: 870, expectedCash: 870, totals: noTotals,
+      lastSettlementRevision: 2, settlements: [version(1), version(2)],
+    }));
+    const onOpenOrders = vi.fn();
+    renderAt(gap, { onOpenOrders });
+    const info = await screen.findByTestId('backfill-info');
+    expect(info).toHaveTextContent('2026-10-14 正在回填（原因：那天斷線）');
+    expect(info).toHaveTextContent('這一天關過帳後重開；補登完要再關帳一次，現金仍要與下一天的開帳對齊。');
+    const row = screen.getByTestId(`cloud-unclosed-${gap}`);
+    expect(within(row).getByText('回填中（已重開）')).toHaveClass('badge-ui', 'badge-warn');
+    expect(row).toHaveTextContent('補登完成後關帳 · 2 筆交易');
+    fireEvent.click(within(info).getByRole('button', { name: `到訂餐頁補登 ${gap}` }));
+    expect(onOpenOrders).toHaveBeenCalledWith(gap);
+  });
+
+  it('keeps the open backfilling day free of the reopened note (#601)', async () => {
+    repository.readOverview.mockResolvedValue(gapOverview(marker, true));
+    repository.read.mockResolvedValue(gapDay(3, 870));
+    renderAt(gap, { onOpenOrders: vi.fn() });
+    const info = await screen.findByTestId('backfill-info');
+    expect(info).not.toHaveTextContent('關過帳後重開');
+    expect(within(screen.getByTestId(`cloud-unclosed-${gap}`)).getByText('回填中')).toBeInTheDocument();
+  });
+
   it.each([
     ['today', today, dayState({ openingCash: null, expectedCash: null })],
     ['a closed past day', gap, dayState({ dayId: gap, status: 'closed', lastSettlementRevision: 1, settlements: [version(1)] })],
