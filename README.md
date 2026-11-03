@@ -34,7 +34,7 @@ npm run dev:prototype   # http://localhost:5174
 [公開 Web config 範本](docs/ops/firebase-web-config.example.json)只在本機私有副本填實值；release build 不讀 .env。一般開發範本仍見 [frontend/.env.example](frontend/.env.example)。不以 email 網域取代白名單、不啟用 Email/Password provider，不沿用 Vercel／payroll 部署。
 
 ## Documentation
-- Repository guidance: [Root instructions](CLAUDE.md), [Frontend instructions](frontend/CLAUDE.md), [contributor guide](CONTRIBUTING.md)
+- Repository guidance: [Root instructions](CLAUDE.md), [Frontend instructions](frontend/CLAUDE.md), [PR review instructions](REVIEW.md), [contributor guide](CONTRIBUTING.md)
 - Handoffs: [Frontend](docs/FRONTEND-PROTOTYPE-HANDOFF.md), [Backend](docs/DEVELOPMENT-HANDOFF.md)
 - Specifications and plans: [Frontend prototype spec](docs/superpowers/specs/frontend-prototype-workflow-spec.md), [backend spec](docs/superpowers/specs/2026-10-13-free-production-backend-spec.md), [backend plan](docs/superpowers/plans/2026-10-13-free-production-backend-plan.md), [this guidance plan](docs/superpowers/plans/2026-10-17-claude-md-guidance.md)
 - Architecture, verification and operations: `docs/superpowers/`, `docs/ops/`
