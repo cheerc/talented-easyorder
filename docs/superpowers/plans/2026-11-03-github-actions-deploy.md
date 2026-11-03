@@ -20,7 +20,7 @@
 
 ## 驗收
 
-- 自動（本 PR）：`node --test ../scripts/__tests__/release.test.mjs`（frontend 目錄）涵蓋 CI guard 各拒絕情境、`--non-interactive` 且無 `--force`、index READY 判斷（含隱含 `__name__`、缺少、建立中、方向不符）、`deploy-ci` 入口在 Actions 外於任何 provider 動作前拒絕、workflow 只能手動觸發且 action 釘 SHA。RED `28a33a9`、GREEN `55221f1`。
+- 自動（本 PR）：`node --test ../scripts/__tests__/release.test.mjs`（frontend 目錄）涵蓋 CI guard 各拒絕情境、`--non-interactive` 且無 `--force`、index READY 判斷（含隱含 `__name__`、缺少、建立中、方向不符）、`deploy-ci` 入口在 Actions 外於任何 provider 動作前拒絕、workflow 只能手動觸發且 action 釘 SHA。RED `1d2e98e`、GREEN `0bfa2b8`；`--ignore-scripts` 與不上傳 artifact：RED `14c8361`、GREEN `0bbaded`。
 - 本人（未執行）：依部署指南第 9 節設定 `firebase-test`；從 main 觸發並核准，三步成功、run log 顯示 index READY 與各步完成；照第 6 節 smoke。確認無誤後再設定 `firebase-production`。任何正式結果在 evidence 補記前都是 UNVERIFIED。
 
 ## 風險與未知
