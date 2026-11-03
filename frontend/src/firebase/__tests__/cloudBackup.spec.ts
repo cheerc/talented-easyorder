@@ -612,7 +612,7 @@ describeWithEmulator('P14 cloud backup', () => {
     expect(replayed[`days/${gap}`]).toMatchObject({ status: 'closed', openingCash: 600 });
     expect(opened.records[3]).toMatchObject({ kind: 'StartBackfill', reason: '前天停電，事後補登', payload: { reason: '前天停電，事後補登' }, targets: { dayId: gap } });
 
-    // The paper number is only a note prefix, so a backup taken before the rule (past-day entries without it) replays as before.
+    // Prefixed notes are existing data (#600 removed the P13d1 rule): a backup with them, or with the prefixes stripped, replays the same.
     const withoutPaperNumbers = JSON.parse(JSON.stringify(opened).replaceAll(/紙本A-000[123]：/g, '')) as typeof opened;
     expect(withoutPaperNumbers.records[6]).toMatchObject({ kind: 'CreateCashMovement', reason: '零錢補充', payload: { reason: '零錢補充' } });
     expect(() => validateBackupManifest(withoutPaperNumbers)).not.toThrow();
@@ -656,6 +656,64 @@ describeWithEmulator('P14 cloud backup', () => {
     expect(forToday.records[3]!.targets.dayId).toBe(gap);
     forToday.records[3]!.committedAt = { _type: 'timestamp', seconds: 1_760_000_000, nanoseconds: 0 };
     expect(() => validateBackupManifest(forToday)).toThrow(/seq 4/);
+  });
+
+  it('#600: a gap day backfilled through the real Rules with ordinary notes (no paper number) exports, decrypts and replays to the projection', async () => {
+    await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 0, []));
+    const db = authedDb();
+    const user = { uid: operator.uid, email: operator.email, emailVerified: true, providerData: [{ providerId: 'google.com' }] } as unknown as User;
+    const writer = createCloudCommandRepository(db, { currentUser: () => user });
+    const orders = createCloudOrderRepository(db, { currentUser: () => user });
+    const closing = createCloudDayCloseRepository(db, { currentUser: () => user });
+    const backups = createCloudBackupRepository(db, { currentUid: () => operator.uid });
+    const shifted = new Date(`${taipeiToday()}T00:00:00.000Z`);
+    shifted.setUTCDate(shifted.getUTCDate() - 2);
+    const gap = shifted.toISOString().slice(0, 10);
+    const studentId = uuid(980);
+    let next = 980;
+    const id = () => uuid(++next);
+    const read = async (path: string) => (await getDoc(doc(db, path))).data() as Record<string, number & string>;
+    const okResult = (result: { ok: boolean }) => expect(result, JSON.stringify(result)).toMatchObject({ ok: true });
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'CreateStudent', leaseEpoch: 7,
+      targets: { studentId }, expectedRevisions: { student: 0 },
+      payload: { studentCode: '980', displayName: 'Anonymous plain-note fixture', aliases: [],
+        openingBalance: { amount: 100, asOfDate: '2026-10-01', note: '' } } }));
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'EnsureDay', leaseEpoch: 7,
+      targets: { dayId: gap }, expectedRevisions: { day: 0 }, payload: { businessDate: gap } }));
+    okResult(await closing.backfillOpening({ commandId: id(), leaseEpoch: 7, dayId: gap,
+      expectedDayRevision: (await read(`days/${gap}`)).revision, openingCash: 600, reason: '整天沒有用系統' }));
+    okResult(await writer.commitCommand({ commandId: id(), kind: 'StartBackfill', leaseEpoch: 7,
+      targets: { dayId: gap }, expectedRevisions: { day: (await read(`days/${gap}`)).revision },
+      payload: { reason: '前天停電，事後補登' } }));
+    const revisions = async () => ({ student: (await read(`students/${studentId}`)).revision, day: (await read(`days/${gap}`)).revision });
+    let r = await revisions();
+    const orderId = id();
+    okResult(await orders.createOrder({ commandId: id(), transactionId: orderId, leaseEpoch: 7, studentId, dayId: gap,
+      expectedStudentRevision: r.student, expectedDayRevision: r.day, mealKind: 'other', mealPrice: 80, paidAmount: 0,
+      menuRevision: null, otherItemName: '自備便當', note: '' }));
+    r = await revisions();
+    const paymentId = id();
+    okResult(await orders.createPayment({ commandId: id(), transactionId: paymentId, leaseEpoch: 7, studentId, dayId: gap,
+      expectedStudentRevision: r.student, expectedDayRevision: r.day, paidAmount: 200, note: '停電' }));
+    const cashId = id();
+    okResult(await orders.createCashMovement({ commandId: id(), transactionId: cashId, leaseEpoch: 7, dayId: gap,
+      expectedDayRevision: (await read(`days/${gap}`)).revision, direction: 'income', amount: 50, reason: '零錢補充' }));
+    const current = await read(`days/${gap}`);
+    okResult(await closing.closeDay({ commandId: id(), leaseEpoch: 7, dayId: gap,
+      expectedDayRevision: current.revision, expectedSettlementRevision: current.lastSettlementRevision,
+      expectedCash: 850, countedCash: 850, note: '', alignWithDayId: null }));
+
+    const exported = await backups.exportRange({ fromSeq: 0, generatedAt: '2026-11-03T06:00:00.000Z' });
+    expect(exported.manifest.records.map(record => record.kind)).toEqual([
+      'CreateStudent', 'EnsureDay', 'BackfillOpeningCash', 'StartBackfill', 'CreateOrder', 'CreatePayment', 'CreateCashMovement', 'CloseDay',
+    ]);
+    const opened = await decryptBackup(await encryptBackup(exported.manifest, 'plain-note-round-trip'), 'plain-note-round-trip');
+    const replayed = replayBackupProjections(opened.records, opened.baseState);
+    expect(replayed).toEqual(opened.projectionState);
+    expect(replayed[`transactions/${orderId}`]).toMatchObject({ businessDate: gap, note: '' });
+    expect(replayed[`transactions/${paymentId}`]).toMatchObject({ businessDate: gap, note: '停電' });
+    expect(replayed[`transactions/${cashId}`]).toMatchObject({ businessDate: gap, note: '零錢補充' });
+    expect(replayed[`days/${gap}`]).toMatchObject({ status: 'closed', openingCash: 600 });
   });
 
   it('#601: exports, decrypts and replays a marked day that is backfilled again after a reopen (marker → order → close → reopen → order → close); a backfill on a closed day is rejected', async () => {

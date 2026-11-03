@@ -1057,7 +1057,8 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     return { student: student!.revision as number, day: day!.revision as number };
   }
 
-  // P13d1: an entry on a marked past day carries its paper number as a fixed prefix of the note (the reason of a cash movement).
+  // Fixtures written under P13d1 (paper number as a note prefix). #600 removed the requirement; these stay as ordinary
+  // existing notes, so every backfill test below also proves old prefixed notes remain valid text.
   const PAPER_ORDER_NOTE = '紙本A-0001：';
   const PAPER_PAYMENT_NOTE = '紙本A-0002：';
   const PAPER_CASH_REASON = '紙本A-0003：零錢補充';
@@ -1211,7 +1212,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
   });
 
   /** A complete raw SDK backfilled CreateOrder on a marked past day, built the same way as the repository (no paid amount). */
-  async function rawBackfillOrder(dayId: string, actor = operatorA) {
+  async function rawBackfillOrder(dayId: string, actor = operatorA, note: string = PAPER_ORDER_NOTE) {
     const commandId = uuid();
     const transactionId = uuid();
     const [headBefore, dayBefore, studentBefore] = await Promise.all([
@@ -1221,7 +1222,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
       commandId, kind: 'CreateOrder' as const, leaseEpoch: 1,
       targets: { transactionId, studentId: studentA, dayId },
       expectedRevisions: { transaction: 0, student: studentBefore.revision, day: dayBefore.revision },
-      payload: { mealPrice: 90, paidAmount: 0, mealKind: 'bento', menuRevision: 1, otherItemName: null, note: PAPER_ORDER_NOTE },
+      payload: { mealPrice: 90, paidAmount: 0, mealKind: 'bento', menuRevision: 1, otherItemName: null, note },
     };
     const canonical = normalizeEnabledCommandInput(input);
     const now = serverTimestamp();
@@ -1242,7 +1243,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
       amount: -90, studentNameSnapshot: studentBefore.displayName, menuNameSnapshot: menu.itemName, menuPriceSnapshot: menu.price,
       vendorIdSnapshot: menu.vendorId, vendorNameSnapshot: menu.vendorNameSnapshot, otherItemName: null, status: 'active',
       revision: 1, createdAt: now, createdSeq: seq, operatorUid: actor.uid, operatorEmail: actor.email, sourceDevice: 'pc',
-      note: PAPER_ORDER_NOTE, lastCommandId: commandId, updatedAt: now,
+      note, lastCommandId: commandId, updatedAt: now,
     };
     const command = {
       commandId, kind: 'CreateOrder', seq, leaseEpoch: 1, actor: { uid: actor.uid, email: actor.email }, committedAt: now,
@@ -1503,7 +1504,8 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     expect((await read(`days/${gap}`))!.totals.activeTransactionCount).toBe(1);
   });
 
-  // ---- P13d1: the paper number of every backfilled entry (fixed note prefix, spec §7) ----
+  // ---- #600 (CheerC 2026-11-03): the P13d1 paper number is removed — a backfilled note is free text like today's ----
+  // These replace P13d1.1/.4/.5, which locked the removed feature; P13d1.2/.3 stay as regressions.
 
   async function markedGap() {
     const gap = shiftDate(today, -2);
@@ -1514,26 +1516,33 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     return gap;
   }
 
-  const MISSING_REFS = ['', '前天停電補登', '備註 紙本A-0001：', '紙本：沒有編號'];
-  const MALFORMED_REFS = [
+  // Notes P13d1 refused (no or malformed paper number); all are ordinary notes after #600.
+  const PLAIN_NOTES = ['', '前天停電補登', '備註 紙本A-0001：', '紙本：沒有編號'];
+  const FORMER_MALFORMED_NOTES = [
     '紙本A 1：空白', '紙本A_1：底線', '紙本A1:半形冒號', ' 紙本A1：前面有空白', '紙本' + 'a'.repeat(21) + '：太長', '紙本甲乙：中文編號', '紙本A1',
   ];
 
-  it.each<[string, (dayId: string, text: string) => Promise<{ result: CommandResult }>]>([
+  it.each<[string, (dayId: string, text: string) => Promise<{ transactionId: string; result: CommandResult }>]>([
     ['order', (dayId, text) => backfillOrder(dayId, uuid(), text)],
     ['payment', (dayId, text) => backfillPayment(dayId, 200, text)],
     ['cash movement', (dayId, text) => backfillCash(dayId, 50, text)],
-  ])('P13d1.1: a backfilled %s without a well-formed paper number is refused and changes nothing', async (_label, create) => {
+  ])('#600.1: a backfilled %s takes any ordinary note and stores it as written; a cash movement still needs a reason', async (label, create) => {
     const gap = await markedGap();
-    const before = await state(gap);
-    for (const text of [...MISSING_REFS, ...MALFORMED_REFS]) {
-      const attempt = await create(gap, text);
-      expect(attempt.result, JSON.stringify(text)).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    for (const text of [...PLAIN_NOTES, ...FORMER_MALFORMED_NOTES]) {
+      if (label === 'cash movement' && text === '') continue;
+      const created = await create(gap, text);
+      ok(created.result);
+      expect((await read(`transactions/${created.transactionId}`))!.note, JSON.stringify(text)).toBe(text);
     }
-    expect(await state(gap)).toEqual(before);
-  });
+    if (label === 'cash movement') {
+      // The cashier reason is required on every day (validCashMovementPayload); #600 does not loosen it.
+      const before = await state(gap);
+      expect((await create(gap, '')).result).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+      expect(await state(gap)).toEqual(before);
+    }
+  }, 30_000);
 
-  it('P13d1.2: a well-formed number is stored in the row note (the reason of a cash movement), 20 characters and a multi-line remark included', async () => {
+  it('P13d1.2 (#600 regression): a note with a former paper-number prefix is still ordinary valid text, 20 characters and a multi-line remark included', async () => {
     const gap = await markedGap();
     const longRef = '紙本' + 'Z'.repeat(20) + '：';
     const order = await backfillOrder(gap, uuid(), '紙本A-0123：前天斷線補登');
@@ -1545,7 +1554,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     expect((await read(`transactions/${cash.transactionId}`))!.note).toBe('紙本B-9：第一行\n第二行');
   });
 
-  it('P13d1.3: today needs no paper number, and accepts one', async () => {
+  it('P13d1.3 (#600 regression): today needs no paper number, and accepts a prefixed note as text', async () => {
     const create = async (kind: 'CreatePayment' | 'CreateCashMovement', payload: RawMap) => {
       const transactionId = uuid();
       const r = await revisions();
@@ -1570,7 +1579,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     expect((await read(`transactions/${cashPrefixed.transactionId}`))!.note).toBe('紙本A-0008：零錢補充');
   });
 
-  it('P13d1.4: a correction keeps the paper number — the text after it changes, the number itself cannot be dropped or replaced', async () => {
+  it('#600.4: a correction edits a backfilled note freely — a former paper number can be dropped, replaced or kept; an expense still keeps a non-empty note', async () => {
     const gap = await markedGap();
     const payment = await backfillPayment(gap, 200, '紙本A-0002：原本備註');
     const cash = await backfillCash(gap, 50, '紙本A-0003：零錢補充');
@@ -1588,21 +1597,20 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     };
     const paymentPayload = (note: string) => ({ mealPrice: 0, paidAmount: 150, amount: 150, note });
     const cashPayload = (note: string) => ({ mealPrice: 0, paidAmount: 60, amount: 60, note });
+    let revision = 1;
+    for (const note of ['原本備註', '', '紙本A-0009：原本備註', '紙本A-0002', '紙本A 2：原本備註', '紙本A-0002：金額更正為 150']) {
+      ok(await correct(payment.transactionId, studentA, paymentPayload(note)));
+      revision += 1;
+      expect((await read(`transactions/${payment.transactionId}`))!, JSON.stringify(note)).toMatchObject({ note, paidAmount: 150, revision });
+    }
+    ok(await correct(cash.transactionId, '__cashier__', cashPayload('零錢補充')));
+    expect((await read(`transactions/${cash.transactionId}`))!).toMatchObject({ note: '零錢補充', paidAmount: 60, revision: 2 });
+    // An expense / income row keeps a non-empty note (its reason) — unchanged by #600.
     const before = await state(gap);
-    for (const note of ['原本備註', '', '紙本A-0009：原本備註', '紙本A-0002', '紙本A 2：原本備註']) {
-      expect(await correct(payment.transactionId, studentA, paymentPayload(note)), JSON.stringify(note)).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
-    }
-    for (const note of ['零錢補充', '紙本A-0010：零錢補充']) {
-      expect(await correct(cash.transactionId, '__cashier__', cashPayload(note)), JSON.stringify(note)).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
-    }
+    expect(await correct(cash.transactionId, '__cashier__', cashPayload(''))).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
     expect(await state(gap)).toEqual(before);
 
-    ok(await correct(payment.transactionId, studentA, paymentPayload('紙本A-0002：金額更正為 150')));
-    ok(await correct(cash.transactionId, '__cashier__', cashPayload('紙本A-0003：零錢補充，金額更正')));
-    expect((await read(`transactions/${payment.transactionId}`))!).toMatchObject({ note: '紙本A-0002：金額更正為 150', paidAmount: 150, revision: 2 });
-    expect((await read(`transactions/${cash.transactionId}`))!).toMatchObject({ note: '紙本A-0003：零錢補充，金額更正', revision: 2 });
-
-    // A void only flips the status; the paper number stays on the row.
+    // A void only flips the status; the note stays on the row.
     const tx = (await read(`transactions/${payment.transactionId}`))!;
     const r = await dayRevisions(gap);
     ok(await writer().commitCommand({
@@ -1613,7 +1621,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     expect((await read(`transactions/${payment.transactionId}`))!).toMatchObject({ status: 'voided', note: '紙本A-0002：金額更正為 150' });
   });
 
-  it('P13d1.5: a row without a paper number is corrected as freely as before; once a number is on the row it stays', async () => {
+  it('#600.5: a row of today is corrected freely, and a former paper number put on it can be changed or cleared', async () => {
     const created = await createPayment(100);
     ok(created.result);
     const correct = async (note: string) => {
@@ -1628,10 +1636,47 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     };
     ok(await correct('改過的備註'));
     ok(await correct('紙本A-0011：事後補上號碼'));
-    expect(await correct('')).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
-    ok(await correct('紙本A-0011：只改後面的字'));
-    expect((await read(`transactions/${created.transactionId}`))!).toMatchObject({ note: '紙本A-0011：只改後面的字', revision: 4 });
+    ok(await correct(''));
+    ok(await correct('紙本B-1：換了號碼'));
+    expect((await read(`transactions/${created.transactionId}`))!).toMatchObject({ note: '紙本B-1：換了號碼', revision: 5 });
   });
+
+  it('#600.6: a marked day that is closed (not reopened) refuses ordinary-note order, payment and cash movement with DAY_CLOSED', async () => {
+    const gap = await markedGap();
+    ok((await backfillPayment(gap, 200)).result);
+    ok(await repository().closeDay(await closeInput({ countedCash: 1000, align: 'auto' }, gap)));
+    const before = await state(gap);
+    for (const attempt of [backfillOrder(gap, uuid(), ''), backfillPayment(gap, 200, '前天停電'), backfillCash(gap, 50, '零錢補充')]) {
+      expect(await attempt).toMatchObject({ result: { ok: false, error: { code: 'DAY_CLOSED' } } });
+    }
+    expect(await state(gap)).toEqual(before);
+  });
+
+  it('#600.6b: an unmarked past day and a future day still refuse ordinary-note entries', async () => {
+    const gap = shiftDate(today, -2);
+    await seedGapDay(gap, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    const future = shiftDate(today, 1);
+    await seedGapDay(future, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    for (const dayId of [gap, future]) {
+      const before = await state(dayId);
+      for (const attempt of [backfillOrder(dayId, uuid(), ''), backfillPayment(dayId, 200, '前天停電'), backfillCash(dayId, 50, '零錢補充')]) {
+        // The unmarked past day is refused by the date rule: the writer names the missing marker.
+        const error = dayId === gap ? { code: 'INVALID_INPUT', message: expect.stringContaining('沒有回填標記') } : { code: 'INVALID_INPUT' };
+        expect(await attempt, dayId).toMatchObject({ result: { ok: false, error } });
+      }
+      expect(await state(dayId)).toEqual(before);
+    }
+  });
+
+  it('#600.7: Rules accept a raw backfilled CreateOrder with an ordinary note on a marked day only for the holder', async () => {
+    const gap = await markedGap();
+    const before = await state(gap);
+    await assertFails((await rawBackfillOrder(gap, operatorB, '前天停電補登')).batch(authedDb(operatorB)).commit());
+    expect(await state(gap)).toEqual(before);
+    const raw = await rawBackfillOrder(gap, operatorA, '前天停電補登');
+    await assertSucceeds(raw.batch(authedDb(operatorA)).commit());
+    expect((await read(`transactions/${raw.transactionId}`))!).toMatchObject({ businessDate: gap, status: 'active', note: '前天停電補登' });
+  }, 30_000);
 
   type RawStart = Awaited<ReturnType<typeof rawStartBackfill>>;
 
