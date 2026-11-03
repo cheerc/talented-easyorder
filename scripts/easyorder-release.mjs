@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { validateWebConfig, releaseFiles, checkRelease, deploymentArgs, ciDeploymentArgs, digest, validateProviderState, validateCiDeployment, compositeIndexStatus } from './lib/release.mjs';
+import { validateWebConfig, releaseFiles, checkRelease, deploymentArgs, ciDeploymentArgs, digest, validateProviderState, validateCiDeployment, compositeIndexStatus, runCiStepWithRetry } from './lib/release.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const frontend = path.join(root, 'frontend');
@@ -118,8 +118,17 @@ async function deployCi(args) {
   for (const step of ['indexes', 'rules', 'hosting']) {
     await checkRelease(out);
     process.stdout.write(`部署 ${project} ${step}，source=${manifest.sourceSha}\n`);
-    const result = spawnSync(firebase, ciDeploymentArgs(manifest, project, step), { cwd: out, stdio: 'inherit' });
-    if (result.error || result.status !== 0) throw new Error(`Firebase deploy ${step} 失敗（exit ${result.status}）；後續步驟未執行`);
+    await runCiStepWithRetry({
+      step,
+      run: () => {
+        const result = spawnSync(firebase, ciDeploymentArgs(manifest, project, step), { cwd: out, stdio: ['inherit', 'pipe', 'pipe'], encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+        process.stdout.write(result.stdout ?? '');
+        process.stderr.write(result.stderr ?? '');
+        return { status: result.status, error: result.error, output: `${result.stdout ?? ''}\n${result.stderr ?? ''}` };
+      },
+      sleep: ms => new Promise(resolve => { setTimeout(resolve, ms); }),
+      log: text => process.stdout.write(text),
+    });
     receipt.steps.push({ step, at: new Date().toISOString() });
     await save(path.join(out, 'deploy-receipt.json'), receipt);
     if (step === 'indexes') await waitForIndexes(out, project, timeoutMinutes);

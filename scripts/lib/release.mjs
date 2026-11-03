@@ -78,6 +78,27 @@ export function ciDeploymentArgs(manifest, project, step) {
   return [...deploymentArgs(manifest, project, step), '--non-interactive'];
 }
 
+// Firebase Rules API 編譯大型 rules 時會偶發 5xx；CLI 不重試，且 release PATCH 失敗後改 create 會得 409 already exists。
+// indexes／rules 部署可重複執行，只對這些 provider 暫時性錯誤重試；hosting 不重試，避免重複建立 Hosting release。
+const ANSI = /\u001b\[[0-9;]*m/g;
+export function isTransientCiFailure(step, output) {
+  if (step !== 'indexes' && step !== 'rules') return false;
+  const text = String(output ?? '').replace(ANSI, '');
+  return /HTTP Error: (429|5\d\d)\b/.test(text) || /HTTP Error: 409, Release \S+\/releases\/cloud\.firestore\S* already exists/.test(text);
+}
+
+export async function runCiStepWithRetry({ step, run, sleep, log, maxAttempts = 3, delaysMs = [30_000, 60_000] }) {
+  for (let attempt = 1; ; attempt += 1) {
+    const result = run();
+    if (!result.error && result.status === 0) return attempt;
+    if (result.error || !isTransientCiFailure(step, result.output)) throw new Error(`Firebase deploy ${step} 失敗（exit ${result.status}）；後續步驟未執行`);
+    if (attempt >= maxAttempts) throw new Error(`Firebase deploy ${step} 遇到暫時性錯誤，重試 ${maxAttempts} 次仍失敗；後續步驟未執行`);
+    const wait = delaysMs[Math.min(attempt - 1, delaysMs.length - 1)];
+    log(`Firebase deploy ${step} 遇到暫時性錯誤（第 ${attempt} 次），${wait / 1000} 秒後重試\n`);
+    await sleep(wait);
+  }
+}
+
 // GitHub Actions 部署：取代本機 TTY 確認的是 GitHub Environment 核准；環境變數 EASYORDER_DEPLOY_PROJECT
 // 只在核准後的 environment job 內存在，且必須與 release 及 --project 三者一致。
 export function validateCiDeployment(env, manifest, project) {
