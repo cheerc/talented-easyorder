@@ -432,7 +432,7 @@ export function CloudAccountHistoryPage({
     setMealPriceText(String(transaction.mealPrice));
     setPaidAmountText(String(transaction.paidAmount));
     setRefundAmountText(String(transaction.amount));
-    // A paper number in the stored note stays locked (Rules keep it); the form edits only the text after it.
+    // A correction starts from the whole stored note, a former paper-number prefix included (#600).
     setNote(transaction.note);
     setReason('');
     setFormError('');
