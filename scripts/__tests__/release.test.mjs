@@ -5,7 +5,7 @@ import { mkdtemp, writeFile, mkdir, symlink, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { validateProject, validateWebConfig, deploymentArgs, ciDeploymentArgs, releaseFiles, checkRelease, validateProviderState, validateCiDeployment, compositeIndexStatus } from '../lib/release.mjs';
+import { validateProject, validateWebConfig, deploymentArgs, ciDeploymentArgs, releaseFiles, checkRelease, validateProviderState, validateCiDeployment, compositeIndexStatus, isTransientCiFailure, runCiStepWithRetry } from '../lib/release.mjs';
 
 const web = { apiKey: 'synthetic-api-key', projectId: 'demo-easyorder', authDomain: 'demo-easyorder.firebaseapp.com', appId: '1:000000000000:web:synthetic', messagingSenderId: '000000000000', storageBucket: 'demo-easyorder.firebasestorage.app' };
 
@@ -126,6 +126,48 @@ test('CI deployment commands are the local commands plus --non-interactive and n
     assert.ok(!args.includes('--force'));
   }
   assert.throws(() => ciDeploymentArgs({ ...ciManifest, emulator: true }, ciManifest.project, 'hosting'));
+});
+
+test('only Firebase Rules／Firestore provider 5xx、429 and the release-already-exists fallback count as transient, and never for hosting', () => {
+  const unavailable = '\u001b[1m\u001b[31mError:\u001b[39m\u001b[22m Request to https://firebaserules.googleapis.com/v1/projects/p:test had HTTP Error: 503, The service is currently unavailable.';
+  const releaseExists = 'Error: Request to https://firebaserules.googleapis.com/v1/projects/p/releases had HTTP Error: 409, Release projects/p/releases/cloud.firestore already exists.';
+  for (const step of ['indexes', 'rules']) {
+    assert.equal(isTransientCiFailure(step, unavailable), true, step);
+    for (const code of [429, 500, 502, 504]) assert.equal(isTransientCiFailure(step, `had HTTP Error: ${code}, x`), true, `${step} ${code}`);
+  }
+  assert.equal(isTransientCiFailure('rules', releaseExists), true);
+  assert.equal(isTransientCiFailure('hosting', unavailable), false);
+  assert.equal(isTransientCiFailure('rules', 'Error: Compilation errors in firestore.rules'), false);
+  assert.equal(isTransientCiFailure('rules', 'had HTTP Error: 403, The caller does not have permission'), false);
+  assert.equal(isTransientCiFailure('indexes', 'had HTTP Error: 409, index already exists'), false);
+  assert.equal(isTransientCiFailure('rules', ''), false);
+});
+
+test('deploy-ci retries a transient step failure with backoff, stops on success, and gives up after three attempts', async () => {
+  const run = outcomes => { const calls = []; return { calls, fn: () => { const next = outcomes[calls.length]; calls.push(next); return next; } }; };
+  const sleeps = [];
+  const sleep = ms => { sleeps.push(ms); return Promise.resolve(); };
+  const transient = { status: 2, output: 'had HTTP Error: 503, The service is currently unavailable.' };
+  const ok = { status: 0, output: '' };
+
+  let r = run([transient, ok]);
+  assert.equal(await runCiStepWithRetry({ step: 'rules', run: r.fn, sleep, log: () => {} }), 2);
+  assert.equal(r.calls.length, 2);
+  assert.deepEqual(sleeps, [30_000]);
+
+  sleeps.length = 0; r = run([transient, transient, transient, ok]);
+  await assert.rejects(runCiStepWithRetry({ step: 'indexes', run: r.fn, sleep, log: () => {} }), /indexes.*3 次/);
+  assert.equal(r.calls.length, 3);
+  assert.deepEqual(sleeps, [30_000, 60_000]);
+
+  sleeps.length = 0; r = run([{ status: 1, output: 'Error: Compilation errors' }, ok]);
+  await assert.rejects(runCiStepWithRetry({ step: 'rules', run: r.fn, sleep, log: () => {} }), /rules 失敗（exit 1）/);
+  assert.equal(r.calls.length, 1);
+
+  r = run([transient, ok]);
+  await assert.rejects(runCiStepWithRetry({ step: 'hosting', run: r.fn, sleep, log: () => {} }), /hosting 失敗/);
+  assert.equal(r.calls.length, 1);
+  assert.deepEqual(sleeps, []);
 });
 
 test('composite index check requires every configured index READY, ignoring implicit __name__ and extra remote indexes', () => {
