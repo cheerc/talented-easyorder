@@ -45,7 +45,7 @@
 - CI 已檢查的項目：ESLint、格式、`tsc` 型別錯誤、build 失敗。
 - 沒有具體失敗情境的主觀風格、命名、檔案拆分或重構建議。
 - 純 UI 文案、樣式或版面調整缺少單元測試。
-- Commit message 格式（`CONTRIBUTING.md` 的 Conventional Commits 與 `CLAUDE.md` 的中文要求並存，不以此開 finding）。
+- Commit message 是否加 `docs:`、`fix:` 等前綴（`CONTRIBUTING.md` 不強制）。
 - `frontend/package-lock.json` 的內容細節、`docs/ui_sample/**`、PDF 等二進位或範例素材。
 - 歷史紀錄文件中已過時的內容：`docs/retro/**`、`docs/superpowers/**/archive/**`、舊的 dispatch／receipt／review 紀錄、handoff 中較早日期的接手段落。只有本 PR 新寫入的錯誤宣稱才回報。
 

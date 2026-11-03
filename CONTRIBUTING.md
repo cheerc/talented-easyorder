@@ -21,31 +21,18 @@ PR validation is determined by the current [CI workflow](./.github/workflows/ci.
 
 ## Code Review
 
-- External PRs require **maintainer review and approval** before merge
-- Address all review comments before requesting re-review
-- Keep PRs focused — one feature or fix per PR
+- PR 會由 Claude Code Review 自動審查；嚴重度、必查與略過項目見 [REVIEW.md](./REVIEW.md)（只從 `main` 讀取，修改需合併後才生效）。
+- 合併條件：最新 head 沒有未解的 🔴 Important finding，且 required CI 通過。符合時以 squash merge 合併到 `main`，必要時可用管理員權限略過其他分支保護。
+- 不以 skip、停用測試或重開 PR 的方式換取綠燈。
+- 外部貢獻者的 PR 需 maintainer 審核同意。
+- 一個 PR 只做一件事。
 
-## Commit Convention
+## Commit 與 PR 標題
 
-Use [Conventional Commits](https://www.conventionalcommits.org/) format:
-
-```
-type(scope): description
-```
-
-| Type | Use for |
-|------|---------|
-| `feat` | New features |
-| `fix` | Bug fixes |
-| `docs` | Documentation changes |
-| `test` | Adding or updating tests |
-| `chore` | Maintenance, dependencies |
-| `refactor` | Code restructuring without behavior change |
-
-Examples:
-- `feat(pos): add barcode scanner support`
-- `fix(auth): handle expired session gracefully`
-- `test(store): add orderActions coverage`
+- Commit message 與 PR 標題、內文使用中文，描述使用者看得到的效果或修正；可加 `docs:`、`fix:` 等前綴，但不強制。
+- 對應 issue 時在標題末尾加上編號，例如 `日結頁備份後不再誤報「其他裝置已更新資料」（#596）`；squash merge 以 PR 標題作為 commit 標題。
+- 不寫 AI 模型名稱、真實姓名、餘額或其他個資。
+- PR 內文依 [PR template](./.github/PULL_REQUEST_TEMPLATE.md) 填寫，必填欄位與 [正式後端交接](./docs/DEVELOPMENT-HANDOFF.md) 的要求一致。
 
 ## Code Quality
 
