@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect } from 'react';
+import { useCallback, useRef, useLayoutEffect } from 'react';
 import type { PosFlowState } from '../domain/posFlow';
 
 // Ref: #281 — Extracted from App.tsx to reduce AppContent complexity.
@@ -27,11 +27,11 @@ export function useConfirmHandler({
   const confirmExpenseAmountRef = useRef(confirmExpenseAmount);
   const orderBlockedRef = useRef(orderBlocked);
 
-  useEffect(() => { stateRef.current = state; });
-  useEffect(() => { requestConfirmRef.current = requestConfirm; });
-  useEffect(() => { confirmDuplicateRef.current = confirmDuplicate; });
-  useEffect(() => { confirmExpenseAmountRef.current = confirmExpenseAmount; });
-  useEffect(() => { orderBlockedRef.current = orderBlocked; });
+  useLayoutEffect(() => { stateRef.current = state; });
+  useLayoutEffect(() => { requestConfirmRef.current = requestConfirm; });
+  useLayoutEffect(() => { confirmDuplicateRef.current = confirmDuplicate; });
+  useLayoutEffect(() => { confirmExpenseAmountRef.current = confirmExpenseAmount; });
+  useLayoutEffect(() => { orderBlockedRef.current = orderBlocked; });
 
   return useCallback(() => {
     const s = stateRef.current;

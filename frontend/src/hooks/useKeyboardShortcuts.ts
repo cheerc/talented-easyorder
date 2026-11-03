@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { PosMode } from '../domain/posFlow';
 
 interface UseKeyboardShortcutsArgs {
@@ -27,14 +27,14 @@ export function useKeyboardShortcuts({ enabled, changeMode, cancelOrder, isStude
   const setFocusZoneRef = useRef(setFocusZone);
   const openOtherMealRef = useRef(openOtherMeal);
 
-  useEffect(() => { changeModeRef.current = changeMode; });
-  useEffect(() => { cancelOrderRef.current = cancelOrder; });
-  useEffect(() => { isStudentSelectedRef.current = isStudentSelected; });
-  useEffect(() => { handleConfirmRef.current = handleConfirm; });
-  useEffect(() => { cancelFlowRef.current = cancelFlow; });
-  useEffect(() => { enterExpenseModeRef.current = enterExpenseMode; });
-  useEffect(() => { setFocusZoneRef.current = setFocusZone; });
-  useEffect(() => { openOtherMealRef.current = openOtherMeal; });
+  useLayoutEffect(() => { changeModeRef.current = changeMode; });
+  useLayoutEffect(() => { cancelOrderRef.current = cancelOrder; });
+  useLayoutEffect(() => { isStudentSelectedRef.current = isStudentSelected; });
+  useLayoutEffect(() => { handleConfirmRef.current = handleConfirm; });
+  useLayoutEffect(() => { cancelFlowRef.current = cancelFlow; });
+  useLayoutEffect(() => { enterExpenseModeRef.current = enterExpenseMode; });
+  useLayoutEffect(() => { setFocusZoneRef.current = setFocusZone; });
+  useLayoutEffect(() => { openOtherMealRef.current = openOtherMeal; });
 
   useEffect(() => {
     if (!enabled || isDialogOpen) return;
