@@ -65,9 +65,10 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      # 本 job 有 id-token 權限；不執行依賴的 install script（build 與 firebase CLI 都不需要）。
       - name: Install dependencies
         working-directory: frontend
-        run: npm ci --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Check environment variables
         env:
@@ -80,7 +81,8 @@ jobs:
           done
           printf '%s' "${WEB_CONFIG}" > "${RUNNER_TEMP}/web-config.json"
 
-      # 在取得 Google 授權前建立 release，確保工作目錄乾淨（sourceDirty=false）且 build 不會接觸憑證。
+      # 在 auth 步驟前建立 release，確保工作目錄乾淨（sourceDirty=false）、憑證檔尚未寫入。
+      # 注意：id-token 權限是整個 job 的，build 期間執行的依賴程式理論上也能要 OIDC token；風險與本機部署同類。
       - name: Prepare release
         run: |
           ./deploy.sh prepare --project "${EASYORDER_DEPLOY_PROJECT}" --web-config "${RUNNER_TEMP}/web-config.json" \
@@ -97,14 +99,3 @@ jobs:
 
       - name: Deploy indexes, wait READY, rules, hosting
         run: ./deploy.sh deploy-ci --project "${EASYORDER_DEPLOY_PROJECT}" --release "${RUNNER_TEMP}/release"
-
-      - name: Upload release manifest and deploy receipt
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: deploy-${{ inputs.target }}-${{ github.run_id }}
-          path: |
-            ${{ runner.temp }}/release/release.json
-            ${{ runner.temp }}/release/deploy-receipt.json
-          if-no-files-found: ignore
-          retention-days: 90

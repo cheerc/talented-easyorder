@@ -13,15 +13,15 @@
 ## 設計
 
 - `.github/workflows/deploy.yml`：只有 `workflow_dispatch`，target 為 `firebase-test` 或 `firebase-production`；兩個 job 都要求 `github.ref == refs/heads/main`。先確認此 commit 在 main 上有成功的 Frontend CI push run；部署 job 使用 `environment: ${{ inputs.target }}`，核准後才拿到 OIDC token 與 Environment variables。action 全部釘 commit SHA；`concurrency` 依 target 排隊、不取消進行中的部署。
-- 在取得 Google 授權前執行 `./deploy.sh prepare`，讓 release 來源為乾淨 checkout，build 不接觸憑證。
-- `./deploy.sh deploy-ci`：`validateCiDeployment` 要求 GitHub Actions、workflow_dispatch、main、`EASYORDER_DEPLOY_PROJECT` 與 `--project`、release 三者一致、release SHA 等於 `GITHUB_SHA` 且 `sourceDirty=false`、無 Emulator 變數；接著做與本機相同的 provider 檢查；每步前重驗 release；Firebase CLI 加 `--non-interactive`、不帶 `--force`（遠端多出的 index 不刪）；indexes 後以 `gcloud firestore indexes composite list` 輪詢，`compositeIndexStatus` 確認設定中每個 composite index 都 READY，預設 30 分鐘上限，逾時停在 rules 之前。receipt 與 manifest 上傳為 artifact。
-- Google 端：每個 project 各一個 identity pool／provider，attribute condition 綁 repo 數字 ID、`refs/heads/main` 與 Environment 名稱；部署用 service account 只給 Hosting Admin、Rules Admin、Index Admin、Browser、Service Usage Consumer，不給能讀 Firestore 資料的角色。
+- 在 auth 步驟前執行 `./deploy.sh prepare`，讓 release 來源為乾淨 checkout、憑證檔尚未寫入。`id-token` 權限屬整個 job，build 期間執行的依賴程式理論上也能要 OIDC token；以 `npm ci --ignore-scripts` 排除 install script，build 本身的風險與本機部署同類，接受並記錄。
+- `./deploy.sh deploy-ci`：`validateCiDeployment` 要求 GitHub Actions、workflow_dispatch、main、`EASYORDER_DEPLOY_PROJECT` 與 `--project`、release 三者一致、release SHA 等於 `GITHUB_SHA` 且 `sourceDirty=false`、無 Emulator 變數；接著做與本機相同的 provider 檢查；每步前重驗 release；Firebase CLI 加 `--non-interactive`、不帶 `--force`（遠端多出的 index 不刪）；indexes 後以 `gcloud firestore indexes composite list` 輪詢，`compositeIndexStatus` 確認設定中每個 composite index 都 READY，預設 30 分鐘上限，逾時停在 rules 之前。公開 repo 不上傳 release／receipt artifact；run log 與 evidence 記錄結果。
+- Google 端：每個 project 各一個 identity pool／provider，attribute condition 綁 repo 數字 ID、`refs/heads/main`、Environment 名稱與 `deploy.yml@refs/heads/main` 的 workflow_ref；部署用 service account 只給 Hosting Admin、Rules Admin、Index Admin、Browser、Service Usage Consumer，不給能讀 Firestore 資料的角色。
 - 規則同步：`CLAUDE.md` 安全邊界改為「deploy 由本人在本機，或本人觸發並核准此 workflow；agent 不觸發、不核准」；`REVIEW.md` 第 8 條改為只允許這個 workflow 的形狀。
 
 ## 驗收
 
 - 自動（本 PR）：`node --test ../scripts/__tests__/release.test.mjs`（frontend 目錄）涵蓋 CI guard 各拒絕情境、`--non-interactive` 且無 `--force`、index READY 判斷（含隱含 `__name__`、缺少、建立中、方向不符）、`deploy-ci` 入口在 Actions 外於任何 provider 動作前拒絕、workflow 只能手動觸發且 action 釘 SHA。RED `28a33a9`、GREEN `55221f1`。
-- 本人（未執行）：依部署指南第 9 節設定 `firebase-test`；從 main 觸發並核准，三步成功、artifact 有 receipt；照第 6 節 smoke。確認無誤後再設定 `firebase-production`。任何正式結果在 evidence 補記前都是 UNVERIFIED。
+- 本人（未執行）：依部署指南第 9 節設定 `firebase-test`；從 main 觸發並核准，三步成功、run log 顯示 index READY 與各步完成；照第 6 節 smoke。確認無誤後再設定 `firebase-production`。任何正式結果在 evidence 補記前都是 UNVERIFIED。
 
 ## 風險與未知
 
