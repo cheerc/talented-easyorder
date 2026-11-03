@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type SetStateAction } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type SetStateAction } from 'react';
 import { getAuth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
@@ -528,9 +528,10 @@ export function CloudDayClosePage({
     }
     : currentPage;
 
-  // Event handlers and awaited continuations read the latest committed page, never a stale render closure.
+  // Event handlers and awaited continuations read the latest committed page, never a stale render closure. A layout effect,
+  // so a click right after a commit, before its passive effects run, still sees that commit (same as #574; CI run 41642144001).
   const latestPageRef = useRef(page);
-  useEffect(() => { latestPageRef.current = page; });
+  useLayoutEffect(() => { latestPageRef.current = page; });
 
   const isCurrent = useCallback((key: string, generation: number) => (
     scopeRef.current === key && generationRef.current === generation
