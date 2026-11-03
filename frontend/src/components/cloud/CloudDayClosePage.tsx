@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type SetStateAction } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type SetStateAction } from 'react';
 import { getAuth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
@@ -306,7 +306,7 @@ function unclosedLabel(day: CloudUnclosedDay, selectionDate: string): string {
 }
 
 function unclosedStatusLabel(day: CloudUnclosedDay): string {
-  if (day.backfill) return '回填中';
+  if (day.backfill) return day.status === 'reopened' ? '回填中（已重開）' : '回填中';
   if (day.status === 'reopened') return '已重開';
   if (day.kind === 'missing-opening') return '待確認開帳';
   return '尚未關帳';
@@ -528,9 +528,10 @@ export function CloudDayClosePage({
     }
     : currentPage;
 
-  // Event handlers and awaited continuations read the latest committed page, never a stale render closure.
+  // Event handlers and awaited continuations read the latest committed page, never a stale render closure. A layout effect,
+  // so a click right after a commit, before its passive effects run, still sees that commit (same as #574; CI run 41642144001).
   const latestPageRef = useRef(page);
-  useEffect(() => { latestPageRef.current = page; });
+  useLayoutEffect(() => { latestPageRef.current = page; });
 
   const isCurrent = useCallback((key: string, generation: number) => (
     scopeRef.current === key && generationRef.current === generation
@@ -1763,8 +1764,9 @@ export function CloudDayClosePage({
                 <p>
                   {snapshot.dayId} 正在回填（原因：{snapshot.backfill.reason}）。補登的訂餐、繳費與櫃台收支都記在這一天並標為「回填」；
                   補完後在這一頁核對現金再關帳。
+                  {day?.status === 'reopened' && ' 這一天關過帳後重開；補登完要再關帳一次，現金仍要與下一天的開帳對齊。'}
                 </p>
-                {onOpenOrders && day?.status === 'open' && (
+                {onOpenOrders && day?.status !== 'closed' && (
                   <button type="button" className="cloud-day-close__primary" onClick={() => onOpenOrders(snapshot.dayId)} disabled={busy}>
                     到訂餐頁補登 {snapshot.dayId}
                   </button>

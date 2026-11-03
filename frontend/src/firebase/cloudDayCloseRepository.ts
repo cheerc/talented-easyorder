@@ -552,8 +552,8 @@ export async function readCloudDayCloseOverview(
 }
 
 /**
- * Days that are being backfilled right now and can still take transactions: marker present, day open and never
- * closed (a reopened day was closed once, so Rules refuse transactions on it). Oldest first.
+ * Days that are being backfilled right now and can still take transactions: marker present and the day not closed
+ * (open, or reopened after a close — #601). Oldest first.
  */
 export async function listCloudBackfillingDays(
   db: Firestore,
@@ -561,7 +561,7 @@ export async function listCloudBackfillingDays(
 ): Promise<CloudBackfillDay[]> {
   const overview = await readCloudDayCloseOverview(db, options);
   return overview.unclosedDays
-    .filter(day => day.backfill !== null && day.status === 'open')
+    .filter(day => day.backfill !== null)
     .map(day => day.backfill as CloudBackfillDay);
 }
 

@@ -1182,6 +1182,19 @@ describe('CloudOrdersPage', () => {
     expect(await screen.findByTestId('cash-movement-card')).toBeVisible();
   });
 
+  it('Esc with counter cash open closes the panel and focuses the empty search, not the blur path (#598, #604 review)', async () => {
+    renderComponent();
+    await screen.findByTestId('cloud-cash-summary');
+    fireEvent.keyDown(window, { key: 'a' });
+    expect(await screen.findByTestId('cash-movement-card')).toBeVisible();
+    const search = screen.getByLabelText('搜尋編號、姓名或別名');
+    expect(search).toHaveValue('');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByTestId('cash-movement-card')).toBeNull());
+    expect(search).toHaveValue('');
+    expect(search).toHaveFocus();
+  });
+
   it('Esc with a student selected still returns to a cleared, focused search (#598 regression)', async () => {
     renderComponent();
     await selectStudent('001');
@@ -1754,6 +1767,26 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     expect(await screen.findByText(/已確認/)).toBeVisible();
     expect(screen.queryByTestId('undo-bar')).toBeNull();
     expect(screen.queryByRole('button', { name: /撤回/ })).toBeNull();
+  });
+
+  it('takes payments on a backfilling day that was closed and reopened (#601)', async () => {
+    repositoryMock.loadSnapshot.mockImplementation(async (options: { dayId?: string | null } = {}) => (
+      options.dayId
+        ? backfillSnapshot({ day: gapDay({ status: 'reopened', lastSettlementRevision: 2 }) })
+        : snapshot({ backfillDays: [marker] })
+    ));
+    renderComponent();
+    const select = await screen.findByTestId('orders-day-select');
+    fireEvent.change(select, { target: { value: GAP } });
+    expect(await screen.findByTestId('backfill-banner')).toHaveTextContent(`正在回填 ${GAP}（原因：那天斷線）`);
+    expect(screen.queryByText(/已經關過帳，不能再用回填補登/)).toBeNull();
+    await selectStudent('001');
+    fireEvent.click(screen.getByRole('button', { name: '繳費' }));
+    fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
+    fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: 'A-0125' } });
+    fireEvent.click(screen.getByTestId('submit-order-button'));
+    await waitFor(() => expect(repositoryMock.createPayment).toHaveBeenCalledTimes(1));
+    expect(repositoryMock.createPayment.mock.calls[0][0]).toMatchObject({ dayId: GAP, paidAmount: 50, note: '紙本A-0125：' });
   });
 
   it('re-reads the list of backfilling days on a day switch but reuses it after a counter operation (#513 review)', async () => {
