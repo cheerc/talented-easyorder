@@ -944,8 +944,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     : businessDate < snapshot.goLiveDate ? `伺服器營業日 ${businessDate} 早於系統啟用日期 ${snapshot.goLiveDate}，不能訂餐`
       : !day ? `${dayWord}（${businessDate}）營業日尚未建立，請先到「今日設定 › 菜單與開帳」建立營業日`
         : day.status === 'closed' ? `${dayWord}已關帳，不能訂餐、繳費或新增櫃台收支`
-          : backfillView && day.lastSettlementRevision > 0 ? `${businessDate} 已經關過帳，不能再用回填補登；請回到今天作業`
-            : '';
+          : '';
 
   // Inactive accounts can still pay (spec §6.1) but never order, whatever mode was last chosen.
   const mode: EntryMode = selectedStudent?.status === 'inactive' ? 'payment' : page.mode;
