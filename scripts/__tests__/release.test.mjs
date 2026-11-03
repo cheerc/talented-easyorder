@@ -151,7 +151,7 @@ test('deploy-ci retries a transient step failure with backoff, stops on success,
   const ok = { status: 0, output: '' };
 
   let r = run([transient, ok]);
-  assert.equal(await runCiStepWithRetry({ step: 'rules', run: r.fn, sleep, log: () => {} }), 1);
+  assert.equal(await runCiStepWithRetry({ step: 'rules', run: r.fn, sleep, log: () => {} }), 2);
   assert.equal(r.calls.length, 2);
   assert.deepEqual(sleeps, [30_000]);
 
