@@ -1667,16 +1667,9 @@ test.describe('P11c2b Cloud Backfill', () => {
       await orders.getByRole('button', { name: '其他餐點' }).click();
       await orders.getByLabel(/餐點品名/).fill('補登炒麵');
       await orders.getByLabel(/餐點單價/).fill('70');
-      // P13d2: a backfill day cannot be submitted without a paper number, and a malformed one is named.
+      // #600: a backfill day takes an ordinary remark, like today; there is no paper number field.
+      await expect(orders.getByLabel(/紙本號/)).toHaveCount(0);
       await orders.getByLabel('備註（選填）').fill('停電補登');
-      await orders.getByTestId('submit-order-button').click();
-      await expect(orders.getByRole('alert')).toContainText('補登日必須填紙本號');
-      await orders.getByLabel(/紙本號/).fill('A 1');
-      await orders.getByTestId('submit-order-button').click();
-      await expect(orders.getByRole('alert')).toContainText('紙本號只能是 1 至 20 字的英數與 -');
-      expect((await listAdminDocuments('transactions')).filter(item => item.businessDate === gap)).toHaveLength(0);
-      // The number is its own field; it becomes the note prefix.
-      await orders.getByLabel(/紙本號/).fill('A-0101');
       await orders.getByTestId('submit-order-button').click();
       await expect(orders.getByText(/已確認 901 回填測試生 訂餐完成/)).toBeVisible();
       await expect(orders.getByTestId('backfill-tag-recent-901')).toContainText('回填');
@@ -1688,10 +1681,10 @@ test.describe('P11c2b Cloud Backfill', () => {
 
       const rows = (await listAdminDocuments('transactions')).filter(item => item.businessDate === gap);
       expect(rows).toHaveLength(1);
-      expect(rows[0]).toMatchObject({ type: 'order', mealKind: 'other', mealPrice: 70, otherItemName: '補登炒麵', note: '紙本A-0101：停電補登' });
+      expect(rows[0]).toMatchObject({ type: 'order', mealKind: 'other', mealPrice: 70, otherItemName: '補登炒麵', note: '停電補登' });
       await orders.getByTestId('open-payment-details-button').click();
       await expect(orders.getByTestId(`backfill-tag-${rows[0].id}`)).toContainText('回填');
-      await expect(orders.getByTestId(`paper-tag-${rows[0].id}`)).toContainText('紙本 A-0101');
+      await expect(orders.getByTestId(`paper-tag-${rows[0].id}`)).toHaveCount(0);
 
       // 4. 離開回填：回到今天，橫幅消失
       await page.keyboard.press('Escape');
@@ -1812,8 +1805,6 @@ test.describe('P11c3 Cloud Backfill Align', () => {
         await orders.getByTestId('search-result-902').click();
         await orders.getByRole('button', { name: '繳費' }).click();
         await orders.getByLabel(/繳費金額/).fill(amount);
-        // P13d2: the paper number of each backfilled payment, typed in its own field.
-        await orders.getByLabel(/紙本號/).fill(`A-02${amount}`);
         await orders.getByLabel('備註（選填）').fill('對齊補登');
         await orders.getByTestId('submit-order-button').click();
         await expect(orders.getByText(new RegExp(`已確認 902 對齊測試生 繳費 \\$${amount} 完成`))).toBeVisible();

@@ -1744,11 +1744,10 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     fireEvent.click(screen.getByRole('button', { name: '其他餐點' }));
     fireEvent.change(screen.getByLabelText(/餐點品名/), { target: { value: '水餃' } });
     fireEvent.change(screen.getByLabelText(/餐點單價/), { target: { value: '70' } });
-    fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: 'A-0123' } });
     fireEvent.click(screen.getByTestId('submit-order-button'));
     await waitFor(() => expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1));
     expect(repositoryMock.createOrder.mock.calls[0][0]).toMatchObject({
-      dayId: GAP, mealKind: 'other', mealPrice: 70, expectedDayRevision: 5, note: '紙本A-0123：',
+      dayId: GAP, mealKind: 'other', mealPrice: 70, expectedDayRevision: 5, note: '',
     });
   });
 
@@ -1760,10 +1759,9 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     expect(screen.getByTestId('open-refund-button')).toBeDisabled();
     expect(screen.getByTestId('backfill-refund-note')).toHaveTextContent('回填中不能退款');
     fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
-    fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: 'A-0124' } });
     fireEvent.click(screen.getByTestId('submit-order-button'));
     await waitFor(() => expect(repositoryMock.createPayment).toHaveBeenCalledTimes(1));
-    expect(repositoryMock.createPayment.mock.calls[0][0]).toMatchObject({ dayId: GAP, paidAmount: 50, note: '紙本A-0124：' });
+    expect(repositoryMock.createPayment.mock.calls[0][0]).toMatchObject({ dayId: GAP, paidAmount: 50, note: '' });
     expect(await screen.findByText(/已確認/)).toBeVisible();
     expect(screen.queryByTestId('undo-bar')).toBeNull();
     expect(screen.queryByRole('button', { name: /撤回/ })).toBeNull();
@@ -1783,10 +1781,9 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     await selectStudent('001');
     fireEvent.click(screen.getByRole('button', { name: '繳費' }));
     fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
-    fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: 'A-0125' } });
     fireEvent.click(screen.getByTestId('submit-order-button'));
     await waitFor(() => expect(repositoryMock.createPayment).toHaveBeenCalledTimes(1));
-    expect(repositoryMock.createPayment.mock.calls[0][0]).toMatchObject({ dayId: GAP, paidAmount: 50, note: '紙本A-0125：' });
+    expect(repositoryMock.createPayment.mock.calls[0][0]).toMatchObject({ dayId: GAP, paidAmount: 50, note: '' });
   });
 
   it('re-reads the list of backfilling days on a day switch but reuses it after a counter operation (#513 review)', async () => {
@@ -1795,7 +1792,6 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     await selectStudent('001');
     fireEvent.click(screen.getByRole('button', { name: '繳費' }));
     fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
-    fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: 'A-0130' } });
     fireEvent.click(screen.getByTestId('submit-order-button'));
     expect(await screen.findByText(/已確認/)).toBeVisible();
     // First load: no list passed. After the payment: the list the page already holds is passed on.
@@ -1813,7 +1809,6 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     await selectStudent('001');
     fireEvent.click(screen.getByRole('button', { name: '繳費' }));
     fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
-    fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: 'A-0130' } });
     fireEvent.click(screen.getByTestId('submit-order-button'));
     await waitFor(() => expect(repositoryMock.createPayment).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(repositoryMock.loadSnapshot).toHaveBeenCalledTimes(2));
@@ -1827,7 +1822,6 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     await selectStudent('001');
     fireEvent.click(screen.getByRole('button', { name: '繳費' }));
     fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
-    fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: 'A-0130' } });
     fireEvent.click(screen.getByTestId('submit-order-button'));
     expect(await screen.findByText(/已確認/)).toBeVisible();
     expect(repositoryMock.loadSnapshot).toHaveBeenNthCalledWith(2, { dayId: GAP });
@@ -1840,10 +1834,9 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     fireEvent.click(screen.getByTestId('open-cash-movement-button'));
     fireEvent.change(await screen.findByLabelText(/金額/), { target: { value: '80' } });
     fireEvent.change(screen.getByLabelText(/原因/), { target: { value: '補買零錢' } });
-    fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: 'A-0125' } });
     fireEvent.click(screen.getByTestId('submit-cash-movement-button'));
     await waitFor(() => expect(repositoryMock.createCashMovement).toHaveBeenCalledTimes(1));
-    expect(repositoryMock.createCashMovement.mock.calls[0][0]).toMatchObject({ dayId: GAP, reason: '紙本A-0125：補買零錢' });
+    expect(repositoryMock.createCashMovement.mock.calls[0][0]).toMatchObject({ dayId: GAP, reason: '補買零錢' });
   });
 
   it('hides 取消訂餐並退還 for a paid order and explains why', async () => {
@@ -1877,7 +1870,9 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
     expect(screen.getByTestId('submit-order-button')).toBeEnabled();
   });
 
-  describe('P13d2 paper number', () => {
+  // #600 (CheerC 2026-11-03): the P13d2 paper number is removed. These replace the P13d2 blocks, which locked the
+  // removed feature; a note that already carries a former `紙本X：` prefix is ordinary text, shown and corrected as is.
+  describe('#600 no paper number', () => {
     const fillOtherMeal = async () => {
       await selectStudent('002');
       fireEvent.click(screen.getByRole('button', { name: '其他餐點' }));
@@ -1885,65 +1880,40 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
       fireEvent.change(screen.getByLabelText(/餐點單價/), { target: { value: '70' } });
     };
 
-    it('asks for the number on a backfill day and says so by name when it is missing — nothing is sent', async () => {
+    it('has no paper number field on a backfill day; a blank remark is sent as an empty note', async () => {
       repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot({ transactions: [] }));
       renderComponent('uid-1:1', GAP);
       await fillOtherMeal();
-      expect(screen.getByLabelText('紙本號（必填）')).toBeVisible();
-      fireEvent.click(screen.getByTestId('submit-order-button'));
-      expect(await screen.findByText('補登日必須填紙本號（1 至 20 字的英數與 -，例如 A-0123）')).toBeVisible();
-      expect(repositoryMock.createOrder).not.toHaveBeenCalled();
-      // The typed meal survives the refusal, and a valid number then goes through.
-      expect(screen.getByLabelText(/餐點品名/)).toHaveValue('水餃');
-      fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: 'A-0126' } });
+      expect(screen.queryByLabelText(/紙本號/)).toBeNull();
       fireEvent.click(screen.getByTestId('submit-order-button'));
       await waitFor(() => expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1));
+      expect(repositoryMock.createOrder.mock.calls[0][0]).toMatchObject({ dayId: GAP, note: '' });
     });
 
-    it('refuses a malformed number with its own message, for order and payment', async () => {
+    it('sends the typed remark on a backfill day, trimmed, with no prefix', async () => {
       repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot({ transactions: [] }));
       renderComponent('uid-1:1', GAP);
       await fillOtherMeal();
-      fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: 'A 0123' } });
+      fireEvent.change(screen.getByLabelText('備註（選填）'), { target: { value: ' 前天停電 ' } });
       fireEvent.click(screen.getByTestId('submit-order-button'));
-      expect(await screen.findByText('紙本號只能是 1 至 20 字的英數與 -（例如 A-0123）')).toBeVisible();
-      fireEvent.click(screen.getByRole('button', { name: '繳費' }));
-      fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
-      fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: 'a'.repeat(21) } });
-      fireEvent.click(screen.getByTestId('submit-order-button'));
-      expect(await screen.findByText('紙本號只能是 1 至 20 字的英數與 -（例如 A-0123）')).toBeVisible();
-      expect(repositoryMock.createOrder).not.toHaveBeenCalled();
-      expect(repositoryMock.createPayment).not.toHaveBeenCalled();
+      await waitFor(() => expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1));
+      expect(repositoryMock.createOrder.mock.calls[0][0]).toMatchObject({ note: '前天停電' });
     });
 
-    it('asks for the number on counter cash of a backfill day, and names a malformed one', async () => {
+    it('has no paper number field on counter cash of a backfill day; the reason is still required', async () => {
       repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot({ transactions: [] }));
       renderComponent('uid-1:1', GAP);
       await screen.findByTestId('backfill-banner');
       fireEvent.click(screen.getByTestId('open-cash-movement-button'));
       fireEvent.change(await screen.findByLabelText(/金額/), { target: { value: '80' } });
+      expect(screen.queryByLabelText(/紙本號/)).toBeNull();
+      // The reason stays required: without it the submit button is disabled.
+      expect(screen.getByTestId('submit-cash-movement-button')).toBeDisabled();
       fireEvent.change(screen.getByLabelText(/原因/), { target: { value: '補買零錢' } });
-      expect(screen.getByLabelText('紙本號（必填）')).toBeVisible();
-      fireEvent.click(screen.getByTestId('submit-cash-movement-button'));
-      expect(await screen.findByText('補登日必須填紙本號（1 至 20 字的英數與 -，例如 A-0123）')).toBeVisible();
-      fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: 'A:1' } });
-      fireEvent.click(screen.getByTestId('submit-cash-movement-button'));
-      expect(await screen.findByText('紙本號只能是 1 至 20 字的英數與 -（例如 A-0123）')).toBeVisible();
-      expect(repositoryMock.createCashMovement).not.toHaveBeenCalled();
+      expect(screen.getByTestId('submit-cash-movement-button')).toBeEnabled();
     });
 
-    it('puts the number in front of the typed remark', async () => {
-      repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot({ transactions: [] }));
-      renderComponent('uid-1:1', GAP);
-      await fillOtherMeal();
-      fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: ' A-0127 ' } });
-      fireEvent.change(screen.getByLabelText('備註（選填）'), { target: { value: ' 前天停電 ' } });
-      fireEvent.click(screen.getByTestId('submit-order-button'));
-      await waitFor(() => expect(repositoryMock.createOrder).toHaveBeenCalledTimes(1));
-      expect(repositoryMock.createOrder.mock.calls[0][0]).toMatchObject({ note: '紙本A-0127：前天停電' });
-    });
-
-    it('shows the number as its own tag on cash rows and payment-detail rows, with the remark text beside it', async () => {
+    it('shows a former paper-number note as plain text on cash rows, with no tag; a payment-detail row has no tag either', async () => {
       const cash = {
         ...mockTx('tx-cash', '__cashier__', 'other', 0, 50), type: 'expense' as const, mealKind: null, otherItemName: null,
         studentNameSnapshot: '櫃台', businessDate: GAP, note: '紙本A-0128：零錢補充', amount: 50,
@@ -1952,15 +1922,14 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
       repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot({ transactions: [cash, paid] }));
       renderComponent('uid-1:1', GAP);
       const row = await screen.findByTestId('cash-row-tx-cash');
-      expect(within(row).getByTestId('paper-tag-tx-cash')).toHaveTextContent('紙本 A-0128');
-      expect(row).toHaveTextContent('零錢補充');
-      expect(row).not.toHaveTextContent('紙本A-0128：');
+      expect(row).toHaveTextContent('紙本A-0128：零錢補充');
+      expect(within(row).queryByTestId('paper-tag-tx-cash')).toBeNull();
       await selectStudent('001');
       fireEvent.click(screen.getByTestId('open-payment-details-button'));
-      expect(within(await screen.findByTestId('detail-row-tx-paper')).getByTestId('paper-tag-tx-paper')).toHaveTextContent('紙本 B-9');
+      expect(within(await screen.findByTestId('detail-row-tx-paper')).queryByTestId('paper-tag-tx-paper')).toBeNull();
     });
 
-    it('P15n: a refund whose note carries a number shows the number once, in the tag; the item label is the text only', async () => {
+    it('P15n (#600): a refund label shows its whole note, a former prefix included', async () => {
       const refund = {
         ...gapTx('tx-refund', '2026-10-16T05:30:00.000Z'), type: 'refund' as const, mealKind: null, mealPrice: 0, paidAmount: 0,
         amount: 60, note: '紙本A-0123：退回餘額',
@@ -1970,13 +1939,11 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
       await selectStudent('001');
       fireEvent.click(screen.getByTestId('open-payment-details-button'));
       const row = await screen.findByTestId('detail-row-tx-refund');
-      expect(within(row).getByTestId('paper-tag-tx-refund')).toHaveTextContent('紙本 A-0123');
-      expect(row.textContent?.match(/A-0123/g)).toHaveLength(1);
-      expect(row).toHaveTextContent('退款：退回餘額');
-      expect(row).not.toHaveTextContent('紙本A-0123：');
+      expect(row).toHaveTextContent('退款：紙本A-0123：退回餘額');
+      expect(within(row).queryByTestId('paper-tag-tx-refund')).toBeNull();
     });
 
-    it('locks the number when a row that carries one is corrected — only the text after it is editable', async () => {
+    it('corrects a row with a former prefix from its whole note: the prefix can be removed; an empty reason is refused', async () => {
       repositoryMock.mutateTransaction.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 20));
       const cash = {
         ...mockTx('tx-cash', '__cashier__', 'other', 0, 50), type: 'expense' as const, mealKind: null, otherItemName: null,
@@ -1986,9 +1953,8 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
       renderComponent('uid-1:1', GAP);
       fireEvent.click(within(await screen.findByTestId('cash-row-tx-cash')).getByRole('button', { name: '更正' }));
       await screen.findByTestId('edit-transaction-modal');
-      expect(screen.getByTestId('edit-paper-ref')).toHaveTextContent('紙本號 A-0128（更正時不能修改）');
-      expect(screen.getByLabelText('收支原因')).toHaveValue('零錢補充');
-      // The number cannot be typed over, and an empty reason is refused by name.
+      expect(screen.queryByTestId('edit-paper-ref')).toBeNull();
+      expect(screen.getByLabelText('收支原因')).toHaveValue('紙本A-0128：零錢補充');
       fireEvent.change(screen.getByLabelText('收支原因'), { target: { value: '' } });
       fireEvent.change(screen.getByLabelText(/修改理由/), { target: { value: '寫錯了' } });
       fireEvent.click(screen.getByTestId('submit-edit-button'));
@@ -1998,11 +1964,11 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
       fireEvent.click(screen.getByTestId('submit-edit-button'));
       await waitFor(() => expect(repositoryMock.mutateTransaction).toHaveBeenCalledTimes(1));
       expect(repositoryMock.mutateTransaction.mock.calls[0][0]).toMatchObject({
-        kind: 'CorrectTransaction', payload: { note: '紙本A-0128：零錢補充（更正）' },
+        kind: 'CorrectTransaction', payload: { note: '零錢補充（更正）' },
       });
     });
 
-    it('corrects a row without a number as before: the note is sent as typed and no number is shown', async () => {
+    it('corrects a row without a prefix as before: the note is sent as typed', async () => {
       repositoryMock.mutateTransaction.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 20));
       repositoryMock.loadSnapshot.mockResolvedValue(backfillSnapshot());
       renderComponent('uid-1:1', GAP);
@@ -2017,42 +1983,18 @@ describe('CloudOrdersPage: backfill view (contract §13)', () => {
       await waitFor(() => expect(repositoryMock.mutateTransaction).toHaveBeenCalledTimes(1));
       expect(repositoryMock.mutateTransaction.mock.calls[0][0]).toMatchObject({ kind: 'CorrectTransaction', payload: { note: '改備註' } });
     });
-  });
 
-  describe('P13d2 paper number on today', () => {
-    const payToday = async (paperRef: string) => {
+    it('has no paper number field today either; the note is sent exactly as typed', async () => {
       repositoryMock.loadSnapshot.mockResolvedValue(snapshot());
       renderComponent();
       await selectStudent('002');
-      expect(screen.getByLabelText('紙本號（選填）')).toBeVisible();
+      expect(screen.queryByLabelText(/紙本號/)).toBeNull();
       fireEvent.click(screen.getByRole('button', { name: '繳費' }));
       fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
       fireEvent.change(screen.getByLabelText('備註（選填）'), { target: { value: '現金' } });
-      if (paperRef) fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: paperRef } });
       fireEvent.click(screen.getByTestId('submit-order-button'));
       await waitFor(() => expect(repositoryMock.createPayment).toHaveBeenCalledTimes(1));
-    };
-
-    it('is optional today: without a number the note is sent exactly as typed', async () => {
-      await payToday('');
       expect(repositoryMock.createPayment.mock.calls[0][0]).toMatchObject({ note: '現金' });
-    });
-
-    it('accepts a number today as well, and puts it in front of the note', async () => {
-      await payToday('A-0200');
-      expect(repositoryMock.createPayment.mock.calls[0][0]).toMatchObject({ note: '紙本A-0200：現金' });
-    });
-
-    it('still names a malformed number today', async () => {
-      repositoryMock.loadSnapshot.mockResolvedValue(snapshot());
-      renderComponent();
-      await selectStudent('002');
-      fireEvent.click(screen.getByRole('button', { name: '繳費' }));
-      fireEvent.change(screen.getByLabelText(/繳費金額/), { target: { value: '50' } });
-      fireEvent.change(screen.getByLabelText(/紙本號/), { target: { value: '紙本1：' } });
-      fireEvent.click(screen.getByTestId('submit-order-button'));
-      expect(await screen.findByText('紙本號只能是 1 至 20 字的英數與 -（例如 A-0123）')).toBeVisible();
-      expect(repositoryMock.createPayment).not.toHaveBeenCalled();
     });
   });
 });
