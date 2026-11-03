@@ -716,12 +716,17 @@ describeWithEmulator('P14 cloud backup', () => {
     expect(replayed[`days/${gap}`]).toMatchObject({ status: 'closed', lastSettlementRevision: 3, openingCash: 600 });
     expect((replayed[`days/${gap}`] as Record<string, Record<string, number>>).totals).toMatchObject({ activeTransactionCount: 2, retainedReceipts: 180 });
 
-    // Replay is no wider than Rules: a backfilled transaction claiming to land on a closed day is refused.
-    const onClosedDay = structuredClone(opened);
-    const forgedDay = onClosedDay.records[7]!.before!.day as Record<string, unknown>;
-    forgedDay.status = 'closed';
-    expect(() => replayBackupProjections(onClosedDay.records, onClosedDay.baseState)).toThrow(/seq 8/);
-    }, 30_000);
+    // Replay is no wider than Rules: a backfilled transaction on a closed marked day is refused. The forgery is
+    // self-consistent, as in an increment whose base already has the day closed: the base state is the replay up to
+    // the first close, and the second order (seq 8) claims exactly that closed day as its before-snapshot.
+    const closedBase = replayBackupProjections(opened.records.slice(0, 6), opened.baseState);
+    expect(closedBase[`days/${gap}`]).toMatchObject({ status: 'closed', lastSettlementRevision: 1 });
+    expect(closedBase[`backfillDays/${gap}`]).toBeTruthy();
+    const onClosedDay = structuredClone(opened.records[7]!);
+    expect(onClosedDay.kind).toBe('CreateOrder');
+    onClosedDay.before!.day = structuredClone(closedBase[`days/${gap}`]);
+    expect(() => replayBackupProjections([onClosedDay], closedBase)).toThrow(/seq 8 .*關帳狀態/);
+  }, 30_000);
 
   it('exports, decrypts and replays a real aligned close of a back-filled day (EnsureDay → opening → marker → entries → aligned close); forged alignments are rejected', async () => {
     await env.withSecurityRulesDisabled(async context => seed(context.firestore() as unknown as Firestore, 0, []));

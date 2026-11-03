@@ -1288,12 +1288,52 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     expect((await read(`days/${gap}`))!.totals).toMatchObject({ retainedReceipts: 400, cashierIncome: 50 });
     expect((await repository().closeDay(await closeInput({ countedCash: 1000, align: 'auto' }, gap))).ok).toBe(false);
     expect((await state(gap)).day).toMatchObject({ status: 'reopened', lastSettlementRevision: 2 });
-    // Once the next opening matches, the re-close is aligned and has no difference, as every close of a marked day must.
-    await withAdmin(async db => updateDoc(doc(db, `days/${today}`), { openingCash: 1250 }));
+    // The aligned day is today, so its opening cash can be corrected with a reason (a real SetOpeningCash command);
+    // then the re-close is aligned and has no difference, as every close of a marked day must.
+    const todayDay = (await read(`days/${today}`))!;
+    ok(await writer().commitCommand({
+      commandId: uuid(), kind: 'SetOpeningCash', leaseEpoch: 1, targets: { dayId: today },
+      expectedRevisions: { day: todayDay.revision }, payload: { openingCash: 1250, reason: REASON },
+    }));
     ok(await repository().closeDay(await closeInput({ countedCash: 1250, align: 'auto' }, gap)));
     expect((await state(gap)).settlements['3']).toMatchObject({ status: 'closed', expectedCash: 1250, difference: 0 });
     expect((await read(`backfillDays/${gap}`))).toBeDefined();
-    }, 30_000);
+  }, 30_000);
+
+  it('P11c2a.7d (#601 review F2): when the aligned day is a past day, a backfill that moves the expected cash needs an offsetting cash movement before the re-close', async () => {
+    // The next opened day is in the past: its opening cash cannot change any more (SetOpeningCash is today only,
+    // BackfillOpeningCash only fills a missing one), so the re-close can only meet it through the gap day's own books.
+    const gap = shiftDate(today, -3);
+    const next = shiftDate(today, -1);
+    await seedGapDay(gap, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    await seedPastDay(next, { totals: zeroTotals(), openingCash: 1000, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    ok(await startBackfill(gap));
+    ok((await backfillPayment(gap, 200)).result);
+    const firstClose = await closeInput({ countedCash: 1000, align: 'auto' }, gap);
+    expect(firstClose.alignWithDayId).toBe(next);
+    ok(await repository().closeDay(firstClose));
+    ok(await repository().reopenDay(await reopenInput('漏登一張繳費紙本', gap)));
+
+    // A missed payment of 100 is backfilled: expected cash 1,100, but the next day opened with 1,000.
+    ok((await backfillPayment(gap, 100, '紙本A-0004：')).result);
+    for (const countedCash of [1100, 1000]) {
+      expect((await repository().closeDay(await closeInput({ countedCash, align: 'auto' }, gap))).ok).toBe(false);
+    }
+    expect((await state(gap)).day).toMatchObject({ status: 'reopened', lastSettlementRevision: 2 });
+    expect((await read(`days/${next}`))!.openingCash).toBe(1000);
+
+    // An offsetting counter expense with its reason brings the expected cash back to the next opening; then it closes.
+    const r = await dayRevisions(gap);
+    ok(await writer().commitCommand({
+      commandId: uuid(), kind: 'CreateCashMovement', leaseEpoch: 1,
+      targets: { transactionId: uuid(), dayId: gap }, expectedRevisions: { transaction: 0, day: r.day },
+      payload: { mealPrice: 100, paidAmount: 0, reason: '紙本A-0005：補登的 100 元當天已交回，對沖' },
+    }));
+    const reClose = await closeInput({ countedCash: 1000, align: 'auto' }, gap);
+    expect(reClose.alignWithDayId).toBe(next);
+    ok(await repository().closeDay(reClose));
+    expect((await state(gap)).settlements['3']).toMatchObject({ status: 'closed', expectedCash: 1000, difference: 0 });
+  }, 30_000);
 
   it('P11c2a.7b (#601): a marked day that is closed and not reopened still refuses backfilled order, payment and cash movement', async () => {
     const gap = shiftDate(today, -2);
@@ -1326,7 +1366,7 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     const closedBefore = await state(closed);
     await assertFails((await rawBackfillOrder(closed)).batch(authedDb(operatorA)).commit());
     expect(await state(closed)).toEqual(closedBefore);
-    }, 30_000);
+  }, 30_000);
 
   it('P11c2a.12: a backfill day opens no refund, undo or refund cancellation; a menu can still be set; a past day can be created', async () => {
     const gap = shiftDate(today, -2);
