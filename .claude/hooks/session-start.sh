@@ -16,10 +16,13 @@ if [ "$(node -v 2>/dev/null | cut -d. -f1)" != "v${node_major}" ]; then
     version="$(curl -fsSL https://nodejs.org/dist/index.json \
       | python3 -I -c "import json,sys; print(next(r['version'] for r in json.load(sys.stdin) if r['version'].startswith('v${node_major}.')))")"
     tmp="$(mktemp -d)"
+    trap 'rm -rf "${tmp}"' EXIT
     curl -fsSL "https://nodejs.org/dist/${version}/node-${version}-linux-x64.tar.xz" -o "${tmp}/node.tar.xz"
-    mkdir -p "${node_dir}"
-    tar -xJf "${tmp}/node.tar.xz" -C "${node_dir}" --strip-components=1
-    rm -rf "${tmp}"
+    # 先解壓到暫存目錄，完整成功後才搬到正式位置，避免殘缺安裝被當成已安裝。
+    mkdir "${tmp}/node"
+    tar -xJf "${tmp}/node.tar.xz" -C "${tmp}/node" --strip-components=1
+    rm -rf "${node_dir}"
+    mv "${tmp}/node" "${node_dir}"
   fi
   export PATH="${node_dir}/bin:${PATH}"
   if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
