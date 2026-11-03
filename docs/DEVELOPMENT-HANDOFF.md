@@ -1,5 +1,7 @@
 # 正式後端逐 PR 開發交接
 
+> **2026-11-03 firebase-test 第一次 GitHub Actions 部署成功：** run [41631085491](https://github.com/cheerc/talented-easyorder/actions/runs/41631085491)，main `320f8bb`，indexes（重試 1 次）→ 6 個 READY → rules → hosting 全部完成；細節見 [ops evidence](ops/free-production-evidence.md#github-actions-first-deploy-to-firebase-test-2026-11-03)。第 6 節正式 smoke 尚未由本人執行；`firebase-production` 尚未設定；不推進 P18。
+
 > **2026-11-03 deploy-ci 暫時性錯誤重試：** `firebase-test` 第一次 GitHub Actions 部署（run 41620401536，main `3f4b16d`）三次嘗試皆失敗於 Firebase Rules API：兩次 `projects:test` 503、一次 release PATCH 失敗後 create 409；本機以同一 2383 行 rules 呼叫 `projects:test` 亦 1/5 回 503，屬 provider 暫時性錯誤，非權限或設定。第二次嘗試已部署 indexes（6 個 READY），線上 rules 與 repo 逐字相同，hosting 未更新。本 PR 讓 `deploy-ci` 對 indexes／rules 的 429／5xx 與上述 409 最多試 3 次（30、60 秒），hosting 不重試；本機 `deploy` 行為不變。合併並經 main CI 通過後重跑部署；正式結果仍 UNVERIFIED，不推進 P18。
 
 > **2026-11-03 Deploy workflow 觸發與核准可由 agent 代操作：** 使用者授權：agent 可在使用者於當次對話明確要求時，以 `gh` 觸發 `Deploy to Firebase`（`firebase-test`、`firebase-production`），並在使用者對該次 run 明確允許後以 `gh api` 核准 pending deployment；核准前回報 run URL、target、commit，不延用前次允許。只改 `CLAUDE.md`、`deploy.yml` 註解、[部署指南第 9 節](ops/DEPLOYMENT-GUIDE.md#9-github-actions-部署本人觸發並核准)；workflow 行為、Environment 保護、WIF 條件不變。`firebase-test` 的 Google Cloud WIF／service account 與 GitHub Environment 已由使用者授權設定；`firebase-production` 尚未設定。第一次實際部署結果另記 evidence，未記錄前仍為 UNVERIFIED；不推進 P18。
