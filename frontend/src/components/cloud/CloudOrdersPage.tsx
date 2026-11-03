@@ -1704,6 +1704,11 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
       const numeric = target?.hasAttribute('data-numeric-input');
       if (event.key === 'Escape') {
         event.preventDefault();
+        // Nothing to clear: the second Esc on an empty search leaves the box so A can open counter cash (#598).
+        if (!pageState.selectedStudentId && !pageState.cashOpen && pageState.search === '') {
+          if (document.activeElement === searchInputRef.current) searchInputRef.current?.blur();
+          return;
+        }
         if (pageState.selectedStudentId && pageState.mode === 'other') {
           setPageStateRaw(previous => ({ ...previous, mode: 'bento', otherItemName: '', otherPriceText: '' }));
           amountInputRef.current?.focus();
