@@ -23,3 +23,4 @@
 
 - Frontend 開發命令、mode 隔離與驗證範圍見 [`frontend/CLAUDE.md`](frontend/CLAUDE.md)；CI gate 見 [CI workflow](.github/workflows/ci.yml)。
 - Commit 與 PR 使用中文，並依 handoff 與 repo PR template。
+- GitHub PR 自動 review 的嚴重度、必查與略過項目見 [`REVIEW.md`](REVIEW.md)；它只從 `main` 讀取，PR 內對它的修改要合併後才生效。本機 `/code-review` 不讀 `REVIEW.md`，兩邊都要的規則放本檔。
