@@ -24,6 +24,52 @@ function input(payload: Record<string, unknown>, overrides: Record<string, unkno
   };
 }
 
+/** A consistent CreateCashMovement expense receipt; the options move it to a past day or another day state. */
+async function cashReceipt(options: {
+  committedAt?: Timestamp; reason?: string; status?: string; lastSettlementRevision?: number;
+} = {}) {
+  const committedAt = options.committedAt ?? Timestamp.fromDate(new Date('2026-10-16T04:00:00.000Z'));
+  const earlier = Timestamp.fromDate(new Date('2026-10-16T01:00:00.000Z'));
+  const reason = options.reason ?? '付餐費給廠商';
+  const payload = { mealPrice: 80, paidAmount: 0, reason };
+  const fingerprint = await fingerprintCommandInput(normalizeEnabledCommandInput(input(payload)));
+  const head = (seq: number, last: string | null, at: Timestamp) => ({
+    schemaVersion: 1, datasetId: 'synthetic', seq, lastCommandId: last, maintenance: false,
+    goLiveDate: '2026-10-01', updatedAt: at,
+  });
+  const totals = (count: number, expense: number) => ({
+    activeTransactionCount: count, bentoCount: 0, otherMealCount: 0, mealTotal: 0,
+    retainedReceipts: 0, cashierIncome: 0, cashierExpense: expense, accountRefunds: 0,
+  });
+  const day = (revision: number, last: string, at: Timestamp, count: number, expense: number) => ({
+    status: options.status ?? 'open', revision, menu: null, openingCash: 1000, openedBy: 'synthetic-uid', openedAt: earlier,
+    totals: totals(count, expense), lastSettlementRevision: options.lastSettlementRevision ?? 0, lastCommandId: last, updatedAt: at,
+  });
+  const priorId = '66666666-6666-4666-8666-666666666666';
+  return {
+    commandId, kind: 'CreateCashMovement', seq: 5, leaseEpoch: 1,
+    actor: { uid: 'synthetic-uid', email: 'synthetic@example.test' }, committedAt,
+    businessDate: dayId, studentId: '__cashier__',
+    targets: { transactionId, dayId }, expectedRevisions: { transaction: 0, day: 4 },
+    before: { head: head(4, priorId, earlier), day: day(4, priorId, earlier, 0, 0), transaction: null },
+    after: {
+      head: head(5, commandId, committedAt),
+      day: day(5, commandId, committedAt, 1, 80),
+      transaction: {
+        transactionId, studentId: '__cashier__', businessDate: dayId, type: 'expense', mealKind: null,
+        mealPrice: 80, paidAmount: 0, amount: -80, studentNameSnapshot: '櫃台', menuNameSnapshot: '',
+        menuPriceSnapshot: 0, vendorIdSnapshot: '', vendorNameSnapshot: '', otherItemName: null,
+        status: 'active', revision: 1, createdAt: committedAt, createdSeq: 5,
+        operatorUid: 'synthetic-uid', operatorEmail: 'synthetic@example.test', sourceDevice: 'pc',
+        note: reason, lastCommandId: commandId, updatedAt: committedAt,
+      },
+    },
+    reason,
+    cashEffect: { before: 0, after: -80, delta: -80, reasonKind: 'payout', refundAmount: 0 },
+    payload, inputFingerprint: fingerprint,
+  };
+}
+
 describe('P09a CreateCashMovement schema', () => {
   it('normalizes income and expense with exactly one positive side and a required reason', () => {
     expect(normalizeEnabledCommandInput(input({ mealPrice: 0, paidAmount: 50, reason: '零錢補充' }))).toEqual(
@@ -63,51 +109,24 @@ describe('P09a CreateCashMovement schema', () => {
   });
 
   it('decodes a consistent receipt and rejects one whose reason or cashier sentinel was altered', async () => {
-    const committedAt = Timestamp.fromDate(new Date('2026-10-16T04:00:00.000Z'));
-    const earlier = Timestamp.fromDate(new Date('2026-10-16T01:00:00.000Z'));
-    const payload = { mealPrice: 80, paidAmount: 0, reason: '付餐費給廠商' };
-    const fingerprint = await fingerprintCommandInput(normalizeEnabledCommandInput(input(payload)));
-    const head = (seq: number, last: string | null, at: Timestamp) => ({
-      schemaVersion: 1, datasetId: 'synthetic', seq, lastCommandId: last, maintenance: false,
-      goLiveDate: '2026-10-01', updatedAt: at,
-    });
-    const totals = (count: number, expense: number) => ({
-      activeTransactionCount: count, bentoCount: 0, otherMealCount: 0, mealTotal: 0,
-      retainedReceipts: 0, cashierIncome: 0, cashierExpense: expense, accountRefunds: 0,
-    });
-    const day = (revision: number, last: string, at: Timestamp, count: number, expense: number) => ({
-      status: 'open', revision, menu: null, openingCash: 1000, openedBy: 'synthetic-uid', openedAt: earlier,
-      totals: totals(count, expense), lastSettlementRevision: 0, lastCommandId: last, updatedAt: at,
-    });
-    const priorId = '66666666-6666-4666-8666-666666666666';
-    const raw = {
-      commandId, kind: 'CreateCashMovement', seq: 5, leaseEpoch: 1,
-      actor: { uid: 'synthetic-uid', email: 'synthetic@example.test' }, committedAt,
-      businessDate: dayId, studentId: '__cashier__',
-      targets: { transactionId, dayId }, expectedRevisions: { transaction: 0, day: 4 },
-      before: { head: head(4, priorId, earlier), day: day(4, priorId, earlier, 0, 0), transaction: null },
-      after: {
-        head: head(5, commandId, committedAt),
-        day: day(5, commandId, committedAt, 1, 80),
-        transaction: {
-          transactionId, studentId: '__cashier__', businessDate: dayId, type: 'expense', mealKind: null,
-          mealPrice: 80, paidAmount: 0, amount: -80, studentNameSnapshot: '櫃台', menuNameSnapshot: '',
-          menuPriceSnapshot: 0, vendorIdSnapshot: '', vendorNameSnapshot: '', otherItemName: null,
-          status: 'active', revision: 1, createdAt: committedAt, createdSeq: 5,
-          operatorUid: 'synthetic-uid', operatorEmail: 'synthetic@example.test', sourceDevice: 'pc',
-          note: '付餐費給廠商', lastCommandId: commandId, updatedAt: committedAt,
-        },
-      },
-      reason: '付餐費給廠商',
-      cashEffect: { before: 0, after: -80, delta: -80, reasonKind: 'payout', refundAmount: 0 },
-      payload, inputFingerprint: fingerprint,
-    };
+    const raw = await cashReceipt();
     expect(decodeEnabledCommandDoc(raw).kind).toBe('CreateCashMovement');
     expect(() => decodeEnabledCommandDoc({ ...raw, reason: 'changed' })).toThrow();
     expect(() => decodeEnabledCommandDoc({ ...raw, studentId: '55555555-5555-4555-8555-555555555555' })).toThrow();
     expect(() => decodeEnabledCommandDoc({
       ...raw, cashEffect: { before: 0, after: -80, delta: -80, reasonKind: 'collection', refundAmount: 0 },
     })).toThrow();
+  });
+
+  it('#601: a backfilled receipt on a past day that closed and reopened is accepted; on a closed day it is refused', async () => {
+    // Committed two days after its business day, as a backfill; whether the day carries a marker is proven by Rules and P14 replay.
+    const later = Timestamp.fromDate(new Date('2026-10-18T04:00:00.000Z'));
+    const reason = '紙本A-0003：付餐費給廠商';
+    expect(decodeEnabledCommandDoc(await cashReceipt({ committedAt: later, reason })).kind).toBe('CreateCashMovement');
+    expect(decodeEnabledCommandDoc(await cashReceipt({ committedAt: later, reason, status: 'reopened', lastSettlementRevision: 2 })).kind)
+      .toBe('CreateCashMovement');
+    const closed = await cashReceipt({ committedAt: later, reason, status: 'closed', lastSettlementRevision: 1 });
+    expect(() => decodeEnabledCommandDoc(closed)).toThrow();
   });
 });
 

@@ -1210,23 +1210,123 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     expect(await withAdmin(async db => (await getDocs(collection(db, 'backfillDays'))).size)).toBe(1);
   });
 
-  it('P11c2a.7: a day that closed after the marker accepts no more backfilled transactions, even once reopened', async () => {
+  /** A complete raw SDK backfilled CreateOrder on a marked past day, built the same way as the repository (no paid amount). */
+  async function rawBackfillOrder(dayId: string, actor = operatorA) {
+    const commandId = uuid();
+    const transactionId = uuid();
+    const [headBefore, dayBefore, studentBefore] = await Promise.all([
+      read('system/dataHead'), read(`days/${dayId}`), read(`students/${studentA}`),
+    ]) as RawMap[];
+    const input = {
+      commandId, kind: 'CreateOrder' as const, leaseEpoch: 1,
+      targets: { transactionId, studentId: studentA, dayId },
+      expectedRevisions: { transaction: 0, student: studentBefore.revision, day: dayBefore.revision },
+      payload: { mealPrice: 90, paidAmount: 0, mealKind: 'bento', menuRevision: 1, otherItemName: null, note: PAPER_ORDER_NOTE },
+    };
+    const canonical = normalizeEnabledCommandInput(input);
+    const now = serverTimestamp();
+    const seq = headBefore.seq + 1;
+    const menu = dayBefore.menu as RawMap;
+    const headAfter = { ...headBefore, seq, lastCommandId: commandId, updatedAt: now };
+    const studentAfter = {
+      ...studentBefore, currentBalance: studentBefore.currentBalance - 90, revision: studentBefore.revision + 1,
+      lastCommandId: commandId, updatedAt: now,
+    };
+    const t = dayBefore.totals as Record<string, number>;
+    const dayAfter = {
+      ...dayBefore, revision: dayBefore.revision + 1, lastCommandId: commandId, updatedAt: now,
+      totals: { ...t, activeTransactionCount: t.activeTransactionCount + 1, bentoCount: t.bentoCount + 1, mealTotal: t.mealTotal + 90 },
+    };
+    const transactionAfter = {
+      transactionId, studentId: studentA, businessDate: dayId, type: 'order', mealKind: 'bento', mealPrice: 90, paidAmount: 0,
+      amount: -90, studentNameSnapshot: studentBefore.displayName, menuNameSnapshot: menu.itemName, menuPriceSnapshot: menu.price,
+      vendorIdSnapshot: menu.vendorId, vendorNameSnapshot: menu.vendorNameSnapshot, otherItemName: null, status: 'active',
+      revision: 1, createdAt: now, createdSeq: seq, operatorUid: actor.uid, operatorEmail: actor.email, sourceDevice: 'pc',
+      note: PAPER_ORDER_NOTE, lastCommandId: commandId, updatedAt: now,
+    };
+    const command = {
+      commandId, kind: 'CreateOrder', seq, leaseEpoch: 1, actor: { uid: actor.uid, email: actor.email }, committedAt: now,
+      businessDate: dayId, studentId: studentA, targets: canonical.targets, expectedRevisions: canonical.expectedRevisions,
+      before: { head: headBefore, student: studentBefore, day: dayBefore, transaction: null },
+      after: { head: headAfter, student: studentAfter, day: dayAfter, transaction: transactionAfter },
+      reason: null, cashEffect: { before: 0, after: 0, delta: 0, reasonKind: 'none', refundAmount: 0 },
+      payload: canonical.payload, inputFingerprint: await fingerprintCommandInput(canonical),
+    };
+    const batch = (db: Firestore) => writeBatch(db)
+      .set(doc(db, 'system/dataHead'), headAfter)
+      .set(doc(db, `students/${studentA}`), studentAfter)
+      .set(doc(db, `days/${dayId}`), dayAfter)
+      .set(doc(db, `transactions/${transactionId}`), transactionAfter)
+      .set(doc(db, `commands/${commandId}`), command);
+    return { transactionId, batch };
+  }
+
+  /** Marker, a payment of 200, an aligned close at 1,000 (today opens with 1,000), then a reopen: settlement version 2. */
+  async function seedReopenedMarkedDay(gap: string) {
+    await seedGapDay(gap, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
+    ok(await startBackfill(gap));
+    ok((await backfillPayment(gap, 200)).result);
+    ok(await repository().closeDay(await closeInput({ countedCash: 1000, align: 'auto' }, gap)));
+    ok(await repository().reopenDay(await reopenInput('補登漏掉的紙本', gap)));
+    expect((await state(gap)).day).toMatchObject({ status: 'reopened', lastSettlementRevision: 2 });
+  }
+
+  it('P11c2a.7 (#601): a marked day that closed and reopened accepts backfilled order, payment and cash movement again, and must re-close aligned', async () => {
+    // Product decision (CheerC, 2026-11-03, #601): a reopened day that carries a backfill marker can be backfilled again.
+    const gap = shiftDate(today, -2);
+    await seedReopenedMarkedDay(gap);
+    const order = await backfillOrder(gap);
+    const payment = await backfillPayment(gap, 200);
+    const cash = await backfillCash(gap, 50);
+    ok(order.result);
+    ok(payment.result);
+    ok(cash.result);
+    for (const id of [order.transactionId, payment.transactionId, cash.transactionId]) {
+      expect((await read(`transactions/${id}`))!).toMatchObject({ businessDate: gap, status: 'active' });
+    }
+    // 800 + receipts 400 + income 50 = 1,250, but today still opens with 1,000: the books do not meet, so it cannot close.
+    expect((await read(`days/${gap}`))!.totals).toMatchObject({ retainedReceipts: 400, cashierIncome: 50 });
+    expect((await repository().closeDay(await closeInput({ countedCash: 1000, align: 'auto' }, gap))).ok).toBe(false);
+    expect((await state(gap)).day).toMatchObject({ status: 'reopened', lastSettlementRevision: 2 });
+    // Once the next opening matches, the re-close is aligned and has no difference, as every close of a marked day must.
+    await withAdmin(async db => updateDoc(doc(db, `days/${today}`), { openingCash: 1250 }));
+    ok(await repository().closeDay(await closeInput({ countedCash: 1250, align: 'auto' }, gap)));
+    expect((await state(gap)).settlements['3']).toMatchObject({ status: 'closed', expectedCash: 1250, difference: 0 });
+    expect((await read(`backfillDays/${gap}`))).toBeDefined();
+    }, 30_000);
+
+  it('P11c2a.7b (#601): a marked day that is closed and not reopened still refuses backfilled order, payment and cash movement', async () => {
     const gap = shiftDate(today, -2);
     await seedGapDay(gap, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
     ok(await startBackfill(gap));
     ok((await backfillPayment(gap, 200)).result);
     ok(await repository().closeDay(await closeInput({ countedCash: 1000, align: 'auto' }, gap)));
-    ok(await repository().reopenDay(await reopenInput('補登漏掉的繳費', gap)));
     const before = await state(gap);
-    expect(before.day).toMatchObject({ status: 'reopened', lastSettlementRevision: 2 });
-    // The writer says why: the day was marked, closed and reopened, which is not the same as "never marked".
     for (const attempt of [backfillOrder(gap), backfillPayment(gap), backfillCash(gap)]) {
-      expect(await attempt).toMatchObject({
-        result: { ok: false, error: { code: 'DAY_CLOSED', message: expect.stringContaining('曾經關過帳') } },
-      });
+      expect(await attempt).toMatchObject({ result: { ok: false, error: { code: 'DAY_CLOSED' } } });
     }
     expect(await state(gap)).toEqual(before);
   });
+
+  it('P11c2a.7c (#601): Rules accept a raw backfilled CreateOrder on a reopened marked day only for the holder, and never on a closed one', async () => {
+    const gap = shiftDate(today, -2);
+    await seedReopenedMarkedDay(gap);
+    const before = await state(gap);
+    await assertFails((await rawBackfillOrder(gap, operatorB)).batch(authedDb(operatorB)).commit());
+    expect(await state(gap)).toEqual(before);
+    const raw = await rawBackfillOrder(gap);
+    await assertSucceeds(raw.batch(authedDb(operatorA)).commit());
+    expect((await read(`transactions/${raw.transactionId}`))!).toMatchObject({ businessDate: gap, status: 'active', note: PAPER_ORDER_NOTE });
+    // A closed marked day stays shut to the same raw write.
+    const closed = shiftDate(today, -3);
+    await seedGapDay(closed, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp(), status: 'closed', lastSettlementRevision: 1 });
+    await withAdmin(async db => setDoc(doc(db, `backfillDays/${closed}`), {
+      dayId: closed, reason: BF_REASON, startedBy: operatorA.uid, startedAt: serverTimestamp(), commandId: uuid(),
+    }));
+    const closedBefore = await state(closed);
+    await assertFails((await rawBackfillOrder(closed)).batch(authedDb(operatorA)).commit());
+    expect(await state(closed)).toEqual(closedBefore);
+    }, 30_000);
 
   it('P11c2a.12: a backfill day opens no refund, undo or refund cancellation; a menu can still be set; a past day can be created', async () => {
     const gap = shiftDate(today, -2);
