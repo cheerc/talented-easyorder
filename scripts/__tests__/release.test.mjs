@@ -187,4 +187,7 @@ test('deploy workflow is manual-only from main, uses an approval environment, ke
   assert.ok(uses.length >= 4);
   for (const action of uses) assert.match(action, /^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/, `${action} must be pinned to a full commit SHA`);
   assert.match(workflow, /\.\/deploy\.sh deploy-ci /);
+  // job 有 id-token 權限時不執行依賴的 install script；public repo 不上傳部署 artifact。
+  for (const install of workflow.matchAll(/npm (ci|install)\b[^\n]*/g)) assert.match(install[0], /--ignore-scripts/);
+  assert.doesNotMatch(workflow, /upload-artifact/);
 });
