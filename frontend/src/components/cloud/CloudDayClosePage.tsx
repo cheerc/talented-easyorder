@@ -26,6 +26,7 @@ import { Toast } from '../ui/Toast';
 import { BackupScreen } from '../screens/BackupScreen';
 import { LedgerUnclosedBanner } from './LedgerUnclosedBanner';
 import { DataUpdatedNotice } from './DataUpdatedNotice';
+import { seqWithOwnReceipts, useOwnReceiptSeqs } from './ownReceiptSeqs';
 import './CloudDayClosePage.css';
 
 export interface CloudDayClosePageProps {
@@ -474,6 +475,8 @@ export function CloudDayClosePage({
   // The embedded backup keeps its own unconfirmed RecordBackup; this page starts no command meanwhile (single flight).
   const backupRecoveringRef = useRef(false);
   const [backupRecovering, setBackupRecovering] = useState(false);
+  // The embedded backup records on its own and this page does not read again after it (#596).
+  const { ownSeqs: ownBackupSeqs, addOwnSeq: addOwnBackupSeq } = useOwnReceiptSeqs(authorizationScopeKey);
   const onBackupRecoveryChange = useCallback((active: boolean) => {
     backupRecoveringRef.current = active;
     setBackupRecovering(active);
@@ -1604,7 +1607,7 @@ export function CloudDayClosePage({
         </button>
       </header>
       <DataUpdatedNotice
-        pageSeq={snapshot?.overview.seq ?? null}
+        pageSeq={snapshot ? seqWithOwnReceipts(snapshot.overview.seq, ownBackupSeqs) : null}
         hidden={progressActive || busy}
         onReload={() => void loadSnapshot((snapshot?.dayId ?? page.dayIdDraft) || undefined, page.recovery?.phase === 'receipt' ? page.recovery.receipt : undefined)}
       />
@@ -2197,7 +2200,7 @@ export function CloudDayClosePage({
         <section className="cloud-day-close__backup" aria-label="關帳後備份">
           <h2>關帳後備份</h2>
           <p className="cloud-day-close__help">每天最後一次關帳後，在這裡下載加密增量備份，並重新選取檔案完成驗證。</p>
-          {backupBlock ?? <BackupScreen onRecoveryChange={onBackupRecoveryChange} locked={hasRecovery} />}
+          {backupBlock ?? <BackupScreen onRecoveryChange={onBackupRecoveryChange} onRecorded={addOwnBackupSeq} locked={hasRecovery} />}
         </section>
       )}
     </main>

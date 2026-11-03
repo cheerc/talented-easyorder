@@ -72,9 +72,11 @@ interface BackupScreenProps {
   onRecoveryChange?: (active: boolean) => void;
   /** The host holds its own unconfirmed command; this screen starts nothing meanwhile. */
   locked?: boolean;
+  /** The seq of the confirmed RecordBackup receipt, once per recorded backup: the host's own write, not another device's (#596). */
+  onRecorded?: (seq: number) => void;
 }
 
-export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange, locked = false }: BackupScreenProps) {
+export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange, locked = false, onRecorded }: BackupScreenProps) {
   const firebase = useFirebaseOptional();
   const fb = firebase?.fb ?? null;
   const access = firebase?.access ?? { ok: false as const };
@@ -116,6 +118,8 @@ export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange,
   useEffect(() => { latestRef.current = { db, uid, isHolder: lease.isHolder, epoch: lease.epoch }; });
   const onRecoveryChangeRef = useRef(onRecoveryChange);
   useEffect(() => { onRecoveryChangeRef.current = onRecoveryChange; });
+  const onRecordedRef = useRef(onRecorded);
+  useEffect(() => { onRecordedRef.current = onRecorded; });
   // Awaited continuations read the live lock, never the value captured when the handler started.
   const lockedRef = useRef(locked);
   useEffect(() => { lockedRef.current = locked; });
@@ -207,6 +211,8 @@ export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange,
     operation.retryAuthorized = false;
     operation.checking = false;
     operation.querySequence += 1;
+    // Reported in the same batch as the recovery state clears, so the host never sees the moved head without it (#596).
+    onRecordedRef.current?.(receipt.seq);
     // The file was verified in this mount before the command was frozen; the receipt only confirms the registration.
     setRecovery(null); setError(''); setStage('verifiedLocal');
     try {
