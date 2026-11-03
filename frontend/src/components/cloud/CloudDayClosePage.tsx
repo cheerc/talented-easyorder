@@ -450,10 +450,10 @@ export function CloudDayClosePage({
   initialPostCloseEntry, onOpenOrders, hasUnresolvedPendingCommands = false,
 }: CloudDayClosePageProps) {
   const onLedgerChangedRef = useRef(onLedgerChanged);
-  useEffect(() => { onLedgerChangedRef.current = onLedgerChanged; }, [onLedgerChanged]);
+  useLayoutEffect(() => { onLedgerChangedRef.current = onLedgerChanged; }, [onLedgerChanged]);
   // The shared §7.4 flag is read at the moment of submission, never from a stale closure.
   const hasUnresolvedRef = useRef(hasUnresolvedPendingCommands);
-  useEffect(() => { hasUnresolvedRef.current = hasUnresolvedPendingCommands; }, [hasUnresolvedPendingCommands]);
+  useLayoutEffect(() => { hasUnresolvedRef.current = hasUnresolvedPendingCommands; }, [hasUnresolvedPendingCommands]);
   const recoveryReader = useMemo(() => getCloudRecoveryReader(db), [db]);
   const repository = useMemo(() => createCloudDayCloseRepository(db, { recoveryReader }), [db, recoveryReader]);
   let currentUid: string | null = null;

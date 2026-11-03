@@ -1,3 +1,4 @@
+import { useState, type Context } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,6 +15,8 @@ const mocks = vi.hoisted(() => {
     db,
     firebase,
     current: { value: firebase(3) as ReturnType<typeof firebase> },
+    // A test that changes the lease outside act() provides the value through this context, as the real provider does.
+    FirebaseContext: null as unknown as Context<ReturnType<typeof firebase> | null>,
     recoveryReader: { id: 'lite-reader' },
     exportRange: vi.fn(),
     createCommandRepository: vi.fn(),
@@ -26,9 +29,11 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../../providers/FirebaseProvider', () => ({
-  useFirebaseOptional: () => mocks.current.value,
-}));
+vi.mock('../../../providers/FirebaseProvider', async () => {
+  const { createContext, useContext } = await import('react');
+  mocks.FirebaseContext = createContext<ReturnType<typeof mocks.firebase> | null>(null);
+  return { useFirebaseOptional: () => useContext(mocks.FirebaseContext) ?? mocks.current.value };
+});
 vi.mock('../../../firebase/cloudRecoveryReader', () => ({
   getCloudRecoveryReader: () => mocks.recoveryReader,
 }));
@@ -464,5 +469,103 @@ describe('BackupScreen verified-local gate', () => {
       expect(screen.getByText(/日結命令確認中/)).toBeVisible();
       expect(mocks.exportRange).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('BackupScreen refs read right after a commit, before passive effects run (#611)', () => {
+  beforeEach(() => {
+    mocks.current.value = mocks.firebase(3);
+    mocks.exportRange.mockReset().mockResolvedValue({ fromSeq: 0, toSeq: 1, manifest });
+    mocks.createCommandRepository.mockReset();
+    mocks.commitRecordBackupIntent.mockReset().mockImplementation(async (intent: { commandId: string }) => (
+      { ok: true, receipt: receipt(intent.commandId) }
+    ));
+    mocks.confirmPendingIntent.mockReset();
+    mocks.cleanupConfirmedIntent.mockReset().mockResolvedValue(true);
+    mocks.encryptBackup.mockReset().mockResolvedValue(new Uint8Array([1, 2, 3]));
+    mocks.sha256Hex.mockReset().mockResolvedValue(sha);
+    mocks.verifyBackupFile.mockReset().mockResolvedValue(manifest);
+  });
+
+  /**
+   * Runs `act` when React commits the change made by `change`, before that commit's passive effects are flushed: the change
+   * is made outside act() (as a provider or host update would be), and `act` runs from a MutationObserver.
+   */
+  async function onNextCommit(change: () => void, ready: () => boolean, run: () => void) {
+    let ran = false;
+    const observer = new MutationObserver(() => {
+      if (ran || !ready()) return;
+      ran = true;
+      run();
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
+    try {
+      await new Promise<void>(resolve => setTimeout(() => { change(); resolve(); }, 0));
+      await waitFor(() => expect(ran).toBe(true));
+      await flush();
+    } finally {
+      observer.disconnect();
+    }
+  }
+
+  it('does not record a backup when the host locks the screen in the window before passive effects (lockedRef)', async () => {
+    const verification = deferred<typeof manifest>();
+    mocks.verifyBackupFile.mockReturnValueOnce(verification.promise);
+    let setLocked: (value: boolean) => void = () => undefined;
+    function Harness() {
+      const [locked, set] = useState(false);
+      setLocked = set;
+      return <BackupScreen locked={locked} />;
+    }
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.type(screen.getByLabelText('備份密碼'), 'fixture-passphrase');
+    await user.click(screen.getByRole('button', { name: '產生加密備份' }));
+    const reselect = await screen.findByLabelText('重新選取剛存下的備份檔');
+    fireEvent.change(reselect, { target: { files: [backupFile()] } });
+    await flush();
+    expect(mocks.verifyBackupFile).toHaveBeenCalledTimes(1);
+
+    await onNextCommit(
+      () => setLocked(true),
+      () => !!screen.queryByRole('note'),
+      () => verification.resolve(manifest),
+    );
+
+    expect(mocks.commitRecordBackupIntent).not.toHaveBeenCalled();
+    expect(await screen.findByText(/日結命令確認中，沒有登記備份/)).toBeVisible();
+  });
+
+  it('does not accept a receipt for a lease lost in the window before passive effects (latestRef)', async () => {
+    const original = deferred<unknown>();
+    mocks.commitRecordBackupIntent.mockReturnValueOnce(original.promise);
+    const onRecorded = vi.fn();
+    let setFirebase: (value: ReturnType<typeof mocks.firebase>) => void = () => undefined;
+    function Harness() {
+      const [value, set] = useState(mocks.firebase(3));
+      setFirebase = set;
+      return (
+        <mocks.FirebaseContext.Provider value={value}>
+          <span data-testid="lease-marker">{value.lease.isHolder ? 'holder' : 'lost'}</span>
+          <BackupScreen onRecorded={onRecorded} />
+        </mocks.FirebaseContext.Provider>
+      );
+    }
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.type(screen.getByLabelText('備份密碼'), 'fixture-passphrase');
+    await user.click(screen.getByRole('button', { name: '產生加密備份' }));
+    const reselect = await screen.findByLabelText('重新選取剛存下的備份檔');
+    const intent = await submitBackup(reselect);
+
+    const lost = mocks.firebase(3);
+    await onNextCommit(
+      () => setFirebase({ ...lost, lease: { isHolder: false, epoch: 3 } }),
+      () => screen.queryByTestId('lease-marker')?.textContent === 'lost',
+      () => original.resolve({ ok: true, receipt: receipt(intent.commandId, 7) }),
+    );
+
+    expect(onRecorded).not.toHaveBeenCalled();
+    expect(screen.queryByText(/已登記 RecordBackup/)).toBeNull();
   });
 });

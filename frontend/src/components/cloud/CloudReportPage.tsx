@@ -316,7 +316,7 @@ export function CloudReportPage({
   const requestGeneration = useRef(0);
   const operationRef = useRef<ActionOperation | null>(null);
   const navigationRef = useRef(onNavigationStateChange);
-  useEffect(() => { navigationRef.current = onNavigationStateChange; });
+  useLayoutEffect(() => { navigationRef.current = onNavigationStateChange; });
   const performedActions = useRef(new Set<string>());
   const printLifecycleRef = useRef<ActivePrintLifecycle | null>(null);
 

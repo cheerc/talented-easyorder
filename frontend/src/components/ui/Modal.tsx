@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import './Modal.css';
 
 interface ModalProps {
@@ -42,7 +42,7 @@ export const Modal = React.memo(function Modal({
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
-  useEffect(() => { onCloseRef.current = onClose; });
+  useLayoutEffect(() => { onCloseRef.current = onClose; });
   // Record the opener during the render that opens the dialog: a child's autoFocus runs in the
   // commit, before this component's effects, so reading activeElement in the effect would get the
   // dialog's own button and cancel could not restore focus (#581 D3).

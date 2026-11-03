@@ -2,7 +2,7 @@
 // The notice must not take those for another device's write, so the page remembers the receipt seqs of its own commands. A receipt
 // only counts while it follows what the page already knows without a gap: a foreign write in between would be a seq the page never
 // saw, and then the notice has to show.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 /** The newest seq the page can call its own: what it read, followed by an unbroken run of its own receipts. */
 export function seqWithOwnReceipts(sourceSeq: number, ownSeqs: ReadonlySet<number>): number {
@@ -20,7 +20,7 @@ const NONE: ReadonlySet<number> = new Set();
 export function useOwnReceiptSeqs(scopeKey: string): { ownSeqs: ReadonlySet<number>; addOwnSeq: (seq: number) => void } {
   const [state, setState] = useState<{ scopeKey: string; seqs: ReadonlySet<number> }>({ scopeKey, seqs: NONE });
   const scopeRef = useRef(scopeKey);
-  useEffect(() => { scopeRef.current = scopeKey; }, [scopeKey]);
+  useLayoutEffect(() => { scopeRef.current = scopeKey; }, [scopeKey]);
   const addOwnSeq = useCallback((seq: number) => {
     if (scopeRef.current !== scopeKey || !Number.isSafeInteger(seq) || seq < 0) return;
     setState(previous => {
