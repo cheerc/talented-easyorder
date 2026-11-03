@@ -1208,6 +1208,29 @@ describe('CloudDayClosePage: aligned close of a backfilled day (contract §14)',
     }));
   });
 
+  it('does not drop a close clicked right after the alignment renders, before passive effects run (CI flake, run 41642144001)', async () => {
+    // Click from a MutationObserver: it runs right after React commits the alignment, before the passive effects of that
+    // commit are flushed, which is the window a loaded CI runner hit.
+    let clicked = false;
+    const observer = new MutationObserver(() => {
+      if (clicked) return;
+      const target = document.querySelector('[data-testid="backfill-align-target"]');
+      const submit = document.querySelector<HTMLButtonElement>('[data-testid="close-submit"]');
+      if (!target?.textContent?.includes('須等於') || !submit || submit.disabled) return;
+      clicked = true;
+      fireEvent.click(submit);
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
+    try {
+      renderAt(gap);
+      await waitFor(() => expect(clicked).toBe(true));
+      await waitFor(() => expect(repository.closeDay).toHaveBeenCalledTimes(1), { timeout: 3_000 });
+      expect(repository.closeDay).toHaveBeenCalledWith(expect.objectContaining({ dayId: gap, alignWithDayId: '2026-10-16' }));
+    } finally {
+      observer.disconnect();
+    }
+  });
+
   it('blocks the close, says how much is missing and points to the back-fill mode when the cash does not match', async () => {
     repository.read.mockResolvedValue(gapDay(0));
     const onOpenOrders = vi.fn();
