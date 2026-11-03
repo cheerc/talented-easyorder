@@ -21,8 +21,8 @@ PR validation is determined by the current [CI workflow](./.github/workflows/ci.
 
 ## Code Review
 
-- PR 會由 Claude Code Review 自動審查；嚴重度、必查與略過項目見 [REVIEW.md](./REVIEW.md)（只從 `main` 讀取，修改需合併後才生效）。
-- 合併條件：最新 head 沒有未解的 🔴 Important finding，且 required CI 通過。符合時以 squash merge 合併到 `main`，必要時可用管理員權限略過其他分支保護。
+- PR 由獨立的 reviewer（subagent 或另開的 session，不是作者本身）依 [REVIEW.md](./REVIEW.md) 審查最新 head；reviewer 要先讀 `REVIEW.md` 與變更區域的 `CLAUDE.md`。
+- 合併條件：最新 head 的 review 沒有未解的 🔴 Important finding，且 required CI 通過。符合時以 squash merge 合併到 `main`，必要時可用管理員權限略過其他分支保護。
 - 不以 skip、停用測試或重開 PR 的方式換取綠燈。
 - 外部貢獻者的 PR 需 maintainer 審核同意。
 - 一個 PR 只做一件事。

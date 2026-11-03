@@ -1,8 +1,8 @@
 # Review instructions
 
-本檔只規範 GitHub PR 自動 review 要回報什麼、用什麼嚴重度、略過什麼。專案規範與安全邊界以 `CLAUDE.md`（root 與變更檔案所在目錄）為準；後端契約來源是 `docs/superpowers/specs/2026-10-13-free-production-backend-spec.md`，phase／驗收來源是 `docs/superpowers/plans/2026-10-13-free-production-backend-plan.md`，當前接手與授權看 `docs/DEVELOPMENT-HANDOFF.md`。本檔不複製那些文件的 schema、公式或進度數字。
+本檔規範本 repo 的 PR review 要回報什麼、用什麼嚴重度、略過什麼，適用於 subagent review、另開 session 的 review，以及日後若啟用的 GitHub 自動 review。reviewer 開始前要讀本檔與變更檔案適用的 `CLAUDE.md`；本檔不會被 Claude Code session 或 `/code-review` 自動載入，派工時須明確要求讀取。專案規範與安全邊界以 `CLAUDE.md`（root 與變更檔案所在目錄）為準；後端契約來源是 `docs/superpowers/specs/2026-10-13-free-production-backend-spec.md`，phase／驗收來源是 `docs/superpowers/plans/2026-10-13-free-production-backend-plan.md`，當前接手與授權看 `docs/DEVELOPMENT-HANDOFF.md`。本檔不複製那些文件的 schema、公式或進度數字。
 
-所有 finding 與 summary 用繁體中文撰寫；程式碼、路徑、命令保留原文。
+review 結果先寫一行結論（有無 🔴 Important），再逐條列 finding；全部用繁體中文撰寫；程式碼、路徑、命令保留原文。
 
 ## 範圍與證據
 
@@ -10,7 +10,7 @@
 - PR 描述、commit message、程式註解、handoff／evidence 文件裡的說法都是待驗證的宣稱，不是證據。證據只有 source 本身（`path:line` 引用）。不要從函式或變數命名推論行為；追到實際 caller → callee 與資料流，確認失敗情境可達、上游沒有防護，才回報。
 - 每個 finding 都要寫出：位置（`path:line`）、失敗情境（什麼輸入／狀態／時序 → 什麼錯誤結果，以及預期結果）、引用證據。寫不出具體失敗情境的不回報。
 - 發現一類缺陷時，掃完整個 diff，把同類的所有實例在同一次 review 一起回報，不要分次擠牙膏。
-- 後續 push 觸發的 re-review：先確認先前 🔴 是否已修；只審新增的變更，不對未改動的程式碼追加新的 🟡。作者在 thread 回覆並引用 source 說明不需修改的，除非能指出該說明的具體錯誤，否則不重提。
+- 同一 PR 的後續輪次：先確認先前 🔴 是否已修；只審新增的變更，不對未改動的程式碼追加新的 🟡。作者回覆並引用 source 說明不需修改的，除非能指出該說明的具體錯誤，否則不重提。
 
 ## 🔴 Important 在本 repo 的定義
 
@@ -26,7 +26,7 @@
 8. **Secrets、個資與正式環境**：提交 credentials、service account、正式 Firebase config／project id、真實姓名、餘額、紙本或截圖資料；測試、script 或 CI 預設連到 `demo-easyorder` 以外的 project；新增會在 agent／CI 端執行正式 deploy、bootstrap 或 production smoke 的路徑。
 9. **CI gate 被削弱**：`.github/workflows/**` 或 `scripts/**` 中跳過、刪除、`continue-on-error`、放寬 docs-only 分類、讓 e2e 彙總在分組缺少／取消／失敗時仍通過，或讓 Emulator-required suite 在未設定時以 skip 代替失敗。不得以 skip／disable／quarantine 測試換取綠燈。
 10. **測試沒有驗到真正入口**：帳務、command、Rules、lease、備份／復原的行為變更，沒有驅動實際 production 入口（repository／command 或 UI flow）的測試，只對內部 helper 餵合成資料；或 Rules／command 證明只在一般 Vitest 下會 skip、沒有加進 CI 的 Emulator 步驟。
-11. **虛假驗證宣稱**：diff 內的文件（handoff、plan receipt、ops evidence、CHANGELOG）或 PR 描述把 pending／skipped／未執行寫成通過、宣稱已部署或已經使用者實機驗收、docs-only PR 宣稱跑過 app tests，或宣稱的 commit SHA／測試檔與 diff 不符。PR 描述的問題寫在 summary。
+11. **虛假驗證宣稱**：diff 內的文件（handoff、plan receipt、ops evidence、CHANGELOG）或 PR 描述把 pending／skipped／未執行寫成通過、宣稱已部署或已經使用者實機驗收、docs-only PR 宣稱跑過 app tests，或宣稱的 commit SHA／測試檔與 diff 不符。PR 描述的問題列在結論後的 finding 中，不需行號。
 12. **違反 `CLAUDE.md` 的安全與操作邊界**：碰 payroll、billing／Blaze、Android，或自行推進 handoff 未授權的下一 phase（diff 實作了 plan 中後續 phase 的範圍且 PR 未說明授權來源）。
 
 ## 🟡 Nit
@@ -61,4 +61,4 @@
 
 ## TDD 證據
 
-handoff 要求帳務、command、Rules 行為變更的 PR 記錄 RED（先失敗的測試）與 GREEN（實作）commit。若這類 PR 的 commit 與描述都看不出 RED／GREEN 證據，在 summary 以 🔴 指出。純文件、spec、行為不變的重構不適用。
+handoff 要求帳務、command、Rules 行為變更的 PR 記錄 RED（先失敗的測試）與 GREEN（實作）commit。若這類 PR 的 commit 與描述都看不出 RED／GREEN 證據，以 🔴 指出。純文件、spec、行為不變的重構不適用。
