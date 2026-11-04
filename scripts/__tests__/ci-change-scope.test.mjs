@@ -27,6 +27,10 @@ const nonDocsCases = [
   ['x.pdf'], // binary whitelist applies only under docs/
   ['docs/notes.md.json'],
   ['docs/notes.md/run.sh'],
+  ['frontend/X.MD'], // *.md is case-sensitive, as in the previous grep rule
+  ['docs/a.md '], // trailing space: path is not trimmed
+  ['docs/a.md\r'], // CRLF residue must not pass as Markdown
+  [' docs/a.md'],
 ];
 
 test('docs-only whitelist accepts Markdown anywhere and documentation assets under docs/', () => {
@@ -49,7 +53,14 @@ test('classify lists only non-docs paths and treats empty input as non-docs', ()
   assert.equal(classify([]).docsOnly, false);
   assert.equal(classify(['']).docsOnly, false);
   assert.equal(classify(['', '  ']).docsOnly, false);
+  assert.equal(classify(['  ']).docsOnly, false);
   assert.equal(classify(['README.md', '']).docsOnly, true);
+});
+
+test('isDocsPath and classify agree on every path', () => {
+  for (const p of ['a.md', 'A.MD', 'a.md ', 'a.md\r', 'docs/x.PNG', 'docs/x.json', 'x.png']) {
+    assert.equal(classify([p]).docsOnly, isDocsPath(p), JSON.stringify(p));
+  }
 });
 
 test('CLI reads stdin paths and writes docs_only to GITHUB_OUTPUT', () => {
