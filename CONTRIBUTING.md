@@ -32,7 +32,7 @@ PR validation is determined by the current [CI workflow](./.github/workflows/ci.
 
 - Commit message 與 PR 標題、內文使用中文，描述使用者看得到的效果或修正；可加 `docs:`、`fix:` 等前綴，但不強制。
 - 對應 issue 時在標題末尾加上編號，例如 `日結頁備份後不再誤報「其他裝置已更新資料」（#596）`；squash merge 以 PR 標題作為 commit 標題。
-- 不寫 AI 模型名稱、真實姓名、餘額或其他個資。
+- 不寫真實姓名、餘額或其他個資。
 - PR 內文依 [PR template](./.github/PULL_REQUEST_TEMPLATE.md) 填寫，必填欄位與 [正式後端交接](./docs/DEVELOPMENT-HANDOFF.md) 的要求一致。
 
 ## Code Quality
