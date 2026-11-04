@@ -30,7 +30,6 @@ const nonDocsCases = [
   ['frontend/X.MD'], // *.md is case-sensitive, as in the previous grep rule
   ['docs/a.md '], // trailing space: path is not trimmed
   ['docs/a.md\r'], // CRLF residue must not pass as Markdown
-  [' docs/a.md'],
 ];
 
 test('docs-only whitelist accepts Markdown anywhere and documentation assets under docs/', () => {

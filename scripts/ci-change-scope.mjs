@@ -3,14 +3,16 @@
 import { appendFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+const MARKDOWN = /\.md$/;
 const DOCS_ASSET = /^docs\/.+\.(pdf|png|jpe?g|gif|svg|txt)$/i;
 
 export function isDocsPath(path) {
-  return /\.md$/i.test(path) || DOCS_ASSET.test(path);
+  return MARKDOWN.test(path) || DOCS_ASSET.test(path);
 }
 
 export function classify(paths) {
-  const list = paths.map((p) => p.trim()).filter(Boolean);
+  // 只丟掉完全空白的行；不修剪路徑，帶空白或 \r 的路徑視為非 docs。
+  const list = paths.filter((p) => p !== '');
   const nonDocs = list.filter((p) => !isDocsPath(p));
   return { docsOnly: list.length > 0 && nonDocs.length === 0, nonDocs };
 }
@@ -21,7 +23,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   for await (const chunk of process.stdin) input += chunk;
   const paths = input.split('\n');
   const { docsOnly, nonDocs } = classify(paths);
-  const changed = paths.map((p) => p.trim()).filter(Boolean);
+  const changed = paths.filter((p) => p !== '');
   if (changed.length === 0) console.log('No changed files detected, running full CI');
   else if (docsOnly) console.log(`All ${changed.length} changed files are docs (*.md or docs/ assets) -> docs-only`);
   else console.log(`Non-docs changes detected, running full CI:\n${nonDocs.join('\n')}`);

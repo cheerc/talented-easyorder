@@ -27,6 +27,7 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         working-directory: ${{ github.workspace }}
         run: |
+          set -o pipefail
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "Not a pull request (event: ${{ github.event_name }}), running full CI"
             echo "docs_only=false" >> "$GITHUB_OUTPUT"
