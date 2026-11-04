@@ -212,6 +212,31 @@ test('the real deploy-ci entry refuses to run outside an approved GitHub Actions
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+function installScriptConfigErrors(npmrc) {
+  const config = new Map();
+  for (const line of npmrc.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || /^[#;]/.test(trimmed)) continue;
+    const separator = trimmed.indexOf('=');
+    if (separator !== -1) config.set(trimmed.slice(0, separator).trim(), trimmed.slice(separator + 1).trim());
+  }
+  return [['strict-allow-scripts', 'true'], ['allow-scripts-pin', 'false']]
+    .filter(([key, value]) => config.get(key) !== value)
+    .map(([key, value]) => `.npmrc: 有效設定必須為 ${key}=${value}`);
+}
+
+test('install-script config uses the last value and ignores comment lines', () => {
+  const valid = 'strict-allow-scripts=true\nallow-scripts-pin=false\n';
+  assert.deepEqual(installScriptConfigErrors(valid), []);
+  assert.deepEqual(installScriptConfigErrors(`${valid}strict-allow-scripts=false\n`), [
+    '.npmrc: 有效設定必須為 strict-allow-scripts=true',
+  ]);
+  assert.deepEqual(installScriptConfigErrors(`${valid}allow-scripts-pin=true\n`), [
+    '.npmrc: 有效設定必須為 allow-scripts-pin=false',
+  ]);
+  assert.deepEqual(installScriptConfigErrors(`strict-allow-scripts=false\nallow-scripts-pin=true\n${valid}  # strict-allow-scripts=false\n ; allow-scripts-pin=true\n`), []);
+});
+
 test('frontend install scripts have explicit current decisions and strict enforcement', () => {
   const frontend = new URL('../../frontend/', import.meta.url);
   const { packages } = JSON.parse(readFileSync(new URL('package-lock.json', frontend)));
@@ -231,9 +256,7 @@ test('frontend install scripts have explicit current decisions and strict enforc
   let npmrc = '';
   try { npmrc = readFileSync(new URL('.npmrc', frontend), 'utf8'); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
-  if (!/^\s*strict-allow-scripts\s*=\s*true\s*$/m.test(npmrc)) {
-    errors.push('.npmrc: 缺少 strict-allow-scripts=true');
-  }
+  errors.push(...installScriptConfigErrors(npmrc));
   assert.deepEqual(errors, []);
 });
 
