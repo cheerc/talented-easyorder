@@ -212,6 +212,31 @@ test('the real deploy-ci entry refuses to run outside an approved GitHub Actions
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
+test('frontend install scripts have explicit current decisions and strict enforcement', () => {
+  const frontend = new URL('../../frontend/', import.meta.url);
+  const { packages } = JSON.parse(readFileSync(new URL('package-lock.json', frontend)));
+  const { allowScripts = {} } = JSON.parse(readFileSync(new URL('package.json', frontend)));
+  const scriptedPackages = new Set(Object.entries(packages)
+    .filter(([, metadata]) => metadata.hasInstallScript)
+    .map(([packagePath]) => packagePath.split('node_modules/').at(-1)));
+  const errors = [];
+  for (const name of [...scriptedPackages].sort()) {
+    if (!Object.hasOwn(allowScripts, name) || typeof allowScripts[name] !== 'boolean') {
+      errors.push(`${name}: 缺少 boolean allowScripts entry`);
+    }
+  }
+  for (const name of Object.keys(allowScripts)) {
+    if (!scriptedPackages.has(name)) errors.push(`${name}: 過期 allowScripts entry`);
+  }
+  let npmrc = '';
+  try { npmrc = readFileSync(new URL('.npmrc', frontend), 'utf8'); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (!/^\s*strict-allow-scripts\s*=\s*true\s*$/m.test(npmrc)) {
+    errors.push('.npmrc: 缺少 strict-allow-scripts=true');
+  }
+  assert.deepEqual(errors, []);
+});
+
 test('deploy workflow is manual-only from main, uses an approval environment, keyless auth and pinned actions', () => {
   const workflow = readFileSync(new URL('../../.github/workflows/deploy.yml', import.meta.url), 'utf8');
   const on = /^on:\n((?: {2}.*\n)+)/m.exec(workflow)?.[1] ?? '';
