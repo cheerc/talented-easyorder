@@ -1,6 +1,6 @@
 # EasyOrder P17：獨立 Spark 本機部署
 
-新正式後端的部署入口：本機第 3–4 節，或第 9 節的 GitHub Actions。`firebase-test` 可由 agent 先告知本人 target、commit 與方式後自行部署；`firebase-production` 仍由本人部署或逐次允許（見根目錄 `CLAUDE.md`）。版本與 gate 見[交接](../DEVELOPMENT-HANDOFF.md)及[phase plan](../superpowers/plans/2026-10-13-free-production-backend-plan.md)。獨立測試專案的實際部署與部分 smoke 已執行，逐項結果以 [P17 live evidence](free-production-evidence.md#p17-user-authorized-live-verification-2026-10-27) 為準；未列證據者仍未驗證。不貼憑證或真名單到聊天／PR。
+新正式後端的部署入口：本機第 2.1／3–4 節，或第 9 節的 GitHub Actions。`firebase-test` 可由 agent 先告知本人 target、commit 與方式後自行部署（使用本機第 2.1 節非互動入口或第 9 節 workflow）；`firebase-production` 仍由本人部署或逐次允許（見根目錄 `CLAUDE.md`）。版本與 gate 見[交接](../DEVELOPMENT-HANDOFF.md)及[phase plan](../superpowers/plans/2026-10-13-free-production-backend-plan.md)。獨立測試專案的實際部署與部分 smoke 已執行，逐項結果以 [P17 live evidence](free-production-evidence.md#p17-user-authorized-live-verification-2026-10-27) 為準；未列證據者仍未驗證。不貼憑證或真名單到聊天／PR。
 
 ## 分工與順序
 
@@ -57,6 +57,37 @@ chmod 600 "$HOME/.easyorder-private/web-config.json"
 ~~~
 
 只在本機填 JSON 六個公開 Web config 欄位。authDomain 先用自己 project 的 firebaseapp.com，projectId 須與 --project 一致。工具拒絕 Admin JSON／私鑰等額外欄位。release build **不讀 frontend .env、不繼承 VITE 設定**。舊 deploy.sh p1-p5、Vercel／payroll 合併入口已移除。
+
+### 2.1 firebase-test 非互動入口（deploy-test）
+
+`firebase-test` 可由 agent 在對話中先告知本人 target、commit 與方式後，直接使用本機非互動入口部署（原 PR #630 規劃之非互動本機入口）：
+
+1. **一次性設定**：
+   - 建立私有設定檔 `~/.easyorder-private/deploy-test.env`（可複製 `docs/ops/deploy-test.env.example`），填入具備該測試專案部署權限的 Google 帳號 email：
+     ~~~bash
+     cp docs/ops/deploy-test.env.example "$HOME/.easyorder-private/deploy-test.env"
+     chmod 600 "$HOME/.easyorder-private/deploy-test.env"
+     # 編輯 ~/.easyorder-private/deploy-test.env，填入 EASYORDER_TEST_ACCOUNT=<email>
+     ~~~
+   - 確保該帳號已登入 gcloud 與 Firebase CLI：
+     ~~~bash
+     gcloud auth login <email>
+     ./frontend/node_modules/.bin/firebase login:add <email>
+     ~~~
+2. **執行指令**：
+   ~~~bash
+   ./deploy.sh deploy-test [--index-timeout-minutes 30]
+   ~~~
+   此指令不接受 `--project`、`--release` 等 target 參數；target 只能固定從 GitHub Environment `firebase-test` 取得，若 `firebase-production` 存在且 project 相同則拒絕。
+3. **前置條件**：
+   - 工作目錄必須乾淨（`git status --porcelain` 為空）。
+   - 本機 `HEAD` 必須等於 `origin/main`。
+   - 來源 commit 在 GitHub Actions 上必須有成功的 push CI run。
+4. **自動化流程**：
+   - 自動透過 `prepare` 產生物件並核對完整性。
+   - 依序執行 preflight → indexes → 等候 composite indexes 全部 READY → rules → hosting。
+   - indexes 與 rules 遇到暫時性錯誤時自動重試最多 10 次；hosting 不重試。
+5. **正式 smoke 仍由本人執行**：部署成功後，仍須由本人依第 6 節進行 smoke 驗證。
 
 ## 3. 建立並核對 release
 

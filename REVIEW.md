@@ -56,7 +56,7 @@ review 結果先寫一行結論（有無 🔴 Important），再逐條列 findin
 - **`frontend/src/appMode.ts`、`frontend/src/providers/**`、`frontend/src/auth/**`**：cloud／prototype 判定與隔離、缺設定 fail closed、登出清除訂閱與 store。
 - **`frontend/src/components/**`、`frontend/src/store/**`**：UI 不繞過 repository 寫資料；送出中防連按；結果未知時顯示確認中而非允許重新收款。
 - **`.github/workflows/**`、`scripts/**`**：Emulator 一律 `--project demo-easyorder`；改 release 或 e2e gate 時同步更新 `scripts/__tests__/release.test.mjs`、`scripts/__tests__/e2e-ci.test.mjs`；新增 Emulator-required suite 時 CI 有對應步驟並設定 `EASYORDER_REQUIRE_*`。
-- **`deploy.sh`、`firebase.json`、`vercel.json`、Hosting／CSP 設定**：不放寬 CSP；不加入 agent 或 CI 可直接執行的 `firebase-production` 部署路徑；`firebase-test` 的非互動本機入口須寫死只接受該測試 target，不能被參數或環境變數導向其他 project。`deploy.yml` 與 `deploy-ci` 的變更要同步 `scripts/__tests__/release.test.mjs` 的 guard 與 workflow 測試，且不得帶 `--force`、金鑰或 `secrets.`。
+- **`deploy.sh`、`firebase.json`、`vercel.json`、Hosting／CSP 設定**：不放寬 CSP；不加入 agent 或 CI 可直接執行的 `firebase-production` 部署路徑；`firebase-test` 的非互動本機入口須寫死只接受該測試 target，不能被參數或環境變數導向其他 project。`deploy-test` 的 target 只能來自 GitHub Environment `firebase-test`，前置條件不得比 `deploy.yml` 寬鬆。`deploy.yml` 與 `deploy-ci` 的變更要同步 `scripts/__tests__/release.test.mjs` 的 guard 與 workflow 測試，且不得帶 `--force`、金鑰或 `secrets.`。
 - **`docs/**` 與 `*.md`（docs-only PR）**：新增或修改的相對連結與 code path 確實存在；文件中的命令與 `frontend/package.json`、CI workflow 一致；handoff／evidence 如實區分 passed、skipped、pending、未執行；`CLAUDE.md` 不放易過期的 phase 進度、測試數字、schema 或公式；不含真實個資。
 
 ## TDD 證據

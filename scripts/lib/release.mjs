@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
-import { readdir, readFile, lstat } from 'node:fs/promises';
+import { readdir, readFile, writeFile, lstat } from 'node:fs/promises';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 export function validateProject(project, emulator = false) {
@@ -136,4 +138,243 @@ export function compositeIndexStatus(config, listed) {
     else if (remote.get(key) !== 'READY') notReady.push(`${key}=${remote.get(key)}`);
   }
   return { ready: missing.length === 0 && notReady.length === 0, missing, notReady };
+}
+
+const defaultRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const defaultFirebase = path.join(defaultRoot, 'frontend/node_modules/.bin/firebase');
+
+export function providerPreflight(manifest, project, account, out, options = {}) {
+  const gcloudAccount = options.gcloudAccount ?? options.account;
+  const exec = options.execFileSync ?? options.exec ?? execFileSync;
+  const firebaseBin = options.firebaseBin ?? defaultFirebase;
+  const stdio = options.nonInteractive ? { stdio: ['ignore', 'pipe', 'pipe'] } : {};
+
+  const gcloudArgs = ['billing', 'projects', 'describe', project, '--format=json', ...(gcloudAccount ? ['--account', gcloudAccount] : []), ...(options.nonInteractive ? ['--quiet'] : [])];
+  let billingRaw;
+  try {
+    billingRaw = exec('gcloud', gcloudArgs, { encoding: 'utf8', ...stdio });
+    if (billingRaw && typeof billingRaw === 'object' && (billingRaw.status !== 0 || billingRaw.error)) {
+      const errText = billingRaw.stderr || billingRaw.output || billingRaw.error?.message || '';
+      throw new Error(`gcloud billing describe 失敗（exit ${billingRaw.status}）：${errText}`);
+    }
+  } catch (err) {
+    const stderr = err.stderr ? String(err.stderr) : '';
+    throw new Error(`gcloud billing describe 失敗：${stderr || err.message}`);
+  }
+  let billing;
+  try {
+    billing = JSON.parse(typeof billingRaw === 'string' ? billingRaw : billingRaw.stdout ?? billingRaw.output);
+  } catch (err) {
+    const rawOut = typeof billingRaw === 'string' ? billingRaw : `${billingRaw?.stdout ?? ''}\n${billingRaw?.stderr ?? ''}`;
+    throw new Error(`gcloud billing describe 輸出無法解析為 JSON：${rawOut.trim()}`);
+  }
+
+  const fbArgs = ['firestore:databases:get', '(default)', '--project', project, '--json', ...(account ? ['--account', account] : []), ...(options.nonInteractive ? ['--non-interactive'] : [])];
+  let databaseRaw;
+  try {
+    databaseRaw = exec(firebaseBin, fbArgs, { cwd: out, encoding: 'utf8', ...stdio });
+    if (databaseRaw && typeof databaseRaw === 'object' && (databaseRaw.status !== 0 || databaseRaw.error)) {
+      const errText = databaseRaw.stderr || databaseRaw.output || databaseRaw.error?.message || '';
+      throw new Error(`Firebase databases:get 失敗（exit ${databaseRaw.status}）：${errText}`);
+    }
+  } catch (err) {
+    const stderr = err.stderr ? String(err.stderr) : '';
+    throw new Error(`Firebase databases:get 失敗：${stderr || err.message}`);
+  }
+  let database;
+  try {
+    database = JSON.parse(typeof databaseRaw === 'string' ? databaseRaw : databaseRaw.stdout ?? databaseRaw.output);
+  } catch (err) {
+    const rawOut = typeof databaseRaw === 'string' ? databaseRaw : `${databaseRaw?.stdout ?? ''}\n${databaseRaw?.stderr ?? ''}`;
+    throw new Error(`Firebase databases:get 輸出無法解析為 JSON：${rawOut.trim()}`);
+  }
+  if (database.status !== 'success') {
+    throw new Error(`無法讀取 Firestore metadata：${database.message || JSON.stringify(database)}`);
+  }
+  validateProviderState(manifest, billing, database.result);
+}
+
+export async function waitForIndexes(out, project, timeoutMinutes, options = {}) {
+  const gcloudAccount = options.gcloudAccount;
+  const exec = options.execFileSync ?? options.exec ?? execFileSync;
+  const sleep = options.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)));
+  const log = options.log ?? (text => process.stdout.write(text));
+  const readConfig = options.readConfig ?? options.readConfigFn ?? (async file => JSON.parse(await readFile(file, 'utf8')));
+  const config = await readConfig(path.join(out, 'firestore.indexes.json'));
+  const deadline = Date.now() + timeoutMinutes * 60_000;
+  for (;;) {
+    const listArgs = ['firestore', 'indexes', 'composite', 'list', '--project', project, '--database', '(default)', '--format=json', ...(gcloudAccount ? ['--account', gcloudAccount] : []), ...(options.nonInteractive ? ['--quiet'] : [])];
+    let raw;
+    try {
+      raw = exec('gcloud', listArgs, { encoding: 'utf8', ...(options.nonInteractive ? { stdio: ['ignore', 'pipe', 'pipe'] } : {}) });
+    } catch (error) {
+      throw new Error(`gcloud firestore indexes composite list 失敗：${error.stderr ? String(error.stderr) : error.message}`);
+    }
+    if (raw && typeof raw === 'object' && (raw.status !== 0 || raw.error)) {
+      throw new Error(`gcloud firestore indexes composite list 失敗（exit ${raw.status}）：${raw.stderr || raw.error?.message || raw.output || raw.stdout || ''}`);
+    }
+    let listed;
+    try {
+      listed = JSON.parse(typeof raw === 'string' ? raw : raw.stdout ?? raw.output);
+    } catch {
+      const output = typeof raw === 'string' ? raw : `${raw?.stdout ?? ''}\n${raw?.stderr ?? ''}`;
+      throw new Error(`gcloud firestore indexes composite list 輸出無法解析為 JSON：${output.trim()}`);
+    }
+    const status = compositeIndexStatus(config, listed);
+    if (status.ready) { log(`composite indexes 全部 READY（${(config.indexes ?? []).length} 個）\n`); return status; }
+    if (Date.now() >= deadline) throw new Error(`index 未在 ${timeoutMinutes} 分鐘內 READY；不部署 rules／hosting。缺少：${status.missing.join('; ') || '無'}；未完成：${status.notReady.join('; ') || '無'}`);
+    log(`等待 index READY：缺少 ${status.missing.length}、未完成 ${status.notReady.length}\n`);
+    await sleep(30_000);
+  }
+}
+
+export function parseDeployTestEnv(content) {
+  if (typeof content !== 'string') throw new Error('deploy-test.env 內容必須為字串');
+  const lines = content.split(/\r?\n/);
+  const vars = {};
+  for (let i = 0; i < lines.length; i += 1) {
+    const raw = lines[i].trim();
+    if (!raw || raw.startsWith('#')) continue;
+    const eqIdx = raw.indexOf('=');
+    if (eqIdx === -1) throw new Error(`deploy-test.env 第 ${i + 1} 行格式不合法：缺少 '='`);
+    const key = raw.slice(0, eqIdx).trim();
+    const value = raw.slice(eqIdx + 1).trim();
+    if (key !== 'EASYORDER_TEST_ACCOUNT') throw new Error(`deploy-test.env 包含未知 key：${key}`);
+    vars[key] = value;
+  }
+  const account = vars.EASYORDER_TEST_ACCOUNT;
+  if (!account) throw new Error('deploy-test.env 缺少 EASYORDER_TEST_ACCOUNT');
+  if (!/^[^\s@-][^\s@]*@[^\s@]+\.[^\s@]+$/.test(account)) throw new Error('EASYORDER_TEST_ACCOUNT 格式必須為有效 email');
+  return { account };
+}
+
+export function resolveTestTarget({ testVars, productionVars }) {
+  if (!testVars || typeof testVars !== 'object') throw new Error('缺少 testVars 設定');
+  const project = testVars.EASYORDER_DEPLOY_PROJECT ?? testVars.project;
+  const region = testVars.EASYORDER_REGION ?? testVars.region;
+  const rawWeb = testVars.EASYORDER_WEB_CONFIG ?? testVars.webConfig ?? testVars.web;
+
+  if (!project || typeof project !== 'string' || !project.trim()) throw new Error('缺少 EASYORDER_DEPLOY_PROJECT');
+  if (!region || typeof region !== 'string' || !region.trim()) throw new Error('缺少 EASYORDER_REGION');
+  if (!rawWeb) throw new Error('缺少 EASYORDER_WEB_CONFIG');
+
+  if (productionVars && typeof productionVars === 'object') {
+    const prodProject = productionVars.EASYORDER_DEPLOY_PROJECT ?? productionVars.project;
+    if (prodProject && prodProject === project) {
+      throw new Error(`production 與 test 的 project 相同（${project}），拒絕部署`);
+    }
+  }
+
+  let web = rawWeb;
+  if (typeof rawWeb === 'string') {
+    try {
+      web = JSON.parse(rawWeb);
+    } catch {
+      throw new Error('EASYORDER_WEB_CONFIG 必須為合法的 JSON 字串');
+    }
+  }
+
+  validateProject(project, false);
+  validateWebConfig(web, project, false);
+  return { project, region, web };
+}
+
+export function validateTestSource({ head, originMain, dirty, ciSuccessCount }) {
+  if (dirty) throw new Error('工作目錄有未提交變更（dirty），不能執行 deploy-test');
+  if (!head || !originMain || head !== originMain) throw new Error(`HEAD (${head}) 與 origin/main (${originMain}) 不一致`);
+  if (typeof ciSuccessCount !== 'number' || ciSuccessCount < 1) throw new Error('來源 commit 缺少成功的 push CI run，不能執行 deploy-test');
+}
+
+export async function runTestDeployment({
+  manifest,
+  project,
+  account,
+  out,
+  timeoutMinutes = 30,
+  exec,
+  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  log = text => process.stdout.write(text),
+  checkReleaseFn,
+  readConfigFn,
+  saveReceiptFn,
+  firebaseBin = defaultFirebase,
+  stdout = process.stdout,
+  stderr = process.stderr,
+}) {
+  const execFn = exec ?? ((cmd, args, opts) => {
+    const res = spawnSync(cmd, args, opts);
+    return { status: res.status, error: res.error, output: `${res.stdout ?? ''}\n${res.stderr ?? ''}`, stdout: res.stdout, stderr: res.stderr };
+  });
+
+  const check = checkReleaseFn ?? (() => checkRelease(out));
+
+  // Step 6: preflight
+  providerPreflight(manifest, project, account, out, { gcloudAccount: account, exec: execFn, firebaseBin, nonInteractive: true });
+
+  let releaseDigest = '';
+  try {
+    const content = await readFile(path.join(out, 'release.json'));
+    releaseDigest = digest(content);
+  } catch {}
+
+  const receipt = {
+    project,
+    releaseDigest,
+    sourceSha: manifest.sourceSha,
+    runId: null,
+    actor: account,
+    steps: [],
+  };
+
+  const saveReceipt = async () => {
+    if (saveReceiptFn) {
+      await saveReceiptFn(path.join(out, 'deploy-receipt.json'), receipt);
+    } else {
+      await writeFile(path.join(out, 'deploy-receipt.json'), `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });
+    }
+  };
+
+  for (const step of ['indexes', 'rules', 'hosting']) {
+    await check(out);
+    log(`部署 ${project} ${step}，source=${manifest.sourceSha}\n`);
+    const args = [...deploymentArgs(manifest, project, step, account), '--non-interactive'];
+
+    await runCiStepWithRetry({
+      step,
+      run: () => {
+        const raw = execFn(firebaseBin, args, { cwd: out, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+        const outText = typeof raw === 'string' ? raw : (raw.stdout ?? '');
+        const errText = typeof raw === 'string' ? '' : (raw.stderr ?? '');
+        if (outText && stdout?.write) stdout.write(outText);
+        if (errText && stderr?.write) stderr.write(errText);
+        if (typeof raw === 'string') {
+          return { status: 0, output: raw };
+        }
+        return {
+          status: raw.status ?? (raw.error ? 1 : 0),
+          error: raw.error,
+          output: raw.output ?? `${raw.stdout ?? ''}\n${raw.stderr ?? ''}`,
+        };
+      },
+      sleep,
+      log,
+    });
+
+    receipt.steps.push({ step, at: new Date().toISOString() });
+    await saveReceipt();
+
+    if (step === 'indexes') {
+      await waitForIndexes(out, project, timeoutMinutes, {
+        nonInteractive: true,
+        gcloudAccount: account,
+        exec: execFn,
+        readConfig: readConfigFn,
+        sleep,
+        log,
+      });
+    }
+  }
+
+  log('indexes、rules、hosting 已部署；正式 smoke 仍由本人驗證。\n');
+  return receipt;
 }

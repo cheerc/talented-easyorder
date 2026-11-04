@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { mkdtemp, writeFile, mkdir, symlink, rm } from 'node:fs/promises';
+import { readFileSync, existsSync } from 'node:fs';
+import { mkdtemp, writeFile, mkdir, symlink, rm, copyFile, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import * as release from '../lib/release.mjs';
 import { validateProject, validateWebConfig, deploymentArgs, ciDeploymentArgs, releaseFiles, checkRelease, validateProviderState, validateCiDeployment, compositeIndexStatus, isTransientCiFailure, runCiStepWithRetry } from '../lib/release.mjs';
 
 const web = { apiKey: 'synthetic-api-key', projectId: 'demo-easyorder', authDomain: 'demo-easyorder.firebaseapp.com', appId: '1:000000000000:web:synthetic', messagingSenderId: '000000000000', storageBucket: 'demo-easyorder.firebasestorage.app' };
@@ -290,4 +291,644 @@ test('deploy workflow is manual-only from main, uses an approval environment, ke
   // job 有 id-token 權限時不執行依賴的 install script；public repo 不上傳部署 artifact。
   for (const install of workflow.matchAll(/npm (ci|install)\b[^\n]*/g)) assert.match(install[0], /--ignore-scripts/);
   assert.doesNotMatch(workflow, /upload-artifact/);
+});
+
+test('deploy-test CLI entry refuses invalid flags, missing or invalid private config, or emulator env before external calls', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'easyorder-deploy-test-cli-'));
+  try {
+    const binDir = path.join(dir, 'bin');
+    await mkdir(binDir, { recursive: true });
+    const marker = path.join(dir, 'marker.txt');
+    for (const cmd of ['gh', 'gcloud', 'git']) {
+      await writeFile(path.join(binDir, cmd), `#!/bin/sh\necho "${cmd}" > "${marker}"\nexit 1\n`, { mode: 0o755 });
+    }
+    const fakeHome = path.join(dir, 'home');
+    await mkdir(fakeHome, { recursive: true });
+
+    const entry = new URL('../easyorder-release.mjs', import.meta.url).pathname;
+    const run = (args, extraEnv = {}) => {
+      const env = { ...process.env, HOME: fakeHome, PATH: `${binDir}:${process.env.PATH}`, ...extraEnv };
+      delete env.FIRESTORE_EMULATOR_HOST;
+      delete env.FIREBASE_AUTH_EMULATOR_HOST;
+      if (extraEnv.FIRESTORE_EMULATOR_HOST) env.FIRESTORE_EMULATOR_HOST = extraEnv.FIRESTORE_EMULATOR_HOST;
+      return spawnSync(process.execPath, [entry, 'deploy-test', ...args], { encoding: 'utf8', env });
+    };
+
+    // 1. Unknown or extra flags (e.g. --project)
+    const res1 = run(['--project', 'easyorder-test-123']);
+    assert.equal(res1.status, 1);
+    assert.match(res1.stderr, /未知或重複參數/);
+    assert.equal(existsSync(marker), false, 'no external command may be called');
+
+    // 2. Missing private config
+    const res2 = run([]);
+    assert.equal(res2.status, 1);
+    assert.match(res2.stderr, /deploy-test\.env/);
+    assert.equal(existsSync(marker), false, 'no external command may be called');
+
+    // 3. Unknown key in private config
+    const privateDir = path.join(fakeHome, '.easyorder-private');
+    await mkdir(privateDir, { recursive: true });
+    const envFile = path.join(privateDir, 'deploy-test.env');
+    await writeFile(envFile, 'UNKNOWN_KEY=foo\n');
+    const res3 = run([]);
+    assert.equal(res3.status, 1);
+    assert.match(res3.stderr, /未知|deploy-test\.env/);
+    assert.equal(existsSync(marker), false, 'no external command may be called');
+
+    // 4. Emulator env set
+    await writeFile(envFile, 'EASYORDER_TEST_ACCOUNT=tester@example.com\n');
+    const res4 = run([], { FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080' });
+    assert.equal(res4.status, 1);
+    assert.match(res4.stderr, /Emulator/);
+    assert.equal(existsSync(marker), false, 'no external command may be called');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('resolveTestTarget validates required test vars, distinct production project, and valid web config', () => {
+  assert.equal(typeof release.resolveTestTarget, 'function');
+  const validWeb = {
+    apiKey: 'test-api-key',
+    projectId: 'easyorder-test-123',
+    authDomain: 'easyorder-test-123.firebaseapp.com',
+    appId: '1:123456789012:web:abcdef',
+    messagingSenderId: '123456789012',
+    storageBucket: 'easyorder-test-123.firebasestorage.app',
+  };
+  const testVars = {
+    EASYORDER_DEPLOY_PROJECT: 'easyorder-test-123',
+    EASYORDER_REGION: 'asia-east1',
+    EASYORDER_WEB_CONFIG: JSON.stringify(validWeb),
+  };
+  const prodVars = {
+    EASYORDER_DEPLOY_PROJECT: 'easyorder-prod-456',
+  };
+
+  // Missing required test var (each should throw)
+  assert.throws(() => release.resolveTestTarget({ testVars: { ...testVars, EASYORDER_DEPLOY_PROJECT: '' }, productionVars: prodVars }));
+  assert.throws(() => release.resolveTestTarget({ testVars: { ...testVars, EASYORDER_REGION: '' }, productionVars: prodVars }));
+  assert.throws(() => release.resolveTestTarget({ testVars: { ...testVars, EASYORDER_WEB_CONFIG: '' }, productionVars: prodVars }));
+  assert.throws(() => release.resolveTestTarget({ testVars: null, productionVars: prodVars }));
+
+  // Production project is identical to test project -> reject
+  assert.throws(() => release.resolveTestTarget({
+    testVars,
+    productionVars: { EASYORDER_DEPLOY_PROJECT: 'easyorder-test-123' },
+  }), /production.*test.*相同/);
+
+  // Production environment does not exist (null) -> allow
+  const resNullProd = release.resolveTestTarget({ testVars, productionVars: null });
+  assert.equal(resNullProd.project, 'easyorder-test-123');
+  assert.equal(resNullProd.region, 'asia-east1');
+  assert.deepEqual(resNullProd.web, validWeb);
+
+  // Normal case with distinct production vars -> allow
+  const resNormal = release.resolveTestTarget({ testVars, productionVars: prodVars });
+  assert.equal(resNormal.project, 'easyorder-test-123');
+  assert.equal(resNormal.region, 'asia-east1');
+  assert.deepEqual(resNormal.web, validWeb);
+  assert.deepEqual(validateWebConfig(resNormal.web, resNormal.project, false), validWeb);
+});
+
+test('validateTestSource requires clean working tree, HEAD matching origin/main, and green push CI', () => {
+  assert.equal(typeof release.validateTestSource, 'function');
+  const valid = {
+    head: '535cf3d2f10c4763d0076f8c57f19597a2220e7b',
+    originMain: '535cf3d2f10c4763d0076f8c57f19597a2220e7b',
+    dirty: false,
+    ciSuccessCount: 1,
+  };
+
+  // dirty working tree -> reject
+  assert.throws(() => release.validateTestSource({ ...valid, dirty: true }), /未提交|dirty/);
+
+  // HEAD not equal to origin/main -> reject
+  assert.throws(() => release.validateTestSource({ ...valid, originMain: '0000000000000000000000000000000000000000' }), /origin\/main/);
+
+  // CI success count is 0 -> reject
+  assert.throws(() => release.validateTestSource({ ...valid, ciSuccessCount: 0 }), /CI/);
+
+  // all valid -> pass
+  assert.doesNotThrow(() => release.validateTestSource(valid));
+});
+
+test('runTestDeployment orchestrates test deployment steps with account, non-interactive, retries and receipt', async () => {
+  assert.equal(typeof release.runTestDeployment, 'function');
+
+  const manifest = {
+    format: 'easyorder-release',
+    version: 1,
+    project: 'easyorder-test-123',
+    region: 'asia-east1',
+    authDomain: 'easyorder-test-123.firebaseapp.com',
+    emulator: false,
+    sourceSha: '535cf3d2f10c4763d0076f8c57f19597a2220e7b',
+    sourceDirty: false,
+    files: {},
+  };
+  const project = 'easyorder-test-123';
+  const account = 'deployer@example.com';
+  const out = '/tmp/fake-release-out';
+
+  const defaultBilling = JSON.stringify({ billingEnabled: false });
+  const defaultDb = JSON.stringify({
+    status: 'success',
+    result: {
+      name: `projects/${project}/databases/(default)`,
+      locationId: 'asia-east1',
+      type: 'FIRESTORE_NATIVE',
+      databaseEdition: 'STANDARD',
+      freeTier: true,
+    },
+  });
+  const defaultIndexes = JSON.stringify([]);
+
+  // Helper to record calls
+  const createMockExec = (overrides = {}) => {
+    const calls = [];
+    const exec = (cmd, args, opts) => {
+      calls.push({ cmd, args, opts });
+      const normalizedCmd = cmd.includes('firebase') ? 'firebase' : cmd;
+      const target = args.indexOf('--only') !== -1 ? args[args.indexOf('--only') + 1] : (args[1] ?? '');
+      const key = `${normalizedCmd} ${args[0]} ${target}`.trim();
+      if (overrides[key]) return overrides[key](calls.length, args, opts);
+      if (cmd === 'gcloud' && args[0] === 'billing') return defaultBilling;
+      if (cmd.includes('firebase') && args[0] === 'firestore:databases:get') return defaultDb;
+      if (cmd === 'gcloud' && args[0] === 'firestore') return defaultIndexes;
+      if (cmd.includes('firebase') && args[0] === 'deploy') return { status: 0, output: '' };
+      return { status: 0, output: '' };
+    };
+    return { calls, exec };
+  };
+
+  const sleeps = [];
+  const sleep = ms => { sleeps.push(ms); return Promise.resolve(); };
+
+  // Case 1: Happy path
+  const { calls: calls1, exec: exec1 } = createMockExec();
+  const receipt1 = await release.runTestDeployment({
+    manifest,
+    project,
+    account,
+    out,
+    timeoutMinutes: 30,
+    exec: exec1,
+    sleep,
+    log: () => {},
+    checkReleaseFn: () => Promise.resolve(manifest),
+    readConfigFn: () => Promise.resolve({ indexes: [] }),
+    saveReceiptFn: () => Promise.resolve(),
+  });
+
+  // Verify call sequence: preflight -> indexes -> wait -> rules -> hosting
+  assert.equal(calls1[0].cmd, 'gcloud');
+  assert.equal(calls1[0].args[0], 'billing');
+  assert.ok(calls1[1].cmd.includes('firebase'));
+  assert.equal(calls1[1].args[0], 'firestore:databases:get');
+  assert.ok(calls1[2].cmd.includes('firebase'));
+  assert.equal(calls1[2].args[0], 'deploy');
+  assert.ok(calls1[2].args.includes('firestore:indexes'));
+  assert.equal(calls1[3].cmd, 'gcloud');
+  assert.equal(calls1[3].args[0], 'firestore');
+  assert.ok(calls1[4].cmd.includes('firebase'));
+  assert.equal(calls1[4].args[0], 'deploy');
+  assert.ok(calls1[4].args.includes('firestore:rules'));
+  assert.ok(calls1[5].cmd.includes('firebase'));
+  assert.equal(calls1[5].args[0], 'deploy');
+  assert.ok(calls1[5].args.includes('hosting'));
+
+  // Every firebase call includes --project, --account, --non-interactive, and NO --force
+  const firebaseCalls = calls1.filter(c => c.cmd.includes('firebase'));
+  for (const call of firebaseCalls) {
+    assert.ok(call.args.includes('--project'), `${call.cmd} ${call.args.join(' ')} must include --project`);
+    assert.equal(call.args[call.args.indexOf('--project') + 1], project);
+    assert.ok(call.args.includes('--account'), `${call.cmd} ${call.args.join(' ')} must include --account`);
+    assert.equal(call.args[call.args.indexOf('--account') + 1], account);
+    if (call.args[0] === 'deploy') {
+      assert.ok(call.args.includes('--non-interactive'), 'deploy must include --non-interactive');
+      assert.ok(!call.args.includes('--force'), 'deploy must not include --force');
+    }
+  }
+
+  // Every gcloud call includes --account
+  const gcloudCalls = calls1.filter(c => c.cmd === 'gcloud');
+  for (const call of gcloudCalls) {
+    assert.ok(call.args.includes('--account'), `${call.cmd} ${call.args.join(' ')} must include --account`);
+    assert.equal(call.args[call.args.indexOf('--account') + 1], account);
+  }
+
+  // Verify receipt step sequence
+  assert.deepEqual(receipt1.steps.map(s => s.step), ['indexes', 'rules', 'hosting']);
+
+  // Case 2: rules encounters transient 503 and retries with deploy-ci default retry policy
+  let rulesAttempts = 0;
+  const transientOut = { status: 2, output: 'had HTTP Error: 503, The service is currently unavailable.' };
+  const { calls: calls2, exec: exec2 } = createMockExec({
+    'firebase deploy firestore:rules': () => {
+      rulesAttempts += 1;
+      return rulesAttempts === 1 ? transientOut : { status: 0, output: '' };
+    },
+  });
+  sleeps.length = 0;
+  const receipt2 = await release.runTestDeployment({
+    manifest,
+    project,
+    account,
+    out,
+    timeoutMinutes: 30,
+    exec: exec2,
+    sleep,
+    log: () => {},
+    checkReleaseFn: () => Promise.resolve(manifest),
+    readConfigFn: () => Promise.resolve({ indexes: [] }),
+    saveReceiptFn: () => Promise.resolve(),
+  });
+  assert.equal(rulesAttempts, 2);
+  assert.deepEqual(sleeps, [30_000]);
+  assert.deepEqual(receipt2.steps.map(s => s.step), ['indexes', 'rules', 'hosting']);
+
+  // Case 3: hosting failure does NOT retry
+  let hostingAttempts = 0;
+  const { calls: calls3, exec: exec3 } = createMockExec({
+    'firebase deploy hosting': () => {
+      hostingAttempts += 1;
+      return transientOut;
+    },
+  });
+  sleeps.length = 0;
+  await assert.rejects(
+    release.runTestDeployment({
+      manifest,
+      project,
+      account,
+      out,
+      timeoutMinutes: 30,
+      exec: exec3,
+      sleep,
+      log: () => {},
+      checkReleaseFn: () => Promise.resolve(manifest),
+      readConfigFn: () => Promise.resolve({ indexes: [] }),
+      saveReceiptFn: () => Promise.resolve(),
+    }),
+    /hosting 失敗/
+  );
+  assert.equal(hostingAttempts, 1, 'hosting must fail immediately without retry');
+  assert.deepEqual(sleeps, []);
+
+  // Case 4: Step failure halts further steps (e.g. indexes fails -> rules/hosting not executed)
+  const { calls: calls4, exec: exec4 } = createMockExec({
+    'firebase deploy firestore:indexes': () => ({ status: 1, output: 'indexes error' }),
+  });
+  await assert.rejects(
+    release.runTestDeployment({
+      manifest,
+      project,
+      account,
+      out,
+      timeoutMinutes: 30,
+      exec: exec4,
+      sleep,
+      log: () => {},
+      checkReleaseFn: () => Promise.resolve(manifest),
+      readConfigFn: () => Promise.resolve({ indexes: [] }),
+      saveReceiptFn: () => Promise.resolve(),
+    }),
+    /indexes 失敗/
+  );
+  const rulesCalled = calls4.some(c => c.args.includes('firestore:rules'));
+  const hostingCalled = calls4.some(c => c.args.includes('hosting'));
+  assert.equal(rulesCalled, false, 'rules must not be called after indexes failure');
+  assert.equal(hostingCalled, false, 'hosting must not be called after indexes failure');
+});
+
+test('providerPreflight includes CLI stderr upon failure and runTestDeployment forwards CLI stdout/stderr', async () => {
+  const manifest = { format: 'easyorder-release', version: 1, project: 'easyorder-test-123', region: 'asia-east1', files: {} };
+  const project = 'easyorder-test-123';
+  const account = 'deployer@example.com';
+  const out = '/tmp/fake-release-out';
+
+  // 1. gcloud billing failure includes CLI stderr
+  const gcloudErrExec = (cmd, args) => {
+    if (cmd === 'gcloud' && args[0] === 'billing') {
+      return { status: 1, stderr: 'ERROR: (gcloud.billing.projects.describe) User not authorized to view billing', output: '' };
+    }
+    return { status: 0, output: '' };
+  };
+  assert.throws(
+    () => release.providerPreflight(manifest, project, account, out, { exec: gcloudErrExec }),
+    /User not authorized to view billing/
+  );
+
+  // 2. Firebase databases:get failure includes CLI stderr
+  const fbErrExec = (cmd, args) => {
+    if (cmd === 'gcloud' && args[0] === 'billing') return JSON.stringify({ billingEnabled: false });
+    if (cmd.includes('firebase') && args[0] === 'firestore:databases:get') {
+      return { status: 1, stderr: 'Error: Failed to get database (default). Permission denied.', output: '' };
+    }
+    return { status: 0, output: '' };
+  };
+  assert.throws(
+    () => release.providerPreflight(manifest, project, account, out, { exec: fbErrExec }),
+    /Permission denied/
+  );
+
+  // 3. runTestDeployment forwards CLI stdout and stderr
+  const stdouts = [];
+  const stderrs = [];
+  const forwardingExec = (cmd, args) => {
+    if (cmd === 'gcloud' && args[0] === 'billing') return JSON.stringify({ billingEnabled: false });
+    if (cmd.includes('firebase') && args[0] === 'firestore:databases:get') {
+      return JSON.stringify({ status: 'success', result: { name: `projects/${project}/databases/(default)`, locationId: 'asia-east1', type: 'FIRESTORE_NATIVE', databaseEdition: 'STANDARD', freeTier: true } });
+    }
+    if (cmd === 'gcloud' && args[0] === 'firestore') return JSON.stringify([]);
+    if (cmd.includes('firebase') && args[0] === 'deploy') {
+      return { status: 0, stdout: `[deploy-out:${args.join(' ')}]`, stderr: `[deploy-err:${args.join(' ')}]` };
+    }
+    return { status: 0, output: '' };
+  };
+
+  await release.runTestDeployment({
+    manifest,
+    project,
+    account,
+    out,
+    exec: forwardingExec,
+    sleep: () => Promise.resolve(),
+    checkReleaseFn: () => Promise.resolve(manifest),
+    readConfigFn: () => Promise.resolve({ indexes: [] }),
+    saveReceiptFn: () => Promise.resolve(),
+    stdout: { write: text => stdouts.push(text) },
+    stderr: { write: text => stderrs.push(text) },
+  });
+
+  const allStdout = stdouts.join('');
+  const allStderr = stderrs.join('');
+  assert.match(allStdout, /\[deploy-out:.*firestore:indexes/);
+  assert.match(allStderr, /\[deploy-err:.*firestore:indexes/);
+  assert.match(allStdout, /\[deploy-out:.*firestore:rules/);
+  assert.match(allStderr, /\[deploy-err:.*firestore:rules/);
+  assert.match(allStdout, /\[deploy-out:.*hosting/);
+  assert.match(allStderr, /\[deploy-err:.*hosting/);
+});
+
+test('deploy-test stops before rules when index polling fails and preserves named CLI diagnostics', async () => {
+  const project = 'easyorder-test-123';
+  const manifest = { project, region: 'asia-east1', sourceSha: 'synthetic-source', files: {} };
+  const failures = [
+    { result: { status: 1, stdout: '[]', stderr: 'synthetic index permission denied' }, diagnostic: /gcloud firestore indexes composite list.*synthetic index permission denied/s },
+    { result: { status: null, error: new Error('synthetic spawn ENOENT'), stdout: '' }, diagnostic: /gcloud firestore indexes composite list.*synthetic spawn ENOENT/s },
+    { error: Object.assign(new Error('Command failed'), { stderr: 'synthetic index transport failure' }), diagnostic: /gcloud firestore indexes composite list.*synthetic index transport failure/s },
+    { result: { status: 0, stdout: 'not-json', stderr: '' }, diagnostic: /gcloud firestore indexes composite list.*not-json/s },
+  ];
+  for (const failure of failures) {
+    const steps = [];
+    await assert.rejects(release.runTestDeployment({
+      manifest, project, account: 'tester@example.com', out: '/tmp/synthetic-release',
+      exec: (cmd, args) => {
+        if (cmd === 'gcloud' && args[0] === 'billing') return JSON.stringify({ billingEnabled: false });
+        if (args[0] === 'firestore:databases:get') return JSON.stringify({ status: 'success', result: {
+          name: `projects/${project}/databases/(default)`, locationId: 'asia-east1', type: 'FIRESTORE_NATIVE', databaseEdition: 'STANDARD', freeTier: true,
+        } });
+        if (args[0] === 'deploy') { steps.push(args[args.indexOf('--only') + 1]); return { status: 0 }; }
+        if (failure.error) throw failure.error;
+        return failure.result;
+      },
+      checkReleaseFn: async () => manifest,
+      readConfigFn: async () => ({ indexes: [] }),
+      saveReceiptFn: async () => {},
+      log: () => {},
+    }), failure.diagnostic);
+    assert.deepEqual(steps, ['firestore:indexes'], 'index polling failure must prevent rules and hosting');
+  }
+});
+
+test('deploy-test metadata is non-interactive without changing shared caller defaults', async () => {
+  const project = 'easyorder-test-123';
+  const manifest = { project, region: 'asia-east1', files: {} };
+  const calls = [];
+  const exec = (cmd, args, options) => {
+    calls.push({ cmd, args, options });
+    if (args[0] === 'billing') return JSON.stringify({ billingEnabled: false });
+    if (args[0] === 'firestore:databases:get') return JSON.stringify({ status: 'success', result: {
+      name: `projects/${project}/databases/(default)`, locationId: 'asia-east1', type: 'FIRESTORE_NATIVE', databaseEdition: 'STANDARD', freeTier: true,
+    } });
+    if (cmd === 'gcloud') return '[]';
+    return { status: 0 };
+  };
+  await release.runTestDeployment({
+    manifest, project, account: 'tester@example.com', out: '/tmp/synthetic-release', exec,
+    checkReleaseFn: async () => manifest, readConfigFn: async () => ({ indexes: [] }),
+    saveReceiptFn: async () => {}, log: () => {},
+  });
+  for (const call of calls) {
+    assert.equal(call.options.stdio?.[0], 'ignore', `${call.args[0]} must ignore stdin`);
+    assert.ok(call.args.includes(call.cmd === 'gcloud' ? '--quiet' : '--non-interactive'));
+  }
+  calls.length = 0;
+  release.providerPreflight(manifest, project, undefined, '/tmp/synthetic-release', { exec });
+  await release.waitForIndexes('/tmp/synthetic-release', project, 1, { exec, readConfig: async () => ({ indexes: [] }), log: () => {} });
+  for (const call of calls) {
+    assert.equal(call.options.stdio, undefined, 'shared metadata defaults must remain unchanged');
+    assert.ok(!call.args.includes('--quiet') && !call.args.includes('--non-interactive'));
+  }
+});
+
+test('deploy-test CLI wires target from GitHub Environment and queries only test and production environments', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'easyorder-deploy-test-target-'));
+  try {
+    const binDir = path.join(dir, 'bin');
+    await mkdir(binDir, { recursive: true });
+
+    const ghLog = path.join(dir, 'gh-calls.log');
+    const gcloudLog = path.join(dir, 'gcloud-calls.log');
+    const firebaseLog = path.join(dir, 'firebase-calls.log');
+    const gitLog = path.join(dir, 'git-calls.log');
+
+    const syntheticTarget = 'synthetic-test-target-proj';
+    const syntheticWeb = {
+      apiKey: 'k',
+      authDomain: `${syntheticTarget}.firebaseapp.com`,
+      projectId: syntheticTarget,
+      appId: '1:1:web:1',
+      messagingSenderId: '1',
+      storageBucket: `${syntheticTarget}.firebasestorage.app`,
+    };
+
+    // Stub gh
+    const ghScript = `#!/usr/bin/env node
+import { appendFileSync } from 'node:fs';
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(ghLog)}, args.join(' ') + '\\n');
+const joined = args.join(' ');
+if (joined.includes('repo view')) {
+  process.stdout.write('cheerc/talented-easyorder\\n');
+} else if (joined.includes('actions/workflows/ci.yml/runs')) {
+  process.stdout.write(JSON.stringify({ total_count: 1 }) + '\\n');
+} else if (joined.includes('environments/firebase-test/variables')) {
+  process.stdout.write(JSON.stringify({
+    variables: [
+      { name: 'EASYORDER_DEPLOY_PROJECT', value: ${JSON.stringify(syntheticTarget)} },
+      { name: 'EASYORDER_REGION', value: 'asia-east1' },
+      { name: 'EASYORDER_WEB_CONFIG', value: ${JSON.stringify(JSON.stringify(syntheticWeb))} },
+    ],
+  }) + '\\n');
+} else if (joined.includes('environments/firebase-production/variables')) {
+  process.stdout.write(JSON.stringify({
+    variables: [
+      { name: 'EASYORDER_DEPLOY_PROJECT', value: 'synthetic-prod-proj' },
+    ],
+  }) + '\\n');
+} else {
+  process.exit(1);
+}
+`;
+    await writeFile(path.join(binDir, 'gh'), ghScript, { mode: 0o755 });
+
+    // Stub gcloud
+    const indexesConfig = JSON.parse(readFileSync(new URL('../../firestore.indexes.json', import.meta.url), 'utf8'));
+    const readyIndexes = (indexesConfig.indexes ?? []).map((idx, i) => ({
+      name: `projects/${syntheticTarget}/databases/(default)/collectionGroups/${idx.collectionGroup}/indexes/idx_${i}`,
+      queryScope: idx.queryScope ?? 'COLLECTION',
+      fields: idx.fields,
+      state: 'READY',
+    }));
+    const gcloudScript = `#!/usr/bin/env node
+import { appendFileSync } from 'node:fs';
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(gcloudLog)}, args.join(' ') + '\\n');
+const joined = args.join(' ');
+if (joined.includes('auth print-access-token')) {
+  process.stdout.write('ya29.synthetic-token\\n');
+} else if (joined.includes('billing projects describe')) {
+  process.stdout.write(JSON.stringify({ billingEnabled: false }) + '\\n');
+} else if (joined.includes('firestore indexes composite list')) {
+  process.stdout.write(JSON.stringify(${JSON.stringify(readyIndexes)}) + '\\n');
+} else {
+  process.stdout.write('{}\\n');
+}
+`;
+    await writeFile(path.join(binDir, 'gcloud'), gcloudScript, { mode: 0o755 });
+
+    // Stub firebase
+    const firebaseScript = `#!/usr/bin/env node
+import { appendFileSync } from 'node:fs';
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(firebaseLog)}, args.join(' ') + '\\n');
+const joined = args.join(' ');
+if (joined.includes('login:list')) {
+  process.stdout.write(JSON.stringify({ status: 'success', result: [{ user: { email: 'tester@example.com' } }] }) + '\\n');
+} else if (joined.includes('firestore:databases:get')) {
+  process.stdout.write(JSON.stringify({
+    status: 'success',
+    result: {
+      name: 'projects/' + ${JSON.stringify(syntheticTarget)} + '/databases/(default)',
+      locationId: 'asia-east1',
+      type: 'FIRESTORE_NATIVE',
+      databaseEdition: 'STANDARD',
+      freeTier: true,
+    },
+  }) + '\\n');
+} else if (joined.includes('deploy')) {
+  process.stdout.write('Deploy complete\\n');
+} else {
+  process.stdout.write('{}\\n');
+}
+`;
+    await writeFile(path.join(binDir, 'firebase'), firebaseScript, { mode: 0o755 });
+
+    // 所有 git 結果均為合成資料；fixture 不查詢真正的 repo 或 remote。
+    const syntheticSha = '1234567890abcdef1234567890abcdef12345678';
+    const gitScript = `#!/usr/bin/env node
+import { appendFileSync } from 'node:fs';
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(gitLog)}, args.join(' ') + '\\n');
+if (args[0] === 'rev-parse') process.stdout.write(${JSON.stringify(syntheticSha)} + '\\n');
+else if (!['fetch', 'status', 'diff'].includes(args[0])) process.exit(1);
+`;
+    await writeFile(path.join(binDir, 'git'), gitScript, { mode: 0o755 });
+
+    const fakeHome = path.join(dir, 'home');
+    const privateDir = path.join(fakeHome, '.easyorder-private');
+    await mkdir(privateDir, { recursive: true });
+    await writeFile(path.join(privateDir, 'deploy-test.env'), 'EASYORDER_TEST_ACCOUNT=tester@example.com\n');
+
+    // 複製 production 入口與 release 資源；最小前端只驗證 prepare 的 web config 接線。
+    const fixture = path.join(dir, 'repo');
+    await mkdir(path.join(fixture, 'scripts/lib'), { recursive: true });
+    for (const file of ['scripts/easyorder-release.mjs', 'scripts/lib/release.mjs', 'firebase.json', 'firestore.rules', 'firestore.indexes.json']) {
+      await copyFile(new URL(`../../${file}`, import.meta.url), path.join(fixture, file));
+    }
+    const fixtureFrontend = path.join(fixture, 'frontend');
+    await mkdir(path.join(fixtureFrontend, 'node_modules/.bin'), { recursive: true });
+    await copyFile(new URL('../../frontend/package.json', import.meta.url), path.join(fixtureFrontend, 'package.json'));
+    await symlink(new URL('../../frontend/node_modules/vite', import.meta.url).pathname, path.join(fixtureFrontend, 'node_modules/vite'));
+    await writeFile(path.join(fixtureFrontend, 'vite.config.ts'), 'export default {};\n');
+    await writeFile(path.join(fixtureFrontend, 'index.html'), '<html><script type="module" src="/main.js"></script></html>');
+    await writeFile(path.join(fixtureFrontend, 'main.js'), 'document.body.textContent = import.meta.env.VITE_FIREBASE_PROJECT_ID;\n');
+    await writeFile(path.join(fixtureFrontend, 'node_modules/.bin/firebase'), firebaseScript, { mode: 0o755 });
+
+    const entry = path.join(fixture, 'scripts/easyorder-release.mjs');
+    const env = {
+      ...process.env,
+      HOME: fakeHome,
+      PATH: `${binDir}:${process.env.PATH}`,
+    };
+    delete env.EASYORDER_FIREBASE_BIN;
+    delete env.FIRESTORE_EMULATOR_HOST;
+    delete env.FIREBASE_AUTH_EMULATOR_HOST;
+
+    const res = spawnSync(process.execPath, [entry, 'deploy-test'], { encoding: 'utf8', env, cwd: fixture, timeout: 30_000, stdio: ['ignore', 'pipe', 'pipe'] });
+    const leakedToken = `${res.stdout ?? ''}${res.stderr ?? ''}`.includes('ya29.synthetic-token');
+    assert.equal(leakedToken, false, 'auth token must never appear in CLI output');
+    assert.equal(res.status, 0, 'isolated deploy-test fixture must succeed');
+
+    const releaseRoot = path.join(privateDir, 'deploy-test/releases');
+    const releases = await readdir(releaseRoot);
+    assert.equal(releases.length, 1);
+    const releaseOut = path.join(releaseRoot, releases[0]);
+    const prepared = JSON.parse(await readFile(path.join(releaseOut, 'release.json'), 'utf8'));
+    assert.equal(prepared.project, syntheticTarget);
+    assert.equal(prepared.sourceSha, syntheticSha);
+    const publicAssets = path.join(releaseOut, 'public/assets');
+    const jsAssets = (await readdir(publicAssets)).filter(name => name.endsWith('.js'));
+    const builtJs = (await Promise.all(jsAssets.map(name => readFile(path.join(publicAssets, name), 'utf8')))).join('\n');
+    assert.ok(builtJs.includes(syntheticTarget), 'prepare must build using GitHub Environment web config');
+    const receiptText = await readFile(path.join(releaseOut, 'deploy-receipt.json'), 'utf8');
+    assert.equal(receiptText.includes('ya29.synthetic-token'), false, 'auth token must not be written to receipt');
+
+    // 1. Assert gh was only queried for firebase-test and firebase-production
+    const ghLines = readFileSync(ghLog, 'utf8').trim().split('\n');
+    const envQueries = ghLines.filter(line => line.includes('environments/'));
+    assert.ok(envQueries.length >= 2, 'gh must query environments');
+    for (const q of envQueries) {
+      const match = /environments\/([^/]+)/.exec(q);
+      assert.ok(match, `Must match environment query: ${q}`);
+      assert.ok(
+        ['firebase-test', 'firebase-production'].includes(match[1]),
+        `gh should only be queried for firebase-test or firebase-production, got ${match[1]}`
+      );
+    }
+
+    // 2. Assert gcloud and firebase were called with the synthetic target
+    const gcloudLines = readFileSync(gcloudLog, 'utf8').trim().split('\n');
+    const billingCall = gcloudLines.find(l => l.includes('billing'));
+    assert.ok(billingCall && billingCall.includes(syntheticTarget), `gcloud billing must use synthetic target: ${billingCall}`);
+    const indexCall = gcloudLines.find(l => l.includes('firestore indexes'));
+    assert.ok(indexCall && indexCall.includes(`--project ${syntheticTarget}`), `gcloud indexes must use synthetic target: ${indexCall}`);
+
+    const firebaseLines = readFileSync(firebaseLog, 'utf8').trim().split('\n');
+    const dbCall = firebaseLines.find(l => l.includes('firestore:databases:get'));
+    assert.ok(dbCall && dbCall.includes(`--project ${syntheticTarget}`), `firebase databases:get must use synthetic target: ${dbCall}`);
+    for (const call of firebaseLines) assert.ok(call.includes('--non-interactive'), 'all deploy-test Firebase calls must be non-interactive');
+    for (const call of gcloudLines) assert.ok(call.includes('--quiet'), 'all deploy-test gcloud calls must suppress prompts');
+    const deployCalls = firebaseLines.filter(l => l.includes('deploy'));
+    assert.equal(deployCalls.length, 3, 'Must deploy indexes, rules, hosting');
+    for (const d of deployCalls) {
+      assert.ok(d.includes(`--project ${syntheticTarget}`), `firebase deploy must use synthetic target: ${d}`);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
