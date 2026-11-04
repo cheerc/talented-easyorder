@@ -20,6 +20,8 @@ CI 的 `build-and-test` 與穩定的 `e2e` 彙總檢查各自依獨立變更分�
 
 Cloud Rules／command 證明需在 `demo-easyorder` Emulator 中實際執行；Vitest skip 不是 Emulator pass。App project TypeScript baseline、required gates 及 docs-only CI 分類以 [workflow](../.github/workflows/ci.yml) 和 [正式後端 handoff](../docs/DEVELOPMENT-HANDOFF.md) 為準；bare `tsc` 或 Vite build 不能取代 App project baseline。只改文件時做 diff、連結與路徑核對即可，不能宣稱跑過 app suites。
 
+`frontend/.npmrc` 開 `strict-allow-scripts`：新增或升級的依賴若帶 install script，`npm ci` 會以 ESTRICTALLOWSCRIPTS 失敗（設計行為）；先 `npm ci --ignore-scripts`，再用 `npm install-scripts ls` 列出、`npm install-scripts approve|deny <pkg>` 判定並在 PR 寫理由，最後重跑 `npm ci`。
+
 ## Mode 與程式導航
 
 - `src/appMode.ts` 判定 prototype／cloud 模式及設定；`src/App.tsx` 組裝應用；`src/providers/`、`src/auth/` 管理 Firebase 與登入；`src/domain/` 放領域契約，`src/firebase/` 放 cloud repository，`src/store/` 與 `src/components/` 放狀態及介面。沿用附近的測試與分層，不在 UI 繞過 repository。
