@@ -147,11 +147,12 @@ export function providerPreflight(manifest, project, account, out, options = {})
   const gcloudAccount = options.gcloudAccount ?? options.account;
   const exec = options.execFileSync ?? options.exec ?? execFileSync;
   const firebaseBin = options.firebaseBin ?? defaultFirebase;
+  const stdio = options.nonInteractive ? { stdio: ['ignore', 'pipe', 'pipe'] } : {};
 
-  const gcloudArgs = ['billing', 'projects', 'describe', project, '--format=json', ...(gcloudAccount ? ['--account', gcloudAccount] : [])];
+  const gcloudArgs = ['billing', 'projects', 'describe', project, '--format=json', ...(gcloudAccount ? ['--account', gcloudAccount] : []), ...(options.nonInteractive ? ['--quiet'] : [])];
   let billingRaw;
   try {
-    billingRaw = exec('gcloud', gcloudArgs, { encoding: 'utf8' });
+    billingRaw = exec('gcloud', gcloudArgs, { encoding: 'utf8', ...stdio });
     if (billingRaw && typeof billingRaw === 'object' && (billingRaw.status !== 0 || billingRaw.error)) {
       const errText = billingRaw.stderr || billingRaw.output || billingRaw.error?.message || '';
       throw new Error(`gcloud billing describe 失敗（exit ${billingRaw.status}）：${errText}`);
@@ -168,10 +169,10 @@ export function providerPreflight(manifest, project, account, out, options = {})
     throw new Error(`gcloud billing describe 輸出無法解析為 JSON：${rawOut.trim()}`);
   }
 
-  const fbArgs = ['firestore:databases:get', '(default)', '--project', project, '--json', ...(account ? ['--account', account] : [])];
+  const fbArgs = ['firestore:databases:get', '(default)', '--project', project, '--json', ...(account ? ['--account', account] : []), ...(options.nonInteractive ? ['--non-interactive'] : [])];
   let databaseRaw;
   try {
-    databaseRaw = exec(firebaseBin, fbArgs, { cwd: out, encoding: 'utf8' });
+    databaseRaw = exec(firebaseBin, fbArgs, { cwd: out, encoding: 'utf8', ...stdio });
     if (databaseRaw && typeof databaseRaw === 'object' && (databaseRaw.status !== 0 || databaseRaw.error)) {
       const errText = databaseRaw.stderr || databaseRaw.output || databaseRaw.error?.message || '';
       throw new Error(`Firebase databases:get 失敗（exit ${databaseRaw.status}）：${errText}`);
@@ -202,9 +203,23 @@ export async function waitForIndexes(out, project, timeoutMinutes, options = {})
   const config = await readConfig(path.join(out, 'firestore.indexes.json'));
   const deadline = Date.now() + timeoutMinutes * 60_000;
   for (;;) {
-    const listArgs = ['firestore', 'indexes', 'composite', 'list', '--project', project, '--database', '(default)', '--format=json', ...(gcloudAccount ? ['--account', gcloudAccount] : [])];
-    const raw = exec('gcloud', listArgs, { encoding: 'utf8' });
-    const listed = JSON.parse(typeof raw === 'string' ? raw : raw.stdout ?? raw.output);
+    const listArgs = ['firestore', 'indexes', 'composite', 'list', '--project', project, '--database', '(default)', '--format=json', ...(gcloudAccount ? ['--account', gcloudAccount] : []), ...(options.nonInteractive ? ['--quiet'] : [])];
+    let raw;
+    try {
+      raw = exec('gcloud', listArgs, { encoding: 'utf8', ...(options.nonInteractive ? { stdio: ['ignore', 'pipe', 'pipe'] } : {}) });
+    } catch (error) {
+      throw new Error(`gcloud firestore indexes composite list 失敗：${error.stderr ? String(error.stderr) : error.message}`);
+    }
+    if (raw && typeof raw === 'object' && (raw.status !== 0 || raw.error)) {
+      throw new Error(`gcloud firestore indexes composite list 失敗（exit ${raw.status}）：${raw.stderr || raw.error?.message || raw.output || raw.stdout || ''}`);
+    }
+    let listed;
+    try {
+      listed = JSON.parse(typeof raw === 'string' ? raw : raw.stdout ?? raw.output);
+    } catch {
+      const output = typeof raw === 'string' ? raw : `${raw?.stdout ?? ''}\n${raw?.stderr ?? ''}`;
+      throw new Error(`gcloud firestore indexes composite list 輸出無法解析為 JSON：${output.trim()}`);
+    }
     const status = compositeIndexStatus(config, listed);
     if (status.ready) { log(`composite indexes 全部 READY（${(config.indexes ?? []).length} 個）\n`); return status; }
     if (Date.now() >= deadline) throw new Error(`index 未在 ${timeoutMinutes} 分鐘內 READY；不部署 rules／hosting。缺少：${status.missing.join('; ') || '無'}；未完成：${status.notReady.join('; ') || '無'}`);
@@ -294,7 +309,7 @@ export async function runTestDeployment({
   const check = checkReleaseFn ?? (() => checkRelease(out));
 
   // Step 6: preflight
-  providerPreflight(manifest, project, account, out, { gcloudAccount: account, exec: execFn, firebaseBin });
+  providerPreflight(manifest, project, account, out, { gcloudAccount: account, exec: execFn, firebaseBin, nonInteractive: true });
 
   let releaseDigest = '';
   try {
@@ -350,6 +365,7 @@ export async function runTestDeployment({
 
     if (step === 'indexes') {
       await waitForIndexes(out, project, timeoutMinutes, {
+        nonInteractive: true,
         gcloudAccount: account,
         exec: execFn,
         readConfig: readConfigFn,

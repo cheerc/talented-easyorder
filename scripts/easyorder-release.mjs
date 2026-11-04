@@ -10,7 +10,7 @@ import { validateWebConfig, releaseFiles, checkRelease, deploymentArgs, ciDeploy
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const frontend = path.join(root, 'frontend');
-const firebase = process.env.EASYORDER_FIREBASE_BIN || path.join(frontend, 'node_modules/.bin/firebase');
+const firebase = path.join(frontend, 'node_modules/.bin/firebase');
 const usage = `EasyOrder P17 本機 release 工具（Node 24）
   ./deploy.sh prepare --project <id> --web-config <本機 JSON> --out <新目錄> [--region asia-east1] [--emulator]
   ./deploy.sh check --release <目錄>
@@ -134,7 +134,7 @@ async function deployTest(args) {
 
   let gcloudOk = false;
   try {
-    const res = spawnSync('gcloud', ['auth', 'print-access-token', '--account', account], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+    const res = spawnSync('gcloud', ['auth', 'print-access-token', '--account', account, '--quiet'], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
     if (res.status === 0 && res.stdout?.trim()) gcloudOk = true;
   } catch {}
   if (!gcloudOk) {
@@ -143,7 +143,7 @@ async function deployTest(args) {
 
   let firebaseOk = false;
   try {
-    const res = spawnSync(firebase, ['login:list', '--json'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+    const res = spawnSync(firebase, ['login:list', '--json', '--non-interactive'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
     if (res.status === 0) {
       const listData = JSON.parse(res.stdout);
       const users = Array.isArray(listData.result) ? listData.result : Array.isArray(listData) ? listData : [];
