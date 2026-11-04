@@ -602,3 +602,251 @@ test('runTestDeployment orchestrates test deployment steps with account, non-int
   assert.equal(rulesCalled, false, 'rules must not be called after indexes failure');
   assert.equal(hostingCalled, false, 'hosting must not be called after indexes failure');
 });
+
+test('providerPreflight includes CLI stderr upon failure and runTestDeployment forwards CLI stdout/stderr', async () => {
+  const manifest = { format: 'easyorder-release', version: 1, project: 'easyorder-test-123', region: 'asia-east1', files: {} };
+  const project = 'easyorder-test-123';
+  const account = 'deployer@example.com';
+  const out = '/tmp/fake-release-out';
+
+  // 1. gcloud billing failure includes CLI stderr
+  const gcloudErrExec = (cmd, args) => {
+    if (cmd === 'gcloud' && args[0] === 'billing') {
+      return { status: 1, stderr: 'ERROR: (gcloud.billing.projects.describe) User not authorized to view billing', output: '' };
+    }
+    return { status: 0, output: '' };
+  };
+  assert.throws(
+    () => release.providerPreflight(manifest, project, account, out, { exec: gcloudErrExec }),
+    /User not authorized to view billing/
+  );
+
+  // 2. Firebase databases:get failure includes CLI stderr
+  const fbErrExec = (cmd, args) => {
+    if (cmd === 'gcloud' && args[0] === 'billing') return JSON.stringify({ billingEnabled: false });
+    if (cmd.includes('firebase') && args[0] === 'firestore:databases:get') {
+      return { status: 1, stderr: 'Error: Failed to get database (default). Permission denied.', output: '' };
+    }
+    return { status: 0, output: '' };
+  };
+  assert.throws(
+    () => release.providerPreflight(manifest, project, account, out, { exec: fbErrExec }),
+    /Permission denied/
+  );
+
+  // 3. runTestDeployment forwards CLI stdout and stderr
+  const stdouts = [];
+  const stderrs = [];
+  const forwardingExec = (cmd, args) => {
+    if (cmd === 'gcloud' && args[0] === 'billing') return JSON.stringify({ billingEnabled: false });
+    if (cmd.includes('firebase') && args[0] === 'firestore:databases:get') {
+      return JSON.stringify({ status: 'success', result: { name: `projects/${project}/databases/(default)`, locationId: 'asia-east1', type: 'FIRESTORE_NATIVE', databaseEdition: 'STANDARD', freeTier: true } });
+    }
+    if (cmd === 'gcloud' && args[0] === 'firestore') return JSON.stringify([]);
+    if (cmd.includes('firebase') && args[0] === 'deploy') {
+      return { status: 0, stdout: `[deploy-out:${args.join(' ')}]`, stderr: `[deploy-err:${args.join(' ')}]` };
+    }
+    return { status: 0, output: '' };
+  };
+
+  await release.runTestDeployment({
+    manifest,
+    project,
+    account,
+    out,
+    exec: forwardingExec,
+    sleep: () => Promise.resolve(),
+    checkReleaseFn: () => Promise.resolve(manifest),
+    readConfigFn: () => Promise.resolve({ indexes: [] }),
+    saveReceiptFn: () => Promise.resolve(),
+    stdout: { write: text => stdouts.push(text) },
+    stderr: { write: text => stderrs.push(text) },
+  });
+
+  const allStdout = stdouts.join('');
+  const allStderr = stderrs.join('');
+  assert.match(allStdout, /\[deploy-out:.*firestore:indexes/);
+  assert.match(allStderr, /\[deploy-err:.*firestore:indexes/);
+  assert.match(allStdout, /\[deploy-out:.*firestore:rules/);
+  assert.match(allStderr, /\[deploy-err:.*firestore:rules/);
+  assert.match(allStdout, /\[deploy-out:.*hosting/);
+  assert.match(allStderr, /\[deploy-err:.*hosting/);
+});
+
+test('deploy-test CLI wires target from GitHub Environment and queries only test and production environments', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'easyorder-deploy-test-target-'));
+  try {
+    const binDir = path.join(dir, 'bin');
+    await mkdir(binDir, { recursive: true });
+
+    const ghLog = path.join(dir, 'gh-calls.log');
+    const gcloudLog = path.join(dir, 'gcloud-calls.log');
+    const firebaseLog = path.join(dir, 'firebase-calls.log');
+    const gitLog = path.join(dir, 'git-calls.log');
+
+    const syntheticTarget = 'synthetic-test-target-proj';
+    const syntheticWeb = {
+      apiKey: 'k',
+      authDomain: `${syntheticTarget}.firebaseapp.com`,
+      projectId: syntheticTarget,
+      appId: '1:1:web:1',
+      messagingSenderId: '1',
+      storageBucket: `${syntheticTarget}.firebasestorage.app`,
+    };
+
+    // Stub gh
+    const ghScript = `#!/usr/bin/env node
+import { appendFileSync } from 'node:fs';
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(ghLog)}, args.join(' ') + '\\n');
+const joined = args.join(' ');
+if (joined.includes('repo view')) {
+  process.stdout.write('cheerc/talented-easyorder\\n');
+} else if (joined.includes('actions/workflows/ci.yml/runs')) {
+  process.stdout.write(JSON.stringify({ total_count: 1 }) + '\\n');
+} else if (joined.includes('environments/firebase-test/variables')) {
+  process.stdout.write(JSON.stringify({
+    variables: [
+      { name: 'EASYORDER_DEPLOY_PROJECT', value: ${JSON.stringify(syntheticTarget)} },
+      { name: 'EASYORDER_REGION', value: 'asia-east1' },
+      { name: 'EASYORDER_WEB_CONFIG', value: ${JSON.stringify(JSON.stringify(syntheticWeb))} },
+    ],
+  }) + '\\n');
+} else if (joined.includes('environments/firebase-production/variables')) {
+  process.stdout.write(JSON.stringify({
+    variables: [
+      { name: 'EASYORDER_DEPLOY_PROJECT', value: 'synthetic-prod-proj' },
+    ],
+  }) + '\\n');
+} else {
+  process.exit(1);
+}
+`;
+    await writeFile(path.join(binDir, 'gh'), ghScript, { mode: 0o755 });
+
+    // Stub gcloud
+    const indexesConfig = JSON.parse(readFileSync(new URL('../../firestore.indexes.json', import.meta.url), 'utf8'));
+    const readyIndexes = (indexesConfig.indexes ?? []).map((idx, i) => ({
+      name: `projects/${syntheticTarget}/databases/(default)/collectionGroups/${idx.collectionGroup}/indexes/idx_${i}`,
+      queryScope: idx.queryScope ?? 'COLLECTION',
+      fields: idx.fields,
+      state: 'READY',
+    }));
+    const gcloudScript = `#!/usr/bin/env node
+import { appendFileSync } from 'node:fs';
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(gcloudLog)}, args.join(' ') + '\\n');
+const joined = args.join(' ');
+if (joined.includes('auth print-access-token')) {
+  process.stdout.write('ya29.synthetic-token\\n');
+} else if (joined.includes('billing projects describe')) {
+  process.stdout.write(JSON.stringify({ billingEnabled: false }) + '\\n');
+} else if (joined.includes('firestore indexes composite list')) {
+  process.stdout.write(JSON.stringify(${JSON.stringify(readyIndexes)}) + '\\n');
+} else {
+  process.stdout.write('{}\\n');
+}
+`;
+    await writeFile(path.join(binDir, 'gcloud'), gcloudScript, { mode: 0o755 });
+
+    // Stub firebase
+    const firebaseScript = `#!/usr/bin/env node
+import { appendFileSync } from 'node:fs';
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(firebaseLog)}, args.join(' ') + '\\n');
+const joined = args.join(' ');
+if (joined.includes('login:list')) {
+  process.stdout.write(JSON.stringify({ status: 'success', result: [{ user: { email: 'tester@example.com' } }] }) + '\\n');
+} else if (joined.includes('firestore:databases:get')) {
+  process.stdout.write(JSON.stringify({
+    status: 'success',
+    result: {
+      name: 'projects/' + ${JSON.stringify(syntheticTarget)} + '/databases/(default)',
+      locationId: 'asia-east1',
+      type: 'FIRESTORE_NATIVE',
+      databaseEdition: 'STANDARD',
+      freeTier: true,
+    },
+  }) + '\\n');
+} else if (joined.includes('deploy')) {
+  process.stdout.write('Deploy complete\\n');
+} else {
+  process.stdout.write('{}\\n');
+}
+`;
+    await writeFile(path.join(binDir, 'firebase'), firebaseScript, { mode: 0o755 });
+
+    // Stub git: delegate everything to real git except fetch and rev-parse origin/main
+    const gitScript = `#!/usr/bin/env node
+import { appendFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(gitLog)}, args.join(' ') + '\\n');
+if (args[0] === 'fetch') {
+  process.exit(0);
+}
+if (args[0] === 'status' && args.includes('--porcelain')) {
+  process.exit(0);
+}
+if (args[0] === 'rev-parse' && args[1] === 'origin/main') {
+  const headRes = spawnSync('/usr/bin/git', ['rev-parse', 'HEAD'], { encoding: 'utf8' });
+  process.stdout.write(headRes.stdout);
+  process.exit(headRes.status);
+}
+const res = spawnSync('/usr/bin/git', args, { encoding: 'utf8' });
+process.stdout.write(res.stdout ?? '');
+process.stderr.write(res.stderr ?? '');
+process.exit(res.status ?? 0);
+`;
+    await writeFile(path.join(binDir, 'git'), gitScript, { mode: 0o755 });
+
+    const fakeHome = path.join(dir, 'home');
+    const privateDir = path.join(fakeHome, '.easyorder-private');
+    await mkdir(privateDir, { recursive: true });
+    await writeFile(path.join(privateDir, 'deploy-test.env'), 'EASYORDER_TEST_ACCOUNT=tester@example.com\n');
+
+    const entry = new URL('../easyorder-release.mjs', import.meta.url).pathname;
+    const env = {
+      ...process.env,
+      HOME: fakeHome,
+      PATH: `${binDir}:${process.env.PATH}`,
+      EASYORDER_FIREBASE_BIN: path.join(binDir, 'firebase'),
+    };
+    delete env.FIRESTORE_EMULATOR_HOST;
+    delete env.FIREBASE_AUTH_EMULATOR_HOST;
+
+    const res = spawnSync(process.execPath, [entry, 'deploy-test'], { encoding: 'utf8', env });
+    assert.equal(res.status, 0, `deploy-test failed: stderr=${res.stderr}, stdout=${res.stdout}`);
+
+    // 1. Assert gh was only queried for firebase-test and firebase-production
+    const ghLines = readFileSync(ghLog, 'utf8').trim().split('\n');
+    const envQueries = ghLines.filter(line => line.includes('environments/'));
+    assert.ok(envQueries.length >= 2, 'gh must query environments');
+    for (const q of envQueries) {
+      const match = /environments\/([^/]+)/.exec(q);
+      assert.ok(match, `Must match environment query: ${q}`);
+      assert.ok(
+        ['firebase-test', 'firebase-production'].includes(match[1]),
+        `gh should only be queried for firebase-test or firebase-production, got ${match[1]}`
+      );
+    }
+
+    // 2. Assert gcloud and firebase were called with the synthetic target
+    const gcloudLines = readFileSync(gcloudLog, 'utf8').trim().split('\n');
+    const billingCall = gcloudLines.find(l => l.includes('billing'));
+    assert.ok(billingCall && billingCall.includes(syntheticTarget), `gcloud billing must use synthetic target: ${billingCall}`);
+    const indexCall = gcloudLines.find(l => l.includes('firestore indexes'));
+    assert.ok(indexCall && indexCall.includes(`--project ${syntheticTarget}`), `gcloud indexes must use synthetic target: ${indexCall}`);
+
+    const firebaseLines = readFileSync(firebaseLog, 'utf8').trim().split('\n');
+    const dbCall = firebaseLines.find(l => l.includes('firestore:databases:get'));
+    assert.ok(dbCall && dbCall.includes(`--project ${syntheticTarget}`), `firebase databases:get must use synthetic target: ${dbCall}`);
+    const deployCalls = firebaseLines.filter(l => l.includes('deploy'));
+    assert.equal(deployCalls.length, 3, 'Must deploy indexes, rules, hosting');
+    for (const d of deployCalls) {
+      assert.ok(d.includes(`--project ${syntheticTarget}`), `firebase deploy must use synthetic target: ${d}`);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
