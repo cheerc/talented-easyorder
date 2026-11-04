@@ -143,7 +143,7 @@ test('only Firebase Rules／Firestore provider 5xx、429 and the release-already
   assert.equal(isTransientCiFailure('rules', ''), false);
 });
 
-test('deploy-ci retries a transient step failure with backoff, stops on success, and gives up after three attempts', async () => {
+test('deploy-ci retries a transient step failure with backoff, stops on success, and gives up after 10 attempts', async () => {
   const run = outcomes => { const calls = []; return { calls, fn: () => { const next = outcomes[calls.length]; calls.push(next); return next; } }; };
   const sleeps = [];
   const sleep = ms => { sleeps.push(ms); return Promise.resolve(); };
@@ -155,15 +155,25 @@ test('deploy-ci retries a transient step failure with backoff, stops on success,
   assert.equal(r.calls.length, 2);
   assert.deepEqual(sleeps, [30_000]);
 
-  sleeps.length = 0; r = run([transient, transient, transient, ok]);
-  await assert.rejects(runCiStepWithRetry({ step: 'indexes', run: r.fn, sleep, log: () => {} }), /indexes.*3 次/);
-  assert.equal(r.calls.length, 3);
-  assert.deepEqual(sleeps, [30_000, 60_000]);
+  sleeps.length = 0;
+  r = run([...Array(9).fill(transient), ok]);
+  assert.equal(await runCiStepWithRetry({ step: 'rules', run: r.fn, sleep, log: () => {} }), 10);
+  assert.equal(r.calls.length, 10);
+  assert.deepEqual(sleeps, [30_000, 60_000, 60_000, 60_000, 60_000, 60_000, 60_000, 60_000, 60_000]);
 
-  sleeps.length = 0; r = run([{ status: 1, output: 'Error: Compilation errors' }, ok]);
+  sleeps.length = 0;
+  r = run(Array(10).fill(transient));
+  await assert.rejects(runCiStepWithRetry({ step: 'indexes', run: r.fn, sleep, log: () => {} }), /indexes.*10 次/);
+  assert.equal(r.calls.length, 10);
+  assert.deepEqual(sleeps, [30_000, 60_000, 60_000, 60_000, 60_000, 60_000, 60_000, 60_000, 60_000]);
+
+  sleeps.length = 0;
+  r = run([{ status: 1, output: 'Error: Compilation errors' }, ok]);
   await assert.rejects(runCiStepWithRetry({ step: 'rules', run: r.fn, sleep, log: () => {} }), /rules 失敗（exit 1）/);
   assert.equal(r.calls.length, 1);
+  assert.deepEqual(sleeps, []);
 
+  sleeps.length = 0;
   r = run([transient, ok]);
   await assert.rejects(runCiStepWithRetry({ step: 'hosting', run: r.fn, sleep, log: () => {} }), /hosting 失敗/);
   assert.equal(r.calls.length, 1);
