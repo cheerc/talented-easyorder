@@ -174,7 +174,7 @@
 
 ## 接手時的第一步
 
-先確認最新遠端與工作區，保留使用者或前一位 implementer 尚未提交的內容；不要用 reset、checkout 覆寫或清除它：
+先確認最新遠端與工作區，保留使用者或前一位作者尚未提交的內容；不要用 reset、checkout 覆寫或清除它：
 
 ```bash
 git fetch origin
@@ -286,7 +286,7 @@ git log -1 --oneline --decorate
 
 ## 每個 PR 的協作與交接要求
 
-- 每次只開一個小 phase PR；作者做程式／文件與自我驗證。合併條件：最新 head 經獨立 review 無未解 🔴、required CI 通過，以 squash merge 到 `main`；未經使用者授權的流程核可不得合併。使用者已於 2026-11-04 裁定：流程核可後即可合併；`--admin` 只在使用者授權下使用。由誰執行合併、採用哪些角色與 effort，屬各環境自己的工作流程，不寫進本 repo。
+- 每次只開一個小 phase PR；作者做程式／文件與自我驗證。合併條件：最新 head 經獨立 review 無未解 🔴、required CI 通過，以 squash merge 到 `main`；未經使用者授權的流程核可不得合併。使用者已於 2026-11-04 裁定：上述條件成立且取得流程核可後即可合併。使用者已授權：本 repo 單人開發期間，PR 最新 head 符合上述合併條件並取得流程核可後，可用 `gh pr merge --squash --admin` 略過分支保護的 approving-review 要求；`--admin` 不得用來略過 required CI 或未解 🔴，其他情形須使用者對該 PR 另行授權。由誰執行合併、採用哪些角色與 effort，屬各環境自己的工作流程，不寫進本 repo。
 - 不放模型名稱到文件、commit message 或 PR body。
 - commit 與 PR body 用中文，不寫模型名稱或真實個資，也不複製任何角色或 effort 設定。
 - 每次開 PR 後即向使用者回報 URL、當前 SHA、當批完成內容、review／CI 狀態與接續第一步。更新本 handoff 的 PR URL及狀態、plan receipt、evidence；不把未知標成已完成。
