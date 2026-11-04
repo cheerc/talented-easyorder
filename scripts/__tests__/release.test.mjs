@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { mkdtemp, writeFile, mkdir, symlink, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import * as release from '../lib/release.mjs';
 import { validateProject, validateWebConfig, deploymentArgs, ciDeploymentArgs, releaseFiles, checkRelease, validateProviderState, validateCiDeployment, compositeIndexStatus, isTransientCiFailure, runCiStepWithRetry } from '../lib/release.mjs';
 
 const web = { apiKey: 'synthetic-api-key', projectId: 'demo-easyorder', authDomain: 'demo-easyorder.firebaseapp.com', appId: '1:000000000000:web:synthetic', messagingSenderId: '000000000000', storageBucket: 'demo-easyorder.firebasestorage.app' };
@@ -290,4 +291,314 @@ test('deploy workflow is manual-only from main, uses an approval environment, ke
   // job 有 id-token 權限時不執行依賴的 install script；public repo 不上傳部署 artifact。
   for (const install of workflow.matchAll(/npm (ci|install)\b[^\n]*/g)) assert.match(install[0], /--ignore-scripts/);
   assert.doesNotMatch(workflow, /upload-artifact/);
+});
+
+test('deploy-test CLI entry refuses invalid flags, missing or invalid private config, or emulator env before external calls', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'easyorder-deploy-test-cli-'));
+  try {
+    const binDir = path.join(dir, 'bin');
+    await mkdir(binDir, { recursive: true });
+    const marker = path.join(dir, 'marker.txt');
+    for (const cmd of ['gh', 'gcloud', 'git']) {
+      await writeFile(path.join(binDir, cmd), `#!/bin/sh\necho "${cmd}" > "${marker}"\nexit 1\n`, { mode: 0o755 });
+    }
+    const fakeHome = path.join(dir, 'home');
+    await mkdir(fakeHome, { recursive: true });
+
+    const entry = new URL('../easyorder-release.mjs', import.meta.url).pathname;
+    const run = (args, extraEnv = {}) => {
+      const env = { ...process.env, HOME: fakeHome, PATH: `${binDir}:${process.env.PATH}`, ...extraEnv };
+      delete env.FIRESTORE_EMULATOR_HOST;
+      delete env.FIREBASE_AUTH_EMULATOR_HOST;
+      if (extraEnv.FIRESTORE_EMULATOR_HOST) env.FIRESTORE_EMULATOR_HOST = extraEnv.FIRESTORE_EMULATOR_HOST;
+      return spawnSync(process.execPath, [entry, 'deploy-test', ...args], { encoding: 'utf8', env });
+    };
+
+    // 1. Unknown or extra flags (e.g. --project)
+    const res1 = run(['--project', 'easyorder-test-123']);
+    assert.equal(res1.status, 1);
+    assert.match(res1.stderr, /未知或重複參數/);
+    assert.equal(existsSync(marker), false, 'no external command may be called');
+
+    // 2. Missing private config
+    const res2 = run([]);
+    assert.equal(res2.status, 1);
+    assert.match(res2.stderr, /deploy-test\.env/);
+    assert.equal(existsSync(marker), false, 'no external command may be called');
+
+    // 3. Unknown key in private config
+    const privateDir = path.join(fakeHome, '.easyorder-private');
+    await mkdir(privateDir, { recursive: true });
+    const envFile = path.join(privateDir, 'deploy-test.env');
+    await writeFile(envFile, 'UNKNOWN_KEY=foo\n');
+    const res3 = run([]);
+    assert.equal(res3.status, 1);
+    assert.match(res3.stderr, /未知|deploy-test\.env/);
+    assert.equal(existsSync(marker), false, 'no external command may be called');
+
+    // 4. Emulator env set
+    await writeFile(envFile, 'EASYORDER_TEST_ACCOUNT=tester@example.com\n');
+    const res4 = run([], { FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080' });
+    assert.equal(res4.status, 1);
+    assert.match(res4.stderr, /Emulator/);
+    assert.equal(existsSync(marker), false, 'no external command may be called');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('resolveTestTarget validates required test vars, distinct production project, and valid web config', () => {
+  assert.equal(typeof release.resolveTestTarget, 'function');
+  const validWeb = {
+    apiKey: 'test-api-key',
+    projectId: 'easyorder-test-123',
+    authDomain: 'easyorder-test-123.firebaseapp.com',
+    appId: '1:123456789012:web:abcdef',
+    messagingSenderId: '123456789012',
+    storageBucket: 'easyorder-test-123.firebasestorage.app',
+  };
+  const testVars = {
+    EASYORDER_DEPLOY_PROJECT: 'easyorder-test-123',
+    EASYORDER_REGION: 'asia-east1',
+    EASYORDER_WEB_CONFIG: JSON.stringify(validWeb),
+  };
+  const prodVars = {
+    EASYORDER_DEPLOY_PROJECT: 'easyorder-prod-456',
+  };
+
+  // Missing required test var (each should throw)
+  assert.throws(() => release.resolveTestTarget({ testVars: { ...testVars, EASYORDER_DEPLOY_PROJECT: '' }, productionVars: prodVars }));
+  assert.throws(() => release.resolveTestTarget({ testVars: { ...testVars, EASYORDER_REGION: '' }, productionVars: prodVars }));
+  assert.throws(() => release.resolveTestTarget({ testVars: { ...testVars, EASYORDER_WEB_CONFIG: '' }, productionVars: prodVars }));
+  assert.throws(() => release.resolveTestTarget({ testVars: null, productionVars: prodVars }));
+
+  // Production project is identical to test project -> reject
+  assert.throws(() => release.resolveTestTarget({
+    testVars,
+    productionVars: { EASYORDER_DEPLOY_PROJECT: 'easyorder-test-123' },
+  }), /production.*test.*相同/);
+
+  // Production environment does not exist (null) -> allow
+  const resNullProd = release.resolveTestTarget({ testVars, productionVars: null });
+  assert.equal(resNullProd.project, 'easyorder-test-123');
+  assert.equal(resNullProd.region, 'asia-east1');
+  assert.deepEqual(resNullProd.web, validWeb);
+
+  // Normal case with distinct production vars -> allow
+  const resNormal = release.resolveTestTarget({ testVars, productionVars: prodVars });
+  assert.equal(resNormal.project, 'easyorder-test-123');
+  assert.equal(resNormal.region, 'asia-east1');
+  assert.deepEqual(resNormal.web, validWeb);
+  assert.deepEqual(validateWebConfig(resNormal.web, resNormal.project, false), validWeb);
+});
+
+test('validateTestSource requires clean working tree, HEAD matching origin/main, and green push CI', () => {
+  assert.equal(typeof release.validateTestSource, 'function');
+  const valid = {
+    head: '535cf3d2f10c4763d0076f8c57f19597a2220e7b',
+    originMain: '535cf3d2f10c4763d0076f8c57f19597a2220e7b',
+    dirty: false,
+    ciSuccessCount: 1,
+  };
+
+  // dirty working tree -> reject
+  assert.throws(() => release.validateTestSource({ ...valid, dirty: true }), /未提交|dirty/);
+
+  // HEAD not equal to origin/main -> reject
+  assert.throws(() => release.validateTestSource({ ...valid, originMain: '0000000000000000000000000000000000000000' }), /origin\/main/);
+
+  // CI success count is 0 -> reject
+  assert.throws(() => release.validateTestSource({ ...valid, ciSuccessCount: 0 }), /CI/);
+
+  // all valid -> pass
+  assert.doesNotThrow(() => release.validateTestSource(valid));
+});
+
+test('runTestDeployment orchestrates test deployment steps with account, non-interactive, retries and receipt', async () => {
+  assert.equal(typeof release.runTestDeployment, 'function');
+
+  const manifest = {
+    format: 'easyorder-release',
+    version: 1,
+    project: 'easyorder-test-123',
+    region: 'asia-east1',
+    authDomain: 'easyorder-test-123.firebaseapp.com',
+    emulator: false,
+    sourceSha: '535cf3d2f10c4763d0076f8c57f19597a2220e7b',
+    sourceDirty: false,
+    files: {},
+  };
+  const project = 'easyorder-test-123';
+  const account = 'deployer@example.com';
+  const out = '/tmp/fake-release-out';
+
+  const defaultBilling = JSON.stringify({ billingEnabled: false });
+  const defaultDb = JSON.stringify({
+    status: 'success',
+    result: {
+      name: `projects/${project}/databases/(default)`,
+      locationId: 'asia-east1',
+      type: 'FIRESTORE_NATIVE',
+      databaseEdition: 'STANDARD',
+      freeTier: true,
+    },
+  });
+  const defaultIndexes = JSON.stringify([]);
+
+  // Helper to record calls
+  const createMockExec = (overrides = {}) => {
+    const calls = [];
+    const exec = (cmd, args, opts) => {
+      calls.push({ cmd, args, opts });
+      const normalizedCmd = cmd.includes('firebase') ? 'firebase' : cmd;
+      const target = args.indexOf('--only') !== -1 ? args[args.indexOf('--only') + 1] : (args[1] ?? '');
+      const key = `${normalizedCmd} ${args[0]} ${target}`.trim();
+      if (overrides[key]) return overrides[key](calls.length, args, opts);
+      if (cmd === 'gcloud' && args[0] === 'billing') return defaultBilling;
+      if (cmd.includes('firebase') && args[0] === 'firestore:databases:get') return defaultDb;
+      if (cmd === 'gcloud' && args[0] === 'firestore') return defaultIndexes;
+      if (cmd.includes('firebase') && args[0] === 'deploy') return { status: 0, output: '' };
+      return { status: 0, output: '' };
+    };
+    return { calls, exec };
+  };
+
+  const sleeps = [];
+  const sleep = ms => { sleeps.push(ms); return Promise.resolve(); };
+
+  // Case 1: Happy path
+  const { calls: calls1, exec: exec1 } = createMockExec();
+  const receipt1 = await release.runTestDeployment({
+    manifest,
+    project,
+    account,
+    out,
+    timeoutMinutes: 30,
+    exec: exec1,
+    sleep,
+    log: () => {},
+    checkReleaseFn: () => Promise.resolve(manifest),
+    readConfigFn: () => Promise.resolve({ indexes: [] }),
+    saveReceiptFn: () => Promise.resolve(),
+  });
+
+  // Verify call sequence: preflight -> indexes -> wait -> rules -> hosting
+  assert.equal(calls1[0].cmd, 'gcloud');
+  assert.equal(calls1[0].args[0], 'billing');
+  assert.ok(calls1[1].cmd.includes('firebase'));
+  assert.equal(calls1[1].args[0], 'firestore:databases:get');
+  assert.ok(calls1[2].cmd.includes('firebase'));
+  assert.equal(calls1[2].args[0], 'deploy');
+  assert.ok(calls1[2].args.includes('firestore:indexes'));
+  assert.equal(calls1[3].cmd, 'gcloud');
+  assert.equal(calls1[3].args[0], 'firestore');
+  assert.ok(calls1[4].cmd.includes('firebase'));
+  assert.equal(calls1[4].args[0], 'deploy');
+  assert.ok(calls1[4].args.includes('firestore:rules'));
+  assert.ok(calls1[5].cmd.includes('firebase'));
+  assert.equal(calls1[5].args[0], 'deploy');
+  assert.ok(calls1[5].args.includes('hosting'));
+
+  // Every firebase call includes --project, --account, --non-interactive, and NO --force
+  const firebaseCalls = calls1.filter(c => c.cmd.includes('firebase'));
+  for (const call of firebaseCalls) {
+    assert.ok(call.args.includes('--project'), `${call.cmd} ${call.args.join(' ')} must include --project`);
+    assert.equal(call.args[call.args.indexOf('--project') + 1], project);
+    assert.ok(call.args.includes('--account'), `${call.cmd} ${call.args.join(' ')} must include --account`);
+    assert.equal(call.args[call.args.indexOf('--account') + 1], account);
+    if (call.args[0] === 'deploy') {
+      assert.ok(call.args.includes('--non-interactive'), 'deploy must include --non-interactive');
+      assert.ok(!call.args.includes('--force'), 'deploy must not include --force');
+    }
+  }
+
+  // Every gcloud call includes --account
+  const gcloudCalls = calls1.filter(c => c.cmd === 'gcloud');
+  for (const call of gcloudCalls) {
+    assert.ok(call.args.includes('--account'), `${call.cmd} ${call.args.join(' ')} must include --account`);
+    assert.equal(call.args[call.args.indexOf('--account') + 1], account);
+  }
+
+  // Verify receipt step sequence
+  assert.deepEqual(receipt1.steps.map(s => s.step), ['indexes', 'rules', 'hosting']);
+
+  // Case 2: rules encounters transient 503 and retries with deploy-ci default retry policy
+  let rulesAttempts = 0;
+  const transientOut = { status: 2, output: 'had HTTP Error: 503, The service is currently unavailable.' };
+  const { calls: calls2, exec: exec2 } = createMockExec({
+    'firebase deploy firestore:rules': () => {
+      rulesAttempts += 1;
+      return rulesAttempts === 1 ? transientOut : { status: 0, output: '' };
+    },
+  });
+  sleeps.length = 0;
+  const receipt2 = await release.runTestDeployment({
+    manifest,
+    project,
+    account,
+    out,
+    timeoutMinutes: 30,
+    exec: exec2,
+    sleep,
+    log: () => {},
+    checkReleaseFn: () => Promise.resolve(manifest),
+    readConfigFn: () => Promise.resolve({ indexes: [] }),
+    saveReceiptFn: () => Promise.resolve(),
+  });
+  assert.equal(rulesAttempts, 2);
+  assert.deepEqual(sleeps, [30_000]);
+  assert.deepEqual(receipt2.steps.map(s => s.step), ['indexes', 'rules', 'hosting']);
+
+  // Case 3: hosting failure does NOT retry
+  let hostingAttempts = 0;
+  const { calls: calls3, exec: exec3 } = createMockExec({
+    'firebase deploy hosting': () => {
+      hostingAttempts += 1;
+      return transientOut;
+    },
+  });
+  sleeps.length = 0;
+  await assert.rejects(
+    release.runTestDeployment({
+      manifest,
+      project,
+      account,
+      out,
+      timeoutMinutes: 30,
+      exec: exec3,
+      sleep,
+      log: () => {},
+      checkReleaseFn: () => Promise.resolve(manifest),
+      readConfigFn: () => Promise.resolve({ indexes: [] }),
+      saveReceiptFn: () => Promise.resolve(),
+    }),
+    /hosting 失敗/
+  );
+  assert.equal(hostingAttempts, 1, 'hosting must fail immediately without retry');
+  assert.deepEqual(sleeps, []);
+
+  // Case 4: Step failure halts further steps (e.g. indexes fails -> rules/hosting not executed)
+  const { calls: calls4, exec: exec4 } = createMockExec({
+    'firebase deploy firestore:indexes': () => ({ status: 1, output: 'indexes error' }),
+  });
+  await assert.rejects(
+    release.runTestDeployment({
+      manifest,
+      project,
+      account,
+      out,
+      timeoutMinutes: 30,
+      exec: exec4,
+      sleep,
+      log: () => {},
+      checkReleaseFn: () => Promise.resolve(manifest),
+      readConfigFn: () => Promise.resolve({ indexes: [] }),
+      saveReceiptFn: () => Promise.resolve(),
+    }),
+    /indexes 失敗/
+  );
+  const rulesCalled = calls4.some(c => c.args.includes('firestore:rules'));
+  const hostingCalled = calls4.some(c => c.args.includes('hosting'));
+  assert.equal(rulesCalled, false, 'rules must not be called after indexes failure');
+  assert.equal(hostingCalled, false, 'hosting must not be called after indexes failure');
 });
