@@ -1159,8 +1159,8 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     const gap = shiftDate(today, -2);
     await seedGapDay(gap, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
     const before = await state(gap);
-    for (const attempt of [backfillOrder(gap), backfillPayment(gap), backfillCash(gap)]) {
-      expect(await attempt).toMatchObject({ result: { ok: false, error: { code: 'INVALID_INPUT' } } });
+    for (const attempt of [() => backfillOrder(gap), () => backfillPayment(gap), () => backfillCash(gap)]) {
+      expect(await attempt()).toMatchObject({ result: { ok: false, error: { code: 'INVALID_INPUT' } } });
     }
     expect(await state(gap)).toEqual(before);
     expect(await read(`backfillDays/${gap}`)).toBeUndefined();
@@ -1659,10 +1659,10 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     await seedGapDay(future, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp() });
     for (const dayId of [gap, future]) {
       const before = await state(dayId);
-      for (const attempt of [backfillOrder(dayId, uuid(), ''), backfillPayment(dayId, 200, '前天停電'), backfillCash(dayId, 50, '零錢補充')]) {
+      for (const attempt of [() => backfillOrder(dayId, uuid(), ''), () => backfillPayment(dayId, 200, '前天停電'), () => backfillCash(dayId, 50, '零錢補充')]) {
         // The unmarked past day is refused by the date rule: the writer names the missing marker.
         const error = dayId === gap ? { code: 'INVALID_INPUT', message: expect.stringContaining('沒有回填標記') } : { code: 'INVALID_INPUT' };
-        expect(await attempt, dayId).toMatchObject({ result: { ok: false, error } });
+        expect(await attempt(), dayId).toMatchObject({ result: { ok: false, error } });
       }
       expect(await state(dayId)).toEqual(before);
     }
@@ -2025,8 +2025,8 @@ describeWithEmulator('P11 CloseDay／ReopenDay: repository, receipt and producti
     const gap = shiftDate(today, -2);
     await seedGapDay(gap, { openingCash: 800, openedBy: operatorA.uid, openedAt: serverTimestamp(), status: 'reopened', lastSettlementRevision: 2 });
     const before = await state(gap);
-    for (const attempt of [backfillOrder(gap), backfillPayment(gap), backfillCash(gap)]) {
-      const { result } = await attempt;
+    for (const attempt of [() => backfillOrder(gap), () => backfillPayment(gap), () => backfillCash(gap)]) {
+      const { result } = await attempt();
       expect(result).toMatchObject({ ok: false, error: { code: 'DAY_CLOSED', message: expect.stringContaining('沒有回填標記') } });
     }
     expect(await state(gap)).toEqual(before);
