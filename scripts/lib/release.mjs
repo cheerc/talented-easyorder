@@ -147,13 +147,49 @@ export function providerPreflight(manifest, project, account, out, options = {})
   const gcloudAccount = options.gcloudAccount ?? options.account;
   const exec = options.execFileSync ?? options.exec ?? execFileSync;
   const firebaseBin = options.firebaseBin ?? defaultFirebase;
+
   const gcloudArgs = ['billing', 'projects', 'describe', project, '--format=json', ...(gcloudAccount ? ['--account', gcloudAccount] : [])];
-  const billingRaw = exec('gcloud', gcloudArgs, { encoding: 'utf8' });
-  const billing = JSON.parse(typeof billingRaw === 'string' ? billingRaw : billingRaw.stdout ?? billingRaw.output);
+  let billingRaw;
+  try {
+    billingRaw = exec('gcloud', gcloudArgs, { encoding: 'utf8' });
+    if (billingRaw && typeof billingRaw === 'object' && (billingRaw.status !== 0 || billingRaw.error)) {
+      const errText = billingRaw.stderr || billingRaw.output || billingRaw.error?.message || '';
+      throw new Error(`gcloud billing describe 失敗（exit ${billingRaw.status}）：${errText}`);
+    }
+  } catch (err) {
+    const stderr = err.stderr ? String(err.stderr) : '';
+    throw new Error(`gcloud billing describe 失敗：${stderr || err.message}`);
+  }
+  let billing;
+  try {
+    billing = JSON.parse(typeof billingRaw === 'string' ? billingRaw : billingRaw.stdout ?? billingRaw.output);
+  } catch (err) {
+    const rawOut = typeof billingRaw === 'string' ? billingRaw : `${billingRaw?.stdout ?? ''}\n${billingRaw?.stderr ?? ''}`;
+    throw new Error(`gcloud billing describe 輸出無法解析為 JSON：${rawOut.trim()}`);
+  }
+
   const fbArgs = ['firestore:databases:get', '(default)', '--project', project, '--json', ...(account ? ['--account', account] : [])];
-  const databaseRaw = exec(firebaseBin, fbArgs, { cwd: out, encoding: 'utf8' });
-  const database = JSON.parse(typeof databaseRaw === 'string' ? databaseRaw : databaseRaw.stdout ?? databaseRaw.output);
-  if (database.status !== 'success') throw new Error('無法讀取 Firestore metadata');
+  let databaseRaw;
+  try {
+    databaseRaw = exec(firebaseBin, fbArgs, { cwd: out, encoding: 'utf8' });
+    if (databaseRaw && typeof databaseRaw === 'object' && (databaseRaw.status !== 0 || databaseRaw.error)) {
+      const errText = databaseRaw.stderr || databaseRaw.output || databaseRaw.error?.message || '';
+      throw new Error(`Firebase databases:get 失敗（exit ${databaseRaw.status}）：${errText}`);
+    }
+  } catch (err) {
+    const stderr = err.stderr ? String(err.stderr) : '';
+    throw new Error(`Firebase databases:get 失敗：${stderr || err.message}`);
+  }
+  let database;
+  try {
+    database = JSON.parse(typeof databaseRaw === 'string' ? databaseRaw : databaseRaw.stdout ?? databaseRaw.output);
+  } catch (err) {
+    const rawOut = typeof databaseRaw === 'string' ? databaseRaw : `${databaseRaw?.stdout ?? ''}\n${databaseRaw?.stderr ?? ''}`;
+    throw new Error(`Firebase databases:get 輸出無法解析為 JSON：${rawOut.trim()}`);
+  }
+  if (database.status !== 'success') {
+    throw new Error(`無法讀取 Firestore metadata：${database.message || JSON.stringify(database)}`);
+  }
   validateProviderState(manifest, billing, database.result);
 }
 
@@ -247,6 +283,8 @@ export async function runTestDeployment({
   readConfigFn,
   saveReceiptFn,
   firebaseBin = defaultFirebase,
+  stdout = process.stdout,
+  stderr = process.stderr,
 }) {
   const execFn = exec ?? ((cmd, args, opts) => {
     const res = spawnSync(cmd, args, opts);
@@ -290,6 +328,10 @@ export async function runTestDeployment({
       step,
       run: () => {
         const raw = execFn(firebaseBin, args, { cwd: out, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+        const outText = typeof raw === 'string' ? raw : (raw.stdout ?? '');
+        const errText = typeof raw === 'string' ? '' : (raw.stderr ?? '');
+        if (outText && stdout?.write) stdout.write(outText);
+        if (errText && stderr?.write) stderr.write(errText);
         if (typeof raw === 'string') {
           return { status: 0, output: raw };
         }
