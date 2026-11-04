@@ -1,7 +1,7 @@
 # 手動部署到 Firebase（indexes → 等 READY → rules → hosting）。
 # 只能由有寫入權限的人從 main 手動觸發，並經 GitHub Environment 的 required reviewer 核准後才拿得到 Google 授權。
 # 不存任何金鑰：Google 端以 Workload Identity Federation 只信任本 repo 指定 environment 的 OIDC token。
-# 設定步驟見 docs/ops/DEPLOYMENT-GUIDE.md「GitHub Actions 部署」。agent 只能在使用者於當次對話明確要求時觸發，並在使用者對該次 run 明確允許後才核准。
+# 設定步驟見 docs/ops/DEPLOYMENT-GUIDE.md「GitHub Actions 部署」。firebase-test：agent 告知使用者後可自行觸發並核准；firebase-production：agent 只能在使用者於當次對話明確要求時觸發，並在使用者對該次 run 明確允許後才核准（見根目錄 CLAUDE.md）。
 name: Deploy to Firebase
 
 on:
