@@ -47,6 +47,7 @@ test('aggregate gate accepts only a successful full run or an explicit docs-only
 
 test('change-scope classifies via the tested script with rename detection off', () => {
   const scope = workflow.split('  change-scope:\n')[1]?.split('  build-and-test:\n')[0] ?? '';
+  assert.match(scope, /run: \|\n\s+set -o pipefail\n/);
   assert.match(scope, /git diff --name-only --no-renames /);
   assert.match(scope, /node scripts\/ci-change-scope\.mjs/);
   assert.doesNotMatch(scope, /grep -v '\^docs\/'/);
