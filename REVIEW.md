@@ -33,7 +33,6 @@ review 結果先寫一行結論（有無 🔴 Important），再逐條列 findin
 
 - 每次 review 最多 3 個 Nit。
 - 只回報有具體好處的簡化、可讀性問題，或有 `CLAUDE.md`／spec 文字依據的寫法問題。
-- 文件、commit、PR 中出現 AI 模型名稱：Nit（handoff 規定不寫）。
 
 ## 🟣 Pre-existing
 
