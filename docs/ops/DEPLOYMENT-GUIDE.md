@@ -1,6 +1,6 @@
 # EasyOrder P17：獨立 Spark 本機部署
 
-新正式後端的部署入口：本機第 3–4 節，或第 9 節的 GitHub Actions。正式上線（P18 本人簽收）前，agent 可先告知本人 target、commit 與方式後自行部署（見根目錄 `CLAUDE.md`）；上線後恢復本人逐次允許。版本與 gate 見[交接](../DEVELOPMENT-HANDOFF.md)及[phase plan](../superpowers/plans/2026-10-13-free-production-backend-plan.md)。獨立測試專案的實際部署與部分 smoke 已執行，逐項結果以 [P17 live evidence](free-production-evidence.md#p17-user-authorized-live-verification-2026-10-27) 為準；未列證據者仍未驗證。不貼憑證或真名單到聊天／PR。
+新正式後端的部署入口：本機第 3–4 節，或第 9 節的 GitHub Actions。`firebase-test` 可由 agent 先告知本人 target、commit 與方式後自行部署；`firebase-production` 仍由本人部署或逐次允許（見根目錄 `CLAUDE.md`）。版本與 gate 見[交接](../DEVELOPMENT-HANDOFF.md)及[phase plan](../superpowers/plans/2026-10-13-free-production-backend-plan.md)。獨立測試專案的實際部署與部分 smoke 已執行，逐項結果以 [P17 live evidence](free-production-evidence.md#p17-user-authorized-live-verification-2026-10-27) 為準；未列證據者仍未驗證。不貼憑證或真名單到聊天／PR。
 
 ## 分工與順序
 
@@ -157,6 +157,8 @@ init 建 schema 1、seq 0、維護中的 head。activate-empty 只接受空白�
 
 ## 9. GitHub Actions 部署（本人觸發並核准）
 
+> 2026-11-04 起：`firebase-test` 的觸發與核准可由 agent 告知本人後自行執行；`firebase-production` 仍依本節由本人觸發並核准，或本人逐次允許 agent 代操作。標題保留以免舊連結失效。
+
 本機第 3、4 節之外的另一個入口（信任範圍：部署 job 有 OIDC 權限，job 內執行的依賴與 build 程式理論上也能要 token；workflow 以 `--ignore-scripts` 安裝依賴，但 build 本身的風險與本機部署相同）：`.github/workflows/deploy.yml` 從 main 建 release，依序部署 indexes → 等 composite index 全部 READY → rules → hosting。取代本機 `DEPLOY project step` 確認的是 GitHub Environment 的核准；仍先檢查 billing 未啟用、Firestore 為同 region 的 Standard Native free-tier。repo 不存任何金鑰，Google 端只信任本 repo 指定 Environment 的 OIDC token。agent 只能在本人於當次對話明確要求部署時觸發（`gh workflow run deploy.yml --ref main -f target=<ENV>`）；核准前先回報 run URL、target 與 commit，經本人對該次 run 明確允許後，才以 `gh api` 呼叫 pending_deployments 核准。agent 用的是本人的 GitHub 身分，Environment 的 required reviewer 因此只能證明「本人帳號核准」，不能區分本人或 agent；實際把關是本人在對話中的逐次允許。不需要此便利時，可改回只由本人在網頁核准。
 
 測試與正式 project 各做一次以下設定（`<ENV>` 分別是 `firebase-test`、`firebase-production`）。Google Cloud 設定都在 Spark 免費範圍內，不需要 billing。
@@ -218,8 +220,8 @@ repo Settings → Environments → New environment，名稱 `<ENV>`：
 ### 9.3 部署、核對與停用
 
 1. 確認要部署的 commit 已在 main，且該 commit 的 Frontend CI（push）成功；workflow 會再檢查一次，沒有就停。
-2. Actions → **Deploy to Firebase** → Run workflow，branch 選 `main`，target 選 `<ENV>`。正式上線前，agent 可先告知本人 target、commit 後自行以上述 `gh workflow run` 觸發。
-3. 等 run 顯示 Waiting，本人按 **Review deployments** 核對 commit 後 Approve；正式上線前，agent 可在回報 run URL、target、commit 後自行以 `gh api` 核准，上線後須經本人對該次 run 明確允許。
+2. Actions → **Deploy to Firebase** → Run workflow，branch 選 `main`，target 選 `<ENV>`。`firebase-test` 可由 agent 先告知本人 target、commit 後自行以上述 `gh workflow run` 觸發；`firebase-production` 須本人在當次對話明確要求。
+3. 等 run 顯示 Waiting，本人按 **Review deployments** 核對 commit 後 Approve；`firebase-test` 可由 agent 回報 run URL、target、commit 後自行以 `gh api` 核准，`firebase-production` 須經本人對該次 run 明確允許。
 4. 完成後在 evidence 記 run URL 與 commit（run log 會印出各步結果）；workflow 不上傳 release／receipt artifact，因為公開 repo 的 artifact 任何登入使用者都能下載。照第 6 節做 smoke 並匿名回報。CI 部署成功不等於 smoke 通過。
 
 indexes、rules 遇到 Firebase API 暫時性錯誤（HTTP 429／5xx，或 rules release PATCH 失敗後的 409 `cloud.firestore already exists`）會自動重試，最多 3 次（間隔 30、60 秒）；大型 `firestore.rules` 的編譯檢查 API 本身會偶發 503。hosting 不自動重試。其他錯誤或重試用盡，會停在該步，後面的步驟不執行；修正後重跑整個 workflow（從新 release 重部署，不跳步）。index 30 分鐘內未 READY 會停在 rules 之前。回退依第 8 節，在 Hosting release history 由本人操作。

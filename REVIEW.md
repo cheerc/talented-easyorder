@@ -23,7 +23,7 @@ review 結果先寫一行結論（有無 🔴 Important），再逐條列 findin
 5. **租約與模式隔離**：以本機倒數判定 lease 有效；cloud 缺 Firebase 設定時沒有 fail closed、退回 prototype／local POS；prototype 與 cloud 共用業務資料、storage namespace 或寫入路徑。
 6. **備份相容**：新增或改變 command kind、command payload 或投影欄位，卻沒有同步 `frontend/src/firebase/cloudBackup.ts` 的 decoder／replay 與 `frontend/src/firebase/__tests__/cloudBackup.spec.ts` 等相容測試；不相容資料沒有 fail closed。
 7. **讀取一致性**：多頁讀取未以資料序號前後一致驗證、報表／匯出只取第一頁卻當完整資料、查詢未帶 `limit`。
-8. **Secrets、個資與正式環境**：提交 credentials、service account、正式 Firebase config／project id、真實姓名、餘額、紙本或截圖資料；測試、script 或 CI 預設連到 `demo-easyorder` 以外的 project；新增會在 agent／CI 端執行正式 bootstrap 或 production smoke 的路徑；正式 deploy 只能經 `.github/workflows/deploy.yml`（手動觸發、只限 main、GitHub Environment 核准、Workload Identity Federation、action 釘 SHA），放寬其中任一項或新增其他會自動部署的 workflow 都算。
+8. **Secrets、個資與正式環境**：提交 credentials、service account、正式 Firebase config／project id、真實姓名、餘額、紙本或截圖資料；測試、script 或 CI 預設連到 `demo-easyorder` 以外的 project；新增會在 agent／CI 端執行正式 bootstrap 或 production smoke 的路徑；正式 deploy 只能經 `.github/workflows/deploy.yml`（手動觸發、只限 main、GitHub Environment 核准、Workload Identity Federation、action 釘 SHA）或本機 `deploy.sh`，放寬其中任一項或新增其他會自動部署的 workflow 都算。例外（使用者 2026-11-04 授權）：`firebase-test` 的 workflow 觸發與 Environment 核准可由 agent 執行；`firebase-production` 不適用。
 9. **CI gate 被削弱**：`.github/workflows/**` 或 `scripts/**` 中跳過、刪除、`continue-on-error`、放寬 docs-only 分類、讓 e2e 彙總在分組缺少／取消／失敗時仍通過，或讓 Emulator-required suite 在未設定時以 skip 代替失敗。不得以 skip／disable／quarantine 測試換取綠燈。
 10. **測試沒有驗到真正入口**：帳務、command、Rules、lease、備份／復原的行為變更，沒有驅動實際 production 入口（repository／command 或 UI flow）的測試，只對內部 helper 餵合成資料；或 Rules／command 證明只在一般 Vitest 下會 skip、沒有加進 CI 的 Emulator 步驟。
 11. **虛假驗證宣稱**：diff 內的文件（handoff、plan receipt、ops evidence、CHANGELOG）或 PR 描述把 pending／skipped／未執行寫成通過、宣稱已部署或已經使用者實機驗收、docs-only PR 宣稱跑過 app tests，或宣稱的 commit SHA／測試檔與 diff 不符。PR 描述的問題列在結論後的 finding 中，不需行號。
@@ -56,7 +56,7 @@ review 結果先寫一行結論（有無 🔴 Important），再逐條列 findin
 - **`frontend/src/appMode.ts`、`frontend/src/providers/**`、`frontend/src/auth/**`**：cloud／prototype 判定與隔離、缺設定 fail closed、登出清除訂閱與 store。
 - **`frontend/src/components/**`、`frontend/src/store/**`**：UI 不繞過 repository 寫資料；送出中防連按；結果未知時顯示確認中而非允許重新收款。
 - **`.github/workflows/**`、`scripts/**`**：Emulator 一律 `--project demo-easyorder`；改 release 或 e2e gate 時同步更新 `scripts/__tests__/release.test.mjs`、`scripts/__tests__/e2e-ci.test.mjs`；新增 Emulator-required suite 時 CI 有對應步驟並設定 `EASYORDER_REQUIRE_*`。
-- **`deploy.sh`、`firebase.json`、`vercel.json`、Hosting／CSP 設定**：不放寬 CSP；不加入 agent 或 CI 可直接執行的正式部署路徑。`deploy.yml` 與 `deploy-ci` 的變更要同步 `scripts/__tests__/release.test.mjs` 的 guard 與 workflow 測試，且不得帶 `--force`、金鑰或 `secrets.`。
+- **`deploy.sh`、`firebase.json`、`vercel.json`、Hosting／CSP 設定**：不放寬 CSP；不加入 agent 或 CI 可直接執行的 `firebase-production` 部署路徑；`firebase-test` 的非互動本機入口須寫死只接受該測試 target，不能被參數或環境變數導向其他 project。`deploy.yml` 與 `deploy-ci` 的變更要同步 `scripts/__tests__/release.test.mjs` 的 guard 與 workflow 測試，且不得帶 `--force`、金鑰或 `secrets.`。
 - **`docs/**` 與 `*.md`（docs-only PR）**：新增或修改的相對連結與 code path 確實存在；文件中的命令與 `frontend/package.json`、CI workflow 一致；handoff／evidence 如實區分 passed、skipped、pending、未執行；`CLAUDE.md` 不放易過期的 phase 進度、測試數字、schema 或公式；不含真實個資。
 
 ## TDD 證據
