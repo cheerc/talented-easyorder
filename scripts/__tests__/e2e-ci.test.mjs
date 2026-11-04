@@ -51,7 +51,21 @@ test('change-scope classifies via the tested script with rename detection off', 
   assert.match(scope, /git diff --name-only --no-renames /);
   assert.match(scope, /node scripts\/ci-change-scope\.mjs/);
   assert.doesNotMatch(scope, /grep -v '\^docs\/'/);
-  assert.match(scope, /event_name }}" != "pull_request"[\s\S]*docs_only=false/);
+  assert.doesNotMatch(scope, /event_name }}" != "pull_request"/);
   const build = workflow.split('  build-and-test:\n')[1]?.split('  e2e-shards:\n')[0] ?? '';
   assert.match(build, /node --test \.\.\/scripts\/__tests__\/ci-change-scope\.test\.mjs/);
+});
+
+test('change-scope inherits the parent push result only on push, never on workflow_dispatch', () => {
+  const scope = workflow.split('  change-scope:\n')[1]?.split('  build-and-test:\n')[0] ?? '';
+  assert.match(scope, /permissions:\n\s+contents: read\n\s+actions: read\n/);
+  assert.match(scope, /GH_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(scope, /node scripts\/ci-change-scope\.mjs --push --before "\$BEFORE" --parent-green /);
+  assert.match(scope, /actions\/workflows\/ci\.yml\/runs\?head_sha=\$BEFORE&event=push&status=success/);
+  assert.match(scope, /git diff --name-only --no-renames "\$BEFORE" "\$GITHUB_SHA"/);
+  // gh/diff failure must fail closed to full CI
+  assert.match(scope, /parent_green=false/);
+  assert.match(scope, /workflow_dispatch\)[\s\S]*docs_only=false/);
+  const build = workflow.split('  build-and-test:\n')[1]?.split('  e2e-shards:\n')[0] ?? '';
+  assert.doesNotMatch(build, /Docs-only PR detected/);
 });

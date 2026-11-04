@@ -17,7 +17,7 @@ For the formal backend, read the current [development handoff](./docs/DEVELOPMEN
 
 ## CI Requirements
 
-PR validation is determined by the current [CI workflow](./.github/workflows/ci.yml). Its npm commands run with working directory `frontend/`; the workflow also runs project-specific Emulator proofs on non-docs changes. A docs-only PR (every changed path is a Markdown file, or a `pdf|png|jpg|jpeg|gif|svg|txt` file under `docs/`; renames count as delete plus add; any other file, such as `docs/**/*.json`, runs full CI) is classified separately and skips build, lint, and test steps; required CI success for that path is not evidence that app checks ran. To run a command locally, first use `cd frontend`; select the checks applicable to your change and report skipped or unrun checks accurately.
+PR validation is determined by the current [CI workflow](./.github/workflows/ci.yml). Its npm commands run with working directory `frontend/`; the workflow also runs project-specific Emulator proofs on non-docs changes. A docs-only PR (every changed path is a Markdown file, or a `pdf|png|jpg|jpeg|gif|svg|txt` file under `docs/`; renames count as delete plus add; any other file, such as `docs/**/*.json`, runs full CI) is classified separately and skips build, lint, and test steps; required CI success for that path is not evidence that app checks ran. A docs-only merge on `main` also skips them when the previous `main` commit (the push's `before`) already has a successful push run; that success means the parent commit's full validation is inherited, not re-run for this commit. To run a command locally, first use `cd frontend`; select the checks applicable to your change and report skipped or unrun checks accurately.
 
 ## Code Review
 

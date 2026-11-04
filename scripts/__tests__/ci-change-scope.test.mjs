@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const cli = fileURLToPath(new URL('../ci-change-scope.mjs', import.meta.url));
-const { classify, isDocsPath } = await import('../ci-change-scope.mjs');
+const { classify, isDocsPath, decidePush } = await import('../ci-change-scope.mjs');
 
 const docsCases = [
   ['CLAUDE.md'],
@@ -81,4 +81,53 @@ test('CLI reads stdin paths and writes docs_only to GITHUB_OUTPUT', () => {
   const noOut = run('docs/a.md\n', false);
   assert.match(noOut.r.stdout, /docs_only=true/);
   assert.equal(noOut.r.status, 0);
+});
+
+const ZERO = '0'.repeat(40);
+const BEFORE = 'a'.repeat(40);
+
+test('decidePush inherits the parent result only for docs-only diffs on a green parent', () => {
+  const ok = decidePush({ before: BEFORE, paths: ['docs/a.md', 'CONTRIBUTING.md'], parentGreen: true });
+  assert.equal(ok.docsOnly, true);
+  assert.match(ok.reason, new RegExp(BEFORE));
+  // r2: commit count between before and sha is irrelevant; only the tree diff matters.
+  assert.equal(decidePush({ before: BEFORE, paths: ['a.md', 'b/c.md', 'docs/x.pdf'], parentGreen: true }).docsOnly, true);
+});
+
+test('decidePush falls back to full CI on every non-inheriting branch', () => {
+  const full = (args) => {
+    const r = decidePush(args);
+    assert.equal(r.docsOnly, false, JSON.stringify(args));
+    assert.ok(r.reason.length > 0);
+  };
+  full({ before: BEFORE, paths: ['docs/a.md'], parentGreen: false }); // failed/cancelled/in-progress/gh error
+  full({ before: BEFORE, paths: ['docs/a.md'], parentGreen: undefined });
+  full({ before: BEFORE, paths: ['docs/a.md'], parentGreen: 'true' }); // only boolean true counts
+  full({ before: ZERO, paths: ['docs/a.md'], parentGreen: true }); // new branch push
+  full({ before: '', paths: ['docs/a.md'], parentGreen: true });
+  full({ before: undefined, paths: ['docs/a.md'], parentGreen: true });
+  full({ before: BEFORE, paths: ['docs/a.md', 'frontend/src/a.ts'], parentGreen: true });
+  full({ before: BEFORE, paths: [], parentGreen: true });
+  full({ before: BEFORE, paths: [''], parentGreen: true });
+});
+
+test('CLI push mode applies decidePush and never inherits without all conditions', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ci-push-'));
+  const run = (args, input) => {
+    const out = join(dir, `out-${Math.random()}`);
+    writeFileSync(out, '');
+    const r = spawnSync(process.execPath, [cli, ...args], {
+      input, env: { ...process.env, GITHUB_OUTPUT: out }, encoding: 'utf8',
+    });
+    return { r, file: readFileSync(out, 'utf8') };
+  };
+  const docs = 'docs/a.md\nREADME.md\n';
+  assert.equal(run(['--push', '--before', BEFORE, '--parent-green', 'true'], docs).file, 'docs_only=true\n');
+  assert.equal(run(['--push', '--before', BEFORE, '--parent-green', 'false'], docs).file, 'docs_only=false\n');
+  assert.equal(run(['--push', '--before', BEFORE], docs).file, 'docs_only=false\n');
+  assert.equal(run(['--push', '--before', ZERO, '--parent-green', 'true'], docs).file, 'docs_only=false\n');
+  assert.equal(run(['--push', '--before', BEFORE, '--parent-green', 'true'], 'frontend/src/a.ts\n').file, 'docs_only=false\n');
+  assert.equal(run(['--push', '--before', BEFORE, '--parent-green', 'true'], '').file, 'docs_only=false\n');
+  const ok = run(['--push', '--before', BEFORE, '--parent-green', 'true'], docs);
+  assert.match(ok.r.stdout, new RegExp(BEFORE));
 });
