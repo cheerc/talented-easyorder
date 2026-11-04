@@ -87,7 +87,7 @@ export function isTransientCiFailure(step, output) {
   return /HTTP Error: (429|5\d\d)\b/.test(text) || /HTTP Error: 409, Release \S+\/releases\/cloud\.firestore\S* already exists/.test(text);
 }
 
-export async function runCiStepWithRetry({ step, run, sleep, log, maxAttempts = 3, delaysMs = [30_000, 60_000] }) {
+export async function runCiStepWithRetry({ step, run, sleep, log, maxAttempts = 10, delaysMs = [30_000, 60_000] }) {
   for (let attempt = 1; ; attempt += 1) {
     const result = run();
     if (!result.error && result.status === 0) return attempt;

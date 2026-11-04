@@ -224,7 +224,7 @@ repo Settings → Environments → New environment，名稱 `<ENV>`：
 3. 等 run 顯示 Waiting，本人按 **Review deployments** 核對 commit 後 Approve；`firebase-test` 可由 agent 回報 run URL、target、commit 後自行以 `gh api` 核准，`firebase-production` 須經本人對該次 run 明確允許。
 4. 完成後在 evidence 記 run URL 與 commit（run log 會印出各步結果）；workflow 不上傳 release／receipt artifact，因為公開 repo 的 artifact 任何登入使用者都能下載。照第 6 節做 smoke 並匿名回報。CI 部署成功不等於 smoke 通過。
 
-indexes、rules 遇到 Firebase API 暫時性錯誤（HTTP 429／5xx，或 rules release PATCH 失敗後的 409 `cloud.firestore already exists`）會自動重試，最多 3 次（間隔 30、60 秒）；大型 `firestore.rules` 的編譯檢查 API 本身會偶發 503。hosting 不自動重試。其他錯誤或重試用盡，會停在該步，後面的步驟不執行；修正後重跑整個 workflow（從新 release 重部署，不跳步）。index 30 分鐘內未 READY 會停在 rules 之前。回退依第 8 節，在 Hosting release history 由本人操作。
+indexes、rules 遇到 Firebase API 暫時性錯誤（HTTP 429／5xx，或 rules release PATCH 失敗後的 409 `cloud.firestore already exists`）會自動重試，最多 10 次（間隔 30、60 秒後固定 60 秒）；大型 `firestore.rules` 的編譯檢查 API 本身會偶發 503。hosting 不自動重試。其他錯誤或重試用盡，會停在該步，後面的步驟不執行；修正後重跑整個 workflow（從新 release 重部署，不跳步）。index 30 分鐘內未 READY 會停在 rules 之前。回退依第 8 節，在 Hosting release history 由本人操作。
 
 停用：刪除 Environment，或刪除 service account 上的 `roles/iam.workloadIdentityUser` binding，或停用 identity pool；三者任一都會讓 workflow 拿不到 Google 授權。
 
