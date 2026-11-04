@@ -17,11 +17,38 @@ export function classify(paths) {
   return { docsOnly: list.length > 0 && nonDocs.length === 0, nonDocs };
 }
 
+// main push：只有「before 非全零、diff 非空且全為 docs、before 有成功的 push run」才繼承父 commit 結果。
+// 非 docs 檔與 before 相同，代表程式 tree 已在 main 上完整驗證過（與 commit 數量無關）。任一條件不成立即完整 CI。
+export function decidePush({ before, paths, parentGreen }) {
+  if (typeof before !== 'string' || before === '' || /^0+$/.test(before)) {
+    return { docsOnly: false, reason: 'no usable before SHA (new branch push), running full CI' };
+  }
+  const { docsOnly, nonDocs } = classify(paths);
+  if (!docsOnly) {
+    return { docsOnly: false, reason: nonDocs.length ? `non-docs changes since ${before}, running full CI` : 'empty diff, running full CI' };
+  }
+  if (parentGreen !== true) {
+    return { docsOnly: false, reason: `parent ${before} has no successful push run, running full CI` };
+  }
+  return { docsOnly: true, reason: `docs-only push; parent ${before} has a successful CI push run (inherits its full validation, not re-run)` };
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   let input = '';
   process.stdin.setEncoding('utf8');
   for await (const chunk of process.stdin) input += chunk;
   const paths = input.split('\n');
+  const args = process.argv.slice(2);
+  const opt = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
+  if (args.includes('--push')) {
+    const { docsOnly, reason } = decidePush({ before: opt('--before'), paths, parentGreen: opt('--parent-green') === 'true' });
+    console.log(reason);
+    if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `change-scope (push): ${reason}\n`);
+    const out = `docs_only=${docsOnly}\n`;
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, out);
+    else process.stdout.write(out);
+    process.exit(0);
+  }
   const { docsOnly, nonDocs } = classify(paths);
   const changed = paths.filter((p) => p !== '');
   if (changed.length === 0) console.log('No changed files detected, running full CI');

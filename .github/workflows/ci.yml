@@ -15,6 +15,9 @@ concurrency:
 jobs:
   change-scope:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
     outputs:
       docs_only: ${{ steps.check-docs.outputs.docs_only }}
     steps:
@@ -25,19 +28,35 @@ jobs:
         id: check-docs
         env:
           BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
         working-directory: ${{ github.workspace }}
         run: |
           set -o pipefail
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "Not a pull request (event: ${{ github.event_name }}), running full CI"
-            echo "docs_only=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          git fetch origin "$BASE_REF"
-
-          echo "Changed files in PR:"
-          git diff --name-only --no-renames "origin/$BASE_REF...HEAD" | tee /dev/stderr | node scripts/ci-change-scope.mjs
+          case "${{ github.event_name }}" in
+            pull_request)
+              git fetch origin "$BASE_REF"
+              echo "Changed files in PR:"
+              git diff --name-only --no-renames "origin/$BASE_REF...HEAD" | tee /dev/stderr | node scripts/ci-change-scope.mjs
+              ;;
+            push)
+              # Inherit the parent's CI only for docs-only diffs; any failure below falls back to full CI.
+              parent_green=false
+              count=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$BEFORE&event=push&status=success" --jq .total_count) || count=0
+              if [ "${count:-0}" -gt 0 ] 2>/dev/null; then parent_green=true; fi
+              echo "Changed files since $BEFORE:"
+              if ! paths=$(git diff --name-only --no-renames "$BEFORE" "$GITHUB_SHA"); then paths=""; fi
+              printf '%s\n' "$paths" | tee /dev/stderr | node scripts/ci-change-scope.mjs --push --before "$BEFORE" --parent-green "$parent_green"
+              ;;
+            workflow_dispatch)
+              echo "Manual dispatch, running full CI"
+              echo "docs_only=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unexpected event (${{ github.event_name }}), running full CI"
+              echo "docs_only=false" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
 
 
   build-and-test:
@@ -59,7 +78,7 @@ jobs:
         if: needs.change-scope.outputs.docs_only == 'true'
         working-directory: ${{ github.workspace }}
         run: |
-          echo "### 📄 Docs-only PR detected" >> "$GITHUB_STEP_SUMMARY"
+          echo "### 📄 Docs-only change detected" >> "$GITHUB_STEP_SUMMARY"
           echo "Skipping build, lint, and test steps. Required check satisfied." >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/setup-node@v6
