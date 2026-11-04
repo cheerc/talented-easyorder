@@ -1433,14 +1433,18 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
         await expect(openingForm.getByText(/伺服器已確認開帳現金 NT\$ 1,000/)).toBeVisible();
       }
 
-      const expectedCash = async (page: typeof pageA) => Number(((await page.getByTestId('cloud-expected-cash').innerText()).match(/-?\d+/) ?? ['NaN'])[0]);
+      const expectedCash = async (page: typeof pageA) =>
+        Number(((await page.getByTestId('cloud-expected-cash').innerText({ timeout: 10_000 })).match(/-?\d+/) ?? ['NaN'])[0]);
 
-      // Page B (same Google account) signs in. That makes page A re-check its lease once (it remounts), so A is settled on the
-      // counter page first and only then starts to be watched.
-      const sessionB = await signInGoogle(pageB, E2E_IDENTITIES.operatorA.email);
-      expect(sessionB.uid).toBe(sessionA.uid);
-      await expect(pageB.locator('.operator-strip')).toBeVisible();
-      await expect(pageA.locator('.operator-strip')).toBeVisible();
+      // Page B opens in the same context and reuses the persisted sign-in of the same Google account. It does not sign
+      // in again: a new ID token reaches A through the shared Auth persistence at an unpredictable time, masks A and
+      // remounts it back on the default tab (#618). Mark A's current shell so any remount fails this case quickly.
+      await pageA.locator('.operator-strip').evaluate(element => element.setAttribute('data-e2e-before-page-b', ''));
+      const pageAOriginalShell = pageA.locator('.operator-strip[data-e2e-before-page-b]');
+      await pageB.goto('/');
+      await expect(pageB.locator('.operator-strip')).toBeVisible({ timeout: 15_000 });
+      await expect.poll(readAccessLease).toMatchObject({ holderUid: sessionA.uid });
+      await expect(pageAOriginalShell).toBeVisible();
       await pageA.getByRole('button', { name: '櫃台' }).click();
       await expect(pageA.getByTestId('cloud-orders-page')).toBeVisible();
       await expect(pageA.getByTestId('cloud-orders-loading')).toHaveCount(0);
@@ -1479,6 +1483,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       await expect(pageA.getByTestId('cloud-expected-cash')).toHaveText(`$${cashBefore + 50}`, { timeout: 10_000 });
       await expect(pageA.getByTestId('cash-movement-list')).toContainText('另一頁的零錢補充');
       expect(await pageA.evaluate(() => (window as unknown as { __flashes: number }).__flashes)).toBe(0);
+      await expect(pageAOriginalShell).toBeVisible();
     } finally {
       await context.close();
     }
