@@ -44,3 +44,14 @@ test('aggregate gate accepts only a successful full run or an explicit docs-only
     assert.notEqual(run(...args), 0, args.join(' '));
   }
 });
+
+test('change-scope classifies via the tested script with rename detection off', () => {
+  const scope = workflow.split('  change-scope:\n')[1]?.split('  build-and-test:\n')[0] ?? '';
+  assert.match(scope, /run: \|\n\s+set -o pipefail\n/);
+  assert.match(scope, /git diff --name-only --no-renames /);
+  assert.match(scope, /node scripts\/ci-change-scope\.mjs/);
+  assert.doesNotMatch(scope, /grep -v '\^docs\/'/);
+  assert.match(scope, /event_name }}" != "pull_request"[\s\S]*docs_only=false/);
+  const build = workflow.split('  build-and-test:\n')[1]?.split('  e2e-shards:\n')[0] ?? '';
+  assert.match(build, /node --test \.\.\/scripts\/__tests__\/ci-change-scope\.test\.mjs/);
+});
