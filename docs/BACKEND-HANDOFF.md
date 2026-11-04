@@ -406,6 +406,8 @@ Firebase（Firestore＋Auth，Google 登入，白名單）＋ Vercel 靜態託�
 
 ## 10. 協作與資料規則
 
+> （2026-10-13 當時的分工紀錄；現行合併規則見 CONTRIBUTING.md 與 DEVELOPMENT-HANDOFF「每個 PR 的協作與交接要求」）
+
 - **repo 是公開的**：真實姓名、餘額、快照檔、Excel、紙本照片、平板截圖（可能有臉）一律不進 repo、PR、留言。回報時用帳戶編號或「某學員」代稱。
 - **分工**：
   - coordinator 分析、規劃、派工、寫 reviewer brief、檢查 review 結果、合併；
