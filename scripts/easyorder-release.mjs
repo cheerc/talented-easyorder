@@ -4,8 +4,9 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import os from 'node:os';
 import path from 'node:path';
-import { validateWebConfig, releaseFiles, checkRelease, deploymentArgs, ciDeploymentArgs, digest, validateProviderState, validateCiDeployment, compositeIndexStatus, runCiStepWithRetry } from './lib/release.mjs';
+import { validateWebConfig, releaseFiles, checkRelease, deploymentArgs, ciDeploymentArgs, digest, validateProviderState, validateCiDeployment, compositeIndexStatus, runCiStepWithRetry, providerPreflight, waitForIndexes, parseDeployTestEnv, resolveTestTarget, validateTestSource, runTestDeployment } from './lib/release.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const frontend = path.join(root, 'frontend');
@@ -14,8 +15,9 @@ const usage = `EasyOrder P17 本機 release 工具（Node 24）
   ./deploy.sh prepare --project <id> --web-config <本機 JSON> --out <新目錄> [--region asia-east1] [--emulator]
   ./deploy.sh check --release <目錄>
   ./deploy.sh deploy --project <id> --release <目錄> --step indexes|rules|hosting [--account <Firebase CLI email>]
+  ./deploy.sh deploy-test [--index-timeout-minutes 30]   （只限 firebase-test；target 取自 GitHub Environment firebase-test）
   ./deploy.sh deploy-ci --project <id> --release <目錄> [--index-timeout-minutes 30]   （只限 GitHub Actions 核准後的 deploy workflow）
-正式部署由本人操作：本機互動終端，或本人在 GitHub 核准的 deploy workflow。先 indexes 並確認 READY，再 rules，最後 hosting；詳見 docs/ops/DEPLOYMENT-GUIDE.md。
+正式部署由本人操作：本機互動終端，或本人在 GitHub 核准的 deploy workflow（firebase-test 可用 deploy-test，或用 agent 告知後自行觸發的 workflow；firebase-production 由本人在本機互動終端部署，或由本人逐次允許 workflow）。先 indexes 並確認 READY，再 rules，最後 hosting；詳見 docs/ops/DEPLOYMENT-GUIDE.md。
 舊 d1-d3/p1-p5 已移除；練習用 frontend/npm run dev:prototype，Emulator 明示 demo-easyorder。
 `;
 
@@ -84,24 +86,102 @@ async function prepare(args) {
   process.stdout.write(`release 已建立並核對：${out}\nproject=${project}, region=${region}, emulator=${emulator}, source=${manifest.sourceSha}, dirty=${manifest.sourceDirty}\n`);
 }
 
-function providerPreflight(manifest, project, account, out) {
-  const billing = JSON.parse(execFileSync('gcloud', ['billing', 'projects', 'describe', project, '--format=json'], { encoding: 'utf8' }));
-  const database = JSON.parse(execFileSync(firebase, ['firestore:databases:get', '(default)', '--project', project, '--json', ...(account ? ['--account', account] : [])], { cwd: out, encoding: 'utf8' }));
-  if (database.status !== 'success') throw new Error('無法讀取 Firestore metadata');
-  validateProviderState(manifest, billing, database.result);
-}
+async function deployTest(args) {
+  const options = flags(args, ['--index-timeout-minutes']);
+  const timeoutMinutes = Number(options['--index-timeout-minutes'] ?? 30);
+  if (!Number.isInteger(timeoutMinutes) || timeoutMinutes < 1 || timeoutMinutes > 120) throw new Error('--index-timeout-minutes 必須是 1–120 的整數');
+  if (process.env.FIRESTORE_EMULATOR_HOST || process.env.FIREBASE_AUTH_EMULATOR_HOST) throw new Error('deploy-test 前須移除 Emulator 環境變數');
 
-async function waitForIndexes(out, project, timeoutMinutes) {
-  const config = await json(path.join(out, 'firestore.indexes.json'));
-  const deadline = Date.now() + timeoutMinutes * 60_000;
-  for (;;) {
-    const listed = JSON.parse(execFileSync('gcloud', ['firestore', 'indexes', 'composite', 'list', '--project', project, '--database', '(default)', '--format=json'], { encoding: 'utf8' }));
-    const status = compositeIndexStatus(config, listed);
-    if (status.ready) { process.stdout.write(`composite indexes 全部 READY（${(config.indexes ?? []).length} 個）\n`); return; }
-    if (Date.now() >= deadline) throw new Error(`index 未在 ${timeoutMinutes} 分鐘內 READY；不部署 rules／hosting。缺少：${status.missing.join('; ') || '無'}；未完成：${status.notReady.join('; ') || '無'}`);
-    process.stdout.write(`等待 index READY：缺少 ${status.missing.length}、未完成 ${status.notReady.length}\n`);
-    await new Promise(resolve => { setTimeout(resolve, 30_000); });
+  const envPath = path.join(os.homedir(), '.easyorder-private', 'deploy-test.env');
+  let envContent = '';
+  try {
+    envContent = await readFile(envPath, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') throw new Error(`缺少私有設定檔 ${envPath}；請參考 docs/ops/deploy-test.env.example 建立`);
+    throw error;
   }
+  const { account } = parseDeployTestEnv(envContent);
+
+  execFileSync('git', ['fetch', 'origin', 'main'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+  const dirty = Boolean(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim());
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  const originMain = execFileSync('git', ['rev-parse', 'origin/main'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+
+  const repo = execFileSync('gh', ['repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  const ciRunsRaw = execFileSync('gh', ['api', `repos/${repo}/actions/workflows/ci.yml/runs?head_sha=${head}&event=push&status=success`], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const ciSuccessCount = JSON.parse(ciRunsRaw).total_count ?? 0;
+  validateTestSource({ head, originMain, dirty, ciSuccessCount });
+
+  const readEnvVars = (envName) => {
+    try {
+      const raw = execFileSync('gh', ['api', `repos/${repo}/environments/${envName}/variables`], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      const data = JSON.parse(raw);
+      const vars = {};
+      for (const v of data.variables ?? []) {
+        vars[v.name] = v.value;
+      }
+      return vars;
+    } catch (error) {
+      if (error.message?.includes('404') || error.stderr?.includes('404')) return null;
+      throw error;
+    }
+  };
+
+  const testVars = readEnvVars('firebase-test');
+  if (!testVars) throw new Error('無法讀取 GitHub Environment firebase-test');
+  const productionVars = readEnvVars('firebase-production');
+  const { project, region, web } = resolveTestTarget({ testVars, productionVars });
+
+  let gcloudOk = false;
+  try {
+    const res = spawnSync('gcloud', ['auth', 'print-access-token', '--account', account], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+    if (res.status === 0 && res.stdout?.trim()) gcloudOk = true;
+  } catch {}
+  if (!gcloudOk) {
+    throw new Error(`gcloud 尚未登入帳號 ${account}，請先由本人執行：\ngcloud auth login ${account}`);
+  }
+
+  let firebaseOk = false;
+  try {
+    const res = spawnSync(firebase, ['login:list', '--json'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+    if (res.status === 0) {
+      const listData = JSON.parse(res.stdout);
+      const users = Array.isArray(listData.result) ? listData.result : Array.isArray(listData) ? listData : [];
+      if (users.some(u => (u.user?.email ?? u.email ?? u) === account)) {
+        firebaseOk = true;
+      }
+    }
+  } catch {}
+  if (!firebaseOk) {
+    throw new Error(`Firebase CLI 尚未登入帳號 ${account}，請先由本人執行：\n./frontend/node_modules/.bin/firebase login:add ${account}`);
+  }
+
+  const deployTestDir = path.join(os.homedir(), '.easyorder-private', 'deploy-test');
+  await mkdir(deployTestDir, { recursive: true });
+  const webConfigPath = path.join(deployTestDir, 'web-config.json');
+  await save(webConfigPath, web);
+
+  const sha7 = head.slice(0, 7);
+  const ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+  const out = path.join(deployTestDir, 'releases', `${sha7}-${ts}`);
+  await prepare(['--project', project, '--web-config', webConfigPath, '--region', region, '--out', out]);
+
+  const manifest = await checkRelease(out);
+  if (manifest.sourceDirty !== false || manifest.sourceSha !== head) {
+    throw new Error(`release 來源不合規：sourceDirty=${manifest.sourceDirty}, sourceSha=${manifest.sourceSha}`);
+  }
+
+  await runTestDeployment({
+    manifest,
+    project,
+    account,
+    out,
+    timeoutMinutes,
+    firebaseBin: firebase,
+    log: text => process.stdout.write(text),
+  });
+
+  process.stdout.write(`deploy-test 完成：\nrelease: ${out}\nreceipt: ${path.join(out, 'deploy-receipt.json')}\nsource: ${manifest.sourceSha}\n正式 smoke 仍由本人驗證。\n`);
 }
 
 async function deployCi(args) {
@@ -174,6 +254,7 @@ try {
     const manifest = await checkRelease(path.resolve(required(options, '--release')));
     process.stdout.write(`release 完整性通過：${manifest.project}，${Object.keys(manifest.files).length} 個檔案，emulator=${manifest.emulator}\n`);
   } else if (command === 'deploy') await deploy(args);
+  else if (command === 'deploy-test') await deployTest(args);
   else if (command === 'deploy-ci') await deployCi(args);
   else throw new Error(`舊部署選項已停用或未知命令：${command}\n${usage}`);
 } catch (error) { process.stderr.write(`${error.message}\n`); process.exitCode = 1; }
