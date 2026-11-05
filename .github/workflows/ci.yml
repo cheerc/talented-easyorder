@@ -549,7 +549,9 @@ jobs:
     needs: change-scope
     if: needs.change-scope.result == 'success' && needs.change-scope.outputs.docs_only == 'false'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    # 系統依賴安裝曾耗盡 10m；保留最長 browser suite 與 artifact 收尾預算。
+    # 此為有限 job 上限，不重試或略過任何 suite；時間契約見 e2e-ci.test.mjs。
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
