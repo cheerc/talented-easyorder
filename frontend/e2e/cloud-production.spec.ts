@@ -849,7 +849,7 @@ test.describe('P08 Cloud Orders', () => {
 
       // 驗證頂部兩行餐點計數（今日餐點 0，其他餐點 0）
       const bentoRow = page.getByTestId('cloud-topbar-bento');
-      await expect(bentoRow).toContainText('今日餐點（排骨便當）');
+      await expect(bentoRow).toContainText('今日餐點・排骨便當');
       await expect(bentoRow).toContainText('0');
       const otherRow = page.getByTestId('cloud-topbar-other');
       await expect(otherRow).toContainText('其他餐點');
@@ -932,7 +932,7 @@ test.describe('P08 Cloud Orders', () => {
       await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
 
       // 重新整理後計數與最近帳戶依然完全一致
-      await expect(page.getByTestId('cloud-topbar-bento')).toContainText('今日餐點（排骨便當）');
+      await expect(page.getByTestId('cloud-topbar-bento')).toContainText('今日餐點・排骨便當');
       await expect(page.getByTestId('cloud-topbar-bento')).toContainText('2');
       await expect(page.getByTestId('cloud-topbar-other')).toContainText('其他餐點');
       await expect(page.getByTestId('cloud-topbar-other')).toContainText('1');

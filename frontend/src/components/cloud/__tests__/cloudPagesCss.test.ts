@@ -32,7 +32,7 @@ const INDEX_CSS = resolve(process.cwd(), 'src/index.css');
 // 每個雲端頁在改版 Phase 完成時，必須把自己的頁面 CSS 加進 FONT_SIZE_CHECKED_CLOUD_CSS；
 // P8 結束時所有雲端頁 CSS 都要在清單內（見 docs/FRONTEND-UI-STYLE.md）。
 const FONT_SIZE_CHECKED_UI_CSS = ['HelpTip.css', 'Callout.css', 'ActionCard.css', 'StatTile.css'];
-const FONT_SIZE_CHECKED_CLOUD_CSS: string[] = ['CloudBackupPage.css'];
+const FONT_SIZE_CHECKED_CLOUD_CSS: string[] = ['CloudBackupPage.css', 'CloudOrdersPage.css'];
 const FONT_SIZE_CHECKED_STYLES_CSS = ['data-table.css'];
 
 const TYPE_TOKENS = ['--t-xs', '--t-sm', '--t-md', '--t-lg', '--t-xl', '--t-2xl', '--t-num'];

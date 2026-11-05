@@ -4,6 +4,11 @@ import { Kbd } from '../ui/Kbd';
 import { isCompositionKey } from '../navigationKeys';
 import { Button } from '../ui/Button';
 import { Toast } from '../ui/Toast';
+import { ActionCard } from '../ui/ActionCard';
+import { Callout } from '../ui/Callout';
+import { HelpTip } from '../ui/HelpTip';
+import { StatTile } from '../ui/StatTile';
+import { CalendarPlus, UtensilsCrossed } from 'lucide-react';
 import { CommandProgress } from '../ui/CommandProgress';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
 import type { PendingReceiptCheck } from '../../firebase/cloudCommandRepository';
@@ -1732,6 +1737,16 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
 
   const bentoCount = day?.totals.bentoCount ?? 0;
   const otherMealCount = day?.totals.otherMealCount ?? 0;
+  const menuMissingCard = (
+    <ActionCard
+      icon={<UtensilsCrossed size={32} strokeWidth={1.6} />}
+      title={backfillView ? `${businessDate} 尚未設定菜單` : '今日尚未設定菜單'}
+      description={`${businessDate}・設定後就能訂購${backfillView ? '當日' : '今日'}餐點`}
+      actionLabel="前往設定菜單與開帳（F3）"
+      onClick={() => onOpenSettings?.()}
+      disabled={!onOpenSettings}
+    />
+  );
 
   return (
     <div className="cloud-orders" data-testid="cloud-orders-page" aria-busy={busy || page.loading}>
@@ -1765,6 +1780,19 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
             </span>
           )}
         </div>
+        {snapshot && !page.authorizationRevoked && (
+          <div className="cloud-orders__header-stats" data-testid="cloud-topbar-counts">
+            <div className="cloud-orders__header-stat" data-testid="cloud-topbar-bento">
+              <StatTile
+                label={`${backfillView ? '當日餐點' : '今日餐點'}・${todayMenu ? todayMenu.itemName : '未設定'}`}
+                value={bentoCount}
+              />
+            </div>
+            <div className="cloud-orders__header-stat" data-testid="cloud-topbar-other">
+              <StatTile label="其他餐點" value={otherMealCount} />
+            </div>
+          </div>
+        )}
       </header>
 
       {page.loading && !snapshot && (
@@ -1883,21 +1911,31 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
         <div className="cloud-orders__content" inert={showingStale || undefined}>
           <div className="cloud-orders__main-panel">
             {orderingBlocked && (dayMissing ? (
-              // A day not opened yet is a setup step, not an error: same neutral note as a missing menu (#581 D5).
-              <p className="cloud-orders__menu-unavailable" role="status" data-testid="ordering-blocked">
-                <span>{orderingBlocked}</span>
-                <Button variant="ghost" size="sm" onClick={onOpenSettings} disabled={!onOpenSettings}>
-                  到今日設定 <span aria-hidden="true"><Kbd>F3</Kbd></span>
-                </Button>
-              </p>
+              // A day not opened yet is a setup step, not an error: one big card to menu/opening (F3; #581 D5, #648 P2).
+              <div className="cloud-orders__blocked-card" data-testid="ordering-blocked">
+                <ActionCard
+                  icon={<CalendarPlus size={32} strokeWidth={1.6} />}
+                  title={backfillView ? `${businessDate} 尚未開帳` : '今日尚未開帳'}
+                  description={`${businessDate}・設定後就能開始點餐`}
+                  actionLabel="前往設定菜單與開帳（F3）"
+                  onClick={() => onOpenSettings?.()}
+                  disabled={!onOpenSettings}
+                />
+              </div>
             ) : (
               <div className="cloud-orders__error" role="alert" data-testid="ordering-blocked">{orderingBlocked}</div>
             ))}
-            {!selectedStudent && (
+            {!selectedStudent && !dayMissing && (
               <>
+                {!todayMenu && !orderingBlocked && (
+                  <div className="cloud-orders__blocked-card" data-testid="orders-menu-unavailable">{menuMissingCard}</div>
+                )}
                 <div className="cloud-orders__idle-row">
                   <div className="cloud-orders__search-group">
-                    <label className="cloud-orders__search-label" htmlFor="cloud-student-search">搜尋學員</label>
+                    <div className="cloud-orders__search-label-row">
+                      <label className="cloud-orders__search-label" htmlFor="cloud-student-search">搜尋學員</label>
+                      <HelpTip label="搜尋鍵盤操作說明">{'↑↓ 選擇\nEnter 確認\nEsc 清除'}</HelpTip>
+                    </div>
                     <div className="cloud-orders__search-field">
                       <span className="cloud-orders__search-prefix mono" aria-hidden="true">#</span>
                       <input
@@ -1954,9 +1992,6 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                         ))}
                       </ul>
                     )}
-                    {visibleStudents.length > 0 && (
-                      <p className="cloud-orders__hint">↑↓ 選擇 · Enter 確認 · Esc 清除</p>
-                    )}
                     {page.search.trim() && visibleStudents.length === 0 && (
                       <p className="cloud-orders__hint" role="status">沒有符合的帳戶</p>
                     )}
@@ -1974,34 +2009,18 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                     </div>
                   )}
                 </div>
-                <div className="cloud-orders__card cloud-orders__meal-card">
-                  <div className="cloud-orders__topbar-counts" data-testid="cloud-topbar-counts">
-                <div className="cloud-orders__topbar-row" data-testid="cloud-topbar-bento">
-                  <span className="cloud-orders__topbar-label" title={todayMenu ? todayMenu.itemName : '未設定'}>
-                    {backfillView ? '當日餐點' : '今日餐點'}（{todayMenu ? todayMenu.itemName : '未設定'}）
-                  </span>
-                  <span className="cloud-orders__topbar-number mono">{bentoCount}</span>
-                </div>
-                <div className="cloud-orders__topbar-row" data-testid="cloud-topbar-other">
-                  <span className="cloud-orders__topbar-label">其他餐點</span>
-                  <span className="cloud-orders__topbar-number mono">{otherMealCount}</span>
-                </div>
-              </div>
-                  {todayMenu && (
-                    <p className="cloud-orders__menu-summary">
-                      {backfillView ? '當日餐點' : '今日餐點'}：<strong>{todayMenu.itemName}</strong>
-                      <span className="mono">${todayMenu.price}</span>
-                      <span className="cloud-orders__hint">已訂 <span className="mono">{bentoCount}</span> 份</span>
-                    </p>
-                  )}
-                </div>
+                {todayMenu && (
+                  <p className="cloud-orders__menu-summary">
+                    {backfillView ? '當日餐點' : '今日餐點'}：<strong>{todayMenu.itemName}</strong>
+                    <span className="mono">${todayMenu.price}</span>
+                  </p>
+                )}
               </>
             )}
             {!selectedStudent && page.cashOpen && (
               <div className="cloud-orders__card" data-testid="cash-movement-card">
                 <form onSubmit={submitCashMovement} aria-label="櫃台收支">
-                  <h3>櫃台收支</h3>
-                  <p className="cloud-orders__muted">櫃台自己的現金進出，不影響任何學生餘額。</p>
+                  <h3>櫃台收支 <HelpTip label="櫃台收支說明">櫃台自己的現金進出，不影響任何學生餘額。</HelpTip></h3>
                   <div className="cloud-orders__mode-selector">
                     <button
                       type="button"
@@ -2163,7 +2182,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                       </Button>
                   </div>
                   {selectedStudent.status === 'inactive' && (
-                    <div className="cloud-orders__error" role="alert">此帳戶已停用，禁止新增餐點；仍可繳費或退款。</div>
+                    <Callout variant="warn" role="alert">此帳戶已停用，禁止新增餐點；仍可繳費或退款。</Callout>
                   )}
                   <form onSubmit={requestSubmit} aria-label={mode === 'payment' ? '繳費' : '訂餐'}>
 
@@ -2174,20 +2193,8 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                             品名：<strong>{todayMenu.itemName}</strong>
                             <span className="cloud-orders__bento-price mono">單價：${todayMenu.price}</span>
                           </p>
-                        ) : backfillView ? (
-                          <p className="cloud-orders__menu-unavailable" data-testid="orders-menu-unavailable">
-                            <span>{backfill?.dayId} 尚未設定菜單，無法訂購當日餐點；可先設定這一天的菜單，或只登記其他餐點。</span>
-                            <Button variant="ghost" size="sm" onClick={onOpenSettings} disabled={!onOpenSettings}>
-                              到今日設定 <span aria-hidden="true"><Kbd>F3</Kbd></span>
-                            </Button>
-                          </p>
                         ) : (
-                          <p className="cloud-orders__menu-unavailable" data-testid="orders-menu-unavailable">
-                            <span>今日尚未設定菜單，無法訂購今日餐點；其他餐點仍可登記。</span>
-                            <Button variant="ghost" size="sm" onClick={onOpenSettings} disabled={!onOpenSettings}>
-                              到今日設定 <span aria-hidden="true"><Kbd>F3</Kbd></span>
-                            </Button>
-                          </p>
+                          <div className="cloud-orders__blocked-card cloud-orders__blocked-card--inline" data-testid="orders-menu-unavailable">{menuMissingCard}</div>
                         )}
                       </div>
                     )}
@@ -2227,10 +2234,13 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                         </div>
                       </div>
                     )}
-                    {mode === 'payment' && (
-                      <p className="cloud-orders__muted">繳費只記實際留存的現金，不計找零；金額會加進帳戶餘額。要退錢給學生請用「退款」。</p>
-                    )}
 
+                    {mode === 'payment' && (
+                      // Money rule (no change counted, added to balance): always visible per docs/FRONTEND-UI-STYLE.md R7.
+                      <Callout variant="info" role="note" className="cloud-orders__payment-rule">
+                        繳費只記實際留存的現金，不計找零；金額會加進帳戶餘額。
+                      </Callout>
+                    )}
                     <div className="cloud-orders__checkout">
                       <dl className="cloud-orders__breakdown" data-testid="order-preview" aria-label="結帳明細">
                         <div className="cloud-orders__breakdown-row">
@@ -2270,6 +2280,9 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                       <div className="cloud-orders__entry">
                         <div className="cloud-orders__field">
                           <label htmlFor="paid-amount">{mode === 'payment' ? '繳費金額（必填）' : '實收金額（留空為 0 元）'}</label>
+                          {mode === 'payment' && (
+                            <HelpTip label="繳費說明">要退錢給學生請用「退款」。</HelpTip>
+                          )}
                           <input
                             id="paid-amount"
                             ref={amountInputRef}
@@ -2706,9 +2719,9 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
             {selectedAllTransactions.length === 0 ? (
               <p className="cloud-orders__muted">今日尚無交易紀錄</p>
             ) : (
-              <table className="cloud-orders__table">
+              <div className="dt-wrap"><table className="dt">
                 <thead>
-                  <tr><th>時間</th><th>項目</th><th>餐費</th><th>收款</th><th>退款</th><th>修改</th></tr>
+                  <tr><th>時間</th><th>項目</th><th className="dt-num">餐費</th><th className="dt-num">收款</th><th className="dt-num">退款</th><th>修改</th></tr>
                 </thead>
                 <tbody>
                   {selectedAllTransactions.map(tx => (
@@ -2723,9 +2736,9 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                         {tx.status === 'voided' && <span className="cloud-orders__student-badge">已作廢</span>}
                         {txBackfilled(tx) && <span className="cloud-orders__backfill-tag" data-testid={`backfill-tag-${tx.transactionId}`}>回填</span>}
                       </td>
-                      <td>${tx.mealPrice}</td>
-                      <td>${tx.paidAmount}</td>
-                      <td>{tx.type === 'refund' ? `$${tx.amount}` : '—'}</td>
+                      <td className="dt-num">${tx.mealPrice}</td>
+                      <td className="dt-num">${tx.paidAmount}</td>
+                      <td className="dt-num">{tx.type === 'refund' ? `$${tx.amount}` : '—'}</td>
                       <td>
                         {tx.status === 'active' && (
                           <span className="cloud-orders__row-actions">
@@ -2741,7 +2754,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             )}
             <div className="cloud-orders__preview-bar" data-testid="payment-details-summary">
               <span>今日餐費：${selectedTransactions.reduce((sum, tx) => sum + tx.mealPrice, 0)}</span>
