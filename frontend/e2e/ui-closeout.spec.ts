@@ -165,11 +165,12 @@ for (const theme of ['light', 'dark', 'warm']) {
         await page.screenshot({ path: `/tmp/ui-closeout-${theme}-${width}-backup.png`, fullPage: true });
         await accountCheck(page);
         const ledger = page.locator('.cloud-ledger-anomalies');
-        await expect(ledger.getByTestId(`post-close-shortcut-${dates[1]}`)).toBeVisible();
-        await expect(ledger.getByText('補記不會修改原關帳實點，也不會自動更正其他交易。')).toBeVisible();
+        const anomalyItem = ledger.locator('li.cloud-ledger-anomalies__item').filter({ has: page.getByTestId(`post-close-shortcut-${dates[1]}`) });
+        await expect(anomalyItem.getByTestId(`post-close-shortcut-${dates[1]}`)).toBeVisible();
+        await expect(anomalyItem.getByText('補記不會修改原關帳實點，也不會自動更正其他交易。')).toBeVisible();
         await controls(ledger);
         await help(page, ledger, '異常判定與處理原則');
-        await help(page, ledger, '差額處理說明');
+        await help(page, anomalyItem, '差額處理說明');
         const ratios: number[] = [];
         for (const item of await ledger.locator('h1, h3, p, .cloud-ledger-anomalies__status, .cloud-ledger-anomalies__callout').all()) {
           const result = await contrast(item);
