@@ -1039,6 +1039,30 @@ describe('CloudOrdersPage', () => {
     expect(repositoryMock.createOrder).not.toHaveBeenCalled();
   });
 
+  describe('#648 P2：F1 櫃台點餐改版', () => {
+    it('shows a clickable 尚未開帳 card (with F3) instead of the search box when the business day is missing', async () => {
+      repositoryMock.loadSnapshot.mockResolvedValue(snapshot({ day: null, transactions: [] }));
+      const onOpenSettings = vi.fn();
+      renderComponent('uid-1:1', undefined, { onOpenSettings });
+      const card = await screen.findByRole('button', { name: /尚未開帳.*F3/ });
+      expect(card).toHaveAccessibleName(expect.stringContaining(TODAY));
+      expect(card).toHaveAccessibleName(expect.stringContaining('設定後就能開始點餐'));
+      expect(screen.queryByLabelText('搜尋編號、姓名或別名')).toBeNull();
+      fireEvent.click(card);
+      expect(onOpenSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows the two meal counts as StatTiles in the header', async () => {
+      repositoryMock.loadSnapshot.mockResolvedValue(snapshot({ day: mockDay({ bento: 7, other: 3 }), transactions: [] }));
+      renderComponent();
+      await screen.findByLabelText('搜尋編號、姓名或別名');
+      const bento = screen.getByRole('group', { name: /今日餐點.*7/ });
+      const other = screen.getByRole('group', { name: /其他餐點.*3/ });
+      expect(bento.closest('header')).not.toBeNull();
+      expect(other.closest('header')).not.toBeNull();
+    });
+  });
+
   it('blocks ordering when today has no business day', async () => {
     repositoryMock.loadSnapshot.mockResolvedValue(snapshot({ day: null, transactions: [] }));
     const onOpenSettings = vi.fn();
