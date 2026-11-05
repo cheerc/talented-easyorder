@@ -11,7 +11,7 @@
 
 - 基準：MacBook Air 13 吋預設縮放，1440×900 CSS px。正式櫃台 24 吋 1920×1080 PC 等比放大。
 - `frontend/src/styles/cloud-scale.css` 在 `html[data-app-mode="cloud"]` 設 `font-size: clamp(14px, calc(100vw / 90), 21.333px)`（1440→16px、1920→21.33px）。屬性由 `main.tsx` 呼叫 `applyAppModeAttribute`（`appMode.ts`）設定；prototype 不帶該屬性，`html` 維持原本的 15px。
-- 新寫尺寸（字級、間距、寬高）一律用 rem 或下表 token；不新增 px 字級。`body` 在雲端為 `--t-sm`（1440 寬＝15px，與改版前相同）。
+- 新寫尺寸（字級、間距、寬高）一律用 rem 或下表 token；不新增 px 字級。雲端 `body` 為 `--t-md`（1440 寬＝17px、1920 寬＝22.67px），與改版前預設（`uiTweaksStore` 預設 `scale='large'` → `body[data-fs="lg"]` 的 `--fs: 17px`）在 1440 相同；`cloud-scale.css` 以 rem 覆蓋 `body[data-fs]` 這個 prototype tweak，雲端不再受它影響（`--fs` 仍給 prototype）。
 - `--r`、`--r-lg` 仍是 px（prototype 共用 `tokens.css`，改 rem 會讓 prototype 縮小）；雲端新元件直接引用即可。
 - 字型：系統字型，不載網路字型、不加 `@font-face`、不改 CSP。`--font-sans`（PingFang TC、Microsoft JhengHei、Noto Sans TC、system-ui）；`--font-mono`（ui-monospace、SF Mono、Consolas）用於金額與編號。
 
@@ -22,8 +22,8 @@
 | Token | rem | 1440 寬 | 用途 |
 |---|---|---|---|
 | `--t-xs` | .8125 | 13px | 按鍵、表格、說明氣泡 |
-| `--t-sm` | .9375 | 15px | 標籤、提示、body |
-| `--t-md` | 1.0625 | 17px | 內文 |
+| `--t-sm` | .9375 | 15px | 標籤、提示 |
+| `--t-md` | 1.0625 | 17px | 內文（雲端 body） |
 | `--t-lg` | 1.25 | 20px | 區塊標題 |
 | `--t-xl` | 1.625 | 26px | 重點 |
 | `--t-2xl` | 2.25 | 36px | 頁面標題 |
