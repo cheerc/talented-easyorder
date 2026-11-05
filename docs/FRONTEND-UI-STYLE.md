@@ -61,7 +61,7 @@
 
 `frontend/src/components/cloud/__tests__/cloudPagesCss.test.ts` 檢查：token 齊全且為 rem、三主題顏色 token 齊全、雲端等比放大只限 `data-app-mode="cloud"`、頁面 CSS 不對 `th` 宣告 `vertical-align: top`、無硬寫色碼，以及**硬寫 px 字級**。
 
-px 字級檢查採明確清單：`FONT_SIZE_CHECKED_UI_CSS`（新 ui 元件）、`FONT_SIZE_CHECKED_STYLES_CSS`（`data-table.css`）、`FONT_SIZE_CHECKED_CLOUD_CSS`（雲端頁，P1 為空）。**每個雲端頁在自己的改版 Phase 把該頁 CSS 加進 `FONT_SIZE_CHECKED_CLOUD_CSS`，且字級改用 token；P8 結束時，所有雲端頁 CSS 都必須在清單內。** 新增 `components/ui` 元件 CSS 也要加進 `FONT_SIZE_CHECKED_UI_CSS`。
+px 字級檢查採明確清單：`FONT_SIZE_CHECKED_UI_CSS`（新 ui 元件）、`FONT_SIZE_CHECKED_STYLES_CSS`（`data-table.css`）、`FONT_SIZE_CHECKED_CLOUD_CSS`（雲端頁）。測試另掃 `components/cloud/` 目錄：新增的頁面 CSS 若不在清單內就會失敗，不能漏檢。**每個雲端頁在自己的改版 Phase 把該頁 CSS 加進 `FONT_SIZE_CHECKED_CLOUD_CSS`，且字級改用 token；P8 結束時，所有雲端頁 CSS 都必須在清單內。** 新增 `components/ui` 元件 CSS 也要加進 `FONT_SIZE_CHECKED_UI_CSS`。
 
 ## 未來展望
 
