@@ -1151,6 +1151,14 @@ describe('CloudOrdersPage', () => {
     expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
   });
 
+  it('keeps the payment money rule (no change counted, added to balance) visible without opening any HelpTip', async () => {
+    renderComponent();
+    await selectStudent('001');
+    fireEvent.click(screen.getByRole('button', { name: '繳費' }));
+    expect(screen.getByText(/繳費只記實際留存的現金，不計找零；金額會加進帳戶餘額/)).toBeVisible();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
   it('rejects a zero, decimal or oversized payment before sending', async () => {
     renderComponent();
     await selectStudent('001');
