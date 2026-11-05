@@ -1572,7 +1572,11 @@ test.describe('P11 Cloud Day Close', () => {
       expect(settlements.map(item => [item.revision, item.status, item.countedCash, item.difference])).toEqual([
         [1, 'closed', expected - 10, -10], [2, 'reopened', null, null], [3, 'closed', expected, 0],
       ]);
-      await expect(main.getByRole('region', { name: '關帳後備份' })).toContainText('每日加密備份');
+      // #649: the backup moved to F3 › 資料備份; F2 今日 no longer carries it.
+      await expect(main.getByRole('region', { name: '關帳後備份' })).toHaveCount(0);
+      await page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '今日設定' }).click();
+      await page.getByRole('navigation', { name: '今日設定' }).getByRole('button', { name: '資料備份' }).click();
+      await expect(page.getByRole('heading', { name: '資料備份' })).toBeVisible();
 
       await release(page);
       await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible();

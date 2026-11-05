@@ -51,6 +51,7 @@ import { CloudReportPage } from './components/cloud/CloudReportPage';
 import { CloudAccountHistoryPage } from './components/cloud/CloudAccountHistoryPage';
 import { CloudPendingRecoveryBoundary } from './components/cloud/CloudPendingRecoveryBoundary';
 import { CloudDiagnosticsPage } from './components/cloud/CloudDiagnosticsPage';
+import { CloudBackupPage } from './components/cloud/CloudBackupPage';
 import type { CloudLedgerDateRange } from './domain/cloudLedgerReport';
 import { useCloudLedger } from './hooks/useCloudLedger';
 import type { OpeningMismatchAnomaly } from './domain/ledgerAnomalies';
@@ -374,7 +375,7 @@ function AppContent() {
   );
 }
 
-type CloudSection = 'orders' | 'students' | 'day-vendors' | 'vendors' | 'day-close' | 'anomalies' | 'reports' | 'account-history' | 'diagnostics';
+type CloudSection = 'orders' | 'students' | 'day-vendors' | 'vendors' | 'day-close' | 'anomalies' | 'reports' | 'account-history' | 'diagnostics' | 'backup';
 
 const CLOUD_SECTION_LABELS: Record<CloudSection, string> = {
   orders: '雲端櫃台點餐',
@@ -386,6 +387,7 @@ const CLOUD_SECTION_LABELS: Record<CloudSection, string> = {
   reports: '雲端報表',
   'account-history': '雲端查帳',
   diagnostics: '雲端本機診斷',
+  backup: '資料備份',
 };
 
 // 放在 AuthGate 之內：帳務異常只在已登入並持有使用權之後才從伺服器讀取。
@@ -446,7 +448,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
     dirtyRef.current = false;
     if (section === 'orders') setViewDay(null);
     if (section === 'anomalies') reloadLedger();
-    if (section === 'students' || section === 'day-vendors' || section === 'diagnostics') setSettingsTab(section);
+    if (section === 'students' || section === 'day-vendors' || section === 'diagnostics' || section === 'backup') setSettingsTab(section);
     if (section === 'day-close' || section === 'reports') setAccountTab(section);
     setDayCloseFocus(section === 'day-close' ? dayId : undefined);
     setPostCloseEntryFocus(section === 'day-close' ? postCloseEntry : undefined);
@@ -492,7 +494,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
       const element = event.target as HTMLElement;
       if (element.closest('form') && !element.closest('.cloud-day-vendors__date-form, .cloud-day-close__date-form, .cloud-report__controls, .cloud-account-history__date-form')) dirtyRef.current = true;
     }}>
-      <AppShell active={cloudSection === 'orders' ? 'pos' : cloudSection === 'day-close' || cloudSection === 'reports' ? 'report' : cloudSection === 'students' || cloudSection === 'day-vendors' || cloudSection === 'diagnostics' ? 'admin' : cloudSection === 'vendors' ? 'vendors' : cloudSection === 'account-history' ? 'history' : ''}
+      <AppShell active={cloudSection === 'orders' ? 'pos' : cloudSection === 'day-close' || cloudSection === 'reports' ? 'report' : cloudSection === 'students' || cloudSection === 'day-vendors' || cloudSection === 'diagnostics' || cloudSection === 'backup' ? 'admin' : cloudSection === 'vendors' ? 'vendors' : cloudSection === 'account-history' ? 'history' : ''}
         select={selectPrimary} disabled={navigationLocked}
         brand={<div className="brand"><div className="brand-mark">●</div><div><div className="brand-name">訂餐櫃台</div><div className="brand-sub">{cloudSection === 'orders' && viewDay?.backfill ? <span className="backfill-badge">補登 {viewDay.date}</span> : cloudSection === 'orders' ? viewDay?.date ?? '營業日未確認' : ledger.status === 'ready' ? ledger.snapshot.today : '營業日未確認'}</div></div></div>}
         status={<div className="status">{ledger.status === 'ready' && ledger.snapshot.anomalies.length > 0 && <button disabled={navigationLocked} onClick={openAnomalies}><TriangleAlert size={14} aria-hidden="true" /> 異常 {ledger.snapshot.anomalies.length}</button>}
@@ -504,7 +506,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
             <button type="button" disabled={navigationLocked} onClick={() => operator?.signOut()}>釋放使用權並登出</button>
           </div></details></div>} />
       {(cloudSection === 'day-close' || cloudSection === 'reports') && <nav className="cloud-subnav" aria-label="今日帳"><button disabled={navigationLocked} aria-current={cloudSection === 'day-close' ? 'page' : undefined} onClick={() => selectSection('day-close')}>今日</button><button disabled={navigationLocked} aria-current={cloudSection === 'reports' ? 'page' : undefined} onClick={() => selectSection('reports')}>本週／本月</button></nav>}
-      {(cloudSection === 'students' || cloudSection === 'day-vendors' || cloudSection === 'diagnostics') && <nav className="cloud-subnav" aria-label="今日設定"><button disabled={navigationLocked} aria-current={cloudSection === 'students' ? 'page' : undefined} onClick={() => selectSection('students')}>學生</button><button disabled={navigationLocked} aria-current={cloudSection === 'day-vendors' ? 'page' : undefined} onClick={() => selectSection('day-vendors')}>菜單與開帳</button><button disabled={navigationLocked} aria-current={cloudSection === 'diagnostics' ? 'page' : undefined} onClick={() => selectSection('diagnostics')}>本機診斷</button></nav>}
+      {(cloudSection === 'students' || cloudSection === 'day-vendors' || cloudSection === 'diagnostics' || cloudSection === 'backup') && <nav className="cloud-subnav" aria-label="今日設定"><button disabled={navigationLocked} aria-current={cloudSection === 'students' ? 'page' : undefined} onClick={() => selectSection('students')}>學生</button><button disabled={navigationLocked} aria-current={cloudSection === 'day-vendors' ? 'page' : undefined} onClick={() => selectSection('day-vendors')}>菜單與開帳</button><button disabled={navigationLocked} aria-current={cloudSection === 'diagnostics' ? 'page' : undefined} onClick={() => selectSection('diagnostics')}>本機診斷</button><button disabled={navigationLocked} aria-current={cloudSection === 'backup' ? 'page' : undefined} onClick={() => selectSection('backup')}>資料備份</button></nav>}
       <ConfirmDialog open={leaveTarget !== null} title="離開並捨棄草稿？" message="尚未送出的草稿會被捨棄。" defaultAction="cancel" confirmLabel="捨棄草稿" cancelLabel="取消離開" onCancel={() => setLeaveTarget(null)} onConfirm={() => { if (leaveTarget && !navigationLockRef.current?.locked) { setDayVendorGeneration(value => value + 1); if (leaveTarget.section === 'orders' && cloudSection === 'orders') setOrdersGeneration(value => value + 1); applySection(leaveTarget.section, leaveTarget.dayId, leaveTarget.postCloseEntry, true); } setLeaveTarget(null); }} />
       {cloudSection === 'orders' ? (
         <CloudOrdersPage key={ordersGeneration} {...common} initialBackfillDayId={ordersFocus} onViewDayChange={onViewDayChange} onOpenSettings={() => selectSection('day-vendors')} />
@@ -543,6 +545,8 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
         />
       ) : cloudSection === 'diagnostics' ? (
         <CloudDiagnosticsPage key={`${identityKey}:${leaseEpoch}`} identityKey={identityKey} leaseEpoch={leaseEpoch} />
+      ) : cloudSection === 'backup' ? (
+        <CloudBackupPage key={`${identityKey}:${leaseEpoch}`} identityKey={identityKey} onNavigationStateChange={reportNavigationState} hasUnresolvedPendingCommands={hasUnresolvedPendingCommands} />
       ) : (
         <CloudLedgerAnomaliesPage
           ledger={ledger}

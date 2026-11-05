@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type SetStateAction } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type SetStateAction } from 'react';
 import { getAuth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
@@ -23,10 +23,8 @@ import { CommandProgress } from '../ui/CommandProgress';
 import { EmptyState } from '../ui/EmptyState';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Toast } from '../ui/Toast';
-import { BackupScreen } from '../screens/BackupScreen';
 import { LedgerUnclosedBanner } from './LedgerUnclosedBanner';
 import { DataUpdatedNotice } from './DataUpdatedNotice';
-import { seqWithOwnReceipts, useOwnReceiptSeqs } from './ownReceiptSeqs';
 import './CloudDayClosePage.css';
 
 export interface CloudDayClosePageProps {
@@ -35,8 +33,6 @@ export interface CloudDayClosePageProps {
   identityKey: string;
   onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
   onDraftCleared?: () => void;
-  /** Tests replace the P14 backup block; the page mounts the real one by default. */
-  backupBlock?: ReactNode;
   /** 帳務異常快照（契約 §11）；沒提供時不顯示橫幅。 */
   ledger?: CloudLedgerView;
   onOpenAnomalies?: () => void;
@@ -446,7 +442,7 @@ function DayFigures({ day, unclosedCount }: { day: CloudDayCloseState; unclosedC
 }
 
 export function CloudDayClosePage({
-  db, leaseEpoch, identityKey, onNavigationStateChange, backupBlock, ledger, onOpenAnomalies, onLedgerChanged, onDraftCleared, initialDayId,
+  db, leaseEpoch, identityKey, onNavigationStateChange, ledger, onOpenAnomalies, onLedgerChanged, onDraftCleared, initialDayId,
   initialPostCloseEntry, onOpenOrders, hasUnresolvedPendingCommands = false,
 }: CloudDayClosePageProps) {
   const onLedgerChangedRef = useRef(onLedgerChanged);
@@ -472,15 +468,6 @@ export function CloudDayClosePage({
     revokedScopeRef.current = null;
     pendingCommandIdRef.current = null;
   }
-  // The embedded backup keeps its own unconfirmed RecordBackup; this page starts no command meanwhile (single flight).
-  const backupRecoveringRef = useRef(false);
-  const [backupRecovering, setBackupRecovering] = useState(false);
-  // The embedded backup records on its own and this page does not read again after it (#596).
-  const { ownSeqs: ownBackupSeqs, addOwnSeq: addOwnBackupSeq } = useOwnReceiptSeqs(authorizationScopeKey);
-  const onBackupRecoveryChange = useCallback((active: boolean) => {
-    backupRecoveringRef.current = active;
-    setBackupRecovering(active);
-  }, []);
   const bindingRef = useRef({ db, uid: currentUid, identityKey, leaseEpoch, version: 0 });
   const operationRef = useRef<DayCloseCommandOperation | null>(null);
   if (bindingRef.current.db !== db || bindingRef.current.uid !== currentUid
@@ -803,13 +790,13 @@ export function CloudDayClosePage({
   }, [authorizationScopeKey, loadSnapshot, scopeKey]);
 
   const hasRecovery = page.recovery !== null;
-  // The only reporter of the navigation state: its own recovery and the backup's are merged, so neither can unlock the other.
+  // The only reporter of the navigation state of this page.
   useEffect(() => {
     onNavigationStateChange?.(
       identityKey,
-      page.authorizationRevoked ? 'revoked' : hasRecovery || backupRecovering ? 'recovering' : 'resolved',
+      page.authorizationRevoked ? 'revoked' : hasRecovery ? 'recovering' : 'resolved',
     );
-  }, [backupRecovering, hasRecovery, identityKey, onNavigationStateChange, page.authorizationRevoked]);
+  }, [hasRecovery, identityKey, onNavigationStateChange, page.authorizationRevoked]);
 
   const clearOperationTimer = (operation: DayCloseCommandOperation) => {
     if (operation.timerId !== null) window.clearTimeout(operation.timerId);
@@ -981,7 +968,7 @@ export function CloudDayClosePage({
       }
     } else {
       const latest = latestPageRef.current;
-      if (operationRef.current || latest.recovery || !latest.snapshot || backupRecoveringRef.current) return;
+      if (operationRef.current || latest.recovery || !latest.snapshot) return;
       const loadedSnapshot = latest.snapshot;
       const key = scopeKey;
       const generation = generationRef.current;
@@ -1584,7 +1571,7 @@ export function CloudDayClosePage({
     return () => { cancelled = true; };
   }, [autoAdvance, autoGeneration, snapshot]);
 
-  const busy = page.recovery !== null || page.postCloseChecking || backupRecovering || showingStale;
+  const busy = page.recovery !== null || page.postCloseChecking || showingStale;
   const needsAttention = snapshot?.overview.unclosedDays.filter(item => item.kind !== 'no-business') ?? [];
   const noBusiness = snapshot?.overview.unclosedDays.filter(item => item.kind === 'no-business') ?? [];
   const currentKind = snapshot && day && day.status !== 'closed' && day.openingCash === null
@@ -1608,7 +1595,7 @@ export function CloudDayClosePage({
         </button>
       </header>
       <DataUpdatedNotice
-        pageSeq={snapshot ? seqWithOwnReceipts(snapshot.overview.seq, ownBackupSeqs) : null}
+        pageSeq={snapshot ? snapshot.overview.seq : null}
         hidden={progressActive || busy}
         onReload={() => void loadSnapshot((snapshot?.dayId ?? page.dayIdDraft) || undefined, page.recovery?.phase === 'receipt' ? page.recovery.receipt : undefined)}
       />
@@ -2195,14 +2182,6 @@ export function CloudDayClosePage({
           <button type="button" className="cloud-day-close__primary" onClick={() => void loadSnapshot(page.dayIdDraft || undefined)} disabled={!identityKey || page.authorizationRevoked}>
             重新載入伺服器資料
           </button>
-        </section>
-      )}
-
-      {!page.authorizationRevoked && (
-        <section className="cloud-day-close__backup" aria-label="關帳後備份">
-          <h2>關帳後備份</h2>
-          <p className="cloud-day-close__help">每天最後一次關帳後，在這裡下載加密增量備份，並重新選取檔案完成驗證。</p>
-          {backupBlock ?? <BackupScreen onRecoveryChange={onBackupRecoveryChange} onRecorded={addOwnBackupSeq} locked={hasRecovery} />}
         </section>
       )}
     </main>

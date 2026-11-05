@@ -1,4 +1,4 @@
-import { StrictMode, useState, type ReactNode } from 'react';
+import { StrictMode, useState } from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Firestore } from 'firebase/firestore';
@@ -96,16 +96,6 @@ vi.mock('firebase/auth', () => ({
   getAuth: () => ({ currentUser: { uid: currentAuth.uid } }),
 }));
 
-vi.mock('../screens/BackupScreen', () => ({
-  BackupScreen: (props: { locked?: boolean; onRecoveryChange?: (active: boolean) => void }) => (
-    <div data-testid="p14-backup" data-locked={String(props.locked === true)}>
-      每日加密備份
-      <button type="button" onClick={() => props.onRecoveryChange?.(true)}>備份開始復原</button>
-      <button type="button" onClick={() => props.onRecoveryChange?.(false)}>備份結束復原</button>
-    </div>
-  ),
-}));
-
 beforeEach(() => {
   currentAuth.uid = 'uid-a';
   repository.dataset.id = 'dataset-a';
@@ -194,7 +184,6 @@ function successful(kind: CommandReceipt['kind']): CommandResult {
 }
 
 function renderPage(props: {
-  backupBlock?: ReactNode;
   initialDayId?: string;
   initialPostCloseEntry?: OpeningMismatchAnomaly;
   onLedgerChanged?: () => void;
@@ -207,7 +196,6 @@ function renderPage(props: {
       identityKey="uid-a:4"
       initialDayId={props.initialDayId}
       onNavigationStateChange={onNavigationStateChange}
-      backupBlock={props.backupBlock}
       initialPostCloseEntry={props.initialPostCloseEntry}
       onLedgerChanged={props.onLedgerChanged}
       hasUnresolvedPendingCommands={props.hasUnresolvedPendingCommands}
@@ -670,56 +658,6 @@ describe('CloudDayClosePage', () => {
     expect(repository.backfillOpening).not.toHaveBeenCalled();
   });
 
-  describe('embedded backup recovery', () => {
-    it('locks the day-close commands and reports recovering while the embedded backup has an unresolved command', async () => {
-      const report = renderPage();
-      const form = await closeForm();
-      await waitFor(() => expect(report).toHaveBeenLastCalledWith('uid-a:4', 'resolved'));
-      expect(within(form).getByTestId('close-submit')).toBeEnabled();
-
-      fireEvent.click(screen.getByRole('button', { name: '備份開始復原' }));
-      await waitFor(() => expect(report).toHaveBeenLastCalledWith('uid-a:4', 'recovering'));
-      expect(within(form).getByTestId('close-submit')).toBeDisabled();
-      fireEvent.change(within(form).getByRole('textbox', { name: '實點現金（元）' }), { target: { value: '1170' } });
-      fireEvent.submit(form);
-      expect(repository.closeDay).not.toHaveBeenCalled();
-
-      fireEvent.click(screen.getByRole('button', { name: '備份結束復原' }));
-      await waitFor(() => expect(report).toHaveBeenLastCalledWith('uid-a:4', 'resolved'));
-      expect(within(form).getByTestId('close-submit')).toBeEnabled();
-    });
-
-    it('keeps navigation recovering when its own command resolves while the backup is still recovering', async () => {
-      repository.closeDay.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
-      repository.confirmPendingIntent.mockResolvedValue({ status: 'matched', receipt: receipt('CloseDay') });
-      const report = renderPage();
-      const form = await closeForm();
-      fireEvent.change(within(form).getByRole('textbox', { name: '實點現金（元）' }), { target: { value: '1170' } });
-      fireEvent.click(within(form).getByRole('button', { name: '確認關帳' }));
-      expect(await screen.findByText('結果確認中，請勿重複操作。')).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: '備份開始復原' }));
-
-      fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
-      expect(await screen.findByText(/已確認 2026-10-17 關帳 完成/)).toBeInTheDocument();
-      await new Promise(resolve => setTimeout(resolve, 20));
-      expect(report).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
-
-      fireEvent.click(screen.getByRole('button', { name: '備份結束復原' }));
-      await waitFor(() => expect(report).toHaveBeenLastCalledWith('uid-a:4', 'resolved'));
-    });
-
-    it('locks the embedded backup while the day-close page holds its own unresolved command', async () => {
-      repository.closeDay.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
-      renderPage();
-      const form = await closeForm();
-      expect(screen.getByTestId('p14-backup')).toHaveAttribute('data-locked', 'false');
-      fireEvent.change(within(form).getByRole('textbox', { name: '實點現金（元）' }), { target: { value: '1170' } });
-      fireEvent.click(within(form).getByRole('button', { name: '確認關帳' }));
-      expect(await screen.findByText('結果確認中，請勿重複操作。')).toBeInTheDocument();
-      expect(screen.getByTestId('p14-backup')).toHaveAttribute('data-locked', 'true');
-    });
-  });
-
   it('keeps the command ID after an unknown result and confirms it by a read-only receipt check', async () => {
     repository.closeDay.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
     repository.confirmPendingIntent.mockResolvedValue({ status: 'matched', receipt: receipt('CloseDay') });
@@ -760,15 +698,13 @@ describe('CloudDayClosePage', () => {
     expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
     expect(screen.getByText(new RegExp(`命令編號 ${commandId}`))).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: `${today} 日結` })).not.toBeInTheDocument();
-    expect(screen.queryByTestId('p14-backup')).not.toBeInTheDocument();
     expect(report).toHaveBeenLastCalledWith('uid-a:4', 'revoked');
   });
 
-  it('mounts the P14 backup block below the close section', async () => {
+  it('no longer mounts the backup block (it moved to F3 › 資料備份, #649)', async () => {
     renderPage();
     await screen.findByRole('heading', { name: `${today} 日結` });
-    const backup = screen.getByRole('region', { name: '關帳後備份' });
-    expect(within(backup).getByTestId('p14-backup')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '關帳後備份' })).not.toBeInTheDocument();
   });
 
   it('fails closed when the server read is incomplete', async () => {
@@ -812,7 +748,6 @@ describe('CloudDayClosePage: ledger warnings (contract §11)', () => {
         db={{} as Firestore}
         leaseEpoch={4}
         identityKey="uid-a:4"
-        backupBlock={<div />}
         ledger={ledger}
         {...extra}
       />,
@@ -1371,7 +1306,6 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
         db={props.db ?? stableDb}
         leaseEpoch={props.leaseEpoch ?? 4}
         identityKey={props.identityKey ?? 'uid-a:4'}
-        backupBlock={<div />}
         initialDayId={props.initialDayId}
         initialPostCloseEntry={props.initialPostCloseEntry}
         onLedgerChanged={props.onLedgerChanged}
