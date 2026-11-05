@@ -1,5 +1,5 @@
 .cloud-day-vendors {
-  width: min(1180px, calc(100% - 32px));
+  width: min(73.75rem, calc(100% - 2rem));
   min-height: calc(100vh - 82px);
   margin: 24px auto 48px;
   padding: 28px;
@@ -40,32 +40,10 @@
 
 .cloud-day-vendors__header h1 {
   margin: 2px 0 0;
-  font-size: clamp(22px, 3vw, 30px);
+  font-size: var(--t-2xl);
   letter-spacing: -.025em;
 }
 
-
-.cloud-day-vendors__intro {
-  margin: 12px 0 0;
-  color: var(--ink-2);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.cloud-day-vendors__intro summary {
-  color: var(--accent-ink);
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.cloud-day-vendors__intro summary:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
-
-.cloud-day-vendors__intro p {
-  margin: 8px 0 0;
-}
 
 .cloud-day-vendors__primary,
 .cloud-day-vendors__secondary,
@@ -115,7 +93,6 @@
 
 .cloud-day-vendors__alert,
 .cloud-day-vendors__notice,
-.cloud-day-vendors__warning,
 .cloud-day-vendors__recovery,
 .cloud-day-vendors__loading,
 .cloud-day-vendors__empty,
@@ -127,8 +104,7 @@
 }
 
 .cloud-day-vendors__alert,
-.cloud-day-vendors__recovery,
-.cloud-day-vendors__warning {
+.cloud-day-vendors__recovery {
   color: var(--ink);
   background: var(--danger-soft);
   border: 1px solid var(--danger);
@@ -171,7 +147,7 @@
 .cloud-day-vendors__no-menu .empty-title {
   margin: 0;
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--t-xs);
   font-weight: 500;
 }
 
@@ -211,7 +187,7 @@
 .cloud-day-vendors__day-section > .cloud-day-vendors__section-heading h2,
 .cloud-day-vendors__vendor-section > .cloud-day-vendors__section-heading h2 {
   margin: 0;
-  font-size: 21px;
+  font-size: var(--t-lg);
   letter-spacing: -.015em;
 }
 
@@ -220,7 +196,7 @@
 }
 
 .cloud-day-vendors__date-form label {
-  font-size: 13px;
+  font-size: var(--t-xs);
   font-weight: 700;
 }
 
@@ -244,39 +220,56 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px 18px;
-  margin-top: 12px;
+  margin-left: auto;
   color: var(--ink-hint);
-  font-size: 12px;
+  font-size: var(--t-xs);
 }
 
-.cloud-day-vendors__help,
-.cloud-day-vendors__date-panel > p,
-.cloud-day-vendors__section-heading p,
-.cloud-day-vendors__footnote {
+.cloud-day-vendors__section-heading p {
   color: var(--ink-hint);
-  font-size: 13px;
+  font-size: var(--t-xs);
   line-height: 1.55;
-}
-
-.cloud-day-vendors__help {
-  margin: 12px 0 0;
 }
 
 .cloud-day-vendors__section-heading p {
   margin: 0;
 }
 
-/* 攤平「卡中卡」：內層沿用同一張卡，只以分隔線與間距分區 */
+/* 今日菜單與開帳現金並排，上緣對齊；窄螢幕才疊成一欄。 */
+.cloud-day-vendors__panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--s4);
+  margin-top: var(--s4);
+}
+
+.cloud-day-vendors__title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
 .cloud-day-vendors__card {
-  margin-top: 16px;
-  padding: 18px 0 0;
-  border: 0;
-  border-top: 1px solid var(--line-2);
+  min-width: 0;
+  padding: var(--s4);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+}
+
+.cloud-day-vendors__card .callout-ui,
+.cloud-day-vendors__day-section > .callout-ui,
+.cloud-day-vendors__date-panel > .callout-ui {
+  margin-top: var(--s3);
+}
+
+.cloud-day-vendors__remove-form .callout-ui {
+  margin-bottom: var(--s2);
 }
 
 .cloud-day-vendors__card h3 {
   margin: 0 0 8px;
-  font-size: 18px;
+  font-size: var(--t-lg);
 }
 
 .cloud-day-vendors__summary {
@@ -288,7 +281,7 @@
 
 .cloud-day-vendors__summary dt {
   color: var(--ink-hint);
-  font-size: 13px;
+  font-size: var(--t-xs);
 }
 
 .cloud-day-vendors__summary dd {
@@ -307,7 +300,7 @@
 .cloud-day-vendors__inherit-card p {
   margin: 0 0 8px;
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--t-xs);
   line-height: 1.55;
 }
 
@@ -334,7 +327,7 @@
   width: 100%;
   min-width: 720px;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--t-xs);
 }
 
 .cloud-day-vendors td {
@@ -350,7 +343,7 @@
   top: 0;
   background: var(--surface-sunken);
   color: var(--ink-hint);
-  font-size: 12px;
+  font-size: var(--t-xs);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -390,22 +383,22 @@
 .cloud-day-vendors__remove-form p {
   margin: 0;
   color: var(--ink-hint);
-  font-size: 12px;
+  font-size: var(--t-xs);
   line-height: 1.5;
 }
 
 .cloud-day-vendors__remove-form label {
   display: grid;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--t-xs);
   font-weight: 650;
 }
 
-.cloud-day-vendors__footnote {
-  margin: 12px 0 0;
-}
-
 @media (max-width: 760px) {
+  .cloud-day-vendors__panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .cloud-day-vendors {
     width: calc(100% - 20px);
     margin: 10px auto 28px;

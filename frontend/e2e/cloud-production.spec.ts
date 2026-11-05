@@ -784,7 +784,6 @@ test.describe('P08 Cloud Orders', () => {
       const dateField = mainVendors.getByLabel('查看或設定日期');
       if ((await dateField.inputValue()) !== today) {
         await dateField.fill(today);
-        await mainVendors.getByRole('button', { name: '載入日期' }).click();
       }
       await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
 
@@ -978,7 +977,6 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       const dateField = mainVendors.getByLabel('查看或設定日期');
       if ((await dateField.inputValue()) !== today) {
         await dateField.fill(today);
-        await mainVendors.getByRole('button', { name: '載入日期' }).click();
       }
       await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
       const createDayBtn = page.getByRole('button', { name: '建立空白營業日' });
@@ -1100,7 +1098,6 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       const dateField = mainVendors.getByLabel('查看或設定日期');
       if ((await dateField.inputValue()) !== today) {
         await dateField.fill(today);
-        await mainVendors.getByRole('button', { name: '載入日期' }).click();
       }
       await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
       const createDayBtn = page.getByRole('button', { name: '建立空白營業日' });
@@ -1199,7 +1196,6 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       const dateField = mainVendors.getByLabel('查看或設定日期');
       if ((await dateField.inputValue()) !== today) {
         await dateField.fill(today);
-        await mainVendors.getByRole('button', { name: '載入日期' }).click();
       }
       await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
       const createDayBtn = page.getByRole('button', { name: '建立空白營業日' });
@@ -1422,7 +1418,6 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
         const dateField = mainVendors.getByLabel('查看或設定日期');
         if ((await dateField.inputValue()) !== today) {
           await dateField.fill(today);
-          await mainVendors.getByRole('button', { name: '載入日期' }).click();
         }
         await expect(mainVendors.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
         const createDayBtn = pageA.getByRole('button', { name: '建立空白營業日' });
