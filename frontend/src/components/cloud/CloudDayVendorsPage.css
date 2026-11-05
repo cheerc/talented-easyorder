@@ -337,7 +337,6 @@
   font-size: 13px;
 }
 
-.cloud-day-vendors th,
 .cloud-day-vendors td {
   padding: 11px 12px;
   border-bottom: 1px solid var(--line-2);
@@ -346,6 +345,7 @@
 }
 
 .cloud-day-vendors th {
+  vertical-align: middle;
   position: sticky;
   top: 0;
   background: var(--surface-sunken);

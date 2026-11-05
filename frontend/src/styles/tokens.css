@@ -28,6 +28,26 @@
   --r: 10px;
   --r-lg: 16px;
   --fs: 15px;
+
+  /* #648 UI 統一風格：尺寸與字型 token（與主題無關，定義一次）。
+     rem 相對 html；雲端模式的 html 字級見 cloud-scale.css（1440 寬＝16px，隨視窗等比放大）。
+     只給雲端頁與 components/ui 新元件使用；prototype 的 html 是 15px，不使用這些 token。 */
+  --t-xs: .8125rem;
+  --t-sm: .9375rem;
+  --t-md: 1.0625rem;
+  --t-lg: 1.25rem;
+  --t-xl: 1.625rem;
+  --t-2xl: 2.25rem;
+  --t-num: 2.5rem;
+  --s1: .25rem;
+  --s2: .5rem;
+  --s3: .75rem;
+  --s4: 1rem;
+  --s5: 1.5rem;
+  --s6: 2rem;
+  --s7: 3rem;
+  --font-sans: "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Consolas, monospace;
 }
 
 [data-theme="dark"] {

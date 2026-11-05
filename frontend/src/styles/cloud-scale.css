@@ -1,0 +1,17 @@
+/* #648 雲端模式等比放大與字型。
+   設計基準 1440×900 CSS px（MacBook Air 13）；1920×1080 的 24 吋櫃台 PC 等比放大。
+   只在 main.tsx 設了 html[data-app-mode="cloud"] 時生效，prototype 不受影響（見 appMode.ts）。
+   新寫尺寸一律用 rem；body 沿用原本 15px（.9375rem 在 1440 寬等於 15px）。 */
+html[data-app-mode="cloud"] {
+  font-size: clamp(14px, calc(100vw / 90), 21.333px);
+  font-family: var(--font-sans);
+}
+
+html[data-app-mode="cloud"] body {
+  font-family: var(--font-sans);
+  font-size: var(--t-sm);
+}
+
+html[data-app-mode="cloud"] .mono {
+  font-family: var(--font-mono);
+}

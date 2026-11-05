@@ -48,7 +48,7 @@
 .cloud-account-history__table-wrap { overflow: auto; max-width: 100%; }
 .cloud-account-history__table-wrap:has(details[open]) { overflow: visible; }
 .cloud-account-history table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.cloud-account-history th,
+.cloud-account-history th { padding: 8px 10px; border-bottom: 1px solid var(--line-2); text-align: left; vertical-align: middle; white-space: nowrap; }
 .cloud-account-history td { padding: 8px 10px; border-bottom: 1px solid var(--line-2); text-align: left; vertical-align: top; white-space: nowrap; }
 .cloud-account-history td small { display: block; white-space: normal; }
 .cloud-account-history details { white-space: normal; }

@@ -1,0 +1,29 @@
+.stat-tile-ui {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: var(--s3) var(--s4);
+  border-radius: var(--r);
+  background: var(--surface-sunken);
+}
+
+.stat-tile-ui__label {
+  color: var(--ink-hint);
+  font-size: var(--t-sm);
+}
+
+.stat-tile-ui__value {
+  font-family: var(--font-mono);
+  font-size: var(--t-num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.stat-tile-ui--warn {
+  background: var(--warn-soft);
+}
+
+.stat-tile-ui--warn .stat-tile-ui__value {
+  color: var(--warn);
+}

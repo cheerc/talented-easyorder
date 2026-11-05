@@ -5,7 +5,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  /* Same side gutter as the other cloud pages (#581 D2). */
+  /* Same side gutter as the other cloud pages (581 D2). */
   width: min(1600px, calc(100% - 32px));
   margin: 20px auto 32px;
 }
@@ -558,7 +558,7 @@
   color: var(--warn);
 }
 
-/* 撤回列放在底部 Toast 裡（#585）。 */
+/* 撤回列放在底部 Toast 裡（585）。 */
 .cloud-orders__undo-bar {
   display: flex;
   align-items: center;

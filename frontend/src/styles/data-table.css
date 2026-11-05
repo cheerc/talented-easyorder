@@ -8,7 +8,7 @@
 .dt {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--t-xs);
   text-align: left;
 }
 
@@ -16,22 +16,23 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  height: 40px;
-  padding: 0 12px;
+  height: 2.5rem;
+  padding: 0 var(--s3);
+  vertical-align: middle;
   background: var(--surface-sunken);
   color: var(--ink-hint);
-  font-size: 12px;
+  font-size: var(--t-xs);
   font-weight: 600;
   white-space: nowrap;
   border-bottom: 1px solid var(--line);
 }
 
 .dt tbody tr {
-  height: 44px;
+  height: 2.75rem;
 }
 
 .dt tbody td {
-  padding: 8px 12px;
+  padding: var(--s2) var(--s3);
   border-bottom: 1px solid var(--line-2);
   vertical-align: middle;
 }

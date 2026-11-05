@@ -108,3 +108,12 @@ export function canResetData(mode: StorageMode = getStorageMode()): boolean {
 export function canSeedData(mode: StorageMode = getStorageMode()): boolean {
   return mode !== 'cloud';
 }
+
+/** html 上標記雲端模式的屬性；cloud-scale.css 以它限定等比放大與字型（#648）。 */
+export const APP_MODE_ATTRIBUTE = 'data-app-mode';
+
+/** 雲端（非 prototype）模式在 html 設 data-app-mode="cloud"；prototype 不帶該屬性。 */
+export function applyAppModeAttribute(root: HTMLElement, prototype: boolean): void {
+  if (prototype) root.removeAttribute(APP_MODE_ATTRIBUTE);
+  else root.setAttribute(APP_MODE_ATTRIBUTE, 'cloud');
+}

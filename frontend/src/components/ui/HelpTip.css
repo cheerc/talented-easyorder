@@ -1,0 +1,52 @@
+.help-tip-ui {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.help-tip-ui__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-hint);
+  cursor: help;
+}
+
+.help-tip-ui__btn:hover,
+.help-tip-ui__btn[aria-expanded="true"] {
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+
+.help-tip-ui__btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* 氣泡放在按鈕下方，不遮住觸發點 */
+.help-tip-ui__bubble {
+  position: absolute;
+  top: calc(100% + var(--s1));
+  left: 50%;
+  z-index: 20;
+  width: max-content;
+  max-width: 22rem;
+  padding: var(--s2) var(--s3);
+  transform: translateX(-50%);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  font-size: var(--t-xs);
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: left;
+  white-space: pre-line;
+}

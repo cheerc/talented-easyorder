@@ -38,7 +38,7 @@
 .cloud-report__totals dd { margin: 5px 0 0; font-weight: 700; font-variant-numeric: tabular-nums; }
 .cloud-report__table-wrap { overflow: auto; max-width: 100%; }
 .cloud-report table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.cloud-report th,
+.cloud-report th { padding: 8px 10px; border-bottom: 1px solid var(--line-2); text-align: left; vertical-align: middle; white-space: nowrap; }
 .cloud-report td { padding: 8px 10px; border-bottom: 1px solid var(--line-2); text-align: left; vertical-align: top; white-space: nowrap; }
 .cloud-report td small { display: block; max-width: 360px; white-space: normal; color: var(--ink-hint); }
 .cloud-report th { position: sticky; top: 0; background: var(--surface-sunken); color: var(--ink-hint); font-size: 12px; font-weight: 600; }
