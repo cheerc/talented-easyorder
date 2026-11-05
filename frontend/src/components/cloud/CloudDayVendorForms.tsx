@@ -1,5 +1,7 @@
 import type { FormEvent } from 'react';
 import { effectiveCashOf, openingDifference, type PreviousClosedDay } from '../../domain/ledgerAnomalies';
+import { Callout } from '../ui/Callout';
+import { HelpTip } from '../ui/HelpTip';
 import './CloudDayVendorForms.css';
 
 export type CloudDayVendorStatus = 'active' | 'inactive';
@@ -43,7 +45,10 @@ export function CloudDayVendorForm({ mode, value, onChange, onSubmit, disabled =
 
   return (
     <form className="cloud-day-form" aria-label={mode === 'create' ? '新增供應商' : `編輯供應商 ${value.vendorId}`} onSubmit={handleSubmit}>
-      <h3>{mode === 'create' ? '新增供應商' : '編輯供應商'}</h3>
+      <div className="cloud-day-form__title-row">
+        <h3>{mode === 'create' ? '新增供應商' : '編輯供應商'}</h3>
+        {mode === 'create' && <HelpTip label="新增供應商說明">新供應商會以「使用中」狀態建立。</HelpTip>}
+      </div>
       <div className="cloud-day-form__grid">
         <label>
           供應商編號
@@ -103,9 +108,7 @@ export function CloudDayVendorForm({ mode, value, onChange, onSubmit, disabled =
               <option value="inactive">已停用</option>
             </select>
           </label>
-        ) : (
-          <p className="cloud-day-form__help">新供應商會以「使用中」狀態建立。</p>
-        )}
+        ) : null}
       </div>
       <div className="cloud-day-form__actions">
         <button type="submit" className="cloud-day-form__primary" disabled={disabled}>
@@ -146,8 +149,10 @@ export function CloudDayMenuForm({
 
   return (
     <form className="cloud-day-form" aria-label={`${businessDate} 菜單`} onSubmit={handleSubmit}>
-      <h3>{businessDate} 菜單</h3>
-      <p className="cloud-day-form__help">僅可選擇使用中的供應商。</p>
+      <div className="cloud-day-form__title-row">
+        <h3>{businessDate} 菜單</h3>
+        <HelpTip label="菜單說明">僅可選擇使用中的供應商。</HelpTip>
+      </div>
       <div className="cloud-day-form__grid">
         <label>
           菜單名稱
@@ -243,20 +248,20 @@ export function CloudDayOpeningCashForm({
     <form className="cloud-day-form" aria-label={`${businessDate} 開帳現金`} onSubmit={handleSubmit}>
       <h3>{businessDate} 開帳現金</h3>
       {currentOpeningCash === null ? (
-        <p className="cloud-day-form__help">尚未確認開帳。請輸入實際金額；輸入 0 才代表已確認為零元。</p>
+        <Callout variant="warn">尚未確認開帳。請輸入實際金額；輸入 0 才代表已確認為零元。</Callout>
       ) : (
-        <p className="cloud-day-form__help" role="status">
+        <Callout variant="info" role="status">
           伺服器已確認開帳現金 NT$ {new Intl.NumberFormat('zh-TW').format(currentOpeningCash)}。再次儲存只修改金額，首次開帳記錄由伺服器保留。
-        </p>
+        </Callout>
       )}
       {previousClosed && (
-        <p className="cloud-day-form__help" role="status">
+        <Callout variant="info" role="status">
           上一個已關帳日 {previousClosed.dayId} 的實點現金為 {formatMoney(previousClosed.countedCash)}
           {(previousClosed.postCloseNet ?? 0) !== 0 && `，關帳後補記淨${(previousClosed.postCloseNet ?? 0) > 0 ? '收入' : '支出'} ${formatMoney(Math.abs(previousClosed.postCloseNet ?? 0))}，有效關帳現金 ${formatMoney(effectiveCashOf(previousClosed))}`}
           ，開帳現金通常應與有效關帳現金相同。
-        </p>
+        </Callout>
       )}
-      {ledgerNotice && <p className="cloud-day-form__help" role="status">{ledgerNotice}</p>}
+      {ledgerNotice && <Callout variant="warn" role="status">{ledgerNotice}</Callout>}
       <label>
         開帳現金（新臺幣整數，0 至 20,000）
         <input
@@ -272,10 +277,10 @@ export function CloudDayOpeningCashForm({
       </label>
       {previousClosed && difference !== null && (
         <>
-          <p className="cloud-day-form__help" role="alert">
+          <Callout variant="warn" role="alert">
             開帳現金比上次關帳實點{difference > 0 ? '多' : '少'}了 {formatMoney(Math.abs(difference))}。仍可照輸入的金額開帳，
             但會記成帳務異常，請填寫原因。
-          </p>
+          </Callout>
           <label>
             差額原因（必填，1–500 字）
             <textarea

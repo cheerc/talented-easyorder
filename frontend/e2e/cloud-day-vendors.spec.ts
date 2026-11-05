@@ -189,7 +189,6 @@ test.describe('P07 Cloud day vendors', () => {
 
     const dateField = main.getByLabel('查看或設定日期');
     await dateField.fill(previousDate);
-    await main.getByRole('button', { name: '載入日期' }).click();
     await expect(main.getByRole('heading', { name: `${previousDate} 營業日` })).toBeVisible();
     await page.getByRole('button', { name: '建立空白營業日' }).click();
     await expect(main.getByRole('form', { name: `${previousDate} 菜單` })).toBeVisible();
@@ -223,7 +222,6 @@ test.describe('P07 Cloud day vendors', () => {
     });
 
     await dateField.fill(today);
-    await main.getByRole('button', { name: '載入日期' }).click();
     await expect(main.getByRole('heading', { name: `${today} 營業日` })).toBeVisible();
     await page.getByRole('button', { name: '建立空白營業日' }).click();
     const todayMenuForm = main.getByRole('form', { name: `${today} 菜單` });
@@ -288,7 +286,6 @@ test.describe('P07 Cloud day vendors', () => {
     await settings(page, '菜單與開帳');
 
     await dateField.fill(futureDate);
-    await main.getByRole('button', { name: '載入日期' }).click();
     await expect(main.getByRole('heading', { name: `${futureDate} 營業日` })).toBeVisible();
     await page.getByRole('button', { name: '建立空白營業日' }).click();
     const futureMenuForm = main.getByRole('form', { name: `${futureDate} 菜單` });

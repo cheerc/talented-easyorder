@@ -1,18 +1,10 @@
 .cloud-ledger-banner {
+  margin: 0 0 var(--s3);
+}
+
+.cloud-ledger-banner__body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
-  margin: 0 0 12px;
-  padding: 10px 14px;
-  border: 1px solid var(--warn);
-  border-radius: var(--r);
-  background: var(--warn-soft);
-  color: var(--ink);
-  font-size: 14px;
-}
-
-.cloud-ledger-banner button {
-  border-color: var(--warn);
-  color: var(--ink);
+  gap: var(--s2) var(--s3);
 }

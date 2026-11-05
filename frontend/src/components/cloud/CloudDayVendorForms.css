@@ -11,14 +11,19 @@
 .cloud-day-form h3 {
   margin: 0;
   color: var(--ink);
-  font-size: 18px;
+  font-size: var(--t-lg);
 }
 
-.cloud-day-form__help,
+.cloud-day-form__title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
 .cloud-day-form__empty {
   margin: 0;
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--t-sm);
   line-height: 1.55;
 }
 
@@ -37,7 +42,7 @@
   min-width: 0;
   gap: 6px;
   color: var(--ink);
-  font-size: 13px;
+  font-size: var(--t-sm);
   font-weight: 650;
 }
 

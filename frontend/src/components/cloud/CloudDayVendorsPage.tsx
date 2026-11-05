@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type SetStateAction } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type FormEvent, type KeyboardEvent, type SetStateAction } from 'react';
 import { getAuth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
@@ -22,8 +22,11 @@ import {
 } from './CloudDayVendorForms';
 import { openingDifference, type PreviousClosedDay } from '../../domain/ledgerAnomalies';
 import type { CloudLedgerView } from '../../hooks/useCloudLedger';
+import { Callout } from '../ui/Callout';
 import { CommandProgress } from '../ui/CommandProgress';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { EmptyState } from '../ui/EmptyState';
+import { HelpTip } from '../ui/HelpTip';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Toast } from '../ui/Toast';
 import { DataUpdatedNotice } from './DataUpdatedNotice';
@@ -938,15 +941,63 @@ export function CloudDayVendorsPage({
     return null;
   };
 
-  const submitDateSelection = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (page.recovery || !page.snapshot) return;
-    if (!isBusinessDate(page.dayIdDraft) || page.dayIdDraft < page.snapshot.goLiveDate) {
-      updatePage(previous => ({ ...previous, actionError: `營業日必須是 ${page.snapshot!.goLiveDate} 或之後的有效日期。` }));
+  // 改日期即載入（#651）：完整合法日期（≥ 系統啟用日）才讀取；鍵盤逐字輸入時等 Enter 或離開欄位才確認。
+  // 只採用最後一次讀取的結果由 loadSnapshot 的 listRequestRef 保證。
+  const typingDateRef = useRef(false);
+  const [pendingDate, setPendingDate] = useState<string | null>(null);
+  const hasUnsentDraft = (current: CloudDayVendorSnapshot): boolean => {
+    const baseline = formDraftsFor(current);
+    const sameJson = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
+    return (page.createVendorOpen && !sameJson(page.vendorDraft, freshVendorDraft()))
+      || page.editingVendorId !== null
+      || page.removingVendorId !== null
+      || page.removeReason !== ''
+      || page.inheritedFromDate !== null
+      || page.openingReasonText !== ''
+      || page.openingCashText !== baseline.openingCashText
+      || !sameJson(page.menuDraft, baseline.menuDraft);
+  };
+  const requestDateLoad = (value: string) => {
+    const current = page.snapshot;
+    if (page.recovery || !current) return;
+    if (!isBusinessDate(value) || value < current.goLiveDate) {
+      updatePage(previous => ({ ...previous, actionError: `營業日必須是 ${current.goLiveDate} 或之後的有效日期。` }));
       return;
     }
-    if (page.dayIdDraft === page.snapshot.dayId) return;
-    void loadSnapshot(page.dayIdDraft);
+    if (value === current.dayId) return;
+    if (hasUnsentDraft(current)) {
+      setPendingDate(value);
+      return;
+    }
+    void loadSnapshot(value);
+  };
+  const onDateChange = (value: string) => {
+    updatePage(previous => ({ ...previous, dayIdDraft: value, actionError: '' }));
+    if (typingDateRef.current) return;
+    requestDateLoad(value);
+  };
+  const onDateKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      if (event.repeat || event.nativeEvent.isComposing) return;
+      typingDateRef.current = false;
+      requestDateLoad(event.currentTarget.value);
+      return;
+    }
+    if (event.key !== 'Tab' && event.key !== 'Escape') typingDateRef.current = true;
+  };
+  const onDateBlur = (event: FocusEvent<HTMLInputElement>) => {
+    typingDateRef.current = false;
+    requestDateLoad(event.currentTarget.value);
+  };
+  const cancelPendingDate = () => {
+    setPendingDate(null);
+    updatePage(previous => ({ ...previous, dayIdDraft: previous.snapshot?.dayId ?? previous.dayIdDraft }));
+  };
+  const confirmPendingDate = () => {
+    const target = pendingDate;
+    setPendingDate(null);
+    if (target) void loadSnapshot(target);
   };
 
   const submitEnsureDay = () => {
@@ -1251,8 +1302,11 @@ export function CloudDayVendorsPage({
     <main className="cloud-day-vendors" aria-label="雲端日期設定與供應商管理" aria-busy={busy || page.loading}>
       <CommandProgress active={progressActive} />
       <header className="cloud-day-vendors__header">
-        <div>
+        <div className="cloud-day-vendors__title-row">
           <h1>{view === 'vendors' ? '供應商' : view === 'day' ? '菜單與開帳' : '營業日、菜單與供應商'}</h1>
+          <HelpTip label="資料與歷史說明">
+            日期與供應商資料都從伺服器完整載入。{'\n'}未確認開帳與零元開帳分開顯示。{'\n'}菜單與供應商的變更不會改寫已存的歷史快照。
+          </HelpTip>
         </div>
         <button
           type="button"
@@ -1268,10 +1322,6 @@ export function CloudDayVendorsPage({
         hidden={progressActive || busy}
         onReload={() => void loadSnapshot((snapshot?.dayId ?? page.dayIdDraft) || undefined, page.recovery?.phase === 'receipt' ? page.recovery.receipt : undefined)}
       />
-      <details className="cloud-day-vendors__intro">
-        <summary>資料與歷史說明</summary>
-        <p>日期與供應商資料只從伺服器完整載入。未確認開帳與零元開帳分開顯示；菜單與供應商變更不改寫既有歷史快照。</p>
-      </details>
 
       {page.loadError && <div className="cloud-day-vendors__alert" role="alert">{page.loadError}</div>}
       {page.actionError && <div className="cloud-day-vendors__alert" role="alert">{page.actionError}</div>}
@@ -1330,10 +1380,7 @@ export function CloudDayVendorsPage({
       {snapshot && (!page.loading || showingStale) && (
         <div className="cloud-day-vendors__content" data-testid="cloud-day-vendors-content" inert={showingStale || undefined}>
           {view !== 'vendors' && <><section className="cloud-day-vendors__date-panel" aria-label="營業日選擇">
-            <div className="cloud-day-vendors__section-heading">
-              <h2>營業日</h2>
-            </div>
-            <form className="cloud-day-vendors__date-form" onSubmit={submitDateSelection}>
+            <div className="cloud-day-vendors__date-form">
               <label htmlFor="cloud-day-vendors-date">查看或設定日期</label>
               <input
                 id="cloud-day-vendors-date"
@@ -1341,20 +1388,21 @@ export function CloudDayVendorsPage({
                 type="date"
                 min={snapshot.goLiveDate}
                 value={page.dayIdDraft || snapshot.dayId}
-                onChange={event => updatePage(previous => ({ ...previous, dayIdDraft: event.target.value, actionError: '' }))}
+                onChange={event => onDateChange(event.target.value)}
+                onKeyDown={onDateKeyDown}
+                onBlur={onDateBlur}
                 disabled={busy}
                 required
               />
-              <button type="submit" className="cloud-day-vendors__secondary" disabled={busy || page.dayIdDraft === snapshot.dayId}>
-                載入日期
-              </button>
-            </form>
-            <p className="cloud-day-vendors__help">使用權日期來自伺服器租約時間，瀏覽器時鐘不會決定營業日或改寫命令日期。若跨過臺北午夜，請先取得伺服器更新的使用權，再重新載入。</p>
-            <div className="cloud-day-vendors__date-meta">
-              <span>系統啟用日：{snapshot.goLiveDate}</span>
-              <span>伺服器使用權日期：{snapshot.selectionDate}</span>
-              <span>資料序號：{snapshot.seq}</span>
+              <HelpTip label="營業日說明">
+                營業日來自伺服器租約時間；瀏覽器時鐘不會決定營業日或改寫命令日期。{'\n'}改日期後會直接載入該日資料；有尚未送出的內容時會先詢問。{'\n'}除錯用：資料序號 {snapshot.seq}。
+              </HelpTip>
+              <div className="cloud-day-vendors__date-meta">
+                <span>系統啟用日：{snapshot.goLiveDate}</span>
+                <span>伺服器使用權日期：{snapshot.selectionDate}</span>
+              </div>
             </div>
+            <Callout variant="info">若跨過臺北午夜，請先取得伺服器更新的使用權，再重新載入。</Callout>
           </section>
 
           <section className="cloud-day-vendors__day-section" aria-label="指定營業日">
@@ -1369,10 +1417,11 @@ export function CloudDayVendorsPage({
                 </button>
               )}
             </div>
-            {snapshot.day?.status === 'closed' && <p className="cloud-day-vendors__warning">此日期已關帳，不能修改菜單與開帳金額。要修改請先到「日結」頁填寫原因重開。</p>}
+            {snapshot.day?.status === 'closed' && <Callout variant="warn">此日期已關帳，不能修改菜單與開帳金額。要修改請先到「日結」頁填寫原因重開。</Callout>}
 
             {snapshot.day && (
               <>
+                <div className="cloud-day-vendors__panels">
                 <section className="cloud-day-vendors__card" aria-label="日期菜單設定">
                   <div className="cloud-day-vendors__section-heading">
                     <div>
@@ -1388,11 +1437,11 @@ export function CloudDayVendorsPage({
                     </div>
                   </div>
 
-                  {source && source.blocked && <p className="cloud-day-vendors__warning">{blockedInheritanceMessage(source.blocked)}（來源日期：{source.sourceDayId}）</p>}
+                  {source && source.blocked && <Callout variant="warn">{blockedInheritanceMessage(source.blocked)}（來源日期：{source.sourceDayId}）</Callout>}
                   {canInherit && source && (
                     <div className="cloud-day-vendors__inherit-card">
                       <p>最近較早菜單：{source.sourceDayId} · {source.menu.itemName} · {formatMoney(source.menu.price)} · {source.menu.vendorNameSnapshot}</p>
-                      <p>沿用只選取這筆最新較早菜單，來源日期須早於目標日期且不晚於伺服器使用權日期；儲存後的菜單快照不會隨供應商變更。</p>
+                      <HelpTip label="沿用說明">沿用只選取這筆最新較早菜單，來源日期須早於目標日期且不晚於伺服器使用權日期。{'\n'}儲存後的菜單快照不會隨供應商變更。</HelpTip>
                       <div className="cloud-day-vendors__actions">
                         <button type="button" className="cloud-day-vendors__secondary" onClick={beginMenuInheritance} disabled={busy || !canMutateDay}>
                           帶入最新較早菜單
@@ -1423,10 +1472,10 @@ export function CloudDayVendorsPage({
                     </div>
                   </div>
                   {snapshot.dayId !== snapshot.selectionDate && (
-                    <p className="cloud-day-vendors__warning">開帳僅限伺服器使用權日期 {snapshot.selectionDate}。此日期可預排菜單，但不能預先開帳。</p>
+                    <Callout variant="warn">開帳僅限伺服器使用權日期 {snapshot.selectionDate}。此日期可預排菜單，但不能預先開帳。</Callout>
                   )}
                   {snapshot.dayId === snapshot.selectionDate && snapshot.selectionDate < snapshot.goLiveDate && (
-                    <p className="cloud-day-vendors__warning">伺服器使用權日期早於系統啟用日，尚不能設定開帳現金。</p>
+                    <Callout variant="warn">伺服器使用權日期早於系統啟用日，尚不能設定開帳現金。</Callout>
                   )}
                   {canSetOpeningCash && <LedgerUnclosedBanner ledger={ledger} onOpenAnomalies={onOpenAnomalies} />}
                   {canSetOpeningCash && ledger && lookupError && (
@@ -1458,9 +1507,10 @@ export function CloudDayVendorsPage({
                       } : {})}
                     />
                   ) : snapshot.dayId === snapshot.selectionDate && snapshot.day.status === 'closed' ? (
-                    <p className="cloud-day-vendors__warning">此日期已關帳，不能修改開帳現金。</p>
+                    <Callout variant="warn">此日期已關帳，不能修改開帳現金。</Callout>
                   ) : null}
                 </section>
+                </div>
               </>
             )}
           </section>
@@ -1469,8 +1519,13 @@ export function CloudDayVendorsPage({
           {view !== 'day' && <section className="cloud-day-vendors__vendor-section" aria-label="供應商管理">
             <div className="cloud-day-vendors__section-heading">
               <div>
-                <h2>供應商</h2>
-                <p>{snapshot.vendors.length} 家可管理供應商（停用資料仍可恢復；已移除資料由伺服器保留 tombstone，編號不重用）。</p>
+                <div className="cloud-day-vendors__title-row">
+                  <h2>供應商</h2>
+                  <HelpTip label="供應商說明">
+                    停用的供應商可以恢復；移除後不能恢復，編號也不會再使用。{'\n'}停用或移除都不會改到已存的菜單與交易。{'\n'}建立、編輯、停用、恢復與移除，每次都是一筆一筆送到伺服器確認。
+                  </HelpTip>
+                </div>
+                <p>{snapshot.vendors.length} 家供應商</p>
               </div>
               <button
                 type="button"
@@ -1514,7 +1569,7 @@ export function CloudDayVendorsPage({
                           <div className="cloud-day-vendors__row-actions">
                             {page.removingVendorId === vendor.vendorId ? (
                               <form className="cloud-day-vendors__remove-form" aria-label={`移除供應商 ${vendor.vendorId}`} onSubmit={event => submitVendorRemoval(event, vendor)}>
-                                <p>移除會保留稽核 tombstone 和歷史快照，不能重用編號。</p>
+                                <Callout variant="warn">移除後不能恢復，編號也不會再使用。</Callout>
                                 <label>移除原因（必填，最多 500 字）
                                   <textarea className="cloud-day-vendors__input" rows={2} maxLength={500} value={page.removeReason} onChange={event => updatePage(previous => ({ ...previous, removeReason: event.target.value }))} disabled={busy} required />
                                 </label>
@@ -1539,10 +1594,21 @@ export function CloudDayVendorsPage({
                 </table>
               </div>
             )}
-            <p className="cloud-day-vendors__footnote">建立、編輯、停用、恢復與移除都是逐筆伺服器命令。停用或移除供應商不會改寫營業日菜單及既有交易中的名稱快照。</p>
           </section>}
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingDate !== null}
+        title="捨棄草稿？"
+        message="菜單、開帳現金或供應商欄位還有尚未送出的內容，改日期會清除它們。"
+        confirmLabel="捨棄並載入"
+        cancelLabel="取消"
+        variant="danger"
+        defaultAction="cancel"
+        onConfirm={confirmPendingDate}
+        onCancel={cancelPendingDate}
+      />
 
       {!snapshot && !page.loading && !page.recovery && (
         <section className="cloud-day-vendors__unavailable" aria-label="雲端資料未載入">

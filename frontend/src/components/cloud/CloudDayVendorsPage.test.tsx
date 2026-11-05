@@ -854,6 +854,178 @@ describe('CloudDayVendorsPage', () => {
     });
     expect(screen.queryByText(new RegExp(`已確認 設定 ${future} 菜單 完成`))).not.toBeInTheDocument();
   });
+
+  describe('改日期即載入（#651）', () => {
+    const dateField = () => screen.getByLabelText('查看或設定日期');
+    const nextDay = '2026-10-16';
+
+    it('loads the server snapshot as soon as a complete valid date is chosen, without a load button', async () => {
+      renderPage();
+      await screen.findByRole('heading', { name: `${today} 營業日` });
+      expect(screen.queryByRole('button', { name: '載入日期' })).not.toBeInTheDocument();
+      repository.loadSnapshot.mockResolvedValueOnce(snapshot({ dayId: nextDay, day: { ...snapshot().day!, dayId: nextDay } }));
+
+      fireEvent.change(dateField(), { target: { value: nextDay } });
+
+      await screen.findByRole('heading', { name: `${nextDay} 營業日` });
+      expect(repository.loadSnapshot).toHaveBeenLastCalledWith(nextDay);
+    });
+
+    it('does not read for an empty date or one before the go-live date, and keeps the original error', async () => {
+      renderPage();
+      await screen.findByRole('heading', { name: `${today} 營業日` });
+      repository.loadSnapshot.mockClear();
+
+      fireEvent.change(dateField(), { target: { value: '' } });
+      fireEvent.blur(dateField());
+      fireEvent.change(dateField(), { target: { value: '2026-10-10' } });
+
+      expect(repository.loadSnapshot).not.toHaveBeenCalled();
+      expect(await screen.findByRole('alert')).toHaveTextContent(`營業日必須是 ${today} 或之後的有效日期。`);
+    });
+
+    it('waits for Enter or blur while the date is being typed by keyboard', async () => {
+      renderPage();
+      await screen.findByRole('heading', { name: `${today} 營業日` });
+      repository.loadSnapshot.mockClear();
+      repository.loadSnapshot.mockResolvedValue(snapshot({ dayId: nextDay, day: { ...snapshot().day!, dayId: nextDay } }));
+
+      fireEvent.keyDown(dateField(), { key: '6' });
+      fireEvent.change(dateField(), { target: { value: nextDay } });
+      expect(repository.loadSnapshot).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(dateField(), { key: 'Enter' });
+      await screen.findByRole('heading', { name: `${nextDay} 營業日` });
+      expect(repository.loadSnapshot).toHaveBeenCalledTimes(1);
+      expect(repository.loadSnapshot).toHaveBeenCalledWith(nextDay);
+    });
+
+    it('loads typed dates on blur', async () => {
+      renderPage();
+      await screen.findByRole('heading', { name: `${today} 營業日` });
+      repository.loadSnapshot.mockClear();
+      repository.loadSnapshot.mockResolvedValue(snapshot({ dayId: nextDay, day: { ...snapshot().day!, dayId: nextDay } }));
+
+      fireEvent.keyDown(dateField(), { key: '6' });
+      fireEvent.change(dateField(), { target: { value: nextDay } });
+      expect(repository.loadSnapshot).not.toHaveBeenCalled();
+      fireEvent.blur(dateField());
+
+      await screen.findByRole('heading', { name: `${nextDay} 營業日` });
+      expect(repository.loadSnapshot).toHaveBeenCalledWith(nextDay);
+    });
+
+    it('asks before discarding an unsent draft: cancel keeps the draft and date, confirm loads', async () => {
+      renderPage();
+      await screen.findByRole('heading', { name: `${today} 營業日` });
+      repository.loadSnapshot.mockClear();
+      fireEvent.change(screen.getByLabelText('菜單名稱'), { target: { value: '未送出的菜單' } });
+
+      fireEvent.change(dateField(), { target: { value: nextDay } });
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog).toHaveTextContent('捨棄草稿');
+      expect(repository.loadSnapshot).not.toHaveBeenCalled();
+
+      fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(repository.loadSnapshot).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('菜單名稱')).toHaveValue('未送出的菜單');
+      expect(dateField()).toHaveValue(today);
+
+      repository.loadSnapshot.mockResolvedValueOnce(snapshot({ dayId: nextDay, day: { ...snapshot().day!, dayId: nextDay } }));
+      fireEvent.change(dateField(), { target: { value: nextDay } });
+      fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: '捨棄並載入' }));
+      await screen.findByRole('heading', { name: `${nextDay} 營業日` });
+      expect(repository.loadSnapshot).toHaveBeenCalledWith(nextDay);
+    });
+
+    it('applies only the last response when an older read resolves late', async () => {
+      let resolveOld: (value: CloudDayVendorSnapshot) => void = () => {};
+      repository.loadSnapshot
+        .mockImplementationOnce(() => new Promise<CloudDayVendorSnapshot>(resolve => { resolveOld = resolve; }))
+        .mockResolvedValueOnce(snapshot({ dayId: today }));
+      const view = renderPage();
+      view.rerender(<CloudDayVendorsPage db={{} as Firestore} leaseEpoch={5} identityKey="uid-a:5" />);
+      await screen.findByRole('heading', { name: `${today} 營業日` });
+
+      await act(async () => { resolveOld(snapshot({ dayId: future, day: { ...snapshot().day!, dayId: future } })); });
+
+      expect(screen.getByRole('heading', { name: `${today} 營業日` })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: `${future} 營業日` })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('說明收進「?」、警示常駐（#650）', () => {
+    it('moves explanations into HelpTip and drops the details block and engineering terms', async () => {
+      repository.loadSnapshot.mockResolvedValue(snapshot({
+        vendors: [vendor('inactive-vendor', { status: 'inactive' })],
+      }));
+      const { container } = renderPage();
+      await screen.findByRole('heading', { name: `${today} 營業日` });
+
+      expect(container.querySelector('details')).toBeNull();
+      expect(screen.queryByText(/使用權日期來自伺服器租約時間/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/tombstone/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/資料序號/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/逐筆伺服器命令/)).not.toBeInTheDocument();
+      for (const name of ['資料與歷史說明', '營業日說明', '供應商說明']) {
+        expect(screen.getByRole('button', { name })).toBeInTheDocument();
+      }
+
+      fireEvent.click(screen.getByRole('button', { name: '供應商說明' }));
+      const tip = screen.getByRole('tooltip');
+      expect(tip).toHaveTextContent('停用的供應商可以恢復');
+      expect(tip).toHaveTextContent('移除後不能恢復，編號也不會再使用');
+      expect(tip).toHaveTextContent('不會改到已存的菜單與交易');
+      expect(tip.textContent).not.toMatch(/tombstone/i);
+    });
+
+    it('keeps the midnight sentence visible and out of the HelpTip', async () => {
+      renderPage();
+      await screen.findByRole('heading', { name: `${today} 營業日` });
+      const note = screen.getByText(/若跨過臺北午夜，請先取得伺服器更新的使用權，再重新載入。/);
+      expect(note.closest('.callout-ui')).not.toBeNull();
+      expect(note.textContent).not.toMatch(/瀏覽器時鐘/);
+    });
+
+    it('shows blocked-action reasons as Callout', async () => {
+      repository.loadSnapshot.mockResolvedValue(snapshot({ day: { ...snapshot().day!, status: 'closed' } }));
+      renderPage();
+      await screen.findByRole('heading', { name: `${today} 營業日` });
+      const closed = screen.getAllByText(/此日期已關帳，不能修改/);
+      expect(closed.length).toBeGreaterThanOrEqual(2);
+      for (const node of closed) expect(node.closest('.callout-ui.callout-warn')).not.toBeNull();
+    });
+
+    it('shows the future-day opening block reason as Callout', async () => {
+      repository.loadSnapshot.mockResolvedValue(snapshot({
+        dayId: future, selectionDate: today, day: { ...snapshot().day!, dayId: future },
+      }));
+      renderPage();
+      const note = await screen.findByText(/此日期可預排菜單，但不能預先開帳/);
+      expect(note.closest('.callout-ui.callout-warn')).not.toBeNull();
+    });
+
+    it('keeps an always-visible irreversibility warning in the remove form', async () => {
+      repository.loadSnapshot.mockResolvedValue(snapshot({
+        vendors: [vendor('inactive-vendor', { status: 'inactive' })],
+      }));
+      renderPage();
+      fireEvent.click(await screen.findByRole('button', { name: '移除' }));
+      const form = screen.getByRole('form', { name: '移除供應商 inactive-vendor' });
+      const warning = within(form).getByText(/移除後不能恢復，編號也不會再使用/);
+      expect(warning.closest('.callout-ui.callout-warn')).not.toBeNull();
+      expect(form.textContent).not.toMatch(/tombstone/i);
+    });
+
+    it('places the menu and opening-cash panels side by side in one row', async () => {
+      renderPage();
+      const menu = await screen.findByRole('region', { name: '日期菜單設定' });
+      const opening = screen.getByRole('region', { name: '開帳現金設定' });
+      expect(menu.parentElement).toBe(opening.parentElement);
+      expect(menu.parentElement).toHaveClass('cloud-day-vendors__panels');
+    });
+  });
 });
 
 describe('CloudDayVendorsPage: ledger warnings and the opening difference reason (contract §11)', () => {
@@ -897,6 +1069,17 @@ describe('CloudDayVendorsPage: ledger warnings and the opening difference reason
     }), { onOpenAnomalies });
     const banner = await screen.findByLabelText('過去未關帳警示');
     expect(banner).toHaveTextContent('過去有 2 天尚未關帳（2026-10-12、2026-10-14）');
+    fireEvent.click(within(banner).getByRole('button', { name: '查看帳務異常' }));
+    expect(onOpenAnomalies).toHaveBeenCalledTimes(1);
+  });
+
+  it('presents the unclosed-past-day banner through Callout with the same name and button', async () => {
+    const onOpenAnomalies = vi.fn();
+    renderWithLedger(readyLedger({
+      anomalies: [{ kind: 'unclosed-past-day', dayId: '2026-10-12', status: 'open', openingCash: 500, activeTransactionCount: 2 }],
+    }), { onOpenAnomalies });
+    const banner = await screen.findByLabelText('過去未關帳警示');
+    expect(banner.closest('.callout-ui.callout-warn')).not.toBeNull();
     fireEvent.click(within(banner).getByRole('button', { name: '查看帳務異常' }));
     expect(onOpenAnomalies).toHaveBeenCalledTimes(1);
   });
