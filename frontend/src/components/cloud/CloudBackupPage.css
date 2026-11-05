@@ -16,3 +16,28 @@
 .cloud-backup .bk-callout { margin: var(--s3) 0; }
 .cloud-backup .bk-callout p { margin: 0; color: inherit; }
 .cloud-backup .bk-flow-sub .help-tip-ui { font-size: var(--t-md); }
+
+.cloud-backup .bk-flow-sub {
+  font-size: var(--t-sm);
+}
+
+.cloud-backup .bk-flow label {
+  font-size: var(--t-sm);
+}
+
+.cloud-backup .bk-flow input[type="password"],
+.cloud-backup .bk-flow input[type="file"] {
+  font-size: var(--t-sm);
+}
+
+.cloud-backup .bk-flow input::file-selector-button {
+  font-size: var(--t-sm);
+}
+
+.cloud-backup .btn-confirm {
+  font-size: var(--t-md);
+}
+
+.cloud-backup .bk-recovery span {
+  font-size: var(--t-sm);
+}
