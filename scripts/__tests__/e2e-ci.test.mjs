@@ -36,6 +36,25 @@ test('CI runs every existing Playwright configuration and Hosting smoke in isola
   assert.match(workflow, /name: test-results-\$\{\{ matrix\.config \}\}/);
 });
 
+test('browser shard budget leaves execution time after observed slow dependency installation', () => {
+  const shards = workflow.split('  e2e-shards:\n')[1]?.split('  e2e:\n')[0] ?? '';
+  const jobMinutes = Number(shards.match(/^    timeout-minutes: (\d+)$/m)?.[1]);
+  // run 42058577173: browser/dependency installation was cancelled after 559s.
+  // run 42055665921: npm ci 53s, PDF tools 5s, longest browser suite 238s.
+  // Installation is a censored lower bound, not a guarantee of mirror latency.
+  const observedInstallSeconds = 559;
+  const dependencySeconds = 53 + 5;
+  const longestSuiteSeconds = 238;
+  const setupAndArtifactReserveSeconds = 60;
+  assert.ok(Number.isFinite(jobMinutes), 'browser shards require an explicit finite job timeout');
+  assert.ok(jobMinutes * 60 >= observedInstallSeconds + dependencySeconds
+    + longestSuiteSeconds + setupAndArtifactReserveSeconds,
+  'job budget must leave room for browser execution and cleanup after observed slow installation');
+  assert.ok(jobMinutes <= 20, 'bounded CI repair must not permit jobs longer than 20 minutes');
+  assert.match(shards, /run: npx playwright install chromium --with-deps/);
+  assert.doesNotMatch(shards, /continue-on-error:/);
+});
+
 test('aggregate gate accepts only a successful full run or an explicit docs-only bypass', () => {
   const run = (...args) => spawnSync(process.execPath, [gate, ...args], { cwd: repo }).status;
   assert.equal(run('success', 'false', 'success'), 0);
