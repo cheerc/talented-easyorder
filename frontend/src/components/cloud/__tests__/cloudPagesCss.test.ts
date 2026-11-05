@@ -164,6 +164,13 @@ describe('#648 P1 雲端等比放大只限雲端模式', () => {
     for (const sel of selectors) expect(sel).toContain('[data-app-mode="cloud"]');
   });
 
+  it('雲端 body 字級是 var(--t-md)（改版前預設 scale=large 為 17px；覆蓋 body[data-fs] 的 --fs）', () => {
+    const css = cloudScale().replace(/\/\*[\s\S]*?\*\//g, '');
+    const body = css.match(/html\[data-app-mode="cloud"\] body\s*\{([^}]*)\}/);
+    expect(body).not.toBeNull();
+    expect(body![1]).toMatch(/font-size:\s*var\(--t-md\)/);
+  });
+
   it('index.css 引入 cloud-scale.css', () => {
     expect(readFileSync(INDEX_CSS, 'utf8')).toContain("@import './styles/cloud-scale.css'");
   });
