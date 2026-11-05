@@ -227,4 +227,53 @@ describe('CloudDayVendorForms', () => {
       expect(onSubmit).not.toHaveBeenCalled();
     });
   });
+  describe('說明與警示分類（#650）', () => {
+    it('puts form usage notes into HelpTip instead of inline paragraphs', () => {
+      const { unmount } = render(<VendorFormHarness mode="create" initial={{ vendorId: '', name: '', phone: '', note: '', status: 'active' }} onSubmit={vi.fn()} />);
+      expect(screen.queryByText('新供應商會以「使用中」狀態建立。')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '新增供應商說明' }));
+      expect(screen.getByRole('tooltip')).toHaveTextContent('新供應商會以「使用中」狀態建立。');
+      unmount();
+
+      render(<MenuFormHarness onSubmit={vi.fn()} />);
+      expect(screen.queryByText('僅可選擇使用中的供應商。')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '菜單說明' }));
+      expect(screen.getByRole('tooltip')).toHaveTextContent('僅可選擇使用中的供應商。');
+    });
+
+    it('shows the opening-cash warnings as always-visible Callout', () => {
+      const onChange = vi.fn();
+      const previousClosed = {
+        dayId: '2026-10-14', countedCash: 870, postCloseNet: 0,
+      } as unknown as PreviousClosedDay;
+      render(
+        <CloudDayOpeningCashForm
+          businessDate="2026-10-15"
+          currentOpeningCash={null}
+          amountText="800"
+          onAmountTextChange={onChange}
+          onSubmit={vi.fn()}
+          previousClosed={previousClosed}
+          ledgerNotice="無法確認上一個已關帳日的實點現金（離線），暫時不能開帳。"
+        />,
+      );
+      for (const pattern of [
+        /尚未確認開帳。請輸入實際金額；輸入 0 才代表已確認為零元。/,
+        /上一個已關帳日 2026-10-14 的實點現金為 NT\$ 870/,
+        /無法確認上一個已關帳日的實點現金（離線），暫時不能開帳。/,
+        /開帳現金比上次關帳實點少了 NT\$ 70/,
+      ]) {
+        expect(screen.getByText(pattern).closest('.callout-ui')).not.toBeNull();
+      }
+      expect(screen.getByText(/比上次關帳實點少了/).closest('.callout-warn')).not.toBeNull();
+      expect(screen.queryByRole('button', { name: /說明/ })).not.toBeInTheDocument();
+    });
+
+    it('shows the confirmed opening-cash amount as Callout', () => {
+      render(
+        <CloudDayOpeningCashForm businessDate="2026-10-15" currentOpeningCash={0} amountText="0" onAmountTextChange={vi.fn()} onSubmit={vi.fn()} />,
+      );
+      expect(screen.getByText(/伺服器已確認開帳現金 NT\$ 0/).closest('.callout-ui')).not.toBeNull();
+    });
+  });
 });
