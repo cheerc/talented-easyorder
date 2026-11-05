@@ -1741,7 +1741,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
     <ActionCard
       icon={<UtensilsCrossed size={32} strokeWidth={1.6} />}
       title={backfillView ? `${businessDate} 尚未設定菜單` : '今日尚未設定菜單'}
-      description={`${businessDate}・設定後就能訂購${backfillView ? '當日' : '今日'}餐點；其他餐點仍可登記`}
+      description={`${businessDate}・設定後就能訂購${backfillView ? '當日' : '今日'}餐點`}
       actionLabel="前往設定菜單與開帳（F3）"
       onClick={() => onOpenSettings?.()}
       disabled={!onOpenSettings}
