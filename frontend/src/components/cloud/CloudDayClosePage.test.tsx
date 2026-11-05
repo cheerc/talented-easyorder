@@ -257,16 +257,16 @@ describe('CloudDayClosePage', () => {
     const row = screen.getByTestId('cloud-settlement-1');
     expect(within(row).getByText('少 NT$ 10')).toBeInTheDocument();
     expect(within(row).getByText('找零少收 10 元')).toBeInTheDocument();
-    expect(screen.getByText(/沒有需要關帳的營業日/)).toBeInTheDocument();
+    expect(screen.getByText('過去沒有未關帳的日子')).toBeInTheDocument();
   });
 
-  it('uses EmptyState for a day with no pending closes or settlement versions', async () => {
+  it('uses EmptyState for a day with no settlement versions, and one status line when no past day is unclosed', async () => {
     repository.readOverview.mockResolvedValue(overview({ unclosedDays: [] }));
     repository.read.mockResolvedValue(dayState({ status: 'closed', revision: 7, lastSettlementRevision: 1, settlements: [] }));
     renderPage();
 
-    const noUnclosed = await screen.findByText(`到伺服器使用權日期 ${today} 為止，沒有需要關帳的營業日。`);
-    expect(noUnclosed.closest('.empty-title')).not.toBeNull();
+    expect(await screen.findByText('過去沒有未關帳的日子')).toBeInTheDocument();
+    expect(screen.queryByLabelText('未關帳營業日')).not.toBeInTheDocument();
     const noSettlements = screen.getByText('這天還沒有日結版本。');
     expect(noSettlements.closest('.empty-title')).not.toBeNull();
     const noPostCloseEntries = screen.getByText('這個關帳版本還沒有補記。');
@@ -570,19 +570,21 @@ describe('CloudDayClosePage', () => {
     }));
     repository.read.mockResolvedValue(dayState({ openingCash: null, expectedCash: null, totals: { ...dayState().totals, activeTransactionCount: 0 } }));
     renderPage();
-    expect(await screen.findByTestId('cloud-no-business-days')).toHaveTextContent(/沒有開帳也沒有交易的過去日期/);
+    expect(await screen.findByTestId('cloud-no-business-days')).toHaveTextContent('2026-10-10');
     expect(screen.getByTestId('cloud-no-business-2026-10-10')).toHaveTextContent('2026-10-10');
     expect(screen.queryByTestId('cloud-unclosed-2026-10-10')).not.toBeInTheDocument();
-    expect(screen.getByTestId('cloud-unclosed-2026-10-12')).toHaveTextContent('缺開帳現金，需補開帳後關帳');
+    expect(screen.getByTestId('cloud-unclosed-2026-10-12')).toHaveTextContent('2026-10-12');
+    expect(within(screen.getByTestId('cloud-unclosed-2026-10-12')).getByText('待確認開帳')).toHaveClass('badge-ui', 'badge-warn');
     const reopened = screen.getByTestId(`cloud-unclosed-${past}`);
-    expect(reopened).toHaveTextContent('需關帳');
+    expect(reopened).toHaveTextContent('2 筆交易');
     expect(within(reopened).getByText('已重開')).toHaveClass('badge-ui', 'badge-warn');
-    expect(screen.getByTestId(`cloud-unclosed-${today}`)).toHaveTextContent('尚未確認開帳現金');
+    // Today is the page's own day (shown by the date row), not a past unclosed day.
+    expect(screen.queryByTestId(`cloud-unclosed-${today}`)).not.toBeInTheDocument();
     expect(screen.getByText(/尚未確認開帳現金，不能關帳/)).toBeInTheDocument();
     expect(screen.queryByRole('form', { name: `${today} 關帳` })).not.toBeInTheDocument();
 
     repository.read.mockResolvedValue(dayState({ dayId: past, status: 'reopened', openingCash: 500, expectedCash: 670 }));
-    fireEvent.click(within(screen.getByTestId(`cloud-unclosed-${past}`)).getByRole('button', { name: '查看' }));
+    fireEvent.click(screen.getByTestId(`cloud-unclosed-${past}`));
     expect(await screen.findByRole('heading', { name: `${past} 日結` })).toBeInTheDocument();
     expect(repository.read).toHaveBeenLastCalledWith(past);
     expect(screen.getByRole('form', { name: `${past} 關帳` })).toBeInTheDocument();
@@ -595,7 +597,6 @@ describe('CloudDayClosePage', () => {
     }));
     renderPage();
     fireEvent.change(await screen.findByLabelText('查看日期'), { target: { value: past } });
-    fireEvent.click(screen.getByRole('button', { name: '載入日期' }));
     expect(await screen.findByText(/這天沒有開帳現金，也沒有任何交易。那天沒有營業就不需關帳/)).toBeInTheDocument();
     expect(screen.queryByRole('form', { name: `${past} 關帳` })).not.toBeInTheDocument();
     expect(screen.getByRole('form', { name: `${past} 補開帳` })).toBeInTheDocument();
@@ -607,7 +608,6 @@ describe('CloudDayClosePage', () => {
     repository.read.mockResolvedValue(missing);
     renderPage();
     fireEvent.change(await screen.findByLabelText('查看日期'), { target: { value: past } });
-    fireEvent.click(screen.getByRole('button', { name: '載入日期' }));
     expect(await screen.findByText('這天有交易但沒有開帳現金，要先補開帳才能關帳。')).toBeInTheDocument();
     expect(screen.queryByRole('form', { name: `${past} 關帳` })).not.toBeInTheDocument();
     const form = screen.getByRole('form', { name: `${past} 補開帳` });
@@ -647,12 +647,10 @@ describe('CloudDayClosePage', () => {
     ]) {
       repository.read.mockResolvedValue(state);
       fireEvent.change(screen.getByLabelText('查看日期'), { target: { value: past } });
-      fireEvent.click(screen.getByRole('button', { name: '載入日期' }));
       expect(await screen.findByRole('heading', { name: `${past} 日結` })).toBeInTheDocument();
       expect(screen.queryByRole('form', { name: `${past} 補開帳` })).not.toBeInTheDocument();
       fireEvent.change(screen.getByLabelText('查看日期'), { target: { value: today } });
       repository.read.mockResolvedValue(dayState({ openingCash: null, expectedCash: null }));
-      fireEvent.click(screen.getByRole('button', { name: '載入日期' }));
       expect(await screen.findByRole('heading', { name: `${today} 日結` })).toBeInTheDocument();
     }
     expect(repository.backfillOpening).not.toHaveBeenCalled();
@@ -727,10 +725,6 @@ describe('CloudDayClosePage: ledger warnings (contract §11)', () => {
       ],
     },
   };
-  const cleanLedger: CloudLedgerView = {
-    status: 'ready', snapshot: { today, goLiveDate: '2026-10-01', closedDays: [], seq: 20, anomalies: [] },
-  };
-
   beforeEach(() => {
     vi.resetAllMocks();
     vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValue(commandId) });
@@ -754,25 +748,11 @@ describe('CloudDayClosePage: ledger warnings (contract §11)', () => {
     );
   }
 
-  it('shows a banner listing every unclosed past day with a button to the anomalies page', async () => {
-    const onOpenAnomalies = vi.fn();
-    renderWithLedger(unclosedLedger, { onOpenAnomalies });
-    const banner = await screen.findByLabelText('過去未關帳警示');
-    expect(banner).toHaveTextContent('過去有 2 天尚未關帳（2026-10-14、2026-10-15），請儘速處理');
-    fireEvent.click(within(banner).getByRole('button', { name: '查看帳務異常' }));
-    expect(onOpenAnomalies).toHaveBeenCalledTimes(1);
-    expect(await closeForm()).toBeInTheDocument();
-  });
-
-  it.each<[string, CloudLedgerView | undefined]>([
-    ['no unclosed past day', cleanLedger],
-    ['a loading ledger', { status: 'loading' }],
-    ['a failed ledger', { status: 'error', message: 'x' }],
-    ['no ledger', undefined],
-  ])('shows no banner for %s', async (_label, ledger) => {
-    renderWithLedger(ledger);
+  it('does not show the ledger banner on this page (the unclosed past days are the page\'s own warning, #648 R8)', async () => {
+    renderWithLedger(unclosedLedger);
     await closeForm();
     expect(screen.queryByLabelText('過去未關帳警示')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '查看帳務異常' })).not.toBeInTheDocument();
   });
 
   it('opens on the day sent from the anomalies page', async () => {
@@ -1107,7 +1087,7 @@ describe('CloudDayClosePage: backfill (contract §13)', () => {
     expect(info).toHaveTextContent('這一天關過帳後重開；補登完要再關帳一次，現金仍要與下一天的開帳對齊。');
     const row = screen.getByTestId(`cloud-unclosed-${gap}`);
     expect(within(row).getByText('回填中（已重開）')).toHaveClass('badge-ui', 'badge-warn');
-    expect(row).toHaveTextContent('補登完成後關帳 · 2 筆交易');
+    expect(row).toHaveTextContent('2 筆交易');
     fireEvent.click(within(info).getByRole('button', { name: `到訂餐頁補登 ${gap}` }));
     expect(onOpenOrders).toHaveBeenCalledWith(gap);
   });
@@ -2056,5 +2036,311 @@ describe('CloudDayClosePage: #587 P2 data updated elsewhere', () => {
     renderPage();
     await screen.findByRole('heading', { name: `${today} 日結` });
     expect(screen.queryByTestId('data-updated-notice')).toBeNull();
+  });
+});
+
+describe('CloudDayClosePage: F2 今日 layout and date auto-load (#648 P4)', () => {
+  const past = '2026-10-15';
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValue(commandId) });
+    repository.readOverview.mockResolvedValue(overview());
+    repository.read.mockImplementation(async (dayId: string) => dayState({ dayId }));
+    repository.closeDay.mockResolvedValue(successful('CloseDay'));
+    repository.findPreviousClosed.mockResolvedValue({ previous: null, seq: 20 });
+    repository.readCommand.mockResolvedValue(null);
+    repository.readLedger.mockResolvedValue({ today, goLiveDate: '2026-10-01', anomalies: [], closedDays: [], seq: 20 });
+  });
+
+  function renderWith(extra: { onOpenAnomalies?: () => void } = {}) {
+    render(<CloudDayClosePage db={{} as Firestore} leaseEpoch={4} identityKey="uid-a:4" {...extra} />);
+  }
+
+  const dateInput = () => screen.getByLabelText('查看日期');
+
+  describe('date input', () => {
+    it('loads a complete valid date as soon as it changes, with no load button', async () => {
+      renderWith();
+      await screen.findByRole('heading', { name: `${today} 日結` });
+      expect(screen.queryByRole('button', { name: '載入日期' })).not.toBeInTheDocument();
+      fireEvent.change(dateInput(), { target: { value: past } });
+      expect(await screen.findByRole('heading', { name: `${past} 日結` })).toBeInTheDocument();
+      expect(repository.read).toHaveBeenLastCalledWith(past);
+    });
+
+    it('while typing, waits for Enter before reading, and only reads once', async () => {
+      renderWith();
+      await screen.findByRole('heading', { name: `${today} 日結` });
+      const reads = repository.read.mock.calls.length;
+      fireEvent.keyDown(dateInput(), { key: '5' });
+      fireEvent.change(dateInput(), { target: { value: past } });
+      expect(repository.read).toHaveBeenCalledTimes(reads);
+      fireEvent.keyDown(dateInput(), { key: 'Enter' });
+      expect(await screen.findByRole('heading', { name: `${past} 日結` })).toBeInTheDocument();
+      expect(repository.read).toHaveBeenCalledTimes(reads + 1);
+    });
+
+    it('while typing, also reads when the field loses focus', async () => {
+      renderWith();
+      await screen.findByRole('heading', { name: `${today} 日結` });
+      fireEvent.keyDown(dateInput(), { key: '5' });
+      fireEvent.change(dateInput(), { target: { value: past } });
+      fireEvent.blur(dateInput());
+      expect(await screen.findByRole('heading', { name: `${past} 日結` })).toBeInTheDocument();
+      expect(repository.read).toHaveBeenLastCalledWith(past);
+    });
+
+    it('does not read an incomplete or too-early date and shows the original error', async () => {
+      renderWith();
+      await screen.findByRole('heading', { name: `${today} 日結` });
+      const reads = repository.read.mock.calls.length;
+      fireEvent.change(dateInput(), { target: { value: '' } });
+      expect(await screen.findByText('日期必須是 2026-10-01 或之後的有效日期。')).toBeInTheDocument();
+      fireEvent.change(dateInput(), { target: { value: '2026-09-30' } });
+      expect(await screen.findByText('日期必須是 2026-10-01 或之後的有效日期。')).toBeInTheDocument();
+      fireEvent.blur(dateInput());
+      expect(repository.read).toHaveBeenCalledTimes(reads);
+      expect(screen.getByRole('heading', { name: `${today} 日結` })).toBeInTheDocument();
+    });
+
+    it('does not show the error while an incomplete date is still being typed', async () => {
+      renderWith();
+      await screen.findByRole('heading', { name: `${today} 日結` });
+      fireEvent.keyDown(dateInput(), { key: '1' });
+      fireEvent.change(dateInput(), { target: { value: '' } });
+      expect(screen.queryByText('日期必須是 2026-10-01 或之後的有效日期。')).not.toBeInTheDocument();
+      fireEvent.blur(dateInput());
+      expect(await screen.findByText('日期必須是 2026-10-01 或之後的有效日期。')).toBeInTheDocument();
+    });
+
+    it('asks to discard the draft first, and keeps the draft and the day when cancelled', async () => {
+      renderWith();
+      const form = await closeForm();
+      fireEvent.change(within(form).getByRole('textbox', { name: '實點現金（元）' }), { target: { value: '1170' } });
+      const reads = repository.read.mock.calls.length;
+      fireEvent.change(dateInput(), { target: { value: past } });
+      const dialog = await screen.findByRole('dialog', { name: '捨棄草稿？' });
+      expect(repository.read).toHaveBeenCalledTimes(reads);
+      fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: '捨棄草稿？' })).not.toBeInTheDocument());
+      expect(repository.read).toHaveBeenCalledTimes(reads);
+      expect(within(await closeForm()).getByRole('textbox', { name: '實點現金（元）' })).toHaveValue('1170');
+      expect(dateInput()).toHaveValue(today);
+    });
+
+    it('loads the new day and drops the draft once the discard is confirmed', async () => {
+      renderWith();
+      const form = await closeForm();
+      fireEvent.change(within(form).getByRole('textbox', { name: '實點現金（元）' }), { target: { value: '1170' } });
+      fireEvent.change(dateInput(), { target: { value: past } });
+      const dialog = await screen.findByRole('dialog', { name: '捨棄草稿？' });
+      fireEvent.click(within(dialog).getByRole('button', { name: '捨棄並載入' }));
+      expect(await screen.findByRole('heading', { name: `${past} 日結` })).toBeInTheDocument();
+      expect(within(screen.getByRole('form', { name: `${past} 關帳` })).getByRole('textbox', { name: '實點現金（元）' })).toHaveValue('');
+    });
+
+    it('asks before discarding an open reopen form too', async () => {
+      repository.read.mockImplementation(async (dayId: string) => dayState({
+        dayId, status: 'closed', revision: 7, lastSettlementRevision: 1, settlements: [version(1)],
+      }));
+      renderWith();
+      fireEvent.click(await screen.findByRole('button', { name: '重開這一天' }));
+      fireEvent.change(dateInput(), { target: { value: past } });
+      expect(await screen.findByRole('dialog', { name: '捨棄草稿？' })).toBeInTheDocument();
+    });
+
+    it('loads without asking when there is no draft', async () => {
+      renderWith();
+      await closeForm();
+      fireEvent.change(dateInput(), { target: { value: past } });
+      expect(screen.queryByRole('dialog', { name: '捨棄草稿？' })).not.toBeInTheDocument();
+      expect(await screen.findByRole('heading', { name: `${past} 日結` })).toBeInTheDocument();
+    });
+
+    it('keeps the date field while a day loads, and shows only the last requested day when an earlier read answers late', async () => {
+      renderWith();
+      await screen.findByRole('heading', { name: `${today} 日結` });
+      let resolveSlow: (value: CloudDayCloseState) => void = () => undefined;
+      repository.read.mockImplementation((dayId: string) => dayId === past
+        ? new Promise<CloudDayCloseState>(resolve => { resolveSlow = resolve; })
+        : Promise.resolve(dayState({ dayId })));
+      fireEvent.change(dateInput(), { target: { value: past } });
+      await waitFor(() => expect(repository.read).toHaveBeenLastCalledWith(past));
+      // The field stays mounted while the first request is pending, so a second pick is possible.
+      fireEvent.change(dateInput(), { target: { value: '2026-10-16' } });
+      expect(await screen.findByRole('heading', { name: '2026-10-16 日結' })).toBeInTheDocument();
+      await act(async () => { resolveSlow(dayState({ dayId: past })); });
+      expect(screen.getByRole('heading', { name: '2026-10-16 日結' })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: `${past} 日結` })).not.toBeInTheDocument();
+      expect(dateInput()).toHaveValue('2026-10-16');
+    });
+  });
+
+  describe('unclosed past days', () => {
+    it('shows no list section and one OK status line when no past day is unclosed', async () => {
+      repository.readOverview.mockResolvedValue(overview({ unclosedDays: [] }));
+      renderWith();
+      await screen.findByRole('heading', { name: `${today} 日結` });
+      expect(screen.queryByLabelText('未關帳營業日')).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: '未關帳營業日' })).not.toBeInTheDocument();
+      expect(screen.getByText('過去沒有未關帳的日子')).toBeInTheDocument();
+    });
+
+    it('treats only today as no past unclosed day', async () => {
+      renderWith();
+      await screen.findByRole('heading', { name: `${today} 日結` });
+      expect(screen.getByText('過去沒有未關帳的日子')).toBeInTheDocument();
+    });
+
+    it('shows a warning with a date chip per unclosed past day, and a chip loads that day', async () => {
+      repository.readOverview.mockResolvedValue(overview({
+        unclosedDays: [
+          { dayId: past, status: 'open', openingCash: 500, activeTransactionCount: 2, kind: 'needs-close', backfill: null },
+          { dayId: today, status: 'open', openingCash: 1000, activeTransactionCount: 4, kind: 'needs-close', backfill: null },
+        ],
+      }));
+      renderWith();
+      const section = await screen.findByLabelText('未關帳營業日');
+      expect(section).toHaveTextContent('過去有 1 天還沒關帳');
+      expect(screen.queryByText('過去沒有未關帳的日子')).not.toBeInTheDocument();
+      const chip = within(section).getByRole('button', { name: new RegExp(`${past}.*2 筆交易`) });
+      fireEvent.click(chip);
+      expect(await screen.findByRole('heading', { name: `${past} 日結` })).toBeInTheDocument();
+      expect(repository.read).toHaveBeenLastCalledWith(past);
+    });
+
+    it('lists the first days and sends the rest to the anomalies page when there are many', async () => {
+      const days = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11'];
+      repository.readOverview.mockResolvedValue(overview({
+        unclosedDays: days.map(dayId => ({
+          dayId, status: 'open' as const, openingCash: 500, activeTransactionCount: 1, kind: 'needs-close' as const, backfill: null,
+        })),
+      }));
+      const onOpenAnomalies = vi.fn();
+      renderWith({ onOpenAnomalies });
+      const section = await screen.findByLabelText('未關帳營業日');
+      expect(section).toHaveTextContent('過去有 7 天還沒關帳');
+      expect(within(section).getAllByRole('button', { name: /筆交易/ })).toHaveLength(5);
+      fireEvent.click(within(section).getByRole('button', { name: '到帳務檢查看全部' }));
+      expect(onOpenAnomalies).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not hide days when there is no anomalies page to send the rest to', async () => {
+      const days = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11'];
+      repository.readOverview.mockResolvedValue(overview({
+        unclosedDays: days.map(dayId => ({
+          dayId, status: 'open' as const, openingCash: 500, activeTransactionCount: 1, kind: 'needs-close' as const, backfill: null,
+        })),
+      }));
+      renderWith();
+      const section = await screen.findByLabelText('未關帳營業日');
+      expect(within(section).getAllByRole('button', { name: /筆交易/ })).toHaveLength(7);
+      expect(within(section).queryByRole('button', { name: '到帳務檢查看全部' })).not.toBeInTheDocument();
+    });
+
+    it('moves the no-business explanation into a help tip and keeps its days clickable', async () => {
+      repository.readOverview.mockResolvedValue(overview({
+        unclosedDays: [{ dayId: '2026-10-10', status: 'open', openingCash: null, activeTransactionCount: 0, kind: 'no-business', backfill: null }],
+      }));
+      renderWith();
+      const region = await screen.findByTestId('cloud-no-business-days');
+      expect(region).not.toHaveTextContent('那天沒有營業就不需處理');
+      fireEvent.focus(within(region).getByRole('button', { name: '沒有營業日期說明' }));
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('那天沒有營業就不需處理');
+      fireEvent.click(within(region).getByTestId('cloud-no-business-2026-10-10'));
+      expect(await screen.findByRole('heading', { name: '2026-10-10 日結' })).toBeInTheDocument();
+    });
+  });
+
+  describe('layout and wording', () => {
+    it('shows three stat tiles with the difference marked as a warning only when it is not zero', async () => {
+      repository.read.mockResolvedValue(dayState({
+        status: 'closed', revision: 7, lastSettlementRevision: 1, settlements: [version(1)],
+      }));
+      renderWith();
+      await screen.findByRole('heading', { name: `${today} 日結` });
+      const expected = screen.getByRole('group', { name: '應有現金 NT$ 1,170' });
+      const counted = screen.getByRole('group', { name: '實點現金 NT$ 1,160' });
+      const diff = screen.getByRole('group', { name: /^差額/ });
+      expect(expected).toHaveClass('stat-tile-ui');
+      expect(counted).toHaveClass('stat-tile-ui');
+      expect(diff).toHaveClass('stat-tile-ui--warn');
+      expect(screen.queryByText('未結營業日數')).not.toBeInTheDocument();
+    });
+
+    it('does not mark the difference when it is zero', async () => {
+      repository.read.mockResolvedValue(dayState({
+        status: 'closed', revision: 7, lastSettlementRevision: 1,
+        settlements: [version(1, { countedCash: 1170, difference: 0, note: '' })],
+      }));
+      renderWith();
+      await screen.findByRole('heading', { name: `${today} 日結` });
+      expect(screen.getByRole('group', { name: /^差額/ })).not.toHaveClass('stat-tile-ui--warn');
+    });
+
+    it('has no engineering info or load-date row text beside the date, and shows the day state there', async () => {
+      renderWith();
+      await screen.findByRole('heading', { name: `${today} 日結` });
+      const state = screen.getByTestId('cloud-day-state');
+      expect(state).toHaveTextContent('今天');
+      expect(within(state).getByText('開啟中')).toHaveClass('badge-ui', 'badge-warn');
+      expect(screen.queryByText(/資料序號/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/伺服器使用權日期/)).not.toBeInTheDocument();
+    });
+
+    it('puts the intro explanation in a help tip instead of a details block', async () => {
+      const { container } = render(<CloudDayClosePage db={{} as Firestore} leaseEpoch={4} identityKey="uid-a:4" />);
+      await screen.findByRole('heading', { name: `${today} 日結` });
+      expect(container.querySelector('details.cloud-day-close__intro')).toBeNull();
+      expect(screen.queryByText(/應有現金由伺服器依營業日統計計算/)).not.toBeInTheDocument();
+      fireEvent.focus(screen.getByRole('button', { name: '應有現金與關帳版本說明' }));
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('應有現金由伺服器依營業日統計計算');
+    });
+
+    it('keeps money, irreversibility and blocking warnings visible in callouts', async () => {
+      repository.read.mockImplementation(async (dayId: string) => dayState({ dayId }));
+      renderWith();
+      const form = await closeForm();
+      const warning = within(form).getByText(/關帳後不能再新增或更正交易、菜單與開帳現金/);
+      expect(warning.closest('.callout-ui')).toHaveClass('callout-warn');
+      // How-to prose about the close is behind the help tip, not on the page.
+      expect(within(form).queryByText(/一般現金差額可在下方留下有原因的關帳後補記/)).not.toBeInTheDocument();
+      fireEvent.focus(within(form).getByRole('button', { name: '關帳說明' }));
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('一般現金差額可在下方留下有原因的關帳後補記');
+    });
+
+    it('keeps the closed-day warnings visible and the reopen irreversibility notice in callouts', async () => {
+      repository.read.mockResolvedValue(dayState({
+        status: 'closed', revision: 7, lastSettlementRevision: 1, settlements: [version(1)],
+      }));
+      renderWith();
+      await screen.findByRole('heading', { name: `${today} 日結` });
+      expect(screen.getByText(/差額超過 20,000 元時需依現場流程處理，不可拆成多筆補記/).closest('.callout-ui')).toHaveClass('callout-warn');
+      expect(screen.getByText(/另一個視窗仍可能同時補記/).closest('.callout-ui')).toHaveClass('callout-warn');
+      expect(screen.getByText(/每次關帳或重開都新增一個不能修改的日結版本/).closest('.callout-ui')).not.toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: '重開這一天' }));
+      expect(screen.getByText(/舊的關帳版本保留不變；修正後要重新關帳/).closest('.callout-ui')).toHaveClass('callout-warn');
+    });
+
+    it('keeps the backfill irreversibility warning visible and moves the how-to behind a help tip', async () => {
+      repository.readOverview.mockResolvedValue(overview({
+        unclosedDays: [{ dayId: past, status: 'open', openingCash: null, activeTransactionCount: 3, kind: 'missing-opening', backfill: null }],
+      }));
+      repository.read.mockImplementation(async (dayId: string) => dayState({ dayId, openingCash: null, expectedCash: null }));
+      renderWith();
+      fireEvent.change(await screen.findByLabelText('查看日期'), { target: { value: past } });
+      const form = await screen.findByRole('form', { name: `${past} 補開帳` });
+      expect(within(form).getByText(/補開帳會留下操作者、時間與原因，之後不能用補開帳修改/).closest('.callout-ui')).toHaveClass('callout-warn');
+      expect(within(form).queryByText(/填那天開店時抽屜裡的現金/)).not.toBeInTheDocument();
+      fireEvent.focus(within(form).getByRole('button', { name: '補開帳說明' }));
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('填那天開店時抽屜裡的現金');
+    });
+
+    it('shows the future-date and missing-opening warnings as callouts', async () => {
+      repository.read.mockImplementation(async (dayId: string) => dayState({ dayId, openingCash: null, expectedCash: null }));
+      renderWith();
+      expect((await screen.findByText(/尚未確認開帳現金，不能關帳/)).closest('.callout-ui')).toHaveClass('callout-warn');
+    });
   });
 });
