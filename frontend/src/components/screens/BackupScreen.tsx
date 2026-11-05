@@ -47,6 +47,11 @@ interface BackupOperation {
 }
 
 const PROMPT_AFTER_MS = 10_000;
+
+/** Cloud display of an export range. `fromSeq` is exclusive (records fromSeq+1..toSeq), so an equal pair means no records. */
+function cloudRangeText(fromSeq: number, toSeq: number): string {
+  return toSeq <= fromSeq ? `沒有新紀錄（目前到第 ${toSeq} 筆）` : `第 ${fromSeq + 1} 筆到第 ${toSeq} 筆`;
+}
 const BACKUP_UNSAVED_WARNING = '產生備份與瀏覽器發起下載都不代表檔案已存好；只有重新選取、解密並比對成功後才登記。取消、錯誤或失去使用權不會推進驗證狀態。';
 
 function errorCode(error: unknown): string {
@@ -449,10 +454,10 @@ export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange,
         <input type="file" accept=".eobackup,application/json" onChange={event => { const file = event.target.files?.[0]; if (file) void readPrevious(file); }} disabled={controlsDisabled} />
       </label>
       {previousManifest && (cloudPage
-        ? <p>前次備份已解密：第 {previousManifest.fromSeq} 筆到第 {previousManifest.toSeq} 筆，這次從第 {previousManifest.toSeq + 1} 筆開始。</p>
+        ? <p>前次備份已解密：{previousManifest.toSeq <= previousManifest.fromSeq ? `沒有紀錄（到第 ${previousManifest.toSeq} 筆）` : cloudRangeText(previousManifest.fromSeq, previousManifest.toSeq)}，這次從第 {previousManifest.toSeq + 1} 筆開始。</p>
         : <p>前包已解密：seq {previousManifest.fromSeq}–{previousManifest.toSeq}，增量從 {previousManifest.toSeq + 1} 開始。</p>)}
       {headSeq !== null && (cloudPage
-        ? <p role="status">備份範圍：第 {fromSeq} 筆到第 {headSeq} 筆。{stage === 'verifiedLocal' ? '本機副本已驗證。' : stage === 'downloadRequested' ? '狀態：已下載，等待驗證。' : '狀態：已產生，等待驗證。'}</p>
+        ? stage !== 'idle' && <p role="status">備份範圍：{cloudRangeText(fromSeq, headSeq)}。{stage === 'verifiedLocal' ? '本機副本已驗證。' : stage === 'downloadRequested' ? '狀態：已下載，等待驗證。' : '狀態：已產生，等待驗證。'}</p>
         : <p role="status">固定匯出 head H={headSeq}；範圍 {fromSeq}–{headSeq}。{stage === 'verifiedLocal' ? '本機副本已驗證。' : `狀態：${stage}。`}</p>)}
       <div className="rest-btns">
         <button type="button" className="btn-confirm" onClick={() => void generate()} disabled={controlsDisabled || !lease.isHolder || !password || (fromSeq > 0 && !previousManifest)}>

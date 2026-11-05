@@ -2266,7 +2266,7 @@ test.describe('P13b2b3a journal cleanup post-condition and backup page recovery'
       await openBackupPage(page);
       await page.getByLabel('備份密碼').fill('e2e-fixture-passphrase');
       await page.getByRole('button', { name: '產生加密備份' }).click();
-      await expect(page.getByText(/備份範圍：第 0 筆到第 0 筆/)).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText(/備份範圍：沒有新紀錄（目前到第 0 筆）/)).toBeVisible({ timeout: 15000 });
       const [download] = await Promise.all([
         page.waitForEvent('download'),
         page.getByRole('button', { name: '下載備份' }).click(),
