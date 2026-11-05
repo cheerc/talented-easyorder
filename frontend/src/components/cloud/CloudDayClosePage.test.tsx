@@ -760,15 +760,14 @@ describe('CloudDayClosePage', () => {
     expect(await screen.findByText(/授權狀態已失效/)).toBeInTheDocument();
     expect(screen.getByText(new RegExp(`命令編號 ${commandId}`))).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: `${today} 日結` })).not.toBeInTheDocument();
-    expect(screen.queryByTestId('p14-backup')).not.toBeInTheDocument();
     expect(report).toHaveBeenLastCalledWith('uid-a:4', 'revoked');
   });
 
-  it('mounts the P14 backup block below the close section', async () => {
+  it('no longer mounts the backup block (it moved to F3 › 資料備份, #649)', async () => {
     renderPage();
     await screen.findByRole('heading', { name: `${today} 日結` });
-    const backup = screen.getByRole('region', { name: '關帳後備份' });
-    expect(within(backup).getByTestId('p14-backup')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '關帳後備份' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('p14-backup')).not.toBeInTheDocument();
   });
 
   it('fails closed when the server read is incomplete', async () => {
