@@ -2123,7 +2123,6 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
     try {
       await openDayClose(page);
       await page.locator('#cloud-day-close-date').fill(gap);
-      await page.getByRole('button', { name: '載入日期' }).click();
       const form = page.getByRole('form', { name: `${gap} 回填` });
       await expect(form).toBeVisible();
       await expect(form.getByRole('button', { name: '確認回填這一天' })).toBeEnabled({ timeout: 15000 });
