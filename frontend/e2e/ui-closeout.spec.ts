@@ -4,7 +4,6 @@ import { accountCheck } from './helpers/navigation';
 import { removeDocument, seedAccessLease, upsertDocument } from './helpers/seed';
 import type { Locator, Page } from '@playwright/test';
 
-const DATASET = 'e2e-empty-p06-dataset';
 const JOURNAL = 'easyorder-cloud-command-journal:v1:demo-easyorder:%5BDEFAULT%5D';
 const COMMAND = 'a0652000-0000-4000-8000-000000000001';
 const totals = { activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0, mealTotal: 0, retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0 };
@@ -118,12 +117,15 @@ for (const theme of ['light', 'dark', 'warm']) {
     test.describe(`UI 收尾 ${theme} ${width}`, () => {
       test.use({ viewport: { width, height: width === 1440 ? 900 : 1080 } });
       let originalGoLiveDate = '';
+      let datasetId = '';
       test.beforeEach(async () => {
         dates = [];
         await seedAccessLease({ holderUid: null, epoch: 0, updatedAt: new Date() });
         const response = await fetch('http://127.0.0.1:8080/v1/projects/demo-easyorder/databases/(default)/documents/system/dataHead', { headers: { Authorization: 'Bearer owner' } });
         if (!response.ok) throw new Error(`無法讀取 demo dataHead：${response.status}`);
-        originalGoLiveDate = (await response.json()).fields.goLiveDate.stringValue;
+        const head = (await response.json()).fields;
+        originalGoLiveDate = head.goLiveDate.stringValue;
+        datasetId = head.datasetId.stringValue;
       });
       test.afterEach(async () => {
         await upsertDocument('system', 'dataHead', { goLiveDate: originalGoLiveDate });
@@ -181,10 +183,9 @@ for (const theme of ['light', 'dark', 'warm']) {
 
       test('待核對真頁面保留編號與重複收款警示', async ({ googleSession }) => {
         const { page, uid } = googleSession;
-        await upsertDocument('system', 'dataHead', { datasetId: DATASET });
         await page.evaluate(({ uid, commandId, datasetId, namespace }) => {
           localStorage.setItem(`${namespace}:${commandId}`, JSON.stringify({ commandId, datasetId, uid }));
-        }, { uid, commandId: COMMAND, datasetId: DATASET, namespace: JOURNAL });
+        }, { uid, commandId: COMMAND, datasetId, namespace: JOURNAL });
         await page.getByRole('button', { name: '取得系統使用權' }).click();
         const pending = page.locator('.cloud-pending-recovery');
         await expect(pending.getByText(COMMAND)).toBeVisible();
