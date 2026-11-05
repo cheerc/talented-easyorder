@@ -63,6 +63,10 @@
 
 px 字級檢查採明確清單：`FONT_SIZE_CHECKED_UI_CSS`（新 ui 元件）、`FONT_SIZE_CHECKED_STYLES_CSS`（`data-table.css`）、`FONT_SIZE_CHECKED_CLOUD_CSS`（雲端頁）。測試另掃 `components/cloud/` 目錄：新增的頁面 CSS 若不在清單內就會失敗，不能漏檢。**每個雲端頁在自己的改版 Phase 把該頁 CSS 加進 `FONT_SIZE_CHECKED_CLOUD_CSS`，且字級改用 token；P8 結束時，所有雲端頁 CSS 都必須在清單內。** 新增 `components/ui` 元件 CSS 也要加進 `FONT_SIZE_CHECKED_UI_CSS`。
 
+## 驗證入口
+
+[#648／#650／#652 Chrome 操作清單與工程真頁面證據](ops/2026-11-05-ui-chrome-verification.md)：三主題、兩尺寸、真 App fixture 重跑方式，以及待使用者填寫的驗收表；不是使用者已驗收的紀錄。
+
 ## 未來展望
 
 資料備份頻率與備份功能的後續調整（#649）不在本規範範圍，見該 issue 與後端 spec。

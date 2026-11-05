@@ -8,6 +8,7 @@ export default defineConfig({
     '**/cloud-production.spec.ts',
     '**/cloud-day-vendors.spec.ts',
     '**/smoke.spec.ts',
+    '**/ui-closeout.spec.ts',
   ],
   testIgnore: [
     '**/deposit-flow.spec.ts',

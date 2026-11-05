@@ -224,3 +224,14 @@ describe('#648 P1 字級守門（硬寫 px 字級）', () => {
     }
   });
 });
+
+describe('#652 雲端備份頁字級等比縮放 CSS 契約', () => {
+  it('CloudBackupPage.css 覆寫 .bk-flow-sub、label、input、file-selector-button 與按鈕為既有 type tokens', () => {
+    const css = readCss('CloudBackupPage.css');
+    expect(css).toMatch(/\.cloud-backup\s+\.bk-flow-sub\s*\{[^}]*font-size:\s*var\(--t-sm\)/);
+    expect(css).toMatch(/\.cloud-backup\s+\.bk-flow\s+label\s*\{[^}]*font-size:\s*var\(--t-sm\)/);
+    expect(css).toMatch(/\.cloud-backup\s+\.bk-flow\s+input\[type="password"\],\s*\n?\.cloud-backup\s+\.bk-flow\s+input\[type="file"\]\s*\{[^}]*font-size:\s*var\(--t-sm\)/);
+    expect(css).toMatch(/\.cloud-backup\s+\.bk-flow\s+input::file-selector-button\s*\{[^}]*font-size:\s*var\(--t-sm\)/);
+    expect(css).toMatch(/\.cloud-backup\s+\.btn-confirm\s*\{[^}]*font-size:\s*var\(--t-md\)/);
+  });
+});
