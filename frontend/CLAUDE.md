@@ -29,6 +29,10 @@ Cloud Rules／command 證明需在 `demo-easyorder` Emulator 中實際執行；V
 - Cloud 業務寫入經 typed command／repository，Firestore Rules 是授權邊界；不得恢復裸寫、legacy sync、離線排隊或以登入 UI 代替 Rules。租約是否有效以伺服器確認及 Rules 為準，不用本機倒數授權。
 - 未知提交結果時保留原 command ID，先確認 receipt／server state；不可當失敗換 ID 重送或重複收款。讀取須遵循 server confirmation、新鮮度及 fail-closed 契約。詳見 [正式後端 spec](../docs/superpowers/specs/2026-10-13-free-production-backend-spec.md)，不要在此複製完整 schema／流程。
 
+## UI 風格
+
+改雲端頁或 `src/components/ui/` 的畫面前，先讀 [`../docs/FRONTEND-UI-STYLE.md`](../docs/FRONTEND-UI-STYLE.md)（字級／間距 token、等比放大、共用元件、HelpTip 與 Callout 分類、版面原則）。
+
 ## 驗收與相容
 
 - 帳務、command 或 Rules 變更依適用 unit、真 Emulator 與 UI/E2E gates 驗證；照 handoff／CI 的實際適用範圍選命令並記錄結果，不以一般 Vitest 的 skip 代替安全證明。

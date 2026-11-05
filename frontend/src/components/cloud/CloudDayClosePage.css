@@ -405,7 +405,6 @@
   border-collapse: collapse;
 }
 
-.cloud-day-close th,
 .cloud-day-close td {
   padding: 11px 12px;
   border-bottom: 1px solid var(--line-2);
@@ -414,6 +413,7 @@
 }
 
 .cloud-day-close th {
+  vertical-align: middle;
   color: var(--ink-hint);
   background: var(--surface-sunken);
   font-size: 12px;

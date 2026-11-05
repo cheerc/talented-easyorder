@@ -1,0 +1,48 @@
+.callout-ui {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s3) var(--s4);
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+}
+
+.callout-ui__icon {
+  display: inline-flex;
+  flex: none;
+  padding-top: .125rem;
+}
+
+.callout-ui__body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1) var(--s2);
+  min-width: 0;
+}
+
+.callout-warn {
+  background: var(--warn-soft);
+  border-color: var(--warn);
+  color: var(--ink);
+}
+
+.callout-warn .callout-ui__icon { color: var(--warn); }
+
+.callout-ok {
+  background: var(--success-soft);
+  border-color: var(--success);
+  color: var(--ink);
+}
+
+.callout-ok .callout-ui__icon { color: var(--success); }
+
+.callout-info {
+  background: var(--surface-sunken);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.callout-info .callout-ui__icon { color: var(--ink-2); }

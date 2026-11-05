@@ -3,8 +3,11 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { installErrorListeners } from './errors/errorLogger'
-import { isPrototypeMode } from './appMode'
+import { applyAppModeAttribute, isPrototypeMode } from './appMode'
 import { retireLegacyRuntimeCache } from './storage/retireLegacyRuntimeCache'
+
+// #648：雲端模式才套等比放大與雲端字型（prototype 不設屬性）。
+applyAppModeAttribute(document.documentElement, isPrototypeMode)
 
 // M0：瀏覽器分頁標題也標示本機練習，避免與一般模式混淆。
 if (isPrototypeMode) {

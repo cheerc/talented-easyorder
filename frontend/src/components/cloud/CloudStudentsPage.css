@@ -328,7 +328,6 @@
   text-align: left;
 }
 
-.cloud-students th,
 .cloud-students td {
   padding: 13px 12px;
   border-bottom: 1px solid var(--line-2);
@@ -344,6 +343,7 @@
 }
 
 .cloud-students th {
+  vertical-align: middle;
   position: sticky;
   top: 0;
   color: var(--ink-hint);
