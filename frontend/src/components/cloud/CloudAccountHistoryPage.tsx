@@ -11,7 +11,9 @@ import { createCloudStudentRepository, type CloudStudentRecord } from '../../fir
 import { createCloudOrderRepository, type CloudTransactionMutationInput } from '../../firebase/cloudOrderRepository';
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
 import { CommandProgress } from '../ui/CommandProgress';
+import { Callout } from '../ui/Callout';
 import { EmptyState } from '../ui/EmptyState';
+import { HelpTip } from '../ui/HelpTip';
 import { StatusBadge } from '../ui/StatusBadge';
 import { CloudAccountBalance } from './CloudAccountBalance';
 import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerToken } from './useCloudActionOwner';
@@ -799,15 +801,11 @@ export function CloudAccountHistoryPage({
   return (
     <section className="cloud-account-history" aria-label="雲端查帳">
       <CommandProgress active={progressActive} />
-      <header className="cloud-account-history__header"><div>
-        <h2>查帳與歷史更正</h2></div>
-        {snapshot && <strong>來源序號 H={snapshot.account.sourceSeq}</strong>}
+      <header className="cloud-account-history__header"><div className="cloud-account-history__title">
+        <h2>查帳與歷史更正</h2>
+        <HelpTip label="資料來源與餘額說明">使用目前學生名單映射帳戶 ID；餘額依目前更正後資料重算，不代表當時現金快照。</HelpTip></div>
       </header>
       <DataUpdatedNotice pageSeq={snapshot?.account.sourceSeq ?? null} hidden={loading || Boolean(visibleAction)} onReload={loadAgain} />
-      <details className="cloud-account-history__intro">
-        <summary>資料來源與餘額說明</summary>
-        <p>使用目前學生名單映射帳戶 ID；餘額依目前更正後資料重算，不代表當時現金快照。</p>
-      </details>
 
       <div className="cloud-account-history__controls">
         <label>搜尋目前帳戶<input aria-label="搜尋目前學生帳戶" value={search} disabled={retryButtonDisabled}
@@ -843,17 +841,18 @@ export function CloudAccountHistoryPage({
         </div>
       )}
       {!loading && snapshot && currentStudent && range && <>
-        <p className="cloud-account-history__snapshot" data-testid="account-history-ready">dataset {snapshot.account.datasetId} · {range.startDate}–{range.endDate} · {currentStudent.displayName}（目前編號 {currentStudent.studentCode}） · 來源序號 H={snapshot.account.sourceSeq}</p>
+        <p className="cloud-account-history__snapshot" data-testid="account-history-ready" data-source-seq={snapshot.account.sourceSeq} data-dataset-id={snapshot.account.datasetId}>{range.startDate}–{range.endDate} · {currentStudent.displayName}（目前編號 {currentStudent.studentCode}）</p>
         <dl className="cloud-account-history__balance">
           <div><dt>期初餘額</dt><dd><CloudAccountBalance amount={snapshot.account.openingBalance} currency="$" /></dd></div>
           <div><dt>目前帳戶餘額</dt><dd><CloudAccountBalance amount={snapshot.account.currentBalance} currency="$" /></dd></div>
           <div><dt>帳戶狀態</dt><dd><StatusBadge variant={currentStudent.status === 'active' ? 'ok' : 'neutral'} className="cloud-account-history__status">{currentStudent.status === 'active' ? '使用中' : '已停用'}</StatusBadge></dd></div>
           <div><dt>學生版本</dt><dd>{currentStudent.revision}</dd></div>
         </dl>
-        <p><strong>依目前更正後資料重算</strong> · 各筆餘額已由完整歷史驗證；本日結版本另列，不視為交易當時餘額。</p>
+        <Callout variant="info" className="cloud-account-history__callout"><span><strong>依目前更正後資料重算</strong>，不是交易當時餘額。</span>
+          <HelpTip label="餘額驗證說明">各筆餘額已由完整歷史驗證；日結版本另列，不視為交易當時餘額。</HelpTip></Callout>
 
         <section aria-labelledby="account-transactions-heading"><h3 id="account-transactions-heading">區間交易與更正入口</h3>
-          <div className="cloud-account-history__table-wrap"><table className="dt"><thead><tr><th>營業日／時間</th><th>交易</th><th>當時姓名</th><th>金額</th><th>重算後餘額</th><th>狀態／回填</th><th>日狀態</th><th>操作</th></tr></thead><tbody>
+          <div className="cloud-account-history__table-wrap"><table className="dt"><thead><tr><th>營業日／時間</th><th>交易</th><th>當時姓名</th><th className="dt-num">金額</th><th className="dt-num">重算後餘額</th><th>狀態／回填</th><th>日狀態</th><th>操作</th></tr></thead><tbody>
             {snapshot.account.transactions.map(transaction => {
               const day = rangeDayByDate.get(transaction.businessDate);
               const eligible = canMutate(transaction);
@@ -865,12 +864,12 @@ export function CloudAccountHistoryPage({
                     <dt>交易備註</dt><dd>{transaction.note || '—'}</dd></dl>
                   {snapshot.audit.rows.filter(row => row.studentId === selectedId && (row.commandId === transaction.lastCommandId
                     || JSON.stringify(row.before).includes(transaction.transactionId) || JSON.stringify(row.after).includes(transaction.transactionId)))
-                    .map(row => <article key={row.commandId}><strong>{row.kind} · {row.commandId} · seq {row.seq} · {row.dateBasis === 'committed-at' ? '按記錄日期歸屬' : '按營業日歸屬'}</strong>
+                    .map(row => <article key={row.commandId}><strong data-seq={row.seq}>{row.kind} · {row.commandId} · {row.dateBasis === 'committed-at' ? '按記錄日期歸屬' : '按營業日歸屬'}</strong>
                       <p>{row.reason || '無理由'} · {row.actorUid} · {row.actorEmail} · {formatTaipeiTime(row.committedAt)}</p>
                       <pre>before: {JSON.stringify(row.before, null, 2)}{'\n'}after: {JSON.stringify(row.after, null, 2)}</pre></article>)}
                 </details></td>
-                <td>{transaction.studentNameSnapshot}</td><td>{formatMoney(transaction.amount)} · 餐費 {formatMoney(transaction.mealPrice)} · 收款 {formatMoney(transaction.paidAmount)}</td>
-                <td>{transaction.afterBalance === undefined || transaction.balanceApplicability !== 'verified' ? '未驗證' : <CloudAccountBalance amount={transaction.afterBalance} currency="$" />}</td>
+                <td>{transaction.studentNameSnapshot}</td><td className="dt-num">{formatMoney(transaction.amount)} · 餐費 {formatMoney(transaction.mealPrice)} · 收款 {formatMoney(transaction.paidAmount)}</td>
+                <td className="dt-num">{transaction.afterBalance === undefined || transaction.balanceApplicability !== 'verified' ? '未驗證' : <CloudAccountBalance amount={transaction.afterBalance} currency="$" />}</td>
                 <td><StatusBadge variant={transaction.status === 'active' ? 'ok' : 'neutral'} className="cloud-account-history__status">{transaction.status === 'voided' ? '已作廢（保留原列）' : '有效'}</StatusBadge>{transaction.backfilled && <> · <StatusBadge variant="warn" className="cloud-account-history__status">回填</StatusBadge></>}</td>
                 <td><StatusBadge variant={dayStatusVariant(day?.status)} className="cloud-account-history__status">{dayStatusLabel(day?.status)}</StatusBadge>{day?.lastSettlementRevision ? ` · 曾關帳第 ${day.lastSettlementRevision} 版` : ''}</td>
                 <td>{eligible ? (
@@ -910,9 +909,10 @@ export function CloudAccountHistoryPage({
         </section>
 
         <section aria-labelledby="account-audit-heading"><h3 id="account-audit-heading">帳戶範圍稽核</h3>
-          <p>沒有營業日的操作依台北記錄日期列入；本次稽核只涵蓋此帳戶與選定區間。</p>
-          <div className="cloud-account-history__table-wrap"><table className="dt"><thead><tr><th>seq／命令</th><th>有效日期與依據</th><th>操作人／時間</th><th>理由</th><th>before / after</th></tr></thead><tbody>
-            {snapshot.audit.rows.map(row => <tr key={row.commandId}><td>{row.seq} · {row.kind}<small>{row.commandId}</small></td>
+          <Callout variant="info" className="cloud-account-history__callout">本次稽核只涵蓋此帳戶與選定區間。
+            <HelpTip label="稽核日期歸屬說明">沒有營業日的操作依台北記錄日期列入。</HelpTip></Callout>
+          <div className="cloud-account-history__table-wrap"><table className="dt"><thead><tr><th>命令</th><th>有效日期與依據</th><th>操作人／時間</th><th>理由</th><th>更正前後</th></tr></thead><tbody>
+            {snapshot.audit.rows.map(row => <tr key={row.commandId} data-seq={row.seq}><td>{row.kind}<small>{row.commandId}</small></td>
               <td>{row.attributedDate} · {row.dateBasis === 'business-date' ? '營業日' : '記錄日（台北）'}<small>原營業日：{row.businessDate ?? '無'}</small></td>
               <td>{row.actorUid} · {row.actorEmail}<small>{formatTaipeiTime(row.committedAt)}</small></td><td>{row.reason ?? '—'}</td>
               <td><details><summary>查看</summary><pre>before: {JSON.stringify(row.before, null, 2)}{'\n'}after: {JSON.stringify(row.after, null, 2)}</pre></details></td></tr>)}
@@ -927,7 +927,8 @@ export function CloudAccountHistoryPage({
 
       {draft && snapshot && <form className="cloud-account-history__mutation" aria-label="歷史交易更正" onSubmit={submitMutation}>
         <h3>{draft.kind === 'void' ? '作廢歷史交易' : '更正歷史交易'} · {draft.transaction.transactionId}</h3>
-        <p>固定交易版本 {draft.transaction.revision}、學生版本 {currentStudent?.revision ?? '—'}、日期版本 {rangeDayByDate.get(draft.transaction.businessDate)?.revision ?? '—'}。此頁只允許仍未曾關帳的營業日。</p>
+        <p>固定交易版本 {draft.transaction.revision}、學生版本 {currentStudent?.revision ?? '—'}、日期版本 {rangeDayByDate.get(draft.transaction.businessDate)?.revision ?? '—'}。</p>
+        <Callout variant="warn" className="cloud-account-history__callout">此頁只允許仍未曾關帳的營業日。</Callout>
         {draft.kind === 'correct' && draft.transaction.type === 'order' && <>
           <label>餐費<input aria-label="更正餐費" inputMode="numeric" disabled={Boolean(visibleFrozen)} value={mealPriceText} onChange={event => setMealPriceText(event.target.value)} /></label>
           <label>收款<input aria-label="更正收款" inputMode="numeric" disabled={Boolean(visibleFrozen)} value={paidAmountText} onChange={event => setPaidAmountText(event.target.value)} /></label>

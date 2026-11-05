@@ -827,7 +827,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
       const currentDayRow = transactionSection.getByRole('row').filter({ hasText: d3 });
       await expect(currentDayRow.getByRole('button', { name: '更正' })).toHaveCount(0);
       const activeHistoricalRow = transactionSection.getByRole('row').filter({ hasText: d2Active.transactionId });
-      const headBeforeCorrection = Number((await page.getByTestId('account-history-ready').innerText()).match(/H=(\d+)/)?.[1]);
+      const headBeforeCorrection = Number(await page.getByTestId('account-history-ready').getAttribute('data-source-seq'));
       expect(Number.isSafeInteger(headBeforeCorrection)).toBe(true);
       const exactNextHead = headBeforeCorrection + 1;
       expect(Number.isSafeInteger(exactNextHead)).toBe(true);
@@ -892,7 +892,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
         await readHeld;
         await capturePageState('student-transaction-listen-held');
         const exactHeadReady = expect(page.getByTestId('account-history-ready'))
-          .toContainText(new RegExp(`H=${exactNextHead}$`), { timeout: 30_000 });
+          .toHaveAttribute('data-source-seq', String(exactNextHead), { timeout: 30_000 });
         void exactHeadReady.catch(() => undefined);
         const holdStartedAt = await page.evaluate(() => performance.now());
         await page.waitForFunction(startedAt => performance.now() - startedAt > 5_500, holdStartedAt, { timeout: 10_000 });
@@ -1080,7 +1080,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
       await page.getByRole('button', { name: `選取 ${CURRENT_NAME}（${STUDENT_CODE}）` }).click();
       await page.getByRole('button', { name: `開啟查帳：${CURRENT_NAME}` }).click();
       await expect(page.getByTestId('account-history-ready')).toBeVisible({ timeout: 30_000 });
-      const readyHead = async () => Number((await page.getByTestId('account-history-ready').innerText()).match(/H=(\d+)/)?.[1]);
+      const readyHead = async () => Number(await page.getByTestId('account-history-ready').getAttribute('data-source-seq'));
       const headBefore = await readyHead();
 
       const row = page.locator('section[aria-labelledby="account-transactions-heading"]').getByRole('row').filter({ hasText: transactionId });
@@ -1114,7 +1114,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
 
       held.release.resolve();
       await Promise.race([held.completed.promise, new Promise(resolve => setTimeout(resolve, 10_000))]);
-      await expect(page.getByTestId('account-history-ready')).toContainText(new RegExp(`H=${headBefore + 1}$`), { timeout: 30_000 });
+      await expect(page.getByTestId('account-history-ready')).toHaveAttribute('data-source-seq', String(headBefore + 1), { timeout: 30_000 });
       await page.waitForTimeout(500);
       expect(held.matched).toBe(1);
       expect(await readyHead()).toBe(headBefore + 1);

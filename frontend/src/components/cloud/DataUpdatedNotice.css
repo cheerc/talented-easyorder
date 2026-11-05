@@ -1,4 +1,4 @@
-/* #587 P2: a one-line hint under a page title when another device has written since this page last read. */
+/* Issue 587 P2: a one-line hint under a page title when another device has written since this page last read. */
 .data-updated-notice {
   display: flex;
   flex-wrap: wrap;

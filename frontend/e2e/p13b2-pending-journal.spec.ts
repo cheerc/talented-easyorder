@@ -333,7 +333,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
 
     await page.getByRole('button', { name: '取得系統使用權' }).click();
     await expect.poll(async () => (await readEmulatorDocument('system', 'accessLease')).fields?.epoch).toEqual({ integerValue: '1' });
-    await expect(page.getByText('共有 101 筆最小追蹤編號；每頁最多 100 筆，最多保留 1000 筆。未決編號不會自動淘汰。')).toBeVisible();
+    await expect(page.getByText('共有 101 筆待核對編號。未決編號不會自動淘汰。')).toBeVisible();
     await expect(page.getByText(ids[0])).toBeVisible();
     await expect(page.getByText(ids[99])).toBeVisible();
     await expect(page.getByText(ids[100])).toHaveCount(0);

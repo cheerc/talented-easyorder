@@ -10,6 +10,7 @@ import {
   type PendingJournalChangeSource,
 } from '../../firebase/cloudPendingJournal';
 import { createCloudCommandRepository, type PendingReceiptCheck } from '../../firebase/cloudCommandRepository';
+import { HelpTip } from '../ui/HelpTip';
 import './CloudPendingRecoveryBoundary.css';
 
 /** A same-tab command in flight stays quiet this long before its row is shown (matches the 10 s result-check prompt, #585). */
@@ -536,7 +537,8 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
         )}
         {scopedRows.length > 0 && (
           <>
-            <p>共有 {state.total} 筆最小追蹤編號；每頁最多 {CLOUD_PENDING_JOURNAL_PAGE_SIZE} 筆，最多保留 {CLOUD_PENDING_JOURNAL_CAPACITY} 筆。未決編號不會自動淘汰。</p>
+            <p>共有 {state.total} 筆待核對編號。未決編號不會自動淘汰。
+              <HelpTip label="待核對容量說明">{`每頁最多 ${CLOUD_PENDING_JOURNAL_PAGE_SIZE} 筆，最多保留 ${CLOUD_PENDING_JOURNAL_CAPACITY} 筆。`}</HelpTip></p>
             <ul className="cloud-pending-recovery__list">
               {visibleRows.map(row => (
                 <li key={row.record.commandId}>
