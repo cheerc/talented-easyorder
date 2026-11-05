@@ -235,13 +235,13 @@ prototype 保留訓練用途。首次切換可下載舊練習快照作本機參�
 
 每筆業務異動都有 immutable command.seq，所有投影由 seq=1 開始重播可重建。初始化 dataset/schema/head 使用本機維護工具並輸出 bootstrap manifest（無財務初值）；名單、期初與設定必須走 command，不可手工 console 填業務文件破壞備份鏈。
 
-每日最後關帳後，由當班持有帳號匯出增量：讀 head 的 H，下載上次已備份 S 之後至 H 的 commands；不可因取到空頁就假定完整，必須驗連續 S+1..H、唯一 ID、datasetId/schema、每筆前後 revision 與對映，重播並對照 H 狀態。即使匯出過程有新命令，≤H 的 immutable prefix 仍一致。備份狀態分generated（產生包）、downloadRequested（發起下載）、verifiedLocal（重新選取已存檔並比對成功）。普通瀏覽器不能可靠判斷下載是否完成：必須要求操作者重新選取剛存下的檔案，以File API重讀、比對加密檔SHA-256及manifest後，才寫RecordBackup記H、雜湊與區間並顯示「本機副本已驗證」；取消／失敗不得推進S。RecordBackup留到下次增量，不形成自我包含循環。下一次增量的S取自操作者提供的上一份可讀備份鏈manifest，不能只信雲端「曾匯出」記錄；鏈遺失則重新從0匯出或取已驗證完整archive，額度不足明確停下。第二副本另由人工確認，不假稱瀏覽器能驗異地媒體。
+**備份頻率不固定，約每月一次**（CheerC 裁決，#649）；入口為 F3「今日設定」›「資料備份」（原本掛在 F2 今日關帳區下方，#649 移出）。由當班持有帳號匯出增量：讀 head 的 H，下載上次已備份 S 之後至 H 的 commands；不可因取到空頁就假定完整，必須驗連續 S+1..H、唯一 ID、datasetId/schema、每筆前後 revision 與對映，重播並對照 H 狀態。即使匯出過程有新命令，≤H 的 immutable prefix 仍一致。備份狀態分generated（產生包）、downloadRequested（發起下載）、verifiedLocal（重新選取已存檔並比對成功）。普通瀏覽器不能可靠判斷下載是否完成：必須要求操作者重新選取剛存下的檔案，以File API重讀、比對加密檔SHA-256及manifest後，才寫RecordBackup記H、雜湊與區間並顯示「本機副本已驗證」；取消／失敗不得推進S。RecordBackup留到下次增量，不形成自我包含循環。下一次增量的S取自操作者提供的上一份可讀備份鏈manifest，不能只信雲端「曾匯出」記錄；鏈遺失則重新從0匯出或取已驗證完整archive，額度不足明確停下。第二副本另由人工確認，不假稱瀏覽器能驗異地媒體。
 
 備份包：版本、datasetId、S/H、上一包 SHA-256、生成時間、records、筆數、重播 totals；含完整稽核與 voided 原單。SHA-256 只驗完整性，不是抵抗可重算雜湊的管理員攻擊。用 Web Crypto AES-GCM 加密下載，密碼經 PBKDF2-SHA256（隨機salt、至少600,000迭代，P15 實測效能）、隨機96-bit IV；不保存密碼／金鑰到repo、日誌或瀏覽器。錯密碼／毀損要拒絕，無密碼不可恢復。
 
-一份放公司受控電腦，一份複製到現有加密離線媒體；CheerC 為備份責任人、當班操作者執行。每日提醒未備份，首頁顯示最近已匯出 H，但下載事件不等於異地副本已存在，runbook 需人工確認。每日增量保留90天；每月在本機合併成完整 checkpoint＋完整歷史 command archive，**確認兩份副本且可還原後**才刪被涵蓋的舊增量；歷史 archive 不自動刪除。checkpoint不能丟更正前紀錄。
+一份放公司受控電腦，一份複製到現有加密離線媒體；CheerC 為備份責任人、當班操作者執行。**不做每日提醒。** 原設計的「首頁顯示最近已匯出 H」目前沒有實作（程式內沒有此畫面，也沒有未備份提醒），#649 後也不計畫做；若日後要加，須另立需求。下載事件不等於異地副本已存在，runbook 需人工確認。增量保留90天；每月在本機合併成完整 checkpoint＋完整歷史 command archive，**確認兩份副本且可還原後**才刪被涵蓋的舊增量；歷史 archive 不自動刪除。checkpoint不能丟更正前紀錄。
 
-免費備份不使用雲端排程；瀏覽器關閉不會自行備份。目標 RPO≤1營業日、RTO≤4小時（實測，不是服務SLA）；如需更低RPO，本人可收款高峰後多匯出一次。
+免費備份不使用雲端排程；瀏覽器關閉不會自行備份。目標 RPO≤1營業日、RTO≤4小時（實測，不是服務SLA）；如需更低RPO，本人可收款高峰後多匯出一次。**備份頻率改約每月一次（#649）後，實際 RPO 是「上次備份至今」，不再滿足 RPO≤1營業日；此目標是否調整由使用者決定，本段數值暫不改。** 未來可評估自動異地備份，見 [備份 runbook 的未來展望](../../ops/firebase-backup-runbook.md#未來展望)。
 
 `accessEvents` 不屬於 P14 備份鏈：它不是 command，沒有 `seq`，不進 manifest 與重播，也不由備份還原。它是使用權稽核紀錄，復原後租約從空租約重新開始，舊事件留在原專案；在同一專案復原時須遵守 §4.2 的 epoch 下限。
 **P13c2 讀取：**F2 雲端報表頁（全部帳戶範圍）在稽核區下方顯示唯讀「使用權交接」表，由 `readAccessEvents({ range, leaseEpoch })` 以 `at` 的台北日界半開區間（含起、不含終）、`orderBy(at, __name__)` 分頁讀取（單頁 100，上限 20,000，超過即 `INCOMPLETE_SNAPSHOT`），讀前讀後比對 `dataHead` 與租約（換手 `LEASE_LOST`、版本變動 `STALE_SNAPSHOT`）。畫面只顯示時間、種類、操作人 email 與前一位持有人 email；事件只存 `previousHolderUid`，email 取自前一個 epoch 事件的 `actorEmail`（該事件的 `holderUid` 與 `actorUid` 都必須等於 `previousHolderUid`），找不到就顯示「（無紀錄）」，不顯示 UID；`previousHolderUid == null` 顯示「無」。不提供 CSV 匯出、不建立 `RecordExport`，表格只在其封套（dataset、H、日期區間、租約世代）與已一致的報表／稽核快照相同時顯示；讀取失敗或封套不一致只讓這張表不顯示並說明原因，不阻擋報表（`LEASE_LOST`／`UNAUTHORIZED` 例外，與其他讀取一樣使整頁失效）。單一帳戶範圍不讀取也不顯示。
