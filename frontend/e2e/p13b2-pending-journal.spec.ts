@@ -2186,13 +2186,22 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
   });
 });
 
-test.describe('P13b2b3a journal cleanup post-condition and embedded backup recovery', () => {
+test.describe('P13b2b3a journal cleanup post-condition and backup page recovery', () => {
   test.setTimeout(120000);
 
   async function openDayClose(page: Page) {
     await page.getByRole('button', { name: '取得系統使用權' }).click();
     await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
     await page.getByRole('button', { name: '今日帳', exact: true }).click();
+  }
+
+  // #649: the backup lives in F3 › 資料備份 (it used to be embedded under the close section of F2).
+  async function openBackupPage(page: Page) {
+    await page.getByRole('button', { name: '取得系統使用權' }).click();
+    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await page.getByRole('button', { name: '今日設定', exact: true }).click();
+    await page.getByRole('navigation', { name: '今日設定' }).getByRole('button', { name: '資料備份' }).click();
+    await expect(page.getByRole('heading', { name: '資料備份' })).toBeVisible();
   }
 
   test('shows no misleading local-tracking warning after a normal CloseDay and leaves an empty journal', async ({ googleSession }) => {
@@ -2255,7 +2264,7 @@ test.describe('P13b2b3a journal cleanup post-condition and embedded backup recov
     await held.install();
     let commandId: string | null = null;
     try {
-      await openDayClose(page);
+      await openBackupPage(page);
       await page.getByLabel('備份密碼').fill('e2e-fixture-passphrase');
       await page.getByRole('button', { name: '產生加密備份' }).click();
       await expect(page.getByText(/固定匯出 head H=0/)).toBeVisible({ timeout: 15000 });
@@ -2276,7 +2285,9 @@ test.describe('P13b2b3a journal cleanup post-condition and embedded backup recov
       await expectMinimalJournal(page, [{ commandId, datasetId, uid }]);
       expect(await rawStorageDump(page)).not.toContain('e2e-fixture-passphrase');
       await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
-      await expect(page.getByRole('form', { name: `${today} 關帳`, exact: true }).getByRole('button', { name: '確認關帳' })).toBeDisabled();
+      // the unconfirmed backup keeps the operator here: no other page (and so no other command) is reachable
+      await expect(page.getByRole('navigation', { name: '今日設定' }).getByRole('button', { name: '學生' })).toBeDisabled();
+      await expect(page.getByRole('button', { name: '產生加密備份' })).toBeDisabled();
 
       await page.getByRole('button', { name: '查詢原命令結果' }).click();
       await expect(page.getByText(/已登記 RecordBackup/)).toBeVisible({ timeout: 15000 });
