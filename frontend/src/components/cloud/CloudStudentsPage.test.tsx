@@ -380,7 +380,7 @@ describe('CloudStudentsPage', () => {
     expect(await screen.findByText(/已確認 新增 001 完成/)).toBeInTheDocument();
     expect(repository.list).toHaveBeenCalledTimes(3);
     expect(repository.confirmPendingIntent).not.toHaveBeenCalled();
-    expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'resolved');
+    await waitFor(() => expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'resolved'));
   });
 
   it('keeps receipt recovery locked when the completed list belongs to a different dataset', async () => {
