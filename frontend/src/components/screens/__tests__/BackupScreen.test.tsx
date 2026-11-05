@@ -466,7 +466,7 @@ describe('BackupScreen verified-local gate', () => {
       expect(screen.getByLabelText('前次可讀備份（首次完整備份可留空）')).toBeDisabled();
       expect(screen.getByRole('button', { name: '產生加密備份' })).toBeDisabled();
       expect(screen.getByRole('button', { name: '下載備份' })).toBeDisabled();
-      expect(screen.getByText(/日結命令確認中/)).toBeVisible();
+      expect(screen.getByText(/其他雲端命令確認中/)).toBeVisible();
       expect(mocks.exportRange).not.toHaveBeenCalled();
     });
   });
@@ -533,7 +533,7 @@ describe('BackupScreen refs read right after a commit, before passive effects ru
     );
 
     expect(mocks.commitRecordBackupIntent).not.toHaveBeenCalled();
-    expect(await screen.findByText(/日結命令確認中，沒有登記備份/)).toBeVisible();
+    expect(await screen.findByText(/有其他雲端命令確認中，沒有登記備份/)).toBeVisible();
   });
 
   it('does not accept a receipt for a lease lost in the window before passive effects (latestRef)', async () => {

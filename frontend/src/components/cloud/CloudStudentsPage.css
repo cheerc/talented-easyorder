@@ -34,7 +34,7 @@
 
 .cloud-students__header h1 {
   margin: 2px 0 8px;
-  font-size: clamp(22px, 3vw, 30px);
+  font-size: var(--t-xl);
   letter-spacing: -.025em;
 }
 
@@ -43,31 +43,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-}
-
-.cloud-students__intro-details {
-  margin-top: 12px;
-  color: var(--ink-2);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.cloud-students__intro-details summary {
-  color: var(--accent-ink);
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.cloud-students__intro-details summary:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
-
-.cloud-students__intro {
-  max-width: 680px;
-  margin: 8px 0 0;
-  color: var(--ink-2);
-  line-height: 1.6;
 }
 
 .cloud-students__primary,
@@ -159,7 +134,7 @@
 .cloud-students__empty .empty-title {
   margin: 0;
   color: var(--ink-2);
-  font-size: 14px;
+  font-size: var(--t-sm);
   font-weight: 500;
 }
 
@@ -175,7 +150,7 @@
 }
 
 .cloud-students__search-label {
-  font-size: 13px;
+  font-size: var(--t-xs);
   font-weight: 700;
 }
 
@@ -197,7 +172,7 @@
 
 .cloud-students__count {
   color: var(--ink-hint);
-  font-size: 13px;
+  font-size: var(--t-xs);
   white-space: nowrap;
 }
 
@@ -246,13 +221,13 @@
 
 .cloud-students__form h2 {
   margin: 0 0 6px;
-  font-size: 19px;
+  font-size: var(--t-lg);
 }
 
 .cloud-students__form > p,
 .cloud-students__footnote {
   color: var(--ink-hint);
-  font-size: 13px;
+  font-size: var(--t-xs);
   line-height: 1.55;
 }
 
@@ -268,7 +243,7 @@
 .cloud-students__status-form > label {
   display: grid;
   gap: 6px;
-  font-size: 13px;
+  font-size: var(--t-xs);
   font-weight: 650;
 }
 
@@ -287,7 +262,7 @@
 
 .cloud-students__opening-choice legend {
   padding: 0 5px;
-  font-size: 13px;
+  font-size: var(--t-xs);
   font-weight: 700;
 }
 
@@ -295,7 +270,7 @@
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--t-xs);
 }
 
 .cloud-students__opening-choice small {
@@ -348,7 +323,7 @@
   top: 0;
   color: var(--ink-hint);
   background: var(--surface-sunken);
-  font-size: 12px;
+  font-size: var(--t-xs);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -364,7 +339,7 @@
 
 .cloud-students__gap-row > td {
   color: var(--ink-hint);
-  font-size: 13px;
+  font-size: var(--t-xs);
   text-align: center;
 }
 
@@ -389,7 +364,7 @@
 .cloud-students__aliases {
   margin-top: 5px;
   color: var(--ink-hint);
-  font-size: 12px;
+  font-size: var(--t-xs);
 }
 
 .cloud-students__status {
@@ -405,7 +380,7 @@
 .cloud-students__opening-details summary {
   color: var(--accent-ink);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--t-xs);
   white-space: nowrap;
 }
 
@@ -415,7 +390,7 @@
   gap: 4px 10px;
   min-width: 220px;
   margin: 10px 0 0;
-  font-size: 12px;
+  font-size: var(--t-xs);
 }
 
 .cloud-students__opening-details dt {
@@ -435,7 +410,7 @@
 
 .cloud-students__row-actions button {
   padding: 6px 9px;
-  font-size: 12px;
+  font-size: var(--t-xs);
 }
 
 .cloud-students__more {
@@ -454,7 +429,7 @@
   color: var(--ink-2);
   cursor: pointer;
   list-style: none;
-  font-size: 16px;
+  font-size: var(--t-md);
   line-height: 1;
 }
 
@@ -497,7 +472,7 @@
 
 .cloud-students__status-form p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--t-xs);
   font-weight: 700;
 }
 
@@ -509,7 +484,7 @@
 .cloud-students__status-form button,
 .cloud-students__edit-form button {
   padding: 6px 8px;
-  font-size: 12px;
+  font-size: var(--t-xs);
 }
 
 .cloud-students__footnote {
@@ -569,7 +544,7 @@
 
 .cloud-students__opening-form > span,
 .cloud-students__opening-form small {
-  font-size: 12px;
+  font-size: var(--t-xs);
   line-height: 1.5;
 }
 
@@ -578,7 +553,7 @@
   grid-template-columns: auto 1fr;
   gap: 2px 8px;
   margin: 0;
-  font-size: 12px;
+  font-size: var(--t-xs);
 }
 
 .cloud-students__opening-preview dt {
@@ -589,3 +564,9 @@
   margin: 0;
   font-variant-numeric: tabular-nums;
 }
+
+.cloud-students__callout { margin-top: var(--s4); }
+.cloud-students__callout p { margin: 0; color: inherit; font-size: inherit; }
+.cloud-students__header h1 .help-tip-ui { font-size: var(--t-md); font-weight: 400; letter-spacing: 0; }
+.cloud-students__code-field { display: flex; align-items: flex-end; gap: var(--s2); }
+.cloud-students__code-field > label { flex: 1; }

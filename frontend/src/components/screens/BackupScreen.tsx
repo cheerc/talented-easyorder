@@ -5,6 +5,8 @@ import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
 import { createCloudBackupRepository } from '../../firebase/cloudBackupRepository';
 import { createCloudBackupCommandRepository, type RecordBackupIntent } from '../../firebase/cloudBackupCommandRepository';
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
+import { Callout } from '../ui/Callout';
+import { HelpTip } from '../ui/HelpTip';
 import { decryptBackup, encryptBackup, sha256Hex, verifyBackupFile, type BackupManifest } from '../../firebase/cloudBackup';
 
 type BackupStage = 'idle' | 'generated' | 'downloadRequested' | 'verifiedLocal';
@@ -45,6 +47,7 @@ interface BackupOperation {
 }
 
 const PROMPT_AFTER_MS = 10_000;
+const BACKUP_UNSAVED_WARNING = '產生備份與瀏覽器發起下載都不代表檔案已存好；只有重新選取、解密並比對成功後才登記。取消、錯誤或失去使用權不會推進驗證狀態。';
 
 function errorCode(error: unknown): string {
   return error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code) : '';
@@ -394,7 +397,7 @@ export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange,
         throw new Error('重新選取的備份範圍或 dataset 不一致');
       }
       if (id !== flowRef.current || !lease.isHolder) return;
-      if (lockedRef.current) throw new Error('日結命令確認中，沒有登記備份；請先完成日結結果確認，再重新選取檔案。');
+      if (lockedRef.current) throw new Error('有其他雲端命令確認中，沒有登記備份；請先完成該命令的結果確認，再重新選取檔案。');
       if (!commandRepository) throw new Error('無法建立唯讀查證通道，沒有登記備份；請重新載入頁面。');
       let commandId: string;
       try { commandId = crypto.randomUUID(); } catch { throw new Error('瀏覽器無法建立安全的命令編號，沒有登記備份。請重新載入安全連線後再試。'); }
@@ -430,16 +433,27 @@ export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange,
   return <section className="screen backup" aria-label={cloudPage ? '備份操作' : '每日增量備份'}>
     <div className="card bk-flow">
       {!cloudPage && <h2 className="bk-flow-h">每日加密備份</h2>}
-      <p className="bk-flow-sub">{cloudPage ? '手動下載加密增量備份。' : '手動下載每日增量。'}下載後請重新選取檔案驗證；第二份副本需由操作者複製至公司受控電腦或加密離線媒體並確認。</p>
-      {locked && <p role="note">日結命令確認中，暫停備份操作；請先完成日結結果確認。</p>}
+      {cloudPage ? <>
+        <p className="bk-flow-sub">手動下載加密增量備份 <HelpTip label="備份說明">手動下載加密增量備份。下載後請重新選取檔案驗證；驗證成功才會登記這次備份。</HelpTip></p>
+        <Callout variant="warn" className="bk-callout"><p>第二份副本需由操作者複製至公司受控電腦或加密離線媒體並確認。</p></Callout>
+      </> : (
+        <p className="bk-flow-sub">手動下載每日增量。下載後請重新選取檔案驗證；第二份副本需由操作者複製至公司受控電腦或加密離線媒體並確認。</p>
+      )}
+      {locked && (cloudPage
+        ? <Callout variant="warn" className="bk-callout"><p role="note">其他雲端命令確認中，暫停備份操作；請先完成該命令的結果確認。</p></Callout>
+        : <p role="note">其他雲端命令確認中，暫停備份操作；請先完成該命令的結果確認。</p>)}
       <label>備份密碼
         <input type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} disabled={controlsDisabled} />
       </label>
       <label>前次可讀備份（首次完整備份可留空）
         <input type="file" accept=".eobackup,application/json" onChange={event => { const file = event.target.files?.[0]; if (file) void readPrevious(file); }} disabled={controlsDisabled} />
       </label>
-      {previousManifest && <p>前包已解密：seq {previousManifest.fromSeq}–{previousManifest.toSeq}，增量從 {previousManifest.toSeq + 1} 開始。</p>}
-      {headSeq !== null && <p role="status">固定匯出 head H={headSeq}；範圍 {fromSeq}–{headSeq}。{stage === 'verifiedLocal' ? '本機副本已驗證。' : `狀態：${stage}。`}</p>}
+      {previousManifest && (cloudPage
+        ? <p>前次備份已解密：第 {previousManifest.fromSeq} 筆到第 {previousManifest.toSeq} 筆，這次從第 {previousManifest.toSeq + 1} 筆開始。</p>
+        : <p>前包已解密：seq {previousManifest.fromSeq}–{previousManifest.toSeq}，增量從 {previousManifest.toSeq + 1} 開始。</p>)}
+      {headSeq !== null && (cloudPage
+        ? <p role="status">備份範圍：第 {fromSeq} 筆到第 {headSeq} 筆。{stage === 'verifiedLocal' ? '本機副本已驗證。' : stage === 'downloadRequested' ? '狀態：已下載，等待驗證。' : '狀態：已產生，等待驗證。'}</p>
+        : <p role="status">固定匯出 head H={headSeq}；範圍 {fromSeq}–{headSeq}。{stage === 'verifiedLocal' ? '本機副本已驗證。' : `狀態：${stage}。`}</p>)}
       <div className="rest-btns">
         <button type="button" className="btn-confirm" onClick={() => void generate()} disabled={controlsDisabled || !lease.isHolder || !password || (fromSeq > 0 && !previousManifest)}>
           {busy ? '處理中…' : '產生加密備份'}
@@ -465,10 +479,12 @@ export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange,
           </div>
         </div>
       )}
-      {stage === 'verifiedLocal' && <p role="status">備份雜湊與 manifest 已從本機檔案驗證，且已登記 RecordBackup。</p>}
+      {stage === 'verifiedLocal' && <p role="status">{cloudPage ? '備份檔內容已從本機檔案驗證，且已登記這次備份。' : '備份雜湊與 manifest 已從本機檔案驗證，且已登記 RecordBackup。'}</p>}
       {cleanupNote && <p role="status">{cleanupNote}</p>}
       {error && <p role="alert">{error}</p>}
-      <p>產生備份與瀏覽器發起下載都不代表檔案已存好；只有重新選取、解密並比對成功後才登記。取消、錯誤或失去使用權不會推進驗證狀態。</p>
+      {cloudPage
+        ? <Callout variant="warn" className="bk-callout"><p>{BACKUP_UNSAVED_WARNING}</p></Callout>
+        : <p>{BACKUP_UNSAVED_WARNING}</p>}
     </div>
   </section>;
 });

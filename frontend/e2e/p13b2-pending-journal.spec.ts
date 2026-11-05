@@ -2266,7 +2266,7 @@ test.describe('P13b2b3a journal cleanup post-condition and backup page recovery'
       await openBackupPage(page);
       await page.getByLabel('備份密碼').fill('e2e-fixture-passphrase');
       await page.getByRole('button', { name: '產生加密備份' }).click();
-      await expect(page.getByText(/固定匯出 head H=0/)).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText(/備份範圍：第 0 筆到第 0 筆/)).toBeVisible({ timeout: 15000 });
       const [download] = await Promise.all([
         page.waitForEvent('download'),
         page.getByRole('button', { name: '下載備份' }).click(),
@@ -2289,7 +2289,7 @@ test.describe('P13b2b3a journal cleanup post-condition and backup page recovery'
       await expect(page.getByRole('button', { name: '產生加密備份' })).toBeDisabled();
 
       await page.getByRole('button', { name: '查詢原命令結果' }).click();
-      await expect(page.getByText(/已登記 RecordBackup/)).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText(/已登記這次備份/)).toBeVisible({ timeout: 15000 });
       expect(held.state.returned).toBe(false);
       expect(held.state.matched).toBe(1);
       await expect.poll(() => readPendingIdentity(page, commandId!)).toBeNull();
@@ -2298,7 +2298,7 @@ test.describe('P13b2b3a journal cleanup post-condition and backup page recovery'
 
       held.state.release.resolve();
       await waitForWriteGate(held.state.completed.promise, 'RecordBackup response release');
-      await expect(page.getByText(/已登記 RecordBackup/)).toBeVisible();
+      await expect(page.getByText(/已登記這次備份/)).toBeVisible();
       await expect(page.getByRole('alert', { name: '命令結果確認' })).toHaveCount(0);
       expect(held.state.matched).toBe(1);
       expect(await listEmulatorDocumentIds('commands')).toEqual([commandId]);

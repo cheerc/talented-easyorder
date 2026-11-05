@@ -34,11 +34,11 @@
 }
 
 .cloud-diagnostics__empty .empty-icon { display: none; }
-.cloud-diagnostics__empty .empty-title { color: var(--ink-2); font-size: 13px; font-weight: 500; }
+.cloud-diagnostics__empty .empty-title { color: var(--ink-2); font-size: var(--t-xs); font-weight: 500; }
 
 .cloud-diagnostics__card li p {
   margin: 2px 0;
-  font-size: 13px;
+  font-size: var(--t-xs);
 }
 
 .cloud-diagnostics__actions {
@@ -51,3 +51,7 @@
 .cloud-diagnostics__actions .btn-ui {
   white-space: nowrap;
 }
+
+.cloud-diagnostics__callout { margin-bottom: var(--s3); }
+.cloud-diagnostics__callout p { margin: 0; color: inherit; }
+.cloud-diagnostics__card h2 .help-tip-ui { font-size: var(--t-md); font-weight: 400; }

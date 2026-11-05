@@ -1006,8 +1006,8 @@ describe('CloudStudentsPage', () => {
       await screen.findByTestId('cloud-student-row-001');
       expect(document.querySelector('details.cloud-students__intro-details')).toBeNull();
       expect(screen.queryByText('名單由伺服器完整載入。期初結餘在新增學生時建立；之後只能以「更正期初」修改金額與備註，期初日不變，並須填寫原因。')).toBeNull();
-      expect(openTip('期初結餘與名單規則說明')).toHaveTextContent('只能以「更正期初」修改金額與備註');
-      fireEvent.blur(screen.getByRole('button', { name: '期初結餘與名單規則說明' }));
+      expect(openTip('名單規則說明')).toHaveTextContent('只能以「更正期初」修改金額與備註');
+      fireEvent.blur(screen.getByRole('button', { name: '名單規則說明' }));
       expect(screen.queryByText(/不會儲存在本機離線草稿/)).toBeNull();
       expect(openTip('學生資料來源說明')).toHaveTextContent('不會儲存在本機離線草稿');
     });

@@ -7,8 +7,10 @@ import {
 } from '../../errors/errorLogger';
 import { useFirebase } from '../../hooks/useFirebase';
 import { Button } from '../ui/Button';
+import { Callout } from '../ui/Callout';
 import { Card } from '../ui/Card';
 import { EmptyState } from '../ui/EmptyState';
+import { HelpTip } from '../ui/HelpTip';
 import './CloudDiagnosticsPage.css';
 import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerToken } from './useCloudActionOwner';
 
@@ -23,8 +25,8 @@ export function CloudDiagnosticsPage({ identityKey, leaseEpoch }: CloudDiagnosti
     && lease.holderUid === access.profile.uid && lease.epoch === leaseEpoch;
   return <section className="cloud-diagnostics" aria-label="本機診斷">
     <Card className="cloud-diagnostics__card">
-      <h2>本機診斷</h2>
-      <p>診斷只保存在這台電腦，時間取自本機時鐘並以 ISO 格式保存；最多 100 筆，保留 24 小時。匯出檔只含固定診斷欄位。</p>
+      <h2>本機診斷 <HelpTip label="本機診斷說明">時間取自本機時鐘並以 ISO 格式保存。匯出檔只含固定診斷欄位。</HelpTip></h2>
+      <Callout variant="info" className="cloud-diagnostics__callout"><p>診斷只保存在這台電腦；超過 100 筆或 24 小時的紀錄會自動刪除。</p></Callout>
       {hasLease
         ? <CloudDiagnosticsControls identityKey={identityKey} leaseEpoch={leaseEpoch} />
         : <p>需要有效的操作租約才能查看本機診斷。</p>}
