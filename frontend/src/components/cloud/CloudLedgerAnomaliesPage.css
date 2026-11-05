@@ -70,6 +70,8 @@
 
 .cloud-ledger-anomalies__status {
   white-space: nowrap;
+  color: var(--ink);
+  font-size: var(--t-sm);
 }
 
 .cloud-ledger-anomalies__empty.empty-ui {
