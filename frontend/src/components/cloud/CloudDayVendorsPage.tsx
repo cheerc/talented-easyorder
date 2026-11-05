@@ -987,7 +987,6 @@ export function CloudDayVendorsPage({
     if (event.key !== 'Tab' && event.key !== 'Escape') typingDateRef.current = true;
   };
   const onDateBlur = (event: FocusEvent<HTMLInputElement>) => {
-    if (!typingDateRef.current) return;
     typingDateRef.current = false;
     requestDateLoad(event.currentTarget.value);
   };
