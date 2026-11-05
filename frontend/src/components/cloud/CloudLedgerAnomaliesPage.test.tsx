@@ -60,8 +60,9 @@ describe('CloudLedgerAnomaliesPage', () => {
     expect(item).toHaveTextContent('2026-10-13 的實點現金是 NT$ 870');
     expect(item).toHaveTextContent('少了 NT$ 70');
     expect(item).toHaveTextContent('相隔 3 天');
-    expect(item).toHaveTextContent('有原因的關帳後補記');
-    expect(item).toHaveTextContent('不會修改原關帳實點');
+    expect(within(item).getByText(/補記不會修改原關帳實點/).closest('.callout-ui')).not.toBeNull();
+    fireEvent.click(within(item).getByRole('button', { name: '差額處理說明' }));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('有原因的關帳後補記');
     expect(item).toHaveTextContent('每一天都已經有營業日資料，沒有可以回填的空日');
     expect(item).not.toHaveTextContent(/已更正完成|已修正/);
     fireEvent.click(within(item).getByRole('button', { name: '到前一個已關帳日補記差額（2026-10-13）' }));
@@ -139,5 +140,32 @@ describe('CloudLedgerAnomaliesPage', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('無法檢查帳務異常：無法連線確認雲端日結');
     fireEvent.click(screen.getByRole('button', { name: '重新讀取' }));
     expect(onReload).toHaveBeenCalledTimes(1);
+  });
+
+  it('#648 P8: turns the page intro into a HelpTip instead of a details block', () => {
+    const { container } = render(<CloudLedgerAnomaliesPage ledger={ready([])} onReload={vi.fn()} onOpenDayClose={vi.fn()} onOpenPostCloseEntry={vi.fn()} />);
+    expect(container.querySelector('details')).toBeNull();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '異常判定與處理原則' }));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('過去沒有關帳的日子');
+  });
+
+  it('#648 P8: unclosed-day how-to is a HelpTip; the consequence of leaving it stays visible', () => {
+    renderPage(ready([{ kind: 'unclosed-past-day', dayId: '2026-10-15', status: 'open', openingCash: 1200, activeTransactionCount: 2 }]));
+    const item = screen.getByRole('listitem');
+    expect(item).toHaveTextContent('之後每天開帳與關帳都會看到警示');
+    expect(item).not.toHaveTextContent('核對全日現金後關帳');
+    fireEvent.click(within(item).getByRole('button', { name: '處理方式說明' }));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('核對全日現金後關帳');
+  });
+
+  it('#648 P8: with gap days the backfill guidance is HelpTip but the post-close-entry limit stays visible', () => {
+    renderPage(ready([{
+      kind: 'opening-mismatch', dayId: '2026-10-16', openingCash: 800, previousClosedDayId: '2026-10-13',
+      previousCountedCash: 870, previousPostCloseNet: 0, previousEffectiveCash: 870, difference: -70, daysApart: 3, gapDays: ['2026-10-14'], gapDayCount: 1,
+    }]));
+    const item = within(screen.getByRole('list', { name: '帳務異常清單' })).getAllByRole('listitem')[0];
+    expect(within(item).getByText(/補記不會修改原關帳實點/).closest('.callout-ui')).not.toBeNull();
+    expect(within(item).getByTestId('gap-days-2026-10-16')).toHaveTextContent('共 1 天');
   });
 });

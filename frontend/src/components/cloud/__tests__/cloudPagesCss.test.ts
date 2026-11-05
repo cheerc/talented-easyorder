@@ -1,5 +1,5 @@
 // @ts-expect-error app tsconfig 只含 vite/client；本契約測試在 Vitest（Node）執行才需要檔案讀取
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 // @ts-expect-error 同上，Node 的 path 模組不在 app tsconfig 的型別來源內
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -22,6 +22,7 @@ const PAGE_CSS = [
   'CloudLedgerAnomaliesPage.css',
   'CloudDiagnosticsPage.css',
   'CloudBackupPage.css',
+  'DataUpdatedNotice.css',
 ];
 
 const STYLES_DIR = resolve(process.cwd(), 'src/styles');
@@ -32,7 +33,7 @@ const INDEX_CSS = resolve(process.cwd(), 'src/index.css');
 // 每個雲端頁在改版 Phase 完成時，必須把自己的頁面 CSS 加進 FONT_SIZE_CHECKED_CLOUD_CSS；
 // P8 結束時所有雲端頁 CSS 都要在清單內（見 docs/FRONTEND-UI-STYLE.md）。
 const FONT_SIZE_CHECKED_UI_CSS = ['HelpTip.css', 'Callout.css', 'ActionCard.css', 'StatTile.css'];
-const FONT_SIZE_CHECKED_CLOUD_CSS: string[] = ['CloudBackupPage.css', 'CloudOrdersPage.css', 'CloudReportPage.css', 'CloudDayClosePage.css', 'CloudDayVendorsPage.css', 'CloudDayVendorForms.css', 'CloudDiagnosticsPage.css', 'CloudStudentsPage.css'];
+const FONT_SIZE_CHECKED_CLOUD_CSS: string[] = ['CloudBackupPage.css', 'CloudOrdersPage.css', 'CloudReportPage.css', 'CloudDayClosePage.css', 'CloudDayVendorsPage.css', 'CloudDayVendorForms.css', 'CloudDiagnosticsPage.css', 'CloudStudentsPage.css', 'CloudAccountHistoryPage.css', 'CloudLedgerAnomaliesPage.css', 'CloudPendingRecoveryBoundary.css', 'LedgerUnclosedBanner.css', 'DataUpdatedNotice.css'];
 const FONT_SIZE_CHECKED_STYLES_CSS = ['data-table.css'];
 
 const TYPE_TOKENS = ['--t-xs', '--t-sm', '--t-md', '--t-lg', '--t-xl', '--t-2xl', '--t-num'];
@@ -207,6 +208,14 @@ describe('#648 P1 字級守門（硬寫 px 字級）', () => {
 
   it.each(FONT_SIZE_CHECKED_CLOUD_CSS)('cloud/%s 不硬寫 px 字級', name => {
     expect(hardPx(readCss(name))).toEqual([]);
+  });
+
+  it('雲端目錄下每個頁面 CSS 都在 PAGE_CSS 與 FONT_SIZE_CHECKED_CLOUD_CSS（新頁面不能漏檢）', () => {
+    const onDisk = (readdirSync(CLOUD_DIR) as string[]).filter(name => name.endsWith('.css')).sort();
+    expect(PAGE_CSS.filter(name => !onDisk.includes(name))).toEqual([]);
+    const unchecked = onDisk.filter(name => !FONT_SIZE_CHECKED_CLOUD_CSS.includes(name));
+    expect(unchecked).toEqual([]);
+    expect(onDisk.filter(name => !PAGE_CSS.includes(name))).toEqual([]);
   });
 
   it('檢查清單與新 ui 元件 CSS 同步（新增元件 CSS 不能漏檢）', () => {
