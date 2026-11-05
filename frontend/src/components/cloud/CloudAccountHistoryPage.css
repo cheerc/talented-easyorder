@@ -11,25 +11,23 @@
 .cloud-account-history button,
 .cloud-account-history input,
 .cloud-account-history select { font: inherit; }
-.cloud-account-history button { min-height: 36px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: inherit; cursor: pointer; }
-.cloud-account-history button:disabled { cursor: not-allowed; opacity: .5; }
+.cloud-account-history button:not(.help-tip-ui__btn) { min-height: 36px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: inherit; cursor: pointer; }
+.cloud-account-history button:not(.help-tip-ui__btn):disabled { cursor: not-allowed; opacity: .5; }
 .cloud-account-history label { display: inline-grid; gap: 5px; margin: 4px 12px 4px 0; font-weight: 650; }
 .cloud-account-history input,
 .cloud-account-history select { min-height: 36px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: inherit; }
 .cloud-account-history__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
-.cloud-account-history__header h2 { margin: 2px 0 8px; font-size: clamp(22px, 3vw, 30px); }
+.cloud-account-history__header h2 { margin: 0; font-size: var(--t-2xl); }
 .cloud-account-history__header p { max-width: 760px; color: var(--ink-2); line-height: 1.55; }
-.cloud-account-history__intro { color: var(--ink-2); font-size: 13px; line-height: 1.6; }
-.cloud-account-history__intro summary { color: var(--accent-ink); cursor: pointer; font-weight: 600; }
-.cloud-account-history__intro summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.cloud-account-history__intro p { margin: 8px 0 12px; }
+.cloud-account-history__title { display: flex; align-items: center; gap: var(--s2); }
+.cloud-account-history__callout { margin: var(--s3) 0; }
 .cloud-account-history__controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 18px 0; }
 .cloud-account-history__controls form { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
 .cloud-account-history__controls button { margin: 3px; }
 .cloud-account-history__snapshot { padding: 10px 12px; background: var(--accent-soft); border-left: 4px solid var(--accent); font-weight: 650; }
 .cloud-account-history__balance { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 16px 0; }
 .cloud-account-history__balance div { padding: 10px; border: 1px solid var(--line); border-radius: 7px; }
-.cloud-account-history__balance dt { color: var(--ink-3); font-size: 12px; }
+.cloud-account-history__balance dt { color: var(--ink-hint); font-size: var(--t-xs); }
 .cloud-account-history__balance dd { margin: 5px 0 0; font-weight: 700; }
 .cloud-account-history__status { white-space: nowrap; }
 .cloud-account-history__empty-state { margin: 12px 0; }
@@ -43,11 +41,11 @@
   text-align: left;
 }
 .cloud-account-history__empty .empty-icon { display: none; }
-.cloud-account-history__empty .empty-title { margin: 0; font-size: 13px; font-weight: 500; }
+.cloud-account-history__empty .empty-title { margin: 0; font-size: var(--t-xs); font-weight: 500; }
 .cloud-account-history section { margin: 24px 0; padding-top: 18px; border-top: 1px solid var(--line); }
 .cloud-account-history__table-wrap { overflow: auto; max-width: 100%; }
 .cloud-account-history__table-wrap:has(details[open]) { overflow: visible; }
-.cloud-account-history table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cloud-account-history table { width: 100%; border-collapse: collapse; font-size: var(--t-xs); }
 .cloud-account-history th { padding: 8px 10px; border-bottom: 1px solid var(--line-2); text-align: left; vertical-align: middle; white-space: nowrap; }
 .cloud-account-history td { padding: 8px 10px; border-bottom: 1px solid var(--line-2); text-align: left; vertical-align: top; white-space: nowrap; }
 .cloud-account-history td small { display: block; white-space: normal; }
@@ -80,7 +78,7 @@
   color: var(--ink-2);
   cursor: pointer;
   list-style: none;
-  font-size: 15px;
+  font-size: var(--t-sm);
   line-height: 1;
 }
 

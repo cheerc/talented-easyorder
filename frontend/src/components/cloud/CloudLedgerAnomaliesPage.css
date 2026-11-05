@@ -22,36 +22,19 @@
 
 .cloud-ledger-anomalies__title h1 {
   margin: 2px 0 0;
-  font-size: clamp(22px, 3vw, 30px);
+  font-size: var(--t-2xl);
   letter-spacing: -.025em;
 }
 
 
-.cloud-ledger-anomalies__intro {
-  color: var(--ink-2);
-  font-size: 13px;
-  line-height: 1.6;
-}
+.cloud-ledger-anomalies__title { display: flex; align-items: center; gap: var(--s2); }
 
-.cloud-ledger-anomalies__intro summary {
-  color: var(--accent-ink);
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.cloud-ledger-anomalies__intro summary:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
-
-.cloud-ledger-anomalies__intro p {
-  margin: 8px 0 0;
-}
+.cloud-ledger-anomalies__callout { margin: 0 0 var(--s2); }
 
 .cloud-ledger-anomalies__range {
   margin: 0;
   color: var(--ink-hint);
-  font-size: 13px;
+  font-size: var(--t-xs);
 }
 
 .cloud-ledger-anomalies__alert {
@@ -96,11 +79,11 @@
 }
 
 .cloud-ledger-anomalies__empty .empty-icon { display: none; }
-.cloud-ledger-anomalies__empty .empty-title { color: var(--ink-2); font-size: 13px; font-weight: 500; }
+.cloud-ledger-anomalies__empty .empty-title { color: var(--ink-2); font-size: var(--t-xs); font-weight: 500; }
 
 .cloud-ledger-anomalies__item h3 {
   margin: 0 0 6px;
-  font-size: 16px;
+  font-size: var(--t-md);
 }
 
 .cloud-ledger-anomalies__item p {

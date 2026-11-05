@@ -711,7 +711,7 @@ describe('CloudAccountHistoryPage: #587 P2 data updated elsewhere', () => {
     mocks.readAuditRange.mockResolvedValue({ ...audit, sourceSeq: 12 } as unknown as CloudAuditRangeSnapshot);
     fireEvent.click(within(notice).getByRole('button', { name: '重新載入' }));
     await waitFor(() => expect(mocks.readAccountHistory).toHaveBeenCalledTimes(2));
-    await screen.findByText('來源序號 H=12');
+    await waitFor(() => expect(screen.getByTestId('account-history-ready')).toHaveAttribute('data-source-seq', '12'));
     expect(screen.queryByTestId('data-updated-notice')).toBeNull();
   });
 
@@ -720,5 +720,77 @@ describe('CloudAccountHistoryPage: #587 P2 data updated elsewhere', () => {
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:p587-at-head" initialStudentId={studentId} initialRange={range} />);
     await screen.findByTestId('account-history-ready');
     expect(screen.queryByTestId('data-updated-notice')).toBeNull();
+  });
+});
+
+describe('CloudAccountHistoryPage: #648 P8 統一風格', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    currentAuth.uid = 'uid-a';
+    headMock.current = null;
+    mocks.readSummary.mockResolvedValue({ leaseToday: '2026-10-19' });
+    mocks.listStudents.mockResolvedValue({ datasetId: 'dataset-a', seq: 11, goLiveDate: '2026-10-01', students: [student] });
+    mocks.readAccountHistory.mockResolvedValue(account);
+    mocks.readAuditRange.mockResolvedValue(audit);
+    mocks.confirmPendingIntent.mockResolvedValue({ status: 'not-found' });
+    mocks.cleanupConfirmedIntent.mockResolvedValue(true);
+  });
+
+  const renderReady = async (key: string) => {
+    const view = render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey={key} initialStudentId={studentId} initialRange={range} />);
+    await screen.findByTestId('account-history-ready');
+    return view;
+  };
+
+  it('turns the source/balance intro into a HelpTip and keeps one short always-visible balance sentence', async () => {
+    const { container } = await renderReady('operator-a:4:p8-intro');
+    expect(container.querySelector('details.cloud-account-history__intro')).toBeNull();
+    const tip = screen.getByRole('button', { name: '資料來源與餘額說明' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.click(tip);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('使用目前學生名單映射帳戶 ID');
+    fireEvent.click(tip);
+    const visible = screen.getByText(/不是交易當時餘額/);
+    expect(visible.closest('.callout-ui')).not.toBeNull();
+    expect(visible).toBeVisible();
+  });
+
+  it('shows no engineering terms on screen but keeps the data version in data attributes', async () => {
+    const { container } = await renderReady('operator-a:4:p8-terms');
+    expect(container).not.toHaveTextContent(/H=\d|來源序號|dataset /);
+    const ready = screen.getByTestId('account-history-ready');
+    expect(ready).toHaveAttribute('data-source-seq', '11');
+    expect(ready).toHaveAttribute('data-dataset-id', 'dataset-a');
+    const auditSection = screen.getByRole('heading', { name: '帳戶範圍稽核' }).closest('section') as HTMLElement;
+    const headers = within(auditSection).getAllByRole('columnheader').map(th => th.textContent);
+    expect(headers.join('|')).not.toMatch(/seq|before \/ after/);
+  });
+
+  it('right-aligns the amount and balance columns of the transaction table', async () => {
+    await renderReady('operator-a:4:p8-num');
+    const section = screen.getByRole('heading', { name: '區間交易與更正入口' }).closest('section') as HTMLElement;
+    const heads = within(section).getAllByRole('columnheader');
+    const numHeads = heads.filter(th => th.classList.contains('dt-num')).map(th => th.textContent);
+    expect(numHeads).toEqual(['金額', '重算後餘額']);
+    const cells = within(within(section).getAllByRole('row')[1]).getAllByRole('cell');
+    expect(cells[3]).toHaveClass('dt-num');
+    expect(cells[4]).toHaveClass('dt-num');
+  });
+
+  it('keeps the audit scope limit visible as a Callout and puts the date-basis note in a HelpTip', async () => {
+    await renderReady('operator-a:4:p8-audit');
+    const scope = screen.getByText(/本次稽核只涵蓋此帳戶與選定區間/);
+    expect(scope.closest('.callout-ui')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '稽核日期歸屬說明' }));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('沒有營業日的操作依台北記錄日期列入');
+  });
+
+  it('keeps 查詢完整歷史 as a button and shows the closed-day restriction as a visible Callout in the correction form', async () => {
+    await renderReady('operator-a:4:p8-form');
+    expect(screen.getByRole('button', { name: '查詢完整歷史' })).toBeEnabled();
+    openTransactionMenu();
+    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    const form = screen.getByRole('form', { name: '歷史交易更正' });
+    expect(within(form).getByText(/此頁只允許仍未曾關帳的營業日/).closest('.callout-ui')).not.toBeNull();
   });
 });

@@ -156,3 +156,25 @@ describe('CloudPendingRecoveryBoundary synchronous scope fence', () => {
     expect(screen.getByText(record.commandId)).toBeInTheDocument();
   });
 });
+
+describe('CloudPendingRecoveryBoundary #648 P8 說明與警示分類', () => {
+  it('keeps 未決編號不會自動淘汰 always visible and moves page size and capacity into a HelpTip', async () => {
+    render(boundary(dbA, 'operator-a', 1, 'epoch-1', []));
+    await screen.findByText(record.commandId);
+    const visible = screen.getByText(/未決編號不會自動淘汰/);
+    expect(visible).toBeVisible();
+    expect(visible).toHaveTextContent('共有 1 筆待核對編號');
+    expect(visible).not.toHaveTextContent('每頁最多');
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '待核對容量說明' }));
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/每頁最多 \d+ 筆，最多保留 \d+ 筆/);
+  });
+
+  it('keeps the duplicate-charge warnings visible, not inside a HelpTip', async () => {
+    render(boundary(dbA, 'operator-a', 1, 'epoch-1', []));
+    await screen.findByText(record.commandId);
+    expect(screen.getByText('伺服器目前未查到的編號仍可能已入帳；不可重新收款或重登。')).toBeVisible();
+    expect(screen.getByLabelText(confirmationLabel)).toBeVisible();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+});
