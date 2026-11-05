@@ -1,0 +1,393 @@
+<title>訂餐櫃台風格規範</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: 1440 CSS px 為基準、root 字級隨寬度等比（1440→16px，1920→21.33px）；分頁切換「規範／F2 今日／F3 菜單與開帳／F4 供應商」。 */
+:root {
+  --bg: #f6f1e8; --panel: #fffaf1; --ink: #1f1a13; --ink-2: #6b5f4d; --ink-hint: #6f6353;
+  --line: #e9dec9; --line-2: #f1e8d3; --sunken: #f2ebdd;
+  --accent: oklch(62% 0.14 60); --accent-ink: oklch(40% 0.12 60); --accent-soft: oklch(94% 0.04 60);
+  --warn: oklch(56% 0.18 28); --warn-soft: oklch(94% 0.05 28);
+  --success: oklch(46% 0.12 152); --success-soft: oklch(94% 0.04 152);
+  --danger: #b3261e; --danger-soft: #fdeceb; --on-accent: #fffaf1;
+  --t-xs: .8125rem; --t-sm: .9375rem; --t-md: 1.0625rem; --t-lg: 1.25rem; --t-xl: 1.625rem; --t-2xl: 2.25rem; --t-num: 2.5rem;
+  --s1: .25rem; --s2: .5rem; --s3: .75rem; --s4: 1rem; --s5: 1.5rem; --s6: 2rem; --s7: 3rem;
+  --r: .625rem; --r-lg: 1rem;
+  --sans: "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Consolas, monospace;
+  font-size: clamp(14px, calc(100vw / 90), 21.333px);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e1014; --panel: #161a20; --ink: #f4f5f7; --ink-2: #a8aeb8; --ink-hint: #9aa3af;
+  --line: #262b33; --line-2: #1d2229; --sunken: #12151a;
+  --accent: oklch(72% 0.14 60); --accent-ink: oklch(82% 0.12 60); --accent-soft: oklch(28% 0.05 60);
+  --warn: oklch(70% 0.20 32); --warn-soft: oklch(28% 0.06 32); --success: oklch(78% 0.14 152); --success-soft: oklch(28% 0.06 152);
+  --danger: #ff9b92; --danger-soft: #2a1614; --on-accent: #161a20; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0e1014; --panel: #161a20; --ink: #f4f5f7; --ink-2: #a8aeb8; --ink-hint: #9aa3af;
+  --line: #262b33; --line-2: #1d2229; --sunken: #12151a;
+  --accent: oklch(72% 0.14 60); --accent-ink: oklch(82% 0.12 60); --accent-soft: oklch(28% 0.05 60);
+  --warn: oklch(70% 0.20 32); --warn-soft: oklch(28% 0.06 32); --success: oklch(78% 0.14 152); --success-soft: oklch(28% 0.06 152);
+  --danger: #ff9b92; --danger-soft: #2a1614; --on-accent: #161a20; color-scheme: dark; }
+
+/* 專案三主題（值取自 frontend/src/styles/tokens.css）；字級／間距與主題無關，三套共用 */
+body[data-app="light"] { --bg:#f4f4f2; --panel:#ffffff; --ink:#15181c; --ink-2:#5a5f66; --ink-hint:#63696f; --line:#e6e5e1; --line-2:#efeeea; --sunken:#f1f1ee;
+  --accent:oklch(64% 0.16 152); --accent-ink:oklch(38% 0.14 152); --accent-soft:oklch(96% 0.04 152); --warn:oklch(58% 0.18 32); --warn-soft:oklch(96% 0.04 32);
+  --success:oklch(52% 0.14 152); --success-soft:oklch(96% 0.04 152); --danger:#b3261e; --danger-soft:#fdeceb; --on-accent:#ffffff; color-scheme: light; }
+body[data-app="warm"] { --bg:#f6f1e8; --panel:#fffaf1; --ink:#1f1a13; --ink-2:#6b5f4d; --ink-hint:#6f6353; --line:#e9dec9; --line-2:#f1e8d3; --sunken:#f2ebdd;
+  --accent:oklch(62% 0.14 60); --accent-ink:oklch(40% 0.12 60); --accent-soft:oklch(94% 0.04 60); --warn:oklch(56% 0.18 28); --warn-soft:oklch(94% 0.05 28);
+  --success:oklch(46% 0.12 152); --success-soft:oklch(94% 0.04 152); --danger:#b3261e; --danger-soft:#fdeceb; --on-accent:#fffaf1; color-scheme: light; }
+body[data-app="dark"] { --bg:#0e1014; --panel:#161a20; --ink:#f4f5f7; --ink-2:#a8aeb8; --ink-hint:#9aa3af; --line:#262b33; --line-2:#1d2229; --sunken:#12151a;
+  --accent:oklch(72% 0.18 152); --accent-ink:oklch(82% 0.16 152); --accent-soft:oklch(28% 0.06 152); --warn:oklch(70% 0.20 32); --warn-soft:oklch(28% 0.06 32);
+  --success:oklch(78% 0.14 152); --success-soft:oklch(28% 0.06 152); --danger:#ff9b92; --danger-soft:#2a1614; --on-accent:#0e1014; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: var(--t-md); line-height: 1.5; }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-hint); }
+.wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.page { max-width: 90rem; margin: 0 auto; padding-block: 0 var(--s7); }
+
+/* doc bar */
+.docbar { padding-block: var(--s3); background: var(--sunken); border-bottom: 1px solid var(--line); }
+.docbar .page { padding-block: 0; display: flex; gap: var(--s4); align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.docbar b { font-size: var(--t-md); }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--panel); }
+.seg button { border: 0; background: none; padding: var(--s1) var(--s4); cursor: pointer; font-size: var(--t-sm); min-height: 2.25rem; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+/* shell */
+.topbar { display: flex; align-items: center; gap: var(--s5); padding-block: var(--s3); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: var(--s2); font-weight: 600; font-size: var(--t-lg); }
+.brand i { width: .75rem; height: .75rem; border-radius: 50%; background: var(--accent); display: inline-block; }
+.tabs { display: flex; gap: var(--s1); flex-wrap: wrap; }
+.tab { display: flex; align-items: center; gap: var(--s2); padding: var(--s2) var(--s4); border-radius: var(--r); color: var(--ink-2); }
+.tab[aria-current="page"] { background: var(--panel); color: var(--ink); font-weight: 600; box-shadow: inset 0 0 0 1px var(--line); }
+kbd { font-family: var(--mono); font-size: var(--t-xs); line-height: 1; padding: .2rem .4rem; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: .3rem; background: var(--panel); color: var(--ink-2); }
+
+/* page header + subnav */
+.ph { display: flex; align-items: center; justify-content: space-between; gap: var(--s5); flex-wrap: wrap; padding-block: var(--s5) var(--s4); }
+.ph h1 { margin: 0; font-size: var(--t-2xl); line-height: 1.15; letter-spacing: .02em; text-wrap: balance; }
+.subnav { display: flex; gap: var(--s1); border-bottom: 1px solid var(--line); margin-bottom: var(--s5); flex-wrap: wrap; }
+.subnav span { padding: var(--s2) var(--s4); color: var(--ink-2); border-bottom: 3px solid transparent; margin-bottom: -1px; }
+.subnav span[aria-current="page"] { color: var(--ink); font-weight: 600; border-color: var(--accent); }
+
+/* primitives */
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s5); min-width: 0; }
+.panel > h2 { margin: 0 0 var(--s4); font-size: var(--t-lg); line-height: 1.3; display: flex; align-items: center; gap: var(--s2); }
+.stack { display: grid; gap: var(--s5); align-content: start; }
+.cols { display: grid; grid-template-columns: minmax(16rem, 1fr) minmax(0, 2.2fr); gap: var(--s5); align-items: start; }
+.cols-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s5); align-items: start; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: 3rem; padding: 0 var(--s5); border-radius: var(--r); border: 1px solid var(--line); background: var(--panel); font-size: var(--t-md); cursor: pointer; white-space: nowrap; }
+.btn.sm { min-height: 2.5rem; padding: 0 var(--s4); font-size: var(--t-sm); }
+.btn.primary { background: var(--accent-ink); border-color: var(--accent-ink); color: var(--on-accent); font-weight: 600; }
+.btn.danger { border-color: var(--danger); color: var(--danger); }
+.btn kbd { background: transparent; color: inherit; border-color: currentColor; }
+
+.help { display: inline-grid; place-items: center; width: 1.375rem; height: 1.375rem; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); color: var(--ink-2); font-size: var(--t-xs); font-weight: 700; cursor: help; position: relative; flex: none; }
+.help .tip { display: none; position: absolute; top: calc(100% + .5rem); left: 50%; transform: translateX(-50%); width: 18rem; max-width: 80vw; padding: var(--s3); border-radius: var(--r); background: var(--ink); color: var(--bg); font-size: var(--t-sm); font-weight: 400; line-height: 1.5; z-index: 5; text-align: left; }
+.help:hover .tip, .help:focus-visible .tip, .help[aria-expanded="true"] .tip { display: block; }
+
+.callout { display: flex; gap: var(--s3); align-items: flex-start; padding: var(--s3) var(--s4); border-radius: var(--r); font-size: var(--t-md); }
+.callout svg { width: 1.25rem; height: 1.25rem; flex: none; margin-top: .15rem; }
+.callout.warn { background: var(--warn-soft); color: var(--ink); }
+.callout.warn svg { color: var(--warn); }
+.callout.ok { background: var(--success-soft); }
+.callout.ok svg { color: var(--success); }
+
+.badge { display: inline-flex; align-items: center; padding: .1rem .6rem; border-radius: 999px; font-size: var(--t-sm); font-weight: 600; }
+.badge.ok { background: var(--success-soft); color: var(--success); }
+.badge.warn { background: var(--warn-soft); color: var(--warn); }
+.badge.idle { background: var(--sunken); color: var(--ink-2); }
+
+.kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4); }
+.kpi { padding: var(--s4) var(--s5); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg); display: grid; gap: var(--s1); }
+.kpi span { font-size: var(--t-sm); color: var(--ink-2); }
+.kpi strong { font-size: var(--t-num); font-weight: 600; line-height: 1.1; }
+.kpi.warn strong { color: var(--warn); }
+
+.datebar { display: flex; align-items: center; gap: var(--s4); flex-wrap: wrap; padding: var(--s4) var(--s5); background: var(--sunken); border-radius: var(--r-lg); }
+.datebar label { font-weight: 600; }
+.datebar input { padding: var(--s2) var(--s3); min-height: 3rem; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); font-family: var(--mono); font-size: var(--t-lg); }
+.datebar .state { display: inline-flex; align-items: center; gap: var(--s2); color: var(--ink-2); font-size: var(--t-sm); }
+
+.dl { margin: 0; display: grid; grid-template-columns: auto auto; row-gap: var(--s2); column-gap: var(--s5); }
+.dl dt { color: var(--ink-2); }
+.dl dd { margin: 0; text-align: right; font-size: var(--t-lg); }
+.dl .sum { padding-top: var(--s3); border-top: 1px solid var(--line); font-weight: 600; color: var(--ink); }
+
+.field { display: grid; gap: var(--s2); }
+.field label { font-size: var(--t-sm); color: var(--ink-2); font-weight: 600; }
+.field .input { display: flex; align-items: baseline; gap: var(--s2); padding: var(--s3) var(--s4); border: 2px solid var(--line); border-radius: var(--r); background: var(--bg); font-size: var(--t-xl); }
+.row { display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; }
+.row.end { justify-content: flex-end; }
+
+.allclear { margin: 0; display: flex; gap: var(--s2); align-items: center; color: var(--ink-2); font-size: var(--t-sm); }
+.allclear svg { width: 1.25rem; height: 1.25rem; color: var(--success); }
+.chip { border: 1px solid var(--warn); background: var(--panel); color: var(--ink); border-radius: 999px; padding: var(--s1) var(--s4); min-height: 2.5rem; cursor: pointer; font-size: var(--t-sm); }
+.chip:hover { background: var(--warn-soft); }
+.empty { display: flex; gap: var(--s3); align-items: center; color: var(--ink-2); padding-block: var(--s2); }
+.empty svg { width: 1.5rem; height: 1.5rem; color: var(--success); flex: none; }
+
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); }
+table.dt { width: 100%; border-collapse: collapse; font-size: var(--t-md); }
+.dt th { height: 3rem; padding: 0 var(--s4); text-align: left; vertical-align: middle; font-size: var(--t-sm); font-weight: 600; color: var(--ink-2); background: var(--sunken); border-bottom: 1px solid var(--line); white-space: nowrap; }
+.dt td { height: 3.5rem; padding: var(--s2) var(--s4); vertical-align: middle; border-bottom: 1px solid var(--line-2); }
+.dt tr:last-child td { border-bottom: 0; }
+.dt .r { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.dt tbody tr:hover td { background: var(--accent-soft); }
+
+.cta { width: 100%; display: grid; justify-items: center; gap: var(--s3); padding: var(--s6) var(--s5); border: 2px dashed var(--accent); border-radius: var(--r-lg); background: var(--accent-soft); color: var(--ink); text-align: center; cursor: pointer; }
+.cta svg { width: 3rem; height: 3rem; color: var(--accent-ink); }
+.cta .t { font-size: var(--t-2xl); font-weight: 600; line-height: 1.2; }
+.cta .s { font-size: var(--t-lg); color: var(--ink-2); }
+.cta .go { margin-top: var(--s2); display: inline-flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s5); border-radius: 999px; background: var(--accent-ink); color: var(--on-accent); font-size: var(--t-lg); font-weight: 600; }
+.cta .go kbd { background: transparent; color: inherit; border-color: currentColor; }
+
+/* spec view */
+.spec h2.sec { font-size: var(--t-xl); margin: var(--s6) 0 var(--s3); }
+.spec p.lead { margin: 0 0 var(--s4); color: var(--ink-2); max-width: 46rem; }
+.typerow { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: var(--s4); align-items: baseline; padding-block: var(--s2); border-bottom: 1px solid var(--line-2); }
+.typerow code { font-family: var(--mono); font-size: var(--t-xs); color: var(--ink-hint); }
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: var(--s3); }
+.sw { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--panel); font-size: var(--t-sm); }
+.sw i { display: block; height: 3rem; }
+.sw span { display: block; padding: var(--s2) var(--s3); }
+.rules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4); }
+.rules .panel h3 { margin: 0 0 var(--s2); font-size: var(--t-md); }
+.rules ul { margin: 0; padding-left: 1.2em; color: var(--ink-2); display: grid; gap: var(--s1); }
+.demo { display: flex; flex-wrap: wrap; gap: var(--s4); align-items: center; }
+
+@media (max-width: 900px) {
+  .cols, .cols-2, .rules, .kpis { grid-template-columns: 1fr; }
+  .typerow { grid-template-columns: 1fr; }
+}
+</style>
+
+<div class="docbar wrap">
+  <div class="page">
+    <b>訂餐櫃台風格規範（示意）</b>
+    <span class="seg" role="group" aria-label="主題"><button type="button" data-th="light" aria-pressed="false">淺色</button><button type="button" data-th="warm" aria-pressed="true">暖色</button><button type="button" data-th="dark" aria-pressed="false">深色</button></span>
+    <span class="seg" role="group" aria-label="切換頁面">
+      <button type="button" data-v="spec" aria-pressed="true">規範</button>
+      <button type="button" data-v="f2" aria-pressed="false">F2 今日</button>
+      <button type="button" data-v="f3" aria-pressed="false">F3 菜單與開帳</button>
+      <button type="button" data-v="f4" aria-pressed="false">F4 供應商</button>
+    </span>
+  </div>
+</div>
+
+<div class="wrap">
+<div class="page">
+  <header class="topbar">
+    <div class="brand"><i aria-hidden="true"></i>訂餐櫃台</div>
+    <nav class="tabs" aria-label="主要頁面">
+      <span class="tab" data-tab="f1">櫃台 <kbd>F1</kbd></span>
+      <span class="tab" data-tab="f2">今日帳 <kbd>F2</kbd></span>
+      <span class="tab" data-tab="f3">今日設定 <kbd>F3</kbd></span>
+      <span class="tab" data-tab="f4">供應商 <kbd>F4</kbd></span>
+      <span class="tab" data-tab="f5">歷史 <kbd>F5</kbd></span>
+    </nav>
+  </header>
+
+  <!-- ================= SPEC ================= -->
+  <section class="view spec" data-view="spec">
+    <div class="ph"><h1>風格規範</h1><span class="muted">以 MacBook 13 吋（1440 寬）為基準，24 吋（1920 寬）等比放大</span></div>
+
+    <h2 class="sec">字級</h2>
+    <p class="lead">全站只用這 7 級。頁面不直接寫 px，一律用這些名稱。</p>
+    <div class="panel">
+      <div class="typerow"><code>頁面標題 2xl・36</code><span style="font-size:var(--t-2xl);font-weight:600">日結與關帳</span></div>
+      <div class="typerow"><code>大數字 num・40</code><span class="num" style="font-size:var(--t-num);font-weight:600">$2,810</span></div>
+      <div class="typerow"><code>重點 xl・26</code><span style="font-size:var(--t-xl);font-weight:600">示範學生甲 #012</span></div>
+      <div class="typerow"><code>區塊標題 lg・20</code><span style="font-size:var(--t-lg);font-weight:600">今日現金</span></div>
+      <div class="typerow"><code>內文 md・17</code><span>設定今日菜單與開帳現金後，就能開始點餐。</span></div>
+      <div class="typerow"><code>標籤 sm・15</code><span style="font-size:var(--t-sm);color:var(--ink-2)">目前餘額</span></div>
+      <div class="typerow"><code>按鍵 xs・13</code><span><kbd>F3</kbd> <kbd>Enter</kbd></span></div>
+    </div>
+
+    <h2 class="sec">顏色</h2>
+    <p class="lead">三個主題共用同一套字級、間距與元件，只換顏色；用上方切換看各主題。強調色只用在「下一步要做的事」；警示色只用在金額與不可逆操作。</p>
+    <div class="swatches">
+      <div class="sw"><i style="background:var(--bg)"></i><span>背景</span></div>
+      <div class="sw"><i style="background:var(--panel)"></i><span>面板</span></div>
+      <div class="sw"><i style="background:var(--sunken)"></i><span>凹陷區（日期列、表頭）</span></div>
+      <div class="sw"><i style="background:var(--accent-ink)"></i><span>主要動作</span></div>
+      <div class="sw"><i style="background:var(--accent-soft)"></i><span>下一步提示</span></div>
+      <div class="sw"><i style="background:var(--warn)"></i><span>警示（金額、不可逆）</span></div>
+      <div class="sw"><i style="background:var(--success)"></i><span>完成／正常</span></div>
+    </div>
+
+    <h2 class="sec">元件</h2>
+    <div class="cols-2">
+      <div class="panel stack">
+        <h2>按鈕</h2>
+        <div class="demo">
+          <button type="button" class="btn primary">確認關帳 <kbd>Enter</kbd></button>
+          <button type="button" class="btn">取消</button>
+          <button type="button" class="btn sm">編輯</button>
+          <button type="button" class="btn danger">重開</button>
+        </div>
+        <p class="muted" style="margin:0">一頁只有一個主要按鈕。高度 48px，小按鈕 40px，只用在表格列內。</p>
+      </div>
+      <div class="panel stack">
+        <h2>說明提示 <span class="help" tabindex="0" role="button" aria-label="說明" aria-expanded="false">?<span class="tip" role="tooltip">滑鼠移上、Tab 選到或點一下會打開；按 Esc 關閉。功能用途、操作方式放這裡。</span></span></h2>
+        <p class="muted" style="margin:0">說明功能用途的文字一律收進「?」。點開示範看看。</p>
+      </div>
+      <div class="panel stack">
+        <h2>警示</h2>
+        <div class="callout warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3 2 21h20L12 3Z"/><path d="M12 10v5M12 18h.01"/></svg><span>關帳後不能再新增或更正交易、菜單與開帳現金。</span></div>
+        <p class="muted" style="margin:0">金額、不可逆、重複收款風險的句子保持可見，不收進「?」。</p>
+      </div>
+      <div class="panel stack">
+        <h2>狀態標籤</h2>
+        <div class="demo"><span class="badge ok">已關帳</span><span class="badge warn">未關帳</span><span class="badge idle">未開帳</span><span class="badge ok">使用中</span><span class="badge idle">已停用</span></div>
+      </div>
+    </div>
+
+    <h2 class="sec">版面原則</h2>
+    <div class="rules">
+      <div class="panel"><h3>每頁同一個骨架</h3><ul><li>頁面標題＋右側摘要數字</li><li>子分頁用底線標示目前位置</li><li>日期列放在內容最上方，選了日期就載入</li></ul></div>
+      <div class="panel"><h3>對齊</h3><ul><li>金額一律靠右、等寬數字</li><li>表頭與內容都垂直置中</li><li>只在有內容時才出現的區塊，不常駐佔版面</li></ul></div>
+      <div class="panel"><h3>框線用得少</h3><ul><li>面板裡不再包一層框</li><li>空白狀態用一行圖示＋文字</li><li>凹陷底色只給日期列和表頭</li></ul></div>
+      <div class="panel"><h3>文字</h3><ul><li>不出現工程用語（seq、H、tombstone、epoch）</li><li>按鈕寫出會發生的事</li><li>下一步要做的事用大按鈕卡片</li></ul></div>
+    </div>
+  </section>
+
+  <!-- ================= F2 ================= -->
+  <section class="view" data-view="f2" hidden>
+    <div class="ph">
+      <h1>日結與關帳</h1>
+      <button type="button" class="btn sm">重新讀取</button>
+    </div>
+    <nav class="subnav" aria-label="今日帳"><span aria-current="page">今日</span><span>本週／本月</span></nav>
+
+    <div class="stack">
+        <div class="datebar">
+          <label for="d2">查看日期</label>
+          <input id="d2" type="text" value="2026-11-05" aria-label="查看日期" readonly>
+          <span class="state"><span class="badge warn">未關帳</span>今天</span>
+          <span class="seg" role="group" aria-label="示範：過去未關帳" style="margin-left:auto">
+            <button type="button" id="uc-none" aria-pressed="true">示範：沒有未關帳</button>
+            <button type="button" id="uc-some" aria-pressed="false">示範：有 2 天未關帳</button>
+          </span>
+        </div>
+        <p class="allclear" id="uc-ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>過去沒有未關帳的日子</p>
+        <div class="callout warn" id="uc-list" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3 2 21h20L12 3Z"/><path d="M12 10v5M12 18h.01"/></svg>
+          <div class="stack" style="gap:var(--s2)"><span>過去有 2 天還沒關帳，之後每天開帳、關帳都會看到這個提醒。點日期前往處理：</span>
+          <span class="row"><button type="button" class="chip num">2026-11-03　1 筆交易</button><button type="button" class="chip num">2026-11-04　12 筆交易</button></span></div>
+        </div>
+        <div class="kpis">
+          <div class="kpi"><span>應有現金</span><strong class="num">$2,810</strong></div>
+          <div class="kpi"><span>實點現金</span><strong class="num">$2,800</strong></div>
+          <div class="kpi warn"><span>差額</span><strong class="num">−$10</strong></div>
+        </div>
+        <section class="panel stack">
+          <h2>全日點現金與關帳 <span class="help" tabindex="0" role="button" aria-label="說明" aria-expanded="false">?<span class="tip" role="tooltip">應有現金＝開帳現金＋學生收款＋櫃台收入−櫃台支出−帳戶退款。差額不為 0 時需要寫說明。</span></span></h2>
+          <div class="cols-2">
+            <dl class="dl">
+              <dt>開帳現金</dt><dd class="num">$2,000</dd>
+              <dt>學生收款</dt><dd class="num">$960</dd>
+              <dt>櫃台收入</dt><dd class="num">$0</dd>
+              <dt>櫃台支出</dt><dd class="num">$150</dd>
+              <dt>帳戶退款</dt><dd class="num">$0</dd>
+              <dt class="sum">應有現金</dt><dd class="num sum">$2,810</dd>
+            </dl>
+            <div class="stack">
+              <div class="field"><label for="cnt">實點現金</label><div class="input" id="cnt"><span class="muted">$</span><span class="num">2,800</span></div></div>
+              <div class="field"><label for="why">差額說明</label><div class="input" id="why" style="font-size:var(--t-md)"><span class="muted">例如：找零少找 10 元</span></div></div>
+            </div>
+          </div>
+          <div class="callout warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3 2 21h20L12 3Z"/><path d="M12 10v5M12 18h.01"/></svg><span>關帳後不能再新增或更正交易、菜單與開帳現金。</span></div>
+          <div class="row end"><button type="button" class="btn primary">確認關帳</button></div>
+        </section>
+    </div>
+  </section>
+
+  <!-- ================= F3 ================= -->
+  <section class="view" data-view="f3" hidden>
+    <div class="ph"><h1>菜單與開帳</h1></div>
+    <nav class="subnav" aria-label="今日設定"><span>學生</span><span aria-current="page">菜單與開帳</span><span>本機診斷</span><span>資料備份</span></nav>
+    <div class="stack">
+      <div class="datebar">
+        <label for="d3">營業日</label>
+        <input id="d3" type="text" value="2026-11-05" aria-label="營業日" readonly>
+        <span class="state"><span class="badge idle">未開帳</span>今天</span>
+      </div>
+      <div class="cols-2">
+        <section class="panel stack">
+          <h2>今日菜單 <span class="help" tabindex="0" role="button" aria-label="說明" aria-expanded="false">?<span class="tip" role="tooltip">只能選使用中的供應商。可以沿用最近一次較早日期的菜單。</span></span></h2>
+          <dl class="dl">
+            <dt>供應商</dt><dd>示範便當</dd>
+            <dt>餐點</dt><dd>排骨飯</dd>
+            <dt>價格</dt><dd class="num">$80</dd>
+          </dl>
+          <div class="row end"><button type="button" class="btn">沿用上次菜單</button><button type="button" class="btn">編輯菜單</button></div>
+        </section>
+        <section class="panel stack">
+          <h2>開帳現金</h2>
+          <div class="field"><label for="open">實際點算的開帳現金</label><div class="input" id="open"><span class="muted">$</span><span class="num">2,000</span></div></div>
+          <p class="muted" style="margin:0">上次關帳實點：<span class="num">$2,000</span></p>
+          <div class="callout warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3 2 21h20L12 3Z"/><path d="M12 10v5M12 18h.01"/></svg><span>輸入 0 才代表確認為零元；空白表示尚未開帳。</span></div>
+          <div class="row end"><button type="button" class="btn primary">確認開帳</button></div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= F4 ================= -->
+  <section class="view" data-view="f4" hidden>
+    <div class="ph">
+      <h1>供應商 <span class="help" tabindex="0" role="button" aria-label="說明" aria-expanded="false" style="vertical-align:middle">?<span class="tip" role="tooltip">停用的供應商可以恢復；移除後不能恢復，編號也不會再用。停用或移除不會改到已存的菜單與交易。</span></span></h1>
+      <button type="button" class="btn primary">新增供應商</button>
+    </div>
+    <div class="tablewrap">
+      <table class="dt">
+        <thead><tr><th scope="col">編號</th><th scope="col">名稱</th><th scope="col">電話</th><th scope="col">備註</th><th scope="col">狀態</th><th scope="col" class="r">本月份數</th><th scope="col"><span class="sr-only">操作</span></th></tr></thead>
+        <tbody>
+          <tr><td class="num">1</td><td>示範便當</td><td class="num">02-1234-5678</td><td class="muted">—</td><td><span class="badge ok">使用中</span></td><td class="r">214</td><td style="text-align:right"><button type="button" class="btn sm">編輯</button></td></tr>
+          <tr><td class="num">2</td><td>示範麵店</td><td class="num">02-2345-6789</td><td>週三公休</td><td><span class="badge ok">使用中</span></td><td class="r">58</td><td style="text-align:right"><button type="button" class="btn sm">編輯</button></td></tr>
+          <tr><td class="num">3</td><td>示範簡餐</td><td class="num">02-3456-7890</td><td class="muted">—</td><td><span class="badge idle">已停用</span></td><td class="r">0</td><td style="text-align:right"><button type="button" class="btn sm">恢復</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">「本月份數」只是示範金額／數字欄靠右的樣子，不是本次要新增的欄位。</p>
+  </section>
+</div>
+</div>
+
+<style>.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}</style>
+<script>
+(() => {
+  document.body.dataset.app = 'warm';
+  const bs = document.querySelectorAll('[data-th]');
+  bs.forEach(b => b.addEventListener('click', () => { document.body.dataset.app = b.dataset.th; bs.forEach(x => x.setAttribute('aria-pressed', String(x === b))); }));
+})();
+</script>
+<script>
+(() => {
+  const btns = document.querySelectorAll('.seg [data-v]');
+  const tabs = { spec: null, f2: 'f2', f3: 'f3', f4: 'f4' };
+  function show(v) {
+    btns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
+    document.querySelectorAll('.view').forEach(s => { s.hidden = s.dataset.view !== v; });
+    document.querySelectorAll('.tab').forEach(t => {
+      if (t.dataset.tab === tabs[v]) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
+    });
+  }
+  btns.forEach(b => b.addEventListener('click', () => show(b.dataset.v)));
+  document.querySelectorAll('.help').forEach(h => {
+    const set = v => h.setAttribute('aria-expanded', v);
+    h.addEventListener('click', () => set(h.getAttribute('aria-expanded') === 'true' ? 'false' : 'true'));
+    h.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); set(h.getAttribute('aria-expanded') === 'true' ? 'false' : 'true'); }
+      if (e.key === 'Escape') { set('false'); h.blur(); }
+    });
+  });
+  const none=document.getElementById('uc-none'), some=document.getElementById('uc-some');
+  const uc = on => { none.setAttribute('aria-pressed', String(!on)); some.setAttribute('aria-pressed', String(on)); document.getElementById('uc-ok').hidden = on; document.getElementById('uc-list').hidden = !on; };
+  none.addEventListener('click', () => uc(false)); some.addEventListener('click', () => uc(true));
+  show('spec');
+})();
+</script>
