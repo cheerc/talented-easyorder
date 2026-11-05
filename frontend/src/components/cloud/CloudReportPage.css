@@ -1,7 +1,7 @@
 .cloud-report {
   width: min(1320px, calc(100% - 32px));
-  margin: 24px auto 48px;
-  padding: 28px;
+  margin: var(--s5) auto var(--s7);
+  padding: var(--s5);
   color: var(--ink);
   background: var(--panel);
   border: 1px solid var(--line);
@@ -12,56 +12,60 @@
 .cloud-report button,
 .cloud-report input,
 .cloud-report select { font: inherit; }
-.cloud-report button { min-height: 36px; padding: 6px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); color: var(--ink); cursor: pointer; }
-.cloud-report button:disabled { cursor: not-allowed; opacity: .5; }
-.cloud-report label { display: inline-flex; align-items: center; gap: 8px; margin: 4px 12px 4px 0; font-weight: 650; }
+.cloud-report button:not(.help-tip-ui__btn) { min-height: 2.25rem; padding: var(--s2) var(--s3); font-size: var(--t-xs); border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); color: var(--ink); cursor: pointer; }
+.cloud-report button:not(.help-tip-ui__btn):disabled { cursor: not-allowed; opacity: .5; }
+.cloud-report label { display: inline-flex; align-items: center; gap: var(--s2); margin: var(--s1) var(--s3) var(--s1) 0; font-size: var(--t-sm); font-weight: 650; }
 .cloud-report input,
-.cloud-report select { min-height: 36px; padding: 5px 8px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); color: var(--ink); }
+.cloud-report select { min-height: 2.25rem; padding: var(--s1) var(--s2); border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); color: var(--ink); }
 .cloud-report__header,
-.cloud-report__section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
-.cloud-report__header { padding-bottom: 18px; border-bottom: 1px solid var(--line); }
-.cloud-report__header h2 { margin: 2px 0 8px; font-size: clamp(22px, 3vw, 30px); letter-spacing: -.025em; }
+.cloud-report__section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s5); }
+.cloud-report__header { padding-bottom: var(--s4); border-bottom: 1px solid var(--line); }
+.cloud-report__header h2 { margin: 0; font-size: var(--t-2xl); letter-spacing: -.025em; }
 .cloud-report__header p,
 .cloud-report__section > p { line-height: 1.55; color: var(--ink-2); }
-.cloud-report__controls { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin: 18px 0; }
-.cloud-report__controls label { display: grid; gap: 5px; }
+.cloud-report__title,
+.cloud-report__heading-row { display: flex; align-items: center; gap: var(--s2); margin-bottom: var(--s2); }
+.cloud-report__heading-row h3 { margin: 0; }
+.cloud-report__callout { margin: var(--s2) 0; }
+.cloud-report__controls { display: flex; flex-wrap: wrap; align-items: end; gap: var(--s3); margin: var(--s4) 0; }
+.cloud-report__controls label { display: grid; gap: var(--s1); }
 .cloud-report__controls button { color: var(--panel); background: var(--ink); border-color: var(--ink); }
 .cloud-report__controls button:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); }
-.cloud-report__snapshot { padding: 10px 12px; background: var(--accent-soft); border-left: 4px solid var(--accent); color: var(--accent-ink); font-weight: 650; }
+.cloud-report button:focus-visible,
+.cloud-report input:focus-visible,
+.cloud-report select:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.cloud-report__snapshot { padding: var(--s3); background: var(--accent-soft); border-left: 4px solid var(--accent); color: var(--accent-ink); font-weight: 650; }
 .cloud-report__error,
-.cloud-report__recovery { padding: 12px 16px; border: 1px solid var(--danger); border-radius: var(--r); background: var(--danger-soft); }
-.cloud-report__section { margin: 24px 0; padding: 18px 0 4px; border-top: 1px solid var(--line); }
-.cloud-report__section h3 { margin: 0 0 10px; }
-.cloud-report__totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 16px 0; }
-.cloud-report__totals div { padding: 10px; border: 1px solid var(--line); border-radius: var(--r); }
-.cloud-report__totals dt { color: var(--ink-hint); font-size: 12px; }
-.cloud-report__totals dd { margin: 5px 0 0; font-weight: 700; font-variant-numeric: tabular-nums; }
-.cloud-report__table-wrap { overflow: auto; max-width: 100%; }
-.cloud-report table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.cloud-report th { padding: 8px 10px; border-bottom: 1px solid var(--line-2); text-align: left; vertical-align: middle; white-space: nowrap; }
-.cloud-report td { padding: 8px 10px; border-bottom: 1px solid var(--line-2); text-align: left; vertical-align: top; white-space: nowrap; }
-.cloud-report td small { display: block; max-width: 360px; white-space: normal; color: var(--ink-hint); }
-.cloud-report th { position: sticky; top: 0; background: var(--surface-sunken); color: var(--ink-hint); font-size: 12px; font-weight: 600; }
+.cloud-report__recovery { padding: var(--s3) var(--s4); border: 1px solid var(--danger); border-radius: var(--r); background: var(--danger-soft); }
+.cloud-report__section { margin: var(--s5) 0; padding: var(--s4) 0 var(--s1); border-top: 1px solid var(--line); }
+.cloud-report__section h3 { margin: 0 0 var(--s3); font-size: var(--t-lg); }
+.cloud-report__totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s2); margin: var(--s4) 0; }
+.cloud-report__totals div { padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r); }
+.cloud-report__totals dt { color: var(--ink-hint); font-size: var(--t-xs); }
+.cloud-report__totals dd { margin: var(--s1) 0 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cloud-report .dt td small { max-width: 22.5rem; }
+.cloud-report .dt td { white-space: nowrap; vertical-align: top; }
+.cloud-report .dt td.dt-num { vertical-align: top; }
 .cloud-report__actions,
-.cloud-report__pager { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
+.cloud-report__pager { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin: var(--s3) 0; }
 .cloud-report__pager { justify-content: center; }
 .cloud-report__print { display: none; }
-.cloud-report__details { color: var(--ink-2); font-size: 13px; }
+.cloud-report__details { color: var(--ink-2); font-size: var(--t-xs); }
 .cloud-report__details summary { color: var(--accent-ink); cursor: pointer; font-weight: 600; }
 .cloud-report__details summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .cloud-report__status { white-space: nowrap; }
 .cloud-report__empty.empty-ui {
   display: block;
   margin: 0;
-  padding: 12px;
+  padding: var(--s3);
   color: var(--ink-2);
   text-align: left;
 }
 .cloud-report__empty .empty-icon { display: none; }
-.cloud-report__empty .empty-title { margin: 0; color: var(--ink-2); font-size: 13px; font-weight: 500; }
+.cloud-report__empty .empty-title { margin: 0; color: var(--ink-2); font-size: var(--t-xs); font-weight: 500; }
 
 @media (max-width: 720px) {
-  .cloud-report { width: calc(100% - 16px); padding: 16px; }
+  .cloud-report { width: calc(100% - var(--s4)); padding: var(--s4); }
   .cloud-report__header,
   .cloud-report__section-heading { flex-direction: column; }
   .cloud-report__totals { grid-template-columns: repeat(2, minmax(0, 1fr)); }

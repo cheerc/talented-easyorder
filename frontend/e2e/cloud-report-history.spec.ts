@@ -589,8 +589,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
       await expect(page.getByText(`目前明細範圍：${CURRENT_NAME}（${STUDENT_CODE}）`)).toBeVisible();
       expect(await page.getByLabel('全日摘要合計').innerText()).toBe(daySummaryBeforeScope);
       await expect(page.locator('.cloud-report__pager')).toContainText(`全部 ${selectedAccountRowsExpected} 筆`);
-      const reportReady = await page.getByTestId('report-ready').innerText();
-      const sourceSeq = Number(reportReady.match(/H=(\d+)/)?.[1]);
+      const sourceSeq = Number(await page.getByTestId('report-ready').getAttribute('data-source-seq'));
       expect(Number.isSafeInteger(sourceSeq)).toBe(true);
 
       const detailRows = page.locator('section[aria-labelledby="cloud-report-detail-heading"] tbody tr');
@@ -646,8 +645,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
           // #600: no paper number tag; the note is shown as written.
           await expect(page.locator('.cloud-report__paper-tag')).toHaveCount(0);
           expect(new Set(uiIds).size).toBe(printScope.expectedRows);
-          const reportBeforeExport = await page.getByTestId('report-ready').innerText();
-          const exportSourceSeq = Number(reportBeforeExport.match(/H=(\d+)/)?.[1]);
+          const exportSourceSeq = Number(await page.getByTestId('report-ready').getAttribute('data-source-seq'));
           expect(Number.isSafeInteger(exportSourceSeq)).toBe(true);
           const [download] = await Promise.all([
             page.waitForEvent('download'),
@@ -680,8 +678,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
           });
 
           const printType = mode === 'original' ? 'ledger-original' : 'ledger-merged';
-          const reportBeforePrint = await page.getByTestId('report-ready').innerText();
-          const printSourceSeq = Number(reportBeforePrint.match(/H=(\d+)/)?.[1]);
+          const printSourceSeq = Number(await page.getByTestId('report-ready').getAttribute('data-source-seq'));
           expect(Number.isSafeInteger(printSourceSeq)).toBe(true);
           await page.emulateMedia({ media: 'print' });
           await page.evaluate(() => {

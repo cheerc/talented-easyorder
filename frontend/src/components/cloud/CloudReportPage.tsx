@@ -35,6 +35,8 @@ import { StatusBadge } from '../ui/StatusBadge';
 import { CloudAccountBalance } from './CloudAccountBalance';
 import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerToken } from './useCloudActionOwner';
 import { DataUpdatedNotice } from './DataUpdatedNotice';
+import { HelpTip } from '../ui/HelpTip';
+import { Callout } from '../ui/Callout';
 import { seqWithOwnReceipts, useOwnReceiptSeqs } from './ownReceiptSeqs';
 import './CloudReportPage.css';
 
@@ -930,9 +932,11 @@ export function CloudReportPage({
     <section className="cloud-report" aria-label="雲端報表">
       <CommandProgress active={progressActive} />
       <header className="cloud-report__header">
-        <div><h2>報表</h2>
-          <p>日期範圍由伺服器台北日期 {leaseToday || '讀取中'} 推導；僅在報表與稽核資料版本一致時顯示。</p></div>
-        {snapshot && <strong>來源序號 H={snapshot.report.sourceSeq}</strong>}
+        <div>
+          <div className="cloud-report__title"><h2>報表</h2>
+            <HelpTip label="報表說明">日期範圍由伺服器台北日期 {leaseToday || '讀取中'} 推導。{snapshot ? `\n資料版本 ${snapshot.report.sourceSeq}。` : ''}</HelpTip></div>
+          <Callout variant="info" className="cloud-report__callout">僅在報表與稽核資料版本一致時顯示。</Callout>
+        </div>
       </header>
       <DataUpdatedNotice pageSeq={snapshot ? seqWithOwnReceipts(snapshot.report.sourceSeq, ownReceiptSeqs) : null} hidden={controlsLocked} onReload={reloadReport} />
 
@@ -946,7 +950,7 @@ export function CloudReportPage({
         {rangeKind === 'custom' ? <>
           <label>開始日期<input aria-label="開始日期" type="date" value={customStart} disabled={controlsLocked} onChange={event => setCustomStart(event.target.value)} /></label>
           <label>結束日期<input aria-label="結束日期" type="date" value={customEnd} disabled={controlsLocked} onChange={event => setCustomEnd(event.target.value)} /></label>
-          <span>自訂最多 31 日，超出時不會截短。</span>
+          <Callout variant="info" className="cloud-report__callout">自訂最多 31 日，超出時不會截短。</Callout>
         </> : <label>範圍日期<input aria-label="範圍日期" type="date" value={rangeAnchor} disabled={controlsLocked} onChange={event => setRangeAnchor(event.target.value)} /></label>}
         <button type="submit" disabled={controlsLocked || !leaseToday}>查詢完整報表</button>
       </form>
@@ -959,21 +963,22 @@ export function CloudReportPage({
 
       {loading && <p role="status">正在由伺服器讀取完整交易與稽核資料；目前不提供餘額或輸出。</p>}
       {!loading && snapshot && query && <>
-        <p className="cloud-report__snapshot" data-testid="report-ready">資料已確認：{query.range.startDate}–{query.range.endDate} · {query.studentId ? `帳戶 ${query.studentId}` : '全部帳戶'} · 來源序號 H={snapshot.report.sourceSeq}</p>
+        <p className="cloud-report__snapshot" data-testid="report-ready" data-source-seq={snapshot.report.sourceSeq}>資料已確認：{query.range.startDate}–{query.range.endDate} · {query.studentId ? `帳戶 ${query.studentId}` : '全部帳戶'}</p>
         <details className="cloud-report__details">
           <summary>資料詳情</summary>
           <dl>
-            <dt>dataset</dt><dd>{snapshot.report.datasetId}</dd>
+            <dt>資料集</dt><dd>{snapshot.report.datasetId}</dd>
             <dt>查詢區間</dt><dd>{query.range.startDate} 至 {query.range.endDate}</dd>
-            <dt>版本核對</dt><dd>報表與稽核來源序號須一致才可匯出</dd>
+            <dt>版本核對</dt><dd>報表與稽核資料版本須一致才可匯出</dd>
           </dl>
         </details>
 
         <section aria-labelledby="cloud-report-summary-heading" className="cloud-report__section">
-          <div className="cloud-report__section-heading"><h3 id="cloud-report-summary-heading">區間日摘要</h3><button type="button" disabled={controlsLocked || !onOpenDayClose}
+          <div className="cloud-report__section-heading"><div className="cloud-report__heading-row"><h3 id="cloud-report-summary-heading">區間日摘要</h3>
+            <HelpTip label="區間日摘要說明">{'日摘要與選定帳戶明細分開呈現。\n沒有營業日的操作依記錄日期列入稽核。'}</HelpTip></div><button type="button" disabled={controlsLocked || !onOpenDayClose}
             onClick={() => onOpenDayClose?.(snapshot.report.days.find(day => day.businessDate === printDate)?.businessDate ?? snapshot.report.range.startDate)}>
             開啟日結 {printDate || snapshot.report.range.startDate}</button></div>
-          <p>日摘要與選定帳戶明細分開呈現；現金存量不會跨日加總，未提供訂餐欠款推估。沒有營業日的操作依記錄日期列入稽核。</p>
+          <Callout variant="warn" className="cloud-report__callout">現金存量不會跨日加總，未提供訂餐欠款推估。</Callout>
           <dl className="cloud-report__totals" aria-label="全日摘要合計">
             <div><dt>有效交易</dt><dd>{snapshot.report.summary.activeTransactionCount}</dd></div>
             <div><dt>便當份數</dt><dd>{snapshot.report.summary.bentoCount}</dd></div>
@@ -984,14 +989,14 @@ export function CloudReportPage({
             <div><dt>帳戶退款</dt><dd>{money(snapshot.report.summary.totalRefund)}</dd></div>
             <div><dt>區間淨現金流</dt><dd>{money(snapshot.report.summary.netCash)}</dd></div>
           </dl>
-          <div className="cloud-report__table-wrap"><table className="dt"><thead><tr><th>營業日</th><th>狀態</th><th>份數</th><th>餐費</th><th>收款留存</th><th>櫃台收入／支出</th><th>帳戶退款</th><th>日結現金</th><th>日結操作</th></tr></thead>
+          <div className="dt-wrap"><table className="dt"><thead><tr><th>營業日</th><th>狀態</th><th className="dt-num">份數</th><th className="dt-num">餐費</th><th className="dt-num">收款留存</th><th className="dt-num">櫃台收入／支出</th><th className="dt-num">帳戶退款</th><th>日結現金</th><th>日結操作</th></tr></thead>
             <tbody>{snapshot.report.days.length === 0 ? (
               <tr><td colSpan={9}><EmptyState className="cloud-report__empty" title="此區間沒有營業日資料。" /></td></tr>
             ) : snapshot.report.days.map(day => <tr key={day.businessDate}>
-              <td>{day.businessDate}</td><td><StatusBadge variant={reportDayStatusVariant(day.status)} className="cloud-report__status">{reportDayStatusLabel(day.status)}</StatusBadge></td><td>{day.totals ? `${day.totals.bentoCount} + ${day.totals.otherMealCount}` : '—'}</td>
-              <td>{day.totals ? money(day.totals.mealTotal) : '—'}</td><td>{day.totals ? money(day.totals.retainedReceipts) : '—'}</td>
-              <td>{day.totals ? `${money(day.totals.cashierIncome)} / ${money(day.totals.cashierExpense)}` : '—'}</td>
-              <td>{day.totals ? money(day.totals.accountRefunds) : '—'}</td>
+              <td>{day.businessDate}</td><td><StatusBadge variant={reportDayStatusVariant(day.status)} className="cloud-report__status">{reportDayStatusLabel(day.status)}</StatusBadge></td><td className="dt-num">{day.totals ? `${day.totals.bentoCount} + ${day.totals.otherMealCount}` : '—'}</td>
+              <td className="dt-num">{day.totals ? money(day.totals.mealTotal) : '—'}</td><td className="dt-num">{day.totals ? money(day.totals.retainedReceipts) : '—'}</td>
+              <td className="dt-num">{day.totals ? `${money(day.totals.cashierIncome)} / ${money(day.totals.cashierExpense)}` : '—'}</td>
+              <td className="dt-num">{day.totals ? money(day.totals.accountRefunds) : '—'}</td>
               <td>{day.lastSettlementRevision > 0 ? <>{day.settlements.map(version => <div key={version.revision}>
                 第 {version.revision} 次實點 {version.countedCash === null ? '—' : money(version.countedCash)}{day.status === 'closed' && version.revision === day.lastSettlementRevision ? ` · 有效現金 ${money(day.effectiveCash ?? version.countedCash ?? 0)}` : ''}
                 <small>{version.actorUid} · {taipeiTime(version.committedAt)} · {version.note || '無備註'}</small>
@@ -1022,12 +1027,13 @@ export function CloudReportPage({
         </section>
 
         <section className="cloud-report__section" aria-labelledby="cloud-report-detail-heading">
-          <div className="cloud-report__section-heading"><h3 id="cloud-report-detail-heading">完整交易明細</h3>
+          <div className="cloud-report__section-heading"><div className="cloud-report__heading-row"><h3 id="cloud-report-detail-heading">完整交易明細</h3>
+            <HelpTip label="交易明細說明">輸出使用全部 {allRows.length} 筆完整資料，畫面每頁 100 筆。</HelpTip></div>
             <div><label>呈現方式<select aria-label="交易呈現方式" value={mode} disabled={controlsLocked} onChange={event => { setMode(event.target.value as typeof mode); setPageNumber(0); }}>
               <option value="original">原始交易</option><option value="merged">合併交易</option></select></label>
-              <span>輸出使用全部 {allRows.length} 筆完整模型，畫面每頁 100 筆。</span></div>
+</div>
           </div>
-          <div className="cloud-report__table-wrap"><table className="dt"><thead><tr><th>交易識別</th><th>營業日</th><th>帳戶與當時姓名</th><th>類型／狀態</th><th>餐點快照</th><th>金額／份數</th><th>完整歷史餘額</th><th>操作者／台北時間</th><th>回填／說明</th></tr></thead>
+          <div className="dt-wrap"><table className="dt"><thead><tr><th>交易識別</th><th>營業日</th><th>帳戶與當時姓名</th><th>類型／狀態</th><th>餐點快照</th><th className="dt-num">金額／份數</th><th className="dt-num">完整歷史餘額</th><th>操作者／台北時間</th><th>回填／說明</th></tr></thead>
             <tbody>{visibleRows.length === 0 ? (
               <tr><td colSpan={9}><EmptyState className="cloud-report__empty" title="此範圍沒有帳戶交易。" /></td></tr>
             ) : visibleRows.map(row => {
@@ -1039,8 +1045,8 @@ export function CloudReportPage({
               return <tr key={`${merged ? 'merged' : 'raw'}:${row.transactionId}`}>
                 <td><small>{transactionIds.join(' · ')}</small></td><td>{row.businessDate}</td><td>{row.studentNameSnapshot}（{row.studentId}）</td>
                 <td>{merged ? row.kind : row.type} · <StatusBadge variant={transactionStatusVariant(row.status)} className="cloud-report__status">{transactionStatusLabel(row.status)}</StatusBadge></td><td>{mealText}</td>
-                <td>{money(row.amount)} · 餐費 {money(row.mealPrice)} · 收款 {money(row.paidAmount)}{merged && row.orderCount ? ` · ${row.orderCount} 筆訂餐／${row.bentoOrderCount} 份便當` : ''}</td>
-                <td>{row.studentId === '__cashier__' ? '不適用' : balance === undefined ? '未驗證' : <CloudAccountBalance amount={balance} currency="$" />}</td>
+                <td className="dt-num">{money(row.amount)} · 餐費 {money(row.mealPrice)} · 收款 {money(row.paidAmount)}{merged && row.orderCount ? ` · ${row.orderCount} 筆訂餐／${row.bentoOrderCount} 份便當` : ''}</td>
+                <td className="dt-num">{row.studentId === '__cashier__' ? '不適用' : balance === undefined ? '未驗證' : <CloudAccountBalance amount={balance} currency="$" />}</td>
                 <td>{raw.map(item => <div key={item.transactionId}>{item.operatorUid} · {taipeiTime(item.createdAt)}</div>)}</td>
                 <td>{row.backfilled ? '回填' : '—'}{raw.some(item => item.status === 'voided') ? ' · 保留作廢列' : ''}{raw.map(item => item.note && <small key={`note:${item.transactionId}`}>{item.note}</small>)}</td>
               </tr>;
@@ -1051,8 +1057,9 @@ export function CloudReportPage({
         </section>
 
         <section className="cloud-report__section" aria-labelledby="cloud-report-exports-heading">
-          <h3 id="cloud-report-exports-heading">收據確認後輸出</h3>
-          <p>輸出固定目前日期、帳戶範圍與來源序號 H={snapshot.report.sourceSeq}；日結與關帳後補記僅支援全部帳戶範圍。</p>
+          <div className="cloud-report__heading-row"><h3 id="cloud-report-exports-heading">收據確認後輸出</h3>
+            <HelpTip label="輸出說明">{`輸出固定目前日期與帳戶範圍。\n資料版本 ${snapshot.report.sourceSeq}。`}</HelpTip></div>
+          <Callout variant="info" className="cloud-report__callout">日結與關帳後補記僅支援全部帳戶範圍。</Callout>
           <div className="cloud-report__actions">
             <button type="button" disabled={controlsLocked} onClick={() => makeExport('transactions-original')}>匯出原始交易 CSV</button>
             <button type="button" disabled={controlsLocked} onClick={() => makeExport('transactions-merged')}>匯出合併交易 CSV</button>
@@ -1067,14 +1074,14 @@ export function CloudReportPage({
         </section>
 
         {snapshot.accessEvents && <section className="cloud-report__section" aria-labelledby="cloud-report-handover-heading">
-          <h3 id="cloud-report-handover-heading">使用權交接</h3>
+          <div className="cloud-report__heading-row"><h3 id="cloud-report-handover-heading">使用權交接</h3>
+            <HelpTip label="使用權交接說明">唯讀記錄：誰在何時取得、接手或釋放編輯使用權；僅顯示 email，不提供匯出。</HelpTip></div>
           {snapshot.accessEvents.status === 'unavailable'
             ? <p>{snapshot.accessEvents.message}</p>
             : !snapshot.accessEvents.snapshot.rows.length
               ? <EmptyState className="cloud-report__empty" title="此區間沒有使用權交接紀錄。" />
               : <>
-                <p>唯讀記錄：誰在何時取得、接手或釋放編輯使用權；僅顯示 email，不提供匯出。</p>
-                <div className="cloud-report__table-wrap"><table className="dt"><thead><tr><th>時間（台北）</th><th>種類</th><th>操作人</th><th>前一位持有人</th></tr></thead>
+                <div className="dt-wrap"><table className="dt"><thead><tr><th>時間（台北）</th><th>種類</th><th>操作人</th><th>前一位持有人</th></tr></thead>
                   <tbody>{snapshot.accessEvents.snapshot.rows.map(row => <tr key={row.epoch}>
                     <td>{taipeiTime(row.at)}</td><td>{ACCESS_EVENT_KIND_TEXT[row.kind]}</td><td>{row.actorEmail}</td><td>{previousHolderText(row)}</td>
                   </tr>)}</tbody></table></div>
