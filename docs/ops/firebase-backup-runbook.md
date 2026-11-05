@@ -43,7 +43,7 @@ F3 provides no restore or overwrite action. Do not import a package into a live 
 
 ## 未來展望
 
-這一節是方向，不是承諾，也不代表已授權或已排程。
+這一節是方向，不是承諾，也不代表已授權或已排程。使用者 2026-11-05 裁定暫緩；要重新討論備份方式或 RPO 目標時，從 [#657](https://github.com/cheerc/talented-easyorder/issues/657) 開始。
 
 - **每月自動觸發備份到某個雲端位置。** 原因：櫃台人員流動率高，下載到本機再人工複製有外洩與遺失風險，也難以讓新人反覆訓練到熟。目標是把「產生、驗證、存放」變成不依賴人員記憶的流程。
 - **限制：** Firebase 的受管備份、排程匯出與 PITR（時間點復原）都需要 Blaze（付費）方案。本案使用 Spark，且不啟用 billing，所以這些都不能直接用。要做就必須另找不需付費的方式，並由使用者決策；目前沒有選定的方案。
