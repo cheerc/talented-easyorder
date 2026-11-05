@@ -2235,6 +2235,12 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                       </div>
                     )}
 
+                    {mode === 'payment' && (
+                      // Money rule (no change counted, added to balance): always visible per docs/FRONTEND-UI-STYLE.md R7.
+                      <Callout variant="info" role="note" className="cloud-orders__payment-rule">
+                        繳費只記實際留存的現金，不計找零；金額會加進帳戶餘額。
+                      </Callout>
+                    )}
                     <div className="cloud-orders__checkout">
                       <dl className="cloud-orders__breakdown" data-testid="order-preview" aria-label="結帳明細">
                         <div className="cloud-orders__breakdown-row">
@@ -2275,7 +2281,7 @@ export function CloudOrdersPage({ db, leaseEpoch, identityKey, onNavigationState
                         <div className="cloud-orders__field">
                           <label htmlFor="paid-amount">{mode === 'payment' ? '繳費金額（必填）' : '實收金額（留空為 0 元）'}</label>
                           {mode === 'payment' && (
-                            <HelpTip label="繳費說明">{'繳費只記實際留存的現金，不計找零；金額會加進帳戶餘額。\n要退錢給學生請用「退款」。'}</HelpTip>
+                            <HelpTip label="繳費說明">要退錢給學生請用「退款」。</HelpTip>
                           )}
                           <input
                             id="paid-amount"

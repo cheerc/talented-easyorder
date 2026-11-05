@@ -813,3 +813,7 @@ li.cloud-orders__recent-item:hover {
   vertical-align: middle;
 }
 
+
+.cloud-orders__payment-rule {
+  margin-bottom: var(--s3);
+}
