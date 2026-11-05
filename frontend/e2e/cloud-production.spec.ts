@@ -1526,9 +1526,9 @@ test.describe('P11 Cloud Day Close', () => {
       const main = page.getByRole('main', { name: '雲端日結' });
       await expect(main.getByRole('heading', { name: `${today} 日結` })).toBeVisible();
       await expect(main.getByLabel('營業日現金統計')).toContainText(money(expected));
-      const todayUnclosed = main.getByTestId(`cloud-unclosed-${today}`);
-      await expect(todayUnclosed).toContainText('今天');
-      await expect(todayUnclosed.getByText('尚未關帳')).toHaveClass(/badge-ui.*badge-warn/);
+      const dayState = main.getByTestId('cloud-day-state');
+      await expect(dayState).toContainText('今天');
+      await expect(dayState.getByText('開啟中')).toHaveClass(/badge-ui.*badge-warn/);
       const closeForm = main.getByRole('form', { name: `${today} 關帳` });
       await closeForm.getByRole('textbox', { name: '實點現金（元）' }).fill(String(expected - 10));
       await expect(closeForm).toContainText(`應有 ${money(expected)}，實點 ${money(expected - 10)}，少 NT$ 10`);
@@ -1799,7 +1799,6 @@ test.describe('P11c3 Cloud Backfill Align', () => {
         if (amount === '40') {
           await page.getByRole('button', { name: '今日帳', exact: true }).click();
           await main.getByLabel('查看日期').fill(gap);
-          await main.getByRole('button', { name: '載入日期' }).click();
           await expect(main.getByTestId('backfill-align-gap')).toContainText('差 NT$ 40，不能關帳');
         }
         await main.getByTestId('backfill-align-orders').click();
@@ -1817,7 +1816,6 @@ test.describe('P11c3 Cloud Backfill Align', () => {
       // 5. 回到日結頁：差額 0，用預設的 970 關帳
       await page.getByRole('button', { name: '今日帳', exact: true }).click();
       await main.getByLabel('查看日期').fill(gap);
-      await main.getByRole('button', { name: '載入日期' }).click();
       await expect(main.getByTestId('backfill-align-target')).toContainText('NT$ 970');
       await expect(main.getByTestId('backfill-align-gap')).toHaveCount(0);
       await main.getByRole('form', { name: `${gap} 關帳` }).getByRole('button', { name: '確認關帳' }).click();
@@ -1932,7 +1930,6 @@ test.describe('P11c4b Cloud Post-Close UI', () => {
 
       await page.getByRole('button', { name: '今日帳', exact: true }).click();
       await main.getByLabel('查看日期').fill(previous);
-      await main.getByRole('button', { name: '載入日期' }).click();
       await expect(main.getByRole('heading', { name: `${previous} 日結` })).toBeVisible();
       await main.getByRole('button', { name: '重開這一天' }).click();
       const reopen = main.getByRole('form', { name: `${previous} 重開` });

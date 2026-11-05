@@ -19,11 +19,15 @@ import {
   type StartCloudBackfillInput,
 } from '../../firebase/cloudDayCloseRepository';
 import type { CloudLedgerView } from '../../hooks/useCloudLedger';
+import { CircleCheck } from 'lucide-react';
+import { Callout } from '../ui/Callout';
 import { CommandProgress } from '../ui/CommandProgress';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { EmptyState } from '../ui/EmptyState';
+import { HelpTip } from '../ui/HelpTip';
+import { StatTile } from '../ui/StatTile';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Toast } from '../ui/Toast';
-import { LedgerUnclosedBanner } from './LedgerUnclosedBanner';
 import { DataUpdatedNotice } from './DataUpdatedNotice';
 import './CloudDayClosePage.css';
 
@@ -33,7 +37,7 @@ export interface CloudDayClosePageProps {
   identityKey: string;
   onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
   onDraftCleared?: () => void;
-  /** 帳務異常快照（契約 §11）；沒提供時不顯示橫幅。 */
+  /** 帳務異常快照（契約 §11）。#648 R8：本頁的未關帳日自己列出警示，不再顯示共用橫幅；prop 保留給上層相容。 */
   ledger?: CloudLedgerView;
   onOpenAnomalies?: () => void;
   /** 開帳補登、關帳或重開命令確認成功後呼叫，讓上層重讀帳務異常。 */
@@ -292,15 +296,6 @@ function commandLabel(command: PreparedCommand): string {
   return command.kind === 'close-day' ? `${command.dayId} 關帳` : `${command.dayId} 重開`;
 }
 
-function unclosedLabel(day: CloudUnclosedDay, selectionDate: string): string {
-  if (day.backfill) return '補登完成後關帳';
-  if (day.kind === 'no-business') return '沒有開帳也沒有交易';
-  if (day.kind === 'missing-opening') {
-    return day.dayId === selectionDate ? '尚未確認開帳現金' : '缺開帳現金，需補開帳後關帳';
-  }
-  return day.dayId === selectionDate ? '今天' : '需關帳';
-}
-
 function unclosedStatusLabel(day: CloudUnclosedDay): string {
   if (day.backfill) return day.status === 'reopened' ? '回填中（已重開）' : '回填中';
   if (day.status === 'reopened') return '已重開';
@@ -396,7 +391,7 @@ function intentFor(command: PreparedCommand, leaseEpoch: number): CloudDayCloseC
 }
 
 /** The day's own cash numbers; the close and reopen forms only send what the server already shows. */
-function DayFigures({ day, unclosedCount }: { day: CloudDayCloseState; unclosedCount: number }) {
+function DayFigures({ day }: { day: CloudDayCloseState }) {
   const t = day.totals;
   const lastSettlement = day.settlements[day.settlements.length - 1];
   // The settlement's own count; effectiveCash (count + post-close entries) stays under 其他現金統計.
@@ -405,22 +400,13 @@ function DayFigures({ day, unclosedCount }: { day: CloudDayCloseState; unclosedC
   return (
     <div className="cloud-day-close__figures-wrap">
       <div className="cloud-day-close__figures">
-        <div className="cloud-day-close__figure">
-          <span className="cloud-day-close__figure-label">應有現金</span>
-          <span className="cloud-day-close__figure-value">{day.expectedCash === null ? '需先確認開帳' : formatMoney(day.expectedCash)}</span>
-        </div>
-        <div className="cloud-day-close__figure">
-          <span className="cloud-day-close__figure-label">實點現金</span>
-          <span className="cloud-day-close__figure-value">{countedCash === null ? '尚未關帳' : formatMoney(countedCash)}</span>
-        </div>
-        <div className={`cloud-day-close__figure${difference !== null && difference !== 0 ? ' cloud-day-close__figure--warn' : ''}`}>
-          <span className="cloud-day-close__figure-label">差額</span>
-          <span className="cloud-day-close__figure-value">{difference === null ? '—' : `${difference > 0 ? '+' : ''}${formatMoney(difference)}`}</span>
-        </div>
-        <div className="cloud-day-close__figure">
-          <span className="cloud-day-close__figure-label">未結營業日數</span>
-          <span className="cloud-day-close__figure-value">{unclosedCount} 天</span>
-        </div>
+        <StatTile label="應有現金" value={day.expectedCash === null ? '需先確認開帳' : formatMoney(day.expectedCash)} />
+        <StatTile label="實點現金" value={countedCash === null ? '尚未關帳' : formatMoney(countedCash)} />
+        <StatTile
+          label="差額"
+          value={difference === null ? '—' : `${difference > 0 ? '+' : ''}${formatMoney(difference)}`}
+          warn={difference !== null && difference !== 0}
+        />
       </div>
       <details className="cloud-day-close__figure-details">
         <summary>其他現金統計</summary>
@@ -441,8 +427,19 @@ function DayFigures({ day, unclosedCount }: { day: CloudDayCloseState; unclosedC
   );
 }
 
+/** How many unclosed past days show as chips before the rest is left to the anomalies page. */
+const MAX_UNCLOSED_CHIPS = 5;
+
+/** Whether a day-close form holds input the operator has not sent (loading another day would drop it). */
+function hasUnsentDraft(page: PageState): boolean {
+  return page.countedText !== '' || page.note !== '' || page.reopenOpen || page.reopenReason !== ''
+    || page.postCloseReason !== '' || (page.postCloseAmountText !== '' && page.postCloseReference === null)
+    || page.backfillText !== '' || page.backfillReason !== ''
+    || page.startReason !== '' || page.startOpeningText !== null || page.startOpeningReason !== '';
+}
+
 export function CloudDayClosePage({
-  db, leaseEpoch, identityKey, onNavigationStateChange, ledger, onOpenAnomalies, onLedgerChanged, onDraftCleared, initialDayId,
+  db, leaseEpoch, identityKey, onNavigationStateChange, onOpenAnomalies, onLedgerChanged, onDraftCleared, initialDayId,
   initialPostCloseEntry, onOpenOrders, hasUnresolvedPendingCommands = false,
 }: CloudDayClosePageProps) {
   const onLedgerChangedRef = useRef(onLedgerChanged);
@@ -491,6 +488,14 @@ export function CloudDayClosePage({
     scopeKey, dayId: initialDayId, entry: initialPostCloseEntry,
   });
   const [pageState, setPageStateRaw] = useState<PageState>(() => initialPageState(scopeKey));
+  // The date field stays on screen while a day loads (so a second pick is possible and the keyboard focus is kept);
+  // it needs the bounds of the last loaded overview for that.
+  const [dateMeta, setDateMeta] = useState<{ goLiveDate: string; selectionDate: string } | null>(null);
+  const [discardTarget, setDiscardTarget] = useState<string | null>(null);
+  // True between a keystroke in the date field and its Enter/blur: typing passes through valid dates (year 0002…), so only
+  // Enter or leaving the field confirms. A picker choice or a pasted/filled value has no keystroke and loads at once.
+  const typingDateRef = useRef(false);
+  const requestedDayRef = useRef<string | null>(null);
   const scopeRef = useRef(scopeKey);
   const generationRef = useRef(0);
   const readRequestRef = useRef(0);
@@ -519,6 +524,13 @@ export function CloudDayClosePage({
   // so a click right after a commit, before its passive effects run, still sees that commit (same as #574; CI run 41642144001).
   const latestPageRef = useRef(page);
   useLayoutEffect(() => { latestPageRef.current = page; });
+
+  const loadedOverview = page.snapshot?.overview ?? null;
+  useEffect(() => {
+    if (loadedOverview) setDateMeta({ goLiveDate: loadedOverview.goLiveDate, selectionDate: loadedOverview.selectionDate });
+  }, [loadedOverview]);
+  // Another owner never inherits the previous owner's date bounds.
+  useEffect(() => { setDateMeta(null); setDiscardTarget(null); }, [scopeKey]);
 
   const isCurrent = useCallback((key: string, generation: number) => (
     scopeRef.current === key && generationRef.current === generation
@@ -1189,16 +1201,40 @@ export function CloudDayClosePage({
     return null;
   };
 
-  const submitDateSelection = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const snapshot = page.snapshot;
-    if (page.recovery || operationRef.current || !snapshot || showingStale) return;
-    if (!isBusinessDate(page.dayIdDraft) || page.dayIdDraft < snapshot.overview.goLiveDate) {
-      updatePage(previous => ({ ...previous, actionError: `日期必須是 ${snapshot.overview.goLiveDate} 或之後的有效日期。` }));
+  // Loading another day drops whatever is typed into the forms, so unsent input is confirmed first.
+  const requestDay = (target: string) => {
+    requestedDayRef.current = target;
+    if (hasUnsentDraft(latestPageRef.current)) {
+      setDiscardTarget(target);
       return;
     }
-    if (page.dayIdDraft === snapshot.dayId) return;
-    void loadSnapshot(page.dayIdDraft);
+    void loadSnapshot(target);
+  };
+
+  /** Validates a date the operator picked or typed (same rule as before), then loads it. */
+  const confirmDate = (value: string) => {
+    const current = latestPageRef.current;
+    const snapshot = current.snapshot;
+    const meta = snapshot ? snapshot.overview : dateMeta;
+    if (current.recovery || operationRef.current || showingStale || !meta || (!snapshot && !current.loading)) return;
+    if (!isBusinessDate(value) || value < meta.goLiveDate) {
+      updatePage(previous => ({ ...previous, actionError: `日期必須是 ${meta.goLiveDate} 或之後的有效日期。` }));
+      return;
+    }
+    if (snapshot ? value === snapshot.dayId : value === requestedDayRef.current) return;
+    requestDay(value);
+  };
+
+  const cancelDiscard = () => {
+    setDiscardTarget(null);
+    requestedDayRef.current = null;
+    updatePage(previous => ({ ...previous, dayIdDraft: previous.snapshot?.dayId ?? previous.dayIdDraft, actionError: '' }));
+  };
+
+  const confirmDiscard = () => {
+    const target = discardTarget;
+    setDiscardTarget(null);
+    if (target) void loadSnapshot(target);
   };
 
   // Quiet feedback (#585): a command in flight (before ten seconds) and the re-read after its receipt are shown only by the
@@ -1573,6 +1609,12 @@ export function CloudDayClosePage({
 
   const busy = page.recovery !== null || page.postCloseChecking || showingStale;
   const needsAttention = snapshot?.overview.unclosedDays.filter(item => item.kind !== 'no-business') ?? [];
+  // Today is the page's own day (the date row shows its state); the warning is about past days only.
+  const pastUnclosed = needsAttention.filter(item => item.dayId < selectionDate);
+  // Without an anomalies page to send the rest to, every day stays listed.
+  const shownUnclosed = onOpenAnomalies ? pastUnclosed.slice(0, MAX_UNCLOSED_CHIPS) : pastUnclosed;
+  const hiddenUnclosed = onOpenAnomalies ? pastUnclosed.length - shownUnclosed.length : 0;
+  const dateBarMeta = snapshot ? snapshot.overview : page.loading ? dateMeta : null;
   const noBusiness = snapshot?.overview.unclosedDays.filter(item => item.kind === 'no-business') ?? [];
   const currentKind = snapshot && day && day.status !== 'closed' && day.openingCash === null
     ? (snapshot.dayId < selectionDate && day.totals.activeTransactionCount === 0 ? 'no-business' : 'missing-opening')
@@ -1582,9 +1624,12 @@ export function CloudDayClosePage({
     <main className="cloud-day-close" aria-label="雲端日結" aria-busy={busy || page.loading}>
       <CommandProgress active={progressActive} />
       <header className="cloud-day-close__header">
-        <div>
-          <h1>日結、關帳與重開</h1>
-        </div>
+        <h1>
+          日結、關帳與重開
+          <HelpTip label="應有現金與關帳版本說明">
+            應有現金由伺服器依營業日統計計算：開帳現金＋收款留存＋櫃台收入－櫃台支出－帳戶退款。
+          </HelpTip>
+        </h1>
         <button
           type="button"
           className="cloud-day-close__secondary"
@@ -1599,12 +1644,6 @@ export function CloudDayClosePage({
         hidden={progressActive || busy}
         onReload={() => void loadSnapshot((snapshot?.dayId ?? page.dayIdDraft) || undefined, page.recovery?.phase === 'receipt' ? page.recovery.receipt : undefined)}
       />
-      <details className="cloud-day-close__intro">
-        <summary>應有現金與關帳版本</summary>
-        <p className="cloud-day-close__intro">應有現金由伺服器依營業日統計計算：開帳現金＋收款留存＋櫃台收入－櫃台支出－帳戶退款。每次關帳或重開都新增一個不能修改的日結版本。</p>
-      </details>
-
-      <LedgerUnclosedBanner ledger={ledger} onOpenAnomalies={onOpenAnomalies} />
       {page.loadError && <div className="cloud-day-close__alert" role="alert">{page.loadError}</div>}
       {page.actionError && <div className="cloud-day-close__alert" role="alert">{page.actionError}</div>}
       {page.authorizationRevoked && (
@@ -1659,88 +1698,123 @@ export function CloudDayClosePage({
 
       {page.loading && !showingStale && <div className="cloud-day-close__loading" role="status">正在從伺服器載入日結資料…</div>}
 
+      {dateBarMeta && (
+        <section className="cloud-day-close__datebar" aria-label="日期選擇">
+          <label htmlFor="cloud-day-close-date">查看日期</label>
+          <input
+            id="cloud-day-close-date"
+            className="cloud-day-close__input cloud-day-close__mono"
+            type="date"
+            min={dateBarMeta.goLiveDate}
+            value={page.dayIdDraft}
+            onKeyDown={event => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                typingDateRef.current = false;
+                confirmDate(event.currentTarget.value);
+              } else if (event.key !== 'Tab' && event.key !== 'Escape') {
+                typingDateRef.current = true;
+              }
+            }}
+            onChange={event => {
+              const value = event.target.value;
+              updatePage(previous => ({ ...previous, dayIdDraft: value, actionError: '' }));
+              if (!typingDateRef.current) confirmDate(value);
+            }}
+            onBlur={event => {
+              typingDateRef.current = false;
+              confirmDate(event.currentTarget.value);
+            }}
+            disabled={busy}
+            required
+          />
+          {snapshot && (
+            <span className="cloud-day-close__day-state" data-testid="cloud-day-state">
+              {day
+                ? <StatusBadge variant={statusVariant(day.status)} className={`cloud-day-close__status cloud-day-close__status--${day.status}`}>{statusLabel(day.status)}</StatusBadge>
+                : <StatusBadge variant="neutral">沒有營業日</StatusBadge>}
+              {snapshot.dayId === selectionDate ? '今天' : snapshot.dayId < selectionDate ? '過去日期' : '未來日期'}
+            </span>
+          )}
+        </section>
+      )}
+
       {snapshot && (!page.loading || showingStale) && (
         <div className="cloud-day-close__content" data-testid="cloud-day-close-content" inert={showingStale || undefined}>
-          <div className="cloud-day-close__layout">
-          <section className="cloud-day-close__date-panel" aria-label="未關帳營業日">
-            <h2>未關帳營業日</h2>
-            {needsAttention.length === 0 ? (
-              <div className="cloud-day-close__empty-state" role="status">
-                <EmptyState className="cloud-day-close__empty" title={`到伺服器使用權日期 ${selectionDate} 為止，沒有需要關帳的營業日。`} />
-              </div>
-            ) : (
-              <ul className="cloud-day-close__list">
-                {needsAttention.map(item => (
-                  <li key={item.dayId} data-testid={`cloud-unclosed-${item.dayId}`}>
-                    <span className="cloud-day-close__mono">{item.dayId}</span>
-                    {item.backfill ? (
-                      <span data-testid={`cloud-unclosed-backfill-${item.dayId}`}>
-                        <StatusBadge variant="warn" className="cloud-day-close__status cloud-day-close__status--open">{unclosedStatusLabel(item)}</StatusBadge>
-                      </span>
-                    ) : (
-                      <StatusBadge variant="warn" className={`cloud-day-close__status cloud-day-close__status--${item.status}`}>{unclosedStatusLabel(item)}</StatusBadge>
-                    )}
-                    <span>{unclosedLabel(item, selectionDate)} · {item.activeTransactionCount} 筆交易</span>
-                    <button type="button" className="cloud-day-close__secondary" onClick={() => void loadSnapshot(item.dayId)} disabled={busy || item.dayId === snapshot.dayId}>
-                      查看
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {noBusiness.length > 0 && (
-              <div className="cloud-day-close__help" data-testid="cloud-no-business-days">
-                <p>
-                  沒有開帳也沒有交易的過去日期（例如為更正期初建立的營業日）。那天沒有營業就不需處理；
-                  如果其實有營業但沒開帳（例如網路斷線），可以查看該日補開帳後再關帳。
-                </p>
-                <ul className="cloud-day-close__list">
-                  {noBusiness.map(item => (
-                    <li key={item.dayId} data-testid={`cloud-no-business-${item.dayId}`}>
+          {pastUnclosed.length === 0 ? (
+            <p className="cloud-day-close__allclear" role="status">
+              <CircleCheck size={20} strokeWidth={2} aria-hidden="true" />
+              過去沒有未關帳的日子
+            </p>
+          ) : (
+            <section aria-label="未關帳營業日">
+              <Callout variant="warn">
+                <span>
+                  過去有 {pastUnclosed.length} 天還沒關帳，請儘速處理，避免帳務核對越來越困難。點日期前往處理：
+                </span>
+                <span className="cloud-day-close__chips">
+                  {shownUnclosed.map(item => (
+                    <button
+                      key={item.dayId}
+                      type="button"
+                      className="cloud-day-close__chip"
+                      data-testid={`cloud-unclosed-${item.dayId}`}
+                      onClick={() => requestDay(item.dayId)}
+                      disabled={busy || item.dayId === snapshot.dayId}
+                    >
                       <span className="cloud-day-close__mono">{item.dayId}</span>
-                      <button type="button" className="cloud-day-close__secondary" onClick={() => void loadSnapshot(item.dayId)} disabled={busy || item.dayId === snapshot.dayId}>
-                        查看
-                      </button>
-                    </li>
+                      <span className="cloud-day-close__chip-count">{item.activeTransactionCount} 筆交易</span>
+                      {item.backfill ? (
+                        <span data-testid={`cloud-unclosed-backfill-${item.dayId}`}>
+                          <StatusBadge variant="warn" className="cloud-day-close__status cloud-day-close__status--open">{unclosedStatusLabel(item)}</StatusBadge>
+                        </span>
+                      ) : (item.status === 'reopened' || item.kind === 'missing-opening') && (
+                        <StatusBadge variant="warn" className={`cloud-day-close__status cloud-day-close__status--${item.status}`}>{unclosedStatusLabel(item)}</StatusBadge>
+                      )}
+                    </button>
                   ))}
-                </ul>
-              </div>
-            )}
-          </section>
-
-          <div className="cloud-day-close__selected-column">
-          <section className="cloud-day-close__date-panel" aria-label="日期選擇">
-            <form className="cloud-day-close__date-form" onSubmit={submitDateSelection}>
-              <label htmlFor="cloud-day-close-date">查看日期</label>
-              <input
-                id="cloud-day-close-date"
-                className="cloud-day-close__input cloud-day-close__mono"
-                type="date"
-                min={snapshot.overview.goLiveDate}
-                value={page.dayIdDraft || snapshot.dayId}
-                onChange={event => updatePage(previous => ({ ...previous, dayIdDraft: event.target.value, actionError: '' }))}
-                disabled={busy}
-                required
-              />
-              <button type="submit" className="cloud-day-close__secondary" disabled={busy || page.dayIdDraft === snapshot.dayId}>
-                載入日期
-              </button>
-            </form>
-            <div className="cloud-day-close__date-meta">
-              <span>伺服器使用權日期：{selectionDate}</span>
-              <span>資料序號：{snapshot.overview.seq}</span>
+                </span>
+                {hiddenUnclosed > 0 && (
+                  <span className="cloud-day-close__more">
+                    另有 {hiddenUnclosed} 天
+                    <button type="button" className="cloud-day-close__secondary" onClick={onOpenAnomalies}>到帳務檢查看全部</button>
+                  </span>
+                )}
+              </Callout>
+            </section>
+          )}
+          {noBusiness.length > 0 && (
+            <div className="cloud-day-close__nobiz" data-testid="cloud-no-business-days">
+              <span>
+                沒有營業的過去日期
+                <HelpTip label="沒有營業日期說明">
+                  沒有開帳也沒有交易的過去日期（例如為更正期初建立的營業日）。那天沒有營業就不需處理；
+                  如果其實有營業但沒開帳（例如網路斷線），可以點日期查看，補開帳後再關帳。
+                </HelpTip>
+              </span>
+              <span className="cloud-day-close__chips">
+                {noBusiness.map(item => (
+                  <button
+                    key={item.dayId}
+                    type="button"
+                    className="cloud-day-close__chip cloud-day-close__chip--quiet"
+                    data-testid={`cloud-no-business-${item.dayId}`}
+                    onClick={() => requestDay(item.dayId)}
+                    disabled={busy || item.dayId === snapshot.dayId}
+                  >
+                    <span className="cloud-day-close__mono">{item.dayId}</span>
+                  </button>
+                ))}
+              </span>
             </div>
-          </section>
+          )}
 
           <section className="cloud-day-close__day-section" aria-label="指定營業日日結">
             <div className="cloud-day-close__section-heading">
               <div>
                 <h2>{snapshot.dayId} 日結</h2>
                 {day ? (
-                  <p>
-                    <StatusBadge variant={statusVariant(day.status)} className={`cloud-day-close__status cloud-day-close__status--${day.status}`}>{statusLabel(day.status)}</StatusBadge>
-                    {' '}· 日結版本 {day.lastSettlementRevision}
-                  </p>
+                  <p>日結版本 {day.lastSettlementRevision}</p>
                 ) : <p>{canStartBackfill ? '伺服器沒有這個日期的營業日。如果那天其實有營業，可以在下方回填。' : '伺服器沒有這個日期的營業日，不需關帳。'}</p>}
               </div>
             </div>
@@ -1783,7 +1857,14 @@ export function CloudDayClosePage({
 
             {canStartBackfill && !page.backfillPlan && (
               <section className="cloud-day-close__card" aria-label="回填這一天" data-testid="backfill-start">
-                <h3>{day ? '標為回填，補登剩下的交易' : '回填這一天'}</h3>
+                <h3>
+                  {day ? '標為回填，補登剩下的交易' : '回填這一天'}
+                  <HelpTip label="回填說明">
+                    {day
+                      ? '標記後這一天可以補登訂餐、繳費與櫃台收支，原因與操作者會留下紀錄。'
+                      : '會依序建立營業日、補開帳、標為回填；任何一步失敗都會停在那一步，已完成的步驟不會重做。'}
+                  </HelpTip>
+                </h3>
                 <form
                   className="cloud-day-close__form"
                   aria-label={`${snapshot.dayId} ${day ? '標為回填' : '回填'}`}
@@ -1853,39 +1934,38 @@ export function CloudDayClosePage({
                       {day ? '確認標為回填' : '確認回填這一天'}
                     </button>
                   </div>
-                  <p className="cloud-day-close__help">
-                    {day
-                      ? '標記後這一天可以補登訂餐、繳費與櫃台收支，原因與操作者會留下紀錄。'
-                      : '會依序建立營業日、補開帳、標為回填；任何一步失敗都會停在那一步，已完成的步驟不會重做。'}
-                    已經關過帳的日子不能回填。
-                  </p>
+                  <Callout variant="warn">已經關過帳的日子不能回填。</Callout>
                 </form>
               </section>
             )}
 
             {day && (
               <>
-                <section className="cloud-day-close__card" aria-label="現金統計">
-                  <DayFigures day={day} unclosedCount={needsAttention.length} />
-                </section>
+                <DayFigures day={day} />
 
                 {snapshot.dayId > selectionDate && day.status !== 'closed' && (
-                  <p className="cloud-day-close__warning">未來日期只能預排菜單，不能關帳。</p>
+                  <Callout variant="warn">未來日期只能預排菜單，不能關帳。</Callout>
                 )}
                 {currentKind === 'no-business' && (
-                  <p className="cloud-day-close__notice" role="status">這天沒有開帳現金，也沒有任何交易。那天沒有營業就不需關帳；如果其實有營業但沒開帳，可以在下方補開帳後再關帳。</p>
+                  <Callout variant="info" role="status">
+                    <span>這天沒有開帳現金，也沒有任何交易。</span>
+                    <HelpTip label="沒有營業的日子說明">那天沒有營業就不需關帳；如果其實有營業但沒開帳，可以在下方補開帳後再關帳。</HelpTip>
+                  </Callout>
                 )}
                 {currentKind === 'missing-opening' && snapshot.dayId <= selectionDate && (
-                  <p className="cloud-day-close__warning">
+                  <Callout variant="warn">
                     {snapshot.dayId === selectionDate
                       ? '尚未確認開帳現金，不能關帳。請先到「今日設定 › 菜單與開帳」確認開帳現金。'
                       : '這天有交易但沒有開帳現金，要先補開帳才能關帳。'}
-                  </p>
+                  </Callout>
                 )}
 
                 {canBackfill && (
                   <section className="cloud-day-close__card" aria-label="補開帳">
-                    <h3>補開帳</h3>
+                    <h3>
+                      補開帳
+                      <HelpTip label="補開帳說明">填那天開店時抽屜裡的現金；補完後在這一頁點現金關帳。</HelpTip>
+                    </h3>
                     <form className="cloud-day-close__form" aria-label={`${snapshot.dayId} 補開帳`} onSubmit={submitBackfill}>
                       <label>
                         開帳現金（元）
@@ -1913,14 +1993,17 @@ export function CloudDayClosePage({
                       <div className="cloud-day-close__actions">
                         <button type="submit" className="cloud-day-close__primary" disabled={busy}>確認補開帳</button>
                       </div>
-                      <p className="cloud-day-close__help">填那天開店時抽屜裡的現金。補開帳會留下操作者、時間與原因，之後不能用補開帳修改；補完後在這一頁點現金關帳。</p>
+                      <Callout variant="warn">補開帳會留下操作者、時間與原因，之後不能用補開帳修改。</Callout>
                     </form>
                   </section>
                 )}
 
                 {canClose && (
                   <section className="cloud-day-close__card" aria-label="全日點現金與關帳">
-                    <h3>全日點現金與關帳</h3>
+                    <h3>
+                      全日點現金與關帳
+                      <HelpTip label="關帳說明">一般現金差額可在下方留下有原因的關帳後補記；若要更正關帳版本，仍須填原因重開後重新關帳。</HelpTip>
+                    </h3>
                     <form className="cloud-day-close__form" aria-label={`${snapshot.dayId} 關帳`} onSubmit={submitClose}>
                       {backfillClose && alignLookup?.status === 'ready' && (
                         <div className="cloud-day-close__notice" data-testid="backfill-align">
@@ -1987,24 +2070,29 @@ export function CloudDayClosePage({
                         <button type="submit" className="cloud-day-close__primary" disabled={busy || closeBlocked} data-testid="close-submit">確認關帳</button>
                       </div>
                       {hasUnresolvedPendingCommands && (
-                        <p className="cloud-day-close__alert" role="alert" data-testid="pending-close-block">
+                        <div className="cloud-day-close__alert" role="alert" data-testid="pending-close-block">
                           尚有待核對命令；依關帳規則，先完成結果確認後才能關帳。保留原編號，不要重新收款。
-                        </p>
+                        </div>
                       )}
-                      <p className="cloud-day-close__help">關帳後不能再新增或更正交易、菜單與開帳現金。一般現金差額可在下方留下有原因的關帳後補記；若要更正關帳版本，仍須填原因重開後重新關帳。</p>
+                      <Callout variant="warn">關帳後不能再新增或更正交易、菜單與開帳現金。</Callout>
                     </form>
                   </section>
                 )}
 
                 {(day.status === 'closed' || day.status === 'reopened') && (
                   <section className="cloud-day-close__card" aria-label="關帳後補記與歷史">
-                    <h3>關帳後補記與歷史</h3>
-                    {day.status === 'closed' && <p className="cloud-day-close__help">
-                      補記只記錄關帳後的現金收入或支出，不修改學生訂餐、繳費、交易或原關帳實點。差額超過 20,000 元時需依現場流程處理，不可拆成多筆補記。
-                    </p>}
-                    {day.status === 'closed' && <p className="cloud-day-close__help">
+                    <h3>
+                      關帳後補記與歷史
+                      {day.status === 'closed' && (
+                        <HelpTip label="補記說明">補記只記錄關帳後的現金收入或支出，不修改學生訂餐、繳費、交易或原關帳實點。</HelpTip>
+                      )}
+                    </h3>
+                    {day.status === 'closed' && <Callout variant="warn">
+                      差額超過 20,000 元時需依現場流程處理，不可拆成多筆補記。
+                    </Callout>}
+                    {day.status === 'closed' && <Callout variant="warn">
                       另一個視窗仍可能同時補記。同一筆差額請只在一個視窗操作，送出前先核對補記歷史。
-                    </p>}
+                    </Callout>}
                     {page.postCloseReference && (
                       <p className="cloud-day-close__difference cloud-day-close__difference--nonzero" role="status" data-testid="post-close-anomaly-preview">
                         由 {page.postCloseReference.dayId} 的開帳差額帶入：開帳現金 {formatMoney(page.postCloseReference.openingCash)}，
@@ -2012,9 +2100,9 @@ export function CloudDayClosePage({
                         差 {formatMoney(Math.abs(page.postCloseReference.difference))}。
                       </p>
                     )}
-                    {page.postCloseStaleMessage && <p className="cloud-day-close__warning" role="alert">{page.postCloseStaleMessage}</p>}
+                    {page.postCloseStaleMessage && <Callout variant="warn" role="alert">{page.postCloseStaleMessage}</Callout>}
                     {page.postCloseReference && Math.abs(page.postCloseReference.difference) > 20_000 && (
-                      <p className="cloud-day-close__warning" role="alert">此差額超過單筆補記上限 NT$ 20,000，沒有拆單或送出補記功能。</p>
+                      <Callout variant="warn" role="alert">此差額超過單筆補記上限 NT$ 20,000，沒有拆單或送出補記功能。</Callout>
                     )}
                     {day.status === 'closed' && <form
                       className="cloud-day-close__form"
@@ -2085,7 +2173,7 @@ export function CloudDayClosePage({
                       <div className="cloud-day-close__table-wrap">
                         <table className="dt">
                           <thead>
-                            <tr><th>方向</th><th>金額</th><th>原因</th><th>操作者</th><th>時間（臺北）</th><th>關帳版本</th><th>計算狀態</th></tr>
+                            <tr><th>方向</th><th className="dt-num">金額</th><th>原因</th><th>操作者</th><th>時間（臺北）</th><th>關帳版本</th><th>計算狀態</th></tr>
                           </thead>
                           <tbody>
                             {day.postCloseEntries.map(entry => {
@@ -2093,7 +2181,7 @@ export function CloudDayClosePage({
                               return (
                                 <tr key={entry.entryId} data-testid={`post-close-entry-${entry.entryId}`}>
                                   <td>{entry.direction === 'income' ? '收入' : '支出'}</td>
-                                  <td className="cloud-day-close__mono">{formatMoney(entry.amount)}</td>
+                                  <td className="dt-num">{formatMoney(entry.amount)}</td>
                                   <td>{entry.reason}</td>
                                   <td>{entry.createdBy}</td>
                                   <td>{formatServerTime(entry.createdAt)}</td>
@@ -2130,7 +2218,7 @@ export function CloudDayClosePage({
                           <button type="submit" className="cloud-day-close__danger" disabled={busy}>確認重開</button>
                           <button type="button" className="cloud-day-close__secondary" onClick={() => updatePage(previous => ({ ...previous, reopenOpen: false, reopenReason: '', actionError: '' }))} disabled={busy}>取消</button>
                         </div>
-                        <p className="cloud-day-close__help">重開會新增一個版本，舊的關帳版本保留不變；修正後要重新關帳。</p>
+                        <Callout variant="warn">重開會新增一個版本，舊的關帳版本保留不變；修正後要重新關帳。</Callout>
                       </form>
                     ) : (
                       <button type="button" className="cloud-day-close__secondary" onClick={() => updatePage(previous => ({ ...previous, reopenOpen: true, actionError: '' }))} disabled={busy}>
@@ -2142,22 +2230,23 @@ export function CloudDayClosePage({
 
                 <section className="cloud-day-close__card" aria-label="日結版本">
                   <h3>日結版本</h3>
+                  <Callout variant="info">每次關帳或重開都新增一個不能修改的日結版本。</Callout>
                   {day.settlements.length === 0 ? (
                     <EmptyState className="cloud-day-close__empty" title="這天還沒有日結版本。" />
                   ) : (
                     <div className="cloud-day-close__table-wrap">
                       <table className="dt">
                         <thead>
-                          <tr><th>版本</th><th>狀態</th><th>應有</th><th>實點</th><th>差額</th><th>說明／原因</th><th>操作者</th><th>時間（臺北）</th></tr>
+                          <tr><th>版本</th><th>狀態</th><th className="dt-num">應有</th><th className="dt-num">實點</th><th className="dt-num">差額</th><th>說明／原因</th><th>操作者</th><th>時間（臺北）</th></tr>
                         </thead>
                         <tbody>
                           {[...day.settlements].reverse().map(version => (
                             <tr key={version.revision} data-testid={`cloud-settlement-${version.revision}`}>
                               <td className="cloud-day-close__mono">{version.revision}</td>
                               <td><StatusBadge variant={version.status === 'closed' ? 'ok' : 'warn'} className={`cloud-day-close__status cloud-day-close__status--${version.status}`}>{version.status === 'closed' ? '關帳' : '重開'}</StatusBadge></td>
-                              <td className="cloud-day-close__mono">{formatMoney(version.expectedCash)}</td>
-                              <td className="cloud-day-close__mono">{version.countedCash === null ? '—' : formatMoney(version.countedCash)}</td>
-                              <td className="cloud-day-close__mono">{version.difference === null ? '—' : formatDifference(version.difference)}</td>
+                              <td className="dt-num">{formatMoney(version.expectedCash)}</td>
+                              <td className="dt-num">{version.countedCash === null ? '—' : formatMoney(version.countedCash)}</td>
+                              <td className="dt-num">{version.difference === null ? '—' : formatDifference(version.difference)}</td>
                               <td>{version.note || '—'}</td>
                               <td>{version.actorEmail}</td>
                               <td>{formatServerTime(version.committedAt)}</td>
@@ -2171,10 +2260,20 @@ export function CloudDayClosePage({
               </>
             )}
           </section>
-          </div>
-          </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={discardTarget !== null}
+        title="捨棄草稿？"
+        message="這一天有尚未送出的輸入，改看其他日期會清除它們。"
+        confirmLabel="捨棄並載入"
+        cancelLabel="取消"
+        variant="danger"
+        defaultAction="cancel"
+        onConfirm={confirmDiscard}
+        onCancel={cancelDiscard}
+      />
 
       {!snapshot && !page.loading && !page.recovery && (
         <section className="cloud-day-close__unavailable" aria-label="雲端資料未載入">
