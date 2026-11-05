@@ -244,11 +244,11 @@ describe('CloudOrdersPage', () => {
   });
 
   describe('P3 視覺收斂：版面與字面契約', () => {
-    it('keeps the food counts in the counter card rather than a separate header', async () => {
+    it('shows the food counts in the page header (#648 P2), not in a card', async () => {
       renderComponent();
       const counts = await screen.findByTestId('cloud-topbar-counts');
-      expect(counts.closest('.cloud-orders__card')).not.toBeNull();
-      expect(counts.closest('header')).toBeNull();
+      expect(counts.closest('.cloud-orders__card')).toBeNull();
+      expect(counts.closest('header')).not.toBeNull();
       expect(counts).toContainElement(screen.getByTestId('cloud-topbar-bento'));
       expect(counts).toContainElement(screen.getByTestId('cloud-topbar-other'));
     });
@@ -260,7 +260,6 @@ describe('CloudOrdersPage', () => {
       expect(row).not.toBeNull();
       expect(row).toContainElement(screen.getByTestId('open-cash-movement-button'));
       expect(row).not.toContainElement(screen.getByTestId('cloud-topbar-counts'));
-      expect(screen.getByTestId('cloud-topbar-counts').closest('.cloud-orders__meal-card')).not.toBeNull();
     });
 
     it('keeps the mode selector outside the single account and checkout card', async () => {
@@ -298,7 +297,7 @@ describe('CloudOrdersPage', () => {
       expect(reason).toHaveTextContent('今日尚未設定菜單');
       expect(reason.closest('[role="alert"]')).toBeNull();
       expect(reason.closest('.cloud-orders__error')).toBeNull();
-      fireEvent.click(within(reason).getByRole('button', { name: '到今日設定' }));
+      fireEvent.click(within(reason).getByRole('button', { name: /尚未設定菜單.*F3/ }));
       expect(onOpenSettings).toHaveBeenCalledTimes(1);
     });
 
@@ -498,7 +497,7 @@ describe('CloudOrdersPage', () => {
   it('renders the two-row meal counters from the reconciled server day (U2a contract)', async () => {
     renderComponent();
     const bentoRow = await screen.findByTestId('cloud-topbar-bento');
-    expect(bentoRow).toHaveTextContent('今日餐點（排骨飯）');
+    expect(bentoRow).toHaveTextContent('今日餐點・排骨飯');
     expect(bentoRow).toHaveTextContent('1');
     expect(screen.getByTestId('cloud-topbar-other')).toHaveTextContent('其他餐點1');
   });
@@ -1068,21 +1067,20 @@ describe('CloudOrdersPage', () => {
     const onOpenSettings = vi.fn();
     renderComponent('uid-1:1', undefined, { onOpenSettings });
     const blocked = await screen.findByTestId('ordering-blocked');
-    expect(blocked).toHaveTextContent('營業日尚未建立');
-    // #581 D5：用現在的頁名，並提供到今日設定的入口，不再是紅色錯誤框。
-    expect(blocked).toHaveTextContent('今日設定 › 菜單與開帳');
+    // #581 D5 / #648 P2：不是錯誤框，是一張通往「菜單與開帳」的卡片。
+    expect(blocked).toHaveTextContent('今日尚未開帳');
     expect(blocked).not.toHaveTextContent('日期與供應商');
     expect(blocked).not.toHaveClass('cloud-orders__error');
-    fireEvent.click(within(blocked).getByRole('button', { name: /到今日設定/ }));
+    fireEvent.click(within(blocked).getByRole('button', { name: /尚未開帳/ }));
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
   it('supports ordering an other meal when no menu is configured', async () => {
     repositoryMock.loadSnapshot.mockResolvedValue(snapshot({ day: mockDay({ menu: false, bento: 0, other: 0 }), transactions: [] }));
     renderComponent();
-    expect(await screen.findByTestId('cloud-topbar-bento')).toHaveTextContent('今日餐點（未設定）');
+    expect(await screen.findByTestId('cloud-topbar-bento')).toHaveTextContent('今日餐點・未設定');
     await selectStudent('002');
-    expect(screen.getByText(/今日尚未設定菜單，無法訂購今日餐點/)).toBeVisible();
+    expect(screen.getByTestId('orders-menu-unavailable')).toHaveTextContent('今日尚未設定菜單');
     expect(screen.getByTestId('submit-order-button')).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '其他餐點' }));
     fireEvent.change(screen.getByLabelText(/餐點品名/), { target: { value: '素食餐' } });
@@ -1234,7 +1232,7 @@ describe('CloudOrdersPage', () => {
     await screen.findByTestId('cloud-cash-summary');
     fireEvent.keyDown(window, { key: 'a' });
     const card = await screen.findByTestId('cash-movement-card');
-    expect(card).toHaveTextContent('不影響任何學生餘額');
+    expect(within(card).getByRole('button', { name: '櫃台收支說明' })).toBeVisible();
     fireEvent.change(screen.getByLabelText(/金額（必填）/), { target: { value: '80' } });
     expect(screen.getByTestId('submit-cash-movement-button')).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '付餐費給廠商' }));
@@ -1267,7 +1265,7 @@ describe('CloudOrdersPage', () => {
     } finally {
       observer.disconnect();
     }
-    expect(await screen.findByTestId('cash-movement-card')).toHaveTextContent('不影響任何學生餘額');
+    expect(await screen.findByTestId('cash-movement-card')).toHaveTextContent('櫃台收支');
   });
 
   it('requires a counter cash reason and a positive whole amount', async () => {
