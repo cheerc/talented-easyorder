@@ -1716,7 +1716,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
                     學員編號
                     <input className="cloud-students__input cloud-students__mono" value={page.createDraft.studentCode} maxLength={6} placeholder="001 至 999999" onChange={event => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, studentCode: event.target.value } }))} disabled={busy} />
                   </label>
-                  <HelpTip label="學員編號格式說明">編號會以正規化形式儲存（例如 001、099、1000）。</HelpTip>
+                  <HelpTip label="編號正規化說明">編號會以正規化形式儲存（例如 001、099、1000）。</HelpTip>
                 </div>
                 <label>
                   姓名

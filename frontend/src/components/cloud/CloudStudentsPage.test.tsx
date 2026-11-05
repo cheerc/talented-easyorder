@@ -1043,9 +1043,9 @@ describe('CloudStudentsPage', () => {
       expect(dateBlock.closest('.callout-warn')).not.toBeNull();
       expect(dateBlock).not.toHaveTextContent('瀏覽器日期只用於顯示與預填');
       expect(form.querySelector('small')).toBeNull();
-      fireEvent.focus(within(form).getByRole('button', { name: '學員編號格式說明' }));
+      fireEvent.focus(within(form).getByRole('button', { name: '編號正規化說明' }));
       expect(screen.getByRole('tooltip')).toHaveTextContent('001、099、1000');
-      fireEvent.blur(within(form).getByRole('button', { name: '學員編號格式說明' }));
+      fireEvent.blur(within(form).getByRole('button', { name: '編號正規化說明' }));
       fireEvent.focus(within(form).getByRole('button', { name: '期初日期說明' }));
       expect(screen.getByRole('tooltip')).toHaveTextContent('瀏覽器日期只用於顯示與預填');
     });
