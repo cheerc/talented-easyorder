@@ -992,4 +992,62 @@ describe('CloudStudentsPage', () => {
       expect(screen.queryByTestId('data-updated-notice')).toBeNull();
     });
   });
+
+  describe('#648 P7 explanations in HelpTip, warnings in Callout', () => {
+    function openTip(name: string) {
+      const button = screen.getByRole('button', { name });
+      fireEvent.focus(button);
+      return screen.getByRole('tooltip');
+    }
+
+    it('puts the list rules and the data-source note in HelpTip, with no details block or footnote', async () => {
+      repository.list.mockResolvedValue(snapshot([student('001')]));
+      renderPage();
+      await screen.findByTestId('cloud-student-row-001');
+      expect(document.querySelector('details.cloud-students__intro-details')).toBeNull();
+      expect(screen.queryByText('名單由伺服器完整載入。期初結餘在新增學生時建立；之後只能以「更正期初」修改金額與備註，期初日不變，並須填寫原因。')).toBeNull();
+      expect(openTip('期初結餘與名單規則說明')).toHaveTextContent('只能以「更正期初」修改金額與備註');
+      fireEvent.blur(screen.getByRole('button', { name: '期初結餘與名單規則說明' }));
+      expect(screen.queryByText(/不會儲存在本機離線草稿/)).toBeNull();
+      expect(openTip('學生資料來源說明')).toHaveTextContent('不會儲存在本機離線草稿');
+    });
+
+    it('keeps the revoked-authorization notice visible as a warn Callout', async () => {
+      repository.list.mockRejectedValueOnce({ code: 'LEASE_LOST', message: 'lease changed' });
+      renderPage();
+      const text = await screen.findByText(/授權狀態已失效/);
+      expect(text.closest('.callout-warn')).not.toBeNull();
+    });
+
+    it('keeps the discard warning visible as a warn Callout', async () => {
+      renderPage();
+      await screen.findByText(/目前伺服器名單是空的/);
+      openCreateForm();
+      const dialog = screen.getByRole('dialog', { name: '新增學生' });
+      fireEvent.change(within(dialog).getByLabelText('學員編號'), { target: { value: '987' } });
+      fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+      const confirmation = within(dialog).getByRole('group', { name: '新增學生草稿離開確認' });
+      expect(within(confirmation).getByText('尚未送出的草稿會被捨棄。').closest('.callout-warn')).not.toBeNull();
+    });
+
+    it('splits the create form notes: money check stays visible, code format and date basis go to HelpTip', async () => {
+      renderPage();
+      await screen.findByText(/目前伺服器名單是空的/);
+      openCreateForm();
+      const form = screen.getByRole('form', { name: '新增學生' });
+      const money = within(form).getByText(/請自行核對實際結餘/);
+      expect(money.closest('.callout-warn')).not.toBeNull();
+      expect(money).toHaveTextContent('輸入 0 才代表零元');
+      expect(money).not.toHaveTextContent('正規化');
+      const dateBlock = within(form).getByText(/日期不符時請先確認連線與系統時間/);
+      expect(dateBlock.closest('.callout-warn')).not.toBeNull();
+      expect(dateBlock).not.toHaveTextContent('瀏覽器日期只用於顯示與預填');
+      expect(form.querySelector('small')).toBeNull();
+      fireEvent.focus(within(form).getByRole('button', { name: '學員編號格式說明' }));
+      expect(screen.getByRole('tooltip')).toHaveTextContent('001、099、1000');
+      fireEvent.blur(within(form).getByRole('button', { name: '學員編號格式說明' }));
+      fireEvent.focus(within(form).getByRole('button', { name: '期初日期說明' }));
+      expect(screen.getByRole('tooltip')).toHaveTextContent('瀏覽器日期只用於顯示與預填');
+    });
+  });
 });

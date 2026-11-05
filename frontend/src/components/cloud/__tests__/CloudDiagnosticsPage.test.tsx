@@ -83,4 +83,16 @@ describe('P13b1 Cloud F3 diagnostics actions', () => {
     expect(emptyTitle.closest('.empty-title')).not.toBeNull();
     expect(screen.getByRole('status')).toHaveTextContent('本機診斷紀錄已清除。');
   });
+
+  it('#648 P7 puts the clock and export-field explanation in HelpTip and keeps the auto-delete rule visible', () => {
+    render(<CloudDiagnosticsPage identityKey="operator-a:3" leaseEpoch={3} />);
+    expect(screen.queryByText(/時間取自本機時鐘/)).toBeNull();
+    fireEvent.focus(screen.getByRole('button', { name: '本機診斷說明' }));
+    const tip = screen.getByRole('tooltip');
+    expect(tip).toHaveTextContent('時間取自本機時鐘');
+    expect(tip).toHaveTextContent('匯出檔只含固定診斷欄位');
+    const retention = screen.getByText(/超過 100 筆或 24 小時的紀錄會自動刪除/);
+    expect(retention.closest('.callout-info')).not.toBeNull();
+    expect(retention).toHaveTextContent('只保存在這台電腦');
+  });
 });

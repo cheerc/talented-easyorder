@@ -144,4 +144,42 @@ describe('CloudBackupPage (F3 資料備份)', () => {
     await renderReadyPage();
     expect(screen.queryByTestId('data-updated-notice')).toBeNull();
   });
+
+  describe('#648 P7 plain wording', () => {
+    it('shows the backup range and state in plain words, with no engineering terms', async () => {
+      const { user } = await renderReadyPage();
+      await generate(user);
+      const status = screen.getByRole('status');
+      expect(status).toHaveTextContent('備份範圍：第 0 筆到第 1 筆');
+      expect(status).toHaveTextContent('狀態：已產生，等待驗證');
+      expect(document.body.textContent).not.toMatch(/head H=|generated|downloadRequested|RecordBackup|\bseq\b/);
+    });
+
+    it('says downloaded-but-unverified after the download request', async () => {
+      const { user } = await renderReadyPage();
+      await generate(user);
+      vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() }));
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+      await user.click(screen.getByRole('button', { name: '下載備份' }));
+      expect(screen.getByRole('status')).toHaveTextContent('狀態：已下載，等待驗證');
+    });
+
+    it('keeps the second-copy safety steps in an always visible Callout, apart from the explanation', async () => {
+      await renderReadyPage();
+      const safety = screen.getByText(/第二份副本/);
+      expect(safety.closest('.callout-warn')).not.toBeNull();
+      expect(safety).not.toHaveTextContent('手動下載加密增量備份');
+      expect(screen.getByRole('button', { name: '備份說明' })).toBeVisible();
+      const warning = screen.getByText(/都不代表檔案已存好/);
+      expect(warning.closest('.callout-warn')).not.toBeNull();
+    });
+
+    it('words the lock for any other unresolved cloud command, not only the day close', async () => {
+      await renderReadyPage(true);
+      const note = screen.getByRole('note');
+      expect(note.closest('.callout-warn')).not.toBeNull();
+      expect(note).toHaveTextContent('其他雲端命令確認中');
+      expect(document.body.textContent).not.toContain('日結命令確認中');
+    });
+  });
 });
