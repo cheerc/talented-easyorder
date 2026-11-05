@@ -74,9 +74,11 @@ interface BackupScreenProps {
   locked?: boolean;
   /** The seq of the confirmed RecordBackup receipt, once per recorded backup: the host's own write, not another device's (#596). */
   onRecorded?: (seq: number) => void;
+  /** The cloud backup page (#649) supplies its own title, so the card repeats neither the title nor 每日 wording. */
+  cloudPage?: boolean;
 }
 
-export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange, locked = false, onRecorded }: BackupScreenProps) {
+export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange, locked = false, onRecorded, cloudPage = false }: BackupScreenProps) {
   const firebase = useFirebaseOptional();
   const fb = firebase?.fb ?? null;
   const access = firebase?.access ?? { ok: false as const };
@@ -425,10 +427,10 @@ export const BackupScreen = React.memo(function BackupScreen({ onRecoveryChange,
   const controlsDisabled = busy || locked || recoveryActive;
   const canQuery = recovery !== null && (recovery.phase === 'unknown' || (recovery.phase === 'submitting' && recovery.timedOut));
 
-  return <section className="screen backup" aria-label="每日增量備份">
+  return <section className="screen backup" aria-label={cloudPage ? '備份操作' : '每日增量備份'}>
     <div className="card bk-flow">
-      <h2 className="bk-flow-h">每日加密備份</h2>
-      <p className="bk-flow-sub">手動下載每日增量。下載後請重新選取檔案驗證；第二份副本需由操作者複製至公司受控電腦或加密離線媒體並確認。</p>
+      {!cloudPage && <h2 className="bk-flow-h">每日加密備份</h2>}
+      <p className="bk-flow-sub">{cloudPage ? '手動下載加密增量備份。' : '手動下載每日增量。'}下載後請重新選取檔案驗證；第二份副本需由操作者複製至公司受控電腦或加密離線媒體並確認。</p>
       {locked && <p role="note">日結命令確認中，暫停備份操作；請先完成日結結果確認。</p>}
       <label>備份密碼
         <input type="password" autoComplete="new-password" value={password} onChange={event => setPassword(event.target.value)} disabled={controlsDisabled} />

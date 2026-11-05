@@ -1,0 +1,14 @@
+.cloud-backup {
+  width: min(1320px, calc(100% - 32px));
+  margin: 24px auto 48px;
+}
+
+.cloud-backup__header h1 {
+  margin: 0 0 var(--s4);
+  font-size: var(--t-2xl);
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .cloud-backup { width: calc(100% - 16px); margin: 8px auto 24px; }
+}
