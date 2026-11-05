@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   encryptBackup: vi.fn(),
   sha256Hex: vi.fn(),
   verifyBackupFile: vi.fn(),
+  decryptBackup: vi.fn(),
 }));
 
 vi.mock('../../providers/FirebaseProvider', () => ({ useFirebaseOptional: () => mocks.firebase, useDataHead: () => null }));
@@ -32,7 +33,7 @@ vi.mock('../../firebase/cloudBackupCommandRepository', () => ({
   }),
 }));
 vi.mock('../../firebase/cloudBackup', () => ({
-  decryptBackup: vi.fn(), encryptBackup: mocks.encryptBackup, sha256Hex: mocks.sha256Hex,
+  decryptBackup: mocks.decryptBackup, encryptBackup: mocks.encryptBackup, sha256Hex: mocks.sha256Hex,
   verifyBackupFile: mocks.verifyBackupFile,
 }));
 
@@ -150,9 +151,54 @@ describe('CloudBackupPage (F3 資料備份)', () => {
       const { user } = await renderReadyPage();
       await generate(user);
       const status = screen.getByRole('status');
-      expect(status).toHaveTextContent('備份範圍：第 0 筆到第 1 筆');
+      expect(status).toHaveTextContent('備份範圍：第 1 筆到第 1 筆');
       expect(status).toHaveTextContent('狀態：已產生，等待驗證');
       expect(document.body.textContent).not.toMatch(/head H=|generated|downloadRequested|RecordBackup|\bseq\b/);
+    });
+
+    it('says there are no new records when the range is empty (first backup of an empty dataset)', async () => {
+      mocks.exportRange.mockResolvedValue({ fromSeq: 0, toSeq: 0, manifest: { ...manifest, toSeq: 0 } });
+      const { user } = await renderReadyPage();
+      await generate(user);
+      const status = screen.getByRole('status');
+      expect(status).toHaveTextContent('備份範圍：沒有新紀錄（目前到第 0 筆）');
+      expect(status).not.toHaveTextContent('第 0 筆到');
+    });
+
+    it('counts an incremental range from the record after the previous backup, consistent with the start line', async () => {
+      mocks.decryptBackup.mockResolvedValue({ ...manifest, fromSeq: 0, toSeq: 10 });
+      mocks.exportRange.mockResolvedValue({ fromSeq: 10, toSeq: 15, manifest: { ...manifest, fromSeq: 10, toSeq: 15 } });
+      const { user } = await renderReadyPage();
+      await user.type(screen.getByLabelText('備份密碼'), 'fixture-passphrase');
+      fireEvent.change(screen.getByLabelText(/前次可讀備份/), { target: { files: [new File(['prev'], 'prev.eobackup')] } });
+      await flush();
+      expect(screen.getByText(/前次備份已解密/)).toHaveTextContent('第 1 筆到第 10 筆，這次從第 11 筆開始');
+      await user.click(screen.getByRole('button', { name: '產生加密備份' }));
+      await screen.findByLabelText('重新選取剛存下的備份檔');
+      expect(screen.getByRole('status')).toHaveTextContent('備份範圍：第 11 筆到第 15 筆');
+    });
+
+    it('says no new records for an incremental backup whose head did not move', async () => {
+      mocks.decryptBackup.mockResolvedValue({ ...manifest, fromSeq: 0, toSeq: 10 });
+      mocks.exportRange.mockResolvedValue({ fromSeq: 10, toSeq: 10, manifest: { ...manifest, fromSeq: 10, toSeq: 10 } });
+      const { user } = await renderReadyPage();
+      await user.type(screen.getByLabelText('備份密碼'), 'fixture-passphrase');
+      fireEvent.change(screen.getByLabelText(/前次可讀備份/), { target: { files: [new File(['prev'], 'prev.eobackup')] } });
+      await flush();
+      await user.click(screen.getByRole('button', { name: '產生加密備份' }));
+      await screen.findByLabelText('重新選取剛存下的備份檔');
+      expect(screen.getByRole('status')).toHaveTextContent('備份範圍：沒有新紀錄（目前到第 10 筆）');
+    });
+
+    it('shows no stale range or state after a failed re-generate', async () => {
+      const { user } = await renderReadyPage();
+      await generate(user);
+      expect(screen.getByRole('status')).toHaveTextContent('狀態：已產生，等待驗證');
+      mocks.exportRange.mockRejectedValueOnce(new Error('匯出失敗'));
+      await user.click(screen.getByRole('button', { name: '產生加密備份' }));
+      expect(await screen.findByText('匯出失敗')).toBeVisible();
+      expect(screen.queryByRole('status')).toBeNull();
+      expect(document.body.textContent).not.toContain('已產生，等待驗證');
     });
 
     it('says downloaded-but-unverified after the download request', async () => {
