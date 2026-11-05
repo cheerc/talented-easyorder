@@ -12,3 +12,7 @@
 @media (max-width: 720px) {
   .cloud-backup { width: calc(100% - 16px); margin: 8px auto 24px; }
 }
+
+.cloud-backup .bk-callout { margin: var(--s3) 0; }
+.cloud-backup .bk-callout p { margin: 0; color: inherit; }
+.cloud-backup .bk-flow-sub .help-tip-ui { font-size: var(--t-md); }

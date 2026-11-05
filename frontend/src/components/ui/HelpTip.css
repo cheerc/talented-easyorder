@@ -1,4 +1,5 @@
 .help-tip-ui {
+  flex: none;
   position: relative;
   display: inline-flex;
   vertical-align: middle;

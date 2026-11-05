@@ -10,8 +10,10 @@ import {
   type CloudStudentRecord,
 } from '../../firebase/cloudStudentRepository';
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
+import { Callout } from '../ui/Callout';
 import { CommandProgress } from '../ui/CommandProgress';
 import { EmptyState } from '../ui/EmptyState';
+import { HelpTip } from '../ui/HelpTip';
 import { Modal } from '../ui/Modal';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Toast } from '../ui/Toast';
@@ -1485,7 +1487,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
       <CommandProgress active={progressActive} />
       <header className="cloud-students__header">
         <div>
-          <h1>學生名單與期初結餘</h1>
+          <h1>學生名單與期初結餘 <HelpTip label="名單規則說明">名單由伺服器完整載入。期初結餘在新增學生時建立；之後只能以「更正期初」修改金額與備註，期初日不變，並須填寫原因。</HelpTip></h1>
         </div>
         <div className="cloud-students__header-actions">
           <button
@@ -1512,17 +1514,13 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
         hidden={progressActive || busy}
         onReload={() => void loadSnapshot(page.recovery?.phase === 'receipt' ? page.recovery.receipt : undefined)}
       />
-      <details className="cloud-students__intro-details">
-        <summary>期初結餘與名單規則</summary>
-        <p className="cloud-students__intro">名單由伺服器完整載入。期初結餘在新增學生時建立；之後只能以「更正期初」修改金額與備註，期初日不變，並須填寫原因。</p>
-      </details>
 
       {page.loadError && <div className="cloud-students__alert" role="alert">{page.loadError}</div>}
       {page.actionError && !page.createOpen && <div className="cloud-students__alert" role="alert">{page.actionError}</div>}
       {page.authorizationRevoked && (
-        <div className="cloud-students__notice" role="status">
+        <Callout variant="warn" role="status" className="cloud-students__callout">
           授權狀態已失效。請重新登入並取得有效使用權；若登入狀態尚未更新，重新載入整頁會再次向伺服器驗證。
-        </div>
+        </Callout>
       )}
       {page.notice && <div className="cloud-students__notice" role="status">{page.notice}</div>}
       <Toast message={page.toast} durationMs={/更正期初/.test(page.toast) ? 8000 : 4000} />
@@ -1681,7 +1679,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
               </div>
             )}
           </section>
-          <p className="cloud-students__footnote">學生資料由雲端伺服器提供。編號、姓名及期初資料不會儲存在本機離線草稿。</p>
+          <p className="cloud-students__footnote">資料來源 <HelpTip label="學生資料來源說明">學生資料由雲端伺服器提供。編號、姓名及期初資料不會儲存在本機離線草稿。</HelpTip></p>
         </div>
       )}
 
@@ -1698,7 +1696,7 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
           {page.loadError && <div className="cloud-students__alert" role="alert">{page.loadError}</div>}
           {recovery ? recoveryPanel : createDiscardPending ? (
             <div className="cloud-students__discard-confirmation" role="group" aria-label="新增學生草稿離開確認">
-              <p>尚未送出的草稿會被捨棄。</p>
+              <Callout variant="warn" className="cloud-students__callout"><p>尚未送出的草稿會被捨棄。</p></Callout>
               <div className="cloud-students__actions">
                 <button type="button" className="cloud-students__secondary" autoFocus onClick={() => setCreateDiscardPending(false)}>
                   取消離開
@@ -1711,12 +1709,15 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
           ) : snapshot && (!page.loading || showingStale) ? (
             <form className="cloud-students__form cloud-students__form--dialog" aria-label="新增學生" onSubmit={submitCreate}>
               <h2>手動新增學生</h2>
-              <p>編號會以正規化形式儲存（例如 001、099、1000）；請自行核對實際結餘。金額沒有預設值，輸入 0 才代表零元。</p>
+              <Callout variant="warn" className="cloud-students__callout"><p>請自行核對實際結餘。金額沒有預設值，輸入 0 才代表零元。</p></Callout>
               <div className="cloud-students__form-grid">
-                <label>
-                  學員編號
-                  <input className="cloud-students__input cloud-students__mono" value={page.createDraft.studentCode} maxLength={6} placeholder="001 至 999999" onChange={event => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, studentCode: event.target.value } }))} disabled={busy} />
-                </label>
+                <div className="cloud-students__code-field">
+                  <label>
+                    學員編號
+                    <input className="cloud-students__input cloud-students__mono" value={page.createDraft.studentCode} maxLength={6} placeholder="001 至 999999" onChange={event => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, studentCode: event.target.value } }))} disabled={busy} />
+                  </label>
+                  <HelpTip label="編號正規化說明">編號會以正規化形式儲存（例如 001、099、1000）。</HelpTip>
+                </div>
                 <label>
                   姓名
                   <input className="cloud-students__input" value={page.createDraft.displayName} maxLength={100} onChange={event => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, displayName: event.target.value } }))} disabled={busy} />
@@ -1743,7 +1744,8 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
                     <input type="radio" name="opening-mode" value="new-student" checked={page.createDraft.openingMode === 'new-student'} onChange={() => setPageState(previous => ({ ...previous, createDraft: { ...previous.createDraft, openingMode: 'new-student' } }))} disabled={busy} />
                     建立新學生，期初日預填臺北今天 {clientTaipeiDate()}（伺服器會再次核對日期）
                   </label>
-                  <small>瀏覽器日期只用於顯示與預填；伺服器日期檢查才是最後依據。日期不符時請先確認連線與系統時間，不會自動改寫未確認的命令。</small>
+                  <HelpTip label="期初日期說明">瀏覽器日期只用於顯示與預填；伺服器日期檢查才是最後依據。</HelpTip>
+                  <Callout variant="warn" className="cloud-students__callout"><p>日期不符時請先確認連線與系統時間，不會自動改寫未確認的命令。</p></Callout>
                 </fieldset>
               </div>
               <div className="cloud-students__actions">
