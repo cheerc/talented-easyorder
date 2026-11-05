@@ -442,10 +442,8 @@ describe('CloudDayClosePage', () => {
     renderPage({ initialDayId: targetDay });
 
     expect(await screen.findByRole('heading', { name: `${targetDay} 日結` })).toBeInTheDocument();
-    const figure = (label: string) => screen.getByText(label, { selector: '.cloud-day-close__figure-label' })
-      .closest('.cloud-day-close__figure') as HTMLElement;
-    expect(figure('實點現金')).toHaveTextContent('NT$ 1,160');
-    expect(figure('差額')).toHaveTextContent('−NT$ 10');
+    expect(screen.getByRole('group', { name: /^實點現金/ })).toHaveTextContent('NT$ 1,160');
+    expect(screen.getByRole('group', { name: /^差額/ })).toHaveTextContent('−NT$ 10');
     expect(screen.getByLabelText('有效關帳現金')).toHaveTextContent('NT$ 1,110');
   });
 
@@ -597,7 +595,9 @@ describe('CloudDayClosePage', () => {
     }));
     renderPage();
     fireEvent.change(await screen.findByLabelText('查看日期'), { target: { value: past } });
-    expect(await screen.findByText(/這天沒有開帳現金，也沒有任何交易。那天沒有營業就不需關帳/)).toBeInTheDocument();
+    expect(await screen.findByText('這天沒有開帳現金，也沒有任何交易。')).toBeInTheDocument();
+    fireEvent.focus(screen.getByRole('button', { name: '沒有營業的日子說明' }));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('那天沒有營業就不需關帳');
     expect(screen.queryByRole('form', { name: `${past} 關帳` })).not.toBeInTheDocument();
     expect(screen.getByRole('form', { name: `${past} 補開帳` })).toBeInTheDocument();
   });
@@ -2306,7 +2306,7 @@ describe('CloudDayClosePage: F2 今日 layout and date auto-load (#648 P4)', () 
       expect(warning.closest('.callout-ui')).toHaveClass('callout-warn');
       // How-to prose about the close is behind the help tip, not on the page.
       expect(within(form).queryByText(/一般現金差額可在下方留下有原因的關帳後補記/)).not.toBeInTheDocument();
-      fireEvent.focus(within(form).getByRole('button', { name: '關帳說明' }));
+      fireEvent.focus(screen.getByRole('button', { name: '關帳說明' }));
       expect(await screen.findByRole('tooltip')).toHaveTextContent('一般現金差額可在下方留下有原因的關帳後補記');
     });
 
@@ -2333,7 +2333,7 @@ describe('CloudDayClosePage: F2 今日 layout and date auto-load (#648 P4)', () 
       const form = await screen.findByRole('form', { name: `${past} 補開帳` });
       expect(within(form).getByText(/補開帳會留下操作者、時間與原因，之後不能用補開帳修改/).closest('.callout-ui')).toHaveClass('callout-warn');
       expect(within(form).queryByText(/填那天開店時抽屜裡的現金/)).not.toBeInTheDocument();
-      fireEvent.focus(within(form).getByRole('button', { name: '補開帳說明' }));
+      fireEvent.focus(screen.getByRole('button', { name: '補開帳說明' }));
       expect(await screen.findByRole('tooltip')).toHaveTextContent('填那天開店時抽屜裡的現金');
     });
 
