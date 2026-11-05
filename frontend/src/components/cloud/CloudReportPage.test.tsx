@@ -135,7 +135,7 @@ describe('CloudReportPage', () => {
 
     expect(screen.queryByRole('button', { name: '匯出稽核 CSV' })).toBeNull();
     await act(async () => { finishReport(report); });
-    await screen.findByText('來源序號 H=11');
+    await screen.findByTestId('report-ready');
     expect(screen.getByRole('button', { name: '匯出稽核 CSV' })).toBeEnabled();
   });
 
@@ -184,7 +184,7 @@ describe('CloudReportPage', () => {
     const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
     const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
     render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:audit-export" />);
-    await screen.findByText('來源序號 H=11');
+    await screen.findByTestId('report-ready');
 
     await clickAuditExport();
     await waitFor(() => expect(anchorClick).toHaveBeenCalledTimes(1));
@@ -312,7 +312,7 @@ describe('CloudReportPage', () => {
         const remounted = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={identityKey}
           onNavigationStateChange={navigation} />);
         await screen.findByTestId('report-ready');
-        expect(screen.getByTestId('report-ready')).toHaveTextContent(`H=${liveSourceSeq}`);
+        expect(screen.getByTestId('report-ready')).toHaveAttribute('data-source-seq', String(liveSourceSeq));
         await screen.findByRole('region', { name: '輸出命令確認' });
         expect(download).not.toHaveBeenCalled();
         expect(print).not.toHaveBeenCalled();
@@ -349,7 +349,7 @@ describe('CloudReportPage', () => {
         fireEvent.click(screen.getByRole('button', { name: '查詢完整報表' }));
         await waitFor(() => expect(mocks.readReport).toHaveBeenCalledTimes(reportsBeforeRequery + 1));
         await screen.findByTestId('report-ready');
-        expect(screen.getByTestId('report-ready')).toHaveTextContent(`H=${liveSourceSeq}`);
+        expect(screen.getByTestId('report-ready')).toHaveAttribute('data-source-seq', String(liveSourceSeq));
         if (kind === 'print') fireEvent.change(screen.getByLabelText('列印標示日期'), { target: { value: '2026-10-19' } });
         fireEvent.click(screen.getByRole('button', { name: kind === 'export' ? '匯出稽核 CSV' : '記錄後列印目前完整明細' }));
 
@@ -497,7 +497,7 @@ describe('CloudReportPage', () => {
     const firstView = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={identityKey}
       onNavigationStateChange={navigation} />);
     await screen.findByTestId('report-ready');
-    expect(screen.getByTestId('report-ready')).toHaveTextContent('H=11');
+    expect(screen.getByTestId('report-ready')).toHaveAttribute('data-source-seq', '11');
     await clickAuditExport();
     await screen.findByRole('alert');
     const originalInput = mocks.recordExport.mock.calls[0][0];
@@ -533,7 +533,7 @@ describe('CloudReportPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '查詢完整報表' }));
     await waitFor(() => expect(mocks.readReport).toHaveBeenCalledTimes(readsBeforeRequery + 1));
     await screen.findByTestId('report-ready');
-    expect(screen.getByTestId('report-ready')).toHaveTextContent('H=12');
+    expect(screen.getByTestId('report-ready')).toHaveAttribute('data-source-seq', '12');
     await clickAuditExport();
     await waitFor(() => expect(browserClick).toHaveBeenCalledTimes(1));
     const newInput = mocks.recordExport.mock.calls[1][0];
@@ -712,7 +712,8 @@ describe('CloudReportPage', () => {
         [expect.stringContaining('17:30'), '釋放使用權', 'second@example.test', '（無紀錄）'],
       ]);
       expect(handoverRegion().textContent).not.toMatch(/uid-|operator-a/);
-      expect(within(handoverRegion()).queryByRole('button')).toBeNull();
+      expect(within(handoverRegion()).queryByRole('button', { name: /匯出|下載/ })).toBeNull();
+      expect(within(handoverRegion()).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['使用權交接說明']);
     });
 
     it('hides a table whose snapshot envelope differs from the report and says so, without blocking the report', async () => {
@@ -770,7 +771,7 @@ describe('CloudReportPage', () => {
     mocks.readAuditRange.mockImplementation(async input => ({ ...audit, scope: { studentId: input.studentId } }));
     render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:route"
       onOpenDayClose={onOpenDayClose} onOpenAccountHistory={onOpenAccountHistory} />);
-    await screen.findByText('來源序號 H=11');
+    await screen.findByTestId('report-ready');
     fireEvent.change(screen.getByLabelText('搜尋帳戶'), { target: { value: '001' } });
     fireEvent.click(screen.getByRole('button', { name: '選取 林小明（001）' }));
     await waitFor(() => expect(mocks.readReport).toHaveBeenCalledWith(expect.objectContaining({
@@ -1124,7 +1125,7 @@ describe('CloudReportPage: #587 P2 data updated elsewhere', () => {
       ...accessEvents, sourceSeq: 12, leaseEpoch: input.leaseEpoch, range: input.range,
     }));
     fireEvent.click(within(notice).getByRole('button', { name: '重新載入' }));
-    await screen.findByText('來源序號 H=12');
+    await waitFor(() => expect(screen.getByTestId('report-ready')).toHaveAttribute('data-source-seq', '12'));
     expect(mocks.readReport).toHaveBeenCalledTimes(2);
     expect(mocks.readReport.mock.calls[1][0].range).toEqual(range);
     expect(screen.queryByTestId('data-updated-notice')).toBeNull();
@@ -1181,5 +1182,66 @@ describe('CloudReportPage: #587 P2 data updated elsewhere', () => {
     render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:at-head" />);
     await screen.findByTestId('report-ready');
     expect(screen.queryByTestId('data-updated-notice')).toBeNull();
+  });
+  describe('#648 P5 F2 report page uses the unified UI style', () => {
+    async function renderReady(identityKey: string) {
+      headMock.current = head(11);
+      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={identityKey} />);
+      await screen.findByTestId('report-ready');
+      return screen.getByRole('region', { name: '雲端報表' });
+    }
+
+    it('shows no engineering terms in the visible page, keeping the data version in a machine-readable attribute', async () => {
+      const page = await renderReady('operator-a:4:p5-terms');
+      expect(page.textContent).not.toMatch(/H=|來源序號/);
+      expect(Array.from(page.querySelectorAll('dt')).map(dt => dt.textContent)).not.toContain('dataset');
+      expect(screen.getByTestId('report-ready')).toHaveAttribute('data-source-seq', '11');
+    });
+
+    it('moves usage explanations into HelpTip buttons and does not leave them as page text', async () => {
+      const page = await renderReady('operator-a:4:p5-help');
+      for (const name of ['報表說明', '區間日摘要說明', '交易明細說明', '輸出說明', '使用權交接說明']) {
+        expect(within(page).getByRole('button', { name })).toBeInTheDocument();
+      }
+      expect(page.textContent).not.toContain('日期範圍由伺服器台北日期');
+      expect(page.textContent).not.toContain('日摘要與選定帳戶明細分開呈現');
+      expect(page.textContent).not.toContain('輸出使用全部');
+      expect(page.textContent).not.toContain('唯讀記錄：');
+      fireEvent.click(within(page).getByRole('button', { name: '報表說明' }));
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('日期範圍由伺服器台北日期 2026-10-19');
+      expect(screen.getByRole('tooltip')).toHaveTextContent('資料版本 11');
+    });
+
+    it('keeps money, blocked-action and incomplete-data sentences visible (R7)', async () => {
+      const page = await renderReady('operator-a:4:p5-callout');
+      expect(page).toHaveTextContent('現金存量不會跨日加總，未提供訂餐欠款推估');
+      expect(page).toHaveTextContent('日結與關帳後補記僅支援全部帳戶範圍');
+      expect(page).toHaveTextContent('僅在報表與稽核資料版本一致時顯示');
+      expect(page).toHaveTextContent('日摘要與日結數字維持全日口徑');
+      fireEvent.change(within(page).getByLabelText('日期範圍'), { target: { value: 'custom' } });
+      expect(page).toHaveTextContent('自訂最多 31 日，超出時不會截短');
+    });
+
+    it('wraps the three tables in the shared wrapper and right-aligns amount and count cells with dt-num', async () => {
+      const page = await renderReady('operator-a:4:p5-tables');
+      const tables = Array.from(page.querySelectorAll('table.dt'));
+      expect(tables).toHaveLength(3);
+      for (const table of tables) expect(table.parentElement).toHaveClass('dt-wrap');
+
+      const numericCols = (name: string, headers: string[]) => {
+        const table = page.querySelector(`section[aria-labelledby="${name}"] table`) as HTMLTableElement;
+        const heads = Array.from(table.querySelectorAll('thead th'));
+        for (const header of headers) {
+          const index = heads.findIndex(th => th.textContent === header);
+          expect(index, header).toBeGreaterThanOrEqual(0);
+          expect(heads[index], `th ${header}`).toHaveClass('dt-num');
+          for (const row of Array.from(table.querySelectorAll('tbody tr'))) {
+            expect(row.children[index], `td ${header}`).toHaveClass('dt-num');
+          }
+        }
+      };
+      numericCols('cloud-report-summary-heading', ['份數', '餐費', '收款留存', '櫃台收入／支出', '帳戶退款']);
+      numericCols('cloud-report-detail-heading', ['金額／份數', '完整歷史餘額']);
+    });
   });
 });
