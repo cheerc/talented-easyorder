@@ -135,7 +135,7 @@ describe('CloudReportPage', () => {
 
     expect(screen.queryByRole('button', { name: '匯出稽核 CSV' })).toBeNull();
     await act(async () => { finishReport(report); });
-    await screen.findByText('來源序號 H=11');
+    await screen.findByTestId('report-ready');
     expect(screen.getByRole('button', { name: '匯出稽核 CSV' })).toBeEnabled();
   });
 
@@ -184,7 +184,7 @@ describe('CloudReportPage', () => {
     const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
     const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
     render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:audit-export" />);
-    await screen.findByText('來源序號 H=11');
+    await screen.findByTestId('report-ready');
 
     await clickAuditExport();
     await waitFor(() => expect(anchorClick).toHaveBeenCalledTimes(1));
@@ -312,7 +312,7 @@ describe('CloudReportPage', () => {
         const remounted = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={identityKey}
           onNavigationStateChange={navigation} />);
         await screen.findByTestId('report-ready');
-        expect(screen.getByTestId('report-ready')).toHaveTextContent(`H=${liveSourceSeq}`);
+        expect(screen.getByTestId('report-ready')).toHaveAttribute('data-source-seq', String(liveSourceSeq));
         await screen.findByRole('region', { name: '輸出命令確認' });
         expect(download).not.toHaveBeenCalled();
         expect(print).not.toHaveBeenCalled();
@@ -349,7 +349,7 @@ describe('CloudReportPage', () => {
         fireEvent.click(screen.getByRole('button', { name: '查詢完整報表' }));
         await waitFor(() => expect(mocks.readReport).toHaveBeenCalledTimes(reportsBeforeRequery + 1));
         await screen.findByTestId('report-ready');
-        expect(screen.getByTestId('report-ready')).toHaveTextContent(`H=${liveSourceSeq}`);
+        expect(screen.getByTestId('report-ready')).toHaveAttribute('data-source-seq', String(liveSourceSeq));
         if (kind === 'print') fireEvent.change(screen.getByLabelText('列印標示日期'), { target: { value: '2026-10-19' } });
         fireEvent.click(screen.getByRole('button', { name: kind === 'export' ? '匯出稽核 CSV' : '記錄後列印目前完整明細' }));
 
@@ -497,7 +497,7 @@ describe('CloudReportPage', () => {
     const firstView = render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={identityKey}
       onNavigationStateChange={navigation} />);
     await screen.findByTestId('report-ready');
-    expect(screen.getByTestId('report-ready')).toHaveTextContent('H=11');
+    expect(screen.getByTestId('report-ready')).toHaveAttribute('data-source-seq', '11');
     await clickAuditExport();
     await screen.findByRole('alert');
     const originalInput = mocks.recordExport.mock.calls[0][0];
@@ -533,7 +533,7 @@ describe('CloudReportPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '查詢完整報表' }));
     await waitFor(() => expect(mocks.readReport).toHaveBeenCalledTimes(readsBeforeRequery + 1));
     await screen.findByTestId('report-ready');
-    expect(screen.getByTestId('report-ready')).toHaveTextContent('H=12');
+    expect(screen.getByTestId('report-ready')).toHaveAttribute('data-source-seq', '12');
     await clickAuditExport();
     await waitFor(() => expect(browserClick).toHaveBeenCalledTimes(1));
     const newInput = mocks.recordExport.mock.calls[1][0];
@@ -712,7 +712,8 @@ describe('CloudReportPage', () => {
         [expect.stringContaining('17:30'), '釋放使用權', 'second@example.test', '（無紀錄）'],
       ]);
       expect(handoverRegion().textContent).not.toMatch(/uid-|operator-a/);
-      expect(within(handoverRegion()).queryByRole('button')).toBeNull();
+      expect(within(handoverRegion()).queryByRole('button', { name: /匯出|下載/ })).toBeNull();
+      expect(within(handoverRegion()).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['使用權交接說明']);
     });
 
     it('hides a table whose snapshot envelope differs from the report and says so, without blocking the report', async () => {
@@ -770,7 +771,7 @@ describe('CloudReportPage', () => {
     mocks.readAuditRange.mockImplementation(async input => ({ ...audit, scope: { studentId: input.studentId } }));
     render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:route"
       onOpenDayClose={onOpenDayClose} onOpenAccountHistory={onOpenAccountHistory} />);
-    await screen.findByText('來源序號 H=11');
+    await screen.findByTestId('report-ready');
     fireEvent.change(screen.getByLabelText('搜尋帳戶'), { target: { value: '001' } });
     fireEvent.click(screen.getByRole('button', { name: '選取 林小明（001）' }));
     await waitFor(() => expect(mocks.readReport).toHaveBeenCalledWith(expect.objectContaining({
@@ -1124,7 +1125,7 @@ describe('CloudReportPage: #587 P2 data updated elsewhere', () => {
       ...accessEvents, sourceSeq: 12, leaseEpoch: input.leaseEpoch, range: input.range,
     }));
     fireEvent.click(within(notice).getByRole('button', { name: '重新載入' }));
-    await screen.findByText('來源序號 H=12');
+    await waitFor(() => expect(screen.getByTestId('report-ready')).toHaveAttribute('data-source-seq', '12'));
     expect(mocks.readReport).toHaveBeenCalledTimes(2);
     expect(mocks.readReport.mock.calls[1][0].range).toEqual(range);
     expect(screen.queryByTestId('data-updated-notice')).toBeNull();
@@ -1193,7 +1194,7 @@ describe('CloudReportPage: #587 P2 data updated elsewhere', () => {
     it('shows no engineering terms in the visible page, keeping the data version in a machine-readable attribute', async () => {
       const page = await renderReady('operator-a:4:p5-terms');
       expect(page.textContent).not.toMatch(/H=|來源序號/);
-      expect(page.textContent).not.toContain('dataset');
+      expect(Array.from(page.querySelectorAll('dt')).map(dt => dt.textContent)).not.toContain('dataset');
       expect(screen.getByTestId('report-ready')).toHaveAttribute('data-source-seq', '11');
     });
 
