@@ -6,6 +6,7 @@ import { accountCheck } from './helpers/navigation';
 import { seedAccessLease } from './helpers/seed';
 import {
   assertDayAbsent,
+  clearLeftoverBusinessState,
   seedAdjacentCashGap,
   seedBackfillInProgress,
   seedOpenDayWithMenu,
@@ -34,6 +35,8 @@ function mainNav(page: Page, name: string) {
 test.describe('具名業務情境 fixtures', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
+  // 同 shard 前面的 spec 共用 Emulator 並可能留下營業日；從乾淨的營業日狀態開始。
+  test.beforeAll(async () => { await clearLeftoverBusinessState(); });
   test.beforeEach(async () => {
     await seedAccessLease({ ...VACANT_LEASE, updatedAt: new Date() });
   });

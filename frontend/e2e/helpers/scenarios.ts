@@ -56,6 +56,23 @@ export async function assertDayAbsent(day: string): Promise<void> {
 }
 
 /**
+ * 清掉同一個 Emulator 上「前面已跑完的 spec」留下的營業日（含 settlements 子集合）與交易。
+ * 同一 shard 的 spec 依序執行、共用 Emulator，部分既有 spec 結束後會留下 `days/{today}` 與當日交易（見 PR 說明）；
+ * 櫃台頁會拿交易和營業日合計交叉核對，殘留的交易會讓 seed 出來的營業日被判定為「合計不一致」。
+ * 這裡只在 spec 檔開頭呼叫一次，讓 scenario 從乾淨的營業日狀態開始；每個「今天」案例仍用 `assertDayAbsent`
+ * 檢查，所以 scenario 自己的 cleanup 漏刪時會直接失敗，不會被這個 reset 掩蓋。
+ */
+export async function clearLeftoverBusinessState(): Promise<void> {
+  for (const day of await listRaw('days')) {
+    for (const settlement of await listRaw(`days/${day.id}/settlements`)) {
+      await removeDocument(`days/${day.id}/settlements`, settlement.id);
+    }
+    await removeDocument('days', day.id);
+  }
+  for (const transaction of await listRaw('transactions')) await removeDocument('transactions', transaction.id);
+}
+
+/**
  * 在近 30 天內尋找沒有被使用的營業日（升冪，最舊的在前）。`adjacent` 要求連續日期。
  * 從 5 天前起算，避開今天與昨天，讓其他 suite 用「今天／昨天」的流程不會撞到。
  */
