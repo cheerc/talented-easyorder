@@ -26,6 +26,7 @@ import {
 } from '../cloudPendingJournal';
 import { SAFE_DIAGNOSTICS_STORAGE_KEY } from '../../errors/errorLogger';
 
+const PLAIN_WORDING_FORBIDDEN = /來源序號|資料序號|資料版本|學生版本|營業日版本|交易版本|revisions?|payload|command(?!\s*編號)|commandId|\bseq\b/i;
 type ServerRead = typeof import('firebase/firestore').getDocFromServer;
 type RunTransaction = typeof import('firebase/firestore').runTransaction;
 const firestoreMock = vi.hoisted(() => ({
@@ -666,6 +667,9 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
       },
     });
     expect(staleHead).toMatchObject({ ok: false, error: { code: 'REVISION_CONFLICT' } });
+    // #682: the message reaches the F5 / report screens, so it is plain Chinese without engineering terms.
+    expect(staleHead.ok ? '' : staleHead.error.message).toBe('資料已被其他操作更新；請重新載入，確認目前狀態後再操作。');
+    expect(staleHead.ok ? '' : staleHead.error.message).not.toMatch(PLAIN_WORDING_FORBIDDEN);
 
     await withAdmin(db => updateDoc(doc(db, `days/${today}`), { revision: 2 }));
     firestoreMock.runTransaction.mockRejectedValueOnce(permissionDenied());
@@ -675,6 +679,7 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
       expectedRevisions: { day: 1 }, payload: { openingCash: 125 },
     });
     expect(staleDay).toMatchObject({ ok: false, error: { code: 'REVISION_CONFLICT' } });
+    expect(staleDay.ok ? '' : staleDay.error.message).toBe('資料已被其他操作更新；請重新載入，確認目前狀態後再操作。');
   });
 
   it('P07.24: a current-holder server diagnosis classifies a closed business day as DAY_CLOSED', async () => {
