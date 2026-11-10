@@ -373,7 +373,8 @@ describe('CloudStudentsPage', () => {
 
     expect(await screen.findByText('已找到伺服器回執，名單尚待再次讀取。')).toBeInTheDocument();
     expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
-    expect(screen.getByText('伺服器命令序號 1')).toBeInTheDocument();
+    expect(screen.getByText(/命令編號 cmd-ui-001/)).toBeInTheDocument();
+    expect(screen.queryByText(/伺服器命令序號/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '查詢原命令結果' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '重新讀取伺服器名單' }));
 
@@ -417,7 +418,7 @@ describe('CloudStudentsPage', () => {
     const recovery = recoveryHeading.closest('section');
     if (!recovery) throw new Error('Receipt confirmation panel was not rendered');
     expect(recovery).toHaveTextContent('命令編號 cmd-ui-001');
-    expect(recovery).toHaveTextContent('伺服器命令序號 1');
+    expect(recovery).not.toHaveTextContent(/伺服器命令序號/);
     expect(screen.getByText(/資料集已變更/)).toBeInTheDocument();
     expect(screen.queryByText('B 資料集學生')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '新增學生' })).not.toBeInTheDocument();

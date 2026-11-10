@@ -1506,6 +1506,7 @@ describe('CloudDayClosePage: same-page command recovery (P13b2b2c)', () => {
         const recovery = screen.getByRole('alert', { name: '命令結果確認' });
         expect(recovery).toHaveTextContent('已找到伺服器回執，資料尚待再次讀取。');
         expect(recovery).toHaveTextContent(commandId);
+        expect(recovery).not.toHaveTextContent(/伺服器命令序號/);
         expect(screen.queryByRole('form', { name: `${today} 關帳` })).not.toBeInTheDocument();
         expect(onLedgerChanged).not.toHaveBeenCalled();
         expect(onNavigationStateChange).toHaveBeenLastCalledWith('uid-a:4', 'recovering');
@@ -2308,6 +2309,20 @@ describe('CloudDayClosePage: F2 今日 layout and date auto-load (#648 P4)', () 
       expect(within(state).getByText('開啟中')).toHaveClass('badge-ui', 'badge-warn');
       expect(screen.queryByText(/資料序號/)).not.toBeInTheDocument();
       expect(screen.queryByText(/伺服器使用權日期/)).not.toBeInTheDocument();
+    });
+
+    it('hides the settlement version until the day has been closed at least once', async () => {
+      repository.read.mockResolvedValue(dayState({ status: 'open', lastSettlementRevision: 0 }));
+      const { unmount } = render(<CloudDayClosePage db={{} as Firestore} leaseEpoch={4} identityKey="uid-a:4" />);
+      await screen.findByRole('heading', { name: `${today} 日結` });
+      expect(screen.queryByText(/日結版本 0/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/^日結版本 \d+$/)).not.toBeInTheDocument();
+      unmount();
+
+      repository.read.mockResolvedValue(dayState({ status: 'closed', revision: 7, lastSettlementRevision: 1, settlements: [version(1)] }));
+      renderWith();
+      await screen.findByRole('heading', { name: `${today} 日結` });
+      expect(screen.getByText('日結版本 1')).toBeInTheDocument();
     });
 
     it('puts the intro explanation in a help tip instead of a details block', async () => {

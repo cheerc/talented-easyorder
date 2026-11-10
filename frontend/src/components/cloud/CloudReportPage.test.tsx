@@ -293,7 +293,9 @@ describe('CloudReportPage', () => {
     const surface = document.querySelector<HTMLElement>('.cloud-report__print');
     expect(printParent).toBe(document.body);
     expect(printText).toContain('transaction-a');
+    expect(printText).not.toMatch(/H=|來源序號/);
     expect(surface).not.toBeNull();
+    expect(surface).toHaveAttribute('data-source-seq', '11');
     act(() => { window.dispatchEvent(new Event('afterprint')); });
     await waitFor(() => expect(document.querySelector('.cloud-report__print')).toBeNull());
   });
@@ -308,7 +310,9 @@ describe('CloudReportPage', () => {
     await screen.findByTestId('report-ready');
 
     await clickAuditExport();
-    await screen.findByRole('region', { name: '輸出命令確認' });
+    const outputRegion = await screen.findByRole('region', { name: '輸出命令確認' });
+    expect(outputRegion).toHaveTextContent('匯出稽核 CSV');
+    expect(outputRegion).not.toHaveTextContent(/Paudit|H=/);
     const firstInput = mocks.recordExport.mock.calls[0][0];
     expect(screen.queryByRole('button', { name: '以相同命令編號重試' })).toBeNull();
     mocks.confirmPendingIntent.mockResolvedValueOnce({ status: 'not-found' });
@@ -1256,7 +1260,11 @@ describe('CloudReportPage: #587 P2 data updated elsewhere', () => {
       expect(page.textContent).not.toContain('唯讀記錄：');
       fireEvent.click(within(page).getByRole('button', { name: '報表說明' }));
       expect(await screen.findByRole('tooltip')).toHaveTextContent('日期範圍由伺服器台北日期 2026-10-19');
-      expect(screen.getByRole('tooltip')).toHaveTextContent('資料版本 11');
+      expect(screen.getByRole('tooltip').textContent).not.toMatch(/資料版本|資料序號/);
+      fireEvent.click(within(page).getByRole('button', { name: '報表說明' }));
+      fireEvent.click(within(page).getByRole('button', { name: '輸出說明' }));
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('輸出固定目前日期與帳戶範圍');
+      expect(screen.getByRole('tooltip').textContent).not.toMatch(/資料版本|資料序號/);
     });
 
     it('keeps money, blocked-action and incomplete-data sentences visible (R7)', async () => {

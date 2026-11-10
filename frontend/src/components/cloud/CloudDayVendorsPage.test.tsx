@@ -613,6 +613,7 @@ describe('CloudDayVendorsPage', () => {
     fireEvent.click(within(form).getByRole('button', { name: '確認開帳金額' }));
 
     expect(await screen.findByText('已找到伺服器回執，資料尚待再次讀取。')).toBeInTheDocument();
+    expect(screen.queryByText(/伺服器命令序號/)).not.toBeInTheDocument();
     await waitFor(() => expect(reportNavigationState).toHaveBeenLastCalledWith('uid-a:4', 'recovering'));
     fireEvent.click(screen.getByRole('button', { name: '重新讀取伺服器資料' }));
     expect(await screen.findByText(/已確認 確認 2026-10-15 開帳現金 完成/)).toBeInTheDocument();
@@ -658,6 +659,7 @@ describe('CloudDayVendorsPage', () => {
       expect(repository.loadSnapshot).toHaveBeenCalledTimes(2);
       expect(screen.getByRole('alert', { name: '命令結果確認' })).toHaveTextContent(commandId);
       expect(screen.getByRole('alert', { name: '命令結果確認' })).toHaveTextContent('已找到伺服器回執，資料尚待再次讀取。');
+      expect(screen.getByRole('alert', { name: '命令結果確認' })).not.toHaveTextContent(/伺服器命令序號/);
       expect(screen.getByRole('button', { name: '重新讀取伺服器資料' })).toBeDisabled();
       expect(screen.queryByRole('form', { name: `${today} 開帳現金` })).not.toBeInTheDocument();
       expect(onLedgerChanged).not.toHaveBeenCalled();
@@ -1004,6 +1006,12 @@ describe('CloudDayVendorsPage', () => {
       for (const name of ['資料與歷史說明', '營業日說明', '供應商說明']) {
         expect(screen.getByRole('button', { name })).toBeInTheDocument();
       }
+
+      fireEvent.click(screen.getByRole('button', { name: '營業日說明' }));
+      const dayTip = screen.getByRole('tooltip');
+      expect(dayTip).toHaveTextContent('營業日來自伺服器租約時間');
+      expect(dayTip.textContent).not.toMatch(/資料序號|除錯用/);
+      fireEvent.click(screen.getByRole('button', { name: '營業日說明' }));
 
       fireEvent.click(screen.getByRole('button', { name: '供應商說明' }));
       const tip = screen.getByRole('tooltip');

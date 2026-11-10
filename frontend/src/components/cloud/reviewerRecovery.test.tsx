@@ -481,6 +481,7 @@ describe('CloudPendingRecoveryBoundary quiet same-tab in-flight rows', () => {
     await waitFor(() => expect(f.context.mock.calls.length).toBe(calls + 2));
     expect(await screen.findByText(/已確認原命令入帳；本機追蹤編號尚未清除，之後會再核對。/)).toBeInTheDocument();
     expect(region()).not.toBeNull();
+    expect(region()).not.toHaveTextContent(/伺服器序號/);
   });
 
   it('S4 keeps the section when the recovery check fails while a row is in flight', async () => {
