@@ -41,7 +41,7 @@ const record = {
 };
 const testDb = {} as never;
 const context = { uid: 'operator-a', datasetId: 'dataset-a', leaseEpoch: 1, maintenance: false };
-const manualConfirmation = '我確認本筆結果尚未確定，不得重新收款或重登；只繼續其他獨立作業，待保留編號人工核對。';
+const notFoundText = '前次有一筆送出未收到確認（伺服器查無資料）。若非剛才的操作，請確認無誤後清除。';
 const notFound = [{ status: 'not-found' }];
 const matched = [{ status: 'matched', receipt: { commandId: record.commandId, seq: 1 } }];
 
@@ -60,9 +60,8 @@ function renderBoundary(uid = 'operator-a', leaseEpoch = 1) {
 }
 
 async function continueManually() {
-  await screen.findByText('伺服器目前未查到；這不代表確定未入帳。保留編號，不要重新收款。');
-  fireEvent.click(screen.getByLabelText(manualConfirmation));
-  fireEvent.click(screen.getByRole('button', { name: '保留編號，移交人工核對並繼續其他作業' }));
+  await screen.findByText(notFoundText);
+  fireEvent.click(screen.getByRole('button', { name: '暫時略過' }));
   await screen.findByTestId('business-shell');
 }
 
@@ -101,10 +100,10 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
 
   it('does not remove a matched per-row retry after unmount while its query is pending', async () => {
     const view = renderBoundary();
-    await screen.findByText('伺服器目前未查到；這不代表確定未入帳。保留編號，不要重新收款。');
+    await screen.findByText(notFoundText);
     const pending = deferred<typeof matched>();
     f.confirm.mockImplementationOnce(() => pending.promise);
-    fireEvent.click(screen.getByRole('button', { name: '再查這筆編號' }));
+    fireEvent.click(screen.getByRole('button', { name: '再查這筆' }));
     await waitFor(() => expect(f.confirm).toHaveBeenCalledTimes(2));
 
     view.unmount();
@@ -187,7 +186,7 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
     await continueManually();
     const oldResult = deferred<typeof matched>();
     f.confirm.mockImplementationOnce(() => oldResult.promise);
-    fireEvent.click(screen.getByRole('button', { name: '再查這筆編號' }));
+    fireEvent.click(screen.getByRole('button', { name: '再查這筆' }));
     await waitFor(() => expect(f.confirm).toHaveBeenCalledTimes(2));
 
     await act(async () => f.listener?.('other-tab'));
@@ -197,7 +196,7 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
 
     expect(f.remove).not.toHaveBeenCalled();
     expect(f.records).toEqual([record]);
-    expect(screen.getByText('伺服器目前未查到；這不代表確定未入帳。保留編號，不要重新收款。')).toBeInTheDocument();
+    expect(screen.getByText(notFoundText)).toBeInTheDocument();
     expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
   });
 
@@ -205,6 +204,7 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
     renderBoundary();
     await continueManually();
     expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
+    expect(screen.queryByRole('button', { name: '暫時略過' })).not.toBeInTheDocument();
 
     await act(async () => {
       window.dispatchEvent(new Event('offline'));
@@ -215,8 +215,8 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
     await waitFor(() => expect(f.confirm).toHaveBeenCalledTimes(2));
     expect(screen.getByTestId('business-shell')).toBeInTheDocument();
     expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
-    expect(screen.getByLabelText(manualConfirmation)).not.toBeChecked();
-    expect(screen.getByRole('button', { name: '保留編號，移交人工核對並繼續其他作業' })).toBeDisabled();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.getByRole('button', { name: '暫時略過' })).toBeEnabled();
     expect(f.records).toEqual([record]);
   });
 
@@ -225,7 +225,7 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
     await continueManually();
     const lateResult = deferred<typeof matched>();
     f.confirm.mockImplementationOnce(() => lateResult.promise);
-    fireEvent.click(screen.getByRole('button', { name: '再查這筆編號' }));
+    fireEvent.click(screen.getByRole('button', { name: '再查這筆' }));
     await waitFor(() => expect(f.confirm).toHaveBeenCalledTimes(2));
 
     await act(async () => {
@@ -240,8 +240,8 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
 
     expect(f.remove).not.toHaveBeenCalled();
     expect(f.records).toEqual([record]);
-    expect(screen.getByText('伺服器目前未查到；這不代表確定未入帳。保留編號，不要重新收款。')).toBeInTheDocument();
-    expect(screen.getByLabelText(manualConfirmation)).not.toBeChecked();
+    expect(screen.getByText(notFoundText)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '暫時略過' })).toBeEnabled();
     expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
   });
 
@@ -259,7 +259,7 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
     await waitFor(() => expect(f.confirm).toHaveBeenCalledTimes(2));
     expect(screen.getByTestId('business-shell')).toBeInTheDocument();
     expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
-    expect(screen.getByLabelText(manualConfirmation)).not.toBeChecked();
+    expect(screen.getByRole('button', { name: '暫時略過' })).toBeEnabled();
     expect(f.records).toEqual([record]);
   });
 

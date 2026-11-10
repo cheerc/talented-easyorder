@@ -42,8 +42,7 @@ const record = {
 };
 const dbA = { app: { name: '[DEFAULT]', options: { projectId: 'demo-a' } } } as unknown as Firestore;
 const dbB = { app: { name: '[DEFAULT]', options: { projectId: 'demo-b' } } } as unknown as Firestore;
-const confirmationLabel = '我確認本筆結果尚未確定，不得重新收款或重登；只繼續其他獨立作業，待保留編號人工核對。';
-const continuationLabel = '保留編號，移交人工核對並繼續其他作業';
+const continuationLabel = '暫時略過';
 
 interface LayoutObservation {
   scope: string;
@@ -68,7 +67,6 @@ function boundary(db: Firestore, uid: string, leaseEpoch: number, scope: string,
 
 async function continueManually(): Promise<void> {
   await screen.findByText(record.commandId);
-  fireEvent.click(screen.getByLabelText(confirmationLabel));
   fireEvent.click(screen.getByRole('button', { name: continuationLabel }));
   await screen.findByTestId('business-shell');
 }
@@ -173,12 +171,12 @@ describe('CloudPendingRecoveryBoundary synchronous scope fence', () => {
 });
 
 describe('CloudPendingRecoveryBoundary #648 P8 說明與警示分類', () => {
-  it('keeps 未決編號不會自動淘汰 always visible and moves page size and capacity into a HelpTip', async () => {
+  it('keeps the pending summary always visible and moves page size and capacity into a HelpTip', async () => {
     render(boundary(dbA, 'operator-a', 1, 'epoch-1', []));
     await screen.findByText(record.commandId);
-    const visible = screen.getByText(/未決編號不會自動淘汰/);
+    const visible = screen.getByText(/請先確認帳務結果後再處理/);
     expect(visible).toBeVisible();
-    expect(visible).toHaveTextContent('共有 1 筆待核對編號');
+    expect(visible).toHaveTextContent('共有 1 筆待核對紀錄');
     expect(visible).not.toHaveTextContent('每頁最多');
     expect(screen.queryByRole('tooltip')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '待核對容量說明' }));
@@ -188,8 +186,8 @@ describe('CloudPendingRecoveryBoundary #648 P8 說明與警示分類', () => {
   it('keeps the duplicate-charge warnings visible, not inside a HelpTip', async () => {
     render(boundary(dbA, 'operator-a', 1, 'epoch-1', []));
     await screen.findByText(record.commandId);
-    expect(screen.getByText('伺服器目前未查到的編號仍可能已入帳；不可重新收款或重登。')).toBeVisible();
-    expect(screen.getByLabelText(confirmationLabel)).toBeVisible();
+    expect(screen.getByText('前次有一筆送出未收到確認（伺服器查無資料）。若非剛才的操作，請確認無誤後清除。')).toBeVisible();
+    expect(screen.getByText('若需先查閱帳務再決定，可暫時略過提醒；確認前請勿重複入帳。')).toBeVisible();
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
 });
@@ -225,7 +223,7 @@ describe('CloudPendingRecoveryBoundary #676 Phase 1 解除全域黑屏與清除�
     );
 
     await screen.findByText(record.commandId);
-    const dismissButton = screen.getByRole('button', { name: '清除紀錄' });
+    const dismissButton = screen.getByRole('button', { name: '清除此紀錄' });
     expect(dismissButton).toBeEnabled();
 
     fireEvent.click(dismissButton);
@@ -235,6 +233,32 @@ describe('CloudPendingRecoveryBoundary #676 Phase 1 解除全域黑屏與清除�
     expect(fixture.records).toEqual([]);
     expect((await fixture.journal.readAll()).total).toBe(0);
     expect(observedUnresolved).toBe(false);
+    expect(screen.getByTestId('business-shell')).toBeVisible();
+  });
+});
+
+describe('CloudPendingRecoveryBoundary #676 Phase 2 頂部警告 Banner、移除 Checkbox 與收合技術資訊', () => {
+  it('removes the disclaimer checkbox, folds the raw UUID inside <details><summary>技術資訊</summary>, and allows direct skip', async () => {
+    render(boundary(dbA, 'operator-a', 1, 'epoch-1', []));
+    const codeNode = await screen.findByText(record.commandId);
+
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.queryByText(/未決編號不會自動淘汰/)).toBeNull();
+    expect(screen.queryByText(/不得重新收款或重登/)).toBeNull();
+
+    const details = codeNode.closest('details');
+    expect(details).not.toBeNull();
+    expect(details).toHaveClass('cloud-pending-recovery__tech-details');
+    expect(details).not.toHaveAttribute('open');
+    expect(details?.querySelector('summary')).toHaveTextContent('技術資訊');
+
+    expect(screen.getByRole('button', { name: '再查這筆' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '清除此紀錄' })).toBeEnabled();
+    const skipButton = screen.getByRole('button', { name: '暫時略過' });
+    expect(skipButton).toBeEnabled();
+
+    fireEvent.click(skipButton);
+    expect(screen.queryByRole('button', { name: '暫時略過' })).not.toBeInTheDocument();
     expect(screen.getByTestId('business-shell')).toBeVisible();
   });
 });

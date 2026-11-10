@@ -275,8 +275,9 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     await page.getByRole('button', { name: '取得系統使用權' }).click();
     await expect.poll(async () => (await readEmulatorDocument('system', 'accessLease')).fields?.epoch).toEqual({ integerValue: '1' });
     await expect(page.getByRole('heading', { name: '待核對命令' })).toBeVisible();
+    await expect(page.getByText('前次有一筆送出未收到確認（伺服器查無資料）。若非剛才的操作，請確認無誤後清除。')).toBeVisible();
+    await page.getByText('技術資訊').click();
     await expect(page.getByText(commandId)).toBeVisible();
-    await expect(page.getByText('伺服器目前未查到；這不代表確定未入帳。保留編號，不要重新收款。')).toBeVisible();
     await expect(page.getByRole('button', { name: '櫃台' })).toBeVisible();
 
     const stored = await page.evaluate(({ namespace, pendingCommandId }) => {
@@ -295,8 +296,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     expect(stored.raw).toBe(JSON.stringify({ commandId, datasetId: DATASET_ID, uid }));
     expect(Object.keys(JSON.parse(stored.raw!))).toEqual(['commandId', 'datasetId', 'uid']);
 
-    await page.getByLabel('我確認本筆結果尚未確定，不得重新收款或重登；只繼續其他獨立作業，待保留編號人工核對。').check();
-    await page.getByRole('button', { name: '保留編號，移交人工核對並繼續其他作業' }).click();
+    await page.getByRole('button', { name: '暫時略過' }).click();
     await expect(page.getByRole('button', { name: '櫃台' })).toBeVisible();
     await expect(page.getByText(commandId)).toBeVisible();
     expect(await page.evaluate(key => localStorage.getItem(key), `${APP_NAMESPACE}:${commandId}`)).toBe(stored.raw);
@@ -319,12 +319,15 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
 
     await page.getByRole('button', { name: '取得系統使用權' }).click();
     await expect.poll(async () => (await readEmulatorDocument('system', 'accessLease')).fields?.epoch).toEqual({ integerValue: '1' });
-    await expect(page.getByText('共有 101 筆待核對編號。未決編號不會自動淘汰。')).toBeVisible();
+    await expect(page.getByText('共有 101 筆待核對紀錄，請先確認帳務結果後再處理。')).toBeVisible();
+    await page.locator('.cloud-pending-recovery__tech-details summary').first().click();
+    await page.locator('.cloud-pending-recovery__tech-details summary').nth(99).click();
     await expect(page.getByText(ids[0])).toBeVisible();
     await expect(page.getByText(ids[99])).toBeVisible();
     await expect(page.getByText(ids[100])).toHaveCount(0);
     await expect(page.getByText('第 1 / 2 頁')).toBeVisible();
     await page.getByRole('button', { name: '下一頁' }).click();
+    await page.locator('.cloud-pending-recovery__tech-details summary').first().click();
     await expect(page.getByText(ids[100])).toBeVisible();
     await expect(page.getByText(ids[0])).toHaveCount(0);
     await expect(page.getByText('第 2 / 2 頁')).toBeVisible();
@@ -455,6 +458,8 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       // Both AuthGate instances become legal holders of the same UID/epoch and concurrently migrate one legacy slot.
       await page.getByRole('button', { name: '取得系統使用權' }).click();
       await expect.poll(async () => (await readEmulatorDocument('system', 'accessLease')).fields?.epoch).toEqual({ integerValue: '1' });
+      await page.getByText('技術資訊').click();
+      await peer.getByText('技術資訊').click();
       await expect(page.getByText(migratedCommandId)).toBeVisible();
       await expect(peer.getByText(migratedCommandId)).toBeVisible();
       const migratedStorage = await page.evaluate(({ namespace, pendingCommandId }) => ({
@@ -466,8 +471,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
         commandId: migratedCommandId, datasetId: DATASET_ID, uid,
       }));
 
-      await page.getByLabel('我確認本筆結果尚未確定，不得重新收款或重登；只繼續其他獨立作業，待保留編號人工核對。').check();
-      await page.getByRole('button', { name: '保留編號，移交人工核對並繼續其他作業' }).click();
+      await page.getByRole('button', { name: '暫時略過' }).click();
       await expect(page.locator('.cloud-app')).toBeVisible();
       await page.evaluate(() => {
         const win = window as unknown as Record<string, unknown>;
@@ -484,9 +488,11 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
         }));
       }, { journalKey: key, currentUid: uid, pendingCommandId: commandId });
 
+      await expect(page.locator('.cloud-pending-recovery__tech-details summary')).toHaveCount(2);
+      await page.locator('.cloud-pending-recovery__tech-details summary').nth(1).click();
       await expect(page.getByText(commandId)).toBeVisible();
       await expect(page.getByRole('listitem').filter({ hasText: commandId }).getByText(
-        '伺服器目前未查到；這不代表確定未入帳。保留編號，不要重新收款。',
+        '前次有一筆送出未收到確認（伺服器查無資料）。若非剛才的操作，請確認無誤後清除。',
       )).toBeVisible();
       const shellStillSameNode = await page.evaluate(() => {
         const win = window as unknown as Record<string, unknown>;
@@ -527,7 +533,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await expect.poll(() => peer.evaluate(() => (
         (window as unknown as Record<string, unknown>).__p13b2SecondLockEntered
       ))).toBe(true);
-      await expect(page.getByRole('button', { name: '保留編號，移交人工核對並繼續其他作業' })).toBeVisible();
+      await expect(page.getByRole('button', { name: '暫時略過' })).toBeVisible();
     } finally {
       await peer.close();
     }
@@ -755,9 +761,8 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     const commandId = 'd7777777-7777-4777-8777-777777777777';
     await storePendingIdentity(page, uid, commandId);
     await page.getByRole('button', { name: '取得系統使用權' }).click();
-    await expect(page.getByText('伺服器目前未查到；這不代表確定未入帳。保留編號，不要重新收款。')).toBeVisible();
-    await page.getByLabel('我確認本筆結果尚未確定，不得重新收款或重登；只繼續其他獨立作業，待保留編號人工核對。').check();
-    await page.getByRole('button', { name: '保留編號，移交人工核對並繼續其他作業' }).click();
+    await expect(page.getByText('前次有一筆送出未收到確認（伺服器查無資料）。若非剛才的操作，請確認無誤後清除。')).toBeVisible();
+    await page.getByRole('button', { name: '暫時略過' }).click();
     await expect(page.locator('.cloud-app')).toBeVisible();
     const before = await readPendingIdentity(page, commandId);
     expect(before).toBe(JSON.stringify({ commandId, datasetId: DATASET_ID, uid }));
@@ -781,7 +786,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       await expect(page.getByText('原資料集與目前不同；已保留編號，需由維護者核對。')).toBeVisible({ timeout: 15000 });
       await expect(page.locator('.cloud-app')).toHaveCount(1);
       await expect(page.locator('.cloud-app').locator('..')).toHaveAttribute('inert', '');
-      await expect(page.getByLabel('我確認本筆結果尚未確定，不得重新收款或重登；只繼續其他獨立作業，待保留編號人工核對。')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '暫時略過' })).toHaveCount(0);
       expect(await readPendingIdentity(page, commandId)).toBe(before);
 
       const receiptResponse = await fetch(`${FIRESTORE_EMULATOR}/v1/projects/demo-easyorder/databases/(default)/documents/commands/${commandId}`, {
@@ -807,11 +812,11 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     const commandId = 'd8888888-8888-4888-8888-888888888888';
     await storePendingIdentity(page, uid, commandId);
     await page.getByRole('button', { name: '取得系統使用權' }).click();
-    await expect(page.getByText('伺服器目前未查到；這不代表確定未入帳。保留編號，不要重新收款。')).toBeVisible();
+    await expect(page.getByText('前次有一筆送出未收到確認（伺服器查無資料）。若非剛才的操作，請確認無誤後清除。')).toBeVisible();
     await expect.poll(async () => (await readEmulatorDocument('system', 'accessLease')).fields?.epoch).toEqual({ integerValue: '1' });
-    const confirmation = page.getByLabel('我確認本筆結果尚未確定，不得重新收款或重登；只繼續其他獨立作業，待保留編號人工核對。');
-    await confirmation.check();
-    await page.getByRole('button', { name: '保留編號，移交人工核對並繼續其他作業' }).click();
+    const skipButton = page.getByRole('button', { name: '暫時略過' });
+    await skipButton.click();
+    await expect(skipButton).toHaveCount(0);
     await expect(page.locator('.cloud-app')).toBeVisible();
     const before = await readPendingIdentity(page, commandId);
 
@@ -822,8 +827,8 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
 
     await expect(page.locator('.cloud-app')).toBeVisible();
-    await expect(confirmation).not.toBeChecked();
-    await expect(page.getByRole('button', { name: '保留編號，移交人工核對並繼續其他作業' })).toBeDisabled();
+    await expect(skipButton).toBeVisible();
+    await expect(skipButton).toBeEnabled();
     expect(await readPendingIdentity(page, commandId)).toBe(before);
 
     const receiptResponse = await fetch(`${FIRESTORE_EMULATOR}/v1/projects/demo-easyorder/databases/(default)/documents/commands/${commandId}`, {
