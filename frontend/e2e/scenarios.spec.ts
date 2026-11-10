@@ -268,6 +268,7 @@ test.describe('具名業務情境 fixtures', () => {
       // 有待核對命令時不顯示操作者列，所以只點取得使用權，直接等待核對區塊。
       await page.getByRole('button', { name: '取得系統使用權' }).click();
       const pending = page.locator('.cloud-pending-recovery');
+      await pending.getByText('技術資訊').click();
       await expect(pending.getByText(scenario.commandId)).toBeVisible();
     } finally {
       await scenario.cleanup();

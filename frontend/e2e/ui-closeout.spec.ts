@@ -152,8 +152,9 @@ for (const theme of ['light', 'dark', 'warm']) {
         const commandId = pendingScenario.commandId;
         await page.getByRole('button', { name: '取得系統使用權' }).click();
         const pending = page.locator('.cloud-pending-recovery');
+        await pending.getByText('技術資訊').click();
         await expect(pending.getByText(commandId)).toBeVisible();
-        await expect(pending.getByText('伺服器目前未查到的編號仍可能已入帳；不可重新收款或重登。')).toBeVisible();
+        await expect(pending.getByText('前次有一筆送出未收到確認（伺服器查無資料）。若非剛才的操作，請確認無誤後清除。')).toBeVisible();
         await page.evaluate(t => { document.documentElement.setAttribute('data-theme', t); document.body.setAttribute('data-theme', t); }, theme);
         await help(page, pending, '待核對容量說明');
         await controls(pending);
