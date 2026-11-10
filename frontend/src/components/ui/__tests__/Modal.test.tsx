@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Modal } from '../Modal';
+import { HelpTip } from '../HelpTip';
 
 describe('Modal', () => {
   it('renders title and children when open', () => {
@@ -112,5 +113,49 @@ describe('Modal', () => {
     expect(background!.inert).toBe(false);
     expect(document.body.style.overflow).toBe(previousOverflow);
   });
-});
 
+  it('#665：Modal 內說明（點擊固定開啟）時，第一次 Esc 只關說明，第二次才關對話框', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(
+      <Modal open title="新增學生" onClose={onClose}>
+        <HelpTip label="測試說明">說明內容</HelpTip>
+      </Modal>,
+    );
+    const trigger = screen.getByRole('button', { name: '測試說明' });
+    await user.click(trigger);
+    expect(screen.getByRole('tooltip')).toBeDefined();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(screen.getByRole('dialog')).toBeDefined();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(trigger);
+
+    await user.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('#665：說明由滑鼠移上開啟（沒有聚焦）時，第一次 Esc 一樣只關說明', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(
+      <Modal open title="新增學生" onClose={onClose}>
+        <input aria-label="編號" />
+        <HelpTip label="測試說明">說明內容</HelpTip>
+      </Modal>,
+    );
+    const trigger = screen.getByRole('button', { name: '測試說明' });
+    await user.hover(trigger);
+    expect(screen.getByRole('tooltip')).toBeDefined();
+    expect(document.activeElement).not.toBe(trigger);
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(screen.getByRole('dialog')).toBeDefined();
+    expect(onClose).not.toHaveBeenCalled();
+
+    await user.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+});

@@ -26,6 +26,17 @@ test('cloud shell routes, physical Alt keys, draft guard and themes', async ({ g
   await expect(createDialog).toBeVisible();
   await expect(draft).toHaveValue('987');
 
+  // #665：Modal 內說明開啟時，第一次 Esc 只關說明；有草稿也不出現捨棄確認，第二次 Esc 才走原流程。
+  const codeHelp = createDialog.getByRole('button', { name: '編號正規化說明' });
+  await codeHelp.click();
+  await expect(createDialog.getByRole('tooltip')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(createDialog.getByRole('tooltip')).toHaveCount(0);
+  await expect(createDialog).toBeVisible();
+  await expect(createDialog.getByRole('group', { name: '新增學生草稿離開確認' })).toHaveCount(0);
+  await expect(codeHelp).toBeFocused();
+  await expect(draft).toHaveValue('987');
+
   await page.keyboard.press('Escape');
   const discardConfirmation = createDialog.getByRole('group', { name: '新增學生草稿離開確認' });
   await expect(discardConfirmation).toBeVisible();
