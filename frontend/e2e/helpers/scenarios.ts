@@ -304,3 +304,25 @@ export async function seedPendingCommand(page: Page, uid: string, commandId = PE
   };
   return { commandId, cleanup };
 }
+
+// ---------------------------------------------------------------- 已關帳日備份（F3d）
+
+/**
+ * F3d：今天已開帳、開帳現金 1,000、沒有任何交易（應有現金 1,000）；spec 經 UI 關帳後即有已關帳日，可接著走備份完整流程。
+ * 從 `p13b2-pending-journal.spec.ts` 抽出，shape 不變。例外：不回傳 cleanup——該 spec 的 `cleanupDayCloseRun` 會清
+ * days／commands／settlements 並自行設定 dataHead（datasetId 與 seq 依案例而異）。
+ */
+export async function seedClosedDayForBackup(today: string, uid: string, datasetId: string): Promise<void> {
+  await upsertDocument('days', today, {
+    status: 'open', revision: 6,
+    menu: {
+      businessDate: today, itemName: 'P13b2b2c 日結餐盒', price: 90, vendorId: 'p13b2b2c-vendor',
+      vendorNameSnapshot: 'P13b2b2c 供應商', updatedAt: new Date(), revision: 1, inheritedFromDate: null,
+    },
+    openingCash: 1000, openedBy: uid, openedAt: new Date(),
+    totals: ZERO_TOTALS, lastSettlementRevision: 0, lastCommandId: 'd4000000-0000-4000-8000-000000000001', updatedAt: new Date(),
+  });
+  await upsertDocument('system', 'dataHead', {
+    schemaVersion: 1, datasetId, seq: 0, lastCommandId: null, maintenance: false, goLiveDate: today, updatedAt: new Date(),
+  });
+}

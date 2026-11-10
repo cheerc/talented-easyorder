@@ -184,37 +184,6 @@ export async function readLeaseWithIdToken(idToken: string): Promise<Response> {
   );
 }
 
-export async function seedStudent(studentId: string, name: string, balance: number): Promise<void> {
-  await createDoc('students', studentId, {
-    id: studentId,
-    displayName: name,
-    aliases: [],
-    className: null,
-    groupName: null,
-    openingBalance: balance,
-    currentBalance: balance,
-    status: 'active',
-    createdAt: new Date('2026-01-01T00:00:00Z'),
-    createdBy: 'seed',
-    updatedAt: new Date('2026-01-01T00:00:00Z'),
-    updatedBy: 'seed',
-    revision: 1,
-    lastTransactionId: null,
-  });
-}
-
-export async function seedTodayMenu(itemName: string, price: number): Promise<void> {
-  const today = new Date().toISOString().slice(0, 10);
-  await createDoc('today_menus', today, {
-    itemName,
-    price,
-    vendorId: 'v-seed',
-    vendorNameSnapshot: '測試供應商',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
-}
-
 export async function clearFirestoreData(): Promise<void> {
   const res = await fetch(
     `${FIRESTORE_EMULATOR}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`,
