@@ -75,3 +75,20 @@ test.describe('prototype 純圖示按鈕', () => {
     }
   });
 });
+
+// #667：雲端外殼的等比放大覆寫只在 html[data-app-mode="cloud"] 下生效；prototype 外觀不變。
+// 這是「保護現況」的守門斷言：實作前後都應通過（不是 RED）。用 1920 寬量，雲端覆寫若外洩就會放大。
+test.describe('prototype 外殼字級不受雲端覆寫影響', () => {
+  test.use({ viewport: { width: 1920, height: 1080 } });
+
+  test('.tab 仍是 14px、.brand-name 仍是 15px', async ({ prototypePage: page }) => {
+    const sizes = await page.evaluate(() => ({
+      mode: document.documentElement.getAttribute('data-app-mode'),
+      tab: getComputedStyle(document.querySelector('.app-shell .tabs .tab')!).fontSize,
+      brandName: getComputedStyle(document.querySelector('.app-shell .brand-name')!).fontSize,
+    }));
+    expect(sizes.mode).not.toBe('cloud');
+    expect(sizes.tab).toBe('14px');
+    expect(sizes.brandName).toBe('15px');
+  });
+});
