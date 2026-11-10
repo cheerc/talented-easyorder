@@ -65,6 +65,8 @@
 - 沿既有主題宿主同步設定 `html`／`body` 的 `data-theme`；不是在 fixture 注入字級。測試後移除自身營業日、還原 goLiveDate 並釋放 lease。
 - 舊 `ux-ui-audit` probe 不在環境內；替代為上述最小 Playwright：Chromium computed styles、Canvas 將瀏覽器解析的 oklch 轉 sRGB、透明背景合成、相對亮度對比；真 Tab 後量外側 outline，並跑 hover／click／Esc。按鈕可見文字或 aria-label、尺寸、頁面橫向溢出與 tooltip 邊界另有斷言。這不是完整 WCAG 認證。
 
+- 具名情境 fixture（今日有／無菜單、未關帳過去日、補開帳、回填中、供應商、相鄰帳差、待核對命令等，#669）在 `frontend/e2e/helpers/scenarios.ts`；驗證 spec 是 `frontend/e2e/scenarios.spec.ts`（`playwright.config.ts` 分組）。`ui-closeout.spec.ts` 的帳差與待核對情境也由該檔提供，重跑 `e2e/ui-closeout.spec.ts` 時一併涵蓋。
+
 重跑（Node 24、Java 21、無其他程式占用 4173／8080／9099；工作目錄 `frontend/`）：
 
 ```bash
