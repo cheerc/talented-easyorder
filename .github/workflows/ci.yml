@@ -607,6 +607,11 @@ jobs:
             timeout 240 bash -c 'npx playwright install-deps chromium && sudo apt-get install --no-install-recommends -y poppler-utils' && { echo "::endgroup::"; exit 0; }
             status=$?
             echo "::endgroup::"
+            # timeout 只對自己的 process group 送訊號；root 的 apt-get 子行程會殘留並握有 dpkg lock（PR #680 run 42806819173），
+            # 先清掉並修復中斷的 dpkg 狀態，已下載的 .deb 留在 apt cache，重試只補剩下的。
+            sudo pkill -TERM -x apt-get || true
+            sleep 3
+            sudo dpkg --configure -a || true
             if [ "$status" -eq 124 ]; then reason="timed out after 240s"; else reason="exit $status"; fi
             echo "::warning::apt attempt $attempt/2 failed ($reason)"
           done
