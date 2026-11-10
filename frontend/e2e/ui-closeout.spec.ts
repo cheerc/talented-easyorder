@@ -2,7 +2,7 @@
 import { test, expect } from './fixtures';
 import { accountCheck } from './helpers/navigation';
 import { seedAccessLease } from './helpers/seed';
-import { JOURNAL_NAMESPACE, seedAdjacentCashGap, seedPendingCommand, type ScenarioHandle } from './helpers/scenarios';
+import { JOURNAL_NAMESPACE, clearLeftoverBusinessState, seedAdjacentCashGap, seedOpenDayWithMenu, seedPendingCommand, seedUnopenedPastDay, type ScenarioHandle } from './helpers/scenarios';
 import type { Locator, Page } from '@playwright/test';
 
 // 對實際渲染文字量測：Canvas 將 Chromium 解析的 oklch 轉 sRGB，逐層合成透明背景。
@@ -164,6 +164,49 @@ for (const theme of ['light', 'dark', 'warm']) {
         await expect(page.getByRole('button', { name: '櫃台', exact: true })).toHaveCount(0);
         console.log('UI-PENDING', JSON.stringify({ theme, width, minContrast: Math.min(...ratios) }));
         await page.screenshot({ path: `/tmp/ui-closeout-${theme}-${width}-pending.png`, fullPage: true });
+      });
+
+      // #666：靠近視窗左右邊緣的說明氣泡水平留在視窗內，且不遮住觸發按鈕。
+      async function expectTipInsideViewport(page: Page, button: Locator) {
+        await expect(button).toBeVisible();
+        await button.click();
+        const tooltip = page.getByRole('tooltip');
+        await expect(tooltip).toBeVisible();
+        const tip = await tooltip.boundingBox();
+        const trigger = await button.boundingBox();
+        expect(tip!.x, `${await button.getAttribute('aria-label')} 氣泡左緣`).toBeGreaterThanOrEqual(0);
+        expect(tip!.x + tip!.width, `${await button.getAttribute('aria-label')} 氣泡右緣`).toBeLessThanOrEqual(page.viewportSize()!.width);
+        expect(tip!.y).toBeGreaterThanOrEqual(trigger!.y + trigger!.height);
+        await page.keyboard.press('Escape');
+        await expect(tooltip).toHaveCount(0);
+      }
+
+      test('靠邊說明氣泡留在視窗內：櫃台收支說明', async ({ googleSession }) => {
+        const { page } = googleSession;
+        await clearLeftoverBusinessState();
+        const open = await seedOpenDayWithMenu();
+        scenario = open;
+        await page.getByRole('button', { name: '取得系統使用權' }).click();
+        await expect(page.locator('.operator-strip')).toBeVisible();
+        await page.evaluate(t => { document.documentElement.setAttribute('data-theme', t); document.body.setAttribute('data-theme', t); }, theme);
+        await page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台', exact: true }).click();
+        const orders = page.getByTestId('cloud-orders-page');
+        await orders.getByTestId('open-cash-movement-button').click();
+        await expectTipInsideViewport(page, orders.getByTestId('cash-movement-card').getByRole('button', { name: '櫃台收支說明', exact: true }));
+      });
+
+      test('靠邊說明氣泡留在視窗內：補開帳說明', async ({ googleSession }) => {
+        const { page } = googleSession;
+        await clearLeftoverBusinessState();
+        const unopened = await seedUnopenedPastDay();
+        scenario = unopened;
+        await page.getByRole('button', { name: '取得系統使用權' }).click();
+        await expect(page.locator('.operator-strip')).toBeVisible();
+        await page.evaluate(t => { document.documentElement.setAttribute('data-theme', t); document.body.setAttribute('data-theme', t); }, theme);
+        await page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '今日帳', exact: true }).click();
+        const main = page.getByRole('main', { name: '雲端日結' });
+        await main.getByTestId(`cloud-no-business-${unopened.dayId}`).click();
+        await expectTipInsideViewport(page, main.getByRole('region', { name: '補開帳' }).getByRole('button', { name: '補開帳說明', exact: true }));
       });
     });
   }
