@@ -9,6 +9,7 @@ export default defineConfig({
     '**/cloud-day-vendors.spec.ts',
     '**/smoke.spec.ts',
     '**/ui-closeout.spec.ts',
+    '**/scenarios.spec.ts',
   ],
   testIgnore: [
     '**/deposit-flow.spec.ts',

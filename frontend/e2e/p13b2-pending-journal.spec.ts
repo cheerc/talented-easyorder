@@ -2,6 +2,7 @@ import { settings, report, releaseOwner } from './helpers/navigation';
 import type { Page, Request } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { removeDocument, seedAccessLease, upsertDocument } from './helpers/seed';
+import { seedClosedDayForBackup } from './helpers/scenarios';
 
 const DATASET_ID = 'e2e-empty-p06-dataset';
 const APP_NAMESPACE = 'easyorder-cloud-command-journal:v1:demo-easyorder:%5BDEFAULT%5D';
@@ -148,21 +149,6 @@ const ZERO_TOTALS = {
   activeTransactionCount: 0, bentoCount: 0, otherMealCount: 0, mealTotal: 0,
   retainedReceipts: 0, cashierIncome: 0, cashierExpense: 0, accountRefunds: 0,
 };
-
-/** An open day with a confirmed opening cash of 1,000 and no activity: the expected cash to close is 1,000. */
-async function seedDayCloseFixture(today: string, uid: string, datasetId: string) {
-  const seedCommandId = 'd4000000-0000-4000-8000-000000000001';
-  await upsertDocument('days', today, {
-    status: 'open', revision: 6,
-    menu: {
-      businessDate: today, itemName: 'P13b2b2c 日結餐盒', price: 90, vendorId: 'p13b2b2c-vendor',
-      vendorNameSnapshot: 'P13b2b2c 供應商', updatedAt: new Date(), revision: 1, inheritedFromDate: null,
-    },
-    openingCash: 1000, openedBy: uid, openedAt: new Date(),
-    totals: ZERO_TOTALS, lastSettlementRevision: 0, lastCommandId: seedCommandId, updatedAt: new Date(),
-  });
-  await setDayCloseDataHead(datasetId, today, 0, null);
-}
 
 /**
  * Holds the server response of one matching commit: the request reaches the Emulator and takes effect, but the browser
@@ -1918,7 +1904,7 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
     const { page, uid } = googleSession;
     const today = taipeiToday();
     const datasetId = 'p13b2b2c-day-close';
-    await seedDayCloseFixture(today, uid, datasetId);
+    await seedClosedDayForBackup(today, uid, datasetId);
     const held = createHeldCommit(page, request => commitWritesDocument(request, 'days', today));
     await held.install();
     let commandId: string | null = null;
@@ -1959,7 +1945,7 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
     const today = taipeiToday();
     const datasetA = 'p13b2b2c-close-a';
     const datasetB = 'p13b2b2c-close-b';
-    await seedDayCloseFixture(today, uid, datasetA);
+    await seedClosedDayForBackup(today, uid, datasetA);
     const held = createHeldCommit(page, request => commitWritesDocument(request, 'days', today));
     await held.install();
     let commandId: string | null = null;
@@ -2003,7 +1989,7 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
     const { page, uid } = googleSession;
     const today = taipeiToday();
     const datasetId = 'p13b2b2c-close-epoch';
-    await seedDayCloseFixture(today, uid, datasetId);
+    await seedClosedDayForBackup(today, uid, datasetId);
     const held = createHeldCommit(page, request => commitWritesDocument(request, 'days', today));
     await held.install();
     let leaseReads = 0;
@@ -2062,7 +2048,7 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
     const { page, uid } = googleSession;
     const today = taipeiToday();
     const datasetId = 'p13b2b2c-close-local-remove';
-    await seedDayCloseFixture(today, uid, datasetId);
+    await seedClosedDayForBackup(today, uid, datasetId);
     let closeWrites = 0;
     await page.route('**/documents:commit*', async route => {
       if (route.request().method() === 'POST' && commitWritesDocument(route.request(), 'days', today)) closeWrites += 1;
@@ -2207,7 +2193,7 @@ test.describe('P13b2b3a journal cleanup post-condition and backup page recovery'
     const { page, uid } = googleSession;
     const today = taipeiToday();
     const datasetId = 'p13b2b3a-normal-close';
-    await seedDayCloseFixture(today, uid, datasetId);
+    await seedClosedDayForBackup(today, uid, datasetId);
     let commandId: string | null = null;
     try {
       await openDayClose(page);
@@ -2258,7 +2244,7 @@ test.describe('P13b2b3a journal cleanup post-condition and backup page recovery'
     const { page, uid } = googleSession;
     const today = taipeiToday();
     const datasetId = 'p13b2b3a-backup';
-    await seedDayCloseFixture(today, uid, datasetId);
+    await seedClosedDayForBackup(today, uid, datasetId);
     const held = createHeldCommit(page, request => commitWritesDocument(request, 'system', 'dataHead'));
     await held.install();
     let commandId: string | null = null;
@@ -2335,7 +2321,7 @@ test.describe('P13b2b3b report export and print same-page recovery', () => {
     const { page, uid } = googleSession;
     const today = taipeiToday();
     const datasetId = 'p13b2b3b-export';
-    await seedDayCloseFixture(today, uid, datasetId);
+    await seedClosedDayForBackup(today, uid, datasetId);
     const held = createHeldCommit(page, request => commitWritesDocument(request, 'system', 'dataHead'));
     await held.install();
     const downloads: string[] = [];
@@ -2377,7 +2363,7 @@ test.describe('P13b2b3b report export and print same-page recovery', () => {
     const { page, uid } = googleSession;
     const today = taipeiToday();
     const datasetId = 'p13b2b3b-print';
-    await seedDayCloseFixture(today, uid, datasetId);
+    await seedClosedDayForBackup(today, uid, datasetId);
     const held = createHeldCommit(page, request => commitWritesDocument(request, 'system', 'dataHead'));
     await held.install();
     const printCount = () => page.evaluate(() => (window as Window & { __p13b2b3bPrints?: number }).__p13b2b3bPrints ?? 0);
