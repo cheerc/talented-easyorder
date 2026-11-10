@@ -131,6 +131,20 @@ test('apt is bounded by short timeouts and at most one bounded retry of the inst
   assert.match(apt, /::error::/, 'a stalled attempt must name the failing sub-step in the log');
 });
 
+// Observed on PR #680 run 42806819173 (prototype shard): attempt 1 hit `timeout 240` while the
+// root apt-get child was still downloading; `timeout` only signals our own process group, so the
+// orphan kept /var/lib/dpkg/lock-frontend and attempt 2 died with "Unable to acquire the dpkg
+// frontend lock". A retry is only meaningful if the orphan is reaped first.
+test('a timed-out apt attempt reaps the orphaned root apt-get before the retry starts', () => {
+  const apt = stepNamed(/apt/i) ?? '';
+  const loop = apt.slice(apt.indexOf('for attempt in'));
+  const reap = loop.match(/sudo pkill [^\n]*apt-get[^\n]*/)?.[0];
+  assert.ok(reap, 'failed attempts must kill the leftover apt-get that still holds the dpkg lock');
+  assert.ok(loop.indexOf(reap) > loop.indexOf('timeout 240 bash -c'), 'reaping happens after the attempt');
+  assert.ok(loop.indexOf(reap) < loop.indexOf('done'), 'reaping happens inside the retry loop, before the next attempt');
+  assert.match(loop, /sudo dpkg --configure -a/, 'repair an interrupted dpkg state before retrying');
+});
+
 test('install steps plus observed suite budget still fit inside the job timeout', () => {
   const jobMinutes = Number(shardsSection().match(/^    timeout-minutes: (\d+)$/m)?.[1]);
   const installMinutes = stepMinutes(stepNamed(/apt/i)) + stepMinutes(stepNamed(/^Install Playwright (?:Chromium|Browsers)/i));
