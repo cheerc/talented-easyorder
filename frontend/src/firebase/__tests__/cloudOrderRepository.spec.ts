@@ -25,6 +25,7 @@ import {
 } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createCloudOrderRepository, type CreateCloudOrderInput } from '../cloudOrderRepository';
+import { plainMessage } from './helpers/plainMessage';
 
 declare const process: { env: Record<string, string | undefined>; cwd: () => string };
 
@@ -312,7 +313,7 @@ describeWithEmulator('P08 cloud order repository reads, retries and transactions
       const [row] = (await getDocs(collection(db, 'transactions'))).docs;
       await updateDoc(row.ref, { menuNameSnapshot: '' });
     });
-    await expect(repository(operatorA).loadSnapshot()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    await expect(repository(operatorA).loadSnapshot()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
   });
 
   it('P08.R10: an empty day before any order loads with zero counts and no transactions', async () => {

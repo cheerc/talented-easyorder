@@ -31,6 +31,7 @@ import { fingerprintCommandInput, normalizeEnabledCommandInput } from '../../dom
 import { CloudCommandReadError, createCloudCommandRepository } from '../cloudCommandRepository';
 import { listCloudStudents } from '../cloudStudentRepository';
 import { createInitialFirestoreCleaner } from './helpers/clearInitialFirestore';
+import { plainMessage } from './helpers/plainMessage';
 
 declare const process: { env: Record<string, string | undefined>; cwd: () => string };
 
@@ -1165,7 +1166,7 @@ async function expectMalformedReceiptRejected(
   mutate(malformed);
   await withAdmin(db => setDoc(doc(db, path), malformed));
   await expect(repository(operatorA).readCommand(commandId)).rejects.toMatchObject({
-    name: 'CloudCommandReadError', code: 'UNSUPPORTED_SCHEMA',
+    name: 'CloudCommandReadError', code: 'UNSUPPORTED_SCHEMA', message: plainMessage(),
   } satisfies Partial<CloudCommandReadError>);
 
   await withAdmin(db => setDoc(doc(db, path), original));
@@ -1652,24 +1653,27 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     expect(result.ok, JSON.stringify(result)).toBe(true);
     await withAdmin(async db => updateDoc(doc(db, `commands/${commandId}`), { after: null }));
     await expect(repository(operatorA).readCommand(commandId)).rejects.toMatchObject({
-      name: 'CloudCommandReadError', code: 'UNSUPPORTED_SCHEMA',
+      name: 'CloudCommandReadError', code: 'UNSUPPORTED_SCHEMA', message: plainMessage(),
     } satisfies Partial<CloudCommandReadError>);
+    await expect(repository(operatorA).readCommand(commandId)).rejects.toThrow('伺服器的命令結果格式異常');
 
     const fingerprintId = 'e3333333-3333-4333-8333-333333333333';
     const second = await repository(operatorA).commitCommand(orderInput(fingerprintId, 'p05-tampered-fingerprint', 2, 2));
     expect(second.ok, JSON.stringify(second)).toBe(true);
     await withAdmin(async db => updateDoc(doc(db, `commands/${fingerprintId}`), { inputFingerprint: '0'.repeat(64) }));
     await expect(repository(operatorA).readCommand(fingerprintId)).rejects.toMatchObject({
-      name: 'CloudCommandReadError', code: 'UNSUPPORTED_SCHEMA',
+      name: 'CloudCommandReadError', code: 'UNSUPPORTED_SCHEMA', message: plainMessage(),
     });
+    await expect(repository(operatorA).readCommand(fingerprintId)).rejects.toThrow('與原操作內容對不上');
 
     const pathId = 'e4444444-4444-4444-8444-444444444444';
     const third = await repository(operatorA).commitCommand(orderInput(pathId, 'p05-path-mismatch', 3, 3));
     expect(third.ok, JSON.stringify(third)).toBe(true);
     await withAdmin(async db => updateDoc(doc(db, `commands/${pathId}`), { commandId: 'e5555555-5555-4555-8555-555555555555' }));
     await expect(repository(operatorA).readCommand(pathId)).rejects.toMatchObject({
-      name: 'CloudCommandReadError', code: 'UNSUPPORTED_SCHEMA',
+      name: 'CloudCommandReadError', code: 'UNSUPPORTED_SCHEMA', message: plainMessage(),
     });
+    await expect(repository(operatorA).readCommand(pathId)).rejects.toThrow('伺服器的命令結果格式異常');
   });
 
   it.each([
@@ -1745,7 +1749,7 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     malformed.inputFingerprint = await fingerprintCommandInput(invalidInput);
     await withAdmin(db => setDoc(doc(db, path), malformed));
     await expect(repository(operatorA).readCommand(commandId)).rejects.toMatchObject({
-      name: 'CloudCommandReadError', code: 'UNSUPPORTED_SCHEMA',
+      name: 'CloudCommandReadError', code: 'UNSUPPORTED_SCHEMA', message: plainMessage(),
     } satisfies Partial<CloudCommandReadError>);
 
     await withAdmin(db => setDoc(doc(db, path), original));

@@ -29,6 +29,7 @@ import {
   type CreateCloudOrderInput,
   type CreateCloudPaymentInput,
 } from '../cloudOrderRepository';
+import { plainMessage } from './helpers/plainMessage';
 
 declare const process: { env: Record<string, string | undefined>; cwd: () => string };
 
@@ -534,7 +535,7 @@ describeWithEmulator('P09a payments and counter cash movements: repository, read
       const [row] = (await getDocs(collection(db, 'transactions'))).docs;
       await updateDoc(row.ref, { studentId: studentA });
     });
-    await expect(freshSnapshot()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    await expect(freshSnapshot()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
 
     await env.clearFirestore();
     await seed();
@@ -543,6 +544,6 @@ describeWithEmulator('P09a payments and counter cash movements: repository, read
       const [row] = (await getDocs(collection(db, 'transactions'))).docs;
       await updateDoc(row.ref, { studentId: '__cashier__' });
     });
-    await expect(freshSnapshot()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    await expect(freshSnapshot()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
   });
 });

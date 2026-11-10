@@ -24,6 +24,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createCloudDayVendorRepository,
 } from '../cloudDayVendorRepository';
+import { plainMessage } from './helpers/plainMessage';
 
 declare const process: { env: Record<string, string | undefined>; cwd: () => string };
 
@@ -249,7 +250,7 @@ describeWithEmulator('P07 server-only day/vendor repository reads and production
       await setDoc(doc(db, 'vendors/malformed-vendor'), malformed);
     });
     await expect(repository(operatorA).loadSnapshot()).rejects.toMatchObject({
-      name: 'CloudDayVendorRepositoryError', code: 'UNSUPPORTED_SCHEMA',
+      name: 'CloudDayVendorRepositoryError', code: 'UNSUPPORTED_SCHEMA', message: plainMessage(),
     });
   });
 

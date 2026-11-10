@@ -20,6 +20,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createCloudReadRepository } from '../cloudReadRepository';
 import { createCloudOrderRepository } from '../cloudOrderRepository';
 import { createCloudReportActionRepository } from '../cloudReportActionRepository';
+import { plainMessage } from './helpers/plainMessage';
 
 declare const process: { env: Record<string, string | undefined>; cwd: () => string };
 
@@ -472,9 +473,9 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
       });
 
       await expect(repository().readSummary({ range, leaseEpoch: 7 }))
-        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
       await expect(repository().readReport({ studentId: null, range, leaseEpoch: 7 }))
-        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
     },
   );
 
@@ -871,7 +872,7 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
       studentId: studentA,
       range: { kind: 'custom', startDate: '2025-02-28', endDate: '2025-03-02' },
       leaseEpoch: 7,
-    })).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: expect.stringContaining('有效 Gregorian 營業日') });
+    })).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: expect.stringContaining('缺少有效的營業日') });
   });
 
   describe('readAccessEvents (P13c2)', () => {
@@ -1023,14 +1024,14 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
         kind: 'unknown-kind',
       }));
       await expect(repository().readAccessEvents({ range: todayRange(), leaseEpoch }))
-        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
     });
 
     it('rejects an event numbered after the current lease epoch', async () => {
       await withAdmin(db => setDoc(doc(db, `accessEvents/${leaseEpoch + 1}`),
         accessEvent('acquire', 'p13c2-a', null, 'p13c2-a', emailA, taipeiInstant(today, '08:00:00.000'))));
       await expect(repository().readAccessEvents({ range: todayRange(), leaseEpoch }))
-        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
     });
 
     it('returns an empty complete list when no handover happened in the range', async () => {
