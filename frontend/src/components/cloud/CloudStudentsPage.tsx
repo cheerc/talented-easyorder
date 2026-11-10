@@ -1439,9 +1439,6 @@ export function CloudStudentsPage({ db, leaseEpoch, identityKey, onNavigationSta
       {recovery.command && <span>{commandLabel(recovery.command)} · 命令編號 {recovery.commandId}</span>}
       {!recovery.command && <span>命令編號 {recovery.commandId}</span>}
       {recovery.phase === 'access-lost' && <span>只保留命令編號供稍後同編號核對；請先重新確認登入帳號與使用權。</span>}
-      {recovery.phase === 'receipt' && recovery.receipt && (
-        <span>伺服器命令序號 {recovery.receipt.seq}</span>
-      )}
       <div className="cloud-students__actions">
         {recovery.command && (recovery.phase === 'unknown'
           || (recovery.phase === 'submitting' && recovery.timedOut)) && (
