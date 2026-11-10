@@ -391,10 +391,12 @@ const CLOUD_SECTION_LABELS: Record<CloudSection, string> = {
 };
 
 // 放在 AuthGate 之內：帳務異常只在已登入並持有使用權之後才從伺服器讀取。
-function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingCommands }: {
+function CloudSections({ db, leaseEpoch, identityKey, operatorUid, hasUnresolvedPendingCommands }: {
   db: Firestore;
   leaseEpoch: number;
   identityKey: string;
+  /** 目前操作員的 UID；只用來在頁面上辨識「是不是自己」，不顯示。 */
+  operatorUid: string;
   hasUnresolvedPendingCommands: boolean;
 }) {
   const [cloudSection, setCloudSection] = useState<CloudSection>('students');
@@ -488,6 +490,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
   const openAnomalies = () => selectSection('anomalies');
   const onDraftCleared = useCallback(() => { if (pageGenerationRef.current === pageGeneration) dirtyRef.current = false; }, [pageGeneration]);
   const common = { db, leaseEpoch, identityKey, onNavigationStateChange: reportNavigationState, onDraftCleared };
+  const operatorSelf = useMemo(() => ({ uid: operatorUid, name: operator?.name ?? '' }), [operatorUid, operator?.name]);
 
   return (
     <main className="cloud-app" aria-label={CLOUD_SECTION_LABELS[cloudSection]} onChangeCapture={event => {
@@ -498,8 +501,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
         select={selectPrimary} disabled={navigationLocked}
         brand={<div className="brand"><div className="brand-mark">●</div><div><div className="brand-name">訂餐櫃台</div><div className="brand-sub">{cloudSection === 'orders' && viewDay?.backfill ? <span className="backfill-badge">補登 {viewDay.date}</span> : cloudSection === 'orders' ? viewDay?.date ?? '營業日未確認' : ledger.status === 'ready' ? ledger.snapshot.today : '營業日未確認'}</div></div></div>}
         status={<div className="status">{ledger.status === 'ready' && ledger.snapshot.anomalies.length > 0 && <button disabled={navigationLocked} onClick={openAnomalies}><TriangleAlert size={14} aria-hidden="true" /> 異常 {ledger.snapshot.anomalies.length}</button>}
-          <details className="operator-menu operator-strip" onClick={event => { if ((event.target as HTMLElement).closest('button')) { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); } }} onKeyDown={event => { if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); } }}><summary>{operator?.name ?? '操作員'}</summary><div className="operator-menu__panel">
-            <small>租約 Epoch: {leaseEpoch}</small>
+          <details className="operator-menu operator-strip" data-lease-epoch={leaseEpoch} onClick={event => { if ((event.target as HTMLElement).closest('button')) { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); } }} onKeyDown={event => { if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); } }}><summary>{operator?.name ?? '操作員'}</summary><div className="operator-menu__panel">
             <button type="button" disabled={navigationLocked} onClick={openAnomalies}>帳務檢查</button>
             <label>主題 <select value={tweaks.theme} onChange={event => setTweak('theme', event.target.value)}><option value="warm">暖色</option><option value="light">淺色</option><option value="dark">深色</option></select></label>
             <p className="operator-menu__help">F1–F5 或 Alt／Option + 1–5 切換頁面；F5 已改為切換頁面，重新整理請按 Ctrl+R／Cmd+R。</p>
@@ -513,10 +515,11 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
       ) : cloudSection === 'students' ? (
         <CloudStudentsPage {...common} />
       ) : cloudSection === 'day-vendors' || cloudSection === 'vendors' ? (
-        <CloudDayVendorsPage key={dayVendorGeneration} view={cloudSection === 'vendors' ? 'vendors' : 'day'} {...common} ledger={ledger} onOpenAnomalies={openAnomalies} onLedgerChanged={reloadLedger} />
+        <CloudDayVendorsPage key={dayVendorGeneration} view={cloudSection === 'vendors' ? 'vendors' : 'day'} {...common} operatorSelf={operatorSelf} ledger={ledger} onOpenAnomalies={openAnomalies} onLedgerChanged={reloadLedger} />
       ) : cloudSection === 'day-close' ? (
         <CloudDayClosePage
           {...common}
+          operatorSelf={operatorSelf}
           ledger={ledger}
           onOpenAnomalies={openAnomalies}
           onLedgerChanged={reloadLedger}
@@ -529,6 +532,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
         <CloudReportPage
           key={`${identityKey}:${leaseEpoch}`}
           {...common}
+          operatorSelf={operatorSelf}
           onOpenDayClose={dayId => selectSection('day-close', dayId)}
           onOpenAccountHistory={(studentId, range) => {
             setAccountHistoryStudentId(studentId);
@@ -540,6 +544,7 @@ function CloudSections({ db, leaseEpoch, identityKey, hasUnresolvedPendingComman
         <CloudAccountHistoryPage
           key={`${identityKey}:${leaseEpoch}`}
           {...common}
+          operatorSelf={operatorSelf}
           initialStudentId={accountHistoryStudentId}
           initialRange={accountHistoryRange}
         />
@@ -598,6 +603,7 @@ function CloudAppContent() {
                 db={fb.db}
                 leaseEpoch={lease.epoch}
                 identityKey={`${access.profile.uid}:${lease.epoch}`}
+                operatorUid={access.profile.uid}
                 hasUnresolvedPendingCommands={hasUnresolvedPendingCommands}
               />
             )}

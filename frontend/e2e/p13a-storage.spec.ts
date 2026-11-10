@@ -336,7 +336,7 @@ test.describe('P13a generated service worker and memory-only cloud storage', () 
       });
 
       await pageA.getByRole('button', { name: '取得系統使用權' }).click();
-      await expect(pageA.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(pageA.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await expect(pageA.getByTestId(`cloud-student-row-${STUDENT_CODE}`)).toContainText(STUDENT_MARKER);
       await pageA.getByRole('button', { name: '櫃台' }).click();
       await expect(pageA.getByTestId('cloud-orders-page')).toBeVisible();
@@ -374,7 +374,7 @@ test.describe('P13a generated service worker and memory-only cloud storage', () 
       const pageB = await contextB.newPage();
       await signInGoogle(pageB, E2E_IDENTITIES.operatorB.email);
       await pageB.getByRole('button', { name: '取得系統使用權' }).click();
-      await expect(pageB.locator('.operator-strip')).toContainText('租約 Epoch: 3');
+      await expect(pageB.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '3');
       await expect(pageB.getByTestId(`cloud-student-row-${STUDENT_CODE}`)).toContainText(STUDENT_MARKER);
       await pageB.getByRole('button', { name: '櫃台' }).click();
       await expect(pageB.getByTestId(`recent-item-${STUDENT_CODE}`)).toContainText('今日餐點 1');

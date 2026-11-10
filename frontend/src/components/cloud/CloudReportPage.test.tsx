@@ -162,6 +162,53 @@ describe('CloudReportPage', () => {
     expect(within(cells[6]).getByText('−$40')).toBeInTheDocument();
   });
 
+  describe('操作人顯示（#668）：不顯示原始 UID', () => {
+    const self = { uid: 'uid-self', name: '測試操作員甲' };
+    const closedReport = () => {
+      const day = report.days[0];
+      return {
+        ...report,
+        days: [{
+          ...day, status: 'closed', lastSettlementRevision: 1,
+          settlements: [{
+            businessDate: '2026-10-19', revision: 1, status: 'closed', openingCash: 100, expectedCash: 120, countedCash: 120,
+            difference: 0, note: '', actorUid: 'uid-settler', actorEmail: 'settler@example.test', sourceSeq: 10,
+            committedAt: '2026-10-19T10:00:00.000Z', lastCommandId: 'cmd-settle', totals: day.totals,
+          }],
+          postCloseEntries: [
+            { entryId: 'entry-self', businessDate: '2026-10-19', settlementRevision: 1, direction: 'income', amount: 30,
+              reason: '補收甲', createdBy: 'uid-self', createdAt: '2026-10-19T11:00:00.000Z', commandId: 'cmd-e1', countedInEffectiveCash: true },
+            { entryId: 'entry-other', businessDate: '2026-10-19', settlementRevision: 1, direction: 'expense', amount: 10,
+              reason: '補付乙', createdBy: 'uid-someone-else', createdAt: '2026-10-19T12:00:00.000Z', commandId: 'cmd-e2', countedInEffectiveCash: true },
+          ],
+        }],
+      } as unknown as CloudLedgerReport;
+    };
+
+    it('日結現金欄顯示操作者 email，補記列依標籤規則顯示名稱，畫面上沒有原始 UID', async () => {
+      mocks.readReport.mockResolvedValue(closedReport());
+      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="uid-self:4:operator-label" operatorSelf={self} />);
+      await screen.findByTestId('report-ready');
+
+      const summary = screen.getByRole('region', { name: '區間日摘要' });
+      expect(within(summary).getByText(/settler@example\.test/)).toBeInTheDocument();
+      expect(within(summary).getByText(/補收甲 · 測試操作員甲 ·/)).toBeInTheDocument();
+      expect(within(summary).getByText(/補付乙 · 其他操作員 ·/)).toBeInTheDocument();
+      for (const uid of ['uid-settler', 'uid-self', 'uid-someone-else']) {
+        expect(screen.queryByText(new RegExp(uid))).not.toBeInTheDocument();
+      }
+    });
+
+    it('完整交易明細的操作者欄顯示 operatorEmail，不顯示 operatorUid', async () => {
+      render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="uid-self:4:operator-email" operatorSelf={self} />);
+      await screen.findByTestId('report-ready');
+
+      const details = screen.getByRole('region', { name: '完整交易明細' });
+      expect(within(details).getByText(/a@example\.test · /)).toBeInTheDocument();
+      expect(within(details).queryByText(/operator-a/)).not.toBeInTheDocument();
+    });
+  });
+
   it('uses EmptyState for an empty report, no matching accounts, and no access events', async () => {
     mocks.readReport.mockResolvedValue({ ...report, days: [], transactions: [], mergedTransactions: [] } as unknown as CloudLedgerReport);
     mocks.readAccessEvents.mockResolvedValue({ ...accessEvents, rows: [] });

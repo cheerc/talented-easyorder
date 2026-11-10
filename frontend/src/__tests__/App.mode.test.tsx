@@ -197,6 +197,16 @@ describe('App mode gate', () => {
     expect(help?.textContent).toContain('Ctrl+R／Cmd+R');
   });
 
+  it('操作員選單不顯示租約 Epoch（#668）', () => {
+    appMocks.cloudModeValid = true;
+    render(<App />);
+
+    const panel = document.querySelector('.operator-menu__panel');
+    expect(panel).not.toBeNull();
+    expect(panel?.textContent).not.toMatch(/epoch/i);
+    expect(panel?.textContent).not.toContain('租約');
+  });
+
   it('opens today settings from the counter page without leaving the cloud shell', () => {
     appMocks.cloudModeValid = true;
     render(<App />);

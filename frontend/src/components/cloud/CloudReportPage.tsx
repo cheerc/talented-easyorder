@@ -39,11 +39,14 @@ import { HelpTip } from '../ui/HelpTip';
 import { Callout } from '../ui/Callout';
 import { seqWithOwnReceipts, useOwnReceiptSeqs } from './ownReceiptSeqs';
 import './CloudReportPage.css';
+import { operatorDisplayLabel, type OperatorSelf } from '../../domain/operatorDisplay';
 
 export interface CloudReportPageProps {
   db: Firestore;
   leaseEpoch: number;
   identityKey: string;
+  /** 目前操作員；沒有 email 的紀錄用它判斷「是不是自己」（#668），不新增任何讀取。 */
+  operatorSelf?: OperatorSelf | null;
   onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
   onOpenDayClose?: (dayId: string) => void;
   onOpenAccountHistory?: (studentId: string, range: CloudLedgerDateRange) => void;
@@ -284,7 +287,7 @@ interface ActivePrintLifecycle {
 }
 
 export function CloudReportPage({
-  db, leaseEpoch, identityKey, onNavigationStateChange, onOpenDayClose, onOpenAccountHistory,
+  db, leaseEpoch, identityKey, operatorSelf = null, onNavigationStateChange, onOpenDayClose, onOpenAccountHistory,
 }: CloudReportPageProps) {
   const reads = useMemo(() => createCloudReadRepository(db), [db]);
   const recoveryReader = useMemo(() => getCloudRecoveryReader(db), [db]);
@@ -999,9 +1002,9 @@ export function CloudReportPage({
               <td className="dt-num">{day.totals ? money(day.totals.accountRefunds) : '—'}</td>
               <td>{day.lastSettlementRevision > 0 ? <>{day.settlements.map(version => <div key={version.revision}>
                 第 {version.revision} 次實點 {version.countedCash === null ? '—' : money(version.countedCash)}{day.status === 'closed' && version.revision === day.lastSettlementRevision ? ` · 有效現金 ${money(day.effectiveCash ?? version.countedCash ?? 0)}` : ''}
-                <small>{version.actorUid} · {taipeiTime(version.committedAt)} · {version.note || '無備註'}</small>
+                <small>{version.actorEmail} · {taipeiTime(version.committedAt)} · {version.note || '無備註'}</small>
               </div>)}{day.postCloseEntries.map(entry => <small key={entry.entryId}>
-                補記 {entry.direction === 'income' ? '收入' : '支出'} {money(entry.amount)} · {entry.reason} · {entry.createdBy} · {taipeiTime(entry.createdAt)} · 原日結第 {entry.settlementRevision} 次 · {entry.countedInEffectiveCash ? '計入有效現金' : '未計入有效現金'}
+                補記 {entry.direction === 'income' ? '收入' : '支出'} {money(entry.amount)} · {entry.reason} · {operatorDisplayLabel(entry.createdBy, operatorSelf)} · {taipeiTime(entry.createdAt)} · 原日結第 {entry.settlementRevision} 次 · {entry.countedInEffectiveCash ? '計入有效現金' : '未計入有效現金'}
               </small>)}</> : '未關帳'}</td>
               <td><button type="button" aria-label={`開啟日結 ${day.businessDate}`} disabled={controlsLocked || !onOpenDayClose} onClick={() => onOpenDayClose?.(day.businessDate)}>開啟日結</button></td>
             </tr>)}</tbody></table></div>
@@ -1047,7 +1050,7 @@ export function CloudReportPage({
                 <td>{merged ? row.kind : row.type} · <StatusBadge variant={transactionStatusVariant(row.status)} className="cloud-report__status">{transactionStatusLabel(row.status)}</StatusBadge></td><td>{mealText}</td>
                 <td className="dt-num">{money(row.amount)} · 餐費 {money(row.mealPrice)} · 收款 {money(row.paidAmount)}{merged && row.orderCount ? ` · ${row.orderCount} 筆訂餐／${row.bentoOrderCount} 份便當` : ''}</td>
                 <td className="dt-num">{row.studentId === '__cashier__' ? '不適用' : balance === undefined ? '未驗證' : <CloudAccountBalance amount={balance} currency="$" />}</td>
-                <td>{raw.map(item => <div key={item.transactionId}>{item.operatorUid} · {taipeiTime(item.createdAt)}</div>)}</td>
+                <td>{raw.map(item => <div key={item.transactionId}>{item.operatorEmail} · {taipeiTime(item.createdAt)}</div>)}</td>
                 <td>{row.backfilled ? '回填' : '—'}{raw.some(item => item.status === 'voided') ? ' · 保留作廢列' : ''}{raw.map(item => item.note && <small key={`note:${item.transactionId}`}>{item.note}</small>)}</td>
               </tr>;
             })}</tbody></table></div>

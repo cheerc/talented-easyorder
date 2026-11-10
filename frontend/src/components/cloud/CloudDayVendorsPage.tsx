@@ -32,6 +32,7 @@ import { Toast } from '../ui/Toast';
 import { DataUpdatedNotice } from './DataUpdatedNotice';
 import { LedgerUnclosedBanner } from './LedgerUnclosedBanner';
 import './CloudDayVendorsPage.css';
+import { operatorDisplayLabel, type OperatorSelf } from '../../domain/operatorDisplay';
 
 type PreviousClosedLookupView =
   | { status: 'idle' }
@@ -43,6 +44,8 @@ export interface CloudDayVendorsPageProps {
   db: Firestore;
   leaseEpoch: number;
   identityKey: string;
+  /** 目前操作員；沒有 email 的紀錄用它判斷「是不是自己」（#668），不新增任何讀取。 */
+  operatorSelf?: OperatorSelf | null;
   onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
   onDraftCleared?: () => void;
   /** 帳務異常快照（契約 §11）；沒提供時不顯示橫幅，也不要求開帳差額原因。 */
@@ -341,7 +344,7 @@ function dayStatusVariant(status: 'open' | 'closed' | 'reopened'): 'ok' | 'neutr
 }
 
 export function CloudDayVendorsPage({
-  db, leaseEpoch, identityKey, onNavigationStateChange, ledger, onOpenAnomalies, onLedgerChanged, onDraftCleared, view = 'combined',
+  db, leaseEpoch, identityKey, operatorSelf = null, onNavigationStateChange, ledger, onOpenAnomalies, onLedgerChanged, onDraftCleared, view = 'combined',
 }: CloudDayVendorsPageProps) {
   const recoveryReader = useMemo(() => getCloudRecoveryReader(db), [db]);
   const repository = useMemo(() => createCloudDayVendorRepository(db, { recoveryReader }), [db, recoveryReader]);
@@ -1409,7 +1412,7 @@ export function CloudDayVendorsPage({
             <div className="cloud-day-vendors__section-heading">
               <div>
                 <h2>{snapshot.dayId} 營業日</h2>
-                <p>{snapshot.day ? <>狀態：<StatusBadge variant={dayStatusVariant(snapshot.day.status)} className={`cloud-day-vendors__day-status cloud-day-vendors__day-status--${snapshot.day.status}`}>{dayStatusLabel(snapshot.day.status)}</StatusBadge> · revision {snapshot.day.revision}</> : '伺服器尚無此日期文件；建立日期只建立空白營業日，不會建立菜單或開帳金額。'}</p>
+                <p>{snapshot.day ? <>狀態：<StatusBadge variant={dayStatusVariant(snapshot.day.status)} className={`cloud-day-vendors__day-status cloud-day-vendors__day-status--${snapshot.day.status}`}>{dayStatusLabel(snapshot.day.status)}</StatusBadge></> : '伺服器尚無此日期文件；建立日期只建立空白營業日，不會建立菜單或開帳金額。'}</p>
               </div>
               {!snapshot.day && (
                 <button type="button" className="cloud-day-vendors__primary" onClick={submitEnsureDay} disabled={busy || snapshot.dayId < snapshot.goLiveDate}>
@@ -1467,7 +1470,7 @@ export function CloudDayVendorsPage({
                     <div>
                       <h3>開帳現金</h3>
                       {snapshot.day.openedAt && (
-                        <p>首次開帳人：{snapshot.day.openedBy ?? '未知'} · 首次確認時間（臺北）：{formatServerTime(snapshot.day.openedAt)}</p>
+                        <p>首次開帳人：{snapshot.day.openedBy === null ? '未知' : operatorDisplayLabel(snapshot.day.openedBy, operatorSelf)} · 首次確認時間（臺北）：{formatServerTime(snapshot.day.openedAt)}</p>
                       )}
                     </div>
                   </div>

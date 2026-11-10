@@ -361,7 +361,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     let commandId: string | null = null;
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
-      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await page.getByRole('button', { name: '櫃台' }).click();
       await expect(page.getByTestId('cloud-orders-page')).toBeVisible();
       await expect(page.getByTestId('cloud-orders-loading')).toHaveCount(0);
@@ -404,7 +404,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
 
       // A reload drops the synthetic method denial; startup resolves the receipt and removes its exact journal ID.
       await page.reload();
-      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await expect(page.locator('.cloud-app')).toBeVisible();
       await expect(page.getByRole('region', { name: '待核對命令' })).toHaveCount(0);
       await expect.poll(() => page.evaluate(({ namespace: journalNamespace, id }) => (
@@ -912,7 +912,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     let commandId: string | null = null;
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
-      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await page.getByRole('button', { name: '櫃台' }).click();
       await expect(page.getByTestId('cloud-orders-page')).toBeVisible();
       await page.getByLabel('搜尋編號、姓名或別名').fill(studentCode);
@@ -1019,7 +1019,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     let createdStudentId: string | null = null;
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
-      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await expect(page.getByRole('heading', { name: '學生名單與期初結餘' })).toBeVisible();
       await expect(page.getByTestId(`cloud-student-row-${seedStudentCode}`)).toBeVisible();
 
@@ -1125,7 +1125,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     let commandId: string | null = null;
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
-      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       const row = page.getByTestId(`cloud-student-row-${studentCode}`);
       await expect(row).toBeVisible();
       await row.getByRole('button', { name: '編輯姓名與別名' }).click();
@@ -1215,7 +1215,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     let createdStudentId: string | null = null;
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
-      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await page.getByRole('button', { name: '新增學生' }).click();
       const form = page.getByRole('form', { name: '新增學生' });
       await form.getByLabel('學員編號').fill(studentCode);
@@ -1303,7 +1303,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     let createdStudentId: string | null = null;
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
-      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await expect(page.getByRole('heading', { name: '學生名單與期初結餘' })).toBeVisible();
       await expect(page.getByTestId(`cloud-student-row-${seedStudentCode}`)).toBeVisible();
 
@@ -1414,7 +1414,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     let commandId: string | null = null;
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
-      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await settings(page, '菜單與開帳');
       const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
       const openingForm = main.getByRole('form', { name: `${today} 開帳現金` });
@@ -1528,7 +1528,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     let commandId: string | null = null;
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
-      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await settings(page, '菜單與開帳');
       const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
       const openingForm = main.getByRole('form', { name: `${today} 開帳現金` });
@@ -1629,7 +1629,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     let commandId: string | null = null;
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
-      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await settings(page, '菜單與開帳');
       const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
       const openingForm = main.getByRole('form', { name: `${today} 開帳現金` });
@@ -1714,7 +1714,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
 
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
-      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await settings(page, '菜單與開帳');
       const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
       const menuForm = main.getByRole('form', { name: `${today} 菜單` });
@@ -1811,7 +1811,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     let commandId: string | null = null;
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
-      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await page.keyboard.press('F4');
       const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
       await page.getByRole('button', { name: '新增供應商' }).click();
@@ -1871,7 +1871,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
 test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
   async function openDayClose(page: Page) {
     await page.getByRole('button', { name: '取得系統使用權' }).click();
-    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
     await page.getByRole('button', { name: '今日帳', exact: true }).click();
   }
 
@@ -2176,14 +2176,14 @@ test.describe('P13b2b3a journal cleanup post-condition and backup page recovery'
 
   async function openDayClose(page: Page) {
     await page.getByRole('button', { name: '取得系統使用權' }).click();
-    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
     await page.getByRole('button', { name: '今日帳', exact: true }).click();
   }
 
   // #649: the backup lives in F3 › 資料備份 (it used to be embedded under the close section of F2).
   async function openBackupPage(page: Page) {
     await page.getByRole('button', { name: '取得系統使用權' }).click();
-    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
     await page.getByRole('button', { name: '今日設定', exact: true }).click();
     await page.getByRole('navigation', { name: '今日設定' }).getByRole('button', { name: '資料備份' }).click();
     await expect(page.getByRole('heading', { name: '資料備份' })).toBeVisible();
@@ -2219,7 +2219,7 @@ test.describe('P13b2b3a journal cleanup post-condition and backup page recovery'
     let commandId: string | null = null;
     try {
       await page.getByRole('button', { name: '取得系統使用權' }).click();
-      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await page.keyboard.press('F4');
       const main = page.getByRole('main', { name: '雲端日期設定與供應商管理' });
       await page.getByRole('button', { name: '新增供應商' }).click();
@@ -2303,7 +2303,7 @@ test.describe('P13b2b3b report export and print same-page recovery', () => {
 
   async function openReport(page: Page) {
     await page.getByRole('button', { name: '取得系統使用權' }).click();
-    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
     await report(page);
     await expect(page.getByTestId('report-ready')).toBeVisible({ timeout: 30000 });
   }

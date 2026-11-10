@@ -109,6 +109,51 @@ describe('CloudAccountHistoryPage', () => {
     mocks.cleanupConfirmedIntent.mockResolvedValue(true);
   });
 
+  describe('操作人顯示（#668）：一般區塊不顯示原始 UID', () => {
+    const self = { uid: 'uid-self', name: '測試操作員甲' };
+    const withSettlementAndEntries = () => ({
+      ...account,
+      days: [{ ...days[0], status: 'closed', lastSettlementRevision: 1 }],
+      settlements: [{
+        businessDate: date, revision: 1, status: 'closed', totals: days[0].totals!, openingCash: 100,
+        expectedCash: 100, countedCash: 100, difference: 0, note: '', actorUid: 'uid-settler',
+        actorEmail: 'settler@example.test', sourceSeq: 11, committedAt: `${date}T04:00:00.000Z`, lastCommandId: 'settlement-a',
+      }],
+      postCloseEntries: [
+        { entryId: 'entry-self', dayId: date, businessDate: date, settlementRevision: 1, direction: 'income', amount: 30,
+          reason: '補收甲', createdBy: 'uid-self', createdAt: new Date(`${date}T05:00:00.000Z`), commandId: 'cmd-e1', countedInEffectiveCash: true },
+        { entryId: 'entry-other', dayId: date, businessDate: date, settlementRevision: 1, direction: 'expense', amount: 10,
+          reason: '補付乙', createdBy: 'uid-someone-else', createdAt: new Date(`${date}T06:00:00.000Z`), commandId: 'cmd-e2', countedInEffectiveCash: true },
+      ],
+    });
+
+    it('日結版本列顯示 actorEmail，補記列依標籤規則顯示名稱，不出現 UID', async () => {
+      mocks.readAccountHistory.mockResolvedValue(withSettlementAndEntries());
+      render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="uid-self:4" operatorSelf={self} initialStudentId={studentId} initialRange={range} />);
+      await screen.findByTestId('account-history-ready');
+
+      const section = screen.getByRole('heading', { name: /日結版本/ }).closest('section') as HTMLElement;
+      expect(within(section).getByText(/settler@example\.test/)).toBeInTheDocument();
+      expect(within(section).getByText(/補收甲 · 測試操作員甲 ·/)).toBeInTheDocument();
+      expect(within(section).getByText(/補付乙 · 其他操作員 ·/)).toBeInTheDocument();
+      for (const uid of ['uid-settler', 'uid-self', 'uid-someone-else']) {
+        expect(within(section).queryByText(new RegExp(uid))).not.toBeInTheDocument();
+      }
+    });
+
+    it('帳戶範圍稽核表只顯示 email，不顯示 UID；資料詳情內容不變', async () => {
+      render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="uid-self:4" operatorSelf={self} initialStudentId={studentId} initialRange={range} />);
+      await screen.findByTestId('account-history-ready');
+
+      const section = screen.getByRole('heading', { name: '帳戶範圍稽核' }).closest('section') as HTMLElement;
+      const cells = within(within(section).getAllByRole('row')[1]).getAllByRole('cell');
+      expect(cells[2]).toHaveTextContent('a@example.test');
+      expect(cells[2]).not.toHaveTextContent('operator-a');
+      // 資料詳情（交易與稽核詳情）是查帳資訊，本次不動：仍列出建立者 UID。
+      expect(screen.getByText('建立者').nextElementSibling).toHaveTextContent('operator-a · a@example.test');
+    });
+  });
+
   it('shows no balance until account history and audit agree', async () => {
     mocks.readAuditRange.mockResolvedValueOnce({ ...audit, sourceSeq: 12 });
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
