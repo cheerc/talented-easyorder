@@ -36,7 +36,7 @@
 
 既有：`Button`、`StatusBadge`、`EmptyState`、`Kbd`、`Card`、`Tabs`、`Modal` 等。新增：
 
-- `HelpTip`：圓形「?」。滑鼠移上、Tab 聚焦、點擊（固定開啟）皆可開；Esc 或點外面關。Esc 只在說明開啟時攔截並保留焦點，說明沒開時照常傳給全域鍵盤處理（F 鍵、Alt+數字、Esc）。氣泡在按鈕下方，不遮住觸發點；內容的 `\n` 會換行。
+- `HelpTip`：圓形「?」。滑鼠移上、Tab 聚焦、點擊（固定開啟）皆可開；Esc 或點外面關。Esc 只在說明開啟時攔截並保留焦點，說明沒開時照常傳給全域鍵盤處理（F 鍵、Alt+數字、Esc）。放在 `Modal` 內也一樣：說明開啟時第一次 Esc 只關說明，下一次 Esc 才照 Modal 原流程（關閉，或先跳出捨棄確認）。氣泡在按鈕下方，不遮住觸發點；內容的 `\n` 會換行。
 - `Callout`：`variant: 'warn' | 'ok' | 'info'`，圖示＋文字，可放子元素（例如日期 chip）。
 - `ActionCard`：整張是一個 `<button>`，圖示、標題、說明、動作膠囊、`Kbd`；accessible name 是「標題，說明，動作」，不含 Kbd。
 - `StatTile`：標籤＋大數字（等寬）；`warn` 只給需要處理的數字。
