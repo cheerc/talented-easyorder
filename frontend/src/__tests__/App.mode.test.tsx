@@ -127,7 +127,7 @@ describe('App mode gate', () => {
 
   it('shows actionable Firebase cache cleanup guidance and blocks the cloud app', () => {
     appMocks.cloudModeValid = true;
-    appMocks.firebase.fbError = '舊版 Firestore 快取仍被其他分頁使用。請關閉其他 EasyOrder 分頁後再重新載入。';
+    appMocks.firebase.fbError = '舊版瀏覽器快取仍被其他分頁使用。請關閉其他 EasyOrder 分頁後再重新載入。';
     render(<App />);
 
     expect(screen.getByRole('alert')).toHaveTextContent(appMocks.firebase.fbError);

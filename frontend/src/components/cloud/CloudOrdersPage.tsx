@@ -227,7 +227,7 @@ function errorText(error: unknown): string {
   if (code === 'STALE_SNAPSHOT') return '載入期間伺服器資料有變動，沒有顯示部分資料。請重新載入。';
   if (code === 'INCOMPLETE_SNAPSHOT' || code === 'RECONCILIATION_FAILED' || code === 'UNSUPPORTED_SCHEMA') {
     const message = error instanceof Error ? error.message : '';
-    return `伺服器資料無法安全顯示，沒有顯示份數或金額。${message ? `（${message}）` : ''}請聯絡系統維護者。`;
+    return `伺服器資料無法安全顯示，沒有顯示份數或金額。${message ? `${message.replace(/[。.]+$/, '')}。` : '請聯絡系統維護者。'}`;
   }
   if (error && typeof error === 'object' && 'message' in error) {
     const message = (error as { message?: unknown }).message;

@@ -357,7 +357,7 @@ async function readPaged(
     pageNumber += 1;
     documents.push(...page.docs);
     if (documents.length > maxDocuments) {
-      throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `雲端 ${collectionName} 超過完整讀取上限 ${maxDocuments}`);
+      throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', '資料量超過一次能完整讀取的上限，沒有顯示部分資料；請縮小查詢範圍後重新查詢');
     }
     await afterPageRead?.({ collection: collectionName, page: pageNumber, ...pageTrace });
     await assertContextUnchanged(db, user, context);
@@ -365,7 +365,7 @@ async function readPaged(
     cursor = page.docs.at(-1) ?? null;
     if (!cursor) return { documents, count: documents.length };
   }
-  throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `雲端 ${collectionName} 無法證明完整讀取至 EOF`);
+  throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', '無法確認資料已完整讀取，沒有顯示部分資料；請重新查詢');
 }
 
 function decodeTransactionSnapshot(snapshot: QueryDocumentSnapshot, headSeq: number): ReturnType<typeof decodeCloudOrderTransaction> {
@@ -415,7 +415,7 @@ function decodeAccessEvent(snapshot: { id: string; data: () => unknown }): Decod
     || (value.kind !== 'acquire' && value.kind !== 'takeover' && value.kind !== 'release')
     || !nullableUid(value.holderUid) || !nullableUid(value.previousHolderUid)
     || !uid(value.actorUid) || !uid(value.actorEmail) || !(value.at instanceof Timestamp)) {
-    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `使用權交接紀錄 ${snapshot.id} 格式不支援`);
+    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '使用權交接紀錄格式異常，請停止操作並聯絡維護者');
   }
   const kindMatches = value.kind === 'release'
     ? value.holderUid === null && value.previousHolderUid !== null
@@ -423,7 +423,7 @@ function decodeAccessEvent(snapshot: { id: string; data: () => unknown }): Decod
       ? value.holderUid !== null && value.previousHolderUid === null
       : value.holderUid !== null && value.previousHolderUid !== null;
   if (!kindMatches) {
-    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `使用權交接紀錄 ${snapshot.id} 的種類與前後持有人不一致`);
+    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '使用權交接紀錄的種類與前後持有人對不上，請停止操作並聯絡維護者');
   }
   return {
     epoch,
@@ -444,7 +444,7 @@ function decodeAuditCommand(snapshot: QueryDocumentSnapshot, headSeq: number): C
     throw readFailure(error);
   }
   if (command.commandId !== snapshot.id || command.seq > headSeq) {
-    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `稽核紀錄 ${snapshot.id} 與讀取當下的資料不一致，請重新讀取`);
+    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '稽核紀錄與讀取當下的資料對不上，請重新讀取');
   }
   return {
     commandId: command.commandId,
@@ -536,7 +536,7 @@ async function readPostCloseEntries(
     }
     if (decoded.dayId !== dayId || !(decoded.createdAt instanceof Timestamp)
       || !integer(decoded.settlementRevision, 1) || decoded.settlementRevision > lastSettlementRevision) {
-      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `關帳後補記 ${snapshot.id} 與營業日資料不一致，請重新讀取`);
+      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '關帳後補記與營業日資料對不上，請重新讀取');
     }
     return {
       entryId: snapshot.id,
@@ -594,7 +594,7 @@ async function loadRange(
       }
     }
     if (day && dayId < context.head.goLiveDate) {
-      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `系統啟用日前存在營業日投影 ${dayId}`);
+      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `系統啟用日前存在營業日資料 ${dayId}，請停止操作並聯絡維護者`);
     }
     if (day) {
       const requiresSettlement = day.status === 'closed' || day.status === 'reopened';
@@ -605,13 +605,13 @@ async function loadRange(
     }
     const backfill = await readCloudBackfillDay(db, dayId);
     if (backfill && !day) {
-      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `回填標記 ${dayId} 缺少營業日投影`);
+      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `回填營業日 ${dayId} 缺少營業日資料，請停止操作並聯絡維護者`);
     }
     const close = day && day.lastSettlementRevision > 0
       ? await readCloudDayClose(db, dayId, { currentUser: () => user })
       : null;
     if (day && day.lastSettlementRevision > 0 && close === null) {
-      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 缺少版號所指的完整日結歷史`);
+      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 的日結紀錄不完整，請停止操作並聯絡維護者`);
     }
     if (close) {
       const totalsMatch = JSON.stringify(close.totals) === JSON.stringify(day?.totals);
@@ -682,7 +682,7 @@ async function loadRangeHeads(
       }
     }
     if (day && dayId < context.head.goLiveDate) {
-      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `系統啟用日前存在營業日投影 ${dayId}`);
+      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `系統啟用日前存在營業日資料 ${dayId}，請停止操作並聯絡維護者`);
     }
     if (day && (day.status === 'closed' || day.status === 'reopened') !== (day.lastSettlementRevision > 0)) {
       throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 的狀態與日結紀錄對不上，請停止操作並聯絡維護者`);
@@ -691,7 +691,7 @@ async function loadRangeHeads(
       ? await readCloudSettlementVersion(db, dayId, day.lastSettlementRevision).catch(error => { throw readFailure(error); })
       : null;
     if (day && day.lastSettlementRevision > 0) {
-      if (latest === null) throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 缺少版號所指的日結版本`);
+      if (latest === null) throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 的日結紀錄不完整，請停止操作並聯絡維護者`);
       if (latest.sourceSeq > context.head.sourceSeq) {
         throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 的日結紀錄比目前資料還新，請重新讀取`);
       }
@@ -766,7 +766,7 @@ function balancesBackFromCurrent(
   context: ReadContext,
 ): Map<string, number> {
   if (!isValidCloudGregorianDate(student.openingBalance.asOfDate)) {
-    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `學生 ${student.studentId} 期初日期不支援`);
+    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '學生期初日期異常，請停止操作並聯絡維護者');
   }
   const balances = new Map<string, number>();
   let balance = student.currentBalance;
@@ -774,7 +774,7 @@ function balancesBackFromCurrent(
     const record = records[index]!;
     if (record.studentId !== student.studentId || record.type === 'expense' || record.businessDate < context.head.goLiveDate
       || record.businessDate < student.openingBalance.asOfDate || record.businessDate > context.leaseToday) {
-      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `帳戶 ${student.studentId} 的歷史交易日期或帳戶資料不一致`);
+      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '帳戶的歷史交易日期或帳戶資料對不上，請停止操作並聯絡維護者');
     }
     balances.set(record.transactionId, balance);
     balance -= transactionEffect(record);
@@ -811,7 +811,7 @@ function withBalance(
   if (record.studentId === '__cashier__') return { ...row, balanceApplicability: 'not-applicable' };
   const balance = balances.get(record.transactionId);
   if (balance === undefined) {
-    throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `交易 ${record.transactionId} 沒有可驗證的帳戶餘額`);
+    throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', '有交易沒有可驗證的帳戶餘額，請停止操作並聯絡維護者');
   }
   return { ...row, afterBalance: balance, balanceApplicability: 'verified' };
 }
@@ -930,7 +930,7 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
         for (const dayId of dates) {
           const records = inRange.filter(record => record.businessDate === dayId);
           if (records.length > MAX_DAY_TRANSACTIONS) {
-            throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `雲端 transactions 超過完整讀取上限 ${MAX_DAY_TRANSACTIONS}`);
+            throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', '交易筆數超過一次能完整讀取的上限，沒有顯示部分資料；請縮小查詢範圍後重新查詢');
           }
           reconcileDayTotals(loaded.dayRecords.get(dayId) ?? null, records);
         }
@@ -1035,7 +1035,7 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
           const dayRows = paged.documents.map(snapshot => {
             const row = decodeAuditCommand(snapshot, context.head.sourceSeq);
             if (row.businessDate !== dayId) {
-              throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `稽核紀錄 ${snapshot.id} 與查詢的營業日不一致`);
+              throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '稽核紀錄與查詢的營業日對不上，請重新查詢');
             }
             return row;
           });
@@ -1071,11 +1071,11 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
         const rangeRows = paged.documents.map(snapshot => {
           const row = decodeAuditCommand(snapshot, context.head.sourceSeq);
           if (row.businessDate !== null) {
-            throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `稽核紀錄 ${snapshot.id} 的日期範圍不一致`);
+            throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '稽核紀錄的日期範圍對不上，請重新查詢');
           }
           const attributed = attributeCloudAuditDate(row);
           if (attributed.attributedDate < range.startDate || attributed.attributedDate > range.endDate) {
-            throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `稽核紀錄 ${snapshot.id} 超出可查詢的日期範圍`);
+            throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '稽核紀錄超出可查詢的日期範圍，請縮小範圍後重新查詢');
           }
           return row;
         });
@@ -1088,7 +1088,7 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
         for (const snapshot of documents) {
           const row = decodeAuditCommand(snapshot, context.head.sourceSeq);
           if (row.studentId !== input.studentId) {
-            throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `稽核紀錄 ${snapshot.id} 與查詢的帳戶不一致`);
+            throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '稽核紀錄與查詢的帳戶對不上，請重新查詢');
           }
           auditRows.push(row);
         }
@@ -1169,7 +1169,7 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
         if (command.commandId !== snapshot.id || command.seq <= previousSeq || command.seq > context.head.sourceSeq
           || (isDay && command.businessDate !== input.dayId)
           || (!isDay && command.studentId !== input.studentId)) {
-          throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `稽核紀錄 ${snapshot.id} 與查詢範圍不一致`);
+          throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '稽核紀錄與查詢範圍對不上，請重新查詢');
         }
         previousSeq = command.seq;
         rows.push({
