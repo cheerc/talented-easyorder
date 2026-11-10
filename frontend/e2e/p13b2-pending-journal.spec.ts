@@ -277,7 +277,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     await expect(page.getByRole('heading', { name: '待核對命令' })).toBeVisible();
     await expect(page.getByText(commandId)).toBeVisible();
     await expect(page.getByText('伺服器目前未查到；這不代表確定未入帳。保留編號，不要重新收款。')).toBeVisible();
-    await expect(page.getByRole('button', { name: '櫃台' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '櫃台' })).toBeVisible();
 
     const stored = await page.evaluate(({ namespace, pendingCommandId }) => {
       const prefix = `${namespace}:`;
@@ -821,7 +821,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     await page.context().setOffline(false);
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
 
-    await expect(page.locator('.cloud-app')).toHaveCount(0);
+    await expect(page.locator('.cloud-app')).toBeVisible();
     await expect(confirmation).not.toBeChecked();
     await expect(page.getByRole('button', { name: '保留編號，移交人工核對並繼續其他作業' })).toBeDisabled();
     expect(await readPendingIdentity(page, commandId)).toBe(before);

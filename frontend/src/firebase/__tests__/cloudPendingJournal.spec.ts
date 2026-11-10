@@ -91,6 +91,21 @@ describe('Cloud pending command journal', () => {
     expect((await journal.readAll()).records).toEqual([]);
   });
 
+  it('dismisses an orphan pending identity under lock and enforces the synchronous owner predicate', async () => {
+    const adapter = createMemoryCloudPendingJournalTestAdapter();
+    const journal = createCloudPendingJournal(testDb, adapter);
+    const orphan = record(15);
+    await journal.put(orphan);
+
+    await expect(journal.dismiss(orphan, () => false)).resolves.toBe(false);
+    expect(await journal.readAll()).toMatchObject({ records: [orphan], total: 1, complete: true });
+
+    await expect(journal.dismiss({ ...orphan, datasetId: 'other-dataset' })).rejects.toBeInstanceOf(PendingJournalUnavailableError);
+    await expect(journal.dismiss(orphan)).resolves.toBe(true);
+    await expect(journal.dismiss(orphan)).resolves.toBe(false);
+    expect(await journal.readAll()).toMatchObject({ records: [], total: 0, complete: true });
+  });
+
   it('reports removed, absent or kept for the exact identity without changing removeIf semantics', async () => {
     const adapter = createMemoryCloudPendingJournalTestAdapter();
     const journal = createCloudPendingJournal(testDb, adapter);

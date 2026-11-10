@@ -175,7 +175,11 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
     expect(f.remove).toHaveBeenCalledWith(record, expect.any(Function));
     expect(f.records).toEqual([record]);
     expect(screen.getByTestId('business-shell')).toBeInTheDocument();
-    expect(screen.getByTestId('business-shell').parentElement).toHaveAttribute('inert');
+    if (change === 'dataset') {
+      expect(screen.getByTestId('business-shell').parentElement).toHaveAttribute('inert');
+    } else {
+      expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
+    }
   });
 
   it('keeps the latest external recovery result when an older per-row result resolves late', async () => {
@@ -188,13 +192,13 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
 
     await act(async () => f.listener?.('other-tab'));
     await waitFor(() => expect(f.confirm).toHaveBeenCalledTimes(3));
-    expect(screen.getByTestId('business-shell').parentElement).toHaveAttribute('inert');
+    expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
     await act(async () => oldResult.resolve(matched));
 
     expect(f.remove).not.toHaveBeenCalled();
     expect(f.records).toEqual([record]);
     expect(screen.getByText('伺服器目前未查到；這不代表確定未入帳。保留編號，不要重新收款。')).toBeInTheDocument();
-    expect(screen.getByTestId('business-shell').parentElement).toHaveAttribute('inert');
+    expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
   });
 
   it('rechecks on reconnect and requires a new acknowledgement for a still-null receipt', async () => {
@@ -210,7 +214,7 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
 
     await waitFor(() => expect(f.confirm).toHaveBeenCalledTimes(2));
     expect(screen.getByTestId('business-shell')).toBeInTheDocument();
-    expect(screen.getByTestId('business-shell').parentElement).toHaveAttribute('inert');
+    expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
     expect(screen.getByLabelText(manualConfirmation)).not.toBeChecked();
     expect(screen.getByRole('button', { name: '保留編號，移交人工核對並繼續其他作業' })).toBeDisabled();
     expect(f.records).toEqual([record]);
@@ -231,17 +235,17 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
     });
 
     await waitFor(() => expect(f.confirm).toHaveBeenCalledTimes(3));
-    expect(screen.getByTestId('business-shell').parentElement).toHaveAttribute('inert');
+    expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
     await act(async () => lateResult.resolve(matched));
 
     expect(f.remove).not.toHaveBeenCalled();
     expect(f.records).toEqual([record]);
     expect(screen.getByText('伺服器目前未查到；這不代表確定未入帳。保留編號，不要重新收款。')).toBeInTheDocument();
     expect(screen.getByLabelText(manualConfirmation)).not.toBeChecked();
-    expect(screen.getByTestId('business-shell').parentElement).toHaveAttribute('inert');
+    expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
   });
 
-  it('keeps the current shell mounted and inert while a changed lease epoch is rechecked', async () => {
+  it('keeps the current shell mounted and resets acknowledgement when a changed lease epoch is rechecked', async () => {
     const view = renderBoundary();
     await continueManually();
     f.context.mockResolvedValue({ ...context, leaseEpoch: 2 });
@@ -254,7 +258,7 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
 
     await waitFor(() => expect(f.confirm).toHaveBeenCalledTimes(2));
     expect(screen.getByTestId('business-shell')).toBeInTheDocument();
-    expect(screen.getByTestId('business-shell').parentElement).toHaveAttribute('inert');
+    expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
     expect(screen.getByLabelText(manualConfirmation)).not.toBeChecked();
     expect(f.records).toEqual([record]);
   });
@@ -272,7 +276,7 @@ describe('CloudPendingRecoveryBoundary asynchronous ownership', () => {
 
     await waitFor(() => expect(f.confirm).toHaveBeenCalledTimes(2));
     expect(f.records).toEqual([record]);
-    expect(screen.getByTestId('business-shell').parentElement).toHaveAttribute('inert');
+    expect(screen.getByTestId('business-shell').parentElement).not.toHaveAttribute('inert');
   });
 
   it('keeps reconnect verification failures gated', async () => {
