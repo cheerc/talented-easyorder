@@ -422,7 +422,7 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
     });
     await expect(repository().readReport({
       range: { kind: 'custom', startDate: today, endDate: today }, studentId: null, leaseEpoch: 7,
-    })).rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
+    })).rejects.toMatchObject({ code: 'RECONCILIATION_FAILED', message: plainMessage() });
   });
 
   it('does not read the day projection for one account (P16f1): the history and the scoped report need only the transactions of that student', async () => {
@@ -457,7 +457,7 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
     });
 
     await expect(repository().readReport({ studentId: null, range, leaseEpoch: 7 }))
-      .rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
+      .rejects.toMatchObject({ code: 'RECONCILIATION_FAILED', message: plainMessage() });
   });
 
   it.each(['closed', 'reopened'] as const)(
@@ -857,6 +857,32 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
       range: { kind: 'custom', startDate: today, endDate: today }, studentId: null, leaseEpoch: 7,
     })).rejects.toMatchObject({ code: 'STALE_SNAPSHOT', message: '讀取期間資料已被其他操作更新或使用權已切換，請重新載入' });
     expect(bumped).toBe(true);
+  });
+
+  it('#684: a transaction that points to a missing student is reported without its internal ID', async () => {
+    const orphanId = uuidFrom(901);
+    await withAdmin(async db => {
+      await setDoc(doc(db, `transactions/${orphanId}`), tx(orphanId, uuidFrom(990), today, 204, 'payment'));
+      await setDoc(doc(db, 'system/dataHead'), head(205));
+    });
+    const error = await repository().readReport({
+      range: { kind: 'custom', startDate: today, endDate: today }, studentId: uuidFrom(990), leaseEpoch: 7,
+    }).then(() => null, (cause: unknown) => cause as Error);
+    expect(error).toMatchObject({ code: 'RECONCILIATION_FAILED', message: plainMessage() });
+    expect(error?.message).not.toContain(orphanId);
+    expect(error?.message).toBe('有交易指向不存在的學生，沒有顯示部分資料；請停止操作並聯絡維護者');
+  });
+
+  it('#684: an account history balance outside the safe range is reported without the account ID', async () => {
+    await withAdmin(async db => {
+      await setDoc(doc(db, `students/${studentA}`), student(studentA, '001', 0, 1_000_000_000));
+    });
+    const error = await repository().readAccountHistory({
+      studentId: studentA, range: { kind: 'custom', startDate: today, endDate: today }, leaseEpoch: 7,
+    }).then(() => null, (cause: unknown) => cause as Error);
+    expect(error).toMatchObject({ code: 'RECONCILIATION_FAILED', message: plainMessage() });
+    expect(error?.message).not.toContain(studentA);
+    expect(error?.message).toBe('帳戶歷史餘額超出可安全計算的範圍，沒有顯示部分資料；請停止操作並聯絡維護者');
   });
 
   it('rejects an invalid Gregorian business date found in the transactions read for the range', async () => {

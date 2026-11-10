@@ -21,6 +21,7 @@ vi.mock('firebase/firestore', async importOriginal => {
 });
 
 import { createCloudDayCloseRepository } from '../cloudDayCloseRepository';
+import { plainMessage } from './helpers/plainMessage';
 
 type Data = Record<string, unknown>;
 type Constraint = { type: string; field?: unknown; op?: string; value?: unknown; direction?: string; count?: number };
@@ -63,10 +64,12 @@ interface Setup {
   backfill?: Array<[string, Data]>;
   /** The data head returned by the n-th head read (0-based); the last entry repeats. */
   heads?: (index: number) => Data;
+  /** Document paths the server read reports as served from the cache. */
+  cachedDocs?: string[];
   failDayQueries?: (request: { collectionRef: { path: string }; constraints: Constraint[] }) => unknown;
 }
 
-function setup({ days = [], settlements = {}, backfill = [], heads = () => head(), failDayQueries }: Setup = {}) {
+function setup({ days = [], settlements = {}, backfill = [], heads = () => head(), failDayQueries, cachedDocs = [] }: Setup = {}) {
   const metadata = { fromCache: false, hasPendingWrites: false };
   let headReads = 0;
   firestoreMocks.documentId.mockReturnValue('__name__');
@@ -84,7 +87,7 @@ function setup({ days = [], settlements = {}, backfill = [], heads = () => head(
     else if (ref.path.includes('/settlements/')) value = settlements[ref.path];
     else if (ref.path.startsWith('days/')) value = days.find(([id]) => `days/${id}` === ref.path)?.[1];
     else if (ref.path.startsWith('backfillDays/')) value = backfill.find(([id]) => `backfillDays/${id}` === ref.path)?.[1];
-    return { id: ref.path.split('/').at(-1), exists: () => value !== undefined, data: () => value, metadata };
+    return { id: ref.path.split('/').at(-1), exists: () => value !== undefined, data: () => value, metadata: cachedDocs.includes(ref.path) ? { fromCache: true, hasPendingWrites: false } : metadata };
   });
   firestoreMocks.getDocsFromServer.mockImplementation(async (raw: { collectionRef?: { path: string }; path?: string; constraints?: Constraint[] }) => {
     // `getDocsFromServer(collection(...))` passes the collection itself; a `query(...)` wraps it with constraints.
@@ -156,6 +159,15 @@ describe('CloudDayCloseRepository.loadSnapshot', () => {
     expect(snapshot.backfill).toMatchObject({ dayId: gap, reason: '那天斷線' });
     expect(snapshot.align).toEqual({ status: 'ready', next: { dayId: '2026-10-16', openingCash: 950 } });
     expect(snapshot.previous).toBeNull();
+  });
+
+  it.each([
+    ['system/dataHead', '營業資料狀態尚未由伺服器確認，請重新載入日結'],
+    ['system/accessLease', '使用權狀態尚未由伺服器確認，請重新載入日結'],
+  ])('#684: %s read from the cache is reported in plain words without internal names', async (cachedPath, message) => {
+    setup({ days: [[today, dayDoc()]], cachedDocs: [cachedPath] });
+    await expect(subject().loadSnapshot()).rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT', message });
+    await expect(subject().loadSnapshot()).rejects.toMatchObject({ message: plainMessage() });
   });
 
   it('rejects a legitimate concurrent change by seq at any point of the composition', async () => {

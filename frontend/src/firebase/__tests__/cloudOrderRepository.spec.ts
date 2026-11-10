@@ -304,7 +304,7 @@ describeWithEmulator('P08 cloud order repository reads, retries and transactions
     await withAdmin(async db => {
       await updateDoc(doc(db, `days/${today}`), { 'totals.bentoCount': 2 });
     });
-    await expect(repository(operatorA).loadSnapshot()).rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
+    await expect(repository(operatorA).loadSnapshot()).rejects.toMatchObject({ code: 'RECONCILIATION_FAILED', message: plainMessage() });
   });
 
   it('P08.R9: a transaction row outside the strict schema fails closed', async () => {

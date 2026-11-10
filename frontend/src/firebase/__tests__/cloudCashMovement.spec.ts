@@ -526,7 +526,7 @@ describeWithEmulator('P09a payments and counter cash movements: repository, read
   it('P09.13: day counter totals that disagree with the cash rows fail closed on read', async () => {
     expect((await repository().createCashMovement(await cashInput('expense', 80))).ok).toBe(true);
     await withAdmin(async db => updateDoc(doc(db, `days/${today}`), { 'totals.cashierExpense': 70 }));
-    await expect(freshSnapshot()).rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
+    await expect(freshSnapshot()).rejects.toMatchObject({ code: 'RECONCILIATION_FAILED', message: plainMessage() });
   });
 
   it('P09.14: a cash row moved onto a student or a student row moved onto the cashier fails closed on read', async () => {
