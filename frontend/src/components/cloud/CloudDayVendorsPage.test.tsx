@@ -122,7 +122,7 @@ function successful(commandId: string, kind: CommandReceipt['kind'], targets: Co
 }
 
 function renderPage(
-  props: Partial<{ leaseEpoch: number; identityKey: string }> = {},
+  props: Partial<{ leaseEpoch: number; identityKey: string; operatorSelf: { uid: string; name: string } | null }> = {},
   onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void,
 ) {
   return render(
@@ -130,6 +130,7 @@ function renderPage(
       db={{} as Firestore}
       leaseEpoch={props.leaseEpoch ?? 4}
       identityKey={props.identityKey ?? 'uid-a:4'}
+      operatorSelf={props.operatorSelf === undefined ? { uid: 'uid-a', name: '測試操作員甲' } : props.operatorSelf}
       onNavigationStateChange={onNavigationStateChange}
     />,
   );
@@ -347,8 +348,40 @@ describe('CloudDayVendorsPage', () => {
       openingCash: 0,
     }));
     expect(await screen.findByText(/已確認 確認 2026-10-15 開帳現金 完成/)).toBeInTheDocument();
-    expect(screen.getByText(/首次開帳人：uid-a/)).toBeInTheDocument();
+    expect(screen.getByText(/首次開帳人：測試操作員甲/)).toBeInTheDocument();
     expect(screen.getByText(/伺服器已確認開帳現金 NT\$ 0/)).toBeInTheDocument();
+  });
+
+  it('營業日狀態列不顯示 revision', async () => {
+    renderPage();
+    await screen.findByRole('form', { name: `${today} 開帳現金` });
+    expect(screen.queryByText(/revision/i)).not.toBeInTheDocument();
+  });
+
+  it('首次開帳人是目前操作員時顯示其名稱，畫面上不出現 UID', async () => {
+    repository.loadSnapshot.mockResolvedValue(snapshot({
+      day: { ...snapshot().day!, revision: 4, openingCash: 80, openedBy: 'uid-a', openedAt: '2026-10-15T01:00:00.000Z' },
+    }));
+    renderPage();
+    expect(await screen.findByText(/首次開帳人：測試操作員甲/)).toBeInTheDocument();
+    expect(screen.queryByText(/uid-a/)).not.toBeInTheDocument();
+  });
+
+  it('首次開帳人是其他操作員時顯示「其他操作員」，畫面上不出現 UID', async () => {
+    repository.loadSnapshot.mockResolvedValue(snapshot({
+      day: { ...snapshot().day!, revision: 4, openingCash: 80, openedBy: 'uid-other', openedAt: '2026-10-15T01:00:00.000Z' },
+    }));
+    renderPage();
+    expect(await screen.findByText(/首次開帳人：其他操作員/)).toBeInTheDocument();
+    expect(screen.queryByText(/uid-other/)).not.toBeInTheDocument();
+  });
+
+  it('首次開帳人未知時維持顯示「未知」', async () => {
+    repository.loadSnapshot.mockResolvedValue(snapshot({
+      day: { ...snapshot().day!, revision: 4, openingCash: 80, openedBy: null, openedAt: '2026-10-15T01:00:00.000Z' },
+    }));
+    renderPage();
+    expect(await screen.findByText(/首次開帳人：未知/)).toBeInTheDocument();
   });
 
   it('rejects opening values outside 0..20,000 without dispatching a command', async () => {

@@ -188,6 +188,7 @@ function renderPage(props: {
   initialPostCloseEntry?: OpeningMismatchAnomaly;
   onLedgerChanged?: () => void;
   hasUnresolvedPendingCommands?: boolean;
+  operatorSelf?: { uid: string; name: string } | null;
 } = {}, onNavigationStateChange = vi.fn()) {
   render(
     <CloudDayClosePage
@@ -199,6 +200,7 @@ function renderPage(props: {
       initialPostCloseEntry={props.initialPostCloseEntry}
       onLedgerChanged={props.onLedgerChanged}
       hasUnresolvedPendingCommands={props.hasUnresolvedPendingCommands}
+      operatorSelf={props.operatorSelf === undefined ? { uid: 'uid-a', name: '測試操作員甲' } : props.operatorSelf}
     />,
   );
   return onNavigationStateChange;
@@ -410,7 +412,8 @@ describe('CloudDayClosePage', () => {
     expect(history).toHaveTextContent('支出');
     expect(history).toHaveTextContent('NT$ 50');
     expect(history).toHaveTextContent('中間沒有營業，開店點現金少 50 元');
-    expect(history).toHaveTextContent('uid-a');
+    expect(history).toHaveTextContent('測試操作員甲');
+    expect(history).not.toHaveTextContent('uid-a');
     expect(history).toHaveTextContent('已計入有效關帳現金');
   });
 
@@ -445,6 +448,24 @@ describe('CloudDayClosePage', () => {
     expect(screen.getByRole('group', { name: /^實點現金/ })).toHaveTextContent('NT$ 1,160');
     expect(screen.getByRole('group', { name: /^差額/ })).toHaveTextContent('−NT$ 10');
     expect(screen.getByLabelText('有效關帳現金')).toHaveTextContent('NT$ 1,110');
+  });
+
+  it('補記歷史的操作者欄：自己顯示操作員名稱，其他人顯示「其他操作員」，不出現 UID（#668）', async () => {
+    const targetDay = q2Mismatch.previousClosedDayId;
+    const mine = postCloseEntry({ entryId: 'entry-mine', dayId: targetDay, createdBy: 'uid-a' });
+    const others = postCloseEntry({ entryId: 'entry-others', dayId: targetDay, createdBy: 'uid-someone-else' });
+    repository.read.mockResolvedValue(dayState({
+      dayId: targetDay, status: 'closed', revision: 8, lastSettlementRevision: 1,
+      settlements: [version(1)], postCloseEntries: [mine, others], effectiveCash: 1110,
+    }));
+    renderPage({ initialDayId: targetDay });
+
+    const mineRow = await screen.findByTestId('post-close-entry-entry-mine');
+    const othersRow = screen.getByTestId('post-close-entry-entry-others');
+    expect(within(mineRow).getAllByRole('cell')[3]).toHaveTextContent('測試操作員甲');
+    expect(within(othersRow).getAllByRole('cell')[3]).toHaveTextContent('其他操作員');
+    expect(screen.queryByText(/uid-someone-else/)).not.toBeInTheDocument();
+    expect(within(mineRow).queryByText(/uid-a/)).not.toBeInTheDocument();
   });
 
   it('does not split or submit an anomaly amount above the single-entry limit', async () => {
