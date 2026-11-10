@@ -977,6 +977,22 @@ describe('CloudOrdersPage', () => {
     expect(window.localStorage.getItem(LEGACY_PENDING_KEY)).toBeNull();
   });
 
+  it('#684: an unsupported-format read failure shows its plain message once, without a duplicated maintainer line', async () => {
+    repositoryMock.loadSnapshot.mockRejectedValue(Object.assign(
+      new Error('雲端資料狀態格式異常，請停止操作並聯絡維護者'), { code: 'UNSUPPORTED_SCHEMA' },
+    ));
+    renderComponent();
+    const alert = await screen.findByText(/伺服器資料無法安全顯示/);
+    expect(alert).toHaveTextContent('雲端資料狀態格式異常，請停止操作並聯絡維護者');
+    expect(alert.textContent).not.toContain('請聯絡系統維護者');
+  });
+
+  it('#684: an unsupported-format read failure without a message still tells the operator to contact the maintainer', async () => {
+    repositoryMock.loadSnapshot.mockRejectedValue(Object.assign(new Error(''), { code: 'UNSUPPORTED_SCHEMA' }));
+    renderComponent();
+    expect(await screen.findByText(/伺服器資料無法安全顯示.*請聯絡系統維護者/)).toBeVisible();
+  });
+
   it('masks data when the initial server read is denied (B2)', async () => {
     repositoryMock.loadSnapshot.mockRejectedValue(Object.assign(new Error('denied'), { code: 'LEASE_LOST' }));
     renderComponent();

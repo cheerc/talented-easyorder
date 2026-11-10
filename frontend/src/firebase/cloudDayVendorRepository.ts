@@ -333,7 +333,7 @@ function decodeHead(value: unknown): { seq: number; datasetId: string; goLiveDat
     || !integer(value.seq) || (value.lastCommandId !== null && typeof value.lastCommandId !== 'string')
     || typeof value.maintenance !== 'boolean' || !validDate(value.goLiveDate)
     || !(value.updatedAt instanceof Timestamp)) {
-    throw new CloudDayVendorRepositoryError('UNSUPPORTED_SCHEMA', '雲端 dataHead schema 不支援');
+    throw new CloudDayVendorRepositoryError('UNSUPPORTED_SCHEMA', '雲端資料狀態格式異常，請停止操作並聯絡維護者');
   }
   if (value.maintenance) throw new CloudDayVendorRepositoryError('MAINTENANCE', '系統正在維護，暫停讀取營業日與供應商資料');
   return { seq: value.seq, datasetId: value.datasetId, goLiveDate: value.goLiveDate };
@@ -356,11 +356,11 @@ function decodeVendor(id: string, value: unknown): CloudVendorRecord {
     || typeof value.note !== 'string' || value.note.length > 500
     || (value.status !== 'active' && value.status !== 'inactive') || typeof value.deleted !== 'boolean'
     || !integer(value.revision, 1) || typeof value.lastCommandId !== 'string' || !UUID.test(value.lastCommandId)) {
-    throw new CloudDayVendorRepositoryError('UNSUPPORTED_SCHEMA', `供應商文件 ${id} schema 不支援`);
+    throw new CloudDayVendorRepositoryError('UNSUPPORTED_SCHEMA', '供應商資料格式異常，請停止操作並聯絡維護者');
   }
   const createdAt = timestampIso(value.createdAt);
   const updatedAt = timestampIso(value.updatedAt);
-  if (!createdAt || !updatedAt) throw new CloudDayVendorRepositoryError('UNSUPPORTED_SCHEMA', `供應商文件 ${id} 缺少伺服器 Timestamp`);
+  if (!createdAt || !updatedAt) throw new CloudDayVendorRepositoryError('UNSUPPORTED_SCHEMA', '供應商資料格式異常，請停止操作並聯絡維護者');
   return {
     vendorId: id, name: value.name, phone: value.phone, note: value.note,
     status: value.status, deleted: value.deleted, createdAt,
@@ -394,7 +394,7 @@ function decodeDay(id: string, value: unknown): CloudDayRecord {
     || !integer(value.totals.accountRefunds, 0, 1_000_000_000)
     || !integer(value.lastSettlementRevision)
     || typeof value.lastCommandId !== 'string' || !UUID.test(value.lastCommandId)) {
-    throw new CloudDayVendorRepositoryError('UNSUPPORTED_SCHEMA', `營業日文件 ${id} schema 不支援`);
+    throw new CloudDayVendorRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${id} 資料格式異常，請停止操作並聯絡維護者`);
   }
   let menu: CloudDayMenuRecord | null = null;
   if (value.menu !== null) {
@@ -406,10 +406,10 @@ function decodeDay(id: string, value: unknown): CloudDayRecord {
       || !integer(raw.price, 1, 1_000_000) || !validVendorId(raw.vendorId)
       || typeof raw.vendorNameSnapshot !== 'string' || raw.vendorNameSnapshot.length < 1 || raw.vendorNameSnapshot.length > 100
       || !integer(raw.revision, 1) || (raw.inheritedFromDate !== null && !validDate(raw.inheritedFromDate))) {
-      throw new CloudDayVendorRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${id} 菜單 schema 不支援`);
+      throw new CloudDayVendorRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${id} 菜單資料格式異常，請停止操作並聯絡維護者`);
     }
     const updatedAt = timestampIso(raw.updatedAt);
-    if (!updatedAt) throw new CloudDayVendorRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${id} 菜單缺少伺服器 Timestamp`);
+    if (!updatedAt) throw new CloudDayVendorRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${id} 菜單資料格式異常，請停止操作並聯絡維護者`);
     menu = {
       businessDate: id, itemName: raw.itemName, price: raw.price, vendorId: raw.vendorId,
       vendorNameSnapshot: raw.vendorNameSnapshot, updatedAt, revision: raw.revision,
@@ -419,7 +419,7 @@ function decodeDay(id: string, value: unknown): CloudDayRecord {
   const updatedAt = timestampIso(value.updatedAt);
   const openedAt = value.openedAt === null ? null : timestampIso(value.openedAt);
   if (!updatedAt || (value.openedAt !== null && !openedAt)) {
-    throw new CloudDayVendorRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${id} 缺少伺服器 Timestamp`);
+    throw new CloudDayVendorRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${id} 資料格式異常，請停止操作並聯絡維護者`);
   }
   const totals = value.totals as Data;
   return {
@@ -448,7 +448,7 @@ function decodeDay(id: string, value: unknown): CloudDayRecord {
 
 async function readHead(db: Firestore): Promise<ReturnType<typeof decodeHead>> {
   const snapshot = await getDocFromServer(doc(db, dataHeadPath()));
-  if (!snapshot.exists()) throw new CloudDayVendorRepositoryError('UNSUPPORTED_SCHEMA', '雲端 dataHead 尚未初始化');
+  if (!snapshot.exists()) throw new CloudDayVendorRepositoryError('UNSUPPORTED_SCHEMA', '雲端資料狀態尚未由維護者初始化，請聯絡維護者');
   return decodeHead(snapshot.data());
 }
 

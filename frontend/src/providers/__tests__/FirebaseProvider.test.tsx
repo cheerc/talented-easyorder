@@ -126,6 +126,21 @@ describe('#331 — FirebaseProvider lifecycle tests', () => {
     expect(result.current.fb).toBeNull();
   });
 
+  it('#684: the blocked old-cache notice names no engineering term and still says what to do', async () => {
+    let notifyBlocked: (() => void) | undefined;
+    mockEnsure.mockImplementation(((_env: unknown, options?: { onFirestoreCleanupBlocked?: () => void }) => {
+      notifyBlocked = options?.onFirestoreCleanupBlocked;
+      return new Promise(() => {});
+    }) as unknown as typeof ensureFirebaseInitialized);
+
+    const { result } = renderHook(() => useFirebase(), { wrapper });
+    await waitFor(() => expect(notifyBlocked).toBeDefined());
+    act(() => notifyBlocked?.());
+
+    expect(result.current.fbError).not.toMatch(/Firestore/i);
+    expect(result.current.fbError).toContain('請關閉其他 EasyOrder 分頁後再重新載入');
+  });
+
   it('subscribes to operator access after init', async () => {
     const mockServices = {
       app: {} as Record<string, unknown>,

@@ -225,7 +225,7 @@ function decodeHead(value: unknown): Data {
     || typeof value.maintenance !== 'boolean'
     || !validDate(value.goLiveDate)
     || !(value.updatedAt instanceof Timestamp)) {
-    throw new RejectCommand('UNSUPPORTED_SCHEMA', '雲端 dataHead schema 不支援');
+    throw new RejectCommand('UNSUPPORTED_SCHEMA', '雲端資料狀態格式異常，請停止操作並聯絡維護者');
   }
   return value;
 }
@@ -235,7 +235,7 @@ function decodeLease(value: unknown): Data {
     || (value.holderUid !== null && (typeof value.holderUid !== 'string' || value.holderUid.length === 0))
     || !integer(value.epoch)
     || !(value.updatedAt instanceof Timestamp)) {
-    throw new RejectCommand('UNSUPPORTED_SCHEMA', '雲端 accessLease schema 不支援');
+    throw new RejectCommand('UNSUPPORTED_SCHEMA', '使用權資料格式異常，請停止操作並聯絡維護者');
   }
   return value;
 }
@@ -260,7 +260,7 @@ function decodeStudent(value: unknown): Data {
     || !integer(value.revision, 1)
     || typeof value.lastCommandId !== 'string'
     || !(value.updatedAt instanceof Timestamp)) {
-    throw new RejectCommand('UNSUPPORTED_SCHEMA', '學生文件 schema 不支援');
+    throw new RejectCommand('UNSUPPORTED_SCHEMA', '學生資料格式異常，請停止操作並聯絡維護者');
   }
   return value;
 }
@@ -288,7 +288,7 @@ function decodeDay(value: unknown): Data {
     || !integer(value.lastSettlementRevision)
     || typeof value.lastCommandId !== 'string'
     || !(value.updatedAt instanceof Timestamp)) {
-    throw new RejectCommand('UNSUPPORTED_SCHEMA', '營業日文件 schema 不支援');
+    throw new RejectCommand('UNSUPPORTED_SCHEMA', '營業日資料格式異常，請停止操作並聯絡維護者');
   }
   if (value.menu !== null) {
     const menu = value.menu;
@@ -302,7 +302,7 @@ function decodeDay(value: unknown): Data {
       || !(menu.updatedAt instanceof Timestamp)
       || !integer(menu.revision, 1)
       || (menu.inheritedFromDate !== null && !validDate(menu.inheritedFromDate))) {
-      throw new RejectCommand('UNSUPPORTED_SCHEMA', '營業日菜單 schema 不支援');
+      throw new RejectCommand('UNSUPPORTED_SCHEMA', '營業日菜單資料格式異常，請停止操作並聯絡維護者');
     }
   }
   return value;
@@ -319,7 +319,7 @@ function decodeVendor(value: unknown): Data {
     || !(value.createdAt instanceof Timestamp) || !integer(value.revision, 1)
     || typeof value.lastCommandId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.lastCommandId)
     || !(value.updatedAt instanceof Timestamp)) {
-    throw new RejectCommand('UNSUPPORTED_SCHEMA', '供應商文件 schema 不支援');
+    throw new RejectCommand('UNSUPPORTED_SCHEMA', '供應商資料格式異常，請停止操作並聯絡維護者');
   }
   return value;
 }
@@ -343,7 +343,7 @@ function decodeTransaction(value: unknown): Data {
     || !integer(value.revision, 1) || !integer(value.createdSeq, 1)
     || typeof value.note !== 'string' || typeof value.operatorUid !== 'string' || typeof value.lastCommandId !== 'string'
     || !(value.createdAt instanceof Timestamp) || !(value.updatedAt instanceof Timestamp)) {
-    throw new RejectCommand('UNSUPPORTED_SCHEMA', '交易文件 schema 不支援');
+    throw new RejectCommand('UNSUPPORTED_SCHEMA', '交易資料格式異常，請停止操作並聯絡維護者');
   }
   return value;
 }
@@ -396,7 +396,7 @@ function requireDateAfterGoLive(date: string, goLiveDate: string): void {
 
 function buildReceipt(stored: StoredEnabledCommandDoc): CommandReceipt {
   if (!(stored.committedAt instanceof Timestamp) || stored.after === null) {
-    throw new RejectCommand('UNSUPPORTED_SCHEMA', 'receipt 缺少伺服器 Timestamp 或 after snapshot');
+    throw new RejectCommand('UNSUPPORTED_SCHEMA', '伺服器的命令結果記錄不完整；請勿重送，保留命令編號並聯絡維護者');
   }
   return {
     commandId: stored.commandId,
@@ -421,12 +421,12 @@ function storedInput(stored: StoredEnabledCommandDoc): unknown {
 
 async function assertStoredReceiptMatches(stored: StoredEnabledCommandDoc, input: CanonicalEnabledInput, fingerprint: string): Promise<void> {
   if (!sameCommandSemantics(input, storedInput(stored))) {
-    throw new RejectCommand('INVALID_INPUT', 'commandId 已用於不同的命令內容');
+    throw new RejectCommand('INVALID_INPUT', '這個命令編號已被不同內容的操作使用；請勿重送，並聯絡維護者');
   }
   const storedNormalized = normalizeEnabledCommandInput(storedInput(stored));
   const actualFingerprint = await fingerprintCommandInput(storedNormalized);
   if (stored.inputFingerprint !== actualFingerprint || stored.inputFingerprint !== fingerprint) {
-    throw new RejectCommand('UNSUPPORTED_SCHEMA', 'receipt semantic input 與 fingerprint 不一致');
+    throw new RejectCommand('UNSUPPORTED_SCHEMA', '伺服器的命令結果與原操作內容對不上；請勿重送，保留命令編號並聯絡維護者');
   }
 }
 
@@ -441,7 +441,7 @@ function mapTransactionError(error: unknown): CommandErrorCode {
   return 'UNKNOWN_RESULT';
 }
 
-function resultFromUnknownError(message = '提交回應不確定，請用原 commandId 查詢結果'): CommandResult {
+function resultFromUnknownError(message = '提交結果不確定；請用原命令編號查詢結果，不要重送'): CommandResult {
   return errorResult('UNKNOWN_RESULT', message);
 }
 
@@ -619,7 +619,7 @@ function leaseDenialResult(code: Diagnosis): CommandResult | null {
     return errorResult(code, '資料已被其他操作更新；請重新載入，確認目前狀態後再操作。');
   }
   if (code === 'INVALID_INPUT') {
-    return errorResult(code, '目前 Rules 不允許這筆命令；請檢查日期與資料狀態');
+    return errorResult(code, '伺服器目前不允許這筆操作；請檢查日期與資料狀態');
   }
   if (code === 'DAY_CLOSED') {
     return errorResult(code, '營業日已關閉；請重新載入日期資料');
@@ -688,7 +688,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     if ([headSnapshot, leaseSnapshot, operatorSnapshot].some(snapshot => snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites)) {
       throw new RejectCommand('UNKNOWN_RESULT', '伺服器尚未確認目前資料與使用權');
     }
-    if (!headSnapshot.exists()) throw new RejectCommand('UNSUPPORTED_SCHEMA', 'dataHead 尚未由維護者初始化');
+    if (!headSnapshot.exists()) throw new RejectCommand('UNSUPPORTED_SCHEMA', '雲端資料狀態尚未由維護者初始化，請聯絡維護者');
     if (!leaseSnapshot.exists()) throw new RejectCommand('LEASE_LOST', '使用權租約不存在');
     if (!operatorSnapshot.exists()) throw new RejectCommand('UNAUTHORIZED', '操作員文件不存在');
     const head = decodeHead(headSnapshot.data());
@@ -740,7 +740,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         const afterDataset = (stored.after as Data | null)?.head && ((stored.after as Data).head as Data).datasetId;
         if (stored.commandId !== record.commandId || stored.actor.uid !== record.uid
           || beforeDataset !== record.datasetId || afterDataset !== record.datasetId) {
-          throw new RejectCommand('UNSUPPORTED_SCHEMA', '伺服器 receipt 與待核對識別不一致');
+          throw new RejectCommand('UNSUPPORTED_SCHEMA', '伺服器的命令結果與待核對的操作對不上；請勿重送，保留命令編號並聯絡維護者');
         }
         checks.push({ status: 'matched', receipt: buildReceipt(stored), stored });
       }
@@ -752,7 +752,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
     } catch (error) {
       if (error instanceof CloudCommandReadError) throw error;
       if (error instanceof RejectCommand) throw new CloudCommandReadError(error.code, error.message);
-      throw new CloudCommandReadError(mapTransactionError(error), '目前無法安全確認伺服器 receipt');
+      throw new CloudCommandReadError(mapTransactionError(error), '目前無法安全確認伺服器上的命令結果；請稍後用原命令編號查詢');
     }
   }
 
@@ -792,24 +792,24 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
       stored = decodeEnabledCommandDoc(snapshot.data());
     } catch (error) {
       if (error instanceof InvalidCloudCommandInput) {
-        throw new RejectCommand('UNSUPPORTED_SCHEMA', '伺服器 command receipt schema 不支援');
+        throw new RejectCommand('UNSUPPORTED_SCHEMA', '伺服器的命令結果格式異常；請勿重送，保留命令編號並聯絡維護者');
       }
       throw error;
     }
     if (stored.commandId !== commandId) {
-      throw new RejectCommand('UNSUPPORTED_SCHEMA', 'receipt commandId 與文件路徑不一致');
+      throw new RejectCommand('UNSUPPORTED_SCHEMA', '伺服器的命令結果與命令編號對不上；請勿重送，保留命令編號並聯絡維護者');
     }
     try {
       const normalized = normalizeEnabledCommandInput(storedInput(stored));
       const actualFingerprint = await fingerprintCommandInput(normalized);
       recoveryReader?.assertCurrent();
       if (stored.inputFingerprint !== actualFingerprint) {
-        throw new RejectCommand('UNSUPPORTED_SCHEMA', 'receipt semantic input 與 fingerprint 不一致');
+        throw new RejectCommand('UNSUPPORTED_SCHEMA', '伺服器的命令結果與原操作內容對不上；請勿重送，保留命令編號並聯絡維護者');
       }
     } catch (error) {
       if (error instanceof RejectCommand) throw error;
       if (error instanceof InvalidCloudCommandInput) {
-        throw new RejectCommand('UNSUPPORTED_SCHEMA', 'receipt semantic input schema 不支援');
+        throw new RejectCommand('UNSUPPORTED_SCHEMA', '伺服器的命令結果格式異常；請勿重送，保留命令編號並聯絡維護者');
       }
       throw error;
     }
@@ -818,7 +818,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
 
   async function readCommand(commandId: string): Promise<CommandReceipt | null> {
     if (typeof commandId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(commandId)) {
-      throw new CloudCommandReadError('INVALID_INPUT', 'commandId 必須是 UUID');
+      throw new CloudCommandReadError('INVALID_INPUT', '命令編號格式不正確');
     }
     try {
       const user = getCurrentUser(options);
@@ -831,7 +831,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
       if (error instanceof RejectCommand) throw new CloudCommandReadError(error.code, error.message);
       // null is reserved for a successful server read that confirmed absence.
       const code = mapTransactionError(error);
-      throw new CloudCommandReadError(code, '無法從伺服器確認 command receipt');
+      throw new CloudCommandReadError(code, '無法從伺服器確認命令結果');
     }
   }
 
@@ -924,7 +924,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
             const afterDataset = (stored.after as Data | null)?.head && ((stored.after as Data).head as Data).datasetId;
             if (stored.commandId !== canonical.commandId || stored.actor.uid !== user.uid
               || beforeDataset !== expectedDatasetId || afterDataset !== expectedDatasetId) {
-              verificationError = new RejectCommand('UNSUPPORTED_SCHEMA', '伺服器 receipt 與原命令資料集或操作人不一致');
+              verificationError = new RejectCommand('UNSUPPORTED_SCHEMA', '伺服器的命令結果與原操作的資料或操作人對不上；請勿重送，保留命令編號並聯絡維護者');
             } else {
               try {
                 await assertStoredReceiptMatches(stored, canonical, inputFingerprint);
@@ -1157,7 +1157,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         checkOperator(operatorSnapshot.data(), user);
         if (!leaseSnapshot.exists()) throw new RejectCommand('LEASE_LOST', '使用權租約不存在');
         checkLease(leaseSnapshot.data(), input, user);
-        if (!headSnapshot.exists()) throw new RejectCommand('UNSUPPORTED_SCHEMA', 'dataHead 尚未由維護者初始化');
+        if (!headSnapshot.exists()) throw new RejectCommand('UNSUPPORTED_SCHEMA', '雲端資料狀態尚未由維護者初始化，請聯絡維護者');
         const headBefore = decodeHead(headSnapshot.data());
         const transactionUser = getCurrentUser(options);
         requireVerifiedGoogle(transactionUser);
@@ -1167,7 +1167,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
 
         if (commandSnapshot.exists()) {
           const stored = decodeEnabledCommandDoc(commandSnapshot.data());
-          if (stored.commandId !== input.commandId) throw new RejectCommand('UNSUPPORTED_SCHEMA', 'receipt commandId 與文件路徑不一致');
+          if (stored.commandId !== input.commandId) throw new RejectCommand('UNSUPPORTED_SCHEMA', '伺服器的命令結果與命令編號對不上；請勿重送，保留命令編號並聯絡維護者');
           // Historical actor/lease epoch do not authorize a new read; the current operator/lease above does.
           await assertStoredReceiptMatches(stored, input, fingerprint);
           return { existing: stored } as const;
@@ -1186,7 +1186,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
           } else {
             if (!studentSnapshot.exists()) throw new RejectCommand('INVALID_INPUT', '目標學生不存在');
             studentBefore = decodeStudent(studentSnapshot.data());
-            if (studentBefore.studentId !== targetStudentId) throw new RejectCommand('UNSUPPORTED_SCHEMA', '學生文件 ID 與路徑不一致');
+            if (studentBefore.studentId !== targetStudentId) throw new RejectCommand('UNSUPPORTED_SCHEMA', '學生資料格式異常，請停止操作並聯絡維護者');
           }
         }
         if (targetTransactionRef) {
@@ -1215,7 +1215,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
           const oldIndexSnapshot = await tx.get(oldIndexRef);
           const newIndexSnapshot = await tx.get(newIndexRef);
           if (!oldIndexSnapshot.exists() || oldIndexSnapshot.data()?.studentId !== targetStudentId) {
-            throw new RejectCommand('UNSUPPORTED_SCHEMA', '舊編號索引不存在或指向不正確');
+            throw new RejectCommand('UNSUPPORTED_SCHEMA', '學生舊編號資料異常，請停止操作並聯絡維護者');
           }
           if (newIndexSnapshot.exists()) {
             throw new RejectCommand('INVALID_INPUT', '目標編號已被使用');
@@ -1317,14 +1317,14 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
           const nextRef = doc(db, settlementPath(dayId, settlementRevision));
           const previousSnapshot = previousRef ? await tx.get(previousRef) : null;
           const nextSnapshot = await tx.get(nextRef);
-          if (nextSnapshot.exists()) throw new RejectCommand('UNSUPPORTED_SCHEMA', '日結版本已存在，但營業日指標未指向它');
+          if (nextSnapshot.exists()) throw new RejectCommand('UNSUPPORTED_SCHEMA', '日結紀錄與營業日狀態對不上，請停止操作並聯絡維護者');
           let previousSettlement: Data | null = null;
           if (previousSnapshot) {
-            if (!previousSnapshot.exists()) throw new RejectCommand('UNSUPPORTED_SCHEMA', '前一版日結不存在');
+            if (!previousSnapshot.exists()) throw new RejectCommand('UNSUPPORTED_SCHEMA', '前一版日結紀錄不存在，請停止操作並聯絡維護者');
             try {
               previousSettlement = decodeSettlementDoc(previousSnapshot.data(), dayId, settlementRevision - 1);
             } catch {
-              throw new RejectCommand('UNSUPPORTED_SCHEMA', '前一版日結 schema 不支援');
+              throw new RejectCommand('UNSUPPORTED_SCHEMA', '前一版日結資料格式異常，請停止操作並聯絡維護者');
             }
           }
           const dayAfter: Data = {
@@ -1487,7 +1487,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         }
 
         if (input.kind === 'EnsureDay') {
-          if (!daySnapshot) throw new RejectCommand('UNSUPPORTED_SCHEMA', 'EnsureDay 缺少目標日期參照');
+          if (!daySnapshot) throw new RejectCommand('UNSUPPORTED_SCHEMA', '建立營業日缺少目標日期，請停止操作並聯絡維護者');
           if (daySnapshot.exists()) throw new RejectCommand('INVALID_INPUT', '該營業日已存在；不會重設或重開日期');
           const businessDate = input.payload.businessDate;
           requireDateAfterGoLive(businessDate, String(headBefore.goLiveDate));
@@ -1511,12 +1511,12 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         }
 
         if (input.kind === 'SaveVendor' || input.kind === 'RemoveVendor') {
-          if (!targetVendorRef || !vendorSnapshot) throw new RejectCommand('UNSUPPORTED_SCHEMA', '供應商命令缺少 target 參照');
+          if (!targetVendorRef || !vendorSnapshot) throw new RejectCommand('UNSUPPORTED_SCHEMA', '供應商操作缺少目標供應商，請停止操作並聯絡維護者');
           const vendorId = input.targets.vendorId;
           const expectedRevision = input.expectedRevisions.vendor;
           const vendorBefore = vendorSnapshot.exists() ? decodeVendor(vendorSnapshot.data()) : null;
           if (vendorBefore && vendorBefore.vendorId !== vendorId) {
-            throw new RejectCommand('UNSUPPORTED_SCHEMA', '供應商文件 ID 與路徑不一致');
+            throw new RejectCommand('UNSUPPORTED_SCHEMA', '供應商資料格式異常，請停止操作並聯絡維護者');
           }
           checkRevision(vendorBefore?.revision ?? 0, expectedRevision, '供應商版本');
 
@@ -1619,7 +1619,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
                 throw new RejectCommand('INVALID_INPUT', '最近來源菜單或供應商已變更；請重新載入或直接確認新菜單');
               }
             } else if (sourceDaySnapshot) {
-              throw new RejectCommand('UNSUPPORTED_SCHEMA', '直接菜單命令不應帶繼承來源參照');
+              throw new RejectCommand('UNSUPPORTED_SCHEMA', '直接指定的菜單不應帶有沿用來源，請停止操作並聯絡維護者');
             }
             const previousMenu = dayBefore.menu as Data | null;
             const menuAfter: Data = {
@@ -2030,7 +2030,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         }
 
         if (input.kind !== 'CreateOrder' && input.kind !== 'CreatePayment') {
-          throw new RejectCommand('UNSUPPORTED_SCHEMA', '命令種類沒有對應的寫入流程');
+          throw new RejectCommand('UNSUPPORTED_SCHEMA', '這種操作目前無法處理，請停止操作並聯絡維護者');
         }
         if (!daySnapshot?.exists() || !studentBefore || !targetTransactionRef || !dayRef) {
           throw new RejectCommand('INVALID_INPUT', '建立交易需要已存在的營業日與學生');

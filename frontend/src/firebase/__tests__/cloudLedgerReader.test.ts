@@ -21,6 +21,7 @@ vi.mock('firebase/firestore', async importOriginal => {
 });
 
 import { createCloudLedgerReader } from '../cloudDayCloseRepository';
+import { plainMessage } from './helpers/plainMessage';
 
 const uid = 'synthetic-operator';
 let db: Firestore;
@@ -306,9 +307,9 @@ describe('createCloudLedgerReader.read', () => {
       days: closed,
       settlements: { 'days/2026-10-01/settlements/2': settlementDoc('2026-10-01', 2, { status: 'reopened', countedCash: null, difference: null, note: '重開' }) },
     });
-    await expect(reader().read()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    await expect(reader().read()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
     setup({ days: [['2026-10-01', dayDoc({ status: 'closed', openingCash: 100, lastSettlementRevision: 0 })]] });
-    await expect(reader().read()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    await expect(reader().read()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
   });
 
   it('uses the Taipei date of the server lease time, not the browser clock', async () => {
@@ -318,7 +319,7 @@ describe('createCloudLedgerReader.read', () => {
 
   it('refuses a head with a malformed day path', async () => {
     setup({ days: [['2026-10-02x', dayDoc()]] });
-    await expect(reader().read()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    await expect(reader().read()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
   });
 });
 
@@ -404,7 +405,7 @@ describe('createCloudLedgerReader.findPreviousClosed', () => {
 
   it('fails closed on a malformed day path, a missing settlement, and a bad date', async () => {
     setup({ days: [['2026-10-02x', dayDoc()]] });
-    await expect(reader().findPreviousClosed('2026-10-06')).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    await expect(reader().findPreviousClosed('2026-10-06')).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
     setup({ days: [['2026-10-02', closedDay()]], settlements: {} });
     await expect(reader().findPreviousClosed('2026-10-06')).rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT' });
     await expect(reader().findPreviousClosed('2026-13-40')).rejects.toMatchObject({ code: 'INVALID_INPUT' });
@@ -479,7 +480,7 @@ describe('createCloudLedgerReader.findNextOpened (contract §14.2)', () => {
 
   it('fails closed on a malformed day path and a bad date', async () => {
     setup({ days: [['2026-10-04x', dayDoc()]] });
-    await expect(reader().findNextOpened('2026-10-01')).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    await expect(reader().findNextOpened('2026-10-01')).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
     await expect(reader().findNextOpened('2026-13-40')).rejects.toMatchObject({ code: 'INVALID_INPUT' });
   });
 });
@@ -546,9 +547,9 @@ describe('createCloudLedgerReader: post-close entries (contract §15)', () => {
 
   it('fails closed on an entry the schema does not know', async () => {
     setup({ days: q2Days, settlements: q2Settlements, entries: [entry(uuidOf(1), '2026-10-01', { amount: 0 })] });
-    await expect(reader().read()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    await expect(reader().read()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
     setup({ days: q2Days, settlements: q2Settlements, entries: [entry(uuidOf(1), '2026-10-01', { extra: true })] });
-    await expect(reader().read()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    await expect(reader().read()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
   });
 
   it('findPreviousClosed returns the entries\' net of just the closed day it found, by an equality query on dayId', async () => {

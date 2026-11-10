@@ -23,6 +23,7 @@ import {
 } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { listCloudStudents } from '../cloudStudentRepository';
+import { plainMessage } from './helpers/plainMessage';
 
 declare const process: { env: Record<string, string | undefined>; cwd: () => string };
 
@@ -182,7 +183,7 @@ describeWithEmulator('P06 server-only student-list repository and production Rul
       ...studentDocument(makeUuid(200), 201), currentBalance: 1.25,
     }));
     await expect(listCloudStudents(authedDb(operatorA), { currentUser: () => fakeCurrentUser(operatorA) }))
-      .rejects.toMatchObject({ name: 'CloudStudentRepositoryError', code: 'UNSUPPORTED_SCHEMA' });
+      .rejects.toMatchObject({ name: 'CloudStudentRepositoryError', code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
   });
 
   it.each([
@@ -194,18 +195,18 @@ describeWithEmulator('P06 server-only student-list repository and production Rul
   ])('fails closed on %s', async (_label, id, data) => {
     await withAdmin(async db => setDoc(doc(db, `students/${id}`), data));
     await expect(listCloudStudents(authedDb(operatorA), { currentUser: () => fakeCurrentUser(operatorA) }))
-      .rejects.toMatchObject({ name: 'CloudStudentRepositoryError', code: 'UNSUPPORTED_SCHEMA' });
+      .rejects.toMatchObject({ name: 'CloudStudentRepositoryError', code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
   });
 
   it('distinguishes missing, malformed, and maintenance dataHead states', async () => {
     await withAdmin(db => deleteDoc(doc(db, 'system/dataHead')));
     await expect(listCloudStudents(authedDb(operatorA), { currentUser: () => fakeCurrentUser(operatorA) }))
-      .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+      .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
 
     await seedHolder();
     await withAdmin(db => updateDoc(doc(db, 'system/dataHead'), { schemaVersion: 2 }));
     await expect(listCloudStudents(authedDb(operatorA), { currentUser: () => fakeCurrentUser(operatorA) }))
-      .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+      .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
 
     await seedHolder();
     await withAdmin(db => updateDoc(doc(db, 'system/dataHead'), { maintenance: true }));

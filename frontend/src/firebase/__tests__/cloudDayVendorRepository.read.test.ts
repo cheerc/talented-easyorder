@@ -37,6 +37,7 @@ vi.mock('firebase/firestore', async importOriginal => {
 });
 
 import { createCloudDayVendorRepository } from '../cloudDayVendorRepository';
+import { plainMessage } from './helpers/plainMessage';
 
 const uid = 'synthetic-operator';
 const commandId = '11111111-1111-4111-8111-111111111111';
@@ -279,7 +280,7 @@ describe('cloud day/vendor repository mocked server reads', () => {
     void _deleted;
     setupReadMocks({ vendors: [document('vendor-tombstone', malformedTombstone)] });
 
-    await expect(repo().loadSnapshot()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    await expect(repo().loadSnapshot()).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
   });
 
   it('distinguishes an exhausted 500-vendor collection from a 501-document overflow probe', async () => {
@@ -310,7 +311,7 @@ describe('cloud day/vendor repository mocked server reads', () => {
   ])('rejects day schema with inconsistent opening cash nullity: %s', async (_label, fields) => {
     setupReadMocks({ targetDays: { '2026-10-16': validDay('2026-10-16', fields) } });
 
-    await expect(repo().loadSnapshot('2026-10-16')).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    await expect(repo().loadSnapshot('2026-10-16')).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
   });
 
   it.each(['mealTotal', 'retainedReceipts', 'cashierIncome', 'cashierExpense', 'accountRefunds'] as const)(
@@ -323,7 +324,7 @@ describe('cloud day/vendor repository mocked server reads', () => {
         },
       });
 
-      await expect(repo().loadSnapshot('2026-10-16')).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+      await expect(repo().loadSnapshot('2026-10-16')).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
     },
   );
 
@@ -382,7 +383,7 @@ describe('cloud day/vendor repository mocked server reads', () => {
       ],
     });
 
-    await expect(repo().loadSnapshot('2026-10-16')).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+    await expect(repo().loadSnapshot('2026-10-16')).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
   });
 
   it('probes beyond exactly 2,000 null-menu day documents to confirm exhaustion', async () => {

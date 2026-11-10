@@ -95,7 +95,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     ensureFirebaseInitialized(undefined, {
       signal: initializationSignal.signal,
       onFirestoreCleanupBlocked: () => {
-        if (!cancelled) setFbError('舊版 Firestore 快取仍被其他分頁使用。請關閉其他 EasyOrder 分頁後再重新載入。');
+        if (!cancelled) setFbError('舊版瀏覽器快取仍被其他分頁使用。請關閉其他 EasyOrder 分頁後再重新載入。');
       },
     }).then(
       services => {

@@ -20,6 +20,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createCloudReadRepository } from '../cloudReadRepository';
 import { createCloudOrderRepository } from '../cloudOrderRepository';
 import { createCloudReportActionRepository } from '../cloudReportActionRepository';
+import { plainMessage } from './helpers/plainMessage';
 
 declare const process: { env: Record<string, string | undefined>; cwd: () => string };
 
@@ -421,7 +422,7 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
     });
     await expect(repository().readReport({
       range: { kind: 'custom', startDate: today, endDate: today }, studentId: null, leaseEpoch: 7,
-    })).rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
+    })).rejects.toMatchObject({ code: 'RECONCILIATION_FAILED', message: plainMessage() });
   });
 
   it('does not read the day projection for one account (P16f1): the history and the scoped report need only the transactions of that student', async () => {
@@ -456,7 +457,7 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
     });
 
     await expect(repository().readReport({ studentId: null, range, leaseEpoch: 7 }))
-      .rejects.toMatchObject({ code: 'RECONCILIATION_FAILED' });
+      .rejects.toMatchObject({ code: 'RECONCILIATION_FAILED', message: plainMessage() });
   });
 
   it.each(['closed', 'reopened'] as const)(
@@ -472,9 +473,9 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
       });
 
       await expect(repository().readSummary({ range, leaseEpoch: 7 }))
-        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
       await expect(repository().readReport({ studentId: null, range, leaseEpoch: 7 }))
-        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
     },
   );
 
@@ -858,6 +859,32 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
     expect(bumped).toBe(true);
   });
 
+  it('#684: a transaction that points to a missing student is reported without its internal ID', async () => {
+    const orphanId = uuidFrom(901);
+    await withAdmin(async db => {
+      await setDoc(doc(db, `transactions/${orphanId}`), tx(orphanId, uuidFrom(990), today, 204, 'payment'));
+      await setDoc(doc(db, 'system/dataHead'), head(205));
+    });
+    const error = await repository().readReport({
+      range: { kind: 'custom', startDate: today, endDate: today }, studentId: uuidFrom(990), leaseEpoch: 7,
+    }).then(() => null, (cause: unknown) => cause as Error);
+    expect(error).toMatchObject({ code: 'RECONCILIATION_FAILED', message: plainMessage() });
+    expect(error?.message).not.toContain(orphanId);
+    expect(error?.message).toBe('有交易指向不存在的學生，沒有顯示部分資料；請停止操作並聯絡維護者');
+  });
+
+  it('#684: an account history balance outside the safe range is reported without the account ID', async () => {
+    await withAdmin(async db => {
+      await setDoc(doc(db, `students/${studentA}`), student(studentA, '001', 0, 1_000_000_000));
+    });
+    const error = await repository().readAccountHistory({
+      studentId: studentA, range: { kind: 'custom', startDate: today, endDate: today }, leaseEpoch: 7,
+    }).then(() => null, (cause: unknown) => cause as Error);
+    expect(error).toMatchObject({ code: 'RECONCILIATION_FAILED', message: plainMessage() });
+    expect(error?.message).not.toContain(studentA);
+    expect(error?.message).toBe('帳戶歷史餘額超出可安全計算的範圍，沒有顯示部分資料；請停止操作並聯絡維護者');
+  });
+
   it('rejects an invalid Gregorian business date found in the transactions read for the range', async () => {
     // a past date inside the range read, so that the Gregorian check (not a future date or the go-live check) is what refuses it
     const invalidId = uuidFrom(900);
@@ -871,7 +898,7 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
       studentId: studentA,
       range: { kind: 'custom', startDate: '2025-02-28', endDate: '2025-03-02' },
       leaseEpoch: 7,
-    })).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: expect.stringContaining('有效 Gregorian 營業日') });
+    })).rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: expect.stringContaining('缺少有效的營業日') });
   });
 
   describe('readAccessEvents (P13c2)', () => {
@@ -970,7 +997,9 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
         currentUser: fakeCurrentUser,
         pageSize: 1,
         maxAccessEvents: 2,
-      }).readAccessEvents({ range: todayRange(), leaseEpoch })).rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT' });
+      }).readAccessEvents({ range: todayRange(), leaseEpoch })).rejects.toMatchObject({
+        code: 'INCOMPLETE_SNAPSHOT', message: '資料量超過一次能完整讀取的上限，沒有顯示部分資料；請縮小查詢範圍後重新查詢',
+      });
     });
 
     it('rejects when the lease changes holder between pages', async () => {
@@ -1023,14 +1052,14 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
         kind: 'unknown-kind',
       }));
       await expect(repository().readAccessEvents({ range: todayRange(), leaseEpoch }))
-        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: '使用權交接紀錄格式異常，請停止操作並聯絡維護者' });
     });
 
     it('rejects an event numbered after the current lease epoch', async () => {
       await withAdmin(db => setDoc(doc(db, `accessEvents/${leaseEpoch + 1}`),
         accessEvent('acquire', 'p13c2-a', null, 'p13c2-a', emailA, taipeiInstant(today, '08:00:00.000'))));
       await expect(repository().readAccessEvents({ range: todayRange(), leaseEpoch }))
-        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA' });
+        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
     });
 
     it('returns an empty complete list when no handover happened in the range', async () => {

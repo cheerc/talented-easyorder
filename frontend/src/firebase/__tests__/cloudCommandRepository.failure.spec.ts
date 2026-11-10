@@ -25,6 +25,7 @@ import {
   type PendingJournalAdapter,
 } from '../cloudPendingJournal';
 import { SAFE_DIAGNOSTICS_STORAGE_KEY } from '../../errors/errorLogger';
+import { ENGINEERING_TERMS } from './helpers/plainMessage';
 
 const PLAIN_WORDING_FORBIDDEN = /來源序號|資料序號|資料版本|學生版本|營業日版本|交易版本|revisions?|payload|command(?!\s*編號)|commandId|\bseq\b/i;
 type ServerRead = typeof import('firebase/firestore').getDocFromServer;
@@ -288,6 +289,7 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
       currentUser: () => fakeCurrentUser(operatorA), pendingJournal,
     }).commitCommand(input);
     expect(result).toMatchObject({ ok: false, error: { code: 'UNKNOWN_RESULT' } });
+    expect(result.ok ? '' : result.error.message).not.toMatch(ENGINEERING_TERMS);
     expect(callbackAttempts).toBe(5);
     expect(firestoreMock.runTransaction).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem(`${pendingJournal.namespace}:${commandId}`)).toBe(JSON.stringify({
@@ -361,7 +363,7 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
     const diagnosticWriteCount = setItem.mock.calls.length;
     expect(diagnosticWriteCount).toBeGreaterThan(0);
-    await expect(repository(operatorA).readCommand('not-a-uuid')).rejects.toThrow('commandId 必須是 UUID');
+    await expect(repository(operatorA).readCommand('not-a-uuid')).rejects.toThrow('命令編號格式不正確');
     expect(setItem).toHaveBeenCalledTimes(diagnosticWriteCount);
   });
 
@@ -648,6 +650,9 @@ describeWithEmulator('P05 post-commit receipt read failures', () => {
       firestoreMock.runTransaction.mockRejectedValueOnce(permissionDenied());
       const result = await repository(operatorA).commitCommand(input);
       expect(result, input.kind).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+      // #684: the message reaches the screens, so it names no engineering term and still says what to check.
+      expect(result.ok ? '' : result.error.message, input.kind).toBe('伺服器目前不允許這筆操作；請檢查日期與資料狀態');
+      expect(result.ok ? '' : result.error.message, input.kind).not.toMatch(ENGINEERING_TERMS);
     }
     expect(firestoreMock.runTransaction).toHaveBeenCalledTimes(4);
   });
