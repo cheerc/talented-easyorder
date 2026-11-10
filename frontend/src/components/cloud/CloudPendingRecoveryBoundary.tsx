@@ -72,7 +72,7 @@ function codeOf(error: unknown): CommandErrorCode | null {
 function statusText(row: PendingRow): string {
   switch (row.status) {
     case 'in-flight': return '同分頁的提交仍在執行；保留編號，勿另送。';
-    case 'not-found': return '伺服器目前未查到；這不代表確定未入帳。保留編號，不要重新收款。';
+    case 'not-found': return '前次有一筆送出未收到確認（伺服器查無資料）。若非剛才的操作，請確認無誤後清除。';
     case 'read-error': return '目前無法安全確認伺服器結果；保留編號。';
     case 'different-dataset': return '原資料集與目前不同；已保留編號，需由維護者核對。';
     case 'confirmed': return row.cleanupPending
@@ -109,7 +109,6 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
     confirmedScopeRef.current = null;
   }
   const [state, setState] = useState<RecoveryState>(initialState);
-  const [manualConfirmation, setManualConfirmation] = useState(false);
   const initialReadyRef = useRef(false);
   const mountedShellRef = useRef(false);
   const pendingRefreshRef = useRef(false);
@@ -138,7 +137,6 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
     let scannedRecords: PendingCommandIdentity[] | null = null;
     let confirmedDatasetId: string | null = null;
     const rows: PendingRow[] = [];
-    if (external) setManualConfirmation(false);
     setState(previous => ({
       ...previous,
       scope: initial || source === 'owner-change' ? null : previous.scope,
@@ -271,13 +269,11 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
         && previousConfirmedScope.uid === uid
         && previousConfirmedScope.leaseEpoch === leaseEpoch
         && previousConfirmedScope.datasetId === before.datasetId;
-      if (!sameConfirmedScope) setManualConfirmation(false);
       confirmedScopeRef.current = nextScope;
       initialReadyRef.current = true;
       pendingRefreshRef.current = false;
       const shellMounted = mountedShellRef.current || !hardBlocked;
       mountedShellRef.current = shellMounted;
-      setManualConfirmation(false);
       setState(previous => ({
         ...previous,
         scope: nextScope,
@@ -306,7 +302,6 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
         : null;
       const failedScope = { db, uid, leaseEpoch, datasetId: confirmedDatasetId };
       confirmedScopeRef.current = confirmedDatasetId === null ? null : failedScope;
-      setManualConfirmation(false);
       setState(previous => ({
         ...previous,
         scope: failedScope,
@@ -341,7 +336,6 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
     const handleOffline = () => {
       onlineRef.current = false;
       generationRef.current += 1;
-      setManualConfirmation(false);
       setState(previous => ({
         ...previous,
         online: false,
@@ -356,7 +350,6 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
     const handleOnline = () => {
       onlineRef.current = true;
       generationRef.current += 1;
-      setManualConfirmation(false);
       setState(previous => ({
         ...previous,
         online: true,
@@ -390,7 +383,6 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
     const previous = ownerScopeRef.current;
     if (previous.db === db && previous.uid === uid && previous.leaseEpoch === leaseEpoch) return;
     ownerScopeRef.current = { db, uid, leaseEpoch };
-    setManualConfirmation(false);
     void recover('owner-change');
   }, [db, leaseEpoch, recover, uid]);
 
@@ -401,7 +393,6 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
     }
     if (source === 'storage-cleared') {
       setState(previous => ({ ...previous, error: 'journal', gateRequired: true, continued: false, busy: false }));
-      setManualConfirmation(false);
       return;
     }
     void recover(source === 'other-tab' ? 'other-tab' : 'same-tab');
@@ -515,7 +506,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
   };
 
   const manualContinue = () => {
-    if (!scopeConfirmed || !canManualContinue || !manualConfirmation || !onlineRef.current) return;
+    if (!scopeConfirmed || !canManualContinue || !onlineRef.current) return;
     mountedShellRef.current = true;
     setState(previous => ({ ...previous, shellMounted: true, continued: true, gateRequired: false }));
   };
@@ -582,24 +573,31 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
         )}
         {scopedRows.length > 0 && (
           <>
-            <p>共有 {state.total} 筆待核對編號。未決編號不會自動淘汰。
+            <p className="cloud-pending-recovery__summary">共有 {state.total} 筆待核對紀錄，請先確認帳務結果後再處理。
               <HelpTip label="待核對容量說明">{`每頁最多 ${CLOUD_PENDING_JOURNAL_PAGE_SIZE} 筆，最多保留 ${CLOUD_PENDING_JOURNAL_CAPACITY} 筆。`}</HelpTip></p>
             <ul className="cloud-pending-recovery__list">
               {visibleRows.map(row => (
                 <li key={row.record.commandId}>
-                  <code>{row.record.commandId}</code>
-                  <span>{statusText(row)}{row.status === 'confirmed' && row.seq ? `（伺服器序號 ${row.seq}）` : ''}</span>
+                  <div className="cloud-pending-recovery__row-main">
+                    <span>{statusText(row)}{row.status === 'confirmed' && row.seq ? `（伺服器序號 ${row.seq}）` : ''}</span>
+                    <details className="cloud-pending-recovery__tech-details">
+                      <summary>技術資訊</summary>
+                      <code>{row.record.commandId}</code>
+                    </details>
+                  </div>
                   {(row.status === 'not-found' || row.status === 'read-error') && (
-                    <button type="button" onClick={() => void retryOne(row.record)} disabled={state.busy || !state.online || !scopeConfirmed}>再查這筆編號</button>
-                  )}
-                  {row.status === 'not-found' && (
-                    <button
-                      type="button"
-                      onClick={() => void handleDismiss(row.record)}
-                      disabled={state.busy || !state.online || !scopeConfirmed || journal.isInFlight(row.record, leaseEpoch)}
-                    >
-                      清除紀錄
-                    </button>
+                    <div className="cloud-pending-recovery__actions">
+                      <button type="button" onClick={() => void retryOne(row.record)} disabled={state.busy || !state.online || !scopeConfirmed}>再查這筆</button>
+                      {row.status === 'not-found' && (
+                        <button
+                          type="button"
+                          onClick={() => void handleDismiss(row.record)}
+                          disabled={state.busy || !state.online || !scopeConfirmed || journal.isInFlight(row.record, leaseEpoch)}
+                        >
+                          清除此紀錄
+                        </button>
+                      )}
+                    </div>
                   )}
                 </li>
               ))}
@@ -613,12 +611,8 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
             )}
             {canManualContinue && state.gateRequired && (
               <div className="cloud-pending-recovery__manual">
-                <p>伺服器目前未查到的編號仍可能已入帳；不可重新收款或重登。</p>
-                <label>
-                  <input type="checkbox" checked={manualConfirmation} onChange={event => setManualConfirmation(event.target.checked)} />
-                  我確認本筆結果尚未確定，不得重新收款或重登；只繼續其他獨立作業，待保留編號人工核對。
-                </label>
-                <button type="button" onClick={manualContinue} disabled={!manualConfirmation || !state.online}>保留編號，移交人工核對並繼續其他作業</button>
+                <p>若需先查閱帳務再決定，可暫時略過提醒；確認前請勿重複入帳。</p>
+                <button type="button" onClick={manualContinue} disabled={!state.online}>暫時略過</button>
               </div>
             )}
             {state.gateRequired && blockers.some(row => row.status === 'different-dataset') && (
