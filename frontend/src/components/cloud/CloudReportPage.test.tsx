@@ -110,6 +110,9 @@ async function clickAuditExport() {
   await waitFor(() => expect(mocks.recordExport.mock.calls.length).toBeGreaterThan(calls));
 }
 
+// #682：畫面提示不可出現來源序號、資料版本、各種版本欄位、revision(s)、payload、command、seq 等工程用語（保留「命令編號」）。
+const ENGINEERING_TERMS = /來源序號|資料序號|資料版本|稽核版本|學生版本|營業日版本|交易版本|revisions?|payload|command(?!\s*編號)|\bseq\b/i;
+
 describe('CloudReportPage', () => {
   afterEach(() => vi.restoreAllMocks());
 
@@ -607,12 +610,12 @@ describe('CloudReportPage', () => {
     render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey={identityKey} />);
     await screen.findByTestId('report-ready');
     await screen.findByRole('region', { name: '輸出命令確認' });
-    expect(screen.getByText('有一筆先前輸出命令需要在目前帳戶與版本下重新確認。')).toBeInTheDocument();
+    expect(screen.getByText('有一筆先前的輸出尚未確認；請核對目前帳戶與資料後重新確認。')).toBeInTheDocument();
     mocks.confirmPendingIntent.mockRejectedValueOnce(new Error('temporary receipt read failure'));
     fireEvent.click(screen.getByRole('button', { name: '查詢原命令結果' }));
     await screen.findByText('目前無法安全確認原命令；查詢錯誤不代表命令不存在，暫不可重試。');
     expect(screen.getByRole('region', { name: '輸出命令確認' })).toBeInTheDocument();
-    expect(screen.getByText('有一筆先前輸出命令需要在目前帳戶與版本下重新確認。')).toBeInTheDocument();
+    expect(screen.getByText('有一筆先前的輸出尚未確認；請核對目前帳戶與資料後重新確認。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '查詢原命令結果' })).toBeEnabled();
 
     mocks.confirmPendingIntent.mockResolvedValueOnce({ status: 'not-found' });
@@ -682,7 +685,9 @@ describe('CloudReportPage', () => {
     await screen.findByTestId('report-ready');
 
     fireEvent.click(screen.getByRole('button', { name: '匯出稽核 CSV' }));
-    expect(await screen.findByText('報表與稽核版本不一致，請重新查詢完整資料。')).toBeVisible();
+    const message = await screen.findByText('報表與稽核資料對不上，請重新查詢完整資料。');
+    expect(message).toBeVisible();
+    expect(message.textContent).not.toMatch(ENGINEERING_TERMS);
     expect(mocks.recordExport).not.toHaveBeenCalled();
     expect(screen.getByTestId('report-ready')).toBeVisible();
     expect(screen.getByRole('button', { name: '匯出稽核 CSV' })).toBeEnabled();
@@ -772,7 +777,8 @@ describe('CloudReportPage', () => {
       render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:handover-envelope" />);
       await screen.findByTestId('report-ready');
 
-      expect(handoverRegion()).toHaveTextContent('使用權交接資料版本與報表不一致');
+      expect(handoverRegion()).toHaveTextContent('使用權交接紀錄與報表對不上，未顯示；請重新查詢。');
+      expect(handoverRegion().textContent).not.toMatch(ENGINEERING_TERMS);
       expect(within(handoverRegion()).queryByRole('table')).toBeNull();
       expect(screen.getByRole('button', { name: '匯出稽核 CSV' })).toBeEnabled();
     });
@@ -1245,6 +1251,8 @@ describe('CloudReportPage: #587 P2 data updated elsewhere', () => {
     it('shows no engineering terms in the visible page, keeping the data version in a machine-readable attribute', async () => {
       const page = await renderReady('operator-a:4:p5-terms');
       expect(page.textContent).not.toMatch(/H=|來源序號/);
+      expect(page.textContent).not.toMatch(ENGINEERING_TERMS);
+      expect(page).toHaveTextContent('報表與稽核資料須一致才可匯出');
       expect(Array.from(page.querySelectorAll('dt')).map(dt => dt.textContent)).not.toContain('dataset');
       expect(screen.getByTestId('report-ready')).toHaveAttribute('data-source-seq', '11');
     });
@@ -1271,7 +1279,7 @@ describe('CloudReportPage: #587 P2 data updated elsewhere', () => {
       const page = await renderReady('operator-a:4:p5-callout');
       expect(page).toHaveTextContent('現金存量不會跨日加總，未提供訂餐欠款推估');
       expect(page).toHaveTextContent('日結與關帳後補記僅支援全部帳戶範圍');
-      expect(page).toHaveTextContent('僅在報表與稽核資料版本一致時顯示');
+      expect(page).toHaveTextContent('僅在報表與稽核資料一致時顯示');
       expect(page).toHaveTextContent('日摘要與日結數字維持全日口徑');
       fireEvent.change(within(page).getByLabelText('日期範圍'), { target: { value: 'custom' } });
       expect(page).toHaveTextContent('自訂最多 31 日，超出時不會截短');

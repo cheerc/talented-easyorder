@@ -158,7 +158,7 @@ describe('CloudAccountHistoryPage', () => {
     mocks.readAuditRange.mockResolvedValueOnce({ ...audit, sourceSeq: 12 });
     render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4" initialStudentId={studentId} initialRange={range} />);
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('版本不一致');
+    expect(await screen.findByRole('alert')).toHaveTextContent('查帳、日結與稽核資料對不上；未顯示部分資料');
     expect(screen.queryByText('目前帳戶餘額')).toBeNull();
     expect(screen.queryByRole('button', { name: '更正' })).toBeNull();
   });
@@ -839,5 +839,93 @@ describe('CloudAccountHistoryPage: #648 P8 統一風格', () => {
     fireEvent.click(screen.getByRole('button', { name: '更正' }));
     const form = screen.getByRole('form', { name: '歷史交易更正' });
     expect(within(form).getByText(/此頁只允許仍未曾關帳的營業日/).closest('.callout-ui')).not.toBeNull();
+  });
+});
+
+describe('CloudAccountHistoryPage: #682 提示與錯誤訊息不含工程用語', () => {
+  // 來源序號、資料版本、學生／營業日／交易版本、revision(s)、payload、command、seq 不可出現在畫面提示。
+  const ENGINEERING_TERMS = /來源序號|資料序號|資料版本|學生版本|營業日版本|交易版本|revisions?|payload|command(?!\s*編號)|\bseq\b/i;
+  const flush = () => act(async () => { for (let index = 0; index < 20; index += 1) await Promise.resolve(); });
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    currentAuth.uid = 'uid-a';
+    headMock.current = null;
+    mocks.readSummary.mockResolvedValue({ leaseToday: '2026-10-19' });
+    mocks.listStudents.mockResolvedValue({ datasetId: 'dataset-a', seq: 11, goLiveDate: '2026-10-01', students: [student] });
+    mocks.readAccountHistory.mockResolvedValue(account);
+    mocks.readAuditRange.mockResolvedValue(audit);
+    mocks.confirmPendingIntent.mockResolvedValue({ status: 'not-found' });
+    mocks.cleanupConfirmedIntent.mockResolvedValue(true);
+  });
+
+  async function submitCorrection(key: string) {
+    const view = render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey={key} initialStudentId={studentId} initialRange={range} />);
+    await screen.findByTestId('account-history-ready');
+    openTransactionMenu();
+    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: '文案檢查' } });
+    fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
+    await flush();
+    return view;
+  }
+
+  it('資料不一致時只說明對不上並未顯示部分資料，沒有工程用語', async () => {
+    mocks.readAuditRange.mockResolvedValueOnce({ ...audit, sourceSeq: 12 });
+    render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:w1" initialStudentId={studentId} initialRange={range} />);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('查帳、日結與稽核資料對不上；未顯示部分資料，請重新讀取。');
+    expect(alert.textContent).not.toMatch(ENGINEERING_TERMS);
+    expect(screen.queryByTestId('account-history-ready')).toBeNull();
+  });
+
+  it('更正遇到資料衝突：說明資料已被其他操作更新並重新載入，仍不自動重送', async () => {
+    mocks.mutateTransaction.mockResolvedValueOnce({ ok: false, error: { code: 'REVISION_CONFLICT', message: '資料已被其他操作更新' } });
+    const reload = deferred<CloudAccountHistory>();
+    const readsBefore = () => mocks.readAccountHistory.mock.calls.length;
+    const view = render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:w2" initialStudentId={studentId} initialRange={range} />);
+    await screen.findByTestId('account-history-ready');
+    openTransactionMenu();
+    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: '衝突' } });
+    const before = readsBefore();
+    mocks.readAccountHistory.mockReturnValueOnce(reload.promise);
+    fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
+    await flush();
+
+    expect(view.container).toHaveTextContent('資料已被其他操作更新，已重新載入完整歷史。請檢視新資料後重新開啟更正並確認，不會自動重送舊內容。');
+    expect(view.container.textContent).not.toMatch(ENGINEERING_TERMS);
+    expect(readsBefore()).toBeGreaterThan(before);
+    expect(mocks.mutateTransaction).toHaveBeenCalledTimes(1);
+    await act(async () => { reload.resolve(account); });
+  });
+
+  it('更正結果未知：保留原命令編號與更正內容、只提供唯讀查詢，沒有工程用語', async () => {
+    mocks.mutateTransaction.mockResolvedValueOnce({ ok: false, error: { code: 'UNKNOWN_RESULT', message: 'unknown' } });
+    await submitCorrection('operator-a:4:w3');
+    // 資料詳情區的命令編號值（例如 create-command）屬排除項，只檢查恢復提示區。
+    const recovery = screen.getByRole('region', { name: '歷史更正命令恢復' });
+    expect(recovery).toHaveTextContent('更正結果還不確定；已保留原命令編號與更正內容。請先查詢原命令結果；查詢失敗或查無結果都不會自動重送。');
+    expect(recovery.textContent).not.toMatch(ENGINEERING_TERMS);
+    expect(screen.getByRole('button', { name: '查詢原命令結果' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: '以相同命令編號重試' })).toBeNull();
+    expect(mocks.mutateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('更正收據確認後重新讀取期間：提示不含來源序號', async () => {
+    const reload = deferred<CloudAccountHistory>();
+    mocks.mutateTransaction.mockImplementationOnce(async (input: { commandId: string }) => ({ ok: true, receipt: { commandId: input.commandId, seq: 12, kind: 'CorrectTransaction' } }));
+    const view = render(<CloudAccountHistoryPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:w4" initialStudentId={studentId} initialRange={range} />);
+    await screen.findByTestId('account-history-ready');
+    openTransactionMenu();
+    fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: '收據' } });
+    mocks.readAccountHistory.mockReturnValueOnce(reload.promise);
+    fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
+    await flush();
+
+    expect(view.container).toHaveTextContent('更正收據已確認；正在重新讀取最新完整歷史。');
+    expect(view.container.textContent).not.toMatch(ENGINEERING_TERMS);
+    await act(async () => { reload.resolve(account); });
   });
 });

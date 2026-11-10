@@ -797,7 +797,7 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
       range: { kind: 'custom', startDate: today, endDate: today },
       studentId: studentA,
       leaseEpoch: 7,
-    })).rejects.toMatchObject({ code: 'STALE_SNAPSHOT' });
+    })).rejects.toMatchObject({ code: 'STALE_SNAPSHOT', message: '讀取期間資料已被其他操作更新或使用權已切換，請重新載入' });
     expect(changed).toBe(true);
   });
 
@@ -854,7 +854,7 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
     });
     await expect(repo.readReport({
       range: { kind: 'custom', startDate: today, endDate: today }, studentId: null, leaseEpoch: 7,
-    })).rejects.toMatchObject({ code: 'STALE_SNAPSHOT' });
+    })).rejects.toMatchObject({ code: 'STALE_SNAPSHOT', message: '讀取期間資料已被其他操作更新或使用權已切換，請重新載入' });
     expect(bumped).toBe(true);
   });
 
@@ -1003,7 +1003,7 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
           await withAdmin(db => setDoc(doc(db, 'system/dataHead'), head(206)));
         },
       });
-      await expect(repo.readAccessEvents({ range: todayRange(), leaseEpoch })).rejects.toMatchObject({ code: 'STALE_SNAPSHOT' });
+      await expect(repo.readAccessEvents({ range: todayRange(), leaseEpoch })).rejects.toMatchObject({ code: 'STALE_SNAPSHOT', message: '讀取期間資料已被其他操作更新或使用權已切換，請重新載入' });
     });
 
     it('rejects a caller whose lease epoch no longer matches or whose lease belongs to someone else', async () => {

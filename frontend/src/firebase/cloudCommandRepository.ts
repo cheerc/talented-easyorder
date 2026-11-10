@@ -616,7 +616,7 @@ function leaseDenialResult(code: Diagnosis): CommandResult | null {
     return errorResult('INVALID_INPUT', '這個過去的營業日沒有回填標記，不能補登；請先到日結頁把它標為回填');
   }
   if (code === 'REVISION_CONFLICT') {
-    return errorResult(code, '伺服器資料已變更；請保留 commandId 並重新確認');
+    return errorResult(code, '資料已被其他操作更新；請重新載入，確認目前狀態後再操作。');
   }
   if (code === 'INVALID_INPUT') {
     return errorResult(code, '目前 Rules 不允許這筆命令；請檢查日期與資料狀態');
@@ -625,7 +625,7 @@ function leaseDenialResult(code: Diagnosis): CommandResult | null {
     return errorResult(code, '營業日已關閉；請重新載入日期資料');
   }
   if (code === 'UNSUPPORTED_SCHEMA') {
-    return errorResult(code, '伺服器日期或資料版本不支援；請聯絡管理者');
+    return errorResult(code, '伺服器日期或資料內容不支援；請聯絡管理者');
   }
   return null;
 }
@@ -2185,7 +2185,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
             const diagnosed = leaseDenialResult(await readRevisionConflict(db, input));
             if (diagnosed) return diagnosed;
           }
-          return errorResult(resultCode, '提交遭伺服器拒絕；請保留 commandId 並確認目前狀態');
+          return errorResult(resultCode, '伺服器沒有接受這次操作；請先確認目前狀態，再決定是否重做。');
         }
       } catch (readError) {
         if (readError instanceof RejectCommand && readError.code === 'INVALID_INPUT') {
