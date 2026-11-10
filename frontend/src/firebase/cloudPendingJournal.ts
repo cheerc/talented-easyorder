@@ -64,6 +64,11 @@ export interface CloudPendingJournal {
   put(record: PendingCommandIdentity): Promise<void>;
   removeIf(record: PendingCommandIdentity, isCurrent?: () => boolean): Promise<boolean>;
   /**
+   * Explicitly dismisses a server-checked `not-found` orphan pending identity under the same exclusive lock and
+   * synchronous local owner/dataset predicate (#676).
+   */
+  dismiss(record: PendingCommandIdentity, isCurrent?: () => boolean): Promise<boolean>;
+  /**
    * Same exact-identity removal under the same lock, but says why nothing was removed: `absent` means the
    * identity is no longer tracked (nothing to clean), `kept` means the owner predicate no longer holds.
    */
@@ -301,6 +306,9 @@ export function createCloudPendingJournal(db: Firestore, adapter: PendingJournal
     },
     removeIfPresent,
     async removeIf(untrustedRecord, isCurrent = () => true): Promise<boolean> {
+      return (await removeIfPresent(untrustedRecord, isCurrent)) === 'removed';
+    },
+    async dismiss(untrustedRecord, isCurrent = () => true): Promise<boolean> {
       return (await removeIfPresent(untrustedRecord, isCurrent)) === 'removed';
     },
     async migrateLegacyOrderSlot(): Promise<'empty' | 'migrated' | 'already-migrated'> {

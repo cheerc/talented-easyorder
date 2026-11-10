@@ -85,6 +85,10 @@ function blocksIndependentWork(row: PendingRow): boolean {
   return row.status !== 'confirmed';
 }
 
+function locksShellGate(row: PendingRow): boolean {
+  return row.status !== 'confirmed' && row.status !== 'not-found';
+}
+
 export interface CloudPendingRecoveryBoundaryProps {
   db: Firestore;
   uid: string;
@@ -259,6 +263,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
         status: journal.isInFlight(record, leaseEpoch) ? 'in-flight' as const : 'read-error' as const,
       });
       const unresolved = finalRows.some(blocksIndependentWork);
+      const hardBlocked = finalRows.some(locksShellGate);
       if (!isCurrentGeneration(generation)) return;
       const nextScope = { db, uid, leaseEpoch, datasetId: before.datasetId };
       const previousConfirmedScope = confirmedScopeRef.current;
@@ -270,7 +275,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
       confirmedScopeRef.current = nextScope;
       initialReadyRef.current = true;
       pendingRefreshRef.current = false;
-      const shellMounted = mountedShellRef.current || !unresolved;
+      const shellMounted = mountedShellRef.current || !hardBlocked;
       mountedShellRef.current = shellMounted;
       setManualConfirmation(false);
       setState(previous => ({
@@ -425,9 +430,11 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
     && !state.busy;
   const canManualContinue = scopeConfirmed
     && blockers.length > 0 && blockers.every(row => row.status === 'not-found') && !state.busy;
+  const hasHardBlocker = scopedRows.some(locksShellGate);
+  const hardGateRequired = state.gateRequired && hasHardBlocker;
   const gateLocked = !scopeConfirmed || !state.online || !state.initialReady
-    || state.busy && (state.gateRequired || !state.shellMounted)
-    || scopeMatchesOwner && state.error !== null || state.gateRequired && !state.continued;
+    || state.busy && (hardGateRequired || !state.shellMounted)
+    || scopeMatchesOwner && state.error !== null || hardGateRequired && !state.continued;
   // Display only (#585 R9): while every row is a same-tab command in flight (or confirmed with nothing left to clean up) and the
   // system is healthy, the section would only repeat what the page already shows and push the page down. It comes back after
   // QUIET_IN_FLIGHT_MS, and any other state (check, offline, owner change, error, not-found, read-error, other dataset, cleanup
@@ -513,6 +520,44 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
     setState(previous => ({ ...previous, shellMounted: true, continued: true, gateRequired: false }));
   };
 
+  const handleDismiss = async (record: PendingCommandIdentity) => {
+    const generation = generationRef.current;
+    if (!scopeConfirmed || state.busy || !onlineRef.current || !isCurrentGeneration(generation)) return;
+    if (journal.isInFlight(record, leaseEpoch)) return;
+    try {
+      const removeRecord = journal.dismiss ?? journal.removeIf;
+      const removed = await removeRecord(record, () => (
+        isCurrentGeneration(generation)
+          && record.datasetId === state.scope?.datasetId
+          && !journal.isInFlight(record, leaseEpoch)
+      ));
+      if (!isCurrentGeneration(generation) || !removed) return;
+      setState(previous => {
+        const nextRows = previous.rows.filter(row => row.record.commandId !== record.commandId);
+        const nextTotal = Math.max(0, previous.total - 1);
+        const maxPageIndex = Math.max(0, Math.ceil(nextRows.length / CLOUD_PENDING_JOURNAL_PAGE_SIZE) - 1);
+        const stillUnresolved = nextRows.some(blocksIndependentWork);
+        return {
+          ...previous,
+          rows: nextRows,
+          total: nextTotal,
+          gateRequired: stillUnresolved ? previous.gateRequired : false,
+          continued: stillUnresolved ? previous.continued : false,
+          pageIndex: Math.min(previous.pageIndex, maxPageIndex),
+        };
+      });
+    } catch {
+      if (!isCurrentGeneration(generation)) return;
+      setState(previous => ({
+        ...previous,
+        error: 'journal',
+        errorCode: 'LOCAL_STORAGE_UNAVAILABLE',
+        gateRequired: true,
+        continued: false,
+      }));
+    }
+  };
+
   return (
     <>
       {!quietSameTab && !(scopeConfirmed && state.initialReady && state.online && !state.busy && state.error === null && scopedRows.length === 0) && <section className={`cloud-pending-recovery${gateLocked ? ' cloud-pending-recovery--blocked' : ''}`} aria-label="待核對命令">
@@ -546,6 +591,15 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
                   <span>{statusText(row)}{row.status === 'confirmed' && row.seq ? `（伺服器序號 ${row.seq}）` : ''}</span>
                   {(row.status === 'not-found' || row.status === 'read-error') && (
                     <button type="button" onClick={() => void retryOne(row.record)} disabled={state.busy || !state.online || !scopeConfirmed}>再查這筆編號</button>
+                  )}
+                  {row.status === 'not-found' && (
+                    <button
+                      type="button"
+                      onClick={() => void handleDismiss(row.record)}
+                      disabled={state.busy || !state.online || !scopeConfirmed || journal.isInFlight(row.record, leaseEpoch)}
+                    >
+                      清除紀錄
+                    </button>
                   )}
                 </li>
               ))}

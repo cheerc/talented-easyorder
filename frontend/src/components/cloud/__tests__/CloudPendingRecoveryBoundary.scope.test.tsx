@@ -7,11 +7,13 @@ import { CloudPendingRecoveryBoundary } from '../CloudPendingRecoveryBoundary';
 const fixture = vi.hoisted(() => ({
   contextUid: 'operator-a',
   contextDataset: 'dataset-a',
+  records: [] as Array<{ commandId: string; datasetId: string; uid: string }>,
   listeners: [] as Array<(source: string) => void>,
   journal: {
     migrateLegacyOrderSlot: vi.fn(),
     readAll: vi.fn(),
     removeIf: vi.fn(),
+    dismiss: vi.fn(),
     subscribe: vi.fn(),
     isInFlight: vi.fn(),
   },
@@ -74,14 +76,27 @@ async function continueManually(): Promise<void> {
 beforeEach(() => {
   fixture.contextUid = 'operator-a';
   fixture.contextDataset = 'dataset-a';
+  fixture.records = [{ ...record }];
   fixture.listeners.length = 0;
   vi.clearAllMocks();
 
   fixture.journal.migrateLegacyOrderSlot.mockResolvedValue('empty');
   fixture.journal.readAll.mockImplementation(async () => ({
-    records: [{ ...record }], total: 1, complete: true,
+    records: [...fixture.records], total: fixture.records.length, complete: true,
   }));
-  fixture.journal.removeIf.mockImplementation(async (_item, guard) => guard?.() === true);
+  const removeMatching = async (item: { commandId: string; datasetId: string; uid: string }, guard?: () => boolean) => {
+    if (guard && guard() !== true) return false;
+    const index = fixture.records.findIndex(candidate => (
+      candidate.commandId === item.commandId
+        && candidate.datasetId === item.datasetId
+        && candidate.uid === item.uid
+    ));
+    if (index < 0) return false;
+    fixture.records.splice(index, 1);
+    return true;
+  };
+  fixture.journal.removeIf.mockImplementation(removeMatching);
+  fixture.journal.dismiss.mockImplementation(removeMatching);
   fixture.journal.subscribe.mockImplementation(listener => {
     fixture.listeners.push(listener);
     return () => { fixture.listeners = fixture.listeners.filter(item => item !== listener); };
@@ -178,3 +193,49 @@ describe('CloudPendingRecoveryBoundary #648 P8 說明與警示分類', () => {
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
 });
+
+describe('CloudPendingRecoveryBoundary #676 Phase 1 解除全域黑屏與清除紀錄逃生口', () => {
+  it('mounts children without inert when a not-found pending record exists while still passing hasUnresolvedPendingCommands=true', async () => {
+    let observedUnresolved: boolean | null = null;
+    render(
+      <CloudPendingRecoveryBoundary db={dbA} uid="operator-a" leaseEpoch={1}>
+        {hasUnresolved => {
+          observedUnresolved = hasUnresolved;
+          return <div data-testid="business-shell">Main shell content</div>;
+        }}
+      </CloudPendingRecoveryBoundary>,
+    );
+
+    await screen.findByText(record.commandId);
+    const shell = screen.getByTestId('business-shell');
+    expect(shell).toBeVisible();
+    expect(shell.parentElement).not.toHaveAttribute('inert');
+    expect(observedUnresolved).toBe(true);
+  });
+
+  it('dismisses a not-found pending record from storage, resets total to 0, and clears unresolved state', async () => {
+    let observedUnresolved: boolean | null = null;
+    render(
+      <CloudPendingRecoveryBoundary db={dbA} uid="operator-a" leaseEpoch={1}>
+        {hasUnresolved => {
+          observedUnresolved = hasUnresolved;
+          return <div data-testid="business-shell">Main shell content</div>;
+        }}
+      </CloudPendingRecoveryBoundary>,
+    );
+
+    await screen.findByText(record.commandId);
+    const dismissButton = screen.getByRole('button', { name: '清除紀錄' });
+    expect(dismissButton).toBeEnabled();
+
+    fireEvent.click(dismissButton);
+
+    await waitFor(() => expect(fixture.journal.dismiss).toHaveBeenCalledWith(record, expect.any(Function)));
+    await waitFor(() => expect(screen.queryByRole('region', { name: '待核對命令' })).not.toBeInTheDocument());
+    expect(fixture.records).toEqual([]);
+    expect((await fixture.journal.readAll()).total).toBe(0);
+    expect(observedUnresolved).toBe(false);
+    expect(screen.getByTestId('business-shell')).toBeVisible();
+  });
+});
+

@@ -161,7 +161,7 @@ for (const theme of ['light', 'dark', 'warm']) {
         for (const text of await pending.locator('h2, p, label, code').all()) ratios.push((await contrast(text)).ratio);
         expect(Math.min(...ratios)).toBeGreaterThanOrEqual(4.5);
         expect(await page.evaluate(key => localStorage.getItem(key), `${JOURNAL_NAMESPACE}:${commandId}`)).not.toBeNull();
-        await expect(page.getByRole('button', { name: '櫃台', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: '櫃台', exact: true })).toBeVisible();
         console.log('UI-PENDING', JSON.stringify({ theme, width, minContrast: Math.min(...ratios) }));
         await page.screenshot({ path: `/tmp/ui-closeout-${theme}-${width}-pending.png`, fullPage: true });
       });
