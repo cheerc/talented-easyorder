@@ -459,7 +459,7 @@ export function CloudReportPage({
       if (!active || requestGeneration.current !== generation || !isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
       const accessEvents: AccessEventsView | null = events?.status === 'ready'
         && !sameAccessEventsEnvelope(events.snapshot, report, query, leaseEpoch)
-        ? { status: 'unavailable', message: '使用權交接資料版本與報表不一致，未顯示；請重新查詢。' }
+        ? { status: 'unavailable', message: '使用權交接紀錄與報表對不上，未顯示；請重新查詢。' }
         : events;
       setSnapshot({ report, accessEvents });
       setLoading(false);
@@ -796,7 +796,7 @@ export function CloudReportPage({
       const audit = await reads.readAuditRange({ range: request.range, studentId: request.studentId, leaseEpoch });
       if (requestGeneration.current !== generation || !isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
       if (!sameEnvelope(snapshot.report, audit, request, leaseEpoch)) {
-        setActionMessage('報表與稽核版本不一致，請重新查詢完整資料。');
+        setActionMessage('報表與稽核資料對不上，請重新查詢完整資料。');
         return;
       }
       setActionMessage('');
@@ -942,7 +942,7 @@ export function CloudReportPage({
         <div>
           <div className="cloud-report__title"><h2>報表</h2>
             <HelpTip label="報表說明">日期範圍由伺服器台北日期 {leaseToday || '讀取中'} 推導。</HelpTip></div>
-          <Callout variant="info" className="cloud-report__callout">僅在報表與稽核資料版本一致時顯示。</Callout>
+          <Callout variant="info" className="cloud-report__callout">僅在報表與稽核資料一致時顯示。</Callout>
         </div>
       </header>
       <DataUpdatedNotice pageSeq={snapshot ? seqWithOwnReceipts(snapshot.report.sourceSeq, ownReceiptSeqs) : null} hidden={controlsLocked} onReload={reloadReport} />
@@ -976,7 +976,7 @@ export function CloudReportPage({
           <dl>
             <dt>資料集</dt><dd>{snapshot.report.datasetId}</dd>
             <dt>查詢區間</dt><dd>{query.range.startDate} 至 {query.range.endDate}</dd>
-            <dt>版本核對</dt><dd>報表與稽核資料版本須一致才可匯出</dd>
+            <dt>資料核對</dt><dd>報表與稽核資料須一致才可匯出</dd>
           </dl>
         </details>
 
@@ -1102,7 +1102,7 @@ export function CloudReportPage({
             : recovery.phase === 'submitting'
               ? '結果確認中，勿重新收款'
               : '結果確認中，請勿重複操作。'}</strong>
-        <p>{isRecoveryIdentity(visibleAction) ? '有一筆先前輸出命令需要在目前帳戶與版本下重新確認。'
+        <p>{isRecoveryIdentity(visibleAction) ? '有一筆先前的輸出尚未確認；請核對目前帳戶與資料後重新確認。'
           : `${visibleAction.title} · ID ${visibleAction.id}`}</p>
         {isRecoveryIdentity(visibleAction) && <p>命令編號 {visibleAction.id}</p>}
         <div className="cloud-report__actions">

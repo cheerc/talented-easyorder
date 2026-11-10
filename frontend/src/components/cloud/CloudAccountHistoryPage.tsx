@@ -90,7 +90,7 @@ interface MutationOperation {
 
 const PROMPT_AFTER_MS = 10_000;
 const RECEIPT_MISMATCH = '伺服器回執與固定更正命令不一致；保留原命令編號，尚未確認完成。';
-const UNKNOWN_RESULT = '更正結果待確認；保留原命令編號、payload 與 revisions。請唯讀查詢原命令結果；查詢錯誤或找不到結果都不會自動重送。';
+const UNKNOWN_RESULT = '更正結果還不確定；已保留原命令編號與更正內容。請先查詢原命令結果；查詢失敗或查無結果都不會自動重送。';
 
 function isRecoveryIdentity(action: RecoverableMutation): action is RecoveryIdentity {
   return 'identityKey' in action;
@@ -362,7 +362,7 @@ export function CloudAccountHistoryPage({
       if (!active || generationRef.current !== generation || !isCurrentCloudActionOwner(actionOwnerRef, owner)) return;
       const complete = { account, audit };
       if (!matchingEnvelope(complete, selectedId, range, leaseEpoch)) {
-        throw new Error('查帳、日結、稽核與學生版本不一致；未顯示部分資料。');
+        throw new Error('查帳、日結與稽核資料對不上；未顯示部分資料，請重新讀取。');
       }
       setSnapshot(complete);
       setLoading(false);
@@ -524,7 +524,7 @@ export function CloudAccountHistoryPage({
     setCleanupWarning(warning);
     setNotice(isRecoveryIdentity(frozen)
       ? '原命令收據已確認；依目前完整資料重新讀取帳戶歷史。'
-      : '更正收據已確認；正在依新來源序號重讀完整歷史。');
+      : '更正收據已確認；正在重新讀取最新完整歷史。');
     setSnapshot(null);
     setLoadError('');
     const latest = latestRef.current;
@@ -561,7 +561,7 @@ export function CloudAccountHistoryPage({
       setRecovery(null);
       if (result.error.code === 'REVISION_CONFLICT') {
         setDraft(null);
-        setNotice('資料版本已變更。已重新載入完整歷史；請檢視新資料後重新開啟更正並確認，不會自動重送舊內容。');
+        setNotice('資料已被其他操作更新，已重新載入完整歷史。請檢視新資料後重新開啟更正並確認，不會自動重送舊內容。');
         setLoading(true);
         setSnapshot(null);
         setLoadError('');
