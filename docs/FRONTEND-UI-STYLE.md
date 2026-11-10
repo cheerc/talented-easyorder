@@ -63,6 +63,8 @@
 
 px 字級檢查採明確清單：`FONT_SIZE_CHECKED_UI_CSS`（新 ui 元件）、`FONT_SIZE_CHECKED_STYLES_CSS`（`data-table.css`）、`FONT_SIZE_CHECKED_CLOUD_CSS`（雲端頁）。測試另掃 `components/cloud/` 目錄：新增的頁面 CSS 若不在清單內就會失敗，不能漏檢。**每個雲端頁在自己的改版 Phase 把該頁 CSS 加進 `FONT_SIZE_CHECKED_CLOUD_CSS`，且字級改用 token；P8 結束時，所有雲端頁 CSS 都必須在清單內。** 新增 `components/ui` 元件 CSS 也要加進 `FONT_SIZE_CHECKED_UI_CSS`。
 
+**雲端外殼字級（#667）**：`topbar.css` 與 prototype 共用，px 字級保留給 prototype、不改。雲端外殼（品牌、主分頁、「異常 N」、次級導覽、操作員選單）的字級在 `cloud-scale.css` 以 `html[data-app-mode="cloud"] …` 覆寫成 token 或 `em`（附屬小字如 `.tab-key` 用相對父元素的 `em`），1920 才會依 1440 等比放大約 4/3。原生 `button`、`select`、`input` 不繼承字級：新增雲端頁時要設 token 或 `font: inherit`。守門：`cloudPagesCss.test.ts` 的 `CLOUD_SHELL_SELECTORS`（每個選擇器都要有雲端覆寫，且不是 px）；`ui-closeout.spec.ts` 的「外殼與原生控制項等比放大」在櫃台、今日帳、菜單與開帳量同一頁 1440／1920 的 computed font-size，比值須在 4/3 ± 0.02，並確認五個主分頁仍在同一列；`prototype-layout.spec.ts` 保護 prototype 的 `.tab` 14px、`.brand-name` 15px。
+
 ## 驗證入口
 
 [#648／#650／#652 Chrome 操作清單與工程真頁面證據](ops/2026-11-05-ui-chrome-verification.md)：三主題、兩尺寸、真 App fixture 重跑方式，以及待使用者填寫的驗收表；不是使用者已驗收的紀錄。
