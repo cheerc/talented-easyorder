@@ -120,6 +120,27 @@ test.describe('具名業務情境 fixtures', () => {
       }
       await assertDayAbsent(today);
     });
+
+    test('#668：一般畫面不顯示租約 Epoch、revision 與他人的原始 UID', async ({ googleSession }) => {
+      const { page } = googleSession;
+      const scenario = await seedOpenDayWithMenu(); // days.openedBy 是另一個合成 UID
+      try {
+        await acquire(page);
+        await page.locator('.operator-strip > summary').click();
+        await expect(page.locator('.operator-menu__panel')).toBeVisible();
+        await expect(page.locator('.operator-menu__panel')).not.toContainText(/epoch/i);
+        await page.locator('.operator-strip > summary').click();
+        await mainNav(page, '今日設定').click();
+        await page.getByRole('navigation', { name: '今日設定' }).getByRole('button', { name: '菜單與開帳', exact: true }).click();
+        const main = page.getByRole('main').first();
+        await expect(main.getByText(/首次開帳人：其他操作員/)).toBeVisible();
+        await expect(main.getByText(/synthetic-scenario/)).toHaveCount(0);
+        await expect(main.getByText(/revision/i)).toHaveCount(0);
+      } finally {
+        await scenario.cleanup();
+      }
+      await assertDayAbsent(today);
+    });
   });
 
   test('F2a：有未關帳的過去營業日，今日帳出現對應的日期 chips', async ({ googleSession }) => {

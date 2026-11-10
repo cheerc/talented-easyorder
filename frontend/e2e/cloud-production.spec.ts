@@ -135,7 +135,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     await page.getByRole('button', { name: '取得系統使用權' }).click();
     await expect(page.locator('.operator-strip')).toBeVisible();
     await expect.poll(readAccessLease).toMatchObject({ holderUid: uid, epoch: 1 });
-    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
   });
 
   test('A03: two operators contend on the server, 15-second recheck limit holds, then B explicitly acquires after A releases', async ({ browser }) => {
@@ -316,7 +316,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
       const sessionA = await signInGoogle(pageA, E2E_IDENTITIES.operatorA.email);
       await pageA.getByRole('button', { name: '取得系統使用權' }).click();
       await expect(pageA.locator('.operator-strip')).toBeVisible();
-      await expect(pageA.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(pageA.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await expect.poll(readAccessLease).toMatchObject({ holderUid: sessionA.uid, epoch: 1 });
       // Wait for A's real heartbeat request to hold the origin-wide Web Lock before B signs in.
       await expect.poll(() => heartbeatLockCounts(pageA)).toEqual({ held: 1, pending: 0 });
@@ -325,7 +325,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
       expect(sessionB.uid).toBe(sessionA.uid);
       // B's initial server-authorized renew probe confirms the existing same-UID lease.
       await expect(pageB.locator('.operator-strip')).toBeVisible();
-      await expect(pageB.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(pageB.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await expect.poll(readAccessLease).toMatchObject({ holderUid: sessionA.uid, epoch: 1 });
       // The native lock query is supporting evidence: A holds it while B is queued.
       await expect.poll(() => heartbeatLockCounts(pageA)).toEqual({ held: 1, pending: 1 });
@@ -337,16 +337,16 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
         beforeLeaderHeartbeat.updatedAt.getTime(),
       );
       await expect(pageA.locator('.operator-strip')).toBeVisible();
-      await expect(pageA.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(pageA.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await expect(pageB.locator('.operator-strip')).toBeVisible();
-      await expect(pageB.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(pageB.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await expect.poll(readAccessLease).toMatchObject({ holderUid: sessionA.uid, epoch: 1 });
 
       // Closing the leader releases its Web Lock without releasing the server lease.
       await pageA.close();
       await expect.poll(() => heartbeatLockCounts(pageB)).toEqual({ held: 1, pending: 0 });
       await expect(pageB.locator('.operator-strip')).toBeVisible();
-      await expect(pageB.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(pageB.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       const beforeFollowerHeartbeat = await readAccessLease();
       expect(beforeFollowerHeartbeat).toMatchObject({ holderUid: sessionA.uid, epoch: 1 });
 
@@ -355,7 +355,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
         beforeFollowerHeartbeat.updatedAt.getTime(),
       );
       await expect(pageB.locator('.operator-strip')).toBeVisible();
-      await expect(pageB.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(pageB.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await expect.poll(readAccessLease).toMatchObject({ holderUid: sessionA.uid, epoch: 1 });
     } finally {
       await context.close();
@@ -481,7 +481,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
       await expect.poll(async () => (await readAccessLease()).updatedAt.getTime()).toBeGreaterThan(firstUpdate);
       expect(await maskCount()).toBe(0);
       await expect(page.locator('.operator-menu')).toHaveAttribute('open', '');
-      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
 
       // Lease expired while the tab was away and nobody touched it (#586 P2): the silent renew is refused, the server shows the
       // same own lease at the same epoch, so the tab re-acquires it once. No mask ever mounts; the epoch change itself re-keys the
@@ -492,7 +492,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
       await page.clock.runFor(61_000);
       await setVisibility('visible');
       await expect.poll(readAccessLease).toMatchObject({ holderUid: session.uid, epoch: 2 });
-      await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 2');
+      await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '2');
       expect(await maskCount()).toBe(0);
       await expect(page.locator('.auth-gate')).toHaveCount(0);
       await expect(page.locator('.cloud-app')).toBeVisible();
@@ -521,7 +521,7 @@ test.describe('P06 Cloud Students', () => {
     const first = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
     try {
       await first.page.getByRole('button', { name: '取得系統使用權' }).click();
-      await expect(first.page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+      await expect(first.page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
       await expect(first.page.getByRole('heading', { name: '學生名單與期初結餘' })).toBeVisible();
       await expect(first.page.getByText('目前伺服器名單是空的，請手動新增學生。')).toBeVisible();
       await first.page.setViewportSize({ width: 1366, height: 768 });

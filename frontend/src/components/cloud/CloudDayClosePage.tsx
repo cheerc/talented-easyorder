@@ -30,11 +30,14 @@ import { StatusBadge } from '../ui/StatusBadge';
 import { Toast } from '../ui/Toast';
 import { DataUpdatedNotice } from './DataUpdatedNotice';
 import './CloudDayClosePage.css';
+import { operatorDisplayLabel, type OperatorSelf } from '../../domain/operatorDisplay';
 
 export interface CloudDayClosePageProps {
   db: Firestore;
   leaseEpoch: number;
   identityKey: string;
+  /** 目前操作員；沒有 email 的紀錄用它判斷「是不是自己」（#668），不新增任何讀取。 */
+  operatorSelf?: OperatorSelf | null;
   onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
   onDraftCleared?: () => void;
   /** 帳務異常快照（契約 §11）。#648 R8：本頁的未關帳日自己列出警示，不再顯示共用橫幅；prop 保留給上層相容。 */
@@ -439,7 +442,7 @@ function hasUnsentDraft(page: PageState): boolean {
 }
 
 export function CloudDayClosePage({
-  db, leaseEpoch, identityKey, onNavigationStateChange, onOpenAnomalies, onLedgerChanged, onDraftCleared, initialDayId,
+  db, leaseEpoch, identityKey, operatorSelf = null, onNavigationStateChange, onOpenAnomalies, onLedgerChanged, onDraftCleared, initialDayId,
   initialPostCloseEntry, onOpenOrders, hasUnresolvedPendingCommands = false,
 }: CloudDayClosePageProps) {
   const onLedgerChangedRef = useRef(onLedgerChanged);
@@ -2183,7 +2186,7 @@ export function CloudDayClosePage({
                                   <td>{entry.direction === 'income' ? '收入' : '支出'}</td>
                                   <td className="dt-num">{formatMoney(entry.amount)}</td>
                                   <td>{entry.reason}</td>
-                                  <td>{entry.createdBy}</td>
+                                  <td>{operatorDisplayLabel(entry.createdBy, operatorSelf)}</td>
                                   <td>{formatServerTime(entry.createdAt)}</td>
                                   <td className="cloud-day-close__mono">{entry.settlementRevision}</td>
                                   <td>{effective ? '已計入有效關帳現金' : '舊關帳版本，僅供歷史查閱'}</td>

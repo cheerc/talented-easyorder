@@ -19,6 +19,7 @@ import { CloudAccountBalance } from './CloudAccountBalance';
 import { isCurrentCloudActionOwner, useCloudActionOwner, type CloudActionOwnerToken } from './useCloudActionOwner';
 import { DataUpdatedNotice } from './DataUpdatedNotice';
 import './CloudAccountHistoryPage.css';
+import { operatorDisplayLabel, type OperatorSelf } from '../../domain/operatorDisplay';
 
 export interface CloudAccountHistoryPageProps {
   db: Firestore;
@@ -26,6 +27,8 @@ export interface CloudAccountHistoryPageProps {
   identityKey: string;
   initialStudentId?: string | null;
   initialRange?: CloudLedgerDateRange | null;
+  /** 目前操作員；沒有 email 的紀錄用它判斷「是不是自己」（#668），不新增任何讀取。 */
+  operatorSelf?: OperatorSelf | null;
   onNavigationStateChange?: (identityKey: string, state: 'recovering' | 'revoked' | 'resolved') => void;
 }
 
@@ -178,7 +181,7 @@ function matchingEnvelope(snapshot: HistorySnapshot, studentId: string, range: C
 
 
 export function CloudAccountHistoryPage({
-  db, leaseEpoch, identityKey, initialStudentId = null, initialRange = null, onNavigationStateChange,
+  db, leaseEpoch, identityKey, initialStudentId = null, initialRange = null, operatorSelf = null, onNavigationStateChange,
 }: CloudAccountHistoryPageProps) {
   const reads = useMemo(() => createCloudReadRepository(db), [db]);
   const studentsRepository = useMemo(() => createCloudStudentRepository(db), [db]);
@@ -894,7 +897,7 @@ export function CloudAccountHistoryPage({
         <section aria-labelledby="account-settlements-heading"><h3 id="account-settlements-heading">日結版本（全日現金，不代表此帳戶餘額）</h3>
           {snapshot.account.settlements.map(settlement => <article key={`${settlement.businessDate}:${settlement.revision}`}>
             <strong>{settlement.businessDate} · 第 {settlement.revision} 版 · <StatusBadge variant={settlement.status === 'closed' ? 'ok' : 'warn'} className="cloud-account-history__status">{settlement.status === 'closed' ? '已關帳' : '已重開'}</StatusBadge></strong>
-            <p>應有現金 {formatMoney(settlement.expectedCash)} · 實點 {settlement.countedCash === null ? '—' : formatMoney(settlement.countedCash)} · {settlement.actorUid} · {formatTaipeiTime(settlement.committedAt)}</p>
+            <p>應有現金 {formatMoney(settlement.expectedCash)} · 實點 {settlement.countedCash === null ? '—' : formatMoney(settlement.countedCash)} · {settlement.actorEmail} · {formatTaipeiTime(settlement.committedAt)}</p>
             <p>{settlement.note || '無備註'}</p>
           </article>)}
           {snapshot.account.settlements.length === 0 && (
@@ -904,7 +907,7 @@ export function CloudAccountHistoryPage({
           )}
           {snapshot.account.postCloseEntries.map(entry => <article key={entry.entryId}>
             <strong>{entry.businessDate} · 日結第 {entry.settlementRevision} 版後補記 · {entry.direction === 'income' ? '收入' : '支出'} {formatMoney(entry.amount)}</strong>
-            <p>{entry.reason} · {entry.createdBy} · {formatTaipeiTime(entry.createdAt)} · {entry.countedInEffectiveCash ? '計入有效現金' : '未計入有效現金'}</p>
+            <p>{entry.reason} · {operatorDisplayLabel(entry.createdBy, operatorSelf)} · {formatTaipeiTime(entry.createdAt)} · {entry.countedInEffectiveCash ? '計入有效現金' : '未計入有效現金'}</p>
           </article>)}
         </section>
 
@@ -914,7 +917,7 @@ export function CloudAccountHistoryPage({
           <div className="cloud-account-history__table-wrap"><table className="dt"><thead><tr><th>命令</th><th>有效日期與依據</th><th>操作人／時間</th><th>理由</th><th>更正前後</th></tr></thead><tbody>
             {snapshot.audit.rows.map(row => <tr key={row.commandId} data-seq={row.seq}><td>{row.kind}<small>{row.commandId}</small></td>
               <td>{row.attributedDate} · {row.dateBasis === 'business-date' ? '營業日' : '記錄日（台北）'}<small>原營業日：{row.businessDate ?? '無'}</small></td>
-              <td>{row.actorUid} · {row.actorEmail}<small>{formatTaipeiTime(row.committedAt)}</small></td><td>{row.reason ?? '—'}</td>
+              <td>{row.actorEmail}<small>{formatTaipeiTime(row.committedAt)}</small></td><td>{row.reason ?? '—'}</td>
               <td><details><summary>查看</summary><pre>before: {JSON.stringify(row.before, null, 2)}{'\n'}after: {JSON.stringify(row.after, null, 2)}</pre></details></td></tr>)}
           </tbody></table></div>
           {snapshot.audit.rows.length === 0 && (

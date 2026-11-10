@@ -40,7 +40,7 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
   test('F3 reports blocked storage reads and clear failures without exporting or showing success', async ({ googleSession }) => {
     const { page } = googleSession;
     await page.getByRole('button', { name: '取得系統使用權' }).click();
-    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
     await page.evaluate(() => localStorage.setItem('easyorder-diagnostics-cloud', JSON.stringify({
       schemaVersion: 1,
       entries: [{
@@ -97,7 +97,7 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
     }, MARKERS);
 
     await page.getByRole('button', { name: '取得系統使用權' }).click();
-    await expect(page.locator('.operator-strip')).toContainText(`租約 Epoch: 1`);
+    await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
     await expect(navButton).toBeVisible();
     await settings(page, '本機診斷');
     await expect(page.getByRole('heading', { name: '本機診斷' })).toBeVisible();
@@ -152,7 +152,7 @@ test.describe('P13b1 Cloud F3 safe diagnostics', () => {
   test('removes a crafted diagnostic envelope when F3 reads it without a new error event', async ({ googleSession }) => {
     const { page } = googleSession;
     await page.getByRole('button', { name: '取得系統使用權' }).click();
-    await expect(page.locator('.operator-strip')).toContainText('租約 Epoch: 1');
+    await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
     await page.evaluate(marker => {
       const occurredAt = new Date().toISOString();
       const raw = `{"schemaVersion":"${marker}","schemaVersion":1,"entries":[{"type":"system-error","source":"${marker}","source":"auth","systemCode":"AUTH_ERROR","occurredAt":"${occurredAt}"}]}`;
