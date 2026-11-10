@@ -271,6 +271,13 @@ describe('#667 雲端外殼字級用 token 等比放大', () => {
     expect(fontSize, `${full} 的 font-size`).toMatch(/^(var\(--t-[a-z0-9]+\)|\d*\.?\d+em)$/);
   });
 
+  // 這兩個元素沒有自己的字級（label 繼承 body 的 --t-md、small 是瀏覽器的 smaller），本來就跟著 token 等比放大；
+  // 覆寫成 --t-xs 會讓 1440 的 label 由 17px 縮成 13px。
+  it.each(['.operator-menu__panel small', '.operator-menu__panel label'])('cloud-scale.css 不覆寫已繼承 token 的 %s', (selector: string) => {
+    const full = `html[data-app-mode="cloud"] ${selector}`;
+    expect(cloudScaleRules().filter(item => item.selectors.includes(full))).toEqual([]);
+  });
+
   it('topbar.css 的 px 字級保留給 prototype（雲端覆寫不改 topbar.css）', () => {
     const topbar = readFileSync(resolve(STYLES_DIR, 'topbar.css'), 'utf8');
     expect(ruleBody(topbar, '.tab')).toContain('font-size: 14px');

@@ -218,7 +218,7 @@ test.describe('UI 收尾 外殼與原生控制項等比放大 #667', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
   const SCALE_PROBE = [
     '.brand-name', '.brand-sub', '.brand-mark', '.tab', '.tab-key', '.status > button', '.operator-menu summary',
-    '.operator-menu__panel p', '.operator-menu__panel button', '.operator-menu__panel select', 'button', 'select', 'input',
+    '.operator-menu__panel p', '.operator-menu__panel small', '.operator-menu__panel label', '.operator-menu__panel button', '.operator-menu__panel select', 'button', 'select', 'input',
   ].join(', ');
   const scenarios: ScenarioHandle[] = [];
   test.beforeEach(async () => {
@@ -234,12 +234,13 @@ test.describe('UI 收尾 外殼與原生控制項等比放大 #667', () => {
     return page.evaluate(selector => {
       const root = document.querySelector('.cloud-app') ?? document.body;
       const seen = new Map<string, { label: string; size: number }>();
-      let index = 0;
+      // 計數器放在 window：每頁重新呼叫也不會重號，後來才出現的元素不會和先前標記的外殼元素撞 id。
+      const counter = window as unknown as { scaleProbeSeq?: number };
       for (const element of Array.from(root.querySelectorAll<HTMLElement>(selector))) {
         const rect = element.getBoundingClientRect();
         const style = getComputedStyle(element);
         if (rect.width === 0 || rect.height === 0 || style.visibility === 'hidden') continue;
-        const id = element.dataset.scaleProbe ?? String(index++);
+        const id = element.dataset.scaleProbe ?? String(counter.scaleProbeSeq = (counter.scaleProbeSeq ?? 0) + 1);
         element.dataset.scaleProbe = id;
         const text = (element.getAttribute('aria-label') || element.textContent || '').trim().slice(0, 16);
         seen.set(id, { label: `${element.tagName.toLowerCase()}.${element.className}[${text}]`, size: parseFloat(style.fontSize) });
@@ -268,6 +269,25 @@ test.describe('UI 收尾 外殼與原生控制項等比放大 #667', () => {
     expect(layout, `${where} 五個主分頁`).toMatchObject({ count: 5, rows: 1 });
     expect(layout.overflow, `${where} 分頁列橫向溢出`).toBeLessThanOrEqual(0);
     expect(layout.page, `${where} 頁面橫向溢出`).toBeLessThanOrEqual(0);
+  }
+
+  // 操作員選單的 label（主題）與 small（租約）改版前沒有自己的字級：label 繼承 body 的 --t-md、small 是瀏覽器的 smaller。
+  // 它們本來就跟著 token 等比放大，不該被外殼覆寫縮小：1440 下 label 要和 summary 同字級，small 約為面板字級 ÷ 1.2。
+  async function assertPanelInheritance(page: Page) {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const sizes = await page.evaluate(() => {
+      const size = (selector: string) => {
+        const element = document.querySelector(selector);
+        return element ? parseFloat(getComputedStyle(element).fontSize) : null;
+      };
+      return {
+        summary: size('.operator-menu summary'), label: size('.operator-menu__panel label'),
+        panel: size('.operator-menu__panel'), small: size('.operator-menu__panel small'),
+      };
+    });
+    expect.soft(sizes.label, '操作員選單 label（主題）應繼承 body 字級，與 summary 相同').toBe(sizes.summary);
+    // small 只在有租約 epoch 時存在；存在時要維持瀏覽器的 smaller（面板字級 ÷ 1.2）。
+    if (sizes.small !== null) expect.soft(sizes.small).toBeCloseTo(sizes.panel! / 1.2, 1);
   }
 
   async function assertScaled(page: Page, where: string) {
@@ -307,6 +327,7 @@ test.describe('UI 收尾 外殼與原生控制項等比放大 #667', () => {
     await page.locator('.operator-menu summary').click();
     await expect(page.locator('.operator-menu__panel')).toBeVisible();
     await assertScaled(page, '櫃台');
+    await assertPanelInheritance(page);
     await page.locator('.operator-menu summary').click();
 
     // 今日帳（含 .cloud-subnav button）。
