@@ -235,3 +235,54 @@ describe('#652 雲端備份頁字級等比縮放 CSS 契約', () => {
     expect(css).toMatch(/\.cloud-backup\s+\.btn-confirm\s*\{[^}]*font-size:\s*var\(--t-md\)/);
   });
 });
+
+// #667：雲端外殼（topbar.css 與 App 內的原生控制項）字級在 cloud-scale.css 覆寫。
+// topbar.css 與 prototype 共用，px 值保留給 prototype；雲端覆寫一律限定在 html[data-app-mode="cloud"] 之下，
+// 並用 token／em／inherit，讓 1920 依 1440 等比放大（約 4/3）。
+const CLOUD_SHELL_SELECTORS = [
+  '.brand-name',
+  '.brand-sub',
+  '.brand-mark',
+  '.tab',
+  '.tab-key',
+  '.status > button',
+  '.cloud-subnav button',
+  '.operator-menu__panel p',
+  '.operator-menu__panel button',
+  '.operator-menu__panel select',
+];
+
+describe('#667 雲端外殼字級用 token 等比放大', () => {
+  const cloudScaleRules = () => {
+    const css = readFileSync(resolve(STYLES_DIR, 'cloud-scale.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    return [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].map(match => ({
+      selectors: match[1].split(',').map((selector: string) => selector.trim().replace(/\s+/g, ' ')),
+      body: match[2],
+    }));
+  };
+
+  it.each(CLOUD_SHELL_SELECTORS)('cloud-scale.css 有 html[data-app-mode="cloud"] %s 的字級規則，且不是 px', selector => {
+    const full = `html[data-app-mode="cloud"] ${selector}`;
+    const rule = cloudScaleRules().find(item => item.selectors.includes(full));
+    expect(rule, `缺少 ${full}`).toBeDefined();
+    const fontSize = rule!.body.match(/font-size:\s*([^;]+);?/)?.[1].trim() ?? '';
+    expect(fontSize, `${full} 的 font-size`).toMatch(/^(var\(--t-[a-z0-9]+\)|\d*\.?\d+em)$/);
+  });
+
+  // 這兩個元素沒有自己的字級（label 繼承 body 的 --t-md、small 是瀏覽器的 smaller），本來就跟著 token 等比放大；
+  // 覆寫成 --t-xs 會讓 1440 的 label 由 17px 縮成 13px。
+  it.each(['.operator-menu__panel small', '.operator-menu__panel label'])('cloud-scale.css 不覆寫已繼承 token 的 %s', (selector: string) => {
+    const full = `html[data-app-mode="cloud"] ${selector}`;
+    expect(cloudScaleRules().filter(item => item.selectors.includes(full))).toEqual([]);
+  });
+
+  it('topbar.css 的 px 字級保留給 prototype（雲端覆寫不改 topbar.css）', () => {
+    const topbar = readFileSync(resolve(STYLES_DIR, 'topbar.css'), 'utf8');
+    expect(ruleBody(topbar, '.tab')).toContain('font-size: 14px');
+    expect(ruleBody(topbar, '.brand-name')).toContain('font-size: 15px');
+  });
+
+  it('CloudOrdersPage.css 的原生 select 繼承容器字級（切換營業日），與其他雲端頁一致', () => {
+    expect(readCss('CloudOrdersPage.css')).toMatch(/\.cloud-orders select\s*\{[^}]*font:\s*inherit/);
+  });
+});
