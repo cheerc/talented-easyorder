@@ -72,15 +72,15 @@ receipt 已確認與業務頁 ready 是不同狀態。原提交回應仍未返�
 
 receipt 查詢成功返回 null 僅表示「伺服器目前未查到」，查詢失敗則表示「目前無法確認」。兩者不能混為明確拒絕／未入帳；都不自動補送、不恢復舊 payload、不清 journal。重啟後沒有原 intent，不提供用猜測內容重建命令的按鈕。
 
-對成功查詢但仍為 null 的項目，提供再次查詢與「保留編號，移交人工核對並繼續其他作業」。後者須明確確認「本筆結果尚未確定，不得重新收款或重登」，只解除本次畫面的核對 gate，保留 journal 與持續可見的待核對清單；不標記已解決／未入帳，不存另一份財務草稿。後續重新載入仍再次查詢；換 owner／dataset 或新增其他分頁項目時，重新核對相關清單，不能沿用舊 owner 的解除狀態。
+對成功查詢但仍為 null（`not-found`）的項目，當 `scopeConfirmed && initialReady` 已確認且無其他讀取錯誤／跨資料集／啟動時在途阻斷項時，主應用外殼（`shellMounted`）維持正常掛載且不以全域 `inert` 鎖死畫面（日結與備份等關鍵帳務仍由 `hasUnresolvedPendingCommands` 保護）。畫面提供再次查詢、「保留編號，移交人工核對並繼續其他作業」以及針對伺服器已確認 `not-found` 且非在途項目的明確「清除紀錄（Dismiss）」逃生口（#676）。
 
-這個選擇允許其他獨立業務繼續，不授權系統判斷另一筆交易是否等於原筆。人工以紙本編號與查帳核對原筆，必要補登依 P13d；不聲稱最小日誌可自動比對實際收現。需要長期保留且永遠查不到的識別，留待維護流程處理，不在本批提供一鍵「確認未入帳並刪除」。
+選擇保留編號繼續其他作業時，保留 journal 與可見的待核對清單，不標記已解決、不存另一份財務草稿；後續重新載入或換 owner／dataset／新增其他分頁項目時仍再次查詢。選擇「清除紀錄（Dismiss）」時，則在同一把 namespace 獨占鎖與同步本機 owner／dataset／非在途 predicate 下，將該筆已由伺服器確認查無 receipt 的孤兒 key 自 `localStorage` 精確移除，解除重整後的重複阻斷死鎖；此操作不宣稱最小日誌可自動比對實際收現，人工補登仍依 P13d。
 
 P12 匯出／列印與 P14 備份的 minimal recovery 只確認原稽核 receipt，不重建舊報表 H、重新下載／列印、改 backup checkpoint 或宣稱檔案已保存／驗證。必須重新查詢資料並明確發起新的輸出意圖；原稽核 receipt 仍保留為歷史。
 
 ## 6. 相容與分批交付
 
-既有 `easyorder-cloud-pending-order` 只在驗證其三欄最小識別後遷入本 app 的 journal；讀回確認成功才移除舊 slot。malformed／不同 dataset 或無法遷入不可被當成空白成功。新寫入不再使用單 slot；其他 prototype/local 帳務不得遷入。不得把它的舊「確認未入帳並清除提醒」行為當成本契約的 null 解決方式。
+既有 `easyorder-cloud-pending-order` 只在驗證其三欄最小識別後遷入本 app 的 journal；讀回確認成功才移除舊 slot。malformed／不同 dataset 或無法遷入不可被當成空白成功。新寫入不再使用單 slot；其他 prototype/local 帳務不得遷入。對遷入或既有 journal 中經伺服器完整查詢確認為 `not-found` 且非在途的孤兒暫存，演進為允許使用者透過明確「清除紀錄（Dismiss）」逃生口在獨占鎖與同步本機驗證下移除該筆 key（#676），但查詢失敗、離線、跨 dataset 或仍在途的項目仍不得清除。
 
 採分批實作：先共用 journal 與 repository write-ahead／錯誤碼／receipt context，再 shell 復原 gate 與各正式頁面的 10 秒／同 ID／owner 行為；每批有自己的明確驗收範圍。直到所有正式 command adapters 及頁面涵蓋前，不宣稱整體 P13b2 完成。中間批次也必須提供已啟用 journal 的可見確認／錯誤入口，不能只寫入無法處理的 pending 資料。
 
