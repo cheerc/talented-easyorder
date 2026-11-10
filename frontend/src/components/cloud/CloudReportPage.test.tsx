@@ -784,11 +784,11 @@ describe('CloudReportPage', () => {
     });
 
     it('reports an incomplete handover read without hiding the report or its exports', async () => {
-      mocks.readAccessEvents.mockRejectedValueOnce(Object.assign(new Error('雲端 accessEvents 超過完整讀取上限'), { code: 'INCOMPLETE_SNAPSHOT' }));
+      mocks.readAccessEvents.mockRejectedValueOnce(Object.assign(new Error('資料量超過一次能完整讀取的上限，沒有顯示部分資料；請縮小查詢範圍後重新查詢'), { code: 'INCOMPLETE_SNAPSHOT' }));
       render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:handover-incomplete" />);
       await screen.findByTestId('report-ready');
 
-      expect(handoverRegion()).toHaveTextContent('使用權交接無法完整讀取：雲端 accessEvents 超過完整讀取上限');
+      expect(handoverRegion()).toHaveTextContent('使用權交接無法完整讀取：資料量超過一次能完整讀取的上限，沒有顯示部分資料；請縮小查詢範圍後重新查詢');
       expect(within(handoverRegion()).queryByRole('table')).toBeNull();
       expect(screen.getByRole('button', { name: '匯出稽核 CSV' })).toBeEnabled();
     });

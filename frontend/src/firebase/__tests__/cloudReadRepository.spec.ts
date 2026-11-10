@@ -971,7 +971,9 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
         currentUser: fakeCurrentUser,
         pageSize: 1,
         maxAccessEvents: 2,
-      }).readAccessEvents({ range: todayRange(), leaseEpoch })).rejects.toMatchObject({ code: 'INCOMPLETE_SNAPSHOT' });
+      }).readAccessEvents({ range: todayRange(), leaseEpoch })).rejects.toMatchObject({
+        code: 'INCOMPLETE_SNAPSHOT', message: '資料量超過一次能完整讀取的上限，沒有顯示部分資料；請縮小查詢範圍後重新查詢',
+      });
     });
 
     it('rejects when the lease changes holder between pages', async () => {
@@ -1024,7 +1026,7 @@ describeWithEmulator('P12a complete cloud report reads and rules', () => {
         kind: 'unknown-kind',
       }));
       await expect(repository().readAccessEvents({ range: todayRange(), leaseEpoch }))
-        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: plainMessage() });
+        .rejects.toMatchObject({ code: 'UNSUPPORTED_SCHEMA', message: '使用權交接紀錄格式異常，請停止操作並聯絡維護者' });
     });
 
     it('rejects an event numbered after the current lease epoch', async () => {

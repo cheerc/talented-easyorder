@@ -60,6 +60,12 @@ describe('error catalog', () => {
     expect(getSystemDiagnosticNextStep(code)).not.toMatch(ENGINEERING_TERMS);
   });
 
+  it.each([...COMMAND_CODES, ...SYSTEM_CODES])('next step for %s has no stray space between Chinese characters and no bare ID', code => {
+    const text = SYSTEM_CODES.includes(code) ? getSystemDiagnosticNextStep(code) : getCommandDiagnosticNextStep(code);
+    expect(text).not.toMatch(/[一-鿿] [一-鿿]/);
+    expect(text).not.toMatch(/\bID\b/);
+  });
+
   it('keeps the original command number and never suggests a resend for the retained-ID codes', () => {
     for (const code of ['LEASE_LOST', 'UNAUTHORIZED', 'OFFLINE', 'UNKNOWN_RESULT', 'QUOTA_EXCEEDED', 'MAINTENANCE', 'UNSUPPORTED_SCHEMA']) {
       expect(getCommandDiagnosticNextStep(code), code).toContain('原命令編號');
