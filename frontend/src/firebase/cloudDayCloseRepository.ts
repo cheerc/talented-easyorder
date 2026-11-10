@@ -310,7 +310,7 @@ const TOTALS_KEYS = [
 function decodeTotals(value: unknown, label: string): CloudDayTotals {
   if (!plainRecord(value) || Object.keys(value).length !== TOTALS_KEYS.length
     || !TOTALS_KEYS.every(key => integer(value[key], 0))) {
-    throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `${label} 統計 schema 不支援`);
+    throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `${label} 統計資料格式異常，請停止操作並聯絡維護者`);
   }
   return Object.fromEntries(TOTALS_KEYS.map(key => [key, value[key]])) as unknown as CloudDayTotals;
 }
@@ -320,7 +320,7 @@ function decodeDay(dayId: string, value: unknown) {
     || !integer(value.revision, 1, Number.MAX_SAFE_INTEGER)
     || !integer(value.lastSettlementRevision, 0, MAX_SETTLEMENT_VERSIONS)
     || (value.openingCash !== null && !integer(value.openingCash, 0, 20_000))) {
-    throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日文件 ${dayId} schema 不支援`);
+    throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 資料格式異常，請停止操作並聯絡維護者`);
   }
   const totals = decodeTotals(value.totals, `營業日 ${dayId}`);
   return {
@@ -338,7 +338,7 @@ function toVersion(dayId: string, revision: number, value: unknown): CloudSettle
     settlement = decodeSettlementDoc(value, dayId, revision);
   } catch (error) {
     if (error instanceof InvalidCloudCommandInput) {
-      throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `日結版本 ${dayId}#${revision} schema 不支援`);
+      throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 的日結資料格式異常，請停止操作並聯絡維護者`);
     }
     throw error;
   }
@@ -375,7 +375,7 @@ function decodePostCloseEntry(entryId: string, value: unknown): PostCloseEntry {
     };
   } catch (error) {
     if (error instanceof InvalidCloudCommandInput) {
-      throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `關帳後補記 ${entryId} schema 不支援`);
+      throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', '關帳後補記資料格式異常，請停止操作並聯絡維護者');
     }
     throw error;
   }
@@ -470,10 +470,10 @@ async function readHeadSeq(db: Firestore): Promise<{ seq: number; datasetId: str
   assertServerConfirmed(snapshot, 'dataHead');
   const value: unknown = snapshot.exists() ? snapshot.data() : null;
   if (!plainRecord(value) || !integer(value.seq, 0, Number.MAX_SAFE_INTEGER) || typeof value.datasetId !== 'string') {
-    throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', '雲端 dataHead 尚未初始化或 schema 不支援');
+    throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', '雲端資料狀態尚未初始化或格式異常，請停止操作並聯絡維護者');
   }
   if (value.maintenance === true) throw new CloudDayCloseRepositoryError('MAINTENANCE', '系統正在維護，暫停讀取日結');
-  if (!validDate(value.goLiveDate)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', '雲端 dataHead 缺少系統啟用日期');
+  if (!validDate(value.goLiveDate)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', '雲端資料狀態缺少系統啟用日期，請停止操作並聯絡維護者');
   return { seq: value.seq, datasetId: value.datasetId, goLiveDate: value.goLiveDate };
 }
 
@@ -599,7 +599,7 @@ export async function readCloudDayClose(
     assertServerConfirmed(page, `營業日 ${dayId} 日結版本`);
     for (const snapshot of page.docs) assertServerConfirmed(snapshot, `營業日 ${dayId} 日結版本`);
     if (page.size !== day.lastSettlementRevision) {
-      throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `營業日 ${dayId} 的日結版本數與版號不一致`);
+      throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `營業日 ${dayId} 的日結紀錄數量對不上，請重新載入日結`);
     }
     const settlements = page.docs
       .map(snapshot => {

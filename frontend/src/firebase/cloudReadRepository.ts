@@ -189,7 +189,7 @@ function decodeHead(value: unknown): Head {
     || (value.seq === 0) !== (value.lastCommandId === null)
     || typeof value.maintenance !== 'boolean' || !isValidCloudGregorianDate(value.goLiveDate)
     || !(value.updatedAt instanceof Timestamp)) {
-    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '雲端 dataHead schema 不支援');
+    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '雲端資料狀態格式異常，請停止操作並聯絡維護者');
   }
   if (value.maintenance) throw new CloudReadRepositoryError('MAINTENANCE', '系統正在維護，暫停讀取雲端報表');
   return { datasetId: value.datasetId, sourceSeq: value.seq, goLiveDate: value.goLiveDate };
@@ -214,7 +214,7 @@ function decodeLease(value: unknown, uid: string): Omit<ReadContext, 'head'> {
 function readFailure(error: unknown): CloudReadRepositoryError {
   if (error instanceof CloudReadRepositoryError) return error;
   if (error instanceof InvalidCloudCommandInput) {
-    return new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '雲端稽核資料 schema 不支援');
+    return new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '雲端稽核資料格式異常，請停止操作並聯絡維護者');
   }
   if (error && typeof error === 'object' && 'code' in error) {
     const code = String((error as { code?: unknown }).code);
@@ -267,7 +267,7 @@ async function readContext(db: Firestore, user: CurrentUser): Promise<ReadContex
   ]);
   assertServerConfirmed(headSnapshot, 'dataHead');
   assertServerConfirmed(leaseSnapshot, 'accessLease');
-  if (!headSnapshot.exists()) throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '雲端 dataHead 尚未初始化');
+  if (!headSnapshot.exists()) throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '雲端資料狀態尚未由維護者初始化，請聯絡維護者');
   if (!leaseSnapshot.exists()) throw new CloudReadRepositoryError('LEASE_LOST', '使用權租約不存在');
   return {
     head: decodeHead(headSnapshot.data()),
@@ -328,7 +328,7 @@ function compareTransactionDocuments(left: QueryDocumentSnapshot, right: QueryDo
 function assertOrdered(documents: readonly QueryDocumentSnapshot[]): void {
   for (let index = 1; index < documents.length; index += 1) {
     if (compareTransactionDocuments(documents[index - 1], documents[index]) > 0) {
-      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', 'Firestore 交易排序與報表固定排序不一致');
+      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '交易資料的順序與報表對不上，沒有顯示部分資料，請停止操作並聯絡維護者');
     }
   }
 }
@@ -371,7 +371,7 @@ async function readPaged(
 function decodeTransactionSnapshot(snapshot: QueryDocumentSnapshot, headSeq: number): ReturnType<typeof decodeCloudOrderTransaction> {
   const value: unknown = snapshot.data();
   if (!plainRecord(value) || !isValidCloudGregorianDate(value.businessDate)) {
-    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `交易文件 ${snapshot.id} 缺少有效 Gregorian 營業日`);
+    throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '交易資料缺少有效的營業日，請停止操作並聯絡維護者');
   }
   try {
     return decodeCloudOrderTransaction(snapshot.id, value, value.businessDate, headSeq);
@@ -600,7 +600,7 @@ async function loadRange(
       const requiresSettlement = day.status === 'closed' || day.status === 'reopened';
       const hasSettlementRevision = day.lastSettlementRevision > 0;
       if (requiresSettlement !== hasSettlementRevision) {
-        throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 狀態與日結版號不一致`);
+        throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 的狀態與日結紀錄對不上，請停止操作並聯絡維護者`);
       }
     }
     const backfill = await readCloudBackfillDay(db, dayId);
@@ -685,7 +685,7 @@ async function loadRangeHeads(
       throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `系統啟用日前存在營業日投影 ${dayId}`);
     }
     if (day && (day.status === 'closed' || day.status === 'reopened') !== (day.lastSettlementRevision > 0)) {
-      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 狀態與日結版號不一致`);
+      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 的狀態與日結紀錄對不上，請停止操作並聯絡維護者`);
     }
     const latest = day && day.lastSettlementRevision > 0
       ? await readCloudSettlementVersion(db, dayId, day.lastSettlementRevision).catch(error => { throw readFailure(error); })

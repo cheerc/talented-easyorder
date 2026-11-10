@@ -269,7 +269,7 @@ function decodeHead(value: unknown): { seq: number; datasetId: string; goLiveDat
     || (value.lastCommandId !== null && (typeof value.lastCommandId !== 'string' || !UUID.test(value.lastCommandId)))
     || typeof value.maintenance !== 'boolean' || !validDate(value.goLiveDate)
     || !(value.updatedAt instanceof Timestamp)) {
-    throw new CloudOrderRepositoryError('UNSUPPORTED_SCHEMA', '雲端 dataHead schema 不支援');
+    throw new CloudOrderRepositoryError('UNSUPPORTED_SCHEMA', '雲端資料狀態格式異常，請停止操作並聯絡維護者');
   }
   if (value.maintenance) throw new CloudOrderRepositoryError('MAINTENANCE', '系統正在維護，暫停讀取訂餐資料');
   return { seq: value.seq, datasetId: value.datasetId, goLiveDate: value.goLiveDate };
@@ -295,7 +295,7 @@ export function decodeCloudOrderTransaction(id: string, value: unknown, business
     'vendorNameSnapshot', 'otherItemName', 'status', 'revision', 'createdAt', 'createdSeq',
     'operatorUid', 'operatorEmail', 'sourceDevice', 'note', 'lastCommandId', 'updatedAt',
   ];
-  const fail = () => new CloudOrderRepositoryError('UNSUPPORTED_SCHEMA', `交易文件 ${id} schema 不支援`);
+  const fail = () => new CloudOrderRepositoryError('UNSUPPORTED_SCHEMA', '交易資料格式異常，請停止操作並聯絡維護者');
   if (!validDocumentId(id) || !exactKeys(value, keys) || value.transactionId !== id) throw fail();
   const order = value.type === 'order';
   const expense = value.type === 'expense';
@@ -337,7 +337,7 @@ export function decodeCloudOrderTransaction(id: string, value: unknown, business
   }
   const createdAt = timestampIso(value.createdAt);
   const updatedAt = timestampIso(value.updatedAt);
-  if (!createdAt || !updatedAt) throw new CloudOrderRepositoryError('UNSUPPORTED_SCHEMA', `交易文件 ${id} 缺少伺服器 Timestamp`);
+  if (!createdAt || !updatedAt) throw new CloudOrderRepositoryError('UNSUPPORTED_SCHEMA', '交易資料格式異常，請停止操作並聯絡維護者');
   return {
     transactionId: id,
     studentId: value.studentId,
@@ -402,7 +402,7 @@ export function reconcileDayTotals(day: CloudDayRecord | null, transactions: Clo
 
 async function readHead(db: Firestore) {
   const snapshot = await getDocFromServer(doc(db, dataHeadPath()));
-  if (!snapshot.exists()) throw new CloudOrderRepositoryError('UNSUPPORTED_SCHEMA', '雲端 dataHead 尚未初始化');
+  if (!snapshot.exists()) throw new CloudOrderRepositoryError('UNSUPPORTED_SCHEMA', '雲端資料狀態尚未由維護者初始化，請聯絡維護者');
   return decodeHead(snapshot.data());
 }
 

@@ -269,11 +269,11 @@ function decodeHead(value: unknown): { seq: number; datasetId: string; goLiveDat
     || typeof value.maintenance !== 'boolean'
     || !validDate(value.goLiveDate)
     || !(value.updatedAt instanceof Timestamp)) {
-    throw new CloudStudentRepositoryError('UNSUPPORTED_SCHEMA', '雲端 dataHead schema 不支援');
+    throw new CloudStudentRepositoryError('UNSUPPORTED_SCHEMA', '雲端資料狀態格式異常，請停止操作並聯絡維護者');
   }
   if (value.maintenance) throw new CloudStudentRepositoryError('MAINTENANCE', '系統正在維護，暫停讀取學生名單');
   if ((value.seq === 0) !== (value.lastCommandId === null)) {
-    throw new CloudStudentRepositoryError('UNSUPPORTED_SCHEMA', '雲端 dataHead 序號與 command 狀態不一致');
+    throw new CloudStudentRepositoryError('UNSUPPORTED_SCHEMA', '雲端資料狀態與命令紀錄對不上，請停止操作並聯絡維護者');
   }
   return { seq: value.seq, datasetId: value.datasetId, goLiveDate: value.goLiveDate, maintenance: value.maintenance };
 }
@@ -296,13 +296,13 @@ export function decodeCloudStudentRecord(id: string, value: unknown): CloudStude
     || !integer(value.currentBalance, -1_000_000_000)
     || !UUID.test(String(value.lastCommandId))
     || !integer(value.revision, 1, Number.MAX_SAFE_INTEGER)) {
-    throw new CloudStudentRepositoryError('UNSUPPORTED_SCHEMA', `學生文件 ${id} schema 不支援`);
+    throw new CloudStudentRepositoryError('UNSUPPORTED_SCHEMA', '學生資料格式異常，請停止操作並聯絡維護者');
   }
   const createdAt = timestampIso(value.createdAt);
   const updatedAt = timestampIso(value.updatedAt);
   const openingCreatedAt = timestampIso(value.openingBalance.createdAt);
   if (!createdAt || !updatedAt || !openingCreatedAt) {
-    throw new CloudStudentRepositoryError('UNSUPPORTED_SCHEMA', `學生文件 ${id} 缺少伺服器 Timestamp`);
+    throw new CloudStudentRepositoryError('UNSUPPORTED_SCHEMA', '學生資料格式異常，請停止操作並聯絡維護者');
   }
   return {
     studentId: id,
@@ -361,7 +361,7 @@ function assertServerConfirmed(snapshot: { metadata: { fromCache: boolean; hasPe
 async function readHead(db: Firestore): Promise<ReturnType<typeof decodeHead>> {
   const snapshot = await getDocFromServer(doc(db, dataHeadPath()));
   assertServerConfirmed(snapshot);
-  if (!snapshot.exists()) throw new CloudStudentRepositoryError('UNSUPPORTED_SCHEMA', '雲端 dataHead 尚未初始化');
+  if (!snapshot.exists()) throw new CloudStudentRepositoryError('UNSUPPORTED_SCHEMA', '雲端資料狀態尚未由維護者初始化，請聯絡維護者');
   return decodeHead(snapshot.data());
 }
 
@@ -421,7 +421,7 @@ export async function readCloudOpeningDay(
     if (!plainRecord(value)
       || !integer(value.revision, 1, Number.MAX_SAFE_INTEGER)
       || (value.status !== 'open' && value.status !== 'closed' && value.status !== 'reopened')) {
-      throw new CloudStudentRepositoryError('UNSUPPORTED_SCHEMA', `營業日文件 ${dayId} schema 不支援`);
+      throw new CloudStudentRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 資料格式異常，請停止操作並聯絡維護者`);
     }
     return { dayId, revision: value.revision, status: value.status };
   } catch (error) {
