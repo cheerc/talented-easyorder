@@ -142,9 +142,17 @@ function plainRecord(value: unknown): value is Data {
   return prototype === Object.prototype || prototype === null;
 }
 
+/** 畫面用的記錄名稱；不把 collection 名稱直接顯示給操作員。 */
+const COLLECTION_LABEL: Record<CloudReadPageEvent['collection'], string> = {
+  transactions: '交易紀錄',
+  commands: '命令結果',
+  postCloseEntries: '關帳後補記',
+  accessEvents: '使用權交接紀錄',
+};
+
 function assertServerConfirmed(snapshot: { metadata: { fromCache: boolean; hasPendingWrites: boolean } }, source: string): void {
   if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) {
-    throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `${source} 含快取或未確認的本機寫入，無法作為完整報表`);
+    throw new CloudReadRepositoryError('INCOMPLETE_SNAPSHOT', `${source}尚未由伺服器確認，無法作為完整報表；請重新載入`);
   }
 }
 
@@ -265,8 +273,8 @@ async function readContext(db: Firestore, user: CurrentUser): Promise<ReadContex
     getDocFromServer(doc(db, dataHeadPath())),
     getDocFromServer(doc(db, accessLeasePath())),
   ]);
-  assertServerConfirmed(headSnapshot, 'dataHead');
-  assertServerConfirmed(leaseSnapshot, 'accessLease');
+  assertServerConfirmed(headSnapshot, '營業資料狀態');
+  assertServerConfirmed(leaseSnapshot, '使用權狀態');
   if (!headSnapshot.exists()) throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '雲端資料狀態尚未由維護者初始化，請聯絡維護者');
   if (!leaseSnapshot.exists()) throw new CloudReadRepositoryError('LEASE_LOST', '使用權租約不存在');
   return {
@@ -328,7 +336,7 @@ function compareTransactionDocuments(left: QueryDocumentSnapshot, right: QueryDo
 function assertOrdered(documents: readonly QueryDocumentSnapshot[]): void {
   for (let index = 1; index < documents.length; index += 1) {
     if (compareTransactionDocuments(documents[index - 1], documents[index]) > 0) {
-      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '交易資料的順序與報表對不上，沒有顯示部分資料，請停止操作並聯絡維護者');
+      throw new CloudReadRepositoryError('UNSUPPORTED_SCHEMA', '交易資料的順序與報表對不上，沒有顯示部分資料；請停止操作並聯絡維護者');
     }
   }
 }
@@ -352,8 +360,8 @@ async function readPaged(
     const pageLimit = Math.min(pageSize, remainingProbe);
     if (pageLimit <= 0) break;
     const page: QuerySnapshot = await getDocsFromServer(base(cursor, pageLimit));
-    assertServerConfirmed(page, collectionName);
-    for (const snapshot of page.docs) assertServerConfirmed(snapshot, collectionName);
+    assertServerConfirmed(page, COLLECTION_LABEL[collectionName]);
+    for (const snapshot of page.docs) assertServerConfirmed(snapshot, COLLECTION_LABEL[collectionName]);
     pageNumber += 1;
     documents.push(...page.docs);
     if (documents.length > maxDocuments) {
@@ -779,7 +787,7 @@ function balancesBackFromCurrent(
     balances.set(record.transactionId, balance);
     balance -= transactionEffect(record);
     if (!Number.isSafeInteger(balance) || balance < -1_000_000_000 || balance > 1_000_000_000) {
-      throw new CloudReadRepositoryError('RECONCILIATION_FAILED', `帳戶 ${student.studentId} 歷史餘額超出安全範圍`);
+      throw new CloudReadRepositoryError('RECONCILIATION_FAILED', '帳戶歷史餘額超出可安全計算的範圍，沒有顯示部分資料；請停止操作並聯絡維護者');
     }
   }
   return balances;
@@ -787,7 +795,7 @@ function balancesBackFromCurrent(
 
 async function readStudent(db: Firestore, studentId: string): Promise<CloudStudentRecord | null> {
   const snapshot = await getDocFromServer(doc(db, studentPath(studentId)));
-  assertServerConfirmed(snapshot, '學生文件');
+  assertServerConfirmed(snapshot, '學生資料');
   if (!snapshot.exists()) return null;
   try {
     return decodeCloudStudentRecord(snapshot.id, snapshot.data());
@@ -844,8 +852,8 @@ async function readStudentCommandsNewestFirst(
       ...(cursor ? [startAfter(cursor)] : []),
       limit(pageLimit),
     ));
-    assertServerConfirmed(page, 'commands');
-    for (const snapshot of page.docs) assertServerConfirmed(snapshot, 'commands');
+    assertServerConfirmed(page, COLLECTION_LABEL.commands);
+    for (const snapshot of page.docs) assertServerConfirmed(snapshot, COLLECTION_LABEL.commands);
     pageNumber += 1;
     await options.afterPageRead?.({ collection: 'commands', page: pageNumber });
     await assertContextUnchanged(db, user, context);
@@ -943,7 +951,7 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
       const studentById = new Map(listed.students.map(student => [student.studentId, student]));
       for (const record of since) {
         if (record.studentId !== '__cashier__' && !studentById.has(record.studentId)) {
-          throw new CloudReadRepositoryError('RECONCILIATION_FAILED', `交易 ${record.transactionId} 指向不存在的學生`);
+          throw new CloudReadRepositoryError('RECONCILIATION_FAILED', '有交易指向不存在的學生，沒有顯示部分資料；請停止操作並聯絡維護者');
         }
       }
       const balances = new Map<string, number>();
@@ -1240,7 +1248,7 @@ export function createCloudReadRepository(db: Firestore, options: CloudReadRepos
         const inRange = known.get(epoch - 1);
         if (inRange) return inRange;
         const snapshot = await getDocFromServer(doc(db, accessEventPath(epoch - 1)));
-        assertServerConfirmed(snapshot, 'accessEvents');
+        assertServerConfirmed(snapshot, COLLECTION_LABEL.accessEvents);
         if (!snapshot.exists()) return null;
         const decoded = decodeAccessEvent(snapshot);
         known.set(decoded.epoch, decoded);

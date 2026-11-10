@@ -1186,7 +1186,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
           } else {
             if (!studentSnapshot.exists()) throw new RejectCommand('INVALID_INPUT', '目標學生不存在');
             studentBefore = decodeStudent(studentSnapshot.data());
-            if (studentBefore.studentId !== targetStudentId) throw new RejectCommand('UNSUPPORTED_SCHEMA', '學生文件 ID 與路徑不一致');
+            if (studentBefore.studentId !== targetStudentId) throw new RejectCommand('UNSUPPORTED_SCHEMA', '學生資料格式異常，請停止操作並聯絡維護者');
           }
         }
         if (targetTransactionRef) {
@@ -1215,7 +1215,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
           const oldIndexSnapshot = await tx.get(oldIndexRef);
           const newIndexSnapshot = await tx.get(newIndexRef);
           if (!oldIndexSnapshot.exists() || oldIndexSnapshot.data()?.studentId !== targetStudentId) {
-            throw new RejectCommand('UNSUPPORTED_SCHEMA', '舊編號索引不存在或指向不正確');
+            throw new RejectCommand('UNSUPPORTED_SCHEMA', '學生舊編號資料異常，請停止操作並聯絡維護者');
           }
           if (newIndexSnapshot.exists()) {
             throw new RejectCommand('INVALID_INPUT', '目標編號已被使用');
@@ -1317,10 +1317,10 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
           const nextRef = doc(db, settlementPath(dayId, settlementRevision));
           const previousSnapshot = previousRef ? await tx.get(previousRef) : null;
           const nextSnapshot = await tx.get(nextRef);
-          if (nextSnapshot.exists()) throw new RejectCommand('UNSUPPORTED_SCHEMA', '日結版本已存在，但營業日指標未指向它');
+          if (nextSnapshot.exists()) throw new RejectCommand('UNSUPPORTED_SCHEMA', '日結紀錄與營業日狀態對不上，請停止操作並聯絡維護者');
           let previousSettlement: Data | null = null;
           if (previousSnapshot) {
-            if (!previousSnapshot.exists()) throw new RejectCommand('UNSUPPORTED_SCHEMA', '前一版日結不存在');
+            if (!previousSnapshot.exists()) throw new RejectCommand('UNSUPPORTED_SCHEMA', '前一版日結紀錄不存在，請停止操作並聯絡維護者');
             try {
               previousSettlement = decodeSettlementDoc(previousSnapshot.data(), dayId, settlementRevision - 1);
             } catch {
@@ -1487,7 +1487,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         }
 
         if (input.kind === 'EnsureDay') {
-          if (!daySnapshot) throw new RejectCommand('UNSUPPORTED_SCHEMA', 'EnsureDay 缺少目標日期參照');
+          if (!daySnapshot) throw new RejectCommand('UNSUPPORTED_SCHEMA', '建立營業日缺少目標日期，請停止操作並聯絡維護者');
           if (daySnapshot.exists()) throw new RejectCommand('INVALID_INPUT', '該營業日已存在；不會重設或重開日期');
           const businessDate = input.payload.businessDate;
           requireDateAfterGoLive(businessDate, String(headBefore.goLiveDate));
@@ -1511,12 +1511,12 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         }
 
         if (input.kind === 'SaveVendor' || input.kind === 'RemoveVendor') {
-          if (!targetVendorRef || !vendorSnapshot) throw new RejectCommand('UNSUPPORTED_SCHEMA', '供應商命令缺少 target 參照');
+          if (!targetVendorRef || !vendorSnapshot) throw new RejectCommand('UNSUPPORTED_SCHEMA', '供應商操作缺少目標供應商，請停止操作並聯絡維護者');
           const vendorId = input.targets.vendorId;
           const expectedRevision = input.expectedRevisions.vendor;
           const vendorBefore = vendorSnapshot.exists() ? decodeVendor(vendorSnapshot.data()) : null;
           if (vendorBefore && vendorBefore.vendorId !== vendorId) {
-            throw new RejectCommand('UNSUPPORTED_SCHEMA', '供應商文件 ID 與路徑不一致');
+            throw new RejectCommand('UNSUPPORTED_SCHEMA', '供應商資料格式異常，請停止操作並聯絡維護者');
           }
           checkRevision(vendorBefore?.revision ?? 0, expectedRevision, '供應商版本');
 
@@ -1619,7 +1619,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
                 throw new RejectCommand('INVALID_INPUT', '最近來源菜單或供應商已變更；請重新載入或直接確認新菜單');
               }
             } else if (sourceDaySnapshot) {
-              throw new RejectCommand('UNSUPPORTED_SCHEMA', '直接菜單命令不應帶繼承來源參照');
+              throw new RejectCommand('UNSUPPORTED_SCHEMA', '直接指定的菜單不應帶有沿用來源，請停止操作並聯絡維護者');
             }
             const previousMenu = dayBefore.menu as Data | null;
             const menuAfter: Data = {
@@ -2030,7 +2030,7 @@ export function createCloudCommandRepository(db: Firestore, options: CloudComman
         }
 
         if (input.kind !== 'CreateOrder' && input.kind !== 'CreatePayment') {
-          throw new RejectCommand('UNSUPPORTED_SCHEMA', '命令種類沒有對應的寫入流程');
+          throw new RejectCommand('UNSUPPORTED_SCHEMA', '這種操作目前無法處理，請停止操作並聯絡維護者');
         }
         if (!daySnapshot?.exists() || !studentBefore || !targetTransactionRef || !dayRef) {
           throw new RejectCommand('INVALID_INPUT', '建立交易需要已存在的營業日與學生');

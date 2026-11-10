@@ -293,7 +293,7 @@ function integer(value: unknown, minimum: number, maximum = 1_000_000_000): valu
 
 function assertServerConfirmed(snapshot: { metadata: { fromCache: boolean; hasPendingWrites: boolean } }, source: string): void {
   if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) {
-    throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `${source} 含快取或未確認的本機寫入`);
+    throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `${source}尚未由伺服器確認，請重新載入日結`);
   }
 }
 
@@ -345,7 +345,7 @@ function toVersion(dayId: string, revision: number, value: unknown): CloudSettle
   return {
     revision,
     status: settlement.status as CloudSettlementVersion['status'],
-    totals: decodeTotals(settlement.totals, `日結版本 ${dayId}#${revision}`),
+    totals: decodeTotals(settlement.totals, `營業日 ${dayId} 的日結`),
     openingCash: settlement.openingCash as number,
     expectedCash: settlement.expectedCash as number,
     countedCash: settlement.countedCash as number | null,
@@ -409,7 +409,7 @@ async function readPostCloseEntries(
       }
       const entry = decodePostCloseEntry(snapshot.id, snapshot.data());
       if (dayId !== null && entry.dayId !== dayId) {
-        throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `關帳後補記 ${snapshot.id} 的日期與查詢不一致`);
+        throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', '關帳後補記的日期與查詢對不上，請重新讀取');
       }
       entries.push(entry);
     }
@@ -467,7 +467,7 @@ export async function readCloudBackfillDay(db: Firestore, dayId: string): Promis
 
 async function readHeadSeq(db: Firestore): Promise<{ seq: number; datasetId: string; goLiveDate: string }> {
   const snapshot = await getDocFromServer(doc(db, dataHeadPath()));
-  assertServerConfirmed(snapshot, 'dataHead');
+  assertServerConfirmed(snapshot, '營業資料狀態');
   const value: unknown = snapshot.exists() ? snapshot.data() : null;
   if (!plainRecord(value) || !integer(value.seq, 0, Number.MAX_SAFE_INTEGER) || typeof value.datasetId !== 'string') {
     throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', '雲端資料狀態尚未初始化或格式異常，請停止操作並聯絡維護者');
@@ -487,7 +487,7 @@ function taipeiDate(timestamp: Timestamp): string {
 
 async function readLeaseDate(db: Firestore, user: CurrentUser): Promise<string> {
   const lease = await getDocFromServer(doc(db, accessLeasePath()));
-  assertServerConfirmed(lease, 'accessLease');
+  assertServerConfirmed(lease, '使用權狀態');
   const leaseValue: unknown = lease.exists() ? lease.data() : null;
   if (!plainRecord(leaseValue) || leaseValue.holderUid !== user.uid || !(leaseValue.updatedAt instanceof Timestamp)) {
     throw new CloudDayCloseRepositoryError('LEASE_LOST', '目前沒有有效的伺服器使用權租約');
@@ -528,7 +528,7 @@ export async function readCloudDayCloseOverview(
     }
     const unclosedDays = page.docs
       .map(snapshot => {
-        if (!validDate(snapshot.id)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${snapshot.id} 路徑不支援`);
+        if (!validDate(snapshot.id)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', '營業日資料的日期格式異常，請停止操作並聯絡維護者');
         const day = decodeDay(snapshot.id, snapshot.data());
         if (day.status === 'closed') throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${snapshot.id} 狀態不符查詢條件`);
         const entry = {
@@ -572,7 +572,7 @@ export async function readCloudSettlementVersion(
   revision: number,
 ): Promise<CloudSettlementVersion | null> {
   const snapshot = await getDocFromServer(doc(db, settlementPath(dayId, revision)));
-  assertServerConfirmed(snapshot, `日結版本 ${dayId}#${revision}`);
+  assertServerConfirmed(snapshot, `營業日 ${dayId} 的日結紀錄`);
   return snapshot.exists() ? toVersion(dayId, revision, snapshot.data()) : null;
 }
 
@@ -596,8 +596,8 @@ export async function readCloudDayClose(
     const day = decodeDay(dayId, daySnapshot.data());
     // One document more than the most versions a day can have: a longer list fails the count check below instead of loading.
     const page = await getDocsFromServer(query(collection(db, dayPath(dayId), 'settlements'), limit(MAX_SETTLEMENT_VERSIONS + 1)));
-    assertServerConfirmed(page, `營業日 ${dayId} 日結版本`);
-    for (const snapshot of page.docs) assertServerConfirmed(snapshot, `營業日 ${dayId} 日結版本`);
+    assertServerConfirmed(page, `營業日 ${dayId} 的日結紀錄`);
+    for (const snapshot of page.docs) assertServerConfirmed(snapshot, `營業日 ${dayId} 的日結紀錄`);
     if (page.size !== day.lastSettlementRevision) {
       throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `營業日 ${dayId} 的日結紀錄數量對不上，請重新載入日結`);
     }
@@ -605,7 +605,7 @@ export async function readCloudDayClose(
       .map(snapshot => {
         const revision = Number(snapshot.id);
         if (!integer(revision, 1, day.lastSettlementRevision) || String(revision) !== snapshot.id) {
-          throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `日結版本 ${dayId}/${snapshot.id} 路徑不支援`);
+          throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${dayId} 的日結紀錄格式異常，請停止操作並聯絡維護者`);
         }
         return toVersion(dayId, revision, snapshot.data());
       })
@@ -752,7 +752,7 @@ export function createCloudLedgerReader(
         if (days.length >= MAX_SCANNED_DAYS) {
           throw new CloudDayCloseRepositoryError('INCOMPLETE_SNAPSHOT', `營業日超過 ${MAX_SCANNED_DAYS} 天，無法完整檢查帳務異常`);
         }
-        if (!validDate(snapshot.id)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${snapshot.id} 路徑不支援`);
+        if (!validDate(snapshot.id)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', '營業日資料的日期格式異常，請停止操作並聯絡維護者');
         const day = decodeDay(snapshot.id, snapshot.data());
         days.push({
           dayId: snapshot.id,
@@ -839,7 +839,7 @@ export function createCloudLedgerReader(
         for (let index = page.docs.length - 1; index >= 0; index -= 1) {
           const snapshot = page.docs[index];
           if (!snapshot) continue;
-          if (!validDate(snapshot.id)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${snapshot.id} 路徑不支援`);
+          if (!validDate(snapshot.id)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', '營業日資料的日期格式異常，請停止操作並聯絡維護者');
           const day = decodeDay(snapshot.id, snapshot.data());
           if (day.status === 'closed') {
             const countedCash = await countedCashOf(before.datasetId, snapshot.id, day);
@@ -882,7 +882,7 @@ export function createCloudLedgerReader(
           limit(segmentDays),
         ));
         for (const snapshot of page.docs) {
-          if (!validDate(snapshot.id)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', `營業日 ${snapshot.id} 路徑不支援`);
+          if (!validDate(snapshot.id)) throw new CloudDayCloseRepositoryError('UNSUPPORTED_SCHEMA', '營業日資料的日期格式異常，請停止操作並聯絡維護者');
           const day = decodeDay(snapshot.id, snapshot.data());
           if (day.openingCash !== null) {
             next = { dayId: snapshot.id, openingCash: day.openingCash };

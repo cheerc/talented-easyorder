@@ -372,6 +372,18 @@ export function decodeCloudOrderTransaction(id: string, value: unknown, business
  * expense rows split into cashierIncome (paidAmount) and cashierExpense (mealPrice), active refund rows count
  * accountRefunds (amount), voided rows contribute nothing.
  */
+/** 營業日合計欄位的畫面名稱；不把內部欄位名顯示給操作員。 */
+const TOTALS_LABEL = {
+  activeTransactionCount: '有效交易筆數',
+  bentoCount: '餐盒份數',
+  otherMealCount: '其他餐點份數',
+  mealTotal: '餐費合計',
+  retainedReceipts: '收款合計',
+  cashierIncome: '櫃台收入',
+  cashierExpense: '櫃台支出',
+  accountRefunds: '帳戶退款',
+} as const;
+
 export function reconcileDayTotals(day: CloudDayRecord | null, transactions: CloudOrderTransactionRecord[]): void {
   const active = transactions.filter(tx => tx.status === 'active');
   if (!day) {
@@ -395,7 +407,7 @@ export function reconcileDayTotals(day: CloudDayRecord | null, transactions: Clo
   if (mismatched.length > 0) {
     throw new CloudOrderRepositoryError(
       'RECONCILIATION_FAILED',
-      `當日交易與營業日合計不一致（${mismatched.join('、')}）；沒有顯示可能錯誤的份數或金額`,
+      `當日交易與營業日合計對不上（${mismatched.map(key => TOTALS_LABEL[key]).join('、')}）；沒有顯示可能錯誤的份數或金額`,
     );
   }
 }
@@ -468,7 +480,7 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
       const studentIds = new Set(students.map(student => student.studentId));
       const orphan = transactions.find(tx => tx.type !== 'expense' && !studentIds.has(tx.studentId));
       if (orphan) {
-        throw new CloudOrderRepositoryError('RECONCILIATION_FAILED', `交易 ${orphan.transactionId} 指向不存在的學生；請聯絡系統維護者`);
+        throw new CloudOrderRepositoryError('RECONCILIATION_FAILED', '有交易指向不存在的學生；請聯絡系統維護者');
       }
       reconcileDayTotals(day, transactions);
       const leaseDateAfter = await readLeaseDate(db, user.uid);
@@ -554,7 +566,7 @@ export function createCloudOrderRepository(db: Firestore, options: CloudOrderRep
       const studentIds = new Set(students.map(item => item.studentId));
       const orphan = transactions.find(item => item.type !== 'expense' && !studentIds.has(item.studentId));
       if (orphan) {
-        throw new CloudOrderRepositoryError('RECONCILIATION_FAILED', `交易 ${orphan.transactionId} 指向不存在的學生；請聯絡系統維護者`);
+        throw new CloudOrderRepositoryError('RECONCILIATION_FAILED', '有交易指向不存在的學生；請聯絡系統維護者');
       }
       reconcileDayTotals(day, transactions);
       if (await readLeaseDate(db, user.uid) !== previous.today) return null;
