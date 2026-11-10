@@ -550,7 +550,7 @@ jobs:
     if: needs.change-scope.result == 'success' && needs.change-scope.outputs.docs_only == 'false'
     runs-on: ubuntu-24.04
     # 系統依賴安裝曾耗盡 10m；保留最長 browser suite 與 artifact 收尾預算。
-    # 此為有限 job 上限，不重試或略過任何 suite；時間契約見 e2e-ci.test.mjs。
+    # 此為有限 job 上限，不重試或略過任何 suite；安裝步驟另有 step timeout（#674），時間契約見 e2e-ci.test.mjs。
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -594,10 +594,32 @@ jobs:
           java-version: '21'
       - name: Install Dependencies
         run: npm ci
-      - name: Install Playwright Browsers
-        run: npx playwright install chromium --with-deps
-      - name: Install PDF inspection tools
-        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y poppler-utils
+      # #674：apt（Playwright 系統依賴 + poppler-utils）與瀏覽器下載分成各自命名、各自有逾時的步驟，
+      # 卡住時由步驟名與 ::error:: 即可辨識是哪一段；兩者皆遠低於 job 上限，且不重試任何測試步驟。
+      # 觀察到的卡點在 `apt-get update`（azure 鏡像逾時後，Packages 階段無輸出直到 job 被取消）；成因為 Hypothesis。
+      # 設 apt 短逾時／重試，並以 `timeout` 限制每次嘗試；安裝命令最多重試一次（共 2 次嘗試）。
+      - name: Install system packages via apt (Playwright deps and PDF tools)
+        timeout-minutes: 9
+        run: |
+          printf '%s\n' 'Acquire::Retries "3";' 'Acquire::http::Timeout "20";' 'Acquire::https::Timeout "20";' 'DPkg::Lock::Timeout "60";' | sudo tee /etc/apt/apt.conf.d/99ci-bounded
+          for attempt in 1 2; do
+            echo "::group::apt attempt $attempt/2: playwright install-deps chromium + poppler-utils"
+            timeout 240 bash -c 'npx playwright install-deps chromium && sudo apt-get install --no-install-recommends -y poppler-utils' && { echo "::endgroup::"; exit 0; }
+            status=$?
+            echo "::endgroup::"
+            # timeout 只對自己的 process group 送訊號；root 的 apt-get 子行程會殘留並握有 dpkg lock（PR #680 run 42806819173），
+            # 先清掉並修復中斷的 dpkg 狀態，已下載的 .deb 留在 apt cache，重試只補剩下的。
+            sudo pkill -TERM -x apt-get || true
+            sleep 3
+            sudo dpkg --configure -a || true
+            if [ "$status" -eq 124 ]; then reason="timed out after 240s"; else reason="exit $status"; fi
+            echo "::warning::apt attempt $attempt/2 failed ($reason)"
+          done
+          echo "::error::apt install (playwright install-deps chromium + poppler-utils) failed after 2 attempts"
+          exit 1
+      - name: Install Playwright Chromium
+        timeout-minutes: 4
+        run: npx playwright install chromium
       - name: P17 demo Hosting release and browser smoke (CSP enforced)
         if: matrix.config == 'hosting'
         run: |

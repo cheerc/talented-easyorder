@@ -51,7 +51,6 @@ test('browser shard budget leaves execution time after observed slow dependency 
     + longestSuiteSeconds + setupAndArtifactReserveSeconds,
   'job budget must leave room for browser execution and cleanup after observed slow installation');
   assert.ok(jobMinutes <= 20, 'bounded CI repair must not permit jobs longer than 20 minutes');
-  assert.match(shards, /run: npx playwright install chromium --with-deps/);
   assert.doesNotMatch(shards, /continue-on-error:/);
 });
 
@@ -87,4 +86,80 @@ test('change-scope inherits the parent push result only on push, never on workfl
   assert.match(scope, /workflow_dispatch\)[\s\S]*docs_only=false/);
   const build = workflow.split('  build-and-test:\n')[1]?.split('  e2e-shards:\n')[0] ?? '';
   assert.doesNotMatch(build, /Docs-only PR detected/);
+});
+
+// Issue #674: browser/Hosting shards stalled 16-19 min in apt (`apt-get update`)
+// during "Install Playwright Browsers" / "Install PDF inspection tools" until the
+// 20-minute job timeout. Evidence: runs 42757108002, 42759804425, 42760681241.
+// Contract: every install sub-step is its own named step, is bounded below the job
+// budget, and may retry at most once (install commands only, never tests).
+const shardsSection = () => workflow.split('  e2e-shards:\n')[1]?.split('  e2e:\n')[0] ?? '';
+const shardSteps = () => shardsSection().split(/\n      - (?=\w+:)/).slice(1);
+const stepName = (s) => s.match(/^name: (.*)$/m)?.[1] ?? '';
+const stepNamed = (re) => shardSteps().find(s => re.test(stepName(s)));
+const stepMinutes = (step) => Number(step?.match(/^ {8}timeout-minutes: (\d+)$/m)?.[1]);
+
+test('apt and browser download are separate named install steps, each bounded by a step timeout', () => {
+  const apt = stepNamed(/apt/i);
+  const browser = stepNamed(/^Install Playwright (?:Chromium|Browsers)/i);
+  assert.ok(apt, 'an apt install step must be named so a stall identifies apt, not the browser download');
+  assert.ok(browser, 'the browser download must be its own named step');
+  assert.notEqual(apt, browser);
+  assert.doesNotMatch(shardsSection(), /playwright install [^\n]*--with-deps/,
+    '--with-deps hides apt inside the browser step; use install-deps in the apt step');
+  assert.match(apt, /playwright install-deps chromium/);
+  assert.match(apt, /apt-get install --no-install-recommends -y poppler-utils/);
+  assert.match(browser, /run: npx playwright install chromium\s*$/m);
+  const jobMinutes = Number(shardsSection().match(/^    timeout-minutes: (\d+)$/m)?.[1]);
+  for (const [name, step] of [['apt', apt], ['browser', browser]]) {
+    const minutes = stepMinutes(step);
+    assert.ok(Number.isFinite(minutes), `${name} install step needs an explicit timeout-minutes`);
+    assert.ok(minutes < jobMinutes / 2, `${name} install step timeout must stay well below the job timeout`);
+  }
+});
+
+test('apt is bounded by short timeouts and at most one bounded retry of the install command', () => {
+  const apt = stepNamed(/apt/i) ?? '';
+  assert.match(apt, /Acquire::Retries/);
+  assert.match(apt, /Acquire::http::Timeout/);
+  assert.match(apt, /Acquire::https::Timeout/);
+  const attempts = apt.match(/for attempt in ([\d ]+); do/)?.[1].trim().split(/\s+/).length;
+  assert.equal(attempts, 2, 'exactly one retry (two attempts) of the install command');
+  const perAttempt = Number(apt.match(/timeout (\d+) bash -c/)?.[1]);
+  assert.ok(Number.isFinite(perAttempt), 'each attempt must run under `timeout <seconds>`');
+  assert.ok(attempts * perAttempt < stepMinutes(apt) * 60, 'step timeout must cover all attempts');
+  assert.match(apt, /::error::/, 'a stalled attempt must name the failing sub-step in the log');
+});
+
+// Observed on PR #680 run 42806819173 (prototype shard): attempt 1 hit `timeout 240` while the
+// root apt-get child was still downloading; `timeout` only signals our own process group, so the
+// orphan kept /var/lib/dpkg/lock-frontend and attempt 2 died with "Unable to acquire the dpkg
+// frontend lock". A retry is only meaningful if the orphan is reaped first.
+test('a timed-out apt attempt reaps the orphaned root apt-get before the retry starts', () => {
+  const apt = stepNamed(/apt/i) ?? '';
+  const loop = apt.slice(apt.indexOf('for attempt in'));
+  const reap = loop.match(/sudo pkill [^\n]*apt-get[^\n]*/)?.[0];
+  assert.ok(reap, 'failed attempts must kill the leftover apt-get that still holds the dpkg lock');
+  assert.ok(loop.indexOf(reap) > loop.indexOf('timeout 240 bash -c'), 'reaping happens after the attempt');
+  assert.ok(loop.indexOf(reap) < loop.indexOf('done'), 'reaping happens inside the retry loop, before the next attempt');
+  assert.match(loop, /sudo dpkg --configure -a/, 'repair an interrupted dpkg state before retrying');
+});
+
+test('install steps plus observed suite budget still fit inside the job timeout', () => {
+  const jobMinutes = Number(shardsSection().match(/^    timeout-minutes: (\d+)$/m)?.[1]);
+  const installMinutes = stepMinutes(stepNamed(/apt/i)) + stepMinutes(stepNamed(/^Install Playwright (?:Chromium|Browsers)/i));
+  const npmCiSeconds = 53;
+  const longestSuiteSeconds = 238;
+  const setupAndArtifactReserveSeconds = 60;
+  assert.ok(installMinutes * 60 + npmCiSeconds + longestSuiteSeconds + setupAndArtifactReserveSeconds <= jobMinutes * 60,
+    'worst-case bounded install must still leave room for the longest suite');
+  assert.ok(jobMinutes <= 20, 'job limit must not be raised for #674');
+});
+
+test('test steps are never retried; retries are limited to the apt install command', () => {
+  const shards = shardsSection();
+  const suite = stepNamed(/Run isolated browser suite/) ?? '';
+  assert.match(suite, /npx playwright test/);
+  assert.doesNotMatch(suite, /for attempt|retry|timeout \d+ bash/i);
+  assert.doesNotMatch(shards, /--retries|nick-fields\/retry/);
 });
