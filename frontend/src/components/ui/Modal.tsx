@@ -71,13 +71,16 @@ export const Modal = React.memo(function Modal({
     };
   }, [open]);
 
-  // M1 K09：對話框開著時 Esc 只關對話框。在 capture 階段處理並停止傳遞，背景的「取消整筆」收不到同一次 Esc；
+  // M1 K09：對話框開著時 Esc 只關對話框（內有開啟中的說明時，先讓說明關閉）。在 capture 階段處理並停止傳遞，背景的「取消整筆」收不到同一次 Esc；
   // 監聽不隨 onClose 重新註冊，避免背景先觸發重繪時把這次 Esc 的監聽拆掉。
   useEffect(() => {
     if (!open) return;
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // #665：panel 內有開啟中的說明（HelpTip 的 role="tooltip"）時讓出這次 Esc；
+        // 事件繼續傳到 document capture，由 HelpTip 只關說明。說明關閉後的下一次 Esc 照下面流程關對話框。
+        if (panelRef.current?.querySelector('[role="tooltip"]')) return;
         e.preventDefault();
         e.stopImmediatePropagation();
         onCloseRef.current();
