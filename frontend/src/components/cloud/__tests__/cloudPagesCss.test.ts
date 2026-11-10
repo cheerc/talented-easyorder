@@ -258,7 +258,7 @@ describe('#667 雲端外殼字級用 token 等比放大', () => {
   const cloudScaleRules = () => {
     const css = readFileSync(resolve(STYLES_DIR, 'cloud-scale.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
     return [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].map(match => ({
-      selectors: match[1].split(',').map(selector => selector.trim().replace(/\s+/g, ' ')),
+      selectors: match[1].split(',').map((selector: string) => selector.trim().replace(/\s+/g, ' ')),
       body: match[2],
     }));
   };

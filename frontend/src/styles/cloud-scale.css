@@ -17,3 +17,42 @@ html[data-app-mode="cloud"] body {
 html[data-app-mode="cloud"] .mono {
   font-family: var(--font-mono);
 }
+
+/* #667 雲端外殼字級：topbar.css 與 prototype 共用、用硬寫 px，保留給 prototype 不動；
+   雲端在這裡改用 token／em，1920 依 1440 等比放大（約 4/3）。選擇器加 html[data-app-mode="cloud"] 前綴，
+   specificity 高於 topbar.css 原規則，prototype 不受影響（cloudPagesCss.test.ts 守門）。
+   1440 下對照原值：brand-name 15→15、brand-sub 11→13、brand-mark 12→13、tab 14→15、operator 面板說明 12→13、按鈕 14→15。 */
+html[data-app-mode="cloud"] .brand-name {
+  font-size: var(--t-sm);
+}
+
+html[data-app-mode="cloud"] .brand-sub,
+html[data-app-mode="cloud"] .brand-mark {
+  font-size: var(--t-xs);
+}
+
+html[data-app-mode="cloud"] .tab {
+  font-size: var(--t-sm);
+}
+
+/* 快捷鍵標示相對於 .tab 的字級，隨 token 一起放大。 */
+html[data-app-mode="cloud"] .tab-key {
+  font-size: .7em;
+}
+
+/* 頂部「異常 N」與次級導覽沒有設字級，原本使用瀏覽器預設的 13.333px。 */
+html[data-app-mode="cloud"] .status > button,
+html[data-app-mode="cloud"] .cloud-subnav button {
+  font-size: var(--t-xs);
+}
+
+html[data-app-mode="cloud"] .operator-menu__panel p,
+html[data-app-mode="cloud"] .operator-menu__panel small,
+html[data-app-mode="cloud"] .operator-menu__panel label {
+  font-size: var(--t-xs);
+}
+
+html[data-app-mode="cloud"] .operator-menu__panel button,
+html[data-app-mode="cloud"] .operator-menu__panel select {
+  font-size: var(--t-sm);
+}

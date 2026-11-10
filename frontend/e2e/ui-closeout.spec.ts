@@ -258,11 +258,25 @@ test.describe('UI 收尾 外殼與原生控制項等比放大 #667', () => {
     }, SCALE_PROBE);
   }
 
+  // `.tab` 在 1440 由 14px 變 15px：五個主分頁必須仍在同一列、不需橫向捲動，頁面也沒有橫向溢出。
+  async function assertTabsOneRow(page: Page, where: string) {
+    const layout = await page.evaluate(() => {
+      const strip = document.querySelector('.app-shell .tabs')!;
+      const tops = Array.from(strip.querySelectorAll('.tab')).map(tab => Math.round(tab.getBoundingClientRect().top));
+      return { count: tops.length, rows: new Set(tops).size, overflow: strip.scrollWidth - strip.clientWidth, page: document.documentElement.scrollWidth - window.innerWidth };
+    });
+    expect(layout, `${where} 五個主分頁`).toMatchObject({ count: 5, rows: 1 });
+    expect(layout.overflow, `${where} 分頁列橫向溢出`).toBeLessThanOrEqual(0);
+    expect(layout.page, `${where} 頁面橫向溢出`).toBeLessThanOrEqual(0);
+  }
+
   async function assertScaled(page: Page, where: string) {
     await page.setViewportSize({ width: 1440, height: 900 });
+    await assertTabsOneRow(page, `${where} 1440`);
     const before = await tagVisible(page);
     expect(before.length, `${where} 沒有量到任何元素`).toBeGreaterThan(5);
     await page.setViewportSize({ width: 1920, height: 1080 });
+    await assertTabsOneRow(page, `${where} 1920`);
     const after = new Map(await readSizes(page));
     const bad: string[] = [];
     for (const [id, { label, size }] of before) {
@@ -271,6 +285,8 @@ test.describe('UI 收尾 外殼與原生控制項等比放大 #667', () => {
       if (!(Math.abs(ratio - 4 / 3) <= 0.02)) bad.push(`${label}: ${size}px → ${big}px (×${ratio.toFixed(3)})`);
     }
     console.log('UI-SCALE', where, JSON.stringify({ measured: before.length, bad: bad.length }));
+    // 供 PR 記錄：每個元素 1440／1920 的實測字級。
+    console.log('UI-SCALE-EL', where, JSON.stringify(before.map(([id, { label, size }]) => [label, size, after.get(id)])));
     // soft：一次列出三個頁面所有沒放大的元素，不在第一頁就中止。
     expect.soft(bad, `${where} 沒有等比放大的元素`).toEqual([]);
     await page.setViewportSize({ width: 1440, height: 900 });
