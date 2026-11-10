@@ -596,14 +596,6 @@ jobs:
         run: npm ci
       # #674：apt（Playwright 系統依賴 + poppler-utils）與瀏覽器下載分成各自命名、各自有逾時的步驟，
       # 卡住時由步驟名與 ::error:: 即可辨識是哪一段；兩者皆遠低於 job 上限，且不重試任何測試步驟。
-      - name: Resolve Playwright version
-        id: playwright
-        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_OUTPUT"
-      - name: Cache Playwright browsers
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright.outputs.version }}
       # 觀察到的卡點在 `apt-get update`（azure 鏡像逾時後，Packages 階段無輸出直到 job 被取消）；成因為 Hypothesis。
       # 設 apt 短逾時／重試，並以 `timeout` 限制每次嘗試；安裝命令最多重試一次（共 2 次嘗試）。
       - name: Install system packages via apt (Playwright deps and PDF tools)
@@ -620,7 +612,7 @@ jobs:
           done
           echo "::error::apt install (playwright install-deps chromium + poppler-utils) failed after 2 attempts"
           exit 1
-      - name: Install Playwright Chromium (cached by locked version)
+      - name: Install Playwright Chromium
         timeout-minutes: 4
         run: npx playwright install chromium
       - name: P17 demo Hosting release and browser smoke (CSP enforced)

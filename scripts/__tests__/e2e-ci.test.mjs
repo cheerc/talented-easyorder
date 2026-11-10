@@ -92,7 +92,7 @@ test('change-scope inherits the parent push result only on push, never on workfl
 // during "Install Playwright Browsers" / "Install PDF inspection tools" until the
 // 20-minute job timeout. Evidence: runs 42757108002, 42759804425, 42760681241.
 // Contract: every install sub-step is its own named step, is bounded below the job
-// budget, may retry at most once, and the browser download is cached by locked version.
+// budget, and may retry at most once (install commands only, never tests).
 const shardsSection = () => workflow.split('  e2e-shards:\n')[1]?.split('  e2e:\n')[0] ?? '';
 const shardSteps = () => shardsSection().split(/\n      - (?=\w+:)/).slice(1);
 const stepName = (s) => s.match(/^name: (.*)$/m)?.[1] ?? '';
@@ -142,27 +142,10 @@ test('install steps plus observed suite budget still fit inside the job timeout'
   assert.ok(jobMinutes <= 20, 'job limit must not be raised for #674');
 });
 
-test('Playwright browsers are cached by the locked @playwright/test version, never retrying tests', () => {
+test('test steps are never retried; retries are limited to the apt install command', () => {
   const shards = shardsSection();
-  const versionStep = stepNamed(/Playwright version/i);
-  assert.ok(versionStep, 'a step must resolve the locked Playwright version');
-  assert.match(versionStep, /^ {8}id: (\w+)$/m);
-  const id = versionStep.match(/^ {8}id: (\w+)$/m)[1];
-  assert.match(versionStep, /node_modules\/@playwright\/test/);
-  assert.match(versionStep, /package-lock\.json/);
-  assert.match(versionStep, /GITHUB_OUTPUT/);
-  const cache = stepNamed(/Cache Playwright/i);
-  assert.ok(cache, 'browser cache step required');
-  assert.match(cache, /uses: actions\/cache@v\d+/);
-  assert.match(cache, /path: ~\/\.cache\/ms-playwright/);
-  assert.match(cache, new RegExp(`key: .*\\$\\{\\{ steps\\.${id}\\.outputs\\.version \\}\\}`));
-  const lock = JSON.parse(readFileSync(new URL('../../frontend/package-lock.json', import.meta.url), 'utf8'));
-  assert.match(lock.packages['node_modules/@playwright/test'].version, /^\d+\.\d+\.\d+$/);
-  const names = shardSteps().map(s => s.match(/^name: (.*)$/m)?.[1] ?? s.match(/^uses: (.*)$/m)?.[1]);
-  const idx = (re) => names.findIndex(n => re.test(n ?? ''));
-  assert.ok(idx(/Playwright version/i) < idx(/Cache Playwright/i) && idx(/Cache Playwright/i) < idx(/^Install Playwright (?:Chromium|Browsers)/i));
-  // retries are allowed for installs only; test steps stay single-shot.
   const suite = stepNamed(/Run isolated browser suite/) ?? '';
+  assert.match(suite, /npx playwright test/);
   assert.doesNotMatch(suite, /for attempt|retry|timeout \d+ bash/i);
   assert.doesNotMatch(shards, /--retries|nick-fields\/retry/);
 });
