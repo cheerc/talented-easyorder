@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HelpTip } from '../HelpTip';
@@ -99,5 +99,51 @@ describe('HelpTip', () => {
     const trigger = setup();
     await user.click(trigger);
     expect(screen.getByRole('tooltip').className).toContain('help-tip-ui__bubble');
+  });
+});
+
+describe('HelpTip 靠近視窗邊緣（#666）', () => {
+  const originalWidth = window.innerWidth;
+  afterEach(() => {
+    vi.restoreAllMocks();
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
+  });
+
+  // jsdom 沒有版面：用 stub 讓氣泡回傳指定的位置，驗證 HelpTip 算出的水平位移。
+  function stubBubble(left: number, width: number, viewport = 1440) {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: viewport });
+    const original = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains('help-tip-ui__bubble')) {
+        return { left, right: left + width, top: 0, bottom: 0, width, height: 0, x: left, y: 0, toJSON: () => ({}) } as DOMRect;
+      }
+      return original.call(this);
+    });
+  }
+
+  async function open() {
+    const user = userEvent.setup();
+    const trigger = setup();
+    await user.click(trigger);
+    return screen.getByRole('tooltip');
+  }
+
+  it('氣泡超出視窗左緣時，寫入把它推回邊距內的正位移', async () => {
+    stubBubble(-8, 300);
+    const tip = await open();
+    // 邊距 .5rem（16px 根字級 = 8px）：-8 → 8 需要位移 16px。
+    expect(parseFloat(tip.style.getPropertyValue('--help-tip-shift'))).toBeGreaterThanOrEqual(16);
+  });
+
+  it('氣泡超出視窗右緣時，寫入負位移', async () => {
+    stubBubble(1300, 300);
+    const tip = await open();
+    expect(parseFloat(tip.style.getPropertyValue('--help-tip-shift'))).toBeLessThan(0);
+  });
+
+  it('氣泡完全在視窗內時不位移', async () => {
+    stubBubble(100, 300);
+    const tip = await open();
+    expect(parseFloat(tip.style.getPropertyValue('--help-tip-shift') || '0')).toBe(0);
   });
 });

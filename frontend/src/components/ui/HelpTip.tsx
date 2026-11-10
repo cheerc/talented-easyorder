@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import './HelpTip.css';
 import { CircleHelp } from 'lucide-react';
 
@@ -13,10 +13,12 @@ interface HelpTipProps {
 /**
  * 圓形「?」說明：滑鼠移上、Tab 聚焦、點擊都能開（點擊會固定開啟）。
  * Esc 只在說明開啟時關閉並保留焦點，且不再傳給其他全域處理器；說明沒開時 Esc 照常傳遞。
+ * 氣泡在按鈕下方置中；靠近視窗左右邊緣時水平位移（`--help-tip-shift`），留在視窗內。
  */
 export function HelpTip({ label, children, className = '' }: HelpTipProps) {
   const id = useId();
   const wrapRef = useRef<HTMLSpanElement>(null);
+  const bubbleRef = useRef<HTMLSpanElement>(null);
   const pinnedRef = useRef(false);
   const [open, setOpen] = useState(false);
 
@@ -24,6 +26,26 @@ export function HelpTip({ label, children, className = '' }: HelpTipProps) {
     pinnedRef.current = false;
     setOpen(false);
   }, []);
+
+  // 先清掉舊位移再量，才量得到「置中」的原位；邊距 .5rem 依 root 字級換算，不寫死 px。
+  const keepInViewport = useCallback(() => {
+    const bubble = bubbleRef.current;
+    if (!bubble) return;
+    bubble.style.setProperty('--help-tip-shift', '0px');
+    const rect = bubble.getBoundingClientRect();
+    const margin = (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) * 0.5;
+    let shift = 0;
+    if (rect.left < margin) shift = margin - rect.left;
+    else if (rect.right > window.innerWidth - margin) shift = window.innerWidth - margin - rect.right;
+    bubble.style.setProperty('--help-tip-shift', `${shift}px`);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    keepInViewport();
+    window.addEventListener('resize', keepInViewport);
+    return () => window.removeEventListener('resize', keepInViewport);
+  }, [open, keepInViewport]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -68,7 +90,7 @@ export function HelpTip({ label, children, className = '' }: HelpTipProps) {
         <CircleHelp size={16} strokeWidth={2} aria-hidden="true" />
       </button>
       {open && (
-        <span id={id} role="tooltip" className="help-tip-ui__bubble">{children}</span>
+        <span id={id} ref={bubbleRef} role="tooltip" className="help-tip-ui__bubble">{children}</span>
       )}
     </span>
   );

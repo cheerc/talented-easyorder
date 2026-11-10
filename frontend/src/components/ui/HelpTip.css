@@ -30,16 +30,16 @@
   outline-offset: 2px;
 }
 
-/* 氣泡放在按鈕下方，不遮住觸發點 */
+/* 氣泡放在按鈕下方，不遮住觸發點；--help-tip-shift 由 HelpTip.tsx 量測後設定，靠邊時把氣泡推回視窗內 */
 .help-tip-ui__bubble {
   position: absolute;
   top: calc(100% + var(--s1));
   left: 50%;
   z-index: 20;
   width: max-content;
-  max-width: 22rem;
+  max-width: min(22rem, calc(100vw - 1rem));
   padding: var(--s2) var(--s3);
-  transform: translateX(-50%);
+  transform: translateX(calc(-50% + var(--help-tip-shift, 0px)));
   border: 1px solid var(--line);
   border-radius: var(--r);
   background: var(--panel);
