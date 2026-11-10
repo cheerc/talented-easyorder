@@ -248,8 +248,6 @@ const CLOUD_SHELL_SELECTORS = [
   '.status > button',
   '.cloud-subnav button',
   '.operator-menu__panel p',
-  '.operator-menu__panel small',
-  '.operator-menu__panel label',
   '.operator-menu__panel button',
   '.operator-menu__panel select',
 ];
