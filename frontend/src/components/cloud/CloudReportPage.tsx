@@ -772,10 +772,14 @@ export function CloudReportPage({
       'transactions-original': 'transactions-original', 'transactions-merged': 'transactions-merged',
       settlements: 'settlements', 'post-close-entries': 'post-close-entries', audit: 'audit',
     };
+    const titles: Record<RecordCloudExportInput['exportType'], string> = {
+      'transactions-original': '匯出原始交易 CSV', 'transactions-merged': '匯出合併交易 CSV',
+      settlements: '匯出日結 CSV', 'post-close-entries': '匯出關帳後補記 CSV', audit: '匯出稽核 CSV',
+    };
     recordAction({
       id, kind: 'export', scopeKey, datasetId: snapshot.report.datasetId, input,
       contents: csvFor(type, snapshot, audit), filename: `cloud-${names[type]}-${query.range.startDate}_${query.range.endDate}.csv`,
-      title: `P${type} · ${query.range.startDate}–${query.range.endDate} · H=${snapshot.report.sourceSeq}`,
+      title: `${titles[type]} · ${query.range.startDate}–${query.range.endDate}`,
       rows: type === 'transactions-merged' ? snapshot.report.mergedTransactions : snapshot.report.transactions,
     });
   };
@@ -817,7 +821,7 @@ export function CloudReportPage({
     };
     recordAction({
       id, kind: 'print', scopeKey, datasetId: snapshot.report.datasetId, input,
-      contents: '', filename: '', title: `雲端帳務 ${query.range.startDate}–${query.range.endDate} · ${query.studentId ?? '全部帳戶'} · H=${snapshot.report.sourceSeq}`,
+      contents: '', filename: '', title: `雲端帳務 ${query.range.startDate}–${query.range.endDate} · ${query.studentId ?? '全部帳戶'}`,
       rows: mode === 'original' ? snapshot.report.transactions : snapshot.report.mergedTransactions,
     });
   };
@@ -937,7 +941,7 @@ export function CloudReportPage({
       <header className="cloud-report__header">
         <div>
           <div className="cloud-report__title"><h2>報表</h2>
-            <HelpTip label="報表說明">日期範圍由伺服器台北日期 {leaseToday || '讀取中'} 推導。{snapshot ? `\n資料版本 ${snapshot.report.sourceSeq}。` : ''}</HelpTip></div>
+            <HelpTip label="報表說明">日期範圍由伺服器台北日期 {leaseToday || '讀取中'} 推導。</HelpTip></div>
           <Callout variant="info" className="cloud-report__callout">僅在報表與稽核資料版本一致時顯示。</Callout>
         </div>
       </header>
@@ -1061,7 +1065,7 @@ export function CloudReportPage({
 
         <section className="cloud-report__section" aria-labelledby="cloud-report-exports-heading">
           <div className="cloud-report__heading-row"><h3 id="cloud-report-exports-heading">收據確認後輸出</h3>
-            <HelpTip label="輸出說明">{`輸出固定目前日期與帳戶範圍。\n資料版本 ${snapshot.report.sourceSeq}。`}</HelpTip></div>
+            <HelpTip label="輸出說明">輸出固定目前日期與帳戶範圍。</HelpTip></div>
           <Callout variant="info" className="cloud-report__callout">日結與關帳後補記僅支援全部帳戶範圍。</Callout>
           <div className="cloud-report__actions">
             <button type="button" disabled={controlsLocked} onClick={() => makeExport('transactions-original')}>匯出原始交易 CSV</button>
@@ -1113,17 +1117,17 @@ export function CloudReportPage({
 
     </section>
     {printAction && createPortal(
-      <article className="cloud-report__print" aria-label="本次固定列印內容">
+      <article className="cloud-report__print" aria-label="本次固定列印內容" data-source-seq={printAction.input.sourceSeq}>
         <h1>{printAction.title}</h1>
         <p>營業日標示：{(printAction.input as RecordCloudPrintInput).businessDate} · 範圍：{(printAction.input as RecordCloudPrintInput).range.startDate}–{(printAction.input as RecordCloudPrintInput).range.endDate}
-          · 帳戶：{(printAction.input as RecordCloudPrintInput).scope.studentId ?? '全部帳戶'} · 完整資料列數：{printAction.rows.length} · H={printAction.input.sourceSeq}</p>
-        <table><thead><tr><th>交易識別</th><th>營業日</th><th>帳戶</th><th>姓名快照</th><th>類型</th><th>金額</th><th>餘額</th><th>來源序號</th></tr></thead>
+          · 帳戶：{(printAction.input as RecordCloudPrintInput).scope.studentId ?? '全部帳戶'} · 完整資料列數：{printAction.rows.length}</p>
+        <table><thead><tr><th>交易識別</th><th>營業日</th><th>帳戶</th><th>姓名快照</th><th>類型</th><th>金額</th><th>餘額</th></tr></thead>
           <tbody>{printAction.rows.map(row => {
             const transactionIds = 'kind' in row ? row.transactionIds : [row.transactionId];
             return <tr key={row.transactionId} data-merged-row={'kind' in row ? 'true' : undefined}>
               <td>{transactionIds.map((id, index) => <span key={id}>{index > 0 ? ' · ' : ''}{id}</span>)}</td>
               <td>{row.businessDate}</td><td>{row.studentId}</td><td>{row.studentNameSnapshot}</td>
-              <td>{'kind' in row ? row.kind : row.type}</td><td>{money(row.amount)}</td><td>{row.afterBalance === undefined ? '—' : money(row.afterBalance)}</td><td>{row.sourceSeq}</td>
+              <td>{'kind' in row ? row.kind : row.type}</td><td>{money(row.amount)}</td><td>{row.afterBalance === undefined ? '—' : money(row.afterBalance)}</td>
             </tr>;
           })}</tbody>
         </table>

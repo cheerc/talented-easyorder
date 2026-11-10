@@ -849,7 +849,6 @@ export function CloudAccountHistoryPage({
           <div><dt>期初餘額</dt><dd><CloudAccountBalance amount={snapshot.account.openingBalance} currency="$" /></dd></div>
           <div><dt>目前帳戶餘額</dt><dd><CloudAccountBalance amount={snapshot.account.currentBalance} currency="$" /></dd></div>
           <div><dt>帳戶狀態</dt><dd><StatusBadge variant={currentStudent.status === 'active' ? 'ok' : 'neutral'} className="cloud-account-history__status">{currentStudent.status === 'active' ? '使用中' : '已停用'}</StatusBadge></dd></div>
-          <div><dt>學生版本</dt><dd>{currentStudent.revision}</dd></div>
         </dl>
         <Callout variant="info" className="cloud-account-history__callout"><span><strong>依目前更正後資料重算</strong>，不是交易當時餘額。</span>
           <HelpTip label="餘額驗證說明">各筆餘額已由完整歷史驗證；日結版本另列，不視為交易當時餘額。</HelpTip></Callout>
@@ -930,7 +929,6 @@ export function CloudAccountHistoryPage({
 
       {draft && snapshot && <form className="cloud-account-history__mutation" aria-label="歷史交易更正" onSubmit={submitMutation}>
         <h3>{draft.kind === 'void' ? '作廢歷史交易' : '更正歷史交易'} · {draft.transaction.transactionId}</h3>
-        <p>固定交易版本 {draft.transaction.revision}、學生版本 {currentStudent?.revision ?? '—'}、日期版本 {rangeDayByDate.get(draft.transaction.businessDate)?.revision ?? '—'}。</p>
         <Callout variant="warn" className="cloud-account-history__callout">此頁只允許仍未曾關帳的營業日。</Callout>
         {draft.kind === 'correct' && draft.transaction.type === 'order' && <>
           <label>餐費<input aria-label="更正餐費" inputMode="numeric" disabled={Boolean(visibleFrozen)} value={mealPriceText} onChange={event => setMealPriceText(event.target.value)} /></label>

@@ -1354,7 +1354,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
       const recovery = page.getByRole('alert', { name: '命令結果確認' });
       await expect(recovery).toBeVisible();
       await expect(recovery).toContainText(commandId);
-      await expect(recovery).toContainText('伺服器命令序號 1');
+      await expect(recovery).not.toContainText('伺服器命令序號');
       await expect(page.getByText(/資料集已變更/)).toBeVisible();
       await expect(page.getByTestId(`cloud-student-row-${studentCode}`)).toHaveCount(0);
       await expect(page.getByRole('button', { name: '新增學生' })).toHaveCount(0);
@@ -1749,7 +1749,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
 
       const recovery = page.getByRole('alert', { name: '命令結果確認' });
       await expect(recovery).toContainText(commandId);
-      await expect(recovery).toContainText('伺服器命令序號 1');
+      await expect(recovery).not.toContainText('伺服器命令序號');
       await expect(page.locator('.cloud-day-vendors__alert')).toContainText(/伺服器資料集或營業日已變更/);
       await expect(page.getByRole('heading', { name: `${today} 營業日` })).toHaveCount(0);
       await expect(page.getByRole('navigation', { name: '主要導覽' }).getByRole('button', { name: '櫃台' })).toBeDisabled();
@@ -1969,7 +1969,7 @@ test.describe('P13b2b2c DayClose command and backfill-step recovery', () => {
 
       const recovery = page.getByRole('alert', { name: '命令結果確認' });
       await expect(recovery).toContainText(commandId);
-      await expect(recovery).toContainText('伺服器命令序號 1');
+      await expect(recovery).not.toContainText('伺服器命令序號');
       await expect(page.getByText(/伺服器資料集或營業日已變更/).first()).toBeVisible();
       await expect(page.getByRole('heading', { name: `${today} 日結` })).toHaveCount(0);
       await expect(page.getByText(new RegExp(`已確認 ${today} 關帳 完成`))).toHaveCount(0);

@@ -230,6 +230,7 @@ describe('CloudAccountHistoryPage', () => {
     expect(within(statusCell).getByText('回填')).toHaveClass('badge-ui', 'badge-warn');
     openTransactionMenu();
       fireEvent.click(screen.getByRole('button', { name: '更正' }));
+    expect(screen.getByRole('form', { name: '歷史交易更正' })).not.toHaveTextContent(/固定交易版本|學生版本|日期版本/);
     fireEvent.change(screen.getByLabelText('更正餐費'), { target: { value: '60' } });
     fireEvent.change(screen.getByLabelText('更正理由'), { target: { value: '餐費輸入錯誤' } });
     fireEvent.click(screen.getByRole('button', { name: '確認送出' }));
@@ -803,6 +804,7 @@ describe('CloudAccountHistoryPage: #648 P8 統一風格', () => {
   it('shows no engineering terms on screen but keeps the data version in data attributes', async () => {
     const { container } = await renderReady('operator-a:4:p8-terms');
     expect(container).not.toHaveTextContent(/H=\d|來源序號|dataset /);
+    expect(container).not.toHaveTextContent(/學生版本/);
     const ready = screen.getByTestId('account-history-ready');
     expect(ready).toHaveAttribute('data-source-seq', '11');
     expect(ready).toHaveAttribute('data-dataset-id', 'dataset-a');

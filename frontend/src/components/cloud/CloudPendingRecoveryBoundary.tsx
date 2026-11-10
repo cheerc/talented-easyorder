@@ -579,7 +579,7 @@ export function CloudPendingRecoveryBoundary({ db, uid, leaseEpoch, children }: 
               {visibleRows.map(row => (
                 <li key={row.record.commandId}>
                   <div className="cloud-pending-recovery__row-main">
-                    <span>{statusText(row)}{row.status === 'confirmed' && row.seq ? `（伺服器序號 ${row.seq}）` : ''}</span>
+                    <span>{statusText(row)}</span>
                     <details className="cloud-pending-recovery__tech-details">
                       <summary>技術資訊</summary>
                       <code>{row.record.commandId}</code>

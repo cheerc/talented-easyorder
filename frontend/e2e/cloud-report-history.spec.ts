@@ -702,7 +702,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
                 display: style?.display ?? 'missing',
                 visibility: style?.visibility ?? 'missing',
                 parentIsBody: content?.parentElement === document.body,
-                sourceSeq: Number(content?.textContent?.match(/H=(\d+)/)?.[1]) || null,
+                sourceSeq: Number(content?.getAttribute('data-source-seq')) || null,
               };
             };
           });
@@ -719,7 +719,7 @@ test.describe('P12c cloud report and account history acceptance', () => {
           expect(printCapture?.count).toBe(1);
           expect(printCapture?.rows).toBe(uiRowCount);
           expect(printCapture?.text).toContain(`完整資料列數：${uiRowCount}`);
-          expect(printCapture?.text).toContain(`H=${printSourceSeq}`);
+          expect(printCapture?.text).not.toMatch(/H=\d|來源序號/);
           expect(printCapture?.sourceSeq).toBe(printSourceSeq);
           expect(printCapture?.text).toContain(`帳戶：${printScope.studentId ?? '全部帳戶'}`);
           expect(printCapture?.ids).toEqual(csvIds);
@@ -739,11 +739,11 @@ test.describe('P12c cloud report and account history acceptance', () => {
           const textPath = testInfo.outputPath(`p12c-${printScope.name}-${mode}-ledger.txt`);
           await writeFile(textPath, pdfText, 'utf8');
           const normalizedPdfText = pdfText
-            .replace(/交易識別\s+營業日\s+帳戶\s+姓名快照\s+類型\s+金額\s+餘額\s+來源序號/g, '')
+            .replace(/交易識別\s+營業日\s+帳戶\s+姓名快照\s+類型\s+金額\s+餘額/g, '')
             .replace(/\s+/g, '');
           expect(normalizedPdfText).toContain(`範圍：${d1}–${d3}`);
           expect(normalizedPdfText).toContain(`帳戶：${printScope.studentId ?? '全部帳戶'}`);
-          expect(normalizedPdfText).toContain(`H=${printSourceSeq}`);
+          expect(normalizedPdfText).not.toMatch(/H=\d|來源序號/);
           if (printScope.studentId === null) {
             expect(normalizedPdfText).toContain(SECOND_STUDENT_ID);
             expect(normalizedPdfText).toContain(SECOND_STUDENT_NAME);

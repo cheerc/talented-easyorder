@@ -1351,7 +1351,6 @@ export function CloudDayVendorsPage({
                   : '結果確認中，請勿重複操作。'}</strong>
           <span>{page.recovery.command ? `${commandLabel(page.recovery.command)} · 命令編號 ${page.recovery.commandId}` : `命令編號 ${page.recovery.commandId}`}</span>
           {page.recovery.phase === 'access-lost' && <span>只保留命令編號；請先重新確認登入帳號與使用權，再依現場流程核對。</span>}
-          {page.recovery.phase === 'receipt' && page.recovery.receipt && <span>伺服器命令序號 {page.recovery.receipt.seq}</span>}
           <div className="cloud-day-vendors__actions">
             {page.recovery.command && page.recovery.phase !== 'checking' && page.recovery.phase !== 'receipt'
               && (page.recovery.phase !== 'submitting' || page.recovery.timedOut) && (
@@ -1398,7 +1397,7 @@ export function CloudDayVendorsPage({
                 required
               />
               <HelpTip label="營業日說明">
-                營業日來自伺服器租約時間；瀏覽器時鐘不會決定營業日或改寫命令日期。{'\n'}改日期後會直接載入該日資料；有尚未送出的內容時會先詢問。{'\n'}除錯用：資料序號 {snapshot.seq}。
+                營業日來自伺服器租約時間；瀏覽器時鐘不會決定營業日或改寫命令日期。{'\n'}改日期後會直接載入該日資料；有尚未送出的內容時會先詢問。
               </HelpTip>
               <div className="cloud-day-vendors__date-meta">
                 <span>系統啟用日：{snapshot.goLiveDate}</span>

@@ -1669,7 +1669,6 @@ export function CloudDayClosePage({
                   : '結果確認中，請勿重複操作。'}</strong>
           <span>{page.recovery.command ? `${commandLabel(page.recovery.command)} · 命令編號 ${page.recovery.commandId}` : `命令編號 ${page.recovery.commandId}`}</span>
           {page.recovery.phase === 'access-lost' && <span>只保留命令編號；請先重新確認登入帳號與使用權，再依現場流程核對。</span>}
-          {page.recovery.phase === 'receipt' && page.recovery.receipt && <span>伺服器命令序號 {page.recovery.receipt.seq}</span>}
           <div className="cloud-day-close__actions">
             {page.recovery.command && (page.recovery.phase === 'unknown' || (page.recovery.phase === 'submitting' && page.recovery.timedOut)) && (
               <button type="button" className="cloud-day-close__primary" onClick={() => void checkPendingCommand()}>
@@ -1817,7 +1816,7 @@ export function CloudDayClosePage({
               <div>
                 <h2>{snapshot.dayId} 日結</h2>
                 {day ? (
-                  <p>日結版本 {day.lastSettlementRevision}</p>
+                  day.lastSettlementRevision > 0 ? <p>日結版本 {day.lastSettlementRevision}</p> : null
                 ) : <p>{canStartBackfill ? '伺服器沒有這個日期的營業日。如果那天其實有營業，可以在下方回填。' : '伺服器沒有這個日期的營業日，不需關帳。'}</p>}
               </div>
             </div>
