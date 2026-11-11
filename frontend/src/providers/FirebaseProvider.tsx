@@ -6,6 +6,7 @@ import { createContext, useContext, useState, useEffect, useRef, type ReactNode 
 import { ensureFirebaseInitialized, isFirebaseConfigured, type FirebaseServices, type FirebaseEnv } from '../firebase/firebaseApp';
 import { subscribeOperatorAccess, type OperatorAccess } from '../firebase/authService';
 import {
+  readLeaseTakerEmail,
   acquireLease as apiAcquireLease,
   getLeaseStatus as apiGetLeaseStatus,
   releaseLease as apiReleaseLease,
@@ -21,14 +22,30 @@ import { subscribeDataHead, type DataHeadSignal } from '../firebase/dataHeadWatc
 import { clearSensitivePosData } from '../store/clearSensitivePosData';
 import { emitError } from '../errors/errorBus';
 
+/** #691: this tab was the holder and another operator took the lease over. `takerEmail` is null when it cannot be read. */
+export interface KickedNotice {
+  takerEmail: string | null;
+}
+
+/**
+ * `confirmedTakeoverEpoch`: the epoch of the occupied lease the operator was shown and explicitly agreed to take over.
+ * Without it, a lease held by another UID is never taken over by this call (only observed), unless the lease already looks
+ * expired. Rules stay the authority either way.
+ */
+export interface AcquireLeaseOptions {
+  confirmedTakeoverEpoch?: number;
+}
+
 export interface FirebaseContextValue {
   fb: FirebaseServices | null;
   fbError: string | null;
   storageCleanupError: string | null;
   access: OperatorAccess;
   lease: ActiveLeaseState;
-  acquireLease: () => Promise<LeaseResult>;
+  acquireLease: (options?: AcquireLeaseOptions) => Promise<LeaseResult>;
   releaseLease: () => Promise<boolean>;
+  kicked: KickedNotice | null;
+  acknowledgeKicked: () => void;
 }
 
 const FirebaseContext = createContext<FirebaseContextValue | null>(null);
@@ -51,6 +68,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   const [access, setAccess] = useState<OperatorAccess>({ ok: false, reason: 'signed_out' });
   const accessRef = useRef<OperatorAccess>({ ok: false, reason: 'signed_out' });
   const [lease, setLease] = useState<ActiveLeaseState>(defaultLeaseState);
+  const [kicked, setKicked] = useState<KickedNotice | null>(null);
   const leaseRef = useRef<ActiveLeaseState>(defaultLeaseState);
   const confirmedEpochRef = useRef<number | null>(null);
   const probedEpochRef = useRef<number | null>(null);
@@ -123,6 +141,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
         probedEpochRef.current = null;
         stopHeartbeat();
         publishLease(defaultLeaseState);
+        setKicked(null);
         // `checking`, inactive and signed-out all mask first and clear only Cloud state.
         void clearSensitiveDataSafely();
       }
@@ -164,6 +183,17 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       if (previous.isHolder && !confirmed) {
         stopHeartbeat();
         void clearSensitiveDataSafely();
+        // #691: a confirmed holder whose lease now belongs to another UID was taken over (a release leaves no holder; an
+        // expiry of our own lease keeps our UID). Name the taker from the access record of that epoch.
+        if (observed.isKnown && observed.holderUid !== null && observed.holderUid !== currentUid) {
+          const takerUid = observed.holderUid;
+          const takenEpoch = observed.epoch;
+          void (async () => {
+            let takerEmail: string | null = null;
+            try { takerEmail = (await readLeaseTakerEmail(fb.db!, takenEpoch, takerUid)) ?? null; } catch { /* shown as 其他人 */ }
+            if (isCurrentGeneration() && !leaseRef.current.isHolder) setKicked({ takerEmail });
+          })();
+        }
       }
 
       if (!visibilityProbeInFlight && stillOurEpoch && !confirmed && probedEpochRef.current !== observed.epoch) {
@@ -378,7 +408,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
 
   const isConfirmedHolder = lease.isKnown && lease.isHolder;
 
-  const acquireLease = async (): Promise<LeaseResult> => {
+  const acquireLease = async (options: AcquireLeaseOptions = {}): Promise<LeaseResult> => {
     const startingAccess = accessRef.current;
     if (!fb?.db || !startingAccess.ok) {
       return { status: 'lost', message: '尚未登入或未通過白名單' };
@@ -400,6 +430,14 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
 
     const currentConfirmed = observed.holderUid === uid && confirmedEpochRef.current === observed.epoch;
     publishLease({ ...observed, isHolder: currentConfirmed });
+
+    // #691: another UID's lease that does not look expired is taken over only with an explicit confirmation that names
+    // this very epoch. Otherwise (never confirmed, or the occupant changed after it was shown) only report what is there.
+    if (observed.holderUid !== null && observed.holderUid !== uid && !observed.isExpired
+      && options.confirmedTakeoverEpoch !== observed.epoch) {
+      confirmedEpochRef.current = null;
+      return { status: 'busy', currentHolderUid: observed.holderUid, epoch: observed.epoch, updatedAt: observed.updatedAt ?? new Date(0) };
+    }
 
     // If this UID is already observed, first ask Rules to prove it is still valid.
     // If expired, an explicit acquire below may advance the epoch under Rules.
@@ -426,6 +464,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
       confirmedEpochRef.current = result.epoch;
       probedEpochRef.current = result.epoch;
       publishLease(stateFromResult(result, uid));
+      setKicked(null);
     } else if (result.status === 'busy') {
       confirmedEpochRef.current = null;
       publishLease({
@@ -476,7 +515,7 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <FirebaseContext.Provider value={{ fb, fbError, storageCleanupError, access, lease, acquireLease, releaseLease }}>
+    <FirebaseContext.Provider value={{ fb, fbError, storageCleanupError, access, lease, acquireLease, releaseLease, kicked, acknowledgeKicked: () => setKicked(null) }}>
       <DataHeadProvider db={fb?.db ?? null} uid={currentUid} confirmedHolder={isConfirmedHolder} epoch={lease.epoch}>
         {children}
       </DataHeadProvider>
