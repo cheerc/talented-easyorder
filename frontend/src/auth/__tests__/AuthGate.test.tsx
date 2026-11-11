@@ -482,4 +482,47 @@ describe('AuthGate: 授權閘門與白名單畫面', () => {
     expect(screen.getByRole('button', { name: '取得系統使用權' })).toBeTruthy();
     expect(screen.getByRole('main').textContent).not.toMatch(/權威時間|伺服器會依|逾期/);
   });
+
+  it('#691 P7 r2: an open confirmation closes when the occupant changes and never confirms an older epoch', async () => {
+    vi.mocked(readLeaseTakerEmail).mockReset().mockImplementation(async (_db, epoch) => (epoch === 2 ? 'first@example.com' : 'second@example.com'));
+    const acquire = vi.fn().mockResolvedValue({ status: 'acquired', holderUid: 'uid-me', epoch: 4, updatedAt: new Date() });
+    const access: OperatorAccess = { ok: true, profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' } };
+    const occupied = (epoch: number, holderUid: string | null): ActiveLeaseState => ({
+      holderUid, epoch, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false,
+    });
+    const view = render(<AuthGate auth={mockAuth} db={mockDb} access={access} lease={occupied(2, 'uid-first')} onAcquireLease={acquire}><span>x</span></AuthGate>);
+    await screen.findByText(/first@example\.com/);
+    fireEvent.click(screen.getByRole('button', { name: '登入並讓對方登出' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('first@example.com');
+
+    // Someone else took over while the dialog was open: the confirmation was for first@, so it must go away.
+    view.rerender(<AuthGate auth={mockAuth} db={mockDb} access={access} lease={occupied(3, 'uid-second')} onAcquireLease={acquire}><span>x</span></AuthGate>);
+    await screen.findByText(/second@example\.com/);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(acquire).not.toHaveBeenCalled();
+
+    // A fresh confirmation names the new occupant and the new epoch.
+    fireEvent.click(screen.getByRole('button', { name: '登入並讓對方登出' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('second@example.com');
+    fireEvent.click(screen.getByRole('button', { name: '是，讓對方登出並繼續' }));
+    await waitFor(() => expect(acquire).toHaveBeenCalledWith({ confirmedTakeoverEpoch: 3 }));
+  });
+
+  it('#691 P7 r2: leaving the occupied screen drops an open confirmation, so a later occupant does not inherit it', async () => {
+    vi.mocked(readLeaseTakerEmail).mockReset().mockResolvedValue('other@example.com');
+    const access: OperatorAccess = { ok: true, profile: { uid: 'uid-me', email: 'me@example.com', displayName: '我' } };
+    const lease = (epoch: number, holderUid: string | null): ActiveLeaseState => ({
+      holderUid, epoch, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false,
+    });
+    const view = render(<AuthGate auth={mockAuth} db={mockDb} access={access} lease={lease(2, 'uid-other')}><span>x</span></AuthGate>);
+    await screen.findByText(/other@example\.com/);
+    fireEvent.click(screen.getByRole('button', { name: '登入並讓對方登出' }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+
+    view.rerender(<AuthGate auth={mockAuth} db={mockDb} access={access} lease={lease(3, null)}><span>x</span></AuthGate>);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    view.rerender(<AuthGate auth={mockAuth} db={mockDb} access={access} lease={lease(4, 'uid-other')}><span>x</span></AuthGate>);
+    await screen.findByText(/other@example\.com/);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
 });
