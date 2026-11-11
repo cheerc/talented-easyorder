@@ -100,49 +100,6 @@
     {
       "collection": "days",
       "where": [
-        "__name__ <",
-        "__name__ <=",
-        "__name__ <",
-        "__name__ >="
-      ],
-      "orderBy": [
-        "__name__ asc"
-      ],
-      "operations": [
-        "load.dayVendors"
-      ]
-    },
-    {
-      "collection": "days",
-      "where": [
-        "__name__ <",
-        "__name__ <=",
-        "__name__ <"
-      ],
-      "orderBy": [
-        "__name__ asc"
-      ],
-      "operations": [
-        "load.dayVendors"
-      ]
-    },
-    {
-      "collection": "days",
-      "where": [
-        "__name__ <",
-        "__name__ <=",
-        "__name__ >="
-      ],
-      "orderBy": [
-        "__name__ asc"
-      ],
-      "operations": [
-        "load.dayVendors"
-      ]
-    },
-    {
-      "collection": "days",
-      "where": [
         "__name__ >",
         "__name__ <="
       ],

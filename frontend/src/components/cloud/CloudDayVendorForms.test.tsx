@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -9,6 +9,7 @@ import {
   type CloudDayVendorDraft,
 } from './CloudDayVendorForms';
 import type { PreviousClosedDay } from '../../domain/ledgerAnomalies';
+import type { CloudLastWeekMenuItem } from '../../firebase/cloudDayVendorRepository';
 
 function VendorFormHarness({
   mode,
@@ -274,6 +275,110 @@ describe('CloudDayVendorForms', () => {
         <CloudDayOpeningCashForm businessDate="2026-10-15" currentOpeningCash={0} amountText="0" onAmountTextChange={vi.fn()} onSubmit={vi.fn()} />,
       );
       expect(screen.getByText(/伺服器已確認開帳現金 NT\$ 0/).closest('.callout-ui')).not.toBeNull();
+    });
+  });
+
+  describe('「複製上週菜單」(#686)', () => {
+    const item = (dayId: string, itemName: string, price: number, vendorName = '甲供應商'): CloudLastWeekMenuItem => ({
+      dayId, itemName, price, vendorId: 'vendor-a', vendorName,
+    });
+
+    function Harness({ load, disabled = false, initial }: {
+      load: () => Promise<CloudLastWeekMenuItem[]>;
+      disabled?: boolean;
+      initial?: CloudDayMenuDraft;
+    }) {
+      const [value, setValue] = useState<CloudDayMenuDraft>(initial ?? { itemName: '', priceText: '', vendorId: '' });
+      return (
+        <CloudDayMenuForm
+          businessDate="2026-11-12"
+          value={value}
+          vendors={[{ vendorId: 'vendor-a', name: '甲供應商' }]}
+          onChange={setValue}
+          onSubmit={vi.fn()}
+          loadLastWeekMenus={load}
+          disabled={disabled}
+        />
+      );
+    }
+
+    it('is always offered, also when the day already has a menu, and follows the form disabled state', () => {
+      const load = vi.fn().mockResolvedValue([]);
+      const { rerender } = render(<Harness load={load} initial={{ itemName: '已有菜單', priceText: '80', vendorId: 'vendor-a' }} />);
+      expect(screen.getByRole('button', { name: '複製上週菜單' })).toBeEnabled();
+      expect(load).not.toHaveBeenCalled();
+      rerender(<Harness load={load} disabled initial={{ itemName: '已有菜單', priceText: '80', vendorId: 'vendor-a' }} />);
+      expect(screen.getByRole('button', { name: '複製上週菜單' })).toBeDisabled();
+    });
+
+    it('opens a dialog that reads on demand and lists every day with its date, without merging identical menus', async () => {
+      const load = vi.fn().mockResolvedValue([
+        item('2026-11-02', '雞腿便當', 90, '供應商A'),
+        item('2026-11-03', '雞腿便當', 90, '供應商A'),
+      ]);
+      render(<Harness load={load} />);
+      fireEvent.click(screen.getByRole('button', { name: '複製上週菜單' }));
+
+      const dialog = await screen.findByRole('dialog');
+      expect(load).toHaveBeenCalledTimes(1);
+      expect(await within(dialog).findByRole('button', { name: '11/02（一）· 雞腿便當 · $90 · 供應商A' })).toBeEnabled();
+      expect(within(dialog).getByRole('button', { name: '11/03（二）· 雞腿便當 · $90 · 供應商A' })).toBeEnabled();
+    });
+
+    it('shows reading, an empty state, and a retryable error with text', async () => {
+      let resolve!: (rows: CloudLastWeekMenuItem[]) => void;
+      const load = vi.fn()
+        .mockImplementationOnce(() => new Promise<CloudLastWeekMenuItem[]>(r => { resolve = r; }))
+        .mockRejectedValueOnce(new Error('讀取失敗，請稍後再試。'))
+        .mockResolvedValueOnce([]);
+      render(<Harness load={load} />);
+      fireEvent.click(screen.getByRole('button', { name: '複製上週菜單' }));
+      expect(await screen.findByText('讀取中…')).toBeInTheDocument();
+      resolve([]);
+      expect(await screen.findByText('上週沒有菜單')).toBeInTheDocument();
+
+      fireEvent.keyDown(document, { key: 'Escape' });
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      fireEvent.click(screen.getByRole('button', { name: '複製上週菜單' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('讀取失敗，請稍後再試。');
+      fireEvent.click(screen.getByRole('button', { name: '重試' }));
+      expect(await screen.findByText('上週沒有菜單')).toBeInTheDocument();
+      expect(load).toHaveBeenCalledTimes(3);
+    });
+
+    it('fills the editable fields from the picked day, closes, and returns focus to the name field', async () => {
+      const load = vi.fn().mockResolvedValue([item('2026-11-04', '排骨便當', 95)]);
+      render(<Harness load={load} initial={{ itemName: '舊草稿', priceText: '1', vendorId: '' }} />);
+      fireEvent.click(screen.getByRole('button', { name: '複製上週菜單' }));
+      fireEvent.click(await screen.findByRole('button', { name: '11/04（三）· 排骨便當 · $95 · 甲供應商' }));
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      const name = screen.getByRole('textbox', { name: '菜單名稱' });
+      expect(name).toHaveValue('排骨便當');
+      expect(name).toBeEnabled();
+      expect(screen.getByLabelText('價格（新臺幣整數）')).toHaveValue('95');
+      expect(screen.getByRole('combobox', { name: '供應商' })).toHaveValue('vendor-a');
+      await waitFor(() => expect(name).toHaveFocus());
+
+      // The copied values stay editable like any typed values.
+      fireEvent.change(screen.getByLabelText('價格（新臺幣整數）'), { target: { value: '100' } });
+      expect(screen.getByLabelText('價格（新臺幣整數）')).toHaveValue('100');
+    });
+
+    it('closes on Escape without touching the form draft', async () => {
+      const load = vi.fn().mockResolvedValue([item('2026-11-04', '排骨便當', 95)]);
+      render(<Harness load={load} initial={{ itemName: '我的草稿', priceText: '70', vendorId: 'vendor-a' }} />);
+      fireEvent.click(screen.getByRole('button', { name: '複製上週菜單' }));
+      await screen.findByRole('button', { name: /排骨便當/ });
+      fireEvent.keyDown(document, { key: 'Escape' });
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(screen.getByRole('textbox', { name: '菜單名稱' })).toHaveValue('我的草稿');
+    });
+
+    it('has no copy button when the page supplies no loader, and no read-only mode for the fields', () => {
+      render(<MenuFormHarness onSubmit={vi.fn()} />);
+      expect(screen.queryByRole('button', { name: '複製上週菜單' })).toBeNull();
+      expect(screen.getByRole('textbox', { name: '菜單名稱' })).toBeEnabled();
     });
   });
 });

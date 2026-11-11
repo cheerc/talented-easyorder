@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  DESIGN, LEDGER_WINDOW_DAYS, MENU_SCAN_WINDOW_DAYS, THRESHOLDS, TYPICAL, dayShape, evaluateGate, projectStorage, readVerdictOf, scaleDimensions, storageVerdict, workloadOf,
+  DESIGN, LEDGER_WINDOW_DAYS, THRESHOLDS, TYPICAL, dayShape, evaluateGate, projectStorage, readVerdictOf, scaleDimensions, storageVerdict, workloadOf,
   type StorageFootprints, type StorageProfile,
 } from '../capacityGate';
 import { dailyUsage, type CostTable } from '../capacityModel';
@@ -137,14 +137,14 @@ describe('P16f2 S9: the usage the workload states', () => {
   });
 });
 
-describe('P16f2 S9: the vendors page', () => {
-  it('reads the first 32-day window for the latest menu, which is what the repository reads first', () => {
+describe('P16f2 S9 / #686: the vendors page', () => {
+  it('reads the vendors only (the open days cost no read): it no longer scans earlier days for a latest menu, whatever the history', () => {
     const source = readFileSync(`${process.cwd()}/src/firebase/cloudDayVendorRepository.ts`, 'utf8') as string;
-    expect(Number(/const INITIAL_SOURCE_WINDOW_DAYS = (\d+);/.exec(source)![1])).toBe(MENU_SCAN_WINDOW_DAYS);
+    expect(source).not.toMatch(/INITIAL_SOURCE_WINDOW_DAYS|readLatestEarlierMenu/);
     const load = workloadOf(DESIGN).find(line => line.operation === 'load.dayVendors')!;
     expect(load.perDay).toBe(7);
-    expect(load.units).toEqual({ vendor: 20, closedDay: 32, openDay: 3 });
-    expect(workloadOf({ ...DESIGN, closedDays: 10 }).find(line => line.operation === 'load.dayVendors')!.units!.closedDay).toBe(10);
+    expect(load.units).toEqual({ vendor: 20, openDay: 3 });
+    expect(workloadOf({ ...DESIGN, closedDays: 10 }).find(line => line.operation === 'load.dayVendors')!.units).toEqual({ vendor: 20, openDay: 3 });
   });
 });
 

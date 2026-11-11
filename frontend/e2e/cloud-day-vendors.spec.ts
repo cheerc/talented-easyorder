@@ -22,6 +22,13 @@ function shiftDate(value: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+/** Tuesday of the calendar week before the one `today` belongs to (weeks run Monday to Sunday). */
+function lastWeekTuesday(today: string): string {
+  const dayOfWeek = new Date(`${today}T00:00:00.000Z`).getUTCDay();
+  const thisMonday = shiftDate(today, -((dayOfWeek + 6) % 7));
+  return shiftDate(thisMonday, -7 + 1);
+}
+
 function decodeAdminValue(value: unknown): unknown {
   if (!value || typeof value !== 'object') return undefined;
   const raw = value as Record<string, unknown>;
@@ -98,10 +105,10 @@ async function resetDemoP07Data(head: 'p07-isolated' | 'global-empty'): Promise<
     for (const document of documents) await deleteAdminDocument(collection, document.id);
   }
 
-  // The P07 fixture starts one day earlier so D02 can create a previous source day; the
+  // The P07 fixture starts three weeks earlier so D02 can create a day in last week to copy from; the
   // global-empty head matches e2e/global-setup.ts so later suites see their initial dataset.
   const isolated = head === 'p07-isolated';
-  const goLiveDate = isolated ? shiftDate(taipeiToday(), -1) : taipeiToday();
+  const goLiveDate = isolated ? shiftDate(taipeiToday(), -21) : taipeiToday();
   const fields: Record<string, Record<string, unknown>> = {
     schemaVersion: { integerValue: '1' },
     datasetId: { stringValue: isolated ? 'e2e-p07-d02-isolated' : 'e2e-empty-p06-dataset' },
@@ -172,11 +179,13 @@ test.describe('P07 Cloud day vendors', () => {
     await expect(main.getByText(/已確認 確認 .* 開帳現金 完成/)).toBeVisible();
   });
 
-  test('D02: preserves earlier menu snapshots through vendor removal and supports a future direct menu only', async ({ authedPage }) => {
+  test('D02: copies a last-week menu as a direct set, preserves earlier menu snapshots through vendor removal and supports a future direct menu', async ({ authedPage }) => {
     test.setTimeout(60_000);
     const page = authedPage;
     const today = taipeiToday();
-    const previousDate = shiftDate(today, -1);
+    // A day in the previous calendar week (Tuesday): the source of 「複製上週菜單」 for today.
+    const previousDate = lastWeekTuesday(today);
+    const previousLabel = `${previousDate.slice(5, 7)}/${previousDate.slice(8, 10)}（二）`;
     const futureDate = shiftDate(today, 1);
     const oldVendorId = 'p07-d02-old-vendor';
     const newVendorId = 'p07-d02-future-vendor';
@@ -227,10 +236,16 @@ test.describe('P07 Cloud day vendors', () => {
     const todayMenuForm = main.getByRole('form', { name: `${today} 菜單` });
     await expect(todayMenuForm).toBeVisible();
 
-    await page.getByRole('button', { name: '帶入最新較早菜單' }).click();
-    await expect(main.getByText(new RegExp(`沿用來源已鎖定為 ${previousDate}`))).toBeVisible();
+    // The old "latest earlier menu" card and its locked-fields flow are gone; copying fills an editable form.
+    await expect(page.getByRole('button', { name: '帶入最新較早菜單' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '改為直接設定' })).toHaveCount(0);
+    await todayMenuForm.getByRole('button', { name: '複製上週菜單' }).click();
+    const copyDialog = page.getByRole('dialog', { name: '複製上週菜單' });
+    await copyDialog.getByRole('button', { name: `${previousLabel}· 昨日菜單快照 · $125 · 昨日供應商快照` }).click();
+    await expect(copyDialog).toHaveCount(0);
     await expect(todayMenuForm.getByLabel('菜單名稱')).toHaveValue('昨日菜單快照');
-    await expect(todayMenuForm.getByLabel('菜單名稱')).toBeDisabled();
+    await expect(todayMenuForm.getByLabel('菜單名稱')).toBeEnabled();
+    await expect(todayMenuForm.getByLabel('菜單名稱')).toBeFocused();
     await todayMenuForm.getByRole('button', { name: '儲存菜單' }).click();
     await expect(main.getByText('昨日菜單快照', { exact: true })).toBeVisible();
     let todayDay = await readAdminDocument('days', today);
@@ -240,7 +255,7 @@ test.describe('P07 Cloud day vendors', () => {
       price: 125,
       vendorId: oldVendorId,
       vendorNameSnapshot: '昨日供應商快照',
-      inheritedFromDate: previousDate,
+      inheritedFromDate: null,
     });
 
     const openingForm = main.getByRole('form', { name: `${today} 開帳現金` });
@@ -257,7 +272,7 @@ test.describe('P07 Cloud day vendors', () => {
     const secondOpening = await readAdminDocument('days', today);
     expect(secondOpening).toMatchObject({ openingCash: 20_000, openedBy: firstOpening?.openedBy, openedAt: firstOpening?.openedAt });
 
-    // Editing an inherited form turns it into an explicit direct assignment.
+    // Copied values stay editable like any typed values.
     await todayMenuForm.getByLabel('價格（新臺幣整數）').fill('175');
     await todayMenuForm.getByRole('button', { name: '儲存菜單' }).click();
     await expect(main.getByText('NT$ 175')).toBeVisible();
@@ -359,10 +374,10 @@ test.describe('P07 Cloud day vendors', () => {
       payload: { businessDate: previousDate },
       after: { day: { menu: null, openingCash: null } },
     });
-    expect(commands.find(command => command.kind === 'SetDayMenu' && command.businessDate === today && (command.payload as Record<string, unknown>).inheritedFromDate === previousDate)).toMatchObject({
+    expect(commands.find(command => command.kind === 'SetDayMenu' && command.businessDate === today && (command.payload as Record<string, unknown>).price === 125)).toMatchObject({
       kind: 'SetDayMenu',
-      payload: { selectionDate: today, inheritedFromDate: previousDate },
-      after: { day: { menu: { businessDate: today, itemName: '昨日菜單快照', inheritedFromDate: previousDate } } },
+      payload: { selectionDate: today, inheritedFromDate: null },
+      after: { day: { menu: { businessDate: today, itemName: '昨日菜單快照', inheritedFromDate: null } } },
     });
     expect(commands.find(command => command.kind === 'RemoveVendor')).toMatchObject({
       kind: 'RemoveVendor',

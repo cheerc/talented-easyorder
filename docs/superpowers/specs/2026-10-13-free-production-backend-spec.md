@@ -42,7 +42,7 @@
 
 - F3 學生／共用帳戶：手動建檔、編號與前導零、姓名、別名、明確輸入期初（含零／負數）、期初日期與說明；修改姓名／別名、停用／恢復、可追溯的期初更正。停用帳戶仍可查帳及補繳／更正，禁止新增餐點。
 - F4 供應商逐筆建立、編輯聯絡資料、停用／恢復、移除。停用才可移除；雲端保留稽核用 tombstone 與歷史快照，正常清單不再出現；不是清除歷史交易。
-- F3 按日菜單與當日開帳。每天只有晚餐；未設定菜單可沿用最近較早日期，F1 提醒但不阻擋；尚無任何菜單時擋今日餐點，仍可繳費與明確輸入的其他餐點。
+- F3 按日菜單與當日開帳。每天只有晚餐；菜單表單提供「複製上週菜單」（列出上一個自然週一～五各日的菜單供挑選，帶入後仍可修改，以直接設定儲存），F1 提醒未設定菜單但不阻擋；尚無任何菜單時擋今日餐點，仍可繳費與明確輸入的其他餐點。
 - F1 保留 Q/W/E，新增 R 開啟其他餐點、重複訂餐確認、每次一份、其他餐點、繳費、櫃台現金收入／支出、成功後 5 秒撤回；換人與取消不殘留金額。正式版必須等待雲端確認才顯示成功。
 - F2 今日／本週／本月，份數分今日餐點與其他餐點，餐費、實際收現、支出、淨現金、筆數；依帳戶合併／原始明細；全日點現金、差異、關帳與重開。
 - F5 按帳戶與日期查交易、作廢原單、前後值與理由、結帳所有版次。匯出 CSV 與列印維持 `domain/ledgerExport.ts` 的既有欄位／兩種模式。
@@ -104,7 +104,7 @@ commands 的共用查詢欄位一律存在：studentId 在學生／期初／學�
 
 交易保留既有 `type=order|payment|expense`、`studentId`、`mealPrice`、`paidAmount`、`amount`、name/menu/vendor 快照、note、otherItemName。新建交易 `operatorId` 對映 UID；更正 actor 在 command，原始建立人不覆寫。`sourceDevice='pc'`；保留既有 `'ipad_handoff'` 相容字串供未來 adapter，不在本輪接受 Android 寫入。`depositAmount/unpaidAmount/afterBalance` 由有效資料推導。依 U2b／P08 定稿，程式內部識別字（如 `bentoCount`、`mealKind: 'bento'`、CSV 欄名 `bento_count` 等）維持不變，對應使用者可見之「今日餐點」（當日菜單那一項），避免改名牽動 Rules、schema 與備份格式；使用者可見介面則一律使用「今日餐點」。
 
-`days.menu` 包含現有 TodayMenu 欄位與 `inheritedFromDate`（或 null）。EnsureDay 初始 totals=0、status=open、openingCash=null；若採沿用菜單，讀最新較早 menu 並經獨立設定 command 寫入當日快照。規則驗證來源文件、日期不晚於當天且內容吻合；查找「最新較早」由 repository query 完成。菜單異動不改已售餐點快照。選單設定與訂單之間 revision 變動時重新確認價格，不能默默採新價。
+`days.menu` 包含現有 TodayMenu 欄位與 `inheritedFromDate`（或 null）。EnsureDay 初始 totals=0、status=open、openingCash=null；F3 的「複製上週菜單」只在按下按鈕時讀上一個自然週一～五的 `days`（單次 query、`limit 5`），選取後填入表單，以直接設定 command 寫入當日快照（`inheritedFromDate` 為 null）；`inheritedFromDate` 非 null 的繼承路徑與 Rules 驗證保留給舊回執、備份重播與既有資料，UI 不再使用，載入頁面也不再往前掃描較早日期。菜單異動不改已售餐點快照。選單設定與訂單之間 revision 變動時重新確認價格，不能默默採新價。
 
 Cloud store 不持久化整包 Zustand 帳務。伺服器讀回資料才更新 UI；prototype 保留原 persist，命名空間與正式版分離。正式模式缺 Firebase config 必須顯示設定錯誤，不可無聲降級 local-only。舊 firebase repository、schema、裸 setter 及離線 batch 寫路徑須移除或明確只供 prototype，不能同時有兩套正式寫入器。
 
@@ -290,7 +290,7 @@ Hosting 使用 HTTPS、SPA rewrites、CSP／安全header承接 `vercel.json` 的
 | L10 | 負數、小數、超界、零元payment、不同帳戶／日期改單 | rules拒絕；負學生餘額本身允許 |
 | L11 | 分別撤回繳費100、櫃台收入50、支出80（各自獨立fixture） | 學生繳費回復前餘額；現金delta依序−100／−50／+80；expense不影響學生；原單與理由均保留 |
 | D01 | 空白建檔、前導零、同名不同ID、停用／恢復、改期初 | 名稱不當主鍵；期初不計收現；更正需重開asOfDate，餘額加差額、day現金不變、新版重結、舊版不改 |
-| D02 | 前日菜單沿用、改價、供應商移除 | 沿用提醒；舊單快照不變；移除不刪歷史 |
+| D02 | 上週菜單複製、改價、供應商移除 | 複製上週菜單帶入可編輯表單並以直接設定儲存；舊單快照不變；移除不刪歷史 |
 | R01 | 3個晚餐日＋F2週/月＋F5查詢＋CSV／列印 | 欄位／筆數／份數／金額一致，跨頁完整且有發起稽核 |
 | R02 | 全量bootstrap＋兩次增量，加更正／void／重開後還原 | 任選H完整重播一致；缺seq／錯hash／錯密碼拒絕 |
 | R03 | 登出換電腦、清瀏覽器storage、部署前端回退 | 雲端資料保留、重新登入可還原畫面；不載範例 |

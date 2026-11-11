@@ -1,7 +1,9 @@
-import type { FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { effectiveCashOf, openingDifference, type PreviousClosedDay } from '../../domain/ledgerAnomalies';
+import type { CloudLastWeekMenuItem } from '../../firebase/cloudDayVendorRepository';
 import { Callout } from '../ui/Callout';
 import { HelpTip } from '../ui/HelpTip';
+import { Modal } from '../ui/Modal';
 import './CloudDayVendorForms.css';
 
 export type CloudDayVendorStatus = 'active' | 'inactive';
@@ -126,7 +128,21 @@ interface CloudDayMenuFormProps {
   onChange: (value: CloudDayMenuDraft) => void;
   onSubmit: (value: CloudDayMenuDraft) => void;
   disabled?: boolean;
-  fieldsReadOnly?: boolean;
+  /** #686: reads last week's menus on demand. Without it the 「複製上週菜單」 button is not offered. */
+  loadLastWeekMenus?: () => Promise<CloudLastWeekMenuItem[]>;
+}
+
+type LastWeekState =
+  | { status: 'loading' }
+  | { status: 'ready'; items: CloudLastWeekMenuItem[] }
+  | { status: 'error'; message: string };
+
+const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+
+/** "11/03（二）" from a YYYY-MM-DD id; the weekday comes from the date string, not from the browser clock. */
+function lastWeekDayLabel(dayId: string): string {
+  const weekday = WEEKDAY_LABELS[new Date(`${dayId}T00:00:00.000Z`).getUTCDay()] ?? '';
+  return `${dayId.slice(5, 7)}/${dayId.slice(8, 10)}（${weekday}）`;
 }
 
 export function CloudDayMenuForm({
@@ -136,8 +152,23 @@ export function CloudDayMenuForm({
   onChange,
   onSubmit,
   disabled = false,
-  fieldsReadOnly = false,
+  loadLastWeekMenus,
 }: CloudDayMenuFormProps) {
+  const nameRef = useRef<HTMLInputElement>(null);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [lastWeek, setLastWeek] = useState<LastWeekState>({ status: 'loading' });
+  const focusNameAfterCloseRef = useRef(false);
+  // Only the newest read may answer; closing or retrying makes an older answer stale.
+  const readRequestRef = useRef(0);
+
+  // The dialog gives focus back to the copy button when it closes; after a pick the name field takes it instead.
+  // This effect runs after the dialog's own cleanup in the same commit.
+  useEffect(() => {
+    if (copyOpen || !focusNameAfterCloseRef.current) return;
+    focusNameAfterCloseRef.current = false;
+    nameRef.current?.focus();
+  }, [copyOpen]);
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onSubmit(value);
@@ -147,59 +178,119 @@ export function CloudDayMenuForm({
     onChange({ ...value, [field]: nextValue });
   };
 
+  const readLastWeek = () => {
+    if (!loadLastWeekMenus) return;
+    const request = ++readRequestRef.current;
+    setLastWeek({ status: 'loading' });
+    loadLastWeekMenus().then(
+      items => { if (readRequestRef.current === request) setLastWeek({ status: 'ready', items }); },
+      error => {
+        if (readRequestRef.current !== request) return;
+        setLastWeek({ status: 'error', message: error instanceof Error && error.message ? error.message : '讀取失敗，請稍後再試。' });
+      },
+    );
+  };
+
+  const openCopy = () => {
+    setCopyOpen(true);
+    readLastWeek();
+  };
+
+  const closeCopy = () => {
+    readRequestRef.current += 1;
+    setCopyOpen(false);
+  };
+
+  const pick = (item: CloudLastWeekMenuItem) => {
+    onChange({ itemName: item.itemName, priceText: String(item.price), vendorId: item.vendorId });
+    focusNameAfterCloseRef.current = true;
+    closeCopy();
+  };
+
   return (
-    <form className="cloud-day-form" aria-label={`${businessDate} 菜單`} onSubmit={handleSubmit}>
-      <div className="cloud-day-form__title-row">
-        <h3>{businessDate} 菜單</h3>
-        <HelpTip label="菜單說明">僅可選擇使用中的供應商。</HelpTip>
-      </div>
-      <div className="cloud-day-form__grid">
-        <label>
-          菜單名稱
-          <input
-            className="cloud-day-form__input"
-            value={value.itemName}
-            onChange={event => update('itemName', event.target.value)}
-            disabled={disabled || fieldsReadOnly}
-            required
-            autoComplete="off"
-          />
-        </label>
-        <label>
-          價格（新臺幣整數）
-          <input
-            className="cloud-day-form__input cloud-day-form__mono"
-            type="text"
-            inputMode="numeric"
-            value={value.priceText}
-            onChange={event => update('priceText', event.target.value)}
-            disabled={disabled || fieldsReadOnly}
-            required
-          />
-        </label>
-        <label>
-          供應商
-          <select
-            className="cloud-day-form__input"
-            value={value.vendorId}
-            onChange={event => update('vendorId', event.target.value)}
-            disabled={disabled || fieldsReadOnly || vendors.length === 0}
-            required
-          >
-            <option value="">請選擇供應商</option>
-            {vendors.map(vendor => (
-              <option key={vendor.vendorId} value={vendor.vendorId}>{vendor.name}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-      {vendors.length === 0 && <p className="cloud-day-form__empty">目前沒有可選供應商，請先新增或恢復供應商。</p>}
-      <div className="cloud-day-form__actions">
-        <button type="submit" className="cloud-day-form__primary" disabled={disabled || vendors.length === 0}>
-          儲存菜單
-        </button>
-      </div>
-    </form>
+    <>
+      <form className="cloud-day-form" aria-label={`${businessDate} 菜單`} onSubmit={handleSubmit}>
+        <div className="cloud-day-form__title-row">
+          <h3>{businessDate} 菜單</h3>
+          <HelpTip label="菜單說明">僅可選擇使用中的供應商。{'\n'}可用「複製上週菜單」帶入上週一～五的菜單，帶入後仍可修改。</HelpTip>
+          {loadLastWeekMenus && (
+            <button type="button" className="cloud-day-form__secondary" onClick={openCopy} disabled={disabled}>
+              複製上週菜單
+            </button>
+          )}
+        </div>
+        <div className="cloud-day-form__grid">
+          <label>
+            菜單名稱
+            <input
+              ref={nameRef}
+              className="cloud-day-form__input"
+              value={value.itemName}
+              onChange={event => update('itemName', event.target.value)}
+              disabled={disabled}
+              required
+              autoComplete="off"
+            />
+          </label>
+          <label>
+            價格（新臺幣整數）
+            <input
+              className="cloud-day-form__input cloud-day-form__mono"
+              type="text"
+              inputMode="numeric"
+              value={value.priceText}
+              onChange={event => update('priceText', event.target.value)}
+              disabled={disabled}
+              required
+            />
+          </label>
+          <label>
+            供應商
+            <select
+              className="cloud-day-form__input"
+              value={value.vendorId}
+              onChange={event => update('vendorId', event.target.value)}
+              disabled={disabled || vendors.length === 0}
+              required
+            >
+              <option value="">請選擇供應商</option>
+              {vendors.map(vendor => (
+                <option key={vendor.vendorId} value={vendor.vendorId}>{vendor.name}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {vendors.length === 0 && <p className="cloud-day-form__empty">目前沒有可選供應商，請先新增或恢復供應商。</p>}
+        <div className="cloud-day-form__actions">
+          <button type="submit" className="cloud-day-form__primary" disabled={disabled || vendors.length === 0}>
+            儲存菜單
+          </button>
+        </div>
+      </form>
+      <Modal open={copyOpen} title="複製上週菜單" onClose={closeCopy}>
+        <div className="cloud-day-form__copy">
+          {lastWeek.status === 'loading' && <p role="status">讀取中…</p>}
+          {lastWeek.status === 'error' && (
+            <>
+              <p role="alert">{lastWeek.message}</p>
+              <button type="button" className="cloud-day-form__secondary" onClick={readLastWeek}>重試</button>
+            </>
+          )}
+          {lastWeek.status === 'ready' && lastWeek.items.length === 0 && <p>上週沒有菜單</p>}
+          {lastWeek.status === 'ready' && lastWeek.items.length > 0 && (
+            <ul className="cloud-day-form__copy-list">
+              {lastWeek.items.map(item => (
+                <li key={item.dayId}>
+                  <button type="button" className="cloud-day-form__copy-item" onClick={() => pick(item)}>
+                    {`${lastWeekDayLabel(item.dayId)}· ${item.itemName} · $${item.price} · ${item.vendorName}`}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Modal>
+    </>
   );
 }
 
