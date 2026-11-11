@@ -3,6 +3,7 @@
 // 被測行為（停用、恢復、移除供應商）一律走 UI 正式命令。只使用 demo-easyorder Emulator 與合成資料。
 import { test, expect } from './fixtures';
 import { accountCheck } from './helpers/navigation';
+import { enterSystem } from './helpers/session';
 import { seedAccessLease } from './helpers/seed';
 import {
   assertDayAbsent,

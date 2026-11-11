@@ -862,7 +862,7 @@ test.describe('P13b2a pending command journal and recovery boundary', () => {
     const headBefore = await readEmulatorDocument('system', 'dataHead');
     const commandsBefore = await listEmulatorDocumentIds('commands');
     const transactionsBefore = await listEmulatorDocumentIds('transactions');
-    await enterSystem(page);
+    // The journal failure hides the operator menu, so the entry is read from the lease the page took by itself.
     await expect.poll(async () => (await readEmulatorDocument('system', 'accessLease')).fields?.epoch).toEqual({ integerValue: '1' });
     await expect(page.getByText('本機待核對日誌無法安全讀取或保存。資料未確認，已停止開放新操作；請聯絡系統維護者。')).toBeVisible();
 

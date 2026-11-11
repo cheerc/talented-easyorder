@@ -187,7 +187,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     }
   });
 
-  test('A04: releasing from one same-UID page leaves the other page masked without auto-acquiring', async ({ browser }) => {
+  test('A04: releasing from one same-UID page lets the other page enter by itself, because nobody holds the lease (#691)', async ({ browser }) => {
     const context = await browser.newContext({ baseURL: E2E_BASE_URL });
     const pageA = await context.newPage();
     const pageB = await context.newPage();
@@ -210,12 +210,12 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
         if (!await menuA.evaluate(element => (element as HTMLDetailsElement).open)) await menuA.locator('summary').click();
         await menuA.getByRole('button', { name: '登出' }).click({ timeout: 2_000 });
       }).toPass({ timeout: 20_000 });
-      await expect.poll(readAccessLease).toMatchObject({ holderUid: null, epoch: 2 });
-      await expect(pageB.locator('.operator-strip')).toHaveCount(0);
-      await expect(pageB.locator('.auth-gate')).toBeVisible();
-      await pageB.waitForTimeout(500);
-      await expect.poll(readAccessLease).toMatchObject({ holderUid: null, epoch: 2 });
-      await expect(pageB.locator('.operator-strip')).toHaveCount(0);
+      // A's release makes the lease vacant (epoch 2); B is masked for that moment, then enters by itself because the
+      // server-observed holder is nobody. The signed-out A page never takes it back.
+      await expect.poll(readAccessLease).toMatchObject({ holderUid: sessionA.uid, epoch: 3 });
+      await expect(pageB.locator('.operator-strip')).toBeVisible();
+      await expect(pageA.locator('.auth-gate')).toBeVisible();
+      await expect(pageA.locator('.operator-strip')).toHaveCount(0);
     } finally {
       await context.close();
     }
