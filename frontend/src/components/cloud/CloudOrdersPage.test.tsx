@@ -307,28 +307,45 @@ describe('CloudOrdersPage', () => {
       expect(screen.getByTestId('selected-student-card')).toHaveTextContent('目前餘額：$100');
     });
 
-    it('marks a negative current balance in the checkout breakdown', async () => {
+    it('does not repeat the current balance inside the checkout breakdown in any mode (#687)', async () => {
+      renderComponent();
+      await selectStudent('001');
+      const preview = screen.getByTestId('order-preview');
+      expect(within(preview).queryByText('目前餘額')).toBeNull();
+      expect(preview.querySelectorAll('.cloud-orders__breakdown-row')).toHaveLength(3);
+      expect(within(preview).getByText('今日餐點')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '其他餐點' }));
+      expect(within(screen.getByTestId('order-preview')).queryByText('目前餘額')).toBeNull();
+      expect(screen.getByTestId('order-preview').querySelectorAll('.cloud-orders__breakdown-row')).toHaveLength(3);
+      fireEvent.click(screen.getByRole('button', { name: '繳費' }));
+      const payment = screen.getByTestId('order-preview');
+      expect(payment.querySelectorAll('.cloud-orders__breakdown-row')).toHaveLength(2);
+      expect(within(payment).getByText('本次繳費')).toBeInTheDocument();
+      expect(within(payment).getByText('預計結餘')).toBeInTheDocument();
+      expect(within(payment).queryByText('目前餘額')).toBeNull();
+    });
+
+    it('shows a negative current balance only in the selected card as −$N 欠款 (#687)', async () => {
       repositoryMock.loadSnapshot.mockResolvedValue(snapshot({
-        students: [mockStudent('s1', '001', '測試甲', -50)],
+        students: [mockStudent('s1', '001', '測試甲', -1234)],
         transactions: [],
       }));
       renderComponent();
       await selectStudent('001');
-      const current = within(screen.getByTestId('order-preview')).getByText('目前餘額').parentElement!;
-      expect(current).toHaveTextContent('−$50');
-      expect(current).toHaveTextContent('欠款');
-      expect(current.querySelector('.cloud-orders__debt')).not.toBeNull();
+      const card = screen.getByTestId('selected-student-card');
+      expect(card).toHaveTextContent('目前餘額：−$1,234 欠款');
+      expect(within(card).getByText('欠款')).toHaveClass('cloud-account-balance__debt');
     });
 
-    it('marks a negative projected balance with a minus sign, the word 欠款 and the warn class', async () => {
+    it('marks a negative projected balance as −$N 欠款 with the warn label and no 「（欠款 $N）」 suffix', async () => {
       renderComponent();
       await selectStudent('002');
       const preview = screen.getByTestId('order-preview');
-      expect(preview).toHaveTextContent('−$40');
-      expect(preview).toHaveTextContent('欠款');
-      expect(within(preview).getByText(/欠款/).className).toContain('cloud-orders__debt');
+      expect(preview).toHaveTextContent('預計結餘−$40 欠款');
+      expect(preview).not.toHaveTextContent('（欠款');
+      expect(within(preview).getByText('欠款')).toHaveClass('cloud-account-balance__debt');
       fireEvent.change(screen.getByLabelText(/實收金額/), { target: { value: '50' } });
-      expect(preview).toHaveTextContent('$10');
+      expect(preview).toHaveTextContent('預計結餘$10');
       expect(preview).not.toHaveTextContent('欠款');
     });
   });
@@ -492,6 +509,17 @@ describe('CloudOrdersPage', () => {
     fireEvent.change(await screen.findByLabelText('搜尋編號、姓名或別名'), { target: { value: '004' } });
     expect(await screen.findByTestId('search-result-004')).toHaveTextContent('−$50 欠款');
     expect(screen.getByTestId('search-result-004')).not.toHaveTextContent('結餘 $-50');
+  });
+
+  it('formats search-list balances with the shared helper: thousands separators and −$N 欠款 (#687)', async () => {
+    const base = snapshot();
+    repositoryMock.loadSnapshot.mockResolvedValue(snapshot({
+      students: [...base.students, mockStudent('s4', '004', '趙欠款', -1234), mockStudent('s5', '005', '錢多多', 1500)],
+    }));
+    renderComponent();
+    fireEvent.change(await screen.findByLabelText('搜尋編號、姓名或別名'), { target: { value: '00' } });
+    expect(await screen.findByTestId('search-result-004')).toHaveTextContent('−$1,234 欠款');
+    expect(screen.getByTestId('search-result-005')).toHaveTextContent('結餘 $1,500');
   });
 
   it('renders the two-row meal counters from the reconciled server day (U2a contract)', async () => {
@@ -1520,12 +1548,12 @@ describe('CloudOrdersPage', () => {
       repositoryMock.mutateTransaction.mockImplementation(async (input: { commandId: string }) => okResult(input.commandId, 20));
     });
 
-    async function payOnce() {
+    async function payOnce(balanceAfterPayment = 300) {
       repositoryMock.loadSnapshot.mockImplementation(async () => {
         const created = repositoryMock.createPayment.mock.calls[0]?.[0] as { transactionId: string; commandId: string } | undefined;
         if (!created) return snapshot();
         return snapshot({
-          students: [mockStudent('s1', '001', '王小明', 300), mockStudent('s2', '002', '李小華', 50)],
+          students: [mockStudent('s1', '001', '王小明', balanceAfterPayment), mockStudent('s2', '002', '李小華', 50)],
           day: { ...mockDay(), revision: 6 },
           transactions: [mockTx('tx-1', 's1', 'bento', 90, 100), { ...paymentRow(created.transactionId, 200), lastCommandId: created.commandId }],
         });
@@ -1595,6 +1623,35 @@ describe('CloudOrdersPage', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it('undo hint states the balance the same way as everywhere else: thousands and −$N 欠款 (#687)', async () => {
+      await payOnce(1200);
+      expect(await screen.findByTestId('undo-bar')).toHaveTextContent('現金 −$200，餘額回到 $1,000');
+    });
+
+    it('undo hint shows a debt balance as −$N 欠款 instead of $-N (#687)', async () => {
+      await payOnce(110);
+      const bar = await screen.findByTestId('undo-bar');
+      expect(bar).toHaveTextContent('現金 −$200，餘額回到 −$90 欠款');
+      expect(bar).not.toHaveTextContent('$-90');
+    });
+
+    it('previews a correction on a debt account as −$N 欠款 at both ends (#687)', async () => {
+      repositoryMock.loadSnapshot.mockResolvedValue(snapshot({
+        students: [mockStudent('s1', '001', '王小明', -90), mockStudent('s2', '002', '李小華', 50)],
+        transactions: [mockTx('tx-1', 's1', 'bento', 90, 100)],
+      }));
+      renderComponent();
+      await selectStudent('001');
+      fireEvent.click(screen.getByTestId('open-payment-details-button'));
+      expect(screen.getByTestId('payment-details-summary')).toHaveTextContent('帳戶餘額：−$90 欠款');
+      fireEvent.click(within(await screen.findByTestId('detail-row-tx-1')).getByRole('button', { name: '更正' }));
+      await screen.findByTestId('edit-transaction-modal');
+      fireEvent.change(screen.getByLabelText('餐費'), { target: { value: '110' } });
+      const preview = screen.getByTestId('edit-preview');
+      expect(preview).toHaveTextContent('帳戶餘額：−$90 欠款 → −$110 欠款');
+      expect(preview).not.toHaveTextContent('$-');
     });
 
     it('corrects a meal from 90 to 110 with a reason and previews the new balance (L02)', async () => {
@@ -1684,7 +1741,7 @@ describe('CloudOrdersPage', () => {
       fireEvent.click(within(await screen.findByTestId('detail-row-tx-5')).getByRole('button', { name: '更正' }));
       fireEvent.change(await screen.findByLabelText('退款金額'), { target: { value: '120' } });
       fireEvent.change(screen.getByLabelText(/修改理由/), { target: { value: '少記' } });
-      expect(screen.getByTestId('edit-preview')).toHaveTextContent('退款更正後帳戶餘額會變成 $-20，不能是負數');
+      expect(screen.getByTestId('edit-preview')).toHaveTextContent('退款更正後帳戶餘額會變成 −$20 欠款，不能是負數');
       expect(screen.getByTestId('submit-edit-button')).toBeDisabled();
       fireEvent.change(screen.getByLabelText('退款金額'), { target: { value: '100' } });
       expect(screen.getByTestId('edit-preview')).toHaveTextContent('現金影響：−$40（帳本更正）');

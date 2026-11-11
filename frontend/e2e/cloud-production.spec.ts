@@ -564,8 +564,8 @@ test.describe('P06 Cloud Students', () => {
         await expect(page.getByText(new RegExp(`已確認 新增 ${input.id} 完成`))).toBeVisible();
         await expect(addStudent).toBeFocused();
         if (input.id === '002') {
-          expect(row).toContainText('−NT$ 25');
-          await expect(row.locator('.cloud-students__balance').getByText('欠款')).toHaveClass(/badge-warn/);
+          await expect(row.locator('.cloud-students__balance')).toContainText('−$25 欠款');
+          await expect(row.locator('.cloud-students__balance').getByText('欠款')).toHaveClass(/cloud-account-balance__debt/);
         }
       };
 
@@ -1357,13 +1357,13 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
       // 3. 期初 100 → 70：預覽顯示期初與目前結餘的變化，送出需要原因
       await openingForm.getByLabel(/期初結餘/).fill('70');
       await openingForm.getByLabel(/期初備註/).fill('核對紙本後更正');
-      await expect(openingForm.getByLabel('期初更正預覽')).toContainText('NT$ 100 → NT$ 70');
+      await expect(openingForm.getByLabel('期初更正預覽')).toContainText('$100 → $70');
       await openingForm.getByRole('button', { name: '確認更正期初' }).click();
       await expect(page.getByRole('alert')).toContainText('請輸入具體的期初更正原因');
       await openingForm.getByLabel('更正原因（必填）').fill('期初抄錯 30 元');
       await openingForm.getByRole('button', { name: '確認更正期初' }).click();
-      await expect(page.getByText(/已確認 更正 009 期初為 NT\$ 70 完成/)).toBeVisible();
-      await expect(row).toContainText('NT$ 70');
+      await expect(page.getByText(/已確認 更正 009 期初為 \$70 完成/)).toBeVisible();
+      await expect(row).toContainText('$70');
 
       const corrected = (await listAdminDocuments('students')).find(item => item.studentCode === '009')!;
       expect(corrected).toMatchObject({
@@ -1390,7 +1390,7 @@ test.describe('P09a Cloud Payments and Counter Cash', () => {
     try {
       await second.page.getByRole('button', { name: '取得系統使用權' }).click();
       const row = second.page.getByTestId('cloud-student-row-009');
-      await expect(row).toContainText('NT$ 70');
+      await expect(row).toContainText('$70');
       await row.getByText('查看期初資料').click();
       await expect(row).toContainText('核對紙本後更正');
       await release(second.page);

@@ -161,7 +161,8 @@ describe('CloudReportPage', () => {
     expect(within(cells[3]).getByText('有效')).toHaveClass('badge-ui', 'badge-ok');
     expect(cells[5]).toHaveTextContent('−$35');
     expect(cells[5].querySelector('.badge-warn')).toBeNull();
-    expect(within(cells[6]).getByText('欠款')).toHaveClass('badge-ui', 'badge-warn');
+    expect(cells[6]).toHaveTextContent('−$40 欠款');
+    expect(within(cells[6]).getByText('欠款')).toHaveClass('cloud-account-balance__debt');
     expect(within(cells[6]).getByText('−$40')).toBeInTheDocument();
   });
 
@@ -301,6 +302,24 @@ describe('CloudReportPage', () => {
     expect(surface).toHaveAttribute('data-source-seq', '11');
     act(() => { window.dispatchEvent(new Event('afterprint')); });
     await waitFor(() => expect(document.querySelector('.cloud-report__print')).toBeNull());
+  });
+
+  it('prints account balances the same way as the screen: −$N 欠款 for debt, thousands for credit (#687)', async () => {
+    const debt = { ...report.transactions[0], transactionId: 'transaction-debt', amount: -35, afterBalance: -1234 };
+    const credit = { ...report.transactions[0], transactionId: 'transaction-credit', amount: 35, afterBalance: 1500 };
+    mocks.readReport.mockResolvedValue({ ...report, transactions: [debt, credit] } as unknown as CloudLedgerReport);
+    vi.spyOn(window, 'print').mockImplementation(() => undefined);
+    render(<CloudReportPage db={{} as never} leaseEpoch={4} identityKey="operator-a:4:print-balance" />);
+    await screen.findByTestId('report-ready');
+    fireEvent.click(screen.getByRole('button', { name: '記錄後列印目前完整明細' }));
+    await waitFor(() => expect(mocks.recordPrint).toHaveBeenCalledTimes(1));
+    const surface = await screen.findByRole('article', { name: '本次固定列印內容' });
+    const rows = within(surface).getAllByRole('row');
+    const debtRow = rows.find(row => row.textContent?.includes('transaction-debt'))!;
+    const creditRow = rows.find(row => row.textContent?.includes('transaction-credit'))!;
+    expect(within(debtRow).getAllByRole('cell').at(-1)).toHaveTextContent('−$1,234 欠款');
+    expect(within(creditRow).getAllByRole('cell').at(-1)).toHaveTextContent('$1,500');
+    expect(within(creditRow).getAllByRole('cell').at(-1)).not.toHaveTextContent('欠款');
   });
 
   it('queries an unknown export read-only and resends with the same command only after an explicit retry click', async () => {
