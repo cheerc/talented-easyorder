@@ -920,6 +920,22 @@ Two anchors were added to `mk.py`: `leaseUpdate` (the `allow update` of `system/
 
 The new clause costs exactly one expression term on the lease update (+94 → +93). The r1 rework (`!exists` added) was re-measured with the same cases: before the rework (`existsAfter` only) `+93 / +94`, after `+93 / +94`; `accessEventCreate` `+97 / +98` before and after. The access count for an epoch-changing lease update went from 2 to 3. At the `+hi` of each branch row the Emulator reports `Error compiling rules: ... Expression is too complex to evaluate safely.` (checked directly at `+94` for `leaseUpdate` and `+98` for `accessEventCreate`; the 35 tests of the spec were all skipped, none executed), so these are compile boundaries, not runtime-cap measurements. They match the existing `dataHead`, `dayCloseCommand` and settlement compile boundaries of about +95 to +97. Neither new rule is near the 1,000-expression runtime cap; they have no `for` or long chain of their own, and the runtime cost of `accessEventCreate` is one function call, three `get`-style reads and about a dozen comparisons.
 
+### #691 P7 re-measure — takeover of a live lease
+
+Rules SHA-256: main (`9678540`) `13aa906145a0986a4483b66708ec0b69c7e58aaa77e99aba44d31a8d790b0b27`; branch `69b66e657899932a7ce8b18387316c7e109833114a662478efa65353e31fe659`. The only Rules change is the acquire clause of `system/accessLease` update: `resource.data.holderUid == null` became `resource.data.holderUid != request.auth.uid` (the other half of the `||`, the 5-minute expiry, is unchanged). `accessEventCreate`, `commandHolder`, `currentHolder` and the event kind derivation are untouched, so a live takeover is an ordinary `takeover` event (before holder not null, after holder not null). A takeover stays an epoch change: it still needs the `!exists` / `existsAfter` event binding.
+
+Static access-call budget is unchanged: an epoch-changing lease update is 3 access calls (`approvedOperator` operator `get`, `exists`, `existsAfter`; `resource` is free), `accessEvents` create is 3, renew is 1. The replaced term compares fields of `resource` and `request.auth` and adds no document access.
+
+Probe: same method as the P13c1 section (inline `1 == 1 && ` terms at the start of the `allow update` condition, bisected between +80 and +110 against a positive Emulator case on a persistent demo-only Firestore Emulator; the spec file is the branch `activeAccountLease.spec.ts` on both sides, using cases that pass on both Rules). `+lo / +hi`, where `+hi` is the Emulator's `Expression is too complex to evaluate safely` compile error, not a runtime-cap measurement:
+
+| Anchor / case | main `+lo / +hi` | branch `+lo / +hi` |
+|---|---:|---:|
+| `leaseUpdate` / `A02.5` (release then acquire) | +93 / +94 | +93 / +94 |
+| `leaseUpdate` / `E04` (release with its event) | +93 / +94 | +93 / +94 |
+| `leaseUpdate` / `T01` (takeover of a live lease; new behavior, refused on main) | n/a | +93 / +94 |
+
+The headroom is unchanged because `!= request.auth.uid` replaces `== null` one for one. `accessEventCreate` was not re-probed: the function and its anchor are byte-identical to main.
+
 ## P13d1 — paper number prefix on backfilled entries
 
 Rules SHA-256: main (#542 base `29c5370`) `8bc9497cacd7dd6129cb5b3229f43e52fcde6db848f6c9c81d7c86ae6ea190f2`; branch `98b143a3531f78cace7a4df0146b017089b4d4fe6582928a6cbabe5711a96455`. Changes: `validTransactionDay(dayId, day, text)` gets `validPaperNote(text)` (`text.matches('(?s)^紙本[A-Za-z0-9-]{1,20}：.*')`) in front of the backfill branch (today still short-circuits first); the three callers pass `tx.note`, `command.payload.reason` (cash command create) and `command.payload.reason` (`transactionCommand` cash branch); `validCorrectedTransaction` adds one clause that keeps an existing paper number. Probe tool `/mnt/project-files/tools/rules-probe`, same cases on both sides; `txUpdate` (the `allow update` of `transactions/{id}`) was added to a private copy of `mk.py` for the correction rows.

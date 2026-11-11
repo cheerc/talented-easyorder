@@ -214,6 +214,28 @@ function accessEventFor(
 }
 
 /**
+ * #691 P7: who is in. The access record of the lease's current epoch names the operator who acquired or took over
+ * (`actorEmail`); every approved operator may read it, so no extra Rules permission is needed. The record is trusted only
+ * when it names the holder the caller is asking about. Anything else (missing, unreadable, mismatched, offline) is
+ * `null`: screens then say 其他人 instead of a name. This is display only and never grants or proves access.
+ */
+export async function readLeaseTakerEmail(
+  db: Firestore,
+  epoch: number,
+  holderUid: string,
+): Promise<string | null> {
+  try {
+    const snapshot = await getDocFromServer(doc(db, ACCESS_EVENTS_COLLECTION, String(epoch)));
+    if (!snapshot.exists()) return null;
+    const data = snapshot.data();
+    if (data.holderUid !== holderUid) return null;
+    return typeof data.actorEmail === 'string' && data.actorEmail.trim() ? data.actorEmail : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Acquire always reaches Firestore Rules. Local time is never used to decide whether
  * another holder has expired; Rules compare the old timestamp with request.time.
  */

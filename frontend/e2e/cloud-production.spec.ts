@@ -138,7 +138,7 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     await expect(page.locator('.operator-strip')).toHaveAttribute('data-lease-epoch', '1');
   });
 
-  test('A03: two operators contend on the server, 15-second recheck limit holds, then B explicitly acquires after A releases', async ({ browser }) => {
+  test('A03: B sees who is using the system, must confirm before taking over, A is shown who logged them out (#691)', async ({ browser }) => {
     const operatorA = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
     const operatorB = await openGoogleSession(browser, E2E_IDENTITIES.operatorB.email);
 
@@ -149,28 +149,42 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
       await expect(operatorA.page.locator('.operator-strip')).toBeVisible();
       await expect.poll(readAccessLease).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
 
-      await expect(operatorB.page.locator('.auth-gate-busy')).toBeVisible();
-      await expect(operatorB.page.locator('.operator-strip')).toHaveCount(0);
-      await expect.poll(readAccessLease).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
-
-      const recheckB = operatorB.page.getByRole('button', { name: '重新檢查' });
-      await recheckB.click();
-      await expect(operatorB.page.getByText(new RegExp(`目前(仍)?由操作員 ${operatorA.uid} 使用中`))).toBeVisible();
-      await expect.poll(readAccessLease).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
-
-      await recheckB.click();
-      await expect(operatorB.page.getByText(/檢查過於頻繁/)).toBeVisible();
-      await expect.poll(readAccessLease).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
-
-      await release(operatorA.page);
-      await expect.poll(readAccessLease).toMatchObject({ holderUid: null, epoch: 2 });
-      await expect(operatorB.page.getByRole('button', { name: '取得系統使用權' })).toBeVisible();
-      await expect.poll(readAccessLease).toMatchObject({ holderUid: null, epoch: 2 });
+      // B: the occupant is named by email; no UID, no epoch, and no silent recheck that could take over.
+      const busyB = operatorB.page.locator('.auth-gate-busy');
+      await expect(busyB).toBeVisible();
+      await expect(busyB).toContainText(E2E_IDENTITIES.operatorA.email);
+      await expect(busyB).not.toContainText(operatorA.uid);
+      await expect(busyB).not.toContainText(/Epoch|世代/);
+      await expect(operatorB.page.getByRole('button', { name: '重新檢查' })).toHaveCount(0);
       await expect(operatorB.page.locator('.operator-strip')).toHaveCount(0);
 
-      await operatorB.page.getByRole('button', { name: '取得系統使用權' }).click();
+      // Cancelling the confirmation changes nothing on the server.
+      await operatorB.page.getByRole('button', { name: '登入並讓對方登出' }).click();
+      await expect(operatorB.page.getByRole('dialog')).toContainText(`${E2E_IDENTITIES.operatorA.email} 正在使用`);
+      await operatorB.page.getByRole('button', { name: '取消' }).click();
+      await expect(operatorB.page.getByRole('dialog')).toHaveCount(0);
+      await expect.poll(readAccessLease).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
+      await expect(operatorB.page.locator('.operator-strip')).toHaveCount(0);
+
+      // Confirming takes the lease over at once; the takeover is recorded with B's email.
+      await operatorB.page.getByRole('button', { name: '登入並讓對方登出' }).click();
+      await operatorB.page.getByRole('button', { name: '是，讓對方登出並繼續' }).click();
       await expect(operatorB.page.locator('.operator-strip')).toBeVisible();
-      await expect.poll(readAccessLease).toMatchObject({ holderUid: operatorB.uid, epoch: 3 });
+      await expect.poll(readAccessLease).toMatchObject({ holderUid: operatorB.uid, epoch: 2 });
+      await expect.poll(async () => (await readAdminDocument('accessEvents', '2'))?.kind).toBe('takeover');
+      expect(await readAdminDocument('accessEvents', '2')).toMatchObject({
+        previousHolderUid: operatorA.uid, actorUid: operatorB.uid, actorEmail: E2E_IDENTITIES.operatorB.email,
+      });
+
+      // A is masked and told who logged them out, without UID or epoch; acknowledging goes back to the busy screen.
+      await expect(operatorA.page.locator('.operator-strip')).toHaveCount(0);
+      const kickedA = operatorA.page.getByRole('alert').filter({ hasText: '已被登出' });
+      await expect(kickedA).toContainText(`${E2E_IDENTITIES.operatorB.email} 已登入，您已被登出。`);
+      await expect(operatorA.page.locator('.auth-gate')).not.toContainText(operatorB.uid);
+      await expect(operatorA.page.locator('.auth-gate')).not.toContainText(/Epoch|世代/);
+      await operatorA.page.getByRole('button', { name: '我知道了' }).click();
+      await expect(operatorA.page.locator('.auth-gate-busy')).toContainText(E2E_IDENTITIES.operatorB.email);
+      await expect.poll(readAccessLease).toMatchObject({ holderUid: operatorB.uid, epoch: 2 });
     } finally {
       await operatorA.close();
       await operatorB.close();
@@ -211,33 +225,48 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
     }
   });
 
-  test('A05: a fast client clock cannot acquire early; a slow clock cannot block server-expired handoff after the holder closes the tab', async ({ browser }) => {
+  test('A05a: a fast client clock cannot skip the confirmation: the screen asks first and the lease stays with A until B confirms (#691)', async ({ browser }) => {
     const operatorA = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
     const operatorB = await openGoogleSession(browser, E2E_IDENTITIES.operatorB.email);
 
     try {
       await operatorA.page.getByRole('button', { name: '取得系統使用權' }).click();
       await expect(operatorA.page.locator('.operator-strip')).toBeVisible();
-      const activeLease = await readAccessLease();
-      expect(activeLease).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
+      expect(await readAccessLease()).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
 
+      // B's clock runs ten minutes fast, so the live lease looks expired to B's screen.
       await operatorB.page.clock.setFixedTime(new Date(Date.now() + 10 * 60 * 1000));
       await operatorB.page.reload();
-      await expect(operatorB.page.locator('.auth-gate-busy, .auth-gate-acquire')).toBeVisible({ timeout: 20_000 });
-      const fastClockAction = operatorB.page.getByRole('button', { name: /取得系統使用權|重新檢查|重新確認使用權/ });
-      await expect(fastClockAction).toBeVisible();
-      await fastClockAction.click();
+      await expect(operatorB.page.locator('.auth-gate-busy')).toContainText(E2E_IDENTITIES.operatorA.email, { timeout: 20_000 });
+      await expect(operatorB.page.getByRole('button', { name: '取得系統使用權' })).toHaveCount(0);
+
+      await operatorB.page.getByRole('button', { name: '登入並讓對方登出' }).click();
+      await expect(operatorB.page.getByRole('dialog')).toContainText(E2E_IDENTITIES.operatorA.email);
+      await operatorB.page.getByRole('button', { name: '取消' }).click();
+      await expect(operatorB.page.getByRole('dialog')).toHaveCount(0);
       await expect(operatorB.page.locator('.operator-strip')).toHaveCount(0);
-      await expect(operatorB.page.locator('.auth-gate')).toBeVisible();
-      await expect(fastClockAction).toBeEnabled();
-      await expect(operatorB.page.locator('.auth-gate-busy')).toContainText(`目前由操作員 ${operatorA.uid} 使用中`);
       await expect.poll(readAccessLease).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
+      await expect(operatorA.page.locator('.operator-strip')).toBeVisible();
+    } finally {
+      await operatorA.close();
+      await operatorB.close();
+    }
+  });
+
+  test('A05: a slow client clock cannot block a takeover of a lease the server already considers expired (#691)', async ({ browser }) => {
+    const operatorA = await openGoogleSession(browser, E2E_IDENTITIES.operatorA.email);
+    const operatorB = await openGoogleSession(browser, E2E_IDENTITIES.operatorB.email);
+
+    try {
+      await operatorA.page.getByRole('button', { name: '取得系統使用權' }).click();
+      await expect(operatorA.page.locator('.operator-strip')).toBeVisible();
+      expect(await readAccessLease()).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
 
       // Closing the actual holder tab does not release its server lease.
       await operatorA.close();
       await expect.poll(readAccessLease).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
 
-      // Admin REST simulates a lease whose server timestamp is six minutes old.
+      // Admin REST simulates a lease whose server timestamp is six minutes old; B's clock runs ten minutes slow.
       await seedAccessLease({
         holderUid: operatorA.uid,
         epoch: 1,
@@ -245,11 +274,11 @@ test.describe('P04 Cloud Authentication & Access Lease', () => {
       });
       await operatorB.page.clock.setFixedTime(new Date(Date.now() - 10 * 60 * 1000));
       await operatorB.page.reload();
-      await expect(operatorB.page.locator('.auth-gate-busy, .auth-gate-acquire')).toBeVisible({ timeout: 20_000 });
+      await expect(operatorB.page.locator('.auth-gate-busy')).toContainText(E2E_IDENTITIES.operatorA.email, { timeout: 20_000 });
       await expect.poll(readAccessLease).toMatchObject({ holderUid: operatorA.uid, epoch: 1 });
 
-      const slowClockAction = operatorB.page.getByRole('button', { name: /取得系統使用權|重新檢查|重新確認使用權/ });
-      await slowClockAction.click();
+      await operatorB.page.getByRole('button', { name: '登入並讓對方登出' }).click();
+      await operatorB.page.getByRole('button', { name: '是，讓對方登出並繼續' }).click();
       await expect(operatorB.page.locator('.operator-strip')).toBeVisible();
       const handedOffLease = await readAccessLease();
       expect(handedOffLease.holderUid).toBe(operatorB.uid);

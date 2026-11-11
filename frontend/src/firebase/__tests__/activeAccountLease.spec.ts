@@ -23,6 +23,7 @@ import {
   acquireLease,
   renewLease,
   releaseLease,
+  readLeaseTakerEmail,
   LEASE_DURATION_MS,
 } from '../activeAccountLease';
 
@@ -139,22 +140,20 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     expect(leaseDoc.data()?.epoch).toBe(1);
   });
 
-  it('A02.2: A 持有期間，B 同時嘗試 acquire 回傳 busy，且 Rules 拒絕 B 強制覆寫', async () => {
+  it('A02.2: A 持有有效租約期間，白名單 B 經確認後可立即接手（epoch +1，takeover 事件記錄 B）', async () => {
     await seedInitialLease(operatorA.uid, 1, new Date());
     const dbB = authedDb(operatorB.uid, operatorB.email);
 
-    // Client transaction 檢查發現 busy
     const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1, operatorB.email);
-    expect(result.status).toBe('busy');
+    expect(result.status).toBe('acquired');
+    if (result.status === 'acquired') {
+      expect(result.holderUid).toBe(operatorB.uid);
+      expect(result.epoch).toBe(2);
+    }
 
-    // 直接以 Rules 攻擊覆寫也必須被 Rules 拒絕
-    await assertFails(
-      updateDoc(doc(dbB, 'system/accessLease'), {
-        holderUid: operatorB.uid,
-        epoch: 2,
-        updatedAt: serverTimestamp(),
-      }),
-    );
+    const leaseDoc = await getDoc(doc(dbB, 'system/accessLease'));
+    expect(leaseDoc.data()?.holderUid).toBe(operatorB.uid);
+    expect(leaseDoc.data()?.epoch).toBe(2);
   });
 
   it('A02.3: 持有人 A 成功續約（renew），holderUid 與 epoch 保持不變', async () => {
@@ -231,18 +230,17 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     }
   });
 
-  it('A02.7: a lease remains active before the server expiry boundary (90-second safety window)', async () => {
+  it('A02.7: a lease still inside its 5-minute window can be taken over by another approved operator', async () => {
     const expiresAt = new Date(Date.now() + 90_000);
     await seedInitialLease(operatorA.uid, 1, new Date(expiresAt.getTime() - LEASE_DURATION_MS));
     const dbB = authedDb(operatorB.uid, operatorB.email);
 
     const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1, operatorB.email);
-    expect(result.status).toBe('busy');
-    if (result.status === 'busy') expect(result.currentHolderUid).toBe(operatorA.uid);
+    expect(result.status).toBe('acquired');
 
     const leaseDoc = await getDoc(doc(dbB, 'system/accessLease'));
-    expect(leaseDoc.data()?.holderUid).toBe(operatorA.uid);
-    expect(leaseDoc.data()?.epoch).toBe(1);
+    expect(leaseDoc.data()?.holderUid).toBe(operatorB.uid);
+    expect(leaseDoc.data()?.epoch).toBe(2);
   });
 
   it('A02.8: concurrent acquire calls with the same expected epoch have exactly one winner', async () => {
@@ -342,16 +340,15 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
     }
   });
 
-  it('A03.4: a fast client clock cannot acquire a lease that Rules still consider active', async () => {
+  it('A03.4: a client clock cannot change the outcome of a takeover; the server decides', async () => {
     const realNow = Date.now();
     await seedInitialLease(operatorA.uid, 1, new Date(realNow));
     const dbB = authedDb(operatorB.uid, operatorB.email);
-    const fakeClock = vi.spyOn(Date, 'now').mockReturnValue(realNow + 10 * 60 * 1000);
+    const fakeClock = vi.spyOn(Date, 'now').mockReturnValue(realNow - 10 * 60 * 1000);
 
     try {
       const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 1, operatorB.email);
-      expect(result.status).toBe('busy');
-      if (result.status === 'busy') expect(result.currentHolderUid).toBe(operatorA.uid);
+      expect(result.status).toBe('acquired');
     } finally {
       fakeClock.mockRestore();
     }
@@ -691,6 +688,139 @@ describeOrSkip('activeAccountLease: P04 全公司單一活躍 Google 租約規�
       const events = await readEvents();
       expect(events.map(row => row.id)).toEqual(['1', '5']);
       expect(events.map(row => row.data.marker)).toEqual(['earlier history', 'earlier history']);
+    });
+  });
+
+  describe('P7 #691: an approved operator can take over a live lease after explicit confirmation', () => {
+    const rawTakeover = (db: ReturnType<typeof authedDb>, newHolder: string, epoch: number, event: Record<string, unknown> | null) => {
+      const modular = db as unknown as Firestore;
+      const batch = writeBatch(modular);
+      batch.update(doc(modular, 'system/accessLease'), { holderUid: newHolder, epoch, updatedAt: serverTimestamp() });
+      if (event) batch.set(doc(modular, `accessEvents/${epoch}`), event);
+      return batch.commit();
+    };
+    const takeoverEvent = (overrides: Record<string, unknown> = {}) => ({
+      kind: 'takeover',
+      holderUid: operatorB.uid,
+      previousHolderUid: operatorA.uid,
+      actorUid: operatorB.uid,
+      actorEmail: operatorB.email,
+      at: serverTimestamp(),
+      ...overrides,
+    });
+
+    it('T01: takeover of a live lease commits with epoch +1 and a takeover event naming the taker email and previous holder', async () => {
+      await seedInitialLease(operatorA.uid, 3, new Date());
+      const dbB = authedDb(operatorB.uid, operatorB.email);
+
+      const result = await acquireLease(dbB as unknown as Firestore, operatorB.uid, 3, operatorB.email);
+      expect(result.status).toBe('acquired');
+
+      const lease = await getDoc(doc(dbB, 'system/accessLease'));
+      expect(lease.data()?.holderUid).toBe(operatorB.uid);
+      expect(lease.data()?.epoch).toBe(4);
+
+      // The taker (and any approved operator) can read the event: it is how the screens name who is in.
+      const event = await getDoc(doc(dbB, 'accessEvents/4'));
+      expect(event.data()).toMatchObject({
+        kind: 'takeover', holderUid: operatorB.uid, previousHolderUid: operatorA.uid,
+        actorUid: operatorB.uid, actorEmail: operatorB.email,
+      });
+    });
+
+    it('T01b: readLeaseTakerEmail returns the actor email of the current epoch for the holder it was asked about, else null', async () => {
+      await seedInitialLease(operatorA.uid, 3, new Date());
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+      const dbB = authedDb(operatorB.uid, operatorB.email);
+      expect((await acquireLease(dbB as unknown as Firestore, operatorB.uid, 3, operatorB.email)).status).toBe('acquired');
+
+      // Both the taker and the displaced holder (still an approved operator) can read it.
+      expect(await readLeaseTakerEmail(dbA as unknown as Firestore, 4, operatorB.uid)).toBe(operatorB.email);
+      expect(await readLeaseTakerEmail(dbB as unknown as Firestore, 4, operatorB.uid)).toBe(operatorB.email);
+      // A record whose holder differs from the lease holder is not trusted, and a missing record reads as unknown.
+      expect(await readLeaseTakerEmail(dbA as unknown as Firestore, 4, operatorA.uid)).toBeNull();
+      expect(await readLeaseTakerEmail(dbA as unknown as Firestore, 99, operatorB.uid)).toBeNull();
+      // Not an approved operator: the read is denied by Rules and reported as unknown, never thrown.
+      const stranger = authedDb('uid-stranger', 'stranger@example.com');
+      expect(await readLeaseTakerEmail(stranger as unknown as Firestore, 4, operatorB.uid)).toBeNull();
+    });
+
+    it('T02: after the takeover the old holder is rejected on renew, release, lease overwrite and business reads', async () => {
+      await seedInitialLease(operatorA.uid, 3, new Date());
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+      const dbB = authedDb(operatorB.uid, operatorB.email);
+      expect((await acquireLease(dbB as unknown as Firestore, operatorB.uid, 3, operatorB.email)).status).toBe('acquired');
+
+      expect((await renewLease(dbA as unknown as Firestore, operatorA.uid, 4)).status).toBe('lost');
+      expect(await releaseLease(dbA as unknown as Firestore, operatorA.uid, 4, operatorA.email)).toBe(false);
+      await assertFails(updateDoc(doc(dbA, 'system/accessLease'), {
+        holderUid: operatorA.uid, epoch: 4, updatedAt: serverTimestamp(),
+      }));
+      await assertFails(updateDoc(doc(dbA, 'system/accessLease'), {
+        holderUid: null, epoch: 5, updatedAt: serverTimestamp(),
+      }));
+
+      // Business reads require holderUid == caller; the old holder is no longer it. (A full-shape command with the old
+      // epoch is proven in cloudRulesProof.spec.ts, "P7 #691 takeover" case.)
+      await assertFails(getDoc(doc(dbA, 'students/stu-1')));
+      await assertFails(getDocs(query(collection(dbA, 'commands'), limit(1))));
+
+      const lease = await getDoc(doc(dbB, 'system/accessLease'));
+      expect(lease.data()?.holderUid).toBe(operatorB.uid);
+      expect(lease.data()?.epoch).toBe(4);
+    });
+
+    it('T03: a non-whitelisted or inactive account cannot take over a live lease', async () => {
+      await seedInitialLease(operatorA.uid, 3, new Date());
+      const stranger = authedDb('uid-stranger', 'stranger@example.com');
+      const dbInactive = authedDb(inactiveOperator.uid, inactiveOperator.email);
+
+      expect((await acquireLease(stranger as unknown as Firestore, 'uid-stranger', 3, 'stranger@example.com')).status).toBe('lost');
+      expect((await acquireLease(dbInactive as unknown as Firestore, inactiveOperator.uid, 3, inactiveOperator.email)).status).toBe('lost');
+      await assertFails(rawTakeover(stranger, 'uid-stranger', 4, takeoverEvent({
+        holderUid: 'uid-stranger', actorUid: 'uid-stranger', actorEmail: 'stranger@example.com',
+      })));
+
+      const lease = await getDoc(doc(authedDb(operatorA.uid, operatorA.email), 'system/accessLease'));
+      expect(lease.data()?.holderUid).toBe(operatorA.uid);
+      expect(lease.data()?.epoch).toBe(3);
+    });
+
+    it('T04: the same UID cannot start a new epoch while its own lease is still valid (another tab keeps renewing, never re-acquiring)', async () => {
+      await seedInitialLease(operatorA.uid, 3, new Date());
+      const dbA = authedDb(operatorA.uid, operatorA.email);
+
+      expect((await acquireLease(dbA as unknown as Firestore, operatorA.uid, 3, operatorA.email)).status).not.toBe('acquired');
+      await assertFails(rawTakeover(dbA, operatorA.uid, 4, takeoverEvent({
+        holderUid: operatorA.uid, previousHolderUid: operatorA.uid, actorUid: operatorA.uid, actorEmail: operatorA.email,
+      })));
+
+      const lease = await getDoc(doc(dbA, 'system/accessLease'));
+      expect(lease.data()?.holderUid).toBe(operatorA.uid);
+      expect(lease.data()?.epoch).toBe(3);
+    });
+
+    it('T05: a takeover without its accessEvents record is rejected (P13c1 binding unchanged)', async () => {
+      await seedInitialLease(operatorA.uid, 3, new Date());
+      const dbB = authedDb(operatorB.uid, operatorB.email);
+      await assertFails(rawTakeover(dbB, operatorB.uid, 4, null));
+      await assertFails(rawTakeover(dbB, operatorB.uid, 4, takeoverEvent({ kind: 'acquire' })));
+      await assertFails(rawTakeover(dbB, operatorB.uid, 4, takeoverEvent({ actorEmail: operatorA.email })));
+      await assertSucceeds(rawTakeover(dbB, operatorB.uid, 4, takeoverEvent()));
+    });
+
+    it('T06: a takeover cannot skip an epoch, hand the lease to someone else, or smuggle a null holder', async () => {
+      await seedInitialLease(operatorA.uid, 3, new Date());
+      const dbB = authedDb(operatorB.uid, operatorB.email);
+      await assertFails(rawTakeover(dbB, operatorB.uid, 5, takeoverEvent()));
+      await assertFails(rawTakeover(dbB, operatorA.uid, 4, takeoverEvent({ holderUid: operatorA.uid })));
+      await assertFails(updateDoc(doc(dbB, 'system/accessLease'), {
+        holderUid: operatorB.uid, epoch: 4, updatedAt: new Date(),
+      }));
+    });
+
+    it('T07: static Rules contract keeps the 5-minute expiry only for the same UID (acquire branch compares holderUid with the caller)', () => {
+      expect(rulesSource).toMatch(/resource\.data\.holderUid\s*!=\s*request\.auth\.uid\s*\|\|\s*resource\.data\.updatedAt\s*\+\s*duration\.value\(5,\s*'m'\)\s*<=\s*request\.time/);
     });
   });
 });

@@ -6,6 +6,7 @@ import type { OperatorAccess } from '../../firebase/authService';
 import type { ActiveLeaseState } from '../../firebase/activeAccountLease';
 
 const leaseMocks = vi.hoisted(() => ({
+  readLeaseTakerEmail: vi.fn(),
   acquireLease: vi.fn(),
   getLeaseStatus: vi.fn(),
   releaseLease: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock('../../firebase/authService', () => ({
   subscribeOperatorAccess: vi.fn(),
 }));
 vi.mock('../../firebase/activeAccountLease', () => ({
+  readLeaseTakerEmail: leaseMocks.readLeaseTakerEmail,
   acquireLease: leaseMocks.acquireLease,
   getLeaseStatus: leaseMocks.getLeaseStatus,
   releaseLease: leaseMocks.releaseLease,
@@ -780,5 +782,142 @@ describe('#587 — dataHead is watched only while this tab is a confirmed holder
     await act(async () => { headMocks.subscribeDataHead.mock.calls[0]![1]({ seq: 6, lastCommandId: 'cmd-6', datasetId: 'ds-1', targets: {} }); });
     expect(hook.result.current.dataHead).toEqual({ seq: 6, lastCommandId: 'cmd-6', datasetId: 'ds-1', targets: {} });
     expect(contextRenders).toBe(before);
+  });
+});
+
+describe('#691 P7 — a holder who is taken over sees who took the lease; takeover needs a confirmation bound to what was shown', () => {
+  const services = {
+    app: {} as Record<string, unknown>,
+    auth: { currentUser: null } as Record<string, unknown>,
+    db: {} as Record<string, unknown>,
+  };
+  const liveOther = (epoch: number) => ({
+    holderUid: 'op-2', epoch, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false,
+  });
+
+  async function signedInTab({ confirmed }: { confirmed: boolean }) {
+    mockEnsure.mockResolvedValue(services as unknown as ReturnType<typeof ensureFirebaseInitialized> extends Promise<infer T> ? T : never);
+    let accessCallback: ((access: OperatorAccess) => void) | null = null;
+    mockSubscribe.mockImplementation((_auth, _db, callback) => { accessCallback = callback; return vi.fn(); });
+    let leaseCallback: ((state: ActiveLeaseState) => void) | null = null;
+    leaseMocks.subscribeLease.mockImplementation((_db, _uid, callback) => { leaseCallback = callback; return vi.fn(); });
+    leaseMocks.startLeaseHeartbeat.mockReturnValue(vi.fn());
+    leaseMocks.renewLease.mockResolvedValue({ status: 'acquired', holderUid: 'op-1', epoch: 1, updatedAt: new Date() });
+    const hook = renderHook(() => useFirebase(), { wrapper });
+    await waitFor(() => expect(accessCallback).not.toBeNull());
+    await act(async () => {
+      accessCallback!({ ok: true, profile: { uid: 'op-1', email: 'op-1@example.com', displayName: 'Operator 1' } });
+    });
+    await waitFor(() => expect(leaseCallback).not.toBeNull());
+    if (confirmed) {
+      await act(async () => {
+        leaseCallback!({ holderUid: 'op-1', epoch: 1, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+      });
+      await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(true));
+    } else {
+      await act(async () => { leaseCallback!(liveOther(1)); });
+    }
+    mockClearSensitivePosData.mockClear();
+    return { hook, leaseCallback: () => leaseCallback! };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsConfigured.mockReturnValue(true);
+    leaseMocks.readLeaseTakerEmail.mockReset().mockResolvedValue(null);
+    leaseMocks.acquireLease.mockReset();
+    leaseMocks.getLeaseStatus.mockReset();
+    leaseMocks.releaseLease.mockReset().mockResolvedValue(false);
+    leaseMocks.renewLease.mockReset();
+    leaseMocks.subscribeLease.mockReset().mockReturnValue(vi.fn());
+    leaseMocks.startLeaseHeartbeat.mockReset().mockReturnValue(vi.fn());
+  });
+
+  it('K1: the confirmed holder is taken over → masks, clears, and exposes the taker email read from the new epoch', async () => {
+    leaseMocks.readLeaseTakerEmail.mockResolvedValue('op-2@example.com');
+    const { hook, leaseCallback } = await signedInTab({ confirmed: true });
+    await act(async () => { leaseCallback()(liveOther(2)); });
+
+    await waitFor(() => expect(hook.result.current.kicked).toEqual({ takerEmail: 'op-2@example.com' }));
+    expect(leaseMocks.readLeaseTakerEmail).toHaveBeenCalledWith(services.db, 2, 'op-2');
+    expect(hook.result.current.lease.isHolder).toBe(false);
+    expect(mockClearSensitivePosData).toHaveBeenCalledTimes(1);
+  });
+
+  it('K2: when the taker email cannot be read the notice still appears, without a name', async () => {
+    leaseMocks.readLeaseTakerEmail.mockRejectedValue(new Error('offline'));
+    const { hook, leaseCallback } = await signedInTab({ confirmed: true });
+    await act(async () => { leaseCallback()(liveOther(2)); });
+
+    await waitFor(() => expect(hook.result.current.kicked).toEqual({ takerEmail: null }));
+  });
+
+  it('K3: acknowledging the notice clears it and leaves the tab masked', async () => {
+    leaseMocks.readLeaseTakerEmail.mockResolvedValue('op-2@example.com');
+    const { hook, leaseCallback } = await signedInTab({ confirmed: true });
+    await act(async () => { leaseCallback()(liveOther(2)); });
+    await waitFor(() => expect(hook.result.current.kicked).not.toBeNull());
+
+    act(() => hook.result.current.acknowledgeKicked());
+    expect(hook.result.current.kicked).toBeNull();
+    expect(hook.result.current.lease).toMatchObject({ holderUid: 'op-2', isHolder: false });
+  });
+
+  it('K4: releasing our own lease, or never having held it, is not a takeover notice', async () => {
+    const { hook, leaseCallback } = await signedInTab({ confirmed: true });
+    await act(async () => {
+      leaseCallback()({ holderUid: null, epoch: 2, updatedAt: new Date(), isKnown: true, isHolder: false, isExpired: false });
+    });
+    await waitFor(() => expect(hook.result.current.lease.isHolder).toBe(false));
+    expect(hook.result.current.kicked).toBeNull();
+
+    const other = await signedInTab({ confirmed: false });
+    await act(async () => { other.leaseCallback()(liveOther(3)); });
+    expect(other.hook.result.current.kicked).toBeNull();
+    expect(leaseMocks.readLeaseTakerEmail).not.toHaveBeenCalled();
+  });
+
+  it('K5: without a confirmation naming the epoch the user was shown, a live other holder is never taken over', async () => {
+    const { hook } = await signedInTab({ confirmed: false });
+    leaseMocks.getLeaseStatus.mockResolvedValue(liveOther(1));
+
+    let result: Awaited<ReturnType<typeof hook.result.current.acquireLease>> | undefined;
+    await act(async () => { result = await hook.result.current.acquireLease(); });
+    expect(leaseMocks.acquireLease).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ status: 'busy', currentHolderUid: 'op-2', epoch: 1 });
+
+    // The occupant changed after the user looked (a different epoch than the one confirmed): still no write.
+    leaseMocks.getLeaseStatus.mockResolvedValue(liveOther(2));
+    await act(async () => { result = await hook.result.current.acquireLease({ confirmedTakeoverEpoch: 1 }); });
+    expect(leaseMocks.acquireLease).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ status: 'busy', epoch: 2 });
+  });
+
+  it('K6: a confirmation naming the observed epoch takes the lease over, and the notice is cleared', async () => {
+    const { hook } = await signedInTab({ confirmed: false });
+    leaseMocks.getLeaseStatus.mockResolvedValue(liveOther(1));
+    leaseMocks.acquireLease.mockResolvedValue({ status: 'acquired', holderUid: 'op-1', epoch: 2, updatedAt: new Date() });
+
+    await act(async () => { await hook.result.current.acquireLease({ confirmedTakeoverEpoch: 1 }); });
+    expect(leaseMocks.acquireLease).toHaveBeenCalledWith(services.db, 'op-1', 1, 'op-1@example.com');
+    expect(hook.result.current.lease).toMatchObject({ holderUid: 'op-1', epoch: 2, isHolder: true });
+    expect(hook.result.current.kicked).toBeNull();
+  });
+
+  it('K7: another UID\'s lease is never taken over without a confirmation, even when the local clock says it expired', async () => {
+    const { hook } = await signedInTab({ confirmed: false });
+    // isExpired is a client-clock estimate: a fast clock reports a live lease as expired. It must not skip the confirmation.
+    const looksExpired = (epoch: number) => ({ ...liveOther(epoch), isExpired: true });
+    leaseMocks.getLeaseStatus.mockResolvedValue(looksExpired(1));
+
+    let result: Awaited<ReturnType<typeof hook.result.current.acquireLease>> | undefined;
+    await act(async () => { result = await hook.result.current.acquireLease(); });
+    expect(leaseMocks.acquireLease).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ status: 'busy', currentHolderUid: 'op-2', epoch: 1 });
+
+    leaseMocks.acquireLease.mockResolvedValue({ status: 'acquired', holderUid: 'op-1', epoch: 2, updatedAt: new Date() });
+    await act(async () => { await hook.result.current.acquireLease({ confirmedTakeoverEpoch: 1 }); });
+    expect(leaseMocks.acquireLease).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.lease).toMatchObject({ holderUid: 'op-1', epoch: 2, isHolder: true });
   });
 });

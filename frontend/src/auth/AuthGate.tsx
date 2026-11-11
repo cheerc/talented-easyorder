@@ -4,10 +4,12 @@ import type { Firestore } from 'firebase/firestore';
 import { signInWithGoogle, signOutOperator, type OperatorAccess } from '../firebase/authService';
 import {
   LEASE_RECHECK_THROTTLE_MS,
+  readLeaseTakerEmail,
   type ActiveLeaseState,
   type LeaseResult,
 } from '../firebase/activeAccountLease';
-import { useFirebase } from '../providers/FirebaseProvider';
+import { useFirebase, type AcquireLeaseOptions, type KickedNotice } from '../providers/FirebaseProvider';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { OperatorContext } from './OperatorContext';
 
 export interface AuthGateProps {
@@ -16,8 +18,11 @@ export interface AuthGateProps {
   db: Firestore;
   access: OperatorAccess;
   lease?: ActiveLeaseState;
-  onAcquireLease?: () => Promise<LeaseResult>;
+  onAcquireLease?: (options?: AcquireLeaseOptions) => Promise<LeaseResult>;
   onReleaseLease?: () => Promise<boolean>;
+  /** #691: this tab was taken over by another operator; shown until acknowledged. Defaults to the FirebaseProvider's. */
+  kicked?: KickedNotice | null;
+  onAcknowledgeKicked?: () => void;
   children: ReactNode;
 }
 
@@ -28,6 +33,8 @@ export function AuthGate({
   lease: propLease,
   onAcquireLease: propAcquire,
   onReleaseLease: propRelease,
+  kicked: propKicked,
+  onAcknowledgeKicked: propAcknowledgeKicked,
   children,
   showOperatorStrip = true,
 }: AuthGateProps) {
@@ -43,6 +50,8 @@ export function AuthGate({
   const activeLease = propLease ?? contextValue?.lease;
   const doAcquire = propAcquire ?? contextValue?.acquireLease;
   const doRelease = propRelease ?? contextValue?.releaseLease;
+  const kicked = propKicked !== undefined ? propKicked : (contextValue?.kicked ?? null);
+  const acknowledgeKicked = propAcknowledgeKicked ?? contextValue?.acknowledgeKicked;
 
   const [lastCheckTime, setLastCheckTime] = useState<number>(0);
   const [throttleMessage, setThrottleMessage] = useState<string>('');
@@ -51,6 +60,28 @@ export function AuthGate({
   const [signInError, setSignInError] = useState('');
   const [signingIn, setSigningIn] = useState(false);
   const [showSignInWait, setShowSignInWait] = useState(false);
+  // #691: the confirmation is for the occupant (holder and epoch) that was on screen when it opened.
+  const [confirmTarget, setConfirmTarget] = useState<{ holderUid: string; epoch: number } | null>(null);
+  // #691: who is in, read from the access record of the lease epoch the screen is showing. null = unknown (其他人).
+  const [occupant, setOccupant] = useState<{ epoch: number; holderUid: string; email: string | null } | null>(null);
+
+  const observedHolderUid = access.ok && activeLease?.isKnown ? activeLease.holderUid : null;
+  const observedEpoch = activeLease?.epoch ?? 0;
+  const watchedOccupantUid = access.ok && observedHolderUid !== null && observedHolderUid !== access.profile.uid
+    ? observedHolderUid : null;
+  // The confirmation lapses as soon as the occupant (holder or epoch) differs from the one it was opened for. Epochs only
+  // grow, so a lapsed target can never match again and a later occupant never inherits it.
+  const targetStillOccupies = confirmTarget !== null && confirmTarget.holderUid === observedHolderUid && confirmTarget.epoch === observedEpoch
+    && watchedOccupantUid !== null;
+
+  useEffect(() => {
+    if (watchedOccupantUid === null) return;
+    let cancelled = false;
+    void readLeaseTakerEmail(db, observedEpoch, watchedOccupantUid).then(email => {
+      if (!cancelled) setOccupant({ epoch: observedEpoch, holderUid: watchedOccupantUid, email });
+    });
+    return () => { cancelled = true; };
+  }, [db, observedEpoch, watchedOccupantUid]);
 
   useEffect(() => {
     if (!signingIn) return;
@@ -175,14 +206,14 @@ export function AuthGate({
     );
   }
 
-  const attemptAcquire = async () => {
+  const attemptAcquire = async (options?: AcquireLeaseOptions) => {
     setIsAcquiring(true);
     setBusyError('');
     try {
       if (!doAcquire) throw new Error('租約服務尚未就緒，請重新連線後再試');
-      const result = await doAcquire();
+      const result = await (options ? doAcquire(options) : doAcquire());
       if (result.status === 'busy') {
-        setBusyError(`目前由操作員 ${result.currentHolderUid} 使用中`);
+        setBusyError('對方仍在使用中，請稍後再試。');
       } else if (result.status === 'stale_epoch') {
         setBusyError('租約狀態已更新，請重新檢查後再試');
       } else if (result.status === 'lost') {
@@ -230,11 +261,31 @@ export function AuthGate({
 
   const hasCurrentLease = activeLease.isHolder && activeLease.holderUid === access.profile.uid;
 
+  // #691: this tab was the holder and another operator took over. Tell who, then fall through to the occupied screen.
+  if (!hasCurrentLease && kicked) {
+    return (
+      <main className="auth-gate" aria-label="已被登出">
+        <h1>Talented EasyOrder</h1>
+        <div className="auth-gate-kicked" role="alert">
+          <h2>您已被登出</h2>
+          <p>{kicked.takerEmail ? `${kicked.takerEmail} 已登入` : '其他人已登入'}，您已被登出。</p>
+        </div>
+        <button type="button" className="auth-gate-primary" onClick={() => acknowledgeKicked?.()}>
+          我知道了
+        </button>
+      </main>
+    );
+  }
+
   // 2. Lease observations never auto-acquire. Only an explicit operator action writes, with one exception handled in
   // FirebaseProvider: a tab that was a confirmed holder re-acquires its own untouched expired lease once (#586 P2).
   if (!hasCurrentLease) {
     const isSameUidUnconfirmed = activeLease.holderUid === access.profile.uid;
-    const isOccupied = activeLease.holderUid !== null && !activeLease.isExpired && !isSameUidUnconfirmed;
+    // Any other UID's lease needs the confirmation. `isExpired` is a local-clock estimate that only changes the wording.
+    const isOccupied = activeLease.holderUid !== null && !isSameUidUnconfirmed;
+    const knownOccupant = occupant && occupant.epoch === activeLease.epoch && occupant.holderUid === activeLease.holderUid
+      ? occupant.email : null;
+    const occupantName = knownOccupant ?? '其他人';
 
     return (
       <main className="auth-gate" aria-label="EasyOrder 使用權租約">
@@ -254,39 +305,39 @@ export function AuthGate({
         ) : isOccupied ? (
           <div className="auth-gate-busy" aria-label="目前有人使用中">
             <h2>目前有人使用中</h2>
-            <p>全公司同一時間僅限一位操作員使用。伺服器觀察到其他持有人；租約到期與否由伺服器時間判定，您可以重新檢查並提出交接。</p>
-            <div
-              style={{
-                margin: '16px 0',
-                padding: '12px',
-                background: 'var(--surface-subtle, #f5f5f5)',
-                borderRadius: '6px',
-                fontSize: '13px',
-              }}
-            >
-              <div><strong>目前持有者：</strong><code>{activeLease.holderUid}</code></div>
-              <div><strong>目前租約世代 (Epoch)：</strong>{activeLease.epoch}</div>
-              {activeLease.updatedAt && (
-                <div><strong>最後活動時間：</strong>{activeLease.updatedAt.toLocaleTimeString('zh-TW', { timeZone: 'Asia/Taipei' })}</div>
-              )}
-            </div>
+            <p>{activeLease.isExpired ? `目前由${occupantName}使用，可能已閒置。` : `目前由${occupantName}使用中。`}全公司同一時間僅限一位操作員使用。</p>
+            <p>若繼續登入，對方會立即被登出。</p>
 
             {busyError && <div style={{ color: 'var(--color-danger, #d32f2f)', margin: '8px 0' }}>{busyError}</div>}
-            {throttleMessage && <div style={{ color: 'var(--text-dim, #666)', margin: '8px 0' }}>{throttleMessage}</div>}
 
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-              <button type="button" onClick={() => void handleRecheck()} disabled={isAcquiring}>
-                {isAcquiring ? '檢查中...' : '重新檢查'}
+              <button type="button" className="auth-gate-primary" onClick={() => setConfirmTarget({ holderUid: activeLease.holderUid!, epoch: activeLease.epoch })} disabled={isAcquiring}>
+                {isAcquiring ? '登入中...' : '登入並讓對方登出'}
               </button>
               <button type="button" onClick={() => void signOutOperator(auth)}>
                 登出
               </button>
             </div>
+            <ConfirmDialog
+              open={targetStillOccupies}
+              title="讓對方登出？"
+              message={`${occupantName} ${activeLease.isExpired ? '可能仍在使用' : '正在使用'}。繼續登入會讓對方立即登出，對方尚未送出的操作不會保存。`}
+              confirmLabel="是，讓對方登出並繼續"
+              cancelLabel="取消"
+              variant="danger"
+              defaultAction="cancel"
+              onCancel={() => setConfirmTarget(null)}
+              onConfirm={() => {
+                const target = confirmTarget;
+                setConfirmTarget(null);
+                if (target && targetStillOccupies) void attemptAcquire({ confirmedTakeoverEpoch: target.epoch });
+              }}
+            />
           </div>
         ) : (
           <div className="auth-gate-acquire" aria-label="待取得使用權">
             <h2>待取得使用權</h2>
-            <p>租約目前看起來閒置或可能已逾期。送出申請後，伺服器會依權威時間確認能否取得使用權。</p>
+            <p>目前沒有人使用。按下按鈕即可開始使用。</p>
             {busyError && <div style={{ color: 'var(--color-danger, #d32f2f)', margin: '8px 0' }}>{busyError}</div>}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
               <button type="button" className="auth-gate-primary" onClick={() => void attemptAcquire()} disabled={isAcquiring}>

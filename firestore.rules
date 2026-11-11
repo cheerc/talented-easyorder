@@ -2207,6 +2207,10 @@ service cloud.firestore {
       allow list, create, update, delete: if false;
     }
 
+    // #691 P7: another approved operator may take over a lease that is still valid (the client asks for an explicit
+    // confirmation first); the same UID still has to wait for its own lease to expire, so a second tab can never start a
+    // new epoch for itself. A takeover is an epoch +1 and is bound to its accessEvents record below, so the displaced
+    // holder's late commands (leaseEpoch / holder checks) and reads are rejected from the commit on. There is no grace window.
     // P04 global lease state machine. P13c1: every epoch change (acquire, takeover, release) must commit together
     // with its accessEvents/{new epoch} record; a renew keeps the epoch and has no event. The record must not exist
     // before the commit: `existsAfter` alone would also be true for a stale record that this commit did not write.
@@ -2217,7 +2221,7 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['holderUid', 'epoch', 'updatedAt'])
         && request.resource.data.updatedAt == request.time
         && (
-          ((resource.data.holderUid == null || resource.data.updatedAt + duration.value(5, 'm') <= request.time)
+          ((resource.data.holderUid != request.auth.uid || resource.data.updatedAt + duration.value(5, 'm') <= request.time)
             && request.resource.data.holderUid == request.auth.uid
             && request.resource.data.epoch == resource.data.epoch + 1)
           || (resource.data.holderUid == request.auth.uid

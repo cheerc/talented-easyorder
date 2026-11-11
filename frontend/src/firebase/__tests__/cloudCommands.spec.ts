@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   assertFails,
+  assertSucceeds,
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
@@ -1560,6 +1561,30 @@ describeWithEmulator('P05 production command repository and Rules', () => {
     await seedBase({ withBusinessDocs: true });
     const artifacts = await rawOrderArtifacts(orderInput('dcdddddd-dddd-4ddd-8ddd-dddddddddddd', 'p05-non-holder'));
     await expectRawBatchDeniedUnchanged(authedDb(operatorB), artifacts);
+  });
+
+  it('P7.691: after another operator takes over a live lease, the displaced holder\'s full raw command closure (old epoch) is denied atomically and the new holder\'s command commits', async () => {
+    await seedBase({ withBusinessDocs: true });
+    const artifacts = await rawOrderArtifacts(orderInput('de111111-1111-4111-8111-111111111111', 'p7-691-displaced-holder'));
+
+    // B takes the still-valid lease over through the production Rules: epoch +1 together with its takeover event.
+    const dbB = authedDb(operatorB);
+    const takeover = writeBatch(dbB);
+    takeover.update(doc(dbB, 'system/accessLease'), { holderUid: operatorB.uid, epoch: 2, updatedAt: serverTimestamp() });
+    takeover.set(doc(dbB, 'accessEvents/2'), {
+      kind: 'takeover', holderUid: operatorB.uid, previousHolderUid: operatorA.uid,
+      actorUid: operatorB.uid, actorEmail: operatorB.email, at: serverTimestamp(),
+    });
+    await assertSucceeds(takeover.commit());
+
+    // A: the closure that was valid for epoch 1 (A held it a moment ago) no longer commits, and nothing is half-written.
+    await expectRawBatchDeniedUnchanged(authedDb(operatorA), artifacts);
+
+    // B: the same kind of command under the new epoch commits, so the denial above is about the lease and not the shape.
+    const control = await repository(operatorB).commitCommand({
+      ...orderInput('de222222-2222-4222-8222-222222222222', 'p7-691-new-holder'), leaseEpoch: 2,
+    });
+    expect(control.ok, JSON.stringify(control)).toBe(true);
   });
 
   it.each([
