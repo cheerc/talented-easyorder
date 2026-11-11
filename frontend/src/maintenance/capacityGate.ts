@@ -44,14 +44,6 @@ export const LEDGER_WINDOW_DAYS = 62;
 export const ACCOUNT_RANGE_MIX: Array<[days: number, share: number]> = [[1, 0.6], [7, 0.3], [31, 0.1]];
 
 /**
- * The first window of days the vendors page reads to find the latest earlier menu (`INITIAL_SOURCE_WINDOW_DAYS` in
- * cloudDayVendorRepository.ts; `capacityGate.test.ts` checks they agree). Every business day gets a menu, so the latest one is
- * found in it; the fixture's closed days have none, which is why the fitted cost grows with them, one read each, up to this window
- * and no further (an older menu would be a gap of more than a month without one).
- */
-export const MENU_SCAN_WINDOW_DAYS = 32;
-
-/**
  * #587: the share of the orders-page commands that were made on another page of the same account while this one was an idle counter
  * page (and so followed the data head with `load.ordersExternalRefresh`). ASSUMPTION: 30 %, with `Assumptions.pages` (2) pages open;
  * a second ordering path (the face-order tablet) writing through its own account would be counted by the data head listener too.
@@ -143,8 +135,8 @@ function commandLines(a: Assumptions): WorkloadLine[] {
  *   on every page (`listener.dataHeadSnapshot`);
  * - ledger scan (S3: the last 62 days and the days still open): when each page starts (cold: nothing is cached yet), after opening or
  *   closing a day (2) and when the anomalies page is opened (1); a closed day of the window is at most 62;
- * - day pages: the vendors page is opened 4 times and reloads after each of its 3 commands (it reads the first 32-day window for the
- *   latest menu, not the history), the day-close page 3 times, the students page 4 times;
+ * - day pages: the vendors page is opened 4 times and reloads after each of its 3 commands (#686: it reads the vendors only, the open days no longer cost a read; last week's menus are read when the copy button is pressed, at most 5 day documents, and are not counted here), the day-close
+ *   page 3 times, the students page 4 times;
  * - reports: 6 of today, 1 of a week, one of a month every 5 days (0.2 a day), after a summary at the page start (2 opens, S13: day
  *   heads only); the range audit is read on demand (S10): a CSV or print takes the report on the screen (S12: no re-read) and
  *   reads the audit of the range, 2 a day. Each access-events read goes with a report. A report reads the transactions of the range
@@ -174,8 +166,6 @@ function loadLines(a: Assumptions): WorkloadLine[] {
   const studentRangeCommands = Math.round(commandsPerStudentDay * RANGE_DAYS);
   // the closed days that the anomaly scan reads: the window of 62 days at most (cloudDayCloseRepository LEDGER_WINDOW_DAYS)
   const scannedClosedDays = Math.min(a.closedDays, LEDGER_WINDOW_DAYS);
-  // the days that the vendors page reads to find the latest menu: the first window, because every business day has one
-  const menuScanDays = Math.min(a.closedDays, MENU_SCAN_WINDOW_DAYS);
   /**
    * The units of a report over `days` days. The report reads the transactions of the range and the roster; the accounts of the
    * range and their histories are still units of the fitted `load.report` (the cost of a few reads of the range per account,
@@ -202,7 +192,7 @@ function loadLines(a: Assumptions): WorkloadLine[] {
   load('load.ledgerScan', 3, { closedDay: scannedClosedDays, openDay: a.unclosedDays });
   // every scan also looks up the closed day before its window (a segment of day documents, measured as one operation)
   load('load.ledgerLookup', a.pages + 3);
-  load('load.dayVendors', 4 + 3, { vendor: a.vendors, closedDay: menuScanDays, openDay: a.unclosedDays });
+  load('load.dayVendors', 4 + 3, { vendor: a.vendors, openDay: a.unclosedDays });
   load('load.dayCloseOverview', 3, { openDay: a.unclosedDays });
   load('load.dayCloseState', 3, { settlementVersion: 2 });
   load('load.students', 4, { student: a.roster });

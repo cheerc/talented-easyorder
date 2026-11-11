@@ -193,9 +193,8 @@ describeWithEmulator('P16e history scale: the table against the full size', () =
     const warm = createCloudLedgerReader(app, current);
     await warm.read();
     await measure('load.ledgerScan', { closedDay: scanned, openDay: unclosed }, () => warm.read(), true, ['load.ledgerLookup']);
-    // none of this fixture's days has a menu, so the vendors page scans every closed day here (the worst case the table covers; with
-    // a menu in the first 32-day window the gate counts 32)
-    await measure('load.dayVendors', { vendor: 1, closedDay: closedDays, openDay: unclosed }, () => createCloudDayVendorRepository(app, current).loadSnapshot());
+    // #686: the vendors page no longer scans earlier days, so the closed days do not enter its cost (the open days stay a dimension of the table, at cost 0)
+    await measure('load.dayVendors', { vendor: 1, openDay: unclosed }, () => createCloudDayVendorRepository(app, current).loadSnapshot());
     await measure('load.orders', { student: students, dayTransaction: 0, openDay: unclosed }, () => orders.loadSnapshot());
     await measure('load.dayCloseOverview', { openDay: unclosed }, () => closing.readOverview());
   }, 600_000);

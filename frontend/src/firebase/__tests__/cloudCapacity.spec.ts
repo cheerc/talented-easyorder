@@ -507,7 +507,7 @@ describeWithEmulator('P16d capacity: reads and writes per operation, measured on
       return [
         { name: 'load.students', dimensions: ['student'], paged: false, production: production.students, make: () => () => listCloudStudents(app, current) },
         { name: 'load.orders', dimensions: ['student', 'dayTransaction', 'openDay'], roster: true, paged: true, production: production.orders, make: pageSize => () => createCloudOrderRepository(app, { ...current, pageSize }).loadSnapshot() },
-        { name: 'load.dayVendors', dimensions: ['vendor', 'closedDay', 'openDay'], paged: true, production: production.vendors, make: pageSize => () => createCloudDayVendorRepository(app, { ...current, pageSize }).loadSnapshot() },
+        { name: 'load.dayVendors', dimensions: ['vendor', 'openDay'], paged: true, production: production.vendors, make: pageSize => () => createCloudDayVendorRepository(app, { ...current, pageSize }).loadSnapshot() },
         { name: 'load.summary', dimensions: ['closedDay', 'settlementVersion'], paged: true, production: production.read, make: pageSize => () => readerAt(pageSize).readSummary({ range: range(closedMade), leaseEpoch: epoch }) },
         // the report reads the transactions of the range (every student's) and, for every account that has one in the range, that
         // account's whole history (`readAccountPrefix`, twice): the accounts of the range and their histories are dimensions of their own
