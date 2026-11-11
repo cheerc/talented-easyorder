@@ -40,6 +40,7 @@
 - `Callout`：`variant: 'warn' | 'ok' | 'info'`，圖示＋文字，可放子元素（例如日期 chip）。
 - `ActionCard`：整張是一個 `<button>`，圖示、標題、說明、動作膠囊、`Kbd`；accessible name 是「標題，說明，動作」，不含 Kbd。
 - `StatTile`：標籤＋大數字（等寬）；`warn` 只給需要處理的數字。
+- `DateField`：單日「營業日」控制項，F1／F2／F3 共用，標籤固定為「營業日」；外觀取 F2 日結日期列（等寬字、`--t-lg`、最小高度 3rem）。三種變體：`date`（原生日期，輸入中不載入、Enter 或離開欄位才確認，滑鼠選日期立刻確認）、`select`（選項由頁面提供，F1 用）、`static`（唯讀、同外觀）；右側 `status` slot 由頁面放狀態徽章與今天／過去日期／未來日期；`size="compact"` 給較小的標題列。新頁面要選單日營業日時用它，不要自己寫日期列。
 
 ## HelpTip 與 Callout 的分類（依語意，不依現有 class）
 

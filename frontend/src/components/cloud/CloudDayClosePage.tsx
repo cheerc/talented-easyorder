@@ -3,6 +3,7 @@ import { getAuth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
 import type { CommandReceipt, CommandResult } from '../../domain/cloudCommands';
 import { effectiveCashOf, openingDifference, type OpeningMismatchAnomaly } from '../../domain/ledgerAnomalies';
+import { dayStateLabel } from '../../domain/cloudDayState';
 import type { PostCloseDirection } from '../../domain/postCloseEntries';
 import { getCloudRecoveryReader } from '../../firebase/cloudRecoveryReader';
 import {
@@ -283,14 +284,6 @@ function formatServerTime(value: string | Date): string {
   return new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', dateStyle: 'medium', timeStyle: 'medium' }).format(timestamp);
 }
 
-function statusLabel(status: CloudDayCloseState['status']): string {
-  return status === 'closed' ? '已關帳' : status === 'reopened' ? '已重開' : '開啟中';
-}
-
-function statusVariant(status: CloudDayCloseState['status']): 'ok' | 'warn' {
-  return status === 'closed' ? 'ok' : 'warn';
-}
-
 const BACKFILL_STEP_LABEL = { 'ensure-day': '建立營業日', 'backfill-opening': '補開帳', 'start-backfill': '標為回填' } as const;
 
 function commandLabel(command: PreparedCommand): string {
@@ -298,13 +291,6 @@ function commandLabel(command: PreparedCommand): string {
   if (command.kind === 'backfill-opening') return `${command.dayId} 補開帳`;
   if (command.kind === 'record-post-close-entry') return `${command.dayId} 關帳後補記`;
   return command.kind === 'close-day' ? `${command.dayId} 關帳` : `${command.dayId} 重開`;
-}
-
-function unclosedStatusLabel(day: CloudUnclosedDay): string {
-  if (day.backfill) return day.status === 'reopened' ? '回填中（已重開）' : '回填中';
-  if (day.status === 'reopened') return '已重開';
-  if (day.kind === 'missing-opening') return '待確認開帳';
-  return '尚未關帳';
 }
 
 /**
@@ -1611,15 +1597,24 @@ export function CloudDayClosePage({
   const busy = page.recovery !== null || page.postCloseChecking || showingStale;
   const needsAttention = snapshot?.overview.unclosedDays.filter(item => item.kind !== 'no-business') ?? [];
   // Today is the page's own day (the date row shows its state); the warning is about past days only.
-  const pastUnclosed = needsAttention.filter(item => item.dayId < selectionDate);
+  // The viewed day is left out too (#688): the date row already shows its state, so the banner lists the other days.
+  const viewedDayId = snapshot?.dayId ?? null;
+  const pastUnclosed = needsAttention.filter(item => item.dayId < selectionDate && item.dayId !== viewedDayId);
   // Without an anomalies page to send the rest to, every day stays listed.
   const shownUnclosed = onOpenAnomalies ? pastUnclosed.slice(0, MAX_UNCLOSED_CHIPS) : pastUnclosed;
   const hiddenUnclosed = onOpenAnomalies ? pastUnclosed.length - shownUnclosed.length : 0;
+  const chipState = (item: CloudUnclosedDay) => dayStateLabel({
+    status: item.status, backfill: Boolean(item.backfill), kind: item.kind, dayId: item.dayId, today: selectionDate,
+  });
   const dateBarMeta = snapshot ? snapshot.overview : page.loading ? dateMeta : null;
-  const noBusiness = snapshot?.overview.unclosedDays.filter(item => item.kind === 'no-business') ?? [];
+  const noBusiness = snapshot?.overview.unclosedDays.filter(item => item.kind === 'no-business' && item.dayId !== viewedDayId) ?? [];
   const currentKind = snapshot && day && day.status !== 'closed' && day.openingCash === null
     ? (snapshot.dayId < selectionDate && day.totals.activeTransactionCount === 0 ? 'no-business' : 'missing-opening')
     : null;
+  // The date row uses the same state words as the banner chips (#688).
+  const rowState = dayStateLabel({
+    status: day?.status ?? 'open', backfill: Boolean(snapshot?.backfill), kind: currentKind, dayId: snapshot?.dayId ?? '', today: selectionDate,
+  });
 
   return (
     <main className="cloud-day-close" aria-label="雲端日結" aria-busy={busy || page.loading}>
@@ -1710,7 +1705,7 @@ export function CloudDayClosePage({
           status={snapshot && (
             <span className="cloud-day-close__day-state" data-testid="cloud-day-state">
               {day
-                ? <StatusBadge variant={statusVariant(day.status)} className={`cloud-day-close__status cloud-day-close__status--${day.status}`}>{statusLabel(day.status)}</StatusBadge>
+                ? <StatusBadge variant={rowState.variant} className={`cloud-day-close__status cloud-day-close__status--${day.status}`}>{rowState.text}</StatusBadge>
                 : <StatusBadge variant="neutral">沒有營業日</StatusBadge>}
               {snapshot.dayId === selectionDate ? '今天' : snapshot.dayId < selectionDate ? '過去日期' : '未來日期'}
             </span>
@@ -1739,16 +1734,16 @@ export function CloudDayClosePage({
                       className="cloud-day-close__chip"
                       data-testid={`cloud-unclosed-${item.dayId}`}
                       onClick={() => requestDay(item.dayId)}
-                      disabled={busy || item.dayId === snapshot.dayId}
+                      disabled={busy}
                     >
                       <span className="cloud-day-close__mono">{item.dayId}</span>
                       <span className="cloud-day-close__chip-count">{item.activeTransactionCount} 筆交易</span>
                       {item.backfill ? (
                         <span data-testid={`cloud-unclosed-backfill-${item.dayId}`}>
-                          <StatusBadge variant="warn" className="cloud-day-close__status cloud-day-close__status--open">{unclosedStatusLabel(item)}</StatusBadge>
+                          <StatusBadge variant="warn" className="cloud-day-close__status cloud-day-close__status--open">{chipState(item).text}</StatusBadge>
                         </span>
                       ) : (item.status === 'reopened' || item.kind === 'missing-opening') && (
-                        <StatusBadge variant="warn" className={`cloud-day-close__status cloud-day-close__status--${item.status}`}>{unclosedStatusLabel(item)}</StatusBadge>
+                        <StatusBadge variant="warn" className={`cloud-day-close__status cloud-day-close__status--${item.status}`}>{chipState(item).text}</StatusBadge>
                       )}
                     </button>
                   ))}
@@ -1779,7 +1774,7 @@ export function CloudDayClosePage({
                     className="cloud-day-close__chip cloud-day-close__chip--quiet"
                     data-testid={`cloud-no-business-${item.dayId}`}
                     onClick={() => requestDay(item.dayId)}
-                    disabled={busy || item.dayId === snapshot.dayId}
+                    disabled={busy}
                   >
                     <span className="cloud-day-close__mono">{item.dayId}</span>
                   </button>
