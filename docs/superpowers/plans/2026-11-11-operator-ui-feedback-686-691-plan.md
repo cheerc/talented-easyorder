@@ -369,7 +369,10 @@ npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx 
 - 關閉瀏覽器或斷電時，不靠 unload 釋放，最多 5 分鐘逾期（spec `:71`）。分頁一直開著時，心跳會無限續約（`activeAccountLease.ts:27`）。
 
 **範圍**
-- 自動進入：租約為 `null`，或伺服器確認已逾期時（`isKnown && isExpired` 或 `holderUid == null`），登入後自動呼叫一次 acquire，不顯示按鈕。結果為 `busy`（同時有人搶先）時，進入 P7 的「有人使用中」畫面。仍在使用中的租約**不會**自動接手（P7 的確認對話不變）。修訂 spec `:69`：「閒置或逾期時自動取得；有效持有中時需明確確認才接手」。
+- 自動進入：**只在伺服器觀察到 `holderUid === null`**（`isKnown`，無人持有）時，登入後自動呼叫一次 acquire，不顯示按鈕。結果為 `busy`（同時有人搶先）時，進入 P7 的確認畫面。
+- 租約由**其他 UID** 持有時，不論本機 `isExpired` 是否為真，一律進入 P7 確認畫面，不自動接手。本機判定可能已逾期時，文案可寫「○○ 可能已閒置」。同 UID 的逾期重新取得路徑（`FirebaseProvider.tsx:193-231`）不變。
+- Ruling（Coordinator，PR #693 dual review）：P7 之後 Rules 不再以逾期條件阻擋他人接手，本機 `isExpired`（client 時鐘）不能作為接手他人租約的授權依據（`REVIEW.md` 🔴 #5）。所以自動進入只依伺服器觀察到的「無人持有」判斷。
+- 修訂 spec `:69`：「無人持有時自動取得；由他人持有時（不論是否可能已逾期）需明確確認才接手」。
 - 自動登出：持有分頁自登入（取得租約）起滿 8 小時後，不因操作而延長，走正常登出流程：先確認送出中的結果，再釋放租約，最後 signOut。若此時 `navigationLocked`（送出中或錯誤待處理，`App.tsx:312`），延到解除後再執行，不中斷送出中的命令。登出後的登入畫面顯示一行「已超過 8 小時，系統已自動登出。」
 - Ruling：8 小時計時只用來讓本機主動登出（只減少權限、不授予），不違反 `frontend/CLAUDE.md`「不用本機倒數授權」與 `REVIEW.md` 🔴 #5。Rules 不改；5 分鐘租約與心跳不變。
 - Ruling：先不做登出前的倒數警告，只在登入畫面說明原因（減法原則）。擁有者若要提前提醒，再另外加。
@@ -378,8 +381,9 @@ npx firebase emulators:exec --project demo-easyorder --only auth,firestore "npx 
 
 **驗收**（以 fake timers 測量；Emulator 驗證 acquire 實際寫入）
 - 無人持有時登入 → 不點任何按鈕即進入，事件 kind 為 `acquire`。
-- 持有者租約已逾期時登入 → 自動進入，事件 kind 為 `takeover`。
-- 有效持有中時登入 → 顯示「目前由 ○○ 使用中」與確認按鈕，不自動接手。
+- 其他 UID 持有、本機判定已逾期時登入 → 顯示確認畫面（可寫「可能已閒置」），acquire 未被呼叫；確認後才接手，事件 kind 為 `takeover`。
+- 其他 UID 有效持有中時登入 → 顯示「目前由 ○○ 使用中」與確認按鈕，不自動接手。
+- 同 UID 自己的租約逾期 → 沿用既有重新取得路徑，行為不變。
 - 登入滿 8 小時、沒有送出中命令 → 租約釋放（epoch +1、`release` 事件），回到登入畫面並顯示原因。
 - 滿 8 小時時正在送出命令 → 等送出完成並確認後才登出。
 
