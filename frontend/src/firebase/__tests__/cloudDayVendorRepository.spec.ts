@@ -16,7 +16,6 @@ import {
   getDoc,
   serverTimestamp,
   setDoc,
-  updateDoc,
   writeBatch,
   type Firestore,
 } from 'firebase/firestore';

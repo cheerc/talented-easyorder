@@ -11,9 +11,7 @@ import {
   query,
   startAfter,
   where,
-  type CollectionReference,
   type DocumentSnapshot,
-  type QueryFieldFilterConstraint,
   type Firestore,
 } from 'firebase/firestore';
 import type { CommandErrorCode, CommandReceipt, CommandResult } from '../domain/cloudCommands';
@@ -38,9 +36,6 @@ type CurrentUser = Pick<User, 'uid' | 'email' | 'emailVerified' | 'providerData'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PAGE_SIZE = 200;
 const MAX_VENDOR_DOCUMENTS = 500;
-const MAX_SOURCE_DAY_DOCUMENTS = 2_000;
-const INITIAL_SOURCE_WINDOW_DAYS = 32;
-const MAX_SOURCE_WINDOW_DAYS = 4_096;
 
 export interface CloudVendorRecord {
   vendorId: string;
@@ -91,13 +86,16 @@ export interface CloudDayRecord {
   updatedAt: string;
 }
 
-export type InheritanceBlock = 'vendor-missing' | 'vendor-inactive' | 'vendor-deleted' | 'vendor-renamed';
-
-export interface CloudMenuSource {
-  sourceDayId: string;
-  menu: CloudDayMenuRecord;
-  sourceVendor: CloudVendorRecord | null;
-  blocked: InheritanceBlock | null;
+/**
+ * One day of the previous calendar week (Monday to Friday) that has a usable menu: its vendor still exists, is not removed and
+ * is active. `vendorName` is the vendor's current name, because the form fills the vendor by id and saves the current name.
+ */
+export interface CloudLastWeekMenuItem {
+  dayId: string;
+  itemName: string;
+  price: number;
+  vendorId: string;
+  vendorName: string;
 }
 
 export interface CloudDayVendorSnapshot {
@@ -105,7 +103,6 @@ export interface CloudDayVendorSnapshot {
   selectionDate: string;
   day: CloudDayRecord | null;
   vendors: CloudVendorRecord[];
-  latestEarlierMenu: CloudMenuSource | null;
   seq: number;
   datasetId: string;
   goLiveDate: string;
@@ -204,6 +201,11 @@ export interface CloudDayVendorRepository {
     expectedUid: string,
     isCurrent: () => boolean,
   ): Promise<boolean>;
+  /**
+   * #686: the days with a usable menu in the calendar week before the one `dayId` belongs to (Monday to Friday, Taipei date
+   * strings, no browser clock), read on demand from the server. `vendors` is the snapshot's vendor list.
+   */
+  readLastWeekMenus(dayId: string, vendors: CloudVendorRecord[]): Promise<CloudLastWeekMenuItem[]>;
   /** The latest closed day dated before `dayId` (contract §11.2); shared with the `setOpeningCash` check. */
   findPreviousClosed(dayId: string): Promise<CloudPreviousClosedLookup>;
   readCommand(commandId: string): Promise<CommandReceipt | null>;
@@ -482,92 +484,13 @@ function shiftDayId(dayId: string, days: number): string | null {
   return value.toISOString().slice(0, 10);
 }
 
-// Firestore Emulator rejects document-ID DESC scans ("descending key scans"), so the newest
-// eligible source is found by walking calendar-date windows backwards. Each window is read in
-// ascending document-ID order and then processed newest-first, so the processing order, the
-// 2,000-document scan cap and every strict row decode match a descending document-ID scan.
-async function readSourceWindow(
-  days: CollectionReference,
-  bounds: QueryFieldFilterConstraint[],
-  maximum: number,
-  pageSize: number,
-): Promise<DocumentSnapshot[]> {
-  const found: DocumentSnapshot[] = [];
-  let cursor: DocumentSnapshot | undefined;
-  while (found.length < maximum) {
-    const size = Math.min(pageSize, maximum - found.length);
-    const page = await getDocsFromServer(query(
-      days,
-      ...bounds,
-      orderBy(documentId()),
-      ...(cursor ? [startAfter(cursor)] : []),
-      limit(size),
-    ));
-    found.push(...page.docs);
-    if (page.docs.length < size) break;
-    cursor = page.docs[page.docs.length - 1];
-  }
-  return found;
-}
-
-async function readLatestEarlierMenu(
-  db: Firestore,
-  targetDayId: string,
-  selectionDate: string,
-  vendors: CloudVendorRecord[],
-  pageSize: number,
-): Promise<CloudMenuSource | null> {
-  const days = collection(db, 'days');
-  const eligible = [where(documentId(), '<', targetDayId), where(documentId(), '<=', selectionDate)];
-  const previousDay = shiftDayId(targetDayId, -1);
-  const newest = previousDay !== null && previousDay < selectionDate ? previousDay : selectionDate;
-  let upper: string | null = null;
-  let span = INITIAL_SOURCE_WINDOW_DAYS;
-  let scanned = 0;
-  for (;;) {
-    const remaining = MAX_SOURCE_DAY_DOCUMENTS - scanned;
-    // Canonical day IDs hold at most one document per calendar date, so a window no wider than
-    // the remaining cap cannot overflow unless malformed IDs exist.
-    span = Math.max(1, Math.min(span, remaining));
-    const windowNewest: string | null = upper === null ? newest : shiftDayId(upper, -1);
-    const lower: string | null = windowNewest === null ? null : shiftDayId(windowNewest, -(span - 1));
-    const bounds = [
-      ...eligible,
-      ...(upper === null ? [] : [where(documentId(), '<', upper)]),
-      ...(lower === null ? [] : [where(documentId(), '>=', lower)]),
-    ];
-    const window = await readSourceWindow(days, bounds, remaining + 1, pageSize);
-    if (window.length > remaining) {
-      // More physical rows than the cap allows: narrow the window so only its newest rows count.
-      if (span > 1 && lower !== null) {
-        span = Math.max(1, Math.floor(span / 2));
-        continue;
-      }
-      throw new CloudDayVendorRepositoryError('INCOMPLETE_SNAPSHOT', '最近菜單來源超過完整掃描上限 2,000 個營業日');
-    }
-    for (const snapshot of window.reverse()) {
-      scanned += 1;
-      const day = decodeDay(snapshot.id, snapshot.data());
-      if (!day.menu) continue;
-      const vendor = vendors.find(item => item.vendorId === day.menu!.vendorId) ?? null;
-      let blocked: InheritanceBlock | null = null;
-      if (!vendor) blocked = 'vendor-missing';
-      else if (vendor.deleted) blocked = 'vendor-deleted';
-      else if (vendor.status !== 'active') blocked = 'vendor-inactive';
-      else if (vendor.name !== day.menu.vendorNameSnapshot) blocked = 'vendor-renamed';
-      return { sourceDayId: snapshot.id, menu: day.menu, sourceVendor: vendor, blocked };
-    }
-    if (lower === null) return null;
-    const older = await getDocsFromServer(query(
-      days, ...eligible, where(documentId(), '<', lower), orderBy(documentId()), limit(1),
-    ));
-    if (older.empty) return null;
-    if (scanned >= MAX_SOURCE_DAY_DOCUMENTS) {
-      throw new CloudDayVendorRepositoryError('INCOMPLETE_SNAPSHOT', '最近菜單來源超過完整掃描上限 2,000 個營業日');
-    }
-    upper = lower;
-    span = Math.min(span * 2, MAX_SOURCE_WINDOW_DAYS);
-  }
+/** Monday and Friday of the calendar week before the one `dayId` belongs to, computed on the date string only. */
+function lastWeekRange(dayId: string): { monday: string; friday: string } | null {
+  const dayOfWeek = new Date(`${dayId}T00:00:00.000Z`).getUTCDay();
+  const thisMonday = shiftDayId(dayId, -((dayOfWeek + 6) % 7));
+  const monday = thisMonday === null ? null : shiftDayId(thisMonday, -7);
+  const friday = monday === null ? null : shiftDayId(monday, 4);
+  return monday !== null && friday !== null ? { monday, friday } : null;
 }
 
 export function createCloudDayVendorRepository(
@@ -640,7 +563,6 @@ export function createCloudDayVendorRepository(
         readVendorRecords(db, pageSize),
       ]);
       const visibleVendors = physicalVendors.filter(vendor => !vendor.deleted);
-      const latestEarlierMenu = await readLatestEarlierMenu(db, dayId, selectionDate, physicalVendors, pageSize);
       const leaseAfter = await getDocFromServer(doc(db, accessLeasePath()));
       if (!leaseAfter.exists() || decodeLease(leaseAfter.data(), user.uid).selectionDate !== selectionDate) {
         throw new CloudDayVendorRepositoryError('STALE_SNAPSHOT', '伺服器租約日期在讀取期間更新，請重新載入');
@@ -654,7 +576,6 @@ export function createCloudDayVendorRepository(
         selectionDate,
         day: daySnapshot.exists() ? decodeDay(dayId, daySnapshot.data()) : null,
         vendors: visibleVendors,
-        latestEarlierMenu,
         seq: before.seq,
         datasetId: before.datasetId,
         goLiveDate: before.goLiveDate,
@@ -664,8 +585,40 @@ export function createCloudDayVendorRepository(
     }
   }
 
+  // Only on demand (the button in the F3 menu form), never while a snapshot loads. No head fence: the list is a suggestion
+  // for the form; the save goes through SetDayMenu, which Rules validate. A read error is shown and can be retried.
+  async function readLastWeekMenus(dayId: string, vendors: CloudVendorRecord[]): Promise<CloudLastWeekMenuItem[]> {
+    try {
+      requireGoogleUser(options);
+      if (!validDate(dayId)) throw new CloudDayVendorRepositoryError('INVALID_INPUT', '營業日必須是 YYYY-MM-DD');
+      const range = lastWeekRange(dayId);
+      if (!range) throw new CloudDayVendorRepositoryError('INVALID_INPUT', '營業日必須是 YYYY-MM-DD');
+      const page = await getDocsFromServer(query(
+        collection(db, 'days'),
+        where(documentId(), '>=', range.monday),
+        where(documentId(), '<=', range.friday),
+        orderBy(documentId()),
+        limit(5),
+      ));
+      const items: CloudLastWeekMenuItem[] = [];
+      for (const snapshot of page.docs) {
+        const menu = decodeDay(snapshot.id, snapshot.data()).menu;
+        if (!menu) continue;
+        const vendor = vendors.find(item => item.vendorId === menu.vendorId);
+        if (!vendor || vendor.deleted || vendor.status !== 'active') continue;
+        items.push({
+          dayId: snapshot.id, itemName: menu.itemName, price: menu.price, vendorId: vendor.vendorId, vendorName: vendor.name,
+        });
+      }
+      return items;
+    } catch (error) {
+      throw readError(error);
+    }
+  }
+
   return {
     loadSnapshot,
+    readLastWeekMenus,
     findPreviousClosed: dayId => ledgerReader.findPreviousClosed(dayId),
     ensureDay: input => commitTypedIntent({ kind: 'ensure-day', input }),
     saveVendor: input => commitTypedIntent({ kind: 'save-vendor', input }),

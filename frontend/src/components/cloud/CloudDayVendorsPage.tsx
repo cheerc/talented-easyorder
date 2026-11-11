@@ -123,7 +123,6 @@ interface PageState {
   removingVendorId: string | null;
   removeReason: string;
   menuDraft: CloudDayMenuDraft;
-  inheritedFromDate: string | null;
   openingCashText: string;
   openingReasonText: string;
   recovery: RecoveryState | null;
@@ -140,7 +139,7 @@ const freshVendorDraft = (): CloudDayVendorDraft => ({
 const freshMenuDraft = (): CloudDayMenuDraft => ({ itemName: '', priceText: '', vendorId: '' });
 
 function formDraftsFor(snapshot: CloudDayVendorSnapshot): Pick<PageState,
-  'createVendorOpen' | 'vendorDraft' | 'editingVendorId' | 'removingVendorId' | 'removeReason' | 'menuDraft' | 'inheritedFromDate' | 'openingCashText' | 'openingReasonText'> {
+  'createVendorOpen' | 'vendorDraft' | 'editingVendorId' | 'removingVendorId' | 'removeReason' | 'menuDraft' | 'openingCashText' | 'openingReasonText'> {
   return {
     createVendorOpen: false,
     vendorDraft: freshVendorDraft(),
@@ -154,9 +153,6 @@ function formDraftsFor(snapshot: CloudDayVendorSnapshot): Pick<PageState,
         vendorId: snapshot.day.menu.vendorId,
       }
       : freshMenuDraft(),
-    // Any new write from an existing menu is an explicit direct assignment.
-    // Inheritance is selected only from the current, strictly decoded source below.
-    inheritedFromDate: null,
     openingCashText: snapshot.day?.openingCash === null || snapshot.day?.openingCash === undefined
       ? ''
       : String(snapshot.day.openingCash),
@@ -182,7 +178,6 @@ function initialPageState(scopeKey: string): PageState {
     removingVendorId: null,
     removeReason: '',
     menuDraft: freshMenuDraft(),
-    inheritedFromDate: null,
     openingCashText: '',
     openingReasonText: '',
     recovery: null,
@@ -190,7 +185,7 @@ function initialPageState(scopeKey: string): PageState {
 }
 
 function clearFormDrafts(): Pick<PageState,
-  'createVendorOpen' | 'vendorDraft' | 'editingVendorId' | 'removingVendorId' | 'removeReason' | 'menuDraft' | 'inheritedFromDate' | 'openingCashText' | 'openingReasonText'> {
+  'createVendorOpen' | 'vendorDraft' | 'editingVendorId' | 'removingVendorId' | 'removeReason' | 'menuDraft' | 'openingCashText' | 'openingReasonText'> {
   return {
     createVendorOpen: false,
     vendorDraft: freshVendorDraft(),
@@ -198,7 +193,6 @@ function clearFormDrafts(): Pick<PageState,
     removingVendorId: null,
     removeReason: '',
     menuDraft: freshMenuDraft(),
-    inheritedFromDate: null,
     openingCashText: '',
     openingReasonText: '',
   };
@@ -327,13 +321,6 @@ function intentFor(command: PreparedCommand, leaseEpoch: number): CloudDayVendor
       ...(command.reason === undefined ? {} : { reason: command.reason }),
     },
   };
-}
-
-function blockedInheritanceMessage(blocked: string): string {
-  if (blocked === 'vendor-missing') return '最近一筆較早菜單的供應商已不存在，不能自動沿用；請直接確認菜單與使用中的供應商。';
-  if (blocked === 'vendor-inactive') return '最近一筆較早菜單的供應商已停用，不能沿用；請先恢復供應商或直接選擇使用中的供應商。';
-  if (blocked === 'vendor-deleted') return '最近一筆較早菜單的供應商已移除，不能沿用；請直接確認菜單與使用中的供應商。';
-  return '最近一筆較早菜單的供應商名稱已變更，不能沿用舊快照；請直接確認菜單與使用中的供應商。';
 }
 
 function dayStatusLabel(status: 'open' | 'closed' | 'reopened'): string {
@@ -955,7 +942,6 @@ export function CloudDayVendorsPage({
       || page.editingVendorId !== null
       || page.removingVendorId !== null
       || page.removeReason !== ''
-      || page.inheritedFromDate !== null
       || page.openingReasonText !== ''
       || page.openingCashText !== baseline.openingCashText
       || !sameJson(page.menuDraft, baseline.menuDraft);
@@ -1095,33 +1081,7 @@ export function CloudDayVendorsPage({
   const updateMenuDraft = (draft: CloudDayMenuDraft) => updatePage(previous => ({
     ...previous,
     menuDraft: draft,
-    inheritedFromDate: null,
     actionError: '',
-  }));
-
-  const beginMenuInheritance = () => {
-    const source = page.snapshot?.latestEarlierMenu;
-    if (!source || source.blocked !== null || !source.sourceVendor
-      || source.sourceVendor.status !== 'active' || source.sourceVendor.deleted
-      || source.sourceVendor.name !== source.menu.vendorNameSnapshot) return;
-    updatePage(previous => ({
-      ...previous,
-      menuDraft: {
-        itemName: source.menu.itemName,
-        priceText: String(source.menu.price),
-        vendorId: source.menu.vendorId,
-      },
-      inheritedFromDate: source.sourceDayId,
-      actionError: '',
-      notice: `已選取 ${source.sourceDayId} 的最新較早菜單；沿用內容會依原快照送出。`,
-    }));
-  };
-
-  const switchMenuToDirect = () => updatePage(previous => ({
-    ...previous,
-    inheritedFromDate: null,
-    actionError: '',
-    notice: '已切換為直接設定；請確認菜單名稱、價格與使用中的供應商。',
   }));
 
   const submitMenu = (draft: CloudDayMenuDraft) => {
@@ -1133,46 +1093,23 @@ export function CloudDayVendorsPage({
       return;
     }
 
-    let itemName = draft.itemName;
-    let price: number;
-    let vendorId: string;
-    let vendorNameSnapshot: string;
-    let inheritedFromDate: string | null = null;
-
-    if (page.inheritedFromDate) {
-      const source = snapshot.latestEarlierMenu;
-      if (!source || source.sourceDayId !== page.inheritedFromDate || source.blocked !== null
-        || !source.sourceVendor || source.sourceVendor.status !== 'active' || source.sourceVendor.deleted
-        || source.sourceVendor.name !== source.menu.vendorNameSnapshot) {
-        updatePage(previous => ({ ...previous, actionError: '沿用來源或供應商已變更；請重新載入，再直接確認菜單。' }));
-        return;
-      }
-      itemName = source.menu.itemName;
-      price = source.menu.price;
-      vendorId = source.menu.vendorId;
-      vendorNameSnapshot = source.menu.vendorNameSnapshot;
-      inheritedFromDate = source.sourceDayId;
-    } else {
-      if (draft.itemName.length < 1 || draft.itemName.length > 100) {
-        updatePage(previous => ({ ...previous, actionError: '菜單名稱必須為 1 至 100 個字元。' }));
-        return;
-      }
-      if (!/^\d+$/.test(draft.priceText)) {
-        updatePage(previous => ({ ...previous, actionError: '菜單價格必須明確輸入 1 至 1,000,000 元的整數。' }));
-        return;
-      }
-      price = Number(draft.priceText);
-      if (!Number.isSafeInteger(price) || price < 1 || price > 1_000_000 || Object.is(price, -0)) {
-        updatePage(previous => ({ ...previous, actionError: '菜單價格必須是 1 至 1,000,000 元的整數。' }));
-        return;
-      }
-      const vendor = snapshot.vendors.find(item => item.vendorId === draft.vendorId);
-      if (!vendor || vendor.status !== 'active' || vendor.deleted) {
-        updatePage(previous => ({ ...previous, actionError: '請選擇仍在使用中的供應商。' }));
-        return;
-      }
-      vendorId = vendor.vendorId;
-      vendorNameSnapshot = vendor.name;
+    if (draft.itemName.length < 1 || draft.itemName.length > 100) {
+      updatePage(previous => ({ ...previous, actionError: '菜單名稱必須為 1 至 100 個字元。' }));
+      return;
+    }
+    if (!/^\d+$/.test(draft.priceText)) {
+      updatePage(previous => ({ ...previous, actionError: '菜單價格必須明確輸入 1 至 1,000,000 元的整數。' }));
+      return;
+    }
+    const price = Number(draft.priceText);
+    if (!Number.isSafeInteger(price) || price < 1 || price > 1_000_000 || Object.is(price, -0)) {
+      updatePage(previous => ({ ...previous, actionError: '菜單價格必須是 1 至 1,000,000 元的整數。' }));
+      return;
+    }
+    const vendor = snapshot.vendors.find(item => item.vendorId === draft.vendorId);
+    if (!vendor || vendor.status !== 'active' || vendor.deleted) {
+      updatePage(previous => ({ ...previous, actionError: '請選擇仍在使用中的供應商。' }));
+      return;
     }
 
     const commandId = makePreparedCommandId();
@@ -1182,11 +1119,12 @@ export function CloudDayVendorsPage({
       selectionDate: snapshot.selectionDate,
       expectedRevision: day.revision,
       expectedHeadSeq: snapshot.seq,
-      itemName,
+      itemName: draft.itemName,
       price,
-      vendorId,
-      vendorNameSnapshot,
-      inheritedFromDate,
+      vendorId: vendor.vendorId,
+      vendorNameSnapshot: vendor.name,
+      // The menu is always a direct set; copying last week's menu only fills this form.
+      inheritedFromDate: null,
     };
     void runPreparedCommand({ kind: 'set-day-menu', commandId, ...input });
   };
@@ -1281,10 +1219,6 @@ export function CloudDayVendorsPage({
   }, [repository, lookupDayId, ledgerKey, lookupAttempt]);
   const lookupReady = previousLookup.status === 'ready' && previousLookup.dayId === lookupDayId;
   const lookupError = previousLookup.status === 'error' && previousLookup.dayId === lookupDayId;
-  const source = snapshot?.latestEarlierMenu ?? null;
-  const canInherit = !!source && source.blocked === null && !!source.sourceVendor
-    && source.sourceVendor.status === 'active' && !source.sourceVendor.deleted
-    && source.sourceVendor.name === source.menu.vendorNameSnapshot;
   return (
     <main className="cloud-day-vendors" aria-label="雲端日期設定與供應商管理" aria-busy={busy || page.loading}>
       <CommandProgress active={progressActive} />
@@ -1414,20 +1348,6 @@ export function CloudDayVendorsPage({
                     </div>
                   </div>
 
-                  {source && source.blocked && <Callout variant="warn">{blockedInheritanceMessage(source.blocked)}（來源日期：{source.sourceDayId}）</Callout>}
-                  {canInherit && source && (
-                    <div className="cloud-day-vendors__inherit-card">
-                      <p>最近較早菜單：{source.sourceDayId} · {source.menu.itemName} · {formatMoney(source.menu.price)} · {source.menu.vendorNameSnapshot}</p>
-                      <HelpTip label="沿用說明">沿用只選取這筆最新較早菜單，來源日期須早於目標日期且不晚於伺服器使用權日期。{'\n'}儲存後的菜單快照不會隨供應商變更。</HelpTip>
-                      <div className="cloud-day-vendors__actions">
-                        <button type="button" className="cloud-day-vendors__secondary" onClick={beginMenuInheritance} disabled={busy || !canMutateDay}>
-                          帶入最新較早菜單
-                        </button>
-                        {page.inheritedFromDate && <button type="button" className="cloud-day-vendors__secondary" onClick={switchMenuToDirect} disabled={busy}>改為直接設定</button>}
-                      </div>
-                    </div>
-                  )}
-                  {page.inheritedFromDate && <p className="cloud-day-vendors__notice" role="status">沿用來源已鎖定為 {page.inheritedFromDate}。若要變更任一欄位，請改用直接設定。</p>}
                   <CloudDayMenuForm
                     businessDate={snapshot.dayId}
                     value={page.menuDraft}
@@ -1435,7 +1355,7 @@ export function CloudDayVendorsPage({
                     onChange={updateMenuDraft}
                     onSubmit={submitMenu}
                     disabled={busy || !canMutateDay}
-                    fieldsReadOnly={!!page.inheritedFromDate}
+                    loadLastWeekMenus={() => repository.readLastWeekMenus(snapshot.dayId, snapshot.vendors)}
                   />
                 </section>
 
